@@ -69,7 +69,40 @@ inline bool read_protobuf_from_pipe(int fd, google::protobuf::MessageLite& msg)
 // The protobuf ChunkedProblemHeader carries all metadata (settings, field
 // types, element counts). Array data bypasses protobuf serialization and
 // flows directly through the pipe as raw bytes.
+//
+// Note: a follow-up commit extends this to also carry chunks for arrays
+// inside repeated nested messages (e.g. QuadraticConstraint arrays), keyed
+// by (container_field_num, container_index, field_id) via the
+// ContainerArrayKey defined below.  The gRPC-level ArrayChunk message has
+// already gained the corresponding optional fields; the on-pipe format
+// will be extended in lockstep with the codegen extension that produces
+// container-aware chunk-assembly code.
 // =============================================================================
+
+// Composite key for chunks targeting arrays inside repeated nested messages
+// (e.g., a single QuadraticConstraint's linear_values).  Top-level arrays
+// continue to use the legacy std::map<int32_t, ...> signature for backward
+// source compatibility — this key is reserved for future container-aware
+// assembly paths.
+struct ContainerArrayKey {
+  int32_t container_field_num;  // parent message's field_num for the repeated_messages entry
+  int32_t container_index;      // 0-based index within the repeated field
+  int32_t field_id;             // container-relative id
+
+  bool operator<(const ContainerArrayKey& other) const
+  {
+    if (container_field_num != other.container_field_num)
+      return container_field_num < other.container_field_num;
+    if (container_index != other.container_index) return container_index < other.container_index;
+    return field_id < other.field_id;
+  }
+
+  bool operator==(const ContainerArrayKey& other) const
+  {
+    return container_field_num == other.container_field_num &&
+           container_index == other.container_index && field_id == other.field_id;
+  }
+};
 
 inline bool write_chunked_request_to_pipe(int fd,
                                           const cuopt::remote::ChunkedProblemHeader& header,
@@ -86,7 +119,7 @@ inline bool write_chunked_request_to_pipe(int fd,
   };
   std::map<int32_t, FieldInfo> fields;
   for (const auto& ac : chunks) {
-    int32_t fid = static_cast<int32_t>(ac.field_id());
+    int32_t fid = ac.field_id();
     auto& fi    = fields[fid];
     fi.chunks.push_back(&ac);
     if (fi.total_bytes == 0 && ac.total_elements() > 0) {

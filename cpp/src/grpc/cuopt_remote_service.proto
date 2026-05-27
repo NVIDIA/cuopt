@@ -137,14 +137,33 @@ message ChunkedProblemHeader {
 }
 
 // A chunk of typed array data for large problem transfers.
-// Each chunk carries a slice of one array field, identified by field_id.
-// The server pre-allocates the target array on the first chunk (using total_elements)
-// and copies each chunk's data at the given element_offset.
+// Each chunk carries a slice of one array field. The chunk identifies its
+// target array via (container_field_num, container_index, field_id):
+//
+//   - Top-level array (default): container_field_num and container_index are
+//     unset.  field_id is interpreted as an ArrayFieldId enum value (e.g.,
+//     FIELD_A_VALUES).  This is the only mode used today.
+//
+//   - Array inside a repeated nested message: container_field_num is the
+//     parent message's field_num for the repeated_messages entry (e.g. 25 for
+//     OptimizationProblem.quadratic_constraints), container_index is the
+//     0-based element index within that repeated field, and field_id is
+//     interpreted relative to the container's own array namespace (a small
+//     dense int starting from 0; see the registry entry for the container).
+//
+// The server pre-allocates the target array on the first chunk (using
+// total_elements) and copies each chunk's data at the given element_offset.
 message ArrayChunk {
-  ArrayFieldId field_id = 1;   // Which array this chunk belongs to
+  int32 field_id = 1;          // ArrayFieldId for top-level, or container-relative id
   int64 element_offset = 2;    // Element index offset within the array
   int64 total_elements = 3;    // Total elements in the complete array (for pre-allocation)
   bytes data = 4;              // Raw bytes: sizeof(element_type) * elements_in_this_chunk
+
+  // For chunks targeting an array inside a repeated nested message (e.g. a
+  // single QuadraticConstraint's linear_values).  Both unset (proto3
+  // has_*()-style presence) means a top-level chunk — existing semantics.
+  optional int32 container_field_num = 5;
+  optional int32 container_index = 6;
 }
 
 // Start a chunked upload: sends problem metadata and settings.
