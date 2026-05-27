@@ -1,0 +1,19 @@
+[
+  {
+    "id": "rt-form-eval-001-tsp-vs-vrp-vs-pdp",
+    "question": "A courier company has 8 trucks and 50 packages to deliver across a city. Some packages must be picked up from one address and dropped off at another. What problem type is this, and what data do I need to collect?",
+    "expected_skill": "routing-formulation",
+    "expected_script": null,
+    "ground_truth": "The agent identifies the problem as PDP (Pickup and Delivery Problem) because of the pickup-then-deliver pairing — not VRP (which would be one-way deliveries to a depot) and not TSP (which is single-vehicle, visit-all). With 8 trucks and pickup/delivery pairs, it is a multi-vehicle PDP. The data the agent walks the user through: (a) Locations — number of unique addresses, depot locations for the 8 trucks (single depot vs multi-depot), and the cost or distance matrix (or travel-time matrix) between every pair. (b) Orders / tasks — the pickup-and-delivery pairs (each package: pickup location, delivery location, optional demand/weight, optional service time). (c) Fleet — 8 trucks; the agent asks about capacity (weight, volume, or count of packages per truck) and start/end locations per truck. (d) Constraints — time windows on pickups and deliveries (when can a package be picked up / delivered), precedence (always implicit for PDP: pickup must be before delivery for each pair). It mentions that PDP precedence is handled by the routing API's pickup-delivery-pair structure, not a separate precedence constraint. Does not produce code — this skill is concepts only.",
+    "expected_behavior": [
+      "Identifies the problem type as PDP (multi-vehicle), not VRP and not TSP",
+      "Explains the distinguishing feature: pickup-then-deliver pairs",
+      "Asks about depot configuration (single vs multi-depot) and the cost / distance matrix",
+      "Lists pickup-delivery pairs as the order/task data (including demand and service times)",
+      "Asks about per-truck capacity and start/end locations",
+      "Asks about pickup and delivery time windows",
+      "Mentions that pickup-before-delivery precedence is intrinsic to PDP, not a separate constraint",
+      "Does not produce code — this skill is concepts only"
+    ]
+  }
+]
