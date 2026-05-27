@@ -278,9 +278,10 @@ TEST(barrier, presolve_reindexes_cone_start_after_empty_column_removal)
   user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
 
   simplex_solver_settings_t<int, double> settings;
-  settings.barrier       = true;
-  settings.dualize       = 0;
-  settings.scale_columns = false;
+  settings.barrier          = true;
+  settings.barrier_presolve = true;
+  settings.dualize          = 0;
+  settings.scale_columns    = false;
 
   std::vector<int> new_slacks;
   dualize_info_t<int, double> dualize_info;
@@ -344,9 +345,10 @@ TEST(barrier, presolve_keeps_direct_free_variables_before_cones)
   user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
 
   simplex_solver_settings_t<int, double> settings;
-  settings.barrier       = true;
-  settings.dualize       = 0;
-  settings.scale_columns = false;
+  settings.barrier          = true;
+  settings.barrier_presolve = true;
+  settings.dualize          = 0;
+  settings.scale_columns    = false;
 
   std::vector<int> new_slacks;
   dualize_info_t<int, double> dualize_info;
@@ -1020,8 +1022,6 @@ TEST(barrier, min_x_squared_free_variable_dual_correction)
   auto h_x = cuopt::host_copy(solution.get_primal_solution(), handle.get_stream());
   auto h_y = cuopt::host_copy(solution.get_dual_solution(), handle.get_stream());
   auto h_z = cuopt::host_copy(solution.get_reduced_cost(), handle.get_stream());
-
-  printf("x %e y %e z %e\n", h_x[0], h_y[0], h_z[0]);
 
   const double tol = 1e-5;
   EXPECT_NEAR(h_x[0], 1.0, tol);
