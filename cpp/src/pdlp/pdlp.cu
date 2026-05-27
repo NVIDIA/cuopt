@@ -381,7 +381,13 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
                                        int num_gpus)
   // 1. Delegate to single-GPU ctor to bring up all the per-master state
   //    (problem_ptr, op_problem_scaled_, pdhg_solver_, strategies, etc.).
-  : pdlp_solver_t(op_problem, settings, false)
+  //
+  // NOTE: pass is_legacy_batch_mode=true to disable CUDA-graph capture on the
+  // master while we are debugging fake-mGPU divergence. The flag is a pure
+  // graph-capture toggle (see ping_pong_graph_t / manual_cuda_graph_t); it does
+  // not change any algorithm semantics. Restore to false once the path is
+  // confirmed correct.
+  : pdlp_solver_t(op_problem, settings, /*is_legacy_batch_mode=*/true)
 {
   if (num_gpus == 1) {
     std::cout << "CAREFUL: num_gpus == 1, running dummy version" << std::endl;

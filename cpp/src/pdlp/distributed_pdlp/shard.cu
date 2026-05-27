@@ -153,7 +153,13 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
   //         At this point sub_pdlp.op_problem_scaled_ is an unscaled copy
   //         of sub_problem and sub_pdlp.initial_scaling_strategy_ has
   //         unit cumulative factors (sub-settings disable Ruiz / PC iters).
-  sub_pdlp = std::make_unique<pdlp_solver_t<i_t, f_t>>(*sub_problem, settings, /*batch=*/false);
+  // NOTE: pass is_legacy_batch_mode=true to disable CUDA-graph capture inside
+  // sub_pdlp while debugging fake-mGPU divergence. The flag is a pure
+  // graph-capture toggle (ping_pong_graph_t / manual_cuda_graph_t) and does
+  // not change any algorithm semantics. Restore to false once the path is
+  // confirmed correct.
+  sub_pdlp = std::make_unique<pdlp_solver_t<i_t, f_t>>(
+    *sub_problem, settings, /*is_legacy_batch_mode=*/true);
 
   sub_pdlp->pdhg_solver_.set_is_multi_gpu(true);
 
