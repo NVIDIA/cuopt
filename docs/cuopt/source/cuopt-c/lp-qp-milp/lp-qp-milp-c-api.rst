@@ -51,6 +51,17 @@ Optimization problems can be created via five different functions
 .. doxygenfunction:: cuOptCreateQuadraticProblem
 .. doxygenfunction:: cuOptCreateQuadraticRangedProblem
 
+.. note::
+   ``cuOptCreateQuadraticProblem`` and ``cuOptCreateQuadraticRangedProblem`` are deprecated.
+   Prefer ``cuOptCreateProblem`` or ``cuOptCreateRangedProblem`` followed by
+   ``cuOptSetQuadraticObjective`` (and ``cuOptAddQuadraticConstraint`` for QCQP).
+
+For QP and QCQP models, the quadratic objective and constraints may be specified
+after creating a linear problem:
+
+.. doxygenfunction:: cuOptSetQuadraticObjective
+.. doxygenfunction:: cuOptAddQuadraticConstraint
+
 A optimization problem must be destroyed with the following function
 
 .. doxygenfunction:: cuOptDestroyProblem
