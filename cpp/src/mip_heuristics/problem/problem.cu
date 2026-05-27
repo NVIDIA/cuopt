@@ -1455,7 +1455,7 @@ void problem_t<i_t, f_t>::compute_objective_step()
       // For integer variables lb is typically already integer, so ceil is a no-op.
       // For implied integers with fractional lb, ceil gives the first feasible point.
       // If lb is -inf (free variable), use 0 as the anchor.
-      f_t lb = h_var_lb[i];
+      f_t lb            = h_var_lb[i];
       f_t lattice_point = std::isfinite(lb) ? std::ceil(lb) : f_t(0);
       bias += coef * lattice_point;
     }
@@ -1508,15 +1508,18 @@ void problem_t<i_t, f_t>::compute_objective_step()
   auto h_con_ub  = cuopt::host_copy(constraint_upper_bounds, handle_ptr->get_stream());
 
   objective_step = dual_simplex::compute_objective_step_info<i_t, f_t>(h_obj_coefs,
-                                                                        h_var_lb,
-                                                                        h_var_ub,
-                                                                        is_lattice_known_initially,
-                                                                        h_offsets,
-                                                                        h_vars,
-                                                                        h_coefs,
-                                                                        h_con_lb,
-                                                                        h_con_ub);
-  CUOPT_LOG_INFO("Objective step (step %e, bias %e) completed in %.3f seconds", objective_step.step_size, objective_step.bias, dual_simplex::toc(start_time));
+                                                                       h_var_lb,
+                                                                       h_var_ub,
+                                                                       is_lattice_known_initially,
+                                                                       h_offsets,
+                                                                       h_vars,
+                                                                       h_coefs,
+                                                                       h_con_lb,
+                                                                       h_con_ub);
+  CUOPT_LOG_INFO("Objective step (step %e, bias %e) completed in %.3f seconds",
+                 objective_step.step_size,
+                 objective_step.bias,
+                 dual_simplex::toc(start_time));
 }
 
 template <typename i_t, typename f_t>

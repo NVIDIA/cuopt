@@ -89,9 +89,9 @@ bool propagate_lattice(i_t n_vars,
       step_r[j] = {1, 1};
       // Use ceil(lb) as the lattice anchor: the first integer value >= lb.
       // If lb is -inf (free variable), use 0 as the anchor.
-      f_t lb = var_lb[j];
+      f_t lb            = var_lb[j];
       f_t lattice_point = std::isfinite(lb) ? std::ceil(lb) : f_t(0);
-      bias_r[j] = rational128_t<f_t>::safe_from_floating_point(lattice_point);
+      bias_r[j]         = rational128_t<f_t>::safe_from_floating_point(lattice_point);
       if (bias_r[j].is_zero() && lattice_point != 0) {
         // Can't rationalize this variable's lattice point; treat it as lattice-unknown.
         step_r[j] = {0, 1};
@@ -106,9 +106,7 @@ bool propagate_lattice(i_t n_vars,
   for (i_t i = 0; i < n_cons; ++i) {
     for (i_t p = offsets[i]; p < offsets[i + 1]; ++p) {
       coef_r[p] = rational128_t<f_t>::safe_from_floating_point(coefficients[p]);
-      if (coef_r[p].is_zero() && coefficients[p] != 0) {
-        constraint_has_bad_coef[i] = true;
-      }
+      if (coef_r[p].is_zero() && coefficients[p] != 0) { constraint_has_bad_coef[i] = true; }
     }
   }
 
@@ -307,8 +305,8 @@ bool propagate_lattice(i_t n_vars,
   // We take the GCD of steps from all qualifying inequalities, and also account for the
   // variable's simple bound in the objective-improving direction.
   {
-    i_t obj_var  = -1;
-    f_t obj_coef = 0;
+    i_t obj_var       = -1;
+    f_t obj_coef      = 0;
     i_t n_unknown_obj = 0;
     for (i_t j = 0; j < n_vars; ++j) {
       if (obj_coefs[j] == 0) continue;
@@ -322,7 +320,7 @@ bool propagate_lattice(i_t n_vars,
     if (n_unknown_obj == 1 && obj_var >= 0) {
       rational128_t<f_t> combined_step = {0, 1};
       rational128_t<f_t> combined_bias = {0, 1};
-      bool found_any = false;
+      bool found_any                   = false;
 
       const i_t col_start = A_col.col_start[obj_var];
       const i_t col_end   = A_col.col_start[obj_var + 1];
@@ -349,9 +347,9 @@ bool propagate_lattice(i_t n_vars,
         // Minimization pushes obj_var in direction -sign(obj_coef).
         // For LHS <= ub: tightens when obj_var_coef_in_row * obj_coef < 0
         // For LHS >= lb: tightens when obj_var_coef_in_row * obj_coef > 0
-        bool lb_finite = std::isfinite(con_lb[i]);
-        bool ub_finite = std::isfinite(con_ub[i]);
-        f_t rhs_val    = 0;
+        bool lb_finite  = std::isfinite(con_lb[i]);
+        bool ub_finite  = std::isfinite(con_ub[i]);
+        f_t rhs_val     = 0;
         bool qualifying = false;
 
         if (ub_finite && (obj_var_coef_in_row * obj_coef < 0)) {
@@ -396,9 +394,7 @@ bool propagate_lattice(i_t n_vars,
           rational128_t<f_t> bound_r = rational128_t<f_t>::safe_from_floating_point(bound);
           if (!bound_r.is_zero() || bound == 0) {
             rational128_t<f_t> dist = (bound_r - combined_bias).abs();
-            if (!dist.is_zero()) {
-              combined_step = gcd(combined_step, dist);
-            }
+            if (!dist.is_zero()) { combined_step = gcd(combined_step, dist); }
           }
         }
 
@@ -443,18 +439,18 @@ objective_step_t<f_t> compute_objective_step_info(
   // The propagation also handles the single-variable objective inequality case.
   std::vector<f_t> lattice_step, lattice_bias;
   bool discovered = propagate_lattice<i_t, f_t>(n_variables,
-                                                 n_constraints,
-                                                 offsets,
-                                                 variables,
-                                                 coefficients,
-                                                 con_lb,
-                                                 con_ub,
-                                                 var_lb,
-                                                 var_ub,
-                                                 is_lattice_known_initially,
-                                                 obj_coefs,
-                                                 lattice_step,
-                                                 lattice_bias);
+                                                n_constraints,
+                                                offsets,
+                                                variables,
+                                                coefficients,
+                                                con_lb,
+                                                con_ub,
+                                                var_lb,
+                                                var_ub,
+                                                is_lattice_known_initially,
+                                                obj_coefs,
+                                                lattice_step,
+                                                lattice_bias);
 
   if (!discovered) return {};
 
@@ -523,13 +519,13 @@ template objective_step_t<double> compute_objective_step_info<int, double>(
   const std::vector<double>&);
 
 template objective_step_t<float> compute_objective_step_info<int, float>(const std::vector<float>&,
-                                                                          const std::vector<float>&,
-                                                                          const std::vector<float>&,
-                                                                          const std::vector<bool>&,
-                                                                          const std::vector<int>&,
-                                                                          const std::vector<int>&,
-                                                                          const std::vector<float>&,
-                                                                          const std::vector<float>&,
-                                                                          const std::vector<float>&);
+                                                                         const std::vector<float>&,
+                                                                         const std::vector<float>&,
+                                                                         const std::vector<bool>&,
+                                                                         const std::vector<int>&,
+                                                                         const std::vector<int>&,
+                                                                         const std::vector<float>&,
+                                                                         const std::vector<float>&,
+                                                                         const std::vector<float>&);
 
 }  // namespace cuopt::linear_programming::dual_simplex
