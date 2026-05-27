@@ -1206,6 +1206,77 @@ TEST_F(ChunkedUploadTests, ConcurrentChunkedUploads)
   EXPECT_EQ(success_count.load(), num_clients);
 }
 
+// =============================================================================
+// QCQP transport integration tests — submit a problem with quadratic
+// constraints end-to-end through gRPC to verify the container-chunk path
+// (proto, server validation, pipe wire format, worker reassembly).  The
+// underlying solver is PDLP, which ignores QC and solves the LP
+// relaxation, so we only assert the call completes without a transport
+// error; the objective value of the LP relaxation is not checked.
+// =============================================================================
+
+// Submit a small QCQP problem on the unary path (default thresholds keep the
+// payload below the chunked threshold).  Exercises map_problem_to_proto and
+// map_proto_to_problem with quadratic_constraints on the wire.
+TEST_F(ChunkedUploadTests, QuadraticConstraintsUnarySubmit)
+{
+  grpc_client_config_t config;
+  config.timeout_seconds = 60;
+  // Generous threshold ensures the small QC problem stays on the unary path.
+  config.chunked_array_threshold_bytes = 100 * 1024 * 1024;
+
+  auto client = create_client(config);
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_data_path("qcqp", "QC_Test_1.mps");
+  auto problem         = load_problem_from_mps(mps_path);
+  ASSERT_TRUE(problem.has_quadratic_constraints());
+  EXPECT_EQ(problem.get_quadratic_constraints().size(), 2u);
+
+  pdlp_solver_settings_t<int32_t, double> settings;
+  settings.time_limit = 10.0;
+
+  auto result = client->solve_lp(problem, settings);
+  // PDLP currently ignores QC and solves the LP relaxation; we assert only
+  // that the transport completed cleanly with no INVALID_ARGUMENT or worker
+  // crash, which proves the new wire encoding round-tripped end-to-end.
+  EXPECT_TRUE(result.success) << result.error_message;
+}
+
+// Force the chunked upload path with both a zero-byte threshold (every array
+// goes via SendArrayChunk) and a deliberately tiny chunk_size_bytes so each
+// per-row QC array is split across multiple ArrayChunks.  This exercises:
+//   * Client: chunk_container_typed_array emitting cfn/ci-stamped chunks.
+//   * Server: SendArrayChunk routing container chunks into
+//             container_field_meta and validating against
+//             array_field_element_size(cfn, fid).
+//   * Pipe:   the new container_arrays wire section with multi-chunk
+//             stitching inside write_chunked_request_to_pipe.
+//   * Worker: read_chunked_request_from_pipe + map_chunked_arrays_to_problem
+//             reconstructing QC entries from header scalars + container bytes.
+TEST_F(ChunkedUploadTests, QuadraticConstraintsChunkedSubmit)
+{
+  grpc_client_config_t config;
+  config.timeout_seconds = 60;
+  // Tiny chunk size forces multiple chunks per container array even for
+  // QC_Test_1's small linear/quadratic vectors (8 bytes / double, 4 / int).
+  config.chunk_size_bytes              = 8;
+  config.chunked_array_threshold_bytes = 0;
+
+  auto client = create_client(config);
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_data_path("qcqp", "QC_Test_1.mps");
+  auto problem         = load_problem_from_mps(mps_path);
+  ASSERT_TRUE(problem.has_quadratic_constraints());
+
+  pdlp_solver_settings_t<int32_t, double> settings;
+  settings.time_limit = 10.0;
+
+  auto result = client->solve_lp(problem, settings);
+  EXPECT_TRUE(result.success) << result.error_message;
+}
+
 TEST_F(ChunkedUploadTests, UnaryFallbackSmallProblem)
 {
   grpc_client_config_t config;

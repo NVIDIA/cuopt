@@ -91,6 +91,44 @@ ArrayChunk make_partial_chunk(ArrayFieldId field_id,
   return ac;
 }
 
+// Container variants: stamp the (cfn, ci) optional fields so the chunk is
+// routed to the container-keyed map on the read side.  `field_id` here is a
+// container-relative id (e.g. 0..4 inside a QuadraticConstraint), not an
+// ArrayFieldId enum value.
+ArrayChunk make_container_whole_chunk(int32_t container_field_num,
+                                      int32_t container_index,
+                                      int32_t field_id,
+                                      int64_t total_elements,
+                                      const std::vector<uint8_t>& data)
+{
+  ArrayChunk ac;
+  ac.set_field_id(field_id);
+  ac.set_element_offset(0);
+  ac.set_total_elements(total_elements);
+  ac.set_data(std::string(reinterpret_cast<const char*>(data.data()), data.size()));
+  ac.set_container_field_num(container_field_num);
+  ac.set_container_index(container_index);
+  return ac;
+}
+
+ArrayChunk make_container_partial_chunk(int32_t container_field_num,
+                                        int32_t container_index,
+                                        int32_t field_id,
+                                        int64_t element_offset,
+                                        int64_t total_elements,
+                                        const uint8_t* data,
+                                        size_t data_size)
+{
+  ArrayChunk ac;
+  ac.set_field_id(field_id);
+  ac.set_element_offset(element_offset);
+  ac.set_total_elements(total_elements);
+  ac.set_data(std::string(reinterpret_cast<const char*>(data), data_size));
+  ac.set_container_field_num(container_field_num);
+  ac.set_container_index(container_index);
+  return ac;
+}
+
 }  // namespace
 
 // =============================================================================
@@ -298,6 +336,88 @@ TEST(PipeSerialization, ChunkedRequest_ManyFields)
     ASSERT_TRUE(arrays_out.count(fid)) << "Missing field_id " << fid;
     EXPECT_EQ(arrays_out[fid], data) << "Mismatch for field_id " << fid;
   }
+}
+
+// Round-trip a mix of top-level and container chunks through the pipe.
+// Exercises:
+//   * Top-level fast path (single whole chunk per field).
+//   * Container fast path (single whole chunk per (cfn, ci, fid)).
+//   * Container slow path (one container array delivered as two partial
+//     chunks that must be stitched at the writer side).
+//   * Multiple container indices under the same parent field_num to ensure
+//     they don't collide on the int32_t key space.
+// Uses cfn=25 / fids 0..4 which match the registered quadratic_constraints
+// entry, so array_field_element_size() returns the correct widths.
+TEST(PipeSerialization, ChunkedRequest_ContainerArrays)
+{
+  PipePair pp;
+
+  ChunkedProblemHeader header;
+  header.set_problem_name("qc_pipe_smoke");
+
+  // One top-level FIELD_C (8-byte doubles, 50 elements) — confirms top-level
+  // path still works when container chunks are present.
+  auto c_data = make_pattern(50 * 8, 0xC0);
+
+  // Container index 0: linear_values (cfn=25, fid=0, 8 bytes), small fast-path
+  // single-chunk.  Also linear_indices (cfn=25, fid=1, 4 bytes) and
+  // quadratic_offsets (cfn=25, fid=4, 4 bytes).
+  auto lv0_data = make_pattern(10 * 8, 0xA0);
+  auto li0_data = make_pattern(10 * 4, 0xA1);
+  auto qo0_data = make_pattern(3 * 4, 0xA4);
+
+  // Container index 1: linear_values delivered in two partial chunks (slow
+  // path inside a container).  20 elements * 8 bytes = 160 bytes, split at 12.
+  constexpr int64_t lv1_total = 20;
+  constexpr int64_t lv1_split = 12;
+  auto lv1_data               = make_pattern(lv1_total * 8, 0xB0);
+
+  std::vector<ArrayChunk> chunks;
+  chunks.push_back(make_whole_chunk(FIELD_C, 50, c_data));
+  chunks.push_back(make_container_whole_chunk(25, 0, 0, 10, lv0_data));
+  chunks.push_back(make_container_whole_chunk(25, 0, 1, 10, li0_data));
+  chunks.push_back(make_container_whole_chunk(25, 0, 4, 3, qo0_data));
+  chunks.push_back(make_container_partial_chunk(
+    25, 1, 0, 0, lv1_total, lv1_data.data(), static_cast<size_t>(lv1_split * 8)));
+  chunks.push_back(make_container_partial_chunk(25,
+                                                1,
+                                                0,
+                                                lv1_split,
+                                                lv1_total,
+                                                lv1_data.data() + lv1_split * 8,
+                                                static_cast<size_t>((lv1_total - lv1_split) * 8)));
+
+  bool write_ok = false;
+  std::thread writer(
+    [&] { write_ok = write_chunked_request_to_pipe(pp.write_fd(), header, chunks); });
+
+  ChunkedProblemHeader header_out;
+  std::map<int32_t, std::vector<uint8_t>> arrays_out;
+  std::map<ContainerArrayKey, std::vector<uint8_t>> container_arrays_out;
+  bool read_ok =
+    read_chunked_request_from_pipe(pp.read_fd(), header_out, arrays_out, container_arrays_out);
+
+  writer.join();
+
+  ASSERT_TRUE(write_ok);
+  ASSERT_TRUE(read_ok);
+  EXPECT_EQ(header_out.problem_name(), "qc_pipe_smoke");
+
+  // Top-level array round-trips unchanged.
+  ASSERT_EQ(arrays_out.size(), 1u);
+  EXPECT_EQ(arrays_out[FIELD_C], c_data);
+
+  // Four container arrays survived (3 in entry 0, 1 in entry 1).  Brace-init
+  // commas confuse the EXPECT_EQ macro's argument parsing; extract the key.
+  ASSERT_EQ(container_arrays_out.size(), 4u);
+  ContainerArrayKey k0_0{25, 0, 0};
+  ContainerArrayKey k0_1{25, 0, 1};
+  ContainerArrayKey k0_4{25, 0, 4};
+  ContainerArrayKey k1_0{25, 1, 0};
+  EXPECT_EQ(container_arrays_out[k0_0], lv0_data);
+  EXPECT_EQ(container_arrays_out[k0_1], li0_data);
+  EXPECT_EQ(container_arrays_out[k0_4], qo0_data);
+  EXPECT_EQ(container_arrays_out[k1_0], lv1_data);
 }
 
 // =============================================================================
