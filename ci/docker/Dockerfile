@@ -62,7 +62,6 @@ RUN \
       "cuopt-server-${cuda_suffix}==${CUOPT_VER}" \
       "cuopt-${cuda_suffix}==${CUOPT_VER}" \
       "libcuopt-${cuda_suffix}==${CUOPT_VER}" \
-      "cuopt-mps-parser==${CUOPT_VER}" \
       "cuopt-sh-client==${CUOPT_VER}" && \
     python -m pip list
 

@@ -7,12 +7,13 @@
 
 #include <cuopt/linear_programming/cpu_optimization_problem.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
+#include <cuopt/linear_programming/optimization_problem_utils.hpp>
 #include <cuopt/linear_programming/solve_remote.hpp>
 
 #include <cuopt/error.hpp>
 #include <cuopt/linear_programming/csr_matrix_utils.hpp>
+#include <cuopt/linear_programming/io/writer.hpp>
 #include <mip_heuristics/mip_constants.hpp>
-#include <mps_parser/writer.hpp>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/logger.hpp>
 #include <utilities/sparse_matrix_helpers.hpp>
@@ -211,6 +212,58 @@ void optimization_problem_t<i_t, f_t>::set_quadratic_constraints(
     constraints)
 {
   quadratic_constraints_ = std::move(constraints);
+}
+
+template <typename i_t, typename f_t>
+void optimization_problem_t<i_t, f_t>::add_quadratic_constraint(char constraint_row_type,
+                                                                f_t rhs_value,
+                                                                const f_t* quadratic_values,
+                                                                i_t size_quadratic_values,
+                                                                const i_t* quadratic_indices,
+                                                                i_t size_quadratic_indices,
+                                                                const i_t* quadratic_offsets,
+                                                                i_t size_quadratic_offsets,
+                                                                const f_t* linear_values,
+                                                                i_t size_linear_values,
+                                                                const i_t* linear_indices,
+                                                                i_t size_linear_indices)
+{
+  cuopt_expects(size_quadratic_offsets >= 1,
+                error_type_t::ValidationError,
+                "quadratic_offsets must have at least one element");
+  cuopt_expects(quadratic_offsets != nullptr,
+                error_type_t::ValidationError,
+                "quadratic_offsets cannot be null");
+  cuopt_expects(size_linear_values == size_linear_indices,
+                error_type_t::ValidationError,
+                "linear_values and linear_indices must have the same size");
+  if (size_quadratic_values != 0) {
+    cuopt_expects(quadratic_values != nullptr,
+                  error_type_t::ValidationError,
+                  "quadratic_values cannot be null");
+  }
+  if (size_quadratic_indices != 0) {
+    cuopt_expects(quadratic_indices != nullptr,
+                  error_type_t::ValidationError,
+                  "quadratic_indices cannot be null");
+  }
+  if (size_linear_values != 0) {
+    cuopt_expects(
+      linear_values != nullptr, error_type_t::ValidationError, "linear_values cannot be null");
+    cuopt_expects(
+      linear_indices != nullptr, error_type_t::ValidationError, "linear_indices cannot be null");
+  }
+
+  typename optimization_problem_interface_t<i_t, f_t>::quadratic_constraint_t qc;
+  qc.constraint_row_index = get_n_constraints() + static_cast<i_t>(quadratic_constraints_.size());
+  qc.constraint_row_type  = constraint_row_type;
+  qc.rhs_value            = rhs_value;
+  qc.quadratic_values.assign(quadratic_values, quadratic_values + size_quadratic_values);
+  qc.quadratic_indices.assign(quadratic_indices, quadratic_indices + size_quadratic_indices);
+  qc.quadratic_offsets.assign(quadratic_offsets, quadratic_offsets + size_quadratic_offsets);
+  qc.linear_values.assign(linear_values, linear_values + size_linear_values);
+  qc.linear_indices.assign(linear_indices, linear_indices + size_linear_indices);
+  quadratic_constraints_.push_back(std::move(qc));
 }
 
 template <typename i_t, typename f_t>
@@ -763,7 +816,7 @@ typename optimization_problem_t<i_t, f_t>::view_t optimization_problem_t<i_t, f_
 template <typename i_t, typename f_t>
 void optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_path)
 {
-  cuopt::mps_parser::data_model_view_t<i_t, f_t> data_model_view;
+  cuopt::linear_programming::io::data_model_view_t<i_t, f_t> data_model_view;
 
   // Set optimization sense
   data_model_view.set_maximize(get_sense());
@@ -843,11 +896,15 @@ void optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_
   std::vector<char> variable_types;
   if (get_n_variables() != 0) {
     auto enum_variable_types = cuopt::host_copy(get_variable_types(), stream);
-    variable_types.resize(enum_variable_types.size());
-
-    // Convert enum types to char types
-    for (size_t i = 0; i < variable_types.size(); ++i) {
-      variable_types[i] = (enum_variable_types[i] == var_t::INTEGER) ? 'I' : 'C';
+    if (enum_variable_types.empty()) {
+      // Variable types not set (e.g. pure LP); default to all continuous
+      variable_types.assign(get_n_variables(), 'C');
+    } else {
+      variable_types.resize(enum_variable_types.size());
+      // Convert enum types to char types
+      for (size_t i = 0; i < variable_types.size(); ++i) {
+        variable_types[i] = detail::var_type_to_char(enum_variable_types[i]);
+      }
     }
 
     data_model_view.set_variable_types(variable_types.data(), variable_types.size());
@@ -869,7 +926,7 @@ void optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_
     data_model_view.set_quadratic_constraints(quadratic_constraints_);
   }
 
-  cuopt::mps_parser::write_mps(data_model_view, mps_file_path);
+  cuopt::linear_programming::io::write_mps(data_model_view, mps_file_path);
 }
 
 template <typename i_t, typename f_t>

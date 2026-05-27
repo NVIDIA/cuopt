@@ -9,9 +9,13 @@ set -euo pipefail
 # so those constraints will affect all future 'pip install' calls
 source rapids-init-pip
 
+# Make sure libssl.so.3 / libcrypto.so.3 are on the linker path before any
+# 'import cuopt'. cuopt wheels link OpenSSL 3 and don't bundle it; on Rocky 8
+# the runtime needs to come from EPEL (no-op on distros that already ship it).
+bash "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/utils/install_openssl3_runtime.sh"
+
 # Download the packages built in the previous step
 RAPIDS_PY_CUDA_SUFFIX="$(rapids-wheel-ctk-name-gen "${RAPIDS_CUDA_VERSION}")"
-CUOPT_MPS_PARSER_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="cuopt_mps_parser" rapids-download-wheels-from-github python)
 CUOPT_SH_CLIENT_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="cuopt_sh_client" RAPIDS_PY_WHEEL_PURE="1" rapids-download-wheels-from-github python)
 CUOPT_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="cuopt_${RAPIDS_PY_CUDA_SUFFIX}" rapids-download-wheels-from-github python)
 LIBCUOPT_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="libcuopt_${RAPIDS_PY_CUDA_SUFFIX}" rapids-download-wheels-from-github cpp)
@@ -20,7 +24,6 @@ LIBCUOPT_WHEELHOUSE=$(RAPIDS_PY_WHEEL_NAME="libcuopt_${RAPIDS_PY_CUDA_SUFFIX}" r
 # use these wheels for cuopt packages
 cat > "${PIP_CONSTRAINT}" <<EOF
 cuopt-${RAPIDS_PY_CUDA_SUFFIX} @ file://$(echo ${CUOPT_WHEELHOUSE}/cuopt_${RAPIDS_PY_CUDA_SUFFIX}-*.whl)
-cuopt-mps-parser @ file://$(echo ${CUOPT_MPS_PARSER_WHEELHOUSE}/cuopt_mps_parser-*.whl)
 cuopt-sh-client @ file://$(echo ${CUOPT_SH_CLIENT_WHEELHOUSE}/cuopt_sh_client-*.whl)
 libcuopt-${RAPIDS_PY_CUDA_SUFFIX} @ file://$(echo ${LIBCUOPT_WHEELHOUSE}/libcuopt_${RAPIDS_PY_CUDA_SUFFIX}-*.whl)
 EOF
@@ -38,7 +41,6 @@ rapids-pip-retry install \
     --prefer-binary \
     --constraint "${PIP_CONSTRAINT}" \
     --constraint "${PIP_CONSTRAINT}" \
-    "${CUOPT_MPS_PARSER_WHEELHOUSE}"/cuopt_mps_parser*.whl \
     "$(echo "${CUOPT_WHEELHOUSE}"/cuopt*.whl)[test]" \
     "${CUOPT_SH_CLIENT_WHEELHOUSE}"/cuopt_sh_client*.whl \
     "${LIBCUOPT_WHEELHOUSE}"/libcuopt*.whl

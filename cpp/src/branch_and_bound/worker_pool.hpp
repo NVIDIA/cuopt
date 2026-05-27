@@ -18,6 +18,7 @@ class branch_and_bound_worker_pool_t {
             const lp_problem_t<i_t, f_t>& original_lp,
             const csr_matrix_t<i_t, f_t>& Arow,
             const std::vector<variable_type_t>& var_type,
+            mip_symmetry_t<i_t, f_t>* symmetry,
             const simplex_solver_settings_t<i_t, f_t>& settings)
   {
     workers_.resize(num_workers);
@@ -25,6 +26,9 @@ class branch_and_bound_worker_pool_t {
     for (i_t i = 0; i < num_workers; ++i) {
       workers_[i] = std::make_unique<branch_and_bound_worker_t<i_t, f_t>>(
         i, original_lp, Arow, var_type, settings);
+      // Propagate the (possibly null) symmetry pointer; workers lazily build
+      // their orbital_fixing/lexical_reduction state via ensure_orbital_fixing().
+      workers_[i]->symmetry_ptr = symmetry;
       idle_workers_.push_front(i);
     }
 

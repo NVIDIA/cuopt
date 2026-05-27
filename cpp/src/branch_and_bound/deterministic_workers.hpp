@@ -308,10 +308,10 @@ class deterministic_diving_worker_t
     dive_upper = original_lp.upper;
   }
 
-  deterministic_diving_worker_t(const deterministic_diving_worker_t&)            = delete;
-  deterministic_diving_worker_t& operator=(const deterministic_diving_worker_t&) = delete;
-  deterministic_diving_worker_t(deterministic_diving_worker_t&&)                 = default;
-  deterministic_diving_worker_t& operator=(deterministic_diving_worker_t&&)      = default;
+  deterministic_diving_worker_t(const deterministic_diving_worker_t&)                = delete;
+  deterministic_diving_worker_t& operator=(const deterministic_diving_worker_t&)     = delete;
+  deterministic_diving_worker_t(deterministic_diving_worker_t&&) noexcept            = default;
+  deterministic_diving_worker_t& operator=(deterministic_diving_worker_t&&) noexcept = default;
 
   bool has_work_impl() const { return !dive_queue.empty(); }
 

@@ -1970,9 +1970,11 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
     stream_view_);
 #endif
 
-  // Set PDHG graph to unitilized so that next call can start a new graph
-  // Currently graph capture is not supported for cuSparse SpMM
-  // TODO enable once cuSparse SpMM supports graph capture
+  // Set PDHG graphs to uninitialized so that next call can start a new graph.
+  // Currently graph capture is not supported for cuSparse SpMM.
+  // TODO enable once cuSparse SpMM supports graph capture.
+  // Reset both reflected-path caches: graph_all (non-reflected + reflected major) and
+  // graph_all_non_major (reflected non-major).
   pdhg_solver_.get_graph_all() = ping_pong_graph_t<i_t>(stream_view_, true);
 
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
@@ -2316,6 +2318,12 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     compute_initial_primal_weight();
 
   initial_scaling_strategy_.scale_problem();
+  if constexpr (std::is_same_v<f_t, double>) {
+    if (!batch_mode_ && !pdhg_solver_.get_cusparse_view().mixed_precision_enabled_) {
+      pdhg_solver_.get_cusparse_view().create_spmv_op_plans(
+        settings_.hyper_params.use_reflected_primal_dual);
+    }
+  }
 
   // Update FP32 matrix copies for mixed precision SpMV after scaling
   pdhg_solver_.get_cusparse_view().update_mixed_precision_matrices();

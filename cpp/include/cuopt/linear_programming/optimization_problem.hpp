@@ -116,8 +116,8 @@ class optimization_problem_t : public optimization_problem_interface_t<i_t, f_t>
 
   explicit optimization_problem_t(raft::handle_t const* handle_ptr);
   optimization_problem_t(const optimization_problem_t<i_t, f_t>& other);
-  optimization_problem_t(optimization_problem_t<i_t, f_t>&&)            = default;
-  optimization_problem_t& operator=(optimization_problem_t<i_t, f_t>&&) = default;
+  optimization_problem_t(optimization_problem_t<i_t, f_t>&&) noexcept            = default;
+  optimization_problem_t& operator=(optimization_problem_t<i_t, f_t>&&) noexcept = default;
 
   std::vector<internals::base_solution_callback_t*> mip_callbacks_;
 
@@ -210,6 +210,18 @@ class optimization_problem_t : public optimization_problem_interface_t<i_t, f_t>
                                       bool validate_positive_semi_definite = false) override;
 
   void set_quadratic_constraints(std::vector<quadratic_constraint_t> constraints) override;
+  void add_quadratic_constraint(char constraint_row_type,
+                                f_t rhs_value,
+                                const f_t* quadratic_values,
+                                i_t size_quadratic_values,
+                                const i_t* quadratic_indices,
+                                i_t size_quadratic_indices,
+                                const i_t* quadratic_offsets,
+                                i_t size_quadratic_offsets,
+                                const f_t* linear_values,
+                                i_t size_linear_values,
+                                const i_t* linear_indices,
+                                i_t size_linear_indices) override;
 
   /** @copydoc optimization_problem_interface_t::set_variable_lower_bounds */
   void set_variable_lower_bounds(const f_t* variable_lower_bounds, i_t size) override;

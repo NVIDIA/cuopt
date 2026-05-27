@@ -17,6 +17,7 @@ if(BUILD_TESTS)
       PRIVATE
       "${CMAKE_CURRENT_SOURCE_DIR}/../src"
       "${CMAKE_CURRENT_SOURCE_DIR}"
+      "${dejavu_SOURCE_DIR}"
   )
 
   target_link_libraries(cuopttestutils
@@ -43,16 +44,16 @@ function(ConfigureTest CMAKE_TEST_NAME)
     target_include_directories(${CMAKE_TEST_NAME}
         PRIVATE
         "${CUOPT_TEST_DIR}/../src"
-        "${CUOPT_TEST_DIR}/../libmps_parser/src"
+        "${CUOPT_TEST_DIR}/../src/io"
         "${CUOPT_TEST_DIR}"
         "${papilo_SOURCE_DIR}/src"
         "${papilo_BINARY_DIR}"
         "${pslp_SOURCE_DIR}/include"
+        "${dejavu_SOURCE_DIR}"
     )
 
     target_link_libraries(${CMAKE_TEST_NAME}
        PRIVATE
-        mps_parser
         cuopt
         cuopttestutils
         GTest::gmock

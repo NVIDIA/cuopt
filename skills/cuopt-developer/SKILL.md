@@ -10,7 +10,7 @@ Contribute to the NVIDIA cuOpt codebase. This skill is for modifying cuOpt itsel
 
 **If you just want to USE cuOpt**, switch to the appropriate problem skill (cuopt-routing, cuopt-lp-milp, etc.)
 
-**First-time dev environment setup?** See [resources/first_time_setup.md](resources/first_time_setup.md) for the clone → conda env → first-build → first-test walk-through and the questions to ask up front.
+**First-time dev environment setup?** See [resources/first_time_setup.md](resources/first_time_setup.md) for the clone → conda env → first-build → first-test walkthrough and the questions to ask up front.
 
 ---
 
@@ -202,7 +202,7 @@ cuOpt uses Cython to bridge Python and C++. See [resources/python_bindings.md](r
 
 ## Contributing — Commits, PRs, Common Tasks
 
-For pre-commit setup, DCO sign-off (`git commit -s`), the fork-based PR workflow, the draft-PR rule for agents, and step-by-step common-task recipes (adding a solver parameter, dependency, server endpoint, or CUDA kernel), see [resources/contributing.md](resources/contributing.md).
+For pre-commit setup, DCO sign-off (`git commit -s`), the fork-based PR workflow, the draft-PR rule for agents, PR-description rules (keep it short — no "how it works" walkthroughs or file tables), script and CI/workflow authoring principles (extend existing files before adding new ones; no speculative flags, restated defaults, or silent fallbacks), and step-by-step common-task recipes (adding a solver parameter, dependency, server endpoint, or CUDA kernel), see [resources/contributing.md](resources/contributing.md).
 
 ## Coding Conventions
 
@@ -232,3 +232,11 @@ For build/test pitfalls (Cython rebuild, OOM, CUDA driver mismatch, missing `nvc
 - **Python binding architecture**: [resources/python_bindings.md](resources/python_bindings.md)
 
 _Shell-execution, install, sudo, and outside-workspace policies are covered by [Refusal Rules — Read First](#refusal-rules--read-first) at the top of this skill._
+
+## VRP dimension internals (routing engine)
+
+When implementing or debugging **VRP dimensions** (constraints, objectives, forward/backward propagation, `combine`, local-search deltas), read:
+
+- **`resources/vrp_skills.md`** — architecture contracts, required interfaces, and implementation checklist.
+
+Read it **before** adding a new dimension or changing combine semantics.

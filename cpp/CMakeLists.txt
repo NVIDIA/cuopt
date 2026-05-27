@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # cmake-format: on
 
-cmake_minimum_required(VERSION 3.30.4 FATAL_ERROR)
+cmake_minimum_required(VERSION 4.0 FATAL_ERROR)
 
 # Add our custom Find modules to the module path
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/thirdparty")
@@ -159,15 +159,6 @@ if (DEFINE_PDLP_VERBOSE_MODE)
     add_definitions(-DPDLP_VERBOSE_MODE)
 endif (DEFINE_PDLP_VERBOSE_MODE)
 
-# This fix a crash on RTX PRO 6000 caused by Warp MMU Fault in cub::detail::scan::DeviceScanKernel.
-# CCCL 3.4.0 introduced an SM90+ "warpspeed" scan kernel that uses Hopper/Blackwell TMA (cp_async_bulk), however,
-# on cuda 13.1, this can produce a non-contiguous byte mask which is not allowed in Hopper/Blackwell.
-# This is fixed only NVCC ≥ 13.2.
-
-if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS_EQUAL 13.2)
-    add_definitions(-DCCCL_DISABLE_WARPSPEED_SCAN)
-endif ()
-
 # Set logging level
 set(LIBCUOPT_LOGGING_LEVEL
         "INFO"
@@ -213,6 +204,18 @@ endif ()
 # The MIP solver requires OpenMP to work
 find_package(OpenMP REQUIRED)
 message(VERBOSE "cuOpt: OpenMP found in ${OpenMP_CXX_INCLUDE_DIRS}")
+
+# MPS/QPS parser supports compressed inputs via bzip2 and zlib
+option(CUOPT_PARSER_WITH_BZIP2 "Build MPS parser with bzip2 decompression" ON)
+option(CUOPT_PARSER_WITH_ZLIB "Build MPS parser with zlib decompression" ON)
+if (CUOPT_PARSER_WITH_BZIP2)
+    find_package(BZip2 REQUIRED)
+    add_compile_definitions(MPS_PARSER_WITH_BZIP2)
+endif ()
+if (CUOPT_PARSER_WITH_ZLIB)
+    find_package(ZLIB REQUIRED)
+    add_compile_definitions(MPS_PARSER_WITH_ZLIB)
+endif ()
 
 # Debug options
 if (CMAKE_BUILD_TYPE MATCHES Debug)
@@ -289,6 +292,20 @@ set(BUILD_SHARED_LIBS OFF)
 FetchContent_MakeAvailable(pslp)
 set(BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS_SAVED})
 
+
+# dejavu - header-only graph automorphism library for MIP symmetry detection
+# https://github.com/markusa4/dejavu (header-only, skip its CMakeLists.txt)
+FetchContent_Declare(
+  dejavu
+  GIT_REPOSITORY "https://github.com/markusa4/dejavu.git"
+  GIT_TAG "v2.1"
+  GIT_PROGRESS TRUE
+  EXCLUDE_FROM_ALL
+  SYSTEM
+  SOURCE_SUBDIR _nonexistent
+)
+FetchContent_MakeAvailable(dejavu)
+message(STATUS "dejavu (graph automorphism): ${dejavu_SOURCE_DIR}")
 
 include(${rapids-cmake-dir}/cpm/rapids_logger.cmake)
 # generate logging macros
@@ -448,7 +465,10 @@ set_target_properties(cuopt
         CXX_SCAN_FOR_MODULES OFF
 )
 
-target_compile_definitions(cuopt PUBLIC "CUOPT_LOG_ACTIVE_LEVEL=RAPIDS_LOGGER_LOG_LEVEL_${LIBCUOPT_LOGGING_LEVEL}")
+target_compile_definitions(cuopt
+  PUBLIC "CUOPT_LOG_ACTIVE_LEVEL=RAPIDS_LOGGER_LOG_LEVEL_${LIBCUOPT_LOGGING_LEVEL}"
+  PUBLIC CUSPARSE_ENABLE_EXPERIMENTAL_API
+)
 
 target_compile_options(cuopt
         PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
@@ -479,21 +499,24 @@ target_include_directories(cuopt PRIVATE
 )
 
 target_include_directories(cuopt SYSTEM PRIVATE
-        "${pslp_SOURCE_DIR}/include"
+  "${pslp_SOURCE_DIR}/include"
+  "${dejavu_SOURCE_DIR}"
 )
 
 target_include_directories(cuopt
         PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty"
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/io"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc/client"
         "${CMAKE_CURRENT_BINARY_DIR}"
         "${CUDSS_INCLUDE}"
+        $<$<BOOL:${CUOPT_PARSER_WITH_BZIP2}>:${BZIP2_INCLUDE_DIRS}>
+        $<$<BOOL:${CUOPT_PARSER_WITH_ZLIB}>:${ZLIB_INCLUDE_DIRS}>
         PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
-        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/libmps_parser/include>"
         INTERFACE
         "$<INSTALL_INTERFACE:include>"
         ${CUDSS_INCLUDE}
@@ -513,10 +536,6 @@ set(CUOPT_PRIVATE_CUDA_LIBS
         OpenMP::OpenMP_CXX)
 
 list(PREPEND CUOPT_PRIVATE_CUDA_LIBS CUDA::cublasLt)
-
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/libmps_parser)
-set(CMAKE_LIBRARY_PATH ${CMAKE_CURRENT_BINARY_DIR}/libmps_parser/)
-
 
 # Pass CUDSS_MT_LIB_FILE_NAME as a compile definition
 get_filename_component(CUDSS_MT_LIB_FILE_NAME "${CUDSS_MT_LIB_FILE}" NAME)
@@ -554,7 +573,6 @@ target_link_libraries(cuopt
         rapids_logger::rapids_logger
         CCCL::CCCL
         raft::raft
-        cuopt::mps_parser
         ${CUDSS_LIB_FILE}
         PRIVATE
         ${CUOPT_PRIVATE_CUDA_LIBS}
@@ -592,14 +610,14 @@ else ()
 endif ()
 
 # adds the .so files to the runtime deb package
-install(TARGETS cuopt mps_parser
+install(TARGETS cuopt
         DESTINATION ${_LIB_DEST}
         COMPONENT runtime
         EXPORT cuopt-exports
 )
 
 # adds the .so files to the development deb package
-install(TARGETS cuopt mps_parser
+install(TARGETS cuopt
         DESTINATION ${_LIB_DEST}
         COMPONENT dev
 )
@@ -812,7 +830,6 @@ if (NOT SKIP_GRPC_BUILD)
             "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc"
             "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc/server"
             "${CMAKE_CURRENT_SOURCE_DIR}/include"
-            "${CMAKE_CURRENT_SOURCE_DIR}/libmps_parser/include"
             "${CMAKE_CURRENT_BINARY_DIR}"
             PUBLIC
             "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"

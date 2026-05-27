@@ -18,8 +18,8 @@
 #include <cuopt/linear_programming/solver_settings.hpp>
 #include <cuopt/linear_programming/utilities/internals.hpp>
 
+#include <cuopt/linear_programming/io/mps_data_model.hpp>
 #include <memory>
-#include <mps_parser/mps_data_model.hpp>
 #include <string>
 #include <vector>
 
@@ -71,7 +71,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> solve_lp(
   raft::handle_t const* handle_ptr,
-  const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& mps_data_model,
+  const cuopt::linear_programming::io::mps_data_model_t<i_t, f_t>& mps_data_model,
   pdlp_solver_settings_t<i_t, f_t> const& settings = pdlp_solver_settings_t<i_t, f_t>{},
   bool problem_checking                            = true,
   bool use_pdlp_solver_mode                        = true);
@@ -107,7 +107,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> batch_pdlp_solve(
   raft::handle_t const* handle_ptr,
-  const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& mps_data_model,
+  const cuopt::linear_programming::io::mps_data_model_t<i_t, f_t>& mps_data_model,
   const std::vector<i_t>& fractional,
   const std::vector<f_t>& root_soln_x,
   pdlp_solver_settings_t<i_t, f_t> const& settings = pdlp_solver_settings_t<i_t, f_t>{});
@@ -140,13 +140,13 @@ mip_solution_t<i_t, f_t> solve_mip(
 template <typename i_t, typename f_t>
 mip_solution_t<i_t, f_t> solve_mip(
   raft::handle_t const* handle_ptr,
-  const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& mps_data_model,
+  const cuopt::linear_programming::io::mps_data_model_t<i_t, f_t>& mps_data_model,
   mip_solver_settings_t<i_t, f_t> const& settings = mip_solver_settings_t<i_t, f_t>{});
 
 template <typename i_t, typename f_t>
 optimization_problem_t<i_t, f_t> mps_data_model_to_optimization_problem(
   raft::handle_t const* handle_ptr,
-  const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& data_model);
+  const cuopt::linear_programming::io::mps_data_model_t<i_t, f_t>& data_model);
 
 // ============================================================================
 // CPU problem overloads (convert to GPU, solve, convert solution back)

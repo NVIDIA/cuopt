@@ -8,9 +8,9 @@
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 #include "mip_utils.cuh"
 
+#include <cuopt/linear_programming/io/parser.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <cuopt/linear_programming/utilities/internals.hpp>
-#include <mps_parser/parser.hpp>
 #include <utilities/common_utils.hpp>
 #include <utilities/error.hpp>
 
@@ -90,7 +90,7 @@ class test_get_solution_callback_t : public cuopt::internals::get_solution_callb
 };
 
 void check_solutions(const test_get_solution_callback_t& get_solution_callback,
-                     const cuopt::mps_parser::mps_data_model_t<int, double>& op_problem,
+                     const cuopt::linear_programming::io::mps_data_model_t<int, double>& op_problem,
                      const cuopt::linear_programming::mip_solver_settings_t<int, double>& settings)
 {
   for (const auto& solution : get_solution_callback.solutions) {
@@ -112,8 +112,8 @@ void test_incumbent_callback(std::string test_instance, bool include_set_callbac
   const raft::handle_t handle_{};
   std::cout << "Running: " << test_instance << std::endl;
   auto path = make_path_absolute(test_instance);
-  cuopt::mps_parser::mps_data_model_t<int, double> mps_problem =
-    cuopt::mps_parser::parse_mps<int, double>(path, false);
+  cuopt::linear_programming::io::mps_data_model_t<int, double> mps_problem =
+    cuopt::linear_programming::io::read_mps<int, double>(path, false);
   handle_.sync_stream();
   auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps_problem);
 
@@ -138,9 +138,8 @@ void test_incumbent_callback(std::string test_instance, bool include_set_callbac
 
 TEST(mip_solve, incumbent_get_callback_test)
 {
-  // swath1 is temporarily disabled here because this incumbent callback path can abort
-  // nondeterministically in CI while MIP root relaxation uses concurrent PDLP CUDA graph capture.
-  std::vector<std::string> test_instances = {"mip/50v-10.mps", "mip/neos5-free-bound.mps"};
+  std::vector<std::string> test_instances = {
+    "mip/50v-10.mps", "mip/neos5-free-bound.mps", "mip/swath1.mps"};
   for (const auto& test_instance : test_instances) {
     test_incumbent_callback(test_instance, false);
   }
@@ -148,9 +147,8 @@ TEST(mip_solve, incumbent_get_callback_test)
 
 TEST(mip_solve, incumbent_get_set_callback_test)
 {
-  // swath1 is temporarily disabled here because this incumbent callback path can abort
-  // nondeterministically in CI while MIP root relaxation uses concurrent PDLP CUDA graph capture.
-  std::vector<std::string> test_instances = {"mip/50v-10.mps", "mip/neos5-free-bound.mps"};
+  std::vector<std::string> test_instances = {
+    "mip/50v-10.mps", "mip/neos5-free-bound.mps", "mip/swath1.mps"};
   for (const auto& test_instance : test_instances) {
     test_incumbent_callback(test_instance, true);
   }
@@ -166,8 +164,8 @@ TEST(mip_solve, early_heuristic_incumbent_fallback)
 
   const raft::handle_t handle_{};
   auto path = make_path_absolute("mip/pk1.mps");
-  cuopt::mps_parser::mps_data_model_t<int, double> mps_problem =
-    cuopt::mps_parser::parse_mps<int, double>(path, false);
+  cuopt::linear_programming::io::mps_data_model_t<int, double> mps_problem =
+    cuopt::linear_programming::io::read_mps<int, double>(path, false);
   handle_.sync_stream();
   auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps_problem);
 
