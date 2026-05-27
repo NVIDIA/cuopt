@@ -106,6 +106,9 @@ class Variable:
         Value of the variable after solving.
     ReducedCost : float
         Reduced Cost after solving an LP problem.
+    MIPStart : float
+        Initial value (warm-start hint) for the variable. Defaults to NaN
+        (unset). Only used for a MIP problem.
     """
 
     def __init__(
@@ -124,6 +127,7 @@ class Variable:
         self.ReducedCost = float("nan")
         self.VariableType = vtype
         self.VariableName = vname
+        self.MIPStart = float("nan")
 
     def getIndex(self):
         """
@@ -198,6 +202,20 @@ class Variable:
         Returns the name of the variable.
         """
         return self.VariableName
+
+    def setMIPStart(self, val):
+        """
+        Sets the MIP start (initial primal solution hint) value for the
+        variable. Use ``float("nan")`` to unset.
+        """
+        self.MIPStart = float(val)
+
+    def getMIPStart(self):
+        """
+        Returns the MIP start (initial primal solution hint) value of the
+        variable. Defaults to NaN when unset.
+        """
+        return self.MIPStart
 
     def __neg__(self):
         return LinearExpression([self], [-1.0], 0.0)
@@ -1428,6 +1446,7 @@ class Problem:
         self.lower_bound, self.upper_bound = np.zeros(n), np.zeros(n)
         self.var_type = np.empty(n, dtype="S1")
         self.var_names = []
+        self.mip_start = np.empty(n, dtype=np.float64)
 
         for j in range(n):
             self.objective[j] = self.vars[j].getObjectiveCoefficient()
@@ -1438,6 +1457,7 @@ class Problem:
             if var_name == "":
                 var_name = "C" + str(self.vars[j].index)
             self.var_names.append(var_name)
+            self.mip_start[j] = self.vars[j].MIPStart
 
         # Initialize datamodel
         dm.set_csr_constraint_matrix(
@@ -1463,6 +1483,9 @@ class Problem:
         dm.set_variable_names(self.var_names)
         dm.set_row_names(self.row_names)
         dm.set_problem_name(self.Name)
+
+        if self.mip_start.size > 0 and not np.all(np.isnan(self.mip_start)):
+            dm.set_initial_primal_solution(self.mip_start)
 
         self.model = dm
 
