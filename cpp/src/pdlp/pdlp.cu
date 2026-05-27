@@ -2962,22 +2962,24 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
                                                     unscaled_dual_avg_solution_);
       }
       if (settings_.hyper_params.use_adaptive_step_size_strategy) {
+        initial_scaling_strategy_.unscale_solutions(pdhg_solver_.get_primal_solution(),
+                                                    pdhg_solver_.get_dual_solution());
+      } else {
         if (multi_gpu_engine) {
-          // The only branch in cuPDLPx
+          // The only branch in cuPDLPx (Stable3)
           multi_gpu_engine->for_each_shard([&](auto& shard) {
             auto& sub = *shard.sub_pdlp;
             sub.get_initial_scaling_strategy().unscale_solutions(
-              sub.pdhg_solver_.get_primal_solution(), sub.pdhg_solver_.get_dual_solution());
+              sub.pdhg_solver_.get_potential_next_primal_solution(),
+              sub.pdhg_solver_.get_potential_next_dual_solution(),
+              sub.pdhg_solver_.get_dual_slack());
           });
         } else {
-          initial_scaling_strategy_.unscale_solutions(pdhg_solver_.get_primal_solution(),
-                                                      pdhg_solver_.get_dual_solution());
+          initial_scaling_strategy_.unscale_solutions(
+            pdhg_solver_.get_potential_next_primal_solution(),
+            pdhg_solver_.get_potential_next_dual_solution(),
+            pdhg_solver_.get_dual_slack());
         }
-      } else {
-        initial_scaling_strategy_.unscale_solutions(
-          pdhg_solver_.get_potential_next_primal_solution(),
-          pdhg_solver_.get_potential_next_dual_solution(),
-          pdhg_solver_.get_dual_slack());
       }
 
 #ifdef CUPDLP_DEBUG_MODE
@@ -3006,22 +3008,24 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
                                                     unscaled_dual_avg_solution_);
         }
         if (settings_.hyper_params.use_adaptive_step_size_strategy) {
+          initial_scaling_strategy_.scale_solutions(pdhg_solver_.get_primal_solution(),
+                                                    pdhg_solver_.get_dual_solution());
+        } else {
           if (multi_gpu_engine) {
-            // The only branch in cuPDLPx
+            // The only branch in cuPDLPx (Stable3)
             multi_gpu_engine->for_each_shard([&](auto& shard) {
               auto& sub = *shard.sub_pdlp;
               sub.get_initial_scaling_strategy().scale_solutions(
-                sub.pdhg_solver_.get_primal_solution(), sub.pdhg_solver_.get_dual_solution());
+                sub.pdhg_solver_.get_potential_next_primal_solution(),
+                sub.pdhg_solver_.get_potential_next_dual_solution(),
+                sub.pdhg_solver_.get_dual_slack());
             });
           } else {
-            initial_scaling_strategy_.scale_solutions(pdhg_solver_.get_primal_solution(),
-                                                      pdhg_solver_.get_dual_solution());
+            initial_scaling_strategy_.scale_solutions(
+              pdhg_solver_.get_potential_next_primal_solution(),
+              pdhg_solver_.get_potential_next_dual_solution(),
+              pdhg_solver_.get_dual_slack());
           }
-        } else {
-          initial_scaling_strategy_.scale_solutions(
-            pdhg_solver_.get_potential_next_primal_solution(),
-            pdhg_solver_.get_potential_next_dual_solution(),
-            pdhg_solver_.get_dual_slack());
         }
       }
 
