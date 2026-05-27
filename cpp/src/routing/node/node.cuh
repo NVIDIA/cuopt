@@ -66,9 +66,17 @@ class node_t {
                                        const VehicleInfo<f_t, is_device>& vehicle_info) const
   {
     loop_over_dimensions(dimensions_info, [&](auto I) {
-      double arc_value = get_arc_of_dimension<i_t, f_t, I, is_device>(
-        request.info, next_node.request.info, vehicle_info);
-      get_dimension<I>().calculate_forward(next_node.get_dimension<I>(), arc_value);
+      if constexpr (decltype(I)::value == (size_t)dim_t::COST) {
+        auto arc_cost_distance = get_arc_cost(request.info, next_node.request.info, vehicle_info);
+        auto arc_travel_distance =
+          get_travel_distance(request.info, next_node.request.info, vehicle_info);
+        get_dimension<I>().calculate_forward(
+          next_node.get_dimension<I>(), arc_cost_distance, arc_travel_distance);
+      } else {
+        double arc_value = get_arc_of_dimension<i_t, f_t, I, is_device>(
+          request.info, next_node.request.info, vehicle_info);
+        get_dimension<I>().calculate_forward(next_node.get_dimension<I>(), arc_value);
+      }
     });
   }
 
@@ -106,9 +114,17 @@ class node_t {
   DI void calculate_backward_all(node_t& prev_node, const VehicleInfo<f_t>& vehicle_info) const
   {
     loop_over_dimensions(dimensions_info, [&](auto I) {
-      double arc_value =
-        get_arc_of_dimension<i_t, f_t, I>(prev_node.request.info, request.info, vehicle_info);
-      get_dimension<I>().calculate_backward(prev_node.get_dimension<I>(), arc_value);
+      if constexpr (decltype(I)::value == (size_t)dim_t::COST) {
+        auto arc_cost_distance = get_arc_cost(prev_node.request.info, request.info, vehicle_info);
+        auto arc_travel_distance =
+          get_travel_distance(prev_node.request.info, request.info, vehicle_info);
+        get_dimension<I>().calculate_backward(
+          prev_node.get_dimension<I>(), arc_cost_distance, arc_travel_distance);
+      } else {
+        double arc_value =
+          get_arc_of_dimension<i_t, f_t, I>(prev_node.request.info, request.info, vehicle_info);
+        get_dimension<I>().calculate_backward(prev_node.get_dimension<I>(), arc_value);
+      }
     });
   }
 
@@ -160,11 +176,23 @@ class node_t {
     loop_over_dimensions(prev.dimensions_info, [&] __device__(auto I) {
       // time dimension is already included
       if constexpr (I != (size_t)dim_t::TIME) {
-        double arc_value =
-          get_arc_of_dimension<i_t, f_t, I>(prev.request.info, next.request.info, vehicle_info);
         auto& dim_node    = prev.get_dimension<I>();
-        double dim_excess = std::decay_t<decltype(dim_node)>::combine(
-          prev.get_dimension<I>(), next.get_dimension<I>(), vehicle_info, arc_value);
+        double dim_excess = 0.;
+        if constexpr (decltype(I)::value == (size_t)dim_t::COST) {
+          auto arc_cost_distance = get_arc_cost(prev.request.info, next.request.info, vehicle_info);
+          auto arc_travel_distance =
+            get_travel_distance(prev.request.info, next.request.info, vehicle_info);
+          dim_excess = std::decay_t<decltype(dim_node)>::combine(prev.get_dimension<I>(),
+                                                                 next.get_dimension<I>(),
+                                                                 vehicle_info,
+                                                                 arc_cost_distance,
+                                                                 arc_travel_distance);
+        } else {
+          double arc_value =
+            get_arc_of_dimension<i_t, f_t, I>(prev.request.info, next.request.info, vehicle_info);
+          dim_excess = std::decay_t<decltype(dim_node)>::combine(
+            prev.get_dimension<I>(), next.get_dimension<I>(), vehicle_info, arc_value);
+        }
         total_excess += dim_excess * weights[I];
       }
     });

@@ -477,7 +477,7 @@ void problem_t<i_t, f_t>::sort_viable_matrix(rmm::device_uvector<i_t>& viable_fr
                       i_t segment = idx / l_n_requests;
                       return segment;
                     });
-  // sort according to cost
+  // sort according to the same per-arc score used by tiered route costs
   thrust::stable_sort(
     handle_ptr->get_thrust_policy(),
     thrust::make_zip_iterator(viable_from_matrix.begin(), segments.begin()),
@@ -489,19 +489,19 @@ void problem_t<i_t, f_t>::sort_viable_matrix(rmm::device_uvector<i_t>& viable_fr
       i_t from_node_2 = thrust::get<1>(second);
       if (to_node_1 == -1) return false;
       if (to_node_2 == -1) return true;
-      auto cost_between_1 = get_arc_cost(
-        NodeInfo<i_t>(
-          from_node_1, order_info_view.get_order_location(from_node_1), node_type_t::PICKUP),
-        NodeInfo<i_t>(
-          to_node_1, order_info_view.get_order_location(to_node_1), node_type_t::PICKUP),
-        l_vehicle_info);
-      auto cost_between_2 = get_arc_cost(
-        NodeInfo<i_t>(
-          from_node_2, order_info_view.get_order_location(from_node_2), node_type_t::PICKUP),
-        NodeInfo<i_t>(
-          to_node_2, order_info_view.get_order_location(to_node_2), node_type_t::PICKUP),
-        l_vehicle_info);
-      return cost_between_1 < cost_between_2;
+      const auto from_info_1 =
+        NodeInfo<i_t>(from_node_1, order_info_view.get_order_location(from_node_1), node_type_t::PICKUP);
+      const auto to_info_1 =
+        NodeInfo<i_t>(to_node_1, order_info_view.get_order_location(to_node_1), node_type_t::PICKUP);
+      const auto from_info_2 =
+        NodeInfo<i_t>(from_node_2, order_info_view.get_order_location(from_node_2), node_type_t::PICKUP);
+      const auto to_info_2 =
+        NodeInfo<i_t>(to_node_2, order_info_view.get_order_location(to_node_2), node_type_t::PICKUP);
+      const auto score_1 =
+        problem_t<i_t, f_t>::compute_viable_neighbor_score(from_info_1, to_info_1, l_vehicle_info);
+      const auto score_2 =
+        problem_t<i_t, f_t>::compute_viable_neighbor_score(from_info_2, to_info_2, l_vehicle_info);
+      return score_1 < score_2;
     });
   // sort the segments
   thrust::stable_sort(handle_ptr->get_thrust_policy(),
@@ -521,7 +521,7 @@ void problem_t<i_t, f_t>::sort_viable_matrix(rmm::device_uvector<i_t>& viable_fr
                       i_t segment = idx / l_n_requests;
                       return segment;
                     });
-  // sort according to cost
+  // sort according to the same per-arc score used by tiered route costs
   thrust::stable_sort(
     handle_ptr->get_thrust_policy(),
     thrust::make_zip_iterator(viable_to_matrix.begin(), segments.begin()),
@@ -533,19 +533,19 @@ void problem_t<i_t, f_t>::sort_viable_matrix(rmm::device_uvector<i_t>& viable_fr
       i_t to_node_2   = thrust::get<1>(second);
       if (from_node_1 == -1) return false;
       if (from_node_2 == -1) return true;
-      auto cost_between_1 = get_arc_cost(
-        NodeInfo<i_t>(
-          from_node_1, order_info_view.get_order_location(from_node_1), node_type_t::PICKUP),
-        NodeInfo<i_t>(
-          to_node_1, order_info_view.get_order_location(to_node_1), node_type_t::PICKUP),
-        l_vehicle_info);
-      auto cost_between_2 = get_arc_cost(
-        NodeInfo<i_t>(
-          from_node_2, order_info_view.get_order_location(from_node_2), node_type_t::PICKUP),
-        NodeInfo<i_t>(
-          to_node_2, order_info_view.get_order_location(to_node_2), node_type_t::PICKUP),
-        l_vehicle_info);
-      return cost_between_1 < cost_between_2;
+      const auto from_info_1 =
+        NodeInfo<i_t>(from_node_1, order_info_view.get_order_location(from_node_1), node_type_t::PICKUP);
+      const auto to_info_1 =
+        NodeInfo<i_t>(to_node_1, order_info_view.get_order_location(to_node_1), node_type_t::PICKUP);
+      const auto from_info_2 =
+        NodeInfo<i_t>(from_node_2, order_info_view.get_order_location(from_node_2), node_type_t::PICKUP);
+      const auto to_info_2 =
+        NodeInfo<i_t>(to_node_2, order_info_view.get_order_location(to_node_2), node_type_t::PICKUP);
+      const auto score_1 =
+        problem_t<i_t, f_t>::compute_viable_neighbor_score(from_info_1, to_info_1, l_vehicle_info);
+      const auto score_2 =
+        problem_t<i_t, f_t>::compute_viable_neighbor_score(from_info_2, to_info_2, l_vehicle_info);
+      return score_1 < score_2;
     });
   // sort the segments again to get back the segmented sorted
   thrust::stable_sort(handle_ptr->get_thrust_policy(),

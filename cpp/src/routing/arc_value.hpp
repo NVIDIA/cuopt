@@ -58,6 +58,17 @@ static constexpr double get_arc_cost(const NodeInfo<i_t>& l1,
   return lookup_matrix_value(matrix, l1.location(), l2.location(), vehicle_info.matrices.extent[3]);
 }
 
+template <typename i_t, typename f_t, bool is_device = true>
+static constexpr double get_travel_distance(const NodeInfo<i_t>& l1,
+                                            const NodeInfo<i_t>& l2,
+                                            const VehicleInfo<f_t, is_device>& vehicle_info)
+{
+  if (vehicle_info.skip_first_trip && l1.node_type() == node_type_t::DEPOT) { return 0.f; }
+  if (vehicle_info.drop_return_trip && l2.node_type() == node_type_t::DEPOT) { return 0.f; }
+  auto matrix = vehicle_info.matrices.get_distance_matrix(vehicle_info.type);
+  return lookup_matrix_value(matrix, l1.location(), l2.location(), vehicle_info.matrices.extent[3]);
+}
+
 // All values pre-loaded overload
 template <typename i_t, typename f_t, bool is_device = true>
 static constexpr double get_transit_time(const NodeInfo<i_t>& l1,

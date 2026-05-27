@@ -12,6 +12,7 @@
 #include <cuopt/routing/data_model_view.hpp>
 #include <cuopt/routing/solver_settings.hpp>
 #include <routing/fleet_info.hpp>
+#include <routing/arc_value.hpp>
 #include <routing/fleet_order_info.hpp>
 #include <routing/order_info.hpp>
 #include <routing/problem/special_nodes.cuh>
@@ -166,6 +167,16 @@ struct viables_t {
 template <typename i_t, typename f_t>
 class problem_t {
  public:
+  template <bool is_device = true>
+  static HDI double compute_viable_neighbor_score(const NodeInfo<i_t>& from_node,
+                                                  const NodeInfo<i_t>& to_node,
+                                                  const VehicleInfo<f_t, is_device>& vehicle_info)
+  {
+    const auto arc_cost_distance = get_arc_cost(from_node, to_node, vehicle_info);
+    const auto arc_travel_distance = get_travel_distance(from_node, to_node, vehicle_info);
+    return vehicle_info.compute_distance_cost(arc_travel_distance, arc_cost_distance);
+  }
+
   problem_t()            = delete;
   problem_t(problem_t&&) = default;
   problem_t(const data_model_view_t<i_t, f_t>& data_model_view_,
@@ -196,6 +207,10 @@ class problem_t {
   double cost_between(const NodeInfo<>& node_1,
                       const NodeInfo<>& node_2,
                       const int& vehicle_id) const;
+
+  double distance_between(const NodeInfo<>& node_1,
+                           const NodeInfo<>& node_2,
+                           const int& vehicle_id) const;
 
   struct view_t {
     DI NodeInfo<> get_start_depot_node_info(const i_t vehicle_id) const
@@ -315,6 +330,7 @@ class problem_t {
   // appropriate host functions in order_info_, fleet_info_ classes and call
   // them directly
   std::map<i_t, std::vector<f_t>> cost_matrices_h;
+  std::map<i_t, std::vector<f_t>> travel_distance_matrices_h;
   std::vector<i_t> pair_indices_h;
   std::vector<bool> is_pickup_h;
   std::vector<i_t> order_locations_h;

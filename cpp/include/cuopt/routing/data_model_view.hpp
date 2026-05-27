@@ -74,6 +74,8 @@ class data_model_view_t {
    * matrix of size num_locations_ . cuOpt does not own or copy this data.
    * @param[in] vehicle_type Identifier of the vehicle.
    */
+  void add_distance_matrix(f_t const* matrix, uint8_t vehicle_type = 0);
+
   void add_cost_matrix(f_t const* matrix, uint8_t vehicle_type = 0);
 
   /**
@@ -412,6 +414,8 @@ class data_model_view_t {
    * @brief Limits the primary matrix cost cumulated along a route.
    * @param[in] vehicle_max_costs Upper bound for route cost.
    */
+  void set_vehicle_max_distances(f_t const* vehicle_max_distances);
+
   void set_vehicle_max_costs(f_t const* vehicle_max_costs);
 
   /**
@@ -454,6 +458,8 @@ class data_model_view_t {
    * @brief Get cost matrix
    * @return Matrix pointer
    */
+  f_t const* get_distance_matrix(uint8_t vehicle_type = 0) const noexcept;
+
   f_t const* get_cost_matrix(uint8_t vehicle_type = 0) const noexcept;
 
   /**
@@ -466,6 +472,8 @@ class data_model_view_t {
    * @brief Get all cost matrices as a map
    * @return map of vehicle type to cost matrix
    */
+  std::unordered_map<uint8_t, f_t const*> get_distance_matrices() const noexcept;
+
   std::unordered_map<uint8_t, f_t const*> get_cost_matrices() const noexcept;
 
   /**
@@ -647,6 +655,8 @@ class data_model_view_t {
    * @brief Return max cost allowed per vehicle
    * @return max cost per route
    */
+  raft::device_span<f_t const> get_vehicle_max_distances() const noexcept;
+
   raft::device_span<f_t const> get_vehicle_max_costs() const noexcept;
 
   /**
@@ -688,6 +698,7 @@ class data_model_view_t {
   i_t n_requests_{};
   raft::device_span<uint8_t const> vehicle_types_;
   std::unordered_map<uint8_t, f_t const*> cost_matrices_{};
+  std::unordered_map<uint8_t, f_t const*> distance_matrices_{};
   std::unordered_map<uint8_t, f_t const*> transit_time_matrices_{};
   i_t const* order_locations_{nullptr};
   i_t const* break_locations_{nullptr};
@@ -714,6 +725,7 @@ class data_model_view_t {
   std::unordered_map<i_t, std::pair<i_t const*, i_t>> precedence_{};
   i_t min_num_vehicles_{0};
 
+  raft::device_span<f_t const> vehicle_max_distances_{};
   raft::device_span<f_t const> vehicle_max_costs_{};
   raft::device_span<f_t const> vehicle_max_times_{};
   raft::device_span<f_t const> vehicle_fixed_costs_{};

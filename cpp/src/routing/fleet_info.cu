@@ -227,8 +227,22 @@ void populate_fleet_info(data_model_view_t<i_t, f_t> const& data_model,
   }
   populate_matrices(data_model, fleet_info_.matrices_);
   populate_fleet_order_constraints(data_model, fleet_info_.fleet_order_constraints_, is_homogenous);
+  const bool has_separate_distance_matrix = detail::has_distance_matrix<i_t, f_t>(data_model);
 
   // max constraints
+  if (auto vehicle_max_distances = data_model.get_vehicle_max_distances();
+      !vehicle_max_distances.empty()) {
+    cuopt_expects(has_separate_distance_matrix,
+                  error_type_t::ValidationError,
+                  "vehicle_max_distances requires add_distance_matrix() to be set");
+    fleet_info_.v_max_distances_.resize(fleet_size, stream_view);
+    raft::copy(
+      fleet_info_.v_max_distances_.data(), vehicle_max_distances.data(), fleet_size, stream_view);
+    is_homogenous =
+      is_homogenous &&
+      all_entries_are_equal(handle_ptr_, fleet_info_.v_max_distances_.data(), fleet_size);
+  }
+
   if (auto vehicle_max_costs = data_model.get_vehicle_max_costs(); !vehicle_max_costs.empty()) {
     fleet_info_.v_max_costs_.resize(fleet_size, stream_view);
     raft::copy(fleet_info_.v_max_costs_.data(), vehicle_max_costs.data(), fleet_size, stream_view);
@@ -261,6 +275,9 @@ void populate_fleet_info(data_model_view_t<i_t, f_t> const& data_model,
     data_model.get_vehicle_distance_tiers();
 
   if (thresholds != nullptr && total_tiers > 0) {
+    cuopt_expects(has_separate_distance_matrix,
+                  error_type_t::ValidationError,
+                  "vehicle_distance_tiers requires add_distance_matrix() to be set");
     // Resize and copy the flattened tiers data
     fleet_info_.v_distance_tiers_.resize(total_tiers, stream_view);
     fleet_info_.v_tier_offsets_.resize(fleet_size + 1, stream_view);

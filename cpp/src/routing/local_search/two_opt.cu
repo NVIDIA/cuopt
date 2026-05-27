@@ -51,21 +51,34 @@ DI thrust::pair<double, double> evaluate_two_opt_cvrp_move(
   i_t second)
 {
   auto n_nodes         = route.get_num_nodes();
-  double frag_backward = reverse_route.cost_dim.cost_forward[n_nodes - (first + 1)] -
-                         reverse_route.cost_dim.cost_forward[n_nodes - second];
-  double forward_sum =
-    route.get_node(second + 1).cost_dim.cost_forward - route.get_node(first).cost_dim.cost_forward;
+  double frag_backward_cost = reverse_route.cost_dim.cost_forward[n_nodes - (first + 1)] -
+                              reverse_route.cost_dim.cost_forward[n_nodes - second];
+  double frag_backward_distance = reverse_route.cost_dim.distance_forward[n_nodes - (first + 1)] -
+                                  reverse_route.cost_dim.distance_forward[n_nodes - second];
+  double forward_cost = route.get_node(second + 1).cost_dim.cost_forward -
+                        route.get_node(first).cost_dim.cost_forward;
+  double forward_distance = route.get_node(second + 1).cost_dim.distance_forward -
+                            route.get_node(first).cost_dim.distance_forward;
 
-  double first_second = get_arc_of_dimension<i_t, f_t, dim_t::COST>(
+  double first_second_cost = get_arc_cost(
+    route.get_node(first).node_info(), route.get_node(second).node_info(), route.vehicle_info());
+  double first_second_distance = get_travel_distance(
     route.get_node(first).node_info(), route.get_node(second).node_info(), route.vehicle_info());
 
-  double first_next_second_next =
-    get_arc_of_dimension<i_t, f_t, dim_t::COST>(route.get_node(first + 1).node_info(),
-                                                route.get_node(second + 1).node_info(),
-                                                route.vehicle_info());
+  double first_next_second_next_cost = get_arc_cost(
+    route.get_node(first + 1).node_info(), route.get_node(second + 1).node_info(), route.vehicle_info());
+  double first_next_second_next_distance = get_travel_distance(
+    route.get_node(first + 1).node_info(), route.get_node(second + 1).node_info(), route.vehicle_info());
 
-  double delta = (first_second + frag_backward + first_next_second_next) - forward_sum;
-  return {delta, delta};
+  auto new_total_cost = route.get_node(n_nodes).cost_dim.cost_forward +
+                        ((first_second_cost + frag_backward_cost + first_next_second_next_cost) -
+                         forward_cost);
+  auto new_total_distance =
+    route.get_node(n_nodes).cost_dim.distance_forward +
+    ((first_second_distance + frag_backward_distance + first_next_second_next_distance) -
+     forward_distance);
+  return compute_distance_delta_from_totals<i_t, f_t, REQUEST>(
+    move_candidates, route, new_total_cost, new_total_distance);
 }
 
 template <typename i_t, typename f_t, request_t REQUEST>

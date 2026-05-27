@@ -29,12 +29,17 @@ __global__ void compute_reverse_costs(typename solution_t<i_t, f_t, REQUEST>::vi
     auto route_id = route.get_id();
     auto n_nodes  = route.get_num_nodes();
 
-    route.dimensions.cost_dim.reverse_cost[n_nodes] = 0.;
+    route.dimensions.cost_dim.reverse_cost[n_nodes]     = 0.;
+    route.dimensions.cost_dim.reverse_distance[n_nodes] = 0.;
     for (int i = n_nodes - 1; i >= 0; i--) {
-      double cost = get_arc_of_dimension<i_t, f_t, dim_t::COST>(
+      double cost = get_arc_cost(
+        route.get_node(i + 1).node_info(), route.get_node(i).node_info(), route.vehicle_info());
+      double distance = get_travel_distance(
         route.get_node(i + 1).node_info(), route.get_node(i).node_info(), route.vehicle_info());
       route.dimensions.cost_dim.reverse_cost[i] =
         cost + route.dimensions.cost_dim.reverse_cost[i + 1];
+      route.dimensions.cost_dim.reverse_distance[i] =
+        distance + route.dimensions.cost_dim.reverse_distance[i + 1];
     }
   }
 }

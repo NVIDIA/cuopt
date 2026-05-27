@@ -67,6 +67,8 @@ __device__ void set_route_data(typename problem_t<i_t, f_t>::view_t const& probl
         cost_route.distance_break_cost_forward[0]              = 0.;
       }
     }
+    cost_route.distance_backward[n_nodes_route] = 0.f;
+    cost_route.distance_forward[0]              = 0.f;
     if (problem.dimensions_info.has_dimension(dim_t::CAP)) {
       route.template get_dim<dim_t::CAP>().max_to_node[0]           = 0;
       route.template get_dim<dim_t::CAP>().gathered[0]              = 0;

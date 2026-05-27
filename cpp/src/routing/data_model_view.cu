@@ -77,6 +77,13 @@ data_model_view_t<i_t, f_t>::data_model_view_t(raft::handle_t* handle_ptr,
 }
 
 template <typename i_t, typename f_t>
+void data_model_view_t<i_t, f_t>::add_distance_matrix(f_t const* matrix, uint8_t vehicle_type)
+{
+  cuopt_expects(matrix != nullptr, error_type_t::ValidationError, "Matrix input cannot be null");
+  distance_matrices_[vehicle_type] = matrix;
+}
+
+template <typename i_t, typename f_t>
 void data_model_view_t<i_t, f_t>::add_cost_matrix(f_t const* matrix, uint8_t vehicle_type)
 {
   cuopt_expects(matrix != nullptr, error_type_t::ValidationError, "Matrix input cannot be null");
@@ -546,6 +553,15 @@ void data_model_view_t<i_t, f_t>::set_min_vehicles(i_t min_vehicles)
 }
 
 template <typename i_t, typename f_t>
+void data_model_view_t<i_t, f_t>::set_vehicle_max_distances(f_t const* vehicle_max_distances)
+{
+  cuopt_expects(vehicle_max_distances != nullptr,
+                error_type_t::ValidationError,
+                "vehicle_max_distances cannot be null");
+  vehicle_max_distances_ = raft::device_span<f_t const>(vehicle_max_distances, fleet_size_);
+}
+
+template <typename i_t, typename f_t>
 void data_model_view_t<i_t, f_t>::set_vehicle_max_costs(f_t const* vehicle_max_costs)
 {
   cuopt_expects(vehicle_max_costs != nullptr,
@@ -600,6 +616,14 @@ void data_model_view_t<i_t, f_t>::set_vehicle_distance_tiers(f_t const* threshol
 }
 
 template <typename i_t, typename f_t>
+f_t const* data_model_view_t<i_t, f_t>::get_distance_matrix(uint8_t vehicle_type) const noexcept
+{
+  if (distance_matrices_.find(vehicle_type) != distance_matrices_.end())
+    return distance_matrices_.at(vehicle_type);
+  return nullptr;
+}
+
+template <typename i_t, typename f_t>
 f_t const* data_model_view_t<i_t, f_t>::get_cost_matrix(uint8_t vehicle_type) const noexcept
 {
   if (cost_matrices_.find(vehicle_type) != cost_matrices_.end())
@@ -613,6 +637,13 @@ f_t const* data_model_view_t<i_t, f_t>::get_transit_time_matrix(uint8_t vehicle_
   if (transit_time_matrices_.find(vehicle_type) != transit_time_matrices_.end())
     return transit_time_matrices_.at(vehicle_type);
   return nullptr;
+}
+
+template <typename i_t, typename f_t>
+std::unordered_map<uint8_t, f_t const*> data_model_view_t<i_t, f_t>::get_distance_matrices()
+  const noexcept
+{
+  return distance_matrices_;
 }
 
 template <typename i_t, typename f_t>
@@ -800,6 +831,12 @@ template <typename i_t, typename f_t>
 i_t data_model_view_t<i_t, f_t>::get_min_vehicles() const noexcept
 {
   return min_num_vehicles_;
+}
+
+template <typename i_t, typename f_t>
+raft::device_span<f_t const> data_model_view_t<i_t, f_t>::get_vehicle_max_distances() const noexcept
+{
+  return vehicle_max_distances_;
 }
 
 template <typename i_t, typename f_t>

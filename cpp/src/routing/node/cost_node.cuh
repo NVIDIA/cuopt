@@ -32,6 +32,10 @@ class cost_node_t {
   double cost_forward = 0.0;
   //! Cost gathered after node
   double cost_backward = 0.0;
+  //! Physical travel distance gathered to node
+  double distance_forward = 0.0;
+  //! Physical travel distance gathered after node
+  double distance_backward = 0.0;
   // Upper-bound propagation: clamped cumulative-from-start (forward) and latest-allowable
   // cumulative-from-start (backward).
   // [window_start, window_end] = [0, DISTANCE_WINDOW_INFINITY] means unconstrained
@@ -48,9 +52,12 @@ class cost_node_t {
   double distance_break_cost_forward  = 0.0;
 
   /*! \brief { Calculate next node forward gathered cost data based on actual node} */
-  void HDI calculate_forward(cost_node_t& next, double cost_between) const noexcept
+  void HDI calculate_forward(cost_node_t& next,
+                             double cost_between,
+                             double distance_between) const noexcept
   {
-    next.cost_forward = cost_forward + cost_between;
+    next.cost_forward     = cost_forward + cost_between;
+    next.distance_forward = distance_forward + distance_between;
 
     next.distance_window_forward = distance_window_forward + cost_between;
     next.excess_forward          = excess_forward;
@@ -64,9 +71,12 @@ class cost_node_t {
   }
 
   /*! \brief { Calculate prev node gathered cost backward data based on actual node} */
-  void HDI calculate_backward(cost_node_t& prev, double cost_between) const noexcept
+  void HDI calculate_backward(cost_node_t& prev,
+                              double cost_between,
+                              double distance_between) const noexcept
   {
-    prev.cost_backward = cost_backward + cost_between;
+    prev.cost_backward     = cost_backward + cost_between;
+    prev.distance_backward = distance_backward + distance_between;
 
     prev.distance_window_backward = distance_window_backward - cost_between;
     prev.excess_backward          = excess_backward;
@@ -85,12 +95,18 @@ class cost_node_t {
 
   HDI double forward_excess(const VehicleInfo<f_t>& vehicle_info) const noexcept
   {
-    return excess_forward + max(0., cost_forward - vehicle_info.max_cost);
+    const double objective_cost =
+      vehicle_info.compute_distance_cost(distance_forward, cost_forward);
+    return excess_forward + max(0., distance_forward - vehicle_info.max_distance) +
+           max(0., objective_cost - vehicle_info.max_cost);
   }
 
   HDI double backward_excess(const VehicleInfo<f_t>& vehicle_info) const noexcept
   {
-    return excess_backward + max(0., cost_backward - vehicle_info.max_cost);
+    const double objective_cost =
+      vehicle_info.compute_distance_cost(distance_backward, cost_backward);
+    return excess_backward + max(0., distance_backward - vehicle_info.max_distance) +
+           max(0., objective_cost - vehicle_info.max_cost);
   }
 
   HDI bool forward_feasible(const VehicleInfo<f_t>& vehicle_info,
@@ -102,16 +118,22 @@ class cost_node_t {
 
   /*! \brief  { Combine information from begining and ending fragments.}
       \return { Cost excess of route represented by nodes prev and next }*/
+  template <bool is_device = true>
   static HDI double combine(const cost_node_t& prev,
                             const cost_node_t& next,
-                            const VehicleInfo<f_t>& vehicle_info,
-                            f_t cost_between) noexcept
+                            const VehicleInfo<f_t, is_device>& vehicle_info,
+                            f_t cost_between,
+                            f_t distance_between) noexcept
   {
-    double total_cost = prev.cost_forward + next.cost_backward + cost_between;
-    double arrival_f  = prev.distance_window_forward + cost_between;
+    double total_cost     = prev.cost_forward + next.cost_backward + cost_between;
+    double total_distance =
+      prev.distance_forward + next.distance_backward + distance_between;
+    double objective_cost = vehicle_info.compute_distance_cost(total_distance, total_cost);
+    double arrival_f      = prev.distance_window_forward + cost_between;
     return prev.excess_forward + next.excess_backward +
            max(0., arrival_f - next.distance_window_backward) +
-           max(0., total_cost - vehicle_info.max_cost);
+           max(0., total_distance - vehicle_info.max_distance) +
+           max(0., objective_cost - vehicle_info.max_cost);
   }
 
   HDI bool backward_feasible(const VehicleInfo<f_t>& vehicle_info,
@@ -128,8 +150,10 @@ class cost_node_t {
                     objective_cost_t& obj_cost,
                     infeasible_cost_t& inf_cost) const noexcept
   {
-    double total_cost           = cost_forward + cost_backward;
-    obj_cost[objective_t::COST] = total_cost;
+    double total_cost     = cost_forward + cost_backward;
+    double total_distance = distance_forward + distance_backward;
+    obj_cost[objective_t::COST] =
+      vehicle_info.compute_distance_cost(total_distance, total_cost);
 
     if (dim_info.has_distance_window && dim_info.has_distance_break_cost) {
       obj_cost[objective_t::DISTANCE_BREAK_COST] =
@@ -138,7 +162,8 @@ class cost_node_t {
 
     inf_cost[dim_t::COST] = 0.;
     if (dim_info.has_max_constraint) {
-      inf_cost[dim_t::COST] = max(0., total_cost - vehicle_info.max_cost);
+      inf_cost[dim_t::COST] = max(0., total_distance - vehicle_info.max_distance) +
+                              max(0., obj_cost[objective_t::COST] - vehicle_info.max_cost);
     }
     if (dim_info.has_distance_window) {
       inf_cost[dim_t::COST] += excess_forward + excess_backward +
