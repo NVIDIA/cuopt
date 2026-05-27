@@ -842,21 +842,21 @@ bool flow_cover_is_zero_one_integer_variable(const flow_cover_context_t<i_t, f_t
 
 template <typename i_t, typename f_t>
 f_t flow_cover_arc_tol(const flow_cover_context_t<i_t, f_t>& context,
-                       const snf_arc_t<i_t, f_t>& arc)
+                       const single_node_flow_arc_t<i_t, f_t>& arc)
 {
   return flow_cover_scaled_primal_tol(context, arc.u);
 }
 
 template <typename i_t, typename f_t>
-snf_arc_t<i_t, f_t> flow_cover_build_arc(const flow_cover_context_t<i_t, f_t>& context,
-                                         f_t u,
-                                         bool in_n2,
-                                         i_t x_col,
-                                         f_t fixed_x,
-                                         f_t y_const,
-                                         i_t y_col,
-                                         f_t y_coeff,
-                                         f_t y_x_coeff)
+single_node_flow_arc_t<i_t, f_t> flow_cover_build_arc(const flow_cover_context_t<i_t, f_t>& context,
+                                                      f_t u,
+                                                      bool in_n2,
+                                                      i_t x_col,
+                                                      f_t fixed_x,
+                                                      f_t y_const,
+                                                      i_t y_col,
+                                                      f_t y_coeff,
+                                                      f_t y_x_coeff)
 {
   auto clamp01      = [](f_t x) { return std::min<f_t>(1.0, std::max<f_t>(0.0, x)); };
   const f_t x_value = x_col >= 0 ? clamp01(context.xstar[x_col]) : fixed_x;
@@ -867,14 +867,15 @@ snf_arc_t<i_t, f_t> flow_cover_build_arc(const flow_cover_context_t<i_t, f_t>& c
   } else {
     y_value += y_x_coeff * fixed_x;
   }
-  return snf_arc_t<i_t, f_t>{u, in_n2, x_col, x_value, y_const, y_col, y_coeff, y_x_coeff, y_value};
+  return single_node_flow_arc_t<i_t, f_t>{
+    u, in_n2, x_col, x_value, y_const, y_col, y_coeff, y_x_coeff, y_value};
 }
 
 template <typename i_t, typename f_t>
 void flow_cover_try_add_candidate(const flow_cover_context_t<i_t, f_t>& context,
                                   const flow_cover_arc_spec_t<i_t, f_t>& spec,
                                   f_t y_star,
-                                  std::vector<snf_candidate_t<i_t, f_t>>& candidates)
+                                  std::vector<single_node_flow_candidate_t<i_t, f_t>>& candidates)
 {
   const f_t bound_tol       = context.settings.primal_tol;
   const f_t feasibility_tol = context.settings.primal_tol;
@@ -882,7 +883,7 @@ void flow_cover_try_add_candidate(const flow_cover_context_t<i_t, f_t>& context,
   const f_t capacity = std::max<f_t>(0.0, spec.u);
   if (capacity <= feasibility_tol) { return; }
 
-  snf_candidate_t<i_t, f_t> candidate;
+  single_node_flow_candidate_t<i_t, f_t> candidate;
   candidate.arc                  = flow_cover_build_arc(context,
                                        capacity,
                                        spec.in_n2,
@@ -1106,8 +1107,8 @@ bool knapsack_generation_t<i_t, f_t>::normalize_row_side(
 }
 
 template <typename i_t, typename f_t>
-bool knapsack_generation_t<i_t, f_t>::build_snf_relaxation(
-  const flow_cover_context_t<i_t, f_t>& context, f_t b, f_t& snf_b)
+bool knapsack_generation_t<i_t, f_t>::build_single_node_flow_relaxation(
+  const flow_cover_context_t<i_t, f_t>& context, f_t b, f_t& single_node_flow_b)
 {
   auto& scratch             = flow_cover_scratch_;
   const f_t coefficient_tol = static_cast<f_t>(1e-6);
@@ -1214,12 +1215,11 @@ bool knapsack_generation_t<i_t, f_t>::build_snf_relaxation(
     add_simple_bound_candidates(j, c);
 
     if (scratch.candidates.empty()) { return false; }
-    auto best =
-      std::min_element(scratch.candidates.begin(),
-                       scratch.candidates.end(),
-                       [](const snf_candidate_t<i_t, f_t>& a, const snf_candidate_t<i_t, f_t>& b) {
-                         return a.distance < b.distance;
-                       });
+    auto best = std::min_element(
+      scratch.candidates.begin(),
+      scratch.candidates.end(),
+      [](const single_node_flow_candidate_t<i_t, f_t>& a,
+         const single_node_flow_candidate_t<i_t, f_t>& b) { return a.distance < b.distance; });
     const f_t arc_lower_tol =
       std::max<f_t>(10 * context.settings.primal_tol, static_cast<f_t>(1e-5));
     const f_t arc_upper_tol =
@@ -1245,29 +1245,32 @@ bool knapsack_generation_t<i_t, f_t>::build_snf_relaxation(
   }
 
   if (scratch.arcs.empty()) { return false; }
-  snf_b = b - b_shift;
+  single_node_flow_b = b - b_shift;
   cuopt_assert(
     [&]() {
-      f_t snf_activity = 0.0;
-      f_t snf_scale    = std::max<f_t>(1.0, std::abs(snf_b));
+      f_t single_node_flow_activity = 0.0;
+      f_t single_node_flow_scale    = std::max<f_t>(1.0, std::abs(single_node_flow_b));
       for (const auto& arc : scratch.arcs) {
         const f_t arc_tol = flow_cover_arc_tol(context, arc);
         if (arc.y_value < -arc_tol) { return false; }
         if (arc.y_value > arc.u * arc.x_value + arc_tol) { return false; }
         const f_t signed_y = arc.in_n2 ? -arc.y_value : arc.y_value;
-        snf_activity += signed_y;
-        snf_scale += std::abs(signed_y);
+        single_node_flow_activity += signed_y;
+        single_node_flow_scale += std::abs(signed_y);
       }
-      return snf_activity <= snf_b + context.settings.primal_tol * snf_scale;
+      return single_node_flow_activity <=
+             single_node_flow_b + context.settings.primal_tol * single_node_flow_scale;
     }(),
-    "Flow cover SNF relaxation excludes LP solution");
+    "Flow cover single-node-flow relaxation excludes LP solution");
 
   return true;
 }
 
 template <typename i_t, typename f_t>
 bool knapsack_generation_t<i_t, f_t>::select_flow_cover(
-  const flow_cover_context_t<i_t, f_t>& context, f_t snf_b, flow_cover_selection_t<f_t>& selection)
+  const flow_cover_context_t<i_t, f_t>& context,
+  f_t single_node_flow_b,
+  flow_cover_selection_t<f_t>& selection)
 {
   auto& scratch             = flow_cover_scratch_;
   const f_t feasibility_tol = context.settings.primal_tol;
@@ -1282,7 +1285,7 @@ bool knapsack_generation_t<i_t, f_t>::select_flow_cover(
       sum_n1_u += arc.u;
     }
   }
-  const f_t cover_capacity = -snf_b + sum_n1_u;
+  const f_t cover_capacity = -single_node_flow_b + sum_n1_u;
   if (!has_binary_controlled_arc || !has_n1 || cover_capacity <= feasibility_tol) { return false; }
 
   scratch.values.reserve(scratch.arcs.size());
@@ -1327,13 +1330,13 @@ bool knapsack_generation_t<i_t, f_t>::select_flow_cover(
     if (scratch.in_c2[k]) { sum_c2_u += scratch.arcs[k].u; }
   }
 
-  selection.lambda = -snf_b + sum_c1_u - sum_c2_u;
+  selection.lambda = -single_node_flow_b + sum_c1_u - sum_c2_u;
   return c1_nonempty && selection.lambda > feasibility_tol;
 }
 
 template <typename i_t, typename f_t>
 flow_cover_evaluation_t<f_t> knapsack_generation_t<i_t, f_t>::evaluate_cmirfci(
-  const flow_cover_context_t<i_t, f_t>& context, f_t snf_b, f_t lambda)
+  const flow_cover_context_t<i_t, f_t>& context, f_t single_node_flow_b, f_t lambda)
 {
   auto& scratch                       = flow_cover_scratch_;
   constexpr f_t min_mir_beta_fraction = 0.01;
@@ -1377,7 +1380,7 @@ flow_cover_evaluation_t<f_t> knapsack_generation_t<i_t, f_t>::evaluate_cmirfci(
   scratch.best_in_l1.assign(scratch.arcs.size(), 0);
   scratch.best_in_l2.assign(scratch.arcs.size(), 0);
 
-  auto contribution = [&](const snf_arc_t<i_t, f_t>& arc,
+  auto contribution = [&](const single_node_flow_arc_t<i_t, f_t>& arc,
                           bool arc_in_c1,
                           bool arc_in_c2,
                           bool arc_in_l1,
@@ -1425,7 +1428,7 @@ flow_cover_evaluation_t<f_t> knapsack_generation_t<i_t, f_t>::evaluate_cmirfci(
                                 scratch.in_l2[k],
                                 ubar);
     }
-    const f_t violation = lhs_value - snf_b;
+    const f_t violation = lhs_value - single_node_flow_b;
     if (violation > best.violation + min_violation) {
       best.violation     = violation;
       best.ubar          = ubar;
@@ -1439,7 +1442,7 @@ flow_cover_evaluation_t<f_t> knapsack_generation_t<i_t, f_t>::evaluate_cmirfci(
 
 template <typename i_t, typename f_t>
 flow_cover_evaluation_t<f_t> knapsack_generation_t<i_t, f_t>::evaluate_sgfci(
-  const flow_cover_context_t<i_t, f_t>& context, f_t snf_b, f_t lambda)
+  const flow_cover_context_t<i_t, f_t>& context, f_t single_node_flow_b, f_t lambda)
 {
   auto& scratch           = flow_cover_scratch_;
   const f_t min_violation = static_cast<f_t>(1e-6);
@@ -1462,23 +1465,23 @@ flow_cover_evaluation_t<f_t> knapsack_generation_t<i_t, f_t>::evaluate_sgfci(
     }
   }
 
-  return {lhs_value - snf_b, 0.0};
+  return {lhs_value - single_node_flow_b, 0.0};
 }
 
 template <typename i_t, typename f_t>
 bool knapsack_generation_t<i_t, f_t>::emit_flow_cover_cut(
   const flow_cover_context_t<i_t, f_t>& context,
-  f_t snf_b,
+  f_t single_node_flow_b,
   f_t lambda,
   const flow_cover_evaluation_t<f_t>& cmirfci,
   const flow_cover_evaluation_t<f_t>& sgfci,
   inequality_t<i_t, f_t>& cut)
 {
-  auto& scratch                = flow_cover_scratch_;
-  const f_t accumulator_tol    = static_cast<f_t>(1e-12);
-  const f_t output_drop_tol    = static_cast<f_t>(1e-9);
-  const bool use_cmirfci       = cmirfci.violation >= sgfci.violation;
-  f_t lhs_constant             = 0.0;
+  auto& scratch             = flow_cover_scratch_;
+  const f_t accumulator_tol = static_cast<f_t>(1e-12);
+  const f_t output_drop_tol = static_cast<f_t>(1e-9);
+  const bool use_cmirfci    = cmirfci.violation >= sgfci.violation;
+  f_t lhs_constant          = 0.0;
 
   scratch.lhs_indices.reserve(scratch.arcs.size() * 2);
   auto add_lhs_coeff = [&](i_t j, f_t value) {
@@ -1491,7 +1494,7 @@ bool knapsack_generation_t<i_t, f_t>::emit_flow_cover_cut(
     scratch.lhs_coefficients[j] += value;
   };
 
-  auto add_y = [&](const snf_arc_t<i_t, f_t>& arc, f_t multiplier) {
+  auto add_y = [&](const single_node_flow_arc_t<i_t, f_t>& arc, f_t multiplier) {
     lhs_constant += multiplier * arc.y_const;
     if (arc.y_col >= 0) { add_lhs_coeff(arc.y_col, multiplier * arc.y_coeff); }
     if (arc.x_col >= 0) {
@@ -1501,7 +1504,7 @@ bool knapsack_generation_t<i_t, f_t>::emit_flow_cover_cut(
     }
   };
 
-  auto add_x = [&](const snf_arc_t<i_t, f_t>& arc, f_t multiplier) {
+  auto add_x = [&](const single_node_flow_arc_t<i_t, f_t>& arc, f_t multiplier) {
     if (arc.x_col >= 0) {
       add_lhs_coeff(arc.x_col, multiplier);
     } else {
@@ -1509,7 +1512,7 @@ bool knapsack_generation_t<i_t, f_t>::emit_flow_cover_cut(
     }
   };
 
-  auto add_one_minus_x = [&](const snf_arc_t<i_t, f_t>& arc, f_t multiplier) {
+  auto add_one_minus_x = [&](const single_node_flow_arc_t<i_t, f_t>& arc, f_t multiplier) {
     lhs_constant += multiplier;
     add_x(arc, -multiplier);
   };
@@ -1562,12 +1565,11 @@ bool knapsack_generation_t<i_t, f_t>::emit_flow_cover_cut(
     if (std::abs(coeff) > output_drop_tol) { cut.push_back(j, -coeff); }
   }
   if (cut.size() == 0) { return false; }
-  cut.rhs = lhs_constant - snf_b;
+  cut.rhs = lhs_constant - single_node_flow_b;
   cut.sort();
 
-  const f_t dot = cut.vector.dot(context.xstar);
-  const f_t violation_tol =
-    std::max(context.settings.primal_tol, static_cast<f_t>(1e-6));
+  const f_t dot           = cut.vector.dot(context.xstar);
+  const f_t violation_tol = std::max(context.settings.primal_tol, static_cast<f_t>(1e-6));
   return dot < cut.rhs - violation_tol;
 }
 
@@ -1590,18 +1592,20 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   bool negate_row = false;
   if (!normalize_row_side(context, flow_cover_row, row, b, negate_row)) { return -1; }
 
-  f_t snf_b = 0.0;
-  if (!build_snf_relaxation(context, b, snf_b)) { return -1; }
+  f_t single_node_flow_b = 0.0;
+  if (!build_single_node_flow_relaxation(context, b, single_node_flow_b)) { return -1; }
 
   flow_cover_selection_t<f_t> selection{0.0};
-  if (!select_flow_cover(context, snf_b, selection)) { return -1; }
+  if (!select_flow_cover(context, single_node_flow_b, selection)) { return -1; }
 
-  const auto cmirfci      = evaluate_cmirfci(context, snf_b, selection.lambda);
-  const auto sgfci        = evaluate_sgfci(context, snf_b, selection.lambda);
+  const auto cmirfci      = evaluate_cmirfci(context, single_node_flow_b, selection.lambda);
+  const auto sgfci        = evaluate_sgfci(context, single_node_flow_b, selection.lambda);
   const f_t violation_tol = std::max(settings.primal_tol, static_cast<f_t>(1e-6));
   if (cmirfci.violation <= violation_tol && sgfci.violation <= violation_tol) { return -1; }
 
-  if (!emit_flow_cover_cut(context, snf_b, selection.lambda, cmirfci, sgfci, cut)) { return -1; }
+  if (!emit_flow_cover_cut(context, single_node_flow_b, selection.lambda, cmirfci, sgfci, cut)) {
+    return -1;
+  }
   return 0;
 }
 
@@ -2144,9 +2148,9 @@ f_t knapsack_generation_t<i_t, f_t>::greedy_knapsack_problem(const std::vector<f
   std::sort(perm.begin(), perm.end(), [&](i_t i, i_t j) { return ratios[i] > ratios[j]; });
 
   if (mode == greedy_knapsack_mode_t::STRICT_RATIO_PREFIX) {
-    // Wolter Algorithm 5.1 for KPSNF^rat: take the ratio-sorted prefix while
-    // the strict capacity remains satisfied and stop at the first item that
-    // does not fit.
+    // Wolter Algorithm 5.1 for the single-node-flow knapsack relaxation: take
+    // the ratio-sorted prefix while the strict capacity remains satisfied and
+    // stop at the first item that does not fit.
     f_t total_weight = 0.0;
     f_t total_value  = 0.0;
     for (i_t item : perm) {

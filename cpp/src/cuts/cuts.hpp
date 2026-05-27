@@ -340,7 +340,7 @@ struct flow_cover_row_t {
 };
 
 template <typename i_t, typename f_t>
-struct snf_arc_t {
+struct single_node_flow_arc_t {
   f_t u;        // Capacity u_j in 0 <= y_j <= u_j x_j.
   bool in_n2;   // false: y_j appears with + sign (N1), true: with - sign (N2).
   i_t x_col;    // Binary controller column, or -1 for a fixed-control simple-bound arc.
@@ -353,8 +353,8 @@ struct snf_arc_t {
 };
 
 template <typename i_t, typename f_t>
-struct snf_candidate_t {
-  snf_arc_t<i_t, f_t> arc;
+struct single_node_flow_candidate_t {
+  single_node_flow_arc_t<i_t, f_t> arc;
   f_t b_shift;
   f_t distance;
   bool absorbs_binary_coeff;
@@ -392,8 +392,8 @@ struct flow_cover_scratch_t {
   std::vector<f_t> binary_coefficients;
   std::vector<uint8_t> binary_coefficients_touched;
   std::vector<i_t> touched_binary_coefficients;
-  std::vector<snf_arc_t<i_t, f_t>> arcs;
-  std::vector<snf_candidate_t<i_t, f_t>> candidates;
+  std::vector<single_node_flow_arc_t<i_t, f_t>> arcs;
+  std::vector<single_node_flow_candidate_t<i_t, f_t>> candidates;
   std::vector<f_t> values;
   std::vector<f_t> weights;
   std::vector<i_t> item_to_arc;
@@ -551,22 +551,24 @@ class knapsack_generation_t {
                           f_t& b,
                           bool& negate_row);
 
-  bool build_snf_relaxation(const flow_cover_context_t<i_t, f_t>& context, f_t b, f_t& snf_b);
+  bool build_single_node_flow_relaxation(const flow_cover_context_t<i_t, f_t>& context,
+                                         f_t b,
+                                         f_t& single_node_flow_b);
 
   bool select_flow_cover(const flow_cover_context_t<i_t, f_t>& context,
-                         f_t snf_b,
+                         f_t single_node_flow_b,
                          flow_cover_selection_t<f_t>& selection);
 
   flow_cover_evaluation_t<f_t> evaluate_cmirfci(const flow_cover_context_t<i_t, f_t>& context,
-                                                f_t snf_b,
+                                                f_t single_node_flow_b,
                                                 f_t lambda);
 
   flow_cover_evaluation_t<f_t> evaluate_sgfci(const flow_cover_context_t<i_t, f_t>& context,
-                                              f_t snf_b,
+                                              f_t single_node_flow_b,
                                               f_t lambda);
 
   bool emit_flow_cover_cut(const flow_cover_context_t<i_t, f_t>& context,
-                           f_t snf_b,
+                           f_t single_node_flow_b,
                            f_t lambda,
                            const flow_cover_evaluation_t<f_t>& cmirfci,
                            const flow_cover_evaluation_t<f_t>& sgfci,

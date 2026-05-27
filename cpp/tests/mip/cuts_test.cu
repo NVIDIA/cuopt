@@ -1413,7 +1413,7 @@ TEST(cuts, clique_neos8_phase4_lp_infeasibility_binary_search)
 // The fractional point x* = (1, 2/3, 1), y* = (3, 4, 3) satisfies the relaxation
 // but violates the generated c-MIR flow-cover cut. This is a reduced version of a
 // standard flow-cover example; the test checks validity instead of exact coefficients
-// because the approximate KPSNF selection may choose a different valid cut.
+// because the approximate single-node-flow selection may choose a different valid cut.
 mps_parser::mps_data_model_t<int, double> create_small_single_node_flow_problem()
 {
   mps_parser::mps_data_model_t<int, double> problem;
