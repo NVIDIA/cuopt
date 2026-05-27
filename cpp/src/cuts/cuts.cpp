@@ -451,7 +451,6 @@ bool rational_coefficients(const std::vector<variable_type_t>& var_types,
                            const inequality_t<i_t, f_t>& inequality,
                            inequality_t<i_t, f_t>& rational_inequality);
 
-// rational_approximation is defined in cuts/rational.hpp (templated on f_t).
 
 int64_t gcd(const std::vector<int64_t>& integers);
 

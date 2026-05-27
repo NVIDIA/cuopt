@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <numeric>
+#include <vector>
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -158,6 +159,20 @@ f_t gcd_floating_point(f_t a, f_t b)
   auto ra = rational128_t<f_t>::from_floating_point(std::abs(a));
   auto rb = rational128_t<f_t>::from_floating_point(std::abs(b));
   return gcd(ra, rb).to_floating_point();
+}
+
+// GCD of the absolute values of a vector of floats whose entries are close to integers.
+// Returns 0 if every entry rounds to zero (or the vector is empty).
+template <typename f_t>
+f_t gcd_of_integer_values(const std::vector<f_t>& values)
+{
+  int64_t g = 0;
+  for (f_t v : values) {
+    int64_t iv = std::llround(std::abs(v));
+    if (iv == 0) continue;
+    g = (g == 0) ? iv : std::gcd(g, iv);
+  }
+  return static_cast<f_t>(g);
 }
 
 }  // namespace cuopt::linear_programming::dual_simplex

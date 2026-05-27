@@ -18,6 +18,7 @@
 #include <pdlp/utils.cuh>
 
 #include <cuts/objective_step.hpp>
+#include <cuts/rational.hpp>
 #include <dual_simplex/tic_toc.hpp>
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
 #include <mip_heuristics/presolve/trivial_presolve.cuh>
@@ -1260,20 +1261,6 @@ std::pair<int64_t, int64_t> rational_approximation(double x, int64_t max_denom, 
   return {p_prev1, q_prev1};
 }
 
-// GCD of the absolute values of a vector of floats whose entries are close to integers.
-// Returns 0 if every entry rounds to zero (or the vector is empty).
-template <typename f_t>
-f_t gcd_of_integer_values(const std::vector<f_t>& values)
-{
-  int64_t g = 0;
-  for (f_t v : values) {
-    int64_t iv = std::llround(std::abs(v));
-    if (iv == 0) continue;
-    g = (g == 0) ? iv : std::gcd(g, iv);
-  }
-  return static_cast<f_t>(g);
-}
-
 // Brute-force: try scalars 1..max_brute and return the smallest that makes all coefficients
 // integral.
 double find_scaling_brute_force(const std::vector<double>& coefficients,
@@ -1465,7 +1452,7 @@ void problem_t<i_t, f_t>::compute_objective_step()
     }
 
     if (objective_is_integral) {
-      f_t g = gcd_of_integer_values(nonzero_coefs);
+      f_t g = dual_simplex::gcd_of_integer_values(nonzero_coefs);
       if (g > 0) {
         objective_step.step_size = g;
         objective_step.bias      = std::fmod(bias, g);
@@ -1484,7 +1471,7 @@ void problem_t<i_t, f_t>::compute_objective_step()
       for (f_t c : nonzero_coefs) {
         scaled_coefs.push_back(std::round(static_cast<f_t>(scaling_factor) * c));
       }
-      f_t g = gcd_of_integer_values(scaled_coefs);
+      f_t g = dual_simplex::gcd_of_integer_values(scaled_coefs);
       if (g > 0) {
         f_t sf                   = static_cast<f_t>(scaling_factor);
         objective_step.step_size = g / sf;
