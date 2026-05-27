@@ -382,16 +382,14 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
   //    (problem_ptr, op_problem_scaled_, pdhg_solver_, strategies, etc.).
   : pdlp_solver_t(op_problem, settings, false)
 {
-  cuopt_expects(num_gpus == settings.num_gpus && settings.num_gpus > 1,
+  if (num_gpus == 1) {
+    std::cout << "CAREFUL: num_gpus == 1, running dummy version" << std::endl;
+  }
+  cuopt_expects(num_gpus == settings.num_gpus /*&& settings.num_gpus > 1*/,
                 error_type_t::ValidationError,
                 "This constructor should only be used for distributed PDLP (num_gpus > 1)");
 
-  // Distributed PDLP is currently double-only. The body is guarded with
-  // `if constexpr` so the float instantiation never references the
-  // multi_gpu_engine_t<i_t, float> / partition_loader_t<i_t, float> symbols
-  // (those are intentionally not instantiated in their .cu files), keeping
-  // the link clean. Trying to use distributed PDLP with f_t = float will
-  // throw at runtime instead.
+  // Distributed PDLP is currently double-only
   if constexpr (!std::is_same_v<f_t, double>) {
     cuopt_expects(false,
                   error_type_t::ValidationError,
@@ -403,6 +401,18 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
     if (!settings.multi_gpu_partition_file.empty()) {
       parts = partition_loader_t<i_t, f_t>::parse_distributed_pdlp_partition_file(
         settings.multi_gpu_partition_file);
+    } else if (num_gpus == 1) {
+      // Single-part dummy run: useful for exercising the mGPU code paths on a
+      // single physical GPU without a real Metis partition file. The downstream
+      // create_rank_data_from_parts expects a flat vector of length
+      // (n_constraints + n_variables) where each entry is the owning part-id
+      // (cstrs first, then vars). With nb_parts == 1, every entry is 0.
+      std::cout << "CAREFUL: num_gpus == 1, running dummy version (single part covering "
+                << op_problem_scaled_.n_constraints << " cstrs + "
+                << op_problem_scaled_.n_variables << " vars)" << std::endl;
+      parts = std::vector<i_t>(
+        static_cast<std::size_t>(op_problem_scaled_.n_constraints + op_problem_scaled_.n_variables),
+        0);
     } else {
       cuopt_expects(false,
                     error_type_t::RuntimeError,

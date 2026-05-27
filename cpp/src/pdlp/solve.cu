@@ -771,9 +771,11 @@ static optimization_problem_solution_t<i_t, f_t> run_pdlp_solver(
   }
 #endif
   if (settings.hyper_params.use_distributed_pdlp) {
+    /*
     cuopt_expects(settings.num_gpus > 1,
                   error_type_t::ValidationError,
-                  "use_distributed_pdlp requires settings.num_gpus > 1");
+                  "use_distributed_pdlp requires settings.num_gpus > 1"); */
+    if (settings.num_gpus == 1) {std::cout << "CAREFUL: use_distributed_pdlp requires settings.num_gpus > 1" << std::endl;}
     cuopt_expects(!is_batch_mode,
                   error_type_t::ValidationError,
                   "Distributed PDLP does not support batch mode");
