@@ -725,7 +725,6 @@ struct OX {
   bool use_linear_ox_for_path_tsp(Solution const& S, int n_routes) const
   {
     if (!S.problem->is_tsp || n_routes != 1) { return false; }
-    if (S.problem->data_view_ptr->get_vehicle_locations().first == nullptr) { return false; }
 
     // With distinct vehicle start/end locations the TSP is a fixed path, not a cycle.
     // Classic OX may wrap across the end/start boundary or rotate the child, which is
