@@ -8,7 +8,7 @@ This skill is ready for commercial/non-commercial use. <br>
 ### License/Terms of Use: <br>
 Apache 2.0 <br>
 ## Use Case: <br>
-Developers and engineers who need to install or verify NVIDIA cuOpt for any user-facing interface (Python, C, or REST server) across local GPU, cloud, or Docker environments. <br>
+Developers and engineers who need to install or verify NVIDIA cuOpt for any user-facing interface (Python, C, or REST server) across pip, conda, or Docker environments. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
