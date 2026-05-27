@@ -32,11 +32,11 @@ Never push branches directly to the main cuOpt repository. Use the fork workflow
 
 ```bash
 # 1. Clone the main repo
-git clone git@github.com:NVIDIA/cuopt.git
+git clone https://github.com/NVIDIA/cuopt.git
 cd cuopt
 
 # 2. Add your fork as a remote
-git remote add fork git@github.com:<your-username>/cuopt.git
+git remote add fork https://github.com/<your-username>/cuopt.git
 
 # 3. Create a branch from the appropriate base
 git checkout -b my-feature-branch

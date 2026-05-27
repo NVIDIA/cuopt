@@ -1,7 +1,16 @@
 ---
 name: cuopt-numerical-optimization-api-c
-version: "26.06.00"
+version: "26.08.00"
 description: LP, MILP, and QP (beta) with cuOpt — C API only. Use when the user is embedding LP, MILP, or QP in C/C++.
+license: Apache-2.0
+metadata:
+  author: NVIDIA cuOpt Team
+  tags:
+    - cuopt
+    - linear-programming
+    - milp
+    - qp
+    - c-api
 ---
 
 

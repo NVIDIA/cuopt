@@ -1,5 +1,5 @@
 ## Description: <br>
-LP, MILP, and QP (beta) with cuOpt — CLI only (MPS files, cuopt_cli). Use when the user is solving LP, MILP, or QP from MPS via command line. <br>
+Solve Linear Programming (LP), Mixed-Integer Linear Programming (MILP), and Quadratic Programming (QP, beta) with the Python API. <br>
 
 This skill is ready for commercial/non-commercial use. <br>
 
@@ -8,7 +8,7 @@ This skill is ready for commercial/non-commercial use. <br>
 ### License/Terms of Use: <br>
 Apache 2.0 <br>
 ## Use Case: <br>
-Developers and engineers solving linear programming, mixed-integer linear programming, or quadratic programming problems from MPS files via the cuopt_cli command-line interface. <br>
+Developers and engineers use this skill to model and solve linear, mixed-integer, and quadratic optimization problems using NVIDIA cuOpt's GPU-accelerated Python API for tasks such as scheduling, resource allocation, facility location, production planning, portfolio optimization, and least squares. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
@@ -20,12 +20,13 @@ Mitigation: Review and scan skill before deployment. <br>
 ## Reference(s): <br>
 - [cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html) <br>
 - [cuOpt API Reference](https://docs.nvidia.com/cuopt/user-guide/latest/api.html) <br>
-- [cuOpt Examples](https://github.com/NVIDIA/cuopt-examples) <br>
+- [cuOpt Examples Repository](https://github.com/NVIDIA/cuopt-examples) <br>
+- [QP Examples (resource)](resources/qp_examples.md) <br>
 
 
 ## Skill Output: <br>
-**Output Type(s):** [Shell commands, Configuration instructions] <br>
-**Output Format:** [Markdown with inline bash code blocks] <br>
+**Output Type(s):** [Code, Analysis] <br>
+**Output Format:** [Markdown with inline Python code blocks] <br>
 **Output Parameters:** [1D] <br>
 **Other Properties Related to Output:** [None] <br>
 

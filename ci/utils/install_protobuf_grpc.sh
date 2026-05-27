@@ -90,6 +90,16 @@ echo "  Build dir: ${BUILD_DIR}"
 echo "  Skip deps: ${SKIP_DEPS}"
 echo "=============================================="
 
+# OpenSSL 3 hints for CMake's find_package(OpenSSL).
+#
+# On Rocky/RHEL 8 the default 'openssl-devel' is still 1.1.1k, so we install
+# 'openssl3-devel' from EPEL. That package installs in non-default paths
+# (/usr/include/openssl3 and /usr/lib64/openssl3) so we have to point CMake
+# at them explicitly. On Rocky/RHEL 9+ and Ubuntu 22.04+ the default OpenSSL
+# devel package is already 3.x, so no special handling is needed.
+OPENSSL_INCLUDE_DIR_HINT=""
+OPENSSL_LIB_DIR_HINT=""
+
 # Install system dependencies if not skipped
 if [ "${SKIP_DEPS}" = false ]; then
     echo ""
@@ -100,11 +110,35 @@ if [ "${SKIP_DEPS}" = false ]; then
             # Enable PowerTools (Rocky 8) or CRB (Rocky 9) for some packages
             if [[ "${VERSION_ID%%.*}" == "8" ]]; then
                 dnf config-manager --set-enabled powertools || dnf config-manager --set-enabled PowerTools || true
+                # EPEL provides 'openssl3-devel' in parallel with the system OpenSSL 1.1.x.
+                dnf install -y epel-release
+                dnf install -y git cmake ninja-build gcc gcc-c++ openssl3-devel zlib-devel c-ares-devel
+                OPENSSL_INCLUDE_DIR_HINT="/usr/include/openssl3"
+                OPENSSL_LIB_DIR_HINT="/usr/lib64/openssl3"
             elif [[ "${VERSION_ID%%.*}" == "9" ]]; then
                 dnf config-manager --set-enabled crb || true
+                dnf install -y git cmake ninja-build gcc gcc-c++ openssl-devel zlib-devel c-ares-devel
+            elif [[ "$ID" == "fedora" ]]; then
+                # Fedora 36+ ships OpenSSL 3.x as the default 'openssl-devel'.
+                dnf install -y git cmake ninja-build gcc gcc-c++ openssl-devel zlib-devel c-ares-devel
+            else
+                echo "ERROR: ${PRETTY_NAME:-$ID $VERSION_ID} is not a supported RHEL-family release for OpenSSL 3 builds." >&2
+                echo "Supported: Rocky/RHEL/CentOS/Alma 8 or 9, or Fedora. Re-run with --skip-deps to bypass." >&2
+                exit 1
             fi
-            dnf install -y git cmake ninja-build gcc gcc-c++ openssl-devel zlib-devel c-ares-devel
         elif [[ "$ID" == "ubuntu" || "$ID" == "debian" ]]; then
+            # The default 'libssl-dev' package is OpenSSL 3.x on Ubuntu 22.04+
+            # and Debian 12+. Older releases (Ubuntu 20.04, Debian 11) ship
+            # OpenSSL 1.1.1, which we deliberately do not link against (see top
+            # of file). Refuse to proceed there rather than silently regress.
+            DISTRO_MAJOR="${VERSION_ID%%.*}"
+            if [[ "$ID" == "ubuntu" && "${DISTRO_MAJOR}" -lt 22 ]] || \
+               [[ "$ID" == "debian" && "${DISTRO_MAJOR}" -lt 12 ]]; then
+                echo "ERROR: ${PRETTY_NAME:-$ID $VERSION_ID} ships OpenSSL 1.1; cuopt requires OpenSSL 3." >&2
+                echo "Upgrade to Ubuntu 22.04+ / Debian 12+, or install OpenSSL 3 manually" >&2
+                echo "(e.g. via PPA or backport) and re-run this script with --skip-deps." >&2
+                exit 1
+            fi
             apt-get update
             apt-get install -y git cmake ninja-build g++ libssl-dev zlib1g-dev libc-ares-dev
         else
@@ -200,6 +234,17 @@ cmake --install "${PROTOBUF_BUILD}"
 
 echo ""
 echo "Building gRPC (using installed Abseil and Protobuf)..."
+# When building on Rocky/RHEL 8, the EPEL openssl3-devel package installs
+# headers in /usr/include/openssl3 and libs in /usr/lib64/openssl3. CMake's
+# FindOpenSSL.cmake doesn't know to look there, so pass explicit hints.
+GRPC_OPENSSL_HINTS=()
+if [[ -n "${OPENSSL_INCLUDE_DIR_HINT}" && -n "${OPENSSL_LIB_DIR_HINT}" ]]; then
+    GRPC_OPENSSL_HINTS=(
+        "-DOPENSSL_INCLUDE_DIR=${OPENSSL_INCLUDE_DIR_HINT}"
+        "-DOPENSSL_SSL_LIBRARY=${OPENSSL_LIB_DIR_HINT}/libssl.so"
+        "-DOPENSSL_CRYPTO_LIBRARY=${OPENSSL_LIB_DIR_HINT}/libcrypto.so"
+    )
+fi
 cmake -S "${GRPC_SRC}" -B "${GRPC_BUILD}" -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
@@ -214,6 +259,7 @@ cmake -S "${GRPC_SRC}" -B "${GRPC_BUILD}" -G Ninja \
     -DgRPC_SSL_PROVIDER=package \
     -DgRPC_ZLIB_PROVIDER=package \
     -DgRPC_CARES_PROVIDER=package \
+    "${GRPC_OPENSSL_HINTS[@]}" \
     -DCMAKE_PREFIX_PATH="${PREFIX}" \
     -DCMAKE_INSTALL_PREFIX="${PREFIX}"
 cmake --build "${GRPC_BUILD}" --parallel

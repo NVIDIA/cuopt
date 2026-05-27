@@ -1,5 +1,5 @@
 ## Description: <br>
-LP, MILP, and QP (beta) with cuOpt — CLI only (MPS files, cuopt_cli). Use when the user is solving LP, MILP, or QP from MPS via command line. <br>
+Install cuOpt for Python, C, or as a server (pip, conda, Docker) — system requirements, install commands, and verification. <br>
 
 This skill is ready for commercial/non-commercial use. <br>
 
@@ -8,7 +8,7 @@ This skill is ready for commercial/non-commercial use. <br>
 ### License/Terms of Use: <br>
 Apache 2.0 <br>
 ## Use Case: <br>
-Developers and engineers solving linear programming, mixed-integer linear programming, or quadratic programming problems from MPS files via the cuopt_cli command-line interface. <br>
+Developers and engineers who need to install or verify NVIDIA cuOpt for any user-facing interface (Python, C, or REST server) across local GPU, cloud, or Docker environments. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
@@ -18,9 +18,8 @@ Risk: Review before execution as proposals could introduce incorrect or misleadi
 Mitigation: Review and scan skill before deployment. <br>
 
 ## Reference(s): <br>
+- [Verification Examples](resources/verification_examples.md) <br>
 - [cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html) <br>
-- [cuOpt API Reference](https://docs.nvidia.com/cuopt/user-guide/latest/api.html) <br>
-- [cuOpt Examples](https://github.com/NVIDIA/cuopt-examples) <br>
 
 
 ## Skill Output: <br>

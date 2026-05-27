@@ -1,7 +1,16 @@
 ---
 name: routing-formulation
-version: "26.06.00"
+version: "26.08.00"
 description: Vehicle routing (VRP, TSP, PDP) — problem types and data requirements. Domain concepts; no API or interface.
+license: Apache-2.0
+metadata:
+  author: NVIDIA cuOpt Team
+  tags:
+    - routing
+    - vrp
+    - tsp
+    - formulation
+    - concepts
 ---
 
 

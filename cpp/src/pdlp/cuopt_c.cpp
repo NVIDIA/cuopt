@@ -82,6 +82,87 @@ solver_settings_handle_t* get_settings_handle(cuOptSolverSettings settings)
   return static_cast<solver_settings_handle_t*>(settings);
 }
 
+namespace {
+
+void coo_to_csr(cuopt_int_t num_entries,
+                const cuopt_int_t* row_index,
+                const cuopt_int_t* col_index,
+                const cuopt_float_t* coeff,
+                cuopt_int_t num_rows,
+                cuopt_int_t num_cols,
+                std::vector<cuopt_int_t>& offsets,
+                std::vector<cuopt_int_t>& indices,
+                std::vector<cuopt_float_t>& values)
+{
+  offsets.assign(num_rows + 1, 0);
+  indices.clear();
+  values.clear();
+  if (num_entries <= 0) { return; }
+
+  for (cuopt_int_t k = 0; k < num_entries; ++k) {
+    const cuopt_int_t row = row_index[k];
+    if (row < 0 || row >= num_rows) { throw raft::exception("Matrix row index out of range"); }
+    if (col_index[k] < 0 || col_index[k] >= num_cols) {
+      throw raft::exception("Matrix column index out of range");
+    }
+    ++offsets[row + 1];
+  }
+
+  for (cuopt_int_t row = 0; row < num_rows; ++row) {
+    offsets[row + 1] += offsets[row];
+  }
+
+  // Group triplet indices by row (counting/bucket sort on row): O(nnz + num_rows).
+  std::vector<cuopt_int_t> perm(static_cast<size_t>(num_entries));
+  std::vector<cuopt_int_t> row_cursor(offsets.begin(), offsets.begin() + num_rows);
+  for (cuopt_int_t k = 0; k < num_entries; ++k) {
+    const cuopt_int_t row                        = row_index[k];
+    perm[static_cast<size_t>(row_cursor[row]++)] = k;
+  }
+
+  // Per row: merge duplicate columns in one pass. col_mark[col] stores the index into
+  // values for the current row's entry; entries from prior rows have index < row_out_start.
+  indices.reserve(static_cast<size_t>(num_entries));
+  values.reserve(static_cast<size_t>(num_entries));
+  std::vector<cuopt_int_t> col_mark(static_cast<size_t>(num_cols), -1);
+
+  cuopt_int_t out_nnz = 0;
+  for (cuopt_int_t row = 0; row < num_rows; ++row) {
+    const cuopt_int_t start         = offsets[row];
+    const cuopt_int_t end           = offsets[row + 1];
+    const cuopt_int_t row_out_start = out_nnz;
+    offsets[row]                    = out_nnz;
+    if (start >= end) { continue; }
+
+    for (cuopt_int_t p = start; p < end; ++p) {
+      const cuopt_int_t k   = perm[static_cast<size_t>(p)];
+      const cuopt_int_t col = col_index[k];
+      const size_t col_u    = static_cast<size_t>(col);
+      if (col_mark[col_u] < row_out_start) {
+        col_mark[col_u] = out_nnz;
+        indices.push_back(col);
+        values.push_back(coeff[k]);
+        ++out_nnz;
+      } else {
+        values[static_cast<size_t>(col_mark[col_u])] += coeff[k];
+      }
+    }
+  }
+  offsets[num_rows] = out_nnz;
+}
+
+constexpr char k_deprecated_quadratic_problem_msg[] =
+  "cuOptCreateQuadraticProblem is deprecated. Use cuOptCreateProblem to set up the linear "
+  "problem, then cuOptSetQuadraticObjective to specify the quadratic objective terms. "
+  "For ranged constraints, use cuOptCreateRangedProblem instead of cuOptCreateProblem.";
+
+constexpr char k_deprecated_quadratic_ranged_problem_msg[] =
+  "cuOptCreateQuadraticRangedProblem is deprecated. Use cuOptCreateRangedProblem to set up the "
+  "linear problem, then cuOptSetQuadraticObjective to specify the quadratic objective terms. "
+  "For QCQP models, call cuOptAddQuadraticConstraint for each quadratic constraint.";
+
+}  // namespace
+
 int8_t cuOptGetFloatSize() { return sizeof(cuopt_float_t); }
 
 int8_t cuOptGetIntSize() { return sizeof(cuopt_int_t); }
@@ -275,12 +356,12 @@ cuopt_int_t cuOptCreateRangedProblem(cuopt_int_t num_constraints,
     // Problem category (LP/MIP/IP) is auto-detected by set_variable_types
     std::vector<var_t> variable_types_host(num_variables);
     if (variable_types != nullptr) {
-      for (int j = 0; j < num_variables; j++) {
+      for (cuopt_int_t j = 0; j < num_variables; ++j) {
         variable_types_host[j] = detail::char_to_var_type(variable_types[j]);
       }
     } else {
       // Default to all continuous
-      for (int j = 0; j < num_variables; j++) {
+      for (cuopt_int_t j = 0; j < num_variables; ++j) {
         variable_types_host[j] = var_t::CONTINUOUS;
       }
     }
@@ -323,6 +404,8 @@ cuopt_int_t cuOptCreateQuadraticProblem(
       rhs == nullptr || lower_bounds == nullptr || upper_bounds == nullptr) {
     return CUOPT_INVALID_ARGUMENT;
   }
+
+  CUOPT_LOG_WARN("%s", k_deprecated_quadratic_problem_msg);
 
   problem_and_stream_view_t* problem_and_stream =
     new problem_and_stream_view_t(get_memory_backend_type());
@@ -391,6 +474,8 @@ cuopt_int_t cuOptCreateQuadraticRangedProblem(
     return CUOPT_INVALID_ARGUMENT;
   }
 
+  CUOPT_LOG_WARN("%s", k_deprecated_quadratic_ranged_problem_msg);
+
   problem_and_stream_view_t* problem_and_stream =
     new problem_and_stream_view_t(get_memory_backend_type());
   try {
@@ -423,6 +508,131 @@ cuopt_int_t cuOptCreateQuadraticRangedProblem(
   } catch (const raft::exception& e) {
     delete problem_and_stream;
     return CUOPT_INVALID_ARGUMENT;
+  }
+  return CUOPT_SUCCESS;
+}
+
+cuopt_int_t cuOptSetQuadraticObjective(cuOptOptimizationProblem problem,
+                                       cuopt_int_t num_entries,
+                                       const cuopt_int_t* row_index,
+                                       const cuopt_int_t* col_index,
+                                       const cuopt_float_t* coeff)
+{
+  if (problem == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  if (num_entries <= 0) { return CUOPT_INVALID_ARGUMENT; }
+  if (row_index == nullptr || col_index == nullptr || coeff == nullptr) {
+    return CUOPT_INVALID_ARGUMENT;
+  }
+
+  problem_and_stream_view_t* problem_and_stream = static_cast<problem_and_stream_view_t*>(problem);
+  auto* op_problem                              = problem_and_stream->get_problem();
+  const cuopt_int_t num_variables               = op_problem->get_n_variables();
+  if (num_variables <= 0) { return CUOPT_INVALID_ARGUMENT; }
+
+  for (cuopt_int_t k = 0; k < num_entries; ++k) {
+    if (row_index[k] < 0 || row_index[k] >= num_variables || col_index[k] < 0 ||
+        col_index[k] >= num_variables) {
+      return CUOPT_INVALID_ARGUMENT;
+    }
+  }
+
+  try {
+    std::vector<cuopt_int_t> Q_offsets;
+    std::vector<cuopt_int_t> Q_indices;
+    std::vector<cuopt_float_t> Q_values;
+    coo_to_csr(num_entries,
+               row_index,
+               col_index,
+               coeff,
+               num_variables,
+               num_variables,
+               Q_offsets,
+               Q_indices,
+               Q_values);
+    if (Q_values.empty()) { return CUOPT_INVALID_ARGUMENT; }
+
+    op_problem->set_quadratic_objective_matrix(Q_values.data(),
+                                               static_cast<cuopt_int_t>(Q_values.size()),
+                                               Q_indices.data(),
+                                               static_cast<cuopt_int_t>(Q_indices.size()),
+                                               Q_offsets.data(),
+                                               static_cast<cuopt_int_t>(Q_offsets.size()));
+  } catch (const raft::exception&) {
+    return CUOPT_INVALID_ARGUMENT;
+  } catch (const std::exception&) {
+    return CUOPT_RUNTIME_ERROR;
+  }
+  return CUOPT_SUCCESS;
+}
+
+cuopt_int_t cuOptAddQuadraticConstraint(cuOptOptimizationProblem problem,
+                                        cuopt_int_t quad_num_entries,
+                                        const cuopt_int_t* row_index,
+                                        const cuopt_int_t* col_index,
+                                        const cuopt_float_t* coeff,
+                                        cuopt_int_t num_lin_entries,
+                                        const cuopt_int_t* linear_index,
+                                        const cuopt_float_t* linear_coeff,
+                                        char sense,
+                                        cuopt_float_t rhs)
+{
+  if (problem == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  if (quad_num_entries <= 0) { return CUOPT_INVALID_ARGUMENT; }
+  if (row_index == nullptr || col_index == nullptr || coeff == nullptr) {
+    return CUOPT_INVALID_ARGUMENT;
+  }
+  if (num_lin_entries < 0) { return CUOPT_INVALID_ARGUMENT; }
+  if (num_lin_entries > 0 && (linear_index == nullptr || linear_coeff == nullptr)) {
+    return CUOPT_INVALID_ARGUMENT;
+  }
+  if (sense != CUOPT_LESS_THAN && sense != CUOPT_GREATER_THAN) { return CUOPT_INVALID_ARGUMENT; }
+
+  problem_and_stream_view_t* problem_and_stream = static_cast<problem_and_stream_view_t*>(problem);
+  auto* op_problem                              = problem_and_stream->get_problem();
+  const cuopt_int_t num_variables               = op_problem->get_n_variables();
+  if (num_variables <= 0) { return CUOPT_INVALID_ARGUMENT; }
+
+  for (cuopt_int_t k = 0; k < quad_num_entries; ++k) {
+    if (row_index[k] < 0 || row_index[k] >= num_variables || col_index[k] < 0 ||
+        col_index[k] >= num_variables) {
+      return CUOPT_INVALID_ARGUMENT;
+    }
+  }
+  for (cuopt_int_t k = 0; k < num_lin_entries; ++k) {
+    if (linear_index[k] < 0 || linear_index[k] >= num_variables) { return CUOPT_INVALID_ARGUMENT; }
+  }
+
+  try {
+    std::vector<cuopt_int_t> Q_offsets;
+    std::vector<cuopt_int_t> Q_indices;
+    std::vector<cuopt_float_t> Q_values;
+    coo_to_csr(quad_num_entries,
+               row_index,
+               col_index,
+               coeff,
+               num_variables,
+               num_variables,
+               Q_offsets,
+               Q_indices,
+               Q_values);
+    if (Q_offsets.empty()) { return CUOPT_INVALID_ARGUMENT; }
+
+    op_problem->add_quadratic_constraint(sense,
+                                         rhs,
+                                         Q_values.data(),
+                                         static_cast<cuopt_int_t>(Q_values.size()),
+                                         Q_indices.data(),
+                                         static_cast<cuopt_int_t>(Q_indices.size()),
+                                         Q_offsets.data(),
+                                         static_cast<cuopt_int_t>(Q_offsets.size()),
+                                         linear_coeff,
+                                         num_lin_entries,
+                                         linear_index,
+                                         num_lin_entries);
+  } catch (const raft::exception&) {
+    return CUOPT_INVALID_ARGUMENT;
+  } catch (const std::exception&) {
+    return CUOPT_RUNTIME_ERROR;
   }
   return CUOPT_SUCCESS;
 }
