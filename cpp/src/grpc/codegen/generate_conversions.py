@@ -600,25 +600,59 @@ def generate_array_field_id_enum(registry):
 
 
 def generate_array_field_element_size_inc(registry):
-    """Generate body of array_field_element_size() switch function.
+    """Generate body of array_field_element_size(container_field_num, field_id).
 
-    Emits every known ArrayFieldId case explicitly and returns -1 after the
-    switch for unrecognized values, rather than a default case. A default
-    case would silently coerce an unknown field id to some size and mask
-    enum-vs-code drift; the -1 sentinel lets callers detect the mismatch."""
+    For top-level chunks (container_field_num < 0) the switch dispatches on
+    ArrayFieldId values.  For container chunks (container_field_num >= 0) the
+    outer switch dispatches on the container's parent field_num, then an
+    inner switch dispatches on the container-relative array_id.
+
+    Every known case is emitted explicitly and the function returns -1 after
+    the switch for unrecognized values, rather than a default case.  A
+    default case would silently coerce unknown ids to some size and mask
+    registry-vs-code drift; the -1 sentinel lets callers detect the mismatch
+    and reject the chunk."""
     obj = registry.get("optimization_problem", {})
+    lines = ["  if (container_field_num < 0) {"]
+    lines.append("    switch (field_id) {")
     cases_by_size = {}
     for entry in obj.get("arrays", []):
         f = parse_field(entry)
         afid = _field_array_id_name(f)
         size = _default_element_size(f)
         cases_by_size.setdefault(size, []).append(afid)
-    lines = ["  switch (field_id) {"]
     for size in sorted(cases_by_size.keys()):
         for afid in cases_by_size[size]:
-            lines.append(f"    case cuopt::remote::{afid}:")
-        lines.append(f"      return {size};")
+            lines.append(f"      case cuopt::remote::{afid}:")
+        lines.append(f"        return {size};")
+    lines.append("    }")
+    lines.append("    return -1;")
     lines.append("  }")
+
+    rm_entries = list(_iter_repeated_messages(obj))
+    if rm_entries:
+        lines.append("  switch (container_field_num) {")
+        for name, body in rm_entries:
+            cfn = body["field_num"]
+            msg_type = body["message_type"]
+            lines.append(f"    case {cfn}: {{  // {msg_type} ({name})")
+            lines.append("      switch (field_id) {")
+            inner_by_size = {}
+            for f in _repeated_message_arrays(body):
+                aid = f.get("array_id")
+                if aid is None:
+                    continue
+                size = _default_element_size(f)
+                inner_by_size.setdefault(size, []).append((aid, f["name"]))
+            for size in sorted(inner_by_size.keys()):
+                for aid, fname in sorted(inner_by_size[size]):
+                    lines.append(
+                        f"        case {aid}: return {size};  // {fname}"
+                    )
+            lines.append("      }")
+            lines.append("      return -1;")
+            lines.append("    }")
+        lines.append("  }")
     lines.append("  return -1;")
     return "\n".join(lines)
 

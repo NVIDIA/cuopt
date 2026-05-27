@@ -28,6 +28,7 @@
 #include "grpc_pipe_serialization.hpp"
 
 using namespace cuopt::remote;
+using cuopt::linear_programming::ContainerArrayKey;
 
 // ---------------------------------------------------------------------------
 // RAII wrapper for a pipe(2) pair.
@@ -121,7 +122,9 @@ TEST(PipeSerialization, ChunkedRequest_SingleChunkPerField)
 
   ChunkedProblemHeader header_out;
   std::map<int32_t, std::vector<uint8_t>> arrays_out;
-  bool read_ok = read_chunked_request_from_pipe(pp.read_fd(), header_out, arrays_out);
+  std::map<ContainerArrayKey, std::vector<uint8_t>> container_arrays_out;
+  bool read_ok =
+    read_chunked_request_from_pipe(pp.read_fd(), header_out, arrays_out, container_arrays_out);
 
   writer.join();
 
@@ -135,6 +138,7 @@ TEST(PipeSerialization, ChunkedRequest_SingleChunkPerField)
   ASSERT_EQ(arrays_out.size(), 2u);
   EXPECT_EQ(arrays_out[FIELD_C], c_data);
   EXPECT_EQ(arrays_out[FIELD_A_INDICES], i_data);
+  EXPECT_TRUE(container_arrays_out.empty());
 }
 
 TEST(PipeSerialization, ChunkedRequest_MultiChunkAssembly)
@@ -165,7 +169,9 @@ TEST(PipeSerialization, ChunkedRequest_MultiChunkAssembly)
 
   ChunkedProblemHeader header_out;
   std::map<int32_t, std::vector<uint8_t>> arrays_out;
-  bool read_ok = read_chunked_request_from_pipe(pp.read_fd(), header_out, arrays_out);
+  std::map<ContainerArrayKey, std::vector<uint8_t>> container_arrays_out;
+  bool read_ok =
+    read_chunked_request_from_pipe(pp.read_fd(), header_out, arrays_out, container_arrays_out);
 
   writer.join();
 
@@ -173,6 +179,7 @@ TEST(PipeSerialization, ChunkedRequest_MultiChunkAssembly)
   ASSERT_TRUE(read_ok);
   ASSERT_EQ(arrays_out.size(), 1u);
   EXPECT_EQ(arrays_out[FIELD_C], full_data);
+  EXPECT_TRUE(container_arrays_out.empty());
 }
 
 TEST(PipeSerialization, ChunkedRequest_EmptyArrays)
@@ -197,7 +204,9 @@ TEST(PipeSerialization, ChunkedRequest_EmptyArrays)
 
   ChunkedProblemHeader header_out;
   std::map<int32_t, std::vector<uint8_t>> arrays_out;
-  bool read_ok = read_chunked_request_from_pipe(pp.read_fd(), header_out, arrays_out);
+  std::map<ContainerArrayKey, std::vector<uint8_t>> container_arrays_out;
+  bool read_ok =
+    read_chunked_request_from_pipe(pp.read_fd(), header_out, arrays_out, container_arrays_out);
 
   writer.join();
 
@@ -206,6 +215,7 @@ TEST(PipeSerialization, ChunkedRequest_EmptyArrays)
   EXPECT_EQ(header_out.problem_name(), "empty");
   ASSERT_EQ(arrays_out.size(), 1u);
   EXPECT_TRUE(arrays_out[FIELD_C].empty());
+  EXPECT_TRUE(container_arrays_out.empty());
 }
 
 TEST(PipeSerialization, ChunkedRequest_NoChunks)
@@ -223,7 +233,9 @@ TEST(PipeSerialization, ChunkedRequest_NoChunks)
 
   ChunkedProblemHeader header_out;
   std::map<int32_t, std::vector<uint8_t>> arrays_out;
-  bool read_ok = read_chunked_request_from_pipe(pp.read_fd(), header_out, arrays_out);
+  std::map<ContainerArrayKey, std::vector<uint8_t>> container_arrays_out;
+  bool read_ok =
+    read_chunked_request_from_pipe(pp.read_fd(), header_out, arrays_out, container_arrays_out);
 
   writer.join();
 
@@ -231,6 +243,7 @@ TEST(PipeSerialization, ChunkedRequest_NoChunks)
   ASSERT_TRUE(read_ok);
   EXPECT_EQ(header_out.problem_name(), "header_only");
   EXPECT_TRUE(arrays_out.empty());
+  EXPECT_TRUE(container_arrays_out.empty());
 }
 
 TEST(PipeSerialization, ChunkedRequest_ManyFields)
@@ -260,7 +273,7 @@ TEST(PipeSerialization, ChunkedRequest_ManyFields)
   std::vector<ArrayChunk> chunks;
   for (size_t i = 0; i < test_fields.size(); ++i) {
     auto& tf   = test_fields[i];
-    int64_t es = array_field_element_size(tf.id);
+    int64_t es = array_field_element_size(-1, tf.id);
     auto data  = make_pattern(static_cast<size_t>(tf.elements * es), static_cast<uint8_t>(i));
     expected[static_cast<int32_t>(tf.id)] = data;
     chunks.push_back(make_whole_chunk(tf.id, tf.elements, data));
@@ -272,7 +285,9 @@ TEST(PipeSerialization, ChunkedRequest_ManyFields)
 
   ChunkedProblemHeader header_out;
   std::map<int32_t, std::vector<uint8_t>> arrays_out;
-  bool read_ok = read_chunked_request_from_pipe(pp.read_fd(), header_out, arrays_out);
+  std::map<ContainerArrayKey, std::vector<uint8_t>> container_arrays_out;
+  bool read_ok =
+    read_chunked_request_from_pipe(pp.read_fd(), header_out, arrays_out, container_arrays_out);
 
   writer.join();
 

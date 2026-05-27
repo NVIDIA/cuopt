@@ -99,6 +99,18 @@ enum ArrayFieldId {
   FIELD_Q_OFFSETS = 17;
 }
 
+message QuadraticConstraint {
+  int32 constraint_row_index = 1;
+  string constraint_row_name = 2;
+  int32 constraint_row_type = 3;
+  double rhs_value = 4;
+  repeated double linear_values = 5;
+  repeated int32 linear_indices = 6;
+  repeated double quadratic_values = 7;
+  repeated int32 quadratic_indices = 8;
+  repeated int32 quadratic_offsets = 9;
+}
+
 message OptimizationProblem {
   string problem_name = 1;
   string objective_name = 2;
@@ -123,6 +135,7 @@ message OptimizationProblem {
   repeated double Q_values = 22;
   repeated int32 Q_indices = 23;
   repeated int32 Q_offsets = 24;
+  repeated QuadraticConstraint quadratic_constraints = 25;
 }
 
 message PDLPSolverSettings {

@@ -68,3 +68,18 @@
     auto _Q_offsets = cpu_problem.get_quadratic_objective_offsets_host();
     for (const auto& v : _Q_offsets) pb_problem->add_q_offsets(static_cast<int32_t>(v));
   }
+
+  if (cpu_problem.has_quadratic_constraints()) {
+    for (const auto& _entry : cpu_problem.get_quadratic_constraints()) {
+      auto* pb_entry = pb_problem->add_quadratic_constraints();
+      pb_entry->set_constraint_row_index(static_cast<int32_t>(_entry.constraint_row_index));
+      pb_entry->set_constraint_row_name(_entry.constraint_row_name);
+      pb_entry->set_constraint_row_type(static_cast<int32_t>(_entry.constraint_row_type));
+      pb_entry->set_rhs_value(_entry.rhs_value);
+      for (const auto& v : _entry.linear_values) pb_entry->add_linear_values(static_cast<double>(v));
+      for (const auto& v : _entry.linear_indices) pb_entry->add_linear_indices(static_cast<int32_t>(v));
+      for (const auto& v : _entry.quadratic_values) pb_entry->add_quadratic_values(static_cast<double>(v));
+      for (const auto& v : _entry.quadratic_indices) pb_entry->add_quadratic_indices(static_cast<int32_t>(v));
+      for (const auto& v : _entry.quadratic_offsets) pb_entry->add_quadratic_offsets(static_cast<int32_t>(v));
+    }
+  }

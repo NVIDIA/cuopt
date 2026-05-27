@@ -72,3 +72,22 @@
     }
     cpu_problem.set_variable_types(variable_types.data(), static_cast<i_t>(variable_types.size()));
   }
+
+  if (pb_problem.quadratic_constraints_size() > 0) {
+    std::vector<typename cpu_optimization_problem_t<i_t, f_t>::quadratic_constraint_t> _entries;
+    _entries.reserve(pb_problem.quadratic_constraints_size());
+    for (const auto& pb_entry : pb_problem.quadratic_constraints()) {
+      typename cpu_optimization_problem_t<i_t, f_t>::quadratic_constraint_t _entry;
+      _entry.constraint_row_index = static_cast<i_t>(pb_entry.constraint_row_index());
+      _entry.constraint_row_name = pb_entry.constraint_row_name();
+      _entry.constraint_row_type = static_cast<char>(pb_entry.constraint_row_type());
+      _entry.rhs_value = static_cast<f_t>(pb_entry.rhs_value());
+      _entry.linear_values.assign(pb_entry.linear_values().begin(), pb_entry.linear_values().end());
+      _entry.linear_indices.assign(pb_entry.linear_indices().begin(), pb_entry.linear_indices().end());
+      _entry.quadratic_values.assign(pb_entry.quadratic_values().begin(), pb_entry.quadratic_values().end());
+      _entry.quadratic_indices.assign(pb_entry.quadratic_indices().begin(), pb_entry.quadratic_indices().end());
+      _entry.quadratic_offsets.assign(pb_entry.quadratic_offsets().begin(), pb_entry.quadratic_offsets().end());
+      _entries.push_back(std::move(_entry));
+    }
+    cpu_problem.set_quadratic_constraints(std::move(_entries));
+  }

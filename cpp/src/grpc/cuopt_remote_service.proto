@@ -134,6 +134,15 @@ message ChunkedProblemHeader {
 
   // MIP-specific
   bool enable_incumbents = 30;
+
+  // Per-entry scalars for repeated_messages on OptimizationProblem (e.g. QC
+  // rows).  The arrays inside each entry are unbounded in size and travel
+  // separately via container-keyed ArrayChunks
+  // (container_field_num=25, container_index=<entry idx>, field_id=<0..4>);
+  // see field_registry.yaml and the ArrayChunk message above.  Field number
+  // matches the corresponding `repeated QuadraticConstraint quadratic_constraints`
+  // field on OptimizationProblem so client/server share the same tag.
+  repeated QuadraticConstraint quadratic_constraints = 25;
 }
 
 // A chunk of typed array data for large problem transfers.

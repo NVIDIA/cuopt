@@ -19,5 +19,19 @@
   est += cpu_problem.get_quadratic_objective_values_host().size() * sizeof(double);
   est += cpu_problem.get_quadratic_objective_indices_host().size() * 5;
   est += cpu_problem.get_quadratic_objective_offsets_host().size() * 5;
+  if (cpu_problem.has_quadratic_constraints()) {
+    for (const auto& _entry : cpu_problem.get_quadratic_constraints()) {
+      est += 32;  // per-entry framing
+      est += 5;
+      est += _entry.constraint_row_name.size() + 2;
+      est += 5;
+      est += sizeof(double);
+      est += _entry.linear_values.size() * sizeof(double);
+      est += _entry.linear_indices.size() * 5;
+      est += _entry.quadratic_values.size() * sizeof(double);
+      est += _entry.quadratic_indices.size() * 5;
+      est += _entry.quadratic_offsets.size() * 5;
+    }
+  }
   est += 512;
   return est;

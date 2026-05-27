@@ -218,16 +218,28 @@ static DeserializedJob read_problem_from_pipe(int worker_id, const JobQueueEntry
     // This avoids a single giant protobuf allocation for large problems.
     cuopt::remote::ChunkedProblemHeader chunked_header;
     std::map<int32_t, std::vector<uint8_t>> arrays;
-    if (!read_chunked_request_from_pipe(read_fd, chunked_header, arrays)) { return dj; }
+    std::map<cuopt::linear_programming::ContainerArrayKey, std::vector<uint8_t>> container_arrays;
+    if (!read_chunked_request_from_pipe(read_fd, chunked_header, arrays, container_arrays)) {
+      return dj;
+    }
 
     if (config.verbose) {
       int64_t total_bytes = 0;
       for (const auto& [fid, data] : arrays) {
         total_bytes += data.size();
       }
-      log_pipe_throughput("pipe_job_recv", total_bytes, pipe_recv_t0);
+      int64_t container_total_bytes = 0;
+      for (const auto& [key, data] : container_arrays) {
+        container_total_bytes += data.size();
+      }
+      log_pipe_throughput("pipe_job_recv", total_bytes + container_total_bytes, pipe_recv_t0);
       SERVER_LOG_INFO(
-        "[Worker] IPC path: CHUNKED (%zu arrays, %ld bytes)", arrays.size(), total_bytes);
+        "[Worker] IPC path: CHUNKED (%zu top-level arrays, %ld bytes; %zu container "
+        "arrays, %ld bytes)",
+        arrays.size(),
+        total_bytes,
+        container_arrays.size(),
+        container_total_bytes);
     }
     if (chunked_header.has_lp_settings()) {
       map_proto_to_pdlp_settings(chunked_header.lp_settings(), dj.lp_settings);
@@ -236,7 +248,7 @@ static DeserializedJob read_problem_from_pipe(int worker_id, const JobQueueEntry
       map_proto_to_mip_settings(chunked_header.mip_settings(), dj.mip_settings);
     }
     dj.enable_incumbents = chunked_header.enable_incumbents();
-    map_chunked_arrays_to_problem(chunked_header, arrays, dj.problem);
+    map_chunked_arrays_to_problem(chunked_header, arrays, container_arrays, dj.problem);
   } else {
     // Unary path: the entire SubmitJobRequest was serialized as a single
     // protobuf blob.  Simpler but copies more memory for large problems.

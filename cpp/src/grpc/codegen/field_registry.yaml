@@ -915,3 +915,58 @@ optimization_problem:
     quadratic_objective:
       setter: set_quadratic_objective_matrix
       fields: [Q_values, Q_indices, Q_offsets]
+
+  # Quadratic constraints (QCQP).  Each entry is a row with its own RHS plus
+  # the row's linear coefficients (linear_values/linear_indices) and quadratic
+  # term (quadratic_values + quadratic_indices/offsets CSR per row-of-rows).
+  # Per-entry arrays are unbounded in size so they travel via container chunks
+  # (container_field_num=25, container_index=<entry idx>, field_id=<0..4>).
+  # Per-entry scalars travel inline in the parent message (OptimizationProblem
+  # in the unary path; ChunkedProblemHeader in the chunked path).
+  #
+  # `constraint_row_type` is `char` in cpu_optimization_problem_t but rides
+  # the wire as int32 (proto3 has no `char`).  Decode is intentionally lenient
+  # — any int32 round-trips back as a char without range validation, matching
+  # how the local-solve binding accepts whatever the C++ caller supplies.
+  repeated_messages:
+  - quadratic_constraints:
+      field_num: 25
+      message_type: QuadraticConstraint
+      cpp_inner_type: "typename cpu_optimization_problem_t<i_t, f_t>::quadratic_constraint_t"
+      presence_check: has_quadratic_constraints()
+      getter: get_quadratic_constraints()
+      setter: set_quadratic_constraints
+      scalars:
+      - constraint_row_index:
+          field_num: 1
+          type: int32
+          to_proto_cast: int32_t
+      - constraint_row_name:
+          field_num: 2
+          type: string
+      - constraint_row_type:
+          field_num: 3
+          type: int32
+          to_proto_cast: int32_t
+          from_proto_cast: char
+      - rhs_value:
+          field_num: 4
+      arrays:
+      - linear_values:
+          field_num: 5
+          array_id: 0
+      - linear_indices:
+          field_num: 6
+          array_id: 1
+          type: repeated int32
+      - quadratic_values:
+          field_num: 7
+          array_id: 2
+      - quadratic_indices:
+          field_num: 8
+          array_id: 3
+          type: repeated int32
+      - quadratic_offsets:
+          field_num: 9
+          array_id: 4
+          type: repeated int32
