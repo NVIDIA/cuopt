@@ -12,6 +12,7 @@
 #include <branch_and_bound/mip_node.hpp>
 #include <branch_and_bound/node_queue.hpp>
 #include <branch_and_bound/pseudo_costs.hpp>
+#include <branch_and_bound/search_tree.hpp>
 #include <branch_and_bound/worker.hpp>
 #include <branch_and_bound/worker_pool.hpp>
 
