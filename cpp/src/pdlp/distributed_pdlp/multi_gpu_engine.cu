@@ -81,6 +81,19 @@ multi_gpu_engine_t<i_t, f_t>::multi_gpu_engine_t(
                                                                  objective_scaling_factor,
                                                                  sub_solver_settings));
   }
+
+  // 4. Allocate fork/join events for cross-stream graph capture splicing.
+  //    fork_event_ on the master device (whatever device is current when the
+  //    engine is constructed -- pdlp_solver_t's mGPU ctor runs on master).
+  //    join_events_[r] on shard r's device. event_handler_t uses the default
+  //    cudaEventCreate (no flags), matching the rest of the codebase.
+  //    Cleanup is automatic via event_handler_t's RAII destructor.
+  fork_event_ = std::make_unique<cuopt::event_handler_t>();
+  join_events_.reserve(nb_parts);
+  for (int r = 0; r < nb_parts; ++r) {
+    raft::device_setter guard(devices[r]);
+    join_events_.emplace_back(std::make_unique<cuopt::event_handler_t>());
+  }
 }
 
 template struct multi_gpu_engine_t<int, double>;

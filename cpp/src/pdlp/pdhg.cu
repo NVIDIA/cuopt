@@ -1249,6 +1249,14 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
 
   if (should_major) {
     graph_all.run(should_major, [&]() {
+      // Multi-GPU: splice shard streams into the capture so their kernels and
+      // NCCL collectives are recorded into the same graph. Without this, work
+      // issued on shard.stream from inside this lambda would either invalidate
+      // the capture or run outside the graph, leaving the captured graph
+      // empty (or broken) -- which produces the cycling/stall behavior we
+      // observed on larger problems. Mirrors metis_tests bench.cu fork/join.
+      if (mgpu_engine_ != nullptr) { mgpu_engine_->fork_to_shards(stream_view_); }
+
       compute_At_y();
       if (mgpu_engine_ != nullptr) {
         for (auto& shard : mgpu_engine_->shards) {
@@ -1346,10 +1354,17 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
       print("potential_next_dual_solution_", potential_next_dual_solution_);
       print("reflected_dual_", reflected_dual_);
 #endif
+
+      // Multi-GPU: close the fork by joining every shard stream back into
+      // the master stream so cudaStreamEndCapture sees a single graph
+      // spanning all streams.
+      if (mgpu_engine_ != nullptr) { mgpu_engine_->join_from_shards(stream_view_); }
     });
 
   } else {
     graph_all.run(should_major, [&]() {
+      if (mgpu_engine_ != nullptr) { mgpu_engine_->fork_to_shards(stream_view_); }
+
       // Compute next primal
       compute_At_y();
 
@@ -1454,6 +1469,8 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
 #ifdef CUPDLP_DEBUG_MODE
       print("reflected_dual_", reflected_dual_);
 #endif
+
+      if (mgpu_engine_ != nullptr) { mgpu_engine_->join_from_shards(stream_view_); }
     });
   }
 }

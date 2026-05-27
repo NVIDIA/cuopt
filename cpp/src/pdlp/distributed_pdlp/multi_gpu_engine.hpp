@@ -8,6 +8,7 @@
 #include <pdlp/distributed_pdlp/shard.hpp>
 #include <pdlp/pdhg.hpp>
 #include <utilities/cuda_helpers.cuh>
+#include <utilities/event_handler.cuh>
 
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 
@@ -446,6 +447,60 @@ struct multi_gpu_engine_t {
   // Shards stored by unique_ptr because pdlp_shard_t is immovable
   // (owns device-affine resources: handle, NCCL comm, RMM buffers).
   std::vector<std::unique_ptr<pdlp_shard_t<i_t, f_t>>> shards;
+
+  // ===== Fork/join events for CUDA graph capture spanning shard streams =====
+  //
+  // CUDA graph capture starts on the master pdhg stream (in pdhg_solver_t).
+  // The per-iteration work then dispatches kernels and NCCL collectives onto
+  // each shard's own stream. For these cross-stream operations to be
+  // recorded into the same captured graph (instead of escaping the capture
+  // and either invalidating it or being silently dropped), every shard
+  // stream must be "spliced" into the active capture via fork/join events.
+  //
+  //   master_stream ──record(fork_event_)──┐
+  //                                        ├─> shard_0.stream (waits) ──┐
+  //                                        ├─> shard_1.stream (waits) ──┤
+  //                                        └─> shard_{n-1}.stream     ──┘
+  //                                                                  (record join_events_[r])
+  //                                                                  master waits on each
+  //
+  // Pattern mirrors metis_tests/src/bench.cu. Events are reused across
+  // iterations (created once at engine construction) and cleaned up
+  // automatically by event_handler_t's RAII destructor.
+  //
+  // unique_ptr because event_handler_t is non-copyable and we need
+  // per-device construction (each join event must be created with its
+  // shard's device current).
+  std::unique_ptr<cuopt::event_handler_t> fork_event_;
+  std::vector<std::unique_ptr<cuopt::event_handler_t>> join_events_;
+
+  // fork_to_shards: record fork_event_ on `master_stream`, then make every
+  // shard stream wait on it. Inside a graph capture, this splices every
+  // shard stream into the same captured graph.
+  void fork_to_shards(rmm::cuda_stream_view master_stream)
+  {
+    fork_event_->record(master_stream);
+    for (auto& s : shards) {
+      raft::device_setter guard(s->device_id);
+      fork_event_->stream_wait(s->stream.view());
+    }
+  }
+
+  // join_from_shards: each shard records its join event on its own stream,
+  // then `master_stream` waits on every join event. Closes the captured
+  // sub-graph back into the master stream so cudaStreamEndCapture can
+  // produce a single graph spanning all streams.
+  void join_from_shards(rmm::cuda_stream_view master_stream)
+  {
+    const int nb = static_cast<int>(shards.size());
+    for (int r = 0; r < nb; ++r) {
+      raft::device_setter guard(shards[r]->device_id);
+      join_events_[r]->record(shards[r]->stream.view());
+    }
+    for (auto& e : join_events_) {
+      e->stream_wait(master_stream);
+    }
+  }
 };
 
 }  // namespace cuopt::linear_programming::detail
