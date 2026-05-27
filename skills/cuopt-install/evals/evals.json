@@ -1,0 +1,18 @@
+[
+  {
+    "id": "inst-eval-001-python-install-cuda12",
+    "question": "My machine has CUDA 12.4 (per nvidia-smi). I want to use cuopt from Python. What do I install and how do I verify?",
+    "expected_skill": "cuopt-install",
+    "expected_script": null,
+    "ground_truth": "The agent matches the package CUDA suffix to the runtime CUDA. For CUDA 12.x, the correct pip command is 'pip install --extra-index-url=https://pypi.nvidia.com cuopt-cu12' (or the version-pinned 'cuopt-cu12==26.2.*' form). The conda alternative is 'conda install -c rapidsai -c conda-forge -c nvidia cuopt'. The agent warns to pick one (pip or conda) and not run both, since the second install would clobber the first and risk a CUDA mismatch. It mentions that installing cuopt-cu12 also pulls in libcuopt-cu12 as a dependency, so the C library and headers come along for free. Verification: 'import cuopt; print(cuopt.__version__)' and a minimal smoke test like 'from cuopt import routing; routing.DataModel(n_locations=3, n_fleet=1, n_orders=2)'. The agent does not suggest cuopt-cu13 on a CUDA 12 system. It does not run pip install on the user's machine without explicit consent — provides the command for the user.",
+    "expected_behavior": [
+      "Matches the package suffix to the runtime CUDA (cuopt-cu12 for CUDA 12.x)",
+      "Gives both pip (--extra-index-url=https://pypi.nvidia.com) and conda commands",
+      "Warns not to mix pip and conda installs of cuopt",
+      "Mentions that cuopt-cu12 transitively installs libcuopt-cu12 (no separate C-API install needed)",
+      "Provides a Python verification snippet (import cuopt; cuopt.__version__; routing.DataModel)",
+      "Does not suggest a cu13 package on a CUDA 12 system",
+      "Does not run pip install on the user's behalf — provides the command for the user"
+    ]
+  }
+]
