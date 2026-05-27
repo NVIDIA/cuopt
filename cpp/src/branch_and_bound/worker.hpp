@@ -188,8 +188,6 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
 
   void set_inactive() { this->is_active = false; }
 
-  f_t get_lower_bound() { return std::min<f_t>(this->lower_bound, node_queue.get_lower_bound()); }
-
   // Steal nodes from another worker
   bool steal_node_from(bfs_worker_t* other, i_t num_nodes)
   {
@@ -204,8 +202,18 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
     while (num_nodes > 0) {
       other->node_queue.lock();
 
-      // We need to temporarily save the lower bound in this worker so it is
-      // considered when calculating the global lower bound.
+      // Similar case when launching a new best-first worker. Copied from branch_and_bound.cpp:
+      // "Since there may have a window between when the node is popped
+      // from the queue and the new worker is launched, its lower bound temporarily vanish
+      // from the solver (as it is not store in the local queue or in the lower bound of the
+      // worker, representing the lower bound of the node currently being solved).
+      // Hence, need to store its lower bound somewhere during the transition.
+      // If it is better than the current lower bound of the worker, then it has the potential
+      // to be the best lower bound across all workers, and thus, we can safely replace the current
+      // lower bound with the one from the top of the heap. It will be update again to reflect
+      // the lower bound of the node being solved after popping a new node from the local stack
+      // (line 1590) and the new worker is already active. See `get_lower_bound()` for
+      // more details in how the global lower bound is computed."
       this->lower_bound = std::min<f_t>(this->lower_bound, other->node_queue.get_lower_bound());
 
       mip_node_t<i_t, f_t>* node = other->node_queue.best_first_queue_size() > num_nodes

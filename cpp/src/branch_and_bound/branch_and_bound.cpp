@@ -300,8 +300,16 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
 template <typename i_t, typename f_t>
 f_t branch_and_bound_t<i_t, f_t>::get_lower_bound()
 {
-  f_t lower_bound = lower_bound_ceiling_.load();
-  lower_bound     = std::min(bfs_worker_pool_.get_lower_bound(), lower_bound);
+  f_t lower_bound = lower_bound_numerical_.load();
+
+  if (bfs_worker_pool_.is_initialized()) {
+    for (i_t i = 0; i < bfs_worker_pool_.size(); ++i) {
+      if (bfs_worker_pool_[i]->is_active) {
+        lower_bound = std::min(lower_bound, bfs_worker_pool_[i]->lower_bound.load());
+        lower_bound = std::min(lower_bound, bfs_worker_pool_[i]->node_queue.get_lower_bound());
+      }
+    }
+  }
 
   if (std::isfinite(lower_bound)) {
     return lower_bound;
@@ -867,7 +875,7 @@ branch_variable_t<i_t> branch_and_bound_t<i_t, f_t>::variable_selection(
                                                      var_types_,
                                                      exploration_stats_,
                                                      upper_bound_,
-                                                     bfs_worker_pool_.num_idle_workers(),
+                                                     bfs_worker_pool_.num_idle(),
                                                      new_slacks_,
                                                      original_lp_);
       } else {
@@ -976,10 +984,10 @@ struct nondeterministic_policy_t : tree_update_policy_t<i_t, f_t> {
   void on_numerical_issue(mip_node_t<i_t, f_t>* node) override
   {
     if (worker->search_strategy == search_strategy_t::BEST_FIRST) {
-      fetch_min(bnb.lower_bound_ceiling_, node->lower_bound);
+      fetch_min(bnb.lower_bound_numerical_, node->lower_bound);
       log.printf("LP returned numerical issue on node %d. Best bound set to %+10.6e.\n",
                  node->node_id,
-                 compute_user_objective(bnb.original_lp_, bnb.lower_bound_ceiling_.load()));
+                 compute_user_objective(bnb.original_lp_, bnb.lower_bound_numerical_.load()));
     }
   }
 
@@ -1540,11 +1548,22 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
     }
 
     // If any best-first worker become idle,
-    if (bfs_worker_pool_.num_idle_workers() > 0 && worker->node_queue.best_first_queue_size() > 0) {
+    if (bfs_worker_pool_.num_idle() > 0 && worker->node_queue.best_first_queue_size() > 0) {
       worker->node_queue.lock();
-      // We need to temporarily save the lower bound in this worker so it is
-      // considered when calculating the global lower bound.
-      worker->lower_bound        = worker->get_lower_bound();
+
+      // Since there may have a window between when th "best" node is popped
+      // from the queue and the new worker is launched, its lower bound temporarily vanish
+      // from the solver (as it is not store in the local queue or in the lower bound of the
+      // worker, representing the lower bound of the node currently being solved).
+      // Hence, need to store its lower bound somewhere during the transition.
+      // If it is better than the current lower bound of the worker, then it has the potential
+      // to be the best lower bound across all workers, and thus, we can safely replace the current
+      // lower bound with the one from the top of the heap. The worker will be updated again to
+      // reflect the lower bound of the node being solved after popping a new node from the local
+      // stack (a few lines below) and the new worker is already active. See `get_lower_bound()` for
+      // more details in how the global lower bound is computed.
+      worker->lower_bound =
+        std::min<f_t>(worker->node_queue.get_lower_bound(), worker->lower_bound);
       mip_node_t<i_t, f_t>* node = worker->node_queue.pop_best_first();
       worker->node_queue.unlock();
 
@@ -1727,8 +1746,8 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
   f_t rel_gap      = user_relative_gap(original_lp_, upper_bound_.load(), lower_bound);
   f_t steal_chance = settings_.bnb_steal_chance >= 0 ? settings_.bnb_steal_chance : 0.05;
 
-  worker->calculate_num_diving_workers(bfs_worker_pool_.num_workers(),
-                                       diving_worker_pool_.num_workers(),
+  worker->calculate_num_diving_workers(bfs_worker_pool_.size(),
+                                       diving_worker_pool_.size(),
                                        has_solver_space_incumbent(),
                                        settings_.diving_settings);
 
@@ -1737,11 +1756,11 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
          worker->node_queue.best_first_queue_size() > 0) {
     // If the guided diving was disabled previously due to the lack of an incumbent solution,
     // re-enable as soon as a new incumbent is found.
-    if (diving_worker_pool_.num_workers() > 0 && settings_.diving_settings.guided_diving != 0 &&
+    if (diving_worker_pool_.size() > 0 && settings_.diving_settings.guided_diving != 0 &&
         worker->max_diving_workers[GUIDED_DIVING] == 0) {
       if (has_solver_space_incumbent()) {
-        worker->calculate_num_diving_workers(bfs_worker_pool_.num_workers(),
-                                             diving_worker_pool_.num_workers(),
+        worker->calculate_num_diving_workers(bfs_worker_pool_.size(),
+                                             diving_worker_pool_.size(),
                                              has_solver_space_incumbent(),
                                              settings_.diving_settings);
       }
@@ -1787,8 +1806,10 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
     if (worker->node_queue.best_first_queue_size() == 0 ||
         worker->rng.next_double() < steal_chance) {
       for (i_t i = 0; i < settings_.bnb_max_steal_attempts; ++i) {
-        i_t k = worker->rng.uniform(0, bfs_worker_pool_.num_workers());
-        if (worker->steal_node_from(bfs_worker_pool_[k], settings_.bnb_nodes_per_steal)) { break; }
+        i_t victim = worker->rng.uniform(0, bfs_worker_pool_.size());
+        if (worker->steal_node_from(bfs_worker_pool_[victim], settings_.bnb_nodes_per_steal)) {
+          break;
+        }
       }
     }
   }
@@ -2577,8 +2598,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     return mip_status_t::OPTIMAL;
   }
 
-  is_running_          = true;
-  lower_bound_ceiling_ = inf;
+  is_running_            = true;
+  lower_bound_numerical_ = inf;
 
   if (num_fractional != 0 && settings_.max_cut_passes > 0) {
     settings_.log.printf(
@@ -2891,7 +2912,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   } else {
     lower_bound = std::numeric_limits<f_t>::infinity();
 
-    for (int i = 0; i < bfs_worker_pool_.num_workers(); ++i) {
+    for (int i = 0; i < bfs_worker_pool_.size(); ++i) {
       bfs_worker_t<i_t, f_t>* worker = bfs_worker_pool_[i];
 
       // We need to clear the queue and use the info in the search tree for the lower bound
@@ -3729,7 +3750,7 @@ void branch_and_bound_t<i_t, f_t>::deterministic_sort_replay_events(
   deterministic_merge_pseudo_cost_updates(*deterministic_workers_);
 
   for (const auto& worker : *deterministic_workers_) {
-    fetch_min(lower_bound_ceiling_, worker.local_lower_bound_ceiling);
+    fetch_min(lower_bound_numerical_, worker.local_lower_bound_ceiling);
   }
 }
 
@@ -3833,7 +3854,7 @@ template <typename i_t, typename f_t>
 f_t branch_and_bound_t<i_t, f_t>::deterministic_compute_lower_bound()
 {
   // Compute lower bound from BFS worker local structures only
-  f_t lower_bound = lower_bound_ceiling_.load();
+  f_t lower_bound = lower_bound_numerical_.load();
 
   // Check all BFS worker queues
   for (const auto& worker : *deterministic_workers_) {

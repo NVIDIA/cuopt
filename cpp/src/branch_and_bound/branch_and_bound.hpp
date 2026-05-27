@@ -258,8 +258,9 @@ class branch_and_bound_t {
   i_t min_node_queue_size_;
 
   // In case, a best-first thread encounters a numerical issue when solving a node,
-  // its blocks the progression of the lower bound.
-  omp_atomic_t<f_t> lower_bound_ceiling_;
+  // its blocks the progression of the lower bound as it cannot explore the
+  // corresponding subtree.
+  omp_atomic_t<f_t> lower_bound_numerical_;
   std::function<void(f_t)> user_bound_callback_;
 
   void report_heuristic(f_t obj);

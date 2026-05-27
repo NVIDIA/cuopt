@@ -46,13 +46,13 @@ variable_status_t decode(uint8_t val)
 
 std::vector<uint8_t> compress_vstatus(const std::vector<variable_status_t>& vstatus)
 {
-  size_t n        = vstatus.size() / 4;
-  size_t has_tail = (vstatus.size() % 4 > 0);
+  size_t compressed_size = vstatus.size() / 4;
+  size_t has_tail        = (vstatus.size() % 4 > 0);
 
   std::vector<uint8_t> packed_vstatus;
-  packed_vstatus.resize(n + has_tail);
+  packed_vstatus.resize(compressed_size + has_tail);
 
-  for (size_t i = 0; i < n; ++i) {
+  for (size_t i = 0; i < compressed_size; ++i) {
     size_t j          = i * 4;
     packed_vstatus[i] = 0;
     packed_vstatus[i] |= encode(vstatus[j]);
@@ -62,12 +62,12 @@ std::vector<uint8_t> compress_vstatus(const std::vector<variable_status_t>& vsta
   }
 
   if (has_tail) {
-    size_t j          = n * 4;
-    packed_vstatus[n] = 0;
-    packed_vstatus[n] |= encode(vstatus[j]);
-    if (j + 1 < vstatus.size()) packed_vstatus[n] |= encode(vstatus[j + 1]) << 2;
-    if (j + 2 < vstatus.size()) packed_vstatus[n] |= encode(vstatus[j + 2]) << 4;
-    if (j + 3 < vstatus.size()) packed_vstatus[n] |= encode(vstatus[j + 3]) << 6;
+    size_t j                        = compressed_size * 4;
+    packed_vstatus[compressed_size] = 0;
+    packed_vstatus[compressed_size] |= encode(vstatus[j]);
+    if (j + 1 < vstatus.size()) packed_vstatus[compressed_size] |= encode(vstatus[j + 1]) << 2;
+    if (j + 2 < vstatus.size()) packed_vstatus[compressed_size] |= encode(vstatus[j + 2]) << 4;
+    if (j + 3 < vstatus.size()) packed_vstatus[compressed_size] |= encode(vstatus[j + 3]) << 6;
   }
 
   return packed_vstatus;
@@ -76,14 +76,14 @@ std::vector<uint8_t> compress_vstatus(const std::vector<variable_status_t>& vsta
 std::vector<variable_status_t> decompress_vstatus(const std::vector<uint8_t>& packed_vstatus,
                                                   size_t vstatus_size)
 {
-  size_t n        = vstatus_size / 4;
-  size_t has_tail = (vstatus_size % 4 > 0);
+  size_t compressed_size = vstatus_size / 4;
+  size_t has_tail        = (vstatus_size % 4 > 0);
 
   std::vector<variable_status_t> vstatus;
   vstatus.resize(vstatus_size);
-  assert(packed_vstatus.size() == n + has_tail);
+  assert(packed_vstatus.size() == compressed_size + has_tail);
 
-  for (size_t i = 0; i < n; ++i) {
+  for (size_t i = 0; i < compressed_size; ++i) {
     size_t j       = i * 4;
     vstatus[j]     = decode(packed_vstatus[i]);
     vstatus[j + 1] = decode(packed_vstatus[i] >> 2);
@@ -92,11 +92,11 @@ std::vector<variable_status_t> decompress_vstatus(const std::vector<uint8_t>& pa
   }
 
   if (has_tail) {
-    size_t j   = n * 4;
-    vstatus[j] = decode(packed_vstatus[n]);
-    if (j + 1 < vstatus.size()) vstatus[j + 1] = decode(packed_vstatus[n] >> 2);
-    if (j + 2 < vstatus.size()) vstatus[j + 2] = decode(packed_vstatus[n] >> 4);
-    if (j + 3 < vstatus.size()) vstatus[j + 3] = decode(packed_vstatus[n] >> 6);
+    size_t j   = compressed_size * 4;
+    vstatus[j] = decode(packed_vstatus[compressed_size]);
+    if (j + 1 < vstatus.size()) vstatus[j + 1] = decode(packed_vstatus[compressed_size] >> 2);
+    if (j + 2 < vstatus.size()) vstatus[j + 2] = decode(packed_vstatus[compressed_size] >> 4);
+    if (j + 3 < vstatus.size()) vstatus[j + 3] = decode(packed_vstatus[compressed_size] >> 6);
   }
 
   return vstatus;

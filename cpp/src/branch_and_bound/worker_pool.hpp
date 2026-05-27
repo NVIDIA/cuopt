@@ -72,21 +72,6 @@ class worker_pool_t {
     num_idle_workers_++;
   }
 
-  f_t get_lower_bound()
-  {
-    f_t lower_bound = std::numeric_limits<f_t>::infinity();
-
-    if (is_initialized) {
-      for (i_t i = 0; i < workers_.size(); ++i) {
-        if (workers_[i]->is_active.load()) {
-          lower_bound = std::min(workers_[i]->get_lower_bound(), lower_bound);
-        }
-      }
-    }
-
-    return lower_bound;
-  }
-
   WorkerType* operator[](i_t id)
   {
     assert(id >= 0 && static_cast<size_t>(id) < workers_.size());
@@ -100,12 +85,14 @@ class worker_pool_t {
     return workers_[id].get();
   }
 
-  i_t num_idle_workers() const { return num_idle_workers_; }
-  i_t num_workers() const { return workers_.size(); }
+  bool is_initialized() const { return is_initialized_; }
+
+  i_t num_idle() const { return num_idle_workers_; }
+  i_t size() const { return workers_.size(); }
 
  private:
   std::vector<std::unique_ptr<WorkerType>> workers_;
-  bool is_initialized = false;
+  bool is_initialized_ = false;
 
   omp_mutex_t mutex_;
   circular_deque_t<i_t> idle_workers_;
