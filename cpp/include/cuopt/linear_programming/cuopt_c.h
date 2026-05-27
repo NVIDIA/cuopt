@@ -268,8 +268,8 @@ cuopt_int_t cuOptCreateRangedProblem(cuopt_int_t num_constraints,
 
 /** @brief Create an optimization problem of the form
  *
- * @note **Deprecated:** Use ``cuOptCreateProblem`` to set up the linear problem, then
- *       ``cuOptSetQuadraticObjective`` to specify the quadratic objective terms.
+ * @deprecated Use ``cuOptCreateProblem`` to set up the linear problem, then
+ *             ``cuOptSetQuadraticObjective`` to specify the quadratic objective terms.
  *
  * @verbatim
  *                minimize/maximize  c^T x + x^T Q x + offset
@@ -343,9 +343,9 @@ cuopt_int_t cuOptCreateQuadraticProblem(
 
 /** @brief Create an optimization problem of the form *
  *
- * @note **Deprecated:** Use ``cuOptCreateRangedProblem`` to set up the linear problem, then
- *       ``cuOptSetQuadraticObjective`` to specify the quadratic objective terms.
- *       For QCQP models, use ``cuOptAddQuadraticConstraint`` for each quadratic constraint.
+ * @deprecated Use ``cuOptCreateRangedProblem`` to set up the linear problem, then
+ *             ``cuOptSetQuadraticObjective`` to specify the quadratic objective terms.
+ *             For QCQP models, use ``cuOptAddQuadraticConstraint`` for each quadratic constraint.
  *
  * @verbatim
  *                minimize/maximize  c^T x + x^T Q x + offset
@@ -434,7 +434,7 @@ cuopt_int_t cuOptCreateQuadraticRangedProblem(
  * after ``cuOptCreateProblem`` or ``cuOptCreateRangedProblem`` to build a QP or QCQP model
  * without using ``cuOptCreateQuadraticProblem`` or ``cuOptCreateQuadraticRangedProblem``.
  * Each call replaces any previously set quadratic objective. Duplicate (row, col) indices
- * in the triplet arrays are summed. Matrix Q must be symmetric positive semidefinite.
+ * in the triplet arrays are summed.
  *
  * @param[in] problem The optimization problem created by ``cuOptCreateProblem`` or
  *            ``cuOptCreateRangedProblem``.
