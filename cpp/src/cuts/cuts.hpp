@@ -385,33 +385,66 @@ struct flow_cover_context_t {
   const std::vector<f_t>& xstar;
 };
 
-template <typename i_t, typename f_t>
-struct flow_cover_scratch_t {
-  std::vector<std::pair<i_t, f_t>> continuous_terms;
-  std::vector<i_t> binary_columns;
-  std::vector<f_t> binary_coefficients;
-  std::vector<uint8_t> binary_coefficients_touched;
-  std::vector<i_t> touched_binary_coefficients;
-  std::vector<single_node_flow_arc_t<i_t, f_t>> arcs;
-  std::vector<single_node_flow_candidate_t<i_t, f_t>> candidates;
-  std::vector<f_t> values;
-  std::vector<f_t> weights;
-  std::vector<i_t> item_to_arc;
-  std::vector<f_t> solution;
-  std::vector<uint8_t> in_c1;
-  std::vector<uint8_t> in_c2;
-  std::vector<f_t> ubar_candidates;
-  std::vector<uint8_t> in_l1;
-  std::vector<uint8_t> in_l2;
-  std::vector<uint8_t> best_in_l1;
-  std::vector<uint8_t> best_in_l2;
-  std::vector<uint8_t> simple_generalized_flow_cover_in_l2;
-  std::vector<i_t> lhs_indices;
-  std::vector<f_t> lhs_coefficients;
-  std::vector<uint8_t> lhs_coefficients_touched;
-  std::vector<i_t> touched_lhs_coefficients;
+template <typename f_t>
+struct flow_cover_evaluation_t {
+  f_t violation;
+  f_t ubar;
+};
 
-  void clear(i_t num_cols)
+template <typename i_t, typename f_t>
+class flow_cover_generation_t {
+ public:
+  flow_cover_generation_t(const lp_problem_t<i_t, f_t>& lp,
+                          const simplex_solver_settings_t<i_t, f_t>& settings,
+                          csr_matrix_t<i_t, f_t>& Arow,
+                          const std::vector<i_t>& new_slacks);
+
+  i_t generate_cut(const lp_problem_t<i_t, f_t>& lp,
+                   const simplex_solver_settings_t<i_t, f_t>& settings,
+                   csr_matrix_t<i_t, f_t>& Arow,
+                   const variable_bounds_t<i_t, f_t>& variable_bounds,
+                   const std::vector<variable_type_t>& var_types,
+                   const std::vector<f_t>& xstar,
+                   const flow_cover_row_t<i_t>& flow_cover_row,
+                   inequality_t<i_t, f_t>& cut);
+
+  i_t num_constraints() const { return flow_cover_constraints_.size(); }
+  const std::vector<flow_cover_row_t<i_t>>& get_constraints() const
+  {
+    return flow_cover_constraints_;
+  }
+
+ private:
+  bool normalize_row_side(const flow_cover_context_t<i_t, f_t>& context,
+                          const flow_cover_row_t<i_t>& flow_cover_row,
+                          inequality_t<i_t, f_t>& row,
+                          f_t& b,
+                          bool& negate_row);
+
+  bool build_single_node_flow_relaxation(const flow_cover_context_t<i_t, f_t>& context,
+                                         f_t b,
+                                         f_t& single_node_flow_b);
+
+  bool separate_single_node_flow_cover(const flow_cover_context_t<i_t, f_t>& context,
+                                       f_t single_node_flow_b,
+                                       f_t& lambda);
+
+  // cMIR: complemented mixed-integer-rounding flow cover inequality.
+  flow_cover_evaluation_t<f_t> evaluate_c_mir_flow_cover_inequality(
+    const flow_cover_context_t<i_t, f_t>& context, f_t single_node_flow_b, f_t lambda);
+
+  // SGFCI: simple generalized flow cover inequality.
+  flow_cover_evaluation_t<f_t> evaluate_simple_generalized_flow_cover_inequality(
+    const flow_cover_context_t<i_t, f_t>& context, f_t single_node_flow_b, f_t lambda);
+
+  bool emit_flow_cover_cut(const flow_cover_context_t<i_t, f_t>& context,
+                           f_t single_node_flow_b,
+                           f_t lambda,
+                           const flow_cover_evaluation_t<f_t>& c_mir_inequality,
+                           const flow_cover_evaluation_t<f_t>& simple_generalized_inequality,
+                           inequality_t<i_t, f_t>& cut);
+
+  void clear_cut_state(i_t num_cols)
   {
     continuous_terms.clear();
     binary_columns.clear();
@@ -453,12 +486,32 @@ struct flow_cover_scratch_t {
     }
     touched_lhs_coefficients.clear();
   }
-};
 
-template <typename f_t>
-struct flow_cover_evaluation_t {
-  f_t violation;
-  f_t ubar;
+  std::vector<i_t> is_slack_;
+  std::vector<flow_cover_row_t<i_t>> flow_cover_constraints_;
+  std::vector<std::pair<i_t, f_t>> continuous_terms;
+  std::vector<i_t> binary_columns;
+  std::vector<f_t> binary_coefficients;
+  std::vector<uint8_t> binary_coefficients_touched;
+  std::vector<i_t> touched_binary_coefficients;
+  std::vector<single_node_flow_arc_t<i_t, f_t>> arcs;
+  std::vector<single_node_flow_candidate_t<i_t, f_t>> candidates;
+  std::vector<f_t> values;
+  std::vector<f_t> weights;
+  std::vector<i_t> item_to_arc;
+  std::vector<f_t> solution;
+  std::vector<uint8_t> in_c1;
+  std::vector<uint8_t> in_c2;
+  std::vector<f_t> ubar_candidates;
+  std::vector<uint8_t> in_l1;
+  std::vector<uint8_t> in_l2;
+  std::vector<uint8_t> best_in_l1;
+  std::vector<uint8_t> best_in_l2;
+  std::vector<uint8_t> simple_generalized_flow_cover_in_l2;
+  std::vector<i_t> lhs_indices;
+  std::vector<f_t> lhs_coefficients;
+  std::vector<uint8_t> lhs_coefficients_touched;
+  std::vector<i_t> touched_lhs_coefficients;
 };
 
 template <typename i_t, typename f_t>
@@ -479,23 +532,8 @@ class knapsack_generation_t {
                             i_t knapsack_row,
                             inequality_t<i_t, f_t>& cut);
 
-  i_t generate_flow_cover_cut(const lp_problem_t<i_t, f_t>& lp,
-                              const simplex_solver_settings_t<i_t, f_t>& settings,
-                              csr_matrix_t<i_t, f_t>& Arow,
-                              const variable_bounds_t<i_t, f_t>& variable_bounds,
-                              const std::vector<variable_type_t>& var_types,
-                              const std::vector<f_t>& xstar,
-                              const flow_cover_row_t<i_t>& flow_cover_row,
-                              inequality_t<i_t, f_t>& cut);
-
   i_t num_knapsack_constraints() const { return knapsack_constraints_.size(); }
   const std::vector<i_t>& get_knapsack_constraints() const { return knapsack_constraints_; }
-
-  i_t num_flow_cover_constraints() const { return flow_cover_constraints_.size(); }
-  const std::vector<flow_cover_row_t<i_t>>& get_flow_cover_constraints() const
-  {
-    return flow_cover_constraints_;
-  }
 
  private:
   void restore_complemented(const std::vector<i_t>& complemented_variables)
@@ -519,16 +557,6 @@ class knapsack_generation_t {
                          const std::vector<i_t>& c2_partition,
                          inequality_t<i_t, f_t>& lifted_cut);
 
-  enum class greedy_knapsack_mode_t { SCAN_ALL_WITH_BEST_SINGLE, STRICT_RATIO_PREFIX };
-
-  // Generate a heuristic solution to the 0-1 knapsack problem.
-  f_t greedy_knapsack_problem(
-    const std::vector<f_t>& values,
-    const std::vector<f_t>& weights,
-    f_t rhs,
-    std::vector<f_t>& solution,
-    greedy_knapsack_mode_t mode = greedy_knapsack_mode_t::SCAN_ALL_WITH_BEST_SINGLE);
-
   // Solve a 0-1 knapsack problem using dynamic programming
   f_t solve_knapsack_problem(const std::vector<f_t>& values,
                              const std::vector<f_t>& weights,
@@ -540,43 +568,12 @@ class knapsack_generation_t {
                                                             f_t rhs,
                                                             std::vector<f_t>& solution);
 
-  bool normalize_row_side(const flow_cover_context_t<i_t, f_t>& context,
-                          const flow_cover_row_t<i_t>& flow_cover_row,
-                          inequality_t<i_t, f_t>& row,
-                          f_t& b,
-                          bool& negate_row);
-
-  bool build_single_node_flow_relaxation(const flow_cover_context_t<i_t, f_t>& context,
-                                         f_t b,
-                                         f_t& single_node_flow_b);
-
-  bool separate_single_node_flow_cover(const flow_cover_context_t<i_t, f_t>& context,
-                                       f_t single_node_flow_b,
-                                       f_t& lambda);
-
-  // cMIR: complemented mixed-integer-rounding flow cover inequality.
-  flow_cover_evaluation_t<f_t> evaluate_c_mir_flow_cover_inequality(
-    const flow_cover_context_t<i_t, f_t>& context, f_t single_node_flow_b, f_t lambda);
-
-  // SGFCI: simple generalized flow cover inequality.
-  flow_cover_evaluation_t<f_t> evaluate_simple_generalized_flow_cover_inequality(
-    const flow_cover_context_t<i_t, f_t>& context, f_t single_node_flow_b, f_t lambda);
-
-  bool emit_flow_cover_cut(const flow_cover_context_t<i_t, f_t>& context,
-                           f_t single_node_flow_b,
-                           f_t lambda,
-                           const flow_cover_evaluation_t<f_t>& c_mir_inequality,
-                           const flow_cover_evaluation_t<f_t>& simple_generalized_inequality,
-                           inequality_t<i_t, f_t>& cut);
-
   std::vector<i_t> is_slack_;
   std::vector<i_t> knapsack_constraints_;
-  std::vector<flow_cover_row_t<i_t>> flow_cover_constraints_;
   std::vector<i_t> is_complemented_;
   std::vector<i_t> is_marked_;
   std::vector<f_t> workspace_;
   std::vector<f_t> complemented_xstar_;
-  flow_cover_scratch_t<i_t, f_t> flow_cover_scratch_;
   const simplex_solver_settings_t<i_t, f_t>& settings_;
 };
 
@@ -599,6 +596,7 @@ class cut_generation_t {
                    omp_atomic_t<bool>* signal_extend                              = nullptr)
     : cut_pool_(cut_pool),
       knapsack_generation_(lp, settings, Arow, new_slacks, var_types),
+      flow_cover_generation_(lp, settings, Arow, new_slacks),
       user_problem_(user_problem),
       probing_implied_bound_(probing_implied_bound),
       clique_table_(std::move(clique_table)),
@@ -677,6 +675,7 @@ class cut_generation_t {
 
   cut_pool_t<i_t, f_t>& cut_pool_;
   knapsack_generation_t<i_t, f_t> knapsack_generation_;
+  flow_cover_generation_t<i_t, f_t> flow_cover_generation_;
   const user_problem_t<i_t, f_t>& user_problem_;
   const probing_implied_bound_t<i_t, f_t>& probing_implied_bound_;
   std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table_;

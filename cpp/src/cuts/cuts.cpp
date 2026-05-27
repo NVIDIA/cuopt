@@ -825,6 +825,16 @@ void cut_pool_t<i_t, f_t>::drop_cuts()
 
 enum class flow_cover_bound_side_t : int8_t { UPPER, LOWER };
 
+enum class greedy_knapsack_mode_t { SCAN_ALL_WITH_BEST_SINGLE, STRICT_RATIO_PREFIX };
+
+template <typename i_t, typename f_t>
+f_t greedy_knapsack_problem(
+  const std::vector<f_t>& values,
+  const std::vector<f_t>& weights,
+  f_t rhs,
+  std::vector<f_t>& solution,
+  greedy_knapsack_mode_t mode = greedy_knapsack_mode_t::SCAN_ALL_WITH_BEST_SINGLE);
+
 template <typename i_t, typename f_t>
 f_t flow_cover_scaled_primal_tol(const flow_cover_context_t<i_t, f_t>& context, f_t scale)
 {
@@ -984,10 +994,23 @@ knapsack_generation_t<i_t, f_t>::knapsack_generation_t(
   i_t num_knapsack_constraints = knapsack_constraints_.size();
   settings.log.printf("Number of knapsack constraints %d\n", num_knapsack_constraints);
 #endif
+}
+
+template <typename i_t, typename f_t>
+flow_cover_generation_t<i_t, f_t>::flow_cover_generation_t(
+  const lp_problem_t<i_t, f_t>& lp,
+  const simplex_solver_settings_t<i_t, f_t>& settings,
+  csr_matrix_t<i_t, f_t>& Arow,
+  const std::vector<i_t>& new_slacks)
+  : is_slack_(lp.num_cols, 0)
+{
+  for (i_t j : new_slacks) {
+    is_slack_[j] = 1;
+  }
 
   // Wolter's separator is applied to every finite row side after attempting to construct a 0-1
   // single-node-flow relaxation. Rows that do not admit the relaxation are rejected inside
-  // generate_flow_cover_cut.
+  // generate_cut.
   flow_cover_constraints_.reserve(2 * lp.num_rows);
   for (i_t i = 0; i < lp.num_rows; i++) {
     if (Arow.row_start[i + 1] <= Arow.row_start[i]) { continue; }
@@ -1020,7 +1043,7 @@ knapsack_generation_t<i_t, f_t>::knapsack_generation_t(
 }
 
 template <typename i_t, typename f_t>
-bool knapsack_generation_t<i_t, f_t>::normalize_row_side(
+bool flow_cover_generation_t<i_t, f_t>::normalize_row_side(
   const flow_cover_context_t<i_t, f_t>& context,
   const flow_cover_row_t<i_t>& flow_cover_row,
   inequality_t<i_t, f_t>& row,
@@ -1028,7 +1051,7 @@ bool knapsack_generation_t<i_t, f_t>::normalize_row_side(
   bool& negate_row)
 {
   const f_t coefficient_tol = static_cast<f_t>(1e-6);
-  auto& scratch             = flow_cover_scratch_;
+  auto& scratch             = *this;
   row =
     inequality_t<i_t, f_t>(context.Arow, flow_cover_row.row, context.lp.rhs[flow_cover_row.row]);
 
@@ -1107,10 +1130,10 @@ bool knapsack_generation_t<i_t, f_t>::normalize_row_side(
 }
 
 template <typename i_t, typename f_t>
-bool knapsack_generation_t<i_t, f_t>::build_single_node_flow_relaxation(
+bool flow_cover_generation_t<i_t, f_t>::build_single_node_flow_relaxation(
   const flow_cover_context_t<i_t, f_t>& context, f_t b, f_t& single_node_flow_b)
 {
-  auto& scratch             = flow_cover_scratch_;
+  auto& scratch             = *this;
   const f_t coefficient_tol = static_cast<f_t>(1e-6);
   const f_t feasibility_tol = context.settings.primal_tol;
   const f_t bound_tol       = context.settings.primal_tol;
@@ -1267,10 +1290,10 @@ bool knapsack_generation_t<i_t, f_t>::build_single_node_flow_relaxation(
 }
 
 template <typename i_t, typename f_t>
-bool knapsack_generation_t<i_t, f_t>::separate_single_node_flow_cover(
+bool flow_cover_generation_t<i_t, f_t>::separate_single_node_flow_cover(
   const flow_cover_context_t<i_t, f_t>& context, f_t single_node_flow_b, f_t& lambda)
 {
-  auto& scratch             = flow_cover_scratch_;
+  auto& scratch             = *this;
   const f_t feasibility_tol = context.settings.primal_tol;
 
   bool has_binary_controlled_arc = false;
@@ -1299,11 +1322,12 @@ bool knapsack_generation_t<i_t, f_t>::separate_single_node_flow_cover(
   }
   if (scratch.values.empty()) { return false; }
 
-  const f_t objective = greedy_knapsack_problem(scratch.values,
-                                                scratch.weights,
-                                                cover_capacity,
-                                                scratch.solution,
-                                                greedy_knapsack_mode_t::STRICT_RATIO_PREFIX);
+  const f_t objective =
+    greedy_knapsack_problem<i_t, f_t>(scratch.values,
+                                      scratch.weights,
+                                      cover_capacity,
+                                      scratch.solution,
+                                      greedy_knapsack_mode_t::STRICT_RATIO_PREFIX);
   if (std::isnan(objective)) { return false; }
 
   scratch.in_c1.assign(scratch.arcs.size(), 0);
@@ -1333,10 +1357,11 @@ bool knapsack_generation_t<i_t, f_t>::separate_single_node_flow_cover(
 }
 
 template <typename i_t, typename f_t>
-flow_cover_evaluation_t<f_t> knapsack_generation_t<i_t, f_t>::evaluate_c_mir_flow_cover_inequality(
+flow_cover_evaluation_t<f_t>
+flow_cover_generation_t<i_t, f_t>::evaluate_c_mir_flow_cover_inequality(
   const flow_cover_context_t<i_t, f_t>& context, f_t single_node_flow_b, f_t lambda)
 {
-  auto& scratch                       = flow_cover_scratch_;
+  auto& scratch                       = *this;
   constexpr f_t min_mir_beta_fraction = 0.01;
   constexpr f_t max_mir_beta_fraction = 0.95;
   const f_t min_violation             = static_cast<f_t>(1e-6);
@@ -1440,10 +1465,10 @@ flow_cover_evaluation_t<f_t> knapsack_generation_t<i_t, f_t>::evaluate_c_mir_flo
 
 template <typename i_t, typename f_t>
 flow_cover_evaluation_t<f_t>
-knapsack_generation_t<i_t, f_t>::evaluate_simple_generalized_flow_cover_inequality(
+flow_cover_generation_t<i_t, f_t>::evaluate_simple_generalized_flow_cover_inequality(
   const flow_cover_context_t<i_t, f_t>& context, f_t single_node_flow_b, f_t lambda)
 {
-  auto& scratch           = flow_cover_scratch_;
+  auto& scratch           = *this;
   const f_t min_violation = static_cast<f_t>(1e-6);
   scratch.simple_generalized_flow_cover_in_l2.assign(scratch.arcs.size(), 0);
 
@@ -1468,7 +1493,7 @@ knapsack_generation_t<i_t, f_t>::evaluate_simple_generalized_flow_cover_inequali
 }
 
 template <typename i_t, typename f_t>
-bool knapsack_generation_t<i_t, f_t>::emit_flow_cover_cut(
+bool flow_cover_generation_t<i_t, f_t>::emit_flow_cover_cut(
   const flow_cover_context_t<i_t, f_t>& context,
   f_t single_node_flow_b,
   f_t lambda,
@@ -1476,7 +1501,7 @@ bool knapsack_generation_t<i_t, f_t>::emit_flow_cover_cut(
   const flow_cover_evaluation_t<f_t>& simple_generalized_inequality,
   inequality_t<i_t, f_t>& cut)
 {
-  auto& scratch             = flow_cover_scratch_;
+  auto& scratch             = *this;
   const f_t accumulator_tol = static_cast<f_t>(1e-12);
   const f_t output_drop_tol = static_cast<f_t>(1e-9);
   const bool use_c_mir_inequality =
@@ -1574,7 +1599,7 @@ bool knapsack_generation_t<i_t, f_t>::emit_flow_cover_cut(
 }
 
 template <typename i_t, typename f_t>
-i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
+i_t flow_cover_generation_t<i_t, f_t>::generate_cut(
   const lp_problem_t<i_t, f_t>& lp,
   const simplex_solver_settings_t<i_t, f_t>& settings,
   csr_matrix_t<i_t, f_t>& Arow,
@@ -1585,7 +1610,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   inequality_t<i_t, f_t>& cut)
 {
   flow_cover_context_t<i_t, f_t> context{lp, settings, Arow, variable_bounds, var_types, xstar};
-  flow_cover_scratch_.clear(lp.num_cols);
+  clear_cut_state(lp.num_cols);
 
   inequality_t<i_t, f_t> row;
   f_t b           = 0.0;
@@ -2135,11 +2160,11 @@ void knapsack_generation_t<i_t, f_t>::lift_knapsack_cut(
 }
 
 template <typename i_t, typename f_t>
-f_t knapsack_generation_t<i_t, f_t>::greedy_knapsack_problem(const std::vector<f_t>& values,
-                                                             const std::vector<f_t>& weights,
-                                                             f_t rhs,
-                                                             std::vector<f_t>& solution,
-                                                             greedy_knapsack_mode_t mode)
+f_t greedy_knapsack_problem(const std::vector<f_t>& values,
+                            const std::vector<f_t>& weights,
+                            f_t rhs,
+                            std::vector<f_t>& solution,
+                            greedy_knapsack_mode_t mode)
 {
   i_t n = weights.size();
   solution.assign(n, 0.0);
@@ -2271,7 +2296,7 @@ f_t knapsack_generation_t<i_t, f_t>::solve_knapsack_problem(const std::vector<f_
       settings_.log.printf("sum value %d is negative or too large using greedy solution\n",
                            sum_value);
     }
-    return greedy_knapsack_problem(values, weights, rhs, solution);
+    return greedy_knapsack_problem<i_t, f_t>(values, weights, rhs, solution);
   }
 
   solution.assign(n, 0.0);
@@ -2618,11 +2643,11 @@ void cut_generation_t<i_t, f_t>::generate_flow_cover_cuts(
   variable_bounds_t<i_t, f_t>& variable_bounds,
   f_t start_time)
 {
-  if (knapsack_generation_.num_flow_cover_constraints() > 0) {
-    for (const auto& flow_cover_row : knapsack_generation_.get_flow_cover_constraints()) {
+  if (flow_cover_generation_.num_constraints() > 0) {
+    for (const auto& flow_cover_row : flow_cover_generation_.get_constraints()) {
       if (toc(start_time) >= settings.time_limit) { return; }
       inequality_t<i_t, f_t> cut(lp.num_cols);
-      i_t status = knapsack_generation_.generate_flow_cover_cut(
+      i_t status = flow_cover_generation_.generate_cut(
         lp, settings, Arow, variable_bounds, var_types, xstar, flow_cover_row, cut);
       if (status == 0) { cut_pool_.add_cut(cut_type_t::FLOW_COVER, cut); }
     }
@@ -5541,6 +5566,7 @@ void verify_cuts_against_saved_solution(const csr_matrix_t<i_t, f_t>& cuts,
 template class cut_pool_t<int, double>;
 template class cut_generation_t<int, double>;
 template class knapsack_generation_t<int, double>;
+template class flow_cover_generation_t<int, double>;
 template class tableau_equality_t<int, double>;
 template class complemented_mixed_integer_rounding_cut_t<int, double>;
 template class variable_bounds_t<int, double>;

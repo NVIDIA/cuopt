@@ -1411,9 +1411,9 @@ TEST(cuts, clique_neos8_phase4_lp_infeasibility_binary_search)
 // but violates the generated c-MIR flow-cover cut. This is a reduced version of a
 // standard flow-cover example; the test checks validity instead of exact coefficients
 // because the approximate single-node-flow selection may choose a different valid cut.
-mps_parser::mps_data_model_t<int, double> create_small_single_node_flow_problem()
+io::mps_data_model_t<int, double> create_small_single_node_flow_problem()
 {
-  mps_parser::mps_data_model_t<int, double> problem;
+  io::mps_data_model_t<int, double> problem;
 
   std::vector<int> offsets         = {0, 3, 5, 7, 9};
   std::vector<int> indices         = {3, 4, 5, 0, 3, 1, 4, 2, 5};
@@ -1454,7 +1454,7 @@ struct flow_cover_test_problem_t {
 };
 
 flow_cover_test_problem_t build_flow_cover_test_problem(
-  const mps_parser::mps_data_model_t<int, double>& model)
+  const io::mps_data_model_t<int, double>& model)
 {
   flow_cover_test_problem_t test_problem;
   auto op_problem = mps_data_model_to_optimization_problem(&test_problem.handle, model);
@@ -1574,29 +1574,26 @@ TEST(cuts, flow_cover_generates_valid_single_node_flow_cut)
   auto test_problem = build_flow_cover_test_problem(create_small_single_node_flow_problem());
   const std::vector<double> xstar = single_node_flow_fractional_solution(test_problem.lp.num_cols);
 
-  dual_simplex::knapsack_generation_t<int, double> generator(test_problem.lp,
-                                                             test_problem.settings,
-                                                             test_problem.Arow,
-                                                             test_problem.new_slacks,
-                                                             test_problem.var_types);
+  dual_simplex::flow_cover_generation_t<int, double> generator(
+    test_problem.lp, test_problem.settings, test_problem.Arow, test_problem.new_slacks);
   dual_simplex::variable_bounds_t<int, double> variable_bounds(test_problem.lp,
                                                                test_problem.settings,
                                                                test_problem.var_types,
                                                                test_problem.Arow,
                                                                test_problem.new_slacks);
-  ASSERT_GT(generator.num_flow_cover_constraints(), 0);
+  ASSERT_GT(generator.num_constraints(), 0);
 
   int generated_cuts = 0;
-  for (const auto& flow_cover_row : generator.get_flow_cover_constraints()) {
+  for (const auto& flow_cover_row : generator.get_constraints()) {
     dual_simplex::inequality_t<int, double> cut(test_problem.lp.num_cols);
-    const int status = generator.generate_flow_cover_cut(test_problem.lp,
-                                                         test_problem.settings,
-                                                         test_problem.Arow,
-                                                         variable_bounds,
-                                                         test_problem.var_types,
-                                                         xstar,
-                                                         flow_cover_row,
-                                                         cut);
+    const int status = generator.generate_cut(test_problem.lp,
+                                              test_problem.settings,
+                                              test_problem.Arow,
+                                              variable_bounds,
+                                              test_problem.var_types,
+                                              xstar,
+                                              flow_cover_row,
+                                              cut);
     if (status != 0) { continue; }
 
     EXPECT_LT(cut.vector.dot(xstar), cut.rhs - 1e-6)
