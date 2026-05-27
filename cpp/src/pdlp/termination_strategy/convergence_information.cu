@@ -429,22 +429,24 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
                   error_type_t::ValidationError,
                   "per_constraint_residual is not yet supported in multi-GPU mode");
 
-    // Prepares halo values in primal_solution
+    // Prepares halo values in potential_next_primal_solution
+
     engine->halo_exchange_var(
       [](pdhg_solver_t<i_t, f_t>& pdhg) -> rmm::device_uvector<f_t>& {
-        return pdhg.get_primal_solution();
+        return pdhg.get_potential_next_primal_solution();
       });
 
-    // Compute the primal residual and objective on each shard
     for (auto& shard : engine->shards) {
       raft::device_setter guard(shard->device_id);
       auto& sub_pdlp = *shard->sub_pdlp;
       auto& sub_conv = sub_pdlp.get_current_termination_strategy().get_convergence_information();
-      sub_conv.compute_primal_residual(sub_conv.op_problem_cusparse_view_,
-                                       sub_pdlp.pdhg_solver_.get_dual_tmp_resource(),
-                                       sub_pdlp.pdhg_solver_.get_dual_solution());
-      sub_conv.compute_primal_objective_owned_partial(sub_pdlp.pdhg_solver_.get_primal_solution(),
-                                                      shard->rank_data.owned_var_size);
+      sub_conv.compute_primal_residual(
+        sub_conv.op_problem_cusparse_view_,
+        sub_pdlp.pdhg_solver_.get_dual_tmp_resource(),
+        sub_pdlp.pdhg_solver_.get_potential_next_dual_solution());
+      sub_conv.compute_primal_objective_owned_partial(
+        sub_pdlp.pdhg_solver_.get_potential_next_primal_solution(),
+        shard->rank_data.owned_var_size);
     }
 
     // Reduce all primal objectives across shards
@@ -546,12 +548,15 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
   if (current_pdhg_solver.is_multi_gpu()) {
     auto* engine = current_pdhg_solver.get_mgpu_engine();
 
-    // 1) Halo-exchange the dual solution on every shard so the upcoming
-    //    A_T_shard @ dual SpMV inside compute_dual_residual reads correct
-    //    values in the cstr halo region.
+    // 1) Halo-exchange potential_next_dual_solution on every shard so the
+    //    A_T_shard @ y SpMV inside compute_dual_residual reads correct values
+    //    in the cstr halo region. The SpMV is driven through the eval view's
+    //    cv.dual_solution descriptor, which (cuPDLPx, see
+    //    cusparse_view.cu:931-937) is bound to _potential_next_dual -- not to
+    //    current.dual_solution. So we must halo-exchange the same buffer.
     engine->halo_exchange_cstr(
       [](pdhg_solver_t<i_t, f_t>& pdhg) -> rmm::device_uvector<f_t>& {
-        return pdhg.get_dual_solution();
+        return pdhg.get_potential_next_dual_solution();
       });
 
     // 2-3) Per-shard:
@@ -563,18 +568,26 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
     //        shard.dual_objective_, with NO scaling/offset. Relies on
     //        primal_slack_ already populated by the per-shard
     //        compute_primal_residual above.
+    //
+    // Same primal_iterate fix as the primal block above: use the shard's
+    // (fresh, unscaled) potential_next_primal_solution, matching single-GPU
+    // cuPDLPx (pdlp.cu:1190-1203). The previous code's get_primal_solution()
+    // would mix scaled x with unscaled dual_slack in the dual_objective
+    // cublasdot.
     for (auto& shard : engine->shards) {
       raft::device_setter guard(shard->device_id);
       auto& sub_pdlp = *shard->sub_pdlp;
       auto& sub_conv = sub_pdlp.get_current_termination_strategy().get_convergence_information();
-      sub_conv.compute_dual_residual(sub_conv.op_problem_cusparse_view_,
-                                     sub_pdlp.pdhg_solver_.get_primal_tmp_resource(),
-                                     sub_pdlp.pdhg_solver_.get_primal_solution(),
-                                     sub_pdlp.pdhg_solver_.get_dual_slack());
-      sub_conv.compute_dual_objective_owned_partial(sub_pdlp.pdhg_solver_.get_primal_solution(),
-                                                    sub_pdlp.pdhg_solver_.get_dual_slack(),
-                                                    shard->rank_data.owned_var_size,
-                                                    shard->rank_data.owned_cstr_size);
+      sub_conv.compute_dual_residual(
+        sub_conv.op_problem_cusparse_view_,
+        sub_pdlp.pdhg_solver_.get_primal_tmp_resource(),
+        sub_pdlp.pdhg_solver_.get_potential_next_primal_solution(),
+        sub_pdlp.pdhg_solver_.get_dual_slack());
+      sub_conv.compute_dual_objective_owned_partial(
+        sub_pdlp.pdhg_solver_.get_potential_next_primal_solution(),
+        sub_pdlp.pdhg_solver_.get_dual_slack(),
+        shard->rank_data.owned_var_size,
+        shard->rank_data.owned_cstr_size);
     }
 
     // 4) Allreduce dual_objective_ across shards (sum, in place). Same
