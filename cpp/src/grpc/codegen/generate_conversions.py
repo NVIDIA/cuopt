@@ -636,20 +636,26 @@ def generate_proto_to_settings_body(registry, obj_name, obj, indent="  "):
         edef = _lookup_enum(registry, ftype)
         from_fn = _enum_from_proto_fn(ftype, edef) if edef else None
 
+        # Two presence mechanisms can each appear independently or together:
+        #   * `optional` -> wrap the body in `if (pb.has_X())` so an omitted
+        #     wire field preserves the C++ struct's in-class default.
+        #   * `sentinel` -> wrap the body (or its remaining inner content) in
+        #     `if (pb.X() <guard>)` so a reserved value on the wire is treated
+        #     as "use default" (e.g. -1 for iteration_limit).
+        # When both are set, the optional guard runs first, then the sentinel
+        # value-guard runs inside it.
+        body_lines = []
         if sentinel:
-            # sentinel and optional are mutually exclusive presence mechanisms;
-            # the validator rejects the combination. Sentinels keep their own
-            # value-based guard regardless of the optional flag.
             guard = sentinel["from_proto_guard"]
             cast = sentinel.get("from_proto_cast", from_proto_cast)
-            lines.append(f"{ind}if (pb_settings.{pname}() {guard}) {{")
             expr = (
                 f"static_cast<{cast}>(pb_settings.{pname}())"
                 if cast
                 else f"pb_settings.{pname}()"
             )
-            lines.append(f"{ind}  settings.{cpp_member} = {expr};")
-            lines.append(f"{ind}}}")
+            body_lines.append(f"if (pb_settings.{pname}() {guard}) {{")
+            body_lines.append(f"  settings.{cpp_member} = {expr};")
+            body_lines.append("}")
         else:
             if from_fn:
                 rhs = f"{from_fn}(pb_settings.{pname}())"
@@ -657,16 +663,16 @@ def generate_proto_to_settings_body(registry, obj_name, obj, indent="  "):
                 rhs = f"static_cast<{from_proto_cast}>(pb_settings.{pname}())"
             else:
                 rhs = f"pb_settings.{pname}()"
+            body_lines.append(f"settings.{cpp_member} = {rhs};")
 
-            if is_optional:
-                # `optional` proto3 scalar: only apply the value when the
-                # client explicitly set it on the wire, so omitted fields
-                # preserve the C++ struct's in-class default.
-                lines.append(f"{ind}if (pb_settings.has_{pname}()) {{")
-                lines.append(f"{ind}  settings.{cpp_member} = {rhs};")
-                lines.append(f"{ind}}}")
-            else:
-                lines.append(f"{ind}settings.{cpp_member} = {rhs};")
+        if is_optional:
+            lines.append(f"{ind}if (pb_settings.has_{pname}()) {{")
+            for bl in body_lines:
+                lines.append(f"{ind}  {bl}")
+            lines.append(f"{ind}}}")
+        else:
+            for bl in body_lines:
+                lines.append(f"{ind}{bl}")
     return "\n".join(lines)
 
 
@@ -2156,20 +2162,17 @@ def _validate_registry_uniqueness(registry):
     ]
     _check_unique("ArrayFieldId", afid_pairs, errors)
 
-    # `optional: true` is only meaningful for scalar proto3 fields that have
-    # a settable C++ default different from the proto3 zero value. The codegen
-    # only emits `optional <type>` + a `has_<X>()` guard for the scalar settings
-    # path; we reject combinations that would silently do the wrong thing.
+    # `optional: true` is meaningful for scalar proto3 fields whose C++
+    # default differs from the proto3 zero value. The codegen emits
+    # `optional <type>` + a `has_<X>()` guard for the scalar settings path.
+    # It composes with `sentinel`: the optional guard handles "omit ⇒ keep
+    # default" while the sentinel guard handles "reserved value ⇒ keep
+    # default" (e.g. -1 for iteration_limit / node_limit).
     #
-    # Specifically:
-    #   * Sentinel fields already encode "unset" via a reserved value and the
-    #     mapper uses `from_proto_guard` to recover the C++ default — pairing
-    #     them with `optional` is redundant and the two presence mechanisms
-    #     would fight (`has_X()==true && value==sentinel` is ambiguous).
-    #   * Enum-typed fields are syntactically allowed by proto3 but our enums
-    #     follow the "UNSPECIFIED = 0 means default" convention; flipping them
-    #     to `optional` would change semantics in ways we want to think about
-    #     case-by-case, not implicitly.
+    # Enum-typed settings fields are intentionally rejected: proto3 allows
+    # `optional <enum>`, but our enums follow the "UNSPECIFIED = 0 means
+    # default" convention and an implicit flip would change semantics in
+    # ways that deserve a case-by-case review, not registry-wide policy.
     for msg, key in [
         ("PDLPSolverSettings", "pdlp_settings"),
         ("MIPSolverSettings", "mip_settings"),
@@ -2179,11 +2182,6 @@ def _validate_registry_uniqueness(registry):
             if not f.get("optional"):
                 continue
             name = f.get("name")
-            if f.get("sentinel"):
-                errors.append(
-                    f"{msg}.{name}: `optional` and `sentinel` are mutually "
-                    "exclusive presence mechanisms"
-                )
             ftype = f.get("type", "double")
             if _lookup_enum(registry, ftype):
                 errors.append(

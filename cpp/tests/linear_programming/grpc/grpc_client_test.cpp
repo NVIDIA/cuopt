@@ -2142,3 +2142,113 @@ TEST(MapperRoundtrip, PDLPSettingsBarrierIterativeRefinementExplicitFalseRoundtr
   map_proto_to_pdlp_settings(pb, restored);
   EXPECT_FALSE(restored.barrier_iterative_refinement);
 }
+
+// Wide-coverage sanity: a default-constructed proto (no fields touched on the
+// wire) must, after the mapper, leave every C++ scalar settings field at its
+// in-class default. Spot-checks a representative cross-section of the fields
+// converted to `optional` in field_registry.yaml — booleans with default true,
+// numeric tolerances with non-zero defaults, time/work limits at infinity,
+// int32 knobs whose default is -1 or +N, and a handful of heuristic_params
+// values. If a field is ever added with a non-zero C++ default but without
+// `optional: true` in the registry, this test will fail and point at the gap.
+TEST(MapperRoundtrip, PDLPSettingsDefaultProtoPreservesAllCppDefaults)
+{
+  cuopt::remote::PDLPSolverSettings pb;
+  pdlp_solver_settings_t<int32_t, double> fresh;
+  pdlp_solver_settings_t<int32_t, double> after = fresh;
+  map_proto_to_pdlp_settings(pb, after);
+
+  // Tolerances (all 1e-4 / 1e-10 by C++ default).
+  EXPECT_DOUBLE_EQ(after.tolerances.absolute_gap_tolerance,
+                   fresh.tolerances.absolute_gap_tolerance);
+  EXPECT_DOUBLE_EQ(after.tolerances.relative_gap_tolerance,
+                   fresh.tolerances.relative_gap_tolerance);
+  EXPECT_DOUBLE_EQ(after.tolerances.absolute_primal_tolerance,
+                   fresh.tolerances.absolute_primal_tolerance);
+  EXPECT_DOUBLE_EQ(after.tolerances.relative_primal_tolerance,
+                   fresh.tolerances.relative_primal_tolerance);
+  EXPECT_DOUBLE_EQ(after.tolerances.absolute_dual_tolerance,
+                   fresh.tolerances.absolute_dual_tolerance);
+  EXPECT_DOUBLE_EQ(after.tolerances.relative_dual_tolerance,
+                   fresh.tolerances.relative_dual_tolerance);
+  EXPECT_DOUBLE_EQ(after.tolerances.primal_infeasible_tolerance,
+                   fresh.tolerances.primal_infeasible_tolerance);
+  EXPECT_DOUBLE_EQ(after.tolerances.dual_infeasible_tolerance,
+                   fresh.tolerances.dual_infeasible_tolerance);
+  // Limits.
+  EXPECT_EQ(after.time_limit, fresh.time_limit) << "time_limit default (infinity) preserved";
+  // Bools with non-zero defaults.
+  EXPECT_EQ(after.log_to_console, fresh.log_to_console);
+  EXPECT_EQ(after.dual_postsolve, fresh.dual_postsolve);
+  EXPECT_EQ(after.eliminate_dense_columns, fresh.eliminate_dense_columns);
+  EXPECT_EQ(after.barrier_iterative_refinement, fresh.barrier_iterative_refinement);
+  // Numeric defaults != 0.
+  EXPECT_EQ(after.num_gpus, fresh.num_gpus);
+  EXPECT_EQ(after.folding, fresh.folding);
+  EXPECT_EQ(after.augmented, fresh.augmented);
+  EXPECT_EQ(after.dualize, fresh.dualize);
+  EXPECT_EQ(after.ordering, fresh.ordering);
+  EXPECT_EQ(after.barrier_dual_initial_point, fresh.barrier_dual_initial_point);
+  EXPECT_DOUBLE_EQ(after.barrier_step_scale, fresh.barrier_step_scale);
+  // Enum-int32 fields (post-decode clamping defends out-of-range; default `0`
+  // on the wire is in-range so the clamp does not fire, but the `optional`
+  // guard prevents the assignment entirely and the C++ default survives).
+  EXPECT_EQ(static_cast<int>(after.presolver), static_cast<int>(fresh.presolver));
+  EXPECT_EQ(static_cast<int>(after.pdlp_precision), static_cast<int>(fresh.pdlp_precision));
+}
+
+TEST(MapperRoundtrip, MIPSettingsDefaultProtoPreservesAllCppDefaults)
+{
+  cuopt::remote::MIPSolverSettings pb;
+  mip_solver_settings_t<int32_t, double> fresh;
+  mip_solver_settings_t<int32_t, double> after = fresh;
+  map_proto_to_mip_settings(pb, after);
+
+  // Tolerances.
+  EXPECT_DOUBLE_EQ(after.tolerances.absolute_mip_gap, fresh.tolerances.absolute_mip_gap);
+  EXPECT_DOUBLE_EQ(after.tolerances.relative_mip_gap, fresh.tolerances.relative_mip_gap);
+  EXPECT_DOUBLE_EQ(after.tolerances.integrality_tolerance, fresh.tolerances.integrality_tolerance);
+  EXPECT_DOUBLE_EQ(after.tolerances.absolute_tolerance, fresh.tolerances.absolute_tolerance);
+  EXPECT_DOUBLE_EQ(after.tolerances.relative_tolerance, fresh.tolerances.relative_tolerance);
+  EXPECT_DOUBLE_EQ(after.tolerances.presolve_absolute_tolerance,
+                   fresh.tolerances.presolve_absolute_tolerance);
+  // Limits.
+  EXPECT_EQ(after.time_limit, fresh.time_limit);
+  EXPECT_EQ(after.work_limit, fresh.work_limit);
+  EXPECT_EQ(after.node_limit, fresh.node_limit);  // sentinel path
+  // Bools with non-zero defaults.
+  EXPECT_EQ(after.log_to_console, fresh.log_to_console);
+  EXPECT_EQ(after.probing, fresh.probing);
+  // Numeric knobs.
+  EXPECT_EQ(after.num_cpu_threads, fresh.num_cpu_threads);
+  EXPECT_EQ(after.num_gpus, fresh.num_gpus);
+  EXPECT_EQ(after.reliability_branching, fresh.reliability_branching);
+  EXPECT_EQ(after.symmetry, fresh.symmetry);  // clamp-defended; default -1
+  EXPECT_EQ(after.max_cut_passes, fresh.max_cut_passes);
+  EXPECT_EQ(after.mir_cuts, fresh.mir_cuts);
+  EXPECT_EQ(after.mixed_integer_gomory_cuts, fresh.mixed_integer_gomory_cuts);
+  EXPECT_EQ(after.knapsack_cuts, fresh.knapsack_cuts);
+  EXPECT_EQ(after.clique_cuts, fresh.clique_cuts);
+  EXPECT_EQ(after.implied_bound_cuts, fresh.implied_bound_cuts);
+  EXPECT_EQ(after.strong_chvatal_gomory_cuts, fresh.strong_chvatal_gomory_cuts);
+  EXPECT_EQ(after.reduced_cost_strengthening, fresh.reduced_cost_strengthening);
+  EXPECT_DOUBLE_EQ(after.cut_change_threshold, fresh.cut_change_threshold);
+  EXPECT_DOUBLE_EQ(after.cut_min_orthogonality, fresh.cut_min_orthogonality);
+  EXPECT_EQ(after.strong_branching_simplex_iteration_limit,
+            fresh.strong_branching_simplex_iteration_limit);
+  EXPECT_EQ(after.seed, fresh.seed);
+  EXPECT_DOUBLE_EQ(after.semi_continuous_big_m, fresh.semi_continuous_big_m);
+  EXPECT_EQ(static_cast<int>(after.presolver), static_cast<int>(fresh.presolver));
+  EXPECT_EQ(after.mip_scaling, fresh.mip_scaling);
+  // heuristic_params: spot-check one of each kind (int, double).
+  EXPECT_EQ(after.heuristic_params.population_size, fresh.heuristic_params.population_size);
+  EXPECT_EQ(after.heuristic_params.num_cpufj_threads, fresh.heuristic_params.num_cpufj_threads);
+  EXPECT_DOUBLE_EQ(after.heuristic_params.presolve_time_ratio,
+                   fresh.heuristic_params.presolve_time_ratio);
+  EXPECT_DOUBLE_EQ(after.heuristic_params.presolve_max_time,
+                   fresh.heuristic_params.presolve_max_time);
+  EXPECT_DOUBLE_EQ(after.heuristic_params.rins_fix_rate, fresh.heuristic_params.rins_fix_rate);
+  EXPECT_EQ(after.heuristic_params.enabled_recombiners, fresh.heuristic_params.enabled_recombiners);
+  EXPECT_DOUBLE_EQ(after.heuristic_params.initial_infeasibility_weight,
+                   fresh.heuristic_params.initial_infeasibility_weight);
+}

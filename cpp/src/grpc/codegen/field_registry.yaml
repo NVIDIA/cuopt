@@ -55,8 +55,10 @@
 #                          Use for scalar fields whose C++ default differs from the
 #                          proto3 zero value (e.g. `bool foo{true}`), so that an
 #                          omitted field preserves the solver default instead of
-#                          silently overwriting it with the proto3 zero. Mutually
-#                          exclusive with `sentinel`. Not supported on enum types.
+#                          silently overwriting it with the proto3 zero. Composes
+#                          with `sentinel` (optional guards the omitted case;
+#                          sentinel keeps the existing wire encoding for "explicit
+#                          default" values). Not supported on enum types.
 #   to_proto_cast      – explicit cast type for C++ -> proto direction
 #   from_proto_cast    – explicit cast type for proto -> C++ direction
 #
@@ -415,25 +417,39 @@ pdlp_settings:
   - tolerances:
     - absolute_gap_tolerance:
         field_num: 1
+        optional: true
     - relative_gap_tolerance:
         field_num: 2
+        optional: true
     - primal_infeasible_tolerance:
         field_num: 3
+        optional: true
     - dual_infeasible_tolerance:
         field_num: 4
+        optional: true
     - absolute_dual_tolerance:
         field_num: 5
+        optional: true
     - relative_dual_tolerance:
         field_num: 6
+        optional: true
     - absolute_primal_tolerance:
         field_num: 7
+        optional: true
     - relative_primal_tolerance:
         field_num: 8
+        optional: true
 
     # Limits
   - time_limit:
       field_num: 9
+      optional: true
   - iteration_limit:
+      # C++ default is `std::numeric_limits<i_t>::max()`. Two presence
+      # mechanisms compose here: `sentinel` keeps the existing wire encoding
+      # (max() <=> -1, preserving 26.04 compatibility) and `optional` adds the
+      # missing piece — an omitted field would otherwise decode to the wire
+      # zero (0), which is `>= 0` and would overwrite the C++ default with 0.
       field_num: 10
       type: int64
       sentinel:
@@ -441,11 +457,13 @@ pdlp_settings:
         proto_value: -1
         from_proto_guard: ">= 0"
         from_proto_cast: "i_t"
+      optional: true
 
     # Solver configuration
   - log_to_console:
       field_num: 11
       type: bool
+      optional: true
   - detect_infeasibility:
       field_num: 12
       type: bool
@@ -463,6 +481,7 @@ pdlp_settings:
       type: int32
       to_proto_cast: "int32_t"
       from_proto_cast: "presolver_t"
+      optional: true
   - dual_postsolve:
       # C++ default is `true`; using proto3 `optional` so that a client that
       # omits this field gets the solver default rather than the proto3 zero
@@ -477,6 +496,7 @@ pdlp_settings:
   - num_gpus:
       field_num: 19
       type: int32
+      optional: true
 
   - per_constraint_residual:
       field_num: 20
@@ -487,21 +507,27 @@ pdlp_settings:
   - folding:
       field_num: 22
       type: int32
+      optional: true
   - augmented:
       field_num: 23
       type: int32
+      optional: true
   - dualize:
       field_num: 24
       type: int32
+      optional: true
   - ordering:
       field_num: 25
       type: int32
+      optional: true
   - barrier_dual_initial_point:
       field_num: 26
       type: int32
+      optional: true
   - eliminate_dense_columns:
       field_num: 27
       type: bool
+      optional: true
   - barrier_iterative_refinement:
       # Whether the barrier method runs iterative refinement after each solve
       # (see cpp/src/barrier/barrier.cu). C++ default is `true`. Declared as
@@ -517,6 +543,7 @@ pdlp_settings:
       # solver_settings.cu. No post-decode clamp is applied here for
       # consistency with the other f_t scalars (tolerances, time_limit, ...).
       field_num: 32
+      optional: true
   - save_best_primal_so_far:
       field_num: 28
       type: bool
@@ -528,6 +555,7 @@ pdlp_settings:
       type: int32
       to_proto_cast: "int32_t"
       from_proto_cast: "pdlp_precision_t"
+      optional: true
 
 # ─────────────────────────────────────────────────────────────────────────────
 # MIP Solver Settings
@@ -540,43 +568,55 @@ mip_settings:
     # Limits
   - time_limit:
       field_num: 1
+      optional: true
 
     # Tolerances (nested: settings.tolerances.<field>)
   - tolerances:
     - relative_mip_gap:
         field_num: 2
+        optional: true
     - absolute_mip_gap:
         field_num: 3
+        optional: true
     - integrality_tolerance:
         field_num: 4
+        optional: true
     - absolute_tolerance:
         field_num: 5
+        optional: true
     - relative_tolerance:
         field_num: 6
+        optional: true
     - presolve_absolute_tolerance:
         field_num: 7
+        optional: true
 
     # Solver configuration
   - log_to_console:
       field_num: 8
       type: bool
+      optional: true
   - heuristics_only:
       field_num: 9
       type: bool
   - num_cpu_threads:
       field_num: 10
       type: int32
+      optional: true
   - num_gpus:
       field_num: 11
       type: int32
+      optional: true
   - presolver:
       field_num: 12
       type: int32
       to_proto_cast: "int32_t"
       from_proto_cast: "presolver_t"
+      optional: true
   - mip_scaling:
       field_num: 13
       type: int32
+      optional: true
   - symmetry:
       # Symmetry-detection level (dejavu). Valid: -1 (default), 0 (off),
       # 1 (orbital fixing), 2 (orbital fixing + lexical reduction). The
@@ -584,11 +624,16 @@ mip_settings:
       # range check in cpp/src/math_optimization/solver_settings.cu.
       field_num: 33
       type: int32
+      optional: true
 
     # Additional limits
   - work_limit:
       field_num: 14
+      optional: true
   - node_limit:
+      # C++ default `max()`. See iteration_limit for the rationale on
+      # composing `sentinel` with `optional` (sentinel for the explicit
+      # wire-encoded "default" value, optional for the omitted-field case).
       field_num: 15
       type: int32
       sentinel:
@@ -596,11 +641,13 @@ mip_settings:
         proto_value: -1
         from_proto_guard: ">= 0"
         from_proto_cast: "i_t"
+      optional: true
 
     # Branching
   - reliability_branching:
       field_num: 16
       type: int32
+      optional: true
   - mip_batch_pdlp_strong_branching:
       field_num: 17
       type: int32
@@ -610,36 +657,47 @@ mip_settings:
   - strong_branching_simplex_iteration_limit:
       field_num: 30
       type: int32
+      optional: true
 
     # Cut configuration
   - max_cut_passes:
       field_num: 18
       type: int32
+      optional: true
   - mir_cuts:
       field_num: 19
       type: int32
+      optional: true
   - mixed_integer_gomory_cuts:
       field_num: 20
       type: int32
+      optional: true
   - knapsack_cuts:
       field_num: 21
       type: int32
+      optional: true
   - clique_cuts:
       field_num: 22
       type: int32
+      optional: true
   - implied_bound_cuts:
       field_num: 31
       type: int32
+      optional: true
   - strong_chvatal_gomory_cuts:
       field_num: 23
       type: int32
+      optional: true
   - reduced_cost_strengthening:
       field_num: 24
       type: int32
+      optional: true
   - cut_change_threshold:
       field_num: 25
+      optional: true
   - cut_min_orthogonality:
       field_num: 26
+      optional: true
 
     # Determinism and reproducibility
   - determinism_mode:
@@ -648,6 +706,7 @@ mip_settings:
   - seed:
       field_num: 28
       type: int32
+      optional: true
 
     # Presolve sub-steps
   - probing:
@@ -666,57 +725,73 @@ mip_settings:
     # [1.0, +inf] with default 1e10; see solver_settings.cu.
   - semi_continuous_big_m:
       field_num: 34
+      optional: true
 
     # MIP heuristic hyper-parameters (nested: settings.heuristic_params.<field>)
     # Tuning knobs for MIP GPU heuristics; see mip_heuristics_hyper_params_t
     # in cpp/include/cuopt/linear_programming/mip/heuristics_hyper_params.hpp.
-    # All fields carry non-zero defaults on the C++ side, so an old client
-    # predating any of these fields will silently revert the corresponding
-    # value to the proto3 wire default (0) on the server. This matches the
-    # pre-existing behavior of mip_settings.probing / barrier settings, and
-    # is the price of using bare scalars in proto3 (no field-presence).
+    # All fields carry non-zero defaults on the C++ side, so they are declared
+    # `optional` in the proto: a client that omits any of them gets the C++
+    # default rather than the proto3 wire zero (0).
   - heuristic_params:
     - population_size:
         field_num: 35
         type: int32
+        optional: true
     - num_cpufj_threads:
         field_num: 36
         type: int32
+        optional: true
     - presolve_time_ratio:
         field_num: 37
+        optional: true
     - presolve_max_time:
         field_num: 38
+        optional: true
     - root_lp_time_ratio:
         field_num: 39
+        optional: true
     - root_lp_max_time:
         field_num: 40
+        optional: true
     - rins_time_limit:
         field_num: 41
+        optional: true
     - rins_max_time_limit:
         field_num: 42
+        optional: true
     - rins_fix_rate:
         field_num: 43
+        optional: true
     - stagnation_trigger:
         field_num: 44
         type: int32
+        optional: true
     - max_iterations_without_improvement:
         field_num: 45
         type: int32
+        optional: true
     - initial_infeasibility_weight:
         field_num: 46
+        optional: true
     - n_of_minimums_for_exit:
         field_num: 47
         type: int32
+        optional: true
     - enabled_recombiners:
         field_num: 48
         type: int32
+        optional: true
     - cycle_detection_length:
         field_num: 49
         type: int32
+        optional: true
     - relaxed_lp_time_limit:
         field_num: 50
+        optional: true
     - related_vars_time_limit:
         field_num: 51
+        optional: true
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Optimization Problem (cpu_optimization_problem_t)
