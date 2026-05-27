@@ -2916,23 +2916,17 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       bfs_worker_t<i_t, f_t>* worker = bfs_worker_pool_[i];
 
       // We need to clear the queue and use the info in the search tree for the lower bound
-      while (worker->node_queue.best_first_queue_size() > 0) {
+      while (worker->node_queue.best_first_queue_size() > 0 &&
+             worker->node_queue.get_lower_bound() > upper_bound_.load()) {
         mip_node_t<i_t, f_t>* start_node = worker->node_queue.pop_best_first();
-
-        if (!start_node) { continue; }
-        if (upper_bound_.load() < start_node->lower_bound) {
-          // This node was put on the heap earlier but its lower bound is now greater than the
-          // current upper bound
-          search_tree_.graphviz_node(settings_.log, start_node, "cutoff", start_node->lower_bound);
-          search_tree_.update(start_node, node_status_t::FATHOMED);
-          --exploration_stats_.nodes_unexplored;
-        } else {
-          // Needed to ensure we don't lose the correct lower bound
-          worker->node_queue.push(start_node);
-          lower_bound = std::min(lower_bound, worker->node_queue.get_lower_bound());
-          break;
-        }
+        // This node was put on the heap earlier but its lower bound is now greater than the
+        // current upper bound
+        search_tree_.graphviz_node(settings_.log, start_node, "cutoff", start_node->lower_bound);
+        search_tree_.update(start_node, node_status_t::FATHOMED);
+        --exploration_stats_.nodes_unexplored;
       }
+
+      lower_bound = std::min(lower_bound, worker->node_queue.get_lower_bound());
     }
 
     if (!std::isfinite(lower_bound)) { lower_bound = search_tree_.root.lower_bound; }
