@@ -12,6 +12,7 @@
 
 #include <pdlp/cusparse_view.hpp>
 #include <pdlp/distributed_pdlp/partition_loader.hpp>
+#include <pdlp/distributed_pdlp/partitioner.hpp>
 #include <pdlp/pdlp.cuh>
 #include <pdlp/swap_and_resize_helper.cuh>
 #include <pdlp/utils.cuh>
@@ -396,28 +397,32 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
                   "Distributed PDLP (num_gpus > 1) currently requires double precision");
     return;
   } else {
-    // 2. Load partition
+    // 2. Load or compute partition
     std::vector<i_t> parts;
     if (!settings.multi_gpu_partition_file.empty()) {
       parts = partition_loader_t<i_t, f_t>::parse_distributed_pdlp_partition_file(
         settings.multi_gpu_partition_file);
-    } else if (num_gpus == 1) {
-      // Single-part dummy run: useful for exercising the mGPU code paths on a
-      // single physical GPU without a real Metis partition file. The downstream
-      // create_rank_data_from_parts expects a flat vector of length
-      // (n_constraints + n_variables) where each entry is the owning part-id
-      // (cstrs first, then vars). With nb_parts == 1, every entry is 0.
-      std::cout << "CAREFUL: num_gpus == 1, running dummy version (single part covering "
-                << op_problem_scaled_.n_constraints << " cstrs + "
-                << op_problem_scaled_.n_variables << " vars)" << std::endl;
-      parts = std::vector<i_t>(
-        static_cast<std::size_t>(op_problem_scaled_.n_constraints + op_problem_scaled_.n_variables),
-        0);
+      validate_partition(parts,
+                         op_problem_scaled_.n_constraints,
+                         op_problem_scaled_.n_variables,
+                         num_gpus,
+                         "partition file");
     } else {
-      cuopt_expects(false,
-                    error_type_t::RuntimeError,
-                    "Metis partitioning inside cuopt not implemented yet; "
-                    "provide a --parts file via settings.multi_gpu_partition_file");
+      if (num_gpus == 1) {
+        // Single-part dummy run: useful for exercising the mGPU code paths on a
+        // single physical GPU without a real partition file.
+        std::cout << "CAREFUL: num_gpus == 1, running dummy version (single part covering "
+                  << op_problem_scaled_.n_constraints << " cstrs + "
+                  << op_problem_scaled_.n_variables << " vars)" << std::endl;
+      }
+      partitioner_input_t<i_t, f_t> partition_input;
+      partition_input.nb_cstr  = op_problem_scaled_.n_constraints;
+      partition_input.nb_vars  = op_problem_scaled_.n_variables;
+      partition_input.nb_parts = num_gpus;
+      // Dummy partitioner ignores A / A_t for now; future METIS partitioners will
+      // fill these CSR views before calling partition().
+      auto partitioner = make_partitioner<i_t, f_t>(partitioner_kind_t::Dummy);
+      parts            = partitioner->partition(partition_input);
     }
 
     // always compute initial step size before scaling and primal_weight after scaling to do like
