@@ -1267,7 +1267,7 @@ bool knapsack_generation_t<i_t, f_t>::build_single_node_flow_relaxation(
 }
 
 template <typename i_t, typename f_t>
-bool knapsack_generation_t<i_t, f_t>::select_flow_cover(
+bool knapsack_generation_t<i_t, f_t>::separate_single_node_flow_cover(
   const flow_cover_context_t<i_t, f_t>& context, f_t single_node_flow_b, f_t& lambda)
 {
   auto& scratch             = flow_cover_scratch_;
@@ -1596,7 +1596,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   if (!build_single_node_flow_relaxation(context, b, single_node_flow_b)) { return -1; }
 
   f_t lambda = 0.0;
-  if (!select_flow_cover(context, single_node_flow_b, lambda)) { return -1; }
+  if (!separate_single_node_flow_cover(context, single_node_flow_b, lambda)) { return -1; }
 
   const auto c_mir_inequality =
     evaluate_c_mir_flow_cover_inequality(context, single_node_flow_b, lambda);

@@ -550,9 +550,9 @@ class knapsack_generation_t {
                                          f_t b,
                                          f_t& single_node_flow_b);
 
-  bool select_flow_cover(const flow_cover_context_t<i_t, f_t>& context,
-                         f_t single_node_flow_b,
-                         f_t& lambda);
+  bool separate_single_node_flow_cover(const flow_cover_context_t<i_t, f_t>& context,
+                                       f_t single_node_flow_b,
+                                       f_t& lambda);
 
   // cMIR: complemented mixed-integer-rounding flow cover inequality.
   flow_cover_evaluation_t<f_t> evaluate_c_mir_flow_cover_inequality(
