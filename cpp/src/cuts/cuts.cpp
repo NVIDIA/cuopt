@@ -3601,12 +3601,7 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
   }
   f_t start_time = tic();
 
-  // This is shared variable-bound preprocessing used by multiple cut separators.
-  // Flow-cover applies its own 0-1 controller filter when it consumes these bounds.
-  auto is_variable_bound_controller = [&](i_t j) {
-    return var_types[j] != variable_type_t::CONTINUOUS;
-  };
-  std::vector<i_t> num_noncontinuous_in_row(lp.num_rows, 0);
+  std::vector<i_t> num_integer_in_row(lp.num_rows, 0);
 
   // Construct the slack map
   slack_map_.resize(lp.num_rows, -1);
@@ -3633,7 +3628,7 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
     for (i_t p = row_start; p < row_end; p++) {
       const i_t j = Arow.j[p];
       if (j == slack_index) { continue; }
-      if (is_variable_bound_controller(j)) { num_noncontinuous_in_row[i]++; }
+      if (var_types[j] == variable_type_t::INTEGER) { num_integer_in_row[i]++; }
       const f_t aj = Arow.x[p];
       const f_t uj = lp.upper[j];
       const f_t lj = lp.lower[j];
@@ -3693,7 +3688,7 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
     const i_t col_end   = lp.A.col_start[j + 1];
     for (i_t p = col_start; p < col_end; p++) {
       const i_t i = lp.A.i[p];
-      if (num_noncontinuous_in_row[i] < 1) { continue; }
+      if (num_integer_in_row[i] < 1) { continue; }
       if (num_neg_inf_[i] > 2 && num_pos_inf_[i] > 2) { continue; }
       const i_t row_start = Arow.row_start[i];
       const i_t row_end   = Arow.row_start[i + 1];
@@ -3718,13 +3713,13 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
         if (a_ij > 0.0 && num_neg_inf_[i] <= 2) {
           const f_t lower_activity_j = lower_activity(lp.lower[j], lp.upper[j], a_ij);
 
-          // This loop may still scan controllers when num_neg_inf_[i] > 0. A bound is finite only
-          // if every lower-infinite contribution is removed by excluding the target j and the
-          // controller l. For num_neg_inf_[i] == 1, the lower-infinite term must be either j or l;
-          // for num_neg_inf_[i] == 2, both j and l must be lower-infinite.
+          // This loop may still scan integer variables when num_neg_inf_[i] > 0. A bound is finite
+          // only if every lower-infinite contribution is removed by excluding the target j and the
+          // bound variable l. For num_neg_inf_[i] == 1, the lower-infinite term must be either j or
+          // l; for num_neg_inf_[i] == 2, both j and l must be lower-infinite.
           for (i_t q = row_start; q < row_end; q++) {
             const i_t l = Arow.j[q];
-            if (!is_variable_bound_controller(l)) { continue; }
+            if (var_types[l] == variable_type_t::CONTINUOUS) { continue; }
             // sum_{k != l, k != j} a_ik x_k + a_ij x_j + a_il x_l <= beta
             // a_ij x_j <= -a_il x_l + beta - sum_{k != l, k != j} a_ik x_k
             const f_t a_il             = Arow.x[q];
@@ -3755,7 +3750,7 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
 
           for (i_t q = row_start; q < row_end; q++) {
             const i_t l = Arow.j[q];
-            if (!is_variable_bound_controller(l)) { continue; }
+            if (var_types[l] == variable_type_t::CONTINUOUS) { continue; }
             // sum_{k != l, k != j} a_ik x_k + a_ij x_j + a_il x_l >= beta
             // a_ij x_j >= -a_il x_l + beta - sum_{k != l, k != j} a_ik x_k
             const f_t a_il             = Arow.x[q];
@@ -3788,7 +3783,7 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
     const i_t col_end   = lp.A.col_start[j + 1];
     for (i_t p = col_start; p < col_end; p++) {
       const i_t i = lp.A.i[p];
-      if (num_noncontinuous_in_row[i] < 1) { continue; }
+      if (num_integer_in_row[i] < 1) { continue; }
       const i_t row_start = Arow.row_start[i];
       const i_t row_end   = Arow.row_start[i + 1];
       const i_t row_len   = row_end - row_start;
@@ -3814,7 +3809,7 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
 
           for (i_t q = row_start; q < row_end; q++) {
             const i_t l = Arow.j[q];
-            if (!is_variable_bound_controller(l)) { continue; }
+            if (var_types[l] == variable_type_t::CONTINUOUS) { continue; }
             // sum_{k != l, k != j} a_ik x_k + a_ij x_j + a_il x_l <= beta
             // a_ij x_j <= -a_il x_l + beta - sum_{k != l, k != j} a_ik x_k
             // x_j >= -a_il/a_ij * x_l + beta/a_ij - 1/a_ij * sum_{k != l, k != j} a_ik * bound(x_k)
@@ -3846,7 +3841,7 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
 
           for (i_t q = row_start; q < row_end; q++) {
             const i_t l = Arow.j[q];
-            if (!is_variable_bound_controller(l)) { continue; }
+            if (var_types[l] == variable_type_t::CONTINUOUS) { continue; }
             // sum_{k != l, k != j} a_ik x_k + a_ij x_j + a_il x_l >= beta
             // a_ij x_j >= -a_il x_l + beta - sum_{k != l, k != j} a_ik x_k
             const f_t a_il             = Arow.x[q];
