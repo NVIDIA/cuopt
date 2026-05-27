@@ -456,11 +456,6 @@ struct flow_cover_scratch_t {
 };
 
 template <typename f_t>
-struct flow_cover_selection_t {
-  f_t lambda;
-};
-
-template <typename f_t>
 struct flow_cover_evaluation_t {
   f_t violation;
   f_t ubar;
@@ -557,7 +552,7 @@ class knapsack_generation_t {
 
   bool select_flow_cover(const flow_cover_context_t<i_t, f_t>& context,
                          f_t single_node_flow_b,
-                         flow_cover_selection_t<f_t>& selection);
+                         f_t& lambda);
 
   // cMIR: complemented mixed-integer-rounding flow cover inequality.
   flow_cover_evaluation_t<f_t> evaluate_c_mir_flow_cover_inequality(

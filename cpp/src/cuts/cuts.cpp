@@ -1268,9 +1268,7 @@ bool knapsack_generation_t<i_t, f_t>::build_single_node_flow_relaxation(
 
 template <typename i_t, typename f_t>
 bool knapsack_generation_t<i_t, f_t>::select_flow_cover(
-  const flow_cover_context_t<i_t, f_t>& context,
-  f_t single_node_flow_b,
-  flow_cover_selection_t<f_t>& selection)
+  const flow_cover_context_t<i_t, f_t>& context, f_t single_node_flow_b, f_t& lambda)
 {
   auto& scratch             = flow_cover_scratch_;
   const f_t feasibility_tol = context.settings.primal_tol;
@@ -1330,8 +1328,8 @@ bool knapsack_generation_t<i_t, f_t>::select_flow_cover(
     if (scratch.in_c2[k]) { sum_c2_u += scratch.arcs[k].u; }
   }
 
-  selection.lambda = -single_node_flow_b + sum_c1_u - sum_c2_u;
-  return c1_nonempty && selection.lambda > feasibility_tol;
+  lambda = -single_node_flow_b + sum_c1_u - sum_c2_u;
+  return c1_nonempty && lambda > feasibility_tol;
 }
 
 template <typename i_t, typename f_t>
@@ -1597,13 +1595,13 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   f_t single_node_flow_b = 0.0;
   if (!build_single_node_flow_relaxation(context, b, single_node_flow_b)) { return -1; }
 
-  flow_cover_selection_t<f_t> selection{0.0};
-  if (!select_flow_cover(context, single_node_flow_b, selection)) { return -1; }
+  f_t lambda = 0.0;
+  if (!select_flow_cover(context, single_node_flow_b, lambda)) { return -1; }
 
   const auto c_mir_inequality =
-    evaluate_c_mir_flow_cover_inequality(context, single_node_flow_b, selection.lambda);
-  const auto simple_generalized_inequality = evaluate_simple_generalized_flow_cover_inequality(
-    context, single_node_flow_b, selection.lambda);
+    evaluate_c_mir_flow_cover_inequality(context, single_node_flow_b, lambda);
+  const auto simple_generalized_inequality =
+    evaluate_simple_generalized_flow_cover_inequality(context, single_node_flow_b, lambda);
   const f_t violation_tol = std::max(settings.primal_tol, static_cast<f_t>(1e-6));
   if (c_mir_inequality.violation <= violation_tol &&
       simple_generalized_inequality.violation <= violation_tol) {
@@ -1612,7 +1610,7 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
 
   if (!emit_flow_cover_cut(context,
                            single_node_flow_b,
-                           selection.lambda,
+                           lambda,
                            c_mir_inequality,
                            simple_generalized_inequality,
                            cut)) {
