@@ -1,5 +1,5 @@
 ## Description: <br>
-cuOpt REST server — what it does and how requests flow. Domain concepts; no deploy or client code. <br>
+Conceptual overview of the cuOpt REST service: the asynchronous submit-then-poll request lifecycle, supported problem types (routing, LP, MILP), what fields appear in the response, and where the OpenAPI spec lives. Read this before touching deployment commands or client code — those live in sibling skills. <br>
 
 This skill is ready for commercial/non-commercial use. <br>
 
