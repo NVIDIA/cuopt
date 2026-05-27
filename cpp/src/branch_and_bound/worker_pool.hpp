@@ -26,7 +26,7 @@ class worker_pool_t {
             const simplex_solver_settings_t<i_t, f_t>& settings,
             const uint64_t rng_offset = 0)
   {
-    assert(!is_initialized);
+    assert(!is_initialized_);
     assert(num_workers > 0);
 
     workers_.resize(num_workers);
@@ -41,7 +41,7 @@ class worker_pool_t {
       workers_[i]->symmetry_ptr = symmetry;
     }
 
-    is_initialized = true;
+    is_initialized_ = true;
   }
 
   WorkerType* pop_idle_worker()

@@ -1772,13 +1772,13 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
     }
 
     worker->node_queue.lock();
+    worker->lower_bound              = worker->node_queue.get_lower_bound();
     mip_node_t<i_t, f_t>* start_node = worker->node_queue.pop_best_first();
     if (!start_node) {
       worker->node_queue.unlock();
       continue;
     }
 
-    worker->lower_bound = start_node->lower_bound;
     worker->node_queue.unlock();
 
     if (upper_bound_.load() < start_node->lower_bound) {
