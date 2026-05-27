@@ -110,6 +110,7 @@ class pdlp_solver_t {
   {
     return initial_scaling_strategy_;
   }
+  detail::pdlp_restart_strategy_t<i_t, f_t>& get_restart_strategy() { return restart_strategy_; }
 
   // Per-shard primal/dual step sizes are private state on pdlp_solver_t but
   // are needed inside the multi-GPU dispatch paths that fan out a master cub

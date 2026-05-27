@@ -8,6 +8,8 @@
 #include <cuopt/error.hpp>
 
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
+#include <pdlp/distributed_pdlp/multi_gpu_engine.hpp>
+#include <pdlp/pdlp.cuh>
 #include <pdlp/pdlp_constants.hpp>
 #include <pdlp/restart_strategy/pdlp_restart_strategy.cuh>
 #include <pdlp/swap_and_resize_helper.cuh>
@@ -892,20 +894,64 @@ void pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart(
     "If any, all should be true");
 
   // Computing the deltas
-  distance_squared_moved_from_last_restart_period(
-    pdhg_solver.get_potential_next_primal_solution(),
-    last_restart_duality_gap_.primal_solution_,
-    pdhg_solver.get_primal_tmp_resource(),
-    primal_size_h_,
-    1,
-    last_restart_duality_gap_.primal_distance_traveled_);
-  distance_squared_moved_from_last_restart_period(
-    pdhg_solver.get_potential_next_dual_solution(),
-    last_restart_duality_gap_.dual_solution_,
-    pdhg_solver.get_dual_tmp_resource(),
-    dual_size_h_,
-    1,
-    last_restart_duality_gap_.dual_distance_traveled_);
+  if (auto* engine = pdhg_solver.get_mgpu_engine()) {
+    engine->for_each_shard([&](auto& shard) {
+      auto& sub      = *shard.sub_pdlp;
+      auto& sub_rest = sub.get_restart_strategy();
+      sub_rest.distance_squared_moved_from_last_restart_period(
+        sub.pdhg_solver_.get_potential_next_primal_solution(),
+        sub_rest.last_restart_duality_gap_.primal_solution_,
+        sub.pdhg_solver_.get_primal_tmp_resource(),
+        shard.rank_data.owned_var_size,
+        1,
+        sub_rest.last_restart_duality_gap_.primal_distance_traveled_);
+      sub_rest.distance_squared_moved_from_last_restart_period(
+        sub.pdhg_solver_.get_potential_next_dual_solution(),
+        sub_rest.last_restart_duality_gap_.dual_solution_,
+        sub.pdhg_solver_.get_dual_tmp_resource(),
+        shard.rank_data.owned_cstr_size,
+        1,
+        sub_rest.last_restart_duality_gap_.dual_distance_traveled_);
+    });
+
+    engine->allreduce_sum_inplace([](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
+      return sp.get_restart_strategy().last_restart_duality_gap_.primal_distance_traveled_.data();
+    });
+    engine->allreduce_sum_inplace([](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
+      return sp.get_restart_strategy().last_restart_duality_gap_.dual_distance_traveled_.data();
+    });
+
+    auto& s0 = *engine->shards[0];
+    {
+      raft::device_setter guard(s0.device_id);
+      RAFT_CUDA_TRY(cudaStreamSynchronize(s0.stream.view().value()));
+    }
+    raft::copy(last_restart_duality_gap_.primal_distance_traveled_.data(),
+               s0.sub_pdlp->get_restart_strategy()
+                 .last_restart_duality_gap_.primal_distance_traveled_.data(),
+               1,
+               stream_view_);
+    raft::copy(last_restart_duality_gap_.dual_distance_traveled_.data(),
+               s0.sub_pdlp->get_restart_strategy()
+                 .last_restart_duality_gap_.dual_distance_traveled_.data(),
+               1,
+               stream_view_);
+  } else {
+    distance_squared_moved_from_last_restart_period(
+      pdhg_solver.get_potential_next_primal_solution(),
+      last_restart_duality_gap_.primal_solution_,
+      pdhg_solver.get_primal_tmp_resource(),
+      primal_size_h_,
+      1,
+      last_restart_duality_gap_.primal_distance_traveled_);
+    distance_squared_moved_from_last_restart_period(
+      pdhg_solver.get_potential_next_dual_solution(),
+      last_restart_duality_gap_.dual_solution_,
+      pdhg_solver.get_dual_tmp_resource(),
+      dual_size_h_,
+      1,
+      last_restart_duality_gap_.dual_distance_traveled_);
+  }
 
   auto view = make_cupdlpx_restart_view(last_restart_duality_gap_.primal_distance_traveled_,
                                         last_restart_duality_gap_.dual_distance_traveled_,
@@ -958,24 +1004,58 @@ void pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart(
     best_primal_weight.set_element_async(0, best_primal_weight_value, stream_view_);
   }
 
+  // Broadcast the primal and dual step sizes to all shards
+  if (auto* engine = pdhg_solver.get_mgpu_engine()) {
+    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+    engine->for_each_shard([&](auto& shard) {
+      auto& sub = *shard.sub_pdlp;
+      raft::copy(sub.get_primal_step_size().data(),
+                 primal_step_size.data(), 1, shard.stream.view());
+      raft::copy(sub.get_dual_step_size().data(),
+                 dual_step_size.data(), 1, shard.stream.view());
+    });
+  }
   // TODO later batch mode: remove if you have per climber restart
 
-  raft::copy(last_restart_duality_gap_.primal_solution_.data(),
-             pdhg_solver.get_potential_next_primal_solution().data(),
-             last_restart_duality_gap_.primal_solution_.size(),
-             stream_view_);
-  raft::copy(pdhg_solver.get_primal_solution().data(),
-             pdhg_solver.get_potential_next_primal_solution().data(),
-             last_restart_duality_gap_.primal_solution_.size(),
-             stream_view_);
-  raft::copy(last_restart_duality_gap_.dual_solution_.data(),
-             pdhg_solver.get_potential_next_dual_solution().data(),
-             last_restart_duality_gap_.dual_solution_.size(),
-             stream_view_);
-  raft::copy(pdhg_solver.get_dual_solution().data(),
-             pdhg_solver.get_potential_next_dual_solution().data(),
-             last_restart_duality_gap_.dual_solution_.size(),
-             stream_view_);
+  if (auto* engine = pdhg_solver.get_mgpu_engine()) {
+    engine->for_each_shard([&](auto& shard) {
+      auto& sub      = *shard.sub_pdlp;
+      auto& sub_rest = sub.get_restart_strategy();
+      raft::copy(sub_rest.last_restart_duality_gap_.primal_solution_.data(),
+                 sub.pdhg_solver_.get_potential_next_primal_solution().data(),
+                 sub_rest.last_restart_duality_gap_.primal_solution_.size(),
+                 shard.stream.view());
+      raft::copy(sub.pdhg_solver_.get_primal_solution().data(),
+                 sub.pdhg_solver_.get_potential_next_primal_solution().data(),
+                 sub.pdhg_solver_.get_primal_solution().size(),
+                 shard.stream.view());
+      raft::copy(sub_rest.last_restart_duality_gap_.dual_solution_.data(),
+                 sub.pdhg_solver_.get_potential_next_dual_solution().data(),
+                 sub_rest.last_restart_duality_gap_.dual_solution_.size(),
+                 shard.stream.view());
+      raft::copy(sub.pdhg_solver_.get_dual_solution().data(),
+                 sub.pdhg_solver_.get_potential_next_dual_solution().data(),
+                 sub.pdhg_solver_.get_dual_solution().size(),
+                 shard.stream.view());
+    });
+  } else {
+    raft::copy(last_restart_duality_gap_.primal_solution_.data(),
+               pdhg_solver.get_potential_next_primal_solution().data(),
+               last_restart_duality_gap_.primal_solution_.size(),
+               stream_view_);
+    raft::copy(pdhg_solver.get_primal_solution().data(),
+               pdhg_solver.get_potential_next_primal_solution().data(),
+               last_restart_duality_gap_.primal_solution_.size(),
+               stream_view_);
+    raft::copy(last_restart_duality_gap_.dual_solution_.data(),
+               pdhg_solver.get_potential_next_dual_solution().data(),
+               last_restart_duality_gap_.dual_solution_.size(),
+               stream_view_);
+    raft::copy(pdhg_solver.get_dual_solution().data(),
+               pdhg_solver.get_potential_next_dual_solution().data(),
+               last_restart_duality_gap_.dual_solution_.size(),
+               stream_view_);
+  }
 
 #ifdef CUPDLP_DEBUG_MODE
   print("New last_restart_duality_gap_.primal_solution_",
@@ -989,6 +1069,13 @@ void pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart(
   for (size_t i = 0; i < climber_strategies_.size(); ++i) {
     weighted_average_solution_.iterations_since_last_restart_ = 0;
     last_trial_fixed_point_error_[i] = std::numeric_limits<f_t>::infinity();
+  }
+
+  if (auto* engine = pdhg_solver.get_mgpu_engine()) {
+    engine->for_each_shard([&](auto& shard) {
+      shard.sub_pdlp->get_restart_strategy().weighted_average_solution_.iterations_since_last_restart_ =
+        0;
+    });
   }
 }
 
