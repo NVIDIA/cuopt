@@ -4438,7 +4438,7 @@ void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::transform_inequality(
   scratch_pad_.get_pad(inequality.vector.i, inequality.vector.x);
   // At this point we have converted all the continuous variables to be nonnegative
   // Note that since continuous variables had VUB or VLB, they modified
-  // the controller variables.
+  // the integer variables.
 
   // We clear the scratch pad. As it is no longer needed.
   scratch_pad_.clear_pad();
