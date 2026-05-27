@@ -264,7 +264,7 @@ class dimensions_route_t {
   // pdp route
   request_route_t<i_t, f_t, REQUEST> requests;
 
-  // distance route
+  // cost route
   cost_route_t<i_t, f_t> cost_dim;
 
   // time route

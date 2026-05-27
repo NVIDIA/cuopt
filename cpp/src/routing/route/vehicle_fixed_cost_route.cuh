@@ -104,7 +104,7 @@ class vehicle_fixed_cost_route_t {
   }
 
   /**
-   * @brief Get the shared memory size required to store a cost route of a given size
+   * @brief Get the shared memory size required to store a vehicle fixed route of a given size
    *
    * @param route_size
    * @return size_t

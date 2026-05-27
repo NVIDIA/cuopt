@@ -140,7 +140,7 @@ class service_time_route_t {
   }
 
   /**
-   * @brief Get the shared memory size required to store a cost route of a given size
+   * @brief Get the shared memory size required to store a service time route of a given size
    *
    * @param route_size
    * @return size_t
