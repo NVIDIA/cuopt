@@ -1335,7 +1335,7 @@ bool knapsack_generation_t<i_t, f_t>::select_flow_cover(
 }
 
 template <typename i_t, typename f_t>
-flow_cover_evaluation_t<f_t> knapsack_generation_t<i_t, f_t>::evaluate_cmirfci(
+flow_cover_evaluation_t<f_t> knapsack_generation_t<i_t, f_t>::evaluate_c_mir_flow_cover_inequality(
   const flow_cover_context_t<i_t, f_t>& context, f_t single_node_flow_b, f_t lambda)
 {
   auto& scratch                       = flow_cover_scratch_;
@@ -1441,12 +1441,13 @@ flow_cover_evaluation_t<f_t> knapsack_generation_t<i_t, f_t>::evaluate_cmirfci(
 }
 
 template <typename i_t, typename f_t>
-flow_cover_evaluation_t<f_t> knapsack_generation_t<i_t, f_t>::evaluate_sgfci(
+flow_cover_evaluation_t<f_t>
+knapsack_generation_t<i_t, f_t>::evaluate_simple_generalized_flow_cover_inequality(
   const flow_cover_context_t<i_t, f_t>& context, f_t single_node_flow_b, f_t lambda)
 {
   auto& scratch           = flow_cover_scratch_;
   const f_t min_violation = static_cast<f_t>(1e-6);
-  scratch.sgfci_in_l2.assign(scratch.arcs.size(), 0);
+  scratch.simple_generalized_flow_cover_in_l2.assign(scratch.arcs.size(), 0);
 
   f_t lhs_value = 0.0;
   for (i_t k = 0; k < static_cast<i_t>(scratch.arcs.size()); k++) {
@@ -1458,7 +1459,7 @@ flow_cover_evaluation_t<f_t> knapsack_generation_t<i_t, f_t>::evaluate_sgfci(
     } else if (scratch.in_c2[k]) {
       lhs_value -= arc.u;
     } else if (std::min(arc.u, lambda) * arc.x_value <= arc.y_value + min_violation) {
-      scratch.sgfci_in_l2[k] = 1;
+      scratch.simple_generalized_flow_cover_in_l2[k] = 1;
       lhs_value -= std::min(arc.u, lambda) * arc.x_value;
     } else {
       lhs_value -= arc.y_value;
@@ -1473,15 +1474,16 @@ bool knapsack_generation_t<i_t, f_t>::emit_flow_cover_cut(
   const flow_cover_context_t<i_t, f_t>& context,
   f_t single_node_flow_b,
   f_t lambda,
-  const flow_cover_evaluation_t<f_t>& cmirfci,
-  const flow_cover_evaluation_t<f_t>& sgfci,
+  const flow_cover_evaluation_t<f_t>& c_mir_inequality,
+  const flow_cover_evaluation_t<f_t>& simple_generalized_inequality,
   inequality_t<i_t, f_t>& cut)
 {
   auto& scratch             = flow_cover_scratch_;
   const f_t accumulator_tol = static_cast<f_t>(1e-12);
   const f_t output_drop_tol = static_cast<f_t>(1e-9);
-  const bool use_cmirfci    = cmirfci.violation >= sgfci.violation;
-  f_t lhs_constant          = 0.0;
+  const bool use_c_mir_inequality =
+    c_mir_inequality.violation >= simple_generalized_inequality.violation;
+  f_t lhs_constant = 0.0;
 
   scratch.lhs_indices.reserve(scratch.arcs.size() * 2);
   auto add_lhs_coeff = [&](i_t j, f_t value) {
@@ -1517,12 +1519,12 @@ bool knapsack_generation_t<i_t, f_t>::emit_flow_cover_cut(
     add_x(arc, -multiplier);
   };
 
-  if (use_cmirfci) {
-    const f_t f_beta_best = fractional_part(-lambda / cmirfci.ubar);
+  if (use_c_mir_inequality) {
+    const f_t f_beta_best = fractional_part(-lambda / c_mir_inequality.ubar);
     for (i_t k = 0; k < static_cast<i_t>(scratch.arcs.size()); k++) {
       const auto& arc = scratch.arcs[k];
-      const f_t f_pos = flow_cover_mir_f(f_beta_best, arc.u / cmirfci.ubar);
-      const f_t f_neg = flow_cover_mir_f(f_beta_best, -arc.u / cmirfci.ubar);
+      const f_t f_pos = flow_cover_mir_f(f_beta_best, arc.u / c_mir_inequality.ubar);
+      const f_t f_neg = flow_cover_mir_f(f_beta_best, -arc.u / c_mir_inequality.ubar);
       if (scratch.in_c1[k]) {
         add_y(arc, 1.0);
         add_one_minus_x(arc, arc.u + lambda * f_neg);
@@ -1550,7 +1552,7 @@ bool knapsack_generation_t<i_t, f_t>::emit_flow_cover_cut(
         continue;
       } else if (scratch.in_c2[k]) {
         lhs_constant -= arc.u;
-      } else if (scratch.sgfci_in_l2[k]) {
+      } else if (scratch.simple_generalized_flow_cover_in_l2[k]) {
         add_x(arc, -std::min(arc.u, lambda));
       } else {
         add_y(arc, -1.0);
@@ -1598,12 +1600,22 @@ i_t knapsack_generation_t<i_t, f_t>::generate_flow_cover_cut(
   flow_cover_selection_t<f_t> selection{0.0};
   if (!select_flow_cover(context, single_node_flow_b, selection)) { return -1; }
 
-  const auto cmirfci      = evaluate_cmirfci(context, single_node_flow_b, selection.lambda);
-  const auto sgfci        = evaluate_sgfci(context, single_node_flow_b, selection.lambda);
+  const auto c_mir_inequality =
+    evaluate_c_mir_flow_cover_inequality(context, single_node_flow_b, selection.lambda);
+  const auto simple_generalized_inequality = evaluate_simple_generalized_flow_cover_inequality(
+    context, single_node_flow_b, selection.lambda);
   const f_t violation_tol = std::max(settings.primal_tol, static_cast<f_t>(1e-6));
-  if (cmirfci.violation <= violation_tol && sgfci.violation <= violation_tol) { return -1; }
+  if (c_mir_inequality.violation <= violation_tol &&
+      simple_generalized_inequality.violation <= violation_tol) {
+    return -1;
+  }
 
-  if (!emit_flow_cover_cut(context, single_node_flow_b, selection.lambda, cmirfci, sgfci, cut)) {
+  if (!emit_flow_cover_cut(context,
+                           single_node_flow_b,
+                           selection.lambda,
+                           c_mir_inequality,
+                           simple_generalized_inequality,
+                           cut)) {
     return -1;
   }
   return 0;

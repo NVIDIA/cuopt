@@ -405,7 +405,7 @@ struct flow_cover_scratch_t {
   std::vector<uint8_t> in_l2;
   std::vector<uint8_t> best_in_l1;
   std::vector<uint8_t> best_in_l2;
-  std::vector<uint8_t> sgfci_in_l2;
+  std::vector<uint8_t> simple_generalized_flow_cover_in_l2;
   std::vector<i_t> lhs_indices;
   std::vector<f_t> lhs_coefficients;
   std::vector<uint8_t> lhs_coefficients_touched;
@@ -428,7 +428,7 @@ struct flow_cover_scratch_t {
     in_l2.clear();
     best_in_l1.clear();
     best_in_l2.clear();
-    sgfci_in_l2.clear();
+    simple_generalized_flow_cover_in_l2.clear();
     lhs_indices.clear();
 
     if (static_cast<i_t>(binary_coefficients.size()) < num_cols) {
@@ -559,19 +559,19 @@ class knapsack_generation_t {
                          f_t single_node_flow_b,
                          flow_cover_selection_t<f_t>& selection);
 
-  flow_cover_evaluation_t<f_t> evaluate_cmirfci(const flow_cover_context_t<i_t, f_t>& context,
-                                                f_t single_node_flow_b,
-                                                f_t lambda);
+  // cMIR: complemented mixed-integer-rounding flow cover inequality.
+  flow_cover_evaluation_t<f_t> evaluate_c_mir_flow_cover_inequality(
+    const flow_cover_context_t<i_t, f_t>& context, f_t single_node_flow_b, f_t lambda);
 
-  flow_cover_evaluation_t<f_t> evaluate_sgfci(const flow_cover_context_t<i_t, f_t>& context,
-                                              f_t single_node_flow_b,
-                                              f_t lambda);
+  // SGFCI: simple generalized flow cover inequality.
+  flow_cover_evaluation_t<f_t> evaluate_simple_generalized_flow_cover_inequality(
+    const flow_cover_context_t<i_t, f_t>& context, f_t single_node_flow_b, f_t lambda);
 
   bool emit_flow_cover_cut(const flow_cover_context_t<i_t, f_t>& context,
                            f_t single_node_flow_b,
                            f_t lambda,
-                           const flow_cover_evaluation_t<f_t>& cmirfci,
-                           const flow_cover_evaluation_t<f_t>& sgfci,
+                           const flow_cover_evaluation_t<f_t>& c_mir_inequality,
+                           const flow_cover_evaluation_t<f_t>& simple_generalized_inequality,
                            inequality_t<i_t, f_t>& cut);
 
   std::vector<i_t> is_slack_;
