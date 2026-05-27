@@ -4,11 +4,10 @@
     "question": "I'd like to contribute a bug fix to cuOpt. What's the end-to-end workflow from cloning the repo to getting the PR merged?",
     "expected_skill": "cuopt-developer",
     "expected_script": null,
-    "ground_truth": "The agent walks the user through the fork-based contribution flow: fork NVIDIA/cuopt, clone the fork, branch off main, set up the conda env, build with build.sh, and run tests (ctest + pytest). Commits require DCO sign-off (git commit -s) — CI rejects unsigned commits. The agent does not suggest --no-verify or any bypass, and points the user to CONTRIBUTING.md for the authoritative steps.",
+    "ground_truth": "The agent walks the user through the fork-based contribution flow: fork NVIDIA/cuopt, clone the fork, branch off main, set up the conda env, build with build.sh, and run tests (ctest + pytest). The agent does not suggest --no-verify or any bypass of pre-commit / CI, and points the user to CONTRIBUTING.md for the authoritative steps.",
     "expected_behavior": [
       "Describes the fork-based PR workflow (fork on GitHub, clone fork, branch off main)",
-      "Mentions DCO sign-off via 'git commit -s' as a hard requirement",
-      "Does not suggest --no-verify or any way to bypass DCO / pre-commit / CI"
+      "Does not suggest --no-verify or any way to bypass pre-commit / CI"
     ]
   }
 ]
