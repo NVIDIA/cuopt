@@ -451,7 +451,6 @@ bool rational_coefficients(const std::vector<variable_type_t>& var_types,
                            const inequality_t<i_t, f_t>& inequality,
                            inequality_t<i_t, f_t>& rational_inequality);
 
-
 int64_t gcd(const std::vector<int64_t>& integers);
 
 int64_t lcm(const std::vector<int64_t>& integers);
