@@ -168,8 +168,8 @@ bool propagate_lattice(i_t n_vars,
   }
 
   // Iteratively propagate using a worklist of constraints that may yield a new lattice
-  // discovery on the next pass. We seed it with every equality row. Each pass scans the worklist, collects the
-  // variables whose lattices were newly determined, then rebuilds the worklist as the
+  // discovery on the next pass. We seed it with every equality row. Each pass scans the worklist,
+  // collects the variables whose lattices were newly determined, then rebuilds the worklist as the
   // union (deduplicated) of equality rows touched by any of those variables.
   bool any_discovered = false;
 
