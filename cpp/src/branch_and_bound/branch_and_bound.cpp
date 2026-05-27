@@ -1237,7 +1237,7 @@ std::pair<node_status_t, rounding_direction_t> branch_and_bound_t<i_t, f_t>::upd
       f_t step = original_lp_.objective_step.step_size;
       f_t bias = original_lp_.objective_step.bias;
       // Round up to next value on the lattice: k * step + bias >= leaf_obj
-      f_t k             = std::ceil((leaf_obj - bias) / step - settings_.integer_tol);
+      f_t k                 = std::ceil((leaf_obj - bias) / step - settings_.integer_tol);
       node_ptr->lower_bound = k * step + bias;
     } else if (original_lp_.objective_is_integral) {
       node_ptr->lower_bound = std::ceil(leaf_obj - settings_.integer_tol);
@@ -1367,8 +1367,7 @@ dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
     // If the objective is integral, any feasible solution should produce an upper bound that is
     // (approximately) integral. We add a small tolerance and floor this value to get an integer,
     // we then subtract 1, to stop simplex on problems that cannot improve the primal objective.
-    lp_settings.cut_off =
-      std::floor(cutoff + settings_.integer_tol) - 1 + settings_.dual_tol;
+    lp_settings.cut_off = std::floor(cutoff + settings_.integer_tol) - 1 + settings_.dual_tol;
   } else {
     lp_settings.cut_off = cutoff + settings_.dual_tol;
   }

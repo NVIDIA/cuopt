@@ -1440,13 +1440,11 @@ void problem_t<i_t, f_t>::compute_objective_step()
   std::vector<bool> is_lattice_known_initially(n_variables, false);
   bool all_obj_vars_integral = true;
   for (i_t i = 0; i < n_variables; ++i) {
-    h_var_lb[i]      = get_lower(h_var_bounds[i]);
-    bool is_int      = (h_var_types[i] == var_t::INTEGER);
-    bool is_impl_int = (h_var_flags[i] & (i_t)VAR_IMPLIED_INTEGER) != 0;
+    h_var_lb[i]                   = get_lower(h_var_bounds[i]);
+    bool is_int                   = (h_var_types[i] == var_t::INTEGER);
+    bool is_impl_int              = (h_var_flags[i] & (i_t)VAR_IMPLIED_INTEGER) != 0;
     is_lattice_known_initially[i] = is_int || is_impl_int;
-    if (h_obj_coefs[i] != 0 && !is_lattice_known_initially[i]) {
-      all_obj_vars_integral = false;
-    }
+    if (h_obj_coefs[i] != 0 && !is_lattice_known_initially[i]) { all_obj_vars_integral = false; }
   }
 
   // Fast path: every variable with nonzero objective coefficient already has a known
@@ -1509,9 +1507,14 @@ void problem_t<i_t, f_t>::compute_objective_step()
   auto h_con_lb  = cuopt::host_copy(constraint_lower_bounds, handle_ptr->get_stream());
   auto h_con_ub  = cuopt::host_copy(constraint_upper_bounds, handle_ptr->get_stream());
 
-  objective_step = dual_simplex::compute_objective_step_info<i_t, f_t>(
-    h_obj_coefs, h_var_lb, is_lattice_known_initially,
-    h_offsets, h_vars, h_coefs, h_con_lb, h_con_ub);
+  objective_step = dual_simplex::compute_objective_step_info<i_t, f_t>(h_obj_coefs,
+                                                                       h_var_lb,
+                                                                       is_lattice_known_initially,
+                                                                       h_offsets,
+                                                                       h_vars,
+                                                                       h_coefs,
+                                                                       h_con_lb,
+                                                                       h_con_ub);
 }
 
 template <typename i_t, typename f_t>

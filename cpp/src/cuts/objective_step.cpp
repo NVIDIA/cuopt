@@ -104,8 +104,7 @@ bool propagate_lattice(i_t n_vars,
   for (i_t i = 0; i < n_cons; ++i) {
     bool lb_finite = std::isfinite(con_lb[i]);
     bool ub_finite = std::isfinite(con_ub[i]);
-    cuopt_assert(lb_finite || ub_finite,
-                 "propagate_lattice: free constraints are not supported");
+    cuopt_assert(lb_finite || ub_finite, "propagate_lattice: free constraints are not supported");
 
     if (lb_finite && ub_finite && std::abs(con_lb[i] - con_ub[i]) < eq_tol) {
       rhs[i] = rational128_t<f_t>::from_floating_point(con_lb[i]);
@@ -213,7 +212,7 @@ bool propagate_lattice(i_t n_vars,
       running += cnt;
     }
     for (i_t k = 0; k < num_changed; ++k) {
-      i_t i = changed_constraints[k];
+      i_t i                                                                = changed_constraints[k];
       sorted_constraints[bucket_offset[unknown_count_per_constraint[i]]++] = i;
     }
     changed_constraints.swap(sorted_constraints);
@@ -266,9 +265,7 @@ bool propagate_lattice(i_t n_vars,
         }
         // A singleton variable appears only in constraint i, so only this constraint's
         // unknown-singleton count is affected by its discovery.
-        if (constraints_per_variable[j] == 1) {
-          unknown_singleton_count[i]--;
-        }
+        if (constraints_per_variable[j] == 1) { unknown_singleton_count[i]--; }
         // j had step_r zero, which means is_lattice_known_initially[j]
         // was false: any discovery here is therefore of an originally-unknown variable.
         any_discovered = true;
@@ -281,11 +278,11 @@ bool propagate_lattice(i_t n_vars,
     i_t num_next = 0;
     for (i_t j : discovered_variables) {
       const i_t col_start = A_col.col_start[j];
-      const i_t col_end = A_col.col_start[j + 1];
+      const i_t col_end   = A_col.col_start[j + 1];
       for (i_t p = col_start; p < col_end; ++p) {
         const i_t i = A_col.i[p];
         if (!in_next_pass[i]) {
-          in_next_pass[i] = true;
+          in_next_pass[i]                      = true;
           next_changed_constraints[num_next++] = i;
         }
       }
@@ -329,18 +326,17 @@ objective_step_t<f_t> compute_objective_step_info(
   // run lattice propagation through equality constraints to discover the lattice of any
   // remaining continuous (and not implied-integer) objective variables.
   std::vector<f_t> lattice_step, lattice_bias;
-  bool discovered = propagate_lattice<i_t, f_t>(
-    n_variables,
-    static_cast<i_t>(con_lb.size()),
-    offsets,
-    variables,
-    coefficients,
-    con_lb,
-    con_ub,
-    var_lb,
-    is_lattice_known_initially,
-    lattice_step,
-    lattice_bias);
+  bool discovered = propagate_lattice<i_t, f_t>(n_variables,
+                                                static_cast<i_t>(con_lb.size()),
+                                                offsets,
+                                                variables,
+                                                coefficients,
+                                                con_lb,
+                                                con_ub,
+                                                var_lb,
+                                                is_lattice_known_initially,
+                                                lattice_step,
+                                                lattice_bias);
 
   if (!discovered) return {};
 
@@ -403,14 +399,13 @@ template objective_step_t<double> compute_objective_step_info<int, double>(
   const std::vector<double>&,
   const std::vector<double>&);
 
-template objective_step_t<float> compute_objective_step_info<int, float>(
-  const std::vector<float>&,
-  const std::vector<float>&,
-  const std::vector<bool>&,
-  const std::vector<int>&,
-  const std::vector<int>&,
-  const std::vector<float>&,
-  const std::vector<float>&,
-  const std::vector<float>&);
+template objective_step_t<float> compute_objective_step_info<int, float>(const std::vector<float>&,
+                                                                         const std::vector<float>&,
+                                                                         const std::vector<bool>&,
+                                                                         const std::vector<int>&,
+                                                                         const std::vector<int>&,
+                                                                         const std::vector<float>&,
+                                                                         const std::vector<float>&,
+                                                                         const std::vector<float>&);
 
 }  // namespace cuopt::linear_programming::dual_simplex

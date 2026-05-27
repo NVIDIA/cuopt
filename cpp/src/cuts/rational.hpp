@@ -119,10 +119,7 @@ struct rational128_t {
     return rational128_t{p * (o.q / g) + o.p * lq, lq * o.q}.reduced();
   }
 
-  rational128_t operator-(const rational128_t& o) const
-  {
-    return *this + rational128_t{-o.p, o.q};
-  }
+  rational128_t operator-(const rational128_t& o) const { return *this + rational128_t{-o.p, o.q}; }
 
   rational128_t abs() const { return {std::abs(p), q}; }
 
@@ -137,8 +134,8 @@ rational128_t<f_t> gcd(rational128_t<f_t> a, rational128_t<f_t> b)
 {
   if (a.is_zero()) return b.abs();
   if (b.is_zero()) return a.abs();
-  a = a.abs();
-  b = b.abs();
+  a           = a.abs();
+  b           = b.abs();
   int64_t num = std::gcd(a.p * b.q, b.p * a.q);
   int64_t den = a.q * b.q;
   int64_t g   = std::gcd(num, den);
