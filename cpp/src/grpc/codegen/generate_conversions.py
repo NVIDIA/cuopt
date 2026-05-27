@@ -2162,33 +2162,17 @@ def _validate_registry_uniqueness(registry):
     ]
     _check_unique("ArrayFieldId", afid_pairs, errors)
 
-    # `optional: true` is meaningful for scalar proto3 fields whose C++
+    # `optional: true` is meaningful for any proto3 settings field whose C++
     # default differs from the proto3 zero value. The codegen emits
     # `optional <type>` + a `has_<X>()` guard for the scalar settings path.
     # It composes with `sentinel`: the optional guard handles "omit ⇒ keep
     # default" while the sentinel guard handles "reserved value ⇒ keep
-    # default" (e.g. -1 for iteration_limit / node_limit).
-    #
-    # Enum-typed settings fields are intentionally rejected: proto3 allows
-    # `optional <enum>`, but our enums follow the "UNSPECIFIED = 0 means
-    # default" convention and an implicit flip would change semantics in
-    # ways that deserve a case-by-case review, not registry-wide policy.
-    for msg, key in [
-        ("PDLPSolverSettings", "pdlp_settings"),
-        ("MIPSolverSettings", "mip_settings"),
-    ]:
-        section = registry.get(key) or {}
-        for f in parse_settings_fields(section.get("fields", [])):
-            if not f.get("optional"):
-                continue
-            name = f.get("name")
-            ftype = f.get("type", "double")
-            if _lookup_enum(registry, ftype):
-                errors.append(
-                    f"{msg}.{name}: `optional` is not supported on enum-typed "
-                    f"fields (type {ftype!r}); enums use the UNSPECIFIED=0 "
-                    "convention for defaults"
-                )
+    # default" (e.g. -1 for iteration_limit / node_limit). It also composes
+    # with enum-typed fields: the `has_<X>()` guard wraps the enum
+    # from_proto conversion so an omitted field preserves the C++ default
+    # for enums whose proto3 zero (the first value listed in the registry)
+    # does not coincide with the documented C++ default — e.g.
+    # pdlp_solver_mode (proto-zero=Stable1, C++ default=Stable3).
 
     if errors:
         raise ValueError(

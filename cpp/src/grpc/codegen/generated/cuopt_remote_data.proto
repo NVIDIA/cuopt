@@ -139,7 +139,7 @@ message PDLPSolverSettings {
   optional bool log_to_console = 11;
   bool detect_infeasibility = 12;
   bool strict_infeasibility = 13;
-  PDLPSolverMode pdlp_solver_mode = 14;
+  optional PDLPSolverMode pdlp_solver_mode = 14;
   LPMethod method = 15;
   optional int32 presolver = 16;
   optional bool dual_postsolve = 17;

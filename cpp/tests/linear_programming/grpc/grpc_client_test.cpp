@@ -2195,6 +2195,13 @@ TEST(MapperRoundtrip, PDLPSettingsDefaultProtoPreservesAllCppDefaults)
   // guard prevents the assignment entirely and the C++ default survives).
   EXPECT_EQ(static_cast<int>(after.presolver), static_cast<int>(fresh.presolver));
   EXPECT_EQ(static_cast<int>(after.pdlp_precision), static_cast<int>(fresh.pdlp_precision));
+  // True-enum field: the proto3 enum zero is `Stable1` (first listed value)
+  // and the C++ default is `Stable3`. Without `optional` on this field the
+  // mapper would silently apply `Stable1`; the `has_pdlp_solver_mode()`
+  // guard preserves the C++ default.
+  EXPECT_EQ(static_cast<int>(after.pdlp_solver_mode), static_cast<int>(fresh.pdlp_solver_mode));
+  EXPECT_EQ(static_cast<int>(fresh.pdlp_solver_mode), static_cast<int>(pdlp_solver_mode_t::Stable3))
+    << "pre-condition: C++ default is expected to be Stable3";
 }
 
 TEST(MapperRoundtrip, MIPSettingsDefaultProtoPreservesAllCppDefaults)

@@ -58,7 +58,9 @@
 #                          silently overwriting it with the proto3 zero. Composes
 #                          with `sentinel` (optional guards the omitted case;
 #                          sentinel keeps the existing wire encoding for "explicit
-#                          default" values). Not supported on enum types.
+#                          default" values). Also valid on enum-typed fields whose
+#                          proto3 zero (the first listed value) does not match the
+#                          documented C++ default — e.g. pdlp_solver_mode.
 #   to_proto_cast      – explicit cast type for C++ -> proto direction
 #   from_proto_cast    – explicit cast type for proto -> C++ direction
 #
@@ -471,8 +473,14 @@ pdlp_settings:
       field_num: 13
       type: bool
   - pdlp_solver_mode:
+      # C++ default is `Stable3` (enum value 4). The proto3 enum zero is
+      # `Stable1` (the first value declared), so without `optional` an
+      # omitted field would silently apply `Stable1` instead of the cuOpt
+      # default. Declared `optional` so the mapper preserves the C++
+      # default via `has_pdlp_solver_mode()`.
       field_num: 14
       type: pdlp_solver_mode
+      optional: true
   - method:
       field_num: 15
       type: lp_method

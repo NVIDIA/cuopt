@@ -39,7 +39,9 @@
   }
   settings.detect_infeasibility = pb_settings.detect_infeasibility();
   settings.strict_infeasibility = pb_settings.strict_infeasibility();
-  settings.pdlp_solver_mode = from_proto_pdlp_solver_mode(pb_settings.pdlp_solver_mode());
+  if (pb_settings.has_pdlp_solver_mode()) {
+    settings.pdlp_solver_mode = from_proto_pdlp_solver_mode(pb_settings.pdlp_solver_mode());
+  }
   settings.method = from_proto_lp_method(pb_settings.method());
   if (pb_settings.has_presolver()) {
     settings.presolver = static_cast<presolver_t>(pb_settings.presolver());
