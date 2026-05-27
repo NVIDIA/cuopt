@@ -349,6 +349,84 @@ def _problem_field_proto_type(registry, ftype):
     return ftype
 
 
+# ============================================================================
+# repeated_messages helpers
+#
+# A `repeated_messages` entry on a parent section (currently only
+# optimization_problem) describes a `repeated <MessageType> <name> = <num>;`
+# field together with the per-entry scalar and array fields. Arrays inside
+# each entry are chunked via the (container_field_num, container_index,
+# field_id) protocol on ArrayChunk; `array_id` is *container-relative* (small
+# dense int starting from 0 within each container, independent of the
+# top-level ArrayFieldId namespace).
+# ============================================================================
+
+
+def _iter_repeated_messages(obj):
+    """Yield (name, body) for every repeated_messages entry under `obj`.
+
+    Raises if the shape is malformed so misconfigurations surface at codegen
+    time rather than as broken generated code."""
+    for entry in obj.get("repeated_messages", []) or []:
+        if not isinstance(entry, dict) or len(entry) != 1:
+            raise ValueError(
+                f"repeated_messages: expected single-key dict, got {entry!r}"
+            )
+        name = next(iter(entry))
+        body = entry[name]
+        if not isinstance(body, dict):
+            raise ValueError(
+                f"repeated_messages.{name}: body must be a mapping, got {body!r}"
+            )
+        for required in ("field_num", "message_type"):
+            if required not in body:
+                raise ValueError(
+                    f"repeated_messages.{name}: missing required key {required!r}"
+                )
+        yield name, body
+
+
+def _repeated_message_scalars(body):
+    """Yield parsed scalar field dicts for a repeated_messages entry."""
+    for entry in body.get("scalars", []) or []:
+        yield parse_field(entry)
+
+
+def _repeated_message_arrays(body):
+    """Yield parsed array field dicts for a repeated_messages entry."""
+    for entry in body.get("arrays", []) or []:
+        yield parse_field(entry)
+
+
+def generate_repeated_messages_proto(registry, obj):
+    """Emit `message <MessageType> { ... }` blocks for every repeated_messages
+    entry on `obj`. Returns the assembled text (empty string if none).
+
+    Each block carries its scalar fields followed by its array fields, with
+    proto tags drawn from the per-entry `field_num` attribute (local to the
+    nested message; independent of the parent's tag pool)."""
+    blocks = []
+    for _name, body in _iter_repeated_messages(obj):
+        msg_type = body["message_type"]
+        lines = [f"message {msg_type} {{"]
+        for f in _repeated_message_scalars(body):
+            num = f.get("field_num")
+            if num is None:
+                continue
+            ptype = _settings_field_proto_type(registry, f)
+            lines.append(f"  {ptype} {f['name']} = {num};")
+        for f in _repeated_message_arrays(body):
+            num = f.get("field_num")
+            if num is None:
+                continue
+            ftype = f.get("type", "repeated double")
+            ptype = _problem_field_proto_type(registry, ftype)
+            lines.append(f"  {ptype} {f['name']} = {num};")
+        lines.append("}")
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks)
+
+
 def _settings_field_proto_type(registry, f):
     """Map settings field type to proto type."""
     ftype = f.get("type", "double")
@@ -761,6 +839,10 @@ def generate_optimization_problem_proto(registry):
                 registry, f.get("type", "repeated double")
             )
             lines.append((num, f"  {ptype} {f['name']} = {num};"))
+    for name, body in _iter_repeated_messages(obj):
+        num = body["field_num"]
+        msg_type = body["message_type"]
+        lines.append((num, f"  repeated {msg_type} {name} = {num};"))
     lines.sort(key=lambda x: x[0])
     return "\n".join(item[1] for item in lines)
 
@@ -809,7 +891,11 @@ def generate_data_proto(registry):
         + "\n}"
     )
     opt_prob = ""
+    nested_msgs = ""
     if "optimization_problem" in registry:
+        nested_msgs = generate_repeated_messages_proto(
+            registry, registry["optimization_problem"]
+        )
         opt_prob = (
             "message OptimizationProblem {\n"
             + generate_optimization_problem_proto(registry)
@@ -874,6 +960,11 @@ def generate_data_proto(registry):
         rfid,
         "",
         afid,
+    ]
+    if nested_msgs:
+        parts.append(nested_msgs)
+        parts.append("")
+    parts += [
         opt_prob,
         pdlp_s,
         "",
@@ -1400,6 +1491,44 @@ def _gen_problem_to_proto(registry, indent="  "):
             )
             lines.append(f"{ind}}}")
 
+    # repeated_messages — emit per-entry encode loop (unary path: scalars and
+    # arrays both go inline into the nested proto message).
+    for name, body in _iter_repeated_messages(obj):
+        presence = body.get("presence_check")
+        getter = body.get("getter")
+        if not presence or not getter:
+            raise ValueError(
+                f"repeated_messages.{name}: requires both 'presence_check' "
+                f"and 'getter' for unary encode"
+            )
+        lines.append("")
+        lines.append(f"{ind}if (cpu_problem.{presence}) {{")
+        lines.append(
+            f"{ind}  for (const auto& _entry : cpu_problem.{getter}) {{"
+        )
+        lines.append(f"{ind}    auto* pb_entry = pb_problem->add_{name}();")
+        for f in _repeated_message_scalars(body):
+            sp = _proto_cpp_name(f["name"])
+            member = f.get("member", f["name"])
+            to_cast = f.get("to_proto_cast")
+            if to_cast:
+                lines.append(
+                    f"{ind}    pb_entry->set_{sp}(static_cast<{to_cast}>(_entry.{member}));"
+                )
+            else:
+                lines.append(f"{ind}    pb_entry->set_{sp}(_entry.{member});")
+        for f in _repeated_message_arrays(body):
+            ap = _proto_cpp_name(f["name"])
+            member = f.get("member", f["name"])
+            ftype = f.get("type", "repeated double")
+            cast = _array_element_cast(ftype) or "double"
+            lines.append(
+                f"{ind}    for (const auto& v : _entry.{member}) "
+                f"pb_entry->add_{ap}(static_cast<{cast}>(v));"
+            )
+        lines.append(f"{ind}  }}")
+        lines.append(f"{ind}}}")
+
     return "\n".join(lines)
 
 
@@ -1537,6 +1666,50 @@ def _gen_proto_to_problem(registry, indent="  "):
             )
             lines.append(f"{ind}}}")
 
+    # repeated_messages — emit per-entry decode loop (unary path: scalars and
+    # arrays are both read inline from the nested proto message).
+    for name, body in _iter_repeated_messages(obj):
+        setter = body.get("setter")
+        cpp_inner = body.get("cpp_inner_type")
+        if not setter or not cpp_inner:
+            raise ValueError(
+                f"repeated_messages.{name}: requires both 'setter' and "
+                f"'cpp_inner_type' for unary decode"
+            )
+        lines.append("")
+        lines.append(f"{ind}if (pb_problem.{name}_size() > 0) {{")
+        lines.append(f"{ind}  std::vector<{cpp_inner}> _entries;")
+        lines.append(f"{ind}  _entries.reserve(pb_problem.{name}_size());")
+        lines.append(
+            f"{ind}  for (const auto& pb_entry : pb_problem.{name}()) {{"
+        )
+        lines.append(f"{ind}    {cpp_inner} _entry;")
+        for f in _repeated_message_scalars(body):
+            sp = _proto_cpp_name(f["name"])
+            member = f.get("member", f["name"])
+            from_cast = f.get("from_proto_cast")
+            ftype = f.get("type", "double")
+            if from_cast:
+                lines.append(
+                    f"{ind}    _entry.{member} = static_cast<{from_cast}>(pb_entry.{sp}());"
+                )
+            elif _from_proto_cast(ftype):
+                lines.append(
+                    f"{ind}    _entry.{member} = static_cast<{_from_proto_cast(ftype)}>(pb_entry.{sp}());"
+                )
+            else:
+                lines.append(f"{ind}    _entry.{member} = pb_entry.{sp}();")
+        for f in _repeated_message_arrays(body):
+            ap = _proto_cpp_name(f["name"])
+            member = f.get("member", f["name"])
+            lines.append(
+                f"{ind}    _entry.{member}.assign(pb_entry.{ap}().begin(), pb_entry.{ap}().end());"
+            )
+        lines.append(f"{ind}    _entries.push_back(std::move(_entry));")
+        lines.append(f"{ind}  }}")
+        lines.append(f"{ind}  cpu_problem.{setter}(std::move(_entries));")
+        lines.append(f"{ind}}}")
+
     return "\n".join(lines)
 
 
@@ -1568,6 +1741,40 @@ def _gen_estimate_problem_size(registry, indent="  "):
             lines.append(
                 f"{ind}est += cpu_problem.{getter}.size() * sizeof(double);"
             )
+
+    # repeated_messages — accumulate per-entry scalar + array contributions.
+    # Per-entry overhead matches the per-array overhead applied above (a
+    # handful of bytes for name + tag + length).
+    for name, body in _iter_repeated_messages(obj):
+        presence = body.get("presence_check")
+        getter = body.get("getter")
+        if not presence or not getter:
+            continue
+        lines.append(f"{ind}if (cpu_problem.{presence}) {{")
+        lines.append(
+            f"{ind}  for (const auto& _entry : cpu_problem.{getter}) {{"
+        )
+        lines.append(f"{ind}    est += 32;  // per-entry framing")
+        for f in _repeated_message_scalars(body):
+            member = f.get("member", f["name"])
+            ftype = f.get("type", "double")
+            if ftype == "string":
+                lines.append(f"{ind}    est += _entry.{member}.size() + 2;")
+            elif "int" in ftype:
+                lines.append(f"{ind}    est += 5;")
+            else:
+                lines.append(f"{ind}    est += sizeof(double);")
+        for f in _repeated_message_arrays(body):
+            member = f.get("member", f["name"])
+            ftype = f.get("type", "repeated double")
+            if "int32" in ftype:
+                lines.append(f"{ind}    est += _entry.{member}.size() * 5;")
+            else:
+                lines.append(
+                    f"{ind}    est += _entry.{member}.size() * sizeof(double);"
+                )
+        lines.append(f"{ind}  }}")
+        lines.append(f"{ind}}}")
 
     lines.append(f"{ind}est += 512;")
     lines.append(f"{ind}return est;")
@@ -1614,6 +1821,32 @@ def _gen_populate_chunked_header(registry, solver_type, indent="  "):
             f"{ind}map_mip_settings_to_proto(settings, header->mutable_mip_settings());"
         )
         lines.append(f"{ind}header->set_enable_incumbents(enable_incumbents);")
+
+    # repeated_messages — populate per-entry scalars in the header.  Arrays
+    # for each entry travel separately via container-keyed ArrayChunks.
+    for name, body in _iter_repeated_messages(obj):
+        presence = body.get("presence_check")
+        getter = body.get("getter")
+        if not presence or not getter:
+            continue
+        lines.append("")
+        lines.append(f"{ind}if (cpu_problem.{presence}) {{")
+        lines.append(
+            f"{ind}  for (const auto& _entry : cpu_problem.{getter}) {{"
+        )
+        lines.append(f"{ind}    auto* pb_entry = header->add_{name}();")
+        for f in _repeated_message_scalars(body):
+            sp = _proto_cpp_name(f["name"])
+            member = f.get("member", f["name"])
+            to_cast = f.get("to_proto_cast")
+            if to_cast:
+                lines.append(
+                    f"{ind}    pb_entry->set_{sp}(static_cast<{to_cast}>(_entry.{member}));"
+                )
+            else:
+                lines.append(f"{ind}    pb_entry->set_{sp}(_entry.{member});")
+        lines.append(f"{ind}  }}")
+        lines.append(f"{ind}}}")
 
     return "\n".join(lines)
 
@@ -1874,6 +2107,141 @@ def _gen_chunked_arrays_to_problem(registry, indent="  "):
             lines.append(f"{ind}}}")
         lines.append("")
 
+    # repeated_messages — reconstruct each entry from scalars (carried in
+    # `header`) + arrays (carried in `container_arrays`, keyed by
+    # (container_field_num, container_index, container-relative field_id)).
+    rm_entries = list(_iter_repeated_messages(obj))
+    if rm_entries:
+        lines.append("")
+        lines.append(
+            f"{ind}auto container_get_doubles = [&](int32_t _cfn, "
+            f"int32_t _ci, int32_t _fid) -> std::vector<f_t> {{"
+        )
+        lines.append(
+            f"{ind}  auto it = container_arrays.find(ContainerArrayKey{{_cfn, _ci, _fid}});"
+        )
+        lines.append(
+            f"{ind}  if (it == container_arrays.end() || it->second.empty()) return {{}};"
+        )
+        lines.append(f"{ind}  if (it->second.size() % sizeof(double) != 0) {{")
+        lines.append(
+            f'{ind}    throw std::invalid_argument("container_get_doubles: payload size " '
+            f'+ std::to_string(it->second.size()) + " is not a multiple of sizeof(double)");'
+        )
+        lines.append(f"{ind}  }}")
+        lines.append(f"{ind}  size_t n = it->second.size() / sizeof(double);")
+        lines.append(f"{ind}  if constexpr (std::is_same_v<f_t, double>) {{")
+        lines.append(f"{ind}    std::vector<double> v(n);")
+        lines.append(
+            f"{ind}    std::memcpy(v.data(), it->second.data(), n * sizeof(double));"
+        )
+        lines.append(f"{ind}    return v;")
+        lines.append(f"{ind}  }} else {{")
+        lines.append(f"{ind}    std::vector<double> tmp(n);")
+        lines.append(
+            f"{ind}    std::memcpy(tmp.data(), it->second.data(), n * sizeof(double));"
+        )
+        lines.append(
+            f"{ind}    return std::vector<f_t>(tmp.begin(), tmp.end());"
+        )
+        lines.append(f"{ind}  }}")
+        lines.append(f"{ind}}};")
+        lines.append("")
+        lines.append(
+            f"{ind}auto container_get_ints = [&](int32_t _cfn, "
+            f"int32_t _ci, int32_t _fid) -> std::vector<i_t> {{"
+        )
+        lines.append(
+            f"{ind}  auto it = container_arrays.find(ContainerArrayKey{{_cfn, _ci, _fid}});"
+        )
+        lines.append(
+            f"{ind}  if (it == container_arrays.end() || it->second.empty()) return {{}};"
+        )
+        lines.append(
+            f"{ind}  if (it->second.size() % sizeof(int32_t) != 0) {{"
+        )
+        lines.append(
+            f'{ind}    throw std::invalid_argument("container_get_ints: payload size " '
+            f'+ std::to_string(it->second.size()) + " is not a multiple of sizeof(int32_t)");'
+        )
+        lines.append(f"{ind}  }}")
+        lines.append(f"{ind}  size_t n = it->second.size() / sizeof(int32_t);")
+        lines.append(f"{ind}  if constexpr (std::is_same_v<i_t, int32_t>) {{")
+        lines.append(f"{ind}    std::vector<int32_t> v(n);")
+        lines.append(
+            f"{ind}    std::memcpy(v.data(), it->second.data(), n * sizeof(int32_t));"
+        )
+        lines.append(f"{ind}    return v;")
+        lines.append(f"{ind}  }} else {{")
+        lines.append(f"{ind}    std::vector<int32_t> tmp(n);")
+        lines.append(
+            f"{ind}    std::memcpy(tmp.data(), it->second.data(), n * sizeof(int32_t));"
+        )
+        lines.append(
+            f"{ind}    return std::vector<i_t>(tmp.begin(), tmp.end());"
+        )
+        lines.append(f"{ind}  }}")
+        lines.append(f"{ind}}};")
+
+        for name, body in rm_entries:
+            setter = body.get("setter")
+            cpp_inner = body.get("cpp_inner_type")
+            cfn = body["field_num"]
+            if not setter or not cpp_inner:
+                raise ValueError(
+                    f"repeated_messages.{name}: requires both 'setter' and "
+                    f"'cpp_inner_type' for chunked decode"
+                )
+            lines.append("")
+            lines.append(f"{ind}if (header.{name}_size() > 0) {{")
+            lines.append(f"{ind}  std::vector<{cpp_inner}> _entries;")
+            lines.append(f"{ind}  _entries.reserve(header.{name}_size());")
+            lines.append(
+                f"{ind}  for (int32_t _ci = 0; _ci < header.{name}_size(); ++_ci) {{"
+            )
+            lines.append(
+                f"{ind}    const auto& pb_entry = header.{name}(_ci);"
+            )
+            lines.append(f"{ind}    {cpp_inner} _entry;")
+            for f in _repeated_message_scalars(body):
+                sp = _proto_cpp_name(f["name"])
+                member = f.get("member", f["name"])
+                from_cast = f.get("from_proto_cast")
+                ftype = f.get("type", "double")
+                if from_cast:
+                    lines.append(
+                        f"{ind}    _entry.{member} = static_cast<{from_cast}>(pb_entry.{sp}());"
+                    )
+                elif _from_proto_cast(ftype):
+                    lines.append(
+                        f"{ind}    _entry.{member} = static_cast<{_from_proto_cast(ftype)}>(pb_entry.{sp}());"
+                    )
+                else:
+                    lines.append(
+                        f"{ind}    _entry.{member} = pb_entry.{sp}();"
+                    )
+            for f in _repeated_message_arrays(body):
+                member = f.get("member", f["name"])
+                array_id = f.get("array_id")
+                if array_id is None:
+                    raise ValueError(
+                        f"repeated_messages.{name}.arrays.{f['name']}: "
+                        "missing required 'array_id' (container-relative routing id)"
+                    )
+                ftype = f.get("type", "repeated double")
+                fn = (
+                    "container_get_ints"
+                    if "int32" in ftype
+                    else "container_get_doubles"
+                )
+                lines.append(
+                    f"{ind}    _entry.{member} = {fn}({cfn}, _ci, {array_id});"
+                )
+            lines.append(f"{ind}    _entries.push_back(std::move(_entry));")
+            lines.append(f"{ind}  }}")
+            lines.append(f"{ind}  cpu_problem.{setter}(std::move(_entries));")
+            lines.append(f"{ind}}}")
+
     return "\n".join(lines).rstrip()
 
 
@@ -1982,6 +2350,38 @@ def _gen_build_array_chunk_requests(registry, indent="  "):
                 f"{ind}  chunk_typed_array(requests, cuopt::remote::{afid}, _{f['name']}, upload_id, chunk_size_bytes);"
             )
             lines.append(f"{ind}}}")
+
+    # repeated_messages — for each entry, emit one chunk-batch per array
+    # field, tagged with the container's (field_num, index) so the worker
+    # can route chunks back to the right entry.
+    for name, body in _iter_repeated_messages(obj):
+        presence = body.get("presence_check")
+        getter = body.get("getter")
+        if not presence or not getter:
+            continue
+        cfn = body["field_num"]
+        lines.append("")
+        lines.append(f"{ind}if (problem.{presence}) {{")
+        lines.append(f"{ind}  const auto& _entries = problem.{getter};")
+        lines.append(
+            f"{ind}  for (size_t _idx = 0; _idx < _entries.size(); ++_idx) {{"
+        )
+        lines.append(f"{ind}    const auto& _entry = _entries[_idx];")
+        lines.append(f"{ind}    int32_t _ci = static_cast<int32_t>(_idx);")
+        for f in _repeated_message_arrays(body):
+            member = f.get("member", f["name"])
+            array_id = f.get("array_id")
+            if array_id is None:
+                raise ValueError(
+                    f"repeated_messages.{name}.arrays.{f['name']}: "
+                    "missing required 'array_id' (container-relative routing id)"
+                )
+            lines.append(
+                f"{ind}    chunk_container_typed_array(requests, {cfn}, _ci, "
+                f"{array_id}, _entry.{member}, upload_id, chunk_size_bytes);"
+            )
+        lines.append(f"{ind}  }}")
+        lines.append(f"{ind}}}")
 
     lines.append("")
     lines.append(f"{ind}return requests;")
@@ -2109,7 +2509,34 @@ def _validate_registry_uniqueness(registry):
         for fk in field_keys:
             pairs.extend(_iter_named_field_nums(section.get(fk, [])))
         pairs.extend(_iter_named_embed_field_nums(section))
+        # repeated_messages parent-field tags share OptimizationProblem's pool.
+        for name, body in _iter_repeated_messages(section):
+            if "field_num" in body:
+                pairs.append((body["field_num"], f"repeated_messages:{name}"))
         _check_unique(msg, pairs, errors)
+
+    # Per-container namespaces inside repeated_messages: each container has
+    # its own proto field_num pool (the nested message) and its own
+    # container-relative array_id pool. Validate both per entry.
+    problem = registry.get("optimization_problem") or {}
+    for name, body in _iter_repeated_messages(problem):
+        msg_label = body.get("message_type", name)
+        inner_pairs = []
+        for f in _repeated_message_scalars(body):
+            if "field_num" in f:
+                inner_pairs.append((f["field_num"], f"scalars.{f['name']}"))
+        for f in _repeated_message_arrays(body):
+            if "field_num" in f:
+                inner_pairs.append((f["field_num"], f"arrays.{f['name']}"))
+        _check_unique(msg_label, inner_pairs, errors)
+
+        aid_pairs = []
+        for f in _repeated_message_arrays(body):
+            if "array_id" in f:
+                aid_pairs.append(
+                    (f["array_id"], f"arrays.{f['name']}.array_id")
+                )
+        _check_unique(f"{msg_label}::array_id", aid_pairs, errors)
 
     # Settings messages use the nested `fields:` layout.
     for msg, key in [
