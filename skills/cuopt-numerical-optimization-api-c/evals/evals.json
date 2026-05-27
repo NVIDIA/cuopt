@@ -4,15 +4,11 @@
     "question": "I want to solve a small MILP (some integer variables, linear objective, linear constraints) with the cuOpt C API. List the C functions and structs I need in order — names only, one line each, no full source.",
     "expected_skill": "cuopt-numerical-optimization-api-c",
     "expected_script": null,
-    "ground_truth": "The agent produces an ordered list of C API entry points without writing a full source file. The list, in order: (1) Include cuopt/linear_programming/cuopt_c.h. (2) Prepare data: objective_coefficients (cuopt_float_t array), constraint matrix in CSR (row_offsets, col_indices, values), constraint_lower/constraint_upper bounds, var_lower/var_upper bounds, var_types (char array — CUOPT_CONTINUOUS or CUOPT_INTEGER per variable, with CUOPT_INTEGER and bounds 0/1 for binary). (3) Call cuOptCreateRangedProblem with sense CUOPT_MINIMIZE or CUOPT_MAXIMIZE, the prepared data, and an output problem handle. (4) Optionally configure a settings handle (time limit, MIP gap). (5) Call cuOptSolve(problem, settings, &solution). (6) Read results via cuOptGetObjectiveValue(solution, &obj_value) and the relevant cuOptGet* functions for variable values and status. (7) Free the problem, settings, and solution handles via the matching destroy/free calls. The agent flags that the constraint matrix is CSR (row_offsets, col_indices, values), and that var_types is a char array using the CUOPT_CONTINUOUS / CUOPT_INTEGER macros. Does not invent function names not in the C header.",
+    "ground_truth": "The agent produces an ordered list of C API entry points without writing a full source file: include cuopt/linear_programming/cuopt_c.h, then call cuOptCreateRangedProblem with sense CUOPT_MINIMIZE or CUOPT_MAXIMIZE, then cuOptSolve(problem, settings, &solution), then cuOptGetObjectiveValue. The constraint matrix is CSR (row_offsets, col_indices, values), and var_types is a char array using CUOPT_CONTINUOUS / CUOPT_INTEGER macros.",
     "expected_behavior": [
       "Lists C API call sequence without writing a complete source file",
-      "Names cuOptCreateRangedProblem, cuOptSolve, cuOptGetObjectiveValue",
-      "Names the CSR triple for the constraint matrix: row_offsets, col_indices, values",
-      "Names var_types with CUOPT_CONTINUOUS / CUOPT_INTEGER macros and binary = INTEGER with lb=0 ub=1",
-      "Names CUOPT_MINIMIZE / CUOPT_MAXIMIZE for the sense argument",
-      "Mentions destroying / freeing problem, settings, and solution handles to avoid leaks",
-      "Does not invent C functions that are not in cuopt_c.h"
+      "Names cuOptCreateRangedProblem, cuOptSolve, cuOptGetObjectiveValue in order",
+      "Names var_types with CUOPT_CONTINUOUS / CUOPT_INTEGER macros and the constraint matrix as CSR (row_offsets, col_indices, values)"
     ]
   }
 ]

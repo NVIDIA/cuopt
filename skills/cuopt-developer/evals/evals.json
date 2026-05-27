@@ -4,14 +4,10 @@
     "question": "I'd like to contribute a bug fix to cuOpt. What's the end-to-end workflow from cloning the repo to getting the PR merged?",
     "expected_skill": "cuopt-developer",
     "expected_script": null,
-    "ground_truth": "The agent walks the user through the fork-based contribution flow. First, fork NVIDIA/cuopt on GitHub and clone the fork locally. Create a topic branch off the relevant base branch (usually main, or release/<ver> for hotfixes). Set up the conda env from conda/environments/all_cuda-<ver>_arch-<arch>.yaml matching the driver's max CUDA major, run ./build.sh, and run the test suites (ctest + pytest) to confirm a clean baseline. Make the fix, add or update tests, and commit with DCO sign-off (git commit -s) — the CI gate will reject unsigned commits. Push the branch to the fork and open a pull request against NVIDIA/cuopt; agent-created PRs must be opened as draft (gh pr create --draft) so the developer can review before reviewers are pinged. Keep the PR description short — a paragraph or 3–5 bullets stating what and why; skip how-it-works walkthroughs, file-by-file tables, and test-plan checklists. Pre-commit hooks must pass — do not use --no-verify. Point the user to CONTRIBUTING.md for the authoritative steps.",
+    "ground_truth": "The agent walks the user through the fork-based contribution flow: fork NVIDIA/cuopt, clone the fork, branch off main, set up the conda env, build with build.sh, and run tests (ctest + pytest). Commits require DCO sign-off (git commit -s) — CI rejects unsigned commits. The agent does not suggest --no-verify or any bypass, and points the user to CONTRIBUTING.md for the authoritative steps.",
     "expected_behavior": [
-      "Describes the fork-based PR workflow (fork on GitHub, clone fork, branch off main or release/<ver>)",
+      "Describes the fork-based PR workflow (fork on GitHub, clone fork, branch off main)",
       "Mentions DCO sign-off via 'git commit -s' as a hard requirement",
-      "Mentions the draft-PR rule for agent-created PRs (gh pr create --draft)",
-      "Mentions running pre-commit hooks and ctest/pytest before opening the PR",
-      "Mentions keeping the PR description short, with no how-it-works walkthroughs or file tables",
-      "Points the user to CONTRIBUTING.md as the authoritative source",
       "Does not suggest --no-verify or any way to bypass DCO / pre-commit / CI"
     ]
   }

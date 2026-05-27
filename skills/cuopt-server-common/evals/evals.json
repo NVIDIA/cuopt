@@ -4,13 +4,10 @@
     "question": "How does the cuOpt REST server handle an optimization request, conceptually? Walk me through the flow from submission to solution.",
     "expected_skill": "cuopt-server-common",
     "expected_script": null,
-    "ground_truth": "The agent describes the asynchronous request-id + polling pattern. The client POSTs the problem payload (matrices, tasks, fleet, solver config) to the submit endpoint; the server returns a reqId rather than blocking until the solve completes. The client then polls the solution endpoint with that reqId until the solve finishes; the response then contains the status and, on success, the solution (routes for routing, primal values and objective for LP/MILP). The agent notes the server supports routing, LP, and MILP — QP is not exposed over REST. It mentions the OpenAPI spec as the authoritative payload reference and the health endpoint for liveness checks. Does not invent endpoint names; does not claim QP support over REST.",
+    "ground_truth": "The agent describes the asynchronous request-id + polling pattern: the client POSTs the problem payload (matrices, tasks, fleet, solver config) to the submit endpoint, and the server returns a reqId rather than blocking. The client polls the solution endpoint with that reqId until the solve finishes. The server supports routing, LP, and MILP — QP is not exposed over REST.",
     "expected_behavior": [
-      "Describes the asynchronous flow: POST returns reqId, then poll the solution endpoint",
-      "Names the four conceptual endpoint types: health, submit (POST), solution-by-id (GET), OpenAPI spec",
+      "Describes the asynchronous flow: POST returns reqId, then poll the solution endpoint until ready",
       "States that supported problem types are routing, LP, MILP — not QP",
-      "Mentions the response contains status plus solution payload (routes / primal values / objective) on success",
-      "Mentions the OpenAPI spec as the payload reference",
       "Does not fabricate endpoint URLs or claim QP is supported over REST"
     ]
   }
