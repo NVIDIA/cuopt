@@ -1441,8 +1441,9 @@ void problem_t<i_t, f_t>::compute_objective_step()
   }
 
   // Fast path: every variable with nonzero objective coefficient already has a known
-  // lattice. Compute step = gcd(|c_j|) and bias = sum(c_j * lb_j) mod step directly using
-  // the local helpers below; no matrix-level propagation needed.
+  // lattice. Compute step = gcd(|c_j|) and bias = sum(c_j * lattice_point_j) mod step
+  // directly using the local helpers below; no matrix-level propagation needed.
+  // For each variable, lattice_point_j is the first feasible integer value >= lb.
   if (all_obj_vars_integral) {
     std::vector<f_t> nonzero_coefs;
     f_t bias = 0;
@@ -1450,7 +1451,13 @@ void problem_t<i_t, f_t>::compute_objective_step()
       if (h_obj_coefs[i] == 0) continue;
       f_t coef = h_obj_coefs[i];
       nonzero_coefs.push_back(coef);
-      bias += coef * h_var_lb[i];
+      // Use ceil(lb) as the lattice anchor: the first integer value >= lb.
+      // For integer variables lb is typically already integer, so ceil is a no-op.
+      // For implied integers with fractional lb, ceil gives the first feasible point.
+      // If lb is -inf (free variable), use 0 as the anchor.
+      f_t lb = h_var_lb[i];
+      f_t lattice_point = std::isfinite(lb) ? std::ceil(lb) : f_t(0);
+      bias += coef * lattice_point;
     }
     if (nonzero_coefs.empty()) {
       objective_step = {};

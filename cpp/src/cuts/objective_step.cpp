@@ -87,9 +87,13 @@ bool propagate_lattice(i_t n_vars,
   for (i_t j = 0; j < n_vars; ++j) {
     if (is_lattice_known_initially[j]) {
       step_r[j] = {1, 1};
-      bias_r[j] = rational128_t<f_t>::safe_from_floating_point(var_lb[j]);
-      if (bias_r[j].is_zero() && var_lb[j] != 0) {
-        // Can't rationalize this variable's lower bound; treat it as lattice-unknown.
+      // Use ceil(lb) as the lattice anchor: the first integer value >= lb.
+      // If lb is -inf (free variable), use 0 as the anchor.
+      f_t lb = var_lb[j];
+      f_t lattice_point = std::isfinite(lb) ? std::ceil(lb) : f_t(0);
+      bias_r[j] = rational128_t<f_t>::safe_from_floating_point(lattice_point);
+      if (bias_r[j].is_zero() && lattice_point != 0) {
+        // Can't rationalize this variable's lattice point; treat it as lattice-unknown.
         step_r[j] = {0, 1};
       }
     }
@@ -374,6 +378,12 @@ bool propagate_lattice(i_t n_vars,
           found_any     = true;
         } else {
           combined_step = gcd(combined_step, new_step);
+          // If the GCD has become negligibly small, the constraints do not share a
+          // meaningful common lattice. Bail out to avoid overflow in rational arithmetic.
+          if (combined_step.q < 0 || std::abs(combined_step.to_floating_point()) < 1e-10) {
+            found_any = false;
+            break;
+          }
         }
       }
 
