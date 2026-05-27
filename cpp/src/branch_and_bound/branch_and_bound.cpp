@@ -1587,7 +1587,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
     // - The current node and its siblings uses the lower bound of the parent before solving the LP
     // relaxation
     // - The lower bound of the parent is lower or equal to its children
-    worker->lower_bound = std::min(worker->node_queue.get_lower_bound(), node_ptr->lower_bound);
+    worker->lower_bound = node_ptr->lower_bound;
 
     if (node_ptr->lower_bound > upper_bound_.load()) {
       search_tree_.graphviz_node(settings_.log, node_ptr, "cutoff", node_ptr->lower_bound);
