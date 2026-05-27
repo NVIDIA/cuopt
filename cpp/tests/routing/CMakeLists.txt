@@ -56,6 +56,7 @@ ConfigureTest(ROUTING_UNIT_TEST
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/batch_tsp.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/cost_boundary_initialization.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/set_shmem_of_kernel.cu
+      ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/distance_tiers_separate_distance.cu
     LABELS routing
     STATIC_LIB)
 
