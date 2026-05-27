@@ -81,6 +81,7 @@ These constants are used to define the the variable type in the :c:func:`cuOptCr
 
 .. doxygendefine:: CUOPT_CONTINUOUS
 .. doxygendefine:: CUOPT_INTEGER
+.. doxygendefine:: CUOPT_SEMI_CONTINUOUS
 
 Infinity Constant
 -----------------

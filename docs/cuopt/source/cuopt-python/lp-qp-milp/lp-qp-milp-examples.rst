@@ -68,6 +68,25 @@ The response is as follows:
     Objective value = 303.0
 
 
+Semi-continuous Variable Example
+--------------------------------
+
+:download:`semi_continuous_example.py <examples/semi_continuous_example.py>`
+
+.. literalinclude:: examples/semi_continuous_example.py
+   :language: python
+   :linenos:
+
+The response is as follows:
+
+.. code-block:: text
+
+    Optimal solution found in 0.00 seconds
+    x = 0.0
+    y = 1.0
+    Objective value = 0.0
+
+
 Advanced Example: Production Planning
 -------------------------------------
 

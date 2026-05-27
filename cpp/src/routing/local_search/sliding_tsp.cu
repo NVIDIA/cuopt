@@ -150,22 +150,16 @@ __global__ void find_sliding_moves_tsp(
   const int max_neighbors                  = min(max_n_neighbors, sol.get_num_orders());
   auto nodes_to_consider                   = move_candidates.viables.get_viable_to_pickups(
     node_info.node(), sol.get_num_requests(), max_neighbors, exclude_self_in_neighbors);
-  auto start_depot_node_info  = sol.problem.get_start_depot_node_info(route.get_vehicle_id());
-  auto return_depot_node_info = sol.problem.get_return_depot_node_info(route.get_vehicle_id());
-  bool include_start_depot_insertion =
-    !sol.problem.order_info.depot_included &&
-    start_depot_node_info.location() != return_depot_node_info.location();
 
-  auto n_reverse_types = 2;
-  auto n_insertion_pos = nodes_to_consider.size() + include_start_depot_insertion;
-  auto total_permut    = route_max_window_size * n_reverse_types *
+  auto n_reverse_types              = 2;
+  auto start_depot_insertion_choice = nodes_to_consider.size();
+  auto n_insertion_pos              = start_depot_insertion_choice + 1;
+  auto total_permut                 = route_max_window_size * n_reverse_types *
                       n_insertion_pos;  // forward, backward at every node pos
   for (i_t tid = threadIdx.x; tid < total_permut; tid += blockDim.x) {
     auto insertion_choice = tid % n_insertion_pos;
     auto insertion_pos    = i_t{0};
-    if (include_start_depot_insertion && insertion_choice == nodes_to_consider.size()) {
-      insertion_pos = 0;
-    } else {
+    if (insertion_choice != start_depot_insertion_choice) {
       auto node_choice = nodes_to_consider[insertion_choice];
       insertion_pos    = sol.route_node_map.intra_route_idx_per_node[node_choice];
     }
@@ -323,15 +317,21 @@ __global__ void execute_sliding_moves_tsp(
     __syncthreads();
 
     if (threadIdx.x == 0) {
-      auto original_node_info = s_route.get_node(cand.window_start).node_info();
+      auto original_node_info =
+        NodeInfo<i_t>(original_node_id,
+                      sol.problem.order_info.get_order_location(original_node_id),
+                      node_type_t::DELIVERY);
       auto original_fragment_end_node_info =
-        s_route.get_node(cand.window_start + cand.window_size - 1).node_info();
-      auto original_node_insertion_info = s_route.get_node(cand.insertion_pos).node_info();
-      cuopt_assert(original_node_info.node() == original_node_id, "Moved node mismatch");
-      cuopt_assert(original_fragment_end_node_info.node() == original_fragment_end_node_id,
-                   "Moved fragment end mismatch");
-      cuopt_assert(original_node_insertion_info.node() == original_node_insertion,
-                   "Moved insertion node mismatch");
+        NodeInfo<i_t>(original_fragment_end_node_id,
+                      sol.problem.order_info.get_order_location(original_fragment_end_node_id),
+                      node_type_t::DELIVERY);
+      auto start_depot_node_info = sol.problem.get_start_depot_node_info(route.get_vehicle_id());
+      auto original_node_insertion_info =
+        original_node_insertion == start_depot_node_info.node()
+          ? start_depot_node_info
+          : NodeInfo<i_t>(original_node_insertion,
+                          sol.problem.order_info.get_order_location(original_node_insertion),
+                          node_type_t::DELIVERY);
 
       auto node_before_fragment = s_route.dimensions.requests.tsp_requests.pred[original_node_id];
       auto node_after_fragment =
