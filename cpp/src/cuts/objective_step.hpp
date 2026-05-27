@@ -38,9 +38,11 @@ objective_step_t<f_t> compute_objective_step_info(
   const std::vector<f_t>& con_ub);
 
 // Lattice propagation: for each variable, determine if it must lie on a lattice
-// x_j = k * step_j + bias_j for integer k. This is done by scanning equality constraints
-// (and inequalities treated as equalities with implicit slack variables) for constraints
-// with exactly one variable of unknown lattice structure, and solving for it.
+// x_j = k * step_j + bias_j for integer k. This is done by scanning equality rows of
+// the constraint matrix for rows in which exactly one unknown remains, solving for it
+// in terms of the other (already-lattice-known) variables, and updating that
+// variable's lattice. Discoveries make further rows productive and the process is
+// iterated to a fixed point via a worklist.
 //
 // is_lattice_known_initially[j] must be true for any variable whose lattice is known at
 // entry (integer or implied-integer variables): such a variable's lattice is initialized
