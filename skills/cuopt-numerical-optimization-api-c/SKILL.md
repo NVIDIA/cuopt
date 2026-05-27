@@ -30,7 +30,12 @@ This skill is **C only**.
 // CSR format for constraints
 cuopt_int_t row_offsets[] = {0, 2, 4};
 cuopt_int_t col_indices[] = {0, 1, 0, 1};
-cuopt_float_t values[] = {2.0, 3.0, 4.0, 2.0};
+cuopt_float_t values[] = {
+    2.0,
+    3.0,
+    4.0,
+    2.0
+};
 char var_types[] = {CUOPT_CONTINUOUS, CUOPT_INTEGER};
 
 cuOptCreateRangedProblem(

@@ -46,17 +46,31 @@ int main() {
     // Constraint matrix in CSR format
     cuopt_int_t row_offsets[] = {0, 2, 4};
     cuopt_int_t column_indices[] = {0, 1, 0, 1};
-    cuopt_float_t values[] = {3.0, 4.0, 2.7, 10.1};
+    cuopt_float_t values[] = {
+        3.0,
+        4.0,
+        2.7,
+        10.1
+    };
 
     // Objective coefficients
-    cuopt_float_t objective_coefficients[] = {-0.2, 0.1};
+    cuopt_float_t objective_coefficients[] = {
+        -0.2,
+        0.1
+    };
 
     // Constraint bounds (lower <= Ax <= upper)
-    cuopt_float_t constraint_upper_bounds[] = {5.4, 4.9};
+    cuopt_float_t constraint_upper_bounds[] = {
+        5.4,
+        4.9
+    };
     cuopt_float_t constraint_lower_bounds[] = {-CUOPT_INFINITY, -CUOPT_INFINITY};
 
     // Variable bounds
-    cuopt_float_t var_lower_bounds[] = {0.0, 0.0};
+    cuopt_float_t var_lower_bounds[] = {
+        0.0,
+        0.0
+    };
     cuopt_float_t var_upper_bounds[] = {CUOPT_INFINITY, CUOPT_INFINITY};
 
     // Variable types
@@ -140,12 +154,26 @@ int main() {
 
     cuopt_int_t row_offsets[] = {0, 2, 4};
     cuopt_int_t column_indices[] = {0, 1, 0, 1};
-    cuopt_float_t values[] = {3.0, 4.0, 2.7, 10.1};
+    cuopt_float_t values[] = {
+        3.0,
+        4.0,
+        2.7,
+        10.1
+    };
 
-    cuopt_float_t objective_coefficients[] = {-0.2, 0.1};
-    cuopt_float_t constraint_upper[] = {5.4, 4.9};
+    cuopt_float_t objective_coefficients[] = {
+        -0.2,
+        0.1
+    };
+    cuopt_float_t constraint_upper[] = {
+        5.4,
+        4.9
+    };
     cuopt_float_t constraint_lower[] = {-CUOPT_INFINITY, -CUOPT_INFINITY};
-    cuopt_float_t var_lower[] = {0.0, 0.0};
+    cuopt_float_t var_lower[] = {
+        0.0,
+        0.0
+    };
     cuopt_float_t var_upper[] = {CUOPT_INFINITY, CUOPT_INFINITY};
 
     // x1 = INTEGER, x2 = CONTINUOUS
