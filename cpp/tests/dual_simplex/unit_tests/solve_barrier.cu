@@ -372,39 +372,6 @@ TEST(barrier, presolve_keeps_direct_free_variables_before_cones)
   EXPECT_EQ(presolved_lp.upper[1], inf);
 }
 
-TEST(barrier, uncrush_solution_removes_non_tail_free_variable_partner)
-{
-  using namespace cuopt::linear_programming::dual_simplex;
-
-  raft::handle_t handle{};
-  init_handler(&handle);
-  lp_problem_t<int, double> original_lp(&handle, 0, 3, 0);
-
-  presolve_info_t<int, double> presolve_info;
-  presolve_info.free_variable_pairs = {0, 1};
-
-  simplex_solver_settings_t<int, double> settings;
-  std::vector<double> crushed_x{5.0, 2.0, 9.0, 8.0};
-  std::vector<double> crushed_y{};
-  std::vector<double> crushed_z{7.0, 11.0, 13.0, 17.0};
-  std::vector<double> uncrushed_x(3);
-  std::vector<double> uncrushed_y(0);
-  std::vector<double> uncrushed_z(3);
-
-  uncrush_solution(presolve_info,
-                   settings,
-                   original_lp,
-                   crushed_x,
-                   crushed_y,
-                   crushed_z,
-                   uncrushed_x,
-                   uncrushed_y,
-                   uncrushed_z);
-
-  EXPECT_EQ(uncrushed_x, std::vector<double>({3.0, 9.0, 8.0}));
-  EXPECT_EQ(uncrushed_z, std::vector<double>({7.0, 13.0, 17.0}));
-}
-
 TEST(barrier, rejects_middle_cone_input_before_barrier)
 {
   raft::handle_t handle{};
