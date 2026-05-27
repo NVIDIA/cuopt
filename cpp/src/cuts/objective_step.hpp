@@ -30,6 +30,7 @@ template <typename i_t, typename f_t>
 objective_step_t<f_t> compute_objective_step_info(
   const std::vector<f_t>& obj_coefs,
   const std::vector<f_t>& var_lb,
+  const std::vector<f_t>& var_ub,
   const std::vector<bool>& is_lattice_known_initially,
   const std::vector<i_t>& offsets,
   const std::vector<i_t>& variables,
@@ -43,6 +44,12 @@ objective_step_t<f_t> compute_objective_step_info(
 // in terms of the other (already-lattice-known) variables, and updating that
 // variable's lattice. Discoveries make further rows productive and the process is
 // iterated to a fixed point via a worklist.
+//
+// After the equality fixed-point is reached, if exactly one objective variable remains
+// unknown, inequality constraints are also considered using the objective-direction
+// argument: at optimum, at least one inequality bounding the objective variable in the
+// improving direction must be tight. The variable's simple bound is also accounted for.
+// The problem is assumed to be in minimization form.
 //
 // is_lattice_known_initially[j] must be true for any variable whose lattice is known at
 // entry (integer or implied-integer variables): such a variable's lattice is initialized
@@ -65,7 +72,9 @@ bool propagate_lattice(i_t n_vars,
                        const std::vector<f_t>& con_lb,
                        const std::vector<f_t>& con_ub,
                        const std::vector<f_t>& var_lb,
+                       const std::vector<f_t>& var_ub,
                        const std::vector<bool>& is_lattice_known_initially,
+                       const std::vector<f_t>& obj_coefs,
                        std::vector<f_t>& lattice_step,
                        std::vector<f_t>& lattice_bias);
 

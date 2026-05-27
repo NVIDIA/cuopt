@@ -83,6 +83,16 @@ struct rational128_t {
     return {num, den};
   }
 
+  // Safe version: returns {0, 1} if the rational approximation is not accurate within 1e-14.
+  // This allows callers to detect failure by testing is_zero() on the result.
+  static rational128_t safe_from_floating_point(f_t x, int64_t max_d = 10000000)
+  {
+    int64_t num = 0, den = 1;
+    if (!rational_approximation(x, max_d, num, den)) return {0, 1};
+    if (den <= 0) return {0, 1};
+    return {num, den};
+  }
+
   // Convert to floating-point in double precision, then cast to f_t.
   // The intermediate double avoids precision loss when f_t is float.
   f_t to_floating_point() const

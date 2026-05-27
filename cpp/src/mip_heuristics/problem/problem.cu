@@ -1410,14 +1410,6 @@ void problem_t<i_t, f_t>::recompute_objective_integrality()
       objective_is_integral = true;
     }
   }
-
-  // Compute objective step size.
-  // The objective takes values k * step_size + bias for integer k, when all
-  // variables with nonzero objective coefficient are integer or implied integer.
-  // The step size is gcd(|c_j|) over those variables, and the bias is
-  // sum(c_j * lb_j) mod step_size, where lb_j is the lower bound of variable j.
-  // This generalizes objective_is_integral: when step_size >= 1 the objective is integral.
-  compute_objective_step();
 }
 
 template <typename i_t, typename f_t>
@@ -1430,16 +1422,18 @@ void problem_t<i_t, f_t>::compute_objective_step()
   auto h_var_flags  = cuopt::host_copy(presolve_data.var_flags, handle_ptr->get_stream());
   auto h_var_bounds = cuopt::host_copy(variable_bounds, handle_ptr->get_stream());
 
-  // Compute a vector of lower bounds and a vector of bools
+  // Compute a vector of lower bounds and upper bounds, and a vector of bools
   // indicating whether a variable's lattice is already known (integer or
   // implied-integer). Track whether every variable with nonzero objective coefficient is
   // already lattice-known: in that case we take the fast path below and never need to read
   // the constraint matrix.
   std::vector<f_t> h_var_lb(n_variables);
+  std::vector<f_t> h_var_ub(n_variables);
   std::vector<bool> is_lattice_known_initially(n_variables, false);
   bool all_obj_vars_integral = true;
   for (i_t i = 0; i < n_variables; ++i) {
     h_var_lb[i]                   = get_lower(h_var_bounds[i]);
+    h_var_ub[i]                   = get_upper(h_var_bounds[i]);
     bool is_int                   = (h_var_types[i] == var_t::INTEGER);
     bool is_impl_int              = (h_var_flags[i] & (i_t)VAR_IMPLIED_INTEGER) != 0;
     is_lattice_known_initially[i] = is_int || is_impl_int;
@@ -1507,13 +1501,15 @@ void problem_t<i_t, f_t>::compute_objective_step()
   auto h_con_ub  = cuopt::host_copy(constraint_upper_bounds, handle_ptr->get_stream());
 
   objective_step = dual_simplex::compute_objective_step_info<i_t, f_t>(h_obj_coefs,
-                                                                       h_var_lb,
-                                                                       is_lattice_known_initially,
-                                                                       h_offsets,
-                                                                       h_vars,
-                                                                       h_coefs,
-                                                                       h_con_lb,
-                                                                       h_con_ub);
+                                                                        h_var_lb,
+                                                                        h_var_ub,
+                                                                        is_lattice_known_initially,
+                                                                        h_offsets,
+                                                                        h_vars,
+                                                                        h_coefs,
+                                                                        h_con_lb,
+                                                                        h_con_ub);
+  CUOPT_LOG_INFO("Objective step (step %e, bias %e) completed in %.3f seconds", objective_step.step_size, objective_step.bias, dual_simplex::toc(start_time));
 }
 
 template <typename i_t, typename f_t>
