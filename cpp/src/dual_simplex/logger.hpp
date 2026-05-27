@@ -12,6 +12,7 @@
 #endif
 
 #include <string>
+#include <string_view>
 
 #include <cstdarg>
 #include <cstdio>
@@ -86,10 +87,10 @@ class logger_t {
   }
 
   template <typename... Args>
-  void print_format(std::format_string<Args...> fmt, Args... args)
+  void print_format(std::string_view fmt, Args&&... args)
   {
     if (log) {
-      std::string msg = std::format(fmt, args...);
+      const std::string msg = std::vformat(fmt, std::make_format_args(args...));
       if (log_to_console) {
 #ifdef CUOPT_LOG_ACTIVE_LEVEL
         CUOPT_LOG_INFO("%s%s", log_prefix.c_str(), msg.c_str());
@@ -140,10 +141,10 @@ class logger_t {
   }
 
   template <typename... Args>
-  void debug_format(std::format_string<Args...> fmt, Args... args)
+  void debug_format(std::string_view fmt, Args&&... args)
   {
     if (log) {
-      std::string msg = std::format(fmt, args...);
+      std::string msg = std::vformat(fmt, std::make_format_args(args...));
       if (log_to_console) {
 #ifdef CUOPT_LOG_ACTIVE_LEVEL
         CUOPT_LOG_TRACE("%s%s", log_prefix.c_str(), msg.c_str());

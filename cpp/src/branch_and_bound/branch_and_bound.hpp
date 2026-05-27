@@ -262,6 +262,7 @@ class branch_and_bound_t {
   omp_atomic_t<f_t> lower_bound_numerical_;
   std::function<void(f_t)> user_bound_callback_;
 
+  void print_table_header();
   void report_heuristic(f_t obj);
   void report(char symbol,
               f_t obj,

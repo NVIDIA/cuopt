@@ -22,7 +22,16 @@ class search_tree_t {
 
   void update(mip_node_t<i_t, f_t>* node_ptr, node_status_t status)
   {
-    std::lock_guard<omp_mutex_t> lock(mutex);
+    std::lock_guard lock(mutex);
+
+    --num_open_nodes;
+    if (status == node_status_t::HAS_CHILDREN) {
+      ++num_inner_nodes;
+    } else {
+      ++num_final_nodes;
+      progress += std::pow(2, -node_ptr->depth);
+    }
+
     std::vector<mip_node_t<i_t, f_t>*> stack;
     node_ptr->set_status(status, stack);
     remove_fathomed_nodes(stack);
@@ -72,6 +81,7 @@ class search_tree_t {
     assert(parent_vstatus.size() == original_lp.num_cols);
     parent_node->add_children(std::move(down_child),
                               std::move(up_child));  // child pointers moved into the tree
+    num_open_nodes += 2;
   }
 
   static void graphviz_node(logger_t& log,
@@ -111,7 +121,6 @@ class search_tree_t {
 
     while (!stack.empty()) {
       auto node = std::move(stack.back());
-      std::cout << std::format("destroying node {}", node->node_id) << std::endl;
       stack.pop_back();
       if (node->children[0]) stack.push_back(std::move(node->children[0]));
       if (node->children[1]) stack.push_back(std::move(node->children[1]));
@@ -121,7 +130,19 @@ class search_tree_t {
 
   mip_node_t<i_t, f_t> root;
   omp_mutex_t mutex;
-  omp_atomic_t<i_t> num_nodes;
+  omp_atomic_t<uint64_t> num_nodes;
+
+  // Number of nodes that still needs to be explored
+  omp_atomic_t<uint64_t> num_open_nodes;
+
+  // Number of integer feasible, infeasible or fathomed nodes
+  omp_atomic_t<uint64_t> num_final_nodes;
+
+  // Number of inner nodes
+  omp_atomic_t<uint64_t> num_inner_nodes;
+
+  // Track the solver progress based on how much the tree was explored
+  omp_atomic_t<f_t> progress = 0.0;
 
   static constexpr bool write_graphviz = false;
 };
