@@ -127,7 +127,7 @@ TEST(docs, user_problem_file)
   EXPECT_TRUE(std::filesystem::exists(user_problem_path));
 
   cuopt::linear_programming::io::mps_data_model_t<int, double> problem2 =
-    cuopt::linear_programming::io::parse_mps<int, double>(user_problem_path, false);
+    cuopt::linear_programming::io::read_mps<int, double>(user_problem_path, false);
 
   EXPECT_EQ(problem2.get_n_variables(), problem.get_n_variables());
   EXPECT_EQ(problem2.get_n_constraints(), problem.get_n_constraints());

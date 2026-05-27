@@ -445,6 +445,63 @@ void pdhg_solver_t<i_t, f_t>::compute_next_dual_solution(rmm::device_uvector<f_t
 }
 
 template <typename i_t, typename f_t>
+void pdhg_solver_t<i_t, f_t>::spmvop_At_y()
+{
+#if CUDA_VER_13_2_UP
+  if (is_cusparse_runtime_spmvop_supported()) {
+    cusparse_spmvop_run(handle_ptr_->get_cusparse_handle(),
+                        cusparse_view_.spmv_op_plan_A_t_,
+                        reusable_device_scalar_value_1_.data(),
+                        reusable_device_scalar_value_0_.data(),
+                        cusparse_view_.dual_solution,
+                        cusparse_view_.current_AtY,
+                        cusparse_view_.current_AtY,
+                        stream_view_.value());
+    return;
+  }
+#endif
+  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
+                                                       CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                                       reusable_device_scalar_value_1_.data(),
+                                                       cusparse_view_.A_T,
+                                                       cusparse_view_.dual_solution,
+                                                       reusable_device_scalar_value_0_.data(),
+                                                       cusparse_view_.current_AtY,
+                                                       CUSPARSE_SPMV_CSR_ALG2,
+                                                       (f_t*)cusparse_view_.buffer_transpose.data(),
+                                                       stream_view_));
+}
+
+template <typename i_t, typename f_t>
+void pdhg_solver_t<i_t, f_t>::spmvop_A_x()
+{
+#if CUDA_VER_13_2_UP
+  if (is_cusparse_runtime_spmvop_supported()) {
+    cusparse_spmvop_run(handle_ptr_->get_cusparse_handle(),
+                        cusparse_view_.spmv_op_plan_A_,
+                        reusable_device_scalar_value_1_.data(),
+                        reusable_device_scalar_value_0_.data(),
+                        cusparse_view_.reflected_primal_solution,
+                        cusparse_view_.dual_gradient,
+                        cusparse_view_.dual_gradient,
+                        stream_view_.value());
+    return;
+  }
+#endif
+  RAFT_CUSPARSE_TRY(
+    raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
+                                       CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                       reusable_device_scalar_value_1_.data(),
+                                       cusparse_view_.A,
+                                       cusparse_view_.reflected_primal_solution,
+                                       reusable_device_scalar_value_0_.data(),
+                                       cusparse_view_.dual_gradient,
+                                       CUSPARSE_SPMV_CSR_ALG2,
+                                       (f_t*)cusparse_view_.buffer_non_transpose.data(),
+                                       stream_view_));
+}
+
+template <typename i_t, typename f_t>
 void pdhg_solver_t<i_t, f_t>::compute_At_y()
 {
   // A_t @ y
@@ -462,9 +519,10 @@ void pdhg_solver_t<i_t, f_t>::compute_At_y()
                              CUSPARSE_SPMV_CSR_ALG2,
                              cusparse_view_.buffer_transpose_mixed_.data(),
                              stream_view_);
+      } else {
+        spmvop_At_y();
       }
-    }
-    if (!cusparse_view_.mixed_precision_enabled_) {
+    } else {
       RAFT_CUSPARSE_TRY(
         raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
                                            CUSPARSE_OPERATION_NON_TRANSPOSE,
@@ -510,9 +568,10 @@ void pdhg_solver_t<i_t, f_t>::compute_A_x()
                              CUSPARSE_SPMV_CSR_ALG2,
                              cusparse_view_.buffer_non_transpose_mixed_.data(),
                              stream_view_);
+      } else {
+        spmvop_A_x();
       }
-    }
-    if (!cusparse_view_.mixed_precision_enabled_) {
+    } else {
       RAFT_CUSPARSE_TRY(
         raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
                                            CUSPARSE_OPERATION_NON_TRANSPOSE,
@@ -597,29 +656,23 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution(
 #endif
 
     // Primal and dual steps are captured in a cuda graph since called very often
-    if (!graph_all.is_initialized(total_pdlp_iterations)) {
-      graph_all.start_capture(total_pdlp_iterations);
+    graph_all.run(total_pdlp_iterations, [&]() {
       // First compute only A_t @ y, needed later in adaptative step size
       compute_At_y();
       // Compute fused primal gradient with projection
       compute_primal_projection_with_gradient(primal_step_size);
       // Compute next dual solution
       compute_next_dual_solution(dual_step_size);
-      graph_all.end_capture(total_pdlp_iterations);
-    }
-    graph_all.launch(total_pdlp_iterations);
+    });
   } else {
 #ifdef PDLP_DEBUG_MODE
     std::cout << "    Not computing A_t * Y" << std::endl;
 #endif
     // A_t * y was already computed in previous iteration
-    if (!graph_prim_proj_gradient_dual.is_initialized(total_pdlp_iterations)) {
-      graph_prim_proj_gradient_dual.start_capture(total_pdlp_iterations);
+    graph_prim_proj_gradient_dual.run(total_pdlp_iterations, [&]() {
       compute_primal_projection_with_gradient(primal_step_size);
       compute_next_dual_solution(dual_step_size);
-      graph_prim_proj_gradient_dual.end_capture(total_pdlp_iterations);
-    }
-    graph_prim_proj_gradient_dual.launch(total_pdlp_iterations);
+    });
   }
 }
 
@@ -1060,12 +1113,10 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
 
   using f_t2 = typename type_2<f_t>::type;
 
-  // Compute next primal solution reflected
+  // Compute next primal solution reflected.
 
   if (should_major) {
-    if (!graph_all.is_initialized(should_major)) {
-      graph_all.start_capture(should_major);
-
+    graph_all.run(should_major, [&]() {
       compute_At_y();
       if (!batch_mode_) {
         cub::DeviceTransform::Transform(
@@ -1166,14 +1217,10 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
       print("potential_next_dual_solution_", potential_next_dual_solution_);
       print("reflected_dual_", reflected_dual_);
 #endif
-      graph_all.end_capture(should_major);
-    }
-    graph_all.launch(should_major);
+    });
 
   } else {
-    if (!graph_all.is_initialized(should_major)) {
-      graph_all.start_capture(should_major);
-
+    graph_all.run(should_major, [&]() {
       // Compute next primal
       compute_At_y();
 
@@ -1281,9 +1328,7 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
 #ifdef CUPDLP_DEBUG_MODE
       print("reflected_dual_", reflected_dual_);
 #endif
-      graph_all.end_capture(should_major);
-    }
-    graph_all.launch(should_major);
+    });
   }
 }
 

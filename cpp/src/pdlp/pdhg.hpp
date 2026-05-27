@@ -95,6 +95,8 @@ class pdhg_solver_t {
   void compute_primal_projection(rmm::device_uvector<f_t>& primal_step_size);
   void compute_At_y();
   void compute_A_x();
+  void spmvop_At_y();
+  void spmvop_A_x();
 
   bool batch_mode_{false};
   raft::handle_t const* handle_ptr_{nullptr};
@@ -127,7 +129,13 @@ class pdhg_solver_t {
 
   // Different graphs for each case
   // Either compute the whole next primal step
-  // Or skip the SpMV (most cases) if it was done at the previous iteration
+  // Or skip the SpMV (most cases) if it was done at the previous iteration.
+  // The reflected primal/dual path branches on `should_major`, and the two branches build
+  // different graph topologies. They get separate ping-pong caches so each branch can key its
+  // 2-slot cache on `total_pdlp_iterations` parity (the swap state of the primal/dual buffers
+  // baked into the captured graph) without colliding with the other branch's topology.
+  // graph_all serves the non-reflected path and the major reflected branch (mutually exclusive
+  // at runtime); graph_all_non_major serves the non-major reflected branch.
   ping_pong_graph_t<i_t> graph_all;
   ping_pong_graph_t<i_t> graph_prim_proj_gradient_dual;
 
