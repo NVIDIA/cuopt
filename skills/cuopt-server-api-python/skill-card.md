@@ -1,5 +1,5 @@
 ## Description: <br>
-cuOpt REST server — start server, endpoints, Python/curl client examples. Use when the user is deploying or calling the REST API. <br>
+End-to-end recipe for running the cuOpt REST server locally (pip-installed launcher or Docker container) and talking to it from Python or curl. Covers the `/cuopt/request` submit, the async `/cuopt/solution/{reqId}` poll, the OpenAPI spec at `/cuopt.yaml`, and ready-to-run client examples for VRPTW, LP, MILP, and PDP. For conceptual server background without runnable code, see `cuopt-server-common`. <br>
 
 This skill is ready for commercial/non-commercial use. <br>
 

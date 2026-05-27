@@ -8,7 +8,7 @@ This skill is ready for commercial/non-commercial use. <br>
 ### License/Terms of Use: <br>
 Apache 2.0 <br>
 ## Use Case: <br>
-Developers and AI engineers use this skill to capture generalizable learnings from problem-solving interactions and propose structured updates to existing skills, ensuring continuous improvement of the agent skill library. <br>
+Fires at the end of any interaction where the agent had to retry an approach, recover from a user correction, discover undocumented API behavior, or apply a workaround that isn't covered by an existing skill. Inspects the just-finished session, drafts a proposed delta to the most relevant skill, and surfaces it for the user to accept or reject before anything is committed. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
