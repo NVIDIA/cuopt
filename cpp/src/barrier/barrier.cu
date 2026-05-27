@@ -3744,7 +3744,7 @@ void barrier_solver_t<i_t, f_t>::compute_target_mu(
   const f_t mu_denom      = data.complementarity_degree(data.x.size(), data.n_upper_bounds);
   mu_aff                  = complementarity_aff_sum / mu_denom;
   sigma                   = std::max(0.0, std::min(1.0, std::pow(mu_aff / mu, 3.0)));
-  new_mu                  = sigma * mu;
+  new_mu                  = sigma * mu_aff;
 }
 
 template <typename i_t, typename f_t>
