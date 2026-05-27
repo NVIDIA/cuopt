@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # cmake-format: on
 
-cmake_minimum_required(VERSION 3.30.4 FATAL_ERROR)
+cmake_minimum_required(VERSION 4.0 FATAL_ERROR)
 
 # Add our custom Find modules to the module path
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/thirdparty")
@@ -28,6 +28,11 @@ project(
         VERSION "${RAPIDS_VERSION}"
         LANGUAGES CXX CUDA C
 )
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CUDA_STANDARD 20)
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
 # Disable C++20 module scanning as the codebase doesn't use modules
 set(CMAKE_CXX_SCAN_FOR_MODULES OFF CACHE BOOL "Disable C++20 module scanning")
@@ -200,6 +205,18 @@ endif ()
 find_package(OpenMP REQUIRED)
 message(VERBOSE "cuOpt: OpenMP found in ${OpenMP_CXX_INCLUDE_DIRS}")
 
+# MPS/QPS parser supports compressed inputs via bzip2 and zlib
+option(CUOPT_PARSER_WITH_BZIP2 "Build MPS parser with bzip2 decompression" ON)
+option(CUOPT_PARSER_WITH_ZLIB "Build MPS parser with zlib decompression" ON)
+if (CUOPT_PARSER_WITH_BZIP2)
+    find_package(BZip2 REQUIRED)
+    add_compile_definitions(MPS_PARSER_WITH_BZIP2)
+endif ()
+if (CUOPT_PARSER_WITH_ZLIB)
+    find_package(ZLIB REQUIRED)
+    add_compile_definitions(MPS_PARSER_WITH_ZLIB)
+endif ()
+
 # Debug options
 if (CMAKE_BUILD_TYPE MATCHES Debug)
     message(STATUS "Building with debugging flags")
@@ -275,6 +292,20 @@ set(BUILD_SHARED_LIBS OFF)
 FetchContent_MakeAvailable(pslp)
 set(BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS_SAVED})
 
+
+# dejavu - header-only graph automorphism library for MIP symmetry detection
+# https://github.com/markusa4/dejavu (header-only, skip its CMakeLists.txt)
+FetchContent_Declare(
+  dejavu
+  GIT_REPOSITORY "https://github.com/markusa4/dejavu.git"
+  GIT_TAG "v2.1"
+  GIT_PROGRESS TRUE
+  EXCLUDE_FROM_ALL
+  SYSTEM
+  SOURCE_SUBDIR _nonexistent
+)
+FetchContent_MakeAvailable(dejavu)
+message(STATUS "dejavu (graph automorphism): ${dejavu_SOURCE_DIR}")
 
 include(${rapids-cmake-dir}/cpm/rapids_logger.cmake)
 # generate logging macros
@@ -430,17 +461,14 @@ add_library(cuopt SHARED
 set_target_properties(cuopt
         PROPERTIES BUILD_RPATH "\$ORIGIN"
         INSTALL_RPATH "\$ORIGIN"
-
-        # set target compile options
-        CXX_STANDARD 20
-        CXX_STANDARD_REQUIRED ON
-        CUDA_STANDARD 20
-        CUDA_STANDARD_REQUIRED ON
         INTERFACE_POSITION_INDEPENDENT_CODE ON
         CXX_SCAN_FOR_MODULES OFF
 )
 
-target_compile_definitions(cuopt PUBLIC "CUOPT_LOG_ACTIVE_LEVEL=RAPIDS_LOGGER_LOG_LEVEL_${LIBCUOPT_LOGGING_LEVEL}")
+target_compile_definitions(cuopt
+  PUBLIC "CUOPT_LOG_ACTIVE_LEVEL=RAPIDS_LOGGER_LOG_LEVEL_${LIBCUOPT_LOGGING_LEVEL}"
+  PUBLIC CUSPARSE_ENABLE_EXPERIMENTAL_API
+)
 
 target_compile_options(cuopt
         PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
@@ -471,21 +499,24 @@ target_include_directories(cuopt PRIVATE
 )
 
 target_include_directories(cuopt SYSTEM PRIVATE
-        "${pslp_SOURCE_DIR}/include"
+  "${pslp_SOURCE_DIR}/include"
+  "${dejavu_SOURCE_DIR}"
 )
 
 target_include_directories(cuopt
         PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty"
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/io"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc/client"
         "${CMAKE_CURRENT_BINARY_DIR}"
         "${CUDSS_INCLUDE}"
+        $<$<BOOL:${CUOPT_PARSER_WITH_BZIP2}>:${BZIP2_INCLUDE_DIRS}>
+        $<$<BOOL:${CUOPT_PARSER_WITH_ZLIB}>:${ZLIB_INCLUDE_DIRS}>
         PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
-        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/libmps_parser/include>"
         INTERFACE
         "$<INSTALL_INTERFACE:include>"
         ${CUDSS_INCLUDE}
@@ -505,10 +536,6 @@ set(CUOPT_PRIVATE_CUDA_LIBS
         OpenMP::OpenMP_CXX)
 
 list(PREPEND CUOPT_PRIVATE_CUDA_LIBS CUDA::cublasLt)
-
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/libmps_parser)
-set(CMAKE_LIBRARY_PATH ${CMAKE_CURRENT_BINARY_DIR}/libmps_parser/)
-
 
 # Pass CUDSS_MT_LIB_FILE_NAME as a compile definition
 get_filename_component(CUDSS_MT_LIB_FILE_NAME "${CUDSS_MT_LIB_FILE}" NAME)
@@ -546,7 +573,6 @@ target_link_libraries(cuopt
         rapids_logger::rapids_logger
         CCCL::CCCL
         raft::raft
-        cuopt::mps_parser
         ${CUDSS_LIB_FILE}
         PRIVATE
         ${CUOPT_PRIVATE_CUDA_LIBS}
@@ -584,14 +610,14 @@ else ()
 endif ()
 
 # adds the .so files to the runtime deb package
-install(TARGETS cuopt mps_parser
+install(TARGETS cuopt
         DESTINATION ${_LIB_DEST}
         COMPONENT runtime
         EXPORT cuopt-exports
 )
 
 # adds the .so files to the development deb package
-install(TARGETS cuopt mps_parser
+install(TARGETS cuopt
         DESTINATION ${_LIB_DEST}
         COMPONENT dev
 )
@@ -667,8 +693,6 @@ if (NOT BUILD_LP_ONLY)
     # (ET_EXEC) binaries are prone to corrupt segment layout. PIE (ET_DYN) survives RPATH edits.
     set_target_properties(cuopt_cli
             PROPERTIES
-            CXX_STANDARD 20
-            CXX_STANDARD_REQUIRED ON
             CXX_SCAN_FOR_MODULES OFF
             POSITION_INDEPENDENT_CODE ON
     )
@@ -725,8 +749,6 @@ if (BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
 
     set_target_properties(solve_MIP
             PROPERTIES
-            CXX_STANDARD 20
-            CXX_STANDARD_REQUIRED ON
             CXX_SCAN_FOR_MODULES OFF
     )
 
@@ -757,10 +779,6 @@ if (BUILD_LP_BENCHMARKS)
 
     set_target_properties(solve_LP
             PROPERTIES
-            CXX_STANDARD 20
-            CXX_STANDARD_REQUIRED ON
-            CUDA_STANDARD 20
-            CUDA_STANDARD_REQUIRED ON
             CXX_SCAN_FOR_MODULES OFF
     )
 
@@ -796,8 +814,6 @@ if (NOT SKIP_GRPC_BUILD)
 
     set_target_properties(cuopt_grpc_server
             PROPERTIES
-            CXX_STANDARD 20
-            CXX_STANDARD_REQUIRED ON
             CXX_SCAN_FOR_MODULES OFF
             POSITION_INDEPENDENT_CODE ON
     )
@@ -814,7 +830,6 @@ if (NOT SKIP_GRPC_BUILD)
             "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc"
             "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc/server"
             "${CMAKE_CURRENT_SOURCE_DIR}/include"
-            "${CMAKE_CURRENT_SOURCE_DIR}/libmps_parser/include"
             "${CMAKE_CURRENT_BINARY_DIR}"
             PUBLIC
             "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"

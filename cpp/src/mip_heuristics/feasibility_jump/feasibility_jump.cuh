@@ -18,6 +18,7 @@
 #include <mip_heuristics/utils.cuh>
 
 #include <utilities/event_handler.cuh>
+#include <utilities/manual_cuda_graph.cuh>
 
 #include <functional>
 
@@ -216,8 +217,6 @@ class fj_t {
     std::atomic<bool>& preemption_flag,
     fj_settings_t settings = fj_settings_t{},
     bool randomize_params  = false);
-  bool cpu_solve(fj_cpu_climber_t<i_t, f_t>& fj_cpu,
-                 f_t time_limit = +std::numeric_limits<f_t>::infinity());
   i_t alloc_max_climbers(i_t desired_climbers);
   void resize_vectors(const raft::handle_t* handle_ptr);
   void device_init(const rmm::cuda_stream_view& stream);
@@ -269,8 +268,7 @@ class fj_t {
   rmm::device_uvector<fj_load_balancing_workid_mapping_t> work_id_to_nonbin_var_idx;
   rmm::device_uvector<i_t> work_ids_for_related_vars;
 
-  cudaGraphExec_t graph_instance;
-  bool graph_created = false;
+  cuopt::manual_cuda_graph_t step_graph_;
 
   // kernel launch dimensions, computed once inside the constructor
   std::pair<dim3, dim3> setval_launch_dims;
@@ -634,6 +632,10 @@ class fj_t {
   std::vector<std::unique_ptr<climber_data_t>> climbers;
   rmm::device_uvector<typename climber_data_t::view_t> climber_views;
   fj_settings_t settings;
+  // Device-side mirror of `settings`. `run_step_device` pushes the host
+  // `settings` here before each kernel launch; kernels read it via
+  // `view_t::settings`.
+  rmm::device_scalar<fj_settings_t> device_settings;
 
   fj_improvement_callback_t<f_t> improvement_callback;
   f_t last_reported_objective_{std::numeric_limits<f_t>::infinity()};

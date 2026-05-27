@@ -72,6 +72,9 @@ class optimization_problem_t : public optimization_problem_interface_t<i_t, f_t>
   static_assert(std::is_floating_point<f_t>::value,
                 "'optimization_problem_t' accepts only floating point types for weights");
 
+  // nvcc does not always find base typedefs in derived class scope; inject explicitly.
+  using typename optimization_problem_interface_t<i_t, f_t>::quadratic_constraint_t;
+
   /**
    * @brief A device-side view of the `optimization_problem_t` structure with
    * the RAII stuffs stripped out, to make it easy to work inside kernels
@@ -113,8 +116,8 @@ class optimization_problem_t : public optimization_problem_interface_t<i_t, f_t>
 
   explicit optimization_problem_t(raft::handle_t const* handle_ptr);
   optimization_problem_t(const optimization_problem_t<i_t, f_t>& other);
-  optimization_problem_t(optimization_problem_t<i_t, f_t>&&)            = default;
-  optimization_problem_t& operator=(optimization_problem_t<i_t, f_t>&&) = default;
+  optimization_problem_t(optimization_problem_t<i_t, f_t>&&) noexcept            = default;
+  optimization_problem_t& operator=(optimization_problem_t<i_t, f_t>&&) noexcept = default;
 
   std::vector<internals::base_solution_callback_t*> mip_callbacks_;
 
@@ -178,6 +181,16 @@ class optimization_problem_t : public optimization_problem_interface_t<i_t, f_t>
   void set_objective_offset(f_t objective_offset) override;
 
   /**
+   * @brief Set per-climber objective offsets for batch PDLP.
+   *
+   * When non-empty, the size must match the fixed_batch_size that will be used for batch PDLP.
+   * Empty means the scalar `objective_offset_` is replicated across climbers (default behavior).
+   *
+   * @param[in] offsets Host-side vector of per-climber offsets.
+   */
+  void set_batch_objective_offsets(const std::vector<f_t>& offsets);
+
+  /**
    * @brief Set the quadratic objective matrix (Q) in CSR format.
    * @note Used for quadratic programming: objective is x^T * Q * x + c^T * x
    * @param[in] Q_values Values of the CSR representation
@@ -195,6 +208,8 @@ class optimization_problem_t : public optimization_problem_interface_t<i_t, f_t>
                                       const i_t* Q_offsets,
                                       i_t size_offsets,
                                       bool validate_positive_semi_definite = false) override;
+
+  void set_quadratic_constraints(std::vector<quadratic_constraint_t> constraints) override;
 
   /** @copydoc optimization_problem_interface_t::set_variable_lower_bounds */
   void set_variable_lower_bounds(const f_t* variable_lower_bounds, i_t size) override;
@@ -239,6 +254,11 @@ class optimization_problem_t : public optimization_problem_interface_t<i_t, f_t>
   rmm::device_uvector<f_t>& get_objective_coefficients() override;
   f_t get_objective_scaling_factor() const override;
   f_t get_objective_offset() const override;
+  /**
+   * @brief Get the per-climber objective offsets host vector. Size 0 means none were set.
+   */
+  const std::vector<f_t>& get_batch_objective_offsets() const noexcept;
+  std::vector<f_t>& get_batch_objective_offsets() noexcept;
   const rmm::device_uvector<f_t>& get_variable_lower_bounds() const override;
   rmm::device_uvector<f_t>& get_variable_lower_bounds() override;
   const rmm::device_uvector<f_t>& get_variable_upper_bounds() const override;
@@ -259,7 +279,9 @@ class optimization_problem_t : public optimization_problem_interface_t<i_t, f_t>
   const std::vector<i_t>& get_quadratic_objective_offsets() const override;
   const std::vector<i_t>& get_quadratic_objective_indices() const override;
   const std::vector<f_t>& get_quadratic_objective_values() const override;
+  const std::vector<quadratic_constraint_t>& get_quadratic_constraints() const override;
   bool has_quadratic_objective() const override;
+  bool has_quadratic_constraints() const override;
 
   // ============================================================================
   // Host getters
@@ -371,10 +393,16 @@ class optimization_problem_t : public optimization_problem_interface_t<i_t, f_t>
   rmm::device_uvector<f_t> c_;
   f_t objective_scaling_factor_{1};
   f_t objective_offset_{0};
+  // Per-climber objective offsets for batch PDLP. Empty means the scalar `objective_offset_` is
+  // replicated across climbers (default behavior).
+  std::vector<f_t> batch_objective_offsets_{};
 
   std::vector<i_t> Q_offsets_;
   std::vector<i_t> Q_indices_;
   std::vector<f_t> Q_values_;
+
+  /** QCQP: quadratic constraints **/
+  std::vector<quadratic_constraint_t> quadratic_constraints_{};
 
   rmm::device_uvector<f_t> variable_lower_bounds_;
   rmm::device_uvector<f_t> variable_upper_bounds_;

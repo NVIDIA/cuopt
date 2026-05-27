@@ -406,24 +406,21 @@ class variable_bounds_t;
 template <typename i_t, typename f_t>
 class cut_generation_t {
  public:
-  cut_generation_t(
-    cut_pool_t<i_t, f_t>& cut_pool,
-    const lp_problem_t<i_t, f_t>& lp,
-    const simplex_solver_settings_t<i_t, f_t>& settings,
-    csr_matrix_t<i_t, f_t>& Arow,
-    const std::vector<i_t>& new_slacks,
-    const std::vector<variable_type_t>& var_types,
-    const user_problem_t<i_t, f_t>& user_problem,
-    const probing_implied_bound_t<i_t, f_t>& probing_implied_bound,
-    std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table                      = nullptr,
-    std::future<std::shared_ptr<detail::clique_table_t<i_t, f_t>>>* clique_table_future = nullptr,
-    std::atomic<bool>* signal_extend                                                    = nullptr)
+  cut_generation_t(cut_pool_t<i_t, f_t>& cut_pool,
+                   const lp_problem_t<i_t, f_t>& lp,
+                   const simplex_solver_settings_t<i_t, f_t>& settings,
+                   csr_matrix_t<i_t, f_t>& Arow,
+                   const std::vector<i_t>& new_slacks,
+                   const std::vector<variable_type_t>& var_types,
+                   const user_problem_t<i_t, f_t>& user_problem,
+                   const probing_implied_bound_t<i_t, f_t>& probing_implied_bound,
+                   std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table = nullptr,
+                   omp_atomic_t<bool>* signal_extend                              = nullptr)
     : cut_pool_(cut_pool),
       knapsack_generation_(lp, settings, Arow, new_slacks, var_types),
       user_problem_(user_problem),
       probing_implied_bound_(probing_implied_bound),
       clique_table_(std::move(clique_table)),
-      clique_table_future_(clique_table_future),
       signal_extend_(signal_extend)
   {
   }
@@ -493,8 +490,7 @@ class cut_generation_t {
   const user_problem_t<i_t, f_t>& user_problem_;
   const probing_implied_bound_t<i_t, f_t>& probing_implied_bound_;
   std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table_;
-  std::future<std::shared_ptr<detail::clique_table_t<i_t, f_t>>>* clique_table_future_{nullptr};
-  std::atomic<bool>* signal_extend_{nullptr};
+  omp_atomic_t<bool>* signal_extend_{nullptr};
 };
 
 template <typename i_t, typename f_t>

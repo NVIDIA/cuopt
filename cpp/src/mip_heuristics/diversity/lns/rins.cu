@@ -24,6 +24,7 @@
 
 #include <branch_and_bound/branch_and_bound.hpp>
 #include <dual_simplex/tic_toc.hpp>
+#include <utilities/scope_guard.hpp>
 
 namespace cuopt::linear_programming::detail {
 template <typename i_t, typename f_t>
@@ -37,19 +38,6 @@ rins_t<i_t, f_t>::rins_t(mip_solver_context_t<i_t, f_t>& context_,
 }
 
 template <typename i_t, typename f_t>
-rins_thread_t<i_t, f_t>::~rins_thread_t()
-{
-  this->request_termination();
-}
-
-template <typename i_t, typename f_t>
-void rins_thread_t<i_t, f_t>::run_worker()
-{
-  raft::common::nvtx::range fun_scope("Running RINS");
-  rins_ptr->run_rins();
-}
-
-template <typename i_t, typename f_t>
 void rins_t<i_t, f_t>::new_best_incumbent_callback(const std::vector<f_t>& solution)
 {
   node_count_at_last_improvement = node_count.load();
@@ -59,23 +47,27 @@ template <typename i_t, typename f_t>
 void rins_t<i_t, f_t>::node_callback(const std::vector<f_t>& solution, f_t objective)
 {
   if (!enabled) return;
-
   node_count++;
 
   if (node_count - node_count_at_last_improvement < settings.nodes_after_later_improvement) return;
-
   if (node_count - node_count_at_last_rins > settings.node_freq) {
     // opportunistic early test w/ atomic to avoid having to take the lock
-    if (!rins_thread->cpu_thread_done) return;
-    std::lock_guard<std::mutex> lock(rins_mutex);
+    if (!launch_new_task.exchange(false)) return;
+
     bool population_ready = false;
-    if (rins_thread->cpu_thread_done) {
+    {
       std::lock_guard<std::recursive_mutex> pop_lock(dm.population.write_mutex);
       population_ready = dm.population.current_size() > 0 && dm.population.is_feasible();
     }
+
     if (population_ready) {
       lp_optimal_solution = solution;
-      rins_thread->start_cpu_solver();
+
+      CUOPT_LOG_DEBUG("Launching RINS task");
+#pragma omp task default(none)
+      run_rins();
+    } else {
+      launch_new_task = true;
     }
   }
 }
@@ -83,27 +75,19 @@ void rins_t<i_t, f_t>::node_callback(const std::vector<f_t>& solution, f_t objec
 template <typename i_t, typename f_t>
 void rins_t<i_t, f_t>::enable()
 {
-  rins_thread           = std::make_unique<rins_thread_t<i_t, f_t>>();
-  rins_thread->rins_ptr = this;
-  seed                  = cuopt::seed_generator::get_seed();
+  seed = cuopt::seed_generator::get_seed();
   problem_ptr->handle_ptr->sync_stream();
   problem_copy = std::make_unique<problem_t<i_t, f_t>>(*problem_ptr, &rins_handle);
   enabled      = true;
 }
 
 template <typename i_t, typename f_t>
-void rins_t<i_t, f_t>::stop_rins()
-{
-  enabled = false;
-  if (rins_thread) rins_thread->request_termination();
-  rins_thread.reset();
-}
-
-template <typename i_t, typename f_t>
 void rins_t<i_t, f_t>::run_rins()
 {
-  if (total_calls == 0) RAFT_CUDA_TRY(cudaSetDevice(context.handle_ptr->get_device()));
+  raft::common::nvtx::range fun_scope("Running RINS");
+  scope_guard guard([this]() { this->launch_new_task = true; });
 
+  RAFT_CUDA_TRY(cudaSetDevice(context.handle_ptr->get_device()));
   cuopt_assert(lp_optimal_solution.size() == problem_copy->n_variables, "Assignment size mismatch");
   cuopt_assert(problem_copy->handle_ptr == &rins_handle, "Handle mismatch");
   // Do not make assertions based on problem_ptr. The original problem may have been modified within
@@ -229,18 +213,20 @@ void rins_t<i_t, f_t>::run_rins()
   solution_t<i_t, f_t> fj_solution(fixed_problem);
   fj_solution.copy_new_assignment(cuopt::host_copy(fixed_assignment, rins_handle.get_stream()));
   std::vector<f_t> default_weights(fixed_problem.n_constraints, 1.);
-  cpu_fj_thread_t<i_t, f_t> cpu_fj_thread;
-  cpu_fj_thread.fj_cpu             = fj.create_cpu_climber(fj_solution,
-                                               default_weights,
-                                               default_weights,
-                                               0.,
-                                               context.preempt_heuristic_solver_,
-                                               fj_settings_t{},
-                                               true);
-  cpu_fj_thread.fj_ptr             = &fj;
-  cpu_fj_thread.fj_cpu->log_prefix = "[RINS] ";
-  cpu_fj_thread.time_limit         = time_limit;
-  cpu_fj_thread.start_cpu_solver();
+
+  std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> fj_cpu =
+    fj.create_cpu_climber(fj_solution,
+                          default_weights,
+                          default_weights,
+                          0.,
+                          context.preempt_heuristic_solver_,
+                          fj_settings_t{},
+                          true);
+  fj_cpu->log_prefix = "[RINS] ";
+
+  CUOPT_LOG_DEBUG("Launching CPUFJ (RINS) task");
+#pragma omp task shared(fj_cpu) firstprivate(time_limit) default(none)
+  cpufj_solve(fj_cpu.get(), time_limit);
 
   f_t lower_bound = context.branch_and_bound_ptr ? context.branch_and_bound_ptr->get_lower_bound()
                                                  : -std::numeric_limits<f_t>::infinity();
@@ -311,13 +297,13 @@ void rins_t<i_t, f_t>::run_rins()
                           static_cast<f_t>(context.settings.heuristic_params.rins_max_time_limit));
   }
 
-  cpu_fj_thread.stop_cpu_solver();
-  bool fj_solution_found = cpu_fj_thread.wait_for_cpu_solver();
-  CUOPT_LOG_DEBUG("RINS FJ ran for %d iterations", cpu_fj_thread.fj_cpu->iterations);
-  if (fj_solution_found) {
-    CUOPT_LOG_DEBUG("RINS FJ solution found. Objective %.16e",
-                    cpu_fj_thread.fj_cpu->h_best_objective);
-    rins_solution_queue.push_back(cpu_fj_thread.fj_cpu->h_best_assignment);
+#pragma omp taskwait  // Wait for the CPU FJ (RINS) to finish
+  CUOPT_LOG_DEBUG("CPUFJ (RINS) task was stopped");
+
+  CUOPT_LOG_DEBUG("RINS FJ ran for %d iterations", fj_cpu->iterations);
+  if (fj_cpu->feasible_found) {
+    CUOPT_LOG_DEBUG("RINS FJ solution found. Objective %.16e", fj_cpu->h_best_objective);
+    rins_solution_queue.push_back(fj_cpu->h_best_assignment);
   }
   // Thread will be automatically terminated and joined by destructor
 
@@ -357,12 +343,10 @@ void rins_t<i_t, f_t>::run_rins()
 }
 
 #if MIP_INSTANTIATE_FLOAT
-template class rins_thread_t<int, float>;
 template class rins_t<int, float>;
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
-template class rins_thread_t<int, double>;
 template class rins_t<int, double>;
 #endif
 

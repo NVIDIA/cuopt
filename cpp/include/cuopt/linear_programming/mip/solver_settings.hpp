@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <optional>
 #include <vector>
 
 #include <cuopt/linear_programming/constants.h>
@@ -30,6 +31,14 @@ struct benchmark_info_t {
 // Forward declare solver_settings_t for friend class
 template <typename i_t, typename f_t>
 class solver_settings_t;
+
+template <typename i_t, typename f_t>
+class mip_solver_settings_t;
+
+namespace detail {
+template <typename i_t, typename f_t>
+struct mip_solver_settings_accessor;
+}  // namespace detail
 
 template <typename i_t, typename f_t>
 class mip_solver_settings_t {
@@ -86,10 +95,12 @@ class mip_solver_settings_t {
 
   f_t time_limit                = std::numeric_limits<f_t>::infinity();
   f_t work_limit                = std::numeric_limits<f_t>::infinity();
+  f_t semi_continuous_big_m     = f_t(1e10);
   i_t node_limit                = std::numeric_limits<i_t>::max();
   bool heuristics_only          = false;
   i_t reliability_branching     = -1;
   i_t num_cpu_threads           = -1;  // -1 means use default number of threads in branch and bound
+  i_t symmetry                  = -1;
   i_t max_cut_passes            = 10;  // number of cut passes to make
   i_t mir_cuts                  = -1;
   i_t mixed_integer_gomory_cuts = -1;
@@ -119,6 +130,14 @@ class mip_solver_settings_t {
   int mip_scaling = CUOPT_MIP_SCALING_NO_OBJECTIVE;
   presolver_t presolver{presolver_t::Default};
   /**
+   * @brief Enable the cuOpt internal probing-cache step of presolve (MIP only).
+   *
+   * Probing is part of cuOpt's internal MIP presolve and runs only when the
+   * higher-level presolve is enabled (i.e. `presolver != presolver_t::None`).
+   * When this is `false`, probing is skipped even if presolve is otherwise on.
+   */
+  bool probing{true};
+  /**
    * @brief Determinism mode for MIP solver.
    *
    * Controls the determinism behavior of the MIP solver:
@@ -146,8 +165,49 @@ class mip_solver_settings_t {
 
  private:
   std::vector<internals::base_solution_callback_t*> mip_callbacks_;
+  std::optional<i_t> semi_continuous_original_num_variables_;
+  std::vector<i_t> semi_continuous_binary_to_original_indices_;
 
   friend class solver_settings_t<i_t, f_t>;
+  friend struct detail::mip_solver_settings_accessor<i_t, f_t>;
 };
+
+namespace detail {
+
+template <typename i_t, typename f_t>
+struct mip_solver_settings_accessor {
+  static void clear_mip_callbacks(mip_solver_settings_t<i_t, f_t>& settings)
+  {
+    settings.mip_callbacks_.clear();
+  }
+
+  static void set_semi_continuous_callback_translation(mip_solver_settings_t<i_t, f_t>& settings,
+                                                       i_t original_num_variables,
+                                                       std::vector<i_t> binary_to_original_indices)
+  {
+    settings.semi_continuous_original_num_variables_     = original_num_variables;
+    settings.semi_continuous_binary_to_original_indices_ = std::move(binary_to_original_indices);
+  }
+
+  static bool has_semi_continuous_callback_translation(
+    const mip_solver_settings_t<i_t, f_t>& settings)
+  {
+    return settings.semi_continuous_original_num_variables_.has_value();
+  }
+
+  static i_t get_semi_continuous_original_num_variables(
+    const mip_solver_settings_t<i_t, f_t>& settings)
+  {
+    return settings.semi_continuous_original_num_variables_.value_or(0);
+  }
+
+  static const std::vector<i_t>& get_semi_continuous_binary_to_original_indices(
+    const mip_solver_settings_t<i_t, f_t>& settings)
+  {
+    return settings.semi_continuous_binary_to_original_indices_;
+  }
+};
+
+}  // namespace detail
 
 }  // namespace cuopt::linear_programming

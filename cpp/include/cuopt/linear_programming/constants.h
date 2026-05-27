@@ -33,6 +33,7 @@
 #define CUOPT_ITERATION_LIMIT                      "iteration_limit"
 #define CUOPT_TIME_LIMIT                           "time_limit"
 #define CUOPT_WORK_LIMIT                           "work_limit"
+#define CUOPT_NODE_LIMIT                           "node_limit"
 #define CUOPT_PDLP_SOLVER_MODE                     "pdlp_solver_mode"
 #define CUOPT_METHOD                               "method"
 #define CUOPT_PER_CONSTRAINT_RESIDUAL              "per_constraint_residual"
@@ -46,9 +47,12 @@
 #define CUOPT_DUALIZE                              "dualize"
 #define CUOPT_ORDERING                             "ordering"
 #define CUOPT_BARRIER_DUAL_INITIAL_POINT           "barrier_dual_initial_point"
+#define CUOPT_BARRIER_ITERATIVE_REFINEMENT         "barrier_iterative_refinement"
+#define CUOPT_BARRIER_STEP_SCALE                   "barrier_step_scale"
 #define CUOPT_ELIMINATE_DENSE_COLUMNS              "eliminate_dense_columns"
 #define CUOPT_CUDSS_DETERMINISTIC                  "cudss_deterministic"
 #define CUOPT_PRESOLVE                             "presolve"
+#define CUOPT_MIP_PROBING                          "mip_probing"
 #define CUOPT_DUAL_POSTSOLVE                       "dual_postsolve"
 #define CUOPT_MIP_DETERMINISM_MODE                 "mip_determinism_mode"
 #define CUOPT_MIP_ABSOLUTE_TOLERANCE               "mip_absolute_tolerance"
@@ -59,6 +63,7 @@
 #define CUOPT_MIP_HEURISTICS_ONLY                  "mip_heuristics_only"
 #define CUOPT_MIP_SCALING                          "mip_scaling"
 #define CUOPT_MIP_PRESOLVE                         "mip_presolve"
+#define CUOPT_MIP_SYMMETRY                         "mip_symmetry"
 #define CUOPT_MIP_RELIABILITY_BRANCHING            "mip_reliability_branching"
 #define CUOPT_MIP_CUT_PASSES                       "mip_cut_passes"
 #define CUOPT_MIP_MIXED_INTEGER_ROUNDING_CUTS      "mip_mixed_integer_rounding_cuts"
@@ -75,13 +80,15 @@
 #define CUOPT_MIP_BATCH_PDLP_RELIABILITY_BRANCHING "mip_batch_pdlp_reliability_branching"
 #define CUOPT_MIP_STRONG_BRANCHING_SIMPLEX_ITERATION_LIMIT \
   "mip_strong_branching_simplex_iteration_limit"
-#define CUOPT_SOLUTION_FILE     "solution_file"
-#define CUOPT_NUM_CPU_THREADS   "num_cpu_threads"
-#define CUOPT_NUM_GPUS          "num_gpus"
-#define CUOPT_USER_PROBLEM_FILE "user_problem_file"
-#define CUOPT_PRESOLVE_FILE     "presolve_file"
-#define CUOPT_RANDOM_SEED       "random_seed"
-#define CUOPT_PDLP_PRECISION    "pdlp_precision"
+
+#define CUOPT_SOLUTION_FILE            "solution_file"
+#define CUOPT_NUM_CPU_THREADS          "num_cpu_threads"
+#define CUOPT_NUM_GPUS                 "num_gpus"
+#define CUOPT_USER_PROBLEM_FILE        "user_problem_file"
+#define CUOPT_PRESOLVE_FILE            "presolve_file"
+#define CUOPT_RANDOM_SEED              "random_seed"
+#define CUOPT_PDLP_PRECISION           "pdlp_precision"
+#define CUOPT_MIP_SEMICONTINUOUS_BIG_M "mip_semi_continuous_big_m"
 
 #define CUOPT_MIP_HYPER_HEURISTIC_POPULATION_SIZE     "mip_hyper_heuristic_population_size"
 #define CUOPT_MIP_HYPER_HEURISTIC_NUM_CPUFJ_THREADS   "mip_hyper_heuristic_num_cpufj_threads"
@@ -134,8 +141,9 @@
 #define CUOPT_EQUAL        'E'
 
 /* @brief The variable type constants */
-#define CUOPT_CONTINUOUS 'C'
-#define CUOPT_INTEGER    'I'
+#define CUOPT_CONTINUOUS      'C'
+#define CUOPT_INTEGER         'I'
+#define CUOPT_SEMI_CONTINUOUS 'S'
 
 /* @brief The infinity constant */
 #ifdef __cplusplus
@@ -185,5 +193,8 @@
 #define CUOPT_MIP_SCALING_OFF          0
 #define CUOPT_MIP_SCALING_ON           1
 #define CUOPT_MIP_SCALING_NO_OBJECTIVE 2
+
+#define CUOPT_BARRIER_ITERATIVE_REFINEMENT_OFF 0
+#define CUOPT_BARRIER_ITERATIVE_REFINEMENT_ON  1
 
 #endif  // CUOPT_CONSTANTS_H

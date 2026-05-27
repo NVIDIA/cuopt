@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
+
 #include <raft/core/handle.hpp>
 
 #include <rmm/cuda_stream_view.hpp>
@@ -64,7 +66,8 @@ class saddle_point_state_t {
   saddle_point_state_t(raft::handle_t const* handle_ptr,
                        i_t primal_size,
                        i_t dual_size,
-                       size_t batch_size);
+                       size_t batch_size,
+                       const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params);
 
   /**
    * @brief Copies the values of the solutions in another saddle_point_state_t
