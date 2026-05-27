@@ -142,7 +142,7 @@ message PDLPSolverSettings {
   PDLPSolverMode pdlp_solver_mode = 14;
   LPMethod method = 15;
   int32 presolver = 16;
-  bool dual_postsolve = 17;
+  optional bool dual_postsolve = 17;
   bool crossover = 18;
   int32 num_gpus = 19;
   bool per_constraint_residual = 20;
@@ -156,7 +156,7 @@ message PDLPSolverSettings {
   bool save_best_primal_so_far = 28;
   bool first_primal_feasible = 29;
   int32 pdlp_precision = 30;
-  bool barrier_iterative_refinement = 31;
+  optional bool barrier_iterative_refinement = 31;
   double barrier_step_scale = 32;
   PDLPWarmStartData warm_start_data = 50;
 }
@@ -190,7 +190,7 @@ message MIPSolverSettings {
   double cut_min_orthogonality = 26;
   int32 determinism_mode = 27;
   int32 seed = 28;
-  bool probing = 29;
+  optional bool probing = 29;
   int32 strong_branching_simplex_iteration_limit = 30;
   int32 implied_bound_cuts = 31;
   int32 mip_batch_pdlp_reliability_branching = 32;

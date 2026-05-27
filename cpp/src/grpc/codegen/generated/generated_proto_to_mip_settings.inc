@@ -36,7 +36,9 @@
   settings.cut_min_orthogonality = pb_settings.cut_min_orthogonality();
   settings.determinism_mode = pb_settings.determinism_mode();
   settings.seed = pb_settings.seed();
-  settings.probing = pb_settings.probing();
+  if (pb_settings.has_probing()) {
+    settings.probing = pb_settings.probing();
+  }
   settings.semi_continuous_big_m = pb_settings.semi_continuous_big_m();
   settings.heuristic_params.population_size = pb_settings.population_size();
   settings.heuristic_params.num_cpufj_threads = pb_settings.num_cpufj_threads();

@@ -2060,3 +2060,85 @@ TEST(MapperRoundtrip, PDLPSettingsIterationLimitSentinel)
   map_proto_to_pdlp_settings(pb, restored);
   EXPECT_EQ(restored.iteration_limit, default_limit) << "Negative sentinel should keep default";
 }
+
+// ───────────────────────────────────────────────────────────────────────────
+// Proto3 `optional` presence handling
+// ───────────────────────────────────────────────────────────────────────────
+//
+// A handful of bool settings have a C++ default of `true` but live on the wire
+// in a proto3 message. Without `optional`, an omitted field decodes as the
+// proto3 zero (`false`) and the mapper would silently overwrite the C++
+// default. The codegen now emits `optional <type>` for these fields and
+// guards the assignment with `has_<X>()`, so an omitted field preserves the
+// solver default. The tests below pin that behavior for the three currently
+// converted fields.
+TEST(MapperRoundtrip, MIPSettingsProbingOmittedPreservesDefault)
+{
+  cuopt::remote::MIPSolverSettings pb;  // default-constructed: probing absent
+
+  mip_solver_settings_t<int32_t, double> restored;
+  ASSERT_TRUE(restored.probing) << "C++ default is expected to be true";
+  restored.probing = false;  // confirm the guard actively skips the assignment
+  map_proto_to_mip_settings(pb, restored);
+  EXPECT_FALSE(restored.probing)
+    << "Omitted optional bool must not overwrite the existing struct value; "
+       "the in-class default would be restored only if the struct was fresh";
+
+  mip_solver_settings_t<int32_t, double> fresh;
+  map_proto_to_mip_settings(pb, fresh);
+  EXPECT_TRUE(fresh.probing) << "Omitted optional bool must preserve the C++ default `true`";
+}
+
+TEST(MapperRoundtrip, MIPSettingsProbingExplicitFalseRoundtrips)
+{
+  cuopt::remote::MIPSolverSettings pb;
+  pb.set_probing(false);
+  ASSERT_TRUE(pb.has_probing()) << "set_probing must mark presence on optional field";
+
+  mip_solver_settings_t<int32_t, double> restored;
+  map_proto_to_mip_settings(pb, restored);
+  EXPECT_FALSE(restored.probing) << "Explicit false must apply";
+}
+
+TEST(MapperRoundtrip, PDLPSettingsDualPostsolveOmittedPreservesDefault)
+{
+  cuopt::remote::PDLPSolverSettings pb;  // default-constructed
+
+  pdlp_solver_settings_t<int32_t, double> fresh;
+  ASSERT_TRUE(fresh.dual_postsolve) << "C++ default is expected to be true";
+  map_proto_to_pdlp_settings(pb, fresh);
+  EXPECT_TRUE(fresh.dual_postsolve) << "Omitted optional bool must preserve the C++ default `true`";
+}
+
+TEST(MapperRoundtrip, PDLPSettingsDualPostsolveExplicitFalseRoundtrips)
+{
+  cuopt::remote::PDLPSolverSettings pb;
+  pb.set_dual_postsolve(false);
+  ASSERT_TRUE(pb.has_dual_postsolve());
+
+  pdlp_solver_settings_t<int32_t, double> restored;
+  map_proto_to_pdlp_settings(pb, restored);
+  EXPECT_FALSE(restored.dual_postsolve);
+}
+
+TEST(MapperRoundtrip, PDLPSettingsBarrierIterativeRefinementOmittedPreservesDefault)
+{
+  cuopt::remote::PDLPSolverSettings pb;
+
+  pdlp_solver_settings_t<int32_t, double> fresh;
+  ASSERT_TRUE(fresh.barrier_iterative_refinement);
+  map_proto_to_pdlp_settings(pb, fresh);
+  EXPECT_TRUE(fresh.barrier_iterative_refinement)
+    << "Omitted optional bool must preserve the C++ default `true`";
+}
+
+TEST(MapperRoundtrip, PDLPSettingsBarrierIterativeRefinementExplicitFalseRoundtrips)
+{
+  cuopt::remote::PDLPSolverSettings pb;
+  pb.set_barrier_iterative_refinement(false);
+  ASSERT_TRUE(pb.has_barrier_iterative_refinement());
+
+  pdlp_solver_settings_t<int32_t, double> restored;
+  map_proto_to_pdlp_settings(pb, restored);
+  EXPECT_FALSE(restored.barrier_iterative_refinement);
+}

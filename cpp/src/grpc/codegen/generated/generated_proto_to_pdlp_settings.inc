@@ -20,7 +20,9 @@
   settings.pdlp_solver_mode = from_proto_pdlp_solver_mode(pb_settings.pdlp_solver_mode());
   settings.method = from_proto_lp_method(pb_settings.method());
   settings.presolver = static_cast<presolver_t>(pb_settings.presolver());
-  settings.dual_postsolve = pb_settings.dual_postsolve();
+  if (pb_settings.has_dual_postsolve()) {
+    settings.dual_postsolve = pb_settings.dual_postsolve();
+  }
   settings.crossover = pb_settings.crossover();
   settings.num_gpus = pb_settings.num_gpus();
   settings.per_constraint_residual = pb_settings.per_constraint_residual();
@@ -31,7 +33,9 @@
   settings.ordering = pb_settings.ordering();
   settings.barrier_dual_initial_point = pb_settings.barrier_dual_initial_point();
   settings.eliminate_dense_columns = pb_settings.eliminate_dense_columns();
-  settings.barrier_iterative_refinement = pb_settings.barrier_iterative_refinement();
+  if (pb_settings.has_barrier_iterative_refinement()) {
+    settings.barrier_iterative_refinement = pb_settings.barrier_iterative_refinement();
+  }
   settings.barrier_step_scale = pb_settings.barrier_step_scale();
   settings.save_best_primal_so_far = pb_settings.save_best_primal_so_far();
   settings.first_primal_feasible = pb_settings.first_primal_feasible();

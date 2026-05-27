@@ -576,7 +576,8 @@ def generate_settings_message_proto(registry, message_name, obj):
         if num is None:
             continue
         ptype = _settings_field_proto_type(registry, f)
-        lines.append((num, f"  {ptype} {f['name']} = {num};"))
+        prefix = "optional " if f.get("optional") else ""
+        lines.append((num, f"  {prefix}{ptype} {f['name']} = {num};"))
     lines.extend(_iter_embeds(obj))
     lines.sort(key=lambda x: x[0])
     return "\n".join(item[1] for item in lines)
@@ -630,11 +631,15 @@ def generate_proto_to_settings_body(registry, obj_name, obj, indent="  "):
         cpp_member = f.get("member", f["name"])
         from_proto_cast = f.get("from_proto_cast")
         sentinel = f.get("sentinel")
+        is_optional = bool(f.get("optional"))
 
         edef = _lookup_enum(registry, ftype)
         from_fn = _enum_from_proto_fn(ftype, edef) if edef else None
 
         if sentinel:
+            # sentinel and optional are mutually exclusive presence mechanisms;
+            # the validator rejects the combination. Sentinels keep their own
+            # value-based guard regardless of the optional flag.
             guard = sentinel["from_proto_guard"]
             cast = sentinel.get("from_proto_cast", from_proto_cast)
             lines.append(f"{ind}if (pb_settings.{pname}() {guard}) {{")
@@ -645,18 +650,23 @@ def generate_proto_to_settings_body(registry, obj_name, obj, indent="  "):
             )
             lines.append(f"{ind}  settings.{cpp_member} = {expr};")
             lines.append(f"{ind}}}")
-        elif from_fn:
-            lines.append(
-                f"{ind}settings.{cpp_member} = {from_fn}(pb_settings.{pname}());"
-            )
-        elif from_proto_cast:
-            lines.append(
-                f"{ind}settings.{cpp_member} = static_cast<{from_proto_cast}>(pb_settings.{pname}());"
-            )
         else:
-            lines.append(
-                f"{ind}settings.{cpp_member} = pb_settings.{pname}();"
-            )
+            if from_fn:
+                rhs = f"{from_fn}(pb_settings.{pname}())"
+            elif from_proto_cast:
+                rhs = f"static_cast<{from_proto_cast}>(pb_settings.{pname}())"
+            else:
+                rhs = f"pb_settings.{pname}()"
+
+            if is_optional:
+                # `optional` proto3 scalar: only apply the value when the
+                # client explicitly set it on the wire, so omitted fields
+                # preserve the C++ struct's in-class default.
+                lines.append(f"{ind}if (pb_settings.has_{pname}()) {{")
+                lines.append(f"{ind}  settings.{cpp_member} = {rhs};")
+                lines.append(f"{ind}}}")
+            else:
+                lines.append(f"{ind}settings.{cpp_member} = {rhs};")
     return "\n".join(lines)
 
 
@@ -2145,6 +2155,42 @@ def _validate_registry_uniqueness(registry):
         )
     ]
     _check_unique("ArrayFieldId", afid_pairs, errors)
+
+    # `optional: true` is only meaningful for scalar proto3 fields that have
+    # a settable C++ default different from the proto3 zero value. The codegen
+    # only emits `optional <type>` + a `has_<X>()` guard for the scalar settings
+    # path; we reject combinations that would silently do the wrong thing.
+    #
+    # Specifically:
+    #   * Sentinel fields already encode "unset" via a reserved value and the
+    #     mapper uses `from_proto_guard` to recover the C++ default — pairing
+    #     them with `optional` is redundant and the two presence mechanisms
+    #     would fight (`has_X()==true && value==sentinel` is ambiguous).
+    #   * Enum-typed fields are syntactically allowed by proto3 but our enums
+    #     follow the "UNSPECIFIED = 0 means default" convention; flipping them
+    #     to `optional` would change semantics in ways we want to think about
+    #     case-by-case, not implicitly.
+    for msg, key in [
+        ("PDLPSolverSettings", "pdlp_settings"),
+        ("MIPSolverSettings", "mip_settings"),
+    ]:
+        section = registry.get(key) or {}
+        for f in parse_settings_fields(section.get("fields", [])):
+            if not f.get("optional"):
+                continue
+            name = f.get("name")
+            if f.get("sentinel"):
+                errors.append(
+                    f"{msg}.{name}: `optional` and `sentinel` are mutually "
+                    "exclusive presence mechanisms"
+                )
+            ftype = f.get("type", "double")
+            if _lookup_enum(registry, ftype):
+                errors.append(
+                    f"{msg}.{name}: `optional` is not supported on enum-typed "
+                    f"fields (type {ftype!r}); enums use the UNSPECIFIED=0 "
+                    "convention for defaults"
+                )
 
     if errors:
         raise ValueError(

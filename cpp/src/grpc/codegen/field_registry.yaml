@@ -50,6 +50,13 @@
 #   skip_conversion    – true => include in proto but not in conversion code
 #   proto_only         – true => include in proto header but not a constructor arg
 #   sentinel           – sentinel value handling for fields with "unset" semantics
+#   optional           – true => emit proto3 `optional` (presence-tracked) and
+#                          only apply the value when the client explicitly set it.
+#                          Use for scalar fields whose C++ default differs from the
+#                          proto3 zero value (e.g. `bool foo{true}`), so that an
+#                          omitted field preserves the solver default instead of
+#                          silently overwriting it with the proto3 zero. Mutually
+#                          exclusive with `sentinel`. Not supported on enum types.
 #   to_proto_cast      – explicit cast type for C++ -> proto direction
 #   from_proto_cast    – explicit cast type for proto -> C++ direction
 #
@@ -457,8 +464,13 @@ pdlp_settings:
       to_proto_cast: "int32_t"
       from_proto_cast: "presolver_t"
   - dual_postsolve:
+      # C++ default is `true`; using proto3 `optional` so that a client that
+      # omits this field gets the solver default rather than the proto3 zero
+      # (`false`). See also the matching `optional` markers on
+      # `barrier_iterative_refinement` (pdlp) and `probing` (mip).
       field_num: 17
       type: bool
+      optional: true
   - crossover:
       field_num: 18
       type: bool
@@ -492,12 +504,13 @@ pdlp_settings:
       type: bool
   - barrier_iterative_refinement:
       # Whether the barrier method runs iterative refinement after each solve
-      # (see cpp/src/barrier/barrier.cu). C++ default is `true`; if an old
-      # client (predating this field) hits a newer server, the proto3 wire
-      # default of `false` will overwrite the C++ default. This matches the
-      # pre-existing behavior of mip_settings.probing (also default-true bool).
+      # (see cpp/src/barrier/barrier.cu). C++ default is `true`. Declared as
+      # proto3 `optional` so that a client which omits this field preserves
+      # the solver default; without `optional`, the proto3 wire zero (`false`)
+      # would silently overwrite the C++ default.
       field_num: 31
       type: bool
+      optional: true
   - barrier_step_scale:
       # Step scale used by the barrier method primal/dual updates. Local-solve
       # binding restricts the range to [0.5, 0.9999] with default 0.9; see
@@ -638,8 +651,14 @@ mip_settings:
 
     # Presolve sub-steps
   - probing:
+      # C++ default is `true`; declared as proto3 `optional` so that a client
+      # which omits this field preserves the solver default. Without
+      # `optional`, the proto3 wire zero (`false`) would silently overwrite
+      # the C++ default. See also `dual_postsolve` and
+      # `barrier_iterative_refinement` in pdlp_settings.
       field_num: 29
       type: bool
+      optional: true
 
     # Semi-continuous variables
     # Fallback upper bound for semi-continuous variables when bounds-strengthening
