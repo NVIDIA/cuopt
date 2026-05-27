@@ -3689,10 +3689,14 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
         // sum_k a_ik x_k <= beta
 
         // If we have too many variables in the row that would cause the activity to be infinite,
-        // we cannot derive an variable bound
+        // we cannot derive a variable bound
         if (a_ij > 0.0 && num_neg_inf_[i] <= 2) {
           const f_t lower_activity_j = lower_activity(lp.lower[j], lp.upper[j], a_ij);
 
+          // This loop may still scan controllers when num_neg_inf_[i] > 0. A bound is finite only
+          // if every lower-infinite contribution is removed by excluding the target j and the
+          // controller l. For num_neg_inf_[i] == 1, the lower-infinite term must be either j or l;
+          // for num_neg_inf_[i] == 2, both j and l must be lower-infinite.
           for (i_t q = row_start; q < row_end; q++) {
             const i_t l = Arow.j[q];
             if (!is_variable_bound_controller(l)) { continue; }
