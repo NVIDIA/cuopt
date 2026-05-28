@@ -88,6 +88,22 @@ inline bool read_protobuf_from_pipe(int fd, google::protobuf::MessageLite& msg)
 // public protocol and can evolve in lockstep with the server binary.
 // =============================================================================
 
+// Tri-state result for write_chunked_request_to_pipe.  The distinction lets
+// callers respond differently to malformed-input (bad client data — reject the
+// job, keep the worker) vs. real pipe failures (worker may be hung on a
+// half-fed pipe — kill it).
+enum class PipeWriteStatus {
+  Success,
+  // Phase 1 (pre-pipe-write) validation rejected the request.  No bytes were
+  // written to the pipe and the worker is untouched.  Safe to fail the job
+  // without disturbing the worker process.
+  ValidationFailed,
+  // Phase 2 pipe write failed (or a phase-2 invariant tripped).  The pipe
+  // may contain a partial transfer and the worker may be blocked reading
+  // bytes that will never arrive.  Caller should tear the worker down.
+  PipeFailed,
+};
+
 namespace detail {
 
 // Per-field bookkeeping used by write_chunked_request_to_pipe to assemble a
@@ -96,6 +112,50 @@ struct FieldChunks {
   std::vector<const cuopt::remote::ArrayChunk*> chunks;
   int64_t total_bytes = 0;
 };
+
+// Pre-flight check on the chunks for a single field: alignment, in-range
+// offsets, exact disjoint coverage of the logical array.  Allocates only a
+// per-element bitmap (one bit per element), no byte buffer, no pipe I/O.
+// Mirrors the validation arm of assemble_and_write_field_payload so we can
+// reject malformed input before any bytes are written to the worker pipe.
+inline bool validate_field_chunks(const FieldChunks& fi)
+{
+  if (fi.total_bytes == 0) return true;
+
+  if (fi.chunks.size() == 1 && fi.chunks[0]->element_offset() == 0 &&
+      static_cast<int64_t>(fi.chunks[0]->data().size()) == fi.total_bytes) {
+    return true;
+  }
+
+  int64_t total_elements = fi.chunks[0]->total_elements();
+  if (total_elements <= 0 || fi.total_bytes % total_elements != 0) return false;
+  int64_t elem_size = fi.total_bytes / total_elements;
+  if (elem_size <= 0) return false;
+
+  std::vector<bool> covered(static_cast<size_t>(total_elements), false);
+
+  for (const auto* ac : fi.chunks) {
+    int64_t element_offset = ac->element_offset();
+    const auto& chunk_data = ac->data();
+    if (chunk_data.size() % static_cast<size_t>(elem_size) != 0) return false;
+    int64_t chunk_elements = static_cast<int64_t>(chunk_data.size()) / elem_size;
+    if (element_offset < 0 || chunk_elements < 0) return false;
+    if (element_offset > total_elements - chunk_elements) return false;
+
+    int64_t byte_offset = element_offset * elem_size;
+    if (byte_offset + static_cast<int64_t>(chunk_data.size()) > fi.total_bytes) return false;
+
+    for (int64_t e = 0; e < chunk_elements; ++e) {
+      size_t idx = static_cast<size_t>(element_offset + e);
+      if (covered[idx]) return false;
+      covered[idx] = true;
+    }
+  }
+  for (size_t e = 0; e < static_cast<size_t>(total_elements); ++e) {
+    if (!covered[e]) return false;
+  }
+  return true;
+}
 
 // Assemble a single field's chunks into a contiguous byte payload and write
 // it to the pipe with a length prefix already supplied by the caller.
@@ -150,17 +210,24 @@ inline bool assemble_and_write_field_payload(int fd, const FieldChunks& fi)
 
 }  // namespace detail
 
-inline bool write_chunked_request_to_pipe(int fd,
-                                          const cuopt::remote::ChunkedProblemHeader& header,
-                                          const std::vector<cuopt::remote::ArrayChunk>& chunks)
+// Returns one of three PipeWriteStatus values:
+//   Success           — header and all arrays written
+//   ValidationFailed  — malformed client input rejected BEFORE any pipe write;
+//                       the pipe is untouched and the worker is unaffected
+//   PipeFailed        — the protobuf header or an array body failed mid-write;
+//                       the pipe may contain a partial transfer and the worker
+//                       may be blocked reading bytes that will never arrive
+//
+// All input validation happens in phase 1, before any pipe I/O.  This means a
+// caller flooded with malformed requests can safely fail-fast without
+// disturbing the (otherwise healthy) worker process — only PipeFailed should
+// trigger worker teardown.
+inline PipeWriteStatus write_chunked_request_to_pipe(
+  int fd,
+  const cuopt::remote::ChunkedProblemHeader& header,
+  const std::vector<cuopt::remote::ArrayChunk>& chunks)
 {
-  // Step 1: write the protobuf header (settings, scalars, string arrays,
-  // and per-entry scalars for any repeated_messages entries).
-  if (!write_protobuf_to_pipe(fd, header)) return false;
-
-  // Step 2: partition incoming gRPC chunks into top-level vs container,
-  // grouping by their respective composite keys.  A single field may arrive
-  // as multiple chunks (the client splits large arrays at chunk_size_bytes).
+  // -------- Phase 1: bin chunks per field and validate (no pipe I/O) --------
   std::map<int32_t, detail::FieldChunks> top_fields;
   std::map<cuopt::linear_programming::container_array_key_t, detail::FieldChunks> container_fields;
   for (const auto& ac : chunks) {
@@ -176,42 +243,71 @@ inline bool write_chunked_request_to_pipe(int fd,
       elem_size = array_field_element_size(-1, ac.field_id());
     }
     fi->chunks.push_back(&ac);
-    if (fi->total_bytes == 0 && ac.total_elements() > 0) {
-      if (elem_size > 0 && ac.total_elements() <= std::numeric_limits<int64_t>::max() / elem_size) {
-        fi->total_bytes = ac.total_elements() * elem_size;
+
+    // Only chunks claiming a non-empty array contribute to the size; an
+    // explicitly-empty chunk leaves total_bytes at its default of 0.
+    if (ac.total_elements() > 0) {
+      // Unknown field_id (or container_field_num): codegen out of sync with
+      // the client's enum, or a malicious/corrupted chunk.  Reject hard.
+      if (elem_size <= 0) return PipeWriteStatus::ValidationFailed;
+      // Overflow guard for total_elements * elem_size.
+      if (ac.total_elements() > std::numeric_limits<int64_t>::max() / elem_size) {
+        return PipeWriteStatus::ValidationFailed;
+      }
+      int64_t this_bytes = ac.total_elements() * elem_size;
+      if (fi->total_bytes == 0) {
+        fi->total_bytes = this_bytes;
+      } else if (fi->total_bytes != this_bytes) {
+        // Chunks for the same logical array disagree on the array's total
+        // size — they should all carry the same total_elements value.
+        return PipeWriteStatus::ValidationFailed;
       }
     }
   }
 
-  // Step 3a: top-level arrays — [int32 field_id][uint64 total_bytes][bytes...]
-  uint32_t num_arrays = static_cast<uint32_t>(top_fields.size());
-  if (!write_to_pipe(fd, &num_arrays, sizeof(num_arrays))) return false;
+  // Per-field deep validation (alignment, range, exact disjoint coverage).
+  // assemble_and_write_field_payload still re-checks these as defense in
+  // depth, but pre-validating here keeps phase 2 purely I/O so any failure
+  // there is unambiguously a pipe failure.
+  for (const auto& [fid, fi] : top_fields) {
+    (void)fid;
+    if (!detail::validate_field_chunks(fi)) return PipeWriteStatus::ValidationFailed;
+  }
+  for (const auto& [key, fi] : container_fields) {
+    (void)key;
+    if (!detail::validate_field_chunks(fi)) return PipeWriteStatus::ValidationFailed;
+  }
 
+  // -------- Phase 2: commit to the pipe (any failure = PipeFailed) --------
+  if (!write_protobuf_to_pipe(fd, header)) return PipeWriteStatus::PipeFailed;
+
+  uint32_t num_arrays = static_cast<uint32_t>(top_fields.size());
+  if (!write_to_pipe(fd, &num_arrays, sizeof(num_arrays))) return PipeWriteStatus::PipeFailed;
   for (const auto& [fid, fi] : top_fields) {
     int32_t field_id     = fid;
     uint64_t total_bytes = static_cast<uint64_t>(fi.total_bytes);
-    if (!write_to_pipe(fd, &field_id, sizeof(field_id))) return false;
-    if (!write_to_pipe(fd, &total_bytes, sizeof(total_bytes))) return false;
-    if (!detail::assemble_and_write_field_payload(fd, fi)) return false;
+    if (!write_to_pipe(fd, &field_id, sizeof(field_id))) return PipeWriteStatus::PipeFailed;
+    if (!write_to_pipe(fd, &total_bytes, sizeof(total_bytes))) return PipeWriteStatus::PipeFailed;
+    if (!detail::assemble_and_write_field_payload(fd, fi)) return PipeWriteStatus::PipeFailed;
   }
 
-  // Step 3b: container arrays — [int32 cfn][int32 ci][int32 fid][uint64 sz][bytes...]
   uint32_t num_container_arrays = static_cast<uint32_t>(container_fields.size());
-  if (!write_to_pipe(fd, &num_container_arrays, sizeof(num_container_arrays))) return false;
-
+  if (!write_to_pipe(fd, &num_container_arrays, sizeof(num_container_arrays))) {
+    return PipeWriteStatus::PipeFailed;
+  }
   for (const auto& [key, fi] : container_fields) {
     int32_t cfn          = key.container_field_num;
     int32_t ci           = key.container_index;
     int32_t field_id     = key.field_id;
     uint64_t total_bytes = static_cast<uint64_t>(fi.total_bytes);
-    if (!write_to_pipe(fd, &cfn, sizeof(cfn))) return false;
-    if (!write_to_pipe(fd, &ci, sizeof(ci))) return false;
-    if (!write_to_pipe(fd, &field_id, sizeof(field_id))) return false;
-    if (!write_to_pipe(fd, &total_bytes, sizeof(total_bytes))) return false;
-    if (!detail::assemble_and_write_field_payload(fd, fi)) return false;
+    if (!write_to_pipe(fd, &cfn, sizeof(cfn))) return PipeWriteStatus::PipeFailed;
+    if (!write_to_pipe(fd, &ci, sizeof(ci))) return PipeWriteStatus::PipeFailed;
+    if (!write_to_pipe(fd, &field_id, sizeof(field_id))) return PipeWriteStatus::PipeFailed;
+    if (!write_to_pipe(fd, &total_bytes, sizeof(total_bytes))) return PipeWriteStatus::PipeFailed;
+    if (!detail::assemble_and_write_field_payload(fd, fi)) return PipeWriteStatus::PipeFailed;
   }
 
-  return true;
+  return PipeWriteStatus::Success;
 }
 
 inline bool read_chunked_request_from_pipe(
@@ -221,51 +317,60 @@ inline bool read_chunked_request_from_pipe(
   std::map<cuopt::linear_programming::container_array_key_t, std::vector<uint8_t>>&
     container_arrays_out)
 {
-  if (!read_protobuf_from_pipe(fd, header_out)) return false;
+  // dest.resize(total_bytes) can throw std::bad_alloc if the wire claims an
+  // allocation larger than the worker can satisfy.  Catch it here so the
+  // caller sees a clean false and the worker can report job failure instead
+  // of dying via an uncaught exception (which the worker monitor would just
+  // respawn anyway).
+  try {
+    if (!read_protobuf_from_pipe(fd, header_out)) return false;
 
-  // Top-level arrays
-  uint32_t num_arrays;
-  if (!read_from_pipe(fd, &num_arrays, sizeof(num_arrays))) return false;
-  if (num_arrays > kMaxPipeArrayFields) return false;
+    // Top-level arrays
+    uint32_t num_arrays;
+    if (!read_from_pipe(fd, &num_arrays, sizeof(num_arrays))) return false;
+    if (num_arrays > kMaxPipeArrayFields) return false;
 
-  for (uint32_t i = 0; i < num_arrays; ++i) {
-    int32_t field_id;
-    uint64_t total_bytes;
-    if (!read_from_pipe(fd, &field_id, sizeof(field_id))) return false;
-    if (!read_from_pipe(fd, &total_bytes, sizeof(total_bytes))) return false;
-    if (total_bytes > kMaxPipeArrayBytes) return false;
-    auto& dest = arrays_out[field_id];
-    dest.resize(static_cast<size_t>(total_bytes));
-    if (total_bytes > 0 && !read_from_pipe(fd, dest.data(), static_cast<size_t>(total_bytes)))
-      return false;
+    for (uint32_t i = 0; i < num_arrays; ++i) {
+      int32_t field_id;
+      uint64_t total_bytes;
+      if (!read_from_pipe(fd, &field_id, sizeof(field_id))) return false;
+      if (!read_from_pipe(fd, &total_bytes, sizeof(total_bytes))) return false;
+      if (total_bytes > kMaxPipeArrayBytes) return false;
+      auto& dest = arrays_out[field_id];
+      dest.resize(static_cast<size_t>(total_bytes));
+      if (total_bytes > 0 && !read_from_pipe(fd, dest.data(), static_cast<size_t>(total_bytes)))
+        return false;
+    }
+
+    // Container arrays.  Cap is separate from kMaxPipeArrayFields because the
+    // count scales with problem size (every per-entry array inside every
+    // repeated nested message), not with the small fixed set of top-level
+    // ArrayFieldId enum values.
+    uint32_t num_container_arrays;
+    if (!read_from_pipe(fd, &num_container_arrays, sizeof(num_container_arrays))) return false;
+    if (num_container_arrays > kMaxPipeContainerArrays) return false;
+
+    for (uint32_t i = 0; i < num_container_arrays; ++i) {
+      int32_t cfn;
+      int32_t ci;
+      int32_t field_id;
+      uint64_t total_bytes;
+      if (!read_from_pipe(fd, &cfn, sizeof(cfn))) return false;
+      if (!read_from_pipe(fd, &ci, sizeof(ci))) return false;
+      if (!read_from_pipe(fd, &field_id, sizeof(field_id))) return false;
+      if (!read_from_pipe(fd, &total_bytes, sizeof(total_bytes))) return false;
+      if (total_bytes > kMaxPipeArrayBytes) return false;
+      auto& dest =
+        container_arrays_out[cuopt::linear_programming::container_array_key_t{cfn, ci, field_id}];
+      dest.resize(static_cast<size_t>(total_bytes));
+      if (total_bytes > 0 && !read_from_pipe(fd, dest.data(), static_cast<size_t>(total_bytes)))
+        return false;
+    }
+
+    return true;
+  } catch (const std::bad_alloc&) {
+    return false;
   }
-
-  // Container arrays.  Cap is separate from kMaxPipeArrayFields because the
-  // count scales with problem size (every per-entry array inside every
-  // repeated nested message), not with the small fixed set of top-level
-  // ArrayFieldId enum values.
-  uint32_t num_container_arrays;
-  if (!read_from_pipe(fd, &num_container_arrays, sizeof(num_container_arrays))) return false;
-  if (num_container_arrays > kMaxPipeContainerArrays) return false;
-
-  for (uint32_t i = 0; i < num_container_arrays; ++i) {
-    int32_t cfn;
-    int32_t ci;
-    int32_t field_id;
-    uint64_t total_bytes;
-    if (!read_from_pipe(fd, &cfn, sizeof(cfn))) return false;
-    if (!read_from_pipe(fd, &ci, sizeof(ci))) return false;
-    if (!read_from_pipe(fd, &field_id, sizeof(field_id))) return false;
-    if (!read_from_pipe(fd, &total_bytes, sizeof(total_bytes))) return false;
-    if (total_bytes > kMaxPipeArrayBytes) return false;
-    auto& dest =
-      container_arrays_out[cuopt::linear_programming::container_array_key_t{cfn, ci, field_id}];
-    dest.resize(static_cast<size_t>(total_bytes));
-    if (total_bytes > 0 && !read_from_pipe(fd, dest.data(), static_cast<size_t>(total_bytes)))
-      return false;
-  }
-
-  return true;
 }
 
 // =============================================================================

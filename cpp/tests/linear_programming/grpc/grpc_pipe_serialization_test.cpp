@@ -15,10 +15,12 @@
 
 #include <gtest/gtest.h>
 
+#include <poll.h>
 #include <unistd.h>
 
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <map>
 #include <thread>
 #include <vector>
@@ -129,6 +131,21 @@ ArrayChunk make_container_partial_chunk(int32_t container_field_num,
   return ac;
 }
 
+// Non-blocking poll on the read end of a pipe.  Returns true iff there is
+// nothing readable right now (i.e. the writer left the pipe untouched).
+// Used by the ValidationFailed tests to confirm the writer aborted before
+// emitting a single byte.
+bool pipe_is_empty(int read_fd)
+{
+  pollfd pfd{};
+  pfd.fd     = read_fd;
+  pfd.events = POLLIN;
+  int rc     = ::poll(&pfd, 1, 0);
+  // rc == 0 means timeout fired with no events; rc < 0 is an error.  Anything
+  // else (rc > 0) means data or hangup is pending on the fd.
+  return rc == 0;
+}
+
 }  // namespace
 
 // =============================================================================
@@ -154,9 +171,9 @@ TEST(PipeSerialization, ChunkedRequest_SingleChunkPerField)
   chunks.push_back(make_whole_chunk(FIELD_A_INDICES, 50, i_data));
 
   // Write in a thread (pipe buffer is finite).
-  bool write_ok = false;
+  PipeWriteStatus write_status = PipeWriteStatus::ValidationFailed;
   std::thread writer(
-    [&] { write_ok = write_chunked_request_to_pipe(pp.write_fd(), header, chunks); });
+    [&] { write_status = write_chunked_request_to_pipe(pp.write_fd(), header, chunks); });
 
   ChunkedProblemHeader header_out;
   std::map<int32_t, std::vector<uint8_t>> arrays_out;
@@ -166,7 +183,7 @@ TEST(PipeSerialization, ChunkedRequest_SingleChunkPerField)
 
   writer.join();
 
-  ASSERT_TRUE(write_ok);
+  ASSERT_EQ(write_status, PipeWriteStatus::Success);
   ASSERT_TRUE(read_ok);
 
   EXPECT_TRUE(header_out.maximize());
@@ -201,9 +218,9 @@ TEST(PipeSerialization, ChunkedRequest_MultiChunkAssembly)
                                       full_data.data() + split * elem_size,
                                       static_cast<size_t>((total_elements - split) * elem_size)));
 
-  bool write_ok = false;
+  PipeWriteStatus write_status = PipeWriteStatus::ValidationFailed;
   std::thread writer(
-    [&] { write_ok = write_chunked_request_to_pipe(pp.write_fd(), header, chunks); });
+    [&] { write_status = write_chunked_request_to_pipe(pp.write_fd(), header, chunks); });
 
   ChunkedProblemHeader header_out;
   std::map<int32_t, std::vector<uint8_t>> arrays_out;
@@ -213,7 +230,7 @@ TEST(PipeSerialization, ChunkedRequest_MultiChunkAssembly)
 
   writer.join();
 
-  ASSERT_TRUE(write_ok);
+  ASSERT_EQ(write_status, PipeWriteStatus::Success);
   ASSERT_TRUE(read_ok);
   ASSERT_EQ(arrays_out.size(), 1u);
   EXPECT_EQ(arrays_out[FIELD_C], full_data);
@@ -236,9 +253,9 @@ TEST(PipeSerialization, ChunkedRequest_EmptyArrays)
 
   std::vector<ArrayChunk> chunks = {empty_chunk};
 
-  bool write_ok = false;
+  PipeWriteStatus write_status = PipeWriteStatus::ValidationFailed;
   std::thread writer(
-    [&] { write_ok = write_chunked_request_to_pipe(pp.write_fd(), header, chunks); });
+    [&] { write_status = write_chunked_request_to_pipe(pp.write_fd(), header, chunks); });
 
   ChunkedProblemHeader header_out;
   std::map<int32_t, std::vector<uint8_t>> arrays_out;
@@ -248,7 +265,7 @@ TEST(PipeSerialization, ChunkedRequest_EmptyArrays)
 
   writer.join();
 
-  ASSERT_TRUE(write_ok);
+  ASSERT_EQ(write_status, PipeWriteStatus::Success);
   ASSERT_TRUE(read_ok);
   EXPECT_EQ(header_out.problem_name(), "empty");
   ASSERT_EQ(arrays_out.size(), 1u);
@@ -265,9 +282,9 @@ TEST(PipeSerialization, ChunkedRequest_NoChunks)
 
   std::vector<ArrayChunk> chunks;  // no chunks at all
 
-  bool write_ok = false;
+  PipeWriteStatus write_status = PipeWriteStatus::ValidationFailed;
   std::thread writer(
-    [&] { write_ok = write_chunked_request_to_pipe(pp.write_fd(), header, chunks); });
+    [&] { write_status = write_chunked_request_to_pipe(pp.write_fd(), header, chunks); });
 
   ChunkedProblemHeader header_out;
   std::map<int32_t, std::vector<uint8_t>> arrays_out;
@@ -277,7 +294,7 @@ TEST(PipeSerialization, ChunkedRequest_NoChunks)
 
   writer.join();
 
-  ASSERT_TRUE(write_ok);
+  ASSERT_EQ(write_status, PipeWriteStatus::Success);
   ASSERT_TRUE(read_ok);
   EXPECT_EQ(header_out.problem_name(), "header_only");
   EXPECT_TRUE(arrays_out.empty());
@@ -317,9 +334,9 @@ TEST(PipeSerialization, ChunkedRequest_ManyFields)
     chunks.push_back(make_whole_chunk(tf.id, tf.elements, data));
   }
 
-  bool write_ok = false;
+  PipeWriteStatus write_status = PipeWriteStatus::ValidationFailed;
   std::thread writer(
-    [&] { write_ok = write_chunked_request_to_pipe(pp.write_fd(), header, chunks); });
+    [&] { write_status = write_chunked_request_to_pipe(pp.write_fd(), header, chunks); });
 
   ChunkedProblemHeader header_out;
   std::map<int32_t, std::vector<uint8_t>> arrays_out;
@@ -329,7 +346,7 @@ TEST(PipeSerialization, ChunkedRequest_ManyFields)
 
   writer.join();
 
-  ASSERT_TRUE(write_ok);
+  ASSERT_EQ(write_status, PipeWriteStatus::Success);
   ASSERT_TRUE(read_ok);
   ASSERT_EQ(arrays_out.size(), expected.size());
   for (const auto& [fid, data] : expected) {
@@ -387,9 +404,9 @@ TEST(PipeSerialization, ChunkedRequest_ContainerArrays)
                                                 lv1_data.data() + lv1_split * 8,
                                                 static_cast<size_t>((lv1_total - lv1_split) * 8)));
 
-  bool write_ok = false;
+  PipeWriteStatus write_status = PipeWriteStatus::ValidationFailed;
   std::thread writer(
-    [&] { write_ok = write_chunked_request_to_pipe(pp.write_fd(), header, chunks); });
+    [&] { write_status = write_chunked_request_to_pipe(pp.write_fd(), header, chunks); });
 
   ChunkedProblemHeader header_out;
   std::map<int32_t, std::vector<uint8_t>> arrays_out;
@@ -399,7 +416,7 @@ TEST(PipeSerialization, ChunkedRequest_ContainerArrays)
 
   writer.join();
 
-  ASSERT_TRUE(write_ok);
+  ASSERT_EQ(write_status, PipeWriteStatus::Success);
   ASSERT_TRUE(read_ok);
   EXPECT_EQ(header_out.problem_name(), "qc_pipe_smoke");
 
@@ -418,6 +435,178 @@ TEST(PipeSerialization, ChunkedRequest_ContainerArrays)
   EXPECT_EQ(container_arrays_out[k0_1], li0_data);
   EXPECT_EQ(container_arrays_out[k0_4], qo0_data);
   EXPECT_EQ(container_arrays_out[k1_0], lv1_data);
+}
+
+// =============================================================================
+// Malformed-input rejection: write_chunked_request_to_pipe must report
+// PipeWriteStatus::ValidationFailed and leave the pipe completely untouched
+// when given bad chunks.  This protects the worker from being killed (or
+// hung on a half-fed pipe) by adversarial / buggy clients.
+// =============================================================================
+
+TEST(PipeSerialization, ValidationFailed_UnknownFieldId)
+{
+  PipePair pp;
+
+  ChunkedProblemHeader header;
+  header.set_problem_name("bad");
+
+  // 99999 is not a valid ArrayFieldId — array_field_element_size() returns
+  // -1, which the writer must reject before any pipe I/O.
+  ArrayChunk ac;
+  ac.set_field_id(static_cast<ArrayFieldId>(99999));
+  ac.set_element_offset(0);
+  ac.set_total_elements(8);
+  ac.set_data(std::string(64, '\0'));
+
+  std::vector<ArrayChunk> chunks{ac};
+
+  PipeWriteStatus write_status = write_chunked_request_to_pipe(pp.write_fd(), header, chunks);
+
+  EXPECT_EQ(write_status, PipeWriteStatus::ValidationFailed);
+  EXPECT_TRUE(pipe_is_empty(pp.read_fd()))
+    << "Writer must not write any bytes to the pipe when validation fails";
+}
+
+TEST(PipeSerialization, ValidationFailed_OverflowTotalBytes)
+{
+  PipePair pp;
+
+  ChunkedProblemHeader header;
+
+  // FIELD_C is an 8-byte-per-element field.  total_elements above
+  // INT64_MAX / 8 makes total_elements * elem_size overflow int64_t, which
+  // the writer's overflow guard must catch.
+  ArrayChunk ac;
+  ac.set_field_id(FIELD_C);
+  ac.set_element_offset(0);
+  ac.set_total_elements(std::numeric_limits<int64_t>::max() / 4);  // > INT64_MAX/8
+  ac.set_data("");
+
+  std::vector<ArrayChunk> chunks{ac};
+
+  PipeWriteStatus write_status = write_chunked_request_to_pipe(pp.write_fd(), header, chunks);
+
+  EXPECT_EQ(write_status, PipeWriteStatus::ValidationFailed);
+  EXPECT_TRUE(pipe_is_empty(pp.read_fd()));
+}
+
+TEST(PipeSerialization, ValidationFailed_ChunksDisagreeOnTotalElements)
+{
+  PipePair pp;
+
+  ChunkedProblemHeader header;
+
+  // Two chunks for the same FIELD_C field disagreeing about the logical
+  // array length.  Every chunk for a given field must carry the same
+  // total_elements value (it describes the WHOLE array, not the chunk).
+  auto data = make_pattern(80, 0x55);  // 10 doubles
+  ArrayChunk a;
+  a.set_field_id(FIELD_C);
+  a.set_element_offset(0);
+  a.set_total_elements(10);
+  a.set_data(std::string(reinterpret_cast<const char*>(data.data()), data.size()));
+
+  ArrayChunk b;
+  b.set_field_id(FIELD_C);
+  b.set_element_offset(0);
+  b.set_total_elements(20);  // disagrees with chunk a
+  b.set_data(std::string(reinterpret_cast<const char*>(data.data()), data.size()));
+
+  std::vector<ArrayChunk> chunks{a, b};
+
+  PipeWriteStatus write_status = write_chunked_request_to_pipe(pp.write_fd(), header, chunks);
+
+  EXPECT_EQ(write_status, PipeWriteStatus::ValidationFailed);
+  EXPECT_TRUE(pipe_is_empty(pp.read_fd()));
+}
+
+TEST(PipeSerialization, ValidationFailed_ChunkOverlap)
+{
+  PipePair pp;
+
+  ChunkedProblemHeader header;
+
+  // Two chunks for FIELD_C claiming overlapping element ranges of the same
+  // 20-element logical array.  validate_field_chunks() must reject this.
+  auto chunk_a = make_pattern(15 * 8, 0xAA);  // covers elements [0, 15)
+  auto chunk_b = make_pattern(10 * 8, 0xBB);  // covers elements [10, 20) — overlaps a
+  std::vector<ArrayChunk> chunks;
+  chunks.push_back(make_partial_chunk(
+    FIELD_C, /*element_offset=*/0, /*total_elements=*/20, chunk_a.data(), chunk_a.size()));
+  chunks.push_back(make_partial_chunk(
+    FIELD_C, /*element_offset=*/10, /*total_elements=*/20, chunk_b.data(), chunk_b.size()));
+
+  PipeWriteStatus write_status = write_chunked_request_to_pipe(pp.write_fd(), header, chunks);
+
+  EXPECT_EQ(write_status, PipeWriteStatus::ValidationFailed);
+  EXPECT_TRUE(pipe_is_empty(pp.read_fd()));
+}
+
+TEST(PipeSerialization, ValidationFailed_ChunkGap)
+{
+  PipePair pp;
+
+  ChunkedProblemHeader header;
+
+  // Two chunks for FIELD_C covering [0, 8) and [12, 20) — elements 8..11
+  // are never written.  validate_field_chunks() must reject this.
+  auto chunk_a = make_pattern(8 * 8, 0xAA);
+  auto chunk_b = make_pattern(8 * 8, 0xBB);
+  std::vector<ArrayChunk> chunks;
+  chunks.push_back(make_partial_chunk(
+    FIELD_C, /*element_offset=*/0, /*total_elements=*/20, chunk_a.data(), chunk_a.size()));
+  chunks.push_back(make_partial_chunk(
+    FIELD_C, /*element_offset=*/12, /*total_elements=*/20, chunk_b.data(), chunk_b.size()));
+
+  PipeWriteStatus write_status = write_chunked_request_to_pipe(pp.write_fd(), header, chunks);
+
+  EXPECT_EQ(write_status, PipeWriteStatus::ValidationFailed);
+  EXPECT_TRUE(pipe_is_empty(pp.read_fd()));
+}
+
+TEST(PipeSerialization, ValidationFailed_MisalignedChunkSize)
+{
+  PipePair pp;
+
+  ChunkedProblemHeader header;
+
+  // FIELD_C is 8 bytes per element, but this chunk's data is 7 bytes —
+  // not a clean multiple of elem_size.  Caught by validate_field_chunks().
+  ArrayChunk ac;
+  ac.set_field_id(FIELD_C);
+  ac.set_element_offset(0);
+  ac.set_total_elements(2);
+  ac.set_data(std::string(7, '\0'));  // 7 bytes, not 16
+
+  std::vector<ArrayChunk> chunks{ac};
+
+  PipeWriteStatus write_status = write_chunked_request_to_pipe(pp.write_fd(), header, chunks);
+
+  EXPECT_EQ(write_status, PipeWriteStatus::ValidationFailed);
+  EXPECT_TRUE(pipe_is_empty(pp.read_fd()));
+}
+
+// Sanity check that the spam scenario is bounded: 1000 malformed requests
+// must produce 1000 ValidationFailed results without ever touching the pipe.
+// In production this is what protects the worker pool from a hostile client.
+TEST(PipeSerialization, ValidationFailed_RepeatedSpamLeavesPipeEmpty)
+{
+  PipePair pp;
+
+  ChunkedProblemHeader header;
+  ArrayChunk ac;
+  ac.set_field_id(static_cast<ArrayFieldId>(99999));  // unknown
+  ac.set_element_offset(0);
+  ac.set_total_elements(1);
+  ac.set_data(std::string(8, '\0'));
+  std::vector<ArrayChunk> chunks{ac};
+
+  for (int i = 0; i < 1000; ++i) {
+    PipeWriteStatus s = write_chunked_request_to_pipe(pp.write_fd(), header, chunks);
+    ASSERT_EQ(s, PipeWriteStatus::ValidationFailed) << "iteration " << i;
+  }
+  EXPECT_TRUE(pipe_is_empty(pp.read_fd()));
 }
 
 // =============================================================================
