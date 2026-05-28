@@ -81,17 +81,6 @@ class heap_t {
 template <typename i_t, typename f_t>
 class node_queue_t {
  public:
-  void push_nolock(mip_node_t<i_t, f_t>* new_node)
-  {
-    assert(new_node != nullptr);
-
-    std::lock_guard lock(mutex_);
-    auto entry = std::make_shared<heap_entry_t>(new_node);
-    best_first_heap_.push(entry);
-    if (new_node->can_dive) diving_heap_.push(entry);
-    lower_bound_ = best_first_heap_.top()->lower_bound;
-  }
-
   void push_atomic(mip_node_t<i_t, f_t>* new_node)
   {
     assert(new_node != nullptr);

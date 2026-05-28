@@ -186,7 +186,7 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
 
     for (auto* node : nodes) {
       assert(node != nullptr);
-      node_queue.push_nolock(node);
+      node_queue.push_atomic(node);
     }
 
     this->lower_bound = node_queue.get_lower_bound();

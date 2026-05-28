@@ -1945,8 +1945,8 @@ void branch_and_bound_t<i_t, f_t>::single_threaded_solve()
   bfs_worker_t<i_t, f_t>* worker = bfs_worker_pool_.pop_idle_worker();
 
   node_queue_t<i_t, f_t>& node_queue = worker->node_queue;
-  node_queue.push_nolock(search_tree_.root.get_down_child());
-  node_queue.push_nolock(search_tree_.root.get_up_child());
+  node_queue.push_atomic(search_tree_.root.get_down_child());
+  node_queue.push_atomic(search_tree_.root.get_up_child());
   worker->lower_bound = worker->node_queue.get_lower_bound();
   worker->set_active();
   best_first_search_with(worker);
