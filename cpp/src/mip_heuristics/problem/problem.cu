@@ -1494,10 +1494,6 @@ void problem_t<i_t, f_t>::compute_objective_step()
                                                                         h_coefs,
                                                                         h_con_lb,
                                                                         h_con_ub);
-  CUOPT_LOG_INFO("Objective step (step %e, bias %e) completed in %.3f seconds",
-                 objective_step.step_size,
-                 objective_step.bias,
-                 dual_simplex::toc(start_time));
 }
 
 template <typename i_t, typename f_t>
