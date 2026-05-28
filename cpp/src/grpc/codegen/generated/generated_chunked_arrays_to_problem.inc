@@ -135,7 +135,7 @@
 
 
   auto container_get_doubles = [&](int32_t _cfn, int32_t _ci, int32_t _fid) -> std::vector<f_t> {
-    auto it = container_arrays.find(ContainerArrayKey{_cfn, _ci, _fid});
+    auto it = container_arrays.find(container_array_key_t{_cfn, _ci, _fid});
     if (it == container_arrays.end() || it->second.empty()) return {};
     if (it->second.size() % sizeof(double) != 0) {
       throw std::invalid_argument("container_get_doubles: payload size " + std::to_string(it->second.size()) + " is not a multiple of sizeof(double)");
@@ -153,7 +153,7 @@
   };
 
   auto container_get_ints = [&](int32_t _cfn, int32_t _ci, int32_t _fid) -> std::vector<i_t> {
-    auto it = container_arrays.find(ContainerArrayKey{_cfn, _ci, _fid});
+    auto it = container_arrays.find(container_array_key_t{_cfn, _ci, _fid});
     if (it == container_arrays.end() || it->second.empty()) return {};
     if (it->second.size() % sizeof(int32_t) != 0) {
       throw std::invalid_argument("container_get_ints: payload size " + std::to_string(it->second.size()) + " is not a multiple of sizeof(int32_t)");
@@ -185,6 +185,12 @@
       _entry.quadratic_values = container_get_doubles(25, _ci, 2);
       _entry.quadratic_indices = container_get_ints(25, _ci, 3);
       _entry.quadratic_offsets = container_get_ints(25, _ci, 4);
+      if (_entry.linear_values.size() != _entry.linear_indices.size()) {
+        throw std::invalid_argument("set_quadratic_constraints: linear_values/linear_indices size mismatch");
+      }
+      if (_entry.quadratic_values.size() != _entry.quadratic_indices.size()) {
+        throw std::invalid_argument("set_quadratic_constraints: quadratic_values/quadratic_indices size mismatch");
+      }
       _entries.push_back(std::move(_entry));
     }
     cpu_problem.set_quadratic_constraints(std::move(_entries));

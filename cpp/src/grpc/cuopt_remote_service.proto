@@ -151,7 +151,7 @@ message ChunkedProblemHeader {
 //
 //   - Top-level array (default): container_field_num and container_index are
 //     unset.  field_id is interpreted as an ArrayFieldId enum value (e.g.,
-//     FIELD_A_VALUES).  This is the only mode used today.
+//     FIELD_A_VALUES).
 //
 //   - Array inside a repeated nested message: container_field_num is the
 //     parent message's field_num for the repeated_messages entry (e.g. 25 for

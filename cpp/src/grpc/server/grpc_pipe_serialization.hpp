@@ -27,6 +27,14 @@ static constexpr uint64_t kMaxPipeArrayBytes       = 4ULL * 1024 * 1024 * 1024;
 static constexpr uint32_t kMaxPipeArrayFields      = 10000;
 static constexpr uint32_t kMaxProtobufMessageBytes = 64 * 1024 * 1024;  // 64 MiB
 
+// Container arrays count every per-entry array inside every repeated nested
+// message (e.g., 5 arrays per QuadraticConstraint row), so the cap must scale
+// with problem size rather than reuse the small top-level field cap.  10M
+// container arrays = 2M QC rows at 5 arrays per row, which is well above any
+// realistic QCQP workload while still bounding worst-case map overhead at
+// ~500–800 MB on a malicious client sending many empty entries.
+static constexpr uint32_t kMaxPipeContainerArrays = 10'000'000;
+
 // Pipe I/O primitives defined in grpc_job_management.cpp.
 bool write_to_pipe(int fd, const void* data, size_t size);
 bool read_from_pipe(int fd, void* data, size_t size, int timeout_ms = 120000);
@@ -154,12 +162,12 @@ inline bool write_chunked_request_to_pipe(int fd,
   // grouping by their respective composite keys.  A single field may arrive
   // as multiple chunks (the client splits large arrays at chunk_size_bytes).
   std::map<int32_t, detail::FieldChunks> top_fields;
-  std::map<cuopt::linear_programming::ContainerArrayKey, detail::FieldChunks> container_fields;
+  std::map<cuopt::linear_programming::container_array_key_t, detail::FieldChunks> container_fields;
   for (const auto& ac : chunks) {
     int64_t elem_size       = 0;
     detail::FieldChunks* fi = nullptr;
     if (ac.has_container_field_num()) {
-      cuopt::linear_programming::ContainerArrayKey key{
+      cuopt::linear_programming::container_array_key_t key{
         ac.container_field_num(), ac.container_index(), ac.field_id()};
       fi        = &container_fields[key];
       elem_size = array_field_element_size(key.container_field_num, key.field_id);
@@ -206,11 +214,12 @@ inline bool write_chunked_request_to_pipe(int fd,
   return true;
 }
 
-inline bool read_chunked_request_from_pipe(int fd,
-                                           cuopt::remote::ChunkedProblemHeader& header_out,
-                                           std::map<int32_t, std::vector<uint8_t>>& arrays_out,
-                                           std::map<cuopt::linear_programming::ContainerArrayKey,
-                                                    std::vector<uint8_t>>& container_arrays_out)
+inline bool read_chunked_request_from_pipe(
+  int fd,
+  cuopt::remote::ChunkedProblemHeader& header_out,
+  std::map<int32_t, std::vector<uint8_t>>& arrays_out,
+  std::map<cuopt::linear_programming::container_array_key_t, std::vector<uint8_t>>&
+    container_arrays_out)
 {
   if (!read_protobuf_from_pipe(fd, header_out)) return false;
 
@@ -231,10 +240,13 @@ inline bool read_chunked_request_from_pipe(int fd,
       return false;
   }
 
-  // Container arrays
+  // Container arrays.  Cap is separate from kMaxPipeArrayFields because the
+  // count scales with problem size (every per-entry array inside every
+  // repeated nested message), not with the small fixed set of top-level
+  // ArrayFieldId enum values.
   uint32_t num_container_arrays;
   if (!read_from_pipe(fd, &num_container_arrays, sizeof(num_container_arrays))) return false;
-  if (num_container_arrays > kMaxPipeArrayFields) return false;
+  if (num_container_arrays > kMaxPipeContainerArrays) return false;
 
   for (uint32_t i = 0; i < num_container_arrays; ++i) {
     int32_t cfn;
@@ -247,7 +259,7 @@ inline bool read_chunked_request_from_pipe(int fd,
     if (!read_from_pipe(fd, &total_bytes, sizeof(total_bytes))) return false;
     if (total_bytes > kMaxPipeArrayBytes) return false;
     auto& dest =
-      container_arrays_out[cuopt::linear_programming::ContainerArrayKey{cfn, ci, field_id}];
+      container_arrays_out[cuopt::linear_programming::container_array_key_t{cfn, ci, field_id}];
     dest.resize(static_cast<size_t>(total_bytes));
     if (total_bytes > 0 && !read_from_pipe(fd, dest.data(), static_cast<size_t>(total_bytes)))
       return false;

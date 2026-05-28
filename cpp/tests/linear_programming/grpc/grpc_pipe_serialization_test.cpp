@@ -28,7 +28,7 @@
 #include "grpc_pipe_serialization.hpp"
 
 using namespace cuopt::remote;
-using cuopt::linear_programming::ContainerArrayKey;
+using cuopt::linear_programming::container_array_key_t;
 
 // ---------------------------------------------------------------------------
 // RAII wrapper for a pipe(2) pair.
@@ -160,7 +160,7 @@ TEST(PipeSerialization, ChunkedRequest_SingleChunkPerField)
 
   ChunkedProblemHeader header_out;
   std::map<int32_t, std::vector<uint8_t>> arrays_out;
-  std::map<ContainerArrayKey, std::vector<uint8_t>> container_arrays_out;
+  std::map<container_array_key_t, std::vector<uint8_t>> container_arrays_out;
   bool read_ok =
     read_chunked_request_from_pipe(pp.read_fd(), header_out, arrays_out, container_arrays_out);
 
@@ -207,7 +207,7 @@ TEST(PipeSerialization, ChunkedRequest_MultiChunkAssembly)
 
   ChunkedProblemHeader header_out;
   std::map<int32_t, std::vector<uint8_t>> arrays_out;
-  std::map<ContainerArrayKey, std::vector<uint8_t>> container_arrays_out;
+  std::map<container_array_key_t, std::vector<uint8_t>> container_arrays_out;
   bool read_ok =
     read_chunked_request_from_pipe(pp.read_fd(), header_out, arrays_out, container_arrays_out);
 
@@ -242,7 +242,7 @@ TEST(PipeSerialization, ChunkedRequest_EmptyArrays)
 
   ChunkedProblemHeader header_out;
   std::map<int32_t, std::vector<uint8_t>> arrays_out;
-  std::map<ContainerArrayKey, std::vector<uint8_t>> container_arrays_out;
+  std::map<container_array_key_t, std::vector<uint8_t>> container_arrays_out;
   bool read_ok =
     read_chunked_request_from_pipe(pp.read_fd(), header_out, arrays_out, container_arrays_out);
 
@@ -271,7 +271,7 @@ TEST(PipeSerialization, ChunkedRequest_NoChunks)
 
   ChunkedProblemHeader header_out;
   std::map<int32_t, std::vector<uint8_t>> arrays_out;
-  std::map<ContainerArrayKey, std::vector<uint8_t>> container_arrays_out;
+  std::map<container_array_key_t, std::vector<uint8_t>> container_arrays_out;
   bool read_ok =
     read_chunked_request_from_pipe(pp.read_fd(), header_out, arrays_out, container_arrays_out);
 
@@ -323,7 +323,7 @@ TEST(PipeSerialization, ChunkedRequest_ManyFields)
 
   ChunkedProblemHeader header_out;
   std::map<int32_t, std::vector<uint8_t>> arrays_out;
-  std::map<ContainerArrayKey, std::vector<uint8_t>> container_arrays_out;
+  std::map<container_array_key_t, std::vector<uint8_t>> container_arrays_out;
   bool read_ok =
     read_chunked_request_from_pipe(pp.read_fd(), header_out, arrays_out, container_arrays_out);
 
@@ -393,7 +393,7 @@ TEST(PipeSerialization, ChunkedRequest_ContainerArrays)
 
   ChunkedProblemHeader header_out;
   std::map<int32_t, std::vector<uint8_t>> arrays_out;
-  std::map<ContainerArrayKey, std::vector<uint8_t>> container_arrays_out;
+  std::map<container_array_key_t, std::vector<uint8_t>> container_arrays_out;
   bool read_ok =
     read_chunked_request_from_pipe(pp.read_fd(), header_out, arrays_out, container_arrays_out);
 
@@ -410,10 +410,10 @@ TEST(PipeSerialization, ChunkedRequest_ContainerArrays)
   // Four container arrays survived (3 in entry 0, 1 in entry 1).  Brace-init
   // commas confuse the EXPECT_EQ macro's argument parsing; extract the key.
   ASSERT_EQ(container_arrays_out.size(), 4u);
-  ContainerArrayKey k0_0{25, 0, 0};
-  ContainerArrayKey k0_1{25, 0, 1};
-  ContainerArrayKey k0_4{25, 0, 4};
-  ContainerArrayKey k1_0{25, 1, 0};
+  container_array_key_t k0_0{25, 0, 0};
+  container_array_key_t k0_1{25, 0, 1};
+  container_array_key_t k0_4{25, 0, 4};
+  container_array_key_t k1_0{25, 1, 0};
   EXPECT_EQ(container_arrays_out[k0_0], lv0_data);
   EXPECT_EQ(container_arrays_out[k0_1], li0_data);
   EXPECT_EQ(container_arrays_out[k0_4], qo0_data);

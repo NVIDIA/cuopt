@@ -970,3 +970,12 @@ optimization_problem:
           field_num: 9
           array_id: 4
           type: repeated int32
+      # Companion-array length invariants enforced on decode.  Each [values,
+      # indices] pair must have equal size, mirroring the top-level
+      # setter_groups check (e.g., set_csr_constraint_matrix).  A mismatch
+      # throws std::invalid_argument before set_quadratic_constraints sees the
+      # row, so a malformed client cannot land an inconsistent QC entry in the
+      # solver.
+      companion_pairs:
+        - [linear_values, linear_indices]
+        - [quadratic_values, quadratic_indices]

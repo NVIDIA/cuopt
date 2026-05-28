@@ -87,6 +87,12 @@
       _entry.quadratic_values.assign(pb_entry.quadratic_values().begin(), pb_entry.quadratic_values().end());
       _entry.quadratic_indices.assign(pb_entry.quadratic_indices().begin(), pb_entry.quadratic_indices().end());
       _entry.quadratic_offsets.assign(pb_entry.quadratic_offsets().begin(), pb_entry.quadratic_offsets().end());
+      if (_entry.linear_values.size() != _entry.linear_indices.size()) {
+        throw std::invalid_argument("set_quadratic_constraints: linear_values/linear_indices size mismatch");
+      }
+      if (_entry.quadratic_values.size() != _entry.quadratic_indices.size()) {
+        throw std::invalid_argument("set_quadratic_constraints: quadratic_values/quadratic_indices size mismatch");
+      }
       _entries.push_back(std::move(_entry));
     }
     cpu_problem.set_quadratic_constraints(std::move(_entries));

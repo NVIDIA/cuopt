@@ -218,7 +218,8 @@ static DeserializedJob read_problem_from_pipe(int worker_id, const JobQueueEntry
     // This avoids a single giant protobuf allocation for large problems.
     cuopt::remote::ChunkedProblemHeader chunked_header;
     std::map<int32_t, std::vector<uint8_t>> arrays;
-    std::map<cuopt::linear_programming::ContainerArrayKey, std::vector<uint8_t>> container_arrays;
+    std::map<cuopt::linear_programming::container_array_key_t, std::vector<uint8_t>>
+      container_arrays;
     if (!read_chunked_request_from_pipe(read_fd, chunked_header, arrays, container_arrays)) {
       return dj;
     }

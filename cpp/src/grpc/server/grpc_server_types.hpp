@@ -216,7 +216,7 @@ struct ChunkedUploadState {
   // Top-level and container fields stay in separate maps so a top-level
   // field_id and a container-relative field_id can coexist without
   // colliding on the int32_t key.
-  std::map<cuopt::linear_programming::ContainerArrayKey, FieldMeta> container_field_meta;
+  std::map<cuopt::linear_programming::container_array_key_t, FieldMeta> container_field_meta;
   std::vector<cuopt::remote::ArrayChunk> chunks;
   int64_t total_chunks = 0;
   int64_t total_bytes  = 0;

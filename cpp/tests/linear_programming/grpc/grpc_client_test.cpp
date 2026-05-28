@@ -2316,9 +2316,10 @@ void expect_qc_equal(const QC& a, const QC& b)
 // the same (arrays, container_arrays) shape that map_chunked_arrays_to_problem
 // consumes — i.e. what the worker reconstructs from the pipe in production.
 // This is the only place in the test where we mirror server-side wire logic.
-void assemble_chunk_requests(const std::vector<cuopt::remote::SendArrayChunkRequest>& reqs,
-                             std::map<int32_t, std::vector<uint8_t>>& arrays,
-                             std::map<ContainerArrayKey, std::vector<uint8_t>>& container_arrays)
+void assemble_chunk_requests(
+  const std::vector<cuopt::remote::SendArrayChunkRequest>& reqs,
+  std::map<int32_t, std::vector<uint8_t>>& arrays,
+  std::map<container_array_key_t, std::vector<uint8_t>>& container_arrays)
 {
   for (const auto& req : reqs) {
     const auto& ac             = req.chunk();
@@ -2327,7 +2328,7 @@ void assemble_chunk_requests(const std::vector<cuopt::remote::SendArrayChunkRequ
     int64_t elem_size          = 0;
     std::vector<uint8_t>* dest = nullptr;
     if (ac.has_container_field_num()) {
-      ContainerArrayKey key{ac.container_field_num(), ac.container_index(), fid};
+      container_array_key_t key{ac.container_field_num(), ac.container_index(), fid};
       dest      = &container_arrays[key];
       elem_size = array_field_element_size(key.container_field_num, key.field_id);
     } else {
@@ -2335,9 +2336,14 @@ void assemble_chunk_requests(const std::vector<cuopt::remote::SendArrayChunkRequ
       elem_size = array_field_element_size(-1, fid);
     }
     ASSERT_GT(elem_size, 0) << "Unknown element size for chunk";
-    auto needed = static_cast<size_t>(total * elem_size);
+    ASSERT_GE(total, 0) << "Negative total_elements in chunk";
+    ASSERT_GE(ac.element_offset(), 0) << "Negative element_offset in chunk";
+    auto needed = static_cast<size_t>(total) * static_cast<size_t>(elem_size);
     if (dest->size() < needed) dest->resize(needed);
-    auto byte_offset = static_cast<size_t>(ac.element_offset() * elem_size);
+    auto byte_offset = static_cast<size_t>(ac.element_offset()) * static_cast<size_t>(elem_size);
+    ASSERT_LE(byte_offset, dest->size()) << "Chunk byte_offset exceeds destination size";
+    ASSERT_LE(ac.data().size(), dest->size() - byte_offset)
+      << "Chunk payload exceeds destination bounds";
     std::memcpy(dest->data() + byte_offset, ac.data().data(), ac.data().size());
   }
 }
@@ -2481,7 +2487,7 @@ TEST(MapperRoundtrip, QuadraticConstraintsChunkedPath)
 
   // 2) Server side: reassemble chunks into raw byte maps and reconstruct.
   std::map<int32_t, std::vector<uint8_t>> arrays;
-  std::map<ContainerArrayKey, std::vector<uint8_t>> container_arrays;
+  std::map<container_array_key_t, std::vector<uint8_t>> container_arrays;
   assemble_chunk_requests(requests, arrays, container_arrays);
 
   cpu_optimization_problem_t<int32_t, double> restored;
@@ -2525,7 +2531,7 @@ TEST(MapperRoundtrip, QuadraticConstraintsEmpty)
   }
 
   std::map<int32_t, std::vector<uint8_t>> arrays;
-  std::map<ContainerArrayKey, std::vector<uint8_t>> container_arrays;
+  std::map<container_array_key_t, std::vector<uint8_t>> container_arrays;
   assemble_chunk_requests(requests, arrays, container_arrays);
   EXPECT_TRUE(container_arrays.empty());
 

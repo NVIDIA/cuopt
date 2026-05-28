@@ -192,7 +192,7 @@ template <typename i_t, typename f_t>
 void map_chunked_arrays_to_problem(
   const cuopt::remote::ChunkedProblemHeader& header,
   const std::map<int32_t, std::vector<uint8_t>>& arrays,
-  const std::map<ContainerArrayKey, std::vector<uint8_t>>& container_arrays,
+  const std::map<container_array_key_t, std::vector<uint8_t>>& container_arrays,
   cpu_optimization_problem_t<i_t, f_t>& cpu_problem)
 {
 #include "generated_chunked_arrays_to_problem.inc"
@@ -234,7 +234,7 @@ template void map_chunked_header_to_problem(
 template void map_chunked_arrays_to_problem(
   const cuopt::remote::ChunkedProblemHeader& header,
   const std::map<int32_t, std::vector<uint8_t>>& arrays,
-  const std::map<ContainerArrayKey, std::vector<uint8_t>>& container_arrays,
+  const std::map<container_array_key_t, std::vector<uint8_t>>& container_arrays,
   cpu_optimization_problem_t<int32_t, float>& cpu_problem);
 template std::vector<cuopt::remote::SendArrayChunkRequest> build_array_chunk_requests(
   const cpu_optimization_problem_t<int32_t, float>& problem,
@@ -264,7 +264,7 @@ template void map_chunked_header_to_problem(
 template void map_chunked_arrays_to_problem(
   const cuopt::remote::ChunkedProblemHeader& header,
   const std::map<int32_t, std::vector<uint8_t>>& arrays,
-  const std::map<ContainerArrayKey, std::vector<uint8_t>>& container_arrays,
+  const std::map<container_array_key_t, std::vector<uint8_t>>& container_arrays,
   cpu_optimization_problem_t<int32_t, double>& cpu_problem);
 template std::vector<cuopt::remote::SendArrayChunkRequest> build_array_chunk_requests(
   const cpu_optimization_problem_t<int32_t, double>& problem,

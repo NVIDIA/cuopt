@@ -122,10 +122,20 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     auto& state         = it->second;
     state.last_activity = std::chrono::steady_clock::now();
 
-    int32_t field_id     = static_cast<int32_t>(ac.field_id());
-    int64_t elem_offset  = ac.element_offset();
-    int64_t total_elems  = ac.total_elements();
-    const auto& raw      = ac.data();
+    int32_t field_id    = static_cast<int32_t>(ac.field_id());
+    int64_t elem_offset = ac.element_offset();
+    int64_t total_elems = ac.total_elements();
+    const auto& raw     = ac.data();
+
+    // container_field_num and container_index are an indivisible pair: either
+    // both name a target inside a repeated nested message, or both are unset
+    // (top-level chunk).  Reject partial presence outright so we never silently
+    // route a half-targeted chunk to container_index=0 or strip a stray
+    // container_index off a top-level chunk.
+    if (ac.has_container_field_num() != ac.has_container_index()) {
+      return Status(StatusCode::INVALID_ARGUMENT,
+                    "container_field_num and container_index must both be set or both unset");
+    }
     bool is_container    = ac.has_container_field_num();
     int32_t cfn_for_size = is_container ? ac.container_field_num() : -1;
 
@@ -154,7 +164,7 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     // container-relative field_id can coexist without colliding.
     ChunkedUploadState::FieldMeta* meta_ptr = nullptr;
     if (is_container) {
-      cuopt::linear_programming::ContainerArrayKey key{
+      cuopt::linear_programming::container_array_key_t key{
         cfn_for_size, ac.container_index(), field_id};
       meta_ptr = &state.container_field_meta[key];
     } else {

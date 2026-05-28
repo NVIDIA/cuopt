@@ -1239,8 +1239,11 @@ TEST_F(ChunkedUploadTests, QuadraticConstraintsUnarySubmit)
   auto result = client->solve_lp(problem, settings);
   // PDLP currently ignores QC and solves the LP relaxation; we assert only
   // that the transport completed cleanly with no INVALID_ARGUMENT or worker
-  // crash, which proves the new wire encoding round-tripped end-to-end.
+  // crash and that a solution object came back, which proves the new wire
+  // encoding round-tripped end-to-end.  The objective value of the LP
+  // relaxation is not checked.
   EXPECT_TRUE(result.success) << result.error_message;
+  ASSERT_NE(result.solution, nullptr);
 }
 
 // Force the chunked upload path with both a zero-byte threshold (every array
@@ -1275,6 +1278,7 @@ TEST_F(ChunkedUploadTests, QuadraticConstraintsChunkedSubmit)
 
   auto result = client->solve_lp(problem, settings);
   EXPECT_TRUE(result.success) << result.error_message;
+  ASSERT_NE(result.solution, nullptr);
 }
 
 TEST_F(ChunkedUploadTests, UnaryFallbackSmallProblem)
@@ -1982,6 +1986,49 @@ TEST_F(ChunkValidationTests, RejectsUnknownUploadId)
   auto status = send_chunk("nonexistent-upload-id", cuopt::remote::FIELD_C, 0, 10, data);
   EXPECT_FALSE(status.ok());
   EXPECT_EQ(status.error_code(), grpc::StatusCode::NOT_FOUND);
+}
+
+// container_field_num and container_index target a single array inside a
+// repeated nested message and are meaningless individually.  If only one is
+// set we would otherwise either route to container_index=0 silently (when
+// container_field_num is set alone) or strip the container_index off a
+// top-level chunk (when container_index is set alone).  Both must be flagged.
+TEST_F(ChunkValidationTests, RejectsContainerFieldNumWithoutContainerIndex)
+{
+  auto uid = start_upload();
+  grpc::ClientContext ctx;
+  cuopt::remote::SendArrayChunkRequest req;
+  req.set_upload_id(uid);
+  auto* ac = req.mutable_chunk();
+  ac->set_field_id(0);
+  ac->set_element_offset(0);
+  ac->set_total_elements(1);
+  ac->set_data(std::string(8, '\0'));
+  ac->set_container_field_num(25);
+  cuopt::remote::SendArrayChunkResponse resp;
+  auto status = stub_->SendArrayChunk(&ctx, req, &resp);
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+  EXPECT_THAT(status.error_message(), ::testing::HasSubstr("container_field_num"));
+}
+
+TEST_F(ChunkValidationTests, RejectsContainerIndexWithoutContainerFieldNum)
+{
+  auto uid = start_upload();
+  grpc::ClientContext ctx;
+  cuopt::remote::SendArrayChunkRequest req;
+  req.set_upload_id(uid);
+  auto* ac = req.mutable_chunk();
+  ac->set_field_id(0);
+  ac->set_element_offset(0);
+  ac->set_total_elements(1);
+  ac->set_data(std::string(8, '\0'));
+  ac->set_container_index(0);
+  cuopt::remote::SendArrayChunkResponse resp;
+  auto status = stub_->SendArrayChunk(&ctx, req, &resp);
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+  EXPECT_THAT(status.error_message(), ::testing::HasSubstr("container_index"));
 }
 
 TEST_F(ChunkValidationTests, AcceptsValidChunk)

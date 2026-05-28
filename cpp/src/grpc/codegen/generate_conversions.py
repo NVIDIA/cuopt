@@ -454,6 +454,34 @@ def _repeated_message_arrays(body):
         yield parse_field(entry)
 
 
+def _repeated_message_companion_pairs(name, body):
+    """Return validated (a_field, b_field) tuples whose .size() must match
+    on decode. Raises at codegen time if the registry names a field that does
+    not appear in arrays for this entry, so misconfigurations don't silently
+    skip the validation."""
+    pairs = body.get("companion_pairs") or []
+    if not pairs:
+        return []
+    array_fields = {f["name"]: f for f in _repeated_message_arrays(body)}
+    out = []
+    for raw in pairs:
+        if not isinstance(raw, list) or len(raw) != 2:
+            raise ValueError(
+                f"repeated_messages.{name}.companion_pairs: expected list of "
+                f"[a, b] pairs, got {raw!r}"
+            )
+        a_name, b_name = raw
+        a = array_fields.get(a_name)
+        b = array_fields.get(b_name)
+        if a is None or b is None:
+            raise ValueError(
+                f"repeated_messages.{name}.companion_pairs: pair "
+                f"[{a_name}, {b_name}] references field(s) not in arrays"
+            )
+        out.append((a, b))
+    return out
+
+
 def generate_repeated_messages_proto(registry, obj):
     """Emit `message <MessageType> { ... }` blocks for every repeated_messages
     entry on `obj`. Returns the assembled text (empty string if none).
@@ -1764,6 +1792,17 @@ def _gen_proto_to_problem(registry, indent="  "):
             lines.append(
                 f"{ind}    _entry.{member}.assign(pb_entry.{ap}().begin(), pb_entry.{ap}().end());"
             )
+        for a, b in _repeated_message_companion_pairs(name, body):
+            a_mem = a.get("member", a["name"])
+            b_mem = b.get("member", b["name"])
+            lines.append(
+                f"{ind}    if (_entry.{a_mem}.size() != _entry.{b_mem}.size()) {{"
+            )
+            lines.append(
+                f'{ind}      throw std::invalid_argument("{setter}: {a["name"]}/'
+                f'{b["name"]} size mismatch");'
+            )
+            lines.append(f"{ind}    }}")
         lines.append(f"{ind}    _entries.push_back(std::move(_entry));")
         lines.append(f"{ind}  }}")
         lines.append(f"{ind}  cpu_problem.{setter}(std::move(_entries));")
@@ -2226,7 +2265,7 @@ def _gen_chunked_arrays_to_problem(registry, indent="  "):
             f"int32_t _ci, int32_t _fid) -> std::vector<f_t> {{"
         )
         lines.append(
-            f"{ind}  auto it = container_arrays.find(ContainerArrayKey{{_cfn, _ci, _fid}});"
+            f"{ind}  auto it = container_arrays.find(container_array_key_t{{_cfn, _ci, _fid}});"
         )
         lines.append(
             f"{ind}  if (it == container_arrays.end() || it->second.empty()) return {{}};"
@@ -2260,7 +2299,7 @@ def _gen_chunked_arrays_to_problem(registry, indent="  "):
             f"int32_t _ci, int32_t _fid) -> std::vector<i_t> {{"
         )
         lines.append(
-            f"{ind}  auto it = container_arrays.find(ContainerArrayKey{{_cfn, _ci, _fid}});"
+            f"{ind}  auto it = container_arrays.find(container_array_key_t{{_cfn, _ci, _fid}});"
         )
         lines.append(
             f"{ind}  if (it == container_arrays.end() || it->second.empty()) return {{}};"
@@ -2345,6 +2384,17 @@ def _gen_chunked_arrays_to_problem(registry, indent="  "):
                 lines.append(
                     f"{ind}    _entry.{member} = {fn}({cfn}, _ci, {array_id});"
                 )
+            for a, b in _repeated_message_companion_pairs(name, body):
+                a_mem = a.get("member", a["name"])
+                b_mem = b.get("member", b["name"])
+                lines.append(
+                    f"{ind}    if (_entry.{a_mem}.size() != _entry.{b_mem}.size()) {{"
+                )
+                lines.append(
+                    f'{ind}      throw std::invalid_argument("{setter}: {a["name"]}/'
+                    f'{b["name"]} size mismatch");'
+                )
+                lines.append(f"{ind}    }}")
             lines.append(f"{ind}    _entries.push_back(std::move(_entry));")
             lines.append(f"{ind}  }}")
             lines.append(f"{ind}  cpu_problem.{setter}(std::move(_entries));")

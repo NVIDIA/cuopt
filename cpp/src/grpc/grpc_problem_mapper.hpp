@@ -102,7 +102,7 @@ void map_chunked_header_to_problem(const cuopt::remote::ChunkedProblemHeader& he
  * This is the single entry point for reconstructing a problem from chunked transfer data.
  * It calls map_chunked_header_to_problem() for scalars/strings, then populates all numeric
  * arrays from the raw byte data — top-level arrays keyed by ArrayFieldId and per-entry
- * arrays of repeated_messages keyed by ContainerArrayKey.
+ * arrays of repeated_messages keyed by container_array_key_t.
  *
  * @param header The chunked problem header (scalars, settings metadata, string arrays,
  *               and per-entry scalars for any repeated_messages such as QuadraticConstraint)
@@ -115,7 +115,7 @@ template <typename i_t, typename f_t>
 void map_chunked_arrays_to_problem(
   const cuopt::remote::ChunkedProblemHeader& header,
   const std::map<int32_t, std::vector<uint8_t>>& arrays,
-  const std::map<ContainerArrayKey, std::vector<uint8_t>>& container_arrays,
+  const std::map<container_array_key_t, std::vector<uint8_t>>& container_arrays,
   cpu_optimization_problem_t<i_t, f_t>& cpu_problem);
 
 /**
