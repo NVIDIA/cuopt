@@ -2068,7 +2068,7 @@ TEST(MapperRoundtrip, PDLPSettingsIterationLimitSentinel)
 // A handful of bool settings have a C++ default of `true` but live on the wire
 // in a proto3 message. Without `optional`, an omitted field decodes as the
 // proto3 zero (`false`) and the mapper would silently overwrite the C++
-// default. The codegen now emits `optional <type>` for these fields and
+// default. The codegen emits `optional <type>` for these fields and
 // guards the assignment with `has_<X>()`, so an omitted field preserves the
 // solver default. The tests below pin that behavior for the three currently
 // converted fields.
