@@ -1,13 +1,13 @@
 [
   {
     "id": "dev-eval-001-vrp-combine-boundary-correction",
-    "question": "I'm implementing `combine(prev, next)` for a new cuOpt VRP dimension. My first attempt returns `prev.fwd_excess + next.bwd_excess`. The result is wrong by a small amount that scales with the boundary node's contribution. What's the correction term, and why is it needed?",
+    "question": "In cuOpt's VRP framework, the `combine(prev, next)` operation has a specific design contract that distinguishes it from a naive prefix+suffix sum. What is the exact formula cuOpt requires (involving `fwd_excess[k]`, `bwd_excess[k+1]`, and any correction term), and what design rationale forces that shape?",
     "expected_skill": "cuopt-developer",
     "expected_script": null,
-    "ground_truth": "The naive sum `prev.fwd_excess + next.bwd_excess` double-counts the boundary node's contribution: `fwd_excess[k]` accumulates the prefix [0..k] and `bwd_excess[k+1]` accumulates the suffix [k+1..n], and both have already 'seen' the in-transit state at the boundary k. The correction subtracts that boundary contribution once, so combine becomes `fwd_excess[k] + bwd_excess[k+1] - excess(fwd_state[k])`. Without this term, every combine call is off by the boundary excess — and because local search evaluates moves by differencing combined costs, the error propagates into every delta. The agent references `skills/cuopt-developer/references/vrp_skills.md` ('Why boundaries double-count' section) as the canonical source.",
+    "ground_truth": "The exact formula cuOpt's framework requires is `combine(k, k+1) = fwd_excess[k] + bwd_excess[k+1] - excess(fwd_state[k])`. The correction term subtracts the in-transit state's contribution at the join boundary, which is otherwise double-counted: `fwd_excess[k]` accumulates the prefix [0..k] and `bwd_excess[k+1]` accumulates the suffix [k+1..n], so both sides have already 'seen' the in-transit state at boundary k. A naive `prev.fwd_excess + next.bwd_excess` would overcount the boundary contribution once. The boundary-correction shape is forced because local search evaluates moves by differencing combined fragment costs, and any inconsistency in `combine` propagates into every delta. The agent references `skills/cuopt-developer/references/vrp_skills.md` ('Why boundaries double-count' section) as the canonical source.",
     "expected_behavior": [
-      "Identifies that `fwd_excess` (prefix) and `bwd_excess` (suffix) both include the boundary node's contribution, so summing them double-counts the boundary",
-      "States the correction subtracts the boundary's contribution once — `excess(fwd_state[k])` (or equivalent), giving `combine = fwd_excess[k] + bwd_excess[k+1] - excess(fwd_state[k])`"
+      "States the exact formula cuOpt requires: `combine(k, k+1) = fwd_excess[k] + bwd_excess[k+1] - excess(fwd_state[k])` (or substantively equivalent — a `fwd_excess + bwd_excess` sum minus a boundary correction term derived from `fwd_state[k]`)",
+      "Explains the rationale: the in-transit state at the join boundary is accumulated in both `fwd_excess[k]` and `bwd_excess[k+1]`, so the naive sum double-counts it once — the correction subtracts that boundary contribution"
     ]
   }
 ]
