@@ -69,6 +69,7 @@
 #define CUOPT_MIP_MIXED_INTEGER_ROUNDING_CUTS      "mip_mixed_integer_rounding_cuts"
 #define CUOPT_MIP_MIXED_INTEGER_GOMORY_CUTS        "mip_mixed_integer_gomory_cuts"
 #define CUOPT_MIP_KNAPSACK_CUTS                    "mip_knapsack_cuts"
+#define CUOPT_MIP_FLOW_COVER_CUTS                  "mip_flow_cover_cuts"
 #define CUOPT_MIP_IMPLIED_BOUND_CUTS               "mip_implied_bound_cuts"
 #define CUOPT_MIP_CLIQUE_CUTS                      "mip_clique_cuts"
 #define CUOPT_MIP_STRONG_CHVATAL_GOMORY_CUTS       "mip_strong_chvatal_gomory_cuts"
