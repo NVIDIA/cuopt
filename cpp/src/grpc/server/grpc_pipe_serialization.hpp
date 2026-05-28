@@ -244,25 +244,51 @@ inline PipeWriteStatus write_chunked_request_to_pipe(
     }
     fi->chunks.push_back(&ac);
 
-    // Only chunks claiming a non-empty array contribute to the size; an
-    // explicitly-empty chunk leaves total_bytes at its default of 0.
-    if (ac.total_elements() > 0) {
-      // Unknown field_id (or container_field_num): codegen out of sync with
-      // the client's enum, or a malicious/corrupted chunk.  Reject hard.
-      if (elem_size <= 0) return PipeWriteStatus::ValidationFailed;
-      // Overflow guard for total_elements * elem_size.
-      if (ac.total_elements() > std::numeric_limits<int64_t>::max() / elem_size) {
-        return PipeWriteStatus::ValidationFailed;
-      }
-      int64_t this_bytes = ac.total_elements() * elem_size;
-      if (fi->total_bytes == 0) {
-        fi->total_bytes = this_bytes;
-      } else if (fi->total_bytes != this_bytes) {
-        // Chunks for the same logical array disagree on the array's total
-        // size — they should all carry the same total_elements value.
-        return PipeWriteStatus::ValidationFailed;
-      }
+    // Unknown field_id (or container_field_num): codegen out of sync with
+    // the client's enum, or a malicious/corrupted chunk.  Reject hard even
+    // for zero-element chunks — an unknown field_id is a protocol error
+    // regardless of payload size.
+    if (elem_size <= 0) return PipeWriteStatus::ValidationFailed;
+
+    // Negative total_elements is always malformed.
+    if (ac.total_elements() < 0) return PipeWriteStatus::ValidationFailed;
+
+    if (ac.total_elements() == 0) {
+      // Zero-element chunks must carry an empty payload.  Phase 2 writes
+      // total_bytes=0 and no payload for such fields, so any data here
+      // would otherwise be silently discarded.
+      if (!ac.data().empty()) return PipeWriteStatus::ValidationFailed;
+      continue;
     }
+
+    // Overflow guard for total_elements * elem_size.
+    if (ac.total_elements() > std::numeric_limits<int64_t>::max() / elem_size) {
+      return PipeWriteStatus::ValidationFailed;
+    }
+    int64_t this_bytes = ac.total_elements() * elem_size;
+
+    // Enforce the reader's per-array byte cap on the writer side, so a
+    // too-large request fails as ValidationFailed (no pipe I/O, worker
+    // untouched) instead of surfacing as a mid-stream PipeFailed at the
+    // reader (which would force a worker SIGKILL).
+    if (static_cast<uint64_t>(this_bytes) > kMaxPipeArrayBytes) {
+      return PipeWriteStatus::ValidationFailed;
+    }
+
+    if (fi->total_bytes == 0) {
+      fi->total_bytes = this_bytes;
+    } else if (fi->total_bytes != this_bytes) {
+      // Chunks for the same logical array disagree on the array's total
+      // size — they should all carry the same total_elements value.
+      return PipeWriteStatus::ValidationFailed;
+    }
+  }
+
+  // Mirror the reader's count caps so an oversized field set fails cleanly
+  // here instead of mid-pipe-write on the receiving end.
+  if (top_fields.size() > kMaxPipeArrayFields) return PipeWriteStatus::ValidationFailed;
+  if (container_fields.size() > kMaxPipeContainerArrays) {
+    return PipeWriteStatus::ValidationFailed;
   }
 
   // Per-field deep validation (alignment, range, exact disjoint coverage).

@@ -18,6 +18,7 @@
 #include <poll.h>
 #include <unistd.h>
 
+#include <cerrno>
 #include <cstdint>
 #include <cstring>
 #include <limits>
@@ -135,14 +136,22 @@ ArrayChunk make_container_partial_chunk(int32_t container_field_num,
 // nothing readable right now (i.e. the writer left the pipe untouched).
 // Used by the ValidationFailed tests to confirm the writer aborted before
 // emitting a single byte.
+//
+// Retries on EINTR: even with a 0ms timeout, poll() can return -1/EINTR if a
+// signal is delivered between syscall entry and the timer expiring.  Without
+// the retry, an unlucky signal during a test run would make this report
+// "pipe not empty" and falsely fail the assertion.
 bool pipe_is_empty(int read_fd)
 {
   pollfd pfd{};
   pfd.fd     = read_fd;
   pfd.events = POLLIN;
-  int rc     = ::poll(&pfd, 1, 0);
-  // rc == 0 means timeout fired with no events; rc < 0 is an error.  Anything
-  // else (rc > 0) means data or hangup is pending on the fd.
+  int rc;
+  do {
+    rc = ::poll(&pfd, 1, 0);
+  } while (rc == -1 && errno == EINTR);
+  // rc == 0 means timeout fired with no events; rc < 0 is an error other
+  // than EINTR.  Anything else (rc > 0) means data or hangup is pending.
   return rc == 0;
 }
 
