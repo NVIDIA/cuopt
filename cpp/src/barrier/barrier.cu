@@ -440,6 +440,12 @@ class iteration_data_t {
     }
   }
 
+  ~iteration_data_t()
+  {
+    chol.reset();
+    handle_ptr->sync_stream();
+  }
+
   void form_augmented(bool first_call = false)
   {
     i_t n                    = A.n;
