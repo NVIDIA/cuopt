@@ -502,6 +502,7 @@ void branch_and_bound_t<i_t, f_t>::set_solution_from_heuristics(const std::vecto
     if (is_feasible && improves_incumbent(obj)) {
       upper_bound_ = std::min(upper_bound_.load(), obj);
       incumbent_.set_incumbent_solution(obj, crushed_solution);
+      if (current_upper_bound > upper_bound_.load()) { report_heuristic(obj); }
     } else {
       attempt_repair         = true;
       constexpr bool verbose = false;
@@ -519,7 +520,6 @@ void branch_and_bound_t<i_t, f_t>::set_solution_from_heuristics(const std::vecto
     settings_.log.debug("Solution objective not better than current upper_bound_. Not accepted.\n");
   }
 
-  if (is_feasible && current_upper_bound > upper_bound_.load()) { report_heuristic(obj); }
   if (attempt_repair) {
     mutex_repair_.lock();
     repair_queue_.push_back(solution);
@@ -1782,7 +1782,12 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
     }
   }
 
-  bfs_worker_pool_.return_worker_to_pool(worker);
+  // If the worker has still nodes in the queue (this can happen if it was stopped due to
+  // time limit, small gap or other reason), then do not add back to the pool to avoid
+  // constantly trying to start it again
+  if (worker->node_queue.best_first_queue_size() == 0) {
+    bfs_worker_pool_.return_worker_to_pool(worker);
+  }
 }
 
 template <typename i_t, typename f_t>

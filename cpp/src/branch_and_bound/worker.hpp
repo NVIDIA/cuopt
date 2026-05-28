@@ -190,7 +190,7 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
     }
 
     this->lower_bound = node_queue.get_lower_bound();
-    this->is_active   = true;
+    this->set_active();
   }
 
   void set_inactive() { this->is_active = false; }
