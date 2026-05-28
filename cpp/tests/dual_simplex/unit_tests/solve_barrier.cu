@@ -207,7 +207,7 @@ TEST(barrier, min_x_squared_free_variable_dual_correction)
   auto h_z = cuopt::host_copy(solution.get_reduced_cost(), handle.get_stream());
 
   printf("x %e y %e z %e\n", h_x[0], h_y[0], h_z[0]);
-  
+
   const double tol = 1e-5;
   EXPECT_NEAR(h_x[0], 1.0, tol);
   EXPECT_NEAR(h_y[0], 2.0, tol);

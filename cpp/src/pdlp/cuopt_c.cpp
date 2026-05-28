@@ -619,13 +619,8 @@ cuopt_int_t cuOptAddQuadraticConstraint(cuOptOptimizationProblem problem,
         ? std::span<const cuopt_int_t>{}
         : std::span<const cuopt_int_t>(linear_index, static_cast<std::size_t>(num_lin_entries));
 
-    op_problem->add_quadratic_constraint(sense,
-                                         rhs,
-                                         row_index_span,
-                                         col_index_span,
-                                         coeff_span,
-                                         linear_coeff_span,
-                                         linear_index_span);
+    op_problem->add_quadratic_constraint(
+      sense, rhs, row_index_span, col_index_span, coeff_span, linear_coeff_span, linear_index_span);
   } catch (const raft::exception&) {
     return CUOPT_INVALID_ARGUMENT;
   } catch (const std::exception&) {

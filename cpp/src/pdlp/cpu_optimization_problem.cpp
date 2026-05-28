@@ -143,13 +143,14 @@ void cpu_optimization_problem_t<i_t, f_t>::set_quadratic_constraints(
 }
 
 template <typename i_t, typename f_t>
-void cpu_optimization_problem_t<i_t, f_t>::add_quadratic_constraint(char constraint_row_type,
-                                                                    f_t rhs_value,
-                                                                    std::span<const i_t> row_index,
-                                                                    std::span<const i_t> col_index,
-                                                                    std::span<const f_t> coeff,
-                                                                    std::span<const f_t> linear_values,
-                                                                    std::span<const i_t> linear_indices)
+void cpu_optimization_problem_t<i_t, f_t>::add_quadratic_constraint(
+  char constraint_row_type,
+  f_t rhs_value,
+  std::span<const i_t> row_index,
+  std::span<const i_t> col_index,
+  std::span<const f_t> coeff,
+  std::span<const f_t> linear_values,
+  std::span<const i_t> linear_indices)
 {
   cuopt_expects(!row_index.empty(),
                 error_type_t::ValidationError,

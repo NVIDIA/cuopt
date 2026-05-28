@@ -14,8 +14,8 @@
 #include <dual_simplex/solve.hpp>
 #include <dual_simplex/user_problem.hpp>
 
-#include <raft/core/cusparse_macros.hpp>
 #include <raft/sparse/detail/cusparse_wrappers.h>
+#include <raft/core/cusparse_macros.hpp>
 
 #include <cmath>
 #include <vector>
