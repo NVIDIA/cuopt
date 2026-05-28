@@ -23,13 +23,12 @@ namespace {
 // Returns {0, 1} if solve_for cannot be determined (its coefficient is zero, or no
 // other variable in the constraint has a known lattice).
 template <typename i_t, typename f_t>
-rational128_t<f_t> compute_step_for_unknown(
-  i_t i,
-  i_t solve_for,
-  const std::vector<i_t>& offsets,
-  const std::vector<i_t>& variables,
-  const std::vector<rational128_t<f_t>>& coef_r,
-  const std::vector<rational128_t<f_t>>& step_r)
+rational128_t<f_t> compute_step_for_unknown(i_t i,
+                                            i_t solve_for,
+                                            const std::vector<i_t>& offsets,
+                                            const std::vector<i_t>& variables,
+                                            const std::vector<rational128_t<f_t>>& coef_r,
+                                            const std::vector<rational128_t<f_t>>& step_r)
 {
   rational128_t<f_t> a_unknown = {0, 1};
   rational128_t<f_t> step_sum  = {0, 1};
@@ -166,7 +165,9 @@ bool propagate_lattice(i_t n_vars,
 
   while (num_changed > 0) {
     // Counting-sort by unknown count ascending.
-    for (i_t k = 0; k <= max_unknown_count; ++k) { bucket_offset[k] = 0; }
+    for (i_t k = 0; k <= max_unknown_count; ++k) {
+      bucket_offset[k] = 0;
+    }
     for (i_t k = 0; k < num_changed; ++k) {
       bucket_offset[unknown_count_per_constraint[changed_constraints[k]]]++;
     }
@@ -339,15 +340,15 @@ objective_step_t<f_t> compute_objective_step_info(
 
   std::vector<f_t> lattice_step;
   bool discovered = propagate_lattice<i_t, f_t>(n_variables,
-                                                 n_constraints,
-                                                 offsets,
-                                                 variables,
-                                                 coefficients,
-                                                 con_lb,
-                                                 con_ub,
-                                                 is_lattice_known_initially,
-                                                 obj_coefs,
-                                                 lattice_step);
+                                                n_constraints,
+                                                offsets,
+                                                variables,
+                                                coefficients,
+                                                con_lb,
+                                                con_ub,
+                                                is_lattice_known_initially,
+                                                obj_coefs,
+                                                lattice_step);
 
   if (!discovered) return {};
 
@@ -400,11 +401,11 @@ template objective_step_t<double> compute_objective_step_info<int, double>(
   const std::vector<double>&);
 
 template objective_step_t<float> compute_objective_step_info<int, float>(const std::vector<float>&,
-                                                                          const std::vector<bool>&,
-                                                                          const std::vector<int>&,
-                                                                          const std::vector<int>&,
-                                                                          const std::vector<float>&,
-                                                                          const std::vector<float>&,
-                                                                          const std::vector<float>&);
+                                                                         const std::vector<bool>&,
+                                                                         const std::vector<int>&,
+                                                                         const std::vector<int>&,
+                                                                         const std::vector<float>&,
+                                                                         const std::vector<float>&,
+                                                                         const std::vector<float>&);
 
 }  // namespace cuopt::linear_programming::dual_simplex

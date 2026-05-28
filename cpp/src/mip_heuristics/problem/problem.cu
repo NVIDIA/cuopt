@@ -1417,9 +1417,9 @@ void problem_t<i_t, f_t>::compute_objective_step()
 {
   f_t start_time = dual_simplex::tic();
   // Copy info from device to host
-  auto h_obj_coefs  = cuopt::host_copy(objective_coefficients, handle_ptr->get_stream());
-  auto h_var_types  = cuopt::host_copy(variable_types, handle_ptr->get_stream());
-  auto h_var_flags  = cuopt::host_copy(presolve_data.var_flags, handle_ptr->get_stream());
+  auto h_obj_coefs = cuopt::host_copy(objective_coefficients, handle_ptr->get_stream());
+  auto h_var_types = cuopt::host_copy(variable_types, handle_ptr->get_stream());
+  auto h_var_flags = cuopt::host_copy(presolve_data.var_flags, handle_ptr->get_stream());
 
   // Determine whether each variable's lattice is already known (integer or implied-integer).
   // Track whether every variable with nonzero objective coefficient is already lattice-known:
@@ -1487,13 +1487,8 @@ void problem_t<i_t, f_t>::compute_objective_step()
   auto h_con_lb  = cuopt::host_copy(constraint_lower_bounds, handle_ptr->get_stream());
   auto h_con_ub  = cuopt::host_copy(constraint_upper_bounds, handle_ptr->get_stream());
 
-  objective_step = dual_simplex::compute_objective_step_info<i_t, f_t>(h_obj_coefs,
-                                                                        is_lattice_known_initially,
-                                                                        h_offsets,
-                                                                        h_vars,
-                                                                        h_coefs,
-                                                                        h_con_lb,
-                                                                        h_con_ub);
+  objective_step = dual_simplex::compute_objective_step_info<i_t, f_t>(
+    h_obj_coefs, is_lattice_known_initially, h_offsets, h_vars, h_coefs, h_con_lb, h_con_ub);
 }
 
 template <typename i_t, typename f_t>
