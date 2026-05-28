@@ -14,10 +14,11 @@ ARGS=$*
 REPODIR=$(cd "$(dirname "$0")"; pwd)
 LIBCUOPT_BUILD_DIR=${LIBCUOPT_BUILD_DIR:=${REPODIR}/cpp/build}
 
-VALIDARGS="clean libcuopt cuopt_grpc_server cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -fsanitize -tsan -msan -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-grpc-build --skip-fatbin-write --host-lineinfo [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] -n --allgpuarch --ci-only-arch --show_depr_warn -h --help"
+VALIDARGS="clean codegen libcuopt cuopt_grpc_server cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -fsanitize -tsan -msan -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-grpc-build --skip-fatbin-write --host-lineinfo [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] -n --allgpuarch --ci-only-arch --show_depr_warn -h --help"
 HELP="$0 [<target> ...] [<flag> ...]
  where <target> is:
    clean            - remove all existing build artifacts and configuration (start over)
+   codegen          - regenerate gRPC .inc files and proto from field_registry.yaml (requires pyyaml)
    libcuopt         - build the cuopt C++ code
    cuopt_grpc_server - build only the gRPC server binary (configures + builds libcuopt as needed)
    cuopt            - build the cuopt Python package
@@ -337,6 +338,21 @@ else
         CUOPT_CMAKE_CUDA_ARCHITECTURES="NATIVE"
         echo "Building for the architecture of the GPU in the system..."
     fi
+fi
+
+################################################################################
+# Regenerate gRPC codegen .inc files from the field registry (explicit target only)
+if hasArg codegen; then
+    echo "Regenerating codegen .inc files from field_registry.yaml..."
+    # Remove previously generated files so artifacts no longer emitted by the
+    # generator do not linger and cause verify_grpc_codegen.sh to fail.
+    if [ -d "${REPODIR}"/cpp/src/grpc/codegen/generated ]; then
+        find "${REPODIR}"/cpp/src/grpc/codegen/generated -mindepth 1 -maxdepth 1 -type f -delete
+    fi
+    python "${REPODIR}"/cpp/src/grpc/codegen/generate_conversions.py \
+        --registry "${REPODIR}"/cpp/src/grpc/codegen/field_registry.yaml \
+        --output-dir "${REPODIR}"/cpp/src/grpc/codegen/generated
+    echo "Done. Remember to commit the generated files."
 fi
 
 ################################################################################

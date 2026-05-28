@@ -139,6 +139,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_IMPLIED_BOUND_CUTS, &mip_settings.implied_bound_cuts, -1, 1, -1},
     {CUOPT_MIP_STRONG_CHVATAL_GOMORY_CUTS, &mip_settings.strong_chvatal_gomory_cuts, -1, 1, -1},
     {CUOPT_MIP_REDUCED_COST_STRENGTHENING, &mip_settings.reduced_cost_strengthening, -1, std::numeric_limits<i_t>::max(), -1},
+    {CUOPT_MIP_OBJECTIVE_STEP, &mip_settings.objective_step, 0, 1, 1},
     {CUOPT_NUM_GPUS, &pdlp_settings.num_gpus, 1, 2, 1},
     {CUOPT_NUM_GPUS, &mip_settings.num_gpus, 1, 2, 1},
     {CUOPT_MIP_BATCH_PDLP_STRONG_BRANCHING, &mip_settings.mip_batch_pdlp_strong_branching, 0, 2, 0},

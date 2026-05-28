@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #include <cuts/cuts.hpp>
+#include <cuts/rational.hpp>
 
 #include <dual_simplex/basis_solves.hpp>
 #include <dual_simplex/tic_toc.hpp>
@@ -451,12 +452,6 @@ template <typename i_t, typename f_t>
 bool rational_coefficients(const std::vector<variable_type_t>& var_types,
                            const inequality_t<i_t, f_t>& inequality,
                            inequality_t<i_t, f_t>& rational_inequality);
-
-template <typename f_t>
-bool rational_approximation(f_t x,
-                            int64_t max_denominator,
-                            int64_t& numerator,
-                            int64_t& denominator);
 
 int64_t gcd(const std::vector<int64_t>& integers);
 
@@ -3484,45 +3479,6 @@ i_t tableau_equality_t<i_t, f_t>::generate_base_equality(
   inequality.rhs    = b_bar_[i];
 
   return 0;
-}
-
-template <typename f_t>
-bool rational_approximation(f_t x,
-                            int64_t max_denominator,
-                            int64_t& numerator,
-                            int64_t& denominator)
-{
-  int64_t a, p0 = 0, q0 = 1, p1 = 1, q1 = 0;
-  f_t val       = x;
-  bool negative = false;
-
-  if (x < 0) {
-    negative = true;
-    val      = -val;
-  }
-
-  while (1) {
-    a = (int64_t)std::floor(val);
-    if (a < 0 || a > INT64_MAX) { return false; }  // Protect against overflow
-    int64_t p2 = a * p1 + p0;
-    int64_t q2 = a * q1 + q0;
-    if (q2 > max_denominator) { break; }
-    p0 = p1;
-    q0 = q1;
-    p1 = p2;
-    q1 = q2;
-
-    f_t rem = val - a;
-    if (rem < 1e-14) { break; }
-    val = 1.0 / rem;
-  }
-
-  numerator   = negative ? -p1 : p1;
-  denominator = q1;
-
-  f_t approx = static_cast<f_t>(numerator) / static_cast<f_t>(denominator);
-  f_t err    = std::abs(approx - x);
-  return err <= 1e-14;
 }
 
 template <typename i_t, typename f_t>
