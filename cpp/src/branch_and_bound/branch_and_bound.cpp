@@ -482,6 +482,7 @@ void branch_and_bound_t<i_t, f_t>::set_new_solution(const std::vector<f_t>& solu
   mutex_original_lp_.unlock();
   bool is_feasible    = false;
   bool attempt_repair = false;
+
   if (!incumbent_.has_incumbent || obj < incumbent_.objective) {
     f_t primal_err;
     f_t bound_err;
@@ -1568,11 +1569,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
       worker->node_queue.unlock();
 
       if (node != nullptr) {
-        if (!launch_bfs_worker({node})) {
-          worker->node_queue.lock();
-          worker->node_queue.push(node);
-          worker->node_queue.unlock();
-        }
+        if (!launch_bfs_worker({node})) { worker->node_queue.push_atomic(node); }
       }
     }
 
@@ -1666,18 +1663,14 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
       if (stack.size() > 0) {
         mip_node_t<i_t, f_t>* node = stack.back();
         stack.pop_back();
-        worker->node_queue.lock();
-        worker->node_queue.push(node);
-        worker->node_queue.unlock();
+        worker->node_queue.push_atomic(node);
       }
 
       exploration_stats_.nodes_unexplored += 2;
 
       if (round_dir == branch_direction_t::UP) {
         if (worker->node_queue.best_first_queue_size() < min_node_queue_size_) {
-          worker->node_queue.lock();
-          worker->node_queue.push(node_ptr->get_down_child());
-          worker->node_queue.unlock();
+          worker->node_queue.push_atomic(node_ptr->get_down_child());
         } else {
           stack.push_front(node_ptr->get_down_child());
         }
@@ -1685,9 +1678,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
         stack.push_front(node_ptr->get_up_child());
       } else {
         if (worker->node_queue.best_first_queue_size() < min_node_queue_size_) {
-          worker->node_queue.lock();
-          worker->node_queue.push(node_ptr->get_up_child());
-          worker->node_queue.unlock();
+          worker->node_queue.push_atomic(node_ptr->get_up_child());
         } else {
           stack.push_front(node_ptr->get_up_child());
         }
@@ -1708,9 +1699,7 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
   while (!stack.empty()) {
     auto node = stack.front();
     stack.pop_front();
-    worker->node_queue.lock();
-    worker->node_queue.push(node);
-    worker->node_queue.unlock();
+    worker->node_queue.push_atomic(node);
   }
 }
 
@@ -1814,7 +1803,6 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
     }
   }
 
-  worker->set_inactive();
   bfs_worker_pool_.return_worker_to_pool(worker);
 }
 
@@ -1909,7 +1897,6 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker)
     abs_gap     = compute_user_abs_gap(original_lp_, upper_bound, lower_bound);
   }
 
-  worker->set_inactive();
   diving_worker_pool_.return_worker_to_pool(worker);
 }
 
@@ -1979,8 +1966,8 @@ void branch_and_bound_t<i_t, f_t>::single_threaded_solve()
   bfs_worker_t<i_t, f_t>* worker = bfs_worker_pool_.pop_idle_worker();
 
   node_queue_t<i_t, f_t>& node_queue = worker->node_queue;
-  node_queue.push(search_tree_.root.get_down_child());
-  node_queue.push(search_tree_.root.get_up_child());
+  node_queue.push_nolock(search_tree_.root.get_down_child());
+  node_queue.push_nolock(search_tree_.root.get_up_child());
   worker->lower_bound = worker->node_queue.get_lower_bound();
   worker->set_active();
   best_first_search_with(worker);
@@ -3074,8 +3061,8 @@ void branch_and_bound_t<i_t, f_t>::run_deterministic_coordinator(const csr_matri
 
   if (num_diving_workers > 0) {
     // Extract diving types from search_strategies (skip BEST_FIRST at index 0)
-    std::vector<search_strategy_t> diving_types(search_strategies.begin() + 1,
-                                                search_strategies.end());
+    std::vector<search_strategy_t> diving_types(search_strategies + 1,
+                                                search_strategies + num_search_strategies);
 
     if (settings_.diving_settings.coefficient_diving != 0) {
       calculate_variable_locks(original_lp_, var_up_locks_, var_down_locks_);

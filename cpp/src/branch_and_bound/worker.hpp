@@ -53,8 +53,9 @@ bool is_search_strategy_enabled(search_strategy_t strategy,
     case LINE_SEARCH_DIVING: return settings.line_search_diving != 0;
     case GUIDED_DIVING: return settings.guided_diving != 0 && has_incumbent;
     case COEFFICIENT_DIVING: return settings.coefficient_diving != 0;
-    default: return false;
   }
+
+  return false;
 }
 
 template <typename i_t, typename f_t>
@@ -180,7 +181,7 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
 
     for (auto* node : nodes) {
       assert(node != nullptr);
-      node_queue.push(node);
+      node_queue.push_nolock(node);
     }
 
     this->lower_bound = node_queue.get_lower_bound();
@@ -222,9 +223,7 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
       other->node_queue.unlock();
       if (node == nullptr) { break; }
 
-      this->node_queue.lock();
-      this->node_queue.push(node);
-      this->node_queue.unlock();
+      this->node_queue.push_atomic(node);
       --num_nodes;
       steal = true;
     }

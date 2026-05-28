@@ -61,6 +61,7 @@ class worker_pool_t {
 
   void return_worker_to_pool(WorkerType* worker)
   {
+    worker->set_inactive();
     std::lock_guard lock(mutex_);
     assert(worker != nullptr);
     assert(workers_[worker->worker_id].get() == worker);

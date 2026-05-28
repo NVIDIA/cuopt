@@ -6,7 +6,6 @@
 /* clang-format on */
 
 #pragma once
-#include <array>
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -25,7 +24,7 @@ enum search_strategy_t : int {
   COEFFICIENT_DIVING = 4   // Coefficient diving (9.2.1)
 };
 
-constexpr std::array search_strategies = {
+constexpr search_strategy_t search_strategies[] = {
   BEST_FIRST, PSEUDOCOST_DIVING, LINE_SEARCH_DIVING, GUIDED_DIVING, COEFFICIENT_DIVING};
 
 enum class branch_direction_t { NONE = -1, DOWN = 0, UP = 1 };
