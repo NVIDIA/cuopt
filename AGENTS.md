@@ -13,7 +13,6 @@ AI agent skills for NVIDIA cuOpt optimization engine. Skills live in **`skills/`
 
 ### Common (concepts only; no API code)
 - `skills/cuopt-numerical-optimization-formulation/` — LP / MILP / QP: concepts + problem parsing + common formulation patterns
-- `skills/cuopt-routing-formulation/` — Routing: VRP, TSP, PDP (problem types, data)
 - `skills/cuopt-server-common/` — Server: capabilities, workflow
 
 ### Installation
