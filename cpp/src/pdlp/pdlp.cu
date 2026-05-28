@@ -3154,12 +3154,11 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     ++total_pdlp_iterations_;
     ++internal_solver_iterations_;
     if (settings_.hyper_params.never_restart_to_average) {
+      restart_strategy_.increment_iteration_since_last_restart();
       if (multi_gpu_engine) {
         multi_gpu_engine->for_each_shard([&](auto& shard) {
           shard.sub_pdlp->restart_strategy_.increment_iteration_since_last_restart();
         });
-      } else {
-        restart_strategy_.increment_iteration_since_last_restart();
       }
     }
   }

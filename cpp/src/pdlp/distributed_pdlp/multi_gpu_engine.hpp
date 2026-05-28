@@ -311,21 +311,29 @@ struct multi_gpu_engine_t {
 
   // -------- High-level: A @ x and A_T @ y ---------------------------------
   // Thin wrappers used from pdhg_solver_t::compute_A_x / compute_At_y when an
-  // engine is wired in. They use the canonical PDHG buffers/descriptors so the
-  // result lands where single-GPU PDHG would have put it (dual_gradient for A,
-  // current_AtY for A_T).
+  // engine is wired in. They drive the per-shard plan-based SpMV via the
+  // canonical cusparse_view bindings (no rebinding) so the descriptor binding
+  // is never disturbed by mGPU machinery.
+  //
+  // The halo-exchange MUST target the exact buffer the canonical descriptor
+  // is bound to in the PDHG cusparse_view (see cusparse_view.cu lines 516-519
+  // and 595-599):
+  //   - cv.reflected_primal_solution -> reflected_primal_ (var-shaped)
+  //   - cv.dual_solution             -> current.dual_solution_ (cstr-shaped)
+  // For 1 shard the halo-exchange is a no-op, but the buffer choice is what
+  // makes multi-shard correctness work, so we keep it accurate either way.
   void distributed_compute_A_x()
   {
-    distributed_spmv_A(
-      [](auto& pdhg) -> rmm::device_uvector<f_t>& { return pdhg.get_reflected_primal(); },
-      [](auto& pdhg) -> cusparseDnVecDescr_t { return pdhg.get_cusparse_view().dual_gradient; });
+    halo_exchange_var(
+      [](auto& pdhg) -> rmm::device_uvector<f_t>& { return pdhg.get_reflected_primal(); });
+    for_each_shard([](auto& shard) { shard.sub_pdlp->pdhg_solver_.spmvop_A_x(); });
   }
 
   void distributed_compute_At_y()
   {
-    distributed_spmv_At(
-      [](auto& pdhg) -> rmm::device_uvector<f_t>& { return pdhg.get_dual_solution(); },
-      [](auto& pdhg) -> cusparseDnVecDescr_t { return pdhg.get_cusparse_view().current_AtY; });
+    halo_exchange_cstr(
+      [](auto& pdhg) -> rmm::device_uvector<f_t>& { return pdhg.get_dual_solution(); });
+    for_each_shard([](auto& shard) { shard.sub_pdlp->pdhg_solver_.spmvop_At_y(); });
   }
 
   // -------- Solution gather (shards -> master) ----------------------------
