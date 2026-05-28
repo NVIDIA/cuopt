@@ -1,13 +1,13 @@
 [
   {
-    "id": "dev-eval-001-vrp-dimension-combine-invariant",
-    "question": "I'm adding a new VRP dimension (a custom constraint) to cuOpt's routing engine. What's the `combine` invariant my dimension must satisfy, and how should I implement `get_cost`?",
+    "id": "dev-eval-001-vrp-combine-boundary-correction",
+    "question": "I'm implementing `combine(prev, next)` for a new cuOpt VRP dimension. My first attempt returns `prev.fwd_excess + next.bwd_excess`. The result is wrong by a small amount that scales with the boundary node's contribution. What's the correction term, and why is it needed?",
     "expected_skill": "cuopt-developer",
     "expected_script": null,
-    "ground_truth": "The combine function must return the same total cost for every split point `k` in a route (within floating-point tolerance) — this is the fundamental correctness contract. Local search evaluates moves by differencing `cost_after - cost_before` via combine, so a materially inconsistent combine produces wrong deltas and corrupts the search. `get_cost(prev, this)` must equal `combine(prev, this)` — implement it by delegating to combine (or inlining the same formula); never derive an independent formula, because any deviation breaks coherence assertions and can hide a slower code path. The agent references `skills/cuopt-developer/references/vrp_skills.md` as the canonical source for the dimension contract.",
+    "ground_truth": "The naive sum `prev.fwd_excess + next.bwd_excess` double-counts the boundary node's contribution: `fwd_excess[k]` accumulates the prefix [0..k] and `bwd_excess[k+1]` accumulates the suffix [k+1..n], and both have already 'seen' the in-transit state at the boundary k. The correction subtracts that boundary contribution once, so combine becomes `fwd_excess[k] + bwd_excess[k+1] - excess(fwd_state[k])`. Without this term, every combine call is off by the boundary excess — and because local search evaluates moves by differencing combined costs, the error propagates into every delta. The agent references `skills/cuopt-developer/references/vrp_skills.md` ('Why boundaries double-count' section) as the canonical source.",
     "expected_behavior": [
-      "States that `combine(prev, next)` must return the same value for every split point k in a route (k-independence invariant) and that this is required because local-search delta evaluation depends on it",
-      "States that `get_cost(prev, this)` must equal `combine(prev, this)` and should be implemented by delegating to combine, not by deriving an independent formula"
+      "Identifies that `fwd_excess` (prefix) and `bwd_excess` (suffix) both include the boundary node's contribution, so summing them double-counts the boundary",
+      "States the correction subtracts the boundary's contribution once — `excess(fwd_state[k])` (or equivalent), giving `combine = fwd_excess[k] + bwd_excess[k+1] - excess(fwd_state[k])`"
     ]
   }
 ]
