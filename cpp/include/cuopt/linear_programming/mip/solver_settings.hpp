@@ -105,10 +105,12 @@ class mip_solver_settings_t {
   i_t mir_cuts                  = -1;
   i_t mixed_integer_gomory_cuts = -1;
   i_t knapsack_cuts             = -1;
+  i_t flow_cover_cuts           = -1;
   i_t clique_cuts               = -1;
   i_t implied_bound_cuts        = -1;
   i_t strong_chvatal_gomory_cuts = -1;
   i_t reduced_cost_strengthening = -1;
+  i_t objective_step             = 1;  // 0 = disable objective step tightening, 1 = enable
   f_t cut_change_threshold       = -1.0;
   f_t cut_min_orthogonality      = 0.5;
   i_t mip_batch_pdlp_strong_branching{

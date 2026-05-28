@@ -23,6 +23,16 @@ enum class variable_type_t : int8_t {
   INTEGER    = 2,
 };
 
+// The objective function takes values on a lattice: k * step_size + bias
+// for integer k. A step_size of 0 means no lattice structure is known.
+template <typename f_t>
+struct objective_step_t {
+  f_t step_size{0};
+  f_t bias{0};
+
+  bool has_step() const { return step_size > 0; }
+};
+
 template <typename i_t, typename f_t>
 struct user_problem_t {
   user_problem_t(raft::handle_t const* handle_ptr_)
@@ -48,6 +58,7 @@ struct user_problem_t {
   f_t obj_constant;
   f_t obj_scale;  // positive for min, netagive for max
   bool objective_is_integral{false};
+  objective_step_t<f_t> objective_step;
   std::vector<variable_type_t> var_types;
   std::vector<i_t> Q_offsets;
   std::vector<i_t> Q_indices;
