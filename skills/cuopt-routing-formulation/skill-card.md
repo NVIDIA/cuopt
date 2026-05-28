@@ -3,12 +3,13 @@ Vehicle routing (VRP, TSP, PDP) — problem types and data requirements. Domain 
 
 This skill is ready for commercial/non-commercial use. <br>
 
-## Owner: NVIDIA <br>
+## Owner
+NVIDIA <br>
 
 ### License/Terms of Use: <br>
 Apache 2.0 <br>
 ## Use Case: <br>
-Developers and engineers use this skill to identify the correct vehicle routing problem type (TSP, VRP, or PDP) and determine the data requirements before formulating an optimization problem with cuOpt. <br>
+Developers and engineers formulating vehicle routing optimization problems (VRP, TSP, PDP) who need to identify the correct problem type and required input data before using cuOpt APIs. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
@@ -19,7 +20,7 @@ Mitigation: Review and scan skill before deployment. <br>
 
 ## Reference(s): <br>
 - [cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html) <br>
-- [cuOpt Examples](https://github.com/NVIDIA/cuopt-examples) <br>
+- [cuopt-examples](https://github.com/NVIDIA/cuopt-examples) <br>
 
 
 ## Skill Output: <br>
@@ -27,6 +28,42 @@ Mitigation: Review and scan skill before deployment. <br>
 **Output Format:** [Markdown] <br>
 **Output Parameters:** [1D] <br>
 **Other Properties Related to Output:** [None] <br>
+
+## Evaluation Agents Used: <br>
+- `claude-code` <br>
+- `codex` <br>
+
+
+
+## Evaluation Tasks: <br>
+1 evaluation task (positive skill-activation case) with 2 attempts per task; pass threshold 50%. NVSkills-Eval profile: external. <br>
+
+## Evaluation Metrics Used: <br>
+Reported benchmark dimensions: <br>
+- Security: Checks whether skill-assisted execution avoids unsafe behavior such as secret leakage, destructive commands, or unauthorized access. <br>
+- Correctness: Checks whether the agent follows the expected workflow and produces the correct final output. <br>
+- Discoverability: Checks whether the agent loads the skill when relevant and avoids using it when irrelevant. <br>
+- Effectiveness: Checks whether the agent performs measurably better with the skill than without it. <br>
+- Efficiency: Checks whether the agent uses fewer tokens and avoids redundant work. <br>
+
+Underlying evaluation signals used in this run: <br>
+- `skill_execution`: Verifies that the agent loaded the expected skill and workflow. <br>
+- `skill_efficiency`: Checks routing quality, decoy avoidance, and redundant tool usage. <br>
+- `accuracy`: Grades final-answer correctness against the reference answer. <br>
+- `goal_accuracy`: Checks whether the overall user task completed successfully. <br>
+- `behavior_check`: Verifies expected behavior steps, including safety expectations. <br>
+- `token_efficiency`: Compares token usage with and without the skill. <br>
+
+
+
+## Evaluation Results: <br>
+| Dimension | Num | `claude-code` | `codex` |
+|---|---:|---:|---:|
+| Security | 2 | 100% (+0%) | 100% (+0%) |
+| Correctness | 2 | 100% (+0%) | 97% (+23%) |
+| Discoverability | 2 | 100% (+0%) | 84% (+48%) |
+| Effectiveness | 2 | 97% (-2%) | 98% (+0%) |
+| Efficiency | 2 | 93% (-0%) | 78% (+34%) |
 
 ## Skill Version(s): <br>
 26.08.00 (source: frontmatter) <br>
