@@ -1,4 +1,4 @@
-# Debugging Numerical Issues in Solver Internals
+# Debugging Numerical Issues in Numerical Optimization Solver Internals
 
 Read this when a solver bug surfaces as **wrong-but-plausible output** rather
 than a crash or assertion.
@@ -23,23 +23,30 @@ result dominated by floating-point noise.
 The classical mistake is to guess the cancellation site and apply a fix. There
 are usually several candidates and you will guess wrong. Do this instead:
 
-1. **Locate the suspicious region.** Usually a recent commit or a code path
-   tied to the symptom. Read it end-to-end before adding any instrumentation.
-2. **Audit candidate cancellation sites by hand.** Any floating-point
-   accumulator whose result can be much smaller than its inputs is a candidate.
-   Write the list down before you instrument anything.
-3. **Instrument each site** with a `cancel_ratio = |final| / max(1, Σ|delta|)`
-   logged per event. A ratio of `1.0` means no cancellation; `1e-9` means ~7
-   decimal digits of precision lost; `1e-15` means the result is numerical
-   noise.
-4. **Reproduce, log, read.** Sort the log by `cancel_ratio` ascending; the
-   worst offenders are at the top.
-5. **Guard at the exact site that's cancelling — not earlier, not later.** A
-   guard on an upstream accumulator does nothing if cancellation happens
-   downstream; cut-generation paths typically have multiple sites in series.
-6. **Re-run and confirm.** If the symptom persists, your instrumentation
-   missed a site — return to step 2. The cancellation hypothesis is wrong
-   only if every measured ratio is `≥ ~1e-6` and the symptom is still there.
+### Locate the suspicious region
+
+Usually a recent commit or a code path tied to the symptom. Read it end-to-end before adding any instrumentation.
+
+### Audit candidate cancellation sites by hand
+
+Any floating-point accumulator whose result can be much smaller than its inputs is a candidate.
+Write the list down before you instrument anything.
+
+### Instrument each site with a `cancel_ratio = |final| / max(1, Σ|delta|)`
+
+Logged per event. A ratio of `1.0` means no cancellation; `1e-9` means ~7 decimal digits of precision lost; `1e-15` means the result is numerical noise.
+
+### Reproduce, log, read
+
+Sort the log by `cancel_ratio` ascending; the worst offenders are at the top.
+
+### Guard at the exact site that's cancelling — not earlier, not later
+
+A guard on an upstream accumulator does nothing if cancellation happens downstream; cut-generation paths typically have multiple sites in series.
+
+### Re-run and confirm
+
+If the symptom persists, your instrumentation missed a site — return to step 2. The cancellation hypothesis is wrong only if every measured ratio is `≥ ~1e-6` and the symptom is still there.
 
 ## Threshold Guidance
 
