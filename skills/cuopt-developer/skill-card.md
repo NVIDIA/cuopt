@@ -8,7 +8,7 @@ This skill is ready for commercial/non-commercial use. <br>
 ### License/Terms of Use: <br>
 Apache 2.0 <br>
 ## Use Case: <br>
-Developers and engineers contributing to the NVIDIA cuOpt codebase use this skill for building, testing, debugging, and submitting changes to the C++/CUDA solver core, Python bindings, REST server, and CI infrastructure. <br>
+Activate when an NVIDIA contributor is preparing a pull request against `NVIDIA/cuopt`, debugging a failing CI job, or asking how the build/test/sign-off workflow works for this repository specifically. Not for end-user questions about *calling* cuOpt — those route to `cuopt-install`, `cuopt-routing-api-python`, or the numerical-optimization API skills. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
