@@ -113,6 +113,18 @@ class cpu_optimization_problem_t : public optimization_problem_interface_t<i_t, 
   const std::vector<i_t>& get_quadratic_objective_offsets() const override;
   const std::vector<i_t>& get_quadratic_objective_indices() const override;
   const std::vector<f_t>& get_quadratic_objective_values() const override;
+  const std::vector<i_t>& get_quadratic_objective_offsets_host() const
+  {
+    return get_quadratic_objective_offsets();
+  }
+  const std::vector<i_t>& get_quadratic_objective_indices_host() const
+  {
+    return get_quadratic_objective_indices();
+  }
+  const std::vector<f_t>& get_quadratic_objective_values_host() const
+  {
+    return get_quadratic_objective_values();
+  }
   bool has_quadratic_objective() const override;
 
   void set_quadratic_constraints(std::vector<quadratic_constraint_t> constraints) override;

@@ -312,11 +312,22 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   dual_simplex::mip_status_t branch_and_bound_status = dual_simplex::mip_status_t::UNSET;
   dual_simplex::user_problem_t<i_t, f_t> branch_and_bound_problem(context.problem_ptr->handle_ptr);
   context.problem_ptr->recompute_objective_integrality();
+  if (context.settings.objective_step) { context.problem_ptr->compute_objective_step(); }
   if (context.problem_ptr->is_objective_integral()) {
     CUOPT_LOG_INFO("Objective function is integral, scale %g",
                    context.problem_ptr->presolve_data.objective_scaling_factor);
   }
+  if (context.settings.objective_step && context.problem_ptr->get_objective_step().has_step()) {
+    f_t scale     = context.problem_ptr->presolve_data.objective_scaling_factor;
+    f_t user_step = context.problem_ptr->get_objective_step().step_size * std::abs(scale);
+    CUOPT_LOG_INFO("Objective step size %g (unscaled: %g)",
+                   context.problem_ptr->get_objective_step().step_size,
+                   user_step);
+  }
   branch_and_bound_problem.objective_is_integral = context.problem_ptr->is_objective_integral();
+  if (context.settings.objective_step) {
+    branch_and_bound_problem.objective_step = context.problem_ptr->get_objective_step();
+  }
   dual_simplex::simplex_solver_settings_t<i_t, f_t> branch_and_bound_settings;
   std::unique_ptr<dual_simplex::branch_and_bound_t<i_t, f_t>> branch_and_bound;
   branch_and_bound_solution_helper_t solution_helper(&dm, branch_and_bound_settings);
