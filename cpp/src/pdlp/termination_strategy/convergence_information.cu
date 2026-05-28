@@ -460,9 +460,8 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
       });
 
     // Get the reduced primal objective from the shard[0] (arbitrary)
-    // Race fix: master stream must wait for shard streams to finish the
-    // allreduce above before copying scalar data out of shard 0's buffer.
-    engine->join_from_shards(stream_view_);
+    // Sync shards with master stream to avoid race conditions
+    engine->sync_await_shards(stream_view_);
     {
       auto& s0 = *engine->shards[0];
       raft::device_setter guard(s0.device_id);
@@ -497,9 +496,8 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
       },
       [](pdlp_shard_t<i_t, f_t>& shard) -> i_t { return shard.rank_data.owned_cstr_size; });
 
-    // Race fix: master stream must wait for shard streams to finish the
     // distributed L2 norm before copying scalar data out of shard 0.
-    engine->join_from_shards(stream_view_);
+    engine->sync_await_shards(stream_view_);
     auto& s0 = *engine->shards[0];
     raft::device_setter guard(s0.device_id);
     raft::copy(l2_primal_residual_.data(),
@@ -607,9 +605,8 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
           .data();
       });
 
-    // Race fix: master stream must wait for shard streams to finish the
-    // allreduce above before copying scalar data out of shard 0's buffer.
-    engine->join_from_shards(stream_view_);
+    // Sync shards with master stream to avoid race conditions
+    engine->sync_await_shards(stream_view_);
     {
       auto& s0 = *engine->shards[0];
       raft::device_setter guard(s0.device_id);
@@ -646,9 +643,9 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
           .l2_dual_residual_.data();
       },
       [](pdlp_shard_t<i_t, f_t>& shard) -> i_t { return shard.rank_data.owned_var_size; });
-    // Race fix: master stream must wait for shard streams to finish the
+
     // distributed L2 norm before copying scalar data out of shard 0.
-    engine->join_from_shards(stream_view_);
+    engine->sync_await_shards(stream_view_);
     auto& s0 = *engine->shards[0];
     raft::device_setter guard(s0.device_id);
     raft::copy(l2_dual_residual_.data(),

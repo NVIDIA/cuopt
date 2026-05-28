@@ -381,12 +381,6 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
                                        int num_gpus)
   // 1. Delegate to single-GPU ctor to bring up all the per-master state
   //    (problem_ptr, op_problem_scaled_, pdhg_solver_, strategies, etc.).
-  //
-  // Graph capture is enabled here. The master's captured graph splices the
-  // shard streams via fork_to_shards/join_from_shards inside
-  // compute_next_primal_dual_solution_reflected (see pdhg.cu) so every
-  // per-shard kernel and NCCL collective is recorded into the same parent
-  // graph.
   : pdlp_solver_t(op_problem, settings, /*is_legacy_batch_mode=*/false)
 {
   if (num_gpus == 1) {

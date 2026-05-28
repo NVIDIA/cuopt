@@ -1245,6 +1245,8 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
 
   using f_t2 = typename type_2<f_t>::type;
 
+  if (mgpu_engine_ != nullptr) { mgpu_engine_->sync_await_shards(stream_view_); }
+
   // Compute next primal solution reflected.
 
   if (should_major) {
@@ -1255,7 +1257,9 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
       // the capture or run outside the graph, leaving the captured graph
       // empty (or broken) -- which produces the cycling/stall behavior we
       // observed on larger problems. Mirrors metis_tests bench.cu fork/join.
-      if (mgpu_engine_ != nullptr) { mgpu_engine_->fork_to_shards(stream_view_); }
+      if (mgpu_engine_ != nullptr) {
+        mgpu_engine_->graph_capture_fork_to_shards(stream_view_);
+      }
 
       compute_At_y();
       if (mgpu_engine_ != nullptr) {
@@ -1358,12 +1362,16 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
       // Multi-GPU: close the fork by joining every shard stream back into
       // the master stream so cudaStreamEndCapture sees a single graph
       // spanning all streams.
-      if (mgpu_engine_ != nullptr) { mgpu_engine_->join_from_shards(stream_view_); }
+      if (mgpu_engine_ != nullptr) {
+        mgpu_engine_->graph_capture_join_from_shards(stream_view_);
+      }
     });
 
   } else {
     graph_all.run(should_major, [&]() {
-      if (mgpu_engine_ != nullptr) { mgpu_engine_->fork_to_shards(stream_view_); }
+      if (mgpu_engine_ != nullptr) {
+        mgpu_engine_->graph_capture_fork_to_shards(stream_view_);
+      }
 
       // Compute next primal
       compute_At_y();
@@ -1470,9 +1478,14 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
       print("reflected_dual_", reflected_dual_);
 #endif
 
-      if (mgpu_engine_ != nullptr) { mgpu_engine_->join_from_shards(stream_view_); }
+      if (mgpu_engine_ != nullptr) {
+        mgpu_engine_->graph_capture_join_from_shards(stream_view_);
+      }
     });
   }
+
+  // sync to master stream after the graph is captured
+  if (mgpu_engine_ != nullptr) { mgpu_engine_->sync_await_master(stream_view_); }
 }
 
 template <typename i_t, typename f_t>
