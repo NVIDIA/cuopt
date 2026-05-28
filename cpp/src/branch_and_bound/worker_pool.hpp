@@ -61,14 +61,14 @@ class worker_pool_t {
 
   void return_worker_to_pool(WorkerType* worker)
   {
-    worker->set_inactive();
     std::lock_guard lock(mutex_);
     assert(worker != nullptr);
     assert(workers_[worker->worker_id].get() == worker);
-    assert(!worker->is_active.load());
     assert(static_cast<size_t>(num_idle_workers_.load()) == idle_workers_.size());
     assert(idle_workers_.size() <= workers_.size());
 
+    worker->set_inactive();
+    assert(!worker->is_active.load());
     idle_workers_.push_back(worker->worker_id);
     num_idle_workers_++;
   }

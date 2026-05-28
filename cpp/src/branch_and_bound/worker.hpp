@@ -312,7 +312,7 @@ class diving_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
   // Set this node inactive
   void set_inactive()
   {
-    assert(this->is_active.load());
+    if (!this->is_active.load()) { return; }
     assert(bfs_worker != nullptr);
     assert(bfs_worker->active_diving_workers[this->search_strategy].load() > 0);
     assert(bfs_worker->total_active_diving_workers.load() > 0);
