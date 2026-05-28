@@ -1,19 +1,14 @@
 [
   {
-    "id": "user-rules-eval-001-clarify-before-code",
-    "question": "Help me optimize my routing.",
+    "id": "user-rules-eval-001-result-summary-format",
+    "question": "I just solved a cuOpt LP problem and got `objective_value = 1234.56` from `solution.get_primal_objective()`, with `termination_status = TerminationStatus.Optimal`. How should you present the result summary at the end of your response?",
     "expected_skill": "cuopt-user-rules",
     "expected_script": null,
-    "ground_truth": "The prompt is incomplete on every dimension. Per the user-rules skill, the agent must ask before assuming. It asks: (a) Language / interface — Python, C, or REST server? (b) Problem type — TSP, VRP, or PDP? (c) Data — does the user have a cost / distance matrix, order locations, fleet definition, or should the agent generate a small sample dataset for demonstration? (d) Constraints — time windows, vehicle capacities, precedence, service times? (e) Problem size — number of locations, vehicles, orders? (f) Performance — time limit, solution-quality target? It does not produce code, does not silently choose Python+VRP and emit a starter script, and does not invent constraint values. If the user later says 'just create a sample dataset', the agent will state clearly what it synthesized (size, depot assumption, time windows used) before producing code.",
+    "ground_truth": "The agent produces a Result Summary that includes all three mandatory elements: (1) the solver status string drawn from cuOpt's allowed set — Optimal / FeasibleFound / SUCCESS (here 'Optimal'), not a generic phrase like 'solved'; (2) the objective value rendered prominently — either bolded (e.g. **Objective value: 1234.56**) or in a code block (e.g. `Objective value: 1234.56`), NOT buried in a paragraph; (3) a brief description of what the objective represents (e.g. 'total cost', 'total profit'). The objective value is not unnecessarily truncated or rounded.",
     "expected_behavior": [
-      "Does not produce code on the underspecified prompt",
-      "Asks about language / interface (Python / C / REST)",
-      "Asks about problem type (TSP / VRP / PDP)",
-      "Asks whether the user has data or wants a synthesized sample",
-      "Asks about constraints (time windows, capacities, precedence, service times)",
-      "Asks about problem size and performance requirements",
-      "Does not silently assume Python+VRP defaults and produce a starter script",
-      "References the user-rules 'ask before assuming' rule"
+      "Reports the solver status as 'Optimal' (one of the allowed values: Optimal / FeasibleFound / SUCCESS) — not a generic 'solved' or 'success'",
+      "Renders the objective value prominently in bold or a code block (e.g. **Objective value: 1234.56** or `Objective value: 1234.56`), not inline inside a paragraph",
+      "Includes a brief description of what the objective represents (total cost, total profit, etc.)"
     ]
   }
 ]
