@@ -387,7 +387,6 @@ template bool propagate_lattice<int, float>(int,
 
 template objective_step_t<double> compute_objective_step_info<int, double>(
   const std::vector<double>&,
-  const std::vector<double>&,
   const std::vector<bool>&,
   const std::vector<int>&,
   const std::vector<int>&,
@@ -396,7 +395,6 @@ template objective_step_t<double> compute_objective_step_info<int, double>(
   const std::vector<double>&);
 
 template objective_step_t<float> compute_objective_step_info<int, float>(const std::vector<float>&,
-                                                                          const std::vector<float>&,
                                                                           const std::vector<bool>&,
                                                                           const std::vector<int>&,
                                                                           const std::vector<int>&,
