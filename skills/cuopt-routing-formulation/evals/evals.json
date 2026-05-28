@@ -1,14 +1,12 @@
 [
   {
-    "id": "rt-form-eval-001-underspecified-routing-data",
-    "question": "I run a delivery business and want to plan routes for my fleet. Help me set this up as an optimization problem.",
+    "id": "rt-form-eval-001-pdp-with-missing-data",
+    "question": "A courier company has 8 trucks and needs to handle 50 jobs across a city this week. Some jobs are simple deliveries from the warehouse, but about 20 of them require picking up a parcel from one customer address and dropping it off at another. Help me set this up as an optimization problem — what problem type is this and what do I still need from the user before I can start writing code?",
     "expected_skill": "cuopt-routing-formulation",
     "expected_script": null,
-    "ground_truth": "The problem is severely underspecified. Before formulating anything, the agent MUST surface all required information across the five data categories — it must NOT silently default to VRP, invent capacities or time windows, or jump to code. Specifically, the agent must ask the user about: (1) PROBLEM TYPE — single vehicle visiting all stops (TSP), multiple vehicles with capacity/time constraints (VRP), or pickup-then-deliver pairs (PDP)? (2) LOCATIONS data — how many locations, where is the depot (or are there multiple depots), and is there a cost/distance/travel-time matrix or coordinates to build one from? (3) ORDERS / TASKS — which locations must be visited, demand or service-time per stop? (4) FLEET — how many vehicles, capacity per vehicle (per dimension if multiple), start and end locations? (5) CONSTRAINTS — time windows for vehicles and orders, service times, precedence requirements? The agent does NOT produce code and does NOT pick one interpretation silently.",
+    "ground_truth": "The agent must (1) identify the problem as multi-vehicle Pickup and Delivery Problem (PDP) — the pickup-then-deliver pairing on ~20 of the jobs is the distinguishing feature versus plain VRP (one-way deliveries) or TSP (single vehicle); (2) name the specific missing data the user still needs to provide before code can be written — at minimum: a cost/distance/travel-time matrix (or coordinates), the per-vehicle capacity, the depot location (since some jobs are warehouse deliveries), and whether there are time windows or service times for the jobs. The agent does NOT produce code yet, does NOT silently default to plain VRP, and does NOT invent capacities, time windows, or depot indices.",
     "expected_behavior": [
-      "Surfaces that the problem is underspecified — does NOT silently default to VRP, does NOT invent specific numbers (vehicle count, capacities, time windows, depot)",
-      "Asks about all five data categories before formulating: problem type (TSP/VRP/PDP), locations & cost/distance matrix, orders & demand, fleet & capacities, and constraints (time windows, precedence)",
-      "Does not produce code or an API call sequence — this is a conceptual / data-gathering response"
+      "Identifies the problem as multi-vehicle PDP (not VRP, not TSP) and names the pickup-then-deliver pairing on ~20 of the jobs as the distinguishing feature"
     ]
   }
 ]
