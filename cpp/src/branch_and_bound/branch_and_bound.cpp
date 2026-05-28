@@ -468,7 +468,7 @@ void branch_and_bound_t<i_t, f_t>::update_user_bound(f_t lower_bound)
 }
 
 template <typename i_t, typename f_t>
-void branch_and_bound_t<i_t, f_t>::set_new_solution(const std::vector<f_t>& solution)
+void branch_and_bound_t<i_t, f_t>::set_solution_from_heuristics(const std::vector<f_t>& solution)
 {
   mutex_original_lp_.lock();
   if (solution.size() != original_problem_.num_cols) {
@@ -480,10 +480,11 @@ void branch_and_bound_t<i_t, f_t>::set_new_solution(const std::vector<f_t>& solu
     original_problem_, original_lp_, solution, new_slacks_, crushed_solution);
   f_t obj = compute_objective(original_lp_, crushed_solution);
   mutex_original_lp_.unlock();
-  bool is_feasible    = false;
-  bool attempt_repair = false;
+  bool is_feasible        = false;
+  bool attempt_repair     = false;
+  f_t current_upper_bound = upper_bound_.load();
 
-  if (!incumbent_.has_incumbent || obj < incumbent_.objective) {
+  if (improves_incumbent(obj)) {
     f_t primal_err;
     f_t bound_err;
     i_t num_fractional;
@@ -518,7 +519,7 @@ void branch_and_bound_t<i_t, f_t>::set_new_solution(const std::vector<f_t>& solu
     settings_.log.debug("Solution objective not better than current upper_bound_. Not accepted.\n");
   }
 
-  if (is_feasible) { report_heuristic(obj); }
+  if (is_feasible && current_upper_bound > upper_bound_.load()) { report_heuristic(obj); }
   if (attempt_repair) {
     mutex_repair_.lock();
     repair_queue_.push_back(solution);
@@ -2607,7 +2608,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       if (settings_.deterministic) {
         queue_external_solution_deterministic(user_assignment, work_units);
       } else {
-        set_new_solution(user_assignment);
+        set_solution_from_heuristics(user_assignment);
       }
     };
   auto stop_root_cut_cpufj = [&]() {

@@ -439,7 +439,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
       branch_and_bound->set_concurrent_lp_root_solve(true);
 
       context.problem_ptr->branch_and_bound_callback =
-        std::bind(&dual_simplex::branch_and_bound_t<i_t, f_t>::set_new_solution,
+        std::bind(&dual_simplex::branch_and_bound_t<i_t, f_t>::set_solution_from_heuristics,
                   branch_and_bound.get(),
                   std::placeholders::_1);
     } else if (context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC) {

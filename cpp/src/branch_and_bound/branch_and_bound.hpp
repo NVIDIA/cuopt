@@ -112,7 +112,7 @@ class branch_and_bound_t {
   }
 
   // Set a solution based on the user problem during the course of the solve
-  void set_new_solution(const std::vector<f_t>& solution);
+  void set_solution_from_heuristics(const std::vector<f_t>& solution);
 
   // This queues the solution to be processed at the correct work unit timestamp
   void queue_external_solution_deterministic(const std::vector<f_t>& solution, double work_unit_ts);
