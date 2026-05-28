@@ -1,13 +1,13 @@
 [
   {
-    "id": "dev-eval-001-first-time-contributor-workflow",
-    "question": "I'd like to contribute a bug fix to cuOpt. What's the end-to-end workflow from cloning the repo to getting the PR merged?",
+    "id": "dev-eval-001-dependencies-yaml-workflow",
+    "question": "I'm contributing to cuOpt and want to add `xarray` as a new Python runtime dependency. What's the workflow to get it into the build?",
     "expected_skill": "cuopt-developer",
     "expected_script": null,
-    "ground_truth": "The agent walks the user through the fork-based contribution flow: fork NVIDIA/cuopt, clone the fork, branch off main, set up the conda env, build with build.sh, and run tests (ctest + pytest). The agent does not suggest --no-verify or any bypass of pre-commit / CI, and points the user to CONTRIBUTING.md for the authoritative steps.",
+    "ground_truth": "The agent edits dependencies.yaml under the appropriate dependency group and instructs the user to run `pre-commit run --all-files` to regenerate conda/environments/ and pyproject.toml. The agent does not run `pip install` directly and does not hand-edit pyproject.toml or conda/environments/ files (those are generated artifacts).",
     "expected_behavior": [
-      "Describes the fork-based PR workflow (fork on GitHub, clone fork, branch off main)",
-      "Does not suggest --no-verify or any way to bypass pre-commit / CI"
+      "Edits dependencies.yaml as the source of truth and runs `pre-commit run --all-files` to regenerate conda/environments/ and pyproject.toml",
+      "Does not run `pip install` and does not hand-edit pyproject.toml or conda/environments/ files"
     ]
   }
 ]
