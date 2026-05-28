@@ -241,7 +241,7 @@ When implementing or debugging **VRP dimensions** (constraints, objectives, forw
 
 Read it **before** adding a new dimension or changing combine semantics.
 
-## Numerical issues in solver internals
+## Numerical issues in non-routing solver internals
 
 When a bug surfaces as **wrong-but-plausible** solver output (invalid lower bound, unexpectedly large duals, 10× iteration blow-up after a small change) rather than a crash, read:
 
