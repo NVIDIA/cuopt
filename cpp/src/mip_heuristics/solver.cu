@@ -320,12 +320,9 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   if (context.settings.objective_step && context.problem_ptr->get_objective_step().has_step()) {
     f_t scale     = context.problem_ptr->presolve_data.objective_scaling_factor;
     f_t user_step = context.problem_ptr->get_objective_step().step_size * std::abs(scale);
-    f_t user_bias = context.problem_ptr->get_objective_step().bias * scale;
-    CUOPT_LOG_INFO("Objective step size %g, bias %g (unscaled: step %g, bias %g)",
+    CUOPT_LOG_INFO("Objective step size %g (unscaled: %g)",
                    context.problem_ptr->get_objective_step().step_size,
-                   context.problem_ptr->get_objective_step().bias,
-                   user_step,
-                   user_bias);
+                   user_step);
   }
   branch_and_bound_problem.objective_is_integral = context.problem_ptr->is_objective_integral();
   if (context.settings.objective_step) {

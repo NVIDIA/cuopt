@@ -1420,20 +1420,13 @@ void problem_t<i_t, f_t>::compute_objective_step()
   auto h_obj_coefs  = cuopt::host_copy(objective_coefficients, handle_ptr->get_stream());
   auto h_var_types  = cuopt::host_copy(variable_types, handle_ptr->get_stream());
   auto h_var_flags  = cuopt::host_copy(presolve_data.var_flags, handle_ptr->get_stream());
-  auto h_var_bounds = cuopt::host_copy(variable_bounds, handle_ptr->get_stream());
 
-  // Compute a vector of lower bounds and upper bounds, and a vector of bools
-  // indicating whether a variable's lattice is already known (integer or
-  // implied-integer). Track whether every variable with nonzero objective coefficient is
-  // already lattice-known: in that case we take the fast path below and never need to read
-  // the constraint matrix.
-  std::vector<f_t> h_var_lb(n_variables);
-  std::vector<f_t> h_var_ub(n_variables);
+  // Determine whether each variable's lattice is already known (integer or implied-integer).
+  // Track whether every variable with nonzero objective coefficient is already lattice-known:
+  // in that case we take the fast path below and never need to read the constraint matrix.
   std::vector<bool> is_lattice_known_initially(n_variables, false);
   bool all_obj_vars_integral = true;
   for (i_t i = 0; i < n_variables; ++i) {
-    h_var_lb[i]                   = get_lower(h_var_bounds[i]);
-    h_var_ub[i]                   = get_upper(h_var_bounds[i]);
     bool is_int                   = (h_var_types[i] == var_t::INTEGER);
     bool is_impl_int              = (h_var_flags[i] & (i_t)VAR_IMPLIED_INTEGER) != 0;
     is_lattice_known_initially[i] = is_int || is_impl_int;
@@ -1441,23 +1434,14 @@ void problem_t<i_t, f_t>::compute_objective_step()
   }
 
   // Fast path: every variable with nonzero objective coefficient already has a known
-  // lattice. Compute step = gcd(|c_j|) and bias = sum(c_j * lattice_point_j) mod step
-  // directly using the local helpers below; no matrix-level propagation needed.
-  // For each variable, lattice_point_j is the first feasible integer value >= lb.
+  // lattice (step=1). The objective step is gcd(|c_j|) and the bias is always 0, because
+  // each c_j is a multiple of the gcd, and each variable takes integer values, so the
+  // objective value sum(c_j * integer_j) is always a multiple of the gcd.
   if (all_obj_vars_integral) {
     std::vector<f_t> nonzero_coefs;
-    f_t bias = 0;
     for (i_t i = 0; i < n_variables; ++i) {
       if (h_obj_coefs[i] == 0) continue;
-      f_t coef = h_obj_coefs[i];
-      nonzero_coefs.push_back(coef);
-      // Use ceil(lb) as the lattice anchor: the first integer value >= lb.
-      // For integer variables lb is typically already integer, so ceil is a no-op.
-      // For implied integers with fractional lb, ceil gives the first feasible point.
-      // If lb is -inf (free variable), use 0 as the anchor.
-      f_t lb            = h_var_lb[i];
-      f_t lattice_point = std::isfinite(lb) ? std::ceil(lb) : f_t(0);
-      bias += coef * lattice_point;
+      nonzero_coefs.push_back(h_obj_coefs[i]);
     }
     if (nonzero_coefs.empty()) {
       objective_step = {};
@@ -1468,8 +1452,7 @@ void problem_t<i_t, f_t>::compute_objective_step()
       f_t g = dual_simplex::gcd_of_integer_values(nonzero_coefs);
       if (g > 0) {
         objective_step.step_size = g;
-        objective_step.bias      = std::fmod(bias, g);
-        if (objective_step.bias < 0) objective_step.bias += g;
+        objective_step.bias      = 0;
       } else {
         objective_step = {};
       }
@@ -1488,10 +1471,7 @@ void problem_t<i_t, f_t>::compute_objective_step()
       if (g > 0) {
         f_t sf                   = static_cast<f_t>(scaling_factor);
         objective_step.step_size = g / sf;
-        f_t scaled_bias          = sf * bias;
-        f_t mod                  = std::fmod(scaled_bias, g);
-        objective_step.bias      = mod / sf;
-        if (objective_step.bias < 0) objective_step.bias += objective_step.step_size;
+        objective_step.bias      = 0;
         return;
       }
     }
@@ -1508,14 +1488,12 @@ void problem_t<i_t, f_t>::compute_objective_step()
   auto h_con_ub  = cuopt::host_copy(constraint_upper_bounds, handle_ptr->get_stream());
 
   objective_step = dual_simplex::compute_objective_step_info<i_t, f_t>(h_obj_coefs,
-                                                                       h_var_lb,
-                                                                       h_var_ub,
-                                                                       is_lattice_known_initially,
-                                                                       h_offsets,
-                                                                       h_vars,
-                                                                       h_coefs,
-                                                                       h_con_lb,
-                                                                       h_con_ub);
+                                                                        is_lattice_known_initially,
+                                                                        h_offsets,
+                                                                        h_vars,
+                                                                        h_coefs,
+                                                                        h_con_lb,
+                                                                        h_con_ub);
   CUOPT_LOG_INFO("Objective step (step %e, bias %e) completed in %.3f seconds",
                  objective_step.step_size,
                  objective_step.bias,
