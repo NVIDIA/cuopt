@@ -14,6 +14,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -118,14 +119,11 @@ class cpu_optimization_problem_t : public optimization_problem_interface_t<i_t, 
   void set_quadratic_constraints(std::vector<quadratic_constraint_t> constraints) override;
   void add_quadratic_constraint(char constraint_row_type,
                                 f_t rhs_value,
-                                const i_t* row_index,
-                                const i_t* col_index,
-                                const f_t* coeff,
-                                i_t num_entries,
-                                const f_t* linear_values,
-                                i_t size_linear_values,
-                                const i_t* linear_indices,
-                                i_t size_linear_indices) override;
+                                std::span<const i_t> row_index,
+                                std::span<const i_t> col_index,
+                                std::span<const f_t> coeff,
+                                std::span<const f_t> linear_values,
+                                std::span<const i_t> linear_indices) override;
   bool has_quadratic_constraints() const override;
   const std::vector<quadratic_constraint_t>& get_quadratic_constraints() const override;
 

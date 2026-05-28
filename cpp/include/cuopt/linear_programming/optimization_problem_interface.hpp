@@ -15,6 +15,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -80,20 +81,17 @@ class optimization_problem_interface_t {
   /**
    * @brief Append one quadratic constraint x^T Q x + d^T x {<=, >=} rhs.
    *
-   * Quadratic matrix Q is COO (row_index, col_index, coeff). Linear term d uses parallel
+   * Quadratic matrix Q is COO (row_index, col_index, coeff spans). Linear term d uses parallel
    * linear_values and linear_indices (empty allowed). constraint_row_index is assigned
    * automatically as n_linear_constraints + n_existing_quadratic_constraints.
    */
   virtual void add_quadratic_constraint(char constraint_row_type,
                                         f_t rhs_value,
-                                        const i_t* row_index,
-                                        const i_t* col_index,
-                                        const f_t* coeff,
-                                        i_t num_entries,
-                                        const f_t* linear_values,
-                                        i_t size_linear_values,
-                                        const i_t* linear_indices,
-                                        i_t size_linear_indices) = 0;
+                                        std::span<const i_t> row_index,
+                                        std::span<const i_t> col_index,
+                                        std::span<const f_t> coeff,
+                                        std::span<const f_t> linear_values,
+                                        std::span<const i_t> linear_indices) = 0;
   template <typename qc_t,
             typename = std::enable_if_t<!std::is_same_v<qc_t, quadratic_constraint_t>>>
   void set_quadratic_constraints(const std::vector<qc_t>& constraints)
