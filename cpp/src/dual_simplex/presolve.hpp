@@ -49,6 +49,7 @@ struct lp_problem_t {
   f_t obj_constant;
   f_t obj_scale;  // 1.0 for min, -1.0 for max
   bool objective_is_integral{false};
+  objective_step_t<f_t> objective_step;
   i_t cone_var_start{0};
   std::vector<i_t> second_order_cone_dims;
 
