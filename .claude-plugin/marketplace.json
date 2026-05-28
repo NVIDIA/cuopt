@@ -51,8 +51,8 @@
       "description": "LP, MILP, and QP (beta) with cuOpt — CLI only (MPS files, cuopt_cli). Use when the user is solving LP, MILP, or QP from MPS via command line."
     },
     {
-      "name": "routing-formulation",
-      "source": "./skills/routing-formulation",
+      "name": "cuopt-routing-formulation",
+      "source": "./skills/cuopt-routing-formulation",
       "skills": "./",
       "description": "Vehicle routing (VRP, TSP, PDP) — problem types and data requirements. Domain concepts; no API or interface."
     },
