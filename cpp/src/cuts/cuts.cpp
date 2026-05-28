@@ -1138,7 +1138,6 @@ bool flow_cover_generation_t<i_t, f_t>::build_single_node_flow_relaxation(
   const f_t feasibility_tol = context.settings.primal_tol;
   const f_t bound_tol       = context.settings.primal_tol;
   f_t b_shift               = 0.0;
-  f_t b_shift_abs_sum       = 0.0;
 
   scratch.arcs.reserve(scratch.continuous_terms.size() + scratch.binary_columns.size());
 
@@ -1256,7 +1255,6 @@ bool flow_cover_generation_t<i_t, f_t>::build_single_node_flow_relaxation(
     if (best->arc.y_value < 0.0) { best->arc.y_value = 0.0; }
     scratch.arcs.push_back(best->arc);
     b_shift += best->b_shift;
-    b_shift_abs_sum += std::abs(best->b_shift);
     if (best->absorbs_binary_coeff && best->arc.x_col >= 0) {
       scratch.binary_coefficients[best->arc.x_col] = 0.0;
     }
@@ -1272,14 +1270,6 @@ bool flow_cover_generation_t<i_t, f_t>::build_single_node_flow_relaxation(
   if (scratch.arcs.empty()) { return false; }
   single_node_flow_b = b - b_shift;
 
-  // Reject the relaxation when single_node_flow_b is the result of catastrophic
-  // cancellation between b and the accumulated c*alpha shifts. Below this floor,
-  // snfb is dominated by floating-point noise and any downstream cMIR/SGFCI cut
-  // is built on a fictitious right-hand side. Observed on cbs-cta where rows
-  // with |alpha| ~ 1e7 produced snfb at machine epsilon.
-  const f_t cancellation_tol   = static_cast<f_t>(1e-9);
-  const f_t cancellation_scale = std::max<f_t>(1.0, std::abs(b) + b_shift_abs_sum);
-  if (std::abs(single_node_flow_b) < cancellation_tol * cancellation_scale) { return false; }
   cuopt_assert(
     [&]() {
       f_t single_node_flow_activity = 0.0;
@@ -1517,15 +1507,7 @@ bool flow_cover_generation_t<i_t, f_t>::emit_flow_cover_cut(
   const f_t output_drop_tol = static_cast<f_t>(1e-9);
   const bool use_c_mir_inequality =
     c_mir_inequality.violation >= simple_generalized_inequality.violation;
-  f_t lhs_constant         = 0.0;
-  f_t lhs_constant_abs_sum = 0.0;
-
-  // Track Σ|delta| alongside the raw lhs_constant accumulation so the emit-time
-  // guard below can quantify cancellation in this accumulator.
-  auto bump_lhs_constant = [&](f_t delta) {
-    lhs_constant += delta;
-    lhs_constant_abs_sum += std::abs(delta);
-  };
+  f_t lhs_constant = 0.0;
 
   scratch.lhs_indices.reserve(scratch.arcs.size() * 2);
   auto add_lhs_coeff = [&](i_t j, f_t value) {
@@ -1539,12 +1521,12 @@ bool flow_cover_generation_t<i_t, f_t>::emit_flow_cover_cut(
   };
 
   auto add_y = [&](const single_node_flow_arc_t<i_t, f_t>& arc, f_t multiplier) {
-    bump_lhs_constant(multiplier * arc.y_const);
+    lhs_constant += multiplier * arc.y_const;
     if (arc.y_col >= 0) { add_lhs_coeff(arc.y_col, multiplier * arc.y_coeff); }
     if (arc.x_col >= 0) {
       add_lhs_coeff(arc.x_col, multiplier * arc.y_x_coeff);
     } else {
-      bump_lhs_constant(multiplier * arc.y_x_coeff * arc.x_value);
+      lhs_constant += multiplier * arc.y_x_coeff * arc.x_value;
     }
   };
 
@@ -1552,12 +1534,12 @@ bool flow_cover_generation_t<i_t, f_t>::emit_flow_cover_cut(
     if (arc.x_col >= 0) {
       add_lhs_coeff(arc.x_col, multiplier);
     } else {
-      bump_lhs_constant(multiplier * arc.x_value);
+      lhs_constant += multiplier * arc.x_value;
     }
   };
 
   auto add_one_minus_x = [&](const single_node_flow_arc_t<i_t, f_t>& arc, f_t multiplier) {
-    bump_lhs_constant(multiplier);
+    lhs_constant += multiplier;
     add_x(arc, -multiplier);
   };
 
@@ -1576,7 +1558,7 @@ bool flow_cover_generation_t<i_t, f_t>::emit_flow_cover_cut(
           add_x(arc, -(arc.u - lambda * f_pos));
         }
       } else if (scratch.in_c2[k]) {
-        bump_lhs_constant(-arc.u);
+        lhs_constant -= arc.u;
         add_one_minus_x(arc, lambda * f_pos);
       } else if (scratch.best_in_l2[k]) {
         add_x(arc, lambda * f_neg);
@@ -1593,7 +1575,7 @@ bool flow_cover_generation_t<i_t, f_t>::emit_flow_cover_cut(
       } else if (!arc.in_n2) {
         continue;
       } else if (scratch.in_c2[k]) {
-        bump_lhs_constant(-arc.u);
+        lhs_constant -= arc.u;
       } else if (scratch.simple_generalized_flow_cover_in_l2[k]) {
         add_x(arc, -std::min(arc.u, lambda));
       } else {
@@ -1601,18 +1583,6 @@ bool flow_cover_generation_t<i_t, f_t>::emit_flow_cover_cut(
       }
     }
   }
-
-  // Two numerical-safety guards on emit. Thresholds are intentionally identical
-  // and well above the worst observed cancellation on cbs-cta (5.5e-6 / 1.0e-6).
-  //  - lhs_cancel: lhs_constant collapses from a sum of large opposite-signed
-  //    contributions to a small remainder.
-  //  - cutrhs_cancel: lhs_constant and single_node_flow_b are individually
-  //    large and near-equal, so their difference (cut.rhs) is dominated by
-  //    cancellation noise.
-  const f_t cancellation_emit_tol  = static_cast<f_t>(1e-4);
-  const f_t lhs_cancel_denominator = std::max<f_t>(1.0, lhs_constant_abs_sum);
-  const f_t lhs_cancel_ratio       = std::abs(lhs_constant) / lhs_cancel_denominator;
-  if (lhs_cancel_ratio < cancellation_emit_tol) { return false; }
 
   cut.clear();
   cut.reserve(scratch.lhs_indices.size());
@@ -1624,10 +1594,18 @@ bool flow_cover_generation_t<i_t, f_t>::emit_flow_cover_cut(
   cut.rhs = lhs_constant - single_node_flow_b;
   cut.sort();
 
-  const f_t cutrhs_cancel_denominator =
-    std::max<f_t>({static_cast<f_t>(1.0), std::abs(lhs_constant), std::abs(single_node_flow_b)});
-  const f_t cutrhs_cancel_ratio = std::abs(cut.rhs) / cutrhs_cancel_denominator;
-  if (cutrhs_cancel_ratio < cancellation_emit_tol) { return false; }
+  // Small residual-RHS cuts are common and useful at normal scales. They become
+  // numerically dangerous when the RHS is the difference of two large internal
+  // SNF constants, because the added row can destabilize warm dual-simplex
+  // reoptimization even though the cut is algebraically valid.
+  const f_t cut_rhs_scale = std::max<f_t>(
+    static_cast<f_t>(1.0), std::max(std::abs(lhs_constant), std::abs(single_node_flow_b)));
+  const f_t cut_rhs_cancel_ratio          = std::abs(cut.rhs) / cut_rhs_scale;
+  constexpr f_t large_cut_rhs_scale       = static_cast<f_t>(1e5);
+  constexpr f_t unstable_cut_rhs_residual = static_cast<f_t>(1e-5);
+  if (cut_rhs_scale >= large_cut_rhs_scale && cut_rhs_cancel_ratio <= unstable_cut_rhs_residual) {
+    return false;
+  }
 
   const f_t dot           = cut.vector.dot(context.xstar);
   const f_t violation_tol = std::max(context.settings.primal_tol, static_cast<f_t>(1e-6));
