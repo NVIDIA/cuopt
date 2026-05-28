@@ -27,8 +27,8 @@
       "description": "Install cuOpt for Python, C, or as a server (pip, conda, Docker) — system requirements, install commands, and verification. Use when the user wants to install or verify cuOpt for any user-facing interface."
     },
     {
-      "name": "numerical-optimization-formulation",
-      "source": "./skills/numerical-optimization-formulation",
+      "name": "cuopt-numerical-optimization-formulation",
+      "source": "./skills/cuopt-numerical-optimization-formulation",
       "skills": "./",
       "description": "Numerical optimization (LP, MILP, QP) — concepts, problem-text parsing, and formulation patterns. What LP, MILP, and QP are, required formulation questions, modeling elements, common patterns, and how to parse problem statements (parameters, constraints, decisions, objective). Domain concepts; no API or interface."
     },
