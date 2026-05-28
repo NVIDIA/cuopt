@@ -44,11 +44,16 @@ rational128_t<f_t> compute_step_for_unknown(
     if (step_r[j].is_zero()) continue;
 
     step_sum = gcd(step_sum, (coef_r[p] * step_r[j]).abs());
+    // Check for overflow in intermediate GCD computation
+    if (step_sum.q <= 0) return {0, 1};
   }
 
   if (a_unknown.is_zero()) return {0, 1};
 
-  return step_sum / a_unknown.abs();
+  rational128_t<f_t> result = step_sum / a_unknown.abs();
+  // Check for overflow in the division
+  if (result.q <= 0) return {0, 1};
+  return result;
 }
 
 }  // namespace
