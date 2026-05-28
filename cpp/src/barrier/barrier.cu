@@ -385,8 +385,17 @@ class iteration_data_t {
       f_t estimated_nz_AAT = 0.0;
 
       const bool has_soc = has_cones();
-      if (has_Q || has_soc) {
-        // QP and SOCP always use the augmented KKT; skip dense-column / ADAT heuristics.
+
+      if (has_soc) {
+        primal_perturb = 1e-8;
+        dual_perturb   = 1e-8;
+      } else {
+        primal_perturb = 1e-6;
+        dual_perturb   = 0;
+      }
+
+      if (has_soc) {
+        // SOCP always use the augmented KKT; skip dense-column / ADAT heuristics.
         use_augmented   = true;
         n_dense_columns = 0;
       } else {
@@ -420,6 +429,12 @@ class iteration_data_t {
           use_augmented   = true;
           n_dense_columns = 0;
         }
+      }
+
+      if (has_Q && !use_augmented) {
+        // For now let's not deal with dense columns
+        n_dense_columns = 0;
+        use_augmented   = !Q_diagonal;
       }
 
       if (use_augmented) {
@@ -3001,7 +3016,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
 
       // Adaptive regularization: increase/decrease based on IR quality.
       // Only adapt on calls where we actually (re)factorized — the affine step.
-      if (did_factorize) {
+      if (did_factorize && data.has_cones()) {
         constexpr f_t min_perturb = 1e-8;
         constexpr f_t max_perturb = 1e-1;
         if (solve_err > 1e-2) {
@@ -4444,8 +4459,8 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
     const i_t iteration_limit = settings.iteration_limit;
 
     // Adaptive regularization for the augmented system.
-    f_t dual_perturb   = 1e-8;
-    f_t primal_perturb = 1e-8;
+    f_t dual_perturb   = data.has_cones() ? 1e-8 : 0;
+    f_t primal_perturb = data.has_cones() ? 1e-8 : 1e-6;
 
     while (iter < iteration_limit) {
       raft::common::nvtx::range fun_scope("Barrier: iteration");
