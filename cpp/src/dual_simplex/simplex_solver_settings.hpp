@@ -102,6 +102,7 @@ struct simplex_solver_settings_t {
       mir_cuts(-1),
       mixed_integer_gomory_cuts(-1),
       knapsack_cuts(-1),
+      flow_cover_cuts(-1),
       implied_bound_cuts(-1),
       clique_cuts(-1),
       strong_chvatal_gomory_cuts(-1),
@@ -189,6 +190,7 @@ struct simplex_solver_settings_t {
   i_t mixed_integer_gomory_cuts;   // -1 automatic, 0 to disable, >0 to enable mixed integer Gomory
                                    // cuts
   i_t knapsack_cuts;               // -1 automatic, 0 to disable, >0 to enable knapsack cuts
+  i_t flow_cover_cuts;             // -1 automatic, 0 to disable, >0 to enable flow cover cuts
   i_t implied_bound_cuts;          // -1 automatic, 0 to disable, >0 to enable implied bound cuts
   i_t clique_cuts;                 // -1 automatic, 0 to disable, >0 to enable clique cuts
   i_t strong_chvatal_gomory_cuts;  // -1 automatic, 0 to disable, >0 to enable strong Chvatal Gomory

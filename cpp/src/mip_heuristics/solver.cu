@@ -359,6 +359,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     branch_and_bound_settings.mixed_integer_gomory_cuts =
       context.settings.mixed_integer_gomory_cuts;
     branch_and_bound_settings.knapsack_cuts      = context.settings.knapsack_cuts;
+    branch_and_bound_settings.flow_cover_cuts    = context.settings.flow_cover_cuts;
     branch_and_bound_settings.implied_bound_cuts = context.settings.implied_bound_cuts;
     branch_and_bound_settings.clique_cuts        = context.settings.clique_cuts;
     branch_and_bound_settings.strong_chvatal_gomory_cuts =

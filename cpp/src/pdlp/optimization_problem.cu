@@ -215,6 +215,58 @@ void optimization_problem_t<i_t, f_t>::set_quadratic_constraints(
 }
 
 template <typename i_t, typename f_t>
+void optimization_problem_t<i_t, f_t>::add_quadratic_constraint(char constraint_row_type,
+                                                                f_t rhs_value,
+                                                                const f_t* quadratic_values,
+                                                                i_t size_quadratic_values,
+                                                                const i_t* quadratic_indices,
+                                                                i_t size_quadratic_indices,
+                                                                const i_t* quadratic_offsets,
+                                                                i_t size_quadratic_offsets,
+                                                                const f_t* linear_values,
+                                                                i_t size_linear_values,
+                                                                const i_t* linear_indices,
+                                                                i_t size_linear_indices)
+{
+  cuopt_expects(size_quadratic_offsets >= 1,
+                error_type_t::ValidationError,
+                "quadratic_offsets must have at least one element");
+  cuopt_expects(quadratic_offsets != nullptr,
+                error_type_t::ValidationError,
+                "quadratic_offsets cannot be null");
+  cuopt_expects(size_linear_values == size_linear_indices,
+                error_type_t::ValidationError,
+                "linear_values and linear_indices must have the same size");
+  if (size_quadratic_values != 0) {
+    cuopt_expects(quadratic_values != nullptr,
+                  error_type_t::ValidationError,
+                  "quadratic_values cannot be null");
+  }
+  if (size_quadratic_indices != 0) {
+    cuopt_expects(quadratic_indices != nullptr,
+                  error_type_t::ValidationError,
+                  "quadratic_indices cannot be null");
+  }
+  if (size_linear_values != 0) {
+    cuopt_expects(
+      linear_values != nullptr, error_type_t::ValidationError, "linear_values cannot be null");
+    cuopt_expects(
+      linear_indices != nullptr, error_type_t::ValidationError, "linear_indices cannot be null");
+  }
+
+  typename optimization_problem_interface_t<i_t, f_t>::quadratic_constraint_t qc;
+  qc.constraint_row_index = get_n_constraints() + static_cast<i_t>(quadratic_constraints_.size());
+  qc.constraint_row_type  = constraint_row_type;
+  qc.rhs_value            = rhs_value;
+  qc.quadratic_values.assign(quadratic_values, quadratic_values + size_quadratic_values);
+  qc.quadratic_indices.assign(quadratic_indices, quadratic_indices + size_quadratic_indices);
+  qc.quadratic_offsets.assign(quadratic_offsets, quadratic_offsets + size_quadratic_offsets);
+  qc.linear_values.assign(linear_values, linear_values + size_linear_values);
+  qc.linear_indices.assign(linear_indices, linear_indices + size_linear_indices);
+  quadratic_constraints_.push_back(std::move(qc));
+}
+
+template <typename i_t, typename f_t>
 void optimization_problem_t<i_t, f_t>::set_variable_lower_bounds(const f_t* variable_lower_bounds,
                                                                  i_t size)
 {
