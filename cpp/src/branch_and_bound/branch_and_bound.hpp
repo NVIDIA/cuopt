@@ -314,8 +314,6 @@ class branch_and_bound_t {
   // Repairs low-quality solutions from the heuristics, if it is applicable.
   void repair_heuristic_solutions();
 
-  // Launch a new bfs worker initialized from the `start_node`.
-  bfs_worker_t<i_t, f_t>* launch_bfs_worker(const std::vector<mip_node_t<i_t, f_t>*>&);
   // Launch a new diving worker from a given bfs worker. The dive will start
   // from the node at the top of the local heap.
   bool launch_diving_worker(bfs_worker_t<i_t, f_t>* bfs_worker);

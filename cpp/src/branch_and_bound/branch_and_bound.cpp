@@ -1550,26 +1550,28 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
 
     // If any best-first worker become idle,
     if (bfs_worker_pool_.num_idle() > 0 && worker->node_queue.best_first_queue_size() > 0) {
-      worker->node_queue.lock();
+      bfs_worker_t<i_t, f_t>* idle_worker = bfs_worker_pool_.pop_idle_worker();
+      if (idle_worker) {
+        worker->node_queue.lock();
+        if (worker->node_queue.bfs_top()) {
+          // Initialize the idle worker before we pop the node from the heap to avoid
+          // the node from vanishing from the solver during its migration between node queues.
+          idle_worker->init(worker->node_queue.bfs_top());
+          worker->node_queue.pop_best_first();
+        }
+        worker->node_queue.unlock();
 
-      // Since there may have a window between when th "best" node is popped
-      // from the queue and the new worker is launched, its lower bound temporarily vanish
-      // from the solver (as it is not store in the local queue or in the lower bound of the
-      // worker, representing the lower bound of the node currently being solved).
-      // Hence, need to store its lower bound somewhere during the transition.
-      // If it is better than the current lower bound of the worker, then it has the potential
-      // to be the best lower bound across all workers, and thus, we can safely replace the current
-      // lower bound with the one from the top of the heap. The worker will be updated again to
-      // reflect the lower bound of the node being solved after popping a new node from the local
-      // stack (a few lines below) and the new worker is already active. See `get_lower_bound()` for
-      // more details in how the global lower bound is computed.
-      worker->lower_bound =
-        std::min<f_t>(worker->node_queue.get_lower_bound(), worker->lower_bound);
-      mip_node_t<i_t, f_t>* node = worker->node_queue.pop_best_first();
-      worker->node_queue.unlock();
-
-      if (node != nullptr) {
-        if (!launch_bfs_worker({node})) { worker->node_queue.push_atomic(node); }
+        // If the idle worker is set to active (i.e., its node queue has a valid node),
+        // launch a openmp task to run the best-first search for that worker
+        if (idle_worker->is_active.load()) {
+#pragma omp task affinity(*idle_worker) priority(CUOPT_CRITICAL_TASK_PRIORITY) default(none) \
+  firstprivate(idle_worker)
+          best_first_search_with(idle_worker);
+        } else {
+          // The idle worker was not successfully initialized. This should occur
+          // rarely or even none at all. Keep here for safety.
+          bfs_worker_pool_.return_worker_to_pool(idle_worker);
+        }
       }
     }
 
@@ -1701,30 +1703,6 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
     stack.pop_front();
     worker->node_queue.push_atomic(node);
   }
-}
-
-template <typename i_t, typename f_t>
-bfs_worker_t<i_t, f_t>* branch_and_bound_t<i_t, f_t>::launch_bfs_worker(
-  const std::vector<mip_node_t<i_t, f_t>*>& start_nodes)
-{
-  // Take an idle node from the pool
-  bfs_worker_t<i_t, f_t>* idle_worker = bfs_worker_pool_.pop_idle_worker();
-  if (!idle_worker) { return nullptr; }
-
-  if (toc(exploration_stats_.start_time) > settings_.time_limit ||
-      solver_status_ != mip_status_t::UNSET) {
-    bfs_worker_pool_.return_worker_to_pool(idle_worker);
-    return nullptr;
-  }
-
-  idle_worker->init(start_nodes);
-  idle_worker->set_active();
-
-#pragma omp task affinity(*idle_worker) priority(CUOPT_CRITICAL_TASK_PRIORITY) default(none) \
-  firstprivate(idle_worker)
-  best_first_search_with(idle_worker);
-
-  return idle_worker;
 }
 
 template <typename i_t, typename f_t>
@@ -2878,12 +2856,13 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       diving_worker_pool_.init(
         num_diving_workers, original_lp_, Arow_, var_types_, symmetry_, settings_, num_bfs_workers);
 
-      if (num_bfs_workers > 1) {
-        launch_bfs_worker({search_tree_.root.get_up_child()});
-        launch_bfs_worker({search_tree_.root.get_down_child()});
-      } else {
-        launch_bfs_worker({search_tree_.root.get_up_child(), search_tree_.root.get_down_child()});
-      }
+      bfs_worker_t<i_t, f_t>* initial_worker = bfs_worker_pool_.pop_idle_worker();
+      initial_worker->init({search_tree_.root.get_up_child(), search_tree_.root.get_down_child()});
+
+#pragma omp task affinity(*initial_worker) priority(CUOPT_CRITICAL_TASK_PRIORITY) default(none) \
+  firstprivate(initial_worker)
+      best_first_search_with(initial_worker);
+
     } else {
       single_threaded_solve();
     }

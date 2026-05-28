@@ -173,7 +173,12 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
     total_active_diving_workers = 0;
   }
 
-  void init(const std::vector<mip_node_t<i_t, f_t>*>& nodes)
+  void init(mip_node_t<i_t, f_t>* node) { init({node}); }
+
+  // Note that we do need to lock here since the only thread interacting
+  // with this worker is the one that is calling this routine. Only after
+  // setting the flag to `active`, it will be considered by the other workers.
+  void init(std::initializer_list<mip_node_t<i_t, f_t>*>&& nodes)
   {
     assert(!this->is_active.load());
     assert(node_queue.best_first_queue_size() == 0);
@@ -185,6 +190,7 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
     }
 
     this->lower_bound = node_queue.get_lower_bound();
+    this->is_active   = true;
   }
 
   void set_inactive() { this->is_active = false; }
@@ -202,25 +208,15 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
     }
 
     while (num_nodes > 0) {
+      mip_node_t<i_t, f_t>* node = nullptr;
+
       other->node_queue.lock();
-
-      // Similar case when launching a new best-first worker. Copied from branch_and_bound.cpp:
-      // "Since there may have a window between when the node is popped
-      // from the queue and the new worker is launched, its lower bound temporarily vanish
-      // from the solver (as it is not store in the local queue or in the lower bound of the
-      // worker, representing the lower bound of the node currently being solved).
-      // Hence, need to store its lower bound somewhere during the transition.
-      // If it is better than the current lower bound of the worker, then it has the potential
-      // to be the best lower bound across all workers, and thus, we can safely replace the current
-      // lower bound with the one from the top of the heap. It will be update again to reflect
-      // the lower bound of the node being solved after popping a new node from the local stack
-      // (line 1590) and the new worker is already active. See `get_lower_bound()` for
-      // more details in how the global lower bound is computed."
-      this->lower_bound = std::min<f_t>(this->lower_bound, other->node_queue.get_lower_bound());
-
-      mip_node_t<i_t, f_t>* node = other->node_queue.best_first_queue_size() > num_nodes
-                                     ? other->node_queue.pop_best_first()
-                                     : nullptr;
+      if (other->node_queue.best_first_queue_size() > num_nodes) {
+        // Pre-emptively update the lower bound of the worker after pushing the new node
+        // to the local heap, so it is considered when computing the global lower bound.
+        this->lower_bound = std::min<f_t>(this->lower_bound, other->node_queue.get_lower_bound());
+        node              = other->node_queue.pop_best_first();
+      }
       other->node_queue.unlock();
       if (node == nullptr) { break; }
 
