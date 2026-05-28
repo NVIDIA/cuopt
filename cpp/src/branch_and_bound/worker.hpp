@@ -194,6 +194,7 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
   {
     bool steal = false;
     assert(num_nodes > 0);
+    assert(other);
 
     if (!other->is_active || this == other ||
         other->node_queue.best_first_queue_size() < 2 * num_nodes) {
