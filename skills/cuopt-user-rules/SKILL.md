@@ -122,7 +122,7 @@ Do not bury the objective value only in the middle of a paragraph; it must appea
 Provide diagnostic code snippets when helpful.
 
 ### Post-correction check (mandatory)
-If the result required a correction, retry, or workaround to reach this point, you MUST evaluate the skill-evolution workflow (`skills/skill-evolution/SKILL.md`) before moving on. Do not skip this step.
+If the result required a correction, retry, or workaround to reach this point, you MUST evaluate the cuopt-skill-evolution workflow (`skills/cuopt-skill-evolution/SKILL.md`) before moving on. Do not skip this step.
 
 ---
 
