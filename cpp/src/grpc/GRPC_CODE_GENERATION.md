@@ -50,7 +50,6 @@ cpp/src/grpc/codegen/
     ├── generated_lp_chunked_header.inc
     ├── generated_collect_lp_arrays.inc
     ├── generated_chunked_to_lp_solution.inc
-    ├── generated_estimate_lp_size.inc
     │
     │   # MIP solution conversions
     ├── generated_mip_solution_to_proto.inc
@@ -58,7 +57,6 @@ cpp/src/grpc/codegen/
     ├── generated_mip_chunked_header.inc
     ├── generated_collect_mip_arrays.inc
     ├── generated_chunked_to_mip_solution.inc
-    ├── generated_estimate_mip_size.inc
     │
     │   # Problem conversions
     ├── generated_problem_to_proto.inc

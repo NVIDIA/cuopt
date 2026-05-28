@@ -35,6 +35,62 @@ HEADER = """\
 // ============================================================================
 """
 
+# ============================================================================
+# Protobuf wire-size estimator constants
+#
+# The estimators below produce a conservative upper bound on the serialized
+# protobuf size — used to size the output byte buffer before encoding.
+# Accuracy is not the goal; over-allocating slightly is preferred to under-
+# allocating (which would force a reallocation mid-encode).  Per-value
+# approximations:
+#
+#   int32 varint     : up to 5 bytes (worst-case 32-bit varint encoding;
+#                      VarintSize32 is 1..5)
+#   enum varint      : up to 4 bytes (proto3 enums encode as varints; small
+#                      enum values are 1..2 bytes in practice, 4 is a safe
+#                      pad)
+#   fixed64 double   : 8 bytes (sizeof(double); cuopt fixes doubles as
+#                      protobuf `double`, which is fixed64 on the wire)
+#   string framing   : tag byte + 1-byte length prefix ≈ 2 bytes (added to
+#                      s.size() per string)
+#   per-entry frame  : ~32 bytes for the per-element wrapper of a
+#                      repeated nested message (tag + length prefix + slop)
+#   message envelope : 256 or 512 bytes of slop for the outer message
+#                      (header, settings sub-messages, scalar fields, etc.)
+#
+# Tags themselves are 1–5 bytes per field; the estimator treats them as
+# subsumed by the framing/padding above rather than tracking them per-field.
+# ============================================================================
+
+PROTO_SIZE = {
+    "int32_varint": 5,
+    "enum_varint": 4,
+    "string_framing": 2,
+    "per_entry_framing": 32,
+    "outer_envelope": 512,
+}
+
+# Header block prepended to each generated size-estimator body so the
+# magic numbers visible inline make sense to a reader.
+SIZE_ESTIMATOR_BODY_DOC = """\
+// Protobuf wire-size estimate (conservative upper bound).  Each literal
+// below corresponds to a protobuf wire-format encoding:
+//   * 5             : int32 field, varint (max 5B per value, strict bound)
+//   * 4             : enum field, varint (4B per value, generous for the
+//                     short enum values cuopt uses; small enums fit in
+//                     1-2B in practice)
+//   * sizeof(double): double field, fixed64 (8B per value, exact)
+//   * s.size() + 2  : string field, length-delimited (string body plus 2B
+//                     of tag+length framing; long strings absorbed by the
+//                     envelope slop below)
+//   * 32            : per-entry framing for an element of a repeated
+//                     nested message (tag + length prefix; 32B slop
+//                     budget per entry)
+//   * 512           : outer message envelope slop (header + settings +
+//                     scalar fields)
+// See generate_conversions.py: PROTO_SIZE for definitions.
+"""
+
 
 def write_file(path, content):
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
@@ -1397,37 +1453,6 @@ def _gen_chunked_to_solution(registry, obj_name, obj, indent="  "):
     return "\n".join(lines)
 
 
-def _gen_estimate_size(registry, obj_name, obj, indent="  "):
-    """Generate body of estimate_{lp,mip}_solution_proto_size()."""
-    ind = indent
-    lines = [f"{ind}size_t est = 0;"]
-
-    for entry in obj.get("arrays", []):
-        f = parse_field(entry)
-        getter = f.get("getter", f"get_{f['name']}_host()")
-        size_getter = getter.replace("_host()", "_size()")
-        lines.append(
-            f"{ind}est += static_cast<size_t>(solution.{size_getter}) * sizeof(double);"
-        )
-
-    ws = obj.get("warm_start")
-    if ws:
-        check = ws.get("presence_check", "has_warm_start_data()")
-        ws_getter = ws.get("getter", "get_cpu_pdlp_warm_start_data()")
-        lines.append(f"{ind}if (solution.{check}) {{")
-        lines.append(f"{ind}  const auto& ws = solution.{ws_getter};")
-        for entry in ws.get("arrays", []):
-            f = parse_field(entry)
-            member = f.get("member", f["name"])
-            lines.append(f"{ind}  est += ws.{member}.size() * sizeof(double);")
-        lines.append(f"{ind}}}")
-
-    overhead = 512 if ws else 256
-    lines.append(f"{ind}est += {overhead};")
-    lines.append(f"{ind}return est;")
-    return "\n".join(lines)
-
-
 # ============================================================================
 # Problem conversion code generation
 # ============================================================================
@@ -1748,10 +1773,24 @@ def _gen_proto_to_problem(registry, indent="  "):
 
 
 def _gen_estimate_problem_size(registry, indent="  "):
-    """Generate body of estimate_problem_proto_size()."""
+    """Generate body of estimate_problem_proto_size().
+
+    Each emitted line is annotated with an inline comment explaining what
+    the literal represents in protobuf wire format.  See PROTO_SIZE and
+    SIZE_ESTIMATOR_BODY_DOC for the size model.
+    """
     obj = registry.get("optimization_problem", {})
     ind = indent
-    lines = [f"{ind}size_t est = 0;"]
+    vi = PROTO_SIZE["int32_varint"]
+    ev = PROTO_SIZE["enum_varint"]
+    sf = PROTO_SIZE["string_framing"]
+    pf = PROTO_SIZE["per_entry_framing"]
+    env = PROTO_SIZE["outer_envelope"]
+
+    lines = []
+    for doc_line in SIZE_ESTIMATOR_BODY_DOC.rstrip("\n").splitlines():
+        lines.append(f"{ind}{doc_line}")
+    lines.append(f"{ind}size_t est = 0;")
 
     for entry in obj.get("arrays", []):
         f = parse_field(entry)
@@ -1761,24 +1800,36 @@ def _gen_estimate_problem_size(registry, indent="  "):
         getter = _default_problem_getter(f, is_scalar=False)
         if ftype == "repeated string":
             lines.append(
-                f"{ind}for (const auto& s : cpu_problem.{getter}) est += s.size() + 2;"
+                f"{ind}for (const auto& s : cpu_problem.{getter}) "
+                f"est += s.size() + {sf};"
+                f"  // string field, length-delimited (body + {sf}B framing)"
             )
         elif ftype == "bytes":
-            lines.append(f"{ind}est += cpu_problem.{getter}.size();")
+            lines.append(
+                f"{ind}est += cpu_problem.{getter}.size();"
+                f"  // bytes field, length-delimited (payload only; framing in envelope)"
+            )
         elif "int32" in ftype:
-            lines.append(f"{ind}est += cpu_problem.{getter}.size() * 5;")
+            lines.append(
+                f"{ind}est += cpu_problem.{getter}.size() * {vi};"
+                f"  // int32 field, varint (max {vi}B per value)"
+            )
         elif ftype.startswith("repeated ") and _is_repeated_enum(
             registry, ftype
         ):
-            lines.append(f"{ind}est += cpu_problem.{getter}.size() * 4;")
+            lines.append(
+                f"{ind}est += cpu_problem.{getter}.size() * {ev};"
+                f"  // enum field, varint ({ev}B per value, generous for short enums)"
+            )
         else:
             lines.append(
                 f"{ind}est += cpu_problem.{getter}.size() * sizeof(double);"
+                f"  // double field, fixed64 (8B per value)"
             )
 
     # repeated_messages — accumulate per-entry scalar + array contributions.
-    # Per-entry overhead matches the per-array overhead applied above (a
-    # handful of bytes for name + tag + length).
+    # Per-entry overhead is the nested message wrapper; inner scalars/arrays
+    # contribute their own wire sizes inside the loop.
     for name, body in _iter_repeated_messages(obj):
         presence = body.get("presence_check")
         getter = body.get("getter")
@@ -1788,29 +1839,52 @@ def _gen_estimate_problem_size(registry, indent="  "):
         lines.append(
             f"{ind}  for (const auto& _entry : cpu_problem.{getter}) {{"
         )
-        lines.append(f"{ind}    est += 32;  // per-entry framing")
+        lines.append(
+            f"{ind}    est += {pf};"
+            f"  // per-entry framing: {pf}B slop budget"
+            f" for nested message header"
+        )
         for f in _repeated_message_scalars(body):
             member = f.get("member", f["name"])
             ftype = f.get("type", "double")
             if ftype == "string":
-                lines.append(f"{ind}    est += _entry.{member}.size() + 2;")
+                lines.append(
+                    f"{ind}    est += _entry.{member}.size() + {sf};"
+                    f"  // {member}: string field, length-delimited"
+                    f" (body + {sf}B framing)"
+                )
             elif "int" in ftype:
-                lines.append(f"{ind}    est += 5;")
+                lines.append(
+                    f"{ind}    est += {vi};"
+                    f"  // {member}: int32 field, varint"
+                    f" (max {vi}B per value)"
+                )
             else:
-                lines.append(f"{ind}    est += sizeof(double);")
+                lines.append(
+                    f"{ind}    est += sizeof(double);"
+                    f"  // {member}: double field, fixed64 (8B per value)"
+                )
         for f in _repeated_message_arrays(body):
             member = f.get("member", f["name"])
             ftype = f.get("type", "repeated double")
             if "int32" in ftype:
-                lines.append(f"{ind}    est += _entry.{member}.size() * 5;")
+                lines.append(
+                    f"{ind}    est += _entry.{member}.size() * {vi};"
+                    f"  // int32 field, varint (max {vi}B per value)"
+                )
             else:
                 lines.append(
                     f"{ind}    est += _entry.{member}.size() * sizeof(double);"
+                    f"  // double field, fixed64 (8B per value)"
                 )
         lines.append(f"{ind}  }}")
         lines.append(f"{ind}}}")
 
-    lines.append(f"{ind}est += 512;")
+    lines.append(
+        f"{ind}est += {env};"
+        f"  // outer message envelope: {env}B slop budget"
+        f" for header + settings + scalar fields"
+    )
     lines.append(f"{ind}return est;")
     return "\n".join(lines)
 
@@ -2854,6 +2928,22 @@ def auto_assign_field_numbers(data):
                     entries = sub.get(list_key)
                     if entries:
                         _normalize_bare_strings(entries)
+        # repeated_messages: normalize the parent list itself plus each
+        # entry's inner scalars/arrays so bare-string entries (e.g. just
+        # a field name with no body) participate in autonumbering.
+        rm_entries = section.get("repeated_messages")
+        if rm_entries:
+            _normalize_bare_strings(rm_entries)
+            for rm_entry in rm_entries:
+                if not isinstance(rm_entry, dict) or len(rm_entry) != 1:
+                    continue
+                body = next(iter(rm_entry.values()))
+                if not isinstance(body, dict):
+                    continue
+                for list_key in ["scalars", "arrays"]:
+                    inner = body.get(list_key)
+                    if inner:
+                        _normalize_bare_strings(inner)
 
     total = 0
 
@@ -2862,13 +2952,20 @@ def auto_assign_field_numbers(data):
         if not section:
             continue
 
-        # field_num — single contiguous pool across scalars and arrays
+        # field_num — single contiguous pool across scalars, arrays, and
+        # repeated_messages parent tags.  All three live in the
+        # OptimizationProblem proto's field-number namespace, so the
+        # autonumberer must seed itself with whichever tags are already
+        # pinned across all three lists before handing out new ones.
         scalars = section.get("scalars", [])
         arrays = section.get("arrays", [])
+        rm_entries = section.get("repeated_messages") or []
         lo, hi = FIELD_NUM_RANGES[f"{section_key}.field_num"]
-        existing_fn = _collect_field_nums(
-            scalars, "field_num"
-        ) | _collect_field_nums(arrays, "field_num")
+        existing_fn = (
+            _collect_field_nums(scalars, "field_num")
+            | _collect_field_nums(arrays, "field_num")
+            | _collect_field_nums(rm_entries, "field_num")
+        )
         total += _assign_to_field_list(
             scalars,
             "field_num",
@@ -2885,8 +2982,16 @@ def auto_assign_field_numbers(data):
             existing_fn,
             f"{section_key}.arrays.field_num",
         )
+        total += _assign_to_field_list(
+            rm_entries,
+            "field_num",
+            lo,
+            hi,
+            existing_fn,
+            f"{section_key}.repeated_messages.field_num",
+        )
 
-        # array_id — separate namespace
+        # array_id — separate namespace (top-level ArrayFieldId pool).
         lo, hi = FIELD_NUM_RANGES[f"{section_key}.array_id"]
         existing_aid = _collect_field_nums(arrays, "array_id")
         total += _assign_to_field_list(
@@ -2897,6 +3002,51 @@ def auto_assign_field_numbers(data):
             existing_aid,
             f"{section_key}.arrays.array_id",
         )
+
+        # Per-container nested namespaces inside each repeated_messages
+        # entry: the nested message has its own field_num pool starting at
+        # 1 (no cap) and a separate per-entry array_id pool starting at 0
+        # (no cap, independent of the global ArrayFieldId pool).  Each
+        # entry is autonumbered in isolation so two different containers
+        # may reuse the same inner tags without conflict.
+        for rm_entry in rm_entries:
+            if not isinstance(rm_entry, dict) or len(rm_entry) != 1:
+                continue
+            inner_name = next(iter(rm_entry))
+            body = rm_entry[inner_name]
+            if not isinstance(body, dict):
+                continue
+            inner_scalars = body.get("scalars", []) or []
+            inner_arrays = body.get("arrays", []) or []
+            inner_label = f"{section_key}.repeated_messages.{inner_name}"
+            inner_existing_fn = _collect_field_nums(
+                inner_scalars, "field_num"
+            ) | _collect_field_nums(inner_arrays, "field_num")
+            total += _assign_to_field_list(
+                inner_scalars,
+                "field_num",
+                1,
+                None,
+                inner_existing_fn,
+                f"{inner_label}.scalars.field_num",
+            )
+            total += _assign_to_field_list(
+                inner_arrays,
+                "field_num",
+                1,
+                None,
+                inner_existing_fn,
+                f"{inner_label}.arrays.field_num",
+            )
+            inner_existing_aid = _collect_field_nums(inner_arrays, "array_id")
+            total += _assign_to_field_list(
+                inner_arrays,
+                "array_id",
+                0,
+                None,
+                inner_existing_aid,
+                f"{inner_label}.arrays.array_id",
+            )
 
     # Collect all solution array_ids into a shared pool (ResultFieldId is global).
     shared_result_ids = set()
@@ -3162,10 +3312,6 @@ def main():
         write_file(
             os.path.join(outdir, f"generated_chunked_to_{label}_solution.inc"),
             HEADER + _gen_chunked_to_solution(registry, key, obj) + "\n",
-        )
-        write_file(
-            os.path.join(outdir, f"generated_estimate_{label}_size.inc"),
-            HEADER + _gen_estimate_size(registry, key, obj) + "\n",
         )
 
     # Problem conversion .inc files
