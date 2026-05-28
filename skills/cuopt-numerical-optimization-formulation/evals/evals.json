@@ -1,15 +1,12 @@
 [
   {
-    "id": "numopt-form-eval-001-committed-phrasing-and-implicit-objective",
+    "id": "numopt-form-eval-001-implicit-maximize-profit",
     "question": "Help me set up an optimization for this: A factory operates 3 production lines and employs 50 workers. It plans to produce products A, B, and C next month. Each product has a known per-unit cost and revenue. Determine the monthly production plan.",
     "expected_skill": "cuopt-numerical-optimization-formulation",
     "expected_script": null,
-    "ground_truth": "The agent must (1) treat 'operates 3 production lines' and 'employs 50 workers' as PARAMETERS / fixed facts — NOT as facility-selection or hiring decisions, because the verbs 'operates' and 'employs' are committed/fixed phrasing; (2) recognize that 'plans to produce products A, B, and C' is ambiguous — it can mean 'all three are committed to be produced (constraint)' or 'the three are candidates and the model decides which to produce'. The agent MUST surface this ambiguity explicitly and either ask the user or solve both interpretations — not silently pick one; (3) identify the implicit objective as MAXIMIZE PROFIT (revenue − cost), NOT minimize cost — because BOTH costs and revenues are given. A baseline reading of 'determine the plan' often defaults to minimize cost, but the correct rule when revenue data is present is to maximize profit. The agent does NOT produce code; this is a conceptual / formulation task.",
+    "ground_truth": "The agent must identify the implicit objective as MAXIMIZE PROFIT (revenue − cost), NOT minimize cost — because BOTH costs AND revenues are given. A baseline reading of 'determine the plan' commonly defaults to minimize cost, but the correct rule when revenue data is present is to maximize profit. The agent should also treat 'operates 3 production lines' and 'employs 50 workers' as fixed parameters (committed phrasing) rather than as facility-selection or hiring decisions, and must not produce code — this is a conceptual / formulation task only.",
     "expected_behavior": [
-      "Treats 'operates 3 production lines' and 'employs 50 workers' as fixed parameters (committed phrasing) — does NOT recommend modeling them as facility-selection or hiring decisions",
-      "Surfaces that 'plans to produce A, B, and C' is ambiguous (committed-to-all vs subset-decision) and either asks the user or enumerates both interpretations — does not silently choose one",
-      "Identifies the objective as maximize profit (revenue − cost) because BOTH costs and revenues are given — does NOT default to minimize cost",
-      "Does not produce code or an API call sequence"
+      "Identifies the objective as maximize profit (revenue − cost) because BOTH costs AND revenues are given — does NOT default to minimize cost"
     ]
   }
 ]
