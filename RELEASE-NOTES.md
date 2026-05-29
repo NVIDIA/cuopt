@@ -19,6 +19,7 @@
 - Built and tested with CUDA 13.2.
 - gRPC is now built against OpenSSL 3 in the container and wheel.
 - Substantially expanded the in-repo skill set for AI coding agents (Copilot, Cline, Windsurf, Jules, Aider, Codex) covering developer onboarding, installation, numerical optimization, routing, and the server. Added NVIDIA-signed skill cards, evaluation datasets, and a skill-evolution workflow under `skills/`.
+- Greatly improve the performance of B&B by moving from a shared, global heap to one heap per worker. In average, this increases the number of nodes solved by 3x. 
 
 ### Bug Fixes (26.06)
 - Probing cache now correctly update the model after each batch
