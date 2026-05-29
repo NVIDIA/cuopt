@@ -3,12 +3,13 @@ After solving a non-trivial problem, detect generalizable learnings and propose 
 
 This skill is ready for commercial/non-commercial use. <br>
 
-## Owner: NVIDIA <br>
+## Owner
+NVIDIA <br>
 
 ### License/Terms of Use: <br>
 Apache 2.0 <br>
 ## Use Case: <br>
-Developers and engineers using cuOpt skills who want to continuously improve skill quality by capturing generalizable learnings from problem-solving interactions. <br>
+Developers and engineers using cuOpt agent skills who need to continuously improve skill quality by capturing generalizable learnings from agent interactions into reusable skill updates. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
@@ -18,15 +19,27 @@ Risk: Review before execution as proposals could introduce incorrect or misleadi
 Mitigation: Review and scan skill before deployment. <br>
 
 ## Reference(s): <br>
-- [cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html) <br>
-- [cuOpt Examples](https://github.com/NVIDIA/cuopt-examples) <br>
+- [Skill Evolution SKILL.md](skills/cuopt-skill-evolution/SKILL.md) <br>
 
 
 ## Skill Output: <br>
 **Output Type(s):** [Analysis, Code] <br>
-**Output Format:** [Markdown with inline code blocks] <br>
+**Output Format:** [Markdown with inline code diffs] <br>
 **Output Parameters:** [1D] <br>
-**Other Properties Related to Output:** [None] <br>
+**Other Properties Related to Output:** [Proposals require explicit user approval before application] <br>
+
+## Evaluation Tasks: <br>
+NVSkills-Eval `external` profile, 3-Tier evaluation. Overall verdict: PASS. Tier 1 static validation: 9 checks (passed with observations). Tier 2 deduplication: 2 checks (passed). <br>
+
+## Evaluation Metrics Used: <br>
+Reported benchmark dimensions: <br>
+- Security: Checks whether skill-assisted execution avoids unsafe behavior such as secret leakage, destructive commands, or unauthorized access. <br>
+- Correctness: Checks whether the agent follows the expected workflow and produces the correct final output. <br>
+- Discoverability: Checks whether the agent loads the skill when relevant and avoids using it when irrelevant. <br>
+- Effectiveness: Checks whether the agent performs measurably better with the skill than without it. <br>
+- Efficiency: Checks whether the agent uses fewer tokens and avoids redundant work. <br>
+
+
 
 ## Skill Version(s): <br>
 26.08.00 (source: frontmatter) <br>
