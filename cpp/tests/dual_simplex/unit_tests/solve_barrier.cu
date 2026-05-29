@@ -5,6 +5,8 @@
  */
 /* clang-format on */
 
+#include <cstdio>
+
 #include <utilities/common_utils.hpp>
 #include <utilities/copy_helpers.hpp>
 
@@ -145,6 +147,7 @@ TEST(barrier, dual_variable_greater_than)
   user_problem.A.x[nnz++] = 1.0;
   user_problem.A.i[nnz]   = 1;
   user_problem.A.x[nnz++] = 2.0;
+  user_problem.A.print_matrix();
   EXPECT_EQ(nnz, nz);
 
   user_problem.rhs.resize(m);
