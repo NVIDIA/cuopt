@@ -143,7 +143,7 @@ To solve **locally** with the same file:
 
 More options (time limits, relaxation): :doc:`../cuopt-cli/quick-start` and :doc:`examples`.
 
-**C API** — With the same environment variables set, call ``solve_lp`` / ``solve_mip`` as in :doc:`../cuopt-c/lp-qp-milp/continuous-c-api`.
+**C API** — With the same environment variables set, call ``solve_lp`` / ``solve_mip`` as in :doc:`../cuopt-c/continuous/continuous-c-api`.
 
 More patterns (MPS variants, custom gRPC): :doc:`examples`.
 

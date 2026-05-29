@@ -26,8 +26,16 @@ This section contains details on the cuOpt Python package.
 
 .. toctree::
    :maxdepth: 3
-   :caption: Continuous Optimization and MIP
-   :name: Continuous Optimization and MIP Python API
+   :caption: Continuous Optimization (LP/QP/SOCP)
+   :name: Continuous Optimization Python API
    :titlesonly:
 
-   Continuous Optimization and MIP <lp-qp-milp/index.rst>
+   Continuous Optimization <continuous/index.rst>
+
+.. toctree::
+   :maxdepth: 3
+   :caption: Mixed Integer Programming (MIP)
+   :name: MIP Python API Index
+   :titlesonly:
+
+   MIP <mip/index.rst>

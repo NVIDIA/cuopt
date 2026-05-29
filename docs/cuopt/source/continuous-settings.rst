@@ -3,7 +3,7 @@ Continuous Optimization Settings (LP, QP, SOCP)
 ================================================
 
 
-This page describes the parameter settings available for cuOpt's LP, QP, and SOCP solvers. These parameters are set as :ref:`parameter constants <parameter-constants>` in case of C API and in case of Server Thin client as raw strings. Please refer to examples in :doc:`C </cuopt-c/lp-qp-milp/index>` and :doc:`Server Thin client </cuopt-server/index>` for more details.
+This page describes the parameter settings available for cuOpt's LP, QP, and SOCP solvers. These parameters are set as :ref:`parameter constants <parameter-constants>` in case of C API and in case of Server Thin client as raw strings. Please refer to examples in :doc:`C </cuopt-c/continuous/index>` and :doc:`Server Thin client </cuopt-server/index>` for more details.
 
 .. note::
    When setting parameters in thin client solver settings, remove ``CUOPT_`` from the parameter name and convert to lowercase. For example, ``CUOPT_TIME_LIMIT`` would be set as ``time_limit``.
