@@ -1516,40 +1516,6 @@ dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
 }
 
 template <typename i_t, typename f_t>
-void branch_and_bound_t<i_t, f_t>::launch_bfs_worker(bfs_worker_t<i_t, f_t>* worker)
-{
-  bfs_worker_t<i_t, f_t>* idle_worker = bfs_worker_pool_.pop_idle_worker();
-  if (!idle_worker) return;
-
-  assert(idle_worker->is_active.load() == false);
-  assert(idle_worker->node_queue.best_first_queue_size() == 0);
-
-  // Pre-emptively set the lower bound of the idle worker for the top of the heap
-  // so it is visible to all workers.
-  idle_worker->lower_bound = worker->node_queue.get_lower_bound();
-  idle_worker->set_active();
-
-  bool success = idle_worker->node_queue.steal_from(
-    worker->node_queue, idle_worker->worker_id, worker->worker_id, 1);
-
-  // Update to the actual lower bound of the stolen node (another worker may attempt to
-  // steal the same node at the same time)
-  idle_worker->lower_bound = idle_worker->node_queue.get_lower_bound();
-
-  // If the idle worker is set to active (i.e., its node queue has a valid node),
-  // launch a openmp task to run the best-first search for that worker
-  if (success) {
-#pragma omp task affinity(*idle_worker) priority(CUOPT_CRITICAL_TASK_PRIORITY) default(none) \
-  firstprivate(idle_worker)
-    best_first_search_with(idle_worker);
-  } else {
-    // The idle worker was not successfully initialized. This should occur
-    // rarely or even none at all. Keep here for safety.
-    bfs_worker_pool_.return_worker_to_pool(idle_worker);
-  }
-}
-
-template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
                                                mip_node_t<i_t, f_t>* start_node)
 {
@@ -1714,11 +1680,47 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
 }
 
 template <typename i_t, typename f_t>
+void branch_and_bound_t<i_t, f_t>::launch_bfs_worker(bfs_worker_t<i_t, f_t>* worker)
+{
+  bfs_worker_t<i_t, f_t>* idle_worker = bfs_worker_pool_.pop_idle_worker();
+  if (!idle_worker) return;
+
+  assert(idle_worker->is_active.load() == false);
+  assert(idle_worker->node_queue.best_first_queue_size() == 0);
+
+  // Pre-emptively set the lower bound of the idle worker for the top of the heap
+  // so it is visible to all workers.
+  idle_worker->lower_bound = worker->node_queue.get_lower_bound();
+  idle_worker->set_active();
+
+  bool success = idle_worker->node_queue.steal_from(
+    worker->node_queue, idle_worker->worker_id, worker->worker_id, 1);
+
+  // Update to the actual lower bound of the stolen node (another worker may attempt to
+  // steal the same node at the same time)
+  idle_worker->lower_bound = idle_worker->node_queue.get_lower_bound();
+
+  // If the idle worker is set to active (i.e., its node queue has a valid node),
+  // launch a openmp task to run the best-first search for that worker
+  if (success) {
+#pragma omp task affinity(*idle_worker) priority(CUOPT_CRITICAL_TASK_PRIORITY) default(none) \
+  firstprivate(idle_worker)
+    best_first_search_with(idle_worker);
+  } else {
+    // The idle worker was not successfully initialized. This should occur
+    // rarely or even none at all. Keep here for safety.
+    bfs_worker_pool_.return_worker_to_pool(idle_worker);
+  }
+}
+
+template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::work_stealing(bfs_worker_t<i_t, f_t>* worker)
 {
-  i_t nodes_to_steal = settings_.bnb_nodes_per_steal;
-
-  for (i_t i = 0; i < settings_.bnb_max_steal_attempts; ++i) {
+  i_t nodes_to_steal = settings_.bnb_nodes_per_steal >= 0 ? settings_.bnb_nodes_per_steal
+                                                          : MIP_DEFAULT_NODES_PER_STEAL;
+  i_t max_attempts   = settings_.bnb_max_steal_attempts >= 0 ? settings_.bnb_max_steal_attempts
+                                                             : MIP_DEFAULT_MAX_STEAL_ATTEMPTS;
+  for (i_t i = 0; i < max_attempts; ++i) {
     i_t victim_id                  = worker->rng.uniform(0, bfs_worker_pool_.size());
     bfs_worker_t<i_t, f_t>* victim = bfs_worker_pool_[victim_id];
     if (worker->steal_from(victim, nodes_to_steal)) { break; }
@@ -1728,10 +1730,11 @@ void branch_and_bound_t<i_t, f_t>::work_stealing(bfs_worker_t<i_t, f_t>* worker)
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>* worker)
 {
-  f_t lower_bound  = get_lower_bound();
-  f_t abs_gap      = compute_user_abs_gap(original_lp_, upper_bound_.load(), lower_bound);
-  f_t rel_gap      = user_relative_gap(original_lp_, upper_bound_.load(), lower_bound);
-  f_t steal_chance = settings_.bnb_steal_chance >= 0 ? settings_.bnb_steal_chance : 0.05;
+  f_t lower_bound = get_lower_bound();
+  f_t abs_gap     = compute_user_abs_gap(original_lp_, upper_bound_.load(), lower_bound);
+  f_t rel_gap     = user_relative_gap(original_lp_, upper_bound_.load(), lower_bound);
+  f_t steal_chance =
+    settings_.bnb_steal_chance >= 0 ? settings_.bnb_steal_chance : MIP_DEFAULT_STEAL_CHANCE;
   node_queue_t<i_t, f_t>& node_queue = worker->node_queue;
 
   worker->calculate_num_diving_workers(bfs_worker_pool_.size(),
@@ -1758,6 +1761,7 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
       break;
     }
 
+    // Pre-emptively set the lower bound of the worker
     worker->lower_bound              = node_queue.get_lower_bound();
     mip_node_t<i_t, f_t>* start_node = node_queue.pop();
     if (!start_node) continue;
