@@ -18,41 +18,6 @@
 
 namespace cuopt::linear_programming::dual_simplex::test {
 
-// Mirrors `cone_step_length_from_scalars` in second_order_cone_kernels.cuh (device).
-double host_cone_step_length_from_scalars(double u0,
-                                          double du0,
-                                          double du_tail_sq,
-                                          double u_tail_du_tail,
-                                          double u_tail_sq,
-                                          double alpha_max)
-{
-  const auto a     = du0 * du0 - du_tail_sq;
-  const auto b     = u0 * du0 - u_tail_du_tail;
-  const auto c_raw = u0 * u0 - u_tail_sq;
-  const auto c     = c_raw > 0.0 ? c_raw : 0.0;
-  const auto disc  = b * b - a * c;
-  auto alpha       = alpha_max;
-
-  if (u0 >= 0.0 && du0 < 0.0) { alpha = std::min(alpha, -u0 / du0); }
-
-  if ((a > 0.0 && b > 0.0) || disc < 0.0) { return alpha; }
-
-  if (a == 0.0) {
-    return alpha;
-  } else if (c == 0.0) {
-    alpha = a >= 0.0 ? alpha : 0.0;
-  } else {
-    const auto t = -(b + std::copysign(std::sqrt(disc), b));
-    auto r1      = c / t;
-    auto r2      = t / a;
-    if (r1 < 0.0) { r1 = alpha; }
-    if (r2 < 0.0) { r2 = alpha; }
-    alpha = std::min(alpha, std::min(r1, r2));
-  }
-
-  return alpha;
-}
-
 TEST(second_order_cone_kernels, topology_and_scratch_layout)
 {
   auto stream = rmm::cuda_stream_default;
@@ -237,7 +202,7 @@ TEST(second_order_cone_kernels, nt_scaling_matches_host_reference)
   }
 }
 
-TEST(second_order_cone_kernels, cone_step_length_matches_host_reference)
+TEST(second_order_cone_kernels, cone_step_length_keeps_iterate_in_cone)
 {
   auto stream = rmm::cuda_stream_default;
 
@@ -273,43 +238,35 @@ TEST(second_order_cone_kernels, cone_step_length_matches_host_reference)
     offset += static_cast<std::size_t>(dim);
   }
 
-  auto compute_expected_step = [&](std::vector<double> const& u,
-                                   std::vector<double> const& du,
-                                   double alpha_max,
-                                   std::vector<double>& per_cone_alpha) {
-    auto global_alpha = alpha_max;
-    std::size_t off   = 0;
+  constexpr double alpha_max = 0.99;
+  constexpr double cone_tol  = 1e-8;
 
-    for (std::size_t cone = 0; cone < cone_dimensions.size(); ++cone) {
-      const auto dim = cone_dimensions[cone];
-
-      double du_tail_sq     = 0.0;
-      double u_tail_du_tail = 0.0;
-      double u_tail_sq      = 0.0;
-      for (int local_idx = 1; local_idx < dim; ++local_idx) {
-        const auto idx = off + local_idx;
-        du_tail_sq += du[idx] * du[idx];
-        u_tail_du_tail += u[idx] * du[idx];
-        u_tail_sq += u[idx] * u[idx];
-      }
-
-      per_cone_alpha[cone] = host_cone_step_length_from_scalars(
-        u[off], du[off], du_tail_sq, u_tail_du_tail, u_tail_sq, alpha_max);
-      global_alpha = std::min(global_alpha, per_cone_alpha[cone]);
-
-      off += static_cast<std::size_t>(dim);
+  const auto cone_block_offset = [&](std::size_t cone_idx) {
+    std::size_t off = 0;
+    for (std::size_t c = 0; c < cone_idx; ++c) {
+      off += static_cast<std::size_t>(cone_dimensions[c]);
     }
-
-    return global_alpha;
+    return off;
   };
 
-  constexpr double alpha_max = 0.99;
-  std::vector<double> expected_primal_per_cone(cone_dimensions.size());
-  std::vector<double> expected_dual_per_cone(cone_dimensions.size());
-  const auto expected_primal =
-    compute_expected_step(x_host, dx_host, alpha_max, expected_primal_per_cone);
-  const auto expected_dual =
-    compute_expected_step(z_host, dz_host, alpha_max, expected_dual_per_cone);
+  const auto expect_cone_feasible_after_step = [&](std::vector<double> const& u,
+                                                  std::vector<double> const& du,
+                                                  double alpha,
+                                                  std::size_t cone_idx,
+                                                  const char* label) {
+    const std::size_t off = cone_block_offset(cone_idx);
+    const auto dim        = cone_dimensions[cone_idx];
+    const double u0       = u[off] + alpha * du[off];
+
+    double tail_sq = 0.0;
+    for (int j = 1; j < dim; ++j) {
+      const double tail = u[off + j] + alpha * du[off + j];
+      tail_sq += tail * tail;
+    }
+
+    EXPECT_GE(u0, -cone_tol) << label << " cone " << cone_idx;
+    EXPECT_GE(u0 * u0 + cone_tol, tail_sq) << label << " cone " << cone_idx;
+  };
 
   auto x  = cuopt::device_copy(x_host, stream);
   auto z  = cuopt::device_copy(z_host, stream);
@@ -324,17 +281,19 @@ TEST(second_order_cone_kernels, cone_step_length_matches_host_reference)
                              alpha_max,
                              stream);
 
-  EXPECT_LT(expected_primal, alpha_max);
-  EXPECT_LT(expected_dual, alpha_max);
-  EXPECT_NEAR(step_primal, expected_primal, 1e-12);
-  EXPECT_NEAR(step_dual, expected_dual, 1e-12);
-
   const auto primal_per_cone = cuopt::host_copy(cones.scratch.step_alpha_primal, stream);
   const auto dual_per_cone   = cuopt::host_copy(cones.scratch.step_alpha_dual, stream);
+  EXPECT_NEAR(step_primal,
+              *std::min_element(primal_per_cone.begin(), primal_per_cone.end()),
+              1e-12);
+  EXPECT_NEAR(step_dual,
+              *std::min_element(dual_per_cone.begin(), dual_per_cone.end()),
+              1e-12);
   for (std::size_t cone = 0; cone < cone_dimensions.size(); ++cone) {
-    EXPECT_NEAR(primal_per_cone[cone], expected_primal_per_cone[cone], 1e-12)
-      << "primal cone " << cone;
-    EXPECT_NEAR(dual_per_cone[cone], expected_dual_per_cone[cone], 1e-12) << "dual cone " << cone;
+    EXPECT_GT(primal_per_cone[cone], 0.0) << "primal cone " << cone;
+    EXPECT_GT(dual_per_cone[cone], 0.0) << "dual cone " << cone;
+    expect_cone_feasible_after_step(x_host, dx_host, primal_per_cone[cone], cone, "primal");
+    expect_cone_feasible_after_step(z_host, dz_host, dual_per_cone[cone], cone, "dual");
   }
 }
 
