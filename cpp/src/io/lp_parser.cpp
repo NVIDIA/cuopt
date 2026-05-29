@@ -829,8 +829,9 @@ void LpParseEngine<i_t, f_t>::parse_linear_expression(std::vector<LinearTerm>& o
 }
 
 template <typename i_t, typename f_t>
-void LpParseEngine<i_t, f_t>::parse_quadratic_bracket(
-  int outer_sign, BracketRole role, coo_entries_t<i_t, f_t>& out_quad_entries)
+void LpParseEngine<i_t, f_t>::parse_quadratic_bracket(int outer_sign,
+                                                      BracketRole role,
+                                                      coo_entries_t<i_t, f_t>& out_quad_entries)
 {
   expect(LpTokenKind::LBracket, "'[' at start of quadratic section");
 
@@ -1480,8 +1481,8 @@ void finalize_problem(mps_data_model_t<i_t, f_t>& problem, lp_parser_t<i_t, f_t>
   if (!parser.quadobj_entries.empty()) {
     std::vector<std::vector<std::pair<i_t, f_t>>> row_data(n_vars);
     for (size_t p = 0; p < parser.quadobj_entries.size(); p++) {
-      row_data[parser.quadobj_entries.rows[p]].emplace_back(
-        parser.quadobj_entries.cols[p], parser.quadobj_entries.vals[p]);
+      row_data[parser.quadobj_entries.rows[p]].emplace_back(parser.quadobj_entries.cols[p],
+                                                            parser.quadobj_entries.vals[p]);
     }
     for (auto& row : row_data) {
       std::sort(row.begin(), row.end());

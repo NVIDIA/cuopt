@@ -106,12 +106,12 @@ void triples_to_csr_flat(const coo_entries_t<i_t, f_t>& entries,
     const i_t c = entries.cols[i];
     const f_t v = entries.vals[i];
     {
-      const i_t p      = scratch.col_wr[c]++;
+      const i_t p         = scratch.col_wr[c]++;
       scratch.csc_rows[p] = r;
       scratch.csc_vals[p] = v;
     }
     if (symmetrize_upper_triangular && r != c) {
-      const i_t p      = scratch.col_wr[r]++;
+      const i_t p         = scratch.col_wr[r]++;
       scratch.csc_rows[p] = c;
       scratch.csc_vals[p] = v;
     }
@@ -143,9 +143,9 @@ void triples_to_csr_flat(const coo_entries_t<i_t, f_t>& entries,
     const i_t lo = scratch.col_off[cc];
     const i_t hi = scratch.col_off[cc + 1];
     for (i_t t = lo; t < hi; ++t) {
-      const i_t row = scratch.csc_rows[t];
-      const f_t val = scratch.csc_vals[t];
-      const i_t w   = scratch.row_wr[row]++;
+      const i_t row  = scratch.csc_rows[t];
+      const f_t val  = scratch.csc_vals[t];
+      const i_t w    = scratch.row_wr[row]++;
       out_indices[w] = cc;
       out_values[w]  = val * value_scale;
     }
