@@ -1,5 +1,5 @@
 ## Description: <br>
-Install cuOpt for Python, C, or as a server (pip, conda, Docker) — system requirements, install commands, and verification. <br>
+Install cuOpt for Python, C, or server via pip, conda, or Docker; verify the install. <br>
 
 This skill is ready for commercial/non-commercial use. <br>
 
@@ -9,7 +9,7 @@ NVIDIA <br>
 ### License/Terms of Use: <br>
 Apache 2.0 <br>
 ## Use Case: <br>
-Developers and engineers installing and verifying the NVIDIA cuOpt GPU-accelerated optimization engine for Python, C, or REST server interfaces. <br>
+Developers and engineers who need to install NVIDIA cuOpt (GPU-accelerated optimization engine) via pip, conda, or Docker and verify the installation for Python, C, or server deployments. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
@@ -21,7 +21,6 @@ Mitigation: Review and scan skill before deployment. <br>
 ## Reference(s): <br>
 - [Verification Examples](references/verification_examples.md) <br>
 - [cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html) <br>
-- [cuOpt Docker Hub](https://hub.docker.com/r/nvidia/cuopt) <br>
 - [cuOpt Examples](https://github.com/NVIDIA/cuopt-examples) <br>
 
 
@@ -32,13 +31,13 @@ Mitigation: Review and scan skill before deployment. <br>
 **Other Properties Related to Output:** [None] <br>
 
 ## Evaluation Agents Used: <br>
-- Claude Code (`claude-code`) <br>
-- Codex (`codex`) <br>
+- `claude-code` <br>
+- `codex` <br>
 
 
 
 ## Evaluation Tasks: <br>
-Evaluated against 1 internal skill task (2 attempts per task, 50% pass threshold) via NVSkills-Eval external profile. <br>
+Evaluated against 1 evaluation task with 2 attempts per task (pass threshold: 50%). <br>
 
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
@@ -49,6 +48,7 @@ Reported benchmark dimensions: <br>
 - Efficiency: Checks whether the agent uses fewer tokens and avoids redundant work. <br>
 
 Underlying evaluation signals used in this run: <br>
+- `security`: Checks for unsafe operations, secret leakage, and unauthorized access. <br>
 - `skill_execution`: Verifies that the agent loaded the expected skill and workflow. <br>
 - `skill_efficiency`: Checks routing quality, decoy avoidance, and redundant tool usage. <br>
 - `accuracy`: Grades final-answer correctness against the reference answer. <br>
@@ -62,13 +62,13 @@ Underlying evaluation signals used in this run: <br>
 | Dimension | Num | `claude-code` | `codex` |
 |---|---:|---:|---:|
 | Security | 2 | 100% (+0%) | 100% (+0%) |
-| Correctness | 2 | 100% (+0%) | 92% (+17%) |
-| Discoverability | 2 | 100% (+0%) | 80% (+55%) |
-| Effectiveness | 2 | 100% (+6%) | 100% (+2%) |
-| Efficiency | 2 | 93% (-0%) | 78% (+51%) |
+| Correctness | 2 | 100% (+0%) | 88% (+6%) |
+| Discoverability | 2 | 100% (+0%) | 62% (+19%) |
+| Effectiveness | 2 | 97% (+4%) | 100% (+0%) |
+| Efficiency | 2 | 93% (-0%) | 61% (+17%) |
 
 ## Skill Version(s): <br>
-26.08.00 (source: frontmatter, git tag) <br>
+26.08.00 (source: frontmatter) <br>
 
 ## Ethical Considerations: <br>
 NVIDIA believes Trustworthy AI is a shared responsibility and we have established policies and practices to enable development for a wide array of AI applications. When downloaded or used in accordance with our terms of service, developers should work with their internal team to ensure this skill meets requirements for the relevant industry and use case and addresses unforeseen product misuse. <br>
