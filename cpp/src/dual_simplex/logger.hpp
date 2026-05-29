@@ -87,10 +87,10 @@ class logger_t {
   }
 
   template <typename... Args>
-  void print_format(std::string_view fmt, Args&&... args)
+  void print_format(std::format_string<Args...> fmt, Args&&... args)
   {
     if (log) {
-      const std::string msg = std::vformat(fmt, std::make_format_args(args...));
+      const std::string msg = std::format(fmt, std::forward<Args&&>(args)...);
       if (log_to_console) {
 #ifdef CUOPT_LOG_ACTIVE_LEVEL
         CUOPT_LOG_INFO("%s%s", log_prefix.c_str(), msg.c_str());
@@ -141,10 +141,10 @@ class logger_t {
   }
 
   template <typename... Args>
-  void debug_format(std::string_view fmt, Args&&... args)
+  void debug_format(std::format_string<Args...> fmt, Args&&... args)
   {
     if (log) {
-      std::string msg = std::vformat(fmt, std::make_format_args(args...));
+      std::string msg = std::format(fmt, std::forward<Args&&>(args)...);
       if (log_to_console) {
 #ifdef CUOPT_LOG_ACTIVE_LEVEL
         CUOPT_LOG_TRACE("%s%s", log_prefix.c_str(), msg.c_str());

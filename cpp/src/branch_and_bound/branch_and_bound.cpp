@@ -372,15 +372,16 @@ void branch_and_bound_t<i_t, f_t>::report_heuristic(f_t obj)
       f_t user_obj = compute_user_objective(original_lp_, obj);
       f_t user_gap = user_relative_gap(original_lp_, obj, root_lp_current_lower_bound_.load());
       std::string user_gap_text = to_percentage(user_gap);
-      settings_.log.printf(
-        "New solution from primal heuristics. Objective %+.6e. Gap %s. Time %.2f\n",
+      settings_.log.print_format(
+        "New solution from primal heuristics. Objective {:+.6e}. Gap {}. Time {:.2f}\n",
         user_obj,
-        user_gap_text.c_str(),
+        user_gap_text,
         toc(exploration_stats_.start_time));
     } else {
-      settings_.log.printf("New solution from primal heuristics. Objective %+.6e. Time %.2f\n",
-                           compute_user_objective(original_lp_, obj),
-                           toc(exploration_stats_.start_time));
+      settings_.log.print_format(
+        "New solution from primal heuristics. Objective {:+.6e}. Time {:.2f}\n",
+        compute_user_objective(original_lp_, obj),
+        toc(exploration_stats_.start_time));
     }
   }
 }
