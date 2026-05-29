@@ -57,11 +57,17 @@ Optimization problems can be created or loaded via the following functions
    Prefer ``cuOptCreateProblem`` or ``cuOptCreateRangedProblem`` followed by
    ``cuOptSetQuadraticObjective`` (and ``cuOptAddQuadraticConstraint`` for QCQP).
 
-For QP and QCQP models, the quadratic objective and constraints may be specified
+For QP and QCQP/SOCP models, the quadratic objective and constraints may be specified
 after creating a linear problem:
 
 .. doxygenfunction:: cuOptSetQuadraticObjective
 .. doxygenfunction:: cuOptAddQuadraticConstraint
+
+.. note::
+   ``cuOptAddQuadraticConstraint`` also enables **Second-Order Cone Programming (SOCP)**
+   support **(beta)**. When one or more quadratic constraints are present, cuOpt automatically
+   converts them to second-order cone form and selects the barrier solver. Only ``CUOPT_LESS_THAN``
+   and ``CUOPT_GREATER_THAN`` sense is supported; equality quadratic constraints are not supported.
 
 A optimization problem must be destroyed with the following function
 

@@ -1,6 +1,6 @@
-==================
-LP/QP Features
-==================
+========================
+LP/QP/SOCP Features
+========================
 
 Availability
 -------------
@@ -72,6 +72,45 @@ where Q is a symmetric positive semidefinite matrix. Please note that the Q matr
 
 See :ref:`simple-qp-example-python` for an example of how to create a QP problem with the Python Modeling API.
 See :ref:`simple-qp-example-c` for an example of how to create a QP problem with the C API.
+
+Second-Order Cone Programming (Beta)
+--------------------------------------
+
+.. note:: SOCP support is **beta** in this release. The API is functional but has not been fully hardened for all problem types and edge cases.
+
+cuOpt supports Second-Order Cone Programming (SOCP) problems — problems with quadratic constraints of the form:
+
+.. code-block:: text
+
+    minimize        c^T*x
+    subject to      A*x {<=, =, >=} b
+                    ||Ax + b||_2 <= c^T*x + d   (second-order cone constraints)
+                    lb <= x <= ub
+
+SOCP constraints are specified as quadratic constraints using ``<=`` or ``>=`` comparisons on a ``QuadraticExpression``. cuOpt automatically converts these quadratic constraints to second-order cone form internally.
+
+When any quadratic constraint is present, cuOpt automatically selects the barrier method and disables presolve optimizations that apply only to linear problems.
+
+**Constraints:**
+
+- Only ``<=`` and ``>=`` sense is supported for quadratic constraints. Equality quadratic constraints are not supported.
+- The right-hand side of a quadratic constraint must be zero when the constraint is intended as a SOC constraint.
+- Each second-order cone must have dimension at least 2.
+
+**Python example:**
+
+.. code-block:: python
+
+    x = problem.addVariable("x", lb=0)
+    y = problem.addVariable("y", lb=0)
+    z = problem.addVariable("z", lb=0)
+
+    # ||[x, y]||_2 <= z  written as  x*x + y*y - z*z <= 0
+    problem.addConstraint(x*x + y*y - z*z <= 0, name="soc")
+
+**C API:** Use :c:func:`cuOptAddQuadraticConstraint` to add quadratic constraints. The solver automatically detects and handles SOC structure.
+
+.. note:: SOCP problems always use the barrier solver regardless of the ``CUOPT_METHOD`` setting.
 
 Warm Start
 -----------

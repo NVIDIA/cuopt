@@ -1,12 +1,12 @@
 Linear Programming
 ==================
 
-This section contains details on the cuOpt LP/QP/MILP C API.
+This section contains details on the cuOpt LP/QP/MILP/SOCP C API.
 
 .. toctree::
    :maxdepth: 3
-   :caption: LP/QP/MILP
-   :name: LP/QP/MILP
+   :caption: LP/QP/MILP/SOCP
+   :name: LP/QP/MILP/SOCP
    :titlesonly:
 
    lp-qp-milp-c-api.rst

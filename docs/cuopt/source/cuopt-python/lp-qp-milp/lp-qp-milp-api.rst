@@ -19,6 +19,7 @@ LP, QP and MILP API Reference
 .. autoclass:: cuopt.linear_programming.problem.QuadraticExpression
    :members:
    :undoc-members:
+   :special-members: __le__, __ge__, __neg__
 
 .. autoclass:: cuopt.linear_programming.problem.Constraint
    :members:

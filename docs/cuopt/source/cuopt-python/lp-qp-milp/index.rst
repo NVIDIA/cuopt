@@ -1,13 +1,13 @@
-==============================================================================
-Linear Programming, Quadratic Programming and Mixed Integer Linear Programming
-==============================================================================
+=============================================================================================================
+Linear Programming, Quadratic Programming, Mixed Integer Linear Programming, and Second-Order Cone Programming
+=============================================================================================================
 
-This section contains details on the cuOpt linear programming, quadratic programming and mixed integer linear programming Python API.
+This section contains details on the cuOpt linear programming, quadratic programming, mixed integer linear programming, and second-order cone programming Python API.
 
 .. toctree::
    :maxdepth: 3
-   :caption: LP, QP and MILP
-   :name: LP, QP and MILP
+   :caption: LP, QP, MILP, and SOCP
+   :name: LP, QP, MILP, and SOCP
    :titlesonly:
 
    lp-qp-milp-api.rst
