@@ -275,7 +275,7 @@ class iteration_data_t {
                    is_direct_free_linear_host.data(),
                    lp.num_cols,
                    stream_view_);
-        settings.log.printf("Direct free linear (QP): %d\n", n_direct_free_linear);
+        settings.log.printf("Free variables handled directly: %d\n", n_direct_free_linear);
       }
     }
 
