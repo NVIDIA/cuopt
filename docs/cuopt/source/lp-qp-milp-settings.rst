@@ -556,3 +556,146 @@ Set this value to 0 to disable batched PDLP strong branching.
 Set this value to 1 to enable batched PDLP strong branching.
 
 .. note:: The default value is ``0`` (disabled). This setting is ignored if the problem is not a MIP problem.
+
+Batch PDLP Reliability Branching
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_MIP_BATCH_PDLP_RELIABILITY_BRANCHING`` controls whether to use batched PDLP for reliability branching evaluations.
+When enabled, candidate variables for reliability branching are evaluated simultaneously using a single batched PDLP solve.
+Set this value to 0 to disable.
+Set this value to 1 to enable.
+
+.. note:: The default value is ``0`` (disabled).
+
+Strong Branching Simplex Iteration Limit
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_MIP_STRONG_BRANCHING_SIMPLEX_ITERATION_LIMIT`` controls the maximum number of simplex iterations allowed per candidate during strong branching.
+Reducing this value speeds up strong branching at the cost of less accurate candidate evaluations.
+
+.. note:: By default there is no iteration limit for strong branching solves.
+
+MIP Determinism Mode
+^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_MIP_DETERMINISM_MODE`` controls whether the MIP solver runs in opportunistic or deterministic mode.
+
+* ``0`` (``CUOPT_MODE_OPPORTUNISTIC``): Opportunistic mode — results may vary between runs due to parallelism (default).
+* ``1`` (``CUOPT_MODE_DETERMINISTIC``): Deterministic mode — guarantees reproducible results across runs with the same number of threads.
+
+.. note:: The default value is ``0`` (opportunistic).
+
+MIP Symmetry
+^^^^^^^^^^^^^
+
+``CUOPT_MIP_SYMMETRY`` controls symmetry detection and handling in the MIP solver.
+
+* ``-1``: Automatic (default) — cuOpt decides based on problem characteristics.
+* ``0``: Disable symmetry handling.
+* ``1``: Enable symmetry handling.
+
+.. note:: The default value is ``-1`` (automatic).
+
+Flow Cover Cuts
+^^^^^^^^^^^^^^^^
+
+``CUOPT_MIP_FLOW_COVER_CUTS`` controls whether to use flow cover cuts.
+Set this value to ``-1`` (automatic) to let the solver decide.
+Set this value to ``0`` to disable flow cover cuts.
+Set this value to ``1`` to enable flow cover cuts.
+
+.. note:: The default value is ``-1`` (automatic).
+
+Implied Bound Cuts
+^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_MIP_IMPLIED_BOUND_CUTS`` controls whether to use implied bound cuts.
+Set this value to ``-1`` (automatic) to let the solver decide.
+Set this value to ``0`` to disable implied bound cuts.
+Set this value to ``1`` to enable implied bound cuts.
+
+.. note:: The default value is ``-1`` (automatic).
+
+Clique Cuts
+^^^^^^^^^^^^
+
+``CUOPT_MIP_CLIQUE_CUTS`` controls whether to use clique cuts.
+Set this value to ``-1`` (automatic) to let the solver decide.
+Set this value to ``0`` to disable clique cuts.
+Set this value to ``1`` to enable clique cuts.
+
+.. note:: The default value is ``-1`` (automatic).
+
+Objective Step
+^^^^^^^^^^^^^^^
+
+``CUOPT_MIP_OBJECTIVE_STEP`` controls the minimum discrete step size used to tighten the dual bound when all integer variables have integer objective coefficients.
+When the objective value can only change in multiples of a known step size, cuOpt uses this information to close the gap faster.
+Set this value to ``0`` to disable this tightening (default) or provide a positive step size to override automatic detection.
+
+.. note:: The default value is ``0`` (disabled). When set to ``0``, cuOpt will automatically detect an objective step when possible.
+
+Semi-Continuous Big-M
+^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_MIP_SEMICONTINUOUS_BIG_M`` controls the Big-M coefficient used when linearizing semi-continuous variable constraints.
+A semi-continuous variable is either zero or takes a value in the range ``[lower_bound, upper_bound]``.
+Set this to a positive value that is at least as large as the upper bound of any semi-continuous variable in the problem.
+
+.. note:: By default cuOpt derives the Big-M from the variable's upper bound.
+
+Work Limit
+^^^^^^^^^^
+
+``CUOPT_WORK_LIMIT`` controls the work limit after which the solver will stop and return the current solution.
+Work units are a machine-independent measure of solver effort. If set along with the time limit or iteration limit, cuOpt will stop when the first limit is hit.
+
+.. note:: By default there is no work limit.
+
+Random Seed
+^^^^^^^^^^^^
+
+``CUOPT_RANDOM_SEED`` controls the random seed used by the solver. Setting a fixed seed enables reproducible results when running in deterministic mode.
+
+.. note:: By default the random seed is set automatically.
+
+Presolve File
+^^^^^^^^^^^^^^
+
+``CUOPT_PRESOLVE_FILE`` controls the name of a file where cuOpt should write presolve information.
+
+.. note:: The default value is ``""`` and no presolve file is written.
+
+Primal Infeasibility Tolerance
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_PRIMAL_INFEASIBLE_TOLERANCE`` controls the tolerance used to detect primal infeasibility in PDLP.
+A certificate of primal infeasibility is accepted when the primal infeasibility residual falls below this threshold.
+
+.. note:: The default value is ``1e-8``.
+
+Dual Infeasibility Tolerance
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_DUAL_INFEASIBLE_TOLERANCE`` controls the tolerance used to detect dual infeasibility (unboundedness) in PDLP.
+A certificate of dual infeasibility is accepted when the dual infeasibility residual falls below this threshold.
+
+.. note:: The default value is ``1e-8``.
+
+Barrier Iterative Refinement
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_BARRIER_ITERATIVE_REFINEMENT`` controls whether iterative refinement is applied after each barrier iteration to improve solution accuracy.
+
+* ``0`` (``CUOPT_BARRIER_ITERATIVE_REFINEMENT_OFF``): Disable iterative refinement (default).
+* ``1`` (``CUOPT_BARRIER_ITERATIVE_REFINEMENT_ON``): Enable iterative refinement.
+
+.. note:: The default value is ``0`` (off).
+
+Barrier Step Scale
+^^^^^^^^^^^^^^^^^^^
+
+``CUOPT_BARRIER_STEP_SCALE`` controls the scaling factor applied to the step size in the barrier method.
+Values less than 1 result in more conservative (shorter) steps; values greater than 1 result in more aggressive steps.
+
+.. note:: By default cuOpt selects the step scale automatically.

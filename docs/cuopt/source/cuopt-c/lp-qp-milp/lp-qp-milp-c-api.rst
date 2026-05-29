@@ -43,9 +43,10 @@ An optimization problem is represented via a `cuOptOptimizationProblem`
 
 .. doxygentypedef:: cuOptOptimizationProblem
 
-Optimization problems can be created via five different functions
+Optimization problems can be created or loaded via the following functions
 
 .. doxygenfunction:: cuOptReadProblem
+.. doxygenfunction:: cuOptWriteProblem
 .. doxygenfunction:: cuOptCreateProblem
 .. doxygenfunction:: cuOptCreateRangedProblem
 .. doxygenfunction:: cuOptCreateQuadraticProblem
@@ -100,6 +101,13 @@ Infinity Constant
 This constant may be used to represent infinity in the :c:func:`cuOptCreateProblem` and :c:func:`cuOptCreateRangedProblem` functions.
 
 .. doxygendefine:: CUOPT_INFINITY
+
+File Format Constants
+---------------------
+
+These constants are used to specify the output file format in :c:func:`cuOptWriteProblem`.
+
+.. doxygendefine:: CUOPT_FILE_FORMAT_MPS
 
 Querying an optimization problem
 --------------------------------
@@ -171,6 +179,7 @@ These constants are used as parameter names in the :c:func:`cuOptSetParameter`, 
 .. doxygendefine:: CUOPT_DUAL_INFEASIBLE_TOLERANCE
 .. doxygendefine:: CUOPT_ITERATION_LIMIT
 .. doxygendefine:: CUOPT_TIME_LIMIT
+.. doxygendefine:: CUOPT_WORK_LIMIT
 .. doxygendefine:: CUOPT_NODE_LIMIT
 .. doxygendefine:: CUOPT_PDLP_SOLVER_MODE
 .. doxygendefine:: CUOPT_METHOD
@@ -186,6 +195,8 @@ These constants are used as parameter names in the :c:func:`cuOptSetParameter`, 
 .. doxygendefine:: CUOPT_MIP_SCALING
 .. doxygendefine:: CUOPT_MIP_HEURISTICS_ONLY
 .. doxygendefine:: CUOPT_MIP_PRESOLVE
+.. doxygendefine:: CUOPT_MIP_DETERMINISM_MODE
+.. doxygendefine:: CUOPT_MIP_SYMMETRY
 .. doxygendefine:: CUOPT_PRESOLVE
 .. doxygendefine:: CUOPT_MIP_PROBING
 .. doxygendefine:: CUOPT_LOG_TO_CONSOLE
@@ -197,11 +208,33 @@ These constants are used as parameter names in the :c:func:`cuOptSetParameter`, 
 .. doxygendefine:: CUOPT_ELIMINATE_DENSE_COLUMNS
 .. doxygendefine:: CUOPT_CUDSS_DETERMINISTIC
 .. doxygendefine:: CUOPT_BARRIER_DUAL_INITIAL_POINT
+.. doxygendefine:: CUOPT_BARRIER_ITERATIVE_REFINEMENT
+.. doxygendefine:: CUOPT_BARRIER_STEP_SCALE
 .. doxygendefine:: CUOPT_DUAL_POSTSOLVE
 .. doxygendefine:: CUOPT_SOLUTION_FILE
 .. doxygendefine:: CUOPT_NUM_CPU_THREADS
+.. doxygendefine:: CUOPT_NUM_GPUS
 .. doxygendefine:: CUOPT_USER_PROBLEM_FILE
+.. doxygendefine:: CUOPT_PRESOLVE_FILE
+.. doxygendefine:: CUOPT_RANDOM_SEED
 .. doxygendefine:: CUOPT_PDLP_PRECISION
+.. doxygendefine:: CUOPT_MIP_RELIABILITY_BRANCHING
+.. doxygendefine:: CUOPT_MIP_CUT_PASSES
+.. doxygendefine:: CUOPT_MIP_MIXED_INTEGER_ROUNDING_CUTS
+.. doxygendefine:: CUOPT_MIP_MIXED_INTEGER_GOMORY_CUTS
+.. doxygendefine:: CUOPT_MIP_KNAPSACK_CUTS
+.. doxygendefine:: CUOPT_MIP_FLOW_COVER_CUTS
+.. doxygendefine:: CUOPT_MIP_IMPLIED_BOUND_CUTS
+.. doxygendefine:: CUOPT_MIP_CLIQUE_CUTS
+.. doxygendefine:: CUOPT_MIP_STRONG_CHVATAL_GOMORY_CUTS
+.. doxygendefine:: CUOPT_MIP_REDUCED_COST_STRENGTHENING
+.. doxygendefine:: CUOPT_MIP_OBJECTIVE_STEP
+.. doxygendefine:: CUOPT_MIP_CUT_CHANGE_THRESHOLD
+.. doxygendefine:: CUOPT_MIP_CUT_MIN_ORTHOGONALITY
+.. doxygendefine:: CUOPT_MIP_BATCH_PDLP_STRONG_BRANCHING
+.. doxygendefine:: CUOPT_MIP_BATCH_PDLP_RELIABILITY_BRANCHING
+.. doxygendefine:: CUOPT_MIP_STRONG_BRANCHING_SIMPLEX_ITERATION_LIMIT
+.. doxygendefine:: CUOPT_MIP_SEMICONTINUOUS_BIG_M
 
 .. _pdlp-solver-mode-constants:
 
@@ -239,6 +272,53 @@ These constants are used to configure `CUOPT_METHOD` via :c:func:`cuOptSetIntege
 .. doxygendefine:: CUOPT_METHOD_PDLP
 .. doxygendefine:: CUOPT_METHOD_DUAL_SIMPLEX
 .. doxygendefine:: CUOPT_METHOD_BARRIER
+.. doxygendefine:: CUOPT_METHOD_UNSET
+
+.. _mip-determinism-mode-constants:
+
+MIP Determinism Mode Constants
+------------------------------
+
+These constants are used to configure `CUOPT_MIP_DETERMINISM_MODE` via :c:func:`cuOptSetIntegerParameter`.
+
+.. doxygendefine:: CUOPT_MODE_OPPORTUNISTIC
+.. doxygendefine:: CUOPT_MODE_DETERMINISTIC
+
+.. _barrier-iterative-refinement-constants:
+
+Barrier Iterative Refinement Constants
+---------------------------------------
+
+These constants are used to configure `CUOPT_BARRIER_ITERATIVE_REFINEMENT` via :c:func:`cuOptSetIntegerParameter`.
+
+.. doxygendefine:: CUOPT_BARRIER_ITERATIVE_REFINEMENT_OFF
+.. doxygendefine:: CUOPT_BARRIER_ITERATIVE_REFINEMENT_ON
+
+
+Warm Start and MIP Start
+------------------------
+
+The following functions set initial solution hints for the solver.
+
+For LP problems solved with PDLP, primal and dual warm start vectors may be provided:
+
+.. doxygenfunction:: cuOptSetInitialPrimalSolution
+.. doxygenfunction:: cuOptSetInitialDualSolution
+
+For MIP problems, one or more primal solution hints (MIP starts) may be provided:
+
+.. doxygenfunction:: cuOptAddMIPStart
+
+MIP Solution Callbacks
+-----------------------
+
+The following callback types and functions allow monitoring and injecting solutions during a MIP solve.
+
+.. doxygentypedef:: cuOptMIPGetSolutionCallback
+.. doxygentypedef:: cuOptMIPSetSolutionCallback
+
+.. doxygenfunction:: cuOptSetMIPGetSolutionCallback
+.. doxygenfunction:: cuOptSetMIPSetSolutionCallback
 
 
 Solving an LP or MIP
@@ -290,4 +370,5 @@ These constants define the termination status received from the :c:func:`cuOptGe
 .. doxygendefine:: CUOPT_TERMINATION_STATUS_PRIMAL_FEASIBLE
 .. doxygendefine:: CUOPT_TERMINATION_STATUS_FEASIBLE_FOUND
 .. doxygendefine:: CUOPT_TERMINATION_STATUS_CONCURRENT_LIMIT
+.. doxygendefine:: CUOPT_TERMINATION_STATUS_WORK_LIMIT
 .. doxygendefine:: CUOPT_TERMINATION_STATUS_UNBOUNDED_OR_INFEASIBLE
