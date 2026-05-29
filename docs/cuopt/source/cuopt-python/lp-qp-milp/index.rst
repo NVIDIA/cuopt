@@ -1,14 +1,22 @@
-=============================================================================================================
-Linear Programming, Quadratic Programming, Mixed Integer Linear Programming, and Second-Order Cone Programming
-=============================================================================================================
+Continuous Optimization and MIP Python API
+==========================================
 
-This section contains details on the cuOpt linear programming, quadratic programming, mixed integer linear programming, and second-order cone programming Python API.
+This section contains details on the cuOpt LP/QP/SOCP/MILP Python API.
 
 .. toctree::
    :maxdepth: 3
-   :caption: LP, QP, MILP, and SOCP
-   :name: LP, QP, MILP, and SOCP
+   :caption: Continuous Optimization (LP/QP/SOCP)
+   :name: LP/QP/SOCP Python API
    :titlesonly:
 
-   lp-qp-milp-api.rst
-   lp-qp-milp-examples.rst
+   continuous-api.rst
+   continuous-examples.rst
+
+.. toctree::
+   :maxdepth: 3
+   :caption: Mixed Integer Programming (MIP)
+   :name: MIP Python API
+   :titlesonly:
+
+   mip-api.rst
+   mip-examples.rst

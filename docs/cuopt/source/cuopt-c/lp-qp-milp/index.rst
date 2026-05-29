@@ -1,15 +1,24 @@
-Linear Programming
-==================
+Continuous Optimization and MIP
+================================
 
-This section contains details on the cuOpt LP/QP/MILP/SOCP C API.
+This section contains details on the cuOpt LP/QP/SOCP/MILP C API.
 
 .. toctree::
    :maxdepth: 3
-   :caption: LP/QP/MILP/SOCP
-   :name: LP/QP/MILP/SOCP
+   :caption: Continuous Optimization (LP/QP/SOCP)
+   :name: LP/QP/SOCP C API
    :titlesonly:
 
-   lp-qp-milp-c-api.rst
-   ../../lp-qp-milp-settings.rst
-   lp-qp-example.rst
-   milp-examples.rst
+   continuous-c-api.rst
+   ../../continuous-settings.rst
+   continuous-examples.rst
+
+.. toctree::
+   :maxdepth: 3
+   :caption: Mixed Integer Programming (MIP)
+   :name: MIP C API
+   :titlesonly:
+
+   mip-c-api.rst
+   ../../mip-settings.rst
+   mip-examples.rst

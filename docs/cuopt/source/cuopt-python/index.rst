@@ -26,8 +26,8 @@ This section contains details on the cuOpt Python package.
 
 .. toctree::
    :maxdepth: 3
-   :caption: Linear Programming, Quadratic Programming and Mixed Integer Linear Programming
-   :name: LP, QP and MILP API
+   :caption: Continuous Optimization and MIP
+   :name: Continuous Optimization and MIP Python API
    :titlesonly:
 
-   LP, QP and MILP <lp-qp-milp/index.rst>
+   Continuous Optimization and MIP <lp-qp-milp/index.rst>
