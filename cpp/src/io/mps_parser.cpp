@@ -76,84 +76,76 @@ void triples_to_csr_flat(const std::vector<std::tuple<i_t, i_t, f_t>>& entries,
   if (entries.empty()) {
     out_values.clear();
     out_indices.clear();
-    out_offsets.assign(static_cast<size_t>(num_rows) + 1, 0);
+    out_offsets.assign(num_rows + 1, 0);
     return;
   }
 
-  const size_t nc = static_cast<size_t>(num_cols);
-  const size_t nr = static_cast<size_t>(num_rows);
-
-  scratch.col_nnz.assign(nc, 0);
+  scratch.col_nnz.assign(num_cols, 0);
   for (const auto& entry : entries) {
     const i_t r = std::get<0>(entry);
     const i_t c = std::get<1>(entry);
-    scratch.col_nnz[static_cast<size_t>(c)]++;
-    if (symmetrize_upper_triangular && r != c) { scratch.col_nnz[static_cast<size_t>(r)]++; }
+    scratch.col_nnz[c]++;
+    if (symmetrize_upper_triangular && r != c) { scratch.col_nnz[r]++; }
   }
 
-  scratch.col_off.resize(nc + 1);
+  scratch.col_off.resize(num_cols + 1);
   scratch.col_off[0] = 0;
-  for (size_t c = 0; c < nc; ++c) {
+  for (i_t c = 0; c < num_cols; ++c) {
     scratch.col_off[c + 1] = scratch.col_off[c] + scratch.col_nnz[c];
   }
-  const i_t csc_nnz = scratch.col_off[nc];
-  scratch.csc_rows.resize(static_cast<size_t>(csc_nnz));
-  scratch.csc_vals.resize(static_cast<size_t>(csc_nnz));
-  scratch.col_wr.resize(nc);
-  std::copy(scratch.col_off.begin(), scratch.col_off.begin() + nc, scratch.col_wr.begin());
+  const i_t csc_nnz = scratch.col_off[num_cols];
+  scratch.csc_rows.resize(csc_nnz);
+  scratch.csc_vals.resize(csc_nnz);
+  scratch.col_wr.resize(num_cols);
+  std::copy(scratch.col_off.begin(), scratch.col_off.begin() + num_cols, scratch.col_wr.begin());
 
   for (const auto& entry : entries) {
     const i_t r = std::get<0>(entry);
     const i_t c = std::get<1>(entry);
     const f_t v = std::get<2>(entry);
     {
-      const size_t sc                          = static_cast<size_t>(c);
-      const i_t p                              = scratch.col_wr[sc]++;
-      scratch.csc_rows[static_cast<size_t>(p)] = r;
-      scratch.csc_vals[static_cast<size_t>(p)] = v;
+      const i_t p         = scratch.col_wr[c]++;
+      scratch.csc_rows[p] = r;
+      scratch.csc_vals[p] = v;
     }
     if (symmetrize_upper_triangular && r != c) {
-      const size_t sr                          = static_cast<size_t>(r);
-      const i_t p                              = scratch.col_wr[sr]++;
-      scratch.csc_rows[static_cast<size_t>(p)] = c;
-      scratch.csc_vals[static_cast<size_t>(p)] = v;
+      const i_t p         = scratch.col_wr[r]++;
+      scratch.csc_rows[p] = c;
+      scratch.csc_vals[p] = v;
     }
   }
 
-  scratch.row_nnz.assign(nr, 0);
+  scratch.row_nnz.assign(num_rows, 0);
   for (i_t cc = 0; cc < num_cols; ++cc) {
-    const size_t col_z = static_cast<size_t>(cc);
-    const i_t lo       = scratch.col_off[col_z];
-    const i_t hi       = scratch.col_off[col_z + 1];
+    const i_t lo = scratch.col_off[cc];
+    const i_t hi = scratch.col_off[cc + 1];
     for (i_t t = lo; t < hi; ++t) {
-      const i_t row = scratch.csc_rows[static_cast<size_t>(t)];
-      scratch.row_nnz[static_cast<size_t>(row)]++;
+      const i_t row = scratch.csc_rows[t];
+      scratch.row_nnz[row]++;
     }
   }
 
-  scratch.row_off.resize(nr + 1);
+  scratch.row_off.resize(num_rows + 1);
   scratch.row_off[0] = 0;
-  for (size_t r = 0; r < nr; ++r) {
+  for (i_t r = 0; r < num_rows; ++r) {
     scratch.row_off[r + 1] = scratch.row_off[r] + scratch.row_nnz[r];
   }
-  const size_t csr_nnz = static_cast<size_t>(scratch.row_off[nr]);
+  const i_t csr_nnz = scratch.row_off[num_rows];
 
   out_values.resize(csr_nnz);
   out_indices.resize(csr_nnz);
-  scratch.row_wr.resize(nr);
-  std::copy(scratch.row_off.begin(), scratch.row_off.begin() + nr, scratch.row_wr.begin());
+  scratch.row_wr.resize(num_rows);
+  std::copy(scratch.row_off.begin(), scratch.row_off.begin() + num_rows, scratch.row_wr.begin());
 
   for (i_t cc = 0; cc < num_cols; ++cc) {
-    const size_t col_z = static_cast<size_t>(cc);
-    const i_t lo       = scratch.col_off[col_z];
-    const i_t hi       = scratch.col_off[col_z + 1];
+    const i_t lo = scratch.col_off[cc];
+    const i_t hi = scratch.col_off[cc + 1];
     for (i_t t = lo; t < hi; ++t) {
-      const i_t row                       = scratch.csc_rows[static_cast<size_t>(t)];
-      const f_t val                       = scratch.csc_vals[static_cast<size_t>(t)];
-      const size_t sr                     = static_cast<size_t>(row);
-      const i_t w                         = scratch.row_wr[sr]++;
-      out_indices[static_cast<size_t>(w)] = cc;
-      out_values[static_cast<size_t>(w)]  = val * value_scale;
+      const i_t row  = scratch.csc_rows[t];
+      const f_t val  = scratch.csc_vals[t];
+      const i_t w    = scratch.row_wr[row]++;
+      out_indices[w] = cc;
+      out_values[w]  = val * value_scale;
     }
   }
 
