@@ -98,8 +98,8 @@ class barrier_solver_t {
                                   f_t& complementarity_residual_norm);
 
   f_t compute_nonnegative_step_length(iteration_data_t<i_t, f_t>& data,
-                               const rmm::device_uvector<f_t>& x,
-                               const rmm::device_uvector<f_t>& dx);
+                                      const rmm::device_uvector<f_t>& x,
+                                      const rmm::device_uvector<f_t>& dx);
   i_t gpu_compute_search_direction(iteration_data_t<i_t, f_t>& data,
                                    pinned_dense_vector_t<i_t, f_t>& dw,
                                    pinned_dense_vector_t<i_t, f_t>& dx,

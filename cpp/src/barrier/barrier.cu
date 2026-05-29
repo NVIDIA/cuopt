@@ -135,9 +135,8 @@ static f_t max_nonnegative_step_length_in_range(
 
   if (is_direct_free_linear != nullptr) {
     return transform_reduce_helper.transform_reduce(
-      thrust::make_zip_iterator(dx.data() + start,
-                                x.data() + start,
-                                is_direct_free_linear->data() + start),
+      thrust::make_zip_iterator(
+        dx.data() + start, x.data() + start, is_direct_free_linear->data() + start),
       thrust::minimum<f_t>{},
       [] HD(const thrust::tuple<f_t, f_t, i_t>& t) {
         const f_t dx_val                = thrust::get<0>(t);
@@ -209,11 +208,7 @@ static void negate_complementarity_rhs(raft::device_span<f_t> out,
 {
   if (out.empty()) return;
   cub::DeviceTransform::Transform(
-    residual.data(),
-    out.data(),
-    out.size(),
-    [] HD(f_t rhs) { return -rhs; },
-    stream.value());
+    residual.data(), out.data(), out.size(), [] HD(f_t rhs) { return -rhs; }, stream.value());
 }
 
 template <typename i_t, typename f_t>
@@ -2728,7 +2723,7 @@ void barrier_solver_t<i_t, f_t>::gpu_compute_residual_norms(const rmm::device_uv
     std::max(device_vector_norm_inf<i_t, f_t>(linear_xz_span, stream_view_),
              device_vector_norm_inf<i_t, f_t>(data.d_complementarity_wv_residual_, stream_view_));
   if (has_soc) {
-    f_t cone_complementarity_norm = f_t(0);
+    f_t cone_complementarity_norm   = f_t(0);
     raft::device_span<f_t> cone_dot = data.cones().scratch.template get_slot<0>();
     data.cones().segmented_sum(
       data.d_complementarity_xz_residual_.data() + data.cone_start(), cone_dot, stream_view_);
@@ -3025,8 +3020,10 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
     // Constraint block: primal_rhs.
 
     raft::copy(data.d_augmented_rhs_.data(), data.d_r1_.data(), lp.num_cols, stream_view_);
-    raft::copy(
-      data.d_augmented_rhs_.data() + lp.num_cols, data.primal_rhs.data(), lp.num_rows, stream_view_);
+    raft::copy(data.d_augmented_rhs_.data() + lp.num_cols,
+               data.primal_rhs.data(),
+               lp.num_rows,
+               stream_view_);
     data.chol->solve(data.d_augmented_rhs_, data.d_augmented_soln_);
     struct op_t {
       op_t(iteration_data_t<i_t, f_t>& data) : data_(data) {}
@@ -3336,9 +3333,9 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       raft::device_span<const f_t>(data.d_dx_.data(), linear_dz_size),
       raft::device_span<const f_t>(data.d_x_.data(), linear_dz_size),
       raft::device_span<f_t>(data.d_dz_.data(), linear_dz_size),
-      has_direct_free_linear ? raft::device_span<const i_t>(data.d_is_direct_free_linear_.data(),
-                                                            linear_dz_size)
-                             : raft::device_span<const i_t>{},
+      has_direct_free_linear
+        ? raft::device_span<const i_t>(data.d_is_direct_free_linear_.data(), linear_dz_size)
+        : raft::device_span<const i_t>{},
       stream_view_);
     raft::copy(dz.data(), data.d_dz_.data(), data.d_dz_.size(), stream_view_);
   }
@@ -3704,7 +3701,7 @@ void barrier_solver_t<i_t, f_t>::compute_affine_rhs(iteration_data_t<i_t, f_t>& 
   data.cone_combined_step_ = false;
   data.cone_sigma_mu_      = f_t(0);
 
-  // xz -> -x .* z; 
+  // xz -> -x .* z;
   negate_complementarity_rhs<f_t>(
     raft::device_span<f_t>(data.d_complementarity_xz_rhs_.data(), linear_size),
     raft::device_span<const f_t>(data.d_complementarity_xz_residual_.data(), linear_size),
@@ -3836,9 +3833,9 @@ void barrier_solver_t<i_t, f_t>::compute_cc_rhs(iteration_data_t<i_t, f_t>& data
     raft::device_span<const f_t>(data.d_dx_aff_.data(), linear_size),
     raft::device_span<const f_t>(data.d_dz_aff_.data(), linear_size),
     new_mu,
-    has_direct_free_linear ? raft::device_span<const i_t>(data.d_is_direct_free_linear_.data(),
-                                                            linear_size)
-                           : raft::device_span<const i_t>{},
+    has_direct_free_linear
+      ? raft::device_span<const i_t>(data.d_is_direct_free_linear_.data(), linear_size)
+      : raft::device_span<const i_t>{},
     stream_view_);
 
   const i_t cone_var_start = data.cone_start();
@@ -4320,7 +4317,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
       "Barrier solver: %d constraints, %d variables, %ld nonzeros\n", m, n, lp.A.col_start[n]);
 
     settings.log.printf("\n");
-    
+
     if (lp.Q.n > 0) {
       settings.log.printf("Quadratic objective matrix  : %d nonzeros\n", lp.Q.row_start[lp.Q.n]);
     }

@@ -250,10 +250,10 @@ TEST(second_order_cone_kernels, cone_step_length_keeps_iterate_in_cone)
   };
 
   const auto expect_cone_feasible_after_step = [&](std::vector<double> const& u,
-                                                  std::vector<double> const& du,
-                                                  double alpha,
-                                                  std::size_t cone_idx,
-                                                  const char* label) {
+                                                   std::vector<double> const& du,
+                                                   double alpha,
+                                                   std::size_t cone_idx,
+                                                   const char* label) {
     const std::size_t off = cone_block_offset(cone_idx);
     const auto dim        = cone_dimensions[cone_idx];
     const double u0       = u[off] + alpha * du[off];
@@ -283,12 +283,9 @@ TEST(second_order_cone_kernels, cone_step_length_keeps_iterate_in_cone)
 
   const auto primal_per_cone = cuopt::host_copy(cones.scratch.step_alpha_primal, stream);
   const auto dual_per_cone   = cuopt::host_copy(cones.scratch.step_alpha_dual, stream);
-  EXPECT_NEAR(step_primal,
-              *std::min_element(primal_per_cone.begin(), primal_per_cone.end()),
-              1e-12);
-  EXPECT_NEAR(step_dual,
-              *std::min_element(dual_per_cone.begin(), dual_per_cone.end()),
-              1e-12);
+  EXPECT_NEAR(
+    step_primal, *std::min_element(primal_per_cone.begin(), primal_per_cone.end()), 1e-12);
+  EXPECT_NEAR(step_dual, *std::min_element(dual_per_cone.begin(), dual_per_cone.end()), 1e-12);
   for (std::size_t cone = 0; cone < cone_dimensions.size(); ++cone) {
     EXPECT_GT(primal_per_cone[cone], 0.0) << "primal cone " << cone;
     EXPECT_GT(dual_per_cone[cone], 0.0) << "dual cone " << cone;
