@@ -631,11 +631,13 @@ Set this value to ``1`` to enable clique cuts.
 Objective Step
 ^^^^^^^^^^^^^^^
 
-``CUOPT_MIP_OBJECTIVE_STEP`` controls the minimum discrete step size used to tighten the dual bound when all integer variables have integer objective coefficients.
-When the objective value can only change in multiples of a known step size, cuOpt uses this information to close the gap faster.
-Set this value to ``0`` to disable this tightening (default) or provide a positive step size to override automatic detection.
+``CUOPT_MIP_OBJECTIVE_STEP`` controls whether cuOpt automatically detects and exploits discrete step structure in the objective to tighten the dual bound.
+When all integer variables have integer objective coefficients, the objective value can only change in multiples of a known step size; enabling this setting allows cuOpt to use that information to close the gap faster.
 
-.. note:: The default value is ``0`` (disabled). When set to ``0``, cuOpt will automatically detect an objective step when possible.
+* ``0``: Disable objective step detection.
+* ``1``: Enable objective step detection (default).
+
+.. note:: The default value is ``1`` (enabled).
 
 Semi-Continuous Big-M
 ^^^^^^^^^^^^^^^^^^^^^^
