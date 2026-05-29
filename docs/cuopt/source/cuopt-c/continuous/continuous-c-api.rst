@@ -64,10 +64,10 @@ after creating a linear problem:
 .. doxygenfunction:: cuOptAddQuadraticConstraint
 
 .. note::
-   ``cuOptAddQuadraticConstraint`` also enables **Second-Order Cone Programming (SOCP)**
-   support **(beta)**. When one or more quadratic constraints are present, cuOpt automatically
-   converts them to second-order cone form and selects the barrier solver. Only ``CUOPT_LESS_THAN``
-   and ``CUOPT_GREATER_THAN`` sense is supported; equality quadratic constraints are not supported.
+   ``cuOptAddQuadraticConstraint`` enables **QCQP/SOCP (beta)** support. Quadratic constraints
+   are specified in standard QCQP form; cuOpt internally converts them to second-order cone form
+   and selects the barrier solver. Only ``CUOPT_LESS_THAN`` and ``CUOPT_GREATER_THAN`` sense is
+   supported; equality quadratic constraints are not supported.
 
 A optimization problem must be destroyed with the following function
 
