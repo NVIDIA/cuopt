@@ -279,6 +279,7 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
   }
 
   // Quadratic constraint rows omit linear coefficients from global A; add them from QC bundles.
+  // QP/QCQP models are continuous-only (no integer variables).
   if (problem_.has_quadratic_constraints()) {
     for (size_t q = 0; q < quadratic_constraints.size(); ++q) {
       const auto& qc      = quadratic_constraints[q];
@@ -286,11 +287,7 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
       for (size_t t = 0; t < qc.linear_indices.size(); ++t) {
         i_t var = qc.linear_indices[t];
         f_t val = qc.linear_values[t];
-        if (variable_types[var] == 'I') {
-          integral_col_nnzs[var].emplace_back(row_id, val);
-        } else {
-          continuous_col_nnzs[var].emplace_back(row_id, val);
-        }
+        continuous_col_nnzs[var].emplace_back(row_id, val);
         var_in_constraint[var] = true;
       }
     }
