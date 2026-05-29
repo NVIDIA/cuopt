@@ -19,11 +19,11 @@
 #include <memory>
 #include <sstream>
 #include <string>
-#include <tuple>
 #include <unordered_set>
 #include <utility>
 
 namespace {
+using cuopt::linear_programming::io::coo_entries_t;
 using cuopt::linear_programming::io::error_type_t;
 using cuopt::linear_programming::io::mps_parser_expects;
 using cuopt::linear_programming::io::mps_parser_expects_fatal;
@@ -63,7 +63,7 @@ struct triples_to_csr_scratch_t {
  * @param symmetrize_upper_triangular If true (QUADOBJ), each off-diagonal (r,c) also adds (c,r).
  */
 template <typename i_t, typename f_t>
-void triples_to_csr_flat(const std::vector<std::tuple<i_t, i_t, f_t>>& entries,
+void triples_to_csr_flat(const coo_entries_t<i_t, f_t>& entries,
                          i_t num_rows,
                          i_t num_cols,
                          bool symmetrize_upper_triangular,
@@ -80,10 +80,12 @@ void triples_to_csr_flat(const std::vector<std::tuple<i_t, i_t, f_t>>& entries,
     return;
   }
 
+  const i_t n_entries = static_cast<i_t>(entries.size());
+
   scratch.col_nnz.assign(num_cols, 0);
-  for (const auto& entry : entries) {
-    const i_t r = std::get<0>(entry);
-    const i_t c = std::get<1>(entry);
+  for (i_t i = 0; i < n_entries; ++i) {
+    const i_t r = entries.rows[i];
+    const i_t c = entries.cols[i];
     scratch.col_nnz[c]++;
     if (symmetrize_upper_triangular && r != c) { scratch.col_nnz[r]++; }
   }
@@ -99,17 +101,17 @@ void triples_to_csr_flat(const std::vector<std::tuple<i_t, i_t, f_t>>& entries,
   scratch.col_wr.resize(num_cols);
   std::copy(scratch.col_off.begin(), scratch.col_off.begin() + num_cols, scratch.col_wr.begin());
 
-  for (const auto& entry : entries) {
-    const i_t r = std::get<0>(entry);
-    const i_t c = std::get<1>(entry);
-    const f_t v = std::get<2>(entry);
+  for (i_t i = 0; i < n_entries; ++i) {
+    const i_t r = entries.rows[i];
+    const i_t c = entries.cols[i];
+    const f_t v = entries.vals[i];
     {
-      const i_t p         = scratch.col_wr[c]++;
+      const i_t p      = scratch.col_wr[c]++;
       scratch.csc_rows[p] = r;
       scratch.csc_vals[p] = v;
     }
     if (symmetrize_upper_triangular && r != c) {
-      const i_t p         = scratch.col_wr[r]++;
+      const i_t p      = scratch.col_wr[r]++;
       scratch.csc_rows[p] = c;
       scratch.csc_vals[p] = v;
     }
@@ -141,9 +143,9 @@ void triples_to_csr_flat(const std::vector<std::tuple<i_t, i_t, f_t>>& entries,
     const i_t lo = scratch.col_off[cc];
     const i_t hi = scratch.col_off[cc + 1];
     for (i_t t = lo; t < hi; ++t) {
-      const i_t row  = scratch.csc_rows[t];
-      const f_t val  = scratch.csc_vals[t];
-      const i_t w    = scratch.row_wr[row]++;
+      const i_t row = scratch.csc_rows[t];
+      const f_t val = scratch.csc_vals[t];
+      const i_t w   = scratch.row_wr[row]++;
       out_indices[w] = cc;
       out_values[w]  = val * value_scale;
     }
@@ -445,32 +447,21 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
   }
 
   // QCMATRIX: one symmetric Q per constraint row (no extra ½ factor vs file coeffs).
-  // Store Q in COO (row, col, value) per block — avoids O(n) CSR row-pointer materialization.
-  constexpr f_t k_qcmatrix_value_scale = f_t(1);
   for (const auto& block : qcmatrix_blocks_) {
     const i_t row_id = block.constraint_row_id;
     mps_parser_expects(row_id >= 0 && row_id < static_cast<i_t>(row_types.size()),
                        error_type_t::ValidationError,
                        "QCMATRIX row index %d is out of range for constraints",
                        static_cast<int>(row_id));
-    const size_t nnz = block.entries.size();
-    std::vector<i_t> qc_rows(nnz);
-    std::vector<i_t> qc_cols(nnz);
-    std::vector<f_t> qc_vals(nnz);
-    for (size_t e = 0; e < nnz; ++e) {
-      qc_rows[e] = std::get<0>(block.entries[e]);
-      qc_cols[e] = std::get<1>(block.entries[e]);
-      qc_vals[e] = std::get<2>(block.entries[e]) * k_qcmatrix_value_scale;
-    }
     problem.append_quadratic_constraint(row_id,
                                         row_names[row_id],
                                         static_cast<char>(row_types[row_id]),
                                         A_values[row_id],
                                         A_indices[row_id],
                                         b_values[row_id],
-                                        qc_vals,
-                                        qc_rows,
-                                        qc_cols);
+                                        block.entries.vals,
+                                        block.entries.rows,
+                                        block.entries.cols);
   }
 
   if (!quadratic_row_ids.empty()) {
