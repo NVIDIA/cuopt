@@ -31,6 +31,9 @@ mkdir -p "${RAPIDS_TESTS_DIR}"
 
 rapids-print-env
 
+rapids-logger "Verify gRPC codegen output matches committed files"
+./ci/verify_grpc_codegen.sh
+
 rapids-logger "Check GPU usage"
 nvidia-smi
 

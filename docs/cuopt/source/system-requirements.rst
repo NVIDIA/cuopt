@@ -28,6 +28,12 @@ Dependencies are installed automatically when using the pip and Conda installati
    * Python:
       - >= 3.11.* and <= 3.14.*
 
+   * OpenSSL:
+      - 3.x runtime (``libssl.so.3`` and ``libcrypto.so.3``) must be present on the host
+      - Shipped by default on Ubuntu 22.04+, Debian 12+, RHEL/Rocky/Alma 9+, Fedora 36+
+      - On RHEL/Rocky/Alma 8, install the ``openssl3`` package from EPEL (see :doc:`faq`)
+      - On Ubuntu 20.04, install OpenSSL 3 from a PPA/backport or use the cuOpt container
+
    * NVIDIA drivers:
       - 525.60.13+ (Linux)
       - 527.41+ (Windows)

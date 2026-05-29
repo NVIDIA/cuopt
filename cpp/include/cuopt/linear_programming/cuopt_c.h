@@ -19,8 +19,11 @@ extern "C" {
 
 /**
  * @brief A ``cuOptOptimizationProblem`` object contains a representation of
- * an LP or MIP. It is created by ``cuOptCreateProblem`` or ``cuOptCreateRangedProblem``.
- * It is passed to ``cuOptSolve``. It should be destroyed using ``cuOptDestroyProblem``.
+ * an LP, MIP, QP, or QCQP. It is created by ``cuOptCreateProblem``,
+ * ``cuOptCreateRangedProblem``, or the quadratic create functions. Quadratic objectives and
+ * quadratic objectives and constraints may be set via ``cuOptSetQuadraticObjective`` and
+ * added via ``cuOptAddQuadraticConstraint``. It is passed to ``cuOptSolve`` and destroyed with
+ * ``cuOptDestroyProblem``.
  */
 typedef void* cuOptOptimizationProblem;
 
@@ -265,6 +268,9 @@ cuopt_int_t cuOptCreateRangedProblem(cuopt_int_t num_constraints,
 
 /** @brief Create an optimization problem of the form
  *
+ * @note **Deprecated:** Use ``cuOptCreateProblem`` to set up the linear problem, then
+ *             ``cuOptSetQuadraticObjective`` to specify the quadratic objective terms.
+ *
  * @verbatim
  *                minimize/maximize  c^T x + x^T Q x + offset
  *                  subject to       A x {=, <=, >=} b
@@ -336,6 +342,11 @@ cuopt_int_t cuOptCreateQuadraticProblem(
   cuOptOptimizationProblem* problem_ptr);
 
 /** @brief Create an optimization problem of the form *
+ *
+ * @note **Deprecated:** Use ``cuOptCreateRangedProblem`` to set up the linear problem, then
+ *             ``cuOptSetQuadraticObjective`` to specify the quadratic objective terms.
+ *             For QCQP models, use ``cuOptAddQuadraticConstraint`` for each quadratic constraint.
+ *
  * @verbatim
  *                minimize/maximize  c^T x + x^T Q x + offset
  *                  subject to       bl <= A*x <= bu
@@ -416,6 +427,62 @@ cuopt_int_t cuOptCreateQuadraticRangedProblem(
   const cuopt_float_t* variable_lower_bounds,
   const cuopt_float_t* variable_upper_bounds,
   cuOptOptimizationProblem* problem_ptr);
+
+/** @brief Set the quadratic objective term x^T Q x on an existing problem.
+ *
+ * The matrix Q is specified in coordinate (triplet) format. This function may be called
+ * after ``cuOptCreateProblem`` or ``cuOptCreateRangedProblem`` to build a QP or QCQP model
+ * without using ``cuOptCreateQuadraticProblem`` or ``cuOptCreateQuadraticRangedProblem``.
+ * Each call replaces any previously set quadratic objective. Duplicate (row, col) indices
+ * in the triplet arrays are summed.
+ *
+ * @param[in] problem The optimization problem created by ``cuOptCreateProblem`` or
+ *            ``cuOptCreateRangedProblem``.
+ * @param[in] num_entries Number of non-zero entries in Q.
+ * @param[in] row_index Array of length num_entries with row indices (0-based).
+ * @param[in] col_index Array of length num_entries with column indices (0-based).
+ * @param[in] coeff Array of length num_entries with matrix coefficients.
+ *
+ * @return A status code indicating success or failure.
+ */
+cuopt_int_t cuOptSetQuadraticObjective(cuOptOptimizationProblem problem,
+                                       cuopt_int_t num_entries,
+                                       const cuopt_int_t* row_index,
+                                       const cuopt_int_t* col_index,
+                                       const cuopt_float_t* coeff);
+
+/** @brief Add a quadratic constraint x^T Q x + d^T x {<=, >=} rhs to an existing problem.
+ *
+ * The quadratic matrix Q is specified in coordinate (triplet) format. The linear term d
+ * is specified by parallel arrays of variable indices and coefficients. This function may be
+ * called after ``cuOptCreateProblem`` or ``cuOptCreateRangedProblem`` to build a QCQP model.
+ * Each call appends one quadratic constraint.
+ *
+ * @param[in] problem The optimization problem created by ``cuOptCreateProblem`` or
+ *            ``cuOptCreateRangedProblem``.
+ * @param[in] quad_num_entries Number of non-zero entries in the quadratic part.
+ * @param[in] row_index Array of length quad_num_entries with row indices (0-based).
+ * @param[in] col_index Array of length quad_num_entries with column indices (0-based).
+ * @param[in] coeff Array of length quad_num_entries with quadratic matrix coefficients.
+ * @param[in] num_lin_entries Number of non-zero entries in the linear part.
+ * @param[in] linear_index Array of length num_lin_entries with variable indices (0-based).
+ * @param[in] linear_coeff Array of length num_lin_entries with linear coefficients.
+ * @param[in] sense Constraint sense: ``CUOPT_LESS_THAN`` ('L') for <= or
+ *            ``CUOPT_GREATER_THAN`` ('G') for >=.
+ * @param[in] rhs Right-hand side of the constraint.
+ *
+ * @return A status code indicating success or failure.
+ */
+cuopt_int_t cuOptAddQuadraticConstraint(cuOptOptimizationProblem problem,
+                                        cuopt_int_t quad_num_entries,
+                                        const cuopt_int_t* row_index,
+                                        const cuopt_int_t* col_index,
+                                        const cuopt_float_t* coeff,
+                                        cuopt_int_t num_lin_entries,
+                                        const cuopt_int_t* linear_index,
+                                        const cuopt_float_t* linear_coeff,
+                                        char sense,
+                                        cuopt_float_t rhs);
 
 /** @brief Destroy an optimization problem
  *

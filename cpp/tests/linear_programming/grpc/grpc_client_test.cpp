@@ -1665,6 +1665,10 @@ TEST(MapperRoundtrip, MIPSettingsAllFields)
   orig.num_gpus        = 2;
   orig.presolver       = presolver_t::Default;
   orig.mip_scaling     = true;
+  orig.symmetry        = 2;  // orbital fixing + lexical reduction
+
+  // Semi-continuous variables
+  orig.semi_continuous_big_m = 7.5e9;  // not the default 1e10, to detect overwrite-on-decode
 
   // Branching
   orig.reliability_branching           = 32;
@@ -1684,6 +1688,27 @@ TEST(MapperRoundtrip, MIPSettingsAllFields)
   // Determinism and reproducibility
   orig.determinism_mode = CUOPT_MODE_DETERMINISTIC;
   orig.seed             = 12345;
+
+  // Heuristic hyper-parameters (mip_heuristics_hyper_params_t).
+  // Set every field to a value distinct from its C++ default so a missed
+  // mapping line would produce a default-valued mismatch on decode.
+  orig.heuristic_params.population_size                    = 64;     // default 32
+  orig.heuristic_params.num_cpufj_threads                  = 4;      // default 8
+  orig.heuristic_params.presolve_time_ratio                = 0.2;    // default 0.1
+  orig.heuristic_params.presolve_max_time                  = 45.0;   // default 60.0
+  orig.heuristic_params.root_lp_time_ratio                 = 0.25;   // default 0.1
+  orig.heuristic_params.root_lp_max_time                   = 7.5;    // default 15.0
+  orig.heuristic_params.rins_time_limit                    = 4.0;    // default 3.0
+  orig.heuristic_params.rins_max_time_limit                = 25.0;   // default 20.0
+  orig.heuristic_params.rins_fix_rate                      = 0.75;   // default 0.5
+  orig.heuristic_params.stagnation_trigger                 = 5;      // default 3
+  orig.heuristic_params.max_iterations_without_improvement = 12;     // default 8
+  orig.heuristic_params.initial_infeasibility_weight       = 500.0;  // default 1000.0
+  orig.heuristic_params.n_of_minimums_for_exit             = 9000;   // default 7000
+  orig.heuristic_params.enabled_recombiners                = 7;      // default 15 (bitmask)
+  orig.heuristic_params.cycle_detection_length             = 40;     // default 30
+  orig.heuristic_params.relaxed_lp_time_limit              = 2.5;    // default 1.0
+  orig.heuristic_params.related_vars_time_limit            = 45.0;   // default 30.0
 
   // Roundtrip: C++ -> proto -> C++
   cuopt::remote::MIPSolverSettings pb;
@@ -1712,6 +1737,10 @@ TEST(MapperRoundtrip, MIPSettingsAllFields)
   EXPECT_EQ(restored.num_gpus, 2);
   EXPECT_EQ(restored.presolver, presolver_t::Default);
   EXPECT_EQ(restored.mip_scaling, true);
+  EXPECT_EQ(restored.symmetry, 2);
+
+  // Semi-continuous variables
+  EXPECT_DOUBLE_EQ(restored.semi_continuous_big_m, 7.5e9);
 
   // Branching
   EXPECT_EQ(restored.reliability_branching, 32);
@@ -1731,6 +1760,53 @@ TEST(MapperRoundtrip, MIPSettingsAllFields)
   // Determinism and reproducibility
   EXPECT_EQ(restored.determinism_mode, CUOPT_MODE_DETERMINISTIC);
   EXPECT_EQ(restored.seed, 12345);
+
+  // Heuristic hyper-parameters
+  EXPECT_EQ(restored.heuristic_params.population_size, 64);
+  EXPECT_EQ(restored.heuristic_params.num_cpufj_threads, 4);
+  EXPECT_DOUBLE_EQ(restored.heuristic_params.presolve_time_ratio, 0.2);
+  EXPECT_DOUBLE_EQ(restored.heuristic_params.presolve_max_time, 45.0);
+  EXPECT_DOUBLE_EQ(restored.heuristic_params.root_lp_time_ratio, 0.25);
+  EXPECT_DOUBLE_EQ(restored.heuristic_params.root_lp_max_time, 7.5);
+  EXPECT_DOUBLE_EQ(restored.heuristic_params.rins_time_limit, 4.0);
+  EXPECT_DOUBLE_EQ(restored.heuristic_params.rins_max_time_limit, 25.0);
+  EXPECT_DOUBLE_EQ(restored.heuristic_params.rins_fix_rate, 0.75);
+  EXPECT_EQ(restored.heuristic_params.stagnation_trigger, 5);
+  EXPECT_EQ(restored.heuristic_params.max_iterations_without_improvement, 12);
+  EXPECT_DOUBLE_EQ(restored.heuristic_params.initial_infeasibility_weight, 500.0);
+  EXPECT_EQ(restored.heuristic_params.n_of_minimums_for_exit, 9000);
+  EXPECT_EQ(restored.heuristic_params.enabled_recombiners, 7);
+  EXPECT_EQ(restored.heuristic_params.cycle_detection_length, 40);
+  EXPECT_DOUBLE_EQ(restored.heuristic_params.relaxed_lp_time_limit, 2.5);
+  EXPECT_DOUBLE_EQ(restored.heuristic_params.related_vars_time_limit, 45.0);
+}
+
+TEST(MapperRoundtrip, MIPSettingsSymmetryClampsOutOfRange)
+{
+  // The local-solve binding (solver_settings.cu) restricts symmetry to [-1, 2].
+  // The mapper applies the same range to defend against buggy/untrusted clients.
+  for (int bad_value : {-2, 3, 99, std::numeric_limits<int32_t>::min()}) {
+    cuopt::remote::MIPSolverSettings pb;
+    pb.set_symmetry(bad_value);
+
+    mip_solver_settings_t<int32_t, double> restored;
+    restored.symmetry = 0;  // confirm clamp actively overwrites
+    map_proto_to_mip_settings(pb, restored);
+
+    EXPECT_EQ(restored.symmetry, -1) << "symmetry=" << bad_value << " should clamp to -1 (default)";
+  }
+
+  // In-range values pass through unchanged.
+  for (int good_value : {-1, 0, 1, 2}) {
+    cuopt::remote::MIPSolverSettings pb;
+    pb.set_symmetry(good_value);
+
+    mip_solver_settings_t<int32_t, double> restored;
+    map_proto_to_mip_settings(pb, restored);
+
+    EXPECT_EQ(restored.symmetry, good_value)
+      << "symmetry=" << good_value << " should round-trip unchanged";
+  }
 }
 
 TEST(MapperRoundtrip, MIPSettingsNodeLimitSentinel)
@@ -1904,28 +1980,30 @@ TEST(MapperRoundtrip, PDLPSettingsAllFields)
   orig.tolerances.absolute_primal_tolerance   = 5e-7;
   orig.tolerances.relative_primal_tolerance   = 6e-7;
 
-  orig.time_limit                 = 99.5;
-  orig.iteration_limit            = 10000;
-  orig.log_to_console             = false;
-  orig.detect_infeasibility       = true;
-  orig.strict_infeasibility       = true;
-  orig.pdlp_solver_mode           = pdlp_solver_mode_t::Fast1;
-  orig.method                     = method_t::Barrier;
-  orig.presolver                  = presolver_t::Default;
-  orig.dual_postsolve             = true;
-  orig.crossover                  = true;
-  orig.num_gpus                   = 4;
-  orig.per_constraint_residual    = true;
-  orig.cudss_deterministic        = true;
-  orig.folding                    = 1;
-  orig.augmented                  = 1;
-  orig.dualize                    = 1;
-  orig.ordering                   = 2;
-  orig.barrier_dual_initial_point = 1;
-  orig.eliminate_dense_columns    = true;
-  orig.pdlp_precision             = pdlp_precision_t::MixedPrecision;
-  orig.save_best_primal_so_far    = true;
-  orig.first_primal_feasible      = true;
+  orig.time_limit                   = 99.5;
+  orig.iteration_limit              = 10000;
+  orig.log_to_console               = false;
+  orig.detect_infeasibility         = true;
+  orig.strict_infeasibility         = true;
+  orig.pdlp_solver_mode             = pdlp_solver_mode_t::Fast1;
+  orig.method                       = method_t::Barrier;
+  orig.presolver                    = presolver_t::Default;
+  orig.dual_postsolve               = true;
+  orig.crossover                    = true;
+  orig.num_gpus                     = 4;
+  orig.per_constraint_residual      = true;
+  orig.cudss_deterministic          = true;
+  orig.folding                      = 1;
+  orig.augmented                    = 1;
+  orig.dualize                      = 1;
+  orig.ordering                     = 2;
+  orig.barrier_dual_initial_point   = 1;
+  orig.eliminate_dense_columns      = true;
+  orig.barrier_iterative_refinement = false;  // not the default true, to detect overwrite-on-decode
+  orig.barrier_step_scale           = 0.75;   // not the default 0.9
+  orig.pdlp_precision               = pdlp_precision_t::MixedPrecision;
+  orig.save_best_primal_so_far      = true;
+  orig.first_primal_feasible        = true;
 
   cuopt::remote::PDLPSolverSettings pb;
   map_pdlp_settings_to_proto(orig, &pb);
@@ -1961,6 +2039,8 @@ TEST(MapperRoundtrip, PDLPSettingsAllFields)
   EXPECT_EQ(restored.ordering, 2);
   EXPECT_EQ(restored.barrier_dual_initial_point, 1);
   EXPECT_EQ(restored.eliminate_dense_columns, true);
+  EXPECT_EQ(restored.barrier_iterative_refinement, false);
+  EXPECT_DOUBLE_EQ(restored.barrier_step_scale, 0.75);
   EXPECT_EQ(restored.pdlp_precision, pdlp_precision_t::MixedPrecision);
   EXPECT_EQ(restored.save_best_primal_so_far, true);
   EXPECT_EQ(restored.first_primal_feasible, true);
@@ -1979,4 +2059,203 @@ TEST(MapperRoundtrip, PDLPSettingsIterationLimitSentinel)
   auto default_limit = restored.iteration_limit;
   map_proto_to_pdlp_settings(pb, restored);
   EXPECT_EQ(restored.iteration_limit, default_limit) << "Negative sentinel should keep default";
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Proto3 `optional` presence handling
+// ───────────────────────────────────────────────────────────────────────────
+//
+// A handful of bool settings have a C++ default of `true` but live on the wire
+// in a proto3 message. Without `optional`, an omitted field decodes as the
+// proto3 zero (`false`) and the mapper would silently overwrite the C++
+// default. The codegen emits `optional <type>` for these fields and
+// guards the assignment with `has_<X>()`, so an omitted field preserves the
+// solver default. The tests below pin that behavior for the three currently
+// converted fields.
+TEST(MapperRoundtrip, MIPSettingsProbingOmittedPreservesDefault)
+{
+  cuopt::remote::MIPSolverSettings pb;  // default-constructed: probing absent
+
+  mip_solver_settings_t<int32_t, double> restored;
+  ASSERT_TRUE(restored.probing) << "C++ default is expected to be true";
+  restored.probing = false;  // confirm the guard actively skips the assignment
+  map_proto_to_mip_settings(pb, restored);
+  EXPECT_FALSE(restored.probing)
+    << "Omitted optional bool must not overwrite the existing struct value; "
+       "the in-class default would be restored only if the struct was fresh";
+
+  mip_solver_settings_t<int32_t, double> fresh;
+  map_proto_to_mip_settings(pb, fresh);
+  EXPECT_TRUE(fresh.probing) << "Omitted optional bool must preserve the C++ default `true`";
+}
+
+TEST(MapperRoundtrip, MIPSettingsProbingExplicitFalseRoundtrips)
+{
+  cuopt::remote::MIPSolverSettings pb;
+  pb.set_probing(false);
+  ASSERT_TRUE(pb.has_probing()) << "set_probing must mark presence on optional field";
+
+  mip_solver_settings_t<int32_t, double> restored;
+  map_proto_to_mip_settings(pb, restored);
+  EXPECT_FALSE(restored.probing) << "Explicit false must apply";
+}
+
+TEST(MapperRoundtrip, PDLPSettingsDualPostsolveOmittedPreservesDefault)
+{
+  cuopt::remote::PDLPSolverSettings pb;  // default-constructed
+
+  pdlp_solver_settings_t<int32_t, double> fresh;
+  ASSERT_TRUE(fresh.dual_postsolve) << "C++ default is expected to be true";
+  map_proto_to_pdlp_settings(pb, fresh);
+  EXPECT_TRUE(fresh.dual_postsolve) << "Omitted optional bool must preserve the C++ default `true`";
+}
+
+TEST(MapperRoundtrip, PDLPSettingsDualPostsolveExplicitFalseRoundtrips)
+{
+  cuopt::remote::PDLPSolverSettings pb;
+  pb.set_dual_postsolve(false);
+  ASSERT_TRUE(pb.has_dual_postsolve());
+
+  pdlp_solver_settings_t<int32_t, double> restored;
+  map_proto_to_pdlp_settings(pb, restored);
+  EXPECT_FALSE(restored.dual_postsolve);
+}
+
+TEST(MapperRoundtrip, PDLPSettingsBarrierIterativeRefinementOmittedPreservesDefault)
+{
+  cuopt::remote::PDLPSolverSettings pb;
+
+  pdlp_solver_settings_t<int32_t, double> fresh;
+  ASSERT_TRUE(fresh.barrier_iterative_refinement);
+  map_proto_to_pdlp_settings(pb, fresh);
+  EXPECT_TRUE(fresh.barrier_iterative_refinement)
+    << "Omitted optional bool must preserve the C++ default `true`";
+}
+
+TEST(MapperRoundtrip, PDLPSettingsBarrierIterativeRefinementExplicitFalseRoundtrips)
+{
+  cuopt::remote::PDLPSolverSettings pb;
+  pb.set_barrier_iterative_refinement(false);
+  ASSERT_TRUE(pb.has_barrier_iterative_refinement());
+
+  pdlp_solver_settings_t<int32_t, double> restored;
+  map_proto_to_pdlp_settings(pb, restored);
+  EXPECT_FALSE(restored.barrier_iterative_refinement);
+}
+
+// Wide-coverage sanity: a default-constructed proto (no fields touched on the
+// wire) must, after the mapper, leave every C++ scalar settings field at its
+// in-class default. Spot-checks a representative cross-section of the fields
+// converted to `optional` in field_registry.yaml — booleans with default true,
+// numeric tolerances with non-zero defaults, time/work limits at infinity,
+// int32 knobs whose default is -1 or +N, and a handful of heuristic_params
+// values. If a field is ever added with a non-zero C++ default but without
+// `optional: true` in the registry, this test will fail and point at the gap.
+TEST(MapperRoundtrip, PDLPSettingsDefaultProtoPreservesAllCppDefaults)
+{
+  cuopt::remote::PDLPSolverSettings pb;
+  pdlp_solver_settings_t<int32_t, double> fresh;
+  pdlp_solver_settings_t<int32_t, double> after = fresh;
+  map_proto_to_pdlp_settings(pb, after);
+
+  // Tolerances (all 1e-4 / 1e-10 by C++ default).
+  EXPECT_DOUBLE_EQ(after.tolerances.absolute_gap_tolerance,
+                   fresh.tolerances.absolute_gap_tolerance);
+  EXPECT_DOUBLE_EQ(after.tolerances.relative_gap_tolerance,
+                   fresh.tolerances.relative_gap_tolerance);
+  EXPECT_DOUBLE_EQ(after.tolerances.absolute_primal_tolerance,
+                   fresh.tolerances.absolute_primal_tolerance);
+  EXPECT_DOUBLE_EQ(after.tolerances.relative_primal_tolerance,
+                   fresh.tolerances.relative_primal_tolerance);
+  EXPECT_DOUBLE_EQ(after.tolerances.absolute_dual_tolerance,
+                   fresh.tolerances.absolute_dual_tolerance);
+  EXPECT_DOUBLE_EQ(after.tolerances.relative_dual_tolerance,
+                   fresh.tolerances.relative_dual_tolerance);
+  EXPECT_DOUBLE_EQ(after.tolerances.primal_infeasible_tolerance,
+                   fresh.tolerances.primal_infeasible_tolerance);
+  EXPECT_DOUBLE_EQ(after.tolerances.dual_infeasible_tolerance,
+                   fresh.tolerances.dual_infeasible_tolerance);
+  // Limits.
+  EXPECT_EQ(after.time_limit, fresh.time_limit) << "time_limit default (infinity) preserved";
+  // Bools with non-zero defaults.
+  EXPECT_EQ(after.log_to_console, fresh.log_to_console);
+  EXPECT_EQ(after.dual_postsolve, fresh.dual_postsolve);
+  EXPECT_EQ(after.eliminate_dense_columns, fresh.eliminate_dense_columns);
+  EXPECT_EQ(after.barrier_iterative_refinement, fresh.barrier_iterative_refinement);
+  // Numeric defaults != 0.
+  EXPECT_EQ(after.num_gpus, fresh.num_gpus);
+  EXPECT_EQ(after.folding, fresh.folding);
+  EXPECT_EQ(after.augmented, fresh.augmented);
+  EXPECT_EQ(after.dualize, fresh.dualize);
+  EXPECT_EQ(after.ordering, fresh.ordering);
+  EXPECT_EQ(after.barrier_dual_initial_point, fresh.barrier_dual_initial_point);
+  EXPECT_DOUBLE_EQ(after.barrier_step_scale, fresh.barrier_step_scale);
+  // Enum-int32 fields (post-decode clamping defends out-of-range; default `0`
+  // on the wire is in-range so the clamp does not fire, but the `optional`
+  // guard prevents the assignment entirely and the C++ default survives).
+  EXPECT_EQ(static_cast<int>(after.presolver), static_cast<int>(fresh.presolver));
+  EXPECT_EQ(static_cast<int>(after.pdlp_precision), static_cast<int>(fresh.pdlp_precision));
+  // True-enum field: the proto3 enum zero is `Stable1` (first listed value)
+  // and the C++ default is `Stable3`. Without `optional` on this field the
+  // mapper would silently apply `Stable1`; the `has_pdlp_solver_mode()`
+  // guard preserves the C++ default.
+  EXPECT_EQ(static_cast<int>(after.pdlp_solver_mode), static_cast<int>(fresh.pdlp_solver_mode));
+  EXPECT_EQ(static_cast<int>(fresh.pdlp_solver_mode), static_cast<int>(pdlp_solver_mode_t::Stable3))
+    << "pre-condition: C++ default is expected to be Stable3";
+}
+
+TEST(MapperRoundtrip, MIPSettingsDefaultProtoPreservesAllCppDefaults)
+{
+  cuopt::remote::MIPSolverSettings pb;
+  mip_solver_settings_t<int32_t, double> fresh;
+  mip_solver_settings_t<int32_t, double> after = fresh;
+  map_proto_to_mip_settings(pb, after);
+
+  // Tolerances.
+  EXPECT_DOUBLE_EQ(after.tolerances.absolute_mip_gap, fresh.tolerances.absolute_mip_gap);
+  EXPECT_DOUBLE_EQ(after.tolerances.relative_mip_gap, fresh.tolerances.relative_mip_gap);
+  EXPECT_DOUBLE_EQ(after.tolerances.integrality_tolerance, fresh.tolerances.integrality_tolerance);
+  EXPECT_DOUBLE_EQ(after.tolerances.absolute_tolerance, fresh.tolerances.absolute_tolerance);
+  EXPECT_DOUBLE_EQ(after.tolerances.relative_tolerance, fresh.tolerances.relative_tolerance);
+  EXPECT_DOUBLE_EQ(after.tolerances.presolve_absolute_tolerance,
+                   fresh.tolerances.presolve_absolute_tolerance);
+  // Limits.
+  EXPECT_EQ(after.time_limit, fresh.time_limit);
+  EXPECT_EQ(after.work_limit, fresh.work_limit);
+  EXPECT_EQ(after.node_limit, fresh.node_limit);  // sentinel path
+  // Bools with non-zero defaults.
+  EXPECT_EQ(after.log_to_console, fresh.log_to_console);
+  EXPECT_EQ(after.probing, fresh.probing);
+  // Numeric knobs.
+  EXPECT_EQ(after.num_cpu_threads, fresh.num_cpu_threads);
+  EXPECT_EQ(after.num_gpus, fresh.num_gpus);
+  EXPECT_EQ(after.reliability_branching, fresh.reliability_branching);
+  EXPECT_EQ(after.symmetry, fresh.symmetry);  // clamp-defended; default -1
+  EXPECT_EQ(after.max_cut_passes, fresh.max_cut_passes);
+  EXPECT_EQ(after.mir_cuts, fresh.mir_cuts);
+  EXPECT_EQ(after.mixed_integer_gomory_cuts, fresh.mixed_integer_gomory_cuts);
+  EXPECT_EQ(after.knapsack_cuts, fresh.knapsack_cuts);
+  EXPECT_EQ(after.clique_cuts, fresh.clique_cuts);
+  EXPECT_EQ(after.implied_bound_cuts, fresh.implied_bound_cuts);
+  EXPECT_EQ(after.strong_chvatal_gomory_cuts, fresh.strong_chvatal_gomory_cuts);
+  EXPECT_EQ(after.reduced_cost_strengthening, fresh.reduced_cost_strengthening);
+  EXPECT_DOUBLE_EQ(after.cut_change_threshold, fresh.cut_change_threshold);
+  EXPECT_DOUBLE_EQ(after.cut_min_orthogonality, fresh.cut_min_orthogonality);
+  EXPECT_EQ(after.strong_branching_simplex_iteration_limit,
+            fresh.strong_branching_simplex_iteration_limit);
+  EXPECT_EQ(after.seed, fresh.seed);
+  EXPECT_DOUBLE_EQ(after.semi_continuous_big_m, fresh.semi_continuous_big_m);
+  EXPECT_EQ(static_cast<int>(after.presolver), static_cast<int>(fresh.presolver));
+  EXPECT_EQ(after.mip_scaling, fresh.mip_scaling);
+  // heuristic_params: spot-check one of each kind (int, double).
+  EXPECT_EQ(after.heuristic_params.population_size, fresh.heuristic_params.population_size);
+  EXPECT_EQ(after.heuristic_params.num_cpufj_threads, fresh.heuristic_params.num_cpufj_threads);
+  EXPECT_DOUBLE_EQ(after.heuristic_params.presolve_time_ratio,
+                   fresh.heuristic_params.presolve_time_ratio);
+  EXPECT_DOUBLE_EQ(after.heuristic_params.presolve_max_time,
+                   fresh.heuristic_params.presolve_max_time);
+  EXPECT_DOUBLE_EQ(after.heuristic_params.rins_fix_rate, fresh.heuristic_params.rins_fix_rate);
+  EXPECT_EQ(after.heuristic_params.enabled_recombiners, fresh.heuristic_params.enabled_recombiners);
+  EXPECT_DOUBLE_EQ(after.heuristic_params.initial_infeasibility_weight,
+                   fresh.heuristic_params.initial_infeasibility_weight);
 }
