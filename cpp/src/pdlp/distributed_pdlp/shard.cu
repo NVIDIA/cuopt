@@ -155,12 +155,26 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
 
   sub_pdlp->pdhg_solver_.set_is_multi_gpu(true);
 
-  // Inject master-scaled buffers inside sub_pdlp
+  // Re-inject master-scaled buffers inside sub_pdlp.
+  // Need to also re-inject the offsets and variables arrays to revert
+  // the csrsort done by problem_t's constructor.
   auto& scaled = sub_pdlp->get_op_problem_scaled();
+  raft::copy(scaled.offsets.data(),
+             rank_data.h_A_row_offsets.data(),
+             rank_data.h_A_row_offsets.size(),
+             stream_view);
+  raft::copy(scaled.variables.data(),
+             rank_data.h_A_col_indices.data(),
+             rank_data.h_A_col_indices.size(),
+             stream_view);
   raft::copy(scaled.coefficients.data(),
              rank_data.h_A_values_scaled.data(),
              rank_data.h_A_values_scaled.size(),
              stream_view);
+  // A_T side: all three arrays were already overridden together from
+  // rank_data on sub_problem (see step 4 above) and deep-copied into the
+  // scaled problem, so reverse_offsets / reverse_constraints already match
+  // h_A_t_values_scaled's order. Only the values need a SCALED swap-in.
   raft::copy(scaled.reverse_coefficients.data(),
              rank_data.h_A_t_values_scaled.data(),
              rank_data.h_A_t_values_scaled.size(),
