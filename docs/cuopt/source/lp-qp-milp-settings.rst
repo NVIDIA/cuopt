@@ -581,9 +581,11 @@ MIP Determinism Mode
 ``CUOPT_MIP_DETERMINISM_MODE`` controls whether the MIP solver runs in opportunistic or deterministic mode.
 
 * ``0`` (``CUOPT_MODE_OPPORTUNISTIC``): Opportunistic mode — results may vary between runs due to parallelism (default).
-* ``1`` (``CUOPT_MODE_DETERMINISTIC``): Deterministic mode — guarantees reproducible results across runs with the same number of threads.
+* ``1`` (``CUOPT_MODE_DETERMINISTIC``): Deterministic mode — improves reproducibility across runs with the same number of threads.
 
 .. note:: The default value is ``0`` (opportunistic).
+
+.. warning:: Deterministic mode is experimental. It improves reproducibility in many cases but does not yet guarantee fully deterministic results in all scenarios.
 
 MIP Symmetry
 ^^^^^^^^^^^^^
