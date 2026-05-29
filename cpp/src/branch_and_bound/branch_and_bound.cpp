@@ -324,36 +324,21 @@ void branch_and_bound_t<i_t, f_t>::set_initial_upper_bound(f_t bound)
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::print_table_header()
 {
-  if (settings_.deterministic) {
-    settings_.log.print_format(
-      "{:^1}|{:^12}|{:^12}|{:^19}|{:^15}|{:^8}|{:^7}|{:^11}|{:^11}|{:^15}|{:^8}|{:^8}|",
-      "",
-      "Explored",
-      "Unexplored",
-      "Objective",
-      "Bound",
-      "IntInf",
-      "Depth",
-      "Iter/Node",
-      "Gap",
-      "Completion",
-      "Work",
-      "Time");
-  } else {
-    settings_.log.print_format(
-      "{:^1}|{:^12}|{:^12}|{:^19}|{:^15}|{:^8}|{:^7}|{:^11}|{:^11}|{:^15}|{:^8}|",
-      "",
-      "Explored",
-      "Unexplored",
-      "Objective",
-      "Bound",
-      "IntInf",
-      "Depth",
-      "Iter/Node",
-      "Gap",
-      "Completion",
-      "Time");
-  }
+  std::string header =
+    std::format("{:^1}|{:^12}|{:^12}|{:^19}|{:^15}|{:^8}|{:^7}|{:^11}|{:^11}|{:^15}|",
+                "",
+                "Explored",
+                "Unexplored",
+                "Objective",
+                "Bound",
+                "IntInf",
+                "Depth",
+                "Iter/Node",
+                "Gap",
+                "Completion");
+  if (settings_.deterministic) { header += std::format("{:^8}|", "Work"); }
+  header += std::format("{:^8}|", "Time");
+  settings_.log.printf("%s", header.c_str());
 }
 
 template <typename i_t, typename f_t>
@@ -366,18 +351,22 @@ void branch_and_bound_t<i_t, f_t>::report_heuristic(f_t obj)
     f_t user_gap              = user_relative_gap(original_lp_, obj, lower_bound);
     std::string user_gap_text = to_percentage(user_gap);
 
-    settings_.log.print_format(
-      "H {:>12} {:>12} {:^19.6e} {:^15.6e} {:>8} {:>7} {:^11} {:^11} {:^15} {:>8.2f}",
-      "",  // nodes explored
-      "",  // nodes unexplored
-      user_obj,
-      user_lower,
-      "",  // integer infeasible
-      "",  // depth
-      "",  // iter/node
-      user_gap_text.c_str(),
-      "",  // tree progress
-      toc(exploration_stats_.start_time));
+    std::string log_line =
+      std::format("H {:>12} {:>12} {:^19.6e} {:^15.6e} {:>8} {:>7} {:^11} {:^11} {:^15}",
+                  "",  // nodes explored
+                  "",  // nodes unexplored
+                  user_obj,
+                  user_lower,
+                  "",  // integer infeasible
+                  "",  // depth
+                  "",  // iter/node
+                  user_gap_text,
+                  ""  // tree progress
+      );
+
+    if (settings_.deterministic) { log_line += std::format("{:^8}", ""); }
+    log_line += std::format(" {:>8.2f}", toc(exploration_stats_.start_time));
+    settings_.log.printf("%s", log_line.c_str());
   } else {
     if (solving_root_relaxation_.load()) {
       f_t user_obj = compute_user_objective(original_lp_, obj);
@@ -411,37 +400,21 @@ void branch_and_bound_t<i_t, f_t>::report(
   std::string user_gap_text   = to_percentage(user_gap);
   std::string tree_completion = to_percentage(search_tree_.progress.load());
 
-  if (work_time >= 0) {
-    settings_.log.print_format(
-      "{:^1} {:>12} {:>12} {:^19.6e} {:^15.6e} {:>8} {:>7} {:^11.1e} {:^11} {:^15} {:>8.2f} "
-      "{:>8.2f}",
-      symbol,
-      nodes_explored,
-      nodes_unexplored,
-      user_obj,
-      user_lower,
-      node_int_infeas,
-      node_depth,
-      iter_node,
-      user_gap_text.c_str(),
-      tree_completion.c_str(),
-      work_time,
-      toc(exploration_stats_.start_time));
-  } else {
-    settings_.log.print_format(
-      "{:^1} {:>12} {:>12} {:^19.6e} {:^15.6e} {:>8} {:>7} {:^11.1e} {:^11} {:^15} {:>8.2f}",
-      symbol,
-      nodes_explored,
-      nodes_unexplored,
-      user_obj,
-      user_lower,
-      node_int_infeas,
-      node_depth,
-      iter_node,
-      user_gap_text.c_str(),
-      tree_completion.c_str(),
-      toc(exploration_stats_.start_time));
-  }
+  std::string log_line =
+    std::format("{:^1} {:>12} {:>12} {:^19.6e} {:^15.6e} {:>8} {:>7} {:^11.1e} {:^11} {:^15}",
+                symbol,
+                nodes_explored,
+                nodes_unexplored,
+                user_obj,
+                user_lower,
+                node_int_infeas,
+                node_depth,
+                iter_node,
+                user_gap_text,
+                tree_completion);
+  if (work_time >= 0) { log_line += std::format(" {:>8.2f}", work_time); }
+  log_line += std::format(" {:>8.2f}", toc(exploration_stats_.start_time));
+  settings_.log.printf("%s", log_line.c_str());
 }
 
 template <typename i_t, typename f_t>
