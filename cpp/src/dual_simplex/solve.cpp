@@ -662,8 +662,8 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
     // Run crossover
     lp_solution_t<i_t, f_t> crossover_solution(original_lp.num_rows, original_lp.num_cols);
     std::vector<variable_status_t> vstatus(original_lp.num_cols);
-    crossover_status_t crossover_status =
-      crossover(original_lp, settings, lp_solution, start_time, crossover_solution, vstatus);
+    crossover_status_t crossover_status = crossover(
+      original_lp, barrier_settings, lp_solution, start_time, crossover_solution, vstatus);
     settings.log.printf("Crossover status: %d\n", crossover_status);
     if (crossover_status == crossover_status_t::OPTIMAL) { barrier_status = lp_status_t::OPTIMAL; }
   }
