@@ -3058,14 +3058,14 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
           f_t old_dp     = dual_perturb;
           dual_perturb   = std::min(max_perturb, dual_perturb * 10.0);
           primal_perturb = std::min(max_perturb, primal_perturb * 10.0);
-          settings.log.debug(
+          settings.log.printf(
             "  reg UP: %e -> %e (solve_err=%e)\n", old_dp, dual_perturb, solve_err);
         } else if (solve_err < 1e-4) {
           f_t old_dp     = dual_perturb;
           dual_perturb   = std::max(min_perturb, dual_perturb / 10.0);
           primal_perturb = std::max(min_perturb, primal_perturb / 10.0);
           if (old_dp != dual_perturb) {
-            settings.log.debug(
+            settings.log.printf(
               "  reg DOWN: %e -> %e (solve_err=%e)\n", old_dp, dual_perturb, solve_err);
           }
         }
@@ -3817,7 +3817,7 @@ void barrier_solver_t<i_t, f_t>::compute_target_mu(
   const f_t mu_denom      = data.complementarity_degree(data.x.size(), data.n_upper_bounds);
   mu_aff                  = complementarity_aff_sum / mu_denom;
   sigma                   = std::max(0.0, std::min(1.0, std::pow(mu_aff / mu, 3.0)));
-  new_mu                  = sigma * mu_aff;
+  new_mu                  = data.has_cones() ? sigma * mu : sigma * mu_aff;
 }
 
 template <typename i_t, typename f_t>

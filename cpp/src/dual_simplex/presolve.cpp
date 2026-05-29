@@ -1161,7 +1161,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
       if (problem.lower[j] == -inf && problem.upper[j] == inf) { free_variables++; }
     }
     if (removed_free_variables != 0) {
-      settings.log.printf("Bounded %d free variable row(s) in presolve\n",
+      settings.log.printf("Bounded %d free variables in presolve\n",
                           static_cast<int>(removed_free_variables));
     }
   }

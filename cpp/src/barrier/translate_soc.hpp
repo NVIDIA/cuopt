@@ -807,27 +807,34 @@ void convert_quadratic_constraints_to_second_order_cones(
   // Bounded cone participants cannot sit in the cone block:
   // introduce a free cone copy and alias - original = 0 so the original keeps its bounds
   // in the linear block while the barrier sees an unconstrained cone variable.
+  // Exception: cone heads with lower = 0 need no split because cone membership
+  // already implies x_0 >= ||x_tail|| >= 0.
   {
     const f_t neg_inf = -std::numeric_limits<f_t>::infinity();
     const f_t pos_inf = std::numeric_limits<f_t>::infinity();
     auto is_box_free  = [&](i_t j) {
       return user_problem.lower[j] == neg_inf && user_problem.upper[j] == pos_inf;
     };
+    auto is_cone_head_nonneg_only = [&](i_t j) {
+      return user_problem.lower[j] == 0 && user_problem.upper[j] == pos_inf;
+    };
 
     std::vector<std::pair<i_t, i_t>> bound_split_pairs;  // (cone_alias, linear_original)
 
     for (std::vector<i_t>& cone : cone_vars) {
-      for (i_t& var : cone) {
+      for (size_t idx = 0; idx < cone.size(); idx++) {
+        i_t& var = cone[idx];
         cuopt_expects(var >= 0 && var < n_prob,
                       error_type_t::ValidationError,
                       "SOC variable index %d is outside [0, %d)",
                       static_cast<int>(var),
                       static_cast<int>(n_prob));
-        if (!is_box_free(var)) {
-          const i_t alias = static_cast<i_t>(n_prob + bound_split_pairs.size());
-          bound_split_pairs.emplace_back(alias, var);
-          var = alias;
-        }
+        const bool is_head = (idx == 0);
+        if (is_box_free(var)) { continue; }
+        if (is_head && is_cone_head_nonneg_only(var)) { continue; }
+        const i_t alias = static_cast<i_t>(n_prob + bound_split_pairs.size());
+        bound_split_pairs.emplace_back(alias, var);
+        var = alias;
       }
     }
 
