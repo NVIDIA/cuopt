@@ -679,11 +679,10 @@ class iteration_data_t {
             i_t q_end = (nnzQ > 0) ? Q.col_start[i + 1] : 0;
 
             // Q entries before cone block
-            while (qp < q_end && Q.i[qp] < cone_col_start) {
+            for (; qp < q_end && Q.i[qp] < cone_col_start; qp++) {
               augmented_CSR.j[q]   = Q.i[qp];
               augmented_CSR.x[q++] = -Q.x[qp];
               off_diag_Qnz++;
-              qp++;
             }
 
             // Dense cone block, absorbing any Q entries that fall inside
@@ -706,11 +705,10 @@ class iteration_data_t {
             }
 
             // Q entries after cone block
-            while (qp < q_end) {
+            for (; qp < q_end; qp++) {
               augmented_CSR.j[q]   = Q.i[qp];
               augmented_CSR.x[q++] = -Q.x[qp];
               off_diag_Qnz++;
-              qp++;
             }
           } else if (nnzQ == 0) {
             augmented_diagonal_indices[i] = q;
