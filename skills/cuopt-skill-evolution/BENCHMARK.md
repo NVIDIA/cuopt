@@ -9,7 +9,7 @@ This benchmark summarizes 3-Tier Evaluation from NVSkills-Eval results for the s
 - Skill: `cuopt-skill-evolution`
 - Evaluation date: 2026-05-29
 - NVSkills-Eval profile: `external`
-- Overall verdict: PASS
+- Overall verdict: FAIL
 - Tier 3 live agent evaluation: not available in this report
 
 ## Agents Used
@@ -40,15 +40,15 @@ Tier 3 dimension rollup was not available in this report.
 
 ## Tier 1: Static Validation Summary
 
-Tier 1 validation passed with observations. NVSkills-Eval ran 9 checks and found 13 total findings.
+Tier 1 validation reported findings. NVSkills-Eval ran 9 checks and found 13 total findings.
 
 Top findings:
 
 - MEDIUM QUALITY/quality_discoverability: Description contains vague words (`skills/cuopt-skill-evolution/SKILL.md`)
 - MEDIUM SCHEMA/body_recommended_section: Missing recommended section: '## Instructions' (`skills/cuopt-skill-evolution/SKILL.md`)
 - MEDIUM SCHEMA/body_recommended_section: Missing recommended section: '## Examples' (`skills/cuopt-skill-evolution/SKILL.md`)
-- MEDIUM SECURITY/Unknown (SQP-1): The skill description states it is 'Always active — applies to every interaction' without defining specific trigger phra (`skill-card.md:2`)
-- MEDIUM SECURITY/Unknown (SQP-2): The skill is designed to 'propose skill updates so future interactions benefit automatically,' which implies it can reco (`skill-card.md:2`)
+- MEDIUM SECURITY/Unknown (SQP-1): The skill is described as 'Always active — applies to every interaction,' which combined with a vague trigger condition  (`skill-card.md:2`)
+- LOW QUALITY/quality_discoverability: Description doesn't mention WHEN to use this skill (`skills/cuopt-skill-evolution/SKILL.md`)
 
 ## Tier 2: Deduplication Summary
 
@@ -61,4 +61,4 @@ Notable observations:
 
 ## Publication Recommendation
 
-The skill is suitable to proceed toward NVSkills-Eval publication based on this benchmark. Skill owners should keep this file with the skill and refresh it when the evaluation dataset, skill behavior, or target agents materially change.
+The skill should be reviewed before NVSkills-Eval publication. Skill owners should address the findings above and rerun NVSkills-Eval to refresh this benchmark.

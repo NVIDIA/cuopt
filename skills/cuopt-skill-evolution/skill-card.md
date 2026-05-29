@@ -7,9 +7,9 @@ This skill is ready for commercial/non-commercial use. <br>
 NVIDIA <br>
 
 ### License/Terms of Use: <br>
-Apache 2.0 <br>
+Apache-2.0 <br>
 ## Use Case: <br>
-Developers and engineers using cuOpt agent skills who need to continuously improve skill quality by capturing generalizable learnings from agent interactions into reusable skill updates. <br>
+Developers and engineers use this skill to automatically detect generalizable learnings from agent-assisted problem solving and propose skill updates so future interactions benefit. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
@@ -19,17 +19,14 @@ Risk: Review before execution as proposals could introduce incorrect or misleadi
 Mitigation: Review and scan skill before deployment. <br>
 
 ## Reference(s): <br>
-- [Skill Evolution SKILL.md](skills/cuopt-skill-evolution/SKILL.md) <br>
+- [SKILL.md](skills/cuopt-skill-evolution/SKILL.md) <br>
 
 
 ## Skill Output: <br>
 **Output Type(s):** [Analysis, Code] <br>
-**Output Format:** [Markdown with inline code diffs] <br>
+**Output Format:** [Markdown] <br>
 **Output Parameters:** [1D] <br>
-**Other Properties Related to Output:** [Proposals require explicit user approval before application] <br>
-
-## Evaluation Tasks: <br>
-NVSkills-Eval `external` profile, 3-Tier evaluation. Overall verdict: PASS. Tier 1 static validation: 9 checks (passed with observations). Tier 2 deduplication: 2 checks (passed). <br>
+**Other Properties Related to Output:** [None] <br>
 
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
