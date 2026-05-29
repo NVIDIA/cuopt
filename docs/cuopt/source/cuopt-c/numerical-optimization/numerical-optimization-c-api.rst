@@ -142,7 +142,7 @@ When you are done with a solve you should destroy a `cuOptSolverSettings` object
 
 Setting Parameters
 ------------------
-The following functions are used to set and get parameters. You can find more details on the available parameters in the :doc:`LP/MILP settings <../../lp-qp-milp-settings>` section.
+The following functions are used to set and get parameters. You can find more details on the available parameters in the :doc:`LP/MILP settings <../../numerical-optimization-settings>` section.
 
 .. doxygenfunction:: cuOptSetParameter
 .. doxygenfunction:: cuOptGetParameter
@@ -156,7 +156,7 @@ The following functions are used to set and get parameters. You can find more de
 Parameter Constants
 -------------------
 
-These constants are used as parameter names in the :c:func:`cuOptSetParameter`, :c:func:`cuOptGetParameter`, and similar functions. For more details on the available parameters, see the :doc:`LP/MILP settings <../../lp-qp-milp-settings>` section.
+These constants are used as parameter names in the :c:func:`cuOptSetParameter`, :c:func:`cuOptGetParameter`, and similar functions. For more details on the available parameters, see the :doc:`LP/MILP settings <../../numerical-optimization-settings>` section.
 
 .. LP/MIP parameter string constants
 .. doxygendefine:: CUOPT_ABSOLUTE_DUAL_TOLERANCE

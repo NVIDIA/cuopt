@@ -30,4 +30,4 @@ This section contains details on the cuOpt Python package.
    :name: LP, QP and MILP API
    :titlesonly:
 
-   LP, QP and MILP <lp-qp-milp/index.rst>
+   LP, QP and MILP <numerical-optimization/index.rst>

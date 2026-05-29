@@ -17,4 +17,4 @@ NVIDIA cuOpt supports a C API for GPU-accelerated optimization that enables user
    :name: LP, QP and MILP Optimization
    :titlesonly:
 
-   LP, QP and MILP <lp-qp-milp/index.rst>
+   LP, QP and MILP <numerical-optimization/index.rst>

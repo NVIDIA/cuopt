@@ -6,7 +6,7 @@ LP/QP C API Examples
 Example With Data
 -----------------
 
-This example demonstrates how to use the LP solver in C. More details on the API can be found in :doc:`C API <lp-qp-milp-c-api>`.
+This example demonstrates how to use the LP solver in C. More details on the API can be found in :doc:`C API <numerical-optimization-c-api>`.
 
 The example code is available at ``examples/cuopt-c/lp/simple_lp_example.c`` (:download:`download <examples/simple_lp_example.c>`):
 

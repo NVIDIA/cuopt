@@ -9,7 +9,7 @@ This section contains details on the cuOpt LP/QP/MILP C API.
    :name: LP/QP/MILP
    :titlesonly:
 
-   lp-qp-milp-c-api.rst
-   ../../lp-qp-milp-settings.rst
+   numerical-optimization-c-api.rst
+   ../../numerical-optimization-settings.rst
    lp-qp-example.rst
    milp-examples.rst

@@ -10,5 +10,5 @@ This section contains details on the cuOpt linear programming, quadratic program
    :name: LP, QP and MILP
    :titlesonly:
 
-   lp-qp-milp-api.rst
-   lp-qp-milp-examples.rst
+   numerical-optimization-api.rst
+   numerical-optimization-examples.rst
