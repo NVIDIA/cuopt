@@ -58,7 +58,7 @@ bool validate_barrier_cone_layout(const lp_problem_t<i_t, f_t>& problem,
   if (problem.second_order_cone_dims.empty()) { return true; }
 
   i_t cone_end = problem.cone_var_start;
-  for (auto q_k : problem.second_order_cone_dims) {
+  for (i_t q_k : problem.second_order_cone_dims) {
     if (q_k <= 1) {
       settings.log.printf(
         "Error: second-order cone dimensions must be at least 2; use linear variables instead of "
@@ -263,7 +263,7 @@ class iteration_data_t {
 
     {
       raft::common::nvtx::range scope("Barrier: LP Data: direct free linear");
-      // Set up direct free linear variable tracking (linear columns only, j < cone_start).
+      // Setup tracking of direct free variables (linear columns only j < cone_start)
       if (!direct_free_variables.empty()) {
         n_direct_free_linear = direct_free_variables.size();
         std::vector<i_t> is_direct_free_linear_host(lp.num_cols, 0);
@@ -810,9 +810,10 @@ class iteration_data_t {
     } else {
       const i_t linear_n = has_soc ? cone_start() : n;
 
-      // Primal diagonal: linear block includes dual_perturb; SOC block is filled by scatter below.
-      // Direct free variables use barrier D = 0 in augmented_multiply; omit span_diag[j] here so
-      // the factorized matrix matches the matvec (only -q_diag - dual_perturb on the diagonal).
+      // Refactor: update linear primal diagonals (j < cone_start() for SOCP) with
+      // -q_diag - d_j - dual_perturb. Cone Hessian block is overwritten by scatter when has_soc.
+      // Direct-free linear vars: d_j = 0 here and D·x = 0 in augmented_multiply so the Q/D part
+      // of the diagonal matches the matvec (-q_diag); dual_perturb remains factorization-only.
       thrust::for_each_n(
         rmm::exec_policy(handle_ptr->get_stream()),
         thrust::make_counting_iterator<i_t>(0),
@@ -1891,7 +1892,7 @@ class iteration_data_t {
   i_t symbolic_status;
   i_t n_direct_free_linear{0};
   rmm::device_uvector<i_t>
-    d_is_direct_free_linear_;  // 1 if direct free linear (j < cone_start), else 0
+    d_is_direct_free_linear_;  // 1 if variable is free in the linear block, else 0
 
   // Adaptive regularization for the augmented system
   f_t dual_perturb{1e-8};
@@ -2103,19 +2104,53 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
 {
   raft::common::nvtx::range fun_scope("Barrier: initial_point");
   const bool use_augmented          = data.use_augmented;
-  const bool has_soc                = data.has_cones();
   const bool has_direct_free_linear = data.n_direct_free_linear > 0;
 
-  // Mask used by the two ADAT/augmented branches below to enforce z > 0 on the linear block
-  // while leaving the SOC cone block (kept feasible by NT scaling) alone.
-  std::vector<i_t> nonnegative_z(lp.num_cols, 1);
-  if (has_soc) {
-    const i_t cone_start = data.cone_start();
-    const i_t cone_end   = data.cone_end();
-    for (i_t i = cone_start; i < cone_end; ++i) {
-      nonnegative_z[i] = 0;
+  // SOCP: data-dependent initial point following SeDuMi (Sturm, 1999).
+  //   mu = sqrt((1 + ||b||_inf) * (1 + ||c||_inf))
+  //   primal and dual: x = mu * e_K,  z = mu * e_K
+  // where e_K is the identity of the symmetric cone:
+  //   LP block: e = 1,  SOC block: e = (sqrt(2), 0, ..., 0)
+  if (data.has_cones()) {
+    const i_t cs     = data.cone_start();
+    const f_t norm_b = vector_norm_inf<i_t, f_t>(lp.rhs);
+    const f_t norm_c = vector_norm_inf<i_t, f_t>(lp.objective);
+    const f_t mu     = std::sqrt((1.0 + norm_b) * (1.0 + norm_c));
+    const f_t sqrt2  = std::sqrt(2.0);
+    const f_t x_soc  = mu * sqrt2;
+    const f_t z_soc  = mu * sqrt2;
+    // Linear orthant
+    for (i_t j = 0; j < cs; ++j) {
+      data.x[j] = mu;
+      data.z[j] = mu;
     }
+    if (has_direct_free_linear) {
+      for (i_t j : presolve_info.direct_free_variables) {
+        if (j < cs) { data.z[j] = 0.0; }
+      }
+    }
+    // SOC blocks
+    i_t off = 0;
+    for (size_t k = 0; k < lp.second_order_cone_dims.size(); k++) {
+      i_t q_k          = lp.second_order_cone_dims[k];
+      data.x[cs + off] = x_soc;
+      data.z[cs + off] = z_soc;
+      for (i_t j = 1; j < q_k; ++j) {
+        data.x[cs + off + j] = 0.0;
+        data.z[cs + off + j] = 0.0;
+      }
+      off += q_k;
+    }
+    data.y.set_scalar(0.0);
+    if (data.n_upper_bounds > 0) {
+      data.w.set_scalar(mu);
+      data.v.set_scalar(mu);
+    }
+    return 0;
   }
+
+  // Mask used by the two ADAT/augmented branches below to enforce z > 0.
+  std::vector<i_t> nonnegative_z(lp.num_cols, 1);
 
   // Perform a numerical factorization
   i_t status;
@@ -2243,51 +2278,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
 #endif
   }
 
-  dense_vector_t<i_t, f_t> dual_res(lp.num_cols);
   float64_t epsilon_adjust = 10.0;
-
-  // Data-dependent initial point for SOCP, following SeDuMi (Sturm, 1999).
-  //   mu = sqrt((1 + ||b||_inf) * (1 + ||c||_inf))
-  //   primal and dual: x = mu * e_K,  z = mu * e_K
-  // where e_K is the identity of the symmetric cone:
-  //   LP block: e = 1,  SOC block: e = (sqrt(2), 0, ..., 0)
-  if (has_soc) {
-    const i_t cs     = data.cone_start();
-    const f_t norm_b = vector_norm_inf<i_t, f_t>(lp.rhs);
-    const f_t norm_c = vector_norm_inf<i_t, f_t>(lp.objective);
-    const f_t mu     = std::sqrt((1.0 + norm_b) * (1.0 + norm_c));
-    const f_t sqrt2  = std::sqrt(2.0);
-    const f_t x_soc  = mu * sqrt2;
-    const f_t z_soc  = mu * sqrt2;
-    // Linear orthant
-    for (i_t j = 0; j < cs; ++j) {
-      data.x[j] = mu;
-      data.z[j] = mu;
-    }
-    if (has_direct_free_linear) {
-      for (i_t j : presolve_info.direct_free_variables) {
-        if (j < cs) { data.z[j] = 0.0; }
-      }
-    }
-    // SOC blocks
-    i_t off = 0;
-    for (i_t k = 0; k < static_cast<i_t>(lp.second_order_cone_dims.size()); ++k) {
-      i_t q_k          = lp.second_order_cone_dims[k];
-      data.x[cs + off] = x_soc;
-      data.z[cs + off] = z_soc;
-      for (i_t j = 1; j < q_k; ++j) {
-        data.x[cs + off + j] = 0.0;
-        data.z[cs + off + j] = 0.0;
-      }
-      off += q_k;
-    }
-    data.y.set_scalar(0.0);
-    if (data.n_upper_bounds > 0) {
-      data.w.set_scalar(mu);
-      data.v.set_scalar(mu);
-    }
-    return 0;
-  }
 
   if (settings.barrier_dual_initial_point == -1 || settings.barrier_dual_initial_point == 0) {
     // Use the dual starting point suggested by the paper
@@ -2321,10 +2312,8 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
         data.v[k] = -c[j] + epsilon;
       }
     }
-    // Now handle the case with no upper bounds (skip cone variables)
-    const i_t cone_end = data.cone_end();
+    // Now handle the case with no upper bounds
     for (i_t j = 0; j < lp.num_cols; j++) {
-      if (has_soc && j >= data.cone_start() && j < cone_end) continue;
       if (lp.upper[j] == inf) {
         if (c[j] > epsilon_adjust) {
           data.z[j] = c[j];
@@ -2400,16 +2389,9 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   settings.log.printf("||A^T y + z - E*v - Q*x - c ||: %e\n",
                       vector_norm2<i_t, f_t>(data.dual_residual));
 #endif
-  // Make sure (w, x, v, z) > 0. Skip cone variables and free variables being handled directly.
+  // Make sure (w, x, v, z) > 0. Skip free variables being handled directly.
   data.w.ensure_positive(epsilon_adjust);
   std::vector<i_t> nonnegative_variables(data.x.size(), 1);
-  if (has_soc) {
-    const i_t cone_start = data.cone_start();
-    const i_t cone_end   = data.cone_end();
-    for (i_t i = cone_start; i < cone_end; ++i) {
-      nonnegative_variables[i] = 0;
-    }
-  }
   if (has_direct_free_linear) {
     for (i_t j : presolve_info.direct_free_variables) {
       nonnegative_variables[j] = 0;
