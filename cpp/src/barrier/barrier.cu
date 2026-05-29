@@ -620,6 +620,7 @@ class iteration_data_t {
 
     std::vector<std::size_t> cone_offsets_host;
     std::vector<std::size_t> cone_block_offsets_host;
+    std::vector<i_t> local_to_cone;
 
     if (first_call) {
       if (has_soc) {
@@ -636,6 +637,16 @@ class iteration_data_t {
           cone_block_offsets_host[k + 1] = cone_block_offsets_host[k] + q_k * q_k;
         }
         total_block_nnz = static_cast<i_t>(cone_block_offsets_host[n_cones]);
+
+        // Precompute: for each local cone entry, which cone does it belong to?
+        local_to_cone.resize(m_c);
+        for (i_t k = 0; k < n_cones; ++k) {
+          const i_t lo = cone_offsets_host[k];
+          const i_t hi = cone_offsets_host[k + 1];
+          for (i_t p = lo; p < hi; p++) {
+            local_to_cone[p] = k;
+          }
+        }
       }
 
       i_t new_nnz = 2 * nnzA + n + m + nnzQ + total_block_nnz;  // conservative estimate of nnz
@@ -656,11 +667,7 @@ class iteration_data_t {
           if (is_cone_row) {
             // Determine which cone this variable belongs to and its local row
             i_t local_idx = i - cone_start();
-            i_t k         = 0;
-            while (k + 1 < cone_count() &&
-                   cone_offsets_host[k + 1] <= static_cast<std::size_t>(local_idx)) {
-              k++;
-            }
+            i_t k         = local_to_cone[local_idx];
             i_t local_r =
               static_cast<i_t>(static_cast<std::size_t>(local_idx) - cone_offsets_host[k]);
             i_t q_k            = static_cast<i_t>(cone_offsets_host[k + 1] - cone_offsets_host[k]);
