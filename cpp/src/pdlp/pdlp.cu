@@ -572,14 +572,25 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
                              op_problem_scaled_.presolve_data.objective_scaling_factor,
                              sub_pdlp_settings);
 
+    // Copy to host and then to shards.
+    // More robust than cudaDeviceEnablePeerAccess and cost-free-ish.
+    f_t h_step_size{}, h_primal_weight{}, h_best_primal_weight{};
+    f_t h_primal_step_size{}, h_dual_step_size{};
+    raft::copy(&h_step_size, step_size_.data(), 1, stream_view_);
+    raft::copy(&h_primal_weight, primal_weight_.data(), 1, stream_view_);
+    raft::copy(&h_best_primal_weight, best_primal_weight_.data(), 1, stream_view_);
+    raft::copy(&h_primal_step_size, primal_step_size_.data(), 1, stream_view_);
+    raft::copy(&h_dual_step_size, dual_step_size_.data(), 1, stream_view_);
+    handle_ptr_->sync_stream(stream_view_);
+
     for (auto& shard : multi_gpu_engine->shards) {
       raft::device_setter guard(shard->device_id);
       auto& sub = *shard->sub_pdlp;
-      raft::copy(sub.step_size_.data(), step_size_.data(), 1, shard->stream);
-      raft::copy(sub.primal_weight_.data(), primal_weight_.data(), 1, shard->stream);
-      raft::copy(sub.best_primal_weight_.data(), best_primal_weight_.data(), 1, shard->stream);
-      raft::copy(sub.primal_step_size_.data(), primal_step_size_.data(), 1, shard->stream);
-      raft::copy(sub.dual_step_size_.data(), dual_step_size_.data(), 1, shard->stream);
+      raft::copy(sub.step_size_.data(), &h_step_size, 1, shard->stream);
+      raft::copy(sub.primal_weight_.data(), &h_primal_weight, 1, shard->stream);
+      raft::copy(sub.best_primal_weight_.data(), &h_best_primal_weight, 1, shard->stream);
+      raft::copy(sub.primal_step_size_.data(), &h_primal_step_size, 1, shard->stream);
+      raft::copy(sub.dual_step_size_.data(), &h_dual_step_size, 1, shard->stream);
     }
 
     // Wire the engine into the master pdhg_solver_. Shards' pdhg_solver_ keep

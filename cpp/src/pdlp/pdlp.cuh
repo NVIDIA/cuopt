@@ -117,6 +117,11 @@ class pdlp_solver_t {
   // call across all shards' pdhg_solver_t::*_transform methods.
   rmm::device_uvector<f_t>& get_primal_step_size() { return primal_step_size_; }
   rmm::device_uvector<f_t>& get_dual_step_size() { return dual_step_size_; }
+  // Multi-GPU restart broadcast needs to mirror master's primal_weight /
+  // best_primal_weight onto every shard after each cuPDLPx restart so that
+  // downstream shard-side restart machinery stays in sync with master.
+  rmm::device_uvector<f_t>& get_primal_weight() { return primal_weight_; }
+  rmm::device_uvector<f_t>& get_best_primal_weight() { return best_primal_weight_; }
 
  private:
   void print_termination_criteria(const timer_t& timer, bool is_average = false);
