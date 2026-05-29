@@ -83,6 +83,7 @@
 #define CUOPT_SOLUTION_FILE            "solution_file"
 #define CUOPT_NUM_CPU_THREADS          "num_cpu_threads"
 #define CUOPT_NUM_GPUS                 "num_gpus"
+#define CUOPT_DISTRIBUTED_PDLP_NUM_GPUS "distributed_pdlp_num_gpus"
 #define CUOPT_MULTI_GPU_PARTITION_FILE "multi_gpu_partition_file"
 #define CUOPT_USE_DISTRIBUTED_PDLP     "use_distributed_pdlp"
 #define CUOPT_USER_PROBLEM_FILE        "user_problem_file"

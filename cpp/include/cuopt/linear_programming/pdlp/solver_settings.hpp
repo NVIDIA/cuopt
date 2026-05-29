@@ -307,6 +307,9 @@ class pdlp_solver_settings_t {
   presolver_t presolver{presolver_t::Default};
   bool dual_postsolve{true};
   int num_gpus{1};
+  // Number of GPUs to use specifically for distributed PDLP (use_distributed_pdlp=true).
+  // -1 means auto-detect
+  int distributed_pdlp_num_gpus{-1};
   std::string multi_gpu_partition_file{""};
   // Set to true inside the shards
   bool is_distributed_sub_pdlp{false};

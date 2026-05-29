@@ -426,10 +426,22 @@ int main(int argc, char* argv[])
   std::vector<rmm::mr::cuda_async_memory_resource> memory_resources;
 
   if (memory_backend == cuopt::linear_programming::memory_backend_t::GPU) {
-    const int num_gpus = settings.get_parameter<int>(CUOPT_NUM_GPUS);
+    // Distributed PDLP scales one shard per GPU and uses its own knob; everything else
+    // (concurrent, batch, MIP) uses num_gpus which is capped at 2.
+    // For distributed PDLP, -1 means "auto-detect": resolve to the visible device
+    // count so the RMM memory pools match what solve.cu will eventually dispatch.
+    const bool use_distributed_pdlp = settings.get_parameter<bool>(CUOPT_USE_DISTRIBUTED_PDLP);
+    int requested_gpus =
+      use_distributed_pdlp ? settings.get_parameter<int>(CUOPT_DISTRIBUTED_PDLP_NUM_GPUS)
+                           : settings.get_parameter<int>(CUOPT_NUM_GPUS);
+    if (use_distributed_pdlp && requested_gpus == -1) {
+      requested_gpus = raft::device_setter::get_device_count();
+    }
+    const int provisioned_gpus =
+      std::min(raft::device_setter::get_device_count(), requested_gpus);
 
-    memory_resources.reserve(std::min(raft::device_setter::get_device_count(), num_gpus));
-    for (int i = 0; i < std::min(raft::device_setter::get_device_count(), num_gpus); ++i) {
+    memory_resources.reserve(provisioned_gpus);
+    for (int i = 0; i < provisioned_gpus; ++i) {
       RAFT_CUDA_TRY(cudaSetDevice(i));
       memory_resources.emplace_back();
       rmm::mr::set_per_device_resource(rmm::cuda_device_id{i}, memory_resources.back());

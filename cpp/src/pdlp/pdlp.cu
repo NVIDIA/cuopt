@@ -378,23 +378,29 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
 template <typename i_t, typename f_t>
 pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
                                        pdlp_solver_settings_t<i_t, f_t> const& settings,
-                                       int num_gpus)
+                                       int distributed_pdlp_num_gpus)
   // 1. Delegate to single-GPU ctor to bring up all the per-master state
   //    (problem_ptr, op_problem_scaled_, pdhg_solver_, strategies, etc.).
   : pdlp_solver_t(op_problem, settings, /*is_legacy_batch_mode=*/false)
 {
-  if (num_gpus == 1) {
-    std::cout << "CAREFUL: num_gpus == 1, running dummy version" << std::endl;
+  CUOPT_LOG_INFO("Solving with distributed PDLP on %d GPU",
+                 distributed_pdlp_num_gpus);
+  if (distributed_pdlp_num_gpus == 1) {
+    std::cout << "CAREFUL !!: distributed_pdlp_num_gpus == 1, running single-shard dummy path, "
+                 "if you want to set the number of GPUs to use for distributed PDLP, set the "
+                 "parameter --distributed-pdlp-num-gpus"
+              << std::endl;
   }
-  cuopt_expects(num_gpus == settings.num_gpus /*&& settings.num_gpus > 1*/,
+  cuopt_expects(distributed_pdlp_num_gpus == settings.distributed_pdlp_num_gpus,
                 error_type_t::ValidationError,
-                "This constructor should only be used for distributed PDLP (num_gpus > 1)");
+                "This constructor's distributed_pdlp_num_gpus argument must match "
+                "settings.distributed_pdlp_num_gpus");
 
   // Distributed PDLP is currently double-only
   if constexpr (!std::is_same_v<f_t, double>) {
     cuopt_expects(false,
                   error_type_t::ValidationError,
-                  "Distributed PDLP (num_gpus > 1) currently requires double precision");
+                  "Distributed PDLP currently requires double precision");
     return;
   } else {
     // 2. Load or compute partition
@@ -405,20 +411,21 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
       validate_partition(parts,
                          op_problem_scaled_.n_constraints,
                          op_problem_scaled_.n_variables,
-                         num_gpus,
+                         distributed_pdlp_num_gpus,
                          "partition file");
     } else {
-      if (num_gpus == 1) {
+      if (distributed_pdlp_num_gpus == 1) {
         // Single-part dummy run: useful for exercising the mGPU code paths on a
         // single physical GPU without a real partition file.
-        std::cout << "CAREFUL: num_gpus == 1, running dummy version (single part covering "
+        std::cout << "CAREFUL: distributed_pdlp_num_gpus == 1, running dummy version (single "
+                     "part covering "
                   << op_problem_scaled_.n_constraints << " cstrs + "
                   << op_problem_scaled_.n_variables << " vars)" << std::endl;
       }
       partitioner_input_t<i_t, f_t> partition_input;
       partition_input.nb_cstr  = op_problem_scaled_.n_constraints;
       partition_input.nb_vars  = op_problem_scaled_.n_variables;
-      partition_input.nb_parts = num_gpus;
+      partition_input.nb_parts = distributed_pdlp_num_gpus;
       // Dummy partitioner ignores A / A_t for now; future METIS partitioners will
       // fill these CSR views before calling partition().
       auto partitioner = make_partitioner<i_t, f_t>(partitioner_kind_t::Dummy);
@@ -538,7 +545,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
                                                                 h_A_t_col_indices,
                                                                 h_A_t_values,
                                                                 h_A_t_values_scaled,
-                                                                settings.num_gpus,
+                                                                settings.distributed_pdlp_num_gpus,
                                                                 n_cstr,
                                                                 n_vars,
                                                                 nnz);
@@ -546,6 +553,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
     // 7. Build the per-shard PDLP settings:
     pdlp_solver_settings_t<i_t, f_t> sub_pdlp_settings                    = settings;
     sub_pdlp_settings.num_gpus                                            = 1;
+    sub_pdlp_settings.distributed_pdlp_num_gpus                           = 1;
     sub_pdlp_settings.multi_gpu_partition_file                            = "";
     sub_pdlp_settings.is_distributed_sub_pdlp                             = true;
     sub_pdlp_settings.hyper_params.default_l_inf_ruiz_iterations          = 0;

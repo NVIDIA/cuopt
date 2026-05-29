@@ -771,16 +771,29 @@ static optimization_problem_solution_t<i_t, f_t> run_pdlp_solver(
   }
 #endif
   if (settings.hyper_params.use_distributed_pdlp) {
-    /*
-    cuopt_expects(settings.num_gpus > 1,
+    // Resolve the -1 "auto-detect" sentinel to the actual visible-device count on
+    // the master process
+    pdlp_solver_settings_t<i_t, f_t> settings_resolved = settings;
+    if (settings_resolved.distributed_pdlp_num_gpus == -1) {
+      settings_resolved.distributed_pdlp_num_gpus = raft::device_setter::get_device_count();
+      CUOPT_LOG_INFO("distributed_pdlp_num_gpus == -1: auto-detected %d visible CUDA device",
+                     settings_resolved.distributed_pdlp_num_gpus);
+    }
+    cuopt_expects(settings_resolved.distributed_pdlp_num_gpus >= 1,
                   error_type_t::ValidationError,
-                  "use_distributed_pdlp requires settings.num_gpus > 1"); */
-    if (settings.num_gpus == 1) {std::cout << "CAREFUL: use_distributed_pdlp requires settings.num_gpus > 1" << std::endl;}
+                  "distributed_pdlp_num_gpus must be >= 1 or -1 (auto-detect)");
+    if (settings_resolved.distributed_pdlp_num_gpus == 1) {
+      std::cout
+        << "CAREFUL: use_distributed_pdlp with distributed_pdlp_num_gpus == 1 runs the "
+           "single-shard dummy path"
+        << std::endl;
+    }
     cuopt_expects(!is_batch_mode,
                   error_type_t::ValidationError,
                   "Distributed PDLP does not support batch mode");
-    // Multi-GPU ctor; dispatched by 3rd-arg TYPE (int num_gpus, not bool batch).
-    detail::pdlp_solver_t<i_t, f_t> solver(problem, settings, settings.num_gpus);
+    // Multi-GPU ctor; dispatched by 3rd-arg TYPE (int, not bool batch).
+    detail::pdlp_solver_t<i_t, f_t> solver(
+      problem, settings_resolved, settings_resolved.distributed_pdlp_num_gpus);
     return solver.run_solver(timer);
   }
   detail::pdlp_solver_t<i_t, f_t> solver(problem, settings, is_batch_mode);
