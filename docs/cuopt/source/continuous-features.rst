@@ -7,16 +7,35 @@ Availability
 
 The Linear Programming (LP), Quadratic Programming (QP), and Second-Order Cone Programming (SOCP) solvers can be accessed in the following ways:
 
-- **Third-Party Modeling Languages**: cuOpt's LP solver can be called directly from the following third-party modeling languages. This allows you to leverage GPU acceleration while maintaining your existing optimization workflow in these modeling languages.
+- **Third-Party Modeling Languages**: cuOpt's LP/QP solver can be called directly from the following third-party modeling languages. This allows you to leverage GPU acceleration while maintaining your existing optimization workflow in these modeling languages.
 
   Supported modeling languages:
-   -  AMPL
-   -  GAMS
-   -  PuLP
-   -  JuMP
+
+  .. list-table::
+     :header-rows: 1
+     :widths: 30 15 15
+
+     * - Language
+       - LP
+       - QP
+     * - AMPL
+       - ✓
+       -
+     * - CVXPY
+       - ✓
+       - ✓
+     * - GAMS
+       - ✓
+       -
+     * - JuMP
+       - ✓
+       - ✓
+     * - PuLP
+       - ✓
+       -
 
 .. note::
-   The QP and SOCP solvers are not currently supported in third-party modeling languages.
+   SOCP is not currently supported in third-party modeling languages.
 
 - **C API**: A native C API that provides direct low-level access to cuOpt's LP/QP/SOCP capabilities, enabling integration into any application or system that can interface with C.
 
