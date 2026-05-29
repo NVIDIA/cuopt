@@ -96,7 +96,8 @@ void local_search_t<i_t, f_t>::start_cpufj_scratch_threads(population_t<i_t, f_t
 
   for (size_t i = 0; i < scratch_cpu_fj.size(); ++i) {
     auto ptr = scratch_cpu_fj[i].get();
-#pragma omp task firstprivate(ptr) depend(out : *ptr) default(none)
+#pragma omp task firstprivate(ptr) priority(CUOPT_DEFAULT_TASK_PRIORITY) \
+  depend(out : *ptr) default(none)
     cpufj_solve(ptr);
   }
 }
@@ -134,8 +135,8 @@ void local_search_t<i_t, f_t>::start_cpufj_lptopt_scratch_threads(
 
   CUOPT_LOG_DEBUG("Launching scratch CPUFJ (on LP optimal) task");
 
-#pragma omp task shared(scratch_cpu_fj_on_lp_opt) default(none) \
-  depend(out : *scratch_cpu_fj_on_lp_opt)
+#pragma omp task shared(scratch_cpu_fj_on_lp_opt) \
+  priority(CUOPT_DEFAULT_TASK_PRIORITY) default(none) depend(out : *scratch_cpu_fj_on_lp_opt)
   cpufj_solve(scratch_cpu_fj_on_lp_opt.get());
 }
 
@@ -199,7 +200,8 @@ void local_search_t<i_t, f_t>::start_cpufj_deterministic(
     };
 
   CUOPT_LOG_DEBUG("Launching deterministic CPUFJ task");
-#pragma omp task shared(deterministic_cpu_fj) default(none) depend(inout : *deterministic_cpu_fj)
+#pragma omp task shared(deterministic_cpu_fj) priority(CUOPT_DEFAULT_TASK_PRIORITY) default(none) \
+  depend(inout : *deterministic_cpu_fj)
   cpufj_solve(deterministic_cpu_fj.get());
 
   // Signal that registration is complete - B&B can now wait on producers
@@ -270,7 +272,8 @@ bool local_search_t<i_t, f_t>::do_fj_solve(solution_t<i_t, f_t>& solution,
       size_t n = std::min<size_t>(omp_get_num_threads() - 1, ls_cpu_fj.size());
       CUOPT_LOG_DEBUG("Launching %d CPUFJ tasks", n);
 
-#pragma omp taskloop shared(ls_cpu_fj) default(none) num_tasks(n) nogroup
+#pragma omp taskloop shared(ls_cpu_fj) default(none) num_tasks(n) \
+  nogroup priority(CUOPT_DEFAULT_TASK_PRIORITY)
       for (size_t i = 0; i < n; ++i) {
         cpufj_solve(ls_cpu_fj[i].get());
       }

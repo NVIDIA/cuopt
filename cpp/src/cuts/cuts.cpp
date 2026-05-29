@@ -1264,6 +1264,7 @@ bool flow_cover_generation_t<i_t, f_t>::build_single_node_flow_relaxation(
 
   if (scratch.arcs.empty()) { return false; }
   single_node_flow_b = b - b_shift;
+
   cuopt_assert(
     [&]() {
       f_t single_node_flow_activity = 0.0;
@@ -1587,6 +1588,19 @@ bool flow_cover_generation_t<i_t, f_t>::emit_flow_cover_cut(
   if (cut.size() == 0) { return false; }
   cut.rhs = lhs_constant - single_node_flow_b;
   cut.sort();
+
+  // Small residual-RHS cuts are common and useful at normal scales. They become
+  // numerically dangerous when the RHS is the difference of two large internal
+  // SNF constants, because the added row can destabilize warm dual-simplex
+  // reoptimization even though the cut is algebraically valid.
+  const f_t cut_rhs_scale = std::max<f_t>(
+    static_cast<f_t>(1.0), std::max(std::abs(lhs_constant), std::abs(single_node_flow_b)));
+  const f_t cut_rhs_cancel_ratio          = std::abs(cut.rhs) / cut_rhs_scale;
+  constexpr f_t large_cut_rhs_scale       = static_cast<f_t>(1e5);
+  constexpr f_t unstable_cut_rhs_residual = static_cast<f_t>(1e-5);
+  if (cut_rhs_scale >= large_cut_rhs_scale && cut_rhs_cancel_ratio <= unstable_cut_rhs_residual) {
+    return false;
+  }
 
   const f_t dot           = cut.vector.dot(context.xstar);
   const f_t violation_tol = std::max(context.settings.primal_tol, static_cast<f_t>(1e-6));

@@ -114,6 +114,9 @@ struct simplex_solver_settings_t {
       mip_batch_pdlp_reliability_branching(0),
       strong_branching_simplex_iteration_limit(-1),
       random_seed(0),
+      bnb_steal_chance(-1),
+      bnb_nodes_per_steal(-1),
+      bnb_max_steal_attempts(-1),
       reliability_branching(-1),
       inside_mip(0),
       sub_mip(0),
@@ -206,12 +209,20 @@ struct simplex_solver_settings_t {
                                              // PDLP only
   // Set the maximum number of simplex iterations allowed per trial branch when applying
   // strong branching to the root node.
-  // -1 - Automatic (iteration limit = 200)
-  // 0, 1 - Estimate the objective change using a single pivot of dual simplex
-  // >1 - Set as the iteration limit in dual simplex
+  // -1 - automatic (iteration limit = 200)
+  // 0, 1 - estimate the objective change using a single pivot of dual simplex
+  // >1 - set as the iteration limit in dual simplex
   i_t strong_branching_simplex_iteration_limit;
 
   diving_heuristics_settings_t<i_t, f_t> diving_settings;  // Settings for the diving heuristics
+
+  // In B&B, indicate the chance in which a worker can steal a node from another worker.
+  // -1 - automatic (0.05)
+  // 0 - disable
+  // >0 - set the stealing chance [0, 1]
+  f_t bnb_steal_chance;
+  i_t bnb_nodes_per_steal;
+  i_t bnb_max_steal_attempts;
 
   // Settings for the reliability branching.
   // - -1: automatic
