@@ -291,7 +291,7 @@ class DataModel(data_model_wrapper.DataModel):
 
     def get_quadratic_constraints(self):
         """
-        Return quadratic (QCMATRIX) constraints appended to this model.
+        Return quadratic constraints appended to this model.
 
         Each entry is a dict with keys including ``constraint_row_index``,
         ``constraint_row_name``, ``constraint_row_type``, COO arrays, and ``rhs_value``.
@@ -301,10 +301,7 @@ class DataModel(data_model_wrapper.DataModel):
     @catch_cuopt_exception
     def clear_quadratic_constraints(self):
         """
-        Remove all quadratic (QCMATRIX) constraints from the model.
-
-        Quadratic constraints are converted to second-order cone form internally
-        and solved with the barrier method.
+        Remove all quadratic constraints from the model.
         """
         super().clear_quadratic_constraints()
 
@@ -322,35 +319,34 @@ class DataModel(data_model_wrapper.DataModel):
         sense="L",
     ):
         """
-        Add one quadratic constraint in MPS QCMATRIX form.
+        Add a quadratic constraint.
 
         Each constraint has a linear part (optional) and a quadratic part in COO
-        format. Call multiple times to add several QCMATRIX rows; each call must
-        use a distinct ``constraint_row_index``.
+        format. Call multiple times to add several quadratic constraints; each
+        call must use a distinct ``constraint_row_index``.
 
         Parameters
         ----------
         constraint_row_index : int
-            ROWS declaration index for this quadratic row (among all rows).
+            Row index for this quadratic constraint (among all rows).
         constraint_row_name : str, optional
-            Optional row name (for MPS export).
+            Optional row name.
         linear_values, linear_indices : array-like, optional
             Sparse linear coefficients on the same variable index space.
         rhs_value : float, optional
-            Right-hand side of the quadratic row.
+            Right-hand side of the constraint.
         vals, rows, cols : array-like
             COO triplets for the quadratic matrix Q in
             ``linear^T x + x^T Q x {sense} rhs_value``.
         sense : str, optional
-            MPS row type: ``'L'`` (default, ``<=``) or ``'G'`` (``>=``), same values as
-            :meth:`set_row_types`. Rows are stored with the given sense; ``'G'`` is converted to
-            ``'L'`` when the barrier solver builds second-order cones from QCMATRIX data.
+            Constraint sense: ``'L'`` (default, ``<=``) or ``'G'`` (``>=``).
+            ``'G'`` constraints are converted to ``'L'`` internally.
             Equality (``'E'``) is not supported.
 
         Notes
         -----
         When any quadratic constraint is present, cuOpt selects the barrier
-        solver and converts QCMATRIX rows to second-order cones.
+        solver and converts quadratic constraints to second-order cones.
         """
         if hasattr(sense, "value"):
             sense = sense.value
