@@ -26,7 +26,7 @@ The Linear Programming (LP), Quadratic Programming (QP), and Second-Order Cone P
        - ✓
      * - GAMS
        - ✓
-       -
+       - ✓
      * - JuMP
        - ✓
        - ✓
