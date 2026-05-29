@@ -76,7 +76,7 @@ See :ref:`simple-qp-example-c` for an example of how to create a QP problem with
 Quadratically Constrained Programming / SOCP (Beta)
 -----------------------------------------------------
 
-.. note:: QCQP/SOCP support is **beta** in this release. The API is functional but has not been fully hardened for all problem types and edge cases.
+.. note:: QCQP/SOCP support is **beta** in this release.
 
 cuOpt supports problems with quadratic constraints (QCQP). Problems are specified in quadratic constraint form:
 
