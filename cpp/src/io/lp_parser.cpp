@@ -1512,8 +1512,8 @@ void flush_quadratic_constraints(mps_data_model_t<i_t, f_t>& problem,
                                  const lp_parser_t<i_t, f_t>& parser)
 {
   const i_t linear_row_count = static_cast<i_t>(parser.row_names.size());
-  i_t k                      = 0;
-  for (const auto& block : parser.quadratic_constraint_blocks) {
+  for (i_t k = 0; k < static_cast<i_t>(parser.quadratic_constraint_blocks.size()); k++) {
+    const auto& block = parser.quadratic_constraint_blocks[k];
     std::vector<i_t> q_row_indices;
     std::vector<i_t> q_col_indices;
     std::vector<f_t> q_values;
@@ -1527,7 +1527,6 @@ void flush_quadratic_constraints(mps_data_model_t<i_t, f_t>& problem,
                                         q_values,
                                         q_row_indices,
                                         q_col_indices);
-    ++k;
   }
 }
 
