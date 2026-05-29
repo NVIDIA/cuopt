@@ -184,8 +184,7 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
       return false;
     }
 
-    return node_queue.steal_from(
-      victim->node_queue, this->worker_id, victim->worker_id, nodes_to_steal);
+    return node_queue.steal_from(victim->node_queue, nodes_to_steal);
   }
 
   // Calculate the number of diving workers that this worker can launch. Having a fixed number

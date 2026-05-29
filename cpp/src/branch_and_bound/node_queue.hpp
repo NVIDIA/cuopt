@@ -127,17 +127,12 @@ class node_queue_t {
     return true;
   }
 
-  bool steal_from(node_queue_t& victim, i_t id, i_t victim_id, i_t nodes_to_steal)
+  bool steal_from(node_queue_t& victim, i_t nodes_to_steal)
   {
-    bool steal = false;
+    assert(this != &victim);
 
-    if (id < victim_id) {
-      mutex_.lock();
-      victim.mutex_.lock();
-    } else {
-      victim.mutex_.lock();
-      mutex_.lock();
-    }
+    bool steal = false;
+    std::scoped_lock lock(mutex_, victim.mutex_);
 
     for (i_t k = 0; k < nodes_to_steal; ++k) {
       if (victim.best_first_heap_.size() < nodes_to_steal) break;
@@ -151,15 +146,6 @@ class node_queue_t {
                               : victim.best_first_heap_.top()->lower_bound;
       steal               = true;
     }
-
-    if (id < victim_id) {
-      mutex_.unlock();
-      victim.mutex_.unlock();
-    } else {
-      victim.mutex_.unlock();
-      mutex_.unlock();
-    }
-
     return steal;
   }
 

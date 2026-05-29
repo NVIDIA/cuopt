@@ -1698,6 +1698,10 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
     stack.pop_front();
     worker->node_queue.push_atomic(node);
   }
+
+  // The worker is no longer exploring the tree. Set its lower bound to infinity to avoid
+  // interfering with the global lower bound calculation.
+  worker->lower_bound = std::numeric_limits<f_t>::infinity();
 }
 
 template <typename i_t, typename f_t>
@@ -1714,8 +1718,7 @@ void branch_and_bound_t<i_t, f_t>::launch_bfs_worker(bfs_worker_t<i_t, f_t>* wor
   idle_worker->lower_bound = worker->node_queue.get_lower_bound();
   idle_worker->set_active();
 
-  bool success = idle_worker->node_queue.steal_from(
-    worker->node_queue, idle_worker->worker_id, worker->worker_id, 1);
+  bool success = idle_worker->node_queue.steal_from(worker->node_queue, 1);
 
   // Update to the actual lower bound of the stolen node (another worker may attempt to
   // steal the same node at the same time)
