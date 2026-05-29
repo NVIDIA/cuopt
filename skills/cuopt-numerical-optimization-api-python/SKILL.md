@@ -13,6 +13,7 @@ metadata:
     - python
 ---
 
+
 # cuOpt Numerical Optimization Skill (Python)
 
 Model and solve LP, MILP, and QP problems using NVIDIA cuOpt's GPU-accelerated solver. The Python API surface (`Problem`, `SolverSettings`, `solve`) is shared across all three problem classes — only the objective form and a few rules change.
