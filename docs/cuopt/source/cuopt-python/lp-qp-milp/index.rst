@@ -1,5 +1,5 @@
 Continuous Optimization and MIP Python API
-==========================================
+============================================
 
 This section contains details on the cuOpt LP/QP/SOCP/MILP Python API.
 
