@@ -28,7 +28,7 @@ namespace cuopt::linear_programming::detail {
 
 /** Convert MPS >= ('G') quadratic row to <= ('L') form on a working copy for SOC conversion. */
 template <typename qc_t>
-void normalize_quadratic_constraint_g_to_l(qc_t& qc)
+void normalize_quadratic_constraint_greater_to_less(qc_t& qc)
 {
   if (qc.constraint_row_type != 'G') { return; }
   for (auto& v : qc.linear_values) {
@@ -120,7 +120,7 @@ void convert_quadratic_constraints_to_second_order_cones(
                   error_type_t::ValidationError,
                   "Quadratic constraint '%s' ROWS type must be 'L' (<=) or 'G' (>=)",
                   qc.constraint_row_name.c_str());
-    normalize_quadratic_constraint_g_to_l(qc);
+    normalize_quadratic_constraint_greater_to_less(qc);
     cuopt_expects((qc.rhs_value < tol) && (qc.rhs_value > -tol),
                   error_type_t::ValidationError,
                   "SOC conversion currently requires rhs = 0 for quadratic constraints");
