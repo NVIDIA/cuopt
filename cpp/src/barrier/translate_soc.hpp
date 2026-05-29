@@ -86,7 +86,7 @@ void convert_quadratic_constraints_to_second_order_cones(
     std::vector<i_t> tails{};
     bool head1_is_constant_half{false};
     /// For two-head rotated SOC: sqrt(d/s) where Q_off = -d and tail diagonals +s (canonical 1).
-    f_t head_lift_sqrt_ratio{f_t(1)};
+    f_t head_lift_sqrt_ratio{1};
   };
   // This is the index of the auxiliary variable for the linear part of the quadratic constraint.
   std::vector<i_t> qc_affine_heads(qcs.size(), -1);
@@ -109,7 +109,7 @@ void convert_quadratic_constraints_to_second_order_cones(
   cone_dims.reserve(qcs.size());
   cone_is_rotated.reserve(qcs.size());
   rotated_cones.reserve(qcs.size());
-  std::vector<f_t> qc_soc_uniform_scale(qcs.size(), f_t(1));
+  std::vector<f_t> qc_soc_uniform_scale(qcs.size(), 1);
 
   for (size_t qc_i = 0; qc_i < qcs.size(); ++qc_i) {
     auto qc = qcs[qc_i];
@@ -247,7 +247,7 @@ void convert_quadratic_constraints_to_second_order_cones(
       tail_vars.push_back(pr.first);
     }
 
-    f_t uniform_s        = f_t(0);
+    f_t uniform_s        = 0;
     bool have_uniform_s  = false;
     auto note_positive_s = [&](f_t v) {
       cuopt_expects(v > tol,
@@ -382,7 +382,7 @@ void convert_quadratic_constraints_to_second_order_cones(
         cone.insert(cone.end(), tail_vars.begin(), tail_vars.end());
         cone_dim   = static_cast<i_t>(tail_vars.size() + 2);
         is_rotated = 1;
-        rotated_cones.push_back(rotated_soc_t{affine_head, -1, tail_vars, true, f_t(1)});
+        rotated_cones.push_back(rotated_soc_t{affine_head, -1, tail_vars, true, 1});
       }
     } else {
       cuopt_expects(!has_linear_part,
@@ -507,7 +507,7 @@ void convert_quadratic_constraints_to_second_order_cones(
     const i_t m_aug      = static_cast<i_t>(m_old + n_affine_linear_aux);
     i_t row_write_cursor = m_old;
 
-    user_problem.objective.resize(n_aug, f_t(0));
+    user_problem.objective.resize(n_aug, 0);
     user_problem.lower.resize(n_aug, -inf);
     user_problem.upper.resize(n_aug, inf);
     user_problem.var_types.resize(
@@ -517,7 +517,7 @@ void convert_quadratic_constraints_to_second_order_cones(
     for (size_t qc_i = 0; qc_i < qcs.size(); ++qc_i) {
       const i_t aux_j = qc_affine_heads[qc_i];
       if (aux_j < 0) { continue; }
-      user_problem.lower[aux_j] = f_t(0);
+      user_problem.lower[aux_j] = 0;
       user_problem.upper[aux_j] = inf;
       if (!user_problem.col_names.empty()) {
         user_problem.col_names[aux_j] =
@@ -540,9 +540,9 @@ void convert_quadratic_constraints_to_second_order_cones(
       eq_row.i.clear();
       eq_row.x.clear();
       // Define auxiliary as t = -(1/s) a^T x so QC linear part matches normalized cone row.
-      const f_t inv_s = f_t(1) / qc_soc_uniform_scale[qc_i];
+      const f_t inv_s = 1 / qc_soc_uniform_scale[qc_i];
       eq_row.i.push_back(aux_j);
-      eq_row.x.push_back(f_t(1));
+      eq_row.x.push_back(1);
       for (size_t p = 0; p < qc.linear_values.size(); ++p) {
         const f_t v = qc.linear_values[p];
         if (v > -tol && v < tol) { continue; }
@@ -552,7 +552,7 @@ void convert_quadratic_constraints_to_second_order_cones(
       eq_row.sort();
       csr_A.append_row(eq_row);
       user_problem.row_sense[row_write_cursor] = 'E';
-      user_problem.rhs[row_write_cursor]       = f_t(0);
+      user_problem.rhs[row_write_cursor]       = 0;
       if (!user_problem.row_names.empty()) {
         user_problem.row_names[row_write_cursor] =
           "_CUOPT_qc_linear_link_" + qc.constraint_row_name;
@@ -612,7 +612,7 @@ void convert_quadratic_constraints_to_second_order_cones(
     const i_t n_old = n_prob;
     n_prob          = static_cast<i_t>(n_old + n_slack_total);
 
-    user_problem.objective.resize(n_prob, f_t(0));
+    user_problem.objective.resize(n_prob, 0);
     user_problem.lower.resize(n_prob, -inf);
     user_problem.upper.resize(n_prob, inf);
     user_problem.var_types.resize(
@@ -669,7 +669,7 @@ void convert_quadratic_constraints_to_second_order_cones(
         eq_row.sort();
         csr_A.append_row(eq_row);
         user_problem.row_sense[row_idx] = 'E';
-        user_problem.rhs[row_idx]       = f_t(0);
+        user_problem.rhs[row_idx]       = 0;
         ++row_idx;
 
         // s_1 - h * x_h0 + h * x_h1 = 0
@@ -678,7 +678,7 @@ void convert_quadratic_constraints_to_second_order_cones(
         eq_row.sort();
         csr_A.append_row(eq_row);
         user_problem.row_sense[row_idx] = 'E';
-        user_problem.rhs[row_idx]       = f_t(0);
+        user_problem.rhs[row_idx]       = 0;
         ++row_idx;
 
         is_cone_var[rc.head0] = 0;
@@ -755,7 +755,7 @@ void convert_quadratic_constraints_to_second_order_cones(
       const i_t m_old = csr_A.m;
       const i_t m_new = static_cast<i_t>(m_old + cone_alias_pairs.size());
 
-      user_problem.objective.resize(n_new, f_t(0));
+      user_problem.objective.resize(n_new, 0);
       user_problem.lower.resize(n_new, -std::numeric_limits<f_t>::infinity());
       user_problem.upper.resize(n_new, std::numeric_limits<f_t>::infinity());
       user_problem.var_types.resize(
@@ -789,7 +789,7 @@ void convert_quadratic_constraints_to_second_order_cones(
         eq_row.sort();
         csr_A.append_row(eq_row);
         user_problem.row_sense[row_idx] = 'E';
-        user_problem.rhs[row_idx]       = f_t(0);
+        user_problem.rhs[row_idx]       = 0;
         if (!user_problem.row_names.empty()) {
           user_problem.row_names[row_idx] =
             "_CUOPT_cone_alias_link_" + std::to_string(static_cast<int>(row_idx - m_old));
@@ -841,7 +841,7 @@ void convert_quadratic_constraints_to_second_order_cones(
       const i_t m_old = csr_A.m;
       const i_t m_new = static_cast<i_t>(m_old + bound_split_pairs.size());
 
-      user_problem.objective.resize(n_new, f_t(0));
+      user_problem.objective.resize(n_new, 0);
       user_problem.lower.resize(n_new, neg_inf);
       user_problem.upper.resize(n_new, pos_inf);
       user_problem.var_types.resize(
@@ -870,7 +870,7 @@ void convert_quadratic_constraints_to_second_order_cones(
         eq_row.sort();
         csr_A.append_row(eq_row);
         user_problem.row_sense[row_idx] = 'E';
-        user_problem.rhs[row_idx]       = f_t(0);
+        user_problem.rhs[row_idx]       = 0;
         if (!user_problem.row_names.empty()) {
           user_problem.row_names[row_idx] =
             "_CUOPT_cone_bound_split_link_" + std::to_string(static_cast<int>(row_idx - m_old));
