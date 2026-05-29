@@ -335,10 +335,10 @@ void branch_and_bound_t<i_t, f_t>::print_table_header()
                 "Depth",
                 "Iter/Node",
                 "Gap",
-                "Completion");
+                "Est. Progress");
   if (settings_.deterministic) { header += std::format("{:^8}|", "Work"); }
   header += std::format("{:^8}|", "Time");
-  settings_.log.printf("%s", header.c_str());
+  settings_.log.printf("%s\n", header.c_str());
 }
 
 template <typename i_t, typename f_t>
@@ -366,7 +366,7 @@ void branch_and_bound_t<i_t, f_t>::report_heuristic(f_t obj)
 
     if (settings_.deterministic) { log_line += std::format("{:^8}", ""); }
     log_line += std::format(" {:>8.2f}", toc(exploration_stats_.start_time));
-    settings_.log.printf("%s", log_line.c_str());
+    settings_.log.printf("%s\n", log_line.c_str());
   } else {
     if (solving_root_relaxation_.load()) {
       f_t user_obj = compute_user_objective(original_lp_, obj);
@@ -415,7 +415,7 @@ void branch_and_bound_t<i_t, f_t>::report(
                 tree_completion);
   if (work_time >= 0) { log_line += std::format(" {:>8.2f}", work_time); }
   log_line += std::format(" {:>8.2f}", toc(exploration_stats_.start_time));
-  settings_.log.printf("%s", log_line.c_str());
+  settings_.log.printf("%s\n", log_line.c_str());
 }
 
 template <typename i_t, typename f_t>
@@ -1015,8 +1015,8 @@ struct nondeterministic_policy_t : tree_update_policy_t<i_t, f_t> {
   {
     if (worker->search_strategy == search_strategy_t::BEST_FIRST) {
       fetch_min(bnb.lower_bound_numerical_, node->lower_bound);
-      log.printf("LP returned numerical issue on node %d. Best bound set to %+10.6e.\n",
-                 node->node_id,
+      log.print_format("LP returned numerical issue on node {}. Best bound set to {:+10.6e}.\n",
+                       node->node_id,
                  compute_user_objective(bnb.original_lp_, bnb.lower_bound_numerical_.load()));
     }
   }
@@ -1277,15 +1277,15 @@ std::pair<node_status_t, branch_direction_t> branch_and_bound_t<i_t, f_t>::updat
 #ifdef DEBUG_FRACTIONAL_FIXED
     for (i_t j : leaf_fractional) {
       if (leaf_problem.lower[j] == leaf_problem.upper[j]) {
-        printf(
-          "Node %d: Fixed variable %d has a fractional value %e. Lower %e upper %e. Variable "
-          "status %d\n",
+        settings_.log.print_format(
+          "Node {}: Fixed variable {} has a fractional value {:e}. Lower {:e} upper {:e}. "
+          "Variable status {}\n",
           node_ptr->node_id,
           j,
           leaf_solution.x[j],
           leaf_problem.lower[j],
           leaf_problem.upper[j],
-          node_ptr->vstatus[j]);
+          static_cast<int>(node_ptr->vstatus[j]));
       }
     }
 #endif
@@ -1503,10 +1503,10 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   ss >> logname;
   lp_settings.log.set_log_file(logname, "a");
   lp_settings.log.log_to_console = false;
-  lp_settings.log.printf(
-    "%scurrent node: id = %d, depth = %d, branch var = %d, branch dir = %s, fractional val = "
-    "%f, variable lower bound = %f, variable upper bound = %f, branch vstatus = %d\n\n",
-    settings_.log.log_prefix.c_str(),
+  lp_settings.log.print_format(
+    "{}current node: id = {}, depth = {}, branch var = {}, branch dir = {}, fractional val = "
+    "{:f}, variable lower bound = {:f}, variable upper bound = {:f}, branch vstatus = {}\n\n",
+    settings_.log.log_prefix,
     node_ptr->node_id,
     node_ptr->depth,
     node_ptr->branch_var,
@@ -1514,7 +1514,7 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
     node_ptr->fractional_val,
     node_ptr->branch_var_lower,
     node_ptr->branch_var_upper,
-    node_ptr->vstatus[node_ptr->branch_var]);
+    static_cast<int>(node_ptr->vstatus[node_ptr->branch_var]));
 #endif
 
   bool feasible           = worker->set_lp_variable_bounds(node_ptr, settings_);
@@ -1546,7 +1546,7 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
                                                   worker->leaf_edge_norms);
 
       if (lp_status == dual_status_t::NUMERICAL) {
-        log.debug("Numerical issue node %d. Resolving from scratch.\n", node_ptr->node_id);
+        log.debug_format("Numerical issue node {}. Resolving from scratch.\n", node_ptr->node_id);
         lp_status_t second_status =
           solve_linear_program_with_advanced_basis(worker->leaf_problem,
                                                    lp_start_time,
@@ -3570,7 +3570,8 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node_deterministic(
                                                             &worker.work_context);
 
   if (lp_status == dual_status_t::NUMERICAL) {
-    settings_.log.printf("Numerical issue node %d. Resolving from scratch.\n", node_ptr->node_id);
+    settings_.log.print_format("Numerical issue node {}. Resolving from scratch.\n",
+                               node_ptr->node_id);
     lp_status_t second_status = solve_linear_program_with_advanced_basis(worker.leaf_problem,
                                                                          lp_start_time,
                                                                          lp_settings,

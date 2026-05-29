@@ -90,9 +90,10 @@ class logger_t {
   void print_format(std::format_string<Args...> fmt, Args&&... args)
   {
     if (log) {
-      const std::string msg = std::format(fmt, std::forward<Args&&>(args)...);
+      std::string msg = std::format(fmt, std::forward<Args&&>(args)...);
       if (log_to_console) {
 #ifdef CUOPT_LOG_ACTIVE_LEVEL
+        if (msg.size() > 0 && msg.back() == '\n') { msg.back() = '\0'; }
         CUOPT_LOG_INFO("%s%s", log_prefix.c_str(), msg.c_str());
 #else
         std::printf("%s", msg.c_str());
@@ -147,6 +148,7 @@ class logger_t {
       std::string msg = std::format(fmt, std::forward<Args&&>(args)...);
       if (log_to_console) {
 #ifdef CUOPT_LOG_ACTIVE_LEVEL
+        if (msg.size() > 0 && msg.back() == '\n') { msg.back() = '\0'; }
         CUOPT_LOG_TRACE("%s%s", log_prefix.c_str(), msg.c_str());
 #else
         std::printf("%s", msg.c_str());

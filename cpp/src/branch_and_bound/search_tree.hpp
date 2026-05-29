@@ -14,9 +14,9 @@ namespace cuopt::linear_programming::dual_simplex {
 template <typename i_t, typename f_t>
 class search_tree_t {
  public:
-  search_tree_t() : num_nodes(0) {}
+  search_tree_t() = default;
 
-  search_tree_t(mip_node_t<i_t, f_t>&& node) : root(std::move(node)), num_nodes(0) {}
+  search_tree_t(mip_node_t<i_t, f_t>&& node) : search_tree_t() { root = std::move(node); }
 
   ~search_tree_t() { clean(); }
 
@@ -29,7 +29,7 @@ class search_tree_t {
       ++num_inner_nodes;
     } else {
       ++num_final_nodes;
-      progress += std::pow(2, -node_ptr->depth);
+      progress += std::ldexp(f_t(1), -node_ptr->depth);
     }
 
     std::vector<mip_node_t<i_t, f_t>*> stack;
@@ -45,7 +45,7 @@ class search_tree_t {
               const lp_problem_t<i_t, f_t>& original_lp,
               logger_t& log)
   {
-    i_t id = num_nodes.fetch_add(2);
+    uint64_t id = num_nodes.fetch_add(2);
 
     auto down_child = std::make_unique<mip_node_t<i_t, f_t>>(original_lp,
                                                              parent_node,
@@ -90,7 +90,7 @@ class search_tree_t {
                             const f_t val)
   {
     if (write_graphviz) {
-      log.printf("Node%d [label=\"%s %.16e\"]\n", node_ptr->node_id, label.c_str(), val);
+      log.print_format("Node{} [label=\"{} {:.16e}\"]\n", node_ptr->node_id, label, val);
     }
   }
 
@@ -102,12 +102,12 @@ class search_tree_t {
                             const f_t bound)
   {
     if (write_graphviz) {
-      log.printf("Node%d -> Node%d [label=\"x%d %s %e\"]\n",
-                 origin_ptr->node_id,
-                 dest_ptr->node_id,
-                 branch_var,
-                 branch_dir == branch_direction_t::DOWN ? "<=" : ">=",
-                 bound);
+      log.print_format("Node{} -> Node{} [label=\"x{} {} {:e}\"]\n",
+                       origin_ptr->node_id,
+                       dest_ptr->node_id,
+                       branch_var,
+                       branch_dir == branch_direction_t::DOWN ? "<=" : ">=",
+                       bound);
     }
   }
 
@@ -126,23 +126,29 @@ class search_tree_t {
       if (node->children[1]) stack.push_back(std::move(node->children[1]));
       // Implicitly call destructor for `node`
     }
+
+    num_nodes       = 0;
+    num_open_nodes  = 0;
+    num_final_nodes = 0;
+    num_inner_nodes = 0;
+    progress        = 0;
   }
 
   mip_node_t<i_t, f_t> root;
   omp_mutex_t mutex;
-  omp_atomic_t<uint64_t> num_nodes;
+  omp_atomic_t<uint64_t> num_nodes = 0;
 
   // Number of nodes that still needs to be explored
-  omp_atomic_t<uint64_t> num_open_nodes;
+  omp_atomic_t<uint64_t> num_open_nodes = 0;
 
   // Number of integer feasible, infeasible or fathomed nodes
-  omp_atomic_t<uint64_t> num_final_nodes;
+  omp_atomic_t<uint64_t> num_final_nodes = 0;
 
   // Number of inner nodes
-  omp_atomic_t<uint64_t> num_inner_nodes;
+  omp_atomic_t<uint64_t> num_inner_nodes = 0;
 
   // Track the solver progress based on how much the tree was explored
-  omp_atomic_t<f_t> progress = 0.0;
+  omp_atomic_t<f_t> progress = 0;
 
   static constexpr bool write_graphviz = false;
 };
