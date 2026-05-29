@@ -43,7 +43,7 @@ An optimization problem is represented via a `cuOptOptimizationProblem`
 
 .. doxygentypedef:: cuOptOptimizationProblem
 
-Optimization problems can be created or loaded via the following functions
+Optimization problems can be created, loaded, or written via the following functions
 
 .. doxygenfunction:: cuOptReadProblem
 .. doxygenfunction:: cuOptWriteProblem
