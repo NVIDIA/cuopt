@@ -939,22 +939,18 @@ class iteration_data_t {
       // -q_diag - d_j - dual_perturb. Cone Hessian block is overwritten by scatter when has_soc.
       // Direct-free linear vars: d_j = 0 here and D·x = 0 in augmented_multiply so the Q/D part
       // of the diagonal matches the matvec (-q_diag); dual_perturb remains factorization-only.
-      thrust::for_each_n(
-        rmm::exec_policy(handle_ptr->get_stream()),
-        thrust::make_counting_iterator<i_t>(0),
-        linear_n,
-        [span_x                     = cuopt::make_span(device_augmented.x),
-         span_diag_indices          = cuopt::make_span(d_augmented_diagonal_indices_),
-         span_q_diag                = cuopt::make_span(d_Q_diag_),
-         span_diag                  = cuopt::make_span(d_diag_),
-         span_is_direct_free_linear = cuopt::make_span(d_is_direct_free_linear_),
-         dual_perturb_value         = dual_perturb] __device__(i_t j) {
-          f_t q_diag    = span_q_diag.size() > 0 ? span_q_diag[j] : 0.0;
-          const f_t d_j = (span_is_direct_free_linear.size() > 0 && span_is_direct_free_linear[j])
-                            ? f_t(0)
-                            : span_diag[j];
-          span_x[span_diag_indices[j]] = -q_diag - d_j - dual_perturb_value;
-        });
+      thrust::for_each_n(rmm::exec_policy(handle_ptr->get_stream()),
+                         thrust::make_counting_iterator<i_t>(0),
+                         linear_n,
+                         [span_x             = cuopt::make_span(device_augmented.x),
+                          span_diag_indices  = cuopt::make_span(d_augmented_diagonal_indices_),
+                          span_q_diag        = cuopt::make_span(d_Q_diag_),
+                          span_diag          = cuopt::make_span(d_diag_),
+                          dual_perturb_value = dual_perturb] __device__(i_t j) {
+                           f_t q_diag    = span_q_diag.size() > 0 ? span_q_diag[j] : 0.0;
+                           const f_t d_j = span_diag[j];
+                           span_x[span_diag_indices[j]] = -q_diag - d_j - dual_perturb_value;
+                         });
       RAFT_CHECK_CUDA(handle_ptr->get_stream());
 
       thrust::for_each_n(rmm::exec_policy(handle_ptr->get_stream()),
@@ -2815,7 +2811,8 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
         data.d_diag_.data(),
         linear_size,
         [] HD(f_t z_j, f_t x_j, i_t is_direct_free_linear) {
-          return is_direct_free_linear ? f_t(0) : (z_j / x_j);
+          constexpr f_t free_var_reg = 1e-7;
+          return is_direct_free_linear ? free_var_reg : (z_j / x_j);
         },
         stream_view_.value());
     } else {
@@ -3817,7 +3814,7 @@ void barrier_solver_t<i_t, f_t>::compute_target_mu(
   const f_t mu_denom      = data.complementarity_degree(data.x.size(), data.n_upper_bounds);
   mu_aff                  = complementarity_aff_sum / mu_denom;
   sigma                   = std::max(0.0, std::min(1.0, std::pow(mu_aff / mu, 3.0)));
-  new_mu                  = data.has_cones() ? sigma * mu : sigma * mu_aff;
+  new_mu                  = sigma * mu_aff;
 }
 
 template <typename i_t, typename f_t>
