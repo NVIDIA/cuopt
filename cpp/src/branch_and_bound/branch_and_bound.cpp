@@ -1519,6 +1519,33 @@ dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
 }
 
 template <typename i_t, typename f_t>
+void branch_and_bound_t<i_t, f_t>::launch_bfs_worker(bfs_worker_t<i_t, f_t>* worker)
+{
+  bfs_worker_t<i_t, f_t>* idle_worker = bfs_worker_pool_.pop_idle_worker();
+  if (!idle_worker) return;
+
+  assert(idle_worker->is_active.load() == false);
+  assert(idle_worker->node_queue.best_first_queue_size() == 0);
+
+  idle_worker->set_active();
+  bool success = idle_worker->node_queue.steal_from(
+    worker->node_queue, idle_worker->worker_id, worker->worker_id, 1);
+  idle_worker->lower_bound = idle_worker->node_queue.get_lower_bound();
+
+  // If the idle worker is set to active (i.e., its node queue has a valid node),
+  // launch a openmp task to run the best-first search for that worker
+  if (success) {
+#pragma omp task affinity(*idle_worker) priority(CUOPT_CRITICAL_TASK_PRIORITY) default(none) \
+  firstprivate(idle_worker)
+    best_first_search_with(idle_worker);
+  } else {
+    // The idle worker was not successfully initialized. This should occur
+    // rarely or even none at all. Keep here for safety.
+    bfs_worker_pool_.return_worker_to_pool(idle_worker);
+  }
+}
+
+template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
                                                mip_node_t<i_t, f_t>* start_node)
 {
@@ -1543,37 +1570,13 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
          rel_gap > settings_.relative_mip_gap_tol && abs_gap > settings_.absolute_mip_gap_tol) {
     if (worker->worker_id == 0) { repair_heuristic_solutions(); }
 
-    // Launch a new diving task if any worker is idle
     if (worker->total_active_diving_workers < worker->total_max_diving_workers &&
         worker->node_queue.diving_queue_size() > 0) {
       launch_diving_worker(worker);
     }
 
-    // If any best-first worker become idle,
     if (bfs_worker_pool_.num_idle() > 0 && worker->node_queue.best_first_queue_size() > 0) {
-      bfs_worker_t<i_t, f_t>* idle_worker = bfs_worker_pool_.pop_idle_worker();
-      if (idle_worker) {
-        worker->node_queue.lock();
-        if (worker->node_queue.bfs_top()) {
-          // Initialize the idle worker before we pop the node from the heap to avoid
-          // the node from vanishing from the solver during its migration between node queues.
-          idle_worker->init(worker->node_queue.bfs_top());
-          worker->node_queue.pop_best_first();
-        }
-        worker->node_queue.unlock();
-
-        // If the idle worker is set to active (i.e., its node queue has a valid node),
-        // launch a openmp task to run the best-first search for that worker
-        if (idle_worker->is_active.load()) {
-#pragma omp task affinity(*idle_worker) priority(CUOPT_CRITICAL_TASK_PRIORITY) default(none) \
-  firstprivate(idle_worker)
-          best_first_search_with(idle_worker);
-        } else {
-          // The idle worker was not successfully initialized. This should occur
-          // rarely or even none at all. Keep here for safety.
-          bfs_worker_pool_.return_worker_to_pool(idle_worker);
-        }
-      }
+      launch_bfs_worker(worker);
     }
 
     assert(stack.size() <= 2);
@@ -1707,12 +1710,25 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
 }
 
 template <typename i_t, typename f_t>
+void branch_and_bound_t<i_t, f_t>::work_stealing(bfs_worker_t<i_t, f_t>* worker)
+{
+  i_t nodes_to_steal = settings_.bnb_nodes_per_steal;
+
+  for (i_t i = 0; i < settings_.bnb_max_steal_attempts; ++i) {
+    i_t victim_id                  = worker->rng.uniform(0, bfs_worker_pool_.size());
+    bfs_worker_t<i_t, f_t>* victim = bfs_worker_pool_[victim_id];
+    if (worker->steal_from(victim, nodes_to_steal)) { break; }
+  }
+}
+
+template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>* worker)
 {
   f_t lower_bound  = get_lower_bound();
   f_t abs_gap      = compute_user_abs_gap(original_lp_, upper_bound_.load(), lower_bound);
   f_t rel_gap      = user_relative_gap(original_lp_, upper_bound_.load(), lower_bound);
   f_t steal_chance = settings_.bnb_steal_chance >= 0 ? settings_.bnb_steal_chance : 0.05;
+  node_queue_t<i_t, f_t>& node_queue = worker->node_queue;
 
   worker->calculate_num_diving_workers(bfs_worker_pool_.size(),
                                        diving_worker_pool_.size(),
@@ -1720,8 +1736,7 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
                                        settings_.diving_settings);
 
   while (solver_status_ == mip_status_t::UNSET && abs_gap > settings_.absolute_mip_gap_tol &&
-         rel_gap > settings_.relative_mip_gap_tol &&
-         worker->node_queue.best_first_queue_size() > 0) {
+         rel_gap > settings_.relative_mip_gap_tol && node_queue.best_first_queue_size() > 0) {
     // If the guided diving was disabled previously due to the lack of an incumbent solution,
     // re-enable as soon as a new incumbent is found.
     if (diving_worker_pool_.size() > 0 && settings_.diving_settings.guided_diving != 0 &&
@@ -1739,15 +1754,10 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
       break;
     }
 
-    worker->node_queue.lock();
-    worker->lower_bound              = worker->node_queue.get_lower_bound();
-    mip_node_t<i_t, f_t>* start_node = worker->node_queue.pop_best_first();
-    if (!start_node) {
-      worker->node_queue.unlock();
-      continue;
-    }
-
-    worker->node_queue.unlock();
+    worker->lower_bound              = node_queue.get_lower_bound();
+    mip_node_t<i_t, f_t>* start_node = node_queue.pop();
+    if (!start_node) continue;
+    worker->lower_bound = start_node->lower_bound;
 
     if (upper_bound_.load() < start_node->lower_bound) {
       // This node was put on the heap earlier but its lower bound is now greater than the
@@ -1771,14 +1781,8 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
     }
 
     // Steal a node with some probability or when it is empty. The victim is determined at random.
-    if (worker->node_queue.best_first_queue_size() == 0 ||
-        worker->rng.next_double() < steal_chance) {
-      for (i_t i = 0; i < settings_.bnb_max_steal_attempts; ++i) {
-        i_t victim = worker->rng.uniform(0, bfs_worker_pool_.size());
-        if (worker->steal_node_from(bfs_worker_pool_[victim], settings_.bnb_nodes_per_steal)) {
-          break;
-        }
-      }
+    if (node_queue.best_first_queue_size() == 0 || worker->rng.next_double() < steal_chance) {
+      work_stealing(worker);
     }
   }
 
@@ -1891,18 +1895,21 @@ bool branch_and_bound_t<i_t, f_t>::launch_diving_worker(bfs_worker_t<i_t, f_t>* 
   diving_worker_t<i_t, f_t>* diving_worker = diving_worker_pool_.pop_idle_worker();
   if (diving_worker == nullptr) { return false; }
 
-  bfs_worker->node_queue.lock();
-  mip_node_t<i_t, f_t>* start_node = bfs_worker->node_queue.pop_diving();
-
-  if (!start_node || upper_bound_.load() < start_node->lower_bound ||
-      start_node->depth < settings_.diving_settings.min_node_depth) {
-    bfs_worker->node_queue.unlock();
+  bool success = bfs_worker->node_queue.diving_init(original_lp_,
+                                                    diving_worker->start_node,
+                                                    diving_worker->start_lower,
+                                                    diving_worker->start_upper,
+                                                    diving_worker->bounds_changed);
+  if (!success) {
     diving_worker_pool_.return_worker_to_pool(diving_worker);
     return false;
   }
 
-  diving_worker->init(start_node, original_lp_);
-  bfs_worker->node_queue.unlock();
+  if (upper_bound_.load() < diving_worker->start_node.lower_bound ||
+      diving_worker->start_node.depth < settings_.diving_settings.min_node_depth) {
+    diving_worker_pool_.return_worker_to_pool(diving_worker);
+    return false;
+  }
 
   bool is_feasible = diving_worker->presolve_start_bounds(settings_);
   if (!is_feasible) {
@@ -1941,20 +1948,6 @@ bool branch_and_bound_t<i_t, f_t>::launch_diving_worker(bfs_worker_t<i_t, f_t>* 
 
   diving_worker_pool_.return_worker_to_pool(diving_worker);
   return false;
-}
-
-template <typename i_t, typename f_t>
-void branch_and_bound_t<i_t, f_t>::single_threaded_solve()
-{
-  bfs_worker_pool_.init(1, original_lp_, Arow_, var_types_, symmetry_, settings_);
-  bfs_worker_t<i_t, f_t>* worker = bfs_worker_pool_.pop_idle_worker();
-
-  node_queue_t<i_t, f_t>& node_queue = worker->node_queue;
-  node_queue.push_atomic(search_tree_.root.get_down_child());
-  node_queue.push_atomic(search_tree_.root.get_up_child());
-  worker->lower_bound = worker->node_queue.get_lower_bound();
-  worker->set_active();
-  best_first_search_with(worker);
 }
 
 template <typename i_t, typename f_t>
@@ -2854,23 +2847,29 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   {
     if (settings_.deterministic) {
       run_deterministic_coordinator(Arow_);
-    } else if (settings_.num_threads > 1) {
+    } else {
       const i_t num_workers        = settings_.num_threads;
       const i_t num_bfs_workers    = std::max(settings_.num_threads / 2, 1);
       const i_t num_diving_workers = num_workers - num_bfs_workers;
       bfs_worker_pool_.init(num_bfs_workers, original_lp_, Arow_, var_types_, symmetry_, settings_);
-      diving_worker_pool_.init(
-        num_diving_workers, original_lp_, Arow_, var_types_, symmetry_, settings_, num_bfs_workers);
+
+      if (num_diving_workers > 0) {
+        diving_worker_pool_.init(num_diving_workers,
+                                 original_lp_,
+                                 Arow_,
+                                 var_types_,
+                                 symmetry_,
+                                 settings_,
+                                 num_bfs_workers);
+      }
 
       bfs_worker_t<i_t, f_t>* initial_worker = bfs_worker_pool_.pop_idle_worker();
-      initial_worker->init({search_tree_.root.get_up_child(), search_tree_.root.get_down_child()});
-
-#pragma omp task affinity(*initial_worker) priority(CUOPT_CRITICAL_TASK_PRIORITY) default(none) \
-  firstprivate(initial_worker)
+      node_queue_t<i_t, f_t>& node_queue     = initial_worker->node_queue;
+      node_queue.push_lockfree(search_tree_.root.get_down_child());
+      node_queue.push_lockfree(search_tree_.root.get_up_child());
+      initial_worker->lower_bound = initial_worker->node_queue.get_lower_bound();
+      initial_worker->set_active();
       best_first_search_with(initial_worker);
-
-    } else {
-      single_threaded_solve();
     }
   }  // Implicit barrier for all tasks created within the group (RINS, B&B workers)
 
@@ -2890,7 +2889,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       // We need to clear the queue and use the info in the search tree for the lower bound
       while (worker->node_queue.best_first_queue_size() > 0 &&
              worker->node_queue.get_lower_bound() > upper_bound_.load()) {
-        mip_node_t<i_t, f_t>* start_node = worker->node_queue.pop_best_first();
+        mip_node_t<i_t, f_t>* start_node = worker->node_queue.pop();
         // This node was put on the heap earlier but its lower bound is now greater than the
         // current upper bound
         search_tree_.graphviz_node(settings_.log, start_node, "cutoff", start_node->lower_bound);

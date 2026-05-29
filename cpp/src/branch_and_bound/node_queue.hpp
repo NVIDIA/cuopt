@@ -83,20 +83,22 @@ class node_queue_t {
  public:
   void push_atomic(mip_node_t<i_t, f_t>* new_node)
   {
-    assert(new_node != nullptr);
-
     std::lock_guard lock(mutex_);
+    push_lockfree(new_node);
+  }
+
+  void push_lockfree(mip_node_t<i_t, f_t>* new_node)
+  {
+    assert(new_node != nullptr);
     auto entry = std::make_shared<heap_entry_t>(new_node);
     best_first_heap_.push(entry);
     if (new_node->can_dive) diving_heap_.push(entry);
     lower_bound_ = best_first_heap_.top()->lower_bound;
   }
 
-  // Before calling pop in parallel,
-  // the mutex NEEDS to be acquired via the `lock()` method. It must the released afterwards with
-  // `unlock()`.
-  mip_node_t<i_t, f_t>* pop_best_first()
+  mip_node_t<i_t, f_t>* pop()
   {
+    std::lock_guard lock(mutex_);
     if (best_first_heap_.empty()) { return nullptr; }
     auto entry                 = best_first_heap_.pop();
     lower_bound_               = best_first_heap_.empty() ? std::numeric_limits<f_t>::infinity()
@@ -106,23 +108,57 @@ class node_queue_t {
     return node;
   }
 
-  // Before calling pop in parallel,
-  // the mutex NEEDS to be acquired via the `lock()` method. It must the released afterwards with
-  // `unlock()`.
-  mip_node_t<i_t, f_t>* pop_diving()
+  bool diving_init(const lp_problem_t<i_t, f_t>& lp,
+                   mip_node_t<i_t, f_t>& start_node,
+                   std::vector<f_t>& start_lower,
+                   std::vector<f_t>& start_upper,
+                   std::vector<bool>& bounds_changed)
   {
-    while (!diving_heap_.empty()) {
-      auto entry = diving_heap_.pop();
-      if (entry->node != nullptr) {
-        entry->node->can_dive = false;
-        return entry->node;
-      }
-    }
-    return nullptr;
+    std::lock_guard lock(mutex_);
+
+    auto node = pop_diving();
+    if (!node) return false;
+
+    start_node  = node->detach_copy();
+    start_lower = lp.lower;
+    start_upper = lp.upper;
+    std::fill(bounds_changed.begin(), bounds_changed.end(), false);
+    node->get_variable_bounds(start_lower, start_upper, bounds_changed);
+    return true;
   }
 
-  void lock() { mutex_.lock(); }
-  void unlock() { mutex_.unlock(); }
+  bool steal_from(node_queue_t& victim, i_t id, i_t victim_id, i_t nodes_to_steal)
+  {
+    bool steal = false;
+
+    if (id < victim_id) {
+      mutex_.lock();
+      victim.mutex_.lock();
+    } else {
+      victim.mutex_.lock();
+      mutex_.lock();
+    }
+
+    for (i_t k = 0; k < nodes_to_steal; ++k) {
+      if (victim.best_first_queue_size() < nodes_to_steal) break;
+      auto entry = victim.best_first_heap_.pop();
+      best_first_heap_.push(entry);
+      if (entry->node->can_dive) diving_heap_.push(entry);
+      lower_bound_        = best_first_heap_.top()->lower_bound;
+      victim.lower_bound_ = victim.best_first_heap_.top()->lower_bound;
+      steal               = true;
+    }
+
+    if (id < victim_id) {
+      mutex_.unlock();
+      victim.mutex_.unlock();
+    } else {
+      victim.mutex_.unlock();
+      mutex_.unlock();
+    }
+
+    return steal;
+  }
 
   mip_node_t<i_t, f_t>* bfs_top()
   {
@@ -168,6 +204,19 @@ class node_queue_t {
       return a->score > b->score;
     }
   };
+
+  mip_node_t<i_t, f_t>* pop_diving()
+  {
+    while (!diving_heap_.empty()) {
+      auto entry = diving_heap_.pop();
+      if (entry->node != nullptr) {
+        entry->node->can_dive = false;
+        return entry->node;
+      }
+    }
+
+    return nullptr;
+  }
 
   heap_t<std::shared_ptr<heap_entry_t>, lower_bound_comp> best_first_heap_;
   heap_t<std::shared_ptr<heap_entry_t>, score_comp> diving_heap_;

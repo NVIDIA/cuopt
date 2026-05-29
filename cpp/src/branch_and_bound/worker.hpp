@@ -173,59 +173,19 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
     total_active_diving_workers = 0;
   }
 
-  void init(mip_node_t<i_t, f_t>* node) { init({node}); }
-
-  // Note that we do need to lock here since the only thread interacting
-  // with this worker is the one that is calling this routine. Only after
-  // setting the flag to `active`, it will be considered by the other workers.
-  void init(std::initializer_list<mip_node_t<i_t, f_t>*>&& nodes)
-  {
-    assert(!this->is_active.load());
-    assert(node_queue.best_first_queue_size() == 0);
-    assert(nodes.size() > 0);
-
-    for (auto* node : nodes) {
-      assert(node != nullptr);
-      node_queue.push_atomic(node);
-    }
-
-    this->lower_bound = node_queue.get_lower_bound();
-    this->set_active();
-  }
-
   void set_inactive() { this->is_active = false; }
 
   // Steal nodes from another worker
-  bool steal_node_from(bfs_worker_t* other, i_t num_nodes)
+  bool steal_from(bfs_worker_t* victim, i_t nodes_to_steal)
   {
-    bool steal = false;
-    assert(num_nodes > 0);
-    assert(other);
-
-    if (!other->is_active || this == other ||
-        other->node_queue.best_first_queue_size() < 2 * num_nodes) {
-      return steal;
+    if (!victim || nodes_to_steal < 1) return false;
+    if (victim == this || !victim->is_active ||
+        victim->node_queue.best_first_queue_size() < 2 * nodes_to_steal) {
+      return false;
     }
 
-    while (num_nodes > 0) {
-      mip_node_t<i_t, f_t>* node = nullptr;
-
-      other->node_queue.lock();
-      if (other->node_queue.best_first_queue_size() > num_nodes) {
-        // Pre-emptively update the lower bound of the worker after pushing the new node
-        // to the local heap, so it is considered when computing the global lower bound.
-        this->lower_bound = std::min<f_t>(this->lower_bound, other->node_queue.get_lower_bound());
-        node              = other->node_queue.pop_best_first();
-      }
-      other->node_queue.unlock();
-      if (node == nullptr) { break; }
-
-      this->node_queue.push_atomic(node);
-      --num_nodes;
-      steal = true;
-    }
-
-    return steal;
+    return node_queue.steal_from(
+      victim->node_queue, this->worker_id, victim->worker_id, nodes_to_steal);
   }
 
   // Calculate the number of diving workers that this worker can launch. Having a fixed number
@@ -283,21 +243,6 @@ class diving_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
  public:
   using Base = branch_and_bound_worker_t<i_t, f_t>;
   using Base::Base;
-
-  // After calling this routine, you need to set `is_active = true` when the worker is ready.
-  // Note that the starting node may be dropped if become infeasible via bound propagation.
-  void init(const mip_node_t<i_t, f_t>* node, const lp_problem_t<i_t, f_t>& original_lp)
-  {
-    // Creates a copy of the node that is disconnected from the main tree, such that the
-    // diving does not modify the main tree. We need to store the variables bounds
-    // associated with this node, since we cannot retrieve it from the tree
-    start_node        = node->detach_copy();
-    this->start_lower = original_lp.lower;
-    this->start_upper = original_lp.upper;
-    this->lower_bound = node->lower_bound;
-    std::fill(this->bounds_changed.begin(), this->bounds_changed.end(), false);
-    node->get_variable_bounds(this->start_lower, this->start_upper, this->bounds_changed);
-  }
 
   // Apply bound strengthening to the starting variable bounds
   bool presolve_start_bounds(const simplex_solver_settings_t<i_t, f_t>& settings)

@@ -314,9 +314,11 @@ class branch_and_bound_t {
   // Repairs low-quality solutions from the heuristics, if it is applicable.
   void repair_heuristic_solutions();
 
-  // Launch a new diving worker from a given bfs worker. The dive will start
-  // from the node at the top of the local heap.
+  // Launch a new diving worker from a given best-first worker.
   bool launch_diving_worker(bfs_worker_t<i_t, f_t>* bfs_worker);
+
+  // Launch a new best-first worker from a given bfs worker.
+  void launch_bfs_worker(bfs_worker_t<i_t, f_t>* worker);
 
   // Perform best-first search with a given bfs worker.
   void best_first_search_with(bfs_worker_t<i_t, f_t>* worker);
@@ -326,13 +328,12 @@ class branch_and_bound_t {
   // Unexplored nodes in the subtree are inserted back into the global heap.
   void plunge_with(bfs_worker_t<i_t, f_t>* worker, mip_node_t<i_t, f_t>* start_node);
 
+  // A worker attempts to steal nodes from another worker
+  void work_stealing(bfs_worker_t<i_t, f_t>* worker);
+
   // Perform a deep dive in the subtree determined by the `start_node` in order
   // to find integer feasible solutions.
   void dive_with(diving_worker_t<i_t, f_t>* worker);
-
-  // Run the branch-and-bound algorithm in single threaded mode.
-  // This disables all diving heuristics.
-  void single_threaded_solve();
 
   // Solve the LP relaxation of a leaf node
   dual::status_t solve_node_lp(mip_node_t<i_t, f_t>* node_ptr,
