@@ -35,16 +35,32 @@ def main():
         "csr_constraint_matrix": {
             "offsets": [0, 2, 4],
             "indices": [0, 1, 0, 1],
-            "values": [2.0, 3.0, 4.0, 2.0],
+            "values": [
+                2.0,
+                3.0,
+                4.0,
+                2.0,
+            ],
         },
         "constraint_bounds": {
-            "upper_bounds": [240.0, 200.0],
+            "upper_bounds": [
+                240.0,
+                200.0,
+            ],
             "lower_bounds": ["ninf", "ninf"],
         },
-        "objective_data": {"coefficients": [40.0, 30.0]},
+        "objective_data": {
+            "coefficients": [
+                40.0,
+                30.0,
+            ],
+        },
         "variable_bounds": {
             "upper_bounds": ["inf", "inf"],
-            "lower_bounds": [0.0, 0.0],
+            "lower_bounds": [
+                0.0,
+                0.0,
+            ],
         },
         "variable_types": ["integer", "continuous"],
         "maximize": True,
