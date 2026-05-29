@@ -73,29 +73,34 @@ where Q is a symmetric positive semidefinite matrix. Please note that the Q matr
 See :ref:`simple-qp-example-python` for an example of how to create a QP problem with the Python Modeling API.
 See :ref:`simple-qp-example-c` for an example of how to create a QP problem with the C API.
 
-Quadratically Constrained Programming / SOCP (Beta)
------------------------------------------------------
+Second-Order Cone Programming (Beta)
+--------------------------------------
 
-.. note:: QCQP/SOCP support is **beta** in this release.
+.. note:: SOCP support is **beta** in this release.
 
-cuOpt supports problems with quadratic constraints (QCQP). Problems are specified in quadratic constraint form:
+cuOpt supports Second-Order Cone Programming (SOCP) problems of the form:
 
 .. code-block:: text
 
-    minimize        x^T*Q*x + c^T*x
+    minimize        c^T*x
     subject to      A*x {<=, =, >=} b
-                    x^T*P_i*x + q_i^T*x {<=, >=} r_i   (quadratic constraints)
+                    ||u_i||_2 <= t_i   (second-order cone constraints)
                     lb <= x <= ub
 
-cuOpt internally converts the quadratic constraints to second-order cone form and solves using the barrier method. Users do not specify cone constraints directly — all quadratic constraints are written in the standard QCQP form above.
+Because cuOpt does not accept cone constraints directly, SOC constraints are specified through the quadratic constraint API. Each SOC constraint ``||u||_2 <= t`` is expressed as the equivalent quadratic inequality ``u^T*u - t^2 <= 0``. cuOpt detects the SOC structure and converts to cone form internally before solving with the barrier method.
+
+.. note::
+   Only SOC-structured quadratic inequalities are supported. General quadratic constraints
+   (arbitrary quadratic forms) are not supported.
 
 When any quadratic constraint is present, cuOpt automatically selects the barrier method and disables presolve optimizations that apply only to linear problems.
 
 **Constraints:**
 
-- Only ``<=`` and ``>=`` sense is supported for quadratic constraints. Equality quadratic constraints are not supported.
+- Only ``<=`` and ``>=`` sense is supported. Equality quadratic constraints are not supported.
+- The quadratic constraint must have valid second-order cone structure.
 
-**Python example:**
+**Python example** — expressing ``||[x, y]||_2 <= z`` as a quadratic inequality:
 
 .. code-block:: python
 
@@ -103,13 +108,12 @@ When any quadratic constraint is present, cuOpt automatically selects the barrie
     y = problem.addVariable("y", lb=0)
     z = problem.addVariable("z", lb=0)
 
-    # Quadratic constraint: x^2 + y^2 - z^2 <= 0
-    # cuOpt converts this to second-order cone form internally
-    problem.addConstraint(x*x + y*y - z*z <= 0, name="qc")
+    # SOC constraint ||[x,y]||_2 <= z expressed as x^2 + y^2 - z^2 <= 0
+    problem.addConstraint(x*x + y*y - z*z <= 0, name="soc")
 
-**C API:** Use :c:func:`cuOptAddQuadraticConstraint` to add quadratic constraints. cuOpt automatically converts them to second-order cone form internally.
+**C API:** Use :c:func:`cuOptAddQuadraticConstraint` to add SOC constraints expressed as quadratic inequalities. cuOpt detects the SOC structure and converts to cone form internally.
 
-.. note:: QCQP problems always use the barrier solver regardless of the ``CUOPT_METHOD`` setting.
+.. note:: SOCP problems always use the barrier solver regardless of the ``CUOPT_METHOD`` setting.
 
 Warm Start
 -----------
