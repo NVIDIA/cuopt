@@ -65,8 +65,8 @@ inline constexpr int soc_block_size = 256;
  */
 template <std::integral i_t, std::floating_point f_t, int n_slots = 3>
 struct cone_scratch_t {
-  i_t n_cones;                 // number of SOC blocks
-  std::size_t n_cone_entries;  // total packed cone dimension
+  i_t n_cones;            // number of SOC blocks
+  size_t n_cone_entries;  // total packed cone dimension
 
   rmm::device_uvector<f_t> slots;  // [n_slots * n_cones]
 
@@ -77,7 +77,7 @@ struct cone_scratch_t {
   // TODO: Consider moving this out to the barrier layer when we wire it in
   rmm::device_uvector<f_t> temp_cone;  // [n_cone_entries]
 
-  cone_scratch_t(i_t n_cones_in, std::size_t n_cone_entries_in, rmm::cuda_stream_view stream)
+  cone_scratch_t(i_t n_cones_in, size_t n_cone_entries_in, rmm::cuda_stream_view stream)
     : n_cones(n_cones_in),
       n_cone_entries(n_cone_entries_in),
       slots(0, stream),
@@ -85,9 +85,9 @@ struct cone_scratch_t {
       step_alpha_dual(0, stream),
       temp_cone(0, stream)
   {
-    const auto n_cones_size = static_cast<std::size_t>(n_cones);
+    const size_t n_cones_size = static_cast<size_t>(n_cones);
 
-    slots.resize(n_cones_size * static_cast<std::size_t>(n_slots), stream);
+    slots.resize(n_cones_size * static_cast<size_t>(n_slots), stream);
     step_alpha_primal.resize(n_cones_size, stream);
     step_alpha_dual.resize(n_cones_size, stream);
     temp_cone.resize(n_cone_entries, stream);
@@ -97,9 +97,9 @@ struct cone_scratch_t {
   raft::device_span<const f_t> get_slot() const
   {
     static_assert(slot_idx >= 0 && slot_idx < n_slots, "scratch slot index out of range");
-    const auto n_cones_size = static_cast<std::size_t>(n_cones);
-    const auto begin        = static_cast<std::size_t>(slot_idx) * n_cones_size;
-    const auto end          = begin + n_cones_size;
+    const size_t n_cones_size = static_cast<size_t>(n_cones);
+    const size_t begin        = static_cast<size_t>(slot_idx) * n_cones_size;
+    const size_t end          = begin + n_cones_size;
     return cuopt::make_span(slots, begin, end);
   }
 
@@ -113,7 +113,7 @@ struct cone_scratch_t {
 
 struct to_size_t_t {
   template <typename value_t>
-  HD std::size_t operator()(value_t value) const
+  HD size_t operator()(value_t value) const
   {
     return value;
   }
@@ -123,12 +123,12 @@ template <std::floating_point f_t>
 HD f_t cone_step_length_from_scalars(
   f_t u0, f_t du0, f_t du_tail_sq, f_t u_tail_du_tail, f_t u_tail_sq, f_t alpha_max)
 {
-  const auto a     = du0 * du0 - du_tail_sq;
-  const auto b     = u0 * du0 - u_tail_du_tail;
-  const auto c_raw = u0 * u0 - u_tail_sq;
-  const auto c     = c_raw > 0 ? c_raw : 0;
-  const auto disc  = b * b - a * c;
-  auto alpha       = alpha_max;
+  const f_t a     = du0 * du0 - du_tail_sq;
+  const f_t b     = u0 * du0 - u_tail_du_tail;
+  const f_t c_raw = u0 * u0 - u_tail_sq;
+  const f_t c     = c_raw > 0 ? c_raw : 0;
+  const f_t disc  = b * b - a * c;
+  f_t alpha       = alpha_max;
 
   if (u0 >= 0 && du0 < 0) { alpha = cuda::std::min(alpha, -u0 / du0); }
 
@@ -139,9 +139,9 @@ HD f_t cone_step_length_from_scalars(
   } else if (c == 0) {
     alpha = a >= 0 ? alpha : 0;
   } else {
-    const auto t = -(b + copysign(sqrt(disc), b));
-    auto r1      = c / t;
-    auto r2      = t / a;
+    const f_t t = -(b + copysign(sqrt(disc), b));
+    f_t r1      = c / t;
+    f_t r2      = t / a;
     if (r1 < 0) { r1 = alpha; }
     if (r2 < 0) { r2 = alpha; }
     alpha = cuda::std::min(alpha, cuda::std::min(r1, r2));
@@ -158,15 +158,15 @@ __global__ void __launch_bounds__(soc_block_size)
                             raft::device_span<const f_t> du_tail_sq,
                             raft::device_span<const f_t> u_tail_du_tail,
                             raft::device_span<const f_t> u_tail_sq,
-                            raft::device_span<const std::size_t> cone_offsets,
+                            raft::device_span<const size_t> cone_offsets,
                             f_t alpha_max,
                             i_t n_cones)
 {
-  const auto cone = static_cast<i_t>(blockIdx.x * blockDim.x + threadIdx.x);
+  const i_t cone = static_cast<i_t>(blockIdx.x * blockDim.x + threadIdx.x);
   if (cone >= n_cones) { return; }
 
-  const auto off = cone_offsets[cone];
-  alpha[cone]    = cone_step_length_from_scalars(
+  const size_t off = cone_offsets[cone];
+  alpha[cone]      = cone_step_length_from_scalars(
     u[off], du[off], du_tail_sq[cone], u_tail_du_tail[cone], u_tail_sq[cone], alpha_max);
 }
 
@@ -184,11 +184,11 @@ __global__ void __launch_bounds__(soc_block_size)
 template <std::integral i_t, std::floating_point f_t>
 struct cone_data_t {
   // Topology. This is immutable after construction.
-  i_t n_cones;                 // number of SOC blocks
-  std::size_t n_cone_entries;  // total packed cone dimension = sum(cone_dimensions)
+  i_t n_cones;            // number of SOC blocks
+  size_t n_cone_entries;  // total packed cone dimension = sum(cone_dimensions)
 
-  rmm::device_uvector<std::size_t> cone_offsets;  // [n_cones + 1], prefix sum of dimensions
-  rmm::device_uvector<i_t> cone_dimensions;       // [n_cones], dimension q_i of each cone
+  rmm::device_uvector<size_t> cone_offsets;  // [n_cones + 1], prefix sum of dimensions
+  rmm::device_uvector<i_t> cone_dimensions;  // [n_cones], dimension q_i of each cone
   // Owning cone per entry for upcoming flat per-entry SOC kernels.
   rmm::device_uvector<i_t> element_cone_ids;  // [n_cone_entries]
   segmented_sum_t<i_t> segmented_sum;
@@ -210,7 +210,7 @@ struct cone_data_t {
               rmm::cuda_stream_view stream)
     : n_cones(cone_dimensions_host.size()),
       n_cone_entries(
-        std::reduce(cone_dimensions_host.begin(), cone_dimensions_host.end(), std::size_t{0})),
+        std::reduce(cone_dimensions_host.begin(), cone_dimensions_host.end(), size_t{0})),
       cone_offsets(n_cones + 1, stream),
       cone_dimensions(n_cones, stream),
       element_cone_ids(n_cone_entries, stream),
@@ -232,13 +232,13 @@ struct cone_data_t {
                            cone_dimensions_as_offsets,
                            cone_dimensions_as_offsets + n_cones,
                            cone_offsets.begin() + 1,
-                           cuda::std::plus<std::size_t>{});
+                           cuda::std::plus<size_t>{});
 
     thrust::upper_bound(policy,
                         cone_offsets.begin() + 1,
                         cone_offsets.end(),
-                        thrust::make_counting_iterator<std::size_t>(0),
-                        thrust::make_counting_iterator<std::size_t>(n_cone_entries),
+                        thrust::make_counting_iterator<size_t>(0),
+                        thrust::make_counting_iterator<size_t>(n_cone_entries),
                         element_cone_ids.begin());
     segmented_sum.template prepare_workspace<f_t>(stream);
   }
@@ -251,17 +251,17 @@ __global__ void __launch_bounds__(soc_block_size)
                                      raft::device_span<f_t> x_scale,
                                      raft::device_span<f_t> z_scale,
                                      raft::device_span<f_t> eta,
-                                     raft::device_span<const std::size_t> cone_offsets,
+                                     raft::device_span<const size_t> cone_offsets,
                                      i_t n_cones)
 {
-  const auto cone = static_cast<i_t>(blockIdx.x * blockDim.x + threadIdx.x);
+  const i_t cone = static_cast<i_t>(blockIdx.x * blockDim.x + threadIdx.x);
   if (cone >= n_cones) { return; }
 
-  const auto off         = cone_offsets[cone];
-  const auto x_tail_norm = sqrt(x_scale[cone]);
-  const auto z_tail_norm = sqrt(z_scale[cone]);
-  const auto x_det       = (x[off] - x_tail_norm) * (x[off] + x_tail_norm);
-  const auto z_det       = (z[off] - z_tail_norm) * (z[off] + z_tail_norm);
+  const size_t off      = cone_offsets[cone];
+  const f_t x_tail_norm = sqrt(x_scale[cone]);
+  const f_t z_tail_norm = sqrt(z_scale[cone]);
+  const f_t x_det       = (x[off] - x_tail_norm) * (x[off] + x_tail_norm);
+  const f_t z_det       = (z[off] - z_tail_norm) * (z[off] + z_tail_norm);
 
   x_scale[cone] = sqrt(x_det);
   z_scale[cone] = sqrt(z_det);
@@ -273,17 +273,17 @@ __global__ void __launch_bounds__(soc_block_size)
   nt_finalize_w_scale_kernel(raft::device_span<const f_t> w,
                              raft::device_span<const f_t> tail_sq,
                              raft::device_span<f_t> w_scale,
-                             raft::device_span<const std::size_t> cone_offsets,
+                             raft::device_span<const size_t> cone_offsets,
                              i_t n_cones)
 {
-  const auto cone = static_cast<i_t>(blockIdx.x * blockDim.x + threadIdx.x);
+  const i_t cone = static_cast<i_t>(blockIdx.x * blockDim.x + threadIdx.x);
   if (cone >= n_cones) { return; }
 
-  const auto cone_off  = cone_offsets[cone];
-  const auto head      = w[cone_off];
-  const auto tail_norm = sqrt(tail_sq[cone]);
-  const auto residual  = (head - tail_norm) * (head + tail_norm);
-  w_scale[cone]        = sqrt(residual);
+  const size_t cone_off = cone_offsets[cone];
+  const f_t head        = w[cone_off];
+  const f_t tail_norm   = sqrt(tail_sq[cone]);
+  const f_t residual    = (head - tail_norm) * (head + tail_norm);
+  w_scale[cone]         = sqrt(residual);
 }
 
 /**
@@ -299,14 +299,14 @@ __global__ void __launch_bounds__(soc_block_size)
                     raft::device_span<const f_t> x_scale,
                     raft::device_span<const f_t> z_scale,
                     raft::device_span<f_t> w,
-                    raft::device_span<const std::size_t> cone_offsets,
+                    raft::device_span<const size_t> cone_offsets,
                     raft::device_span<const i_t> element_cone_ids)
 {
-  const auto idx = static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const size_t idx = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (idx >= w.size()) { return; }
 
-  const auto cone     = element_cone_ids[idx];
-  const auto cone_off = cone_offsets[cone];
+  const i_t cone        = element_cone_ids[idx];
+  const size_t cone_off = cone_offsets[cone];
   if (idx == cone_off) {
     w[idx] = z[idx] / z_scale[cone] + x[idx] / x_scale[cone];
     return;
@@ -321,10 +321,10 @@ __global__ void __launch_bounds__(soc_block_size)
                         raft::device_span<const f_t> w_scale,
                         raft::device_span<const i_t> element_cone_ids)
 {
-  const auto idx = static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const size_t idx = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (idx >= w.size()) { return; }
 
-  const auto cone = element_cone_ids[idx];
+  const i_t cone = element_cone_ids[idx];
   w[idx] /= w_scale[cone];
 }
 
@@ -332,10 +332,10 @@ template <std::integral i_t, std::floating_point f_t>
 __global__ void __launch_bounds__(soc_block_size)
   nt_finalize_head_kernel(raft::device_span<f_t> w,
                           raft::device_span<const f_t> normalized_tail_sq,
-                          raft::device_span<const std::size_t> cone_offsets,
+                          raft::device_span<const size_t> cone_offsets,
                           i_t n_cones)
 {
-  const auto cone = static_cast<i_t>(blockIdx.x * blockDim.x + threadIdx.x);
+  const i_t cone = static_cast<i_t>(blockIdx.x * blockDim.x + threadIdx.x);
   if (cone >= n_cones) { return; }
 
   w[cone_offsets[cone]] = sqrt(1 + normalized_tail_sq[cone]);
@@ -349,34 +349,34 @@ __global__ void __launch_bounds__(soc_block_size)
                          raft::device_span<const f_t> z_scale,
                          raft::device_span<const f_t> w_scale,
                          raft::device_span<f_t> lambda,
-                         raft::device_span<const std::size_t> cone_offsets,
+                         raft::device_span<const size_t> cone_offsets,
                          raft::device_span<const i_t> element_cone_ids)
 {
-  const auto idx = static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const size_t idx = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (idx >= lambda.size()) { return; }
 
-  const auto cone      = element_cone_ids[idx];
-  const auto cone_off  = cone_offsets[cone];
-  const auto local_idx = idx - cone_off;
+  const i_t cone         = element_cone_ids[idx];
+  const size_t cone_off  = cone_offsets[cone];
+  const size_t local_idx = idx - cone_off;
 
-  const auto x_scale_cone = x_scale[cone];
-  const auto z_scale_cone = z_scale[cone];
-  const auto gamma        = static_cast<f_t>(0.5) * w_scale[cone];
-  const auto head_scale   = sqrt(x_scale_cone * z_scale_cone);
+  const f_t x_scale_cone = x_scale[cone];
+  const f_t z_scale_cone = z_scale[cone];
+  const f_t gamma        = static_cast<f_t>(0.5) * w_scale[cone];
+  const f_t head_scale   = sqrt(x_scale_cone * z_scale_cone);
 
   if (local_idx == 0) {
     lambda[idx] = gamma * head_scale;
     return;
   }
 
-  const auto x_head  = x[cone_off];
-  const auto z_head  = z[cone_off];
-  const auto denom   = z_head / z_scale_cone + x_head / x_scale_cone + static_cast<f_t>(2) * gamma;
-  const auto coeff_z = (gamma + x_head / x_scale_cone) / z_scale_cone;
-  const auto coeff_x = (gamma + z_head / z_scale_cone) / x_scale_cone;
+  const f_t x_head  = x[cone_off];
+  const f_t z_head  = z[cone_off];
+  const f_t denom   = z_head / z_scale_cone + x_head / x_scale_cone + static_cast<f_t>(2) * gamma;
+  const f_t coeff_z = (gamma + x_head / x_scale_cone) / z_scale_cone;
+  const f_t coeff_x = (gamma + z_head / z_scale_cone) / x_scale_cone;
 
-  const auto lambda_tail = (coeff_z * z[idx] + coeff_x * x[idx]) / denom;
-  lambda[idx]            = lambda_tail * head_scale;
+  const f_t lambda_tail = (coeff_z * z[idx] + coeff_x * x[idx]) / denom;
+  lambda[idx]           = lambda_tail * head_scale;
 }
 
 /**
@@ -411,29 +411,29 @@ void launch_nt_scaling(cone_data_t<i_t, f_t>& cones, rmm::cuda_stream_view strea
   const auto element_cone_ids = cuopt::make_span(cones.element_cone_ids);
 
   auto x_tail_sq_terms = thrust::make_transform_iterator(
-    thrust::make_counting_iterator<std::size_t>(0),
-    [span_x, cone_offsets, element_cone_ids] HD(std::size_t idx) -> f_t {
-      const auto cone = element_cone_ids[idx];
+    thrust::make_counting_iterator<size_t>(0),
+    [span_x, cone_offsets, element_cone_ids] HD(size_t idx) -> f_t {
+      const i_t cone = element_cone_ids[idx];
       return idx == cone_offsets[cone] ? 0 : span_x[idx] * span_x[idx];
     });
   cones.segmented_sum(x_tail_sq_terms, x_scale, stream);
 
   auto z_tail_sq_terms = thrust::make_transform_iterator(
-    thrust::make_counting_iterator<std::size_t>(0),
-    [span_z, cone_offsets, element_cone_ids] HD(std::size_t idx) -> f_t {
-      const auto cone = element_cone_ids[idx];
+    thrust::make_counting_iterator<size_t>(0),
+    [span_z, cone_offsets, element_cone_ids] HD(size_t idx) -> f_t {
+      const i_t cone = element_cone_ids[idx];
       return idx == cone_offsets[cone] ? 0 : span_z[idx] * span_z[idx];
     });
   cones.segmented_sum(z_tail_sq_terms, z_scale, stream);
 
-  const auto cone_grid_dim =
-    raft::ceildiv<std::size_t>(static_cast<std::size_t>(cones.n_cones), soc_block_size);
+  const size_t cone_grid_dim =
+    raft::ceildiv<size_t>(static_cast<size_t>(cones.n_cones), soc_block_size);
   nt_finalize_scaling_scalars_kernel<i_t, f_t>
     <<<cone_grid_dim, soc_block_size, 0, stream.value()>>>(
       cones.x, cones.z, x_scale, z_scale, cuopt::make_span(cones.eta), cone_offsets, cones.n_cones);
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 
-  const auto element_grid_dim = raft::ceildiv<std::size_t>(cones.n_cone_entries, soc_block_size);
+  const size_t element_grid_dim = raft::ceildiv<size_t>(cones.n_cone_entries, soc_block_size);
 
   auto w = cuopt::make_span(cones.w);
   nt_write_w_kernel<i_t, f_t><<<element_grid_dim, soc_block_size, 0, stream.value()>>>(
@@ -441,9 +441,9 @@ void launch_nt_scaling(cone_data_t<i_t, f_t>& cones, rmm::cuda_stream_view strea
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 
   auto unnormalized_tail_sq_terms =
-    thrust::make_transform_iterator(thrust::make_counting_iterator<std::size_t>(0),
-                                    [cone_offsets, element_cone_ids, w] HD(std::size_t idx) -> f_t {
-                                      const auto cone = element_cone_ids[idx];
+    thrust::make_transform_iterator(thrust::make_counting_iterator<size_t>(0),
+                                    [cone_offsets, element_cone_ids, w] HD(size_t idx) -> f_t {
+                                      const i_t cone = element_cone_ids[idx];
                                       return idx == cone_offsets[cone] ? 0 : w[idx] * w[idx];
                                     });
   cones.segmented_sum(unnormalized_tail_sq_terms, w_scale, stream);
@@ -470,9 +470,9 @@ void launch_nt_scaling(cone_data_t<i_t, f_t>& cones, rmm::cuda_stream_view strea
 
   // w_scale is overwritten from here
   auto normalized_tail_terms =
-    thrust::make_transform_iterator(thrust::make_counting_iterator<std::size_t>(0),
-                                    [cone_offsets, element_cone_ids, w] HD(std::size_t idx) -> f_t {
-                                      const auto cone = element_cone_ids[idx];
+    thrust::make_transform_iterator(thrust::make_counting_iterator<size_t>(0),
+                                    [cone_offsets, element_cone_ids, w] HD(size_t idx) -> f_t {
+                                      const i_t cone = element_cone_ids[idx];
                                       return idx == cone_offsets[cone] ? 0 : w[idx] * w[idx];
                                     });
   cones.segmented_sum(normalized_tail_terms, w_scale, stream);
@@ -489,28 +489,28 @@ __global__ void __launch_bounds__(soc_block_size)
                            raft::device_span<const f_t> w,
                            raft::device_span<const f_t> eta,
                            raft::device_span<const f_t> tail_dot,
-                           raft::device_span<const std::size_t> cone_offsets,
+                           raft::device_span<const size_t> cone_offsets,
                            raft::device_span<const i_t> element_cone_ids)
 {
-  const auto idx = static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const size_t idx = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (idx >= out.size()) { return; }
 
-  const auto cone      = element_cone_ids[idx];
-  const auto cone_off  = cone_offsets[cone];
-  const auto local_idx = idx - cone_off;
+  const i_t cone         = element_cone_ids[idx];
+  const size_t cone_off  = cone_offsets[cone];
+  const size_t local_idx = idx - cone_off;
 
-  const auto w0      = w[cone_off];
-  const auto zeta    = tail_dot[cone];
-  const auto v0      = v[cone_off];
-  const auto inv_eta = f_t(1) / eta[cone];
+  const f_t w0      = w[cone_off];
+  const f_t zeta    = tail_dot[cone];
+  const f_t v0      = v[cone_off];
+  const f_t inv_eta = f_t(1) / eta[cone];
 
   if (local_idx == 0) {
     out[idx] = inv_eta * (w0 * v0 - zeta);
     return;
   }
 
-  const auto coeff = -v0 + zeta / (f_t(1) + w0);
-  out[idx]         = inv_eta * (v[idx] + coeff * w[idx]);
+  const f_t coeff = -v0 + zeta / (f_t(1) + w0);
+  out[idx]        = inv_eta * (v[idx] + coeff * w[idx]);
 }
 
 template <std::integral i_t, std::floating_point f_t>
@@ -520,28 +520,28 @@ __global__ void __launch_bounds__(soc_block_size)
                        raft::device_span<const f_t> w,
                        raft::device_span<const f_t> eta,
                        raft::device_span<const f_t> tail_dot,
-                       raft::device_span<const std::size_t> cone_offsets,
+                       raft::device_span<const size_t> cone_offsets,
                        raft::device_span<const i_t> element_cone_ids)
 {
-  const auto idx = static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const size_t idx = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (idx >= out.size()) { return; }
 
-  const auto cone      = element_cone_ids[idx];
-  const auto cone_off  = cone_offsets[cone];
-  const auto local_idx = idx - cone_off;
+  const i_t cone         = element_cone_ids[idx];
+  const size_t cone_off  = cone_offsets[cone];
+  const size_t local_idx = idx - cone_off;
 
-  const auto w0       = w[cone_off];
-  const auto zeta     = tail_dot[cone];
-  const auto v0       = v[cone_off];
-  const auto cone_eta = eta[cone];
+  const f_t w0       = w[cone_off];
+  const f_t zeta     = tail_dot[cone];
+  const f_t v0       = v[cone_off];
+  const f_t cone_eta = eta[cone];
 
   if (local_idx == 0) {
     out[idx] = cone_eta * (w0 * v0 + zeta);
     return;
   }
 
-  const auto coeff = v0 + zeta / (f_t(1) + w0);
-  out[idx]         = cone_eta * (v[idx] + coeff * w[idx]);
+  const f_t coeff = v0 + zeta / (f_t(1) + w0);
+  out[idx]        = cone_eta * (v[idx] + coeff * w[idx]);
 }
 
 template <std::integral i_t, std::floating_point f_t>
@@ -551,24 +551,24 @@ __global__ void __launch_bounds__(soc_block_size)
                              raft::device_span<const f_t> w,
                              raft::device_span<const f_t> eta,
                              raft::device_span<const f_t> wv_dot,
-                             raft::device_span<const std::size_t> cone_offsets,
+                             raft::device_span<const size_t> cone_offsets,
                              raft::device_span<const i_t> element_cone_ids,
                              raft::device_span<const f_t> bias,
                              f_t output_scale,
                              f_t bias_scale)
 {
-  const auto idx = static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const size_t idx = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (idx >= out.size()) { return; }
 
-  const auto cone      = element_cone_ids[idx];
-  const auto cone_off  = cone_offsets[cone];
-  const auto local_idx = idx - cone_off;
+  const i_t cone         = element_cone_ids[idx];
+  const size_t cone_off  = cone_offsets[cone];
+  const size_t local_idx = idx - cone_off;
 
-  const auto eta_sq  = (eta[cone] * eta[cone]);
-  const auto coeff   = 2 * wv_dot[cone] * eta_sq;
-  const int sign     = (local_idx == 0) * 2 - 1;
-  const auto value   = coeff * w[idx] - eta_sq * v[idx] * sign;
-  const auto h_value = output_scale * value;
+  const f_t eta_sq  = (eta[cone] * eta[cone]);
+  const f_t coeff   = 2 * wv_dot[cone] * eta_sq;
+  const int sign    = (local_idx == 0) * 2 - 1;
+  const f_t value   = coeff * w[idx] - eta_sq * v[idx] * sign;
+  const f_t h_value = output_scale * value;
 
   out[idx] = bias.empty() ? h_value : bias_scale * bias[idx] + h_value;
 }
@@ -577,10 +577,10 @@ template <std::integral i_t, std::floating_point f_t>
 __global__ void __launch_bounds__(soc_block_size)
   gather_cone_heads_kernel(raft::device_span<const f_t> values,
                            raft::device_span<f_t> heads,
-                           raft::device_span<const std::size_t> cone_offsets,
+                           raft::device_span<const size_t> cone_offsets,
                            i_t n_cones)
 {
-  const auto cone = static_cast<i_t>(blockIdx.x * blockDim.x + threadIdx.x);
+  const i_t cone = static_cast<i_t>(blockIdx.x * blockDim.x + threadIdx.x);
   if (cone >= n_cones) { return; }
 
   heads[cone] = values[cone_offsets[cone]];
@@ -606,16 +606,16 @@ __global__ void __launch_bounds__(soc_block_size)
                                    raft::device_span<const f_t> full_dot,
                                    raft::device_span<const f_t> scaled_dx_head,
                                    raft::device_span<const f_t> scaled_dz_head,
-                                   raft::device_span<const std::size_t> cone_offsets,
+                                   raft::device_span<const size_t> cone_offsets,
                                    raft::device_span<const i_t> element_cone_ids,
                                    f_t sigma_mu)
 {
-  const auto idx = static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const size_t idx = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (idx >= shift.size()) { return; }
 
-  const auto cone      = element_cone_ids[idx];
-  const auto cone_off  = cone_offsets[cone];
-  const auto local_idx = idx - cone_off;
+  const i_t cone         = element_cone_ids[idx];
+  const size_t cone_off  = cone_offsets[cone];
+  const size_t local_idx = idx - cone_off;
 
   if (local_idx == 0) {
     shift[idx] = full_dot[cone] - sigma_mu;
@@ -642,16 +642,16 @@ __global__ void __launch_bounds__(soc_block_size)
                                         raft::device_span<const f_t> lambda_tail_sq,
                                         raft::device_span<f_t> p0,
                                         raft::device_span<f_t> inv_lambda0,
-                                        raft::device_span<const std::size_t> cone_offsets,
+                                        raft::device_span<const size_t> cone_offsets,
                                         i_t n_cones)
 {
-  const auto cone = static_cast<i_t>(blockIdx.x * blockDim.x + threadIdx.x);
+  const i_t cone = static_cast<i_t>(blockIdx.x * blockDim.x + threadIdx.x);
   if (cone >= n_cones) { return; }
 
-  const auto cone_off         = cone_offsets[cone];
-  const auto lambda0          = nt_point[cone_off];
-  const auto lambda_tail_norm = sqrt(lambda_tail_sq[cone]);
-  const auto det_lambda       = (lambda0 - lambda_tail_norm) * (lambda0 + lambda_tail_norm);
+  const size_t cone_off      = cone_offsets[cone];
+  const f_t lambda0          = nt_point[cone_off];
+  const f_t lambda_tail_norm = sqrt(lambda_tail_sq[cone]);
+  const f_t det_lambda       = (lambda0 - lambda_tail_norm) * (lambda0 + lambda_tail_norm);
 
   // repurpose the heads in lambda_tail_dot, lambda_tail_sq for each cone
   p0[cone]          = (lambda0 * shift[cone_off] - lambda_tail_dot[cone]) / det_lambda;
@@ -664,16 +664,16 @@ __global__ void __launch_bounds__(soc_block_size)
                                        raft::device_span<const f_t> nt_point,
                                        raft::device_span<const f_t> p0,
                                        raft::device_span<const f_t> inv_lambda0,
-                                       raft::device_span<const std::size_t> cone_offsets,
+                                       raft::device_span<const size_t> cone_offsets,
                                        raft::device_span<const i_t> element_cone_ids,
                                        raft::device_span<f_t> out)
 {
-  const auto idx = static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const size_t idx = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (idx >= out.size()) { return; }
 
-  const auto cone      = element_cone_ids[idx];
-  const auto cone_off  = cone_offsets[cone];
-  const auto local_idx = idx - cone_off;
+  const i_t cone         = element_cone_ids[idx];
+  const size_t cone_off  = cone_offsets[cone];
+  const size_t local_idx = idx - cone_off;
 
   if (local_idx == 0) {
     out[idx] = -p0[cone];
@@ -703,15 +703,15 @@ void apply_w_inv(raft::device_span<const f_t> v,
   auto element_cone_ids = cuopt::make_span(cones.element_cone_ids);
   auto tail_dot         = cones.scratch.template get_slot<0>();
 
-  auto tail_terms = thrust::make_transform_iterator(
-    thrust::make_counting_iterator<std::size_t>(0),
-    [v, w, cone_offsets, element_cone_ids] HD(std::size_t idx) -> f_t {
-      const auto cone = element_cone_ids[idx];
-      return idx == cone_offsets[cone] ? 0 : w[idx] * v[idx];
-    });
+  auto tail_terms =
+    thrust::make_transform_iterator(thrust::make_counting_iterator<size_t>(0),
+                                    [v, w, cone_offsets, element_cone_ids] HD(size_t idx) -> f_t {
+                                      const i_t cone = element_cone_ids[idx];
+                                      return idx == cone_offsets[cone] ? 0 : w[idx] * v[idx];
+                                    });
   cones.segmented_sum(tail_terms, tail_dot, stream);
 
-  const auto grid_dim = raft::ceildiv<std::size_t>(out.size(), soc_block_size);
+  const size_t grid_dim = raft::ceildiv<size_t>(out.size(), soc_block_size);
   apply_w_inv_write_kernel<i_t, f_t><<<grid_dim, soc_block_size, 0, stream.value()>>>(
     v, out, w, eta, tail_dot, cone_offsets, element_cone_ids);
   RAFT_CUDA_TRY(cudaPeekAtLastError());
@@ -739,15 +739,15 @@ void apply_w(raft::device_span<const f_t> v,
   auto element_cone_ids = cuopt::make_span(cones.element_cone_ids);
   auto tail_dot         = cones.scratch.template get_slot<0>();
 
-  auto tail_terms = thrust::make_transform_iterator(
-    thrust::make_counting_iterator<std::size_t>(0),
-    [v, w, cone_offsets, element_cone_ids] HD(std::size_t idx) -> f_t {
-      const auto cone = element_cone_ids[idx];
-      return idx == cone_offsets[cone] ? 0 : w[idx] * v[idx];
-    });
+  auto tail_terms =
+    thrust::make_transform_iterator(thrust::make_counting_iterator<size_t>(0),
+                                    [v, w, cone_offsets, element_cone_ids] HD(size_t idx) -> f_t {
+                                      const i_t cone = element_cone_ids[idx];
+                                      return idx == cone_offsets[cone] ? 0 : w[idx] * v[idx];
+                                    });
   cones.segmented_sum(tail_terms, tail_dot, stream);
 
-  const auto grid_dim = raft::ceildiv<std::size_t>(out.size(), soc_block_size);
+  const size_t grid_dim = raft::ceildiv<size_t>(out.size(), soc_block_size);
   apply_w_write_kernel<i_t, f_t><<<grid_dim, soc_block_size, 0, stream.value()>>>(
     v, out, w, eta, tail_dot, cone_offsets, element_cone_ids);
   RAFT_CUDA_TRY(cudaPeekAtLastError());
@@ -776,11 +776,11 @@ void apply_hessian(raft::device_span<const f_t> v,
   auto wv_dot           = cones.scratch.template get_slot<0>();
 
   auto wv_terms =
-    thrust::make_transform_iterator(thrust::make_counting_iterator<std::size_t>(0),
-                                    [v, w] HD(std::size_t idx) -> f_t { return w[idx] * v[idx]; });
+    thrust::make_transform_iterator(thrust::make_counting_iterator<size_t>(0),
+                                    [v, w] HD(size_t idx) -> f_t { return w[idx] * v[idx]; });
   cones.segmented_sum(wv_terms, wv_dot, stream);
 
-  const auto grid_dim = raft::ceildiv<std::size_t>(out.size(), soc_block_size);
+  const size_t grid_dim = raft::ceildiv<size_t>(out.size(), soc_block_size);
   apply_hessian_write_kernel<i_t, f_t><<<grid_dim, soc_block_size, 0, stream.value()>>>(
     v, out, w, eta, wv_dot, cone_offsets, element_cone_ids, bias, output_scale, bias_scale);
   RAFT_CUDA_TRY(cudaPeekAtLastError());
@@ -826,12 +826,12 @@ __global__ void __launch_bounds__(soc_block_size)
                                         raft::device_span<const f_t> q_values,
                                         raft::device_span<const f_t> w,
                                         raft::device_span<const f_t> eta,
-                                        raft::device_span<const std::size_t> cone_offsets,
-                                        raft::device_span<const std::size_t> block_offsets,
+                                        raft::device_span<const size_t> cone_offsets,
+                                        raft::device_span<const size_t> block_offsets,
                                         i_t n_cones,
                                         f_t dual_perturb_value)
 {
-  const auto e = static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const size_t e = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (e >= csr_indices.size()) { return; }
 
   i_t lo = 0;
@@ -845,20 +845,20 @@ __global__ void __launch_bounds__(soc_block_size)
     }
   }
 
-  const auto cone    = lo;
-  const auto off     = cone_offsets[cone];
-  const auto q       = cone_offsets[cone + 1] - off;
-  const auto blk_off = block_offsets[cone];
-  const auto local   = e - blk_off;
-  const auto r       = local / q;
-  const auto c       = local % q;
+  const i_t cone       = lo;
+  const size_t off     = cone_offsets[cone];
+  const size_t q       = cone_offsets[cone + 1] - off;
+  const size_t blk_off = block_offsets[cone];
+  const size_t local   = e - blk_off;
+  const size_t r       = local / q;
+  const size_t c       = local % q;
 
-  const auto eta_sq          = eta[cone] * eta[cone];
-  const auto w0              = w[off];
-  const auto u_r             = (r == 0) ? w0 : w[off + r];
-  const auto u_c             = (c == 0) ? w0 : w[off + c];
-  auto val                   = f_t{2} * u_r * eta_sq * u_c;
-  const auto diag_correction = (r == 0) ? -eta_sq : eta_sq;
+  const f_t eta_sq          = eta[cone] * eta[cone];
+  const f_t w0              = w[off];
+  const f_t u_r             = (r == 0) ? w0 : w[off + r];
+  const f_t u_c             = (c == 0) ? w0 : w[off + c];
+  f_t val                   = f_t{2} * u_r * eta_sq * u_c;
+  const f_t diag_correction = (r == 0) ? -eta_sq : eta_sq;
   if (r == c) { val += diag_correction; }
 
   augmented_x[csr_indices[e]] = -val - q_values[e];
@@ -872,24 +872,23 @@ void scatter_hessian_into_augmented(const cone_data_t<i_t, f_t>& cones,
                                     rmm::cuda_stream_view stream,
                                     f_t dual_perturb_value)
 {
-  const auto count = csr_indices.size();
+  const size_t count = csr_indices.size();
   if (count == 0) { return; }
   cuopt_assert(count == q_values.size(), "cone CSR index and Q-value arrays must match");
 
   // TODO: This offset calculation should be done in the barrier layer,
   // because it is already done in the barrier layer for the augmented system, see
   // cone_block_offsets_host.
-  rmm::device_uvector<std::size_t> block_offsets(cones.n_cones + 1, stream);
+  rmm::device_uvector<size_t> block_offsets(cones.n_cones + 1, stream);
   block_offsets.set_element_to_zero_async(0, stream);
 
   auto block_sizes = thrust::make_transform_iterator(
-    cones.cone_dimensions.begin(),
-    [] HD(i_t q) -> std::size_t { return static_cast<std::size_t>(q) * q; });
+    cones.cone_dimensions.begin(), [] HD(i_t q) -> size_t { return static_cast<size_t>(q) * q; });
   thrust::inclusive_scan(
     rmm::exec_policy(stream), block_sizes, block_sizes + cones.n_cones, block_offsets.begin() + 1);
 
   // TODO: use dual_perturb_value for regularization
-  const auto grid = raft::ceildiv<std::size_t>(count, soc_block_size);
+  const size_t grid = raft::ceildiv<size_t>(count, soc_block_size);
   scatter_hessian_into_augmented_kernel<i_t, f_t>
     <<<grid, soc_block_size, 0, stream.value()>>>(cuopt::make_span(augmented_x),
                                                   cuopt::make_span(csr_indices),
@@ -937,32 +936,32 @@ std::pair<f_t, f_t> compute_cone_step_length(cone_data_t<i_t, f_t>& cones,
   auto run_pass = [&](raft::device_span<const f_t> u,
                       raft::device_span<const f_t> du,
                       raft::device_span<f_t> alpha) {
-    auto du_tail_sq_terms = thrust::make_transform_iterator(
-      thrust::make_counting_iterator<std::size_t>(0),
-      [du, cone_offsets, element_cone_ids] HD(std::size_t idx) -> f_t {
-        const auto cone = element_cone_ids[idx];
-        return idx == cone_offsets[cone] ? 0 : du[idx] * du[idx];
-      });
+    auto du_tail_sq_terms =
+      thrust::make_transform_iterator(thrust::make_counting_iterator<size_t>(0),
+                                      [du, cone_offsets, element_cone_ids] HD(size_t idx) -> f_t {
+                                        const i_t cone = element_cone_ids[idx];
+                                        return idx == cone_offsets[cone] ? 0 : du[idx] * du[idx];
+                                      });
     cones.segmented_sum(du_tail_sq_terms, slot_0, stream);
 
     auto u_tail_du_tail_terms = thrust::make_transform_iterator(
-      thrust::make_counting_iterator<std::size_t>(0),
-      [u, du, cone_offsets, element_cone_ids] HD(std::size_t idx) -> f_t {
-        const auto cone = element_cone_ids[idx];
+      thrust::make_counting_iterator<size_t>(0),
+      [u, du, cone_offsets, element_cone_ids] HD(size_t idx) -> f_t {
+        const i_t cone = element_cone_ids[idx];
         return idx == cone_offsets[cone] ? 0 : u[idx] * du[idx];
       });
     cones.segmented_sum(u_tail_du_tail_terms, slot_1, stream);
 
-    auto u_tail_sq_terms = thrust::make_transform_iterator(
-      thrust::make_counting_iterator<std::size_t>(0),
-      [u, cone_offsets, element_cone_ids] HD(std::size_t idx) -> f_t {
-        const auto cone = element_cone_ids[idx];
-        return idx == cone_offsets[cone] ? 0 : u[idx] * u[idx];
-      });
+    auto u_tail_sq_terms =
+      thrust::make_transform_iterator(thrust::make_counting_iterator<size_t>(0),
+                                      [u, cone_offsets, element_cone_ids] HD(size_t idx) -> f_t {
+                                        const i_t cone = element_cone_ids[idx];
+                                        return idx == cone_offsets[cone] ? 0 : u[idx] * u[idx];
+                                      });
     cones.segmented_sum(u_tail_sq_terms, slot_2, stream);
 
-    const auto grid_dim =
-      raft::ceildiv<std::size_t>(static_cast<std::size_t>(cones.n_cones), soc_block_size);
+    const size_t grid_dim =
+      raft::ceildiv<size_t>(static_cast<size_t>(cones.n_cones), soc_block_size);
     step_length_single_kernel<i_t, f_t><<<grid_dim, soc_block_size, 0, stream.value()>>>(
       u, du, alpha, slot_0, slot_1, slot_2, cone_offsets, alpha_max, cones.n_cones);
     RAFT_CUDA_TRY(cudaPeekAtLastError());
@@ -974,16 +973,16 @@ std::pair<f_t, f_t> compute_cone_step_length(cone_data_t<i_t, f_t>& cones,
   run_pass(cones.x, dx, alpha_primal);
   run_pass(cones.z, dz, alpha_dual);
 
-  const auto primal = thrust::reduce(rmm::exec_policy(stream),
-                                     alpha_primal.begin(),
-                                     alpha_primal.end(),
-                                     alpha_max,
-                                     thrust::minimum<f_t>());
-  const auto dual   = thrust::reduce(rmm::exec_policy(stream),
-                                   alpha_dual.begin(),
-                                   alpha_dual.end(),
-                                   alpha_max,
-                                   thrust::minimum<f_t>());
+  const f_t primal = thrust::reduce(rmm::exec_policy(stream),
+                                    alpha_primal.begin(),
+                                    alpha_primal.end(),
+                                    alpha_max,
+                                    thrust::minimum<f_t>());
+  const f_t dual   = thrust::reduce(rmm::exec_policy(stream),
+                                  alpha_dual.begin(),
+                                  alpha_dual.end(),
+                                  alpha_max,
+                                  thrust::minimum<f_t>());
 
   return {primal, dual};
 }
@@ -1031,15 +1030,15 @@ void compute_combined_cone_rhs_term(raft::device_span<const f_t> dx_aff,
 
   // `out` currently aliases W^{-T} dz_aff and is about to be overwritten with d.
   // Stage both head vectors first because every tail entry needs them.
-  const auto cone_grid_dim =
-    raft::ceildiv<std::size_t>(static_cast<std::size_t>(cones.n_cones), soc_block_size);
+  const size_t cone_grid_dim =
+    raft::ceildiv<size_t>(static_cast<size_t>(cones.n_cones), soc_block_size);
   gather_cone_heads_kernel<i_t, f_t><<<cone_grid_dim, soc_block_size, 0, stream.value()>>>(
     scaled_dx, slot_1, cone_offsets, cones.n_cones);
   gather_cone_heads_kernel<i_t, f_t><<<cone_grid_dim, soc_block_size, 0, stream.value()>>>(
     scaled_dz, slot_2, cone_offsets, cones.n_cones);
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 
-  const auto element_grid_dim = raft::ceildiv<std::size_t>(cones.n_cone_entries, soc_block_size);
+  const size_t element_grid_dim = raft::ceildiv<size_t>(cones.n_cone_entries, soc_block_size);
   combined_cone_shift_write_kernel<i_t, f_t>
     <<<element_grid_dim, soc_block_size, 0, stream.value()>>>(
       out, scaled_dx, scaled_dz, slot_0, slot_1, slot_2, cone_offsets, element_cone_ids, sigma_mu);
@@ -1050,17 +1049,17 @@ void compute_combined_cone_rhs_term(raft::device_span<const f_t> dx_aff,
 
   // compute W *(-(\lambda inv_circ shift))
   auto lambda_tail_dot_terms = thrust::make_transform_iterator(
-    thrust::make_counting_iterator<std::size_t>(0),
-    [shift, nt_point, cone_offsets, element_cone_ids] HD(std::size_t idx) -> f_t {
-      const auto cone = element_cone_ids[idx];
+    thrust::make_counting_iterator<size_t>(0),
+    [shift, nt_point, cone_offsets, element_cone_ids] HD(size_t idx) -> f_t {
+      const i_t cone = element_cone_ids[idx];
       return idx == cone_offsets[cone] ? 0 : nt_point[idx] * shift[idx];
     });
   cones.segmented_sum(lambda_tail_dot_terms, slot_0, stream);
 
   auto lambda_tail_sq_terms = thrust::make_transform_iterator(
-    thrust::make_counting_iterator<std::size_t>(0),
-    [nt_point, cone_offsets, element_cone_ids] HD(std::size_t idx) -> f_t {
-      const auto cone = element_cone_ids[idx];
+    thrust::make_counting_iterator<size_t>(0),
+    [nt_point, cone_offsets, element_cone_ids] HD(size_t idx) -> f_t {
+      const i_t cone = element_cone_ids[idx];
       return idx == cone_offsets[cone] ? 0 : nt_point[idx] * nt_point[idx];
     });
   cones.segmented_sum(lambda_tail_sq_terms, slot_1, stream);
