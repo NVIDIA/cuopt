@@ -21,7 +21,7 @@ namespace cuopt::linear_programming::dual_simplex {
 
 template <typename i_t, typename f_t>
 /** Number of leading linear columns; SOCP cone variables occupy [linear_cols, num_cols). */
-static i_t linear_var_count(const lp_problem_t<i_t, f_t>& problem)
+static i_t linear_variable_count(const lp_problem_t<i_t, f_t>& problem)
 {
   return problem.second_order_cone_dims.empty() ? problem.num_cols : problem.cone_var_start;
 }
@@ -46,7 +46,7 @@ i_t remove_empty_cols(lp_problem_t<i_t, f_t>& problem,
 
   // Check to see if a variable participates in a quadratic objective
   std::vector<bool> has_quadratic_term(problem.num_cols, false);
-  i_t linear_cols = linear_var_count(problem);
+  i_t linear_cols = linear_variable_count(problem);
 
   if (problem.Q.n > 0) {
     for (i_t j = 0; j < linear_cols; ++j) {
@@ -288,7 +288,7 @@ i_t convert_less_than_to_equal(const user_problem_t<i_t, f_t>& user_problem,
 
   if (!problem.second_order_cone_dims.empty()) {
     const i_t old_num_cols   = problem.num_cols;
-    const i_t linear_cols    = linear_var_count(problem);
+    const i_t linear_cols    = linear_variable_count(problem);
     const i_t num_slacks     = less_rows;
     const i_t num_cols       = old_num_cols + num_slacks;
     const i_t old_nnz        = problem.A.col_start[old_num_cols];
@@ -946,7 +946,7 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
              presolve_info_t<i_t, f_t>& presolve_info)
 {
   problem               = original;
-  const i_t linear_cols = linear_var_count(problem);
+  const i_t linear_cols = linear_variable_count(problem);
   const bool has_cones  = !problem.second_order_cone_dims.empty();
   std::vector<char> row_sense(problem.num_rows, '=');
 
@@ -1854,49 +1854,22 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
     const i_t num_bfv = static_cast<i_t>(presolve_info.bounded_free_variables.size());
     settings.log.printf("Post-solve: Correcting duals for %d bounded free variables\n", num_bfv);
     const csc_matrix_t<i_t, f_t>& A = original_problem.A;
-    // Column scan costs O(num_bfv * nnz); CSR row slices cost O(nnz) conversion plus
-    // O(sum of row nnz touched). Use CSR when num_bfv is large or column scan work dominates.
-    constexpr i_t k_csr_dual_correction_min_bfv = 64;
-    const bool use_csr_row_access =
-      num_bfv >= k_csr_dual_correction_min_bfv || num_bfv * A.n > A.nnz();
 
     // Traverse in reverse order, to ensure that all z_j = 0 after the correction
-    if (use_csr_row_access) {
-      csr_matrix_t<i_t, f_t> Arow(0, 0, 0);
-      A.to_compressed_row(Arow);
-      for (auto it = presolve_info.bounded_free_variables.rbegin();
-           it != presolve_info.bounded_free_variables.rend();
-           ++it) {
-        const auto& bfv = *it;
-        const f_t w_j   = input_z[bfv.variable];
-        if (w_j == 0.0) { continue; }
-        const f_t du = w_j / bfv.coefficient;
-        input_y[bfv.constraint] += du;
-        const i_t row_start = Arow.row_start[bfv.constraint];
-        const i_t row_end   = Arow.row_start[bfv.constraint + 1];
-        for (i_t p = row_start; p < row_end; ++p) {
-          input_z[Arow.j[p]] -= Arow.x[p] * du;
-        }
-      }
-    } else {
-      for (auto it = presolve_info.bounded_free_variables.rbegin();
-           it != presolve_info.bounded_free_variables.rend();
-           ++it) {
-        const auto& bfv = *it;
-        const f_t w_j   = input_z[bfv.variable];
-        if (w_j == 0.0) { continue; }
-        const f_t du = w_j / bfv.coefficient;
-        input_y[bfv.constraint] += du;
-        for (i_t j = 0; j < A.n; j++) {
-          const i_t col_start = A.col_start[j];
-          const i_t col_end   = A.col_start[j + 1];
-          for (i_t p = col_start; p < col_end; p++) {
-            if (A.i[p] == bfv.constraint) {
-              input_z[j] -= A.x[p] * du;
-              break;
-            }
-          }
-        }
+    csr_matrix_t<i_t, f_t> Arow(0, 0, 0);
+    A.to_compressed_row(Arow);
+    for (auto it = presolve_info.bounded_free_variables.rbegin();
+         it != presolve_info.bounded_free_variables.rend();
+         ++it) {
+      const auto& bfv = *it;
+      const f_t w_j   = input_z[bfv.variable];
+      if (w_j == 0.0) { continue; }
+      const f_t du = w_j / bfv.coefficient;
+      input_y[bfv.constraint] += du;
+      const i_t row_start = Arow.row_start[bfv.constraint];
+      const i_t row_end   = Arow.row_start[bfv.constraint + 1];
+      for (i_t p = row_start; p < row_end; ++p) {
+        input_z[Arow.j[p]] -= Arow.x[p] * du;
       }
     }
   }
