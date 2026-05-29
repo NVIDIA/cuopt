@@ -27,14 +27,14 @@
 namespace cuopt::linear_programming::detail {
 
 /** Convert MPS >= ('G') quadratic row to <= ('L') form on a working copy for SOC conversion. */
-template <typename qc_t>
+template <typename qc_t, typename f_t>
 void normalize_quadratic_constraint_greater_to_less(qc_t& qc)
 {
   if (qc.constraint_row_type != 'G') { return; }
-  for (auto& v : qc.linear_values) {
+  for (f_t& v : qc.linear_values) {
     v = -v;
   }
-  for (auto& v : qc.vals) {
+  for (f_t& v : qc.vals) {
     v = -v;
   }
   qc.rhs_value           = -qc.rhs_value;
@@ -51,7 +51,7 @@ void normalize_quadratic_constraint_greater_to_less(qc_t& qc)
  */
 template <typename i_t, typename f_t>
 void convert_quadratic_constraints_to_second_order_cones(
-  int n,
+  i_t n,
   const std::vector<typename optimization_problem_interface_t<i_t, f_t>::quadratic_constraint_t>&
     qcs,
   dual_simplex::csr_matrix_t<i_t, f_t>& csr_A,
@@ -120,7 +120,7 @@ void convert_quadratic_constraints_to_second_order_cones(
                   error_type_t::ValidationError,
                   "Quadratic constraint '%s' ROWS type must be 'L' (<=) or 'G' (>=)",
                   qc.constraint_row_name.c_str());
-    normalize_quadratic_constraint_greater_to_less(qc);
+    normalize_quadratic_constraint_greater_to_less<decltype(qc), f_t>(qc);
     cuopt_expects((qc.rhs_value < tol) && (qc.rhs_value > -tol),
                   error_type_t::ValidationError,
                   "SOC conversion currently requires rhs = 0 for quadratic constraints");
@@ -243,7 +243,7 @@ void convert_quadratic_constraints_to_second_order_cones(
 
     std::vector<i_t> tail_vars;
     tail_vars.reserve(pos_diag_rows.size());
-    for (const auto& pr : pos_diag_rows) {
+    for (const std::pair<i_t, f_t>& pr : pos_diag_rows) {
       tail_vars.push_back(pr.first);
     }
 
@@ -306,7 +306,7 @@ void convert_quadratic_constraints_to_second_order_cones(
           cone_dim   = static_cast<i_t>(cone.size());
           is_rotated = 0;
         } else {
-          for (const auto& pr : pos_diag_rows) {
+          for (const std::pair<i_t, f_t>& pr : pos_diag_rows) {
             note_positive_s(pr.second);
           }
           cuopt_expects(have_uniform_s,
@@ -355,7 +355,7 @@ void convert_quadratic_constraints_to_second_order_cones(
                       error_type_t::ValidationError,
                       "Quadratic constraint '%s' internal error: affine SOC head index invalid",
                       qc.constraint_row_name.c_str());
-        for (const auto& pr : pos_diag_rows) {
+        for (const std::pair<i_t, f_t>& pr : pos_diag_rows) {
           note_positive_s(pr.second);
         }
         cuopt_expects(have_uniform_s,
@@ -396,7 +396,7 @@ void convert_quadratic_constraints_to_second_order_cones(
                     "entries; found %zu negative diagonals",
                     qc.constraint_row_name.c_str(),
                     neg_diag_rows.size());
-      for (const auto& pr : pos_diag_rows) {
+      for (const std::pair<i_t, f_t>& pr : pos_diag_rows) {
         note_positive_s(pr.second);
       }
       cuopt_expects(have_uniform_s,
@@ -490,9 +490,9 @@ void convert_quadratic_constraints_to_second_order_cones(
     for (const i_t var : cone) {
       cuopt_expects(var >= 0 && var < static_cast<i_t>(is_cone_var.size()),
                     error_type_t::ValidationError,
-                    "SOC variable index %d is outside [0, %d)",
+                    "SOC variable index %d is outside [0, %zu)",
                     static_cast<int>(var),
-                    static_cast<int>(is_cone_var.size()));
+                    is_cone_var.size());
     }
     cone_dims.push_back(cone_dim);
     cone_vars.push_back(std::move(cone));
@@ -520,8 +520,7 @@ void convert_quadratic_constraints_to_second_order_cones(
       user_problem.lower[aux_j] = 0;
       user_problem.upper[aux_j] = inf;
       if (!user_problem.col_names.empty()) {
-        user_problem.col_names[aux_j] =
-          "_CUOPT_qc_linear_aux_" + std::to_string(static_cast<int>(aux_j - n_old));
+        user_problem.col_names[aux_j] = "_CUOPT_qc_linear_aux_" + std::to_string(aux_j - n_old);
       }
     }
 
@@ -581,7 +580,7 @@ void convert_quadratic_constraints_to_second_order_cones(
     const f_t inv_sqrt_2 = f_t(1) / std::sqrt(f_t(2));
     const f_t half       = f_t(0.5);
 
-    for (const auto& rc : rotated_cones) {
+    for (const rotated_soc_t& rc : rotated_cones) {
       cuopt_expects(user_problem.var_types[rc.head0] ==
                       cuopt::linear_programming::dual_simplex::variable_type_t::CONTINUOUS,
                     error_type_t::ValidationError,
@@ -620,8 +619,7 @@ void convert_quadratic_constraints_to_second_order_cones(
     if (!user_problem.col_names.empty()) {
       user_problem.col_names.resize(n_prob);
       for (i_t j = n_old; j < n_prob; ++j) {
-        user_problem.col_names[j] =
-          "_CUOPT_rsoc_slack_" + std::to_string(static_cast<int>(j - n_old));
+        user_problem.col_names[j] = "_CUOPT_rsoc_slack_" + std::to_string(j - n_old);
       }
     }
 
@@ -633,8 +631,7 @@ void convert_quadratic_constraints_to_second_order_cones(
     if (!user_problem.row_names.empty()) {
       user_problem.row_names.resize(m_old + n_slack_total);
       for (i_t r = m_old; r < m_old + n_slack_total; ++r) {
-        user_problem.row_names[r] =
-          "_CUOPT_rsoc_lift_" + std::to_string(static_cast<int>(r - m_old));
+        user_problem.row_names[r] = "_CUOPT_rsoc_lift_" + std::to_string(r - m_old);
       }
     }
 
@@ -647,8 +644,8 @@ void convert_quadratic_constraints_to_second_order_cones(
 
     for (size_t ci = 0; ci < cone_vars.size(); ++ci) {
       if (!cone_is_rotated[ci]) { continue; }
-      const auto& rc = rotated_cones[ri++];
-      const i_t dim  = cone_dims[ci];
+      const rotated_soc_t& rc = rotated_cones[ri++];
+      const i_t dim           = cone_dims[ci];
       std::vector<i_t> new_cone;
       new_cone.reserve(dim);
       new_cone.push_back(slack_base);
@@ -730,8 +727,8 @@ void convert_quadratic_constraints_to_second_order_cones(
     std::vector<std::pair<i_t, i_t>> cone_alias_pairs;  // (alias, original)
 
     for (size_t ci = 0; ci < cone_vars.size(); ++ci) {
-      auto& cone = cone_vars[ci];
-      for (auto& var : cone) {
+      std::vector<i_t>& cone = cone_vars[ci];
+      for (i_t& var : cone) {
         cuopt_expects(var >= 0 && var < n_prob,
                       error_type_t::ValidationError,
                       "SOC variable index %d is outside [0, %d)",
@@ -770,8 +767,7 @@ void convert_quadratic_constraints_to_second_order_cones(
         // Keep objective unchanged: alias coefficient stays zero and alias==original links
         // values.
         if (!user_problem.col_names.empty()) {
-          user_problem.col_names[alias] =
-            "_CUOPT_cone_alias_" + std::to_string(static_cast<int>(alias - n_old));
+          user_problem.col_names[alias] = "_CUOPT_cone_alias_" + std::to_string(alias - n_old);
         }
       }
 
@@ -792,7 +788,7 @@ void convert_quadratic_constraints_to_second_order_cones(
         user_problem.rhs[row_idx]       = 0;
         if (!user_problem.row_names.empty()) {
           user_problem.row_names[row_idx] =
-            "_CUOPT_cone_alias_link_" + std::to_string(static_cast<int>(row_idx - m_old));
+            "_CUOPT_cone_alias_link_" + std::to_string(row_idx - m_old);
         }
         ++row_idx;
       }
@@ -820,8 +816,8 @@ void convert_quadratic_constraints_to_second_order_cones(
 
     std::vector<std::pair<i_t, i_t>> bound_split_pairs;  // (cone_alias, linear_original)
 
-    for (auto& cone : cone_vars) {
-      for (auto& var : cone) {
+    for (std::vector<i_t>& cone : cone_vars) {
+      for (i_t& var : cone) {
         cuopt_expects(var >= 0 && var < n_prob,
                       error_type_t::ValidationError,
                       "SOC variable index %d is outside [0, %d)",
@@ -852,7 +848,7 @@ void convert_quadratic_constraints_to_second_order_cones(
         user_problem.var_types[alias] = user_problem.var_types[original];
         if (!user_problem.col_names.empty()) {
           user_problem.col_names[alias] =
-            "_CUOPT_cone_bound_split_" + std::to_string(static_cast<int>(alias - n_old));
+            "_CUOPT_cone_bound_split_" + std::to_string(alias - n_old);
         }
       }
 
@@ -873,7 +869,7 @@ void convert_quadratic_constraints_to_second_order_cones(
         user_problem.rhs[row_idx]       = 0;
         if (!user_problem.row_names.empty()) {
           user_problem.row_names[row_idx] =
-            "_CUOPT_cone_bound_split_link_" + std::to_string(static_cast<int>(row_idx - m_old));
+            "_CUOPT_cone_bound_split_link_" + std::to_string(row_idx - m_old);
         }
         ++row_idx;
       }
@@ -890,7 +886,7 @@ void convert_quadratic_constraints_to_second_order_cones(
   }
 
   is_cone_var.assign(n_prob, 0);
-  for (const auto& cone : cone_vars) {
+  for (const std::vector<i_t>& cone : cone_vars) {
     for (const i_t var : cone) {
       cuopt_expects(var >= 0 && var < n_prob,
                     error_type_t::ValidationError,
@@ -910,7 +906,7 @@ void convert_quadratic_constraints_to_second_order_cones(
     new_to_old.push_back(j);
   }
   const i_t cone_var_start = static_cast<i_t>(new_to_old.size());
-  for (const auto& cone : cone_vars) {
+  for (const std::vector<i_t>& cone : cone_vars) {
     for (const i_t old_j : cone) {
       old_to_new[old_j] = static_cast<i_t>(new_to_old.size());
       new_to_old.push_back(old_j);
@@ -988,7 +984,7 @@ void convert_quadratic_constraints_to_second_order_cones(
 
     std::vector<i_t> q_indices(user_problem.Q_values.size());
     std::vector<f_t> q_values(user_problem.Q_values.size());
-    auto q_write = q_offsets;
+    std::vector<i_t> q_write = q_offsets;
     for (i_t old_row = 0; old_row < n_model; ++old_row) {
       const i_t new_row = old_to_new[old_row];
       for (i_t p = user_problem.Q_offsets[old_row]; p < user_problem.Q_offsets[old_row + 1]; ++p) {
