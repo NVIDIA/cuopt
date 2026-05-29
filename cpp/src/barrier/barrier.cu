@@ -402,7 +402,7 @@ class iteration_data_t {
                    is_direct_free_linear_host.data(),
                    lp.num_cols,
                    stream_view_);
-        settings.log.printf("Free variables handled directly: %d\n", n_direct_free_linear);
+        settings.log.printf("Free variables              : %d\n", n_direct_free_linear);
       }
     }
 
@@ -4395,7 +4395,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
     f_t dual_residual_norm = vector_norm_inf<i_t, f_t>(data.dual_residual, stream_view_);
     f_t complementarity_residual_norm =
       host_complementarity_residual_norm<i_t, f_t>(data, lp.second_order_cone_dims, stream_view_);
-      
+
     f_t mu_denom = data.complementarity_degree(n, num_upper_bounds);
     f_t mu =
       (data.complementarity_xz_residual.sum() + data.complementarity_wv_residual.sum()) / mu_denom;
