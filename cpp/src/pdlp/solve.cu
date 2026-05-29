@@ -756,6 +756,9 @@ static optimization_problem_solution_t<i_t, f_t> run_pdlp_solver(
   const timer_t& timer,
   bool is_batch_mode)
 {
+  detail::pdlp_graph_disabled_flag().store(settings.hyper_params.pdlp_disable_graph,
+                                           std::memory_order_relaxed);
+
   if (problem.n_constraints == 0) {
     CUOPT_LOG_CONDITIONAL_INFO(
       !settings.inside_mip,

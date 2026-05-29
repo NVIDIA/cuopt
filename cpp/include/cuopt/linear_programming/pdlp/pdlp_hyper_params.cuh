@@ -48,6 +48,9 @@ struct pdlp_hyper_params_t {
   bool use_reflected_primal_dual                                  = true;
   bool use_fixed_point_error                                      = true;
   bool use_distributed_pdlp                                       = false;
+  // Debug/diagnostic knob: when true, PDLP bypasses CUDA-graph capture in
+  // ping_pong_graph_t and executes each iteration eagerly
+  bool pdlp_disable_graph                                         = false;
   double reflection_coefficient                                   = 1.0;
   double restart_k_p                                              = 0.99;
   double restart_k_i                                              = 0.01;
