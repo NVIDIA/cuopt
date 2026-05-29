@@ -308,7 +308,6 @@ class DataModel(data_model_wrapper.DataModel):
     @catch_cuopt_exception
     def add_quadratic_constraint(
         self,
-        constraint_row_index,
         constraint_row_name="",
         linear_values=None,
         linear_indices=None,
@@ -322,13 +321,10 @@ class DataModel(data_model_wrapper.DataModel):
         Add a quadratic constraint.
 
         Each constraint has a linear part (optional) and a quadratic part in COO
-        format. Call multiple times to add several quadratic constraints; each
-        call must use a distinct ``constraint_row_index``.
+        format. Call multiple times to add several quadratic constraints.
 
         Parameters
         ----------
-        constraint_row_index : int
-            Row index for this quadratic constraint (among all rows).
         constraint_row_name : str, optional
             Optional row name.
         linear_values, linear_indices : array-like, optional
@@ -358,7 +354,6 @@ class DataModel(data_model_wrapper.DataModel):
                 "(equality 'E' is not supported)."
             )
         super().add_quadratic_constraint(
-            constraint_row_index,
             constraint_row_name,
             linear_values,
             linear_indices,

@@ -1607,10 +1607,6 @@ class Problem:
         dm.set_row_names(self.row_names)
         dm.set_problem_name(self.Name)
 
-        linear_constr_count = sum(
-            1 for c in self.constrs if not c.is_quadratic
-        )
-        quad_index = 0
         for constr in self.constrs:
             if not constr.is_quadratic:
                 continue
@@ -1618,7 +1614,6 @@ class Problem:
             if row_name == "":
                 row_name = "Q" + str(constr.index)
             dm.add_quadratic_constraint(
-                constraint_row_index=linear_constr_count + quad_index,
                 constraint_row_name=row_name,
                 linear_values=constr.linear_values,
                 linear_indices=constr.linear_indices,
@@ -1628,7 +1623,6 @@ class Problem:
                 cols=constr.cols,
                 sense=constr.Sense,
             )
-            quad_index += 1
 
         if self.mip_start.size > 0 and not np.all(np.isnan(self.mip_start)):
             dm.set_initial_primal_solution(self.mip_start)

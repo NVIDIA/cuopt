@@ -71,9 +71,17 @@ cdef class DataModel:
     def clear_quadratic_constraints(self):
         self.quadratic_constraints = []
 
+    def _get_n_linear_constraints(self):
+        if self.b.shape[0] != 0:
+            return self.b.shape[0]
+        if self.A_offsets.shape[0] > 0:
+            return self.A_offsets.shape[0] - 1
+        if self.host_row_types.shape[0] != 0:
+            return self.host_row_types.shape[0]
+        return 0
+
     def add_quadratic_constraint(
         self,
-        constraint_row_index,
         constraint_row_name="",
         linear_values=None,
         linear_indices=None,
@@ -119,6 +127,9 @@ cdef class DataModel:
             raise ValueError(
                 f"Invalid constraint_row_type {row_type!r}; use 'L' or 'G' like set_row_types."
             )
+        constraint_row_index = (
+            self._get_n_linear_constraints() + len(self.quadratic_constraints)
+        )
         self.quadratic_constraints.append(
             {
                 "constraint_row_index": int(constraint_row_index),

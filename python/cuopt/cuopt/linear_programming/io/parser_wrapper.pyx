@@ -169,7 +169,6 @@ cdef _marshal_data_model(mps_data_model_t[int, double]* dm, data_model):
             quadratic_col_indices = None
 
         data_model.add_quadratic_constraint(
-            qc.constraint_row_index,
             qc.constraint_row_name.decode("utf-8"),
             linear_values=linear_values,
             linear_indices=linear_indices,
