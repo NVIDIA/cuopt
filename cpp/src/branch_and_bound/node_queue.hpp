@@ -49,10 +49,10 @@ class heap_t {
 
   T pop()
   {
+    --num_entries_;
     std::pop_heap(buffer.begin(), buffer.end(), comp);
     T node = std::move(buffer.back());
     buffer.pop_back();
-    --num_entries_;
     assert(num_entries_.load() == buffer.size());
     return node;
   }
@@ -140,12 +140,15 @@ class node_queue_t {
     }
 
     for (i_t k = 0; k < nodes_to_steal; ++k) {
-      if (victim.best_first_queue_size() < nodes_to_steal) break;
+      if (victim.best_first_heap_.size() < nodes_to_steal) break;
       auto entry = victim.best_first_heap_.pop();
-      best_first_heap_.push(entry);
-      if (entry->node->can_dive) diving_heap_.push(entry);
-      lower_bound_        = best_first_heap_.top()->lower_bound;
-      victim.lower_bound_ = victim.best_first_heap_.top()->lower_bound;
+
+      // Invalidate the node for diving
+      mip_node_t<i_t, f_t>* node = std::exchange(entry->node, nullptr);
+      push_lockfree(node);
+      victim.lower_bound_ = victim.best_first_heap_.empty()
+                              ? std::numeric_limits<f_t>::infinity()
+                              : victim.best_first_heap_.top()->lower_bound;
       steal               = true;
     }
 
@@ -158,11 +161,6 @@ class node_queue_t {
     }
 
     return steal;
-  }
-
-  mip_node_t<i_t, f_t>* bfs_top()
-  {
-    return best_first_heap_.empty() ? nullptr : best_first_heap_.top()->node;
   }
 
   i_t diving_queue_size() { return diving_heap_.size(); }

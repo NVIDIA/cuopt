@@ -73,13 +73,13 @@ std::vector<uint8_t> compress_vstatus(const std::vector<variable_status_t>& vsta
   return packed_vstatus;
 }
 
-std::vector<variable_status_t> decompress_vstatus(const std::vector<uint8_t>& packed_vstatus,
-                                                  size_t vstatus_size)
+void decompress_vstatus(const std::vector<uint8_t>& packed_vstatus,
+                        size_t vstatus_size,
+                        std::vector<variable_status_t>& vstatus)
 {
   size_t compressed_size = vstatus_size / 4;
   size_t has_tail        = (vstatus_size % 4 > 0);
 
-  std::vector<variable_status_t> vstatus;
   vstatus.resize(vstatus_size);
   assert(packed_vstatus.size() == compressed_size + has_tail);
 
@@ -98,8 +98,6 @@ std::vector<variable_status_t> decompress_vstatus(const std::vector<uint8_t>& pa
     if (j + 2 < vstatus.size()) vstatus[j + 2] = decode(packed_vstatus[compressed_size] >> 4);
     if (j + 3 < vstatus.size()) vstatus[j + 3] = decode(packed_vstatus[compressed_size] >> 6);
   }
-
-  return vstatus;
 }
 
 template <typename i_t, typename f_t>

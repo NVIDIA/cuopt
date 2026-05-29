@@ -480,9 +480,8 @@ void branch_and_bound_t<i_t, f_t>::set_solution_from_heuristics(const std::vecto
     original_problem_, original_lp_, solution, new_slacks_, crushed_solution);
   f_t obj = compute_objective(original_lp_, crushed_solution);
   mutex_original_lp_.unlock();
-  bool is_feasible        = false;
-  bool attempt_repair     = false;
-  f_t current_upper_bound = upper_bound_.load();
+  bool is_feasible    = false;
+  bool attempt_repair = false;
 
   if (improves_incumbent(obj)) {
     f_t primal_err;
@@ -500,7 +499,8 @@ void branch_and_bound_t<i_t, f_t>::set_solution_from_heuristics(const std::vecto
     mutex_original_lp_.unlock();
     mutex_upper_.lock();
     if (is_feasible && improves_incumbent(obj)) {
-      upper_bound_ = std::min(upper_bound_.load(), obj);
+      f_t current_upper_bound = upper_bound_.load();
+      upper_bound_            = std::min(current_upper_bound, obj);
       incumbent_.set_incumbent_solution(obj, crushed_solution);
       if (current_upper_bound > upper_bound_.load()) { report_heuristic(obj); }
     } else {
@@ -715,9 +715,7 @@ void branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t, f_t>& 
     settings_.log.printf("Numerical issue encountered. Stopping the solver...\n");
   }
 
-  if (solver_status_ == mip_status_t::TIME_LIMIT ||
-      toc(exploration_stats_.start_time) > settings_.time_limit) {
-    solver_status_ = mip_status_t::TIME_LIMIT;
+  if (solver_status_ == mip_status_t::TIME_LIMIT) {
     settings_.log.printf("Time limit reached. Stopping the solver...\n");
   }
 
@@ -1415,8 +1413,7 @@ dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   }
 #endif
 
-  worker->leaf_vstatus =
-    decompress_vstatus(node_ptr->packed_vstatus, worker->leaf_problem.num_cols);
+  decompress_vstatus(node_ptr->packed_vstatus, worker->leaf_problem.num_cols, worker->leaf_vstatus);
   assert(worker->leaf_vstatus.size() == worker->leaf_problem.num_cols);
 
   simplex_solver_settings_t lp_settings = settings_;
@@ -1527,9 +1524,16 @@ void branch_and_bound_t<i_t, f_t>::launch_bfs_worker(bfs_worker_t<i_t, f_t>* wor
   assert(idle_worker->is_active.load() == false);
   assert(idle_worker->node_queue.best_first_queue_size() == 0);
 
+  // Pre-emptively set the lower bound of the idle worker for the top of the heap
+  // so it is visible to all workers.
+  idle_worker->lower_bound = worker->node_queue.get_lower_bound();
   idle_worker->set_active();
+
   bool success = idle_worker->node_queue.steal_from(
     worker->node_queue, idle_worker->worker_id, worker->worker_id, 1);
+
+  // Update to the actual lower bound of the stolen node (another worker may attempt to
+  // steal the same node at the same time)
   idle_worker->lower_bound = idle_worker->node_queue.get_lower_bound();
 
   // If the idle worker is set to active (i.e., its node queue has a valid node),
@@ -2881,7 +2885,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     lower_bound    = deterministic_compute_lower_bound();
     solver_status_ = deterministic_global_termination_status_;
   } else {
-    lower_bound = std::numeric_limits<f_t>::infinity();
+    lower_bound = lower_bound_numerical_;
 
     for (int i = 0; i < bfs_worker_pool_.size(); ++i) {
       bfs_worker_t<i_t, f_t>* worker = bfs_worker_pool_[i];
@@ -3436,9 +3440,9 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node_deterministic(
 
   // Solve LP relaxation
   worker.leaf_solution.resize(worker.leaf_problem.num_rows, worker.leaf_problem.num_cols);
-  worker.leaf_vstatus = decompress_vstatus(node_ptr->packed_vstatus, worker.leaf_problem.num_cols);
-  i_t node_iter       = 0;
-  f_t lp_start_time   = tic();
+  decompress_vstatus(node_ptr->packed_vstatus, worker.leaf_problem.num_cols, worker.leaf_vstatus);
+  i_t node_iter                    = 0;
+  f_t lp_start_time                = tic();
   std::vector<f_t> leaf_edge_norms = edge_norms_;
 
   dual::status_t lp_status = dual_phase2_with_advanced_basis(2,
@@ -4054,8 +4058,7 @@ void branch_and_bound_t<i_t, f_t>::deterministic_dive(
     f_t lp_start_time                = tic();
     std::vector<f_t> leaf_edge_norms = edge_norms_;
 
-    worker.leaf_vstatus =
-      decompress_vstatus(node_ptr->packed_vstatus, worker.leaf_problem.num_cols);
+    decompress_vstatus(node_ptr->packed_vstatus, worker.leaf_problem.num_cols, worker.leaf_vstatus);
     dual::status_t lp_status = dual_phase2_with_advanced_basis(2,
                                                                0,
                                                                worker.recompute_bounds_and_basis,
