@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <pdlp/cusparse_view.hpp>
 #include <utilities/macros.cuh>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
@@ -17,7 +18,20 @@
 
 #include <cusparse_v2.h>
 
+#include <memory>
+#include <type_traits>
+
 namespace cuopt::linear_programming::dual_simplex {
+
+struct cusparse_spgemm_deleter {
+  void operator()(cusparseSpGEMMDescr_t descr) const noexcept
+  {
+    if (descr) { CUOPT_CUSPARSE_TRY_NO_THROW(cusparseSpGEMM_destroyDescr(descr)); }
+  }
+};
+
+using cusparse_spgemm_uptr =
+  std::unique_ptr<std::remove_pointer_t<cusparseSpGEMMDescr_t>, cusparse_spgemm_deleter>;
 
 template <typename i_t, typename f_t>
 struct cusparse_info_t {
@@ -35,24 +49,10 @@ struct cusparse_info_t {
     beta.set_value_async(v, handle->get_stream());
   }
 
-  ~cusparse_info_t()
-  {
-    if (spgemm_descr != nullptr) {
-      CUOPT_CUSPARSE_TRY_NO_THROW(cusparseSpGEMM_destroyDescr(spgemm_descr));
-    }
-    if (matA_descr != nullptr) { CUOPT_CUSPARSE_TRY_NO_THROW(cusparseDestroySpMat(matA_descr)); }
-    if (matDAT_descr != nullptr) {
-      CUOPT_CUSPARSE_TRY_NO_THROW(cusparseDestroySpMat(matDAT_descr));
-    }
-    if (matADAT_descr != nullptr) {
-      CUOPT_CUSPARSE_TRY_NO_THROW(cusparseDestroySpMat(matADAT_descr));
-    }
-  }
-
-  cusparseSpMatDescr_t matA_descr{nullptr};
-  cusparseSpMatDescr_t matDAT_descr{nullptr};
-  cusparseSpMatDescr_t matADAT_descr{nullptr};
-  cusparseSpGEMMDescr_t spgemm_descr{nullptr};
+  detail::cusparse_sp_mat_uptr matA_descr;
+  detail::cusparse_sp_mat_uptr matDAT_descr;
+  detail::cusparse_sp_mat_uptr matADAT_descr;
+  cusparse_spgemm_uptr spgemm_descr;
   rmm::device_scalar<f_t> alpha;
   rmm::device_scalar<f_t> beta;
   rmm::device_uvector<uint8_t> buffer_size;

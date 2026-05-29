@@ -29,129 +29,9 @@ struct double_to_float_functor {
 
 namespace cuopt::linear_programming::detail {
 
-// cusparse_sp_mat_descr_wrapper_t implementation
-template <typename i_t, typename f_t>
-cusparse_sp_mat_descr_wrapper_t<i_t, f_t>::cusparse_sp_mat_descr_wrapper_t()
-  : need_destruction_(false)
-{
-}
-
-template <typename i_t, typename f_t>
-cusparse_sp_mat_descr_wrapper_t<i_t, f_t>::~cusparse_sp_mat_descr_wrapper_t()
-{
-  if (need_destruction_) { RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroySpMat(descr_)); }
-}
-
-template <typename i_t, typename f_t>
-cusparse_sp_mat_descr_wrapper_t<i_t, f_t>::cusparse_sp_mat_descr_wrapper_t(
-  const cusparse_sp_mat_descr_wrapper_t& other)
-  : descr_(other.descr_), need_destruction_(false)
-{
-}
-
-template <typename i_t, typename f_t>
-void cusparse_sp_mat_descr_wrapper_t<i_t, f_t>::create(
-  int64_t m, int64_t n, int64_t nnz, i_t* offsets, i_t* indices, f_t* values)
-{
-  RAFT_CUSPARSE_TRY(
-    raft::sparse::detail::cusparsecreatecsr(&descr_, m, n, nnz, offsets, indices, values));
-  need_destruction_ = true;
-}
-
-template <typename i_t, typename f_t>
-cusparse_sp_mat_descr_wrapper_t<i_t, f_t>::operator cusparseSpMatDescr_t() const
-{
-  return descr_;
-}
-
-// cusparse_dn_vec_descr_wrapper_t implementation
-template <typename f_t>
-cusparse_dn_vec_descr_wrapper_t<f_t>::cusparse_dn_vec_descr_wrapper_t() : need_destruction_(false)
-{
-}
-
-template <typename f_t>
-cusparse_dn_vec_descr_wrapper_t<f_t>::~cusparse_dn_vec_descr_wrapper_t()
-{
-  if (need_destruction_) { RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(descr_)); }
-}
-
-template <typename f_t>
-cusparse_dn_vec_descr_wrapper_t<f_t>::cusparse_dn_vec_descr_wrapper_t(
-  const cusparse_dn_vec_descr_wrapper_t& other)
-  : descr_(other.descr_), need_destruction_(false)
-{
-}
-
-template <typename f_t>
-cusparse_dn_vec_descr_wrapper_t<f_t>& cusparse_dn_vec_descr_wrapper_t<f_t>::operator=(
-  cusparse_dn_vec_descr_wrapper_t<f_t>&& other)
-{
-  if (need_destruction_) { RAFT_CUSPARSE_TRY(cusparseDestroyDnVec(descr_)); }
-  descr_                  = other.descr_;
-  need_destruction_       = other.need_destruction_;
-  other.need_destruction_ = false;
-  return *this;
-}
-
-template <typename f_t>
-void cusparse_dn_vec_descr_wrapper_t<f_t>::create(int64_t size, f_t* values)
-{
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(&descr_, size, values));
-  need_destruction_ = true;
-}
-
-template <typename f_t>
-cusparse_dn_vec_descr_wrapper_t<f_t>::operator cusparseDnVecDescr_t() const
-{
-  return descr_;
-}
-
-// cusparse_dn_mat_descr_wrapper_t implementation
-template <typename f_t>
-cusparse_dn_mat_descr_wrapper_t<f_t>::cusparse_dn_mat_descr_wrapper_t() : need_destruction_(false)
-{
-}
-
-template <typename f_t>
-cusparse_dn_mat_descr_wrapper_t<f_t>::~cusparse_dn_mat_descr_wrapper_t()
-{
-  if (need_destruction_) { RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnMat(descr_)); }
-}
-
-template <typename f_t>
-cusparse_dn_mat_descr_wrapper_t<f_t>::cusparse_dn_mat_descr_wrapper_t(
-  const cusparse_dn_mat_descr_wrapper_t& other)
-  : descr_(other.descr_), need_destruction_(false)
-{
-}
-
-template <typename f_t>
-cusparse_dn_mat_descr_wrapper_t<f_t>& cusparse_dn_mat_descr_wrapper_t<f_t>::operator=(
-  cusparse_dn_mat_descr_wrapper_t<f_t>&& other)
-{
-  if (need_destruction_) { RAFT_CUSPARSE_TRY(cusparseDestroyDnMat(descr_)); }
-  descr_                  = other.descr_;
-  need_destruction_       = other.need_destruction_;
-  other.need_destruction_ = false;
-  return *this;
-}
-
-template <typename f_t>
-void cusparse_dn_mat_descr_wrapper_t<f_t>::create(
-  int64_t row, int64_t col, int64_t ld, f_t* values, cusparseOrder_t order)
-{
-  if (need_destruction_) { RAFT_CUSPARSE_TRY(cusparseDestroyDnMat(descr_)); }
-  RAFT_CUSPARSE_TRY(
-    raft::sparse::detail::cusparsecreatednmat(&descr_, row, col, ld, values, order));
-  need_destruction_ = true;
-}
-
-template <typename f_t>
-cusparse_dn_mat_descr_wrapper_t<f_t>::operator cusparseDnMatDescr_t() const
-{
-  return descr_;
-}
+// All inline factories and aliases for SpMat/DnVec/DnMat live in the header.
+// Deleter operator() bodies for SpMVOpDescr/SpMVOpPlan are defined further down
+// because they need dlsym-resolved cuSPARSE symbols.
 
 #if CUDA_VER_12_4_UP
 struct dynamic_load_runtime {
@@ -249,10 +129,10 @@ void my_cusparsespmm_preprocess(cusparseHandle_t handle,
                                 cusparseOperation_t opA,
                                 cusparseOperation_t opB,
                                 const T* alpha,
-                                const cusparseSpMatDescr_t matA,
-                                const cusparseDnMatDescr_t matB,
+                                cusparse_sp_mat_descr_view matA,
+                                cusparse_dn_mat_descr_view matB,
                                 const T* beta,
-                                const cusparseDnMatDescr_t matC,
+                                cusparse_dn_mat_descr_view matC,
                                 cusparseSpMMAlg_t alg,
                                 void* externalBuffer,
                                 cudaStream_t stream)
@@ -302,134 +182,59 @@ using cusparseSpMVOp_sig = cusparse_sig<cusparseHandle_t,
                                         cusparseDnVecDescr_t,
                                         cusparseDnVecDescr_t>;
 
-cusparseStatus_t cusparse_spmvop_descr_wrapper_t::dlsym_create(cusparseHandle_t handle,
-                                                               cusparseSpMVOpDescr_t* descr,
-                                                               cusparseOperation_t opA,
-                                                               cusparseSpMatDescr_t matA,
-                                                               cusparseDnVecDescr_t vecX,
-                                                               cusparseDnVecDescr_t vecY,
-                                                               cusparseDnVecDescr_t vecZ,
-                                                               cudaDataType computeType,
-                                                               void* buffer)
-{
-  static const auto fn =
-    dynamic_load_runtime::function<cusparseSpMVOp_createDescr_sig>("cusparseSpMVOp_createDescr");
-  return (*fn)(handle, descr, opA, matA, vecX, vecY, vecZ, computeType, buffer);
-}
+// dlsym-resolved create/destroy. The *_destroy_sig variants are reused by the
+// deleters; the *_create_sig variants are reused by make_spmvop_{descr,plan}.
 
-cusparseStatus_t cusparse_spmvop_descr_wrapper_t::dlsym_destroy(cusparseSpMVOpDescr_t descr)
+void cusparse_spmvop_descr_deleter::operator()(cusparseSpMVOpDescr_t descr) const noexcept
 {
+  if (!descr) { return; }
   static const auto fn =
     dynamic_load_runtime::function<cusparseSpMVOp_destroyDescr_sig>("cusparseSpMVOp_destroyDescr");
-  return (*fn)(descr);
+  if (fn.has_value()) { RAFT_CUSPARSE_TRY_NO_THROW((*fn)(descr)); }
 }
 
-cusparseStatus_t cusparse_spmvop_plan_wrapper_t::dlsym_create(cusparseHandle_t handle,
-                                                              cusparseSpMVOpDescr_t descr,
-                                                              cusparseSpMVOpPlan_t* plan,
-                                                              char* ltoIRBuf,
-                                                              size_t ltoIRSize)
+void cusparse_spmvop_plan_deleter::operator()(cusparseSpMVOpPlan_t plan) const noexcept
 {
-  static const auto fn =
-    dynamic_load_runtime::function<cusparseSpMVOp_createPlan_sig>("cusparseSpMVOp_createPlan");
-  return (*fn)(handle, descr, plan, ltoIRBuf, ltoIRSize);
-}
-
-cusparseStatus_t cusparse_spmvop_plan_wrapper_t::dlsym_destroy(cusparseSpMVOpPlan_t plan)
-{
+  if (!plan) { return; }
   static const auto fn =
     dynamic_load_runtime::function<cusparseSpMVOp_destroyPlan_sig>("cusparseSpMVOp_destroyPlan");
-  return (*fn)(plan);
+  if (fn.has_value()) { RAFT_CUSPARSE_TRY_NO_THROW((*fn)(plan)); }
 }
 
-cusparse_spmvop_descr_wrapper_t::cusparse_spmvop_descr_wrapper_t()
-  : descr_(nullptr), need_destruction_(false)
-{
-}
-
-cusparse_spmvop_descr_wrapper_t::~cusparse_spmvop_descr_wrapper_t()
-{
-  if (!need_destruction_) { return; }
-  RAFT_CUSPARSE_TRY_NO_THROW(dlsym_destroy(descr_));
-}
-
-cusparse_spmvop_descr_wrapper_t::cusparse_spmvop_descr_wrapper_t(
-  const cusparse_spmvop_descr_wrapper_t& other)
-  : descr_(other.descr_), need_destruction_(false)
-{
-}
-
-cusparse_spmvop_descr_wrapper_t& cusparse_spmvop_descr_wrapper_t::operator=(
-  cusparse_spmvop_descr_wrapper_t&& other)
-{
-  if (need_destruction_) { RAFT_CUSPARSE_TRY(dlsym_destroy(descr_)); }
-  descr_                  = other.descr_;
-  need_destruction_       = other.need_destruction_;
-  other.need_destruction_ = false;
-  return *this;
-}
-
-void cusparse_spmvop_descr_wrapper_t::create(cusparseHandle_t handle,
+cusparse_spmvop_descr_uptr make_spmvop_descr(cusparseHandle_t handle,
                                              cusparseOperation_t opA,
-                                             cusparseSpMatDescr_t matA,
-                                             cusparseDnVecDescr_t vecX,
-                                             cusparseDnVecDescr_t vecY,
-                                             cusparseDnVecDescr_t vecZ,
+                                             cusparse_sp_mat_descr_view matA,
+                                             cusparse_dn_vec_descr_view vecX,
+                                             cusparse_dn_vec_descr_view vecY,
+                                             cusparse_dn_vec_descr_view vecZ,
                                              cudaDataType computeType,
                                              rmm::device_uvector<uint8_t>& buffer)
 {
-  if (need_destruction_) { RAFT_CUSPARSE_TRY(dlsym_destroy(descr_)); }
+  static const auto fn =
+    dynamic_load_runtime::function<cusparseSpMVOp_createDescr_sig>("cusparseSpMVOp_createDescr");
+  cusparseSpMVOpDescr_t descr{nullptr};
   RAFT_CUSPARSE_TRY(
-    dlsym_create(handle, &descr_, opA, matA, vecX, vecY, vecZ, computeType, buffer.data()));
-  need_destruction_ = true;
+    (*fn)(handle, &descr, opA, matA, vecX, vecY, vecZ, computeType, buffer.data()));
+  return cusparse_spmvop_descr_uptr{descr};
 }
 
-cusparse_spmvop_descr_wrapper_t::operator cusparseSpMVOpDescr_t() const { return descr_; }
-
-cusparse_spmvop_plan_wrapper_t::cusparse_spmvop_plan_wrapper_t()
-  : plan_(nullptr), need_destruction_(false)
+cusparse_spmvop_plan_uptr make_spmvop_plan(cusparseHandle_t handle, cusparseSpMVOpDescr_t descr)
 {
-}
-
-cusparse_spmvop_plan_wrapper_t::~cusparse_spmvop_plan_wrapper_t()
-{
-  if (!need_destruction_) { return; }
-  RAFT_CUSPARSE_TRY_NO_THROW(dlsym_destroy(plan_));
-}
-
-cusparse_spmvop_plan_wrapper_t::cusparse_spmvop_plan_wrapper_t(
-  const cusparse_spmvop_plan_wrapper_t& other)
-  : plan_(other.plan_), need_destruction_(false)
-{
-}
-
-cusparse_spmvop_plan_wrapper_t& cusparse_spmvop_plan_wrapper_t::operator=(
-  cusparse_spmvop_plan_wrapper_t&& other)
-{
-  if (need_destruction_) { RAFT_CUSPARSE_TRY(dlsym_destroy(plan_)); }
-  plan_                   = other.plan_;
-  need_destruction_       = other.need_destruction_;
-  other.need_destruction_ = false;
-  return *this;
-}
-
-void cusparse_spmvop_plan_wrapper_t::create(cusparseHandle_t handle, cusparseSpMVOpDescr_t descr)
-{
-  if (need_destruction_) { RAFT_CUSPARSE_TRY(dlsym_destroy(plan_)); }
+  static const auto fn =
+    dynamic_load_runtime::function<cusparseSpMVOp_createPlan_sig>("cusparseSpMVOp_createPlan");
+  cusparseSpMVOpPlan_t plan{nullptr};
   // cuOpt does not supply user-provided LTO IR; pass nullptr/0 so cuSPARSE JITs internally.
-  RAFT_CUSPARSE_TRY(dlsym_create(handle, descr, &plan_, /*ltoIRBuf=*/nullptr, /*ltoIRSize=*/0));
-  need_destruction_ = true;
+  RAFT_CUSPARSE_TRY((*fn)(handle, descr, &plan, /*ltoIRBuf=*/nullptr, /*ltoIRSize=*/0));
+  return cusparse_spmvop_plan_uptr{plan};
 }
-
-cusparse_spmvop_plan_wrapper_t::operator cusparseSpMVOpPlan_t() const { return plan_; }
 
 void cusparse_spmvop_run(cusparseHandle_t handle,
                          cusparseSpMVOpPlan_t plan,
                          const void* alpha,
                          const void* beta,
-                         cusparseDnVecDescr_t vecX,
-                         cusparseDnVecDescr_t vecY,
-                         cusparseDnVecDescr_t vecZ,
+                         cusparse_dn_vec_descr_view vecX,
+                         cusparse_dn_vec_descr_view vecY,
+                         cusparse_dn_vec_descr_view vecZ,
                          cudaStream_t stream)
 {
   static const auto func = dynamic_load_runtime::function<cusparseSpMVOp_sig>("cusparseSpMVOp");
@@ -455,18 +260,6 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   bool enable_mixed_precision_spmv)
   : batch_mode_(climber_strategies.size() > 1),
     handle_ptr_(handle_ptr),
-    A{},
-    A_T{},
-    c{},
-    primal_solution{},
-    dual_solution{},
-    primal_gradient{},
-    dual_gradient{},
-    current_AtY{},
-    next_AtY{},
-    potential_next_dual_solution{},
-    tmp_primal{},
-    tmp_dual{},
     A_T_{op_problem_scaled.reverse_coefficients},
     A_T_offsets_{op_problem_scaled.reverse_offsets},
     A_T_indices_{op_problem_scaled.reverse_constraints},
@@ -496,106 +289,108 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
 #endif
 
   // setup cusparse view
-  A.create(op_problem_scaled.n_constraints,
-           op_problem_scaled.n_variables,
-           op_problem_scaled.nnz,
-           const_cast<i_t*>(op_problem_scaled.offsets.data()),
-           const_cast<i_t*>(op_problem_scaled.variables.data()),
-           const_cast<f_t*>(op_problem_scaled.coefficients.data()));
+  A = make_csr<i_t, f_t>(op_problem_scaled.n_constraints,
+                         op_problem_scaled.n_variables,
+                         op_problem_scaled.nnz,
+                         const_cast<i_t*>(op_problem_scaled.offsets.data()),
+                         const_cast<i_t*>(op_problem_scaled.variables.data()),
+                         const_cast<f_t*>(op_problem_scaled.coefficients.data()));
 
-  A_T.create(op_problem_scaled.n_variables,
-             op_problem_scaled.n_constraints,
-             op_problem_scaled.nnz,
-             const_cast<i_t*>(A_T_offsets_.data()),
-             const_cast<i_t*>(A_T_indices_.data()),
-             const_cast<f_t*>(A_T_.data()));
+  A_T = make_csr<i_t, f_t>(op_problem_scaled.n_variables,
+                           op_problem_scaled.n_constraints,
+                           op_problem_scaled.nnz,
+                           const_cast<i_t*>(A_T_offsets_.data()),
+                           const_cast<i_t*>(A_T_indices_.data()),
+                           const_cast<f_t*>(A_T_.data()));
 
-  c.create(op_problem_scaled.n_variables,
-           const_cast<f_t*>(op_problem_scaled.objective_coefficients.data()));
+  c = make_dnvec<f_t>(op_problem_scaled.n_variables,
+                      const_cast<f_t*>(op_problem_scaled.objective_coefficients.data()));
 
-  primal_solution.create(op_problem_scaled.n_variables,
-                         current_saddle_point_state.get_primal_solution().data());
-  dual_solution.create(op_problem_scaled.n_constraints,
-                       current_saddle_point_state.get_dual_solution().data());
+  primal_solution = make_dnvec<f_t>(op_problem_scaled.n_variables,
+                                    current_saddle_point_state.get_primal_solution().data());
+  dual_solution   = make_dnvec<f_t>(op_problem_scaled.n_constraints,
+                                  current_saddle_point_state.get_dual_solution().data());
 
-  // TODO batch mdoe: convert those to RAII views
   if (batch_mode_) {
     [[maybe_unused]] const bool is_cupdlpx = is_cupdlpx_restart<i_t, f_t>(hyper_params);
     cuopt_assert(is_cupdlpx, "Batch mode only supported with cuPDLPx restart");
-    batch_dual_solutions.create(op_problem_scaled.n_constraints,
-                                climber_strategies.size(),
-                                climber_strategies.size(),
-                                current_saddle_point_state.get_dual_solution().data(),
-                                CUSPARSE_ORDER_ROW);
-    batch_current_AtYs.create(op_problem_scaled.n_variables,
-                              climber_strategies.size(),
-                              climber_strategies.size(),
-                              current_saddle_point_state.get_current_AtY().data(),
-                              CUSPARSE_ORDER_ROW);
-    batch_potential_next_dual_solution.create(op_problem_scaled.n_constraints,
-                                              climber_strategies.size(),
-                                              op_problem_scaled.n_constraints,
-                                              _potential_next_dual_solution.data(),
-                                              CUSPARSE_ORDER_COL);
-    batch_next_AtYs.create(op_problem_scaled.n_variables,
-                           climber_strategies.size(),
-                           op_problem_scaled.n_variables,
-                           current_saddle_point_state.get_next_AtY().data(),
-                           CUSPARSE_ORDER_COL);
+    batch_dual_solutions = make_dnmat<f_t>(op_problem_scaled.n_constraints,
+                                           climber_strategies.size(),
+                                           climber_strategies.size(),
+                                           current_saddle_point_state.get_dual_solution().data(),
+                                           CUSPARSE_ORDER_ROW);
+    batch_current_AtYs   = make_dnmat<f_t>(op_problem_scaled.n_variables,
+                                         climber_strategies.size(),
+                                         climber_strategies.size(),
+                                         current_saddle_point_state.get_current_AtY().data(),
+                                         CUSPARSE_ORDER_ROW);
+    batch_potential_next_dual_solution =
+      make_dnmat<f_t>(op_problem_scaled.n_constraints,
+                      climber_strategies.size(),
+                      op_problem_scaled.n_constraints,
+                      _potential_next_dual_solution.data(),
+                      CUSPARSE_ORDER_COL);
+    batch_next_AtYs = make_dnmat<f_t>(op_problem_scaled.n_variables,
+                                      climber_strategies.size(),
+                                      op_problem_scaled.n_variables,
+                                      current_saddle_point_state.get_next_AtY().data(),
+                                      CUSPARSE_ORDER_COL);
     cuopt_assert(_reflected_primal_solution.size() > 0, "Reflected primal solution empty");
-    batch_reflected_primal_solutions.create(op_problem_scaled.n_variables,
-                                            climber_strategies.size(),
-                                            climber_strategies.size(),
-                                            _reflected_primal_solution.data(),
-                                            CUSPARSE_ORDER_ROW);
-    batch_dual_gradients.create(op_problem_scaled.n_constraints,
-                                climber_strategies.size(),
-                                climber_strategies.size(),
-                                current_saddle_point_state.get_dual_gradient().data(),
-                                CUSPARSE_ORDER_ROW);
+    batch_reflected_primal_solutions = make_dnmat<f_t>(op_problem_scaled.n_variables,
+                                                       climber_strategies.size(),
+                                                       climber_strategies.size(),
+                                                       _reflected_primal_solution.data(),
+                                                       CUSPARSE_ORDER_ROW);
+    batch_dual_gradients = make_dnmat<f_t>(op_problem_scaled.n_constraints,
+                                           climber_strategies.size(),
+                                           climber_strategies.size(),
+                                           current_saddle_point_state.get_dual_gradient().data(),
+                                           CUSPARSE_ORDER_ROW);
   }
 
   // Necessary even in non batch mode (because of infeasiblity detection)
-  batch_delta_primal_solutions.create(op_problem_scaled.n_variables,
-                                      climber_strategies.size(),
-                                      op_problem_scaled.n_variables,
-                                      current_saddle_point_state.get_delta_primal().data(),
-                                      CUSPARSE_ORDER_COL);
-  batch_delta_dual_solutions.create(op_problem_scaled.n_constraints,
+  batch_delta_primal_solutions =
+    make_dnmat<f_t>(op_problem_scaled.n_variables,
+                    climber_strategies.size(),
+                    op_problem_scaled.n_variables,
+                    current_saddle_point_state.get_delta_primal().data(),
+                    CUSPARSE_ORDER_COL);
+  batch_delta_dual_solutions = make_dnmat<f_t>(op_problem_scaled.n_constraints,
+                                               climber_strategies.size(),
+                                               op_problem_scaled.n_constraints,
+                                               current_saddle_point_state.get_delta_dual().data(),
+                                               CUSPARSE_ORDER_COL);
+  batch_tmp_duals            = make_dnmat<f_t>(op_problem_scaled.n_constraints,
                                     climber_strategies.size(),
                                     op_problem_scaled.n_constraints,
-                                    current_saddle_point_state.get_delta_dual().data(),
+                                    _tmp_dual.data(),
                                     CUSPARSE_ORDER_COL);
-  batch_tmp_duals.create(op_problem_scaled.n_constraints,
-                         climber_strategies.size(),
-                         op_problem_scaled.n_constraints,
-                         _tmp_dual.data(),
-                         CUSPARSE_ORDER_COL);
-  batch_tmp_primals.create(op_problem_scaled.n_variables,
-                           climber_strategies.size(),
-                           op_problem_scaled.n_variables,
-                           _tmp_primal.data(),
-                           CUSPARSE_ORDER_COL);
+  batch_tmp_primals          = make_dnmat<f_t>(op_problem_scaled.n_variables,
+                                      climber_strategies.size(),
+                                      op_problem_scaled.n_variables,
+                                      _tmp_primal.data(),
+                                      CUSPARSE_ORDER_COL);
 
-  primal_gradient.create(
+  primal_gradient = make_dnvec<f_t>(
     current_saddle_point_state.get_primal_gradient().size(),  // It is 0 in cupdlpx
     current_saddle_point_state.get_primal_gradient().data());
-  dual_gradient.create(op_problem_scaled.n_constraints,
-                       current_saddle_point_state.get_dual_gradient().data());
+  dual_gradient = make_dnvec<f_t>(op_problem_scaled.n_constraints,
+                                  current_saddle_point_state.get_dual_gradient().data());
 
-  current_AtY.create(op_problem_scaled.n_variables,
-                     current_saddle_point_state.get_current_AtY().data());
-  next_AtY.create(op_problem_scaled.n_variables, current_saddle_point_state.get_next_AtY().data());
+  current_AtY = make_dnvec<f_t>(op_problem_scaled.n_variables,
+                                current_saddle_point_state.get_current_AtY().data());
+  next_AtY    = make_dnvec<f_t>(op_problem_scaled.n_variables,
+                             current_saddle_point_state.get_next_AtY().data());
 
-  potential_next_dual_solution.create(op_problem_scaled.n_constraints,
-                                      _potential_next_dual_solution.data());
+  potential_next_dual_solution =
+    make_dnvec<f_t>(op_problem_scaled.n_constraints, _potential_next_dual_solution.data());
 
-  tmp_primal.create(op_problem_scaled.n_variables, _tmp_primal.data());
-  tmp_dual.create(op_problem_scaled.n_constraints, _tmp_dual.data());
+  tmp_primal = make_dnvec<f_t>(op_problem_scaled.n_variables, _tmp_primal.data());
+  tmp_dual   = make_dnvec<f_t>(op_problem_scaled.n_constraints, _tmp_dual.data());
   if (hyper_params.use_reflected_primal_dual) {
     cuopt_assert(_reflected_primal_solution.size() > 0, "Reflected primal solution empty");
-    reflected_primal_solution.create(op_problem_scaled.n_variables,
-                                     _reflected_primal_solution.data());
+    reflected_primal_solution =
+      make_dnvec<f_t>(op_problem_scaled.n_variables, _reflected_primal_solution.data());
   }
 
   const rmm::device_scalar<f_t> alpha{1, handle_ptr->get_stream()};
@@ -605,10 +400,10 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
     raft::sparse::detail::cusparsespmv_buffersize(handle_ptr_->get_cusparse_handle(),
                                                   CUSPARSE_OPERATION_NON_TRANSPOSE,
                                                   alpha.data(),
-                                                  A,
-                                                  c,
+                                                  A.get(),
+                                                  c.get(),
                                                   beta.data(),
-                                                  dual_solution,
+                                                  dual_solution.get(),
                                                   CUSPARSE_SPMV_CSR_ALG2,
                                                   &buffer_size_non_transpose,
                                                   handle_ptr->get_stream()));
@@ -619,10 +414,10 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
     raft::sparse::detail::cusparsespmv_buffersize(handle_ptr_->get_cusparse_handle(),
                                                   CUSPARSE_OPERATION_NON_TRANSPOSE,
                                                   alpha.data(),
-                                                  A_T,
-                                                  dual_solution,
+                                                  A_T.get(),
+                                                  dual_solution.get(),
                                                   beta.data(),
-                                                  c,
+                                                  c.get(),
                                                   CUSPARSE_SPMV_CSR_ALG2,
                                                   &buffer_size_transpose,
                                                   handle_ptr->get_stream()));
@@ -636,10 +431,10 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                                                   CUSPARSE_OPERATION_NON_TRANSPOSE,
                                                   CUSPARSE_OPERATION_NON_TRANSPOSE,
                                                   alpha.data(),
-                                                  A_T,
-                                                  batch_delta_dual_solutions,
+                                                  A_T.get(),
+                                                  batch_delta_dual_solutions.get(),
                                                   beta.data(),
-                                                  batch_tmp_primals,
+                                                  batch_tmp_primals.get(),
                                                   CUSPARSE_SPMM_CSR_ALG3,
                                                   &buffer_size_transpose_batch,
                                                   handle_ptr->get_stream()));
@@ -651,10 +446,10 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                                                   CUSPARSE_OPERATION_NON_TRANSPOSE,
                                                   CUSPARSE_OPERATION_NON_TRANSPOSE,
                                                   alpha.data(),
-                                                  A,
-                                                  batch_delta_primal_solutions,
+                                                  A.get(),
+                                                  batch_delta_primal_solutions.get(),
                                                   beta.data(),
-                                                  batch_tmp_duals,
+                                                  batch_tmp_duals.get(),
                                                   CUSPARSE_SPMM_CSR_ALG3,
                                                   &buffer_size_non_transpose_batch,
                                                   handle_ptr->get_stream()));
@@ -668,10 +463,10 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
       CUSPARSE_OPERATION_NON_TRANSPOSE,
       CUSPARSE_OPERATION_NON_TRANSPOSE,
       alpha.data(),
-      A_T,
-      batch_dual_solutions,
+      A_T.get(),
+      batch_dual_solutions.get(),
       beta.data(),
-      batch_current_AtYs,
+      batch_current_AtYs.get(),
       (deterministic_batch_pdlp) ? CUSPARSE_SPMM_CSR_ALG3 : CUSPARSE_SPMM_CSR_ALG2,
       &buffer_size_transpose_batch_row_row,
       handle_ptr->get_stream()));
@@ -683,10 +478,10 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
       CUSPARSE_OPERATION_NON_TRANSPOSE,
       CUSPARSE_OPERATION_NON_TRANSPOSE,
       alpha.data(),
-      A,
-      batch_reflected_primal_solutions,
+      A.get(),
+      batch_reflected_primal_solutions.get(),
       beta.data(),
-      batch_dual_gradients,
+      batch_dual_gradients.get(),
       (deterministic_batch_pdlp) ? CUSPARSE_SPMM_CSR_ALG3 : CUSPARSE_SPMM_CSR_ALG2,
       &buffer_size_non_transpose_batch_row_row,
       handle_ptr->get_stream()));
@@ -698,10 +493,10 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   my_cusparsespmv_preprocess(handle_ptr_->get_cusparse_handle(),
                              CUSPARSE_OPERATION_NON_TRANSPOSE,
                              alpha.data(),
-                             A,
-                             c,
+                             A.get(),
+                             c.get(),
                              beta.data(),
-                             dual_solution,
+                             dual_solution.get(),
                              CUSPARSE_SPMV_CSR_ALG2,
                              buffer_non_transpose.data(),
                              handle_ptr->get_stream());
@@ -709,10 +504,10 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   my_cusparsespmv_preprocess(handle_ptr_->get_cusparse_handle(),
                              CUSPARSE_OPERATION_NON_TRANSPOSE,
                              alpha.data(),
-                             A_T,
-                             dual_solution,
+                             A_T.get(),
+                             dual_solution.get(),
                              beta.data(),
-                             c,
+                             c.get(),
                              CUSPARSE_SPMV_CSR_ALG2,
                              buffer_transpose.data(),
                              handle_ptr->get_stream());
@@ -720,10 +515,10 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                              CUSPARSE_OPERATION_NON_TRANSPOSE,
                              CUSPARSE_OPERATION_NON_TRANSPOSE,
                              alpha.data(),
-                             A_T,
-                             batch_delta_dual_solutions,
+                             A_T.get(),
+                             batch_delta_dual_solutions.get(),
                              beta.data(),
-                             batch_tmp_primals,
+                             batch_tmp_primals.get(),
                              CUSPARSE_SPMM_CSR_ALG3,
                              buffer_transpose_batch.data(),
                              handle_ptr->get_stream());
@@ -732,10 +527,10 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                              CUSPARSE_OPERATION_NON_TRANSPOSE,
                              CUSPARSE_OPERATION_NON_TRANSPOSE,
                              alpha.data(),
-                             A,
-                             batch_delta_primal_solutions,
+                             A.get(),
+                             batch_delta_primal_solutions.get(),
                              beta.data(),
-                             batch_tmp_duals,
+                             batch_tmp_duals.get(),
                              CUSPARSE_SPMM_CSR_ALG3,
                              buffer_non_transpose_batch.data(),
                              handle_ptr->get_stream());
@@ -745,10 +540,10 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
       CUSPARSE_OPERATION_NON_TRANSPOSE,
       CUSPARSE_OPERATION_NON_TRANSPOSE,
       alpha.data(),
-      A_T,
-      batch_dual_solutions,
+      A_T.get(),
+      batch_dual_solutions.get(),
       beta.data(),
-      batch_current_AtYs,
+      batch_current_AtYs.get(),
       (deterministic_batch_pdlp) ? CUSPARSE_SPMM_CSR_ALG3 : CUSPARSE_SPMM_CSR_ALG2,
       buffer_transpose_batch_row_row_.data(),
       handle_ptr->get_stream());
@@ -757,10 +552,10 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
       CUSPARSE_OPERATION_NON_TRANSPOSE,
       CUSPARSE_OPERATION_NON_TRANSPOSE,
       alpha.data(),
-      A,
-      batch_reflected_primal_solutions,
+      A.get(),
+      batch_reflected_primal_solutions.get(),
       beta.data(),
-      batch_dual_gradients,
+      batch_dual_gradients.get(),
       (deterministic_batch_pdlp) ? CUSPARSE_SPMM_CSR_ALG3 : CUSPARSE_SPMM_CSR_ALG2,
       buffer_non_transpose_batch_row_row_.data(),
       handle_ptr->get_stream());
@@ -786,19 +581,18 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                                                     double_to_float_functor{},
                                                     handle_ptr->get_stream().value()));
 
-      A_mixed_.create(op_problem_scaled.n_constraints,
-                      op_problem_scaled.n_variables,
-                      op_problem_scaled.nnz,
-                      const_cast<i_t*>(op_problem_scaled.offsets.data()),
-                      const_cast<i_t*>(op_problem_scaled.variables.data()),
-                      A_float_.data());
-
-      A_T_mixed_.create(op_problem_scaled.n_variables,
-                        op_problem_scaled.n_constraints,
-                        op_problem_scaled.nnz,
-                        const_cast<i_t*>(A_T_offsets_.data()),
-                        const_cast<i_t*>(A_T_indices_.data()),
-                        A_T_float_.data());
+      A_mixed_   = make_csr<i_t, float>(op_problem_scaled.n_constraints,
+                                      op_problem_scaled.n_variables,
+                                      op_problem_scaled.nnz,
+                                      const_cast<i_t*>(op_problem_scaled.offsets.data()),
+                                      const_cast<i_t*>(op_problem_scaled.variables.data()),
+                                      A_float_.data());
+      A_T_mixed_ = make_csr<i_t, float>(op_problem_scaled.n_variables,
+                                        op_problem_scaled.n_constraints,
+                                        op_problem_scaled.nnz,
+                                        const_cast<i_t*>(A_T_offsets_.data()),
+                                        const_cast<i_t*>(A_T_indices_.data()),
+                                        A_T_float_.data());
 
       const rmm::device_scalar<double> alpha_d{1.0, handle_ptr->get_stream()};
       const rmm::device_scalar<double> beta_d{0.0, handle_ptr->get_stream()};
@@ -807,10 +601,10 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
         mixed_precision_spmv_buffersize(handle_ptr_->get_cusparse_handle(),
                                         CUSPARSE_OPERATION_NON_TRANSPOSE,
                                         alpha_d.data(),
-                                        A_mixed_,
-                                        c,
+                                        A_mixed_.get(),
+                                        c.get(),
                                         beta_d.data(),
-                                        dual_solution,
+                                        dual_solution.get(),
                                         CUSPARSE_SPMV_CSR_ALG2,
                                         handle_ptr->get_stream());
       buffer_non_transpose_mixed_.resize(buffer_size_non_transpose_mixed, handle_ptr->get_stream());
@@ -819,10 +613,10 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
         mixed_precision_spmv_buffersize(handle_ptr_->get_cusparse_handle(),
                                         CUSPARSE_OPERATION_NON_TRANSPOSE,
                                         alpha_d.data(),
-                                        A_T_mixed_,
-                                        dual_solution,
+                                        A_T_mixed_.get(),
+                                        dual_solution.get(),
                                         beta_d.data(),
-                                        c,
+                                        c.get(),
                                         CUSPARSE_SPMV_CSR_ALG2,
                                         handle_ptr->get_stream());
       buffer_transpose_mixed_.resize(buffer_size_transpose_mixed, handle_ptr->get_stream());
@@ -831,10 +625,10 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
       mixed_precision_spmv_preprocess(handle_ptr_->get_cusparse_handle(),
                                       CUSPARSE_OPERATION_NON_TRANSPOSE,
                                       alpha_d.data(),
-                                      A_mixed_,
-                                      c,
+                                      A_mixed_.get(),
+                                      c.get(),
                                       beta_d.data(),
-                                      dual_solution,
+                                      dual_solution.get(),
                                       CUSPARSE_SPMV_CSR_ALG2,
                                       buffer_non_transpose_mixed_.data(),
                                       handle_ptr->get_stream());
@@ -842,10 +636,10 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
       mixed_precision_spmv_preprocess(handle_ptr_->get_cusparse_handle(),
                                       CUSPARSE_OPERATION_NON_TRANSPOSE,
                                       alpha_d.data(),
-                                      A_T_mixed_,
-                                      dual_solution,
+                                      A_T_mixed_.get(),
+                                      dual_solution.get(),
                                       beta_d.data(),
-                                      c,
+                                      c.get(),
                                       CUSPARSE_SPMV_CSR_ALG2,
                                       buffer_transpose_mixed_.data(),
                                       handle_ptr->get_stream());
@@ -873,15 +667,6 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params)
   : batch_mode_(climber_strategies.size() > 1),
     handle_ptr_(handle_ptr),
-    A{},
-    A_T{},
-    c{},
-    primal_solution{},
-    dual_solution{},
-    primal_gradient{},
-    dual_gradient{},
-    tmp_primal{},
-    tmp_dual{},
     A_T_{_A_T},
     A_T_offsets_{_A_T_offsets},
     A_T_indices_{_A_T_indices},
@@ -912,56 +697,57 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
     handle_ptr_->get_cusparse_handle(), CUSPARSE_POINTER_MODE_DEVICE, handle_ptr->get_stream()));
 
   // setup cusparse view
-  A.create(op_problem.n_constraints,
-           op_problem.n_variables,
-           op_problem.nnz,
-           const_cast<i_t*>(op_problem.offsets.data()),
-           const_cast<i_t*>(op_problem.variables.data()),
-           const_cast<f_t*>(op_problem.coefficients.data()));
+  A = make_csr<i_t, f_t>(op_problem.n_constraints,
+                         op_problem.n_variables,
+                         op_problem.nnz,
+                         const_cast<i_t*>(op_problem.offsets.data()),
+                         const_cast<i_t*>(op_problem.variables.data()),
+                         const_cast<f_t*>(op_problem.coefficients.data()));
 
-  A_T.create(op_problem.n_variables,
-             op_problem.n_constraints,
-             op_problem.nnz,
-             const_cast<i_t*>(A_T_offsets_.data()),
-             const_cast<i_t*>(A_T_indices_.data()),
-             const_cast<f_t*>(A_T_.data()));
+  A_T = make_csr<i_t, f_t>(op_problem.n_variables,
+                           op_problem.n_constraints,
+                           op_problem.nnz,
+                           const_cast<i_t*>(A_T_offsets_.data()),
+                           const_cast<i_t*>(A_T_indices_.data()),
+                           const_cast<f_t*>(A_T_.data()));
 
-  c.create(op_problem.n_variables, const_cast<f_t*>(op_problem.objective_coefficients.data()));
+  c = make_dnvec<f_t>(op_problem.n_variables,
+                      const_cast<f_t*>(op_problem.objective_coefficients.data()));
 
   if (!hyper_params.use_adaptive_step_size_strategy) {
-    primal_solution.create(op_problem.n_variables, _potential_next_primal.data());
-    dual_solution.create(op_problem.n_constraints, _potential_next_dual.data());
+    primal_solution = make_dnvec<f_t>(op_problem.n_variables, _potential_next_primal.data());
+    dual_solution   = make_dnvec<f_t>(op_problem.n_constraints, _potential_next_dual.data());
   } else {
-    primal_solution.create(op_problem.n_variables, _primal_solution.data());
-    dual_solution.create(op_problem.n_constraints, _dual_solution.data());
+    primal_solution = make_dnvec<f_t>(op_problem.n_variables, _primal_solution.data());
+    dual_solution   = make_dnvec<f_t>(op_problem.n_constraints, _dual_solution.data());
   }
 
-  tmp_primal.create(op_problem.n_variables, _tmp_primal.data());
-  tmp_dual.create(op_problem.n_constraints, _tmp_dual.data());
+  tmp_primal = make_dnvec<f_t>(op_problem.n_variables, _tmp_primal.data());
+  tmp_dual   = make_dnvec<f_t>(op_problem.n_constraints, _tmp_dual.data());
 
   if (batch_mode_) {
     [[maybe_unused]] const bool is_cupdlpx = is_cupdlpx_restart<i_t, f_t>(hyper_params);
     cuopt_assert(is_cupdlpx, "Batch mode only supported with cuPDLPx restart");
-    batch_primal_solutions.create(op_problem.n_variables,
-                                  climber_strategies.size(),
-                                  op_problem.n_variables,
-                                  _potential_next_primal.data(),
-                                  CUSPARSE_ORDER_COL);
-    batch_dual_solutions.create(op_problem.n_constraints,
-                                climber_strategies.size(),
-                                op_problem.n_constraints,
-                                _potential_next_dual.data(),
-                                CUSPARSE_ORDER_COL);
-    batch_tmp_duals.create(op_problem.n_constraints,
-                           climber_strategies.size(),
-                           op_problem.n_constraints,
-                           _tmp_dual.data(),
-                           CUSPARSE_ORDER_COL);
-    batch_tmp_primals.create(op_problem.n_variables,
-                             climber_strategies.size(),
-                             op_problem.n_variables,
-                             _tmp_primal.data(),
-                             CUSPARSE_ORDER_COL);
+    batch_primal_solutions = make_dnmat<f_t>(op_problem.n_variables,
+                                             climber_strategies.size(),
+                                             op_problem.n_variables,
+                                             _potential_next_primal.data(),
+                                             CUSPARSE_ORDER_COL);
+    batch_dual_solutions   = make_dnmat<f_t>(op_problem.n_constraints,
+                                           climber_strategies.size(),
+                                           op_problem.n_constraints,
+                                           _potential_next_dual.data(),
+                                           CUSPARSE_ORDER_COL);
+    batch_tmp_duals        = make_dnmat<f_t>(op_problem.n_constraints,
+                                      climber_strategies.size(),
+                                      op_problem.n_constraints,
+                                      _tmp_dual.data(),
+                                      CUSPARSE_ORDER_COL);
+    batch_tmp_primals      = make_dnmat<f_t>(op_problem.n_variables,
+                                        climber_strategies.size(),
+                                        op_problem.n_variables,
+                                        _tmp_primal.data(),
+                                        CUSPARSE_ORDER_COL);
   }
 
   const rmm::device_scalar<f_t> alpha{1, handle_ptr->get_stream()};
@@ -971,10 +757,10 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
     raft::sparse::detail::cusparsespmv_buffersize(handle_ptr_->get_cusparse_handle(),
                                                   CUSPARSE_OPERATION_NON_TRANSPOSE,
                                                   alpha.data(),
-                                                  A,
-                                                  c,
+                                                  A.get(),
+                                                  c.get(),
                                                   beta.data(),
-                                                  dual_solution,
+                                                  dual_solution.get(),
                                                   CUSPARSE_SPMV_CSR_ALG2,
                                                   &buffer_size_non_transpose,
                                                   handle_ptr->get_stream()));
@@ -985,10 +771,10 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
     raft::sparse::detail::cusparsespmv_buffersize(handle_ptr_->get_cusparse_handle(),
                                                   CUSPARSE_OPERATION_NON_TRANSPOSE,
                                                   alpha.data(),
-                                                  A_T,
-                                                  dual_solution,
+                                                  A_T.get(),
+                                                  dual_solution.get(),
                                                   beta.data(),
-                                                  c,
+                                                  c.get(),
                                                   CUSPARSE_SPMV_CSR_ALG2,
                                                   &buffer_size_transpose,
                                                   handle_ptr->get_stream()));
@@ -1002,10 +788,10 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                                                     CUSPARSE_OPERATION_NON_TRANSPOSE,
                                                     CUSPARSE_OPERATION_NON_TRANSPOSE,
                                                     alpha.data(),
-                                                    A_T,
-                                                    batch_dual_solutions,
+                                                    A_T.get(),
+                                                    batch_dual_solutions.get(),
                                                     beta.data(),
-                                                    batch_tmp_primals,
+                                                    batch_tmp_primals.get(),
                                                     CUSPARSE_SPMM_CSR_ALG3,
                                                     &buffer_size_transpose_batch,
                                                     handle_ptr->get_stream()));
@@ -1016,10 +802,10 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                                                     CUSPARSE_OPERATION_NON_TRANSPOSE,
                                                     CUSPARSE_OPERATION_NON_TRANSPOSE,
                                                     alpha.data(),
-                                                    A,
-                                                    batch_primal_solutions,
+                                                    A.get(),
+                                                    batch_primal_solutions.get(),
                                                     beta.data(),
-                                                    batch_tmp_duals,
+                                                    batch_tmp_duals.get(),
                                                     CUSPARSE_SPMM_CSR_ALG3,
                                                     &buffer_size_non_transpose_batch,
                                                     handle_ptr->get_stream()));
@@ -1030,10 +816,10 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   my_cusparsespmv_preprocess(handle_ptr_->get_cusparse_handle(),
                              CUSPARSE_OPERATION_NON_TRANSPOSE,
                              alpha.data(),
-                             A,
-                             c,
+                             A.get(),
+                             c.get(),
                              beta.data(),
-                             dual_solution,
+                             dual_solution.get(),
                              CUSPARSE_SPMV_CSR_ALG2,
                              buffer_non_transpose.data(),
                              handle_ptr->get_stream());
@@ -1041,10 +827,10 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   my_cusparsespmv_preprocess(handle_ptr_->get_cusparse_handle(),
                              CUSPARSE_OPERATION_NON_TRANSPOSE,
                              alpha.data(),
-                             A_T,
-                             dual_solution,
+                             A_T.get(),
+                             dual_solution.get(),
                              beta.data(),
-                             c,
+                             c.get(),
                              CUSPARSE_SPMV_CSR_ALG2,
                              buffer_transpose.data(),
                              handle_ptr->get_stream());
@@ -1054,10 +840,10 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                                CUSPARSE_OPERATION_NON_TRANSPOSE,
                                CUSPARSE_OPERATION_NON_TRANSPOSE,
                                alpha.data(),
-                               A,
-                               batch_primal_solutions,
+                               A.get(),
+                               batch_primal_solutions.get(),
                                beta.data(),
-                               batch_tmp_duals,
+                               batch_tmp_duals.get(),
                                CUSPARSE_SPMM_CSR_ALG3,
                                buffer_non_transpose_batch.data(),
                                handle_ptr->get_stream());
@@ -1066,10 +852,10 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                                CUSPARSE_OPERATION_NON_TRANSPOSE,
                                CUSPARSE_OPERATION_NON_TRANSPOSE,
                                alpha.data(),
-                               A_T,
-                               batch_dual_solutions,
+                               A_T.get(),
+                               batch_dual_solutions.get(),
                                beta.data(),
-                               batch_tmp_primals,
+                               batch_tmp_primals.get(),
                                CUSPARSE_SPMM_CSR_ALG3,
                                buffer_transpose_batch.data(),
                                handle_ptr->get_stream());
@@ -1077,8 +863,11 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
 #endif
 }
 
-// Constructor used 3 times in restart strategy for the duality gaps
-// Used in trust region restart
+// Constructor used 3 times in restart strategy for the duality gaps (trust region restart).
+// All cuSPARSE descriptors are recreated (no borrowing) to avoid the post-CUDA-12.4 segfault
+// observed when copying cusparseSpMatDescr_t handles. tmp_primal/tmp_dual underlying buffer
+// pointers are recovered from existing_cusparse_view via cusparseDnVecGetValues; the buffers
+// themselves are owned by the parent pdhg_solver_t and outlive every cusparse_view_t.
 template <typename i_t, typename f_t>
 cusparse_view_t<i_t, f_t>::cusparse_view_t(
   raft::handle_t const* handle_ptr,
@@ -1089,13 +878,6 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   f_t* _primal_gradient,
   f_t* _dual_gradient)
   : handle_ptr_(handle_ptr),
-    c(existing_cusparse_view.c),
-    primal_solution{},
-    dual_solution{},
-    primal_gradient{},
-    dual_gradient{},
-    tmp_primal(existing_cusparse_view.tmp_primal),
-    tmp_dual(existing_cusparse_view.tmp_dual),
     buffer_non_transpose{0, handle_ptr->get_stream()},
     buffer_transpose{0, handle_ptr->get_stream()},
     buffer_non_transpose_spmvop{0, handle_ptr->get_stream()},
@@ -1125,29 +907,41 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsesetpointermode(
     handle_ptr_->get_cusparse_handle(), CUSPARSE_POINTER_MODE_DEVICE, handle_ptr->get_stream()));
 
-  // Need to reinstanciate the cuSparse views
-  // Copying them from the existing cuSparse view is a bad practice and creates segfault post
-  // CUDA 12.4 Using the saved pointer of the existing cusparse view to make sure we capture the
-  // correct pointer
-  A.create(op_problem.n_constraints,
-           op_problem.n_variables,
-           op_problem.nnz,
-           const_cast<i_t*>(A_offsets_.data()),
-           const_cast<i_t*>(A_indices_.data()),
-           const_cast<f_t*>(A_.data()));
+  // All descriptors are reinstantiated below from the saved data pointers (a copy of the
+  // cusparseSpMatDescr_t handles segfaults under CUDA 12.4+).
+  A = make_csr<i_t, f_t>(op_problem.n_constraints,
+                         op_problem.n_variables,
+                         op_problem.nnz,
+                         const_cast<i_t*>(A_offsets_.data()),
+                         const_cast<i_t*>(A_indices_.data()),
+                         const_cast<f_t*>(A_.data()));
 
-  A_T.create(op_problem.n_variables,
-             op_problem.n_constraints,
-             op_problem.nnz,
-             const_cast<i_t*>(existing_cusparse_view.A_T_offsets_.data()),
-             const_cast<i_t*>(existing_cusparse_view.A_T_indices_.data()),
-             const_cast<f_t*>(existing_cusparse_view.A_T_.data()));
+  A_T = make_csr<i_t, f_t>(op_problem.n_variables,
+                           op_problem.n_constraints,
+                           op_problem.nnz,
+                           const_cast<i_t*>(existing_cusparse_view.A_T_offsets_.data()),
+                           const_cast<i_t*>(existing_cusparse_view.A_T_indices_.data()),
+                           const_cast<f_t*>(existing_cusparse_view.A_T_.data()));
 
-  primal_solution.create(op_problem.n_variables, _primal_solution);
-  dual_solution.create(op_problem.n_constraints, _dual_solution);
+  c = make_dnvec<f_t>(op_problem.n_variables,
+                      const_cast<f_t*>(op_problem.objective_coefficients.data()));
 
-  primal_gradient.create(op_problem.n_variables, _primal_gradient);
-  dual_gradient.create(op_problem.n_constraints, _dual_gradient);
+  primal_solution = make_dnvec<f_t>(op_problem.n_variables, _primal_solution);
+  dual_solution   = make_dnvec<f_t>(op_problem.n_constraints, _dual_solution);
+
+  primal_gradient = make_dnvec<f_t>(op_problem.n_variables, _primal_gradient);
+  dual_gradient   = make_dnvec<f_t>(op_problem.n_constraints, _dual_gradient);
+
+  // Recover the underlying pdhg-owned scratch buffers from the existing view's descriptors so
+  // the new descriptors point at the same memory without plumbing the rmm::device_uvector refs
+  // through pdlp_restart_strategy_t.
+  void* tmp_primal_data{nullptr};
+  void* tmp_dual_data{nullptr};
+  RAFT_CUSPARSE_TRY(
+    cusparseDnVecGetValues(existing_cusparse_view.tmp_primal.get(), &tmp_primal_data));
+  RAFT_CUSPARSE_TRY(cusparseDnVecGetValues(existing_cusparse_view.tmp_dual.get(), &tmp_dual_data));
+  tmp_primal = make_dnvec<f_t>(op_problem.n_variables, static_cast<f_t*>(tmp_primal_data));
+  tmp_dual   = make_dnvec<f_t>(op_problem.n_constraints, static_cast<f_t*>(tmp_dual_data));
 
   const rmm::device_scalar<f_t> alpha{1, handle_ptr->get_stream()};
   const rmm::device_scalar<f_t> beta{1, handle_ptr->get_stream()};
@@ -1156,10 +950,10 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
     raft::sparse::detail::cusparsespmv_buffersize(handle_ptr_->get_cusparse_handle(),
                                                   CUSPARSE_OPERATION_NON_TRANSPOSE,
                                                   alpha.data(),
-                                                  A,
-                                                  c,
+                                                  A.get(),
+                                                  c.get(),
                                                   beta.data(),
-                                                  dual_solution,
+                                                  dual_solution.get(),
                                                   CUSPARSE_SPMV_CSR_ALG2,
                                                   &buffer_size_non_transpose,
                                                   handle_ptr->get_stream()));
@@ -1170,10 +964,10 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
     raft::sparse::detail::cusparsespmv_buffersize(handle_ptr_->get_cusparse_handle(),
                                                   CUSPARSE_OPERATION_NON_TRANSPOSE,
                                                   alpha.data(),
-                                                  A_T,
-                                                  dual_solution,
+                                                  A_T.get(),
+                                                  dual_solution.get(),
                                                   beta.data(),
-                                                  c,
+                                                  c.get(),
                                                   CUSPARSE_SPMV_CSR_ALG2,
                                                   &buffer_size_transpose,
                                                   handle_ptr->get_stream()));
@@ -1184,10 +978,10 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   my_cusparsespmv_preprocess(handle_ptr_->get_cusparse_handle(),
                              CUSPARSE_OPERATION_NON_TRANSPOSE,
                              alpha.data(),
-                             A,
-                             c,
+                             A.get(),
+                             c.get(),
                              beta.data(),
-                             dual_solution,
+                             dual_solution.get(),
                              CUSPARSE_SPMV_CSR_ALG2,
                              buffer_non_transpose.data(),
                              handle_ptr->get_stream());
@@ -1195,10 +989,10 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   my_cusparsespmv_preprocess(handle_ptr_->get_cusparse_handle(),
                              CUSPARSE_OPERATION_NON_TRANSPOSE,
                              alpha.data(),
-                             A_T,
-                             dual_solution,
+                             A_T.get(),
+                             dual_solution.get(),
                              beta.data(),
-                             c,
+                             c.get(),
                              CUSPARSE_SPMV_CSR_ALG2,
                              buffer_transpose.data(),
                              handle_ptr->get_stream());
@@ -1265,26 +1059,26 @@ template <typename i_t, typename f_t>
 void cusparse_view_t<i_t, f_t>::redirect_cusparse_csr_structure_pointers(
   const problem_t<i_t, f_t>& original_problem)
 {
-  RAFT_CUSPARSE_TRY(cusparseCsrSetPointers(A,
+  RAFT_CUSPARSE_TRY(cusparseCsrSetPointers(A.get(),
                                            const_cast<i_t*>(original_problem.offsets.data()),
                                            const_cast<i_t*>(original_problem.variables.data()),
                                            const_cast<f_t*>(A_.data())));
 
   RAFT_CUSPARSE_TRY(
-    cusparseCsrSetPointers(A_T,
+    cusparseCsrSetPointers(A_T.get(),
                            const_cast<i_t*>(original_problem.reverse_offsets.data()),
                            const_cast<i_t*>(original_problem.reverse_constraints.data()),
                            const_cast<f_t*>(A_T_.data())));
 
   if constexpr (std::is_same_v<f_t, double>) {
     if (mixed_precision_enabled_) {
-      RAFT_CUSPARSE_TRY(cusparseCsrSetPointers(A_mixed_,
+      RAFT_CUSPARSE_TRY(cusparseCsrSetPointers(A_mixed_.get(),
                                                const_cast<i_t*>(original_problem.offsets.data()),
                                                const_cast<i_t*>(original_problem.variables.data()),
                                                A_float_.data()));
 
       RAFT_CUSPARSE_TRY(
-        cusparseCsrSetPointers(A_T_mixed_,
+        cusparseCsrSetPointers(A_T_mixed_.get(),
                                const_cast<i_t*>(original_problem.reverse_offsets.data()),
                                const_cast<i_t*>(original_problem.reverse_constraints.data()),
                                A_T_float_.data()));
@@ -1296,10 +1090,10 @@ void cusparse_view_t<i_t, f_t>::redirect_cusparse_csr_structure_pointers(
 size_t mixed_precision_spmv_buffersize(cusparseHandle_t handle,
                                        cusparseOperation_t opA,
                                        const double* alpha,
-                                       cusparseSpMatDescr_t matA,  // FP32 matrix
-                                       cusparseDnVecDescr_t vecX,  // FP64 vector
+                                       cusparse_sp_mat_descr_view matA,  // FP32 matrix
+                                       cusparse_dn_vec_descr_view vecX,  // FP64 vector
                                        const double* beta,
-                                       cusparseDnVecDescr_t vecY,  // FP64 vector
+                                       cusparse_dn_vec_descr_view vecY,  // FP64 vector
                                        cusparseSpMVAlg_t alg,
                                        cudaStream_t stream)
 {
@@ -1313,10 +1107,10 @@ size_t mixed_precision_spmv_buffersize(cusparseHandle_t handle,
 void mixed_precision_spmv(cusparseHandle_t handle,
                           cusparseOperation_t opA,
                           const double* alpha,
-                          cusparseSpMatDescr_t matA,  // FP32 matrix
-                          cusparseDnVecDescr_t vecX,  // FP64 vector
+                          cusparse_sp_mat_descr_view matA,  // FP32 matrix
+                          cusparse_dn_vec_descr_view vecX,  // FP64 vector
                           const double* beta,
-                          cusparseDnVecDescr_t vecY,  // FP64 vector
+                          cusparse_dn_vec_descr_view vecY,  // FP64 vector
                           cusparseSpMVAlg_t alg,
                           void* externalBuffer,
                           cudaStream_t stream)
@@ -1330,10 +1124,10 @@ void mixed_precision_spmv(cusparseHandle_t handle,
 void mixed_precision_spmv_preprocess(cusparseHandle_t handle,
                                      cusparseOperation_t opA,
                                      const double* alpha,
-                                     cusparseSpMatDescr_t matA,  // FP32 matrix
-                                     cusparseDnVecDescr_t vecX,  // FP64 vector
+                                     cusparse_sp_mat_descr_view matA,  // FP32 matrix
+                                     cusparse_dn_vec_descr_view vecX,  // FP64 vector
                                      const double* beta,
-                                     cusparseDnVecDescr_t vecY,  // FP64 vector
+                                     cusparse_dn_vec_descr_view vecY,  // FP64 vector
                                      cusparseSpMVAlg_t alg,
                                      void* externalBuffer,
                                      cudaStream_t stream)
@@ -1383,62 +1177,57 @@ void cusparse_view_t<i_t, f_t>::create_spmv_op_plans(bool is_reflected)
   size_t buffer_size_transpose = 0;
   RAFT_CUSPARSE_TRY((*buffer_size)(handle_ptr_->get_cusparse_handle(),
                                    CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                   A_T,
-                                   dual_solution,
-                                   current_AtY,
-                                   current_AtY,
+                                   A_T.get(),
+                                   dual_solution.get(),
+                                   current_AtY.get(),
+                                   current_AtY.get(),
                                    CUDA_R_64F,
                                    &buffer_size_transpose));
   buffer_transpose_spmvop.resize(buffer_size_transpose, handle_ptr_->get_stream());
 
-  spmv_op_descr_A_t_.create(handle_ptr_->get_cusparse_handle(),
-                            CUSPARSE_OPERATION_NON_TRANSPOSE,
-                            A_T,
-                            dual_solution,
-                            current_AtY,
-                            current_AtY,
-                            CUDA_R_64F,
-                            buffer_transpose_spmvop);
+  spmv_op_descr_A_t_ = make_spmvop_descr(handle_ptr_->get_cusparse_handle(),
+                                         CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                         A_T.get(),
+                                         dual_solution.get(),
+                                         current_AtY.get(),
+                                         current_AtY.get(),
+                                         CUDA_R_64F,
+                                         buffer_transpose_spmvop);
 
-  spmv_op_plan_A_t_.create(handle_ptr_->get_cusparse_handle(), spmv_op_descr_A_t_);
+  spmv_op_plan_A_t_ =
+    make_spmvop_plan(handle_ptr_->get_cusparse_handle(), spmv_op_descr_A_t_.get());
 
   // Only prepare buffers for A_x if we are using reflected_halpern
   if (is_reflected) {
     size_t buffer_size_non_transpose = 0;
     RAFT_CUSPARSE_TRY((*buffer_size)(handle_ptr_->get_cusparse_handle(),
                                      CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                     A,
-                                     reflected_primal_solution,
-                                     dual_gradient,
-                                     dual_gradient,
+                                     A.get(),
+                                     reflected_primal_solution.get(),
+                                     dual_gradient.get(),
+                                     dual_gradient.get(),
                                      CUDA_R_64F,
                                      &buffer_size_non_transpose));
     buffer_non_transpose_spmvop.resize(buffer_size_non_transpose, handle_ptr_->get_stream());
 
-    spmv_op_descr_A_.create(handle_ptr_->get_cusparse_handle(),
-                            CUSPARSE_OPERATION_NON_TRANSPOSE,
-                            A,
-                            reflected_primal_solution,
-                            dual_gradient,
-                            dual_gradient,
-                            CUDA_R_64F,
-                            buffer_non_transpose_spmvop);
+    spmv_op_descr_A_ = make_spmvop_descr(handle_ptr_->get_cusparse_handle(),
+                                         CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                         A.get(),
+                                         reflected_primal_solution.get(),
+                                         dual_gradient.get(),
+                                         dual_gradient.get(),
+                                         CUDA_R_64F,
+                                         buffer_non_transpose_spmvop);
 
-    spmv_op_plan_A_.create(handle_ptr_->get_cusparse_handle(), spmv_op_descr_A_);
+    spmv_op_plan_A_ = make_spmvop_plan(handle_ptr_->get_cusparse_handle(), spmv_op_descr_A_.get());
   }
 #endif
 }
 
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
-template class cusparse_sp_mat_descr_wrapper_t<int, float>;
-template class cusparse_dn_vec_descr_wrapper_t<float>;
-template class cusparse_dn_mat_descr_wrapper_t<float>;
 template class cusparse_view_t<int, float>;
 #endif
 #if MIP_INSTANTIATE_DOUBLE
-template class cusparse_sp_mat_descr_wrapper_t<int, double>;
-template class cusparse_dn_vec_descr_wrapper_t<double>;
-template class cusparse_dn_mat_descr_wrapper_t<double>;
 template class cusparse_view_t<int, double>;
 #endif
 

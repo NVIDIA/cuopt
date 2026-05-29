@@ -20,135 +20,125 @@
 
 #include <cusparse_v2.h>
 
+#include <memory>
+#include <type_traits>
+
 #define CUDA_VER_13_2_UP (CUDART_VERSION >= 13020)
 
 namespace cuopt::linear_programming::detail {
 
+// ---------------------------------------------------------------------------
+// Deleters and unique_ptr aliases for cuSPARSE opaque handles.
+//
+// Each cuSPARSE handle (cusparseSpMatDescr_t etc.) is a typedef for a pointer
+// to an opaque struct. We use std::remove_pointer_t to feed unique_ptr the
+// pointee type so that unique_ptr<...>::pointer matches the cuSPARSE handle.
+// ---------------------------------------------------------------------------
+
+struct cusparse_sp_mat_deleter {
+  void operator()(cusparseSpMatDescr_t descr) const noexcept
+  {
+    if (descr) { RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroySpMat(descr)); }
+  }
+};
+
+struct cusparse_dn_vec_deleter {
+  void operator()(cusparseDnVecDescr_t descr) const noexcept
+  {
+    if (descr) { RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(descr)); }
+  }
+};
+
+struct cusparse_dn_mat_deleter {
+  void operator()(cusparseDnMatDescr_t descr) const noexcept
+  {
+    if (descr) { RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnMat(descr)); }
+  }
+};
+
+using cusparse_sp_mat_uptr =
+  std::unique_ptr<std::remove_pointer_t<cusparseSpMatDescr_t>, cusparse_sp_mat_deleter>;
+using cusparse_dn_vec_uptr =
+  std::unique_ptr<std::remove_pointer_t<cusparseDnVecDescr_t>, cusparse_dn_vec_deleter>;
+using cusparse_dn_mat_uptr =
+  std::unique_ptr<std::remove_pointer_t<cusparseDnMatDescr_t>, cusparse_dn_mat_deleter>;
+
+// Borrowed views: identical to the raw cuSPARSE handle types but the alias makes the non-owning
+// intent explicit at API boundaries. Pair with the *_uptr aliases above:
+//   _uptr  -> owns the descriptor; the destructor calls cusparseDestroy*
+//   _view  -> non-owning, just the raw handle, lifetime managed elsewhere
+using cusparse_sp_mat_descr_view = cusparseSpMatDescr_t;
+using cusparse_dn_vec_descr_view = cusparseDnVecDescr_t;
+using cusparse_dn_mat_descr_view = cusparseDnMatDescr_t;
+
+// Factory functions replacing the old `wrapper.create(...)` two-phase init.
+
 template <typename i_t, typename f_t>
-class cusparse_sp_mat_descr_wrapper_t {
- public:
-  cusparse_sp_mat_descr_wrapper_t();
-  ~cusparse_sp_mat_descr_wrapper_t();
-
-  cusparse_sp_mat_descr_wrapper_t(const cusparse_sp_mat_descr_wrapper_t& other);
-
-  cusparse_sp_mat_descr_wrapper_t& operator=(const cusparse_sp_mat_descr_wrapper_t& other) = delete;
-
-  void create(int64_t m, int64_t n, int64_t nnz, i_t* offsets, i_t* indices, f_t* values);
-
-  operator cusparseSpMatDescr_t() const;
-
- private:
-  cusparseSpMatDescr_t descr_;
-  bool need_destruction_;
-};
+inline cusparse_sp_mat_uptr make_csr(
+  int64_t m, int64_t n, int64_t nnz, i_t* offsets, i_t* indices, f_t* values)
+{
+  cusparseSpMatDescr_t descr{nullptr};
+  RAFT_CUSPARSE_TRY(
+    raft::sparse::detail::cusparsecreatecsr(&descr, m, n, nnz, offsets, indices, values));
+  return cusparse_sp_mat_uptr{descr};
+}
 
 template <typename f_t>
-class cusparse_dn_vec_descr_wrapper_t {
- public:
-  cusparse_dn_vec_descr_wrapper_t();
-  ~cusparse_dn_vec_descr_wrapper_t();
-
-  cusparse_dn_vec_descr_wrapper_t(const cusparse_dn_vec_descr_wrapper_t& other);
-  cusparse_dn_vec_descr_wrapper_t& operator=(cusparse_dn_vec_descr_wrapper_t&& other);
-  cusparse_dn_vec_descr_wrapper_t& operator=(const cusparse_dn_vec_descr_wrapper_t& other) = delete;
-
-  void create(int64_t size, f_t* values);
-
-  operator cusparseDnVecDescr_t() const;
-
- private:
-  cusparseDnVecDescr_t descr_;
-  bool need_destruction_;
-};
+inline cusparse_dn_vec_uptr make_dnvec(int64_t size, f_t* values)
+{
+  cusparseDnVecDescr_t descr{nullptr};
+  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(&descr, size, values));
+  return cusparse_dn_vec_uptr{descr};
+}
 
 template <typename f_t>
-class cusparse_dn_mat_descr_wrapper_t {
- public:
-  cusparse_dn_mat_descr_wrapper_t();
-  ~cusparse_dn_mat_descr_wrapper_t();
-
-  cusparse_dn_mat_descr_wrapper_t(const cusparse_dn_mat_descr_wrapper_t& other);
-  cusparse_dn_mat_descr_wrapper_t& operator=(cusparse_dn_mat_descr_wrapper_t&& other);
-  cusparse_dn_mat_descr_wrapper_t& operator=(const cusparse_dn_mat_descr_wrapper_t& other) = delete;
-
-  void create(int64_t row, int64_t col, int64_t ld, f_t* values, cusparseOrder_t order);
-
-  operator cusparseDnMatDescr_t() const;
-
- private:
-  cusparseDnMatDescr_t descr_;
-  bool need_destruction_;
-};
+inline cusparse_dn_mat_uptr make_dnmat(
+  int64_t row, int64_t col, int64_t ld, f_t* values, cusparseOrder_t order)
+{
+  cusparseDnMatDescr_t descr{nullptr};
+  RAFT_CUSPARSE_TRY(
+    raft::sparse::detail::cusparsecreatednmat(&descr, row, col, ld, values, order));
+  return cusparse_dn_mat_uptr{descr};
+}
 
 #if CUDA_VER_13_2_UP
-// RAII wrapper around cusparse SpMVOp objects. All the buffers are owned by the cusparse_view_t.
-class cusparse_spmvop_descr_wrapper_t {
- public:
-  cusparse_spmvop_descr_wrapper_t();
-  ~cusparse_spmvop_descr_wrapper_t();
+// ---------------------------------------------------------------------------
+// SpMVOp descriptor and plan deleters.
+//
+// The cusparseSpMVOp_{create,destroy}{Descr,Plan} symbols may not be present
+// in the runtime cuSPARSE (the compiled CUDA version may differ from the one
+// at runtime), so destruction is dispatched through dlsym. The deleters below
+// resolve the destroy symbol at first use and cache it via a function-local
+// static.
+// ---------------------------------------------------------------------------
 
-  cusparse_spmvop_descr_wrapper_t(const cusparse_spmvop_descr_wrapper_t& other);
-  cusparse_spmvop_descr_wrapper_t& operator=(cusparse_spmvop_descr_wrapper_t&& other);
-  cusparse_spmvop_descr_wrapper_t& operator=(const cusparse_spmvop_descr_wrapper_t& other) = delete;
-
-  void create(cusparseHandle_t handle,
-              cusparseOperation_t opA,
-              cusparseSpMatDescr_t matA,
-              cusparseDnVecDescr_t vecX,
-              cusparseDnVecDescr_t vecY,
-              cusparseDnVecDescr_t vecZ,
-              cudaDataType computeType,
-              rmm::device_uvector<uint8_t>& buffer);
-
-  operator cusparseSpMVOpDescr_t() const;
-
- private:
-  // Forwards to cusparseSpMVOp_{create,destroy}Descr resolved via dlsym (cached on first call).
-  // This is needed because the cusparseSpMVOp_{create,destroy}Descr symbols might not be defined in
-  // current runtime.
-  static cusparseStatus_t dlsym_create(cusparseHandle_t handle,
-                                       cusparseSpMVOpDescr_t* descr,
-                                       cusparseOperation_t opA,
-                                       cusparseSpMatDescr_t matA,
-                                       cusparseDnVecDescr_t vecX,
-                                       cusparseDnVecDescr_t vecY,
-                                       cusparseDnVecDescr_t vecZ,
-                                       cudaDataType computeType,
-                                       void* buffer);
-  static cusparseStatus_t dlsym_destroy(cusparseSpMVOpDescr_t descr);
-
-  cusparseSpMVOpDescr_t descr_;
-  bool need_destruction_;
+struct cusparse_spmvop_descr_deleter {
+  void operator()(cusparseSpMVOpDescr_t descr) const noexcept;
 };
 
-class cusparse_spmvop_plan_wrapper_t {
- public:
-  cusparse_spmvop_plan_wrapper_t();
-  ~cusparse_spmvop_plan_wrapper_t();
-
-  cusparse_spmvop_plan_wrapper_t(const cusparse_spmvop_plan_wrapper_t& other);
-  cusparse_spmvop_plan_wrapper_t& operator=(cusparse_spmvop_plan_wrapper_t&& other);
-  cusparse_spmvop_plan_wrapper_t& operator=(const cusparse_spmvop_plan_wrapper_t& other) = delete;
-
-  void create(cusparseHandle_t handle, cusparseSpMVOpDescr_t descr);
-
-  operator cusparseSpMVOpPlan_t() const;
-
- private:
-  // Forwards to cusparseSpMVOp_{create,destroy}Plan resolved via dlsym (cached on first call).
-  // This is needed because the cusparseSpMVOp_{create,destroy}Plan symbols might not be defined in
-  // current runtime.
-  static cusparseStatus_t dlsym_create(cusparseHandle_t handle,
-                                       cusparseSpMVOpDescr_t descr,
-                                       cusparseSpMVOpPlan_t* plan,
-                                       char* ltoIRBuf,
-                                       size_t ltoIRSize);
-  static cusparseStatus_t dlsym_destroy(cusparseSpMVOpPlan_t plan);
-
-  cusparseSpMVOpPlan_t plan_;
-  bool need_destruction_;
+struct cusparse_spmvop_plan_deleter {
+  void operator()(cusparseSpMVOpPlan_t plan) const noexcept;
 };
+
+using cusparse_spmvop_descr_uptr =
+  std::unique_ptr<std::remove_pointer_t<cusparseSpMVOpDescr_t>, cusparse_spmvop_descr_deleter>;
+using cusparse_spmvop_plan_uptr =
+  std::unique_ptr<std::remove_pointer_t<cusparseSpMVOpPlan_t>, cusparse_spmvop_plan_deleter>;
+
+// Factories. `make_spmvop_descr` resolves cusparseSpMVOp_createDescr via dlsym.
+cusparse_spmvop_descr_uptr make_spmvop_descr(cusparseHandle_t handle,
+                                             cusparseOperation_t opA,
+                                             cusparse_sp_mat_descr_view matA,
+                                             cusparse_dn_vec_descr_view vecX,
+                                             cusparse_dn_vec_descr_view vecY,
+                                             cusparse_dn_vec_descr_view vecZ,
+                                             cudaDataType computeType,
+                                             rmm::device_uvector<uint8_t>& buffer);
+
+// `make_spmvop_plan` passes nullptr/0 for ltoIRBuf/ltoIRSize so cuSPARSE JITs
+// internally; cuOpt does not supply user-provided LTO IR.
+cusparse_spmvop_plan_uptr make_spmvop_plan(cusparseHandle_t handle,
+                                           cusparseSpMVOpDescr_t descr);
 #endif
 
 template <typename i_t, typename f_t>
@@ -197,48 +187,47 @@ class cusparse_view_t {
   raft::handle_t const* handle_ptr_{nullptr};
 
   // cusparse view of linear program
-  cusparse_sp_mat_descr_wrapper_t<i_t, f_t> A;
-  cusparse_sp_mat_descr_wrapper_t<i_t, f_t> A_T;
-  cusparse_dn_vec_descr_wrapper_t<f_t> c;
+  cusparse_sp_mat_uptr A;
+  cusparse_sp_mat_uptr A_T;
+  cusparse_dn_vec_uptr c;
 
   // cusparse view of solutions
-  cusparse_dn_vec_descr_wrapper_t<f_t> primal_solution;
-  cusparse_dn_vec_descr_wrapper_t<f_t> dual_solution;
+  cusparse_dn_vec_uptr primal_solution;
+  cusparse_dn_vec_uptr dual_solution;
 
   // cusparse view of gradients
-  cusparse_dn_vec_descr_wrapper_t<f_t> primal_gradient;
-  cusparse_dn_vec_descr_wrapper_t<f_t> dual_gradient;
+  cusparse_dn_vec_uptr primal_gradient;
+  cusparse_dn_vec_uptr dual_gradient;
 
   // cusparse view of batch gradients
-  cusparse_dn_mat_descr_wrapper_t<f_t> batch_dual_gradients;
+  cusparse_dn_mat_uptr batch_dual_gradients;
 
   // cusparse view of batch solutions
-  cusparse_dn_mat_descr_wrapper_t<f_t> batch_primal_solutions;
-  cusparse_dn_mat_descr_wrapper_t<f_t> batch_dual_solutions;
-  cusparse_dn_mat_descr_wrapper_t<f_t> batch_potential_next_dual_solution;
-  cusparse_dn_mat_descr_wrapper_t<f_t> batch_next_AtYs;
-  cusparse_dn_mat_descr_wrapper_t<f_t> batch_tmp_duals;
-  cusparse_dn_mat_descr_wrapper_t<f_t> batch_reflected_primal_solutions;
-  cusparse_dn_mat_descr_wrapper_t<f_t> batch_delta_primal_solutions;
-  cusparse_dn_mat_descr_wrapper_t<f_t> batch_delta_dual_solutions;
+  cusparse_dn_mat_uptr batch_primal_solutions;
+  cusparse_dn_mat_uptr batch_dual_solutions;
+  cusparse_dn_mat_uptr batch_potential_next_dual_solution;
+  cusparse_dn_mat_uptr batch_next_AtYs;
+  cusparse_dn_mat_uptr batch_tmp_duals;
+  cusparse_dn_mat_uptr batch_reflected_primal_solutions;
+  cusparse_dn_mat_uptr batch_delta_primal_solutions;
+  cusparse_dn_mat_uptr batch_delta_dual_solutions;
 
   // cusparse view of At * Y batch computation
-  cusparse_dn_mat_descr_wrapper_t<f_t> batch_current_AtYs;
+  cusparse_dn_mat_uptr batch_current_AtYs;
 
   // cusparse view of auxillirary space needed for some spmm computations
-  cusparse_dn_mat_descr_wrapper_t<f_t> batch_tmp_primals;
+  cusparse_dn_mat_uptr batch_tmp_primals;
 
   // cusparse view of At * Y computation
-  cusparse_dn_vec_descr_wrapper_t<f_t>
-    current_AtY;  // Only used at very first iteration and after each restart to average
-  cusparse_dn_vec_descr_wrapper_t<f_t>
-    next_AtY;  // Next value is swapped out with current after each valid PDHG
-               // step to save the first AtY SpMV in compute next primal
-  cusparse_dn_vec_descr_wrapper_t<f_t> potential_next_dual_solution;
+  cusparse_dn_vec_uptr current_AtY;  // Only used at very first iteration and after each restart to
+                                     // average
+  cusparse_dn_vec_uptr next_AtY;     // Next value is swapped out with current after each valid PDHG
+                                     // step to save the first AtY SpMV in compute next primal
+  cusparse_dn_vec_uptr potential_next_dual_solution;
 
   // cusparse view of auxiliary space needed for some spmv computations
-  cusparse_dn_vec_descr_wrapper_t<f_t> tmp_primal;
-  cusparse_dn_vec_descr_wrapper_t<f_t> tmp_dual;
+  cusparse_dn_vec_uptr tmp_primal;
+  cusparse_dn_vec_uptr tmp_dual;
 
   // reuse buffers for cusparse spmv
   rmm::device_uvector<uint8_t> buffer_non_transpose;
@@ -250,10 +239,10 @@ class cusparse_view_t {
 
 #if CUDA_VER_13_2_UP
   // SpMVOp descriptors and plans for A and A_T (descr before plan so dtor destroys plan first)
-  cusparse_spmvop_descr_wrapper_t spmv_op_descr_A_;
-  cusparse_spmvop_plan_wrapper_t spmv_op_plan_A_;
-  cusparse_spmvop_descr_wrapper_t spmv_op_descr_A_t_;
-  cusparse_spmvop_plan_wrapper_t spmv_op_plan_A_t_;
+  cusparse_spmvop_descr_uptr spmv_op_descr_A_;
+  cusparse_spmvop_plan_uptr spmv_op_plan_A_;
+  cusparse_spmvop_descr_uptr spmv_op_descr_A_t_;
+  cusparse_spmvop_plan_uptr spmv_op_plan_A_t_;
 #endif
   // reuse buffers for cusparse spmm
   rmm::device_uvector<uint8_t> buffer_transpose_batch;
@@ -261,7 +250,7 @@ class cusparse_view_t {
   rmm::device_uvector<uint8_t> buffer_transpose_batch_row_row_;
   rmm::device_uvector<uint8_t> buffer_non_transpose_batch_row_row_;
   // Only when using reflection
-  cusparse_dn_vec_descr_wrapper_t<f_t> reflected_primal_solution;
+  cusparse_dn_vec_uptr reflected_primal_solution;
 
   // Ref to the A_T found in either
   // Initial problem, we use it to have an unscaled A_T
@@ -283,8 +272,8 @@ class cusparse_view_t {
   // Only used when mixed_precision_enabled_ is true and f_t = double
   rmm::device_uvector<float> A_float_;                       // FP32 copy of A values
   rmm::device_uvector<float> A_T_float_;                     // FP32 copy of A_T values
-  cusparse_sp_mat_descr_wrapper_t<i_t, float> A_mixed_;      // FP32 matrix descriptor for A
-  cusparse_sp_mat_descr_wrapper_t<i_t, float> A_T_mixed_;    // FP32 matrix descriptor for A_T
+  cusparse_sp_mat_uptr A_mixed_;                             // FP32 matrix descriptor for A
+  cusparse_sp_mat_uptr A_T_mixed_;                           // FP32 matrix descriptor for A_T
   rmm::device_uvector<uint8_t> buffer_non_transpose_mixed_;  // SpMV buffer for mixed precision A
   rmm::device_uvector<uint8_t> buffer_transpose_mixed_;      // SpMV buffer for mixed precision A_T
   bool mixed_precision_enabled_{false};
@@ -303,10 +292,10 @@ class cusparse_view_t {
 void mixed_precision_spmv(cusparseHandle_t handle,
                           cusparseOperation_t opA,
                           const double* alpha,
-                          cusparseSpMatDescr_t matA,  // FP32 matrix
-                          cusparseDnVecDescr_t vecX,  // FP64 vector
+                          cusparse_sp_mat_descr_view matA,  // FP32 matrix
+                          cusparse_dn_vec_descr_view vecX,  // FP64 vector
                           const double* beta,
-                          cusparseDnVecDescr_t vecY,  // FP64 vector
+                          cusparse_dn_vec_descr_view vecY,  // FP64 vector
                           cusparseSpMVAlg_t alg,
                           void* externalBuffer,
                           cudaStream_t stream);
@@ -314,10 +303,10 @@ void mixed_precision_spmv(cusparseHandle_t handle,
 size_t mixed_precision_spmv_buffersize(cusparseHandle_t handle,
                                        cusparseOperation_t opA,
                                        const double* alpha,
-                                       cusparseSpMatDescr_t matA,  // FP32 matrix
-                                       cusparseDnVecDescr_t vecX,  // FP64 vector
+                                       cusparse_sp_mat_descr_view matA,  // FP32 matrix
+                                       cusparse_dn_vec_descr_view vecX,  // FP64 vector
                                        const double* beta,
-                                       cusparseDnVecDescr_t vecY,  // FP64 vector
+                                       cusparse_dn_vec_descr_view vecY,  // FP64 vector
                                        cusparseSpMVAlg_t alg,
                                        cudaStream_t stream);
 
@@ -325,10 +314,10 @@ size_t mixed_precision_spmv_buffersize(cusparseHandle_t handle,
 void mixed_precision_spmv_preprocess(cusparseHandle_t handle,
                                      cusparseOperation_t opA,
                                      const double* alpha,
-                                     cusparseSpMatDescr_t matA,  // FP32 matrix
-                                     cusparseDnVecDescr_t vecX,  // FP64 vector
+                                     cusparse_sp_mat_descr_view matA,  // FP32 matrix
+                                     cusparse_dn_vec_descr_view vecX,  // FP64 vector
                                      const double* beta,
-                                     cusparseDnVecDescr_t vecY,  // FP64 vector
+                                     cusparse_dn_vec_descr_view vecY,  // FP64 vector
                                      cusparseSpMVAlg_t alg,
                                      void* externalBuffer,
                                      cudaStream_t stream);
@@ -342,10 +331,10 @@ void my_cusparsespmm_preprocess(cusparseHandle_t handle,
                                 cusparseOperation_t opA,
                                 cusparseOperation_t opB,
                                 const T* alpha,
-                                const cusparseSpMatDescr_t matA,
-                                const cusparseDnMatDescr_t matB,
+                                cusparse_sp_mat_descr_view matA,
+                                cusparse_dn_mat_descr_view matB,
                                 const T* beta,
-                                const cusparseDnMatDescr_t matC,
+                                cusparse_dn_mat_descr_view matC,
                                 cusparseSpMMAlg_t alg,
                                 void* externalBuffer,
                                 cudaStream_t stream);
@@ -364,9 +353,9 @@ void cusparse_spmvop_run(cusparseHandle_t handle,
                          cusparseSpMVOpPlan_t plan,
                          const void* alpha,
                          const void* beta,
-                         cusparseDnVecDescr_t vecX,
-                         cusparseDnVecDescr_t vecY,
-                         cusparseDnVecDescr_t vecZ,
+                         cusparse_dn_vec_descr_view vecX,
+                         cusparse_dn_vec_descr_view vecY,
+                         cusparse_dn_vec_descr_view vecZ,
                          cudaStream_t stream);
 #endif
 
