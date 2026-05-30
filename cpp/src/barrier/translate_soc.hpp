@@ -1029,7 +1029,6 @@ void project_barrier_solution_to_model_variables(
   const i_t n_model = user_problem.model_num_cols;
   if (n_model <= 0) { return; }
   if (static_cast<i_t>(user_problem.model_col_old_to_new.size()) != n_model) { return; }
-  if (static_cast<i_t>(solution.x.size()) == n_model) { return; }
 
   std::vector<f_t> model_x(n_model);
   std::vector<f_t> model_z(n_model);
