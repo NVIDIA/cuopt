@@ -65,10 +65,10 @@ struct user_problem_t {
   std::vector<f_t> Q_values;
   i_t cone_var_start{0};
   std::vector<i_t> second_order_cone_dims;
-  // Original model column count before QCMATRIX->SOC expansion. When positive,
-  // model_col_old_to_new[j] is the expanded column index for original variable j.
-  i_t model_num_cols{0};
-  std::vector<i_t> model_col_old_to_new;
+  // Column count before QCMATRIX->SOC expansion. When > 0, the barrier solution is in the
+  // expanded layout (num_cols) and must be projected back via original_col_to_expanded_col.
+  i_t original_num_cols{0};
+  std::vector<i_t> original_col_to_expanded_col;
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

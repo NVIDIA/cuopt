@@ -200,7 +200,7 @@ void mps_data_model_t<i_t, f_t>::append_quadratic_constraint(i_t constraint_row_
 
     std::vector<size_t> perm(q_nnz);
     std::iota(perm.begin(), perm.end(), size_t{0});
-    std::stable_sort(perm.begin(), perm.end(), [&](size_t a, size_t b) {
+    std::sort(perm.begin(), perm.end(), [&](size_t a, size_t b) {
       if (wr[a] != wr[b]) { return wr[a] < wr[b]; }
       return wc[a] < wc[b];
     });

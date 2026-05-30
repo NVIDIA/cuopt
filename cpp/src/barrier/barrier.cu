@@ -126,39 +126,22 @@ static f_t max_nonnegative_step_length_in_range(
   transform_reduce_helper_t<f_t>& transform_reduce_helper,
   const rmm::device_uvector<f_t>& x,
   const rmm::device_uvector<f_t>& dx,
-  i_t start,
   i_t len,
-  const rmm::device_uvector<i_t>* is_direct_free_linear,
+  const rmm::device_uvector<i_t>& is_direct_free_linear,
+  bool apply_direct_free_mask,
   rmm::cuda_stream_view stream)
 {
   if (len <= 0) { return f_t(1); }
 
-  if (is_direct_free_linear != nullptr) {
-    return transform_reduce_helper.transform_reduce(
-      thrust::make_zip_iterator(
-        dx.data() + start, x.data() + start, is_direct_free_linear->data() + start),
-      thrust::minimum<f_t>{},
-      [] HD(const thrust::tuple<f_t, f_t, i_t>& t) {
-        const f_t dx_val                = thrust::get<0>(t);
-        const f_t x_val                 = thrust::get<1>(t);
-        const i_t is_direct_free_linear = thrust::get<2>(t);
-        if (is_direct_free_linear) return f_t(1.0);
-        if (dx_val < f_t(0.0)) return -x_val / dx_val;
-        return f_t(1.0);
-      },
-      f_t(1.0),
-      len,
-      stream);
-  }
-
   return transform_reduce_helper.transform_reduce(
-    thrust::make_zip_iterator(dx.data() + start, x.data() + start),
+    thrust::make_zip_iterator(dx.data(), x.data(), is_direct_free_linear.data()),
     thrust::minimum<f_t>{},
-    [] HD(const thrust::tuple<f_t, f_t>& t) {
-      const f_t dx = thrust::get<0>(t);
-      const f_t x  = thrust::get<1>(t);
-      if (dx < f_t(0.0)) return -x / dx;
-      return f_t(1.0);
+    [apply_direct_free_mask] HD(const thrust::tuple<f_t, f_t, i_t>& t) {
+      const f_t dx_val  = thrust::get<0>(t);
+      const f_t x_val   = thrust::get<1>(t);
+      const i_t is_free = thrust::get<2>(t);
+      return (!(apply_direct_free_mask && is_free) && dx_val < f_t(0.0)) ? -x_val / dx_val
+                                                                         : f_t(1.0);
     },
     f_t(1.0),
     len,
@@ -177,27 +160,16 @@ static void recover_linear_orthant_dz(raft::device_span<const f_t> target,
 {
   if (dz.empty()) return;
 
-  if (!is_direct_free_linear.empty()) {
-    cub::DeviceTransform::Transform(
-      cuda::std::make_tuple(
-        target.data(), z.data(), dx.data(), x.data(), is_direct_free_linear.data()),
-      dz.data(),
-      dz.size(),
-      [] HD(f_t target_val, f_t z_val, f_t dx_val, f_t x_val, i_t is_direct_free) {
-        if (is_direct_free) return f_t(0);
-        return target_val - (z_val * dx_val) / x_val;
-      },
-      stream.value());
-  } else {
-    cub::DeviceTransform::Transform(
-      cuda::std::make_tuple(target.data(), z.data(), dx.data(), x.data()),
-      dz.data(),
-      dz.size(),
-      [] HD(f_t target_val, f_t z_val, f_t dx_val, f_t x_val) {
-        return target_val - (z_val * dx_val) / x_val;
-      },
-      stream.value());
-  }
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(
+      target.data(), z.data(), dx.data(), x.data(), is_direct_free_linear.data()),
+    dz.data(),
+    dz.size(),
+    [] HD(f_t target_val, f_t z_val, f_t dx_val, f_t x_val, i_t is_direct_free) {
+      if (is_direct_free) return f_t(0);
+      return target_val - (z_val * dx_val) / x_val;
+    },
+    stream.value());
   RAFT_CHECK_CUDA(stream);
 }
 
@@ -220,23 +192,14 @@ static void fill_linear_cc_rhs(raft::device_span<f_t> out,
                                rmm::cuda_stream_view stream)
 {
   if (out.empty()) return;
-  if (!is_direct_free_linear.empty()) {
-    cub::DeviceTransform::Transform(
-      cuda::std::make_tuple(dx_aff.data(), dz_aff.data(), is_direct_free_linear.data()),
-      out.data(),
-      out.size(),
-      [new_mu] HD(f_t dx_aff_val, f_t dz_aff_val, i_t is_direct_free_linear) {
-        return is_direct_free_linear ? f_t(0) : (-(dx_aff_val * dz_aff_val) + new_mu);
-      },
-      stream.value());
-  } else {
-    cub::DeviceTransform::Transform(
-      cuda::std::make_tuple(dx_aff.data(), dz_aff.data()),
-      out.data(),
-      out.size(),
-      [new_mu] HD(f_t dx_aff_val, f_t dz_aff_val) { return -(dx_aff_val * dz_aff_val) + new_mu; },
-      stream.value());
-  }
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(dx_aff.data(), dz_aff.data(), is_direct_free_linear.data()),
+    out.data(),
+    out.size(),
+    [new_mu] HD(f_t dx_aff_val, f_t dz_aff_val, i_t is_direct_free_linear) {
+      return is_direct_free_linear ? f_t(0) : (-(dx_aff_val * dz_aff_val) + new_mu);
+    },
+    stream.value());
   RAFT_CHECK_CUDA(stream);
 }
 
@@ -386,17 +349,17 @@ class iteration_data_t {
     {
       raft::common::nvtx::range scope("Barrier: LP Data: direct free linear");
       // Setup tracking of direct free variables (linear columns only j < cone_start)
-      if (!direct_free_variables.empty()) {
-        n_direct_free_linear = direct_free_variables.size();
-        std::vector<i_t> is_direct_free_linear_host(lp.num_cols, 0);
-        for (i_t j : direct_free_variables) {
-          is_direct_free_linear_host[j] = 1;
-        }
-        d_is_direct_free_linear_.resize(lp.num_cols, stream_view_);
-        raft::copy(d_is_direct_free_linear_.data(),
-                   is_direct_free_linear_host.data(),
-                   lp.num_cols,
-                   stream_view_);
+      n_direct_free_linear = direct_free_variables.size();
+      std::vector<i_t> is_direct_free_linear_host(lp.num_cols, 0);
+      for (i_t j : direct_free_variables) {
+        is_direct_free_linear_host[j] = 1;
+      }
+      d_is_direct_free_linear_.resize(lp.num_cols, stream_view_);
+      raft::copy(d_is_direct_free_linear_.data(),
+                 is_direct_free_linear_host.data(),
+                 lp.num_cols,
+                 stream_view_);
+      if (n_direct_free_linear > 0) {
         settings.log.printf("Free variables              : %d\n", n_direct_free_linear);
       }
     }
@@ -444,26 +407,23 @@ class iteration_data_t {
       }
     }
 
-    {
+    if (!lp.second_order_cone_dims.empty()) {
       raft::common::nvtx::range scope("Barrier: LP Data: SOC setup");
-      if (!lp.second_order_cone_dims.empty()) {
-        cone_var_start_    = lp.cone_var_start;
-        i_t total_cone_dim = std::accumulate(
-          lp.second_order_cone_dims.begin(), lp.second_order_cone_dims.end(), i_t(0));
-        cuopt_assert(cone_var_start_ >= 0, "cone_var_start must be nonnegative");
-        cuopt_assert(cone_var_start_ + total_cone_dim <= lp.num_cols,
-                     "cone variables exceed problem dimension");
-        cuopt_assert(cone_var_start_ + total_cone_dim == lp.num_cols,
-                     "barrier expects [linear | cone] layout");
-        cones_.emplace(
-          std::span<const i_t>(lp.second_order_cone_dims.data(), lp.second_order_cone_dims.size()),
-          raft::device_span<f_t>{},
-          raft::device_span<f_t>{},
-          stream_view_);
-        cuopt_assert(cone_count() > 0, "second-order cone topology must contain at least one cone");
-        cuopt_assert(cone_entry_count() == total_cone_dim,
-                     "second-order cone entry count mismatch");
-      }
+      cone_var_start_ = lp.cone_var_start;
+      i_t total_cone_dim =
+        std::accumulate(lp.second_order_cone_dims.begin(), lp.second_order_cone_dims.end(), i_t(0));
+      cuopt_assert(cone_var_start_ >= 0, "cone_var_start must be nonnegative");
+      cuopt_assert(cone_var_start_ + total_cone_dim <= lp.num_cols,
+                   "cone variables exceed problem dimension");
+      cuopt_assert(cone_var_start_ + total_cone_dim == lp.num_cols,
+                   "barrier expects [linear | cone] layout");
+      cones_.emplace(
+        std::span<const i_t>(lp.second_order_cone_dims.data(), lp.second_order_cone_dims.size()),
+        raft::device_span<f_t>{},
+        raft::device_span<f_t>{},
+        stream_view_);
+      cuopt_assert(cone_count() > 0, "second-order cone topology must contain at least one cone");
+      cuopt_assert(cone_entry_count() == total_cone_dim, "second-order cone entry count mismatch");
     }
 
     {
@@ -1882,16 +1842,12 @@ class iteration_data_t {
 
     // r1 <- D * x_1 on linear indices; barrier D is zero on direct free variables
     const i_t linear_n = has_soc ? cone_start() : n;
-    if (n_direct_free_linear > 0) {
-      pairwise_multiply_skip_direct_free_linear(d_x1.data(),
-                                                d_diag_.data(),
-                                                d_is_direct_free_linear_.data(),
-                                                d_r1.data(),
-                                                linear_n,
-                                                stream_view_);
-    } else {
-      pairwise_multiply(d_x1.data(), d_diag_.data(), d_r1.data(), linear_n, stream_view_);
-    }
+    pairwise_multiply_skip_direct_free_linear(d_x1.data(),
+                                              d_diag_.data(),
+                                              d_is_direct_free_linear_.data(),
+                                              d_r1.data(),
+                                              linear_n,
+                                              stream_view_);
     RAFT_CHECK_CUDA(stream_view_);
 
     // r1 <- D * x_1 + H x_1  (cone Hessian block H = S^T S; accumulate_cone_hessian_matvec)
@@ -2739,15 +2695,16 @@ f_t barrier_solver_t<i_t, f_t>::compute_nonnegative_step_length(iteration_data_t
                                                                 const rmm::device_uvector<f_t>& dx)
 {
   const bool has_soc = data.has_cones() && static_cast<i_t>(x.size()) >= data.cone_end();
-  const rmm::device_uvector<i_t>* direct_free_mask =
-    (data.n_direct_free_linear > 0 && static_cast<i_t>(x.size()) == lp.num_cols)
-      ? &data.d_is_direct_free_linear_
-      : nullptr;
 
   // SOCP layout is [linear | cone]; stop at cone_start()
   const i_t linear_len = has_soc ? data.cone_start() : static_cast<i_t>(x.size());
-  return max_nonnegative_step_length_in_range(
-    data.transform_reduce_helper_, x, dx, 0, linear_len, direct_free_mask, stream_view_);
+  return max_nonnegative_step_length_in_range(data.transform_reduce_helper_,
+                                              x,
+                                              dx,
+                                              linear_len,
+                                              data.d_is_direct_free_linear_,
+                                              static_cast<i_t>(x.size()) == lp.num_cols,
+                                              stream_view_);
 }
 
 template <typename i_t, typename f_t>
@@ -2856,31 +2813,29 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
         RAFT_CHECK_CUDA(stream_view_);
       }
 
-      if (has_direct_free_linear) {
-        constexpr f_t free_var_reg = 1e-7;
-        if (data.Q.n > 0 && data.Q_diagonal) {
-          cub::DeviceTransform::Transform(
-            cuda::std::make_tuple(
-              data.d_diag_.data(), data.d_is_direct_free_linear_.data(), data.d_Q_diag_.data()),
-            data.d_diag_.data(),
-            linear_size,
-            [free_var_reg] HD(f_t diag_j, i_t is_direct_free_linear, f_t q_jj) {
-              if (!is_direct_free_linear || q_jj > f_t(0)) return diag_j;
-              return diag_j + free_var_reg;
-            },
-            stream_view_.value());
-        } else {
-          cub::DeviceTransform::Transform(
-            cuda::std::make_tuple(data.d_diag_.data(), data.d_is_direct_free_linear_.data()),
-            data.d_diag_.data(),
-            linear_size,
-            [free_var_reg] HD(f_t diag_j, i_t is_direct_free_linear) {
-              return is_direct_free_linear ? (diag_j + free_var_reg) : diag_j;
-            },
-            stream_view_.value());
-        }
-        RAFT_CHECK_CUDA(stream_view_);
+      constexpr f_t free_var_reg = 1e-7;
+      if (data.Q.n > 0 && data.Q_diagonal) {
+        cub::DeviceTransform::Transform(
+          cuda::std::make_tuple(
+            data.d_diag_.data(), data.d_is_direct_free_linear_.data(), data.d_Q_diag_.data()),
+          data.d_diag_.data(),
+          linear_size,
+          [free_var_reg] HD(f_t diag_j, i_t is_direct_free_linear, f_t q_jj) {
+            if (!is_direct_free_linear || q_jj > f_t(0)) return diag_j;
+            return diag_j + free_var_reg;
+          },
+          stream_view_.value());
+      } else {
+        cub::DeviceTransform::Transform(
+          cuda::std::make_tuple(data.d_diag_.data(), data.d_is_direct_free_linear_.data()),
+          data.d_diag_.data(),
+          linear_size,
+          [free_var_reg] HD(f_t diag_j, i_t is_direct_free_linear) {
+            return is_direct_free_linear ? (diag_j + free_var_reg) : diag_j;
+          },
+          stream_view_.value());
       }
+      RAFT_CHECK_CUDA(stream_view_);
     }
 
     raft::copy(data.diag.data(), data.d_diag_.data(), data.d_diag_.size(), stream_view_);
@@ -2968,28 +2923,18 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
         stream_view_.value());
       RAFT_CHECK_CUDA(stream_view_);
     }
-    if (has_direct_free_linear) {
-      cub::DeviceTransform::Transform(
-        cuda::std::make_tuple(data.d_tmp3_.data(),
-                              data.d_complementarity_target_.data(),
-                              data.d_dual_rhs_.data(),
-                              data.d_is_direct_free_linear_.data()),
-        data.d_tmp3_.data(),
-        lp.num_cols,
-        [] HD(f_t tmp3, f_t target, f_t dual_rhs, i_t is_direct_free_linear) {
-          const f_t comp_term = is_direct_free_linear ? f_t(0) : target;
-          return tmp3 + dual_rhs - comp_term;
-        },
-        stream_view_.value());
-    } else {
-      cub::DeviceTransform::Transform(
-        cuda::std::make_tuple(
-          data.d_tmp3_.data(), data.d_dual_rhs_.data(), data.d_complementarity_target_.data()),
-        data.d_tmp3_.data(),
-        lp.num_cols,
-        [] HD(f_t tmp3, f_t dual_rhs, f_t target) { return tmp3 + dual_rhs - target; },
-        stream_view_.value());
-    }
+    cub::DeviceTransform::Transform(
+      cuda::std::make_tuple(data.d_tmp3_.data(),
+                            data.d_complementarity_target_.data(),
+                            data.d_dual_rhs_.data(),
+                            data.d_is_direct_free_linear_.data()),
+      data.d_tmp3_.data(),
+      lp.num_cols,
+      [] HD(f_t tmp3, f_t target, f_t dual_rhs, i_t is_direct_free_linear) {
+        const f_t comp_term = is_direct_free_linear ? f_t(0) : target;
+        return tmp3 + dual_rhs - comp_term;
+      },
+      stream_view_.value());
     RAFT_CHECK_CUDA(stream_view_);
     raft::copy(data.d_r1_.data(), data.d_tmp3_.data(), data.d_tmp3_.size(), stream_view_);
     raft::copy(data.d_r1_prime_.data(), data.d_tmp3_.data(), data.d_tmp3_.size(), stream_view_);
@@ -3330,9 +3275,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       raft::device_span<const f_t>(data.d_dx_.data(), linear_dz_size),
       raft::device_span<const f_t>(data.d_x_.data(), linear_dz_size),
       raft::device_span<f_t>(data.d_dz_.data(), linear_dz_size),
-      has_direct_free_linear
-        ? raft::device_span<const i_t>(data.d_is_direct_free_linear_.data(), linear_dz_size)
-        : raft::device_span<const i_t>{},
+      raft::device_span<const i_t>(data.d_is_direct_free_linear_.data(), linear_dz_size),
       stream_view_);
     raft::copy(dz.data(), data.d_dz_.data(), data.d_dz_.size(), stream_view_);
   }
@@ -3593,25 +3536,15 @@ void fill_linear_complementarity_target(iteration_data_t<i_t, f_t>& data,
                                         rmm::cuda_stream_view stream)
 {
   if (target.empty()) return;
-  const bool has_direct_free_linear = data.n_direct_free_linear > 0;
-  if (has_direct_free_linear) {
-    cub::DeviceTransform::Transform(
-      cuda::std::make_tuple(xz_rhs.data(), x.data(), data.d_is_direct_free_linear_.data()),
-      target.data(),
-      target.size(),
-      [] HD(f_t complementarity_xz_rhs, f_t x_val, i_t is_direct_free_linear) {
-        if (is_direct_free_linear) return f_t(0);
-        return complementarity_xz_rhs / x_val;
-      },
-      stream.value());
-  } else {
-    cub::DeviceTransform::Transform(
-      cuda::std::make_tuple(xz_rhs.data(), x.data()),
-      target.data(),
-      target.size(),
-      [] HD(f_t complementarity_xz_rhs, f_t x_val) { return complementarity_xz_rhs / x_val; },
-      stream.value());
-  }
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(xz_rhs.data(), x.data(), data.d_is_direct_free_linear_.data()),
+    target.data(),
+    target.size(),
+    [] HD(f_t complementarity_xz_rhs, f_t x_val, i_t is_direct_free_linear) {
+      if (is_direct_free_linear) return f_t(0);
+      return complementarity_xz_rhs / x_val;
+    },
+    stream.value());
   RAFT_CHECK_CUDA(stream);
 }
 
@@ -3821,18 +3754,15 @@ template <typename i_t, typename f_t>
 void barrier_solver_t<i_t, f_t>::compute_cc_rhs(iteration_data_t<i_t, f_t>& data, f_t& new_mu)
 {
   raft::common::nvtx::range fun_scope("Barrier: compute_cc_rhs");
-  const bool has_soc                = data.has_cones();
-  const bool has_direct_free_linear = data.n_direct_free_linear > 0;
-  const i_t linear_size             = data.linear_xz_size(lp.num_cols);
+  const bool has_soc    = data.has_cones();
+  const i_t linear_size = data.linear_xz_size(lp.num_cols);
 
   fill_linear_cc_rhs<i_t, f_t>(
     raft::device_span<f_t>(data.d_complementarity_xz_rhs_.data(), linear_size),
     raft::device_span<const f_t>(data.d_dx_aff_.data(), linear_size),
     raft::device_span<const f_t>(data.d_dz_aff_.data(), linear_size),
     new_mu,
-    has_direct_free_linear
-      ? raft::device_span<const i_t>(data.d_is_direct_free_linear_.data(), linear_size)
-      : raft::device_span<const i_t>{},
+    raft::device_span<const i_t>(data.d_is_direct_free_linear_.data(), linear_size),
     stream_view_);
 
   const i_t cone_var_start = data.cone_start();

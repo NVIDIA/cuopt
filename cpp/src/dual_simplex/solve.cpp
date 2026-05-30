@@ -359,7 +359,6 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
   // Convert the user problem to a linear program with only equality constraints
   std::vector<i_t> new_slacks;
   simplex_solver_settings_t<i_t, f_t> barrier_settings = settings;
-  barrier_settings.barrier_presolve                    = true;
   dualize_info_t<i_t, f_t> dualize_info;
   convert_user_problem(user_problem, barrier_settings, original_lp, new_slacks, dualize_info);
   if (!validate_barrier_cone_layout(original_lp, barrier_settings)) {

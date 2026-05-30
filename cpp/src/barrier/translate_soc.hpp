@@ -1012,10 +1012,10 @@ void convert_quadratic_constraints_to_second_order_cones(
   user_problem.num_rows               = csr_A.m;
   user_problem.num_cols               = n_prob;
 
-  user_problem.model_num_cols = static_cast<i_t>(n);
-  user_problem.model_col_old_to_new.resize(n);
+  user_problem.original_num_cols = static_cast<i_t>(n);
+  user_problem.original_col_to_expanded_col.resize(n);
   for (i_t old_j = 0; old_j < static_cast<i_t>(n); ++old_j) {
-    user_problem.model_col_old_to_new[old_j] = old_to_new[old_j];
+    user_problem.original_col_to_expanded_col[old_j] = old_to_new[old_j];
   }
 }
 
@@ -1026,19 +1026,19 @@ void project_barrier_solution_to_model_variables(
   const dual_simplex::user_problem_t<i_t, f_t>& user_problem,
   dual_simplex::lp_solution_t<i_t, f_t>& solution)
 {
-  const i_t n_model = user_problem.model_num_cols;
-  if (n_model <= 0) { return; }
-  if (static_cast<i_t>(user_problem.model_col_old_to_new.size()) != n_model) { return; }
+  const i_t n_original = user_problem.original_num_cols;
+  if (n_original <= 0) { return; }
+  if (static_cast<i_t>(user_problem.original_col_to_expanded_col.size()) != n_original) { return; }
 
-  std::vector<f_t> model_x(n_model);
-  std::vector<f_t> model_z(n_model);
-  for (i_t j = 0; j < n_model; ++j) {
-    const i_t expanded_j = user_problem.model_col_old_to_new[j];
+  std::vector<f_t> model_x(n_original);
+  std::vector<f_t> model_z(n_original);
+  for (i_t j = 0; j < n_original; ++j) {
+    const i_t expanded_j = user_problem.original_col_to_expanded_col[j];
     model_x[j]           = solution.x[expanded_j];
     model_z[j]           = solution.z[expanded_j];
   }
   const i_t m = static_cast<i_t>(solution.y.size());
-  solution.resize(m, n_model);
+  solution.resize(m, n_original);
   solution.x = std::move(model_x);
   solution.z = std::move(model_z);
 }

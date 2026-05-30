@@ -317,8 +317,9 @@ TEST(barrier, socp_min_x0_subject_to_norm_constraint)
   user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
 
   simplex_solver_settings_t<int, double> settings;
-  settings.barrier = true;
-  settings.dualize = 0;
+  settings.barrier          = true;
+  settings.barrier_presolve = true;
+  settings.dualize          = 0;
 
   lp_solution_t<int, double> solution(m, n);
   auto status = solve_linear_program_with_barrier(user_problem, settings, solution);
@@ -380,8 +381,9 @@ TEST(barrier, mixed_linear_and_soc_block)
   user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
 
   simplex_solver_settings_t<int, double> settings;
-  settings.barrier = true;
-  settings.dualize = 0;
+  settings.barrier          = true;
+  settings.barrier_presolve = true;
+  settings.dualize          = 0;
 
   lp_solution_t<int, double> solution(m, n);
   auto status = solve_linear_program_with_barrier(user_problem, settings, solution);
@@ -445,9 +447,10 @@ TEST(barrier, mixed_linear_and_soc_tail_coupling)
   user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
 
   simplex_solver_settings_t<int, double> settings;
-  settings.barrier       = true;
-  settings.dualize       = 0;
-  settings.scale_columns = true;
+  settings.barrier          = true;
+  settings.barrier_presolve = true;
+  settings.dualize          = 0;
+  settings.scale_columns    = true;
 
   lp_solution_t<int, double> solution(m, n);
   auto status = solve_linear_program_with_barrier(user_problem, settings, solution);
@@ -511,9 +514,10 @@ TEST(barrier, mixed_linear_and_soc_tail_coupling_with_inequality)
   user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
 
   simplex_solver_settings_t<int, double> settings;
-  settings.barrier       = true;
-  settings.dualize       = 0;
-  settings.scale_columns = true;
+  settings.barrier          = true;
+  settings.barrier_presolve = true;
+  settings.dualize          = 0;
+  settings.scale_columns    = true;
 
   lp_solution_t<int, double> solution(m, n);
   auto status = solve_linear_program_with_barrier(user_problem, settings, solution);
@@ -588,8 +592,9 @@ TEST(barrier, mixed_linear_and_two_soc_blocks)
   user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
 
   simplex_solver_settings_t<int, double> settings;
-  settings.barrier = true;
-  settings.dualize = 0;
+  settings.barrier          = true;
+  settings.barrier_presolve = true;
+  settings.dualize          = 0;
 
   lp_solution_t<int, double> solution(m, n);
   auto status = solve_linear_program_with_barrier(user_problem, settings, solution);
@@ -668,9 +673,10 @@ TEST(barrier, mixed_linear_and_two_soc_blocks_with_inequality)
   user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
 
   simplex_solver_settings_t<int, double> settings;
-  settings.barrier       = true;
-  settings.dualize       = 0;
-  settings.scale_columns = true;
+  settings.barrier          = true;
+  settings.barrier_presolve = true;
+  settings.dualize          = 0;
+  settings.scale_columns    = true;
 
   lp_solution_t<int, double> solution(m, n);
   auto status = solve_linear_program_with_barrier(user_problem, settings, solution);
@@ -737,8 +743,9 @@ TEST(barrier, free_linear_prefix_is_uncrushed_correctly_with_soc_block)
   user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
 
   simplex_solver_settings_t<int, double> settings;
-  settings.barrier = true;
-  settings.dualize = 0;
+  settings.barrier          = true;
+  settings.barrier_presolve = true;
+  settings.dualize          = 0;
 
   lp_solution_t<int, double> solution(m, n);
   auto status = solve_linear_program_with_barrier(user_problem, settings, solution);
@@ -802,8 +809,9 @@ TEST(barrier, qp_with_soc_block)
   user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
 
   simplex_solver_settings_t<int, double> settings;
-  settings.barrier = true;
-  settings.dualize = 0;
+  settings.barrier          = true;
+  settings.barrier_presolve = true;
+  settings.dualize          = 0;
 
   lp_solution_t<int, double> solution(m, n);
   auto status = solve_linear_program_with_barrier(user_problem, settings, solution);
