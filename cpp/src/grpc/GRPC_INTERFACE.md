@@ -43,8 +43,12 @@ Client                                          Server
 - `StartChunkedUpload` sends a `ChunkedProblemHeader` with all scalar fields
   and solver settings (no per-array metadata in the header)
 - Each `SendArrayChunk` carries one chunk of one array via an `ArrayChunk`
-  message, which includes the `ArrayFieldId`, `element_offset`, and
-  `total_elements` (for server-side pre-allocation)
+  message, which includes the `field_id`, `element_offset`, and
+  `total_elements` (for server-side pre-allocation). For arrays inside a
+  repeated nested message (e.g. a `QuadraticConstraint`), the chunk
+  additionally carries `container_field_num` and `container_index` to
+  identify the parent message and entry; both fields must be set or both
+  unset (see `cuopt_remote_service.proto::ArrayChunk` for the full contract)
 - The server reports `max_message_bytes` so the client can adapt chunk sizing
 - `FinishChunkedUpload` triggers server-side reassembly and job submission
 
@@ -77,8 +81,9 @@ Client                                           Server
 - Each `GetResultChunk` fetches a slice of one array, identified by `ResultFieldId`
   and `element_offset`
 - `FinishChunkedDownload` releases the server-side download session state
-- LP results include PDLP warm start data (9 arrays + 8 scalars) for subsequent
-  warm-started solves
+- LP results include PDLP warm start data for subsequent warm-started solves
+  (the exact set of warm-start scalars and arrays is defined by the
+  `warm_start:` section of `field_registry.yaml`)
 
 ### Automatic Routing
 
@@ -130,4 +135,5 @@ allows "unlimited" message size — both clamp to the protobuf 2 GiB ceiling.
 
 - `GRPC_SERVER_ARCHITECTURE.md` — Server process model, IPC, threads, job lifecycle.
 - `GRPC_QUICK_START.md` — Starting the server and solving remotely from Python, CLI, or C.
-- `GRPC_CODE_GENERATION.md` — Registry format, generated file inventory, and walkthrough examples.
+- `GRPC_CODE_GENERATION.md` — Codegen architecture: what gets generated and how it's wired into the build.
+- `codegen/FIELD_REGISTRY_REFERENCE.md` — Field-level reference for `field_registry.yaml` and walkthroughs for adding new fields.

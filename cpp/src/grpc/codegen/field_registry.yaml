@@ -61,8 +61,14 @@
 #                          default" values). Also valid on enum-typed fields whose
 #                          proto3 zero (the first listed value) does not match the
 #                          documented C++ default — e.g. pdlp_solver_mode.
-#   to_proto_cast      – explicit cast type for C++ -> proto direction
 #   from_proto_cast    – explicit cast type for proto -> C++ direction
+#                        (e.g. wrapping a wire int32 into an enum class).
+#                        When set, the matching to-proto cast back to the
+#                        wire's C++ type is auto-derived from `type:`, so
+#                        the symmetric pair is captured by this one knob.
+#   to_proto_cast      – escape hatch: explicit cast type for C++ -> proto
+#                        direction.  Only needed when the auto-derivation
+#                        above is wrong; otherwise omit it.
 #
 # Per-section:
 #   cpp_type           – C++ type this section maps to
@@ -222,7 +228,6 @@ lp_solution:
       field_num: 1009
       type: int32
       getter: solved_by()
-      to_proto_cast: int32_t
       from_proto_cast: method_t
 
   arrays:
@@ -454,11 +459,7 @@ pdlp_settings:
       # zero (0), which is `>= 0` and would overwrite the C++ default with 0.
       field_num: 10
       type: int64
-      sentinel:
-        to_proto: "std::numeric_limits<i_t>::max()"
-        proto_value: -1
-        from_proto_guard: ">= 0"
-        from_proto_cast: "i_t"
+      sentinel: max_as_negative_1
       optional: true
 
     # Solver configuration
@@ -487,7 +488,6 @@ pdlp_settings:
   - presolver:
       field_num: 16
       type: int32
-      to_proto_cast: "int32_t"
       from_proto_cast: "presolver_t"
       optional: true
   - dual_postsolve:
@@ -561,7 +561,6 @@ pdlp_settings:
   - pdlp_precision:
       field_num: 30
       type: int32
-      to_proto_cast: "int32_t"
       from_proto_cast: "pdlp_precision_t"
       optional: true
 
@@ -618,7 +617,6 @@ mip_settings:
   - presolver:
       field_num: 12
       type: int32
-      to_proto_cast: "int32_t"
       from_proto_cast: "presolver_t"
       optional: true
   - mip_scaling:
@@ -644,11 +642,7 @@ mip_settings:
       # wire-encoded "default" value, optional for the omitted-field case).
       field_num: 15
       type: int32
-      sentinel:
-        to_proto: "std::numeric_limits<i_t>::max()"
-        proto_value: -1
-        from_proto_guard: ">= 0"
-        from_proto_cast: "i_t"
+      sentinel: max_as_negative_1
       optional: true
 
     # Branching
@@ -940,14 +934,12 @@ optimization_problem:
       - constraint_row_index:
           field_num: 1
           type: int32
-          to_proto_cast: int32_t
       - constraint_row_name:
           field_num: 2
           type: string
       - constraint_row_type:
           field_num: 3
           type: int32
-          to_proto_cast: int32_t
           from_proto_cast: char
       - rhs_value:
           field_num: 4

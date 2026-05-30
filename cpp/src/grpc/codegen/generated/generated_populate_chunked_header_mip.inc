@@ -18,7 +18,7 @@
   if (cpu_problem.has_quadratic_constraints()) {
     for (const auto& _entry : cpu_problem.get_quadratic_constraints()) {
       auto* pb_entry = header->add_quadratic_constraints();
-      pb_entry->set_constraint_row_index(static_cast<int32_t>(_entry.constraint_row_index));
+      pb_entry->set_constraint_row_index(_entry.constraint_row_index);
       pb_entry->set_constraint_row_name(_entry.constraint_row_name);
       pb_entry->set_constraint_row_type(static_cast<int32_t>(_entry.constraint_row_type));
       pb_entry->set_rhs_value(_entry.rhs_value);

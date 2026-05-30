@@ -99,6 +99,89 @@ def write_file(path, content):
     print(f"  wrote {path}")
 
 
+# Heuristic: anything containing one of these characters is treated as an
+# already-complete C++ expression and passed through.  Anything else is a
+# bare identifier that needs a `()` suffix to become a call.
+_EXPR_MARKER_CHARS = "().[]"
+
+
+def _normalize_call_expr(v):
+    """Normalize an expression-shaped callable (``getter:``,
+    ``presence_check:``, or any future "expression returning a value"
+    attribute) to a complete C++ expression.  Accepts both forms: a bare
+    method name (``get_X``) gets ``()`` appended; an already-complete
+    expression (``get_X()``, ``get_error_status().what()``, ...) passes
+    through unchanged.
+
+    Distinct from :func:`_normalize_setter_name`, which strips ``()``
+    because setter args are template-driven by the generator rather than
+    written into the YAML.
+
+    ``None`` passes through so callers can keep using
+    ``f.get("getter", default)``.
+    """
+    if v is None or not isinstance(v, str):
+        return v
+    if "->" in v:
+        return v
+    if any(c in v for c in _EXPR_MARKER_CHARS):
+        return v
+    return f"{v}()"
+
+
+def _normalize_setter_name(v):
+    """Normalize a `setter:` value to a bare method name.  Strips a trailing
+    `()` if the YAML author wrote it that way; otherwise leaves the value
+    alone.  The generator owns the argument list (single value, multiple
+    arrays, ``std::move(_entries)``, etc.), so the setter on the wire must
+    be a name template, not a call expression.
+
+    `None` passes through so callers can keep using ``f.get("setter")``.
+    """
+    if v is None or not isinstance(v, str):
+        return v
+    if v.endswith("()"):
+        return v[:-2]
+    return v
+
+
+def _normalize_callables_in_dict(d):
+    """Mutate `d` in place to normalize any `getter`/`presence_check`/
+    `setter` keys it carries.  Safe to call on any dict that may or may not
+    contain those keys; used at section-level entry points where the keys
+    appear by convention rather than via `parse_field`.
+    """
+    if not isinstance(d, dict):
+        return
+    for key in ("getter", "presence_check"):
+        if key in d:
+            d[key] = _normalize_call_expr(d[key])
+    if "setter" in d:
+        d["setter"] = _normalize_setter_name(d["setter"])
+
+
+def _normalize_registry_callables(registry):
+    """Walk the loaded registry once and normalize every section-level
+    ``getter`` / ``presence_check`` / ``setter`` key, so authors can write
+    either ``get_X`` or ``get_X()`` and either ``set_X`` or ``set_X()``
+    without breaking codegen.  Per-field callables are normalized by
+    :func:`parse_field`; this pass handles the section-level keys
+    (warm-start, setter_groups, and the ``repeated_messages`` body — though
+    the latter is also normalized lazily in :func:`_iter_repeated_messages`
+    in case callers reach it directly).
+    """
+    for section in registry.values():
+        if not isinstance(section, dict):
+            continue
+        _normalize_callables_in_dict(section.get("warm_start"))
+        for gdef in (section.get("setter_groups") or {}).values():
+            _normalize_callables_in_dict(gdef)
+        for entry in section.get("repeated_messages") or []:
+            if isinstance(entry, dict) and len(entry) == 1:
+                body = next(iter(entry.values()))
+                _normalize_callables_in_dict(body)
+
+
 def parse_field(entry):
     """Parse a field entry from the YAML, which may be a bare string or a dict.
 
@@ -116,6 +199,7 @@ def parse_field(entry):
         if isinstance(val, dict):
             result = {"name": name}
             result.update(val)
+            _normalize_callables_in_dict(result)
             return result
         if val is None:
             return {"name": name}
@@ -308,8 +392,15 @@ def _proto_cpp_name(name):
 # ============================================================================
 
 
-def _problem_getter_root(f):
-    """Get the getter root for a problem field (setter_getter_root or name)."""
+def _getter_root(f):
+    """Get the getter/setter root for a field (setter_getter_root or name).
+
+    Shared by problem and solution arrays so both follow the same
+    `setter_getter_root` semantics: the YAML field name is the wire-side
+    identity, the root is the C++-side identity, and they're allowed to
+    diverge when the C++ accessor doesn't match the wire field name (e.g.
+    `mip_solution` field on the wire ↔ `get_solution_host()` in C++).
+    """
     return f.get("setter_getter_root", f["name"])
 
 
@@ -317,7 +408,7 @@ def _default_problem_getter(f, is_scalar):
     """Default getter for an optimization_problem field."""
     if "getter" in f:
         return f["getter"]
-    root = _problem_getter_root(f)
+    root = _getter_root(f)
     if is_scalar:
         return f"get_{root}()"
     ftype = f.get("type", "repeated double")
@@ -330,8 +421,26 @@ def _default_problem_setter(f):
     """Default setter name for an optimization_problem field."""
     if "setter" in f:
         return f["setter"]
-    root = _problem_getter_root(f)
+    root = _getter_root(f)
     return f"set_{root}"
+
+
+def _default_solution_array_getter(f):
+    """Default getter for a solution array field.
+
+    Mirrors `_default_problem_getter` so the `repeated string` exception
+    (no `_host` suffix) and the `setter_getter_root` override apply
+    uniformly to problem and solution arrays. String arrays return a
+    `std::vector<std::string>` directly; the `_host()` mirror only exists
+    for numeric host buffers.
+    """
+    if "getter" in f:
+        return f["getter"]
+    root = _getter_root(f)
+    ftype = f.get("type", "repeated double")
+    if ftype == "repeated string":
+        return f"get_{root}()"
+    return f"get_{root}_host()"
 
 
 def _find_problem_field(obj, name):
@@ -408,13 +517,18 @@ def _problem_field_proto_type(registry, ftype):
 # ============================================================================
 # repeated_messages helpers
 #
-# A `repeated_messages` entry on a parent section (currently only
-# optimization_problem) describes a `repeated <MessageType> <name> = <num>;`
-# field together with the per-entry scalar and array fields. Arrays inside
-# each entry are chunked via the (container_field_num, container_index,
-# field_id) protocol on ArrayChunk; `array_id` is *container-relative* (small
-# dense int starting from 0 within each container, independent of the
-# top-level ArrayFieldId namespace).
+# A `repeated_messages` entry on a parent section describes a
+# `repeated <MessageType> <name> = <num>;` field together with the per-entry
+# scalar and array fields. Arrays inside each entry are chunked via the
+# (container_field_num, container_index, field_id) protocol on ArrayChunk;
+# `array_id` is *container-relative* (small dense int starting from 0 within
+# each container, independent of the top-level ArrayFieldId namespace).
+#
+# These helpers are scope-agnostic — every caller that hosts a
+# `repeated_messages:` block passes its own `obj`.  Today only
+# optimization_problem uses them (e.g. for QuadraticConstraint); the
+# mechanism would apply unchanged to a solution or settings section if one
+# ever grew a nested repeated message.
 # ============================================================================
 
 
@@ -439,6 +553,7 @@ def _iter_repeated_messages(obj):
                 raise ValueError(
                     f"repeated_messages.{name}: missing required key {required!r}"
                 )
+        _normalize_callables_in_dict(body)
         yield name, body
 
 
@@ -527,6 +642,285 @@ def _solution_scalar_proto_type(registry, f):
     if edef:
         return _enum_proto_type(ftype, edef)
     return ftype
+
+
+# ============================================================================
+# Scalar emission helpers — shared across settings, problem, and solution
+#
+# These helpers centralize how a scalar field is serialized to proto and
+# deserialized back, including the proto3-presence (`optional:`) and
+# value-mapping (`sentinel:`) wrappers.  All three top-level sections
+# (settings, optimization_problem, lp/mip_solution) go through them so the
+# `optional` / `sentinel` semantics are uniform.
+# ============================================================================
+
+
+def _scalar_to_proto_value_expr(cpp_source, f, registry):
+    """Build the to-proto value expression for a scalar (no sentinel wrapping).
+
+    Honors `type:` (enum lookup) and the resolved `to_proto_cast`.  Caller
+    wraps the expression in a setter call.
+    """
+    ftype = f.get("type", "double")
+    edef = _lookup_enum(registry, ftype)
+    if edef:
+        to_fn = _enum_to_proto_fn(ftype, edef)
+        return f"{to_fn}({cpp_source})"
+    to_proto_cast = _resolved_to_proto_cast(f)
+    if to_proto_cast:
+        return f"static_cast<{to_proto_cast}>({cpp_source})"
+    return cpp_source
+
+
+def _scalar_from_proto_value_expr(proto_source, f, registry, auto_cast=False):
+    """Build the from-proto value expression for a scalar (no guard wrapping).
+
+    Honors `type:` (enum lookup) and `from_proto_cast:`.  When `auto_cast`
+    is true, falls back to `_from_proto_cast(ftype)` for non-enum non-cast
+    fields — this is how solution scalars pick up `static_cast<f_t>` /
+    `static_cast<i_t>` automatically.  Settings and problem scalars set
+    `auto_cast=False` since their C++ targets accept the proto types
+    directly.
+    """
+    ftype = f.get("type", "double")
+    from_proto_cast = f.get("from_proto_cast")
+    edef = _lookup_enum(registry, ftype)
+    if edef:
+        from_fn = _enum_from_proto_fn(ftype, edef)
+        return f"{from_fn}({proto_source})"
+    if from_proto_cast:
+        return f"static_cast<{from_proto_cast}>({proto_source})"
+    if auto_cast:
+        cast = _from_proto_cast(ftype)
+        if cast:
+            return f"static_cast<{cast}>({proto_source})"
+    return proto_source
+
+
+# Sentinel shorthand conventions.  The verbose form of `sentinel:` (a dict
+# with `to_proto`, `proto_value`, `from_proto_guard`, `from_proto_cast`) is
+# always supported; these named conventions are sugar for the common case.
+# Each convention provides the wire-side knobs (`proto_value`,
+# `from_proto_guard`) and a function to derive the C++-side knobs
+# (`to_proto`, `from_proto_cast`) from the field's `type` so int/float
+# fields don't need to re-specify them.
+_INT_TYPES = ("int32", "int64")
+_FLOAT_TYPES = ("double",)
+
+
+def _sentinel_cpp_type_for(field_type, field_name, convention_name):
+    """Pick the C++ type (i_t / f_t) for sentinel expansion based on
+    the field's `type`.  Errors out for types where sentinel doesn't apply
+    (bool, string, enums)."""
+    if field_type in _INT_TYPES:
+        return "i_t"
+    if field_type in _FLOAT_TYPES:
+        return "f_t"
+    raise ValueError(
+        f"Sentinel convention {convention_name!r} on field "
+        f"{field_name!r} requires an integer or floating-point type; "
+        f"got type={field_type!r}.  Use the verbose `sentinel: {{...}}` "
+        f"form for non-numeric sentinels."
+    )
+
+
+SENTINEL_CONVENTIONS = {
+    # "no limit" sentinel: C++ `max()` round-trips through wire `-1`.
+    # Wire side is shared; C++ side is type-derived (i_t for ints,
+    # f_t for floats).  Used today by pdlp.iteration_limit and
+    # mip.node_limit; safe to use on any numeric scalar whose C++
+    # default is `std::numeric_limits<T>::max()`.
+    "max_as_negative_1": {
+        "proto_value": -1,
+        "from_proto_guard": ">= 0",
+    },
+}
+
+
+def _resolve_sentinel(f):
+    """Return the fully-expanded sentinel dict for a field, or None.
+
+    Accepts both the verbose dict form (returned as-is) and the named
+    shorthand form (a string keying into `SENTINEL_CONVENTIONS`, expanded
+    using the field's `type` to pick `i_t` vs `f_t`).
+    """
+    s = f.get("sentinel")
+    if s is None:
+        return None
+    if isinstance(s, dict):
+        return s
+    if isinstance(s, str):
+        if s not in SENTINEL_CONVENTIONS:
+            raise ValueError(
+                f"Unknown sentinel convention {s!r} on field "
+                f"{f.get('name')!r}; expected one of: "
+                f"{sorted(SENTINEL_CONVENTIONS)}, or the verbose "
+                f"`sentinel: {{to_proto: ..., proto_value: ..., "
+                f"from_proto_guard: ..., from_proto_cast: ...}}` form."
+            )
+        ftype = f.get("type", "double")
+        cpp_type = _sentinel_cpp_type_for(ftype, f.get("name"), s)
+        return {
+            **SENTINEL_CONVENTIONS[s],
+            "to_proto": f"std::numeric_limits<{cpp_type}>::max()",
+            "from_proto_cast": cpp_type,
+        }
+    raise ValueError(
+        f"Invalid sentinel value {s!r} on field {f.get('name')!r}: "
+        f"expected a convention name (string) or a verbose dict."
+    )
+
+
+# Wire type -> C++ cast target used when auto-deriving `to_proto_cast`.
+# The keys are the YAML `type:` values for scalar wire types; the values
+# are the C++ types the proto setters accept.
+_WIRE_TO_CAST_TARGET = {
+    "int32": "int32_t",
+    "int64": "int64_t",
+    "double": "double",
+    "bool": "bool",
+}
+
+
+def _resolved_to_proto_cast(f, sentinel=None):
+    """Resolve the to-proto cast target for a scalar field.
+
+    Resolution order:
+      1. Explicit `to_proto_cast:` on the field — used as-is.
+      2. Field-level `from_proto_cast:` is set — derive the cast target
+         from the wire `type:`.  The presence of `from_proto_cast` signals
+         that the C++ side diverges from the wire, so the to-proto direction
+         needs the symmetric cast back to the wire's C++ type.
+      3. Sentinel + int64 wire type — preserved widening case for int64
+         sentinel fields where the C++ source (e.g. `i_t = int32_t`) is
+         narrower than the wire setter signature.
+      4. Otherwise — no cast.
+
+    Returns the cast target string (e.g. ``"int32_t"``) or None.
+    """
+    if "to_proto_cast" in f:
+        return f["to_proto_cast"]
+    if "from_proto_cast" in f:
+        return _WIRE_TO_CAST_TARGET.get(f.get("type", "double"))
+    if sentinel is not None and f.get("type") == "int64":
+        return "int64_t"
+    return None
+
+
+def emit_scalar_to_proto(setter_call_lhs, cpp_source, f, registry, indent):
+    """Emit lines that write a scalar from C++ to proto.
+
+    `setter_call_lhs` is the call prefix (e.g. ``"pb_settings->set_iteration_limit"``);
+    the helper appends ``(value);``.  When `sentinel:` is set the emission is
+    wrapped in an if/else that maps the C++ sentinel value to its proto
+    counterpart.
+    """
+    sentinel = _resolve_sentinel(f)
+
+    if sentinel:
+        sv, pv = sentinel["to_proto"], sentinel["proto_value"]
+        to_cast = _resolved_to_proto_cast(f, sentinel=sentinel)
+        value_expr = (
+            f"static_cast<{to_cast}>({cpp_source})" if to_cast else cpp_source
+        )
+        return [
+            f"{indent}if ({cpp_source} == {sv}) {{",
+            f"{indent}  {setter_call_lhs}({pv});",
+            f"{indent}}} else {{",
+            f"{indent}  {setter_call_lhs}({value_expr});",
+            f"{indent}}}",
+        ]
+    value_expr = _scalar_to_proto_value_expr(cpp_source, f, registry)
+    return [f"{indent}{setter_call_lhs}({value_expr});"]
+
+
+def emit_scalar_from_proto_assign(
+    assign_template, proto_accessor, f, registry, indent, has_check=None
+):
+    """Emit lines that read a scalar from proto into a mutable target
+    (settings struct member or problem setter call).
+
+    `assign_template(value_expr)` returns the full assignment statement,
+    e.g. ``lambda v: f"settings.X = {v};"`` or
+    ``lambda v: f"cpu_problem.set_X({v});"``.
+
+    `has_check` is the C++ presence expression
+    (e.g. ``"pb_settings.has_X()"``) used to gate the assignment when
+    `optional:` is set; pass ``None`` if the surrounding proto doesn't
+    support presence tracking (e.g. hand-written messages that don't
+    declare ``optional``).
+
+    Skip-on-absent (`optional`) and skip-on-sentinel-value (`sentinel`)
+    both serve to preserve the target's in-class default.
+    """
+    sentinel = _resolve_sentinel(f)
+    is_optional = bool(f.get("optional")) and has_check is not None
+
+    body_lines = []
+    if sentinel:
+        guard = sentinel["from_proto_guard"]
+        from_cast = sentinel.get("from_proto_cast", f.get("from_proto_cast"))
+        if from_cast:
+            value_expr = f"static_cast<{from_cast}>({proto_accessor})"
+        else:
+            value_expr = proto_accessor
+        body_lines.append(f"if ({proto_accessor} {guard}) {{")
+        body_lines.append(f"  {assign_template(value_expr)}")
+        body_lines.append("}")
+    else:
+        value_expr = _scalar_from_proto_value_expr(
+            proto_accessor, f, registry, auto_cast=False
+        )
+        body_lines.append(assign_template(value_expr))
+
+    out = []
+    if is_optional:
+        out.append(f"{indent}if ({has_check}) {{")
+        for bl in body_lines:
+            out.append(f"{indent}  {bl}")
+        out.append(f"{indent}}}")
+    else:
+        for bl in body_lines:
+            out.append(f"{indent}{bl}")
+    return out
+
+
+def emit_scalar_from_proto_local(
+    local_name, proto_accessor, f, registry, indent
+):
+    """Emit lines that read a scalar from proto into a freshly declared local.
+
+    Used by the solution path, which is constructor-built and must always
+    produce a value (no skip-to-preserve semantic).  For sentinel fields,
+    the local takes the C++ sentinel value when the wire matches the
+    sentinel, round-tripping the value through the wire.
+
+    `optional` is meaningless here because the constructor still needs an
+    argument; we silently ignore it for solutions.  Future-proofing a
+    solution scalar with `optional:` purely affects the proto declaration
+    (presence-tracking on the wire) — the C++ side reads the proto3 zero
+    if absent, exactly as before.
+    """
+    sentinel = _resolve_sentinel(f)
+    if sentinel:
+        guard = sentinel["from_proto_guard"]
+        cpp_sentinel = sentinel["to_proto"]
+        from_cast = sentinel.get("from_proto_cast", f.get("from_proto_cast"))
+        if from_cast:
+            real_expr = f"static_cast<{from_cast}>({proto_accessor})"
+        else:
+            real_expr = _scalar_from_proto_value_expr(
+                proto_accessor, f, registry, auto_cast=True
+            )
+        return [
+            f"{indent}auto {local_name} = ({proto_accessor} {guard})",
+            f"{indent}    ? {real_expr}",
+            f"{indent}    : {cpp_sentinel};",
+        ]
+    value_expr = _scalar_from_proto_value_expr(
+        proto_accessor, f, registry, auto_cast=True
+    )
+    return [f"{indent}auto {local_name} = {value_expr};"]
 
 
 # ============================================================================
@@ -780,95 +1174,47 @@ def generate_settings_message_proto(registry, message_name, obj):
 
 
 def generate_settings_to_proto_body(registry, obj_name, obj, indent="  "):
+    # Two presence mechanisms (handled by `emit_scalar_to_proto`):
+    #   * `sentinel` -> if/else wrapping so a C++ sentinel value (e.g.
+    #     std::numeric_limits<i_t>::max()) is emitted as a reserved proto
+    #     value (e.g. -1).
+    # (`optional` only affects the from-proto direction and the proto
+    # declaration; the to-proto setter always writes a value.)
     lines, ind = [], indent
     for f in parse_settings_fields(obj.get("fields", [])):
-        name, ftype = f["name"], f.get("type", "double")
-        pname = _proto_cpp_name(name)
         cpp_member = f.get("member", f["name"])
-        sentinel = f.get("sentinel")
-        to_proto_cast = f.get("to_proto_cast")
-
-        edef = _lookup_enum(registry, ftype)
-        to_fn = _enum_to_proto_fn(ftype, edef) if edef else None
-
-        if sentinel:
-            sv, pv = sentinel["to_proto"], sentinel["proto_value"]
-            lines.append(f"{ind}if (settings.{cpp_member} == {sv}) {{")
-            lines.append(f"{ind}  pb_settings->set_{pname}({pv});")
-            lines.append(f"{ind}}} else {{")
-            cast = to_proto_cast or ("int64_t" if ftype == "int64" else None)
-            expr = (
-                f"static_cast<{cast}>(settings.{cpp_member})"
-                if cast
-                else f"settings.{cpp_member}"
+        setter_lhs = f"pb_settings->set_{_proto_cpp_name(f['name'])}"
+        lines.extend(
+            emit_scalar_to_proto(
+                setter_lhs, f"settings.{cpp_member}", f, registry, ind
             )
-            lines.append(f"{ind}  pb_settings->set_{pname}({expr});")
-            lines.append(f"{ind}}}")
-        elif to_fn:
-            lines.append(
-                f"{ind}pb_settings->set_{pname}({to_fn}(settings.{cpp_member}));"
-            )
-        elif to_proto_cast:
-            lines.append(
-                f"{ind}pb_settings->set_{pname}(static_cast<{to_proto_cast}>(settings.{cpp_member}));"
-            )
-        else:
-            lines.append(
-                f"{ind}pb_settings->set_{pname}(settings.{cpp_member});"
-            )
+        )
     return "\n".join(lines)
 
 
 def generate_proto_to_settings_body(registry, obj_name, obj, indent="  "):
+    # Two presence mechanisms (handled by `emit_scalar_from_proto_assign`):
+    #   * `optional` -> wrap the body in `if (pb.has_X())` so an omitted
+    #     wire field preserves the C++ struct's in-class default.
+    #   * `sentinel` -> wrap the body (or its remaining inner content) in
+    #     `if (pb.X() <guard>)` so a reserved value on the wire is treated
+    #     as "use default" (e.g. -1 for iteration_limit).
+    # When both are set, the optional guard runs first, then the sentinel
+    # value-guard runs inside it.
     lines, ind = [], indent
     for f in parse_settings_fields(obj.get("fields", [])):
-        name, ftype = f["name"], f.get("type", "double")
-        pname = _proto_cpp_name(name)
+        pname = _proto_cpp_name(f["name"])
         cpp_member = f.get("member", f["name"])
-        from_proto_cast = f.get("from_proto_cast")
-        sentinel = f.get("sentinel")
-        is_optional = bool(f.get("optional"))
-
-        edef = _lookup_enum(registry, ftype)
-        from_fn = _enum_from_proto_fn(ftype, edef) if edef else None
-
-        # Two presence mechanisms can each appear independently or together:
-        #   * `optional` -> wrap the body in `if (pb.has_X())` so an omitted
-        #     wire field preserves the C++ struct's in-class default.
-        #   * `sentinel` -> wrap the body (or its remaining inner content) in
-        #     `if (pb.X() <guard>)` so a reserved value on the wire is treated
-        #     as "use default" (e.g. -1 for iteration_limit).
-        # When both are set, the optional guard runs first, then the sentinel
-        # value-guard runs inside it.
-        body_lines = []
-        if sentinel:
-            guard = sentinel["from_proto_guard"]
-            cast = sentinel.get("from_proto_cast", from_proto_cast)
-            expr = (
-                f"static_cast<{cast}>(pb_settings.{pname}())"
-                if cast
-                else f"pb_settings.{pname}()"
+        lines.extend(
+            emit_scalar_from_proto_assign(
+                lambda v, m=cpp_member: f"settings.{m} = {v};",
+                f"pb_settings.{pname}()",
+                f,
+                registry,
+                ind,
+                has_check=f"pb_settings.has_{pname}()",
             )
-            body_lines.append(f"if (pb_settings.{pname}() {guard}) {{")
-            body_lines.append(f"  settings.{cpp_member} = {expr};")
-            body_lines.append("}")
-        else:
-            if from_fn:
-                rhs = f"{from_fn}(pb_settings.{pname}())"
-            elif from_proto_cast:
-                rhs = f"static_cast<{from_proto_cast}>(pb_settings.{pname}())"
-            else:
-                rhs = f"pb_settings.{pname}()"
-            body_lines.append(f"settings.{cpp_member} = {rhs};")
-
-        if is_optional:
-            lines.append(f"{ind}if (pb_settings.has_{pname}()) {{")
-            for bl in body_lines:
-                lines.append(f"{ind}  {bl}")
-            lines.append(f"{ind}}}")
-        else:
-            for bl in body_lines:
-                lines.append(f"{ind}{bl}")
+        )
     return "\n".join(lines)
 
 
@@ -913,7 +1259,8 @@ def generate_lp_solution_message_proto(registry):
         num = f.get("field_num")
         if num is not None:
             ptype = _solution_scalar_proto_type(registry, f)
-            lines.append((num, f"  {ptype} {f['name']} = {num};"))
+            prefix = "optional " if f.get("optional") else ""
+            lines.append((num, f"  {prefix}{ptype} {f['name']} = {num};"))
     lines.sort(key=lambda x: x[0])
     return "\n".join(item[1] for item in lines)
 
@@ -931,7 +1278,8 @@ def generate_mip_solution_message_proto(registry):
         num = f.get("field_num")
         if num is not None:
             ptype = _solution_scalar_proto_type(registry, f)
-            lines.append((num, f"  {ptype} {f['name']} = {num};"))
+            prefix = "optional " if f.get("optional") else ""
+            lines.append((num, f"  {prefix}{ptype} {f['name']} = {num};"))
     lines.sort(key=lambda x: x[0])
     return "\n".join(item[1] for item in lines)
 
@@ -948,7 +1296,8 @@ def generate_optimization_problem_proto(registry):
             ptype = _problem_field_proto_type(
                 registry, f.get("type", "double")
             )
-            lines.append((num, f"  {ptype} {f['name']} = {num};"))
+            prefix = "optional " if f.get("optional") else ""
+            lines.append((num, f"  {prefix}{ptype} {f['name']} = {num};"))
     for entry in obj.get("arrays", []):
         f = parse_field(entry)
         num = f.get("field_num")
@@ -977,7 +1326,8 @@ def generate_chunked_result_header_proto(registry):
             num = f.get("field_num")
             if num is not None:
                 ptype = _solution_scalar_proto_type(registry, f)
-                lines.append((num, f"  {ptype} {f['name']} = {num};"))
+                prefix = "optional " if f.get("optional") else ""
+                lines.append((num, f"  {prefix}{ptype} {f['name']} = {num};"))
         ws = obj.get("warm_start", {})
         ws_ch_prefix = ws.get("chunked_header_prefix", "")
         for entry in ws.get("scalars", []):
@@ -1117,26 +1467,22 @@ def _gen_solution_to_proto(registry, obj_name, obj, indent="  "):
         name = f["name"]
         pname = _proto_cpp_name(name)
         getter = f.get("getter", f"get_{name}()")
-        to_cast = f.get("to_proto_cast")
-        edef = _lookup_enum(registry, f.get("type", "double"))
-        if edef:
-            to_fn = _enum_to_proto_fn(f["type"], edef)
-            lines.append(
-                f"{ind}pb_solution->set_{pname}({to_fn}(solution.{getter}));"
+        lines.extend(
+            emit_scalar_to_proto(
+                f"pb_solution->set_{pname}",
+                f"solution.{getter}",
+                f,
+                registry,
+                ind,
             )
-        elif to_cast:
-            lines.append(
-                f"{ind}pb_solution->set_{pname}(static_cast<{to_cast}>(solution.{getter}));"
-            )
-        else:
-            lines.append(f"{ind}pb_solution->set_{pname}(solution.{getter});")
+        )
 
     lines.append("")
 
     for entry in obj.get("arrays", []):
         f = parse_field(entry)
         pname = _proto_cpp_name(f["name"])
-        getter = f.get("getter", f"get_{f['name']}_host()")
+        getter = _default_solution_array_getter(f)
         var = f"_{f['name']}"
         lines.append(f"{ind}const auto& {var} = solution.{getter};")
         lines.append(
@@ -1203,26 +1549,11 @@ def _gen_proto_to_solution(registry, obj_name, obj, indent="  "):
         pname = _proto_cpp_name(name)
         if f.get("proto_only"):
             continue
-        ftype = f.get("type", "double")
-        from_cast = f.get("from_proto_cast")
-        edef = _lookup_enum(registry, ftype)
-        if edef:
-            from_fn = _enum_from_proto_fn(ftype, edef)
-            lines.append(
-                f"{ind}auto _{name} = {from_fn}(pb_solution.{pname}());"
+        lines.extend(
+            emit_scalar_from_proto_local(
+                f"_{name}", f"pb_solution.{pname}()", f, registry, ind
             )
-        elif from_cast:
-            lines.append(
-                f"{ind}auto _{name} = static_cast<{from_cast}>(pb_solution.{pname}());"
-            )
-        else:
-            cast = _from_proto_cast(ftype)
-            if cast:
-                lines.append(
-                    f"{ind}auto _{name} = static_cast<{cast}>(pb_solution.{pname}());"
-                )
-            else:
-                lines.append(f"{ind}auto _{name} = pb_solution.{pname}();")
+        )
         scalar_vars[name] = f"_{name}"
 
     array_names = [parse_field(e)["name"] for e in obj.get("arrays", [])]
@@ -1230,7 +1561,6 @@ def _gen_proto_to_solution(registry, obj_name, obj, indent="  "):
     args = [f"std::move({n})" for n in array_names]
     args += [scalar_vars.get(s, f"_{s}") for s in arg_scalars]
 
-    # Warm start
     if ws:
         accessor_getter = "warm_start_data"
         lines.append("")
@@ -1284,25 +1614,21 @@ def _gen_chunked_header(registry, obj_name, obj, indent="  "):
         name = f["name"]
         pname = _proto_cpp_name(name)
         getter = f.get("getter", f"get_{name}()")
-        to_cast = f.get("to_proto_cast")
-        edef = _lookup_enum(registry, f.get("type", "double"))
-        if edef:
-            to_fn = _enum_to_proto_fn(f["type"], edef)
-            lines.append(
-                f"{ind}header->set_{pname}({to_fn}(solution.{getter}));"
+        lines.extend(
+            emit_scalar_to_proto(
+                f"header->set_{pname}",
+                f"solution.{getter}",
+                f,
+                registry,
+                ind,
             )
-        elif to_cast:
-            lines.append(
-                f"{ind}header->set_{pname}(static_cast<{to_cast}>(solution.{getter}));"
-            )
-        else:
-            lines.append(f"{ind}header->set_{pname}(solution.{getter});")
+        )
 
     lines.append("")
 
     for entry in obj.get("arrays", []):
         f = parse_field(entry)
-        getter = f.get("getter", f"get_{f['name']}_host()")
+        getter = _default_solution_array_getter(f)
         eid = _field_result_id_name(f)
         lines.append(
             f"{ind}add_result_array_descriptor(header, cuopt::remote::{eid}, solution.{getter}.size(), sizeof(double));"
@@ -1352,7 +1678,7 @@ def _gen_collect_arrays(registry, obj_name, obj, indent="  "):
 
     for entry in obj.get("arrays", []):
         f = parse_field(entry)
-        getter = f.get("getter", f"get_{f['name']}_host()")
+        getter = _default_solution_array_getter(f)
         eid = _field_result_id_name(f)
         var = f"_{f['name']}"
         lines.append(f"{ind}const auto& {var} = solution.{getter};")
@@ -1403,24 +1729,11 @@ def _gen_chunked_to_solution(registry, obj_name, obj, indent="  "):
         pname = _proto_cpp_name(name)
         if f.get("proto_only"):
             continue
-        ftype = f.get("type", "double")
-        from_cast = f.get("from_proto_cast")
-        edef = _lookup_enum(registry, ftype)
-        if edef:
-            from_fn = _enum_from_proto_fn(ftype, edef)
-            lines.append(f"{ind}auto _{name} = {from_fn}(h.{pname}());")
-        elif from_cast:
-            lines.append(
-                f"{ind}auto _{name} = static_cast<{from_cast}>(h.{pname}());"
+        lines.extend(
+            emit_scalar_from_proto_local(
+                f"_{name}", f"h.{pname}()", f, registry, ind
             )
-        else:
-            cast = _from_proto_cast(ftype)
-            if cast:
-                lines.append(
-                    f"{ind}auto _{name} = static_cast<{cast}>(h.{pname}());"
-                )
-            else:
-                lines.append(f"{ind}auto _{name} = h.{pname}();")
+        )
         scalar_vars[name] = f"_{name}"
 
     array_names = [parse_field(e)["name"] for e in obj.get("arrays", [])]
@@ -1497,26 +1810,19 @@ def _gen_problem_to_proto(registry, indent="  "):
         for fname in gdef.get("fields", []):
             grouped_fields.add(fname)
 
-    # Scalars
     for entry in obj.get("scalars", []):
         f = parse_field(entry)
         pname = _proto_cpp_name(f["name"])
         getter = _default_problem_getter(f, is_scalar=True)
-        ftype = f.get("type", "double")
-        edef = _lookup_enum(registry, ftype)
-        if edef:
-            to_fn = _enum_to_proto_fn(ftype, edef)
-            lines.append(
-                f"{ind}pb_problem->set_{pname}({to_fn}(cpu_problem.{getter}));"
+        setter_lhs = f"pb_problem->set_{pname}"
+        lines.extend(
+            emit_scalar_to_proto(
+                setter_lhs, f"cpu_problem.{getter}", f, registry, ind
             )
-        else:
-            lines.append(
-                f"{ind}pb_problem->set_{pname}(cpu_problem.{getter});"
-            )
+        )
 
     lines.append("")
 
-    # Non-grouped arrays
     for entry in obj.get("arrays", []):
         f = parse_field(entry)
         name = f["name"]
@@ -1597,7 +1903,7 @@ def _gen_problem_to_proto(registry, indent="  "):
         for f in _repeated_message_scalars(body):
             sp = _proto_cpp_name(f["name"])
             member = f.get("member", f["name"])
-            to_cast = f.get("to_proto_cast")
+            to_cast = _resolved_to_proto_cast(f)
             if to_cast:
                 lines.append(
                     f"{ind}    pb_entry->set_{sp}(static_cast<{to_cast}>(_entry.{member}));"
@@ -1629,21 +1935,20 @@ def _gen_proto_to_problem(registry, indent="  "):
     for gdef in setter_groups.values():
         for fname in gdef.get("fields", []):
             grouped_fields.add(fname)
-    # Scalars
     for entry in obj.get("scalars", []):
         f = parse_field(entry)
-        name = f["name"]
-        pname = _proto_cpp_name(name)
+        pname = _proto_cpp_name(f["name"])
         setter = _default_problem_setter(f)
-        ftype = f.get("type", "double")
-        edef = _lookup_enum(registry, ftype)
-        if edef:
-            from_fn = _enum_from_proto_fn(ftype, edef)
-            lines.append(
-                f"{ind}cpu_problem.{setter}({from_fn}(pb_problem.{pname}()));"
+        lines.extend(
+            emit_scalar_from_proto_assign(
+                lambda v, s=setter: f"cpu_problem.{s}({v});",
+                f"pb_problem.{pname}()",
+                f,
+                registry,
+                ind,
+                has_check=f"pb_problem.has_{pname}()",
             )
-        else:
-            lines.append(f"{ind}cpu_problem.{setter}(pb_problem.{pname}());")
+        )
 
     lines.append("")
 
@@ -1947,15 +2252,15 @@ def _gen_populate_chunked_header(registry, solver_type, indent="  "):
         f = parse_field(entry)
         pname = _proto_cpp_name(f["name"])
         getter = _default_problem_getter(f, is_scalar=True)
-        ftype = f.get("type", "double")
-        edef = _lookup_enum(registry, ftype)
-        if edef:
-            to_fn = _enum_to_proto_fn(ftype, edef)
-            lines.append(
-                f"{ind}header->set_{pname}({to_fn}(cpu_problem.{getter}));"
+        lines.extend(
+            emit_scalar_to_proto(
+                f"header->set_{pname}",
+                f"cpu_problem.{getter}",
+                f,
+                registry,
+                ind,
             )
-        else:
-            lines.append(f"{ind}header->set_{pname}(cpu_problem.{getter});")
+        )
 
     lines.append("")
 
@@ -1985,7 +2290,7 @@ def _gen_populate_chunked_header(registry, solver_type, indent="  "):
         for f in _repeated_message_scalars(body):
             sp = _proto_cpp_name(f["name"])
             member = f.get("member", f["name"])
-            to_cast = f.get("to_proto_cast")
+            to_cast = _resolved_to_proto_cast(f)
             if to_cast:
                 lines.append(
                     f"{ind}    pb_entry->set_{sp}(static_cast<{to_cast}>(_entry.{member}));"
@@ -2004,20 +2309,24 @@ def _gen_chunked_header_to_problem(registry, indent="  "):
     ind = indent
     lines = []
 
+    # `ChunkedProblemHeader` is hand-written (see cuopt_remote_service.proto);
+    # it does not declare `optional` for any field, so we pass has_check=None
+    # to suppress the has_X() guard.  `sentinel:` still applies — the wire
+    # mapping must stay consistent with the unary path.
     for entry in obj.get("scalars", []):
         f = parse_field(entry)
-        name = f["name"]
-        pname = _proto_cpp_name(name)
+        pname = _proto_cpp_name(f["name"])
         setter = _default_problem_setter(f)
-        ftype = f.get("type", "double")
-        edef = _lookup_enum(registry, ftype)
-        if edef:
-            from_fn = _enum_from_proto_fn(ftype, edef)
-            lines.append(
-                f"{ind}cpu_problem.{setter}({from_fn}(header.{pname}()));"
+        lines.extend(
+            emit_scalar_from_proto_assign(
+                lambda v, s=setter: f"cpu_problem.{s}({v});",
+                f"header.{pname}()",
+                f,
+                registry,
+                ind,
+                has_check=None,
             )
-        else:
-            lines.append(f"{ind}cpu_problem.{setter}(header.{pname}());")
+        )
 
     lines.append("")
 
@@ -3278,6 +3587,8 @@ def main():
 
     with open(args.registry) as f:
         registry = yaml.safe_load(f)
+
+    _normalize_registry_callables(registry)
 
     if not _registry_has_field_numbers(registry):
         print(
