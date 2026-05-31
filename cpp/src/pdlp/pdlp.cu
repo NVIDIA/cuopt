@@ -426,9 +426,50 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
       partition_input.nb_cstr  = op_problem_scaled_.n_constraints;
       partition_input.nb_vars  = op_problem_scaled_.n_variables;
       partition_input.nb_parts = distributed_pdlp_num_gpus;
-      // Dummy partitioner ignores A / A_t for now; future METIS partitioners will
-      // fill these CSR views before calling partition().
-      auto partitioner = make_partitioner<i_t, f_t>(partitioner_kind_t::Dummy);
+
+      // Topology buffers: only needed for METIS (Dummy ignores them).
+      // Read CSR offsets and col indices from the (unscaled) problem; the
+      // partitioner only needs topology, not values, and scaled/unscaled share
+      // the same nonzero pattern.
+      std::vector<i_t> h_part_A_row_offsets;
+      std::vector<i_t> h_part_A_col_indices;
+      std::vector<i_t> h_part_A_t_row_offsets;
+      std::vector<i_t> h_part_A_t_col_indices;
+
+      const partitioner_kind_t kind =  partitioner_kind_t::Metis;
+      if (kind == partitioner_kind_t::Metis) {
+        const auto stream = op_problem_scaled_.handle_ptr->get_stream();
+        const i_t n_cstr  = op_problem_scaled_.n_constraints;
+        const i_t n_vars  = op_problem_scaled_.n_variables;
+        const i_t nnz     = op_problem_scaled_.nnz;
+        h_part_A_row_offsets.resize(n_cstr + 1);
+        h_part_A_col_indices.resize(nnz);
+        h_part_A_t_row_offsets.resize(n_vars + 1);
+        h_part_A_t_col_indices.resize(nnz);
+        raft::copy(
+          h_part_A_row_offsets.data(), op_problem_scaled_.offsets.data(), n_cstr + 1, stream);
+        raft::copy(
+          h_part_A_col_indices.data(), op_problem_scaled_.variables.data(), nnz, stream);
+        raft::copy(h_part_A_t_row_offsets.data(),
+                   op_problem_scaled_.reverse_offsets.data(),
+                   n_vars + 1,
+                   stream);
+        raft::copy(h_part_A_t_col_indices.data(),
+                   op_problem_scaled_.reverse_constraints.data(),
+                   nnz,
+                   stream);
+        op_problem_scaled_.handle_ptr->sync_stream(stream);
+
+        partition_input.A.row_offsets   = &h_part_A_row_offsets;
+        partition_input.A.col_indices   = &h_part_A_col_indices;
+        partition_input.A.num_rows      = n_cstr;
+        partition_input.A.num_cols      = n_vars;
+        partition_input.A_t.row_offsets = &h_part_A_t_row_offsets;
+        partition_input.A_t.col_indices = &h_part_A_t_col_indices;
+        partition_input.A_t.num_rows    = n_vars;
+        partition_input.A_t.num_cols    = n_cstr;
+      }
+      auto partitioner = make_partitioner<i_t, f_t>(kind);
       parts            = partitioner->partition(partition_input);
     }
 
