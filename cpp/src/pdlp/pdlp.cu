@@ -2327,10 +2327,13 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
         cusparseDnVecSetValues(sub_cv.potential_next_dual_solution,
                                (void*)sub_pdlp.pdhg_solver_.get_reflected_dual().data()));
 
+      // Ensure norm is on owned size
       sub_pdlp.step_size_strategy_.compute_interaction_and_movement(
         sub_pdlp.pdhg_solver_.get_primal_tmp_resource(),
         sub_cv,
-        sub_pdlp.pdhg_solver_.get_saddle_point_state());
+        sub_pdlp.pdhg_solver_.get_saddle_point_state(),
+        shard->rank_data.owned_var_size,
+        shard->rank_data.owned_cstr_size);
 
       RAFT_CUSPARSE_TRY(cusparseDnVecSetValues(
         sub_cv.potential_next_dual_solution,

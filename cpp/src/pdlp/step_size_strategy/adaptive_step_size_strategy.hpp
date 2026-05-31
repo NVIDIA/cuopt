@@ -88,9 +88,13 @@ class adaptive_step_size_strategy_t {
   rmm::device_uvector<f_t>& get_norm_squared_delta_primal();
   rmm::device_uvector<f_t>& get_norm_squared_delta_dual();
 
+  // owned_primal_size / owned_cstr_size are mGPU overrides.
+  // mGPU needs to know owned size to restrict the reductions to the owned prefix
   void compute_interaction_and_movement(rmm::device_uvector<f_t>& tmp_primal,
                                         cusparse_view_t<i_t, f_t>& cusparse_view,
-                                        saddle_point_state_t<i_t, f_t>& current_saddle_point_state);
+                                        saddle_point_state_t<i_t, f_t>& current_saddle_point_state,
+                                        i_t owned_primal_size = -1,
+                                        i_t owned_cstr_size   = -1);
 
   void swap_context(const thrust::universal_host_pinned_vector<swap_pair_t<i_t>>& swap_pairs);
   void resize_context(i_t new_size);
