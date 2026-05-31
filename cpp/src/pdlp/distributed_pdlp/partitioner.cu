@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include <pdlp/distributed_pdlp/metis_partitioner.hpp>
 #include <pdlp/distributed_pdlp/partitioner.hpp>
 
 #include <cuopt/error.hpp>
@@ -76,6 +77,8 @@ std::unique_ptr<partitioner_i<i_t, f_t>> make_partitioner(partitioner_kind_t kin
   switch (kind) {
     case partitioner_kind_t::Dummy:
       return std::make_unique<dummy_partitioner_t<i_t, f_t>>();
+    case partitioner_kind_t::Metis:
+      return std::make_unique<metis_partitioner_t<i_t, f_t>>();
   }
   cuopt_expects(false, error_type_t::RuntimeError, "make_partitioner: unsupported partitioner kind");
   return nullptr;

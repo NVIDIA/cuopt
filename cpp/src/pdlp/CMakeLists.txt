@@ -33,6 +33,7 @@ set(LP_CORE_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/distributed_pdlp/multi_gpu_engine.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/distributed_pdlp/partition_loader.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/distributed_pdlp/partitioner.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/distributed_pdlp/metis_partitioner.cu
 )
 
 # C and Python adapter files

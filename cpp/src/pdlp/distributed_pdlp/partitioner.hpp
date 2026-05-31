@@ -36,7 +36,7 @@ struct partitioner_input_t {
   csr_host_view_t<i_t, f_t> A_t{};
 };
 
-enum class partitioner_kind_t { Dummy /*, Metis */ };
+enum class partitioner_kind_t { Dummy, Metis };
 
 template <typename i_t, typename f_t>
 class partitioner_i {

@@ -343,6 +343,42 @@ set_target_properties(nccl_external PROPERTIES
 message(STATUS "Using NCCL: ${NCCL_LIBRARY}")
 
 # ##################################################################################################
+# - METIS (graph partitioning for distributed PDLP) -----------------------------------------------
+# Found by searching CONDA_PREFIX first, then CUOPT_METIS_ROOT (cmake var or env)
+# if the user wants to pull METIS from a different conda env / system path.
+set(METIS_HINT_PREFIXES "")
+if (DEFINED ENV{CONDA_PREFIX} AND NOT "$ENV{CONDA_PREFIX}" STREQUAL "")
+    list(APPEND METIS_HINT_PREFIXES "$ENV{CONDA_PREFIX}")
+endif ()
+if (DEFINED CUOPT_METIS_ROOT AND NOT "${CUOPT_METIS_ROOT}" STREQUAL "")
+    list(APPEND METIS_HINT_PREFIXES "${CUOPT_METIS_ROOT}")
+endif ()
+if (DEFINED ENV{CUOPT_METIS_ROOT} AND NOT "$ENV{CUOPT_METIS_ROOT}" STREQUAL "")
+    list(APPEND METIS_HINT_PREFIXES "$ENV{CUOPT_METIS_ROOT}")
+endif ()
+find_path(METIS_INCLUDE_DIR
+    NAMES metis.h
+    HINTS ${METIS_HINT_PREFIXES}
+    PATH_SUFFIXES include
+)
+find_library(METIS_LIBRARY
+    NAMES metis libmetis
+    HINTS ${METIS_HINT_PREFIXES}
+    PATH_SUFFIXES lib lib64
+)
+if (NOT METIS_INCLUDE_DIR OR NOT METIS_LIBRARY)
+    message(FATAL_ERROR "METIS not found. Looked in: ${METIS_HINT_PREFIXES}. "
+                        "Install it via 'conda install -c conda-forge metis' in the active env, "
+                        "or set CUOPT_METIS_ROOT to a prefix containing include/metis.h and lib/libmetis.{so,a}.")
+endif ()
+add_library(metis_external UNKNOWN IMPORTED GLOBAL)
+set_target_properties(metis_external PROPERTIES
+    IMPORTED_LOCATION "${METIS_LIBRARY}"
+    INTERFACE_INCLUDE_DIRECTORIES "${METIS_INCLUDE_DIR}"
+)
+message(STATUS "Using METIS: ${METIS_LIBRARY}")
+
+# ##################################################################################################
 # - gRPC and Protobuf setup -----------------------------------------------------------------------
 
 if (NOT SKIP_GRPC_BUILD)
@@ -605,6 +641,7 @@ target_link_libraries(cuopt
         PRIVATE
         ${CUOPT_PRIVATE_CUDA_LIBS}
         nccl_external
+        metis_external
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:protobuf::libprotobuf>
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:gRPC::grpc++>
 )
