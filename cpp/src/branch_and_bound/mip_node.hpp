@@ -220,7 +220,7 @@ class mip_node_t {
 
       if (current_node->children[0] == nullptr && current_node->children[1] == nullptr &&
           current_node->depth < 10) {
-        printf("Node %ld with no children at depth %d lower bound %e. status %d\n",
+        printf("Node %d with no children at depth %d lower bound %e. status %d\n",
                current_node->node_id,
                current_node->depth,
                current_node->lower_bound,
