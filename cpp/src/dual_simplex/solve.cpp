@@ -170,9 +170,10 @@ lp_status_t solve_linear_program_with_advanced_basis(
                             presolved_lp.num_cols,
                             presolved_lp.A.col_start[presolved_lp.num_cols]);
   std::vector<f_t> column_scales;
+  std::vector<f_t> row_scales_simplex;
   {
     raft::common::nvtx::range scope_scaling("DualSimplex::scaling");
-    column_scaling(presolved_lp, settings, lp, column_scales);
+    scaling(presolved_lp, settings, lp, column_scales, row_scales_simplex);
   }
   assert(presolved_lp.num_cols == lp.num_cols);
   lp_problem_t<i_t, f_t> phase1_problem(original_lp.handle_ptr, 1, 1, 1);
@@ -293,13 +294,21 @@ lp_status_t solve_linear_program_with_advanced_basis(
     }
     if (status == dual::status_t::OPTIMAL) {
       std::vector<f_t> unscaled_x(lp.num_cols);
+      std::vector<f_t> unscaled_y(lp.num_rows);
       std::vector<f_t> unscaled_z(lp.num_cols);
-      unscale_solution<i_t, f_t>(column_scales, solution.x, solution.z, unscaled_x, unscaled_z);
+      unscale_solution<i_t, f_t>(column_scales,
+                                 row_scales_simplex,
+                                 solution.x,
+                                 solution.y,
+                                 solution.z,
+                                 unscaled_x,
+                                 unscaled_y,
+                                 unscaled_z);
       uncrush_solution(presolve_info,
                        settings,
                        original_lp,
                        unscaled_x,
-                       solution.y,
+                       unscaled_y,
                        unscaled_z,
                        original_solution.x,
                        original_solution.y,
@@ -350,9 +359,12 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
   // Convert the user problem to a linear program with only equality constraints
   std::vector<i_t> new_slacks;
   simplex_solver_settings_t<i_t, f_t> barrier_settings = settings;
-  barrier_settings.barrier_presolve                    = true;
   dualize_info_t<i_t, f_t> dualize_info;
   convert_user_problem(user_problem, barrier_settings, original_lp, new_slacks, dualize_info);
+  if (!validate_barrier_cone_layout(original_lp, barrier_settings)) {
+    return lp_status_t::NUMERICAL_ISSUES;
+  }
+
   lp_solution_t<i_t, f_t> lp_solution(original_lp.num_rows, original_lp.num_cols);
 
   // Presolve the linear program
@@ -369,7 +381,8 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
                                     presolved_lp.num_cols,
                                     presolved_lp.A.col_start[presolved_lp.num_cols]);
   std::vector<f_t> column_scales;
-  column_scaling(presolved_lp, barrier_settings, barrier_lp, column_scales);
+  std::vector<f_t> row_scales;
+  scaling(presolved_lp, barrier_settings, barrier_lp, column_scales, row_scales);
 
   // Solve using barrier
   lp_solution_t<i_t, f_t> barrier_solution(barrier_lp.num_rows, barrier_lp.num_cols);
@@ -394,9 +407,16 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
 #endif
     // Unscale the solution
     std::vector<f_t> unscaled_x(barrier_lp.num_cols);
+    std::vector<f_t> unscaled_y(barrier_lp.num_rows);
     std::vector<f_t> unscaled_z(barrier_lp.num_cols);
-    unscale_solution<i_t, f_t>(
-      column_scales, barrier_solution.x, barrier_solution.z, unscaled_x, unscaled_z);
+    unscale_solution<i_t, f_t>(column_scales,
+                               row_scales,
+                               barrier_solution.x,
+                               barrier_solution.y,
+                               barrier_solution.z,
+                               unscaled_x,
+                               unscaled_y,
+                               unscaled_z);
 
     std::vector<f_t> residual = presolved_lp.rhs;
     matrix_vector_multiply(presolved_lp.A, 1.0, unscaled_x, -1.0, residual);
@@ -410,7 +430,7 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
         unscaled_dual_residual[j] -= presolved_lp.objective[j];
       }
       matrix_transpose_vector_multiply(
-        presolved_lp.A, 1.0, barrier_solution.y, 1.0, unscaled_dual_residual);
+        presolved_lp.A, 1.0, unscaled_y, 1.0, unscaled_dual_residual);
       f_t unscaled_dual_residual_norm = vector_norm_inf<i_t, f_t>(unscaled_dual_residual);
       settings.log.printf(
         "Unscaled Dual infeasibility     (abs/rel): %.2e/%.2e\n",
@@ -423,7 +443,7 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
                      barrier_settings,
                      original_lp,
                      unscaled_x,
-                     barrier_solution.y,
+                     unscaled_y,
                      unscaled_z,
                      lp_solution.x,
                      lp_solution.y,
@@ -564,7 +584,8 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
     uncrush_primal_solution(user_problem, original_lp, lp_solution.x, solution.x);
     uncrush_dual_solution(
       user_problem, original_lp, lp_solution.y, lp_solution.z, solution.y, solution.z);
-    solution.objective          = barrier_solution.objective;
+    solution.objective =
+      barrier_solution.user_objective / user_problem.obj_scale - user_problem.obj_constant;
     solution.user_objective     = barrier_solution.user_objective;
     solution.l2_primal_residual = barrier_solution.l2_primal_residual;
     solution.l2_dual_residual   = barrier_solution.l2_dual_residual;

@@ -15,6 +15,17 @@ from libcpp.vector cimport vector
 cdef extern from "cuopt/linear_programming/io/mps_data_model.hpp" namespace "cuopt::linear_programming::io": # noqa
 
     cdef cppclass mps_data_model_t[i_t, f_t]:
+        cppclass quadratic_constraint_t:
+            int constraint_row_index
+            string constraint_row_name
+            char constraint_row_type
+            vector[double] linear_values
+            vector[int] linear_indices
+            double rhs_value
+            vector[int] rows
+            vector[int] cols
+            vector[double] vals
+
         bool maximize_
         vector[f_t] A_
         vector[i_t] A_indices_
@@ -36,6 +47,7 @@ cdef extern from "cuopt/linear_programming/io/mps_data_model.hpp" namespace "cuo
         vector[char] row_types_
         string objective_name_
         string problem_name_
+        const vector[quadratic_constraint_t]& get_quadratic_constraints() const
 
 cdef extern from "cuopt/linear_programming/io/utilities/cython_parser.hpp" namespace "cuopt::cython": # noqa
 

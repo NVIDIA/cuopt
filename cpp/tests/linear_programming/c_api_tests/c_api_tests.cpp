@@ -226,6 +226,21 @@ TEST(c_api, test_quadratic_ranged_problem)
   EXPECT_NEAR(objective, -32.0, 1e-3);
 }
 
+TEST(c_api, test_quadratic_constraint_problem)
+{
+  cuopt_int_t termination_status;
+  cuopt_float_t objective;
+  cuopt_float_t solution_values[4];
+  EXPECT_EQ(test_quadratic_constraint_problem(&termination_status, &objective, solution_values),
+            CUOPT_SUCCESS);
+  EXPECT_EQ(termination_status, CUOPT_TERMINATION_STATUS_OPTIMAL);
+  EXPECT_NEAR(objective, -13.548638904065102, 1e-4);
+  EXPECT_NEAR(solution_values[0], -3.874621860638774, 1e-4);
+  EXPECT_NEAR(solution_values[1], -2.129788233677883, 1e-4);
+  EXPECT_NEAR(solution_values[2], 2.33480343377204, 1e-4);
+  EXPECT_NEAR(solution_values[3], 5.0, 1e-4);
+}
+
 TEST(c_api, test_write_problem)
 {
   const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
