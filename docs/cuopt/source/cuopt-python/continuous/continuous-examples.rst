@@ -49,6 +49,33 @@ The response is as follows:
     Objective value = 0.5
 
 
+.. _simple-socp-example-python:
+
+Simple Second-Order Cone Programming Example
+--------------------------------------------
+
+:download:`simple_socp_example.py <examples/simple_socp_example.py>`
+
+This example minimizes ``x3`` subject to ``x1 + x2 >= 2`` and the second-order
+cone ``||(x1, x2)||_2 <= x3``, expressed as the quadratic inequality
+``x1^2 + x2^2 - x3^2 <= 0``. cuOpt detects the cone structure and solves with the
+barrier method.
+
+.. literalinclude:: examples/simple_socp_example.py
+   :language: python
+   :linenos:
+
+The response is as follows:
+
+.. code-block:: text
+
+    Status: 1
+    x1 = 1.0
+    x2 = 1.0
+    x3 = 1.4142135623730951
+    Objective value = 1.4142135623730951
+
+
 Advanced Example: Production Planning
 -------------------------------------
 

@@ -3,8 +3,8 @@ LP/QP/SOCP C API Examples
 =========================
 
 
-Example With Data
------------------
+LP Example With Data
+--------------------
 
 This example demonstrates how to use the LP solver in C. More details on the API can be found in :doc:`C API <continuous-c-api>`.
 
@@ -68,8 +68,8 @@ You should see the following output:
    Test completed successfully!
 
 
-Example With MPS File
----------------------
+LP Example With MPS File
+------------------------
 
 This example demonstrates how to use the cuOpt linear programming solver in C to solve an MPS file.
 
@@ -146,8 +146,8 @@ You should see the following output:
 
 .. _lp-file-example-c:
 
-Example With LP File
---------------------
+LP Example With LP File
+-----------------------
 
 ``cuOptReadProblem`` also accepts LP format files. The same function is
 used — it dispatches on the file extension (case-insensitive):
@@ -207,10 +207,57 @@ You should see the following output:
    :caption: Output
 
    Creating and solving simple QP problem...
-   Status: Optimal
+
+   Results:
+   --------
+   Termination status: Optimal (1)
    Objective value: 0.500000
-   x = 0.500000
-   y = 0.500000
+
+   Primal Solution: Solution variables
+   x1 = 0.500000
+   x2 = 0.500000
+
+   Test completed successfully!
+
+
+.. _simple-socp-example-c:
+
+Simple Second-Order Cone Programming Example
+--------------------------------------------
+
+This example builds an SOCP directly with the C API: a linear problem is created with :c:func:`cuOptCreateProblem`, then a second-order cone constraint is added with :c:func:`cuOptAddQuadraticConstraint`. It minimizes ``x3`` subject to ``x1 + x2 >= 2`` and the cone ``||(x1, x2)||_2 <= x3``, written as the quadratic inequality ``x1^2 + x2^2 - x3^2 <= 0``. cuOpt detects the second-order cone structure and solves with the barrier method.
+
+The example code is available at ``examples/cuopt-c/lp/simple_socp_example.c`` (:download:`download <examples/simple_socp_example.c>`):
+
+.. literalinclude:: examples/simple_socp_example.c
+   :language: c
+   :linenos:
+
+Build and run the example
+
+.. code-block:: bash
+
+   # Build and run the example
+   gcc -I $INCLUDE_PATH -L $LIBCUOPT_LIBRARY_PATH -o simple_socp_example simple_socp_example.c -lcuopt
+   ./simple_socp_example
+
+The optimum is ``x1 = x2 = 1`` and ``x3 = sqrt(2)``:
+
+.. code-block:: bash
+   :caption: Output
+
+   Creating and solving simple SOCP problem...
+
+   Results:
+   --------
+   Termination status: Optimal (1)
+   Objective value: 1.414214
+
+   Primal Solution: Solution variables
+   x1 = 1.000000
+   x2 = 1.000000
+   x3 = 1.414214
+
    Test completed successfully!
 
 
