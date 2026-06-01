@@ -1749,72 +1749,72 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
 
   // Reset all cusparse view
 
-  // Reset cuSparse views for PDHG
-  auto& pdhg_cusparse_view = pdhg_solver_.get_cusparse_view();
-  pdhg_cusparse_view.batch_dual_solutions.create(
-    op_problem_scaled_.n_constraints,
-    climber_strategies_.size(),
-    climber_strategies_.size(),
-    pdhg_solver_.get_saddle_point_state().get_dual_solution().data(),
-    CUSPARSE_ORDER_ROW);
-  pdhg_cusparse_view.batch_current_AtYs.create(
-    op_problem_scaled_.n_variables,
-    climber_strategies_.size(),
-    climber_strategies_.size(),
-    pdhg_solver_.get_saddle_point_state().get_current_AtY().data(),
-    CUSPARSE_ORDER_ROW);
-  pdhg_cusparse_view.batch_reflected_primal_solutions.create(
-    op_problem_scaled_.n_variables,
-    climber_strategies_.size(),
-    climber_strategies_.size(),
-    pdhg_solver_.get_reflected_primal().data(),
-    CUSPARSE_ORDER_ROW);
-  pdhg_cusparse_view.batch_dual_gradients.create(
-    op_problem_scaled_.n_constraints,
-    climber_strategies_.size(),
-    climber_strategies_.size(),
-    pdhg_solver_.get_saddle_point_state().get_dual_gradient().data(),
-    CUSPARSE_ORDER_ROW);
+  // Reset cuSparse views for PDHG. unique_ptr move-assign destroys the old descriptor first.
+  auto& pdhg_cusparse_view           = pdhg_solver_.get_cusparse_view();
+  pdhg_cusparse_view.batch_dual_solutions =
+    detail::make_dnmat<f_t>(op_problem_scaled_.n_constraints,
+                            climber_strategies_.size(),
+                            climber_strategies_.size(),
+                            pdhg_solver_.get_saddle_point_state().get_dual_solution().data(),
+                            CUSPARSE_ORDER_ROW);
+  pdhg_cusparse_view.batch_current_AtYs =
+    detail::make_dnmat<f_t>(op_problem_scaled_.n_variables,
+                            climber_strategies_.size(),
+                            climber_strategies_.size(),
+                            pdhg_solver_.get_saddle_point_state().get_current_AtY().data(),
+                            CUSPARSE_ORDER_ROW);
+  pdhg_cusparse_view.batch_reflected_primal_solutions =
+    detail::make_dnmat<f_t>(op_problem_scaled_.n_variables,
+                            climber_strategies_.size(),
+                            climber_strategies_.size(),
+                            pdhg_solver_.get_reflected_primal().data(),
+                            CUSPARSE_ORDER_ROW);
+  pdhg_cusparse_view.batch_dual_gradients =
+    detail::make_dnmat<f_t>(op_problem_scaled_.n_constraints,
+                            climber_strategies_.size(),
+                            climber_strategies_.size(),
+                            pdhg_solver_.get_saddle_point_state().get_dual_gradient().data(),
+                            CUSPARSE_ORDER_ROW);
 
   // Reset cusparse view used by adaptive step size strategy but owned by PDHG
-  pdhg_cusparse_view.batch_potential_next_dual_solution.create(
-    op_problem_scaled_.n_constraints,
-    climber_strategies_.size(),
-    op_problem_scaled_.n_constraints,
-    pdhg_solver_.get_potential_next_dual_solution().data(),
-    CUSPARSE_ORDER_COL);
-  pdhg_cusparse_view.batch_next_AtYs.create(
-    op_problem_scaled_.n_variables,
-    climber_strategies_.size(),
-    op_problem_scaled_.n_variables,
-    pdhg_solver_.get_saddle_point_state().get_next_AtY().data(),
-    CUSPARSE_ORDER_COL);
+  pdhg_cusparse_view.batch_potential_next_dual_solution =
+    detail::make_dnmat<f_t>(op_problem_scaled_.n_constraints,
+                            climber_strategies_.size(),
+                            op_problem_scaled_.n_constraints,
+                            pdhg_solver_.get_potential_next_dual_solution().data(),
+                            CUSPARSE_ORDER_COL);
+  pdhg_cusparse_view.batch_next_AtYs =
+    detail::make_dnmat<f_t>(op_problem_scaled_.n_variables,
+                            climber_strategies_.size(),
+                            op_problem_scaled_.n_variables,
+                            pdhg_solver_.get_saddle_point_state().get_next_AtY().data(),
+                            CUSPARSE_ORDER_COL);
 
   // Reset cusparse view used by convergence information but owned by PDLP
-  current_op_problem_evaluation_cusparse_view_.batch_primal_solutions.create(
-    op_problem_scaled_.n_variables,
-    climber_strategies_.size(),
-    op_problem_scaled_.n_variables,
-    pdhg_solver_.get_potential_next_primal_solution().data(),
-    CUSPARSE_ORDER_COL);
-  current_op_problem_evaluation_cusparse_view_.batch_dual_solutions.create(
-    op_problem_scaled_.n_constraints,
-    climber_strategies_.size(),
-    op_problem_scaled_.n_constraints,
-    pdhg_solver_.get_potential_next_dual_solution().data(),
-    CUSPARSE_ORDER_COL);
-  current_op_problem_evaluation_cusparse_view_.batch_tmp_duals.create(
-    op_problem_scaled_.n_constraints,
-    climber_strategies_.size(),
-    op_problem_scaled_.n_constraints,
-    pdhg_solver_.get_dual_tmp_resource().data(),
-    CUSPARSE_ORDER_COL);
-  current_op_problem_evaluation_cusparse_view_.batch_tmp_primals.create(
-    op_problem_scaled_.n_variables,
-    climber_strategies_.size(),
-    op_problem_scaled_.n_variables,
-    pdhg_solver_.get_primal_tmp_resource().data(),
-    CUSPARSE_ORDER_COL);
+  current_op_problem_evaluation_cusparse_view_.batch_primal_solutions =
+    detail::make_dnmat<f_t>(op_problem_scaled_.n_variables,
+                            climber_strategies_.size(),
+                            op_problem_scaled_.n_variables,
+                            pdhg_solver_.get_potential_next_primal_solution().data(),
+                            CUSPARSE_ORDER_COL);
+  current_op_problem_evaluation_cusparse_view_.batch_dual_solutions =
+    detail::make_dnmat<f_t>(op_problem_scaled_.n_constraints,
+                            climber_strategies_.size(),
+                            op_problem_scaled_.n_constraints,
+                            pdhg_solver_.get_potential_next_dual_solution().data(),
+                            CUSPARSE_ORDER_COL);
+  current_op_problem_evaluation_cusparse_view_.batch_tmp_duals =
+    detail::make_dnmat<f_t>(op_problem_scaled_.n_constraints,
+                            climber_strategies_.size(),
+                            op_problem_scaled_.n_constraints,
+                            pdhg_solver_.get_dual_tmp_resource().data(),
+                            CUSPARSE_ORDER_COL);
+  current_op_problem_evaluation_cusparse_view_.batch_tmp_primals =
+    detail::make_dnmat<f_t>(op_problem_scaled_.n_variables,
+                            climber_strategies_.size(),
+                            op_problem_scaled_.n_variables,
+                            pdhg_solver_.get_primal_tmp_resource().data(),
+                            CUSPARSE_ORDER_COL);
 
   // Recalculate SpMM buffer sizes for the new batch dimensions.
   // cuSparse may require different buffer sizes when the number of columns changes
@@ -1828,10 +1828,10 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
       CUSPARSE_OPERATION_NON_TRANSPOSE,
       CUSPARSE_OPERATION_NON_TRANSPOSE,
       reusable_device_scalar_value_1_.data(),
-      pdhg_cusparse_view.A_T,
-      pdhg_cusparse_view.batch_dual_solutions,
+      pdhg_cusparse_view.A_T.get(),
+      pdhg_cusparse_view.batch_dual_solutions.get(),
       reusable_device_scalar_value_0_.data(),
-      pdhg_cusparse_view.batch_current_AtYs,
+      pdhg_cusparse_view.batch_current_AtYs.get(),
       (deterministic_batch_pdlp) ? CUSPARSE_SPMM_CSR_ALG3 : CUSPARSE_SPMM_CSR_ALG2,
       &new_buf_size,
       stream_view_));
@@ -1843,10 +1843,10 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
       CUSPARSE_OPERATION_NON_TRANSPOSE,
       CUSPARSE_OPERATION_NON_TRANSPOSE,
       reusable_device_scalar_value_1_.data(),
-      pdhg_cusparse_view.A,
-      pdhg_cusparse_view.batch_reflected_primal_solutions,
+      pdhg_cusparse_view.A.get(),
+      pdhg_cusparse_view.batch_reflected_primal_solutions.get(),
       reusable_device_scalar_value_0_.data(),
-      pdhg_cusparse_view.batch_dual_gradients,
+      pdhg_cusparse_view.batch_dual_gradients.get(),
       (deterministic_batch_pdlp) ? CUSPARSE_SPMM_CSR_ALG3 : CUSPARSE_SPMM_CSR_ALG2,
       &new_buf_size,
       stream_view_));
@@ -1858,10 +1858,10 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
       CUSPARSE_OPERATION_NON_TRANSPOSE,
       CUSPARSE_OPERATION_NON_TRANSPOSE,
       reusable_device_scalar_value_1_.data(),
-      pdhg_cusparse_view.A_T,
-      pdhg_cusparse_view.batch_potential_next_dual_solution,
+      pdhg_cusparse_view.A_T.get(),
+      pdhg_cusparse_view.batch_potential_next_dual_solution.get(),
       reusable_device_scalar_value_0_.data(),
-      pdhg_cusparse_view.batch_next_AtYs,
+      pdhg_cusparse_view.batch_next_AtYs.get(),
       CUSPARSE_SPMM_CSR_ALG3,
       &new_buf_size,
       stream_view_));
@@ -1873,10 +1873,10 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
       CUSPARSE_OPERATION_NON_TRANSPOSE,
       CUSPARSE_OPERATION_NON_TRANSPOSE,
       reusable_device_scalar_value_1_.data(),
-      current_op_problem_evaluation_cusparse_view_.A_T,
-      current_op_problem_evaluation_cusparse_view_.batch_dual_solutions,
+      current_op_problem_evaluation_cusparse_view_.A_T.get(),
+      current_op_problem_evaluation_cusparse_view_.batch_dual_solutions.get(),
       reusable_device_scalar_value_0_.data(),
-      current_op_problem_evaluation_cusparse_view_.batch_tmp_primals,
+      current_op_problem_evaluation_cusparse_view_.batch_tmp_primals.get(),
       CUSPARSE_SPMM_CSR_ALG3,
       &new_buf_size,
       stream_view_));
@@ -1889,10 +1889,10 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
       CUSPARSE_OPERATION_NON_TRANSPOSE,
       CUSPARSE_OPERATION_NON_TRANSPOSE,
       reusable_device_scalar_value_1_.data(),
-      current_op_problem_evaluation_cusparse_view_.A,
-      current_op_problem_evaluation_cusparse_view_.batch_primal_solutions,
+      current_op_problem_evaluation_cusparse_view_.A.get(),
+      current_op_problem_evaluation_cusparse_view_.batch_primal_solutions.get(),
       reusable_device_scalar_value_0_.data(),
-      current_op_problem_evaluation_cusparse_view_.batch_tmp_duals,
+      current_op_problem_evaluation_cusparse_view_.batch_tmp_duals.get(),
       CUSPARSE_SPMM_CSR_ALG3,
       &new_buf_size,
       stream_view_));
@@ -1909,10 +1909,10 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
     CUSPARSE_OPERATION_NON_TRANSPOSE,
     CUSPARSE_OPERATION_NON_TRANSPOSE,
     reusable_device_scalar_value_1_.data(),
-    pdhg_cusparse_view.A_T,
-    pdhg_cusparse_view.batch_dual_solutions,
+    pdhg_cusparse_view.A_T.get(),
+    pdhg_cusparse_view.batch_dual_solutions.get(),
     reusable_device_scalar_value_0_.data(),
-    pdhg_cusparse_view.batch_current_AtYs,
+    pdhg_cusparse_view.batch_current_AtYs.get(),
     (deterministic_batch_pdlp) ? CUSPARSE_SPMM_CSR_ALG3 : CUSPARSE_SPMM_CSR_ALG2,
     pdhg_cusparse_view.buffer_transpose_batch_row_row_.data(),
     stream_view_);
@@ -1921,10 +1921,10 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
     CUSPARSE_OPERATION_NON_TRANSPOSE,
     CUSPARSE_OPERATION_NON_TRANSPOSE,
     reusable_device_scalar_value_1_.data(),
-    pdhg_cusparse_view.A,
-    pdhg_cusparse_view.batch_reflected_primal_solutions,
+    pdhg_cusparse_view.A.get(),
+    pdhg_cusparse_view.batch_reflected_primal_solutions.get(),
     reusable_device_scalar_value_0_.data(),
-    pdhg_cusparse_view.batch_dual_gradients,
+    pdhg_cusparse_view.batch_dual_gradients.get(),
     (deterministic_batch_pdlp) ? CUSPARSE_SPMM_CSR_ALG3 : CUSPARSE_SPMM_CSR_ALG2,
     pdhg_cusparse_view.buffer_non_transpose_batch_row_row_.data(),
     stream_view_);
@@ -1934,10 +1934,10 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
                              CUSPARSE_OPERATION_NON_TRANSPOSE,
                              CUSPARSE_OPERATION_NON_TRANSPOSE,
                              reusable_device_scalar_value_1_.data(),
-                             pdhg_cusparse_view.A_T,
-                             pdhg_cusparse_view.batch_potential_next_dual_solution,
+                             pdhg_cusparse_view.A_T.get(),
+                             pdhg_cusparse_view.batch_potential_next_dual_solution.get(),
                              reusable_device_scalar_value_0_.data(),
-                             pdhg_cusparse_view.batch_next_AtYs,
+                             pdhg_cusparse_view.batch_next_AtYs.get(),
                              CUSPARSE_SPMM_CSR_ALG3,
                              (f_t*)pdhg_cusparse_view.buffer_transpose_batch.data(),
                              stream_view_);
@@ -1948,10 +1948,10 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
     CUSPARSE_OPERATION_NON_TRANSPOSE,
     CUSPARSE_OPERATION_NON_TRANSPOSE,
     reusable_device_scalar_value_1_.data(),
-    current_op_problem_evaluation_cusparse_view_.A_T,
-    current_op_problem_evaluation_cusparse_view_.batch_dual_solutions,
+    current_op_problem_evaluation_cusparse_view_.A_T.get(),
+    current_op_problem_evaluation_cusparse_view_.batch_dual_solutions.get(),
     reusable_device_scalar_value_0_.data(),
-    current_op_problem_evaluation_cusparse_view_.batch_tmp_primals,
+    current_op_problem_evaluation_cusparse_view_.batch_tmp_primals.get(),
     CUSPARSE_SPMM_CSR_ALG3,
     (f_t*)current_op_problem_evaluation_cusparse_view_.buffer_transpose_batch.data(),
     stream_view_);
@@ -1961,10 +1961,10 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
     CUSPARSE_OPERATION_NON_TRANSPOSE,
     CUSPARSE_OPERATION_NON_TRANSPOSE,
     reusable_device_scalar_value_1_.data(),
-    current_op_problem_evaluation_cusparse_view_.A,
-    current_op_problem_evaluation_cusparse_view_.batch_primal_solutions,
+    current_op_problem_evaluation_cusparse_view_.A.get(),
+    current_op_problem_evaluation_cusparse_view_.batch_primal_solutions.get(),
     reusable_device_scalar_value_0_.data(),
-    current_op_problem_evaluation_cusparse_view_.batch_tmp_duals,
+    current_op_problem_evaluation_cusparse_view_.batch_tmp_duals.get(),
     CUSPARSE_SPMM_CSR_ALG3,
     (f_t*)current_op_problem_evaluation_cusparse_view_.buffer_non_transpose_batch.data(),
     stream_view_);
@@ -2027,11 +2027,11 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
 
   // Make potential_next_dual_solution point towards reflected dual solution to reuse the code
-  RAFT_CUSPARSE_TRY(cusparseDnVecSetValues(cusparse_view.potential_next_dual_solution,
+  RAFT_CUSPARSE_TRY(cusparseDnVecSetValues(cusparse_view.potential_next_dual_solution.get(),
                                            (void*)pdhg_solver_.get_reflected_dual().data()));
 
   if (batch_mode_)
-    RAFT_CUSPARSE_TRY(cusparseDnMatSetValues(cusparse_view.batch_potential_next_dual_solution,
+    RAFT_CUSPARSE_TRY(cusparseDnMatSetValues(cusparse_view.batch_potential_next_dual_solution.get(),
                                              (void*)pdhg_solver_.get_reflected_dual().data()));
 
   step_size_strategy_.compute_interaction_and_movement(
@@ -2068,12 +2068,12 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
 
   // Put back
   RAFT_CUSPARSE_TRY(
-    cusparseDnVecSetValues(cusparse_view.potential_next_dual_solution,
+    cusparseDnVecSetValues(cusparse_view.potential_next_dual_solution.get(),
                            (void*)pdhg_solver_.get_potential_next_dual_solution().data()));
 
   if (batch_mode_) {
     RAFT_CUSPARSE_TRY(
-      cusparseDnMatSetValues(cusparse_view.batch_potential_next_dual_solution,
+      cusparseDnMatSetValues(cusparse_view.batch_potential_next_dual_solution.get(),
                              (void*)pdhg_solver_.get_potential_next_dual_solution().data()));
   }
 
@@ -3023,7 +3023,7 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
         raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
                                            CUSPARSE_OPERATION_NON_TRANSPOSE,
                                            reusable_device_scalar_value_1_.data(),
-                                           cusparse_view_.A_T,
+                                           cusparse_view_.A_T.get(),
                                            vecQ,
                                            reusable_device_scalar_value_0_.data(),
                                            vecATQ,
@@ -3036,7 +3036,7 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
         raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
                                            CUSPARSE_OPERATION_NON_TRANSPOSE,
                                            reusable_device_scalar_value_1_.data(),  // 1
-                                           cusparse_view_.A,
+                                           cusparse_view_.A.get(),
                                            vecATQ,
                                            reusable_device_scalar_value_0_.data(),  // 1
                                            vecZ,

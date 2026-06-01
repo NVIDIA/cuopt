@@ -401,10 +401,10 @@ void pdhg_solver_t<i_t, f_t>::compute_next_dual_solution(rmm::device_uvector<f_t
       mixed_precision_spmv(handle_ptr_->get_cusparse_handle(),
                            CUSPARSE_OPERATION_NON_TRANSPOSE,
                            reusable_device_scalar_value_1_.data(),
-                           cusparse_view_.A_mixed_,
-                           cusparse_view_.tmp_primal,
+                           cusparse_view_.A_mixed_.get(),
+                           cusparse_view_.tmp_primal.get(),
                            reusable_device_scalar_value_0_.data(),
-                           cusparse_view_.dual_gradient,
+                           cusparse_view_.dual_gradient.get(),
                            CUSPARSE_SPMV_CSR_ALG2,
                            cusparse_view_.buffer_non_transpose_mixed_.data(),
                            stream_view_);
@@ -415,10 +415,10 @@ void pdhg_solver_t<i_t, f_t>::compute_next_dual_solution(rmm::device_uvector<f_t
       raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
                                          CUSPARSE_OPERATION_NON_TRANSPOSE,
                                          reusable_device_scalar_value_1_.data(),
-                                         cusparse_view_.A,
-                                         cusparse_view_.tmp_primal,
+                                         cusparse_view_.A.get(),
+                                         cusparse_view_.tmp_primal.get(),
                                          reusable_device_scalar_value_0_.data(),
-                                         cusparse_view_.dual_gradient,
+                                         cusparse_view_.dual_gradient.get(),
                                          CUSPARSE_SPMV_CSR_ALG2,
                                          (f_t*)cusparse_view_.buffer_non_transpose.data(),
                                          stream_view_));
@@ -450,12 +450,12 @@ void pdhg_solver_t<i_t, f_t>::spmvop_At_y()
 #if CUDA_VER_13_2_UP
   if (is_cusparse_runtime_spmvop_supported()) {
     cusparse_spmvop_run(handle_ptr_->get_cusparse_handle(),
-                        cusparse_view_.spmv_op_plan_A_t_,
+                        cusparse_view_.spmv_op_plan_A_t_.get(),
                         reusable_device_scalar_value_1_.data(),
                         reusable_device_scalar_value_0_.data(),
-                        cusparse_view_.dual_solution,
-                        cusparse_view_.current_AtY,
-                        cusparse_view_.current_AtY,
+                        cusparse_view_.dual_solution.get(),
+                        cusparse_view_.current_AtY.get(),
+                        cusparse_view_.current_AtY.get(),
                         stream_view_.value());
     return;
   }
@@ -463,10 +463,10 @@ void pdhg_solver_t<i_t, f_t>::spmvop_At_y()
   RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
                                                        CUSPARSE_OPERATION_NON_TRANSPOSE,
                                                        reusable_device_scalar_value_1_.data(),
-                                                       cusparse_view_.A_T,
-                                                       cusparse_view_.dual_solution,
+                                                       cusparse_view_.A_T.get(),
+                                                       cusparse_view_.dual_solution.get(),
                                                        reusable_device_scalar_value_0_.data(),
-                                                       cusparse_view_.current_AtY,
+                                                       cusparse_view_.current_AtY.get(),
                                                        CUSPARSE_SPMV_CSR_ALG2,
                                                        (f_t*)cusparse_view_.buffer_transpose.data(),
                                                        stream_view_));
@@ -478,12 +478,12 @@ void pdhg_solver_t<i_t, f_t>::spmvop_A_x()
 #if CUDA_VER_13_2_UP
   if (is_cusparse_runtime_spmvop_supported()) {
     cusparse_spmvop_run(handle_ptr_->get_cusparse_handle(),
-                        cusparse_view_.spmv_op_plan_A_,
+                        cusparse_view_.spmv_op_plan_A_.get(),
                         reusable_device_scalar_value_1_.data(),
                         reusable_device_scalar_value_0_.data(),
-                        cusparse_view_.reflected_primal_solution,
-                        cusparse_view_.dual_gradient,
-                        cusparse_view_.dual_gradient,
+                        cusparse_view_.reflected_primal_solution.get(),
+                        cusparse_view_.dual_gradient.get(),
+                        cusparse_view_.dual_gradient.get(),
                         stream_view_.value());
     return;
   }
@@ -492,10 +492,10 @@ void pdhg_solver_t<i_t, f_t>::spmvop_A_x()
     raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
                                        CUSPARSE_OPERATION_NON_TRANSPOSE,
                                        reusable_device_scalar_value_1_.data(),
-                                       cusparse_view_.A,
-                                       cusparse_view_.reflected_primal_solution,
+                                       cusparse_view_.A.get(),
+                                       cusparse_view_.reflected_primal_solution.get(),
                                        reusable_device_scalar_value_0_.data(),
-                                       cusparse_view_.dual_gradient,
+                                       cusparse_view_.dual_gradient.get(),
                                        CUSPARSE_SPMV_CSR_ALG2,
                                        (f_t*)cusparse_view_.buffer_non_transpose.data(),
                                        stream_view_));
@@ -512,10 +512,10 @@ void pdhg_solver_t<i_t, f_t>::compute_At_y()
         mixed_precision_spmv(handle_ptr_->get_cusparse_handle(),
                              CUSPARSE_OPERATION_NON_TRANSPOSE,
                              reusable_device_scalar_value_1_.data(),
-                             cusparse_view_.A_T_mixed_,
-                             cusparse_view_.dual_solution,
+                             cusparse_view_.A_T_mixed_.get(),
+                             cusparse_view_.dual_solution.get(),
                              reusable_device_scalar_value_0_.data(),
-                             cusparse_view_.current_AtY,
+                             cusparse_view_.current_AtY.get(),
                              CUSPARSE_SPMV_CSR_ALG2,
                              cusparse_view_.buffer_transpose_mixed_.data(),
                              stream_view_);
@@ -527,10 +527,10 @@ void pdhg_solver_t<i_t, f_t>::compute_At_y()
         raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
                                            CUSPARSE_OPERATION_NON_TRANSPOSE,
                                            reusable_device_scalar_value_1_.data(),
-                                           cusparse_view_.A_T,
-                                           cusparse_view_.dual_solution,
+                                           cusparse_view_.A_T.get(),
+                                           cusparse_view_.dual_solution.get(),
                                            reusable_device_scalar_value_0_.data(),
-                                           cusparse_view_.current_AtY,
+                                           cusparse_view_.current_AtY.get(),
                                            CUSPARSE_SPMV_CSR_ALG2,
                                            (f_t*)cusparse_view_.buffer_transpose.data(),
                                            stream_view_));
@@ -541,10 +541,10 @@ void pdhg_solver_t<i_t, f_t>::compute_At_y()
       CUSPARSE_OPERATION_NON_TRANSPOSE,
       CUSPARSE_OPERATION_NON_TRANSPOSE,
       reusable_device_scalar_value_1_.data(),
-      cusparse_view_.A_T,
-      cusparse_view_.batch_dual_solutions,
+      cusparse_view_.A_T.get(),
+      cusparse_view_.batch_dual_solutions.get(),
       reusable_device_scalar_value_0_.data(),
-      cusparse_view_.batch_current_AtYs,
+      cusparse_view_.batch_current_AtYs.get(),
       (deterministic_batch_pdlp) ? CUSPARSE_SPMM_CSR_ALG3 : CUSPARSE_SPMM_CSR_ALG2,
       (f_t*)cusparse_view_.buffer_transpose_batch_row_row_.data(),
       stream_view_));
@@ -561,10 +561,10 @@ void pdhg_solver_t<i_t, f_t>::compute_A_x()
         mixed_precision_spmv(handle_ptr_->get_cusparse_handle(),
                              CUSPARSE_OPERATION_NON_TRANSPOSE,
                              reusable_device_scalar_value_1_.data(),
-                             cusparse_view_.A_mixed_,
-                             cusparse_view_.reflected_primal_solution,
+                             cusparse_view_.A_mixed_.get(),
+                             cusparse_view_.reflected_primal_solution.get(),
                              reusable_device_scalar_value_0_.data(),
-                             cusparse_view_.dual_gradient,
+                             cusparse_view_.dual_gradient.get(),
                              CUSPARSE_SPMV_CSR_ALG2,
                              cusparse_view_.buffer_non_transpose_mixed_.data(),
                              stream_view_);
@@ -576,10 +576,10 @@ void pdhg_solver_t<i_t, f_t>::compute_A_x()
         raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
                                            CUSPARSE_OPERATION_NON_TRANSPOSE,
                                            reusable_device_scalar_value_1_.data(),
-                                           cusparse_view_.A,
-                                           cusparse_view_.reflected_primal_solution,
+                                           cusparse_view_.A.get(),
+                                           cusparse_view_.reflected_primal_solution.get(),
                                            reusable_device_scalar_value_0_.data(),
-                                           cusparse_view_.dual_gradient,
+                                           cusparse_view_.dual_gradient.get(),
                                            CUSPARSE_SPMV_CSR_ALG2,
                                            (f_t*)cusparse_view_.buffer_non_transpose.data(),
                                            stream_view_));
@@ -590,10 +590,10 @@ void pdhg_solver_t<i_t, f_t>::compute_A_x()
       CUSPARSE_OPERATION_NON_TRANSPOSE,
       CUSPARSE_OPERATION_NON_TRANSPOSE,
       reusable_device_scalar_value_1_.data(),
-      cusparse_view_.A,
-      cusparse_view_.batch_reflected_primal_solutions,
+      cusparse_view_.A.get(),
+      cusparse_view_.batch_reflected_primal_solutions.get(),
       reusable_device_scalar_value_0_.data(),
-      cusparse_view_.batch_dual_gradients,
+      cusparse_view_.batch_dual_gradients.get(),
       (deterministic_batch_pdlp) ? CUSPARSE_SPMM_CSR_ALG3 : CUSPARSE_SPMM_CSR_ALG2,
       (f_t*)cusparse_view_.buffer_non_transpose_batch_row_row_.data(),
       stream_view_));
@@ -1381,21 +1381,21 @@ void pdhg_solver_t<i_t, f_t>::update_solution(
   std::swap(current_saddle_point_state_.current_AtY_, current_saddle_point_state_.next_AtY_);
 
   // Update cusparse views to point to the new values, cost is marginal
-  RAFT_CUSPARSE_TRY(cusparseDnVecSetValues(cusparse_view_.current_AtY,
+  RAFT_CUSPARSE_TRY(cusparseDnVecSetValues(cusparse_view_.current_AtY.get(),
                                            current_saddle_point_state_.current_AtY_.data()));
   RAFT_CUSPARSE_TRY(
-    cusparseDnVecSetValues(cusparse_view_.next_AtY, current_saddle_point_state_.next_AtY_.data()));
-  RAFT_CUSPARSE_TRY(cusparseDnVecSetValues(cusparse_view_.potential_next_dual_solution,
+    cusparseDnVecSetValues(cusparse_view_.next_AtY.get(), current_saddle_point_state_.next_AtY_.data()));
+  RAFT_CUSPARSE_TRY(cusparseDnVecSetValues(cusparse_view_.potential_next_dual_solution.get(),
                                            potential_next_dual_solution_.data()));
-  RAFT_CUSPARSE_TRY(cusparseDnVecSetValues(cusparse_view_.primal_solution,
+  RAFT_CUSPARSE_TRY(cusparseDnVecSetValues(cusparse_view_.primal_solution.get(),
                                            current_saddle_point_state_.primal_solution_.data()));
-  RAFT_CUSPARSE_TRY(cusparseDnVecSetValues(cusparse_view_.dual_solution,
+  RAFT_CUSPARSE_TRY(cusparseDnVecSetValues(cusparse_view_.dual_solution.get(),
                                            current_saddle_point_state_.dual_solution_.data()));
   RAFT_CUSPARSE_TRY(
-    cusparseDnVecSetValues(current_op_problem_evaluation_cusparse_view_.primal_solution,
+    cusparseDnVecSetValues(current_op_problem_evaluation_cusparse_view_.primal_solution.get(),
                            current_saddle_point_state_.primal_solution_.data()));
   RAFT_CUSPARSE_TRY(
-    cusparseDnVecSetValues(current_op_problem_evaluation_cusparse_view_.dual_solution,
+    cusparseDnVecSetValues(current_op_problem_evaluation_cusparse_view_.dual_solution.get(),
                            current_saddle_point_state_.dual_solution_.data()));
 }
 

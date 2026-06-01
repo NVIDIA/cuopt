@@ -389,10 +389,10 @@ void adaptive_step_size_strategy_t<i_t, f_t>::compute_interaction_and_movement(
       raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
                                          CUSPARSE_OPERATION_NON_TRANSPOSE,
                                          reusable_device_scalar_value_1_.data(),  // alpha
-                                         cusparse_view.A_T,
-                                         cusparse_view.potential_next_dual_solution,
+                                         cusparse_view.A_T.get(),
+                                         cusparse_view.potential_next_dual_solution.get(),
                                          reusable_device_scalar_value_0_.data(),  // beta
-                                         cusparse_view.next_AtY,
+                                         cusparse_view.next_AtY.get(),
                                          CUSPARSE_SPMV_CSR_ALG2,
                                          (f_t*)cusparse_view.buffer_transpose.data(),
                                          stream_view_.value()));
@@ -403,10 +403,10 @@ void adaptive_step_size_strategy_t<i_t, f_t>::compute_interaction_and_movement(
                                          CUSPARSE_OPERATION_NON_TRANSPOSE,
                                          CUSPARSE_OPERATION_NON_TRANSPOSE,
                                          reusable_device_scalar_value_1_.data(),
-                                         cusparse_view.A_T,
-                                         cusparse_view.batch_potential_next_dual_solution,
+                                         cusparse_view.A_T.get(),
+                                         cusparse_view.batch_potential_next_dual_solution.get(),
                                          reusable_device_scalar_value_0_.data(),
-                                         cusparse_view.batch_next_AtYs,
+                                         cusparse_view.batch_next_AtYs.get(),
                                          CUSPARSE_SPMM_CSR_ALG3,
                                          (f_t*)cusparse_view.buffer_transpose_batch.data(),
                                          stream_view_.value()));
