@@ -1,8 +1,8 @@
-================
+=================
 MIP API Reference
-================
+=================
 
-MIP uses the same Python API classes as LP/QP/SOCP — see :doc:`continuous-api` for the full class reference. The following are particularly relevant for MIP problems.
+MIP uses the same Python API classes as LP/QP/SOCP — see :doc:`../continuous/continuous-api` for the full class reference. The following are particularly relevant for MIP problems.
 
 Variable Types
 --------------

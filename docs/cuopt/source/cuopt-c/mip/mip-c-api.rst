@@ -1,12 +1,12 @@
 cuOpt MIP C API Reference
 =========================
 
-This section contains the cuOpt MIP C API reference. Functions for problem creation, solver settings, solving, and inspecting solutions are shared with LP/QP/SOCP and documented in :doc:`continuous-c-api`.
+This section contains the cuOpt MIP C API reference. Functions for problem creation, solver settings, solving, and inspecting solutions are shared with LP/QP/SOCP and documented in :doc:`../continuous/continuous-c-api`.
 
 Warm Start and MIP Start
 ------------------------
 
-For LP problems solved with PDLP, see :doc:`continuous-c-api` for primal and dual warm start.
+For LP problems solved with PDLP, see :doc:`../continuous/continuous-c-api` for primal and dual warm start.
 
 For MIP problems, one or more primal solution hints (MIP starts) may be provided:
 

@@ -1,7 +1,7 @@
 cuOpt LP/QP/SOCP C API Reference
 ========================================
 
-This section contains the cuOpt LP/QP/SOCP C API reference. For MIP-specific functions and callbacks, see :doc:`mip-c-api`.
+This section contains the cuOpt LP/QP/SOCP C API reference. For MIP-specific functions and callbacks, see :doc:`../mip/mip-c-api`.
 
 Integer and Floating-Point Types
 ---------------------------------
@@ -275,7 +275,7 @@ For LP problems solved with PDLP, primal and dual warm start vectors may be prov
 .. doxygenfunction:: cuOptSetInitialDualSolution
 
 .. note::
-   For MIP warm start (MIP starts), see :doc:`mip-c-api`.
+   For MIP warm start (MIP starts), see :doc:`../mip/mip-c-api`.
 
 
 Solving an LP or MIP
