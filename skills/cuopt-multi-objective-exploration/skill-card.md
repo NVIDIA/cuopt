@@ -57,7 +57,7 @@ Underlying evaluation signals used in this run: <br>
 
 
 ## Evaluation Results: <br>
-A pre-publication WITH/WITHOUT A/B (Colab GPU, real cuOpt) supports the value claim — interpretation discipline +0.15 across both models and both decisions, with frontier exploration as a supporting lift; full numbers and caveats in `BENCHMARK.md`. The official NVSkills-Eval table below (`claude-code` / `codex`, external profile) is PENDING — it runs on the fork; the values are placeholders until then. <br>
+A pre-publication WITH/WITHOUT A/B (Colab GPU, real cuOpt) supports the value claim — interpretation discipline +0.15 across both models and both decisions, with frontier exploration as a supporting lift; full numbers and caveats in `BENCHMARK.md`. The official NVSkills-Eval table below (`claude-code` / `codex`, external profile) is PENDING — it's maintainer-run (`/nvskills-ci`, non-fork); the values are placeholders until then. <br>
 
 | Dimension | Num | `claude-code` | `codex` |
 |---|---:|---:|---:|
