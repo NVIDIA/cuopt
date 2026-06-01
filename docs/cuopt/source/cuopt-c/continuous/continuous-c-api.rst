@@ -64,10 +64,16 @@ after creating a linear problem:
 .. doxygenfunction:: cuOptAddQuadraticConstraint
 
 .. note::
-   ``cuOptAddQuadraticConstraint`` enables **SOCP (beta)** support. SOC constraints are specified
-   as quadratic inequalities (e.g. ``u^T*u - t^2 <= 0`` for ``||u||_2 <= t``); cuOpt detects the
-   SOC structure and converts to cone form internally, then selects the barrier solver. Only
-   ``CUOPT_LESS_THAN`` and ``CUOPT_GREATER_THAN`` sense is supported; equality constraints and
+   ``cuOptAddQuadraticConstraint`` enables **SOCP (beta)** support. Quadratic constraints are
+   specified as quadratic inequalities ``x^T Q x + c^T x + alpha <= 0`` with a zero right-hand
+   side; cuOpt translates the second-order cone structure into cone form internally, then selects
+   the barrier solver. Only ``(Q, c, alpha)`` combinations describing a second-order cone are
+   supported — in practice the two cone families:
+
+   - **Standard (Lorentz) cone** ``||(x_1, ..., x_{k-1})||_2 <= x_k`` as ``x_1^2 + ... + x_{k-1}^2 - x_k^2 <= 0``.
+   - **Rotated cone** ``x_1^2 + ... + x_{k-2}^2 <= x_{k-1}*x_k`` (with ``x_{k-1}, x_k >= 0``) as ``x_1^2 + ... + x_{k-2}^2 - x_{k-1}*x_k <= 0``.
+
+   Only ``CUOPT_LESS_THAN`` and ``CUOPT_GREATER_THAN`` sense is supported; equality constraints and
    general quadratic constraints are not supported.
 
 A optimization problem must be destroyed with the following function

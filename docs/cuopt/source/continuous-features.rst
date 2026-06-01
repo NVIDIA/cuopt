@@ -35,7 +35,7 @@ The Linear Programming (LP), Quadratic Programming (QP), and Second-Order Cone P
        -
 
 .. note::
-   SOCP is not currently supported in third-party modeling languages.
+   SOCP is not yet supported in third-party modeling languages.
 
 - **C API**: A native C API that provides direct low-level access to cuOpt's LP/QP/SOCP capabilities, enabling integration into any application or system that can interface with C.
 
@@ -97,40 +97,83 @@ Second-Order Cone Programming (Beta)
 
 .. note:: SOCP support is **beta** in this release.
 
-cuOpt supports Second-Order Cone Programming (SOCP) problems of the form:
+cuOpt accepts **quadratic constraints** of the form
+
+.. code-block:: text
+
+    x^T Q x + c^T x + alpha <= 0
+
+and translates them internally into **second-order cone** constraints, so it can solve second-order cone programs (SOCP). A problem then has the shape:
 
 .. code-block:: text
 
     minimize        c^T*x
     subject to      A*x {<=, =, >=} b
-                    ||u_i||_2 <= t_i   (second-order cone constraints)
+                    x^T Q_i x + c_i^T x + alpha_i <= 0   (quadratic constraints)
                     lb <= x <= ub
 
-Because cuOpt does not accept cone constraints directly, SOC constraints are specified through the quadratic constraint API. Each SOC constraint ``||u||_2 <= t`` is expressed as the equivalent quadratic inequality ``u^T*u - t^2 <= 0``. cuOpt detects the SOC structure and converts to cone form internally before solving with the barrier method.
+Quadratic constraints are supplied through the quadratic constraint API — in Python via ``addConstraint`` with a quadratic expression, in C via :c:func:`cuOptAddQuadraticConstraint`, and in MPS via ``QCMATRIX`` sections — rather than as cone constraints directly. cuOpt detects the second-order cone structure of the quadratic form and converts it before solving with the barrier method.
 
 .. note::
-   Only SOC-structured quadratic inequalities are supported. General quadratic constraints
-   (arbitrary quadratic forms) are not supported.
+   Only quadratic constraints whose ``(Q, c, alpha)`` describe a second-order cone are
+   currently supported. General quadratic constraints (arbitrary quadratic forms) are
+   not supported.
+
+In practice the supported quadratic forms are the two cone families below, written with a zero right-hand side. ``x_1, ..., x_k`` denote the variables that participate in a single constraint:
+
+**Standard (Lorentz) cone** — ``||(x_1, ..., x_{k-1})||_2 <= x_k`` with ``x_k >= 0``. Express it as the quadratic inequality
+
+.. code-block:: text
+
+    x_1^2 + ... + x_{k-1}^2 - x_k^2 <= 0
+
+**Rotated cone** — ``x_1^2 + ... + x_{k-2}^2 <= x_{k-1} * x_k`` with ``x_{k-1} >= 0`` and ``x_k >= 0``. Express it as the quadratic inequality
+
+.. code-block:: text
+
+    x_1^2 + ... + x_{k-2}^2 - x_{k-1} * x_k <= 0
 
 When any quadratic constraint is present, cuOpt automatically selects the barrier method and disables presolve optimizations that apply only to linear problems.
 
 **Constraints:**
 
 - Only ``<=`` and ``>=`` sense is supported. Equality quadratic constraints are not supported.
-- The quadratic constraint must have valid second-order cone structure.
+- The right-hand side must be ``0``.
+- The quadratic form must have valid second-order cone structure (standard or rotated).
 
-**Python example** — expressing ``||[x, y]||_2 <= z`` as a quadratic inequality:
+**Python example — standard cone** ``||(x_1, x_2)||_2 <= x_3``:
 
 .. code-block:: python
 
-    x = problem.addVariable("x", lb=0)
-    y = problem.addVariable("y", lb=0)
-    z = problem.addVariable("z", lb=0)
+    x1 = problem.addVariable(name="x1")
+    x2 = problem.addVariable(name="x2")
+    x3 = problem.addVariable(name="x3", lb=0)   # cone head, must be >= 0
 
-    # SOC constraint ||[x,y]||_2 <= z expressed as x^2 + y^2 - z^2 <= 0
-    problem.addConstraint(x*x + y*y - z*z <= 0, name="soc")
+    # ||(x1, x2)||_2 <= x3  expressed as  x1^2 + x2^2 - x3^2 <= 0
+    problem.addConstraint(x1*x1 + x2*x2 - x3*x3 <= 0, name="soc")
 
-**C API:** Use :c:func:`cuOptAddQuadraticConstraint` to add SOC constraints expressed as quadratic inequalities. cuOpt detects the SOC structure and converts to cone form internally.
+**Python example — rotated cone** ``x_1^2 + x_2^2 <= x_3 * x_4``:
+
+.. code-block:: python
+
+    x1 = problem.addVariable(name="x1")
+    x2 = problem.addVariable(name="x2")
+    x3 = problem.addVariable(name="x3", lb=0)   # cone heads, must be >= 0
+    x4 = problem.addVariable(name="x4", lb=0)
+
+    # x1^2 + x2^2 <= x3 * x4  expressed as  x1^2 + x2^2 - x3*x4 <= 0.
+    # The quadratic form must be symmetric, so the cross term is supplied as the
+    # two equal halves -0.5*x3*x4 and -0.5*x4*x3 (i.e. Q[x3,x4] = Q[x4,x3] = -0.5).
+    problem.addConstraint(
+        x1*x1 + x2*x2 - 0.5*x3*x4 - 0.5*x4*x3 <= 0, name="rotated_soc"
+    )
+
+.. note::
+   The rotated-cone cross term must be written symmetrically (both ``x3*x4`` and
+   ``x4*x3`` halves). Supplying only ``- x3*x4`` produces an asymmetric quadratic
+   form that is not recognized as a second-order cone.
+
+**C API:** Use :c:func:`cuOptAddQuadraticConstraint` to add standard or rotated SOC constraints expressed as quadratic inequalities. cuOpt detects the SOC structure and converts to cone form internally.
 
 .. note:: SOCP problems always use the barrier solver regardless of the ``CUOPT_METHOD`` setting.
 

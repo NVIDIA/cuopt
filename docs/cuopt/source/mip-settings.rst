@@ -271,7 +271,7 @@ Strong Branching Simplex Iteration Limit
 ``CUOPT_MIP_STRONG_BRANCHING_SIMPLEX_ITERATION_LIMIT`` controls the maximum number of simplex iterations allowed per candidate during strong branching.
 Reducing this value speeds up strong branching at the cost of less accurate candidate evaluations.
 
-.. note:: By default there is no iteration limit for strong branching solves.
+.. note:: The default value is ``-1`` (no iteration limit for strong branching solves).
 
 MIP Determinism Mode
 ^^^^^^^^^^^^^^^^^^^^^

@@ -30,7 +30,7 @@ This section contains details on the cuOpt Python package.
    :name: Continuous Optimization Python API
    :titlesonly:
 
-   Continuous Optimization <continuous/index.rst>
+   Continuous (Convex) Optimization <continuous/index.rst>
 
 .. toctree::
    :maxdepth: 3

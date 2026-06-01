@@ -1,6 +1,6 @@
-====================
-LP/QP C API Examples
-====================
+=========================
+LP/QP/SOCP C API Examples
+=========================
 
 
 Example With Data
@@ -212,3 +212,118 @@ You should see the following output:
    x = 0.500000
    y = 0.500000
    Test completed successfully!
+
+
+.. _qp-mps-example-c:
+
+QP Example With MPS File
+------------------------
+
+The same ``mps_file_example.c`` program also solves quadratic-objective (QP)
+problems. A quadratic objective is supplied through a ``QUADOBJ`` section, which
+holds the (upper-triangular) entries of the objective matrix ``Q`` using the
+MPS ``1/2 * x^T Q x`` convention.
+
+A sample QP file (:download:`download qp_sample.mps <examples/qp_sample.mps>`),
+which minimizes ``x^2 + y^2`` subject to ``x + y >= 1``:
+
+.. literalinclude:: examples/qp_sample.mps
+   :language: text
+   :linenos:
+
+Run it with the same binary:
+
+.. code-block:: bash
+
+   ./mps_file_example qp_sample.mps
+
+cuOpt detects the quadratic objective and solves with the barrier method. The
+optimum is ``x = y = 0.5`` with objective ``0.5``:
+
+.. code-block:: bash
+   :caption: Output (barrier iteration log abbreviated)
+
+   Reading and solving MPS file: qp_sample.mps
+   Problem has a quadratic objective. Solving with barrier.
+   Barrier solver: 1 constraints, 3 variables, 3 nonzeros
+   Quadratic objective matrix  : 2 nonzeros
+   ...
+   Optimal solution found in 11 iterations and 0.188s
+   Objective +5.00000008e-01
+   Barrier finished in 0.19 seconds
+
+   Results:
+   --------
+   Number of variables: 2
+   Termination status: Optimal (1)
+   Solve time: 0.190449 seconds
+   Objective value: 0.500000
+
+   Primal Solution: First 10 solution variables (or fewer if less exist):
+   x1 = 0.500000
+   x2 = 0.500000
+
+   Solver completed successfully!
+
+
+.. _socp-mps-example-c:
+
+SOCP Example With MPS File
+--------------------------
+
+Second-order cone (SOCP) constraints are expressed through ``QCMATRIX`` sections
+— one per quadratic constraint — each holding the **full, symmetric** entries of
+that constraint's quadratic matrix with a zero right-hand side. Both standard and
+rotated cones are supported; see the SOCP section of
+:doc:`LP/QP/SOCP Features </continuous-features>` for the cone forms.
+
+A sample SOCP file (:download:`download socp_sample.mps <examples/socp_sample.mps>`)
+minimizes ``s + p + q`` subject to ``a + b >= 2`` and two cones:
+
+- standard cone ``||(a, b)||_2 <= s`` (row ``QCSTD``, written ``a^2 + b^2 - s^2 <= 0``)
+- rotated cone ``a^2 + b^2 <= p * q`` (row ``QCROT``)
+
+.. literalinclude:: examples/socp_sample.mps
+   :language: text
+   :linenos:
+
+The rotated cone's cross term is given symmetrically as the two half-entries
+``P Q -0.5`` and ``Q P -0.5`` (so that ``x^T Q x`` contributes ``-p*q``). Run it
+with the same binary:
+
+.. code-block:: bash
+
+   ./mps_file_example socp_sample.mps
+
+cuOpt detects the quadratic constraints, converts them to second-order cones, and
+solves with the barrier method. The optimum is ``a = b = 1`` and
+``s = p = q = sqrt(2) ≈ 1.414214`` with objective ``3*sqrt(2) ≈ 4.242641``. In the
+output below, ``x1..x5`` are ``a, b, s, p, q`` in column order:
+
+.. code-block:: bash
+   :caption: Output (barrier iteration log abbreviated)
+
+   Reading and solving MPS file: socp_sample.mps
+   Problem has 2 quadratic constraints. Converting to second-order cones and solving with barrier.
+   Barrier solver: 5 constraints, 10 variables, 13 nonzeros
+   Second-order cones          : 2
+   ...
+   Optimal solution found in 9 iterations and 0.126s
+   Objective +4.24264071e+00
+   Barrier finished in 0.13 seconds
+
+   Results:
+   --------
+   Number of variables: 5
+   Termination status: Optimal (1)
+   Solve time: 0.128689 seconds
+   Objective value: 4.242641
+
+   Primal Solution: First 10 solution variables (or fewer if less exist):
+   x1 = 1.000000
+   x2 = 1.000000
+   x3 = 1.414214
+   x4 = 1.414214
+   x5 = 1.414214
+
+   Solver completed successfully!
