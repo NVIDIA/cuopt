@@ -617,10 +617,8 @@ void fj_t<i_t, f_t>::load_balancing_score_update(const rmm::cuda_stream_view& st
   data.iteration_related_variables.clear(stream);
 
   void* kernel_args[] = {&v};
-  launch_load_balancing_prepare_iteration<i_t, f_t>(grid_load_balancing_prepare,
-                                                    blocks_load_balancing_prepare,
-                                                    kernel_args,
-                                                    stream);
+  launch_load_balancing_prepare_iteration<i_t, f_t>(
+    grid_load_balancing_prepare, blocks_load_balancing_prepare, kernel_args, stream);
 
   data.load_balancing_start_event.record(stream);
 
@@ -741,10 +739,7 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
         } else {
           if (is_binary_pb) {
             launch_compute_mtm_moves_kernel<i_t, f_t, MTMMoveType::FJ_MTM_VIOLATED, true>(
-              grid_resetmoves_bin,
-              blocks_resetmoves_bin,
-              reset_moves_args,
-              climber_stream);
+              grid_resetmoves_bin, blocks_resetmoves_bin, reset_moves_args, climber_stream);
           } else {
             launch_compute_mtm_moves_kernel<i_t, f_t, MTMMoveType::FJ_MTM_VIOLATED, false>(
               grid_resetmoves, blocks_resetmoves, reset_moves_args, climber_stream);
@@ -753,12 +748,8 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
 #if FJ_DEBUG_LOAD_BALANCING
         if (use_load_balancing) {
           launch_compute_mtm_moves_kernel<i_t, f_t, MTMMoveType::FJ_MTM_VIOLATED, false>(
-            grid_resetmoves,
-            blocks_resetmoves,
-            reset_moves_args,
-            climber_stream);
-          launch_load_balancing_sanity_checks<i_t, f_t>(
-            512, 128, kernel_args, climber_stream);
+            grid_resetmoves, blocks_resetmoves, reset_moves_args, climber_stream);
+          launch_load_balancing_sanity_checks<i_t, f_t>(512, 128, kernel_args, climber_stream);
         }
 #endif
 
@@ -778,8 +769,7 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
                                  pb_ptr->n_variables,
                                  climber_stream);
 
-      launch_select_variable_kernel<i_t, f_t>(
-        dim3(1), dim3(256), kernel_args, climber_stream);
+      launch_select_variable_kernel<i_t, f_t>(dim3(1), dim3(256), kernel_args, climber_stream);
 
       launch_handle_local_minimum_kernel<i_t, f_t>(
         grid_update_weights, blocks_update_weights, kernel_args, climber_stream);

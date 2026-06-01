@@ -115,12 +115,12 @@ void launch_update_assignment_kernel(dim3 grid,
                                      rmm::cuda_stream_view stream);
 
 template <typename i_t, typename f_t, MTMMoveType move_type, bool is_binary_pb>
-std::pair<dim3, dim3> get_launch_dims_compute_mtm_moves_kernel(
-  int TPB, const raft::handle_t* handle_ptr);
+std::pair<dim3, dim3> get_launch_dims_compute_mtm_moves_kernel(int TPB,
+                                                               const raft::handle_t* handle_ptr);
 
 template <typename i_t, typename f_t>
-std::pair<dim3, dim3> get_launch_dims_handle_local_minimum_kernel(
-  int TPB, const raft::handle_t* handle_ptr);
+std::pair<dim3, dim3> get_launch_dims_handle_local_minimum_kernel(int TPB,
+                                                                  const raft::handle_t* handle_ptr);
 
 template <typename i_t, typename f_t>
 std::pair<dim3, dim3> get_launch_dims_update_lift_moves_kernel(int TPB,
