@@ -23,8 +23,8 @@ The response is as follows:
 .. code-block:: text
 
     Optimal solution found in 0.01 seconds
-    x = 10.0
-    y = 0.0
+    x = 5.0
+    y = 5.0
     Objective value = 10.0
 
 
@@ -113,8 +113,8 @@ The response is as follows:
     === Expression Example Results ===
     x = 0.0
     y = 50.0
-    z = 99.99999999999999
-    Objective value = 399.99999999999994
+    z = 100.0
+    Objective value = 400.0
 
 Working with Quadratic objective matrix
 ---------------------------------------
@@ -175,6 +175,6 @@ The response is as follows:
 .. code-block:: text
 
     Optimal solution found in 0.01 seconds
-    x = 25.000000000639382
+    x = 25.001763214569394
     y = 0.0
-    Objective value = 50.000000001278764
+    Objective value = 50.00352642913879

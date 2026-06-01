@@ -24,7 +24,7 @@ The response is as follows:
 
     Optimal solution found in 0.00 seconds
     x = 36.0
-    y = 40.99999999999999
+    y = 41.0
     Objective value = 303.0
 
 
