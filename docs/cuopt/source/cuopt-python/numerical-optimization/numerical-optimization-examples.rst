@@ -1,6 +1,6 @@
-========================
-LP, QP and MILP Examples
-========================
+===============================
+Numerical Optimization Examples
+===============================
 
 This section contains examples of how to use the cuOpt linear programming, quadratic programming and mixed integer linear programming Python API.
 

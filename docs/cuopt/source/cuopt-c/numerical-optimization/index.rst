@@ -1,5 +1,5 @@
-Linear Programming
-==================
+Numerical Optimization
+======================
 
 This section contains details on the cuOpt LP/QP/MILP C API.
 

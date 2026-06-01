@@ -1,6 +1,6 @@
-==============================================================================
-Linear Programming, Quadratic Programming and Mixed Integer Linear Programming
-==============================================================================
+======================
+Numerical Optimization
+======================
 
 This section contains details on the cuOpt linear programming, quadratic programming and mixed integer linear programming Python API.
 

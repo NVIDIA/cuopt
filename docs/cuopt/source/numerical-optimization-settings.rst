@@ -1,6 +1,6 @@
-=================================
-LP, QP, and MILP Settings
-=================================
+===============================
+Numerical Optimization Settings
+===============================
 
 
 This page describes the parameter settings available for cuOpt's LP, QP, and MILP solvers. These parameters are set as :ref:`parameter constants <parameter-constants>` in case of C API and in case of Server Thin client as raw strings.

@@ -1,6 +1,6 @@
-=============================
-LP, QP and MILP API Reference
-=============================
+====================================
+Numerical Optimization API Reference
+====================================
 
 .. autoclass:: cuopt.linear_programming.problem.Problem
    :members:

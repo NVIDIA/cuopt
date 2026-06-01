@@ -1,5 +1,5 @@
-cuOpt LP/QP/MILP C API Reference
-========================================
+cuOpt Numerical Optimization C API Reference
+============================================
 
 This section contains the cuOpt LP/QP/MILP C API reference.
 
