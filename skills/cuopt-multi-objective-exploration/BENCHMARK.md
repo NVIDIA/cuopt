@@ -2,11 +2,11 @@
 
 Evaluation of the `cuopt-multi-objective-exploration` skill.
 
-> **Status: proof-of-concept A/B complete; official NVSkills-Eval pending on the fork.**
+> **Status: proof-of-concept A/B complete; official NVSkills-Eval pending (maintainer-run).**
 > The numbers below are from a custom WITH-vs-WITHOUT run on a Colab GPU with cuOpt in the
 > loop (real solves) — not from NVSkills-Eval. They establish the skill's value before the
 > formal run. The official NVSkills-Eval (`claude-code` + `codex`, external profile) and CI
-> Tiers 1–2 still run on the fork and gate publication.
+> Tiers 1–2 are maintainer-triggered (`/nvskills-ci`) on a non-fork `NVIDIA/cuopt` branch (fork PRs aren't supported) and gate publication.
 
 ## Summary
 
@@ -43,7 +43,7 @@ Evaluation of the `cuopt-multi-objective-exploration` skill.
 - Judge is `claude-opus-4-8` (LLM-graded rubric).
 - The shipped `SKILL.md` has been refined since the A/B run. Three additions are cuOpt-feasibility clarifications (PDLP warmstart is LP-only; ε-constrain *linear* objectives, since cuOpt constraints are linear; cap each MILP solve's time limit, so points are optimal to the gap you set) — factual corrections that don't bear on the measured behaviors. Three more are method/discipline notes the A/B did not exercise (read a fixed constraint as a candidate objective only when its level was an assumption; recognize a hand-coded target/budget loop as the ε-constraint method; verify-don't-assume when comparing methods). The numbers above reflect the skill text as tested, not these later additions; the official NVSkills-Eval runs against the final text and remains the gate.
 
-## Tier 1 / Tier 2 / official NVSkills-Eval — pending on the fork
+## Tier 1 / Tier 2 / official NVSkills-Eval — pending (maintainer-run)
 
 - `./ci/utils/validate_skills.sh` (frontmatter, required files, version 26.08.00) + `sync_skills_version.sh`.
 - Tier 2 dedup — scoped to orchestration + interpretation; defers per-solve mechanics to the api-* skills and per-objective formulation to `cuopt-numerical-optimization-formulation`.
@@ -51,4 +51,4 @@ Evaluation of the `cuopt-multi-objective-exploration` skill.
 
 ## Publication recommendation
 
-The POC supports the value claim. Next: socialize via a GitHub discussion/proposal, then a fork-based draft PR with CI + the official NVSkills-Eval.
+The POC supports the value claim. Next: socialize via a GitHub discussion/proposal, then a maintainer runs `/nvskills-ci` on a non-fork `NVIDIA/cuopt` branch for CI Tiers 1–2 + the official NVSkills-Eval (the NVSkills CI doesn't support fork PRs, and its bot attaches the `skill.oms.sig` signature).

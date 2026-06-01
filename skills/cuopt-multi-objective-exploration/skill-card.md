@@ -36,7 +36,7 @@ Mitigation: Review and scan skill before deployment. <br>
 
 
 ## Evaluation Tasks: <br>
-Three tasks (see `evals/evals.json`): two positive — interpretation on a real cost-vs-reliability supplier front, and frontier exploration on a supplier-selection MILP — plus one single-objective decoy (no activation expected). A pre-publication WITH/WITHOUT A/B over these has been run on a Colab GPU with real cuOpt solves (see `BENCHMARK.md`). The official NVSkills-Eval (external profile, `claude-code` + `codex`) has not been run from this environment (cuOpt is Linux + NVIDIA-GPU only) and runs on the fork as for the sibling skills. <br>
+Three tasks (see `evals/evals.json`): two positive — interpretation on a real cost-vs-reliability supplier front, and frontier exploration on a supplier-selection MILP — plus one single-objective decoy (no activation expected). A pre-publication WITH/WITHOUT A/B over these has been run on a Colab GPU with real cuOpt solves (see `BENCHMARK.md`). The official NVSkills-Eval (external profile, `claude-code` + `codex`) has not been run from this environment (cuOpt is Linux + NVIDIA-GPU only) and is maintainer-triggered via `/nvskills-ci` on a non-fork `NVIDIA/cuopt` branch, as for the sibling skills (the NVSkills CI doesn't support fork PRs). <br>
 
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
