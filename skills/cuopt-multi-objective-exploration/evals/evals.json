@@ -15,7 +15,7 @@
   },
   {
     "id": "multiobj-explore-eval-002-supplier-exploration",
-    "question": "A procurement lead must choose which of ~25 candidate suppliers to contract to maximize total supply-chain resilience and minimize total annual cost, while covering required demand. There is no agreed weighting between resilience and cost. Using cuOpt, how would you approach this and what would you report back?",
+    "question": "A procurement lead must choose which of 12 candidate suppliers to contract to maximize total supply-chain resilience and minimize total annual cost, while covering required demand. There is no agreed weighting between resilience and cost. Using cuOpt, how would you approach this and what would you report back?",
     "expected_skill": "cuopt-multi-objective-exploration",
     "expected_script": null,
     "ground_truth": "The agent recognizes a multi-objective (resilience vs cost) selection problem with no fixed weighting and a hard demand constraint, builds a payoff table by solving each objective alone for ranges, then traces the Pareto frontier with repeated single-objective cuOpt solves. Because the supplier selection is combinatorial (non-convex), it prefers the epsilon-constraint method (e.g. minimize cost subject to a resilience floor, sweeping the floor) over weighted-sum, which would miss non-supported portfolios. It filters dominated points and reports the tradeoff curve plus the knee, deferring the final pick, and defers per-solve mechanics to the api-* skills and formulation to cuopt-numerical-optimization-formulation.",

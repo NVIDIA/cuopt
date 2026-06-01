@@ -87,7 +87,7 @@ subject to  f2(x) ≤ ε2
 
 Sweep each `ε_k` across the range from the payoff table. Each `(ε2, ε3, …)` combination is a single standard cuOpt solve. This recovers the **full** frontier, including the concave regions weighted-sum cannot reach, which is why it's the default when completeness matters. The cost is more solves (a grid over the constrained objectives) and bookkeeping of the ε values.
 
-cuOpt's constraints are **linear**, so ε-constrain *linear* objectives. If an objective is quadratic (e.g. risk `xᵀΣx`), keep that one as the objective `f1` and ε-constrain the linear ones — cuOpt solves QP (quadratic objective, linear constraints), not quadratically-constrained programs.
+ε-constrain *linear* objectives directly. A quadratic objective (e.g. risk `xᵀΣx`) can stay the objective `f1` while you ε-constrain the linear ones — the simplest route — or be ε-constrained itself when it is **convex**: a `xᵀQx ≤ ε` constraint (Q positive semidefinite) makes cuOpt switch to the barrier solver and convert it to a second-order cone (`add_quadratic_constraint`, inequality only). Non-convex or equality quadratic constraints are not supported, and the MILP path stays linear-constraint only.
 
 Spot it in existing code: a hand-coded loop over a target or budget value (a return target, a cost cap) is already the ε-constraint method — name it as such, filter dominated points, and read the swept constraint's dual (LP/QP only).
 
