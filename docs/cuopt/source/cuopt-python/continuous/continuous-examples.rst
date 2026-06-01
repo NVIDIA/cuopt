@@ -76,6 +76,40 @@ The response is as follows:
     Objective value = 1.4142135623730951
 
 
+.. _mps-example-python:
+
+Reading a Problem from an MPS File
+----------------------------------
+
+:download:`mps_example.py <examples/mps_example.py>`,
+:download:`sample.mps <examples/sample.mps>`
+
+``Problem.read`` loads a problem from an MPS, QPS, or LP file, dispatching on the
+file extension. The same call also reads ``QUADOBJ`` quadratic objectives (QP)
+and ``QCMATRIX`` second-order cone constraints (SOCP). This example reads the
+bundled ``sample.mps`` (a small LP) and solves it.
+
+.. literalinclude:: examples/mps_example.py
+   :language: python
+   :linenos:
+
+The sample MPS file:
+
+.. literalinclude:: examples/sample.mps
+   :language: text
+   :linenos:
+
+The response is as follows:
+
+.. code-block:: text
+
+    Status: 1
+    Number of variables: 2
+    Objective value = -0.36000000000000004
+    VAR1 = 1.8
+    VAR2 = 0.0
+
+
 Advanced Example: Production Planning
 -------------------------------------
 
