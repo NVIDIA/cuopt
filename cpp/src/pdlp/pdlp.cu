@@ -436,7 +436,13 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
       std::vector<i_t> h_part_A_t_row_offsets;
       std::vector<i_t> h_part_A_t_col_indices;
 
-      const partitioner_kind_t kind =  partitioner_kind_t::Metis;
+      // METIS_PartGraphKway requires nparts >= 2; calling it with nparts == 1
+      // traps inside METIS (SIGFPE on integer division by zero). The
+      // num_gpus == 1 path is the single-shard dummy run anyway -- there's
+      // nothing for METIS to do, so route directly to Dummy which just places
+      // every vertex into part 0.
+      const partitioner_kind_t kind =
+        (distributed_pdlp_num_gpus == 1) ? partitioner_kind_t::Dummy : partitioner_kind_t::Metis;
       if (kind == partitioner_kind_t::Metis) {
         const auto stream = op_problem_scaled_.handle_ptr->get_stream();
         const i_t n_cstr  = op_problem_scaled_.n_constraints;
