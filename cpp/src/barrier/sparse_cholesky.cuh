@@ -330,6 +330,16 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
 
     i_t ldb = n;
     i_t ldx = n;
+#if CUDSS_VERSION_MAJOR > 0 || (CUDSS_VERSION_MAJOR == 0 && CUDSS_VERSION_MINOR >= 8)
+    CUDSS_CALL_AND_CHECK_EXIT(
+      cudssMatrixCreateDn(&cudss_b, n, 1, ldb, b_values_d, CUDSS_R_64F, CUDSS_LAYOUT_COL_MAJOR),
+      status,
+      "cudssMatrixCreateDn for b");
+    CUDSS_CALL_AND_CHECK_EXIT(
+      cudssMatrixCreateDn(&cudss_x, n, 1, ldx, x_values_d, CUDSS_R_64F, CUDSS_LAYOUT_COL_MAJOR),
+      status,
+      "cudssMatrixCreateDn for x");
+#else
     CUDSS_CALL_AND_CHECK_EXIT(
       cudssMatrixCreateDn(&cudss_b, n, 1, ldb, b_values_d, CUDA_R_64F, CUDSS_LAYOUT_COL_MAJOR),
       status,
@@ -338,6 +348,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       cudssMatrixCreateDn(&cudss_x, n, 1, ldx, x_values_d, CUDA_R_64F, CUDSS_LAYOUT_COL_MAJOR),
       status,
       "cudssMatrixCreateDn for x");
+#endif
     handle_ptr_->get_stream().synchronize();
   }
 
@@ -395,18 +406,26 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     nnz               = Arow.row_start.element(Arow.m, Arow.row_start.stream());
     const f_t density = static_cast<f_t>(nnz) / (static_cast<f_t>(n) * static_cast<f_t>(n));
 
-    // skip reordering if matrix diagonal
     if (first_factor &&
         ((settings_.ordering == -1 && density >= 0.05 && nnz > n) || settings_.ordering == 1) &&
         n > 1) {
       settings_.log.printf("Reordering algorithm        : AMD\n");
       // Tell cuDSS to use AMD
+#if CUDSS_VERSION_MAJOR > 0 || (CUDSS_VERSION_MAJOR == 0 && CUDSS_VERSION_MINOR >= 8)
+      cudssReorderingAlg_t reorder_alg = CUDSS_REORDERING_ALG_AMD;
+      CUDSS_CALL_AND_CHECK_EXIT(
+        cudssConfigSet(
+          solverConfig, CUDSS_CONFIG_REORDERING_ALG, &reorder_alg, sizeof(cudssReorderingAlg_t)),
+        status,
+        "cudssConfigSet for reordering alg");
+#else
       cudssAlgType_t reorder_alg = CUDSS_ALG_3;
       CUDSS_CALL_AND_CHECK_EXIT(
         cudssConfigSet(
           solverConfig, CUDSS_CONFIG_REORDERING_ALG, &reorder_alg, sizeof(cudssAlgType_t)),
         status,
         "cudssConfigSet for reordering alg");
+#endif
     }
 
     if (!first_factor) {
@@ -416,6 +435,25 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
 
     {
       raft::common::nvtx::range fun_scope("Barrier: cuDSS Analyze : cudssMatrixCreateCsr");
+#if CUDSS_VERSION_MAJOR > 0 || (CUDSS_VERSION_MAJOR == 0 && CUDSS_VERSION_MINOR >= 8)
+      CUDSS_CALL_AND_CHECK(
+        cudssMatrixCreateCsr(&A,
+                             n,
+                             n,
+                             nnz,
+                             Arow.row_start.data(),
+                             nullptr,
+                             Arow.j.data(),
+                             Arow.x.data(),
+                             CUDSS_R_32I,
+                             CUDSS_R_32I,
+                             CUDSS_R_64F,
+                             positive_definite ? CUDSS_MTYPE_SPD : CUDSS_MTYPE_SYMMETRIC,
+                             CUDSS_MVIEW_FULL,
+                             CUDSS_BASE_ZERO),
+        status,
+        "cudssMatrixCreateCsr");
+#else
       CUDSS_CALL_AND_CHECK(
         cudssMatrixCreateCsr(&A,
                              n,
@@ -432,6 +470,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
                              CUDSS_BASE_ZERO),
         status,
         "cudssMatrixCreateCsr");
+#endif
       A_created = true;
     }
 
@@ -613,7 +652,25 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       CUDSS_CALL_AND_CHECK(cudssMatrixDestroy(A), status, "cudssMatrixDestroy for A");
       A_created = false;
     }
-
+#if CUDSS_VERSION_MAJOR > 0 || (CUDSS_VERSION_MAJOR == 0 && CUDSS_VERSION_MINOR >= 8)
+    CUDSS_CALL_AND_CHECK(
+      cudssMatrixCreateCsr(&A,
+                           n,
+                           n,
+                           nnz,
+                           csr_offset_d,
+                           nullptr,
+                           csr_columns_d,
+                           csr_values_d,
+                           CUDSS_R_32I,
+                           CUDSS_R_32I,
+                           CUDSS_R_64F,
+                           positive_definite ? CUDSS_MTYPE_SPD : CUDSS_MTYPE_SYMMETRIC,
+                           CUDSS_MVIEW_FULL,
+                           CUDSS_BASE_ZERO),
+      status,
+      "cudssMatrixCreateCsr");
+#else
     CUDSS_CALL_AND_CHECK(
       cudssMatrixCreateCsr(&A,
                            n,
@@ -630,6 +687,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
                            CUDSS_BASE_ZERO),
       status,
       "cudssMatrixCreateCsr");
+#endif
     A_created = true;
 
     // Perform symbolic analysis
