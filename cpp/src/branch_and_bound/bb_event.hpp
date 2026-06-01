@@ -25,8 +25,8 @@ enum class bb_event_type_t : int8_t {
 
 template <typename i_t, typename f_t>
 struct branched_payload_t {
-  uint64_t down_child_id;
-  uint64_t up_child_id;
+  i_t down_child_id;
+  i_t up_child_id;
   f_t node_lower_bound;
   i_t branch_var;
   f_t branch_value;
@@ -75,8 +75,8 @@ struct bb_event_t {
   static bb_event_t make_branched(double work_unit_ts,
                                   int worker,
                                   i_t node,
-                                  uint64_t down_id,
-                                  uint64_t up_id,
+                                  i_t down_id,
+                                  i_t up_id,
                                   f_t lower_bound,
                                   i_t branch_var,
                                   f_t branch_val)

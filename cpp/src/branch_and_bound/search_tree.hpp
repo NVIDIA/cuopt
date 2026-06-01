@@ -18,7 +18,24 @@ class search_tree_t {
 
   search_tree_t(mip_node_t<i_t, f_t>&& node) : search_tree_t() { root = std::move(node); }
 
-  ~search_tree_t() { clean(); }
+  ~search_tree_t()
+  {
+    try {
+      clean();  // scope-exit ensure destruction of all detached leaves
+    } catch (const std::exception& e) {
+      // fprintf to stderr is allocation-free and cannot throw; using the
+      // project logger here would risk a secondary bad_alloc that would
+      // escape the destructor and re-introduce std::terminate.
+      std::fprintf(stderr,
+                   "search_tree_t destructor: iterative teardown failed (%s); falling back to "
+                   "recursive unique_ptr destruction.\n",
+                   e.what());
+    } catch (...) {
+      std::fprintf(stderr,
+                   "search_tree_t destructor: iterative teardown failed (unknown exception); "
+                   "falling back to recursive unique_ptr destruction.\n");
+    }
+  }
 
   void update(mip_node_t<i_t, f_t>* node_ptr, node_status_t status)
   {
@@ -136,16 +153,16 @@ class search_tree_t {
 
   mip_node_t<i_t, f_t> root;
   omp_mutex_t mutex;
-  omp_atomic_t<uint64_t> num_nodes = 0;
+  omp_atomic_t<i_t> num_nodes = 0;
 
   // Number of nodes that still needs to be explored
-  omp_atomic_t<uint64_t> num_open_nodes = 0;
+  omp_atomic_t<i_t> num_open_nodes = 0;
 
   // Number of integer feasible, infeasible or fathomed nodes
-  omp_atomic_t<uint64_t> num_final_nodes = 0;
+  omp_atomic_t<i_t> num_final_nodes = 0;
 
   // Number of inner nodes
-  omp_atomic_t<uint64_t> num_inner_nodes = 0;
+  omp_atomic_t<i_t> num_inner_nodes = 0;
 
   // Track the solver progress based on how much the tree was explored
   omp_atomic_t<f_t> progress = 0;

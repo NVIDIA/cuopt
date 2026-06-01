@@ -1015,8 +1015,8 @@ struct nondeterministic_policy_t : tree_update_policy_t<i_t, f_t> {
   {
     if (worker->search_strategy == search_strategy_t::BEST_FIRST) {
       fetch_min(bnb.lower_bound_numerical_, node->lower_bound);
-      log.print_format("LP returned numerical issue on node {}. Best bound set to {:+10.6e}.\n",
-                       node->node_id,
+      log.printf("LP returned numerical issue on node %d. Best bound set to %+10.6e.\n",
+                 node->node_id,
                  compute_user_objective(bnb.original_lp_, bnb.lower_bound_numerical_.load()));
     }
   }
@@ -1277,15 +1277,15 @@ std::pair<node_status_t, branch_direction_t> branch_and_bound_t<i_t, f_t>::updat
 #ifdef DEBUG_FRACTIONAL_FIXED
     for (i_t j : leaf_fractional) {
       if (leaf_problem.lower[j] == leaf_problem.upper[j]) {
-        settings_.log.print_format(
-          "Node {}: Fixed variable {} has a fractional value {:e}. Lower {:e} upper {:e}. "
-          "Variable status {}\n",
+        printf(
+          "Node %d: Fixed variable %d has a fractional value %e. Lower %e upper %e. Variable "
+          "status %d\n",
           node_ptr->node_id,
           j,
           leaf_solution.x[j],
           leaf_problem.lower[j],
           leaf_problem.upper[j],
-          static_cast<int>(node_ptr->vstatus[j]));
+          node_ptr->vstatus[j]);
       }
     }
 #endif
@@ -1503,10 +1503,10 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   ss >> logname;
   lp_settings.log.set_log_file(logname, "a");
   lp_settings.log.log_to_console = false;
-  lp_settings.log.print_format(
-    "{}current node: id = {}, depth = {}, branch var = {}, branch dir = {}, fractional val = "
-    "{:f}, variable lower bound = {:f}, variable upper bound = {:f}, branch vstatus = {}\n\n",
-    settings_.log.log_prefix,
+  lp_settings.log.printf(
+    "%scurrent node: id = %d, depth = %d, branch var = %d, branch dir = %s, fractional val = "
+    "%f, variable lower bound = %f, variable upper bound = %f, branch vstatus = %d\n\n",
+    settings_.log.log_prefix.c_str(),
     node_ptr->node_id,
     node_ptr->depth,
     node_ptr->branch_var,
@@ -1514,7 +1514,7 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
     node_ptr->fractional_val,
     node_ptr->branch_var_lower,
     node_ptr->branch_var_upper,
-    static_cast<int>(node_ptr->vstatus[node_ptr->branch_var]));
+    node_ptr->vstatus[node_ptr->branch_var]);
 #endif
 
   bool feasible           = worker->set_lp_variable_bounds(node_ptr, settings_);

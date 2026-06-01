@@ -210,11 +210,8 @@ class deterministic_bfs_worker_t
     events.add(std::move(event));
   }
 
-  void record_branched(mip_node_t<i_t, f_t>* node,
-                       uint64_t down_child_id,
-                       uint64_t up_child_id,
-                       i_t branch_var,
-                       f_t branch_val)
+  void record_branched(
+    mip_node_t<i_t, f_t>* node, i_t down_child_id, i_t up_child_id, i_t branch_var, f_t branch_val)
   {
     record_event(bb_event_t<i_t, f_t>::make_branched(this->clock,
                                                      this->worker_id,

@@ -12,7 +12,6 @@
 #endif
 
 #include <string>
-#include <string_view>
 
 #include <cstdarg>
 #include <cstdio>
