@@ -29,6 +29,7 @@
 #include <gtest/gtest.h>
 
 #include <atomic>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <mutex>
@@ -1207,18 +1208,38 @@ TEST_F(ChunkedUploadTests, ConcurrentChunkedUploads)
 }
 
 // =============================================================================
-// QCQP transport integration tests — submit a problem with quadratic
-// constraints end-to-end through gRPC to verify the container-chunk path
-// (proto, server validation, pipe wire format, worker reassembly).  The
-// underlying solver is PDLP, which ignores QC and solves the LP
-// relaxation, so we only assert the call completes without a transport
-// error; the objective value of the LP relaxation is not checked.
+// QCQP transport + solve integration tests.
+//
+// These tests submit problems with quadratic constraints end-to-end through
+// gRPC to verify two layers:
+//
+//   1. Wire transport — the container-chunk path (proto, server validation,
+//      pipe wire format, worker reassembly).  Both QC_Test_1 (rhs != 0,
+//      SOC-incompatible) and QC_Test_2 (rhs = 0, SOC-friendly) exercise this
+//      layer; SOC compatibility is irrelevant for transport.
+//
+//   2. End-to-end SOCP correctness — solve_lp dispatches QCQP problems to
+//      solve_qcqp, which converts each QC to a second-order cone and runs
+//      barrier.  The QC_Test_2 test asserts the returned solution matches
+//      the closed-form optimum, catching solver and SOC-conversion
+//      regressions in addition to transport.
+//
+// Note on error propagation: solve_lp / solve_qcqp catch cuopt::logic_error
+// internally and stash it in optimization_problem_solution_t::error_status_
+// instead of throwing (long-standing solver-API contract; see solve.cu).
+// run_lp_solve in grpc_worker.cpp inspects error_status_ after solve_lp
+// returns and forwards non-Success errors as sr.error_message, so the
+// QC_Test_1 test below can rely on result.success being false with a
+// validation message rather than getting a zero-filled "successful"
+// response.
 // =============================================================================
 
-// Submit a small QCQP problem on the unary path (default thresholds keep the
-// payload below the chunked threshold).  Exercises map_problem_to_proto and
-// map_proto_to_problem with quadratic_constraints on the wire.
-TEST_F(ChunkedUploadTests, QuadraticConstraintsUnarySubmit)
+// Submit QC_Test_1 on the unary path.  rhs != 0 on its QC rows so SOC
+// conversion rejects the problem, but the *transport* layer (proto encoding,
+// unary SubmitJob path) must still round-trip the wire format cleanly and
+// the worker must surface the SOC validator's ValidationError back to the
+// client.
+TEST_F(ChunkedUploadTests, QuadraticConstraintsUnaryRejectsNonZeroRhs)
 {
   grpc_client_config_t config;
   config.timeout_seconds = 60;
@@ -1237,13 +1258,15 @@ TEST_F(ChunkedUploadTests, QuadraticConstraintsUnarySubmit)
   settings.time_limit = 10.0;
 
   auto result = client->solve_lp(problem, settings);
-  // PDLP currently ignores QC and solves the LP relaxation; we assert only
-  // that the transport completed cleanly with no INVALID_ARGUMENT or worker
-  // crash and that a solution object came back, which proves the new wire
-  // encoding round-tripped end-to-end.  The objective value of the LP
-  // relaxation is not checked.
-  EXPECT_TRUE(result.success) << result.error_message;
-  ASSERT_NE(result.solution, nullptr);
+  // SOC conversion currently requires rhs = 0 on every QC row; QC_Test_1
+  // has rhs = 5 / rhs = 10, so the validator rejects it.  This proves both
+  // (a) the QCQP wire format made it intact through the unary submit path
+  // (otherwise the validator would never have run) and (b) worker error
+  // propagation correctly forwards the SOC validator's ValidationError to
+  // the client instead of swallowing it into a fake "successful" response.
+  EXPECT_FALSE(result.success);
+  EXPECT_THAT(result.error_message, ::testing::HasSubstr("ValidationError"));
+  EXPECT_THAT(result.error_message, ::testing::HasSubstr("rhs = 0"));
 }
 
 // Force the chunked upload path with both a zero-byte threshold (every array
@@ -1257,7 +1280,13 @@ TEST_F(ChunkedUploadTests, QuadraticConstraintsUnarySubmit)
 //             stitching inside write_chunked_request_to_pipe.
 //   * Worker: read_chunked_request_from_pipe + map_chunked_arrays_to_problem
 //             reconstructing QC entries from header scalars + container bytes.
-TEST_F(ChunkedUploadTests, QuadraticConstraintsChunkedSubmit)
+//
+// QC_Test_1 is again SOC-incompatible (rhs != 0); we assert the same
+// validator-rejection error message as the unary case so a transport bug
+// that drops or duplicates QC array bytes would manifest as a *different*
+// failure mode (typically a malformed-problem error or a successful solve
+// of a tampered problem) rather than the expected rhs=0 rejection.
+TEST_F(ChunkedUploadTests, QuadraticConstraintsChunkedRejectsNonZeroRhs)
 {
   grpc_client_config_t config;
   config.timeout_seconds = 60;
@@ -1277,8 +1306,64 @@ TEST_F(ChunkedUploadTests, QuadraticConstraintsChunkedSubmit)
   settings.time_limit = 10.0;
 
   auto result = client->solve_lp(problem, settings);
-  EXPECT_TRUE(result.success) << result.error_message;
+  EXPECT_FALSE(result.success);
+  EXPECT_THAT(result.error_message, ::testing::HasSubstr("ValidationError"));
+  EXPECT_THAT(result.error_message, ::testing::HasSubstr("rhs = 0"));
+}
+
+// End-to-end SOCP correctness via gRPC: QC_Test_2 is a small convex QCQP
+// designed to exercise the same wire-format aspects as QC_Test_1 (multiple
+// QCs, off-diagonal QCMATRIX cross-terms, linear-in-QC-row terms, normal LP
+// constraint alongside QCs) while being SOC-friendly (rhs = 0 on every QC,
+// each QC's structure matches one of the SOC validator's accepted shapes).
+//
+// The problem has a closed-form optimum derived in the file's header
+// comment: x = y = 1/sqrt(2), z = 1, objective = -(1 + sqrt(2)).  Asserting
+// these values via gRPC verifies that QC encoding, chunked transport,
+// SOC conversion, barrier solve, and result decoding are all wired together
+// correctly.
+TEST_F(ChunkedUploadTests, QuadraticConstraintsEndToEndSocp)
+{
+  grpc_client_config_t config;
+  config.timeout_seconds = 60;
+  // Force the chunked path so this test also covers chunked transport of a
+  // SOC-compatible problem (the rejection tests above only prove the chunked
+  // path delivers bytes intact for an *infeasible-for-SOC* problem; here we
+  // additionally prove a chunked SOC-friendly problem solves correctly).
+  config.chunk_size_bytes              = 8;
+  config.chunked_array_threshold_bytes = 0;
+
+  auto client = create_client(config);
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_data_path("qcqp", "QC_Test_2.mps");
+  auto problem         = load_problem_from_mps(mps_path);
+  ASSERT_TRUE(problem.has_quadratic_constraints());
+  EXPECT_EQ(problem.get_quadratic_constraints().size(), 2u);
+
+  pdlp_solver_settings_t<int32_t, double> settings;
+  settings.time_limit = 30.0;
+
+  auto result = client->solve_lp(problem, settings);
+  ASSERT_TRUE(result.success) << result.error_message;
   ASSERT_NE(result.solution, nullptr);
+
+  EXPECT_EQ(result.solution->get_termination_status(), pdlp_termination_status_t::Optimal);
+
+  const double sqrt2   = std::sqrt(2.0);
+  const double opt_obj = -(1.0 + sqrt2);
+  const double opt_x_y = 1.0 / sqrt2;
+  const double opt_z   = 1.0;
+  // Barrier converges to ~1e-6; allow 1e-3 to absorb tolerance settings and
+  // future numeric drift without masking real regressions.
+  constexpr double kTol = 1e-3;
+  EXPECT_NEAR(result.solution->get_objective_value(), opt_obj, kTol);
+
+  const auto primal = result.solution->get_primal_solution_host();
+  ASSERT_GE(primal.size(), 3u);
+  EXPECT_NEAR(primal[0], opt_x_y, kTol);
+  EXPECT_NEAR(primal[1], opt_x_y, kTol);
+  EXPECT_NEAR(primal[2], opt_z, kTol);
 }
 
 TEST_F(ChunkedUploadTests, UnaryFallbackSmallProblem)

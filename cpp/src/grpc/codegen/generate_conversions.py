@@ -307,6 +307,33 @@ def _default_element_size(f):
     return 8
 
 
+def _array_wire_type_comment(f):
+    """Short human-readable description of an array field's chunked wire form.
+
+    External clients reassembling chunks need to know the element width and
+    byte layout — the chunk's `data` is raw native-endian bytes, *not* a
+    protobuf-encoded value.  This helper produces a consistent trailing
+    comment used in the generated proto enums (e.g. ArrayFieldId, nested
+    repeated_messages ArrayId enums).
+    """
+    ftype = f.get("type", "repeated double")
+    size = _default_element_size(f)
+    if "double" in ftype:
+        return f"raw IEEE-754 fixed64 (little-endian on supported platforms), {size} B/elem"
+    if "int32" in ftype:
+        return (
+            f"raw int32 (little-endian on supported platforms), {size} B/elem"
+        )
+    if ftype == "bytes":
+        return "raw bytes (1 B/elem)"
+    if ftype == "repeated string":
+        return "NUL-terminated UTF-8 strings concatenated; total_elements = byte length"
+    if ftype.startswith("repeated "):
+        elem = ftype.split()[-1]
+        return f"raw {elem} ({size} B/elem)"
+    return f"raw bytes ({size} B/elem)"
+
+
 # ============================================================================
 # Enum helpers — convention-based derivation
 # ============================================================================
@@ -601,13 +628,68 @@ def generate_repeated_messages_proto(registry, obj):
     """Emit `message <MessageType> { ... }` blocks for every repeated_messages
     entry on `obj`. Returns the assembled text (empty string if none).
 
-    Each block carries its scalar fields followed by its array fields, with
-    proto tags drawn from the per-entry `field_num` attribute (local to the
-    nested message; independent of the parent's tag pool)."""
+    Each block carries:
+      * a nested `enum ArrayId { ... }` listing the container-relative
+        array_id values used in `ArrayChunk.field_id` when this entry is
+        targeted via container chunks (each enum value carries a trailing
+        comment giving the chunk's raw byte layout, so external clients can
+        produce correctly-sized native-endian buffers without consulting the
+        C++ source),
+      * its scalar fields,
+      * its array fields,
+    with proto tags drawn from the per-entry `field_num` attribute (local to
+    the nested message; independent of the parent's tag pool).
+
+    The nested ArrayId enum is the public, stable name for container-relative
+    chunk routing — clients should reference (e.g.)
+    `QuadraticConstraint.LINEAR_VALUES` rather than the bare integer 0 when
+    populating ArrayChunk.field_id under
+    `container_field_num = OptimizationProblem.quadratic_constraints field
+    number`.  Internally the C++ codegen still uses the raw `array_id`
+    integers from field_registry.yaml; the proto enum is for clients."""
     blocks = []
     for _name, body in _iter_repeated_messages(obj):
         msg_type = body["message_type"]
         lines = [f"message {msg_type} {{"]
+        # Nested ArrayId enum: container-relative array routing ids,
+        # each annotated with the chunk's raw byte layout.
+        array_fields = [
+            f
+            for f in _repeated_message_arrays(body)
+            if f.get("array_id") is not None
+        ]
+        if array_fields:
+            lines.append(
+                "  // ArrayId names the per-entry array a chunk targets when this"
+            )
+            lines.append(
+                f"  // {msg_type} is addressed via container chunks (i.e."
+            )
+            lines.append(
+                "  // ArrayChunk.container_field_num set to this message's parent"
+            )
+            lines.append(
+                "  // field_num and ArrayChunk.container_index = entry index)."
+            )
+            lines.append(
+                "  // Each value's trailing comment gives the raw byte layout"
+            )
+            lines.append(
+                "  // ArrayChunk.data must carry — native-endian element bytes,"
+            )
+            lines.append("  // not a protobuf-encoded value.")
+            lines.append("  enum ArrayId {")
+            sorted_fields = sorted(array_fields, key=lambda f: f["array_id"])
+            inner_rows = [
+                (f, f"    {f['name'].upper()} = {f['array_id']};")
+                for f in sorted_fields
+            ]
+            inner_max = max((len(line) for _, line in inner_rows), default=0)
+            for f, line in inner_rows:
+                comment = _array_wire_type_comment(f)
+                pad = " " * max(1, (inner_max + 2) - len(line))
+                lines.append(f"{line}{pad}// {comment}")
+            lines.append("  }")
         for f in _repeated_message_scalars(body):
             num = f.get("field_num")
             if num is None:
@@ -1064,17 +1146,32 @@ def generate_proto_result_enums(registry):
 
 
 def generate_array_field_id_enum(registry):
-    """Generate ArrayFieldId enum for the proto file."""
+    """Generate ArrayFieldId enum for the proto file.
+
+    Each entry carries a trailing comment giving the on-the-wire element
+    layout for the chunk's `data` payload, so external clients can produce
+    correctly-sized native-endian byte buffers without consulting the C++
+    source.
+    """
     obj = registry.get("optimization_problem", {})
-    entries = []
+    rows = []
     for entry in obj.get("arrays", []):
         f = parse_field(entry)
-        afid = _field_array_id_name(f)
         afnum = f.get("array_id")
-        if afnum is not None:
-            entries.append((afnum, f"  {afid} = {afnum};"))
-    entries.sort(key=lambda x: x[0])
-    return "\n".join(e[1] for e in entries)
+        if afnum is None:
+            continue
+        afid = _field_array_id_name(f)
+        rows.append(
+            (afnum, f"  {afid} = {afnum};", _array_wire_type_comment(f))
+        )
+    rows.sort(key=lambda x: x[0])
+    # Align trailing comments on the longest `<indent><NAME> = <NUM>;` prefix.
+    max_prefix = max((len(line) for _, line, _ in rows), default=0)
+    entries = []
+    for afnum, line, comment in rows:
+        pad = " " * max(1, (max_prefix + 2) - len(line))
+        entries.append(f"{line}{pad}// {comment}")
+    return "\n".join(entries)
 
 
 def generate_array_field_element_size_inc(registry):
@@ -1414,7 +1511,17 @@ def generate_data_proto(registry):
     if "optimization_problem" in registry:
         afid_body = generate_array_field_id_enum(registry)
         if afid_body:
-            afid = "enum ArrayFieldId {\n" + afid_body + "\n}\n"
+            afid_doc = (
+                "// ArrayFieldId names the top-level OptimizationProblem array a chunk\n"
+                "// targets when ArrayChunk.container_field_num is unset.  The trailing\n"
+                "// comment on each entry describes the raw byte layout the server\n"
+                "// expects in ArrayChunk.data: chunks carry native-endian element\n"
+                "// bytes (memcpy'd directly from the client's std::vector), NOT a\n"
+                "// protobuf-encoded value.  total_elements counts logical elements\n"
+                "// (e.g. number of doubles), so data.size() must equal\n"
+                "// chunk_elements * element_size_bytes.\n"
+            )
+            afid = afid_doc + "enum ArrayFieldId {\n" + afid_body + "\n}\n"
     parts = [
         "// AUTO-GENERATED by src/grpc/codegen/generate_conversions.py from field_registry.yaml",
         "// DO NOT EDIT — regenerate with: python cpp/src/grpc/codegen/generate_conversions.py",

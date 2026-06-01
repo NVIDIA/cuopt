@@ -319,6 +319,18 @@ static SolveResult run_mip_solve(DeserializedJob& dj,
     auto gpu_solution = solve_mip(*gpu_problem, dj.mip_settings);
     SERVER_LOG_INFO("[Worker] solve_mip done");
 
+    // solve_mip_helper catches cuopt::logic_error internally and stashes it
+    // in mip_solution_t::error_status_ rather than rethrow (matches the LP
+    // path's solver-API contract).  Forward the error back to the client
+    // instead of shipping a zero-filled "successful" result.
+    {
+      const auto& err = gpu_solution.get_error_status();
+      if (err.get_error_type() != cuopt::error_type_t::Success) {
+        sr.error_message = format_cuopt_error(err);
+        return sr;
+      }
+    }
+
     SERVER_LOG_INFO("[Worker] Converting solution to CPU format...");
 
     auto host_solution = device_to_host<double>(gpu_solution.get_solution());
@@ -366,6 +378,20 @@ static SolveResult run_lp_solve(DeserializedJob& dj,
     SERVER_LOG_INFO("[Worker] Calling solve_lp...");
     auto gpu_solution = solve_lp(*gpu_problem, dj.lp_settings);
     SERVER_LOG_INFO("[Worker] solve_lp done");
+
+    // solve_lp / solve_qcqp catch cuopt::logic_error internally and stash it
+    // in optimization_problem_solution_t::error_status_ rather than rethrow
+    // (long-standing solver-API contract; see solve.cu).  Forward the error
+    // back to the client instead of shipping a zero-filled "successful"
+    // result; otherwise validation failures (e.g. SOC's rhs=0 requirement)
+    // silently succeed on the wire.
+    {
+      const auto err = gpu_solution.get_error_status();
+      if (err.get_error_type() != cuopt::error_type_t::Success) {
+        sr.error_message = format_cuopt_error(err);
+        return sr;
+      }
+    }
 
     SERVER_LOG_INFO("[Worker] Converting solution to CPU format...");
 
