@@ -179,7 +179,7 @@ Parameter Constants
 
 These constants are used as parameter names in the :c:func:`cuOptSetParameter`, :c:func:`cuOptGetParameter`, and similar functions. For more details on the available parameters, see the :doc:`Continuous Optimization settings <../../continuous-settings>` and :doc:`MIP settings <../../mip-settings>` sections.
 
-.. LP/QP parameter string constants
+.. Continuous optimization (LP/QP/SOCP) parameter string constants
 .. doxygendefine:: CUOPT_ABSOLUTE_DUAL_TOLERANCE
 .. doxygendefine:: CUOPT_RELATIVE_DUAL_TOLERANCE
 .. doxygendefine:: CUOPT_ABSOLUTE_PRIMAL_TOLERANCE
