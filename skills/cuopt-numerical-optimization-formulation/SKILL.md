@@ -232,7 +232,7 @@ Deviation variables (d⁻, d⁺) and slack/idle-time variables are always **cont
 
 Goal programming (above) needs a **priority order** and returns **one** prioritized solution. When objectives genuinely conflict and there is **no fixed priority or weighting** — the user wants to see the tradeoffs and choose — don't pick one weighting up front. Trace the **Pareto frontier**: keep one objective and sweep the others as parametric ε-constraints (or sweep weighted-sum weights), then filter to the non-dominated set. On integer / non-convex problems prefer ε-constraint — weighted-sum provably misses unsupported efficient points.
 
-For the full workflow (anchor each objective → sweep → filter → read the frontier with exchange rates and the knee) see the **`cuopt-multi-objective-exploration`** skill; for a worked cuOpt ε-sweep see **cuopt-examples → `multi_objective_frontier/`**.
+For the full workflow (anchor each objective → sweep → filter → read the frontier with exchange rates and the knee) see the **`cuopt-multi-objective-exploration`** skill.
 
 ### Multi-period inventory / purchasing models
 

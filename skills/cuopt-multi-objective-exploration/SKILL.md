@@ -105,6 +105,7 @@ sort the survivors to form the frontier
 Practical notes:
 
 - **Warm-start LP sweeps.** For an LP frontier, reuse the previous solve's PDLP warmstart data to cut solve time (`getWarmstartData` → `set_pdlp_warm_start_data`). Per cuOpt this is **LP-only**: a MILP solve doesn't take a PDLP warmstart (you can optionally seed a MIP start instead). See `cuopt-numerical-optimization-api-python`.
+- **Cap each MILP solve.** Set a per-solve time limit on MILP sweeps (see `cuopt-numerical-optimization-api-python`) — a sweep is many solves, and branch-and-bound can over-spend certifying optimality past a tiny gap, while cuOpt sets no limit by default and won't warn. Report the points as optimal *to the gap you set*, not certified optimal.
 - **Filter dominated points.** A correct sweep can still emit dominated points (especially weighted-sum near the hull, or MILP). Drop them; they are not part of the frontier.
 - **Resolution is a budget.** Curve fidelity trades against solve count. Start coarse to see the shape, then refine the grid only where the curve bends.
 

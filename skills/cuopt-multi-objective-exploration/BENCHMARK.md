@@ -51,4 +51,4 @@ Evaluation of the `cuopt-multi-objective-exploration` skill.
 
 ## Publication recommendation
 
-The POC supports the value claim. Proceed per `CONTRIBUTION_NEXT_STEPS.md`: socialize via a GitHub discussion/proposal, then a fork-based draft PR with CI + the official NVSkills-Eval.
+The POC supports the value claim. Next: socialize via a GitHub discussion/proposal, then a fork-based draft PR with CI + the official NVSkills-Eval.
