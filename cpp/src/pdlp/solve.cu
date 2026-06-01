@@ -2167,6 +2167,10 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
                 error_type_t::ValidationError,
                 "solve_lp_distributed_from_mps: settings.hyper_params.use_distributed_pdlp "
                 "must be true");
+  cuopt_expects(settings.presolver == cuopt::linear_programming::presolver_t::None,
+                error_type_t::ValidationError,
+                "solve_lp_distributed_from_mps: presolve is not yet supported with "
+                "use_distributed_pdlp; please set settings.presolver = presolver_t::None");
 
   pdlp_solver_settings_t<i_t, f_t> settings_resolved = settings;
   if (settings_resolved.distributed_pdlp_num_gpus == -1) {
