@@ -2143,8 +2143,47 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
   bool problem_checking,
   bool use_pdlp_solver_mode)
 {
+  // In distributed PDLP we can't allocate the full problem on the master device
+  if (settings.hyper_params.use_distributed_pdlp) {
+    return solve_lp_distributed_from_mps(
+      handle_ptr, mps_data_model, settings, problem_checking, use_pdlp_solver_mode);
+  }
   auto op_problem = mps_data_model_to_optimization_problem(handle_ptr, mps_data_model);
   return solve_lp(op_problem, settings, problem_checking, use_pdlp_solver_mode);
+}
+
+template <typename i_t, typename f_t>
+optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
+  raft::handle_t const* handle_ptr,
+  const cuopt::linear_programming::io::mps_data_model_t<i_t, f_t>& mps_data_model,
+  pdlp_solver_settings_t<i_t, f_t> const& settings,
+  bool problem_checking,
+  bool use_pdlp_solver_mode)
+{
+  cuopt_expects(handle_ptr != nullptr,
+                error_type_t::ValidationError,
+                "solve_lp_distributed_from_mps: handle_ptr must not be null");
+  cuopt_expects(settings.hyper_params.use_distributed_pdlp,
+                error_type_t::ValidationError,
+                "solve_lp_distributed_from_mps: settings.hyper_params.use_distributed_pdlp "
+                "must be true");
+
+  pdlp_solver_settings_t<i_t, f_t> settings_resolved = settings;
+  if (settings_resolved.distributed_pdlp_num_gpus == -1) {
+    settings_resolved.distributed_pdlp_num_gpus = raft::device_setter::get_device_count();
+    CUOPT_LOG_INFO(
+      "solve_lp_distributed_from_mps: distributed_pdlp_num_gpus == -1, auto-detected "
+      "%d visible CUDA device(s)",
+      settings_resolved.distributed_pdlp_num_gpus);
+  }
+  if (settings_resolved.distributed_pdlp_num_gpus <= 1)
+  {
+    std::cout << "CAREFUL: use_distributed_pdlp with distributed_pdlp_num_gpus == 1 runs the "
+                 "single-shard dummy path"
+              << std::endl;
+  }
+  auto op_problem = mps_data_model_to_optimization_problem(handle_ptr, mps_data_model);
+  return solve_lp(op_problem, settings_resolved, problem_checking, use_pdlp_solver_mode);
 }
 
 // ============================================================================
@@ -2287,6 +2326,14 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
   template optimization_problem_t<int, F_TYPE> mps_data_model_to_optimization_problem(           \
     raft::handle_t const* handle_ptr,                                                            \
     const cuopt::linear_programming::io::mps_data_model_t<int, F_TYPE>& data_model);             \
+                                                                                                 \
+  template optimization_problem_solution_t<int, F_TYPE> solve_lp_distributed_from_mps(           \
+    raft::handle_t const* handle_ptr,                                                            \
+    const cuopt::linear_programming::io::mps_data_model_t<int, F_TYPE>& mps_data_model,          \
+    pdlp_solver_settings_t<int, F_TYPE> const& settings,                                         \
+    bool problem_checking,                                                                       \
+    bool use_pdlp_solver_mode);                                                                  \
+                                                                                                 \
   template void set_pdlp_solver_mode(pdlp_solver_settings_t<int, F_TYPE>& settings);
 
 #if MIP_INSTANTIATE_FLOAT

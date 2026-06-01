@@ -33,6 +33,46 @@ cuopt::linear_programming::optimization_problem_solution_t<i_t, f_t> solve_lp_wi
   bool is_batch_mode = false);
 
 /**
+ * @brief Distributed-PDLP entry point that consumes the host MPS data model
+ *        directly, without ever materializing the full problem on a single
+ *        (master) GPU.
+ *
+ * This is the entry point intended for problems whose `nnz` exceeds the memory
+ * of a single device. Today (Step 1 of the mGPU memory refactor) it is a thin
+ * routing shim: it resolves `distributed_pdlp_num_gpus == -1` against the
+ * visible-device count and delegates to the legacy
+ * `mps_data_model_to_optimization_problem(...)` + device-side `solve_lp(...)`
+ * pipeline, which still allocates the full problem on master. The shim exists
+ * so the public-facing call site is already in place; subsequent commits will
+ * replace the body with:
+ *   1. host-side METIS partitioning straight off the MPS CSR
+ *   2. per-shard host CSR slicing
+ *   3. construction of an mGPU-native pdlp_solver_t whose master only holds
+ *      scalar metadata + gather buffers (no full A / A^T / scaled copies).
+ *
+ * Until then, behaviour and memory footprint are identical to the legacy path.
+ *
+ * @param handle_ptr  Master raft handle (its stream owns the gather buffers
+ *                    and any master-side aggregator allocations).
+ * @param mps_data_model  Host-resident MPS data (CPU vectors only).
+ * @param settings    User-supplied PDLP solver settings; the
+ *                    `distributed_pdlp_num_gpus == -1` sentinel is resolved
+ *                    here against the visible-device count.
+ * @param problem_checking      Forwarded to the eventual solver.
+ * @param use_pdlp_solver_mode  Forwarded to the eventual solver.
+ *
+ * @pre `settings.hyper_params.use_distributed_pdlp == true`.
+ */
+template <typename i_t, typename f_t>
+cuopt::linear_programming::optimization_problem_solution_t<i_t, f_t>
+solve_lp_distributed_from_mps(
+  raft::handle_t const* handle_ptr,
+  const cuopt::linear_programming::io::mps_data_model_t<i_t, f_t>& mps_data_model,
+  pdlp_solver_settings_t<i_t, f_t> const& settings,
+  bool problem_checking,
+  bool use_pdlp_solver_mode);
+
+/**
  * @brief Entry point for batch PDLP. Solves multiple LPs sharing the same constraint
  *        matrix structure in a single batched GPU run.
  *
