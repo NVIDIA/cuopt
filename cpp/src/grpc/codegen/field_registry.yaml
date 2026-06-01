@@ -913,6 +913,22 @@ optimization_problem:
   # Quadratic constraints (QCQP).  Each entry is a row with its own RHS plus
   # the row's linear coefficients (linear_values/linear_indices) and the COO
   # representation of the Q matrix (rows/cols/vals as three parallel arrays).
+  #
+  # Why a repeated message rather than a flat shared structure (as we use for
+  # linear constraints)?  Linear constraints fold together into a single CSR
+  # triple A_values / A_indices / A_offsets — three top-level arrays sized by
+  # nnz(A), independent of row count.  Quadratic constraints can't fold the
+  # same way: each row has its own independent Q matrix with no shared
+  # sparsity pattern, so the natural wire shape is one message per row with
+  # the row's per-entry arrays nested inside it.
+  #
+  # That nesting is why these arrays need the container-chunk path rather
+  # than the flat top-level chunk path.  Top-level arrays are chunked under a
+  # single (array_id) key; container arrays sit inside a repeated field and
+  # are chunked under (container_field_num, container_index, field_id) — the
+  # extra container_index disambiguates which repeated entry the chunk
+  # belongs to.  See ArrayChunk in cuopt_remote_data.proto.
+  #
   # Per-entry arrays are unbounded in size so they travel via container chunks
   # (container_field_num=25, container_index=<entry idx>, field_id=<0..4>).
   # Per-entry scalars travel inline in the parent message (OptimizationProblem

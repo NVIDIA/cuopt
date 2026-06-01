@@ -529,6 +529,19 @@ field where each entry has its own scalars and arrays. Per-entry arrays are
 unbounded in size, so they ride the chunked-array protocol with a
 container-relative `array_id`.
 
+Use this when the underlying C++ data is naturally a list of independent
+records that *cannot* be folded into a single shared structure on the wire.
+Linear constraints, by contrast, share one CSR triple
+(`A_values`/`A_indices`/`A_offsets`) for the entire constraint matrix and
+ride the standard top-level array path; quadratic constraints can't fold the
+same way because each row carries its own independent `Q` matrix with no
+shared sparsity pattern, so each row becomes one entry in
+`quadratic_constraints` with its own per-row arrays nested inside. That
+nesting is also why the chunked path for these arrays uses the three-tuple
+`(container_field_num, container_index, array_id)` instead of the flat
+`array_id` used for top-level arrays — `container_index` disambiguates which
+repeated entry a chunk belongs to.
+
 ```yaml
 repeated_messages:
 - quadratic_constraints:
