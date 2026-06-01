@@ -400,8 +400,8 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
         n > 1) {
       settings_.log.printf("Reordering algorithm        : AMD\n");
       // Tell cuDSS to use AMD
-#if CUDSS_VERSION_MAJOR >= 0 && CUDSS_VERSION_MINOR >= 8
-      cudssAlgType_t reorder_alg = CUDSS_REORDERING_ALG_AMD;
+#if CUDSS_VERSION_MAJOR > 0 || (CUDSS_VERSION_MAJOR == 0 && CUDSS_VERSION_MINOR >= 8)
+      cudssReorderingAlg_t reorder_alg = CUDSS_REORDERING_ALG_AMD;
 #else
       cudssAlgType_t reorder_alg = CUDSS_ALG_3;
 #endif
