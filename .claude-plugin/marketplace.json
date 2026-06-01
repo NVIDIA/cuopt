@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Agent skills for NVIDIA cuOpt: routing (VRP, TSP, PDP), LP/MILP/QP, installation (user/developer), and REST server.",
-    "version": "26.06.00"
+    "version": "26.08.00"
   },
   "plugins": [
     {
@@ -27,8 +27,8 @@
       "description": "Install cuOpt for Python, C, or as a server (pip, conda, Docker) — system requirements, install commands, and verification. Use when the user wants to install or verify cuOpt for any user-facing interface."
     },
     {
-      "name": "numerical-optimization-formulation",
-      "source": "./skills/numerical-optimization-formulation",
+      "name": "cuopt-numerical-optimization-formulation",
+      "source": "./skills/cuopt-numerical-optimization-formulation",
       "skills": "./",
       "description": "Numerical optimization (LP, MILP, QP) — concepts, problem-text parsing, and formulation patterns. What LP, MILP, and QP are, required formulation questions, modeling elements, common patterns, and how to parse problem statements (parameters, constraints, decisions, objective). Domain concepts; no API or interface."
     },
@@ -51,8 +51,8 @@
       "description": "LP, MILP, and QP (beta) with cuOpt — CLI only (MPS files, cuopt_cli). Use when the user is solving LP, MILP, or QP from MPS via command line."
     },
     {
-      "name": "routing-formulation",
-      "source": "./skills/routing-formulation",
+      "name": "cuopt-routing-formulation",
+      "source": "./skills/cuopt-routing-formulation",
       "skills": "./",
       "description": "Vehicle routing (VRP, TSP, PDP) — problem types and data requirements. Domain concepts; no API or interface."
     },
@@ -75,8 +75,8 @@
       "description": "cuOpt REST server — start server, endpoints, Python/curl client examples. Use when the user is deploying or calling the REST API."
     },
     {
-      "name": "skill-evolution",
-      "source": "./skills/skill-evolution",
+      "name": "cuopt-skill-evolution",
+      "source": "./skills/cuopt-skill-evolution",
       "skills": "./",
       "description": "After solving a non-trivial problem, detect generalizable learnings and propose skill updates. Always active."
     }

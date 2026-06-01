@@ -195,8 +195,8 @@ class deterministic_bfs_worker_t
       plunge_stack.pop_front();
       return node;
     }
-    auto node_opt = backlog.pop();
-    return node_opt.has_value() ? node_opt.value() : nullptr;
+
+    return !backlog.empty() ? backlog.pop() : nullptr;
   }
 
   size_t queue_size() const
@@ -308,10 +308,10 @@ class deterministic_diving_worker_t
     dive_upper = original_lp.upper;
   }
 
-  deterministic_diving_worker_t(const deterministic_diving_worker_t&)            = delete;
-  deterministic_diving_worker_t& operator=(const deterministic_diving_worker_t&) = delete;
-  deterministic_diving_worker_t(deterministic_diving_worker_t&&)                 = default;
-  deterministic_diving_worker_t& operator=(deterministic_diving_worker_t&&)      = default;
+  deterministic_diving_worker_t(const deterministic_diving_worker_t&)                = delete;
+  deterministic_diving_worker_t& operator=(const deterministic_diving_worker_t&)     = delete;
+  deterministic_diving_worker_t(deterministic_diving_worker_t&&) noexcept            = default;
+  deterministic_diving_worker_t& operator=(deterministic_diving_worker_t&&) noexcept = default;
 
   bool has_work_impl() const { return !dive_queue.empty(); }
 

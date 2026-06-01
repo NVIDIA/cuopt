@@ -7,6 +7,7 @@
 
 #include <mps_parser_internal.hpp>
 
+#include <file_to_string.hpp>
 #include <utilities/error.hpp>
 
 #include <algorithm>
@@ -19,31 +20,13 @@
 #include <sstream>
 #include <string>
 #include <unordered_set>
-
-#ifdef MPS_PARSER_WITH_BZIP2
-#include <bzlib.h>
-#endif  // MPS_PARSER_WITH_BZIP2
-
-#ifdef MPS_PARSER_WITH_ZLIB
-#include <zlib.h>
-#endif  // MPS_PARSER_WITH_ZLIB
-
-#if defined(MPS_PARSER_WITH_BZIP2) || defined(MPS_PARSER_WITH_ZLIB)
-#include <dlfcn.h>
-#endif  // MPS_PARSER_WITH_BZIP2 || MPS_PARSER_WITH_ZLIB
+#include <utility>
 
 namespace {
+using cuopt::linear_programming::io::coo_entries_t;
 using cuopt::linear_programming::io::error_type_t;
 using cuopt::linear_programming::io::mps_parser_expects;
 using cuopt::linear_programming::io::mps_parser_expects_fatal;
-
-struct FcloseDeleter {
-  void operator()(FILE* fp)
-  {
-    mps_parser_expects_fatal(
-      fclose(fp) == 0, error_type_t::ValidationError, "Error closing MPS file!");
-  }
-};
 
 std::vector<char> string_to_buffer(std::string_view input)
 {
@@ -53,162 +36,125 @@ std::vector<char> string_to_buffer(std::string_view input)
 }
 }  // end namespace
 
-#ifdef MPS_PARSER_WITH_BZIP2
 namespace {
-using BZ2_bzReadOpen_t  = decltype(&BZ2_bzReadOpen);
-using BZ2_bzReadClose_t = decltype(&BZ2_bzReadClose);
-using BZ2_bzRead_t      = decltype(&BZ2_bzRead);
 
-std::vector<char> bz2_file_to_string(const std::string& file)
+/**
+ * @brief Reusable scratch for converting (row,col,value) triples to CSR via CSC (double transpose).
+ *
+ * Avoids `std::vector<std::vector<...>>` per column/row, which is allocation-heavy for large Q
+ * blocks (e.g. many QCMATRIX sections in portfolio models).
+ */
+template <typename i_t, typename f_t>
+struct triples_to_csr_scratch_t {
+  std::vector<i_t> col_nnz{};
+  std::vector<i_t> col_off{};
+  std::vector<i_t> col_wr{};
+  std::vector<i_t> csc_rows{};
+  std::vector<f_t> csc_vals{};
+  std::vector<i_t> row_nnz{};
+  std::vector<i_t> row_off{};
+  std::vector<i_t> row_wr{};
+};
+
+/**
+ * @brief Build CSR from coordinate triples via CSC (double transpose): column buckets, then CSR
+ * with column indices ascending within each row.
+ *
+ * @param symmetrize_upper_triangular If true (QUADOBJ), each off-diagonal (r,c) also adds (c,r).
+ */
+template <typename i_t, typename f_t>
+void triples_to_csr_flat(const coo_entries_t<i_t, f_t>& entries,
+                         i_t num_rows,
+                         i_t num_cols,
+                         bool symmetrize_upper_triangular,
+                         f_t value_scale,
+                         triples_to_csr_scratch_t<i_t, f_t>& scratch,
+                         std::vector<f_t>& out_values,
+                         std::vector<i_t>& out_indices,
+                         std::vector<i_t>& out_offsets)
 {
-  struct DlCloseDeleter {
-    void operator()(void* fp)
+  if (entries.empty()) {
+    out_values.clear();
+    out_indices.clear();
+    out_offsets.assign(num_rows + 1, 0);
+    return;
+  }
+
+  const i_t n_entries = static_cast<i_t>(entries.size());
+
+  scratch.col_nnz.assign(num_cols, 0);
+  for (i_t i = 0; i < n_entries; ++i) {
+    const i_t r = entries.rows[i];
+    const i_t c = entries.cols[i];
+    scratch.col_nnz[c]++;
+    if (symmetrize_upper_triangular && r != c) { scratch.col_nnz[r]++; }
+  }
+
+  scratch.col_off.resize(num_cols + 1);
+  scratch.col_off[0] = 0;
+  for (i_t c = 0; c < num_cols; ++c) {
+    scratch.col_off[c + 1] = scratch.col_off[c] + scratch.col_nnz[c];
+  }
+  const i_t csc_nnz = scratch.col_off[num_cols];
+  scratch.csc_rows.resize(csc_nnz);
+  scratch.csc_vals.resize(csc_nnz);
+  scratch.col_wr.resize(num_cols);
+  std::copy(scratch.col_off.begin(), scratch.col_off.begin() + num_cols, scratch.col_wr.begin());
+
+  for (i_t i = 0; i < n_entries; ++i) {
+    const i_t r = entries.rows[i];
+    const i_t c = entries.cols[i];
+    const f_t v = entries.vals[i];
     {
-      mps_parser_expects_fatal(
-        dlclose(fp) == 0, error_type_t::ValidationError, "Error closing libbz2.so!");
+      const i_t p         = scratch.col_wr[c]++;
+      scratch.csc_rows[p] = r;
+      scratch.csc_vals[p] = v;
     }
-  };
-  struct BzReadCloseDeleter {
-    void operator()(void* f)
-    {
-      int bzerror;
-      if (f != nullptr) fptr(&bzerror, f);
-      mps_parser_expects_fatal(
-        bzerror == BZ_OK, error_type_t::ValidationError, "Error closing bzip2 file!");
-    }
-    BZ2_bzReadClose_t fptr = nullptr;
-  };
-
-  std::unique_ptr<void, DlCloseDeleter> lbz2handle{dlopen("libbz2.so", RTLD_LAZY)};
-  mps_parser_expects(
-    lbz2handle != nullptr,
-    error_type_t::ValidationError,
-    "Could not open .mps.bz2 file since libbz2.so was not found. In order to open .mps.bz2 files "
-    "directly, please ensure libbzip2 is installed. Alternatively, decompress the .mps.bz2 file "
-    "manually and open the uncompressed .mps file. Given path: %s",
-    file.c_str());
-
-  BZ2_bzReadOpen_t BZ2_bzReadOpen =
-    reinterpret_cast<BZ2_bzReadOpen_t>(dlsym(lbz2handle.get(), "BZ2_bzReadOpen"));
-  BZ2_bzReadClose_t BZ2_bzReadClose =
-    reinterpret_cast<BZ2_bzReadClose_t>(dlsym(lbz2handle.get(), "BZ2_bzReadClose"));
-  BZ2_bzRead_t BZ2_bzRead = reinterpret_cast<BZ2_bzRead_t>(dlsym(lbz2handle.get(), "BZ2_bzRead"));
-  mps_parser_expects(
-    BZ2_bzReadOpen != nullptr && BZ2_bzReadClose != nullptr && BZ2_bzRead != nullptr,
-    error_type_t::ValidationError,
-    "Error loading libbzip2! Library version might be incompatible. Please decompress the .mps.bz2 "
-    "file manually and open the uncompressed .mps file. Given path: %s",
-    file.c_str());
-
-  std::unique_ptr<FILE, FcloseDeleter> fp{fopen(file.c_str(), "rb")};
-  mps_parser_expects(fp != nullptr,
-                     error_type_t::ValidationError,
-                     "Error opening MPS file! Given path: %s",
-                     file.c_str());
-  int bzerror = BZ_OK;
-  std::unique_ptr<void, BzReadCloseDeleter> bzfile{
-    BZ2_bzReadOpen(&bzerror, fp.get(), 0, 0, nullptr, 0), {BZ2_bzReadClose}};
-  mps_parser_expects(bzerror == BZ_OK,
-                     error_type_t::ValidationError,
-                     "Could not open bzip2 compressed file! Given path: %s",
-                     file.c_str());
-
-  std::vector<char> buf;
-  const size_t readbufsize = 1ull << 24;  // 16MiB - just a guess.
-  std::vector<char> readbuf(readbufsize);
-  while (bzerror == BZ_OK) {
-    const size_t bytes_read = BZ2_bzRead(&bzerror, bzfile.get(), readbuf.data(), readbuf.size());
-    if (bzerror == BZ_OK || bzerror == BZ_STREAM_END) {
-      buf.insert(buf.end(), begin(readbuf), begin(readbuf) + bytes_read);
+    if (symmetrize_upper_triangular && r != c) {
+      const i_t p         = scratch.col_wr[r]++;
+      scratch.csc_rows[p] = c;
+      scratch.csc_vals[p] = v;
     }
   }
-  buf.push_back('\0');
-  mps_parser_expects(bzerror == BZ_STREAM_END,
-                     error_type_t::ValidationError,
-                     "Error in bzip2 decompression of MPS file! Given path: %s",
-                     file.c_str());
-  return buf;
-}
-}  // end namespace
-#endif  // MPS_PARSER_WITH_BZIP2
 
-#ifdef MPS_PARSER_WITH_ZLIB
-namespace {
-using gzopen_t    = decltype(&gzopen);
-using gzclose_r_t = decltype(&gzclose_r);
-using gzbuffer_t  = decltype(&gzbuffer);
-using gzread_t    = decltype(&gzread);
-using gzerror_t   = decltype(&gzerror);
-std::vector<char> zlib_file_to_string(const std::string& file)
-{
-  struct DlCloseDeleter {
-    void operator()(void* fp)
-    {
-      mps_parser_expects_fatal(
-        dlclose(fp) == 0, error_type_t::ValidationError, "Error closing libbz2.so!");
-    }
-  };
-  struct GzCloseDeleter {
-    void operator()(gzFile_s* f)
-    {
-      int err = fptr(f);
-      mps_parser_expects_fatal(
-        err == Z_OK, error_type_t::ValidationError, "Error closing gz file!");
-    }
-    gzclose_r_t fptr = nullptr;
-  };
-
-  std::unique_ptr<void, DlCloseDeleter> lzhandle{dlopen("libz.so.1", RTLD_LAZY)};
-  mps_parser_expects(
-    lzhandle != nullptr,
-    error_type_t::ValidationError,
-    "Could not open .mps.gz file since libz.so was not found. In order to open .mps.gz files "
-    "directly, please ensure zlib is installed. Alternatively, decompress the .mps.gz file "
-    "manually and open the uncompressed .mps file. Given path: %s",
-    file.c_str());
-  gzopen_t gzopen       = reinterpret_cast<gzopen_t>(dlsym(lzhandle.get(), "gzopen"));
-  gzclose_r_t gzclose_r = reinterpret_cast<gzclose_r_t>(dlsym(lzhandle.get(), "gzclose_r"));
-  gzbuffer_t gzbuffer   = reinterpret_cast<gzbuffer_t>(dlsym(lzhandle.get(), "gzbuffer"));
-  gzread_t gzread       = reinterpret_cast<gzread_t>(dlsym(lzhandle.get(), "gzread"));
-  gzerror_t gzerror     = reinterpret_cast<gzerror_t>(dlsym(lzhandle.get(), "gzerror"));
-  mps_parser_expects(
-    gzopen != nullptr && gzclose_r != nullptr && gzbuffer != nullptr && gzread != nullptr &&
-      gzerror != nullptr,
-    error_type_t::ValidationError,
-    "Error loading zlib! Library version might be incompatible. Please decompress the .mps.gz file "
-    "manually and open the uncompressed .mps file. Given path: %s",
-    file.c_str());
-  std::unique_ptr<gzFile_s, GzCloseDeleter> gzfp{gzopen(file.c_str(), "rb"), {gzclose_r}};
-  mps_parser_expects(gzfp != nullptr,
-                     error_type_t::ValidationError,
-                     "Error opening compressed MPS file! Given path: %s",
-                     file.c_str());
-  int zlib_status = gzbuffer(gzfp.get(), 1 << 20);  // 1 MiB
-  mps_parser_expects(zlib_status == Z_OK,
-                     error_type_t::ValidationError,
-                     "Could not set zlib internal buffer size for decompression! Given path: %s",
-                     file.c_str());
-  std::vector<char> buf;
-  const size_t readbufsize = 1ull << 24;  // 16MiB
-  std::vector<char> readbuf(readbufsize);
-  int bytes_read = -1;
-  while (bytes_read != 0) {
-    bytes_read = gzread(gzfp.get(), readbuf.data(), readbuf.size());
-    if (bytes_read > 0) { buf.insert(buf.end(), begin(readbuf), begin(readbuf) + bytes_read); }
-    if (bytes_read < 0) {
-      gzerror(gzfp.get(), &zlib_status);
-      break;
+  scratch.row_nnz.assign(num_rows, 0);
+  for (i_t cc = 0; cc < num_cols; ++cc) {
+    const i_t lo = scratch.col_off[cc];
+    const i_t hi = scratch.col_off[cc + 1];
+    for (i_t t = lo; t < hi; ++t) {
+      const i_t row = scratch.csc_rows[t];
+      scratch.row_nnz[row]++;
     }
   }
-  buf.push_back('\0');
-  mps_parser_expects(zlib_status == Z_OK,
-                     error_type_t::ValidationError,
-                     "Error in zlib decompression of MPS file! Given path: %s",
-                     file.c_str());
-  return buf;
+
+  scratch.row_off.resize(num_rows + 1);
+  scratch.row_off[0] = 0;
+  for (i_t r = 0; r < num_rows; ++r) {
+    scratch.row_off[r + 1] = scratch.row_off[r] + scratch.row_nnz[r];
+  }
+  const i_t csr_nnz = scratch.row_off[num_rows];
+
+  out_values.resize(csr_nnz);
+  out_indices.resize(csr_nnz);
+  scratch.row_wr.resize(num_rows);
+  std::copy(scratch.row_off.begin(), scratch.row_off.begin() + num_rows, scratch.row_wr.begin());
+
+  for (i_t cc = 0; cc < num_cols; ++cc) {
+    const i_t lo = scratch.col_off[cc];
+    const i_t hi = scratch.col_off[cc + 1];
+    for (i_t t = lo; t < hi; ++t) {
+      const i_t row  = scratch.csc_rows[t];
+      const f_t val  = scratch.csc_vals[t];
+      const i_t w    = scratch.row_wr[row]++;
+      out_indices[w] = cc;
+      out_values[w]  = val * value_scale;
+    }
+  }
+
+  out_offsets = std::move(scratch.row_off);
 }
-}  // end namespace
-#endif  // MPS_PARSER_WITH_ZLIB
+
+}  // namespace
 
 namespace cuopt::linear_programming::io {
 
@@ -464,115 +410,58 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
   problem.set_variable_types(std::move(var_types));
   problem.set_maximize(maximize);
 
-  // Helper function to build CSR format using double transpose (O(m+n+nnz) instead of
-  // O(nnz*log(nnz))) For QUADOBJ: handles upper triangular input by expanding to full symmetric
-  // matrix.
+  // Build CSR from (row,col,value) triples via double transpose (CSC then CSR). Uses flat buffers
+  // plus reusable scratch to avoid per-column/per-row `std::vector` allocations.
   //
-  // @p value_scale:
-  // QUADOBJ/QMATRIX use 0.5 (MPS ½ xᵀQx vs internal xᵀQx);
-  // QCMATRIX uses 1.0 (symmetric Q defines xᵀQx directly in the constraint).
-  auto build_csr_via_transpose = [](const std::vector<std::tuple<i_t, i_t, f_t>>& entries,
-                                    i_t num_rows,
-                                    i_t num_cols,
-                                    bool symmetrize_upper_triangular,
-                                    f_t value_scale) {
-    struct CSRResult {
-      std::vector<f_t> values;
-      std::vector<i_t> indices;
-      std::vector<i_t> offsets;
-    };
-
-    if (entries.empty()) {
-      CSRResult result;
-      result.offsets.resize(num_rows + 1, 0);
-      return result;
-    }
-
-    // First transpose: build CSC format (entries sorted by column)
-    std::vector<std::vector<std::pair<i_t, f_t>>> csc_data(num_cols);
-    for (const auto& entry : entries) {
-      i_t row = std::get<0>(entry);
-      i_t col = std::get<1>(entry);
-      f_t val = std::get<2>(entry);
-
-      // For QUADOBJ (upper triangular), add both (row,col) and (col,row) if off-diagonal
-      csc_data[col].emplace_back(row, val);
-      if (symmetrize_upper_triangular && row != col) { csc_data[row].emplace_back(col, val); }
-    }
-
-    // Second transpose: convert CSC to CSR (entries sorted by row, columns within rows sorted)
-    std::vector<std::vector<std::pair<i_t, f_t>>> csr_data(num_rows);
-    for (i_t col = 0; col < num_cols; ++col) {
-      for (const auto& [row, val] : csc_data[col]) {
-        csr_data[row].emplace_back(col, val);
-      }
-    }
-
-    // Build final CSR format
-    CSRResult result;
-    result.offsets.reserve(num_rows + 1);
-    result.offsets.push_back(0);
-
-    for (i_t row = 0; row < num_rows; ++row) {
-      for (const auto& [col, val] : csr_data[row]) {
-        // While the mps format expects to optimize for 0.5 xT Q x, cuopt optimizes for xT Q xExpand
-        // commentComment on line L488 so we have to multiply the value by value_scale=0.5 to get
-        // the correct value.
-        result.values.push_back(val * value_scale);
-        result.indices.push_back(col);
-      }
-      result.offsets.push_back(result.values.size());
-    }
-
-    return result;
-  };
+  // value_scale: QUADOBJ/QMATRIX use 0.5 (MPS ½ xᵀQx vs internal xᵀQx); QCMATRIX uses 1.0.
+  triples_to_csr_scratch_t<i_t, f_t> triple_csr_scratch{};
+  std::vector<f_t> quad_csr_values{};
+  std::vector<i_t> quad_csr_indices{};
+  std::vector<i_t> quad_csr_offsets{};
 
   // Process QUADOBJ data if present (upper triangular format)
   if (!quadobj_entries.empty()) {
-    // Convert quadratic objective entries to CSR format using double transpose
-    // QUADOBJ stores upper triangular elements, so we expand to full symmetric matrix
     constexpr f_t k_mps_quad_half_scale = f_t(0.5);  // MPS ½ xᵀQx vs internal xᵀQx
-    auto csr_result                     = build_csr_via_transpose(
-      quadobj_entries, num_vars_for_quad, num_vars_for_quad, true, k_mps_quad_half_scale);
-
-    // Use optimized double transpose method - O(m+n+nnz) instead of O(nnz*log(nnz))
-    problem.set_quadratic_objective_matrix(
-      csr_result.values, csr_result.indices, csr_result.offsets);
+    triples_to_csr_flat(quadobj_entries,
+                        num_vars_for_quad,
+                        num_vars_for_quad,
+                        true,
+                        k_mps_quad_half_scale,
+                        triple_csr_scratch,
+                        quad_csr_values,
+                        quad_csr_indices,
+                        quad_csr_offsets);
+    problem.set_quadratic_objective_matrix(quad_csr_values, quad_csr_indices, quad_csr_offsets);
   } else if (!qmatrix_entries.empty()) {
-    // Convert quadratic objective entries to CSR format using double transpose
-    // QMATRIX stores full symmetric matrix
     constexpr f_t k_mps_quad_half_scale = f_t(0.5);
-    auto csr_result                     = build_csr_via_transpose(
-      qmatrix_entries, num_vars_for_quad, num_vars_for_quad, false, k_mps_quad_half_scale);
-
-    // Use optimized double transpose method - O(m+n+nnz) instead of O(nnz*log(nnz))
-    problem.set_quadratic_objective_matrix(
-      csr_result.values, csr_result.indices, csr_result.offsets);
+    triples_to_csr_flat(qmatrix_entries,
+                        num_vars_for_quad,
+                        num_vars_for_quad,
+                        false,
+                        k_mps_quad_half_scale,
+                        triple_csr_scratch,
+                        quad_csr_values,
+                        quad_csr_indices,
+                        quad_csr_offsets);
+    problem.set_quadratic_objective_matrix(quad_csr_values, quad_csr_indices, quad_csr_offsets);
   }
 
   // QCMATRIX: one symmetric Q per constraint row (no extra ½ factor vs file coeffs).
-  // Bundle row metadata, row-linear coefficients (from COLUMNS), rhs, and quadratic part together.
-  constexpr f_t k_qcmatrix_value_scale = f_t(1);
-  const i_t linear_row_count = static_cast<i_t>(row_types.size() - quadratic_row_ids.size());
-  i_t quadratic_row_id       = 0;
   for (const auto& block : qcmatrix_blocks_) {
-    auto csr_result = build_csr_via_transpose(
-      block.entries, num_vars_for_quad, num_vars_for_quad, false, k_qcmatrix_value_scale);
     const i_t row_id = block.constraint_row_id;
     mps_parser_expects(row_id >= 0 && row_id < static_cast<i_t>(row_types.size()),
                        error_type_t::ValidationError,
                        "QCMATRIX row index %d is out of range for constraints",
                        static_cast<int>(row_id));
-    problem.append_quadratic_constraint(linear_row_count + quadratic_row_id,
+    problem.append_quadratic_constraint(row_id,
                                         row_names[row_id],
                                         static_cast<char>(row_types[row_id]),
                                         A_values[row_id],
                                         A_indices[row_id],
                                         b_values[row_id],
-                                        csr_result.values,
-                                        csr_result.indices,
-                                        csr_result.offsets);
-    ++quadratic_row_id;
+                                        block.entries.vals,
+                                        block.entries.rows,
+                                        block.entries.cols);
   }
 
   if (!quadratic_row_ids.empty()) {
@@ -596,51 +485,6 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
     problem.set_row_names(std::move(row_names));
     problem.set_row_types(row_types_host);
   }
-}
-
-template <typename i_t, typename f_t>
-std::vector<char> mps_parser_t<i_t, f_t>::file_to_string(const std::string& file)
-{
-  // raft::common::nvtx::range fun_scope("file to string");
-
-#ifdef MPS_PARSER_WITH_BZIP2
-  if (file.size() > 4 && file.substr(file.size() - 4, 4) == ".bz2") {
-    return bz2_file_to_string(file);
-  }
-#endif  // MPS_PARSER_WITH_BZIP2
-
-#ifdef MPS_PARSER_WITH_ZLIB
-  if (file.size() > 3 && file.substr(file.size() - 3, 3) == ".gz") {
-    return zlib_file_to_string(file);
-  }
-#endif  // MPS_PARSER_WITH_ZLIB
-
-  // Faster than using C++ I/O
-  std::unique_ptr<FILE, FcloseDeleter> fp{fopen(file.c_str(), "r")};
-  mps_parser_expects(fp != nullptr,
-                     error_type_t::ValidationError,
-                     "Error opening MPS file! Given path: %s",
-                     mps_file.c_str());
-
-  mps_parser_expects(fseek(fp.get(), 0L, SEEK_END) == 0,
-                     error_type_t::ValidationError,
-                     "File browsing MPS file! Given path: %s",
-                     mps_file.c_str());
-  const long bufsize = ftell(fp.get());
-  mps_parser_expects(bufsize != -1L,
-                     error_type_t::ValidationError,
-                     "File browsing MPS file! Given path: %s",
-                     mps_file.c_str());
-  std::vector<char> buf(bufsize + 1);
-  rewind(fp.get());
-
-  mps_parser_expects(fread(buf.data(), sizeof(char), bufsize, fp.get()) == bufsize,
-                     error_type_t::ValidationError,
-                     "Error reading MPS file! Given path: %s",
-                     mps_file.c_str());
-  buf[bufsize] = '\0';
-
-  return buf;
 }
 
 template <typename i_t, typename f_t>
@@ -914,10 +758,8 @@ mps_parser_t<i_t, f_t>::mps_parser_t(mps_data_model_t<i_t, f_t>& problem,
 {
   // raft::common::nvtx::range fun_scope("mps parser");
 
-  std::vector<char> buf = file_to_string(file);
-
+  std::vector<char> buf = detail::file_to_string(file);
   parse_string(buf.data());
-
   fill_problem(problem);
 }
 

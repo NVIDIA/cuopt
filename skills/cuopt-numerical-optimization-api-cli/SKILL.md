@@ -1,8 +1,18 @@
 ---
 name: cuopt-numerical-optimization-api-cli
-version: "26.06.00"
+version: "26.08.00"
 description: LP, MILP, and QP (beta) with cuOpt — CLI only (MPS files, cuopt_cli). Use when the user is solving LP, MILP, or QP from MPS via command line.
+license: Apache-2.0
+metadata:
+  author: NVIDIA cuOpt Team
+  tags:
+    - cuopt
+    - linear-programming
+    - milp
+    - qp
+    - cli
 ---
+
 
 
 # cuOpt Numerical Optimization — CLI

@@ -94,6 +94,7 @@ class problem_t {
   void insert_constraints(constraints_delta_t<i_t, f_t>& h_constraints);
   void set_implied_integers(const std::vector<i_t>& implied_integer_indices);
   void recompute_objective_integrality();
+  void compute_objective_step();
   void resize_variables(size_t size);
   void resize_constraints(size_t matrix_size, size_t constraint_size, size_t var_size);
   void preprocess_problem();
@@ -122,6 +123,10 @@ class problem_t {
   f_t get_user_obj_from_solver_obj(f_t solver_obj) const;
   f_t get_solver_obj_from_user_obj(f_t user_obj) const;
   bool is_objective_integral() const { return objective_is_integral; }
+  const cuopt::linear_programming::dual_simplex::objective_step_t<f_t>& get_objective_step() const
+  {
+    return objective_step;
+  }
   void compute_integer_fixed_problem();
   void fill_integer_fixed_problem(rmm::device_uvector<f_t>& assignment,
                                   const raft::handle_t* handle_ptr);
@@ -324,6 +329,7 @@ class problem_t {
   bool is_scaled_{false};
   bool preprocess_called{false};
   bool objective_is_integral{false};
+  cuopt::linear_programming::dual_simplex::objective_step_t<f_t> objective_step;
   // this LP state keeps the warm start data of some solution of
   // 1. Original problem: it is unchanged and part of it is used
   // to warm start slightly modified problems.

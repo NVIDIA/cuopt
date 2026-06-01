@@ -17,6 +17,7 @@ if(BUILD_TESTS)
       PRIVATE
       "${CMAKE_CURRENT_SOURCE_DIR}/../src"
       "${CMAKE_CURRENT_SOURCE_DIR}"
+      "${dejavu_SOURCE_DIR}"
   )
 
   target_link_libraries(cuopttestutils
@@ -48,6 +49,7 @@ function(ConfigureTest CMAKE_TEST_NAME)
         "${papilo_SOURCE_DIR}/src"
         "${papilo_BINARY_DIR}"
         "${pslp_SOURCE_DIR}/include"
+        "${dejavu_SOURCE_DIR}"
     )
 
     target_link_libraries(${CMAKE_TEST_NAME}
@@ -100,6 +102,7 @@ if(BUILD_TESTS)
   endif()
   add_subdirectory(linear_programming)
   add_subdirectory(dual_simplex)
+  add_subdirectory(socp)
   add_subdirectory(qp)
   add_subdirectory(utilities)
 

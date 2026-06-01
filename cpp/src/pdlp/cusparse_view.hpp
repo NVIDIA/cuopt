@@ -20,6 +20,8 @@
 
 #include <cusparse_v2.h>
 
+#define CUDA_VER_13_2_UP (CUDART_VERSION >= 13020)
+
 namespace cuopt::linear_programming::detail {
 
 template <typename i_t, typename f_t>
@@ -78,6 +80,76 @@ class cusparse_dn_mat_descr_wrapper_t {
   cusparseDnMatDescr_t descr_;
   bool need_destruction_;
 };
+
+#if CUDA_VER_13_2_UP
+// RAII wrapper around cusparse SpMVOp objects. All the buffers are owned by the cusparse_view_t.
+class cusparse_spmvop_descr_wrapper_t {
+ public:
+  cusparse_spmvop_descr_wrapper_t();
+  ~cusparse_spmvop_descr_wrapper_t();
+
+  cusparse_spmvop_descr_wrapper_t(const cusparse_spmvop_descr_wrapper_t& other);
+  cusparse_spmvop_descr_wrapper_t& operator=(cusparse_spmvop_descr_wrapper_t&& other);
+  cusparse_spmvop_descr_wrapper_t& operator=(const cusparse_spmvop_descr_wrapper_t& other) = delete;
+
+  void create(cusparseHandle_t handle,
+              cusparseOperation_t opA,
+              cusparseSpMatDescr_t matA,
+              cusparseDnVecDescr_t vecX,
+              cusparseDnVecDescr_t vecY,
+              cusparseDnVecDescr_t vecZ,
+              cudaDataType computeType,
+              rmm::device_uvector<uint8_t>& buffer);
+
+  operator cusparseSpMVOpDescr_t() const;
+
+ private:
+  // Forwards to cusparseSpMVOp_{create,destroy}Descr resolved via dlsym (cached on first call).
+  // This is needed because the cusparseSpMVOp_{create,destroy}Descr symbols might not be defined in
+  // current runtime.
+  static cusparseStatus_t dlsym_create(cusparseHandle_t handle,
+                                       cusparseSpMVOpDescr_t* descr,
+                                       cusparseOperation_t opA,
+                                       cusparseSpMatDescr_t matA,
+                                       cusparseDnVecDescr_t vecX,
+                                       cusparseDnVecDescr_t vecY,
+                                       cusparseDnVecDescr_t vecZ,
+                                       cudaDataType computeType,
+                                       void* buffer);
+  static cusparseStatus_t dlsym_destroy(cusparseSpMVOpDescr_t descr);
+
+  cusparseSpMVOpDescr_t descr_;
+  bool need_destruction_;
+};
+
+class cusparse_spmvop_plan_wrapper_t {
+ public:
+  cusparse_spmvop_plan_wrapper_t();
+  ~cusparse_spmvop_plan_wrapper_t();
+
+  cusparse_spmvop_plan_wrapper_t(const cusparse_spmvop_plan_wrapper_t& other);
+  cusparse_spmvop_plan_wrapper_t& operator=(cusparse_spmvop_plan_wrapper_t&& other);
+  cusparse_spmvop_plan_wrapper_t& operator=(const cusparse_spmvop_plan_wrapper_t& other) = delete;
+
+  void create(cusparseHandle_t handle, cusparseSpMVOpDescr_t descr);
+
+  operator cusparseSpMVOpPlan_t() const;
+
+ private:
+  // Forwards to cusparseSpMVOp_{create,destroy}Plan resolved via dlsym (cached on first call).
+  // This is needed because the cusparseSpMVOp_{create,destroy}Plan symbols might not be defined in
+  // current runtime.
+  static cusparseStatus_t dlsym_create(cusparseHandle_t handle,
+                                       cusparseSpMVOpDescr_t descr,
+                                       cusparseSpMVOpPlan_t* plan,
+                                       char* ltoIRBuf,
+                                       size_t ltoIRSize);
+  static cusparseStatus_t dlsym_destroy(cusparseSpMVOpPlan_t plan);
+
+  cusparseSpMVOpPlan_t plan_;
+  bool need_destruction_;
+};
+#endif
 
 template <typename i_t, typename f_t>
 class cusparse_view_t {
@@ -172,6 +244,17 @@ class cusparse_view_t {
   rmm::device_uvector<uint8_t> buffer_non_transpose;
   rmm::device_uvector<uint8_t> buffer_transpose;
 
+  // SpMVOp buffers for A and A_T
+  rmm::device_uvector<uint8_t> buffer_non_transpose_spmvop{0, handle_ptr_->get_stream()};
+  rmm::device_uvector<uint8_t> buffer_transpose_spmvop{0, handle_ptr_->get_stream()};
+
+#if CUDA_VER_13_2_UP
+  // SpMVOp descriptors and plans for A and A_T (descr before plan so dtor destroys plan first)
+  cusparse_spmvop_descr_wrapper_t spmv_op_descr_A_;
+  cusparse_spmvop_plan_wrapper_t spmv_op_plan_A_;
+  cusparse_spmvop_descr_wrapper_t spmv_op_descr_A_t_;
+  cusparse_spmvop_plan_wrapper_t spmv_op_plan_A_t_;
+#endif
   // reuse buffers for cusparse spmm
   rmm::device_uvector<uint8_t> buffer_transpose_batch;
   rmm::device_uvector<uint8_t> buffer_non_transpose_batch;
@@ -212,6 +295,8 @@ class cusparse_view_t {
   // Redirects the cuSPARSE CSR structure pointers from op_problem_scaled_ to the original problem
   // so the duplicated row/column buffers can be freed.
   void redirect_cusparse_csr_structure_pointers(const problem_t<i_t, f_t>& original_problem);
+  // Creates SpMVOp plans. Must be called after scale_problem() so plans use the scaled matrix.
+  void create_spmv_op_plans(bool is_reflected);
 };
 
 // Mixed precision SpMV: FP32 matrix with FP64 vectors and FP64 compute type
@@ -267,5 +352,22 @@ void my_cusparsespmm_preprocess(cusparseHandle_t handle,
 #endif
 
 bool is_cusparse_runtime_mixed_precision_supported();
+
+// False if cuda version < 13.2 or runtime cuSPARSE does not export SpMVOp symbols. True otherwise.
+bool is_cusparse_runtime_spmvop_supported();
+
+#if CUDA_VER_13_2_UP
+// Dispatches to the runtime cusparseSpMVOp via dlsym so callers (e.g., pdhg.cu) never
+// reference the symbol statically. Caller must have verified
+// is_cusparse_runtime_spmvop_supported().
+void cusparse_spmvop_run(cusparseHandle_t handle,
+                         cusparseSpMVOpPlan_t plan,
+                         const void* alpha,
+                         const void* beta,
+                         cusparseDnVecDescr_t vecX,
+                         cusparseDnVecDescr_t vecY,
+                         cusparseDnVecDescr_t vecZ,
+                         cudaStream_t stream);
+#endif
 
 }  // namespace cuopt::linear_programming::detail

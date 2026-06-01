@@ -143,6 +143,38 @@ void cpu_optimization_problem_t<i_t, f_t>::set_quadratic_constraints(
 }
 
 template <typename i_t, typename f_t>
+void cpu_optimization_problem_t<i_t, f_t>::add_quadratic_constraint(
+  char constraint_row_type,
+  f_t rhs_value,
+  std::span<const i_t> row_index,
+  std::span<const i_t> col_index,
+  std::span<const f_t> coeff,
+  std::span<const f_t> linear_values,
+  std::span<const i_t> linear_indices)
+{
+  cuopt_expects(!row_index.empty(),
+                error_type_t::ValidationError,
+                "quadratic constraint must have at least one matrix entry");
+  cuopt_expects(row_index.size() == col_index.size() && row_index.size() == coeff.size(),
+                error_type_t::ValidationError,
+                "row_index, col_index, and coeff must have the same size");
+  cuopt_expects(linear_values.size() == linear_indices.size(),
+                error_type_t::ValidationError,
+                "linear_values and linear_indices must have the same size");
+
+  typename optimization_problem_interface_t<i_t, f_t>::quadratic_constraint_t qc;
+  qc.constraint_row_index = get_n_constraints() + static_cast<i_t>(quadratic_constraints_.size());
+  qc.constraint_row_type  = constraint_row_type;
+  qc.rhs_value            = rhs_value;
+  qc.rows.assign(row_index.begin(), row_index.end());
+  qc.cols.assign(col_index.begin(), col_index.end());
+  qc.vals.assign(coeff.begin(), coeff.end());
+  qc.linear_values.assign(linear_values.begin(), linear_values.end());
+  qc.linear_indices.assign(linear_indices.begin(), linear_indices.end());
+  quadratic_constraints_.push_back(std::move(qc));
+}
+
+template <typename i_t, typename f_t>
 void cpu_optimization_problem_t<i_t, f_t>::set_variable_lower_bounds(
   const f_t* variable_lower_bounds, i_t size)
 {
@@ -755,7 +787,11 @@ void cpu_optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_f
     for (size_t i = 0; i < var_types_char.size(); ++i) {
       var_types_char[i] = detail::var_type_to_char(variable_types_[i]);
     }
-
+  } else if (get_n_variables() > 0) {
+    // Variable types not set (e.g. pure LP); default to all continuous
+    var_types_char.assign(get_n_variables(), 'C');
+  }
+  if (!var_types_char.empty()) {
     data_model_view.set_variable_types(var_types_char.data(), var_types_char.size());
   }
 

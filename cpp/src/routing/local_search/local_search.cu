@@ -40,6 +40,7 @@ local_search_t<i_t, f_t, REQUEST>::local_search_t(const solution_handle_t<i_t, f
     found_sliding_solution_data_(max_routes, sol_handle_->get_stream()),
     sampled_tsp_data_(max_routes * n_orders, sol_handle_->get_stream()),
     moved_regions_(0, sol_handle_->get_stream()),
+    moved_region_node_infos_(0, sol_handle_->get_stream()),
     locks_(max_routes, sol_handle_->get_stream())
 {
   raft::common::nvtx::range fun_scope("local_search_t");

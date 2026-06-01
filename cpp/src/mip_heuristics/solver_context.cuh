@@ -13,6 +13,7 @@
 #include <utilities/work_unit_scheduler.hpp>
 
 #include <limits>
+#include <memory>
 
 #pragma once
 
@@ -21,6 +22,8 @@ namespace cuopt::linear_programming::dual_simplex {
 template <typename i_t, typename f_t>
 class branch_and_bound_t;
 }
+
+#include <branch_and_bound/symmetry.hpp>
 
 namespace cuopt::linear_programming::detail {
 
@@ -71,6 +74,9 @@ struct mip_solver_context_t {
 
   // Matching incumbent assignment in original output space from early heuristics.
   std::vector<f_t> initial_incumbent_assignment{};
+
+  // Symmetry information for orbital fixing during B&B. Null if no exploitable symmetry.
+  std::unique_ptr<dual_simplex::mip_symmetry_t<i_t, f_t>> symmetry;
 };
 
 }  // namespace cuopt::linear_programming::detail

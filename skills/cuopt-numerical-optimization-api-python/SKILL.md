@@ -1,8 +1,18 @@
 ---
 name: cuopt-numerical-optimization-api-python
-version: "26.06.00"
-description: Solve Linear Programming (LP), Mixed-Integer Linear Programming (MILP), and Quadratic Programming (QP, beta) with the Python API. Use when the user asks about optimization with linear or quadratic objectives, linear constraints, integer variables, scheduling, resource allocation, facility location, production planning, portfolio optimization, or least squares.
+version: "26.08.00"
+description: Solve LP, MILP, QP (beta) with cuOpt Python API — linear/quadratic objectives, integer variables, scheduling, portfolio, least squares.
+license: Apache-2.0
+metadata:
+  author: NVIDIA cuOpt Team
+  tags:
+    - cuopt
+    - linear-programming
+    - milp
+    - qp
+    - python
 ---
+
 
 # cuOpt Numerical Optimization Skill (Python)
 
@@ -144,7 +154,7 @@ if problem.Status.name in ["Optimal", "PrimalFeasible"]:
 - **Q should be PSD** (positive semi-definite) for a convex problem; otherwise the solver may return a non-optimal stationary point.
 - **Beta** — API may evolve; treat as production-capable for typical convex QP but expect occasional changes.
 
-See `resources/qp_examples.md` for least-squares, maximization-workaround, and matrix-form examples.
+See `references/qp_examples.md` for least-squares, maximization-workaround, and matrix-form examples.
 
 ## CRITICAL: Status Checking
 
@@ -199,7 +209,11 @@ from cuopt.linear_programming.problem import LinearExpression
 
 # Build as list of (vars, coeffs) instead of v1*c1 + v2*c2 + ...
 vars_list = [x, y, z]
-coeffs_list = [1.0, 2.0, 3.0]
+coeffs_list = [
+    1.0,
+    2.0,
+    3.0,
+]
 expr = LinearExpression(vars_list, coeffs_list, constant=0.0)
 problem.addConstraint(expr <= 100)
 ```

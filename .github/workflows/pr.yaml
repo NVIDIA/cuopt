@@ -152,6 +152,7 @@ jobs:
           - '!.github/workflows/inactivity_reminder.yaml'
           - '!.github/workflows/issue_automation.yaml'
           - '!.github/workflows/nightly.yaml'
+          - '!.github/workflows/request-nvskills-ci.yml'
           - '!.github/workflows/test.yaml'
           - '!.github/workflows/test_images.yaml'
           - '!.github/workflows/trigger-breaking-change-alert.yaml'
@@ -162,6 +163,7 @@ jobs:
           - '!CONTRIBUTING.md'
           - '!LICENSE'
           - '!README.md'
+          - '!SECURITY.md'
           - '!ci/build_wheel*.sh'
           - '!ci/check_style.sh'
           - '!ci/docker/**'
@@ -208,6 +210,7 @@ jobs:
           - '!.github/workflows/inactivity_reminder.yaml'
           - '!.github/workflows/issue_automation.yaml'
           - '!.github/workflows/nightly.yaml'
+          - '!.github/workflows/request-nvskills-ci.yml'
           - '!.github/workflows/test.yaml'
           - '!.github/workflows/test_images.yaml'
           - '!.github/workflows/trigger-breaking-change-alert.yaml'
@@ -217,6 +220,7 @@ jobs:
           - '!CONTRIBUTING.md'
           - '!LICENSE'
           - '!README.md'
+          - '!SECURITY.md'
           - '!agents/**'
           - '!ci/build_docs.sh'
           - '!ci/build_python.sh'
@@ -242,7 +246,8 @@ jobs:
           - '!skills/**/skill-card.md'
           - '!skills/**/skill.oms.sig'
           - '!skills/**/evals/**'
-          - '!skills/**/resources/**'
+          - '!skills/**/benchmark/**'
+          - '!skills/**/references/**'
           - '!sonar-project.properties'
           - '!sonarqube/**'
           - '!ucf/**'
@@ -274,6 +279,7 @@ jobs:
           - '!.github/workflows/inactivity_reminder.yaml'
           - '!.github/workflows/issue_automation.yaml'
           - '!.github/workflows/nightly.yaml'
+          - '!.github/workflows/request-nvskills-ci.yml'
           - '!.github/workflows/test.yaml'
           - '!.github/workflows/test_images.yaml'
           - '!.github/workflows/trigger-breaking-change-alert.yaml'
@@ -283,6 +289,7 @@ jobs:
           - '!CONTRIBUTING.md'
           - '!LICENSE'
           - '!README.md'
+          - '!SECURITY.md'
           - '!agents/**'
           - '!ci/build_docs.sh'
           - '!ci/build_wheel*.sh'
@@ -305,7 +312,8 @@ jobs:
           - '!skills/**/skill-card.md'
           - '!skills/**/skill.oms.sig'
           - '!skills/**/evals/**'
-          - '!skills/**/resources/**'
+          - '!skills/**/benchmark/**'
+          - '!skills/**/references/**'
           - '!sonar-project.properties'
           - '!sonarqube/**'
           - '!ucf/**'
@@ -337,6 +345,7 @@ jobs:
           - '!.github/workflows/inactivity_reminder.yaml'
           - '!.github/workflows/issue_automation.yaml'
           - '!.github/workflows/nightly.yaml'
+          - '!.github/workflows/request-nvskills-ci.yml'
           - '!.github/workflows/test.yaml'
           - '!.github/workflows/test_images.yaml'
           - '!.github/workflows/trigger-breaking-change-alert.yaml'
@@ -346,6 +355,7 @@ jobs:
           - '!CONTRIBUTING.md'
           - '!LICENSE'
           - '!README.md'
+          - '!SECURITY.md'
           - '!agents/**'
           - '!ci/build_cpp.sh'
           - '!ci/build_docs.sh'
@@ -369,7 +379,8 @@ jobs:
           - '!skills/**/skill-card.md'
           - '!skills/**/skill.oms.sig'
           - '!skills/**/evals/**'
-          - '!skills/**/resources/**'
+          - '!skills/**/benchmark/**'
+          - '!skills/**/references/**'
           - '!sonar-project.properties'
           - '!sonarqube/**'
           - '!ucf/**'
@@ -477,7 +488,7 @@ jobs:
       arch: "amd64"
       file_to_upload: "docs/cuopt/build/html/"
       artifact-name: "cuopt_docs"
-      container_image: "rapidsai/ci-conda:26.06-latest"
+      container_image: "rapidsai/ci-conda:26.08-latest"
       script: "ci/build_docs.sh"
   wheel-build-libcuopt:
     needs: [compute-matrix-filters, changed-files]

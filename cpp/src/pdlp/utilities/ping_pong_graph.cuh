@@ -17,7 +17,7 @@
 namespace cuopt::linear_programming::detail {
 
 // Two-slot CUDA-graph cache for PDLP. PDLP swaps pointers (rather than
-// copying vectors) at the end of every pdhg step, so the captured graph
+// copying vectors) at the end of adaptive pdhg step, so the captured graph
 // topology alternates between two layouts depending on iteration parity.
 // Each slot is a manual_cuda_graph_t, which (a) builds the parent graph
 // explicitly via cudaGraphCreate + cudaStreamBeginCaptureToGraph and

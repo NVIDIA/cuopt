@@ -21,12 +21,11 @@ class pcgenerator_t {
   static constexpr uint64_t default_stream = 0xda3e39cb94b95bdbULL;
 
   /**
-   * @brief ctor. Initializes the PCG
-   * @param rng_state is the generator state used for initializing the generator
-   * @param subsequence specifies the subsequence to be generated out of 2^64 possible subsequences
-   * In a parallel setting, like threads of a CUDA kernel, each thread is required to generate a
-   * unique set of random numbers. This can be achieved by initializing the generator with same
-   * rng_state for all the threads and diststreamt values for subsequence.
+   * @brief Initializes the PCG generator.
+   * @param seed        Generator state seed.
+   * @param subsequence Selects one of 2^64 independent subsequences. Use distinct values per
+   *                    thread to guarantee non-overlapping streams in parallel contexts.
+   * @param offset      Number of outputs to skip ahead before the first draw.
    */
   pcgenerator_t(const uint64_t seed        = default_seed,
                 const uint64_t subsequence = default_stream,
@@ -35,7 +34,12 @@ class pcgenerator_t {
     set_seed(seed, subsequence, offset);
   }
 
-  // Set the seed, subsequence and offset of the PCG
+  /**
+   * @brief Re-seeds the generator.
+   * @param seed        Generator state seed.
+   * @param subsequence Selects one of 2^64 independent subsequences.
+   * @param offset      Number of outputs to skip ahead before the first draw.
+   */
   void set_seed(uint64_t seed, const uint64_t subsequence = default_stream, uint64_t offset = 0)
   {
     state  = uint64_t(0);
@@ -47,8 +51,12 @@ class pcgenerator_t {
     skipahead(offset);
   }
 
-  // Based on "Random Number Generation with Arbitrary Strides" F. B. Brown
-  // Link https://mcnp.lanl.gov/pdf_files/anl-rn-arb-stride.pdf
+  /**
+   * @brief Advances the generator state by @p offset steps in O(log offset) time.
+   *
+   * Uses the closed-form LCG jump described in "Random Number Generation with Arbitrary Strides"
+   * (F. B. Brown, https://mcnp.lanl.gov/pdf_files/anl-rn-arb-stride.pdf).
+   */
   void skipahead(uint64_t offset)
   {
     uint64_t G = 1;
@@ -68,9 +76,7 @@ class pcgenerator_t {
   }
 
   /**
-   * @defgroup NextRand Generate the next random number
-   * @brief This code is derived from PCG basic code
-   * @{
+   * @returns the next uniformly distributed 32-bit unsigned integer.
    */
   uint32_t next_u32()
   {
@@ -83,6 +89,9 @@ class pcgenerator_t {
     return ret;
   }
 
+  /**
+   * @returns the next uniformly distributed 64-bit unsigned integer.
+   */
   uint64_t next_u64()
   {
     uint64_t ret;
@@ -93,6 +102,10 @@ class pcgenerator_t {
     return ret;
   }
 
+  /**
+   * @returns the next uniformly distributed non-negative 32-bit signed integer in [0,
+   * INT32_MAX].
+   */
   int32_t next_i32()
   {
     int32_t ret;
@@ -102,6 +115,10 @@ class pcgenerator_t {
     return ret;
   }
 
+  /**
+   * @returns the next uniformly distributed non-negative 64-bit signed integer in [0,
+   * INT64_MAX].
+   */
   int64_t next_i64()
   {
     int64_t ret;
@@ -111,10 +128,19 @@ class pcgenerator_t {
     return ret;
   }
 
-  float next_float() { return static_cast<float>((next_u32() >> 8) * 0x1.0p-24); }
+  /**
+   * @returns a uniformly distributed float in [0, 1).
+   */
+  float next_float() { return (next_u32() >> 8) * 0x1.0p-24; }
 
-  double next_double() { return static_cast<double>((next_u64() >> 11) * 0x1.0p-53); }
+  /**
+   * @returns a uniformly distributed double in [0, 1).
+   */
+  double next_double() { return (next_u64() >> 11) * 0x1.0p-53; }
 
+  /**
+   * @returns the next random value of type @p T.
+   */
   template <typename T>
   T next()
   {
@@ -130,9 +156,11 @@ class pcgenerator_t {
   void next(float& ret) { ret = next_float(); }
   void next(double& ret) { ret = next_double(); }
 
-  /// Draws a sample from a uniform distribution. The samples are uniformly distributed over
-  /// the semi-closed interval `[low, high)`. This routine may have a **slight bias** toward
-  /// some numbers in the range (scaling by floating-point).
+  /**
+   * @brief Draws a sample from a uniform distribution over `[low, high)`.
+   *
+   * May have a slight bias toward some values due to floating-point scaling.
+   */
   template <typename T>
   T uniform(T low, T high)
   {
@@ -141,7 +169,9 @@ class pcgenerator_t {
     return low + (val * range);
   }
 
-  // Shuffles the contents of a sequence using the Fisher–Yates algorithm.
+  /**
+   * @brief Shuffles @p seq in-place using the Fisher-Yates algorithm.
+   */
   template <typename T>
   void shuffle(std::vector<T>& seq)
   {
