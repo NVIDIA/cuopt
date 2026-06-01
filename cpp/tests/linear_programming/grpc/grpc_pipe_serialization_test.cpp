@@ -387,10 +387,10 @@ TEST(PipeSerialization, ChunkedRequest_ContainerArrays)
 
   // Container index 0: linear_values (cfn=25, fid=0, 8 bytes), small fast-path
   // single-chunk.  Also linear_indices (cfn=25, fid=1, 4 bytes) and
-  // quadratic_offsets (cfn=25, fid=4, 4 bytes).
-  auto lv0_data = make_pattern(10 * 8, 0xA0);
-  auto li0_data = make_pattern(10 * 4, 0xA1);
-  auto qo0_data = make_pattern(3 * 4, 0xA4);
+  // vals (cfn=25, fid=4, 8 bytes — doubles, COO storage of Q).
+  auto lv0_data   = make_pattern(10 * 8, 0xA0);
+  auto li0_data   = make_pattern(10 * 4, 0xA1);
+  auto vals0_data = make_pattern(3 * 8, 0xA4);
 
   // Container index 1: linear_values delivered in two partial chunks (slow
   // path inside a container).  20 elements * 8 bytes = 160 bytes, split at 12.
@@ -402,7 +402,7 @@ TEST(PipeSerialization, ChunkedRequest_ContainerArrays)
   chunks.push_back(make_whole_chunk(FIELD_C, 50, c_data));
   chunks.push_back(make_container_whole_chunk(25, 0, 0, 10, lv0_data));
   chunks.push_back(make_container_whole_chunk(25, 0, 1, 10, li0_data));
-  chunks.push_back(make_container_whole_chunk(25, 0, 4, 3, qo0_data));
+  chunks.push_back(make_container_whole_chunk(25, 0, 4, 3, vals0_data));
   chunks.push_back(make_container_partial_chunk(
     25, 1, 0, 0, lv1_total, lv1_data.data(), static_cast<size_t>(lv1_split * 8)));
   chunks.push_back(make_container_partial_chunk(25,
@@ -442,7 +442,7 @@ TEST(PipeSerialization, ChunkedRequest_ContainerArrays)
   container_array_key_t k1_0{25, 1, 0};
   EXPECT_EQ(container_arrays_out[k0_0], lv0_data);
   EXPECT_EQ(container_arrays_out[k0_1], li0_data);
-  EXPECT_EQ(container_arrays_out[k0_4], qo0_data);
+  EXPECT_EQ(container_arrays_out[k0_4], vals0_data);
   EXPECT_EQ(container_arrays_out[k1_0], lv1_data);
 }
 

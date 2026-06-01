@@ -2274,15 +2274,19 @@ namespace {
 
 using QC = optimization_problem_interface_t<int32_t, double>::quadratic_constraint_t;
 
+// Q is stored COO-style on quadratic_constraint_t: three parallel arrays
+// (rows, cols, vals) of the same length, one entry per non-zero in the
+// Q matrix block for this row.  Older CSR storage was replaced by the
+// SOCP barrier work upstream; the wire format renames track the struct.
 QC make_qc(int32_t row_index,
            std::string name,
            char row_type,
            double rhs,
            std::vector<double> lin_vals,
            std::vector<int32_t> lin_idx,
-           std::vector<double> q_vals,
-           std::vector<int32_t> q_idx,
-           std::vector<int32_t> q_off)
+           std::vector<int32_t> q_rows,
+           std::vector<int32_t> q_cols,
+           std::vector<double> q_vals)
 {
   QC qc;
   qc.constraint_row_index = row_index;
@@ -2291,9 +2295,9 @@ QC make_qc(int32_t row_index,
   qc.rhs_value            = rhs;
   qc.linear_values        = std::move(lin_vals);
   qc.linear_indices       = std::move(lin_idx);
-  qc.quadratic_values     = std::move(q_vals);
-  qc.quadratic_indices    = std::move(q_idx);
-  qc.quadratic_offsets    = std::move(q_off);
+  qc.rows                 = std::move(q_rows);
+  qc.cols                 = std::move(q_cols);
+  qc.vals                 = std::move(q_vals);
   return qc;
 }
 
@@ -2307,9 +2311,9 @@ void expect_qc_equal(const QC& a, const QC& b)
   EXPECT_DOUBLE_EQ(a.rhs_value, b.rhs_value);
   EXPECT_EQ(a.linear_values, b.linear_values);
   EXPECT_EQ(a.linear_indices, b.linear_indices);
-  EXPECT_EQ(a.quadratic_values, b.quadratic_values);
-  EXPECT_EQ(a.quadratic_indices, b.quadratic_indices);
-  EXPECT_EQ(a.quadratic_offsets, b.quadratic_offsets);
+  EXPECT_EQ(a.rows, b.rows);
+  EXPECT_EQ(a.cols, b.cols);
+  EXPECT_EQ(a.vals, b.vals);
 }
 
 // Reassemble the chunk requests produced by build_array_chunk_requests into
@@ -2384,18 +2388,18 @@ TEST(MapperRoundtrip, QuadraticConstraintsUnaryPath)
                         4.5,
                         /*lin_vals=*/{1.5, -2.5},
                         /*lin_idx=*/{0, 2},
-                        /*q_vals=*/{2.0, 0.5, 3.0},
-                        /*q_idx=*/{0, 1, 1},
-                        /*q_off=*/{0, 1, 3}));
+                        /*q_rows=*/{0, 1, 1},
+                        /*q_cols=*/{0, 1, 2},
+                        /*q_vals=*/{2.0, 0.5, 3.0}));
   qcs.push_back(make_qc(/*row_index=*/1,
                         "qc_row_1",
                         'G',
                         -7.0,
                         /*lin_vals=*/{0.25, 0.75, 1.0},
                         /*lin_idx=*/{0, 1, 2},
-                        /*q_vals=*/{4.0},
-                        /*q_idx=*/{2},
-                        /*q_off=*/{0, 0, 1}));
+                        /*q_rows=*/{2},
+                        /*q_cols=*/{2},
+                        /*q_vals=*/{4.0}));
   orig.set_quadratic_constraints(qcs);
   ASSERT_TRUE(orig.has_quadratic_constraints());
 
@@ -2405,7 +2409,8 @@ TEST(MapperRoundtrip, QuadraticConstraintsUnaryPath)
   ASSERT_EQ(pb.quadratic_constraints_size(), 2);
   EXPECT_EQ(pb.quadratic_constraints(0).constraint_row_name(), "qc_row_0");
   EXPECT_EQ(pb.quadratic_constraints(0).linear_values_size(), 2);
-  EXPECT_EQ(pb.quadratic_constraints(1).quadratic_offsets_size(), 3);
+  EXPECT_EQ(pb.quadratic_constraints(0).vals_size(), 3);
+  EXPECT_EQ(pb.quadratic_constraints(1).vals_size(), 1);
 
   cpu_optimization_problem_t<int32_t, double> restored;
   map_proto_to_problem(pb, restored);
@@ -2427,24 +2432,24 @@ TEST(MapperRoundtrip, QuadraticConstraintsChunkedPath)
   // Build QC entries with arrays large enough that build_array_chunk_requests
   // with a small chunk_size_bytes is forced to split them across multiple
   // chunks, exercising the slow-path stitching inside the container code.
+  // Q is COO so rows/cols/vals are three parallel arrays of equal length.
   constexpr int n0_linear = 64;   // 64 doubles = 512 bytes
-  constexpr int n0_q      = 100;  // 100 doubles = 800 bytes
+  constexpr int n0_q      = 100;  // 100 COO entries (rows/cols int, vals double)
   constexpr int n1_linear = 32;
   std::vector<double> lv0(n0_linear);
   std::vector<int32_t> li0(n0_linear);
+  std::vector<int32_t> qr0(n0_q);
+  std::vector<int32_t> qc0(n0_q);
   std::vector<double> qv0(n0_q);
-  std::vector<int32_t> qi0(n0_q);
-  std::vector<int32_t> qo0(n0_linear + 1);
   for (int i = 0; i < n0_linear; ++i) {
     lv0[i] = 0.5 * i + 1.0;
     li0[i] = i;
   }
   for (int i = 0; i < n0_q; ++i) {
+    qr0[i] = i % n0_linear;
+    qc0[i] = (i + 7) % n0_linear;
     qv0[i] = -0.25 * i + 7.0;
-    qi0[i] = i % n0_linear;
   }
-  for (int i = 0; i <= n0_linear; ++i)
-    qo0[i] = std::min(i * 2, n0_q);
 
   std::vector<double> lv1(n1_linear);
   std::vector<int32_t> li1(n1_linear);
@@ -2454,7 +2459,7 @@ TEST(MapperRoundtrip, QuadraticConstraintsChunkedPath)
   }
 
   std::vector<QC> qcs;
-  qcs.push_back(make_qc(0, "big_qc", 'L', 12.5, lv0, li0, qv0, qi0, qo0));
+  qcs.push_back(make_qc(0, "big_qc", 'L', 12.5, lv0, li0, qr0, qc0, qv0));
   qcs.push_back(make_qc(2, "small_qc", 'E', 0.0, lv1, li1, {}, {}, {}));
   orig.set_quadratic_constraints(qcs);
 
@@ -2466,7 +2471,7 @@ TEST(MapperRoundtrip, QuadraticConstraintsChunkedPath)
   ASSERT_EQ(header.quadratic_constraints_size(), 2);
   // Per-entry arrays must NOT have ridden the header — they belong on chunks.
   EXPECT_EQ(header.quadratic_constraints(0).linear_values_size(), 0);
-  EXPECT_EQ(header.quadratic_constraints(0).quadratic_values_size(), 0);
+  EXPECT_EQ(header.quadratic_constraints(0).vals_size(), 0);
 
   // Small chunk budget forces at least one container array to split.
   constexpr int64_t kChunkBytes = 96;
@@ -2561,9 +2566,9 @@ TEST(MapperRoundtrip, QuadraticConstraintsRowTypeLenient)
                           /*rhs=*/static_cast<double>(i),
                           /*lin_vals=*/{1.0},
                           /*lin_idx=*/{0},
-                          /*q_vals=*/{},
-                          /*q_idx=*/{},
-                          /*q_off=*/{0, 0}));
+                          /*q_rows=*/{},
+                          /*q_cols=*/{},
+                          /*q_vals=*/{}));
   }
   orig.set_quadratic_constraints(qcs);
 

@@ -78,8 +78,8 @@
       pb_entry->set_rhs_value(_entry.rhs_value);
       for (const auto& v : _entry.linear_values) pb_entry->add_linear_values(static_cast<double>(v));
       for (const auto& v : _entry.linear_indices) pb_entry->add_linear_indices(static_cast<int32_t>(v));
-      for (const auto& v : _entry.quadratic_values) pb_entry->add_quadratic_values(static_cast<double>(v));
-      for (const auto& v : _entry.quadratic_indices) pb_entry->add_quadratic_indices(static_cast<int32_t>(v));
-      for (const auto& v : _entry.quadratic_offsets) pb_entry->add_quadratic_offsets(static_cast<int32_t>(v));
+      for (const auto& v : _entry.rows) pb_entry->add_rows(static_cast<int32_t>(v));
+      for (const auto& v : _entry.cols) pb_entry->add_cols(static_cast<int32_t>(v));
+      for (const auto& v : _entry.vals) pb_entry->add_vals(static_cast<double>(v));
     }
   }

@@ -44,9 +44,9 @@
       est += sizeof(double);  // rhs_value: double field, fixed64 (8B per value)
       est += _entry.linear_values.size() * sizeof(double);  // double field, fixed64 (8B per value)
       est += _entry.linear_indices.size() * 5;  // int32 field, varint (max 5B per value)
-      est += _entry.quadratic_values.size() * sizeof(double);  // double field, fixed64 (8B per value)
-      est += _entry.quadratic_indices.size() * 5;  // int32 field, varint (max 5B per value)
-      est += _entry.quadratic_offsets.size() * 5;  // int32 field, varint (max 5B per value)
+      est += _entry.rows.size() * 5;  // int32 field, varint (max 5B per value)
+      est += _entry.cols.size() * 5;  // int32 field, varint (max 5B per value)
+      est += _entry.vals.size() * sizeof(double);  // double field, fixed64 (8B per value)
     }
   }
   est += 512;  // outer message envelope: 512B slop budget for header + settings + scalar fields

@@ -911,8 +911,8 @@ optimization_problem:
       fields: [Q_values, Q_indices, Q_offsets]
 
   # Quadratic constraints (QCQP).  Each entry is a row with its own RHS plus
-  # the row's linear coefficients (linear_values/linear_indices) and quadratic
-  # term (quadratic_values + quadratic_indices/offsets CSR per row-of-rows).
+  # the row's linear coefficients (linear_values/linear_indices) and the COO
+  # representation of the Q matrix (rows/cols/vals as three parallel arrays).
   # Per-entry arrays are unbounded in size so they travel via container chunks
   # (container_field_num=25, container_index=<entry idx>, field_id=<0..4>).
   # Per-entry scalars travel inline in the parent message (OptimizationProblem
@@ -951,17 +951,17 @@ optimization_problem:
           field_num: 6
           array_id: 1
           type: repeated int32
-      - quadratic_values:
+      - rows:
           field_num: 7
           array_id: 2
-      - quadratic_indices:
+          type: repeated int32
+      - cols:
           field_num: 8
           array_id: 3
           type: repeated int32
-      - quadratic_offsets:
+      - vals:
           field_num: 9
           array_id: 4
-          type: repeated int32
       # Companion-array length invariants enforced on decode.  Each [values,
       # indices] pair must have equal size, mirroring the top-level
       # setter_groups check (e.g., set_csr_constraint_matrix).  A mismatch
@@ -970,4 +970,5 @@ optimization_problem:
       # solver.
       companion_pairs:
         - [linear_values, linear_indices]
-        - [quadratic_values, quadratic_indices]
+        - [rows, cols]
+        - [cols, vals]

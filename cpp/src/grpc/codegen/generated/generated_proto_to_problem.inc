@@ -84,14 +84,17 @@
       _entry.rhs_value = static_cast<f_t>(pb_entry.rhs_value());
       _entry.linear_values.assign(pb_entry.linear_values().begin(), pb_entry.linear_values().end());
       _entry.linear_indices.assign(pb_entry.linear_indices().begin(), pb_entry.linear_indices().end());
-      _entry.quadratic_values.assign(pb_entry.quadratic_values().begin(), pb_entry.quadratic_values().end());
-      _entry.quadratic_indices.assign(pb_entry.quadratic_indices().begin(), pb_entry.quadratic_indices().end());
-      _entry.quadratic_offsets.assign(pb_entry.quadratic_offsets().begin(), pb_entry.quadratic_offsets().end());
+      _entry.rows.assign(pb_entry.rows().begin(), pb_entry.rows().end());
+      _entry.cols.assign(pb_entry.cols().begin(), pb_entry.cols().end());
+      _entry.vals.assign(pb_entry.vals().begin(), pb_entry.vals().end());
       if (_entry.linear_values.size() != _entry.linear_indices.size()) {
         throw std::invalid_argument("set_quadratic_constraints: linear_values/linear_indices size mismatch");
       }
-      if (_entry.quadratic_values.size() != _entry.quadratic_indices.size()) {
-        throw std::invalid_argument("set_quadratic_constraints: quadratic_values/quadratic_indices size mismatch");
+      if (_entry.rows.size() != _entry.cols.size()) {
+        throw std::invalid_argument("set_quadratic_constraints: rows/cols size mismatch");
+      }
+      if (_entry.cols.size() != _entry.vals.size()) {
+        throw std::invalid_argument("set_quadratic_constraints: cols/vals size mismatch");
       }
       _entries.push_back(std::move(_entry));
     }

@@ -555,7 +555,8 @@ repeated_messages:
     # ...
     companion_pairs:
     - [linear_values, linear_indices]
-    - [quadratic_values, quadratic_indices]
+    - [rows, cols]
+    - [cols, vals]
 ```
 
 | Attribute | Required | Description |

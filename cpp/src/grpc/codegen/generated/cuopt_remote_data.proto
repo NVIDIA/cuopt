@@ -106,9 +106,9 @@ message QuadraticConstraint {
   double rhs_value = 4;
   repeated double linear_values = 5;
   repeated int32 linear_indices = 6;
-  repeated double quadratic_values = 7;
-  repeated int32 quadratic_indices = 8;
-  repeated int32 quadratic_offsets = 9;
+  repeated int32 rows = 7;
+  repeated int32 cols = 8;
+  repeated double vals = 9;
 }
 
 message OptimizationProblem {

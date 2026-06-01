@@ -32,10 +32,10 @@
     case 25: {  // QuadraticConstraint (quadratic_constraints)
       switch (field_id) {
         case 1: return 4;  // linear_indices
-        case 3: return 4;  // quadratic_indices
-        case 4: return 4;  // quadratic_offsets
+        case 2: return 4;  // rows
+        case 3: return 4;  // cols
         case 0: return 8;  // linear_values
-        case 2: return 8;  // quadratic_values
+        case 4: return 8;  // vals
       }
       return -1;
     }
