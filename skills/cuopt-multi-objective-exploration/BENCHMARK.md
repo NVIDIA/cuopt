@@ -41,7 +41,7 @@ Evaluation of the `cuopt-multi-objective-exploration` skill.
 - Custom A/B, not NVSkills-Eval. Agents are raw models with a cuOpt tool, not `claude-code` / `codex`.
 - Exploration and the synthetic scenario use one instance (seed 1); the interpretation value also holds on the seed-independent fixed supplier dataset (scenario A).
 - Judge is `claude-opus-4-8` (LLM-graded rubric).
-- The shipped `SKILL.md` adds two cuOpt-feasibility clarifications not in the A/B's inlined skill text (PDLP warmstart is LP-only; ε-constrain *linear* objectives, since cuOpt constraints are linear). These are factual corrections, not value claims — they don't bear on the measured behaviors, so the numbers above stand. Re-running the notebook against the final text would change nothing material.
+- The shipped `SKILL.md` adds three cuOpt-feasibility clarifications not in the A/B's inlined skill text (PDLP warmstart is LP-only; ε-constrain *linear* objectives, since cuOpt constraints are linear; cap each MILP solve's time limit so points are optimal to the gap you set). These are factual corrections, not value claims — they don't bear on the measured behaviors, so the numbers above stand. Re-running the notebook against the final text would change nothing material.
 
 ## Tier 1 / Tier 2 / official NVSkills-Eval — pending on the fork
 
