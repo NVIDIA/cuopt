@@ -402,14 +402,19 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       // Tell cuDSS to use AMD
 #if CUDSS_VERSION_MAJOR > 0 || (CUDSS_VERSION_MAJOR == 0 && CUDSS_VERSION_MINOR >= 8)
       cudssReorderingAlg_t reorder_alg = CUDSS_REORDERING_ALG_AMD;
+      CUDSS_CALL_AND_CHECK_EXIT(
+        cudssConfigSet(
+          solverConfig, CUDSS_CONFIG_REORDERING_ALG, &reorder_alg, sizeof(cudssReorderingAlg_t)),
+        status,
+        "cudssConfigSet for reordering alg");
 #else
       cudssAlgType_t reorder_alg = CUDSS_ALG_3;
-#endif
       CUDSS_CALL_AND_CHECK_EXIT(
         cudssConfigSet(
           solverConfig, CUDSS_CONFIG_REORDERING_ALG, &reorder_alg, sizeof(cudssAlgType_t)),
         status,
         "cudssConfigSet for reordering alg");
+#endif
     }
 
     if (!first_factor) {
