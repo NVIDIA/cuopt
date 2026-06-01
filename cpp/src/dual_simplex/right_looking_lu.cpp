@@ -1237,8 +1237,7 @@ class symmetric_trailing_matrix_t {
       for (const i_t p : elements) {
         const f_t d = diag_[p];
         if (std::abs(d) >= pivot_tol) {
-          if (nz < best_degree ||
-              (nz == best_degree && std::abs(d) > std::abs(pivot_val))) {
+          if (nz < best_degree || (nz == best_degree && std::abs(d) > std::abs(pivot_val))) {
             best_degree = nz;
             pivot_p     = p;
             pivot_val   = d;
@@ -1541,8 +1540,8 @@ class symmetric_trailing_matrix_t {
         work_estimate_ += 4 * col_size;
       }
       work_estimate_ += 6 * n_;
-      c_i_ = std::move(new_c_i);
-      c_x_ = std::move(new_c_x);
+      c_i_           = std::move(new_c_i);
+      c_x_           = std::move(new_c_x);
       unused_col_nz_ = 0;
     }
 
@@ -1575,9 +1574,9 @@ class symmetric_trailing_matrix_t {
   bool ensure_col_space(i_t j, i_t needed)
   {
     if (col_end_[j] + needed <= col_max_[j]) { return false; }
-    const i_t c_start    = col_start_[j];
-    const i_t c_end      = col_end_[j];
-    i_t current_size     = c_end - c_start;
+    const i_t c_start = col_start_[j];
+    const i_t c_end   = col_end_[j];
+    i_t current_size  = c_end - c_start;
     unused_col_nz_ += current_size;
     i_t new_start = c_i_.size();
     for (i_t p = c_start; p < c_end; p++) {
@@ -1704,7 +1703,7 @@ i_t right_looking_ldlt(const csc_matrix_t<i_t, f_t>& A,
   // perminv[original_index] = elimination_order
   std::vector<i_t> perminv(n, -1);
 
-  i_t Lnz           = 0;
+  i_t Lnz                = 0;
   constexpr f_t drop_tol = 1e-14;
 
   work_estimate += trailing_matrix.record_and_clear_work_estimate_();
@@ -1727,7 +1726,7 @@ i_t right_looking_ldlt(const csc_matrix_t<i_t, f_t>& A,
     if (pivot_val < 0) { return INDEFINITE_MATRIX_RETURN; }
 
     // Record permutation
-    perm[k]        = pivot_p;
+    perm[k]          = pivot_p;
     perminv[pivot_p] = k;
     D.push_back(pivot_val);
     pivots++;

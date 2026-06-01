@@ -72,11 +72,9 @@ static void verify_ldlt(int n,
   std::vector<double> L_dense(rank * rank, 0.0);
   for (int j = 0; j < rank; j++) {
     for (int p = L.col_start[j]; p < L.col_start[j + 1]; p++) {
-      int i             = L.i[p];
-      double val        = L.x[p];
-      if (i < rank) {
-        L_dense[j * rank + i] = val;
-      }
+      int i      = L.i[p];
+      double val = L.x[p];
+      if (i < rank) { L_dense[j * rank + i] = val; }
     }
   }
 
@@ -105,7 +103,7 @@ static void verify_ldlt(int n,
 TEST(right_looking_ldlt, diagonal_2x2)
 {
   // A = [4 0; 0 9]
-  const int n = 2;
+  const int n               = 2;
   std::vector<double> dense = {4.0, 0.0, 0.0, 9.0};
   auto A                    = dense_to_lower_csc(n, dense);
 
@@ -160,7 +158,7 @@ TEST(right_looking_ldlt, rank1_psd)
   // A = [1 2 3]
   //     [2 4 6]
   //     [3 6 9]
-  const int n = 3;
+  const int n               = 3;
   std::vector<double> dense = {1.0, 2.0, 3.0, 2.0, 4.0, 6.0, 3.0, 6.0, 9.0};
   auto A                    = dense_to_lower_csc(n, dense);
 
@@ -187,7 +185,7 @@ TEST(right_looking_ldlt, rank2_psd)
   // A = [1 0 1]   [0 0 0]   [1 0 1]
   //     [0 0 0] + [0 1 1] = [0 1 1]
   //     [1 0 1]   [0 1 1]   [1 1 2]
-  const int n = 3;
+  const int n               = 3;
   std::vector<double> dense = {1.0, 0.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 2.0};
   auto A                    = dense_to_lower_csc(n, dense);
 
@@ -232,7 +230,7 @@ TEST(right_looking_ldlt, zero_matrix)
 // Test 6: 1x1 matrix
 TEST(right_looking_ldlt, scalar_1x1)
 {
-  const int n = 1;
+  const int n               = 1;
   std::vector<double> dense = {7.0};
   auto A                    = dense_to_lower_csc(n, dense);
 
@@ -261,8 +259,9 @@ TEST(right_looking_ldlt, pd_5x5)
   //     [0 0 1 5 1]
   //     [0 0 0 1 6]
   // A = B^T * B (tridiagonal B -> banded A, guaranteed PD)
-  const int n = 5;
-  double B[5][5] = {{2, 1, 0, 0, 0}, {1, 3, 1, 0, 0}, {0, 1, 4, 1, 0}, {0, 0, 1, 5, 1}, {0, 0, 0, 1, 6}};
+  const int n    = 5;
+  double B[5][5] = {
+    {2, 1, 0, 0, 0}, {1, 3, 1, 0, 0}, {0, 1, 4, 1, 0}, {0, 0, 1, 5, 1}, {0, 0, 0, 1, 6}};
   std::vector<double> dense(n * n, 0.0);
   for (int i = 0; i < n; i++) {
     for (int j = 0; j < n; j++) {
@@ -297,7 +296,7 @@ TEST(right_looking_ldlt, rank3_5x5_psd)
 {
   // A = sum_{k=0}^{2} v_k * v_k^T with linearly independent v_k
   // v0 = [1, 0, 1, 0, 1], v1 = [0, 1, 1, 0, 0], v2 = [0, 0, 0, 1, 1]
-  const int n = 5;
+  const int n    = 5;
   double v[3][5] = {{1, 0, 1, 0, 1}, {0, 1, 1, 0, 0}, {0, 0, 0, 1, 1}};
   std::vector<double> dense(n * n, 0.0);
   for (int k = 0; k < 3; k++) {
@@ -366,7 +365,7 @@ TEST(right_looking_ldlt, graph_laplacian)
   //     [ 0 -1  2 -1]
   //     [-1  0 -1  2]
   // Eigenvalues: 0, 2, 2, 4 -> rank 3
-  const int n = 4;
+  const int n               = 4;
   std::vector<double> dense = {
     2.0, -1.0, 0.0, -1.0, -1.0, 2.0, -1.0, 0.0, 0.0, -1.0, 2.0, -1.0, -1.0, 0.0, -1.0, 2.0};
   auto A = dense_to_lower_csc(n, dense);
@@ -400,7 +399,7 @@ TEST(right_looking_ldlt, symmetrized_from_unsymmetric)
   //               [4 10 3]
   //               [0 3 12]
   // H is positive definite (diagonally dominant).
-  const int n = 3;
+  const int n                 = 3;
   std::vector<double> dense_H = {8.0, 4.0, 0.0, 4.0, 10.0, 3.0, 0.0, 3.0, 12.0};
   auto A                      = dense_to_lower_csc(n, dense_H);
 
@@ -423,12 +422,18 @@ TEST(right_looking_ldlt, symmetrized_from_unsymmetric)
 // Test 12: Larger rank-deficient matrix (10x10, rank 5)
 TEST(right_looking_ldlt, rank5_10x10_psd)
 {
-  const int n    = 10;
-  const int r    = 5;
+  const int n = 10;
+  const int r = 5;
   // Build A = V * V^T where V is 10 x 5
-  double V[10][5] = {{1, 0, 0, 0, 0}, {0, 1, 0, 0, 0}, {0, 0, 1, 0, 0},
-                     {0, 0, 0, 1, 0}, {0, 0, 0, 0, 1}, {1, 1, 0, 0, 0},
-                     {0, 1, 1, 0, 0}, {0, 0, 1, 1, 0}, {0, 0, 0, 1, 1},
+  double V[10][5] = {{1, 0, 0, 0, 0},
+                     {0, 1, 0, 0, 0},
+                     {0, 0, 1, 0, 0},
+                     {0, 0, 0, 1, 0},
+                     {0, 0, 0, 0, 1},
+                     {1, 1, 0, 0, 0},
+                     {0, 1, 1, 0, 0},
+                     {0, 0, 1, 1, 0},
+                     {0, 0, 0, 1, 1},
                      {1, 0, 0, 0, 1}};
   std::vector<double> dense(n * n, 0.0);
   for (int i = 0; i < n; i++) {
@@ -450,8 +455,7 @@ TEST(right_looking_ldlt, rank5_10x10_psd)
   double work_estimate = 0;
   double start_time    = tic();
 
-  int rank_out =
-    right_looking_ldlt(A, settings, 1e-12, start_time, perm, L, D, work_estimate);
+  int rank_out = right_looking_ldlt(A, settings, 1e-12, start_time, perm, L, D, work_estimate);
 
   EXPECT_EQ(rank_out, r);
   for (int k = 0; k < rank_out; k++) {
@@ -491,7 +495,7 @@ TEST(right_looking_ldlt, sparse_single_entry_10x10)
 // Matrix: A = [1, 2; 2, 1] has eigenvalues 3 and -1 (indefinite).
 TEST(right_looking_ldlt, indefinite_2x2)
 {
-  const int n = 2;
+  const int n               = 2;
   std::vector<double> dense = {1.0, 2.0, 2.0, 1.0};
   auto A                    = dense_to_lower_csc(n, dense);
 

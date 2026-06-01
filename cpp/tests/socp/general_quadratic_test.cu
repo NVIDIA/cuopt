@@ -21,8 +21,8 @@
 
 namespace cuopt::linear_programming::detail::test {
 
-using i_t = int;
-using f_t = double;
+using i_t  = int;
+using f_t  = double;
 using qc_t = optimization_problem_interface_t<i_t, f_t>::quadratic_constraint_t;
 
 static void init_handler(const raft::handle_t* handle_ptr)
@@ -57,8 +57,8 @@ TEST(general_quadratic, dense_pd_2x2_solve)
   constexpr int n  = 2;
   constexpr int nz = 2;
 
-  user_problem.num_rows = m;
-  user_problem.num_cols = n;
+  user_problem.num_rows  = m;
+  user_problem.num_cols  = n;
   user_problem.objective = {1.0, 1.0};
 
   user_problem.A.m      = m;
@@ -66,15 +66,15 @@ TEST(general_quadratic, dense_pd_2x2_solve)
   user_problem.A.nz_max = nz;
   user_problem.A.reallocate(nz);
   user_problem.A.col_start = {0, 1, 2};
-  user_problem.A.i[0] = 0;
-  user_problem.A.x[0] = 1.0;
-  user_problem.A.i[1] = 0;
-  user_problem.A.x[1] = -1.0;
+  user_problem.A.i[0]      = 0;
+  user_problem.A.x[0]      = 1.0;
+  user_problem.A.i[1]      = 0;
+  user_problem.A.x[1]      = -1.0;
 
-  user_problem.rhs       = {0.0};
-  user_problem.row_sense = {'E'};
-  user_problem.lower = {-inf, -inf};
-  user_problem.upper = {inf, inf};
+  user_problem.rhs            = {0.0};
+  user_problem.row_sense      = {'E'};
+  user_problem.lower          = {-inf, -inf};
+  user_problem.upper          = {inf, inf};
   user_problem.num_range_rows = 0;
   user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
 
@@ -86,17 +86,17 @@ TEST(general_quadratic, dense_pd_2x2_solve)
   qc.constraint_row_name  = "ellipse";
   qc.constraint_row_type  = 'L';
   qc.rhs_value            = 1.0;
-  qc.rows = {0, 1, 1};
-  qc.cols = {0, 0, 1};
-  qc.vals = {2.0, 1.0, 2.0};
+  qc.rows                 = {0, 1, 1};
+  qc.cols                 = {0, 0, 1};
+  qc.vals                 = {2.0, 1.0, 2.0};
 
   // Convert to CSR for translation (must include the linear constraint row)
   dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
-  csr_A.m = m;
-  csr_A.n = n;
+  csr_A.m         = m;
+  csr_A.n         = n;
   csr_A.row_start = {0, 2};
-  csr_A.j = {0, 1};
-  csr_A.x = {1.0, -1.0};
+  csr_A.j         = {0, 1};
+  csr_A.x         = {1.0, -1.0};
 
   std::vector<qc_t> qcs = {qc};
   convert_quadratic_constraints_to_second_order_cones<i_t, f_t>(n, qcs, csr_A, user_problem);
@@ -120,7 +120,9 @@ TEST(general_quadratic, dense_pd_2x2_solve)
 
   // Verify cone layout: cone vars should be a trailing block
   i_t cone_end = user_problem.cone_var_start;
-  for (i_t d : user_problem.second_order_cone_dims) { cone_end += d; }
+  for (i_t d : user_problem.second_order_cone_dims) {
+    cone_end += d;
+  }
   EXPECT_EQ(cone_end, user_problem.num_cols)
     << "cone_var_start=" << user_problem.cone_var_start
     << " cone_dims sum=" << (cone_end - user_problem.cone_var_start)
@@ -132,7 +134,7 @@ TEST(general_quadratic, dense_pd_2x2_solve)
     if (user_problem.row_sense[i] == 'L') n_L_rows++;
   }
   EXPECT_EQ(n_L_rows, 0) << "Expected all rows to be equality after conversion, but found "
-                          << n_L_rows << " 'L' rows out of " << user_problem.num_rows;
+                         << n_L_rows << " 'L' rows out of " << user_problem.num_rows;
 
   // Now solve via barrier
   simplex_solver_settings_t<i_t, f_t> settings;
@@ -164,8 +166,8 @@ TEST(general_quadratic, rejects_non_convex)
   constexpr int n  = 2;
   constexpr int nz = 0;
 
-  user_problem.num_rows = m;
-  user_problem.num_cols = n;
+  user_problem.num_rows  = m;
+  user_problem.num_cols  = n;
   user_problem.objective = {1.0, 0.0};
 
   user_problem.A.m      = m;
@@ -176,8 +178,8 @@ TEST(general_quadratic, rejects_non_convex)
 
   user_problem.rhs.clear();
   user_problem.row_sense.clear();
-  user_problem.lower = {-inf, -inf};
-  user_problem.upper = {inf, inf};
+  user_problem.lower          = {-inf, -inf};
+  user_problem.upper          = {inf, inf};
   user_problem.num_range_rows = 0;
   user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
 
@@ -188,13 +190,13 @@ TEST(general_quadratic, rejects_non_convex)
   qc.constraint_row_name  = "non_convex";
   qc.constraint_row_type  = 'L';
   qc.rhs_value            = 1.0;
-  qc.rows = {0, 1, 1};
-  qc.cols = {0, 0, 1};
-  qc.vals = {1.0, 4.0, 1.0};
+  qc.rows                 = {0, 1, 1};
+  qc.cols                 = {0, 0, 1};
+  qc.vals                 = {1.0, 4.0, 1.0};
 
   dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
-  csr_A.m = m;
-  csr_A.n = n;
+  csr_A.m         = m;
+  csr_A.n         = n;
   csr_A.row_start = {0};
 
   std::vector<qc_t> qcs = {qc};
@@ -222,8 +224,8 @@ TEST(general_quadratic, rank_deficient_psd_solve)
   constexpr int n  = 2;
   constexpr int nz = 2;
 
-  user_problem.num_rows = m;
-  user_problem.num_cols = n;
+  user_problem.num_rows  = m;
+  user_problem.num_cols  = n;
   user_problem.objective = {1.0, 0.0};
 
   user_problem.A.m      = m;
@@ -231,15 +233,15 @@ TEST(general_quadratic, rank_deficient_psd_solve)
   user_problem.A.nz_max = nz;
   user_problem.A.reallocate(nz);
   user_problem.A.col_start = {0, 1, 2};
-  user_problem.A.i[0] = 0;
-  user_problem.A.x[0] = 1.0;
-  user_problem.A.i[1] = 0;
-  user_problem.A.x[1] = -1.0;
+  user_problem.A.i[0]      = 0;
+  user_problem.A.x[0]      = 1.0;
+  user_problem.A.i[1]      = 0;
+  user_problem.A.x[1]      = -1.0;
 
-  user_problem.rhs       = {0.0};
-  user_problem.row_sense = {'E'};
-  user_problem.lower = {-inf, -inf};
-  user_problem.upper = {inf, inf};
+  user_problem.rhs            = {0.0};
+  user_problem.row_sense      = {'E'};
+  user_problem.lower          = {-inf, -inf};
+  user_problem.upper          = {inf, inf};
   user_problem.num_range_rows = 0;
   user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
 
@@ -251,16 +253,16 @@ TEST(general_quadratic, rank_deficient_psd_solve)
   qc.constraint_row_name  = "rank1_cone";
   qc.constraint_row_type  = 'L';
   qc.rhs_value            = 4.0;
-  qc.rows = {0, 1, 1};
-  qc.cols = {0, 0, 1};
-  qc.vals = {1.0, 2.0, 1.0};
+  qc.rows                 = {0, 1, 1};
+  qc.cols                 = {0, 0, 1};
+  qc.vals                 = {1.0, 2.0, 1.0};
 
   dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
-  csr_A.m = m;
-  csr_A.n = n;
+  csr_A.m         = m;
+  csr_A.n         = n;
   csr_A.row_start = {0, 2};
-  csr_A.j = {0, 1};
-  csr_A.x = {1.0, -1.0};
+  csr_A.j         = {0, 1};
+  csr_A.x         = {1.0, -1.0};
 
   std::vector<qc_t> qcs = {qc};
   convert_quadratic_constraints_to_second_order_cones<i_t, f_t>(n, qcs, csr_A, user_problem);
@@ -306,8 +308,8 @@ TEST(general_quadratic, with_inequality_constraint)
   constexpr int n  = 2;
   constexpr int nz = 4;
 
-  user_problem.num_rows = m;
-  user_problem.num_cols = n;
+  user_problem.num_rows  = m;
+  user_problem.num_cols  = n;
   user_problem.objective = {1.0, 1.0};
 
   user_problem.A.m      = m;
@@ -316,19 +318,19 @@ TEST(general_quadratic, with_inequality_constraint)
   user_problem.A.reallocate(nz);
   // Col 0: rows 0 and 1. Col 1: rows 0 and 1.
   user_problem.A.col_start = {0, 2, 4};
-  user_problem.A.i[0] = 0;  // row 0: x0 - x1 = 0
-  user_problem.A.x[0] = 1.0;
-  user_problem.A.i[1] = 1;  // row 1: x0 + x1 <= 10
-  user_problem.A.x[1] = 1.0;
-  user_problem.A.i[2] = 0;  // row 0: x0 - x1 = 0
-  user_problem.A.x[2] = -1.0;
-  user_problem.A.i[3] = 1;  // row 1: x0 + x1 <= 10
-  user_problem.A.x[3] = 1.0;
+  user_problem.A.i[0]      = 0;  // row 0: x0 - x1 = 0
+  user_problem.A.x[0]      = 1.0;
+  user_problem.A.i[1]      = 1;  // row 1: x0 + x1 <= 10
+  user_problem.A.x[1]      = 1.0;
+  user_problem.A.i[2]      = 0;  // row 0: x0 - x1 = 0
+  user_problem.A.x[2]      = -1.0;
+  user_problem.A.i[3]      = 1;  // row 1: x0 + x1 <= 10
+  user_problem.A.x[3]      = 1.0;
 
-  user_problem.rhs       = {0.0, 10.0};
-  user_problem.row_sense = {'E', 'L'};
-  user_problem.lower = {-inf, -inf};
-  user_problem.upper = {inf, inf};
+  user_problem.rhs            = {0.0, 10.0};
+  user_problem.row_sense      = {'E', 'L'};
+  user_problem.lower          = {-inf, -inf};
+  user_problem.upper          = {inf, inf};
   user_problem.num_range_rows = 0;
   user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
 
@@ -339,17 +341,17 @@ TEST(general_quadratic, with_inequality_constraint)
   qc.constraint_row_name  = "ellipse_ineq";
   qc.constraint_row_type  = 'L';
   qc.rhs_value            = 1.0;
-  qc.rows = {0, 1, 1};
-  qc.cols = {0, 0, 1};
-  qc.vals = {2.0, 1.0, 2.0};
+  qc.rows                 = {0, 1, 1};
+  qc.cols                 = {0, 0, 1};
+  qc.vals                 = {2.0, 1.0, 2.0};
 
   // Build CSR matching the A matrix
   dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
-  csr_A.m = m;
-  csr_A.n = n;
+  csr_A.m         = m;
+  csr_A.n         = n;
   csr_A.row_start = {0, 2, 4};
-  csr_A.j = {0, 1, 0, 1};
-  csr_A.x = {1.0, -1.0, 1.0, 1.0};
+  csr_A.j         = {0, 1, 0, 1};
+  csr_A.x         = {1.0, -1.0, 1.0, 1.0};
 
   std::vector<qc_t> qcs = {qc};
   convert_quadratic_constraints_to_second_order_cones<i_t, f_t>(n, qcs, csr_A, user_problem);
@@ -360,11 +362,12 @@ TEST(general_quadratic, with_inequality_constraint)
   // Verify cone layout
   EXPECT_GT(user_problem.second_order_cone_dims.size(), 0u);
   i_t cone_end = user_problem.cone_var_start;
-  for (i_t d : user_problem.second_order_cone_dims) { cone_end += d; }
+  for (i_t d : user_problem.second_order_cone_dims) {
+    cone_end += d;
+  }
   EXPECT_EQ(cone_end, user_problem.num_cols)
     << "Cone must be trailing block: cone_var_start=" << user_problem.cone_var_start
-    << " cone_end=" << cone_end
-    << " num_cols=" << user_problem.num_cols;
+    << " cone_end=" << cone_end << " num_cols=" << user_problem.num_cols;
 
   // Solve
   simplex_solver_settings_t<i_t, f_t> settings;
@@ -398,15 +401,15 @@ TEST(general_quadratic, least_squares_b_in_range)
   using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<i_t, f_t> user_problem(&handle);
 
-  // Variables: x0, x1, u (u = t - b^T*b = t - 5). 
+  // Variables: x0, x1, u (u = t - b^T*b = t - 5).
   // Linear constraint: x0 + x1 = 2 (one row of Ax = b, helps bound x)
   constexpr int m  = 1;
   constexpr int n  = 3;  // x0, x1, u
   constexpr int nz = 2;
 
-  user_problem.num_rows  = m;
-  user_problem.num_cols  = n;
-  user_problem.objective = {0.0, 0.0, 1.0};  // minimize u (obj = u + 5 = t)
+  user_problem.num_rows     = m;
+  user_problem.num_cols     = n;
+  user_problem.objective    = {0.0, 0.0, 1.0};  // minimize u (obj = u + 5 = t)
   user_problem.obj_constant = 5.0;
 
   user_problem.A.m      = m;
@@ -414,15 +417,15 @@ TEST(general_quadratic, least_squares_b_in_range)
   user_problem.A.nz_max = nz;
   user_problem.A.reallocate(nz);
   user_problem.A.col_start = {0, 1, 2, 2};
-  user_problem.A.i[0] = 0;
-  user_problem.A.x[0] = 1.0;
-  user_problem.A.i[1] = 0;
-  user_problem.A.x[1] = 1.0;
+  user_problem.A.i[0]      = 0;
+  user_problem.A.x[0]      = 1.0;
+  user_problem.A.i[1]      = 0;
+  user_problem.A.x[1]      = 1.0;
 
-  user_problem.rhs       = {2.0};
-  user_problem.row_sense = {'E'};
-  user_problem.lower     = {-inf, -inf, -5.0};  // u >= -5 (since u = t-5, t >= 0)
-  user_problem.upper     = {inf, inf, inf};
+  user_problem.rhs            = {2.0};
+  user_problem.row_sense      = {'E'};
+  user_problem.lower          = {-inf, -inf, -5.0};  // u >= -5 (since u = t-5, t >= 0)
+  user_problem.upper          = {inf, inf, inf};
   user_problem.num_range_rows = 0;
   user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
 
@@ -448,19 +451,19 @@ TEST(general_quadratic, least_squares_b_in_range)
   qc.constraint_row_name  = "least_squares";
   qc.constraint_row_type  = 'L';
   qc.rhs_value            = 0.0;
-  qc.rows            = {0, 1};
-  qc.cols            = {0, 1};
-  qc.vals            = {2.0, 3.0};
-  qc.linear_values   = {-4.0, -6.0, -1.0};
-  qc.linear_indices  = {0, 1, 2};
+  qc.rows                 = {0, 1};
+  qc.cols                 = {0, 1};
+  qc.vals                 = {2.0, 3.0};
+  qc.linear_values        = {-4.0, -6.0, -1.0};
+  qc.linear_indices       = {0, 1, 2};
 
   // Build CSR with the linear constraint: x0 + x1 = 2
   dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
-  csr_A.m = m;
-  csr_A.n = n;
+  csr_A.m         = m;
+  csr_A.n         = n;
   csr_A.row_start = {0, 2};
-  csr_A.j = {0, 1};
-  csr_A.x = {1.0, 1.0};
+  csr_A.j         = {0, 1};
+  csr_A.x         = {1.0, 1.0};
 
   std::vector<qc_t> qcs = {qc};
   convert_quadratic_constraints_to_second_order_cones<i_t, f_t>(n, qcs, csr_A, user_problem);
@@ -468,10 +471,12 @@ TEST(general_quadratic, least_squares_b_in_range)
 
   // Verify cone layout
   i_t cone_end_ls = user_problem.cone_var_start;
-  for (i_t d : user_problem.second_order_cone_dims) { cone_end_ls += d; }
+  for (i_t d : user_problem.second_order_cone_dims) {
+    cone_end_ls += d;
+  }
   EXPECT_EQ(cone_end_ls, user_problem.num_cols)
-    << "cone_var_start=" << user_problem.cone_var_start
-    << " cone_end=" << cone_end_ls << " num_cols=" << user_problem.num_cols;
+    << "cone_var_start=" << user_problem.cone_var_start << " cone_end=" << cone_end_ls
+    << " num_cols=" << user_problem.num_cols;
 
   // Check that cone variables have valid bounds for barrier
   for (i_t j = user_problem.cone_var_start; j < user_problem.num_cols; ++j) {
@@ -529,15 +534,15 @@ TEST(general_quadratic, least_squares_b_not_in_range)
   user_problem.A.nz_max = nz;
   user_problem.A.reallocate(nz);
   user_problem.A.col_start = {0, 1, 2, 2};
-  user_problem.A.i[0] = 0;
-  user_problem.A.x[0] = 1.0;
-  user_problem.A.i[1] = 0;
-  user_problem.A.x[1] = 1.0;
+  user_problem.A.i[0]      = 0;
+  user_problem.A.x[0]      = 1.0;
+  user_problem.A.i[1]      = 0;
+  user_problem.A.x[1]      = 1.0;
 
-  user_problem.rhs       = {2.0};
-  user_problem.row_sense = {'E'};
-  user_problem.lower     = {-inf, -inf, 0.0};  // t >= 0
-  user_problem.upper     = {inf, inf, inf};
+  user_problem.rhs            = {2.0};
+  user_problem.row_sense      = {'E'};
+  user_problem.lower          = {-inf, -inf, 0.0};  // t >= 0
+  user_problem.upper          = {inf, inf, inf};
   user_problem.num_range_rows = 0;
   user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
 
@@ -548,19 +553,19 @@ TEST(general_quadratic, least_squares_b_not_in_range)
   qc.constraint_row_name  = "least_squares_nofit";
   qc.constraint_row_type  = 'L';
   qc.rhs_value            = -3.0;
-  qc.rows            = {0, 1};
-  qc.cols            = {0, 1};
-  qc.vals            = {1.0, 1.0};
-  qc.linear_values   = {-2.0, -2.0, -1.0};
-  qc.linear_indices  = {0, 1, 2};
+  qc.rows                 = {0, 1};
+  qc.cols                 = {0, 1};
+  qc.vals                 = {1.0, 1.0};
+  qc.linear_values        = {-2.0, -2.0, -1.0};
+  qc.linear_indices       = {0, 1, 2};
 
   // Build CSR: x0 + x1 = 2
   dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
-  csr_A.m = m;
-  csr_A.n = n;
+  csr_A.m         = m;
+  csr_A.n         = n;
   csr_A.row_start = {0, 2};
-  csr_A.j = {0, 1};
-  csr_A.x = {1.0, 1.0};
+  csr_A.j         = {0, 1};
+  csr_A.x         = {1.0, 1.0};
 
   std::vector<qc_t> qcs = {qc};
   convert_quadratic_constraints_to_second_order_cones<i_t, f_t>(n, qcs, csr_A, user_problem);
