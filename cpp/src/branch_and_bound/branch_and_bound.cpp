@@ -352,7 +352,7 @@ void branch_and_bound_t<i_t, f_t>::report_heuristic(f_t obj)
     std::string user_gap_text = to_percentage(user_gap);
 
     std::string log_line =
-      std::format("H {:>12} {:>12} {:^19.6e} {:^15.6e} {:>8} {:>7} {:^11} {:^11} {:^15}",
+      std::format("H {:>12} {:>12} {:^+19.6e} {:^+15.6e} {:>8} {:>7} {:^11} {:^11} {:^15}",
                   "",  // nodes explored
                   "",  // nodes unexplored
                   user_obj,
@@ -402,7 +402,7 @@ void branch_and_bound_t<i_t, f_t>::report(
   std::string tree_completion = to_percentage(search_tree_.progress.load());
 
   std::string log_line =
-    std::format("{:^1} {:>12} {:>12} {:^19.6e} {:^15.6e} {:>8} {:>7} {:^11.1e} {:^11} {:^15}",
+    std::format("{:^1} {:>12} {:>12} {:^+19.6e} {:^+15.6e} {:>8} {:>7} {:^11.1e} {:^11} {:^15}",
                 symbol,
                 nodes_explored,
                 nodes_unexplored,

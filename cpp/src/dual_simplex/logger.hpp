@@ -17,6 +17,7 @@
 #include <cstdio>
 #include <cstring>
 #include <format>
+#include <utility>
 
 namespace cuopt::mathematical_optimization::simplex {
 
@@ -92,7 +93,7 @@ class logger_t {
       std::string msg = std::format(fmt, std::forward<Args&&>(args)...);
       if (log_to_console) {
 #ifdef CUOPT_LOG_ACTIVE_LEVEL
-        if (msg.size() > 0 && msg.back() == '\n') { msg.back() = '\0'; }
+        std::string_view msg_view = msg.ends_with("\n") ? msg.substr(0, msg.size() - 1) : msg;
         CUOPT_LOG_INFO("%s%s", log_prefix.c_str(), msg.c_str());
 #else
         std::printf("%s", msg.c_str());
@@ -147,8 +148,8 @@ class logger_t {
       std::string msg = std::format(fmt, std::forward<Args&&>(args)...);
       if (log_to_console) {
 #ifdef CUOPT_LOG_ACTIVE_LEVEL
-        if (msg.size() > 0 && msg.back() == '\n') { msg.back() = '\0'; }
-        CUOPT_LOG_TRACE("%s%s", log_prefix.c_str(), msg.c_str());
+        std::string_view msg_view = msg.ends_with("\n") ? msg.substr(0, msg.size() - 1) : msg;
+        CUOPT_LOG_TRACE("%s%s", log_prefix.c_str(), msg_view.c_str());
 #else
         std::printf("%s", msg.c_str());
         fflush(stdout);

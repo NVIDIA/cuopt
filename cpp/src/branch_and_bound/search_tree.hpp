@@ -9,6 +9,14 @@
 
 #include <branch_and_bound/mip_node.hpp>
 
+#include <utilities/omp_helpers.hpp>
+
+#include <cmath>
+#include <cstdio>
+#include <memory>
+#include <mutex>
+#include <vector>
+
 namespace cuopt::linear_programming::dual_simplex {
 
 template <typename i_t, typename f_t>
@@ -62,7 +70,7 @@ class search_tree_t {
               const lp_problem_t<i_t, f_t>& original_lp,
               logger_t& log)
   {
-    uint64_t id = num_nodes.fetch_add(2);
+    i_t id = num_nodes.fetch_add(2);
 
     auto down_child = std::make_unique<mip_node_t<i_t, f_t>>(original_lp,
                                                              parent_node,

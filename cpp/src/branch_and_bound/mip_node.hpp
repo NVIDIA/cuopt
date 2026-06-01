@@ -269,7 +269,7 @@ class mip_node_t {
   f_t lower_bound;
   f_t objective_estimate;
   i_t depth;
-  uint64_t node_id;
+  i_t node_id;
   i_t branch_var;
   branch_direction_t branch_dir;
   f_t branch_var_lower;
