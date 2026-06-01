@@ -39,6 +39,8 @@ A solution **A dominates** B when A is at least as good on every objective and s
 
 Do not collapse a multi-objective problem to a single weighted number and report its optimum as "the answer" — that silently makes the tradeoff decision *for* the user. Trace the frontier and let them choose.
 
+Objectives and constraints are interchangeable. A requirement currently treated as fixed — a coverage floor, a fairness cap, a budget — is often a latent objective: its level was assumed, not given. Promoting such a constraint to a parametric ε-constraint and sweeping it reveals a tradeoff you'd otherwise hide, so read a single-objective model's hard constraints as candidate objectives, not just limits. Express any promoted quantity linearly so it can serve as an ε-constraint (see `cuopt-numerical-optimization-formulation`).
+
 ## Step 1 — build a payoff table (anchor each objective)
 
 Solve each objective **on its own** first. For *k* objectives this is *k* solves. Record, for each, the value of every objective at that optimum:
@@ -87,6 +89,8 @@ Sweep each `ε_k` across the range from the payoff table. Each `(ε2, ε3, …)`
 
 cuOpt's constraints are **linear**, so ε-constrain *linear* objectives. If an objective is quadratic (e.g. risk `xᵀΣx`), keep that one as the objective `f1` and ε-constrain the linear ones — cuOpt solves QP (quadratic objective, linear constraints), not quadratically-constrained programs.
 
+Spot it in existing code: a hand-coded loop over a target or budget value (a return target, a cost cap) is already the ε-constraint method — name it as such, filter dominated points, and read the swept constraint's dual (LP/QP only).
+
 **Picking a method:** weighted-sum for a quick convex sketch or when you know the frontier is convex (e.g. a pure-LP/QP tradeoff); ε-constraint when the problem is MILP, when the frontier may be non-convex, or when the user needs a faithful and complete curve.
 
 ## Step 3 — sweep, collect, and filter
@@ -108,6 +112,7 @@ Practical notes:
 - **Cap each MILP solve.** Set a per-solve time limit on MILP sweeps (see `cuopt-numerical-optimization-api-python`) — a sweep is many solves, and branch-and-bound can over-spend certifying optimality past a tiny gap, while cuOpt sets no limit by default and won't warn. Report the points as optimal *to the gap you set*, not certified optimal.
 - **Filter dominated points.** A correct sweep can still emit dominated points (especially weighted-sum near the hull, or MILP). Drop them; they are not part of the frontier.
 - **Resolution is a budget.** Curve fidelity trades against solve count. Start coarse to see the shape, then refine the grid only where the curve bends.
+- **Verify, don't assume.** When you claim one method beats another, measure it — e.g. count the efficient points ε-constraint recovered that weighted-sum missed — rather than asserting it; and flag any solve returning feasible-but-not-`Optimal` so a non-certified point is never read as exact.
 
 ## Step 4 — interpret the frontier (discipline)
 
