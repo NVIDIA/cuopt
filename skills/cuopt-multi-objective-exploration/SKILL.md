@@ -39,7 +39,7 @@ A solution **A dominates** B when A is at least as good on every objective and s
 
 Do not collapse a multi-objective problem to a single weighted number and report its optimum as "the answer" — that silently makes the tradeoff decision *for* the user. Trace the frontier and let them choose.
 
-Objectives and constraints are interchangeable. A requirement currently treated as fixed — a coverage floor, a fairness cap, a budget — is often a latent objective: its level was assumed, not given. Promoting such a constraint to a parametric ε-constraint and sweeping it reveals a tradeoff you'd otherwise hide, so read a single-objective model's hard constraints as candidate objectives, not just limits. Express any promoted quantity linearly so it can serve as an ε-constraint (see `cuopt-numerical-optimization-formulation`).
+Objectives and constraints are interchangeable. A requirement currently treated as fixed — a coverage floor, a fairness cap, a budget — is often a latent objective: its level was assumed, not given. Promoting such a constraint to a parametric ε-constraint and sweeping it reveals a tradeoff you'd otherwise hide, so read a single-objective model's hard constraints as candidate objectives, not just limits — but only when the level was an assumption. A genuinely fixed, non-negotiable limit (a hard budget cap, a regulatory minimum) stays a constraint; don't manufacture a tradeoff that isn't there. Express any promoted quantity linearly so it can serve as an ε-constraint (see `cuopt-numerical-optimization-formulation`).
 
 ## Step 1 — build a payoff table (anchor each objective)
 
