@@ -74,9 +74,9 @@ void convert_quadratic_constraints_to_second_order_cones(
     const i_t row_start = csr_A.row_start[i];
     const i_t row_end   = csr_A.row_start[i + 1];
     if (row_end - row_start != 1) { continue; }  // not a singleton row
-    const i_t j   = csr_A.j[row_start];
-    const f_t a   = csr_A.x[row_start];
-    const f_t b   = user_problem.rhs[i];
+    const i_t j      = csr_A.j[row_start];
+    const f_t a      = csr_A.x[row_start];
+    const f_t b      = user_problem.rhs[i];
     const char sense = user_problem.row_sense[i];
     if (std::abs(a) < tol) { continue; }
     const f_t bound = b / a;

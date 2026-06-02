@@ -556,8 +556,8 @@ TEST(right_looking_ldlt, large_arrowhead_markowitz)
   int p = 0;
   // Column 0
   A.col_start[0] = p;
-  A.i[p] = 0;
-  A.x[p] = static_cast<double>(n + 2);
+  A.i[p]         = 0;
+  A.x[p]         = static_cast<double>(n + 2);
   p++;
   for (int i = 1; i < n; i++) {
     A.i[p] = i;
@@ -567,8 +567,8 @@ TEST(right_looking_ldlt, large_arrowhead_markowitz)
   // Columns 1..n-1
   for (int j = 1; j < n; j++) {
     A.col_start[j] = p;
-    A.i[p] = j;
-    A.x[p] = static_cast<double>(n);
+    A.i[p]         = j;
+    A.x[p]         = static_cast<double>(n);
     p++;
   }
   A.col_start[n] = p;
