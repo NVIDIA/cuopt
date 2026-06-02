@@ -377,8 +377,8 @@ rotated cones are supported; see the SOCP section of
 A sample SOCP file (:download:`download socp_sample.mps <examples/socp_sample.mps>`)
 minimizes ``s + p + q`` subject to ``a + b >= 2`` and two cones:
 
-- standard cone ``||(a, b)||_2 <= s`` (row ``QCSTD``, written ``a^2 + b^2 - s^2 <= 0``)
-- rotated cone ``a^2 + b^2 <= p * q`` (row ``QCROT``)
+- standard cone ``||(a, b)||_2 <= s`` (row ``QCSTD``, written ``a^2 + b^2 - s^2 <= 0, s >= 0``)
+- rotated cone ``a^2 + b^2 <= p * q, p >= 0, q >= 0`` (row ``QCROT``)
 
 .. literalinclude:: examples/socp_sample.mps
    :language: text
