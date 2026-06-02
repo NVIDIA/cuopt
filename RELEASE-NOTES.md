@@ -5,7 +5,7 @@
 ### New Features (26.06)
 - Add support for quadratic constraints (convex quadratic, second-order cone, and rotated second-order cone)
 - Add support for semi-continuous variables
-- LP-format problem files are now supported; LP files are accepted wherever MPS files were previously, including the compressed variants (`.lp.gz`, `.lp.bz2`).
+- Add support for reading LP (.lp) files; LP files are accepted wherever MPS files were previously, including the compressed variants (`.lp.gz`, `.lp.bz2`).
 - Add support for detecting and exploiting symmetry in MIP
 - Add support for detecting and exploiting discrete objective steps in MIP
 - Add option for specifying a limit on the number of nodes explored in branch and bound
