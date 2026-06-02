@@ -698,7 +698,7 @@ dependencies:
     common:
       - output_types: [conda]
         packages:
-          - libcudss-dev >=0.8,<0.9
+          - libcudss-dev >=0.7,<0.8
           - libcurand-dev
           - libcusolver-dev
           - libcusparse-dev
@@ -726,14 +726,14 @@ dependencies:
               use_cuda_wheels: "true"
             packages:
               - cuda-toolkit[cublas,cudart,curand,cusolver,cusparse,nvtx]==12.*
-              - nvidia-cudss-cu12>=0.8,<0.9
+              - nvidia-cudss-cu12>=0.7,<0.8
               - nvidia-nvjitlink-cu12>=12.9,<13
           - matrix:
               cuda: "13.*"
               use_cuda_wheels: "true"
             packages:
               - &ctk_cu13 cuda-toolkit[cublas,cudart,curand,cusolver,cusparse,nvtx]==13.*
-              - &cudss_cu13 nvidia-cudss-cu13>=0.8,<0.9
+              - &cudss_cu13 nvidia-cudss-cu13>=0.7,<0.8
               - &nvjitlink_cu13 nvidia-nvjitlink>=13.0,<14
           # if no matching matrix selectors passed, list the CUDA 13 requirement
           # (just as a source of documentation, as this populates pyproject.toml in source control)

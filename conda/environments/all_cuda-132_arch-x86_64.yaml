@@ -30,7 +30,7 @@ dependencies:
 - jsonref==1.1.0
 - libabseil
 - libboost-devel
-- libcudss-dev >=0.8,<0.9
+- libcudss-dev >=0.7,<0.8
 - libcurand-dev
 - libcusolver-dev
 - libcusparse-dev
