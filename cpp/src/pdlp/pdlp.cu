@@ -577,24 +577,71 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
                              objective_scaling_factor,
                              sub_pdlp_settings);
 
-    // ----- 8. Seed shard step-size / primal-weight scalars from the master -----
-    f_t h_step_size{}, h_primal_weight{}, h_best_primal_weight{};
-    f_t h_primal_step_size{}, h_dual_step_size{};
-    raft::copy(&h_step_size, step_size_.data(), 1, stream_view_);
-    raft::copy(&h_primal_weight, primal_weight_.data(), 1, stream_view_);
-    raft::copy(&h_best_primal_weight, best_primal_weight_.data(), 1, stream_view_);
-    raft::copy(&h_primal_step_size, primal_step_size_.data(), 1, stream_view_);
-    raft::copy(&h_dual_step_size, dual_step_size_.data(), 1, stream_view_);
+    // ----- 8 Distributed Scaling -----
+    for (auto& shard : multi_gpu_engine->shards) {
+      raft::device_setter guard(shard->device_id);
+      shard->sub_pdlp->get_initial_scaling_strategy().reset_scaling_state_for_distributed();
+    }
+    for (auto& shard : multi_gpu_engine->shards) {
+      raft::device_setter guard(shard->device_id);
+      shard->stream.synchronize();
+    }
+
+    // Distributed scaling
+    if (settings_.hyper_params.do_ruiz_scaling) {
+      multi_gpu_engine->distributed_ruiz_inf_scaling(
+        settings_.hyper_params.default_l_inf_ruiz_iterations, n_vars);
+    }
+    if (settings_.hyper_params.do_pock_chambolle_scaling) {
+      multi_gpu_engine->distributed_pock_chambolle_scaling(
+        static_cast<f_t>(settings_.hyper_params.default_alpha_pock_chambolle_rescaling), n_vars);
+    }
+
+    for (auto& shard : multi_gpu_engine->shards) {
+      raft::device_setter guard(shard->device_id);
+      auto& scaling = shard->sub_pdlp->get_initial_scaling_strategy();
+      scaling.scale_problem();
+
+      shard->sub_pdlp->pdhg_solver_.get_cusparse_view().create_spmv_op_plans(
+        /*is_reflected=*/settings_.hyper_params.use_reflected_primal_dual);
+    }
+    for (auto& shard : multi_gpu_engine->shards) {
+      raft::device_setter guard(shard->device_id);
+      shard->stream.synchronize();
+    }
+
+    // ----- 8b. Seed initial step-size / primal-weight (distributed, scales to N shards) -----
+    constexpr f_t kStepSizeScale = f_t{0.998};
+    const f_t sigma_max          = multi_gpu_engine->distributed_max_singular_value(n_cstr);
+    const f_t h_primal_weight    = f_t{1};
+    const f_t h_step_size        = (sigma_max > f_t{0}) ? kStepSizeScale / sigma_max : f_t{1};
+    // With primal_weight = 1 the adaptive step-size strategy collapses to
+    // primal_step_size = step_size / primal_weight = step_size
+    // dual_step_size   = step_size * primal_weight = step_size.
+    const f_t h_primal_step_size = h_step_size;
+    const f_t h_dual_step_size   = h_step_size;
+
+    // Put the values on master
+    raft::copy(step_size_.data(), &h_step_size, 1, stream_view_);
+    raft::copy(primal_weight_.data(), &h_primal_weight, 1, stream_view_);
+    raft::copy(best_primal_weight_.data(), &h_primal_weight, 1, stream_view_);
+    raft::copy(primal_step_size_.data(), &h_primal_step_size, 1, stream_view_);
+    raft::copy(dual_step_size_.data(), &h_dual_step_size, 1, stream_view_);
     handle_ptr_->sync_stream(stream_view_);
 
+    // put the values on each shard
     for (auto& shard : multi_gpu_engine->shards) {
       raft::device_setter guard(shard->device_id);
       auto& sub = *shard->sub_pdlp;
       raft::copy(sub.step_size_.data(), &h_step_size, 1, shard->stream);
       raft::copy(sub.primal_weight_.data(), &h_primal_weight, 1, shard->stream);
-      raft::copy(sub.best_primal_weight_.data(), &h_best_primal_weight, 1, shard->stream);
-      raft::copy(sub.primal_step_size_.data(), &h_primal_step_size, 1, shard->stream);
-      raft::copy(sub.dual_step_size_.data(), &h_dual_step_size, 1, shard->stream);
+      raft::copy(sub.best_primal_weight_.data(), &h_primal_weight, 1, shard->stream);
+      raft::copy(sub.get_primal_step_size().data(), &h_primal_step_size, 1, shard->stream);
+      raft::copy(sub.get_dual_step_size().data(), &h_dual_step_size, 1, shard->stream);
+    }
+    for (auto& shard : multi_gpu_engine->shards) {
+      raft::device_setter guard(shard->device_id);
+      shard->stream.synchronize();
     }
 
     // Wire the engine into master's pdhg_solver_; shards keep mgpu_engine_ == nullptr.
@@ -607,6 +654,49 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
       n_vars, stream_view_);
     primal_size_h_ = n_vars;
     dual_size_h_   = n_cstr;
+
+    // Distributed conergence_information::init_l2_norms
+    for (auto& shard : multi_gpu_engine->shards) {
+      raft::device_setter guard(shard->device_id);
+      shard->sub_pdlp->get_current_termination_strategy()
+        .get_convergence_information()
+        .compute_owned_reference_norm_partials(shard->rank_data.owned_var_size,
+                                               shard->rank_data.owned_cstr_size);
+    }
+    multi_gpu_engine->allreduce_sum_inplace([](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
+      return sp.get_current_termination_strategy()
+        .get_convergence_information()
+        .l2_norm_primal_right_hand_side_data();
+    });
+    multi_gpu_engine->allreduce_sum_inplace([](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
+      return sp.get_current_termination_strategy()
+        .get_convergence_information()
+        .l2_norm_primal_linear_objective_data();
+    });
+    for (auto& shard : multi_gpu_engine->shards) {
+      raft::device_setter guard(shard->device_id);
+      shard->sub_pdlp->get_current_termination_strategy()
+        .get_convergence_information()
+        .sqrt_reference_norms_inplace();
+      shard->stream.synchronize();
+    }
+    // Broadcast the values to the master
+    {
+      auto& s0      = *multi_gpu_engine->shards[0];
+      auto& s0_conv = s0.sub_pdlp->get_current_termination_strategy().get_convergence_information();
+      raft::device_setter guard(s0.device_id);
+      for (auto* ts : {&current_termination_strategy_, &average_termination_strategy_}) {
+        auto& ci = ts->get_convergence_information();
+        raft::copy(ci.l2_norm_primal_right_hand_side_data(),
+                   s0_conv.l2_norm_primal_right_hand_side_data(),
+                   1,
+                   stream_view_);
+        raft::copy(ci.l2_norm_primal_linear_objective_data(),
+                   s0_conv.l2_norm_primal_linear_objective_data(),
+                   1,
+                   stream_view_);
+      }
+    }
     handle_ptr_->sync_stream(stream_view_);
 }
 

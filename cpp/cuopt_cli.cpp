@@ -176,7 +176,12 @@ int run_single_file(const std::string& file_path,
       auto solution = cuopt::linear_programming::solve_mip(problem_interface.get(), mip_settings);
     } else {
       auto& lp_settings = settings.get_pdlp_settings();
-      auto solution     = cuopt::linear_programming::solve_lp(problem_interface.get(), lp_settings);
+
+      if (lp_settings.hyper_params.use_distributed_pdlp) {
+        cuopt::linear_programming::solve_lp(handle_ptr.get(), mps_data_model, lp_settings);
+      } else {
+        cuopt::linear_programming::solve_lp(problem_interface.get(), lp_settings);
+      }
     }
   } catch (const std::exception& e) {
     fprintf(stderr, "cuopt_cli error: %s\n", e.what());

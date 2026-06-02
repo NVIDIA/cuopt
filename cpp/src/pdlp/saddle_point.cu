@@ -38,8 +38,11 @@ saddle_point_state_t<i_t, f_t>::saddle_point_state_t(
     current_AtY_{batch_size * primal_size, handle_ptr->get_stream()},
     next_AtY_{batch_size * primal_size, handle_ptr->get_stream()}
 {
-  EXE_CUOPT_EXPECTS(primal_size > 0, "Size of the primal problem must be larger than 0");
-  EXE_CUOPT_EXPECTS(dual_size > 0, "Size of the dual problem must be larger than 0");
+  // >= 0 (not > 0): distributed PDLP builds the master pdlp_solver_t from a
+  // shape-0 placeholder problem so the master never materializes per-variable
+  // / per-constraint vectors; size-0 device_uvectors are valid throughout.
+  EXE_CUOPT_EXPECTS(primal_size >= 0, "Size of the primal problem must be non-negative");
+  EXE_CUOPT_EXPECTS(dual_size >= 0, "Size of the dual problem must be non-negative");
 
   // Starting from all 0
   thrust::fill(

@@ -12,6 +12,8 @@
 
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 
+#include <raft/sparse/detail/cusparse_wrappers.h>
+#include <raft/core/cusparse_macros.hpp>
 #include <raft/core/device_setter.hpp>
 #include <raft/linalg/detail/cublas_wrappers.hpp>
 
@@ -27,6 +29,7 @@
 #include <nccl.h>
 
 #include <memory>
+#include <random>
 #include <tuple>
 #include <vector>
 
@@ -334,6 +337,502 @@ struct multi_gpu_engine_t {
     halo_exchange_cstr(
       [](auto& pdhg) -> rmm::device_uvector<f_t>& { return pdhg.get_dual_solution(); });
     for_each_shard([](auto& shard) { shard.sub_pdlp->pdhg_solver_.spmvop_At_y(); });
+  }
+
+  // -------- Distributed Ruiz inf-scaling -----------------------------------
+  void alloc_global_var_scratch(i_t n_global_vars,
+                                std::vector<rmm::device_uvector<f_t>>& global_var_buf,
+                                std::vector<rmm::device_uvector<i_t>>& local_to_global_var_d)
+  {
+    const int nb = static_cast<int>(shards.size());
+    global_var_buf.reserve(nb);
+    local_to_global_var_d.reserve(nb);
+    for (int r = 0; r < nb; ++r) {
+      auto& s = *shards[r];
+      raft::device_setter guard(s.device_id);
+      global_var_buf.emplace_back(static_cast<std::size_t>(n_global_vars), s.stream.view());
+      local_to_global_var_d.emplace_back(static_cast<std::size_t>(s.rank_data.total_var_size),
+                                         s.stream.view());
+      if (s.rank_data.total_var_size > 0) {
+        RAFT_CUDA_TRY(cudaMemcpyAsync(local_to_global_var_d.back().data(),
+                                      s.rank_data.local_to_global_var.data(),
+                                      sizeof(i_t) * s.rank_data.local_to_global_var.size(),
+                                      cudaMemcpyHostToDevice,
+                                      s.stream.view().value()));
+      }
+    }
+  }
+
+  void reduce_iteration_variable_scaling_across_shards(
+    ncclRedOp_t op,
+    i_t n_global_vars,
+    std::vector<rmm::device_uvector<f_t>>& global_var_buf,
+    std::vector<rmm::device_uvector<i_t>>& local_to_global_var_d)
+  {
+    const int nb = static_cast<int>(shards.size());
+
+    // Zero global buffers, then scatter each shard's local values into their
+    // global column indices.
+    for (int r = 0; r < nb; ++r) {
+      auto& s = *shards[r];
+      raft::device_setter guard(s.device_id);
+      RAFT_CUDA_TRY(cudaMemsetAsync(global_var_buf[r].data(),
+                                    0,
+                                    sizeof(f_t) * static_cast<std::size_t>(n_global_vars),
+                                    s.stream.view().value()));
+      auto& iter_var_scaling =
+        s.sub_pdlp->get_initial_scaling_strategy().get_iteration_variable_scaling();
+      if (s.rank_data.total_var_size > 0) {
+        thrust::scatter(rmm::exec_policy_nosync(s.stream.view()),
+                        iter_var_scaling.begin(),
+                        iter_var_scaling.begin() + s.rank_data.total_var_size,
+                        local_to_global_var_d[r].begin(),
+                        global_var_buf[r].begin());
+      }
+    }
+
+    ncclGroupStart();
+    for (int r = 0; r < nb; ++r) {
+      auto& s = *shards[r];
+      raft::device_setter guard(s.device_id);
+      ncclAllReduce(global_var_buf[r].data(),
+                    global_var_buf[r].data(),
+                    static_cast<size_t>(n_global_vars),
+                    ncclFloat64,
+                    op,
+                    s.comm.get(),
+                    s.stream.view().value());
+    }
+    ncclGroupEnd();
+
+    // Gather the global per-column value back into each shard's local iter vector.
+    for (int r = 0; r < nb; ++r) {
+      auto& s = *shards[r];
+      raft::device_setter guard(s.device_id);
+      auto& iter_var_scaling =
+        s.sub_pdlp->get_initial_scaling_strategy().get_iteration_variable_scaling();
+      if (s.rank_data.total_var_size > 0) {
+        thrust::gather(rmm::exec_policy_nosync(s.stream.view()),
+                       local_to_global_var_d[r].begin(),
+                       local_to_global_var_d[r].begin() + s.rank_data.total_var_size,
+                       global_var_buf[r].begin(),
+                       iter_var_scaling.begin());
+      }
+    }
+  }
+
+  void distributed_ruiz_inf_scaling(int num_iter, i_t n_global_vars)
+  {
+    if (num_iter <= 0 || n_global_vars <= 0) return;
+    raft::common::nvtx::range scope("distributed_ruiz_inf_scaling");
+
+    std::vector<rmm::device_uvector<f_t>> global_var_buf;
+    std::vector<rmm::device_uvector<i_t>> local_to_global_var_d;
+    alloc_global_var_scratch(n_global_vars, global_var_buf, local_to_global_var_d);
+
+    for (int it = 0; it < num_iter; ++it) {
+      // 1) per-shard local kernel: writes iteration_variable_scaling (per-column
+      //    inf-norm partial) and iteration_constraint_matrix_scaling (row, complete).
+      for_each_shard([](auto& shard) {
+        shard.sub_pdlp->get_initial_scaling_strategy().ruiz_iter_compute_local_iteration_vectors();
+      });
+
+      // 2) cross-shard column inf-norm reduction (MAX).
+      reduce_iteration_variable_scaling_across_shards(
+        ncclMax, n_global_vars, global_var_buf, local_to_global_var_d);
+
+      // 3) per-shard fold into cumulative + reset iter vectors.
+      for_each_shard([](auto& shard) {
+        shard.sub_pdlp->get_initial_scaling_strategy().ruiz_iter_apply_cumulative_update();
+      });
+    }
+
+    // Make sure per-shard cumulative writes are observable on subsequent
+    // calls (e.g., the next distributed_max_singular_value).
+    for_each_shard([](auto& shard) { shard.stream.synchronize(); });
+  }
+
+  // Distributed Pock-Chambolle: one pass, mirroring single-GPU
+  // pock_chambolle_scaling but with the per-column sum-of-powers reduced across
+  // shards (SUM) between the local kernels and the cumulative fold. Rows are
+  // owned exclusively, so the row half stays local. Runs after the distributed
+  // Ruiz pass, matching the single-GPU order (Ruiz then Pock-Chambolle).
+  void distributed_pock_chambolle_scaling(f_t alpha, i_t n_global_vars)
+  {
+    if (n_global_vars <= 0) return;
+    raft::common::nvtx::range scope("distributed_pock_chambolle_scaling");
+
+    std::vector<rmm::device_uvector<f_t>> global_var_buf;
+    std::vector<rmm::device_uvector<i_t>> local_to_global_var_d;
+    alloc_global_var_scratch(n_global_vars, global_var_buf, local_to_global_var_d);
+
+    // 1) per-shard local kernels: row sum (complete) + column sum (partial).
+    for_each_shard([alpha](auto& shard) {
+      shard.sub_pdlp->get_initial_scaling_strategy().pock_chambolle_compute_local_iteration_vectors(
+        alpha);
+    });
+
+    // 2) cross-shard column sum-of-powers reduction (SUM).
+    reduce_iteration_variable_scaling_across_shards(
+      ncclSum, n_global_vars, global_var_buf, local_to_global_var_d);
+
+    // 3) per-shard fold into cumulative (cumulative /= sqrt(iteration)).
+    for_each_shard([](auto& shard) {
+      shard.sub_pdlp->get_initial_scaling_strategy().pock_chambolle_apply_cumulative_update();
+    });
+
+    for_each_shard([](auto& shard) { shard.stream.synchronize(); });
+  }
+
+  // -------- Distributed σ_max(A) via power iteration ----------------------
+  f_t distributed_max_singular_value(i_t n_global_cstrs,
+                                     int max_iterations = 5000,
+                                     f_t tolerance      = 1e-4)
+  {
+    raft::common::nvtx::range scope("distributed_max_singular_value");
+
+    const int nb = static_cast<int>(shards.size());
+
+    // Generate the GLOBAL z[] sequence in cstr-index order from a fresh
+    // mt19937(1), once per call. It's m doubles regardless of N (cheap).
+    // Each shard then keeps only z[global_idx_for_owned_local_i].
+    std::vector<f_t> h_global_z(static_cast<std::size_t>(n_global_cstrs));
+    {
+      std::mt19937 gen(1);
+      std::normal_distribution<f_t> dist(f_t(0.0), f_t(1.0));
+      for (i_t i = 0; i < n_global_cstrs; ++i) {
+        h_global_z[i] = dist(gen);
+      }
+    }
+
+    // Per-shard scratch lives on each shard's device. We use total (owned +
+    // halo) sizes for q/z/atq because they're SpMV inputs that need halo
+    // space. Norms / dot are scalars.
+    // We use size-1 rmm::device_uvector instead of rmm::device_scalar for the
+    // per-shard scratch scalars: nvcc + libcudacxx <cuda/basic_any> fail the
+    // copy_constructible concept check when device_scalar<T> appears in a
+    // std::vector (the check transitively touches rmm::cuda_stream, which is
+    // non-copyable). device_uvector<T> avoids that path.
+    std::vector<rmm::device_uvector<f_t>> q;
+    std::vector<rmm::device_uvector<f_t>> z;
+    std::vector<rmm::device_uvector<f_t>> atq;
+    std::vector<rmm::device_uvector<f_t>> sigma_sq;
+    std::vector<rmm::device_uvector<f_t>> norm_q;
+    std::vector<rmm::device_uvector<f_t>> residual_norm;
+    std::vector<cusparseDnVecDescr_t> z_dn(nb, nullptr);
+    std::vector<cusparseDnVecDescr_t> atq_dn(nb, nullptr);
+    q.reserve(nb);
+    z.reserve(nb);
+    atq.reserve(nb);
+    sigma_sq.reserve(nb);
+    norm_q.reserve(nb);
+    residual_norm.reserve(nb);
+
+    for (int r = 0; r < nb; ++r) {
+      auto& s = *shards[r];
+      raft::device_setter guard(s.device_id);
+      const i_t cstr_total = s.rank_data.total_cstr_size;
+      const i_t var_total  = s.rank_data.total_var_size;
+      q.emplace_back(static_cast<std::size_t>(cstr_total), s.stream.view());
+      z.emplace_back(static_cast<std::size_t>(cstr_total), s.stream.view());
+      atq.emplace_back(static_cast<std::size_t>(var_total), s.stream.view());
+      sigma_sq.emplace_back(std::size_t{1}, s.stream.view());
+      norm_q.emplace_back(std::size_t{1}, s.stream.view());
+      residual_norm.emplace_back(std::size_t{1}, s.stream.view());
+      RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(
+        &z_dn[r], static_cast<int64_t>(cstr_total), z.back().data()));
+      RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(
+        &atq_dn[r], static_cast<int64_t>(var_total), atq.back().data()));
+
+      std::vector<f_t> h_owned_z(static_cast<std::size_t>(s.rank_data.owned_cstr_size));
+      for (i_t i = 0; i < s.rank_data.owned_cstr_size; ++i) {
+        const i_t g  = s.rank_data.local_to_global_cstr[i];
+        h_owned_z[i] = h_global_z[g];
+      }
+      if (s.rank_data.owned_cstr_size > 0) {
+        RAFT_CUDA_TRY(
+          cudaMemcpyAsync(z.back().data(),
+                          h_owned_z.data(),
+                          sizeof(f_t) * static_cast<std::size_t>(s.rank_data.owned_cstr_size),
+                          cudaMemcpyHostToDevice,
+                          s.stream.view().value()));
+      }
+      if (cstr_total > s.rank_data.owned_cstr_size) {
+        RAFT_CUDA_TRY(cudaMemsetAsync(
+          z.back().data() + s.rank_data.owned_cstr_size,
+          0,
+          sizeof(f_t) * static_cast<std::size_t>(cstr_total - s.rank_data.owned_cstr_size),
+          s.stream.view().value()));
+      }
+      // Sync to ensure h_owned_z stays valid through the H2D copy (it goes
+      // out of scope at end of this iteration of the per-shard loop).
+      s.stream.synchronize();
+    }
+
+    // Local halo-exchange helpers that work directly on per-shard external
+    // buffers (the engine's halo_exchange_var/cstr expect accessors that
+    // resolve through pdhg_solver_t, which doesn't see our scratch).
+    auto halo_exchange_cstr_bufs = [&](std::vector<rmm::device_uvector<f_t>>& bufs) {
+      for (int r = 0; r < nb; ++r) {
+        auto& s = *shards[r];
+        raft::device_setter guard(s.device_id);
+        auto& y = bufs[r];
+        for (int peer = 0; peer < nb; ++peer) {
+          if (peer == r) continue;
+          if (s.cstr_send_indices_d[peer].size() == 0) continue;
+          thrust::gather(rmm::exec_policy_nosync(s.stream.view()),
+                         s.cstr_send_indices_d[peer].begin(),
+                         s.cstr_send_indices_d[peer].end(),
+                         y.begin(),
+                         s.cstr_send_buf_d[peer].begin());
+        }
+      }
+      ncclGroupStart();
+      for (int r = 0; r < nb; ++r) {
+        auto& s = *shards[r];
+        raft::device_setter guard(s.device_id);
+        for (int peer = 0; peer < nb; ++peer) {
+          if (peer == r) continue;
+          ncclSend(s.cstr_send_buf_d[peer].data(),
+                   s.cstr_send_buf_d[peer].size(),
+                   ncclFloat64,
+                   peer,
+                   s.comm.get(),
+                   s.stream.view().value());
+        }
+      }
+      for (int r = 0; r < nb; ++r) {
+        auto& s  = *shards[r];
+        auto& rd = s.rank_data;
+        raft::device_setter guard(s.device_id);
+        auto& y = bufs[r];
+        for (int peer = 0; peer < nb; ++peer) {
+          if (peer == r) continue;
+          f_t* recv_ptr = y.data() + rd.owned_cstr_size + rd.cstr_recv_offsets[peer];
+          ncclRecv(recv_ptr,
+                   static_cast<size_t>(rd.cstr_recv_counts[peer]),
+                   ncclFloat64,
+                   peer,
+                   s.comm.get(),
+                   s.stream.view().value());
+        }
+      }
+      ncclGroupEnd();
+    };
+    auto halo_exchange_var_bufs = [&](std::vector<rmm::device_uvector<f_t>>& bufs) {
+      for (int r = 0; r < nb; ++r) {
+        auto& s = *shards[r];
+        raft::device_setter guard(s.device_id);
+        auto& x = bufs[r];
+        for (int peer = 0; peer < nb; ++peer) {
+          if (peer == r) continue;
+          if (s.var_send_indices_d[peer].size() == 0) continue;
+          thrust::gather(rmm::exec_policy_nosync(s.stream.view()),
+                         s.var_send_indices_d[peer].begin(),
+                         s.var_send_indices_d[peer].end(),
+                         x.begin(),
+                         s.var_send_buf_d[peer].begin());
+        }
+      }
+      ncclGroupStart();
+      for (int r = 0; r < nb; ++r) {
+        auto& s = *shards[r];
+        raft::device_setter guard(s.device_id);
+        for (int peer = 0; peer < nb; ++peer) {
+          if (peer == r) continue;
+          ncclSend(s.var_send_buf_d[peer].data(),
+                   s.var_send_buf_d[peer].size(),
+                   ncclFloat64,
+                   peer,
+                   s.comm.get(),
+                   s.stream.view().value());
+        }
+      }
+      for (int r = 0; r < nb; ++r) {
+        auto& s  = *shards[r];
+        auto& rd = s.rank_data;
+        raft::device_setter guard(s.device_id);
+        auto& x = bufs[r];
+        for (int peer = 0; peer < nb; ++peer) {
+          if (peer == r) continue;
+          f_t* recv_ptr = x.data() + rd.owned_var_size + rd.var_recv_offsets[peer];
+          ncclRecv(recv_ptr,
+                   static_cast<size_t>(rd.var_recv_counts[peer]),
+                   ncclFloat64,
+                   peer,
+                   s.comm.get(),
+                   s.stream.view().value());
+        }
+      }
+      ncclGroupEnd();
+    };
+
+    // Per-shard partial reductions over the OWNED cstr slice + NCCL allreduce.
+    // For norm: out := sqrt(Σ_r ||bufs[r][0:owned_cstr]||²).
+    // For dot : out := Σ_r <a[r][0:owned_cstr], b[r][0:owned_cstr]>.
+    auto distributed_norm_owned_cstr = [&](std::vector<rmm::device_uvector<f_t>>& bufs,
+                                           std::vector<rmm::device_uvector<f_t>>& out) {
+      for (int r = 0; r < nb; ++r) {
+        auto& s = *shards[r];
+        raft::device_setter guard(s.device_id);
+        const i_t n_owned = s.rank_data.owned_cstr_size;
+        RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(s.handle.get_cublas_handle(),
+                                                        static_cast<int>(n_owned),
+                                                        bufs[r].data(),
+                                                        1,
+                                                        bufs[r].data(),
+                                                        1,
+                                                        out[r].data(),
+                                                        s.stream.view().value()));
+      }
+      ncclGroupStart();
+      for (int r = 0; r < nb; ++r) {
+        auto& s = *shards[r];
+        raft::device_setter guard(s.device_id);
+        ncclAllReduce(out[r].data(),
+                      out[r].data(),
+                      1,
+                      ncclFloat64,
+                      ncclSum,
+                      s.comm.get(),
+                      s.stream.view().value());
+      }
+      ncclGroupEnd();
+      for (int r = 0; r < nb; ++r) {
+        auto& s = *shards[r];
+        raft::device_setter guard(s.device_id);
+        cub::DeviceTransform::Transform(
+          out[r].data(), out[r].data(), 1, sqrt_inplace_op_t<f_t>{}, s.stream.view().value());
+      }
+    };
+    auto distributed_dot_owned_cstr = [&](std::vector<rmm::device_uvector<f_t>>& a,
+                                          std::vector<rmm::device_uvector<f_t>>& b,
+                                          std::vector<rmm::device_uvector<f_t>>& out) {
+      for (int r = 0; r < nb; ++r) {
+        auto& s = *shards[r];
+        raft::device_setter guard(s.device_id);
+        const i_t n_owned = s.rank_data.owned_cstr_size;
+        RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(s.handle.get_cublas_handle(),
+                                                        static_cast<int>(n_owned),
+                                                        a[r].data(),
+                                                        1,
+                                                        b[r].data(),
+                                                        1,
+                                                        out[r].data(),
+                                                        s.stream.view().value()));
+      }
+      ncclGroupStart();
+      for (int r = 0; r < nb; ++r) {
+        auto& s = *shards[r];
+        raft::device_setter guard(s.device_id);
+        ncclAllReduce(out[r].data(),
+                      out[r].data(),
+                      1,
+                      ncclFloat64,
+                      ncclSum,
+                      s.comm.get(),
+                      s.stream.view().value());
+      }
+      ncclGroupEnd();
+    };
+
+    // ===== Power iteration =====
+    // Mirrors single-GPU compute_initial_step_size: z is the carried iterate
+    // (A Aᵀ q each step); at the top of each iteration q := z then q is
+    // normalized; the residual z − σ²q is written back into q only to drive
+    // the convergence check (next iteration's q := z discards it).
+    for (int it = 0; it < max_iterations; ++it) {
+      // q := z on the owned slice (the carried iterate), then normalize.
+      for (int r = 0; r < nb; ++r) {
+        auto& s = *shards[r];
+        raft::device_setter guard(s.device_id);
+        const i_t n_owned = s.rank_data.owned_cstr_size;
+        raft::copy(q[r].data(), z[r].data(), n_owned, s.stream.view());
+      }
+
+      // ||q||₂ over the global OWNED cstr slice (one allreduce-sum + sqrt).
+      distributed_norm_owned_cstr(q, norm_q);
+
+      // q /= ||q||₂ on owned slice (halo gets refreshed by next exchange).
+      for (int r = 0; r < nb; ++r) {
+        auto& s = *shards[r];
+        raft::device_setter guard(s.device_id);
+        const i_t n_owned = s.rank_data.owned_cstr_size;
+        cub::DeviceTransform::Transform(
+          q[r].data(),
+          q[r].data(),
+          n_owned,
+          [n = norm_q[r].data()] __device__(f_t v) { return v / *n; },
+          s.stream.view().value());
+      }
+
+      // atq = A^T q : halo-exchange q, then per-shard SpMV. spmv_At_into
+      // rebinds the dual_solution dnvec to q[r].data() and restores the
+      // canonical binding after the call (see pdhg.cu:643-644).
+      halo_exchange_cstr_bufs(q);
+      for (int r = 0; r < nb; ++r) {
+        auto& s = *shards[r];
+        raft::device_setter guard(s.device_id);
+        s.sub_pdlp->pdhg_solver_.spmv_At_into(q[r], atq_dn[r]);
+      }
+
+      // z = A atq : halo-exchange atq, then per-shard SpMV.
+      halo_exchange_var_bufs(atq);
+      for (int r = 0; r < nb; ++r) {
+        auto& s = *shards[r];
+        raft::device_setter guard(s.device_id);
+        s.sub_pdlp->pdhg_solver_.spmv_A_into(atq[r], z_dn[r]);
+      }
+
+      // σ² = q · z over the global OWNED cstr slice (= q^T A A^T q = σ_max²
+      // when q is the dominant left-singular vector).
+      distributed_dot_owned_cstr(q, z, sigma_sq);
+
+      // q := -σ² q + z (owned slice) — residual of the eigen-equation.
+      for (int r = 0; r < nb; ++r) {
+        auto& s = *shards[r];
+        raft::device_setter guard(s.device_id);
+        const i_t n_owned = s.rank_data.owned_cstr_size;
+        cub::DeviceTransform::Transform(
+          cuda::std::make_tuple(q[r].data(), z[r].data()),
+          q[r].data(),
+          n_owned,
+          [s2 = sigma_sq[r].data()] __device__(f_t qv, f_t zv) { return -(*s2) * qv + zv; },
+          s.stream.view().value());
+      }
+
+      // Convergence check via global residual norm.
+      distributed_norm_owned_cstr(q, residual_norm);
+      auto& s0 = *shards[0];
+      raft::device_setter guard0(s0.device_id);
+      f_t h_res{};
+      RAFT_CUDA_TRY(cudaMemcpyAsync(&h_res,
+                                    residual_norm[0].data(),
+                                    sizeof(f_t),
+                                    cudaMemcpyDeviceToHost,
+                                    s0.stream.view().value()));
+      s0.stream.synchronize();
+      if (h_res < tolerance) break;
+    }
+
+    // σ_max² is the same on every shard after the last allreduce.
+    auto& s0 = *shards[0];
+    raft::device_setter guard0(s0.device_id);
+    f_t sigma_sq_h{};
+    RAFT_CUDA_TRY(cudaMemcpyAsync(&sigma_sq_h,
+                                  sigma_sq[0].data(),
+                                  sizeof(f_t),
+                                  cudaMemcpyDeviceToHost,
+                                  s0.stream.view().value()));
+    s0.stream.synchronize();
+
+    for (int r = 0; r < nb; ++r) {
+      raft::device_setter guard(shards[r]->device_id);
+      RAFT_CUSPARSE_TRY(cusparseDestroyDnVec(z_dn[r]));
+      RAFT_CUSPARSE_TRY(cusparseDestroyDnVec(atq_dn[r]));
+    }
+
+    return std::sqrt(std::max(sigma_sq_h, f_t(0)));
   }
 
   // -------- Solution gather (shards -> master) ----------------------------

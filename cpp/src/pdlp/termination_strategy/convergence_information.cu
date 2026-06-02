@@ -212,6 +212,77 @@ void convergence_information_t<i_t, f_t>::init_l2_norms()
   }
 }
 
+template <typename i_t, typename f_t>
+void convergence_information_t<i_t, f_t>::compute_owned_reference_norm_partials(
+  i_t owned_var_size, i_t owned_cstr_size)
+{
+  cuopt_assert(!batch_mode_, "owned reference-norm partials only used in non-batch mGPU mode");
+  cuopt_assert(owned_var_size <= primal_size_h_, "owned_var_size must be <= primal_size_h_");
+  cuopt_assert(owned_cstr_size <= dual_size_h_, "owned_cstr_size must be <= dual_size_h_");
+
+  // Σ objective[0:owned_var]²
+  RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(handle_ptr_->get_cublas_handle(),
+                                                  static_cast<int>(owned_var_size),
+                                                  problem_ptr->objective_coefficients.data(),
+                                                  1,
+                                                  problem_ptr->objective_coefficients.data(),
+                                                  1,
+                                                  l2_norm_primal_linear_objective_.data(),
+                                                  stream_view_));
+
+  // rhs_sum_of_squares(lower[0:owned_cstr], upper[0:owned_cstr])  (no sqrt)
+  {
+    rmm::device_buffer d_temp_storage;
+    size_t bytes = 0;
+    auto zip_begin = thrust::make_zip_iterator(problem_ptr->constraint_lower_bounds.data(),
+                                               problem_ptr->constraint_upper_bounds.data());
+    cub::DeviceReduce::TransformReduce(nullptr,
+                                       bytes,
+                                       zip_begin,
+                                       l2_norm_primal_right_hand_side_.data(),
+                                       static_cast<int>(owned_cstr_size),
+                                       cuda::std::plus<>{},
+                                       rhs_sum_of_squares_t<f_t>{},
+                                       f_t(0),
+                                       stream_view_);
+    d_temp_storage.resize(bytes, stream_view_);
+    cub::DeviceReduce::TransformReduce(d_temp_storage.data(),
+                                       bytes,
+                                       zip_begin,
+                                       l2_norm_primal_right_hand_side_.data(),
+                                       static_cast<int>(owned_cstr_size),
+                                       cuda::std::plus<>{},
+                                       rhs_sum_of_squares_t<f_t>{},
+                                       f_t(0),
+                                       stream_view_);
+  }
+  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+}
+
+template <typename i_t, typename f_t>
+void convergence_information_t<i_t, f_t>::sqrt_reference_norms_inplace()
+{
+  cub::DeviceTransform::Transform(l2_norm_primal_linear_objective_.data(),
+                                  l2_norm_primal_linear_objective_.data(),
+                                  1,
+                                  sqrt_func_t<f_t>{},
+                                  stream_view_);
+  cub::DeviceTransform::Transform(l2_norm_primal_right_hand_side_.data(),
+                                  l2_norm_primal_right_hand_side_.data(),
+                                  1,
+                                  sqrt_func_t<f_t>{},
+                                  stream_view_);
+  // Broadcast slot [0] to all climbers (no-op outside batch mode).
+  thrust::fill(handle_ptr_->get_thrust_policy(),
+               l2_norm_primal_linear_objective_.begin(),
+               l2_norm_primal_linear_objective_.end(),
+               l2_norm_primal_linear_objective_.element(0, stream_view_));
+  thrust::fill(handle_ptr_->get_thrust_policy(),
+               l2_norm_primal_right_hand_side_.begin(),
+               l2_norm_primal_right_hand_side_.end(),
+               l2_norm_primal_right_hand_side_.element(0, stream_view_));
+}
+
 // ---------------------------------------------------------------------------
 // init_reduction_storage: allocate and size the temporary buffers used by
 // cub::DeviceReduce and cub::DeviceSegmentedReduce throughout solving.

@@ -94,6 +94,20 @@ class pdlp_initial_scaling_strategy_t {
 
   void bound_objective_rescaling();
 
+  // Public for distributed PDLP
+  void compute_scaling_vectors(i_t number_of_ruiz_iterations, f_t alpha);
+
+  // ----- Distributed-PDLP hooks -----
+
+  void ruiz_iter_compute_local_iteration_vectors();
+  void ruiz_iter_apply_cumulative_update();
+  void pock_chambolle_compute_local_iteration_vectors(f_t alpha);
+  void pock_chambolle_apply_cumulative_update();
+  rmm::device_uvector<f_t>& get_iteration_variable_scaling() { return iteration_variable_scaling_; }
+
+  // Restore the clean pre-scaling state for the distributed path.
+  void reset_scaling_state_for_distributed();
+
   /**
    * @brief Gets the device-side view (with raw pointers), for ease of access
    *        inside cuda kernels
@@ -101,7 +115,6 @@ class pdlp_initial_scaling_strategy_t {
   view_t view();
 
  private:
-  void compute_scaling_vectors(i_t number_of_ruiz_iterations, f_t alpha);
   void ruiz_inf_scaling(i_t number_of_ruiz_iterations);
   void pock_chambolle_scaling(f_t alpha);
   void reset_integer_variables();

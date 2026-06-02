@@ -69,6 +69,11 @@ class convergence_information_t {
   const rmm::device_uvector<f_t>& get_l2_norm_primal_linear_objective() const;
   const rmm::device_uvector<f_t>& get_l2_norm_primal_right_hand_side() const;
 
+  void compute_owned_reference_norm_partials(i_t owned_var_size, i_t owned_cstr_size);
+  void sqrt_reference_norms_inplace();
+  f_t* l2_norm_primal_right_hand_side_data() { return l2_norm_primal_right_hand_side_.data(); }
+  f_t* l2_norm_primal_linear_objective_data() { return l2_norm_primal_linear_objective_.data(); }
+
   struct view_t {
     i_t primal_size;
     i_t dual_size;

@@ -142,6 +142,10 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::compute_scaling_vectors(
 {
   raft::common::nvtx::range fun_scope("compute_scaling_vectors");
 
+  // Skip scaling entirely for a shape-0 problem (distributed PDLP builds the
+  // master pdlp_solver_t from a shape-0 placeholder)
+  if (primal_size_h_ == 0 || dual_size_h_ == 0) return;
+
   if (hyper_params_.do_ruiz_scaling) { ruiz_inf_scaling(number_of_ruiz_iterations); }
   if (hyper_params_.do_pock_chambolle_scaling) { pock_chambolle_scaling(alpha); }
 }
@@ -214,6 +218,72 @@ __global__ void inf_norm_row_and_col_kernel(
 }
 
 template <typename i_t, typename f_t>
+void pdlp_initial_scaling_strategy_t<i_t, f_t>::ruiz_iter_compute_local_iteration_vectors()
+{
+  // find inf norm over rows and columns of the scaled matrix in given iteration
+  i_t number_of_blocks = op_problem_scaled_.n_constraints / block_size;
+  if (op_problem_scaled_.n_constraints % block_size) number_of_blocks++;
+  i_t number_of_threads = std::min(op_problem_scaled_.n_variables, (i_t)block_size);
+  inf_norm_row_and_col_kernel<i_t, f_t><<<number_of_blocks, number_of_threads, 0, stream_view_>>>(
+    op_problem_scaled_.view(), this->view());
+  RAFT_CUDA_TRY(cudaPeekAtLastError());
+
+  if (running_mip_) { reset_integer_variables(); }
+}
+
+template <typename i_t, typename f_t>
+void pdlp_initial_scaling_strategy_t<i_t, f_t>::ruiz_iter_apply_cumulative_update()
+{
+  raft::linalg::binaryOp(cummulative_constraint_matrix_scaling_.data(),
+                         cummulative_constraint_matrix_scaling_.data(),
+                         iteration_constraint_matrix_scaling_.data(),
+                         dual_size_h_,
+                         a_divides_sqrt_b_bounded<f_t>(),
+                         stream_view_);
+
+  raft::linalg::binaryOp(cummulative_variable_scaling_.data(),
+                         cummulative_variable_scaling_.data(),
+                         iteration_variable_scaling_.data(),
+                         primal_size_h_,
+                         a_divides_sqrt_b_bounded<f_t>(),
+                         stream_view_);
+
+  // Reset the iteration_scaling vectors to all 0
+  RAFT_CUDA_TRY(cudaMemsetAsync(
+    iteration_constraint_matrix_scaling_.data(), 0.0, sizeof(f_t) * dual_size_h_, stream_view_));
+  RAFT_CUDA_TRY(cudaMemsetAsync(
+    iteration_variable_scaling_.data(), 0.0, sizeof(f_t) * primal_size_h_, stream_view_));
+}
+
+template <typename i_t, typename f_t>
+void pdlp_initial_scaling_strategy_t<i_t, f_t>::reset_scaling_state_for_distributed()
+{
+  if (primal_size_h_ == 0 || dual_size_h_ == 0) return;
+
+  // Re-allocate the iteration vectors the ctor shrank to 0 and zero them.
+  iteration_constraint_matrix_scaling_.resize(static_cast<size_t>(dual_size_h_), stream_view_);
+  iteration_variable_scaling_.resize(static_cast<size_t>(primal_size_h_), stream_view_);
+  RAFT_CUDA_TRY(cudaMemsetAsync(
+    iteration_constraint_matrix_scaling_.data(), 0, sizeof(f_t) * dual_size_h_, stream_view_));
+  RAFT_CUDA_TRY(cudaMemsetAsync(
+    iteration_variable_scaling_.data(), 0, sizeof(f_t) * primal_size_h_, stream_view_));
+
+  // Reset cumulative scaling + rescaling to identity (the ctor's stray
+  // Pock-Chambolle pass and shard.cu's set_cummulative_scaling left these in
+  // an arbitrary state; distributed scaling recomputes from a clean slate).
+  thrust::fill(handle_ptr_->get_thrust_policy(),
+               cummulative_constraint_matrix_scaling_.begin(),
+               cummulative_constraint_matrix_scaling_.end(),
+               f_t(1));
+  thrust::fill(handle_ptr_->get_thrust_policy(),
+               cummulative_variable_scaling_.begin(),
+               cummulative_variable_scaling_.end(),
+               f_t(1));
+  set_h_bound_rescaling(f_t(1));
+  set_h_objective_rescaling(f_t(1));
+}
+
+template <typename i_t, typename f_t>
 void pdlp_initial_scaling_strategy_t<i_t, f_t>::ruiz_inf_scaling(i_t number_of_ruiz_iterations)
 {
 #ifdef PDLP_DEBUG_MODE
@@ -221,36 +291,8 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::ruiz_inf_scaling(i_t number_of_r
   std::cout << "Doing ruiz_inf_scaling" << std::endl;
 #endif
   for (int i = 0; i < number_of_ruiz_iterations; i++) {
-    // find inf norm over rows and columns of the scaled matrix in given iteration (matrix is not
-    // actually updated, but the scaled value is computed and evaluated)
-    i_t number_of_blocks = op_problem_scaled_.n_constraints / block_size;
-    if (op_problem_scaled_.n_constraints % block_size) number_of_blocks++;
-    i_t number_of_threads = std::min(op_problem_scaled_.n_variables, (i_t)block_size);
-    inf_norm_row_and_col_kernel<i_t, f_t><<<number_of_blocks, number_of_threads, 0, stream_view_>>>(
-      op_problem_scaled_.view(), this->view());
-    RAFT_CUDA_TRY(cudaPeekAtLastError());
-
-    if (running_mip_) { reset_integer_variables(); }
-
-    raft::linalg::binaryOp(cummulative_constraint_matrix_scaling_.data(),
-                           cummulative_constraint_matrix_scaling_.data(),
-                           iteration_constraint_matrix_scaling_.data(),
-                           dual_size_h_,
-                           a_divides_sqrt_b_bounded<f_t>(),
-                           stream_view_);
-
-    raft::linalg::binaryOp(cummulative_variable_scaling_.data(),
-                           cummulative_variable_scaling_.data(),
-                           iteration_variable_scaling_.data(),
-                           primal_size_h_,
-                           a_divides_sqrt_b_bounded<f_t>(),
-                           stream_view_);
-
-    // Reset the iteration_scaling vectors to all 0
-    RAFT_CUDA_TRY(cudaMemsetAsync(
-      iteration_constraint_matrix_scaling_.data(), 0.0, sizeof(f_t) * dual_size_h_, stream_view_));
-    RAFT_CUDA_TRY(cudaMemsetAsync(
-      iteration_variable_scaling_.data(), 0.0, sizeof(f_t) * primal_size_h_, stream_view_));
+    ruiz_iter_compute_local_iteration_vectors();
+    ruiz_iter_apply_cumulative_update();
   }
 }
 
@@ -343,8 +385,12 @@ __global__ void pock_chambolle_scaling_kernel_col(
   if (threadIdx.x == 0) initial_scaling_view.iteration_variable_scaling[col] = accumulated_value;
 }
 
+// Local half of one Pock-Chambolle pass: writes the per-row and per-column
+// sums-of-powers into iteration_constraint_matrix_scaling_ /
+// iteration_variable_scaling_
 template <typename i_t, typename f_t>
-void pdlp_initial_scaling_strategy_t<i_t, f_t>::pock_chambolle_scaling(f_t alpha)
+void pdlp_initial_scaling_strategy_t<i_t, f_t>::pock_chambolle_compute_local_iteration_vectors(
+  f_t alpha)
 {
   // Reset the iteration_scaling vectors to all 0
   RAFT_CUDA_TRY(cudaMemsetAsync(
@@ -379,7 +425,12 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::pock_chambolle_scaling(f_t alpha
       A_T_offsets_.data(),
       A_T_indices_.data());
   RAFT_CUDA_TRY(cudaPeekAtLastError());
+}
 
+// Fold half of one Pock-Chambolle pass: cumulative /= sqrt(iteration).
+template <typename i_t, typename f_t>
+void pdlp_initial_scaling_strategy_t<i_t, f_t>::pock_chambolle_apply_cumulative_update()
+{
   if (running_mip_) { reset_integer_variables(); }
 
   // divide the sqrt of the vectors of the sums from above to the respective scaling vectors
@@ -396,6 +447,13 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::pock_chambolle_scaling(f_t alpha
                          primal_size_h_,
                          a_divides_sqrt_b_bounded<f_t>(),
                          stream_view_);
+}
+
+template <typename i_t, typename f_t>
+void pdlp_initial_scaling_strategy_t<i_t, f_t>::pock_chambolle_scaling(f_t alpha)
+{
+  pock_chambolle_compute_local_iteration_vectors(alpha);
+  pock_chambolle_apply_cumulative_update();
 }
 
 template <typename i_t, typename f_t>
