@@ -609,6 +609,8 @@ void convert_quadratic_constraints_to_second_order_cones(
       i_t rank = dual_simplex::right_looking_ldlt(
         H_csc, ldlt_settings, f_t(1e-12), ldlt_start, ldlt_perm, L_factor, D_factor, ldlt_work);
 
+      // ldlt_settings uses default time_limit=inf and concurrent_halt=nullptr,
+      // so only INDEFINITE_MATRIX_RETURN is possible as a negative return code.
       cuopt_expects(rank != INDEFINITE_MATRIX_RETURN,
                     error_type_t::ValidationError,
                     "Quadratic constraint '%s' is non-convex (Q matrix is indefinite)",

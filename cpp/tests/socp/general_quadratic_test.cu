@@ -284,9 +284,11 @@ TEST(general_quadratic, rank_deficient_psd_solve)
   auto status = solve_linear_program_with_barrier(user_problem, settings, solution);
 
   EXPECT_EQ(status, lp_status_t::OPTIMAL);
-  // x0=x1=t from equality. Quadratic form: 1*x0^2 + 2*x1*x0 + 1*x1^2 = (x0+x1)^2 = 4t^2
-  // Constraint: 4t^2 <= 4, so t >= -1. obj = 2t = -2.
-  EXPECT_NEAR(solution.objective, -2.0, 1.1);
+  // x0=x1=t from equality. Objective = x0 = t.
+  // Quadratic form from COO (0,0,1),(1,0,2),(1,1,1): H=[2,2;2,2].
+  // (1/2)*x^T*H*x = (1/2)*(2t^2+2t^2+2t^2+2t^2) = 4t^2 <= 4, so t >= -1.
+  // min x0 = min t = -1.
+  EXPECT_NEAR(solution.objective, -1.0, 1e-4);
 }
 
 // Test: general quadratic constraint WITH an inequality linear constraint.
