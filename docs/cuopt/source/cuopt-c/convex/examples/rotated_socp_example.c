@@ -16,7 +16,7 @@
  * Problem:
  *   minimize    x3 + x4
  *   subject to  x1 + x2 >= 2
- *               x1^2 + x2^2 - x3*x4 <= 0      (i.e. x1^2 + x2^2 <= x3*x4)
+ *               x1^2 + x2^2 - x3*x4 <= 0 
  *               x3 >= 0, x4 >= 0,  x1, x2 free
  *
  * Optimal: x1 = x2 = 1, x3 = x4 = sqrt(2) ~= 1.414214, objective = 2*sqrt(2) ~= 2.828427.

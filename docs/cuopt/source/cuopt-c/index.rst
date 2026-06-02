@@ -1,7 +1,7 @@
 C API
 =====
 
-NVIDIA cuOpt supports a C API for GPU-accelerated optimization that enables users to solve complex optimization problems efficiently. The cuOpt C API supports continuous optimization (LP, QP, and SOCP) and mixed-integer programming (MIP).
+NVIDIA cuOpt supports a C API for GPU-accelerated optimization that enables users to solve complex optimization problems efficiently. The cuOpt C API supports convex optimization (LP, QP, QCQP, and SOCP) and mixed-integer programming (MIP).
 
 .. toctree::
    :maxdepth: 3
@@ -13,11 +13,11 @@ NVIDIA cuOpt supports a C API for GPU-accelerated optimization that enables user
 
 .. toctree::
    :maxdepth: 3
-   :caption: Continuous Optimization (LP/QP/SOCP)
-   :name: Continuous Optimization C API
+   :caption: Convex Optimization (LP/QP/QCQP/SOCP)
+   :name: Convex Optimization C API
    :titlesonly:
 
-   Continuous (Convex) Optimization <continuous/index.rst>
+   Convex Optimization <convex/index.rst>
 
 .. toctree::
    :maxdepth: 3

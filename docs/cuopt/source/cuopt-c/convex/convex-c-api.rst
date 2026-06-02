@@ -1,7 +1,7 @@
-cuOpt LP/QP/SOCP C API Reference
+cuOpt Convex Optimization C API Reference
 ========================================
 
-This section contains the cuOpt LP/QP/SOCP C API reference. For MIP-specific functions and callbacks, see :doc:`../mip/mip-c-api`.
+This section contains the cuOpt convex optimization C API reference. For MIP-specific functions and callbacks, see :doc:`../mip/mip-c-api`.
 
 Integer and Floating-Point Types
 ---------------------------------
@@ -43,40 +43,35 @@ An optimization problem is represented via a `cuOptOptimizationProblem`
 
 .. doxygentypedef:: cuOptOptimizationProblem
 
-Optimization problems can be created, loaded, or written via the following functions
+Optimization problems can be created, loaded, or written via the following functions:
 
 .. doxygenfunction:: cuOptReadProblem
 .. doxygenfunction:: cuOptWriteProblem
 .. doxygenfunction:: cuOptCreateProblem
 .. doxygenfunction:: cuOptCreateRangedProblem
-.. doxygenfunction:: cuOptCreateQuadraticProblem
-.. doxygenfunction:: cuOptCreateQuadraticRangedProblem
 
 .. note::
    ``cuOptCreateQuadraticProblem`` and ``cuOptCreateQuadraticRangedProblem`` are deprecated.
    Prefer ``cuOptCreateProblem`` or ``cuOptCreateRangedProblem`` followed by
-   ``cuOptSetQuadraticObjective`` (and ``cuOptAddQuadraticConstraint`` for QCQP).
+   ``cuOptSetQuadraticObjective``.
 
-For QP and QCQP/SOCP models, the quadratic objective and constraints may be specified
-after creating a linear problem:
+For problems with quadratic objectives, first create a problem, and then use
 
 .. doxygenfunction:: cuOptSetQuadraticObjective
+
+For problems with quadratic constraints, first create a problem, and then use
+
 .. doxygenfunction:: cuOptAddQuadraticConstraint
 
 .. note::
-   ``cuOptAddQuadraticConstraint`` enables **SOCP (beta)** support. Quadratic constraints are
-   specified as quadratic inequalities ``x^T Q x + c^T x + alpha <= 0`` with a zero right-hand
-   side; cuOpt translates the second-order cone structure into cone form internally, then selects
-   the barrier solver. Only ``(Q, c, alpha)`` combinations describing a second-order cone are
-   supported — in practice the two cone families:
+   Support for quadratic constraints is currently in **beta**. ``cuOptAddQuadraticConstraint``
+   supports three types of quadratic constraints:
+   - **Convex quadratic constraints** of the form ``x^T Q x + d^T x <= alpha`` where ``H=(Q+Q^T)/2`` is a symmetric positive semidefinite matrix. `Q` need not be symmetric.
+   - **Second-order cone constraints** of the form ``sum_{i=1}^n x_i^2 <= x_0``, ``x_0 >= 0``
+   - **Rotated second-order cone constraints** of the form ``sum_{i=2}^n x_i^2  - 0. 5 * x_0 * x_1 - 0. 5 * x_1 * x_0 <= 0``, ``x_0 >= 0``, ``x_1 >= 0``
 
-   - **Standard (Lorentz) cone** ``||(x_1, ..., x_{k-1})||_2 <= x_k`` as ``x_1^2 + ... + x_{k-1}^2 - x_k^2 <= 0``.
-   - **Rotated cone** ``x_1^2 + ... + x_{k-2}^2 <= x_{k-1}*x_k`` (with ``x_{k-1}, x_k >= 0``) as ``x_1^2 + ... + x_{k-2}^2 - x_{k-1}*x_k <= 0``.
-
-   The quadratic matrix ``Q`` must be supplied symmetrically — for any cross term, pass both the
-   ``(i, j)`` and ``(j, i)`` entries (e.g. for a rotated cone, ``Q[x_{k-1}, x_k] = Q[x_k, x_{k-1}] = -0.5``).
-   Only ``CUOPT_LESS_THAN`` and ``CUOPT_GREATER_THAN`` sense is supported; equality constraints and
-   general quadratic constraints are not supported.
+   For the rotated second-order cone constraints, cuOpt expects the quadratic matrix to be symmetric.
+   Only ``CUOPT_LESS_THAN`` and ``CUOPT_GREATER_THAN`` sense is supported; equality constraints are not supported.
 
 A optimization problem must be destroyed with the following function
 
@@ -124,7 +119,7 @@ These constants are used to specify the output file format in :c:func:`cuOptWrit
 
 .. doxygendefine:: CUOPT_FILE_FORMAT_MPS
 
-Querying an optimization problem
+Querying an Optimization Problem
 --------------------------------
 
 The following functions may be used to get information about an `cuOptimizationProblem`
@@ -165,7 +160,7 @@ When you are done with a solve you should destroy a `cuOptSolverSettings` object
 
 Setting Parameters
 ------------------
-The following functions are used to set and get parameters. You can find more details on the available parameters in the :doc:`Continuous Optimization settings <../../continuous-settings>` section.
+The following functions are used to set and get parameters. You can find more details on the available parameters in the :doc:`Convex Optimization Settings <../../convex-settings>` section.
 
 .. doxygenfunction:: cuOptSetParameter
 .. doxygenfunction:: cuOptGetParameter
@@ -179,9 +174,9 @@ The following functions are used to set and get parameters. You can find more de
 Parameter Constants
 -------------------
 
-These constants are used as parameter names in the :c:func:`cuOptSetParameter`, :c:func:`cuOptGetParameter`, and similar functions. For more details on the available parameters, see the :doc:`Continuous Optimization settings <../../continuous-settings>` and :doc:`MIP settings <../../mip-settings>` sections.
+These constants are used as parameter names in the :c:func:`cuOptSetParameter`, :c:func:`cuOptGetParameter`, and similar functions. For more details on the available parameters, see the :doc:`Convex Optimization Settings <../../convex-settings>` and :doc:`MIP Settings <../../mip-settings>` sections.
 
-.. Continuous optimization (LP/QP/SOCP) parameter string constants
+.. Convex optimization (LP/QP/QCQP/SOCP) parameter string constants
 .. doxygendefine:: CUOPT_ABSOLUTE_DUAL_TOLERANCE
 .. doxygendefine:: CUOPT_RELATIVE_DUAL_TOLERANCE
 .. doxygendefine:: CUOPT_ABSOLUTE_PRIMAL_TOLERANCE
