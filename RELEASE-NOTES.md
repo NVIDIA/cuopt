@@ -3,27 +3,30 @@
 ## Release Notes 26.06
 
 ### New Features (26.06)
+- Add support for quadratic constraints (convex quadratic, second-order cone, and rotated second-order cone)
+- Add support for semi-continuous variables
 - LP-format problem files are now supported; LP files are accepted wherever MPS files were previously, including the compressed variants (`.lp.gz`, `.lp.bz2`).
-- Add option for specifying a maximum number of nodes that can be explored in B&B
-
-
+- Add support for detecting and exploiting symmetry in MIP
+- Add support for detecting and exploiting discrete objective steps in MIP
+- Add option for specifying a limit on the number of nodes explored in branch and bound
+  
 ### Breaking Changes (26.06)
-- Drop `const` qualifier in `raft::handle_t` on the `data_model_view_t` (routing).
-- Folded `libmps_parser` into `libcuopt` and the `mps_parser` Python module into `cuopt`; the standalone `libmps_parser` shared library and Python module are no longer shipped. Imports should move from `libmps_parser` to `cuopt`.
+- Drop `const` qualifier in `raft::handle_t` on the `data_model_view_t` (routing)
+- Move `libmps_parser` into `libcuopt` and the `mps_parser` Python module into `cuopt`; the standalone `libmps_parser` shared library and Python module are no longer shipped. Imports should move from `libmps_parser` to `cuopt`
 
 ### Improvements (26.06)
 - Replace SpMV calls with SpMVOp calls in PDHG, 1.09x speedup
-- Reduce memory footprint of cuPDLPx by around 50%
+- Reduce memory footprint of PDLP by around 50%
 - Unify threading model across LP (concurrent mode) and MIP to use OpenMP tasking model to allow stricter control of the number of threads
 - Unified `read` API on `Problem` for both MPS and LP file formats; the older `readMPS` is now deprecated.
 - Built and tested with CUDA 13.2.
 - gRPC is now built against OpenSSL 3 in the container and wheel.
 - Substantially expanded the in-repo skill set for AI coding agents (Copilot, Cline, Windsurf, Jules, Aider, Codex) covering developer onboarding, installation, numerical optimization, routing, and the server. Added NVIDIA-signed skill cards, evaluation datasets, and a skill-evolution workflow under `skills/`.
-- Greatly improve the performance of B&B by moving from a shared, global heap to one heap per worker. In average, this increases the number of nodes solved by 3x.
+- Improve the performance of parallel branch and bound by moving to one heap per worker. On average, this increases the number of nodes explored by 3x.
 
 ### Bug Fixes (26.06)
 - Probing cache now correctly update the model after each batch
-- Fix quadratic cost when adding slack variables in the crossover
+- Fix accidental O(m^2) algorithm when adding slack variables in crossover
 
 ### Documentation (26.06)
 - Refreshed the contributor guide (`CONTRIBUTING.md`) with conda-environment recommendations and clarified test-suite scope.
