@@ -698,7 +698,7 @@ dependencies:
     common:
       - output_types: [conda]
         packages:
-          - libcudss-dev >=0.8
+          - libcudss-dev >=0.8,<0.9
           - libcurand-dev
           - libcusolver-dev
           - libcusparse-dev
