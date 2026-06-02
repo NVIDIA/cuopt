@@ -19,11 +19,8 @@
 #include <vector>
 
 namespace cuopt::linear_programming {
-// Forward-declared so simplex code can hold a pointer to the high-level
-// benchmark_info_t (defined in cuopt/linear_programming/mip/solver_settings.hpp)
-// without pulling that header into every dual_simplex compilation unit.
 struct benchmark_info_t;
-}  // namespace cuopt::linear_programming
+}
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -248,11 +245,7 @@ struct simplex_solver_settings_t {
   mutable logger_t log;
   std::atomic<int>* concurrent_halt;  // if nullptr ignored, if !nullptr, 0 if solver should
                                       // continue, 1 if solver should halt
-  // Optional non-owning pointer to the run-level benchmark_info_t (defined
-  // in mip/solver_settings.hpp). Used by branch_and_bound to publish the
-  // root LP objectives (before & after the cut loop) so benchmark drivers
-  // can compute gap-closed-by-cuts without having to instrument the
-  // solver internals. Production builds leave this as nullptr.
+  // Optional non-owning pointer to run-level benchmark stats.
   cuopt::linear_programming::benchmark_info_t* benchmark_info_ptr = nullptr;
 };
 
