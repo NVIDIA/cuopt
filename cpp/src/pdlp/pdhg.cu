@@ -97,7 +97,6 @@ pdhg_solver_t<i_t, f_t>::pdhg_solver_t(
     // Currently graph capture is not supported for cuSparse SpMM
     // TODO enable once cuSparse SpMM supports graph capture
     graph_all{stream_view_, is_legacy_batch_mode || batch_mode_},
-    graph_all_non_major{stream_view_, is_legacy_batch_mode || batch_mode_},
     graph_prim_proj_gradient_dual{stream_view_, is_legacy_batch_mode},
     d_total_pdhg_iterations_{0, stream_view_},
     climber_strategies_(climber_strategies),
@@ -362,12 +361,6 @@ template <typename i_t, typename f_t>
 ping_pong_graph_t<i_t>& pdhg_solver_t<i_t, f_t>::get_graph_all()
 {
   return graph_all;
-}
-
-template <typename i_t, typename f_t>
-ping_pong_graph_t<i_t>& pdhg_solver_t<i_t, f_t>::get_graph_all_non_major()
-{
-  return graph_all_non_major;
 }
 
 template <typename i_t, typename f_t>
@@ -1114,8 +1107,7 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
   rmm::device_uvector<f_t>& primal_step_size,
   rmm::device_uvector<f_t>& dual_step_size,
   const rmm::device_uvector<f_t>& bound_rescaling,
-  bool should_major,
-  i_t total_pdlp_iterations)
+  bool should_major)
 {
   raft::common::nvtx::range fun_scope("compute_next_primal_dual_solution_reflected");
 
@@ -1368,8 +1360,7 @@ void pdhg_solver_t<i_t, f_t>::take_step(rmm::device_uvector<f_t>& primal_step_si
       dual_step_size,
       bound_rescaling,
       is_major_iteration ||
-        ((total_pdlp_iterations + 2) % conditional_major<i_t>(total_pdlp_iterations + 2)) == 0,
-      total_pdlp_iterations);
+        ((total_pdlp_iterations + 2) % conditional_major<i_t>(total_pdlp_iterations + 2)) == 0);
   }
   total_pdhg_iterations_ += 1;
 }
