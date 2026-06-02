@@ -19,15 +19,17 @@ Update the image tag in ``cuopt-nimservice.yaml``:
 
    * - CUDA Version
      - Image Tag
-   * - CUDA 12.9
-     - ``25.12.0-cuda12.9-py3.13``
+   * - CUDA 12.x
+     - ``26.6.0-cu12``
+   * - CUDA 13.x
+     - ``26.6.0-cu13``
 
 .. code-block:: yaml
 
    spec:
      image:
        repository: nvcr.io/nvidia/cuopt/cuopt
-       tag: "25.12.0-cuda12.9-py3.13"
+       tag: "26.6.0-cu12"
        pullPolicy: IfNotPresent
 
 Resource Configuration

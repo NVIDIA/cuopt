@@ -18,7 +18,7 @@ set -e
 
 # Default values
 NAMESPACE="nim-service"
-CUOPT_IMAGE_TAG="25.12.0-cuda12.9-py3.13"
+CUOPT_IMAGE_TAG="26.6.0-cu12"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 UNINSTALL=false
 SKIP_PREREQUISITES=false
