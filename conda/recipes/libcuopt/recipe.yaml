@@ -84,7 +84,7 @@ cache:
       - librmm =${{ minor_version }}
       - rapids-logger =0.2
       - cuda-nvtx-dev
-      - libcudss-dev >=0.7
+      - libcudss-dev >=0.8,<0.9
       - libcurand-dev
       - libcusparse-dev
       - libnvjitlink-dev
@@ -124,7 +124,7 @@ outputs:
         - rapids-logger =0.2
         - librmm =${{ minor_version }}
         - libcublas
-        - libcudss-dev >=0.7
+        - libcudss-dev >=0.8,<0.9
         - libcusparse-dev
         - libnvjitlink-dev
         - openssl
@@ -187,7 +187,7 @@ outputs:
         - ${{ pin_subpackage("libcuopt", exact=True) }}
         - libboost-devel
         - libcublas
-        - libcudss-dev >=0.7
+        - libcudss-dev >=0.8,<0.9
         - libcusparse-dev
         - openssl
         - c-ares

@@ -218,16 +218,29 @@ static DeserializedJob read_problem_from_pipe(int worker_id, const JobQueueEntry
     // This avoids a single giant protobuf allocation for large problems.
     cuopt::remote::ChunkedProblemHeader chunked_header;
     std::map<int32_t, std::vector<uint8_t>> arrays;
-    if (!read_chunked_request_from_pipe(read_fd, chunked_header, arrays)) { return dj; }
+    std::map<cuopt::linear_programming::container_array_key_t, std::vector<uint8_t>>
+      container_arrays;
+    if (!read_chunked_request_from_pipe(read_fd, chunked_header, arrays, container_arrays)) {
+      return dj;
+    }
 
     if (config.verbose) {
       int64_t total_bytes = 0;
       for (const auto& [fid, data] : arrays) {
         total_bytes += data.size();
       }
-      log_pipe_throughput("pipe_job_recv", total_bytes, pipe_recv_t0);
+      int64_t container_total_bytes = 0;
+      for (const auto& [key, data] : container_arrays) {
+        container_total_bytes += data.size();
+      }
+      log_pipe_throughput("pipe_job_recv", total_bytes + container_total_bytes, pipe_recv_t0);
       SERVER_LOG_INFO(
-        "[Worker] IPC path: CHUNKED (%zu arrays, %ld bytes)", arrays.size(), total_bytes);
+        "[Worker] IPC path: CHUNKED (%zu top-level arrays, %ld bytes; %zu container "
+        "arrays, %ld bytes)",
+        arrays.size(),
+        total_bytes,
+        container_arrays.size(),
+        container_total_bytes);
     }
     if (chunked_header.has_lp_settings()) {
       map_proto_to_pdlp_settings(chunked_header.lp_settings(), dj.lp_settings);
@@ -236,7 +249,7 @@ static DeserializedJob read_problem_from_pipe(int worker_id, const JobQueueEntry
       map_proto_to_mip_settings(chunked_header.mip_settings(), dj.mip_settings);
     }
     dj.enable_incumbents = chunked_header.enable_incumbents();
-    map_chunked_arrays_to_problem(chunked_header, arrays, dj.problem);
+    map_chunked_arrays_to_problem(chunked_header, arrays, container_arrays, dj.problem);
   } else {
     // Unary path: the entire SubmitJobRequest was serialized as a single
     // protobuf blob.  Simpler but copies more memory for large problems.
@@ -306,6 +319,18 @@ static SolveResult run_mip_solve(DeserializedJob& dj,
     auto gpu_solution = solve_mip(*gpu_problem, dj.mip_settings);
     SERVER_LOG_INFO("[Worker] solve_mip done");
 
+    // solve_mip_helper catches cuopt::logic_error internally and stashes it
+    // in mip_solution_t::error_status_ rather than rethrow (matches the LP
+    // path's solver-API contract).  Forward the error back to the client
+    // instead of shipping a zero-filled "successful" result.
+    {
+      const auto& err = gpu_solution.get_error_status();
+      if (err.get_error_type() != cuopt::error_type_t::Success) {
+        sr.error_message = format_cuopt_error(err);
+        return sr;
+      }
+    }
+
     SERVER_LOG_INFO("[Worker] Converting solution to CPU format...");
 
     auto host_solution = device_to_host<double>(gpu_solution.get_solution());
@@ -353,6 +378,20 @@ static SolveResult run_lp_solve(DeserializedJob& dj,
     SERVER_LOG_INFO("[Worker] Calling solve_lp...");
     auto gpu_solution = solve_lp(*gpu_problem, dj.lp_settings);
     SERVER_LOG_INFO("[Worker] solve_lp done");
+
+    // solve_lp / solve_qcqp catch cuopt::logic_error internally and stash it
+    // in optimization_problem_solution_t::error_status_ rather than rethrow
+    // (long-standing solver-API contract; see solve.cu).  Forward the error
+    // back to the client instead of shipping a zero-filled "successful"
+    // result; otherwise validation failures (e.g. SOC's rhs=0 requirement)
+    // silently succeed on the wire.
+    {
+      const auto err = gpu_solution.get_error_status();
+      if (err.get_error_type() != cuopt::error_type_t::Success) {
+        sr.error_message = format_cuopt_error(err);
+        return sr;
+      }
+    }
 
     SERVER_LOG_INFO("[Worker] Converting solution to CPU format...");
 
