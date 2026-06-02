@@ -26,17 +26,17 @@
 - Substantially expand the in-repo skill set for AI coding agents (Copilot, Cline, Windsurf, Jules, Aider, Codex) covering developer onboarding, installation, numerical optimization, routing, and the server; add NVIDIA-signed skill cards, evaluation datasets, and a skill-evolution workflow under `skills/`
 
 ### Bug Fixes (26.06)
-- Probing cache now correctly update the model after each batch
-- Fix accidental O(m^2) algorithm when adding slack variables in crossover
+- Fix a bug in MIP where the probing cache did not correctly update the model after each batch
+- Fix an issue in crossover where adding slack variables to a rank-deficient basis was accidentlly O(rows^2)
 
 ### Deprecated APIs (26.06)
 - Python API: `readMPS` is deprecated
 - C API: `cuOptCreateQuadraticProblem` and `cuOptCreateQuadraticRangedProblem` is deprecated
 
 ### Documentation (26.06)
-- Refreshed the contributor guide (`CONTRIBUTING.md`) with conda-environment recommendations and clarified test-suite scope.
-- Updated the MIP scaling guide.
-- Migrated the support link to GitHub Discussions and tidied broken doc links.
+- Refresh the contributor guide (`CONTRIBUTING.md`) with conda-environment recommendations and clarified test-suite scope
+- Update the MIP scaling guide
+- Migrate the support link to GitHub Discussions and tidy broken doc links
 
 ### New Contributors (26.06)
 - @np96
