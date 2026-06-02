@@ -393,6 +393,8 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
         : context.settings.reduced_cost_strengthening;
     branch_and_bound_settings.symmetry = context.settings.symmetry;
 
+    branch_and_bound_settings.diving_settings = context.settings.diving_params;
+
     // Set the branch and bound -> primal heuristics callback
     branch_and_bound_settings.solution_callback =
       std::bind(&branch_and_bound_solution_helper_t<i_t, f_t>::solution_callback,

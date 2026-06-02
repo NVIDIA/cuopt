@@ -16,6 +16,43 @@
 
 namespace cuopt::linear_programming::dual_simplex {
 
+// When `log_diving_type` is true, each diving strategy gets its own letter;
+// otherwise every dive collapses to 'D'.
+inline char feasible_solution_symbol(search_strategy_t strategy, bool log_diving_type)
+{
+  if (strategy == BEST_FIRST) return 'B';
+  if (!log_diving_type) {
+    switch (strategy) {
+      case COEFFICIENT_DIVING:
+      case LINE_SEARCH_DIVING:
+      case PSEUDOCOST_DIVING:
+      case GUIDED_DIVING: return 'D';
+      default: return 'U';
+    }
+  }
+  switch (strategy) {
+    case COEFFICIENT_DIVING: return 'C';
+    case LINE_SEARCH_DIVING: return 'L';
+    case PSEUDOCOST_DIVING: return 'P';
+    case GUIDED_DIVING: return 'G';
+    default: return 'U';
+  }
+}
+
+inline bool is_search_strategy_enabled(search_strategy_t strategy,
+                                       const mip_diving_hyper_params_t& settings)
+{
+  switch (strategy) {
+    case BEST_FIRST: return true;
+    case PSEUDOCOST_DIVING: return settings.pseudocost_diving != 0;
+    case LINE_SEARCH_DIVING: return settings.line_search_diving != 0;
+    case GUIDED_DIVING: return settings.guided_diving != 0;
+    case COEFFICIENT_DIVING: return settings.coefficient_diving != 0;
+  }
+
+  return false;
+}
+
 template <typename i_t, typename f_t>
 branch_variable_t<i_t> line_search_diving(const std::vector<i_t>& fractional,
                                           const std::vector<f_t>& solution,
