@@ -79,7 +79,7 @@ TEST(general_quadratic, dense_pd_2x2_solve)
   user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
 
   // Build quadratic constraint: x^T [2 1; 1 2] x <= 1
-  // Q in COO (lower triangle stored per MPS convention):
+  // Q in COO (lower triangular stored):
   // (0,0,2), (1,0,1), (1,1,2)
   qc_t qc;
   qc.constraint_row_index = 0;
@@ -703,10 +703,12 @@ TEST(general_quadratic, soc_head_free_rejected)
   csr_A.x         = {1.0};
 
   std::vector<qc_t> qcs = {qc};
-  // Should throw — head variable t is free, constraint is non-convex
-  EXPECT_THROW(
-    (convert_quadratic_constraints_to_second_order_cones<i_t, f_t>(n, qcs, csr_A, user_problem)),
-    cuopt::logic_error);
+  // Head variable t is free, but the SOC translation tightens lower[t] to 0 automatically
+  // (valid because -t^2 + ||tail||^2 <= 0 is symmetric in sign of t).
+  EXPECT_NO_THROW(
+    (convert_quadratic_constraints_to_second_order_cones<i_t, f_t>(n, qcs, csr_A, user_problem)));
+  // Verify the lower bound was tightened
+  EXPECT_GE(user_problem.lower[2], 0.0);
 }
 
 // Test: x0^2 + x1^2 - 2*y*z <= 0 with y >= 0, z >= 0 should be accepted (valid rotated SOC).

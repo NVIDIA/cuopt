@@ -165,3 +165,34 @@ def test_socp_3_barrier_solution():
     assert h1.Value == pytest.approx(1.0, abs=PRIMAL_TOL)
     assert h2.Value == pytest.approx(1.0, abs=PRIMAL_TOL)
     assert h3.Value == pytest.approx(1.0, abs=PRIMAL_TOL)
+
+
+def test_general_quadratic_unsymmetric():
+    """
+    Min x0 + x1
+    s.t. 2*x0^2 + 3*x0*x1 + 2*x1^2 <= 1  (unsymmetric Q: cross term only as x0*x1)
+         x0 - x1 = 0
+
+    Q is given unsymmetrically: the 3*x0*x1 term is stored as a single
+    entry (row=0, col=1, val=3) rather than symmetric (0,1,1.5)+(1,0,1.5).
+    After symmetrization H = [4 3; 3 4], eigenvalues 1 and 7 (PD).
+
+    With x0 = x1 = t: 2t^2 + 3t^2 + 2t^2 = 7t^2 <= 1
+    min 2t at t = -1/sqrt(7), obj = -2/sqrt(7) ≈ -0.755929
+    """
+    problem = Problem("general_qc_unsymmetric")
+    x0 = problem.addVariable(lb=-np.inf, name="x0")
+    x1 = problem.addVariable(lb=-np.inf, name="x1")
+    problem.setObjective(x0 + x1)
+    problem.addConstraint(2 * x0 * x0 + 3 * x0 * x1 + 2 * x1 * x1 <= 1)
+    problem.addConstraint(x0 - x1 == 0)
+
+    solution = _solve(problem)
+    _assert_solution_on_original_model(problem, solution)
+    _assert_feasible(problem)
+
+    expected_obj = -2.0 / np.sqrt(7.0)
+    expected_x = -1.0 / np.sqrt(7.0)
+    assert problem.ObjValue == pytest.approx(expected_obj, abs=OBJ_TOL)
+    assert x0.Value == pytest.approx(expected_x, abs=PRIMAL_TOL)
+    assert x1.Value == pytest.approx(expected_x, abs=PRIMAL_TOL)
