@@ -66,8 +66,8 @@ void convert_quadratic_constraints_to_second_order_cones(
   // Use a practical tolerance for text-parsed MPS numeric values.
   const f_t tol = std::numeric_limits<f_t>::epsilon() * 2;
 
-  // Simple bound propagation from singleton constraint rows.
-  // A row with a single nonzero coefficient a*x_j {<=,>=,=} b implies a bound on x_j.
+  // Simple bound propagation from singleton inequality rows.
+  // A row with a single nonzero coefficient a*x_j {<=,>=} b implies a bound on x_j.
   // This allows SOC head variables whose non-negativity is implied by a constraint
   // (rather than an explicit variable bound) to be recognized.
   for (i_t i = 0; i < csr_A.m; i++) {
@@ -80,15 +80,14 @@ void convert_quadratic_constraints_to_second_order_cones(
     const char sense = user_problem.row_sense[i];
     if (std::abs(a) < tol) { continue; }
     const f_t bound = b / a;
-    if (sense == 'G' || sense == 'E') {
+    if (sense == 'G') {
       // a*x_j >= b: if a > 0 then x_j >= b/a; if a < 0 then x_j <= b/a
       if (a > 0) {
         user_problem.lower[j] = std::max(user_problem.lower[j], bound);
       } else {
         user_problem.upper[j] = std::min(user_problem.upper[j], bound);
       }
-    }
-    if (sense == 'L' || sense == 'E') {
+    } else if (sense == 'L') {
       // a*x_j <= b: if a > 0 then x_j <= b/a; if a < 0 then x_j >= b/a
       if (a > 0) {
         user_problem.upper[j] = std::min(user_problem.upper[j], bound);
