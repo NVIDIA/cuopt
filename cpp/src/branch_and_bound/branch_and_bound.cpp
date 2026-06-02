@@ -2764,13 +2764,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     }
   }
 
-  // Cut loop terminated (max_cut_passes hit, num_fractional==0 break,
-  // negligible-objective-change break, or time-limit break). Publish
-  // the post-cuts root LP value so benchmark drivers can compute
-  // gap-closed-by-cuts. We use compute_user_objective to flip the sign
-  // back into user space when the LP was dualized, matching the
-  // convention used for root_lp_no_cuts above and for the per-pass
-  // "Bound" column in the search log.
+  // Publish the post-cuts root LP value.
   if (settings_.benchmark_info_ptr != nullptr) {
     settings_.benchmark_info_ptr->root_lp_with_cuts =
       static_cast<double>(compute_user_objective(original_lp_, root_objective_));
@@ -2778,10 +2772,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   print_cut_info(settings_, cut_info);
   f_t cut_generation_time = toc(cut_generation_start_time);
-  // Publish the cut generation wall time so MIPLIBGapStat / run_mip can
-  // emit it alongside gap_closed_pct. Always set when the cut loop ran,
-  // even if no cuts were added (the time still measures real work in
-  // generate_cuts + score_cuts + dedup + LP resolves).
+  // Publish cut-generation time for reporting.
   publish_cut_generation_time();
   if (cut_info.has_cuts()) {
     settings_.log.printf("Cut generation time: %.2f seconds\n", cut_generation_time);

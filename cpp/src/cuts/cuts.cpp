@@ -610,20 +610,12 @@ void cut_pool_t<i_t, f_t>::add_cut(cut_type_t cut_type,
     return;
   }
 
-  // P2-4 at-insert cousin filter for the clique-cut family. Bron-Kerbosch
-  // emits all maximal cliques, so dense conflict graphs can produce
-  // hundreds of "cousin" cliques per round whose support sets agree in
-  // |k - 1| of |k| vertices. The selection-stage orthogonality scan
-  // catches them only after each cousin has paid the full insert + dedup
-  // + score cost. The cousin filter intercepts at insert: we estimate
-  // Jaccard via min-hash and, on a collision >= clique_cousin_jaccard_tau_
-  // with an existing pool entry, keep the higher-scoring representative.
+  // At insert time, use min-hash to detect similar clique cuts and keep
+  // one representative when estimated Jaccard passes the threshold.
   std::vector<uint64_t> new_sketch;
   i_t cousin_replace_row     = -1;
   bool cousin_invariant_path = false;
-  // Apply the size-tilt boost to the caller's score so larger cliques win
-  // ties on cousin replacement (more variables covered = more constraint
-  // strength; a proxy for "integer support" since clique vars are 0-1).
+  // Optional size tilt so larger cliques can win close score comparisons.
   f_t effective_score = cut_score;
   if (effective_score >= static_cast<f_t>(0.0) &&
       clique_cousin_size_weight_ > static_cast<f_t>(0.0) && cut_type == cut_type_t::CLIQUE) {
@@ -643,10 +635,7 @@ void cut_pool_t<i_t, f_t>::add_cut(cut_type_t cut_type,
     if (bucket_it != clique_cousin_buckets_.end()) {
       const i_t pool_size = cut_storage_.m;
       const i_t k         = clique_cousin_minhash_k_;
-      // Walk the bucket, computing min-hash agreement with each peer.
-      // Bucket sizes are O(distinct max-clique families per round) so
-      // this loop is short on every realistic instance even when the
-      // pool is large.
+      // Compare the new sketch with peers in the same bucket.
       auto& bucket_rows = bucket_it->second;
       for (size_t b = 0; b < bucket_rows.size(); b++) {
         const i_t row = bucket_rows[b];
@@ -672,18 +661,10 @@ void cut_pool_t<i_t, f_t>::add_cut(cut_type_t cut_type,
           cousin_drops_++;
           return;
         }
-        // New cut beats the existing representative. We "soft-replace":
-        // clear the loser's sketch so future cousins don't anchor against
-        // it (restoring the bucket invariant for new inserts), and
-        // reroute the bucket entry to the new row below. The loser stays
-        // in cut_storage_ for now and will be filtered by the standard
-        // orthogonality scan in score_cuts() — main_baselin has no
-        // mid-pass eviction primitive, and adding one would invalidate
-        // the per-pass cut_pool_size accounting.
+        // Soft-replace: redirect bucket entry to the new row and clear
+        // the old sketch so future inserts ignore the old representative.
         cousin_replace_row = row;
-        // Replace at most one peer per insert; a transitive cousin of
-        // the loser at the same bucket is filtered next time. Matches
-        // the SCIP / Mops "pairwise" family invariant.
+        // Replace at most one peer per insert.
         break;
       }
     }
@@ -5802,20 +5783,15 @@ void apply_cut_sweep_config(cut_pool_t<i_t, f_t>& cut_pool,
     config_id = 0;
   }
 
-  // Defaults match cut_pool_t's initializers: cousin filter OFF, tau=0.85,
-  // k=8, size_weight=0.0. Each case below documents what it tweaks.
+  // Defaults come from cut_pool_t initializers. Each case overrides
+  // only the needed cousin-filter parameters.
   switch (config_id) {
     case 0:
-      // 00_baseline_no_cousin: clique algorithmic changes only (8f2cf00a).
-      // Cousin filter disabled — isolates the impact of the
-      // build_clique_cut two-pass refactor and the addtl_cliques_scan_cost
-      // work-accounting.
+      // 00_baseline_no_cousin: cousin filter off.
       cut_pool.set_clique_cousin_filter_enable(false);
       break;
     case 1:
-      // 01_cousin_default: P2-4 cousin filter on with the cut_scoring branch
-      // defaults (tau=0.85, k=8, no size tilt). Score is the caller-supplied
-      // violation; ties prefer the earlier insert.
+      // 01_cousin_default: tau=0.85, k=8, no size tilt.
       cut_pool.set_clique_cousin_filter_enable(true);
       cut_pool.set_clique_cousin_jaccard_tau(static_cast<f_t>(0.85));
       cut_pool.set_clique_cousin_minhash_k(8);
@@ -5830,23 +5806,14 @@ void apply_cut_sweep_config(cut_pool_t<i_t, f_t>& cut_pool,
       cut_pool.set_clique_cousin_size_weight(static_cast<f_t>(0.0));
       break;
     case 3:
-      // 03_cousin_loose: looser Jaccard threshold (0.85 -> 0.875). Allows
-      // 7/8 min-hash agreement to qualify as cousins when k=8. Closer
-      // to no-filter behavior. Gap should match config 0 if the cousin
-      // filter is mostly absorbing redundancy that the orthogonality
-      // scan would catch anyway.
+      // 03_cousin_loose: tau=0.875 (7/8 with k=8).
       cut_pool.set_clique_cousin_filter_enable(true);
       cut_pool.set_clique_cousin_jaccard_tau(static_cast<f_t>(0.875));
       cut_pool.set_clique_cousin_minhash_k(8);
       cut_pool.set_clique_cousin_size_weight(static_cast<f_t>(0.0));
       break;
     case 4:
-      // 04_cousin_size_tilt: cousin filter on at default tau=0.85, but the
-      // score used for cousin replacement is multiplied by
-      //   (1 + 0.5 * log2(1 + clique_size))
-      // so larger cliques win on ties / near-ties. For clique cuts every
-      // variable is binary, so clique size is the integer-support count
-      // — this is the "clique integer support" knob the user requested.
+      // 04_cousin_size_tilt: tau=0.85 with size-tilted replacement score.
       cut_pool.set_clique_cousin_filter_enable(true);
       cut_pool.set_clique_cousin_jaccard_tau(static_cast<f_t>(0.85));
       cut_pool.set_clique_cousin_minhash_k(8);

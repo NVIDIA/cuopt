@@ -290,12 +290,10 @@ class cut_pool_t {
   // Add a cut in the form: cut'*x >= rhs.
   // We expect that the cut is violated by the current relaxation xstar.
   //
-  // cut_score is an optional caller-supplied quality score used by the
-  // P2-4 clique cousin filter (only consulted for cut_type == CLIQUE
-  // when the cousin filter is enabled). Pass a non-negative value to
-  // enable score-aware cousin replacement; the default (-1.0) reverts
-  // to "first-write-wins" cousin policy. Other cut types ignore this
-  // parameter.
+  // Optional score used by the clique cousin filter.
+  // Only used for cut_type == CLIQUE when the filter is enabled.
+  // Non-negative values enable score-based replacement; -1.0 means
+  // keep the first inserted representative.
   void add_cut(cut_type_t cut_type,
                const inequality_t<i_t, f_t>& cut,
                f_t cut_score = static_cast<f_t>(-1.0));
@@ -317,24 +315,10 @@ class cut_pool_t {
 
   void check_for_duplicate_cuts();
 
-  // ----- P2-4 clique cousin filter knobs / counters -----------------------
-  //
-  // The clique cut family (Bron-Kerbosch + extension) emits cousin
-  // cliques whose support sets agree in |k-1| of |k| vertices. The
-  // selection-stage orthogonality scan catches them but only after the
-  // full insert + dedup + score cost has been paid. The cousin filter
-  // intercepts at insert: we min-hash the cut's column-support set,
-  // bucket on the first sketch hash, and when an existing pool entry
-  // collides with estimated Jaccard >= jaccard_tau we keep the
-  // higher-scoring representative (or, if no score was supplied, the
-  // earlier-inserted one).
-  //
+  // Clique cousin filter settings.
+  // At insert time, we compare min-hash sketches and keep one
+  // representative when estimated Jaccard >= jaccard_tau.
   // Defaults: jaccard_tau=0.875, k=8, enable=true, size_weight=0.0.
-  // These match "config 3 / cousin_loose" from the clique-sweep on
-  // commit 0b04683b — the configuration that won the gap-closed-pct
-  // comparison and was promoted to be the production default for the
-  // clique cut family. Callers can still override at runtime via
-  // set_clique_cousin_* if they want to experiment.
   void set_clique_cousin_filter_enable(bool v) { clique_cousin_filter_enable_ = v; }
   void set_clique_cousin_jaccard_tau(f_t v) { clique_cousin_jaccard_tau_ = v; }
   void set_clique_cousin_minhash_k(i_t v) { clique_cousin_minhash_k_ = v; }
@@ -390,14 +374,9 @@ class cut_pool_t {
   std::vector<i_t> best_cuts_;
   const f_t min_cut_distance_{1e-4};
 
-  // P2-4 cousin filter state. clique_support_minhash_ is sized in
-  // lock-step with cut_storage_; non-CLIQUE rows carry an empty
-  // sketch and are skipped by rebuild_clique_cousin_buckets() and the
-  // cousin loop in add_cut. clique_cousin_score_ holds the
-  // caller-supplied score (raw violation, or violation * size-tilt) so
-  // we can decide which representative to keep when two cliques
-  // collide. clique_cousin_buckets_ maps the first sketch hash to the
-  // list of pool rows whose sketches start with that hash.
+  // Cousin filter state.
+  // Vectors are kept aligned with cut_storage_. Non-CLIQUE rows keep
+  // empty sketches. Buckets map sketch[0] to candidate rows.
   std::vector<std::vector<uint64_t>> clique_support_minhash_;
   std::vector<f_t> clique_cousin_score_;
   std::unordered_map<uint64_t, std::vector<i_t>> clique_cousin_buckets_;
@@ -420,32 +399,22 @@ class cut_pool_t {
 // ---------------------------------------------------------------------------
 // Cut-pool sweep configuration dispatch.
 //
-// Selected by the CUOPT_CONFIG_ID environment variable; range-checked
-// against CUOPT_MAX_CONFIG (caller-asserted upper bound). One env-var
-// dispatch covers the entire clique cut family because the only knobs
-// we vary on this branch live on cut_pool_t (cousin filter on/off,
-// Jaccard tau, integer-support size tilt). The deterministic
-// measurement path (no concurrent root LP, no in-cut-pass RCS, exit
-// after the cut loop) is unconditional and lives in branch_and_bound.
+// Selected by CUOPT_CONFIG_ID and range-checked against
+// CUOPT_MAX_CONFIG. Configs control the clique cousin filter knobs.
 //
 // Keep kCutSweepNumConfigs in sync with the switch table in
 // apply_cut_sweep_config() (see cuts.cpp) and with cut_sweep_config_name()
 // below.
 //
 // Layout:
-//   0  baseline_no_cousin   clique cut algorithmic changes only
-//                           (cousin filter off; isolates 8f2cf00a impact)
+//   0  baseline_no_cousin   cousin filter off
 //   1  cousin_default       cousin filter on, tau=0.85, k=8, score=violation
-//                           (the cut_scoring final-version P2-4 baseline)
 //   2  cousin_strict        cousin filter on, tau=0.70 (more aggressive
 //                           cousin removal — favors quantity reduction)
 //   3  cousin_loose         cousin filter on, tau=0.875 (allows 7/8 min-hash
-//                           agreement with k=8; still closer to no-filter
-//                           extreme — selection-stage absorbs cousins)
+//                           agreement with k=8)
 //   4  cousin_size_tilt     cousin filter on, tau=0.85, score = violation *
-//                           (1 + 0.5 * log2(1 + clique_size)) — picks the
-//                           larger clique on cousin replacement (integer
-//                           support proxy, since clique vars are 0-1)
+//                           (1 + 0.5 * log2(1 + clique_size))
 constexpr int kCutSweepNumConfigs = 5;
 
 inline const char* cut_sweep_config_name(int config_id)

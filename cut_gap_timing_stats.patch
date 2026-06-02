@@ -830,7 +830,7 @@ index 685b1360..b2231b1a 100644
 
  // Forward declare solver_settings_t for friend class
 diff --git a/cpp/src/branch_and_bound/branch_and_bound.cpp b/cpp/src/branch_and_bound/branch_and_bound.cpp
-index 0222ad6f..96d05d6b 100644
+index 0222ad6f..5420b882 100644
 --- a/cpp/src/branch_and_bound/branch_and_bound.cpp
 +++ b/cpp/src/branch_and_bound/branch_and_bound.cpp
 @@ -11,6 +11,8 @@
@@ -899,10 +899,13 @@ index 0222ad6f..96d05d6b 100644
    constexpr bool enable_root_cut_cpufj = true;
    std::unique_ptr<detail::fj_cpu_task_t<i_t, f_t>> root_cut_cpufj_task;
    auto root_cut_cpufj_improvement_callback =
-@@ -2649,10 +2678,29 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
+@@ -2648,11 +2677,31 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
+   };
    cuopt::scope_guard root_cut_cpufj_guard([&]() { stop_root_cut_cpufj(); });
 
-   f_t cut_generation_start_time = tic();
+-  f_t cut_generation_start_time = tic();
+-  i_t cut_pool_size             = 0;
++  f_t cut_generation_start_time    = tic();
 +  auto publish_cut_generation_time = [&](bool force_time_limit_value = false) {
 +    if (settings_.benchmark_info_ptr == nullptr) { return; }
 +    f_t cut_generation_time = toc(cut_generation_start_time);
@@ -912,9 +915,10 @@ index 0222ad6f..96d05d6b 100644
 +    if (cut_generation_time < static_cast<f_t>(0.0)) {
 +      cut_generation_time = static_cast<f_t>(0.0);
 +    }
-+    settings_.benchmark_info_ptr->cut_generation_time_sec = static_cast<double>(cut_generation_time);
++    settings_.benchmark_info_ptr->cut_generation_time_sec =
++      static_cast<double>(cut_generation_time);
 +  };
-   i_t cut_pool_size             = 0;
++  i_t cut_pool_size = 0;
    for (i_t cut_pass = 0; cut_pass < settings_.max_cut_passes; cut_pass++) {
      if (num_fractional == 0) {
 +      // LP relaxation is already integer-feasible — solved at the root
@@ -929,7 +933,7 @@ index 0222ad6f..96d05d6b 100644
        signal_extend_cliques_.store(true, std::memory_order_release);
  #pragma omp taskwait depend(in : *clique_signal)
        return mip_status_t::OPTIMAL;
-@@ -2692,6 +2740,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
+@@ -2692,6 +2741,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
      }
 
      if (cut_pass_result.action == cut_pass_action_t::RETURN) {
@@ -937,17 +941,11 @@ index 0222ad6f..96d05d6b 100644
        signal_extend_cliques_.store(true, std::memory_order_release);
  #pragma omp taskwait depend(in : *clique_signal)
        return cut_pass_result.status;
-@@ -2714,8 +2763,25 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
+@@ -2714,8 +2764,16 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
      }
    }
 
-+  // Cut loop terminated (max_cut_passes hit, num_fractional==0 break,
-+  // negligible-objective-change break, or time-limit break). Publish
-+  // the post-cuts root LP value so benchmark drivers can compute
-+  // gap-closed-by-cuts. We use compute_user_objective to flip the sign
-+  // back into user space when the LP was dualized, matching the
-+  // convention used for root_lp_no_cuts above and for the per-pass
-+  // "Bound" column in the search log.
++  // Publish the post-cuts root LP value.
 +  if (settings_.benchmark_info_ptr != nullptr) {
 +    settings_.benchmark_info_ptr->root_lp_with_cuts =
 +      static_cast<double>(compute_user_objective(original_lp_, root_objective_));
@@ -955,10 +953,7 @@ index 0222ad6f..96d05d6b 100644
 +
    print_cut_info(settings_, cut_info);
    f_t cut_generation_time = toc(cut_generation_start_time);
-+  // Publish the cut generation wall time so MIPLIBGapStat / run_mip can
-+  // emit it alongside gap_closed_pct. Always set when the cut loop ran,
-+  // even if no cuts were added (the time still measures real work in
-+  // generate_cuts + score_cuts + dedup + LP resolves).
++  // Publish cut-generation time for reporting.
 +  publish_cut_generation_time();
    if (cut_info.has_cuts()) {
      settings_.log.printf("Cut generation time: %.2f seconds\n", cut_generation_time);
