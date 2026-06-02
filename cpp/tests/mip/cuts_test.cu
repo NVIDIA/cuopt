@@ -32,6 +32,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <sstream>
 #include <string>
 #include <unordered_set>
@@ -1399,6 +1400,209 @@ TEST(cuts, clique_neos8_phase4_lp_infeasibility_binary_search)
     isolate_first_lp_infeasible_literal_cut_by_bisection(cuts_for_lp_search, num_vars);
   ASSERT_TRUE(first_infeasible.has_value());
   EXPECT_EQ(first_infeasible.value(), injected_index);
+}
+
+// Minimal 0-1 single-node-flow relaxation for the flow-cover separator.
+//
+//   y0 + y1 - y2 <= 4
+//   0 <= y0 <= 3*x0, 0 <= y1 <= 6*x1, 0 <= y2 <= 3*x2
+//
+// The fractional point x* = (1, 2/3, 1), y* = (3, 4, 3) satisfies the relaxation
+// but violates the generated c-MIR flow-cover cut. This is a reduced version of a
+// standard flow-cover example; the test checks validity instead of exact coefficients
+// because the approximate single-node-flow selection may choose a different valid cut.
+io::mps_data_model_t<int, double> create_small_single_node_flow_problem()
+{
+  io::mps_data_model_t<int, double> problem;
+
+  std::vector<int> offsets         = {0, 3, 5, 7, 9};
+  std::vector<int> indices         = {3, 4, 5, 0, 3, 1, 4, 2, 5};
+  std::vector<double> coefficients = {1.0, 1.0, -1.0, -3.0, 1.0, -6.0, 1.0, -3.0, 1.0};
+  problem.set_csr_constraint_matrix(std::span<const double>{coefficients},
+                                    std::span<const int>{indices},
+                                    std::span<const int>{offsets});
+
+  std::vector<double> lower_bounds(4, -std::numeric_limits<double>::infinity());
+  std::vector<double> upper_bounds = {4.0, 0.0, 0.0, 0.0};
+  problem.set_constraint_lower_bounds(std::span<const double>{lower_bounds});
+  problem.set_constraint_upper_bounds(std::span<const double>{upper_bounds});
+
+  std::vector<double> var_lower_bounds(6, 0.0);
+  std::vector<double> var_upper_bounds = {1.0, 1.0, 1.0, 3.0, 6.0, 3.0};
+  problem.set_variable_lower_bounds(std::span<const double>{var_lower_bounds});
+  problem.set_variable_upper_bounds(std::span<const double>{var_upper_bounds});
+
+  std::vector<double> objective_coefficients(6, 0.0);
+  problem.set_objective_coefficients(std::span<const double>{objective_coefficients});
+
+  std::vector<char> variable_types = {'I', 'I', 'I', 'C', 'C', 'C'};
+  problem.set_variable_types(variable_types);
+
+  problem.set_maximize(false);
+  return problem;
+}
+
+struct flow_cover_test_problem_t {
+  raft::handle_t handle;
+  dual_simplex::simplex_solver_settings_t<int, double> settings;
+  dual_simplex::lp_problem_t<int, double> lp;
+  dual_simplex::csr_matrix_t<int, double> Arow;
+  std::vector<int> new_slacks;
+  std::vector<dual_simplex::variable_type_t> var_types;
+
+  flow_cover_test_problem_t() : handle(), settings(), lp(&handle, 1, 1, 1), Arow(0, 0, 0) {}
+};
+
+flow_cover_test_problem_t build_flow_cover_test_problem(
+  const io::mps_data_model_t<int, double>& model)
+{
+  flow_cover_test_problem_t test_problem;
+  auto op_problem = mps_data_model_to_optimization_problem(&test_problem.handle, model);
+  detail::problem_t<int, double> mip_problem(op_problem);
+  dual_simplex::user_problem_t<int, double> host_problem(op_problem.get_handle_ptr());
+  mip_problem.get_host_user_problem(host_problem);
+
+  dual_simplex::dualize_info_t<int, double> dualize_info;
+  dual_simplex::convert_user_problem(
+    host_problem, test_problem.settings, test_problem.lp, test_problem.new_slacks, dualize_info);
+  test_problem.var_types = host_problem.var_types;
+  if (test_problem.lp.num_cols > static_cast<int>(test_problem.var_types.size())) {
+    test_problem.var_types.resize(test_problem.lp.num_cols,
+                                  dual_simplex::variable_type_t::CONTINUOUS);
+  }
+  test_problem.lp.A.to_compressed_row(test_problem.Arow);
+  return test_problem;
+}
+
+std::vector<double> single_node_flow_fractional_solution(int num_cols)
+{
+  std::vector<double> xstar(num_cols, 0.0);
+  xstar[0] = 1.0;
+  xstar[1] = 2.0 / 3.0;
+  xstar[2] = 1.0;
+  xstar[3] = 3.0;
+  xstar[4] = 4.0;
+  xstar[5] = 3.0;
+  return xstar;
+}
+
+bool single_node_flow_y_feasible(const std::vector<double>& y)
+{
+  const double activity = y[0] + y[1] - y[2];
+  return activity <= 4.0 + 1e-8;
+}
+
+void expect_single_node_flow_cut_valid_at_point(const dual_simplex::inequality_t<int, double>& cut,
+                                                const std::vector<double>& point,
+                                                const std::string& label)
+{
+  EXPECT_GE(cut.vector.dot(point), cut.rhs - 1e-7) << label;
+}
+
+void expect_single_node_flow_cut_valid_at_extreme_points(
+  const dual_simplex::inequality_t<int, double>& cut, int num_cols)
+{
+  const std::vector<double> capacities = {3.0, 6.0, 3.0};
+  const std::vector<double> flow_signs = {1.0, 1.0, -1.0};
+  int checked_points                   = 0;
+
+  for (int x_mask = 0; x_mask < 8; x_mask++) {
+    std::vector<double> y_upper(3, 0.0);
+    for (int j = 0; j < 3; j++) {
+      if (((x_mask >> j) & 1) != 0) { y_upper[j] = capacities[j]; }
+    }
+
+    for (int y_mask = 0; y_mask < 8; y_mask++) {
+      std::vector<double> y(3, 0.0);
+      for (int j = 0; j < 3; j++) {
+        if (((y_mask >> j) & 1) != 0) { y[j] = y_upper[j]; }
+      }
+      if (!single_node_flow_y_feasible(y)) { continue; }
+
+      std::vector<double> point(num_cols, 0.0);
+      for (int j = 0; j < 3; j++) {
+        point[j]     = ((x_mask >> j) & 1) != 0 ? 1.0 : 0.0;
+        point[3 + j] = y[j];
+      }
+      expect_single_node_flow_cut_valid_at_point(
+        cut,
+        point,
+        "box vertex x_mask=" + std::to_string(x_mask) + " y_mask=" + std::to_string(y_mask));
+      checked_points++;
+    }
+
+    for (int free_j = 0; free_j < 3; free_j++) {
+      for (int bound_mask = 0; bound_mask < 4; bound_mask++) {
+        std::vector<double> y(3, 0.0);
+        int bit = 0;
+        for (int j = 0; j < 3; j++) {
+          if (j == free_j) { continue; }
+          if (((bound_mask >> bit) & 1) != 0) { y[j] = y_upper[j]; }
+          bit++;
+        }
+
+        double fixed_activity = 0.0;
+        for (int j = 0; j < 3; j++) {
+          if (j != free_j) { fixed_activity += flow_signs[j] * y[j]; }
+        }
+
+        const double y_free = (4.0 - fixed_activity) / flow_signs[free_j];
+        if (y_free < -1e-8 || y_free > y_upper[free_j] + 1e-8) { continue; }
+        y[free_j] = std::max(0.0, std::min(y_upper[free_j], y_free));
+        if (!single_node_flow_y_feasible(y)) { continue; }
+
+        std::vector<double> point(num_cols, 0.0);
+        for (int j = 0; j < 3; j++) {
+          point[j]     = ((x_mask >> j) & 1) != 0 ? 1.0 : 0.0;
+          point[3 + j] = y[j];
+        }
+        expect_single_node_flow_cut_valid_at_point(
+          cut,
+          point,
+          "flow-tight vertex x_mask=" + std::to_string(x_mask) +
+            " free_j=" + std::to_string(free_j) + " bound_mask=" + std::to_string(bound_mask));
+        checked_points++;
+      }
+    }
+  }
+
+  EXPECT_GT(checked_points, 0);
+}
+
+TEST(cuts, flow_cover_generates_valid_single_node_flow_cut)
+{
+  auto test_problem = build_flow_cover_test_problem(create_small_single_node_flow_problem());
+  const std::vector<double> xstar = single_node_flow_fractional_solution(test_problem.lp.num_cols);
+
+  dual_simplex::flow_cover_generation_t<int, double> generator(
+    test_problem.lp, test_problem.settings, test_problem.Arow, test_problem.new_slacks);
+  dual_simplex::variable_bounds_t<int, double> variable_bounds(test_problem.lp,
+                                                               test_problem.settings,
+                                                               test_problem.var_types,
+                                                               test_problem.Arow,
+                                                               test_problem.new_slacks);
+  ASSERT_GT(generator.num_constraints(), 0);
+
+  int generated_cuts = 0;
+  for (const auto& flow_cover_row : generator.get_constraints()) {
+    dual_simplex::inequality_t<int, double> cut(test_problem.lp.num_cols);
+    const int status = generator.generate_cut(test_problem.lp,
+                                              test_problem.settings,
+                                              test_problem.Arow,
+                                              variable_bounds,
+                                              test_problem.var_types,
+                                              xstar,
+                                              flow_cover_row,
+                                              cut);
+    if (status != 0) { continue; }
+
+    EXPECT_LT(cut.vector.dot(xstar), cut.rhs - 1e-6)
+      << "row=" << flow_cover_row.row << " reverse=" << flow_cover_row.reverse;
+    expect_single_node_flow_cut_valid_at_extreme_points(cut, test_problem.lp.num_cols);
+    generated_cuts++;
+  }
+
+  EXPECT_GT(generated_cuts, 0);
 }
 
 }  // namespace cuopt::linear_programming::test

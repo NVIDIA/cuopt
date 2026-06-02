@@ -265,6 +265,7 @@ dependencies:
         packages:
           - libboost-devel
           - cpp-argparse
+          - &pyyaml pyyaml>=6.0.0
           - tbb-devel
           - zlib
           - bzip2
@@ -279,6 +280,7 @@ dependencies:
       - output_types: [conda]
         packages:
           - cuda-sanitizer-api
+          - *pyyaml
   test_cpp_cuopt:
     common:
       - output_types: [conda]
@@ -322,7 +324,7 @@ dependencies:
           - numba-cuda>=0.22.1
           - numba>=0.60.0,<0.65.0
           - &pandas pandas>=2.0
-          - &pyyaml pyyaml>=6.0.0
+          - *pyyaml
           - scipy>=1.14.1
     specific:
       - output_types: [conda, requirements, pyproject]
@@ -508,7 +510,7 @@ dependencies:
     common:
       - output_types: conda
         packages:
-          - cupy>=13.6.0
+          - cupy>=13.6.0,!=14.0.0,!=14.1.0
     # NOTE: This is intentionally not broken into groups by a 'cuda_suffixed' selector like
     #       other packages with -cu{nn}x suffixes in this file.
     #       All RAPIDS wheel builds (including in devcontainers) expect cupy to be suffixed.
@@ -518,11 +520,11 @@ dependencies:
           - matrix:
               cuda: "12.*"
             packages:
-              - cupy-cuda12x>=13.6.0
+              - cupy-cuda12x>=13.6.0,!=14.0.0,!=14.1.0
           # fallback to CUDA 13 versions if 'cuda' is '13.*' or not provided
           - matrix:
             packages:
-              - cupy-cuda13x>=13.6.0
+              - cupy-cuda13x>=13.6.0,!=14.0.0,!=14.1.0
   depends_on_rapids_logger:
     common:
       - output_types: [conda, requirements, pyproject]
@@ -724,14 +726,14 @@ dependencies:
               use_cuda_wheels: "true"
             packages:
               - cuda-toolkit[cublas,cudart,curand,cusolver,cusparse,nvtx]==12.*
-              - nvidia-cudss-cu12
+              - nvidia-cudss-cu12>=0.7,<0.8
               - nvidia-nvjitlink-cu12>=12.9,<13
           - matrix:
               cuda: "13.*"
               use_cuda_wheels: "true"
             packages:
               - &ctk_cu13 cuda-toolkit[cublas,cudart,curand,cusolver,cusparse,nvtx]==13.*
-              - &cudss_cu13 nvidia-cudss-cu13
+              - &cudss_cu13 nvidia-cudss-cu13>=0.7,<0.8
               - &nvjitlink_cu13 nvidia-nvjitlink>=13.0,<14
           # if no matching matrix selectors passed, list the CUDA 13 requirement
           # (just as a source of documentation, as this populates pyproject.toml in source control)
@@ -745,6 +747,7 @@ dependencies:
       - output_types: [conda, requirements]
         packages:
           - pre-commit
+          - ruamel.yaml>=0.18
       - output_types: conda
         packages:
           - clang==20.1.8

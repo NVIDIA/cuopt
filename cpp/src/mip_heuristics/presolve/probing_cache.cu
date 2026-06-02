@@ -896,17 +896,16 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
     if (timer.check_time_limit() || early_exit || problem_is_infeasible.load()) { break; }
     size_t step_end = std::min(step_start + step_size, priority_indices.size());
 
-#pragma omp taskloop num_tasks(num_tasks) default(shared)
+#pragma omp taskloop num_tasks(num_tasks) default(shared) priority(CUOPT_DEFAULT_TASK_PRIORITY)
     for (size_t task_id = 0; task_id < num_tasks; ++task_id) {
-      size_t n     = step_end - step_start;
-      size_t begin = step_start + std::floor(static_cast<f_t>(n) * task_id / num_tasks);
-      size_t end   = step_start + std::floor(static_cast<f_t>(n) * (task_id + 1) / num_tasks);
+      size_t n                   = step_end - step_start;
+      auto [begin, end]          = calculate_index_range(task_id, n, num_tasks);
       auto& multi_probe_presolve = multi_probe_presolve_pool[task_id];
       auto& modification_vector  = modification_vector_pool[task_id];
       auto& substitution_vector  = substitution_vector_pool[task_id];
       if (timer.check_time_limit()) { continue; }
 
-      for (size_t i = begin; i < end; ++i) {
+      for (size_t i = step_start + begin; i < step_start + end; ++i) {
         auto var_idx = priority_indices[i];
         if (timer.check_time_limit()) { continue; }
 

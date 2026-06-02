@@ -7,11 +7,27 @@
 
 #pragma once
 
+#include <cmath>
+#include <utility>
+
+namespace cuopt {
+
+// Split `total` entries across `n` blocks and return the [start, end) range for `k`-th block.
+// Useful for splitting work across OpenMP tasks/threads/workers.
+template <typename i_t>
+std::pair<i_t, i_t> calculate_index_range(i_t k, double total, double n)
+{
+  i_t start = std::floor(k * total / n);
+  i_t end   = std::floor((k + 1) * total / n);
+  return {start, end};
+}
+
+}  // namespace cuopt
+
 #ifdef _OPENMP
 
 #include <omp.h>
 #include <memory>
-#include <utility>
 
 namespace cuopt {
 
@@ -20,11 +36,9 @@ namespace cuopt {
 class omp_mutex_t {
  public:
   omp_mutex_t() : mutex(new omp_lock_t) { omp_init_lock(mutex.get()); }
-
-  omp_mutex_t(const omp_mutex_t&) = delete;
-
   omp_mutex_t(omp_mutex_t&& other) { *this = std::move(other); }
 
+  omp_mutex_t(const omp_mutex_t&)            = delete;
   omp_mutex_t& operator=(const omp_mutex_t&) = delete;
 
   omp_mutex_t& operator=(omp_mutex_t&& other)
@@ -203,16 +217,9 @@ class omp_atomic_t {
  private:
   T val;
 
-#ifndef __NVCC__
   friend double fetch_min(omp_atomic_t<double>& atomic_var, double other);
   friend double fetch_max(omp_atomic_t<double>& atomic_var, double other);
-#endif
 };
-
-// Atomic CAS are only supported in OpenMP v5.1
-// (gcc 12+ or clang 14+), however, nvcc (or the host compiler) cannot
-// parse it correctly yet
-#ifndef __NVCC__
 
 // Free non-template functions are necessary because of a clang 20 bug
 // when omp atomic compare is used within a templated context.
@@ -238,7 +245,6 @@ inline double fetch_max(omp_atomic_t<double>& atomic_var, double other)
   }
   return old;
 }
-#endif
 
 #endif
 

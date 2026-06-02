@@ -25,3 +25,18 @@
 // MIP-only gate: skip the concurrent barrier when fewer threads are available than this
 // (1 PDLP + 1 dual simplex + 1 barrier). Stand-alone LP always runs all three.
 #define CUOPT_CONCURRENT_LP_BARRIER_REQUIRED_THREAD_COUNT 3
+
+/* @brief Priority classes for the omp tasks. Highest value = higher priority.
+ * Note that this only gives a hint to the runtime, such that the high priority
+ * is not guarantee to be executed before a low priority one (i.e., do not rely on
+ * these values for correctness).
+ */
+#define CUOPT_CRITICAL_TASK_PRIORITY 1000
+#define CUOPT_HIGH_TASK_PRIORITY     100
+#define CUOPT_MEDIUM_TASK_PRIORITY   10
+#define CUOPT_DEFAULT_TASK_PRIORITY  1
+
+// Default values for work stealing in B&B
+#define MIP_DEFAULT_STEAL_CHANCE       0.05
+#define MIP_DEFAULT_NODES_PER_STEAL    10
+#define MIP_DEFAULT_MAX_STEAL_ATTEMPTS 3

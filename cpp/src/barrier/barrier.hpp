@@ -7,7 +7,6 @@
 #pragma once
 
 #include <barrier/dense_vector.hpp>
-#include <barrier/pinned_host_allocator.hpp>
 
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
@@ -18,6 +17,11 @@
 
 #include <rmm/device_uvector.hpp>
 namespace cuopt::linear_programming::dual_simplex {
+
+/** Validates SOC layout on an lp_problem_t before barrier presolve/solve. */
+template <typename i_t, typename f_t>
+bool validate_barrier_cone_layout(const lp_problem_t<i_t, f_t>& problem,
+                                  const simplex_solver_settings_t<i_t, f_t>& settings);
 
 template <typename i_t, typename f_t>
 class iteration_data_t;  // Forward declare
@@ -85,10 +89,13 @@ class barrier_solver_t {
                                   f_t& dual_residual_norm,
                                   f_t& complementarity_residual_norm);
 
-  f_t gpu_max_step_to_boundary(iteration_data_t<i_t, f_t>& data,
-                               const rmm::device_uvector<f_t>& x,
-                               const rmm::device_uvector<f_t>& dx);
-  i_t gpu_compute_search_direction(iteration_data_t<i_t, f_t>& data, f_t& max_residual);
+  f_t compute_nonnegative_step_length(iteration_data_t<i_t, f_t>& data,
+                                      const rmm::device_uvector<f_t>& x,
+                                      const rmm::device_uvector<f_t>& dx);
+  i_t gpu_compute_search_direction(iteration_data_t<i_t, f_t>& data,
+                                   f_t& dual_perturb,
+                                   f_t& primal_perturb,
+                                   f_t& max_residual);
 
  private:
   lp_status_t check_for_suboptimal_solution(iteration_data_t<i_t, f_t>& data,

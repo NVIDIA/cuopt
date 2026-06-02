@@ -812,10 +812,9 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
 }
 
 template <typename i_t, typename f_t>
-mip_solution_t<i_t, f_t> solve_mip(
-  raft::handle_t const* handle_ptr,
-  const cuopt::linear_programming::io::mps_data_model_t<i_t, f_t>& mps_data_model,
-  mip_solver_settings_t<i_t, f_t> const& settings)
+mip_solution_t<i_t, f_t> solve_mip(raft::handle_t const* handle_ptr,
+                                   const io::mps_data_model_t<i_t, f_t>& mps_data_model,
+                                   mip_solver_settings_t<i_t, f_t> const& settings)
 {
   auto op_problem = mps_data_model_to_optimization_problem(handle_ptr, mps_data_model);
   return solve_mip(op_problem, settings);

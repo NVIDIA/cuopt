@@ -507,6 +507,7 @@ run_barrier(dual_simplex::user_problem_t<i_t, f_t>& user_problem,
   barrier_settings.ordering                        = settings.ordering;
   barrier_settings.barrier_dual_initial_point      = settings.barrier_dual_initial_point;
   barrier_settings.barrier                         = true;
+  barrier_settings.barrier_presolve                = true;
   barrier_settings.crossover                       = settings.crossover;
   barrier_settings.eliminate_dense_columns         = settings.eliminate_dense_columns;
   barrier_settings.barrier_iterative_refinement    = settings.barrier_iterative_refinement;
@@ -523,6 +524,8 @@ run_barrier(dual_simplex::user_problem_t<i_t, f_t>& user_problem,
   dual_simplex::lp_solution_t<i_t, f_t> solution(user_problem.num_rows, user_problem.num_cols);
   auto status = dual_simplex::solve_linear_program_with_barrier<i_t, f_t>(
     user_problem, barrier_settings, timer.get_tic_start(), solution);
+
+  detail::project_barrier_solution_to_model_variables(user_problem, solution);
 
   CUOPT_LOG_CONDITIONAL_INFO(
     !settings.inside_mip, "Barrier finished in %.2f seconds", timer.elapsed_time());
@@ -1779,9 +1782,10 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_with_method(
 }
 
 template <typename i_t, typename f_t>
-optimization_problem_solution_t<i_t, f_t> solve_qp(optimization_problem_t<i_t, f_t>& op_problem,
-                                                   pdlp_solver_settings_t<i_t, f_t> const& settings,
-                                                   bool problem_checking)
+optimization_problem_solution_t<i_t, f_t> solve_qcqp(
+  optimization_problem_t<i_t, f_t>& op_problem,
+  pdlp_solver_settings_t<i_t, f_t> const& settings,
+  bool problem_checking)
 {
   try {
     // Create log stream for file logging and add it to default logger
@@ -1791,9 +1795,38 @@ optimization_problem_solution_t<i_t, f_t> solve_qp(optimization_problem_t<i_t, f
     // Init libraries before to not include it in solve time
     init_handler(op_problem.get_handle_ptr());
 
-    auto qp_timer = cuopt::timer_t(settings.time_limit);
+    auto qcqp_timer = cuopt::timer_t(settings.time_limit);
 
-    raft::common::nvtx::range fun_scope("Running QP solver");
+    if (problem_checking) {
+      problem_checking_t<i_t, f_t>::check_problem_representation(op_problem);
+      if (problem_checking_t<i_t, f_t>::has_crossing_bounds(op_problem)) {
+        return optimization_problem_solution_t<i_t, f_t>(
+          pdlp_termination_status_t::PrimalInfeasible, op_problem.get_handle_ptr()->get_stream());
+      }
+    }
+
+    if (op_problem.has_quadratic_objective() && op_problem.get_sense()) {
+      CUOPT_LOG_ERROR("Quadratic problems must be minimized");
+      return optimization_problem_solution_t<i_t, f_t>(pdlp_termination_status_t::NumericalError,
+                                                       op_problem.get_handle_ptr()->get_stream());
+    }
+
+    raft::common::nvtx::range fun_scope("Running QCQP solver");
+    const bool has_q_obj = op_problem.has_quadratic_objective();
+    const bool has_qc    = op_problem.has_quadratic_constraints();
+    if (has_q_obj && has_qc) {
+      CUOPT_LOG_INFO(
+        "Problem has a quadratic objective and %d quadratic constraints. Converting constraints to "
+        "second-order cones and solving with barrier.",
+        static_cast<int>(op_problem.get_quadratic_constraints().size()));
+    } else if (has_q_obj) {
+      CUOPT_LOG_INFO("Problem has a quadratic objective. Solving with barrier.");
+    } else {
+      CUOPT_LOG_INFO(
+        "Problem has %d quadratic constraints. Converting to second-order cones and solving with "
+        "barrier.",
+        static_cast<int>(op_problem.get_quadratic_constraints().size()));
+    }
     if (settings.user_problem_file != "") {
       CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());
       op_problem.write_to_mps(settings.user_problem_file);
@@ -1801,7 +1834,7 @@ optimization_problem_solution_t<i_t, f_t> solve_qp(optimization_problem_t<i_t, f
     // Convert data structures to dual simplex format and back
     dual_simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
       cuopt_optimization_problem_to_user_problem<i_t, f_t>(op_problem.get_handle_ptr(), op_problem);
-    auto sol_dual_simplex = run_barrier(dual_simplex_problem, settings, qp_timer);
+    auto sol_dual_simplex = run_barrier(dual_simplex_problem, settings, qcqp_timer);
     auto solution         = convert_dual_simplex_sol(op_problem,
                                              std::get<0>(sol_dual_simplex),
                                              std::get<1>(sol_dual_simplex),
@@ -1815,10 +1848,10 @@ optimization_problem_solution_t<i_t, f_t> solve_qp(optimization_problem_t<i_t, f
     }
     return solution;
   } catch (const cuopt::logic_error& e) {
-    CUOPT_LOG_ERROR("Error in solve_qp: %s", e.what());
+    CUOPT_LOG_ERROR("Error in solve_qcqp: %s", e.what());
     return optimization_problem_solution_t<i_t, f_t>{e, op_problem.get_handle_ptr()->get_stream()};
   } catch (const std::bad_alloc& e) {
-    CUOPT_LOG_ERROR("Error in solve_qp: %s", e.what());
+    CUOPT_LOG_ERROR("Error in solve_qcqp: %s", e.what());
     return optimization_problem_solution_t<i_t, f_t>{
       cuopt::logic_error("Memory allocation failed", cuopt::error_type_t::RuntimeError),
       op_problem.get_handle_ptr()->get_stream()};
@@ -1833,8 +1866,8 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
   bool use_pdlp_solver_mode,
   bool is_batch_mode)
 {
-  if (op_problem.has_quadratic_objective()) {
-    return solve_qp(op_problem, settings_const, problem_checking);
+  if (op_problem.has_quadratic_objective() || op_problem.has_quadratic_constraints()) {
+    return solve_qcqp(op_problem, settings_const, problem_checking);
   }
 
   try {
@@ -2078,12 +2111,18 @@ cuopt::linear_programming::optimization_problem_t<i_t, f_t> mps_data_model_to_op
   cuopt::linear_programming::optimization_problem_t<i_t, f_t> op_problem(handle_ptr);
   op_problem.set_maximize(data_model.get_sense());
 
-  op_problem.set_csr_constraint_matrix(data_model.get_constraint_matrix_values().data(),
-                                       data_model.get_constraint_matrix_values().size(),
-                                       data_model.get_constraint_matrix_indices().data(),
-                                       data_model.get_constraint_matrix_indices().size(),
-                                       data_model.get_constraint_matrix_offsets().data(),
-                                       data_model.get_constraint_matrix_offsets().size());
+  if (data_model.get_constraint_matrix_values().size() != 0) {
+    op_problem.set_csr_constraint_matrix(data_model.get_constraint_matrix_values().data(),
+                                         data_model.get_constraint_matrix_values().size(),
+                                         data_model.get_constraint_matrix_indices().data(),
+                                         data_model.get_constraint_matrix_indices().size(),
+                                         data_model.get_constraint_matrix_offsets().data(),
+                                         data_model.get_constraint_matrix_offsets().size());
+  } else {
+    // Set empty constraint matrix
+    std::vector<i_t> offsets(1, 0);
+    op_problem.set_csr_constraint_matrix(nullptr, 0, nullptr, 0, offsets.data(), 1);
+  }
 
   if (data_model.get_constraint_bounds().size() != 0) {
     op_problem.set_constraint_bounds(data_model.get_constraint_bounds().data(),

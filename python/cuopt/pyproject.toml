@@ -21,7 +21,7 @@ requires-python = ">=3.11"
 dependencies = [
     "cuda-python>=13.0.1,<14.0",
     "cudf==26.6.*,>=0.0.0a0",
-    "cupy-cuda13x>=13.6.0",
+    "cupy-cuda13x>=13.6.0,!=14.0.0,!=14.1.0",
     "libcuopt==26.6.*,>=0.0.0a0",
     "numba-cuda>=0.22.1",
     "numba>=0.60.0,<0.65.0",
@@ -101,7 +101,7 @@ dependencies-file = "../../dependencies.yaml"
 matrix-entry = "cuda_suffixed=true;use_cuda_wheels=true"
 requires = [
     "cmake>=4.0",
-    "cupy-cuda13x>=13.6.0",
+    "cupy-cuda13x>=13.6.0,!=14.0.0,!=14.1.0",
     "cython>=3.0.3",
     "libcuopt==26.6.*,>=0.0.0a0",
     "ninja",
