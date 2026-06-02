@@ -1,6 +1,6 @@
 # =============================================================================
 # cmake-format: off
-# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION.
 # SPDX-License-Identifier: Apache-2.0
 # cmake-format: on
 # =============================================================================
@@ -40,8 +40,8 @@ if (DEFINED ENV{CUDSS_DIR} AND NOT "$ENV{CUDSS_DIR}" STREQUAL "")
   mark_as_advanced(CUDSS_INCLUDE CUDSS_LIBRARIES)
 
 else()
- # Request CUDSS version >= 0.7
-  find_package(cudss 0.7 REQUIRED CONFIG)
+ # Request CUDSS version >= 0.8
+  find_package(cudss 0.8 REQUIRED CONFIG)
 
   # Print all details of the cudss package
   message(STATUS "cudss package details:")
