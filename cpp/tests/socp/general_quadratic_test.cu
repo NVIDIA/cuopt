@@ -709,4 +709,119 @@ TEST(general_quadratic, soc_head_free_rejected)
     cuopt::logic_error);
 }
 
+// Test: x0^2 + x1^2 - 2*y*z <= 0 with y >= 0, z >= 0 should be accepted (valid rotated SOC).
+TEST(general_quadratic, rotated_soc_heads_nonneg_accepted)
+{
+  raft::handle_t handle{};
+  init_handler(&handle);
+
+  using namespace cuopt::linear_programming::dual_simplex;
+  user_problem_t<i_t, f_t> user_problem(&handle);
+
+  // Variables: x0, x1, y, z. Constraint: x0^2 + x1^2 - 2*y*z <= 0
+  constexpr int m  = 1;
+  constexpr int n  = 4;
+  constexpr int nz = 1;
+
+  user_problem.num_rows  = m;
+  user_problem.num_cols  = n;
+  user_problem.objective = {1.0, 0.0, 0.0, 0.0};
+
+  user_problem.A.m      = m;
+  user_problem.A.n      = n;
+  user_problem.A.nz_max = nz;
+  user_problem.A.reallocate(nz);
+  user_problem.A.col_start = {0, 0, 1, 1, 1};
+  user_problem.A.i[0]      = 0;
+  user_problem.A.x[0]      = 1.0;
+
+  user_problem.rhs            = {1.0};
+  user_problem.row_sense      = {'E'};
+  user_problem.lower          = {-inf, -inf, 0.0, 0.0};  // y >= 0, z >= 0
+  user_problem.upper          = {inf, inf, inf, inf};
+  user_problem.num_range_rows = 0;
+  user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
+
+  // Q COO: x0^2 + x1^2 - 2*y*z <= 0
+  // Diagonal: (0,0,1), (1,1,1). Off-diagonal: (2,3,-1), (3,2,-1)
+  qc_t qc;
+  qc.constraint_row_index = 0;
+  qc.constraint_row_name  = "rsoc_valid";
+  qc.constraint_row_type  = 'L';
+  qc.rhs_value            = 0.0;
+  qc.rows                 = {0, 1, 2, 3};
+  qc.cols                 = {0, 1, 3, 2};
+  qc.vals                 = {1.0, 1.0, -1.0, -1.0};
+
+  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
+  csr_A.m         = m;
+  csr_A.n         = n;
+  csr_A.row_start = {0, 1};
+  csr_A.j         = {1};
+  csr_A.x         = {1.0};
+
+  std::vector<qc_t> qcs = {qc};
+  // Should NOT throw — both head variables y and z have lower >= 0
+  EXPECT_NO_THROW(
+    (convert_quadratic_constraints_to_second_order_cones<i_t, f_t>(n, qcs, csr_A, user_problem)));
+
+  EXPECT_GT(user_problem.second_order_cone_dims.size(), 0u);
+}
+
+// Test: x0^2 + x1^2 - 2*y*z <= 0 with y free, z free should be rejected (non-convex).
+TEST(general_quadratic, rotated_soc_heads_free_rejected)
+{
+  raft::handle_t handle{};
+  init_handler(&handle);
+
+  using namespace cuopt::linear_programming::dual_simplex;
+  user_problem_t<i_t, f_t> user_problem(&handle);
+
+  constexpr int m  = 1;
+  constexpr int n  = 4;
+  constexpr int nz = 1;
+
+  user_problem.num_rows  = m;
+  user_problem.num_cols  = n;
+  user_problem.objective = {1.0, 0.0, 0.0, 0.0};
+
+  user_problem.A.m      = m;
+  user_problem.A.n      = n;
+  user_problem.A.nz_max = nz;
+  user_problem.A.reallocate(nz);
+  user_problem.A.col_start = {0, 0, 1, 1, 1};
+  user_problem.A.i[0]      = 0;
+  user_problem.A.x[0]      = 1.0;
+
+  user_problem.rhs            = {1.0};
+  user_problem.row_sense      = {'E'};
+  user_problem.lower          = {-inf, -inf, -inf, -inf};  // y and z are FREE
+  user_problem.upper          = {inf, inf, inf, inf};
+  user_problem.num_range_rows = 0;
+  user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
+
+  // Q COO: same as above
+  qc_t qc;
+  qc.constraint_row_index = 0;
+  qc.constraint_row_name  = "rsoc_invalid";
+  qc.constraint_row_type  = 'L';
+  qc.rhs_value            = 0.0;
+  qc.rows                 = {0, 1, 2, 3};
+  qc.cols                 = {0, 1, 3, 2};
+  qc.vals                 = {1.0, 1.0, -1.0, -1.0};
+
+  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
+  csr_A.m         = m;
+  csr_A.n         = n;
+  csr_A.row_start = {0, 1};
+  csr_A.j         = {1};
+  csr_A.x         = {1.0};
+
+  std::vector<qc_t> qcs = {qc};
+  // Should throw — head variables y and z are free, constraint is non-convex
+  EXPECT_THROW(
+    (convert_quadratic_constraints_to_second_order_cones<i_t, f_t>(n, qcs, csr_A, user_problem)),
+    cuopt::logic_error);
+}
+
 }  // namespace cuopt::linear_programming::detail::test

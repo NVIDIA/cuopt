@@ -506,6 +506,18 @@ void convert_quadratic_constraints_to_second_order_cones(
         cone.insert(cone.end(), tail_vars.begin(), tail_vars.end());
         cone_dim   = static_cast<i_t>(cone.size());
         is_rotated = 1;
+        cuopt_expects(user_problem.lower[a] >= 0,
+                      error_type_t::ValidationError,
+                      "Quadratic constraint '%s' rotated SOC head variable (index %d) must have a "
+                      "non-negative lower bound for the constraint to be convex",
+                      qc.constraint_row_name.c_str(),
+                      static_cast<int>(a));
+        cuopt_expects(user_problem.lower[b] >= 0,
+                      error_type_t::ValidationError,
+                      "Quadratic constraint '%s' rotated SOC head variable (index %d) must have a "
+                      "non-negative lower bound for the constraint to be convex",
+                      qc.constraint_row_name.c_str(),
+                      static_cast<int>(b));
         rotated_cones.push_back(rotated_soc_t{a, b, tail_vars, false, head_lift_sqrt_ratio});
       }
 
