@@ -23,15 +23,7 @@ namespace cuopt::linear_programming::dual_simplex {
 inline char feasible_solution_symbol(search_strategy_t strategy, bool log_diving_type)
 {
   if (strategy == BEST_FIRST) return 'B';
-  if (!log_diving_type) {
-    switch (strategy) {
-      case COEFFICIENT_DIVING:
-      case LINE_SEARCH_DIVING:
-      case PSEUDOCOST_DIVING:
-      case GUIDED_DIVING: return 'D';
-      default: return 'U';
-    }
-  }
+  if (!log_diving_type) { return 'D'; }
   switch (strategy) {
     case COEFFICIENT_DIVING: return 'C';
     case LINE_SEARCH_DIVING: return 'L';

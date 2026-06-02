@@ -20,10 +20,10 @@ namespace cuopt::linear_programming {
 template <typename i_t, typename f_t>
 struct mip_diving_hyper_params_t {
   // -1 automatic, 0 disabled, 1 enabled
-  int line_search_diving = -1;
-  int pseudocost_diving  = -1;
-  int guided_diving      = -1;
-  int coefficient_diving = -1;
+  i_t line_search_diving = -1;
+  i_t pseudocost_diving  = -1;
+  i_t guided_diving      = -1;
+  i_t coefficient_diving = -1;
 
   // The minimum depth to start diving from.
   i_t min_node_depth = 10;
