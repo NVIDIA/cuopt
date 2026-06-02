@@ -132,3 +132,69 @@
     }
     cpu_problem.set_variable_types(variable_types.data(), static_cast<i_t>(variable_types.size()));
   }
+
+
+  auto container_get_doubles = [&](int32_t _cfn, int32_t _ci, int32_t _fid) -> std::vector<f_t> {
+    auto it = container_arrays.find(container_array_key_t{_cfn, _ci, _fid});
+    if (it == container_arrays.end() || it->second.empty()) return {};
+    if (it->second.size() % sizeof(double) != 0) {
+      throw std::invalid_argument("container_get_doubles: payload size " + std::to_string(it->second.size()) + " is not a multiple of sizeof(double)");
+    }
+    size_t n = it->second.size() / sizeof(double);
+    if constexpr (std::is_same_v<f_t, double>) {
+      std::vector<double> v(n);
+      std::memcpy(v.data(), it->second.data(), n * sizeof(double));
+      return v;
+    } else {
+      std::vector<double> tmp(n);
+      std::memcpy(tmp.data(), it->second.data(), n * sizeof(double));
+      return std::vector<f_t>(tmp.begin(), tmp.end());
+    }
+  };
+
+  auto container_get_ints = [&](int32_t _cfn, int32_t _ci, int32_t _fid) -> std::vector<i_t> {
+    auto it = container_arrays.find(container_array_key_t{_cfn, _ci, _fid});
+    if (it == container_arrays.end() || it->second.empty()) return {};
+    if (it->second.size() % sizeof(int32_t) != 0) {
+      throw std::invalid_argument("container_get_ints: payload size " + std::to_string(it->second.size()) + " is not a multiple of sizeof(int32_t)");
+    }
+    size_t n = it->second.size() / sizeof(int32_t);
+    if constexpr (std::is_same_v<i_t, int32_t>) {
+      std::vector<int32_t> v(n);
+      std::memcpy(v.data(), it->second.data(), n * sizeof(int32_t));
+      return v;
+    } else {
+      std::vector<int32_t> tmp(n);
+      std::memcpy(tmp.data(), it->second.data(), n * sizeof(int32_t));
+      return std::vector<i_t>(tmp.begin(), tmp.end());
+    }
+  };
+
+  if (header.quadratic_constraints_size() > 0) {
+    std::vector<typename cpu_optimization_problem_t<i_t, f_t>::quadratic_constraint_t> _entries;
+    _entries.reserve(header.quadratic_constraints_size());
+    for (int32_t _ci = 0; _ci < header.quadratic_constraints_size(); ++_ci) {
+      const auto& pb_entry = header.quadratic_constraints(_ci);
+      typename cpu_optimization_problem_t<i_t, f_t>::quadratic_constraint_t _entry;
+      _entry.constraint_row_index = static_cast<i_t>(pb_entry.constraint_row_index());
+      _entry.constraint_row_name = pb_entry.constraint_row_name();
+      _entry.constraint_row_type = static_cast<char>(pb_entry.constraint_row_type());
+      _entry.rhs_value = static_cast<f_t>(pb_entry.rhs_value());
+      _entry.linear_values = container_get_doubles(25, _ci, 0);
+      _entry.linear_indices = container_get_ints(25, _ci, 1);
+      _entry.rows = container_get_ints(25, _ci, 2);
+      _entry.cols = container_get_ints(25, _ci, 3);
+      _entry.vals = container_get_doubles(25, _ci, 4);
+      if (_entry.linear_values.size() != _entry.linear_indices.size()) {
+        throw std::invalid_argument("set_quadratic_constraints: linear_values/linear_indices size mismatch");
+      }
+      if (_entry.rows.size() != _entry.cols.size()) {
+        throw std::invalid_argument("set_quadratic_constraints: rows/cols size mismatch");
+      }
+      if (_entry.cols.size() != _entry.vals.size()) {
+        throw std::invalid_argument("set_quadratic_constraints: cols/vals size mismatch");
+      }
+      _entries.push_back(std::move(_entry));
+    }
+    cpu_problem.set_quadratic_constraints(std::move(_entries));
+  }

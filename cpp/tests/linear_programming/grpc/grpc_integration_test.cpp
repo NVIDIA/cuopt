@@ -29,6 +29,7 @@
 #include <gtest/gtest.h>
 
 #include <atomic>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <mutex>
@@ -377,9 +378,12 @@ class GrpcIntegrationTestBase : public ::testing::Test {
     return get_test_data_path("mip", filename);
   }
 
-  cpu_optimization_problem_t<int32_t, double> load_problem_from_mps(const std::string& mps_path)
+  // Load a problem from disk, dispatching by file extension to read_mps()
+  // for .mps/.qps (with optional .gz/.bz2) and read_lp() for .lp (with
+  // optional .gz/.bz2).  See io::read() in parser.hpp.
+  cpu_optimization_problem_t<int32_t, double> load_problem_from_file(const std::string& path)
   {
-    auto mps_data = cuopt::linear_programming::io::read_mps<int32_t, double>(mps_path);
+    auto mps_data = cuopt::linear_programming::io::read<int32_t, double>(path);
     cpu_optimization_problem_t<int32_t, double> problem;
     populate_from_mps_data_model(&problem, mps_data);
     return problem;
@@ -625,7 +629,7 @@ TEST_F(DefaultServerTests, SolveLPPolling)
   ASSERT_NE(client, nullptr);
 
   std::string mps_path = get_test_lp_path("afiro_original.mps");
-  auto problem         = load_problem_from_mps(mps_path);
+  auto problem         = load_problem_from_file(mps_path);
   pdlp_solver_settings_t<int32_t, double> settings;
   settings.time_limit = 30.0;
 
@@ -658,7 +662,7 @@ TEST_F(DefaultServerTests, SolveLPWaitRPC)
   ASSERT_NE(client, nullptr);
 
   std::string mps_path = get_test_lp_path("afiro_original.mps");
-  auto problem         = load_problem_from_mps(mps_path);
+  auto problem         = load_problem_from_file(mps_path);
   pdlp_solver_settings_t<int32_t, double> settings;
   settings.time_limit = 30.0;
 
@@ -724,7 +728,7 @@ TEST_F(DefaultServerTests, ExplicitAsyncLPFlow)
   ASSERT_NE(client, nullptr);
 
   std::string mps_path = get_test_lp_path("afiro_original.mps");
-  auto problem         = load_problem_from_mps(mps_path);
+  auto problem         = load_problem_from_file(mps_path);
   pdlp_solver_settings_t<int32_t, double> settings;
   settings.time_limit = 30.0;
 
@@ -775,7 +779,7 @@ TEST_F(DefaultServerTests, ClientDebugLogsSubmission)
   ASSERT_NE(client, nullptr);
 
   std::string mps_path = get_test_lp_path("afiro_original.mps");
-  auto problem         = load_problem_from_mps(mps_path);
+  auto problem         = load_problem_from_file(mps_path);
   pdlp_solver_settings_t<int32_t, double> settings;
   settings.time_limit = 10.0;
 
@@ -798,7 +802,7 @@ TEST_F(DefaultServerTests, MultipleSequentialSolves)
 
   for (int i = 0; i < 3; ++i) {
     std::string mps_path = get_test_lp_path("afiro_original.mps");
-    auto problem         = load_problem_from_mps(mps_path);
+    auto problem         = load_problem_from_file(mps_path);
     pdlp_solver_settings_t<int32_t, double> settings;
     settings.time_limit = 10.0;
 
@@ -817,7 +821,7 @@ TEST_F(DefaultServerTests, ConcurrentJobSubmission)
   ASSERT_NE(client2, nullptr);
 
   std::string mps_path = get_test_lp_path("afiro_original.mps");
-  auto problem         = load_problem_from_mps(mps_path);
+  auto problem         = load_problem_from_file(mps_path);
   pdlp_solver_settings_t<int32_t, double> settings;
   settings.time_limit = 30.0;
 
@@ -875,7 +879,7 @@ TEST_F(DefaultServerTests, VerifyUnaryUploadSmallProblem)
   ASSERT_NE(client, nullptr);
 
   std::string mps_path = get_test_lp_path("afiro_original.mps");
-  auto problem         = load_problem_from_mps(mps_path);
+  auto problem         = load_problem_from_file(mps_path);
   pdlp_solver_settings_t<int32_t, double> settings;
   settings.time_limit = 10.0;
 
@@ -899,7 +903,7 @@ TEST_F(DefaultServerTests, VerifyUnaryDownloadSmallResult)
   ASSERT_NE(client, nullptr);
 
   std::string mps_path = get_test_lp_path("afiro_original.mps");
-  auto problem         = load_problem_from_mps(mps_path);
+  auto problem         = load_problem_from_file(mps_path);
   pdlp_solver_settings_t<int32_t, double> settings;
   settings.time_limit = 10.0;
 
@@ -920,7 +924,7 @@ TEST_F(DefaultServerTests, SolveLPReturnsWarmStartData)
   ASSERT_NE(client, nullptr);
 
   std::string mps_path = get_test_lp_path("afiro_original.mps");
-  auto problem         = load_problem_from_mps(mps_path);
+  auto problem         = load_problem_from_file(mps_path);
   pdlp_solver_settings_t<int32_t, double> settings;
   settings.time_limit = 30.0;
 
@@ -971,7 +975,7 @@ TEST_F(DefaultServerTests, SolveMIPWithLogCallback)
   ASSERT_NE(client, nullptr);
 
   std::string mps_path = get_test_mip_path("bb_optimality.mps");
-  auto problem         = load_problem_from_mps(mps_path);
+  auto problem         = load_problem_from_file(mps_path);
 
   mip_solver_settings_t<int32_t, double> settings;
   settings.time_limit     = 10.0;
@@ -1000,7 +1004,7 @@ TEST_F(DefaultServerTests, IncumbentCallbacksMIP)
   ASSERT_NE(client, nullptr);
 
   std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
-  auto problem         = load_problem_from_mps(mps_path);
+  auto problem         = load_problem_from_file(mps_path);
 
   mip_solver_settings_t<int32_t, double> settings;
   settings.time_limit = 10.0;
@@ -1029,7 +1033,7 @@ TEST_F(DefaultServerTests, IncumbentCallbackCancelsSolve)
   ASSERT_NE(client, nullptr);
 
   std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
-  auto problem         = load_problem_from_mps(mps_path);
+  auto problem         = load_problem_from_file(mps_path);
 
   mip_solver_settings_t<int32_t, double> settings;
   settings.time_limit = 30.0;
@@ -1050,7 +1054,7 @@ TEST_F(DefaultServerTests, CancelRunningJob)
   ASSERT_NE(client, nullptr);
 
   std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
-  auto problem         = load_problem_from_mps(mps_path);
+  auto problem         = load_problem_from_file(mps_path);
 
   mip_solver_settings_t<int32_t, double> settings;
   settings.time_limit = 120.0;
@@ -1132,7 +1136,7 @@ TEST_F(ChunkedUploadTests, ChunkedUploadLP)
   ASSERT_NE(client, nullptr);
 
   std::string mps_path = get_test_lp_path("afiro_original.mps");
-  auto problem         = load_problem_from_mps(mps_path);
+  auto problem         = load_problem_from_file(mps_path);
   pdlp_solver_settings_t<int32_t, double> settings;
   settings.time_limit = 30.0;
 
@@ -1153,7 +1157,7 @@ TEST_F(ChunkedUploadTests, ChunkedUploadMIP)
   ASSERT_NE(client, nullptr);
 
   std::string mps_path = get_test_mip_path("sudoku.mps");
-  auto problem         = load_problem_from_mps(mps_path);
+  auto problem         = load_problem_from_file(mps_path);
 
   mip_solver_settings_t<int32_t, double> settings;
   settings.time_limit = 10.0;
@@ -1178,7 +1182,7 @@ TEST_F(ChunkedUploadTests, ConcurrentChunkedUploads)
   }
 
   std::string mps_path = get_test_lp_path("afiro_original.mps");
-  auto problem         = load_problem_from_mps(mps_path);
+  auto problem         = load_problem_from_file(mps_path);
   pdlp_solver_settings_t<int32_t, double> settings;
   settings.time_limit = 30.0;
 
@@ -1206,6 +1210,169 @@ TEST_F(ChunkedUploadTests, ConcurrentChunkedUploads)
   EXPECT_EQ(success_count.load(), num_clients);
 }
 
+// =============================================================================
+// QCQP transport + solve integration tests.
+//
+// These tests submit problems with quadratic constraints end-to-end through
+// gRPC to verify two layers:
+//
+//   1. Wire transport — the container-chunk path (proto, server validation,
+//      pipe wire format, worker reassembly).  Both QC_Test_1 (rhs != 0,
+//      SOC-incompatible) and QC_Test_2 (rhs = 0, SOC-friendly) exercise this
+//      layer; SOC compatibility is irrelevant for transport.
+//
+//   2. End-to-end SOCP correctness — solve_lp dispatches QCQP problems to
+//      solve_qcqp, which converts each QC to a second-order cone and runs
+//      barrier.  The QC_Test_2 test asserts the returned solution matches
+//      the closed-form optimum, catching solver and SOC-conversion
+//      regressions in addition to transport.
+//
+// Note on error propagation: solve_lp / solve_qcqp catch cuopt::logic_error
+// internally and stash it in optimization_problem_solution_t::error_status_
+// instead of throwing (long-standing solver-API contract; see solve.cu).
+// run_lp_solve in grpc_worker.cpp inspects error_status_ after solve_lp
+// returns and forwards non-Success errors as sr.error_message, so the
+// QC_Test_1 test below can rely on result.success being false with a
+// validation message rather than getting a zero-filled "successful"
+// response.
+// =============================================================================
+
+// Submit QC_Test_1 on the unary path.  rhs != 0 on its QC rows so SOC
+// conversion rejects the problem, but the *transport* layer (proto encoding,
+// unary SubmitJob path) must still round-trip the wire format cleanly and
+// the worker must surface the SOC validator's ValidationError back to the
+// client.
+TEST_F(ChunkedUploadTests, QuadraticConstraintsUnaryRejectsNonZeroRhs)
+{
+  grpc_client_config_t config;
+  config.timeout_seconds = 60;
+  // Generous threshold ensures the small QC problem stays on the unary path.
+  config.chunked_array_threshold_bytes = 100 * 1024 * 1024;
+
+  auto client = create_client(config);
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_data_path("qcqp", "QC_Test_1.mps");
+  auto problem         = load_problem_from_file(mps_path);
+  ASSERT_TRUE(problem.has_quadratic_constraints());
+  EXPECT_EQ(problem.get_quadratic_constraints().size(), 2u);
+
+  pdlp_solver_settings_t<int32_t, double> settings;
+  settings.time_limit = 10.0;
+
+  auto result = client->solve_lp(problem, settings);
+  // SOC conversion currently requires rhs = 0 on every QC row; QC_Test_1
+  // has rhs = 5 / rhs = 10, so the validator rejects it.  This proves both
+  // (a) the QCQP wire format made it intact through the unary submit path
+  // (otherwise the validator would never have run) and (b) worker error
+  // propagation correctly forwards the SOC validator's ValidationError to
+  // the client instead of swallowing it into a fake "successful" response.
+  EXPECT_FALSE(result.success);
+  EXPECT_THAT(result.error_message, ::testing::HasSubstr("ValidationError"));
+  EXPECT_THAT(result.error_message, ::testing::HasSubstr("rhs = 0"));
+}
+
+// Force the chunked upload path with both a zero-byte threshold (every array
+// goes via SendArrayChunk) and a deliberately tiny chunk_size_bytes so each
+// per-row QC array is split across multiple ArrayChunks.  This exercises:
+//   * Client: chunk_container_typed_array emitting cfn/ci-stamped chunks.
+//   * Server: SendArrayChunk routing container chunks into
+//             container_field_meta and validating against
+//             array_field_element_size(cfn, fid).
+//   * Pipe:   the new container_arrays wire section with multi-chunk
+//             stitching inside write_chunked_request_to_pipe.
+//   * Worker: read_chunked_request_from_pipe + map_chunked_arrays_to_problem
+//             reconstructing QC entries from header scalars + container bytes.
+//
+// QC_Test_1 is again SOC-incompatible (rhs != 0); we assert the same
+// validator-rejection error message as the unary case so a transport bug
+// that drops or duplicates QC array bytes would manifest as a *different*
+// failure mode (typically a malformed-problem error or a successful solve
+// of a tampered problem) rather than the expected rhs=0 rejection.
+TEST_F(ChunkedUploadTests, QuadraticConstraintsChunkedRejectsNonZeroRhs)
+{
+  grpc_client_config_t config;
+  config.timeout_seconds = 60;
+  // Tiny chunk size forces multiple chunks per container array even for
+  // QC_Test_1's small linear/quadratic vectors (8 bytes / double, 4 / int).
+  config.chunk_size_bytes              = 8;
+  config.chunked_array_threshold_bytes = 0;
+
+  auto client = create_client(config);
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_data_path("qcqp", "QC_Test_1.mps");
+  auto problem         = load_problem_from_file(mps_path);
+  ASSERT_TRUE(problem.has_quadratic_constraints());
+
+  pdlp_solver_settings_t<int32_t, double> settings;
+  settings.time_limit = 10.0;
+
+  auto result = client->solve_lp(problem, settings);
+  EXPECT_FALSE(result.success);
+  EXPECT_THAT(result.error_message, ::testing::HasSubstr("ValidationError"));
+  EXPECT_THAT(result.error_message, ::testing::HasSubstr("rhs = 0"));
+}
+
+// End-to-end SOCP correctness via gRPC: QC_Test_2 is a small convex QCQP
+// authored in LP format (rather than MPS) so the file's algebraic content
+// is human-readable at review time — a reviewer can see `[ -2 x*y + z^2 ]
+// <= 0` directly and check it against the comment, instead of decoding
+// QCMATRIX triples.  It exercises the same wire-format aspects as
+// QC_Test_1 (multiple QCs, off-diagonal cross-terms, linear-in-QC-row
+// terms, normal LP constraint alongside QCs) while being SOC-friendly:
+// rhs = 0 on every QC, each QC's structure matches one of the SOC
+// validator's accepted shapes (rotated SOC for QC0, affine SOC for QC1).
+//
+// The problem has a closed-form optimum derived in the file's header
+// comment: x = y = 1/sqrt(2), z = 1, objective = -(1 + sqrt(2)).  Asserting
+// these values via gRPC verifies that QC encoding, chunked transport,
+// SOC conversion, barrier solve, and result decoding are all wired together
+// correctly.
+TEST_F(ChunkedUploadTests, QuadraticConstraintsEndToEndSocp)
+{
+  grpc_client_config_t config;
+  config.timeout_seconds = 60;
+  // Force the chunked path so this test also covers chunked transport of a
+  // SOC-compatible problem (the rejection tests above only prove the chunked
+  // path delivers bytes intact for an *infeasible-for-SOC* problem; here we
+  // additionally prove a chunked SOC-friendly problem solves correctly).
+  config.chunk_size_bytes              = 8;
+  config.chunked_array_threshold_bytes = 0;
+
+  auto client = create_client(config);
+  ASSERT_NE(client, nullptr);
+
+  std::string lp_path = get_test_data_path("qcqp", "QC_Test_2.lp");
+  auto problem        = load_problem_from_file(lp_path);
+  ASSERT_TRUE(problem.has_quadratic_constraints());
+  EXPECT_EQ(problem.get_quadratic_constraints().size(), 2u);
+
+  pdlp_solver_settings_t<int32_t, double> settings;
+  settings.time_limit = 30.0;
+
+  auto result = client->solve_lp(problem, settings);
+  ASSERT_TRUE(result.success) << result.error_message;
+  ASSERT_NE(result.solution, nullptr);
+
+  EXPECT_EQ(result.solution->get_termination_status(), pdlp_termination_status_t::Optimal);
+
+  const double sqrt2   = std::sqrt(2.0);
+  const double opt_obj = -(1.0 + sqrt2);
+  const double opt_x_y = 1.0 / sqrt2;
+  const double opt_z   = 1.0;
+  // Barrier converges to ~1e-6; allow 1e-3 to absorb tolerance settings and
+  // future numeric drift without masking real regressions.
+  constexpr double kTol = 1e-3;
+  EXPECT_NEAR(result.solution->get_objective_value(), opt_obj, kTol);
+
+  const auto primal = result.solution->get_primal_solution_host();
+  ASSERT_GE(primal.size(), 3u);
+  EXPECT_NEAR(primal[0], opt_x_y, kTol);
+  EXPECT_NEAR(primal[1], opt_x_y, kTol);
+  EXPECT_NEAR(primal[2], opt_z, kTol);
+}
+
 TEST_F(ChunkedUploadTests, UnaryFallbackSmallProblem)
 {
   grpc_client_config_t config;
@@ -1216,7 +1383,7 @@ TEST_F(ChunkedUploadTests, UnaryFallbackSmallProblem)
   ASSERT_NE(client, nullptr);
 
   std::string mps_path = get_test_lp_path("afiro_original.mps");
-  auto problem         = load_problem_from_mps(mps_path);
+  auto problem         = load_problem_from_file(mps_path);
   pdlp_solver_settings_t<int32_t, double> settings;
   settings.time_limit = 30.0;
 
@@ -1286,7 +1453,7 @@ TEST_F(PathSelectionTests, UnaryUploadLPWithPathLogging)
   ASSERT_NE(client, nullptr);
 
   std::string mps_path = get_test_lp_path("afiro_original.mps");
-  auto problem         = load_problem_from_mps(mps_path);
+  auto problem         = load_problem_from_file(mps_path);
   pdlp_solver_settings_t<int32_t, double> settings;
   settings.time_limit = 30.0;
 
@@ -1325,7 +1492,7 @@ TEST_F(PathSelectionTests, ChunkedUploadLPWithPathLogging)
   ASSERT_NE(client, nullptr);
 
   std::string mps_path = get_test_lp_path("afiro_original.mps");
-  auto problem         = load_problem_from_mps(mps_path);
+  auto problem         = load_problem_from_file(mps_path);
   pdlp_solver_settings_t<int32_t, double> settings;
   settings.time_limit = 30.0;
 
@@ -1366,7 +1533,7 @@ TEST_F(PathSelectionTests, ChunkedUploadAndChunkedDownloadMIP)
   ASSERT_NE(client, nullptr);
 
   std::string mps_path = get_test_mip_path("sudoku.mps");
-  auto problem         = load_problem_from_mps(mps_path);
+  auto problem         = load_problem_from_file(mps_path);
   mip_solver_settings_t<int32_t, double> settings;
   settings.time_limit = 30.0;
 
@@ -1407,7 +1574,7 @@ TEST_F(PathSelectionTests, UnaryUploadMIPWithPathLogging)
   ASSERT_NE(client, nullptr);
 
   std::string mps_path = get_test_mip_path("bb_optimality.mps");
-  auto problem         = load_problem_from_mps(mps_path);
+  auto problem         = load_problem_from_file(mps_path);
   mip_solver_settings_t<int32_t, double> settings;
   settings.time_limit = 10.0;
 
@@ -1470,7 +1637,7 @@ TEST_F(ErrorRecoveryTests, ClientHandlesServerCrashDuringSolve)
   ASSERT_NE(client, nullptr);
 
   std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
-  auto problem         = load_problem_from_mps(mps_path);
+  auto problem         = load_problem_from_file(mps_path);
 
   mip_solver_settings_t<int32_t, double> settings;
   settings.time_limit = 120.0;
@@ -1498,7 +1665,7 @@ TEST_F(ErrorRecoveryTests, ClientTimeoutConfiguration)
   ASSERT_NE(client, nullptr);
 
   std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
-  auto problem         = load_problem_from_mps(mps_path);
+  auto problem         = load_problem_from_file(mps_path);
 
   mip_solver_settings_t<int32_t, double> settings;
   settings.time_limit = 60.0;
@@ -1536,7 +1703,7 @@ TEST_F(ErrorRecoveryTests, ChunkedUploadAfterServerRestart)
   ASSERT_NE(client, nullptr);
 
   std::string mps_path = get_test_mip_path("sudoku.mps");
-  auto problem         = load_problem_from_mps(mps_path);
+  auto problem         = load_problem_from_file(mps_path);
   mip_solver_settings_t<int32_t, double> settings;
   settings.time_limit = 10.0;
 
@@ -1640,7 +1807,7 @@ TEST_F(TlsServerTests, SolveLP)
   ASSERT_NE(client, nullptr);
 
   std::string mps_path = get_test_lp_path("afiro_original.mps");
-  auto problem         = load_problem_from_mps(mps_path);
+  auto problem         = load_problem_from_file(mps_path);
   pdlp_solver_settings_t<int32_t, double> settings;
   settings.time_limit = 10.0;
 
@@ -1911,6 +2078,49 @@ TEST_F(ChunkValidationTests, RejectsUnknownUploadId)
   auto status = send_chunk("nonexistent-upload-id", cuopt::remote::FIELD_C, 0, 10, data);
   EXPECT_FALSE(status.ok());
   EXPECT_EQ(status.error_code(), grpc::StatusCode::NOT_FOUND);
+}
+
+// container_field_num and container_index target a single array inside a
+// repeated nested message and are meaningless individually.  If only one is
+// set we would otherwise either route to container_index=0 silently (when
+// container_field_num is set alone) or strip the container_index off a
+// top-level chunk (when container_index is set alone).  Both must be flagged.
+TEST_F(ChunkValidationTests, RejectsContainerFieldNumWithoutContainerIndex)
+{
+  auto uid = start_upload();
+  grpc::ClientContext ctx;
+  cuopt::remote::SendArrayChunkRequest req;
+  req.set_upload_id(uid);
+  auto* ac = req.mutable_chunk();
+  ac->set_field_id(0);
+  ac->set_element_offset(0);
+  ac->set_total_elements(1);
+  ac->set_data(std::string(8, '\0'));
+  ac->set_container_field_num(25);
+  cuopt::remote::SendArrayChunkResponse resp;
+  auto status = stub_->SendArrayChunk(&ctx, req, &resp);
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+  EXPECT_THAT(status.error_message(), ::testing::HasSubstr("container_field_num"));
+}
+
+TEST_F(ChunkValidationTests, RejectsContainerIndexWithoutContainerFieldNum)
+{
+  auto uid = start_upload();
+  grpc::ClientContext ctx;
+  cuopt::remote::SendArrayChunkRequest req;
+  req.set_upload_id(uid);
+  auto* ac = req.mutable_chunk();
+  ac->set_field_id(0);
+  ac->set_element_offset(0);
+  ac->set_total_elements(1);
+  ac->set_data(std::string(8, '\0'));
+  ac->set_container_index(0);
+  cuopt::remote::SendArrayChunkResponse resp;
+  auto status = stub_->SendArrayChunk(&ctx, req, &resp);
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::INVALID_ARGUMENT);
+  EXPECT_THAT(status.error_message(), ::testing::HasSubstr("container_index"));
 }
 
 TEST_F(ChunkValidationTests, AcceptsValidChunk)
