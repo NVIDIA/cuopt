@@ -41,7 +41,7 @@ enum class partitioner_kind_t { Dummy, Metis };
 template <typename i_t, typename f_t>
 class partitioner_i {
  public:
-  virtual ~partitioner_i() = default;
+  virtual ~partitioner_i()                                                             = default;
   virtual std::vector<i_t> partition(partitioner_input_t<i_t, f_t> const& input) const = 0;
 };
 

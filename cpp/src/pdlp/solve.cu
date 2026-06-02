@@ -2126,11 +2126,12 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
   bool problem_checking,
   bool use_pdlp_solver_mode)
 {
-  cuopt_expects(settings.hyper_params.use_distributed_pdlp,
-                error_type_t::ValidationError,
-                "solve_lp from mps_data_model: settings.hyper_params.use_distributed_pdlp must be true");
-    return solve_lp_distributed_from_mps(
-      handle_ptr, mps_data_model, settings, problem_checking, use_pdlp_solver_mode);
+  cuopt_expects(
+    settings.hyper_params.use_distributed_pdlp,
+    error_type_t::ValidationError,
+    "solve_lp from mps_data_model: settings.hyper_params.use_distributed_pdlp must be true");
+  return solve_lp_distributed_from_mps(
+    handle_ptr, mps_data_model, settings, problem_checking, use_pdlp_solver_mode);
 }
 
 template <typename i_t, typename f_t>
@@ -2182,12 +2183,13 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
   const i_t n_vars = static_cast<i_t>(mps_data_model.get_objective_coefficients().size());
   const i_t n_cstr = static_cast<i_t>(mps_data_model.get_constraint_lower_bounds().size());
   const i_t nnz    = static_cast<i_t>(mps_data_model.get_constraint_matrix_values().size());
-  CUOPT_LOG_INFO("Solving a problem with %d constraints, %d variables (%d integers), and %d "
-                 "nonzeros (distributed mps-direct path)",
-                 n_cstr,
-                 n_vars,
-                 0,
-                 nnz);
+  CUOPT_LOG_INFO(
+    "Solving a problem with %d constraints, %d variables (%d integers), and %d "
+    "nonzeros (distributed mps-direct path)",
+    n_cstr,
+    n_vars,
+    0,
+    nnz);
 
   auto lp_timer = cuopt::timer_t(settings_resolved.time_limit);
 
@@ -2200,8 +2202,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
   }
   detail::problem_t<i_t, f_t> placeholder_problem(placeholder_op);
 
-  detail::pdlp_solver_t<i_t, f_t> solver(
-    placeholder_problem, mps_data_model, settings_resolved);
+  detail::pdlp_solver_t<i_t, f_t> solver(placeholder_problem, mps_data_model, settings_resolved);
 
   auto sol = solver.run_solver(lp_timer);
 

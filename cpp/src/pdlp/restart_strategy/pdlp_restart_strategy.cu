@@ -931,11 +931,11 @@ void pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart(
                  .last_restart_duality_gap_.primal_distance_traveled_.data(),
                1,
                stream_view_);
-    raft::copy(last_restart_duality_gap_.dual_distance_traveled_.data(),
-               s0.sub_pdlp->get_restart_strategy()
-                 .last_restart_duality_gap_.dual_distance_traveled_.data(),
-               1,
-               stream_view_);
+    raft::copy(
+      last_restart_duality_gap_.dual_distance_traveled_.data(),
+      s0.sub_pdlp->get_restart_strategy().last_restart_duality_gap_.dual_distance_traveled_.data(),
+      1,
+      stream_view_);
   } else {
     distance_squared_moved_from_last_restart_period(
       pdhg_solver.get_potential_next_primal_solution(),
@@ -1021,8 +1021,7 @@ void pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart(
 
     engine->for_each_shard([&](auto& shard) {
       auto& sub = *shard.sub_pdlp;
-      raft::copy(
-        sub.get_primal_step_size().data(), &h_primal_step_size, 1, shard.stream.view());
+      raft::copy(sub.get_primal_step_size().data(), &h_primal_step_size, 1, shard.stream.view());
       raft::copy(sub.get_dual_step_size().data(), &h_dual_step_size, 1, shard.stream.view());
       raft::copy(sub.get_primal_weight().data(), &h_primal_weight, 1, shard.stream.view());
       raft::copy(
@@ -1087,8 +1086,8 @@ void pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart(
 
   if (auto* engine = pdhg_solver.get_mgpu_engine()) {
     engine->for_each_shard([&](auto& shard) {
-      shard.sub_pdlp->get_restart_strategy().weighted_average_solution_.iterations_since_last_restart_ =
-        0;
+      shard.sub_pdlp->get_restart_strategy()
+        .weighted_average_solution_.iterations_since_last_restart_ = 0;
     });
   }
 }

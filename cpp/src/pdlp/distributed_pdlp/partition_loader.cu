@@ -174,12 +174,10 @@ std::vector<rank_data_t<i_t, f_t>> partition_loader_t<i_t, f_t>::create_rank_dat
 
     // Pad row-offset arrays so cuSPARSE sees the local matrices as
     // (total_cstr x total_var) for A and (total_var x total_cstr) for A_T
-    const i_t a_last_nnz =
-      rd.h_A_row_offsets.empty() ? i_t{0} : rd.h_A_row_offsets.back();
+    const i_t a_last_nnz = rd.h_A_row_offsets.empty() ? i_t{0} : rd.h_A_row_offsets.back();
     rd.h_A_row_offsets.resize(rd.total_cstr_size + 1, a_last_nnz);
 
-    const i_t at_last_nnz =
-      rd.h_A_t_row_offsets.empty() ? i_t{0} : rd.h_A_t_row_offsets.back();
+    const i_t at_last_nnz = rd.h_A_t_row_offsets.empty() ? i_t{0} : rd.h_A_t_row_offsets.back();
     rd.h_A_t_row_offsets.resize(rd.total_var_size + 1, at_last_nnz);
   }
 

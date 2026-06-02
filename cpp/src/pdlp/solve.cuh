@@ -64,8 +64,7 @@ cuopt::linear_programming::optimization_problem_solution_t<i_t, f_t> solve_lp_wi
  * @pre `settings.hyper_params.use_distributed_pdlp == true`.
  */
 template <typename i_t, typename f_t>
-cuopt::linear_programming::optimization_problem_solution_t<i_t, f_t>
-solve_lp_distributed_from_mps(
+cuopt::linear_programming::optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
   raft::handle_t const* handle_ptr,
   const cuopt::linear_programming::io::mps_data_model_t<i_t, f_t>& mps_data_model,
   pdlp_solver_settings_t<i_t, f_t> const& settings,

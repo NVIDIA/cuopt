@@ -79,7 +79,9 @@ std::vector<i_t> metis_partitioner_t<i_t, f_t>::partition(
   std::vector<idx_t> adjncy(2 * static_cast<std::size_t>(nnz));
 
   // cstr-side row offsets: A_offsets[0..nb_cstr] (no shift).
-  for (i_t i = 0; i <= nb_cstr; ++i) { xadj[i] = static_cast<idx_t>(A_offsets[i]); }
+  for (i_t i = 0; i <= nb_cstr; ++i) {
+    xadj[i] = static_cast<idx_t>(A_offsets[i]);
+  }
   // var-side row offsets: A_t_offsets[0..nb_vars], shifted by +nnz so that
   // they index into the second half of adjncy.
   for (i_t i = 0; i <= nb_vars; ++i) {
@@ -106,7 +108,7 @@ std::vector<i_t> metis_partitioner_t<i_t, f_t>::partition(
   idx_t objval     = 0;
   std::vector<idx_t> metis_parts(nvtx);
 
-  auto t0 = std::chrono::high_resolution_clock::now();
+  auto t0          = std::chrono::high_resolution_clock::now();
   const int status = METIS_PartGraphKway(&metis_nvtx,
                                          &ncon,
                                          xadj.data(),
@@ -120,8 +122,8 @@ std::vector<i_t> metis_partitioner_t<i_t, f_t>::partition(
                                          metis_options,
                                          &objval,
                                          metis_parts.data());
-  auto t1 = std::chrono::high_resolution_clock::now();
-  const double dt = std::chrono::duration<double>(t1 - t0).count();
+  auto t1          = std::chrono::high_resolution_clock::now();
+  const double dt  = std::chrono::duration<double>(t1 - t0).count();
   cuopt_expects(status == METIS_OK,
                 error_type_t::RuntimeError,
                 "METIS_PartGraphKway failed (status=%d)",
@@ -135,7 +137,9 @@ std::vector<i_t> metis_partitioner_t<i_t, f_t>::partition(
     dt);
 
   std::vector<i_t> parts(static_cast<std::size_t>(nvtx));
-  for (i_t i = 0; i < nvtx; ++i) { parts[i] = static_cast<i_t>(metis_parts[i]); }
+  for (i_t i = 0; i < nvtx; ++i) {
+    parts[i] = static_cast<i_t>(metis_parts[i]);
+  }
 
   validate_partition(parts,
                      static_cast<int>(nb_cstr),

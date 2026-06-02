@@ -436,14 +436,13 @@ int main(int argc, char* argv[])
     // For distributed PDLP, -1 means "auto-detect": resolve to the visible device
     // count so the RMM memory pools match what solve.cu will eventually dispatch.
     const bool use_distributed_pdlp = settings.get_parameter<bool>(CUOPT_USE_DISTRIBUTED_PDLP);
-    int requested_gpus =
-      use_distributed_pdlp ? settings.get_parameter<int>(CUOPT_DISTRIBUTED_PDLP_NUM_GPUS)
-                           : settings.get_parameter<int>(CUOPT_NUM_GPUS);
+    int requested_gpus              = use_distributed_pdlp
+                                        ? settings.get_parameter<int>(CUOPT_DISTRIBUTED_PDLP_NUM_GPUS)
+                                        : settings.get_parameter<int>(CUOPT_NUM_GPUS);
     if (use_distributed_pdlp && requested_gpus == -1) {
       requested_gpus = raft::device_setter::get_device_count();
     }
-    const int provisioned_gpus =
-      std::min(raft::device_setter::get_device_count(), requested_gpus);
+    const int provisioned_gpus = std::min(raft::device_setter::get_device_count(), requested_gpus);
 
     memory_resources.reserve(provisioned_gpus);
     for (int i = 0; i < provisioned_gpus; ++i) {

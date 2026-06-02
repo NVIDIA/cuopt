@@ -35,18 +35,18 @@ inline bool mgpu_trace_enabled()
 
 }  // namespace cuopt::linear_programming::detail
 
-#define MGPU_TRACE(msg)                                                                        \
-  do {                                                                                         \
-    if (::cuopt::linear_programming::detail::mgpu_trace_enabled()) {                           \
-      std::fprintf(stderr, "[mgpu %s:%d] %s\n", __func__, __LINE__, (msg));                    \
-      std::fflush(stderr);                                                                     \
-    }                                                                                          \
+#define MGPU_TRACE(msg)                                                     \
+  do {                                                                      \
+    if (::cuopt::linear_programming::detail::mgpu_trace_enabled()) {        \
+      std::fprintf(stderr, "[mgpu %s:%d] %s\n", __func__, __LINE__, (msg)); \
+      std::fflush(stderr);                                                  \
+    }                                                                       \
   } while (0)
 
-#define MGPU_TRACE_FMT(fmt, ...)                                                               \
-  do {                                                                                         \
-    if (::cuopt::linear_programming::detail::mgpu_trace_enabled()) {                           \
-      std::fprintf(stderr, "[mgpu %s:%d] " fmt "\n", __func__, __LINE__, __VA_ARGS__);         \
-      std::fflush(stderr);                                                                     \
-    }                                                                                          \
+#define MGPU_TRACE_FMT(fmt, ...)                                                       \
+  do {                                                                                 \
+    if (::cuopt::linear_programming::detail::mgpu_trace_enabled()) {                   \
+      std::fprintf(stderr, "[mgpu %s:%d] " fmt "\n", __func__, __LINE__, __VA_ARGS__); \
+      std::fflush(stderr);                                                             \
+    }                                                                                  \
   } while (0)

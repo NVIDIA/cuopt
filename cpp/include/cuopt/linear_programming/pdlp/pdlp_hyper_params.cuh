@@ -50,13 +50,13 @@ struct pdlp_hyper_params_t {
   bool use_distributed_pdlp                                       = false;
   // Debug/diagnostic knob: when true, PDLP bypasses CUDA-graph capture in
   // ping_pong_graph_t and executes each iteration eagerly
-  bool pdlp_disable_graph                                         = false;
-  double reflection_coefficient                                   = 1.0;
-  double restart_k_p                                              = 0.99;
-  double restart_k_i                                              = 0.01;
-  double restart_k_d                                              = 0.0;
-  double restart_i_smooth                                         = 0.3;
-  bool use_conditional_major                                      = true;
+  bool pdlp_disable_graph       = false;
+  double reflection_coefficient = 1.0;
+  double restart_k_p            = 0.99;
+  double restart_k_i            = 0.01;
+  double restart_k_d            = 0.0;
+  double restart_i_smooth       = 0.3;
+  bool use_conditional_major    = true;
 };
 
 // TODO most likely we want to get rid of pdlp_solver_mode and just have prebuilt

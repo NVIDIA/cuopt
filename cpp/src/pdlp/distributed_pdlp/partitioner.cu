@@ -38,11 +38,8 @@ std::vector<i_t> dummy_partitioner_t<i_t, f_t>::partition(
   return parts;
 }
 
-void validate_partition(std::vector<int> const& parts,
-                        int nb_cstr,
-                        int nb_vars,
-                        int nb_parts,
-                        char const* context)
+void validate_partition(
+  std::vector<int> const& parts, int nb_cstr, int nb_vars, int nb_parts, char const* context)
 {
   const std::size_t expected =
     static_cast<std::size_t>(nb_cstr) + static_cast<std::size_t>(nb_vars);
@@ -52,10 +49,8 @@ void validate_partition(std::vector<int> const& parts,
                 context,
                 expected,
                 parts.size());
-  cuopt_expects(nb_parts > 0,
-                error_type_t::ValidationError,
-                "%s: nb_parts must be positive",
-                context);
+  cuopt_expects(
+    nb_parts > 0, error_type_t::ValidationError, "%s: nb_parts must be positive", context);
   if (parts.empty()) { return; }
   const auto [min_it, max_it] = std::minmax_element(parts.begin(), parts.end());
   cuopt_expects(*min_it >= 0,
@@ -75,16 +70,16 @@ template <typename i_t, typename f_t>
 std::unique_ptr<partitioner_i<i_t, f_t>> make_partitioner(partitioner_kind_t kind)
 {
   switch (kind) {
-    case partitioner_kind_t::Dummy:
-      return std::make_unique<dummy_partitioner_t<i_t, f_t>>();
-    case partitioner_kind_t::Metis:
-      return std::make_unique<metis_partitioner_t<i_t, f_t>>();
+    case partitioner_kind_t::Dummy: return std::make_unique<dummy_partitioner_t<i_t, f_t>>();
+    case partitioner_kind_t::Metis: return std::make_unique<metis_partitioner_t<i_t, f_t>>();
   }
-  cuopt_expects(false, error_type_t::RuntimeError, "make_partitioner: unsupported partitioner kind");
+  cuopt_expects(
+    false, error_type_t::RuntimeError, "make_partitioner: unsupported partitioner kind");
   return nullptr;
 }
 
 template class dummy_partitioner_t<int, double>;
-template std::unique_ptr<partitioner_i<int, double>> make_partitioner<int, double>(partitioner_kind_t);
+template std::unique_ptr<partitioner_i<int, double>> make_partitioner<int, double>(
+  partitioner_kind_t);
 
 }  // namespace cuopt::linear_programming::detail

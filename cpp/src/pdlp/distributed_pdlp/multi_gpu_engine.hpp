@@ -255,9 +255,7 @@ struct multi_gpu_engine_t {
   // OutAccess  : pdlp_solver_t<i_t,f_t>& -> f_t*   (single scalar in shard memory)
   // SizeAccess : pdlp_shard_t<i_t,f_t>&  -> i_t    (owned slice length)
   template <typename BufAccess, typename OutAccess, typename SizeAccess>
-  void distributed_l2_norm(BufAccess&& buf_access,
-                           OutAccess&& out_access,
-                           SizeAccess&& size_access)
+  void distributed_l2_norm(BufAccess&& buf_access, OutAccess&& out_access, SizeAccess&& size_access)
   {
     for_each_shard([&](auto& shard) {
       auto& sub   = *shard.sub_pdlp;
@@ -858,13 +856,11 @@ struct multi_gpu_engine_t {
   // master_reduced_cost  : destination for the reduced_cost (var-shaped, lives
   //                        in the master pdlp_solver_t's termination strategy
   //                        convergence_information_).
-  void gather_potential_next_solutions_to_master(
-    pdhg_solver_t<i_t, f_t>& master_pdhg, rmm::device_uvector<f_t>& master_reduced_cost)
+  void gather_potential_next_solutions_to_master(pdhg_solver_t<i_t, f_t>& master_pdhg,
+                                                 rmm::device_uvector<f_t>& master_reduced_cost)
   {
-    const std::size_t total_vars =
-      master_pdhg.get_potential_next_primal_solution().size();
-    const std::size_t total_cstrs =
-      master_pdhg.get_potential_next_dual_solution().size();
+    const std::size_t total_vars  = master_pdhg.get_potential_next_primal_solution().size();
+    const std::size_t total_cstrs = master_pdhg.get_potential_next_dual_solution().size();
 
     std::vector<f_t> h_primal(total_vars);
     std::vector<f_t> h_dual(total_cstrs);
@@ -987,8 +983,8 @@ struct multi_gpu_engine_t {
     }
   }
 
-  // Functionnaly same as graph_capture_fork_to_shards but on a different event to avoid race conditions
-  // Can be used as a way to sync shards with master stream
+  // Functionnaly same as graph_capture_fork_to_shards but on a different event to avoid race
+  // conditions Can be used as a way to sync shards with master stream
   void sync_await_master(rmm::cuda_stream_view master_stream)
   {
     sync_master_ready_event_->record(master_stream);

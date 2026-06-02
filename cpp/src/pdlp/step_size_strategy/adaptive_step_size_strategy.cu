@@ -369,12 +369,10 @@ void adaptive_step_size_strategy_t<i_t, f_t>::compute_interaction_and_movement(
   i_t owned_cstr_size)
 {
   // mGPU needs to know owned size to restrict the reductions to the owned prefix
-  const i_t reduce_primal_size = (owned_primal_size >= 0)
-                                   ? owned_primal_size
-                                   : current_saddle_point_state.get_primal_size();
-  const i_t reduce_dual_size   = (owned_cstr_size >= 0)
-                                   ? owned_cstr_size
-                                   : current_saddle_point_state.get_dual_size();
+  const i_t reduce_primal_size =
+    (owned_primal_size >= 0) ? owned_primal_size : current_saddle_point_state.get_primal_size();
+  const i_t reduce_dual_size =
+    (owned_cstr_size >= 0) ? owned_cstr_size : current_saddle_point_state.get_dual_size();
 
   // QP would need this:
   // if iszero(problem.objective_matrix)
