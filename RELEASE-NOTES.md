@@ -5,7 +5,8 @@
 ### New Features (26.06)
 - Add support for quadratic constraints (convex quadratic, second-order cone, and rotated second-order cone)
 - Add support for semi-continuous variables
-- Add support for reading LP (.lp) files; LP files are accepted wherever MPS files were previously, including the compressed variants (`.lp.gz`, `.lp.bz2`).
+- Add support for reading LP (.lp) files; LP files are accepted wherever MPS files were previously, including the compressed variants (`.lp.gz`, `.lp.bz2`)
+- Branch and bound workers now maintain their own heaps and steal nodes from other workers; on average, this increases the number of nodes explored by 3x
 - Add support for detecting and exploiting symmetry in MIP
 - Add support for detecting and exploiting discrete objective steps in MIP
 - Add option for specifying a limit on the number of nodes explored in branch and bound
@@ -19,11 +20,10 @@
 - Replace SpMV calls with SpMVOp calls in PDHG, 1.09x speedup
 - Reduce memory footprint of PDLP by around 50%
 - Unify threading model across LP (concurrent mode) and MIP to use OpenMP tasking model to allow stricter control of the number of threads
-- Unify `read` API on `Problem` for both MPS and LP file formats; the older `readMPS` is now deprecated.
-- Built and tested with CUDA 13.2.
-- gRPC is now built against OpenSSL 3 in the container and wheel.
-- Substantially expanded the in-repo skill set for AI coding agents (Copilot, Cline, Windsurf, Jules, Aider, Codex) covering developer onboarding, installation, numerical optimization, routing, and the server. Added NVIDIA-signed skill cards, evaluation datasets, and a skill-evolution workflow under `skills/`.
-- Improve the performance of parallel branch and bound by moving to one heap per worker. On average, this increases the number of nodes explored by 3x.
+- Unify `read` API on `Problem` for both MPS and LP file formats
+- Build and test with CUDA 13.2
+- Build against OpenSSL3 in container and wheel for gRPC
+- Substantially expand the in-repo skill set for AI coding agents (Copilot, Cline, Windsurf, Jules, Aider, Codex) covering developer onboarding, installation, numerical optimization, routing, and the server; add NVIDIA-signed skill cards, evaluation datasets, and a skill-evolution workflow under `skills/`
 
 ### Bug Fixes (26.06)
 - Probing cache now correctly update the model after each batch
