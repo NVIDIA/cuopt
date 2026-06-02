@@ -2126,13 +2126,11 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
   bool problem_checking,
   bool use_pdlp_solver_mode)
 {
-  // In distributed PDLP we can't allocate the full problem on the master device
-  if (settings.hyper_params.use_distributed_pdlp) {
+  cuopt_expects(settings.hyper_params.use_distributed_pdlp,
+                error_type_t::ValidationError,
+                "solve_lp from mps_data_model: settings.hyper_params.use_distributed_pdlp must be true");
     return solve_lp_distributed_from_mps(
       handle_ptr, mps_data_model, settings, problem_checking, use_pdlp_solver_mode);
-  }
-  auto op_problem = mps_data_model_to_optimization_problem(handle_ptr, mps_data_model);
-  return solve_lp(op_problem, settings, problem_checking, use_pdlp_solver_mode);
 }
 
 template <typename i_t, typename f_t>
