@@ -703,12 +703,10 @@ TEST(general_quadratic, soc_head_free_rejected)
   csr_A.x         = {1.0};
 
   std::vector<qc_t> qcs = {qc};
-  // Head variable t is free, but the SOC translation tightens lower[t] to 0 automatically
-  // (valid because -t^2 + ||tail||^2 <= 0 is symmetric in sign of t).
-  EXPECT_NO_THROW(
-    (convert_quadratic_constraints_to_second_order_cones<i_t, f_t>(n, qcs, csr_A, user_problem)));
-  // Verify the lower bound was tightened
-  EXPECT_GE(user_problem.lower[2], 0.0);
+  // Head variable t is free with no constraint implying t >= 0, so this is non-convex.
+  EXPECT_THROW(
+    (convert_quadratic_constraints_to_second_order_cones<i_t, f_t>(n, qcs, csr_A, user_problem)),
+    cuopt::logic_error);
 }
 
 // Test: x0^2 + x1^2 - 2*y*z <= 0 with y >= 0, z >= 0 should be accepted (valid rotated SOC).
@@ -820,7 +818,7 @@ TEST(general_quadratic, rotated_soc_heads_free_rejected)
   csr_A.x         = {1.0};
 
   std::vector<qc_t> qcs = {qc};
-  // Should throw — head variables y and z are free, constraint is non-convex
+  // Head variables y and z are free with no constraints implying non-negativity.
   EXPECT_THROW(
     (convert_quadratic_constraints_to_second_order_cones<i_t, f_t>(n, qcs, csr_A, user_problem)),
     cuopt::logic_error);
