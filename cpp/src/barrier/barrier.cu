@@ -4347,9 +4347,9 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
     f_t dual_objective =
       data.b.inner_product(data.y) - data.restrict_u_.inner_product(data.v) - quad_objective;
 
-    f_t duality_gap_abs = std::abs(primal_objective - dual_objective);
-    f_t duality_gap_rel =
-      duality_gap_abs /
+    f_t objective_gap_abs = std::abs(primal_objective - dual_objective);
+    f_t objective_gap_rel =
+      objective_gap_abs /
       std::max(f_t(1), std::min(std::abs(primal_objective), std::abs(dual_objective)));
 
     i_t iter = 0;
@@ -4535,6 +4535,11 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
         (1.0 + std::min(std::abs(compute_user_objective(lp, primal_objective)),
                         std::abs(primal_objective)));
 
+      objective_gap_abs = std::abs(primal_objective - dual_objective);
+      objective_gap_rel =
+        objective_gap_abs /
+        std::max(f_t(1), std::min(std::abs(primal_objective), std::abs(dual_objective)));
+
       if (relative_primal_residual < settings.barrier_relaxed_feasibility_tol &&
           relative_dual_residual < settings.barrier_relaxed_optimality_tol &&
           relative_complementarity_residual < settings.barrier_relaxed_complementarity_tol) {
@@ -4594,8 +4599,10 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
       bool dual_feasible   = relative_dual_residual < settings.barrier_relative_optimality_tol;
       bool small_gap =
         relative_complementarity_residual < settings.barrier_relative_complementarity_tol;
+      bool small_objective_gap =
+        !data.has_cones() || objective_gap_rel < settings.barrier_relaxed_complementarity_tol;
 
-      converged = primal_feasible && dual_feasible && small_gap;
+      converged = primal_feasible && dual_feasible && small_gap && small_objective_gap;
 
       if (converged) {
         settings.log.printf("\n");
