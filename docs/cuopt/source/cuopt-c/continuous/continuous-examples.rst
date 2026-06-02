@@ -261,6 +261,52 @@ The optimum is ``x1 = x2 = 1`` and ``x3 = sqrt(2)``:
    Test completed successfully!
 
 
+.. _rotated-socp-example-c:
+
+Rotated Second-Order Cone Example
+---------------------------------
+
+This example adds a **rotated** cone with :c:func:`cuOptAddQuadraticConstraint`. The
+quadratic matrix ``Q`` must be supplied **symmetrically**, so the cross term of
+``x1^2 + x2^2 <= x3*x4`` is given as the two equal off-diagonal entries
+``Q[x3, x4] = Q[x4, x3] = -0.5`` (triplets ``(2, 3, -0.5)`` and ``(3, 2, -0.5)``).
+It minimizes ``x3 + x4`` subject to ``x1 + x2 >= 2`` and the rotated cone.
+
+The example code is available at ``examples/cuopt-c/lp/rotated_socp_example.c`` (:download:`download <examples/rotated_socp_example.c>`):
+
+.. literalinclude:: examples/rotated_socp_example.c
+   :language: c
+   :linenos:
+
+Build and run the example
+
+.. code-block:: bash
+
+   # Build and run the example
+   gcc -I $INCLUDE_PATH -L $LIBCUOPT_LIBRARY_PATH -o rotated_socp_example rotated_socp_example.c -lcuopt
+   ./rotated_socp_example
+
+The optimum is ``x1 = x2 = 1`` and ``x3 = x4 = sqrt(2)``:
+
+.. code-block:: bash
+   :caption: Output
+
+   Creating and solving rotated SOCP problem...
+
+   Results:
+   --------
+   Termination status: Optimal (1)
+   Objective value: 2.828427
+
+   Primal Solution: Solution variables
+   x1 = 1.000000
+   x2 = 1.000000
+   x3 = 1.414214
+   x4 = 1.414214
+
+   Test completed successfully!
+
+
 .. _qp-mps-example-c:
 
 QP Example With MPS File
