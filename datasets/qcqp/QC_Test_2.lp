@@ -16,7 +16,7 @@
 \   s.t. x + y + z <= 10            (LIN0: linear, slack at optimum)
 \        z^2 - 2*x*y <= 0           (QC0: rotated SOC, cross-term)
 \        x^2 + y^2 - z <= 0         (QC1: affine SOC, linear-in-row)
-\        x, y, z free
+\        x, y, z >= 0
 \
 \ Both QCs convert cleanly to second-order cones:
 \   QC0: cross-term -2*x*y plus +z^2  =>  z^2 <= 2*x*y
@@ -39,7 +39,7 @@ Subject To
  QC0: [ - 2 x * y + z ^ 2 ] <= 0
  QC1: - z + [ x ^ 2 + y ^ 2 ] <= 0
 Bounds
- x free
- y free
- z free
+ x >= 0
+ y >= 0
+ z >= 0
 End
