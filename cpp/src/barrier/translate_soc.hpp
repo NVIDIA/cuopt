@@ -361,6 +361,12 @@ void convert_quadratic_constraints_to_second_order_cones(
               static_cast<double>(neg_v),
               static_cast<double>(-uniform_s));
             head = neg_diag_rows[0].first;
+            cuopt_expects(user_problem.lower[head] >= 0,
+                          error_type_t::ValidationError,
+                          "Quadratic constraint '%s' SOC head variable (index %d) must have a "
+                          "non-negative lower bound for the constraint to be convex",
+                          qc.constraint_row_name.c_str(),
+                          static_cast<int>(head));
             cone.reserve(q_nnz);
             cone.push_back(head);
             cone.insert(cone.end(), tail_vars.begin(), tail_vars.end());

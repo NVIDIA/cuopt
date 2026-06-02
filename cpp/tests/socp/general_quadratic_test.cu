@@ -586,4 +586,127 @@ TEST(general_quadratic, least_squares_b_not_in_range)
   EXPECT_NEAR(solution.objective, 1.0, 1e-3);
 }
 
+// Test: x0^2 + x1^2 - t^2 <= 0 with t >= 0 should be accepted (valid SOC: ||x|| <= t).
+TEST(general_quadratic, soc_head_nonneg_accepted)
+{
+  raft::handle_t handle{};
+  init_handler(&handle);
+
+  using namespace cuopt::linear_programming::dual_simplex;
+  user_problem_t<i_t, f_t> user_problem(&handle);
+
+  // Variables: x0, x1, t. Constraint: x0^2 + x1^2 - t^2 <= 0
+  constexpr int m  = 1;
+  constexpr int n  = 3;
+  constexpr int nz = 2;
+
+  user_problem.num_rows  = m;
+  user_problem.num_cols  = n;
+  user_problem.objective = {1.0, 0.0, 0.0};  // minimize x0
+
+  user_problem.A.m      = m;
+  user_problem.A.n      = n;
+  user_problem.A.nz_max = nz;
+  user_problem.A.reallocate(nz);
+  user_problem.A.col_start = {0, 0, 0, 2};
+  user_problem.A.i[0] = 0;
+  user_problem.A.x[0] = 1.0;  // dummy row for barrier: t <= 10
+  user_problem.A.i[1] = 0;
+  user_problem.A.x[1] = 0.0;  // placeholder
+
+  // Actually just use: x1 = 1 as a simple equality
+  user_problem.A.col_start = {0, 0, 1, 1};
+  user_problem.A.i[0] = 0;
+  user_problem.A.x[0] = 1.0;
+
+  user_problem.rhs       = {1.0};
+  user_problem.row_sense = {'E'};
+  user_problem.lower     = {-inf, -inf, 0.0};  // t >= 0
+  user_problem.upper     = {inf, inf, inf};
+  user_problem.num_range_rows = 0;
+  user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
+
+  // Q COO: x0^2 + x1^2 - t^2 <= 0
+  // (0,0,1), (1,1,1), (2,2,-1)
+  qc_t qc;
+  qc.constraint_row_index = 0;
+  qc.constraint_row_name  = "soc_valid";
+  qc.constraint_row_type  = 'L';
+  qc.rhs_value            = 0.0;
+  qc.rows = {0, 1, 2};
+  qc.cols = {0, 1, 2};
+  qc.vals = {1.0, 1.0, -1.0};
+
+  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, 1);
+  csr_A.m = m;
+  csr_A.n = n;
+  csr_A.row_start = {0, 1};
+  csr_A.j = {1};
+  csr_A.x = {1.0};
+
+  std::vector<qc_t> qcs = {qc};
+  // Should NOT throw — head variable t has lower >= 0
+  EXPECT_NO_THROW(
+    (convert_quadratic_constraints_to_second_order_cones<i_t, f_t>(n, qcs, csr_A, user_problem)));
+
+  // Verify it produced a cone
+  EXPECT_GT(user_problem.second_order_cone_dims.size(), 0u);
+}
+
+// Test: x0^2 + x1^2 - t^2 <= 0 with t free should be rejected (non-convex without t >= 0).
+TEST(general_quadratic, soc_head_free_rejected)
+{
+  raft::handle_t handle{};
+  init_handler(&handle);
+
+  using namespace cuopt::linear_programming::dual_simplex;
+  user_problem_t<i_t, f_t> user_problem(&handle);
+
+  constexpr int m  = 1;
+  constexpr int n  = 3;
+  constexpr int nz = 1;
+
+  user_problem.num_rows  = m;
+  user_problem.num_cols  = n;
+  user_problem.objective = {1.0, 0.0, 0.0};
+
+  user_problem.A.m      = m;
+  user_problem.A.n      = n;
+  user_problem.A.nz_max = nz;
+  user_problem.A.reallocate(nz);
+  user_problem.A.col_start = {0, 0, 1, 1};
+  user_problem.A.i[0] = 0;
+  user_problem.A.x[0] = 1.0;
+
+  user_problem.rhs       = {1.0};
+  user_problem.row_sense = {'E'};
+  user_problem.lower     = {-inf, -inf, -inf};  // t is FREE — no lower bound
+  user_problem.upper     = {inf, inf, inf};
+  user_problem.num_range_rows = 0;
+  user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
+
+  // Q COO: x0^2 + x1^2 - t^2 <= 0 (same Q, but t is free)
+  qc_t qc;
+  qc.constraint_row_index = 0;
+  qc.constraint_row_name  = "soc_invalid";
+  qc.constraint_row_type  = 'L';
+  qc.rhs_value            = 0.0;
+  qc.rows = {0, 1, 2};
+  qc.cols = {0, 1, 2};
+  qc.vals = {1.0, 1.0, -1.0};
+
+  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
+  csr_A.m = m;
+  csr_A.n = n;
+  csr_A.row_start = {0, 1};
+  csr_A.j = {1};
+  csr_A.x = {1.0};
+
+  std::vector<qc_t> qcs = {qc};
+  // Should throw — head variable t is free, constraint is non-convex
+  EXPECT_THROW(
+    (convert_quadratic_constraints_to_second_order_cones<i_t, f_t>(n, qcs, csr_A, user_problem)),
+    cuopt::logic_error);
+}
+
 }  // namespace cuopt::linear_programming::detail::test
