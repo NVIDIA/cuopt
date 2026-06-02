@@ -773,32 +773,15 @@ static optimization_problem_solution_t<i_t, f_t> run_pdlp_solver(
     }
   }
 #endif
-  if (settings.hyper_params.use_distributed_pdlp) {
-    // Resolve the -1 "auto-detect" sentinel to the actual visible-device count on
-    // the master process
-    pdlp_solver_settings_t<i_t, f_t> settings_resolved = settings;
-    if (settings_resolved.distributed_pdlp_num_gpus == -1) {
-      settings_resolved.distributed_pdlp_num_gpus = raft::device_setter::get_device_count();
-      CUOPT_LOG_INFO("distributed_pdlp_num_gpus == -1: auto-detected %d visible CUDA device",
-                     settings_resolved.distributed_pdlp_num_gpus);
-    }
-    cuopt_expects(settings_resolved.distributed_pdlp_num_gpus >= 1,
-                  error_type_t::ValidationError,
-                  "distributed_pdlp_num_gpus must be >= 1 or -1 (auto-detect)");
-    if (settings_resolved.distributed_pdlp_num_gpus == 1) {
-      std::cout
-        << "CAREFUL: use_distributed_pdlp with distributed_pdlp_num_gpus == 1 runs the "
-           "single-shard dummy path"
-        << std::endl;
-    }
-    cuopt_expects(!is_batch_mode,
-                  error_type_t::ValidationError,
-                  "Distributed PDLP does not support batch mode");
-    // Multi-GPU ctor; dispatched by 3rd-arg TYPE (int, not bool batch).
-    detail::pdlp_solver_t<i_t, f_t> solver(
-      problem, settings_resolved, settings_resolved.distributed_pdlp_num_gpus);
-    return solver.run_solver(timer);
-  }
+  // Distributed PDLP cannot enter through this path: by the time we have a
+  // problem_t, the full problem already lives on the master GPU, which defeats
+  // the purpose of distributed mode. Callers must route to
+  // solve_lp_distributed_from_mps via solve_lp(mps_data_model, ...).
+  cuopt_expects(!settings.hyper_params.use_distributed_pdlp,
+                error_type_t::ValidationError,
+                "Distributed PDLP must be entered via solve_lp(mps_data_model, ...) "
+                "so the master GPU never materializes the full problem. Call sites "
+                "with a problem_t cannot dispatch to distributed mode.");
   detail::pdlp_solver_t<i_t, f_t> solver(problem, settings, is_batch_mode);
   if (settings.inside_mip) { solver.set_inside_mip(true); }
   return solver.run_solver(timer);
@@ -2180,14 +2163,75 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
       "%d visible CUDA device(s)",
       settings_resolved.distributed_pdlp_num_gpus);
   }
-  if (settings_resolved.distributed_pdlp_num_gpus <= 1)
-  {
+  if (settings_resolved.distributed_pdlp_num_gpus <= 1) {
     std::cout << "CAREFUL: use_distributed_pdlp with distributed_pdlp_num_gpus == 1 runs the "
                  "single-shard dummy path"
               << std::endl;
   }
-  auto op_problem = mps_data_model_to_optimization_problem(handle_ptr, mps_data_model);
-  return solve_lp(op_problem, settings_resolved, problem_checking, use_pdlp_solver_mode);
+  // PDLP precision validations (mirror the checks in run_pdlp; distributed
+  // path only supports the default-precision, non-batch double config).
+  cuopt_expects(settings_resolved.pdlp_precision == pdlp_precision_t::DefaultPrecision,
+                error_type_t::ValidationError,
+                "Distributed PDLP only supports DefaultPrecision (double).");
+  cuopt_expects(!settings_resolved.inside_mip,
+                error_type_t::ValidationError,
+                "Distributed PDLP is not yet supported from inside MIP.");
+
+  init_logger_t log(settings_resolved.log_file, settings_resolved.log_to_console);
+  print_version_info();
+  init_handler(handle_ptr);
+
+  const i_t n_vars = static_cast<i_t>(mps_data_model.get_objective_coefficients().size());
+  const i_t n_cstr = static_cast<i_t>(mps_data_model.get_constraint_lower_bounds().size());
+  const i_t nnz    = static_cast<i_t>(mps_data_model.get_constraint_matrix_values().size());
+  CUOPT_LOG_INFO("Solving a problem with %d constraints, %d variables (%d integers), and %d "
+                 "nonzeros (distributed mps-direct path)",
+                 n_cstr,
+                 n_vars,
+                 0,
+                 nnz);
+
+  auto lp_timer = cuopt::timer_t(settings_resolved.time_limit);
+
+  // Shape-0 placeholder: needed to build an empty pdlp_solver
+  cuopt::linear_programming::optimization_problem_t<i_t, f_t> placeholder_op(handle_ptr);
+  {
+    std::vector<i_t> empty_offsets = {0};
+    placeholder_op.set_csr_constraint_matrix(
+      nullptr, 0, nullptr, 0, empty_offsets.data(), static_cast<i_t>(empty_offsets.size()));
+  }
+  detail::problem_t<i_t, f_t> placeholder_problem(placeholder_op);
+
+  detail::pdlp_solver_t<i_t, f_t> solver(
+    placeholder_problem, mps_data_model, settings_resolved);
+
+  auto sol = solver.run_solver(lp_timer);
+
+  // Maximization post-processing (matches run_pdlp at solve.cu:835-839):
+  // PDLP internally solves the negated objective, so flip dual / reduced
+  // cost signs on the gathered solution before returning.
+  if (mps_data_model.get_sense()) {
+    adjust_dual_solution_and_reduced_cost(
+      sol.get_dual_solution(), sol.get_reduced_cost(), handle_ptr->get_stream());
+    handle_ptr->sync_stream();
+  }
+
+  sol.set_solve_time(lp_timer.elapsed_time());
+  CUOPT_LOG_INFO("PDLP finished");
+  if (sol.get_termination_status() != pdlp_termination_status_t::ConcurrentLimit) {
+    CUOPT_LOG_INFO("Status: %s   Objective: %.8e  Iterations: %d  Time: %.3fs",
+                   sol.get_termination_status_string().c_str(),
+                   sol.get_objective_value(),
+                   sol.get_additional_termination_information().number_of_steps_taken,
+                   sol.get_solve_time());
+  }
+
+  if (settings_resolved.sol_file != "") {
+    CUOPT_LOG_INFO("Writing solution to file %s", settings_resolved.sol_file.c_str());
+    sol.write_to_sol_file(settings_resolved.sol_file, handle_ptr->get_stream());
+  }
+
+  return sol;
 }
 
 // ============================================================================

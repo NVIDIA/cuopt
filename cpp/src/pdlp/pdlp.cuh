@@ -8,6 +8,7 @@
 #pragma once
 
 #include <branch_and_bound/shared_strong_branching_context.hpp>
+#include <cuopt/linear_programming/io/mps_data_model.hpp>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include <cuopt/linear_programming/pdlp/solver_solution.hpp>
 
@@ -64,9 +65,9 @@ class pdlp_solver_t {
                 bool is_batch_mode = false);
 
   // Distributed Solver Constructor
-  pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
-                pdlp_solver_settings_t<i_t, f_t> const& settings,
-                int distributed_pdlp_num_gpus);
+  pdlp_solver_t(problem_t<i_t, f_t>& placeholder_problem,
+                cuopt::linear_programming::io::mps_data_model_t<i_t, f_t> const& mps,
+                pdlp_solver_settings_t<i_t, f_t> const& settings);
 
   optimization_problem_solution_t<i_t, f_t> run_solver(const timer_t& timer);
 

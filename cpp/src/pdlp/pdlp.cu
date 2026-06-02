@@ -17,6 +17,7 @@
 #include <pdlp/swap_and_resize_helper.cuh>
 #include <pdlp/utils.cuh>
 
+#include <dual_simplex/sparse_matrix.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include "cuopt/linear_programming/pdlp/solver_solution.hpp"
 #include "distributed_pdlp/multi_gpu_engine.hpp"
@@ -375,15 +376,28 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
   }
 }
 
+// ============================================================================
+// Distributed multi-GPU ctor.
+// needs placeholder_problem to be a shape-0 problem
+// reads the problem from mps_data_model directly
+// builds internal attributes from the placeholder_problem
+// builds the engine from the mps_data_model
 template <typename i_t, typename f_t>
-pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
-                                       pdlp_solver_settings_t<i_t, f_t> const& settings,
-                                       int distributed_pdlp_num_gpus)
-  // 1. Delegate to single-GPU ctor to bring up all the per-master state
-  //    (problem_ptr, op_problem_scaled_, pdhg_solver_, strategies, etc.).
-  : pdlp_solver_t(op_problem, settings, /*is_legacy_batch_mode=*/false)
+pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
+  problem_t<i_t, f_t>& placeholder_problem,
+  cuopt::linear_programming::io::mps_data_model_t<i_t, f_t> const& mps,
+  pdlp_solver_settings_t<i_t, f_t> const& settings)
+  // Makes all inner feilds of master 0 size
+  : pdlp_solver_t(placeholder_problem, settings, /*is_legacy_batch_mode=*/false)
 {
-  CUOPT_LOG_INFO("Solving with distributed PDLP on %d GPU",
+  cuopt_expects(placeholder_problem.n_variables == 0 &&
+                  placeholder_problem.n_constraints == 0 &&
+                  placeholder_problem.nnz == 0,
+                error_type_t::ValidationError,
+                "Distributed mGPU pdlp_solver_t ctor requires a shape-0 "
+                "placeholder problem (n_variables == n_constraints == nnz == 0)");
+  const int distributed_pdlp_num_gpus = settings.distributed_pdlp_num_gpus;
+  CUOPT_LOG_INFO("Solving with distributed PDLP on %d GPU (mps direct path)",
                  distributed_pdlp_num_gpus);
   if (distributed_pdlp_num_gpus == 1) {
     std::cout << "CAREFUL !!: distributed_pdlp_num_gpus == 1, running single-shard dummy path, "
@@ -391,87 +405,125 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
                  "parameter --distributed-pdlp-num-gpus"
               << std::endl;
   }
-  cuopt_expects(distributed_pdlp_num_gpus == settings.distributed_pdlp_num_gpus,
-                error_type_t::ValidationError,
-                "This constructor's distributed_pdlp_num_gpus argument must match "
-                "settings.distributed_pdlp_num_gpus");
 
-  // Distributed PDLP is currently double-only
   if constexpr (!std::is_same_v<f_t, double>) {
     cuopt_expects(false,
                   error_type_t::ValidationError,
                   "Distributed PDLP currently requires double precision");
     return;
-  } else {
-    // 2. Load or compute partition
+  }
+    // ----- 1. Read problem shape and bulk data directly from mps (host) -----
+    const i_t n_vars = static_cast<i_t>(mps.get_objective_coefficients().size());
+    const i_t n_cstr = static_cast<i_t>(mps.get_constraint_lower_bounds().size());
+    const i_t nnz    = static_cast<i_t>(mps.get_constraint_matrix_values().size());
+    cuopt_expects(n_vars > 0,
+                  error_type_t::ValidationError,
+                  "Distributed PDLP from mps requires a non-empty objective");
+    cuopt_expects(n_cstr > 0,
+                  error_type_t::ValidationError,
+                  "Distributed PDLP from mps requires at least one constraint");
+    cuopt_expects(static_cast<i_t>(mps.get_constraint_matrix_offsets().size()) == n_cstr + 1,
+                  error_type_t::ValidationError,
+                  "mps constraint_matrix_offsets size must equal n_constraints + 1");
+    cuopt_expects(
+      static_cast<i_t>(mps.get_constraint_matrix_indices().size()) == nnz,
+      error_type_t::ValidationError,
+      "mps constraint_matrix_indices size must equal nnz (constraint_matrix_values size)");
+    cuopt_expects(static_cast<i_t>(mps.get_constraint_upper_bounds().size()) == n_cstr,
+                  error_type_t::ValidationError,
+                  "mps constraint_upper_bounds size must equal n_constraints");
+    cuopt_expects(static_cast<i_t>(mps.get_variable_lower_bounds().size()) == n_vars,
+                  error_type_t::ValidationError,
+                  "mps variable_lower_bounds size must equal n_variables");
+    cuopt_expects(static_cast<i_t>(mps.get_variable_upper_bounds().size()) == n_vars,
+                  error_type_t::ValidationError,
+                  "mps variable_upper_bounds size must equal n_variables");
+
+    const bool maximize           = mps.get_sense();
+    f_t objective_offset          = mps.get_objective_offset();
+    f_t objective_scaling_factor  = mps.get_objective_scaling_factor();
+
+    // Objective: copy (mutable so we can negate for maximize, matching
+    // problem_helpers.cuh::convert_to_maximization_problem).
+    std::vector<f_t> h_obj = mps.get_objective_coefficients();
+    if (maximize) {
+      for (auto& v : h_obj) v = -v;
+      objective_offset         = -objective_offset;
+      objective_scaling_factor = -objective_scaling_factor;
+    }
+
+    // Bounds (copy from mps; engine ctor takes by const ref to std::vector).
+    std::vector<f_t> h_var_lower  = mps.get_variable_lower_bounds();
+    std::vector<f_t> h_var_upper  = mps.get_variable_upper_bounds();
+    std::vector<f_t> h_cstr_lower = mps.get_constraint_lower_bounds();
+    std::vector<f_t> h_cstr_upper = mps.get_constraint_upper_bounds();
+
+    // A (CSR) — mutable copies for the engine + partitioner consumers below.
+    std::vector<i_t> h_A_row_offsets = mps.get_constraint_matrix_offsets();
+    std::vector<i_t> h_A_col_indices = mps.get_constraint_matrix_indices();
+    std::vector<f_t> h_A_values      = mps.get_constraint_matrix_values();
+
+    // ----- 2. Transpose A -> A^T on the host (one-shot CSR transpose) -----
+    // CSC(A) and CSR(A^T) share the same memory layout, so the CSC produced
+    // by dual_simplex::csr_matrix_t::to_compressed_col IS the CSR of A^T.
+    // O(nnz + n_vars) counting sort, same as problem_t::compute_transpose.
+    namespace ds = cuopt::linear_programming::dual_simplex;
+    ds::csr_matrix_t<i_t, f_t> A_csr(n_cstr, n_vars, nnz);
+    A_csr.row_start = h_A_row_offsets;
+    A_csr.j         = h_A_col_indices;
+    A_csr.x         = h_A_values;
+    ds::csc_matrix_t<i_t, f_t> AT_as_csc(n_vars, n_cstr, nnz);
+    A_csr.to_compressed_col(AT_as_csc);
+    std::vector<i_t> h_A_t_row_offsets = std::move(AT_as_csc.col_start);
+    std::vector<i_t> h_A_t_col_indices = std::move(AT_as_csc.i);
+    std::vector<f_t> h_A_t_values      = std::move(AT_as_csc.x);
+
+    // ----- 3. Identity scaling for V1 -----
+    // Real multi-GPU scaling is a TODO; ship the unscaled problem to shards as
+    // both "unscaled" and "scaled" so the engine and per-shard pdlp_solver_t
+    // can run end-to-end. Scaling factor vectors are 1.0 everywhere so the
+    // shard-side unscale at the end is a no-op.
+    std::vector<f_t> h_A_values_scaled              = h_A_values;
+    std::vector<f_t> h_A_t_values_scaled            = h_A_t_values;
+    std::vector<f_t> h_obj_scaled                   = h_obj;
+    std::vector<f_t> h_var_lower_scaled             = h_var_lower;
+    std::vector<f_t> h_var_upper_scaled             = h_var_upper;
+    std::vector<f_t> h_cstr_lower_scaled            = h_cstr_lower;
+    std::vector<f_t> h_cstr_upper_scaled            = h_cstr_upper;
+    std::vector<f_t> h_cummulative_cstr_scaling(n_cstr, f_t(1.0));
+    std::vector<f_t> h_cummulative_var_scaling(n_vars, f_t(1.0));
+    const f_t h_bound_rescaling                     = f_t(1.0);
+    const f_t h_objective_rescaling                 = f_t(1.0);
+
+    // ----- 4. Partition -----
     std::vector<i_t> parts;
     if (!settings.multi_gpu_partition_file.empty()) {
       parts = partition_loader_t<i_t, f_t>::parse_distributed_pdlp_partition_file(
         settings.multi_gpu_partition_file);
-      validate_partition(parts,
-                         op_problem_scaled_.n_constraints,
-                         op_problem_scaled_.n_variables,
-                         distributed_pdlp_num_gpus,
-                         "partition file");
+      validate_partition(parts, n_cstr, n_vars, distributed_pdlp_num_gpus, "partition file");
     } else {
       if (distributed_pdlp_num_gpus == 1) {
-        // Single-part dummy run: useful for exercising the mGPU code paths on a
-        // single physical GPU without a real partition file.
         std::cout << "CAREFUL: distributed_pdlp_num_gpus == 1, running dummy version (single "
                      "part covering "
-                  << op_problem_scaled_.n_constraints << " cstrs + "
-                  << op_problem_scaled_.n_variables << " vars)" << std::endl;
+                  << n_cstr << " cstrs + " << n_vars << " vars)" << std::endl;
       }
       partitioner_input_t<i_t, f_t> partition_input;
-      partition_input.nb_cstr  = op_problem_scaled_.n_constraints;
-      partition_input.nb_vars  = op_problem_scaled_.n_variables;
+      partition_input.nb_cstr  = n_cstr;
+      partition_input.nb_vars  = n_vars;
       partition_input.nb_parts = distributed_pdlp_num_gpus;
 
-      // Topology buffers: only needed for METIS (Dummy ignores them).
-      // Read CSR offsets and col indices from the (unscaled) problem; the
-      // partitioner only needs topology, not values, and scaled/unscaled share
-      // the same nonzero pattern.
-      std::vector<i_t> h_part_A_row_offsets;
-      std::vector<i_t> h_part_A_col_indices;
-      std::vector<i_t> h_part_A_t_row_offsets;
-      std::vector<i_t> h_part_A_t_col_indices;
-
-      // METIS_PartGraphKway requires nparts >= 2; calling it with nparts == 1
-      // traps inside METIS (SIGFPE on integer division by zero). The
-      // num_gpus == 1 path is the single-shard dummy run anyway -- there's
-      // nothing for METIS to do, so route directly to Dummy which just places
-      // every vertex into part 0.
+      // METIS_PartGraphKway requires nparts >= 2; route num_gpus == 1 to Dummy.
       const partitioner_kind_t kind =
         (distributed_pdlp_num_gpus == 1) ? partitioner_kind_t::Dummy : partitioner_kind_t::Metis;
       if (kind == partitioner_kind_t::Metis) {
-        const auto stream = op_problem_scaled_.handle_ptr->get_stream();
-        const i_t n_cstr  = op_problem_scaled_.n_constraints;
-        const i_t n_vars  = op_problem_scaled_.n_variables;
-        const i_t nnz     = op_problem_scaled_.nnz;
-        h_part_A_row_offsets.resize(n_cstr + 1);
-        h_part_A_col_indices.resize(nnz);
-        h_part_A_t_row_offsets.resize(n_vars + 1);
-        h_part_A_t_col_indices.resize(nnz);
-        raft::copy(
-          h_part_A_row_offsets.data(), op_problem_scaled_.offsets.data(), n_cstr + 1, stream);
-        raft::copy(
-          h_part_A_col_indices.data(), op_problem_scaled_.variables.data(), nnz, stream);
-        raft::copy(h_part_A_t_row_offsets.data(),
-                   op_problem_scaled_.reverse_offsets.data(),
-                   n_vars + 1,
-                   stream);
-        raft::copy(h_part_A_t_col_indices.data(),
-                   op_problem_scaled_.reverse_constraints.data(),
-                   nnz,
-                   stream);
-        op_problem_scaled_.handle_ptr->sync_stream(stream);
-
-        partition_input.A.row_offsets   = &h_part_A_row_offsets;
-        partition_input.A.col_indices   = &h_part_A_col_indices;
+        // partitioner_input_t holds non-const std::vector<i_t>* pointers; we
+        // already have the data in our local mutable buffers above.
+        partition_input.A.row_offsets   = &h_A_row_offsets;
+        partition_input.A.col_indices   = &h_A_col_indices;
         partition_input.A.num_rows      = n_cstr;
         partition_input.A.num_cols      = n_vars;
-        partition_input.A_t.row_offsets = &h_part_A_t_row_offsets;
-        partition_input.A_t.col_indices = &h_part_A_t_col_indices;
+        partition_input.A_t.row_offsets = &h_A_t_row_offsets;
+        partition_input.A_t.col_indices = &h_A_t_col_indices;
         partition_input.A_t.num_rows    = n_vars;
         partition_input.A_t.num_cols    = n_cstr;
       }
@@ -479,109 +531,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
       parts            = partitioner->partition(partition_input);
     }
 
-    // always compute initial step size before scaling and primal_weight after scaling to do like
-    // cuPDLPx
-    assert(settings_.hyper_params.compute_initial_primal_weight_before_scaling &&
-           "compute_initial_primal_weight_before_scaling must be true in distributed mode");
-    assert(!settings_.hyper_params.compute_initial_step_size_before_scaling &&
-           "compute_initial_step_size_before_scaling must be false in distributed mode");
-
-    compute_initial_primal_weight();
-
-    // scale globally before dispatching to shards
-    initial_scaling_strategy_.scale_problem();
-
-    compute_initial_step_size();
-    step_size_strategy_.get_primal_and_dual_stepsizes(primal_step_size_, dual_step_size_);
-
-    const f_t initial_step_size_global     = get_step_size_h(0);
-    const f_t initial_primal_weight_global = get_primal_weight_h(0);
-
-    // 4. Copy both scaled and unscaled pb
-    auto const stream = op_problem_scaled_.handle_ptr->get_stream();
-    i_t const n_cstr  = op_problem_scaled_.n_constraints;
-    i_t const n_vars  = op_problem_scaled_.n_variables;
-    i_t const nnz     = op_problem_scaled_.nnz;
-
-    // Shared topology (taken from the scaled problem, but identical on both).
-    std::vector<i_t> h_A_row_offsets(n_cstr + 1);
-    std::vector<i_t> h_A_col_indices(nnz);
-    std::vector<i_t> h_A_t_row_offsets(n_vars + 1);
-    std::vector<i_t> h_A_t_col_indices(nnz);
-    raft::copy(h_A_row_offsets.data(), op_problem_scaled_.offsets.data(), n_cstr + 1, stream);
-    raft::copy(h_A_col_indices.data(), op_problem_scaled_.variables.data(), nnz, stream);
-    raft::copy(
-      h_A_t_row_offsets.data(), op_problem_scaled_.reverse_offsets.data(), n_vars + 1, stream);
-    raft::copy(
-      h_A_t_col_indices.data(), op_problem_scaled_.reverse_constraints.data(), nnz, stream);
-
-    // Paired value arrays for A and A_T.
-    std::vector<f_t> h_A_values(nnz);
-    std::vector<f_t> h_A_values_scaled(nnz);
-    std::vector<f_t> h_A_t_values(nnz);
-    std::vector<f_t> h_A_t_values_scaled(nnz);
-    raft::copy(h_A_values.data(), problem_ptr->coefficients.data(), nnz, stream);
-    raft::copy(h_A_t_values.data(), problem_ptr->reverse_coefficients.data(), nnz, stream);
-    raft::copy(h_A_values_scaled.data(), op_problem_scaled_.coefficients.data(), nnz, stream);
-    raft::copy(
-      h_A_t_values_scaled.data(), op_problem_scaled_.reverse_coefficients.data(), nnz, stream);
-
-    using f_t2 = typename type_2<f_t>::type;
-
-    std::vector<f_t> h_obj(n_vars);
-    std::vector<f_t> h_obj_scaled(n_vars);
-    std::vector<f_t2> h_var_bounds_packed(n_vars);
-    std::vector<f_t2> h_var_bounds_scaled_packed(n_vars);
-    std::vector<f_t> h_cstr_lower(n_cstr);
-    std::vector<f_t> h_cstr_upper(n_cstr);
-    std::vector<f_t> h_cstr_lower_scaled(n_cstr);
-    std::vector<f_t> h_cstr_upper_scaled(n_cstr);
-
-    raft::copy(h_obj.data(), problem_ptr->objective_coefficients.data(), n_vars, stream);
-    raft::copy(
-      h_obj_scaled.data(), op_problem_scaled_.objective_coefficients.data(), n_vars, stream);
-    raft::copy(h_var_bounds_packed.data(), problem_ptr->variable_bounds.data(), n_vars, stream);
-    raft::copy(
-      h_var_bounds_scaled_packed.data(), op_problem_scaled_.variable_bounds.data(), n_vars, stream);
-    raft::copy(h_cstr_lower.data(), problem_ptr->constraint_lower_bounds.data(), n_cstr, stream);
-    raft::copy(h_cstr_upper.data(), problem_ptr->constraint_upper_bounds.data(), n_cstr, stream);
-    raft::copy(h_cstr_lower_scaled.data(),
-               op_problem_scaled_.constraint_lower_bounds.data(),
-               n_cstr,
-               stream);
-    raft::copy(h_cstr_upper_scaled.data(),
-               op_problem_scaled_.constraint_upper_bounds.data(),
-               n_cstr,
-               stream);
-
-    // 5. Get full scaling factors on host
-    std::vector<f_t> h_cummulative_cstr_scaling(n_cstr);
-    std::vector<f_t> h_cummulative_var_scaling(n_vars);
-    raft::copy(h_cummulative_cstr_scaling.data(),
-               initial_scaling_strategy_.get_constraint_matrix_scaling_vector().data(),
-               n_cstr,
-               stream);
-    raft::copy(h_cummulative_var_scaling.data(),
-               initial_scaling_strategy_.get_variable_scaling_vector().data(),
-               n_vars,
-               stream);
-    const f_t h_bound_rescaling     = initial_scaling_strategy_.get_h_bound_rescaling();
-    const f_t h_objective_rescaling = initial_scaling_strategy_.get_h_objective_rescaling();
-
-    op_problem_scaled_.handle_ptr->sync_stream(stream);
-
-    // Unpack interleaved {lower, upper} into separate vectors for both
-    // versions, so the shard ctor's slicing loop is uniform.
-    std::vector<f_t> h_var_lower(n_vars), h_var_upper(n_vars);
-    std::vector<f_t> h_var_lower_scaled(n_vars), h_var_upper_scaled(n_vars);
-    for (i_t i = 0; i < n_vars; ++i) {
-      h_var_lower[i]        = h_var_bounds_packed[i].x;
-      h_var_upper[i]        = h_var_bounds_packed[i].y;
-      h_var_lower_scaled[i] = h_var_bounds_scaled_packed[i].x;
-      h_var_upper_scaled[i] = h_var_bounds_scaled_packed[i].y;
-    }
-
-    // 6. Build per-rank data and meta-data.
+    // ----- 5. Build per-rank data -----
     std::vector<rank_data_t<i_t, f_t>> sub_pdlp_rank_data =
       partition_loader_t<i_t, f_t>::create_rank_data_from_parts(parts,
                                                                 h_A_row_offsets,
@@ -597,7 +547,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
                                                                 n_vars,
                                                                 nnz);
 
-    // 7. Build the per-shard PDLP settings:
+    // ----- 6. Per-shard settings -----
     pdlp_solver_settings_t<i_t, f_t> sub_pdlp_settings                    = settings;
     sub_pdlp_settings.num_gpus                                            = 1;
     sub_pdlp_settings.distributed_pdlp_num_gpus                           = 1;
@@ -606,7 +556,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
     sub_pdlp_settings.hyper_params.default_l_inf_ruiz_iterations          = 0;
     sub_pdlp_settings.hyper_params.default_alpha_pock_chambolle_rescaling = 0.0;
 
-    // 8. Construct the engine, creates NCCL comms and shards
+    // ----- 7. Construct the engine: NCCL comms + per-shard pdlp_solver_t -----
     multi_gpu_engine.emplace(std::move(sub_pdlp_rank_data),
                              h_obj,
                              h_var_lower,
@@ -622,13 +572,12 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
                              h_cummulative_var_scaling,
                              h_bound_rescaling,
                              h_objective_rescaling,
-                             op_problem_scaled_.maximize,
-                             op_problem_scaled_.objective_offset,
-                             op_problem_scaled_.presolve_data.objective_scaling_factor,
+                             maximize,
+                             objective_offset,
+                             objective_scaling_factor,
                              sub_pdlp_settings);
 
-    // Copy to host and then to shards.
-    // More robust than cudaDeviceEnablePeerAccess and cost-free-ish.
+    // ----- 8. Seed shard step-size / primal-weight scalars from the master -----
     f_t h_step_size{}, h_primal_weight{}, h_best_primal_weight{};
     f_t h_primal_step_size{}, h_dual_step_size{};
     raft::copy(&h_step_size, step_size_.data(), 1, stream_view_);
@@ -648,27 +597,17 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
       raft::copy(sub.dual_step_size_.data(), &h_dual_step_size, 1, shard->stream);
     }
 
-    // Wire the engine into the master pdhg_solver_. Shards' pdhg_solver_ keep
-    // mgpu_engine_ == nullptr so they run plain single-GPU SpMV on local A.
+    // Wire the engine into master's pdhg_solver_; shards keep mgpu_engine_ == nullptr.
     pdhg_solver_.set_multi_gpu_engine(&*multi_gpu_engine);
 
-    // Project initial primal solution
-    if (settings_.hyper_params.project_initial_primal) {
-      // Use refine_initial_primal_projection ???
-      using f_t2 = typename type_2<f_t>::type;
-      for (auto& shard : multi_gpu_engine->shards) {
-        raft::device_setter guard(shard->device_id);
-        auto& sub = *shard->sub_pdlp;
-        cub::DeviceTransform::Transform(
-          cuda::std::make_tuple(sub.pdhg_solver_.get_primal_solution().data(),
-                                sub.get_op_problem_scaled().variable_bounds.data()),
-          sub.pdhg_solver_.get_primal_solution().data(),
-          sub.pdhg_solver_.get_primal_solution().size(),
-          clamp<f_t, f_t2>(),
-          shard->stream.view());
-      }
-    }
-  }  // end if constexpr (std::is_same_v<f_t, double>)
+    // ----- 9. Resize master gather destinations to the full problem size -----
+    pdhg_solver_.get_potential_next_primal_solution().resize(n_vars, stream_view_);
+    pdhg_solver_.get_potential_next_dual_solution().resize(n_cstr, stream_view_);
+    current_termination_strategy_.get_convergence_information().get_reduced_cost().resize(
+      n_vars, stream_view_);
+    primal_size_h_ = n_vars;
+    dual_size_h_   = n_cstr;
+    handle_ptr_->sync_stream(stream_view_);
 }
 
 template <typename i_t, typename f_t>
