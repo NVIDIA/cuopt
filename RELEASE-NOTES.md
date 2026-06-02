@@ -15,6 +15,7 @@
 - Move `libmps_parser` into `libcuopt` and the `mps_parser` Python module into `cuopt`; the standalone `libmps_parser` shared library and Python module are no longer shipped. Imports should move from `libmps_parser` to `cuopt`
 
 ### Improvements (26.06)
+- Improve performance of QP solver on portfolio optimization problems
 - Replace SpMV calls with SpMVOp calls in PDHG, 1.09x speedup
 - Reduce memory footprint of PDLP by around 50%
 - Unify threading model across LP (concurrent mode) and MIP to use OpenMP tasking model to allow stricter control of the number of threads
