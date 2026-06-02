@@ -176,7 +176,7 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
   // of workers allows the solver to be more deterministic.
   void calculate_num_diving_workers(i_t num_bfs_workers,
                                     i_t total_diving_workers,
-                                    const mip_diving_hyper_params_t& settings)
+                                    const mip_diving_hyper_params_t<i_t, f_t>& settings)
   {
     i_t num_active = 0;
     for (i_t i = 1; i < num_search_strategies; ++i) {

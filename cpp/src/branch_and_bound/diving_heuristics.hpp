@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include <cuopt/linear_programming/mip/diving_hyper_params.hpp>
+
 #include <branch_and_bound/pseudo_costs.hpp>
 
 #include <dual_simplex/basis_updates.hpp>
@@ -39,8 +41,9 @@ inline char feasible_solution_symbol(search_strategy_t strategy, bool log_diving
   }
 }
 
-inline bool is_search_strategy_enabled(search_strategy_t strategy,
-                                       const mip_diving_hyper_params_t& settings)
+template <typename i_t, typename f_t>
+bool is_search_strategy_enabled(search_strategy_t strategy,
+                                const mip_diving_hyper_params_t<i_t, f_t>& settings)
 {
   switch (strategy) {
     case BEST_FIRST: return true;

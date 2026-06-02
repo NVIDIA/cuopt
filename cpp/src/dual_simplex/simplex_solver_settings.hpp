@@ -193,7 +193,7 @@ struct simplex_solver_settings_t {
   // >1 - set as the iteration limit in dual simplex
   i_t strong_branching_simplex_iteration_limit;
 
-  mip_diving_hyper_params_t diving_settings;  // Settings for the diving heuristics
+  mip_diving_hyper_params_t<i_t, f_t> diving_settings;  // Settings for the diving heuristics
 
   // In B&B, indicate the chance in which a worker can steal a node from another worker.
   // -1 - automatic (0.05)

@@ -125,7 +125,7 @@
 #define CUOPT_MIP_HYPER_DIVING_ITERATION_LIMIT_FACTOR "mip_hyper_diving_iteration_limit_factor"
 #define CUOPT_MIP_HYPER_DIVING_BACKTRACK_LIMIT        "mip_hyper_diving_backtrack_limit"
 /* @brief Show per-strategy diving symbol in logs (true) instead of a generic 'D' */
-#define CUOPT_MIP_HYPER_DIVING_SHOW_DIVING_TYPE "mip_hyper_diving_show_diving_type"
+#define CUOPT_MIP_HYPER_DIVING_SHOW_TYPE "mip_hyper_diving_show_type"
 
 /* @brief MIP determinism mode constants */
 #define CUOPT_MODE_OPPORTUNISTIC 0

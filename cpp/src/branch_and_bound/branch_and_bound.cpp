@@ -785,7 +785,7 @@ void branch_and_bound_t<i_t, f_t>::add_feasible_solution(f_t leaf_objective,
 {
   bool send_solution = false;
 
-  const bool log_diving_type = settings_.diving_settings.show_diving_type;
+  const bool log_diving_type = settings_.diving_settings.show_type;
   settings_.log.debug("%c found a feasible solution with obj=%.10e.\n",
                       feasible_solution_symbol(thread_type, log_diving_type),
                       compute_user_objective(original_lp_, leaf_objective));
@@ -1740,7 +1740,7 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
     settings_.bnb_steal_chance >= 0 ? settings_.bnb_steal_chance : MIP_DEFAULT_STEAL_CHANCE;
   node_queue_t<i_t, f_t>& node_queue = worker->node_queue;
 
-  mip_diving_hyper_params_t diving_settings = settings_.diving_settings;
+  mip_diving_hyper_params_t<i_t, f_t> diving_settings = settings_.diving_settings;
   if (diving_settings.guided_diving != 0 && !has_solver_space_incumbent()) {
     diving_settings.guided_diving = 0;
   }
@@ -3528,7 +3528,7 @@ void branch_and_bound_t<i_t, f_t>::deterministic_process_worker_solutions(
       i_t nodes_unexplored = exploration_stats_.nodes_unexplored.load();
 
       search_strategy_t worker_type = get_worker_type(pool, sol->worker_id);
-      report(feasible_solution_symbol(worker_type, settings_.diving_settings.show_diving_type),
+      report(feasible_solution_symbol(worker_type, settings_.diving_settings.show_type),
              sol->objective,
              deterministic_lower,
              sol->depth,
