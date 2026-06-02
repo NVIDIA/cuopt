@@ -76,6 +76,34 @@ The response is as follows:
     Objective value = 1.4142135623730951
 
 
+.. _rotated-socp-example-python:
+
+Rotated Second-Order Cone Programming Example
+---------------------------------------------
+
+:download:`rotated_socp_example.py <examples/rotated_socp_example.py>`
+
+This example solves a **rotated** cone ``x1^2 + x2^2 <= x3 * x4``. cuOpt expects a
+symmetric quadratic matrix ``Q``, so the cross term is supplied as the two equal
+halves ``-0.5*x3*x4`` and ``-0.5*x4*x3``. It minimizes ``x3 + x4`` subject to
+``x1 + x2 >= 2``.
+
+.. literalinclude:: examples/rotated_socp_example.py
+   :language: python
+   :linenos:
+
+The response is as follows:
+
+.. code-block:: text
+
+    Status: 1
+    x1 = 1.0
+    x2 = 1.0
+    x3 = 1.4142135623730951
+    x4 = 1.4142135623730951
+    Objective value = 2.8284271247461903
+
+
 .. _mps-example-python:
 
 Reading a Problem from an MPS File
