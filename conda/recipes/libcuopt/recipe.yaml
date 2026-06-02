@@ -140,7 +140,7 @@ outputs:
         - libboost-devel
         - librmm =${{ minor_version }}
         - cuda-nvrtc
-        - libcudss
+        - libcudss >=0.7,<0.8
         - openssl
         - c-ares
         - libuuid
