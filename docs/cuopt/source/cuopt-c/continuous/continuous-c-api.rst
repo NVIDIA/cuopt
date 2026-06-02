@@ -73,6 +73,8 @@ after creating a linear problem:
    - **Standard (Lorentz) cone** ``||(x_1, ..., x_{k-1})||_2 <= x_k`` as ``x_1^2 + ... + x_{k-1}^2 - x_k^2 <= 0``.
    - **Rotated cone** ``x_1^2 + ... + x_{k-2}^2 <= x_{k-1}*x_k`` (with ``x_{k-1}, x_k >= 0``) as ``x_1^2 + ... + x_{k-2}^2 - x_{k-1}*x_k <= 0``.
 
+   The quadratic matrix ``Q`` must be supplied symmetrically — for any cross term, pass both the
+   ``(i, j)`` and ``(j, i)`` entries (e.g. for a rotated cone, ``Q[x_{k-1}, x_k] = Q[x_k, x_{k-1}] = -0.5``).
    Only ``CUOPT_LESS_THAN`` and ``CUOPT_GREATER_THAN`` sense is supported; equality constraints and
    general quadratic constraints are not supported.
 

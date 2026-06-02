@@ -140,6 +140,7 @@ When any quadratic constraint is present, cuOpt automatically selects the barrie
 - Only ``<=`` and ``>=`` sense is supported. Equality quadratic constraints are not supported.
 - The right-hand side must be ``0``.
 - The quadratic form must have valid second-order cone structure (standard or rotated).
+- The quadratic matrix ``Q`` must be supplied **symmetrically**: for any cross term, provide both ``Q[i,j]`` and ``Q[j,i]``. cuOpt expects only symmetric ``Q``.
 
 **Python example — standard cone** ``||(x_1, x_2)||_2 <= x_3``:
 
@@ -161,17 +162,22 @@ When any quadratic constraint is present, cuOpt automatically selects the barrie
     x3 = problem.addVariable(name="x3", lb=0)   # cone heads, must be >= 0
     x4 = problem.addVariable(name="x4", lb=0)
 
-    # x1^2 + x2^2 <= x3 * x4  expressed as  x1^2 + x2^2 - x3*x4 <= 0.
-    # The quadratic form must be symmetric, so the cross term is supplied as the
-    # two equal halves -0.5*x3*x4 and -0.5*x4*x3 (i.e. Q[x3,x4] = Q[x4,x3] = -0.5).
+    problem.addConstraint(x1 + x2 >= 2)
+    # x1^2 + x2^2 <= x3 * x4. cuOpt expects a symmetric Q, so the cross term is
+    # supplied as the two equal halves -0.5*x3*x4 and -0.5*x4*x3
+    # (i.e. Q[x3,x4] = Q[x4,x3] = -0.5).
     problem.addConstraint(
         x1*x1 + x2*x2 - 0.5*x3*x4 - 0.5*x4*x3 <= 0, name="rotated_soc"
     )
 
+    problem.setObjective(x3 + x4, sense=MINIMIZE)
+    problem.solve()
+
 .. note::
-   The rotated-cone cross term must be written symmetrically (both ``x3*x4`` and
-   ``x4*x3`` halves). Supplying only ``- x3*x4`` produces an asymmetric quadratic
-   form that is not recognized as a second-order cone.
+   cuOpt expects the quadratic matrix ``Q`` to be symmetric. Supply each cross
+   term as two equal halves, as in ``-0.5*x3*x4 - 0.5*x4*x3`` above.
+
+Minimizing ``x3 + x4`` subject to ``x1 + x2 >= 2`` yields the optimal solution ``x1 = x2 = 1`` and ``x3 = x4 = sqrt(2)`` (objective ``2*sqrt(2) ≈ 2.83``).
 
 **C API:** Use :c:func:`cuOptAddQuadraticConstraint` to add standard or rotated SOC constraints expressed as quadratic inequalities. cuOpt detects the SOC structure and converts to cone form internally.
 
