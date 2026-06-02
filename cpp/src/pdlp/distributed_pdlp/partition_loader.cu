@@ -196,8 +196,7 @@ std::vector<rank_data_t<i_t, f_t>> partition_loader_t<i_t, f_t>::create_rank_dat
       if (peer == rank) continue;
       for (auto recv_cstr : rank_data[peer].cstr_send_per_peer[rank]) {
         rd.global_to_local_cstr[recv_cstr] = curr_id;
-        // rd.local_to_global_cstr.push_back(recv_cstr); // Not needed, we only do local_to_global
-        // on owned side
+        rd.local_to_global_cstr.push_back(recv_cstr);
         curr_id++;
       }
     }
@@ -212,7 +211,7 @@ std::vector<rank_data_t<i_t, f_t>> partition_loader_t<i_t, f_t>::create_rank_dat
       if (peer == rank) continue;
       for (auto recv_var : rank_data[peer].var_send_per_peer[rank]) {
         rd.global_to_local_var[recv_var] = curr_id;
-        // rd.local_to_global_var.push_back(recv_var); // same as over
+        rd.local_to_global_var.push_back(recv_var);
         curr_id++;
       }
     }

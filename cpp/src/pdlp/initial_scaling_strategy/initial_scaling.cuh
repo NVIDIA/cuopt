@@ -75,6 +75,11 @@ class pdlp_initial_scaling_strategy_t {
                          rmm::device_uvector<f_t>& dual_slack) const;
   void unscale_solutions(solution_t<i_t, f_t>& solution) const;
   const rmm::device_uvector<f_t>& get_constraint_matrix_scaling_vector() const;
+  // Mutable access needed by distributed PDLP to broadcast owned constraint
+  rmm::device_uvector<f_t>& get_cummulative_constraint_matrix_scaling()
+  {
+    return cummulative_constraint_matrix_scaling_;
+  }
   const rmm::device_uvector<f_t>& get_variable_scaling_vector() const;
   const problem_t<i_t, f_t>& get_scaled_op_problem();
 
@@ -93,6 +98,14 @@ class pdlp_initial_scaling_strategy_t {
   void set_h_objective_rescaling(f_t value);
 
   void bound_objective_rescaling();
+
+  // Distributed PDLP: apply an externally-computed GLOBAL bound / objective
+  // rescaling to the already-scaled problem.
+  void apply_distributed_bound_objective_rescaling(f_t bound_rescaling, f_t objective_rescaling);
+
+  // Distributed PDLP: skip the LOCAL bound/objective rescaling inside
+  // scale_problem()
+  void set_skip_distributed_local_rescaling(bool value) { skip_distributed_local_rescaling_ = value; }
 
   // Public for distributed PDLP
   void compute_scaling_vectors(i_t number_of_ruiz_iterations, f_t alpha);
@@ -144,5 +157,8 @@ class pdlp_initial_scaling_strategy_t {
   rmm::device_uvector<i_t>& A_T_indices_;
   const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params_;
   bool running_mip_;
+  // Distributed PDLP: when true, scale_problem() skips its local
+  // bound/objective rescaling (the global factor is applied separately).
+  bool skip_distributed_local_rescaling_{false};
 };
 }  // namespace cuopt::linear_programming::detail

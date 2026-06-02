@@ -591,14 +591,21 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
     multi_gpu_engine->distributed_ruiz_inf_scaling(
       settings_.hyper_params.default_l_inf_ruiz_iterations, n_vars);
   }
+  // push local scaling to halo
+  multi_gpu_engine->broadcast_constraint_scaling_to_halo();
   if (settings_.hyper_params.do_pock_chambolle_scaling) {
     multi_gpu_engine->distributed_pock_chambolle_scaling(
       static_cast<f_t>(settings_.hyper_params.default_alpha_pock_chambolle_rescaling), n_vars);
   }
+  // Refresh the halo constraint scaling after Pock-Chambolle
+  multi_gpu_engine->broadcast_constraint_scaling_to_halo();
 
   for (auto& shard : multi_gpu_engine->shards) {
     raft::device_setter guard(shard->device_id);
     auto& scaling = shard->sub_pdlp->get_initial_scaling_strategy();
+    // Skip the per-shard local bound/objective rescaling; the global factor is
+    // applied below. Keeps the unscale path active (flag stays true).
+    scaling.set_skip_distributed_local_rescaling(true);
     scaling.scale_problem();
 
     shard->sub_pdlp->pdhg_solver_.get_cusparse_view().create_spmv_op_plans(
@@ -607,6 +614,12 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   for (auto& shard : multi_gpu_engine->shards) {
     raft::device_setter guard(shard->device_id);
     shard->stream.synchronize();
+  }
+
+  // Global bound/objective rescaling: allreduce the owned partial squared-norms
+  if (settings_.hyper_params.bound_objective_rescaling && !inside_mip_) {
+    multi_gpu_engine->distributed_bound_objective_rescaling(
+      static_cast<f_t>(settings_.hyper_params.initial_primal_weight_c_scaling));
   }
 
   // ----- 8b. Seed initial step-size / primal-weight (distributed, scales to N shards) -----

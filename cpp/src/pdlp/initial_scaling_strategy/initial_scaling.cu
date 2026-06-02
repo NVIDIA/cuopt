@@ -644,7 +644,8 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_problem()
     cuda::std::multiplies<f_t>{},
     stream_view_);
 
-  if (hyper_params_.bound_objective_rescaling && !running_mip_) {
+  if (hyper_params_.bound_objective_rescaling && !running_mip_ &&
+      !skip_distributed_local_rescaling_) {
     // Coefficients are computed on the already scaled values
     bound_objective_rescaling();
 
@@ -955,6 +956,50 @@ template <typename i_t, typename f_t>
 const problem_t<i_t, f_t>& pdlp_initial_scaling_strategy_t<i_t, f_t>::get_scaled_op_problem()
 {
   return op_problem_scaled_;
+}
+
+template <typename i_t, typename f_t>
+void pdlp_initial_scaling_strategy_t<i_t, f_t>::apply_distributed_bound_objective_rescaling(
+  f_t bound_rescaling, f_t objective_rescaling)
+{
+  using f_t2 = typename type_2<f_t>::type;
+
+  // constraint bounds *= bound_rescaling  (matches scale_problem() bound block)
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(op_problem_scaled_.constraint_lower_bounds.data(),
+                          op_problem_scaled_.constraint_upper_bounds.data()),
+    thrust::make_zip_iterator(op_problem_scaled_.constraint_lower_bounds.data(),
+                              op_problem_scaled_.constraint_upper_bounds.data()),
+    op_problem_scaled_.constraint_upper_bounds.size(),
+    [bound_rescaling] __device__(f_t lower, f_t upper) -> thrust::tuple<f_t, f_t> {
+      return {lower * bound_rescaling, upper * bound_rescaling};
+    },
+    stream_view_.value());
+
+  // variable bounds *= bound_rescaling (batch-1 path only; distributed is batch 1)
+  cub::DeviceTransform::Transform(
+    op_problem_scaled_.variable_bounds.data(),
+    op_problem_scaled_.variable_bounds.data(),
+    op_problem_scaled_.variable_bounds.size(),
+    [bound_rescaling] __device__(f_t2 variable_bounds) -> f_t2 {
+      return {variable_bounds.x * bound_rescaling, variable_bounds.y * bound_rescaling};
+    },
+    stream_view_);
+
+  // objective *= objective_rescaling
+  cub::DeviceTransform::Transform(
+    op_problem_scaled_.objective_coefficients.data(),
+    op_problem_scaled_.objective_coefficients.data(),
+    op_problem_scaled_.objective_coefficients.size(),
+    [objective_rescaling] __device__(f_t c) -> f_t { return c * objective_rescaling; },
+    stream_view_);
+
+  // Store the factors (sets both host copies and the device rescaling vectors)
+  // so unscale_solutions() / scale_solutions() apply them consistently. The flag
+  // hyper_params_.bound_objective_rescaling stays true on shards so those paths
+  // are active; only scale_problem()'s local recompute is skipped.
+  set_h_bound_rescaling(bound_rescaling);
+  set_h_objective_rescaling(objective_rescaling);
 }
 
 template <typename i_t, typename f_t>
