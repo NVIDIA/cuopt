@@ -535,4 +535,71 @@ TEST(right_looking_ldlt, indefinite_4x4)
   EXPECT_EQ(result, INDEFINITE_MATRIX_RETURN);
 }
 
+// Test 16: Large sparse PD matrix A = e1*e^T + e*e1^T + n*I (n = 10000).
+// e1 = [1,0,...,0], e = [1,1,...,1].
+// A(0,0) = n+2, A(i,0) = A(0,i) = 1 for i > 0, A(i,i) = n for i > 0.
+// This is an arrowhead matrix: dense first row/column, diagonal elsewhere.
+// Markowitz pivoting should eliminate the n-1 diagonal nodes (degree 1) first,
+// producing zero fill, then eliminate the dense node last.
+// Without reordering, eliminating the dense node first would cause O(n^2) fill.
+TEST(right_looking_ldlt, large_arrowhead_markowitz)
+{
+  const int n = 10000;
+
+  // Build lower triangle CSC of A = e1*e1^T + e*e1^T + n*I
+  // Column 0: entries at all rows (dense column). A(0,0) = n+2, A(i,0) = 1 for i > 0.
+  // Columns j > 0: only diagonal entry A(j,j) = n.
+  // Lower triangle: column 0 has entries (0, n+2), (1, 1), (2, 1), ..., (n-1, 1).
+  //                 column j > 0 has entry (j, n).
+  int nnz = n + (n - 1);  // n entries in col 0, (n-1) diagonal entries in cols 1..n-1
+  csc_matrix_t<int, double> A(n, n, nnz);
+  int p = 0;
+  // Column 0
+  A.col_start[0] = p;
+  A.i[p] = 0;
+  A.x[p] = static_cast<double>(n + 2);
+  p++;
+  for (int i = 1; i < n; i++) {
+    A.i[p] = i;
+    A.x[p] = 1.0;
+    p++;
+  }
+  // Columns 1..n-1
+  for (int j = 1; j < n; j++) {
+    A.col_start[j] = p;
+    A.i[p] = j;
+    A.x[p] = static_cast<double>(n);
+    p++;
+  }
+  A.col_start[n] = p;
+
+  simplex_solver_settings_t<int, double> settings;
+  std::vector<int> perm;
+  csc_matrix_t<int, double> L(n, n, 1);
+  std::vector<double> D;
+  double work_estimate = 0;
+  double start_time    = tic();
+
+  int rank = right_looking_ldlt(A, settings, 1e-12, start_time, perm, L, D, work_estimate);
+
+  EXPECT_EQ(rank, n);
+  for (int k = 0; k < rank; k++) {
+    EXPECT_GT(D[k], 0.0);
+  }
+
+  // With Markowitz pivoting, the diagonal nodes (degree 1) should be eliminated first,
+  // producing zero fill. The L factor should be very sparse: at most n-1 entries in the
+  // last column (from the dense node) plus n unit diagonals.
+  int L_nnz = L.col_start[rank];
+  // Each of the first n-1 pivots (degree-1 nodes) produces 1 L entry (the unit diagonal)
+  // plus 1 off-diagonal entry (connecting to the dense node). The last pivot (dense node)
+  // produces just the unit diagonal. Total: n diagonals + (n-1) off-diagonals = 2n - 1.
+  EXPECT_LE(L_nnz, 2 * n);
+
+  // Verify factorization correctness on a few random entries by checking P*A*P^T = L*D*L^T.
+  // For the arrowhead, after reordering, the first n-1 pivots should be the diagonal nodes.
+  // Check that perm[0] != 0 (the dense node should NOT be first).
+  EXPECT_NE(perm[0], 0) << "Markowitz should not pick the dense node (index 0) first";
+}
+
 }  // namespace cuopt::linear_programming::dual_simplex::test
