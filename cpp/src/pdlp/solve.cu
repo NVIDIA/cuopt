@@ -2155,6 +2155,10 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
                 "use_distributed_pdlp; please set settings.presolver = presolver_t::None");
 
   pdlp_solver_settings_t<i_t, f_t> settings_resolved = settings;
+
+  detail::pdlp_graph_disabled_flag().store(settings_resolved.hyper_params.pdlp_disable_graph,
+                                           std::memory_order_relaxed);
+
   if (settings_resolved.distributed_pdlp_num_gpus == -1) {
     settings_resolved.distributed_pdlp_num_gpus = raft::device_setter::get_device_count();
     CUOPT_LOG_INFO(
