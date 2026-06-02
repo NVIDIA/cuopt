@@ -609,20 +609,20 @@ TEST(general_quadratic, soc_head_nonneg_accepted)
   user_problem.A.nz_max = nz;
   user_problem.A.reallocate(nz);
   user_problem.A.col_start = {0, 0, 0, 2};
-  user_problem.A.i[0] = 0;
-  user_problem.A.x[0] = 1.0;  // dummy row for barrier: t <= 10
-  user_problem.A.i[1] = 0;
-  user_problem.A.x[1] = 0.0;  // placeholder
+  user_problem.A.i[0]      = 0;
+  user_problem.A.x[0]      = 1.0;  // dummy row for barrier: t <= 10
+  user_problem.A.i[1]      = 0;
+  user_problem.A.x[1]      = 0.0;  // placeholder
 
   // Actually just use: x1 = 1 as a simple equality
   user_problem.A.col_start = {0, 0, 1, 1};
-  user_problem.A.i[0] = 0;
-  user_problem.A.x[0] = 1.0;
+  user_problem.A.i[0]      = 0;
+  user_problem.A.x[0]      = 1.0;
 
-  user_problem.rhs       = {1.0};
-  user_problem.row_sense = {'E'};
-  user_problem.lower     = {-inf, -inf, 0.0};  // t >= 0
-  user_problem.upper     = {inf, inf, inf};
+  user_problem.rhs            = {1.0};
+  user_problem.row_sense      = {'E'};
+  user_problem.lower          = {-inf, -inf, 0.0};  // t >= 0
+  user_problem.upper          = {inf, inf, inf};
   user_problem.num_range_rows = 0;
   user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
 
@@ -633,16 +633,16 @@ TEST(general_quadratic, soc_head_nonneg_accepted)
   qc.constraint_row_name  = "soc_valid";
   qc.constraint_row_type  = 'L';
   qc.rhs_value            = 0.0;
-  qc.rows = {0, 1, 2};
-  qc.cols = {0, 1, 2};
-  qc.vals = {1.0, 1.0, -1.0};
+  qc.rows                 = {0, 1, 2};
+  qc.cols                 = {0, 1, 2};
+  qc.vals                 = {1.0, 1.0, -1.0};
 
   dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, 1);
-  csr_A.m = m;
-  csr_A.n = n;
+  csr_A.m         = m;
+  csr_A.n         = n;
   csr_A.row_start = {0, 1};
-  csr_A.j = {1};
-  csr_A.x = {1.0};
+  csr_A.j         = {1};
+  csr_A.x         = {1.0};
 
   std::vector<qc_t> qcs = {qc};
   // Should NOT throw — head variable t has lower >= 0
@@ -675,13 +675,13 @@ TEST(general_quadratic, soc_head_free_rejected)
   user_problem.A.nz_max = nz;
   user_problem.A.reallocate(nz);
   user_problem.A.col_start = {0, 0, 1, 1};
-  user_problem.A.i[0] = 0;
-  user_problem.A.x[0] = 1.0;
+  user_problem.A.i[0]      = 0;
+  user_problem.A.x[0]      = 1.0;
 
-  user_problem.rhs       = {1.0};
-  user_problem.row_sense = {'E'};
-  user_problem.lower     = {-inf, -inf, -inf};  // t is FREE — no lower bound
-  user_problem.upper     = {inf, inf, inf};
+  user_problem.rhs            = {1.0};
+  user_problem.row_sense      = {'E'};
+  user_problem.lower          = {-inf, -inf, -inf};  // t is FREE — no lower bound
+  user_problem.upper          = {inf, inf, inf};
   user_problem.num_range_rows = 0;
   user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
 
@@ -691,16 +691,16 @@ TEST(general_quadratic, soc_head_free_rejected)
   qc.constraint_row_name  = "soc_invalid";
   qc.constraint_row_type  = 'L';
   qc.rhs_value            = 0.0;
-  qc.rows = {0, 1, 2};
-  qc.cols = {0, 1, 2};
-  qc.vals = {1.0, 1.0, -1.0};
+  qc.rows                 = {0, 1, 2};
+  qc.cols                 = {0, 1, 2};
+  qc.vals                 = {1.0, 1.0, -1.0};
 
   dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
-  csr_A.m = m;
-  csr_A.n = n;
+  csr_A.m         = m;
+  csr_A.n         = n;
   csr_A.row_start = {0, 1};
-  csr_A.j = {1};
-  csr_A.x = {1.0};
+  csr_A.j         = {1};
+  csr_A.x         = {1.0};
 
   std::vector<qc_t> qcs = {qc};
   // Should throw — head variable t is free, constraint is non-convex
