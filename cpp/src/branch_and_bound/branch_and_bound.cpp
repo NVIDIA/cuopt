@@ -2677,8 +2677,20 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   };
   cuopt::scope_guard root_cut_cpufj_guard([&]() { stop_root_cut_cpufj(); });
 
-  f_t cut_generation_start_time = tic();
-  i_t cut_pool_size             = 0;
+  f_t cut_generation_start_time    = tic();
+  auto publish_cut_generation_time = [&](bool force_time_limit_value = false) {
+    if (settings_.benchmark_info_ptr == nullptr) { return; }
+    f_t cut_generation_time = toc(cut_generation_start_time);
+    if (force_time_limit_value || cut_generation_time > settings_.time_limit) {
+      cut_generation_time = settings_.time_limit;
+    }
+    if (cut_generation_time < static_cast<f_t>(0.0)) {
+      cut_generation_time = static_cast<f_t>(0.0);
+    }
+    settings_.benchmark_info_ptr->cut_generation_time_sec =
+      static_cast<double>(cut_generation_time);
+  };
+  i_t cut_pool_size = 0;
   for (i_t cut_pass = 0; cut_pass < settings_.max_cut_passes; cut_pass++) {
     if (num_fractional == 0) {
       // LP relaxation is already integer-feasible — solved at the root
@@ -2689,6 +2701,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
           static_cast<double>(compute_user_objective(original_lp_, root_objective_));
       }
       set_solution_at_root(solution, cut_info);
+      publish_cut_generation_time();
       signal_extend_cliques_.store(true, std::memory_order_release);
 #pragma omp taskwait depend(in : *clique_signal)
       return mip_status_t::OPTIMAL;
@@ -2728,6 +2741,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     }
 
     if (cut_pass_result.action == cut_pass_action_t::RETURN) {
+      publish_cut_generation_time(cut_pass_result.status == mip_status_t::TIME_LIMIT);
       signal_extend_cliques_.store(true, std::memory_order_release);
 #pragma omp taskwait depend(in : *clique_signal)
       return cut_pass_result.status;
@@ -2768,10 +2782,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   // emit it alongside gap_closed_pct. Always set when the cut loop ran,
   // even if no cuts were added (the time still measures real work in
   // generate_cuts + score_cuts + dedup + LP resolves).
-  if (settings_.benchmark_info_ptr != nullptr) {
-    settings_.benchmark_info_ptr->cut_generation_time_sec =
-      static_cast<double>(cut_generation_time);
-  }
+  publish_cut_generation_time();
   if (cut_info.has_cuts()) {
     settings_.log.printf("Cut generation time: %.2f seconds\n", cut_generation_time);
     settings_.log.printf("Cut pool size  : %d\n", cut_pool_size);

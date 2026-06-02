@@ -329,7 +329,7 @@ class cut_pool_t {
   // higher-scoring representative (or, if no score was supplied, the
   // earlier-inserted one).
   //
-  // Defaults: jaccard_tau=0.95, k=8, enable=true, size_weight=0.0.
+  // Defaults: jaccard_tau=0.875, k=8, enable=true, size_weight=0.0.
   // These match "config 3 / cousin_loose" from the clique-sweep on
   // commit 0b04683b — the configuration that won the gap-closed-pct
   // comparison and was promoted to be the production default for the
@@ -401,7 +401,7 @@ class cut_pool_t {
   std::vector<std::vector<uint64_t>> clique_support_minhash_;
   std::vector<f_t> clique_cousin_score_;
   std::unordered_map<uint64_t, std::vector<i_t>> clique_cousin_buckets_;
-  f_t clique_cousin_jaccard_tau_{static_cast<f_t>(0.95)};
+  f_t clique_cousin_jaccard_tau_{static_cast<f_t>(0.875)};
   i_t clique_cousin_minhash_k_{8};
   bool clique_cousin_filter_enable_{true};
   // When > 0, the cousin filter's "score" used to pick a winner is
@@ -439,7 +439,8 @@ class cut_pool_t {
 //                           (the cut_scoring final-version P2-4 baseline)
 //   2  cousin_strict        cousin filter on, tau=0.70 (more aggressive
 //                           cousin removal — favors quantity reduction)
-//   3  cousin_loose         cousin filter on, tau=0.95 (closer to no-filter
+//   3  cousin_loose         cousin filter on, tau=0.875 (allows 7/8 min-hash
+//                           agreement with k=8; still closer to no-filter
 //                           extreme — selection-stage absorbs cousins)
 //   4  cousin_size_tilt     cousin filter on, tau=0.85, score = violation *
 //                           (1 + 0.5 * log2(1 + clique_size)) — picks the

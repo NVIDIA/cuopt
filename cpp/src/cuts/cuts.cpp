@@ -5830,12 +5830,13 @@ void apply_cut_sweep_config(cut_pool_t<i_t, f_t>& cut_pool,
       cut_pool.set_clique_cousin_size_weight(static_cast<f_t>(0.0));
       break;
     case 3:
-      // 03_cousin_loose: looser Jaccard threshold (0.85 -> 0.95). Closer
+      // 03_cousin_loose: looser Jaccard threshold (0.85 -> 0.875). Allows
+      // 7/8 min-hash agreement to qualify as cousins when k=8. Closer
       // to no-filter behavior. Gap should match config 0 if the cousin
       // filter is mostly absorbing redundancy that the orthogonality
       // scan would catch anyway.
       cut_pool.set_clique_cousin_filter_enable(true);
-      cut_pool.set_clique_cousin_jaccard_tau(static_cast<f_t>(0.95));
+      cut_pool.set_clique_cousin_jaccard_tau(static_cast<f_t>(0.875));
       cut_pool.set_clique_cousin_minhash_k(8);
       cut_pool.set_clique_cousin_size_weight(static_cast<f_t>(0.0));
       break;
