@@ -19,7 +19,7 @@
 - Replace SpMV calls with SpMVOp calls in PDHG, 1.09x speedup
 - Reduce memory footprint of PDLP by around 50%
 - Unify threading model across LP (concurrent mode) and MIP to use OpenMP tasking model to allow stricter control of the number of threads
-- Unified `read` API on `Problem` for both MPS and LP file formats; the older `readMPS` is now deprecated.
+- Unify `read` API on `Problem` for both MPS and LP file formats; the older `readMPS` is now deprecated.
 - Built and tested with CUDA 13.2.
 - gRPC is now built against OpenSSL 3 in the container and wheel.
 - Substantially expanded the in-repo skill set for AI coding agents (Copilot, Cline, Windsurf, Jules, Aider, Codex) covering developer onboarding, installation, numerical optimization, routing, and the server. Added NVIDIA-signed skill cards, evaluation datasets, and a skill-evolution workflow under `skills/`.
@@ -28,6 +28,10 @@
 ### Bug Fixes (26.06)
 - Probing cache now correctly update the model after each batch
 - Fix accidental O(m^2) algorithm when adding slack variables in crossover
+
+### Deprecated APIs (26.06)
+- Python API: `readMPS` is deprecated
+- C API: `cuOptCreateQuadraticProblem` and `cuOptCreateQuadraticRangedProblem` is deprecated
 
 ### Documentation (26.06)
 - Refreshed the contributor guide (`CONTRIBUTING.md`) with conda-environment recommendations and clarified test-suite scope.
