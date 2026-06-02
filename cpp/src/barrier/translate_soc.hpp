@@ -66,34 +66,24 @@ void convert_quadratic_constraints_to_second_order_cones(
   // Use a practical tolerance for text-parsed MPS numeric values.
   const f_t tol = std::numeric_limits<f_t>::epsilon() * 2;
 
-  // Simple bound propagation from singleton inequality rows.
-  // A row with a single nonzero coefficient a*x_j {<=,>=} b implies a bound on x_j.
-  // This allows SOC head variables whose non-negativity is implied by a constraint
-  // (rather than an explicit variable bound) to be recognized.
+  // Derive implied lower bounds from singleton inequality rows.
+  // Used to check if SOC head variables have implied non-negativity from the constraint system
+  // without actually modifying the variable bounds (which would add barrier terms).
+  std::vector<f_t> implied_lower(n, -std::numeric_limits<f_t>::infinity());
   for (i_t i = 0; i < csr_A.m; i++) {
     const i_t row_start = csr_A.row_start[i];
     const i_t row_end   = csr_A.row_start[i + 1];
-    if (row_end - row_start != 1) { continue; }  // not a singleton row
+    if (row_end - row_start != 1) { continue; }
     const i_t j      = csr_A.j[row_start];
     const f_t a      = csr_A.x[row_start];
     const f_t b      = user_problem.rhs[i];
     const char sense = user_problem.row_sense[i];
     if (std::abs(a) < tol) { continue; }
     const f_t bound = b / a;
-    if (sense == 'G') {
-      // a*x_j >= b: if a > 0 then x_j >= b/a; if a < 0 then x_j <= b/a
-      if (a > 0) {
-        user_problem.lower[j] = std::max(user_problem.lower[j], bound);
-      } else {
-        user_problem.upper[j] = std::min(user_problem.upper[j], bound);
-      }
-    } else if (sense == 'L') {
-      // a*x_j <= b: if a > 0 then x_j <= b/a; if a < 0 then x_j >= b/a
-      if (a > 0) {
-        user_problem.upper[j] = std::min(user_problem.upper[j], bound);
-      } else {
-        user_problem.lower[j] = std::max(user_problem.lower[j], bound);
-      }
+    if (sense == 'G' && a > 0) {
+      implied_lower[j] = std::max(implied_lower[j], bound);
+    } else if (sense == 'L' && a < 0) {
+      implied_lower[j] = std::max(implied_lower[j], bound);
     }
   }
 
@@ -392,9 +382,9 @@ void convert_quadratic_constraints_to_second_order_cones(
               static_cast<double>(neg_v),
               static_cast<double>(-uniform_s));
             head = neg_diag_rows[0].first;
-            // The SOC ||tail|| <= head requires head >= 0. After bound propagation,
-            // this should hold if implied by the constraint system.
-            cuopt_expects(user_problem.lower[head] >= 0,
+            // The SOC ||tail|| <= head requires head >= 0. Check explicit bound
+            // or implied bound from singleton inequality constraints.
+            cuopt_expects(std::max(user_problem.lower[head], implied_lower[head]) >= 0,
                           error_type_t::ValidationError,
                           "Quadratic constraint '%s' SOC head variable (index %d) must have a "
                           "non-negative lower bound for the constraint to be convex",
@@ -540,14 +530,14 @@ void convert_quadratic_constraints_to_second_order_cones(
         cone_dim   = static_cast<i_t>(cone.size());
         is_rotated = 1;
         // Rotated SOC ||tail||^2 <= 2*a*b requires a >= 0 and b >= 0.
-        // After bound propagation, this should hold if implied by the constraint system.
-        cuopt_expects(user_problem.lower[a] >= 0,
+        // Check explicit bound or implied bound from singleton inequality constraints.
+        cuopt_expects(std::max(user_problem.lower[a], implied_lower[a]) >= 0,
                       error_type_t::ValidationError,
                       "Quadratic constraint '%s' rotated SOC head variable (index %d) must have a "
                       "non-negative lower bound for the constraint to be convex",
                       qc.constraint_row_name.c_str(),
                       static_cast<int>(a));
-        cuopt_expects(user_problem.lower[b] >= 0,
+        cuopt_expects(std::max(user_problem.lower[b], implied_lower[b]) >= 0,
                       error_type_t::ValidationError,
                       "Quadratic constraint '%s' rotated SOC head variable (index %d) must have a "
                       "non-negative lower bound for the constraint to be convex",
