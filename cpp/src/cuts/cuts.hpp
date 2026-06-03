@@ -382,7 +382,7 @@ class cut_pool_t {
   std::unordered_map<uint64_t, std::vector<i_t>> clique_cousin_buckets_;
   f_t clique_cousin_jaccard_tau_{static_cast<f_t>(0.875)};
   i_t clique_cousin_minhash_k_{8};
-  bool clique_cousin_filter_enable_{true};
+  bool clique_cousin_filter_enable_{false};
   // When > 0, the cousin filter's "score" used to pick a winner is
   // boosted as: effective_score = base_score * (1 + size_weight * log2(1 + clique_size)).
   // This biases cousin replacement toward larger cliques (more variables
