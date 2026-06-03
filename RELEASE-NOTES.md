@@ -28,7 +28,7 @@
 
 ### Bug Fixes (26.06)
 - Fix a bug in MIP where the probing cache did not correctly update the model after each batch
-- Fix an issue in crossover where adding slack variables to a rank-deficient basis was accidentlly O(rows^2)
+- Fix an issue in crossover where adding slack variables to a rank-deficient basis was accidentally O(rows^2)
 
 ### Deprecated APIs (26.06)
 - Python API: `readMPS` is deprecated
