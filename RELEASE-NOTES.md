@@ -18,7 +18,8 @@
 
 ### Improvements (26.06)
 - Improve performance of QP solver on portfolio optimization problems
-- Replace SpMV calls with SpMVOp calls in PDHG, 1.09x speedup
+- Improve performance of dual simplex solver (faster basis factorization, remove extra BTran) 
+- Replace SpMV calls with SpMVOp calls in PDLP, 1.09x speedup
 - Reduce memory footprint of PDLP by around 50%
 - Unify threading model across LP (concurrent mode) and MIP to use OpenMP tasking model to allow stricter control of the number of threads
 - Unify `read` API on `Problem` for both MPS and LP file formats
