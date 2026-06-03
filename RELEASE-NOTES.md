@@ -6,7 +6,7 @@
 - Add support for quadratic constraints (convex quadratic, second-order cone, and rotated second-order cone) in the barrier solver
 - Add support for semi-continuous variables in the MIP solver
 - Add support for reading LP (.lp) files; LP files are accepted wherever MPS files were previously, including the compressed variants (`.lp.gz`, `.lp.bz2`)
-- Branch and bound workers now maintain their own heaps and steal nodes from other workers; on average, this increases the number of nodes explored by 3x
+- Branch and bound workers now maintain their own heaps and steal nodes from other workers; on average, this increases the number of nodes explored by 3x given a fixed time limit
 - Add support for detecting and exploiting symmetry in MIP
 - Add support for flow cover cuts in MIP
 - Add support for detecting and exploiting discrete objective steps in MIP
