@@ -2728,7 +2728,7 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
                     static_cast<long long>(clique_table_->first.size()),
                     static_cast<long long>(clique_table_->addtl_cliques.size()));
 
-  if (clique_table_->first.empty() && clique_table_->addtl_cliques.empty()) {
+  if (clique_table_->empty()) {
     CLIQUE_CUTS_DEBUG("generate_clique_cuts empty clique table, nothing to separate");
     return true;
   }
