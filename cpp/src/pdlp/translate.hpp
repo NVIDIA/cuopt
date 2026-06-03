@@ -295,9 +295,8 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_optimization_problem_to_user
   }
 
   user_problem.obj_constant = model.get_objective_offset();
-  user_problem.obj_scale    = maximize
-                                ? -model.get_objective_scaling_factor()
-                                : model.get_objective_scaling_factor();
+  user_problem.obj_scale =
+    maximize ? -model.get_objective_scaling_factor() : model.get_objective_scaling_factor();
 
   user_problem.var_types.resize(n);
   auto model_variable_types = model.get_variable_types_host();
