@@ -87,7 +87,7 @@ subject to  f2(x) ≤ ε2
 
 Sweep each `ε_k` across the range from the payoff table. Each `(ε2, ε3, …)` combination is a single standard cuOpt solve. This recovers the **full** frontier, including the concave regions weighted-sum cannot reach, which is why it's the default when completeness matters. The cost is more solves (a grid over the constrained objectives) and bookkeeping of the ε values.
 
-ε-constrain *linear* objectives directly. A quadratic objective (e.g. risk `xᵀΣx`) is simplest kept as the objective `f1` while you ε-constrain the linear ones. A **convex** quadratic objective *can* instead be ε-constrained directly: cuOpt routes a `xᵀQx ≤ ε` constraint (Q positive semidefinite, inequality only) through the barrier solver as a second-order cone (`add_quadratic_constraint`) — though SOCP support is **beta**. Non-convex or equality quadratic constraints are unsupported, and the MILP path stays linear-constraint only.
+ε-constrain *linear* objectives directly. A quadratic objective (e.g. risk `xᵀΣx`) is simplest kept as the objective `f1` while you ε-constrain the linear ones. A **convex** quadratic objective *can* instead be ε-constrained directly: cuOpt routes a `xᵀQx ≤ ε` constraint (Q positive semidefinite, inequality only) through the barrier solver as a second-order cone (`add_quadratic_constraint`). Non-convex or equality quadratic constraints are unsupported, and the MILP path stays linear-constraint only.
 
 Spot it in existing code: a hand-coded loop over a target or budget value (a return target, a cost cap) is already the ε-constraint method — name it as such, filter dominated points, and read the swept constraint's dual (LP/QP only).
 
@@ -125,7 +125,7 @@ Producing the curve is half the work; reading it correctly is the other half.
 
 ## Getting each objective right
 
-The frontier is only as correct as the objectives feeding it. Formulate each one with `cuopt-numerical-optimization-formulation` before sweeping. One trap matters especially here: a **risk / volatility** objective is the quadratic form `xᵀΣx`, **not** a linear sum of per-asset volatility — modeling it linearly distorts the entire return-vs-risk frontier. See that skill's *Typical QP use cases* (portfolio variance) and *QP rule: minimize only*.
+The frontier is only as correct as the objectives feeding it — a misformulated objective distorts the whole curve. Formulate each one with `cuopt-numerical-optimization-formulation` before sweeping.
 
 ## Interfaces
 
