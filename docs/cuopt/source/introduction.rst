@@ -2,7 +2,7 @@
 Introduction
 ==========================
 
-**NVIDIA® cuOpt™** is a GPU-accelerated optimization library that solves `Linear Programming (LP) <https://en.wikipedia.org/wiki/Linear_programming>`_, `Quadratic Programming (QP) <https://en.wikipedia.org/wiki/Quadratic_programming>`_, and `Vehicle Routing Problems (VRP) <https://en.wikipedia.org/wiki/Vehicle_routing_problem>`_, with beta support for `Mixed Integer Linear Programming (MILP) <https://en.wikipedia.org/wiki/Linear_programming#Integer_unknowns>`_. It enables solutions for large-scale problems with millions of variables and constraints, offering seamless deployment across hybrid and multi-cloud environments.
+**NVIDIA® cuOpt™** is a GPU-accelerated optimization library that solves `Linear Programming (LP) <https://en.wikipedia.org/wiki/Linear_programming>`_, `Quadratic Programming (QP) <https://en.wikipedia.org/wiki/Quadratic_programming>`_, and `Vehicle Routing Problems (VRP) <https://en.wikipedia.org/wiki/Vehicle_routing_problem>`_, with beta support for `Mixed Integer Linear Programming (MILP) <https://en.wikipedia.org/wiki/Linear_programming#Integer_unknowns>`_, `Quadratically Constrained Quadratic Programming (QCQP) <https://en.wikipedia.org/wiki/Quadratically_constrained_quadratic_program>`_, and `Second-Order Cone Programming (SOCP) <https://en.wikipedia.org/wiki/Second-order_cone_programming>`_. It enables solutions for large-scale problems with millions of variables and constraints, offering seamless deployment across hybrid and multi-cloud environments.
 
 Using accelerated computing, NVIDIA® cuOpt optimizes operations research and logistics by enabling better, faster decisions.
 
