@@ -5,19 +5,15 @@
 General Convex Quadratic Constraint Example
 ===========================================
 
-This example demonstrates a general convex quadratic constraint
-``x^T Q x + d^T x <= alpha`` with the cuOpt Python API. Unlike a second-order
-cone written in normal form, ``Q`` may be any matrix whose symmetric part
-``(Q + Q^T)/2`` is positive semidefinite, the constraint may have a nonzero
-right-hand side, and the cross term need not be supplied symmetrically — cuOpt
-symmetrizes ``Q`` internally and converts the constraint to a second-order cone.
+This example demonstrates adding a general convex quadratic constraint
+with the cuOpt Python API.
 
 Problem:
     minimize    x + y
     subject to  x + y >= -5
                 2*x^2 + 2*x*y + 2*y^2 <= 6     (general convex quadratic)
 
-The quadratic constraint is an ellipsoid (its matrix is positive definite). The
+The quadratic constraint is an ellipsoid (a convex set). The
 linear objective is minimized on it at x = y = -1, objective -2.
 """
 
@@ -33,19 +29,17 @@ def main():
     x = prob.addVariable(lb=-float("inf"), name="x")
     y = prob.addVariable(lb=-float("inf"), name="y")
 
-    # A linear constraint (a problem with only a quadratic constraint is not
-    # supported; include at least one linear row).
+    # A linear constraint
     prob.addConstraint(x + y >= -5)
 
-    # General convex quadratic constraint 2*x^2 + 2*x*y + 2*y^2 <= 6. The cross
-    # term is given naturally as a single 2*x*y; cuOpt symmetrizes Q internally.
+    # General convex quadratic constraint 2*x^2 + 2*x*y + 2*y^2 <= 6.
     prob.addConstraint(
         2 * x * x + 2 * x * y + 2 * y * y <= 6, name="ellipsoid"
     )
 
     prob.setObjective(x + y, sense=MINIMIZE)
 
-    # cuOpt automatically selects the barrier method for quadratic constraints.
+    # cuOpt automatically selects the barrier method for problems with quadratic constraints.
     prob.solve()
 
     print(f"Status: {prob.Status}")

@@ -317,10 +317,9 @@ General Convex Quadratic Constraint Example
 -------------------------------------------
 
 This example adds a general convex quadratic constraint with
-:c:func:`cuOptAddQuadraticConstraint`. Unlike a cone in normal form, the
-constraint ``2*x^2 + 2*x*y + 2*y^2 <= 6`` has a nonzero right-hand side, and the
-cross term is supplied as the single entry ``Q[0,1] = 2`` (``Q`` need not be
-symmetric; cuOpt symmetrizes it internally). It minimizes ``x + y``.
+:c:func:`cuOptAddQuadraticConstraint`. Here we add the convex quadratic constraint
+``2*x^2 + 2*x*y + 2*y^2 <= 6``. Note that the quadratic matrix Q that encodes this
+constraint need no be symmetric. Here the term ``2*x*y`` is supplied as a single entry ``Q[0,1] = 2``.
 
 The example code is available at ``examples/cuopt-c/lp/general_quadratic_example.c`` (:download:`download <examples/general_quadratic_example.c>`):
 

@@ -9,11 +9,10 @@
  * with the cuOpt C API. A linear problem is created with cuOptCreateProblem,
  * then the quadratic constraint is added with cuOptAddQuadraticConstraint.
  *
- * Unlike a second-order cone in normal form, Q may be any matrix whose symmetric
- * part (Q + Q^T)/2 is positive semidefinite, and the right-hand side may be
- * nonzero. Q need not be supplied symmetrically: here the cross term 2*x*y is
+ * Q may be any matrix whose symmetric part (Q + Q^T)/2 is positive semidefinite.
+ * Note that Q need not be supplied symmetrically: here the cross term 2*x*y is
  * given as the single off-diagonal entry Q[0,1] = 2; cuOpt symmetrizes Q
- * internally and converts the constraint to a second-order cone.
+ * internally automatically.
  *
  * Problem:
  *   minimize    x + y

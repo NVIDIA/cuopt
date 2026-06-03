@@ -112,9 +112,7 @@ General Convex Quadratic Constraint Example
 :download:`general_quadratic_example.py <examples/general_quadratic_example.py>`
 
 This example uses a general convex quadratic constraint
-``2*x^2 + 2*x*y + 2*y^2 <= 6`` (an ellipsoid). Unlike a cone in normal form, the
-constraint has a nonzero right-hand side and a cross term supplied naturally as a
-single ``2*x*y`` — cuOpt symmetrizes ``Q`` internally. It minimizes ``x + y``.
+``2*x^2 + 2*x*y + 2*y^2 <= 6`` (an ellipsoid).  It minimizes ``x + y``.
 
 .. literalinclude:: examples/general_quadratic_example.py
    :language: python
