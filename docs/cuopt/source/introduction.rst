@@ -2,7 +2,7 @@
 Introduction
 ==========================
 
-**NVIDIA® cuOpt™** is a GPU-accelerated optimization library that solves `Mixed Integer Linear Programming (MILP) <https://en.wikipedia.org/wiki/Linear_programming#Integer_unknowns>`_, `Linear Programming (LP) <https://en.wikipedia.org/wiki/Linear_programming>`_, `Quadratic Programming (QP) <https://en.wikipedia.org/wiki/Quadratic_programming>`_, and `Vehicle Routing Problems (VRP) <https://en.wikipedia.org/wiki/Vehicle_routing_problem>`_. It enables solutions for large-scale problems with millions of variables and constraints, offering seamless deployment across hybrid and multi-cloud environments.
+**NVIDIA® cuOpt™** is a GPU-accelerated optimization library that solves `Linear Programming (LP) <https://en.wikipedia.org/wiki/Linear_programming>`_, `Quadratic Programming (QP) <https://en.wikipedia.org/wiki/Quadratic_programming>`_, and `Vehicle Routing Problems (VRP) <https://en.wikipedia.org/wiki/Vehicle_routing_problem>`_, with support for `Quadratically Constrained Quadratic Programming (QCQP) <https://en.wikipedia.org/wiki/Quadratically_constrained_quadratic_program>`_ (beta), `Second-Order Cone Programming (SOCP) <https://en.wikipedia.org/wiki/Second-order_cone_programming>`_ (beta), and `Mixed Integer Linear Programming (MILP) <https://en.wikipedia.org/wiki/Linear_programming#Integer_unknowns>`_ (beta). It enables solutions for large-scale problems with millions of variables and constraints, offering seamless deployment across hybrid and multi-cloud environments.
 
 Using accelerated computing, NVIDIA® cuOpt optimizes operations research and logistics by enabling better, faster decisions.
 
@@ -76,8 +76,10 @@ cuOpt includes three LP solving methods:
 
 All three algorithms can be run concurrently on both GPU and CPU, with the fastest solution returned automatically.
 
-Mixed Integer Linear Programming (MILP)
-=========================================
+Mixed Integer Linear Programming (MILP) (Beta)
+==============================================
+
+.. note:: Support for mixed integer linear programming is currently in **beta**.
 
 A **Mixed Integer Linear Program** is a variant of a Linear Program where some of the variables are restricted to take on only integer values, while other variables can vary continuously. NVIDIA cuOpt uses a hybrid GPU/CPU method: running primal heuristics on the GPU and improving the dual bound on the CPU.
 

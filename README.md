@@ -12,7 +12,7 @@
 
 
 
-NVIDIA® cuOpt™ is a GPU-accelerated optimization engine that excels in mixed integer linear programming (MILP), linear programming (LP), quadratic programming (QP), and vehicle routing problems (VRP). It enables near real-time solutions for large-scale LPs with millions of variables and constraints, and MIPs with hundreds of thousands of variables. cuOpt offers easy integration into existing modeling languages and seamless deployment across hybrid and multi-cloud environments.
+NVIDIA® cuOpt™ is a GPU-accelerated optimization engine that excels in linear programming (LP), quadratic programming (QP), and vehicle routing problems (VRP), with support for quadratically constrained quadratic programming (QCQP) (beta), second-order cone programming (SOCP) (beta), and mixed integer linear programming (MILP) (beta). It enables near real-time solutions for large-scale LPs with millions of variables and constraints. cuOpt offers easy integration into existing modeling languages and seamless deployment across hybrid and multi-cloud environments.
 
 The core engine is written in C++ and wrapped with a C API, Python API and Server API.
 
@@ -28,18 +28,24 @@ cuOpt supports the following APIs:
 
 - C API support
     - Linear Programming (LP)
-    - Mixed Integer Linear Programming (MILP)
     - Quadratic Programming (QP)
+    - Quadratically Constrained Quadratic Programming (QCQP) (beta)
+    - Second-Order Cone Programming (SOCP) (beta)
+    - Mixed Integer Linear Programming (MILP) (beta)
 - C++ API support
     - cuOpt is written in C++ and includes a native C++ API. However, we do not provide documentation for the C++ API at this time. We anticipate that the C++ API will change significantly in the future. Use it at your own risk.
 - Python support
     - Routing (TSP, VRP, and PDP)
-    - Linear Programming (LP), Mixed Integer Linear Programming (MILP) and Quadratic Programming (QP)
-        - Algebraic modeling Python API allows users to easily build constraints and objectives
+    - Linear Programming (LP)
+    - Quadratic Programming (QP)
+    - Quadratically Constrained Quadratic Programming (QCQP) (beta)
+    - Second-Order Cone Programming (SOCP) (beta)
+    - Mixed Integer Linear Programming (MILP) (beta)
+    - Algebraic modeling Python API allows users to easily build constraints and objectives
 - Server support
     - Linear Programming (LP)
-    - Mixed Integer Linear Programming (MILP)
     - Routing (TSP, VRP, and PDP)
+    - Mixed Integer Linear Programming (MILP) (beta)
 
 This repo is also hosted as a [COIN-OR](http://github.com/coin-or/cuopt/) project.
 
@@ -83,7 +89,7 @@ For CUDA 12.x:
 pip install \
   --extra-index-url=https://pypi.nvidia.com \
   nvidia-cuda-runtime-cu12==12.9.* \
-  cuopt-server-cu12==26.06.* cuopt-sh-client==26.06.*
+  cuopt-server-cu12==26.6.* cuopt-sh-client==26.6.*
 ```
 
 Development wheels are available as nightlies, please update `--extra-index-url` to `https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/` to install latest nightly packages.
@@ -91,7 +97,7 @@ Development wheels are available as nightlies, please update `--extra-index-url`
 pip install --pre \
   --extra-index-url=https://pypi.nvidia.com \
   --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
-  cuopt-server-cu12==26.06.* cuopt-sh-client==26.06.*
+  cuopt-server-cu12==26.6.* cuopt-sh-client==26.6.*
 ```
 
 For CUDA 13.x:
@@ -99,7 +105,7 @@ For CUDA 13.x:
 ```bash
 pip install \
   --extra-index-url=https://pypi.nvidia.com \
-  cuopt-server-cu13==26.06.* cuopt-sh-client==26.06.*
+  cuopt-server-cu13==26.6.* cuopt-sh-client==26.6.*
 ```
 
 Development wheels are available as nightlies, please update `--extra-index-url` to `https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/` to install latest nightly packages.
@@ -107,7 +113,7 @@ Development wheels are available as nightlies, please update `--extra-index-url`
 pip install --pre \
   --extra-index-url=https://pypi.nvidia.com \
   --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
-  cuopt-server-cu13==26.06.* cuopt-sh-client==26.06.*
+  cuopt-server-cu13==26.6.* cuopt-sh-client==26.6.*
 ```
 
 

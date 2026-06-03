@@ -1,7 +1,7 @@
-cuOpt LP/QP/MILP C API Reference
-========================================
+cuOpt Convex Optimization C API Reference
+=========================================
 
-This section contains the cuOpt LP/QP/MILP C API reference.
+This section contains the cuOpt convex optimization C API reference. For MIP-specific functions and callbacks, see :doc:`../mip/mip-c-api`.
 
 Integer and Floating-Point Types
 ---------------------------------
@@ -43,24 +43,35 @@ An optimization problem is represented via a `cuOptOptimizationProblem`
 
 .. doxygentypedef:: cuOptOptimizationProblem
 
-Optimization problems can be created via five different functions
+Optimization problems can be created, loaded, or written via the following functions:
 
 .. doxygenfunction:: cuOptReadProblem
+.. doxygenfunction:: cuOptWriteProblem
 .. doxygenfunction:: cuOptCreateProblem
 .. doxygenfunction:: cuOptCreateRangedProblem
-.. doxygenfunction:: cuOptCreateQuadraticProblem
-.. doxygenfunction:: cuOptCreateQuadraticRangedProblem
 
 .. note::
    ``cuOptCreateQuadraticProblem`` and ``cuOptCreateQuadraticRangedProblem`` are deprecated.
    Prefer ``cuOptCreateProblem`` or ``cuOptCreateRangedProblem`` followed by
-   ``cuOptSetQuadraticObjective`` (and ``cuOptAddQuadraticConstraint`` for QCQP).
+   ``cuOptSetQuadraticObjective``.
 
-For QP and QCQP models, the quadratic objective and constraints may be specified
-after creating a linear problem:
+For problems with quadratic objectives, first create a problem, and then use
 
 .. doxygenfunction:: cuOptSetQuadraticObjective
+
+For problems with quadratic constraints, first create a problem, and then use
+
 .. doxygenfunction:: cuOptAddQuadraticConstraint
+
+.. note::
+   Support for quadratic constraints is currently in **beta**. ``cuOptAddQuadraticConstraint``
+   supports three types of quadratic constraints:
+   - **Convex quadratic constraints** of the form ``x^T Q x + d^T x <= alpha`` where ``H=(Q+Q^T)/2`` is a symmetric positive semidefinite matrix. `Q` need not be symmetric.
+   - **Second-order cone constraints** of the form ``sum_{i=1}^n x_i^2 <= x_0``, ``x_0 >= 0``
+   - **Rotated second-order cone constraints** of the form ``sum_{i=2}^n x_i^2  - 0. 5 * x_0 * x_1 - 0. 5 * x_1 * x_0 <= 0``, ``x_0 >= 0``, ``x_1 >= 0``
+
+   For the rotated second-order cone constraints, cuOpt expects the quadratic matrix to be symmetric.
+   Only ``CUOPT_LESS_THAN`` and ``CUOPT_GREATER_THAN`` sense is supported; equality constraints are not supported.
 
 A optimization problem must be destroyed with the following function
 
@@ -101,7 +112,14 @@ This constant may be used to represent infinity in the :c:func:`cuOptCreateProbl
 
 .. doxygendefine:: CUOPT_INFINITY
 
-Querying an optimization problem
+File Format Constants
+---------------------
+
+These constants are used to specify the output file format in :c:func:`cuOptWriteProblem`.
+
+.. doxygendefine:: CUOPT_FILE_FORMAT_MPS
+
+Querying an Optimization Problem
 --------------------------------
 
 The following functions may be used to get information about an `cuOptimizationProblem`
@@ -142,7 +160,7 @@ When you are done with a solve you should destroy a `cuOptSolverSettings` object
 
 Setting Parameters
 ------------------
-The following functions are used to set and get parameters. You can find more details on the available parameters in the :doc:`LP/MILP settings <../../lp-qp-milp-settings>` section.
+The following functions are used to set and get parameters. You can find more details on the available parameters in the :doc:`Convex Optimization Settings <../../convex-settings>` section.
 
 .. doxygenfunction:: cuOptSetParameter
 .. doxygenfunction:: cuOptGetParameter
@@ -156,9 +174,9 @@ The following functions are used to set and get parameters. You can find more de
 Parameter Constants
 -------------------
 
-These constants are used as parameter names in the :c:func:`cuOptSetParameter`, :c:func:`cuOptGetParameter`, and similar functions. For more details on the available parameters, see the :doc:`LP/MILP settings <../../lp-qp-milp-settings>` section.
+These constants are used as parameter names in the :c:func:`cuOptSetParameter`, :c:func:`cuOptGetParameter`, and similar functions. For more details on the available parameters, see the :doc:`Convex Optimization Settings <../../convex-settings>` and :doc:`MIP Settings <../../mip-settings>` sections.
 
-.. LP/MIP parameter string constants
+.. Convex optimization (LP/QP/QCQP/SOCP) parameter string constants
 .. doxygendefine:: CUOPT_ABSOLUTE_DUAL_TOLERANCE
 .. doxygendefine:: CUOPT_RELATIVE_DUAL_TOLERANCE
 .. doxygendefine:: CUOPT_ABSOLUTE_PRIMAL_TOLERANCE
@@ -171,23 +189,13 @@ These constants are used as parameter names in the :c:func:`cuOptSetParameter`, 
 .. doxygendefine:: CUOPT_DUAL_INFEASIBLE_TOLERANCE
 .. doxygendefine:: CUOPT_ITERATION_LIMIT
 .. doxygendefine:: CUOPT_TIME_LIMIT
-.. doxygendefine:: CUOPT_NODE_LIMIT
 .. doxygendefine:: CUOPT_PDLP_SOLVER_MODE
 .. doxygendefine:: CUOPT_METHOD
 .. doxygendefine:: CUOPT_PER_CONSTRAINT_RESIDUAL
 .. doxygendefine:: CUOPT_SAVE_BEST_PRIMAL_SO_FAR
 .. doxygendefine:: CUOPT_FIRST_PRIMAL_FEASIBLE
 .. doxygendefine:: CUOPT_LOG_FILE
-.. doxygendefine:: CUOPT_MIP_ABSOLUTE_TOLERANCE
-.. doxygendefine:: CUOPT_MIP_RELATIVE_TOLERANCE
-.. doxygendefine:: CUOPT_MIP_INTEGRALITY_TOLERANCE
-.. doxygendefine:: CUOPT_MIP_ABSOLUTE_GAP
-.. doxygendefine:: CUOPT_MIP_RELATIVE_GAP
-.. doxygendefine:: CUOPT_MIP_SCALING
-.. doxygendefine:: CUOPT_MIP_HEURISTICS_ONLY
-.. doxygendefine:: CUOPT_MIP_PRESOLVE
 .. doxygendefine:: CUOPT_PRESOLVE
-.. doxygendefine:: CUOPT_MIP_PROBING
 .. doxygendefine:: CUOPT_LOG_TO_CONSOLE
 .. doxygendefine:: CUOPT_CROSSOVER
 .. doxygendefine:: CUOPT_FOLDING
@@ -197,9 +205,12 @@ These constants are used as parameter names in the :c:func:`cuOptSetParameter`, 
 .. doxygendefine:: CUOPT_ELIMINATE_DENSE_COLUMNS
 .. doxygendefine:: CUOPT_CUDSS_DETERMINISTIC
 .. doxygendefine:: CUOPT_BARRIER_DUAL_INITIAL_POINT
+.. doxygendefine:: CUOPT_BARRIER_ITERATIVE_REFINEMENT
+.. doxygendefine:: CUOPT_BARRIER_STEP_SCALE
 .. doxygendefine:: CUOPT_DUAL_POSTSOLVE
 .. doxygendefine:: CUOPT_SOLUTION_FILE
 .. doxygendefine:: CUOPT_NUM_CPU_THREADS
+.. doxygendefine:: CUOPT_NUM_GPUS
 .. doxygendefine:: CUOPT_USER_PROBLEM_FILE
 .. doxygendefine:: CUOPT_PDLP_PRECISION
 
@@ -239,6 +250,29 @@ These constants are used to configure `CUOPT_METHOD` via :c:func:`cuOptSetIntege
 .. doxygendefine:: CUOPT_METHOD_PDLP
 .. doxygendefine:: CUOPT_METHOD_DUAL_SIMPLEX
 .. doxygendefine:: CUOPT_METHOD_BARRIER
+.. doxygendefine:: CUOPT_METHOD_UNSET
+
+.. _barrier-iterative-refinement-constants:
+
+Barrier Iterative Refinement Constants
+---------------------------------------
+
+These constants are used to configure `CUOPT_BARRIER_ITERATIVE_REFINEMENT` via :c:func:`cuOptSetIntegerParameter`.
+
+.. doxygendefine:: CUOPT_BARRIER_ITERATIVE_REFINEMENT_OFF
+.. doxygendefine:: CUOPT_BARRIER_ITERATIVE_REFINEMENT_ON
+
+
+Warm Start
+----------
+
+For LP problems solved with PDLP, primal and dual warm start vectors may be provided:
+
+.. doxygenfunction:: cuOptSetInitialPrimalSolution
+.. doxygenfunction:: cuOptSetInitialDualSolution
+
+.. note::
+   For MIP warm start (MIP starts), see :doc:`../mip/mip-c-api`.
 
 
 Solving an LP or MIP
@@ -290,4 +324,5 @@ These constants define the termination status received from the :c:func:`cuOptGe
 .. doxygendefine:: CUOPT_TERMINATION_STATUS_PRIMAL_FEASIBLE
 .. doxygendefine:: CUOPT_TERMINATION_STATUS_FEASIBLE_FOUND
 .. doxygendefine:: CUOPT_TERMINATION_STATUS_CONCURRENT_LIMIT
+.. doxygendefine:: CUOPT_TERMINATION_STATUS_WORK_LIMIT
 .. doxygendefine:: CUOPT_TERMINATION_STATUS_UNBOUNDED_OR_INFEASIBLE
