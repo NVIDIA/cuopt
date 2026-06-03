@@ -6,8 +6,7 @@
 set -euo pipefail
 
 # Clean metadata & install cudss
-# Pin to 0.7.x to match the runtime cuDSS (pip/conda only ship 0.7); bump once
-# nvidia-cudss-cuXX 0.8 is on PyPI and libcudss 0.8 is on conda-forge.
+# Pin to 0.7.x to match the runtime cuDSS pinned in dependencies.yaml.
 if command -v dnf &> /dev/null; then
     # Adding static library just to please CMAKE requirements
     if [ "$(echo "$CUDA_VERSION" | cut -d. -f1)" -ge 13 ] && [ "$(echo "$CUDA_VERSION" | cut -d. -f1)" -lt 14 ]; then

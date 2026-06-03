@@ -23,5 +23,7 @@ constexpr float64_t inf = std::numeric_limits<float64_t>::infinity();
 #define CONCURRENT_HALT_RETURN -2
 // We return this constant to signal that a time limit has occurred
 #define TIME_LIMIT_RETURN -3
+// We return this constant to signal that a matrix is indefinite (has a negative pivot)
+#define INDEFINITE_MATRIX_RETURN -4
 
 }  // namespace cuopt::linear_programming::dual_simplex

@@ -1842,6 +1842,21 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
                                              std::get<3>(sol_dual_simplex),
                                              std::get<4>(sol_dual_simplex),
                                              method_t::Barrier);
+
+    if (has_qc) {
+      CUOPT_LOG_INFO("Dual variables for problems with quadratic constraints not returned.");
+      const f_t nan_val = std::numeric_limits<f_t>::quiet_NaN();
+      auto stream       = op_problem.get_handle_ptr()->get_stream();
+      thrust::fill(rmm::exec_policy(stream),
+                   solution.get_dual_solution().begin(),
+                   solution.get_dual_solution().end(),
+                   nan_val);
+      thrust::fill(rmm::exec_policy(stream),
+                   solution.get_reduced_cost().begin(),
+                   solution.get_reduced_cost().end(),
+                   nan_val);
+    }
+
     if (settings.sol_file != "") {
       CUOPT_LOG_INFO("Writing solution to file %s", settings.sol_file.c_str());
       solution.write_to_sol_file(settings.sol_file, op_problem.get_handle_ptr()->get_stream());
