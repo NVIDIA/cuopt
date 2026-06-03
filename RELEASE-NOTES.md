@@ -8,6 +8,7 @@
 - Add support for reading LP (.lp) files; LP files are accepted wherever MPS files were previously, including the compressed variants (`.lp.gz`, `.lp.bz2`)
 - Branch and bound workers now maintain their own heaps and steal nodes from other workers; on average, this increases the number of nodes explored by 3x
 - Add support for detecting and exploiting symmetry in MIP
+- Add support for flow cover cuts in MIP
 - Add support for detecting and exploiting discrete objective steps in MIP
 - Add option for specifying a limit on the number of nodes explored in branch and bound
 
