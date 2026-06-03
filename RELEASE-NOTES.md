@@ -42,6 +42,7 @@
 ### Deprecated APIs (26.06)
 - Python API: `readMPS` is deprecated
 - C API: `cuOptCreateQuadraticProblem` and `cuOptCreateQuadraticRangedProblem` is deprecated
+- LP batch mode is deprecated
 
 ### Documentation (26.06)
 - Refresh the contributor guide (`CONTRIBUTING.md`) with conda-environment recommendations and clarified test-suite scope
