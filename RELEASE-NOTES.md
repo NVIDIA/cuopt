@@ -19,7 +19,8 @@
 
 ### Improvements (26.06)
 - Improve performance of QP solver on portfolio optimization problems
-- Improve performance of dual simplex (faster basis factorization, remove extra BTran) 
+- Improve performance of dual simplex (faster basis factorization, remove extra BTran)
+- Reduce concurrent overhead for LP solves
 - Replace SpMV calls with SpMVOp calls in PDLP, 1.09x speedup
 - Reduce memory footprint of PDLP by around 50%
 - Unify threading model across LP (concurrent mode) and MIP to use OpenMP tasking model to allow stricter control of the number of threads
