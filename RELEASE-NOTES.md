@@ -32,6 +32,7 @@
 - Fix a bug in MIP where the probing cache did not correctly update the model after each batch
 - Fix a bug in MIP where loose tolerances in the objective function could lead to incorrect integrality detection
 - Fix a bug in MIP where branch and bound nodes could be lost when a plunge exits early due to LP solve limits
+- Fix a bug in MIP where the lower bound could be incorrect when using a single thread
 - Fix a bug in LP/QP where dual variables and reduced costs could be incorrect when applying implied bounds to free variables
 - Fix an issue in crossover where adding slack variables to a rank-deficient basis was accidentally O(rows^2)
 
