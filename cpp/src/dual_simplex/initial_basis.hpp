@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -22,6 +22,11 @@ enum class variable_status_t : int8_t {
   NONBASIC_FIXED = 3,
   SUPERBASIC     = 4
 };
+
+std::vector<uint8_t> compress_vstatus(const std::vector<variable_status_t>& vstatus);
+void decompress_vstatus(const std::vector<uint8_t>& packed_vstatus,
+                        size_t vstatus_size,
+                        std::vector<variable_status_t>& vstatus);
 
 template <typename i_t, typename f_t>
 i_t initial_basis_selection(const lp_problem_t<i_t, f_t>& problem,

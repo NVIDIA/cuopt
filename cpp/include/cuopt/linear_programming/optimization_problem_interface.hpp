@@ -15,6 +15,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -64,9 +65,10 @@ class optimization_problem_interface_t {
     std::vector<f_t> linear_values{};
     std::vector<i_t> linear_indices{};
     f_t rhs_value{f_t(0)};
-    std::vector<f_t> quadratic_values{};
-    std::vector<i_t> quadratic_indices{};
-    std::vector<i_t> quadratic_offsets{};
+    /** Q in COO: parallel arrays, same length. */
+    std::vector<i_t> rows{};
+    std::vector<i_t> cols{};
+    std::vector<f_t> vals{};
   };
 
   virtual ~optimization_problem_interface_t() = default;
@@ -79,22 +81,17 @@ class optimization_problem_interface_t {
   /**
    * @brief Append one quadratic constraint x^T Q x + d^T x {<=, >=} rhs.
    *
-   * Quadratic matrix Q is CSR (values, indices, offsets). Linear term d uses parallel
+   * Quadratic matrix Q is COO (row_index, col_index, coeff spans). Linear term d uses parallel
    * linear_values and linear_indices (empty allowed). constraint_row_index is assigned
    * automatically as n_linear_constraints + n_existing_quadratic_constraints.
    */
   virtual void add_quadratic_constraint(char constraint_row_type,
                                         f_t rhs_value,
-                                        const f_t* quadratic_values,
-                                        i_t size_quadratic_values,
-                                        const i_t* quadratic_indices,
-                                        i_t size_quadratic_indices,
-                                        const i_t* quadratic_offsets,
-                                        i_t size_quadratic_offsets,
-                                        const f_t* linear_values,
-                                        i_t size_linear_values,
-                                        const i_t* linear_indices,
-                                        i_t size_linear_indices) = 0;
+                                        std::span<const i_t> row_index,
+                                        std::span<const i_t> col_index,
+                                        std::span<const f_t> coeff,
+                                        std::span<const f_t> linear_values,
+                                        std::span<const i_t> linear_indices) = 0;
   template <typename qc_t,
             typename = std::enable_if_t<!std::is_same_v<qc_t, quadratic_constraint_t>>>
   void set_quadratic_constraints(const std::vector<qc_t>& constraints)
@@ -109,9 +106,9 @@ class optimization_problem_interface_t {
          std::vector<f_t>(qc.linear_values.begin(), qc.linear_values.end()),
          std::vector<i_t>(qc.linear_indices.begin(), qc.linear_indices.end()),
          static_cast<f_t>(qc.rhs_value),
-         std::vector<f_t>(qc.quadratic_values.begin(), qc.quadratic_values.end()),
-         std::vector<i_t>(qc.quadratic_indices.begin(), qc.quadratic_indices.end()),
-         std::vector<i_t>(qc.quadratic_offsets.begin(), qc.quadratic_offsets.end())});
+         std::vector<i_t>(qc.rows.begin(), qc.rows.end()),
+         std::vector<i_t>(qc.cols.begin(), qc.cols.end()),
+         std::vector<f_t>(qc.vals.begin(), qc.vals.end())});
     }
     set_quadratic_constraints(std::move(converted_constraints));
   }

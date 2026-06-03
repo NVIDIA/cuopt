@@ -23,6 +23,7 @@
 
 #include <cstdlib>
 #include <memory>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -603,32 +604,23 @@ cuopt_int_t cuOptAddQuadraticConstraint(cuOptOptimizationProblem problem,
   }
 
   try {
-    std::vector<cuopt_int_t> Q_offsets;
-    std::vector<cuopt_int_t> Q_indices;
-    std::vector<cuopt_float_t> Q_values;
-    coo_to_csr(quad_num_entries,
-               row_index,
-               col_index,
-               coeff,
-               num_variables,
-               num_variables,
-               Q_offsets,
-               Q_indices,
-               Q_values);
-    if (Q_offsets.empty()) { return CUOPT_INVALID_ARGUMENT; }
+    const auto row_index_span =
+      std::span<const cuopt_int_t>(row_index, static_cast<std::size_t>(quad_num_entries));
+    const auto col_index_span =
+      std::span<const cuopt_int_t>(col_index, static_cast<std::size_t>(quad_num_entries));
+    const auto coeff_span =
+      std::span<const cuopt_float_t>(coeff, static_cast<std::size_t>(quad_num_entries));
+    const auto linear_coeff_span =
+      num_lin_entries == 0
+        ? std::span<const cuopt_float_t>{}
+        : std::span<const cuopt_float_t>(linear_coeff, static_cast<std::size_t>(num_lin_entries));
+    const auto linear_index_span =
+      num_lin_entries == 0
+        ? std::span<const cuopt_int_t>{}
+        : std::span<const cuopt_int_t>(linear_index, static_cast<std::size_t>(num_lin_entries));
 
-    op_problem->add_quadratic_constraint(sense,
-                                         rhs,
-                                         Q_values.data(),
-                                         static_cast<cuopt_int_t>(Q_values.size()),
-                                         Q_indices.data(),
-                                         static_cast<cuopt_int_t>(Q_indices.size()),
-                                         Q_offsets.data(),
-                                         static_cast<cuopt_int_t>(Q_offsets.size()),
-                                         linear_coeff,
-                                         num_lin_entries,
-                                         linear_index,
-                                         num_lin_entries);
+    op_problem->add_quadratic_constraint(
+      sense, rhs, row_index_span, col_index_span, coeff_span, linear_coeff_span, linear_index_span);
   } catch (const raft::exception&) {
     return CUOPT_INVALID_ARGUMENT;
   } catch (const std::exception&) {

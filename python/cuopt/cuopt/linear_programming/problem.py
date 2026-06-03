@@ -275,8 +275,10 @@ class Variable:
                 qvars1 = [self] * len(other.vars)
                 qvars2 = other.vars
                 qcoeffs = other.coefficients
-                vars = [self]
-                coeffs = [other.constant]
+                vars, coeffs = [], []
+                if other.constant != 0.0:
+                    vars = [self]
+                    coeffs = [other.constant]
                 return QuadraticExpression(
                     qvars1=qvars1,
                     qvars2=qvars2,
@@ -302,6 +304,8 @@ class Variable:
                 # var1 <= var2   -> var1 - var2 <= 0
                 expr = self - other
                 return Constraint(expr, LE, 0.0)
+            case QuadraticExpression():
+                return Constraint(self - other, LE, 0.0)
             case _:
                 raise ValueError("Unsupported operation")
 
@@ -314,6 +318,8 @@ class Variable:
                 # var1 >= var2   ->  var1 - var2 >= 0
                 expr = self - other
                 return Constraint(expr, GE, 0.0)
+            case QuadraticExpression():
+                return Constraint(self - other, GE, 0.0)
             case _:
                 raise ValueError("Unsupported operation")
 
@@ -333,8 +339,9 @@ class Variable:
 class QuadraticExpression:
     """
     QuadraticExpressions contain quadratic terms, linear terms, and a constant.
-    QuadraticExpressions can be used to create quadratic objectives in
-    the Problem.
+    Use them for quadratic objectives (``Problem.setObjective``) or quadratic
+    constraints via ``<=`` or ``>=`` comparisons passed to
+    :py:meth:`Problem.addConstraint` (equality is not supported).
     QuadraticExpressions can be added and subtracted with other
     QuadraticExpressions, LinearExpressions, and Variables, and can also
     be multiplied and divided by scalars.
@@ -753,6 +760,9 @@ class QuadraticExpression:
         # other - self  -> other + self * -1.0
         return other + self * -1.0
 
+    def __neg__(self):
+        return self * -1.0
+
     def __imul__(self, other):
         # Compute expr *= constant
         match other:
@@ -853,13 +863,91 @@ class QuadraticExpression:
                 )
 
     def __le__(self, other):
-        raise Exception("Quadratic constraints not supported")
+        match other:
+            case int() | float():
+                return Constraint(self, LE, float(other))
+            case Variable() | LinearExpression() | QuadraticExpression():
+                return Constraint(self - other, LE, 0.0)
+            case _:
+                raise ValueError(
+                    "Can't compare QuadraticExpression with type %s"
+                    % type(other).__name__
+                )
 
     def __ge__(self, other):
-        raise Exception("Quadratic constraints not supported")
+        match other:
+            case int() | float():
+                return Constraint(self, GE, float(other))
+            case Variable() | LinearExpression() | QuadraticExpression():
+                return Constraint(self - other, GE, 0.0)
+            case _:
+                raise ValueError(
+                    "Can't compare QuadraticExpression with type %s"
+                    % type(other).__name__
+                )
 
     def __eq__(self, other):
-        raise Exception("Quadratic constraints not supported")
+        raise ValueError("Equality constraints are not supported.")
+
+
+def _quadratic_expression_to_qcmatrix(expr, rhs):
+    """Build QCMATRIX COO data for a quadratic row ``expr`` sense ``rhs``.
+
+    Used for both ``<=`` (``LE``) and ``>=`` (``GE``); row sense is stored on
+    ``Constraint.Sense``, not in this helper. The constant term is moved to
+    ``rhs_value``.
+
+    Duplicate linear variable indices and duplicate Q (row, col) triplets are
+    merged by summing coefficients, matching linear ``Constraint`` behavior.
+    """
+    rhs_value = float(rhs) - expr.constant
+
+    linear_coeff = {}
+    for var, coeff in zip(expr.vars, expr.coefficients):
+        if coeff == 0.0:
+            continue
+        idx = var.index
+        linear_coeff[idx] = linear_coeff.get(idx, 0.0) + coeff
+
+    linear_indices = []
+    linear_values = []
+    for idx in sorted(linear_coeff):
+        coeff = linear_coeff[idx]
+        if coeff != 0.0:
+            linear_indices.append(idx)
+            linear_values.append(coeff)
+
+    quad_coeff = {}
+    for var1, var2, coeff in zip(expr.qvars1, expr.qvars2, expr.qcoefficients):
+        if coeff == 0.0:
+            continue
+        key = (var1.index, var2.index)
+        quad_coeff[key] = quad_coeff.get(key, 0.0) + coeff
+    if expr.qmatrix is not None:
+        q_coo = expr.qmatrix.tocoo()
+        for row, col, value in zip(q_coo.row, q_coo.col, q_coo.data):
+            if value == 0.0:
+                continue
+            key = (expr.qvars[row].index, expr.qvars[col].index)
+            quad_coeff[key] = quad_coeff.get(key, 0.0) + value
+
+    quadratic_row_indices = []
+    quadratic_col_indices = []
+    quadratic_values = []
+    for (row, col), value in sorted(quad_coeff.items()):
+        if value != 0.0:
+            quadratic_row_indices.append(row)
+            quadratic_col_indices.append(col)
+            quadratic_values.append(value)
+
+    return (
+        linear_values,
+        linear_indices,
+        quadratic_values,
+        quadratic_row_indices,
+        quadratic_col_indices,
+        rhs_value,
+    )
 
 
 class LinearExpression:
@@ -1169,6 +1257,8 @@ class LinearExpression:
                 # expr1 <= expr2   -> expr1 - expr2 <= 0
                 expr = self - other
                 return Constraint(expr, LE, 0.0)
+            case QuadraticExpression():
+                return Constraint(self - other, LE, 0.0)
 
     def __ge__(self, other):
         match other:
@@ -1178,6 +1268,8 @@ class LinearExpression:
                 # expr1 >= expr2   ->  expr1 - expr2 >= 0
                 expr = self - other
                 return Constraint(expr, GE, 0.0)
+            case QuadraticExpression():
+                return Constraint(self - other, GE, 0.0)
 
     def __eq__(self, other):
         match other:
@@ -1191,16 +1283,15 @@ class LinearExpression:
 
 class Constraint:
     """
-    cuOpt constraint object containing a linear expression,
-    the sense of the constraint, and the right-hand side of
-    the constraint.
-    Constraints are associated with a problem and can be
-    created using :py:meth:`Problem.addConstraint`.
+    cuOpt constraint object containing a linear or quadratic (QCMATRIX)
+    expression, the sense of the constraint, and the right-hand side.
+    Constraints are associated with a problem and can be created using
+    :py:meth:`Problem.addConstraint`.
 
     Parameters
     ----------
-    expr : LinearExpression
-        Linear expression corresponding to a problem.
+    expr : LinearExpression or QuadraticExpression
+        Expression corresponding to the constraint.
     sense : enum
         Sense of the constraint. Either LE for <=,
         GE for >= or EQ for == .
@@ -1216,7 +1307,9 @@ class Constraint:
     Sense : LE, GE or EQ
         Row sense. LE for <=, GE for >= or EQ for == .
     RHS : float
-        Constraint right-hand side value.
+        Constraint right-hand side value (linear rows).
+    is_quadratic : bool
+        True when the row is exported as a QCMATRIX quadratic constraint.
     Slack : float
         Computed LHS - RHS with current solution.
     DualValue : float
@@ -1224,10 +1317,37 @@ class Constraint:
     """
 
     def __init__(self, expr, sense, rhs, name=""):
+        self.index = -1
+        self.Sense = sense
+        self.ConstraintName = name
+        self.DualValue = float("nan")
+        self.Slack = float("nan")
+
+        if isinstance(expr, QuadraticExpression):
+            self.is_quadratic = True
+            (
+                linear_values,
+                linear_indices,
+                quadratic_values,
+                quadratic_row_indices,
+                quadratic_col_indices,
+                rhs_value,
+            ) = _quadratic_expression_to_qcmatrix(expr, rhs)
+            self.linear_values = np.array(linear_values, dtype=np.float64)
+            self.linear_indices = np.array(linear_indices, dtype=np.int32)
+            self.vals = np.array(quadratic_values, dtype=np.float64)
+            self.rows = np.array(quadratic_row_indices, dtype=np.int32)
+            self.cols = np.array(quadratic_col_indices, dtype=np.int32)
+            self.rhs_value = rhs_value
+            self.RHS = rhs_value
+            self.vindex_coeff_dict = {}
+            self.vars = expr.vars
+            return
+
+        self.is_quadratic = False
         self.vindex_coeff_dict = {}
         nz = len(expr)
         self.vars = expr.vars
-        self.index = -1
         for i in range(nz):
             v_idx = expr.vars[i].index
             v_coeff = expr.coefficients[i]
@@ -1236,11 +1356,7 @@ class Constraint:
                 if v_idx in self.vindex_coeff_dict
                 else v_coeff
             )
-        self.Sense = sense
         self.RHS = rhs - expr.getConstant()
-        self.ConstraintName = name
-        self.DualValue = float("nan")
-        self.Slack = float("nan")
 
     def __len__(self):
         return len(self.vindex_coeff_dict)
@@ -1273,9 +1389,12 @@ class Constraint:
 
     def compute_slack(self):
         # Computes the constraint Slack in the current solution.
-        lhs = 0.0
-        for var in self.vars:
-            lhs += var.Value * self.vindex_coeff_dict[var.index]
+        index_to_var = {var.index: var for var in self.vars}
+        lhs = sum(
+            index_to_var[v_idx].Value * coeff
+            for v_idx, coeff in self.vindex_coeff_dict.items()
+        )
+
         return self.RHS - lhs
 
 
@@ -1420,6 +1539,8 @@ class Problem:
                 "values": [],
             }
             for constr in self.constrs:
+                if constr.is_quadratic:
+                    continue
                 csr_dict["column_indices"].extend(
                     list(constr.vindex_coeff_dict.keys())
                 )
@@ -1439,6 +1560,8 @@ class Problem:
 
         else:
             for constr in self.constrs:
+                if constr.is_quadratic:
+                    continue
                 self.rhs.append(constr.RHS)
                 self.row_sense.append(constr.Sense)
 
@@ -1483,6 +1606,23 @@ class Problem:
         dm.set_variable_names(self.var_names)
         dm.set_row_names(self.row_names)
         dm.set_problem_name(self.Name)
+
+        for constr in self.constrs:
+            if not constr.is_quadratic:
+                continue
+            row_name = constr.ConstraintName
+            if row_name == "":
+                row_name = "Q" + str(constr.index)
+            dm.add_quadratic_constraint(
+                constraint_row_name=row_name,
+                linear_values=constr.linear_values,
+                linear_indices=constr.linear_indices,
+                rhs_value=constr.rhs_value,
+                vals=constr.vals,
+                rows=constr.rows,
+                cols=constr.cols,
+                sense=constr.Sense,
+            )
 
         if self.mip_start.size > 0 and not np.all(np.isnan(self.mip_start)):
             dm.set_initial_primal_solution(self.mip_start)
@@ -1554,15 +1694,15 @@ class Problem:
     def addConstraint(self, constr, name=""):
         """
         Adds a constraint to the problem defined by constraint object
-        and name. A constraint is generated using LinearExpression,
-        Sense and RHS.
+        and name. A constraint is generated using LinearExpression or
+        QuadraticExpression comparisons (``<=``, ``>=``, or ``==``).
 
         Parameters
         ----------
         constr : :py:class:`Constraint`
-            Constructed using LinearExpressions (See Examples)
+            Constructed using expression comparisons (see Examples).
         name : string
-            Name of the variable. Optional.
+            Name of the constraint. Optional.
 
         Examples
         --------
@@ -1572,6 +1712,7 @@ class Problem:
         >>> problem.addConstraint(2*x - 3*y <= 10, name="Constr1")
         >>> expr = 3*x + y
         >>> problem.addConstraint(expr + x == 20, name="Constr2")
+        >>> problem.addConstraint(-x*x + y*y <= 0, name="soc")
         """
         if self.solved:
             self.reset_solved_values()  # Reset all solved values
@@ -1611,6 +1752,10 @@ class Problem:
         """
         self.reset_solved_values()
         if isinstance(constr, Constraint):
+            if constr.is_quadratic:
+                raise ValueError(
+                    "updateConstraint applies to linear constraints only"
+                )
             if isinstance(coeffs, dict):
                 coeffs = coeffs.items()
             for var, coeff in coeffs:
@@ -1911,6 +2056,12 @@ class Problem:
         # Returns number of contraints in the problem.
         return len(self.constrs)
 
+    def getQuadraticConstraints(self):
+        """
+        Returns all quadratic (QCMATRIX) constraints in the problem.
+        """
+        return [c for c in self.constrs if c.is_quadratic]
+
     @property
     def NumNZs(self):
         # Returns number of non-zeros in the problem.
@@ -1957,6 +2108,8 @@ class Problem:
             return self.dict_to_object(self.constraint_csr_matrix)
         csr_dict = {"row_pointers": [0], "column_indices": [], "values": []}
         for constr in self.constrs:
+            if constr.is_quadratic:
+                continue
             csr_dict["column_indices"].extend(
                 list(constr.vindex_coeff_dict.keys())
             )
@@ -2033,10 +2186,14 @@ class Problem:
         dual_sol = None
         if not IsMIP:
             dual_sol = solution.get_dual_solution()
-        for i, constr in enumerate(self.constrs):
-            if dual_sol is not None and len(dual_sol) > 0:
-                constr.DualValue = dual_sol[i]
+        linear_row = 0
+        for constr in self.constrs:
+            if constr.is_quadratic:
+                continue
+            if dual_sol is not None and len(dual_sol) > linear_row:
+                constr.DualValue = dual_sol[linear_row]
             constr.Slack = constr.compute_slack()
+            linear_row += 1
         self.solved = True
 
     def solve(self, settings=solver_settings.SolverSettings()):
@@ -2061,3 +2218,4 @@ class Problem:
         solution = solver.Solve(self.model, settings)
         # Post Solve
         self.populate_solution(solution)
+        return solution

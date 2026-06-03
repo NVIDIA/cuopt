@@ -37,7 +37,8 @@ TEST(no_constraints_test, simple_test)
   int A_offsets_host[]   = {0};
   op_problem.set_csr_constraint_matrix(A_values_host, 0, A_indices_host, 0, A_offsets_host, 1);
 
-  double lb_host[] = {0.0, 0.0};
+  double lb_host[] = {-std::numeric_limits<double>::infinity(),
+                      -std::numeric_limits<double>::infinity()};
   double ub_host[] = {std::numeric_limits<double>::infinity(),
                       std::numeric_limits<double>::infinity()};
   op_problem.set_variable_lower_bounds(lb_host, 2);

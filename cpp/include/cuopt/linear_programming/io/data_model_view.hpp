@@ -434,9 +434,9 @@ class data_model_view_t {
          std::vector<f_t>(qc.linear_values.begin(), qc.linear_values.end()),
          std::vector<i_t>(qc.linear_indices.begin(), qc.linear_indices.end()),
          static_cast<f_t>(qc.rhs_value),
-         std::vector<f_t>(qc.quadratic_values.begin(), qc.quadratic_values.end()),
-         std::vector<i_t>(qc.quadratic_indices.begin(), qc.quadratic_indices.end()),
-         std::vector<i_t>(qc.quadratic_offsets.begin(), qc.quadratic_offsets.end())});
+         std::vector<i_t>(qc.rows.begin(), qc.rows.end()),
+         std::vector<i_t>(qc.cols.begin(), qc.cols.end()),
+         std::vector<f_t>(qc.vals.begin(), qc.vals.end())});
     }
   }
 

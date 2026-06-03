@@ -239,7 +239,7 @@ class mps_data_model_t {
    * - row identity and type (from ROWS),
    * - sparse linear coefficients (from COLUMNS),
    * - RHS value (from RHS),
-   * - quadratic matrix Q in CSR (from QCMATRIX).
+   * - quadratic matrix Q in COO (SoA: row, col, value) from QCMATRIX — one triplet per nonzero.
    */
   struct quadratic_constraint_t {
     /** ROWS declaration index (among all constraint rows), not an index into the linear CSR. */
@@ -251,19 +251,21 @@ class mps_data_model_t {
     std::vector<f_t> linear_values{};
     std::vector<i_t> linear_indices{};
     f_t rhs_value{f_t(0)};
-    std::vector<f_t> quadratic_values{};
-    std::vector<i_t> quadratic_indices{};
-    std::vector<i_t> quadratic_offsets{};
+    /** Q nonzeros: parallel arrays, same length (COO / SoA). Sorted by (row, col) in append. */
+    std::vector<i_t> rows{};
+    std::vector<i_t> cols{};
+    std::vector<f_t> vals{};
   };
 
   /**
    * @brief Append one complete quadratic constraint (row + linear + rhs + quadratic Q).
    * @note All span inputs are host memory; the model copies this data.
    * @param linear_values, linear_indices Same nnz; can be empty for a purely quadratic row (rare).
-   * @param quadratic_values, quadratic_indices CSR nnz; may be empty if Q is empty.
-   * @param quadratic_offsets CSR row starts; must be non-empty.
-   * @param constraint_row_type MPS ROWS type; must be 'L'. 'G' and 'E' quadratic rows are not
-   *        supported.
+   * @param vals, rows, cols COO triplets for Q; same length; may all be empty if Q is empty.
+   *        Stored sorted by (row, col).
+   * @param constraint_row_type MPS ROWS type: 'L' (<=) or 'G' (>=). Stored as given; 'G' rows are
+   *        converted to '<=' form when building the SOCP for the barrier solver. Equality ('E') is
+   *        not supported.
    */
   void append_quadratic_constraint(i_t constraint_row_index,
                                    const std::string& constraint_row_name,
@@ -271,9 +273,9 @@ class mps_data_model_t {
                                    std::span<const f_t> linear_values,
                                    std::span<const i_t> linear_indices,
                                    f_t rhs_value,
-                                   std::span<const f_t> quadratic_values,
-                                   std::span<const i_t> quadratic_indices,
-                                   std::span<const i_t> quadratic_offsets);
+                                   std::span<const f_t> vals,
+                                   std::span<const i_t> rows,
+                                   std::span<const i_t> cols);
 
   const std::vector<quadratic_constraint_t>& get_quadratic_constraints() const;
 

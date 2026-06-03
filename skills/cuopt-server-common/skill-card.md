@@ -3,12 +3,13 @@ cuOpt REST server — what it does and how requests flow. Domain concepts; no de
 
 This skill is ready for commercial/non-commercial use. <br>
 
-## Owner: NVIDIA <br>
+## Owner
+NVIDIA <br>
 
 ### License/Terms of Use: <br>
-Apache 2.0 <br>
+Apache-2.0 <br>
 ## Use Case: <br>
-Developers and engineers building optimization solutions who need to understand the cuOpt REST server request flow, supported problem types, and conceptual architecture before implementing deployment or client code. <br>
+Developers and engineers working with NVIDIA cuOpt who need to understand the REST server’s capabilities, supported problem types, and request flow before submitting optimization workloads. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
@@ -19,7 +20,7 @@ Mitigation: Review and scan skill before deployment. <br>
 
 ## Reference(s): <br>
 - [cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html) <br>
-- [cuOpt API Reference](https://docs.nvidia.com/cuopt/user-guide/latest/api.html) <br>
+- [cuOpt Examples](https://github.com/NVIDIA/cuopt-examples) <br>
 
 
 ## Skill Output: <br>
@@ -27,6 +28,42 @@ Mitigation: Review and scan skill before deployment. <br>
 **Output Format:** [Markdown] <br>
 **Output Parameters:** [1D] <br>
 **Other Properties Related to Output:** [None] <br>
+
+## Evaluation Agents Used: <br>
+- Claude Code (`claude-code`) <br>
+- Codex (`codex`) <br>
+
+
+
+## Evaluation Tasks: <br>
+Evaluated against 1 internal evaluation task (positive skill-activation case) with 2 attempts per task at 50% pass threshold. <br>
+
+## Evaluation Metrics Used: <br>
+Reported benchmark dimensions: <br>
+- Security: Checks whether skill-assisted execution avoids unsafe behavior such as secret leakage, destructive commands, or unauthorized access. <br>
+- Correctness: Checks whether the agent follows the expected workflow and produces the correct final output. <br>
+- Discoverability: Checks whether the agent loads the skill when relevant and avoids using it when irrelevant. <br>
+- Effectiveness: Checks whether the agent performs measurably better with the skill than without it. <br>
+- Efficiency: Checks whether the agent uses fewer tokens and avoids redundant work. <br>
+
+Underlying evaluation signals used in this run: <br>
+- `skill_execution`: Verifies that the agent loaded the expected skill and workflow. <br>
+- `skill_efficiency`: Checks routing quality, decoy avoidance, and redundant tool usage. <br>
+- `accuracy`: Grades final-answer correctness against the reference answer. <br>
+- `goal_accuracy`: Checks whether the overall user task completed successfully. <br>
+- `behavior_check`: Verifies expected behavior steps, including safety expectations. <br>
+- `token_efficiency`: Compares token usage with and without the skill. <br>
+
+
+
+## Evaluation Results: <br>
+| Dimension | Num | `claude-code` | `codex` |
+|---|---:|---:|---:|
+| Security | 2 | 100% (+0%) | 50% (+0%) |
+| Correctness | 2 | 100% (+8%) | 69% (+5%) |
+| Discoverability | 2 | 100% (+33%) | 59% (+0%) |
+| Effectiveness | 2 | 98% (+1%) | 50% (+0%) |
+| Efficiency | 2 | 93% (+35%) | 43% (-6%) |
 
 ## Skill Version(s): <br>
 26.08.00 (source: frontmatter) <br>
