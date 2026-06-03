@@ -1098,6 +1098,690 @@ i_t right_looking_lu_row_permutation_only(const csc_matrix_t<i_t, f_t>& A,
   return pivots;
 }
 
+// =============================================================================
+// Symmetric positive semidefinite LDL^T factorization with Markowitz pivoting.
+// Computes P * A * P^T = L * D * L^T where:
+//   - A is symmetric PSD (lower triangle stored in CSC)
+//   - P is a symmetric fill-reducing permutation (from Markowitz)
+//   - L is unit lower triangular (stored in CSC)
+//   - D is diagonal (stored as a vector)
+// =============================================================================
+
+namespace {
+
+// Represents the lower triangle (including diagonal) of a symmetric trailing matrix
+// during right-looking LDL^T factorization.
+// Stores column representation of the lower triangle and row representation (index only)
+// of the lower triangle. Since the matrix is symmetric, "row i" stores columns j <= i
+// that have a nonzero in position (i, j).
+template <typename i_t, typename f_t>
+class symmetric_trailing_matrix_t {
+ public:
+  // Construct from a symmetric matrix stored as lower triangle in CSC format.
+  // A.col_start[j]..A.col_start[j+1]-1 contain entries (i, j) with i >= j.
+  symmetric_trailing_matrix_t(const csc_matrix_t<i_t, f_t>& A)
+    : n_(A.n),
+      Bnz_(0),
+      work_estimate_(0),
+      col_start_(n_),
+      col_end_(n_),
+      col_max_(n_),
+      row_start_(n_),
+      row_end_(n_),
+      row_max_(n_),
+      diag_(n_, 0.0),
+      pivot_col_val_(n_, 0.0),
+      pivot_col_mark_(n_, 0),
+      counts_(compute_degree(A), n_),
+      unused_col_nz_(0),
+      unused_row_nz_(0)
+  {
+    // Count total nonzeros (lower triangle including diagonal)
+    for (i_t j = 0; j < n_; j++) {
+      Bnz_ += A.col_start[j + 1] - A.col_start[j];
+    }
+    work_estimate_ += 2 * n_;
+
+    // Allocate 2x initial size for column and row storage
+    i_t col_nz = 2 * Bnz_;
+    i_t row_nz = 2 * Bnz_;
+
+    c_i_.resize(col_nz);
+    c_x_.resize(col_nz);
+    r_j_.resize(row_nz);
+
+    // Initialize row storage pointers
+    // Row i stores columns j < i (off-diagonal entries in row i of lower triangle).
+    // The diagonal is stored separately in diag_.
+    // Row degree = number of off-diagonal entries in row i of the lower triangle.
+    i_t nz = 0;
+    for (i_t i = 0; i < n_; i++) {
+      row_start_[i] = nz;
+      row_end_[i]   = nz;
+      // The degree from compute_degree counts off-diag entries in column i (below diagonal)
+      // plus off-diag entries in row i (same thing by symmetry).
+      // For row storage, we store columns j < i that appear in column j at row i.
+      // We'll compute this during column init below. For now, reserve based on degree.
+      i_t row_space = 2 * counts_.get_count(i);
+      row_max_[i]   = nz + row_space;
+      nz += row_space;
+    }
+    // Resize row storage if needed
+    if (nz > row_nz) { r_j_.resize(nz); }
+    work_estimate_ += 4 * n_;
+
+    // Initialize column storage and populate row indices
+    nz = 0;
+    for (i_t j = 0; j < n_; j++) {
+      const i_t A_start = A.col_start[j];
+      const i_t A_end   = A.col_start[j + 1];
+      // Count off-diagonal entries (entries below diagonal)
+      i_t off_diag_count = 0;
+      for (i_t p = A_start; p < A_end; p++) {
+        if (A.i[p] == j) {
+          diag_[j] = A.x[p];
+        } else {
+          off_diag_count++;
+        }
+      }
+      i_t col_space = 2 * std::max(off_diag_count, i_t(1));
+      col_max_[j]   = nz + col_space;
+      col_start_[j] = nz;
+      col_end_[j]   = nz;
+
+      // Store only off-diagonal entries in the column (i > j)
+      for (i_t p = A_start; p < A_end; p++) {
+        const i_t row = A.i[p];
+        const f_t val = A.x[p];
+        if (row == j) { continue; }  // diagonal handled above
+        assert(row > j);             // lower triangle: row > col for off-diag
+        c_i_[col_end_[j]] = row;
+        c_x_[col_end_[j]] = val;
+        col_end_[j]++;
+
+        // Also add to row storage: row `row` has an entry in column j
+        ensure_row_space(row, 1);
+        r_j_[row_end_[row]] = j;
+        row_end_[row]++;
+      }
+      nz += col_space;
+    }
+    // Resize column storage to actual allocated size
+    if (nz > col_nz) {
+      c_i_.resize(nz);
+      c_x_.resize(nz);
+    }
+    work_estimate_ += 7 * n_ + 7 * Bnz_;
+  }
+
+  f_t record_and_clear_work_estimate_()
+  {
+    const f_t counts_work = counts_.record_and_clear_work_estimate_();
+    work_estimate_ += counts_work;
+    f_t tmp        = work_estimate_;
+    work_estimate_ = 0;
+    return tmp;
+  }
+
+  // Symmetric Markowitz search: find pivot p on diagonal with |diag_[p]| >= pivot_tol
+  // minimizing degree. Within a fixed degree, select the largest |diag[p]|.
+  // Degree here is the number of off-diagonal neighbors.
+  // Returns the number of candidates searched.
+  i_t symmetric_markowitz_search(f_t pivot_tol, i_t& pivot_p, f_t& pivot_val)
+  {
+    i_t best_degree = n_;
+    i_t nsearch     = 0;
+
+    for (i_t nz = 0; nz <= best_degree; nz++) {
+      const auto& elements = counts_.get_elements_with_count(nz);
+      for (const i_t p : elements) {
+        const f_t d = diag_[p];
+        if (std::abs(d) >= pivot_tol) {
+          if (nz < best_degree || (nz == best_degree && std::abs(d) > std::abs(pivot_val))) {
+            best_degree = nz;
+            pivot_p     = p;
+            pivot_val   = d;
+          }
+        }
+        nsearch++;
+      }
+      work_estimate_ += 4 * static_cast<i_t>(elements.size());
+      // Once we've found a pivot at degree nz, no need to search higher degrees
+      if (pivot_p != -1 && nz == best_degree) { break; }
+    }
+    return nsearch;
+  }
+
+  // Symmetric Schur complement: update A <- A - d * l * l^T (lower triangle only)
+  // where l_i = A(i, pivot_p) / d for all i != pivot_p, d = diag_[pivot_p].
+  // The full pivot vector l comes from:
+  //   - Column pivot_p entries (rows i > pivot_p): stored directly
+  //   - Row pivot_p entries (cols j < pivot_p): these represent A(pivot_p, j) = A(j, pivot_p)
+  //     by symmetry, but are stored in column j at row pivot_p.
+  void symmetric_schur_complement(i_t pivot_p, f_t drop_tol, f_t pivot_val)
+  {
+    // Step 1: Build the full pivot vector from both column (below) and row (left).
+    // For i > pivot_p: l_i = A(i, pivot_p) / pivot_val, found in column pivot_p
+    // For j < pivot_p: l_j = A(pivot_p, j) / pivot_val = A(j, pivot_p) / pivot_val
+    //   A(pivot_p, j) is stored in column j at row pivot_p (lower triangle: pivot_p > j)
+    i_t pivot_col_count = 0;
+
+    // From column storage: entries (i, pivot_p) with i > pivot_p
+    const i_t c_pivot_start = col_start_[pivot_p];
+    const i_t c_pivot_end   = col_end_[pivot_p];
+    for (i_t p = c_pivot_start; p < c_pivot_end; p++) {
+      const i_t i        = c_i_[p];
+      const f_t li       = c_x_[p] / pivot_val;
+      pivot_col_val_[i]  = li;
+      pivot_col_mark_[i] = 1;
+      pivot_col_index_.push_back(i);
+      pivot_col_count++;
+    }
+
+    // From row storage: entries (pivot_p, j) with j < pivot_p
+    // The value A(pivot_p, j) is stored in column j at row pivot_p.
+    const i_t r_pivot_start = row_start_[pivot_p];
+    const i_t r_pivot_end   = row_end_[pivot_p];
+    for (i_t rp = r_pivot_start; rp < r_pivot_end; rp++) {
+      const i_t j = r_j_[rp];
+      // Look up A(pivot_p, j) from column j
+      f_t val = 0;
+      for (i_t q = col_start_[j]; q < col_end_[j]; q++) {
+        if (c_i_[q] == pivot_p) {
+          val = c_x_[q];
+          break;
+        }
+      }
+      const f_t lj       = val / pivot_val;
+      pivot_col_val_[j]  = lj;
+      pivot_col_mark_[j] = 1;
+      pivot_col_index_.push_back(j);
+      pivot_col_count++;
+    }
+    work_estimate_ += 5 * (c_pivot_end - c_pivot_start) + 5 * (r_pivot_end - r_pivot_start);
+
+    // Step 2: For each node j in the pivot vector, update the trailing matrix.
+    // The update is: A(i, j) -= pivot_val * l_i * l_j for all pairs (i, j) with i >= j
+    // that are both in the pivot vector. Also update diagonals.
+    for (i_t k = 0; k < pivot_col_count; k++) {
+      const i_t j  = pivot_col_index_[k];
+      const f_t lj = pivot_col_val_[j];
+
+      // Update diagonal: A(j,j) -= pivot_val * lj * lj
+      diag_[j] -= pivot_val * lj * lj;
+
+      // Update off-diagonal entries in column j: A(i, j) -= pivot_val * l_i * l_j
+      // for i > j where l_i != 0 (i.e., i is in pivot vector)
+      // Column j stores entries with row > j in lower triangle.
+
+      // Count how many pivot vector entries with index > j exist (potential updates/fills)
+      i_t n_pivot_entries_below_j = 0;
+      for (i_t m = 0; m < pivot_col_count; m++) {
+        if (pivot_col_index_[m] > j) { n_pivot_entries_below_j++; }
+      }
+
+      // Scan existing entries in column j and update those that are in pivot vector
+      const i_t c_start = col_start_[j];
+      const i_t c_end   = col_end_[j];
+      i_t n_updated     = 0;
+      i_t n_cancel      = 0;
+      for (i_t q = c_start; q < c_end; q++) {
+        const i_t i = c_i_[q];
+        if (pivot_col_mark_[i]) {
+          // Entry (i, j) exists and i is in pivot vector: update
+          const f_t li = pivot_col_val_[i];
+          c_x_[q] -= pivot_val * li * lj;
+          if (std::abs(c_x_[q]) < drop_tol) {
+            c_x_[q] = 0;
+            n_cancel++;
+          }
+          n_updated++;
+        }
+      }
+      work_estimate_ += 4 * (c_end - c_start);
+      i_t n_fillin = n_pivot_entries_below_j - n_updated;
+
+      // Step 2b: Remove cancellations
+      if (n_cancel > 0) {
+        i_t new_end = col_start_[j];
+        for (i_t q = col_start_[j]; q < col_end_[j]; q++) {
+          if (c_x_[q] != 0) {
+            c_i_[new_end] = c_i_[q];
+            c_x_[new_end] = c_x_[q];
+            new_end++;
+          } else {
+            const i_t dead_row = c_i_[q];
+            // Remove column j from row dead_row
+            for (i_t rp2 = row_start_[dead_row]; rp2 < row_end_[dead_row]; rp2++) {
+              if (r_j_[rp2] == j) {
+                r_j_[rp2] = r_j_[row_end_[dead_row] - 1];
+                row_end_[dead_row]--;
+                break;
+              }
+            }
+            // Update degree for dead_row
+            const i_t rdeg = counts_.get_count(dead_row);
+            if (rdeg > 0) { counts_.update_count(dead_row, rdeg - 1); }
+            work_estimate_ += 6;
+          }
+        }
+        col_end_[j] = new_end;
+      }
+
+      // Step 2c: Insert fill-in entries
+      if (n_fillin > 0) {
+        ensure_col_space(j, n_fillin);
+        for (i_t m = 0; m < pivot_col_count; m++) {
+          const i_t i = pivot_col_index_[m];
+          if (i <= j) { continue; }  // only lower triangle: i > j
+          // Check if (i, j) already exists
+          bool found = false;
+          for (i_t q = col_start_[j]; q < col_end_[j]; q++) {
+            if (c_i_[q] == i) {
+              found = true;
+              break;
+            }
+          }
+          if (found) { continue; }
+
+          // Insert fill-in: A(i, j) = -pivot_val * l_i * l_j
+          const f_t li  = pivot_col_val_[i];
+          const f_t val = -pivot_val * li * lj;
+          if (std::abs(val) < drop_tol) { continue; }
+
+          c_i_[col_end_[j]] = i;
+          c_x_[col_end_[j]] = val;
+          col_end_[j]++;
+
+          // Insert into row storage: row i gets column j
+          ensure_row_space(i, 1);
+          r_j_[row_end_[i]] = j;
+          row_end_[i]++;
+
+          // Update degree for row i
+          const i_t rdeg = counts_.get_count(i);
+          counts_.update_count(i, rdeg + 1);
+          work_estimate_ += 10;
+        }
+      }
+
+      // Update degree for node j
+      i_t col_entries = col_end_[j] - col_start_[j];
+      i_t row_entries = row_end_[j] - row_start_[j];
+      i_t total_deg   = col_entries + row_entries;
+      if (total_deg != counts_.get_count(j)) { counts_.update_count(j, total_deg); }
+    }
+
+    // Step 3: Clear pivot vector workspaces
+    for (i_t k = 0; k < pivot_col_count; k++) {
+      const i_t i        = pivot_col_index_[k];
+      pivot_col_val_[i]  = 0;
+      pivot_col_mark_[i] = 0;
+    }
+    pivot_col_index_.clear();
+    work_estimate_ += 2 * pivot_col_count;
+  }
+
+  // Extract the full pivot vector as the L column (divided by pivot value).
+  // The L column for pivot p includes ALL off-diagonal entries of the full symmetric
+  // column p: entries below (from column storage) AND entries above (from row storage,
+  // looked up in other columns). Returns entries in original row indices.
+  void extract_column(i_t pivot_p, f_t pivot_val, csc_matrix_t<i_t, f_t>& L, i_t& Lnz)
+  {
+    // Entries below pivot: stored directly in column pivot_p
+    const i_t c_start = col_start_[pivot_p];
+    const i_t c_end   = col_end_[pivot_p];
+    for (i_t p = c_start; p < c_end; p++) {
+      const i_t i     = c_i_[p];
+      const f_t l_val = c_x_[p] / pivot_val;
+      L.i.push_back(i);
+      L.x.push_back(l_val);
+      Lnz++;
+    }
+
+    // Entries above pivot: row pivot_p stores columns j < pivot_p.
+    // The value A(pivot_p, j) is stored in column j at row pivot_p.
+    const i_t r_start = row_start_[pivot_p];
+    const i_t r_end   = row_end_[pivot_p];
+    for (i_t rp = r_start; rp < r_end; rp++) {
+      const i_t j = r_j_[rp];
+      // Look up A(pivot_p, j) from column j
+      f_t val = 0;
+      for (i_t q = col_start_[j]; q < col_end_[j]; q++) {
+        if (c_i_[q] == pivot_p) {
+          val = c_x_[q];
+          break;
+        }
+      }
+      const f_t l_val = val / pivot_val;
+      L.i.push_back(j);
+      L.x.push_back(l_val);
+      Lnz++;
+    }
+    work_estimate_ += 4 * (c_end - c_start) + 5 * (r_end - r_start);
+  }
+
+  // Remove the pivot node from the trailing matrix: remove column pivot_p and row pivot_p.
+  void remove_pivot(i_t pivot_p)
+  {
+    // Remove pivot_p from all rows that reference it via column storage
+    // Column pivot_p has entries at rows i > pivot_p. For each such row i,
+    // remove pivot_p from the row-index list of row i.
+    const i_t c_start = col_start_[pivot_p];
+    const i_t c_end   = col_end_[pivot_p];
+    for (i_t p = c_start; p < c_end; p++) {
+      const i_t i = c_i_[p];
+      // Remove column pivot_p from row i
+      for (i_t rp = row_start_[i]; rp < row_end_[i]; rp++) {
+        if (r_j_[rp] == pivot_p) {
+          r_j_[rp] = r_j_[row_end_[i] - 1];
+          row_end_[i]--;
+          break;
+        }
+      }
+      // Update degree for row i: decrement by 1 (lost column pivot_p)
+      const i_t deg = counts_.get_count(i);
+      if (deg > 0) { counts_.update_count(i, deg - 1); }
+    }
+    work_estimate_ += 6 * (c_end - c_start);
+
+    // Remove pivot_p from all columns that row pivot_p references.
+    // Row pivot_p stores columns j < pivot_p that have an entry at row pivot_p.
+    const i_t r_start = row_start_[pivot_p];
+    const i_t r_end   = row_end_[pivot_p];
+    for (i_t rp = r_start; rp < r_end; rp++) {
+      const i_t j = r_j_[rp];
+      // Remove row pivot_p from column j
+      for (i_t q = col_start_[j]; q < col_end_[j]; q++) {
+        if (c_i_[q] == pivot_p) {
+          c_i_[q] = c_i_[col_end_[j] - 1];
+          c_x_[q] = c_x_[col_end_[j] - 1];
+          col_end_[j]--;
+          break;
+        }
+      }
+      // Update degree for column j: lost row pivot_p
+      i_t col_entries = col_end_[j] - col_start_[j];
+      i_t row_entries = row_end_[j] - row_start_[j];
+      i_t total_deg   = col_entries + row_entries;
+      if (total_deg != counts_.get_count(j)) { counts_.update_count(j, total_deg); }
+    }
+    work_estimate_ += 6 * (r_end - r_start);
+
+    // Mark pivot as eliminated
+    col_end_[pivot_p] = col_start_[pivot_p];
+    row_end_[pivot_p] = row_start_[pivot_p];
+    counts_.remove_from_count(pivot_p);
+  }
+
+  void garbage_collect(f_t max_unused_fraction = 0.90)
+  {
+    if (unused_col_nz_ > max_unused_fraction * static_cast<f_t>(c_i_.size())) {
+      std::vector<i_t> new_c_i;
+      std::vector<f_t> new_c_x;
+      new_c_i.reserve(c_i_.size() - unused_col_nz_);
+      new_c_x.reserve(c_x_.size() - unused_col_nz_);
+      for (i_t j = 0; j < n_; j++) {
+        const i_t new_start = static_cast<i_t>(new_c_i.size());
+        const i_t c_start   = col_start_[j];
+        const i_t c_end     = col_end_[j];
+        const i_t col_size  = c_end - c_start;
+        for (i_t p = c_start; p < c_end; p++) {
+          new_c_i.push_back(c_i_[p]);
+          new_c_x.push_back(c_x_[p]);
+        }
+        col_start_[j] = new_start;
+        col_end_[j]   = static_cast<i_t>(new_c_i.size());
+        for (i_t s = 0; s < col_size; s++) {
+          new_c_i.push_back(kNone);
+          new_c_x.push_back(0.0);
+        }
+        col_max_[j] = static_cast<i_t>(new_c_i.size());
+        work_estimate_ += 4 * col_size;
+      }
+      work_estimate_ += 6 * n_;
+      c_i_           = std::move(new_c_i);
+      c_x_           = std::move(new_c_x);
+      unused_col_nz_ = 0;
+    }
+
+    if (unused_row_nz_ > max_unused_fraction * static_cast<f_t>(r_j_.size())) {
+      std::vector<i_t> new_r_j;
+      new_r_j.reserve(r_j_.size() - unused_row_nz_);
+      for (i_t i = 0; i < n_; i++) {
+        const i_t new_start = static_cast<i_t>(new_r_j.size());
+        const i_t r_start   = row_start_[i];
+        const i_t r_end     = row_end_[i];
+        const i_t row_size  = r_end - r_start;
+        for (i_t p = r_start; p < r_end; p++) {
+          new_r_j.push_back(r_j_[p]);
+        }
+        row_start_[i] = new_start;
+        row_end_[i]   = static_cast<i_t>(new_r_j.size());
+        for (i_t s = 0; s < row_size; s++) {
+          new_r_j.push_back(kNone);
+        }
+        row_max_[i] = static_cast<i_t>(new_r_j.size());
+        work_estimate_ += 2 * row_size;
+      }
+      work_estimate_ += 6 * n_;
+      r_j_           = std::move(new_r_j);
+      unused_row_nz_ = 0;
+    }
+  }
+
+ private:
+  bool ensure_col_space(i_t j, i_t needed)
+  {
+    if (col_end_[j] + needed <= col_max_[j]) { return false; }
+    const i_t c_start = col_start_[j];
+    const i_t c_end   = col_end_[j];
+    i_t current_size  = c_end - c_start;
+    unused_col_nz_ += current_size;
+    i_t new_start = c_i_.size();
+    for (i_t p = c_start; p < c_end; p++) {
+      c_i_.push_back(c_i_[p]);
+      c_x_.push_back(c_x_[p]);
+    }
+    work_estimate_ += 2 * (c_end - c_start);
+    col_start_[j] = new_start;
+    col_end_[j]   = c_i_.size();
+    i_t extra     = std::max(current_size, needed);
+    for (i_t k = 0; k < extra; k++) {
+      c_i_.push_back(kNone);
+      c_x_.push_back(0.0);
+    }
+    work_estimate_ += 2 * extra;
+    col_max_[j] = c_i_.size();
+    work_estimate_ += 10;
+    return true;
+  }
+
+  void ensure_row_space(i_t i, i_t needed)
+  {
+    if (row_end_[i] + needed <= row_max_[i]) { return; }
+    const i_t r_start = row_start_[i];
+    const i_t r_end   = row_end_[i];
+    i_t current_size  = r_end - r_start;
+    unused_row_nz_ += current_size;
+    i_t new_start = r_j_.size();
+    for (i_t p = r_start; p < r_end; p++) {
+      r_j_.push_back(r_j_[p]);
+    }
+    work_estimate_ += (r_end - r_start);
+    row_start_[i] = new_start;
+    row_end_[i]   = r_j_.size();
+    i_t extra     = std::max(current_size, needed);
+    for (i_t k = 0; k < extra; k++) {
+      r_j_.push_back(kNone);
+    }
+    work_estimate_ += extra;
+    row_max_[i] = r_j_.size();
+    work_estimate_ += 9;
+  }
+
+  // Compute the symmetric degree of each node: number of off-diagonal nonzeros
+  // in the lower triangle that touch node j (entries in column j with row > j,
+  // plus entries in columns k < j at row j).
+  std::vector<i_t> compute_degree(const csc_matrix_t<i_t, f_t>& A)
+  {
+    std::vector<i_t> degree(A.n, 0);
+    for (i_t j = 0; j < A.n; j++) {
+      for (i_t p = A.col_start[j]; p < A.col_start[j + 1]; p++) {
+        const i_t i = A.i[p];
+        if (i == j) { continue; }  // skip diagonal
+        // Off-diagonal entry (i, j) with i > j: contributes to degree of both i and j
+        degree[j]++;
+        degree[i]++;
+      }
+    }
+    work_estimate_ += 3 * A.n + 2 * Bnz_;
+    return degree;
+  }
+
+  i_t n_;
+  i_t Bnz_;
+  f_t work_estimate_;
+
+  // Column representation of lower triangle (off-diagonal: rows > col)
+  std::vector<i_t> col_start_;
+  std::vector<i_t> col_end_;
+  std::vector<i_t> col_max_;
+  std::vector<i_t> c_i_;
+  std::vector<f_t> c_x_;
+
+  // Row representation (index only): row i stores columns j < i with entry (i, j)
+  std::vector<i_t> row_start_;
+  std::vector<i_t> row_end_;
+  std::vector<i_t> row_max_;
+  std::vector<i_t> r_j_;
+
+  // Diagonal entries
+  std::vector<f_t> diag_;
+
+  // Dense workspaces for pivot column
+  std::vector<f_t> pivot_col_val_;
+  std::vector<char> pivot_col_mark_;
+  std::vector<i_t> pivot_col_index_;
+
+  // Single degree structure (symmetric: row degree == col degree)
+  nonzero_counts_t<i_t, f_t> counts_;
+
+  i_t unused_col_nz_;
+  i_t unused_row_nz_;
+};
+
+}  // namespace
+
+template <typename i_t, typename f_t>
+i_t right_looking_ldlt(const csc_matrix_t<i_t, f_t>& A,
+                       const simplex_solver_settings_t<i_t, f_t>& settings,
+                       f_t pivot_tol,
+                       f_t start_time,
+                       std::vector<i_t>& perm,
+                       csc_matrix_t<i_t, f_t>& L,
+                       std::vector<f_t>& D,
+                       f_t& work_estimate)
+{
+  raft::common::nvtx::range scope("LU::right_looking_ldlt");
+  const i_t n = A.n;
+  assert(A.m == n);
+
+  symmetric_trailing_matrix_t<i_t, f_t> trailing_matrix(A);
+
+  perm.resize(n);
+  std::fill(perm.begin(), perm.end(), -1);
+  D.clear();
+  D.reserve(n);
+
+  L.m = n;
+  L.n = n;
+  L.col_start.resize(n + 1);
+  L.i.clear();
+  L.x.clear();
+
+  // perminv[original_index] = elimination_order
+  std::vector<i_t> perminv(n, -1);
+
+  i_t Lnz                = 0;
+  constexpr f_t drop_tol = 1e-14;
+
+  work_estimate += trailing_matrix.record_and_clear_work_estimate_();
+
+  i_t pivots = 0;
+  for (i_t k = 0; k < n; ++k) {
+    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+      return CONCURRENT_HALT_RETURN;
+    }
+    if (toc(start_time) > settings.time_limit) { return TIME_LIMIT_RETURN; }
+
+    // Find symmetric pivot
+    i_t pivot_p   = -1;
+    f_t pivot_val = 0;
+    trailing_matrix.symmetric_markowitz_search(pivot_tol, pivot_p, pivot_val);
+
+    if (pivot_p == -1) { break; }  // No acceptable pivot found (remaining diagonals are zero/tiny)
+
+    // Check for indefiniteness: a negative pivot means the matrix is not PSD
+    if (pivot_val < 0) { return INDEFINITE_MATRIX_RETURN; }
+
+    // Record permutation
+    perm[k]          = pivot_p;
+    perminv[pivot_p] = k;
+    D.push_back(pivot_val);
+    pivots++;
+
+    // L(:, k) = entries in column pivot_p / pivot_val
+    L.col_start[k] = Lnz;
+    // Unit diagonal: L(pivot_p, k) = 1 (implicit, stored for triangular solve compatibility)
+    L.i.push_back(pivot_p);
+    L.x.push_back(1.0);
+    Lnz++;
+    trailing_matrix.extract_column(pivot_p, pivot_val, L, Lnz);
+
+    // Symmetric Schur complement: A <- A - d * l * l^T
+    trailing_matrix.symmetric_schur_complement(pivot_p, drop_tol, pivot_val);
+
+    // Remove pivot from trailing matrix
+    trailing_matrix.remove_pivot(pivot_p);
+
+    trailing_matrix.garbage_collect();
+
+    work_estimate += trailing_matrix.record_and_clear_work_estimate_();
+  }
+
+  // Finalize L
+  L.col_start[pivots] = Lnz;
+  // Fill remaining col_start entries for any unpivoted columns
+  for (i_t k = pivots + 1; k <= n; k++) {
+    L.col_start[k] = Lnz;
+  }
+
+  // Complete the permutation for unpivoted nodes
+  {
+    i_t next = pivots;
+    for (i_t i = 0; i < n; i++) {
+      if (perminv[i] == -1) {
+        perminv[i] = next;
+        if (next < n) { perm[next] = i; }
+        next++;
+      }
+    }
+  }
+
+  // Remap L row indices from original to permuted order
+  for (i_t p = 0; p < Lnz; p++) {
+    L.i[p] = perminv[L.i[p]];
+  }
+  work_estimate += 2 * Lnz;
+
+  // Resize L to actual rank
+  L.n      = pivots;
+  L.nz_max = Lnz;
+
+  return pivots;
+}
+
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 
 template int right_looking_lu<int, double>(const csc_matrix_t<int, double>& A,
@@ -1118,6 +1802,15 @@ template int right_looking_lu_row_permutation_only<int, double>(
   double start_time,
   std::vector<int>& q,
   std::vector<int>& pinv);
+
+template int right_looking_ldlt<int, double>(const csc_matrix_t<int, double>& A,
+                                             const simplex_solver_settings_t<int, double>& settings,
+                                             double pivot_tol,
+                                             double start_time,
+                                             std::vector<int>& perm,
+                                             csc_matrix_t<int, double>& L,
+                                             std::vector<double>& D,
+                                             double& work_estimate);
 #endif
 
 }  // namespace cuopt::linear_programming::dual_simplex
