@@ -2591,7 +2591,7 @@ static cuopt::linear_programming::io::mps_data_model_t<i_t, f_t> parse_mps_fast_
   int header_done = 0, rows_done = 0, columns_done = 0;
   int rhs_done = 0, bounds_done = 0, ranges_done = 0, quadratic_done = 0, names_done = 0;
 
-#pragma omp parallel num_threads(omp_get_max_threads())
+#pragma omp parallel num_threads(std::min(32, omp_get_max_threads()))
   {
     std::string thread_name = "omp-parser-" + std::to_string(omp_get_thread_num());
     nvtx::name_current_thread(thread_name.c_str());
