@@ -42,6 +42,9 @@ cuopt_int_t test_quadratic_ranged_problem(cuopt_int_t* termination_status_ptr,
 cuopt_int_t test_quadratic_constraint_problem(cuopt_int_t* termination_status_ptr,
                                               cuopt_float_t* objective_ptr,
                                               cuopt_float_t* solution_values);
+cuopt_int_t test_general_quadratic_constraint_problem(cuopt_int_t* termination_status_ptr,
+                                                      cuopt_float_t* objective_ptr,
+                                                      cuopt_float_t* solution_values);
 cuopt_int_t test_write_problem(const char* input_filename, const char* output_filename);
 cuopt_int_t test_maximize_problem_dual_variables(cuopt_int_t method,
                                                  cuopt_int_t* termination_status_ptr,

@@ -241,6 +241,21 @@ TEST(c_api, test_quadratic_constraint_problem)
   EXPECT_NEAR(solution_values[3], 5.0, 1e-4);
 }
 
+TEST(c_api, test_general_quadratic_constraint_problem)
+{
+  cuopt_int_t termination_status;
+  cuopt_float_t objective;
+  cuopt_float_t solution_values[2];
+  EXPECT_EQ(
+    test_general_quadratic_constraint_problem(&termination_status, &objective, solution_values),
+    CUOPT_SUCCESS);
+  EXPECT_EQ(termination_status, CUOPT_TERMINATION_STATUS_OPTIMAL);
+  // Optimal: x0 = x1 = -1/sqrt(7), obj = -2/sqrt(7) ≈ -0.755929
+  EXPECT_NEAR(objective, -2.0 / sqrt(7.0), 1e-4);
+  EXPECT_NEAR(solution_values[0], -1.0 / sqrt(7.0), 1e-4);
+  EXPECT_NEAR(solution_values[1], -1.0 / sqrt(7.0), 1e-4);
+}
+
 TEST(c_api, test_write_problem)
 {
   const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();

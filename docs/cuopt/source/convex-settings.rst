@@ -1,16 +1,15 @@
-=================================
-LP, QP, and MILP Settings
-=================================
+================================================
+Convex Optimization Settings
+================================================
 
 
-This page describes the parameter settings available for cuOpt's LP, QP, and MILP solvers. These parameters are set as :ref:`parameter constants <parameter-constants>` in case of C API and in case of Server Thin client as raw strings.
-Please refer to examples in :doc:`C </cuopt-c/lp-qp-milp/index>` and :doc:`Server Thin client </cuopt-server/index>` for more details.
+This page describes the parameter settings available for cuOpt's convex optimization solvers. These parameters are set as :ref:`parameter constants <parameter-constants>` in case of C API and in case of Server Thin client as raw strings. Refer to examples in :doc:`C </cuopt-c/convex/index>` and :doc:`Server Thin client </cuopt-server/index>` for more details.
 
 .. note::
    When setting parameters in thin client solver settings, remove ``CUOPT_`` from the parameter name and convert to lowercase. For example, ``CUOPT_TIME_LIMIT`` would be set as ``time_limit``.
 
-Parameters common to LP/MILP
-----------------------------
+Common Parameters
+-----------------
 
 We begin by describing parameters common to both the MILP and LP solvers
 
@@ -66,10 +65,6 @@ Presolve
 ``CUOPT_PRESOLVE`` controls which presolver to use for presolve reductions.
 cuOpt provides presolve reductions for linear programming (LP) problems using either PSLP or Papilo, and for mixed-integer programming (MIP) problems using Papilo. By default, Papilo presolve is always enabled for MIP problems. For LP problems, PSLP presolve is always enabled by default. You can explicitly control the presolver by setting this parameter to 0 (disable presolve), 1 (Papilo), or 2 (PSLP).
 
-Probing
-^^^^^^^
-``CUOPT_MIP_PROBING`` toggles the probing-cache step of cuOpt's internal MIP presolve. The probing pass evaluates variable fixings to discover implications used later by branch-and-bound and the rounding heuristics. It is enabled by default (``true``); set it to ``false`` to skip probing while leaving the rest of presolve in place. Setting ``CUOPT_PRESOLVE=0`` already turns off the entire presolve pipeline, so ``CUOPT_MIP_PROBING`` only matters when presolve is otherwise enabled. Probing is also skipped in deterministic mode and on LP-only solves.
-
 Dual Postsolve
 ^^^^^^^^^^^^^^
 ``CUOPT_DUAL_POSTSOLVE`` controls whether dual postsolve is enabled when using Papilo presolver for LP problems. Disabling dual postsolve can improve solve time at the expense of not having
@@ -96,7 +91,7 @@ Default accuracy for each method:
 
 * PDLP solves to 1e-4 relative accuracy by default.
 * Barrier solves to 1e-8 relative accuracy by default.
-* Dual Simplex solves to 1e-6 absolute accuracy by default.
+* Dual Simplex solves to 1e-6 *absolute* accuracy by default.
 
 C API users should use the constants defined in :ref:`method-constants` for this parameter.
 
@@ -375,184 +370,20 @@ The duality gap is computed as follows::
 
 .. note:: The default value is ``1e-4``.
 
+Barrier Iterative Refinement
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Mixed Integer Linear Programming
----------------------------------
+``CUOPT_BARRIER_ITERATIVE_REFINEMENT`` controls whether iterative refinement is applied after each barrier iteration to improve solution accuracy.
 
-We now describe parameter settings for the MILP solvers
+* ``0`` (``CUOPT_BARRIER_ITERATIVE_REFINEMENT_OFF``): Disable iterative refinement (default).
+* ``1`` (``CUOPT_BARRIER_ITERATIVE_REFINEMENT_ON``): Enable iterative refinement.
 
+.. note:: The default value is ``0`` (off).
 
-Heuristics only
-^^^^^^^^^^^^^^^
+Barrier Step Scale
+^^^^^^^^^^^^^^^^^^^
 
-``CUOPT_MIP_HEURISTICS_ONLY`` controls if only the GPU heuristics should be run for the MIP problem. When set to true, only the primal
-bound is improved via the GPU. When set to false, both the GPU and CPU are used and
-the dual bound is improved on the CPU.
+``CUOPT_BARRIER_STEP_SCALE`` controls the scaling factor applied to the step size in the barrier method.
+The step scale must be strictly less than 1. A value like 0.9 is conservative, while a value like 0.999 is aggressive.
 
-.. note:: The default value is false.
-
-Scaling
-^^^^^^^
-
-``CUOPT_MIP_SCALING`` controls if scaling should be applied to the MIP problem.
-
-* ``0``: Scaling is off.
-* ``1``: Scaling is on.
-* ``2``: Scaling is not applied to the objective (default).
-
-Absolute Tolerance
-^^^^^^^^^^^^^^^^^^
-
-``CUOPT_MIP_ABSOLUTE_TOLERANCE`` controls the MIP absolute tolerance.
-
-.. note:: The default value is ``1e-6``.
-
-Relative Tolerance
-^^^^^^^^^^^^^^^^^^
-
-``CUOPT_MIP_RELATIVE_TOLERANCE`` controls the MIP relative tolerance.
-
-.. note:: The default value is ``1e-12``.
-
-
-Integrality Tolerance
-^^^^^^^^^^^^^^^^^^^^^
-
-``CUOPT_MIP_INTEGRALITY_TOLERANCE`` controls the MIP integrality tolerance. A variable is considered to be integral, if
-it is within the integrality tolerance of an integer.
-
-.. note:: The default value is ``1e-5``.
-
-Absolute MIP Gap
-^^^^^^^^^^^^^^^^
-
-``CUOPT_MIP_ABSOLUTE_GAP`` controls the absolute tolerance used to terminate the MIP solve. The solve terminates when::
-
-    Best Objective - Dual Bound  <= absolute tolerance
-
-when minimizing or
-
-    Dual Bound - Best Objective <= absolute tolerance
-
-when maximizing.
-
-.. note:: The default value is ``1e-10``.
-
-Relative MIP Gap
-^^^^^^^^^^^^^^^^
-
-``CUOPT_MIP_RELATIVE_GAP`` controls the relative tolerance used to terminate the MIP solve. The solve terminates when::
-
-    abs(Best Objective - Dual Bound) / abs(Best Objective) <= relative tolerance
-
-If the Best Objective and the Dual Bound are both zero the gap is zero. If the best objective value is zero, the
-gap is infinity.
-
-.. note:: The default value is ``1e-4``.
-
-
-Node Limit
-^^^^^^^^^^
-
-``CUOPT_NODE_LIMIT`` controls the maximum number of branch-and-bound nodes the MILP solver will explore before stopping and returning the current best feasible solution (if any). If set along with the time limit, cuOpt stops at whichever limit is hit first.
-
-.. note:: By default there is no node limit. The setting only affects MILP;
-   it is ignored for LP and QP.
-
-Cut Passes
-^^^^^^^^^^
-
-``CUOPT_MIP_CUT_PASSES`` controls the number of cut passes to run. Set this value to 0 to disable cuts. Set this value to larger numbers to perform more cut passes.
-
-.. note:: The default value is ``10``.
-
-Mixed Integer Rounding Cuts
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-``CUOPT_MIP_MIXED_INTEGER_ROUNDING_CUTS`` controls whether to use mixed integer rounding cuts.
-The default value of ``-1`` (automatic) means that the solver will decide whether to use mixed integer rounding cuts based on the problem characteristics.
-Set this value to 1 to enable mixed integer rounding cuts.
-Set this value to 0 to disable mixed integer rounding cuts.
-
-.. note:: The default value is ``-1`` (automatic).
-
-Mixed Integer Gomory Cuts
-^^^^^^^^^^^^^^^^^^^^^^^^^
-
-``CUOPT_MIP_MIXED_INTEGER_GOMORY_CUTS`` controls whether to use mixed integer Gomory cuts.
-The default value of ``-1`` (automatic) means that the solver will decide whether to use mixed integer Gomory cuts based on the problem characteristics.
-Set this value to 1 to enable mixed integer Gomory cuts.
-Set this value to 0 to disable mixed integer Gomory cuts.
-
-.. note:: The default value is ``-1`` (automatic).
-
-Strong Chvatal-Gomory Cuts
-^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-``CUOPT_MIP_STRONG_CHVATAL_GOMORY_CUTS`` controls whether to use strong Chvatal-Gomory cuts.
-The default value of ``-1`` (automatic) means that the solver will decide whether to use strong Chvatal-Gomory cuts based on the problem characteristics.
-Set this value to 1 to enable strong Chvatal Gomory cuts.
-Set this value to 0 to disable strong Chvatal Gomory cuts.
-
-.. note:: The default value is ``-1`` (automatic).
-
-Knapsack Cuts
-^^^^^^^^^^^^^
-
-``CUOPT_MIP_KNAPSACK_CUTS`` controls whether to use knapsack cuts.
-The default value of ``-1`` (automatic) means that the solver will decide whether to use knapsack cuts based on the problem characteristics.
-Set this value to 1 to enable knapsack cuts.
-Set this value to 0 to disable knapsack cuts.
-
-.. note:: The default value is ``-1`` (automatic).
-
-
-Cut Change Threshold
-^^^^^^^^^^^^^^^^^^^^
-
-``CUOPT_MIP_CUT_CHANGE_THRESHOLD`` controls the threshold for the improvement in the dual bound per cut pass.
-Larger values require the dual bound to improve significantly in each cut pass.
-Set this value to 0 to allow the cut passes to continue even if the dual bound does not improve.
-
-.. note:: The default value is ``1e-3``.
-
-Cut Min Orthogonality
-^^^^^^^^^^^^^^^^^^^^^
-
-``CUOPT_MIP_CUT_MIN_ORTHOGONALITY`` controls the minimum orthogonality required for a cut to be added to the LP relaxation.
-Set this value close to 1, to require all cuts be close to orthogonal to each other.
-Set this value close to zero to allow more cuts to be added to the LP relaxation.
-
-.. note:: The default value is ``0.5``.
-
-Reduced Cost Strengthening
-^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-``CUOPT_MIP_REDUCED_COST_STRENGTHENING`` controls whether to use reduced-cost strengthening.
-When enabled, the solver will use integer feasible solutions to strengthen the bounds of integer variables.
-The default value of ``-1`` (automatic) means that the solver will decide whether to use reduced-cost strengthening based on the problem characteristics.
-Set this value to 0 to disable reduced-cost strengthening.
-Set this value to 1 to perform reduced-cost strengthening during the root cut passes.
-Set this value to 2 to perform reduced-cost strengthening during the root cut passes and after strong branching.
-
-.. note:: The default value is ``-1`` (automatic).
-
-Reliability Branching
-^^^^^^^^^^^^^^^^^^^^^
-
-``CUOPT_MIP_RELIABILITY_BRANCHING`` controls the reliability branching mode.
-The default value of ``-1`` (automatic) means that the solver will decide whether to use reliability branching, and the reliability branching factor, based on the problem characteristics.
-Set this value to 0 to disable reliability branching.
-Set this value to k > 0, to enable reliability branching. A variable will be considered reliable if it has been branched on k times.
-
-.. note:: The default value is ``-1`` (automatic).
-
-Batch PDLP Strong Branching
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-``CUOPT_MIP_BATCH_PDLP_STRONG_BRANCHING`` controls whether to use batched PDLP over Dual Simplex during strong branching at the root.
-When enabled, the solver evaluates multiple branching candidates simultaneously in a single batched PDLP solve rather than solving them in parallel using Dual Simplex. This can significantly reduce the time spent in strong branching if Dual Simplex is struggling.
-Set this value to 0 to disable batched PDLP strong branching.
-Set this value to 1 to enable batched PDLP strong branching.
-
-.. note:: The default value is ``0`` (disabled). This setting is ignored if the problem is not a MIP problem.
+.. note:: By default cuOpt selects the step scale automatically.

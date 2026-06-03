@@ -3000,14 +3000,14 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
           f_t old_dp     = dual_perturb;
           dual_perturb   = std::min(max_perturb, dual_perturb * 10.0);
           primal_perturb = std::min(max_perturb, primal_perturb * 10.0);
-          settings.log.printf(
+          settings.log.debug(
             "  reg UP: %e -> %e (solve_err=%e)\n", old_dp, dual_perturb, solve_err);
         } else if (solve_err < 1e-4) {
           f_t old_dp     = dual_perturb;
           dual_perturb   = std::max(min_perturb, dual_perturb / 10.0);
           primal_perturb = std::max(min_perturb, primal_perturb / 10.0);
           if (old_dp != dual_perturb) {
-            settings.log.printf(
+            settings.log.debug(
               "  reg DOWN: %e -> %e (solve_err=%e)\n", old_dp, dual_perturb, solve_err);
           }
         }

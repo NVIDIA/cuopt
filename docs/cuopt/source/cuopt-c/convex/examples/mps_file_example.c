@@ -3,18 +3,23 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 /*
- * LP MPS File C API Example
+ * MPS File C API Example (LP / QP / QCQP / SOCP)
  *
- * This example demonstrates how to solve LP problems from MPS files using the cuOpt C API.
+ * This example reads any problem from an MPS file and solves it with the cuOpt C
+ * API. The same program handles problems with
+ *  - linear objectives (LP),
+ *  - quadratic objectives (QP via a QUADOBJ section), and
+ *  - quadratic constraints (QCQP/SOCP via QCMATRIX sections).
  *
- * Problem (from MPS file):
+ *
+ * Example LP problem (from sample.mps):
  *   Minimize: -0.2*VAR1 + 0.1*VAR2
  *   Subject to:
  *     3*VAR1 + 4*VAR2 <= 5.4
  *     2.7*VAR1 + 10.1*VAR2 <= 4.9
  *     VAR1, VAR2 >= 0
  *
- * Expected Output:
+ * Expected Output (sample.mps):
  *   Number of variables: 2
  *   Termination status: Optimal (1)
  *   Solve time: 0.000014 seconds
@@ -22,11 +27,15 @@
  *   x1 = 1.800000
  *   x2 = 0.000000
  *
+ * See qp_sample.mps (quadratic objective) and socp_sample.mps (standard and
+ * rotated second-order cone constraints) for QP and SOCP inputs to this same
+ * program.
+ *
  * Build:
- *   gcc -I $INCLUDE_PATH -L $LIBCUOPT_LIBRARY_PATH -o lp_example_mps lp_example_mps.c -lcuopt
+ *   gcc -I $INCLUDE_PATH -L $LIBCUOPT_LIBRARY_PATH -o mps_file_example mps_file_example.c -lcuopt
  *
  * Run:
- *   ./lp_example_mps sample.mps
+ *   ./mps_file_example sample.mps
  */
 
 #include <cuopt/linear_programming/cuopt_c.h>

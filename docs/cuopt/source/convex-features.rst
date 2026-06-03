@@ -1,30 +1,55 @@
-==================
-LP/QP Features
-==================
+============================
+Convex Optimization Features
+============================
 
 Availability
 -------------
 
-The Linear Programming (LP) and Quadratic Programming (QP) solvers can be accessed in the following ways:
+The convex optimization solvers for Linear Programming (LP), Quadratic Programming (QP), Quadratically Constrained Quadratic Programming (QCQP), and Second-Order Cone Programming (SOCP) can be accessed in the following ways:
 
-- **Third-Party Modeling Languages**: cuOpt's LP solver can be called directly from the following third-party modeling languages. This allows you to leverage GPU acceleration while maintaining your existing optimization workflow in these modeling languages.
+- **Third-Party Modeling Languages**: cuOpt's convex optimization solvers can be called directly from the following third-party modeling languages. This allows you to GPU-accelerate your existing optimization workflow in these modeling languages.
 
   Supported modeling languages:
-   -  AMPL
-   -  GAMS
-   -  PuLP
-   -  JuMP
+
+  .. list-table::
+     :header-rows: 1
+     :widths: 30 15 15 15
+
+     * - Language
+       - LP
+       - QP
+       - QCQP/SOCP
+     * - AMPL
+       - ✓
+       -
+       -
+     * - CVXPY
+       - ✓
+       - ✓
+       - ✓
+     * - GAMS
+       - ✓
+       - ✓
+       -
+     * - JuMP
+       - ✓
+       - ✓
+       -
+     * - PuLP
+       - ✓
+       -
+       -
 
 .. note::
-   The QP solver is not currently supported in third-party modeling languages.
+   QCQP/SOCP is currently only supported in CVXPY. We hope to add support for QCQP/SOCP in other modeling languages soon.
 
-- **C API**: A native C API that provides direct low-level access to cuOpt's LP/QP capabilities, enabling integration into any application or system that can interface with C.
+- **C API**: A native C API that provides direct low-level access to cuOpt's convex optimization solvers, enabling integration into any application or system that can interface with C.
 
-- **Python SDK**: A Python package that provides direct access to cuOpt's LP/QP capabilities through a simple, intuitive API. This allows for seamless integration into Python applications and workflows. For more information, see :doc:`cuopt-python/quick-start`.
+- **Python SDK**: A Python package that provides direct access to cuOpt's convex optimization solvers through a simple, intuitive API. This allows for seamless integration into Python applications and workflows. For more information, see :doc:`cuopt-python/quick-start`.
 
-- **As a Self-Hosted Service**: cuOpt's LP/QP solver can be deployed as a self-hosted service in your own infrastructure, enabling you to maintain full control while integrating it into your existing systems.
+- **As a Self-Hosted Service**: cuOpt's convex optimization solvers can be deployed as a self-hosted service in your own infrastructure, enabling you to maintain full control while integrating it into your existing systems.
 
-Each option provide the same powerful linear optimization capabilities while offering flexibility in deployment and integration.
+Each option provides access to the same powerful convex optimization solvers while offering flexibility in deployment and integration.
 
 Variable Bounds
 ---------------
@@ -55,7 +80,7 @@ There are two ways to specify constraints to the LP solver:
    where lb and ub are vectors of lower and upper bounds respectively. This form allows specifying both bounds on a single constraint.
 
 
-Quadratic Programming
+Quadratic Objectives
 ---------------------
 
 cuOpt supports problems with quadratic objectives of the form:
@@ -63,15 +88,131 @@ cuOpt supports problems with quadratic objectives of the form:
 .. code-block:: text
 
     minimize        x^T*Q*x + c^T*x
-    subject to      A*x {<=, =, >=} b
-                    lb <= x <= ub
+    subject to      A*x {<=, =, >=} b,
+                    lb <= x <= ub,
 
-where Q is a symmetric positive semidefinite matrix. Please note that the Q matrix is specified without the 1/2 factor that may be used by other solvers.
+where H = (Q + Q^T)/2 is a symmetric positive semidefinite matrix. Note that the Q matrix need not be symmetric, and is specified without the 1/2 factor that may be used by other solvers.
 
-.. note:: Currently, barrier is the only method that supports QPs.
+.. note:: Currently, barrier is the only method that supports quadratic objectives.
 
-See :ref:`simple-qp-example-python` for an example of how to create a QP problem with the Python Modeling API.
-See :ref:`simple-qp-example-c` for an example of how to create a QP problem with the C API.
+See :ref:`simple-qp-example-python` for an example of how to create a problem with a quadratic objective using the Python Modeling API.
+See :ref:`simple-qp-example-c` for an example of how to create a problem with a quadratic objective using the C API.
+
+Quadratic Constraints (Beta)
+--------------------------------------
+
+.. note:: Support for quadratic constraints is currently in **beta**.
+
+cuOpt supports quadratic constraints of the form
+
+.. code-block:: text
+
+    x^T Q x + d^T x {<=, >=} alpha
+
+and translates them internally into **second-order cone** constraints. Problems with quadratic constraints have the form:
+
+.. code-block:: text
+
+    minimize        c^T*x + x^T Q x
+    subject to      A*x {<=, =, >=} b,
+                    x^T Q_i x + d_i^T x {<=, >=} alpha_i,  i = 1, ..., p,
+                    lb <= x <= ub.
+
+Quadratic constraints are supplied via ``addConstraint`` in Python, via :c:func:`cuOptAddQuadraticConstraint` in C, and via ``QCMATRIX`` sections in MPS.
+
+cuOpt accepts several different types of quadratic constraints:
+
+**Convex quadratic constraints**:
+
+These are constraints of the form
+
+.. code-block:: text
+
+    x^T Q x + d^T x <= alpha
+
+where ``H = (Q + Q^T)/2`` is a symmetric positive semidefinite matrix, and
+
+.. code-block:: text
+
+   x^T Q x + d^T x >= alpha
+
+where ``H = (Q + Q^T)/2`` is a symmetric negative semidefinite matrix.  Note when specifying a convex quadratic constraint, the Q matrix need not be symmetric.
+
+**Second-order cone constraints**:
+
+These constrains are of the form:
+
+.. code-block:: text
+
+   || (x_1, ..., x_n) ||_2 <= x_0.
+
+Second-order cone constraints must be specified as a quadratic constraint with a bound on the x_0 variable:
+
+.. code-block:: text
+
+   x_1^2 + ... + x_n^2 - x_0^2 <= 0,  x_0 >= 0.
+
+**Rotated second-order cone constraints**:
+
+These constraints are of the form:
+
+
+   x_2^2 + x_2^2 + ... + x_n^2 <= x_0 * x_1,  x_0 >= 0,  x_1 >= 0.
+
+Rotated second-order cone constraints must be specified as a quadratic constraint with a bounds on the x_0 and x_1 variables:
+
+.. code-block:: text
+
+   x_2^2 + x_2^2 + ... + x_n^2 - 0.5 * x_0 * x_1 - 0.5 * x_1 * x_0 <= 0,  x_0 >= 0,  x_1 >= 0.
+
+Note that for rotated second-order cone constraints, cuOpt expects the quadratic matrix to be symmetric.
+For any cross term, provide both ``Q_i,j`` and ``Q_j,i``. cuOpt expects only symmetric ``Q``:
+
+.. code-block:: text
+
+   Q[x_0, x_1] = Q[x_1, x_0] = -0.5.
+
+When any quadratic constraint is present, cuOpt automatically selects the barrier method and disables presolve optimizations that apply only to linear problems.
+
+.note::
+
+- Only ``<=`` and ``>=`` sense is supported. Equality quadratic constraints are not supported.
+
+**Python example — second-order cone** ``||(x_1, x_2)||_2 <= x_0``:
+
+.. code-block:: python
+
+    x0 = problem.addVariable(name="x0", lb=0)   # cone head, must be >= 0
+    x1 = problem.addVariable(name="x1")
+    x2 = problem.addVariable(name="x2")
+
+    problem.addConstraint(x1*x1 + x2*x2 - x0*x0 <= 0, name="soc")
+
+**Python example — rotated cone** ``x_2^2 + x_3^2 <= x_0 * x_1``:
+
+.. code-block:: python
+
+
+    x0 = problem.addVariable(name="x3", lb=0)   # cone head, must be >= 0
+    x1 = problem.addVariable(name="x4", lb=0)   # cone head, must be >= 0
+    x2 = problem.addVariable(name="x1")
+    x3 = problem.addVariable(name="x2")
+
+    problem.addConstraint(x1 + x2 >= 2)
+    # x2^2 + x3^2 <= x0 * x1. cuOpt expects a symmetric Q, so the cross term is
+    # supplied as the two equal halves -0.5*x0*x1 and -0.5*x1*x0
+    # (i.e. Q[x0,x1] = Q[x1,x0] = -0.5).
+    problem.addConstraint(
+        x2*x2 + x3*x3 - 0.5*x0*x1 - 0.5*x1*x0 <= 0, name="rotated_soc"
+    )
+
+.. note::
+   cuOpt expects the quadratic matrix ``Q`` to be symmetric. Supply each cross
+   term as two equal halves, as in ``-0.5*x0*x1 - 0.5*x1*x0`` above.
+
+**C API:** Use :c:func:`cuOptAddQuadraticConstraint` to add convex quadratic constraints or second-order and rotated second-order cone constraints expressed as quadratic inequalities.
+
+.. note:: Problems with quadratic constraints always use the barrier solver regardless of the ``CUOPT_METHOD`` setting.
 
 Warm Start
 -----------
@@ -112,19 +253,19 @@ Crossover
 Crossover allows you to obtain a high-quality basic solution from the results of a PDLP or barrier solve. When enabled, crossover converts the PDLP or barrier solution to a vertex solution (basic solution) with high accuracy. More details can be found :ref:`here <crossover>`.
 
 .. note::
-   Crossover is not supported for QP problems.
+   Crossover is not supported for problems with quadratic objectives or quadratic constraints.
 
 Presolve
 --------
 
-Presolve procedure is applied to the problem before the solver is called. It can be used to reduce the problem size and improve solve time. cuOpt supports presolve reductions using PSLP or Papilo for linear programming (LP) problems, and Papilo for mixed-integer programming (MIP) problems. For MIP problems, Papilo presolve is always enabled by default. For LP problems, PSLP presolve is always enabled by default. Users can manually select to disable presolve by setting this parameter to 0, enable Papilo presolve by setting this parameter to 1, or enable PSLP presolve by setting this parameter to 2.
+Presolve procedure is applied to the problem before the solver is called. It can be used to reduce the problem size and improve solve time. cuOpt supports presolve reductions using PSLP or Papilo for linear programming (LP) problems. For LP problems, PSLP presolve is always enabled by default. Users can manually select to disable presolve by setting this parameter to 0, enable Papilo presolve by setting this parameter to 1, or enable PSLP presolve by setting this parameter to 2.
 Furthermore, for LP problems with Papilo presolver, when the dual solution is not needed, additional presolve procedures can be applied to further improve solve times. This is achieved by turning off dual postsolve with the ``CUOPT_DUAL_POSTSOLVE`` setting.
 
 
 Logging
 -------
 
-The ``CUOPT_LOG_FILE`` parameter can be set to write detailed solver logs for LP/QP problems. This parameter is available in all APIs that allow setting solver parameters except the cuOpt service. For the service, see the logging callback below.
+The ``CUOPT_LOG_FILE`` parameter can be set to write detailed solver logs for LP/QP/QCQP/SOCP problems. This parameter is available in all APIs that allow setting solver parameters except the cuOpt service. For the service, see the logging callback below.
 
 Logging Callback in the Service
 -------------------------------

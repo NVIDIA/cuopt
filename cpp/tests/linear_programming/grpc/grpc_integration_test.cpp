@@ -1242,7 +1242,7 @@ TEST_F(ChunkedUploadTests, ConcurrentChunkedUploads)
 // unary SubmitJob path) must still round-trip the wire format cleanly and
 // the worker must surface the SOC validator's ValidationError back to the
 // client.
-TEST_F(ChunkedUploadTests, QuadraticConstraintsUnaryRejectsNonZeroRhs)
+TEST_F(ChunkedUploadTests, QuadraticConstraintsUnaryNonZeroRhs)
 {
   grpc_client_config_t config;
   config.timeout_seconds = 60;
@@ -1261,15 +1261,10 @@ TEST_F(ChunkedUploadTests, QuadraticConstraintsUnaryRejectsNonZeroRhs)
   settings.time_limit = 10.0;
 
   auto result = client->solve_lp(problem, settings);
-  // SOC conversion currently requires rhs = 0 on every QC row; QC_Test_1
-  // has rhs = 5 / rhs = 10, so the validator rejects it.  This proves both
-  // (a) the QCQP wire format made it intact through the unary submit path
-  // (otherwise the validator would never have run) and (b) worker error
-  // propagation correctly forwards the SOC validator's ValidationError to
-  // the client instead of swallowing it into a fake "successful" response.
-  EXPECT_FALSE(result.success);
-  EXPECT_THAT(result.error_message, ::testing::HasSubstr("ValidationError"));
-  EXPECT_THAT(result.error_message, ::testing::HasSubstr("rhs = 0"));
+  // QC_Test_1 has rhs = 5 / rhs = 10. The general convex quadratic path
+  // handles nonzero RHS, so the problem should be accepted and solved.
+  // This proves the QCQP wire format made it intact through the unary submit path.
+  EXPECT_TRUE(result.success);
 }
 
 // Force the chunked upload path with both a zero-byte threshold (every array
@@ -1289,7 +1284,7 @@ TEST_F(ChunkedUploadTests, QuadraticConstraintsUnaryRejectsNonZeroRhs)
 // that drops or duplicates QC array bytes would manifest as a *different*
 // failure mode (typically a malformed-problem error or a successful solve
 // of a tampered problem) rather than the expected rhs=0 rejection.
-TEST_F(ChunkedUploadTests, QuadraticConstraintsChunkedRejectsNonZeroRhs)
+TEST_F(ChunkedUploadTests, QuadraticConstraintsChunkedNonZeroRhs)
 {
   grpc_client_config_t config;
   config.timeout_seconds = 60;
@@ -1309,9 +1304,9 @@ TEST_F(ChunkedUploadTests, QuadraticConstraintsChunkedRejectsNonZeroRhs)
   settings.time_limit = 10.0;
 
   auto result = client->solve_lp(problem, settings);
-  EXPECT_FALSE(result.success);
-  EXPECT_THAT(result.error_message, ::testing::HasSubstr("ValidationError"));
-  EXPECT_THAT(result.error_message, ::testing::HasSubstr("rhs = 0"));
+  // QC_Test_1 has nonzero RHS, now handled by the general convex quadratic path.
+  // This proves the chunked wire format correctly transmits QC data.
+  EXPECT_TRUE(result.success);
 }
 
 // End-to-end SOCP correctness via gRPC: QC_Test_2 is a small convex QCQP

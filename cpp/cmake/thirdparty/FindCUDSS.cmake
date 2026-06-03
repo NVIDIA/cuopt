@@ -40,8 +40,8 @@ if (DEFINED ENV{CUDSS_DIR} AND NOT "$ENV{CUDSS_DIR}" STREQUAL "")
   mark_as_advanced(CUDSS_INCLUDE CUDSS_LIBRARIES)
 
 else()
- # Request CUDSS version >= 0.8
-  find_package(cudss 0.8 REQUIRED CONFIG)
+ # Request CUDSS version >= 0.7
+  find_package(cudss 0.7 REQUIRED CONFIG)
 
   # Print all details of the cudss package
   message(STATUS "cudss package details:")
