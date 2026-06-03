@@ -18,6 +18,88 @@
 
 namespace cuopt::linear_programming::dual_simplex {
 
+uint8_t encode(variable_status_t vstatus)
+{
+  assert(vstatus != variable_status_t::SUPERBASIC &&
+         "packed_variable_status_t does not support superbasic variables");
+
+  uint8_t val = 0;
+  switch (vstatus) {
+    case variable_status_t::BASIC: val = 0b00; break;
+    case variable_status_t::NONBASIC_LOWER: val = 0b01; break;
+    case variable_status_t::NONBASIC_UPPER: val = 0b10; break;
+    case variable_status_t::NONBASIC_FIXED: val = 0b01; break;
+    default: val = 0b11;
+  }
+
+  return val;
+}
+
+variable_status_t decode(uint8_t val)
+{
+  val &= 0b11;
+  if (val == 0b00) return variable_status_t::BASIC;
+  if (val == 0b01) return variable_status_t::NONBASIC_LOWER;
+  if (val == 0b10) return variable_status_t::NONBASIC_UPPER;
+  return variable_status_t::NONBASIC_FREE;
+}
+
+std::vector<uint8_t> compress_vstatus(const std::vector<variable_status_t>& vstatus)
+{
+  size_t compressed_size = vstatus.size() / 4;
+  size_t has_tail        = (vstatus.size() % 4 > 0);
+
+  std::vector<uint8_t> packed_vstatus;
+  packed_vstatus.resize(compressed_size + has_tail);
+
+  for (size_t i = 0; i < compressed_size; ++i) {
+    size_t j          = i * 4;
+    packed_vstatus[i] = 0;
+    packed_vstatus[i] |= encode(vstatus[j]);
+    packed_vstatus[i] |= encode(vstatus[j + 1]) << 2;
+    packed_vstatus[i] |= encode(vstatus[j + 2]) << 4;
+    packed_vstatus[i] |= encode(vstatus[j + 3]) << 6;
+  }
+
+  if (has_tail) {
+    size_t j                        = compressed_size * 4;
+    packed_vstatus[compressed_size] = 0;
+    packed_vstatus[compressed_size] |= encode(vstatus[j]);
+    if (j + 1 < vstatus.size()) packed_vstatus[compressed_size] |= encode(vstatus[j + 1]) << 2;
+    if (j + 2 < vstatus.size()) packed_vstatus[compressed_size] |= encode(vstatus[j + 2]) << 4;
+    if (j + 3 < vstatus.size()) packed_vstatus[compressed_size] |= encode(vstatus[j + 3]) << 6;
+  }
+
+  return packed_vstatus;
+}
+
+void decompress_vstatus(const std::vector<uint8_t>& packed_vstatus,
+                        size_t vstatus_size,
+                        std::vector<variable_status_t>& vstatus)
+{
+  size_t compressed_size = vstatus_size / 4;
+  size_t has_tail        = (vstatus_size % 4 > 0);
+
+  vstatus.resize(vstatus_size);
+  assert(packed_vstatus.size() == compressed_size + has_tail);
+
+  for (size_t i = 0; i < compressed_size; ++i) {
+    size_t j       = i * 4;
+    vstatus[j]     = decode(packed_vstatus[i]);
+    vstatus[j + 1] = decode(packed_vstatus[i] >> 2);
+    vstatus[j + 2] = decode(packed_vstatus[i] >> 4);
+    vstatus[j + 3] = decode(packed_vstatus[i] >> 6);
+  }
+
+  if (has_tail) {
+    size_t j   = compressed_size * 4;
+    vstatus[j] = decode(packed_vstatus[compressed_size]);
+    if (j + 1 < vstatus.size()) vstatus[j + 1] = decode(packed_vstatus[compressed_size] >> 2);
+    if (j + 2 < vstatus.size()) vstatus[j + 2] = decode(packed_vstatus[compressed_size] >> 4);
+    if (j + 3 < vstatus.size()) vstatus[j + 3] = decode(packed_vstatus[compressed_size] >> 6);
+  }
+}
+
 template <typename i_t, typename f_t>
 i_t initial_basis_selection(const lp_problem_t<i_t, f_t>& problem,
                             const simplex_solver_settings_t<i_t, f_t>& settings,

@@ -8,6 +8,8 @@
 #include <cuopt_remote.pb.h>
 #include <cuopt_remote_service.pb.h>
 
+#include "grpc_chunk_key.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <map>
@@ -99,16 +101,22 @@ void map_chunked_header_to_problem(const cuopt::remote::ChunkedProblemHeader& he
  *
  * This is the single entry point for reconstructing a problem from chunked transfer data.
  * It calls map_chunked_header_to_problem() for scalars/strings, then populates all numeric
- * arrays from the raw byte data keyed by ArrayFieldId.
+ * arrays from the raw byte data — top-level arrays keyed by ArrayFieldId and per-entry
+ * arrays of repeated_messages keyed by container_array_key_t.
  *
- * @param header The chunked problem header (scalars, settings metadata, string arrays)
- * @param arrays Map of ArrayFieldId (as int32_t) to raw byte data for each array field
+ * @param header The chunked problem header (scalars, settings metadata, string arrays,
+ *               and per-entry scalars for any repeated_messages such as QuadraticConstraint)
+ * @param arrays Map of ArrayFieldId (as int32_t) to raw byte data for each top-level array
+ * @param container_arrays Map of (container_field_num, container_index, container-relative
+ *                         field_id) to raw byte data for arrays inside repeated_messages
  * @param cpu_problem The cpu_optimization_problem_t to populate (output parameter)
  */
 template <typename i_t, typename f_t>
-void map_chunked_arrays_to_problem(const cuopt::remote::ChunkedProblemHeader& header,
-                                   const std::map<int32_t, std::vector<uint8_t>>& arrays,
-                                   cpu_optimization_problem_t<i_t, f_t>& cpu_problem);
+void map_chunked_arrays_to_problem(
+  const cuopt::remote::ChunkedProblemHeader& header,
+  const std::map<int32_t, std::vector<uint8_t>>& arrays,
+  const std::map<container_array_key_t, std::vector<uint8_t>>& container_arrays,
+  cpu_optimization_problem_t<i_t, f_t>& cpu_problem);
 
 /**
  * @brief Build SendArrayChunkRequest messages for chunked upload of problem arrays.

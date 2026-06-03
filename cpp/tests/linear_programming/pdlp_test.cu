@@ -79,7 +79,7 @@ TEST(pdlp_class, run_double)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   auto solver_settings   = pdlp_solver_settings_t<int, double>{};
   solver_settings.method = cuopt::linear_programming::method_t::PDLP;
@@ -98,7 +98,7 @@ TEST(pdlp_class, precision_mixed)
     const raft::handle_t handle_{};
     auto path = make_path_absolute("linear_programming/afiro_original.mps");
     cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-      cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+      cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
     auto settings           = pdlp_solver_settings_t<int, double>{};
     settings.method         = cuopt::linear_programming::method_t::PDLP;
@@ -114,7 +114,7 @@ TEST(pdlp_class, precision_mixed)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   auto settings_mixed           = pdlp_solver_settings_t<int, double>{};
   settings_mixed.method         = cuopt::linear_programming::method_t::PDLP;
@@ -149,7 +149,7 @@ TEST(pdlp_class, concurrent_pdlp_exception_joins_worker_threads)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   auto settings           = pdlp_solver_settings_t<int, double>{};
   settings.method         = cuopt::linear_programming::method_t::Concurrent;
@@ -173,7 +173,7 @@ TEST(pdlp_class, run_double_very_low_accuracy)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   cuopt::linear_programming::pdlp_solver_settings_t<int, double> settings =
     cuopt::linear_programming::pdlp_solver_settings_t<int, double>{};
@@ -199,7 +199,7 @@ TEST(pdlp_class, run_double_initial_solution)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   std::vector<double> inital_primal_sol(op_problem.get_n_variables());
   std::fill(inital_primal_sol.begin(), inital_primal_sol.end(), 1.0);
@@ -221,7 +221,7 @@ TEST(pdlp_class, run_iteration_limit)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   cuopt::linear_programming::pdlp_solver_settings_t<int, double> settings =
     cuopt::linear_programming::pdlp_solver_settings_t<int, double>{};
@@ -246,7 +246,7 @@ TEST(pdlp_class, batch_iteration_limit_updates_additional_termination_stats)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   auto settings            = pdlp_solver_settings_t<int, double>{};
   settings.iteration_limit = 10;
@@ -279,7 +279,7 @@ TEST(pdlp_class, batch_settings_overrides_preserve_user_limits_and_tolerances)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   constexpr int batch_size           = 2;
   constexpr double tighter_tolerance = 1e-6;
@@ -363,7 +363,7 @@ TEST(pdlp_class, run_time_limit)
   const raft::handle_t handle_{};
   auto path = make_path_absolute("linear_programming/savsched1/savsched1.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path);
+    cuopt::linear_programming::io::read_mps<int, double>(path);
 
   cuopt::linear_programming::pdlp_solver_settings_t<int, double> settings =
     cuopt::linear_programming::pdlp_solver_settings_t<int, double>{};
@@ -408,7 +408,7 @@ TEST(pdlp_class, run_sub_mittleman)
 
     auto path = make_path_absolute("linear_programming/" + name + "/" + name + ".mps");
     cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-      cuopt::linear_programming::io::parse_mps<int, double>(path);
+      cuopt::linear_programming::io::read_mps<int, double>(path);
 
     // Testing for each solver_mode is ok as it's parsing that is the bottleneck here, not
     // solving
@@ -466,7 +466,7 @@ TEST(pdlp_class, initial_solution_test)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> mps_data_model =
-    cuopt::linear_programming::io::parse_mps<int, double>(path);
+    cuopt::linear_programming::io::read_mps<int, double>(path);
 
   auto op_problem = cuopt::linear_programming::mps_data_model_to_optimization_problem<int, double>(
     &handle_, mps_data_model);
@@ -744,7 +744,7 @@ TEST(pdlp_class, initial_primal_weight_step_size_test)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> mps_data_model =
-    cuopt::linear_programming::io::parse_mps<int, double>(path);
+    cuopt::linear_programming::io::read_mps<int, double>(path);
 
   auto op_problem = cuopt::linear_programming::mps_data_model_to_optimization_problem<int, double>(
     &handle_, mps_data_model);
@@ -932,9 +932,9 @@ TEST(pdlp_class, best_primal_so_far_iteration)
   solver_settings.method                  = cuopt::linear_programming::method_t::PDLP;
   solver_settings.pdlp_solver_mode        = cuopt::linear_programming::pdlp_solver_mode_t::Stable2;
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem1 =
-    cuopt::linear_programming::io::parse_mps<int, double>(path);
+    cuopt::linear_programming::io::read_mps<int, double>(path);
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem2 =
-    cuopt::linear_programming::io::parse_mps<int, double>(path);
+    cuopt::linear_programming::io::read_mps<int, double>(path);
 
   optimization_problem_solution_t<int, double> solution1 =
     solve_lp(&handle1, op_problem1, solver_settings);
@@ -962,9 +962,9 @@ TEST(pdlp_class, best_primal_so_far_time)
   solver_settings.method                  = cuopt::linear_programming::method_t::PDLP;
 
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem1 =
-    cuopt::linear_programming::io::parse_mps<int, double>(path);
+    cuopt::linear_programming::io::read_mps<int, double>(path);
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem2 =
-    cuopt::linear_programming::io::parse_mps<int, double>(path);
+    cuopt::linear_programming::io::read_mps<int, double>(path);
 
   optimization_problem_solution_t<int, double> solution1 =
     solve_lp(&handle1, op_problem1, solver_settings);
@@ -992,9 +992,9 @@ TEST(pdlp_class, first_primal_feasible)
   solver_settings.method = cuopt::linear_programming::method_t::PDLP;
 
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem1 =
-    cuopt::linear_programming::io::parse_mps<int, double>(path);
+    cuopt::linear_programming::io::read_mps<int, double>(path);
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem2 =
-    cuopt::linear_programming::io::parse_mps<int, double>(path);
+    cuopt::linear_programming::io::read_mps<int, double>(path);
 
   optimization_problem_solution_t<int, double> solution1 =
     solve_lp(&handle1, op_problem1, solver_settings);
@@ -1022,7 +1022,7 @@ TEST(pdlp_class, per_constraint_residual_stable3)
   solver_settings.method                  = cuopt::linear_programming::method_t::PDLP;
 
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path);
+    cuopt::linear_programming::io::read_mps<int, double>(path);
 
   auto sol = solve_lp(&handle, op_problem, solver_settings);
   RAFT_CUDA_TRY(cudaDeviceSynchronize());
@@ -1046,7 +1046,7 @@ TEST(pdlp_class, batch_per_constraint_residual_stable3)
   solver_settings.method                  = cuopt::linear_programming::method_t::PDLP;
 
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path);
+    cuopt::linear_programming::io::read_mps<int, double>(path);
 
   constexpr int batch_size = 2;
 
@@ -1093,7 +1093,7 @@ TEST(pdlp_class, batch_per_constraint_residual_different_rhs_stable3)
   solver_settings.method                  = cuopt::linear_programming::method_t::PDLP;
 
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path);
+    cuopt::linear_programming::io::read_mps<int, double>(path);
 
   // Build two climbers that share A and variable bounds but differ on the constraint
   // lower/upper bounds (RHS): climber 0 keeps the original, climber 1 finite bounds get set to 100
@@ -1138,8 +1138,8 @@ TEST(pdlp_class, batch_per_constraint_residual_different_rhs_stable3)
 
   // Reload the original (single-climber) problem and build per-climber views so the
   // per-row sanity check evaluates each solution against its own constraint bounds.
-  auto climber0_problem = cuopt::linear_programming::io::parse_mps<int, double>(path);
-  auto climber1_problem = cuopt::linear_programming::io::parse_mps<int, double>(path);
+  auto climber0_problem = cuopt::linear_programming::io::read_mps<int, double>(path);
+  auto climber1_problem = cuopt::linear_programming::io::read_mps<int, double>(path);
   climber1_problem.set_constraint_lower_bounds({climber1_lb.data(), climber1_lb.size()});
   climber1_problem.set_constraint_upper_bounds({climber1_ub.data(), climber1_ub.size()});
 
@@ -1176,7 +1176,7 @@ TEST(pdlp_class, first_primal_feasible_stable3)
   solver_settings.presolver        = presolver_t::None;
 
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path);
+    cuopt::linear_programming::io::read_mps<int, double>(path);
 
   // Wihout first primal feasible we hit iteration limit
   auto sol_base = solve_lp(&handle, op_problem, solver_settings);
@@ -1205,7 +1205,7 @@ TEST(pdlp_class, first_primal_feasible_batch_stable3)
 
   auto path = make_path_absolute("linear_programming/ns1687037/ns1687037.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path);
+    cuopt::linear_programming::io::read_mps<int, double>(path);
 
   auto solver_settings                  = pdlp_solver_settings_t<int, double>{};
   solver_settings.method                = cuopt::linear_programming::method_t::PDLP;
@@ -1252,7 +1252,7 @@ TEST(pdlp_class, first_primal_feasible_batch_different_rhs_stable3)
 
   auto path = make_path_absolute("linear_programming/ns1687037/ns1687037.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path);
+    cuopt::linear_programming::io::read_mps<int, double>(path);
 
   auto solver_settings                  = pdlp_solver_settings_t<int, double>{};
   solver_settings.method                = cuopt::linear_programming::method_t::PDLP;
@@ -1316,7 +1316,7 @@ TEST(pdlp_class, all_primal_feasible_batch_different_rhs_stable3)
 
   auto path = make_path_absolute("linear_programming/ns1687037/ns1687037.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path);
+    cuopt::linear_programming::io::read_mps<int, double>(path);
 
   auto solver_settings                  = pdlp_solver_settings_t<int, double>{};
   solver_settings.method                = cuopt::linear_programming::method_t::PDLP;
@@ -1390,7 +1390,7 @@ TEST(pdlp_class, first_primal_feasible_and_per_constraint_residual_stable3)
   solver_settings.method    = cuopt::linear_programming::method_t::PDLP;
 
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path);
+    cuopt::linear_programming::io::read_mps<int, double>(path);
 
   auto sol = solve_lp(&handle, op_problem, solver_settings);
   RAFT_CUDA_TRY(cudaDeviceSynchronize());
@@ -1413,7 +1413,7 @@ TEST(pdlp_class, first_primal_feasible_and_per_constraint_residual_batch_stable3
 
   auto path = make_path_absolute("linear_programming/ns1687037/ns1687037.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path);
+    cuopt::linear_programming::io::read_mps<int, double>(path);
 
   auto solver_settings                    = pdlp_solver_settings_t<int, double>{};
   solver_settings.method                  = cuopt::linear_programming::method_t::PDLP;
@@ -1460,7 +1460,7 @@ TEST(pdlp_class, first_primal_feasible_and_per_constraint_residual_batch_differe
 
   auto path = make_path_absolute("linear_programming/ns1687037/ns1687037.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path);
+    cuopt::linear_programming::io::read_mps<int, double>(path);
 
   auto solver_settings                    = pdlp_solver_settings_t<int, double>{};
   solver_settings.method                  = cuopt::linear_programming::method_t::PDLP;
@@ -1527,7 +1527,7 @@ TEST(pdlp_class, all_primal_feasible_and_per_constraint_residual_batch_different
 
   auto path = make_path_absolute("linear_programming/ns1687037/ns1687037.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path);
+    cuopt::linear_programming::io::read_mps<int, double>(path);
 
   auto solver_settings                    = pdlp_solver_settings_t<int, double>{};
   solver_settings.method                  = cuopt::linear_programming::method_t::PDLP;
@@ -1594,7 +1594,7 @@ TEST(pdlp_class, all_primal_feasible_and_per_constraint_residual_batch_many_diff
 
   auto path = make_path_absolute("linear_programming/ns1687037/ns1687037.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path);
+    cuopt::linear_programming::io::read_mps<int, double>(path);
 
   auto solver_settings                    = pdlp_solver_settings_t<int, double>{};
   solver_settings.method                  = cuopt::linear_programming::method_t::PDLP;
@@ -1705,7 +1705,7 @@ TEST(pdlp_class, all_primal_feasible_and_per_constraint_residual_batch_many_diff
 
   auto path = make_path_absolute("linear_programming/ns1687037/ns1687037.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path);
+    cuopt::linear_programming::io::read_mps<int, double>(path);
 
   auto solver_settings                    = pdlp_solver_settings_t<int, double>{};
   solver_settings.method                  = cuopt::linear_programming::method_t::PDLP;
@@ -1815,7 +1815,7 @@ TEST(pdlp_class, batch_primal_feasible_non_batch_rejected)
   const raft::handle_t handle_{};
   auto path = make_path_absolute("linear_programming/ns1687037/ns1687037.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path);
+    cuopt::linear_programming::io::read_mps<int, double>(path);
 
   auto solver_settings                = pdlp_solver_settings_t<int, double>{};
   solver_settings.method              = cuopt::linear_programming::method_t::PDLP;
@@ -1832,7 +1832,7 @@ TEST(pdlp_class, first_primal_feasible_and_batch_primal_feasible_rejected)
   const raft::handle_t handle_{};
   auto path = make_path_absolute("linear_programming/ns1687037/ns1687037.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path);
+    cuopt::linear_programming::io::read_mps<int, double>(path);
 
   auto solver_settings                  = pdlp_solver_settings_t<int, double>{};
   solver_settings.method                = cuopt::linear_programming::method_t::PDLP;
@@ -1870,7 +1870,7 @@ TEST(pdlp_class, warm_start)
     solver_settings.presolver            = presolver_t::None;
 
     cuopt::linear_programming::io::mps_data_model_t<int, double> mps_data_model =
-      cuopt::linear_programming::io::parse_mps<int, double>(path);
+      cuopt::linear_programming::io::read_mps<int, double>(path);
     auto op_problem1 =
       cuopt::linear_programming::mps_data_model_to_optimization_problem<int, double>(
         &handle, mps_data_model);
@@ -1912,7 +1912,7 @@ TEST(pdlp_class, warm_start_stable3_not_supported)
   solver_settings.presolver            = presolver_t::None;
 
   cuopt::linear_programming::io::mps_data_model_t<int, double> mps_data_model =
-    cuopt::linear_programming::io::parse_mps<int, double>(path);
+    cuopt::linear_programming::io::read_mps<int, double>(path);
   auto op_problem = cuopt::linear_programming::mps_data_model_to_optimization_problem<int, double>(
     &handle, mps_data_model);
   optimization_problem_solution_t<int, double> solution = solve_lp(op_problem, solver_settings);
@@ -1928,7 +1928,7 @@ TEST(pdlp_class, dual_postsolve_size)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   auto solver_settings      = pdlp_solver_settings_t<int, double>{};
   solver_settings.method    = cuopt::linear_programming::method_t::PDLP;
@@ -1962,7 +1962,7 @@ TEST(dual_simplex, afiro)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   optimization_problem_solution_t<int, double> solution = solve_lp(&handle_, op_problem, settings);
   EXPECT_EQ(solution.get_termination_status(), pdlp_termination_status_t::Optimal);
@@ -1977,7 +1977,7 @@ TEST(pdlp_class, run_empty_matrix_pdlp)
 
   auto path = make_path_absolute("linear_programming/empty_matrix.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path);
+    cuopt::linear_programming::io::read_mps<int, double>(path);
 
   auto solver_settings      = pdlp_solver_settings_t<int, double>{};
   solver_settings.method    = cuopt::linear_programming::method_t::PDLP;
@@ -1995,7 +1995,7 @@ TEST(pdlp_class, run_empty_matrix_dual_simplex)
 
   auto path = make_path_absolute("linear_programming/empty_matrix.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path);
+    cuopt::linear_programming::io::read_mps<int, double>(path);
 
   auto solver_settings      = pdlp_solver_settings_t<int, double>{};
   solver_settings.method    = cuopt::linear_programming::method_t::Concurrent;
@@ -2013,7 +2013,7 @@ TEST(pdlp_class, test_max)
 
   auto path = make_path_absolute("linear_programming/good-max.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path);
+    cuopt::linear_programming::io::read_mps<int, double>(path);
 
   auto solver_settings             = pdlp_solver_settings_t<int, double>{};
   solver_settings.method           = cuopt::linear_programming::method_t::PDLP;
@@ -2033,7 +2033,7 @@ TEST(pdlp_class, test_max_with_offset)
 
   auto path = make_path_absolute("linear_programming/max_offset.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path);
+    cuopt::linear_programming::io::read_mps<int, double>(path);
 
   auto solver_settings      = pdlp_solver_settings_t<int, double>{};
   solver_settings.method    = cuopt::linear_programming::method_t::PDLP;
@@ -2052,7 +2052,7 @@ TEST(pdlp_class, test_lp_no_constraints)
 
   auto path = make_path_absolute("linear_programming/lp-model-no-constraints.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path);
+    cuopt::linear_programming::io::read_mps<int, double>(path);
 
   auto solver_settings      = pdlp_solver_settings_t<int, double>{};
   solver_settings.presolver = presolver_t::None;
@@ -2079,7 +2079,7 @@ TEST(pdlp_class, simple_batch_afiro)
   const raft::handle_t handle_{};
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   auto solver_settings      = pdlp_solver_settings_t<int, double>{};
   solver_settings.method    = cuopt::linear_programming::method_t::PDLP;
@@ -2161,7 +2161,7 @@ TEST(pdlp_class, simple_batch_different_bounds)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   auto solver_settings      = pdlp_solver_settings_t<int, double>{};
   solver_settings.method    = cuopt::linear_programming::method_t::PDLP;
@@ -2217,7 +2217,7 @@ TEST(pdlp_class, more_complex_batch_different_bounds)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   auto solver_settings      = pdlp_solver_settings_t<int, double>{};
   solver_settings.method    = cuopt::linear_programming::method_t::PDLP;
@@ -2310,7 +2310,7 @@ TEST(pdlp_class, simple_batch_different_objectives)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   auto solver_settings      = pdlp_solver_settings_t<int, double>{};
   solver_settings.method    = cuopt::linear_programming::method_t::PDLP;
@@ -2378,7 +2378,7 @@ TEST(pdlp_class, simple_batch_different_offsets)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   auto solver_settings      = pdlp_solver_settings_t<int, double>{};
   solver_settings.method    = cuopt::linear_programming::method_t::PDLP;
@@ -2418,7 +2418,7 @@ TEST(pdlp_class, simple_batch_different_objectives_and_offsets)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   auto solver_settings      = pdlp_solver_settings_t<int, double>{};
   solver_settings.method    = cuopt::linear_programming::method_t::PDLP;
@@ -2476,7 +2476,7 @@ TEST(pdlp_class, simple_batch_different_constraint_bounds)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   auto solver_settings      = pdlp_solver_settings_t<int, double>{};
   solver_settings.method    = cuopt::linear_programming::method_t::PDLP;
@@ -2544,7 +2544,7 @@ TEST(pdlp_class, simple_batch_everything_different)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   auto solver_settings      = pdlp_solver_settings_t<int, double>{};
   solver_settings.method    = cuopt::linear_programming::method_t::PDLP;
@@ -2664,7 +2664,7 @@ TEST(pdlp_class, run_batch_pdlp_fixed_rejects_partial_per_climber_expansion)
   const raft::handle_t handle_{};
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   constexpr int batch_size = 3;
   const auto n_vars        = static_cast<size_t>(op_problem.get_n_variables());
@@ -2746,7 +2746,7 @@ TEST(pdlp_class, run_batch_pdlp_rejects_invalid_new_bounds)
   const raft::handle_t handle_{};
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   auto expect_validation_error = [&](pdlp_solver_settings_t<int, double> settings) {
     auto gpu_op = cuopt::linear_programming::mps_data_model_to_optimization_problem<int, double>(
@@ -2854,7 +2854,7 @@ TEST(pdlp_class, run_batch_pdlp_rejects_save_best_primal_so_far)
   const raft::handle_t handle_{};
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   // Splitting path: trigger batch mode via a non-empty new_bounds list (size > 1).
   {
@@ -2907,7 +2907,7 @@ TEST(pdlp_class, DISABLED_cupdlpx_infeasible_detection_afiro_new_bounds)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   for (size_t i = 1; i < 8; ++i) {
     op_problem.get_variable_lower_bounds()[i] = 7.0;
@@ -2936,7 +2936,7 @@ TEST(pdlp_class, DISABLED_cupdlpx_batch_infeasible_detection)
 
   auto path = make_path_absolute("linear_programming/good-mps-fixed-ranges.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   const std::vector<double>& variable_lower_bounds = op_problem.get_variable_lower_bounds();
   const std::vector<double>& variable_upper_bounds = op_problem.get_variable_upper_bounds();
@@ -2976,7 +2976,7 @@ TEST(pdlp_class, DISABLED_cupdlpx_infeasible_detection_batch_afiro_new_bounds)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   // Use a ref problem that is infeasible
   auto op_problem_ref                           = op_problem;
@@ -3020,7 +3020,7 @@ TEST(pdlp_class, new_bounds)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   auto solver_settings      = pdlp_solver_settings_t<int, double>{};
   solver_settings.method    = cuopt::linear_programming::method_t::PDLP;
@@ -3065,7 +3065,7 @@ TEST(pdlp_class, big_batch_afiro)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   auto solver_settings      = pdlp_solver_settings_t<int, double>{};
   solver_settings.method    = cuopt::linear_programming::method_t::PDLP;
@@ -3153,7 +3153,7 @@ TEST(pdlp_class, DISABLED_simple_batch_optimal_and_infeasible)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   auto solver_settings                 = pdlp_solver_settings_t<int, double>{};
   solver_settings.method               = cuopt::linear_programming::method_t::PDLP;
@@ -3185,7 +3185,7 @@ TEST(pdlp_class, DISABLED_larger_batch_optimal_and_infeasible)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   auto solver_settings                 = pdlp_solver_settings_t<int, double>{};
   solver_settings.method               = cuopt::linear_programming::method_t::PDLP;
@@ -3231,7 +3231,7 @@ TEST(pdlp_class, strong_branching_test)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   const std::vector<int> fractional     = {1, 2, 4};
   const std::vector<double> root_soln_x = {0.891, 0.109, 0.636429};
@@ -3338,7 +3338,7 @@ TEST(pdlp_class, strong_branching_user_api)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   const std::vector<int> fractional     = {1, 2, 4};
   const std::vector<double> root_soln_x = {0.891, 0.109, 0.636429};
@@ -3426,7 +3426,7 @@ TEST(pdlp_class, strong_branching_multi_bounds_per_climber)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   auto solver_settings             = pdlp_solver_settings_t<int, double>{};
   solver_settings.method           = cuopt::linear_programming::method_t::PDLP;
@@ -3505,7 +3505,7 @@ TEST(pdlp_class, run_batch_pdlp_many_different_bounds)
   const raft::handle_t handle_{};
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   const auto& variable_lower_bounds = op_problem.get_variable_lower_bounds();
   const auto& variable_upper_bounds = op_problem.get_variable_upper_bounds();
@@ -3619,7 +3619,7 @@ TEST(pdlp_class, run_batch_pdlp_many_different_bounds_good_mps_some_var_bounds)
   const raft::handle_t handle_{};
   auto path = make_path_absolute("linear_programming/good-mps-some-var-bounds.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   const auto& variable_lower_bounds = op_problem.get_variable_lower_bounds();
   const auto& variable_upper_bounds = op_problem.get_variable_upper_bounds();
@@ -3717,7 +3717,7 @@ TEST(pdlp_class, run_batch_fixed_api_many_different_bounds_good_mps_some_var_bou
   const raft::handle_t handle_{};
   auto path = make_path_absolute("linear_programming/good-mps-some-var-bounds.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   const auto& variable_lower_bounds = op_problem.get_variable_lower_bounds();
   const auto& variable_upper_bounds = op_problem.get_variable_upper_bounds();
@@ -3809,7 +3809,7 @@ TEST(pdlp_class, many_different_bounds)
   const raft::handle_t handle_{};
   auto path = make_path_absolute("linear_programming/good-mps-some-var-bounds.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   const auto& variable_lower_bounds = op_problem.get_variable_lower_bounds();
   const auto& variable_upper_bounds = op_problem.get_variable_upper_bounds();
@@ -3902,7 +3902,7 @@ TEST(pdlp_class, some_climber_hit_iteration_limit)
   const raft::handle_t handle_{};
   auto path = make_path_absolute("linear_programming/good-mps-some-var-bounds.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   const auto& variable_lower_bounds = op_problem.get_variable_lower_bounds();
   const auto& variable_upper_bounds = op_problem.get_variable_upper_bounds();
@@ -3984,7 +3984,7 @@ TEST(pdlp_class, precision_single)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   auto solver_settings           = pdlp_solver_settings_t<int, double>{};
   solver_settings.method         = cuopt::linear_programming::method_t::PDLP;
@@ -4004,7 +4004,7 @@ TEST(pdlp_class, precision_single_crossover)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   auto solver_settings           = pdlp_solver_settings_t<int, double>{};
   solver_settings.method         = cuopt::linear_programming::method_t::PDLP;
@@ -4025,7 +4025,7 @@ TEST(pdlp_class, precision_single_concurrent)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   auto solver_settings           = pdlp_solver_settings_t<int, double>{};
   solver_settings.method         = cuopt::linear_programming::method_t::Concurrent;
@@ -4045,7 +4045,7 @@ TEST(pdlp_class, precision_single_papilo_presolve)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   auto solver_settings           = pdlp_solver_settings_t<int, double>{};
   solver_settings.method         = cuopt::linear_programming::method_t::PDLP;
@@ -4065,7 +4065,7 @@ TEST(pdlp_class, precision_single_pslp_presolve)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   auto solver_settings           = pdlp_solver_settings_t<int, double>{};
   solver_settings.method         = cuopt::linear_programming::method_t::PDLP;
@@ -4137,7 +4137,7 @@ TEST(pdlp_class, shared_sb_view_batch_pre_solved)
   const raft::handle_t handle_{};
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   const std::vector<int> fractional     = {1, 2, 4};
   const std::vector<double> root_soln_x = {0.891, 0.109, 0.636429};
@@ -4197,7 +4197,7 @@ TEST(pdlp_class, shared_sb_view_concurrent_mark)
   const raft::handle_t handle_{};
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   const std::vector<int> fractional     = {1, 2, 4};
   const std::vector<double> root_soln_x = {0.891, 0.109, 0.636429};
@@ -4269,7 +4269,7 @@ TEST(pdlp_class, shared_sb_view_all_infeasible)
   const raft::handle_t handle_{};
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   const std::vector<int> fractional     = {1, 2, 4};
   const std::vector<double> root_soln_x = {0.891, 0.109, 0.636429};
@@ -4336,7 +4336,7 @@ TEST(pdlp_class, big_batch_fixed_path)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   auto solver_settings      = pdlp_solver_settings_t<int, double>{};
   solver_settings.method    = cuopt::linear_programming::method_t::PDLP;
@@ -4454,7 +4454,7 @@ TEST(pdlp_class, batch_bound_objective_rescaling_factors_match_input_expansion)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   constexpr int batch_size = 3;
   const int n_vars         = op_problem.get_n_variables();
@@ -4598,7 +4598,7 @@ TEST(pdlp_class, batch_with_optimal_size_query)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   auto solver_settings      = pdlp_solver_settings_t<int, double>{};
   solver_settings.method    = cuopt::linear_programming::method_t::PDLP;

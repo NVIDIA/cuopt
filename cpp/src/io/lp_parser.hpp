@@ -12,7 +12,6 @@
 
 #include <string>
 #include <string_view>
-#include <tuple>
 #include <vector>
 
 namespace cuopt::linear_programming::io {
@@ -36,7 +35,7 @@ class lp_parser_t {
   lp_parser_t(mps_data_model_t<i_t, f_t>& problem, const std::string& file);
 
   // Parses `input` (LP format text already loaded in memory) and populates
-  // `problem`. Used by parse_lp_from_string() — compressed inputs are only
+  // `problem`. Used by read_lp_from_string() — compressed inputs are only
   // supported via the file-path constructor since compression is detected
   // from the path suffix.
   lp_parser_t(mps_data_model_t<i_t, f_t>& problem, std::string_view input);
@@ -59,7 +58,7 @@ class lp_parser_t {
   // Quadratic objective entries (row, col, value) in upper-triangular
   // QUADOBJ convention; finalize_problem() mirrors to the full symmetric
   // matrix and applies the *0.5 factor required by cuOpt's x^T Q x form.
-  std::vector<std::tuple<i_t, i_t, f_t>> quadobj_entries{};
+  coo_entries_t<i_t, f_t> quadobj_entries{};
 
   // Per-row data for constraints whose LHS contains a quadratic bracket.
   // These rows do NOT appear in row_names/row_types/A_indices/A_values/
@@ -77,7 +76,7 @@ class lp_parser_t {
     // Upper-triangular (i <= j) raw triples directly from the LP source
     // (face value, no /2). The post-pass mirrors and halves off-diagonals
     // to build the symmetric Q in CSR.
-    std::vector<std::tuple<i_t, i_t, f_t>> quad_triples{};
+    coo_entries_t<i_t, f_t> quad_triples{};
   };
   std::vector<quadratic_constraint_block_t> quadratic_constraint_blocks{};
 };

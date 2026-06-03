@@ -92,7 +92,7 @@ branch_variable_t<i_t> pseudocost_diving(pseudo_costs_t<i_t, f_t>& pc,
     f_t score              = 0;
     branch_direction_t dir = branch_direction_t::DOWN;
 
-    f_t root_val = (j < static_cast<i_t>(root_solution.size())) ? root_solution[j] : solution[j];
+    f_t root_val = root_solution[j];
 
     if (solution[j] < root_val - f_t(0.4)) {
       score = score_down;

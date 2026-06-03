@@ -64,7 +64,7 @@ void rins_t<i_t, f_t>::node_callback(const std::vector<f_t>& solution, f_t objec
       lp_optimal_solution = solution;
 
       CUOPT_LOG_DEBUG("Launching RINS task");
-#pragma omp task default(none)
+#pragma omp task default(none) priority(CUOPT_MEDIUM_TASK_PRIORITY)
       run_rins();
     } else {
       launch_new_task = true;
@@ -225,7 +225,8 @@ void rins_t<i_t, f_t>::run_rins()
   fj_cpu->log_prefix = "[RINS] ";
 
   CUOPT_LOG_DEBUG("Launching CPUFJ (RINS) task");
-#pragma omp task shared(fj_cpu) firstprivate(time_limit) default(none)
+#pragma omp task shared(fj_cpu) firstprivate(time_limit) \
+  priority(CUOPT_DEFAULT_TASK_PRIORITY) default(none)
   cpufj_solve(fj_cpu.get(), time_limit);
 
   f_t lower_bound = context.branch_and_bound_ptr ? context.branch_and_bound_ptr->get_lower_bound()

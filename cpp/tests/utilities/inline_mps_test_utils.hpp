@@ -104,7 +104,7 @@ ENDATA
 inline cuopt::linear_programming::io::mps_data_model_t<int, double> parse_inline_mps(
   std::string_view mps_text)
 {
-  return cuopt::linear_programming::io::parse_mps_from_string<int, double>(mps_text, false);
+  return cuopt::linear_programming::io::read_mps_from_string<int, double>(mps_text, false);
 }
 
 }  // namespace cuopt::test::inline_mps

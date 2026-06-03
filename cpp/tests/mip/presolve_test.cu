@@ -34,7 +34,7 @@ TEST(problem, find_implied_integers)
   const raft::handle_t handle_{};
 
   auto path           = make_path_absolute("mip/fiball.mps");
-  auto mps_data_model = cuopt::linear_programming::io::parse_mps<int, double>(path, false);
+  auto mps_data_model = cuopt::linear_programming::io::read_mps<int, double>(path, false);
   auto op_problem     = mps_data_model_to_optimization_problem(&handle_, mps_data_model);
   auto presolver      = std::make_unique<detail::third_party_presolve_t<int, double>>();
   auto result         = presolver->apply(op_problem,

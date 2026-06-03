@@ -20,6 +20,7 @@
 #include <cuopt/linear_programming/utilities/cython_solve.hpp>
 #include <mip_heuristics/logger.hpp>
 #include <utilities/copy_helpers.hpp>
+#include <utilities/logger.hpp>
 
 #include <raft/core/handle.hpp>
 #include <raft/core/nvtx.hpp>
@@ -257,6 +258,11 @@ std::pair<std::vector<std::unique_ptr<solver_ret_t>>, double> call_batch_solve(
   if (cuopt::linear_programming::is_remote_execution_enabled()) {
     return solve_batch_remote(data_models, solver_settings);
   }
+
+  // Hold the logger configuration for the whole batch so that worker-local
+  // init_logger_t instances inside solve_lp() reuse it.
+  init_logger_t batch_log(solver_settings->get_pdlp_settings().log_file,
+                          solver_settings->get_pdlp_settings().log_to_console);
 
   const std::size_t size = data_models.size();
 

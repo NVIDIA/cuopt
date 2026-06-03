@@ -153,7 +153,7 @@ Example With LP File
 used — it dispatches on the file extension (case-insensitive):
 ``.lp`` / ``.lp.gz`` / ``.lp.bz2`` → LP parser; ``.mps`` / ``.qps`` and
 their ``.gz`` / ``.bz2`` variants → MPS parser; unknown extensions are
-rejected. See the ``parse_lp`` declaration in
+rejected. See the ``read_lp`` declaration in
 ``cuopt/linear_programming/io/parser.hpp`` for the supported subset of
 the LP format.
 

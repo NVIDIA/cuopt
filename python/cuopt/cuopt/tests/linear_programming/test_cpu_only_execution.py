@@ -23,7 +23,7 @@ import subprocess
 import sys
 import time
 
-from cuopt.linear_programming import io as mps_parser
+from cuopt.linear_programming import Read
 import pytest
 from cuopt import linear_programming
 from cuopt.linear_programming.solver.solver_parameters import CUOPT_TIME_LIMIT
@@ -301,11 +301,10 @@ def _run_in_subprocess(func, env=None, timeout=120):
 def _impl_lp_solve_cpu_only():
     """LP solve returns correctly-sized solution vectors."""
     from cuopt import linear_programming
-    from cuopt.linear_programming import io as mps_parser
 
     dataset_root = os.environ.get("RAPIDS_DATASET_ROOT_DIR", "./")
     mps_file = f"{dataset_root}/linear_programming/afiro_original.mps"
-    dm = mps_parser.ParseMps(mps_file)
+    dm = Read(mps_file)
     n_vars = len(dm.get_objective_coefficients())
 
     solution = linear_programming.Solve(
@@ -331,11 +330,10 @@ def _impl_lp_solve_cpu_only():
 def _impl_lp_dual_solution_cpu_only():
     """Dual solution and reduced costs are correctly sized."""
     from cuopt import linear_programming
-    from cuopt.linear_programming import io as mps_parser
 
     dataset_root = os.environ.get("RAPIDS_DATASET_ROOT_DIR", "./")
     mps_file = f"{dataset_root}/linear_programming/afiro_original.mps"
-    dm = mps_parser.ParseMps(mps_file)
+    dm = Read(mps_file)
     n_vars = len(dm.get_objective_coefficients())
     n_cons = len(dm.get_constraint_bounds())
 
@@ -364,11 +362,10 @@ def _impl_mip_solve_cpu_only():
     from cuopt.linear_programming.solver.solver_parameters import (
         CUOPT_TIME_LIMIT,
     )
-    from cuopt.linear_programming import io as mps_parser
 
     dataset_root = os.environ.get("RAPIDS_DATASET_ROOT_DIR", "./")
     mps_file = f"{dataset_root}/mip/bb_optimality.mps"
-    dm = mps_parser.ParseMps(mps_file)
+    dm = Read(mps_file)
     n_vars = len(dm.get_objective_coefficients())
 
     settings = linear_programming.SolverSettings()
@@ -400,11 +397,10 @@ def _impl_warmstart_cpu_only():
         CUOPT_PRESOLVE,
     )
     from cuopt.linear_programming.solver_settings import SolverMethod
-    from cuopt.linear_programming import io as mps_parser
 
     dataset_root = os.environ.get("RAPIDS_DATASET_ROOT_DIR", "./")
     mps_file = f"{dataset_root}/linear_programming/afiro_original.mps"
-    dm = mps_parser.ParseMps(mps_file)
+    dm = Read(mps_file)
 
     settings = linear_programming.SolverSettings()
     settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
@@ -658,7 +654,7 @@ class TestSolutionInterfacePolymorphism:
         mps_file = (
             f"{RAPIDS_DATASET_ROOT_DIR}/linear_programming/afiro_original.mps"
         )
-        dm = mps_parser.ParseMps(mps_file)
+        dm = Read(mps_file)
         n_vars = len(dm.get_objective_coefficients())
         n_cons = len(dm.get_constraint_bounds())
 
@@ -687,7 +683,7 @@ class TestSolutionInterfacePolymorphism:
     def test_mip_solution_values(self):
         """MIP solve of bb_optimality.mps returns valid stats."""
         mps_file = f"{RAPIDS_DATASET_ROOT_DIR}/mip/bb_optimality.mps"
-        dm = mps_parser.ParseMps(mps_file)
+        dm = Read(mps_file)
         n_vars = len(dm.get_objective_coefficients())
 
         settings = linear_programming.SolverSettings()
