@@ -14,6 +14,7 @@
 #include <barrier/dense_vector.hpp>
 #include <barrier/device_sparse_matrix.cuh>
 #include <barrier/iterative_refinement.hpp>
+#include <barrier/pinned_host_allocator.hpp>
 #include <barrier/second_order_cone_kernels.cuh>
 #include <barrier/sparse_cholesky.cuh>
 #include <barrier/sparse_matrix_kernels.cuh>
@@ -1382,7 +1383,8 @@ class iteration_data_t {
       // Solve ADAT * x = b
       return chol->solve(d_b, d_x);
     } else {
-      // TMP until this is ported to the GPU
+      raft::copy(inv_diag.data(), d_inv_diag.data(), d_inv_diag.size(), stream_view_);
+      stream_view_.synchronize();
       dense_vector_t<i_t, f_t> b = host_copy(d_b, stream_view_);
       dense_vector_t<i_t, f_t> x = host_copy(d_x, stream_view_);
 
@@ -1904,7 +1906,7 @@ class iteration_data_t {
   f_t complementarity_residual_norm_save;
 
   dense_vector_t<i_t, f_t> diag;
-  dense_vector_t<i_t, f_t> inv_diag;
+  pinned_dense_vector_t<i_t, f_t> inv_diag;
   dense_vector_t<i_t, f_t> inv_sqrt_diag;
 
   rmm::device_uvector<f_t> d_original_A_values;
