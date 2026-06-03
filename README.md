@@ -12,7 +12,7 @@
 
 
 
-NVIDIA® cuOpt™ is a GPU-accelerated optimization engine that excels in linear programming (LP), quadratic programming (QP), and vehicle routing problems (VRP), with beta support for mixed integer linear programming (MILP), quadratically constrained quadratic programming (QCQP), and second-order cone programming (SOCP). It enables near real-time solutions for large-scale LPs with millions of variables and constraints. cuOpt offers easy integration into existing modeling languages and seamless deployment across hybrid and multi-cloud environments.
+NVIDIA® cuOpt™ is a GPU-accelerated optimization engine that excels in linear programming (LP), quadratic programming (QP), and vehicle routing problems (VRP), with support for mixed integer linear programming (MILP) (beta), quadratically constrained quadratic programming (QCQP) (beta), and second-order cone programming (SOCP) (beta). It enables near real-time solutions for large-scale LPs with millions of variables and constraints. cuOpt offers easy integration into existing modeling languages and seamless deployment across hybrid and multi-cloud environments.
 
 The core engine is written in C++ and wrapped with a C API, Python API and Server API.
 
