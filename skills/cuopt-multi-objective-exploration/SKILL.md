@@ -41,7 +41,11 @@ Do not collapse a multi-objective problem to a single weighted number and report
 
 Objectives and constraints are interchangeable. A requirement currently treated as fixed — a coverage floor, a fairness cap, a budget — is often a latent objective: its level was assumed, not given. Promoting such a constraint to a parametric ε-constraint and sweeping it reveals a tradeoff you'd otherwise hide, so read a single-objective model's hard constraints as candidate objectives, not just limits — but only when the level was an assumption. A genuinely fixed, non-negotiable limit (a hard budget cap, a regulatory minimum) stays a constraint; don't manufacture a tradeoff that isn't there. Express any promoted quantity linearly so it can serve as an ε-constraint (see `cuopt-numerical-optimization-formulation`).
 
-## Step 1 — build a payoff table (anchor each objective)
+## Step 1 — define the objectives
+
+An informative frontier needs objectives that genuinely conflict: if they don't pull against each other, it collapses to a single point with nothing to trade off. And each objective has to be formulated correctly, since a wrong form, sense, or scale distorts the tradeoff and shifts where the knee falls. Formulate each one with `cuopt-numerical-optimization-formulation` before sweeping.
+
+## Step 2 — build a payoff table (anchor each objective)
 
 Solve each objective **on its own** first. For *k* objectives this is *k* solves. Record, for each, the value of every objective at that optimum:
 
@@ -59,7 +63,7 @@ The diagonal (`f1*`, `f2*`, …) is each objective's best achievable value; the 
 
 If any single-objective solve is already infeasible, stop and fix the model before sweeping — the frontier doesn't exist yet.
 
-## Step 2 — choose a scalarization
+## Step 3 — choose a scalarization
 
 ### Weighted sum
 
@@ -87,13 +91,13 @@ subject to  f2(x) ≤ ε2
 
 Sweep each `ε_k` across the range from the payoff table. Each `(ε2, ε3, …)` combination is a single standard cuOpt solve. This recovers the **full** frontier, including the concave regions weighted-sum cannot reach, which is why it's the default when completeness matters. The cost is more solves (a grid over the constrained objectives) and bookkeeping of the ε values.
 
-ε-constrain *linear* objectives directly. A quadratic objective (e.g. risk `xᵀΣx`) is simplest kept as the objective `f1` while you ε-constrain the linear ones. A **convex** quadratic objective *can* instead be ε-constrained directly: cuOpt routes a `xᵀQx ≤ ε` constraint (Q positive semidefinite, inequality only) through the barrier solver as a second-order cone (`add_quadratic_constraint`). Non-convex or equality quadratic constraints are unsupported, and the MILP path stays linear-constraint only.
+ε-constrain *linear* objectives directly. A quadratic objective (e.g. risk `xᵀΣx`) is simplest kept as the objective `f1` while you ε-constrain the linear ones. A **convex** quadratic objective *can* instead be ε-constrained directly: add it as a quadratic constraint `xᵀQx ≤ ε` (Q positive semidefinite, inequality only), which cuOpt routes through the barrier solver as a second-order cone. Non-convex or equality quadratic constraints are unsupported, and the MILP path stays linear-constraint only.
 
 Spot it in existing code: a hand-coded loop over a target or budget value (a return target, a cost cap) is already the ε-constraint method — name it as such, filter dominated points, and read the swept constraint's dual (LP/QP only).
 
 **Picking a method:** weighted-sum for a quick convex sketch or when you know the frontier is convex (e.g. a pure-LP/QP tradeoff); ε-constraint when the problem is MILP, when the frontier may be non-convex, or when the user needs a faithful and complete curve.
 
-## Step 3 — sweep, collect, and filter
+## Step 4 — sweep, collect, and filter
 
 ```text
 frontier = []
@@ -108,13 +112,13 @@ sort the survivors to form the frontier
 
 Practical notes:
 
-- **Warm-start LP sweeps.** For an LP frontier, reuse the previous solve's PDLP warmstart data to cut solve time (`getWarmstartData` → `set_pdlp_warm_start_data`). Per cuOpt this is **LP-only**: a MILP solve doesn't take a PDLP warmstart (you can optionally seed a MIP start instead). See `cuopt-numerical-optimization-api-python`.
+- **Warm-start LP sweeps.** For an LP frontier, carry the previous solve's PDLP warmstart data into the next to cut solve time. Per cuOpt this is **LP-only**: a MILP solve doesn't take a PDLP warmstart (you can optionally seed a MIP start instead). See `cuopt-numerical-optimization-api-python` for the calls.
 - **Cap each MILP solve.** Set a per-solve time limit on MILP sweeps (see `cuopt-numerical-optimization-api-python`) — a sweep is many solves, and branch-and-bound can over-spend certifying optimality past a tiny gap, while cuOpt sets no limit by default and won't warn. Report the points as optimal *to the gap you set*, not certified optimal.
 - **Filter dominated points.** A correct sweep can still emit dominated points (especially weighted-sum near the hull, or MILP). Drop them; they are not part of the frontier.
 - **Resolution is a budget.** Curve fidelity trades against solve count. Start coarse to see the shape, then refine the grid only where the curve bends.
 - **Verify, don't assume.** When you claim one method beats another, measure it — e.g. count the efficient points ε-constraint recovered that weighted-sum missed — rather than asserting it; and flag any solve returning feasible-but-not-`Optimal` so a non-certified point is never read as exact.
 
-## Step 4 — interpret the frontier (discipline)
+## Step 5 — interpret the frontier (discipline)
 
 Producing the curve is half the work; reading it correctly is the other half.
 
@@ -122,10 +126,6 @@ Producing the curve is half the work; reading it correctly is the other half.
 - **Flag knee points; don't auto-pick them.** The "knee" is where the curve bends most sharply — beyond it you pay a lot for a little. It's often the best-balanced compromise and worth highlighting, but the final choice is the user's preference, not a rule.
 - **Treat dominated or gappy output as a diagnostic.** If dominated points survive filtering, or the frontier is implausibly sparse or perfectly linear, suspect the sweep or the model — most often weighted-sum hiding a concave region (switch to ε-constraint) or a normalization mistake.
 - **State the weighting/ε you used.** Every reported point is conditional on its scalarization. Make that explicit so a single solve is never mistaken for "the" optimum.
-
-## Getting each objective right
-
-An informative frontier needs objectives that genuinely conflict: if they don't pull against each other, it collapses to a single point with nothing to trade off. And each objective has to be formulated correctly, since a wrong form, sense, or scale distorts the tradeoff and shifts where the knee falls. Formulate each one with `cuopt-numerical-optimization-formulation` before sweeping.
 
 ## Interfaces
 
