@@ -12,7 +12,8 @@
 - Add support for detecting and exploiting discrete objective steps in MIP
 - Add support for handling free variables directly in augmented systems when problem has quadratic objective or constraints
 - New right-looking Markowitz LU factorization for dual simplex and crossover
-- Add option for specifying a limit on the number of nodes explored in branch and bound
+- Add setting for specifying a limit on the number of nodes explored in branch and bound
+- Add setting for disabling probing in cuOpt MIP presolve
 
 ### Breaking Changes (26.06)
 - Routing API: drop `const` qualifier in `raft::handle_t` on the `data_model_view_t`
