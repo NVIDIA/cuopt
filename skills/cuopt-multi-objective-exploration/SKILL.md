@@ -125,7 +125,7 @@ Producing the curve is half the work; reading it correctly is the other half.
 
 ## Getting each objective right
 
-The frontier is only as correct as the objectives feeding it — a misformulated objective distorts the whole curve. Formulate each one with `cuopt-numerical-optimization-formulation` before sweeping.
+An informative frontier needs objectives that genuinely conflict: if they don't pull against each other, it collapses to a single point with nothing to trade off. And each objective has to be formulated correctly, since a wrong form, sense, or scale distorts the trade-off and shifts where the knee falls. Formulate each one with `cuopt-numerical-optimization-formulation` before sweeping.
 
 ## Interfaces
 
