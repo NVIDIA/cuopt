@@ -196,3 +196,50 @@ def test_general_quadratic_unsymmetric():
     assert problem.ObjValue == pytest.approx(expected_obj, abs=OBJ_TOL)
     assert x0.Value == pytest.approx(expected_x, abs=PRIMAL_TOL)
     assert x1.Value == pytest.approx(expected_x, abs=PRIMAL_TOL)
+
+
+def test_maximize_with_quadratic_constraint():
+    """
+    Maximize x + y
+    s.t.  x + y <= 10
+          2*x^2 + 2*x*y + 2*y^2 <= 6
+
+    The quadratic constraint is the binding one.
+    With x = y = t: 2t^2 + 2t^2 + 2t^2 = 6t^2 <= 6 => t in [-1, 1].
+    Maximizing 2t gives t = 1, obj = 2.
+
+    Minimizing gives t = -1, obj = -2.
+
+    This test verifies that MAXIMIZE is respected when quadratic constraints
+    are present (regression for a bug where the QCQP path ignored the
+    objective sense).
+    """
+    from cuopt.linear_programming.problem import MAXIMIZE, MINIMIZE
+
+    # Solve as MINIMIZE first to establish baseline
+    prob_min = Problem("qc_maximize_min")
+    x = prob_min.addVariable(lb=-np.inf, name="x")
+    y = prob_min.addVariable(lb=-np.inf, name="y")
+    prob_min.addConstraint(x + y <= 10)
+    prob_min.addConstraint(2 * x * x + 2 * x * y + 2 * y * y <= 6)
+    prob_min.setObjective(x + y, sense=MINIMIZE)
+    _solve(prob_min)
+    _assert_feasible(prob_min)
+
+    assert prob_min.ObjValue == pytest.approx(-2.0, abs=OBJ_TOL)
+    assert x.Value == pytest.approx(-1.0, abs=PRIMAL_TOL)
+    assert y.Value == pytest.approx(-1.0, abs=PRIMAL_TOL)
+
+    # Solve as MAXIMIZE - should give the opposite optimum
+    prob_max = Problem("qc_maximize_max")
+    x = prob_max.addVariable(lb=-np.inf, name="x")
+    y = prob_max.addVariable(lb=-np.inf, name="y")
+    prob_max.addConstraint(x + y <= 10)
+    prob_max.addConstraint(2 * x * x + 2 * x * y + 2 * y * y <= 6)
+    prob_max.setObjective(x + y, sense=MAXIMIZE)
+    _solve(prob_max)
+    _assert_feasible(prob_max)
+
+    assert prob_max.ObjValue == pytest.approx(2.0, abs=OBJ_TOL)
+    assert x.Value == pytest.approx(1.0, abs=PRIMAL_TOL)
+    assert y.Value == pytest.approx(1.0, abs=PRIMAL_TOL)
