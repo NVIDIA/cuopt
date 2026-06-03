@@ -1,6 +1,8 @@
 MIP (Mixed Integer Programming)
 ================================
 
+.. note:: Support for mixed integer linear programming is currently in **beta**.
+
 This section contains details on the cuOpt MIP Python API.
 
 .. toctree::

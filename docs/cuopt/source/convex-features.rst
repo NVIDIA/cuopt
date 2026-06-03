@@ -41,7 +41,7 @@ The convex optimization solvers for Linear Programming (LP), Quadratic Programmi
        -
 
 .. note::
-   QCQP/SOCP is currently only supported in CVXPY. We hope to add support for QCQP/SOCP in other modeling languages soon.
+   QCQP/SOCP support is currently in **beta**, and is only supported in CVXPY among modeling languages. We hope to add support for QCQP/SOCP in other modeling languages soon.
 
 - **C API**: A native C API that provides direct low-level access to cuOpt's convex optimization solvers, enabling integration into any application or system that can interface with C.
 
