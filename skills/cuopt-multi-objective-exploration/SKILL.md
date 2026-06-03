@@ -45,7 +45,7 @@ Objectives and constraints are interchangeable. A requirement currently treated 
 
 Solve each objective **on its own** first. For *k* objectives this is *k* solves. Record, for each, the value of every objective at that optimum:
 
-```
+```text
               f1        f2        f3
 min f1   →   f1*       f2(at f1*) f3(at f1*)
 min f2   →   ...       f2*        ...
@@ -65,7 +65,7 @@ If any single-objective solve is already infeasible, stop and fix the model befo
 
 Combine the objectives into one and sweep the weights:
 
-```
+```text
 minimize  w1·f1(x) + w2·f2(x) + ... ,   for a grid of weight vectors w
 ```
 
@@ -78,7 +78,7 @@ Cheap and trivial with any solver. Two limitations to respect:
 
 Keep one objective; move the rest to constraints and sweep their right-hand sides:
 
-```
+```text
 minimize  f1(x)
 subject to  f2(x) ≤ ε2
             f3(x) ≤ ε3
@@ -95,7 +95,7 @@ Spot it in existing code: a hand-coded loop over a target or budget value (a ret
 
 ## Step 3 — sweep, collect, and filter
 
-```
+```text
 frontier = []
 for each weight vector (or ε vector) in the grid:
     set the combined objective (or ε right-hand sides)
