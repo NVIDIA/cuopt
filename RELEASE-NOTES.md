@@ -10,7 +10,7 @@
 - Add support for detecting and exploiting symmetry in MIP
 - Add support for flow cover cuts in MIP
 - Add support for detecting and exploiting discrete objective steps in MIP
-- Add support for handling free variables directly in augmented systems when problem has quadratic objective or constraints
+- Add support for handling free variables directly in barrier's augmented systems when a problem has quadratic objective or constraints
 - New right-looking Markowitz LU factorization for dual simplex and crossover
 - Add setting for specifying a limit on the number of nodes explored in branch and bound
 - Add setting for disabling probing in cuOpt MIP presolve
