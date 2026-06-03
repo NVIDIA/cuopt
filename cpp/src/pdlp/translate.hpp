@@ -219,7 +219,7 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_optimization_problem_to_user
   // Note: get_sense() returns true when the problem is a maximization problem.
   const bool maximize = model.get_sense();
   if (maximize) {
-    for (auto& c : user_problem.objective) {
+    for (f_t& c : user_problem.objective) {
       c = -c;
     }
   }
