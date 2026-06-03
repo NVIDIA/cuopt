@@ -17,7 +17,7 @@
 
 ### Breaking Changes (26.06)
 - Routing API: drop `const` qualifier in `raft::handle_t` on the `data_model_view_t`
-- Move `libmps_parser` into `libcuopt` and the `mps_parser` Python module into `cuopt`; the standalone `libmps_parser` shared library and Python module are no longer shipped. Imports should move from `libmps_parser` to `cuopt`
+- Move `libmps_parser` into `libcuopt` and the `mps_parser` Python module into `cuopt`; the standalone `libmps_parser` shared library and Python module are no longer shipped. Imports should move from `libmps_parser` to `cuopt`. Refer to https://github.com/NVIDIA/cuopt/pull/1193
 
 ### Improvements (26.06)
 - Replace SpMV calls with SpMVOp calls in PDLP; 9% faster
