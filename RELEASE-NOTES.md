@@ -23,7 +23,7 @@
 - Replace SpMV calls with SpMVOp calls in PDLP; 9% faster
 - Improve performance of QP solver on portfolio optimization problems
 - Improve performance of dual simplex (remove unnecessary BTran, swap coefficients for faster reduced cost calculation, trigger basis refactorization based on work limits); 16% faster on NETLIB LP, 6% faster on MIPLIB relaxations
-- Improved accuracy of dual simplex (refactor when optimal and primal residual is large and basis updates present)
+- Improve accuracy of dual simplex (refactor when optimal and primal residual is large with basis updates present)
 - Reduce concurrent overhead for LP solves
 - Reduce memory footprint of PDLP by around 50%
 - Unify threading model across LP (concurrent mode) and MIP to use OpenMP task model to allow stricter control of the number of threads
