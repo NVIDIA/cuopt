@@ -1,6 +1,6 @@
-========================
+============================
 Convex Optimization Examples
-========================
+============================
 
 This section contains examples of how to use the cuOpt convex optimization Python API.
 
@@ -79,7 +79,7 @@ The response is as follows:
 .. _rotated-socp-example-python:
 
 Second-Order Cone Programming with Rotated Second-Order Cones Example
----------------------------------------------
+---------------------------------------------------------------------
 
 :download:`rotated_socp_example.py <examples/rotated_socp_example.py>`
 

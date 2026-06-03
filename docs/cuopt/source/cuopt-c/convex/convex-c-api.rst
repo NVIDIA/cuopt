@@ -1,5 +1,5 @@
 cuOpt Convex Optimization C API Reference
-========================================
+=========================================
 
 This section contains the cuOpt convex optimization C API reference. For MIP-specific functions and callbacks, see :doc:`../mip/mip-c-api`.
 
