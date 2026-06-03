@@ -10,6 +10,7 @@
 - Add support for detecting and exploiting symmetry in MIP
 - Add support for flow cover cuts in MIP
 - Add support for detecting and exploiting discrete objective steps in MIP
+- Add support for handling free variables directly in augmented systems when problem has quadratic objective or constraints
 - Add option for specifying a limit on the number of nodes explored in branch and bound
 
 ### Breaking Changes (26.06)
