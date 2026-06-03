@@ -1,9 +1,9 @@
 ================================================
-Continuous Optimization Settings (LP, QP, SOCP)
+Convex Optimization Settings
 ================================================
 
 
-This page describes the parameter settings available for cuOpt's LP, QP, and SOCP solvers. These parameters are set as :ref:`parameter constants <parameter-constants>` in case of C API and in case of Server Thin client as raw strings. Please refer to examples in :doc:`C </cuopt-c/continuous/index>` and :doc:`Server Thin client </cuopt-server/index>` for more details.
+This page describes the parameter settings available for cuOpt's convex optimization solvers. These parameters are set as :ref:`parameter constants <parameter-constants>` in case of C API and in case of Server Thin client as raw strings. Refer to examples in :doc:`C </cuopt-c/convex/index>` and :doc:`Server Thin client </cuopt-server/index>` for more details.
 
 .. note::
    When setting parameters in thin client solver settings, remove ``CUOPT_`` from the parameter name and convert to lowercase. For example, ``CUOPT_TIME_LIMIT`` would be set as ``time_limit``.
@@ -91,7 +91,7 @@ Default accuracy for each method:
 
 * PDLP solves to 1e-4 relative accuracy by default.
 * Barrier solves to 1e-8 relative accuracy by default.
-* Dual Simplex solves to 1e-6 absolute accuracy by default.
+* Dual Simplex solves to 1e-6 *absolute* accuracy by default.
 
 C API users should use the constants defined in :ref:`method-constants` for this parameter.
 
@@ -370,22 +370,6 @@ The duality gap is computed as follows::
 
 .. note:: The default value is ``1e-4``.
 
-Primal Infeasibility Tolerance
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-``CUOPT_PRIMAL_INFEASIBLE_TOLERANCE`` controls the tolerance used to detect primal infeasibility in PDLP.
-A certificate of primal infeasibility is accepted when the primal infeasibility residual falls below this threshold.
-
-.. note:: The default value is ``1e-8``.
-
-Dual Infeasibility Tolerance
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-``CUOPT_DUAL_INFEASIBLE_TOLERANCE`` controls the tolerance used to detect dual infeasibility (unboundedness) in PDLP.
-A certificate of dual infeasibility is accepted when the dual infeasibility residual falls below this threshold.
-
-.. note:: The default value is ``1e-8``.
-
 Barrier Iterative Refinement
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -400,6 +384,6 @@ Barrier Step Scale
 ^^^^^^^^^^^^^^^^^^^
 
 ``CUOPT_BARRIER_STEP_SCALE`` controls the scaling factor applied to the step size in the barrier method.
-Values less than 1 result in more conservative (shorter) steps; values greater than 1 result in more aggressive steps.
+The step scale must be strictly less than 1. A value like 0.9 is conservative, while a value like 0.999 is aggressive.
 
 .. note:: By default cuOpt selects the step scale automatically.

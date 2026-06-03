@@ -1,6 +1,6 @@
-=============================
-LP, QP and SOCP API Reference
-=============================
+===================================
+Convex Optimization API Reference
+===================================
 
 .. autoclass:: cuopt.linear_programming.problem.Problem
    :members:

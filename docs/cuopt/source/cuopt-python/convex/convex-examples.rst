@@ -1,12 +1,12 @@
 ========================
-LP, QP and SOCP Examples
+Convex Optimization Examples
 ========================
 
-This section contains examples of how to use the cuOpt LP, QP, and SOCP Python API.
+This section contains examples of how to use the cuOpt convex optimization Python API.
 
 .. note::
 
-    The examples in this section are not exhaustive. They are provided to help you get started with the cuOpt LP, QP, and SOCP Python API. For more examples, please refer to the `cuopt-examples GitHub repository <https://github.com/NVIDIA/cuopt-examples>`_.
+    The examples in this section are not exhaustive. They are provided to help you get started with the cuOpt convex optimization Python API. For more examples, please refer to the `cuopt-examples GitHub repository <https://github.com/NVIDIA/cuopt-examples>`_.
 
 
 Simple Linear Programming Example
@@ -51,14 +51,14 @@ The response is as follows:
 
 .. _simple-socp-example-python:
 
-Simple Second-Order Cone Programming Example
+Second-Order Cone Programming Example
 --------------------------------------------
 
 :download:`simple_socp_example.py <examples/simple_socp_example.py>`
 
 This example minimizes ``x3`` subject to ``x1 + x2 >= 2`` and the second-order
-cone ``||(x1, x2)||_2 <= x3``, expressed as the quadratic inequality
-``x1^2 + x2^2 - x3^2 <= 0``. cuOpt detects the cone structure and solves with the
+cone ``||(x1, x2)||_2 <= x3``, expressed as the inequalities
+``x1^2 + x2^2 - x3^2 <= 0, x_3 >= 0``. cuOpt detects the cone structure and solves with the
 barrier method.
 
 .. literalinclude:: examples/simple_socp_example.py
@@ -78,12 +78,12 @@ The response is as follows:
 
 .. _rotated-socp-example-python:
 
-Rotated Second-Order Cone Programming Example
+Second-Order Cone Programming with Rotated Second-Order Cones Example
 ---------------------------------------------
 
 :download:`rotated_socp_example.py <examples/rotated_socp_example.py>`
 
-This example solves a **rotated** cone ``x1^2 + x2^2 <= x3 * x4``. cuOpt expects a
+This example solves a **rotated** second-order cone ``x1^2 + x2^2 <= x3 * x4, x3 >= 0, x4 >= 0``. For rotated cones, cuOpt expects a
 symmetric quadratic matrix ``Q``, so the cross term is supplied as the two equal
 halves ``-0.5*x3*x4`` and ``-0.5*x4*x3``. It minimizes ``x3 + x4`` subject to
 ``x1 + x2 >= 2``.
@@ -113,8 +113,8 @@ Reading a Problem from an MPS File
 :download:`sample.mps <examples/sample.mps>`
 
 ``Problem.read`` loads a problem from an MPS, QPS, or LP file, dispatching on the
-file extension. The same call also reads ``QUADOBJ`` quadratic objectives (QP)
-and ``QCMATRIX`` second-order cone constraints (SOCP). This example reads the
+file extension. The same call also reads ``QUADOBJ`` quadratic objectives and
+and ``QCMATRIX`` quadratic constraints. This example reads the
 bundled ``sample.mps`` (a small LP) and solves it.
 
 .. literalinclude:: examples/mps_example.py
@@ -178,7 +178,7 @@ The response is as follows:
     z = 100.0
     Objective value = 400.0
 
-Working with Quadratic objective matrix
+Working with Quadratic Objective Matrix
 ---------------------------------------
 
 :download:`qp_matrix_example.py <examples/qp_matrix_example.py>`

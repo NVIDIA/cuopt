@@ -3,7 +3,7 @@ MIP Settings
 ============
 
 
-This page describes the parameter settings available for cuOpt's MIP solver. These parameters are set as :ref:`parameter constants <parameter-constants>` in case of C API and in case of Server Thin client as raw strings. Please refer to examples in :doc:`C </cuopt-c/mip/index>` and :doc:`Server Thin client </cuopt-server/index>` for more details.
+This page describes the parameter settings available for cuOpt's MIP solver. These parameters are set as :ref:`parameter constants <parameter-constants>` in case of C API and in case of Server Thin client as raw strings. Refer to examples in :doc:`C </cuopt-c/mip/index>` and :doc:`Server Thin client </cuopt-server/index>` for more details.
 
 .. note::
    When setting parameters in thin client solver settings, remove ``CUOPT_`` from the parameter name and convert to lowercase. For example, ``CUOPT_TIME_LIMIT`` would be set as ``time_limit``.
@@ -11,7 +11,7 @@ This page describes the parameter settings available for cuOpt's MIP solver. The
 Common Parameters
 -----------------
 
-We begin by describing parameters common to both the MILP and LP solvers
+We begin by describing parameters common to both the MILP and LP solvers.
 
 
 Time Limit
@@ -30,7 +30,7 @@ the first limit (iteration or time) is hit.
 Log to Console
 ^^^^^^^^^^^^^^
 ``CUOPT_LOG_TO_CONSOLE`` controls whether cuOpt should log information to the console during a solve.
-If true, a logging info is written to the console, if false no logging info is written to the console (logs may still be written to a file.)
+If true, a logging info is written to the console; if false no logging info is written to the console (logs may still be written to a file.)
 
 .. note:: The default value is true.
 
@@ -54,7 +54,7 @@ User Problem File
 
 Num CPU Threads
 ^^^^^^^^^^^^^^^
-``CUOPT_NUM_CPU_THREADS`` controls the number of CPU threads used in the LP and MIP solvers. Set this to a small value to limit
+``CUOPT_NUM_CPU_THREADS`` controls the number of CPU threads used in the MIP solver. Set this to a small value to limit
 the amount of CPU resources cuOpt uses. Set this to a large value to improve solve times for CPU
 parallel parts of the solvers.
 
@@ -62,8 +62,9 @@ parallel parts of the solvers.
 
 Presolve
 ^^^^^^^^
-``CUOPT_PRESOLVE`` controls which presolver to use for presolve reductions.
-cuOpt provides presolve reductions for linear programming (LP) problems using either PSLP or Papilo, and for mixed-integer programming (MIP) problems using Papilo. By default, Papilo presolve is always enabled for MIP problems. For LP problems, PSLP presolve is always enabled by default. You can explicitly control the presolver by setting this parameter to 0 (disable presolve), 1 (Papilo), or 2 (PSLP).
+``CUOPT_PRESOLVE`` controls whether to apply presolve reductions. Set this to 0 to disable presolve.
+
+.. note:: By default, presolve is enabled.
 
 Probing
 ^^^^^^^
@@ -77,10 +78,10 @@ access to the dual solution. Enabled by default for LP when Papilo presolve is s
 Mixed Integer Linear Programming
 ---------------------------------
 
-We now describe parameter settings for the MILP solvers
+We now describe parameter settings for the MILP solver.
 
 
-Heuristics only
+Heuristics Only
 ^^^^^^^^^^^^^^^
 
 ``CUOPT_MIP_HEURISTICS_ONLY`` controls if only the GPU heuristics should be run for the MIP problem. When set to true, only the primal
@@ -154,13 +155,12 @@ Node Limit
 
 ``CUOPT_NODE_LIMIT`` controls the maximum number of branch-and-bound nodes the MILP solver will explore before stopping and returning the current best feasible solution (if any). If set along with the time limit, cuOpt stops at whichever limit is hit first.
 
-.. note:: By default there is no node limit. The setting only affects MILP;
-   it is ignored for LP and QP.
+.. note:: By default there is no node limit.
 
 Cut Passes
 ^^^^^^^^^^
 
-``CUOPT_MIP_CUT_PASSES`` controls the number of cut passes to run. Set this value to 0 to disable cuts. Set this value to larger numbers to perform more cut passes.
+``CUOPT_MIP_CUT_PASSES`` controls the maximum number of cut passes to run. Set this value to 0 to disable cuts. Set this value to larger numbers to perform more cut passes.
 
 .. note:: The default value is ``10``.
 
@@ -210,9 +210,9 @@ Cut Change Threshold
 
 ``CUOPT_MIP_CUT_CHANGE_THRESHOLD`` controls the threshold for the improvement in the dual bound per cut pass.
 Larger values require the dual bound to improve significantly in each cut pass.
-Set this value to 0 to allow the cut passes to continue even if the dual bound does not improve.
+Set this value to -1 to allow the cut passes to continue even if the dual bound does not improve.
 
-.. note:: The default value is ``1e-3``.
+.. note:: The default value is ``-1`` (no threshold).
 
 Cut Min Orthogonality
 ^^^^^^^^^^^^^^^^^^^^^
@@ -271,7 +271,7 @@ Strong Branching Simplex Iteration Limit
 ``CUOPT_MIP_STRONG_BRANCHING_SIMPLEX_ITERATION_LIMIT`` controls the maximum number of simplex iterations allowed per candidate during strong branching.
 Reducing this value speeds up strong branching at the cost of less accurate candidate evaluations.
 
-.. note:: The default value is ``-1`` (no iteration limit for strong branching solves).
+.. note:: The default value is ``-1`` (choose the iteration limit automatically).
 
 MIP Determinism Mode
 ^^^^^^^^^^^^^^^^^^^^^
@@ -292,7 +292,8 @@ MIP Symmetry
 
 * ``-1``: Automatic (default) — cuOpt decides based on problem characteristics.
 * ``0``: Disable symmetry handling.
-* ``1``: Enable symmetry handling.
+* ``1``: Enable symmetry handling (orbital fixing only).
+* ``2``: Enable symmetry handling (orbital fixing + lexical reduction).
 
 .. note:: The default value is ``-1`` (automatic).
 
@@ -330,7 +331,6 @@ Objective Step
 ^^^^^^^^^^^^^^^
 
 ``CUOPT_MIP_OBJECTIVE_STEP`` controls whether cuOpt automatically detects and exploits discrete step structure in the objective to tighten the dual bound.
-When all integer variables have integer objective coefficients, the objective value can only change in multiples of a known step size; enabling this setting allows cuOpt to use that information to close the gap faster.
 
 * ``0``: Disable objective step detection.
 * ``1``: Enable objective step detection (default).

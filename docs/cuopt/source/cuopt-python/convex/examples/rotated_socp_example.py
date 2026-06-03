@@ -15,7 +15,7 @@ Problem:
                 x3 >= 0, x4 >= 0
 
 The rotated cone is supplied as the quadratic inequality
-``x1^2 + x2^2 - x3*x4 <= 0``. cuOpt expects a symmetric quadratic matrix ``Q``,
+``x1^2 + x2^2 - 0.5 * x3*x4 - 0.5 * x4*x3 <= 0``. cuOpt expects a symmetric quadratic matrix ``Q``,
 so the cross term is split into the two equal halves ``-0.5*x3*x4`` and
 ``-0.5*x4*x3`` (i.e. ``Q[x3, x4] = Q[x4, x3] = -0.5``). cuOpt detects the
 second-order cone structure and solves with the barrier method.

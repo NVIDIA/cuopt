@@ -8,9 +8,7 @@ Reading a Problem from an MPS File
 This example loads an optimization problem from a file with ``Problem.read``
 and solves it. ``Problem.read`` dispatches on the file extension:
 
-* ``.mps`` / ``.qps`` (and ``.gz`` / ``.bz2`` variants) use the MPS/QPS reader,
-  including ``QUADOBJ`` quadratic objectives (QP) and ``QCMATRIX`` second-order
-  cone constraints (SOCP);
+* ``.mps`` / ``.qps`` (and ``.gz`` / ``.bz2`` variants) use the MPS reader
 * ``.lp`` (and compressed variants) use the LP reader.
 
 The bundled ``sample.mps`` is a small LP with optimal objective ``-0.36``.

@@ -1,12 +1,12 @@
 cuOpt MIP C API Reference
 =========================
 
-This section contains the cuOpt MIP C API reference. Functions for problem creation, solver settings, solving, and inspecting solutions are shared with LP/QP/SOCP and documented in :doc:`../continuous/continuous-c-api`.
+This section contains the cuOpt MIP C API reference. Functions for problem creation, solver settings, solving, and inspecting solutions are shared with convex optimization and documented in :doc:`../convex/convex-c-api`.
 
 Warm Start and MIP Start
 ------------------------
 
-For LP problems solved with PDLP, see :doc:`../continuous/continuous-c-api` for primal and dual warm start.
+For LP problems solved with PDLP, see :doc:`../convex/convex-c-api` for primal and dual warm start.
 
 For MIP problems, one or more primal solution hints (MIP starts) may be provided:
 
@@ -28,7 +28,7 @@ The following callback types and functions allow monitoring and injecting soluti
 MIP Parameter Constants
 -----------------------
 
-These constants configure MIP-specific solver behavior. Use them with :c:func:`cuOptSetParameter`, :c:func:`cuOptSetIntegerParameter`, or :c:func:`cuOptSetFloatParameter`. For shared parameters (time limit, logging, presolve, etc.), see :ref:`parameter-constants` in the continuous API reference.
+These constants configure MIP-specific solver behavior. Use them with :c:func:`cuOptSetParameter`, :c:func:`cuOptSetIntegerParameter`, or :c:func:`cuOptSetFloatParameter`. For shared parameters (time limit, logging, presolve, etc.), see :ref:`parameter-constants` in the convex API reference.
 
 .. doxygendefine:: CUOPT_NODE_LIMIT
 .. doxygendefine:: CUOPT_WORK_LIMIT

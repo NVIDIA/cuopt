@@ -6,7 +6,7 @@ Simple Second-Order Cone Programming (SOCP) Example
 ===================================================
 
 This example demonstrates how to formulate and solve a Second-Order Cone
-Programming (SOCP) problem using the cuOpt Python API.
+Program (SOCP) using the cuOpt Python API.
 
 Problem:
     minimize    x3

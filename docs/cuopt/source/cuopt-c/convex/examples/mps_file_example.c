@@ -3,12 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 /*
- * MPS File C API Example (LP / QP / SOCP)
+ * MPS File C API Example (LP / QP / QCQP / SOCP)
  *
  * This example reads any problem from an MPS file and solves it with the cuOpt C
- * API. The same program handles linear (LP), quadratic-objective (QP via a
- * QUADOBJ section), and second-order cone (SOCP via QCMATRIX sections) problems
- * the read routine dispatches on the file contents.
+ * API. The same program handles problems with
+ *  - linear objectives (LP),
+ *  - quadratic objectives (QP via a QUADOBJ section), and
+ *  - quadratic constraints (QCQP/SOCP via QCMATRIX sections).
+ *
  *
  * Example LP problem (from sample.mps):
  *   Minimize: -0.2*VAR1 + 0.1*VAR2

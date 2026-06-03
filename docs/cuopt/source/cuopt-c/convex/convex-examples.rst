@@ -1,12 +1,12 @@
 =========================
-LP/QP/SOCP C API Examples
+Convex Optimization C API Examples
 =========================
 
 
 LP Example With Data
 --------------------
 
-This example demonstrates how to use the LP solver in C. More details on the API can be found in :doc:`C API <continuous-c-api>`.
+This example demonstrates how to use the LP solver in C. More details on the API can be found in :doc:`C API <convex-c-api>`.
 
 The example code is available at ``examples/cuopt-c/lp/simple_lp_example.c`` (:download:`download <examples/simple_lp_example.c>`):
 
@@ -260,6 +260,8 @@ The optimum is ``x1 = x2 = 1`` and ``x3 = sqrt(2)``:
 
    Test completed successfully!
 
+Note that dual variables are not currently returned for problems with quadratic constraints.
+
 
 .. _rotated-socp-example-c:
 
@@ -305,6 +307,8 @@ The optimum is ``x1 = x2 = 1`` and ``x3 = x4 = sqrt(2)``:
    x4 = 1.414214
 
    Test completed successfully!
+
+Note that dual variables are not currently returned for problems with quadratic constraints.
 
 
 .. _qp-mps-example-c:
@@ -368,13 +372,13 @@ Second-order cone (SOCP) constraints are expressed through ``QCMATRIX`` sections
 — one per quadratic constraint — each holding the **full, symmetric** entries of
 that constraint's quadratic matrix with a zero right-hand side. Both standard and
 rotated cones are supported; see the SOCP section of
-:doc:`LP/QP/SOCP Features </continuous-features>` for the cone forms.
+:doc:`LP/QP/QCQP/SOCP Features </convex-features>` for the cone forms.
 
 A sample SOCP file (:download:`download socp_sample.mps <examples/socp_sample.mps>`)
 minimizes ``s + p + q`` subject to ``a + b >= 2`` and two cones:
 
-- standard cone ``||(a, b)||_2 <= s`` (row ``QCSTD``, written ``a^2 + b^2 - s^2 <= 0``)
-- rotated cone ``a^2 + b^2 <= p * q`` (row ``QCROT``)
+- standard cone ``||(a, b)||_2 <= s`` (row ``QCSTD``, written ``a^2 + b^2 - s^2 <= 0, s >= 0``)
+- rotated cone ``a^2 + b^2 <= p * q, p >= 0, q >= 0`` (row ``QCROT``)
 
 .. literalinclude:: examples/socp_sample.mps
    :language: text
