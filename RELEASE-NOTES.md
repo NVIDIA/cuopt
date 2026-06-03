@@ -27,7 +27,7 @@
 - Reduce concurrent overhead for LP solves
 - Reduce memory footprint of PDLP by around 50%
 - Unify threading model across LP (concurrent mode) and MIP to use OpenMP task model to allow stricter control of the number of threads
-- Unify `read` API on `Problem` for both MPS and LP file formats
+- Unify Python `read` API on `Problem` for both MPS and LP file formats
 - Build and test with CUDA 13.2
 - Build against OpenSSL3 in container and wheel for gRPC
 - Substantially expand the in-repo skill set for AI coding agents (Copilot, Cline, Windsurf, Jules, Aider, Codex) covering developer onboarding, installation, numerical optimization, routing, and the server; add NVIDIA-signed skill cards, evaluation datasets, and a skill-evolution workflow under `skills/`
