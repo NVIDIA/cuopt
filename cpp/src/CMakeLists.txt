@@ -25,3 +25,4 @@ add_subdirectory(branch_and_bound)
 add_subdirectory(cuts)
 
 set(CUOPT_SRC_FILES ${CUOPT_SRC_FILES} ${UTIL_SRC_FILES} PARENT_SCOPE)
+set(MPS_FAST_SRC_FILES ${MPS_FAST_SRC_FILES} PARENT_SCOPE)

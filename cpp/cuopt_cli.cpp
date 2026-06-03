@@ -90,11 +90,13 @@ inline cuopt::init_logger_t dummy_logger(
  *                  .mps/.qps and their .gz/.bz2 variants → MPS parser;
  *                  anything else is rejected.
  * @param initial_solution_file Path to initial solution file in SOL format
+ * @param mps_reader MPS reader implementation selected by the CLI
  * @param settings Merged solver settings (config file loaded in main, then CLI overrides applied)
  */
 int run_single_file(const std::string& file_path,
                     const std::string& initial_solution_file,
                     bool solve_relaxation,
+                    cuopt::linear_programming::io::mps_reader_type_t mps_reader,
                     cuopt::linear_programming::solver_settings_t<int, double>& settings)
 {
   cuopt::init_logger_t log(settings.get_parameter<std::string>(CUOPT_LOG_FILE),
@@ -108,7 +110,7 @@ int run_single_file(const std::string& file_path,
   {
     CUOPT_LOG_INFO("Reading file %s", base_filename.c_str());
     try {
-      mps_data_model = cuopt::linear_programming::io::read<int, double>(file_path);
+      mps_data_model = cuopt::linear_programming::io::read<int, double>(file_path, mps_reader);
     } catch (const std::logic_error& e) {
       CUOPT_LOG_ERROR("Parser exception: %s", e.what());
       parsing_failed = true;
@@ -285,7 +287,8 @@ int main(int argc, char* argv[])
     .help(
       "input problem file; format dispatched by extension (case-insensitive). "
       "Supported: .lp, .mps, .qps and their .gz / .bz2 compressed variants "
-      "(e.g. .lp.gz, .mps.bz2, .qps.gz)")
+      "(e.g. .lp.gz, .mps.bz2, .qps.gz). Experimental .mps.lz4 inputs require "
+      "--mps-reader fast")
     .nargs(1)
     .required();
 
@@ -302,6 +305,13 @@ int main(int argc, char* argv[])
   program.add_argument("--params-file")
     .help("path to parameter config file (key = value format, supports all parameters)")
     .default_value(std::string(""));
+
+  program.add_argument("--mps-reader")
+    .help(
+      "MPS reader implementation: default uses the production parser; fast uses the experimental "
+      "SIMD parser for LP/MIP .mps and .mps.lz4 files")
+    .default_value(std::string("default"))
+    .choices("default", "fast");
 
   program.add_argument("--dump-hyper-params")
     .help("print hyper-parameters only in config file format and exit")
@@ -403,6 +413,12 @@ int main(int argc, char* argv[])
   const auto initial_solution_file = program.get<std::string>("--initial-solution");
   const auto solve_relaxation      = program.get<bool>("--relaxation");
   const auto params_file           = program.get<std::string>("--params-file");
+  const auto mps_reader_arg        = program.get<std::string>("--mps-reader");
+
+  auto mps_reader = cuopt::linear_programming::io::mps_reader_type_t::default_reader;
+  if (mps_reader_arg == "fast") {
+    mps_reader = cuopt::linear_programming::io::mps_reader_type_t::fast_experimental;
+  }
 
   cuopt::linear_programming::solver_settings_t<int, double> settings;
   try {
@@ -432,5 +448,5 @@ int main(int argc, char* argv[])
     RAFT_CUDA_TRY(cudaSetDevice(0));
   }
 
-  return run_single_file(file_name, initial_solution_file, solve_relaxation, settings);
+  return run_single_file(file_name, initial_solution_file, solve_relaxation, mps_reader, settings);
 }

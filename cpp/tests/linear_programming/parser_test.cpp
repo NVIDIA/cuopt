@@ -56,6 +56,21 @@ bool file_exists(const std::string& file)
 
 namespace {
 
+struct mps_reader_param_t {
+  const char* name;
+  mps_reader_type_t reader;
+};
+
+constexpr mps_reader_param_t default_mps_reader_param{"default_reader",
+                                                      mps_reader_type_t::default_reader};
+constexpr mps_reader_param_t fast_mps_reader_param{"fast_experimental",
+                                                   mps_reader_type_t::fast_experimental};
+
+std::string mps_reader_param_name(const ::testing::TestParamInfo<mps_reader_param_t>& info)
+{
+  return info.param.name;
+}
+
 // Non-template forwarding wrapper around read_lp_from_string<int, double>.
 // Exists only so EXPECT_THROW(read_lp_string(R"LP(...)LP"), exc) is parsed
 // correctly — gtest's macro splits its args on top-level commas, and the
@@ -115,20 +130,32 @@ double q_entry(const mps_data_model_t<int, double>& m, int row, int col)
 // ===========================================================================
 // Per-fixture test classes. Each class describes one named problem fixture
 // and owns the checker for that problem's expected parsed data model. The
-// MPS and LP TEST_F cases within a fixture share the same `check_model`
+// MPS TEST_P and LP TEST_F cases within a fixture share the same `check_model`
 // method, so the expected values live in exactly one place per fixture.
 //
 // All fixtures inherit a common base that supplies read_mps_file and
 // read_lp_file helpers.
 // ===========================================================================
 
-class parser_fixture_base : public ::testing::Test {
+class parser_fixture_base : public ::testing::TestWithParam<mps_reader_param_t> {
  protected:
   static mps_data_model_t<int, double> read_mps_file(const std::string& file,
                                                      bool fixed_format = true)
   {
     const std::string& root = cuopt::test::get_rapids_dataset_root_dir();
     return read_mps<int, double>(root + "/" + file, fixed_format);
+  }
+
+  mps_data_model_t<int, double> read_param_mps_file(const std::string& file,
+                                                    bool fixed_format = true) const
+  {
+    const std::string& root = cuopt::test::get_rapids_dataset_root_dir();
+    const auto reader       = GetParam().reader;
+    // The experimental reader has no fixed/free parser mode. Use the same file but do not force
+    // fixed-format dispatch for that reader.
+    const bool reader_fixed_format =
+      reader == mps_reader_type_t::default_reader ? fixed_format : false;
+    return read<int, double>(root + "/" + file, reader, reader_fixed_format);
   }
 
   static mps_data_model_t<int, double> read_lp_file(const std::string& file)
@@ -357,9 +384,13 @@ TEST(mps_parser, bad_mps_files)
   }
 }
 
-TEST_F(good_mps_1_test, mps)
+TEST_P(good_mps_1_test, mps)
 {
-  check_model(read_mps_file("linear_programming/good-mps-1.mps"));
+  check_model(read_param_mps_file("linear_programming/good-mps-1.mps", false));
+}
+
+TEST_F(good_mps_1_test, mps_parser_internals)
+{
   // Parser-struct fields that are MPS-only (not exposed via the data model).
   auto mps = read_from_mps("linear_programming/good-mps-1.mps");
   EXPECT_EQ("good-1", mps.problem_name);
@@ -592,9 +623,13 @@ TEST(mps_parser_free_format, bad_mps_files_free_format)
   }
 }
 
-TEST_F(up_low_bounds_test, mps)
+TEST_P(up_low_bounds_test, mps)
 {
-  check_model(read_mps_file("linear_programming/lp_model_with_var_bounds.mps", false));
+  check_model(read_param_mps_file("linear_programming/lp_model_with_var_bounds.mps", false));
+}
+
+TEST_F(up_low_bounds_test, mps_parser_internals)
+{
   auto mps = read_from_mps("linear_programming/lp_model_with_var_bounds.mps", false);
   EXPECT_EQ("lp_model_with_var_bounds", mps.problem_name);
   EXPECT_EQ("OBJ", mps.objective_name);
@@ -607,16 +642,16 @@ TEST_F(up_low_bounds_test, lp)
   check_model(read_lp_file("linear_programming/lp_model_with_var_bounds.lp"));
 }
 
-TEST_F(good_mps_1_test, mps_free_format)
+TEST_P(good_mps_1_test, mps_free_format)
 {
   // free-format-mps-1.mps encodes the same problem as good-mps-1 with default
   // [0, +inf) bounds (no BOUNDS section), so it satisfies the same checker.
-  check_model(read_mps_file("linear_programming/free-format-mps-1.mps", false));
+  check_model(read_param_mps_file("linear_programming/free-format-mps-1.mps", false));
 }
 
-TEST_F(some_var_bounds_test, mps)
+TEST_P(some_var_bounds_test, mps)
 {
-  check_model(read_mps_file("linear_programming/good-mps-some-var-bounds.mps"));
+  check_model(read_param_mps_file("linear_programming/good-mps-some-var-bounds.mps"));
 }
 
 TEST_F(some_var_bounds_test, lp)
@@ -624,9 +659,9 @@ TEST_F(some_var_bounds_test, lp)
   check_model(read_lp_file("linear_programming/good-mps-some-var-bounds.lp"));
 }
 
-TEST_F(fixed_var_bound_test, mps)
+TEST_P(fixed_var_bound_test, mps)
 {
-  check_model(read_mps_file("linear_programming/good-mps-fixed-var.mps"));
+  check_model(read_param_mps_file("linear_programming/good-mps-fixed-var.mps"));
 }
 
 TEST_F(fixed_var_bound_test, lp)
@@ -634,9 +669,9 @@ TEST_F(fixed_var_bound_test, lp)
   check_model(read_lp_file("linear_programming/good-mps-fixed-var.lp"));
 }
 
-TEST_F(free_var_bound_test, mps)
+TEST_P(free_var_bound_test, mps)
 {
-  check_model(read_mps_file("linear_programming/good-mps-free-var.mps"));
+  check_model(read_param_mps_file("linear_programming/good-mps-free-var.mps"));
 }
 
 TEST_F(free_var_bound_test, lp)
@@ -644,9 +679,9 @@ TEST_F(free_var_bound_test, lp)
   check_model(read_lp_file("linear_programming/good-mps-free-var.lp"));
 }
 
-TEST_F(lower_inf_var_bound_test, mps)
+TEST_P(lower_inf_var_bound_test, mps)
 {
-  check_model(read_mps_file("linear_programming/good-mps-lower-bound-inf-var.mps"));
+  check_model(read_param_mps_file("linear_programming/good-mps-lower-bound-inf-var.mps"));
 }
 
 TEST_F(lower_inf_var_bound_test, lp)
@@ -662,9 +697,9 @@ TEST(mps_bounds, rhs_cost)
   EXPECT_EQ(int(-5), mps.objective_offset_value);
 }
 
-TEST_F(upper_inf_var_bound_test, mps)
+TEST_P(upper_inf_var_bound_test, mps)
 {
-  check_model(read_mps_file("linear_programming/good-mps-upper-bound-inf-var.mps"));
+  check_model(read_param_mps_file("linear_programming/good-mps-upper-bound-inf-var.mps"));
 }
 
 TEST_F(upper_inf_var_bound_test, lp)
@@ -817,9 +852,13 @@ TEST(mps_bounds, unsupported_or_invalid_mps_types)
   };
 }
 
-TEST_F(mip_with_bounds_test, mps)
+TEST_P(mip_with_bounds_test, mps)
 {
-  check_model(read_mps_file("mixed_integer_programming/good-mip-mps-1.mps", false));
+  check_model(read_param_mps_file("mixed_integer_programming/good-mip-mps-1.mps", false));
+}
+
+TEST_F(mip_with_bounds_test, mps_parser_internals)
+{
   auto mps = read_from_mps("mixed_integer_programming/good-mip-mps-1.mps", false);
   EXPECT_EQ("COST", mps.objective_name);
   ASSERT_EQ(int(2), mps.row_types.size());
@@ -877,9 +916,9 @@ TEST(mps_parser, good_mps_file_mip_no_marker)
   EXPECT_EQ(10., mps.variable_upper_bounds[1]);
 }
 
-TEST_F(mip_no_bounds_test, mps)
+TEST_P(mip_no_bounds_test, mps)
 {
-  check_model(read_mps_file("mixed_integer_programming/good-mip-mps-no-bounds.mps", false));
+  check_model(read_param_mps_file("mixed_integer_programming/good-mip-mps-no-bounds.mps", false));
 }
 
 TEST_F(mip_no_bounds_test, lp)
@@ -887,15 +926,35 @@ TEST_F(mip_no_bounds_test, lp)
   check_model(read_lp_file("mixed_integer_programming/good-mip-mps-no-bounds.lp"));
 }
 
-TEST_F(mip_partial_bounds_test, mps)
+TEST_P(mip_partial_bounds_test, mps)
 {
-  check_model(read_mps_file("mixed_integer_programming/good-mip-mps-partial-bounds.mps", false));
+  check_model(
+    read_param_mps_file("mixed_integer_programming/good-mip-mps-partial-bounds.mps", false));
 }
 
 TEST_F(mip_partial_bounds_test, lp)
 {
   check_model(read_lp_file("mixed_integer_programming/good-mip-mps-partial-bounds.lp"));
 }
+
+#define INSTANTIATE_MPS_READER_TEST(Fixture)                                                   \
+  INSTANTIATE_TEST_SUITE_P(mps_readers,                                                        \
+                           Fixture,                                                            \
+                           ::testing::Values(default_mps_reader_param, fast_mps_reader_param), \
+                           mps_reader_param_name)
+
+INSTANTIATE_MPS_READER_TEST(good_mps_1_test);
+INSTANTIATE_MPS_READER_TEST(up_low_bounds_test);
+INSTANTIATE_MPS_READER_TEST(some_var_bounds_test);
+INSTANTIATE_MPS_READER_TEST(fixed_var_bound_test);
+INSTANTIATE_MPS_READER_TEST(free_var_bound_test);
+INSTANTIATE_MPS_READER_TEST(lower_inf_var_bound_test);
+INSTANTIATE_MPS_READER_TEST(upper_inf_var_bound_test);
+INSTANTIATE_MPS_READER_TEST(mip_with_bounds_test);
+INSTANTIATE_MPS_READER_TEST(mip_no_bounds_test);
+INSTANTIATE_MPS_READER_TEST(mip_partial_bounds_test);
+
+#undef INSTANTIATE_MPS_READER_TEST
 
 #ifdef MPS_PARSER_WITH_BZIP2
 TEST(mps_parser, good_mps_file_bzip2_compressed)
