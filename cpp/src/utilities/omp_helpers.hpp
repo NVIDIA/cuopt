@@ -28,35 +28,43 @@ std::pair<i_t, i_t> calculate_index_range(i_t k, double total, double n)
 
 #include <omp.h>
 #include <memory>
+#include <utility>
 
 namespace cuopt {
 
 // Wrapper of omp_lock_t. Optionally, you can provide a hint as defined in
 // https://www.openmp.org/spec-html/5.1/openmpse39.html#x224-2570003.9
-//
-// The constructor / destructor / move-ops are intentionally out-of-line and
-// defined in omp_helpers.cpp. This ensures that the `new omp_lock_t` and the
-// matching (sized) `delete` instantiated through `std::unique_ptr<omp_lock_t>`
-// happen in exactly one translation unit. Otherwise NVCC host passes (and
-// other TUs) can end up with different `sizeof(omp_lock_t)` values, which
-// ODR-merges into a `new-delete-type-mismatch` at runtime under ASan.
-//
-// `virtual` on the destructor is preserved on purpose: it has been part of the
-// class for a long time and removing it would change `sizeof(omp_mutex_t)`
-// (no more vtable pointer), which would silently break any incremental build
-// or any object file that wasn't rebuilt against the new header.
 class omp_mutex_t {
  public:
-  omp_mutex_t();
-  omp_mutex_t(omp_mutex_t&& other) noexcept;
+  omp_mutex_t() : mutex(new omp_lock_t) { omp_init_lock(mutex.get()); }
 
-  omp_mutex_t(const omp_mutex_t&)            = delete;
+  omp_mutex_t(const omp_mutex_t&) = delete;
+
+  omp_mutex_t(omp_mutex_t&& other) { *this = std::move(other); }
+
   omp_mutex_t& operator=(const omp_mutex_t&) = delete;
-  omp_mutex_t& operator=(omp_mutex_t&& other) noexcept;
-  virtual ~omp_mutex_t();
+
+  omp_mutex_t& operator=(omp_mutex_t&& other)
+  {
+    if (&other != this) {
+      if (mutex) { omp_destroy_lock(mutex.get()); }
+      mutex = std::move(other.mutex);
+    }
+    return *this;
+  }
+
+  virtual ~omp_mutex_t()
+  {
+    if (mutex) {
+      omp_destroy_lock(mutex.get());
+      mutex.reset();
+    }
+  }
 
   void lock() { omp_set_lock(mutex.get()); }
+
   void unlock() { omp_unset_lock(mutex.get()); }
+
   bool try_lock() { return omp_test_lock(mutex.get()); }
 
  private:
