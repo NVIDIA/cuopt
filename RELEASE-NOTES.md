@@ -11,6 +11,7 @@
 - Add support for flow cover cuts in MIP
 - Add support for detecting and exploiting discrete objective steps in MIP
 - Add support for handling free variables directly in augmented systems when problem has quadratic objective or constraints
+- New right-looking Markowitz LU factorization for dual simplex and crossover
 - Add option for specifying a limit on the number of nodes explored in branch and bound
 
 ### Breaking Changes (26.06)
@@ -19,7 +20,8 @@
 
 ### Improvements (26.06)
 - Improve performance of QP solver on portfolio optimization problems
-- Improve performance of dual simplex (faster basis factorization, remove extra BTran)
+- Improve performance of dual simplex (remove unnecessary BTran, swap coefficients for faster reduced cost calculation, trigger basis refactorization based on work limits); 16% faster on NETLIB LP, 6% faster on MIPLIB relaxations 
+- Improved accuracy of dual simplex (refactor when optimal and primal residual is large and basis updates present)
 - Reduce concurrent overhead for LP solves
 - Replace SpMV calls with SpMVOp calls in PDLP, 1.09x speedup
 - Reduce memory footprint of PDLP by around 50%
