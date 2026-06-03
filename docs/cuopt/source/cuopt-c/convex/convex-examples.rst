@@ -311,6 +311,50 @@ The optimum is ``x1 = x2 = 1`` and ``x3 = x4 = sqrt(2)``:
 Note that dual variables are not currently returned for problems with quadratic constraints.
 
 
+.. _general-quadratic-example-c:
+
+General Convex Quadratic Constraint Example
+-------------------------------------------
+
+This example adds a general convex quadratic constraint with
+:c:func:`cuOptAddQuadraticConstraint`. Unlike a cone in normal form, the
+constraint ``2*x^2 + 2*x*y + 2*y^2 <= 6`` has a nonzero right-hand side, and the
+cross term is supplied as the single entry ``Q[0,1] = 2`` (``Q`` need not be
+symmetric; cuOpt symmetrizes it internally). It minimizes ``x + y``.
+
+The example code is available at ``examples/cuopt-c/lp/general_quadratic_example.c`` (:download:`download <examples/general_quadratic_example.c>`):
+
+.. literalinclude:: examples/general_quadratic_example.c
+   :language: c
+   :linenos:
+
+Build and run the example
+
+.. code-block:: bash
+
+   # Build and run the example
+   gcc -I $INCLUDE_PATH -L $LIBCUOPT_LIBRARY_PATH -o general_quadratic_example general_quadratic_example.c -lcuopt
+   ./general_quadratic_example
+
+The optimum is ``x = y = -1``:
+
+.. code-block:: bash
+   :caption: Output
+
+   Creating and solving general convex quadratic problem...
+
+   Results:
+   --------
+   Termination status: Optimal (1)
+   Objective value: -2.000000
+
+   Primal Solution: Solution variables
+   x1 = -1.000000
+   x2 = -1.000000
+
+   Test completed successfully!
+
+
 .. _qp-mps-example-c:
 
 QP Example With MPS File

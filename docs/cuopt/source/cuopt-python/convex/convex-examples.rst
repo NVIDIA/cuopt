@@ -104,6 +104,32 @@ The response is as follows:
     Objective value = 2.8284271247461903
 
 
+.. _general-quadratic-example-python:
+
+General Convex Quadratic Constraint Example
+-------------------------------------------
+
+:download:`general_quadratic_example.py <examples/general_quadratic_example.py>`
+
+This example uses a general convex quadratic constraint
+``2*x^2 + 2*x*y + 2*y^2 <= 6`` (an ellipsoid). Unlike a cone in normal form, the
+constraint has a nonzero right-hand side and a cross term supplied naturally as a
+single ``2*x*y`` — cuOpt symmetrizes ``Q`` internally. It minimizes ``x + y``.
+
+.. literalinclude:: examples/general_quadratic_example.py
+   :language: python
+   :linenos:
+
+The response is as follows:
+
+.. code-block:: text
+
+    Status: 1
+    x = -1.0
+    y = -1.0
+    Objective value = -2.0
+
+
 .. _mps-example-python:
 
 Reading a Problem from an MPS File
