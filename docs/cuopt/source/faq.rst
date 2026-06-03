@@ -366,7 +366,7 @@ Linear Programming FAQs
 .. dropdown:: How small and how many problems can I give when using the batch mode?
 
     LP batch mode is deprecated; see :ref:`Batch Mode <batch-mode>` in
-    :doc:`lp-qp-features`.
+    :doc:`convex-features`.
 
     The batch mode allows solving many LPs in parallel to try to fully utilize the GPU when LP problems are too small. Using H100 SXM, the problem should be of at least 1K elements, and giving more than 100 LPs will usually not increase performance.
 

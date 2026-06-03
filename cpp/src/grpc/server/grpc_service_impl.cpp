@@ -127,9 +127,29 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     int64_t total_elems = ac.total_elements();
     const auto& raw     = ac.data();
 
-    if (!cuopt::remote::ArrayFieldId_IsValid(field_id)) {
+    // container_field_num and container_index are an indivisible pair: either
+    // both name a target inside a repeated nested message, or both are unset
+    // (top-level chunk).  Reject partial presence outright so we never silently
+    // route a half-targeted chunk to container_index=0 or strip a stray
+    // container_index off a top-level chunk.
+    if (ac.has_container_field_num() != ac.has_container_index()) {
+      return Status(StatusCode::INVALID_ARGUMENT,
+                    "container_field_num and container_index must both be set or both unset");
+    }
+    bool is_container    = ac.has_container_field_num();
+    int32_t cfn_for_size = is_container ? ac.container_field_num() : -1;
+
+    // For top-level chunks the field_id must be a registered ArrayFieldId;
+    // for container chunks it is a container-relative id, validated below by
+    // array_field_element_size() (returns -1 for unknown (cfn, fid) pairs).
+    // Container_index is implicitly validated by element_size lookup too —
+    // there's no upper bound on entry count, just on each entry's array size.
+    if (!is_container && !cuopt::remote::ArrayFieldId_IsValid(field_id)) {
       return Status(StatusCode::INVALID_ARGUMENT,
                     "Unknown array field_id: " + std::to_string(field_id));
+    }
+    if (is_container && ac.container_index() < 0) {
+      return Status(StatusCode::INVALID_ARGUMENT, "container_index must be non-negative");
     }
     if (elem_offset < 0) {
       return Status(StatusCode::INVALID_ARGUMENT, "element_offset must be non-negative");
@@ -139,10 +159,25 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     }
 
     // On the first chunk for a field, record its total size and element width.
-    // Subsequent chunks for the same field reuse these values.
-    auto& meta = state.field_meta[field_id];
+    // Subsequent chunks for the same field reuse these values.  Top-level and
+    // container chunks live in separate maps so a top-level field_id and a
+    // container-relative field_id can coexist without colliding.
+    ChunkedUploadState::FieldMeta* meta_ptr = nullptr;
+    if (is_container) {
+      cuopt::linear_programming::container_array_key_t key{
+        cfn_for_size, ac.container_index(), field_id};
+      meta_ptr = &state.container_field_meta[key];
+    } else {
+      meta_ptr = &state.field_meta[field_id];
+    }
+    auto& meta = *meta_ptr;
     if (meta.total_elements == 0 && total_elems > 0) {
-      int64_t elem_size = array_field_element_size(ac.field_id());
+      int64_t elem_size = array_field_element_size(cfn_for_size, field_id);
+      if (elem_size <= 0) {
+        return Status(StatusCode::INVALID_ARGUMENT,
+                      "Unknown array (container_field_num=" + std::to_string(cfn_for_size) +
+                        ", field_id=" + std::to_string(field_id) + ")");
+      }
       if (total_elems > kMaxChunkedArrayBytes / elem_size) {
         return Status(StatusCode::RESOURCE_EXHAUSTED,
                       "Array too large (" + std::to_string(total_elems) + " x " +
@@ -219,6 +254,7 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     pending.header = std::move(state.header);
     pending.chunks = std::move(state.chunks);
     state.field_meta.clear();
+    state.container_field_meta.clear();
 
     if (config.verbose) {
       SERVER_LOG_DEBUG(

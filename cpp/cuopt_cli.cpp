@@ -299,11 +299,6 @@ int main(int argc, char* argv[])
     .default_value(false)
     .implicit_value(true);
 
-  program.add_argument("--presolve")
-    .help("enable/disable presolve (default: true for MIP problems, false for LP problems)")
-    .default_value(true)
-    .implicit_value(true);
-
   program.add_argument("--params-file")
     .help("path to parameter config file (key = value format, supports all parameters)")
     .default_value(std::string(""));
