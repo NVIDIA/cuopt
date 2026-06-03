@@ -83,7 +83,7 @@ For CUDA 12.x:
 pip install \
   --extra-index-url=https://pypi.nvidia.com \
   nvidia-cuda-runtime-cu12==12.9.* \
-  cuopt-server-cu12==26.06.* cuopt-sh-client==26.06.*
+  cuopt-server-cu12==26.6.* cuopt-sh-client==26.6.*
 ```
 
 Development wheels are available as nightlies, please update `--extra-index-url` to `https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/` to install latest nightly packages.
@@ -91,7 +91,7 @@ Development wheels are available as nightlies, please update `--extra-index-url`
 pip install --pre \
   --extra-index-url=https://pypi.nvidia.com \
   --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
-  cuopt-server-cu12==26.06.* cuopt-sh-client==26.06.*
+  cuopt-server-cu12==26.6.* cuopt-sh-client==26.6.*
 ```
 
 For CUDA 13.x:
@@ -99,7 +99,7 @@ For CUDA 13.x:
 ```bash
 pip install \
   --extra-index-url=https://pypi.nvidia.com \
-  cuopt-server-cu13==26.06.* cuopt-sh-client==26.06.*
+  cuopt-server-cu13==26.6.* cuopt-sh-client==26.6.*
 ```
 
 Development wheels are available as nightlies, please update `--extra-index-url` to `https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/` to install latest nightly packages.
@@ -107,7 +107,7 @@ Development wheels are available as nightlies, please update `--extra-index-url`
 pip install --pre \
   --extra-index-url=https://pypi.nvidia.com \
   --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
-  cuopt-server-cu13==26.06.* cuopt-sh-client==26.06.*
+  cuopt-server-cu13==26.6.* cuopt-sh-client==26.6.*
 ```
 
 

@@ -63,18 +63,6 @@ cpu_mip_solution_t<i_t, f_t> map_proto_to_mip_solution(
 // ============================================================================
 
 /**
- * @brief Estimate serialized protobuf size of an LP solution.
- */
-template <typename i_t, typename f_t>
-size_t estimate_lp_solution_proto_size(const cpu_lp_solution_t<i_t, f_t>& solution);
-
-/**
- * @brief Estimate serialized protobuf size of a MIP solution.
- */
-template <typename i_t, typename f_t>
-size_t estimate_mip_solution_proto_size(const cpu_mip_solution_t<i_t, f_t>& solution);
-
-/**
  * @brief Populate a ChunkedResultHeader from an LP solution (scalar fields + array descriptors).
  */
 template <typename i_t, typename f_t>

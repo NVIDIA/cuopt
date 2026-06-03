@@ -209,7 +209,14 @@ struct ChunkedUploadState {
     int64_t element_size   = 0;
     int64_t received_bytes = 0;
   };
+  // Per-field bookkeeping for top-level arrays (keyed by ArrayFieldId).
   std::map<int32_t, FieldMeta> field_meta;
+  // Per-array bookkeeping for arrays inside repeated_messages, keyed by
+  // (container_field_num, container_index, container-relative field_id).
+  // Top-level and container fields stay in separate maps so a top-level
+  // field_id and a container-relative field_id can coexist without
+  // colliding on the int32_t key.
+  std::map<cuopt::linear_programming::container_array_key_t, FieldMeta> container_field_meta;
   std::vector<cuopt::remote::ArrayChunk> chunks;
   int64_t total_chunks = 0;
   int64_t total_bytes  = 0;

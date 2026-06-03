@@ -214,6 +214,16 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_optimization_problem_to_user
   user_problem.num_cols  = n;
   user_problem.objective = model.get_objective_coefficients_host();
 
+  // For maximization, negate the objective so the barrier (which always minimizes)
+  // finds the maximizer.  obj_scale = -1 ensures the reported objective is correct.
+  // Note: get_sense() returns true when the problem is a maximization problem.
+  const bool maximize = model.get_sense();
+  if (maximize) {
+    for (f_t& c : user_problem.objective) {
+      c = -c;
+    }
+  }
+
   dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
   csr_A.x         = model.get_constraint_matrix_values_host();
   csr_A.j         = model.get_constraint_matrix_indices_host();
@@ -285,7 +295,8 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_optimization_problem_to_user
   }
 
   user_problem.obj_constant = model.get_objective_offset();
-  user_problem.obj_scale    = model.get_objective_scaling_factor();
+  user_problem.obj_scale =
+    maximize ? -model.get_objective_scaling_factor() : model.get_objective_scaling_factor();
 
   user_problem.var_types.resize(n);
   auto model_variable_types = model.get_variable_types_host();

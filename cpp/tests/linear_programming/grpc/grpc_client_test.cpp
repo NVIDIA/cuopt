@@ -27,6 +27,7 @@
 #include "grpc_service_mapper.hpp"
 #include "grpc_settings_mapper.hpp"
 #include "grpc_solution_mapper.hpp"
+#include "server/grpc_field_element_size.hpp"
 
 #include <cuopt_remote.pb.h>
 #include <cuopt_remote_service.grpc.pb.h>
@@ -2258,4 +2259,332 @@ TEST(MapperRoundtrip, MIPSettingsDefaultProtoPreservesAllCppDefaults)
   EXPECT_EQ(after.heuristic_params.enabled_recombiners, fresh.heuristic_params.enabled_recombiners);
   EXPECT_DOUBLE_EQ(after.heuristic_params.initial_infeasibility_weight,
                    fresh.heuristic_params.initial_infeasibility_weight);
+}
+
+// ============================================================================
+// Quadratic constraints round-trip tests
+//
+// These exercise the QCQP transport end-to-end at the mapper level:
+//  * Unary path:  map_problem_to_proto → map_proto_to_problem
+//  * Chunked path: populate_chunked_header_* + build_array_chunk_requests
+//                  → reassemble chunks → map_chunked_arrays_to_problem
+// ============================================================================
+
+namespace {
+
+using QC = optimization_problem_interface_t<int32_t, double>::quadratic_constraint_t;
+
+// Q is stored COO-style on quadratic_constraint_t: three parallel arrays
+// (rows, cols, vals) of the same length, one entry per non-zero in the
+// Q matrix block for this row.  Older CSR storage was replaced by the
+// SOCP barrier work upstream; the wire format renames track the struct.
+QC make_qc(int32_t row_index,
+           std::string name,
+           char row_type,
+           double rhs,
+           std::vector<double> lin_vals,
+           std::vector<int32_t> lin_idx,
+           std::vector<int32_t> q_rows,
+           std::vector<int32_t> q_cols,
+           std::vector<double> q_vals)
+{
+  QC qc;
+  qc.constraint_row_index = row_index;
+  qc.constraint_row_name  = std::move(name);
+  qc.constraint_row_type  = row_type;
+  qc.rhs_value            = rhs;
+  qc.linear_values        = std::move(lin_vals);
+  qc.linear_indices       = std::move(lin_idx);
+  qc.rows                 = std::move(q_rows);
+  qc.cols                 = std::move(q_cols);
+  qc.vals                 = std::move(q_vals);
+  return qc;
+}
+
+void expect_qc_equal(const QC& a, const QC& b)
+{
+  EXPECT_EQ(a.constraint_row_index, b.constraint_row_index);
+  EXPECT_EQ(a.constraint_row_name, b.constraint_row_name);
+  // Compare via int so failure messages render unprintable bytes legibly.
+  EXPECT_EQ(static_cast<int>(static_cast<unsigned char>(a.constraint_row_type)),
+            static_cast<int>(static_cast<unsigned char>(b.constraint_row_type)));
+  EXPECT_DOUBLE_EQ(a.rhs_value, b.rhs_value);
+  EXPECT_EQ(a.linear_values, b.linear_values);
+  EXPECT_EQ(a.linear_indices, b.linear_indices);
+  EXPECT_EQ(a.rows, b.rows);
+  EXPECT_EQ(a.cols, b.cols);
+  EXPECT_EQ(a.vals, b.vals);
+}
+
+// Reassemble the chunk requests produced by build_array_chunk_requests into
+// the same (arrays, container_arrays) shape that map_chunked_arrays_to_problem
+// consumes — i.e. what the worker reconstructs from the pipe in production.
+// This is the only place in the test where we mirror server-side wire logic.
+void assemble_chunk_requests(
+  const std::vector<cuopt::remote::SendArrayChunkRequest>& reqs,
+  std::map<int32_t, std::vector<uint8_t>>& arrays,
+  std::map<container_array_key_t, std::vector<uint8_t>>& container_arrays)
+{
+  for (const auto& req : reqs) {
+    const auto& ac             = req.chunk();
+    int32_t fid                = ac.field_id();
+    int64_t total              = ac.total_elements();
+    int64_t elem_size          = 0;
+    std::vector<uint8_t>* dest = nullptr;
+    if (ac.has_container_field_num()) {
+      container_array_key_t key{ac.container_field_num(), ac.container_index(), fid};
+      dest      = &container_arrays[key];
+      elem_size = array_field_element_size(key.container_field_num, key.field_id);
+    } else {
+      dest      = &arrays[fid];
+      elem_size = array_field_element_size(-1, fid);
+    }
+    ASSERT_GT(elem_size, 0) << "Unknown element size for chunk";
+    ASSERT_GE(total, 0) << "Negative total_elements in chunk";
+    ASSERT_GE(ac.element_offset(), 0) << "Negative element_offset in chunk";
+    auto needed = static_cast<size_t>(total) * static_cast<size_t>(elem_size);
+    if (dest->size() < needed) dest->resize(needed);
+    auto byte_offset = static_cast<size_t>(ac.element_offset()) * static_cast<size_t>(elem_size);
+    ASSERT_LE(byte_offset, dest->size()) << "Chunk byte_offset exceeds destination size";
+    ASSERT_LE(ac.data().size(), dest->size() - byte_offset)
+      << "Chunk payload exceeds destination bounds";
+    std::memcpy(dest->data() + byte_offset, ac.data().data(), ac.data().size());
+  }
+}
+
+// A minimal LP scaffold used to satisfy the optimization-problem-level
+// invariants that populate_chunked_header_lp inspects on its way to populating
+// QC fields.  The actual coefficients are not exercised by these tests; we
+// only care about QC round-trip.
+void seed_minimal_problem(cpu_optimization_problem_t<int32_t, double>& problem)
+{
+  std::vector<double> obj    = {1.0, 2.0, 3.0};
+  std::vector<double> var_lb = {0.0, 0.0, 0.0};
+  std::vector<double> var_ub = {10.0, 10.0, 10.0};
+  std::vector<double> A_vals = {1.0, 1.0, 1.0};
+  std::vector<int32_t> A_idx = {0, 1, 2};
+  std::vector<int32_t> A_off = {0, 3};
+  std::vector<double> b_lb   = {1.0};
+  std::vector<double> b_ub   = {1e20};
+  problem.set_objective_coefficients(obj.data(), 3);
+  problem.set_variable_lower_bounds(var_lb.data(), 3);
+  problem.set_variable_upper_bounds(var_ub.data(), 3);
+  problem.set_csr_constraint_matrix(A_vals.data(), 3, A_idx.data(), 3, A_off.data(), 2);
+  problem.set_constraint_lower_bounds(b_lb.data(), 1);
+  problem.set_constraint_upper_bounds(b_ub.data(), 1);
+}
+
+}  // namespace
+
+TEST(MapperRoundtrip, QuadraticConstraintsUnaryPath)
+{
+  cpu_optimization_problem_t<int32_t, double> orig;
+  seed_minimal_problem(orig);
+
+  std::vector<QC> qcs;
+  qcs.push_back(make_qc(/*row_index=*/0,
+                        "qc_row_0",
+                        'L',
+                        4.5,
+                        /*lin_vals=*/{1.5, -2.5},
+                        /*lin_idx=*/{0, 2},
+                        /*q_rows=*/{0, 1, 1},
+                        /*q_cols=*/{0, 1, 2},
+                        /*q_vals=*/{2.0, 0.5, 3.0}));
+  qcs.push_back(make_qc(/*row_index=*/1,
+                        "qc_row_1",
+                        'G',
+                        -7.0,
+                        /*lin_vals=*/{0.25, 0.75, 1.0},
+                        /*lin_idx=*/{0, 1, 2},
+                        /*q_rows=*/{2},
+                        /*q_cols=*/{2},
+                        /*q_vals=*/{4.0}));
+  orig.set_quadratic_constraints(qcs);
+  ASSERT_TRUE(orig.has_quadratic_constraints());
+
+  cuopt::remote::OptimizationProblem pb;
+  map_problem_to_proto(orig, &pb);
+
+  ASSERT_EQ(pb.quadratic_constraints_size(), 2);
+  EXPECT_EQ(pb.quadratic_constraints(0).constraint_row_name(), "qc_row_0");
+  EXPECT_EQ(pb.quadratic_constraints(0).linear_values_size(), 2);
+  EXPECT_EQ(pb.quadratic_constraints(0).vals_size(), 3);
+  EXPECT_EQ(pb.quadratic_constraints(1).vals_size(), 1);
+
+  cpu_optimization_problem_t<int32_t, double> restored;
+  map_proto_to_problem(pb, restored);
+
+  ASSERT_TRUE(restored.has_quadratic_constraints());
+  const auto& got = restored.get_quadratic_constraints();
+  ASSERT_EQ(got.size(), qcs.size());
+  for (size_t i = 0; i < qcs.size(); ++i) {
+    SCOPED_TRACE("QC entry " + std::to_string(i));
+    expect_qc_equal(qcs[i], got[i]);
+  }
+}
+
+TEST(MapperRoundtrip, QuadraticConstraintsChunkedPath)
+{
+  cpu_optimization_problem_t<int32_t, double> orig;
+  seed_minimal_problem(orig);
+
+  // Build QC entries with arrays large enough that build_array_chunk_requests
+  // with a small chunk_size_bytes is forced to split them across multiple
+  // chunks, exercising the slow-path stitching inside the container code.
+  // Q is COO so rows/cols/vals are three parallel arrays of equal length.
+  constexpr int n0_linear = 64;   // 64 doubles = 512 bytes
+  constexpr int n0_q      = 100;  // 100 COO entries (rows/cols int, vals double)
+  constexpr int n1_linear = 32;
+  std::vector<double> lv0(n0_linear);
+  std::vector<int32_t> li0(n0_linear);
+  std::vector<int32_t> qr0(n0_q);
+  std::vector<int32_t> qc0(n0_q);
+  std::vector<double> qv0(n0_q);
+  for (int i = 0; i < n0_linear; ++i) {
+    lv0[i] = 0.5 * i + 1.0;
+    li0[i] = i;
+  }
+  for (int i = 0; i < n0_q; ++i) {
+    qr0[i] = i % n0_linear;
+    qc0[i] = (i + 7) % n0_linear;
+    qv0[i] = -0.25 * i + 7.0;
+  }
+
+  std::vector<double> lv1(n1_linear);
+  std::vector<int32_t> li1(n1_linear);
+  for (int i = 0; i < n1_linear; ++i) {
+    lv1[i] = 100.0 + i;
+    li1[i] = n1_linear - 1 - i;
+  }
+
+  std::vector<QC> qcs;
+  qcs.push_back(make_qc(0, "big_qc", 'L', 12.5, lv0, li0, qr0, qc0, qv0));
+  qcs.push_back(make_qc(2, "small_qc", 'E', 0.0, lv1, li1, {}, {}, {}));
+  orig.set_quadratic_constraints(qcs);
+
+  // 1) Client side: populate header (scalars only) + build chunk requests.
+  pdlp_solver_settings_t<int32_t, double> settings;
+  cuopt::remote::ChunkedProblemHeader header;
+  populate_chunked_header_lp(orig, settings, &header);
+
+  ASSERT_EQ(header.quadratic_constraints_size(), 2);
+  // Per-entry arrays must NOT have ridden the header — they belong on chunks.
+  EXPECT_EQ(header.quadratic_constraints(0).linear_values_size(), 0);
+  EXPECT_EQ(header.quadratic_constraints(0).vals_size(), 0);
+
+  // Small chunk budget forces at least one container array to split.
+  constexpr int64_t kChunkBytes = 96;
+  auto requests                 = build_array_chunk_requests(orig, "upload-test", kChunkBytes);
+
+  // Sanity-check that at least one container chunk was produced and that the
+  // big_qc linear_values (512 B) was split into multiple chunks.
+  size_t container_chunks = 0;
+  size_t big_lv_chunks    = 0;
+  for (const auto& r : requests) {
+    const auto& ac = r.chunk();
+    if (!ac.has_container_field_num()) continue;
+    ++container_chunks;
+    if (ac.container_index() == 0 && ac.field_id() == 0) ++big_lv_chunks;
+  }
+  EXPECT_GT(container_chunks, 0u);
+  EXPECT_GT(big_lv_chunks, 1u) << "Expected multi-chunk split for big_qc.linear_values";
+
+  // 2) Server side: reassemble chunks into raw byte maps and reconstruct.
+  std::map<int32_t, std::vector<uint8_t>> arrays;
+  std::map<container_array_key_t, std::vector<uint8_t>> container_arrays;
+  assemble_chunk_requests(requests, arrays, container_arrays);
+
+  cpu_optimization_problem_t<int32_t, double> restored;
+  map_chunked_arrays_to_problem(header, arrays, container_arrays, restored);
+
+  ASSERT_TRUE(restored.has_quadratic_constraints());
+  const auto& got = restored.get_quadratic_constraints();
+  ASSERT_EQ(got.size(), qcs.size());
+  for (size_t i = 0; i < qcs.size(); ++i) {
+    SCOPED_TRACE("QC entry " + std::to_string(i));
+    expect_qc_equal(qcs[i], got[i]);
+  }
+}
+
+TEST(MapperRoundtrip, QuadraticConstraintsEmpty)
+{
+  cpu_optimization_problem_t<int32_t, double> orig;
+  seed_minimal_problem(orig);
+  ASSERT_FALSE(orig.has_quadratic_constraints());
+
+  // Unary path: proto carries zero entries and decode leaves QC unset.
+  cuopt::remote::OptimizationProblem pb;
+  map_problem_to_proto(orig, &pb);
+  EXPECT_EQ(pb.quadratic_constraints_size(), 0);
+
+  cpu_optimization_problem_t<int32_t, double> restored_unary;
+  map_proto_to_problem(pb, restored_unary);
+  EXPECT_FALSE(restored_unary.has_quadratic_constraints());
+
+  // Chunked path: header carries zero entries, build_array_chunk_requests
+  // produces no container chunks, and the worker-side mapper leaves QC unset.
+  pdlp_solver_settings_t<int32_t, double> settings;
+  cuopt::remote::ChunkedProblemHeader header;
+  populate_chunked_header_lp(orig, settings, &header);
+  EXPECT_EQ(header.quadratic_constraints_size(), 0);
+
+  auto requests = build_array_chunk_requests(orig, "upload-empty", /*chunk_size_bytes=*/1024);
+  for (const auto& r : requests) {
+    EXPECT_FALSE(r.chunk().has_container_field_num())
+      << "No container chunks should be emitted when there are no QC entries";
+  }
+
+  std::map<int32_t, std::vector<uint8_t>> arrays;
+  std::map<container_array_key_t, std::vector<uint8_t>> container_arrays;
+  assemble_chunk_requests(requests, arrays, container_arrays);
+  EXPECT_TRUE(container_arrays.empty());
+
+  cpu_optimization_problem_t<int32_t, double> restored_chunked;
+  map_chunked_arrays_to_problem(header, arrays, container_arrays, restored_chunked);
+  EXPECT_FALSE(restored_chunked.has_quadratic_constraints());
+}
+
+TEST(MapperRoundtrip, QuadraticConstraintsRowTypeLenient)
+{
+  // Verify that constraint_row_type survives any byte value through the
+  // int32 wire encoding without rejection.  cpu_optimization_problem stores
+  // it as a `char` and the gRPC transport is intentionally lenient so the
+  // remote path matches the local-solve binding, which accepts whatever the
+  // C++ caller supplies (e.g. mixed-case 'L'/'l', 0, or any extended byte).
+  cpu_optimization_problem_t<int32_t, double> orig;
+  seed_minimal_problem(orig);
+
+  std::vector<char> row_types = {
+    'L', 'G', 'E', 'l', 'g', 'e', '\0', '\x7F', static_cast<char>(0xFF), static_cast<char>(0x80)};
+  std::vector<QC> qcs;
+  qcs.reserve(row_types.size());
+  for (size_t i = 0; i < row_types.size(); ++i) {
+    qcs.push_back(make_qc(static_cast<int32_t>(i),
+                          "row_" + std::to_string(i),
+                          row_types[i],
+                          /*rhs=*/static_cast<double>(i),
+                          /*lin_vals=*/{1.0},
+                          /*lin_idx=*/{0},
+                          /*q_rows=*/{},
+                          /*q_cols=*/{},
+                          /*q_vals=*/{}));
+  }
+  orig.set_quadratic_constraints(qcs);
+
+  cuopt::remote::OptimizationProblem pb;
+  map_problem_to_proto(orig, &pb);
+  ASSERT_EQ(pb.quadratic_constraints_size(), static_cast<int>(row_types.size()));
+
+  cpu_optimization_problem_t<int32_t, double> restored;
+  map_proto_to_problem(pb, restored);
+
+  ASSERT_TRUE(restored.has_quadratic_constraints());
+  const auto& got = restored.get_quadratic_constraints();
+  ASSERT_EQ(got.size(), qcs.size());
+  for (size_t i = 0; i < qcs.size(); ++i) {
+    EXPECT_EQ(static_cast<int>(static_cast<unsigned char>(got[i].constraint_row_type)),
+              static_cast<int>(static_cast<unsigned char>(row_types[i])))
+      << "Mismatch at index " << i;
+  }
 }
