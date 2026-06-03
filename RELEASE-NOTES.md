@@ -23,7 +23,7 @@
 - Improve performance of dual simplex (remove unnecessary BTran, swap coefficients for faster reduced cost calculation, trigger basis refactorization based on work limits); 16% faster on NETLIB LP, 6% faster on MIPLIB relaxations 
 - Improved accuracy of dual simplex (refactor when optimal and primal residual is large and basis updates present)
 - Reduce concurrent overhead for LP solves
-- Replace SpMV calls with SpMVOp calls in PDLP, 1.09x speedup
+- Replace SpMV calls with SpMVOp calls in PDLP; 1.09x speedup
 - Reduce memory footprint of PDLP by around 50%
 - Unify threading model across LP (concurrent mode) and MIP to use OpenMP tasking model to allow stricter control of the number of threads
 - Unify `read` API on `Problem` for both MPS and LP file formats
