@@ -26,7 +26,7 @@
 - Improved accuracy of dual simplex (refactor when optimal and primal residual is large and basis updates present)
 - Reduce concurrent overhead for LP solves
 - Reduce memory footprint of PDLP by around 50%
-- Unify threading model across LP (concurrent mode) and MIP to use OpenMP tasking model to allow stricter control of the number of threads
+- Unify threading model across LP (concurrent mode) and MIP to use OpenMP task model to allow stricter control of the number of threads
 - Unify `read` API on `Problem` for both MPS and LP file formats
 - Build and test with CUDA 13.2
 - Build against OpenSSL3 in container and wheel for gRPC
