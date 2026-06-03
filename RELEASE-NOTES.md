@@ -20,11 +20,11 @@
 - Move `libmps_parser` into `libcuopt` and the `mps_parser` Python module into `cuopt`; the standalone `libmps_parser` shared library and Python module are no longer shipped. Imports should move from `libmps_parser` to `cuopt`
 
 ### Improvements (26.06)
+- Replace SpMV calls with SpMVOp calls in PDLP; 9% faster
 - Improve performance of QP solver on portfolio optimization problems
 - Improve performance of dual simplex (remove unnecessary BTran, swap coefficients for faster reduced cost calculation, trigger basis refactorization based on work limits); 16% faster on NETLIB LP, 6% faster on MIPLIB relaxations
 - Improved accuracy of dual simplex (refactor when optimal and primal residual is large and basis updates present)
 - Reduce concurrent overhead for LP solves
-- Replace SpMV calls with SpMVOp calls in PDLP; 1.09x speedup
 - Reduce memory footprint of PDLP by around 50%
 - Unify threading model across LP (concurrent mode) and MIP to use OpenMP tasking model to allow stricter control of the number of threads
 - Unify `read` API on `Problem` for both MPS and LP file formats
