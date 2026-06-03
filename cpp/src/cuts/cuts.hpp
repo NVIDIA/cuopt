@@ -289,14 +289,7 @@ class cut_pool_t {
 
   // Add a cut in the form: cut'*x >= rhs.
   // We expect that the cut is violated by the current relaxation xstar.
-  //
-  // Optional score used by the clique cousin filter.
-  // Only used for cut_type == CLIQUE when the filter is enabled.
-  // Non-negative values enable score-based replacement; -1.0 means
-  // keep the first inserted representative.
-  void add_cut(cut_type_t cut_type,
-               const inequality_t<i_t, f_t>& cut,
-               f_t cut_score = static_cast<f_t>(-1.0));
+  void add_cut(cut_type_t cut_type, const inequality_t<i_t, f_t>& cut);
 
   void score_cuts(std::vector<f_t>& x_relax);
 
@@ -315,48 +308,10 @@ class cut_pool_t {
 
   void check_for_duplicate_cuts();
 
-  // Clique cousin filter settings.
-  // At insert time, we compare min-hash sketches and keep one
-  // representative when estimated Jaccard >= jaccard_tau.
-  // Defaults: jaccard_tau=0.875, k=8, enable=true, size_weight=0.0.
-  void set_clique_cousin_filter_enable(bool v) { clique_cousin_filter_enable_ = v; }
-  void set_clique_cousin_jaccard_tau(f_t v) { clique_cousin_jaccard_tau_ = v; }
-  void set_clique_cousin_minhash_k(i_t v) { clique_cousin_minhash_k_ = v; }
-  void set_clique_cousin_size_weight(f_t v) { clique_cousin_size_weight_ = v; }
-
-  bool clique_cousin_filter_enable() const { return clique_cousin_filter_enable_; }
-  f_t clique_cousin_jaccard_tau() const { return clique_cousin_jaccard_tau_; }
-  i_t clique_cousin_minhash_k() const { return clique_cousin_minhash_k_; }
-  f_t clique_cousin_size_weight() const { return clique_cousin_size_weight_; }
-
-  // Per-pool tally for log lines (instance-level diagnostic). All three
-  // counters are reset by reset_cousin_stats() and incremented inside
-  // add_cut() / cousin replacement.
-  i_t cousin_drops() const { return cousin_drops_; }
-  i_t cousin_replaces() const { return cousin_replaces_; }
-  i_t clique_inserts() const { return clique_inserts_; }
-  void reset_cousin_stats()
-  {
-    cousin_drops_    = 0;
-    cousin_replaces_ = 0;
-    clique_inserts_  = 0;
-  }
-
  private:
   f_t cut_distance(i_t row, const std::vector<f_t>& x, f_t& cut_violation, f_t& cut_norm);
   f_t cut_density(i_t row);
   f_t cut_orthogonality(i_t i, i_t j);
-
-  // Cousin filter helpers. compute_clique_minhash_sketch() fills
-  // `sketch` (length = clique_cousin_minhash_k_) with k independent
-  // min-hashes over the cut's column-support set. Two sketches agree
-  // on slot s with probability Jaccard(supp_a, supp_b), so element-wise
-  // agreement count divided by k estimates the Jaccard similarity.
-  void compute_clique_minhash_sketch(const inequality_t<i_t, f_t>& cut,
-                                     std::vector<uint64_t>& sketch) const;
-  // Rebuilds clique_cousin_buckets_ from clique_support_minhash_ after
-  // any compaction that remaps row indices (e.g. dedup).
-  void rebuild_clique_cousin_buckets();
 
   i_t original_vars_;
   const simplex_solver_settings_t<i_t, f_t>& settings_;
@@ -373,65 +328,7 @@ class cut_pool_t {
   std::vector<f_t> cut_scores_;
   std::vector<i_t> best_cuts_;
   const f_t min_cut_distance_{1e-4};
-
-  // Cousin filter state.
-  // Vectors are kept aligned with cut_storage_. Non-CLIQUE rows keep
-  // empty sketches. Buckets map sketch[0] to candidate rows.
-  std::vector<std::vector<uint64_t>> clique_support_minhash_;
-  std::vector<f_t> clique_cousin_score_;
-  std::unordered_map<uint64_t, std::vector<i_t>> clique_cousin_buckets_;
-  f_t clique_cousin_jaccard_tau_{static_cast<f_t>(0.875)};
-  i_t clique_cousin_minhash_k_{8};
-  bool clique_cousin_filter_enable_{false};
-  // When > 0, the cousin filter's "score" used to pick a winner is
-  // boosted as: effective_score = base_score * (1 + size_weight * log2(1 + clique_size)).
-  // This biases cousin replacement toward larger cliques (more variables
-  // covered, larger integer support). 0 disables the tilt.
-  f_t clique_cousin_size_weight_{static_cast<f_t>(0.0)};
-
-  // Diagnostic counters reset at the start of each cut pass via
-  // reset_cousin_stats().
-  i_t cousin_drops_{0};
-  i_t cousin_replaces_{0};
-  i_t clique_inserts_{0};
 };
-
-// ---------------------------------------------------------------------------
-// Cut-pool sweep configuration dispatch.
-//
-// Selected by CUOPT_CONFIG_ID and range-checked against
-// CUOPT_MAX_CONFIG. Configs control the clique cousin filter knobs.
-//
-// Keep kCutSweepNumConfigs in sync with the switch table in
-// apply_cut_sweep_config() (see cuts.cpp) and with cut_sweep_config_name()
-// below.
-//
-// Layout:
-//   0  baseline_no_cousin   cousin filter off
-//   1  cousin_default       cousin filter on, tau=0.85, k=8, score=violation
-//   2  cousin_strict        cousin filter on, tau=0.70 (more aggressive
-//                           cousin removal — favors quantity reduction)
-//   3  cousin_loose         cousin filter on, tau=0.875 (allows 7/8 min-hash
-//                           agreement with k=8)
-//   4  cousin_size_tilt     cousin filter on, tau=0.85, score = violation *
-//                           (1 + 0.5 * log2(1 + clique_size))
-constexpr int kCutSweepNumConfigs = 5;
-
-inline const char* cut_sweep_config_name(int config_id)
-{
-  switch (config_id) {
-    case 0: return "00_baseline_no_cousin";
-    case 1: return "01_cousin_default";
-    case 2: return "02_cousin_strict";
-    case 3: return "03_cousin_loose";
-    case 4: return "04_cousin_size_tilt";
-    default: return "unknown";
-  }
-}
-
-template <typename i_t, typename f_t>
-void apply_cut_sweep_config(cut_pool_t<i_t, f_t>& cut_pool,
-                            const simplex_solver_settings_t<i_t, f_t>& settings);
 
 template <typename i_t, typename f_t>
 class variable_bounds_t;
