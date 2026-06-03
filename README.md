@@ -36,8 +36,12 @@ cuOpt supports the following APIs:
     - cuOpt is written in C++ and includes a native C++ API. However, we do not provide documentation for the C++ API at this time. We anticipate that the C++ API will change significantly in the future. Use it at your own risk.
 - Python support
     - Routing (TSP, VRP, and PDP)
-    - Linear Programming (LP) and Quadratic Programming (QP); Mixed Integer Linear Programming (MILP) (beta), Quadratically Constrained Quadratic Programming (QCQP) (beta), and Second-Order Cone Programming (SOCP) (beta)
-        - Algebraic modeling Python API allows users to easily build constraints and objectives
+    - Linear Programming (LP)
+    - Quadratic Programming (QP)
+    - Mixed Integer Linear Programming (MILP) (beta)
+    - Quadratically Constrained Quadratic Programming (QCQP) (beta)
+    - Second-Order Cone Programming (SOCP) (beta)
+    - Algebraic modeling Python API allows users to easily build constraints and objectives
 - Server support
     - Linear Programming (LP)
     - Mixed Integer Linear Programming (MILP) (beta)
