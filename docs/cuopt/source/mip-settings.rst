@@ -78,6 +78,11 @@ access to the dual solution. Enabled by default for LP when Papilo presolve is s
 Mixed Integer Linear Programming
 ---------------------------------
 
+The cuOpt MIP solver is in **beta** and under active development. The solver
+currently excels at finding high-quality feasible solutions quickly with
+GPU-accelerated primal heuristics. Proving feasible solutions optimal remains
+under active development.
+
 We now describe parameter settings for the MILP solver.
 
 

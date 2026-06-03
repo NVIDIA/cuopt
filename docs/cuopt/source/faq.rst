@@ -422,6 +422,15 @@ Linear Programming FAQs
 Mixed Integer Linear Programming FAQs
 --------------------------------------
 
+.. dropdown:: How do I run the MIP solver with cuOpt?
+
+    You can run the cuOpt MIP solver through the Python, C, CLI, or server APIs
+    by providing a model with integer or binary variables. The cuOpt MIP solver
+    is in **beta** and under active development. The solver currently excels at
+    finding high-quality feasible solutions quickly with GPU-accelerated primal
+    heuristics. Proving feasible solutions optimal remains under active
+    development.
+
 .. dropdown:: What are the limitations of the MILP solver?
 
     #. There is no inherit limit imposed on the number of variables, number of constraints, or number of non-zeros you can have in a MILP or LP, except the restrictions due to the number of bits in integer and the amount of memory in the CPU and GPU.
