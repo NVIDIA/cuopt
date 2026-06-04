@@ -2166,11 +2166,6 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
       "%d visible CUDA device(s)",
       settings_resolved.distributed_pdlp_num_gpus);
   }
-  if (settings_resolved.distributed_pdlp_num_gpus <= 1) {
-    std::cout << "CAREFUL: use_distributed_pdlp with distributed_pdlp_num_gpus == 1 runs the "
-                 "single-shard dummy path"
-              << std::endl;
-  }
   // PDLP precision validations (mirror the checks in run_pdlp; distributed
   // path only supports the default-precision, non-batch double config).
   cuopt_expects(settings_resolved.pdlp_precision == pdlp_precision_t::DefaultPrecision,

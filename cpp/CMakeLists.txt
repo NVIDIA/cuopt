@@ -379,6 +379,17 @@ set_target_properties(metis_external PROPERTIES
 message(STATUS "Using METIS: ${METIS_LIBRARY}")
 
 # ##################################################################################################
+# - KaMinPar (multi-threaded partitioning for distributed PDLP) ------------------------------------
+# Brought in the RAPIDS way (rapids_cpm_find): uses an installed KaMinPar (deb/rpm/conda,
+# discovered via its CMake config) if present, otherwise builds the pinned source via CPM.
+# Distributed PDLP prefers KaMinPar over METIS.
+include(cmake/thirdparty/get_kaminpar.cmake)
+if (NOT TARGET KaMinPar::KaMinPar)
+    message(FATAL_ERROR "KaMinPar::KaMinPar was not made available by get_kaminpar.cmake")
+endif ()
+message(STATUS "Using KaMinPar (distributed PDLP prefers KaMinPar over METIS)")
+
+# ##################################################################################################
 # - gRPC and Protobuf setup -----------------------------------------------------------------------
 
 if (NOT SKIP_GRPC_BUILD)
@@ -642,6 +653,7 @@ target_link_libraries(cuopt
         ${CUOPT_PRIVATE_CUDA_LIBS}
         nccl_external
         metis_external
+        KaMinPar::KaMinPar
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:protobuf::libprotobuf>
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:gRPC::grpc++>
 )

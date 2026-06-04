@@ -1,0 +1,142 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+// Plain C++ translation unit (not .cu): KaMinPar's public header is C++20 host code
+// and pulls in TBB; keeping it out of nvcc avoids device-compiler friction.
+
+#include <pdlp/distributed_pdlp/kaminpar_partitioner.hpp>
+#include <pdlp/distributed_pdlp/partitioner.hpp>
+
+#include <utilities/logger.hpp>
+
+#include <cuopt/error.hpp>
+
+#include <kaminpar.h>
+
+#include <chrono>
+#include <cstddef>
+#include <span>
+#include <thread>
+#include <vector>
+
+namespace cuopt::linear_programming::detail {
+
+// Builds the bipartite constraint/variable graph induced by A (identical layout
+// to metis_partitioner_t) and runs the multi-threaded KaMinPar k-way kernel.
+//   * nodes [0, nb_cstr)              : constraint nodes
+//   * nodes [nb_cstr, nb_cstr+nb_vars): variable nodes
+//   * undirected edges from each A nonzero (one half via A, one via A_t)
+template <typename i_t, typename f_t>
+std::vector<i_t> kaminpar_partitioner_t<i_t, f_t>::partition(
+  partitioner_input_t<i_t, f_t> const& input) const
+{
+  cuopt_expects(input.nb_parts >= 1,
+                error_type_t::ValidationError,
+                "kaminpar_partitioner: nb_parts must be >= 1");
+  cuopt_expects(input.nb_cstr >= 0 && input.nb_vars >= 0,
+                error_type_t::ValidationError,
+                "kaminpar_partitioner: invalid problem dimensions");
+
+  // The k-way kernel needs at least 2 blocks. For the single-shard case the
+  // partition is trivial (everything in block 0); short-circuit so KaMinPar can
+  // still be selected with distributed_pdlp_num_gpus == 1 without crashing.
+  if (input.nb_parts == 1) {
+    CUOPT_LOG_INFO("KaMinPar: nb_parts == 1, returning trivial single-block partition");
+    return std::vector<i_t>(static_cast<std::size_t>(input.nb_cstr + input.nb_vars), i_t{0});
+  }
+  cuopt_expects(input.A.row_offsets != nullptr && input.A.col_indices != nullptr,
+                error_type_t::ValidationError,
+                "kaminpar_partitioner: A.row_offsets and A.col_indices are required");
+  cuopt_expects(input.A_t.row_offsets != nullptr && input.A_t.col_indices != nullptr,
+                error_type_t::ValidationError,
+                "kaminpar_partitioner: A_t.row_offsets and A_t.col_indices are required");
+
+  auto const& A_offsets   = *input.A.row_offsets;
+  auto const& A_cols      = *input.A.col_indices;
+  auto const& A_t_offsets = *input.A_t.row_offsets;
+  auto const& A_t_cols    = *input.A_t.col_indices;
+
+  cuopt_expects(static_cast<i_t>(A_offsets.size()) == input.nb_cstr + 1,
+                error_type_t::ValidationError,
+                "kaminpar_partitioner: A.row_offsets size mismatch (expected nb_cstr+1)");
+  cuopt_expects(static_cast<i_t>(A_t_offsets.size()) == input.nb_vars + 1,
+                error_type_t::ValidationError,
+                "kaminpar_partitioner: A_t.row_offsets size mismatch (expected nb_vars+1)");
+  cuopt_expects(A_cols.size() == A_t_cols.size(),
+                error_type_t::ValidationError,
+                "kaminpar_partitioner: A and A_t nnz mismatch");
+
+  const i_t nb_cstr = input.nb_cstr;
+  const i_t nb_vars = input.nb_vars;
+  const i_t nnz     = static_cast<i_t>(A_cols.size());
+  const i_t nvtx    = nb_cstr + nb_vars;
+
+  // Resolve thread count: <= 0 => all hardware threads (1 as a last resort).
+  int nthreads = input.nb_threads > 0 ? static_cast<int>(input.nb_threads) : 0;
+  if (nthreads <= 0) {
+    nthreads = static_cast<int>(std::thread::hardware_concurrency());
+    if (nthreads <= 0) { nthreads = 1; }
+  }
+
+  // Bipartite CSR using KaMinPar index types (EdgeID for offsets, NodeID for neighbours).
+  std::vector<kaminpar::shm::EdgeID> xadj(static_cast<std::size_t>(nvtx) + 1);
+  std::vector<kaminpar::shm::NodeID> adjncy(2 * static_cast<std::size_t>(nnz));
+
+  for (i_t i = 0; i <= nb_cstr; ++i) {
+    xadj[i] = static_cast<kaminpar::shm::EdgeID>(A_offsets[i]);
+  }
+  for (i_t i = 0; i <= nb_vars; ++i) {
+    xadj[nb_cstr + i] =
+      static_cast<kaminpar::shm::EdgeID>(A_t_offsets[i]) + static_cast<kaminpar::shm::EdgeID>(nnz);
+  }
+  for (i_t k = 0; k < nnz; ++k) {
+    adjncy[k] =
+      static_cast<kaminpar::shm::NodeID>(A_cols[k]) + static_cast<kaminpar::shm::NodeID>(nb_cstr);
+  }
+  for (i_t k = 0; k < nnz; ++k) {
+    adjncy[nnz + k] = static_cast<kaminpar::shm::NodeID>(A_t_cols[k]);
+  }
+
+  std::vector<kaminpar::shm::BlockID> block_of(static_cast<std::size_t>(nvtx));
+
+  kaminpar::KaMinPar engine(nthreads, kaminpar::shm::create_default_context());
+  engine.copy_graph(std::span<const kaminpar::shm::EdgeID>(xadj),
+                    std::span<const kaminpar::shm::NodeID>(adjncy));
+  engine.set_k(static_cast<kaminpar::shm::BlockID>(input.nb_parts));
+  // ~3% imbalance, matching METIS_PartGraphKway's default balance constraint.
+  engine.set_uniform_max_block_weights(0.03);
+
+  auto t0 = std::chrono::high_resolution_clock::now();
+  const kaminpar::shm::EdgeWeight edge_cut =
+    engine.compute_partition(std::span<kaminpar::shm::BlockID>(block_of));
+  auto t1         = std::chrono::high_resolution_clock::now();
+  const double dt = std::chrono::duration<double>(t1 - t0).count();
+
+  CUOPT_LOG_INFO(
+    "KaMinPar partitioned bipartite graph: nvtx=%d nnz=%d nb_parts=%d nthreads=%d edge_cut=%lld "
+    "in %.3fs",
+    static_cast<int>(nvtx),
+    static_cast<int>(nnz),
+    static_cast<int>(input.nb_parts),
+    nthreads,
+    static_cast<long long>(edge_cut),
+    dt);
+
+  std::vector<i_t> parts(static_cast<std::size_t>(nvtx));
+  for (i_t i = 0; i < nvtx; ++i) {
+    parts[i] = static_cast<i_t>(block_of[i]);
+  }
+
+  validate_partition(parts,
+                     static_cast<int>(nb_cstr),
+                     static_cast<int>(nb_vars),
+                     static_cast<int>(input.nb_parts),
+                     "kaminpar_partitioner");
+  return parts;
+}
+
+template class kaminpar_partitioner_t<int, double>;
+
+}  // namespace cuopt::linear_programming::detail

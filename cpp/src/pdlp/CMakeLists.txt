@@ -34,6 +34,7 @@ set(LP_CORE_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/distributed_pdlp/partition_loader.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/distributed_pdlp/partitioner.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/distributed_pdlp/metis_partitioner.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/distributed_pdlp/kaminpar_partitioner.cpp
 )
 
 # C and Python adapter files

@@ -32,17 +32,14 @@ std::vector<i_t> metis_partitioner_t<i_t, f_t>::partition(
   cuopt_expects(input.nb_parts > 0,
                 error_type_t::ValidationError,
                 "metis_partitioner: nb_parts must be positive");
-  // METIS_PartGraphKway internally does integer arithmetic of the form
-  // `nedges / nparts` and traps with SIGFPE when nparts == 1. The single-part
-  // case is also trivial (everything in part 0) so callers should route it to
-  // the Dummy partitioner instead (see pdlp_solver_t mGPU ctor).
-  cuopt_expects(input.nb_parts >= 2,
-                error_type_t::ValidationError,
-                "metis_partitioner: nb_parts must be >= 2 (METIS_PartGraphKway requirement); "
-                "use the Dummy partitioner for the single-shard case");
   cuopt_expects(input.nb_cstr >= 0 && input.nb_vars >= 0,
                 error_type_t::ValidationError,
                 "metis_partitioner: invalid problem dimensions");
+
+  if (input.nb_parts == 1) {
+    CUOPT_LOG_INFO("METIS: nb_parts == 1, returning trivial single-block partition");
+    return std::vector<i_t>(static_cast<std::size_t>(input.nb_cstr + input.nb_vars), i_t{0});
+  }
 
   cuopt_expects(input.A.row_offsets != nullptr && input.A.col_indices != nullptr,
                 error_type_t::ValidationError,

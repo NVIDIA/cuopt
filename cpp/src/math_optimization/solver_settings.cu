@@ -193,6 +193,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_PRESOLVE_FILE, &pdlp_settings.presolve_file, ""},
     {CUOPT_MULTI_GPU_PARTITION_FILE, &pdlp_settings.multi_gpu_partition_file, ""},
     {CUOPT_MULTI_GPU_EXPORT_PARTITION_FILE, &pdlp_settings.multi_gpu_export_partition_file, ""},
+    {CUOPT_DISTRIBUTED_PDLP_PARTITIONER, &pdlp_settings.distributed_pdlp_partitioner, "auto"},
   };
   // clang-format on
 }

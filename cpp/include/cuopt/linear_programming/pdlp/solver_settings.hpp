@@ -316,6 +316,14 @@ class pdlp_solver_settings_t {
   // back via multi_gpu_partition_file. Exposed as the multi_gpu_export_partition_file
   // parameter (CLI: --multi-gpu-export-partition-file <path>).
   std::string multi_gpu_export_partition_file{""};
+  // Which graph partitioner distributed PDLP uses. One of:
+  //   "auto"     - 1 GPU => Dummy; otherwise KaMinPar
+  //   "dummy"    - round-robin, no graph (trivial)
+  //   "metis"    - serial METIS_PartGraphKway
+  //   "kaminpar" - multi-threaded KaMinPar
+  // Exposed as the distributed_pdlp_partitioner parameter
+  // (CLI: --distributed-pdlp-partitioner <auto|dummy|metis|kaminpar>).
+  std::string distributed_pdlp_partitioner{"auto"};
   // Set to true inside the shards
   bool is_distributed_sub_pdlp{false};
   method_t method{method_t::Concurrent};
