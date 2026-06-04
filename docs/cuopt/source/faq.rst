@@ -67,7 +67,7 @@ General FAQ
 
      2. Try to locate the process that is using port 5000 and stop it if possible. A tool like ``netstat`` run as the root user can help identify ports mapped to processes, and ``docker ps -a`` will show running containers.
 
-     3. Alternatively, use port mapping to launch cuOpt on a different port such as 5001 (note the omission of ``–network=host`` flag):
+    3. Alternatively, use port mapping to launch cuOpt on a different port such as 5001 (note the omission of ``--network=host`` flag):
 
      4. If running locally, you can also use ``ps -aux | grep cuopt_server`` to find the process and kill it.
 
@@ -134,7 +134,7 @@ General FAQ
 
      .. code-block:: bash
 
-        curl -s -o /dev/null -w '%{http_code}\\n' localhost:5000/cuopt/health 200
+        curl -s -o /dev/null -w '%{http_code}\\n' localhost:5000/cuopt/health
 
 
     If this command returns 200, cuOpt is running and listening on the specified port.
@@ -142,9 +142,9 @@ General FAQ
 
     If this command returns something other than 200, check the following:
 
-       -  Check that a cuOpt container is running with ``docker -ps``.
+    -  Check that a cuOpt container is running with ``docker ps``.
        -  Examine the cuOpt container log for errors.
-       - Did you include the ``–network=host`` or a ``-p`` port-mapping flag to docker when you launched cuOpt? If you used port mapping, did you perform the health check using the correct port?
+    - Did you include the ``--network=host`` or a ``-p`` port-mapping flag to docker when you launched cuOpt? If you used port mapping, did you perform the health check using the correct port?
        -  Restart cuOpt and see if that corrects the problem.
 
    2. cuOpt microservice health-check from a remote host.
@@ -154,7 +154,7 @@ General FAQ
       .. code-block:: bash
           :linenos:
 
-           curl -s -o /dev/null -w '%{http_code}\\n' <ip>::5000/cuopt/health
+           curl -s -o /dev/null -w '%{http_code}\\n' <ip>:5000/cuopt/health
            200
 
     If this command does not return 200, but a health check locally on the cuOpt host does return 200, the problem is a network configuration or firewall issue. The host is not reachable, or the cuOpt port is not open to incoming traffic.
