@@ -143,9 +143,9 @@ General FAQ
     If this command returns something other than 200, check the following:
 
     -  Check that a cuOpt container is running with ``docker ps``.
-       -  Examine the cuOpt container log for errors.
-    - Did you include the ``--network=host`` or a ``-p`` port-mapping flag to docker when you launched cuOpt? If you used port mapping, did you perform the health check using the correct port?
-       -  Restart cuOpt and see if that corrects the problem.
+    -  Examine the cuOpt container log for errors.
+    -  Did you include the ``--network=host`` or a ``-p`` port-mapping flag to docker when you launched cuOpt? If you used port mapping, did you perform the health check using the correct port?
+    -  Restart cuOpt and see if that corrects the problem.
 
    2. cuOpt microservice health-check from a remote host.
 
