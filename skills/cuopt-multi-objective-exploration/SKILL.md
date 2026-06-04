@@ -120,8 +120,6 @@ Practical notes:
 
 ## Step 5 — interpret the frontier (discipline)
 
-Producing the curve is half the work; reading it correctly is the other half.
-
 - **Report tradeoffs, not single numbers.** A frontier point means nothing in isolation. Quote the exchange rate — "≈ $4k of extra cost per 1% of added coverage in this region" — so the user can judge whether a move is worth it.
 - **Flag knee points; don't auto-pick them.** The "knee" is where the curve bends most sharply — beyond it you pay a lot for a little. It's often the best-balanced compromise and worth highlighting, but the final choice is the user's preference, not a rule.
 - **Treat dominated or gappy output as a diagnostic.** If dominated points survive filtering, or the frontier is implausibly sparse or perfectly linear, suspect the sweep or the model — most often weighted-sum hiding a concave region (switch to ε-constraint) or a normalization mistake.
