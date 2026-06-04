@@ -67,7 +67,7 @@ General FAQ
 
      2. Try to locate the process that is using port 5000 and stop it if possible. A tool like ``netstat`` run as the root user can help identify ports mapped to processes, and ``docker ps -a`` will show running containers.
 
-    3. Alternatively, use port mapping to launch cuOpt on a different port such as 5001 (note the omission of ``--network=host`` flag):
+     3. Alternatively, use port mapping to launch cuOpt on a different port such as 5001 (note the omission of ``--network=host`` flag):
 
      4. If running locally, you can also use ``ps -aux | grep cuopt_server`` to find the process and kill it.
 
