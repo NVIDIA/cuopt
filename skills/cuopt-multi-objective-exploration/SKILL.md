@@ -118,7 +118,7 @@ Practical notes:
 - **Resolution is a budget.** Curve fidelity trades against solve count. Start coarse to see the shape, then refine the grid only where the curve bends.
 - **Verify, don't assume.** When you claim one method beats another, measure it — e.g. count the efficient points ε-constraint recovered that weighted-sum missed — rather than asserting it; and flag any solve returning feasible-but-not-`Optimal` so a non-certified point is never read as exact.
 
-## Step 5 — interpret the frontier (discipline)
+## Step 5 — interpret the frontier
 
 - **Report tradeoffs, not single numbers.** A frontier point means nothing in isolation. Quote the exchange rate — "≈ $4k of extra cost per 1% of added coverage in this region" — so the user can judge whether a move is worth it.
 - **Flag knee points; don't auto-pick them.** The "knee" is where the curve bends most sharply — beyond it you pay a lot for a little. It's often the best-balanced compromise and worth highlighting, but the final choice is the user's preference, not a rule.
