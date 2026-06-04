@@ -3,10 +3,6 @@
  * reserved. SPDX-License-Identifier: Apache-2.0
  */
 
-// Codegen target: this file maps ArrayFieldId enum values to their element byte sizes.
-// A future version of cpp/codegen/generate_conversions.py can produce this from
-// a problem_arrays section in field_registry.yaml.
-
 #pragma once
 
 #ifdef CUOPT_ENABLE_GRPC
@@ -14,29 +10,21 @@
 #include <cstdint>
 #include "cuopt_remote.pb.h"
 
-inline int64_t array_field_element_size(cuopt::remote::ArrayFieldId field_id)
+// Element byte size for a chunk's payload, dispatched on the chunk's
+// (container_field_num, field_id) pair.  For top-level chunks the caller
+// passes -1 for container_field_num (no container) and the chunk's
+// field_id (an ArrayFieldId value).  For chunks targeting an array inside
+// a repeated nested message (e.g. a QuadraticConstraint), the caller
+// passes the container's parent field_num and the container-relative
+// field_id (small dense int starting at 0; see field_registry.yaml).
+//
+// Returns the element width in bytes on success, or -1 if the (container,
+// field_id) pair is not registered.  Callers MUST treat -1 as an invalid
+// chunk and reject it; otherwise downstream arithmetic on elem_size will
+// produce garbage.
+inline int64_t array_field_element_size(int32_t container_field_num, int32_t field_id)
 {
-  switch (field_id) {
-    case cuopt::remote::FIELD_A_VALUES:
-    case cuopt::remote::FIELD_C:
-    case cuopt::remote::FIELD_B:
-    case cuopt::remote::FIELD_VARIABLE_LOWER_BOUNDS:
-    case cuopt::remote::FIELD_VARIABLE_UPPER_BOUNDS:
-    case cuopt::remote::FIELD_CONSTRAINT_LOWER_BOUNDS:
-    case cuopt::remote::FIELD_CONSTRAINT_UPPER_BOUNDS:
-    case cuopt::remote::FIELD_Q_VALUES:
-    case cuopt::remote::FIELD_INITIAL_PRIMAL_SOLUTION:
-    case cuopt::remote::FIELD_INITIAL_DUAL_SOLUTION: return 8;
-    case cuopt::remote::FIELD_A_INDICES:
-    case cuopt::remote::FIELD_A_OFFSETS:
-    case cuopt::remote::FIELD_Q_INDICES:
-    case cuopt::remote::FIELD_Q_OFFSETS:
-    case cuopt::remote::FIELD_VARIABLE_TYPES: return 4;
-    case cuopt::remote::FIELD_ROW_TYPES:
-    case cuopt::remote::FIELD_VARIABLE_NAMES:
-    case cuopt::remote::FIELD_ROW_NAMES: return 1;
-  }
-  return -1;
+#include "generated_array_field_element_size.inc"
 }
 
 #endif  // CUOPT_ENABLE_GRPC

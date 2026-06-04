@@ -14,6 +14,7 @@ metadata:
 ---
 
 
+
 # cuOpt Routing — Python API
 
 Confirm problem type (TSP, VRP, PDP) and data (locations, orders, fleet, constraints) before coding.

@@ -22,28 +22,9 @@ Confirm problem type and formulation (variables, objective, constraints, variabl
 
 This skill is **C only**.
 
-## Quick Reference: C API
+## API Call Sequence
 
-```c
-#include <cuopt/linear_programming/cuopt_c.h>
-
-// CSR format for constraints
-cuopt_int_t row_offsets[] = {0, 2, 4};
-cuopt_int_t col_indices[] = {0, 1, 0, 1};
-cuopt_float_t values[] = {2.0, 3.0, 4.0, 2.0};
-char var_types[] = {CUOPT_CONTINUOUS, CUOPT_INTEGER};
-
-cuOptCreateRangedProblem(
-    num_constraints, num_variables, CUOPT_MINIMIZE,
-    0.0, objective_coefficients,
-    row_offsets, col_indices, values,
-    constraint_lower, constraint_upper,
-    var_lower, var_upper, var_types,
-    &problem
-);
-cuOptSolve(problem, settings, &solution);
-cuOptGetObjectiveValue(solution, &obj_value);
-```
+For LP/MILP, the ordered C entry points are: `cuOptCreateRangedProblem` (sense `CUOPT_MINIMIZE` / `CUOPT_MAXIMIZE`, CSR constraint matrix as `row_offsets` / `col_indices` / `values`, `var_types` char array using `CUOPT_CONTINUOUS` / `CUOPT_INTEGER` macros) → `cuOptSolve(problem, settings, &solution)` → `cuOptGetObjectiveValue(solution, &obj_value)` → matching `cuOptDestroy*` calls. Include `<cuopt/linear_programming/cuopt_c.h>`. Full ordered code with build instructions in [references/examples.md](references/examples.md).
 
 ## QP via C API (beta)
 

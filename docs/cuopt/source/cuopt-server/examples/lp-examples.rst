@@ -274,7 +274,7 @@ Use a :class:`~cuopt.linear_programming.data_model.DataModel` built with
 :func:`~cuopt.linear_programming.io.Read` as input to ``get_LP_solve``;
 the client dispatches on the file extension (``.mps`` / ``.qps`` vs ``.lp``,
 including ``.gz`` / ``.bz2`` compressed variants). For solver settings see
-:doc:`LP/QP/MILP parameters <../../lp-qp-milp-settings>`.
+:doc:`convex optimization parameters <../../convex-settings>` and :doc:`MIP parameters <../../mip-settings>`.
 
 MPS format
 ~~~~~~~~~~
@@ -431,12 +431,12 @@ In the case of batch mode, you can send a bunch of ``mps`` files at once, and ac
 
 .. note::
    LP batch mode is deprecated; see :ref:`Batch Mode <batch-mode>` in
-   :doc:`../../lp-qp-features`.
+   :doc:`../../convex-features`.
 
 .. note::
    Batch mode is not available for MILP problems.
 
-A sample MPS file (:download:`sample.mps <https://people.math.sc.edu/Burkardt/datasets/mps/testprob.mps>`):
+A sample MPS file (:download:`sample.mps <lp/examples/sample.mps>`):
 
 .. literalinclude:: lp/examples/sample.mps
    :language: text

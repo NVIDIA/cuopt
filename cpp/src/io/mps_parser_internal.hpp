@@ -12,12 +12,36 @@
 #include <stdarg.h>
 #include <limits>
 #include <string>
-#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
 namespace cuopt::linear_programming::io {
+
+/**
+ * Sparse COO (coordinate) entries for a matrix: parallel row/col/val vectors.
+ */
+template <typename i_t, typename f_t>
+struct coo_entries_t {
+  std::vector<i_t> rows{};
+  std::vector<i_t> cols{};
+  std::vector<f_t> vals{};
+
+  void emplace_back(i_t r, i_t c, f_t v)
+  {
+    rows.push_back(r);
+    cols.push_back(c);
+    vals.push_back(v);
+  }
+  bool empty() const { return rows.empty(); }
+  size_t size() const { return rows.size(); }
+  void clear()
+  {
+    rows.clear();
+    cols.clear();
+    vals.clear();
+  }
+};
 
 /**
  * @brief Different possible types of 'ROWS'
@@ -128,8 +152,8 @@ class mps_parser_t {
 
   // QPS-specific data for quadratic programming
   /** Quadratic objective matrix entries */
-  std::vector<std::tuple<i_t, i_t, f_t>> quadobj_entries{};
-  std::vector<std::tuple<i_t, i_t, f_t>> qmatrix_entries{};
+  coo_entries_t<i_t, f_t> quadobj_entries{};
+  coo_entries_t<i_t, f_t> qmatrix_entries{};
 
  private:
   bool inside_rows_{false};
@@ -148,12 +172,12 @@ class mps_parser_t {
   /** (free-format) QCMATRIX: finalized blocks (row id + triples) */
   struct qcmatrix_raw_block_t {
     i_t constraint_row_id{};
-    std::vector<std::tuple<i_t, i_t, f_t>> entries{};
+    coo_entries_t<i_t, f_t> entries{};
   };
   std::vector<qcmatrix_raw_block_t> qcmatrix_blocks_{};
   /** Triples for the QCMATRIX block currently being read (-1 row id means none) */
   i_t qcmatrix_active_row_id_{-1};
-  std::vector<std::tuple<i_t, i_t, f_t>> qcmatrix_current_entries_{};
+  coo_entries_t<i_t, f_t> qcmatrix_current_entries_{};
 
   std::unordered_set<std::string> encountered_sections{};
   std::unordered_map<std::string, i_t> row_names_map{};

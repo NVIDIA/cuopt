@@ -289,6 +289,8 @@ def _non_default_solver_param_value(name, current):
         return 0 if int(current) == 1 else 1
     if name == "pdlp_precision":
         return 1 if int(current) == 0 else 0
+    if name == "mip_objective_step":
+        return 0 if int(current) == 1 else 1
     if isinstance(current, bool):
         return not current
     if isinstance(current, str):

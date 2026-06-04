@@ -74,6 +74,7 @@
 #define CUOPT_MIP_CLIQUE_CUTS                      "mip_clique_cuts"
 #define CUOPT_MIP_STRONG_CHVATAL_GOMORY_CUTS       "mip_strong_chvatal_gomory_cuts"
 #define CUOPT_MIP_REDUCED_COST_STRENGTHENING       "mip_reduced_cost_strengthening"
+#define CUOPT_MIP_OBJECTIVE_STEP                   "mip_objective_step"
 #define CUOPT_MIP_CUT_CHANGE_THRESHOLD             "mip_cut_change_threshold"
 #define CUOPT_MIP_CUT_MIN_ORTHOGONALITY            "mip_cut_min_orthogonality"
 #define CUOPT_MIP_BATCH_PDLP_STRONG_BRANCHING      "mip_batch_pdlp_strong_branching"

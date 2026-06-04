@@ -9,6 +9,7 @@
 #include <utilities/error.hpp>
 
 #include <algorithm>
+#include <numeric>
 #include <utility>
 
 namespace cuopt::linear_programming::io {
@@ -145,26 +146,40 @@ void mps_data_model_t<i_t, f_t>::append_quadratic_constraint(i_t constraint_row_
                                                              std::span<const f_t> linear_values,
                                                              std::span<const i_t> linear_indices,
                                                              f_t rhs_value,
-                                                             std::span<const f_t> quadratic_values,
-                                                             std::span<const i_t> quadratic_indices,
-                                                             std::span<const i_t> quadratic_offsets)
+                                                             std::span<const f_t> vals,
+                                                             std::span<const i_t> rows,
+                                                             std::span<const i_t> cols)
 {
   mps_parser_expects(constraint_row_index >= 0,
                      error_type_t::ValidationError,
                      "constraint_row_index must be non-negative");
 
-  mps_parser_expects(constraint_row_type == 'L',
+  mps_parser_expects(constraint_row_type == 'L' || constraint_row_type == 'G',
                      error_type_t::ValidationError,
-                     "Quadratic constraint ROWS type must be 'L' (less-or-equal); got '%c'. "
-                     "Only 'L' is supported for convex quadratic constraints.",
+                     "Quadratic constraint ROWS type must be 'L' (<=) or 'G' (>=); got '%c'.",
                      constraint_row_type);
 
   mps_parser_expects(linear_values.size() == linear_indices.size(),
                      error_type_t::ValidationError,
                      "linear_values and linear_indices must have the same nnz count");
 
+  const size_t q_nnz = vals.size();
   mps_parser_expects(
-    !quadratic_offsets.empty(), error_type_t::ValidationError, "quadratic_offsets cannot be empty");
+    q_nnz == rows.size(), error_type_t::ValidationError, "vals and rows must have the same length");
+  mps_parser_expects(
+    q_nnz == cols.size(), error_type_t::ValidationError, "vals and cols must have the same length");
+
+  if (!linear_values.empty()) {
+    mps_parser_expects(linear_values.data() != nullptr && linear_indices.data() != nullptr,
+                       error_type_t::ValidationError,
+                       "linear_values and linear_indices cannot be null when non-empty");
+  }
+
+  if (q_nnz > 0) {
+    mps_parser_expects(vals.data() != nullptr && rows.data() != nullptr && cols.data() != nullptr,
+                       error_type_t::ValidationError,
+                       "Q COO spans cannot be null when nnz > 0");
+  }
 
   quadratic_constraint_t qc;
   qc.constraint_row_index = constraint_row_index;
@@ -173,9 +188,33 @@ void mps_data_model_t<i_t, f_t>::append_quadratic_constraint(i_t constraint_row_
   qc.rhs_value            = rhs_value;
   qc.linear_values.assign(linear_values.begin(), linear_values.end());
   qc.linear_indices.assign(linear_indices.begin(), linear_indices.end());
-  qc.quadratic_values.assign(quadratic_values.begin(), quadratic_values.end());
-  qc.quadratic_indices.assign(quadratic_indices.begin(), quadratic_indices.end());
-  qc.quadratic_offsets.assign(quadratic_offsets.begin(), quadratic_offsets.end());
+
+  if (q_nnz == 0) {
+    qc.rows.clear();
+    qc.cols.clear();
+    qc.vals.clear();
+  } else {
+    std::vector<i_t> wr(rows.begin(), rows.end());
+    std::vector<i_t> wc(cols.begin(), cols.end());
+    std::vector<f_t> wv(vals.begin(), vals.end());
+
+    std::vector<size_t> perm(q_nnz);
+    std::iota(perm.begin(), perm.end(), size_t{0});
+    std::sort(perm.begin(), perm.end(), [&](size_t a, size_t b) {
+      if (wr[a] != wr[b]) { return wr[a] < wr[b]; }
+      return wc[a] < wc[b];
+    });
+
+    qc.rows.resize(q_nnz);
+    qc.cols.resize(q_nnz);
+    qc.vals.resize(q_nnz);
+    for (size_t t = 0; t < q_nnz; ++t) {
+      const size_t ix = perm[t];
+      qc.rows[t]      = wr[ix];
+      qc.cols[t]      = wc[ix];
+      qc.vals[t]      = wv[ix];
+    }
+  }
 
   quadratic_constraints_.push_back(std::move(qc));
 }

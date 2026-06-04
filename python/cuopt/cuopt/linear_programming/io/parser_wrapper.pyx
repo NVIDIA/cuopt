@@ -133,6 +133,52 @@ cdef _marshal_data_model(mps_data_model_t[int, double]* dm, data_model):
     data_model.set_objective_name(dm.objective_name_.decode())
     data_model.set_problem_name(dm.problem_name_.decode())
 
+    cdef size_t qi
+    cdef size_t n_qc = dm.get_quadratic_constraints().size()
+    cdef mps_data_model_t[int, double].quadratic_constraint_t qc
+    cdef size_t linear_nnz, quadratic_nnz
+    cdef double[:] linear_values_view
+    cdef int[:] linear_indices_view
+    cdef double[:] quadratic_values_view
+    cdef int[:] quadratic_row_indices_view
+    cdef int[:] quadratic_col_indices_view
+
+    for qi in range(n_qc):
+        qc = dm.get_quadratic_constraints()[qi]
+        linear_nnz = qc.linear_values.size()
+        if linear_nnz > 0:
+            linear_values_view = <double[:linear_nnz]>qc.linear_values.data()
+            linear_values = np.asarray(linear_values_view).copy()
+            linear_indices_view = <int[:linear_nnz]>qc.linear_indices.data()
+            linear_indices = np.asarray(linear_indices_view).copy()
+        else:
+            linear_values = None
+            linear_indices = None
+
+        quadratic_nnz = qc.vals.size()
+        if quadratic_nnz > 0:
+            quadratic_values_view = <double[:quadratic_nnz]>qc.vals.data()
+            quadratic_values = np.asarray(quadratic_values_view).copy()
+            quadratic_row_indices_view = <int[:quadratic_nnz]>qc.rows.data()
+            quadratic_row_indices = np.asarray(quadratic_row_indices_view).copy()
+            quadratic_col_indices_view = <int[:quadratic_nnz]>qc.cols.data()
+            quadratic_col_indices = np.asarray(quadratic_col_indices_view).copy()
+        else:
+            quadratic_values = None
+            quadratic_row_indices = None
+            quadratic_col_indices = None
+
+        data_model.add_quadratic_constraint(
+            qc.constraint_row_name.decode("utf-8"),
+            linear_values=linear_values,
+            linear_indices=linear_indices,
+            rhs_value=qc.rhs_value,
+            vals=quadratic_values,
+            rows=quadratic_row_indices,
+            cols=quadratic_col_indices,
+            sense=chr(qc.constraint_row_type),
+        )
+
     return data_model
 
 
