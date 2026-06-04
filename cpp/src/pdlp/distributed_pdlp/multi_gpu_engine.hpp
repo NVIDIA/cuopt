@@ -250,7 +250,7 @@ struct multi_gpu_engine_t {
   // -------- Broadcast owned constraint (row) scaling into halo ------------
   void broadcast_constraint_scaling_to_halo()
   {
-    const int nb = static_cast<int>(shards.size());
+    const int nb    = static_cast<int>(shards.size());
     auto buf_access = [](pdlp_shard_t<i_t, f_t>& s) -> rmm::device_uvector<f_t>& {
       return s.sub_pdlp->get_initial_scaling_strategy().get_cummulative_constraint_matrix_scaling();
     };
@@ -384,7 +384,7 @@ struct multi_gpu_engine_t {
       bound_sq.emplace_back(1, s.stream.view());
       obj_sq.emplace_back(1, s.stream.view());
 
-      const auto& scaled = s.sub_pdlp->get_initial_scaling_strategy().get_scaled_op_problem();
+      const auto& scaled     = s.sub_pdlp->get_initial_scaling_strategy().get_scaled_op_problem();
       const int n_owned_cstr = static_cast<int>(s.rank_data.owned_cstr_size);
       const int n_owned_var  = static_cast<int>(s.rank_data.owned_var_size);
 
@@ -403,7 +403,7 @@ struct multi_gpu_engine_t {
                              n_owned_cstr,
                              s.stream.view().value());
 
-      auto obj_in = thrust::make_transform_iterator(scaled.objective_coefficients.data(),
+      auto obj_in        = thrust::make_transform_iterator(scaled.objective_coefficients.data(),
                                                     mgpu_weighted_sq_op_t<f_t>{c_scaling_weight});
       size_t tmp_bytes_o = 0;
       cub::DeviceReduce::Sum(

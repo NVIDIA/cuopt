@@ -113,9 +113,9 @@ TEST(pdlp_class, distributed_partition_metis_export_import_roundtrip)
   const int n_cstr = static_cast<int>(mps.get_constraint_lower_bounds().size());
   const int nnz    = static_cast<int>(mps.get_constraint_matrix_values().size());
 
-  std::vector<int> h_A_row_offsets    = mps.get_constraint_matrix_offsets();
-  std::vector<int> h_A_col_indices    = mps.get_constraint_matrix_indices();
-  std::vector<double> h_A_values      = mps.get_constraint_matrix_values();
+  std::vector<int> h_A_row_offsets = mps.get_constraint_matrix_offsets();
+  std::vector<int> h_A_col_indices = mps.get_constraint_matrix_indices();
+  std::vector<double> h_A_values   = mps.get_constraint_matrix_values();
 
   // Transpose A -> A^T (CSR of A^T == CSC of A), mirroring solve_lp_distributed_from_mps.
   ds::csr_matrix_t<int, double> A_csr(n_cstr, n_vars, nnz);
@@ -171,7 +171,7 @@ void expect_distributed_matches_base(raft::handle_t const& handle,
     return std::fabs(a - b) <= rel * (1.0 + std::fabs(a));
   };
 
-  auto path = make_path_absolute(mps_rel_path);
+  auto path                                 = make_path_absolute(mps_rel_path);
   io::mps_data_model_t<int, double> problem = io::parse_mps<int, double>(path, fixed_mps_format);
 
   // Shared settings: PDLP, no presolve (distributed requires presolver == None, so the
@@ -186,9 +186,9 @@ void expect_distributed_matches_base(raft::handle_t const& handle,
 
   // ----- distributed PDLP (identical settings, only the distributed flags flipped) -----
   pdlp_solver_settings_t<int, double> dist_settings = base_settings;
-  dist_settings.hyper_params.use_distributed_pdlp    = true;
-  dist_settings.distributed_pdlp_num_gpus            = -1;
-  auto dist                                          = solve_lp(&handle, problem, dist_settings);
+  dist_settings.hyper_params.use_distributed_pdlp   = true;
+  dist_settings.distributed_pdlp_num_gpus           = -1;
+  auto dist                                         = solve_lp(&handle, problem, dist_settings);
 
   // ----- termination status -----
   ASSERT_EQ(static_cast<int>(base.get_termination_status()), CUOPT_TERMINATION_STATUS_OPTIMAL)

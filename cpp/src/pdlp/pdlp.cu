@@ -509,8 +509,8 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
                    [](unsigned char c) { return std::tolower(c); });
     partitioner_kind_t kind;
     if (partitioner_choice.empty() || partitioner_choice == "auto") {
-      kind = (distributed_pdlp_num_gpus == 1) ? partitioner_kind_t::Dummy
-                                              : partitioner_kind_t::KaMinPar;
+      kind =
+        (distributed_pdlp_num_gpus == 1) ? partitioner_kind_t::Dummy : partitioner_kind_t::KaMinPar;
     } else if (partitioner_choice == "dummy") {
       kind = partitioner_kind_t::Dummy;
     } else if (partitioner_choice == "metis") {
@@ -518,10 +518,11 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
     } else if (partitioner_choice == "kaminpar") {
       kind = partitioner_kind_t::KaMinPar;
     } else {
-      cuopt_expects(false,
-                    error_type_t::ValidationError,
-                    "Unknown distributed_pdlp_partitioner '%s' (expected auto|dummy|metis|kaminpar)",
-                    settings.distributed_pdlp_partitioner.c_str());
+      cuopt_expects(
+        false,
+        error_type_t::ValidationError,
+        "Unknown distributed_pdlp_partitioner '%s' (expected auto|dummy|metis|kaminpar)",
+        settings.distributed_pdlp_partitioner.c_str());
       kind = partitioner_kind_t::Dummy;  // unreachable; silences -Wmaybe-uninitialized
     }
     const bool needs_graph =
@@ -544,12 +545,13 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
                             : (kind == partitioner_kind_t::Metis)    ? "metis"
                             : (kind == partitioner_kind_t::KaMinPar) ? "kaminpar"
                                                                      : "unknown";
-    CUOPT_LOG_INFO("Partitioning %d constraints + %d variables into %d part(s) using the %s "
-                   "partitioner",
-                   n_cstr,
-                   n_vars,
-                   distributed_pdlp_num_gpus,
-                   kind_name);
+    CUOPT_LOG_INFO(
+      "Partitioning %d constraints + %d variables into %d part(s) using the %s "
+      "partitioner",
+      n_cstr,
+      n_vars,
+      distributed_pdlp_num_gpus,
+      kind_name);
     auto partitioner = make_partitioner<i_t, f_t>(kind);
     parts            = partitioner->partition(partition_input);
   }

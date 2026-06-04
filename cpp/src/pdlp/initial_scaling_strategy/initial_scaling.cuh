@@ -105,7 +105,10 @@ class pdlp_initial_scaling_strategy_t {
 
   // Distributed PDLP: skip the LOCAL bound/objective rescaling inside
   // scale_problem()
-  void set_skip_distributed_local_rescaling(bool value) { skip_distributed_local_rescaling_ = value; }
+  void set_skip_distributed_local_rescaling(bool value)
+  {
+    skip_distributed_local_rescaling_ = value;
+  }
 
   // Public for distributed PDLP
   void compute_scaling_vectors(i_t number_of_ruiz_iterations, f_t alpha);
