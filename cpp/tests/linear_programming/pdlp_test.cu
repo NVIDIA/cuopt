@@ -49,11 +49,13 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <limits>
 #include <sstream>
+#include <string>
 #include <thread>
 #include <tuple>
 #include <utility>
@@ -151,6 +153,108 @@ TEST(pdlp_class, distributed_partition_metis_export_import_roundtrip)
     partition_loader_t<int, double>::parse_distributed_pdlp_partition_file(out_path);
 
   EXPECT_EQ(parts, reloaded);
+}
+
+namespace {
+
+// Solve `mps_rel_path` with the single-GPU PDLP ("base") and with distributed PDLP
+// (num_gpus = -1 => auto-detect; 1 GPU is fine), then assert the distributed run
+// matches the base run on everything meaningful: termination status, step count
+// (within 15%), primal/dual objective, and the full primal/dual solution vectors.
+// All value comparisons use a loose relative tolerance.
+void expect_distributed_matches_base(raft::handle_t const& handle,
+                                     std::string const& mps_rel_path,
+                                     bool fixed_mps_format = false)
+{
+  constexpr double loose_rel = 1e-3;
+  auto near_rel              = [](double a, double b, double rel) {
+    return std::fabs(a - b) <= rel * (1.0 + std::fabs(a));
+  };
+
+  auto path = make_path_absolute(mps_rel_path);
+  io::mps_data_model_t<int, double> problem = io::parse_mps<int, double>(path, fixed_mps_format);
+
+  // Shared settings: PDLP, no presolve (distributed requires presolver == None, so the
+  // base run must match to keep the two problems identical).
+  pdlp_solver_settings_t<int, double> base_settings{};
+  base_settings.method    = method_t::PDLP;
+  base_settings.presolver = presolver_t::None;
+
+  // ----- base: single-GPU PDLP (materialize the full problem on one GPU) -----
+  auto base_op = mps_data_model_to_optimization_problem<int, double>(&handle, problem);
+  auto base    = solve_lp(base_op, base_settings);
+
+  // ----- distributed PDLP (identical settings, only the distributed flags flipped) -----
+  pdlp_solver_settings_t<int, double> dist_settings = base_settings;
+  dist_settings.hyper_params.use_distributed_pdlp    = true;
+  dist_settings.distributed_pdlp_num_gpus            = -1;
+  auto dist                                          = solve_lp(&handle, problem, dist_settings);
+
+  // ----- termination status -----
+  ASSERT_EQ(static_cast<int>(base.get_termination_status()), CUOPT_TERMINATION_STATUS_OPTIMAL)
+    << mps_rel_path << ": base did not reach optimal";
+  EXPECT_EQ(static_cast<int>(dist.get_termination_status()),
+            static_cast<int>(base.get_termination_status()))
+    << mps_rel_path << ": distributed termination status differs from base";
+
+  const auto& base_info = base.get_additional_termination_information();
+  const auto& dist_info = dist.get_additional_termination_information();
+
+  // ----- objectives -----
+  EXPECT_TRUE(near_rel(base_info.primal_objective, dist_info.primal_objective, loose_rel))
+    << mps_rel_path << ": primal objective base=" << base_info.primal_objective
+    << " distributed=" << dist_info.primal_objective;
+  EXPECT_TRUE(near_rel(base_info.dual_objective, dist_info.dual_objective, loose_rel))
+    << mps_rel_path << ": dual objective base=" << base_info.dual_objective
+    << " distributed=" << dist_info.dual_objective;
+
+  // ----- step count: within 15% of the larger of the two -----
+  const int base_steps = base_info.number_of_steps_taken;
+  const int dist_steps = dist_info.number_of_steps_taken;
+  const int max_steps  = std::max(base_steps, dist_steps);
+  const int step_diff  = std::max(base_steps, dist_steps) - std::min(base_steps, dist_steps);
+  EXPECT_LE(static_cast<double>(step_diff), 0.15 * max_steps)
+    << mps_rel_path << ": step counts differ by >15% (base=" << base_steps
+    << ", distributed=" << dist_steps << ")";
+
+  // ----- primal / dual solution vectors -----
+  auto base_primal = cuopt::host_copy(base.get_primal_solution(), handle.get_stream());
+  auto dist_primal = cuopt::host_copy(dist.get_primal_solution(), handle.get_stream());
+  ASSERT_EQ(base_primal.size(), dist_primal.size()) << mps_rel_path << ": primal size mismatch";
+  for (std::size_t i = 0; i < base_primal.size(); ++i) {
+    EXPECT_TRUE(near_rel(base_primal[i], dist_primal[i], loose_rel))
+      << mps_rel_path << ": primal[" << i << "] base=" << base_primal[i]
+      << " distributed=" << dist_primal[i];
+  }
+
+  auto base_dual = cuopt::host_copy(base.get_dual_solution(), handle.get_stream());
+  auto dist_dual = cuopt::host_copy(dist.get_dual_solution(), handle.get_stream());
+  ASSERT_EQ(base_dual.size(), dist_dual.size()) << mps_rel_path << ": dual size mismatch";
+  for (std::size_t i = 0; i < base_dual.size(); ++i) {
+    EXPECT_TRUE(near_rel(base_dual[i], dist_dual[i], loose_rel))
+      << mps_rel_path << ": dual[" << i << "] base=" << base_dual[i]
+      << " distributed=" << dist_dual[i];
+  }
+}
+
+}  // namespace
+
+TEST(pdlp_class, distributed_parity_afiro)
+{
+  const raft::handle_t handle{};
+  expect_distributed_matches_base(handle, "linear_programming/afiro_original.mps", true);
+}
+
+TEST(pdlp_class, distributed_parity_square41)
+{
+  const raft::handle_t handle{};
+  expect_distributed_matches_base(handle, "linear_programming/neos3/neos3.mps");
+}
+
+TEST(pdlp_class, distributed_parity_a2864)
+{
+  const raft::handle_t handle{};
+  expect_distributed_matches_base(handle, "linear_programming/a2864/a2864.mps");
 }
 
 TEST(pdlp_class, precision_mixed)
