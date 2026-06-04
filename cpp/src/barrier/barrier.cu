@@ -2469,7 +2469,7 @@ void barrier_solver_t<i_t, f_t>::gpu_compute_residuals(const rmm::device_uvector
   raft::common::nvtx::range fun_scope("Barrier: GPU compute_residuals");
 
   data.d_primal_residual_.resize(lp.num_rows, stream_view_);
-  raft::copy(data.d_primal_residual_.data(), lp.rhs.data(), lp.rhs.size(), stream_view_);
+  raft::copy(data.d_primal_residual_.data(), data.d_b_.data(), data.d_b_.size(), stream_view_);
 
   data.d_dual_residual_.resize(lp.num_cols, stream_view_);
 
@@ -2494,19 +2494,16 @@ void barrier_solver_t<i_t, f_t>::gpu_compute_residuals(const rmm::device_uvector
   }
 
   // Compute dual_residual = c - A'*y - z + E*v + Q*x
-  if (data.Q.n > 0) {
-    raft::copy(data.d_c_.data(), data.c.data(), data.c.size(), stream_view_);
-    auto cusparse_d_c = data.cusparse_view_.create_vector(data.d_c_);
-    data.cusparse_Q_view_.spmv(1.0, cusparse_d_x, 1.0, cusparse_d_c);
-  } else {
-    raft::copy(data.d_c_.data(), data.c.data(), data.c.size(), stream_view_);
-  }
   cub::DeviceTransform::Transform(cuda::std::make_tuple(data.d_c_.data(), data.d_z_.data()),
                                   data.d_dual_residual_.data(),
                                   data.d_dual_residual_.size(),
                                   cuda::std::minus<>{},
                                   stream_view_.value());
   RAFT_CHECK_CUDA(stream_view_);
+  if (data.Q.n > 0) {
+    auto descr_dual_residual = data.cusparse_view_.create_vector(data.d_dual_residual_);
+    data.cusparse_Q_view_.spmv(1.0, cusparse_d_x, 1.0, descr_dual_residual);
+  }
   // Compute dual_residual = c - A'*y - z + E*v
   auto cusparse_d_y        = data.cusparse_view_.create_vector(d_y);
   auto descr_dual_residual = data.cusparse_view_.create_vector(data.d_dual_residual_);
@@ -3758,7 +3755,6 @@ void barrier_solver_t<i_t, f_t>::compute_primal_dual_objective(iteration_data_t<
                                                                f_t& dual_objective)
 {
   raft::common::nvtx::range fun_scope("Barrier: compute_primal_dual_objective");
-  raft::copy(data.d_c_.data(), data.c.data(), data.c.size(), stream_view_);
   rmm::device_scalar<f_t> d_cx(stream_view_);
   rmm::device_scalar<f_t> d_by(stream_view_);
   rmm::device_scalar<f_t> d_uv(stream_view_);
