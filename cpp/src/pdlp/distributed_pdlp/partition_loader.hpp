@@ -19,6 +19,12 @@ struct partition_loader_t {
   // nb_cstr + nb_vars, indexed as in create_rank_data_from_parts (cstrs first, then vars).
   static std::vector<i_t> parse_distributed_pdlp_partition_file(std::string const& file);
 
+  // Write a partition vector to file in the same format parse_... reads back:
+  // one part-id per line. Useful for inspecting / reusing a computed partition
+  // (e.g. CLI --distributed-pdlp-export-parts).
+  static void export_distributed_pdlp_partition_file(std::string const& file,
+                                                     std::vector<i_t> const& parts);
+
   // Slices the data to prepare a split from metis partitionning with halo communication
   static std::vector<rank_data_t<i_t, f_t>> create_rank_data_from_parts(
     const std::vector<i_t>& parts,

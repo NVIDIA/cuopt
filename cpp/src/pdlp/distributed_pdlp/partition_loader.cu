@@ -41,6 +41,24 @@ std::vector<i_t> partition_loader_t<i_t, f_t>::parse_distributed_pdlp_partition_
 }
 
 template <typename i_t, typename f_t>
+void partition_loader_t<i_t, f_t>::export_distributed_pdlp_partition_file(
+  std::string const& file, std::vector<i_t> const& parts)
+{
+  std::ofstream part_file(file);
+  cuopt_expects(part_file.is_open(),
+                error_type_t::ValidationError,
+                "Failed to open partition file for export: %s",
+                file.c_str());
+  for (auto const& part : parts) {
+    part_file << part << "\n";
+  }
+  cuopt_expects(part_file.good(),
+                error_type_t::RuntimeError,
+                "Failed while writing partition file: %s",
+                file.c_str());
+}
+
+template <typename i_t, typename f_t>
 std::vector<rank_data_t<i_t, f_t>> partition_loader_t<i_t, f_t>::create_rank_data_from_parts(
   const std::vector<i_t>& parts,
   const std::vector<i_t>& A_row_offsets,
