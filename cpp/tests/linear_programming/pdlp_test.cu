@@ -8,11 +8,15 @@
 #include <branch_and_bound/shared_strong_branching_context.hpp>
 #include <mps_parser_internal.hpp>
 #include <pdlp/cusparse_view.hpp>
+#include <pdlp/distributed_pdlp/partition_loader.hpp>
+#include <pdlp/distributed_pdlp/partitioner.hpp>
 #include <pdlp/initial_scaling_strategy/initial_scaling.cuh>
 #include <pdlp/pdlp.cuh>
 #include <pdlp/pdlp_constants.hpp>
 #include <pdlp/solve.cuh>
 #include <pdlp/utils.cuh>
+
+#include <dual_simplex/sparse_matrix.hpp>
 
 #include "utilities/pdlp_test_utilities.cuh"
 
@@ -89,6 +93,64 @@ TEST(pdlp_class, run_double)
   EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERMINATION_STATUS_OPTIMAL);
   EXPECT_FALSE(is_incorrect_objective(
     afiro_primal_objective, solution.get_additional_termination_information().primal_objective));
+}
+
+// Distributed-PDLP partition round-trip: partition the afiro constraint/variable
+// bipartite graph with METIS, write it out, read it back, and confirm the parsed
+// vector is identical to what the partitioner produced.
+TEST(pdlp_class, distributed_partition_metis_export_import_roundtrip)
+{
+  using namespace cuopt::linear_programming::detail;
+  namespace ds = cuopt::linear_programming::dual_simplex;
+
+  auto path = make_path_absolute("linear_programming/afiro_original.mps");
+  cuopt::linear_programming::io::mps_data_model_t<int, double> mps =
+    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+
+  const int n_vars = static_cast<int>(mps.get_objective_coefficients().size());
+  const int n_cstr = static_cast<int>(mps.get_constraint_lower_bounds().size());
+  const int nnz    = static_cast<int>(mps.get_constraint_matrix_values().size());
+
+  std::vector<int> h_A_row_offsets    = mps.get_constraint_matrix_offsets();
+  std::vector<int> h_A_col_indices    = mps.get_constraint_matrix_indices();
+  std::vector<double> h_A_values      = mps.get_constraint_matrix_values();
+
+  // Transpose A -> A^T (CSR of A^T == CSC of A), mirroring solve_lp_distributed_from_mps.
+  ds::csr_matrix_t<int, double> A_csr(n_cstr, n_vars, nnz);
+  A_csr.row_start = h_A_row_offsets;
+  A_csr.j         = h_A_col_indices;
+  A_csr.x         = h_A_values;
+  ds::csc_matrix_t<int, double> AT_as_csc(n_vars, n_cstr, nnz);
+  A_csr.to_compressed_col(AT_as_csc);
+  std::vector<int> h_A_t_row_offsets = AT_as_csc.col_start;
+  std::vector<int> h_A_t_col_indices = AT_as_csc.i;
+
+  partitioner_input_t<int, double> input;
+  input.nb_cstr         = n_cstr;
+  input.nb_vars         = n_vars;
+  input.nb_parts        = 2;
+  input.A.row_offsets   = &h_A_row_offsets;
+  input.A.col_indices   = &h_A_col_indices;
+  input.A.num_rows      = n_cstr;
+  input.A.num_cols      = n_vars;
+  input.A_t.row_offsets = &h_A_t_row_offsets;
+  input.A_t.col_indices = &h_A_t_col_indices;
+  input.A_t.num_rows    = n_vars;
+  input.A_t.num_cols    = n_cstr;
+
+  auto partitioner       = make_partitioner<int, double>(partitioner_kind_t::Metis);
+  std::vector<int> parts = partitioner->partition(input);
+  ASSERT_EQ(parts.size(), static_cast<std::size_t>(n_cstr + n_vars));
+
+  std::string dir = ::testing::TempDir();
+  if (!dir.empty() && dir.back() != '/') { dir.push_back('/'); }
+  const std::string out_path = dir + "afiro_metis_roundtrip.parts";
+
+  partition_loader_t<int, double>::export_distributed_pdlp_partition_file(out_path, parts);
+  std::vector<int> reloaded =
+    partition_loader_t<int, double>::parse_distributed_pdlp_partition_file(out_path);
+
+  EXPECT_EQ(parts, reloaded);
 }
 
 TEST(pdlp_class, precision_mixed)
