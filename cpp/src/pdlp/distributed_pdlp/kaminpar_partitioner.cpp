@@ -102,6 +102,7 @@ std::vector<i_t> kaminpar_partitioner_t<i_t, f_t>::partition(
   std::vector<kaminpar::shm::BlockID> block_of(static_cast<std::size_t>(nvtx));
 
   kaminpar::KaMinPar engine(nthreads, kaminpar::shm::create_default_context());
+  engine.set_output_level(kaminpar::OutputLevel::QUIET);
   engine.copy_graph(std::span<const kaminpar::shm::EdgeID>(xadj),
                     std::span<const kaminpar::shm::NodeID>(adjncy));
   engine.set_k(static_cast<kaminpar::shm::BlockID>(input.nb_parts));
