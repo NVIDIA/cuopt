@@ -231,7 +231,7 @@ void remove_small_cliques(clique_table_t<i_t, f_t>& clique_table, cuopt::timer_t
   for (size_t clique_idx = 0; clique_idx < clique_table.first.size(); clique_idx++) {
     if (timer.check_time_limit()) { return; }
     const auto& clique = clique_table.first[clique_idx];
-    if (clique.size() < (size_t)clique_table.min_clique_size) {
+    if (clique.size() <= (size_t)clique_table.min_clique_size) {
       for (size_t i = 0; i < clique.size(); i++) {
         for (size_t j = 0; j < clique.size(); j++) {
           if (i == j) { continue; }
