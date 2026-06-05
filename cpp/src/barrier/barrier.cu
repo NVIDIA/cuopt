@@ -2707,6 +2707,30 @@ f_t barrier_solver_t<i_t, f_t>::compute_nonnegative_step_length(iteration_data_t
                                               stream_view_);
 }
 
+// Copy the current device search direction (dw, dx, dy, dv, dz) into d_*_aff_ buffers.
+// Called from gpu_compute_search_direction when snapshot_affine_direction is true, immediately
+// after the direction is fully formed and before the function returns. Mehrotra uses two separate
+// calls to gpu_compute_search_direction (affine then corrector); the corrector call overwrites
+// d_dx_ / d_dy_ / etc. but must not refresh d_*_aff_.
+template <typename i_t, typename f_t>
+void copy_affine_direction_to_device_buffers(iteration_data_t<i_t, f_t>& data,
+                                             rmm::cuda_stream_view stream)
+{
+  raft::common::nvtx::range fun_scope("Barrier: copy_affine_direction_to_device_buffers");
+
+  auto copy_device_vec = [&](rmm::device_uvector<f_t>& dst,
+                             const rmm::device_uvector<f_t>& src) {
+    dst.resize(src.size(), stream);
+    if (src.size() > 0) { raft::copy(dst.data(), src.data(), src.size(), stream); }
+  };
+
+  copy_device_vec(data.d_dw_aff_, data.d_dw_);
+  copy_device_vec(data.d_dx_aff_, data.d_dx_);
+  copy_device_vec(data.d_dy_aff_, data.d_dy_);
+  copy_device_vec(data.d_dv_aff_, data.d_dv_);
+  copy_device_vec(data.d_dz_aff_, data.d_dz_);
+}
+
 template <typename i_t, typename f_t>
 i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_t, f_t>& data,
                                                              pinned_dense_vector_t<i_t, f_t>& dw,
@@ -2716,7 +2740,8 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
                                                              pinned_dense_vector_t<i_t, f_t>& dz,
                                                              f_t& dual_perturb,
                                                              f_t& primal_perturb,
-                                                             f_t& max_residual)
+                                                             f_t& max_residual,
+                                                             bool snapshot_affine_direction)
 {
   raft::common::nvtx::range fun_scope("Barrier: compute_search_direction");
 
@@ -3017,9 +3042,6 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
     raft::copy(data.d_dx_.data(), data.d_augmented_soln_.data(), lp.num_cols, stream_view_);
     raft::copy(
       data.d_dy_.data(), data.d_augmented_soln_.data() + lp.num_cols, lp.num_rows, stream_view_);
-    raft::copy(dx.data(), data.d_dx_.data(), lp.num_cols, stream_view_);
-    raft::copy(dy.data(), data.d_dy_.data(), lp.num_rows, stream_view_);
-    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
 
     // TMP should only be init once
     data.cusparse_dy_ = data.cusparse_view_.create_vector(data.d_dy_);
@@ -3029,9 +3051,6 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
 
       // Solve A D^{-1} A^T dy = h
       i_t solve_status = data.gpu_solve_adat(data.d_h_, data.d_dy_);
-      // TODO Chris, we need to write to cpu because dx is used outside
-      // Can't we also GPUify what's usinng this dx?
-      raft::copy(dy.data(), data.d_dy_.data(), dy.size(), stream_view_);
       if (solve_status == CONCURRENT_HALT_RETURN) { return CONCURRENT_HALT_RETURN; }
       if (solve_status < 0) {
         settings.log.printf("Linear solve failed\n");
@@ -3091,7 +3110,6 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
         },
         stream_view_.value());
       RAFT_CHECK_CUDA(stream_view_);
-      raft::copy(dx.data(), data.d_dx_.data(), data.d_dx_.size(), stream_view_);
 
       data.cusparse_view_.transpose_spmv(-1.0, data.cusparse_dy_, 1.0, data.cusparse_dx_residual_);
       cub::DeviceTransform::Transform(
@@ -3277,7 +3295,6 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       raft::device_span<f_t>(data.d_dz_.data(), linear_dz_size),
       raft::device_span<const i_t>(data.d_is_direct_free_linear_.data(), linear_dz_size),
       stream_view_);
-    raft::copy(dz.data(), data.d_dz_.data(), data.d_dz_.size(), stream_view_);
   }
 
   if (debug) {
@@ -3332,7 +3349,6 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       },
       stream_view_.value());
     RAFT_CHECK_CUDA(stream_view_);
-    raft::copy(dv.data(), data.d_dv_.data(), data.d_dv_.size(), stream_view_);
   }
 
   if (debug) {
@@ -3414,7 +3430,13 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       [] HD(f_t dw, f_t gathered_dx) { return dw - gathered_dx; },
       stream_view_.value());
     RAFT_CHECK_CUDA(stream_view_);
-    raft::copy(dw.data(), data.d_dw_.data(), data.d_dw_.size(), stream_view_);
+
+    // Affine Mehrotra step: save (dw, dx, dy, dv, dz) into d_*_aff_ now that the direction is
+    // complete. The corrector is a separate gpu_compute_search_direction call that reuses d_dx_
+    // / d_dy_ for the centering direction; d_*_aff_ must be fixed before that second call.
+    if (snapshot_affine_direction) {
+      copy_affine_direction_to_device_buffers(data, stream_view_);
+    }
 
     if (debug) {
       // dw_residual <- dw + E'*dx - bound_rhs
@@ -3463,6 +3485,9 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
     }
   }
 
+  // Ensure async GPU work (direction formation, optional d_*_aff_ snapshot, residual norms)
+  // is complete before the host reads return status or max_residual.
+  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
   return 0;
 }
 
@@ -3662,16 +3687,6 @@ void barrier_solver_t<i_t, f_t>::compute_target_mu(
   const bool has_soc = data.has_cones();
 
   f_t complementarity_aff_sum = 0.0;
-  // TMP no copy and data should always be on the GPU
-  data.d_dw_aff_.resize(data.dw_aff.size(), stream_view_);
-  data.d_dx_aff_.resize(data.dx_aff.size(), stream_view_);
-  data.d_dv_aff_.resize(data.dv_aff.size(), stream_view_);
-  data.d_dz_aff_.resize(data.dz_aff.size(), stream_view_);
-
-  raft::copy(data.d_dw_aff_.data(), data.dw_aff.data(), data.dw_aff.size(), stream_view_);
-  raft::copy(data.d_dx_aff_.data(), data.dx_aff.data(), data.dx_aff.size(), stream_view_);
-  raft::copy(data.d_dv_aff_.data(), data.dv_aff.data(), data.dv_aff.size(), stream_view_);
-  raft::copy(data.d_dz_aff_.data(), data.dz_aff.data(), data.dz_aff.size(), stream_view_);
 
   f_t step_primal_aff = std::min(compute_nonnegative_step_length(data, data.d_w_, data.d_dw_aff_),
                                  compute_nonnegative_step_length(data, data.d_x_, data.d_dx_aff_));
@@ -3799,16 +3814,17 @@ template <typename i_t, typename f_t>
 void barrier_solver_t<i_t, f_t>::compute_final_direction(iteration_data_t<i_t, f_t>& data)
 {
   raft::common::nvtx::range fun_scope("Barrier: compute_final_direction");
-  data.d_dy_aff_.resize(data.dy_aff.size(), stream_view_);
-  raft::copy(data.d_dy_aff_.data(), data.dy_aff.data(), data.dy_aff.size(), stream_view_);
 
 #ifdef FINITE_CHECK
   for (i_t i = 0; i < (int)data.y.size(); i++) {
     cuopt_assert(std::isfinite(data.y[i]), "data.d_y_[i] is not finite");
   }
 
-  for (i_t i = 0; i < (int)data.dy_aff.size(); i++) {
-    cuopt_assert(std::isfinite(data.dy_aff[i]), "data.dy_aff_[i] is not finite");
+  if (!data.d_dy_aff_.empty()) {
+    const auto dy_aff_host = host_copy(data.d_dy_aff_, stream_view_);
+    for (i_t i = 0; i < static_cast<i_t>(dy_aff_host.size()); ++i) {
+      cuopt_assert(std::isfinite(dy_aff_host[i]), "data.d_dy_aff_[i] is not finite");
+    }
   }
 #endif
 
@@ -4437,13 +4453,12 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
                                                 data.dz_aff,
                                                 dual_perturb,
                                                 primal_perturb,
-                                                max_affine_residual);
+                                                max_affine_residual,
+                                                true);
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
         settings.log.printf("Barrier solver halted\n");
         return lp_status_t::CONCURRENT_LIMIT;
       }
-      // Sync to make sure all the async copies to host done inside are finished
-      RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
 
       if (status < 0) {
         return check_for_suboptimal_solution(data,
@@ -4489,8 +4504,6 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
         settings.log.printf("Barrier solver halted\n");
         return lp_status_t::CONCURRENT_LIMIT;
       }
-      // Sync to make sure all the async copies to host done inside are finished
-      RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
       if (status < 0) {
         return check_for_suboptimal_solution(data,
                                              start_time,

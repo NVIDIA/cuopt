@@ -108,7 +108,8 @@ class barrier_solver_t {
                                    pinned_dense_vector_t<i_t, f_t>& dz,
                                    f_t& dual_perturb,
                                    f_t& primal_perturb,
-                                   f_t& max_residual);
+                                   f_t& max_residual,
+                                   bool snapshot_affine_direction = false);
 
  private:
   lp_status_t check_for_suboptimal_solution(iteration_data_t<i_t, f_t>& data,
