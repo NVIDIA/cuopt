@@ -477,8 +477,6 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   // both "unscaled" and "scaled" so the engine and per-shard pdlp_solver_t
   // can run end-to-end. Scaling factor vectors are 1.0 everywhere so the
   // shard-side unscale at the end is a no-op.
-  std::vector<f_t> h_A_values_scaled   = h_A_values;
-  std::vector<f_t> h_A_t_values_scaled = h_A_t_values;
   std::vector<f_t> h_obj_scaled        = h_obj;
   std::vector<f_t> h_var_lower_scaled  = h_var_lower;
   std::vector<f_t> h_var_upper_scaled  = h_var_upper;
@@ -570,11 +568,9 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
                                                               h_A_row_offsets,
                                                               h_A_col_indices,
                                                               h_A_values,
-                                                              h_A_values_scaled,
                                                               h_A_t_row_offsets,
                                                               h_A_t_col_indices,
                                                               h_A_t_values,
-                                                              h_A_t_values_scaled,
                                                               settings.distributed_pdlp_num_gpus,
                                                               n_cstr,
                                                               n_vars,

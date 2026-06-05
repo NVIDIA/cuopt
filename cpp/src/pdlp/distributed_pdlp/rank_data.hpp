@@ -51,11 +51,9 @@ struct rank_data_t {
   std::vector<i_t> h_A_row_offsets;
   std::vector<i_t> h_A_col_indices;
   std::vector<f_t> h_A_values;
-  std::vector<f_t> h_A_values_scaled;
   // A_t
   std::vector<i_t> h_A_t_row_offsets;
   std::vector<i_t> h_A_t_col_indices;
   std::vector<f_t> h_A_t_values;
-  std::vector<f_t> h_A_t_values_scaled;
 };
 }  // namespace cuopt::linear_programming::detail

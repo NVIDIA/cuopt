@@ -168,16 +168,17 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
              rank_data.h_A_col_indices.size(),
              stream_view);
   raft::copy(scaled.coefficients.data(),
-             rank_data.h_A_values_scaled.data(),
-             rank_data.h_A_values_scaled.size(),
+             rank_data.h_A_values.data(),
+             rank_data.h_A_values.size(),
              stream_view);
   // A_T side: all three arrays were already overridden together from
   // rank_data on sub_problem (see step 4 above) and deep-copied into the
   // scaled problem, so reverse_offsets / reverse_constraints already match
-  // h_A_t_values_scaled's order. Only the values need a SCALED swap-in.
+  // h_A_t_values's order. At this stage distributed initial scaling starts from
+  // identity, so the matrix values are injected from the unscaled host slices.
   raft::copy(scaled.reverse_coefficients.data(),
-             rank_data.h_A_t_values_scaled.data(),
-             rank_data.h_A_t_values_scaled.size(),
+             rank_data.h_A_t_values.data(),
+             rank_data.h_A_t_values.size(),
              stream_view);
   raft::copy(
     scaled.objective_coefficients.data(), h_obj_scaled.data(), h_obj_scaled.size(), stream_view);

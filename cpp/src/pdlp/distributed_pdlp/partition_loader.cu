@@ -8,7 +8,7 @@
 #include <cuopt/error.hpp>
 
 #include <fstream>
-#include <set>
+#include <unordered_set>
 #include <utility>
 
 namespace cuopt::linear_programming::detail {
@@ -64,36 +64,56 @@ std::vector<rank_data_t<i_t, f_t>> partition_loader_t<i_t, f_t>::create_rank_dat
   const std::vector<i_t>& A_row_offsets,
   const std::vector<i_t>& A_col_indices,
   const std::vector<f_t>& A_values,
-  const std::vector<f_t>& A_values_scaled,
   const std::vector<i_t>& A_t_row_offsets,
   const std::vector<i_t>& A_t_col_indices,
   const std::vector<f_t>& A_t_values,
-  const std::vector<f_t>& A_t_values_scaled,
   i_t nb_parts,
   i_t nb_cstr,
   i_t nb_vars,
   i_t nnz)
 {
-  cuopt_expects(A_values.size() == A_values_scaled.size(),
-                error_type_t::ValidationError,
-                "A_values and A_values_scaled must have the same length");
-  cuopt_expects(A_t_values.size() == A_t_values_scaled.size(),
-                error_type_t::ValidationError,
-                "A_t_values and A_t_values_scaled must have the same length");
-
   std::vector<rank_data_t<i_t, f_t>> rank_data(nb_parts, rank_data_t<i_t, f_t>(nb_parts));
-  std::vector<i_t> cstr_parts(parts.begin(), parts.begin() + nb_cstr);
-  std::vector<i_t> var_parts(parts.begin() + nb_cstr, parts.begin() + nb_cstr + nb_vars);
+  cuopt_expects(static_cast<i_t>(parts.size()) == nb_cstr + nb_vars,
+                error_type_t::ValidationError,
+                "parts size mismatch: expected nb_cstr + nb_vars");
+
+  // Same as two vectors but faster
+  auto cstr_owner = [&](i_t c) { return parts[c]; };
+  auto var_owner  = [&](i_t v) { return parts[nb_cstr + v]; };
+
+  std::vector<i_t> owned_cstr_counts(nb_parts, 0);
+  std::vector<i_t> owned_var_counts(nb_parts, 0);
+  std::vector<i_t> owned_A_nnz(nb_parts, 0);
+  std::vector<i_t> owned_A_t_nnz(nb_parts, 0);
+
+  // Pre-count ownership and nnz to reserve exact capacities and avoid
+  // repeated growth/reallocation across huge vectors.
+  for (i_t i = 0; i < nb_cstr; ++i) {
+    const i_t owner = cstr_owner(i);
+    ++owned_cstr_counts[owner];
+    owned_A_nnz[owner] += (A_row_offsets[i + 1] - A_row_offsets[i]);
+  }
+  for (i_t j = 0; j < nb_vars; ++j) {
+    const i_t owner = var_owner(j);
+    ++owned_var_counts[owner];
+    owned_A_t_nnz[owner] += (A_t_row_offsets[j + 1] - A_t_row_offsets[j]);
+  }
+
+  for (i_t rank = 0; rank < nb_parts; ++rank) {
+    rank_data[rank].owned_cstr_indices.reserve(static_cast<std::size_t>(owned_cstr_counts[rank]));
+    rank_data[rank].owned_var_indices.reserve(static_cast<std::size_t>(owned_var_counts[rank]));
+  }
 
   // 1. Compute ownership
   for (i_t i = 0; i < nb_cstr; i++) {
-    rank_data[cstr_parts[i]].owned_cstr_indices.push_back(i);
+    rank_data[cstr_owner(i)].owned_cstr_indices.push_back(i);
   }
   for (i_t i = 0; i < nb_vars; i++) {
-    rank_data[var_parts[i]].owned_var_indices.push_back(i);
+    rank_data[var_owner(i)].owned_var_indices.push_back(i);
   }
 
   // 2. Compute local matrices and rank_data
+#pragma omp parallel for
   for (i_t rank = 0; rank < nb_parts; rank++) {
     auto& rd           = rank_data[rank];
     rd.owned_var_size  = rd.owned_var_indices.size();
@@ -102,7 +122,9 @@ std::vector<rank_data_t<i_t, f_t>> partition_loader_t<i_t, f_t>::create_rank_dat
     std::vector<i_t> local_A_row_offsets;
     std::vector<i_t> local_A_col_indices;
     std::vector<f_t> local_A_values;
-    std::vector<f_t> local_A_values_scaled;
+    local_A_row_offsets.reserve(static_cast<std::size_t>(rd.owned_cstr_size) + 1);
+    local_A_col_indices.reserve(static_cast<std::size_t>(owned_A_nnz[rank]));
+    local_A_values.reserve(static_cast<std::size_t>(owned_A_nnz[rank]));
 
     i_t local_A_nnz = 0;
     local_A_row_offsets.push_back(local_A_nnz);
@@ -114,81 +136,83 @@ std::vector<rank_data_t<i_t, f_t>> partition_loader_t<i_t, f_t>::create_rank_dat
     for (auto owned_cstr : rd.owned_cstr_indices) {
       i_t cstr_len  = A_row_offsets[owned_cstr + 1] - A_row_offsets[owned_cstr];
       i_t row_start = A_row_offsets[owned_cstr];
-      for (i_t v = 0; v < cstr_len; v++) {
-        local_A_col_indices.push_back(A_col_indices[row_start + v]);
-        local_A_values.push_back(A_values[row_start + v]);
-        local_A_values_scaled.push_back(A_values_scaled[row_start + v]);
-      }
+      local_A_col_indices.insert(
+        local_A_col_indices.end(), A_col_indices.begin() + row_start, A_col_indices.begin() + row_start + cstr_len);
+      local_A_values.insert(
+        local_A_values.end(), A_values.begin() + row_start, A_values.begin() + row_start + cstr_len);
       local_A_nnz += cstr_len;
       local_A_row_offsets.push_back(local_A_nnz);
     }
 
-    std::set<i_t> needed_vars;
+    std::vector<std::vector<i_t>> needed_var_from_peer(nb_parts);
+    std::unordered_set<i_t> seen_needed_vars;
+    // size / 2 + 1 is a heuristic to avoid overestimating and resizing
+    seen_needed_vars.reserve(local_A_col_indices.size() / 2 + 1);
     for (auto indice : local_A_col_indices) {
-      if (var_parts[indice] != rank) needed_vars.insert(indice);
+      const i_t owner = var_owner(indice);
+      if (owner != rank && seen_needed_vars.insert(indice).second) {
+        needed_var_from_peer[owner].push_back(indice);
+      }
     }
 
     for (i_t peer = 0; peer < nb_parts; peer++) {
-      std::vector<i_t> needed_var_from_peer;
-      for (auto needed_var : needed_vars) {
-        if (var_parts[needed_var] == peer) needed_var_from_peer.push_back(needed_var);
-      }
-      i_t nb_recv_from_peer    = needed_var_from_peer.size();
+      i_t nb_recv_from_peer    = needed_var_from_peer[peer].size();
       rd.var_recv_counts[peer] = nb_recv_from_peer;
       rd.var_recv_offsets[peer] =
         peer == 0 ? 0 : rd.var_recv_offsets[peer - 1] + rd.var_recv_counts[peer - 1];
-      rank_data[peer].var_send_per_peer[rank] = std::move(needed_var_from_peer);
+      rank_data[peer].var_send_per_peer[rank] = std::move(needed_var_from_peer[peer]);
     }
 
     rd.h_A_row_offsets   = std::move(local_A_row_offsets);
     rd.h_A_col_indices   = std::move(local_A_col_indices);
     rd.h_A_values        = std::move(local_A_values);
-    rd.h_A_values_scaled = std::move(local_A_values_scaled);
 
     // ---- A_t side ----
     std::vector<i_t> local_A_t_row_offsets;
     std::vector<i_t> local_A_t_col_indices;
     std::vector<f_t> local_A_t_values;
-    std::vector<f_t> local_A_t_values_scaled;
+    local_A_t_row_offsets.reserve(static_cast<std::size_t>(rd.owned_var_size) + 1);
+    local_A_t_col_indices.reserve(static_cast<std::size_t>(owned_A_t_nnz[rank]));
+    local_A_t_values.reserve(static_cast<std::size_t>(owned_A_t_nnz[rank]));
     i_t local_A_t_nnz = 0;
     local_A_t_row_offsets.push_back(local_A_t_nnz);
 
     for (auto owned_var : rd.owned_var_indices) {
       i_t var_len   = A_t_row_offsets[owned_var + 1] - A_t_row_offsets[owned_var];
       i_t row_start = A_t_row_offsets[owned_var];
-      for (i_t v = 0; v < var_len; v++) {
-        local_A_t_col_indices.push_back(A_t_col_indices[row_start + v]);
-        local_A_t_values.push_back(A_t_values[row_start + v]);
-        local_A_t_values_scaled.push_back(A_t_values_scaled[row_start + v]);
-      }
+      local_A_t_col_indices.insert(local_A_t_col_indices.end(),
+                                   A_t_col_indices.begin() + row_start,
+                                   A_t_col_indices.begin() + row_start + var_len);
+      local_A_t_values.insert(
+        local_A_t_values.end(), A_t_values.begin() + row_start, A_t_values.begin() + row_start + var_len);
       local_A_t_nnz += var_len;
       local_A_t_row_offsets.push_back(local_A_t_nnz);
     }
 
-    std::set<i_t> needed_cstrs;
+    std::vector<std::vector<i_t>> needed_cstr_from_peer(nb_parts);
+    std::unordered_set<i_t> seen_needed_cstrs;
+    seen_needed_cstrs.reserve(local_A_t_col_indices.size() / 2 + 1);
     for (auto indice : local_A_t_col_indices) {
-      if (cstr_parts[indice] != rank) needed_cstrs.insert(indice);
+      const i_t owner = cstr_owner(indice);
+      if (owner != rank && seen_needed_cstrs.insert(indice).second) {
+        needed_cstr_from_peer[owner].push_back(indice);
+      }
     }
 
     for (i_t peer = 0; peer < nb_parts; peer++) {
-      std::vector<i_t> needed_cstr_from_peer;
-      for (auto needed_cstr : needed_cstrs) {
-        if (cstr_parts[needed_cstr] == peer) needed_cstr_from_peer.push_back(needed_cstr);
-      }
-      i_t nb_recv_from_peer     = needed_cstr_from_peer.size();
+      i_t nb_recv_from_peer     = needed_cstr_from_peer[peer].size();
       rd.cstr_recv_counts[peer] = nb_recv_from_peer;
       rd.cstr_recv_offsets[peer] =
         peer == 0 ? 0 : rd.cstr_recv_offsets[peer - 1] + rd.cstr_recv_counts[peer - 1];
-      rank_data[peer].cstr_send_per_peer[rank] = std::move(needed_cstr_from_peer);
+      rank_data[peer].cstr_send_per_peer[rank] = std::move(needed_cstr_from_peer[peer]);
     }
 
     rd.h_A_t_row_offsets   = std::move(local_A_t_row_offsets);
     rd.h_A_t_col_indices   = std::move(local_A_t_col_indices);
     rd.h_A_t_values        = std::move(local_A_t_values);
-    rd.h_A_t_values_scaled = std::move(local_A_t_values_scaled);
 
-    rd.total_var_size  = rd.owned_var_size + needed_vars.size();
-    rd.total_cstr_size = rd.owned_cstr_size + needed_cstrs.size();
+    rd.total_var_size  = rd.owned_var_size + static_cast<i_t>(seen_needed_vars.size());
+    rd.total_cstr_size = rd.owned_cstr_size + static_cast<i_t>(seen_needed_cstrs.size());
 
     // Pad row-offset arrays so cuSPARSE sees the local matrices as
     // (total_cstr x total_var) for A and (total_var x total_cstr) for A_T
@@ -201,8 +225,14 @@ std::vector<rank_data_t<i_t, f_t>> partition_loader_t<i_t, f_t>::create_rank_dat
 
   // 3. Generate local indices for contiguous [[self], [peer1], ..., [peer_k]]
   //    Build scatter_gather_maps
+  // 3. Build local<->global maps in parallel across ranks.
+#pragma omp parallel for
   for (i_t rank = 0; rank < nb_parts; rank++) {
     auto& rd = rank_data[rank];
+    rd.global_to_local_cstr.reserve(static_cast<std::size_t>(rd.total_cstr_size));
+    rd.global_to_local_var.reserve(static_cast<std::size_t>(rd.total_var_size));
+    rd.local_to_global_cstr.reserve(static_cast<std::size_t>(rd.total_cstr_size));
+    rd.local_to_global_var.reserve(static_cast<std::size_t>(rd.total_var_size));
 
     i_t curr_id = 0;
     for (auto owned_cstr : rd.owned_cstr_indices) {
@@ -236,6 +266,7 @@ std::vector<rank_data_t<i_t, f_t>> partition_loader_t<i_t, f_t>::create_rank_dat
   }
 
   // 4. Remap global -> local everywhere
+#pragma omp parallel for
   for (i_t rank = 0; rank < nb_parts; rank++) {
     auto& rd = rank_data[rank];
 
