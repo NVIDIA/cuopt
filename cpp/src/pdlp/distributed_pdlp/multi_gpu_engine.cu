@@ -15,7 +15,10 @@
 
 #include <nccl.h>
 
+#include <chrono>
 #include <numeric>
+
+#include <utilities/logger.hpp>
 
 namespace cuopt::linear_programming::detail {
 
@@ -57,6 +60,8 @@ multi_gpu_engine_t<i_t, f_t>::multi_gpu_engine_t(
                 "ncclCommInitAll failed");
 
   // 3. Construct one shard per rank, pinned to its device.
+  CUOPT_LOG_INFO("distributed_pdlp: building %d shard solver(s) ...", nb_parts);
+  auto shard_build_t0 = std::chrono::high_resolution_clock::now();
   for (int r = 0; r < nb_parts; ++r) {
     raft::device_setter guard(devices[r]);  // shard ctor needs device set
     shards.emplace_back(std::make_unique<pdlp_shard_t<i_t, f_t>>(devices[r],
@@ -81,6 +86,9 @@ multi_gpu_engine_t<i_t, f_t>::multi_gpu_engine_t(
                                                                  objective_scaling_factor,
                                                                  sub_solver_settings));
   }
+  auto shard_build_t1 = std::chrono::high_resolution_clock::now();
+  CUOPT_LOG_INFO("distributed_pdlp: shard build done in %.3f s",
+                 std::chrono::duration<double>(shard_build_t1 - shard_build_t0).count());
 
   // Two different events
   // capture_*_event_ are used inside graph capture
