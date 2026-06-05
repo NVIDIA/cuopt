@@ -5,7 +5,8 @@
 
 #pragma once
 
-#include "simd_compat.hpp"
+#include <simde/x86/avx2.h>
+#include <simde/x86/sse4.2.h>
 
 #include <cstdint>
 #include <cstring>
@@ -42,30 +43,6 @@ static inline uint32_t crcHash(const uint8_t* key, int64_t len)
   crc = simde_mm_crc32_u64(crc, val);
 
   return crc;
-}
-
-static const simde__m128i aes_seed_128 =
-  simde_mm_set_epi64x(0x9E3779B97F4A7C15ULL, 0xBB67AE8584CAA73BULL);
-static const simde__m256i aes_seed_256 = simde_mm256_set_epi64x(
-  0x9E3779B97F4A7C15ULL, 0xBB67AE8584CAA73BULL, 0x3C6EF372FE94F82BULL, 0xA54FF53A5F1D36F1ULL);
-
-static inline uint32_t aes_hash(simde__m128i key)
-{
-  simde__m128i h      = simde_mm_aesenc_si128(key, aes_seed_128);
-  h                   = simde_mm_aesenc_si128(h, aes_seed_128);
-  simde__m128i folded = simde_mm_xor_si128(h, simde_mm_srli_si128(h, 8));
-  return (uint32_t)simde_mm_cvtsi128_si32(folded);
-}
-
-static inline uint32_t aes_hash(simde__m256i key)
-{
-  simde__m128i lo     = simde_mm256_castsi256_si128(key);
-  simde__m128i hi     = simde_mm256_extracti128_si256(key, 1);
-  simde__m128i h      = simde_mm_xor_si128(lo, hi);
-  h                   = simde_mm_aesenc_si128(h, aes_seed_128);
-  h                   = simde_mm_aesenc_si128(h, aes_seed_128);
-  simde__m128i folded = simde_mm_xor_si128(h, simde_mm_srli_si128(h, 8));
-  return (uint32_t)simde_mm_cvtsi128_si32(folded);
 }
 
 static inline uint32_t crcHash32B(uint64_t q0, uint64_t q1, uint64_t q2, uint64_t q3)

@@ -1,26 +1,25 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights
 // reserved. SPDX-License-Identifier: Apache-2.0
 
 #include "file_reader.hpp"
 #include "mps_section_scanner.hpp"
 #include "nvtx_ranges.hpp"
 
+#include <utilities/error.hpp>
+
 #ifdef _OPENMP
 #include <omp.h>
 #endif
 
-#ifndef _WIN32
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <cerrno>
-#include <cstring>
-#endif
 
 #include <algorithm>
 #include <atomic>
+#include <cerrno>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
@@ -36,6 +35,10 @@
 #include <vector>
 
 namespace mps_fast {
+
+using cuopt::linear_programming::io::error_type_t;
+using cuopt::linear_programming::io::mps_parser_expects;
+using cuopt::linear_programming::io::mps_parser_fail;
 
 namespace {
 
@@ -60,18 +63,18 @@ struct lz4_runtime_t {
       if (handle != nullptr) { break; }
     }
     if (handle == nullptr) {
-      throw std::logic_error(
-        "Could not open .mps.lz4 file since liblz4 was not found "
-        "(tried liblz4.so.1, liblz4.so). Decompress the .lz4 file manually "
-        "or install liblz4.");
+      mps_parser_fail(error_type_t::RuntimeError,
+                      "Could not open .mps.lz4 file since liblz4 was not found "
+                      "(tried liblz4.so.1, liblz4.so). Decompress the .lz4 file manually "
+                      "or install liblz4.");
     }
 
     decompress_safe =
       reinterpret_cast<LZ4_decompress_safe_t>(::dlsym(handle, "LZ4_decompress_safe"));
     if (decompress_safe == nullptr) {
-      throw std::logic_error(
-        "Error loading LZ4_decompress_safe from liblz4. Decompress the .lz4 file manually "
-        "or install a compatible liblz4.");
+      mps_parser_fail(error_type_t::RuntimeError,
+                      "Error loading LZ4_decompress_safe from liblz4. Decompress the .lz4 file "
+                      "manually or install a compatible liblz4.");
     }
   }
 
@@ -100,7 +103,8 @@ int lz4_decompress_safe_runtime(const char* src, char* dst, int compressed_size,
   (void)dst;
   (void)compressed_size;
   (void)dst_capacity;
-  throw std::logic_error(
+  mps_parser_fail(
+    error_type_t::RuntimeError,
     "Experimental fast MPS parser was built without LZ4 decompression support. "
     "Reconfigure with CUOPT_PARSER_WITH_LZ4=ON or decompress the .lz4 file manually.");
 #endif
@@ -111,7 +115,8 @@ void ensure_lz4_runtime_available()
 #if defined(MPS_PARSER_WITH_LZ4)
   (void)lz4_runtime();
 #else
-  throw std::logic_error(
+  mps_parser_fail(
+    error_type_t::RuntimeError,
     "Experimental fast MPS parser was built without LZ4 decompression support. "
     "Reconfigure with CUOPT_PARSER_WITH_LZ4=ON or decompress the .lz4 file manually.");
 #endif
@@ -121,36 +126,15 @@ int open_lz4_fd(const std::string& path)
 {
   int fd = ::open(path.c_str(), O_RDONLY);
   if (fd < 0) {
-    throw std::runtime_error("Failed to open LZ4 file '" + path + "': " + std::strerror(errno));
+    mps_parser_fail(error_type_t::RuntimeError,
+                    "Failed to open LZ4 file '%s': %s",
+                    path.c_str(),
+                    std::strerror(errno));
   }
   return fd;
 }
 
-#ifndef _WIN32
-std::size_t system_page_size();
-#endif
 std::size_t round_up_to_multiple(std::size_t value, std::size_t alignment);
-
-#ifndef _WIN32
-class FileDescriptor {
- public:
-  explicit FileDescriptor(int fd) : fd_(fd) {}
-  ~FileDescriptor()
-  {
-    if (fd_ >= 0) { ::close(fd_); }
-  }
-
-  FileDescriptor(const FileDescriptor&)            = delete;
-  FileDescriptor& operator=(const FileDescriptor&) = delete;
-
-  int get() const noexcept { return fd_; }
-  bool valid() const noexcept { return fd_ >= 0; }
-
- private:
-  int fd_;
-};
-
-#endif
 
 uint32_t read_le32(const char* ptr)
 {
@@ -176,32 +160,34 @@ std::size_t block_max_size_from_bd(unsigned char bd)
     case 5: return 256ull * 1024ull;
     case 6: return 1024ull * 1024ull;
     case 7: return 4ull * 1024ull * 1024ull;
-    default: throw std::runtime_error("unsupported LZ4 frame block size ID");
+    default: mps_parser_fail(error_type_t::ValidationError, "unsupported LZ4 frame block size ID");
   }
 }
 
 std::size_t checked_size(uint64_t value, const char* label)
 {
   if (value > static_cast<uint64_t>(std::numeric_limits<std::size_t>::max())) {
-    throw std::runtime_error(std::string("LZ4 ") + label + " exceeds size_t");
+    mps_parser_fail(error_type_t::OutOfMemoryError, "LZ4 %s exceeds size_t", label);
   }
   return static_cast<std::size_t>(value);
 }
 
-#ifndef _WIN32
 std::size_t get_file_size(int fd, const std::string& path)
 {
   struct stat st;
   if (::fstat(fd, &st) != 0) {
-    throw std::runtime_error("Failed to stat file '" + path + "': " + std::strerror(errno));
+    mps_parser_fail(error_type_t::RuntimeError,
+                    "Failed to stat file '%s': %s",
+                    path.c_str(),
+                    std::strerror(errno));
   }
-  if (st.st_size < 0) { throw std::runtime_error("Invalid negative file size for '" + path + "'"); }
+  if (st.st_size < 0) {
+    mps_parser_fail(
+      error_type_t::RuntimeError, "Invalid negative file size for '%s'", path.c_str());
+  }
   return static_cast<std::size_t>(st.st_size);
 }
 
-#endif
-
-#ifndef _WIN32
 std::size_t system_page_size()
 {
   static std::size_t page_size = [] {
@@ -210,7 +196,6 @@ std::size_t system_page_size()
   }();
   return page_size;
 }
-#endif
 
 std::size_t round_up_to_multiple(std::size_t value, std::size_t alignment)
 {
@@ -219,16 +204,15 @@ std::size_t round_up_to_multiple(std::size_t value, std::size_t alignment)
   if (remainder == 0) { return value; }
   std::size_t increment = alignment - remainder;
   if (value > std::numeric_limits<std::size_t>::max() - increment) {
-    throw std::runtime_error("allocation size overflow");
+    mps_parser_fail(error_type_t::OutOfMemoryError, "allocation size overflow");
   }
   return value + increment;
 }
 
-#ifndef _WIN32
 std::size_t checked_mul(std::size_t a, std::size_t b, const char* label)
 {
   if (a != 0 && b > std::numeric_limits<std::size_t>::max() / a) {
-    throw std::runtime_error(std::string(label) + " size overflow");
+    mps_parser_fail(error_type_t::OutOfMemoryError, "%s size overflow", label);
   }
   return a * b;
 }
@@ -313,7 +297,7 @@ class lz4_resident_windows_t {
   const lz4_resident_window_t& window_for_offset(std::size_t offset) const
   {
     if (windows_.empty()) {
-      throw std::runtime_error("LZ4 resident window lookup with no windows");
+      mps_parser_fail(error_type_t::RuntimeError, "LZ4 resident window lookup with no windows");
     }
     std::size_t lo = 0;
     std::size_t hi = windows_.size();
@@ -328,12 +312,11 @@ class lz4_resident_windows_t {
         return w;
       }
     }
-    throw std::runtime_error("LZ4 offset outside resident windows");
+    mps_parser_fail(error_type_t::RuntimeError, "LZ4 offset outside resident windows");
   }
 
   std::vector<lz4_resident_window_t>& windows_;
 };
-#endif
 
 }  // namespace
 
@@ -350,48 +333,58 @@ Lz4InputStream::Lz4InputStream(const std::string& path) : path_(path)
 
   char header[32];
   if (compressed_size_ < 7) {
-    throw std::runtime_error("LZ4 input is too small to contain a frame header");
+    mps_parser_fail(error_type_t::ValidationError,
+                    "LZ4 input is too small to contain a frame header");
   }
   std::size_t header_bytes = std::min<std::size_t>(sizeof(header), compressed_size_);
   if (!pread_full_plain(fd_, header, header_bytes, 0)) {
-    throw std::runtime_error("Failed to read LZ4 frame header '" + path +
-                             "': " + std::strerror(errno));
+    mps_parser_fail(error_type_t::RuntimeError,
+                    "Failed to read LZ4 frame header '%s': %s",
+                    path.c_str(),
+                    std::strerror(errno));
   }
 
   std::size_t offset = 0;
   uint32_t magic     = read_le32(header + offset);
   if (magic != lz4_frame_magic) {
-    throw std::runtime_error("unsupported LZ4 input: expected standard LZ4 frame magic");
+    mps_parser_fail(error_type_t::ValidationError,
+                    "unsupported LZ4 input: expected standard LZ4 frame magic");
   }
   offset += 4;
   unsigned char flg = static_cast<unsigned char>(header[offset++]);
   unsigned char bd  = static_cast<unsigned char>(header[offset++]);
   unsigned version  = (flg >> 6) & 0x3u;
-  if (version != 1) { throw std::runtime_error("unsupported LZ4 frame version"); }
+  if (version != 1) {
+    mps_parser_fail(error_type_t::ValidationError, "unsupported LZ4 frame version");
+  }
   bool block_independent = (flg & 0x20u) != 0;
   block_checksum_        = (flg & 0x10u) != 0;
   content_size_present_  = (flg & 0x08u) != 0;
   content_checksum_      = (flg & 0x04u) != 0;
   dict_id_               = (flg & 0x01u) != 0;
   if (!block_independent) {
-    throw std::runtime_error("parallel LZ4 reader requires independent blocks; compress with -BI");
+    mps_parser_fail(error_type_t::ValidationError,
+                    "parallel LZ4 reader requires independent blocks; compress with -BI");
   }
   block_max_size_ = block_max_size_from_bd(bd);
   if (content_size_present_) {
     if (offset + 8 > header_bytes) {
-      throw std::runtime_error("truncated LZ4 frame while reading content size");
+      mps_parser_fail(error_type_t::ValidationError,
+                      "truncated LZ4 frame while reading content size");
     }
     content_size_ = checked_size(read_le64(header + offset), "content size");
     offset += 8;
   }
   if (dict_id_) {
     if (offset + 4 > header_bytes) {
-      throw std::runtime_error("truncated LZ4 frame while reading dictionary id");
+      mps_parser_fail(error_type_t::ValidationError,
+                      "truncated LZ4 frame while reading dictionary id");
     }
     offset += 4;
   }
   if (offset + 1 > header_bytes) {
-    throw std::runtime_error("truncated LZ4 frame while reading header checksum");
+    mps_parser_fail(error_type_t::ValidationError,
+                    "truncated LZ4 frame while reading header checksum");
   }
   offset += 1;
   header_size_ = offset;
@@ -447,7 +440,7 @@ void Lz4InputStream::commit_up_to(std::size_t bytes)
   std::lock_guard<std::mutex> lock(commit_mutex_);
   if (bytes <= output_committed_size_) return;
   if (bytes > output_mapped_size_) {
-    throw std::runtime_error("LZ4 output exceeded reserved virtual mapping");
+    mps_parser_fail(error_type_t::OutOfMemoryError, "LZ4 output exceeded reserved virtual mapping");
   }
   std::size_t new_committed = round_up_to_multiple(bytes, system_page_size());
   if (new_committed > output_mapped_size_) new_committed = output_mapped_size_;
@@ -556,7 +549,8 @@ void Lz4InputStream::run_decode_tasks()
             }
           }
           if (actual < 0 || static_cast<std::size_t>(actual) > block.decompressed_size) {
-            throw std::runtime_error("LZ4 input block decompressed to invalid size");
+            mps_parser_fail(error_type_t::ValidationError,
+                            "LZ4 input block decompressed to invalid size");
           }
 
           std::size_t actual_size = static_cast<std::size_t>(actual);
@@ -606,8 +600,13 @@ void Lz4InputStream::run_decode_tasks()
           ok = pread_full_plain(fd_, w.data.get(), w.size, w.file_offset);
         }
         if (!ok) {
-          fail_and_notify(std::make_exception_ptr(std::runtime_error(
-            "Failed to pread LZ4 resident window: " + std::string(std::strerror(errno)))));
+          try {
+            mps_parser_fail(error_type_t::RuntimeError,
+                            "Failed to pread LZ4 resident window: %s",
+                            std::strerror(errno));
+          } catch (...) {
+            fail_and_notify(std::current_exception());
+          }
           return;
         }
         {
@@ -637,8 +636,8 @@ void Lz4InputStream::run_decode_tasks()
             return stop_workers.load(std::memory_order_acquire) || window_done[wi] != 0;
           });
           if (stop_workers.load(std::memory_order_acquire) && window_done[wi] == 0) {
-            throw std::runtime_error(
-              "LZ4 metadata scanner stopped before required window was ready");
+            mps_parser_fail(error_type_t::RuntimeError,
+                            "LZ4 metadata scanner stopped before required window was ready");
           }
         }
       };
@@ -665,7 +664,8 @@ void Lz4InputStream::run_decode_tasks()
         MPS_NVTX_RANGE("lz4_metadata_scan_block", nvtx::colors::generic);
         wait_range_ready(offset, 4);
         if (offset + 4 > compressed_size_) {
-          throw std::runtime_error("truncated LZ4 frame while reading block header");
+          mps_parser_fail(error_type_t::ValidationError,
+                          "truncated LZ4 frame while reading block header");
         }
         uint32_t raw_block_size = resident.read_u32(offset);
         offset += 4;
@@ -674,17 +674,20 @@ void Lz4InputStream::run_decode_tasks()
         bool uncompressed              = (raw_block_size & lz4_uncompressed_block) != 0;
         std::size_t block_payload_size = raw_block_size & lz4_block_size_mask;
         if (block_payload_size == 0) {
-          throw std::runtime_error("invalid zero-sized LZ4 data block");
+          mps_parser_fail(error_type_t::ValidationError, "invalid zero-sized LZ4 data block");
         }
         if (block_payload_size > block_max_size_ && uncompressed) {
-          throw std::runtime_error("LZ4 uncompressed block exceeds frame block maximum");
+          mps_parser_fail(error_type_t::ValidationError,
+                          "LZ4 uncompressed block exceeds frame block maximum");
         }
         if (content_size_present_ && decompressed_offset >= content_size_) {
-          throw std::runtime_error("LZ4 frame contains more blocks than content size allows");
+          mps_parser_fail(error_type_t::ValidationError,
+                          "LZ4 frame contains more blocks than content size allows");
         }
         wait_range_ready(offset, block_payload_size);
         if (offset + block_payload_size > compressed_size_) {
-          throw std::runtime_error("truncated LZ4 frame while reading block payload");
+          mps_parser_fail(error_type_t::ValidationError,
+                          "truncated LZ4 frame while reading block payload");
         }
 
         std::size_t decompressed_size = block_payload_size;
@@ -696,7 +699,7 @@ void Lz4InputStream::run_decode_tasks()
           }
         }
         if (content_size_present_ && decompressed_size > content_size_ - decompressed_offset) {
-          throw std::runtime_error("LZ4 block exceeds declared content size");
+          mps_parser_fail(error_type_t::ValidationError, "LZ4 block exceeds declared content size");
         }
 
         const char* src = resident.ptr_if_contiguous(offset, block_payload_size);
@@ -717,27 +720,32 @@ void Lz4InputStream::run_decode_tasks()
         if (block_checksum_) {
           wait_range_ready(offset, 4);
           if (offset + 4 > compressed_size_) {
-            throw std::runtime_error("truncated LZ4 frame while reading block checksum");
+            mps_parser_fail(error_type_t::ValidationError,
+                            "truncated LZ4 frame while reading block checksum");
           }
           offset += 4;
         }
         if (blocks_scanned.load(std::memory_order_relaxed) > block_done_.size()) {
-          throw std::runtime_error("LZ4 input block count exceeded reserved metadata slots");
+          mps_parser_fail(error_type_t::OutOfMemoryError,
+                          "LZ4 input block count exceeded reserved metadata slots");
         }
         if (batch.size() >= 1024) { push_batch(batch); }
       }
       if (content_checksum_) {
         wait_range_ready(offset, 4);
         if (offset + 4 > compressed_size_) {
-          throw std::runtime_error("truncated LZ4 frame while reading content checksum");
+          mps_parser_fail(error_type_t::ValidationError,
+                          "truncated LZ4 frame while reading content checksum");
         }
         offset += 4;
       }
       if (content_size_present_ && decompressed_offset != content_size_) {
-        throw std::runtime_error("LZ4 frame ended before declared content size was reached");
+        mps_parser_fail(error_type_t::ValidationError,
+                        "LZ4 frame ended before declared content size was reached");
       }
       if (offset != compressed_size_) {
-        throw std::runtime_error("LZ4 input contains trailing data after the first frame");
+        mps_parser_fail(error_type_t::ValidationError,
+                        "LZ4 input contains trailing data after the first frame");
       }
       push_batch(batch);
       {

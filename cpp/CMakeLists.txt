@@ -465,7 +465,7 @@ endif ()
 if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$" AND
         CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang|AppleClang)$")
     set_property(SOURCE ${MPS_FAST_SRC_FILES} DIRECTORY ${CMAKE_SOURCE_DIR}
-            APPEND PROPERTY COMPILE_OPTIONS "-mavx2;-maes;-msse4.2")
+            APPEND PROPERTY COMPILE_OPTIONS "-mbmi2;-mavx2;-msse4.2")
 endif ()
 
 # Apply -UNDEBUG only to solver source files (not gRPC infrastructure).

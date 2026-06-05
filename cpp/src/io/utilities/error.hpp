@@ -34,6 +34,30 @@ inline std::string error_to_string(error_type_t error)
   return std::string("UnAccountedError");
 }
 
+[[noreturn]] inline void mps_parser_throw(error_type_t error_type, const char* msg)
+{
+  throw std::logic_error("{\"MPS_PARSER_ERROR_TYPE\": \"" + error_to_string(error_type) +
+                         "\", \"msg\": " + "\"" + std::string(msg) + "\"}");
+}
+
+/**
+ * @brief Report an unrecoverable parser error.
+ *
+ * @param[error_type_t] error enum error type
+ * @param[const char *] fmt String format for error message
+ * @param variable set of arguments used for fmt
+ * @throw std::logic_error always
+ */
+[[noreturn]] inline void mps_parser_fail(error_type_t error_type, const char* fmt, ...)
+{
+  va_list args;
+  va_start(args, fmt);
+  char msg[2048];
+  vsnprintf(msg, sizeof(msg), fmt, args);
+  va_end(args);
+  mps_parser_throw(error_type, msg);
+}
+
 /**
  * @brief Function for checking (pre-)conditions that throws an exception when a
  * condition is false
@@ -52,9 +76,7 @@ inline void mps_parser_expects(bool cond, error_type_t error_type, const char* f
     char msg[2048];
     vsnprintf(msg, sizeof(msg), fmt, args);
     va_end(args);
-
-    throw std::logic_error("{\"MPS_PARSER_ERROR_TYPE\": \"" + error_to_string(error_type) +
-                           "\", \"msg\": " + "\"" + std::string(msg) + "\"}");
+    mps_parser_throw(error_type, msg);
   }
 }
 

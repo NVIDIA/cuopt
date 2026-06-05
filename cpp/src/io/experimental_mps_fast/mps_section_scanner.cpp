@@ -1,8 +1,9 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights
 // reserved. SPDX-License-Identifier: Apache-2.0
 
 #include "mps_section_scanner.hpp"
-#include "simd_compat.hpp"
+
+#include <utilities/error.hpp>
 
 #include <algorithm>
 #include <cstdint>
@@ -10,7 +11,14 @@
 #include <initializer_list>
 #include <stdexcept>
 
+#include <simde/x86/avx2.h>
+#include <simde/x86/sse4.2.h>
+
 namespace mps_fast {
+
+using cuopt::linear_programming::io::error_type_t;
+using cuopt::linear_programming::io::mps_parser_expects;
+using cuopt::linear_programming::io::mps_parser_fail;
 
 namespace {
 
@@ -52,7 +60,7 @@ std::size_t mps_phase_registry_t::phase_index(mps_phase_kind phase)
     case mps_phase_kind::ranges: return 5;
     case mps_phase_kind::quadratic: return 6;
   }
-  throw std::runtime_error("invalid MPS phase kind");
+  mps_parser_fail(error_type_t::RuntimeError, "invalid MPS phase kind");
 }
 
 void mps_phase_registry_t::publish(mps_phase_kind phase, mps_phase_range_t range)
@@ -277,7 +285,8 @@ void mps_section_block_scanner_t::observe_block(std::size_t block_index,
                                                 const char* end)
 {
   if (block_index >= block_count_) {
-    throw std::runtime_error("MPS section scanner observed invalid LZ4 block index");
+    mps_parser_fail(error_type_t::RuntimeError,
+                    "MPS section scanner observed invalid LZ4 block index");
   }
 
   scan_section_range(begin, end, false);

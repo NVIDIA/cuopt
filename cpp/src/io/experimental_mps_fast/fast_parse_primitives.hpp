@@ -1,20 +1,20 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights
-// reserved. SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 #pragma once
 
-#include "simd_compat.hpp"
+#include "fast_fp64_parser.hpp"
 
-#include <array>
 #include <cctype>
-#include <cmath>
 #include <cstdarg>
 #include <cstddef>
 #include <cstdint>
-#include <cstdio>
 #include <stdexcept>
 #include <string_view>
 #include <utility>
+
+#include <simde/x86/avx2.h>
+#include <simde/x86/sse4.2.h>
 
 #ifndef __likely
 #define __likely(x) __builtin_expect(!!(x), 1)
@@ -26,104 +26,14 @@
 
 namespace mps_fast {
 
-inline constexpr int EXP10_TABLE_MAX = 308;
-
-constexpr double constexpr_pow10(int exp)
-{
-  if (exp == 0) return 1.0;
-  double result = 1.0;
-  if (exp > 0) {
-    for (int i = 0; i < exp; ++i)
-      result *= 10.0;
-  } else {
-    for (int i = 0; i > exp; --i)
-      result /= 10.0;
-  }
-  return result;
-}
-
-constexpr auto make_exp10_table()
-{
-  std::array<double, EXP10_TABLE_MAX * 2 + 1> table{};
-  for (int i = -EXP10_TABLE_MAX; i <= EXP10_TABLE_MAX; ++i) {
-    table[(size_t)(i + EXP10_TABLE_MAX)] = constexpr_pow10(i);
-  }
-  return table;
-}
-
-inline constexpr auto table_exp10 = make_exp10_table();
+static inline void reset_number_parse_stats() {}
+static inline void print_number_parse_stats() {}
 
 static inline bool is_digit_byte(char c) noexcept { return c >= '0' && c <= '9'; }
 
-// Honestly, it's pretty bare bones as it is. It could take advantage of SIMD/SWAR
-// or use the Eisel-Lemire trick. Would have to be validated through benchmarking
-// but usually MPS files use simple enough coefficients
 static inline double fast_atof_core(const char*& data, const char* end)
 {
-  double sign = 1.0;
-  if (data < end && *data == '-') {
-    sign = -1.0;
-    ++data;
-  } else if (data < end && *data == '+') {
-    ++data;
-  }
-
-  uint64_t significand   = 0;
-  int decimal_exponent   = 0;
-  int significant_digits = 0;
-  bool seen_dot          = false;
-
-  while (data < end) {
-    char c = *data;
-    if (is_digit_byte(c)) {
-      int digit = c - '0';
-      if (seen_dot) { --decimal_exponent; }
-      if (significand != 0 || digit != 0) {
-        // FP64 can't represent more than that
-        if (significant_digits < 19) {
-          significand = significand * 10 + static_cast<uint64_t>(digit);
-          ++significant_digits;
-        } else if (!seen_dot) {
-          ++decimal_exponent;
-        }
-      }
-      ++data;
-    } else if (c == '.' && !seen_dot) {
-      seen_dot = true;
-      ++data;
-    } else {
-      break;
-    }
-  }
-
-  if (data < end && (*data == 'e' || *data == 'E' || *data == 'd' || *data == 'D')) {
-    ++data;
-    int exp_sign = 1;
-    if (data < end && *data == '-') {
-      exp_sign = -1;
-      ++data;
-    } else if (data < end && *data == '+') {
-      ++data;
-    }
-
-    int exponent = 0;
-    while (data < end && is_digit_byte(*data)) {
-      exponent = exponent * 10 + (*data - '0');
-      ++data;
-    }
-
-    exponent *= exp_sign;
-    decimal_exponent += exponent;
-  }
-
-  double result = static_cast<double>(significand);
-  if (decimal_exponent >= -EXP10_TABLE_MAX && decimal_exponent <= EXP10_TABLE_MAX) {
-    result *= table_exp10[static_cast<size_t>(decimal_exponent + EXP10_TABLE_MAX)];
-  } else {
-    result *= std::pow(10.0, decimal_exponent);
-  }
-
-  return sign * result;
+  return fp64::parse_fp64_advance(data, end);
 }
 
 static inline double fast_atof(const char* data, const char* end)
@@ -167,14 +77,14 @@ struct cursor_t {
     char msg_buf[512];
     std::vsnprintf(msg_buf, sizeof(msg_buf), msg, args);
     va_end(args);
-    char buf[1024];
-    std::snprintf(buf, sizeof(buf), "%zu:%zu: %s", line, col, msg_buf);
-    throw std::runtime_error(buf);
+    mps_parser_fail(error_type_t::ValidationError, "%zu:%zu: %s", line, col, msg_buf);
   }
 
   void advance(std::size_t n)
   {
-    if (ptr + n > end) { throw std::runtime_error("cursor advanced past end of file"); }
+    if (ptr + n > end) {
+      mps_parser_fail(error_type_t::ValidationError, "cursor advanced past end of file");
+    }
     ptr += n;
   }
 

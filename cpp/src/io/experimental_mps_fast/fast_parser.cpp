@@ -1,5 +1,7 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights
 // reserved. SPDX-License-Identifier: Apache-2.0
+
+#define MPS_FAST_TIMERS
 
 #include "fast_parser.hpp"
 #include "fast_parse_primitives.hpp"
@@ -1337,14 +1339,38 @@ static const char* find_next_line(const char* p, const char* end)
   return p;
 }
 
-static std::vector<BoundsChunkBoundary> compute_line_chunk_boundaries(const char* section_start,
-                                                                      const char* section_end,
-                                                                      int num_threads)
+static std::string_view peek_bounds_line_var_name(const char* line_start, const char* end)
+{
+  const char* p = line_start;
+  for (int field = 0; field < 2; ++field) {
+    while (p < end && *p <= ' ' && *p != '\n')
+      p++;
+    while (p < end && *p > ' ')
+      p++;
+  }
+  while (p < end && *p <= ' ' && *p != '\n')
+    p++;
+  const char* var_start = p;
+  while (p < end && *p > ' ')
+    p++;
+  return std::string_view(var_start, (size_t)(p - var_start));
+}
+
+static const char* find_line_start(const char* section_start, const char* p)
+{
+  while (p > section_start && p[-1] != '\n')
+    --p;
+  return p;
+}
+
+static std::vector<BoundsChunkBoundary> compute_bounds_chunk_boundaries(const char* section_start,
+                                                                        const char* section_end,
+                                                                        int num_threads)
 {
   scoped_timer_t timer("bounds_compute_chunk_boundaries");
 
-  size_t total_size = (size_t)(section_end - section_start);
-  size_t chunk_size = total_size / (size_t)num_threads;
+  const size_t total_size = (size_t)(section_end - section_start);
+  const size_t chunk_size = total_size / (size_t)num_threads;
 
   std::vector<BoundsChunkBoundary> boundaries((size_t)num_threads);
   boundaries[0].start = section_start;
@@ -1352,9 +1378,21 @@ static std::vector<BoundsChunkBoundary> compute_line_chunk_boundaries(const char
     if (t == num_threads - 1) {
       boundaries[(size_t)t].end = section_end;
     } else {
-      const char* boundary            = section_start + (size_t)(t + 1) * chunk_size;
-      boundaries[(size_t)t].end       = find_next_line(boundary, section_end);
-      boundaries[(size_t)t + 1].start = boundaries[(size_t)t].end;
+      const char* boundary =
+        find_next_line(section_start + (size_t)(t + 1) * chunk_size, section_end);
+
+      // Keep consecutive BOUNDS records for the same variable in one chunk.
+      // Then each thread owns full LO/UP-style groups and can apply file order locally.
+      while (boundary < section_end) {
+        const char* prev_line = find_line_start(section_start, boundary - 1);
+        const auto prev_var   = peek_bounds_line_var_name(prev_line, section_end);
+        const auto next_var   = peek_bounds_line_var_name(boundary, section_end);
+        if (prev_var.empty() || next_var.empty() || prev_var != next_var) { break; }
+        boundary = find_next_line(boundary, section_end);
+      }
+
+      boundaries[(size_t)t].end       = boundary;
+      boundaries[(size_t)t + 1].start = boundary;
     }
   }
   return boundaries;
@@ -1580,6 +1618,23 @@ static void merge_chunk_results_to_csr(parse_state_t<i_t, f_t>& state,
     }
   }
   size_t total_cols = global_col_offset[num_chunks];
+  if constexpr (std::numeric_limits<i_t>::max() < std::numeric_limits<int64_t>::max()) {
+    const size_t index_max = (size_t)std::numeric_limits<i_t>::max();
+    if (total_nnz > index_max) {
+      mps_parser_fail(error_type_t::RuntimeError,
+                      "fast MPS parser requires 64-bit indices: nnz=%zu exceeds index max=%zu",
+                      total_nnz,
+                      index_max);
+    }
+    if (total_cols > index_max || (size_t)n_rows > index_max) {
+      mps_parser_fail(error_type_t::RuntimeError,
+                      "fast MPS parser requires 64-bit indices: rows=%zu cols=%zu exceed index "
+                      "max=%zu",
+                      (size_t)n_rows,
+                      total_cols,
+                      index_max);
+    }
+  }
   {
     scoped_timer_t timer("columns_dense_metadata");
     bool dense_ok   = total_cols > 0;
@@ -1986,7 +2041,7 @@ static bool parse_bounds_section_parallel_dense(parse_state_t<i_t, f_t>& state,
     size_t comments         = 0;
     size_t min_var          = SIZE_MAX;
     size_t max_var          = 0;
-    size_t non_strict_order = 0;
+    size_t decreasing_order = 0;
     bool saw_integer_type   = false;
     bool saw_negative_upper = false;
     const char* error_ptr   = nullptr;
@@ -1994,7 +2049,8 @@ static bool parse_bounds_section_parallel_dense(parse_state_t<i_t, f_t>& state,
   };
 
   std::vector<BoundsParallelStats> stats((size_t)num_threads);
-  auto boundaries = compute_line_chunk_boundaries(bounds_body_start, bounds_body_end, num_threads);
+  auto boundaries =
+    compute_bounds_chunk_boundaries(bounds_body_start, bounds_body_end, num_threads);
 
   std::vector<uint8_t> bound_seen;
   {
@@ -2005,8 +2061,8 @@ static bool parse_bounds_section_parallel_dense(parse_state_t<i_t, f_t>& state,
   {
     scoped_timer_t timer(use_dense_lookup ? "parse_bounds_parallel_dense"
                                           : "parse_bounds_parallel_ordered_hint");
-    // Duplicate or non-monotone BOUNDS updates are file-order dependent. Parse
-    // optimistically, then accept only if chunk summaries prove strict order.
+    // Repeated BOUNDS for the same variable are safe inside a group-owned chunk.
+    // Parse optimistically, then accept only if chunk summaries prove no backward jumps.
 #pragma omp parallel for schedule(static) num_threads(num_threads)
     for (int t = 0; t < num_threads; ++t) {
       auto& local = stats[(size_t)t];
@@ -2073,7 +2129,7 @@ static bool parse_bounds_section_parallel_dense(parse_state_t<i_t, f_t>& state,
           local.lines++;
           local.min_var = std::min(local.min_var, var_idx);
           local.max_var = std::max(local.max_var, var_idx);
-          if (prev_var != SIZE_MAX && var_idx <= prev_var) { local.non_strict_order++; }
+          if (prev_var != SIZE_MAX && var_idx < prev_var) { local.decreasing_order++; }
           prev_var = var_idx;
 
           bool first_bound_for_var = bound_seen[var_idx] == 0;
@@ -2152,7 +2208,7 @@ static bool parse_bounds_section_parallel_dense(parse_state_t<i_t, f_t>& state,
   }
 
   size_t dense_misses     = 0;
-  size_t non_strict_order = 0;
+  size_t decreasing_order = 0;
   size_t overlap_chunks   = 0;
   size_t prev_max         = SIZE_MAX;
   for (int t = 0; t < num_threads; ++t) {
@@ -2162,21 +2218,21 @@ static bool parse_bounds_section_parallel_dense(parse_state_t<i_t, f_t>& state,
       cursor.error("%s", local.error_msg);
     }
     dense_misses += local.dense_misses;
-    non_strict_order += local.non_strict_order;
+    decreasing_order += local.decreasing_order;
     if (local.lines > 0) {
       if (prev_max != SIZE_MAX && local.min_var <= prev_max) { overlap_chunks++; }
       prev_max = local.max_var;
     }
   }
 
-  const bool order_safe = dense_misses == 0 && non_strict_order == 0 && overlap_chunks == 0;
+  const bool order_safe = dense_misses == 0 && decreasing_order == 0 && overlap_chunks == 0;
 
   if (!order_safe) {
     std::fprintf(stderr,
                  "[WARN] parallel BOUNDS fallback to serial: lookup_misses=%zu "
-                 "non_strict_order=%zu overlap_chunks=%zu\n",
+                 "decreasing_order=%zu overlap_chunks=%zu\n",
                  dense_misses,
-                 non_strict_order,
+                 decreasing_order,
                  overlap_chunks);
     cursor.ptr = bounds_body_start;
     return false;
@@ -3010,26 +3066,30 @@ static small_raw_read_t try_read_small_raw_file(const std::string& path)
 {
   FILE* file = std::fopen(path.c_str(), "rb");
   if (file == nullptr) {
-    throw std::runtime_error("Failed to open raw MPS file '" + path + "': " + std::strerror(errno));
+    mps_parser_fail(error_type_t::RuntimeError,
+                    "Failed to open raw MPS file '%s': %s",
+                    path.c_str(),
+                    std::strerror(errno));
   }
   std::unique_ptr<FILE, decltype(&std::fclose)> file_guard(file, &std::fclose);
 
   if (std::fseek(file, 0, SEEK_END) != 0) {
-    throw std::runtime_error("Failed to seek raw MPS file '" + path + "'");
+    mps_parser_fail(error_type_t::RuntimeError, "Failed to seek raw MPS file '%s'", path.c_str());
   }
   long file_size_long = std::ftell(file);
   if (file_size_long < 0) {
-    throw std::runtime_error("Failed to determine raw MPS file size '" + path + "'");
+    mps_parser_fail(
+      error_type_t::RuntimeError, "Failed to determine raw MPS file size '%s'", path.c_str());
   }
   std::size_t file_size = static_cast<std::size_t>(file_size_long);
   if (file_size > MPS_SMALL_RAW_FILE_BYTES) { return {}; }
   if (std::fseek(file, 0, SEEK_SET) != 0) {
-    throw std::runtime_error("Failed to rewind raw MPS file '" + path + "'");
+    mps_parser_fail(error_type_t::RuntimeError, "Failed to rewind raw MPS file '%s'", path.c_str());
   }
 
   std::vector<char> buffer(file_size);
   if (file_size != 0 && std::fread(buffer.data(), 1, file_size, file) != file_size) {
-    throw std::runtime_error("Failed to read raw MPS file '" + path + "'");
+    mps_parser_fail(error_type_t::RuntimeError, "Failed to read raw MPS file '%s'", path.c_str());
   }
   return {true, std::move(buffer)};
 }
@@ -3116,7 +3176,8 @@ cuopt::linear_programming::io::mps_data_model_t<i_t, f_t> parse_mps_fast_file(
     return parse_mps_fast_stream<RawInputStream, i_t, f_t>(
       stream, "parse_mps_fast_file_raw (total)", "task_raw_read");
   }
-  throw std::runtime_error("single-path parser supports raw read and LZ4 inputs only");
+  mps_parser_fail(error_type_t::RuntimeError,
+                  "single-path parser supports raw read and LZ4 inputs only");
 }
 
 template cuopt::linear_programming::io::mps_data_model_t<int, float> parse_mps_fast_file(

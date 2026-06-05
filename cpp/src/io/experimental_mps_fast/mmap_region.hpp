@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights
 // reserved. SPDX-License-Identifier: Apache-2.0
 
 #pragma once
@@ -10,11 +10,18 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+
+#include <utilities/error.hpp>
+
 #include <limits>
 #include <stdexcept>
 #include <string>
 
 namespace mps_fast {
+
+using cuopt::linear_programming::io::error_type_t;
+using cuopt::linear_programming::io::mps_parser_expects;
+using cuopt::linear_programming::io::mps_parser_fail;
 
 // Move-only owner for a Linux mmap range. Fixed sub-maps inside a reserved range
 // are still released by unmapping the owning outer range.
@@ -51,8 +58,8 @@ class mmap_region_t {
   {
     void* ptr = ::mmap(address, size, prot, flags, fd, offset);
     if (ptr == MAP_FAILED) {
-      throw std::runtime_error(std::string("mmap failed for ") + context + ": " +
-                               std::strerror(errno));
+      mps_parser_fail(
+        error_type_t::RuntimeError, "mmap failed for %s: %s", context, std::strerror(errno));
     }
     return mmap_region_t(ptr, size);
   }
@@ -66,17 +73,18 @@ class mmap_region_t {
     std::size_t size, std::size_t alignment, int prot, int flags, const char* context)
   {
     if (alignment == 0 || (alignment & (alignment - 1)) != 0) {
-      throw std::runtime_error("mmap aligned allocation requires power-of-two alignment");
+      mps_parser_fail(error_type_t::RuntimeError,
+                      "mmap aligned allocation requires power-of-two alignment");
     }
     if (size > std::numeric_limits<std::size_t>::max() - alignment) {
-      throw std::runtime_error("mmap aligned allocation size overflow");
+      mps_parser_fail(error_type_t::OutOfMemoryError, "mmap aligned allocation size overflow");
     }
 
     std::size_t raw_size = size + alignment;
     void* raw            = ::mmap(nullptr, raw_size, prot, flags | MAP_ANONYMOUS, -1, 0);
     if (raw == MAP_FAILED) {
-      throw std::runtime_error(std::string("mmap failed for ") + context + ": " +
-                               std::strerror(errno));
+      mps_parser_fail(
+        error_type_t::RuntimeError, "mmap failed for %s: %s", context, std::strerror(errno));
     }
 
     uintptr_t raw_addr     = reinterpret_cast<uintptr_t>(raw);
@@ -93,8 +101,8 @@ class mmap_region_t {
   {
     void* ptr = ::mmap(address, size, prot, flags | MAP_FIXED, fd, offset);
     if (ptr == MAP_FAILED) {
-      throw std::runtime_error(std::string("mmap failed for ") + context + ": " +
-                               std::strerror(errno));
+      mps_parser_fail(
+        error_type_t::RuntimeError, "mmap failed for %s: %s", context, std::strerror(errno));
     }
   }
 

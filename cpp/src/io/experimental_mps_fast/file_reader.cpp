@@ -1,8 +1,10 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights
 // reserved. SPDX-License-Identifier: Apache-2.0
 
 #include "file_reader.hpp"
 #include "nvtx_ranges.hpp"
+
+#include <utilities/error.hpp>
 
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -23,6 +25,10 @@
 #include <vector>
 
 namespace mps_fast {
+
+using cuopt::linear_programming::io::error_type_t;
+using cuopt::linear_programming::io::mps_parser_expects;
+using cuopt::linear_programming::io::mps_parser_fail;
 
 char* string_buffer;
 char* string_buffer_ptr;
@@ -65,7 +71,10 @@ std::size_t get_file_size(int fd, const std::string& path)
 {
   struct stat st;
   if (::fstat(fd, &st) != 0) {
-    throw std::runtime_error("Failed to stat file '" + path + "': " + std::strerror(errno));
+    mps_parser_fail(error_type_t::RuntimeError,
+                    "Failed to stat file '%s': %s",
+                    path.c_str(),
+                    std::strerror(errno));
   }
   return static_cast<std::size_t>(st.st_size);
 }
@@ -86,7 +95,7 @@ std::size_t round_up_to_multiple(std::size_t value, std::size_t alignment)
   if (remainder == 0) { return value; }
   std::size_t increment = alignment - remainder;
   if (value > std::numeric_limits<std::size_t>::max() - increment) {
-    throw std::runtime_error("allocation size overflow");
+    mps_parser_fail(error_type_t::OutOfMemoryError, "allocation size overflow");
   }
   return value + increment;
 }
@@ -98,7 +107,10 @@ RawInputStream::RawInputStream(const std::string& path) : path_(path)
   MPS_NVTX_RANGE("raw_input_construct", nvtx::colors::io);
   fd_ = ::open(path.c_str(), O_RDONLY);
   if (fd_ < 0) {
-    throw std::runtime_error("Failed to open raw MPS file '" + path + "': " + std::strerror(errno));
+    mps_parser_fail(error_type_t::RuntimeError,
+                    "Failed to open raw MPS file '%s': %s",
+                    path.c_str(),
+                    std::strerror(errno));
   }
 
   file_size_    = get_file_size(fd_, path);
@@ -173,11 +185,15 @@ void RawInputStream::run_decode_tasks()
           fd_, output_data_ + offset + done, size - done, static_cast<off_t>(offset + done));
         if (got < 0) {
           if (errno == EINTR) { continue; }
-          throw std::runtime_error("Failed to pread raw MPS file '" + path_ +
-                                   "': " + std::strerror(errno));
+          mps_parser_fail(error_type_t::RuntimeError,
+                          "Failed to pread raw MPS file '%s': %s",
+                          path_.c_str(),
+                          std::strerror(errno));
         }
         if (got == 0) {
-          throw std::runtime_error("Unexpected EOF while reading raw MPS file '" + path_ + "'");
+          mps_parser_fail(error_type_t::RuntimeError,
+                          "Unexpected EOF while reading raw MPS file '%s'",
+                          path_.c_str());
         }
         done += static_cast<std::size_t>(got);
       }
@@ -243,7 +259,8 @@ FileReadMethod effective_file_read_method(const std::string& path, FileReadMetho
 {
   if (has_lz4_extension(path)) { return FileReadMethod::Lz4; }
   if (method == FileReadMethod::Lz4) {
-    throw std::runtime_error("lz4 read method requires a .lz4 input: " + path);
+    mps_parser_fail(
+      error_type_t::ValidationError, "lz4 read method requires a .lz4 input: %s", path.c_str());
   }
   return method;
 }
