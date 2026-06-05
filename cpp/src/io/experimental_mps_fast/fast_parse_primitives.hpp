@@ -26,124 +26,6 @@
 
 namespace mps_fast {
 
-// double values in MPS data rarely need more than this many fractional digits.
-inline constexpr double decimals[16][10] = {
-  {0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9},
-  {0.00, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09},
-  {0.000, 0.001, 0.002, 0.003, 0.004, 0.005, 0.006, 0.007, 0.008, 0.009},
-  {0.0000, 0.0001, 0.0002, 0.0003, 0.0004, 0.0005, 0.0006, 0.0007, 0.0008, 0.0009},
-  {0.00000, 0.00001, 0.00002, 0.00003, 0.00004, 0.00005, 0.00006, 0.00007, 0.00008, 0.00009},
-  {0.000000,
-   0.000001,
-   0.000002,
-   0.000003,
-   0.000004,
-   0.000005,
-   0.000006,
-   0.000007,
-   0.000008,
-   0.000009},
-  {0.0000000,
-   0.0000001,
-   0.0000002,
-   0.0000003,
-   0.0000004,
-   0.0000005,
-   0.0000006,
-   0.0000007,
-   0.0000008,
-   0.0000009},
-  {0.00000000,
-   0.00000001,
-   0.00000002,
-   0.00000003,
-   0.00000004,
-   0.00000005,
-   0.00000006,
-   0.00000007,
-   0.00000008,
-   0.00000009},
-  {0.000000000,
-   0.000000001,
-   0.000000002,
-   0.000000003,
-   0.000000004,
-   0.000000005,
-   0.000000006,
-   0.000000007,
-   0.000000008,
-   0.000000009},
-  {0.0000000000,
-   0.0000000001,
-   0.0000000002,
-   0.0000000003,
-   0.0000000004,
-   0.0000000005,
-   0.0000000006,
-   0.0000000007,
-   0.0000000008,
-   0.0000000009},
-  {0.00000000000,
-   0.00000000001,
-   0.00000000002,
-   0.00000000003,
-   0.00000000004,
-   0.00000000005,
-   0.00000000006,
-   0.00000000007,
-   0.00000000008,
-   0.00000000009},
-  {0.000000000000,
-   0.000000000001,
-   0.000000000002,
-   0.000000000003,
-   0.000000000004,
-   0.000000000005,
-   0.000000000006,
-   0.000000000007,
-   0.000000000008,
-   0.000000000009},
-  {0.0000000000000,
-   0.0000000000001,
-   0.0000000000002,
-   0.0000000000003,
-   0.0000000000004,
-   0.0000000000005,
-   0.0000000000006,
-   0.0000000000007,
-   0.0000000000008,
-   0.0000000000009},
-  {0.00000000000000,
-   0.00000000000001,
-   0.00000000000002,
-   0.00000000000003,
-   0.00000000000004,
-   0.00000000000005,
-   0.00000000000006,
-   0.00000000000007,
-   0.00000000000008,
-   0.00000000000009},
-  {0.000000000000000,
-   0.000000000000001,
-   0.000000000000002,
-   0.000000000000003,
-   0.000000000000004,
-   0.000000000000005,
-   0.000000000000006,
-   0.000000000000007,
-   0.000000000000008,
-   0.000000000000009},
-  {0.0000000000000000,
-   0.0000000000000001,
-   0.0000000000000002,
-   0.0000000000000003,
-   0.0000000000000004,
-   0.0000000000000005,
-   0.0000000000000006,
-   0.0000000000000007,
-   0.0000000000000008,
-   0.0000000000000009}};
-
 inline constexpr int EXP10_TABLE_MAX = 308;
 
 constexpr double constexpr_pow10(int exp)
@@ -173,42 +55,9 @@ inline constexpr auto table_exp10 = make_exp10_table();
 
 static inline bool is_digit_byte(char c) noexcept { return c >= '0' && c <= '9'; }
 
-static inline double fast_frac_atoi(const char*& data, const char* end)
-{
-  double val = 0.0;
-
-#define MPS_FAST_FRAC_DIGIT(i)                                   \
-  do {                                                           \
-    if (data >= end || !is_digit_byte(*data)) return val;        \
-    val += decimals[i][static_cast<unsigned char>(*data) & 0xF]; \
-    ++data;                                                      \
-  } while (0)
-
-  MPS_FAST_FRAC_DIGIT(0);
-  MPS_FAST_FRAC_DIGIT(1);
-  MPS_FAST_FRAC_DIGIT(2);
-  MPS_FAST_FRAC_DIGIT(3);
-  MPS_FAST_FRAC_DIGIT(4);
-  MPS_FAST_FRAC_DIGIT(5);
-  MPS_FAST_FRAC_DIGIT(6);
-  MPS_FAST_FRAC_DIGIT(7);
-  MPS_FAST_FRAC_DIGIT(8);
-  MPS_FAST_FRAC_DIGIT(9);
-  MPS_FAST_FRAC_DIGIT(10);
-  MPS_FAST_FRAC_DIGIT(11);
-  MPS_FAST_FRAC_DIGIT(12);
-  MPS_FAST_FRAC_DIGIT(13);
-  MPS_FAST_FRAC_DIGIT(14);
-  MPS_FAST_FRAC_DIGIT(15);
-
-#undef MPS_FAST_FRAC_DIGIT
-
-  while (data < end && is_digit_byte(*data)) {
-    ++data;
-  }
-  return val;
-}
-
+// Honestly, it's pretty bare bones as it is. It could take advantage of SIMD/SWAR
+// or use the Eisel-Lemire trick. Would have to be validated through benchmarking
+// but usually MPS files use simple enough coefficients
 static inline double fast_atof_core(const char*& data, const char* end)
 {
   double sign = 1.0;
@@ -219,17 +68,32 @@ static inline double fast_atof_core(const char*& data, const char* end)
     ++data;
   }
 
-  uint64_t int_part = 0;
-  while (data < end && is_digit_byte(*data)) {
-    int_part = int_part * 10 + (*data - '0');
-    ++data;
-  }
+  uint64_t significand   = 0;
+  int decimal_exponent   = 0;
+  int significant_digits = 0;
+  bool seen_dot          = false;
 
-  double result = static_cast<double>(int_part);
-
-  if (data < end && *data == '.') {
-    ++data;
-    result += fast_frac_atoi(data, end);
+  while (data < end) {
+    char c = *data;
+    if (is_digit_byte(c)) {
+      int digit = c - '0';
+      if (seen_dot) { --decimal_exponent; }
+      if (significand != 0 || digit != 0) {
+        // FP64 can't represent more than that
+        if (significant_digits < 19) {
+          significand = significand * 10 + static_cast<uint64_t>(digit);
+          ++significant_digits;
+        } else if (!seen_dot) {
+          ++decimal_exponent;
+        }
+      }
+      ++data;
+    } else if (c == '.' && !seen_dot) {
+      seen_dot = true;
+      ++data;
+    } else {
+      break;
+    }
   }
 
   if (data < end && (*data == 'e' || *data == 'E' || *data == 'd' || *data == 'D')) {
@@ -249,11 +113,14 @@ static inline double fast_atof_core(const char*& data, const char* end)
     }
 
     exponent *= exp_sign;
-    if (exponent >= -EXP10_TABLE_MAX && exponent <= EXP10_TABLE_MAX) {
-      result *= table_exp10[static_cast<size_t>(exponent + EXP10_TABLE_MAX)];
-    } else {
-      result *= std::pow(10.0, exponent);
-    }
+    decimal_exponent += exponent;
+  }
+
+  double result = static_cast<double>(significand);
+  if (decimal_exponent >= -EXP10_TABLE_MAX && decimal_exponent <= EXP10_TABLE_MAX) {
+    result *= table_exp10[static_cast<size_t>(decimal_exponent + EXP10_TABLE_MAX)];
+  } else {
+    result *= std::pow(10.0, decimal_exponent);
   }
 
   return sign * result;
@@ -352,17 +219,29 @@ struct cursor_t {
 
   void skip_ws() { ptr = simd_scan<true>(ptr, end); }
 
+  bool eol() const { return ptr < end && (*ptr == '\n' || *ptr == '\r'); }
+
+  void consume_eol()
+  {
+    if (ptr < end && *ptr == '\r') {
+      ptr++;
+      if (ptr < end && *ptr == '\n') { ptr++; }
+      return;
+    }
+    if (ptr < end && *ptr == '\n') { ptr++; }
+  }
+
   void skip_comment_line()
   {
-    while (!done() && *ptr != '\n') {
+    while (!done() && *ptr != '\n' && *ptr != '\r') {
       ptr++;
     }
-    if (!done()) ptr++;
+    consume_eol();
   }
 
   void skip_to_eol()
   {
-    while (!done() && *ptr != '\n') {
+    while (!done() && *ptr != '\n' && *ptr != '\r') {
       ptr++;
     }
   }
@@ -480,8 +359,6 @@ struct cursor_t {
     return {std::string_view(field1_start, field1_end_off),
             std::string_view(field1_start + field2_start_off, field2_end_off - field2_start_off)};
   }
-
-  bool eol() const { return ptr < end && *ptr == '\n'; }
 };
 
 static inline void expect(cursor_t& cursor, const char* field)
@@ -494,7 +371,7 @@ static inline void accept_comment_line(cursor_t& cursor)
 {
   for (;;) {
     while (!cursor.done() && cursor.eol()) {
-      cursor.advance(1);
+      cursor.consume_eol();
     }
     if (cursor.done() || (cursor.ptr[0] != '*' && cursor.ptr[0] != '$')) { return; }
     cursor.skip_comment_line();
@@ -507,7 +384,7 @@ static inline void expect_eol(cursor_t& cursor)
 
   for (;;) {
     while (cursor.eol()) {
-      cursor.advance(1);
+      cursor.consume_eol();
     }
     if (__unlikely(cursor.done())) { return; }
 

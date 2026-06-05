@@ -9,6 +9,7 @@
 #include <omp.h>
 #endif
 
+#ifndef _WIN32
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -16,6 +17,7 @@
 #include <unistd.h>
 #include <cerrno>
 #include <cstring>
+#endif
 
 #include <algorithm>
 #include <atomic>
@@ -44,9 +46,9 @@ constexpr std::size_t lz4_pipeline_batch_bytes          = 64ull * 1024ull * 1024
 constexpr std::size_t lz4_input_max_io_threads          = 8;
 constexpr std::size_t lz4_no_content_size_reserve_ratio = 16;
 
-#if defined(MPS_PARSER_WITH_LZ4)
 using LZ4_decompress_safe_t = int (*)(const char*, char*, int, int);
 
+#if defined(MPS_PARSER_WITH_LZ4)
 struct lz4_runtime_t {
   void* handle                          = nullptr;
   LZ4_decompress_safe_t decompress_safe = nullptr;
@@ -54,28 +56,28 @@ struct lz4_runtime_t {
   lz4_runtime_t()
   {
     for (const char* soname : {"liblz4.so.1", "liblz4.so"}) {
-      handle = dlopen(soname, RTLD_LAZY);
+      handle = ::dlopen(soname, RTLD_LAZY);
       if (handle != nullptr) { break; }
     }
     if (handle == nullptr) {
       throw std::logic_error(
         "Could not open .mps.lz4 file since liblz4 was not found "
-        "(tried liblz4.so.1, liblz4.so). In order to open .mps.lz4 files "
-        "directly, please ensure liblz4 is installed. Alternatively, decompress "
-        "the .lz4 file manually and open the uncompressed .mps file.");
+        "(tried liblz4.so.1, liblz4.so). Decompress the .lz4 file manually "
+        "or install liblz4.");
     }
 
-    decompress_safe = reinterpret_cast<LZ4_decompress_safe_t>(dlsym(handle, "LZ4_decompress_safe"));
+    decompress_safe =
+      reinterpret_cast<LZ4_decompress_safe_t>(::dlsym(handle, "LZ4_decompress_safe"));
     if (decompress_safe == nullptr) {
       throw std::logic_error(
-        "Error loading liblz4! Library version might be incompatible. Please decompress "
-        "the .lz4 file manually and open the uncompressed .mps file.");
+        "Error loading LZ4_decompress_safe from liblz4. Decompress the .lz4 file manually "
+        "or install a compatible liblz4.");
     }
   }
 
   ~lz4_runtime_t()
   {
-    if (handle != nullptr) { dlclose(handle); }
+    if (handle != nullptr) { ::dlclose(handle); }
   }
 
   lz4_runtime_t(const lz4_runtime_t&)            = delete;
@@ -124,9 +126,12 @@ int open_lz4_fd(const std::string& path)
   return fd;
 }
 
+#ifndef _WIN32
 std::size_t system_page_size();
+#endif
 std::size_t round_up_to_multiple(std::size_t value, std::size_t alignment);
 
+#ifndef _WIN32
 class FileDescriptor {
  public:
   explicit FileDescriptor(int fd) : fd_(fd) {}
@@ -144,6 +149,8 @@ class FileDescriptor {
  private:
   int fd_;
 };
+
+#endif
 
 uint32_t read_le32(const char* ptr)
 {
@@ -181,6 +188,7 @@ std::size_t checked_size(uint64_t value, const char* label)
   return static_cast<std::size_t>(value);
 }
 
+#ifndef _WIN32
 std::size_t get_file_size(int fd, const std::string& path)
 {
   struct stat st;
@@ -191,6 +199,9 @@ std::size_t get_file_size(int fd, const std::string& path)
   return static_cast<std::size_t>(st.st_size);
 }
 
+#endif
+
+#ifndef _WIN32
 std::size_t system_page_size()
 {
   static std::size_t page_size = [] {
@@ -199,6 +210,7 @@ std::size_t system_page_size()
   }();
   return page_size;
 }
+#endif
 
 std::size_t round_up_to_multiple(std::size_t value, std::size_t alignment)
 {
@@ -212,6 +224,7 @@ std::size_t round_up_to_multiple(std::size_t value, std::size_t alignment)
   return value + increment;
 }
 
+#ifndef _WIN32
 std::size_t checked_mul(std::size_t a, std::size_t b, const char* label)
 {
   if (a != 0 && b > std::numeric_limits<std::size_t>::max() / a) {
@@ -320,12 +333,14 @@ class lz4_resident_windows_t {
 
   std::vector<lz4_resident_window_t>& windows_;
 };
+#endif
 
 }  // namespace
 
 Lz4InputStream::Lz4InputStream(const std::string& path) : path_(path)
 {
   MPS_NVTX_RANGE("lz4_input_construct", nvtx::colors::io);
+
   ensure_lz4_runtime_available();
 
   fd_ = open_lz4_fd(path);

@@ -162,35 +162,42 @@ void RawInputStream::run_decode_tasks()
   };
 
   auto read_window = [&](std::size_t index) {
+    MPS_NVTX_RANGE("raw_window_read", nvtx::colors::io);
     std::size_t offset = index * window_bytes_;
     std::size_t size   = std::min(window_bytes_, file_size_ - offset);
     std::size_t done   = 0;
-    while (done < size) {
-      ssize_t got =
-        ::pread(fd_, output_data_ + offset + done, size - done, static_cast<off_t>(offset + done));
-      if (got < 0) {
-        if (errno == EINTR) { continue; }
-        throw std::runtime_error("Failed to pread raw MPS file '" + path_ +
-                                 "': " + std::strerror(errno));
+    {
+      MPS_NVTX_RANGE("raw_window_pread", nvtx::colors::io);
+      while (done < size) {
+        ssize_t got = ::pread(
+          fd_, output_data_ + offset + done, size - done, static_cast<off_t>(offset + done));
+        if (got < 0) {
+          if (errno == EINTR) { continue; }
+          throw std::runtime_error("Failed to pread raw MPS file '" + path_ +
+                                   "': " + std::strerror(errno));
+        }
+        if (got == 0) {
+          throw std::runtime_error("Unexpected EOF while reading raw MPS file '" + path_ + "'");
+        }
+        done += static_cast<std::size_t>(got);
       }
-      if (got == 0) {
-        throw std::runtime_error("Unexpected EOF while reading raw MPS file '" + path_ + "'");
-      }
-      done += static_cast<std::size_t>(got);
     }
 
-    section_scanner_->observe_block(index, output_data_ + offset, output_data_ + offset + size);
-    frontier_mutex_.lock();
-    block_done_[index] = 1;
-    block_end_[index]  = offset + size;
-    std::size_t before = ready_bytes_;
-    while (next_block_ < block_done_.size() && block_done_[next_block_]) {
-      ready_bytes_ = block_end_[next_block_];
-      ++next_block_;
+    {
+      MPS_NVTX_RANGE("raw_window_scan_publish", nvtx::colors::io);
+      section_scanner_->observe_block(index, output_data_ + offset, output_data_ + offset + size);
+      frontier_mutex_.lock();
+      block_done_[index] = 1;
+      block_end_[index]  = offset + size;
+      std::size_t before = ready_bytes_;
+      while (next_block_ < block_done_.size() && block_done_[next_block_]) {
+        ready_bytes_ = block_end_[next_block_];
+        ++next_block_;
+      }
+      std::size_t after = ready_bytes_;
+      frontier_mutex_.unlock();
+      if (after > before) { section_scanner_->publish_ready(after); }
     }
-    std::size_t after = ready_bytes_;
-    frontier_mutex_.unlock();
-    if (after > before) { section_scanner_->publish_ready(after); }
   };
 
   std::vector<std::thread> workers;
@@ -199,6 +206,7 @@ void RawInputStream::run_decode_tasks()
     workers.emplace_back([&, t] {
       std::string thread_name = "raw-input-read-" + std::to_string(t);
       nvtx::name_current_thread(thread_name.c_str());
+      MPS_NVTX_RANGE("raw_worker_loop", nvtx::colors::io);
       while (!stop.load(std::memory_order_acquire)) {
         std::size_t index = next_window.fetch_add(1, std::memory_order_relaxed);
         if (index >= window_count_) { break; }
