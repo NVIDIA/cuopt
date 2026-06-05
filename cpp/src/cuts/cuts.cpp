@@ -408,12 +408,6 @@ void extend_clique_vertices(std::vector<i_t>& clique_vertices,
   const f_t sort_work =
     candidate_size > 0.0 ? 2.0 * candidate_size * std::log2(candidate_size + 1.0) : 0.0;
   const f_t adj_set_build_cost = 2.0 * static_cast<f_t>(adj_set.size());
-  // P0-3 (2): account for the addtl_cliques scan that
-  // clique_table_t::check_adjacency performs on every adjacency probe.
-  // Baseline ignored this, so on instances with many addtl_clique entries
-  // the extension loop dominated cut-generation wall time without being
-  // attributed to clique cuts. avg_slice_size of var_clique_addtl is a
-  // robust proxy for the per-call addtl scan cost.
   const f_t addtl_cliques_scan_cost =
     1.0 + static_cast<f_t>(graph.var_clique_addtl.avg_slice_size());
   const f_t adj_check_cost = 5.0 + addtl_cliques_scan_cost;

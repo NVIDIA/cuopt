@@ -194,15 +194,10 @@ struct clique_table_t {
   std::vector<std::vector<i_t>> first;
   // keeps the additional cliques
   std::vector<addtl_clique_t<i_t, f_t>> addtl_cliques;
-  // var_idx → indices of `first` cliques that contain var_idx (CSR).
   csr_var_map_t<i_t> var_clique_first;
-  // var_idx → indices of `addtl_cliques` containing var_idx (as the extension
-  // vertex or as a base-suffix member).
   csr_var_map_t<i_t> var_clique_addtl;
   // var_idx -> position mapping for each first clique, enabling O(1) membership/position checks
   std::vector<std::unordered_map<i_t, i_t>> first_var_positions;
-  // var_idx → pairwise edges from cliques demoted by remove_small_cliques.
-  // Symmetric: edge (u, v) appears in both u's and v's slices.
   csr_var_map_t<i_t> small_clique_adj;
   // degrees of each vertex
   std::vector<i_t> var_degrees;
