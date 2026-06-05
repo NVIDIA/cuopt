@@ -531,8 +531,14 @@ clique_cut_build_status_t build_zero_half_cut(const std::vector<i_t>& cycle_vert
                "Zero-half cut lower bounds size mismatch");
   cuopt_assert(static_cast<size_t>(num_vars) <= xstar.size(), "Zero-half cut xstar size mismatch");
 
-  const i_t m              = static_cast<i_t>((cycle_size - 1) / 2);
-  const f_t f_m            = static_cast<f_t>(m);
+  const i_t m   = static_cast<i_t>((cycle_size - 1) / 2);
+  const f_t f_m = static_cast<f_t>(m);
+  // The guard above rejects even or <5 cycles, so the cycle decomposes as
+  // exactly 2m+1 literals with m >= 2. The whole zero-half lift (rhs = -m,
+  // unit cycle coefficients, m-weighted wheel centers) depends on this.
+  cuopt_assert(2 * m + 1 == static_cast<i_t>(cycle_size),
+               "Zero-half cut: cycle_size must equal 2m+1 (odd cycle)");
+  cuopt_assert(m >= 2, "Zero-half cut: odd cycle must have length >= 5 (m >= 2)");
   const f_t total_size     = static_cast<f_t>(cycle_size + wheel_centers.size());
   const f_t estimated_work = 8.0 * total_size + 2.0 * total_size * std::log2(total_size + 1.0);
   if (add_work_estimate(estimated_work, work_estimate, max_work_estimate)) {
@@ -617,9 +623,18 @@ clique_cut_build_status_t build_zero_half_cut(const std::vector<i_t>& cycle_vert
   cut.x.reserve(coeff_by_var.size());
   for (const auto& kv : coeff_by_var) {
     if (std::abs(kv.second) <= coeff_zero_tol) { continue; }
+    // Each variable appears at most once on the cycle (contributing +/-1) and
+    // at most once among the wheel centers (contributing +/-m), so no final
+    // coefficient can exceed 1 + m in magnitude. A larger value means a vertex
+    // was double-counted in accumulation.
+    cuopt_assert(std::abs(kv.second) <= f_m + static_cast<f_t>(1) + bound_tol,
+                 "Zero-half coefficient exceeds 1 + m (vertex double-counted?)");
     cut.i.push_back(kv.first);
     cut.x.push_back(kv.second);
   }
+  // Support is bounded by the number of distinct accumulated vertices.
+  cuopt_assert(cut.i.size() <= cycle_size + wheel_centers.size(),
+               "Zero-half cut support exceeds accumulated vertex count");
 
   if (cut.i.empty()) {
     ZERO_HALF_DEBUG("build_zero_half_cut empty support after accumulation");
@@ -768,6 +783,10 @@ bool dijkstra_odd_cycle(i_t source_local,
     return false;
   }
   total_weight = dist[target_idx];
+  // All G' edge weights are clamped to >= 0, so the shortest-path distance must
+  // be non-negative; a negative total means the clamp/relaxation invariant broke.
+  cuopt_assert(total_weight >= -static_cast<f_t>(1e-9),
+               "Zero-half Dijkstra shortest-path distance must be non-negative");
   if (cutoff > 0 && total_weight >= cutoff) {
     ZERO_HALF_DEBUG("dijkstra_odd_cycle path too long total=%g cutoff=%g",
                     static_cast<double>(total_weight),
@@ -783,8 +802,18 @@ bool dijkstra_odd_cycle(i_t source_local,
   cuopt_assert(!path.empty(), "Zero-half Dijkstra path empty");
   cuopt_assert(path.back() == source_idx, "Zero-half Dijkstra path missing source");
   std::reverse(path.begin(), path.end());
+  cuopt_assert(path.front() == source_idx, "Zero-half Dijkstra path must start at source");
+  cuopt_assert(path.back() == target_idx, "Zero-half Dijkstra path must end at target");
   // bipartite path from j1 to j2 must have odd number of edges
   cuopt_assert((path.size() % 2) == 0, "Zero-half bipartite path must have even node count");
+#ifdef ASSERT_MODE
+  // Every G' edge crosses between the two bipartite copies, so consecutive path
+  // nodes must live in opposite parts (part = bipartite_idx / num_local).
+  for (size_t k = 0; k + 1 < path.size(); ++k) {
+    cuopt_assert((path[k] / num_local) != (path[k + 1] / num_local),
+                 "Zero-half Dijkstra path must alternate bipartite parts");
+  }
+#endif
   ZERO_HALF_DEBUG("dijkstra_odd_cycle done path.size=%zu total_weight=%g pops=%lld",
                   path.size(),
                   static_cast<double>(total_weight),
@@ -889,6 +918,12 @@ bool path_to_odd_cycle(const std::vector<i_t>& bipartite_path,
     }
     cycle_vertices.push_back(global);
   }
+  // Each local-sequence entry maps to exactly one distinct CG vertex (duplicates
+  // were rejected above), so the extracted cycle keeps the odd length of the
+  // de-duplicated path.
+  cuopt_assert(cycle_vertices.size() == local_seq.size(),
+               "Zero-half cycle dropped vertices during global mapping");
+  cuopt_assert((cycle_vertices.size() % 2) == 1, "Zero-half extracted cycle must have odd length");
   ZERO_HALF_DEBUG("path_to_odd_cycle done cycle_vertices.size=%zu", cycle_vertices.size());
   return cycle_vertices.size() >= 5;
 }
@@ -1015,6 +1050,22 @@ void extend_to_odd_wheel(const std::vector<i_t>& cycle_vertices,
     }
     if (adj_to_wheel) { wheel_centers.push_back(candidate); }
   }
+#ifdef ASSERT_MODE
+  // Post-condition: the selected centers must form a clique that is fully
+  // adjacent to the cycle — each center adjacent to every cycle vertex and to
+  // every other center. This is exactly what makes the m-weighted wheel lift a
+  // valid zero-half inequality.
+  for (size_t a = 0; a < wheel_centers.size(); ++a) {
+    for (const auto cv : cycle_vertices) {
+      cuopt_assert(graph.check_adjacency(wheel_centers[a], cv),
+                   "Zero-half wheel center not adjacent to every cycle vertex");
+    }
+    for (size_t b = a + 1; b < wheel_centers.size(); ++b) {
+      cuopt_assert(graph.check_adjacency(wheel_centers[a], wheel_centers[b]),
+                   "Zero-half wheel centers must be mutually adjacent (clique)");
+    }
+  }
+#endif
   ZERO_HALF_DEBUG("extend_to_odd_wheel done wheel_centers.size=%zu", wheel_centers.size());
 }
 
@@ -3791,6 +3842,12 @@ bool cut_generation_t<i_t, f_t>::generate_zero_half_cuts(
       continue;
     }
     cycles_found++;
+    cuopt_assert(cycle_vertices.size() >= 5 && (cycle_vertices.size() % 2) == 1,
+                 "Zero-half separated cycle must be odd with length >= 5");
+    // dijkstra_odd_cycle only returns true when the path stays below the
+    // half-integer cutoff, the precondition for the cycle to yield a violation.
+    cuopt_assert(cutoff <= static_cast<f_t>(0) || total_weight < cutoff,
+                 "Zero-half cycle weight must be below cutoff");
     ZERO_HALF_DEBUG("cycle found s=%lld cycle_vertices.size=%zu",
                     static_cast<long long>(s),
                     cycle_vertices.size());
@@ -3828,6 +3885,10 @@ bool cut_generation_t<i_t, f_t>::generate_zero_half_cuts(
       return false;
     }
     if (build_status == clique_cut_build_status_t::CUT_ADDED) {
+      // Only violated cuts are worth pooling; build_zero_half_cut promised a
+      // violation > min_violation, so re-check it before we commit.
+      cuopt_assert(cut_rhs - cut.dot(xstar) > min_violation - bound_tol,
+                   "Zero-half cut added to pool must be violated by xstar");
       inequality_t<i_t, f_t> cut_inequality;
       cut_inequality.vector = cut;
       cut_inequality.rhs    = cut_rhs;
