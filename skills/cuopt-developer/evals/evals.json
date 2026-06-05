@@ -1,0 +1,49 @@
+[
+  {
+    "id": "dev-eval-001-run-mittelmann-lp-benchmark",
+    "question": "I want to run the Mittelmann LP benchmark suite against cuOpt. What are the exact steps, including any build flags and environment variables I need?",
+    "expected_skill": "cuopt-developer",
+    "expected_script": null,
+    "ground_truth": "The agent points to benchmarks/linear_programming/utils/benchmark_lp_mittelmann.sh as the entry point. Before running it, the user must build cuOpt with the BUILD_LP_BENCHMARKS=ON CMake flag (e.g. ./build.sh libcuopt -DBUILD_LP_BENCHMARKS=ON) so the solve_LP binary is produced in cpp/build/. The script calls benchmarks/linear_programming/utils/get_datasets.py with the -LPfeasible flag to download the Mittelmann LP feasible set from Plato/Netlib/Sztaki sources into benchmarks/linear_programming/datasets/. The script sets CUDA_MODULE_LOADING=EAGER before running the solver to simulate real production conditions. Each instance is solved with a 3600-second time limit via the solve_LP binary — not cuopt_cli. The agent notes solve_LP is only produced when BUILD_LP_BENCHMARKS is enabled and is a distinct binary from cuopt_cli.",
+    "expected_behavior": [
+      "Names benchmarks/linear_programming/utils/benchmark_lp_mittelmann.sh as the entry point",
+      "States the BUILD_LP_BENCHMARKS=ON CMake flag is required to produce the solve_LP binary",
+      "Distinguishes solve_LP from cuopt_cli — solve_LP is the binary used here",
+      "Mentions get_datasets.py -LPfeasible downloads the dataset before running",
+      "Mentions CUDA_MODULE_LOADING=EAGER is set to simulate real production conditions",
+      "States the default time limit per instance is 3600 seconds"
+    ]
+  },
+  {
+    "id": "dev-eval-002-run-miplib-benchmark",
+    "question": "How do I set up and run the full MIPLIB benchmark with cuOpt, writing per-instance log files and using a 10-minute time limit?",
+    "expected_skill": "cuopt-developer",
+    "expected_script": null,
+    "ground_truth": "The agent walks through the MIPLIB setup as documented in benchmarks/README.md. First create output directories (mkdir miplib_data miplib_result). Download the MIPLIB benchmark zip from https://miplib.zib.de/downloads/benchmark.zip into miplib_data/, unzip it, then decompress all .gz files with find miplib_data -name \"*.gz\" -exec gunzip {} \\; and remove any remaining .gz files. Run the benchmark with: benchmarks/linear_programming/run_mps_files.sh --path miplib_data/ --write-log-file --log-to-console false --output-dir miplib_result --time-limit 600 --presolve t > miplib_result/output.log 2>&1. The agent explains that --write-log-file writes a per-instance .log in miplib_result/, --presolve t enables presolve (defaults to true for MIP but must be stated explicitly here), --log-to-console false suppresses per-instance console output so the outer redirect captures clean progress, and cuopt_cli must be on PATH (built from source or installed). The script distributes MPS files across GPUs using a file-locking mechanism for load balancing.",
+    "expected_behavior": [
+      "Provides the full MIPLIB download and gunzip setup steps before running",
+      "Uses benchmarks/linear_programming/run_mps_files.sh (not solve_LP or cuopt_cli directly)",
+      "Includes --write-log-file to produce per-instance logs in miplib_result/",
+      "Includes --time-limit 600 for the 10-minute limit",
+      "Includes --presolve t to enable presolve for MIP",
+      "Mentions cuopt_cli must be on PATH / built from source",
+      "Explains that --log-to-console false keeps the outer redirect clean"
+    ]
+  },
+  {
+    "id": "dev-eval-003-benchmark-batching-multi-gpu",
+    "question": "I have 4 GPUs and want to run the MIPLIB benchmark in multi-GPU mode (2 GPUs per solve). I also want to split the work into 2 batches so I can run them on two machines in parallel. What flags do I use?",
+    "expected_skill": "cuopt-developer",
+    "expected_script": null,
+    "ground_truth": "The agent uses benchmarks/linear_programming/run_mps_files.sh. For 4 GPUs with 2 GPUs per instance: --ngpus 4 --gpus-per-instance 2. This creates 2 parallel solver instances each using a GPU pair; the script validates that GPUS_PER_INSTANCE is 1 or 2 and rejects any other value. To split across 2 machines: run batch 0 on machine 1 with --batch-num 0 --n-batches 2 and batch 1 on machine 2 with --batch-num 1 --n-batches 2. The script divides the MPS file list evenly by batch index. A complete invocation for machine 1: benchmarks/linear_programming/run_mps_files.sh --path miplib_data/ --ngpus 4 --gpus-per-instance 2 --time-limit 600 --output-dir results_batch0 --write-log-file --presolve t --batch-num 0 --n-batches 2. The agent also notes that CUDA_VISIBLE_DEVICES can override --ngpus to target specific GPU indices, and that the --cut-mode flag (default, no-cuts, flow-cover-only) is available for ablation studies comparing cut families.",
+    "expected_behavior": [
+      "Uses --ngpus 4 --gpus-per-instance 2 for 2-GPU-per-instance mode",
+      "Explains that --gpus-per-instance only accepts 1 or 2",
+      "Uses --batch-num 0 --n-batches 2 on machine 1 and --batch-num 1 --n-batches 2 on machine 2",
+      "Explains the script divides the file list evenly across batches",
+      "Provides a complete example command for one of the two batches",
+      "Mentions CUDA_VISIBLE_DEVICES can target specific GPU indices and overrides --ngpus",
+      "Mentions --cut-mode for ablation studies (at least names the flag)"
+    ]
+  }
+]
