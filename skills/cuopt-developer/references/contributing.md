@@ -74,6 +74,18 @@ A few non-YAGNI points worth keeping in mind:
 
 When in doubt, mirror how the surrounding cuOpt code handles the same concern.
 
+## Resolving Merge Conflicts
+
+Don't resolve a conflict by mechanically picking the side that looks like a superset. A small, local conflict (a few changed lines in one function) often sits on top of a larger architectural divergence — one branch refactored a mechanism the other left alone — and the conflict markers only show the tip of it. Picking "the bigger hunk" then strands the rest of that mechanism.
+
+Before choosing a side, reconstruct what each branch actually did:
+
+- Diff the conflicting symbols across **both branches and the merge base**, not just the two conflict hunks: `git show <branch>:<path>` and `git merge-base A B`. Watch for changes to a member's *type*, an ownership/lifetime model, or a synchronization/threading model (e.g. `std::future` → OpenMP task, `std::atomic` → `omp_atomic_t`). Those changes ripple beyond the conflict region.
+- Check how the **already-merged, non-conflicted files** use the symbol. If a caller (constructor call, factory, task spawn) was auto-merged to one branch's signature, the conflicted file must conform to that branch — keeping the other branch's member or wait logic leaves it dead.
+- When one branch *removed* a mechanism and the other *built on top of it*, the correct resolution is usually to adopt the removal (the newer baseline) and re-port the feature onto the new mechanism — not to keep both, which yields a member that is never set and a guard that never fires.
+
+A wrong merge resolution frequently **compiles cleanly and fails silently**: a dead pointer stays `nullptr`, the guard that depended on it never triggers, and a whole feature quietly disables itself with no error. Compilation is not evidence of a correct merge — trace the runtime wiring (who sets this field? who waits on it? is that path still reachable?) before declaring the conflict resolved.
+
 ## Common Tasks
 
 ### Adding a Solver Parameter
