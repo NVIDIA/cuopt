@@ -2707,11 +2707,17 @@ f_t barrier_solver_t<i_t, f_t>::compute_nonnegative_step_length(iteration_data_t
                                               stream_view_);
 }
 
-// Copy the current device search direction (dw, dx, dy, dv, dz) into d_*_aff_ buffers.
-// Called from gpu_compute_search_direction when snapshot_affine_direction is true, immediately
-// after the direction is fully formed and before the function returns. Mehrotra uses two separate
-// calls to gpu_compute_search_direction (affine then corrector); the corrector call overwrites
-// d_dx_ / d_dy_ / etc. but must not refresh d_*_aff_.
+/**
+ * @brief Copy the current device search direction into Mehrotra affine buffers.
+ *
+ * Device-to-device snapshot of (dw, dx, dy, dv, dz) into d_*_aff_. Called from
+ * gpu_compute_search_direction when snapshot_affine_direction is true, immediately
+ * after the direction is fully formed. The corrector step reuses d_dx_/d_dy_/etc.
+ * and must not refresh d_*_aff_.
+ *
+ * @param data   Per-iteration device state (d_dw_, d_dx_, ..., d_*_aff_).
+ * @param stream CUDA stream for resize and copy operations.
+ */
 template <typename i_t, typename f_t>
 void copy_affine_direction_to_device_buffers(iteration_data_t<i_t, f_t>& data,
                                              rmm::cuda_stream_view stream)
@@ -2720,6 +2726,8 @@ void copy_affine_direction_to_device_buffers(iteration_data_t<i_t, f_t>& data,
 
   auto copy_device_vec = [&](rmm::device_uvector<f_t>& dst,
                              const rmm::device_uvector<f_t>& src) {
+    cuopt_assert(dst.empty() || dst.size() == src.size(),
+                 "Buffer size mismatch in affine snapshot");
     dst.resize(src.size(), stream);
     if (src.size() > 0) { raft::copy(dst.data(), src.data(), src.size(), stream); }
   };
@@ -3485,9 +3493,6 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
     }
   }
 
-  // Ensure async GPU work (direction formation, optional d_*_aff_ snapshot, residual norms)
-  // is complete before the host reads return status or max_residual.
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
   return 0;
 }
 
@@ -3820,8 +3825,9 @@ void barrier_solver_t<i_t, f_t>::compute_final_direction(iteration_data_t<i_t, f
     cuopt_assert(std::isfinite(data.y[i]), "data.d_y_[i] is not finite");
   }
 
-  if (!data.d_dy_aff_.empty()) {
+  if (data.d_dy_aff_.size() > 0) {
     const auto dy_aff_host = host_copy(data.d_dy_aff_, stream_view_);
+    stream_view_.synchronize();
     for (i_t i = 0; i < static_cast<i_t>(dy_aff_host.size()); ++i) {
       cuopt_assert(std::isfinite(dy_aff_host[i]), "data.d_dy_aff_[i] is not finite");
     }

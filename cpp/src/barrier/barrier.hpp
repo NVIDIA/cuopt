@@ -100,6 +100,15 @@ class barrier_solver_t {
   f_t compute_nonnegative_step_length(iteration_data_t<i_t, f_t>& data,
                                       const rmm::device_uvector<f_t>& x,
                                       const rmm::device_uvector<f_t>& dx);
+  /**
+   * @brief Solve for a Mehrotra search direction on the GPU.
+   *
+   * When snapshot_affine_direction is true (affine predictor step), copies the completed
+   * direction into data.d_*_aff_ for compute_target_mu and compute_final_direction.
+   *
+   * @param snapshot_affine_direction If true, snapshot (dw, dx, dy, dv, dz) into d_*_aff_.
+   * @return 0 on success, a negative value on failure, or CONCURRENT_HALT_RETURN if halted.
+   */
   i_t gpu_compute_search_direction(iteration_data_t<i_t, f_t>& data,
                                    pinned_dense_vector_t<i_t, f_t>& dw,
                                    pinned_dense_vector_t<i_t, f_t>& dx,
