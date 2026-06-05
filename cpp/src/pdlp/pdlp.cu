@@ -563,6 +563,9 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   }
 
   // ----- 5. Build per-rank data -----
+  CUOPT_LOG_INFO("distributed_pdlp: building rank_data for %d parts ...",
+                 settings.distributed_pdlp_num_gpus);
+  auto rank_data_t0 = std::chrono::high_resolution_clock::now();
   std::vector<rank_data_t<i_t, f_t>> sub_pdlp_rank_data =
     partition_loader_t<i_t, f_t>::create_rank_data_from_parts(parts,
                                                               h_A_row_offsets,
@@ -575,6 +578,9 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
                                                               n_cstr,
                                                               n_vars,
                                                               nnz);
+  auto rank_data_t1 = std::chrono::high_resolution_clock::now();
+  CUOPT_LOG_INFO("distributed_pdlp: rank_data build done in %.3f s",
+                 std::chrono::duration<double>(rank_data_t1 - rank_data_t0).count());
 
   // ----- 6. Per-shard settings -----
   pdlp_solver_settings_t<i_t, f_t> sub_pdlp_settings                    = settings;
