@@ -2681,9 +2681,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   auto publish_cut_generation_time = [&](bool force_time_limit_value = false) {
     if (settings_.benchmark_info_ptr == nullptr) { return; }
     f_t cut_generation_time = toc(cut_generation_start_time);
-    if (force_time_limit_value || cut_generation_time > settings_.time_limit) {
-      cut_generation_time = settings_.time_limit;
-    }
+    if (force_time_limit_value) { cut_generation_time = settings_.time_limit; }
     if (cut_generation_time < static_cast<f_t>(0.0)) {
       cut_generation_time = static_cast<f_t>(0.0);
     }
