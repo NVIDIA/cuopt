@@ -3451,6 +3451,16 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
     }
   }
 
+  // Generate implied bound cuts
+  if (settings.implied_bound_cuts != 0) {
+    f_t cut_start_time = tic();
+    generate_implied_bound_cuts(lp, settings, var_types, xstar, start_time);
+    f_t cut_generation_time = toc(cut_start_time);
+    if (cut_generation_time > 1.0) {
+      settings.log.debug("Implied bounds cut generation time %.2f seconds\n", cut_generation_time);
+    }
+  }
+
   // Build the fractional conflict-graph subgraph once (resolving the async
   // clique-table future on the way) so both clique-cut and zero-half cut
   // separators consume the same vertex/weight/adjacency tables instead of
@@ -3491,16 +3501,6 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
   } else {
     ZERO_HALF_DEBUG("generate_cuts: zero_half_cuts disabled (setting=%d)",
                     static_cast<int>(settings.zero_half_cuts));
-  }
-
-  // Generate implied bound cuts
-  if (settings.implied_bound_cuts != 0) {
-    f_t cut_start_time = tic();
-    generate_implied_bound_cuts(lp, settings, var_types, xstar, start_time);
-    f_t cut_generation_time = toc(cut_start_time);
-    if (cut_generation_time > 1.0) {
-      settings.log.debug("Implied bounds cut generation time %.2f seconds\n", cut_generation_time);
-    }
   }
   return true;
 }
