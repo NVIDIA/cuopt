@@ -19,11 +19,8 @@
 #include <vector>
 
 namespace cuopt::linear_programming {
-// Forward-declared so simplex code can hold a pointer to the high-level
-// benchmark_info_t (defined in cuopt/linear_programming/mip/solver_settings.hpp)
-// without pulling that header into every dual_simplex compilation unit.
 struct benchmark_info_t;
-}  // namespace cuopt::linear_programming
+}
 
 namespace cuopt::linear_programming::dual_simplex {
 
@@ -91,6 +88,8 @@ struct simplex_solver_settings_t {
       deterministic(false),
       barrier(false),
       eliminate_dense_columns(true),
+      barrier_iterative_refinement(true),
+      barrier_step_scale(0.9),
       num_gpus(1),
       folding(-1),
       augmented(0),
@@ -107,10 +106,12 @@ struct simplex_solver_settings_t {
       mir_cuts(-1),
       mixed_integer_gomory_cuts(-1),
       knapsack_cuts(-1),
+      flow_cover_cuts(-1),
       implied_bound_cuts(-1),
       clique_cuts(-1),
       zero_half_cuts(-1),
       strong_chvatal_gomory_cuts(-1),
+      symmetry(-1),
       reduced_cost_strengthening(-1),
       cut_change_threshold(1e-3),
       cut_min_orthogonality(0.5),
@@ -118,6 +119,9 @@ struct simplex_solver_settings_t {
       mip_batch_pdlp_reliability_branching(0),
       strong_branching_simplex_iteration_limit(-1),
       random_seed(0),
+      bnb_steal_chance(-1),
+      bnb_nodes_per_steal(-1),
+      bnb_max_steal_attempts(-1),
       reliability_branching(-1),
       inside_mip(0),
       sub_mip(0),
@@ -172,7 +176,9 @@ struct simplex_solver_settings_t {
   bool cudss_deterministic;   // true to use cuDSS deterministic mode, false for non-deterministic
   bool barrier;               // true to use barrier method, false to use dual simplex method
   bool deterministic;  // true to use B&B deterministic mode, false to use non-deterministic mode
-  bool eliminate_dense_columns;  // true to eliminate dense columns from A*D*A^T
+  bool eliminate_dense_columns;       // true to eliminate dense columns from A*D*A^T
+  bool barrier_iterative_refinement;  // true to use iterative refinement for barrier method
+  f_t barrier_step_scale;             // step scale for barrier method
   int num_gpus;   // Number of GPUs to use (maximum of 2 gpus are supported at the moment)
   i_t folding;    // -1 automatic, 0 don't fold, 1 fold
   i_t augmented;  // -1 automatic, 0 to solve with ADAT, 1 to solve with augmented system
@@ -192,11 +198,13 @@ struct simplex_solver_settings_t {
   i_t mixed_integer_gomory_cuts;   // -1 automatic, 0 to disable, >0 to enable mixed integer Gomory
                                    // cuts
   i_t knapsack_cuts;               // -1 automatic, 0 to disable, >0 to enable knapsack cuts
+  i_t flow_cover_cuts;             // -1 automatic, 0 to disable, >0 to enable flow cover cuts
   i_t implied_bound_cuts;          // -1 automatic, 0 to disable, >0 to enable implied bound cuts
   i_t clique_cuts;                 // -1 automatic, 0 to disable, >0 to enable clique cuts
   i_t zero_half_cuts;              // -1 automatic, 0 to disable, >0 to enable zero-half cuts
   i_t strong_chvatal_gomory_cuts;  // -1 automatic, 0 to disable, >0 to enable strong Chvatal Gomory
                                    // cuts
+  i_t symmetry;  // -1 automatic, 0 to disable, >0 to enable different symmetry methods
   i_t reduced_cost_strengthening;  // -1 automatic, 0 to disable, >0 to enable reduced cost
                                    // strengthening
   f_t cut_change_threshold;        // threshold for cut change
@@ -207,12 +215,20 @@ struct simplex_solver_settings_t {
                                              // PDLP only
   // Set the maximum number of simplex iterations allowed per trial branch when applying
   // strong branching to the root node.
-  // -1 - Automatic (iteration limit = 200)
-  // 0, 1 - Estimate the objective change using a single pivot of dual simplex
-  // >1 - Set as the iteration limit in dual simplex
+  // -1 - automatic (iteration limit = 200)
+  // 0, 1 - estimate the objective change using a single pivot of dual simplex
+  // >1 - set as the iteration limit in dual simplex
   i_t strong_branching_simplex_iteration_limit;
 
   diving_heuristics_settings_t<i_t, f_t> diving_settings;  // Settings for the diving heuristics
+
+  // In B&B, indicate the chance in which a worker can steal a node from another worker.
+  // -1 - automatic (0.05)
+  // 0 - disable
+  // >0 - set the stealing chance [0, 1]
+  f_t bnb_steal_chance;
+  i_t bnb_nodes_per_steal;
+  i_t bnb_max_steal_attempts;
 
   // Settings for the reliability branching.
   // - -1: automatic
@@ -231,11 +247,7 @@ struct simplex_solver_settings_t {
   mutable logger_t log;
   std::atomic<int>* concurrent_halt;  // if nullptr ignored, if !nullptr, 0 if solver should
                                       // continue, 1 if solver should halt
-  // Optional non-owning pointer to the run-level benchmark_info_t (defined
-  // in mip/solver_settings.hpp). Used by branch_and_bound to publish the
-  // root LP objectives (before & after the cut loop) so benchmark drivers
-  // can compute gap-closed-by-cuts without having to instrument the
-  // solver internals. Production builds leave this as nullptr.
+  // Optional non-owning pointer to run-level benchmark stats.
   cuopt::linear_programming::benchmark_info_t* benchmark_info_ptr = nullptr;
 };
 

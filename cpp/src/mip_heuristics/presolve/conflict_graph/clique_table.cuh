@@ -80,8 +80,14 @@ struct csr_var_map_t {
   }
   i_t n_keys() const { return offsets.empty() ? 0 : static_cast<i_t>(offsets.size() - 1); }
   i_t slice_size(i_t v) const { return offsets[v + 1] - offsets[v]; }
-  const i_t* slice_begin(i_t v) const { return indices.data() + offsets[v]; }
-  const i_t* slice_end(i_t v) const { return indices.data() + offsets[v + 1]; }
+  const i_t* slice_begin(i_t v) const
+  {
+    return indices.empty() ? nullptr : indices.data() + offsets[v];
+  }
+  const i_t* slice_end(i_t v) const
+  {
+    return indices.empty() ? nullptr : indices.data() + offsets[v + 1];
+  }
   // O(1) summary used by cut/extension cost-budget heuristics.
   double avg_slice_size() const
   {
@@ -92,6 +98,7 @@ struct csr_var_map_t {
   {
     const i_t* b = slice_begin(v);
     const i_t* e = slice_end(v);
+    if (b == nullptr) { return false; }
     return std::binary_search(b, e, value);
   }
 
@@ -211,7 +218,7 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
                           typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances,
                           std::shared_ptr<clique_table_t<i_t, f_t>>* clique_table_out,
                           cuopt::timer_t& timer,
-                          std::atomic<bool>* signal_extend = nullptr);
+                          omp_atomic_t<bool>* signal_extend = nullptr);
 
 template <typename i_t, typename f_t>
 void build_clique_table(const dual_simplex::user_problem_t<i_t, f_t>& problem,

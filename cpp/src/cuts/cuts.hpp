@@ -21,6 +21,7 @@
 #include <numeric>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include <cmath>
@@ -41,7 +42,8 @@ enum cut_type_t : int8_t {
   CLIQUE                 = 4,
   IMPLIED_BOUND          = 5,
   ZERO_HALF              = 6,
-  MAX_CUT_TYPE           = 7
+  FLOW_COVER             = 7,
+  MAX_CUT_TYPE           = 8
 };
 
 template <typename f_t>
@@ -181,7 +183,8 @@ struct cut_info_t {
                                               "Strong CG     ",
                                               "Clique        ",
                                               "Implied Bounds",
-                                              "Zero-Half     "};
+                                              "Zero-Half     ",
+                                              "Flow Cover    "};
   std::array<i_t, MAX_CUT_TYPE> num_cuts   = {0};
 };
 
@@ -300,16 +303,7 @@ class cut_pool_t {
 
   // Add a cut in the form: cut'*x >= rhs.
   // We expect that the cut is violated by the current relaxation xstar.
-  //
-  // cut_score is an optional caller-supplied quality score used by the
-  // P2-4 clique cousin filter (only consulted for cut_type == CLIQUE
-  // when the cousin filter is enabled). Pass a non-negative value to
-  // enable score-aware cousin replacement; the default (-1.0) reverts
-  // to "first-write-wins" cousin policy. Other cut types ignore this
-  // parameter.
-  void add_cut(cut_type_t cut_type,
-               const inequality_t<i_t, f_t>& cut,
-               f_t cut_score = static_cast<f_t>(-1.0));
+  void add_cut(cut_type_t cut_type, const inequality_t<i_t, f_t>& cut);
 
   // Backward-compatible scoring entry-point. Falls back to the legacy
   // geometric-distance / nnz-penalty score when bounds are not provided.
@@ -391,17 +385,6 @@ class cut_pool_t {
   f_t cut_density(i_t row);
   f_t cut_orthogonality(i_t i, i_t j);
 
-  // Cousin filter helpers. compute_clique_minhash_sketch() fills
-  // `sketch` (length = clique_cousin_minhash_k_) with k independent
-  // min-hashes over the cut's column-support set. Two sketches agree
-  // on slot s with probability Jaccard(supp_a, supp_b), so element-wise
-  // agreement count divided by k estimates the Jaccard similarity.
-  void compute_clique_minhash_sketch(const inequality_t<i_t, f_t>& cut,
-                                     std::vector<uint64_t>& sketch) const;
-  // Rebuilds clique_cousin_buckets_ from clique_support_minhash_ after
-  // any compaction that remaps row indices (e.g. dedup).
-  void rebuild_clique_cousin_buckets();
-
   i_t original_vars_;
   const simplex_solver_settings_t<i_t, f_t>& settings_;
 
@@ -445,51 +428,189 @@ class cut_pool_t {
   i_t clique_inserts_{0};
 };
 
-// ---------------------------------------------------------------------------
-// Cut-pool sweep configuration dispatch.
-//
-// Selected by the CUOPT_CONFIG_ID environment variable; range-checked
-// against CUOPT_MAX_CONFIG (caller-asserted upper bound). One env-var
-// dispatch covers the entire clique cut family because the only knobs
-// we vary on this branch live on cut_pool_t (cousin filter on/off,
-// Jaccard tau, integer-support size tilt). The deterministic
-// measurement path (no concurrent root LP, no in-cut-pass RCS, exit
-// after the cut loop) is unconditional and lives in branch_and_bound.
-//
-// Keep kCutSweepNumConfigs in sync with the switch table in
-// apply_cut_sweep_config() (see cuts.cpp) and with cut_sweep_config_name()
-// below.
-//
-// Layout:
-//   0  baseline_no_cousin   clique cut algorithmic changes only
-//                           (cousin filter off; isolates 8f2cf00a impact)
-//   1  cousin_default       cousin filter on, tau=0.85, k=8, score=violation
-//                           (the cut_scoring final-version P2-4 baseline)
-//   2  cousin_strict        cousin filter on, tau=0.70 (more aggressive
-//                           cousin removal — favors quantity reduction)
-//   3  cousin_loose         cousin filter on, tau=0.95 (closer to no-filter
-//                           extreme — selection-stage absorbs cousins)
-//   4  cousin_size_tilt     cousin filter on, tau=0.85, score = violation *
-//                           (1 + 0.5 * log2(1 + clique_size)) — picks the
-//                           larger clique on cousin replacement (integer
-//                           support proxy, since clique vars are 0-1)
-constexpr int kCutSweepNumConfigs = 5;
+template <typename i_t, typename f_t>
+class variable_bounds_t;
 
-inline const char* cut_sweep_config_name(int config_id)
-{
-  switch (config_id) {
-    case 0: return "00_baseline_no_cousin";
-    case 1: return "01_cousin_default";
-    case 2: return "02_cousin_strict";
-    case 3: return "03_cousin_loose";
-    case 4: return "04_cousin_size_tilt";
-    default: return "unknown";
-  }
-}
+template <typename i_t>
+struct flow_cover_row_t {
+  i_t row;
+  bool reverse;
+};
 
 template <typename i_t, typename f_t>
-void apply_cut_sweep_config(cut_pool_t<i_t, f_t>& cut_pool,
-                            const simplex_solver_settings_t<i_t, f_t>& settings);
+struct single_node_flow_arc_t {
+  f_t u;        // Capacity u_j in 0 <= y_j <= u_j x_j.
+  bool in_n2;   // false: y_j appears with + sign (N1), true: with - sign (N2).
+  i_t x_col;    // Binary controller column, or -1 for a fixed-control simple-bound arc.
+  f_t x_value;  // Current LP value of x_col, or the fixed-control value.
+  f_t y_const;
+  i_t y_col;
+  f_t y_coeff;
+  f_t y_x_coeff;
+  f_t y_value;  // Current LP value of the synthetic y_j.
+};
+
+template <typename i_t, typename f_t>
+struct single_node_flow_candidate_t {
+  single_node_flow_arc_t<i_t, f_t> arc;
+  f_t b_shift;
+  f_t distance;
+  bool absorbs_binary_coeff;
+};
+
+template <typename i_t, typename f_t>
+struct flow_cover_arc_spec_t {
+  f_t u;
+  bool in_n2;
+  i_t x_col;
+  f_t fixed_x;
+  f_t y_const;
+  i_t y_col;
+  f_t y_coeff;
+  f_t y_x_coeff;
+  f_t b_shift;
+  f_t active_bound;
+  bool absorbs_binary_coeff;
+};
+
+template <typename i_t, typename f_t>
+struct flow_cover_context_t {
+  const lp_problem_t<i_t, f_t>& lp;
+  const simplex_solver_settings_t<i_t, f_t>& settings;
+  csr_matrix_t<i_t, f_t>& Arow;
+  const variable_bounds_t<i_t, f_t>& variable_bounds;
+  const std::vector<variable_type_t>& var_types;
+  const std::vector<f_t>& xstar;
+};
+
+template <typename f_t>
+struct flow_cover_evaluation_t {
+  f_t violation;
+  f_t ubar;
+};
+
+template <typename i_t, typename f_t>
+class flow_cover_generation_t {
+ public:
+  flow_cover_generation_t(const lp_problem_t<i_t, f_t>& lp,
+                          const simplex_solver_settings_t<i_t, f_t>& settings,
+                          csr_matrix_t<i_t, f_t>& Arow,
+                          const std::vector<i_t>& new_slacks);
+
+  i_t generate_cut(const lp_problem_t<i_t, f_t>& lp,
+                   const simplex_solver_settings_t<i_t, f_t>& settings,
+                   csr_matrix_t<i_t, f_t>& Arow,
+                   const variable_bounds_t<i_t, f_t>& variable_bounds,
+                   const std::vector<variable_type_t>& var_types,
+                   const std::vector<f_t>& xstar,
+                   const flow_cover_row_t<i_t>& flow_cover_row,
+                   inequality_t<i_t, f_t>& cut);
+
+  i_t num_constraints() const { return flow_cover_constraints_.size(); }
+  const std::vector<flow_cover_row_t<i_t>>& get_constraints() const
+  {
+    return flow_cover_constraints_;
+  }
+
+ private:
+  bool normalize_row_side(const flow_cover_context_t<i_t, f_t>& context,
+                          const flow_cover_row_t<i_t>& flow_cover_row,
+                          inequality_t<i_t, f_t>& row,
+                          f_t& b,
+                          bool& negate_row);
+
+  bool build_single_node_flow_relaxation(const flow_cover_context_t<i_t, f_t>& context,
+                                         f_t b,
+                                         f_t& single_node_flow_b);
+
+  bool separate_single_node_flow_cover(const flow_cover_context_t<i_t, f_t>& context,
+                                       f_t single_node_flow_b,
+                                       f_t& lambda);
+
+  // cMIR: complemented mixed-integer-rounding flow cover inequality.
+  flow_cover_evaluation_t<f_t> evaluate_c_mir_flow_cover_inequality(
+    const flow_cover_context_t<i_t, f_t>& context, f_t single_node_flow_b, f_t lambda);
+
+  // SGFCI: simple generalized flow cover inequality.
+  flow_cover_evaluation_t<f_t> evaluate_simple_generalized_flow_cover_inequality(
+    const flow_cover_context_t<i_t, f_t>& context, f_t single_node_flow_b, f_t lambda);
+
+  bool emit_flow_cover_cut(const flow_cover_context_t<i_t, f_t>& context,
+                           f_t single_node_flow_b,
+                           f_t lambda,
+                           const flow_cover_evaluation_t<f_t>& c_mir_inequality,
+                           const flow_cover_evaluation_t<f_t>& simple_generalized_inequality,
+                           inequality_t<i_t, f_t>& cut);
+
+  void clear_cut_state(i_t num_cols)
+  {
+    continuous_terms.clear();
+    binary_columns.clear();
+    arcs.clear();
+    candidates.clear();
+    values.clear();
+    weights.clear();
+    item_to_arc.clear();
+    solution.clear();
+    in_c1.clear();
+    in_c2.clear();
+    ubar_candidates.clear();
+    in_l1.clear();
+    in_l2.clear();
+    best_in_l1.clear();
+    best_in_l2.clear();
+    simple_generalized_flow_cover_in_l2.clear();
+    lhs_indices.clear();
+
+    if (static_cast<i_t>(binary_coefficients.size()) < num_cols) {
+      binary_coefficients.assign(num_cols, 0.0);
+      binary_coefficients_touched.assign(num_cols, 0);
+    } else {
+      for (i_t j : touched_binary_coefficients) {
+        binary_coefficients[j]         = 0.0;
+        binary_coefficients_touched[j] = 0;
+      }
+    }
+    touched_binary_coefficients.clear();
+
+    if (static_cast<i_t>(lhs_coefficients.size()) < num_cols) {
+      lhs_coefficients.assign(num_cols, 0.0);
+      lhs_coefficients_touched.assign(num_cols, 0);
+    } else {
+      for (i_t j : touched_lhs_coefficients) {
+        lhs_coefficients[j]         = 0.0;
+        lhs_coefficients_touched[j] = 0;
+      }
+    }
+    touched_lhs_coefficients.clear();
+  }
+
+  std::vector<i_t> is_slack_;
+  std::vector<flow_cover_row_t<i_t>> flow_cover_constraints_;
+  std::vector<std::pair<i_t, f_t>> continuous_terms;
+  std::vector<i_t> binary_columns;
+  std::vector<f_t> binary_coefficients;
+  std::vector<uint8_t> binary_coefficients_touched;
+  std::vector<i_t> touched_binary_coefficients;
+  std::vector<single_node_flow_arc_t<i_t, f_t>> arcs;
+  std::vector<single_node_flow_candidate_t<i_t, f_t>> candidates;
+  std::vector<f_t> values;
+  std::vector<f_t> weights;
+  std::vector<i_t> item_to_arc;
+  std::vector<f_t> solution;
+  std::vector<uint8_t> in_c1;
+  std::vector<uint8_t> in_c2;
+  std::vector<f_t> ubar_candidates;
+  std::vector<uint8_t> in_l1;
+  std::vector<uint8_t> in_l2;
+  std::vector<uint8_t> best_in_l1;
+  std::vector<uint8_t> best_in_l2;
+  std::vector<uint8_t> simple_generalized_flow_cover_in_l2;
+  std::vector<i_t> lhs_indices;
+  std::vector<f_t> lhs_coefficients;
+  std::vector<uint8_t> lhs_coefficients_touched;
+  std::vector<i_t> touched_lhs_coefficients;
+};
 
 template <typename i_t, typename f_t>
 class knapsack_generation_t {
@@ -533,12 +654,6 @@ class knapsack_generation_t {
                          const std::vector<i_t>& c1_partition,
                          const std::vector<i_t>& c2_partition,
                          inequality_t<i_t, f_t>& lifted_cut);
-
-  // Generate a heuristic solution to the 0-1 knapsack problem
-  f_t greedy_knapsack_problem(const std::vector<f_t>& values,
-                              const std::vector<f_t>& weights,
-                              f_t rhs,
-                              std::vector<f_t>& solution);
 
   // Solve a 0-1 knapsack problem using dynamic programming
   f_t solve_knapsack_problem(const std::vector<f_t>& values,
@@ -623,24 +738,22 @@ struct fractional_conflict_subgraph_t {
 template <typename i_t, typename f_t>
 class cut_generation_t {
  public:
-  cut_generation_t(
-    cut_pool_t<i_t, f_t>& cut_pool,
-    const lp_problem_t<i_t, f_t>& lp,
-    const simplex_solver_settings_t<i_t, f_t>& settings,
-    csr_matrix_t<i_t, f_t>& Arow,
-    const std::vector<i_t>& new_slacks,
-    const std::vector<variable_type_t>& var_types,
-    const user_problem_t<i_t, f_t>& user_problem,
-    const probing_implied_bound_t<i_t, f_t>& probing_implied_bound,
-    std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table                      = nullptr,
-    std::future<std::shared_ptr<detail::clique_table_t<i_t, f_t>>>* clique_table_future = nullptr,
-    std::atomic<bool>* signal_extend                                                    = nullptr)
+  cut_generation_t(cut_pool_t<i_t, f_t>& cut_pool,
+                   const lp_problem_t<i_t, f_t>& lp,
+                   const simplex_solver_settings_t<i_t, f_t>& settings,
+                   csr_matrix_t<i_t, f_t>& Arow,
+                   const std::vector<i_t>& new_slacks,
+                   const std::vector<variable_type_t>& var_types,
+                   const user_problem_t<i_t, f_t>& user_problem,
+                   const probing_implied_bound_t<i_t, f_t>& probing_implied_bound,
+                   std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table = nullptr,
+                   omp_atomic_t<bool>* signal_extend                              = nullptr)
     : cut_pool_(cut_pool),
       knapsack_generation_(lp, settings, Arow, new_slacks, var_types),
+      flow_cover_generation_(lp, settings, Arow, new_slacks),
       user_problem_(user_problem),
       probing_implied_bound_(probing_implied_bound),
       clique_table_(std::move(clique_table)),
-      clique_table_future_(clique_table_future),
       signal_extend_(signal_extend)
   {
   }
@@ -690,6 +803,15 @@ class cut_generation_t {
                               const std::vector<f_t>& xstar,
                               f_t start_time);
 
+  // Generate all flow cover cuts
+  void generate_flow_cover_cuts(const lp_problem_t<i_t, f_t>& lp,
+                                const simplex_solver_settings_t<i_t, f_t>& settings,
+                                csr_matrix_t<i_t, f_t>& Arow,
+                                const std::vector<variable_type_t>& var_types,
+                                const std::vector<f_t>& xstar,
+                                variable_bounds_t<i_t, f_t>& variable_bounds,
+                                f_t start_time);
+
   // Generate clique cuts from conflict graph cliques
   bool generate_clique_cuts(const lp_problem_t<i_t, f_t>& lp,
                             const simplex_solver_settings_t<i_t, f_t>& settings,
@@ -725,11 +847,11 @@ class cut_generation_t {
 
   cut_pool_t<i_t, f_t>& cut_pool_;
   knapsack_generation_t<i_t, f_t> knapsack_generation_;
+  flow_cover_generation_t<i_t, f_t> flow_cover_generation_;
   const user_problem_t<i_t, f_t>& user_problem_;
   const probing_implied_bound_t<i_t, f_t>& probing_implied_bound_;
   std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table_;
-  std::future<std::shared_ptr<detail::clique_table_t<i_t, f_t>>>* clique_table_future_{nullptr};
-  std::atomic<bool>* signal_extend_{nullptr};
+  omp_atomic_t<bool>* signal_extend_{nullptr};
   // Cached fractional sub-CG, rebuilt at the top of each generate_cuts call
   // by prepare_fractional_sub_cg. Both clique cuts and zero-half cuts read
   // from this and skip if !sub_cg_.ready.

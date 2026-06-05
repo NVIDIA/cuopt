@@ -1079,22 +1079,33 @@ i_t add_slacks_to_basis(const lp_problem_t<i_t, f_t>& lp,
                         std::vector<variable_status_t>& vstatus)
 {
   const i_t n   = lp.num_cols;
+  const i_t m   = lp.num_rows;
   i_t num_basic = 0;
-  // Add a slack to the basis for each dependent row
-  for (i_t i : dependent_rows) {
-    for (i_t j = n - 1; j >= 0; --j) {
-      const i_t col_start = lp.A.col_start[j];
-      const i_t col_end   = lp.A.col_start[j + 1];
-      const i_t nz        = col_end - col_start;
-      if (nz == 1) {
-        if (i == lp.A.i[col_start]) {
-          vstatus[j] = variable_status_t::BASIC;
-          num_basic++;
-          break;
-        }
-      }
+
+  // O(m) work to create the slack_map
+  // slack_map[i] = j when j is the slack variable for row i
+  std::vector<i_t> slack_map(m, -1);
+  for (i_t j = n - 1; j >= n - m; --j) {
+    const i_t col_start = lp.A.col_start[j];
+    const i_t col_end   = lp.A.col_start[j + 1];
+    const i_t nz        = col_end - col_start;
+    if (nz == 1) {
+      const i_t i  = lp.A.i[col_start];
+      slack_map[i] = j;
     }
   }
+
+  // Add a slack to the basis for each dependent row
+  // O( | dependent_rows | )
+  for (i_t i : dependent_rows) {
+    const i_t j = slack_map[i];
+    if (j >= 0) {
+      vstatus[j] = variable_status_t::BASIC;
+      num_basic++;
+    }
+  }
+
+  // Total work is O(m + | dependent_rows |) = O(m)
   return num_basic;
 }
 
@@ -1244,6 +1255,10 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
   if (rank < m) {
     num_basic = add_slacks_to_basis(lp, dependent_rows, vstatus);
     settings.log.debug("num basic %d from slacks\n", num_basic);
+  }
+  if (num_basic + rank != m) {
+    settings.log.printf("Error: could not find a full-rank initial basis\n");
+    return crossover_status_t::NUMERICAL_ISSUES;
   }
 
   for (i_t k = 0; k < candidate_columns.size(); k++) {

@@ -5,11 +5,11 @@
 
 #include <utilities/common_utils.hpp>
 
+#include <cuopt/linear_programming/io/parser.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <mip_heuristics/problem/problem.cuh>
-#include <mps_parser/parser.hpp>
 #include <utilities/error.hpp>
 
 #include <raft/core/handle.hpp>
@@ -37,7 +37,8 @@ TEST(no_constraints_test, simple_test)
   int A_offsets_host[]   = {0};
   op_problem.set_csr_constraint_matrix(A_values_host, 0, A_indices_host, 0, A_offsets_host, 1);
 
-  double lb_host[] = {0.0, 0.0};
+  double lb_host[] = {-std::numeric_limits<double>::infinity(),
+                      -std::numeric_limits<double>::infinity()};
   double ub_host[] = {std::numeric_limits<double>::infinity(),
                       std::numeric_limits<double>::infinity()};
   op_problem.set_variable_lower_bounds(lb_host, 2);

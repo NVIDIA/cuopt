@@ -83,6 +83,7 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
       fixed_problem.reverse_constraints,
       nullptr,
       context.settings.hyper_params,
+      static_cast<i_t>(1),
       true);
     scaling.scale_problem();
     fixed_problem.presolve_data.reset_additional_vars(fixed_problem, offspring.handle_ptr);

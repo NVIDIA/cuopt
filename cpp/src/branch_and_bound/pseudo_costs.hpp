@@ -28,16 +28,15 @@
 namespace cuopt::linear_programming::dual_simplex {
 
 template <typename i_t, typename f_t>
+struct mip_symmetry_t;
+
+template <typename i_t, typename f_t>
 struct reliability_branching_settings_t {
   // Lower bound for the maximum number of LP iterations for a single trial branching
   i_t lower_max_lp_iter = 10;
 
   // Upper bound for the maximum number of LP iterations for a single trial branching
   i_t upper_max_lp_iter = 500;
-
-  // Priority of the tasks created when running the trial branching in parallel.
-  // Set to 1 to have the same priority as the other tasks.
-  i_t task_priority = 5;
 
   // The maximum number of candidates initialized by strong branching in a single
   // node
@@ -111,7 +110,7 @@ class pseudo_costs_t {
       pseudo_cost_num_up(num_variables),
       pseudo_cost_mutex_up(num_variables),
       pseudo_cost_mutex_down(num_variables),
-      AT(std::make_shared<csc_matrix_t<i_t, f_t>>(1, 1, 1)),
+      Arow(1, 1, 1),
       pdlp_warm_cache(std::make_shared<batch_pdlp_warm_cache_t<i_t, f_t>>())
   {
   }
@@ -213,6 +212,7 @@ class pseudo_costs_t {
 
   reliability_branching_settings_t<i_t, f_t> reliability_branching_settings;
   simplex_solver_settings_t<i_t, f_t> settings;
+  csr_matrix_t<i_t, f_t> Arow;
 
  protected:
   std::vector<omp_atomic_t<f_t>> pseudo_cost_sum_up;
@@ -282,6 +282,7 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
                       const std::vector<i_t>& basic_list,
                       const std::vector<i_t>& nonbasic_list,
                       basis_update_mpf_t<i_t, f_t>& basis_factors,
+                      mip_symmetry_t<i_t, f_t>* symmetry,
                       pseudo_costs_t<i_t, f_t>& pc);
 
 }  // namespace cuopt::linear_programming::dual_simplex

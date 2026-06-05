@@ -39,7 +39,18 @@
 #include <cuopt/linear_programming/solve.hpp>
 #include <cuopt/linear_programming/utilities/internals.hpp>
 
-#include <mps_parser/mps_data_model.hpp>
+#include <branch_and_bound/symmetry.hpp>
+#include <dual_simplex/simplex_solver_settings.hpp>
+#include <pdlp/translate.hpp>
+
+// Choose when to detect symmetry:
+// DETECT_SYMMETRY_BEFORE_PRESOLVE: detect on original problem, disable presolve if symmetry found.
+//   Finds maximum symmetry but loses presolve benefits.
+// DETECT_SYMMETRY_AFTER_PRESOLVE: detect after PaPILO + trivial presolve on the reduced problem.
+//   Presolve runs at full power; symmetry detection on whatever structure remains.
+#define DETECT_SYMMETRY_AFTER_PRESOLVE
+
+#include <cuopt/linear_programming/io/mps_data_model.hpp>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/cusparse_macros.hpp>
@@ -49,6 +60,7 @@
 #include <rmm/cuda_stream.hpp>
 
 #include <cuda_profiler_api.h>
+#include <omp.h>
 
 #include <cmath>
 #include <sstream>
@@ -91,11 +103,13 @@ static void invoke_solution_callbacks(
 }
 
 template <typename i_t, typename f_t>
-mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
-                                 mip_solver_settings_t<i_t, f_t> const& settings,
-                                 timer_t& timer,
-                                 f_t& initial_upper_bound,
-                                 std::vector<f_t>& initial_incumbent_assignment)
+mip_solution_t<i_t, f_t> run_mip_solver(
+  detail::problem_t<i_t, f_t>& problem,
+  mip_solver_settings_t<i_t, f_t> const& settings,
+  timer_t& timer,
+  f_t& initial_upper_bound,
+  std::vector<f_t>& initial_incumbent_assignment,
+  std::unique_ptr<dual_simplex::mip_symmetry_t<i_t, f_t>> symmetry = nullptr)
 {
   try {
     raft::common::nvtx::range fun_scope("run_mip");
@@ -179,13 +193,44 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
     // only call preprocess on scaled problem, so we can compute feasibility on the original problem
     scaled_problem.preprocess_problem();
     scaled_problem.related_vars_time_limit = settings.heuristic_params.related_vars_time_limit;
+    const i_t n_vars_before                = scaled_problem.n_variables;
     detail::trivial_presolve(scaled_problem);
+
+#ifdef DETECT_SYMMETRY_BEFORE_PRESOLVE
+    // Trivial presolve may remove unused variables and renumber the remaining ones.
+    // When that happens the symmetry generators and binary_variables reference the
+    // original (pre-trivial-presolve) column indices which are now invalid.
+    // Re-detect symmetry on the reduced problem.
+    if (symmetry != nullptr && scaled_problem.n_variables != n_vars_before) {
+      CUOPT_LOG_INFO(
+        "Trivial presolve changed variable count (%d -> %d); "
+        "re-detecting symmetry on reduced problem",
+        n_vars_before,
+        scaled_problem.n_variables);
+      symmetry.reset();
+      if (settings.symmetry != 0) {
+        dual_simplex::simplex_solver_settings_t<i_t, f_t> simplex_settings;
+        simplex_settings.set_log(true);
+        simplex_settings.time_limit = settings.time_limit;
+        dual_simplex::user_problem_t<i_t, f_t> reduced_user_problem =
+          cuopt_problem_to_user_problem<i_t, f_t>(
+            scaled_problem.original_problem_ptr->get_handle_ptr(), scaled_problem);
+        bool has_symmetry_reduced = false;
+        symmetry                  = dual_simplex::detect_symmetry(
+          reduced_user_problem, simplex_settings, has_symmetry_reduced);
+      }
+    }
+#endif
+
+    // Note: DETECT_SYMMETRY_AFTER_PRESOLVE detection is done in solver.cu::run_solver()
+    // after cuOpt's presolve (probing cache, bounds propagation, trivial presolve) completes.
 
     detail::mip_solver_t<i_t, f_t> solver(scaled_problem, settings, timer);
     // initial_upper_bound is in user-space (representation-invariant).
     // It will be converted to the target solver-space at each consumption point.
     solver.context.initial_upper_bound          = initial_upper_bound;
     solver.context.initial_incumbent_assignment = initial_incumbent_assignment;
+    solver.context.symmetry                     = std::move(symmetry);
     if (timer.check_time_limit()) {
       CUOPT_LOG_INFO("Time limit reached before main solve");
       detail::solution_t<i_t, f_t> sol(problem);
@@ -286,8 +331,8 @@ mip_solution_t<i_t, f_t> run_mip(detail::problem_t<i_t, f_t>& problem,
 }
 
 template <typename i_t, typename f_t>
-mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
-                                   mip_solver_settings_t<i_t, f_t> const& settings_const)
+mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_problem,
+                                          mip_solver_settings_t<i_t, f_t> const& settings_const)
 {
   try {
     mip_solver_settings_t<i_t, f_t> settings(settings_const);
@@ -370,6 +415,23 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
       callback->template setup<f_t>(callback_num_variables);
     }
 
+    // Start symmetry detection
+    std::unique_ptr<dual_simplex::mip_symmetry_t<i_t, f_t>> symmetry;
+
+#ifdef DETECT_SYMMETRY_BEFORE_PRESOLVE
+    bool has_symmetry = false;
+    if (settings.symmetry != 0) {
+      detail::problem_t<i_t, f_t> problem(op_problem);
+      dual_simplex::simplex_solver_settings_t<i_t, f_t> simplex_settings;
+      simplex_settings.set_log(true);
+      simplex_settings.time_limit = settings.time_limit;
+      dual_simplex::user_problem_t<i_t, f_t> user_problem =
+        cuopt_problem_to_user_problem<i_t, f_t>(op_problem.get_handle_ptr(), problem);
+      symmetry = dual_simplex::detect_symmetry(user_problem, simplex_settings, has_symmetry);
+      if (has_symmetry) { settings.presolver = presolver_t::None; }
+    }
+#endif
+
     if (settings.mip_scaling != CUOPT_MIP_SCALING_OFF) {
       detail::mip_scaling_strategy_t<i_t, f_t> scaling(op_problem);
       scaling.scale_problem(settings.mip_scaling != CUOPT_MIP_SCALING_NO_OBJECTIVE);
@@ -400,8 +462,6 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     // Start early FJ (CPU and GPU) during presolve to find incumbents ASAP
     // Only run if presolve is enabled (gives FJ time to find solutions)
     // and we're not in deterministic mode
-    std::unique_ptr<detail::early_cpufj_t<i_t, f_t>> early_cpufj;
-    std::unique_ptr<detail::early_gpufj_t<i_t, f_t>> early_gpufj;
 
     // Track best incumbent found during presolve (shared across CPU and GPU FJ).
     // early_best_objective is in the original problem's solver-space (always minimization),
@@ -413,6 +473,9 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     std::vector<f_t> early_best_user_assignment;
     std::mutex early_callback_mutex;
 
+    std::unique_ptr<detail::early_cpufj_t<i_t, f_t>> early_cpufj;
+    std::unique_ptr<detail::early_gpufj_t<i_t, f_t>> early_gpufj;
+
     bool run_early_fj = run_presolve && settings.determinism_mode != CUOPT_MODE_DETERMINISTIC &&
                         op_problem.get_n_integers() > 0 && op_problem.get_n_constraints() > 0;
     f_t no_bound = problem.presolve_data.objective_scaling_factor >= 0 ? (f_t)-1e20 : (f_t)1e20;
@@ -423,7 +486,7 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
          &early_best_user_obj,
          &early_best_user_assignment,
          &early_callback_mutex,
-         &early_fj_start,
+         early_fj_start,
          mip_callbacks = settings.get_mip_callbacks(),
          has_semi_continuous_callback_translation =
            detail::mip_solver_settings_accessor<i_t, f_t>::has_semi_continuous_callback_translation(
@@ -548,10 +611,16 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
       CUOPT_LOG_INFO("Writing presolved problem to file: %s", settings.presolve_file.c_str());
       presolve_result_opt->reduced_problem.write_to_mps(settings.presolve_file);
     }
-
     // early_best_user_obj is in user-space.
-    // run_mip stores it in context.initial_upper_bound and converts to target spaces as needed.
-    auto sol = run_mip(problem, settings, timer, early_best_user_obj, early_best_user_assignment);
+    // run_mip_solver stores it in context.initial_upper_bound and converts to target spaces as
+    // needed.
+    auto sol = run_mip_solver(problem,
+                              settings,
+                              timer,
+                              early_best_user_obj,
+                              early_best_user_assignment,
+                              std::move(symmetry));
+
     const f_t cuopt_presolve_time = sol.get_stats().presolve_time;
 
     if (run_presolve) {
@@ -690,12 +759,62 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     throw;
   }
 }
+template <typename i_t, typename f_t>
+mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
+                                   mip_solver_settings_t<i_t, f_t> const& settings_const)
+{
+  std::exception_ptr exception;
+  i_t num_threads = 0;
+  if (settings_const.num_cpu_threads < 0) {
+    num_threads = omp_get_max_threads();
+  } else {
+    num_threads = settings_const.num_cpu_threads;
+  }
+
+  if (num_threads < 2) {
+    CUOPT_LOG_ERROR("The MIP solver requires at least 2 CPU threads!");
+    return mip_solution_t<i_t, f_t>{
+      cuopt::logic_error("The number of CPU threads is less than the expected minimum (2).",
+                         cuopt::error_type_t::RuntimeError),
+      op_problem.get_handle_ptr()->get_stream()};
+  }
+
+  mip_solution_t<i_t, f_t> sol(mip_termination_status_t::NoTermination,
+                               solver_stats_t<i_t, f_t>{},
+                               op_problem.get_handle_ptr()->get_stream());
+
+  // The outer solver opens an omp parallel region in solve.cu, so this inner team would
+  // collapse to a single thread under the default OMP_MAX_ACTIVE_LEVELS=1 and only worker 0
+  // would execute. Enable two active levels locally and restore on the way out.
+  const int saved_max_active_levels = omp_get_max_active_levels();
+  if (saved_max_active_levels < 2) { omp_set_max_active_levels(2); }
+
+  // Creates the OpenMP thread pool. It will be shared across the entire MIP solver.
+#pragma omp parallel num_threads(num_threads) default(none) \
+  shared(sol, op_problem, settings_const, exception)
+  {
+#pragma omp masked
+    {
+      try {
+        sol = solve_mip_helper<i_t, f_t>(op_problem, settings_const);
+      } catch (...) {
+        // We cannot throw inside an OpenMP parallel region. So we need to catch and then
+        // re-throw later.
+        exception = std::current_exception();
+      }
+    }
+  }  // Implicit barrier
+
+  if (saved_max_active_levels < 2) { omp_set_max_active_levels(saved_max_active_levels); }
+
+  if (exception) { std::rethrow_exception(exception); }
+  return sol;
+}
 
 template <typename i_t, typename f_t>
-mip_solution_t<i_t, f_t> solve_mip(
-  raft::handle_t const* handle_ptr,
-  const cuopt::mps_parser::mps_data_model_t<i_t, f_t>& mps_data_model,
-  mip_solver_settings_t<i_t, f_t> const& settings)
+mip_solution_t<i_t, f_t> solve_mip(raft::handle_t const* handle_ptr,
+                                   const io::mps_data_model_t<i_t, f_t>& mps_data_model,
+                                   mip_solver_settings_t<i_t, f_t> const& settings)
 {
   auto op_problem = mps_data_model_to_optimization_problem(handle_ptr, mps_data_model);
   return solve_mip(op_problem, settings);
@@ -789,7 +908,7 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip(
                                                                                           \
   template mip_solution_t<int, F_TYPE> solve_mip(                                         \
     raft::handle_t const* handle_ptr,                                                     \
-    const cuopt::mps_parser::mps_data_model_t<int, F_TYPE>& mps_data_model,               \
+    const cuopt::linear_programming::io::mps_data_model_t<int, F_TYPE>& mps_data_model,   \
     mip_solver_settings_t<int, F_TYPE> const& settings);                                  \
                                                                                           \
   template std::unique_ptr<mip_solution_interface_t<int, F_TYPE>> solve_mip(              \

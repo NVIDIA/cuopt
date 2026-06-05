@@ -231,7 +231,7 @@ void remove_small_cliques(clique_table_t<i_t, f_t>& clique_table, cuopt::timer_t
   for (size_t clique_idx = 0; clique_idx < clique_table.first.size(); clique_idx++) {
     if (timer.check_time_limit()) { return; }
     const auto& clique = clique_table.first[clique_idx];
-    if (clique.size() < (size_t)clique_table.min_clique_size) {
+    if (clique.size() <= (size_t)clique_table.min_clique_size) {
       for (size_t i = 0; i < clique.size(); i++) {
         for (size_t j = 0; j < clique.size(); j++) {
           if (i == j) { continue; }
@@ -491,7 +491,7 @@ i_t extend_cliques(const std::vector<knapsack_constraint_t<i_t, f_t>>& knapsack_
                    double* work_estimate_out,
                    double min_work,
                    double max_work,
-                   std::atomic<bool>* signal_extend)
+                   omp_atomic_t<bool>* signal_extend)
 {
   constexpr i_t min_extension_gain = 2;
 
@@ -678,7 +678,7 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
                           typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances,
                           std::shared_ptr<clique_table_t<i_t, f_t>>* clique_table_out,
                           cuopt::timer_t& timer,
-                          std::atomic<bool>* signal_extend)
+                          omp_atomic_t<bool>* signal_extend)
 {
   cuopt::timer_t stage_timer(std::numeric_limits<double>::infinity());
 #ifdef DEBUG_CLIQUE_TABLE
@@ -778,7 +778,7 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
     typename mip_solver_settings_t<int, F_TYPE>::tolerances_t tolerances,                      \
     std::shared_ptr<clique_table_t<int, F_TYPE>> * clique_table_out,                           \
     cuopt::timer_t & timer,                                                                    \
-    std::atomic<bool> * signal_extend);                                                        \
+    omp_atomic_t<bool> * signal_extend);                                                       \
   template void build_clique_table<int, F_TYPE>(                                               \
     const dual_simplex::user_problem_t<int, F_TYPE>& problem,                                  \
     clique_table_t<int, F_TYPE>& clique_table,                                                 \

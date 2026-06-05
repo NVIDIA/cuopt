@@ -62,11 +62,19 @@ def main():
     untracked_failed = d.get("untracked_failed_ci_jobs", [])
     workflow_jobs = d.get("workflow_jobs", [])
 
-    # Slack user/group to mention on new failures or new flaky tests.
-    # Set CUOPT_SLACK_MENTION_ID to a Slack user ID (e.g., U01ABCDEF) or
-    # group handle. Empty disables mentions.
+    # Slack user or user-group to mention on new failures or new flaky tests.
+    # Set CUOPT_SLACK_MENTION_ID to either:
+    #   - a user ID (starts with U or W, e.g. U01ABCDEF) — pings the user
+    #   - a user-group / subteam ID (starts with S, e.g. S01ABCDEF) — pings the group
+    # The group's handle name (e.g. "cuopt-ci-team") will NOT ping; Slack
+    # requires the subteam ID, formatted as <!subteam^...>. Empty disables.
     mention_id = os.environ.get("CUOPT_SLACK_MENTION_ID", "")
-    mention_tag = f"<@{mention_id}> " if mention_id else ""
+    if mention_id.startswith("S"):
+        mention_tag = f"<!subteam^{mention_id}> "
+    elif mention_id:
+        mention_tag = f"<@{mention_id}> "
+    else:
+        mention_tag = ""
 
     total_jobs = jobs.get("total", 0)
 
