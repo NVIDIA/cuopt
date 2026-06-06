@@ -888,3 +888,129 @@ def test_quadratic_matrix_2():
     assert x2.getValue() == pytest.approx(0.0000000, abs=1e-3)
     assert x3.getValue() == pytest.approx(0.1092896, abs=1e-3)
     assert problem.ObjValue == pytest.approx(3.715847, abs=1e-3)
+
+
+def test_str_and_repr():
+    """Verify algebraic __str__ and detailed __repr__ for LP API classes."""
+    prob = Problem("str_repr_test")
+
+    # === Variable ===
+    x = prob.addVariable(lb=0.0, ub=10.0, vtype=VType.CONTINUOUS, name="x")
+    y = prob.addVariable(lb=0.0, ub=5.0, vtype=VType.INTEGER, name="y")
+    z = prob.addVariable()
+
+    # __str__: with name returns the name
+    assert str(x) == "x"
+    assert str(y) == "y"
+    # __str__: without name falls back to C{index}
+    assert str(z) == "C2"
+
+    # __repr__: detailed summary
+    r = repr(x)
+    assert "cuopt.Variable" in r
+    assert "'x'" in r
+    assert "index=0" in r
+    assert "type=CONTINUOUS" in r
+    assert "bounds=[0.0, 10.0]" in r
+    assert "value=nan" in r
+
+    r = repr(y)
+    assert "type=INTEGER" in r
+    assert "bounds=[0.0, 5.0]" in r
+
+    r = repr(z)
+    assert "'C2'" in r
+    assert "index=2" in r
+
+    # === LinearExpression ===
+    expr1 = 2 * x + 3 * y
+    expr2 = expr1 - 5
+    expr3 = -x + 2.5
+
+    # __str__
+    assert str(expr1) == "2.0 * x + 3.0 * y"
+    assert str(expr2) == "2.0 * x + 3.0 * y - 5.0"
+    assert str(expr3) == "-x + 2.5"
+    # Empty expression collapses to 0.0
+    assert str(LinearExpression([], [], 0.0)) == "0.0"
+    # Constant-only expression
+    assert str(LinearExpression([], [], 3.0)) == "3.0"
+    assert str(LinearExpression([], [], -3.0)) == "-3.0"
+
+    # __repr__
+    assert repr(expr1) == "<cuopt.LinearExpression: 2.0 * x + 3.0 * y>"
+
+    # === QuadraticExpression ===
+    qexpr1 = x * x
+    qexpr2 = qexpr1 + 2 * x * y + 3 * x
+    qexpr3 = -x * x + 0.5 * y * y + x * y
+
+    # __str__
+    assert str(qexpr1) == "x^2"
+    assert str(qexpr2) == "x^2 + 2.0 * x * y + 3.0 * x"
+    assert str(qexpr3) == "-x^2 + 0.5 * y^2 + x * y"
+    # Empty quadratic expression
+    assert str(QuadraticExpression()) == "0.0"
+
+    # __repr__
+    assert repr(qexpr1) == "<cuopt.QuadraticExpression: x^2>"
+
+    # === Constraint ===
+    c1 = 2 * x + 3 * y <= 10
+    c2 = x - y >= 0
+    c3 = x + 1 == 5
+    prob.addConstraint(c1, name="c1")
+    prob.addConstraint(c2, name="c2")
+    prob.addConstraint(c3, name="c3")
+
+    # __str__: shows the original (un-moved) form
+    assert str(c1) == "2.0 * x + 3.0 * y <= 10.0"
+    assert str(c2) == "x - y >= 0.0"
+    assert str(c3) == "x + 1.0 == 5.0"
+
+    # __str__: unnamed constraint
+    c_anon = 2 * x + 3 * y <= 10
+    assert "2.0 * x + 3.0 * y <= 10.0" in str(c_anon)
+
+    # __repr__
+    assert repr(c1) == "<cuopt.Constraint 'c1': 2.0 * x + 3.0 * y <= 10.0>"
+    assert repr(c2) == "<cuopt.Constraint 'c2': x - y >= 0.0>"
+    assert repr(c3) == "<cuopt.Constraint 'c3': x + 1.0 == 5.0>"
+
+    # === Problem ===
+    # __repr__
+    r = repr(prob)
+    assert "cuopt.Problem" in r
+    assert "str_repr_test" in r
+    assert "3 vars" in r
+    assert "3 constrs" in r
+    assert "IsMIP=True" in r  # y is integer
+
+    # __str__: before solve
+    s = str(prob)
+    assert "str_repr_test" in s
+    assert "MINIMIZE" in s
+    assert "Variables: 3" in s
+    assert "continuous=2" in s
+    assert "integer=1" in s
+    assert "semi-continuous=0" in s
+    assert "Constraints: 3" in s
+    assert "linear=3" in s
+    assert "quadratic=0" in s
+    assert "Non-zeros: 5" in s
+    # No status before solve
+    assert "Status:" not in s
+    assert "Objective value:" not in s
+
+    # __str__: after solve includes status and objective value
+    settings = SolverSettings()
+    settings.set_parameter("time_limit", 5)
+    prob.solve(settings)
+    s = str(prob)
+    assert "Status: Optimal" in s
+    assert "Objective value:" in s
+
+    # Unnamed problem
+    empty_prob = Problem()
+    assert "Problem: <unnamed>" in str(empty_prob)
+    assert "<cuopt.Problem '<unnamed>'" in repr(empty_prob)

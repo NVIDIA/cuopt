@@ -16,6 +16,100 @@ import cuopt.linear_programming.solver_settings as solver_settings
 import warnings
 
 
+# ---- Display helpers for __str__/__repr__ ----
+
+_SENSE_SYMBOLS = {LE: "<=", GE: ">=", EQ: "=="}
+_TYPE_NAMES = {"C": "CONTINUOUS", "I": "INTEGER", "S": "SEMI_CONTINUOUS"}
+
+
+def _var_display_name(var):
+    """Return the display name of a Variable."""
+    name = var.VariableName
+    if name:
+        return name
+    if getattr(var, "index", -1) >= 0:
+        return f"C{var.index}"
+    return f"V{id(var)}"
+
+
+def _type_display(type_val):
+    """Return a human-readable name for a variable type."""
+    if isinstance(type_val, VType):
+        return type_val.name
+    if isinstance(type_val, (bytes, bytearray)):
+        type_val = type_val.decode()
+    return _TYPE_NAMES.get(type_val, str(type_val))
+
+
+class _ExprBuilder:
+    """Build an algebraic string from a sequence of terms.
+
+    The first term is emitted without a sign; subsequent terms are joined
+    with ' + ' or ' - ' separators. A coefficient of 1.0 or -1.0 is
+    elided, so '1.0 * x' becomes 'x' and '-1.0 * x' becomes '-x'.
+    """
+
+    def __init__(self):
+        self.parts = []
+
+    def add_linear(self, coef, var):
+        """Add a linear term ``coef * var``."""
+        if coef == 0.0:
+            return
+        var_str = _var_display_name(var)
+        if coef == 1.0:
+            self._append(var_str, negative=False)
+        elif coef == -1.0:
+            self._append(var_str, negative=True)
+        else:
+            self._append(f"{abs(coef)} * {var_str}", negative=coef < 0)
+
+    def add_quadratic(self, coef, var1, var2):
+        """Add a quadratic term ``coef * var1 * var2``."""
+        if coef == 0.0:
+            return
+        v1_str = _var_display_name(var1)
+        v2_str = _var_display_name(var2)
+        if v1_str == v2_str:
+            term_str = f"{v1_str}^2"
+        elif v1_str <= v2_str:
+            term_str = f"{v1_str} * {v2_str}"
+        else:
+            term_str = f"{v2_str} * {v1_str}"
+        if coef == 1.0:
+            self._append(term_str, negative=False)
+        elif coef == -1.0:
+            self._append(term_str, negative=True)
+        else:
+            self._append(f"{abs(coef)} * {term_str}", negative=coef < 0)
+
+    def add_constant(self, value):
+        """Add a constant term."""
+        if value == 0.0:
+            return
+        self._append(f"{abs(value)}", negative=value < 0)
+
+    def _append(self, term, negative):
+        if not self.parts:
+            self.parts.append(f"-{term}" if negative else term)
+        else:
+            self.parts.append(f" - {term}" if negative else f" + {term}")
+
+    def build(self):
+        if not self.parts:
+            return "0.0"
+        return "".join(self.parts)
+
+
+def _format_linear(vars, coeffs, constant):
+    """Format a linear expression as an algebraic string."""
+    builder = _ExprBuilder()
+    for var, coef in zip(vars, coeffs):
+        builder.add_linear(coef, var)
+    builder.add_constant(constant)
+    return builder.build()
+
+
 class VType(str, Enum):
     """
     The type of a variable is continuous, integer, or semi-continuous.
@@ -334,6 +428,19 @@ class Variable:
                 return Constraint(expr, EQ, 0.0)
             case _:
                 raise ValueError("Unsupported operation")
+
+    def __str__(self):
+        return _var_display_name(self)
+
+    def __repr__(self):
+        name = _var_display_name(self)
+        idx = getattr(self, "index", -1)
+        type_str = _type_display(self.VariableType)
+        return (
+            f"<cuopt.Variable '{name}' (index={idx}), "
+            f"type={type_str}, bounds=[{self.LB}, {self.UB}], "
+            f"value={self.Value}>"
+        )
 
 
 class QuadraticExpression:
@@ -889,6 +996,25 @@ class QuadraticExpression:
     def __eq__(self, other):
         raise ValueError("Equality constraints are not supported.")
 
+    def __str__(self):
+        builder = _ExprBuilder()
+        if self.qmatrix is not None:
+            for row, col, val in zip(
+                self.qmatrix.row, self.qmatrix.col, self.qmatrix.data
+            ):
+                if val == 0.0:
+                    continue
+                builder.add_quadratic(val, self.qvars[row], self.qvars[col])
+        for v1, v2, coef in zip(self.qvars1, self.qvars2, self.qcoefficients):
+            builder.add_quadratic(coef, v1, v2)
+        for var, coef in zip(self.vars, self.coefficients):
+            builder.add_linear(coef, var)
+        builder.add_constant(self.constant)
+        return builder.build()
+
+    def __repr__(self):
+        return f"<cuopt.QuadraticExpression: {self}>"
+
 
 def _quadratic_expression_to_qcmatrix(expr, rhs):
     """Build QCMATRIX COO data for a quadratic row ``expr`` sense ``rhs``.
@@ -1280,6 +1406,12 @@ class LinearExpression:
                 expr = self - other
                 return Constraint(expr, EQ, 0.0)
 
+    def __str__(self):
+        return _format_linear(self.vars, self.coefficients, self.constant)
+
+    def __repr__(self):
+        return f"<cuopt.LinearExpression: {self}>"
+
 
 class Constraint:
     """
@@ -1322,6 +1454,7 @@ class Constraint:
         self.ConstraintName = name
         self.DualValue = float("nan")
         self.Slack = float("nan")
+        self._expr = expr
 
         if isinstance(expr, QuadraticExpression):
             self.is_quadratic = True
@@ -1401,6 +1534,17 @@ class Constraint:
         )
 
         return self.RHS - lhs
+
+    def __str__(self):
+        sense_str = _SENSE_SYMBOLS.get(self.Sense, str(self.Sense))
+        lhs = str(self._expr) if self._expr is not None else "0.0"
+        expr_constant = getattr(self._expr, "constant", 0.0) or 0.0
+        user_rhs = self.RHS + expr_constant
+        return f"{lhs} {sense_str} {user_rhs}"
+
+    def __repr__(self):
+        name = self.ConstraintName if self.ConstraintName else "<unnamed>"
+        return f"<cuopt.Constraint '{name}': {self}>"
 
 
 class Problem:
@@ -2234,3 +2378,54 @@ class Problem:
         # Post Solve
         self.populate_solution(solution)
         return solution
+
+    def __repr__(self):
+        name = self.Name if self.Name else "<unnamed>"
+        return (
+            f"<cuopt.Problem '{name}' "
+            f"({len(self.vars)} vars, {len(self.constrs)} constrs, "
+            f"IsMIP={self.IsMIP})>"
+        )
+
+    def __str__(self):
+        lines = []
+        name = self.Name if self.Name else "<unnamed>"
+        lines.append(f"Problem: {name}")
+        sense_str = "MINIMIZE" if self.ObjSense == MINIMIZE else "MAXIMIZE"
+        lines.append(f"  Objective: {sense_str}")
+
+        n_cont = 0
+        n_int = 0
+        n_semi = 0
+        for v in self.vars:
+            t = v.VariableType
+            if isinstance(t, (bytes, bytearray)):
+                t = t.decode()
+            if t in ("I", VType.INTEGER):
+                n_int += 1
+            elif t in ("S", VType.SEMI_CONTINUOUS):
+                n_semi += 1
+            else:
+                n_cont += 1
+        lines.append(
+            f"  Variables: {len(self.vars)} "
+            f"(continuous={n_cont}, integer={n_int}, "
+            f"semi-continuous={n_semi})"
+        )
+
+        n_linear = sum(1 for c in self.constrs if not c.is_quadratic)
+        n_quad = sum(1 for c in self.constrs if c.is_quadratic)
+        lines.append(
+            f"  Constraints: {len(self.constrs)} "
+            f"(linear={n_linear}, quadratic={n_quad})"
+        )
+        lines.append(f"  Non-zeros: {self.NumNZs}")
+
+        if self.solved:
+            status = self.Status
+            if hasattr(status, "name"):
+                status = status.name
+            lines.append(f"  Status: {status}")
+            lines.append(f"  Objective value: {self.ObjValue}")
+
+        return "\n".join(lines)
