@@ -589,12 +589,14 @@ class base_test_t {
   }
 
   /**
-   * @brief Verifies that every Break node in the assignment lies within its configured
-   * cumulative-distance window [min_range, max_range], reset at the depot of each route.
+   * @brief Verifies that every Break node in the assignment is taken no later than its
+   * configured cumulative-distance upper bound @p max_range, reset at the depot of each route.
+   *
+   * The lower bound (min_range) is intentionally not checked: like the time dimension, arriving
+   * before the window start carries no penalty, so the solver may legitimately place a break
+   * earlier than min_range.
    */
-  void check_distance_break_windows(host_assignment_t<i_t> const& h_routing_solution,
-                                    f_t min_range,
-                                    f_t max_range)
+  void check_distance_break_windows(host_assignment_t<i_t> const& h_routing_solution, f_t max_range)
   {
     auto const& truck_id   = h_routing_solution.truck_id;
     auto const& locations  = h_routing_solution.locations;
@@ -618,8 +620,6 @@ class base_test_t {
       prev_loc = loc;
       if (static_cast<node_type_t>(node_types[i]) == node_type_t::BREAK) {
         ++break_count;
-        ASSERT_GE(cumulative, min_range - 1e-3f)
-          << "break at cumulative distance " << cumulative << " is below min_range " << min_range;
         ASSERT_LE(cumulative, max_range + 1e-3f)
           << "break at cumulative distance " << cumulative << " exceeds max_range " << max_range;
       }
@@ -1063,7 +1063,7 @@ class routing_test_t : public base_test_t<i_t, f_t> {
     host_assignment_t<i_t> h_routing_solution(routing_solution);
     check_route(data_model, h_routing_solution);
     this->check_capacity(h_routing_solution, this->demand_h, this->capacity_h, this->demand_d);
-    this->check_distance_break_windows(h_routing_solution, min_range, max_range);
+    this->check_distance_break_windows(h_routing_solution, max_range);
   }
 
  protected:

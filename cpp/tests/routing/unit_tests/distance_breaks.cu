@@ -392,59 +392,6 @@ TEST(distance_breaks, break_distance_window_enforced)
   EXPECT_TRUE(found_break) << "no break found in solution";
 }
 
-// Solver must push a break location reachable before min_range into the window.
-TEST(distance_breaks, break_distance_window_min_enforced)
-{
-  raft::handle_t handle;
-  auto stream = handle.get_stream();
-
-  // clang-format off
-  std::vector<float> cost_matrix_4 = {
-    0,   50,  50,  1,
-    50,  0,   10,  60,
-    50,  10,  0,   60,
-    1,   60,  60,  0,
-  };
-  // clang-format on
-  std::vector<int> order_locations = {1, 2};
-  std::vector<int> break_locations = {3};
-
-  auto v_cost_matrix     = cuopt::device_copy(cost_matrix_4, stream);
-  auto v_order_locations = cuopt::device_copy(order_locations, stream);
-  auto v_break_locations = cuopt::device_copy(break_locations, stream);
-
-  cuopt::routing::data_model_view_t<int, float> data_model(&handle, 4, 1, 2);
-  data_model.add_cost_matrix(v_cost_matrix.data());
-  data_model.set_order_locations(v_order_locations.data());
-  data_model.add_distance_break(0, 40.f, 200.f, 0, v_break_locations.data(), 1);
-
-  auto settings = cuopt::routing::solver_settings_t<int, float>{};
-  settings.set_time_limit(10);
-
-  auto routing_solution = cuopt::routing::solve(data_model, settings);
-  handle.sync_stream();
-
-  ASSERT_EQ(routing_solution.get_status(), cuopt::routing::solution_status_t::SUCCESS);
-  host_assignment_t<int> h(routing_solution);
-
-  float cumulative = 0.f;
-  int prev_loc     = 0;
-  bool found_break = false;
-  for (size_t i = 0; i < h.locations.size(); ++i) {
-    int loc = h.locations[i];
-    cumulative += cost_matrix_4[prev_loc * 4 + loc];
-    if (static_cast<node_type_t>(h.node_types[i]) == node_type_t::BREAK) {
-      found_break = true;
-      EXPECT_GE(cumulative, 40.f - 1e-3f)
-        << "break at cumulative distance " << cumulative << " is below min_range=40";
-      EXPECT_LE(cumulative, 200.f + 1e-3f)
-        << "break at cumulative distance " << cumulative << " exceeds max_range=200";
-    }
-    prev_loc = loc;
-  }
-  EXPECT_TRUE(found_break) << "no break found in solution";
-}
-
 // Only vehicles configured with a distance break receive break nodes.
 TEST(distance_breaks, mixed_fleet)
 {

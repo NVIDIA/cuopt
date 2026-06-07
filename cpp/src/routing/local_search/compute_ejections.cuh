@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -72,14 +72,7 @@ DI void compute_temp_route(typename route_t<i_t, f_t, REQUEST>::view_t& temp_rou
       abs(temp_route.template get_dim<dim_t::TIME>().excess_forward[temp_route.get_num_nodes()] -
             temp_route.template get_dim<dim_t::TIME>().excess_backward[0] <
           0.01),
-    "Time excess issue");
-  cuopt_assert(
-    !(temp_route.dimensions_info().has_dimension(dim_t::DIST) &&
-      temp_route.dimensions_info().distance_dim.has_distance_window) ||
-      abs(temp_route.template get_dim<dim_t::DIST>().excess_forward[temp_route.get_num_nodes()] -
-            temp_route.template get_dim<dim_t::DIST>().excess_backward[0] <
-          0.01),
-    "Distance excess issue");
+    "Excess issue");
 }
 
 template <typename i_t,
@@ -154,14 +147,7 @@ DI void compute_temp_route(typename route_t<i_t, f_t, REQUEST>::view_t& temp_rou
       abs(temp_route.template get_dim<dim_t::TIME>().excess_forward[temp_route.get_num_nodes()] -
             temp_route.template get_dim<dim_t::TIME>().excess_backward[0] <
           0.01),
-    "Time excess issue");
-  cuopt_assert(
-    !(temp_route.dimensions_info().has_dimension(dim_t::DIST) &&
-      temp_route.dimensions_info().distance_dim.has_distance_window) ||
-      abs(temp_route.template get_dim<dim_t::DIST>().excess_forward[temp_route.get_num_nodes()] -
-            temp_route.template get_dim<dim_t::DIST>().excess_backward[0] <
-          0.01),
-    "Distance excess issue");
+    "Excess issue");
 }
 
 }  // namespace detail

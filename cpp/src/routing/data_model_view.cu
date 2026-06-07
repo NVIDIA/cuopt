@@ -203,7 +203,7 @@ void data_model_view_t<i_t, f_t>::add_vehicle_break(i_t vehicle_id,
     validate_break_locations(break_locations, num_break_locations, num_locations_, handle_ptr_);
   }
 
-  vehicle_breaks_[vehicle_id].push_back(detail::vehicle_break_t<i_t>(
+  vehicle_breaks_[vehicle_id].push_back(detail::vehicle_break_t<i_t, f_t>(
     break_earliest,
     break_latest,
     break_duration,
@@ -233,9 +233,9 @@ void data_model_view_t<i_t, f_t>::add_distance_break(i_t vehicle_id,
     validate_break_locations(break_locations, num_break_locations, num_locations_, handle_ptr_);
   }
 
-  vehicle_breaks_[vehicle_id].push_back(detail::vehicle_break_t<i_t>(
-    static_cast<float>(distance_min),
-    static_cast<float>(distance_max),
+  vehicle_breaks_[vehicle_id].push_back(detail::vehicle_break_t<i_t, f_t>(
+    distance_min,
+    distance_max,
     duration,
     raft::device_span<const i_t>(break_locations, num_break_locations)));
 }
@@ -675,7 +675,7 @@ data_model_view_t<i_t, f_t>::get_uniform_breaks() const noexcept
 }
 
 template <typename i_t, typename f_t>
-std::map<i_t, std::vector<detail::vehicle_break_t<i_t>>> const&
+std::map<i_t, std::vector<detail::vehicle_break_t<i_t, f_t>>> const&
 data_model_view_t<i_t, f_t>::get_non_uniform_breaks() const noexcept
 {
   return vehicle_breaks_;

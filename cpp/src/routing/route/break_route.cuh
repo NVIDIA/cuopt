@@ -111,7 +111,7 @@ class break_route_t {
         infeasibility_cost =
           max(0., (double)(breaks_forward[n_nodes_route] - vehicle_info.num_breaks()));
       }
-      inf_cost[dim_t::BREAK] += infeasibility_cost;
+      inf_cost[dim_t::BREAK] = infeasibility_cost;
     }
 
     static DI thrust::tuple<view_t, i_t*> create_shared_route(i_t* shmem,

@@ -519,7 +519,7 @@ class data_model_view_t {
    */
   std::vector<detail::break_dimension_t<i_t, f_t>> const& get_uniform_breaks() const noexcept;
 
-  std::map<i_t, std::vector<detail::vehicle_break_t<i_t>>> const& get_non_uniform_breaks()
+  std::map<i_t, std::vector<detail::vehicle_break_t<i_t, f_t>>> const& get_non_uniform_breaks()
     const noexcept;
 
   /**
@@ -690,7 +690,7 @@ class data_model_view_t {
   raft::device_span<i_t const> initial_routes_{};
   raft::device_span<node_type_t const> initial_types_{};
   raft::device_span<i_t const> initial_sol_offsets_{};
-  std::map<i_t, std::vector<detail::vehicle_break_t<i_t>>> vehicle_breaks_{};
+  std::map<i_t, std::vector<detail::vehicle_break_t<i_t, f_t>>> vehicle_breaks_{};
 };
 }  // namespace CUOPT_EXPORT routing
 }  // namespace cuopt

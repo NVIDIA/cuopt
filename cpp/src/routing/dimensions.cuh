@@ -368,14 +368,6 @@ class enabled_dimensions_t {
    */
   HDI bool has_dimension(dim_t dim) const { return hash & (1 << (int)dim); }
 
-  /// True if any dimension contributing forward/backward window excess is enabled
-  /// (TIME, or DIST when a distance window is configured).
-  HDI bool has_window_dimension() const
-  {
-    return has_dimension(dim_t::TIME) ||
-           (has_dimension(dim_t::DIST) && distance_dim.has_distance_window);
-  }
-
   HDI bool has_objective(objective_t obj) const { return obj_hash & (1 << (int)obj); }
 
   template <size_t I>

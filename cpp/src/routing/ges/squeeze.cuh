@@ -289,13 +289,7 @@ __global__ void execute_move(typename solution_t<i_t, f_t, REQUEST>::view_t solu
                  abs(orginal_route.template get_dim<dim_t::TIME>()
                        .excess_forward[orginal_route.get_num_nodes()] -
                      orginal_route.template get_dim<dim_t::TIME>().excess_backward[0]) < 0.01,
-               "Time backward/forward mismatch!");
-  cuopt_assert(!(orginal_route.dimensions_info().has_dimension(dim_t::DIST) &&
-                 orginal_route.dimensions_info().distance_dim.has_distance_window) ||
-                 abs(orginal_route.template get_dim<dim_t::DIST>()
-                       .excess_forward[orginal_route.get_num_nodes()] -
-                     orginal_route.template get_dim<dim_t::DIST>().excess_backward[0]) < 0.01,
-               "Distance backward/forward mismatch!");
+               "Backward forward mismatch!");
 }
 
 template <typename i_t, typename f_t, request_t REQUEST, bool squeeze_mode>

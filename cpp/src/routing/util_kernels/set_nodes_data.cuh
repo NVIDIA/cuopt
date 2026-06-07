@@ -58,11 +58,10 @@ __device__ void set_route_data(typename problem_t<i_t, f_t>::view_t const& probl
     dist_route.distance_forward[0]              = 0.f;
     dist_route.distance_backward[n_nodes_route] = 0.f;
     if (dist_route.dim_info.has_distance_window) {
-      dist_route.distance_window_forward[0]                  = 0.;
-      dist_route.distance_window_backward[n_nodes_route]     = 1e18;
-      dist_route.distance_window_backward_min[n_nodes_route] = 0.;
-      dist_route.excess_forward[0]                           = 0.;
-      dist_route.excess_backward[n_nodes_route]              = 0.;
+      dist_route.distance_window_forward[0]              = 0.;
+      dist_route.distance_window_backward[n_nodes_route] = 1e18;
+      dist_route.excess_forward[0]                       = 0.;
+      dist_route.excess_backward[n_nodes_route]          = 0.;
     }
     if (problem.dimensions_info.has_dimension(dim_t::CAP)) {
       route.template get_dim<dim_t::CAP>().max_to_node[0]           = 0;

@@ -17,33 +17,35 @@ namespace cuopt {
 namespace routing {
 namespace detail {
 
-// Distance dimension. Tracks both the cumulative route distance (for vehicle.max_cost) and
-// per-node distance windows used by distance-based charging breaks. The window fields parallel
-// time_node_t; distance_forward / distance_backward keep raw-sum semantics for CVRP/TSP and
-// fragment kernels that read them directly.
+// Distance dimension. Tracks the cumulative route distance (for vehicle.max_cost) and, when
+// distance-based charging breaks are configured, per-node distance windows. The window fields
+// mirror time_node_t: arriving before window_start is free (the analogue of waiting), arriving
+// after window_end accumulates excess. distance_forward / distance_backward keep raw-sum
+// semantics for CVRP/TSP and fragment kernels that read them directly.
 template <typename i_t, typename f_t>
 class distance_node_t {
  public:
-  double distance_forward  = 0.0;
+  //! Distance gathered to node
+  double distance_forward = 0.0;
+  //! Distance gathered after node
   double distance_backward = 0.0;
-  // Window-clamped forward cumulative and constraint-propagation backward bounds.
-  double distance_window_forward      = 0.0;
-  double distance_window_backward     = 1e18;  // latest allowable cumulative-from-start
-  double distance_window_backward_min = 0.0;   // earliest required cumulative-from-start
-  // [0, 1e18] means unconstrained (non-break node).
-  double window_start    = 0.0;
-  double window_end      = 1e18;
-  double excess_forward  = 0.0;
-  double excess_backward = 0.0;
+  // Window-clamped cumulative-from-start (forward) and latest-allowable-from-start (backward).
+  // [window_start, window_end] = [0, 1e18] means unconstrained (non-break node).
+  double distance_window_forward  = 0.0;
+  double distance_window_backward = 1e18;
+  double window_start             = 0.0;
+  double window_end               = 1e18;
+  double excess_forward           = 0.0;
+  double excess_backward          = 0.0;
 
   /*! \brief { Calculate next node forward gathered distance data based on actual node} */
   void HDI calculate_forward(distance_node_t& next, double distance_between) const noexcept
   {
-    next.distance_forward        = distance_forward + distance_between;
+    next.distance_forward = distance_forward + distance_between;
+
     next.distance_window_forward = distance_window_forward + distance_between;
     next.excess_forward          = excess_forward;
     if (next.distance_window_forward < next.window_start) {
-      next.excess_forward += next.window_start - next.distance_window_forward;
       next.distance_window_forward = next.window_start;
     } else if (next.distance_window_forward > next.window_end) {
       next.excess_forward += next.distance_window_forward - next.window_end;
@@ -54,34 +56,26 @@ class distance_node_t {
   /*! \brief { Calculate prev node gathered distance backward data based on actual node} */
   void HDI calculate_backward(distance_node_t& prev, double distance_between) const noexcept
   {
-    prev.distance_backward            = distance_backward + distance_between;
-    prev.distance_window_backward     = distance_window_backward - distance_between;
-    prev.distance_window_backward_min = distance_window_backward_min - distance_between;
-    prev.excess_backward              = excess_backward;
-    // Latest-allowable propagation: lower clamp = suffix can't reach prev within its window.
+    prev.distance_backward = distance_backward + distance_between;
+
+    prev.distance_window_backward = distance_window_backward - distance_between;
+    prev.excess_backward          = excess_backward;
     if (prev.distance_window_backward > prev.window_end) {
       prev.distance_window_backward = prev.window_end;
     } else if (prev.distance_window_backward < prev.window_start) {
       prev.excess_backward += prev.window_start - prev.distance_window_backward;
       prev.distance_window_backward = prev.window_start;
     }
-    // Earliest-required propagation: upper clamp = suffix forces prev past its window_end.
-    if (prev.distance_window_backward_min < prev.window_start) {
-      prev.distance_window_backward_min = prev.window_start;
-    } else if (prev.distance_window_backward_min > prev.window_end) {
-      prev.excess_backward += prev.distance_window_backward_min - prev.window_end;
-      prev.distance_window_backward_min = prev.window_end;
-    }
   }
 
   HDI double forward_excess(const VehicleInfo<f_t>& vehicle_info) const noexcept
   {
-    return max(0., distance_forward - vehicle_info.max_cost) + excess_forward;
+    return excess_forward + max(0., distance_forward - vehicle_info.max_cost);
   }
 
-  HDI double backward_excess([[maybe_unused]] const VehicleInfo<f_t>& vehicle_info) const noexcept
+  HDI double backward_excess(const VehicleInfo<f_t>& vehicle_info) const noexcept
   {
-    return excess_backward;
+    return excess_backward + max(0., distance_backward - vehicle_info.max_cost);
   }
 
   HDI bool forward_feasible(const VehicleInfo<f_t>& vehicle_info,
@@ -92,19 +86,17 @@ class distance_node_t {
   }
 
   /*! \brief  { Combine information from begining and ending fragments.}
-      \return { Distance excess of route represented by nodes prev and next } */
+      \return { Distance excess of route represented by nodes prev and next }*/
   static HDI double combine(const distance_node_t& prev,
                             const distance_node_t& next,
                             const VehicleInfo<f_t>& vehicle_info,
                             f_t distance_between) noexcept
   {
-    double arrival_window_f = prev.distance_window_forward + distance_between;
-    double upper_excess     = max(0., arrival_window_f - next.distance_window_backward);
-    double lower_excess     = max(0., next.distance_window_backward_min - arrival_window_f);
-    double total_distance   = prev.distance_forward + distance_between + next.distance_backward;
-    double max_cost_excess  = max(0., total_distance - vehicle_info.max_cost);
-    return prev.excess_forward + next.excess_backward + upper_excess + lower_excess +
-           max_cost_excess;
+    double total_distance = prev.distance_forward + distance_between + next.distance_backward;
+    double arrival_f      = prev.distance_window_forward + distance_between;
+    return prev.excess_forward + next.excess_backward +
+           max(0., arrival_f - next.distance_window_backward) +
+           max(0., total_distance - vehicle_info.max_cost);
   }
 
   HDI bool backward_feasible(const VehicleInfo<f_t>& vehicle_info,
@@ -123,14 +115,14 @@ class distance_node_t {
   {
     double total_distance       = distance_forward + distance_backward;
     obj_cost[objective_t::COST] = total_distance;
-    if (dim_info.has_distance_window) {
-      double upper_boundary  = max(0., distance_window_forward - distance_window_backward);
-      double lower_boundary  = max(0., distance_window_backward_min - distance_window_forward);
-      double max_cost_excess = max(0., total_distance - vehicle_info.max_cost);
-      inf_cost[dim_t::DIST] =
-        excess_forward + excess_backward + upper_boundary + lower_boundary + max_cost_excess;
-    } else if (dim_info.has_max_constraint) {
+
+    inf_cost[dim_t::DIST] = 0.;
+    if (dim_info.has_max_constraint) {
       inf_cost[dim_t::DIST] = max(0., total_distance - vehicle_info.max_cost);
+    }
+    if (dim_info.has_distance_window) {
+      inf_cost[dim_t::DIST] += excess_forward + excess_backward +
+                               max(0., distance_window_forward - distance_window_backward);
     }
   }
 };
