@@ -1154,6 +1154,13 @@ struct deterministic_diving_policy_t
                                             log);
       }
 
+      case VECTOR_LENGTH_DIVING:
+        return vector_length_diving(this->worker.leaf_problem, fractional, x, log);
+
+      case FARKAS_DIVING:
+        return farkas_diving(
+          this->worker.leaf_problem, fractional, x, this->bnb.settings_.zero_tol, log);
+
       default: CUOPT_LOG_ERROR("Invalid diving method!"); return {-1, branch_direction_t::NONE};
     }
   }
@@ -1752,7 +1759,14 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
   }
 
   if (diving_settings.farkas_diving != 0) {
-    f_t obj_dyn = std::log10(original_lp_.max_abs_obj_coeff / original_lp_.min_abs_obj_coeff);
+    f_t obj_dyn;
+    if (std::abs(original_lp_.min_abs_obj_coeff) < settings_.zero_tol) {
+      obj_dyn = std::abs(original_lp_.max_abs_obj_coeff) < settings_.zero_tol
+                  ? 0
+                  : std::numeric_limits<f_t>::infinity();
+    } else {
+      obj_dyn = std::log10(original_lp_.max_abs_obj_coeff / original_lp_.min_abs_obj_coeff);
+    }
     if (obj_dyn < diving_settings.farkas_obj_dynamism_tol) { diving_settings.farkas_diving = 0; }
   }
 
