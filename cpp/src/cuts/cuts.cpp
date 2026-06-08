@@ -38,33 +38,32 @@ namespace {
 
 enum class clique_cut_build_status_t : int8_t { NO_CUT = 0, CUT_ADDED = 1, INFEASIBLE = 2 };
 
-#if DEBUG_CLIQUE_CUTS
-#define CLIQUE_CUTS_DEBUG(...)                    \
-  do {                                            \
-    std::fprintf(stderr, "[DEBUG_CLIQUE_CUTS] "); \
-    std::fprintf(stderr, __VA_ARGS__);            \
-    std::fprintf(stderr, "\n");                   \
+// Shared crash-tolerant debug logger: writes a prefixed line to stderr and
+// flushes immediately so the last line is visible even if the process
+// aborts/terminates right after. Each channel below enables it through its own
+// DEBUG_* flag and supplies its own prefix; when the flag is 0 the call expands
+// to a no-op that still consumes its arguments.
+#define CUTS_DEBUG_LOG(prefix, ...)    \
+  do {                                 \
+    std::fprintf(stderr, prefix " ");  \
+    std::fprintf(stderr, __VA_ARGS__); \
+    std::fprintf(stderr, "\n");        \
+    std::fflush(stderr);               \
   } while (0)
-#else
-#define CLIQUE_CUTS_DEBUG(...) \
-  do {                         \
-  } while (0)
-#endif
-
-// Crash-tolerant logger: writes to stderr and flushes immediately so the
-// last log line is visible even if the process aborts/terminates right after.
-#if DEBUG_ZERO_HALF_CUTS
-#define ZERO_HALF_DEBUG(...)              \
-  do {                                    \
-    std::fprintf(stderr, "[zero_half] "); \
-    std::fprintf(stderr, __VA_ARGS__);    \
-    std::fprintf(stderr, "\n");           \
-    std::fflush(stderr);                  \
-  } while (0)
-#else
-#define ZERO_HALF_DEBUG(...) \
+#define CUTS_DEBUG_NOOP(...) \
   do {                       \
   } while (0)
+
+#if DEBUG_CLIQUE_CUTS
+#define CLIQUE_CUTS_DEBUG(...) CUTS_DEBUG_LOG("[DEBUG_CLIQUE_CUTS]", __VA_ARGS__)
+#else
+#define CLIQUE_CUTS_DEBUG(...) CUTS_DEBUG_NOOP(__VA_ARGS__)
+#endif
+
+#if DEBUG_ZERO_HALF_CUTS
+#define ZERO_HALF_DEBUG(...) CUTS_DEBUG_LOG("[zero_half]", __VA_ARGS__)
+#else
+#define ZERO_HALF_DEBUG(...) CUTS_DEBUG_NOOP(__VA_ARGS__)
 #endif
 
 template <typename i_t, typename f_t>
