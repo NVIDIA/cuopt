@@ -262,3 +262,72 @@ def test_prize_collection():
     assert objectives[routing.Objective.COST] == 13.0
     assert sol.get_status() == 0
     assert sol.get_vehicle_count() >= 2
+
+
+# Cost matrix from issue #904 (7 locations: depot 0 + orders 1-6)
+_ISSUE_904_COST_MATRIX = [
+    [0, 17, 12, 11, 10, 18, 10],
+    [16, 0, 15, 11, 19, 15, 16],
+    [19, 19, 0, 11, 16, 11, 17],
+    [17, 19, 17, 0, 11, 18, 19],
+    [10, 19, 19, 19, 0, 17, 15],
+    [12, 18, 15, 18, 18, 0, 14],
+    [12, 12, 11, 19, 10, 17, 0],
+]
+
+
+def _build_issue_904_data_model(vehicle_fixed_costs, min_vehicles=3):
+    n_locations = 7
+    n_vehicles = 3
+    n_orders = 6
+    dm = routing.DataModel(n_locations, n_vehicles, n_orders)
+    dm.add_cost_matrix(
+        cudf.DataFrame(_ISSUE_904_COST_MATRIX).astype(np.float32)
+    )
+    # Capacity 10 lets all 6 orders fit on one vehicle; min_vehicles must still
+    # force 3 routes.
+    dm.add_capacity_dimension(
+        "demand",
+        cudf.Series([1] * n_orders, dtype=np.int32),
+        cudf.Series([10] * n_vehicles, dtype=np.int32),
+    )
+    dm.set_order_locations(cudf.Series([1, 2, 3, 4, 5, 6], dtype=np.int32))
+    dm.set_vehicle_fixed_costs(
+        cudf.Series(vehicle_fixed_costs, dtype=np.float32)
+    )
+    dm.set_min_vehicles(min_vehicles)
+    dm.set_objective_function(
+        cudf.Series(
+            [routing.Objective.COST, routing.Objective.VEHICLE_FIXED_COST]
+        ),
+        cudf.Series([1.0, 1.0], dtype=np.float32),
+    )
+    return dm
+
+
+def test_issue_904_min_vehicles_with_fixed_costs():
+    # Regression for https://github.com/NVIDIA/cuopt/issues/904: with non-zero
+    # vehicle_fixed_costs and min_vehicles == fleet_size, the solver entered the
+    # fixed-route LS loop where a CUDA-graph-captured reset left n_insertions
+    # corrupted, crashing with a device-side assert. It must now honor
+    # min_vehicles and complete cleanly.
+    dm = _build_issue_904_data_model(vehicle_fixed_costs=[10.0, 20.0, 30.0])
+    ss = routing.SolverSettings()
+    ss.set_time_limit(3)
+
+    sol = routing.Solve(dm, ss)
+
+    assert sol.get_status() == 0, sol.get_error_message()
+    assert sol.get_vehicle_count() >= 3
+
+
+def test_issue_904_min_vehicles_with_zero_fixed_costs():
+    # Control case: min_vehicles enforced with zero fixed costs.
+    dm = _build_issue_904_data_model(vehicle_fixed_costs=[0.0, 0.0, 0.0])
+    ss = routing.SolverSettings()
+    ss.set_time_limit(3)
+
+    sol = routing.Solve(dm, ss)
+
+    assert sol.get_status() == 0, sol.get_error_message()
+    assert sol.get_vehicle_count() >= 3

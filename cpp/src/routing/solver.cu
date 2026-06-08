@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -66,7 +66,7 @@ assignment_t<i_t> solver_t<i_t, f_t>::solve()
   // We only set target vehicles and use fixed route loop in the below case. The other paths will
   // run regular fixed route loop.
   auto target_vehicles = -1;
-  if (data_view_ptr_->get_fleet_size() == data_view_ptr_->get_min_vehicles()) {
+  if (data_view_ptr_->get_fleet_size() >= data_view_ptr_->get_min_vehicles()) {
     target_vehicles = data_view_ptr_->get_min_vehicles();
   }
 
