@@ -30,16 +30,16 @@
   },
   {
     "id": "multiobj-explore-eval-004-dual-exchange-rate",
-    "question": "An analyst is building a risk-return efficient frontier across a set of assets: minimize portfolio variance and maximize expected return, with no fixed risk appetite. Using cuOpt, how would you trace the frontier, and at each point how would you tell the investor the rate at which they are paying variance for extra return without spending additional solves?",
+    "question": "A blend planner mixes feedstocks into a product: minimize total cost and maximize a quality score, with no fixed weighting between them and linear blending constraints. Using cuOpt, how would you trace the cost-vs-quality frontier, and at each point how would you tell the planner the rate at which extra quality costs money without running additional solves?",
     "expected_skill": "cuopt-multi-objective-exploration",
     "expected_script": null,
-    "ground_truth": "The agent recognizes a two-objective tradeoff (variance vs return) with no fixed weighting and traces the frontier by epsilon-constraint: it keeps the quadratic variance as the objective and sweeps a linear return floor (return >= epsilon), each value a single convex QP solve. At each solved point it reads the dual value on the binding return-floor constraint as the marginal variance per unit of required return, which is the local exchange rate, i.e. the slope (tangent) of the frontier at that point. That number is taken directly off the solve at no extra cost rather than by differencing two adjacent points. The agent notes this dual reading applies to LP/QP only, since MILP optima have no duals. It filters dominated points, flags the knee, and leaves the risk appetite to the investor, deferring per-solve mechanics to the api-* skills and formulation to cuopt-numerical-optimization-formulation.",
+    "ground_truth": "The agent recognizes a two-objective tradeoff (cost vs quality) with no fixed weighting and traces the frontier by epsilon-constraint: minimize cost subject to a quality floor (quality >= epsilon), sweeping the floor, each value a single LP solve. At each solved point it reads the dual value on the binding quality-floor constraint as the marginal cost per unit of required quality -- the local exchange rate, i.e. the slope (tangent) of the frontier at that point -- taken directly off the solve at no extra cost rather than by differencing two adjacent points, and accurate to the solve's optimality tolerance. It notes this dual reading applies to continuous LP/QP solutions, not MILP. It filters dominated points, flags the knee, and leaves the final balance to the planner, deferring per-solve mechanics to the api-* skills and formulation to cuopt-numerical-optimization-formulation.",
     "expected_behavior": [
-      "Frames variance vs return as two competing objectives with no agreed weighting",
-      "Traces the frontier via epsilon-constraint, keeping the quadratic variance as the objective and sweeping a linear return floor",
-      "Reads the swept constraint's dual as the local exchange rate (marginal variance per unit return) and slope of the frontier, taken straight off each solve rather than by differencing",
-      "Notes the dual / exchange-rate reading applies to LP/QP only, not MILP",
-      "Filters dominated points, flags the knee, and leaves the final risk appetite to the investor"
+      "Frames cost vs quality as two competing objectives with no agreed weighting",
+      "Traces the frontier via epsilon-constraint (minimize cost subject to a swept quality floor), each a single LP solve",
+      "Reads the swept constraint's dual as the local exchange rate (marginal cost per unit quality) and slope of the frontier, taken straight off each solve rather than by differencing",
+      "Notes the dual / exchange-rate reading applies to continuous LP/QP, not MILP, and is accurate to the solve tolerance",
+      "Filters dominated points, flags the knee, and leaves the final pick to the planner"
     ]
   },
   {
