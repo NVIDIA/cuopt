@@ -426,12 +426,6 @@ void extend_clique_vertices(std::vector<i_t>& clique_vertices,
   const f_t sort_work =
     candidate_size > 0.0 ? 2.0 * candidate_size * std::log2(candidate_size + 1.0) : 0.0;
   const f_t adj_set_build_cost = 2.0 * static_cast<f_t>(adj_set.size());
-  // P0-3 (2): account for the addtl_cliques scan that
-  // clique_table_t::check_adjacency performs on every adjacency probe.
-  // Baseline ignored this, so on instances with many addtl_clique entries
-  // the extension loop dominated cut-generation wall time without being
-  // attributed to clique cuts. avg_slice_size of var_clique_addtl is a
-  // robust proxy for the per-call addtl scan cost.
   const f_t addtl_cliques_scan_cost =
     1.0 + static_cast<f_t>(graph.var_clique_addtl.avg_slice_size());
   const f_t adj_check_cost = 5.0 + addtl_cliques_scan_cost;
@@ -568,29 +562,15 @@ clique_cut_build_status_t build_zero_half_cut(const std::vector<i_t>& cycle_vert
       ZERO_HALF_DEBUG("  acc vertex_idx=%lld (range [0, %lld))",
                       static_cast<long long>(vertex_idx),
                       static_cast<long long>(2 * num_vars));
-      if (vertex_idx < 0 || vertex_idx >= 2 * num_vars) {
-        ZERO_HALF_DEBUG("  acc OUT_OF_RANGE vertex_idx=%lld", static_cast<long long>(vertex_idx));
-        return clique_cut_build_status_t::NO_CUT;
-      }
       cuopt_assert(vertex_idx >= 0 && vertex_idx < 2 * num_vars, "Zero-half vertex out of range");
       const i_t var_idx     = vertex_idx % num_vars;
       const bool complement = vertex_idx >= num_vars;
-      if (var_idx < 0 || static_cast<size_t>(var_idx) >= lower_bounds.size() ||
-          static_cast<size_t>(var_idx) >= upper_bounds.size() ||
-          static_cast<size_t>(var_idx) >= var_types.size()) {
-        ZERO_HALF_DEBUG("  acc var_idx OUT_OF_RANGE var_idx=%lld", static_cast<long long>(var_idx));
-        return clique_cut_build_status_t::NO_CUT;
-      }
       const f_t lower_bound = lower_bounds[var_idx];
       const f_t upper_bound = upper_bounds[var_idx];
       cuopt_assert(var_types[var_idx] != variable_type_t::CONTINUOUS,
                    "Zero-half cut contains continuous variable");
       cuopt_assert(lower_bound >= -bound_tol, "Zero-half variable lower bound below zero");
       cuopt_assert(upper_bound <= 1 + bound_tol, "Zero-half variable upper bound above one");
-
-      // is_cycle is currently informational only; both cycle and wheel paths
-      // share the same accumulation logic
-      (void)is_cycle;
 
       if (complement) {
         if (seen_original.count(var_idx) > 0) { return clique_cut_build_status_t::NO_CUT; }
@@ -642,10 +622,7 @@ clique_cut_build_status_t build_zero_half_cut(const std::vector<i_t>& cycle_vert
   }
 
   cut_rhs = rhs_acc;
-  ZERO_HALF_DEBUG(
-    "build_zero_half_cut pre-sort nz=%zu rhs=%g", cut.i.size(), static_cast<double>(cut_rhs));
   cut.sort();
-  ZERO_HALF_DEBUG("build_zero_half_cut post-sort nz=%zu", cut.i.size());
 
   const f_t dot       = cut.dot(xstar);
   const f_t violation = cut_rhs - dot;
@@ -687,18 +664,8 @@ bool dijkstra_odd_cycle(i_t source_local,
                         f_t max_work_estimate)
 {
   const i_t num_local = static_cast<i_t>(local_adj.size());
-  ZERO_HALF_DEBUG("dijkstra_odd_cycle enter source_local=%lld num_local=%lld weights.size=%zu",
-                  static_cast<long long>(source_local),
-                  static_cast<long long>(num_local),
-                  weights.size());
-  if (source_local < 0 || source_local >= num_local) {
-    ZERO_HALF_DEBUG("dijkstra_odd_cycle source OUT_OF_RANGE");
-    return false;
-  }
-  if (weights.size() != static_cast<size_t>(num_local)) {
-    ZERO_HALF_DEBUG("dijkstra_odd_cycle weights size mismatch");
-    return false;
-  }
+  if (source_local < 0 || source_local >= num_local) { return false; }
+  if (weights.size() != static_cast<size_t>(num_local)) { return false; }
   cuopt_assert(source_local >= 0 && source_local < num_local,
                "Zero-half Dijkstra source out of range");
   cuopt_assert(weights.size() == static_cast<size_t>(num_local),
@@ -722,12 +689,6 @@ bool dijkstra_odd_cycle(i_t source_local,
     auto [d, u] = pq.top();
     pq.pop();
     ++pops;
-    if (u < 0 || u >= total_idx) {
-      ZERO_HALF_DEBUG("dijkstra_odd_cycle popped u OUT_OF_RANGE u=%lld total_idx=%lld",
-                      static_cast<long long>(u),
-                      static_cast<long long>(total_idx));
-      return false;
-    }
     if (d > dist[u]) { continue; }
     if (u == target_idx) { break; }
     if (cutoff > 0 && d >= cutoff) { break; }
@@ -737,36 +698,13 @@ bool dijkstra_odd_cycle(i_t source_local,
     const i_t v_part  = 1 - u_part;
     cuopt_assert(u_part == 0 || u_part == 1, "Bipartite part out of range");
 
-    if (u_local < 0 || u_local >= static_cast<i_t>(local_adj.size())) {
-      ZERO_HALF_DEBUG("dijkstra_odd_cycle u_local OUT_OF_RANGE u_local=%lld local_adj.size=%zu",
-                      static_cast<long long>(u_local),
-                      local_adj.size());
-      return false;
-    }
     const auto& neigh = local_adj[u_local];
     if (add_work_estimate(static_cast<f_t>(neigh.size()) + 4.0, work_estimate, max_work_estimate)) {
       ZERO_HALF_DEBUG("dijkstra_odd_cycle work_limit hit pops=%lld", static_cast<long long>(pops));
       return false;
     }
     for (const auto v_local : neigh) {
-      if (v_local < 0 || v_local >= num_local) {
-        ZERO_HALF_DEBUG("dijkstra_odd_cycle neighbor OUT_OF_RANGE v_local=%lld num_local=%lld",
-                        static_cast<long long>(v_local),
-                        static_cast<long long>(num_local));
-        return false;
-      }
       cuopt_assert(v_local >= 0 && v_local < num_local, "Zero-half Dijkstra neighbor out of range");
-      // Edge weight = (1 − x_u − x_v) / 2, where x_u/x_v are the LP values of
-      // the literals at u and v. A conflict-graph edge x_u + x_v <= 1 is an
-      // *implied* clique inequality (e.g. derived from a knapsack constraint
-      // when a_i + a_j > rhs, see clique_table.cu): it is valid for every
-      // integer-feasible point but is NOT explicitly enforced in the LP. So a
-      // fractional LP optimum routinely violates x_u + x_v <= 1 — that is
-      // exactly the violation the odd-cycle / zero-half separator exists to
-      // exploit. A negative raw edge weight is therefore expected, not a bug.
-      // We clamp it to 0 so the bipartite shortest path stays non-negative; a
-      // strongly violated edge then becomes a 0-weight (very attractive) edge,
-      // which is the desired behavior.
       f_t edge_w = (static_cast<f_t>(1) - weights[u_local] - weights[v_local]) / 2;
       if (edge_w < 0) { edge_w = 0; }
       const i_t v  = v_local + v_part * num_local;
@@ -856,28 +794,12 @@ bool path_to_odd_cycle(const std::vector<i_t>& bipartite_path,
   std::vector<i_t> local_seq;
   local_seq.reserve(bipartite_path.size());
   for (const auto bv : bipartite_path) {
-    if (num_local <= 0) {
-      ZERO_HALF_DEBUG("path_to_odd_cycle num_local <= 0 num_local=%lld",
-                      static_cast<long long>(num_local));
-      return false;
-    }
     local_seq.push_back(bv % num_local);
-  }
-  // First and last entry should both correspond to the source CG vertex
-  if (local_seq.front() != local_seq.back()) {
-    ZERO_HALF_DEBUG("path_to_odd_cycle endpoints mismatch front=%lld back=%lld",
-                    static_cast<long long>(local_seq.front()),
-                    static_cast<long long>(local_seq.back()));
-    return false;
   }
   cuopt_assert(local_seq.front() == local_seq.back(), "Zero-half cycle path endpoints must match");
 
   // Drop the duplicate end so we have a sequence covering each cycle vertex once
   local_seq.pop_back();
-  if ((local_seq.size() % 2) == 0 || local_seq.size() < 5) {
-    ZERO_HALF_DEBUG("path_to_odd_cycle reject local_seq.size=%zu", local_seq.size());
-    return false;
-  }
 
   std::unordered_set<i_t> seen_local;
   seen_local.reserve(local_seq.size());
@@ -894,22 +816,7 @@ bool path_to_odd_cycle(const std::vector<i_t>& bipartite_path,
   std::unordered_set<i_t> seen_var;
   seen_var.reserve(local_seq.size());
   for (const auto lv : local_seq) {
-    if (lv < 0 || lv >= num_local || static_cast<size_t>(lv) >= vertices.size()) {
-      ZERO_HALF_DEBUG(
-        "path_to_odd_cycle local idx OUT_OF_RANGE lv=%lld num_local=%lld vertices.size=%zu",
-        static_cast<long long>(lv),
-        static_cast<long long>(num_local),
-        vertices.size());
-      return false;
-    }
-    cuopt_assert(lv >= 0 && lv < num_local, "Zero-half local idx out of range");
     const i_t global = vertices[lv];
-    if (global < 0 || global >= 2 * num_vars) {
-      ZERO_HALF_DEBUG("path_to_odd_cycle global vertex OUT_OF_RANGE global=%lld 2*num_vars=%lld",
-                      static_cast<long long>(global),
-                      static_cast<long long>(2 * num_vars));
-      return false;
-    }
     cuopt_assert(global >= 0 && global < 2 * num_vars, "Zero-half global vertex out of range");
     const i_t var_idx = global % num_vars;
     if (!seen_var.insert(var_idx).second) {
@@ -958,11 +865,6 @@ void extend_to_odd_wheel(const std::vector<i_t>& cycle_vertices,
   i_t smallest_degree_var = -1;
   for (auto v : cycle_vertices) {
     if (toc(start_time) >= time_limit) { return; }
-    if (v < 0 || v >= 2 * num_vars) {
-      ZERO_HALF_DEBUG("extend_to_odd_wheel cycle vertex OUT_OF_RANGE v=%lld",
-                      static_cast<long long>(v));
-      return;
-    }
     i_t degree = graph.get_degree_of_var(v);
     if (degree < smallest_degree) {
       smallest_degree     = degree;
@@ -981,11 +883,6 @@ void extend_to_odd_wheel(const std::vector<i_t>& cycle_vertices,
   candidates.reserve(adj_set.size());
   for (const auto candidate : adj_set) {
     if (toc(start_time) >= time_limit) { return; }
-    if (candidate < 0 || candidate >= 2 * num_vars) {
-      ZERO_HALF_DEBUG("extend_to_odd_wheel candidate OUT_OF_RANGE candidate=%lld",
-                      static_cast<long long>(candidate));
-      continue;
-    }
     if (cycle_members.count(candidate) != 0) { continue; }
     bool adj_to_all = true;
     for (const auto v : cycle_vertices) {
@@ -1017,11 +914,6 @@ void extend_to_odd_wheel(const std::vector<i_t>& cycle_vertices,
 
   auto reduced_cost = [&](i_t vertex_idx) -> f_t {
     i_t var_idx = vertex_idx % num_vars;
-    if (var_idx < 0 || static_cast<size_t>(var_idx) >= reduced_costs.size()) {
-      ZERO_HALF_DEBUG("extend_to_odd_wheel reduced_cost OUT_OF_RANGE var_idx=%lld",
-                      static_cast<long long>(var_idx));
-      return 0.0;
-    }
     cuopt_assert(var_idx >= 0 && var_idx < static_cast<i_t>(reduced_costs.size()),
                  "Reduced cost index out of range");
     f_t rc = reduced_costs[var_idx];
