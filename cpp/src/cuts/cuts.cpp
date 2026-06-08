@@ -644,6 +644,37 @@ clique_cut_build_status_t build_zero_half_cut(const std::vector<i_t>& cycle_vert
   return clique_cut_build_status_t::NO_CUT;
 }
 
+// Reusable scratch for dijkstra_odd_cycle. The separation loop runs Dijkstra
+// once per source vertex; re-allocating and re-initializing dist/prev (size
+// 2 * num_local) on every call is O(num_local) per call, i.e. O(num_local^2)
+// over a pass — and that cost is invisible to the work-estimate budget. Instead
+// we allocate the buffers once and reset them in O(1) using a generation stamp:
+// dist[v]/prev[v] are considered valid for the current call only when
+// stamp[v] == gen. Bumping `gen` at the start of each call logically clears the
+// whole array without touching memory; entries are (re)stamped lazily as they
+// are relaxed, so per-call work is O(touched) rather than O(num_local).
+template <typename i_t, typename f_t>
+struct dijkstra_scratch_t {
+  std::vector<f_t> dist;
+  std::vector<i_t> prev;
+  std::vector<std::uint64_t> stamp;  // stamp[v] == gen  <=>  dist[v]/prev[v] valid this call
+  std::uint64_t gen{0};
+
+  // Ensure buffers cover `n` bipartite nodes. On growth, stamp is zeroed and
+  // gen reset so no stale entry can spuriously match a future gen; dist/prev
+  // need no initialization because they are only read when their stamp matches
+  // the current gen.
+  void ensure_size(std::size_t n)
+  {
+    if (stamp.size() < n) {
+      dist.resize(n);
+      prev.resize(n);
+      stamp.assign(n, 0);
+      gen = 0;
+    }
+  }
+};
+
 // Run Dijkstra over the bipartite auxiliary graph G' built from the fractional
 // sub-CG. local_adj is the adjacency in CG (local indices). weights[v] is the
 // LP value of vertex v in CG. The auxiliary graph has 2 * num_local vertices,
@@ -652,6 +683,8 @@ clique_cut_build_status_t build_zero_half_cut(const std::vector<i_t>& cycle_vert
 // shortest path from `source_local + 0 * num_local` to `source_local + num_local`.
 // On success, returns true and fills `path` with the path (sequence of bipartite
 // indices) and `total_weight` with its cost. Otherwise returns false.
+// `scratch` holds reusable dist/prev/stamp buffers (see dijkstra_scratch_t); the
+// caller owns it and reuses it across all sources in a cut pass.
 template <typename i_t, typename f_t>
 bool dijkstra_odd_cycle(i_t source_local,
                         const std::vector<std::vector<i_t>>& local_adj,
@@ -660,7 +693,8 @@ bool dijkstra_odd_cycle(i_t source_local,
                         std::vector<i_t>& path,
                         f_t& total_weight,
                         f_t* work_estimate,
-                        f_t max_work_estimate)
+                        f_t max_work_estimate,
+                        dijkstra_scratch_t<i_t, f_t>& scratch)
 {
   const i_t num_local = static_cast<i_t>(local_adj.size());
   if (source_local < 0 || source_local >= num_local) { return false; }
@@ -675,9 +709,19 @@ bool dijkstra_odd_cycle(i_t source_local,
   const i_t total_idx  = 2 * num_local;
   const f_t f_inf      = std::numeric_limits<f_t>::infinity();
 
-  std::vector<f_t> dist(static_cast<size_t>(total_idx), f_inf);
-  std::vector<i_t> prev(static_cast<size_t>(total_idx), -1);
-  dist[source_idx] = 0;
+  scratch.ensure_size(static_cast<std::size_t>(total_idx));
+  ++scratch.gen;
+  const std::uint64_t gen = scratch.gen;
+  auto& dist              = scratch.dist;
+  auto& prev              = scratch.prev;
+  auto& stamp             = scratch.stamp;
+  // dist[v]/prev[v] are valid only if last written this call (stamp[v] == gen);
+  // otherwise the node is unreached, i.e. distance infinity.
+  auto cur_dist = [&](i_t v) -> f_t { return stamp[v] == gen ? dist[v] : f_inf; };
+
+  dist[source_idx]  = 0;
+  prev[source_idx]  = -1;
+  stamp[source_idx] = gen;
 
   using node_t = std::pair<f_t, i_t>;
   std::priority_queue<node_t, std::vector<node_t>, std::greater<node_t>> pq;
@@ -688,7 +732,7 @@ bool dijkstra_odd_cycle(i_t source_local,
     auto [d, u] = pq.top();
     pq.pop();
     ++pops;
-    if (d > dist[u]) { continue; }
+    if (d > cur_dist(u)) { continue; }
     if (u == target_idx) { break; }
     if (cutoff > 0 && d >= cutoff) { break; }
 
@@ -708,19 +752,21 @@ bool dijkstra_odd_cycle(i_t source_local,
       if (edge_w < 0) { edge_w = 0; }
       const i_t v  = v_local + v_part * num_local;
       const f_t nd = d + edge_w;
-      if (nd < dist[v]) {
-        dist[v] = nd;
-        prev[v] = u;
+      if (nd < cur_dist(v)) {
+        dist[v]  = nd;
+        prev[v]  = u;
+        stamp[v] = gen;
         pq.emplace(nd, v);
       }
     }
   }
 
-  if (!std::isfinite(dist[target_idx])) {
+  const f_t target_dist = cur_dist(target_idx);
+  if (!std::isfinite(target_dist)) {
     ZERO_HALF_DEBUG("dijkstra_odd_cycle no path pops=%lld", static_cast<long long>(pops));
     return false;
   }
-  total_weight = dist[target_idx];
+  total_weight = target_dist;
   // All G' edge weights are clamped to >= 0, so the shortest-path distance must
   // be non-negative; a negative total means the clamp/relaxation invariant broke.
   cuopt_assert(total_weight >= -static_cast<f_t>(1e-9),
@@ -1050,6 +1096,7 @@ std::vector<std::vector<int>> find_violated_odd_cycles_for_test(
   std::vector<int> bipartite_path;
   std::vector<int> cycle_local;
   std::vector<char> already_used(n_vertices, 0);
+  dijkstra_scratch_t<int, double> dijkstra_scratch;
 
   for (int s = 0; s < num_local; ++s) {
     if (toc(start_time) >= time_limit) { break; }
@@ -1063,7 +1110,8 @@ std::vector<std::vector<int>> find_violated_odd_cycles_for_test(
                                          bipartite_path,
                                          total_weight,
                                          &work_estimate,
-                                         max_work_estimate)) {
+                                         max_work_estimate,
+                                         dijkstra_scratch)) {
       continue;
     }
     cycle_local.clear();
@@ -3186,7 +3234,7 @@ void cut_generation_t<i_t, f_t>::prepare_fractional_sub_cg(
 
   const f_t bound_tol         = settings.primal_tol;
   f_t work_estimate           = 0.0;
-  const f_t max_work_estimate = 1e8;
+  const f_t max_work_estimate = 1e7;
 
   sub_cg_.num_vars = num_vars;
   sub_cg_.vertices.reserve(static_cast<size_t>(num_vars) * 2);
@@ -3704,6 +3752,7 @@ bool cut_generation_t<i_t, f_t>::generate_zero_half_cuts(
   i_t cuts_added    = 0;
   i_t added_per_var = 0;
   std::vector<char> already_used(num_local, 0);
+  dijkstra_scratch_t<i_t, f_t> dijkstra_scratch;
 
   for (i_t s = 0; s < num_local; ++s) {
     if (toc(start_time) >= settings.time_limit) { break; }
@@ -3721,7 +3770,8 @@ bool cut_generation_t<i_t, f_t>::generate_zero_half_cuts(
                                       bipartite_path,
                                       total_weight,
                                       &work_estimate,
-                                      max_work_estimate)) {
+                                      max_work_estimate,
+                                      dijkstra_scratch)) {
       continue;
     }
     if (!path_to_odd_cycle<i_t, f_t>(bipartite_path,
