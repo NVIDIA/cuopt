@@ -747,10 +747,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
       }
     }
 
-    if (sol.get_termination_status() == mip_termination_status_t::FeasibleFound ||
-        sol.get_termination_status() == mip_termination_status_t::Optimal) {
-      sol.log_detailed_summary();
-    }
+    sol.log_detailed_summary();
 
     if (settings.sol_file != "") {
       CUOPT_LOG_INFO("Writing solution to file %s", settings.sol_file.c_str());

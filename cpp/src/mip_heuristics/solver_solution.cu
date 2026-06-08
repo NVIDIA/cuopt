@@ -238,21 +238,46 @@ void mip_solution_t<i_t, f_t>::log_summary() const
 template <typename i_t, typename f_t>
 void mip_solution_t<i_t, f_t>::log_detailed_summary() const
 {
-  CUOPT_LOG_INFO(
-    "Solution objective: %f , relative_mip_gap %f solution_bound %f presolve_time %f "
-    "total_solve_time %f "
-    "max constraint violation %f max int violation %f max var bounds violation %f "
-    "nodes %d simplex_iterations %d",
-    objective_,
-    mip_gap_,
-    stats_.get_solution_bound(),
-    stats_.presolve_time,
-    stats_.total_solve_time,
-    max_constraint_violation_,
-    max_int_violation_,
-    max_variable_bound_violation_,
-    stats_.num_nodes,
-    stats_.num_simplex_iterations);
+  std::string section_divider(50, '=');
+  std::string text            = "\nSummary\n" + section_divider + "\n";
+  std::string solution_status = get_termination_status_string();
+
+  f_t dual_bound = stats_.get_solution_bound();
+  f_t obj        = objective_;
+  f_t gap        = mip_gap_;
+
+  bool has_solution = termination_status_ == mip_termination_status_t::FeasibleFound ||
+                      termination_status_ == mip_termination_status_t::Optimal;
+
+  if (!has_solution) {
+    obj        = std::numeric_limits<f_t>::infinity();
+    gap        = std::numeric_limits<f_t>::infinity();
+    dual_bound = std::numeric_limits<f_t>::infinity();
+  }
+
+  text += std::format("{:<30}{:>15}\n", "Solution status:", solution_status);
+  text += std::format("{:<30}{:>+15.6e}\n", "Solution objective:", obj);
+  text += std::format("{:<30}{:>+15.6e}\n", "Dual bound:", dual_bound);
+  text += std::format("{:<30}{:>+15.6e}\n", "Relative MIP gap:", gap);
+
+  if (has_solution) {
+    text +=
+      std::format("{:<30}{:>+15.6e}\n", "Max constraint violation:", max_constraint_violation_);
+    text += std::format("{:<30}{:>+15.6e}\n", "Max integer violation:", max_int_violation_);
+    text += std::format(
+      "{:<30}{:>+15.6e}\n", "Max variable bound violation:", max_variable_bound_violation_);
+  } else {
+    text += std::format("{:<30}{:>15}\n", "Max constraint violation:", "N/A");
+    text += std::format("{:<30}{:>15}\n", "Max integer violation:", "N/A");
+    text += std::format("{:<30}{:>15}\n", "Max variable bound violation:", "N/A");
+  }
+
+  text += std::format("{:<30}{:>15}\n", "Nodes explored:", stats_.num_nodes);
+  text += std::format("{:<30}{:>15}\n", "Simplex iterations:", stats_.num_simplex_iterations);
+  text += std::format("{:<30}{:>15.2f}\n", "Presolve time:", stats_.presolve_time);
+  text += std::format("{:<30}{:>15.2f}\n", "B&B time:", stats_.bnb_time);
+  text += std::format("{:<30}{:>15.2f}\n", "Total solve time:", stats_.total_solve_time);
+  CUOPT_LOG_INFO("%s\n", text);
 }
 
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT

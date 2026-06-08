@@ -496,7 +496,10 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     if (!context.settings.heuristics_only) {
 #pragma omp task default(shared) priority(CUOPT_CRITICAL_TASK_PRIORITY)
       {
-        branch_and_bound_status = branch_and_bound->solve(branch_and_bound_solution);
+        auto t0                               = std::chrono::system_clock::now();
+        branch_and_bound_status               = branch_and_bound->solve(branch_and_bound_solution);
+        std::chrono::duration<double> elapsed = std::chrono::system_clock::now() - t0;
+        context.stats.bnb_time                = elapsed.count();
       }
     }
 

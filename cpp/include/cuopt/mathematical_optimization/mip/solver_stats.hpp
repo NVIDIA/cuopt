@@ -22,6 +22,7 @@ struct solver_stats_t {
     if (this == &other) { return *this; }
     total_solve_time = other.total_solve_time;
     presolve_time    = other.presolve_time;
+    bnb_time         = other.bnb_time;
     solution_bound.store(other.solution_bound.load(std::memory_order_relaxed),
                          std::memory_order_relaxed);
     num_nodes              = other.num_nodes;
@@ -35,6 +36,7 @@ struct solver_stats_t {
 
   f_t total_solve_time = 0.;
   f_t presolve_time    = 0.;
+  f_t bnb_time         = 0.;
   std::atomic<f_t> solution_bound;
   i_t num_nodes              = 0;
   i_t num_simplex_iterations = 0;
