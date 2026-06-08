@@ -26,24 +26,7 @@ class search_tree_t {
 
   search_tree_t(mip_node_t<i_t, f_t>&& node) : search_tree_t() { root = std::move(node); }
 
-  ~search_tree_t()
-  {
-    try {
-      clean();  // scope-exit ensure destruction of all detached leaves
-    } catch (const std::exception& e) {
-      // fprintf to stderr is allocation-free and cannot throw; using the
-      // project logger here would risk a secondary bad_alloc that would
-      // escape the destructor and re-introduce std::terminate.
-      std::fprintf(stderr,
-                   "search_tree_t destructor: iterative teardown failed (%s); falling back to "
-                   "recursive unique_ptr destruction.\n",
-                   e.what());
-    } catch (...) {
-      std::fprintf(stderr,
-                   "search_tree_t destructor: iterative teardown failed (unknown exception); "
-                   "falling back to recursive unique_ptr destruction.\n");
-    }
-  }
+  ~search_tree_t() { clean(); }
 
   void update(mip_node_t<i_t, f_t>* node_ptr, node_status_t status)
   {
