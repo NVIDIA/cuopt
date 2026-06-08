@@ -959,7 +959,7 @@ cuopt_int_t cuOptGetErrorStatus(cuOptSolution solution, cuopt_int_t* error_statu
  * @param[out] error_string_ptr - A pointer to a char that on output will contain the
  *  error string.
  *
- * @param[in] error_string_size - Size of the char buffer/
+ * @param[in] error_string_size - Size of the char buffer. Must be positive.
  *
  * @return A status code indicating success or failure.
  */
