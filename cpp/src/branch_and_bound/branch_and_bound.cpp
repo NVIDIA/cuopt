@@ -38,6 +38,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <exception>
 #include <limits>
 #include <string>
 #include <vector>
@@ -1998,20 +1999,26 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
   std::string solver_name = "";
 
   lp_status_t root_status;
+  std::exception_ptr root_exception;
 
 // Launch a task for solving the root LP relaxation via dual simplex.
 #pragma omp task default(shared) depend(out : root_status) priority(CUOPT_CRITICAL_TASK_PRIORITY)
   {
-    root_status = solve_linear_program_with_advanced_basis(original_lp_,
-                                                           exploration_stats_.start_time,
-                                                           lp_settings,
-                                                           root_relax_soln_,
-                                                           basis_update,
-                                                           basic_list,
-                                                           nonbasic_list,
-                                                           root_vstatus_,
-                                                           edge_norms_,
-                                                           nullptr);
+    try {
+      root_status = solve_linear_program_with_advanced_basis(original_lp_,
+                                                             exploration_stats_.start_time,
+                                                             lp_settings,
+                                                             root_relax_soln_,
+                                                             basis_update,
+                                                             basic_list,
+                                                             nonbasic_list,
+                                                             root_vstatus_,
+                                                             edge_norms_,
+                                                             nullptr);
+    } catch (...) {
+      root_exception = std::current_exception();
+      set_root_concurrent_halt(1);
+    }
   }
 
   // Wait for the root relaxation solution to be sent by the diversity manager or dual simplex
@@ -2057,6 +2064,7 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
       // Stop dual simplex and then wait it to finish
       set_root_concurrent_halt(1);
 #pragma omp taskwait depend(in : root_status)
+      if (root_exception) { std::rethrow_exception(root_exception); }
 
       set_root_concurrent_halt(0);  // Clear the concurrent halt flag
       // Override the root relaxation solution with the crossover solution
@@ -2110,6 +2118,7 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
     } else {
 // Wait for the dual simplex to finish (after telling PDLP/Barrier to stop)
 #pragma omp taskwait depend(in : root_status)
+      if (root_exception) { std::rethrow_exception(root_exception); }
       user_objective       = root_relax_soln_.user_objective;
       iter                 = root_relax_soln_.iterations;
       root_relax_solved_by = DualSimplex;
@@ -2118,6 +2127,7 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
   } else {
     // Wait for the dual simplex to finish (crossover do not produced a solution)
 #pragma omp taskwait depend(in : root_status)
+    if (root_exception) { std::rethrow_exception(root_exception); }
     user_objective       = root_relax_soln_.user_objective;
     iter                 = root_relax_soln_.iterations;
     root_relax_solved_by = DualSimplex;
