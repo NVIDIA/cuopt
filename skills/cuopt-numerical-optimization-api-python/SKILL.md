@@ -253,12 +253,18 @@ settings.set_parameter("log_to_console", 1)
 | QP rejected with MAXIMIZE | QP only supports MINIMIZE | Negate the objective: minimize `-f(x)` |
 | QP returns non-optimal | Q not PSD or variables badly scaled | Check Q is PSD; rescale variables to similar magnitudes |
 
-## Getting Dual Values (LP only)
+## Getting Dual Values (LP / QP)
+
+Shadow prices (`DualValue`) and reduced costs (`ReducedCost`) are returned for **LP and QP** —
+cuOpt's barrier solver is primal-dual, so a QP with a quadratic objective and **linear**
+constraints returns duals just like an LP. The constraints you read duals from must be linear:
+cuOpt returns **no dual variables for a problem that has any quadratic constraint** (every
+`DualValue`/`ReducedCost` comes back as `NaN`). MILP returns no duals.
 
 ```python
 if problem.Status.name == "Optimal":
-    constraint = problem.getConstraint("resource_a")
-    shadow_price = constraint.DualValue
+    constraint = problem.getConstraint("resource_a")   # linear constraint
+    shadow_price = constraint.DualValue                # NaN if the model has quadratic constraints
     print(f"Shadow price: {shadow_price}")
 ```
 

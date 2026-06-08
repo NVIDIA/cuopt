@@ -123,6 +123,36 @@ if problem.Status.name == "Optimal":
     print(f"Objective = {problem.ObjValue:.4f}")
 ```
 
+## Reading Duals from a QP
+
+A QP with **linear** constraints returns shadow prices and reduced costs just like an LP
+(cuOpt's barrier solver is primal-dual). A quadratic *objective* is fine; a quadratic
+*constraint* is not — cuOpt returns **no duals for a problem with quadratic constraints**
+(every `DualValue`/`ReducedCost` is `NaN`), so read duals only when all constraints are linear.
+
+```python
+"""
+minimize    x² + y² + z²
+subject to  x + y + z == 10   (linear)
+The equality's shadow price is the marginal change in the optimal objective
+per unit increase of the right-hand side.
+"""
+from cuopt.linear_programming.problem import Problem, MINIMIZE
+
+problem = Problem("QPDuals")
+x = problem.addVariable(lb=0, name="x")
+y = problem.addVariable(lb=0, name="y")
+z = problem.addVariable(lb=0, name="z")
+problem.setObjective(x*x + y*y + z*z, sense=MINIMIZE)
+problem.addConstraint(x + y + z == 10, name="budget")
+problem.solve()
+
+if problem.Status.name in ["Optimal", "PrimalFeasible"]:
+    for c in problem.getConstraints():
+        # 'budget' dual magnitude ≈ 6.667 (Δobjective per unit of the RHS)
+        print(f"{c.ConstraintName} DualValue = {c.DualValue}")
+```
+
 ## Maximization Workaround
 
 ```python

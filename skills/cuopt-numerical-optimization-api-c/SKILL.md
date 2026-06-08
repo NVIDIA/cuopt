@@ -35,6 +35,14 @@ QP uses the same library, include/lib paths, and build pattern as LP/MILP — on
 - **Continuous variables only** — set `CUOPT_CONTINUOUS` for every variable; integer QP is not supported.
 - **Q should be PSD** for a convex problem.
 
+## Dual values (LP / QP)
+
+`cuOptGetDualSolution` (shadow prices) and `cuOptGetReducedCosts` (reduced costs) return values
+for **LP and QP with linear constraints** — the barrier solver is primal-dual, so a quadratic
+objective still yields duals. cuOpt returns **no duals for a problem with quadratic constraints**
+(the returned arrays are filled with `NaN`). See [assets/lp_duals](assets/lp_duals/) for the call
+sequence — it is an LP, but the same calls apply to a QP whose constraints are all linear.
+
 ## Debugging (MPS / C)
 
 **MPS parsing:** Required sections in order: NAME, ROWS, COLUMNS, RHS, (optional) BOUNDS, ENDATA. Integer markers: `'MARKER'`, `'INTORG'`, `'INTEND'`.
