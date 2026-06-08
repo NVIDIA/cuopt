@@ -381,15 +381,14 @@ void branch_and_bound_t<i_t, f_t>::report(
   char symbol, f_t obj, f_t lower_bound, i_t node_depth, i_t node_int_infeas, double work_time)
 {
   update_user_bound(lower_bound);
-  const i_t nodes_explored    = exploration_stats_.nodes_explored;
-  const i_t nodes_unexplored  = exploration_stats_.nodes_unexplored;
-  const f_t user_obj          = compute_user_objective(original_lp_, obj);
-  const f_t user_lower        = compute_user_objective(original_lp_, lower_bound);
-  const f_t iters             = static_cast<f_t>(exploration_stats_.total_lp_iters);
-  const f_t iter_node         = nodes_explored > 0 ? iters / nodes_explored : iters;
-  f_t user_gap                = user_relative_gap(original_lp_, obj, lower_bound);
-  std::string user_gap_text   = to_percentage(user_gap);
-  std::string tree_completion = to_percentage(search_tree_.progress.load());
+  const i_t nodes_explored   = exploration_stats_.nodes_explored;
+  const i_t nodes_unexplored = exploration_stats_.nodes_unexplored;
+  const f_t user_obj         = compute_user_objective(original_lp_, obj);
+  const f_t user_lower       = compute_user_objective(original_lp_, lower_bound);
+  const f_t iters            = static_cast<f_t>(exploration_stats_.total_lp_iters);
+  const f_t iter_node        = nodes_explored > 0 ? iters / nodes_explored : iters;
+  f_t user_gap               = user_relative_gap(original_lp_, obj, lower_bound);
+  std::string user_gap_text  = to_percentage(user_gap);
 
   std::string log_line =
     std::format("{:^1} {:>12} {:>12} {:^+19.6e} {:^+15.6e} {:>8} {:>7} {:^11.1e} {:^11}",
