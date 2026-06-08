@@ -75,6 +75,19 @@ using simplex::vector_norm_inf;
 
 namespace {
 
+// Column widths for the branch-and-bound progress table.
+constexpr int SYMBOL_WIDTH             = 1;
+constexpr int EXPLORED_WIDTH           = 12;
+constexpr int UNEXPLORED_WIDTH         = 12;
+constexpr int OBJECTIVE_WIDTH          = 19;
+constexpr int BOUND_WIDTH              = 15;
+constexpr int INTEGER_INFEASIBLE_WIDTH = 8;
+constexpr int DEPTH_WIDTH              = 7;
+constexpr int ITER_NODE_WIDTH          = 11;
+constexpr int GAP_WIDTH                = 11;
+constexpr int WORK_WIDTH               = 8;
+constexpr int TIME_WIDTH               = 8;
+
 template <typename f_t>
 bool is_fractional(f_t x, variable_type_t var_type, f_t integer_tol)
 {
@@ -324,18 +337,28 @@ void branch_and_bound_t<i_t, f_t>::set_initial_upper_bound(f_t bound)
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::print_table_header()
 {
-  std::string header = std::format("{:^1}|{:^12}|{:^12}|{:^19}|{:^15}|{:^8}|{:^7}|{:^11}|{:^11}|",
-                                   "",
-                                   "Explored",
-                                   "Unexplored",
-                                   "Objective",
-                                   "Bound",
-                                   "IntInf",
-                                   "Depth",
-                                   "Iter/Node",
-                                   "Gap");
-  if (settings_.deterministic) { header += std::format("{:^8}|", "Work"); }
-  header += std::format("{:^8}|", "Time");
+  std::string header =
+    std::format("{:^{}}|{:^{}}|{:^{}}|{:^{}}|{:^{}}|{:^{}}|{:^{}}|{:^{}}|{:^{}}|",
+                "",
+                SYMBOL_WIDTH,
+                "Explored",
+                EXPLORED_WIDTH,
+                "Unexplored",
+                UNEXPLORED_WIDTH,
+                "Objective",
+                OBJECTIVE_WIDTH,
+                "Bound",
+                BOUND_WIDTH,
+                "IntInf",
+                INTEGER_INFEASIBLE_WIDTH,
+                "Depth",
+                DEPTH_WIDTH,
+                "Iter/Node",
+                ITER_NODE_WIDTH,
+                "Gap",
+                GAP_WIDTH);
+  if (settings_.deterministic) { header += std::format("{:^{}}|", "Work", WORK_WIDTH); }
+  header += std::format("{:^{}}|", "Time", TIME_WIDTH);
   settings_.log.printf("%s\n", header.c_str());
 }
 
@@ -350,18 +373,28 @@ void branch_and_bound_t<i_t, f_t>::report_heuristic(f_t obj)
     std::string user_gap_text = to_percentage(user_gap);
 
     std::string log_line =
-      std::format("H {:>12} {:>12} {:^+19.6e} {:^+15.6e} {:>8} {:>7} {:^11} {:^11}",
+      std::format("{:^{}} {:>{}} {:>{}} {:^+{}.6e} {:^+{}.6e} {:>{}} {:>{}} {:^{}} {:^{}}",
+                  "H",
+                  SYMBOL_WIDTH,
                   "",  // nodes explored
+                  EXPLORED_WIDTH,
                   "",  // nodes unexplored
+                  UNEXPLORED_WIDTH,
                   user_obj,
+                  OBJECTIVE_WIDTH,
                   user_lower,
+                  BOUND_WIDTH,
                   "",  // integer infeasible
+                  INTEGER_INFEASIBLE_WIDTH,
                   "",  // depth
+                  DEPTH_WIDTH,
                   "",  // iter/node
-                  user_gap_text);
+                  ITER_NODE_WIDTH,
+                  user_gap_text,
+                  GAP_WIDTH);
 
-    if (settings_.deterministic) { log_line += std::format("{:^8}", ""); }
-    log_line += std::format(" {:>8.2f}", toc(exploration_stats_.start_time));
+    if (settings_.deterministic) { log_line += std::format("{:^{}}", "", WORK_WIDTH); }
+    log_line += std::format(" {:>{}.2f}", toc(exploration_stats_.start_time), TIME_WIDTH);
     settings_.log.printf("%s\n", log_line.c_str());
   } else {
     if (solving_root_relaxation_.load()) {
@@ -396,18 +429,27 @@ void branch_and_bound_t<i_t, f_t>::report(
   std::string user_gap_text  = to_percentage(user_gap);
 
   std::string log_line =
-    std::format("{:^1} {:>12} {:>12} {:^+19.6e} {:^+15.6e} {:>8} {:>7} {:^11.1e} {:^11}",
+    std::format("{:^{}} {:>{}} {:>{}} {:^+{}.6e} {:^+{}.6e} {:>{}} {:>{}} {:^{}.1e} {:^{}}",
                 symbol,
+                SYMBOL_WIDTH,
                 nodes_explored,
+                EXPLORED_WIDTH,
                 nodes_unexplored,
+                UNEXPLORED_WIDTH,
                 user_obj,
+                OBJECTIVE_WIDTH,
                 user_lower,
+                BOUND_WIDTH,
                 node_int_infeas,
+                INTEGER_INFEASIBLE_WIDTH,
                 node_depth,
+                DEPTH_WIDTH,
                 iter_node,
-                user_gap_text);
-  if (work_time >= 0) { log_line += std::format(" {:>8.2f}", work_time); }
-  log_line += std::format(" {:>8.2f}", toc(exploration_stats_.start_time));
+                ITER_NODE_WIDTH,
+                user_gap_text,
+                GAP_WIDTH);
+  if (work_time >= 0) { log_line += std::format(" {:>{}.2f}", work_time, WORK_WIDTH); }
+  log_line += std::format(" {:>{}.2f}", toc(exploration_stats_.start_time), TIME_WIDTH);
   settings_.log.printf("%s\n", log_line.c_str());
 }
 
