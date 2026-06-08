@@ -324,18 +324,16 @@ void branch_and_bound_t<i_t, f_t>::set_initial_upper_bound(f_t bound)
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::print_table_header()
 {
-  std::string header =
-    std::format("{:^1}|{:^12}|{:^12}|{:^19}|{:^15}|{:^8}|{:^7}|{:^11}|{:^11}|{:^15}|",
-                "",
-                "Explored",
-                "Unexplored",
-                "Objective",
-                "Bound",
-                "IntInf",
-                "Depth",
-                "Iter/Node",
-                "Gap",
-                "Est. Progress");
+  std::string header = std::format("{:^1}|{:^12}|{:^12}|{:^19}|{:^15}|{:^8}|{:^7}|{:^11}|{:^11}|",
+                                   "",
+                                   "Explored",
+                                   "Unexplored",
+                                   "Objective",
+                                   "Bound",
+                                   "IntInf",
+                                   "Depth",
+                                   "Iter/Node",
+                                   "Gap");
   if (settings_.deterministic) { header += std::format("{:^8}|", "Work"); }
   header += std::format("{:^8}|", "Time");
   settings_.log.printf("%s\n", header.c_str());
@@ -352,7 +350,7 @@ void branch_and_bound_t<i_t, f_t>::report_heuristic(f_t obj)
     std::string user_gap_text = to_percentage(user_gap);
 
     std::string log_line =
-      std::format("H {:>12} {:>12} {:^+19.6e} {:^+15.6e} {:>8} {:>7} {:^11} {:^11} {:^15}",
+      std::format("H {:>12} {:>12} {:^+19.6e} {:^+15.6e} {:>8} {:>7} {:^11} {:^11}",
                   "",  // nodes explored
                   "",  // nodes unexplored
                   user_obj,
@@ -360,9 +358,7 @@ void branch_and_bound_t<i_t, f_t>::report_heuristic(f_t obj)
                   "",  // integer infeasible
                   "",  // depth
                   "",  // iter/node
-                  user_gap_text,
-                  ""  // tree progress
-      );
+                  user_gap_text);
 
     if (settings_.deterministic) { log_line += std::format("{:^8}", ""); }
     log_line += std::format(" {:>8.2f}", toc(exploration_stats_.start_time));
@@ -401,7 +397,7 @@ void branch_and_bound_t<i_t, f_t>::report(
   std::string tree_completion = to_percentage(search_tree_.progress.load());
 
   std::string log_line =
-    std::format("{:^1} {:>12} {:>12} {:^+19.6e} {:^+15.6e} {:>8} {:>7} {:^11.1e} {:^11} {:^15}",
+    std::format("{:^1} {:>12} {:>12} {:^+19.6e} {:^+15.6e} {:>8} {:>7} {:^11.1e} {:^11}",
                 symbol,
                 nodes_explored,
                 nodes_unexplored,
@@ -410,8 +406,7 @@ void branch_and_bound_t<i_t, f_t>::report(
                 node_int_infeas,
                 node_depth,
                 iter_node,
-                user_gap_text,
-                tree_completion);
+                user_gap_text);
   if (work_time >= 0) { log_line += std::format(" {:>8.2f}", work_time); }
   log_line += std::format(" {:>8.2f}", toc(exploration_stats_.start_time));
   settings_.log.printf("%s\n", log_line.c_str());
