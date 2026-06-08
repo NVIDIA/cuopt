@@ -757,16 +757,17 @@ bool dijkstra_odd_cycle(i_t source_local,
       }
       cuopt_assert(v_local >= 0 && v_local < num_local, "Zero-half Dijkstra neighbor out of range");
       // Edge weight = (1 − x_u − x_v) / 2, where x_u/x_v are the LP values of
-      // the literals at u and v. For a CG edge the conflict constraint
-      // x_u + x_v <= 1 must hold, so the weight is non-negative. Tiny
-      // negative values arise from FP drift; clamp them. A *significantly*
-      // negative weight means the LP is meaningfully violating a conflict
-      // constraint — that's an upstream bug we want to know about, hence
-      // the debug-only assert with a generous tolerance.
+      // the literals at u and v. A conflict-graph edge x_u + x_v <= 1 is an
+      // *implied* clique inequality (e.g. derived from a knapsack constraint
+      // when a_i + a_j > rhs, see clique_table.cu): it is valid for every
+      // integer-feasible point but is NOT explicitly enforced in the LP. So a
+      // fractional LP optimum routinely violates x_u + x_v <= 1 — that is
+      // exactly the violation the odd-cycle / zero-half separator exists to
+      // exploit. A negative raw edge weight is therefore expected, not a bug.
+      // We clamp it to 0 so the bipartite shortest path stays non-negative; a
+      // strongly violated edge then becomes a 0-weight (very attractive) edge,
+      // which is the desired behavior.
       f_t edge_w = (static_cast<f_t>(1) - weights[u_local] - weights[v_local]) / 2;
-      cuopt_assert(edge_w >= -static_cast<f_t>(1e-6),
-                   "Zero-half edge weight significantly negative — conflict constraint violated by "
-                   "LP?");
       if (edge_w < 0) { edge_w = 0; }
       const i_t v  = v_local + v_part * num_local;
       const f_t nd = d + edge_w;
