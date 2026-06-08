@@ -20,9 +20,11 @@
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
+#include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <deque>
 #include <limits>
@@ -215,6 +217,12 @@ std::size_t checked_mul(std::size_t a, std::size_t b, const char* label)
     mps_parser_fail(error_type_t::OutOfMemoryError, "%s size overflow", label);
   }
   return a * b;
+}
+
+double elapsed_ms_since(std::chrono::steady_clock::time_point start)
+{
+  return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start)
+    .count();
 }
 
 bool pread_full_plain(int fd, char* dst, std::size_t bytes, std::size_t offset)
@@ -479,6 +487,8 @@ void Lz4InputStream::run_decode_tasks()
   }
 
   const std::size_t io_threads = std::min(lz4_input_max_io_threads, window_count);
+  std::atomic<double> decoder_wait_batch_ms{0.0};
+  std::atomic<double> decoder_active_batch_ms{0.0};
 
   struct resident_block_desc_t {
     const char* src                 = nullptr;
@@ -514,10 +524,12 @@ void Lz4InputStream::run_decode_tasks()
         {
           MPS_NVTX_RANGE("lz4_decode_wait_batch", nvtx::colors::io);
           std::unique_lock<std::mutex> lock(desc_mutex);
+          const auto wait_start = std::chrono::steady_clock::now();
           desc_cv.wait(lock, [&] {
             return stop_workers.load(std::memory_order_acquire) || scanner_done ||
                    !desc_queue.empty();
           });
+          decoder_wait_batch_ms.fetch_add(elapsed_ms_since(wait_start), std::memory_order_relaxed);
           if (stop_workers.load(std::memory_order_acquire)) { return; }
           if (desc_queue.empty()) {
             if (scanner_done) return;
@@ -527,6 +539,7 @@ void Lz4InputStream::run_decode_tasks()
           desc_queue.pop_front();
         }
 
+        const auto decode_start = std::chrono::steady_clock::now();
         MPS_NVTX_RANGE("lz4_decode_batch", nvtx::colors::decode);
         for (const auto& block : batch) {
           char* dst  = output_data_ + block.decompressed_offset;
@@ -578,6 +591,8 @@ void Lz4InputStream::run_decode_tasks()
             section_scanner_->publish_ready(after);
           }
         }
+        decoder_active_batch_ms.fetch_add(elapsed_ms_since(decode_start),
+                                          std::memory_order_relaxed);
       }
     } catch (...) {
       fail_and_notify(std::current_exception());
@@ -621,6 +636,7 @@ void Lz4InputStream::run_decode_tasks()
 
   std::atomic_size_t blocks_scanned{0};
   std::vector<std::vector<char>> crossing_payloads;
+  const auto read_wall_start = std::chrono::steady_clock::now();
   std::thread scanner([&] {
     try {
       nvtx::name_current_thread("lz4-metadata-scan");
@@ -770,6 +786,7 @@ void Lz4InputStream::run_decode_tasks()
   for (auto& reader : readers) {
     reader.join();
   }
+  const double read_wall_ms = elapsed_ms_since(read_wall_start);
   scanner.join();
   for (auto& worker : io_workers) {
     worker.join();
@@ -777,6 +794,19 @@ void Lz4InputStream::run_decode_tasks()
   if (first_error) std::rethrow_exception(first_error);
   output_view_size_ = ready_bytes_;
   section_scanner_->publish_ready(output_view_size_);
+
+  const double compressed_mb = static_cast<double>(compressed_size_) / (1024.0 * 1024.0);
+  const double read_effective_mbps =
+    read_wall_ms > 0.0 ? compressed_mb / (read_wall_ms / 1000.0) : 0.0;
+  const double decoder_wait_ms   = decoder_wait_batch_ms.load(std::memory_order_relaxed);
+  const double decoder_active_ms = decoder_active_batch_ms.load(std::memory_order_relaxed);
+  const double decoder_total_ms  = decoder_wait_ms + decoder_active_ms;
+  const double decoder_wait_ratio =
+    decoder_total_ms > 0.0 ? decoder_wait_ms / decoder_total_ms : 0.0;
+  std::fprintf(stderr,
+               "[LZ4_IO] read_effective_MBps=%.3f decoder_wait_ratio=%.6f\n",
+               read_effective_mbps,
+               decoder_wait_ratio);
 }
 
 }  // namespace mps_fast
