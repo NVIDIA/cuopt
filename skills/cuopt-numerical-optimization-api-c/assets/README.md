@@ -11,11 +11,6 @@ LP/MILP C API reference implementations. Use as reference when building new appl
 | [milp_production_planning](milp_production_planning/) | MILP | Production planning with resource constraints |
 | [mps_solver](mps_solver/) | LP/MILP | Solve from MPS file via `cuOptReadProblem` |
 
-> **Duals:** `lp_duals` is an LP, but `cuOptGetDualSolution` / `cuOptGetReducedCosts` also return
-> shadow prices and reduced costs for a **QP with linear constraints** (the barrier solver is
-> primal-dual). No duals are returned for problems with **quadratic constraints** — the arrays
-> come back filled with `NaN`.
-
 ## Build and run
 
 Set include and library paths, then build and run.
