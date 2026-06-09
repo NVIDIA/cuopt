@@ -915,7 +915,6 @@ namespace {
 
 cpu_optimization_problem_t<int32_t, double> create_test_lp_problem()
 {
-  // minimize x  subject to x >= 1, 0 <= x <= 10
   auto data = cuopt::test::inline_lp::parse_inline_lp(R"LP(
 Minimize
   obj: x
@@ -932,7 +931,6 @@ End
 
 cpu_optimization_problem_t<int32_t, double> create_test_mip_problem()
 {
-  // minimize x  subject to x >= 1, x integer in [0, 10]
   auto data = cuopt::test::inline_lp::parse_inline_lp(R"LP(
 Minimize
   obj: x

@@ -31,8 +31,6 @@ struct sc_result_t {
   double sc_value;
 };
 
-// Parameterized SC test problem: minimize x s.t. x + y = row_rhs, with x
-// semi-continuous on [sc_lb, sc_ub] and y continuous on [aux_lb, aux_ub].
 optimization_problem_t<int, double> make_sc_problem(raft::handle_t const* handle,
                                                     double sc_lb,
                                                     double sc_ub,

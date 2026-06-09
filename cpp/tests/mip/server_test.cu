@@ -18,7 +18,6 @@
 
 namespace cuopt::linear_programming::test {
 
-// Standard LP test problem matching the Python test.
 io::mps_data_model_t<int, double> create_std_lp_problem()
 {
   return cuopt::test::inline_lp::parse_inline_lp(R"LP(
@@ -34,7 +33,6 @@ End
 )LP");
 }
 
-// Standard MILP test problem matching the Python test (x1 integer, x2 continuous).
 io::mps_data_model_t<int, double> create_std_milp_problem(bool maximize)
 {
   auto problem = create_std_lp_problem();

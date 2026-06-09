@@ -45,8 +45,7 @@ namespace {
 
 constexpr double kCliqueTestTol = 1e-6;
 
-// Maximize x0 + x1 + x2 via minimizing -x0 - x1 - x2, with pairwise binary
-// conflicts forming a triangle.
+// Pairwise binary conflicts forming a triangle.
 io::mps_data_model_t<int, double> create_pairwise_triangle_set_packing_problem()
 {
   return cuopt::test::inline_lp::parse_inline_lp(R"LP(
@@ -121,9 +120,7 @@ End
 )LP");
 }
 
-// One weighted binary knapsack row:
-//   1*x0 + 2*x1 + 3*x2 + 4*x3 <= 5
-// This creates base clique {x2, x3} and additional clique inducing conflict {x1, x3}.
+// Creates base clique {x2, x3} and additional clique inducing conflict {x1, x3}.
 io::mps_data_model_t<int, double> create_weighted_addtl_conflict_problem()
 {
   return cuopt::test::inline_lp::parse_inline_lp(R"LP(
@@ -771,11 +768,6 @@ std::optional<size_t> isolate_first_lp_infeasible_literal_cut_by_bisection(
 
 }  // namespace
 
-// minimize -7*x1 -2*x2
-// subject to -x1 + 2*x2 <= 4
-//            5*x1 +  x2 <= 20
-//           -2*x1 - 2*x2 <= -7
-// x1, x2 integer in [0, 10]
 io::mps_data_model_t<int, double> create_cuts_problem_1()
 {
   return cuopt::test::inline_lp::parse_inline_lp(R"LP(
@@ -816,10 +808,6 @@ TEST(cuts, test_cuts_1)
   EXPECT_LE(solution.get_num_nodes(), 2);
 }
 
-// minimize -86*y1 -4*y2 -40*y3
-// subject to 774*y1 + 76*y2 + 42*y3 <= 875
-//             67*y1 + 27*y2 + 53*y3 <= 875
-//             y1, y2, y3 binary
 io::mps_data_model_t<int, double> create_cuts_problem_2()
 {
   return cuopt::test::inline_lp::parse_inline_lp(R"LP(

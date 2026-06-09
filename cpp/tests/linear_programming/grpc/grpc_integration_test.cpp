@@ -392,7 +392,6 @@ class GrpcIntegrationTestBase : public ::testing::Test {
 
   cpu_optimization_problem_t<int32_t, double> create_simple_mip()
   {
-    // minimize x0 + 2 x1  s.t. x0 + x1 >= 1, x0, x1 binary
     auto data = cuopt::test::inline_lp::parse_inline_lp(R"LP(
 Minimize
   obj: x0 + 2 x1

@@ -21,11 +21,6 @@
 
 namespace cuopt::linear_programming::test {
 
-// Mixed integer linear programming example from documentation:
-//   maximize  5x + 3y
-//   s.t.      2x + 4y >= 230
-//             3x + 2y <= 190
-//             x integer, y continuous, x, y >= 0
 io::mps_data_model_t<int, double> create_doc_example_problem()
 {
   return cuopt::test::inline_lp::parse_inline_lp(R"LP(

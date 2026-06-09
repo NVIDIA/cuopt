@@ -22,7 +22,6 @@
 
 namespace cuopt::linear_programming::test {
 
-// Standard LP test problem matching the Python test.
 io::mps_data_model_t<int, double> create_std_lp_problem()
 {
   return cuopt::test::inline_lp::parse_inline_lp(R"LP(
@@ -38,7 +37,6 @@ End
 )LP");
 }
 
-// Degenerate single-variable LP with x fixed at 0.
 io::mps_data_model_t<int, double> create_single_var_lp_problem()
 {
   return cuopt::test::inline_lp::parse_inline_lp(R"LP(
@@ -52,7 +50,6 @@ End
 )LP");
 }
 
-// Standard MILP test problem (x1 integer, x2 continuous).
 io::mps_data_model_t<int, double> create_std_milp_problem(bool maximize)
 {
   auto problem = create_std_lp_problem();
@@ -62,7 +59,6 @@ io::mps_data_model_t<int, double> create_std_milp_problem(bool maximize)
   return problem;
 }
 
-// Single-variable MILP wrapping create_single_var_lp_problem.
 io::mps_data_model_t<int, double> create_single_var_milp_problem(bool maximize)
 {
   auto problem = create_single_var_lp_problem();
@@ -76,8 +72,7 @@ TEST(LPTest, TestSampleLP2)
 {
   raft::handle_t handle;
 
-  // Minimize x s.t. x <= 1, x <= 1, x >= 0. Two identical row constraints
-  // exercise duplicate-row handling.
+  // Two identical row constraints exercise duplicate-row handling.
   auto problem = cuopt::test::inline_lp::parse_inline_lp(R"LP(
 Minimize
   obj: x
@@ -216,9 +211,9 @@ INSTANTIATE_TEST_SUITE_P(
 // Scaling integrality preservation test
 // ---------------------------------------------------------------------------
 
-// 6 rows × 4 vars (x0=INT, x1=INT, x2=INT, x3=CONT). The coefficient spread
-// (~log2(100000/1) ≈ 17) exceeds the scaler's 12-threshold so the scaling
-// path is exercised; row 4 omits x3 so the integer-only row stays integer.
+// Coefficient spread (~log2(100000/1) ≈ 17) exceeds the scaler's 12-threshold
+// so the scaling path is exercised; row 4 omits x3 so the integer-only row
+// stays integer.
 static io::mps_data_model_t<int, double> create_wide_spread_milp()
 {
   return cuopt::test::inline_lp::parse_inline_lp(R"LP(
