@@ -94,8 +94,10 @@ class logger_t {
       std::string msg = std::format(fmt, std::forward<Args&&>(args)...);
       if (log_to_console) {
 #ifdef CUOPT_LOG_ACTIVE_LEVEL
-        std::string_view msg_view = msg.ends_with("\n") ? msg.substr(0, msg.size() - 1) : msg;
-        CUOPT_LOG_INFO("%s%s", log_prefix.c_str(), msg.c_str());
+        std::string msg_no_newline = msg;
+        if (msg_no_newline.size() > 0 && msg.ends_with("\n")) { msg_no_newline.pop_back(); }
+
+        CUOPT_LOG_INFO("%s%s", log_prefix.c_str(), msg_no_newline.c_str());
 #else
         std::printf("%s", msg.c_str());
         fflush(stdout);
@@ -148,9 +150,10 @@ class logger_t {
     if (log) {
       std::string msg = std::format(fmt, std::forward<Args&&>(args)...);
       if (log_to_console) {
-#ifdef CUOPT_LOG_ACTIVE_LEVEL
-        std::string_view msg_view = msg.ends_with("\n") ? msg.substr(0, msg.size() - 1) : msg;
-        CUOPT_LOG_TRACE("%s%s", log_prefix.c_str(), msg_view.c_str());
+#ifdef CUOPT_LOG_DEBUG
+        std::string msg_no_newline = msg;
+        if (msg_no_newline.size() > 0 && msg.ends_with("\n")) { msg_no_newline.pop_back(); }
+        CUOPT_LOG_TRACE("%s%s", log_prefix.c_str(), msg_no_newline.c_str());
 #else
         std::printf("%s", msg.c_str());
         fflush(stdout);
