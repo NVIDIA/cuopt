@@ -311,6 +311,10 @@ class pdlp_solver_settings_t {
   bool inside_mip{false};
   // For concurrent termination
   std::atomic<int>* concurrent_halt{nullptr};
+  // Set by run_concurrent: 1 while PDLP is running, 0 once it exits. Forwarded to
+  // the barrier's settings so the cuDSS barrier waits for PDLP to exit before
+  // tearing down (avoids cuDSS teardown corrupting a live PDLP capture).
+  std::atomic<int>* pdlp_running{nullptr};
   // Shared strong branching solved flags for cooperative DS + PDLP
   cuda::std::span<std::atomic<int>> shared_sb_solved;
   static constexpr f_t minimal_absolute_tolerance = 1.0e-12;

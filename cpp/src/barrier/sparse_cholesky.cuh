@@ -20,6 +20,9 @@
 
 #include "cudss.h"
 
+#include <atomic>
+#include <thread>
+
 namespace cuopt::linear_programming::dual_simplex {
 
 template <typename i_t, typename f_t>
@@ -354,6 +357,16 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
 
   ~sparse_cholesky_cudss_t() override
   {
+    // In a concurrent solve, wait until the PDLP peer has exited before tearing
+    // down cuDSS. cuDSS destroy device-synchronizes, which corrupts a live PDLP
+    // CUDA graph capture (surfaces as CUBLAS_STATUS_INTERNAL_ERROR). The flag is
+    // cleared right after run_pdlp returns, so this cannot deadlock.
+    if (settings_.pdlp_running != nullptr) {
+      while (settings_.pdlp_running->load(std::memory_order_acquire) != 0) {
+        std::this_thread::yield();
+      }
+    }
+
     cudaFreeAsync(csr_values_d, stream);
     cudaFreeAsync(csr_columns_d, stream);
     cudaFreeAsync(csr_offset_d, stream);
