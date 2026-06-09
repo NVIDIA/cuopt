@@ -37,12 +37,12 @@
 
 #include <cuopt/linear_programming/cpu_optimization_problem.hpp>
 #include <cuopt/linear_programming/io/parser.hpp>
-#include <utilities/inline_lp_test_utils.hpp>
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
 #include <cuopt/linear_programming/optimization_problem_interface.hpp>
 #include <cuopt/linear_programming/optimization_problem_utils.hpp>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
+#include <utilities/inline_lp_test_utils.hpp>
 #include "grpc_client.hpp"
 
 #include "grpc_test_log_capture.hpp"

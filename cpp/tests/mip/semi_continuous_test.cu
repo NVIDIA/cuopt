@@ -49,7 +49,11 @@ optimization_problem_t<int, double> make_sc_problem(raft::handle_t const* handle
     "Semi-Continuous\n"
     "  x\n"
     "End\n",
-    row_rhs, sc_lb, sc_ub, aux_lb, aux_ub);
+    row_rhs,
+    sc_lb,
+    sc_ub,
+    aux_lb,
+    aux_ub);
 
   auto data = cuopt::test::parse_inline_lp(lp);
   return mps_data_model_to_optimization_problem(handle, data);
