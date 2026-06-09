@@ -14,6 +14,8 @@
 #include <string>
 
 #include <cuopt/linear_programming/cuopt_c.h>
+#include <cuopt/error.hpp>
+#include <cuopt/linear_programming/cpu_optimization_problem_solution.hpp>
 #include <pdlp/cuopt_c_internal.hpp>
 
 #include <utilities/common_utils.hpp>
@@ -106,6 +108,28 @@ TEST(c_api, solve_time_bb_preemption)
 }
 
 TEST(c_api, bad_parameter_name) { EXPECT_EQ(test_bad_parameter_name(), CUOPT_INVALID_ARGUMENT); }
+
+TEST(c_api, error_string_invalid_buffer_size)
+{
+  using cuopt::linear_programming::cpu_lp_solution_t;
+  using cuopt::linear_programming::memory_backend_t;
+  using cuopt::linear_programming::pdlp_termination_status_t;
+  using cuopt::linear_programming::solution_and_stream_view_t;
+
+  constexpr const char* error_message = "validation failed";
+
+  solution_and_stream_view_t solution_handle(false, memory_backend_t::CPU);
+  solution_handle.lp_solution_interface_ptr = new cpu_lp_solution_t<cuopt_int_t, cuopt_float_t>(
+    pdlp_termination_status_t::NumericalError,
+    cuopt::logic_error(error_message, cuopt::error_type_t::ValidationError));
+
+  char error_string[32] = {};
+  EXPECT_EQ(cuOptGetErrorString(&solution_handle, error_string, 0), CUOPT_INVALID_ARGUMENT);
+  EXPECT_EQ(cuOptGetErrorString(&solution_handle, error_string, -1), CUOPT_INVALID_ARGUMENT);
+  EXPECT_EQ(cuOptGetErrorString(&solution_handle, error_string, sizeof(error_string)),
+            CUOPT_SUCCESS);
+  EXPECT_STREQ(error_string, error_message);
+}
 
 TEST(c_api, mip_get_callbacks_only) { EXPECT_EQ(test_mip_get_callbacks_only(), CUOPT_SUCCESS); }
 
