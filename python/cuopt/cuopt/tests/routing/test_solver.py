@@ -3,6 +3,7 @@
 
 import os
 import numpy as np
+import pytest
 
 import cudf
 
@@ -276,7 +277,8 @@ _ISSUE_904_COST_MATRIX = [
 ]
 
 
-def _build_issue_904_data_model(vehicle_fixed_costs, min_vehicles=3):
+def _build_min_vehicles_data_model(vehicle_fixed_costs, min_vehicles=3):
+    """Builds min vehicles regression data model"""
     n_locations = 7
     n_vehicles = 3
     n_orders = 6
@@ -305,25 +307,26 @@ def _build_issue_904_data_model(vehicle_fixed_costs, min_vehicles=3):
     return dm
 
 
-def test_issue_904_min_vehicles_with_fixed_costs():
-    # Regression for https://github.com/NVIDIA/cuopt/issues/904: with non-zero
-    # vehicle_fixed_costs and min_vehicles == fleet_size, the solver entered the
-    # fixed-route LS loop where a CUDA-graph-captured reset left n_insertions
-    # corrupted, crashing with a device-side assert. It must now honor
-    # min_vehicles and complete cleanly.
-    dm = _build_issue_904_data_model(vehicle_fixed_costs=[10.0, 20.0, 30.0])
-    ss = routing.SolverSettings()
-    ss.set_time_limit(3)
-
-    sol = routing.Solve(dm, ss)
-
-    assert sol.get_status() == 0, sol.get_error_message()
-    assert sol.get_vehicle_count() >= 3
-
-
-def test_issue_904_min_vehicles_with_zero_fixed_costs():
-    # Control case: min_vehicles enforced with zero fixed costs.
-    dm = _build_issue_904_data_model(vehicle_fixed_costs=[0.0, 0.0, 0.0])
+@pytest.mark.parametrize(
+    "vehicle_fixed_costs",
+    [
+        [10.0, 20.0, 30.0],  # non-zero fixed costs (the bug case in #904)
+        [
+            0.0,
+            0.0,
+            0.0,
+        ],  # zero fixed costs (H100 12.2/13.1 compat crashed in debug)
+    ],
+)
+def test_min_vehicles_respected(vehicle_fixed_costs):
+    """
+    Regression for https://github.com/NVIDIA/cuopt/issues/904.
+    Verifies that min_vehicles is respected and no crash occurs, regardless of
+    vehicle fixed costs.
+    """
+    dm = _build_min_vehicles_data_model(
+        vehicle_fixed_costs=vehicle_fixed_costs
+    )
     ss = routing.SolverSettings()
     ss.set_time_limit(3)
 

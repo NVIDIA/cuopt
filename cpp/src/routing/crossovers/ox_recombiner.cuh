@@ -169,6 +169,14 @@ struct OX {
     return graphs_size + sol_arrays_size + helper_arrays_size;
   }
 
+  /// @brief OX recombination of two parents into A (offspring built in place).
+  ///        In fixed_route mode (fleet_size == min_vehicles) the vehicle count
+  ///        is preserved; otherwise the offspring route count may vary.
+  /// @param A first parent; on success, replaced by the recombined offspring.
+  /// @param B second parent (read-only donor genome).
+  /// @return true if a valid offspring was produced and applied to A; false if
+  ///         recombination was rejected (e.g. mismatched parents, fixed-route
+  ///         count violation, size/memory guards) — A is then left unchanged.
   bool recombine(Solution& A, Solution& B)
   {
     raft::common::nvtx::range fun_scope("ox");
@@ -401,6 +409,7 @@ struct OX {
       // offspring segment (tmp_routes) and remove the distinct original routes those segments
       // touch (routes_to_remove). A mismatch would change the vehicle count and drop it below
       // min_vehicles, so reject this offspring instead of applying it.
+      cuopt_assert(false, "number of routes removed and routes added should be same");
       return false;
     }
     if (routes_to_remove.size() == 0 || tmp_routes.size() == 0) { return false; }

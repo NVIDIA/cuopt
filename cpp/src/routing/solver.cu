@@ -65,9 +65,10 @@ assignment_t<i_t> solver_t<i_t, f_t>::solve()
   // TODO accept a settings object once we have full feature in ges solver
   // We only set target vehicles and use fixed route loop in the below case. The other paths will
   // run regular fixed route loop.
-  auto target_vehicles = -1;
-  if (data_view_ptr_->get_fleet_size() >= data_view_ptr_->get_min_vehicles()) {
-    target_vehicles = data_view_ptr_->get_min_vehicles();
+  auto target_vehicles    = -1;
+  const auto min_vehicles = data_view_ptr_->get_min_vehicles();
+  if (min_vehicles > 0 && data_view_ptr_->get_fleet_size() >= min_vehicles) {
+    target_vehicles = min_vehicles;
   }
 
   const bool is_pdp = data_view_ptr_->get_pickup_delivery_pair().first != nullptr;

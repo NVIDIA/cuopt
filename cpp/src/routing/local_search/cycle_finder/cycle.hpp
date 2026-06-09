@@ -56,6 +56,10 @@ struct ret_cycles_t {
   }
 
   struct view_t {
+    /// Append a vertex to the in-progress cycle (`*n_cycles_`): writes at
+    /// `offsets[*n_cycles_] + curr_cycle_size` into the flat `paths` buffer and
+    /// bumps the per-cycle counter. Caller resets `curr_cycle_size` per cycle;
+    /// append_cycle() finalizes it.
     DI void push_back(i_t val)
     {
       const auto write_pos = offsets[*n_cycles_] + curr_cycle_size++;
@@ -64,6 +68,8 @@ struct ret_cycles_t {
       paths[write_pos] = val;
     }
 
+    /// Close the current cycle: advance the cycle count and store its end as the
+    /// next offsets[] prefix-sum boundary (offsets[c] = offsets[c-1] + cycle_size).
     DI void append_cycle(i_t cycle_size)
     {
       *n_cycles_ += 1;
