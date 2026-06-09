@@ -17,7 +17,7 @@
 
 #include <gtest/gtest.h>
 
-#include <sstream>
+#include <format>
 #include <string>
 #include <utility>
 #include <vector>
@@ -38,19 +38,20 @@ optimization_problem_t<int, double> make_sc_problem(raft::handle_t const* handle
                                                     double aux_lb  = 0.0,
                                                     double aux_ub  = 1.0)
 {
-  std::ostringstream lp;
-  lp << "Minimize\n"
-     << "  obj: x\n"
-     << "Subject To\n"
-     << "  c1: x + y = " << row_rhs << "\n"
-     << "Bounds\n"
-     << "  " << sc_lb << " <= x <= " << sc_ub << "\n"
-     << "  " << aux_lb << " <= y <= " << aux_ub << "\n"
-     << "Semi-Continuous\n"
-     << "  x\n"
-     << "End\n";
+  auto lp = std::format(
+    "Minimize\n"
+    "  obj: x\n"
+    "Subject To\n"
+    "  c1: x + y = {}\n"
+    "Bounds\n"
+    "  {} <= x <= {}\n"
+    "  {} <= y <= {}\n"
+    "Semi-Continuous\n"
+    "  x\n"
+    "End\n",
+    row_rhs, sc_lb, sc_ub, aux_lb, aux_ub);
 
-  auto data = cuopt::test::inline_lp::parse_inline_lp(lp.str());
+  auto data = cuopt::test::inline_lp::parse_inline_lp(lp);
   return mps_data_model_to_optimization_problem(handle, data);
 }
 
