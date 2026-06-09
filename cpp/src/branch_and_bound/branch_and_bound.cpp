@@ -1981,6 +1981,15 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
   std::string solver_name = "";
 
   lp_status_t root_status;
+  auto request_root_concurrent_halt = [this](lp_status_t status) {
+    if (status == lp_status_t::OPTIMAL || status == lp_status_t::INFEASIBLE ||
+        status == lp_status_t::UNBOUNDED || status == lp_status_t::UNBOUNDED_OR_INFEASIBLE ||
+        status == lp_status_t::ITERATION_LIMIT || status == lp_status_t::TIME_LIMIT ||
+        status == lp_status_t::NUMERICAL_ISSUES || status == lp_status_t::CUTOFF ||
+        status == lp_status_t::WORK_LIMIT) {
+      set_root_concurrent_halt(1);
+    }
+  };
 
 // Launch a task for solving the root LP relaxation via dual simplex.
 #pragma omp task default(shared) depend(out : root_status) priority(CUOPT_CRITICAL_TASK_PRIORITY)
@@ -1995,6 +2004,7 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
                                                            root_vstatus_,
                                                            edge_norms_,
                                                            nullptr);
+    request_root_concurrent_halt(root_status);
   }
 
   // Wait for the root relaxation solution to be sent by the diversity manager or dual simplex
