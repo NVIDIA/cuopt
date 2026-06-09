@@ -33,7 +33,7 @@ namespace cuopt::linear_programming::dual_simplex {
 namespace {
 
 #define DEBUG_CLIQUE_CUTS    0
-#define DEBUG_ZERO_HALF_CUTS 1
+#define DEBUG_ZERO_HALF_CUTS 0
 #define CHECK_WORKSPACE      0
 
 enum class clique_cut_build_status_t : int8_t { NO_CUT = 0, CUT_ADDED = 1, INFEASIBLE = 2 };
@@ -371,6 +371,85 @@ void bron_kerbosch(bk_bitset_context_t<i_t, f_t>& ctx,
   }
 }
 
+// ---- Shared helpers for greedy CG-based set extension (clique & odd-wheel) ----
+
+// Pick the seed vertex with the smallest conflict-graph degree. Returns -1 if
+// the seed is empty or the time limit is hit while scanning.
+template <typename i_t, typename f_t>
+i_t min_degree_anchor(const std::vector<i_t>& seed,
+                      detail::clique_table_t<i_t, f_t>& graph,
+                      f_t start_time,
+                      f_t time_limit)
+{
+  i_t smallest_degree     = std::numeric_limits<i_t>::max();
+  i_t smallest_degree_var = -1;
+  for (auto v : seed) {
+    if (toc(start_time) >= time_limit) { return -1; }
+    i_t degree = graph.get_degree_of_var(v);
+    if (degree < smallest_degree) {
+      smallest_degree     = degree;
+      smallest_degree_var = v;
+    }
+  }
+  return smallest_degree_var;
+}
+
+// Reduced-cost key for a CG vertex. A complement vertex (idx >= num_vars) maps
+// to the original variable and flips the sign. Sorting candidates by this key
+// keeps xstar minimally disturbed so the resulting cut stays binding and the
+// dual simplex resolve stays cheap.
+template <typename i_t, typename f_t>
+f_t cg_reduced_cost(i_t vertex_idx, const std::vector<f_t>& reduced_costs, i_t num_vars)
+{
+  i_t var_idx = vertex_idx % num_vars;
+  cuopt_assert(var_idx >= 0 && var_idx < static_cast<i_t>(reduced_costs.size()),
+               "Reduced cost index out of range");
+  f_t rc = reduced_costs[var_idx];
+  if (!std::isfinite(rc)) { rc = 0.0; }
+  return vertex_idx >= num_vars ? -rc : rc;
+}
+
+template <typename i_t, typename f_t>
+void sort_candidates_by_reduced_cost(std::vector<i_t>& candidates,
+                                     const std::vector<f_t>& reduced_costs,
+                                     i_t num_vars)
+{
+  std::sort(candidates.begin(), candidates.end(), [&](i_t a, i_t b) {
+    return cg_reduced_cost(a, reduced_costs, num_vars) <
+           cg_reduced_cost(b, reduced_costs, num_vars);
+  });
+}
+
+// Greedily grow `selected` by appending candidates (assumed already ordered by
+// reduced cost) that are adjacent to every current member of `selected`. The
+// resulting `selected` is therefore a clique. Stops early when the time or work
+// budget is exhausted.
+template <typename i_t, typename f_t>
+void greedy_extend_clique(std::vector<i_t>& selected,
+                          const std::vector<i_t>& candidates,
+                          detail::clique_table_t<i_t, f_t>& graph,
+                          f_t adj_check_cost,
+                          f_t start_time,
+                          f_t time_limit,
+                          f_t* work_estimate,
+                          f_t max_work_estimate)
+{
+  for (const auto candidate : candidates) {
+    if (toc(start_time) >= time_limit) { return; }
+    bool add   = true;
+    i_t checks = 0;
+    for (const auto v : selected) {
+      checks++;
+      if (!graph.check_adjacency(candidate, v)) {
+        add = false;
+        break;
+      }
+    }
+    if (add_work_estimate(adj_check_cost * checks, work_estimate, max_work_estimate)) { break; }
+    if (add) { selected.push_back(candidate); }
+  }
+}
+
 template <typename i_t, typename f_t>
 void extend_clique_vertices(std::vector<i_t>& clique_vertices,
                             detail::clique_table_t<i_t, f_t>& graph,
@@ -392,16 +471,8 @@ void extend_clique_vertices(std::vector<i_t>& clique_vertices,
                     static_cast<long long>(clique_vertices.size()));
   const f_t initial_clique_size = static_cast<f_t>(clique_vertices.size());
 
-  i_t smallest_degree     = std::numeric_limits<i_t>::max();
-  i_t smallest_degree_var = -1;
-  for (auto v : clique_vertices) {
-    if (toc(start_time) >= time_limit) { return; }
-    i_t degree = graph.get_degree_of_var(v);
-    if (degree < smallest_degree) {
-      smallest_degree     = degree;
-      smallest_degree_var = v;
-    }
-  }
+  const i_t smallest_degree_var = min_degree_anchor(clique_vertices, graph, start_time, time_limit);
+  if (smallest_degree_var < 0) { return; }
 
   auto adj_set = graph.get_adj_set_of_var(smallest_degree_var);
   std::unordered_set<i_t> clique_members(clique_vertices.begin(), clique_vertices.end());
@@ -415,12 +486,10 @@ void extend_clique_vertices(std::vector<i_t>& clique_vertices,
     f_t value   = candidate >= num_vars ? (1.0 - xstar[var_idx]) : xstar[var_idx];
     if (std::abs(value - std::round(value)) <= integer_tol) { candidates.push_back(candidate); }
   }
-  CLIQUE_CUTS_DEBUG(
-    "extend_clique_vertices anchor=%lld degree=%lld adj_size=%lld integer_candidates=%lld",
-    static_cast<long long>(smallest_degree_var),
-    static_cast<long long>(smallest_degree),
-    static_cast<long long>(adj_set.size()),
-    static_cast<long long>(candidates.size()));
+  CLIQUE_CUTS_DEBUG("extend_clique_vertices anchor=%lld adj_size=%lld integer_candidates=%lld",
+                    static_cast<long long>(smallest_degree_var),
+                    static_cast<long long>(adj_set.size()),
+                    static_cast<long long>(candidates.size()));
   const f_t candidate_size = static_cast<f_t>(candidates.size());
   const f_t sort_work =
     candidate_size > 0.0 ? 2.0 * candidate_size * std::log2(candidate_size + 1.0) : 0.0;
@@ -444,40 +513,18 @@ void extend_clique_vertices(std::vector<i_t>& clique_vertices,
   // less refactors and less iterations after resolve.
   // it also increases the cut's effectiveness by keeping xstar not disturbed much
   // if it is disturbed too much, the cut might become non-binding
-  auto reduced_cost = [&](i_t vertex_idx) -> f_t {
-    i_t var_idx = vertex_idx % num_vars;
-    cuopt_assert(var_idx >= 0 && var_idx < static_cast<i_t>(reduced_costs.size()),
-                 "Variable index out of range");
-    f_t rc = reduced_costs[var_idx];
-    if (!std::isfinite(rc)) { rc = 0.0; }
-    return vertex_idx >= num_vars ? -rc : rc;
-  };
+  sort_candidates_by_reduced_cost(candidates, reduced_costs, num_vars);
 
-  std::sort(candidates.begin(), candidates.end(), [&](i_t a, i_t b) {
-    return reduced_cost(a) < reduced_cost(b);
-  });
-
-  for (const auto candidate : candidates) {
-    bool add   = true;
-    i_t checks = 0;
-    for (const auto v : clique_vertices) {
-      checks++;
-      if (!graph.check_adjacency(candidate, v)) {
-        add = false;
-        break;
-      }
-    }
-    // Each check_adjacency now charges its own addtl_cliques_scan_cost
-    // term so the per-iteration budget reflects the addtl scan cost.
-    if (add_work_estimate(
-          adj_check_cost * static_cast<f_t>(checks), work_estimate, max_work_estimate)) {
-      break;
-    }
-    if (add) {
-      clique_vertices.push_back(candidate);
-      clique_members.insert(candidate);
-    }
-  }
+  // adj_check_cost folds in addtl_cliques_scan_cost so each check_adjacency
+  // charges its own addtl scan cost as the clique grows.
+  greedy_extend_clique(clique_vertices,
+                       candidates,
+                       graph,
+                       adj_check_cost,
+                       start_time,
+                       time_limit,
+                       work_estimate,
+                       max_work_estimate);
   CLIQUE_CUTS_DEBUG("extend_clique_vertices done start=%lld final=%lld added=%lld",
                     static_cast<long long>(initial_clique_vertices),
                     static_cast<long long>(clique_vertices.size()),
@@ -505,16 +552,6 @@ clique_cut_build_status_t build_zero_half_cut(const std::vector<i_t>& cycle_vert
                                               f_t max_work_estimate)
 {
   const size_t cycle_size = cycle_vertices.size();
-  ZERO_HALF_DEBUG(
-    "build_zero_half_cut enter cycle_size=%zu wheel_centers=%zu num_vars=%lld var_types.size=%zu "
-    "lower.size=%zu upper.size=%zu xstar.size=%zu",
-    cycle_size,
-    wheel_centers.size(),
-    static_cast<long long>(num_vars),
-    var_types.size(),
-    lower_bounds.size(),
-    upper_bounds.size(),
-    xstar.size());
   if (cycle_size < 5 || (cycle_size % 2) == 0) {
     ZERO_HALF_DEBUG("build_zero_half_cut reject cycle_size=%zu", cycle_size);
     return clique_cut_build_status_t::NO_CUT;
@@ -634,25 +671,16 @@ clique_cut_build_status_t build_zero_half_cut(const std::vector<i_t>& cycle_vert
     static_cast<double>(min_violation),
     static_cast<long long>(cycle_size),
     static_cast<long long>(wheel_centers.size()));
-  // Dijkstra found a path < 0.5 − min_violation, so the violation should be
-  // > min_violation here (modulo wheel-lift effects, dropped near-zero
-  // coefficients, and FP reorder). Slight drift below the threshold is fine
-  // — we just won't ship the cut. A *strongly* negative violation indicates
-  // a real bug in cycle construction, the wheel lift, or the cut algebra.
   cuopt_assert(violation > -bound_tol, "Zero-half cut violation flipped sign unexpectedly");
   if (violation > min_violation) { return clique_cut_build_status_t::CUT_ADDED; }
   return clique_cut_build_status_t::NO_CUT;
 }
 
 // Reusable scratch for dijkstra_odd_cycle. The separation loop runs Dijkstra
-// once per source vertex; re-allocating and re-initializing dist/prev (size
-// 2 * num_local) on every call is O(num_local) per call, i.e. O(num_local^2)
-// over a pass — and that cost is invisible to the work-estimate budget. Instead
+// once per source vertex; re-allocating and re-initializing dist/prev. Instead
 // we allocate the buffers once and reset them in O(1) using a generation stamp:
 // dist[v]/prev[v] are considered valid for the current call only when
-// stamp[v] == gen. Bumping `gen` at the start of each call logically clears the
-// whole array without touching memory; entries are (re)stamped lazily as they
-// are relaxed, so per-call work is O(touched) rather than O(num_local).
+// stamp[v] == gen.
 template <typename i_t, typename f_t>
 struct dijkstra_scratch_t {
   std::vector<f_t> dist;
@@ -660,10 +688,6 @@ struct dijkstra_scratch_t {
   std::vector<std::uint64_t> stamp;  // stamp[v] == gen  <=>  dist[v]/prev[v] valid this call
   std::uint64_t gen{0};
 
-  // Ensure buffers cover `n` bipartite nodes. On growth, stamp is zeroed and
-  // gen reset so no stale entry can spuriously match a future gen; dist/prev
-  // need no initialization because they are only read when their stamp matches
-  // the current gen.
   void ensure_size(std::size_t n)
   {
     if (stamp.size() < n) {
@@ -675,16 +699,6 @@ struct dijkstra_scratch_t {
   }
 };
 
-// Run Dijkstra over the bipartite auxiliary graph G' built from the fractional
-// sub-CG. local_adj is the adjacency in CG (local indices). weights[v] is the
-// LP value of vertex v in CG. The auxiliary graph has 2 * num_local vertices,
-// with bipartite_idx = local_idx + part * num_local, part in {0, 1}.
-// Edge weight in G' is max(0, (1 - weights[u] - weights[v]) / 2). We seek the
-// shortest path from `source_local + 0 * num_local` to `source_local + num_local`.
-// On success, returns true and fills `path` with the path (sequence of bipartite
-// indices) and `total_weight` with its cost. Otherwise returns false.
-// `scratch` holds reusable dist/prev/stamp buffers (see dijkstra_scratch_t); the
-// caller owns it and reuses it across all sources in a cut pass.
 template <typename i_t, typename f_t>
 bool dijkstra_odd_cycle(i_t source_local,
                         const std::vector<std::vector<i_t>>& local_adj,
@@ -805,10 +819,6 @@ bool dijkstra_odd_cycle(i_t source_local,
   return true;
 }
 
-// Convert a bipartite-graph path (sequence of bipartite indices) into a simple
-// odd cycle expressed as global CG vertex indices in [0, 2*num_vars). Returns
-// true and fills `cycle_vertices` if a simple cycle of odd length >= 5 (so >
-// triangle) was successfully extracted.
 template <typename i_t, typename f_t>
 bool path_to_odd_cycle(const std::vector<i_t>& bipartite_path,
                        const std::vector<i_t>& vertices,
@@ -871,9 +881,6 @@ bool path_to_odd_cycle(const std::vector<i_t>& bipartite_path,
     }
     cycle_vertices.push_back(global);
   }
-  // Each local-sequence entry maps to exactly one distinct CG vertex (duplicates
-  // were rejected above), so the extracted cycle keeps the odd length of the
-  // de-duplicated path.
   cuopt_assert(cycle_vertices.size() == local_seq.size(),
                "Zero-half cycle dropped vertices during global mapping");
   cuopt_assert((cycle_vertices.size() % 2) == 1, "Zero-half extracted cycle must have odd length");
@@ -882,8 +889,7 @@ bool path_to_odd_cycle(const std::vector<i_t>& bipartite_path,
 }
 
 // Greedy lifting: extend an odd cycle by attaching a clique of "wheel center"
-// vertices that are adjacent (in CG) to every vertex of the cycle. Mirrors the
-// behavior of extend_clique_vertices but uses the cycle as the seed.
+// vertices that are adjacent (in CG) to every vertex of the cycle.
 template <typename i_t, typename f_t>
 void extend_to_odd_wheel(const std::vector<i_t>& cycle_vertices,
                          std::vector<i_t>& wheel_centers,
@@ -906,19 +912,9 @@ void extend_to_odd_wheel(const std::vector<i_t>& cycle_vertices,
   if (cycle_vertices.empty()) { return; }
   if (toc(start_time) >= time_limit) { return; }
 
-  i_t smallest_degree     = std::numeric_limits<i_t>::max();
-  i_t smallest_degree_var = -1;
-  for (auto v : cycle_vertices) {
-    if (toc(start_time) >= time_limit) { return; }
-    i_t degree = graph.get_degree_of_var(v);
-    if (degree < smallest_degree) {
-      smallest_degree     = degree;
-      smallest_degree_var = v;
-    }
-  }
-  ZERO_HALF_DEBUG("extend_to_odd_wheel smallest_degree_var=%lld smallest_degree=%lld",
-                  static_cast<long long>(smallest_degree_var),
-                  static_cast<long long>(smallest_degree));
+  const i_t smallest_degree_var = min_degree_anchor(cycle_vertices, graph, start_time, time_limit);
+  ZERO_HALF_DEBUG("extend_to_odd_wheel smallest_degree_var=%lld",
+                  static_cast<long long>(smallest_degree_var));
   if (smallest_degree_var < 0) { return; }
 
   auto adj_set = graph.get_adj_set_of_var(smallest_degree_var);
@@ -957,37 +953,20 @@ void extend_to_odd_wheel(const std::vector<i_t>& cycle_vertices,
     return;
   }
 
-  auto reduced_cost = [&](i_t vertex_idx) -> f_t {
-    i_t var_idx = vertex_idx % num_vars;
-    cuopt_assert(var_idx >= 0 && var_idx < static_cast<i_t>(reduced_costs.size()),
-                 "Reduced cost index out of range");
-    f_t rc = reduced_costs[var_idx];
-    if (!std::isfinite(rc)) { rc = 0.0; }
-    return vertex_idx >= num_vars ? -rc : rc;
-  };
+  sort_candidates_by_reduced_cost(candidates, reduced_costs, num_vars);
 
-  std::sort(candidates.begin(), candidates.end(), [&](i_t a, i_t b) {
-    return reduced_cost(a) < reduced_cost(b);
-  });
-
+  // Candidates are already adjacent to every cycle vertex (filtered above), so
+  // growing a clique among them yields centers adjacent to the whole cycle and
+  // to each other.
   const f_t adj_check_cost = 5.0;
-  for (const auto candidate : candidates) {
-    if (toc(start_time) >= time_limit) { return; }
-    bool adj_to_wheel = true;
-    i_t checks        = 0;
-    for (const auto w : wheel_centers) {
-      checks++;
-      if (!graph.check_adjacency(candidate, w)) {
-        adj_to_wheel = false;
-        break;
-      }
-    }
-    if (add_work_estimate(
-          adj_check_cost * static_cast<f_t>(checks), work_estimate, max_work_estimate)) {
-      break;
-    }
-    if (adj_to_wheel) { wheel_centers.push_back(candidate); }
-  }
+  greedy_extend_clique(wheel_centers,
+                       candidates,
+                       graph,
+                       adj_check_cost,
+                       start_time,
+                       time_limit,
+                       work_estimate,
+                       max_work_estimate);
 #ifdef ASSERT_MODE
   // Post-condition: the selected centers must form a clique that is fully
   // adjacent to the cycle — each center adjacent to every cycle vertex and to
