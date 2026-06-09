@@ -91,7 +91,7 @@ class logger_t {
   void print_format(std::format_string<Args...> fmt, Args&&... args)
   {
     if (log) {
-      std::string msg = std::format(fmt, std::forward<Args&&>(args)...);
+      std::string msg = std::format(fmt, std::forward<Args>(args)...);
       if (log_to_console) {
 #ifdef CUOPT_LOG_ACTIVE_LEVEL
         std::string msg_no_newline = msg;
@@ -148,7 +148,7 @@ class logger_t {
   void debug_format(std::format_string<Args...> fmt, Args&&... args)
   {
     if (log) {
-      std::string msg = std::format(fmt, std::forward<Args&&>(args)...);
+      std::string msg = std::format(fmt, std::forward<Args>(args)...);
       if (log_to_console) {
 #ifdef CUOPT_LOG_DEBUG
         std::string msg_no_newline = msg;
