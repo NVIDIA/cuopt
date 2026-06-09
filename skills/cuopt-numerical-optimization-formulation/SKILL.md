@@ -29,7 +29,7 @@ Concepts and workflow for going from a problem description to a clear formulatio
 | Property | LP | MILP | QP |
 |---|---|---|---|
 | Objective | Linear | Linear | Quadratic (xᵀQx + cᵀx) |
-| Constraints | Linear | Linear | Linear + convex quadratic (PSD, inequality) via second-order cones |
+| Constraints | Linear | Linear | Linear + convex quadratic (inequality only) via second-order cones |
 | Variables | Continuous | Mixed: continuous + integer/binary | Continuous |
 | Sense | min or max | min or max | **minimize only** (negate to max) |
 | Duals / sensitivity | Shadow prices + reduced costs | **None** (integer optima) | Shadow prices + reduced costs |
@@ -44,7 +44,7 @@ Ask these if not already clear:
 
 1. **Decision variables** — What are they? Bounds?
 2. **Objective** — Minimize or maximize? Linear or quadratic? For QP: any squared or cross terms (x², x·y)? If maximize a quadratic, the user must negate and minimize.
-3. **Constraints** — Linear inequalities/equalities? Convex quadratic constraints (PSD, inequality only) are also supported, handled as second-order cones; non-convex or equality quadratic constraints are not.
+3. **Constraints** — Linear inequalities/equalities? Convex quadratic constraints (inequality only) are also supported, handled as second-order cones; non-convex or equality quadratic constraints are not.
 4. **Variable types** — All continuous (LP / QP) or some integer/binary (MILP)?
 5. **Convexity (QP only)** — For minimization, the quadratic form (matrix Q) should be positive semi-definite for well-posed problems.
 
