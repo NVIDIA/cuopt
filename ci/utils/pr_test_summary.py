@@ -28,6 +28,7 @@ _TEST_PREFIXES = (
 )
 
 _MARKER = "<!-- pr-test-summary -->"
+_HTTP_TIMEOUT_SEC = 30
 # Maximum failed test names shown per job dropdown.
 _MAX_TESTS = 50
 
@@ -60,7 +61,7 @@ def _paginate(path, token):
     url = f"https://api.github.com{path}?per_page=100"
     while url:
         req = urllib.request.Request(url, headers=_headers(token))
-        with urllib.request.urlopen(req) as resp:
+        with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT_SEC) as resp:
             data = json.loads(resp.read())
             # Jobs endpoint wraps items in {"jobs": [...]}; comments is a bare list.
             yield from (data["jobs"] if isinstance(data, dict) else data)
@@ -97,7 +98,7 @@ def _analyze_job_log(job_id, repo, token):
         headers=_headers(token),
     )
     try:
-        with urllib.request.urlopen(req) as resp:
+        with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT_SEC) as resp:
             # Stream the log, retaining only the last 512 KB so the pytest
             # summary section at the end of the output is always captured.
             chunks = []
@@ -127,8 +128,8 @@ def _analyze_job_log(job_id, repo, token):
         if "short test summary info" in line:
             in_summary = True
         elif in_summary:
-            if line.startswith("FAILED "):
-                test_id = line[7:].split(" - ")[0].strip()
+            if line.startswith(("FAILED ", "ERROR ")):
+                test_id = line.split(" ", 1)[1].split(" - ")[0].strip()
                 if test_id:
                     failed.append(test_id)
             elif line.startswith("=") and failed:
@@ -196,9 +197,9 @@ def main():
         print("No test jobs found in this run, skipping.", file=sys.stderr)
         return
 
-    failed = [j for j in test_jobs if j["conclusion"] == "failure"]
     passed = [j for j in test_jobs if j["conclusion"] == "success"]
     skipped = [j for j in test_jobs if j["conclusion"] == "skipped"]
+    failed = [j for j in test_jobs if j not in passed and j not in skipped]
 
     job_analysis = {
         job["id"]: _analyze_job_log(job["id"], repo, token) for job in failed
