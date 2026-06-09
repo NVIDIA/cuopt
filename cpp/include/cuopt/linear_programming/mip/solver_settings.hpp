@@ -11,6 +11,7 @@
 #include <vector>
 
 #include <cuopt/linear_programming/constants.h>
+#include <cuopt/linear_programming/mip/diving_hyper_params.hpp>
 #include <cuopt/linear_programming/mip/heuristics_hyper_params.hpp>
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
 #include <cuopt/linear_programming/utilities/internals.hpp>
@@ -162,7 +163,9 @@ class mip_solver_settings_t {
   // TODO check with Akif and Alice
   pdlp_hyper_params::pdlp_hyper_params_t hyper_params;
 
-  mip_heuristics_hyper_params_t heuristic_params;
+  mip_heuristics_hyper_params_t<i_t, f_t> heuristic_params;
+
+  mip_diving_hyper_params_t<i_t, f_t> diving_params;
 
  private:
   std::vector<internals::base_solution_callback_t*> mip_callbacks_;

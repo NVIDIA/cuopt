@@ -213,32 +213,6 @@ std::string user_mip_gap(const lp_problem_t<i_t, f_t>& lp, f_t obj_value, f_t lo
   }
 }
 
-#ifdef SHOW_DIVING_TYPE
-inline char feasible_solution_symbol(search_strategy_t strategy)
-{
-  switch (strategy) {
-    case search_strategy_t::BEST_FIRST: return 'B';
-    case search_strategy_t::COEFFICIENT_DIVING: return 'C';
-    case search_strategy_t::LINE_SEARCH_DIVING: return 'L';
-    case search_strategy_t::PSEUDOCOST_DIVING: return 'P';
-    case search_strategy_t::GUIDED_DIVING: return 'G';
-    default: return 'U';
-  }
-}
-#else
-inline char feasible_solution_symbol(search_strategy_t strategy)
-{
-  switch (strategy) {
-    case search_strategy_t::BEST_FIRST: return 'B';
-    case search_strategy_t::COEFFICIENT_DIVING: return 'D';
-    case search_strategy_t::LINE_SEARCH_DIVING: return 'D';
-    case search_strategy_t::PSEUDOCOST_DIVING: return 'D';
-    case search_strategy_t::GUIDED_DIVING: return 'D';
-    default: return 'U';
-  }
-}
-#endif
-
 }  // namespace
 
 template <typename i_t, typename f_t>
@@ -811,15 +785,20 @@ void branch_and_bound_t<i_t, f_t>::add_feasible_solution(f_t leaf_objective,
 {
   bool send_solution = false;
 
+  const bool log_diving_type = settings_.diving_settings.show_type;
   settings_.log.debug("%c found a feasible solution with obj=%.10e.\n",
-                      feasible_solution_symbol(thread_type),
+                      feasible_solution_symbol(thread_type, log_diving_type),
                       compute_user_objective(original_lp_, leaf_objective));
 
   mutex_upper_.lock();
   if (improves_incumbent(leaf_objective)) {
     incumbent_.set_incumbent_solution(leaf_objective, leaf_solution);
     upper_bound_ = std::min(upper_bound_.load(), leaf_objective);
-    report(feasible_solution_symbol(thread_type), leaf_objective, get_lower_bound(), leaf_depth, 0);
+    report(feasible_solution_symbol(thread_type, log_diving_type),
+           leaf_objective,
+           get_lower_bound(),
+           leaf_depth,
+           0);
     send_solution = true;
   }
 
@@ -1761,22 +1740,24 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
     settings_.bnb_steal_chance >= 0 ? settings_.bnb_steal_chance : MIP_DEFAULT_STEAL_CHANCE;
   node_queue_t<i_t, f_t>& node_queue = worker->node_queue;
 
-  worker->calculate_num_diving_workers(bfs_worker_pool_.size(),
-                                       diving_worker_pool_.size(),
-                                       has_solver_space_incumbent(),
-                                       settings_.diving_settings);
+  mip_diving_hyper_params_t<i_t, f_t> diving_settings = settings_.diving_settings;
+  if (diving_settings.guided_diving != 0 && !has_solver_space_incumbent()) {
+    diving_settings.guided_diving = 0;
+  }
+
+  worker->calculate_num_diving_workers(
+    bfs_worker_pool_.size(), diving_worker_pool_.size(), diving_settings);
 
   while (solver_status_ == mip_status_t::UNSET && abs_gap > settings_.absolute_mip_gap_tol &&
          rel_gap > settings_.relative_mip_gap_tol && node_queue.best_first_queue_size() > 0) {
     // If the guided diving was disabled previously due to the lack of an incumbent solution,
     // re-enable as soon as a new incumbent is found.
     if (diving_worker_pool_.size() > 0 && settings_.diving_settings.guided_diving != 0 &&
-        worker->max_diving_workers[GUIDED_DIVING] == 0) {
+        diving_settings.guided_diving == 0) {
       if (has_solver_space_incumbent()) {
-        worker->calculate_num_diving_workers(bfs_worker_pool_.size(),
-                                             diving_worker_pool_.size(),
-                                             has_solver_space_incumbent(),
-                                             settings_.diving_settings);
+        diving_settings.guided_diving = 1;
+        worker->calculate_num_diving_workers(
+          bfs_worker_pool_.size(), diving_worker_pool_.size(), diving_settings);
       }
     }
 
@@ -3547,7 +3528,7 @@ void branch_and_bound_t<i_t, f_t>::deterministic_process_worker_solutions(
       i_t nodes_unexplored = exploration_stats_.nodes_unexplored.load();
 
       search_strategy_t worker_type = get_worker_type(pool, sol->worker_id);
-      report(feasible_solution_symbol(worker_type),
+      report(feasible_solution_symbol(worker_type, settings_.diving_settings.show_type),
              sol->objective,
              deterministic_lower,
              sol->depth,
