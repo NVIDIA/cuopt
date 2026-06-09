@@ -105,6 +105,12 @@ def test_parser_and_solver():
 
 
 def test_mip_opportunistic_infeasible_repro_returns_status():
+    """Regression for #1396: opportunistic infeasible MILP must not abort.
+
+    The worker script mirrors the issue repro and subprocess.run isolates each
+    mode so process-level crashes become test failures. Both deterministic and
+    opportunistic runs must exit successfully and print STATUS=Infeasible.
+    """
     worker = textwrap.dedent(
         """
         import sys
