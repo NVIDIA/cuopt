@@ -458,7 +458,7 @@ worker() {
             args="$args --absolute-primal-tolerance $PDLP_TOLERANCES --absolute-dual-tolerance $PDLP_TOLERANCES --relative-primal-tolerance $PDLP_TOLERANCES --relative-dual-tolerance $PDLP_TOLERANCES --absolute-gap-tolerance $PDLP_TOLERANCES --relative-gap-tolerance $PDLP_TOLERANCES"
         fi
 
-        CUDA_VISIBLE_DEVICES=$gpu_devices cuopt_cli "$mps_file" --time-limit $TIME_LIMIT $args
+        CUDA_VISIBLE_DEVICES=$gpu_devices cuopt_cli "$mps_file" --time-limit $TIME_LIMIT $args --cudss-deterministic true
     done
 }
 

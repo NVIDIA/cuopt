@@ -1405,7 +1405,6 @@ class iteration_data_t {
                    f_t objective,
                    f_t user_objective,
                    f_t primal_residual,
-                   f_t dual_residual,
                    cusparse_view_t<i_t, f_t>& cusparse_view,
                    lp_solution_t<i_t, f_t>& solution)
   {
@@ -2305,22 +2304,22 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   }
 
   // Verify A*x = b
-  dense_vector_t<i_t, f_t> primal_residual(lp.num_rows);
-  primal_residual = lp.rhs;
-  data.cusparse_view_.spmv(1.0, data.x, -1.0, primal_residual);
+  dense_vector_t<i_t, f_t> init_primal_residual(lp.num_rows);
+  init_primal_residual = lp.rhs;
+  data.cusparse_view_.spmv(1.0, data.x, -1.0, init_primal_residual);
   data.handle_ptr->get_stream().synchronize();
 #ifdef PRINT_INFO
-  settings.log.printf("||b - A * x||: %.16e\n", vector_norm2<i_t, f_t>(primal_residual));
+  settings.log.printf("||b - A * x||: %.16e\n", vector_norm2<i_t, f_t>(init_primal_residual));
 #endif
 
   if (data.n_upper_bounds > 0) {
-    dense_vector_t<i_t, f_t> bound_residual(data.n_upper_bounds);
+    dense_vector_t<i_t, f_t> init_bound_residual(data.n_upper_bounds);
     for (i_t k = 0; k < data.n_upper_bounds; k++) {
-      i_t j             = data.upper_bounds[k];
-      bound_residual[k] = lp.upper[j] - data.w[k] - data.x[j];
+      i_t j                  = data.upper_bounds[k];
+      init_bound_residual[k] = lp.upper[j] - data.w[k] - data.x[j];
     }
 #ifdef PRINT_INFO
-    settings.log.printf("|| u - w - x||: %e\n", vector_norm2<i_t, f_t>(bound_residual));
+    settings.log.printf("|| u - w - x||: %e\n", vector_norm2<i_t, f_t>(init_bound_residual));
 #endif
   }
 
@@ -2422,19 +2421,19 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   }
 
   // Verify A'*y + z - E*v  - Q*x = c
-  dense_vector_t<i_t, f_t> dual_residual(lp.num_cols);
-  data.z.pairwise_subtract(data.c, dual_residual);
-  if (data.Q.n > 0) { matrix_vector_multiply(data.Q, -1.0, data.x, 1.0, dual_residual); }
-  data.cusparse_view_.transpose_spmv(1.0, data.y, 1.0, dual_residual);
+  dense_vector_t<i_t, f_t> init_dual_residual(lp.num_cols);
+  data.z.pairwise_subtract(data.c, init_dual_residual);
+  if (data.Q.n > 0) { matrix_vector_multiply(data.Q, -1.0, data.x, 1.0, init_dual_residual); }
+  data.cusparse_view_.transpose_spmv(1.0, data.y, 1.0, init_dual_residual);
   if (data.n_upper_bounds > 0) {
     for (i_t k = 0; k < data.n_upper_bounds; k++) {
       i_t j = data.upper_bounds[k];
-      dual_residual[j] -= data.v[k];
+      init_dual_residual[j] -= data.v[k];
     }
   }
 #ifdef PRINT_INFO
   settings.log.printf("||A^T y + z - E*v - Q*x - c ||: %e\n",
-                      vector_norm2<i_t, f_t>(dual_residual));
+                      vector_norm2<i_t, f_t>(init_dual_residual));
 #endif
   // Make sure (w, x, v, z) > 0. Skip free variables being handled directly.
   data.w.ensure_positive(epsilon_adjust);
@@ -3924,7 +3923,6 @@ lp_status_t barrier_solver_t<i_t, f_t>::check_for_suboptimal_solution(
                      primal_objective,
                      compute_user_objective(lp, primal_objective),
                      primal_residual_norm,
-                     dual_residual_norm,
                      data.cusparse_view_,
                      solution);
     settings.log.printf("\n");
@@ -3968,7 +3966,6 @@ lp_status_t barrier_solver_t<i_t, f_t>::check_for_suboptimal_solution(
                      primal_objective_save,
                      compute_user_objective(lp, primal_objective_save),
                      data.primal_residual_norm_save,
-                     data.dual_residual_norm_save,
                      data.cusparse_view_,
                      solution);
     settings.log.printf("\n");
@@ -4390,7 +4387,6 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
                          primal_objective,
                          compute_user_objective(lp, primal_objective),
                          primal_residual_norm,
-                         dual_residual_norm,
                          data.cusparse_view_,
                          solution);
         return lp_status_t::OPTIMAL;
@@ -4431,7 +4427,6 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
                      primal_objective,
                      compute_user_objective(lp, primal_objective),
                      primal_residual_norm,
-                     dual_residual_norm,
                      data.cusparse_view_,
                      solution);
     return lp_status_t::ITERATION_LIMIT;
