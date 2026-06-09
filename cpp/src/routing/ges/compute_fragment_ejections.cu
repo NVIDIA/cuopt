@@ -113,6 +113,47 @@ __global__ void kernel_get_best_insertion_ejection_solution(
                                                                      fragment_step);
 }
 
+template <int BLOCK_SIZE, typename i_t, typename f_t, request_t REQUEST>
+bool set_shmem_for_kernel_get_best_insertion_ejection_solution(size_t dynamic_shmem_size)
+{
+  return set_shmem_of_kernel(
+    kernel_get_best_insertion_ejection_solution<BLOCK_SIZE, i_t, f_t, REQUEST>, dynamic_shmem_size);
+}
+
+template <int BLOCK_SIZE, typename i_t, typename f_t, request_t REQUEST>
+void launch_kernel_get_best_insertion_ejection_solution(
+  dim3 grid, dim3 blocks, size_t shmem_bytes, void** kernel_args, rmm::cuda_stream_view stream)
+{
+  RAFT_CUDA_TRY(cudaLaunchKernel(
+    (void*)kernel_get_best_insertion_ejection_solution<BLOCK_SIZE, i_t, f_t, REQUEST>,
+    grid,
+    blocks,
+    kernel_args,
+    shmem_bytes,
+    stream));
+}
+
+#define CUOPT_INSTANTIATE_GET_BEST_INSERTION_EJECTION(BLOCK_SIZE, REQ)                        \
+  template bool set_shmem_for_kernel_get_best_insertion_ejection_solution<BLOCK_SIZE,         \
+                                                                          int,                \
+                                                                          float,              \
+                                                                          request_t::REQ>(    \
+    size_t dynamic_shmem_size);                                                               \
+  template void                                                                               \
+  launch_kernel_get_best_insertion_ejection_solution<BLOCK_SIZE, int, float, request_t::REQ>( \
+    dim3 grid, dim3 blocks, size_t shmem_bytes, void** kernel_args, rmm::cuda_stream_view stream);
+
+CUOPT_INSTANTIATE_GET_BEST_INSERTION_EJECTION(32, PDP)
+CUOPT_INSTANTIATE_GET_BEST_INSERTION_EJECTION(64, PDP)
+CUOPT_INSTANTIATE_GET_BEST_INSERTION_EJECTION(128, PDP)
+CUOPT_INSTANTIATE_GET_BEST_INSERTION_EJECTION(512, PDP)
+CUOPT_INSTANTIATE_GET_BEST_INSERTION_EJECTION(32, VRP)
+CUOPT_INSTANTIATE_GET_BEST_INSERTION_EJECTION(64, VRP)
+CUOPT_INSTANTIATE_GET_BEST_INSERTION_EJECTION(128, VRP)
+CUOPT_INSTANTIATE_GET_BEST_INSERTION_EJECTION(512, VRP)
+
+#undef CUOPT_INSTANTIATE_GET_BEST_INSERTION_EJECTION
+
 template __global__ void
 kernel_get_best_insertion_ejection_solution<32, int, float, request_t::PDP>(
   typename solution_t<int, float, request_t::PDP>::view_t solution,

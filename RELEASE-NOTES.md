@@ -1,5 +1,62 @@
 # Release Notes
 
+## Release Notes 26.06
+
+### New Features (26.06)
+- Add support for quadratic constraints (convex quadratic, second-order cone, and rotated second-order cone) in the barrier solver
+- Add support for semi-continuous variables in the MIP solver
+- Add support for reading LP (.lp) files; LP files are accepted wherever MPS files were previously, including the compressed variants (`.lp.gz`, `.lp.bz2`)
+- Branch and bound workers now maintain their own heaps and steal nodes from other workers; on average, this increases the number of nodes explored by 3x given a fixed time limit
+- Add support for detecting and exploiting symmetry in MIP
+- Add support for flow cover cuts in MIP
+- Add support for detecting and exploiting discrete objective steps in MIP
+- Add support for handling free variables directly in barrier's augmented system when a problem has a quadratic objective or constraints
+- New right-looking Markowitz LU factorization for dual simplex and crossover
+- Add setting for specifying a limit on the number of nodes explored in branch and bound
+- Add setting for disabling probing in cuOpt MIP presolve
+
+### Breaking Changes (26.06)
+- Routing API: drop `const` qualifier in `raft::handle_t` on the `data_model_view_t`
+- Move `libmps_parser` into `libcuopt` and the `mps_parser` Python module into `cuopt`; the standalone `libmps_parser` shared library and Python module are no longer shipped. Imports should move from `libmps_parser` to `cuopt`. Refer to https://github.com/NVIDIA/cuopt/pull/1193
+
+### Improvements (26.06)
+- Replace SpMV calls with SpMVOp calls in PDLP; 9% faster
+- Improve performance of QP solver on portfolio optimization problems
+- Improve performance of dual simplex (remove unnecessary BTran, swap coefficients for faster reduced cost calculation, trigger basis refactorization based on work limits); 16% faster on NETLIB LP, 6% faster on MIPLIB relaxations
+- Improve accuracy of dual simplex (refactor when optimal and primal residual is large with basis updates present)
+- Reduce concurrent overhead for LP solves
+- Reduce memory footprint of PDLP by around 50%
+- Unify threading model across LP (concurrent mode) and MIP to use OpenMP task model to allow stricter control of the number of threads
+- Unify Python `read` API on `Problem` for both MPS and LP file formats
+- Build and test with CUDA 13.2
+- Build against OpenSSL3 in container and wheel for gRPC
+- Substantially expand the in-repo skill set for AI coding agents (Copilot, Cline, Windsurf, Jules, Aider, Codex) covering developer onboarding, installation, numerical optimization, routing, and the server; add NVIDIA-signed skill cards, evaluation datasets, and a skill-evolution workflow under `skills/`
+
+### Bug Fixes (26.06)
+- Fix a bug in MIP where the probing cache did not correctly update the model after each batch
+- Fix a bug in MIP where loose tolerances in the objective function could lead to incorrect integrality detection
+- Fix a bug in MIP where branch and bound nodes could be lost when a plunge exits early due to LP solve limits
+- Fix a bug in MIP where the lower bound could be incorrect when using a single thread
+- Fix a bug in LP/QP where dual variables and reduced costs could be incorrect when applying implied bounds to free variables
+- Fix an issue in crossover where adding slack variables to a rank-deficient basis was accidentally O(rows^2)
+
+### Deprecated APIs (26.06)
+- Python API: `readMPS` is deprecated
+- C API: `cuOptCreateQuadraticProblem` and `cuOptCreateQuadraticRangedProblem` is deprecated
+- LP batch mode is deprecated
+
+### Documentation (26.06)
+- Refresh the contributor guide (`CONTRIBUTING.md`) with conda-environment recommendations and clarified test-suite scope
+- Update the MIP scaling guide
+- Migrate the support link to GitHub Discussions and tidy broken doc links
+
+### New Contributors (26.06)
+- @np96
+- @srib
+- @yuwenchen95
+- @Bubullzz
+- @aycsi
+
 ## Release Notes 26.04
 
 ### New Features (26.04)
