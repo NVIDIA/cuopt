@@ -53,8 +53,8 @@ template <typename i_t, typename f_t>
 clique_cut_build_status_t build_clique_cut(const std::vector<i_t>& clique_vertices,
                                            i_t num_vars,
                                            const std::vector<variable_type_t>& var_types,
-                                           const std::vector<f_t>& lower_bounds,
-                                           const std::vector<f_t>& upper_bounds,
+                                           [[maybe_unused]] const std::vector<f_t>& lower_bounds,
+                                           [[maybe_unused]] const std::vector<f_t>& upper_bounds,
                                            const std::vector<f_t>& xstar,
                                            f_t bound_tol,
                                            f_t min_violation,
@@ -105,8 +105,6 @@ clique_cut_build_status_t build_clique_cut(const std::vector<i_t>& clique_vertic
                  "Clique contains continuous variable");
     cuopt_assert(lower_bound >= -bound_tol, "Clique variable lower bound below zero");
     cuopt_assert(upper_bound <= 1 + bound_tol, "Clique variable upper bound above one");
-    static_cast<void>(lower_bound);
-    static_cast<void>(upper_bound);
 
     if (complement) {
       cuopt_assert(seen_complement.count(var_idx) == 0, "Duplicate complement in clique");

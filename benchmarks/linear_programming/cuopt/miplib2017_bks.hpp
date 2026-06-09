@@ -5,13 +5,13 @@
  */
 /* clang-format on */
 
-// MIPLIB2017 best-known objective ("optimum") lookup for the MIP
+// MIPLIB2017 best-known solution (BKS) lookup for the MIP
 // benchmark runner. Self-contained: no env vars, no external CSV.
 //
 // Coverage: every instance in the MIPLIB2017 *benchmark* set (240
-// instances). Of those, 232 have a known optimum and live in
-// kBenchmarkOptima; 7 are infeasible and live in kBenchmarkInfeasible
-// so the printer can label them clearly instead of returning "no opt".
+// instances). Of those, 232 have a known BKS and live in
+// kBenchmarkBKS; 7 are infeasible and live in kBenchmarkInfeasible
+// so the printer can label them clearly instead of returning "no bks".
 //
 // Lookup uses the basename without directory and stripped of
 // .mps / .mps.gz / .lp / .lp.gz / .gz suffixes, lower-cased. So
@@ -19,7 +19,7 @@
 // all hit the same entry.
 //
 // Returns std::optional<double>: nullopt means "instance is in our
-// benchmark set but infeasible" *or* "we don't have an entry for it".
+// benchmark set but infeasible" *or* "we don't have a BKS entry for it".
 // is_known_infeasible() distinguishes the two.
 
 #pragma once
@@ -28,6 +28,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <format>
 #include <limits>
 #include <optional>
 #include <string>
@@ -66,13 +67,13 @@ inline std::string normalize_instance_name(const std::string& raw)
   return s;
 }
 
-// MIPLIB2017 benchmark-set best-known objectives (n=232). Source:
+// MIPLIB2017 benchmark-set best-known solutions (n=232). Source:
 // https://miplib.zib.de "The Benchmark Set". Values are stored in the
 // double precision they were published at; unit tests should compare
-// with a tolerance of ~|opt|*1e-9 rather than exact equality.
-inline const std::unordered_map<std::string, double>& kBenchmarkOptima()
+// with a tolerance of ~|bks|*1e-9 rather than exact equality.
+inline const std::unordered_map<std::string, double>& kBenchmarkBKS()
 {
-  static const std::unordered_map<std::string, double> kOptima = {
+  static const std::unordered_map<std::string, double> kBKS = {
     {"30n20b8", 302},
     {"50v-10", 3311.1799841000002},
     {"academictimetablesmall", 0},
@@ -307,7 +308,7 @@ inline const std::unordered_map<std::string, double>& kBenchmarkOptima()
     {"var-smallemery-m6j6", -149.37501},
     {"wachplan", -8},
   };
-  return kOptima;
+  return kBKS;
 }
 
 // MIPLIB2017 benchmark-set instances flagged as infeasible (n=7).
@@ -328,9 +329,9 @@ inline const std::unordered_set<std::string>& kBenchmarkInfeasible()
   return kInfeas;
 }
 
-inline std::optional<double> lookup_miplib_optimum(const std::string& filename)
+inline std::optional<double> lookup_miplib_bks(const std::string& filename)
 {
-  const auto& m = kBenchmarkOptima();
+  const auto& m = kBenchmarkBKS();
   const auto it = m.find(normalize_instance_name(filename));
   if (it == m.end()) { return std::nullopt; }
   return it->second;
@@ -367,7 +368,7 @@ inline bool is_known_infeasible(const std::string& filename)
 // of solve) so the new metric and the previous one can be compared
 // without re-running.
 //
-// "TBD" is emitted when the optimum is unknown so downstream parsers
+// "TBD" is emitted when the BKS is unknown so downstream parsers
 // can join lines on (instance, field) without dropping rows. "NaN" is
 // emitted for root_lp_* when the value is unavailable.
 template <typename Solution>
@@ -381,7 +382,8 @@ inline void print_miplib_gap_stat(
   double cut_gen_time_sec = std::numeric_limits<double>::quiet_NaN())
 {
   const std::string norm   = normalize_instance_name(filename);
-  const auto opt           = lookup_miplib_optimum(filename);
+  const bool infeasible    = is_known_infeasible(filename);
+  const auto bks_opt       = lookup_miplib_bks(filename);
   const double primal      = solution.get_objective_value();
   const double final_dual  = solution.get_solution_bound();
   const double mip_gap     = solution.get_mip_gap();
@@ -390,27 +392,28 @@ inline void print_miplib_gap_stat(
   const bool root1_finite  = std::isfinite(root_lp_with_cuts);
   constexpr double NaN     = std::numeric_limits<double>::quiet_NaN();
 
-  if (is_known_infeasible(filename)) {
-    std::printf(
-      "MIPLIBGapStat instance=%s opt=Infeasible primal=%.10g final_dual=%.10g "
-      "root_lp_no_cuts=%.10g root_lp_with_cuts=%.10g "
-      "abs_root_dual_gap=NA rel_root_dual_gap_pct=NA gap_closed_pct=NA "
-      "abs_primal_gap=NA rel_primal_gap_pct=NA "
-      "mip_gap_reported=%.6g time_s=%.3f cut_gen_time_s=%.3f status=%s\n",
-      norm.c_str(),
-      primal,
-      final_dual,
-      root_lp_no_cuts,
-      root_lp_with_cuts,
-      mip_gap,
-      solve_time_seconds,
-      cut_gen_time_sec,
-      termination_status.c_str());
-  } else if (opt.has_value()) {
-    const double o     = *opt;
-    const double denom = std::max(std::abs(o), 1.0);
+  std::string line = std::format("MIPLIBGapStat instance={}", norm);
 
-    const double abs_root_dgap     = root1_finite ? (o - root_lp_with_cuts) : NaN;
+  if (infeasible) {
+    line += " opt=Infeasible";
+  } else if (bks_opt.has_value()) {
+    line += std::format(" opt={:.10g}", *bks_opt);
+  } else {
+    line += " opt=TBD";
+  }
+
+  line += std::format(
+    " primal={:.10g} final_dual={:.10g} root_lp_no_cuts={:.10g} root_lp_with_cuts={:.10g}",
+    primal,
+    final_dual,
+    root_lp_no_cuts,
+    root_lp_with_cuts);
+
+  if (!infeasible && bks_opt.has_value()) {
+    const double bks   = *bks_opt;
+    const double denom = std::max(std::abs(bks), 1.0);
+
+    const double abs_root_dgap     = root1_finite ? (bks - root_lp_with_cuts) : NaN;
     const double rel_root_dgap_pct = root1_finite ? 100.0 * abs_root_dgap / denom : NaN;
 
     // Classical gap-closed-by-cuts. Skip when either root bound is
@@ -419,7 +422,7 @@ inline void print_miplib_gap_stat(
     // moved the wrong way (numerical noise in either direction).
     double gap_closed_pct = NaN;
     if (root0_finite && root1_finite) {
-      const double total_gap = o - root_lp_no_cuts;
+      const double total_gap = bks - root_lp_no_cuts;
       if (std::abs(total_gap) > 1e-12 * denom) {
         gap_closed_pct = 100.0 * (root_lp_with_cuts - root_lp_no_cuts) / total_gap;
       } else {
@@ -429,47 +432,32 @@ inline void print_miplib_gap_stat(
       }
     }
 
-    const double abs_pgap     = primal_finite ? (primal - o) : NaN;
+    const double abs_pgap     = primal_finite ? (primal - bks) : NaN;
     const double rel_pgap_pct = primal_finite ? 100.0 * abs_pgap / denom : NaN;
 
-    std::printf(
-      "MIPLIBGapStat instance=%s opt=%.10g primal=%.10g final_dual=%.10g "
-      "root_lp_no_cuts=%.10g root_lp_with_cuts=%.10g "
-      "abs_root_dual_gap=%.10g rel_root_dual_gap_pct=%.6g gap_closed_pct=%.6g "
-      "abs_primal_gap=%.10g rel_primal_gap_pct=%.6g "
-      "mip_gap_reported=%.6g time_s=%.3f cut_gen_time_s=%.3f status=%s\n",
-      norm.c_str(),
-      o,
-      primal,
-      final_dual,
-      root_lp_no_cuts,
-      root_lp_with_cuts,
+    line += std::format(
+      " abs_root_dual_gap={:.10g} rel_root_dual_gap_pct={:.6g} gap_closed_pct={:.6g}"
+      " abs_primal_gap={:.10g} rel_primal_gap_pct={:.6g}",
       abs_root_dgap,
       rel_root_dgap_pct,
       gap_closed_pct,
       abs_pgap,
-      rel_pgap_pct,
-      mip_gap,
-      solve_time_seconds,
-      cut_gen_time_sec,
-      termination_status.c_str());
+      rel_pgap_pct);
   } else {
-    std::printf(
-      "MIPLIBGapStat instance=%s opt=TBD primal=%.10g final_dual=%.10g "
-      "root_lp_no_cuts=%.10g root_lp_with_cuts=%.10g "
-      "abs_root_dual_gap=TBD rel_root_dual_gap_pct=TBD gap_closed_pct=TBD "
-      "abs_primal_gap=TBD rel_primal_gap_pct=TBD "
-      "mip_gap_reported=%.6g time_s=%.3f cut_gen_time_s=%.3f status=%s\n",
-      norm.c_str(),
-      primal,
-      final_dual,
-      root_lp_no_cuts,
-      root_lp_with_cuts,
-      mip_gap,
-      solve_time_seconds,
-      cut_gen_time_sec,
-      termination_status.c_str());
+    const char* na = infeasible ? "NA" : "TBD";
+    line += std::format(
+      " abs_root_dual_gap={0} rel_root_dual_gap_pct={0} gap_closed_pct={0}"
+      " abs_primal_gap={0} rel_primal_gap_pct={0}",
+      na);
   }
+
+  line += std::format(" mip_gap_reported={:.6g} time_s={:.3f} cut_gen_time_s={:.3f} status={}",
+                      mip_gap,
+                      solve_time_seconds,
+                      cut_gen_time_sec,
+                      termination_status);
+
+  std::printf("%s\n", line.c_str());
   std::fflush(stdout);
 }
 

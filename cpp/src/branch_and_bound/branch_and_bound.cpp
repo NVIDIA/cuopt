@@ -2363,13 +2363,9 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   }
   root_objective_ = compute_objective(original_lp_, root_relax_soln_.x);
 
-  // Publish after every successful post-cut LP resolve so any
-  // early-exit path below (NUMERICAL, TIME_LIMIT, gap-tolerance
-  // exit) still leaves benchmark_info->root_lp_with_cuts pointing
-  // at the most recent valid LP-with-cuts objective.
   if (settings_.benchmark_info_ptr != nullptr) {
     settings_.benchmark_info_ptr->root_lp_with_cuts =
-      static_cast<double>(compute_user_objective(original_lp_, root_objective_));
+      compute_user_objective(original_lp_, root_objective_);
   }
 
   f_t remove_cuts_start_time = tic();
@@ -2599,10 +2595,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   cut_info_t<i_t, f_t> cut_info;
 
   if (num_fractional == 0) {
-    // LP relaxation already integer-feasible — solved at the root with
-    // no cuts. Publish both bounds equal to the root LP value so the
-    // gap-closed-by-cuts line still has a finite, meaningful entry
-    // (the printer reports 100% closed when total integrality gap ~= 0).
     if (settings_.benchmark_info_ptr != nullptr) {
       const double v = static_cast<double>(compute_user_objective(original_lp_, root_objective_));
       settings_.benchmark_info_ptr->root_lp_no_cuts   = v;
@@ -2650,7 +2642,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   // gap-closed-by-cuts without instrumenting the cut loop directly.
   if (settings_.benchmark_info_ptr != nullptr) {
     settings_.benchmark_info_ptr->root_lp_no_cuts =
-      static_cast<double>(compute_user_objective(original_lp_, root_relax_objective));
+      compute_user_objective(original_lp_, root_relax_objective);
   }
 
   constexpr bool enable_root_cut_cpufj = true;
@@ -2677,18 +2669,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   };
   cuopt::scope_guard root_cut_cpufj_guard([&]() { stop_root_cut_cpufj(); });
 
-  f_t cut_generation_start_time    = tic();
-  auto publish_cut_generation_time = [&](bool force_time_limit_value = false) {
-    if (settings_.benchmark_info_ptr == nullptr) { return; }
-    f_t cut_generation_time = toc(cut_generation_start_time);
-    if (force_time_limit_value) { cut_generation_time = settings_.time_limit; }
-    if (cut_generation_time < static_cast<f_t>(0.0)) {
-      cut_generation_time = static_cast<f_t>(0.0);
-    }
-    settings_.benchmark_info_ptr->cut_generation_time_sec =
-      static_cast<double>(cut_generation_time);
-  };
-  i_t cut_pool_size = 0;
+  f_t cut_generation_start_time = tic();
+  i_t cut_pool_size             = 0;
   for (i_t cut_pass = 0; cut_pass < settings_.max_cut_passes; cut_pass++) {
     if (num_fractional == 0) {
       // LP relaxation is already integer-feasible — solved at the root
@@ -2696,10 +2678,12 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       // value so the gap-closed line still has a non-NaN dual bound.
       if (settings_.benchmark_info_ptr != nullptr) {
         settings_.benchmark_info_ptr->root_lp_with_cuts =
-          static_cast<double>(compute_user_objective(original_lp_, root_objective_));
+          compute_user_objective(original_lp_, root_objective_);
       }
       set_solution_at_root(solution, cut_info);
-      publish_cut_generation_time();
+      if (settings_.benchmark_info_ptr != nullptr) {
+        settings_.benchmark_info_ptr->cut_generation_time_sec = toc(cut_generation_start_time);
+      }
       signal_extend_cliques_.store(true, std::memory_order_release);
 #pragma omp taskwait depend(in : *clique_signal)
       return mip_status_t::OPTIMAL;
@@ -2739,7 +2723,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     }
 
     if (cut_pass_result.action == cut_pass_action_t::RETURN) {
-      publish_cut_generation_time(cut_pass_result.status == mip_status_t::TIME_LIMIT);
+      if (settings_.benchmark_info_ptr != nullptr) {
+        settings_.benchmark_info_ptr->cut_generation_time_sec = toc(cut_generation_start_time);
+      }
       signal_extend_cliques_.store(true, std::memory_order_release);
 #pragma omp taskwait depend(in : *clique_signal)
       return cut_pass_result.status;
@@ -2765,13 +2751,15 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   // Publish the post-cuts root LP value.
   if (settings_.benchmark_info_ptr != nullptr) {
     settings_.benchmark_info_ptr->root_lp_with_cuts =
-      static_cast<double>(compute_user_objective(original_lp_, root_objective_));
+      compute_user_objective(original_lp_, root_objective_);
   }
 
   print_cut_info(settings_, cut_info);
   f_t cut_generation_time = toc(cut_generation_start_time);
   // Publish cut-generation time for reporting.
-  publish_cut_generation_time();
+  if (settings_.benchmark_info_ptr != nullptr) {
+    settings_.benchmark_info_ptr->cut_generation_time_sec = cut_generation_time;
+  }
   if (cut_info.has_cuts()) {
     settings_.log.printf("Cut generation time: %.2f seconds\n", cut_generation_time);
     settings_.log.printf("Cut pool size  : %d\n", cut_pool_size);
