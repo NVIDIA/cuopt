@@ -37,11 +37,7 @@ QP uses the same library, include/lib paths, and build pattern as LP/MILP — on
 
 ## Dual values (LP / QP)
 
-`cuOptGetDualSolution` (shadow prices) and `cuOptGetReducedCosts` (reduced costs) return values
-for **LP and QP with linear constraints** — the barrier solver is primal-dual, so a quadratic
-objective still yields duals. cuOpt returns **no duals for a problem with quadratic constraints**
-(the returned arrays are filled with `NaN`). See [assets/lp_duals](assets/lp_duals/) for the call
-sequence — it is an LP, but the same calls apply to a QP whose constraints are all linear.
+`cuOptGetDualSolution` and `cuOptGetReducedCosts` return duals and reduced costs for **LP and QP**. They are not returned for a problem with quadratic constraints (the arrays are filled with `NaN`), so read them only when all constraints are linear. See [assets/lp_duals](assets/lp_duals/) for the call sequence.
 
 ## Debugging (MPS / C)
 
