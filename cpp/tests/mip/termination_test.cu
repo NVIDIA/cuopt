@@ -38,6 +38,62 @@ namespace cuopt::linear_programming::test {
 constexpr double default_time_limit    = 10;
 constexpr bool default_heuristics_only = true;
 
+namespace {
+
+optimization_problem_t<int, double> make_concurrent_root_infeasible_problem(
+  raft::handle_t const* handle)
+{
+  constexpr int n = 120;
+
+  optimization_problem_t<int, double> problem(handle);
+  std::vector<double> coefficients;
+  std::vector<int> indices;
+  coefficients.reserve(2 * n);
+  indices.reserve(2 * n);
+  std::vector<int> offsets = {0, n, 2 * n};
+  std::vector<double> objective(n, 1.0);
+  std::vector<double> var_lower(n, 0.0);
+  std::vector<double> var_upper(n, 1.0);
+  std::vector<var_t> var_types(n, var_t::INTEGER);
+
+  double sum_a = 0.0;
+  double sum_b = 0.0;
+  for (int i = 0; i < n; ++i) {
+    const double a = 1.0 + static_cast<double>((i * 37) % 90) / 10.0;
+    const double b = a + (static_cast<double>((i * 17) % 11) - 5.0) / 20.0;
+    coefficients.push_back(a);
+    indices.push_back(i);
+    sum_a += a;
+    sum_b += b;
+  }
+  for (int i = 0; i < n; ++i) {
+    const double a = 1.0 + static_cast<double>((i * 37) % 90) / 10.0;
+    const double b = a + (static_cast<double>((i * 17) % 11) - 5.0) / 20.0;
+    coefficients.push_back(b);
+    indices.push_back(i);
+  }
+
+  const std::vector<double> row_lower = {0.80 * sum_a, -std::numeric_limits<double>::infinity()};
+  const std::vector<double> row_upper = {std::numeric_limits<double>::infinity(), 0.30 * sum_b};
+
+  problem.set_csr_constraint_matrix(coefficients.data(),
+                                    coefficients.size(),
+                                    indices.data(),
+                                    indices.size(),
+                                    offsets.data(),
+                                    offsets.size());
+  problem.set_constraint_lower_bounds(row_lower.data(), row_lower.size());
+  problem.set_constraint_upper_bounds(row_upper.data(), row_upper.size());
+  problem.set_objective_coefficients(objective.data(), objective.size());
+  problem.set_variable_lower_bounds(var_lower.data(), var_lower.size());
+  problem.set_variable_upper_bounds(var_upper.data(), var_upper.size());
+  problem.set_variable_types(var_types.data(), var_types.size());
+
+  return problem;
+}
+
+}  // namespace
+
 TEST(termination_status, trivial_presolve_optimality_test)
 {
   auto [termination_status, obj_val, lb] = test_mps_file(
@@ -130,6 +186,21 @@ TEST(termination_status, bb_infeasible_test)
     auto [termination_status, obj_val, lb] = test_mps_file("mip/stein9inf.mps", 30, false);
     EXPECT_EQ(termination_status, mip_termination_status_t::Infeasible);
   }
+}
+
+TEST(termination_status, concurrent_root_infeasible_returns_status)
+{
+  const raft::handle_t handle_{};
+  auto problem = make_concurrent_root_infeasible_problem(&handle_);
+  handle_.sync_stream();
+
+  mip_solver_settings_t<int, double> settings;
+  settings.time_limit       = 15.0;
+  settings.determinism_mode = CUOPT_MODE_OPPORTUNISTIC;
+  settings.num_cpu_threads  = 8;
+
+  auto solution = solve_mip(&handle_, problem, settings);
+  EXPECT_EQ(solution.get_termination_status(), mip_termination_status_t::Infeasible);
 }
 
 }  // namespace cuopt::linear_programming::test

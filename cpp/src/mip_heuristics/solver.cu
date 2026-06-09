@@ -29,6 +29,7 @@
 #include <raft/core/cusparse_macros.hpp>
 
 #include <cmath>
+#include <exception>
 #include <future>
 #include <memory>
 #include <thread>
@@ -490,12 +491,19 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     }
   }
 
+  std::exception_ptr branch_and_bound_exception;
+
 #pragma omp taskgroup
   {
     if (!context.settings.heuristics_only) {
 #pragma omp task default(shared) priority(CUOPT_CRITICAL_TASK_PRIORITY)
       {
-        branch_and_bound_status = branch_and_bound->solve(branch_and_bound_solution);
+        try {
+          branch_and_bound_status = branch_and_bound->solve(branch_and_bound_solution);
+        } catch (...) {
+          branch_and_bound_exception = std::current_exception();
+          solution_helper.preempt_heuristic_solver();
+        }
       }
     }
 
@@ -503,6 +511,8 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     context.diversity_manager_ptr = &dm;
     sol                           = dm.run_solver();
   }  // implicit barrier for all tasks created in B&B and heuristics
+
+  if (branch_and_bound_exception) { std::rethrow_exception(branch_and_bound_exception); }
 
   if (!context.settings.heuristics_only) {
     if (branch_and_bound_solution.lower_bound > -std::numeric_limits<f_t>::infinity()) {
