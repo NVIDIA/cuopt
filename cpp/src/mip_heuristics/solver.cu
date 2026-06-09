@@ -183,7 +183,7 @@ void extract_probing_implied_bounds(const problem_t<i_t, f_t>& op_problem,
     }
   }
 
-  CUOPT_LOG_INFO("Probing implied bounds: %d zero entries, %d one entries", zero_nnz, one_nnz);
+  CUOPT_LOG_INFO("\nProbing implied bounds: %d zero entries, %d one entries", zero_nnz, one_nnz);
 }
 
 template <typename i_t, typename f_t>
@@ -496,10 +496,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     if (!context.settings.heuristics_only) {
 #pragma omp task default(shared) priority(CUOPT_CRITICAL_TASK_PRIORITY)
       {
-        auto t0                               = std::chrono::system_clock::now();
-        branch_and_bound_status               = branch_and_bound->solve(branch_and_bound_solution);
-        std::chrono::duration<double> elapsed = std::chrono::system_clock::now() - t0;
-        context.stats.bnb_time                = elapsed.count();
+        branch_and_bound_status = branch_and_bound->solve(branch_and_bound_solution);
       }
     }
 

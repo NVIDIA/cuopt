@@ -684,6 +684,8 @@ std::unique_ptr<mip_symmetry_t<i_t, f_t>> detect_symmetry(
   const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
   bool& has_symmetry)
 {
+  settings.log.printf("\nRunning symmetry detection...\n");
+
   has_symmetry = false;
 
   f_t start_time = simplex::tic();

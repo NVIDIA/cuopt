@@ -791,30 +791,27 @@ void branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t, f_t>& 
   f_t gap_rel          = user_relative_gap(original_lp_, upper_bound_.load(), lower_bound);
   bool is_maximization = original_lp_.obj_scale < 0.0;
 
-  settings_.log.printf("Explored %d nodes in %.2fs.\n",
-                       exploration_stats_.nodes_explored,
-                       toc(exploration_stats_.start_time));
+  settings_.log.print_format("Explored {} nodes ({} simplex iterations) in {:.2f}s.",
+                             exploration_stats_.nodes_explored.load(),
+                             exploration_stats_.total_lp_iters.load(),
+                             toc(exploration_stats_.start_time));
+
   if (exploration_stats_.orbital_fixing_nodes.load() > 0 ||
       exploration_stats_.orbital_conflict_nodes.load() > 0) {
-    settings_.log.printf(
-      "Orbital fixing applied at %lld nodes, %lld total variable fixings, "
-      "%lld nodes with conflicting orbits\n",
-      (long long)exploration_stats_.orbital_fixing_nodes.load(),
-      (long long)exploration_stats_.orbital_fixings_applied.load(),
-      (long long)exploration_stats_.orbital_conflict_nodes.load());
+    settings_.log.print_format(
+      "Orbital fixing applied at {} nodes, {} total variable fixings, "
+      "{} nodes with conflicting orbits\n",
+      exploration_stats_.orbital_fixing_nodes.load(),
+      exploration_stats_.orbital_fixings_applied.load(),
+      exploration_stats_.orbital_conflict_nodes.load());
   }
   if (exploration_stats_.lexical_reduction_nodes.load() > 0) {
-    settings_.log.printf(
-      "Lexical reduction applied at %lld nodes, %lld total variable fixings, %lld nodes pruned\n",
-      (long long)exploration_stats_.lexical_reduction_nodes.load(),
-      (long long)exploration_stats_.lexical_reduction_fixings_applied.load(),
-      (long long)exploration_stats_.lexical_reduction_pruned_nodes.load());
+    settings_.log.print_format(
+      "Lexical reduction applied at {} nodes, {} total variable fixings, {} nodes pruned\n",
+      exploration_stats_.lexical_reduction_nodes.load(),
+      exploration_stats_.lexical_reduction_fixings_applied.load(),
+      exploration_stats_.lexical_reduction_pruned_nodes.load());
   }
-  settings_.log.printf("Absolute Gap %e Objective %.16e %s Bound %.16e\n",
-                       gap,
-                       obj,
-                       is_maximization ? "Upper" : "Lower",
-                       user_bound);
 
   if (gap <= settings_.absolute_mip_gap_tol || gap_rel <= settings_.relative_mip_gap_tol) {
     solver_status_ = mip_status_t::OPTIMAL;
@@ -2525,8 +2522,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   exploration_stats_.nodes_explored   = 0;
   original_lp_.A.to_compressed_row(Arow_);
 
-  settings_.log.printf("Reduced cost strengthening enabled: %d\n",
-                       settings_.reduced_cost_strengthening);
+  settings_.log.debug("Reduced cost strengthening enabled: %d\n",
+                      settings_.reduced_cost_strengthening);
 
   variable_bounds_t<i_t, f_t> variable_bounds(
     original_lp_, settings_, var_types_, Arow_, new_slacks_);
@@ -3021,6 +3018,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   }  // Implicit barrier for all tasks created within the group (RINS, B&B workers)
 
   is_running_ = false;
+  settings_.log.printf("\n");
 
   // Compute final lower bound
   f_t lower_bound;

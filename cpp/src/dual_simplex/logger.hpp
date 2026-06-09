@@ -17,6 +17,7 @@
 #include <cstdio>
 #include <cstring>
 #include <format>
+#include <string_view>
 #include <utility>
 
 namespace cuopt::mathematical_optimization::simplex {
