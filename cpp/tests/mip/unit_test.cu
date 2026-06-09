@@ -24,7 +24,7 @@ namespace cuopt::linear_programming::test {
 
 io::mps_data_model_t<int, double> create_std_lp_problem()
 {
-  return cuopt::test::inline_lp::parse_inline_lp(R"LP(
+  return cuopt::test::parse_inline_lp(R"LP(
 Minimize
   obj: 1.2 x1 + 1.7 x2
 Subject To
@@ -39,7 +39,7 @@ End
 
 io::mps_data_model_t<int, double> create_single_var_lp_problem()
 {
-  return cuopt::test::inline_lp::parse_inline_lp(R"LP(
+  return cuopt::test::parse_inline_lp(R"LP(
 Minimize
   obj: -0.23 x
 Subject To
@@ -73,7 +73,7 @@ TEST(LPTest, TestSampleLP2)
   raft::handle_t handle;
 
   // Two identical row constraints exercise duplicate-row handling.
-  auto problem = cuopt::test::inline_lp::parse_inline_lp(R"LP(
+  auto problem = cuopt::test::parse_inline_lp(R"LP(
 Minimize
   obj: x
 Subject To
@@ -216,7 +216,7 @@ INSTANTIATE_TEST_SUITE_P(
 // stays integer.
 static io::mps_data_model_t<int, double> create_wide_spread_milp()
 {
-  return cuopt::test::inline_lp::parse_inline_lp(R"LP(
+  return cuopt::test::parse_inline_lp(R"LP(
 Minimize
   obj: x0 + 2 x1 + 3 x2 + 0.5 x3
 Subject To

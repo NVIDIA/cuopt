@@ -48,7 +48,7 @@ constexpr double kCliqueTestTol = 1e-6;
 // Pairwise binary conflicts forming a triangle.
 io::mps_data_model_t<int, double> create_pairwise_triangle_set_packing_problem()
 {
-  return cuopt::test::inline_lp::parse_inline_lp(R"LP(
+  return cuopt::test::parse_inline_lp(R"LP(
 Minimize
   obj: -x0 - x1 - x2
 Subject To
@@ -66,7 +66,7 @@ End
 // Same triangle conflicts plus an isolated binary x3 with no conflict rows.
 io::mps_data_model_t<int, double> create_pairwise_triangle_with_isolated_variable_problem()
 {
-  return cuopt::test::inline_lp::parse_inline_lp(R"LP(
+  return cuopt::test::parse_inline_lp(R"LP(
 Minimize
   obj: -x0 - x1 - x2
 Subject To
@@ -86,7 +86,7 @@ End
 // x0 + x2 <= 1  (must generate a conflict edge)
 io::mps_data_model_t<int, double> create_binary_continuous_mixed_conflict_problem()
 {
-  return cuopt::test::inline_lp::parse_inline_lp(R"LP(
+  return cuopt::test::parse_inline_lp(R"LP(
 Minimize
   obj: 0 x0 + 0 y1 + 0 x2
 Subject To
@@ -105,7 +105,7 @@ End
 // treated as a binary conflict row.
 io::mps_data_model_t<int, double> create_near_binary_bound_conflict_problem()
 {
-  return cuopt::test::inline_lp::parse_inline_lp(R"LP(
+  return cuopt::test::parse_inline_lp(R"LP(
 Minimize
   obj: 0 x0 + 0 x1
 Subject To
@@ -123,7 +123,7 @@ End
 // Creates base clique {x2, x3} and additional clique inducing conflict {x1, x3}.
 io::mps_data_model_t<int, double> create_weighted_addtl_conflict_problem()
 {
-  return cuopt::test::inline_lp::parse_inline_lp(R"LP(
+  return cuopt::test::parse_inline_lp(R"LP(
 Minimize
   obj: 0 x0 + 0 x1 + 0 x2 + 0 x3
 Subject To
@@ -770,7 +770,7 @@ std::optional<size_t> isolate_first_lp_infeasible_literal_cut_by_bisection(
 
 io::mps_data_model_t<int, double> create_cuts_problem_1()
 {
-  return cuopt::test::inline_lp::parse_inline_lp(R"LP(
+  return cuopt::test::parse_inline_lp(R"LP(
 Minimize
   obj: -7 x1 - 2 x2
 Subject To
@@ -810,7 +810,7 @@ TEST(cuts, test_cuts_1)
 
 io::mps_data_model_t<int, double> create_cuts_problem_2()
 {
-  return cuopt::test::inline_lp::parse_inline_lp(R"LP(
+  return cuopt::test::parse_inline_lp(R"LP(
 Minimize
   obj: -86 y1 - 4 y2 - 40 y3
 Subject To
@@ -1325,7 +1325,7 @@ TEST(cuts, clique_neos8_phase4_lp_infeasibility_binary_search)
 // flows. Keep the variable order matching that layout.
 io::mps_data_model_t<int, double> create_small_single_node_flow_problem()
 {
-  return cuopt::test::inline_lp::parse_inline_lp(R"LP(
+  return cuopt::test::parse_inline_lp(R"LP(
 Minimize
   obj: 0 x0 + 0 x1 + 0 x2 + 0 y0 + 0 y1 + 0 y2
 Subject To

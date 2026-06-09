@@ -22,7 +22,7 @@ TEST(two_variable_test, simple_test)
   raft::handle_t handle;
 
   // Unconstrained optimum (4, 2) satisfies the constraint with slack.
-  auto problem = cuopt::test::inline_lp::parse_inline_lp(R"LP(
+  auto problem = cuopt::test::parse_inline_lp(R"LP(
 Minimize
   obj: -8 x1 - 16 x2 + [ 2 x1 ^ 2 + 8 x2 ^ 2 ] / 2
 Subject To

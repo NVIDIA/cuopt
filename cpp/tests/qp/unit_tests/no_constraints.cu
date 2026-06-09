@@ -20,7 +20,7 @@ TEST(no_constraints_test, simple_test)
 {
   raft::handle_t handle;
 
-  auto problem = cuopt::test::inline_lp::parse_inline_lp(R"LP(
+  auto problem = cuopt::test::parse_inline_lp(R"LP(
 Minimize
   obj: [ 2 x1 ^ 2 + 2 x2 ^ 2 ] / 2
 Bounds

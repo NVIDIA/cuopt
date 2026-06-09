@@ -20,7 +20,7 @@ namespace cuopt::linear_programming::test {
 
 io::mps_data_model_t<int, double> create_std_lp_problem()
 {
-  return cuopt::test::inline_lp::parse_inline_lp(R"LP(
+  return cuopt::test::parse_inline_lp(R"LP(
 Minimize
   obj: 1.2 x1 + 1.7 x2
 Subject To

@@ -837,7 +837,7 @@ TEST(pdlp_class, per_constraint_test)
    * will be 0.1009
    */
   raft::handle_t handle;
-  auto mps_data = cuopt::test::inline_lp::parse_inline_lp(R"LP(
+  auto mps_data = cuopt::test::parse_inline_lp(R"LP(
 Minimize
   obj: 0 x1 + 0 x2 + 0 x3
 Subject To

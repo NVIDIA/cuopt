@@ -23,7 +23,7 @@ namespace cuopt::linear_programming::test {
 
 io::mps_data_model_t<int, double> create_doc_example_problem()
 {
-  return cuopt::test::inline_lp::parse_inline_lp(R"LP(
+  return cuopt::test::parse_inline_lp(R"LP(
 Maximize
   obj: 5 x + 3 y
 Subject To
