@@ -5,6 +5,8 @@
  */
 /* clang-format on */
 
+#include <routing/ges/guided_ejection_search.cuh>
+#include <routing/util_kernels/set_nodes_data.cuh>
 #include <routing/utilities/check_constraints.hpp>
 #include <routing/utilities/test_utilities.hpp>
 
@@ -19,6 +21,129 @@
 namespace cuopt {
 namespace routing {
 namespace test {
+
+namespace {
+
+using break_test_solution = detail::solution_t<int, float, request_t::VRP>;
+using break_test_route    = detail::route_t<int, float, request_t::VRP>;
+
+// Load actual break nodes; public initial-solution injection discards supplied breaks.
+__global__ void load_route_with_optional_breaks(break_test_solution::view_t sol)
+{
+  auto& route = sol.routes[0];
+  for (int order = 0; order < sol.problem.order_info.get_num_orders(); ++order) {
+    sol.route_node_map.route_id_per_node[order]        = -1;
+    sol.route_node_map.intra_route_idx_per_node[order] = -1;
+  }
+  auto start = sol.problem.get_start_depot_node_info(0);
+  auto end   = sol.problem.get_return_depot_node_info(0);
+  route.set_num_nodes(4);
+  route.set_node(
+    0, detail::create_depot_node<int, float, request_t::VRP>(sol.problem, start, start, 0));
+  for (int dim = 0; dim < 2; ++dim) {
+    route.set_node(dim + 1,
+                   detail::create_break_node<int, float, request_t::VRP>(
+                     sol.problem.special_nodes.subset(0, dim), 0, sol.problem.dimensions_info));
+  }
+  auto order = detail::create_node<int, float, request_t::VRP>(sol.problem, 0);
+  route.set_node(3, order);
+  sol.route_node_map.set_route_id_and_intra_idx(order.node_info(), 0, 3);
+  route.set_node(4,
+                 detail::create_depot_node<int, float, request_t::VRP>(sol.problem, end, end, 0));
+  detail::set_route_data<int, float, request_t::VRP>(sol.problem, route);
+  break_test_route::view_t::compute_forward(route);
+  break_test_route::view_t::compute_backward(route);
+  route.compute_cost();
+  sol.routes_to_copy[0]   = 1;
+  sol.routes_to_search[0] = 1;
+}
+
+void test_break_normalization_after_route_changes(bool distance_breaks)
+{
+  raft::handle_t handle;
+  auto stream = handle.get_stream();
+  // Depot 0, nearby customer 10, distant customer 60, and break location -55.
+  std::vector<float> matrix = {0, 10, 60, 55, 10, 0, 50, 65, 60, 50, 0, 115, 55, 65, 115, 0};
+  auto d_matrix             = cuopt::device_copy(matrix, stream);
+  auto d_orders             = cuopt::device_copy(std::vector<int>{1, 2}, stream);
+  auto d_break_location     = cuopt::device_copy(std::vector<int>{3}, stream);
+  data_model_view_t<int, float> data_model(&handle, 4, 1, 2);
+  data_model.add_cost_matrix(d_matrix.data());
+  data_model.add_transit_time_matrix(d_matrix.data());
+  data_model.set_order_locations(d_orders.data());
+  for (int dim = 0; dim < 2; ++dim) {
+    if (distance_breaks) {
+      data_model.add_vehicle_distance_break(0, 0.f, 60.f, 5, d_break_location.data(), 1);
+    } else {
+      data_model.add_vehicle_break(
+        0, dim == 0 ? 0 : 60, dim == 0 ? 60 : 65, 5, d_break_location.data(), 1);
+    }
+  }
+
+  solver_settings_t<int, float> settings;
+  detail::problem_t<int, float> problem(data_model, settings);
+  detail::solution_handle_t<int, float> sol_handle(stream);
+  break_test_solution sol(problem, 0, &sol_handle, {0});
+  detail::local_search_t<int, float, request_t::VRP> local_search(
+    &sol_handle, 2, 1, problem.order_info.depot_included_, problem.viables);
+  local_search.set_active_weights(detail::default_weights);
+  detail::guided_ejection_search_t<int, float, request_t::VRP> ges(sol, &local_search);
+
+  load_route_with_optional_breaks<<<1, 1, 0, stream>>>(sol.view());
+  RAFT_CUDA_TRY(cudaGetLastError());
+  sol.compute_cost();
+  ASSERT_EQ(sol.get_route(0).get_num_breaks(), 2);
+  ASSERT_DOUBLE_EQ(sol.get_objective_cost()[objective_t::COST], 130.);
+  // Keeping either detour makes the other appear required. Both must be reconsidered.
+  ges.squeeze_breaks();
+  ASSERT_TRUE(sol.is_feasible());
+  ASSERT_EQ(sol.get_route(0).get_num_breaks(), 0);
+  ASSERT_DOUBLE_EQ(sol.get_objective_cost()[objective_t::COST], 20.);
+
+  detail::NodeInfo<> near_order(0, 1, node_type_t::DELIVERY);
+  detail::NodeInfo<> far_order(1, 2, node_type_t::DELIVERY);
+  sol.add_nodes_to_route({far_order}, 0, 1);
+  sol.compute_cost();
+  ASSERT_DOUBLE_EQ(sol.get_objective_cost()[objective_t::COST], 120.);
+  ges.squeeze_breaks();
+  ASSERT_TRUE(sol.is_feasible());
+  ASSERT_EQ(sol.get_route(0).get_num_breaks(), 2);
+  ASSERT_DOUBLE_EQ(sol.get_objective_cost()[objective_t::COST], 230.);
+
+  // Remove a real customer while retaining the existing break nodes.
+  ASSERT_TRUE(sol.remove_nodes({far_order}));
+  ASSERT_EQ(sol.get_route(0).get_num_breaks(), 2);
+  ges.squeeze_breaks();
+  ASSERT_TRUE(sol.is_feasible());
+  ASSERT_EQ(sol.get_route(0).get_num_breaks(), 0);
+  ASSERT_DOUBLE_EQ(sol.get_objective_cost()[objective_t::COST], 20.);
+  EXPECT_EQ(sol.route_node_map.get_route_id_and_intra_idx(near_order), std::make_pair(0, 1));
+  EXPECT_EQ(sol.route_node_map.get_route_id(far_order), -1);
+
+  sol.add_nodes_to_route({far_order}, 0, 1);
+  ges.squeeze_breaks();
+  ASSERT_EQ(sol.get_route(0).get_num_breaks(), 2);
+  ASSERT_TRUE(sol.remove_nodes({near_order, far_order}));
+  ASSERT_EQ(sol.get_route(0).get_num_service_nodes(), 0);
+  ASSERT_EQ(sol.get_route(0).get_num_breaks(), 2);
+  ges.squeeze_breaks();
+  ASSERT_TRUE(sol.is_feasible());
+  ASSERT_EQ(sol.get_route(0).get_num_breaks(), 0);
+  ASSERT_EQ(sol.get_route(0).n_nodes.value(stream), 1);
+  ASSERT_DOUBLE_EQ(sol.get_objective_cost()[objective_t::COST], 0.);
+}
+
+}  // namespace
+
+TEST(vehicle_breaks, time_breaks_normalized_after_route_changes)
+{
+  test_break_normalization_after_route_changes(false);
+}
+
+TEST(vehicle_breaks, distance_breaks_normalized_after_route_changes)
+{
+  test_break_normalization_after_route_changes(true);
+}
 
 static std::vector<float> cost_matrix   = {0, 1, 1, 1, 0, 1, 1, 1, 0};
 static std::vector<int> break_earliest  = {0, 1};

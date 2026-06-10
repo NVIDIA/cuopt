@@ -35,6 +35,10 @@ void adapted_modifier_t<i_t, f_t, REQUEST>::perturbate(
   for (i_t i = 0; i < perturbation_count; ++i) {
     resource.ls.run_random_local_search(adapted_solution.sol, false);
   }
+  if (adapted_solution.problem->has_vehicle_breaks()) {
+    resource.ges.set_solution_ptr(&adapted_solution.sol);
+    resource.ges.squeeze_breaks();
+  }
   adapted_solution.populate_host_data(true);
   adapted_solution.check_device_host_coherence();
   cuopt_func_call(adapted_solution.sol.check_cost_coherence(gpu_weight));
@@ -59,6 +63,12 @@ void adapted_modifier_t<i_t, f_t, REQUEST>::improve(
   resource.ls.start_timer(time_limit);
   resource.ls.run_best_local_search(
     adapted_solution.sol, consider_unserviced, time_limit_enabled, run_cycle_finder);
+  // Moving requests can make a previously skipped break required, or shorten a route enough
+  // to omit a break. Reconcile both cases before publishing its cost and feasibility.
+  if (adapted_solution.problem->has_vehicle_breaks()) {
+    resource.ges.set_solution_ptr(&adapted_solution.sol);
+    resource.ges.squeeze_breaks();
+  }
   adapted_solution.populate_host_data();
   adapted_solution.check_device_host_coherence();
   cuopt_func_call(adapted_solution.sol.check_cost_coherence(gpu_weight));

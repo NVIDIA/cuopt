@@ -103,8 +103,22 @@ void check_route(data_model_view_t<i_t, f_t> const& data_model,
 
   if (data_model.get_order_locations() == nullptr) { visited.insert(0); }
 
-  bool has_breaks = data_model.has_vehicle_breaks();
-  std::vector<std::vector<i_t>> uniform_break_earliest_h, uniform_break_latest_h;
+  bool has_breaks        = data_model.has_vehicle_breaks();
+  bool has_time_schedule = !time_matrices_h.empty() || !vehicle_max_times_h.empty() ||
+                           data_model.get_vehicle_time_windows().first != nullptr ||
+                           std::get<0>(data_model.get_order_time_windows()) != nullptr;
+  auto [objective_ptr, objective_weights, num_objectives] = data_model.get_objective_function();
+  if (num_objectives > 0) {
+    auto objectives_h = cuopt::host_copy(objective_ptr, num_objectives, stream);
+    auto weights_h    = cuopt::host_copy(objective_weights, num_objectives, stream);
+    for (size_t dim = 0; dim < objectives_h.size(); ++dim) {
+      if (objectives_h[dim] == objective_t::TRAVEL_TIME && weights_h[dim] > 0.) {
+        has_time_schedule = true;
+      }
+    }
+  }
+  std::vector<std::vector<i_t>> uniform_break_earliest_h, uniform_break_latest_h,
+    uniform_break_duration_h;
   std::unordered_set<i_t> uniform_break_locations_set;
   if (has_breaks) {
     auto const& uniform = data_model.get_uniform_breaks();
@@ -114,6 +128,8 @@ void check_route(data_model_view_t<i_t, f_t> const& data_model,
         cuopt::host_copy(e_ptr, static_cast<size_t>(fleet_size), stream));
       uniform_break_latest_h.push_back(
         cuopt::host_copy(l_ptr, static_cast<size_t>(fleet_size), stream));
+      uniform_break_duration_h.push_back(
+        cuopt::host_copy(d_ptr, static_cast<size_t>(fleet_size), stream));
     }
     auto [break_loc_ptr, n_break_loc] = data_model.get_break_locations();
     if (n_break_loc > 0) {
@@ -157,18 +173,32 @@ void check_route(data_model_view_t<i_t, f_t> const& data_model,
     }
 
     if (has_breaks) {
-      int break_dim           = 0;
       auto const& non_uniform = data_model.get_non_uniform_breaks();
       bool use_uniform        = !uniform_break_earliest_h.empty();
       bool use_non_uniform    = (non_uniform.count(id) > 0);
+      size_t num_break_dims   = use_uniform       ? uniform_break_earliest_h.size()
+                                : use_non_uniform ? non_uniform.at(id).size()
+                                                  : 0;
+      std::vector<bool> seen_breaks(num_break_dims, false);
+      double cumulative_distance  = 0.;
+      double final_break_duration = 0.;
       for (size_t k = i_vehicle_start; k < i; ++k) {
+        // The assignment omits the first/return depot when its trip is skipped.
+        if (k > i_vehicle_start) {
+          cumulative_distance += cost_matrix_h[locations[k - 1] * n_locations + locations[k]];
+        }
         if (static_cast<node_type_t>(node_types[k]) == node_type_t::BREAK) {
-          double arrival   = h_routing_solution.stamp[k];
-          i_t break_loc_id = locations[k];
-          if (use_uniform && break_dim < static_cast<int>(uniform_break_earliest_h.size())) {
-            // std::cout<<"VEHID: "<<id<<" ARRIVAL_REAL: "<<arrival<<" EARLIEST:
-            // "<<uniform_break_earliest_h[break_dim][id]<<" LATEST:
-            // "<<uniform_break_latest_h[break_dim][id]<<"\n";
+          i_t break_dim = route[k];
+          ASSERT_GE(break_dim, 0);
+          ASSERT_LT(static_cast<size_t>(break_dim), num_break_dims);
+          ASSERT_FALSE(seen_breaks[break_dim])
+            << "Duplicate break " << break_dim << " vehicle " << id;
+          seen_breaks[break_dim] = true;
+          double arrival         = h_routing_solution.stamp[k];
+          i_t break_loc_id       = locations[k];
+          double break_duration  = 0.;
+          if (use_uniform) {
+            break_duration = uniform_break_duration_h[break_dim][id];
             ASSERT_GE(arrival, static_cast<double>(uniform_break_earliest_h[break_dim][id]) - 1e-6)
               << "Break " << break_dim << " vehicle " << id << " arrival " << arrival
               << " before earliest " << uniform_break_earliest_h[break_dim][id];
@@ -180,35 +210,61 @@ void check_route(data_model_view_t<i_t, f_t> const& data_model,
                 << "Break " << break_dim << " vehicle " << id << " at location " << break_loc_id
                 << " not in allowed break locations";
             }
-          } else if (use_non_uniform) {
-            auto const& breaks = non_uniform.at(id);
-            if (break_dim < static_cast<int>(breaks.size())) {
-              auto const& b = breaks[break_dim];
+          } else {
+            auto const& b  = non_uniform.at(id)[break_dim];
+            break_duration = b.duration_;
+            if (b.is_distance_based_) {
+              ASSERT_LE(cumulative_distance, static_cast<double>(b.distance_max_) + 1e-3)
+                << "Distance break " << break_dim << " vehicle " << id;
+            } else {
               ASSERT_GE(arrival, static_cast<double>(b.earliest_) - 1e-6)
                 << "Non-uniform break " << break_dim << " vehicle " << id;
               ASSERT_LE(arrival, static_cast<double>(b.latest_) + 1e-6)
                 << "Non-uniform break " << break_dim << " vehicle " << id;
-              if (b.locations_.size() > 0) {
-                auto allowed_locs = cuopt::host_copy(b.locations_, stream);
-                bool found = std::find(allowed_locs.begin(), allowed_locs.end(), break_loc_id) !=
-                             allowed_locs.end();
-                ASSERT_TRUE(found)
-                  << "Non-uniform break " << break_dim << " vehicle " << id << " at location "
-                  << break_loc_id << " not in allowed break locations";
-              }
+            }
+            if (b.locations_.size() > 0) {
+              auto allowed_locs = cuopt::host_copy(b.locations_, stream);
+              bool found = std::find(allowed_locs.begin(), allowed_locs.end(), break_loc_id) !=
+                           allowed_locs.end();
+              ASSERT_TRUE(found) << "Non-uniform break " << break_dim << " vehicle " << id
+                                 << " at location " << break_loc_id
+                                 << " not in allowed break locations";
             }
           }
-          ++break_dim;
+          if (k + 1 == i) { final_break_duration = break_duration; }
         }
       }
-      if (use_uniform) {
-        ASSERT_EQ(break_dim, static_cast<int>(uniform_break_earliest_h.size()))
-          << "Vehicle " << id << " break count " << break_dim << " expected "
-          << uniform_break_earliest_h.size();
-      } else if (use_non_uniform) {
-        ASSERT_EQ(break_dim, static_cast<int>(non_uniform.at(id).size()))
-          << "Vehicle " << id << " non-uniform break count " << break_dim << " expected "
-          << non_uniform.at(id).size();
+
+      double route_end_time = h_routing_solution.stamp[i - 1] + final_break_duration;
+      auto final_node_type  = static_cast<node_type_t>(node_types[i - 1]);
+      if (final_node_type != node_type_t::DEPOT && final_node_type != node_type_t::BREAK) {
+        auto const& service_times = data_model.get_order_service_times();
+        auto service_it           = service_times.find(id);
+        if (service_it == service_times.end()) { service_it = service_times.find(-1); }
+        if (service_it != service_times.end()) {
+          auto service_times_h = cuopt::host_copy(service_it->second, stream);
+          route_end_time += service_times_h[route[i - 1]];
+        }
+      }
+      for (size_t dim = 0; dim < num_break_dims; ++dim) {
+        if (seen_breaks[dim]) { continue; }
+        if (use_uniform) {
+          ASSERT_TRUE(has_time_schedule) << "Vehicle " << id << " is missing time break " << dim
+                                         << " without a modeled schedule";
+          ASSERT_LE(route_end_time, static_cast<double>(uniform_break_latest_h[dim][id]) + 1e-3)
+            << "Vehicle " << id << " is missing required time break " << dim;
+        } else {
+          auto const& b = non_uniform.at(id)[dim];
+          if (b.is_distance_based_) {
+            ASSERT_LE(cumulative_distance, static_cast<double>(b.distance_max_) + 1e-3)
+              << "Vehicle " << id << " is missing required distance break " << dim;
+          } else {
+            ASSERT_TRUE(has_time_schedule) << "Vehicle " << id << " is missing time break " << dim
+                                           << " without a modeled schedule";
+            ASSERT_LE(route_end_time, static_cast<double>(b.latest_) + 1e-3)
+              << "Vehicle " << id << " is missing required time break " << dim;
+          }
+        }
       }
     }
 

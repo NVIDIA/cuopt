@@ -502,7 +502,6 @@ class base_test_t {
 
     // Recompute arrival times for each route
     for (auto const& id : temp_truck_ids) {
-      i_t break_dim = -1;
       std::vector<double> arrival_stamp;
       std::vector<double> latest_stamp;
       auto order     = route[i];
@@ -526,11 +525,20 @@ class base_test_t {
       auto transit_matrix_h = matrices_h.get_time_matrix(vehicle_type);
 
       bool is_depot = node_type == node_type_t::DEPOT;
+      bool is_break = node_type == node_type_t::BREAK;
+      if (is_break) {
+        ASSERT_GE(order, 0);
+        ASSERT_LT(order, n_break_dim_);
+      }
 
-      double earliest =
-        is_depot ? depot_earliest : std::max(vehicle_earliest, (double)earliest_time_h[order]);
+      double earliest = is_break
+                          ? break_earliest_h[order * n_vehicles + id]
+                          : (is_depot ? depot_earliest
+                                      : std::max(vehicle_earliest, (double)earliest_time_h[order]));
       double latest =
-        is_depot ? depot_latest : std::min(vehicle_latest, (double)latest_time_h[order]);
+        is_break
+          ? break_latest_h[order * n_vehicles + id]
+          : (is_depot ? depot_latest : std::min(vehicle_latest, (double)latest_time_h[order]));
 
       // route does not have to start from the vehicle earliest time. It just has to start before
       // latest time to lower wait time
@@ -549,22 +557,25 @@ class base_test_t {
         auto new_node_type       = (node_type_t)node_types[i];
         auto curr_is_break_order = node_type == node_type_t::BREAK;
         auto curr_is_depot       = node_type == node_type_t::DEPOT;
-        if (curr_is_break_order) ++break_dim;
         auto next_is_break_order = new_node_type == node_type_t::BREAK;
         auto next_is_depot       = new_node_type == node_type_t::DEPOT;
         double transit           = transit_matrix_h[order_loc * n_locations + new_order_loc];
+        if (next_is_break_order) {
+          ASSERT_GE(new_order, 0);
+          ASSERT_LT(new_order, n_break_dim_);
+        }
 
-        // For tests we assume break dimensions come in order
+        // Break node IDs identify dimensions even when earlier dimensions are omitted.
         double curr_service  = curr_is_break_order
-                                 ? break_duration_h[break_dim * n_vehicles + id]
+                                 ? break_duration_h[order * n_vehicles + id]
                                  : (curr_is_depot ? 0. : vehicle_service_time_h[order]);
         double order_arrival = stamp + transit + curr_service;
         double order_earliest =
           next_is_break_order
-            ? break_earliest_h[(break_dim + 1) * n_vehicles + id]
+            ? break_earliest_h[new_order * n_vehicles + id]
             : (next_is_depot ? depot_earliest : static_cast<double>(earliest_time_h[new_order]));
         double order_latest = next_is_break_order
-                                ? break_latest_h[(break_dim + 1) * n_vehicles + id]
+                                ? break_latest_h[new_order * n_vehicles + id]
                                 : (next_is_depot ? depot_latest : latest_time_h[new_order]);
         double curr_wait    = std::max(0.0, order_earliest - order_arrival);
         order_arrival += curr_wait;
@@ -603,47 +614,81 @@ class base_test_t {
     auto const& locations  = h_routing_solution.locations;
     auto const& node_types = h_routing_solution.node_types;
 
-    auto cost_matrix_h = matrices_h.get_cost_matrix(0);
-    i_t prev_loc       = -1;
-    i_t curr_truck     = -1;
-    f_t cumulative     = 0.f;
-    size_t break_count = 0;
-
-    for (size_t i = 0; i < truck_id.size(); ++i) {
-      if (truck_id[i] != curr_truck) {
-        curr_truck = truck_id[i];
-        cumulative = 0.f;
-        prev_loc   = locations[i];
-        continue;
+    size_t begin = 0;
+    while (begin < truck_id.size()) {
+      auto vehicle_id = truck_id[begin];
+      size_t end      = begin + 1;
+      while (end < truck_id.size() && truck_id[end] == vehicle_id) {
+        ++end;
       }
-      i_t loc = locations[i];
-      cumulative += cost_matrix_h[prev_loc * n_locations + loc];
-      prev_loc = loc;
-      if (static_cast<node_type_t>(node_types[i]) == node_type_t::BREAK) {
-        ++break_count;
-        ASSERT_LE(cumulative, max_range + 1e-3f)
-          << "break at cumulative distance " << cumulative << " exceeds max_range " << max_range;
+      auto vehicle_type  = vehicle_types_h.empty() ? 0 : vehicle_types_h[vehicle_id];
+      auto cost_matrix_h = matrices_h.get_cost_matrix(vehicle_type);
+      double cumulative  = 0.;
+      bool found_break   = false;
+      for (size_t i = begin; i < end; ++i) {
+        // Skipped first/return trips are absent from the assignment.
+        if (i > begin) {
+          cumulative += cost_matrix_h[locations[i - 1] * n_locations + locations[i]];
+        }
+        if (static_cast<node_type_t>(node_types[i]) == node_type_t::BREAK) {
+          ASSERT_EQ(h_routing_solution.route[i], 0);
+          ASSERT_FALSE(found_break) << "Duplicate distance break for vehicle " << vehicle_id;
+          found_break = true;
+          ASSERT_LE(cumulative, static_cast<double>(max_range) + 1e-3)
+            << "break at cumulative distance " << cumulative << " exceeds max_range " << max_range;
+        }
       }
+      if (!found_break) {
+        ASSERT_LE(cumulative, static_cast<double>(max_range) + 1e-3)
+          << "Vehicle " << vehicle_id << " is missing required distance break 0";
+      }
+      begin = end;
     }
-    ASSERT_GT(break_count, 0u)
-      << "expected at least one BREAK node in the solution, none were emitted";
   }
 
   void check_vehicle_breaks(host_assignment_t<i_t> const& h_routing_solution)
   {
-    auto truck_id     = h_routing_solution.truck_id;
-    auto node_types   = h_routing_solution.node_types;
-    i_t curr_truck_id = -1;
-    i_t break_dim     = n_break_dim_;
-    for (size_t i = 0; i < truck_id.size(); i++) {
-      if (truck_id[i] != curr_truck_id) {
-        ASSERT_EQ(break_dim, n_break_dim_);
-        curr_truck_id = truck_id[i];
-        break_dim     = 0;
+    auto const& truck_id      = h_routing_solution.truck_id;
+    auto const& node_types    = h_routing_solution.node_types;
+    auto const& route         = h_routing_solution.route;
+    fleet_order_constraints_h = fleet_order_constraints_d.to_host(stream_view_);
+    size_t begin              = 0;
+    while (begin < truck_id.size()) {
+      auto vehicle_id = truck_id[begin];
+      size_t end      = begin + 1;
+      while (end < truck_id.size() && truck_id[end] == vehicle_id) {
+        ++end;
       }
-      if (node_types[i] == (i_t)node_type_t::BREAK) ++break_dim;
+      std::vector<bool> seen_breaks(n_break_dim_, false);
+      for (size_t i = begin; i < end; ++i) {
+        if (static_cast<node_type_t>(node_types[i]) != node_type_t::BREAK) { continue; }
+        auto dim = route[i];
+        ASSERT_GE(dim, 0);
+        ASSERT_LT(dim, n_break_dim_);
+        ASSERT_FALSE(seen_breaks[dim]) << "Duplicate break " << dim << " vehicle " << vehicle_id;
+        seen_breaks[dim] = true;
+        auto offset      = dim * n_vehicles + vehicle_id;
+        ASSERT_GE(h_routing_solution.stamp[i],
+                  static_cast<double>(break_earliest_h[offset]) - 1e-3);
+        ASSERT_LE(h_routing_solution.stamp[i], static_cast<double>(break_latest_h[offset]) + 1e-3);
+      }
+      double route_end_time = h_routing_solution.stamp[end - 1];
+      auto final_type       = static_cast<node_type_t>(node_types[end - 1]);
+      if (final_type == node_type_t::BREAK) {
+        route_end_time += break_duration_h[route[end - 1] * n_vehicles + vehicle_id];
+      } else if (final_type != node_type_t::DEPOT) {
+        route_end_time +=
+          fleet_order_constraints_h.order_service_times[vehicle_id * n_orders + route[end - 1]];
+      }
+      for (i_t dim = 0; dim < n_break_dim_; ++dim) {
+        if (!seen_breaks[dim]) {
+          ASSERT_LE(route_end_time,
+                    static_cast<double>(break_latest_h[dim * n_vehicles + vehicle_id]) + 1e-3)
+            << "Vehicle " << vehicle_id << " is missing required time break " << dim;
+        }
+      }
+      begin = end;
     }
-    ASSERT_EQ(break_dim, n_break_dim_);
   }
 
   void check_capacity(host_assignment_t<i_t> const& routing_solution,

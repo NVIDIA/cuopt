@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import numpy as np
+import pytest
 
 import cudf
 
@@ -496,17 +497,16 @@ def test_heterogenous_breaks():
     s.set_time_limit(30)
     routing_solution = routing.Solve(d, s)
 
-    # TO DO: Check if breaks are adhered to
-    assert routing_solution.get_status() == 0
-    counters = {}
+    assert routing_solution.get_status() == 0, routing_solution.get_message()
+    taken_breaks = {}
     routes = routing_solution.get_route().to_pandas()
     break_locations_1_list = break_locations_1.to_arrow().to_pylist()
     # make sure the break locations are the right ones and
     # the arrival stamps satisfy the break time constraints
     for i in range(routes.shape[0]):
         truck_id = routes["truck_id"][i]
-        if truck_id not in counters:
-            counters[truck_id] = 0
+        if truck_id not in taken_breaks:
+            taken_breaks[truck_id] = set()
         if routes["type"][i] == "Break":
             break_dim = routes["route"][i]
             location = routes["location"][i]
@@ -518,14 +518,18 @@ def test_heterogenous_breaks():
             else:
                 assert arrival_time >= break_times_2[break_dim][0]
                 assert arrival_time <= break_times_2[break_dim][1]
-            counters[truck_id] = counters[truck_id] + 1
+            assert break_dim not in taken_breaks[truck_id]
+            taken_breaks[truck_id].add(break_dim)
 
-    # Make sure the achieved number of breaks is same as the specified
-    for truck_id, num_breaks in counters.items():
-        if truck_id < num_v_type_1:
-            assert num_breaks == num_breaks_1
-        else:
-            assert num_breaks == num_breaks_2
+    # Every used vehicle must take each break whose deadline it passes.
+    for truck_id, vehicle_route in routes.groupby("truck_id"):
+        break_times = (
+            break_times_1 if truck_id < num_v_type_1 else break_times_2
+        )
+        route_end = vehicle_route["arrival_stamp"].iloc[-1]
+        for break_dim, (_, latest) in enumerate(break_times):
+            if route_end > latest:
+                assert break_dim in taken_breaks[truck_id]
 
 
 # ----- Vehicle dependent service times -----
@@ -733,3 +737,373 @@ def test_empty_routes_with_breaks():
         h_route = solution_vehicle_x["route"].to_arrow().to_pylist()
         route_len = len(h_route)
         assert route_len > 3
+
+
+def _solve_with_initial_break_route(dm, initial_solution):
+    if initial_solution != "none":
+        types = ["Depot", "Delivery", "Depot"]
+        if initial_solution == "with_break":
+            types.insert(1, "Break")
+        n_stops = len(types)
+        dm.add_initial_solutions(
+            cudf.Series([0] * n_stops, dtype=np.int32),
+            cudf.Series([0] * n_stops, dtype=np.int32),
+            cudf.Series(types),
+            cudf.Series([0, n_stops], dtype=np.int32),
+        )
+    settings = routing.SolverSettings()
+    settings.set_time_limit(5)
+    sol = routing.Solve(dm, settings)
+    if initial_solution != "none" and sol.get_status() == 0:
+        accepted = sol.get_accepted_solutions().to_arrow().to_pylist()
+        assert len(accepted) == 1
+        # -1 means the solve did not attempt to inject the initial solution.
+        assert accepted[0] >= 0
+    return sol
+
+
+@pytest.mark.parametrize(
+    "initial_solution", ["none", "without_break", "with_break"]
+)
+def test_required_break_unreachable_is_infeasible(initial_solution):
+    coords = np.array(
+        [[0.0, 0.0], [10.0, 0.0], [0.0, 200.0]], dtype=np.float32
+    )
+    diff = coords[:, None] - coords[None, :]
+    matrix = cudf.DataFrame(np.linalg.norm(diff, axis=-1).astype(np.float32))
+
+    dm = routing.DataModel(3, n_fleet=1, n_orders=1)
+    dm.add_cost_matrix(matrix)
+    dm.add_transit_time_matrix(matrix)
+    dm.set_order_locations(cudf.Series([1], dtype=np.int32))
+    dm.set_order_time_windows(
+        cudf.Series([0], dtype=np.int32),
+        cudf.Series([1000], dtype=np.int32),
+    )
+    dm.set_vehicle_time_windows(
+        cudf.Series([0], dtype=np.int32),
+        cudf.Series([1000], dtype=np.int32),
+    )
+    dm.set_break_locations(cudf.Series([2], dtype=np.int32))
+    dm.add_break_dimension(
+        cudf.Series([0], dtype=np.int32),
+        cudf.Series([5], dtype=np.int32),
+        cudf.Series([5], dtype=np.int32),
+    )
+
+    sol = _solve_with_initial_break_route(dm, initial_solution)
+    assert sol.get_status() == 1, sol.get_message()
+
+
+@pytest.mark.parametrize(
+    "initial_solution", ["none", "without_break", "with_break"]
+)
+def test_required_break_is_inserted(initial_solution):
+    matrix = cudf.DataFrame(
+        [[0, 10, 5], [10, 0, 15], [5, 15, 0]], dtype=np.float32
+    )
+    dm = routing.DataModel(3, n_fleet=1, n_orders=1)
+    dm.add_cost_matrix(matrix)
+    dm.add_transit_time_matrix(matrix)
+    dm.set_order_locations(cudf.Series([1], dtype=np.int32))
+    dm.set_break_locations(cudf.Series([2], dtype=np.int32))
+    dm.add_break_dimension(
+        cudf.Series([0], dtype=np.int32),
+        cudf.Series([15], dtype=np.int32),
+        cudf.Series([5], dtype=np.int32),
+    )
+
+    sol = _solve_with_initial_break_route(dm, initial_solution)
+    assert sol.get_status() == 0, sol.get_message()
+    # The customer is reached before the deadline, but the return leg crosses it.
+    assert sol.get_total_objective() == pytest.approx(30)
+    route = sol.get_route().to_pandas()
+    breaks = route[route["type"] == "Break"]
+    assert breaks["route"].tolist() == [0]
+    assert breaks["location"].tolist() == [2]
+    assert route[route["type"] == "Delivery"]["route"].tolist() == [0]
+    assert route["location"].tolist() == [0, 2, 1, 0]
+    assert route["route"].tolist() == [0, 0, 0, 0]
+    arrivals = route["arrival_stamp"].tolist()
+    break_index = breaks.index[0]
+    assert 5 <= arrivals[break_index] <= 15
+    assert arrivals[break_index + 1] >= arrivals[break_index] + 20
+    assert arrivals[-1] >= arrivals[0] + 35
+
+
+@pytest.mark.parametrize(
+    "initial_solution", ["none", "without_break", "with_break"]
+)
+def test_distance_break_unreachable_is_infeasible(initial_solution):
+    matrix = cudf.DataFrame(
+        [[0, 10, 20], [10, 0, 20], [20, 20, 0]], dtype=np.float32
+    )
+    transit = cudf.DataFrame(
+        [[0, 1, 1], [1, 0, 1], [1, 1, 0]], dtype=np.float32
+    )
+    dm = routing.DataModel(3, n_fleet=1, n_orders=1)
+    dm.add_cost_matrix(matrix)
+    dm.add_transit_time_matrix(transit)
+    dm.set_order_locations(cudf.Series([1], dtype=np.int32))
+    # Every path to the required break exceeds its hard distance limit.
+    dm.add_vehicle_distance_break(
+        0, 0.0, 10.0, 5, cudf.Series([2], dtype=np.int32)
+    )
+
+    sol = _solve_with_initial_break_route(dm, initial_solution)
+    assert sol.get_status() == 1, sol.get_message()
+
+
+@pytest.mark.parametrize(
+    "initial_solution", ["none", "without_break", "with_break"]
+)
+def test_distance_break_is_inserted_before_route_end(initial_solution):
+    matrix = cudf.DataFrame(
+        [[0, 10, 5], [10, 0, 15], [5, 15, 0]], dtype=np.float32
+    )
+    transit = cudf.DataFrame(
+        [[0, 1, 1], [1, 0, 1], [1, 1, 0]], dtype=np.float32
+    )
+    dm = routing.DataModel(3, n_fleet=1, n_orders=1)
+    dm.add_cost_matrix(matrix)
+    dm.add_transit_time_matrix(transit)
+    dm.set_order_locations(cudf.Series([1], dtype=np.int32))
+    # The return leg crosses the distance deadline, despite taking little time.
+    dm.add_vehicle_distance_break(
+        0, 0.0, 15.0, 5, cudf.Series([2], dtype=np.int32)
+    )
+
+    sol = _solve_with_initial_break_route(dm, initial_solution)
+    assert sol.get_status() == 0, sol.get_message()
+    assert sol.get_total_objective() == pytest.approx(30)
+    route = sol.get_route().to_pandas()
+    breaks = route[route["type"] == "Break"]
+    assert breaks["route"].tolist() == [0]
+    assert breaks["location"].tolist() == [2]
+    assert route[route["type"] == "Delivery"]["route"].tolist() == [0]
+    assert route["location"].tolist() == [0, 2, 1, 0]
+    arrivals = route["arrival_stamp"].tolist()
+    break_index = breaks.index[0]
+    assert arrivals[break_index + 1] >= arrivals[break_index] + 6
+    assert arrivals[-1] >= arrivals[0] + 8
+
+
+@pytest.mark.parametrize(
+    "initial_solution", ["none", "without_break", "with_break"]
+)
+@pytest.mark.parametrize(
+    "shift_start, earliest, latest",
+    [(0, 100, 200), (0, 0, 20), (100, 100, 120)],
+)
+def test_time_break_after_route_end_is_skipped(
+    initial_solution, shift_start, earliest, latest
+):
+    coords = np.array(
+        [[0.0, 0.0], [10.0, 0.0], [0.0, 200.0]], dtype=np.float32
+    )
+    diff = coords[:, None] - coords[None, :]
+    matrix = cudf.DataFrame(np.linalg.norm(diff, axis=-1).astype(np.float32))
+    dm = routing.DataModel(3, n_fleet=1, n_orders=1)
+    dm.add_cost_matrix(matrix)
+    dm.add_transit_time_matrix(matrix)
+    dm.set_order_locations(cudf.Series([1], dtype=np.int32))
+    dm.set_vehicle_time_windows(
+        cudf.Series([shift_start], dtype=np.int32),
+        cudf.Series([1000], dtype=np.int32),
+    )
+    dm.set_break_locations(cudf.Series([2], dtype=np.int32))
+    dm.add_break_dimension(
+        cudf.Series([earliest], dtype=np.int32),
+        cudf.Series([latest], dtype=np.int32),
+        cudf.Series([5], dtype=np.int32),
+    )
+
+    sol = _solve_with_initial_break_route(dm, initial_solution)
+    assert sol.get_status() == 0, sol.get_message()
+    assert sol.get_total_objective() == pytest.approx(20)
+    route = sol.get_route().to_pandas()
+    assert route["type"].tolist() == ["Depot", "Delivery", "Depot"]
+    assert route["location"].tolist() == [0, 1, 0]
+    assert route["arrival_stamp"].iloc[-1] <= latest
+
+
+@pytest.mark.parametrize(
+    "initial_solution", ["none", "without_break", "with_break"]
+)
+@pytest.mark.parametrize(
+    "distance_limit", [20.0, 100.0, np.finfo(np.float32).max]
+)
+@pytest.mark.parametrize("model_time", [False, True])
+def test_distance_break_after_route_end_is_skipped(
+    initial_solution, distance_limit, model_time
+):
+    matrix = cudf.DataFrame(
+        [[0, 10, 20], [10, 0, 20], [20, 20, 0]], dtype=np.float32
+    )
+    transit = cudf.DataFrame(
+        [[0, 100, 100], [100, 0, 100], [100, 100, 0]], dtype=np.float32
+    )
+    dm = routing.DataModel(3, n_fleet=1, n_orders=1)
+    dm.add_cost_matrix(matrix)
+    if model_time:
+        dm.add_transit_time_matrix(transit)
+    dm.set_order_locations(cudf.Series([1], dtype=np.int32))
+    dm.add_vehicle_distance_break(
+        0, 0.0, distance_limit, 5, cudf.Series([2], dtype=np.int32)
+    )
+
+    sol = _solve_with_initial_break_route(dm, initial_solution)
+    assert sol.get_status() == 0, sol.get_message()
+    assert sol.get_total_objective() == pytest.approx(20)
+    route = sol.get_route().to_pandas()
+    assert route["type"].tolist() == ["Depot", "Delivery", "Depot"]
+    assert route["location"].tolist() == [0, 1, 0]
+    if model_time:
+        # Time exceeds the finite limits; distance is the applicable dimension.
+        assert route["arrival_stamp"].iloc[-1] >= 200
+
+
+@pytest.mark.parametrize("break_kind", ["time", "distance"])
+@pytest.mark.parametrize("late_break_required", [False, True])
+def test_break_deadlines_are_checked_after_earlier_break_insertion(
+    break_kind, late_break_required
+):
+    matrix = cudf.DataFrame(
+        [[0, 10, 5], [10, 0, 15], [5, 15, 0]], dtype=np.float32
+    )
+    dm = routing.DataModel(3, n_fleet=1, n_orders=1)
+    dm.add_cost_matrix(matrix)
+    dm.add_transit_time_matrix(matrix)
+    dm.set_order_locations(cudf.Series([1], dtype=np.int32))
+    locations = cudf.Series([2], dtype=np.int32)
+    # Dimension 0 starts out optional. Dimension 1's detour can require it.
+    late_deadline = 100
+    if late_break_required:
+        late_deadline = 32 if break_kind == "time" else 25
+    if break_kind == "time":
+        dm.set_break_locations(locations)
+        for latest in (late_deadline, 15):
+            dm.add_break_dimension(
+                cudf.Series([0], dtype=np.int32),
+                cudf.Series([latest], dtype=np.int32),
+                cudf.Series([5], dtype=np.int32),
+            )
+    else:
+        for distance_limit in (late_deadline, 15):
+            dm.add_vehicle_distance_break(0, 0.0, distance_limit, 5, locations)
+
+    sol = _solve_with_initial_break_route(dm, "none")
+    assert sol.get_status() == 0, sol.get_message()
+    assert sol.get_total_objective() == pytest.approx(30)
+    route = sol.get_route().to_pandas()
+    breaks = route[route["type"] == "Break"]
+    expected_dimensions = [0, 1] if late_break_required else [1]
+    assert sorted(breaks["route"].tolist()) == expected_dimensions
+    assert breaks["location"].tolist() == [2] * len(expected_dimensions)
+
+
+def test_time_break_deadline_includes_waiting_for_customer():
+    matrix = cudf.DataFrame(
+        [[0, 10, 5], [10, 0, 15], [5, 15, 0]], dtype=np.float32
+    )
+    dm = routing.DataModel(3, n_fleet=1, n_orders=1)
+    dm.add_cost_matrix(matrix)
+    dm.add_transit_time_matrix(matrix)
+    dm.set_order_locations(cudf.Series([1], dtype=np.int32))
+    dm.set_order_time_windows(
+        cudf.Series([100], dtype=np.int32),
+        cudf.Series([100], dtype=np.int32),
+    )
+    dm.set_break_locations(cudf.Series([2], dtype=np.int32))
+    dm.add_break_dimension(
+        cudf.Series([0], dtype=np.int32),
+        cudf.Series([30], dtype=np.int32),
+        cudf.Series([5], dtype=np.int32),
+    )
+
+    sol = _solve_with_initial_break_route(dm, "none")
+    assert sol.get_status() == 0, sol.get_message()
+    # Travel alone takes 20, but waiting keeps the route active past 30.
+    assert sol.get_total_objective() == pytest.approx(30)
+    route = sol.get_route().to_pandas()
+    assert route["location"].tolist() == [0, 2, 1, 0]
+    assert route[route["type"] == "Break"]["arrival_stamp"].iloc[0] <= 30
+    assert route[route["type"] == "Delivery"]["arrival_stamp"].iloc[0] == 100
+
+
+@pytest.mark.parametrize("latest", [100, np.iinfo(np.int32).max])
+def test_time_break_without_time_dimension_is_preserved(latest):
+    matrix = cudf.DataFrame(
+        [[0, 10, 20], [10, 0, 20], [20, 20, 0]], dtype=np.float32
+    )
+    dm = routing.DataModel(3, n_fleet=1, n_orders=1)
+    dm.add_cost_matrix(matrix)
+    dm.set_order_locations(cudf.Series([1], dtype=np.int32))
+    dm.set_break_locations(cudf.Series([2], dtype=np.int32))
+    dm.add_break_dimension(
+        cudf.Series([0], dtype=np.int32),
+        cudf.Series([latest], dtype=np.int32),
+        cudf.Series([0], dtype=np.int32),
+    )
+
+    sol = _solve_with_initial_break_route(dm, "none")
+    assert sol.get_status() == 0, sol.get_message()
+    # Cost alone cannot establish that the route finishes before a time deadline.
+    assert sol.get_total_objective() == pytest.approx(50)
+    route = sol.get_route().to_pandas()
+    breaks = route[route["type"] == "Break"]
+    assert breaks["route"].tolist() == [0]
+    assert breaks["location"].tolist() == [2]
+    assert route[route["type"] == "Delivery"]["route"].tolist() == [0]
+
+
+def test_mixed_break_types_without_time_dimension():
+    matrix = cudf.DataFrame(
+        [[0, 10, 20], [10, 0, 20], [20, 20, 0]], dtype=np.float32
+    )
+    dm = routing.DataModel(3, n_fleet=1, n_orders=1)
+    dm.add_cost_matrix(matrix)
+    dm.set_order_locations(cudf.Series([1], dtype=np.int32))
+    locations = cudf.Series([2], dtype=np.int32)
+    dm.add_vehicle_break(0, 0, 100, 0, locations)
+    dm.add_vehicle_distance_break(
+        0, 0.0, np.finfo(np.float32).max, 0, locations
+    )
+
+    sol = _solve_with_initial_break_route(dm, "none")
+    assert sol.get_status() == 0, sol.get_message()
+    assert sol.get_total_objective() == pytest.approx(50)
+    route = sol.get_route().to_pandas()
+    breaks = route[route["type"] == "Break"]
+    # The time break is retained; the distance break's own type permits skipping it.
+    assert breaks["route"].tolist() == [0]
+    assert breaks["location"].tolist() == [2]
+    assert route[route["type"] == "Delivery"]["route"].tolist() == [0]
+
+
+@pytest.mark.parametrize("uniform", [True, False])
+def test_time_break_outside_configured_shift_is_rejected(uniform):
+    matrix = cudf.DataFrame([[0, 10], [10, 0]], dtype=np.float32)
+    dm = routing.DataModel(2, n_fleet=1, n_orders=1)
+    dm.add_cost_matrix(matrix)
+    dm.add_transit_time_matrix(matrix)
+    dm.set_order_locations(cudf.Series([1], dtype=np.int32))
+    dm.set_vehicle_time_windows(
+        cudf.Series([0], dtype=np.int32),
+        cudf.Series([20], dtype=np.int32),
+    )
+    if uniform:
+        dm.add_break_dimension(
+            cudf.Series([100], dtype=np.int32),
+            cudf.Series([200], dtype=np.int32),
+            cudf.Series([5], dtype=np.int32),
+        )
+    else:
+        dm.add_vehicle_break(0, 100, 200, 5)
+
+    settings = routing.SolverSettings()
+    settings.set_time_limit(1)
+    sol = routing.Solve(dm, settings)
+    # Skipping a break on a short route does not relax input shift validation.
+    assert sol.get_status() != 0
+    assert "break times should be within" in str(sol.get_error_message())

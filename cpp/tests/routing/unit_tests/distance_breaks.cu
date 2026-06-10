@@ -363,8 +363,8 @@ TEST(distance_breaks, default_case)
   auto v_cost_matrix = copy_array_to_device(cost_matrix_3x3, stream);
   cuopt::routing::data_model_view_t<int, float> data_model(&handle, 3, 2);
   data_model.add_cost_matrix(v_cost_matrix.data());
-  data_model.add_vehicle_distance_break(0, 0.f, 2.f, 1, nullptr, 0);
-  data_model.add_vehicle_distance_break(1, 0.f, 2.f, 1, nullptr, 0);
+  data_model.add_vehicle_distance_break(0, 0.f, 1.5f, 1, nullptr, 0);
+  data_model.add_vehicle_distance_break(1, 0.f, 1.5f, 1, nullptr, 0);
   data_model.set_min_vehicles(2);
 
   auto routing_solution = cuopt::routing::solve(data_model);
@@ -405,7 +405,8 @@ TEST(distance_breaks, default_objective_weight)
     cuopt::routing::data_model_view_t<int, float> data_model(&handle, 3, 1, 1);
     data_model.add_cost_matrix(v_cost_matrix.data());
     data_model.set_order_locations(v_order_locations.data());
-    data_model.add_vehicle_distance_break(0, 10.f, 100.f, 0, v_break_locations.data(), 1);
+    // The two-unit route requires the break; its only feasible arrival is at distance one.
+    data_model.add_vehicle_distance_break(0, 1.25f, 1.5f, 0, v_break_locations.data(), 1);
 
     if (mode != objective_mode::DEFAULTS) {
       data_model.set_objective_function(v_objectives.data(), v_weights.data(), weights.size());
@@ -424,9 +425,9 @@ TEST(distance_breaks, default_objective_weight)
       EXPECT_EQ(objective_values.count(objective_t::DISTANCE_BREAK_COST), 0u);
       EXPECT_DOUBLE_EQ(solution.get_total_objective(), 3.);
     } else {
-      EXPECT_DOUBLE_EQ(objective_values.at(objective_t::DISTANCE_BREAK_COST), 8.);
+      EXPECT_DOUBLE_EQ(objective_values.at(objective_t::DISTANCE_BREAK_COST), 0.25);
       EXPECT_DOUBLE_EQ(solution.get_total_objective(),
-                       mode == objective_mode::OMIT_DISTANCE_BREAK_COST ? 14. : 11.);
+                       mode == objective_mode::OMIT_DISTANCE_BREAK_COST ? 6.25 : 3.25);
     }
   }
 }
@@ -448,9 +449,9 @@ TEST(distance_breaks, with_break_locations)
   data_model.add_cost_matrix(v_cost_matrix.data());
   data_model.set_order_locations(v_order_locations.data());
   data_model.add_vehicle_distance_break(
-    0, 0.f, 2.f, 1, v_break_locations.data(), (int)v_break_locations.size());
+    0, 0.f, 1.5f, 1, v_break_locations.data(), (int)v_break_locations.size());
   data_model.add_vehicle_distance_break(
-    1, 0.f, 2.f, 1, v_break_locations.data(), (int)v_break_locations.size());
+    1, 0.f, 1.5f, 1, v_break_locations.data(), (int)v_break_locations.size());
   data_model.set_min_vehicles(2);
 
   auto settings = cuopt::routing::solver_settings_t<int, float>{};
@@ -471,13 +472,13 @@ TEST(distance_breaks, with_break_locations)
   }
 }
 
-// Stacking add_vehicle_distance_break calls produces one break per cycle per vehicle.
+// Stacking distance breaks enforces every deadline exceeded by the route.
 TEST(distance_breaks, multi_cycle)
 {
   raft::handle_t handle;
   auto stream = handle.get_stream();
 
-  // Two vehicles, each with two charge cycles: [0, 2) and [2, 4).
+  // Both deadlines are below each vehicle's two-unit route length.
   std::vector<int> order_locations = {1, 2};
 
   auto v_cost_matrix     = copy_array_to_device(cost_matrix_5x5, stream);
@@ -488,8 +489,8 @@ TEST(distance_breaks, multi_cycle)
   data_model.set_order_locations(v_order_locations.data());
 
   for (int vid = 0; vid < 2; ++vid) {
-    data_model.add_vehicle_distance_break(vid, 0.f, 2.f, 1, nullptr, 0);
-    data_model.add_vehicle_distance_break(vid, 2.f, 4.f, 1, nullptr, 0);
+    data_model.add_vehicle_distance_break(vid, 0.f, 0.5f, 1, nullptr, 0);
+    data_model.add_vehicle_distance_break(vid, 1.f, 1.5f, 1, nullptr, 0);
   }
   data_model.set_min_vehicles(2);
 
@@ -513,6 +514,7 @@ TEST(distance_breaks, multi_cycle)
   for (auto const& [vid, cnt] : break_count) {
     ASSERT_EQ(cnt, 2);
   }
+  ASSERT_EQ(break_count.size(), 2);
 }
 
 // Solver chooses the longer route so the break lands inside [0, d_max].
@@ -574,8 +576,8 @@ TEST(distance_breaks, early_arrival_objective)
   // clang-format off
   std::vector<float> cost_matrix_4 = {
     0,   50,  50,  1,
-    50,  0,   10,  60,
-    50,  10,  0,   60,
+    50,  0,   10,  40,
+    50,  10,  0,   40,
     1,   60,  60,  0,
   };
   // clang-format on
@@ -593,7 +595,7 @@ TEST(distance_breaks, early_arrival_objective)
   cuopt::routing::data_model_view_t<int, float> data_model(&handle, 4, 1, 2);
   data_model.add_cost_matrix(v_cost_matrix.data());
   data_model.set_order_locations(v_order_locations.data());
-  data_model.add_vehicle_distance_break(0, 40.f, 200.f, 0, v_break_locations.data(), 1);
+  data_model.add_vehicle_distance_break(0, 40.f, 100.f, 0, v_break_locations.data(), 1);
   data_model.set_objective_function(
     v_objectives.data(), v_objective_weights.data(), v_objective_weights.size());
 
@@ -616,7 +618,7 @@ TEST(distance_breaks, early_arrival_objective)
     if (static_cast<node_type_t>(h.node_types[i]) == node_type_t::BREAK) {
       found_break = true;
       EXPECT_GE(cumulative, 40.f - 1e-3f);
-      EXPECT_LE(cumulative, 200.f + 1e-3f);
+      EXPECT_LE(cumulative, 100.f + 1e-3f);
     }
     prev_loc = loc;
   }
@@ -632,7 +634,7 @@ TEST(distance_breaks, mixed_fleet)
   auto v_cost_matrix = copy_array_to_device(cost_matrix_3x3, stream);
   cuopt::routing::data_model_view_t<int, float> data_model(&handle, 3, 2);
   data_model.add_cost_matrix(v_cost_matrix.data());
-  data_model.add_vehicle_distance_break(0, 0.f, 2.f, 1, nullptr, 0);
+  data_model.add_vehicle_distance_break(0, 0.f, 1.5f, 1, nullptr, 0);
   data_model.set_min_vehicles(2);
 
   auto settings = cuopt::routing::solver_settings_t<int, float>{};

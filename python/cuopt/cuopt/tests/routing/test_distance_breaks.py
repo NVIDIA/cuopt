@@ -202,11 +202,11 @@ def _solve(dm, time_limit=10):
 
 
 def test_solve_basic_break_assigned():
-    """Each vehicle with a distance break receives exactly one break in the solution."""
+    """Each route exceeding its distance deadline receives the required break."""
     dm = routing.DataModel(3, 2)
     dm.add_cost_matrix(cudf.DataFrame(_COST_3X3, dtype="float32"))
-    dm.add_vehicle_distance_break(0, 0.0, 2.0, 1)
-    dm.add_vehicle_distance_break(1, 0.0, 2.0, 1)
+    dm.add_vehicle_distance_break(0, 0.0, 1.5, 1)
+    dm.add_vehicle_distance_break(1, 0.0, 1.5, 1)
     dm.set_min_vehicles(2)
 
     sol = _solve(dm)
@@ -217,12 +217,9 @@ def test_solve_basic_break_assigned():
     for i in range(routes.shape[0]):
         if routes["type"][i] == "Break":
             vid = routes["truck_id"][i]
-            breaks_per_vehicle[vid] = breaks_per_vehicle.get(vid, 0) + 1
+            breaks_per_vehicle.setdefault(vid, []).append(routes["route"][i])
 
-    assert 0 in breaks_per_vehicle
-    assert 1 in breaks_per_vehicle
-    assert breaks_per_vehicle[0] == 1
-    assert breaks_per_vehicle[1] == 1
+    assert breaks_per_vehicle == {0: [0], 1: [0]}
 
 
 @pytest.mark.parametrize("objective_mode", ["defaults", "omit", "disable"])
@@ -231,8 +228,9 @@ def test_default_distance_break_cost_weight(objective_mode):
     dm = routing.DataModel(3, 1, 1)
     dm.add_cost_matrix(cudf.DataFrame(_COST_3X3, dtype="float32"))
     dm.set_order_locations(cudf.Series([1], dtype="int32"))
+    # The base route has distance 2; the required break can be reached at 1.
     dm.add_vehicle_distance_break(
-        0, 10.0, 100.0, 0, cudf.Series([2], dtype="int32")
+        0, 1.25, 1.5, 0, cudf.Series([2], dtype="int32")
     )
     if objective_mode != "defaults":
         objectives = [routing.Objective.COST]
@@ -253,10 +251,13 @@ def test_default_distance_break_cost_weight(objective_mode):
         assert routing.Objective.DISTANCE_BREAK_COST not in objectives
         assert sol.get_total_objective() == 3.0
     else:
-        assert objectives[routing.Objective.DISTANCE_BREAK_COST] == 8.0
+        assert objectives[routing.Objective.DISTANCE_BREAK_COST] == 0.25
         assert sol.get_total_objective() == (
-            14.0 if objective_mode == "omit" else 11.0
+            6.25 if objective_mode == "omit" else 3.25
         )
+    routes = sol.get_route().to_pandas()
+    assert routes[routes["type"] == "Break"]["route"].tolist() == [0]
+    assert routes["location"].tolist() == [0, 2, 1, 0]
 
 
 def test_solve_break_at_break_location():
@@ -267,8 +268,8 @@ def test_solve_break_at_break_location():
     dm = routing.DataModel(5, 2, 2)
     dm.add_cost_matrix(cudf.DataFrame(_COST_5X5, dtype="float32"))
     dm.set_order_locations(order_locations)
-    dm.add_vehicle_distance_break(0, 0.0, 2.0, 1, locations)
-    dm.add_vehicle_distance_break(1, 0.0, 2.0, 1, locations)
+    dm.add_vehicle_distance_break(0, 0.0, 1.5, 1, locations)
+    dm.add_vehicle_distance_break(1, 0.0, 1.5, 1, locations)
     dm.set_min_vehicles(2)
 
     sol = _solve(dm)
@@ -276,26 +277,25 @@ def test_solve_break_at_break_location():
 
     routes = sol.get_route().to_pandas()
     break_loc_set = {3, 4}
-    vehicles_with_breaks = set()
+    breaks_per_vehicle = {}
     for i in range(routes.shape[0]):
         if routes["type"][i] == "Break":
-            vehicles_with_breaks.add(int(routes["truck_id"][i]))
+            vid = int(routes["truck_id"][i])
+            breaks_per_vehicle.setdefault(vid, []).append(routes["route"][i])
             assert routes["location"][i] in break_loc_set
-    assert vehicles_with_breaks == {0, 1}, (
-        f"expected breaks on vehicles {{0, 1}}, got {vehicles_with_breaks}"
-    )
+    assert breaks_per_vehicle == {0: [0], 1: [0]}
 
 
 def test_solve_multi_cycle_break_count():
-    """Each used vehicle with 2 cycles receives exactly 2 break nodes."""
+    """Both deadlines precede route completion, so each vehicle needs both breaks."""
     order_locations = cudf.Series([1, 2], dtype="int32")
 
     dm = routing.DataModel(5, 2, 2)
     dm.add_cost_matrix(cudf.DataFrame(_COST_5X5, dtype="float32"))
     dm.set_order_locations(order_locations)
     for vid in [0, 1]:
-        dm.add_vehicle_distance_break(vid, 0.0, 2.0, 1)
-        dm.add_vehicle_distance_break(vid, 2.0, 4.0, 1)
+        dm.add_vehicle_distance_break(vid, 0.0, 0.5, 1)
+        dm.add_vehicle_distance_break(vid, 1.0, 1.5, 1)
     dm.set_min_vehicles(2)
 
     sol = _solve(dm)
@@ -306,13 +306,13 @@ def test_solve_multi_cycle_break_count():
     for i in range(routes.shape[0]):
         if routes["type"][i] == "Break":
             vid = int(routes["truck_id"][i])
-            breaks_per_vehicle[vid] = breaks_per_vehicle.get(vid, 0) + 1
+            breaks_per_vehicle.setdefault(vid, []).append(routes["route"][i])
 
     assert set(breaks_per_vehicle) == {0, 1}, (
         f"expected breaks on vehicles {{0, 1}}, got {set(breaks_per_vehicle)}"
     )
-    for vid, cnt in breaks_per_vehicle.items():
-        assert cnt == 2
+    for dimensions in breaks_per_vehicle.values():
+        assert sorted(dimensions) == [0, 1]
 
 
 def test_solve_break_distance_window_enforced():
@@ -349,17 +349,20 @@ def test_solve_break_distance_window_enforced():
         prev_loc = loc
 
     assert found_break, "no break found in solution"
+    assert routes[routes["type"] == "Break"]["route"].tolist() == [0]
 
 
 def test_solve_full_feature_api():
     """Exercises every add_vehicle_distance_break parameter at non-default values.
 
-    Two cycle targets of 10 and 30, with hard limits of 20 and 40 and a high
-    early-break penalty, make the solver prefer distinct break locations for
-    each cycle on a 5-location unit-cost grid (arc 10 between distinct locations).
+    Each one-customer route has distance 50 before adding breaks, exceeding
+    both hard limits 20 and 40. Soft targets 10 and 30 and a high early-break
+    penalty favor taking the breaks at separate visits to eligible locations.
     """
-    # depot(0), customers(1, 2), break locations(3, 4); arc 10 between distinct locations.
+    # Depot(0), customers(1, 2), break locations(3, 4).
     cost = [[0 if i == j else 10 for j in range(5)] for i in range(5)]
+    for customer in (1, 2):
+        cost[0][customer] = cost[customer][0] = 25
     order_locations = cudf.Series([1, 2], dtype="int32")
     locations = cudf.Series([3, 4], dtype="int32")
     cycle_windows = [(10.0, 20.0), (30.0, 40.0)]
@@ -388,7 +391,7 @@ def test_solve_full_feature_api():
     cost_flat = [c for row in cost for c in row]
     break_loc_set = {int(s) for s in locations.to_arrow().to_pylist()}
 
-    breaks_per_vehicle: dict[int, list[float]] = {}
+    breaks_per_vehicle: dict[int, dict[int, float]] = {}
     cumulative_per_vehicle: dict[int, float] = {}
     prev_loc_per_vehicle: dict[int, int] = {}
     n_loc = 5
@@ -404,9 +407,11 @@ def test_solve_full_feature_api():
         prev_loc_per_vehicle[vid] = loc
 
         if routes["type"][i] == "Break":
-            breaks_per_vehicle.setdefault(vid, []).append(
-                cumulative_per_vehicle[vid]
-            )
+            dimension = int(routes["route"][i])
+            vehicle_breaks = breaks_per_vehicle.setdefault(vid, {})
+            assert dimension in range(len(cycle_windows))
+            assert dimension not in vehicle_breaks
+            vehicle_breaks[dimension] = cumulative_per_vehicle[vid]
             assert loc in break_loc_set, (
                 f"vehicle {vid} break at location {loc} not in break locations "
                 f"{break_loc_set}"
@@ -416,11 +421,8 @@ def test_solve_full_feature_api():
         f"expected breaks on vehicles {{0, 1}}, got {set(breaks_per_vehicle)}"
     )
     for vid, break_distances in breaks_per_vehicle.items():
-        assert len(break_distances) == len(cycle_windows), (
-            f"vehicle {vid} has {len(break_distances)} breaks, "
-            f"expected {len(cycle_windows)}"
-        )
-        for k, d in enumerate(break_distances):
+        assert set(break_distances) == set(range(len(cycle_windows)))
+        for k, d in break_distances.items():
             lo, hi = cycle_windows[k]
             assert lo - 1e-6 <= d <= hi + 1e-6, (
                 f"vehicle {vid} cycle {k} break at cumulative {d} outside window "
@@ -432,7 +434,7 @@ def test_solve_mixed_fleet_break_assignment():
     """Only the vehicle with a distance break configured receives break nodes."""
     dm = routing.DataModel(3, 2)
     dm.add_cost_matrix(cudf.DataFrame(_COST_3X3, dtype="float32"))
-    dm.add_vehicle_distance_break(0, 0.0, 2.0, 1)
+    dm.add_vehicle_distance_break(0, 0.0, 1.5, 1)
     dm.set_min_vehicles(2)
 
     sol = _solve(dm)
@@ -449,3 +451,4 @@ def test_solve_mixed_fleet_break_assignment():
     assert found_break_v0, (
         "vehicle 0 has a distance break configured but received none"
     )
+    assert routes[routes["type"] == "Break"]["route"].tolist() == [0]
