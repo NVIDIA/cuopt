@@ -2554,6 +2554,17 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                                            nonbasic_list,
                                                            root_vstatus_,
                                                            edge_norms_);
+    if (root_status == lp_status_t::OPTIMAL) {
+      settings_.log.printf("\n");
+      settings_.log.printf(
+        "Root relaxation solution found in %d iterations and %.2fs by Dual Simplex\n",
+        root_relax_soln_.iterations,
+        toc(exploration_stats_.start_time));
+      settings_.log.printf("Root relaxation objective %+.8e\n",
+                           compute_user_objective(original_lp_, root_relax_soln_.x));
+      settings_.log.printf("\n");
+    }
+
   } else {
     settings_.log.printf("\nSolving LP root relaxation in concurrent mode\n");
     root_status = solve_root_relaxation(lp_settings,
