@@ -247,11 +247,6 @@ struct simplex_solver_settings_t {
   mutable logger_t log;
   std::atomic<int>* concurrent_halt;  // if nullptr ignored, if !nullptr, 0 if solver should
                                       // continue, 1 if solver should halt
-  // Non-owning flag set by a concurrent PDLP peer: 1 while PDLP is still running
-  // (possibly capturing a CUDA graph), 0 once it has exited. The barrier waits for
-  // this to reach 0 before destroying its cuDSS solver, so cuDSS teardown (which
-  // device-synchronizes) cannot corrupt a live PDLP capture. nullptr = no wait.
-  std::atomic<int>* pdlp_running = nullptr;
   // Optional non-owning pointer to run-level benchmark stats.
   cuopt::linear_programming::benchmark_info_t* benchmark_info_ptr = nullptr;
 };

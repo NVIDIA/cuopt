@@ -501,7 +501,6 @@ run_barrier(dual_simplex::user_problem_t<i_t, f_t>& user_problem,
   barrier_settings.time_limit                      = settings.time_limit;
   barrier_settings.iteration_limit                 = settings.iteration_limit;
   barrier_settings.concurrent_halt                 = settings.concurrent_halt;
-  barrier_settings.pdlp_running                    = settings.pdlp_running;
   barrier_settings.folding                         = settings.folding;
   barrier_settings.augmented                       = settings.augmented;
   barrier_settings.dualize                         = settings.dualize;
@@ -1529,12 +1528,6 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
     settings_pdlp.concurrent_halt = &global_concurrent_halt;
   }
 
-  // 1 while PDLP runs, 0 once it exits. The barrier task waits for this to reach 0
-  // before destroying its cuDSS solver, so cuDSS teardown (which device-syncs)
-  // never collides with a live PDLP CUDA graph capture.
-  std::atomic<int> pdlp_running{1};
-  settings_pdlp.pdlp_running = &pdlp_running;
-
   // Make sure allocations are done on the original stream
   problem.handle_ptr->sync_stream();
 
@@ -1646,8 +1639,6 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
         pdlp_exception = std::current_exception();
         request_concurrent_halt();
       }
-      // PDLP has exited (no more capture): let the barrier proceed to teardown.
-      pdlp_running.store(0, std::memory_order_release);
       // Implicit taskgroup barrier joins all spawned tasks below.
     }
   };
