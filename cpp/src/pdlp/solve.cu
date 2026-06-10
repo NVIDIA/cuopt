@@ -525,6 +525,9 @@ run_barrier(dual_simplex::user_problem_t<i_t, f_t>& user_problem,
   auto status = dual_simplex::solve_linear_program_with_barrier<i_t, f_t>(
     user_problem, barrier_settings, timer.get_tic_start(), solution);
 
+  if (!user_problem.qc_dual_recovery.empty()) {
+    detail::project_barrier_qcqp_duals_to_model(user_problem, solution);
+  }
   detail::project_barrier_solution_to_model_variables(user_problem, solution);
 
   CUOPT_LOG_CONDITIONAL_INFO(
@@ -1844,17 +1847,9 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
                                              method_t::Barrier);
 
     if (has_qc) {
-      CUOPT_LOG_INFO("Dual variables for problems with quadratic constraints not returned.");
-      const f_t nan_val = std::numeric_limits<f_t>::quiet_NaN();
-      auto stream       = op_problem.get_handle_ptr()->get_stream();
-      thrust::fill(rmm::exec_policy(stream),
-                   solution.get_dual_solution().begin(),
-                   solution.get_dual_solution().end(),
-                   nan_val);
-      thrust::fill(rmm::exec_policy(stream),
-                   solution.get_reduced_cost().begin(),
-                   solution.get_reduced_cost().end(),
-                   nan_val);
+      CUOPT_LOG_INFO(
+        "Quadratic-constraint dual multipliers recovered from barrier SOC solution "
+        "(linear rows + one entry per QCMATRIX row).");
     }
 
     if (settings.sol_file != "") {

@@ -2186,14 +2186,22 @@ class Problem:
         dual_sol = None
         if not IsMIP:
             dual_sol = solution.get_dual_solution()
+        n_linear = sum(1 for c in self.constrs if not c.is_quadratic)
+        qc_dual_idx = 0
         linear_row = 0
         for constr in self.constrs:
             if constr.is_quadratic:
-                continue
-            if dual_sol is not None and len(dual_sol) > linear_row:
+                if (
+                    dual_sol is not None
+                    and len(dual_sol) > n_linear + qc_dual_idx
+                ):
+                    constr.DualValue = dual_sol[n_linear + qc_dual_idx]
+                qc_dual_idx += 1
+            elif dual_sol is not None and len(dual_sol) > linear_row:
                 constr.DualValue = dual_sol[linear_row]
             constr.Slack = constr.compute_slack()
-            linear_row += 1
+            if not constr.is_quadratic:
+                linear_row += 1
         self.solved = True
 
     def solve(self, settings=solver_settings.SolverSettings()):
