@@ -126,6 +126,12 @@ branch_variable_t<i_t> pseudocost_diving(pseudo_costs_t<i_t, f_t>& pc,
     round_dir  = branch_direction_t::DOWN;
   }
 
+  log.debug("Pseudocost diving: selected var %d with val = %e, round dir = %d and score = %e\n",
+            branch_var,
+            solution[branch_var],
+            round_dir,
+            max_score);
+
   return {branch_var, round_dir};
 }
 
@@ -167,6 +173,12 @@ branch_variable_t<i_t> guided_diving(pseudo_costs_t<i_t, f_t>& pc,
       round_dir  = dir;
     }
   }
+
+  log.debug("Guided diving: selected var %d with val = %e, round dir = %d and score = %e\n",
+            branch_var,
+            solution[branch_var],
+            round_dir,
+            max_score);
 
   return {branch_var, round_dir};
 }
