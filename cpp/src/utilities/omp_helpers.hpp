@@ -8,7 +8,6 @@
 #pragma once
 
 #include <cmath>
-#include <utility>
 
 namespace cuopt {
 
@@ -28,6 +27,7 @@ std::pair<i_t, i_t> calculate_index_range(i_t k, double total, double n)
 
 #include <omp.h>
 #include <memory>
+#include <utility>
 
 namespace cuopt {
 
@@ -36,6 +36,7 @@ namespace cuopt {
 class omp_mutex_t {
  public:
   omp_mutex_t() : mutex(new omp_lock_t) { omp_init_lock(mutex.get()); }
+
   omp_mutex_t(omp_mutex_t&& other) { *this = std::move(other); }
 
   omp_mutex_t(const omp_mutex_t&)            = delete;

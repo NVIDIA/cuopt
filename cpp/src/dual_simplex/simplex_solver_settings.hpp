@@ -20,6 +20,10 @@
 #include <limits>
 #include <vector>
 
+namespace cuopt::linear_programming {
+struct benchmark_info_t;
+}
+
 namespace cuopt::linear_programming::dual_simplex {
 
 template <typename i_t, typename f_t>
@@ -220,6 +224,8 @@ struct simplex_solver_settings_t {
   mutable logger_t log;
   std::atomic<int>* concurrent_halt;  // if nullptr ignored, if !nullptr, 0 if solver should
                                       // continue, 1 if solver should halt
+  // Optional non-owning pointer to run-level benchmark stats.
+  cuopt::linear_programming::benchmark_info_t* benchmark_info_ptr = nullptr;
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

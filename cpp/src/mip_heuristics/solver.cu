@@ -377,6 +377,9 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
       context.settings.strong_chvatal_gomory_cuts;
     branch_and_bound_settings.cut_change_threshold  = context.settings.cut_change_threshold;
     branch_and_bound_settings.cut_min_orthogonality = context.settings.cut_min_orthogonality;
+    // Forward the run-level benchmark_info_t so B&B can publish root LP
+    // bounds (before / after cuts) for gap-closed-by-cuts measurement.
+    branch_and_bound_settings.benchmark_info_ptr = context.settings.benchmark_info_ptr;
     branch_and_bound_settings.mip_batch_pdlp_strong_branching =
       context.settings.mip_batch_pdlp_strong_branching;
     branch_and_bound_settings.mip_batch_pdlp_reliability_branching =

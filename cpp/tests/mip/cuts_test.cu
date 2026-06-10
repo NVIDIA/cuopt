@@ -1065,7 +1065,7 @@ TEST(cuts, clique_phase1_remove_small_cliques_preserves_addtl_conflicts)
   EXPECT_TRUE(clique_table.first.empty());
   EXPECT_TRUE(clique_table.addtl_cliques.empty());
 
-  // Conflicts must remain materialized in adj_list_small_cliques after removals.
+  // Conflicts must remain materialized in small_clique_adj after removals.
   EXPECT_TRUE(clique_table.check_adjacency(1, 3));
   EXPECT_TRUE(clique_table.check_adjacency(3, 1));
   EXPECT_TRUE(clique_table.check_adjacency(2, 3));
@@ -1244,7 +1244,7 @@ TEST(cuts, clique_neos8_phase1_addtl_suffix_conflicts_materialized)
 TEST(cuts, clique_neos8_phase1_symmetry_and_degree_cache_consistency)
 {
   auto& clique_table   = get_neos8_clique_table_cached();
-  const int n_vertices = static_cast<int>(clique_table.var_clique_map_first.size());
+  const int n_vertices = static_cast<int>(clique_table.var_clique_first.n_keys());
   ASSERT_GT(n_vertices, 0);
 
   const int sample_size = std::min(n_vertices, 24);
