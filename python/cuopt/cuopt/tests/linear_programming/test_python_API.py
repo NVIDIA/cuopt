@@ -566,6 +566,22 @@ def test_problem_update():
     assert prob.ObjValue == pytest.approx(5)
 
 
+def test_problem_update_accepts_zero_values():
+    prob = Problem()
+    x = prob.addVariable(vtype=INTEGER, lb=0, name="x")
+    c1 = prob.addConstraint(x <= 5, name="c1")
+
+    prob.updateConstraint(c1, rhs=0)
+
+    assert c1.RHS == 0
+
+    prob.setObjective(x + 5)
+
+    prob.updateObjective(constant=0)
+
+    assert prob.ObjConstant == 0
+
+
 def test_quadratic_expression_and_matrix():
     problem = Problem()
     x = problem.addVariable(lb=9.0, vtype="I", name="x")
