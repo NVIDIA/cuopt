@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 """
-LP DataModel from MPS Parser Example
+LP DataModel from MPS file parser example
 
 This example demonstrates how to:
-- Parse an MPS file using cuopt.linear_programming.ParseMps
+- Read an MPS file using cuopt.linear_programming.Read
 - Create a DataModel from the parsed MPS
 - Solve using the DataModel via the server
 - Extract detailed solution information
@@ -32,7 +32,7 @@ from cuopt_sh_client import (
     ThinClientSolverSettings,
     PDLPSolverMode,
 )
-from cuopt.linear_programming import ParseMps
+from cuopt.linear_programming import Read
 import time
 
 
@@ -65,7 +65,7 @@ ENDATA
     # Parse the MPS file and measure the time spent
     print("\n=== Parsing MPS File ===")
     parse_start = time.time()
-    data_model = ParseMps(data)
+    data_model = Read(data)
     parse_time = time.time() - parse_start
     print(f"Parse time: {parse_time:.3f} seconds")
 
@@ -110,7 +110,6 @@ ENDATA
     # Check found objective value
     print(f"Objective Value: {solution_obj.get_primal_objective()}")
 
-    # Check the MPS parse time
     print(f"MPS Parse time: {parse_time:.3f} sec")
 
     # Check network time (client call - solve time)

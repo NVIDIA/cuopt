@@ -2,6 +2,15 @@
 name: cuopt-numerical-optimization-api-c
 version: "26.08.00"
 description: LP, MILP, and QP (beta) with cuOpt — C API only. Use when the user is embedding LP, MILP, or QP in C/C++.
+license: Apache-2.0
+metadata:
+  author: NVIDIA cuOpt Team
+  tags:
+    - cuopt
+    - linear-programming
+    - milp
+    - qp
+    - c-api
 ---
 
 
@@ -13,28 +22,9 @@ Confirm problem type and formulation (variables, objective, constraints, variabl
 
 This skill is **C only**.
 
-## Quick Reference: C API
+## API Call Sequence
 
-```c
-#include <cuopt/linear_programming/cuopt_c.h>
-
-// CSR format for constraints
-cuopt_int_t row_offsets[] = {0, 2, 4};
-cuopt_int_t col_indices[] = {0, 1, 0, 1};
-cuopt_float_t values[] = {2.0, 3.0, 4.0, 2.0};
-char var_types[] = {CUOPT_CONTINUOUS, CUOPT_INTEGER};
-
-cuOptCreateRangedProblem(
-    num_constraints, num_variables, CUOPT_MINIMIZE,
-    0.0, objective_coefficients,
-    row_offsets, col_indices, values,
-    constraint_lower, constraint_upper,
-    var_lower, var_upper, var_types,
-    &problem
-);
-cuOptSolve(problem, settings, &solution);
-cuOptGetObjectiveValue(solution, &obj_value);
-```
+For LP/MILP, the ordered C entry points are: `cuOptCreateRangedProblem` (sense `CUOPT_MINIMIZE` / `CUOPT_MAXIMIZE`, CSR constraint matrix as `row_offsets` / `col_indices` / `values`, `var_types` char array using `CUOPT_CONTINUOUS` / `CUOPT_INTEGER` macros) → `cuOptSolve(problem, settings, &solution)` → `cuOptGetObjectiveValue(solution, &obj_value)` → matching `cuOptDestroy*` calls. Include `<cuopt/linear_programming/cuopt_c.h>`. Full ordered code with build instructions in [references/examples.md](references/examples.md).
 
 ## QP via C API (beta)
 
@@ -45,6 +35,10 @@ QP uses the same library, include/lib paths, and build pattern as LP/MILP — on
 - **Continuous variables only** — set `CUOPT_CONTINUOUS` for every variable; integer QP is not supported.
 - **Q should be PSD** for a convex problem.
 
+## Dual values (LP / QP)
+
+`cuOptGetDualSolution` and `cuOptGetReducedCosts` return duals and reduced costs for **LP and QP**. They are not returned for a problem with quadratic constraints (the arrays are filled with `NaN`), so read them only when all constraints are linear. See [assets/lp_duals](assets/lp_duals/) for the call sequence.
+
 ## Debugging (MPS / C)
 
 **MPS parsing:** Required sections in order: NAME, ROWS, COLUMNS, RHS, (optional) BOUNDS, ENDATA. Integer markers: `'MARKER'`, `'INTORG'`, `'INTEND'`.
@@ -53,7 +47,7 @@ QP uses the same library, include/lib paths, and build pattern as LP/MILP — on
 
 ## Examples
 
-- [examples.md](resources/examples.md) — LP/MILP with build instructions
+- [examples.md](references/examples.md) — LP/MILP with build instructions
 - [assets/README.md](assets/README.md) — Build commands for all reference code below
 - [lp_basic](assets/lp_basic/) — Simple LP: create problem, solve, get solution
 - [lp_duals](assets/lp_duals/) — Dual values and reduced costs

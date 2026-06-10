@@ -112,7 +112,7 @@ class branch_and_bound_t {
   }
 
   // Set a solution based on the user problem during the course of the solve
-  void set_new_solution(const std::vector<f_t>& solution);
+  void set_solution_from_heuristics(const std::vector<f_t>& solution);
 
   // This queues the solution to be processed at the correct work unit timestamp
   void queue_external_solution_deterministic(const std::vector<f_t>& solution, double work_unit_ts);
@@ -239,18 +239,14 @@ class branch_and_bound_t {
   // Pseudocosts
   pseudo_costs_t<i_t, f_t> pc_;
 
-  // Heap storing the nodes waiting to be explored.
-  node_queue_t<i_t, f_t> node_queue_;
-
   // Search tree
   search_tree_t<i_t, f_t> search_tree_;
 
-  // Count the number of workers per type that either are being executed or
-  // are waiting to be executed.
-  std::array<omp_atomic_t<i_t>, num_search_strategies> active_workers_per_strategy_;
+  // Worker pool dedicated to the best-first search
+  bfs_worker_pool_t<i_t, f_t> bfs_worker_pool_;
 
-  // Worker pool
-  branch_and_bound_worker_pool_t<i_t, f_t> worker_pool_;
+  // Worker pool dedicated to diving
+  diving_worker_pool_t<i_t, f_t> diving_worker_pool_;
 
   // Global status of the solver.
   omp_atomic_t<mip_status_t> solver_status_;
@@ -262,8 +258,9 @@ class branch_and_bound_t {
   i_t min_node_queue_size_;
 
   // In case, a best-first thread encounters a numerical issue when solving a node,
-  // its blocks the progression of the lower bound.
-  omp_atomic_t<f_t> lower_bound_ceiling_;
+  // its blocks the progression of the lower bound as it cannot explore the
+  // corresponding subtree.
+  omp_atomic_t<f_t> lower_bound_numerical_;
   std::function<void(f_t)> user_bound_callback_;
 
   void report_heuristic(f_t obj);
@@ -317,22 +314,26 @@ class branch_and_bound_t {
   // Repairs low-quality solutions from the heuristics, if it is applicable.
   void repair_heuristic_solutions();
 
+  // Launch a new diving worker from a given best-first worker.
+  bool launch_diving_worker(bfs_worker_t<i_t, f_t>* bfs_worker);
+
+  // Launch a new best-first worker from a given bfs worker.
+  void launch_bfs_worker(bfs_worker_t<i_t, f_t>* worker);
+
+  // Perform best-first search with a given bfs worker.
+  void best_first_search_with(bfs_worker_t<i_t, f_t>* worker);
+
   // We use best-first to pick the `start_node` and then perform a depth-first search
   // from this node (i.e., a plunge). It can only backtrack to a sibling node.
   // Unexplored nodes in the subtree are inserted back into the global heap.
-  void plunge_with(branch_and_bound_worker_t<i_t, f_t>* worker);
+  void plunge_with(bfs_worker_t<i_t, f_t>* worker, mip_node_t<i_t, f_t>* start_node);
+
+  // A worker attempts to steal nodes from another worker
+  void work_stealing(bfs_worker_t<i_t, f_t>* worker);
 
   // Perform a deep dive in the subtree determined by the `start_node` in order
   // to find integer feasible solutions.
-  void dive_with(branch_and_bound_worker_t<i_t, f_t>* worker);
-
-  // Run the scheduler whose will schedule and manage
-  // all the other workers.
-  void run_scheduler();
-
-  // Run the branch-and-bound algorithm in single threaded mode.
-  // This disable all diving heuristics.
-  void single_threaded_solve();
+  void dive_with(diving_worker_t<i_t, f_t>* worker);
 
   // Solve the LP relaxation of a leaf node
   dual::status_t solve_node_lp(mip_node_t<i_t, f_t>* node_ptr,

@@ -16,6 +16,7 @@
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <dual_simplex/presolve.hpp>
+#include <dual_simplex/scaling.hpp>
 #include <dual_simplex/solve.hpp>
 #include <dual_simplex/tic_toc.hpp>
 #include <dual_simplex/user_problem.hpp>
@@ -196,7 +197,7 @@ TEST(barrier, min_x_squared_free_variable_dual_correction)
 
   auto path =
     cuopt::test::get_rapids_dataset_root_dir() + "/quadratic_programming/min_x_squared.mps";
-  auto mps_data = cuopt::linear_programming::io::parse_mps<int, double>(path);
+  auto mps_data = cuopt::linear_programming::io::read_mps<int, double>(path);
 
   auto settings = cuopt::linear_programming::pdlp_solver_settings_t<int, double>{};
 

@@ -312,11 +312,22 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   dual_simplex::mip_status_t branch_and_bound_status = dual_simplex::mip_status_t::UNSET;
   dual_simplex::user_problem_t<i_t, f_t> branch_and_bound_problem(context.problem_ptr->handle_ptr);
   context.problem_ptr->recompute_objective_integrality();
+  if (context.settings.objective_step) { context.problem_ptr->compute_objective_step(); }
   if (context.problem_ptr->is_objective_integral()) {
     CUOPT_LOG_INFO("Objective function is integral, scale %g",
                    context.problem_ptr->presolve_data.objective_scaling_factor);
   }
+  if (context.settings.objective_step && context.problem_ptr->get_objective_step().has_step()) {
+    f_t scale     = context.problem_ptr->presolve_data.objective_scaling_factor;
+    f_t user_step = context.problem_ptr->get_objective_step().step_size * std::abs(scale);
+    CUOPT_LOG_INFO("Objective step size %g (unscaled: %g)",
+                   context.problem_ptr->get_objective_step().step_size,
+                   user_step);
+  }
   branch_and_bound_problem.objective_is_integral = context.problem_ptr->is_objective_integral();
+  if (context.settings.objective_step) {
+    branch_and_bound_problem.objective_step = context.problem_ptr->get_objective_step();
+  }
   dual_simplex::simplex_solver_settings_t<i_t, f_t> branch_and_bound_settings;
   std::unique_ptr<dual_simplex::branch_and_bound_t<i_t, f_t>> branch_and_bound;
   branch_and_bound_solution_helper_t solution_helper(&dm, branch_and_bound_settings);
@@ -359,12 +370,16 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     branch_and_bound_settings.mixed_integer_gomory_cuts =
       context.settings.mixed_integer_gomory_cuts;
     branch_and_bound_settings.knapsack_cuts      = context.settings.knapsack_cuts;
+    branch_and_bound_settings.flow_cover_cuts    = context.settings.flow_cover_cuts;
     branch_and_bound_settings.implied_bound_cuts = context.settings.implied_bound_cuts;
     branch_and_bound_settings.clique_cuts        = context.settings.clique_cuts;
     branch_and_bound_settings.strong_chvatal_gomory_cuts =
       context.settings.strong_chvatal_gomory_cuts;
     branch_and_bound_settings.cut_change_threshold  = context.settings.cut_change_threshold;
     branch_and_bound_settings.cut_min_orthogonality = context.settings.cut_min_orthogonality;
+    // Forward the run-level benchmark_info_t so B&B can publish root LP
+    // bounds (before / after cuts) for gap-closed-by-cuts measurement.
+    branch_and_bound_settings.benchmark_info_ptr = context.settings.benchmark_info_ptr;
     branch_and_bound_settings.mip_batch_pdlp_strong_branching =
       context.settings.mip_batch_pdlp_strong_branching;
     branch_and_bound_settings.mip_batch_pdlp_reliability_branching =
@@ -380,6 +395,8 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
         ? 2
         : context.settings.reduced_cost_strengthening;
     branch_and_bound_settings.symmetry = context.settings.symmetry;
+
+    branch_and_bound_settings.diving_settings = context.settings.diving_params;
 
     // Set the branch and bound -> primal heuristics callback
     branch_and_bound_settings.solution_callback =
@@ -439,7 +456,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
       branch_and_bound->set_concurrent_lp_root_solve(true);
 
       context.problem_ptr->branch_and_bound_callback =
-        std::bind(&dual_simplex::branch_and_bound_t<i_t, f_t>::set_new_solution,
+        std::bind(&dual_simplex::branch_and_bound_t<i_t, f_t>::set_solution_from_heuristics,
                   branch_and_bound.get(),
                   std::placeholders::_1);
     } else if (context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC) {
@@ -476,7 +493,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
 #pragma omp taskgroup
   {
     if (!context.settings.heuristics_only) {
-#pragma omp task default(shared)
+#pragma omp task default(shared) priority(CUOPT_CRITICAL_TASK_PRIORITY)
       {
         branch_and_bound_status = branch_and_bound->solve(branch_and_bound_solution);
       }

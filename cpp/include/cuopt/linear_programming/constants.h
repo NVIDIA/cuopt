@@ -69,10 +69,12 @@
 #define CUOPT_MIP_MIXED_INTEGER_ROUNDING_CUTS      "mip_mixed_integer_rounding_cuts"
 #define CUOPT_MIP_MIXED_INTEGER_GOMORY_CUTS        "mip_mixed_integer_gomory_cuts"
 #define CUOPT_MIP_KNAPSACK_CUTS                    "mip_knapsack_cuts"
+#define CUOPT_MIP_FLOW_COVER_CUTS                  "mip_flow_cover_cuts"
 #define CUOPT_MIP_IMPLIED_BOUND_CUTS               "mip_implied_bound_cuts"
 #define CUOPT_MIP_CLIQUE_CUTS                      "mip_clique_cuts"
 #define CUOPT_MIP_STRONG_CHVATAL_GOMORY_CUTS       "mip_strong_chvatal_gomory_cuts"
 #define CUOPT_MIP_REDUCED_COST_STRENGTHENING       "mip_reduced_cost_strengthening"
+#define CUOPT_MIP_OBJECTIVE_STEP                   "mip_objective_step"
 #define CUOPT_MIP_CUT_CHANGE_THRESHOLD             "mip_cut_change_threshold"
 #define CUOPT_MIP_CUT_MIN_ORTHOGONALITY            "mip_cut_min_orthogonality"
 #define CUOPT_MIP_BATCH_PDLP_STRONG_BRANCHING      "mip_batch_pdlp_strong_branching"
@@ -117,6 +119,19 @@
 #define CUOPT_MIP_HYPER_HEURISTIC_RELAXED_LP_TIME_LIMIT "mip_hyper_heuristic_relaxed_lp_time_limit"
 #define CUOPT_MIP_HYPER_HEURISTIC_RELATED_VARS_TIME_LIMIT \
   "mip_hyper_heuristic_related_vars_time_limit"
+
+/* @brief Diving heuristic toggles: -1 automatic, 0 disabled, 1 enabled */
+#define CUOPT_MIP_HYPER_DIVING_LINE_SEARCH "mip_hyper_diving_line_search"
+#define CUOPT_MIP_HYPER_DIVING_PSEUDOCOST  "mip_hyper_diving_pseudocost"
+#define CUOPT_MIP_HYPER_DIVING_GUIDED      "mip_hyper_diving_guided"
+#define CUOPT_MIP_HYPER_DIVING_COEFFICIENT "mip_hyper_diving_coefficient"
+/* @brief Diving heuristic limits */
+#define CUOPT_MIP_HYPER_DIVING_MIN_NODE_DEPTH         "mip_hyper_diving_min_node_depth"
+#define CUOPT_MIP_HYPER_DIVING_NODE_LIMIT             "mip_hyper_diving_node_limit"
+#define CUOPT_MIP_HYPER_DIVING_ITERATION_LIMIT_FACTOR "mip_hyper_diving_iteration_limit_factor"
+#define CUOPT_MIP_HYPER_DIVING_BACKTRACK_LIMIT        "mip_hyper_diving_backtrack_limit"
+/* @brief Show per-strategy diving symbol in logs (true) instead of a generic 'D' */
+#define CUOPT_MIP_HYPER_DIVING_SHOW_TYPE "mip_hyper_diving_show_type"
 
 /* @brief MIP determinism mode constants */
 #define CUOPT_MODE_OPPORTUNISTIC 0

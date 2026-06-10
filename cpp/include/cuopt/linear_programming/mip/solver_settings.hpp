@@ -11,6 +11,7 @@
 #include <vector>
 
 #include <cuopt/linear_programming/constants.h>
+#include <cuopt/linear_programming/mip/diving_hyper_params.hpp>
 #include <cuopt/linear_programming/mip/heuristics_hyper_params.hpp>
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
 #include <cuopt/linear_programming/utilities/internals.hpp>
@@ -26,6 +27,27 @@ struct benchmark_info_t {
   double last_improvement_of_best_feasible    = 0;
   double last_improvement_after_recombination = 0;
   double objective_of_initial_population      = std::numeric_limits<double>::max();
+  // LP relaxation objective at the root node, BEFORE any cuts have been
+  // added. quiet_NaN() means "B&B did not run cut passes / value was
+  // never written" — distinguishes it from a legitimate 0.0.
+  double root_lp_no_cuts = std::numeric_limits<double>::quiet_NaN();
+  // LP relaxation objective at the root node, AFTER the full cut loop
+  // (final pass result). The dual gap "by cuts at the root" is then
+  //   gap_after_cuts = opt - root_lp_with_cuts        (in B&B's solver
+  //                                                    objective sense)
+  // and the classical "gap closed by cuts" metric is
+  //   gap_closed_pct = 100 * (root_lp_with_cuts - root_lp_no_cuts)
+  //                          / (opt - root_lp_no_cuts).
+  // quiet_NaN() means "B&B did not finish the cut loop / value not written".
+  double root_lp_with_cuts = std::numeric_limits<double>::quiet_NaN();
+
+  // Wall-clock time spent inside the root-node cut generation loop
+  // (sum of generate_cuts + score_cuts + check_for_duplicate_cuts +
+  // get_best_cuts + add_cuts + post-cut LP resolves), in seconds.
+  // Published by branch_and_bound.cpp::solve() at the same point that
+  // root_lp_with_cuts is finalised. quiet_NaN() means "cut loop did
+  // not run / value never written".
+  double cut_generation_time_sec = std::numeric_limits<double>::quiet_NaN();
 };
 
 // Forward declare solver_settings_t for friend class
@@ -105,10 +127,12 @@ class mip_solver_settings_t {
   i_t mir_cuts                  = -1;
   i_t mixed_integer_gomory_cuts = -1;
   i_t knapsack_cuts             = -1;
+  i_t flow_cover_cuts           = -1;
   i_t clique_cuts               = -1;
   i_t implied_bound_cuts        = -1;
   i_t strong_chvatal_gomory_cuts = -1;
   i_t reduced_cost_strengthening = -1;
+  i_t objective_step             = 1;  // 0 = disable objective step tightening, 1 = enable
   f_t cut_change_threshold       = -1.0;
   f_t cut_min_orthogonality      = 0.5;
   i_t mip_batch_pdlp_strong_branching{
@@ -160,7 +184,9 @@ class mip_solver_settings_t {
   // TODO check with Akif and Alice
   pdlp_hyper_params::pdlp_hyper_params_t hyper_params;
 
-  mip_heuristics_hyper_params_t heuristic_params;
+  mip_heuristics_hyper_params_t<i_t, f_t> heuristic_params;
+
+  mip_diving_hyper_params_t<i_t, f_t> diving_params;
 
  private:
   std::vector<internals::base_solution_callback_t*> mip_callbacks_;

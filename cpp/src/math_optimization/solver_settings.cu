@@ -115,6 +115,8 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_HYPER_HEURISTIC_RELAXED_LP_TIME_LIMIT, &mip_settings.heuristic_params.relaxed_lp_time_limit, f_t(1e-9), std::numeric_limits<f_t>::infinity(), f_t(1.0), "base relaxed LP time cap in heuristics"},
     {CUOPT_MIP_HYPER_HEURISTIC_RELATED_VARS_TIME_LIMIT, &mip_settings.heuristic_params.related_vars_time_limit, f_t(1e-9), std::numeric_limits<f_t>::infinity(), f_t(30.0), "time for related-variable structure build"},
     {CUOPT_MIP_SEMICONTINUOUS_BIG_M, &mip_settings.semi_continuous_big_m, f_t(1.0), std::numeric_limits<f_t>::infinity(), f_t(1e10), "big-M value for semi-continuous variables with no finite upper bound"},
+    // Diving heuristic hyper-parameters (hidden from default --help: name contains "hyper_")
+    {CUOPT_MIP_HYPER_DIVING_ITERATION_LIMIT_FACTOR, &mip_settings.diving_params.iteration_limit_factor, f_t(0.0), f_t(1.0), f_t(0.05), "fraction of best-first iterations allowed per dive"},
    };
 
   // Int parameters
@@ -134,10 +136,12 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_MIXED_INTEGER_ROUNDING_CUTS, &mip_settings.mir_cuts, -1, 1, -1},
     {CUOPT_MIP_MIXED_INTEGER_GOMORY_CUTS, &mip_settings.mixed_integer_gomory_cuts, -1, 1, -1},
     {CUOPT_MIP_KNAPSACK_CUTS, &mip_settings.knapsack_cuts, -1, 1, -1},
+    {CUOPT_MIP_FLOW_COVER_CUTS, &mip_settings.flow_cover_cuts, -1, 1, -1},
     {CUOPT_MIP_CLIQUE_CUTS, &mip_settings.clique_cuts, -1, 1, -1},
     {CUOPT_MIP_IMPLIED_BOUND_CUTS, &mip_settings.implied_bound_cuts, -1, 1, -1},
     {CUOPT_MIP_STRONG_CHVATAL_GOMORY_CUTS, &mip_settings.strong_chvatal_gomory_cuts, -1, 1, -1},
     {CUOPT_MIP_REDUCED_COST_STRENGTHENING, &mip_settings.reduced_cost_strengthening, -1, std::numeric_limits<i_t>::max(), -1},
+    {CUOPT_MIP_OBJECTIVE_STEP, &mip_settings.objective_step, 0, 1, 1},
     {CUOPT_NUM_GPUS, &pdlp_settings.num_gpus, 1, 2, 1},
     {CUOPT_NUM_GPUS, &mip_settings.num_gpus, 1, 2, 1},
     {CUOPT_DISTRIBUTED_PDLP_NUM_GPUS, &pdlp_settings.distributed_pdlp_num_gpus, -1, 576, -1},
@@ -160,6 +164,14 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_HYPER_HEURISTIC_N_OF_MINIMUMS_FOR_EXIT, &mip_settings.heuristic_params.n_of_minimums_for_exit, 1, std::numeric_limits<i_t>::max(), 7000, "FJ baseline local-minima exit threshold"},
     {CUOPT_MIP_HYPER_HEURISTIC_ENABLED_RECOMBINERS, &mip_settings.heuristic_params.enabled_recombiners, 0, 15, 15, "bitmask: 1=BP 2=FP 4=LS 8=SubMIP"},
     {CUOPT_MIP_HYPER_HEURISTIC_CYCLE_DETECTION_LENGTH, &mip_settings.heuristic_params.cycle_detection_length, 1, std::numeric_limits<i_t>::max(), 30, "FP assignment cycle ring buffer length"},
+    // Diving heuristic hyper-parameters (hidden from default --help: name contains "hyper_")
+    {CUOPT_MIP_HYPER_DIVING_LINE_SEARCH, &mip_settings.diving_params.line_search_diving, -1, 1, -1, "line-search diving toggle: -1 automatic, 0 disabled, 1 enabled"},
+    {CUOPT_MIP_HYPER_DIVING_PSEUDOCOST, &mip_settings.diving_params.pseudocost_diving, -1, 1, -1, "pseudocost diving toggle: -1 automatic, 0 disabled, 1 enabled"},
+    {CUOPT_MIP_HYPER_DIVING_GUIDED, &mip_settings.diving_params.guided_diving, -1, 1, -1, "guided diving toggle: -1 automatic, 0 disabled, 1 enabled"},
+    {CUOPT_MIP_HYPER_DIVING_COEFFICIENT, &mip_settings.diving_params.coefficient_diving, -1, 1, -1, "coefficient diving toggle: -1 automatic, 0 disabled, 1 enabled"},
+    {CUOPT_MIP_HYPER_DIVING_MIN_NODE_DEPTH, &mip_settings.diving_params.min_node_depth, 0, std::numeric_limits<i_t>::max(), 10, "minimum depth at which to start diving"},
+    {CUOPT_MIP_HYPER_DIVING_NODE_LIMIT, &mip_settings.diving_params.node_limit, 0, std::numeric_limits<i_t>::max(), 500, "maximum nodes explored per dive"},
+    {CUOPT_MIP_HYPER_DIVING_BACKTRACK_LIMIT, &mip_settings.diving_params.backtrack_limit, 0, std::numeric_limits<i_t>::max(), 5, "maximum backtracking allowed per dive"},
   };
 
     // Bool parameters
@@ -180,6 +192,8 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_PROBING, &mip_settings.probing, true},
     {CUOPT_USE_DISTRIBUTED_PDLP, &pdlp_settings.hyper_params.use_distributed_pdlp, false},
     {CUOPT_PDLP_DISABLE_GRAPH, &pdlp_settings.hyper_params.pdlp_disable_graph, false},
+    // Diving heuristic hyper-parameters (hidden from default --help: name contains "hyper_")
+    {CUOPT_MIP_HYPER_DIVING_SHOW_TYPE, &mip_settings.diving_params.show_type, false, "log diving heuristic type when it finds a new incumbent"},
   };
   // String parameters
   string_parameters = {

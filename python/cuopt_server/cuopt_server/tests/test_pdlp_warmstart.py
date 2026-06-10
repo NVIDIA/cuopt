@@ -3,7 +3,8 @@
 
 import os
 
-from cuopt.linear_programming import io as mps_parser
+from cuopt.linear_programming import Read
+from cuopt.linear_programming.io import toDict
 import msgpack
 
 from cuopt.linear_programming import solver_settings
@@ -32,8 +33,8 @@ def test_warmstart(cuoptproc):  # noqa
         RAPIDS_DATASET_ROOT_DIR,
         "linear_programming/square41/square41.mps",
     )
-    data_model_obj = mps_parser.ParseMps(file_path)
-    data = mps_parser.toDict(data_model_obj, json=True)
+    data_model_obj = Read(file_path)
+    data = toDict(data_model_obj, json=True)
     settings = solver_settings.SolverSettings()
     settings.set_optimality_tolerance(1e-4)
     settings.set_parameter(CUOPT_INFEASIBILITY_DETECTION, False)

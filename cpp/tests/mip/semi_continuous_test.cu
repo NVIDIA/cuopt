@@ -7,19 +7,17 @@
 
 #include "cuopt/linear_programming/mip/solver_settings.hpp"
 
+#include "../utilities/inline_lp_test_utils.hpp"
 #include "../utilities/inline_mps_test_utils.hpp"
 
-#include <cuopt/linear_programming/io/parser.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <utilities/copy_helpers.hpp>
-#include <utilities/error.hpp>
 
 #include <raft/core/handle.hpp>
-#include <raft/util/cudart_utils.hpp>
 
 #include <gtest/gtest.h>
 
-#include <stdexcept>
+#include <format>
 #include <string>
 #include <utility>
 #include <vector>
@@ -40,32 +38,25 @@ optimization_problem_t<int, double> make_sc_problem(raft::handle_t const* handle
                                                     double aux_lb  = 0.0,
                                                     double aux_ub  = 1.0)
 {
-  optimization_problem_t<int, double> problem(handle);
+  auto lp = std::format(
+    "Minimize\n"
+    "  obj: x\n"
+    "Subject To\n"
+    "  c1: x + y = {}\n"
+    "Bounds\n"
+    "  {} <= x <= {}\n"
+    "  {} <= y <= {}\n"
+    "Semi-Continuous\n"
+    "  x\n"
+    "End\n",
+    row_rhs,
+    sc_lb,
+    sc_ub,
+    aux_lb,
+    aux_ub);
 
-  const std::vector<double> coefficients = {1.0, 1.0};
-  const std::vector<int> indices         = {0, 1};
-  const std::vector<int> offsets         = {0, 2};
-  const std::vector<double> row_lower    = {row_rhs};
-  const std::vector<double> row_upper    = {row_rhs};
-  const std::vector<double> obj          = {1.0, 0.0};
-  const std::vector<double> var_lower    = {sc_lb, aux_lb};
-  const std::vector<double> var_upper    = {sc_ub, aux_ub};
-  const std::vector<var_t> var_types     = {var_t::SEMI_CONTINUOUS, var_t::CONTINUOUS};
-
-  problem.set_csr_constraint_matrix(coefficients.data(),
-                                    coefficients.size(),
-                                    indices.data(),
-                                    indices.size(),
-                                    offsets.data(),
-                                    offsets.size());
-  problem.set_constraint_lower_bounds(row_lower.data(), row_lower.size());
-  problem.set_constraint_upper_bounds(row_upper.data(), row_upper.size());
-  problem.set_objective_coefficients(obj.data(), obj.size());
-  problem.set_variable_lower_bounds(var_lower.data(), var_lower.size());
-  problem.set_variable_upper_bounds(var_upper.data(), var_upper.size());
-  problem.set_variable_types(var_types.data(), var_types.size());
-
-  return problem;
+  auto data = cuopt::test::parse_inline_lp(lp);
+  return mps_data_model_to_optimization_problem(handle, data);
 }
 
 TEST(mip_solve, semi_continuous_regressions)

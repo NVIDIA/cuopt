@@ -31,6 +31,9 @@ mkdir -p "${RAPIDS_TESTS_DIR}"
 
 rapids-print-env
 
+rapids-logger "Verify gRPC codegen output matches committed files"
+./ci/verify_grpc_codegen.sh
+
 rapids-logger "Check GPU usage"
 nvidia-smi
 
@@ -54,7 +57,7 @@ set +e
 export RAPIDS_TESTS_DIR
 
 rapids-logger "Run gtests"
-timeout 50m ./ci/run_ctests.sh || FAILED_STEPS+=("gtests (run_ctests.sh)")
+timeout 60m ./ci/run_ctests.sh || FAILED_STEPS+=("gtests (run_ctests.sh)")
 
 rapids-logger "Generate nightly test report"
 source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/utils/nightly_report_helper.sh"

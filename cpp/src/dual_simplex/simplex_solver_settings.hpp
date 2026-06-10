@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include <cuopt/linear_programming/mip/diving_hyper_params.hpp>
+
 #include <dual_simplex/logger.hpp>
 #include <dual_simplex/types.hpp>
 
@@ -18,30 +20,11 @@
 #include <limits>
 #include <vector>
 
+namespace cuopt::linear_programming {
+struct benchmark_info_t;
+}
+
 namespace cuopt::linear_programming::dual_simplex {
-
-template <typename i_t, typename f_t>
-struct diving_heuristics_settings_t {
-  // -1 automatic, 0 disabled, 1 enabled
-  i_t line_search_diving = -1;
-  i_t pseudocost_diving  = -1;
-  i_t guided_diving      = -1;
-  i_t coefficient_diving = -1;
-
-  // The minimum depth to start diving from.
-  i_t min_node_depth = 10;
-
-  // The maximum number of nodes when performing a dive.
-  i_t node_limit = 500;
-
-  // The maximum number of dual simplex iteration allowed
-  // in a single dive. This set in terms of the total number of
-  // iterations in the best-first threads.
-  f_t iteration_limit_factor = 0.05;
-
-  // The maximum backtracking allowed.
-  i_t backtrack_limit = 5;
-};
 
 template <typename i_t, typename f_t>
 struct simplex_solver_settings_t {
@@ -102,6 +85,7 @@ struct simplex_solver_settings_t {
       mir_cuts(-1),
       mixed_integer_gomory_cuts(-1),
       knapsack_cuts(-1),
+      flow_cover_cuts(-1),
       implied_bound_cuts(-1),
       clique_cuts(-1),
       strong_chvatal_gomory_cuts(-1),
@@ -113,6 +97,9 @@ struct simplex_solver_settings_t {
       mip_batch_pdlp_reliability_branching(0),
       strong_branching_simplex_iteration_limit(-1),
       random_seed(0),
+      bnb_steal_chance(-1),
+      bnb_nodes_per_steal(-1),
+      bnb_max_steal_attempts(-1),
       reliability_branching(-1),
       inside_mip(0),
       sub_mip(0),
@@ -189,6 +176,7 @@ struct simplex_solver_settings_t {
   i_t mixed_integer_gomory_cuts;   // -1 automatic, 0 to disable, >0 to enable mixed integer Gomory
                                    // cuts
   i_t knapsack_cuts;               // -1 automatic, 0 to disable, >0 to enable knapsack cuts
+  i_t flow_cover_cuts;             // -1 automatic, 0 to disable, >0 to enable flow cover cuts
   i_t implied_bound_cuts;          // -1 automatic, 0 to disable, >0 to enable implied bound cuts
   i_t clique_cuts;                 // -1 automatic, 0 to disable, >0 to enable clique cuts
   i_t strong_chvatal_gomory_cuts;  // -1 automatic, 0 to disable, >0 to enable strong Chvatal Gomory
@@ -204,12 +192,20 @@ struct simplex_solver_settings_t {
                                              // PDLP only
   // Set the maximum number of simplex iterations allowed per trial branch when applying
   // strong branching to the root node.
-  // -1 - Automatic (iteration limit = 200)
-  // 0, 1 - Estimate the objective change using a single pivot of dual simplex
-  // >1 - Set as the iteration limit in dual simplex
+  // -1 - automatic (iteration limit = 200)
+  // 0, 1 - estimate the objective change using a single pivot of dual simplex
+  // >1 - set as the iteration limit in dual simplex
   i_t strong_branching_simplex_iteration_limit;
 
-  diving_heuristics_settings_t<i_t, f_t> diving_settings;  // Settings for the diving heuristics
+  mip_diving_hyper_params_t<i_t, f_t> diving_settings;  // Settings for the diving heuristics
+
+  // In B&B, indicate the chance in which a worker can steal a node from another worker.
+  // -1 - automatic (0.05)
+  // 0 - disable
+  // >0 - set the stealing chance [0, 1]
+  f_t bnb_steal_chance;
+  i_t bnb_nodes_per_steal;
+  i_t bnb_max_steal_attempts;
 
   // Settings for the reliability branching.
   // - -1: automatic
@@ -228,6 +224,8 @@ struct simplex_solver_settings_t {
   mutable logger_t log;
   std::atomic<int>* concurrent_halt;  // if nullptr ignored, if !nullptr, 0 if solver should
                                       // continue, 1 if solver should halt
+  // Optional non-owning pointer to run-level benchmark stats.
+  cuopt::linear_programming::benchmark_info_t* benchmark_info_ptr = nullptr;
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

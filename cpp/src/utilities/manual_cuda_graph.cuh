@@ -24,14 +24,21 @@ namespace cuopt {
 // cuSPARSE calls inside the captured region are preserved.
 //
 // Invalidation recovery:
-//   If cudaStreamEndCapture returns cudaErrorStreamCaptureInvalidated
-//   (typically because another thread issued a synchronous CUDA call --
+//   A concurrent thread that issues a capture-hostile CUDA call --
 //   cudaDeviceSynchronize, cudaMalloc, cudaFree, or a library first-use that
-//   internally syncs the device -- concurrently with this capture window),
-//   the captured work has NOT been issued to the device. The wrapper drains
-//   the sticky error, re-executes `work` eagerly so the current iteration
-//   still produces correct results, and leaves itself uninitialized so the
-//   next `run` call retries capture.
+//   internally syncs the device (e.g. the cuDSS barrier's handle init) -- during
+//   this capture window invalidates the capture. That shows up in one of two ways,
+//   both handled here:
+//     1. cudaStreamEndCapture returns cudaErrorStreamCaptureInvalidated, or
+//     2. a CUDA / cuBLAS / cuSPARSE call inside `work` observes the invalidated
+//        capture and throws. Because cuBLAS/cuSPARSE cannot return a CUDA error
+//        code, this surfaces as e.g. CUBLAS_STATUS_INTERNAL_ERROR rather than the
+//        clean cudaErrorStreamCaptureInvalidated.
+//   In both cases the captured work has NOT been issued to the device. The wrapper
+//   drains the sticky error, re-executes `work` eagerly (no capture, so the
+//   concurrent op cannot break it) so the current iteration still produces correct
+//   results, and leaves itself uninitialized so the next `run` retries capture.
+//   A throw whose capture is NOT invalidated is a genuine error and is rethrown.
 //   IMPORTANT: because `work` is invoked a second time on recovery, any
 //   host-side mutations inside the callable will run twice -- keep `work`
 //   host-idempotent or move host bookkeeping (counters, flags, hash updates,
@@ -75,9 +82,27 @@ class manual_cuda_graph_t {
     RAFT_CUDA_TRY(cudaStreamBeginCapture(stream.value(), cudaStreamCaptureModeThreadLocal));
     guard.capture_active = true;
 
-    work();
-
     cudaGraph_t captured = nullptr;
+    try {
+      work();
+    } catch (...) {
+      // A CUDA / cuBLAS / cuSPARSE call inside `work` threw mid-capture (commonly
+      // CUBLAS_STATUS_INTERNAL_ERROR when a concurrent capture-hostile op
+      // invalidated this capture and the failure was observed inside the library
+      // call). End the capture and let its status disambiguate: if the capture was
+      // invalidated the recorded work was never issued, so recover by re-running
+      // `work` eagerly; otherwise the error is genuine and is rethrown.
+      cudaError_t catch_end_err = cudaStreamEndCapture(stream.value(), &captured);
+      guard.capture_active      = false;
+      if (catch_end_err == cudaErrorStreamCaptureInvalidated) {
+        cudaGetLastError();
+        work();
+        return;
+      }
+      if (captured != nullptr) { RAFT_CUDA_TRY_NO_THROW(cudaGraphDestroy(captured)); }
+      throw;
+    }
+
     cudaError_t end_err  = cudaStreamEndCapture(stream.value(), &captured);
     guard.capture_active = false;
 

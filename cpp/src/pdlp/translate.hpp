@@ -12,10 +12,16 @@
 
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/sparse_matrix.hpp>
+#include <dual_simplex/sparse_vector.hpp>
+
+#include <barrier/translate_soc.hpp>
 
 #include <utilities/copy_helpers.hpp>
 
 #include <limits>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 namespace cuopt::linear_programming {
 
@@ -111,8 +117,6 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_user_problem(
   csr_A.j = std::vector<i_t>(cuopt::host_copy(model.variables, handle_ptr->get_stream()));
   csr_A.row_start = std::vector<i_t>(cuopt::host_copy(model.offsets, handle_ptr->get_stream()));
 
-  csr_A.to_compressed_col(user_problem.A);
-
   user_problem.rhs.resize(m);
   user_problem.row_sense.resize(m);
   user_problem.range_rows.clear();
@@ -186,6 +190,13 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_user_problem(
   user_problem.Q_indices = model.Q_indices;
   user_problem.Q_values  = model.Q_values;
 
+  if (model.original_problem_ptr->has_quadratic_constraints()) {
+    detail::convert_quadratic_constraints_to_second_order_cones<i_t, f_t>(
+      n, model.original_problem_ptr->get_quadratic_constraints(), csr_A, user_problem);
+  }
+
+  csr_A.to_compressed_col(user_problem.A);
+
   return user_problem;
 }
 
@@ -203,6 +214,16 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_optimization_problem_to_user
   user_problem.num_cols  = n;
   user_problem.objective = model.get_objective_coefficients_host();
 
+  // For maximization, negate the objective so the barrier (which always minimizes)
+  // finds the maximizer.  obj_scale = -1 ensures the reported objective is correct.
+  // Note: get_sense() returns true when the problem is a maximization problem.
+  const bool maximize = model.get_sense();
+  if (maximize) {
+    for (f_t& c : user_problem.objective) {
+      c = -c;
+    }
+  }
+
   dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
   csr_A.x         = model.get_constraint_matrix_values_host();
   csr_A.j         = model.get_constraint_matrix_indices_host();
@@ -211,7 +232,6 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_optimization_problem_to_user
     csr_A.row_start.resize(1);
     csr_A.row_start[0] = 0;
   }
-  csr_A.to_compressed_col(user_problem.A);
 
   user_problem.rhs.resize(m);
   user_problem.row_sense.resize(m);
@@ -275,7 +295,8 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_optimization_problem_to_user
   }
 
   user_problem.obj_constant = model.get_objective_offset();
-  user_problem.obj_scale    = model.get_objective_scaling_factor();
+  user_problem.obj_scale =
+    maximize ? -model.get_objective_scaling_factor() : model.get_objective_scaling_factor();
 
   user_problem.var_types.resize(n);
   auto model_variable_types = model.get_variable_types_host();
@@ -290,6 +311,13 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_optimization_problem_to_user
   user_problem.Q_offsets = model.get_quadratic_objective_offsets();
   user_problem.Q_indices = model.get_quadratic_objective_indices();
   user_problem.Q_values  = model.get_quadratic_objective_values();
+
+  if (model.has_quadratic_constraints()) {
+    detail::convert_quadratic_constraints_to_second_order_cones<i_t, f_t>(
+      static_cast<int>(n), model.get_quadratic_constraints(), csr_A, user_problem);
+  }
+
+  csr_A.to_compressed_col(user_problem.A);
 
   return user_problem;
 }

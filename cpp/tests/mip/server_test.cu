@@ -8,64 +8,37 @@
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 #include "mip_utils.cuh"
 
-#include <cuopt/linear_programming/io/parser.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <utilities/common_utils.hpp>
-#include <utilities/error.hpp>
+#include <utilities/inline_lp_test_utils.hpp>
 
 #include <raft/core/handle.hpp>
-#include <raft/util/cudart_utils.hpp>
 
 #include <gtest/gtest.h>
 
-#include <cstdint>
-#include <sstream>
-#include <string>
-#include <vector>
-
 namespace cuopt::linear_programming::test {
 
-// Create standard LP test problem matching Python test
 io::mps_data_model_t<int, double> create_std_lp_problem()
 {
-  io::mps_data_model_t<int, double> problem;
-
-  // Set up constraint matrix in CSR format
-  std::vector<int> offsets         = {0, 2};
-  std::vector<int> indices         = {0, 1};
-  std::vector<double> coefficients = {1.0, 1.0};
-  problem.set_csr_constraint_matrix(coefficients, indices, offsets);
-
-  // Set constraint bounds
-  std::vector<double> lower_bounds = {0.0};
-  std::vector<double> upper_bounds = {5000.0};
-  problem.set_constraint_lower_bounds(lower_bounds);
-  problem.set_constraint_upper_bounds(upper_bounds);
-
-  // Set variable bounds
-  std::vector<double> var_lower = {0.0, 0.0};
-  std::vector<double> var_upper = {3000.0, 5000.0};
-  problem.set_variable_lower_bounds(var_lower);
-  problem.set_variable_upper_bounds(var_upper);
-
-  // Set objective coefficients
-  std::vector<double> obj_coeffs = {1.2, 1.7};
-  problem.set_objective_coefficients(obj_coeffs);
-  problem.set_maximize(false);
-
-  return problem;
+  return cuopt::test::parse_inline_lp(R"LP(
+Minimize
+  obj: 1.2 x1 + 1.7 x2
+Subject To
+  c1_ub: x1 + x2 <= 5000
+  c1_lb: x1 + x2 >= 0
+Bounds
+  0 <= x1 <= 3000
+  0 <= x2 <= 5000
+End
+)LP");
 }
 
-// Create standard MILP test problem matching Python test
 io::mps_data_model_t<int, double> create_std_milp_problem(bool maximize)
 {
   auto problem = create_std_lp_problem();
-
-  // Set variable types for MILP
+  problem.set_maximize(maximize);
   std::vector<char> var_types = {'I', 'C'};
   problem.set_variable_types(var_types);
-  problem.set_maximize(maximize);
-
   return problem;
 }
 

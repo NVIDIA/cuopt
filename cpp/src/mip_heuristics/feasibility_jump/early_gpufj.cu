@@ -60,7 +60,8 @@ void early_gpufj_t<i_t, f_t>::start()
 
   CUOPT_LOG_DEBUG("Launching early GPUFJ task");
 
-#pragma omp task default(none) shared(fj_ptr_) depend(out : *fj_ptr_)
+#pragma omp task default(none) shared(fj_ptr_) priority(CUOPT_DEFAULT_TASK_PRIORITY) \
+  depend(out : *fj_ptr_)
   {
     RAFT_CUDA_TRY(cudaSetDevice(this->device_id_));
     fj_ptr_->solve(*this->solution_ptr_);

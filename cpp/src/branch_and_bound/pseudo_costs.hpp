@@ -9,7 +9,6 @@
 
 #include <branch_and_bound/constants.hpp>
 #include <branch_and_bound/mip_node.hpp>
-#include <branch_and_bound/worker.hpp>
 
 #include <dual_simplex/basis_updates.hpp>
 #include <dual_simplex/logger.hpp>
@@ -31,16 +30,18 @@ template <typename i_t, typename f_t>
 struct mip_symmetry_t;
 
 template <typename i_t, typename f_t>
+struct branch_and_bound_worker_t;
+
+template <typename i_t, typename f_t>
+struct branch_and_bound_stats_t;
+
+template <typename i_t, typename f_t>
 struct reliability_branching_settings_t {
   // Lower bound for the maximum number of LP iterations for a single trial branching
   i_t lower_max_lp_iter = 10;
 
   // Upper bound for the maximum number of LP iterations for a single trial branching
   i_t upper_max_lp_iter = 500;
-
-  // Priority of the tasks created when running the trial branching in parallel.
-  // Set to 1 to have the same priority as the other tasks.
-  i_t task_priority = 5;
 
   // The maximum number of candidates initialized by strong branching in a single
   // node
