@@ -9,7 +9,7 @@
 #include "mps_section_scanner.hpp"
 #include "nvtx_ranges.hpp"
 #ifdef MPS_FAST_PERF_COUNTERS
-#include "perf_counters.hpp"
+#include <utilities/perf_counters.hpp>
 #endif
 
 #include <sys/mman.h>
