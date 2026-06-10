@@ -65,34 +65,35 @@ fj_t<i_t, f_t>::fj_t(mip_solver_context_t<i_t, f_t>& context_, fj_settings_t in_
     row_size_nonbin_prefix_sum(pb_ptr->nonbinary_indices.size(), pb_ptr->handle_ptr->get_stream()),
     work_ids_for_related_vars(pb_ptr->n_variables, pb_ptr->handle_ptr->get_stream())
 {
-  setval_launch_dims = get_launch_dims_max_occupancy(
-    (void*)update_assignment_kernel<i_t, f_t>, TPB_setval, pb_ptr->handle_ptr);
+  setval_launch_dims =
+    get_launch_dims_update_assignment_kernel<i_t, f_t>(TPB_setval, pb_ptr->handle_ptr);
   update_changed_constraints_launch_dims =
-    get_launch_dims_max_occupancy((void*)update_changed_constraints_kernel<i_t, f_t>,
-                                  TPB_update_changed_constraints,
-                                  pb_ptr->handle_ptr);
-  resetmoves_launch_dims = get_launch_dims_max_occupancy(
-    (void*)compute_mtm_moves_kernel<i_t, f_t, MTMMoveType::FJ_MTM_VIOLATED>,
-    TPB_resetmoves,
-    pb_ptr->handle_ptr);
-  resetmoves_bin_launch_dims = get_launch_dims_max_occupancy(
-    (void*)compute_mtm_moves_kernel<i_t, f_t, MTMMoveType::FJ_MTM_VIOLATED, true>,
-    TPB_resetmoves,
-    pb_ptr->handle_ptr);
-  update_weights_launch_dims = get_launch_dims_max_occupancy(
-    (void*)handle_local_minimum_kernel<i_t, f_t>, TPB_localmin, pb_ptr->handle_ptr);
-  lift_move_launch_dims = get_launch_dims_max_occupancy(
-    (void*)update_lift_moves_kernel<i_t, f_t>, TPB_liftmoves, pb_ptr->handle_ptr);
-  load_balancing_workid_map_launch_dims = get_launch_dims_max_occupancy(
-    (void*)load_balancing_compute_workid_mappings<i_t, f_t>, TPB_loadbalance, pb_ptr->handle_ptr);
-  load_balancing_binary_launch_dims = get_launch_dims_max_occupancy(
-    (void*)load_balancing_compute_scores_binary<i_t, f_t>, TPB_loadbalance, pb_ptr->handle_ptr);
-  load_balancing_mtm_compute_candidates_launch_dims = get_launch_dims_max_occupancy(
-    (void*)load_balancing_mtm_compute_candidates<i_t, f_t>, TPB_loadbalance, pb_ptr->handle_ptr);
-  load_balancing_mtm_compute_scores_launch_dims = get_launch_dims_max_occupancy(
-    (void*)load_balancing_mtm_compute_scores<i_t, f_t>, TPB_loadbalance, pb_ptr->handle_ptr);
-  load_balancing_prepare_launch_dims = get_launch_dims_max_occupancy(
-    (void*)load_balancing_prepare_iteration<i_t, f_t>, TPB_loadbalance, pb_ptr->handle_ptr);
+    get_launch_dims_update_changed_constraints_kernel<i_t, f_t>(TPB_update_changed_constraints,
+                                                                pb_ptr->handle_ptr);
+  resetmoves_launch_dims =
+    get_launch_dims_compute_mtm_moves_kernel<i_t, f_t, MTMMoveType::FJ_MTM_VIOLATED, false>(
+      TPB_resetmoves, pb_ptr->handle_ptr);
+  resetmoves_bin_launch_dims =
+    get_launch_dims_compute_mtm_moves_kernel<i_t, f_t, MTMMoveType::FJ_MTM_VIOLATED, true>(
+      TPB_resetmoves, pb_ptr->handle_ptr);
+  update_weights_launch_dims =
+    get_launch_dims_handle_local_minimum_kernel<i_t, f_t>(TPB_localmin, pb_ptr->handle_ptr);
+  lift_move_launch_dims =
+    get_launch_dims_update_lift_moves_kernel<i_t, f_t>(TPB_liftmoves, pb_ptr->handle_ptr);
+  load_balancing_workid_map_launch_dims =
+    get_launch_dims_load_balancing_compute_workid_mappings<i_t, f_t>(TPB_loadbalance,
+                                                                     pb_ptr->handle_ptr);
+  load_balancing_binary_launch_dims =
+    get_launch_dims_load_balancing_compute_scores_binary<i_t, f_t>(TPB_loadbalance,
+                                                                   pb_ptr->handle_ptr);
+  load_balancing_mtm_compute_candidates_launch_dims =
+    get_launch_dims_load_balancing_mtm_compute_candidates<i_t, f_t>(TPB_loadbalance,
+                                                                    pb_ptr->handle_ptr);
+  load_balancing_mtm_compute_scores_launch_dims =
+    get_launch_dims_load_balancing_mtm_compute_scores<i_t, f_t>(TPB_loadbalance,
+                                                                pb_ptr->handle_ptr);
+  load_balancing_prepare_launch_dims =
+    get_launch_dims_load_balancing_prepare_iteration<i_t, f_t>(TPB_loadbalance, pb_ptr->handle_ptr);
   reset_weights(pb_ptr->handle_ptr->get_stream());
 
   // ensure the problem and its transpose are in a valid state (assert checks)
@@ -433,7 +434,10 @@ void fj_t<i_t, f_t>::climber_init(i_t climber_idx, const rmm::cuda_stream_view& 
   climber->saved_solution_objective.set_value_async(inf, climber_stream);
   climber->violation_score.set_value_to_zero_async(climber_stream);
   climber->weighted_violation_score.set_value_to_zero_async(climber_stream);
-  init_lhs_and_violation<i_t, f_t><<<256, 256, 0, climber_stream.value()>>>(view);
+  {
+    void* args[] = {&view};
+    launch_init_lhs_and_violation<i_t, f_t>(dim3(256), dim3(256), args, climber_stream);
+  }
 
   // initialize the best_objective values according to the initial assignment
   f_t best_obj = compute_objective_from_vec<i_t, f_t>(
@@ -532,22 +536,37 @@ void fj_t<i_t, f_t>::climber_init(i_t climber_idx, const rmm::cuda_stream_view& 
   }
 
   // compute the explicit csr_offset to var_idx array
-  if (pb_ptr->binary_indices.size() > 0)
-    load_balancing_compute_workid_mappings<i_t, f_t><<<4096, 128, 0, climber_stream.value()>>>(
-      view, view.row_size_bin_prefix_sum, view.pb.binary_indices, view.work_id_to_bin_var_idx);
-  if (pb_ptr->nonbinary_indices.size() > 0)
-    load_balancing_compute_workid_mappings<i_t, f_t>
-      <<<4096, 128, 0, climber_stream.value()>>>(view,
-                                                 view.row_size_nonbin_prefix_sum,
-                                                 view.pb.nonbinary_indices,
-                                                 view.work_id_to_nonbin_var_idx);
+  if (pb_ptr->binary_indices.size() > 0) {
+    auto row_size_prefix_sum = view.row_size_bin_prefix_sum;
+    auto var_indices         = view.pb.binary_indices;
+    auto work_id_to_var_idx  = view.work_id_to_bin_var_idx;
+    void* args[]             = {&view, &row_size_prefix_sum, &var_indices, &work_id_to_var_idx};
+    launch_load_balancing_compute_workid_mappings<i_t, f_t>(
+      dim3(4096), dim3(128), args, climber_stream);
+  }
+  if (pb_ptr->nonbinary_indices.size() > 0) {
+    auto row_size_prefix_sum = view.row_size_nonbin_prefix_sum;
+    auto var_indices         = view.pb.nonbinary_indices;
+    auto work_id_to_var_idx  = view.work_id_to_nonbin_var_idx;
+    void* args[]             = {&view, &row_size_prefix_sum, &var_indices, &work_id_to_var_idx};
+    launch_load_balancing_compute_workid_mappings<i_t, f_t>(
+      dim3(4096), dim3(128), args, climber_stream);
+  }
 
-  if (pb_ptr->binary_indices.size() > 0)
-    load_balancing_init_cstr_bounds_csr<i_t, f_t><<<4096, 128, 0, climber_stream.value()>>>(
-      view, view.row_size_bin_prefix_sum, view.work_id_to_bin_var_idx);
-  if (pb_ptr->nonbinary_indices.size() > 0)
-    load_balancing_init_cstr_bounds_csr<i_t, f_t><<<4096, 128, 0, climber_stream.value()>>>(
-      view, view.row_size_nonbin_prefix_sum, view.work_id_to_nonbin_var_idx);
+  if (pb_ptr->binary_indices.size() > 0) {
+    auto row_size_prefix_sum = view.row_size_bin_prefix_sum;
+    auto work_id_to_var_idx  = view.work_id_to_bin_var_idx;
+    void* args[]             = {&view, &row_size_prefix_sum, &work_id_to_var_idx};
+    launch_load_balancing_init_cstr_bounds_csr<i_t, f_t>(
+      dim3(4096), dim3(128), args, climber_stream);
+  }
+  if (pb_ptr->nonbinary_indices.size() > 0) {
+    auto row_size_prefix_sum = view.row_size_nonbin_prefix_sum;
+    auto work_id_to_var_idx  = view.work_id_to_nonbin_var_idx;
+    void* args[]             = {&view, &row_size_prefix_sum, &work_id_to_var_idx};
+    launch_load_balancing_init_cstr_bounds_csr<i_t, f_t>(
+      dim3(4096), dim3(128), args, climber_stream);
+  }
 
   cuopt_assert(
     pb_ptr->binary_indices.size() + pb_ptr->nonbinary_indices.size() == pb_ptr->n_variables,
@@ -598,35 +617,31 @@ void fj_t<i_t, f_t>::load_balancing_score_update(const rmm::cuda_stream_view& st
   data.iteration_related_variables.clear(stream);
 
   void* kernel_args[] = {&v};
-  cudaLaunchCooperativeKernel((void*)load_balancing_prepare_iteration<i_t, f_t>,
-                              grid_load_balancing_prepare,
-                              blocks_load_balancing_prepare,
-                              kernel_args,
-                              0,
-                              stream);
+  launch_load_balancing_prepare_iteration<i_t, f_t>(
+    grid_load_balancing_prepare, blocks_load_balancing_prepare, kernel_args, stream);
 
   data.load_balancing_start_event.record(stream);
 
   if (pb_ptr->binary_indices.size() > 0) {
     data.load_balancing_start_event.stream_wait(data.load_balancing_bin_stream.view());
     // compute the scores for binary variables (unique delta)
-    load_balancing_compute_scores_binary<i_t, f_t><<<grid_load_balancing_binary,
-                                                     blocks_load_balancing_binary,
-                                                     0,
-                                                     data.load_balancing_bin_stream.view()>>>(v);
+    launch_load_balancing_compute_scores_binary<i_t, f_t>(grid_load_balancing_binary,
+                                                          blocks_load_balancing_binary,
+                                                          kernel_args,
+                                                          data.load_balancing_bin_stream.view());
     data.load_balancing_bin_finished_event.record(data.load_balancing_bin_stream.view());
   }
   if (pb_ptr->nonbinary_indices.size() > 0) {
     data.load_balancing_start_event.stream_wait(data.load_balancing_nonbin_stream.view());
-    load_balancing_mtm_compute_candidates<i_t, f_t>
-      <<<grid_load_balancing_mtm_compute_candidates,
-         blocks_load_balancing_mtm_compute_candidates,
-         0,
-         data.load_balancing_nonbin_stream.view()>>>(v);
-    load_balancing_mtm_compute_scores<i_t, f_t><<<grid_load_balancing_mtm_compute_scores,
-                                                  blocks_load_balancing_mtm_compute_scores,
-                                                  0,
-                                                  data.load_balancing_nonbin_stream.view()>>>(v);
+    launch_load_balancing_mtm_compute_candidates<i_t, f_t>(
+      grid_load_balancing_mtm_compute_candidates,
+      blocks_load_balancing_mtm_compute_candidates,
+      kernel_args,
+      data.load_balancing_nonbin_stream.view());
+    launch_load_balancing_mtm_compute_scores<i_t, f_t>(grid_load_balancing_mtm_compute_scores,
+                                                       blocks_load_balancing_mtm_compute_scores,
+                                                       kernel_args,
+                                                       data.load_balancing_nonbin_stream.view());
     data.load_balancing_nonbin_finished_event.record(data.load_balancing_nonbin_stream.view());
   }
 
@@ -723,52 +738,25 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
           load_balancing_score_update(climber_stream, climber_idx);
         } else {
           if (is_binary_pb) {
-            RAFT_CUDA_TRY(cudaLaunchCooperativeKernel(
-              (void*)compute_mtm_moves_kernel<i_t, f_t, MTMMoveType::FJ_MTM_VIOLATED, true>,
-              grid_resetmoves_bin,
-              blocks_resetmoves_bin,
-              reset_moves_args,
-              0,
-              climber_stream));
+            launch_compute_mtm_moves_kernel<i_t, f_t, MTMMoveType::FJ_MTM_VIOLATED, true>(
+              grid_resetmoves_bin, blocks_resetmoves_bin, reset_moves_args, climber_stream);
           } else {
-            RAFT_CUDA_TRY(cudaLaunchCooperativeKernel(
-              (void*)compute_mtm_moves_kernel<i_t, f_t, MTMMoveType::FJ_MTM_VIOLATED, false>,
-              grid_resetmoves,
-              blocks_resetmoves,
-              reset_moves_args,
-              0,
-              climber_stream));
+            launch_compute_mtm_moves_kernel<i_t, f_t, MTMMoveType::FJ_MTM_VIOLATED, false>(
+              grid_resetmoves, blocks_resetmoves, reset_moves_args, climber_stream);
           }
         }
 #if FJ_DEBUG_LOAD_BALANCING
         if (use_load_balancing) {
-          RAFT_CUDA_TRY(cudaLaunchCooperativeKernel((void*)compute_mtm_moves_kernel<i_t, f_t>,
-                                                    grid_resetmoves_bin,
-                                                    blocks_resetmoves_bin,
-                                                    reset_moves_args,
-                                                    0,
-                                                    climber_stream));
-          RAFT_CUDA_TRY(cudaLaunchCooperativeKernel((void*)load_balancing_sanity_checks<i_t, f_t>,
-                                                    512,
-                                                    128,
-                                                    kernel_args,
-                                                    0,
-                                                    climber_stream));
+          launch_compute_mtm_moves_kernel<i_t, f_t, MTMMoveType::FJ_MTM_VIOLATED, false>(
+            grid_resetmoves, blocks_resetmoves, reset_moves_args, climber_stream);
+          launch_load_balancing_sanity_checks<i_t, f_t>(512, 128, kernel_args, climber_stream);
         }
 #endif
 
-        RAFT_CUDA_TRY(cudaLaunchKernel((void*)update_lift_moves_kernel<i_t, f_t>,
-                                       grid_lift_move,
-                                       blocks_lift_move,
-                                       kernel_args,
-                                       0,
-                                       climber_stream));
-        RAFT_CUDA_TRY(cudaLaunchKernel((void*)update_breakthrough_moves_kernel<i_t, f_t>,
-                                       grid_lift_move,
-                                       blocks_lift_move,
-                                       kernel_args,
-                                       0,
-                                       climber_stream));
+        launch_update_lift_moves_kernel<i_t, f_t>(
+          grid_lift_move, blocks_lift_move, kernel_args, climber_stream);
+        launch_update_breakthrough_moves_kernel<i_t, f_t>(
+          grid_lift_move, blocks_lift_move, kernel_args, climber_stream);
       }
 
       // compaction kernel
@@ -781,32 +769,15 @@ void fj_t<i_t, f_t>::run_step_device(const rmm::cuda_stream_view& climber_stream
                                  pb_ptr->n_variables,
                                  climber_stream);
 
-      RAFT_CUDA_TRY(cudaLaunchKernel((void*)select_variable_kernel<i_t, f_t>,
-                                     dim3(1),
-                                     dim3(256),
-                                     kernel_args,
-                                     0,
-                                     climber_stream));
+      launch_select_variable_kernel<i_t, f_t>(dim3(1), dim3(256), kernel_args, climber_stream);
 
-      RAFT_CUDA_TRY(cudaLaunchCooperativeKernel((void*)handle_local_minimum_kernel<i_t, f_t>,
-                                                grid_update_weights,
-                                                blocks_update_weights,
-                                                kernel_args,
-                                                0,
-                                                climber_stream));
+      launch_handle_local_minimum_kernel<i_t, f_t>(
+        grid_update_weights, blocks_update_weights, kernel_args, climber_stream);
       raft::copy(data.break_condition.data(), data.temp_break_condition.data(), 1, climber_stream);
-      RAFT_CUDA_TRY(cudaLaunchKernel((void*)update_assignment_kernel<i_t, f_t>,
-                                     grid_setval,
-                                     blocks_setval,
-                                     update_assignment_args,
-                                     0,
-                                     climber_stream));
-      RAFT_CUDA_TRY(cudaLaunchKernel((void*)update_changed_constraints_kernel<i_t, f_t>,
-                                     1,
-                                     blocks_update_changed_constraints,
-                                     kernel_args,
-                                     0,
-                                     climber_stream));
+      launch_update_assignment_kernel<i_t, f_t>(
+        grid_setval, blocks_setval, update_assignment_args, climber_stream);
+      launch_update_changed_constraints_kernel<i_t, f_t>(
+        dim3(1), blocks_update_changed_constraints, kernel_args, climber_stream);
     }
   };
 
@@ -844,7 +815,10 @@ void fj_t<i_t, f_t>::refresh_lhs_and_violation(const rmm::cuda_stream_view& stre
   data.violated_constraints.clear(stream);
   data.violation_score.set_value_to_zero_async(stream);
   data.weighted_violation_score.set_value_to_zero_async(stream);
-  init_lhs_and_violation<i_t, f_t><<<4096, 256, 0, stream>>>(v);
+  {
+    void* args[] = {&v};
+    launch_init_lhs_and_violation<i_t, f_t>(dim3(4096), dim3(256), args, stream);
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -921,7 +895,11 @@ i_t fj_t<i_t, f_t>::host_loop(solution_t<i_t, f_t>& solution, i_t climber_idx)
 
       i_t iterations = data.iterations.value(climber_stream);
       // make sure we have the current incumbent saved (e.g. in the case of a timeout)
-      update_best_solution_kernel<i_t, f_t><<<1, blocks_resetmoves, 0, climber_stream>>>(v);
+      {
+        void* args[] = {&v};
+        launch_update_best_solution_kernel<i_t, f_t>(
+          dim3(1), blocks_resetmoves, args, climber_stream);
+      }
       // check feasibility with the relative tolerance rather than the violation score
       raft::copy(solution.assignment.data(),
                  data.best_assignment.data(),

@@ -1,0 +1,42 @@
+[
+  {
+    "id": "multiobj-explore-eval-001-supplier-interpretation",
+    "question": "A procurement lead is sourcing a component. The candidate suppliers lie on a cost-vs-reliability tradeoff (cheaper tends to be less reliable): CN03 cost $7.05 reliability 81.1; SEA03 $7.63 / 82.6; LA04 $9.93 / 87.2; EU04 $11.29 / 88.2; NA01 $11.74 / 90.3; NA03 $12.33 / 91.0; NA04 $13.37 / 91.1. She asks: 'Which suppliers should we commit to?' Advise her.",
+    "expected_skill": "cuopt-multi-objective-exploration",
+    "expected_script": null,
+    "ground_truth": "The agent treats this as a two-objective tradeoff with no fixed weighting. It does NOT collapse to a single 'best' supplier; it lays out the cost/reliability tradeoff, quotes the exchange rate (e.g. roughly how much cost per reliability point between adjacent options), flags the knee/balanced region, states the assumption behind any option it highlights, and leaves the final pick to the lead (often a diversified mix rather than one supplier).",
+    "expected_behavior": [
+      "Frames it as two competing objectives (cost vs reliability) with no agreed weighting",
+      "Does NOT declare one supplier as THE answer; preserves a genuine choice across options",
+      "Quantifies the tradeoff as an exchange rate (cost per unit of reliability, or vice versa)",
+      "Flags a knee / balanced region but leaves the final pick to the lead",
+      "States where on the tradeoff any specific option it names sits"
+    ]
+  },
+  {
+    "id": "multiobj-explore-eval-002-supplier-exploration",
+    "question": "A procurement lead must choose which of 12 candidate suppliers to contract to maximize total supply-chain resilience and minimize total annual cost, while covering required demand. There is no agreed weighting between resilience and cost. Using cuOpt, how would you approach this and what would you report back?",
+    "expected_skill": "cuopt-multi-objective-exploration",
+    "expected_script": null,
+    "ground_truth": "The agent recognizes a multi-objective (resilience vs cost) selection problem with no fixed weighting and a hard demand constraint, builds a payoff table by solving each objective alone for ranges, then traces the Pareto frontier with repeated single-objective cuOpt solves. Because the supplier selection is combinatorial (non-convex), it prefers the epsilon-constraint method (e.g. minimize cost subject to a resilience floor, sweeping the floor) over weighted-sum, which would miss non-supported portfolios. It filters dominated points and reports the tradeoff curve plus the knee, deferring the final pick, and defers per-solve mechanics to the api-* skills and formulation to cuopt-numerical-optimization-formulation.",
+    "expected_behavior": [
+      "Recognizes two competing objectives with no agreed weighting; does NOT collapse to one weighted optimum",
+      "Builds a payoff table (each objective alone) for ranges/normalization",
+      "Traces the Pareto frontier via repeated single-objective cuOpt solves; prefers epsilon-constraint over weighted-sum for completeness on a non-convex/MILP problem",
+      "Filters dominated and duplicate portfolios",
+      "Reports the tradeoff and flags the knee, leaving the final pick to the lead"
+    ]
+  },
+  {
+    "id": "multiobj-explore-eval-003-single-objective-decoy",
+    "question": "A procurement lead must contract suppliers to MAXIMIZE total supply-chain resilience, but the annual budget is hard-capped: total cost must not exceed $34 (a firm limit, not negotiable), and the set must cover demand. Which suppliers should we contract?",
+    "expected_skill": null,
+    "expected_script": null,
+    "ground_truth": "DECOY (negative) — the multi-objective-exploration skill should NOT activate. There is a single clear objective (maximize resilience) with the cost as a hard constraint, so there is no tradeoff to explore. The correct response is a single optimization (maximize resilience subject to cost <= 34 and demand coverage) returning ONE recommended supplier set, not a Pareto sweep or a range of options.",
+    "expected_behavior": [
+      "Recognizes a single objective with a hard constraint, not a tradeoff",
+      "Does NOT trace a frontier or sweep the budget as if it were a tradeoff dial",
+      "Returns one recommended supplier set (one solve), citing the binding budget and demand coverage"
+    ]
+  }
+]

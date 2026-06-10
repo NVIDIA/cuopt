@@ -79,9 +79,14 @@ All three algorithms can be run concurrently on both GPU and CPU, with the faste
 Mixed Integer Linear Programming (MILP) (Beta)
 ==============================================
 
-.. note:: Support for mixed integer linear programming is currently in **beta**.
+A **Mixed Integer Program (MIP)** is an optimization problem where some variables are restricted to take on only integer values, while other variables can vary continuously. A **Mixed Integer Linear Program (MILP)** is a MIP with a linear objective and linear constraints.
 
-A **Mixed Integer Linear Program** is a variant of a Linear Program where some of the variables are restricted to take on only integer values, while other variables can vary continuously. NVIDIA cuOpt uses a hybrid GPU/CPU method: running primal heuristics on the GPU and improving the dual bound on the CPU.
+.. note::
+
+   The cuOpt MIP solver is in **beta** and under active development. The solver
+   currently excels at finding high-quality feasible solutions quickly with
+   GPU-accelerated primal heuristics. Proving feasible solutions optimal remains
+   under active development.
 
 For example, consider the following system of constraints:
 
@@ -104,7 +109,7 @@ Although MILPs seems similar to a LPs, they require much more computation to sol
 How cuOpt Solves the Mixed-Integer Linear Programming Problem
 -------------------------------------------------------------
 
-The MILP solver is a hybrid GPU/CPU algorithm. Primal heuristics including local search, feasibility pump, and feasibility jump are performed on the GPU to improve the primal bound. Branch and bound is performed on the CPU to improve the dual bound. Integer feasible solutions are shared between both algorithms.
+cuOpt combines GPU-accelerated primal heuristics for improving the primal bound with traditional CPU algorithms, including branch and bound, to improve the dual bound. Primal heuristics such as local search, feasibility pump, and feasibility jump run on the GPU. Integer feasible solutions are shared between these components.
 
 
 =============================
