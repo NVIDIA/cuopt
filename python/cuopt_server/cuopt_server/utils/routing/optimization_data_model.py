@@ -25,6 +25,22 @@ def get_none_for_empty_list(data):
     return data if data is not None and len(data) > 0 else None
 
 
+def get_distance_tiers_as_dicts(vehicle_distance_tiers):
+    return [
+        [
+            tier
+            if isinstance(tier, dict)
+            else (
+                tier.model_dump()
+                if hasattr(tier, "model_dump")
+                else tier.dict()
+            )
+            for tier in vehicle_tiers
+        ]
+        for vehicle_tiers in vehicle_distance_tiers
+    ]
+
+
 def get_objectives_as_lists(objectives):
     cuopt_objectives = []
     objective_weights = []
@@ -106,6 +122,8 @@ class OptimizationDataModel:
             "vehicle_max_costs": None,
             "vehicle_max_times": None,
             "vehicle_fixed_costs": None,
+            "vehicle_distance_tiers": None,
+            "vehicle_max_distances": None,
         }
 
     def reset_task_data(self):
@@ -180,6 +198,13 @@ class OptimizationDataModel:
             .to_pylist()
             if self.fleet_data["vehicle_max_costs"] is not None
             else None,
+            "vehicle_max_distances": self.fleet_data[
+                "vehicle_max_distances"
+            ]
+            .to_arrow()
+            .to_pylist()
+            if self.fleet_data["vehicle_max_distances"] is not None
+            else None,
             "vehicle_max_times": self.fleet_data["vehicle_max_times"]
             .to_arrow()
             .to_pylist()
@@ -219,6 +244,9 @@ class OptimizationDataModel:
                 "vehicle_distance_breaks"
             ],
             "vehicle_order_match": self.fleet_data["vehicle_order_match"],
+            "vehicle_distance_tiers": self.fleet_data[
+                "vehicle_distance_tiers"
+            ],
             "skip_first_trips": self.fleet_data["skip_first_trips"]
             .to_arrow()
             .to_pylist()
@@ -493,6 +521,8 @@ class OptimizationDataModel:
         vehicle_max_times,
         vehicle_fixed_costs,
         vehicle_distance_breaks=None,
+        vehicle_distance_tiers=None,
+        vehicle_max_distances=None,
     ):
         if not self.is_route_detail_set:
             return (
@@ -514,6 +544,10 @@ class OptimizationDataModel:
         vehicle_max_costs = get_none_for_empty_list(vehicle_max_costs)
         vehicle_max_times = get_none_for_empty_list(vehicle_max_times)
         vehicle_fixed_costs = get_none_for_empty_list(vehicle_fixed_costs)
+        vehicle_distance_tiers = get_none_for_empty_list(
+            vehicle_distance_tiers
+        )
+        vehicle_max_distances = get_none_for_empty_list(vehicle_max_distances)
         vehicle_time_windows = get_none_for_empty_list(vehicle_time_windows)
         vehicle_break_time_windows = get_none_for_empty_list(
             vehicle_break_time_windows
@@ -553,6 +587,9 @@ class OptimizationDataModel:
             updating=False,
             comparison_locations=None,
             vehicle_distance_breaks=vehicle_distance_breaks,
+            vehicle_distance_tiers=vehicle_distance_tiers,
+            vehicle_max_distances=vehicle_max_distances,
+            is_distance_matrix_set=False,
         )
 
         if is_valid[0]:
@@ -583,6 +620,14 @@ class OptimizationDataModel:
             if vehicle_fixed_costs is not None:
                 self.fleet_data["vehicle_fixed_costs"] = cudf.Series(
                     vehicle_fixed_costs, dtype=np.float32
+                )
+            if vehicle_distance_tiers is not None:
+                self.fleet_data["vehicle_distance_tiers"] = (
+                    get_distance_tiers_as_dicts(vehicle_distance_tiers)
+                )
+            if vehicle_max_distances is not None:
+                self.fleet_data["vehicle_max_distances"] = cudf.Series(
+                    vehicle_max_distances, dtype=np.float32
                 )
             if vehicle_time_windows:
                 self.fleet_data["vehicle_time_windows"] = cudf.DataFrame(
@@ -672,6 +717,8 @@ class OptimizationDataModel:
         vehicle_max_times,
         vehicle_fixed_costs,
         vehicle_distance_breaks=None,
+        vehicle_distance_tiers=None,
+        vehicle_max_distances=None,
     ):
         if not self.is_route_detail_set:
             return (
@@ -695,6 +742,10 @@ class OptimizationDataModel:
         vehicle_max_costs = get_none_for_empty_list(vehicle_max_costs)
         vehicle_max_times = get_none_for_empty_list(vehicle_max_times)
         vehicle_fixed_costs = get_none_for_empty_list(vehicle_fixed_costs)
+        vehicle_distance_tiers = get_none_for_empty_list(
+            vehicle_distance_tiers
+        )
+        vehicle_max_distances = get_none_for_empty_list(vehicle_max_distances)
         vehicle_time_windows = get_none_for_empty_list(vehicle_time_windows)
         skip_first_trips = get_none_for_empty_list(skip_first_trips)
         vehicle_break_time_windows = get_none_for_empty_list(
@@ -735,6 +786,9 @@ class OptimizationDataModel:
             updating=True,
             comparison_locations=self.fleet_data["vehicle_locations"],
             vehicle_distance_breaks=vehicle_distance_breaks,
+            vehicle_distance_tiers=vehicle_distance_tiers,
+            vehicle_max_distances=vehicle_max_distances,
+            is_distance_matrix_set=False,
         )
 
         if is_valid[0]:
@@ -761,6 +815,14 @@ class OptimizationDataModel:
             if vehicle_fixed_costs is not None:
                 self.fleet_data["vehicle_fixed_costs"] = cudf.Series(
                     vehicle_fixed_costs, dtype=np.float32
+                )
+            if vehicle_distance_tiers is not None:
+                self.fleet_data["vehicle_distance_tiers"] = (
+                    get_distance_tiers_as_dicts(vehicle_distance_tiers)
+                )
+            if vehicle_max_distances is not None:
+                self.fleet_data["vehicle_max_distances"] = cudf.Series(
+                    vehicle_max_distances, dtype=np.float32
                 )
             if vehicle_time_windows:
                 self.fleet_data["vehicle_time_windows"] = cudf.DataFrame(

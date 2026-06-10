@@ -264,6 +264,44 @@ class CostMatrices(StrictModel):
     )
 
 
+class DistanceMatrices(StrictModel):
+    data: Optional[Dict[int, List[List[float]]]] = Field(
+        default=None,
+        description=(
+            "dtype : vehicle-type (uint8), distance (float32), distance >= 0.\n"
+            " \n\n "
+            "Sqaure matrix with distance to travel from A to B and B to A. \n"
+            "If there different types of vehicles which have different \n"
+            "distance matrices, they can be provided with key value pair \n"
+            "where key is vehicle-type and value is distance matrix. Value of \n"
+            "vehicle type should be within [0, 255]"
+        ),
+    )
+
+
+class DistanceTier(StrictModel):
+    threshold: Optional[float] = Field(
+        ...,
+        description=(
+            "dtype: float32 or null. Distance threshold for the tier. "
+            "Use null for the final open-ended tier."
+        ),
+    )
+    fixed_cost: float = Field(
+        default=0.0,
+        description=(
+            "dtype: float32, fixed_cost >= 0. Fixed cost for the tier."
+        ),
+    )
+    cost_per_unit: float = Field(
+        default=0.0,
+        description=(
+            "dtype: float32, cost_per_unit >= 0. Distance unit cost for "
+            "the tier."
+        ),
+    )
+
+
 class FleetData(StrictModel):
     vehicle_locations: List[List[int]] = Field(
         ...,
@@ -523,7 +561,7 @@ class FleetData(StrictModel):
             "shows veh-0 (15) > veh-1 (5) + veh-2 (5)"
         ),
     )
-    vehicle_distance_tiers: Optional[List[List[Dict[str, float]]]] = Field(
+    vehicle_distance_tiers: Optional[List[List[DistanceTier]]] = Field(
         default=None,
         examples=[
             [
@@ -539,7 +577,7 @@ class FleetData(StrictModel):
                         "cost_per_unit": 0.1,
                     },
                     {
-                        "threshold": 1e9,
+                        "threshold": None,
                         "fixed_cost": 0.0,
                         "cost_per_unit": 0.5,
                     },
@@ -551,7 +589,7 @@ class FleetData(StrictModel):
                         "cost_per_unit": 0.0,
                     },
                     {
-                        "threshold": 1e9,
+                        "threshold": None,
                         "fixed_cost": 0.0,
                         "cost_per_unit": 0.3,
                     },
@@ -559,12 +597,13 @@ class FleetData(StrictModel):
             ]
         ],
         description=(
-            "dtype: List of lists of dicts with float values."
+            "dtype: List of lists of distance tier objects."
             " \n\n "
             "Distance-based tiered pricing for each vehicle. "
             "Each vehicle can have multiple tiers with different cost structures."
             " \n\n "
             "For each tier, specify 'threshold' (distance limit), "
+            "where null means the final open-ended tier, "
             "'fixed_cost' (use 0 if not applicable), and "
             "'cost_per_unit' (cost per distance unit, use 0 if not applicable)."
             " \n\n "
@@ -578,7 +617,7 @@ class FleetData(StrictModel):
             " \n\n "
             "            {'threshold': 200, 'fixed_cost': 0, 'cost_per_unit': 0.1},  # 100-200km = 0.1/km"
             " \n\n "
-            "            {'threshold': 1e9, 'fixed_cost': 0, 'cost_per_unit': 0.5}  # >200km = 0.5/km"
+            "            {'threshold': null, 'fixed_cost': 0, 'cost_per_unit': 0.5}  # >200km = 0.5/km"
             " \n\n "
             "        ],"
             " \n\n "
@@ -586,11 +625,20 @@ class FleetData(StrictModel):
             " \n\n "
             "            {'threshold': 150, 'fixed_cost': 75, 'cost_per_unit': 0},  # <150km = 75 fixed"
             " \n\n "
-            "            {'threshold': 1e9, 'fixed_cost': 0, 'cost_per_unit': 0.3}  # >150km = 0.3/km"
+            "            {'threshold': null, 'fixed_cost': 0, 'cost_per_unit': 0.3}  # >150km = 0.3/km"
             " \n\n "
             "        ]"
             " \n\n "
             "    ]"
+        ),
+    )
+    vehicle_max_distances: Optional[List[float]] = Field(
+        default=None,
+        examples=[[200, 350]],
+        description=(
+            "dtype: float32, max_distances >= 0."
+            " \n\n "
+            "Maximum distance a vehicle can travel and it is based on distance matrix/distance waypoint graph."  # noqa
         ),
     )
 
@@ -1134,11 +1182,11 @@ vrp_example_data = {
             [
                 {"threshold": 100.0, "fixed_cost": 50.0, "cost_per_unit": 0.0},
                 {"threshold": 200.0, "fixed_cost": 0.0, "cost_per_unit": 0.1},
-                {"threshold": 1e9, "fixed_cost": 0.0, "cost_per_unit": 0.5},
+                {"threshold": None, "fixed_cost": 0.0, "cost_per_unit": 0.5},
             ],
             [
                 {"threshold": 150.0, "fixed_cost": 75.0, "cost_per_unit": 0.0},
-                {"threshold": 1e9, "fixed_cost": 0.0, "cost_per_unit": 0.3},
+                {"threshold": None, "fixed_cost": 0.0, "cost_per_unit": 0.3},
             ],
         ],
     },

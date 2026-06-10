@@ -51,6 +51,7 @@ valid_data = {
         "vehicle_max_costs": [150, 150, 150, 150],
         "vehicle_max_times": [100, 30, 50, 70],
         "vehicle_fixed_costs": [50, 50, 50, 50],
+        "vehicle_max_distances": [150, 150, 150, 150],
     },
     "task_data": {
         "task_locations": [1],
@@ -251,7 +252,8 @@ def test_valid_unique_vehicle_ids_set_fleet_data(cuoptproc):  # noqa
 def test_valid_minimal_set_fleet_data(cuoptproc):  # noqa
     test_data = copy.deepcopy(valid_data)
     test_data["fleet_data"] = {
-        "vehicle_locations": [[1, 1], [2, 2], [3, 3], [4, 4]]
+        "vehicle_locations": [[1, 1], [2, 2], [3, 3], [4, 4]],
+        "vehicle_max_distances": [150, 150, 150, 150],
     }
 
     response_set = client.post("/cuopt/request", json=test_data)

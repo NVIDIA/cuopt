@@ -1,6 +1,83 @@
 # SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import math
+
+
+def _get_tier_value(tier, key, default=None):
+    if isinstance(tier, dict):
+        return tier.get(key, default)
+    return getattr(tier, key, default)
+
+
+def _is_finite(value):
+    try:
+        return math.isfinite(float(value))
+    except (TypeError, ValueError):
+        return False
+
+
+def _validate_distance_tiers(vehicle_distance_tiers):
+    if vehicle_distance_tiers is None or len(vehicle_distance_tiers) == 0:
+        return (
+            False,
+            "vehicle_distance_tiers must define at least one tier per vehicle",
+        )
+
+    for vehicle_tiers in vehicle_distance_tiers:
+        if vehicle_tiers is None or len(vehicle_tiers) == 0:
+            return (
+                False,
+                "vehicle_distance_tiers must define at least one tier per vehicle",
+            )
+
+        has_open_ended_tier = False
+        for tier in vehicle_tiers:
+            threshold = _get_tier_value(tier, "threshold")
+            fixed_cost = _get_tier_value(tier, "fixed_cost", 0.0)
+            cost_per_unit = _get_tier_value(tier, "cost_per_unit", 0.0)
+
+            if threshold is None:
+                has_open_ended_tier = True
+            else:
+                if not _is_finite(threshold):
+                    return (
+                        False,
+                        "Distance tier threshold values must be finite",
+                    )
+                if threshold < 0:
+                    return (
+                        False,
+                        "Distance tier threshold values must be greater than or equal to 0",
+                    )
+
+            if not _is_finite(fixed_cost):
+                return (False, "Distance tier fixed_cost values must be finite")
+            if fixed_cost < 0:
+                return (
+                    False,
+                    "Distance tier fixed_cost values must be greater than or equal to 0",
+                )
+
+            if not _is_finite(cost_per_unit):
+                return (
+                    False,
+                    "Distance tier cost_per_unit values must be finite",
+                )
+            if cost_per_unit < 0:
+                return (
+                    False,
+                    "Distance tier cost_per_unit values must be greater than or equal to 0",
+                )
+
+        if not has_open_ended_tier:
+            return (
+                False,
+                "Each vehicle_distance_tiers entry must include a null threshold tier",
+            )
+
+    return (True, "")
+
 
 def test_time_window(time_windows, tw_type):
     # All time windows earliest times must be less than latest times
@@ -48,6 +125,9 @@ def validate_fleet_data(
     updating=False,
     comparison_locations=None,
     vehicle_distance_breaks=None,
+    vehicle_max_distances=None,
+    vehicle_distance_tiers=None,
+    is_distance_matrix_set=False,
 ):
     if vehicle_locations is not None:
         for loc in vehicle_locations:
@@ -131,6 +211,38 @@ def validate_fleet_data(
                 "Fixed cost of vehicle must be greater than or equal to 0",
             )
         fleet_length_check_array.append(len(vehicle_fixed_costs))
+
+    if vehicle_max_distances is not None:
+        for vehicle_max_distance in vehicle_max_distances:
+            if not _is_finite(vehicle_max_distance):
+                return (
+                    False,
+                    "Maximum distance any vehicle can travel must be finite",
+                )
+            if vehicle_max_distance < 0:
+                return (
+                    False,
+                    "Maximum distance any vehicle can travel must be greater than or equal to 0",  # noqa
+                )
+        fleet_length_check_array.append(len(vehicle_max_distances))
+
+    if is_distance_matrix_set and not vehicle_distance_tiers:
+        return (
+            False,
+            "vehicle_distance_tiers must be set when distance matrix data is provided",
+        )
+
+    if vehicle_distance_tiers is not None:
+        if not is_distance_matrix_set:
+            return (
+                False,
+                "distance_matrix_data must be set when vehicle_distance_tiers is provided",
+            )
+
+        res = _validate_distance_tiers(vehicle_distance_tiers)
+        if not res[0]:
+            return res
+        fleet_length_check_array.append(len(vehicle_distance_tiers))
 
     if vehicle_time_windows is not None:
         fleet_length_check_array.append(len(vehicle_time_windows))
