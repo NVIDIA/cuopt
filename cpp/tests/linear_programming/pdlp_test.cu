@@ -20,6 +20,7 @@
 
 #include <utilities/base_fixture.hpp>
 #include <utilities/common_utils.hpp>
+#include <utilities/inline_lp_test_utils.hpp>
 
 #include <cuopt/linear_programming/constants.h>
 #include <cuopt/linear_programming/io/parser.hpp>
@@ -836,26 +837,21 @@ TEST(pdlp_class, per_constraint_test)
    * will be 0.1009
    */
   raft::handle_t handle;
-  auto op_problem = optimization_problem_t<int, double>(&handle);
+  auto mps_data   = cuopt::test::parse_inline_lp(R"LP(
+Minimize
+  obj: 0 x1 + 0 x2 + 0 x3
+Subject To
+  c1: x1 = 0
+  c2: x2 = 0
+  c3: x3 = 0
+End
+)LP");
+  auto op_problem = mps_data_model_to_optimization_problem(&handle, mps_data);
 
-  std::vector<double> A_host           = {1.0, 1.0, 1.0};
-  std::vector<int> indices_host        = {0, 1, 2};
-  std::vector<int> offset_host         = {0, 1, 2, 3};
-  std::vector<double> b_host           = {0.0, 0.0, 0.0};
   std::vector<double> h_initial_primal = {0.02, 0.03, 0.1};
   rmm::device_uvector<double> d_initial_primal(3, handle.get_stream());
   raft::copy(
     d_initial_primal.data(), h_initial_primal.data(), h_initial_primal.size(), handle.get_stream());
-
-  op_problem.set_csr_constraint_matrix(A_host.data(),
-                                       A_host.size(),
-                                       indices_host.data(),
-                                       indices_host.size(),
-                                       offset_host.data(),
-                                       offset_host.size());
-  op_problem.set_constraint_lower_bounds(b_host.data(), b_host.size());
-  op_problem.set_constraint_upper_bounds(b_host.data(), b_host.size());
-  op_problem.set_objective_coefficients(b_host.data(), b_host.size());
 
   auto problem = cuopt::linear_programming::detail::problem_t<int, double>(op_problem);
 
