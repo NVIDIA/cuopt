@@ -118,8 +118,9 @@ bool bound_presolve_t<i_t, f_t>::calculate_bounds_update(problem_t<i_t, f_t>& pb
   constexpr i_t zero       = 0;
   constexpr auto n_threads = 256;
 
-  upd.candidate_bound_scale =
-    pb.tolerances.absolute_tolerance / context.settings.semi_continuous_big_m;
+  const f_t scale_divisor =
+    std::max(context.settings.semi_continuous_big_m, pb.tolerances.absolute_tolerance);
+  upd.candidate_bound_scale = pb.tolerances.absolute_tolerance / scale_divisor;
   upd.bounds_changed.set_value_async(zero, pb.handle_ptr->get_stream());
   update_bounds_kernel<i_t, f_t, n_threads>
     <<<pb.n_variables, n_threads, 0, pb.handle_ptr->get_stream()>>>(pb.view(), upd.view());
