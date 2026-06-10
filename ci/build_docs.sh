@@ -18,7 +18,7 @@ export RAPIDS_VERSION_MAJOR_MINOR
 
 rapids-logger "Downloading artifacts from previous jobs"
 CPP_CHANNEL=$(rapids-download-from-github "$(rapids-artifact-name conda_cpp libcuopt cuopt --cuda "$RAPIDS_CUDA_VERSION")")
-PYTHON_CHANNEL=$(rapids-download-from-github "$(rapids-artifact-name conda_python cuopt cuopt --stable --cuda "$RAPIDS_CUDA_VERSION")")
+PYTHON_CHANNEL=$(rapids-download-from-github "$(rapids-artifact-name conda_python cuopt cuopt --py "$RAPIDS_PY_VERSION" --cuda "$RAPIDS_CUDA_VERSION")")
 
 rapids-logger "Generating conda environment YAML"
 
