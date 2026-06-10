@@ -77,4 +77,17 @@
     chunk_typed_array(requests, cuopt::remote::FIELD_Q_OFFSETS, _Q_offsets, upload_id, chunk_size_bytes);
   }
 
+  if (problem.has_quadratic_constraints()) {
+    const auto& _entries = problem.get_quadratic_constraints();
+    for (size_t _idx = 0; _idx < _entries.size(); ++_idx) {
+      const auto& _entry = _entries[_idx];
+      int32_t _ci = static_cast<int32_t>(_idx);
+      chunk_container_typed_array(requests, 25, _ci, 0, _entry.linear_values, upload_id, chunk_size_bytes);
+      chunk_container_typed_array(requests, 25, _ci, 1, _entry.linear_indices, upload_id, chunk_size_bytes);
+      chunk_container_typed_array(requests, 25, _ci, 2, _entry.rows, upload_id, chunk_size_bytes);
+      chunk_container_typed_array(requests, 25, _ci, 3, _entry.cols, upload_id, chunk_size_bytes);
+      chunk_container_typed_array(requests, 25, _ci, 4, _entry.vals, upload_id, chunk_size_bytes);
+    }
+  }
+
   return requests;

@@ -1,12 +1,12 @@
-========================
-LP, QP and MILP Examples
-========================
+============================
+Convex Optimization Examples
+============================
 
-This section contains examples of how to use the cuOpt linear programming, quadratic programming and mixed integer linear programming Python API.
+This section contains examples of how to use the cuOpt convex optimization Python API.
 
 .. note::
 
-    The examples in this section are not exhaustive. They are provided to help you get started with the cuOpt linear programming, quadratic programming and mixed integer linear programming Python API. For more examples, please refer to the `cuopt-examples GitHub repository <https://github.com/NVIDIA/cuopt-examples>`_.
+    The examples in this section are not exhaustive. They are provided to help you get started with the cuOpt convex optimization Python API. For more examples, please refer to the `cuopt-examples GitHub repository <https://github.com/NVIDIA/cuopt-examples>`_.
 
 
 Simple Linear Programming Example
@@ -23,8 +23,8 @@ The response is as follows:
 .. code-block:: text
 
     Optimal solution found in 0.01 seconds
-    x = 10.0
-    y = 0.0
+    x = 5.0
+    y = 5.0
     Objective value = 10.0
 
 
@@ -49,12 +49,19 @@ The response is as follows:
     Objective value = 0.5
 
 
-Mixed Integer Linear Programming Example
-----------------------------------------
+.. _simple-socp-example-python:
 
-:download:`simple_milp_example.py <examples/simple_milp_example.py>`
+Second-Order Cone Programming Example
+--------------------------------------------
 
-.. literalinclude:: examples/simple_milp_example.py
+:download:`simple_socp_example.py <examples/simple_socp_example.py>`
+
+This example minimizes ``x3`` subject to ``x1 + x2 >= 2`` and the second-order
+cone ``||(x1, x2)||_2 <= x3``, expressed as the inequalities
+``x1^2 + x2^2 - x3^2 <= 0, x_3 >= 0``. cuOpt detects the cone structure and solves with the
+barrier method.
+
+.. literalinclude:: examples/simple_socp_example.py
    :language: python
    :linenos:
 
@@ -62,18 +69,26 @@ The response is as follows:
 
 .. code-block:: text
 
-    Optimal solution found in 0.00 seconds
-    x = 36.0
-    y = 40.99999999999999
-    Objective value = 303.0
+    Status: 1
+    x1 = 1.0
+    x2 = 1.0
+    x3 = 1.4142135623730951
+    Objective value = 1.4142135623730951
 
 
-Semi-continuous Variable Example
---------------------------------
+.. _rotated-socp-example-python:
 
-:download:`semi_continuous_example.py <examples/semi_continuous_example.py>`
+Second-Order Cone Programming with Rotated Second-Order Cones Example
+---------------------------------------------------------------------
 
-.. literalinclude:: examples/semi_continuous_example.py
+:download:`rotated_socp_example.py <examples/rotated_socp_example.py>`
+
+This example solves a **rotated** second-order cone ``x1^2 + x2^2 <= x3 * x4, x3 >= 0, x4 >= 0``. For rotated cones, cuOpt expects a
+symmetric quadratic matrix ``Q``, so the cross term is supplied as the two equal
+halves ``-0.5*x3*x4`` and ``-0.5*x4*x3``. It minimizes ``x3 + x4`` subject to
+``x1 + x2 >= 2``.
+
+.. literalinclude:: examples/rotated_socp_example.py
    :language: python
    :linenos:
 
@@ -81,10 +96,70 @@ The response is as follows:
 
 .. code-block:: text
 
-    Optimal solution found in 0.00 seconds
-    x = 0.0
-    y = 1.0
-    Objective value = 0.0
+    Status: 1
+    x1 = 1.0
+    x2 = 1.0
+    x3 = 1.4142135623730951
+    x4 = 1.4142135623730951
+    Objective value = 2.8284271247461903
+
+
+.. _general-quadratic-example-python:
+
+General Convex Quadratic Constraint Example
+-------------------------------------------
+
+:download:`general_quadratic_example.py <examples/general_quadratic_example.py>`
+
+This example uses a general convex quadratic constraint
+``2*x^2 + 2*x*y + 2*y^2 <= 6`` (an ellipsoid).  It minimizes ``x + y``.
+
+.. literalinclude:: examples/general_quadratic_example.py
+   :language: python
+   :linenos:
+
+The response is as follows:
+
+.. code-block:: text
+
+    Status: 1
+    x = -1.0
+    y = -1.0
+    Objective value = -2.0
+
+
+.. _mps-example-python:
+
+Reading a Problem from an MPS File
+----------------------------------
+
+:download:`mps_example.py <examples/mps_example.py>`,
+:download:`sample.mps <examples/sample.mps>`
+
+``Problem.read`` loads a problem from an MPS, QPS, or LP file, dispatching on the
+file extension. The same call also reads ``QUADOBJ`` quadratic objectives and
+and ``QCMATRIX`` quadratic constraints. This example reads the
+bundled ``sample.mps`` (a small LP) and solves it.
+
+.. literalinclude:: examples/mps_example.py
+   :language: python
+   :linenos:
+
+The sample MPS file:
+
+.. literalinclude:: examples/sample.mps
+   :language: text
+   :linenos:
+
+The response is as follows:
+
+.. code-block:: text
+
+    Status: 1
+    Number of variables: 2
+    Objective value = -0.36000000000000004
+    VAR1 = 1.8
+    VAR2 = 0.0
 
 
 Advanced Example: Production Planning
@@ -124,10 +199,10 @@ The response is as follows:
     === Expression Example Results ===
     x = 0.0
     y = 50.0
-    z = 99.99999999999999
-    Objective value = 399.99999999999994
+    z = 100.0
+    Objective value = 400.0
 
-Working with Quadratic objective matrix
+Working with Quadratic Objective Matrix
 ---------------------------------------
 
 :download:`qp_matrix_example.py <examples/qp_matrix_example.py>`
@@ -167,36 +242,6 @@ The response is as follows:
     c1 DualValue = 1.0000000592359144
     c2 DualValue = 1.0000000821854418
 
-Working with Incumbent Solutions
---------------------------------
-
-Incumbent solutions are intermediate feasible solutions found during the MIP solving process. They represent the best integer-feasible solution discovered so far and can be accessed through callback functions.
-
-.. note::
-    Incumbent solutions are only available for Mixed Integer Programming (MIP) problems, not for pure Linear Programming (LP) problems.
-
-:download:`incumbent_solutions_example.py <examples/incumbent_solutions_example.py>`
-
-.. literalinclude:: examples/incumbent_solutions_example.py
-   :language: python
-   :linenos:
-
-The response is as follows:
-
-.. code-block:: text
-
-    Optimal solution found.
-    Incumbent 1: x=36.0 y=41.0 cost: 303.00
-    Solution objective: 303.000000 , relative_mip_gap 0.000000 solution_bound 303.000000 presolve_time 0.103659 total_solve_time 0.173678 max constraint violation 0.000000 max int violation 0.000000 max var bounds violation 0.000000 nodes 0 simplex_iterations 2
-
-    === Final Results ===
-    Problem status: Optimal
-    Solve time: 0.17 seconds
-    Final solution:  x=36.0  y=41.0
-    Final objective value: 303.00
-
-    Total incumbent solutions found: 1
-
 Working with PDLP Warmstart Data
 --------------------------------
 
@@ -216,6 +261,6 @@ The response is as follows:
 .. code-block:: text
 
     Optimal solution found in 0.01 seconds
-    x = 25.000000000639382
+    x = 25.001763214569394
     y = 0.0
-    Objective value = 50.000000001278764
+    Objective value = 50.00352642913879

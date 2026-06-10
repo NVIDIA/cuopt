@@ -51,6 +51,12 @@
       "description": "LP, MILP, and QP (beta) with cuOpt — CLI only (MPS files, cuopt_cli). Use when the user is solving LP, MILP, or QP from MPS via command line."
     },
     {
+      "name": "cuopt-multi-objective-exploration",
+      "source": "./skills/cuopt-multi-objective-exploration",
+      "skills": "./",
+      "description": "Trace and interpret the Pareto frontier across competing objectives using repeated single-objective cuOpt solves (weighted-sum and ε-constraint)."
+    },
+    {
       "name": "cuopt-routing-formulation",
       "source": "./skills/cuopt-routing-formulation",
       "skills": "./",

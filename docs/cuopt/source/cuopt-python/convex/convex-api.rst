@@ -1,11 +1,11 @@
-=============================
-LP, QP and MILP API Reference
-=============================
+===================================
+Convex Optimization API Reference
+===================================
 
 .. autoclass:: cuopt.linear_programming.problem.Problem
    :members:
    :undoc-members:
-   :exclude-members: reset_solved_values, populate_solution, dict_to_object, NumNZs, NumVariables, NumConstraints, IsMIP, get_incumbent_values, get_pdlp_warm_start_data, getQcsr
+   :exclude-members: reset_solved_values, populate_solution, dict_to_object, get_incumbent_values, get_pdlp_warm_start_data, getQcsr
 
 .. autoclass:: cuopt.linear_programming.problem.Variable
    :members:
@@ -19,6 +19,7 @@ LP, QP and MILP API Reference
 .. autoclass:: cuopt.linear_programming.problem.QuadraticExpression
    :members:
    :undoc-members:
+   :special-members: __le__, __ge__, __neg__
 
 .. autoclass:: cuopt.linear_programming.problem.Constraint
    :members:
@@ -29,12 +30,6 @@ LP, QP and MILP API Reference
    :members:
    :undoc-members:
    :exclude-members: to_base_type, toDict
-
-.. autoclass:: cuopt.linear_programming.problem.VType
-   :members:
-   :member-order: bysource
-   :undoc-members:
-   :exclude-members: capitalize, casefold, center, count, encode, endswith, expandtabs, find, format, format_map, index, isalnum, isalpha, isascii, isdecimal, isdigit, isidentifier, islower, isnumeric, isprintable, isspace, istitle, isupper, join, ljust, lower, lstrip, maketrans, partition, removeprefix, removesuffix, replace, rfind, rindex, rjust, rpartition, rsplit, rstrip, split, splitlines, startswith, strip, swapcase, title, translate, upper, zfill
 
 .. autoclass:: cuopt.linear_programming.problem.CType
    :members:

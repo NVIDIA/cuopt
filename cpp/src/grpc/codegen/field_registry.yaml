@@ -61,8 +61,14 @@
 #                          default" values). Also valid on enum-typed fields whose
 #                          proto3 zero (the first listed value) does not match the
 #                          documented C++ default — e.g. pdlp_solver_mode.
-#   to_proto_cast      – explicit cast type for C++ -> proto direction
 #   from_proto_cast    – explicit cast type for proto -> C++ direction
+#                        (e.g. wrapping a wire int32 into an enum class).
+#                        When set, the matching to-proto cast back to the
+#                        wire's C++ type is auto-derived from `type:`, so
+#                        the symmetric pair is captured by this one knob.
+#   to_proto_cast      – escape hatch: explicit cast type for C++ -> proto
+#                        direction.  Only needed when the auto-derivation
+#                        above is wrong; otherwise omit it.
 #
 # Per-section:
 #   cpp_type           – C++ type this section maps to
@@ -222,7 +228,6 @@ lp_solution:
       field_num: 1009
       type: int32
       getter: solved_by()
-      to_proto_cast: int32_t
       from_proto_cast: method_t
 
   arrays:
@@ -454,11 +459,7 @@ pdlp_settings:
       # zero (0), which is `>= 0` and would overwrite the C++ default with 0.
       field_num: 10
       type: int64
-      sentinel:
-        to_proto: "std::numeric_limits<i_t>::max()"
-        proto_value: -1
-        from_proto_guard: ">= 0"
-        from_proto_cast: "i_t"
+      sentinel: max_as_negative_1
       optional: true
 
     # Solver configuration
@@ -487,7 +488,6 @@ pdlp_settings:
   - presolver:
       field_num: 16
       type: int32
-      to_proto_cast: "int32_t"
       from_proto_cast: "presolver_t"
       optional: true
   - dual_postsolve:
@@ -561,7 +561,6 @@ pdlp_settings:
   - pdlp_precision:
       field_num: 30
       type: int32
-      to_proto_cast: "int32_t"
       from_proto_cast: "pdlp_precision_t"
       optional: true
 
@@ -618,7 +617,6 @@ mip_settings:
   - presolver:
       field_num: 12
       type: int32
-      to_proto_cast: "int32_t"
       from_proto_cast: "presolver_t"
       optional: true
   - mip_scaling:
@@ -644,11 +642,7 @@ mip_settings:
       # wire-encoded "default" value, optional for the omitted-field case).
       field_num: 15
       type: int32
-      sentinel:
-        to_proto: "std::numeric_limits<i_t>::max()"
-        proto_value: -1
-        from_proto_guard: ">= 0"
-        from_proto_cast: "i_t"
+      sentinel: max_as_negative_1
       optional: true
 
     # Branching
@@ -915,3 +909,82 @@ optimization_problem:
     quadratic_objective:
       setter: set_quadratic_objective_matrix
       fields: [Q_values, Q_indices, Q_offsets]
+
+  # Quadratic constraints (QCQP).  Each entry is a row with its own RHS plus
+  # the row's linear coefficients (linear_values/linear_indices) and the COO
+  # representation of the Q matrix (rows/cols/vals as three parallel arrays).
+  #
+  # Why a repeated message rather than a flat shared structure (as we use for
+  # linear constraints)?  Linear constraints fold together into a single CSR
+  # triple A_values / A_indices / A_offsets — three top-level arrays sized by
+  # nnz(A), independent of row count.  Quadratic constraints can't fold the
+  # same way: each row has its own independent Q matrix with no shared
+  # sparsity pattern, so the natural wire shape is one message per row with
+  # the row's per-entry arrays nested inside it.
+  #
+  # That nesting is why these arrays need the container-chunk path rather
+  # than the flat top-level chunk path.  Top-level arrays are chunked under a
+  # single (array_id) key; container arrays sit inside a repeated field and
+  # are chunked under (container_field_num, container_index, field_id) — the
+  # extra container_index disambiguates which repeated entry the chunk
+  # belongs to.  See ArrayChunk in cuopt_remote_data.proto.
+  #
+  # Per-entry arrays are unbounded in size so they travel via container chunks
+  # (container_field_num=25, container_index=<entry idx>, field_id=<0..4>).
+  # Per-entry scalars travel inline in the parent message (OptimizationProblem
+  # in the unary path; ChunkedProblemHeader in the chunked path).
+  #
+  # `constraint_row_type` is `char` in cpu_optimization_problem_t but rides
+  # the wire as int32 (proto3 has no `char`).  Decode is intentionally lenient
+  # — any int32 round-trips back as a char without range validation, matching
+  # how the local-solve binding accepts whatever the C++ caller supplies.
+  repeated_messages:
+  - quadratic_constraints:
+      field_num: 25
+      message_type: QuadraticConstraint
+      cpp_inner_type: "typename cpu_optimization_problem_t<i_t, f_t>::quadratic_constraint_t"
+      presence_check: has_quadratic_constraints()
+      getter: get_quadratic_constraints()
+      setter: set_quadratic_constraints
+      scalars:
+      - constraint_row_index:
+          field_num: 1
+          type: int32
+      - constraint_row_name:
+          field_num: 2
+          type: string
+      - constraint_row_type:
+          field_num: 3
+          type: int32
+          from_proto_cast: char
+      - rhs_value:
+          field_num: 4
+      arrays:
+      - linear_values:
+          field_num: 5
+          array_id: 0
+      - linear_indices:
+          field_num: 6
+          array_id: 1
+          type: repeated int32
+      - rows:
+          field_num: 7
+          array_id: 2
+          type: repeated int32
+      - cols:
+          field_num: 8
+          array_id: 3
+          type: repeated int32
+      - vals:
+          field_num: 9
+          array_id: 4
+      # Companion-array length invariants enforced on decode.  Each [values,
+      # indices] pair must have equal size, mirroring the top-level
+      # setter_groups check (e.g., set_csr_constraint_matrix).  A mismatch
+      # throws std::invalid_argument before set_quadratic_constraints sees the
+      # row, so a malformed client cannot land an inconsistent QC entry in the
+      # solver.
+      companion_pairs:
+        - [linear_values, linear_indices]
+        - [rows, cols]
+        - [cols, vals]

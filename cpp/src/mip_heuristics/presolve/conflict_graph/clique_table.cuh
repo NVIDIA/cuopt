@@ -25,6 +25,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <span>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -80,13 +81,10 @@ struct csr_var_map_t {
   }
   i_t n_keys() const { return offsets.empty() ? 0 : static_cast<i_t>(offsets.size() - 1); }
   i_t slice_size(i_t v) const { return offsets[v + 1] - offsets[v]; }
-  const i_t* slice_begin(i_t v) const
+  // Range-for friendly view of the sorted slice for vertex v.
+  std::span<const i_t> slice(i_t v) const
   {
-    return indices.empty() ? nullptr : indices.data() + offsets[v];
-  }
-  const i_t* slice_end(i_t v) const
-  {
-    return indices.empty() ? nullptr : indices.data() + offsets[v + 1];
+    return {indices.data() + offsets[v], (size_t)(offsets[v + 1] - offsets[v])};
   }
   // O(1) summary used by cut/extension cost-budget heuristics.
   double avg_slice_size() const
@@ -96,10 +94,8 @@ struct csr_var_map_t {
   }
   bool slice_contains(i_t v, i_t value) const
   {
-    const i_t* b = slice_begin(v);
-    const i_t* e = slice_end(v);
-    if (b == nullptr) { return false; }
-    return std::binary_search(b, e, value);
+    auto s = slice(v);
+    return std::binary_search(s.begin(), s.end(), value);
   }
 
   // Build CSR from unsorted (src, value) pairs. Each output slice is sorted
@@ -194,15 +190,10 @@ struct clique_table_t {
   std::vector<std::vector<i_t>> first;
   // keeps the additional cliques
   std::vector<addtl_clique_t<i_t, f_t>> addtl_cliques;
-  // var_idx → indices of `first` cliques that contain var_idx (CSR).
   csr_var_map_t<i_t> var_clique_first;
-  // var_idx → indices of `addtl_cliques` containing var_idx (as the extension
-  // vertex or as a base-suffix member).
   csr_var_map_t<i_t> var_clique_addtl;
   // var_idx -> position mapping for each first clique, enabling O(1) membership/position checks
   std::vector<std::unordered_map<i_t, i_t>> first_var_positions;
-  // var_idx → pairwise edges from cliques demoted by remove_small_cliques.
-  // Symmetric: edge (u, v) appears in both u's and v's slices.
   csr_var_map_t<i_t> small_clique_adj;
   // degrees of each vertex
   std::vector<i_t> var_degrees;

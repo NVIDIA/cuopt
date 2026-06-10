@@ -310,18 +310,14 @@ std::unordered_set<i_t> clique_table_t<i_t, f_t>::get_adj_set_of_var(i_t var_idx
   std::unordered_set<i_t> adj_set;
 
   // First-clique edges: every member of each first-clique containing var_idx.
-  for (const i_t* it = var_clique_first.slice_begin(var_idx);
-       it != var_clique_first.slice_end(var_idx);
-       ++it) {
-    const auto& c = first[*it];
+  for (i_t clique_idx : var_clique_first.slice(var_idx)) {
+    const auto& c = first[clique_idx];
     adj_set.insert(c.begin(), c.end());
   }
 
   // Addtl-clique edges.
-  for (const i_t* it = var_clique_addtl.slice_begin(var_idx);
-       it != var_clique_addtl.slice_end(var_idx);
-       ++it) {
-    const auto& a = addtl_cliques[*it];
+  for (i_t addtl_idx : var_clique_addtl.slice(var_idx)) {
+    const auto& a = addtl_cliques[addtl_idx];
     if (a.vertex_idx == var_idx) {
       // var_idx is the extension vertex; new neighbors are the base suffix.
       const auto& base = first[a.clique_idx];
@@ -332,10 +328,8 @@ std::unordered_set<i_t> clique_table_t<i_t, f_t>::get_adj_set_of_var(i_t var_idx
     }
   }
 
-  for (const i_t* it = small_clique_adj.slice_begin(var_idx);
-       it != small_clique_adj.slice_end(var_idx);
-       ++it) {
-    adj_set.insert(*it);
+  for (i_t adj_var : small_clique_adj.slice(var_idx)) {
+    adj_set.insert(adj_var);
   }
 
   // Add the complement of var_idx to the adjacency set
@@ -370,25 +364,19 @@ bool clique_table_t<i_t, f_t>::check_adjacency(i_t var_idx1, i_t var_idx2) const
       probe_var  = var_idx2;
       target_var = var_idx1;
     }
-    for (const i_t* it = var_clique_first.slice_begin(probe_var);
-         it != var_clique_first.slice_end(probe_var);
-         ++it) {
-      if (first_var_positions[*it].count(target_var) > 0) { return true; }
+    for (i_t clique_idx : var_clique_first.slice(probe_var)) {
+      if (first_var_positions[clique_idx].count(target_var) > 0) { return true; }
     }
   }
 
-  for (const i_t* it = var_clique_addtl.slice_begin(var_idx1);
-       it != var_clique_addtl.slice_end(var_idx1);
-       ++it) {
-    const auto& addtl   = addtl_cliques[*it];
+  for (i_t addtl_idx : var_clique_addtl.slice(var_idx1)) {
+    const auto& addtl   = addtl_cliques[addtl_idx];
     const auto& pos_map = first_var_positions[addtl.clique_idx];
     auto pos_it         = pos_map.find(var_idx2);
     if (pos_it != pos_map.end() && pos_it->second >= addtl.start_pos_on_clique) { return true; }
   }
-  for (const i_t* it = var_clique_addtl.slice_begin(var_idx2);
-       it != var_clique_addtl.slice_end(var_idx2);
-       ++it) {
-    const auto& addtl   = addtl_cliques[*it];
+  for (i_t addtl_idx : var_clique_addtl.slice(var_idx2)) {
+    const auto& addtl   = addtl_cliques[addtl_idx];
     const auto& pos_map = first_var_positions[addtl.clique_idx];
     auto pos_it         = pos_map.find(var_idx1);
     if (pos_it != pos_map.end() && pos_it->second >= addtl.start_pos_on_clique) { return true; }

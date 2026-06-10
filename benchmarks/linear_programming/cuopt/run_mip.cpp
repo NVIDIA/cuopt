@@ -6,7 +6,7 @@
 /* clang-format on */
 #include "initial_solution_reader.hpp"
 #include "mip_test_instances.hpp"
-#include "miplib2017_optima.hpp"
+#include "miplib2017_bks.hpp"
 
 #include <cstdio>
 #include <cuopt/linear_programming/io/parser.hpp>
@@ -241,11 +241,11 @@ int run_single_file(std::string file_path,
     CUOPT_LOG_INFO("%s: no solution found", base_filename.c_str());
   }
 
-  // Per-instance "gap closed to optimum" stat. Emits a single
+  // Per-instance "gap closed to BKS" stat. Emits a single
   // grep-friendly "MIPLIBGapStat ..." line via printf so cross-branch
   // comparison is just `grep '^MIPLIBGapStat' branchA.log` then diff.
-  // Optima are looked up from the in-source MIPLIB2017 benchmark-set
-  // table (miplib2017_optima.hpp); unknown instances emit "opt=TBD"
+  // BKS values are looked up from the in-source MIPLIB2017 benchmark-set
+  // table (miplib2017_bks.hpp); unknown instances emit "opt=TBD"
   // and infeasibility-flagged instances emit "opt=Infeasible".
   {
     const double _gap_seconds = std::chrono::duration_cast<std::chrono::milliseconds>(

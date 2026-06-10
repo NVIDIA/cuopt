@@ -96,7 +96,9 @@ void result_retrieval_thread()
                 to_fd = worker_pipes[worker_idx].to_worker_fd;
               }
               auto pipe_t0 = std::chrono::steady_clock::now();
-              send_ok      = write_chunked_request_to_pipe(to_fd, chunked.header, chunked.chunks);
+              PipeWriteStatus chunked_status =
+                write_chunked_request_to_pipe(to_fd, chunked.header, chunked.chunks);
+              send_ok = (chunked_status == PipeWriteStatus::Success);
               if (send_ok && config.verbose) {
                 auto pipe_us = std::chrono::duration_cast<std::chrono::microseconds>(
                                  std::chrono::steady_clock::now() - pipe_t0)
@@ -108,6 +110,26 @@ void result_retrieval_thread()
                                  chunked.chunks.size(),
                                  worker_idx,
                                  job_id.c_str());
+              } else if (chunked_status == PipeWriteStatus::ValidationFailed) {
+                // Bad client input — reject the job but leave the worker
+                // alone (no bytes were sent on the pipe).
+                SERVER_LOG_ERROR(
+                  "[Server] Rejected malformed chunked job %s for worker %d "
+                  "(validation failed; worker unaffected)",
+                  job_id.c_str(),
+                  worker_idx);
+              } else if (chunked_status == PipeWriteStatus::PipeFailed) {
+                // Pipe is in an unknown state — the worker may be blocked
+                // reading bytes that will never arrive.  Kill it so it gets
+                // reaped and respawned by the worker monitor thread.
+                pid_t pid = job_queue[i].worker_pid.load(std::memory_order_relaxed);
+                SERVER_LOG_ERROR(
+                  "[Server] Pipe write to worker %d failed for job %s; "
+                  "killing worker pid=%d to avoid hung pipe",
+                  worker_idx,
+                  job_id.c_str(),
+                  static_cast<int>(pid));
+                if (pid > 0) kill(pid, SIGKILL);
               }
             }
           } else {

@@ -215,32 +215,6 @@ std::string user_mip_gap(const lp_problem_t<i_t, f_t>& lp, f_t obj_value, f_t lo
   }
 }
 
-#ifdef SHOW_DIVING_TYPE
-inline char feasible_solution_symbol(search_strategy_t strategy)
-{
-  switch (strategy) {
-    case search_strategy_t::BEST_FIRST: return 'B';
-    case search_strategy_t::COEFFICIENT_DIVING: return 'C';
-    case search_strategy_t::LINE_SEARCH_DIVING: return 'L';
-    case search_strategy_t::PSEUDOCOST_DIVING: return 'P';
-    case search_strategy_t::GUIDED_DIVING: return 'G';
-    default: return 'U';
-  }
-}
-#else
-inline char feasible_solution_symbol(search_strategy_t strategy)
-{
-  switch (strategy) {
-    case search_strategy_t::BEST_FIRST: return 'B';
-    case search_strategy_t::COEFFICIENT_DIVING: return 'D';
-    case search_strategy_t::LINE_SEARCH_DIVING: return 'D';
-    case search_strategy_t::PSEUDOCOST_DIVING: return 'D';
-    case search_strategy_t::GUIDED_DIVING: return 'D';
-    default: return 'U';
-  }
-}
-#endif
-
 }  // namespace
 
 template <typename i_t, typename f_t>
@@ -813,15 +787,20 @@ void branch_and_bound_t<i_t, f_t>::add_feasible_solution(f_t leaf_objective,
 {
   bool send_solution = false;
 
+  const bool log_diving_type = settings_.diving_settings.show_type;
   settings_.log.debug("%c found a feasible solution with obj=%.10e.\n",
-                      feasible_solution_symbol(thread_type),
+                      feasible_solution_symbol(thread_type, log_diving_type),
                       compute_user_objective(original_lp_, leaf_objective));
 
   mutex_upper_.lock();
   if (improves_incumbent(leaf_objective)) {
     incumbent_.set_incumbent_solution(leaf_objective, leaf_solution);
     upper_bound_ = std::min(upper_bound_.load(), leaf_objective);
-    report(feasible_solution_symbol(thread_type), leaf_objective, get_lower_bound(), leaf_depth, 0);
+    report(feasible_solution_symbol(thread_type, log_diving_type),
+           leaf_objective,
+           get_lower_bound(),
+           leaf_depth,
+           0);
     send_solution = true;
   }
 
@@ -1763,22 +1742,24 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
     settings_.bnb_steal_chance >= 0 ? settings_.bnb_steal_chance : MIP_DEFAULT_STEAL_CHANCE;
   node_queue_t<i_t, f_t>& node_queue = worker->node_queue;
 
-  worker->calculate_num_diving_workers(bfs_worker_pool_.size(),
-                                       diving_worker_pool_.size(),
-                                       has_solver_space_incumbent(),
-                                       settings_.diving_settings);
+  mip_diving_hyper_params_t<i_t, f_t> diving_settings = settings_.diving_settings;
+  if (diving_settings.guided_diving != 0 && !has_solver_space_incumbent()) {
+    diving_settings.guided_diving = 0;
+  }
+
+  worker->calculate_num_diving_workers(
+    bfs_worker_pool_.size(), diving_worker_pool_.size(), diving_settings);
 
   while (solver_status_ == mip_status_t::UNSET && abs_gap > settings_.absolute_mip_gap_tol &&
          rel_gap > settings_.relative_mip_gap_tol && node_queue.best_first_queue_size() > 0) {
     // If the guided diving was disabled previously due to the lack of an incumbent solution,
     // re-enable as soon as a new incumbent is found.
     if (diving_worker_pool_.size() > 0 && settings_.diving_settings.guided_diving != 0 &&
-        worker->max_diving_workers[GUIDED_DIVING] == 0) {
+        diving_settings.guided_diving == 0) {
       if (has_solver_space_incumbent()) {
-        worker->calculate_num_diving_workers(bfs_worker_pool_.size(),
-                                             diving_worker_pool_.size(),
-                                             has_solver_space_incumbent(),
-                                             settings_.diving_settings);
+        diving_settings.guided_diving = 1;
+        worker->calculate_num_diving_workers(
+          bfs_worker_pool_.size(), diving_worker_pool_.size(), diving_settings);
       }
     }
 
@@ -2363,13 +2344,9 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   }
   root_objective_ = compute_objective(original_lp_, root_relax_soln_.x);
 
-  // Publish after every successful post-cut LP resolve so any
-  // early-exit path below (NUMERICAL, TIME_LIMIT, gap-tolerance
-  // exit) still leaves benchmark_info->root_lp_with_cuts pointing
-  // at the most recent valid LP-with-cuts objective.
   if (settings_.benchmark_info_ptr != nullptr) {
     settings_.benchmark_info_ptr->root_lp_with_cuts =
-      static_cast<double>(compute_user_objective(original_lp_, root_objective_));
+      compute_user_objective(original_lp_, root_objective_);
   }
 
   f_t remove_cuts_start_time = tic();
@@ -2599,10 +2576,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   cut_info_t<i_t, f_t> cut_info;
 
   if (num_fractional == 0) {
-    // LP relaxation already integer-feasible — solved at the root with
-    // no cuts. Publish both bounds equal to the root LP value so the
-    // gap-closed-by-cuts line still has a finite, meaningful entry
-    // (the printer reports 100% closed when total integrality gap ~= 0).
     if (settings_.benchmark_info_ptr != nullptr) {
       const double v = static_cast<double>(compute_user_objective(original_lp_, root_objective_));
       settings_.benchmark_info_ptr->root_lp_no_cuts   = v;
@@ -2650,7 +2623,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   // gap-closed-by-cuts without instrumenting the cut loop directly.
   if (settings_.benchmark_info_ptr != nullptr) {
     settings_.benchmark_info_ptr->root_lp_no_cuts =
-      static_cast<double>(compute_user_objective(original_lp_, root_relax_objective));
+      compute_user_objective(original_lp_, root_relax_objective);
   }
 
   constexpr bool enable_root_cut_cpufj = true;
@@ -2696,10 +2669,12 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       // value so the gap-closed line still has a non-NaN dual bound.
       if (settings_.benchmark_info_ptr != nullptr) {
         settings_.benchmark_info_ptr->root_lp_with_cuts =
-          static_cast<double>(compute_user_objective(original_lp_, root_objective_));
+          compute_user_objective(original_lp_, root_objective_);
       }
       set_solution_at_root(solution, cut_info);
-      publish_cut_generation_time();
+      if (settings_.benchmark_info_ptr != nullptr) {
+        settings_.benchmark_info_ptr->cut_generation_time_sec = toc(cut_generation_start_time);
+      }
       signal_extend_cliques_.store(true, std::memory_order_release);
 #pragma omp taskwait depend(in : *clique_signal)
       return mip_status_t::OPTIMAL;
@@ -2739,7 +2714,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     }
 
     if (cut_pass_result.action == cut_pass_action_t::RETURN) {
-      publish_cut_generation_time(cut_pass_result.status == mip_status_t::TIME_LIMIT);
+      if (settings_.benchmark_info_ptr != nullptr) {
+        settings_.benchmark_info_ptr->cut_generation_time_sec = toc(cut_generation_start_time);
+      }
       signal_extend_cliques_.store(true, std::memory_order_release);
 #pragma omp taskwait depend(in : *clique_signal)
       return cut_pass_result.status;
@@ -2765,13 +2742,15 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   // Publish the post-cuts root LP value.
   if (settings_.benchmark_info_ptr != nullptr) {
     settings_.benchmark_info_ptr->root_lp_with_cuts =
-      static_cast<double>(compute_user_objective(original_lp_, root_objective_));
+      compute_user_objective(original_lp_, root_objective_);
   }
 
   print_cut_info(settings_, cut_info);
   f_t cut_generation_time = toc(cut_generation_start_time);
   // Publish cut-generation time for reporting.
-  publish_cut_generation_time();
+  if (settings_.benchmark_info_ptr != nullptr) {
+    settings_.benchmark_info_ptr->cut_generation_time_sec = cut_generation_time;
+  }
   if (cut_info.has_cuts()) {
     settings_.log.printf("Cut generation time: %.2f seconds\n", cut_generation_time);
     settings_.log.printf("Cut pool size  : %d\n", cut_pool_size);
@@ -3603,7 +3582,7 @@ void branch_and_bound_t<i_t, f_t>::deterministic_process_worker_solutions(
       i_t nodes_unexplored = exploration_stats_.nodes_unexplored.load();
 
       search_strategy_t worker_type = get_worker_type(pool, sol->worker_id);
-      report(feasible_solution_symbol(worker_type),
+      report(feasible_solution_symbol(worker_type, settings_.diving_settings.show_type),
              sol->objective,
              deterministic_lower,
              sol->depth,
