@@ -20,6 +20,7 @@
 #include <memory>
 #include <numeric>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -287,8 +288,7 @@ class cut_pool_t {
   }
 
   // Add a cut in the form: cut'*x >= rhs.
-  // We expect that the cut is violated by the current relaxation xstar
-  // cut'*xstart < rhs
+  // We expect that the cut is violated by the current relaxation xstar.
   void add_cut(cut_type_t cut_type, const inequality_t<i_t, f_t>& cut);
 
   void score_cuts(std::vector<f_t>& x_relax);

@@ -176,9 +176,6 @@ message("-- Host target architecture = '${CMAKE_SYSTEM_PROCESSOR}'")
 
 # make the flags global in order to propagate flags to test cmake files
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr --expt-extended-lambda")
-if (${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.9)
-    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -static-global-template-stub=false")
-endif ()
 list(APPEND CUOPT_CUDA_FLAGS -Werror=cross-execution-space-call -Wno-deprecated-declarations -Xcompiler=-Werror --default-stream=per-thread)
 if ("${CMAKE_CUDA_HOST_COMPILER}" MATCHES "clang" OR "${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
     list(APPEND CUOPT_CUDA_FLAGS -Xcompiler=-Wall)
@@ -543,7 +540,6 @@ target_include_directories(cuopt
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
         INTERFACE
         "$<INSTALL_INTERFACE:include>"
-        ${CUDSS_INCLUDE}
 )
 
 # Link PSLP by file to avoid export dependency tracking
