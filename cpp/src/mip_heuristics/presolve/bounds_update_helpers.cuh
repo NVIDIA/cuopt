@@ -41,9 +41,10 @@ inline __device__ f_t update_ub(f_t curr_ub, f_t coeff, f_t delta_min_act, f_t d
 }
 
 template <typename f_t>
-inline __device__ bool accept_candidate_bound_update(f_t bound, f_t abs_tol)
+inline __device__ bool accept_candidate_bound_update(f_t bound,
+                                                     f_t abs_tol,
+                                                     f_t candidate_bound_scale)
 {
-  constexpr f_t candidate_bound_scale = f_t{1e-14};
   return abs(bound) * candidate_bound_scale <= abs_tol;
 }
 
@@ -197,10 +198,12 @@ inline __device__ thrust::pair<f_t, f_t> update_bounds_per_cnst(
   auto new_lb        = update_lb(thrust::get<0>(bnd), coeff, delta_min_act, delta_max_act);
   auto new_ub        = update_ub(thrust::get<1>(bnd), coeff, delta_min_act, delta_max_act);
 
-  if (accept_candidate_bound_update(new_lb, pb.tolerances.absolute_tolerance)) {
+  if (accept_candidate_bound_update(
+        new_lb, pb.tolerances.absolute_tolerance, upd.candidate_bound_scale)) {
     thrust::get<0>(bnd) = new_lb;
   }
-  if (accept_candidate_bound_update(new_ub, pb.tolerances.absolute_tolerance)) {
+  if (accept_candidate_bound_update(
+        new_ub, pb.tolerances.absolute_tolerance, upd.candidate_bound_scale)) {
     thrust::get<1>(bnd) = new_ub;
   }
   return bnd;
