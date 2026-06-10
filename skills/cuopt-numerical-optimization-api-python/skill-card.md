@@ -9,7 +9,7 @@ NVIDIA <br>
 ### License/Terms of Use: <br>
 Apache 2.0 <br>
 ## Use Case: <br>
-Developers and engineers modeling and solving linear programming, mixed-integer linear programming, and quadratic programming problems using the NVIDIA cuOpt GPU-accelerated Python API. <br>
+Developers and engineers solving linear, mixed-integer, and quadratic programming problems using NVIDIA cuOpt’s GPU-accelerated Python API for scheduling, portfolio optimization, production planning, and least-squares fitting. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
@@ -19,25 +19,25 @@ Risk: Review before execution as proposals could introduce incorrect or misleadi
 Mitigation: Review and scan skill before deployment. <br>
 
 ## Reference(s): <br>
-- [QP Examples Reference](references/qp_examples.md) <br>
+- [QP Examples (least-squares, maximization workaround, matrix form)](references/qp_examples.md) <br>
 - [cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html) <br>
 - [cuOpt Examples Repository](https://github.com/NVIDIA/cuopt-examples) <br>
 
 
 ## Skill Output: <br>
-**Output Type(s):** [Code, Analysis] <br>
-**Output Format:** [Python code with solver output] <br>
+**Output Type(s):** [Code, API Calls] <br>
+**Output Format:** [Python code with inline solver configuration] <br>
 **Output Parameters:** [1D] <br>
 **Other Properties Related to Output:** [None] <br>
 
 ## Evaluation Agents Used: <br>
-- claude-code <br>
-- codex <br>
+- `claude-code` <br>
+- `codex` <br>
 
 
 
 ## Evaluation Tasks: <br>
-Evaluated against 4 evaluation tasks (4 positive skill-activation cases) using the NVSkills-Eval external profile in an astra-sandbox environment. <br>
+Evaluated against 4 evaluation tasks (NVSkills-Eval external profile, astra-sandbox environment, 1 attempt per task). <br>
 
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
@@ -62,10 +62,10 @@ Underlying evaluation signals used in this run: <br>
 | Dimension | Num | `claude-code` | `codex` |
 |---|---:|---:|---:|
 | Security | 4 | 100% (+0%) | 100% (+0%) |
-| Correctness | 4 | 62% (+26%) | 84% (+30%) |
-| Discoverability | 4 | 50% (+44%) | 62% (+34%) |
-| Effectiveness | 4 | 62% (+14%) | 80% (+34%) |
-| Efficiency | 4 | 61% (+36%) | 60% (+24%) |
+| Correctness | 4 | 65% (+29%) | 64% (+8%) |
+| Discoverability | 4 | 50% (+44%) | 44% (+25%) |
+| Effectiveness | 4 | 66% (+17%) | 56% (+3%) |
+| Efficiency | 4 | 61% (+37%) | 44% (+17%) |
 
 ## Skill Version(s): <br>
 26.08.00 (source: frontmatter) <br>

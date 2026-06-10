@@ -56,16 +56,16 @@ Task composition is derived from the evaluation dataset when possible. Entries w
 | Dimension | Num | `claude-code` | `codex` |
 |---|---:|---:|---:|
 | Security | 4 | 100% (+0%) | 100% (+0%) |
-| Correctness | 4 | 62% (+26%) | 84% (+30%) |
-| Discoverability | 4 | 50% (+44%) | 62% (+34%) |
-| Effectiveness | 4 | 62% (+14%) | 80% (+34%) |
-| Efficiency | 4 | 61% (+36%) | 60% (+24%) |
+| Correctness | 4 | 65% (+29%) | 64% (+8%) |
+| Discoverability | 4 | 50% (+44%) | 44% (+25%) |
+| Effectiveness | 4 | 66% (+17%) | 56% (+3%) |
+| Efficiency | 4 | 61% (+37%) | 44% (+17%) |
 
 Score values show skill-assisted performance. Values in parentheses show uplift versus the no-skill baseline when baseline data is available.
 
 ## Tier 1: Static Validation Summary
 
-Tier 1 validation passed with observations. NVSkills-Eval ran 9 checks and found 11 total findings.
+Tier 1 validation passed with observations. NVSkills-Eval ran 9 checks and found 10 total findings.
 
 Top findings:
 
@@ -73,7 +73,7 @@ Top findings:
 - MEDIUM PII/phone_numbers: International phone number (`assets/mps_solver/results.md:69`)
 - MEDIUM SCHEMA/body_recommended_section: Missing recommended section: '## Instructions' (`skills/cuopt-numerical-optimization-api-python/SKILL.md`)
 - MEDIUM SCHEMA/body_recommended_section: Missing recommended section: '## Examples' (`skills/cuopt-numerical-optimization-api-python/SKILL.md`)
-- MEDIUM SECURITY/Unknown (SQP-2): The code downloads a file from a hardcoded external URL (miplib.zib.de) using urllib.request.urlretrieve without any int (`assets/mps_solver/model.py:39`)
+- LOW QUALITY/quality_discoverability: Description doesn't mention WHEN to use this skill (`skills/cuopt-numerical-optimization-api-python/SKILL.md`)
 
 ## Tier 2: Deduplication Summary
 
@@ -81,13 +81,13 @@ Tier 2 validation reported findings. NVSkills-Eval ran 2 checks and found 9 tota
 
 Top findings:
 
+- HIGH DUPLICATE/duplicate: Duplicate content found across assets/lp_warmstart/README.md and assets/lp_warmstart/model.py:
+  "# LP PDLP Warmstart" in assets/lp_warmstart/README.md (lines 1-5)
+  vs "(module docstring)" in assets/lp_warmstart/model.py (lines 1-4) (`assets/lp_warmstart/README.md:1`)
 - HIGH DUPLICATE/duplicate: Duplicate content found across SKILL.md and assets/mps_solver/README.md and references/qp_examples.md:
   "# Solve" in SKILL.md (lines 63-67)
   vs "# Configure and solve" in assets/mps_solver/README.md (lines 76-80)
   vs "# Solve" in references/qp_examples.md (lines 47-51) (`SKILL.md:63`)
-- HIGH DUPLICATE/duplicate: Duplicate content found across assets/lp_warmstart/README.md and assets/lp_warmstart/model.py:
-  "# LP PDLP Warmstart" in assets/lp_warmstart/README.md (lines 1-5)
-  vs "(module docstring)" in assets/lp_warmstart/model.py (lines 1-4) (`assets/lp_warmstart/README.md:1`)
 - HIGH DUPLICATE/duplicate: Duplicate content found across assets/milp_basic/README.md and assets/milp_basic/model.py:
   "# Minimal MILP" in assets/milp_basic/README.md (lines 1-10)
   vs "(module docstring)" in assets/milp_basic/model.py (lines 1-6) (`assets/milp_basic/README.md:1`)
