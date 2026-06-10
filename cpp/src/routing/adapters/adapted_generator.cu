@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -125,6 +125,7 @@ void adapted_generator_t<i_t, f_t, REQUEST>::generate_solution(
   }
 
   resource.ges.repair_empty_routes();
+  if (dim_info.has_dimension(dim_t::BREAK)) { resource.ges.try_squeeze_breaks_feasible(); }
 
   sol.populate_host_data(true);
   cuopt_func_call(sol.check_device_host_coherence());
