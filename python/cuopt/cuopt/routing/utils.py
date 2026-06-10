@@ -789,9 +789,9 @@ def save_data_model_to_yaml(data_model, solver_settings, solution, fname):
     b_r_fp = solver_settings.get_best_results_file_path()
     b_r_i = solver_settings.get_best_results_interval()
     if b_r_fp:
-        if b_r_i:
-            yamldict.update({"best_result_path", b_r_fp})
-            yamldict.update({"best_result_interval", b_r_i})
+        if b_r_i is not None:
+            yamldict["best_result_path"] = b_r_fp
+            yamldict["best_result_interval"] = b_r_i
 
     if solution.get_status() == 0:
         sol_df = solution.get_route()

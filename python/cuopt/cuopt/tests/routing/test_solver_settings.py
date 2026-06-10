@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import numpy as np
+import yaml
 
 import cudf
 
@@ -52,7 +53,9 @@ def test_dump_config():
     """Test SolverSettings solve with config file"""
     s = routing.SolverSettings()
     config_file = "solver_cfg.yaml"
+    best_results_file = "best_results.txt"
     s.dump_config_file(config_file)
+    s.dump_best_results(best_results_file, 0)
     assert s.get_config_file_name() == config_file
 
     # Small example data model: 3 locations, 1 vehicle
@@ -65,6 +68,11 @@ def test_dump_config():
     s.set_time_limit(2)
     routing_solution = routing.Solve(dm, s)
     assert routing_solution.get_status() == 0
+
+    with open(config_file) as f:
+        config = yaml.safe_load(f)
+    assert config["best_result_path"] == best_results_file
+    assert config["best_result_interval"] == 0
 
     # Load from written solver_cfg.yaml and solve again
     dm_from_yaml, s_from_yaml = utils.create_data_model_from_yaml(config_file)
