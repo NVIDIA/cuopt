@@ -7,11 +7,11 @@ This benchmark summarizes 3-Tier Evaluation from NVSkills-Eval results for the s
 ## Evaluation Summary
 
 - Skill: `cuopt-numerical-optimization-formulation`
-- Evaluation date: 2026-05-29
+- Evaluation date: 2026-06-10
 - NVSkills-Eval profile: `external`
-- Environment: `local`
-- Dataset: 1 evaluation tasks
-- Attempts per task: 2
+- Environment: `astra-sandbox`
+- Dataset: 3 evaluation tasks
+- Attempts per task: 1
 - Pass threshold: 50%
 - Overall verdict: PASS
 
@@ -42,9 +42,9 @@ Underlying evaluation signals used in this run:
 
 ## Test Tasks
 
-The benchmark dataset contained 1 evaluation tasks:
+The benchmark dataset contained 3 evaluation tasks:
 
-- Positive tasks: 1 tasks where the skill was expected to activate.
+- Positive tasks: 3 tasks where the skill was expected to activate.
 - Negative tasks: 0 tasks where no skill was expected.
 - Unlabeled tasks: 0 tasks where positive/negative intent could not be inferred.
 
@@ -54,11 +54,11 @@ Task composition is derived from the evaluation dataset when possible. Entries w
 
 | Dimension | Num | `claude-code` | `codex` |
 |---|---:|---:|---:|
-| Security | 2 | 100% (+0%) | 100% (+0%) |
-| Correctness | 2 | 100% (+0%) | 97% (+28%) |
-| Discoverability | 2 | 100% (+0%) | 97% (+66%) |
-| Effectiveness | 2 | 96% (+0%) | 90% (-5%) |
-| Efficiency | 2 | 93% (-0%) | 96% (+51%) |
+| Security | 3 | 100% (+0%) | 100% (+0%) |
+| Correctness | 3 | 60% (+17%) | 47% (+13%) |
+| Discoverability | 3 | 33% (+33%) | 0% (+0%) |
+| Effectiveness | 3 | 79% (-0%) | 77% (+14%) |
+| Efficiency | 3 | 49% (+22%) | 28% (-0%) |
 
 Score values show skill-assisted performance. Values in parentheses show uplift versus the no-skill baseline when baseline data is available.
 

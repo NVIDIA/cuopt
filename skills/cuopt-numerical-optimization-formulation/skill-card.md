@@ -9,7 +9,7 @@ NVIDIA <br>
 ### License/Terms of Use: <br>
 Apache 2.0 <br>
 ## Use Case: <br>
-Developers and engineers who need to formulate linear, mixed-integer linear, or quadratic optimization problems using cuOpt, translating natural-language problem descriptions into structured mathematical formulations. <br>
+Developers and engineers formulating linear programming (LP), mixed-integer linear programming (MILP), and quadratic programming (QP) optimization problems for the NVIDIA cuOpt solver. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
@@ -19,8 +19,8 @@ Risk: Review before execution as proposals could introduce incorrect or misleadi
 Mitigation: Review and scan skill before deployment. <br>
 
 ## Reference(s): <br>
-- [cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html) <br>
-- [cuopt-examples](https://github.com/NVIDIA/cuopt-examples) <br>
+- [NVIDIA cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html) <br>
+- [cuOpt Examples](https://github.com/NVIDIA/cuopt-examples) <br>
 
 
 ## Skill Output: <br>
@@ -36,7 +36,7 @@ Mitigation: Review and scan skill before deployment. <br>
 
 
 ## Evaluation Tasks: <br>
-Evaluated against 1 internal evaluation task with 2 attempts per task via NVSkills-Eval (external profile). <br>
+Evaluated against 3 evaluation tasks (3 positive skill-activation cases) using NVSkills-Eval external profile in astra-sandbox environment. <br>
 
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
@@ -60,11 +60,11 @@ Underlying evaluation signals used in this run: <br>
 ## Evaluation Results: <br>
 | Dimension | Num | `claude-code` | `codex` |
 |---|---:|---:|---:|
-| Security | 2 | 100% (+0%) | 100% (+0%) |
-| Correctness | 2 | 100% (+0%) | 97% (+28%) |
-| Discoverability | 2 | 100% (+0%) | 97% (+66%) |
-| Effectiveness | 2 | 96% (+0%) | 90% (-5%) |
-| Efficiency | 2 | 93% (-0%) | 96% (+51%) |
+| Security | 3 | 100% (+0%) | 100% (+0%) |
+| Correctness | 3 | 60% (+17%) | 47% (+13%) |
+| Discoverability | 3 | 33% (+33%) | 0% (+0%) |
+| Effectiveness | 3 | 79% (-0%) | 77% (+14%) |
+| Efficiency | 3 | 49% (+22%) | 28% (-0%) |
 
 ## Skill Version(s): <br>
 26.08.00 (source: frontmatter) <br>
