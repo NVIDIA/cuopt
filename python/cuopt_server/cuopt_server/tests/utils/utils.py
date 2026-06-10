@@ -55,6 +55,7 @@ def get_routes(
     cost_waypoint_graph: Optional[Dict] = None,
     travel_time_waypoint_graph: Optional[Dict] = None,
     cost_matrix: Optional[Dict[int, List[List[float]]]] = None,
+    distance_matrix: Optional[Dict[int, List[List[float]]]] = None,
     travel_time_matrix: Optional[Dict[int, List[List[float]]]] = None,
     vehicle_locations: Optional[List[List[int]]] = None,
     vehicle_ids: Optional[List[str]] = None,
@@ -71,8 +72,10 @@ def get_routes(
     drop_return_trips: Optional[List[bool]] = None,
     min_vehicles: Optional[int] = None,
     vehicle_max_costs: Optional[List[float]] = None,
+    vehicle_max_distances: Optional[List[float]] = None,
     vehicle_max_times: Optional[List[float]] = None,
     vehicle_fixed_costs: Optional[List[float]] = None,
+    vehicle_distance_tiers: Optional[List[List[dict]]] = None,
     task_locations: Optional[List[int]] = None,
     demand: Optional[List[List[int]]] = None,
     pickup_and_delivery_pairs: Optional[List[List[int]]] = None,
@@ -103,6 +106,8 @@ def get_routes(
 
     options["cost_matrix_data"] = generate_json_data(data=cost_matrix)
 
+    options["distance_matrix_data"] = generate_json_data(data=distance_matrix)
+
     options["travel_time_matrix_data"] = generate_json_data(
         data=travel_time_matrix
     )
@@ -124,8 +129,10 @@ def get_routes(
         drop_return_trips=drop_return_trips,
         min_vehicles=min_vehicles,
         vehicle_max_costs=vehicle_max_costs,
+        vehicle_max_distances=vehicle_max_distances,
         vehicle_max_times=vehicle_max_times,
         vehicle_fixed_costs=vehicle_fixed_costs,
+        vehicle_distance_tiers=vehicle_distance_tiers,
     )
 
     # task data
@@ -175,6 +182,7 @@ def cuopt_service_sync(
     cost_waypoint_graph: Optional[Dict] = None,
     travel_time_waypoint_graph: Optional[Dict] = None,
     cost_matrix: Optional[Dict[int, List[List[float]]]] = None,
+    distance_matrix: Optional[Dict[int, List[List[float]]]] = None,
     travel_time_matrix: Optional[Dict[int, List[List[float]]]] = None,
     vehicle_locations: Optional[List[List[int]]] = None,
     vehicle_ids: Optional[List[str]] = None,
@@ -191,8 +199,10 @@ def cuopt_service_sync(
     drop_return_trips: Optional[List[bool]] = None,
     min_vehicles: Optional[int] = None,
     vehicle_max_costs: Optional[List[float]] = None,
+    vehicle_max_distances: Optional[List[float]] = None,
     vehicle_max_times: Optional[List[float]] = None,
     vehicle_fixed_costs: Optional[List[float]] = None,
+    vehicle_distance_tiers: Optional[List[List[dict]]] = None,
     task_locations: Optional[List[int]] = None,
     demand: Optional[List[List[int]]] = None,
     pickup_and_delivery_pairs: Optional[List[List[int]]] = None,
@@ -217,6 +227,8 @@ def cuopt_service_sync(
 
     options["cost_matrix_data"] = generate_json_data(data=cost_matrix)
 
+    options["distance_matrix_data"] = generate_json_data(data=distance_matrix)
+
     options["travel_time_matrix_data"] = generate_json_data(
         data=travel_time_matrix
     )
@@ -238,8 +250,10 @@ def cuopt_service_sync(
         drop_return_trips=drop_return_trips,
         min_vehicles=min_vehicles,
         vehicle_max_costs=vehicle_max_costs,
+        vehicle_max_distances=vehicle_max_distances,
         vehicle_max_times=vehicle_max_times,
         vehicle_fixed_costs=vehicle_fixed_costs,
+        vehicle_distance_tiers=vehicle_distance_tiers,
     )
 
     # task data

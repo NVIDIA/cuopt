@@ -213,6 +213,11 @@ def validate_fleet_data(
         fleet_length_check_array.append(len(vehicle_fixed_costs))
 
     if vehicle_max_distances is not None:
+        if not is_distance_matrix_set:
+            return (
+                False,
+                "distance_matrix_data must be set when vehicle_max_distances is provided",
+            )
         for vehicle_max_distance in vehicle_max_distances:
             if not _is_finite(vehicle_max_distance):
                 return (

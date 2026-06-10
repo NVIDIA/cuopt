@@ -897,6 +897,24 @@ class OptimizedRoutingData(StrictModel):
             "vehicle type should be within [0, 255]"
         ),
     )
+    distance_matrix_data: Optional[DistanceMatrices] = Field(
+        default=DistanceMatrices(),
+        examples=[
+            {
+                "distance_matrix": {
+                    1: [[0, 1, 1], [1, 0, 1], [1, 1, 0]],
+                    2: [[0, 1, 1], [1, 0, 1], [1, 2, 0]],
+                }
+            }
+        ],
+        description=(
+            "Sqaure matrix with distance to travel from A to B and B to A. \n"
+            "If there are different types of vehicles which have different \n"
+            "distance matrices, they can be provided with key value pair \n"
+            "where key is vehicle-type and value is distance matrix. Value of \n"
+            "vehicle type should be within [0, 255]"
+        ),
+    )
     travel_time_matrix_data: Optional[CostMatrices] = Field(
         default=CostMatrices(),
         examples=[
@@ -1148,6 +1166,12 @@ vrp_example_data = {
     "cost_waypoint_graph_data": None,
     "travel_time_waypoint_graph_data": None,
     "cost_matrix_data": {
+        "data": {
+            "1": [[0, 1, 1], [1, 0, 1], [1, 1, 0]],
+            "2": [[0, 1, 1], [1, 0, 1], [1, 2, 0]],
+        }
+    },
+    "distance_matrix_data": {
         "data": {
             "1": [[0, 1, 1], [1, 0, 1], [1, 1, 0]],
             "2": [[0, 1, 1], [1, 0, 1], [1, 2, 0]],
