@@ -7,13 +7,14 @@ This benchmark summarizes 3-Tier Evaluation from NVSkills-Eval results for the s
 ## Evaluation Summary
 
 - Skill: `cuopt-numerical-optimization-api-python`
-- Evaluation date: 2026-05-29
+- Evaluation date: 2026-06-10
 - NVSkills-Eval profile: `external`
-- Environment: `local`
-- Dataset: 1 evaluation tasks
-- Attempts per task: 2
+- Environment: `astra-sandbox`
+- Dataset: 4 evaluation tasks
+- Attempts per task: 1
 - Pass threshold: 50%
 - Overall verdict: FAIL
+The skill should be reviewed before NVSkills-Eval publication. **Skill owners should address the applicable findings below and rerun NVSkills-Eval to refresh this benchmark.**
 
 ## Agents Used
 
@@ -42,9 +43,9 @@ Underlying evaluation signals used in this run:
 
 ## Test Tasks
 
-The benchmark dataset contained 1 evaluation tasks:
+The benchmark dataset contained 4 evaluation tasks:
 
-- Positive tasks: 1 tasks where the skill was expected to activate.
+- Positive tasks: 4 tasks where the skill was expected to activate.
 - Negative tasks: 0 tasks where no skill was expected.
 - Unlabeled tasks: 0 tasks where positive/negative intent could not be inferred.
 
@@ -54,25 +55,25 @@ Task composition is derived from the evaluation dataset when possible. Entries w
 
 | Dimension | Num | `claude-code` | `codex` |
 |---|---:|---:|---:|
-| Security | 2 | 100% (+0%) | 100% (+0%) |
-| Correctness | 2 | 100% (+0%) | 82% (+5%) |
-| Discoverability | 2 | 100% (+0%) | 84% (+5%) |
-| Effectiveness | 2 | 79% (-1%) | 40% (-9%) |
-| Efficiency | 2 | 93% (-0%) | 77% (+1%) |
+| Security | 4 | 100% (+0%) | 100% (+0%) |
+| Correctness | 4 | 62% (+26%) | 84% (+30%) |
+| Discoverability | 4 | 50% (+44%) | 62% (+34%) |
+| Effectiveness | 4 | 62% (+14%) | 80% (+34%) |
+| Efficiency | 4 | 61% (+36%) | 60% (+24%) |
 
 Score values show skill-assisted performance. Values in parentheses show uplift versus the no-skill baseline when baseline data is available.
 
 ## Tier 1: Static Validation Summary
 
-Tier 1 validation passed with observations. NVSkills-Eval ran 9 checks and found 15 total findings.
+Tier 1 validation passed with observations. NVSkills-Eval ran 9 checks and found 11 total findings.
 
 Top findings:
 
-- MEDIUM PII/gps_coordinates: GPS coordinates (location information) (`references/qp_examples.md:162`)
-- MEDIUM PII/gps_coordinates: GPS coordinates (location information) (`references/qp_examples.md:163`)
-- MEDIUM PII/gps_coordinates: GPS coordinates (location information) (`references/qp_examples.md:164`)
 - MEDIUM PII/phone_numbers: International phone number (`assets/mps_solver/results.md:48`)
 - MEDIUM PII/phone_numbers: International phone number (`assets/mps_solver/results.md:69`)
+- MEDIUM SCHEMA/body_recommended_section: Missing recommended section: '## Instructions' (`skills/cuopt-numerical-optimization-api-python/SKILL.md`)
+- MEDIUM SCHEMA/body_recommended_section: Missing recommended section: '## Examples' (`skills/cuopt-numerical-optimization-api-python/SKILL.md`)
+- MEDIUM SECURITY/Unknown (SQP-2): The code downloads a file from a hardcoded external URL (miplib.zib.de) using urllib.request.urlretrieve without any int (`assets/mps_solver/model.py:39`)
 
 ## Tier 2: Deduplication Summary
 
@@ -97,7 +98,3 @@ Top findings:
   "# Check status (CRITICAL: use PascalCase!)" in SKILL.md (lines 68-74)
   vs "# ✅ CORRECT" in SKILL.md (lines 148-151)
   vs "# Check solution" in assets/mps_solver/README.md (lines 81-85) (`SKILL.md:68`)
-
-## Publication Recommendation
-
-The skill should be reviewed before NVSkills-Eval publication. Skill owners should address the findings above and rerun NVSkills-Eval to refresh this benchmark.

@@ -7,9 +7,9 @@ This skill is ready for commercial/non-commercial use. <br>
 NVIDIA <br>
 
 ### License/Terms of Use: <br>
-Apache-2.0 <br>
+Apache 2.0 <br>
 ## Use Case: <br>
-Developers and engineers use this skill to formulate and solve linear programming (LP), mixed-integer linear programming (MILP), and quadratic programming (QP) optimization problems using NVIDIA cuOpt's GPU-accelerated Python API. <br>
+Developers and engineers modeling and solving linear programming, mixed-integer linear programming, and quadratic programming problems using the NVIDIA cuOpt GPU-accelerated Python API. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
@@ -19,14 +19,14 @@ Risk: Review before execution as proposals could introduce incorrect or misleadi
 Mitigation: Review and scan skill before deployment. <br>
 
 ## Reference(s): <br>
-- [cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html) <br>
-- [cuOpt Examples](https://github.com/NVIDIA/cuopt-examples) <br>
 - [QP Examples Reference](references/qp_examples.md) <br>
+- [cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html) <br>
+- [cuOpt Examples Repository](https://github.com/NVIDIA/cuopt-examples) <br>
 
 
 ## Skill Output: <br>
-**Output Type(s):** [Code, API Calls, Analysis] <br>
-**Output Format:** [Python code with inline solver output] <br>
+**Output Type(s):** [Code, Analysis] <br>
+**Output Format:** [Python code with solver output] <br>
 **Output Parameters:** [1D] <br>
 **Other Properties Related to Output:** [None] <br>
 
@@ -37,7 +37,7 @@ Mitigation: Review and scan skill before deployment. <br>
 
 
 ## Evaluation Tasks: <br>
-Evaluated against 1 task with 2 attempts per agent; pass threshold 50%. NVSkills-Eval profile: external. <br>
+Evaluated against 4 evaluation tasks (4 positive skill-activation cases) using the NVSkills-Eval external profile in an astra-sandbox environment. <br>
 
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
@@ -61,11 +61,11 @@ Underlying evaluation signals used in this run: <br>
 ## Evaluation Results: <br>
 | Dimension | Num | `claude-code` | `codex` |
 |---|---:|---:|---:|
-| Security | 2 | 100% (+0%) | 100% (+0%) |
-| Correctness | 2 | 100% (+0%) | 82% (+5%) |
-| Discoverability | 2 | 100% (+0%) | 84% (+5%) |
-| Effectiveness | 2 | 79% (-1%) | 40% (-9%) |
-| Efficiency | 2 | 93% (-0%) | 77% (+1%) |
+| Security | 4 | 100% (+0%) | 100% (+0%) |
+| Correctness | 4 | 62% (+26%) | 84% (+30%) |
+| Discoverability | 4 | 50% (+44%) | 62% (+34%) |
+| Effectiveness | 4 | 62% (+14%) | 80% (+34%) |
+| Efficiency | 4 | 61% (+36%) | 60% (+24%) |
 
 ## Skill Version(s): <br>
 26.08.00 (source: frontmatter) <br>
