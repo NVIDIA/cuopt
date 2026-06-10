@@ -238,44 +238,39 @@ void mip_solution_t<i_t, f_t>::log_summary() const
 template <typename i_t, typename f_t>
 void mip_solution_t<i_t, f_t>::log_detailed_summary() const
 {
-  std::string section_divider(50, '=');
-  std::string text            = "\n" + section_divider + "\n";
-  std::string solution_status = get_termination_status_string();
+  switch (termination_status_) {
+    case mip_termination_status_t::Optimal:
+    case mip_termination_status_t::FeasibleFound:
+      CUOPT_LOG_INFO("%s\n",
+                     std::format("Best objective {:+.6e}, best bound {:+.6e}, gap {:.2f}%.\n",
+                                 objective_,
+                                 stats_.get_solution_bound(),
+                                 mip_gap_ * 100)
+                       .c_str());
+      break;
 
-  f_t dual_bound = stats_.get_solution_bound();
-  f_t obj        = objective_;
-  f_t gap        = mip_gap_;
+    case mip_termination_status_t::Infeasible:
+      CUOPT_LOG_INFO("The problem is integer infeasible.\n");
+      break;
 
-  bool has_solution = termination_status_ == mip_termination_status_t::FeasibleFound ||
-                      termination_status_ == mip_termination_status_t::Optimal;
+    case mip_termination_status_t::TimeLimit:
+      CUOPT_LOG_INFO("No feasible solution was found within the time limit.\n");
+      break;
 
-  if (!has_solution) {
-    obj        = std::numeric_limits<f_t>::infinity();
-    gap        = std::numeric_limits<f_t>::infinity();
-    dual_bound = std::numeric_limits<f_t>::infinity();
+    case mip_termination_status_t::WorkLimit:
+      CUOPT_LOG_INFO("No feasible solution was found within the work limit.\n");
+      break;
+
+    case mip_termination_status_t::Unbounded: CUOPT_LOG_INFO("The problem is unbounded.\n"); break;
+
+    case mip_termination_status_t::UnboundedOrInfeasible:
+      CUOPT_LOG_INFO("The problem is unbounded or infeasible.\n");
+      break;
+
+    case mip_termination_status_t::NoTermination:
+      CUOPT_LOG_INFO("Warning: The solver did not terminate successfully.\n");
+      break;
   }
-
-  text += std::format("{:<30}{:>+15.6e}\n", "Solution objective:", obj);
-  text += std::format("{:<30}{:>+15.6e}\n", "Dual bound:", dual_bound);
-  text += std::format("{:<30}{:>+15.6e}\n", "Absolute MIP gap:", std::abs(obj - dual_bound));
-  text += std::format("{:<30}{:>+15.6e}\n", "Relative MIP gap:", gap);
-
-#ifdef PRINT_CONSTRAINT_VIOLATION
-
-  if (has_solution) {
-    text +=
-      std::format("{:<30}{:>+15.6e}\n", "Max constraint violation:", max_constraint_violation_);
-    text += std::format("{:<30}{:>+15.6e}\n", "Max integer violation:", max_int_violation_);
-    text += std::format(
-      "{:<30}{:>+15.6e}\n", "Max variable bound violation:", max_variable_bound_violation_);
-  } else {
-    text += std::format("{:<30}{:>15}\n", "Max constraint violation:", "N/A");
-    text += std::format("{:<30}{:>15}\n", "Max integer violation:", "N/A");
-    text += std::format("{:<30}{:>15}\n", "Max variable bound violation:", "N/A");
-  }
-#endif
-  text += std::format("{:<30}{:>15.2f}\n", "Solve time:", stats_.total_solve_time);
-  CUOPT_LOG_INFO("%s\n", text);
 }
 
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
