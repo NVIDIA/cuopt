@@ -1,5 +1,5 @@
 ## Description: <br>
-Modify, build, test, debug, and contribute to NVIDIA cuOpt (C++/CUDA, Python, server, CI). Use for solver internals, PRs, DCO, and code conventions. <br>
+Trace and interpret the Pareto frontier across competing objectives using repeated single-objective cuOpt solves (weighted-sum and ε-constraint). <br>
 
 This skill is ready for commercial/non-commercial use. <br>
 
@@ -9,7 +9,7 @@ NVIDIA <br>
 ### License/Terms of Use: <br>
 Apache 2.0 <br>
 ## Use Case: <br>
-Developers and engineers who contribute to or modify the NVIDIA cuOpt codebase, covering C++/CUDA solver internals, Python bindings, server endpoints, CI pipelines, and documentation. <br>
+Developers and optimization engineers exploring multi-objective tradeoffs across LP, MILP, QP, and routing problems to present decision-makers with the full Pareto frontier rather than a single collapsed optimum. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
@@ -20,31 +20,23 @@ Mitigation: Review and scan skill before deployment. <br>
 
 ## Reference(s): <br>
 - [cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html) <br>
-- [cuOpt GitHub Repository](https://github.com/NVIDIA/cuopt) <br>
-- [Build and Test Guide](references/build_and_test.md) <br>
-- [Contributing Guide](references/contributing.md) <br>
-- [Coding Conventions](references/conventions.md) <br>
-- [First-Time Setup](references/first_time_setup.md) <br>
-- [Python Bindings](references/python_bindings.md) <br>
-- [Troubleshooting](references/troubleshooting.md) <br>
-- [VRP Dimension Skills](references/vrp_skills.md) <br>
-- [Numerical Debugging](resources/numerical_debugging.md) <br>
+- [cuopt-examples](https://github.com/NVIDIA/cuopt-examples) <br>
 
 
 ## Skill Output: <br>
-**Output Type(s):** [Code, Shell commands, Configuration instructions] <br>
+**Output Type(s):** [Analysis, Code] <br>
 **Output Format:** [Markdown with inline code blocks] <br>
 **Output Parameters:** [1D] <br>
 **Other Properties Related to Output:** [None] <br>
 
 ## Evaluation Agents Used: <br>
-- `claude-code` <br>
-- `codex` <br>
+- Claude Code (`claude-code`) <br>
+- Codex (`codex`) <br>
 
 
 
 ## Evaluation Tasks: <br>
-Evaluated against 3 internal skill-activation tasks (2 attempts each, 50% pass threshold) in NVSkills-Eval external profile. <br>
+Evaluated against 3 internal evaluation tasks (2 positive skill-activation, 1 negative) with 2 attempts per task. <br>
 
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
@@ -69,10 +61,15 @@ Underlying evaluation signals used in this run: <br>
 | Dimension | Num | `claude-code` | `codex` |
 |---|---:|---:|---:|
 | Security | 6 | 100% (+0%) | 100% (+0%) |
-| Correctness | 6 | 78% (-1%) | 90% (+5%) |
-| Discoverability | 6 | 62% (+11%) | 66% (+7%) |
-| Effectiveness | 6 | 81% (-3%) | 93% (+10%) |
-| Efficiency | 6 | 61% (+15%) | 59% (+7%) |
+| Correctness | 6 | 82% (+27%) | 78% (+15%) |
+| Discoverability | 6 | 67% (+33%) | 64% (+23%) |
+| Effectiveness | 6 | 87% (+16%) | 80% (+8%) |
+| Efficiency | 6 | 71% (+22%) | 63% (+13%) |
+
+## Testing Completed: <br>
+**[x] Agent Red-Teaming** <br>
+**[ ] Network Security** <br>
+**[ ] Product Security** <br>
 
 ## Skill Version(s): <br>
 26.08.00 (source: frontmatter) <br>

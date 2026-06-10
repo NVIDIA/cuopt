@@ -16,7 +16,9 @@
 #include <array>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <limits>
+#include <stdexcept>
 #include <tuple>
 #include <unordered_set>
 
@@ -51,8 +53,8 @@ template <typename i_t, typename f_t>
 clique_cut_build_status_t build_clique_cut(const std::vector<i_t>& clique_vertices,
                                            i_t num_vars,
                                            const std::vector<variable_type_t>& var_types,
-                                           const std::vector<f_t>& lower_bounds,
-                                           const std::vector<f_t>& upper_bounds,
+                                           [[maybe_unused]] const std::vector<f_t>& lower_bounds,
+                                           [[maybe_unused]] const std::vector<f_t>& upper_bounds,
                                            const std::vector<f_t>& xstar,
                                            f_t bound_tol,
                                            f_t min_violation,
@@ -83,9 +85,14 @@ clique_cut_build_status_t build_clique_cut(const std::vector<i_t>& clique_vertic
 
   cut.i.clear();
   cut.x.clear();
-  i_t num_complements = 0;
+
+  // First pass: collect literal/complement occurrences per variable and the
+  // set of variables that appear both as themselves and as their complement
+  // in the clique. Bounds / var_type sanity checks are folded in here so we
+  // touch each clique vertex once.
   std::unordered_set<i_t> seen_original;
   std::unordered_set<i_t> seen_complement;
+  std::unordered_set<i_t> complement_pairs;
   seen_original.reserve(clique_vertices.size());
   seen_complement.reserve(clique_vertices.size());
   for (const auto vertex_idx : clique_vertices) {
@@ -94,40 +101,43 @@ clique_cut_build_status_t build_clique_cut(const std::vector<i_t>& clique_vertic
     const bool complement = vertex_idx >= num_vars;
     const f_t lower_bound = lower_bounds[var_idx];
     const f_t upper_bound = upper_bounds[var_idx];
-
     cuopt_assert(var_types[var_idx] != variable_type_t::CONTINUOUS,
                  "Clique contains continuous variable");
     cuopt_assert(lower_bound >= -bound_tol, "Clique variable lower bound below zero");
     cuopt_assert(upper_bound <= 1 + bound_tol, "Clique variable upper bound above one");
 
-    // we store the cut in the form of >= 1, for easy violation check with dot product
-    // that's why compelements have 1 as coeff and normal vars have -1
     if (complement) {
-      if (seen_original.count(var_idx) > 0) {
-        // FIXME: this is temporary, fix all the vars of all other vars in the clique
-        return clique_cut_build_status_t::NO_CUT;
-        CLIQUE_CUTS_DEBUG("build_clique_cut infeasible var=%lld appears as variable and complement",
-                          static_cast<long long>(var_idx));
-        return clique_cut_build_status_t::INFEASIBLE;
-      }
       cuopt_assert(seen_complement.count(var_idx) == 0, "Duplicate complement in clique");
+      if (seen_original.count(var_idx) > 0) { complement_pairs.insert(var_idx); }
       seen_complement.insert(var_idx);
-      num_complements++;
-      cut.i.push_back(var_idx);
-      cut.x.push_back(1.0);
     } else {
-      if (seen_complement.count(var_idx) > 0) {
-        // FIXME: this is temporary, fix all the vars of all other vars in the clique
-        return clique_cut_build_status_t::NO_CUT;
-        CLIQUE_CUTS_DEBUG("build_clique_cut infeasible var=%lld appears as variable and complement",
-                          static_cast<long long>(var_idx));
-        return clique_cut_build_status_t::INFEASIBLE;
-      }
       cuopt_assert(seen_original.count(var_idx) == 0, "Duplicate variable in clique");
+      if (seen_complement.count(var_idx) > 0) { complement_pairs.insert(var_idx); }
       seen_original.insert(var_idx);
-      cut.i.push_back(var_idx);
-      cut.x.push_back(-1.0);
     }
+  }
+
+  // >= 2 complement pairs force two distinct variables each into
+  // {0} \cap {1} simultaneously => node is LP-infeasible. The caller is
+  // expected to short-circuit the rest of cut generation on INFEASIBLE.
+  if (complement_pairs.size() >= 2) {
+    CLIQUE_CUTS_DEBUG("build_clique_cut infeasible: %lld complement-pairs",
+                      static_cast<long long>(complement_pairs.size()));
+    return clique_cut_build_status_t::INFEASIBLE;
+  }
+
+  // Exactly one complement pair (x + (1-x) = 1) contributes nothing to the
+  // sum but forces every other clique member to 0. We drop the paired
+  // variable from the support and bump rhs by 1, producing a fixing cut.
+  const bool has_pair = complement_pairs.size() == 1;
+  i_t num_complements = 0;
+  for (const auto vertex_idx : clique_vertices) {
+    const i_t var_idx     = vertex_idx % num_vars;
+    const bool complement = vertex_idx >= num_vars;
+    if (has_pair && complement_pairs.count(var_idx) > 0) { continue; }
+    cut.i.push_back(var_idx);
+    cut.x.push_back(complement ? static_cast<f_t>(1.0) : static_cast<f_t>(-1.0));
+    if (complement) { num_complements++; }
   }
 
   if (cut.i.empty()) {
@@ -135,14 +145,16 @@ clique_cut_build_status_t build_clique_cut(const std::vector<i_t>& clique_vertic
     return clique_cut_build_status_t::NO_CUT;
   }
 
-  cut_rhs = static_cast<f_t>(num_complements - 1);
+  cut_rhs = has_pair ? static_cast<f_t>(num_complements) : static_cast<f_t>(num_complements - 1);
   cut.sort();
 
   const f_t dot       = cut.dot(xstar);
   const f_t violation = cut_rhs - dot;
   if (violation > min_violation) {
     CLIQUE_CUTS_DEBUG(
-      "build_clique_cut accepted nz=%lld rhs=%g dot=%g violation=%g threshold=%g complements=%lld",
+      "build_clique_cut accepted has_pair=%d nz=%lld rhs=%g dot=%g violation=%g threshold=%g "
+      "complements=%lld",
+      has_pair ? 1 : 0,
       static_cast<long long>(cut.i.size()),
       static_cast<double>(cut_rhs),
       static_cast<double>(dot),
@@ -152,7 +164,9 @@ clique_cut_build_status_t build_clique_cut(const std::vector<i_t>& clique_vertic
     return clique_cut_build_status_t::CUT_ADDED;
   }
   CLIQUE_CUTS_DEBUG(
-    "build_clique_cut rejected nz=%lld rhs=%g dot=%g violation=%g threshold=%g complements=%lld",
+    "build_clique_cut rejected has_pair=%d nz=%lld rhs=%g dot=%g violation=%g threshold=%g "
+    "complements=%lld",
+    has_pair ? 1 : 0,
     static_cast<long long>(cut.i.size()),
     static_cast<double>(cut_rhs),
     static_cast<double>(dot),
@@ -391,11 +405,14 @@ void extend_clique_vertices(std::vector<i_t>& clique_vertices,
   const f_t candidate_size = static_cast<f_t>(candidates.size());
   const f_t sort_work =
     candidate_size > 0.0 ? 2.0 * candidate_size * std::log2(candidate_size + 1.0) : 0.0;
-  const f_t adj_set_build_cost     = 2.0 * static_cast<f_t>(adj_set.size());
-  const f_t adj_check_cost         = 5.0;
-  const f_t estimated_preloop_work = 2.0 * initial_clique_size + adj_set_build_cost +
-                                     3.0 * static_cast<f_t>(adj_set.size()) + sort_work +
-                                     2.0 * candidate_size;
+  const f_t adj_set_build_cost = 2.0 * static_cast<f_t>(adj_set.size());
+  const f_t addtl_cliques_scan_cost =
+    1.0 + static_cast<f_t>(graph.var_clique_addtl.avg_slice_size());
+  const f_t adj_check_cost = 5.0 + addtl_cliques_scan_cost;
+  const f_t estimated_preloop_work =
+    2.0 * initial_clique_size + adj_set_build_cost + 3.0 * static_cast<f_t>(adj_set.size()) +
+    sort_work + 2.0 * candidate_size + addtl_cliques_scan_cost * initial_clique_size +
+    addtl_cliques_scan_cost;
   if (add_work_estimate(estimated_preloop_work, work_estimate, max_work_estimate)) {
     CLIQUE_CUTS_DEBUG("extend_clique_vertices skip work_limit work=%g limit=%g",
                       work_estimate == nullptr ? -1.0 : static_cast<double>(*work_estimate),
@@ -431,6 +448,8 @@ void extend_clique_vertices(std::vector<i_t>& clique_vertices,
         break;
       }
     }
+    // Each check_adjacency now charges its own addtl_cliques_scan_cost
+    // term so the per-iteration budget reflects the addtl scan cost.
     if (add_work_estimate(
           adj_check_cost * static_cast<f_t>(checks), work_estimate, max_work_estimate)) {
       break;
@@ -524,6 +543,7 @@ void cut_pool_t<i_t, f_t>::add_cut(cut_type_t cut_type, const inequality_t<i_t, 
     settings_.log.printf("Cut has no coefficients\n");
     return;
   }
+
   cut_storage_.append_row(cut_squeezed.vector);
   rhs_storage_.push_back(cut_squeezed.rhs);
   cut_type_.push_back(cut_type);
@@ -2700,7 +2720,7 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
                     static_cast<long long>(clique_table_->first.size()),
                     static_cast<long long>(clique_table_->addtl_cliques.size()));
 
-  if (clique_table_->first.empty() && clique_table_->addtl_cliques.empty()) {
+  if (clique_table_->empty()) {
     CLIQUE_CUTS_DEBUG("generate_clique_cuts empty clique table, nothing to separate");
     return true;
   }
@@ -2782,14 +2802,15 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
     kept_adj_entries += adj.size();
 #ifdef ASSERT_MODE
     {
+      // {k, ~k} as neighbors is legal (vertex_idx is then implicitly fixed to
+      // 0 by the conflict structure); build_clique_cut handles the resulting
+      // cliques as fixing cuts or infeasibility signals, so only duplicates
+      // are a real invariant here.
       std::unordered_set<i_t> adj_global;
       adj_global.reserve(adj.size());
       for (const auto neighbor : adj) {
         i_t v = vertices[neighbor];
         cuopt_assert(adj_global.insert(v).second, "Duplicate neighbor in adjacency list");
-        i_t complement = (v >= num_vars) ? (v - num_vars) : (v + num_vars);
-        cuopt_assert(adj_global.find(complement) == adj_global.end(),
-                     "Adjacency list contains complementing variable");
       }
     }
 #endif
