@@ -54,6 +54,7 @@ option(SKIP_ROUTING_BUILD "Skip building routing components" OFF)
 option(SKIP_GRPC_BUILD "Skip building gRPC and protobuf components" OFF)
 option(WRITE_FATBIN "Enable fatbin writing" ON)
 option(HOST_LINEINFO "Build with debug line information for host code" OFF)
+option(MPS_FAST_TIMERS "Enable experimental fast MPS parser phase timer printouts" OFF)
 
 message(VERBOSE "cuOpt: Enable nvcc -lineinfo: ${CMAKE_CUDA_LINEINFO}")
 message(VERBOSE "cuOpt: Build cuOpt unit-tests: ${BUILD_TESTS}")
@@ -64,6 +65,7 @@ message(VERBOSE "cuOpt: Skip C/Python adapters: ${SKIP_C_PYTHON_ADAPTERS}")
 message(VERBOSE "cuOpt: Skip routing build: ${SKIP_ROUTING_BUILD}")
 message(VERBOSE "cuOpt: Build with debug line information for host code: ${HOST_LINEINFO}")
 message(VERBOSE "cuOpt: fatbin: ${WRITE_FATBIN}")
+message(VERBOSE "cuOpt: Fast MPS parser timers: ${MPS_FAST_TIMERS}")
 
 # ##################################################################################################
 # - compiler options ------------------------------------------------------------------------------
@@ -516,6 +518,10 @@ target_compile_definitions(cuopt
   PUBLIC "CUOPT_LOG_ACTIVE_LEVEL=RAPIDS_LOGGER_LOG_LEVEL_${LIBCUOPT_LOGGING_LEVEL}"
   PUBLIC CUSPARSE_ENABLE_EXPERIMENTAL_API
 )
+
+if (MPS_FAST_TIMERS)
+    target_compile_definitions(cuopt PRIVATE MPS_FAST_TIMERS=1)
+endif ()
 
 target_compile_options(cuopt
         PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"

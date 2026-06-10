@@ -16,6 +16,10 @@
 
 namespace mps_fast {
 
+inline constexpr std::size_t input_buffer_padding_bytes = 64;
+
+struct lz4_pipeline_t;
+
 /**
  * @brief File reading method selection
  */
@@ -72,15 +76,7 @@ class Lz4InputStream {
   void run_decode_tasks();
 
  private:
-  struct Block {
-    std::size_t compressed_offset   = 0;
-    std::size_t compressed_size     = 0;
-    std::size_t read_end_offset     = 0;
-    std::size_t decompressed_offset = 0;
-    std::size_t decompressed_size   = 0;
-    std::size_t index               = 0;
-    bool uncompressed               = false;
-  };
+  friend struct lz4_pipeline_t;
 
   void commit_up_to(std::size_t bytes);
 
@@ -99,7 +95,6 @@ class Lz4InputStream {
   bool block_checksum_               = false;
   bool content_checksum_             = false;
   bool dict_id_                      = false;
-  std::vector<Block> blocks_;
   mps_phase_registry_t registry_;
   std::mutex commit_mutex_;
   std::mutex frontier_mutex_;
@@ -108,24 +103,6 @@ class Lz4InputStream {
   std::unique_ptr<mps_section_block_scanner_t> section_scanner_;
   std::size_t next_block_  = 0;
   std::size_t ready_bytes_ = 0;
-
-  struct BatchMetric {
-    std::size_t index                    = 0;
-    std::size_t first_block              = 0;
-    std::size_t blocks                   = 0;
-    std::size_t file_bytes               = 0;
-    std::size_t decompressed_bytes       = 0;
-    double read_ms                       = 0.0;
-    double decode_ms                     = 0.0;
-    double commit_ms                     = 0.0;
-    double frontier_lock_wait_ms         = 0.0;
-    double frontier_update_ms            = 0.0;
-    double section_scan_ms               = 0.0;
-    std::size_t ready_bytes_delta        = 0;
-    std::size_t frontier_blocks_advanced = 0;
-    double total_ms                      = 0.0;
-  };
-  std::vector<BatchMetric> batch_metrics_;
 };
 
 class RawInputStream {
@@ -148,7 +125,9 @@ class RawInputStream {
 
  private:
   std::string path_;
-  int fd_ = -1;
+  int fd_          = -1;
+  int buffered_fd_ = -1;
+  bool direct_io_  = false;
   mmap_region_t output_region_;
   char* output_data_              = nullptr;
   std::size_t output_mapped_size_ = 0;

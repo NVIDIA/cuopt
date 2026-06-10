@@ -15,6 +15,8 @@
 #include <atomic>
 #include <cerrno>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <limits>
 #include <mutex>
@@ -30,13 +32,11 @@ using cuopt::linear_programming::io::error_type_t;
 using cuopt::linear_programming::io::mps_parser_expects;
 using cuopt::linear_programming::io::mps_parser_fail;
 
-char* string_buffer;
-char* string_buffer_ptr;
-
 namespace {
 
-constexpr std::size_t raw_input_window_bytes     = 64ull * 1024ull * 1024ull;
-constexpr std::size_t raw_input_max_read_threads = 8;
+constexpr std::size_t raw_input_window_bytes              = 64ull * 1024ull * 1024ull;
+constexpr std::size_t raw_input_max_read_threads          = 8;
+constexpr std::size_t raw_input_direct_io_threshold_bytes = 1ull * 1024ull * 1024ull * 1024ull;
 
 bool path_has_suffix(const std::string& path, const char* suffix) noexcept
 {
@@ -44,28 +44,6 @@ bool path_has_suffix(const std::string& path, const char* suffix) noexcept
   return path.size() >= suffix_len &&
          path.compare(path.size() - suffix_len, suffix_len, suffix) == 0;
 }
-
-}  // namespace
-
-namespace {
-
-class FileDescriptor {
- public:
-  explicit FileDescriptor(int fd) : fd_(fd) {}
-  ~FileDescriptor()
-  {
-    if (fd_ >= 0) { ::close(fd_); }
-  }
-
-  FileDescriptor(const FileDescriptor&)            = delete;
-  FileDescriptor& operator=(const FileDescriptor&) = delete;
-
-  int get() const noexcept { return fd_; }
-  bool valid() const noexcept { return fd_ >= 0; }
-
- private:
-  int fd_;
-};
 
 std::size_t get_file_size(int fd, const std::string& path)
 {
@@ -76,14 +54,14 @@ std::size_t get_file_size(int fd, const std::string& path)
                     path.c_str(),
                     std::strerror(errno));
   }
-  return static_cast<std::size_t>(st.st_size);
+  return (std::size_t)st.st_size;
 }
 
 std::size_t system_page_size()
 {
   static std::size_t page_size = [] {
     long value = ::sysconf(_SC_PAGESIZE);
-    return value > 0 ? static_cast<std::size_t>(value) : static_cast<std::size_t>(4096);
+    return value > 0 ? (std::size_t)value : (std::size_t)4096;
   }();
   return page_size;
 }
@@ -100,25 +78,47 @@ std::size_t round_up_to_multiple(std::size_t value, std::size_t alignment)
   return value + increment;
 }
 
+std::size_t add_input_padding(std::size_t size)
+{
+  if (size > std::numeric_limits<std::size_t>::max() - input_buffer_padding_bytes) {
+    mps_parser_fail(error_type_t::OutOfMemoryError, "input padding size overflow");
+  }
+  return size + input_buffer_padding_bytes;
+}
+
 }  // namespace
 
 RawInputStream::RawInputStream(const std::string& path) : path_(path)
 {
   MPS_NVTX_RANGE("raw_input_construct", nvtx::colors::io);
-  fd_ = ::open(path.c_str(), O_RDONLY);
-  if (fd_ < 0) {
+  buffered_fd_ = ::open(path.c_str(), O_RDONLY);
+  if (buffered_fd_ < 0) {
     mps_parser_fail(error_type_t::RuntimeError,
                     "Failed to open raw MPS file '%s': %s",
                     path.c_str(),
                     std::strerror(errno));
   }
 
-  file_size_    = get_file_size(fd_, path);
+  file_size_         = get_file_size(buffered_fd_, path);
+  fd_                = buffered_fd_;
+  bool use_direct_io = file_size_ > raw_input_direct_io_threshold_bytes;
+  if (const char* raw_direct = std::getenv("MPS_FAST_RAW_DIRECT_IO")) {
+    use_direct_io = raw_direct[0] != '0';
+  }
+  if (use_direct_io) {
+#ifdef O_DIRECT
+    int direct_fd = ::open(path.c_str(), O_RDONLY | O_DIRECT);
+    if (direct_fd >= 0) {
+      fd_        = direct_fd;
+      direct_io_ = true;
+    }
+#endif
+  }
   window_bytes_ = raw_input_window_bytes;
   window_count_ = std::max<std::size_t>(1, (file_size_ + window_bytes_ - 1) / window_bytes_);
 
-  output_mapped_size_ =
-    round_up_to_multiple(std::max<std::size_t>(file_size_, 1), system_page_size());
+  output_mapped_size_ = round_up_to_multiple(
+    std::max<std::size_t>(add_input_padding(file_size_), 1), system_page_size());
   output_region_ = mmap_region_t::anonymous(
     output_mapped_size_, PROT_READ | PROT_WRITE, MAP_PRIVATE, "raw input buffer");
   output_data_ = output_region_.char_data();
@@ -133,6 +133,7 @@ RawInputStream::RawInputStream(const std::string& path) : path_(path)
 RawInputStream::~RawInputStream()
 {
   if (fd_ >= 0) { ::close(fd_); }
+  if (buffered_fd_ >= 0 && buffered_fd_ != fd_) { ::close(buffered_fd_); }
 }
 
 const char* RawInputStream::data() const noexcept { return output_data_; }
@@ -156,7 +157,7 @@ void RawInputStream::run_decode_tasks()
   }
 
   std::size_t hw_threads =
-    std::max<std::size_t>(1, static_cast<std::size_t>(std::thread::hardware_concurrency()));
+    std::max<std::size_t>(1, (std::size_t)std::thread::hardware_concurrency());
   std::size_t thread_count = std::min(raw_input_max_read_threads, hw_threads);
   thread_count             = std::max<std::size_t>(1, std::min(thread_count, window_count_));
 
@@ -181,10 +182,19 @@ void RawInputStream::run_decode_tasks()
     {
       MPS_NVTX_RANGE("raw_window_pread", nvtx::colors::io);
       while (done < size) {
-        ssize_t got = ::pread(
-          fd_, output_data_ + offset + done, size - done, static_cast<off_t>(offset + done));
+        ssize_t got =
+          ::pread(fd_, output_data_ + offset + done, size - done, (off_t)(offset + done));
         if (got < 0) {
           if (errno == EINTR) { continue; }
+          if (direct_io_ && errno == EINVAL && buffered_fd_ >= 0) {
+            got = ::pread(
+              buffered_fd_, output_data_ + offset + done, size - done, (off_t)(offset + done));
+            if (got >= 0) {
+              done += (std::size_t)got;
+              continue;
+            }
+            if (errno == EINTR) { continue; }
+          }
           mps_parser_fail(error_type_t::RuntimeError,
                           "Failed to pread raw MPS file '%s': %s",
                           path_.c_str(),
@@ -195,7 +205,7 @@ void RawInputStream::run_decode_tasks()
                           "Unexpected EOF while reading raw MPS file '%s'",
                           path_.c_str());
         }
-        done += static_cast<std::size_t>(got);
+        done += (std::size_t)got;
       }
     }
 
@@ -249,10 +259,11 @@ bool has_lz4_extension(const std::string& path) noexcept { return path_has_suffi
 void drop_file_cache(const std::string& path)
 {
   MPS_NVTX_RANGE("drop_file_cache", nvtx::colors::io);
-  FileDescriptor fd(::open(path.c_str(), O_RDONLY));
-  if (!fd.valid()) { return; }
+  int fd = ::open(path.c_str(), O_RDONLY);
+  if (fd < 0) { return; }
 
-  ::posix_fadvise(fd.get(), 0, 0, POSIX_FADV_DONTNEED);
+  ::posix_fadvise(fd, 0, 0, POSIX_FADV_DONTNEED);
+  ::close(fd);
 }
 
 FileReadMethod effective_file_read_method(const std::string& path, FileReadMethod method)

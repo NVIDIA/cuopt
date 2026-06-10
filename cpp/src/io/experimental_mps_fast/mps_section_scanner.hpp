@@ -47,6 +47,8 @@ class mps_phase_registry_t {
   void attach_event(mps_phase_kind phase, omp_event_handle_t event);
 
   bool ready(mps_phase_kind phase) const;
+  // range() is lock-free: callers must observe ready(phase)==true first. The
+  // acquire load in ready() pairs with publish()'s release store before ranges_.
   mps_phase_range_t range(mps_phase_kind phase) const;
 
  private:
@@ -62,8 +64,6 @@ class mps_phase_registry_t {
   mutable std::mutex mutex_;
 };
 
-bool line_is_section(const char* line_start, const char* line_end, mps_section_kind* kind);
-
 class mps_section_block_scanner_t {
  public:
   mps_section_block_scanner_t(const char* data,
@@ -74,12 +74,14 @@ class mps_section_block_scanner_t {
   void publish_ready(std::size_t ready_bytes);
 
  private:
-  static constexpr std::size_t section_count    = 9;
+  static constexpr std::size_t section_count = 9;
+  // Section titles are short; 128 bytes is enough to rescan around a decoded
+  // block boundary and catch a newline/title pair split across adjacent blocks.
   static constexpr std::size_t boundary_overlap = 128;
 
   static std::size_t section_hit_index(mps_section_kind kind);
 
-  void scan_section_range(const char* begin, const char* end, bool boundary_scan);
+  void scan_section_range(const char* begin, const char* end);
   void scan_boundary(std::size_t left_index, std::size_t right_index);
   void record_section_hit(mps_section_kind kind, const char* ptr);
   void publish_section_ranges();

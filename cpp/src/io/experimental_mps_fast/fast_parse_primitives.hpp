@@ -5,7 +5,6 @@
 
 #include "fast_fp64_parser.hpp"
 
-#include <cctype>
 #include <cstdarg>
 #include <cstddef>
 #include <cstdint>
@@ -26,26 +25,6 @@
 
 namespace mps_fast {
 
-static inline void reset_number_parse_stats() {}
-static inline void print_number_parse_stats() {}
-
-static inline bool is_digit_byte(char c) noexcept { return c >= '0' && c <= '9'; }
-
-static inline double fast_atof_core(const char*& data, const char* end)
-{
-  return fp64::parse_fp64_advance(data, end);
-}
-
-static inline double fast_atof(const char* data, const char* end)
-{
-  return fast_atof_core(data, end);
-}
-
-static inline double fast_atof_advance(const char*& ptr, const char* end)
-{
-  return fast_atof_core(ptr, end);
-}
-
 struct cursor_t {
   const char* start;
   const char* ptr;
@@ -65,7 +44,7 @@ struct cursor_t {
         line_start = p + 1;
       }
     }
-    std::size_t column = static_cast<std::size_t>(ptr - line_start) + 1;
+    std::size_t column = (std::size_t)(ptr - line_start) + 1;
     return {line, column};
   }
 
@@ -92,7 +71,7 @@ struct cursor_t {
   static const char* scalar_scan(const char* p, const char* end)
   {
     while (p < end) {
-      unsigned char c = static_cast<unsigned char>(*p);
+      unsigned char c = (unsigned char)*p;
       if constexpr (skip_ws_mode) {
         if (c > 32 || c == '\n') return p;
       } else {
@@ -171,6 +150,8 @@ struct cursor_t {
     const simde__m256i v32 = simde_mm256_set1_epi8(32);
     const simde__m256i vnl = simde_mm256_set1_epi8('\n');
 
+    // Input buffers are padded by file_reader/lz4_file_reader/small_raw_read,
+    // so this unaligned 32-byte load is valid whenever end - ptr >= 32.
     simde__m256i data    = simde_mm256_loadu_si256((const simde__m256i*)ptr);
     simde__m256i gt32    = simde_mm256_cmpgt_epi8(data, v32);
     unsigned int ws_mask = ~(unsigned int)simde_mm256_movemask_epi8(gt32);
@@ -210,16 +191,19 @@ struct cursor_t {
   inline __attribute__((always_inline)) std::pair<std::string_view, std::string_view>
   read_two_fields()
   {
-    if (__unlikely(end - ptr < 32)) {
+    auto slow = [&] {
       auto f1 = read_field();
       auto f2 = read_field();
-      return {f1, f2};
-    }
+      return std::pair<std::string_view, std::string_view>{f1, f2};
+    };
+
+    if (__unlikely(end - ptr < 32)) { return slow(); }
 
     const char* field1_start = ptr;
     const simde__m256i v32   = simde_mm256_set1_epi8(32);
     const simde__m256i vnl   = simde_mm256_set1_epi8('\n');
 
+    // Same padded-buffer contract as read_field().
     simde__m256i data  = simde_mm256_loadu_si256((const simde__m256i*)ptr);
     simde__m256i gt32  = simde_mm256_cmpgt_epi8(data, v32);
     simde__m256i is_nl = simde_mm256_cmpeq_epi8(data, vnl);
@@ -229,33 +213,17 @@ struct cursor_t {
     unsigned int nl_mask        = (unsigned int)simde_mm256_movemask_epi8(is_nl);
     unsigned int stop_mask      = printable_mask | nl_mask;
 
-    if (__unlikely(ws_mask == 0)) {
-      auto f1 = read_field();
-      auto f2 = read_field();
-      return {f1, f2};
-    }
+    if (__unlikely(ws_mask == 0)) { return slow(); }
     int field1_end_off = __builtin_ctz(ws_mask);
 
     unsigned int after_field1 = stop_mask & ~((1u << field1_end_off) - 1);
-    if (__unlikely(after_field1 == 0)) {
-      auto f1 = read_field();
-      auto f2 = read_field();
-      return {f1, f2};
-    }
+    if (__unlikely(after_field1 == 0)) { return slow(); }
     int field2_start_off = __builtin_ctz(after_field1);
 
-    if (__unlikely(ptr[field2_start_off] == '\n')) {
-      auto f1 = read_field();
-      auto f2 = read_field();
-      return {f1, f2};
-    }
+    if (__unlikely(ptr[field2_start_off] == '\n')) { return slow(); }
 
     unsigned int ws_after_field2_start = ws_mask & ~((1u << field2_start_off) - 1);
-    if (__unlikely(ws_after_field2_start == 0)) {
-      auto f1 = read_field();
-      auto f2 = read_field();
-      return {f1, f2};
-    }
+    if (__unlikely(ws_after_field2_start == 0)) { return slow(); }
     int field2_end_off = __builtin_ctz(ws_after_field2_start);
 
     unsigned int after_field2 = stop_mask & ~((1u << field2_end_off) - 1);
@@ -274,7 +242,9 @@ struct cursor_t {
 static inline void expect(cursor_t& cursor, const char* field)
 {
   auto id = cursor.read_field();
-  if (__unlikely(id != field)) { cursor.error("expected '%s', got '%s'", field, id.data()); }
+  if (__unlikely(id != field)) {
+    cursor.error("expected '%s', got '%.*s'", field, (int)id.size(), id.data());
+  }
 }
 
 static inline void accept_comment_line(cursor_t& cursor)
@@ -290,7 +260,10 @@ static inline void accept_comment_line(cursor_t& cursor)
 
 static inline void expect_eol(cursor_t& cursor)
 {
-  if (__unlikely(!cursor.eol())) { cursor.error("expected end of line, got '%s'", cursor.ptr); }
+  if (__unlikely(!cursor.eol())) {
+    auto got = cursor.peek_field();
+    cursor.error("expected end of line, got '%.*s'", (int)got.size(), got.data());
+  }
 
   for (;;) {
     while (cursor.eol()) {
@@ -308,7 +281,8 @@ static inline void expect_eol(cursor_t& cursor)
     }
 
     if (__unlikely(cursor.done())) { return; }
-    if (__unlikely(!std::isalpha(static_cast<unsigned char>(cursor.ptr[0])))) {
+    char c = cursor.ptr[0];
+    if (__unlikely(!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')))) {
       cursor.skip_ws();
       if (cursor.eol()) { continue; }
     }
@@ -336,19 +310,22 @@ static inline void expect_section(cursor_t& cursor, const char* section)
 static inline double expect_number(cursor_t& cursor)
 {
   auto num = cursor.read_field();
-  if (num.empty()) { cursor.error("expected number, got '%s'", num.data()); }
-  return fast_atof(num.data(), num.data() + num.size());
+  if (num.empty()) { cursor.error("expected number, got empty field"); }
+  const char* p = num.data();
+  return fp64::parse_fp64_advance(p, p + num.size());
 }
 
 static inline double expect_number_fast_pm_one(cursor_t& cursor)
 {
   const char* p = cursor.ptr;
-  if (p[0] == '-' && p[1] == '1' && p[2] <= ' ') {
+  // Kept bounded despite the global padding invariant: this path is also used
+  // on section-local cursors whose logical end may precede the physical buffer.
+  if (cursor.end - p >= 3 && p[0] == '-' && p[1] == '1' && p[2] <= ' ') {
     cursor.ptr = p + 2;
     cursor.skip_ws();
     return -1.0;
   }
-  if (p[0] == '1' && p[1] <= ' ') {
+  if (cursor.end - p >= 2 && p[0] == '1' && p[1] <= ' ') {
     cursor.ptr = p + 1;
     cursor.skip_ws();
     return 1.0;

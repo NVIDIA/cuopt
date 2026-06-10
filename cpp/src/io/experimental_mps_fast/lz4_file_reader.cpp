@@ -19,12 +19,13 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cassert>
 #include <cerrno>
-#include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <limits>
@@ -44,12 +45,13 @@ using cuopt::linear_programming::io::mps_parser_fail;
 
 namespace {
 
-constexpr uint32_t lz4_frame_magic                      = 0x184D2204u;
-constexpr uint32_t lz4_uncompressed_block               = 0x80000000u;
-constexpr uint32_t lz4_block_size_mask                  = 0x7FFFFFFFu;
-constexpr std::size_t lz4_pipeline_batch_bytes          = 64ull * 1024ull * 1024ull;
-constexpr std::size_t lz4_input_max_io_threads          = 8;
-constexpr std::size_t lz4_no_content_size_reserve_ratio = 16;
+constexpr uint32_t lz4_frame_magic                        = 0x184D2204u;
+constexpr uint32_t lz4_uncompressed_block                 = 0x80000000u;
+constexpr uint32_t lz4_block_size_mask                    = 0x7FFFFFFFu;
+constexpr std::size_t lz4_pipeline_batch_bytes            = 64ull * 1024ull * 1024ull;
+constexpr std::size_t lz4_decode_batch_decompressed_bytes = 256ull * 1024ull * 1024ull;
+constexpr std::size_t lz4_input_max_io_threads            = 8;
+constexpr std::size_t lz4_no_content_size_reserve_ratio   = 16;
 
 using LZ4_decompress_safe_t = int (*)(const char*, char*, int, int);
 
@@ -168,10 +170,10 @@ std::size_t block_max_size_from_bd(unsigned char bd)
 
 std::size_t checked_size(uint64_t value, const char* label)
 {
-  if (value > static_cast<uint64_t>(std::numeric_limits<std::size_t>::max())) {
+  if (value > (uint64_t)std::numeric_limits<std::size_t>::max()) {
     mps_parser_fail(error_type_t::OutOfMemoryError, "LZ4 %s exceeds size_t", label);
   }
-  return static_cast<std::size_t>(value);
+  return (std::size_t)value;
 }
 
 std::size_t get_file_size(int fd, const std::string& path)
@@ -187,14 +189,14 @@ std::size_t get_file_size(int fd, const std::string& path)
     mps_parser_fail(
       error_type_t::RuntimeError, "Invalid negative file size for '%s'", path.c_str());
   }
-  return static_cast<std::size_t>(st.st_size);
+  return (std::size_t)st.st_size;
 }
 
 std::size_t system_page_size()
 {
   static std::size_t page_size = [] {
     long value = ::sysconf(_SC_PAGESIZE);
-    return value > 0 ? static_cast<std::size_t>(value) : static_cast<std::size_t>(4096);
+    return value > 0 ? (std::size_t)value : (std::size_t)4096;
   }();
   return page_size;
 }
@@ -219,10 +221,12 @@ std::size_t checked_mul(std::size_t a, std::size_t b, const char* label)
   return a * b;
 }
 
-double elapsed_ms_since(std::chrono::steady_clock::time_point start)
+std::size_t checked_add(std::size_t a, std::size_t b, const char* label)
 {
-  return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start)
-    .count();
+  if (a > std::numeric_limits<std::size_t>::max() - b) {
+    mps_parser_fail(error_type_t::OutOfMemoryError, "%s size overflow", label);
+  }
+  return a + b;
 }
 
 bool pread_full_plain(int fd, char* dst, std::size_t bytes, std::size_t offset)
@@ -230,9 +234,9 @@ bool pread_full_plain(int fd, char* dst, std::size_t bytes, std::size_t offset)
   std::size_t done = 0;
   while (done < bytes) {
     std::size_t remaining = bytes - done;
-    std::size_t chunk     = std::min<std::size_t>(
-      remaining, static_cast<std::size_t>(std::numeric_limits<ssize_t>::max()));
-    ssize_t got = ::pread(fd, dst + done, chunk, static_cast<off_t>(offset + done));
+    std::size_t chunk =
+      std::min<std::size_t>(remaining, (std::size_t)std::numeric_limits<ssize_t>::max());
+    ssize_t got = ::pread(fd, dst + done, chunk, (off_t)(offset + done));
     if (got < 0) {
       if (errno == EINTR) { continue; }
       return false;
@@ -241,7 +245,7 @@ bool pread_full_plain(int fd, char* dst, std::size_t bytes, std::size_t offset)
       errno = EIO;
       return false;
     }
-    done += static_cast<std::size_t>(got);
+    done += (std::size_t)got;
   }
   return true;
 }
@@ -359,8 +363,8 @@ Lz4InputStream::Lz4InputStream(const std::string& path) : path_(path)
                     "unsupported LZ4 input: expected standard LZ4 frame magic");
   }
   offset += 4;
-  unsigned char flg = static_cast<unsigned char>(header[offset++]);
-  unsigned char bd  = static_cast<unsigned char>(header[offset++]);
+  unsigned char flg = (unsigned char)header[offset++];
+  unsigned char bd  = (unsigned char)header[offset++];
   unsigned version  = (flg >> 6) & 0x3u;
   if (version != 1) {
     mps_parser_fail(error_type_t::ValidationError, "unsupported LZ4 frame version");
@@ -403,6 +407,7 @@ Lz4InputStream::Lz4InputStream(const std::string& path) : path_(path)
       checked_mul(compressed_size_, lz4_no_content_size_reserve_ratio, "LZ4 output reserve");
     reserve_size = std::max(reserve_size, block_max_size_);
   }
+  reserve_size = checked_add(reserve_size, input_buffer_padding_bytes, "LZ4 output padding");
 
   constexpr std::size_t huge_alignment = 2 * 1024 * 1024;
   output_mapped_size_                  = round_up_to_multiple(reserve_size, system_page_size());
@@ -460,310 +465,293 @@ void Lz4InputStream::commit_up_to(std::size_t bytes)
   output_committed_size_ = new_committed;
 }
 
-void Lz4InputStream::run_decode_tasks()
-{
-  MPS_NVTX_RANGE("lz4_input_run_decode_tasks", nvtx::colors::io);
-  std::exception_ptr first_error = nullptr;
-  std::mutex error_mutex;
-  std::atomic_bool stop_workers{false};
-  auto mark_error = [&](std::exception_ptr eptr) {
+struct resident_block_desc_t {
+  const char* src                 = nullptr;
+  std::size_t compressed_size     = 0;
+  std::size_t decompressed_offset = 0;
+  std::size_t decompressed_size   = 0;
+  std::size_t index               = 0;
+  std::size_t window_index        = std::numeric_limits<std::size_t>::max();
+  bool uncompressed               = false;
+};
+
+struct lz4_pipeline_t {
+  explicit lz4_pipeline_t(Lz4InputStream& input_)
+    : input(input_),
+      window_count((input.compressed_size_ + window_bytes - 1) / window_bytes),
+      windows(window_count),
+      io_threads(std::min(lz4_input_max_io_threads, window_count)),
+      window_done(window_count, 0),
+      window_refs(window_count),
+      window_scanned(window_count),
+      window_released(window_count)
+  {
+    for (std::size_t i = 0; i < window_count; ++i) {
+      std::size_t offset     = i * window_bytes;
+      std::size_t size       = std::min(window_bytes, input.compressed_size_ - offset);
+      windows[i].index       = i;
+      windows[i].file_offset = offset;
+      windows[i].size        = size;
+      window_refs[i].store(0, std::memory_order_relaxed);
+      window_scanned[i].store(0, std::memory_order_relaxed);
+      window_released[i].store(0, std::memory_order_relaxed);
+    }
+  }
+
+  void run()
+  {
+    start_readers();
+    std::thread scanner(&lz4_pipeline_t::run_scanner_stage, this);
+    start_decoders();
+
+    for (auto& reader : readers) {
+      reader.join();
+    }
+    scanner.join();
+    for (auto& worker : decoders) {
+      worker.join();
+    }
+    if (first_error) { std::rethrow_exception(first_error); }
+  }
+
+  void finalize()
+  {
+    input.output_view_size_ = input.ready_bytes_;
+    input.commit_up_to(
+      checked_add(input.output_view_size_, input_buffer_padding_bytes, "LZ4 output padding"));
+    input.section_scanner_->publish_ready(input.output_view_size_);
+  }
+
+  void mark_error(std::exception_ptr eptr)
+  {
     std::lock_guard<std::mutex> lock(error_mutex);
     if (!first_error) {
       first_error = eptr;
       stop_workers.store(true, std::memory_order_release);
     }
-  };
-
-  const std::size_t window_bytes = lz4_pipeline_batch_bytes;
-  const std::size_t window_count = (compressed_size_ + window_bytes - 1) / window_bytes;
-  std::vector<lz4_resident_window_t> windows(window_count);
-  for (std::size_t i = 0; i < window_count; ++i) {
-    std::size_t offset     = i * window_bytes;
-    std::size_t size       = std::min(window_bytes, compressed_size_ - offset);
-    windows[i].index       = i;
-    windows[i].file_offset = offset;
-    windows[i].size        = size;
-    windows[i].data.reset(new char[size]);
   }
 
-  const std::size_t io_threads = std::min(lz4_input_max_io_threads, window_count);
-  std::atomic<double> decoder_wait_batch_ms{0.0};
-  std::atomic<double> decoder_active_batch_ms{0.0};
-
-  struct resident_block_desc_t {
-    const char* src                 = nullptr;
-    std::size_t compressed_size     = 0;
-    std::size_t decompressed_offset = 0;
-    std::size_t decompressed_size   = 0;
-    std::size_t index               = 0;
-    bool uncompressed               = false;
-  };
-
-  std::atomic_size_t next_window{0};
-  std::vector<unsigned char> window_done(window_count, 0);
-  std::mutex window_mutex;
-  std::condition_variable window_cv;
-
-  std::deque<std::vector<resident_block_desc_t>> desc_queue;
-  bool scanner_done = false;
-  std::mutex desc_mutex;
-  std::condition_variable desc_cv;
-
-  auto fail_and_notify = [&](std::exception_ptr eptr) {
+  void fail_and_notify(std::exception_ptr eptr)
+  {
     mark_error(eptr);
     window_cv.notify_all();
     desc_cv.notify_all();
-  };
+  }
 
-  auto decode_worker = [&](std::size_t tid) {
+  void add_compressed_resident(std::size_t bytes)
+  {
+    compressed_resident_bytes.fetch_add(bytes, std::memory_order_relaxed);
+  }
+
+  void try_release_window(std::size_t index)
+  {
+    if (index >= window_count) { return; }
+    if (window_scanned[index].load(std::memory_order_acquire) == 0) { return; }
+    if (window_refs[index].load(std::memory_order_acquire) != 0) { return; }
+    uint8_t expected = 0;
+    if (!window_released[index].compare_exchange_strong(expected, 1, std::memory_order_acq_rel)) {
+      return;
+    }
+    std::lock_guard<std::mutex> lock(window_release_mutex);
+    if (windows[index].data) {
+      windows[index].data.reset();
+      compressed_resident_bytes.fetch_sub(windows[index].size, std::memory_order_relaxed);
+    }
+  }
+
+  void mark_windows_scanned_before(std::size_t offset)
+  {
+    std::size_t last_excl = std::min(window_count, offset / window_bytes);
+    for (std::size_t wi = 0; wi < last_excl; ++wi) {
+      window_scanned[wi].store(1, std::memory_order_release);
+      try_release_window(wi);
+    }
+  }
+
+  void start_readers()
+  {
+    readers.reserve(io_threads);
+    for (std::size_t t = 0; t < io_threads; ++t) {
+      readers.emplace_back(&lz4_pipeline_t::run_reader_stage, this, t);
+    }
+  }
+
+  void run_reader_stage(std::size_t tid)
+  {
+    std::string thread_name = "lz4-window-read-" + std::to_string(tid);
+    nvtx::name_current_thread(thread_name.c_str());
+    while (!stop_workers.load(std::memory_order_acquire)) {
+      std::size_t index = next_window.fetch_add(1, std::memory_order_relaxed);
+      if (index >= windows.size()) { break; }
+      auto& w = windows[index];
+      w.data.reset(new char[w.size]);
+      add_compressed_resident(w.size);
+      bool ok = false;
+      {
+        MPS_NVTX_RANGE("lz4_window_pread", nvtx::colors::io);
+        ok = pread_full_plain(input.fd_, w.data.get(), w.size, w.file_offset);
+      }
+      if (!ok) {
+        try {
+          mps_parser_fail(error_type_t::RuntimeError,
+                          "Failed to pread LZ4 resident window: %s",
+                          std::strerror(errno));
+        } catch (...) {
+          fail_and_notify(std::current_exception());
+        }
+        return;
+      }
+      {
+        MPS_NVTX_RANGE("lz4_window_publish", nvtx::colors::generic);
+        std::lock_guard<std::mutex> lock(window_mutex);
+        window_done[index] = 1;
+      }
+      window_cv.notify_all();
+    }
+  }
+
+  void start_decoders()
+  {
+    decoders.reserve(io_threads);
+    for (std::size_t t = 0; t < io_threads; ++t) {
+      decoders.emplace_back(&lz4_pipeline_t::run_decoder_stage, this, t);
+    }
+  }
+
+  void run_decoder_stage(std::size_t tid)
+  {
     try {
       std::string thread_name = "lz4-window-decode-" + std::to_string(tid);
       nvtx::name_current_thread(thread_name.c_str());
       while (true) {
-        std::vector<resident_block_desc_t> batch;
-        {
-          MPS_NVTX_RANGE("lz4_decode_wait_batch", nvtx::colors::io);
-          std::unique_lock<std::mutex> lock(desc_mutex);
-          const auto wait_start = std::chrono::steady_clock::now();
-          desc_cv.wait(lock, [&] {
-            return stop_workers.load(std::memory_order_acquire) || scanner_done ||
-                   !desc_queue.empty();
-          });
-          decoder_wait_batch_ms.fetch_add(elapsed_ms_since(wait_start), std::memory_order_relaxed);
-          if (stop_workers.load(std::memory_order_acquire)) { return; }
-          if (desc_queue.empty()) {
-            if (scanner_done) return;
-            continue;
-          }
-          batch = std::move(desc_queue.front());
-          desc_queue.pop_front();
-        }
-
-        const auto decode_start = std::chrono::steady_clock::now();
-        MPS_NVTX_RANGE("lz4_decode_batch", nvtx::colors::decode);
-        for (const auto& block : batch) {
-          char* dst  = output_data_ + block.decompressed_offset;
-          int actual = 0;
-          {
-            MPS_NVTX_RANGE("lz4_decode_block_payload", nvtx::colors::decode);
-            if (block.uncompressed) {
-              std::memcpy(dst, block.src, block.decompressed_size);
-              actual = static_cast<int>(block.decompressed_size);
-            } else if (block.compressed_size >
-                         static_cast<std::size_t>(std::numeric_limits<int>::max()) ||
-                       block.decompressed_size >
-                         static_cast<std::size_t>(std::numeric_limits<int>::max())) {
-              actual = -1;
-            } else {
-              actual = lz4_decompress_safe_runtime(block.src,
-                                                   dst,
-                                                   static_cast<int>(block.compressed_size),
-                                                   static_cast<int>(block.decompressed_size));
-            }
-          }
-          if (actual < 0 || static_cast<std::size_t>(actual) > block.decompressed_size) {
-            mps_parser_fail(error_type_t::ValidationError,
-                            "LZ4 input block decompressed to invalid size");
-          }
-
-          std::size_t actual_size = static_cast<std::size_t>(actual);
-          {
-            MPS_NVTX_RANGE("lz4_section_scan_block", nvtx::colors::generic);
-            section_scanner_->observe_block(block.index, dst, dst + actual_size);
-          }
-          std::size_t before = 0;
-          std::size_t after  = 0;
-          {
-            MPS_NVTX_RANGE("lz4_frontier_update", nvtx::colors::generic);
-            frontier_mutex_.lock();
-            block_done_[block.index] = 1;
-            block_end_[block.index]  = block.decompressed_offset + actual_size;
-            before                   = ready_bytes_;
-            while (next_block_ < block_done_.size() && block_done_[next_block_]) {
-              ready_bytes_ = block_end_[next_block_];
-              ++next_block_;
-            }
-            after = ready_bytes_;
-            frontier_mutex_.unlock();
-          }
-          if (after > before) {
-            MPS_NVTX_RANGE("lz4_publish_ready", nvtx::colors::generic);
-            section_scanner_->publish_ready(after);
-          }
-        }
-        decoder_active_batch_ms.fetch_add(elapsed_ms_since(decode_start),
-                                          std::memory_order_relaxed);
+        std::vector<resident_block_desc_t> batch = wait_for_decode_batch();
+        if (batch.empty()) { return; }
+        decode_batch(batch);
       }
     } catch (...) {
       fail_and_notify(std::current_exception());
     }
-  };
-
-  std::vector<std::thread> readers;
-  readers.reserve(io_threads);
-  for (std::size_t t = 0; t < io_threads; ++t) {
-    readers.emplace_back([&, t] {
-      std::string thread_name = "lz4-window-read-" + std::to_string(t);
-      nvtx::name_current_thread(thread_name.c_str());
-      while (!stop_workers.load(std::memory_order_acquire)) {
-        std::size_t index = next_window.fetch_add(1, std::memory_order_relaxed);
-        if (index >= windows.size()) { break; }
-        auto& w = windows[index];
-        bool ok = false;
-        {
-          MPS_NVTX_RANGE("lz4_window_pread", nvtx::colors::io);
-          ok = pread_full_plain(fd_, w.data.get(), w.size, w.file_offset);
-        }
-        if (!ok) {
-          try {
-            mps_parser_fail(error_type_t::RuntimeError,
-                            "Failed to pread LZ4 resident window: %s",
-                            std::strerror(errno));
-          } catch (...) {
-            fail_and_notify(std::current_exception());
-          }
-          return;
-        }
-        {
-          MPS_NVTX_RANGE("lz4_window_publish", nvtx::colors::generic);
-          std::lock_guard<std::mutex> lock(window_mutex);
-          window_done[index] = 1;
-        }
-        window_cv.notify_all();
-      }
-    });
   }
 
-  std::atomic_size_t blocks_scanned{0};
-  std::vector<std::vector<char>> crossing_payloads;
-  const auto read_wall_start = std::chrono::steady_clock::now();
-  std::thread scanner([&] {
+  std::vector<resident_block_desc_t> wait_for_decode_batch()
+  {
+    MPS_NVTX_RANGE("lz4_decode_wait_batch", nvtx::colors::io);
+    std::unique_lock<std::mutex> lock(desc_mutex);
+    desc_cv.wait(lock, [&] {
+      return stop_workers.load(std::memory_order_acquire) || scanner_done || !desc_queue.empty();
+    });
+    if (stop_workers.load(std::memory_order_acquire) || desc_queue.empty()) { return {}; }
+    std::vector<resident_block_desc_t> batch = std::move(desc_queue.front());
+    desc_queue.pop_front();
+    return batch;
+  }
+
+  void decode_batch(const std::vector<resident_block_desc_t>& batch)
+  {
+    MPS_NVTX_RANGE("lz4_decode_batch", nvtx::colors::decode);
+    for (const auto& block : batch) {
+      decode_block(block);
+    }
+  }
+
+  void decode_block(const resident_block_desc_t& block)
+  {
+    char* dst  = input.output_data_ + block.decompressed_offset;
+    int actual = 0;
+    {
+      MPS_NVTX_RANGE("lz4_decode_block_payload", nvtx::colors::decode);
+      if (block.uncompressed) {
+        std::memcpy(dst, block.src, block.decompressed_size);
+        actual = (int)block.decompressed_size;
+      } else if (block.compressed_size > (std::size_t)std::numeric_limits<int>::max() ||
+                 block.decompressed_size > (std::size_t)std::numeric_limits<int>::max()) {
+        actual = -1;
+      } else {
+        actual = lz4_decompress_safe_runtime(
+          block.src, dst, (int)block.compressed_size, (int)block.decompressed_size);
+      }
+    }
+    if (actual < 0 || (std::size_t)actual > block.decompressed_size) {
+      mps_parser_fail(error_type_t::ValidationError,
+                      "LZ4 input block decompressed to invalid size");
+    }
+    release_block_window_ref(block);
+    publish_decoded_block(block, dst, (std::size_t)actual);
+  }
+
+  void release_block_window_ref(const resident_block_desc_t& block)
+  {
+    if (block.window_index == std::numeric_limits<std::size_t>::max()) { return; }
+    uint32_t old = window_refs[block.window_index].fetch_sub(1, std::memory_order_acq_rel);
+    (void)old;
+    assert(old > 0);
+    if (old == 1) { try_release_window(block.window_index); }
+  }
+
+  void publish_decoded_block(const resident_block_desc_t& block, char* dst, std::size_t actual_size)
+  {
+    {
+      MPS_NVTX_RANGE("lz4_section_scan_block", nvtx::colors::generic);
+      input.section_scanner_->observe_block(block.index, dst, dst + actual_size);
+    }
+    std::size_t before = 0;
+    std::size_t after  = 0;
+    {
+      MPS_NVTX_RANGE("lz4_frontier_update", nvtx::colors::generic);
+      std::lock_guard<std::mutex> lock(input.frontier_mutex_);
+      input.block_done_[block.index] = 1;
+      input.block_end_[block.index]  = block.decompressed_offset + actual_size;
+      before                         = input.ready_bytes_;
+      while (input.next_block_ < input.block_done_.size() && input.block_done_[input.next_block_]) {
+        input.ready_bytes_ = input.block_end_[input.next_block_];
+        ++input.next_block_;
+      }
+      after = input.ready_bytes_;
+    }
+    if (after > before) {
+      MPS_NVTX_RANGE("lz4_publish_ready", nvtx::colors::generic);
+      input.section_scanner_->publish_ready(after);
+    }
+  }
+
+  void wait_range_ready(std::size_t begin, std::size_t size)
+  {
+    if (size == 0) return;
+    std::size_t first = begin / window_bytes;
+    std::size_t last  = (begin + size - 1) / window_bytes;
+    for (std::size_t wi = first; wi <= last; ++wi) {
+      MPS_NVTX_RANGE("lz4_metadata_wait_window", nvtx::colors::io);
+      std::unique_lock<std::mutex> lock(window_mutex);
+      window_cv.wait(
+        lock, [&] { return stop_workers.load(std::memory_order_acquire) || window_done[wi] != 0; });
+      if (stop_workers.load(std::memory_order_acquire) && window_done[wi] == 0) {
+        mps_parser_fail(error_type_t::RuntimeError,
+                        "LZ4 metadata scanner stopped before required window was ready");
+      }
+    }
+  }
+
+  void push_batch(std::vector<resident_block_desc_t>& batch)
+  {
+    if (batch.empty()) return;
+    {
+      MPS_NVTX_RANGE("lz4_metadata_commit_batch", nvtx::colors::alloc);
+      input.commit_up_to(batch.back().decompressed_offset + batch.back().decompressed_size);
+    }
+    {
+      MPS_NVTX_RANGE("lz4_metadata_enqueue_batch", nvtx::colors::generic);
+      std::lock_guard<std::mutex> lock(desc_mutex);
+      desc_queue.push_back(std::move(batch));
+    }
+    batch.clear();
+    desc_cv.notify_one();
+  }
+
+  void run_scanner_stage()
+  {
     try {
       nvtx::name_current_thread("lz4-metadata-scan");
-      lz4_resident_windows_t resident(windows);
-      auto wait_range_ready = [&](std::size_t begin, std::size_t size) {
-        if (size == 0) return;
-        std::size_t first = begin / window_bytes;
-        std::size_t last  = (begin + size - 1) / window_bytes;
-        for (std::size_t wi = first; wi <= last; ++wi) {
-          MPS_NVTX_RANGE("lz4_metadata_wait_window", nvtx::colors::io);
-          std::unique_lock<std::mutex> lock(window_mutex);
-          window_cv.wait(lock, [&] {
-            return stop_workers.load(std::memory_order_acquire) || window_done[wi] != 0;
-          });
-          if (stop_workers.load(std::memory_order_acquire) && window_done[wi] == 0) {
-            mps_parser_fail(error_type_t::RuntimeError,
-                            "LZ4 metadata scanner stopped before required window was ready");
-          }
-        }
-      };
-      auto push_batch = [&](std::vector<resident_block_desc_t>& batch) {
-        if (batch.empty()) return;
-        {
-          MPS_NVTX_RANGE("lz4_metadata_commit_batch", nvtx::colors::alloc);
-          commit_up_to(batch.back().decompressed_offset + batch.back().decompressed_size);
-        }
-        {
-          MPS_NVTX_RANGE("lz4_metadata_enqueue_batch", nvtx::colors::generic);
-          std::lock_guard<std::mutex> lock(desc_mutex);
-          desc_queue.push_back(std::move(batch));
-        }
-        batch.clear();
-        desc_cv.notify_one();
-      };
-
-      std::vector<resident_block_desc_t> batch;
-      batch.reserve(1024);
-      std::size_t offset              = header_size_;
-      std::size_t decompressed_offset = 0;
-      while (true) {
-        MPS_NVTX_RANGE("lz4_metadata_scan_block", nvtx::colors::generic);
-        wait_range_ready(offset, 4);
-        if (offset + 4 > compressed_size_) {
-          mps_parser_fail(error_type_t::ValidationError,
-                          "truncated LZ4 frame while reading block header");
-        }
-        uint32_t raw_block_size = resident.read_u32(offset);
-        offset += 4;
-        if (raw_block_size == 0) { break; }
-
-        bool uncompressed              = (raw_block_size & lz4_uncompressed_block) != 0;
-        std::size_t block_payload_size = raw_block_size & lz4_block_size_mask;
-        if (block_payload_size == 0) {
-          mps_parser_fail(error_type_t::ValidationError, "invalid zero-sized LZ4 data block");
-        }
-        if (block_payload_size > block_max_size_ && uncompressed) {
-          mps_parser_fail(error_type_t::ValidationError,
-                          "LZ4 uncompressed block exceeds frame block maximum");
-        }
-        if (content_size_present_ && decompressed_offset >= content_size_) {
-          mps_parser_fail(error_type_t::ValidationError,
-                          "LZ4 frame contains more blocks than content size allows");
-        }
-        wait_range_ready(offset, block_payload_size);
-        if (offset + block_payload_size > compressed_size_) {
-          mps_parser_fail(error_type_t::ValidationError,
-                          "truncated LZ4 frame while reading block payload");
-        }
-
-        std::size_t decompressed_size = block_payload_size;
-        if (!uncompressed) {
-          if (content_size_present_) {
-            decompressed_size = std::min(block_max_size_, content_size_ - decompressed_offset);
-          } else {
-            decompressed_size = block_max_size_;
-          }
-        }
-        if (content_size_present_ && decompressed_size > content_size_ - decompressed_offset) {
-          mps_parser_fail(error_type_t::ValidationError, "LZ4 block exceeds declared content size");
-        }
-
-        const char* src = resident.ptr_if_contiguous(offset, block_payload_size);
-        if (src == nullptr) {
-          crossing_payloads.emplace_back(block_payload_size);
-          resident.copy_to(offset, crossing_payloads.back().data(), block_payload_size);
-          src = crossing_payloads.back().data();
-        }
-        batch.push_back({src,
-                         block_payload_size,
-                         decompressed_offset,
-                         decompressed_size,
-                         blocks_scanned.load(std::memory_order_relaxed),
-                         uncompressed});
-        blocks_scanned.fetch_add(1, std::memory_order_relaxed);
-        decompressed_offset += decompressed_size;
-        offset += block_payload_size;
-        if (block_checksum_) {
-          wait_range_ready(offset, 4);
-          if (offset + 4 > compressed_size_) {
-            mps_parser_fail(error_type_t::ValidationError,
-                            "truncated LZ4 frame while reading block checksum");
-          }
-          offset += 4;
-        }
-        if (blocks_scanned.load(std::memory_order_relaxed) > block_done_.size()) {
-          mps_parser_fail(error_type_t::OutOfMemoryError,
-                          "LZ4 input block count exceeded reserved metadata slots");
-        }
-        if (batch.size() >= 1024) { push_batch(batch); }
-      }
-      if (content_checksum_) {
-        wait_range_ready(offset, 4);
-        if (offset + 4 > compressed_size_) {
-          mps_parser_fail(error_type_t::ValidationError,
-                          "truncated LZ4 frame while reading content checksum");
-        }
-        offset += 4;
-      }
-      if (content_size_present_ && decompressed_offset != content_size_) {
-        mps_parser_fail(error_type_t::ValidationError,
-                        "LZ4 frame ended before declared content size was reached");
-      }
-      if (offset != compressed_size_) {
-        mps_parser_fail(error_type_t::ValidationError,
-                        "LZ4 input contains trailing data after the first frame");
-      }
-      push_batch(batch);
+      scan_lz4_metadata();
       {
         std::lock_guard<std::mutex> lock(desc_mutex);
         scanner_done = true;
@@ -776,37 +764,177 @@ void Lz4InputStream::run_decode_tasks()
       }
       fail_and_notify(std::current_exception());
     }
-  });
+  }
 
-  std::vector<std::thread> io_workers;
-  io_workers.reserve(io_threads);
-  for (std::size_t t = 0; t < io_threads; ++t) {
-    io_workers.emplace_back(decode_worker, t);
-  }
-  for (auto& reader : readers) {
-    reader.join();
-  }
-  const double read_wall_ms = elapsed_ms_since(read_wall_start);
-  scanner.join();
-  for (auto& worker : io_workers) {
-    worker.join();
-  }
-  if (first_error) std::rethrow_exception(first_error);
-  output_view_size_ = ready_bytes_;
-  section_scanner_->publish_ready(output_view_size_);
+  void scan_lz4_metadata()
+  {
+    lz4_resident_windows_t resident(windows);
+    std::vector<resident_block_desc_t> batch;
+    batch.reserve(lz4_decode_batch_decompressed_bytes / input.block_max_size_ + 1);
+    std::size_t batch_decoded_bytes = 0;
+    std::size_t offset              = input.header_size_;
+    std::size_t decompressed_offset = 0;
+    blocks_scanned.store(0, std::memory_order_relaxed);
 
-  const double compressed_mb = static_cast<double>(compressed_size_) / (1024.0 * 1024.0);
-  const double read_effective_mbps =
-    read_wall_ms > 0.0 ? compressed_mb / (read_wall_ms / 1000.0) : 0.0;
-  const double decoder_wait_ms   = decoder_wait_batch_ms.load(std::memory_order_relaxed);
-  const double decoder_active_ms = decoder_active_batch_ms.load(std::memory_order_relaxed);
-  const double decoder_total_ms  = decoder_wait_ms + decoder_active_ms;
-  const double decoder_wait_ratio =
-    decoder_total_ms > 0.0 ? decoder_wait_ms / decoder_total_ms : 0.0;
-  std::fprintf(stderr,
-               "[LZ4_IO] read_effective_MBps=%.3f decoder_wait_ratio=%.6f\n",
-               read_effective_mbps,
-               decoder_wait_ratio);
+    while (true) {
+      MPS_NVTX_RANGE("lz4_metadata_scan_block", nvtx::colors::generic);
+      wait_range_ready(offset, 4);
+      if (offset + 4 > input.compressed_size_) {
+        mps_parser_fail(error_type_t::ValidationError,
+                        "truncated LZ4 frame while reading block header");
+      }
+      uint32_t raw_block_size = resident.read_u32(offset);
+      offset += 4;
+      if (raw_block_size == 0) { break; }
+
+      resident_block_desc_t block =
+        scan_one_block(resident, raw_block_size, offset, decompressed_offset);
+      batch_decoded_bytes += block.decompressed_size;
+      batch.push_back(block);
+      blocks_scanned.fetch_add(1, std::memory_order_relaxed);
+      if (blocks_scanned.load(std::memory_order_relaxed) > input.block_done_.size()) {
+        mps_parser_fail(error_type_t::OutOfMemoryError,
+                        "LZ4 input block count exceeded reserved metadata slots");
+      }
+      if (batch_decoded_bytes >= lz4_decode_batch_decompressed_bytes) {
+        push_batch(batch);
+        batch_decoded_bytes = 0;
+      }
+    }
+
+    scan_frame_footer(offset, decompressed_offset);
+    push_batch(batch);
+    mark_windows_scanned_before(input.compressed_size_);
+  }
+
+  resident_block_desc_t scan_one_block(lz4_resident_windows_t& resident,
+                                       uint32_t raw_block_size,
+                                       std::size_t& offset,
+                                       std::size_t& decompressed_offset)
+  {
+    bool uncompressed              = (raw_block_size & lz4_uncompressed_block) != 0;
+    std::size_t block_payload_size = raw_block_size & lz4_block_size_mask;
+    if (block_payload_size == 0) {
+      mps_parser_fail(error_type_t::ValidationError, "invalid zero-sized LZ4 data block");
+    }
+    if (block_payload_size > input.block_max_size_ && uncompressed) {
+      mps_parser_fail(error_type_t::ValidationError,
+                      "LZ4 uncompressed block exceeds frame block maximum");
+    }
+    if (input.content_size_present_ && decompressed_offset >= input.content_size_) {
+      mps_parser_fail(error_type_t::ValidationError,
+                      "LZ4 frame contains more blocks than content size allows");
+    }
+
+    wait_range_ready(offset, block_payload_size);
+    if (offset + block_payload_size > input.compressed_size_) {
+      mps_parser_fail(error_type_t::ValidationError,
+                      "truncated LZ4 frame while reading block payload");
+    }
+
+    std::size_t decompressed_size = block_payload_size;
+    if (!uncompressed) {
+      decompressed_size =
+        input.content_size_present_
+          ? std::min(input.block_max_size_, input.content_size_ - decompressed_offset)
+          : input.block_max_size_;
+    }
+    if (input.content_size_present_ &&
+        decompressed_size > input.content_size_ - decompressed_offset) {
+      mps_parser_fail(error_type_t::ValidationError, "LZ4 block exceeds declared content size");
+    }
+
+    const char* src          = resident.ptr_if_contiguous(offset, block_payload_size);
+    std::size_t window_index = std::numeric_limits<std::size_t>::max();
+    if (src == nullptr) {
+      crossing_payloads.emplace_back(block_payload_size);
+      resident.copy_to(offset, crossing_payloads.back().data(), block_payload_size);
+      src = crossing_payloads.back().data();
+    } else {
+      window_index = offset / window_bytes;
+      window_refs[window_index].fetch_add(1, std::memory_order_acq_rel);
+    }
+
+    resident_block_desc_t block{src,
+                                block_payload_size,
+                                decompressed_offset,
+                                decompressed_size,
+                                blocks_scanned.load(std::memory_order_relaxed),
+                                window_index,
+                                uncompressed};
+    decompressed_offset += decompressed_size;
+    offset += block_payload_size;
+    mark_windows_scanned_before(offset);
+    if (input.block_checksum_) {
+      wait_range_ready(offset, 4);
+      if (offset + 4 > input.compressed_size_) {
+        mps_parser_fail(error_type_t::ValidationError,
+                        "truncated LZ4 frame while reading block checksum");
+      }
+      offset += 4;
+      mark_windows_scanned_before(offset);
+    }
+    return block;
+  }
+
+  void scan_frame_footer(std::size_t& offset, std::size_t decompressed_offset)
+  {
+    if (input.content_checksum_) {
+      wait_range_ready(offset, 4);
+      if (offset + 4 > input.compressed_size_) {
+        mps_parser_fail(error_type_t::ValidationError,
+                        "truncated LZ4 frame while reading content checksum");
+      }
+      offset += 4;
+      mark_windows_scanned_before(offset);
+    }
+    if (input.content_size_present_ && decompressed_offset != input.content_size_) {
+      mps_parser_fail(error_type_t::ValidationError,
+                      "LZ4 frame ended before declared content size was reached");
+    }
+    if (offset != input.compressed_size_) {
+      mps_parser_fail(error_type_t::ValidationError,
+                      "LZ4 input contains trailing data after the first frame");
+    }
+  }
+
+  Lz4InputStream& input;
+  const std::size_t window_bytes = lz4_pipeline_batch_bytes;
+  const std::size_t window_count;
+  std::vector<lz4_resident_window_t> windows;
+  const std::size_t io_threads;
+
+  std::exception_ptr first_error = nullptr;
+  std::mutex error_mutex;
+  std::atomic_bool stop_workers{false};
+
+  std::atomic_size_t next_window{0};
+  std::vector<unsigned char> window_done;
+  std::vector<std::atomic<uint32_t>> window_refs;
+  std::vector<std::atomic<uint8_t>> window_scanned;
+  std::vector<std::atomic<uint8_t>> window_released;
+  std::mutex window_mutex;
+  std::condition_variable window_cv;
+  std::mutex window_release_mutex;
+  std::atomic_size_t compressed_resident_bytes{0};
+
+  std::deque<std::vector<resident_block_desc_t>> desc_queue;
+  bool scanner_done = false;
+  std::mutex desc_mutex;
+  std::condition_variable desc_cv;
+
+  std::atomic_size_t blocks_scanned{0};
+  std::vector<std::vector<char>> crossing_payloads;
+  std::vector<std::thread> readers;
+  std::vector<std::thread> decoders;
+};
+
+void Lz4InputStream::run_decode_tasks()
+{
+  MPS_NVTX_RANGE("lz4_input_run_decode_tasks", nvtx::colors::io);
+  lz4_pipeline_t pipeline(*this);
+  pipeline.run();
+  pipeline.finalize();
 }
 
 }  // namespace mps_fast

@@ -27,6 +27,8 @@ namespace fp64 {
 #define FASTP64_MAX_EXP_10    288
 #define FASTP64_POWER_COUNT   (FASTP64_MAX_EXP_10 - FASTP64_MIN_EXP_10 + 1)
 #define FASTP64_MANTISSA_MASK ((uint64_t{1} << 52) - 1)
+#define FASTP64_EXPONENT_MASK 0x7FF
+#define FASTP64_HALF_MASK     0x1FF
 
 // Fast FP64 parser optimized for the <=19digits case, based on the Eisel-Lemire algorithm
 // see Daniel Lemire, Number Parsing at a Gigabyte per Second, Software: Practice and Experience 51
@@ -45,11 +47,11 @@ struct cuopt_uint256_t {
   {
     unsigned __int128 carry = 0;
     for (uint64_t& v : limb) {
-      unsigned __int128 x = static_cast<unsigned __int128>(v) * m + carry;
-      v                   = static_cast<uint64_t>(x);
+      unsigned __int128 x = (unsigned __int128)v * m + carry;
+      v                   = (uint64_t)x;
       carry               = x >> 64;
     }
-    return static_cast<uint32_t>(carry);
+    return (uint32_t)carry;
   }
 
   constexpr cuopt_uint256_t shl_small(int bits) const
@@ -81,6 +83,9 @@ struct cuopt_normalized_uint256_t {
   {
     uint32_t carry = sig.mul_u32(10);
     int shift      = 32 - std::countl_zero(carry);
+    // The normalized 256-bit value always overflows into carry after *10; keep
+    // the guard explicit because the cross-limb path shifts by 64 - shift.
+    if (shift == 0) { return; }
     cuopt_uint256_t out;
     for (int i = 0; i < 4; ++i) {
       uint64_t lower = sig.limb[i] >> shift;
@@ -88,7 +93,7 @@ struct cuopt_normalized_uint256_t {
       if (i + 1 < 4) {
         upper = sig.limb[i + 1] << (64 - shift);
       } else {
-        upper = static_cast<uint64_t>(carry) << (64 - shift);
+        upper = (uint64_t)carry << (64 - shift);
       }
       out.limb[i] = lower | upper;
     }
@@ -107,7 +112,7 @@ struct cuopt_normalized_uint256_t {
     unsigned __int128 rem = extra;
     for (int i = 3; i >= 0; --i) {
       unsigned __int128 cur = (rem << 64) | shifted.limb[i];
-      quotient.limb[i]      = static_cast<uint64_t>(cur / 10);
+      quotient.limb[i]      = (uint64_t)(cur / 10);
       rem                   = cur % 10;
     }
     sig = quotient;
@@ -186,7 +191,7 @@ static inline bool parse_8_digits(const char* p, uint32_t& out)
   uint64_t v     = raw - 0x3030303030303030ULL;
   uint64_t pairs = (v * 10 + (v >> 8)) & 0x00FF00FF00FF00FFULL;
   uint64_t quads = (pairs * 100 + (pairs >> 16)) & 0x0000FFFF0000FFFFULL;
-  out            = static_cast<uint32_t>((quads * 10000 + (quads >> 32)) & 0xFFFFFFFFULL);
+  out            = (uint32_t)((quads * 10000 + (quads >> 32)) & 0xFFFFFFFFULL);
   return true;
 }
 
@@ -229,7 +234,7 @@ static inline void scan_digit_run(const char*& p,
     if (after_dot) ++frac_digits;
     if (!too_many_digits && (digit != 0 || sig_digits != 0)) {
       if (sig_digits < 19) {
-        out.mantissa = (out.mantissa * 10) + static_cast<uint64_t>(digit);
+        out.mantissa = (out.mantissa * 10) + (uint64_t)digit;
         ++sig_digits;
       } else {
         too_many_digits = true;
@@ -314,38 +319,42 @@ static inline bool eisel_lemire(uint64_t man, int exp10, uint64_t& bits)
   uint64_t norm                = man << lz;
   int adj_e2                   = p.biased_e2 - lz;
 
-  unsigned __int128 product = static_cast<unsigned __int128>(norm) * p.high;
-  uint64_t hi               = static_cast<uint64_t>(product >> 64);
-  uint64_t lo               = static_cast<uint64_t>(product);
+  unsigned __int128 product = (unsigned __int128)norm * p.high;
+  uint64_t hi               = (uint64_t)(product >> 64);
+  uint64_t lo               = (uint64_t)product;
 
-  if ((hi & 0x1FF) == 0x1FF && lo + norm < norm) {
-    unsigned __int128 low_product = static_cast<unsigned __int128>(norm) * p.low;
-    uint64_t low_hi               = static_cast<uint64_t>(low_product >> 64);
-    uint64_t low_lo               = static_cast<uint64_t>(low_product);
+  // If the high product lands near the 9-bit halfway window, include the low
+  // 64x64 product to disambiguate rounding before deciding whether to fallback.
+  if ((hi & FASTP64_HALF_MASK) == FASTP64_HALF_MASK && lo + norm < norm) {
+    unsigned __int128 low_product = (unsigned __int128)norm * p.low;
+    uint64_t low_hi               = (uint64_t)(low_product >> 64);
+    uint64_t low_lo               = (uint64_t)low_product;
     uint64_t old_lo               = lo;
     lo += low_hi;
     hi += lo < old_lo ? 1 : 0;
-    if ((hi & 0x1FF) == 0x1FF && lo == std::numeric_limits<uint64_t>::max() &&
-        low_lo + norm < low_lo) {
+    if ((hi & FASTP64_HALF_MASK) == FASTP64_HALF_MASK &&
+        lo == std::numeric_limits<uint64_t>::max() && low_lo + norm < low_lo) {
       return false;
     }
   }
 
   uint64_t hi_msb = hi >> 63;
-  uint64_t x54    = hi >> (9 + hi_msb);
-  adj_e2 -= static_cast<int>(1 - hi_msb);
+  // Extract 54 bits: 53 significand bits plus one rounding bit. The product
+  // may be shifted by one depending on whether hi already has its top bit set.
+  uint64_t x54 = hi >> (9 + hi_msb);
+  adj_e2 -= (int)(1 - hi_msb);
 
-  // half-way ambiguity, fallback
-  if (lo == 0 && (hi & 0x1FF) == 0 && (x54 & 3) == 1) { return false; }
+  // Exact halfway with round-to-even ambiguity; let strtod handle the rare tie.
+  if (lo == 0 && (hi & FASTP64_HALF_MASK) == 0 && (x54 & 3) == 1) { return false; }
 
-  // exponent overflow, fallback
+  // Round 54 -> 53 bits, carry into the exponent if rounding overflows.
   uint64_t x53      = (x54 + (x54 & 1)) >> 1;
   uint64_t overflow = x53 >> 53;
   uint64_t ret_man  = (x53 >> overflow) & FASTP64_MANTISSA_MASK;
-  int ret_exp       = adj_e2 + static_cast<int>(overflow);
-  if (ret_exp <= 0 || ret_exp >= 0x7FF) { return false; }
+  int ret_exp       = adj_e2 + (int)overflow;
+  if (ret_exp <= 0 || ret_exp >= FASTP64_EXPONENT_MASK) { return false; }
 
-  bits = (static_cast<uint64_t>(ret_exp) << 52) | ret_man;
+  bits = ((uint64_t)ret_exp << 52) | ret_man;
   return true;
 }
 
@@ -357,14 +366,14 @@ static inline double assemble_fp64(const ParsedDecimal& dec)
   if (dec.fast_eligible) {
     double small    = 0.0;
     bool used_small = false;
-    if (dec.exp10 >= 0 && dec.exp10 < static_cast<int>(small_integer_powers.size())) {
+    if (dec.exp10 >= 0 && dec.exp10 < (int)small_integer_powers.size()) {
       uint64_t limit = (uint64_t{1} << 53) / small_integer_powers[dec.exp10];
       if (dec.mantissa <= limit) {
-        small      = static_cast<double>(dec.mantissa) * small_powers[dec.exp10];
+        small      = (double)dec.mantissa * small_powers[dec.exp10];
         used_small = true;
       }
     } else if (dec.exp10 < 0 && dec.exp10 >= -22 && dec.mantissa < (uint64_t{1} << 53)) {
-      small      = static_cast<double>(dec.mantissa) / small_powers[-dec.exp10];
+      small      = (double)dec.mantissa / small_powers[-dec.exp10];
       used_small = true;
     }
     if (used_small) { return dec.negative ? -small : small; }
@@ -383,17 +392,12 @@ static inline double parse_fp64_advance(const char*& p, const char* end)
   const char* start = p;
   ParsedDecimal dec;
   if (!parse_decimal_advance(p, end, dec)) {
-    return fallback_strtod(std::string_view(start, static_cast<size_t>(p - start)));
+    return fallback_strtod(std::string_view(start, (size_t)(p - start)));
   }
 
   double v = assemble_fp64(dec);
   if (v == v) return v;
-  return fallback_strtod(std::string_view(start, static_cast<size_t>(p - start)));
-}
-
-static inline double parse_fp64_token(const char* p, const char* end)
-{
-  return parse_fp64_advance(p, end);
+  return fallback_strtod(std::string_view(start, (size_t)(p - start)));
 }
 
 }  // namespace fp64

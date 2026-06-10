@@ -121,7 +121,7 @@ class scoped_range {
 inline void name_current_thread(const char* name)
 {
 #ifdef MPS_FAST_NVTX
-  nvtxNameOsThreadA(static_cast<std::uint32_t>(::syscall(SYS_gettid)), name);
+  nvtxNameOsThreadA((std::uint32_t)::syscall(SYS_gettid), name);
 #else
   (void)name;
 #endif

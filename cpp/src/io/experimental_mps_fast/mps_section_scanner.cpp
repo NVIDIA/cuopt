@@ -6,6 +6,8 @@
 #include <utilities/error.hpp>
 
 #include <algorithm>
+#include <array>
+#include <cassert>
 #include <cstdint>
 #include <cstring>
 #include <initializer_list>
@@ -22,6 +24,33 @@ using cuopt::linear_programming::io::mps_parser_fail;
 
 namespace {
 
+struct section_record_t {
+  mps_section_kind kind;
+  const char* name;
+  std::size_t len;
+};
+
+constexpr section_record_t section_records[] = {
+  {mps_section_kind::rows, "ROWS", 4},
+  {mps_section_kind::columns, "COLUMNS", 7},
+  {mps_section_kind::rhs, "RHS", 3},
+  {mps_section_kind::bounds, "BOUNDS", 6},
+  {mps_section_kind::ranges, "RANGES", 6},
+  {mps_section_kind::quadobj, "QUADOBJ", 7},
+  {mps_section_kind::qmatrix, "QMATRIX", 7},
+  {mps_section_kind::qcmatrix, "QCMATRIX", 8},
+  {mps_section_kind::endata, "ENDATA", 6},
+};
+
+constexpr const char* header_records[] = {"NAME", "OBJSENSE", "OBJNAME"};
+
+constexpr std::size_t kSimdWidth = sizeof(simde__m256i);
+static_assert(kSimdWidth == 32);
+static_assert((std::size_t)mps_section_kind::rows == 0);
+static_assert((std::size_t)mps_section_kind::endata + 1 == std::size(section_records));
+static_assert((std::size_t)mps_phase_kind::header == 0);
+static_assert((std::size_t)mps_phase_kind::quadratic + 1 == 7);
+
 bool is_nonblank_column1(unsigned char c) noexcept { return c > ' '; }
 
 simde__m256i nonblank_column1_mask(simde__m256i bytes)
@@ -29,39 +58,21 @@ simde__m256i nonblank_column1_mask(simde__m256i bytes)
   return simde_mm256_cmpgt_epi8(bytes, simde_mm256_set1_epi8(' '));
 }
 
-const char* section_name(mps_section_kind kind)
-{
-  switch (kind) {
-    case mps_section_kind::rows: return "ROWS";
-    case mps_section_kind::columns: return "COLUMNS";
-    case mps_section_kind::rhs: return "RHS";
-    case mps_section_kind::bounds: return "BOUNDS";
-    case mps_section_kind::ranges: return "RANGES";
-    case mps_section_kind::quadobj: return "QUADOBJ";
-    case mps_section_kind::qmatrix: return "QMATRIX";
-    case mps_section_kind::qcmatrix: return "QCMATRIX";
-    case mps_section_kind::endata: return "ENDATA";
-  }
-  return "";
-}
+enum class section_record_match_t { invalid, header, section };
 
-std::size_t section_name_len(mps_section_kind kind) { return std::strlen(section_name(kind)); }
+bool line_has_record_prefix(const char* line_start, const char* line_end, const char* name)
+{
+  std::size_t len = std::strlen(name);
+  if ((std::size_t)(line_end - line_start) < len || std::memcmp(line_start, name, len) != 0) {
+    return false;
+  }
+  const char* after = line_start + len;
+  return after == line_end || *after <= ' ';
+}
 
 }  // namespace
 
-std::size_t mps_phase_registry_t::phase_index(mps_phase_kind phase)
-{
-  switch (phase) {
-    case mps_phase_kind::header: return 0;
-    case mps_phase_kind::rows: return 1;
-    case mps_phase_kind::columns: return 2;
-    case mps_phase_kind::rhs: return 3;
-    case mps_phase_kind::bounds: return 4;
-    case mps_phase_kind::ranges: return 5;
-    case mps_phase_kind::quadratic: return 6;
-  }
-  mps_parser_fail(error_type_t::RuntimeError, "invalid MPS phase kind");
-}
+std::size_t mps_phase_registry_t::phase_index(mps_phase_kind phase) { return (std::size_t)phase; }
 
 void mps_phase_registry_t::publish(mps_phase_kind phase, mps_phase_range_t range)
 {
@@ -105,68 +116,37 @@ bool mps_phase_registry_t::ready(mps_phase_kind phase) const
 
 mps_phase_range_t mps_phase_registry_t::range(mps_phase_kind phase) const
 {
-  return ranges_[phase_index(phase)];
+  std::size_t idx = phase_index(phase);
+  assert(ready_[idx].load(std::memory_order_acquire));
+  return ranges_[idx];
 }
 
-bool line_is_section(const char* line_start, const char* line_end, mps_section_kind* kind)
+static section_record_match_t is_section_record(const char* line_start,
+                                                const char* line_end,
+                                                mps_section_kind* kind)
 {
-  if (line_start >= line_end) { return false; }
+  if (line_start >= line_end) { return section_record_match_t::invalid; }
 
-  mps_section_kind candidate;
-  switch (*line_start) {
-    case 'R':
-      if (line_end - line_start >= 3 && std::memcmp(line_start, "RHS", 3) == 0) {
-        candidate = mps_section_kind::rhs;
-      } else if (line_end - line_start >= 4 && std::memcmp(line_start, "ROWS", 4) == 0) {
-        candidate = mps_section_kind::rows;
-      } else if (line_end - line_start >= 6 && std::memcmp(line_start, "RANGES", 6) == 0) {
-        candidate = mps_section_kind::ranges;
-      } else {
-        return false;
-      }
-      break;
-    case 'C':
-      if (line_end - line_start >= 7 && std::memcmp(line_start, "COLUMNS", 7) == 0) {
-        candidate = mps_section_kind::columns;
-      } else {
-        return false;
-      }
-      break;
-    case 'B':
-      if (line_end - line_start >= 6 && std::memcmp(line_start, "BOUNDS", 6) == 0) {
-        candidate = mps_section_kind::bounds;
-      } else {
-        return false;
-      }
-      break;
-    case 'E':
-      if (line_end - line_start >= 6 && std::memcmp(line_start, "ENDATA", 6) == 0) {
-        candidate = mps_section_kind::endata;
-      } else {
-        return false;
-      }
-      break;
-    case 'Q':
-      if (line_end - line_start >= 7 && std::memcmp(line_start, "QUADOBJ", 7) == 0) {
-        candidate = mps_section_kind::quadobj;
-      } else if (line_end - line_start >= 7 && std::memcmp(line_start, "QMATRIX", 7) == 0) {
-        candidate = mps_section_kind::qmatrix;
-      } else if (line_end - line_start >= 8 && std::memcmp(line_start, "QCMATRIX", 8) == 0) {
-        candidate = mps_section_kind::qcmatrix;
-      } else {
-        return false;
-      }
-      break;
-    default: return false;
+  for (const char* name : header_records) {
+    if (line_has_record_prefix(line_start, line_end, name)) {
+      return section_record_match_t::header;
+    }
   }
 
-  const char* after = line_start + section_name_len(candidate);
-  while (after < line_end && (*after == ' ' || *after == '\t' || *after == '\r')) {
-    ++after;
+  for (const section_record_t& record : section_records) {
+    if ((std::size_t)(line_end - line_start) < record.len ||
+        std::memcmp(line_start, record.name, record.len) != 0) {
+      continue;
+    }
+    const char* after = line_start + record.len;
+    while (after < line_end && (*after == ' ' || *after == '\t' || *after == '\r')) {
+      ++after;
+    }
+    if (after != line_end) { return section_record_match_t::invalid; }
+    *kind = record.kind;
+    return section_record_match_t::section;
   }
-  if (after != line_end) { return false; }
-  *kind = candidate;
-  return true;
+  return section_record_match_t::invalid;
 }
 
 mps_section_block_scanner_t::mps_section_block_scanner_t(const char* data,
@@ -188,18 +168,7 @@ mps_section_block_scanner_t::mps_section_block_scanner_t(const char* data,
 
 std::size_t mps_section_block_scanner_t::section_hit_index(mps_section_kind kind)
 {
-  switch (kind) {
-    case mps_section_kind::rows: return 0;
-    case mps_section_kind::columns: return 1;
-    case mps_section_kind::rhs: return 2;
-    case mps_section_kind::bounds: return 3;
-    case mps_section_kind::ranges: return 4;
-    case mps_section_kind::quadobj: return 5;
-    case mps_section_kind::qmatrix: return 6;
-    case mps_section_kind::qcmatrix: return 7;
-    case mps_section_kind::endata: return 8;
-  }
-  return 0;
+  return (std::size_t)kind;
 }
 
 void mps_section_block_scanner_t::record_section_hit(mps_section_kind kind, const char* ptr)
@@ -212,11 +181,8 @@ void mps_section_block_scanner_t::record_section_hit(mps_section_kind kind, cons
   }
 }
 
-void mps_section_block_scanner_t::scan_section_range(const char* begin,
-                                                     const char* end,
-                                                     bool boundary_scan)
+void mps_section_block_scanner_t::scan_section_range(const char* begin, const char* end)
 {
-  (void)boundary_scan;
   if (begin >= end) return;
   const char* p = begin;
 
@@ -224,21 +190,39 @@ void mps_section_block_scanner_t::scan_section_range(const char* begin,
   // line. A separate boundary scan covers section titles whose newline/title
   // bytes straddle adjacent LZ4 blocks.
   if (p != data_) {
-    const void* nl = __builtin_memchr(p, '\n', static_cast<std::size_t>(end - p));
+    const void* nl = __builtin_memchr(p, '\n', (std::size_t)(end - p));
     if (nl == nullptr) { return; }
-    p = static_cast<const char*>(nl) + 1;
+    p = (const char*)nl + 1;
   }
 
   auto try_candidate = [&](const char* line_start) {
-    const void* nl = __builtin_memchr(line_start, '\n', static_cast<std::size_t>(end - line_start));
-    const char* line_end = nl == nullptr ? end : static_cast<const char*>(nl);
+    const void* nl       = __builtin_memchr(line_start, '\n', (std::size_t)(end - line_start));
+    const char* line_end = nullptr;
+    if (nl == nullptr) {
+      const char* ready_ptr = data_ + ready_bytes_.load(std::memory_order_acquire);
+      if (end != ready_ptr) { return; }
+      line_end = end;
+    } else {
+      line_end = (const char*)nl;
+    }
+    if (*line_start == '*' || *line_start == '$') { return; }
     mps_section_kind kind;
-    if (line_is_section(line_start, line_end, &kind)) { record_section_hit(kind, line_start); }
+    section_record_match_t match = is_section_record(line_start, line_end, &kind);
+    if (match == section_record_match_t::section) {
+      record_section_hit(kind, line_start);
+      return;
+    }
+    if (match == section_record_match_t::invalid) {
+      mps_parser_fail(error_type_t::ValidationError,
+                      "unknown section record: %.*s",
+                      (int)(line_end - line_start),
+                      line_start);
+    }
   };
 
   // Handle the very first line of a file (NAME indicator, usually)
   if (p == data_) {
-    if (p < end && is_nonblank_column1(static_cast<unsigned char>(*p))) { try_candidate(p); }
+    if (p < end && is_nonblank_column1((unsigned char)*p)) { try_candidate(p); }
     ++p;
   }
 
@@ -246,24 +230,25 @@ void mps_section_block_scanner_t::scan_section_range(const char* begin,
   // begin in column 2+. Treat start-of-file or "\n[nonblank]" as the cheap
   // candidate signal, then run the exact section matcher only for candidates.
   const simde__m256i newline = simde_mm256_set1_epi8('\n');
-  while (static_cast<std::size_t>(end - p) >= 32) {
+  while ((std::size_t)(end - p) >= kSimdWidth) {
+    // The first-line path above increments p when p == data_, so p - 1 is
+    // in-bounds here. Loading the previous vector lets us test "\nX" for all
+    // 32 candidate column-1 bytes with one AVX2 mask.
     simde__m256i current  = simde_mm256_loadu_si256(reinterpret_cast<const simde__m256i*>(p));
     simde__m256i previous = simde_mm256_loadu_si256(reinterpret_cast<const simde__m256i*>(p - 1));
-    std::uint32_t mask = static_cast<std::uint32_t>(simde_mm256_movemask_epi8(simde_mm256_and_si256(
-      simde_mm256_cmpeq_epi8(previous, newline), nonblank_column1_mask(current))));
+    std::uint32_t mask    = (std::uint32_t)simde_mm256_movemask_epi8(simde_mm256_and_si256(
+      simde_mm256_cmpeq_epi8(previous, newline), nonblank_column1_mask(current)));
     while (mask != 0) {
       int bit = __builtin_ctz(mask);
       try_candidate(p + bit);
       mask &= mask - 1;
     }
-    p += 32;
+    p += kSimdWidth;
   }
 
   // scalar tail
   while (p < end) {
-    if (*(p - 1) == '\n' && is_nonblank_column1(static_cast<unsigned char>(*p))) {
-      try_candidate(p);
-    }
+    if (*(p - 1) == '\n' && is_nonblank_column1((unsigned char)*p)) { try_candidate(p); }
     ++p;
   }
 }
@@ -277,7 +262,7 @@ void mps_section_block_scanner_t::scan_boundary(std::size_t left_index, std::siz
     boundary - left_begin > boundary_overlap ? boundary - boundary_overlap : left_begin;
   std::size_t end =
     right_end - boundary > boundary_overlap ? boundary + boundary_overlap : right_end;
-  scan_section_range(data_ + begin, data_ + end, true);
+  scan_section_range(data_ + begin, data_ + end);
 }
 
 void mps_section_block_scanner_t::observe_block(std::size_t block_index,
@@ -289,11 +274,9 @@ void mps_section_block_scanner_t::observe_block(std::size_t block_index,
                     "MPS section scanner observed invalid LZ4 block index");
   }
 
-  scan_section_range(begin, end, false);
-  block_begin_offsets_[block_index].store(static_cast<std::size_t>(begin - data_),
-                                          std::memory_order_relaxed);
-  block_end_offsets_[block_index].store(static_cast<std::size_t>(end - data_),
-                                        std::memory_order_relaxed);
+  scan_section_range(begin, end);
+  block_begin_offsets_[block_index].store((std::size_t)(begin - data_), std::memory_order_relaxed);
+  block_end_offsets_[block_index].store((std::size_t)(end - data_), std::memory_order_relaxed);
   block_decoded_[block_index].store(1, std::memory_order_release);
 
   if (block_index > 0 && block_decoded_[block_index - 1].load(std::memory_order_acquire)) {
@@ -308,11 +291,18 @@ void mps_section_block_scanner_t::observe_block(std::size_t block_index,
 void mps_section_block_scanner_t::publish_ready(std::size_t ready_bytes)
 {
   ready_bytes_.store(ready_bytes, std::memory_order_release);
+  std::size_t begin = ready_bytes > boundary_overlap ? ready_bytes - boundary_overlap : 0;
+  scan_section_range(data_ + begin, data_ + ready_bytes);
   publish_section_ranges();
 }
 
 void mps_section_block_scanner_t::publish_section_ranges()
 {
+  // Publication model: each present phase runs from its own section header to
+  // the first later section header that has been discovered. Optional sections
+  // publish present=false once a later boundary proves they cannot still appear.
+  // ENDATA, or final ready bytes for truncated/non-newline files, is the final
+  // boundary for the trailing optional/quadratic phases.
   std::lock_guard<std::mutex> lock(publish_mutex_);
   std::size_t ready     = ready_bytes_.load(std::memory_order_acquire);
   const char* ready_ptr = data_ + ready;
@@ -349,6 +339,21 @@ void mps_section_block_scanner_t::publish_section_ranges()
     }
     return best;
   };
+  auto publish_optional = [&](mps_phase_kind phase,
+                              const char* self,
+                              const char* predecessor,
+                              std::initializer_list<const char*> later_candidates) {
+    if (registry_.ready(phase)) { return; }
+    if (available(self)) {
+      const char* end = earliest_available_after(self, later_candidates);
+      if (end != nullptr) { registry_.publish(phase, {self, end, true}); }
+      return;
+    }
+    if (predecessor != nullptr &&
+        earliest_available_after(predecessor, later_candidates) != nullptr) {
+      registry_.publish(phase, {nullptr, nullptr, false});
+    }
+  };
 
   if (available(rows) && !registry_.ready(mps_phase_kind::header)) {
     registry_.publish(mps_phase_kind::header, {data_, rows, true});
@@ -364,43 +369,18 @@ void mps_section_block_scanner_t::publish_section_ranges()
     }
   }
 
-  if (!registry_.ready(mps_phase_kind::rhs)) {
-    if (available(rhs)) {
-      const char* rhs_end =
-        earliest_available_after(rhs, {ranges, bounds, quadobj, qmatrix, qcmatrix, final_boundary});
-      if (rhs_end != nullptr) { registry_.publish(mps_phase_kind::rhs, {rhs, rhs_end, true}); }
-    } else {
-      const char* after_columns = earliest_available_after(
-        columns, {ranges, bounds, quadobj, qmatrix, qcmatrix, final_boundary});
-      if (after_columns != nullptr) {
-        registry_.publish(mps_phase_kind::rhs, {nullptr, nullptr, false});
-      }
-    }
-  }
-
-  if (!registry_.ready(mps_phase_kind::ranges)) {
-    const char* ranges_end =
-      earliest_available_after(ranges, {bounds, quadobj, qmatrix, qcmatrix, final_boundary});
-    const char* after_rhs = earliest_available_after(
-      rhs ? rhs : columns, {bounds, quadobj, qmatrix, qcmatrix, final_boundary});
-    if (available(ranges) && ranges_end != nullptr) {
-      registry_.publish(mps_phase_kind::ranges, {ranges, ranges_end, true});
-    } else if (!ranges && after_rhs != nullptr) {
-      registry_.publish(mps_phase_kind::ranges, {nullptr, nullptr, false});
-    }
-  }
-
-  if (!registry_.ready(mps_phase_kind::bounds)) {
-    const char* bounds_end =
-      earliest_available_after(bounds, {quadobj, qmatrix, qcmatrix, final_boundary});
-    const char* after_ranges = earliest_available_after(
-      ranges ? ranges : (rhs ? rhs : columns), {quadobj, qmatrix, qcmatrix, final_boundary});
-    if (available(bounds) && bounds_end != nullptr) {
-      registry_.publish(mps_phase_kind::bounds, {bounds, bounds_end, true});
-    } else if (!bounds && after_ranges != nullptr) {
-      registry_.publish(mps_phase_kind::bounds, {nullptr, nullptr, false});
-    }
-  }
+  publish_optional(mps_phase_kind::rhs,
+                   rhs,
+                   columns,
+                   {ranges, bounds, quadobj, qmatrix, qcmatrix, final_boundary});
+  publish_optional(mps_phase_kind::ranges,
+                   ranges,
+                   rhs ? rhs : columns,
+                   {bounds, quadobj, qmatrix, qcmatrix, final_boundary});
+  publish_optional(mps_phase_kind::bounds,
+                   bounds,
+                   ranges ? ranges : (rhs ? rhs : columns),
+                   {quadobj, qmatrix, qcmatrix, final_boundary});
 
   if (!registry_.ready(mps_phase_kind::quadratic)) {
     const char* quadratic_begin = nullptr;

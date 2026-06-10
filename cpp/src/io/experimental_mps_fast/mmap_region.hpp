@@ -53,6 +53,7 @@ class mmap_region_t {
 
   ~mmap_region_t() { reset(); }
 
+ private:
   static mmap_region_t map(
     void* address, std::size_t size, int prot, int flags, int fd, off_t offset, const char* context)
   {
@@ -64,6 +65,7 @@ class mmap_region_t {
     return mmap_region_t(ptr, size);
   }
 
+ public:
   static mmap_region_t anonymous(std::size_t size, int prot, int flags, const char* context)
   {
     return map(nullptr, size, prot, flags | MAP_ANONYMOUS, -1, 0, context);
@@ -89,7 +91,7 @@ class mmap_region_t {
 
     uintptr_t raw_addr     = reinterpret_cast<uintptr_t>(raw);
     uintptr_t aligned_addr = (raw_addr + alignment - 1) & ~(uintptr_t)(alignment - 1);
-    std::size_t prefix     = static_cast<std::size_t>(aligned_addr - raw_addr);
+    std::size_t prefix     = (std::size_t)(aligned_addr - raw_addr);
     std::size_t suffix     = raw_size - prefix - size;
     if (prefix > 0) { ::munmap(raw, prefix); }
     if (suffix > 0) { ::munmap(reinterpret_cast<void*>(aligned_addr + size), suffix); }
@@ -113,33 +115,14 @@ class mmap_region_t {
     size_ = 0;
   }
 
-  void reset(void* ptr, std::size_t size) noexcept
-  {
-    reset();
-    ptr_  = ptr;
-    size_ = size;
-  }
-
-  void* release() noexcept
-  {
-    void* ptr = ptr_;
-    ptr_      = nullptr;
-    size_     = 0;
-    return ptr;
-  }
-
   void advise(int advice) const noexcept
   {
     if (ptr_ != nullptr && size_ != 0) { ::madvise(ptr_, size_, advice); }
   }
 
   void* data() noexcept { return ptr_; }
-  const void* data() const noexcept { return ptr_; }
-  char* char_data() noexcept { return static_cast<char*>(ptr_); }
-  const char* char_data() const noexcept { return static_cast<const char*>(ptr_); }
+  char* char_data() noexcept { return (char*)ptr_; }
   std::size_t size() const noexcept { return size_; }
-  bool empty() const noexcept { return ptr_ == nullptr || size_ == 0; }
-  explicit operator bool() const noexcept { return !empty(); }
 
  private:
   void* ptr_        = nullptr;
