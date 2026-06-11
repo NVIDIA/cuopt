@@ -855,9 +855,9 @@ struct solve {
           temp_pair.first = injection_info.solutions[next_injection];
           if (!p->has_vehicle_fixed_costs()) {
             auto injection_it = next_injection;
-            while (injection_it < injection_info.n_sol &&
+            while (injection_it < injection_info.n_sol-1 &&
                    temp_pair.first.sol.get_n_routes() > target_vehicles_) {
-              temp_pair.first = injection_info.solutions[injection_it++];
+              temp_pair.first = injection_info.solutions[++injection_it];
             }
             next_injection = injection_it;
           }
