@@ -88,7 +88,8 @@ def _api(path, token, method, payload):
 
 
 def _is_test_job(name):
-    return any(name == p or name.startswith(p + " (") for p in _TEST_PREFIXES)
+    # Matrix jobs use " / " or " (" as separator depending on GHA version.
+    return any(name == p or name.startswith(p + " ") for p in _TEST_PREFIXES)
 
 
 def _analyze_job_log(job_id, repo, token):

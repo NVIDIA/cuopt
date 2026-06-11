@@ -34,6 +34,7 @@ jobs:
       - wheel-tests-cuopt-server
       - wheel-build-cuopt-sh-client
       - test-self-hosted-server
+      - pr-test-summary
     permissions:
       contents: read
     uses: rapidsai/shared-workflows/.github/workflows/pr-builder.yaml@main
@@ -628,6 +629,7 @@ jobs:
       - wheel-tests-cuopt-server
       - test-self-hosted-server
     if: always()
+    continue-on-error: true
     runs-on: ubuntu-latest
     permissions:
       actions: read
