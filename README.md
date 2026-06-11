@@ -2,7 +2,7 @@
 # cuOpt - GPU-accelerated Optimization
 
 [![Build Status](https://github.com/NVIDIA/cuopt/actions/workflows/build.yaml/badge.svg)](https://github.com/NVIDIA/cuopt/actions/workflows/build.yaml)
-[![Version](https://img.shields.io/badge/version-26.06.00-blue)](https://github.com/NVIDIA/cuopt/releases)
+[![Version](https://img.shields.io/badge/version-26.08.00-blue)](https://github.com/NVIDIA/cuopt/releases)
 [![Documentation](https://img.shields.io/badge/docs-latest-brightgreen)](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html)
 [![Docker Hub](https://img.shields.io/badge/docker-nvidia%2Fcuopt-blue?logo=docker)](https://hub.docker.com/r/nvidia/cuopt)
 [![Examples](https://img.shields.io/badge/examples-cuopt--examples-orange)](https://github.com/NVIDIA/cuopt-examples)
@@ -12,7 +12,11 @@
 
 
 
-NVIDIA® cuOpt™ is a GPU-accelerated optimization engine that excels in linear programming (LP), quadratic programming (QP), and vehicle routing problems (VRP), with support for quadratically constrained quadratic programming (QCQP) (beta), second-order cone programming (SOCP) (beta), and mixed integer linear programming (MILP) (beta). It enables near real-time solutions for large-scale LPs with millions of variables and constraints. cuOpt offers easy integration into existing modeling languages and seamless deployment across hybrid and multi-cloud environments.
+NVIDIA® cuOpt™ is a GPU-accelerated optimization engine that excels in linear programming (LP), quadratic programming (QP), and vehicle routing problems (VRP), with support for quadratically constrained quadratic programming (QCQP) (beta), second-order cone programming (SOCP) (beta), and mixed integer linear programming (MILP) (beta). cuOpt enables near real-time solutions for large-scale LPs with millions of variables and constraints and offers easy integration into existing modeling languages with seamless deployment across hybrid and multi-cloud environments.
+
+The cuOpt MIP solver is in beta and under active development. The solver currently excels at finding high-quality feasible solutions quickly with GPU-accelerated primal heuristics. Proving feasible solutions optimal remains under active development.
+
+cuOpt offers easy integration into existing solvers, and seamlessly extends into agent-first optimization workflows through open-source cuOpt agent skills.
 
 The core engine is written in C++ and wrapped with a C API, Python API and Server API.
 

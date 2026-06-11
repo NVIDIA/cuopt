@@ -11,61 +11,28 @@
 #include <cuopt/linear_programming/io/parser.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <utilities/common_utils.hpp>
-#include <utilities/error.hpp>
+#include <utilities/inline_lp_test_utils.hpp>
 
 #include <raft/core/handle.hpp>
-#include <raft/util/cudart_utils.hpp>
 
 #include <gtest/gtest.h>
 
-#include <cstdint>
 #include <filesystem>
-#include <sstream>
-#include <string>
-#include <vector>
 
 namespace cuopt::linear_programming::test {
 
-// Problem data for the mixed integer linear programming example from documentation
 io::mps_data_model_t<int, double> create_doc_example_problem()
 {
-  // Create problem instance
-  io::mps_data_model_t<int, double> problem;
-
-  // Set up constraint matrix in CSR format
-  std::vector<int> offsets         = {0, 2, 4};
-  std::vector<int> indices         = {0, 1, 0, 1};
-  std::vector<double> coefficients = {2.0, 4.0, 3.0, 2.0};
-  problem.set_csr_constraint_matrix(coefficients, indices, offsets);
-
-  // Set constraint bounds
-  std::vector<double> lower_bounds = {230.0, -std::numeric_limits<double>::infinity()};
-  std::vector<double> upper_bounds = {std::numeric_limits<double>::infinity(), 190.0};
-  problem.set_constraint_lower_bounds(lower_bounds);
-  problem.set_constraint_upper_bounds(upper_bounds);
-
-  // Set variable bounds
-  std::vector<double> var_lower_bounds = {0.0, 0.0};
-  std::vector<double> var_upper_bounds = {std::numeric_limits<double>::infinity(),
-                                          std::numeric_limits<double>::infinity()};
-  problem.set_variable_lower_bounds(var_lower_bounds);
-  problem.set_variable_upper_bounds(var_upper_bounds);
-
-  // Set objective coefficients (maximize 5x + 3y)
-  std::vector<double> objective_coefficients = {5.0, 3.0};
-  problem.set_objective_coefficients(objective_coefficients);
-
-  // Set variable types (x is integer, y is continuous)
-  std::vector<char> variable_types = {'I', 'C'};  // 'I' for Integer, 'C' for Continuous
-  problem.set_variable_types(variable_types);
-
-  // Set to maximize
-  problem.set_maximize(true);
-
-  // Optional: Set variable names for better debugging
-  problem.set_variable_names({"x", "y"});
-
-  return problem;
+  return cuopt::test::parse_inline_lp(R"LP(
+Maximize
+  obj: 5 x + 3 y
+Subject To
+  c1: 2 x + 4 y >= 230
+  c2: 3 x + 2 y <= 190
+Generals
+  x
+End
+)LP");
 }
 
 struct result_map_t {

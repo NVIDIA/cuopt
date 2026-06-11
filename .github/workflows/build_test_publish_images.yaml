@@ -42,7 +42,7 @@ jobs:
     permissions:
       contents: read
     container:
-      image: rapidsai/ci-conda:26.06-latest
+      image: rapidsai/ci-conda:26.08-latest
     outputs:
       MATRIX: ${{ steps.compute-matrix.outputs.MATRIX }}
       CUOPT_VER: ${{ steps.compute-cuopt-ver.outputs.CUOPT_VER }}

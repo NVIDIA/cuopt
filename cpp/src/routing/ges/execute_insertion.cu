@@ -267,27 +267,33 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::execute_best_insertion_ejectio
     shared_for_delete_array =
       raft::alignTo(fragment_size * request_info_t<i_t, REQUEST>::size() * sizeof(i_t),
                     sizeof(infeasible_cost_t));
-    if (!set_shmem_of_kernel(
-          kernel_get_best_insertion_ejection_solution<threads_per_block, i_t, f_t, REQUEST>,
+    if (!set_shmem_for_kernel_get_best_insertion_ejection_solution<threads_per_block,
+                                                                   i_t,
+                                                                   f_t,
+                                                                   REQUEST>(
           shared_for_delete_array + shared_for_tmp_route)) {
       return false;
     }
-    kernel_get_best_insertion_ejection_solution<threads_per_block, i_t, f_t, REQUEST>
-      <<<solution_ptr->get_num_requests() * fragment_step,
-         threads_per_block,
-         shared_for_delete_array + shared_for_tmp_route,
-         solution_ptr->sol_handle->get_stream()>>>(
-        solution_ptr->view(),
-        d_request,
-        p_scores_.data(),
-        fragment_size,
-        fragment_step,
-        feasible_move_t(cuopt::make_span(feasible_candidates_data_),
-                        feasible_candidates_size_.data(),
-                        solution_ptr->get_num_orders(),
-                        solution_ptr->problem_ptr->get_max_break_dimensions(),
-                        solution_ptr->get_n_routes()),
-        seed_generator::get_seed());
+    {
+      auto sol_view         = solution_ptr->view();
+      auto fc_move          = feasible_move_t(cuopt::make_span(feasible_candidates_data_),
+                                     feasible_candidates_size_.data(),
+                                     solution_ptr->get_num_orders(),
+                                     solution_ptr->problem_ptr->get_max_break_dimensions(),
+                                     solution_ptr->get_n_routes());
+      int64_t seed          = seed_generator::get_seed();
+      i_t* p_scores         = p_scores_.data();
+      i_t fragment_size_arg = fragment_size;
+      i_t fragment_step_arg = fragment_step;
+      void* args[]          = {
+        &sol_view, &d_request, &p_scores, &fragment_size_arg, &fragment_step_arg, &fc_move, &seed};
+      launch_kernel_get_best_insertion_ejection_solution<threads_per_block, i_t, f_t, REQUEST>(
+        dim3(solution_ptr->get_num_requests() * fragment_step),
+        dim3(threads_per_block),
+        shared_for_delete_array + shared_for_tmp_route,
+        args,
+        solution_ptr->sol_handle->get_stream());
+    }
     RAFT_CHECK_CUDA(solution_ptr->sol_handle->get_stream());
   }
 
