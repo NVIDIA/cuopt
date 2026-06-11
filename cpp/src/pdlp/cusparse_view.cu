@@ -212,7 +212,9 @@ cusparse_spmvop_descr_uptr make_spmvop_descr(cusparseHandle_t handle,
 {
   static const auto fn =
     dynamic_load_runtime::function<cusparseSpMVOp_createDescr_sig>("cusparseSpMVOp_createDescr");
-  if (!fn.has_value()) { EXE_CUOPT_FAIL("Unable to resolve cusparseSpMVOp_createDescr at runtime"); }
+  if (!fn.has_value()) {
+    EXE_CUOPT_FAIL("Unable to resolve cusparseSpMVOp_createDescr at runtime");
+  }
   cusparseSpMVOpDescr_t descr{nullptr};
   RAFT_CUSPARSE_TRY((*fn)(handle, &descr, opA, matA, vecX, vecY, vecZ, computeType, buffer.data()));
   return cusparse_spmvop_descr_uptr{descr};
