@@ -144,7 +144,7 @@ void my_cusparsespmm_preprocess(cusparseHandle_t handle,
       return CUDA_R_64F;
     }
   }();
-  CUSPARSE_CHECK(cusparseSetStream(handle, stream));
+  RAFT_CUSPARSE_TRY(cusparseSetStream(handle, stream));
   RAFT_CUSPARSE_TRY(cusparseSpMM_preprocess(
     handle, opA, opB, alpha, matA, matB, beta, matC, float_type, alg, externalBuffer));
 }
@@ -1172,7 +1172,8 @@ void cusparse_view_t<i_t, f_t>::create_spmv_op_plans(bool is_reflected)
   if (!is_cusparse_runtime_spmvop_supported() || !(std::is_same_v<f_t, double>)) { return; }
   static const auto buffer_size =
     dynamic_load_runtime::function<cusparseSpMVOp_bufferSize_sig>("cusparseSpMVOp_bufferSize");
-  CUSPARSE_CHECK(cusparseSetStream(handle_ptr_->get_cusparse_handle(), handle_ptr_->get_stream()));
+  RAFT_CUSPARSE_TRY(
+    cusparseSetStream(handle_ptr_->get_cusparse_handle(), handle_ptr_->get_stream()));
   // Prepare buffers for At_y SpMVOp
   size_t buffer_size_transpose = 0;
   RAFT_CUSPARSE_TRY((*buffer_size)(handle_ptr_->get_cusparse_handle(),
