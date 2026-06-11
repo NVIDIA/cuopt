@@ -31,6 +31,16 @@ def test_validate_file_path_returns_file_if_relative_path_stays_in_data_dir(
     assert webserver.validate_file_path("input.json") == str(data_file)
 
 
+def test_validate_file_path_rejects_unset_data_dir():
+    settings.set_data_dir("")
+
+    with pytest.raises(HTTPException) as exc_info:
+        webserver.validate_file_path("input.json")
+
+    assert exc_info.value.status_code == 400
+    assert "cuopt data directory not set" in exc_info.value.detail
+
+
 def test_validate_file_path_rejects_absolute_path(tmp_path):
     data_dir = tmp_path / "data"
     data_dir.mkdir()
@@ -57,6 +67,19 @@ def test_validate_file_path_rejects_parent_directory_escape(tmp_path):
 
     assert exc_info.value.status_code == 400
     assert "stay inside CUOPT_DATA_DIR" in exc_info.value.detail
+
+
+def test_validate_file_path_rejects_non_regular_file(tmp_path):
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / "input").mkdir()
+    settings.set_data_dir(str(data_dir))
+
+    with pytest.raises(HTTPException) as exc_info:
+        webserver.validate_file_path("input")
+
+    assert exc_info.value.status_code == 400
+    assert "not a regular file" in exc_info.value.detail
 
 
 def test_validate_file_path_rejects_symlink_escape(tmp_path):

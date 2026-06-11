@@ -213,11 +213,21 @@ def validate_file_path(cuopt_data_file):
             detail="cuopt-data-file must stay inside CUOPT_DATA_DIR",
         )
 
-    if not os.path.isfile(file_path):
-        logging.error(f"File path '{file_path}' doesn't exist")
+    if not os.path.exists(file_path):
+        logging.error("cuopt-data-file does not exist")
         raise HTTPException(
             status_code=400,
             detail=f"specified data file does not exist: {cuopt_data_file}",
+        )
+
+    if not os.path.isfile(file_path):
+        logging.error("cuopt-data-file is not a regular file")
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "specified data file is not a regular file: "
+                f"{cuopt_data_file}"
+            ),
         )
 
     return file_path
