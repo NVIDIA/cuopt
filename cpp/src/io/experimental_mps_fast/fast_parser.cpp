@@ -11,7 +11,7 @@
 #include "nvtx_ranges.hpp"
 
 #include <cuda/cmath>
-#ifdef MPS_FAST_PERF_COUNTERS
+#if defined(MPS_FAST_PERF_COUNTERS) || defined(MPS_FAST_TIMERS)
 #include <utilities/perf_counters.hpp>
 #endif
 

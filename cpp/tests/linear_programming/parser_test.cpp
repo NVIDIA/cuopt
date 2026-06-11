@@ -139,23 +139,12 @@ double q_entry(const mps_data_model_t<int, double>& m, int row, int col)
 
 class parser_fixture_base : public ::testing::TestWithParam<mps_reader_param_t> {
  protected:
-  static mps_data_model_t<int, double> read_mps_file(const std::string& file,
-                                                     bool fixed_format = true)
-  {
-    const std::string& root = cuopt::test::get_rapids_dataset_root_dir();
-    return read_mps<int, double>(root + "/" + file, fixed_format);
-  }
-
-  mps_data_model_t<int, double> read_param_mps_file(const std::string& file,
-                                                    bool fixed_format = true) const
+  mps_data_model_t<int, double> read_mps_file(const std::string& file,
+                                              bool fixed_format = true) const
   {
     const std::string& root = cuopt::test::get_rapids_dataset_root_dir();
     const auto reader       = GetParam().reader;
-    // The experimental reader has no fixed/free parser mode. Use the same file but do not force
-    // fixed-format dispatch for that reader.
-    const bool reader_fixed_format =
-      reader == mps_reader_type_t::default_reader ? fixed_format : false;
-    return read<int, double>(root + "/" + file, reader, reader_fixed_format);
+    return read<int, double>(root + "/" + file, reader, fixed_format);
   }
 
   static mps_data_model_t<int, double> read_lp_file(const std::string& file)
@@ -386,7 +375,7 @@ TEST(mps_parser, bad_mps_files)
 
 TEST_P(good_mps_1_test, mps)
 {
-  check_model(read_param_mps_file("linear_programming/good-mps-1.mps", false));
+  check_model(read_mps_file("linear_programming/good-mps-1.mps", false));
 }
 
 TEST_F(good_mps_1_test, mps_parser_internals)
@@ -625,7 +614,7 @@ TEST(mps_parser_free_format, bad_mps_files_free_format)
 
 TEST_P(up_low_bounds_test, mps)
 {
-  check_model(read_param_mps_file("linear_programming/lp_model_with_var_bounds.mps", false));
+  check_model(read_mps_file("linear_programming/lp_model_with_var_bounds.mps", false));
 }
 
 TEST_F(up_low_bounds_test, mps_parser_internals)
@@ -646,12 +635,12 @@ TEST_P(good_mps_1_test, mps_free_format)
 {
   // free-format-mps-1.mps encodes the same problem as good-mps-1 with default
   // [0, +inf) bounds (no BOUNDS section), so it satisfies the same checker.
-  check_model(read_param_mps_file("linear_programming/free-format-mps-1.mps", false));
+  check_model(read_mps_file("linear_programming/free-format-mps-1.mps", false));
 }
 
 TEST_P(some_var_bounds_test, mps)
 {
-  check_model(read_param_mps_file("linear_programming/good-mps-some-var-bounds.mps"));
+  check_model(read_mps_file("linear_programming/good-mps-some-var-bounds.mps"));
 }
 
 TEST_F(some_var_bounds_test, lp)
@@ -661,7 +650,7 @@ TEST_F(some_var_bounds_test, lp)
 
 TEST_P(fixed_var_bound_test, mps)
 {
-  check_model(read_param_mps_file("linear_programming/good-mps-fixed-var.mps"));
+  check_model(read_mps_file("linear_programming/good-mps-fixed-var.mps"));
 }
 
 TEST_F(fixed_var_bound_test, lp)
@@ -671,7 +660,7 @@ TEST_F(fixed_var_bound_test, lp)
 
 TEST_P(free_var_bound_test, mps)
 {
-  check_model(read_param_mps_file("linear_programming/good-mps-free-var.mps"));
+  check_model(read_mps_file("linear_programming/good-mps-free-var.mps"));
 }
 
 TEST_F(free_var_bound_test, lp)
@@ -681,7 +670,7 @@ TEST_F(free_var_bound_test, lp)
 
 TEST_P(lower_inf_var_bound_test, mps)
 {
-  check_model(read_param_mps_file("linear_programming/good-mps-lower-bound-inf-var.mps"));
+  check_model(read_mps_file("linear_programming/good-mps-lower-bound-inf-var.mps"));
 }
 
 TEST_F(lower_inf_var_bound_test, lp)
@@ -699,7 +688,7 @@ TEST(mps_bounds, rhs_cost)
 
 TEST_P(upper_inf_var_bound_test, mps)
 {
-  check_model(read_param_mps_file("linear_programming/good-mps-upper-bound-inf-var.mps"));
+  check_model(read_mps_file("linear_programming/good-mps-upper-bound-inf-var.mps"));
 }
 
 TEST_F(upper_inf_var_bound_test, lp)
@@ -854,7 +843,7 @@ TEST(mps_bounds, unsupported_or_invalid_mps_types)
 
 TEST_P(mip_with_bounds_test, mps)
 {
-  check_model(read_param_mps_file("mixed_integer_programming/good-mip-mps-1.mps", false));
+  check_model(read_mps_file("mixed_integer_programming/good-mip-mps-1.mps", false));
 }
 
 TEST_F(mip_with_bounds_test, mps_parser_internals)
@@ -918,7 +907,7 @@ TEST(mps_parser, good_mps_file_mip_no_marker)
 
 TEST_P(mip_no_bounds_test, mps)
 {
-  check_model(read_param_mps_file("mixed_integer_programming/good-mip-mps-no-bounds.mps", false));
+  check_model(read_mps_file("mixed_integer_programming/good-mip-mps-no-bounds.mps", false));
 }
 
 TEST_F(mip_no_bounds_test, lp)
@@ -928,8 +917,7 @@ TEST_F(mip_no_bounds_test, lp)
 
 TEST_P(mip_partial_bounds_test, mps)
 {
-  check_model(
-    read_param_mps_file("mixed_integer_programming/good-mip-mps-partial-bounds.mps", false));
+  check_model(read_mps_file("mixed_integer_programming/good-mip-mps-partial-bounds.mps", false));
 }
 
 TEST_F(mip_partial_bounds_test, lp)

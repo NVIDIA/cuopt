@@ -54,7 +54,6 @@ option(SKIP_ROUTING_BUILD "Skip building routing components" OFF)
 option(SKIP_GRPC_BUILD "Skip building gRPC and protobuf components" OFF)
 option(WRITE_FATBIN "Enable fatbin writing" ON)
 option(HOST_LINEINFO "Build with debug line information for host code" OFF)
-option(MPS_FAST_TIMERS "Enable experimental fast MPS parser phase timer printouts" OFF)
 
 message(VERBOSE "cuOpt: Enable nvcc -lineinfo: ${CMAKE_CUDA_LINEINFO}")
 message(VERBOSE "cuOpt: Build cuOpt unit-tests: ${BUILD_TESTS}")
@@ -65,7 +64,6 @@ message(VERBOSE "cuOpt: Skip C/Python adapters: ${SKIP_C_PYTHON_ADAPTERS}")
 message(VERBOSE "cuOpt: Skip routing build: ${SKIP_ROUTING_BUILD}")
 message(VERBOSE "cuOpt: Build with debug line information for host code: ${HOST_LINEINFO}")
 message(VERBOSE "cuOpt: fatbin: ${WRITE_FATBIN}")
-message(VERBOSE "cuOpt: Fast MPS parser timers: ${MPS_FAST_TIMERS}")
 
 # ##################################################################################################
 # - compiler options ------------------------------------------------------------------------------
@@ -204,8 +202,7 @@ endif ()
 find_package(OpenMP REQUIRED)
 message(VERBOSE "cuOpt: OpenMP found in ${OpenMP_CXX_INCLUDE_DIRS}")
 
-# MPS/QPS parser supports compressed inputs via bzip2 and zlib; the experimental fast MPS parser
-# supports LZ4 via runtime-loaded liblz4.
+# MPS/QPS parser supports compressed inputs via bzip2, zlib and lz4
 option(CUOPT_PARSER_WITH_BZIP2 "Build MPS parser with bzip2 decompression" ON)
 option(CUOPT_PARSER_WITH_ZLIB "Build MPS parser with zlib decompression" ON)
 option(CUOPT_PARSER_WITH_LZ4 "Build experimental fast MPS parser with LZ4 decompression" ON)
@@ -464,11 +461,15 @@ if (HOST_LINEINFO)
     set_source_files_properties(${CUOPT_SRC_FILES} DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTIES COMPILE_OPTIONS "-g1")
 endif ()
 
+# Needed for the fast MPS parser
 if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$" AND
         CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang|AppleClang)$")
     set_property(SOURCE ${MPS_FAST_SRC_FILES} DIRECTORY ${CMAKE_SOURCE_DIR}
             APPEND PROPERTY COMPILE_OPTIONS "-mbmi2;-mavx2;-msse4.2")
 endif ()
+
+# TODO: figure out a set of flags for ARM that fits the range of CPUs we wish to support (neoverse?)
+# NEON should be universal on aarch64 and enough for our purposes (parsing) though
 
 # Apply -UNDEBUG only to solver source files (not gRPC infrastructure).
 # Must happen before gRPC files are appended to CUOPT_SRC_FILES.
@@ -518,10 +519,6 @@ target_compile_definitions(cuopt
   PUBLIC "CUOPT_LOG_ACTIVE_LEVEL=RAPIDS_LOGGER_LOG_LEVEL_${LIBCUOPT_LOGGING_LEVEL}"
   PUBLIC CUSPARSE_ENABLE_EXPERIMENTAL_API
 )
-
-if (MPS_FAST_TIMERS)
-    target_compile_definitions(cuopt PRIVATE MPS_FAST_TIMERS=1)
-endif ()
 
 target_compile_options(cuopt
         PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"

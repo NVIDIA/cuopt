@@ -9,6 +9,8 @@
 
 #include <utilities/error.hpp>
 
+#include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <memory>
 #include <string>
@@ -368,22 +370,21 @@ namespace cuopt::linear_programming::io::detail {
 
 std::vector<char> file_to_string(const std::string& file)
 {
+  std::string lower(file);
+  std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
+    return (char)std::tolower(c);
+  });
+
 #ifdef MPS_PARSER_WITH_BZIP2
-  if (file.size() > 4 && file.substr(file.size() - 4, 4) == ".bz2") {
-    return bz2_file_to_string(file);
-  }
+  if (lower.ends_with(".bz2")) { return bz2_file_to_string(file); }
 #endif  // MPS_PARSER_WITH_BZIP2
 
 #ifdef MPS_PARSER_WITH_ZLIB
-  if (file.size() > 3 && file.substr(file.size() - 3, 3) == ".gz") {
-    return zlib_file_to_string(file);
-  }
+  if (lower.ends_with(".gz")) { return zlib_file_to_string(file); }
 #endif  // MPS_PARSER_WITH_ZLIB
 
 #ifdef MPS_PARSER_WITH_LZ4
-  if (file.size() > 4 && file.substr(file.size() - 4, 4) == ".lz4") {
-    return lz4_file_to_string(file);
-  }
+  if (lower.ends_with(".lz4")) { return lz4_file_to_string(file); }
 #endif  // MPS_PARSER_WITH_LZ4
 
   // Faster than using C++ I/O

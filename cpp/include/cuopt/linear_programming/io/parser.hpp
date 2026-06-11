@@ -20,8 +20,7 @@ namespace cuopt::linear_programming::io {
 /**
  * @brief Selects which MPS reader implementation should be used by dispatching entry points.
  *
- * The experimental fast reader is intentionally opt-in. It currently supports LP/MIP problems
- * from raw .mps, .mps.lz4, .mps.gz, and .mps.bz2 files.
+ * The experimental fast reader is intentionally opt-in. It currently supports LP/MIP/QP problems.
  */
 enum class mps_reader_type_t { default_reader, fast_experimental };
 
@@ -52,10 +51,8 @@ mps_data_model_t<i_t, f_t> read_mps(const std::string& mps_file_path,
                                     bool fixed_mps_format = false);
 
 /**
- * @brief Reads a raw LP/MIP MPS problem with the experimental SIMD-optimized reader.
- *
- * This prototype reader supports raw .mps plus .mps.lz4/.mps.gz/.mps.bz2 files. It does not
- * support LP, QPS, quadratic constraint sections, or fixed-format forcing.
+ * @brief Reads a raw LP/MIP/QP MPS problem with the experimental SIMD-optimized reader. SOCP is
+ * unsupported for now.
  *
  * @param[in] mps_file_path Path to a raw or compressed .mps file.
  * @return mps_data_model_t A fully formed LP/MIP problem which represents the given file.
@@ -127,11 +124,6 @@ mps_data_model_t<i_t, f_t> read_lp(const std::string& lp_file_path);
 template <typename i_t, typename f_t>
 mps_data_model_t<i_t, f_t> read_lp_from_string(std::string_view lp_contents);
 
-template <typename i_t, typename f_t>
-inline mps_data_model_t<i_t, f_t> read(const std::string& path,
-                                       mps_reader_type_t mps_reader,
-                                       bool fixed_mps_format = false);
-
 /**
  * @brief Reads an optimization problem from a file, dispatching on the file
  *        extension. Extension matching is case-insensitive.
@@ -146,39 +138,30 @@ inline mps_data_model_t<i_t, f_t> read(const std::string& path,
  * want both formats to "just work" without an explicit format flag.
  *
  * @param[in] path Path to the input file.
+ * @param[in] mps_reader Selects the MPS reader implementation for MPS/QPS inputs.
  * @param[in] fixed_mps_format If the MPS/QPS reader should use fixed format;
  *             ignored for LP inputs. False by default.
  * @return mps_data_model_t The parsed problem.
  */
 template <typename i_t, typename f_t>
-inline mps_data_model_t<i_t, f_t> read(const std::string& path, bool fixed_mps_format = false)
-{
-  return read<i_t, f_t>(path, mps_reader_type_t::default_reader, fixed_mps_format);
-}
-
-template <typename i_t, typename f_t>
 inline mps_data_model_t<i_t, f_t> read(const std::string& path,
                                        mps_reader_type_t mps_reader,
-                                       bool fixed_mps_format)
+                                       bool fixed_mps_format = false)
 {
   std::string lower(path);
   std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
     return static_cast<char>(std::tolower(c));
   });
-  const bool is_mps_lz4  = lower.ends_with(".mps.lz4");
-  const bool is_mps_gzip = lower.ends_with(".mps.gz");
-  const bool is_mps_bzip = lower.ends_with(".mps.bz2");
-  const bool is_qps_lz4  = lower.ends_with(".qps.lz4");
-  const bool is_lp_lz4   = lower.ends_with(".lp.lz4");
-  if (lower.ends_with(".mps") || is_mps_lz4 || is_mps_gzip || is_mps_bzip ||
-      lower.ends_with(".qps") || lower.ends_with(".qps.gz") || lower.ends_with(".qps.bz2") ||
-      is_qps_lz4) {
+  if (lower.ends_with(".mps.lz4") || lower.ends_with(".mps.bz2") || lower.ends_with(".mps.gz") ||
+      lower.ends_with(".mps") || lower.ends_with(".qps.lz4") || lower.ends_with(".qps.bz2") ||
+      lower.ends_with(".qps.gz") || lower.ends_with(".qps")) {
     if (mps_reader == mps_reader_type_t::fast_experimental) {
       if (fixed_mps_format) {
         throw std::logic_error(
           "experimental fast MPS reader does not support fixed MPS format forcing");
       }
-      if (!lower.ends_with(".mps") && !is_mps_lz4 && !is_mps_gzip && !is_mps_bzip) {
+      if (lower.ends_with(".qps") || lower.ends_with(".qps.gz") || lower.ends_with(".qps.bz2") ||
+          lower.ends_with(".qps.lz4")) {
         throw std::logic_error(
           "experimental fast MPS reader supports .mps, .mps.lz4, .mps.gz, and .mps.bz2 "
           "LP/MIP files only");
@@ -187,8 +170,8 @@ inline mps_data_model_t<i_t, f_t> read(const std::string& path,
     }
     return read_mps<i_t, f_t>(path, fixed_mps_format);
   }
-  if (lower.ends_with(".lp") || lower.ends_with(".lp.gz") || lower.ends_with(".lp.bz2") ||
-      is_lp_lz4) {
+  if (lower.ends_with(".lp.lz4") || lower.ends_with(".lp.bz2") || lower.ends_with(".lp.gz") ||
+      lower.ends_with(".lp")) {
     return read_lp<i_t, f_t>(path);
   }
   throw std::logic_error(
@@ -197,6 +180,24 @@ inline mps_data_model_t<i_t, f_t> read(const std::string& path,
     ".lp, .lp.gz, .lp.bz2, .lp.lz4. "
     "Given path: " +
     path);
+}
+
+/**
+ * @brief Reads an optimization problem from a file, dispatching on the file
+ *        extension. Extension matching is case-insensitive.
+ *
+ * Uses the default MPS reader. See the 3-argument read() overload for routing
+ * details and supported extensions.
+ *
+ * @param[in] path Path to the input file.
+ * @param[in] fixed_mps_format If the MPS/QPS reader should use fixed format;
+ *             ignored for LP inputs. False by default.
+ * @return mps_data_model_t The parsed problem.
+ */
+template <typename i_t, typename f_t>
+inline mps_data_model_t<i_t, f_t> read(const std::string& path, bool fixed_mps_format = false)
+{
+  return read<i_t, f_t>(path, mps_reader_type_t::default_reader, fixed_mps_format);
 }
 
 }  // namespace cuopt::linear_programming::io

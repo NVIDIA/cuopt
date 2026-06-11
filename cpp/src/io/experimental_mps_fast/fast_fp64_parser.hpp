@@ -325,7 +325,11 @@ static inline double fallback_strtod(std::string_view s)
 
   char* parse_end = nullptr;
   errno           = 0;
-  return std::strtod(stack_buf, &parse_end);
+  double value    = std::strtod(stack_buf, &parse_end);
+  if (parse_end != stack_buf + s.size() || errno == ERANGE) {
+    mps_parser_fail(error_type_t::ValidationError, "Invalid or out-of-range MPS numeric token");
+  }
+  return value;
 }
 
 // see Daniel Lemire, Number Parsing at a Gigabyte per Second, Software: Practice and Experience 51

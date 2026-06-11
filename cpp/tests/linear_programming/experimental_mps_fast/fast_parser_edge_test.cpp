@@ -6,6 +6,8 @@
 
 #include <cuopt/linear_programming/io/parser.hpp>
 
+#include <gtest/gtest.h>
+
 #include <algorithm>
 #include <bit>
 #include <cerrno>
@@ -13,10 +15,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <exception>
-#include <functional>
 #include <iomanip>
-#include <iostream>
 #include <limits>
 #include <sstream>
 #include <stdexcept>
@@ -28,50 +27,6 @@
 
 namespace {
 
-struct skip_test : std::runtime_error {
-  using std::runtime_error::runtime_error;
-};
-
-[[noreturn]] void fail(const std::string& message) { throw std::runtime_error(message); }
-
-void expect_true(bool condition, const std::string& message)
-{
-  if (!condition) { fail(message); }
-}
-
-template <typename A, typename B>
-void expect_eq(const A& got, const B& expected, std::string_view context)
-{
-  if (!(got == expected)) {
-    std::ostringstream out;
-    out << context << ": got=" << got << " expected=" << expected;
-    fail(out.str());
-  }
-}
-
-template <typename VecA, typename VecB>
-void expect_vector_eq(const VecA& got, const VecB& expected, std::string_view context)
-{
-  if (got.size() != expected.size()) {
-    std::ostringstream out;
-    out << context << ": size got=" << got.size() << " expected=" << expected.size();
-    fail(out.str());
-  }
-  for (size_t i = 0; i < got.size(); ++i) {
-    if (!(got[i] == expected[i])) {
-      std::ostringstream out;
-      out << context << ": first mismatch at " << i;
-      fail(out.str());
-    }
-  }
-}
-
-void expect_near_inf(double value, int sign, std::string_view context)
-{
-  expect_true(std::isinf(value), std::string(context) + ": expected infinity");
-  expect_true(std::signbit(value) == (sign < 0), std::string(context) + ": wrong infinity sign");
-}
-
 struct TempMpsFile {
   explicit TempMpsFile(std::string contents)
   {
@@ -81,20 +36,20 @@ struct TempMpsFile {
                   "/tmp/mps_fast_parser_edge_%ld_XXXXXX.mps",
                   static_cast<long>(getpid()));
     int fd = mkstemps(path_template, 4);
-    if (fd < 0) { fail(std::string("mkstemps failed: ") + std::strerror(errno)); }
+    if (fd < 0) { FAIL() << "mkstemps failed: " << std::strerror(errno); }
     path       = path_template;
     FILE* file = fdopen(fd, "wb");
     if (file == nullptr) {
       close(fd);
-      fail(std::string("fdopen failed: ") + std::strerror(errno));
+      FAIL() << "fdopen failed: " << std::strerror(errno);
     }
     if (!contents.empty() &&
         std::fwrite(contents.data(), 1, contents.size(), file) != contents.size()) {
       std::fclose(file);
-      fail(std::string("failed to write temporary MPS file: ") + std::strerror(errno));
+      FAIL() << "failed to write temporary MPS file: " << std::strerror(errno);
     }
     if (std::fclose(file) != 0) {
-      fail(std::string("failed to close temporary MPS file: ") + std::strerror(errno));
+      FAIL() << "failed to close temporary MPS file: " << std::strerror(errno);
     }
   }
 
@@ -122,164 +77,50 @@ struct TempOwnedPath {
   std::string path;
 };
 
-template <typename Fn>
-void expect_throws(Fn&& fn, std::string_view context)
-{
-  try {
-    fn();
-  } catch (const std::exception&) {
-    return;
-  }
-  fail(std::string(context) + ": expected exception");
-}
-
-void expect_fast_parse_error(std::string_view fixture_name, std::string contents)
-{
-  TempMpsFile file(std::move(contents));
-  expect_throws(
-    [&] {
-      (void)mps_fast::parse_mps_fast_file<int, double>(file.path, mps_fast::FileReadMethod::Read);
-    },
-    fixture_name);
-}
-
 std::string_view range_text(const mps_fast::mps_phase_range_t& range)
 {
   if (!range.present) { return {}; }
   return std::string_view(range.begin, static_cast<size_t>(range.end - range.begin));
 }
 
-void scanner_finds_section_split_across_blocks()
-{
-  const std::string mps =
-    "NAME EDGE\n"
-    "ROWS\n"
-    " N OBJ\n"
-    " L rowA\n"
-    "COLUMNS\n"
-    " x1 OBJ 1\n"
-    " x1 rowA 2\n"
-    "RHS\n"
-    " rhs rowA 3\n"
-    "ENDATA\n";
-
-  const size_t columns_pos = mps.find("COLUMNS");
-  expect_true(columns_pos != std::string::npos, "failed to place COLUMNS split");
-  const size_t split = columns_pos + 3;
-
-  mps_fast::mps_phase_registry_t registry;
-  mps_fast::mps_section_block_scanner_t scanner(mps.data(), 2, registry);
-
-  scanner.observe_block(1, mps.data() + split, mps.data() + mps.size());
-  scanner.publish_ready(0);
-  scanner.observe_block(0, mps.data(), mps.data() + split);
-  scanner.publish_ready(mps.size());
-
-  expect_true(registry.ready(mps_fast::mps_phase_kind::header), "header not ready");
-  expect_true(registry.ready(mps_fast::mps_phase_kind::rows), "rows not ready");
-  expect_true(registry.ready(mps_fast::mps_phase_kind::columns), "columns not ready");
-  expect_true(registry.ready(mps_fast::mps_phase_kind::rhs), "rhs not ready");
-  expect_true(registry.ready(mps_fast::mps_phase_kind::quadratic), "quadratic sentinel not ready");
-
-  expect_true(range_text(registry.range(mps_fast::mps_phase_kind::columns)).starts_with("COLUMNS"),
-              "columns range begins at wrong boundary");
-  expect_true(range_text(registry.range(mps_fast::mps_phase_kind::rhs)).starts_with("RHS"),
-              "rhs range begins at wrong boundary");
-}
-
-void scanner_rejects_unknown_column_one_records_after_rows()
-{
-  const std::string mps =
-    "NAME BAD\n"
-    "ROWS\n"
-    " N OBJ\n"
-    "FOO\n"
-    "COLUMNS\n"
-    " x OBJ 1\n"
-    "ENDATA\n";
-
-  expect_throws(
-    [&] {
-      mps_fast::mps_phase_registry_t registry;
-      mps_fast::mps_section_block_scanner_t scanner(mps.data(), 1, registry);
-      scanner.observe_block(0, mps.data(), mps.data() + mps.size());
-      scanner.publish_ready(mps.size());
-    },
-    "unknown column-1 record after ROWS");
-}
-
 uint64_t bits(double value) { return std::bit_cast<uint64_t>(value); }
 
-void expect_double_bitwise_eq(double got, double expected, std::string_view context)
-{
-  if (bits(got) != bits(expected)) {
-    std::ostringstream out;
-    out << context << ": got=0x" << std::hex << bits(got) << " expected=0x" << bits(expected);
-    fail(out.str());
-  }
-}
-
-template <typename VecA, typename VecB>
-void expect_double_vector_bitwise_eq(const VecA& got,
-                                     const VecB& expected,
-                                     std::string_view context)
-{
-  if (got.size() != expected.size()) {
-    std::ostringstream out;
-    out << context << ": size got=" << got.size() << " expected=" << expected.size();
-    fail(out.str());
-  }
-  for (size_t i = 0; i < got.size(); ++i) {
-    if (bits(got[i]) != bits(expected[i])) {
-      std::ostringstream out;
-      out << context << ": first bitwise mismatch at " << i << " got=0x" << std::hex << bits(got[i])
-          << " expected=0x" << bits(expected[i]);
-      fail(out.str());
-    }
-  }
-}
-
-void expect_models_match_reference_bitwise(
+void check_models_match_reference_bitwise(
   const mps_fast::parser_model_t<int, double>& fast,
   const cuopt::linear_programming::io::mps_data_model_t<int, double>& reference,
   std::string_view context)
 {
-  expect_eq(fast.n_vars_, reference.n_vars_, std::string(context) + " n_vars");
-  expect_eq(fast.n_constraints_, reference.n_constraints_, std::string(context) + " n_constraints");
-  expect_eq(fast.nnz_, reference.nnz_, std::string(context) + " nnz");
-  expect_eq(fast.maximize_, reference.maximize_, std::string(context) + " maximize");
-  expect_eq(fast.problem_name_, reference.problem_name_, std::string(context) + " problem_name");
-  expect_eq(
-    fast.objective_name_, reference.objective_name_, std::string(context) + " objective_name");
+  EXPECT_EQ(reference.n_vars_, fast.n_vars_) << std::string(context) + " n_vars";
+  EXPECT_EQ(reference.n_constraints_, fast.n_constraints_)
+    << std::string(context) + " n_constraints";
+  EXPECT_EQ(reference.nnz_, fast.nnz_) << std::string(context) + " nnz";
+  EXPECT_EQ(reference.maximize_, fast.maximize_) << std::string(context) + " maximize";
+  EXPECT_EQ(reference.problem_name_, fast.problem_name_) << std::string(context) + " problem_name";
+  EXPECT_EQ(reference.objective_name_, fast.objective_name_)
+    << std::string(context) + " objective_name";
 
-  expect_double_bitwise_eq(fast.objective_scaling_factor_,
-                           reference.objective_scaling_factor_,
-                           std::string(context) + " objective_scaling_factor");
-  expect_double_bitwise_eq(fast.objective_offset_,
-                           reference.objective_offset_,
-                           std::string(context) + " objective_offset");
+  EXPECT_EQ(bits(reference.objective_scaling_factor_), bits(fast.objective_scaling_factor_))
+    << std::string(context) + " objective_scaling_factor";
+  EXPECT_EQ(bits(reference.objective_offset_), bits(fast.objective_offset_))
+    << std::string(context) + " objective_offset";
 
-  expect_double_vector_bitwise_eq(fast.A_, reference.A_, std::string(context) + " A");
-  expect_vector_eq(fast.A_indices_, reference.A_indices_, std::string(context) + " A_indices");
-  expect_vector_eq(fast.A_offsets_, reference.A_offsets_, std::string(context) + " A_offsets");
-  expect_double_vector_bitwise_eq(fast.b_, reference.b_, std::string(context) + " b");
-  expect_double_vector_bitwise_eq(fast.c_, reference.c_, std::string(context) + " c");
-  expect_double_vector_bitwise_eq(fast.variable_lower_bounds_,
-                                  reference.variable_lower_bounds_,
-                                  std::string(context) + " variable_lower_bounds");
-  expect_double_vector_bitwise_eq(fast.variable_upper_bounds_,
-                                  reference.variable_upper_bounds_,
-                                  std::string(context) + " variable_upper_bounds");
-  expect_double_vector_bitwise_eq(fast.constraint_lower_bounds_,
-                                  reference.constraint_lower_bounds_,
-                                  std::string(context) + " constraint_lower_bounds");
-  expect_double_vector_bitwise_eq(fast.constraint_upper_bounds_,
-                                  reference.constraint_upper_bounds_,
-                                  std::string(context) + " constraint_upper_bounds");
-  expect_vector_eq(fast.var_types_, reference.var_types_, std::string(context) + " var_types");
-  expect_vector_eq(fast.row_types_, reference.row_types_, std::string(context) + " row_types");
-  expect_vector_eq(fast.var_names_, reference.var_names_, std::string(context) + " var_names");
-  expect_vector_eq(fast.row_names_, reference.row_names_, std::string(context) + " row_names");
+  EXPECT_EQ(reference.A_, fast.A_) << std::string(context) + " A";
+  EXPECT_EQ(reference.A_indices_, fast.A_indices_) << std::string(context) + " A_indices";
+  EXPECT_EQ(reference.A_offsets_, fast.A_offsets_) << std::string(context) + " A_offsets";
+  EXPECT_EQ(reference.b_, fast.b_) << std::string(context) + " b";
+  EXPECT_EQ(reference.c_, fast.c_) << std::string(context) + " c";
+  EXPECT_EQ(reference.variable_lower_bounds_, fast.variable_lower_bounds_)
+    << std::string(context) + " variable_lower_bounds";
+  EXPECT_EQ(reference.variable_upper_bounds_, fast.variable_upper_bounds_)
+    << std::string(context) + " variable_upper_bounds";
+  EXPECT_EQ(reference.constraint_lower_bounds_, fast.constraint_lower_bounds_)
+    << std::string(context) + " constraint_lower_bounds";
+  EXPECT_EQ(reference.constraint_upper_bounds_, fast.constraint_upper_bounds_)
+    << std::string(context) + " constraint_upper_bounds";
+  EXPECT_EQ(reference.var_types_, fast.var_types_) << std::string(context) + " var_types";
+  EXPECT_EQ(reference.row_types_, fast.row_types_) << std::string(context) + " row_types";
+  EXPECT_EQ(reference.var_names_, fast.var_names_) << std::string(context) + " var_names";
+  EXPECT_EQ(reference.row_names_, fast.row_names_) << std::string(context) + " row_names";
 }
 
 void verify_fixture_bitwise(std::string_view fixture_name, std::string contents)
@@ -287,7 +128,7 @@ void verify_fixture_bitwise(std::string_view fixture_name, std::string contents)
   TempMpsFile file(std::move(contents));
   auto fast = mps_fast::parse_mps_fast_file<int, double>(file.path, mps_fast::FileReadMethod::Read);
   auto reference = cuopt::linear_programming::io::read_mps<int, double>(file.path, false);
-  expect_models_match_reference_bitwise(fast, reference, fixture_name);
+  check_models_match_reference_bitwise(fast, reference, fixture_name);
 }
 
 std::string row_name(size_t i)
@@ -297,27 +138,27 @@ std::string row_name(size_t i)
   return out.str();
 }
 
-size_t find_var(const mps_fast::parser_model_t<int, double>& model, std::string_view name)
+int find_var_index(const mps_fast::parser_model_t<int, double>& model, std::string_view name)
 {
   for (size_t i = 0; i < model.var_names_.size(); ++i) {
-    if (model.var_names_[i] == name) { return i; }
+    if (model.var_names_[i] == name) { return static_cast<int>(i); }
   }
-  fail("variable not found: " + std::string(name));
+  return -1;
 }
 
-void expect_model_shapes(const mps_fast::parser_model_t<int, double>& model,
-                         int rows,
-                         int vars,
-                         int nnz,
-                         std::string_view context)
+void check_model_shapes(const mps_fast::parser_model_t<int, double>& model,
+                        int rows,
+                        int vars,
+                        int nnz,
+                        std::string_view context)
 {
-  expect_eq(model.n_constraints_, rows, std::string(context) + " rows");
-  expect_eq(model.n_vars_, vars, std::string(context) + " vars");
-  expect_eq(model.nnz_, nnz, std::string(context) + " nnz");
-  expect_eq(
-    model.A_offsets_.size(), static_cast<size_t>(rows + 1), std::string(context) + " offsets");
-  expect_eq(model.A_.size(), static_cast<size_t>(nnz), std::string(context) + " values");
-  expect_eq(model.A_indices_.size(), static_cast<size_t>(nnz), std::string(context) + " indices");
+  EXPECT_EQ(rows, model.n_constraints_) << std::string(context) + " rows";
+  EXPECT_EQ(vars, model.n_vars_) << std::string(context) + " vars";
+  EXPECT_EQ(nnz, model.nnz_) << std::string(context) + " nnz";
+  EXPECT_EQ(static_cast<size_t>(rows + 1), model.A_offsets_.size())
+    << std::string(context) + " offsets";
+  EXPECT_EQ(static_cast<size_t>(nnz), model.A_.size()) << std::string(context) + " values";
+  EXPECT_EQ(static_cast<size_t>(nnz), model.A_indices_.size()) << std::string(context) + " indices";
 }
 
 std::string section_split_fixture()
@@ -335,14 +176,69 @@ std::string section_split_fixture()
          "ENDATA\n";
 }
 
-void scanner_finds_headers_split_at_every_byte()
+std::string to_crlf(std::string text)
+{
+  std::string converted;
+  converted.reserve(text.size() + text.size() / 8);
+  for (char c : text) {
+    if (c == '\n') {
+      converted += "\r\n";
+    } else {
+      converted.push_back(c);
+    }
+  }
+  return converted;
+}
+
+}  // namespace
+
+TEST(FastMpsParserEdgeTest, ScannerFindsSectionSplitAcrossBlocks)
+{
+  const std::string mps =
+    "NAME EDGE\n"
+    "ROWS\n"
+    " N OBJ\n"
+    " L rowA\n"
+    "COLUMNS\n"
+    " x1 OBJ 1\n"
+    " x1 rowA 2\n"
+    "RHS\n"
+    " rhs rowA 3\n"
+    "ENDATA\n";
+
+  const size_t columns_pos = mps.find("COLUMNS");
+  EXPECT_TRUE(columns_pos != std::string::npos) << "failed to place COLUMNS split";
+  const size_t split = columns_pos + 3;
+
+  mps_fast::mps_phase_registry_t registry;
+  mps_fast::mps_section_block_scanner_t scanner(mps.data(), 2, registry);
+
+  scanner.observe_block(1, mps.data() + split, mps.data() + mps.size());
+  scanner.publish_ready(0);
+  scanner.observe_block(0, mps.data(), mps.data() + split);
+  scanner.publish_ready(mps.size());
+
+  EXPECT_TRUE(registry.ready(mps_fast::mps_phase_kind::header)) << "header not ready";
+  EXPECT_TRUE(registry.ready(mps_fast::mps_phase_kind::rows)) << "rows not ready";
+  EXPECT_TRUE(registry.ready(mps_fast::mps_phase_kind::columns)) << "columns not ready";
+  EXPECT_TRUE(registry.ready(mps_fast::mps_phase_kind::rhs)) << "rhs not ready";
+  EXPECT_TRUE(registry.ready(mps_fast::mps_phase_kind::quadratic))
+    << "quadratic sentinel not ready";
+
+  EXPECT_TRUE(range_text(registry.range(mps_fast::mps_phase_kind::columns)).starts_with("COLUMNS"))
+    << "columns range begins at wrong boundary";
+  EXPECT_TRUE(range_text(registry.range(mps_fast::mps_phase_kind::rhs)).starts_with("RHS"))
+    << "rhs range begins at wrong boundary";
+}
+
+TEST(FastMpsParserEdgeTest, ScannerFindsHeadersSplitAtEveryByte)
 {
   const std::string mps                       = section_split_fixture();
   const std::vector<std::string_view> headers = {"ROWS", "COLUMNS", "RHS", "BOUNDS", "ENDATA"};
 
   for (std::string_view header : headers) {
     const size_t pos = mps.find(header);
-    expect_true(pos != std::string::npos, "missing header in split fixture");
+    EXPECT_TRUE(pos != std::string::npos) << "missing header in split fixture";
     for (size_t offset = 1; offset < header.size(); ++offset) {
       const size_t split = pos + offset;
       mps_fast::mps_phase_registry_t registry;
@@ -352,18 +248,40 @@ void scanner_finds_headers_split_at_every_byte()
       scanner.observe_block(0, mps.data(), mps.data() + split);
       scanner.publish_ready(mps.size());
 
-      expect_true(registry.ready(mps_fast::mps_phase_kind::rows), "rows not ready after split");
-      expect_true(registry.ready(mps_fast::mps_phase_kind::columns),
-                  "columns not ready after split");
-      expect_true(registry.ready(mps_fast::mps_phase_kind::rhs), "rhs not ready after split");
-      expect_true(registry.ready(mps_fast::mps_phase_kind::bounds), "bounds not ready after split");
-      expect_true(registry.ready(mps_fast::mps_phase_kind::quadratic),
-                  "quadratic sentinel not ready after split");
+      EXPECT_TRUE(registry.ready(mps_fast::mps_phase_kind::rows)) << "rows not ready after split";
+      EXPECT_TRUE(registry.ready(mps_fast::mps_phase_kind::columns))
+        << "columns not ready after split";
+      EXPECT_TRUE(registry.ready(mps_fast::mps_phase_kind::rhs)) << "rhs not ready after split";
+      EXPECT_TRUE(registry.ready(mps_fast::mps_phase_kind::bounds))
+        << "bounds not ready after split";
+      EXPECT_TRUE(registry.ready(mps_fast::mps_phase_kind::quadratic))
+        << "quadratic sentinel not ready after split";
     }
   }
 }
 
-void bounds_defaults_and_types_match_reference()
+TEST(FastMpsParserEdgeTest, ScannerRejectsUnknownColumnOneRecordsAfterRows)
+{
+  const std::string mps =
+    "NAME BAD\n"
+    "ROWS\n"
+    " N OBJ\n"
+    "FOO\n"
+    "COLUMNS\n"
+    " x OBJ 1\n"
+    "ENDATA\n";
+
+  EXPECT_THROW(
+    {
+      mps_fast::mps_phase_registry_t registry;
+      mps_fast::mps_section_block_scanner_t scanner(mps.data(), 1, registry);
+      scanner.observe_block(0, mps.data(), mps.data() + mps.size());
+      scanner.publish_ready(mps.size());
+    },
+    std::logic_error);
+}
+
+TEST(FastMpsParserEdgeTest, BoundsDefaultsAndTypesMatchReference)
 {
   verify_fixture_bitwise("bounds_defaults_and_types",
                          "NAME BOUNDS_EDGE\n"
@@ -390,7 +308,7 @@ void bounds_defaults_and_types_match_reference()
                          "ENDATA\n");
 }
 
-void duplicate_bounds_last_statement_wins()
+TEST(FastMpsParserEdgeTest, DuplicateBoundsLastStatementWins)
 {
   const std::string contents =
     "NAME BOUNDS_DUP\n"
@@ -412,12 +330,12 @@ void duplicate_bounds_last_statement_wins()
   TempMpsFile file(contents);
   auto model =
     mps_fast::parse_mps_fast_file<int, double>(file.path, mps_fast::FileReadMethod::Read);
-  expect_eq(model.n_vars_, 1, "n_vars");
-  expect_eq(model.variable_lower_bounds_.at(0), 2.0, "duplicate lower bound");
-  expect_eq(model.variable_upper_bounds_.at(0), 3.0, "duplicate upper bound");
+  EXPECT_EQ(1, model.n_vars_) << "n_vars";
+  EXPECT_EQ(2.0, model.variable_lower_bounds_.at(0)) << "duplicate lower bound";
+  EXPECT_EQ(3.0, model.variable_upper_bounds_.at(0)) << "duplicate upper bound";
 }
 
-void nondense_row_and_column_names_use_hash_path()
+TEST(FastMpsParserEdgeTest, NondenseRowAndColumnNamesUseHashPath)
 {
   verify_fixture_bitwise("nondense_row_and_column_names",
                          "NAME HASH_NAMES\n"
@@ -440,7 +358,7 @@ void nondense_row_and_column_names_use_hash_path()
                          "ENDATA\n");
 }
 
-void missing_optional_bounds_fast_path()
+TEST(FastMpsParserEdgeTest, MissingOptionalBoundsFastPath)
 {
   TempMpsFile file(
     "NAME OPTIONALS\n"
@@ -455,13 +373,13 @@ void missing_optional_bounds_fast_path()
 
   auto model =
     mps_fast::parse_mps_fast_file<int, double>(file.path, mps_fast::FileReadMethod::Read);
-  expect_eq(model.n_vars_, 1, "missing optional n_vars");
-  expect_eq(model.n_constraints_, 1, "missing optional n_constraints");
-  expect_eq(model.variable_lower_bounds_.at(0), 0.0, "missing BOUNDS lower default");
-  expect_near_inf(model.variable_upper_bounds_.at(0), 1, "missing BOUNDS upper default");
+  EXPECT_EQ(1, model.n_vars_) << "missing optional n_vars";
+  EXPECT_EQ(1, model.n_constraints_) << "missing optional n_constraints";
+  EXPECT_EQ(0.0, model.variable_lower_bounds_.at(0)) << "missing BOUNDS lower default";
+  EXPECT_EQ(std::numeric_limits<double>::infinity(), model.variable_upper_bounds_.at(0));
 }
 
-void bounds_only_variables_are_appended_deterministically()
+TEST(FastMpsParserEdgeTest, BoundsOnlyVariablesAreAppendedDeterministically)
 {
   TempMpsFile file(
     "NAME BOUNDS_ONLY\n"
@@ -481,25 +399,28 @@ void bounds_only_variables_are_appended_deterministically()
 
   auto model =
     mps_fast::parse_mps_fast_file<int, double>(file.path, mps_fast::FileReadMethod::Read);
-  expect_model_shapes(model, 1, 4, 1, "bounds-only");
-  expect_eq(model.var_names_.at(0), std::string("XMAIN"), "main var name");
-  expect_eq(model.var_names_.at(1), std::string("AUX_A"), "bounds-only sorted name 1");
-  expect_eq(model.var_names_.at(2), std::string("AUX_S"), "bounds-only sorted name 2");
-  expect_eq(model.var_names_.at(3), std::string("AUX_Z"), "bounds-only sorted name 3");
+  check_model_shapes(model, 1, 4, 1, "bounds-only");
+  EXPECT_EQ(std::string("XMAIN"), model.var_names_.at(0)) << "main var name";
+  EXPECT_EQ(std::string("AUX_A"), model.var_names_.at(1)) << "bounds-only sorted name 1";
+  EXPECT_EQ(std::string("AUX_S"), model.var_names_.at(2)) << "bounds-only sorted name 2";
+  EXPECT_EQ(std::string("AUX_Z"), model.var_names_.at(3)) << "bounds-only sorted name 3";
 
-  size_t aux_a = find_var(model, "AUX_A");
-  size_t aux_s = find_var(model, "AUX_S");
-  size_t aux_z = find_var(model, "AUX_Z");
-  expect_eq(model.var_types_.at(aux_a), 'I', "bounds-only BV type");
-  expect_eq(model.variable_lower_bounds_.at(aux_a), 0.0, "bounds-only BV lb");
-  expect_eq(model.variable_upper_bounds_.at(aux_a), 1.0, "bounds-only BV ub");
-  expect_eq(model.var_types_.at(aux_s), 'S', "bounds-only SC type");
-  expect_eq(model.variable_upper_bounds_.at(aux_s), 5.0, "bounds-only SC ub");
-  expect_eq(model.variable_lower_bounds_.at(aux_z), -3.0, "bounds-only duplicate lb");
-  expect_eq(model.variable_upper_bounds_.at(aux_z), 9.0, "bounds-only duplicate ub");
+  const int aux_a = find_var_index(model, "AUX_A");
+  const int aux_s = find_var_index(model, "AUX_S");
+  const int aux_z = find_var_index(model, "AUX_Z");
+  ASSERT_GE(aux_a, 0);
+  ASSERT_GE(aux_s, 0);
+  ASSERT_GE(aux_z, 0);
+  EXPECT_EQ('I', model.var_types_.at(aux_a)) << "bounds-only BV type";
+  EXPECT_EQ(0.0, model.variable_lower_bounds_.at(aux_a)) << "bounds-only BV lb";
+  EXPECT_EQ(1.0, model.variable_upper_bounds_.at(aux_a)) << "bounds-only BV ub";
+  EXPECT_EQ('S', model.var_types_.at(aux_s)) << "bounds-only SC type";
+  EXPECT_EQ(5.0, model.variable_upper_bounds_.at(aux_s)) << "bounds-only SC ub";
+  EXPECT_EQ(-3.0, model.variable_lower_bounds_.at(aux_z)) << "bounds-only duplicate lb";
+  EXPECT_EQ(9.0, model.variable_upper_bounds_.at(aux_z)) << "bounds-only duplicate ub";
 }
 
-void integer_markers_assign_types_and_default_bounds()
+TEST(FastMpsParserEdgeTest, IntegerMarkersAssignTypesAndDefaultBounds)
 {
   TempMpsFile file(
     "NAME MARKERS\n"
@@ -520,20 +441,23 @@ void integer_markers_assign_types_and_default_bounds()
 
   auto model =
     mps_fast::parse_mps_fast_file<int, double>(file.path, mps_fast::FileReadMethod::Read);
-  expect_model_shapes(model, 1, 3, 3, "integer markers");
-  size_t xint  = find_var(model, "XINT");
-  size_t xcont = find_var(model, "XCONT");
-  size_t xbin  = find_var(model, "XBIN");
-  expect_eq(model.var_types_.at(xint), 'I', "XINT type");
-  expect_eq(model.var_types_.at(xcont), 'C', "XCONT type");
-  expect_eq(model.var_types_.at(xbin), 'I', "XBIN type");
-  expect_eq(model.variable_lower_bounds_.at(xint), 0.0, "XINT default lb");
-  expect_eq(model.variable_upper_bounds_.at(xint), 1.0, "XINT default ub");
-  expect_eq(model.variable_lower_bounds_.at(xbin), 0.0, "XBIN default lb");
-  expect_eq(model.variable_upper_bounds_.at(xbin), 1.0, "XBIN default ub");
+  check_model_shapes(model, 1, 3, 3, "integer markers");
+  const int xint  = find_var_index(model, "XINT");
+  const int xcont = find_var_index(model, "XCONT");
+  const int xbin  = find_var_index(model, "XBIN");
+  ASSERT_GE(xint, 0);
+  ASSERT_GE(xcont, 0);
+  ASSERT_GE(xbin, 0);
+  EXPECT_EQ('I', model.var_types_.at(xint)) << "XINT type";
+  EXPECT_EQ('C', model.var_types_.at(xcont)) << "XCONT type";
+  EXPECT_EQ('I', model.var_types_.at(xbin)) << "XBIN type";
+  EXPECT_EQ(0.0, model.variable_lower_bounds_.at(xint)) << "XINT default lb";
+  EXPECT_EQ(1.0, model.variable_upper_bounds_.at(xint)) << "XINT default ub";
+  EXPECT_EQ(0.0, model.variable_lower_bounds_.at(xbin)) << "XBIN default lb";
+  EXPECT_EQ(1.0, model.variable_upper_bounds_.at(xbin)) << "XBIN default ub";
 }
 
-void numeric_parsing_integration_matches_reference_bitwise()
+TEST(FastMpsParserEdgeTest, NumericParsingIntegrationMatchesReferenceBitwise)
 {
   verify_fixture_bitwise("numeric_parsing_integration",
                          "NAME NUMBERS\n"
@@ -559,21 +483,7 @@ void numeric_parsing_integration_matches_reference_bitwise()
                          "ENDATA\n");
 }
 
-std::string to_crlf(std::string text)
-{
-  std::string converted;
-  converted.reserve(text.size() + text.size() / 8);
-  for (char c : text) {
-    if (c == '\n') {
-      converted += "\r\n";
-    } else {
-      converted.push_back(c);
-    }
-  }
-  return converted;
-}
-
-void crlf_line_endings_match_reference_bitwise()
+TEST(FastMpsParserEdgeTest, CrlfLineEndingsMatchReferenceBitwise)
 {
   verify_fixture_bitwise("crlf_line_endings",
                          to_crlf("NAME CRLF_EDGE\n"
@@ -591,7 +501,7 @@ void crlf_line_endings_match_reference_bitwise()
                                  "ENDATA\n"));
 }
 
-void comment_placement_supported_cases_match_reference_bitwise()
+TEST(FastMpsParserEdgeTest, CommentPlacementSupportedCasesMatchReferenceBitwise)
 {
   verify_fixture_bitwise("comment_placement_supported_cases",
                          "* leading star comment\n"
@@ -618,7 +528,7 @@ void comment_placement_supported_cases_match_reference_bitwise()
                          "ENDATA\n");
 }
 
-void objective_metadata_selects_named_objective()
+TEST(FastMpsParserEdgeTest, ObjectiveMetadataSelectsNamedObjective)
 {
   TempMpsFile file(
     "NAME OBJMETA\n"
@@ -640,81 +550,118 @@ void objective_metadata_selects_named_objective()
 
   auto model =
     mps_fast::parse_mps_fast_file<int, double>(file.path, mps_fast::FileReadMethod::Read);
-  expect_true(model.maximize_, "OBJSENSE MAX not applied");
-  expect_eq(model.problem_name_, std::string("OBJMETA"), "problem name");
-  expect_eq(model.objective_name_, std::string("COST"), "objective name");
-  expect_eq(model.objective_offset_, -7.0, "objective RHS offset");
-  size_t x1 = find_var(model, "X1");
-  size_t x2 = find_var(model, "X2");
-  expect_eq(model.c_.at(x1), 5.0, "named objective coefficient X1");
-  expect_eq(model.c_.at(x2), -2.0, "named objective coefficient X2");
+  EXPECT_TRUE(model.maximize_) << "OBJSENSE MAX not applied";
+  EXPECT_EQ(std::string("OBJMETA"), model.problem_name_) << "problem name";
+  EXPECT_EQ(std::string("COST"), model.objective_name_) << "objective name";
+  EXPECT_EQ(-7.0, model.objective_offset_) << "objective RHS offset";
+  const int x1 = find_var_index(model, "X1");
+  const int x2 = find_var_index(model, "X2");
+  ASSERT_GE(x1, 0);
+  ASSERT_GE(x2, 0);
+  EXPECT_EQ(5.0, model.c_.at(x1)) << "named objective coefficient X1";
+  EXPECT_EQ(-2.0, model.c_.at(x2)) << "named objective coefficient X2";
 }
 
-void malformed_inputs_report_errors()
+TEST(FastMpsParserEdgeTest, MalformedInputsReportErrors)
 {
-  expect_fast_parse_error("bad objsense",
-                          "NAME BADOBJ\n"
-                          "OBJSENSE\n"
-                          " SIDEWAYS\n"
-                          "ROWS\n"
-                          " N OBJ\n"
-                          " L R1\n"
-                          "COLUMNS\n"
-                          " X1 OBJ 1 R1 2\n"
-                          "RHS\n"
-                          " RHS1 R1 0\n"
-                          "ENDATA\n");
+  {
+    TempMpsFile file(
+      "NAME BADOBJ\n"
+      "OBJSENSE\n"
+      " SIDEWAYS\n"
+      "ROWS\n"
+      " N OBJ\n"
+      " L R1\n"
+      "COLUMNS\n"
+      " X1 OBJ 1 R1 2\n"
+      "RHS\n"
+      " RHS1 R1 0\n"
+      "ENDATA\n");
+    EXPECT_THROW(
+      {
+        (void)mps_fast::parse_mps_fast_file<int, double>(file.path, mps_fast::FileReadMethod::Read);
+      },
+      std::logic_error);
+  }
 
-  expect_fast_parse_error("unknown row in columns",
-                          "NAME BADCOLROW\n"
-                          "ROWS\n"
-                          " N OBJ\n"
-                          " L R1\n"
-                          "COLUMNS\n"
-                          " X1 MISSING 1\n"
-                          "RHS\n"
-                          " RHS1 R1 0\n"
-                          "ENDATA\n");
+  {
+    TempMpsFile file(
+      "NAME BADCOLROW\n"
+      "ROWS\n"
+      " N OBJ\n"
+      " L R1\n"
+      "COLUMNS\n"
+      " X1 MISSING 1\n"
+      "RHS\n"
+      " RHS1 R1 0\n"
+      "ENDATA\n");
+    EXPECT_THROW(
+      {
+        (void)mps_fast::parse_mps_fast_file<int, double>(file.path, mps_fast::FileReadMethod::Read);
+      },
+      std::logic_error);
+  }
 
-  expect_fast_parse_error("unknown row in rhs",
-                          "NAME BADRHSROW\n"
-                          "ROWS\n"
-                          " N OBJ\n"
-                          " L R1\n"
-                          "COLUMNS\n"
-                          " X1 OBJ 1 R1 2\n"
-                          "RHS\n"
-                          " RHS1 MISSING 1\n"
-                          "ENDATA\n");
+  {
+    TempMpsFile file(
+      "NAME BADRHSROW\n"
+      "ROWS\n"
+      " N OBJ\n"
+      " L R1\n"
+      "COLUMNS\n"
+      " X1 OBJ 1 R1 2\n"
+      "RHS\n"
+      " RHS1 MISSING 1\n"
+      "ENDATA\n");
+    EXPECT_THROW(
+      {
+        (void)mps_fast::parse_mps_fast_file<int, double>(file.path, mps_fast::FileReadMethod::Read);
+      },
+      std::logic_error);
+  }
 
-  expect_fast_parse_error("unknown bound type",
-                          "NAME BADBOUND\n"
-                          "ROWS\n"
-                          " N OBJ\n"
-                          " L R1\n"
-                          "COLUMNS\n"
-                          " X1 OBJ 1 R1 2\n"
-                          "RHS\n"
-                          " RHS1 R1 0\n"
-                          "BOUNDS\n"
-                          " XX B X1 1\n"
-                          "ENDATA\n");
+  {
+    TempMpsFile file(
+      "NAME BADBOUND\n"
+      "ROWS\n"
+      " N OBJ\n"
+      " L R1\n"
+      "COLUMNS\n"
+      " X1 OBJ 1 R1 2\n"
+      "RHS\n"
+      " RHS1 R1 0\n"
+      "BOUNDS\n"
+      " XX B X1 1\n"
+      "ENDATA\n");
+    EXPECT_THROW(
+      {
+        (void)mps_fast::parse_mps_fast_file<int, double>(file.path, mps_fast::FileReadMethod::Read);
+      },
+      std::logic_error);
+  }
 
-  expect_fast_parse_error("semi-continuous bound without value",
-                          "NAME BADSC\n"
-                          "ROWS\n"
-                          " N OBJ\n"
-                          " L R1\n"
-                          "COLUMNS\n"
-                          " X1 OBJ 1 R1 2\n"
-                          "RHS\n"
-                          " RHS1 R1 0\n"
-                          "BOUNDS\n"
-                          " SC B X1\n"
-                          "ENDATA\n");
+  {
+    TempMpsFile file(
+      "NAME BADSC\n"
+      "ROWS\n"
+      " N OBJ\n"
+      " L R1\n"
+      "COLUMNS\n"
+      " X1 OBJ 1 R1 2\n"
+      "RHS\n"
+      " RHS1 R1 0\n"
+      "BOUNDS\n"
+      " SC B X1\n"
+      "ENDATA\n");
+    EXPECT_THROW(
+      {
+        (void)mps_fast::parse_mps_fast_file<int, double>(file.path, mps_fast::FileReadMethod::Read);
+      },
+      std::logic_error);
+  }
 }
 
-void large_columns_repeated_column_chunk_boundary()
+TEST(FastMpsParserEdgeTest, LargeColumnsRepeatedColumnChunkBoundary)
 {
   constexpr size_t row_count = 180000;
   std::string mps;
@@ -740,13 +687,13 @@ void large_columns_repeated_column_chunk_boundary()
   TempMpsFile file(std::move(mps));
   auto model =
     mps_fast::parse_mps_fast_file<int, double>(file.path, mps_fast::FileReadMethod::Read);
-  expect_model_shapes(
+  check_model_shapes(
     model, static_cast<int>(row_count), 2, static_cast<int>(row_count + 1), "large columns");
-  expect_eq(model.var_names_.at(0), std::string("XBIG"), "large repeated column name");
-  expect_eq(model.var_names_.at(1), std::string("XTAIL"), "large tail column name");
+  EXPECT_EQ(std::string("XBIG"), model.var_names_.at(0)) << "large repeated column name";
+  EXPECT_EQ(std::string("XTAIL"), model.var_names_.at(1)) << "large tail column name";
 }
 
-void large_bounds_repeated_var_stays_ordered()
+TEST(FastMpsParserEdgeTest, LargeBoundsRepeatedVarStaysOrdered)
 {
   constexpr size_t repeat_count = 700000;
   std::string mps;
@@ -763,13 +710,12 @@ void large_bounds_repeated_var_stays_ordered()
   TempMpsFile file(std::move(mps));
   auto model =
     mps_fast::parse_mps_fast_file<int, double>(file.path, mps_fast::FileReadMethod::Read);
-  expect_model_shapes(model, 1, 1, 1, "large bounds");
-  expect_eq(model.variable_upper_bounds_.at(0),
-            static_cast<double>((repeat_count - 1) % 1000),
-            "large repeated bounds last value");
+  check_model_shapes(model, 1, 1, 1, "large bounds");
+  EXPECT_EQ(static_cast<double>((repeat_count - 1) % 1000), model.variable_upper_bounds_.at(0))
+    << "large repeated bounds last value";
 }
 
-void lz4_and_raw_paths_match_on_multiblock_input()
+TEST(FastMpsParserEdgeTest, Lz4AndRawPathsMatchOnMultiblockInput)
 {
   constexpr size_t row_count = 70000;
   std::string mps;
@@ -795,27 +741,27 @@ void lz4_and_raw_paths_match_on_multiblock_input()
   TempMpsFile raw_file(std::move(mps));
   TempOwnedPath lz4_file(raw_file.path + ".lz4");
   const std::string cmd = "lz4 -f -q " + raw_file.path + " " + lz4_file.path;
-  if (std::system(cmd.c_str()) != 0) { throw skip_test("lz4 CLI unavailable"); }
+  if (std::system(cmd.c_str()) != 0) { GTEST_SKIP() << "lz4 CLI unavailable"; }
 
   auto raw =
     mps_fast::parse_mps_fast_file<int, double>(raw_file.path, mps_fast::FileReadMethod::Read);
   auto lz4 =
     mps_fast::parse_mps_fast_file<int, double>(lz4_file.path, mps_fast::FileReadMethod::Read);
 
-  expect_model_shapes(lz4, raw.n_constraints_, raw.n_vars_, raw.nnz_, "lz4 parity");
-  expect_eq(lz4.var_names_.size(), raw.var_names_.size(), "lz4 var name count");
-  expect_eq(lz4.row_names_.size(), raw.row_names_.size(), "lz4 row name count");
-  expect_vector_eq(lz4.A_, raw.A_, "lz4 A values");
-  expect_vector_eq(lz4.A_indices_, raw.A_indices_, "lz4 A indices");
-  expect_vector_eq(lz4.A_offsets_, raw.A_offsets_, "lz4 A offsets");
-  expect_vector_eq(lz4.c_, raw.c_, "lz4 objective");
-  expect_vector_eq(lz4.b_, raw.b_, "lz4 rhs");
-  expect_vector_eq(lz4.var_types_, raw.var_types_, "lz4 var types");
-  expect_vector_eq(lz4.variable_lower_bounds_, raw.variable_lower_bounds_, "lz4 lower bounds");
-  expect_vector_eq(lz4.variable_upper_bounds_, raw.variable_upper_bounds_, "lz4 upper bounds");
+  check_model_shapes(lz4, raw.n_constraints_, raw.n_vars_, raw.nnz_, "lz4 parity");
+  EXPECT_EQ(raw.var_names_.size(), lz4.var_names_.size()) << "lz4 var name count";
+  EXPECT_EQ(raw.row_names_.size(), lz4.row_names_.size()) << "lz4 row name count";
+  EXPECT_EQ(raw.A_, lz4.A_) << "lz4 A values";
+  EXPECT_EQ(raw.A_indices_, lz4.A_indices_) << "lz4 A indices";
+  EXPECT_EQ(raw.A_offsets_, lz4.A_offsets_) << "lz4 A offsets";
+  EXPECT_EQ(raw.c_, lz4.c_) << "lz4 objective";
+  EXPECT_EQ(raw.b_, lz4.b_) << "lz4 rhs";
+  EXPECT_EQ(raw.var_types_, lz4.var_types_) << "lz4 var types";
+  EXPECT_EQ(raw.variable_lower_bounds_, lz4.variable_lower_bounds_) << "lz4 lower bounds";
+  EXPECT_EQ(raw.variable_upper_bounds_, lz4.variable_upper_bounds_) << "lz4 upper bounds";
 }
 
-void gzip_bzip2_and_raw_paths_match()
+TEST(FastMpsParserEdgeTest, GzipBzip2AndRawPathsMatch)
 {
   std::string mps;
   mps += "NAME COMPRESSED\nROWS\n N OBJ\n L R1\n G R2\nCOLUMNS\n";
@@ -828,8 +774,8 @@ void gzip_bzip2_and_raw_paths_match()
 
   const std::string gzip_cmd  = "gzip -c " + raw_file.path + " > " + gzip_file.path;
   const std::string bzip2_cmd = "bzip2 -c " + raw_file.path + " > " + bzip2_file.path;
-  if (std::system(gzip_cmd.c_str()) != 0) { throw skip_test("gzip CLI unavailable"); }
-  if (std::system(bzip2_cmd.c_str()) != 0) { throw skip_test("bzip2 CLI unavailable"); }
+  if (std::system(gzip_cmd.c_str()) != 0) { GTEST_SKIP() << "gzip CLI unavailable"; }
+  if (std::system(bzip2_cmd.c_str()) != 0) { GTEST_SKIP() << "bzip2 CLI unavailable"; }
 
   auto raw =
     mps_fast::parse_mps_fast_file<int, double>(raw_file.path, mps_fast::FileReadMethod::Read);
@@ -838,78 +784,22 @@ void gzip_bzip2_and_raw_paths_match()
   auto bzip2 =
     mps_fast::parse_mps_fast_file<int, double>(bzip2_file.path, mps_fast::FileReadMethod::Read);
 
-  expect_model_shapes(gzip, raw.n_constraints_, raw.n_vars_, raw.nnz_, "gzip parity");
-  expect_model_shapes(bzip2, raw.n_constraints_, raw.n_vars_, raw.nnz_, "bzip2 parity");
-  expect_vector_eq(gzip.A_, raw.A_, "gzip A values");
-  expect_vector_eq(bzip2.A_, raw.A_, "bzip2 A values");
-  expect_vector_eq(gzip.A_indices_, raw.A_indices_, "gzip A indices");
-  expect_vector_eq(bzip2.A_indices_, raw.A_indices_, "bzip2 A indices");
-  expect_vector_eq(gzip.A_offsets_, raw.A_offsets_, "gzip A offsets");
-  expect_vector_eq(bzip2.A_offsets_, raw.A_offsets_, "bzip2 A offsets");
-  expect_vector_eq(gzip.c_, raw.c_, "gzip objective");
-  expect_vector_eq(bzip2.c_, raw.c_, "bzip2 objective");
-  expect_vector_eq(gzip.b_, raw.b_, "gzip rhs");
-  expect_vector_eq(bzip2.b_, raw.b_, "bzip2 rhs");
-  expect_vector_eq(gzip.variable_lower_bounds_, raw.variable_lower_bounds_, "gzip lower bounds");
-  expect_vector_eq(bzip2.variable_lower_bounds_, raw.variable_lower_bounds_, "bzip2 lower bounds");
-  expect_vector_eq(gzip.variable_upper_bounds_, raw.variable_upper_bounds_, "gzip upper bounds");
-  expect_vector_eq(bzip2.variable_upper_bounds_, raw.variable_upper_bounds_, "bzip2 upper bounds");
-  expect_vector_eq(gzip.var_types_, raw.var_types_, "gzip var types");
-  expect_vector_eq(bzip2.var_types_, raw.var_types_, "bzip2 var types");
-}
-
-}  // namespace
-
-int main()
-{
-  struct TestCase {
-    const char* name;
-    void (*fn)();
-  };
-
-  const TestCase tests[] = {
-    {"ScannerFindsSectionSplitAcrossBlocks", scanner_finds_section_split_across_blocks},
-    {"ScannerFindsHeadersSplitAtEveryByte", scanner_finds_headers_split_at_every_byte},
-    {"ScannerRejectsUnknownColumnOneRecordsAfterRows",
-     scanner_rejects_unknown_column_one_records_after_rows},
-    {"BoundsDefaultsAndTypesMatchReference", bounds_defaults_and_types_match_reference},
-    {"DuplicateBoundsLastStatementWins", duplicate_bounds_last_statement_wins},
-    {"NondenseRowAndColumnNamesUseHashPath", nondense_row_and_column_names_use_hash_path},
-    {"MissingOptionalBoundsFastPath", missing_optional_bounds_fast_path},
-    {"BoundsOnlyVariablesAreAppendedDeterministically",
-     bounds_only_variables_are_appended_deterministically},
-    {"IntegerMarkersAssignTypesAndDefaultBounds", integer_markers_assign_types_and_default_bounds},
-    {"NumericParsingIntegrationMatchesReferenceBitwise",
-     numeric_parsing_integration_matches_reference_bitwise},
-    {"CrlfLineEndingsMatchReferenceBitwise", crlf_line_endings_match_reference_bitwise},
-    {"CommentPlacementSupportedCasesMatchReferenceBitwise",
-     comment_placement_supported_cases_match_reference_bitwise},
-    {"ObjectiveMetadataSelectsNamedObjective", objective_metadata_selects_named_objective},
-    {"MalformedInputsReportErrors", malformed_inputs_report_errors},
-    {"LargeColumnsRepeatedColumnChunkBoundary", large_columns_repeated_column_chunk_boundary},
-    {"LargeBoundsRepeatedVarStaysOrdered", large_bounds_repeated_var_stays_ordered},
-    {"Lz4AndRawPathsMatchOnMultiblockInput", lz4_and_raw_paths_match_on_multiblock_input},
-    {"GzipBzip2AndRawPathsMatch", gzip_bzip2_and_raw_paths_match},
-  };
-
-  int failed = 0;
-  for (const TestCase& test : tests) {
-    std::cout << "[ RUN      ] " << test.name << '\n';
-    try {
-      test.fn();
-      std::cout << "[       OK ] " << test.name << '\n';
-    } catch (const skip_test& e) {
-      std::cout << "[  SKIPPED ] " << test.name << ": " << e.what() << '\n';
-    } catch (const std::exception& e) {
-      ++failed;
-      std::cerr << "[  FAILED  ] " << test.name << ": " << e.what() << '\n';
-    }
-  }
-
-  if (failed != 0) {
-    std::cerr << failed << " test(s) failed\n";
-    return 1;
-  }
-  std::cout << "[  PASSED  ] " << std::size(tests) << " test(s)\n";
-  return 0;
+  check_model_shapes(gzip, raw.n_constraints_, raw.n_vars_, raw.nnz_, "gzip parity");
+  check_model_shapes(bzip2, raw.n_constraints_, raw.n_vars_, raw.nnz_, "bzip2 parity");
+  EXPECT_EQ(raw.A_, gzip.A_) << "gzip A values";
+  EXPECT_EQ(raw.A_, bzip2.A_) << "bzip2 A values";
+  EXPECT_EQ(raw.A_indices_, gzip.A_indices_) << "gzip A indices";
+  EXPECT_EQ(raw.A_indices_, bzip2.A_indices_) << "bzip2 A indices";
+  EXPECT_EQ(raw.A_offsets_, gzip.A_offsets_) << "gzip A offsets";
+  EXPECT_EQ(raw.A_offsets_, bzip2.A_offsets_) << "bzip2 A offsets";
+  EXPECT_EQ(raw.c_, gzip.c_) << "gzip objective";
+  EXPECT_EQ(raw.c_, bzip2.c_) << "bzip2 objective";
+  EXPECT_EQ(raw.b_, gzip.b_) << "gzip rhs";
+  EXPECT_EQ(raw.b_, bzip2.b_) << "bzip2 rhs";
+  EXPECT_EQ(raw.variable_lower_bounds_, gzip.variable_lower_bounds_) << "gzip lower bounds";
+  EXPECT_EQ(raw.variable_lower_bounds_, bzip2.variable_lower_bounds_) << "bzip2 lower bounds";
+  EXPECT_EQ(raw.variable_upper_bounds_, gzip.variable_upper_bounds_) << "gzip upper bounds";
+  EXPECT_EQ(raw.variable_upper_bounds_, bzip2.variable_upper_bounds_) << "bzip2 upper bounds";
+  EXPECT_EQ(raw.var_types_, gzip.var_types_) << "gzip var types";
+  EXPECT_EQ(raw.var_types_, bzip2.var_types_) << "bzip2 var types";
 }

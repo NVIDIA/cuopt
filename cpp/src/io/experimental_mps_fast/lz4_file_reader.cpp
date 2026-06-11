@@ -662,8 +662,16 @@ struct lz4_pipeline_t {
   void wait_range_ready(std::size_t begin, std::size_t size)
   {
     if (size == 0) return;
+    if (begin > input.compressed_size_ || size > input.compressed_size_ - begin) {
+      mps_parser_fail(error_type_t::ValidationError,
+                      "truncated LZ4 frame while reading resident window");
+    }
     std::size_t first = begin / window_bytes;
     std::size_t last  = (begin + size - 1) / window_bytes;
+    if (last >= window_done.size()) {
+      mps_parser_fail(error_type_t::ValidationError,
+                      "truncated LZ4 frame while reading resident window");
+    }
     for (std::size_t wi = first; wi <= last; ++wi) {
       MPS_NVTX_RANGE("lz4_metadata_wait_window", nvtx::colors::io);
       std::unique_lock<std::mutex> lock(window_mutex);

@@ -307,10 +307,11 @@ int main(int argc, char* argv[])
 
   program.add_argument("--mps-reader")
     .help(
-      "MPS reader implementation: default uses the production parser; fast uses the experimental "
+      "MPS reader implementation: default uses the production parser; experimental-fast uses the "
+      "experimental "
       "SIMD parser for LP/MIP .mps and .mps.lz4 files")
     .default_value(std::string("default"))
-    .choices("default", "fast");
+    .choices("default", "experimental-fast");
 
   program.add_argument("--dump-hyper-params")
     .help("print hyper-parameters only in config file format and exit")
@@ -415,7 +416,7 @@ int main(int argc, char* argv[])
   const auto mps_reader_arg        = program.get<std::string>("--mps-reader");
 
   auto mps_reader = cuopt::linear_programming::io::mps_reader_type_t::default_reader;
-  if (mps_reader_arg == "fast") {
+  if (mps_reader_arg == "experimental-fast") {
     mps_reader = cuopt::linear_programming::io::mps_reader_type_t::fast_experimental;
   }
 
