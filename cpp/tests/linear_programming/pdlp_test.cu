@@ -246,7 +246,7 @@ TEST(pdlp_class, distributed_parity_afiro)
   expect_distributed_matches_base(handle, "linear_programming/afiro_original.mps", true);
 }
 
-TEST(pdlp_class, distributed_parity_square41)
+TEST(pdlp_class, distributed_parity_neos3)
 {
   const raft::handle_t handle{};
   expect_distributed_matches_base(handle, "linear_programming/neos3/neos3.mps");
