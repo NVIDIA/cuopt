@@ -23,7 +23,7 @@
 
 namespace cuopt::linear_programming::dual_simplex {
 
-struct cusparse_spgemm_deleter {
+struct cusparse_spgemm_deleter_t {
   void operator()(cusparseSpGEMMDescr_t descr) const noexcept
   {
     if (descr) { CUOPT_CUSPARSE_TRY_NO_THROW(cusparseSpGEMM_destroyDescr(descr)); }
@@ -31,7 +31,7 @@ struct cusparse_spgemm_deleter {
 };
 
 using cusparse_spgemm_uptr =
-  std::unique_ptr<std::remove_pointer_t<cusparseSpGEMMDescr_t>, cusparse_spgemm_deleter>;
+  std::unique_ptr<std::remove_pointer_t<cusparseSpGEMMDescr_t>, cusparse_spgemm_deleter_t>;
 
 template <typename i_t, typename f_t>
 struct cusparse_info_t {

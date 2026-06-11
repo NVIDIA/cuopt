@@ -35,21 +35,21 @@ namespace cuopt::linear_programming::detail {
 // pointee type so that unique_ptr<...>::pointer matches the cuSPARSE handle.
 // ---------------------------------------------------------------------------
 
-struct cusparse_sp_mat_deleter {
+struct cusparse_sp_mat_deleter_t {
   void operator()(cusparseSpMatDescr_t descr) const noexcept
   {
     if (descr) { RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroySpMat(descr)); }
   }
 };
 
-struct cusparse_dn_vec_deleter {
+struct cusparse_dn_vec_deleter_t {
   void operator()(cusparseDnVecDescr_t descr) const noexcept
   {
     if (descr) { RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnVec(descr)); }
   }
 };
 
-struct cusparse_dn_mat_deleter {
+struct cusparse_dn_mat_deleter_t {
   void operator()(cusparseDnMatDescr_t descr) const noexcept
   {
     if (descr) { RAFT_CUSPARSE_TRY_NO_THROW(cusparseDestroyDnMat(descr)); }
@@ -57,11 +57,11 @@ struct cusparse_dn_mat_deleter {
 };
 
 using cusparse_sp_mat_uptr =
-  std::unique_ptr<std::remove_pointer_t<cusparseSpMatDescr_t>, cusparse_sp_mat_deleter>;
+  std::unique_ptr<std::remove_pointer_t<cusparseSpMatDescr_t>, cusparse_sp_mat_deleter_t>;
 using cusparse_dn_vec_uptr =
-  std::unique_ptr<std::remove_pointer_t<cusparseDnVecDescr_t>, cusparse_dn_vec_deleter>;
+  std::unique_ptr<std::remove_pointer_t<cusparseDnVecDescr_t>, cusparse_dn_vec_deleter_t>;
 using cusparse_dn_mat_uptr =
-  std::unique_ptr<std::remove_pointer_t<cusparseDnMatDescr_t>, cusparse_dn_mat_deleter>;
+  std::unique_ptr<std::remove_pointer_t<cusparseDnMatDescr_t>, cusparse_dn_mat_deleter_t>;
 
 // Borrowed views: identical to the raw cuSPARSE handle types but the alias makes the non-owning
 // intent explicit at API boundaries. Pair with the *_uptr aliases above:
@@ -112,18 +112,18 @@ inline cusparse_dn_mat_uptr make_dnmat(
 // static.
 // ---------------------------------------------------------------------------
 
-struct cusparse_spmvop_descr_deleter {
+struct cusparse_spmvop_descr_deleter_t {
   void operator()(cusparseSpMVOpDescr_t descr) const noexcept;
 };
 
-struct cusparse_spmvop_plan_deleter {
+struct cusparse_spmvop_plan_deleter_t {
   void operator()(cusparseSpMVOpPlan_t plan) const noexcept;
 };
 
 using cusparse_spmvop_descr_uptr =
-  std::unique_ptr<std::remove_pointer_t<cusparseSpMVOpDescr_t>, cusparse_spmvop_descr_deleter>;
+  std::unique_ptr<std::remove_pointer_t<cusparseSpMVOpDescr_t>, cusparse_spmvop_descr_deleter_t>;
 using cusparse_spmvop_plan_uptr =
-  std::unique_ptr<std::remove_pointer_t<cusparseSpMVOpPlan_t>, cusparse_spmvop_plan_deleter>;
+  std::unique_ptr<std::remove_pointer_t<cusparseSpMVOpPlan_t>, cusparse_spmvop_plan_deleter_t>;
 
 // Factories. `make_spmvop_descr` resolves cusparseSpMVOp_createDescr via dlsym.
 cusparse_spmvop_descr_uptr make_spmvop_descr(cusparseHandle_t handle,

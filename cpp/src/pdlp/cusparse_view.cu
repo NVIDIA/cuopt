@@ -185,7 +185,7 @@ using cusparseSpMVOp_sig = cusparse_sig<cusparseHandle_t,
 // dlsym-resolved create/destroy. The *_destroy_sig variants are reused by the
 // deleters; the *_create_sig variants are reused by make_spmvop_{descr,plan}.
 
-void cusparse_spmvop_descr_deleter::operator()(cusparseSpMVOpDescr_t descr) const noexcept
+void cusparse_spmvop_descr_deleter_t::operator()(cusparseSpMVOpDescr_t descr) const noexcept
 {
   if (!descr) { return; }
   static const auto fn =
@@ -193,7 +193,7 @@ void cusparse_spmvop_descr_deleter::operator()(cusparseSpMVOpDescr_t descr) cons
   if (fn.has_value()) { RAFT_CUSPARSE_TRY_NO_THROW((*fn)(descr)); }
 }
 
-void cusparse_spmvop_plan_deleter::operator()(cusparseSpMVOpPlan_t plan) const noexcept
+void cusparse_spmvop_plan_deleter_t::operator()(cusparseSpMVOpPlan_t plan) const noexcept
 {
   if (!plan) { return; }
   static const auto fn =
