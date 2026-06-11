@@ -96,8 +96,7 @@ inline cusparse_dn_mat_uptr make_dnmat(
   int64_t row, int64_t col, int64_t ld, f_t* values, cusparseOrder_t order)
 {
   cusparseDnMatDescr_t descr{nullptr};
-  RAFT_CUSPARSE_TRY(
-    raft::sparse::detail::cusparsecreatednmat(&descr, row, col, ld, values, order));
+  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednmat(&descr, row, col, ld, values, order));
   return cusparse_dn_mat_uptr{descr};
 }
 
@@ -137,8 +136,7 @@ cusparse_spmvop_descr_uptr make_spmvop_descr(cusparseHandle_t handle,
 
 // `make_spmvop_plan` passes nullptr/0 for ltoIRBuf/ltoIRSize so cuSPARSE JITs
 // internally; cuOpt does not supply user-provided LTO IR.
-cusparse_spmvop_plan_uptr make_spmvop_plan(cusparseHandle_t handle,
-                                           cusparseSpMVOpDescr_t descr);
+cusparse_spmvop_plan_uptr make_spmvop_plan(cusparseHandle_t handle, cusparseSpMVOpDescr_t descr);
 #endif
 
 template <typename i_t, typename f_t>

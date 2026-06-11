@@ -45,8 +45,7 @@ struct SpMM_benchmarks_context_t {
     int col_dual  = current_batch_size;
     int ld_dual   = current_batch_size;
 
-    x_descr =
-      make_dnmat<f_t>(rows_primal, col_primal, ld_primal, x.data(), CUSPARSE_ORDER_ROW);
+    x_descr = make_dnmat<f_t>(rows_primal, col_primal, ld_primal, x.data(), CUSPARSE_ORDER_ROW);
     y_descr = make_dnmat<f_t>(rows_dual, col_dual, ld_dual, y.data(), CUSPARSE_ORDER_ROW);
 
     // Init buffers for SpMMs
@@ -267,7 +266,7 @@ int optimal_batch_size_handler(const optimization_problem_t<i_t, f_t>& op_proble
                                                right_node,
                                                benchmark_runs,
                                                op_problem.get_handle_ptr());
-  int current_step = 1;
+  int current_step     = 1;
 
 #ifdef BATCH_VERBOSE_MODE
   std::cout << "Starting batch size: " << current_batch_size << " and ratio: " << current_ratio

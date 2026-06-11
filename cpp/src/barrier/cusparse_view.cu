@@ -163,7 +163,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
   A_T_indices_ = device_copy(A.i, handle_ptr->get_stream());
   A_T_data_    = device_copy(A.x, handle_ptr->get_stream());
 
-  A_   = detail::make_csr<i_t, f_t>(
+  A_ = detail::make_csr<i_t, f_t>(
     rows, cols, nnz, A_offsets_.data(), A_indices_.data(), A_data_.data());
   A_T_ = detail::make_csr<i_t, f_t>(
     cols, rows, nnz, A_T_offsets_.data(), A_T_indices_.data(), A_T_data_.data());

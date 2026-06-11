@@ -213,8 +213,7 @@ cusparse_spmvop_descr_uptr make_spmvop_descr(cusparseHandle_t handle,
   static const auto fn =
     dynamic_load_runtime::function<cusparseSpMVOp_createDescr_sig>("cusparseSpMVOp_createDescr");
   cusparseSpMVOpDescr_t descr{nullptr};
-  RAFT_CUSPARSE_TRY(
-    (*fn)(handle, &descr, opA, matA, vecX, vecY, vecZ, computeType, buffer.data()));
+  RAFT_CUSPARSE_TRY((*fn)(handle, &descr, opA, matA, vecX, vecY, vecZ, computeType, buffer.data()));
   return cusparse_spmvop_descr_uptr{descr};
 }
 
@@ -314,23 +313,22 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   if (batch_mode_) {
     [[maybe_unused]] const bool is_cupdlpx = is_cupdlpx_restart<i_t, f_t>(hyper_params);
     cuopt_assert(is_cupdlpx, "Batch mode only supported with cuPDLPx restart");
-    batch_dual_solutions = make_dnmat<f_t>(op_problem_scaled.n_constraints,
+    batch_dual_solutions               = make_dnmat<f_t>(op_problem_scaled.n_constraints,
                                            climber_strategies.size(),
                                            climber_strategies.size(),
                                            current_saddle_point_state.get_dual_solution().data(),
                                            CUSPARSE_ORDER_ROW);
-    batch_current_AtYs   = make_dnmat<f_t>(op_problem_scaled.n_variables,
+    batch_current_AtYs                 = make_dnmat<f_t>(op_problem_scaled.n_variables,
                                          climber_strategies.size(),
                                          climber_strategies.size(),
                                          current_saddle_point_state.get_current_AtY().data(),
                                          CUSPARSE_ORDER_ROW);
-    batch_potential_next_dual_solution =
-      make_dnmat<f_t>(op_problem_scaled.n_constraints,
-                      climber_strategies.size(),
-                      op_problem_scaled.n_constraints,
-                      _potential_next_dual_solution.data(),
-                      CUSPARSE_ORDER_COL);
-    batch_next_AtYs = make_dnmat<f_t>(op_problem_scaled.n_variables,
+    batch_potential_next_dual_solution = make_dnmat<f_t>(op_problem_scaled.n_constraints,
+                                                         climber_strategies.size(),
+                                                         op_problem_scaled.n_constraints,
+                                                         _potential_next_dual_solution.data(),
+                                                         CUSPARSE_ORDER_COL);
+    batch_next_AtYs                    = make_dnmat<f_t>(op_problem_scaled.n_variables,
                                       climber_strategies.size(),
                                       op_problem_scaled.n_variables,
                                       current_saddle_point_state.get_next_AtY().data(),
@@ -341,7 +339,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                                                        climber_strategies.size(),
                                                        _reflected_primal_solution.data(),
                                                        CUSPARSE_ORDER_ROW);
-    batch_dual_gradients = make_dnmat<f_t>(op_problem_scaled.n_constraints,
+    batch_dual_gradients             = make_dnmat<f_t>(op_problem_scaled.n_constraints,
                                            climber_strategies.size(),
                                            climber_strategies.size(),
                                            current_saddle_point_state.get_dual_gradient().data(),
@@ -371,9 +369,9 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                                       _tmp_primal.data(),
                                       CUSPARSE_ORDER_COL);
 
-  primal_gradient = make_dnvec<f_t>(
-    current_saddle_point_state.get_primal_gradient().size(),  // It is 0 in cupdlpx
-    current_saddle_point_state.get_primal_gradient().data());
+  primal_gradient =
+    make_dnvec<f_t>(current_saddle_point_state.get_primal_gradient().size(),  // It is 0 in cupdlpx
+                    current_saddle_point_state.get_primal_gradient().data());
   dual_gradient = make_dnvec<f_t>(op_problem_scaled.n_constraints,
                                   current_saddle_point_state.get_dual_gradient().data());
 

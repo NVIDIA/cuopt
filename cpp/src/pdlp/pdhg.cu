@@ -1383,8 +1383,8 @@ void pdhg_solver_t<i_t, f_t>::update_solution(
   // Update cusparse views to point to the new values, cost is marginal
   RAFT_CUSPARSE_TRY(cusparseDnVecSetValues(cusparse_view_.current_AtY.get(),
                                            current_saddle_point_state_.current_AtY_.data()));
-  RAFT_CUSPARSE_TRY(
-    cusparseDnVecSetValues(cusparse_view_.next_AtY.get(), current_saddle_point_state_.next_AtY_.data()));
+  RAFT_CUSPARSE_TRY(cusparseDnVecSetValues(cusparse_view_.next_AtY.get(),
+                                           current_saddle_point_state_.next_AtY_.data()));
   RAFT_CUSPARSE_TRY(cusparseDnVecSetValues(cusparse_view_.potential_next_dual_solution.get(),
                                            potential_next_dual_solution_.data()));
   RAFT_CUSPARSE_TRY(cusparseDnVecSetValues(cusparse_view_.primal_solution.get(),

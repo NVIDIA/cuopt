@@ -2595,7 +2595,8 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       data.cusparse_dy_ = data.cusparse_view_.create_vector(data.d_dy_);
 
       // r1 <- A'*dy - r1
-      data.cusparse_view_.transpose_spmv(1.0, data.cusparse_dy_.get(), -1.0, data.cusparse_r1_.get());
+      data.cusparse_view_.transpose_spmv(
+        1.0, data.cusparse_dy_.get(), -1.0, data.cusparse_r1_.get());
 
       cub::DeviceTransform::Transform(
         cuda::std::make_tuple(data.d_inv_diag.data(), data.d_r1_.data(), data.d_diag_.data()),
@@ -2609,7 +2610,8 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       RAFT_CHECK_CUDA(stream_view_);
       raft::copy(dx.data(), data.d_dx_.data(), data.d_dx_.size(), stream_view_);
 
-      data.cusparse_view_.transpose_spmv(-1.0, data.cusparse_dy_.get(), 1.0, data.cusparse_dx_residual_.get());
+      data.cusparse_view_.transpose_spmv(
+        -1.0, data.cusparse_dy_.get(), 1.0, data.cusparse_dx_residual_.get());
       cub::DeviceTransform::Transform(
         cuda::std::make_tuple(data.d_dx_residual_.data(), data.d_r1_prime_.data()),
         data.d_dx_residual_.data(),
@@ -2670,7 +2672,8 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
 
       data.cusparse_view_.spmv(
         1.0, data.cusparse_dx_residual_5_.get(), 0.0, data.cusparse_dx_residual_6_.get());
-      data.cusparse_view_.spmv(-1.0, data.cusparse_dx_.get(), 1.0, data.cusparse_dx_residual_6_.get());
+      data.cusparse_view_.spmv(
+        -1.0, data.cusparse_dx_.get(), 1.0, data.cusparse_dx_residual_6_.get());
 
       const f_t dx_residual_6_norm =
         device_vector_norm_inf<i_t, f_t>(d_dx_residual_6, stream_view_);
@@ -2701,7 +2704,8 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
 
       data.cusparse_view_.spmv(
         1.0, data.cusparse_dx_residual_3_.get(), 0.0, data.cusparse_dx_residual_4_.get());
-      data.cusparse_view_.spmv(1.0, data.cusparse_dx_.get(), 1.0, data.cusparse_dx_residual_4_.get());
+      data.cusparse_view_.spmv(
+        1.0, data.cusparse_dx_.get(), 1.0, data.cusparse_dx_residual_4_.get());
     }
 
 #if CHECK_FORM_ADAT
@@ -2897,7 +2901,8 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
                     data.d_dual_residual_.begin());
 
     // dual_residual <- A' * dy - E * dv
-    data.cusparse_view_.transpose_spmv(1.0, data.cusparse_dy_.get(), -1.0, data.cusparse_dual_residual_.get());
+    data.cusparse_view_.transpose_spmv(
+      1.0, data.cusparse_dy_.get(), -1.0, data.cusparse_dual_residual_.get());
 
     // dual_residual <- A' * dy - E * dv + dz - dual_rhs
     cub::DeviceTransform::Transform(

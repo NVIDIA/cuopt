@@ -1750,7 +1750,7 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
   // Reset all cusparse view
 
   // Reset cuSparse views for PDHG. unique_ptr move-assign destroys the old descriptor first.
-  auto& pdhg_cusparse_view           = pdhg_solver_.get_cusparse_view();
+  auto& pdhg_cusparse_view = pdhg_solver_.get_cusparse_view();
   pdhg_cusparse_view.batch_dual_solutions =
     detail::make_dnmat<f_t>(op_problem_scaled_.n_constraints,
                             climber_strategies_.size(),
