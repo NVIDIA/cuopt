@@ -5,6 +5,7 @@
  */
 /* clang-format on */
 
+#include <pdlp/distributed_pdlp/multi_gpu_engine.hpp>
 #include <pdlp/pdlp_climber_strategy.hpp>
 #include <pdlp/pdlp_constants.hpp>
 #include <pdlp/swap_and_resize_helper.cuh>
@@ -558,6 +559,19 @@ pdlp_termination_strategy_t<i_t, f_t>::fill_return_problem_solution(
   cuopt_assert(
     dual_iterate.size() == current_pdhg_solver.get_dual_size() * termination_status.size(),
     "Dual iterate size mismatch");
+
+  // In distributed PDLP, gather solutions to master here
+  if (!deep_copy) {
+    if (auto* engine = current_pdhg_solver.get_mgpu_engine()) {
+      const bool is_current_live_iterate =
+        (&primal_iterate == &current_pdhg_solver.get_potential_next_primal_solution()) ||
+        (&primal_iterate == &current_pdhg_solver.get_primal_solution());
+      if (is_current_live_iterate) {
+        engine->gather_potential_next_solutions_to_master(
+          current_pdhg_solver, convergence_information_.get_reduced_cost());
+      }
+    }
+  }
 
   typename convergence_information_t<i_t, f_t>::view_t convergence_information_view =
     convergence_information_.view();
