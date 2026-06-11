@@ -54,6 +54,7 @@ solver_t<i_t, f_t>::solver_t(data_model_view_t<i_t, f_t> const& data_model,
   solver_settings_ptr_ = &settings;
 }
 
+//! \brief { Solve the routing model and return the assignment. }
 template <typename i_t, typename f_t>
 assignment_t<i_t> solver_t<i_t, f_t>::solve()
 {
