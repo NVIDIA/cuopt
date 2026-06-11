@@ -186,6 +186,7 @@ void expect_distributed_matches_base(raft::handle_t const& handle,
   auto base    = solve_lp(base_op, base_settings);
 
   // ----- distributed PDLP (identical settings, only the distributed flags flipped) -----
+  // testing on only one gpu is allowed and is already a great test for the distributed path
   pdlp_solver_settings_t<int, double> dist_settings = base_settings;
   dist_settings.hyper_params.use_distributed_pdlp   = true;
   dist_settings.distributed_pdlp_num_gpus           = -1;
