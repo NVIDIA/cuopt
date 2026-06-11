@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -33,7 +33,9 @@ __global__ void find_break_insertions_kernel(
   i_t route_id          = blockIdx.x / n_max_break_dims;
   i_t ejected_break_dim = blockIdx.x % n_max_break_dims;
   auto global_route     = solution.routes[route_id];
-  if (ejected_break_dim >= global_route.get_num_breaks()) { return; }
+  if (ejected_break_dim >= solution.problem.get_break_dimensions(global_route.get_vehicle_id())) {
+    return;
+  }
 
   for (int i = 0; i < global_route.get_num_nodes(); ++i) {
     auto node = global_route.get_node(i);

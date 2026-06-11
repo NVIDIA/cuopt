@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -439,6 +439,15 @@ __global__ void squeeze_breaks_kernel(typename solution_t<i_t, f_t, REQUEST>::vi
 
   for (int break_dim_idx = 0; break_dim_idx < n_break_dims; ++break_dim_idx) {
     if (break_dim_counters[break_dim_idx] == 1) { continue; }
+    if (sh_route.get_num_service_nodes() > 0 &&
+        sh_route.dimensions_info().has_dimension(dim_t::TIME)) {
+      const auto vehicle_info   = sh_route.vehicle_info();
+      const auto route_end_node = sh_route.get_node(sh_route.get_num_nodes()).time_dim;
+      const double route_end_time =
+        route_end_node.departure_forward + route_end_node.excess_forward;
+      // Breaks become mandatory only once the route reaches their deadline.
+      if (route_end_time < vehicle_info.break_latest[break_dim_idx]) { continue; }
+    }
     const auto old_objective_cost    = sh_route.get_objective_cost();
     const auto old_infeasbility_cost = sh_route.get_infeasibility_cost();
     auto break_nodes =

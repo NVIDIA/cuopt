@@ -497,7 +497,7 @@ def test_heterogenous_breaks():
     routing_solution = routing.Solve(d, s)
 
     # TO DO: Check if breaks are adhered to
-    assert routing_solution.get_status() == 0
+    assert routing_solution.get_status() == 0, routing_solution.get_message()
     counters = {}
     routes = routing_solution.get_route().to_pandas()
     break_locations_1_list = break_locations_1.to_arrow().to_pylist()
@@ -521,11 +521,23 @@ def test_heterogenous_breaks():
             counters[truck_id] = counters[truck_id] + 1
 
     # Make sure the achieved number of breaks is same as the specified
-    for truck_id, num_breaks in counters.items():
+    arrival_col = next(
+        col
+        for col in ("arrival_stamp", "arrival_time", "arrival")
+        if col in routes.columns
+    )
+    for truck_id in routes.truck_id.unique():
+        truck_id = int(truck_id)
+        route_end = routes[routes.truck_id == truck_id][arrival_col].max()
         if truck_id < num_v_type_1:
-            assert num_breaks == num_breaks_1
+            expected_breaks = sum(
+                break_latest <= route_end for _, break_latest in break_times_1
+            )
         else:
-            assert num_breaks == num_breaks_2
+            expected_breaks = sum(
+                break_latest <= route_end for _, break_latest in break_times_2
+            )
+        assert counters.get(truck_id, 0) == expected_breaks
 
 
 # ----- Vehicle dependent service times -----
@@ -733,3 +745,68 @@ def test_empty_routes_with_breaks():
         h_route = solution_vehicle_x["route"].to_arrow().to_pylist()
         route_len = len(h_route)
         assert route_len > 3
+
+
+def test_break_after_route_end_is_not_inserted():
+    coords = np.array(
+        [[0.0, 0.0], [10.0, 0.0], [0.0, 200.0]], dtype=np.float32
+    )
+    diff = coords[:, None] - coords[None, :]
+    matrix = cudf.DataFrame(np.linalg.norm(diff, axis=-1).astype(np.float32))
+
+    dm = routing.DataModel(3, n_fleet=1, n_orders=1)
+    dm.add_cost_matrix(matrix)
+    dm.add_transit_time_matrix(matrix)
+    dm.set_order_locations(cudf.Series([1], dtype=np.int32))
+    dm.set_order_time_windows(
+        cudf.Series([0], dtype=np.int32),
+        cudf.Series([1000], dtype=np.int32),
+    )
+    dm.set_vehicle_time_windows(
+        cudf.Series([0], dtype=np.int32),
+        cudf.Series([1000], dtype=np.int32),
+    )
+    dm.set_break_locations(cudf.Series([2], dtype=np.int32))
+    dm.add_break_dimension(
+        cudf.Series([150], dtype=np.int32),
+        cudf.Series([200], dtype=np.int32),
+        cudf.Series([5], dtype=np.int32),
+    )
+
+    sol = routing.Solve(dm)
+    assert sol.get_status() == 0
+    assert abs(sol.get_total_objective() - 20) < 0.01
+
+    route = sol.get_route()
+    assert "Break" not in route["type"].to_arrow().to_pylist()
+    assert route["location"].to_arrow().to_pylist() == [0, 1, 0]
+
+
+def test_required_break_unreachable_is_infeasible():
+    coords = np.array(
+        [[0.0, 0.0], [10.0, 0.0], [0.0, 200.0]], dtype=np.float32
+    )
+    diff = coords[:, None] - coords[None, :]
+    matrix = cudf.DataFrame(np.linalg.norm(diff, axis=-1).astype(np.float32))
+
+    dm = routing.DataModel(3, n_fleet=1, n_orders=1)
+    dm.add_cost_matrix(matrix)
+    dm.add_transit_time_matrix(matrix)
+    dm.set_order_locations(cudf.Series([1], dtype=np.int32))
+    dm.set_order_time_windows(
+        cudf.Series([0], dtype=np.int32),
+        cudf.Series([1000], dtype=np.int32),
+    )
+    dm.set_vehicle_time_windows(
+        cudf.Series([0], dtype=np.int32),
+        cudf.Series([1000], dtype=np.int32),
+    )
+    dm.set_break_locations(cudf.Series([2], dtype=np.int32))
+    dm.add_break_dimension(
+        cudf.Series([0], dtype=np.int32),
+        cudf.Series([5], dtype=np.int32),
+        cudf.Series([5], dtype=np.int32),
+    )
+
+    sol = routing.Solve(dm)
+    assert sol.get_status() == 1

@@ -663,6 +663,29 @@ class route_t {
           .compute_cost(this->vehicle_info(), *n_nodes, objective_cost[0], infeasibility_cost[0]);
       });
 
+      if (dimensions_info().has_dimension(dim_t::BREAK) &&
+          dimensions_info().has_dimension(dim_t::TIME)) {
+        const auto vehicle_info = this->vehicle_info();
+        const i_t n_breaks      = vehicle_info.num_breaks();
+        if (n_breaks > 0) {
+          const auto route_end_node = this->get_node(*n_nodes).time_dim;
+          const double route_end_time =
+            route_end_node.departure_forward + route_end_node.excess_forward;
+          i_t missing_required_breaks = 0;
+          for (i_t break_dim = 0; break_dim < n_breaks; ++break_dim) {
+            if (vehicle_info.break_latest[break_dim] > route_end_time) { continue; }
+
+            bool has_break = false;
+            for (i_t node_idx = 0; node_idx < *n_nodes; ++node_idx) {
+              const auto node_info = this->get_node(node_idx).node_info();
+              has_break = has_break || (node_info.is_break() && node_info.break_dim() == break_dim);
+            }
+            missing_required_breaks += !has_break;
+          }
+          infeasibility_cost[0][dim_t::BREAK] += missing_required_breaks;
+        }
+      }
+
       return thrust::make_tuple(objective_cost[0], infeasibility_cost[0]);
     }
 
