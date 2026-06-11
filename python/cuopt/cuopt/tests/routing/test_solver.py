@@ -332,5 +332,5 @@ def test_min_vehicles_respected(vehicle_fixed_costs):
 
     sol = routing.Solve(dm, ss)
 
-    assert sol.get_status() == 0, sol.get_error_message()
+    assert sol.get_status() == 0, sol.get_message()
     assert sol.get_vehicle_count() >= 3
