@@ -40,6 +40,8 @@ struct power_10_lut_entry_t {
   int biased_e2;
 };
 
+// util class to perform 256bit precision arithmetic in constexpr to build the eisel-lemire lookup
+// table
 struct cuopt_uint256_t {
   std::array<uint64_t, 4> limb{};
 
@@ -169,7 +171,7 @@ inline constexpr std::array<uint64_t, 16> small_integer_powers = {1ULL,
                                                                   100000000000000ULL,
                                                                   1000000000000000ULL};
 
-struct ParsedDecimal {
+struct parsed_decimal_t {
   bool negative      = false;
   bool fast_eligible = false;
   uint64_t mantissa  = 0;
@@ -181,6 +183,7 @@ static inline bool is_digit(char c) noexcept { return c >= '0' && c <= '9'; }
 // SWAR 8char run of digits -> integer representation
 static inline bool parse_8_digits(const char* p, uint32_t& out)
 {
+  // comply with strict aliasing rules
   std::array<char, sizeof(uint64_t)> bytes{};
   std::memcpy(bytes.data(), p, bytes.size());
   uint64_t raw       = std::bit_cast<uint64_t>(bytes);
@@ -195,10 +198,26 @@ static inline bool parse_8_digits(const char* p, uint32_t& out)
   return true;
 }
 
+static inline void parse_u64_digits_advance(const char*& p, const char* end, uint64_t& out)
+{
+  while (p < end && is_digit(*p)) {
+    if (end - p >= 8) {
+      uint32_t chunk = 0;
+      if (parse_8_digits(p, chunk)) {
+        out = out * 100000000ULL + (uint64_t)chunk;
+        p += 8;
+        continue;
+      }
+    }
+    out = out * 10 + (uint64_t)(*p - '0');
+    ++p;
+  }
+}
+
 static inline void scan_digit_run(const char*& p,
                                   const char* end,
                                   bool after_dot,
-                                  ParsedDecimal& out,
+                                  parsed_decimal_t& out,
                                   bool& saw_digit,
                                   int& frac_digits,
                                   int& sig_digits,
@@ -244,7 +263,7 @@ static inline void scan_digit_run(const char*& p,
   }
 }
 
-static inline bool parse_decimal_advance(const char*& p, const char* end, ParsedDecimal& out)
+static inline bool parse_decimal_advance(const char*& p, const char* end, parsed_decimal_t& out)
 {
   if (p < end && (*p == '-' || *p == '+')) {
     out.negative = *p == '-';
@@ -294,6 +313,7 @@ static inline bool parse_decimal_advance(const char*& p, const char* end, Parsed
 static inline double fallback_strtod(std::string_view s)
 {
   char stack_buf[32];
+  // The MPS specs mandate that numeric tokens are no longer than 25 characters
   if (s.size() >= sizeof(stack_buf)) {
     mps_parser_fail(error_type_t::ValidationError, "MPS numeric token exceeds supported length");
   }
@@ -358,7 +378,7 @@ static inline bool eisel_lemire(uint64_t man, int exp10, uint64_t& bits)
   return true;
 }
 
-static inline double assemble_fp64(const ParsedDecimal& dec)
+static inline double assemble_fp64(const parsed_decimal_t& dec)
 {
   uint64_t bits = dec.negative ? (uint64_t{1} << 63) : 0;
   if (dec.mantissa == 0) { return std::bit_cast<double>(bits); }
@@ -390,7 +410,7 @@ static inline double assemble_fp64(const ParsedDecimal& dec)
 static inline double parse_fp64_advance(const char*& p, const char* end)
 {
   const char* start = p;
-  ParsedDecimal dec;
+  parsed_decimal_t dec;
   if (!parse_decimal_advance(p, end, dec)) {
     return fallback_strtod(std::string_view(start, (size_t)(p - start)));
   }

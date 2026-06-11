@@ -7,6 +7,8 @@
 
 #include <utilities/error.hpp>
 
+#include <cuda/cmath>
+
 #ifdef _OPENMP
 #include <omp.h>
 #endif
@@ -14,7 +16,6 @@
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <sys/mman.h>
-#include <sys/stat.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -51,9 +52,18 @@ constexpr uint32_t lz4_block_size_mask                    = 0x7FFFFFFFu;
 constexpr std::size_t lz4_pipeline_batch_bytes            = 64ull * 1024ull * 1024ull;
 constexpr std::size_t lz4_decode_batch_decompressed_bytes = 256ull * 1024ull * 1024ull;
 constexpr std::size_t lz4_input_max_io_threads            = 8;
-constexpr std::size_t lz4_no_content_size_reserve_ratio   = 16;
+constexpr std::size_t lz4_no_content_size_reserve_ratio   = 128;
 
 using LZ4_decompress_safe_t = int (*)(const char*, char*, int, int);
+
+std::size_t estimate_lz4_no_content_size(std::size_t compressed_size)
+{
+  constexpr std::size_t max_size = std::numeric_limits<std::size_t>::max();
+  if (compressed_size > max_size / lz4_no_content_size_reserve_ratio) {
+    return max_size - input_buffer_padding_bytes;
+  }
+  return compressed_size * lz4_no_content_size_reserve_ratio;
+}
 
 #if defined(MPS_PARSER_WITH_LZ4)
 struct lz4_runtime_t {
@@ -138,8 +148,6 @@ int open_lz4_fd(const std::string& path)
   return fd;
 }
 
-std::size_t round_up_to_multiple(std::size_t value, std::size_t alignment);
-
 uint32_t read_le32(const char* ptr)
 {
   const auto* p = reinterpret_cast<const unsigned char*>(ptr);
@@ -166,67 +174,6 @@ std::size_t block_max_size_from_bd(unsigned char bd)
     case 7: return 4ull * 1024ull * 1024ull;
     default: mps_parser_fail(error_type_t::ValidationError, "unsupported LZ4 frame block size ID");
   }
-}
-
-std::size_t checked_size(uint64_t value, const char* label)
-{
-  if (value > (uint64_t)std::numeric_limits<std::size_t>::max()) {
-    mps_parser_fail(error_type_t::OutOfMemoryError, "LZ4 %s exceeds size_t", label);
-  }
-  return (std::size_t)value;
-}
-
-std::size_t get_file_size(int fd, const std::string& path)
-{
-  struct stat st;
-  if (::fstat(fd, &st) != 0) {
-    mps_parser_fail(error_type_t::RuntimeError,
-                    "Failed to stat file '%s': %s",
-                    path.c_str(),
-                    std::strerror(errno));
-  }
-  if (st.st_size < 0) {
-    mps_parser_fail(
-      error_type_t::RuntimeError, "Invalid negative file size for '%s'", path.c_str());
-  }
-  return (std::size_t)st.st_size;
-}
-
-std::size_t system_page_size()
-{
-  static std::size_t page_size = [] {
-    long value = ::sysconf(_SC_PAGESIZE);
-    return value > 0 ? (std::size_t)value : (std::size_t)4096;
-  }();
-  return page_size;
-}
-
-std::size_t round_up_to_multiple(std::size_t value, std::size_t alignment)
-{
-  if (alignment == 0) { return value; }
-  std::size_t remainder = value % alignment;
-  if (remainder == 0) { return value; }
-  std::size_t increment = alignment - remainder;
-  if (value > std::numeric_limits<std::size_t>::max() - increment) {
-    mps_parser_fail(error_type_t::OutOfMemoryError, "allocation size overflow");
-  }
-  return value + increment;
-}
-
-std::size_t checked_mul(std::size_t a, std::size_t b, const char* label)
-{
-  if (a != 0 && b > std::numeric_limits<std::size_t>::max() / a) {
-    mps_parser_fail(error_type_t::OutOfMemoryError, "%s size overflow", label);
-  }
-  return a * b;
-}
-
-std::size_t checked_add(std::size_t a, std::size_t b, const char* label)
-{
-  if (a > std::numeric_limits<std::size_t>::max() - b) {
-    mps_parser_fail(error_type_t::OutOfMemoryError, "%s size overflow", label);
-  }
-  return a + b;
 }
 
 bool pread_full_plain(int fd, char* dst, std::size_t bytes, std::size_t offset)
@@ -332,7 +279,7 @@ class lz4_resident_windows_t {
 
 }  // namespace
 
-Lz4InputStream::Lz4InputStream(const std::string& path) : path_(path)
+lz4_input_stream_t::lz4_input_stream_t(const std::string& path) : path_(path)
 {
   MPS_NVTX_RANGE("lz4_input_construct", nvtx::colors::io);
 
@@ -384,7 +331,7 @@ Lz4InputStream::Lz4InputStream(const std::string& path) : path_(path)
       mps_parser_fail(error_type_t::ValidationError,
                       "truncated LZ4 frame while reading content size");
     }
-    content_size_ = checked_size(read_le64(header + offset), "content size");
+    content_size_ = (std::size_t)read_le64(header + offset);
     offset += 8;
   }
   if (dict_id_) {
@@ -403,14 +350,13 @@ Lz4InputStream::Lz4InputStream(const std::string& path) : path_(path)
 
   std::size_t reserve_size = content_size_;
   if (!content_size_present_) {
-    reserve_size =
-      checked_mul(compressed_size_, lz4_no_content_size_reserve_ratio, "LZ4 output reserve");
+    reserve_size = estimate_lz4_no_content_size(compressed_size_);
     reserve_size = std::max(reserve_size, block_max_size_);
   }
-  reserve_size = checked_add(reserve_size, input_buffer_padding_bytes, "LZ4 output padding");
+  reserve_size += input_buffer_padding_bytes;
 
   constexpr std::size_t huge_alignment = 2 * 1024 * 1024;
-  output_mapped_size_                  = round_up_to_multiple(reserve_size, system_page_size());
+  output_mapped_size_                  = cuda::round_up(reserve_size, system_page_size());
   output_region_                       = mmap_region_t::anonymous_aligned(output_mapped_size_,
                                                     huge_alignment,
                                                     PROT_NONE,
@@ -418,36 +364,34 @@ Lz4InputStream::Lz4InputStream(const std::string& path) : path_(path)
                                                     "LZ4 output buffer");
   output_data_                         = output_region_.char_data();
 
-  std::size_t block_slots =
-    std::max<std::size_t>(1, (reserve_size + block_max_size_ - 1) / block_max_size_ + 1);
-  block_done_.resize(block_slots, 0);
-  block_end_.resize(block_slots, 0);
+  block_slot_count_ = std::max<std::size_t>(1, cuda::ceil_div(reserve_size, block_max_size_) + 1);
 
   section_scanner_ =
-    std::make_unique<mps_section_block_scanner_t>(output_data_, block_slots, registry_);
+    std::make_unique<mps_section_block_scanner_t>(output_data_, block_slot_count_, registry_);
 }
 
-Lz4InputStream::~Lz4InputStream()
+lz4_input_stream_t::~lz4_input_stream_t()
 {
   if (fd_ >= 0) { ::close(fd_); }
 }
 
-const char* Lz4InputStream::data() const noexcept { return output_data_; }
-char* Lz4InputStream::mutable_data() noexcept { return output_data_; }
-std::size_t Lz4InputStream::size() const noexcept { return output_view_size_; }
-std::size_t Lz4InputStream::compressed_size() const noexcept { return compressed_size_; }
-std::size_t Lz4InputStream::reserve_size_hint() const noexcept
+const char* lz4_input_stream_t::data() const noexcept { return output_data_; }
+char* lz4_input_stream_t::mutable_data() noexcept { return output_data_; }
+std::size_t lz4_input_stream_t::size() const noexcept { return output_view_size_; }
+std::size_t lz4_input_stream_t::compressed_size() const noexcept { return compressed_size_; }
+std::size_t lz4_input_stream_t::reserve_size_hint() const noexcept
 {
-  return content_size_present_ ? content_size_
-                               : std::max<std::size_t>(compressed_size_ * 6, 1024 * 1024);
+  return content_size_present_
+           ? content_size_
+           : std::max<std::size_t>(estimate_lz4_no_content_size(compressed_size_), 1024 * 1024);
 }
-mps_phase_registry_t& Lz4InputStream::registry() noexcept { return registry_; }
-input_stream_view_t Lz4InputStream::view() noexcept
+mps_phase_registry_t& lz4_input_stream_t::registry() noexcept { return registry_; }
+input_stream_view_t lz4_input_stream_t::view() noexcept
 {
   return {output_data_, output_data_, output_view_size_, compressed_size_, &registry_};
 }
 
-void Lz4InputStream::commit_up_to(std::size_t bytes)
+void lz4_input_stream_t::commit_up_to(std::size_t bytes)
 {
   MPS_NVTX_RANGE("lz4_commit_output", nvtx::colors::alloc);
   std::lock_guard<std::mutex> lock(commit_mutex_);
@@ -455,7 +399,7 @@ void Lz4InputStream::commit_up_to(std::size_t bytes)
   if (bytes > output_mapped_size_) {
     mps_parser_fail(error_type_t::OutOfMemoryError, "LZ4 output exceeded reserved virtual mapping");
   }
-  std::size_t new_committed = round_up_to_multiple(bytes, system_page_size());
+  std::size_t new_committed = cuda::round_up(bytes, system_page_size());
   if (new_committed > output_mapped_size_) new_committed = output_mapped_size_;
   std::size_t add = new_committed - output_committed_size_;
   void* target    = output_data_ + output_committed_size_;
@@ -476,15 +420,17 @@ struct resident_block_desc_t {
 };
 
 struct lz4_pipeline_t {
-  explicit lz4_pipeline_t(Lz4InputStream& input_)
+  explicit lz4_pipeline_t(lz4_input_stream_t& input_)
     : input(input_),
-      window_count((input.compressed_size_ + window_bytes - 1) / window_bytes),
+      window_count(cuda::ceil_div(input.compressed_size_, window_bytes)),
       windows(window_count),
       io_threads(std::min(lz4_input_max_io_threads, window_count)),
       window_done(window_count, 0),
       window_refs(window_count),
       window_scanned(window_count),
-      window_released(window_count)
+      window_released(window_count),
+      block_done(input.block_slot_count_, 0),
+      block_end(input.block_slot_count_, 0)
   {
     for (std::size_t i = 0; i < window_count; ++i) {
       std::size_t offset     = i * window_bytes;
@@ -516,9 +462,8 @@ struct lz4_pipeline_t {
 
   void finalize()
   {
-    input.output_view_size_ = input.ready_bytes_;
-    input.commit_up_to(
-      checked_add(input.output_view_size_, input_buffer_padding_bytes, "LZ4 output padding"));
+    input.output_view_size_ = ready_bytes;
+    input.commit_up_to(input.output_view_size_ + input_buffer_padding_bytes);
     input.section_scanner_->publish_ready(input.output_view_size_);
   }
 
@@ -698,15 +643,15 @@ struct lz4_pipeline_t {
     std::size_t after  = 0;
     {
       MPS_NVTX_RANGE("lz4_frontier_update", nvtx::colors::generic);
-      std::lock_guard<std::mutex> lock(input.frontier_mutex_);
-      input.block_done_[block.index] = 1;
-      input.block_end_[block.index]  = block.decompressed_offset + actual_size;
-      before                         = input.ready_bytes_;
-      while (input.next_block_ < input.block_done_.size() && input.block_done_[input.next_block_]) {
-        input.ready_bytes_ = input.block_end_[input.next_block_];
-        ++input.next_block_;
+      std::lock_guard<std::mutex> lock(frontier_mutex);
+      block_done[block.index] = 1;
+      block_end[block.index]  = block.decompressed_offset + actual_size;
+      before                  = ready_bytes;
+      while (next_block < block_done.size() && block_done[next_block]) {
+        ready_bytes = block_end[next_block];
+        ++next_block;
       }
-      after = input.ready_bytes_;
+      after = ready_bytes;
     }
     if (after > before) {
       MPS_NVTX_RANGE("lz4_publish_ready", nvtx::colors::generic);
@@ -792,7 +737,7 @@ struct lz4_pipeline_t {
       batch_decoded_bytes += block.decompressed_size;
       batch.push_back(block);
       blocks_scanned.fetch_add(1, std::memory_order_relaxed);
-      if (blocks_scanned.load(std::memory_order_relaxed) > input.block_done_.size()) {
+      if (blocks_scanned.load(std::memory_order_relaxed) > block_done.size()) {
         mps_parser_fail(error_type_t::OutOfMemoryError,
                         "LZ4 input block count exceeded reserved metadata slots");
       }
@@ -898,7 +843,7 @@ struct lz4_pipeline_t {
     }
   }
 
-  Lz4InputStream& input;
+  lz4_input_stream_t& input;
   const std::size_t window_bytes = lz4_pipeline_batch_bytes;
   const std::size_t window_count;
   std::vector<lz4_resident_window_t> windows;
@@ -927,9 +872,16 @@ struct lz4_pipeline_t {
   std::vector<std::vector<char>> crossing_payloads;
   std::vector<std::thread> readers;
   std::vector<std::thread> decoders;
+
+  // Tracks the contiguous decoded-byte frontier across out-of-order block completions.
+  std::mutex frontier_mutex;
+  std::vector<unsigned char> block_done;
+  std::vector<std::size_t> block_end;
+  std::size_t next_block  = 0;
+  std::size_t ready_bytes = 0;
 };
 
-void Lz4InputStream::run_decode_tasks()
+void lz4_input_stream_t::run_decode_tasks()
 {
   MPS_NVTX_RANGE("lz4_input_run_decode_tasks", nvtx::colors::io);
   lz4_pipeline_t pipeline(*this);

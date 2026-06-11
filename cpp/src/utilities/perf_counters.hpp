@@ -16,6 +16,37 @@
 
 namespace mps_fast {
 
+// Utils to return to total resident set size (used physical pages)
+static size_t parse_status_kb_line(const char* line, const char* key)
+{
+  size_t key_len = std::strlen(key);
+  if (std::strncmp(line, key, key_len) != 0) { return 0; }
+  const char* p = line + key_len;
+  while (*p == ' ' || *p == '\t') {
+    ++p;
+  }
+  char* end_ptr = nullptr;
+  size_t value  = std::strtol(p, &end_ptr, 10);
+  return value;
+}
+
+static std::pair<size_t, size_t> current_process_rss_kb()
+{
+  FILE* file = std::fopen("/proc/self/status", "r");
+  if (file == nullptr) { return {0, 0}; }
+
+  size_t rss_kb = 0;
+  size_t hwm_kb = 0;
+  char line[256];
+  while (std::fgets(line, sizeof(line), file) != nullptr) {
+    if (rss_kb == 0) { rss_kb = parse_status_kb_line(line, "VmRSS:"); }
+    if (hwm_kb == 0) { hwm_kb = parse_status_kb_line(line, "VmHWM:"); }
+    if (rss_kb != 0 && hwm_kb != 0) { break; }
+  }
+  std::fclose(file);
+  return {rss_kb, hwm_kb};
+}
+
 struct perf_counter_spec_t {
   const char* name;
   uint32_t type;

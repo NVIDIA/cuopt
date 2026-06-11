@@ -121,6 +121,31 @@ mps_phase_range_t mps_phase_registry_t::range(mps_phase_kind phase) const
   return ranges_[idx];
 }
 
+void mps_phase_registry_t::publish_endata(const char* begin, bool present)
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  endata_begin_   = begin;
+  endata_present_ = present;
+  endata_ready_.store(true, std::memory_order_release);
+}
+
+bool mps_phase_registry_t::endata_ready() const
+{
+  return endata_ready_.load(std::memory_order_acquire);
+}
+
+const char* mps_phase_registry_t::endata_begin() const
+{
+  assert(endata_ready());
+  return endata_begin_;
+}
+
+bool mps_phase_registry_t::endata_present() const
+{
+  assert(endata_ready());
+  return endata_present_;
+}
+
 static section_record_match_t is_section_record(const char* line_start,
                                                 const char* line_end,
                                                 mps_section_kind* kind)
@@ -396,6 +421,12 @@ void mps_section_block_scanner_t::publish_section_ranges()
     } else if (quadratic_begin == nullptr && final_boundary != nullptr) {
       registry_.publish(mps_phase_kind::quadratic, {nullptr, nullptr, false});
     }
+  }
+
+  if (available(endata)) {
+    registry_.publish_endata(endata, true);
+  } else if (final_ready && final_boundary != nullptr) {
+    registry_.publish_endata(final_boundary, false);
   }
 }
 

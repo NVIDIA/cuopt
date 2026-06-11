@@ -51,6 +51,11 @@ class mps_phase_registry_t {
   // acquire load in ready() pairs with publish()'s release store before ranges_.
   mps_phase_range_t range(mps_phase_kind phase) const;
 
+  void publish_endata(const char* begin, bool present);
+  bool endata_ready() const;
+  const char* endata_begin() const;
+  bool endata_present() const;
+
  private:
   static constexpr std::size_t phase_count = 7;
 
@@ -61,6 +66,9 @@ class mps_phase_registry_t {
   omp_event_handle_t events_[phase_count]{};
   bool has_event_[phase_count]{};
   bool event_fulfilled_[phase_count]{};
+  const char* endata_begin_ = nullptr;
+  bool endata_present_      = false;
+  std::atomic<bool> endata_ready_{false};
   mutable std::mutex mutex_;
 };
 

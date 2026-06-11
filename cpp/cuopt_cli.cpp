@@ -286,9 +286,8 @@ int main(int argc, char* argv[])
   program.add_argument("filename")
     .help(
       "input problem file; format dispatched by extension (case-insensitive). "
-      "Supported: .lp, .mps, .qps and their .gz / .bz2 compressed variants "
-      "(e.g. .lp.gz, .mps.bz2, .qps.gz). Experimental .mps.lz4 inputs require "
-      "--mps-reader fast")
+      "Supported: .lp, .mps, .qps and their .gz / .bz2 / .lz4 compressed variants "
+      "(e.g. .lp.gz, .mps.bz2, .qps.lz4).")
     .nargs(1)
     .required();
 

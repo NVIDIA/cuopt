@@ -59,24 +59,24 @@ inline std::uint32_t color_for_name(std::string_view name) noexcept
   return colors::generic;
 }
 
-class scoped_range {
+class scoped_range_t {
  public:
-  explicit scoped_range(const char* name,
-                        std::uint32_t color    = colors::generic,
-                        std::uint32_t category = 0)
+  explicit scoped_range_t(const char* name,
+                          std::uint32_t color    = colors::generic,
+                          std::uint32_t category = 0)
   {
     push(name, color, category);
   }
 
-  explicit scoped_range(std::string name,
-                        std::uint32_t color    = colors::generic,
-                        std::uint32_t category = 0)
+  explicit scoped_range_t(std::string name,
+                          std::uint32_t color    = colors::generic,
+                          std::uint32_t category = 0)
     : owned_name_(std::move(name))
   {
     push(owned_name_.c_str(), color, category);
   }
 
-  ~scoped_range() { end(); }
+  ~scoped_range_t() { end(); }
 
   void end()
   {
@@ -88,8 +88,8 @@ class scoped_range {
 #endif
   }
 
-  scoped_range(const scoped_range&)            = delete;
-  scoped_range& operator=(const scoped_range&) = delete;
+  scoped_range_t(const scoped_range_t&)            = delete;
+  scoped_range_t& operator=(const scoped_range_t&) = delete;
 
  private:
   void push(const char* name, std::uint32_t color, std::uint32_t category)
@@ -132,4 +132,4 @@ inline void name_current_thread(const char* name)
 #define MPS_FAST_NVTX_CONCAT_INNER(a, b) a##b
 #define MPS_FAST_NVTX_CONCAT(a, b)       MPS_FAST_NVTX_CONCAT_INNER(a, b)
 #define MPS_NVTX_RANGE(name, color) \
-  ::mps_fast::nvtx::scoped_range MPS_FAST_NVTX_CONCAT(_mps_nvtx_range_, __LINE__)(name, color)
+  ::mps_fast::nvtx::scoped_range_t MPS_FAST_NVTX_CONCAT(_mps_nvtx_range_, __LINE__)(name, color)

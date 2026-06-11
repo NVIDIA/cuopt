@@ -6,6 +6,8 @@
 #include <sys/mman.h>
 #include <sys/types.h>
 
+#include <cuda/cmath>
+
 #include <cerrno>
 #include <cstddef>
 #include <cstdint>
@@ -74,7 +76,7 @@ class mmap_region_t {
   static mmap_region_t anonymous_aligned(
     std::size_t size, std::size_t alignment, int prot, int flags, const char* context)
   {
-    if (alignment == 0 || (alignment & (alignment - 1)) != 0) {
+    if (!cuda::is_power_of_two(alignment)) {
       mps_parser_fail(error_type_t::RuntimeError,
                       "mmap aligned allocation requires power-of-two alignment");
     }

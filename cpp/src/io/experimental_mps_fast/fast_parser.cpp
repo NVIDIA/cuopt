@@ -2,12 +2,15 @@
 // reserved. SPDX-License-Identifier: Apache-2.0
 
 #include "fast_parser.hpp"
+#include <file_to_string.hpp>
 #include "fast_parse_primitives.hpp"
 #include "file_reader.hpp"
 #include "hash_table_smallstr.hpp"
 #include "mmap_region.hpp"
 #include "mps_section_scanner.hpp"
 #include "nvtx_ranges.hpp"
+
+#include <cuda/cmath>
 #ifdef MPS_FAST_PERF_COUNTERS
 #include <utilities/perf_counters.hpp>
 #endif
@@ -36,31 +39,43 @@
 #include <string_view>
 #include <tuple>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
-#ifndef MADV_COLLAPSE
-#define MADV_COLLAPSE 25
-#endif
+#define MPS_FAST_COMPACT_ROW_HASH
+#define MPS_FAST_THP_PREFAULT
 
 namespace mps_fast {
 
-static constexpr size_t COLUMN_ROW_COUNT_BLOCK_ROWS                = 4096;
-static constexpr int MPS_ROWS_THREAD_CAP                           = 16;
-static constexpr int MPS_COLUMNS_THREAD_CAP                        = 32;
-static constexpr int MPS_BOUNDS_THREAD_CAP                         = 32;
-static constexpr int MPS_NAMES_THREAD_CAP                          = 16;
-static constexpr size_t MPS_BOUNDS_PARALLEL_INIT_MIN_VARS          = 16 * 1024 * 1024;
-static constexpr size_t MPS_BOUNDS_PARALLEL_MIN_BYTES              = 256ull * 1024ull * 1024ull;
-static constexpr size_t MPS_BOUNDS_ORDERED_HINT_PARALLEL_MIN_BYTES = 8ull * 1024ull * 1024ull;
-static constexpr size_t MPS_COLUMNS_MIN_CHUNK_BYTES                = 1 * 1024 * 1024;
-static constexpr size_t MPS_SMALL_RAW_FILE_BYTES                   = 4ull * 1024ull * 1024ull;
-static constexpr size_t MPS_MEDIUM_FILE_THREAD_THRESHOLD_BYTES     = 100ull * 1000ull * 1000ull;
-static constexpr size_t MPS_ROW_HASH_PARTITIONED_MIN_ROWS          = 64ull * 1024ull;
-static constexpr size_t MPS_ROW_HASH_PARTITIONS                    = 32;
-static constexpr int MPS_ROW_HASH_PARTITION_BITS                   = 5;
-static constexpr int MPS_SMALL_FILE_THREAD_CAP                     = 16;
-static constexpr int MPS_LARGE_FILE_THREAD_CAP                     = 32;
+static constexpr size_t KiB = 1024;
+static constexpr size_t MiB = 1024 * KiB;
+static constexpr size_t GiB = 1024 * MiB;
+
+// per-chunk row-count scratch tile for the column parsing workers
+// small enough to remain warm in L1
+static constexpr size_t COLUMN_ROW_COUNT_BLOCK_ROWS = 4096;
+static constexpr int MPS_ROWS_THREAD_CAP            = 16;
+static constexpr int MPS_COLUMNS_THREAD_CAP         = 32;
+static constexpr int MPS_BOUNDS_THREAD_CAP          = 32;
+static constexpr int MPS_NAMES_THREAD_CAP           = 16;
+// avoid openmp setup for small bounds sections
+static constexpr size_t MPS_BOUNDS_PARALLEL_MIN_BYTES = 256 * MiB;
+// ordered-name fallback is cheap enough to parallelize on smaller bounds sections
+static constexpr size_t MPS_BOUNDS_ORDERED_HINT_PARALLEL_MIN_BYTES = 8 * MiB;
+// lower bound on columns chunk size to avoid tiny parser tasks
+static constexpr size_t MPS_COLUMNS_MIN_CHUNK_BYTES = 1 * MiB;
+// parser-wide thread cap switch; very small files lose to scheduling overhead
+static constexpr size_t MPS_MEDIUM_FILE_THREAD_THRESHOLD_BYTES = 100ull * 1000ull * 1000ull;
+// below this, the serial row-hash build is usually cheaper than partition setup
+static constexpr size_t MPS_ROW_HASH_PARTITIONED_MIN_ROWS = 64 * KiB;
+// number of partitions for the row hash table, used to avoid races and atomics during row hash
+// table initialization
+static constexpr int MPS_ROW_HASH_PARTITION_BITS = 5;
+static constexpr size_t MPS_ROW_HASH_PARTITIONS  = (size_t{1} << MPS_ROW_HASH_PARTITION_BITS);
+// thread caps for small and large files
+static constexpr int MPS_SMALL_FILE_THREAD_CAP = 16;
+static constexpr int MPS_LARGE_FILE_THREAD_CAP = 32;
 
 static int parser_thread_cap_for_size(size_t bytes)
 {
@@ -75,6 +90,8 @@ static int phase_thread_count(int phase_cap)
   return std::max(1, std::min(phase_cap, available_threads));
 }
 
+// Arena allocator for the strings (row names, column names) to avoid the dreadful overheads of
+// glibc's malloc and std::vector<std::string>
 class chunk_name_arena_t {
  public:
   void reserve(size_t bytes)
@@ -92,110 +109,45 @@ class chunk_name_arena_t {
 
  private:
   struct slab_t {
-    std::unique_ptr<char[]> data;
-    size_t capacity = 0;
-    size_t used     = 0;
+    std::vector<char> data;
+    size_t used = 0;
   };
 
   char* allocate(size_t bytes)
   {
-    if (slabs_.empty() || slabs_.back().used + bytes > slabs_.back().capacity) {
+    if (slabs_.empty() || slabs_.back().used + bytes > slabs_.back().data.size()) {
       size_t capacity = std::max(bytes, next_slab_size_);
       slab_t slab;
-      slab.data     = std::make_unique<char[]>(capacity);
-      slab.capacity = capacity;
+      slab.data.resize(capacity);
       slabs_.push_back(std::move(slab));
       next_slab_size_ = std::max(next_slab_size_ * 2, capacity);
     }
     slab_t& slab = slabs_.back();
-    char* ptr    = slab.data.get() + slab.used;
+    char* ptr    = slab.data.data() + slab.used;
     slab.used += bytes;
     return ptr;
   }
 
   std::vector<slab_t> slabs_;
-  size_t next_slab_size_ = 64 * 1024;
+  size_t next_slab_size_ = 64 * KiB;
 };
 
+// returns the hash table partition to use for a given hash
 static inline size_t row_hash_partition_for(uint32_t hash)
 {
   return (size_t)(hash >> (32 - MPS_ROW_HASH_PARTITION_BITS));
 }
 
-// =============================================================================
-// RAII Timer for profiling with deferred output
-// =============================================================================
-
-struct TimerEntry {
+struct timer_entry_t {
   const char* name;
   double elapsed_ms;
   size_t rss_kb;
   size_t hwm_kb;
-  size_t compressed_bytes;
 };
 
-static std::atomic_size_t& get_timer_compressed_bytes()
+static std::vector<timer_entry_t>& get_timer_buffer()
 {
-  static std::atomic_size_t compressed_bytes{0};
-  return compressed_bytes;
-}
-
-class timer_io_context_t {
- public:
-  explicit timer_io_context_t(size_t compressed_bytes)
-    : old_compressed_bytes_(
-        get_timer_compressed_bytes().exchange(compressed_bytes, std::memory_order_acq_rel))
-  {
-  }
-
-  ~timer_io_context_t()
-  {
-    get_timer_compressed_bytes().store(old_compressed_bytes_, std::memory_order_release);
-  }
-
-  timer_io_context_t(const timer_io_context_t&)            = delete;
-  timer_io_context_t& operator=(const timer_io_context_t&) = delete;
-
- private:
-  size_t old_compressed_bytes_ = 0;
-};
-
-static size_t parse_status_kb_line(const char* line, const char* key)
-{
-  size_t key_len = std::strlen(key);
-  if (std::strncmp(line, key, key_len) != 0) { return 0; }
-  const char* p = line + key_len;
-  while (*p == ' ' || *p == '\t') {
-    ++p;
-  }
-  size_t value = 0;
-  while (*p >= '0' && *p <= '9') {
-    value = value * 10 + (size_t)(*p - '0');
-    ++p;
-  }
-  return value;
-}
-
-static std::pair<size_t, size_t> current_process_rss_kb()
-{
-  FILE* file = std::fopen("/proc/self/status", "r");
-  if (file == nullptr) { return {0, 0}; }
-
-  size_t rss_kb = 0;
-  size_t hwm_kb = 0;
-  char line[256];
-  while (std::fgets(line, sizeof(line), file) != nullptr) {
-    if (rss_kb == 0) { rss_kb = parse_status_kb_line(line, "VmRSS:"); }
-    if (hwm_kb == 0) { hwm_kb = parse_status_kb_line(line, "VmHWM:"); }
-    if (rss_kb != 0 && hwm_kb != 0) { break; }
-  }
-  std::fclose(file);
-  return {rss_kb, hwm_kb};
-}
-
-static std::vector<TimerEntry>& get_timer_buffer()
-{
-  static std::vector<TimerEntry> buffer;
+  static std::vector<timer_entry_t> buffer;
   buffer.reserve(100);
   return buffer;
 }
@@ -213,24 +165,14 @@ static void flush_timers()
   auto& buffer = get_timer_buffer();
   for (const auto& entry : buffer) {
     std::fprintf(stderr,
-                 "[TIMER] %s: %.3f ms rss_GB=%.3f hwm_GB=%.3f compressed_GB=%.3f\n",
+                 "[TIMER] %s: %.3f ms rss_GB=%.3f hwm_GB=%.3f\n",
                  entry.name,
                  entry.elapsed_ms,
-                 (double)entry.rss_kb / (1024.0 * 1024.0),
-                 (double)entry.hwm_kb / (1024.0 * 1024.0),
-                 (double)entry.compressed_bytes / (1024.0 * 1024.0 * 1024.0));
+                 (double)entry.rss_kb / (double)(GiB / KiB),
+                 (double)entry.hwm_kb / (double)(GiB / KiB));
   }
   buffer.clear();
 #endif
-}
-
-static size_t system_page_size()
-{
-  static size_t page_size = [] {
-    long value = sysconf(_SC_PAGESIZE);
-    return value > 0 ? (size_t)value : (size_t)4096;
-  }();
-  return page_size;
 }
 
 enum class materialize_touch_t {
@@ -248,7 +190,7 @@ static void materialize_hugepages(const char* label,
   (void)label;
   if (data == nullptr || bytes == 0) return;
 
-  constexpr size_t two_mb = 2 * 1024 * 1024;
+  constexpr size_t two_mb = 2 * MiB;
   size_t page_size        = system_page_size();
   uintptr_t start         = reinterpret_cast<uintptr_t>(data);
   uintptr_t end           = start + bytes;
@@ -257,10 +199,10 @@ static void materialize_hugepages(const char* label,
   size_t aligned_bytes    = (size_t)(aligned_end - aligned_start);
 
   errno = 0;
-  madvise(reinterpret_cast<void*>(aligned_start), aligned_bytes, MADV_HUGEPAGE);
+  madvise((void*)(aligned_start), aligned_bytes, MADV_HUGEPAGE);
 
   size_t step        = touch == materialize_touch_t::write_2mb ? two_mb : page_size;
-  volatile char* ptr = reinterpret_cast<volatile char*>(data);
+  volatile char* ptr = (volatile char*)(data);
   for (size_t offset = 0; offset < bytes; offset += step) {
     ptr[offset] = ptr[offset];
   }
@@ -297,10 +239,9 @@ class scoped_timer_t {
     double elapsed_ms = std::chrono::duration<double, std::milli>(end - start_).count();
     nvtx_.end();
     if (accumulator_) { *accumulator_ += elapsed_ms; }
-    auto [rss_kb, hwm_kb]   = current_process_rss_kb();
-    size_t compressed_bytes = get_timer_compressed_bytes().load(std::memory_order_acquire);
+    auto [rss_kb, hwm_kb] = current_process_rss_kb();
     std::lock_guard<std::mutex> lock(get_timer_mutex());
-    get_timer_buffer().push_back({name_, elapsed_ms, rss_kb, hwm_kb, compressed_bytes});
+    get_timer_buffer().push_back({name_, elapsed_ms, rss_kb, hwm_kb});
 #endif
   }
 
@@ -313,9 +254,25 @@ class scoped_timer_t {
 #endif
   double* accumulator_;
 #ifdef MPS_FAST_TIMERS
-  nvtx::scoped_range nvtx_;
+  nvtx::scoped_range_t nvtx_;
   std::chrono::high_resolution_clock::time_point start_;
 #endif
+};
+
+class omp_max_active_levels_guard_t {
+ public:
+  explicit omp_max_active_levels_guard_t(int value) : old_value_(omp_get_max_active_levels())
+  {
+    omp_set_max_active_levels(value);
+  }
+
+  ~omp_max_active_levels_guard_t() { omp_set_max_active_levels(old_value_); }
+
+  omp_max_active_levels_guard_t(const omp_max_active_levels_guard_t&)            = delete;
+  omp_max_active_levels_guard_t& operator=(const omp_max_active_levels_guard_t&) = delete;
+
+ private:
+  int old_value_ = 0;
 };
 
 static inline void error_unknown_row(cursor_t& cursor, const char* row_start, const char* section)
@@ -327,29 +284,17 @@ static inline void error_unknown_row(cursor_t& cursor, const char* row_start, co
   cursor.error("unknown row name in %s: %.*s", section, (int)(row_end - row_start), row_start);
 }
 
-// =============================================================================
-// Parsing state shared across section parsers
-// =============================================================================
-
-static inline size_t next_power_of_2(size_t n)
-{
-  if (n == 0) return 1;
-  n--;
-  n |= n >> 1;
-  n |= n >> 2;
-  n |= n >> 4;
-  n |= n >> 8;
-  n |= n >> 16;
-  n |= n >> 32;
-  return n + 1;
-}
-
-enum class row_index_mode_t {
+// Two modes for row/column name lookup:
+// - hash: arbitrary names via hash table (rows) or var_names_map (columns)
+// - dense_ordered: sequential numeric suffixes like R0001/R0002 or V0/V1
+enum class index_mode_t {
   hash,
   dense_ordered,
 };
 
-static inline bool is_decimal_digit(char c) { return (unsigned)(c - '0') <= 9; }
+// Every 19-digit decimal string fits in uint64_t; 20+ digits may not and are wildly unlikely in the
+// context of dense MPS rows/cols
+static constexpr size_t dense_suffix_max_digits = 19;
 
 static inline size_t decimal_digits_u64(uint64_t value)
 {
@@ -367,37 +312,142 @@ static inline bool parse_trailing_u64(std::string_view name,
                                       size_t& suffix_width)
 {
   size_t pos = name.size();
-  while (pos > 0 && is_decimal_digit(name[pos - 1])) {
+  while (pos > 0 && fp64::is_digit(name[pos - 1])) {
     pos--;
   }
   if (pos == name.size()) { return false; }
 
+  suffix_width = name.size() - pos;
+  if (suffix_width > dense_suffix_max_digits) { return false; }
+
   uint64_t parsed = 0;
   for (size_t i = pos; i < name.size(); ++i) {
-    uint64_t digit = (uint64_t)(name[i] - '0');
-    if (parsed > (std::numeric_limits<uint64_t>::max() - digit) / 10) { return false; }
-    parsed = parsed * 10 + digit;
+    parsed = parsed * 10 + (uint64_t)(name[i] - '0');
   }
 
-  prefix       = std::string_view(name.data(), pos);
-  value        = parsed;
-  suffix_width = name.size() - pos;
+  prefix = std::string_view(name.data(), pos);
+  value  = parsed;
   return true;
 }
 
+// necessary to handle cases like R0001, ..., R2000, ...
 static inline bool dense_suffix_is_zero_padded(std::string_view name, size_t suffix_width)
 {
   return suffix_width > 1 && name[name.size() - suffix_width] == '0';
 }
 
-static inline bool dense_suffix_width_ok(uint64_t value,
-                                         size_t suffix_width,
-                                         bool zero_padded,
-                                         size_t pad_width)
+static inline size_t dense_initial_pad_width(std::string_view name, size_t suffix_width)
+{
+  return dense_suffix_is_zero_padded(name, suffix_width) ? suffix_width : 0;
+}
+
+static inline bool dense_suffix_width_ok(uint64_t value, size_t suffix_width, size_t pad_width)
 {
   size_t digits         = decimal_digits_u64(value);
-  size_t expected_width = zero_padded ? std::max(pad_width, digits) : digits;
+  size_t expected_width = std::max(pad_width, digits);
   return suffix_width == expected_width;
+}
+
+struct dense_name_index_t {
+  std::string prefix;
+  uint64_t min_id  = 0;
+  uint64_t max_id  = 0;
+  size_t pad_width = 0;
+
+  void reset()
+  {
+    prefix.clear();
+    min_id    = 0;
+    max_id    = 0;
+    pad_width = 0;
+  }
+
+  bool suffix_width_ok(uint64_t value, size_t suffix_width) const
+  {
+    return dense_suffix_width_ok(value, suffix_width, pad_width);
+  }
+
+  size_t lookup(std::string_view name) const
+  {
+    std::string_view parsed_prefix;
+    uint64_t value      = 0;
+    size_t suffix_width = 0;
+    if (!parse_trailing_u64(name, parsed_prefix, value, suffix_width)) { return SIZE_MAX; }
+    if (parsed_prefix != prefix || !suffix_width_ok(value, suffix_width)) { return SIZE_MAX; }
+    if (value < min_id || value > max_id) { return SIZE_MAX; }
+    return (size_t)(value - min_id);
+  }
+
+  void format_name(size_t idx, std::string& out) const
+  {
+    uint64_t value = min_id + idx;
+    char digits_buf[32];
+    auto [digits_end, ec] = std::to_chars(digits_buf, digits_buf + sizeof(digits_buf), value);
+    if (ec != std::errc()) {
+      out.assign(prefix);
+      return;
+    }
+    size_t digits_len = (size_t)(digits_end - digits_buf);
+    size_t width      = std::max(pad_width, digits_len);
+    out.resize(prefix.size() + width);
+    std::memcpy(out.data(), prefix.data(), prefix.size());
+    char* suffix = out.data() + prefix.size();
+    if (width > digits_len) {
+      std::memset(suffix, '0', width - digits_len);
+      suffix += width - digits_len;
+    }
+    std::memcpy(suffix, digits_buf, digits_len);
+  }
+};
+
+struct dense_observe_state_t {
+  bool candidate = true;
+  dense_name_index_t index;
+  size_t count = 0;
+};
+
+static inline void observe_dense_name(bool& candidate,
+                                      dense_name_index_t& index,
+                                      size_t& observed_count,
+                                      std::string_view name,
+                                      uint64_t expected_id = std::numeric_limits<uint64_t>::max())
+{
+  if (!candidate) { return; }
+
+  std::string_view prefix;
+  uint64_t value      = 0;
+  size_t suffix_width = 0;
+  if (!parse_trailing_u64(name, prefix, value, suffix_width)) {
+    candidate = false;
+    return;
+  }
+
+  if (observed_count == 0) {
+    index.prefix.assign(prefix);
+    index.min_id    = value;
+    index.max_id    = value;
+    index.pad_width = dense_initial_pad_width(name, suffix_width);
+    observed_count  = 1;
+    return;
+  }
+
+  if (prefix != index.prefix) {
+    candidate = false;
+    return;
+  }
+
+  if (expected_id != std::numeric_limits<uint64_t>::max() && value != expected_id) {
+    candidate = false;
+    return;
+  }
+
+  if (!index.suffix_width_ok(value, suffix_width)) {
+    candidate = false;
+    return;
+  }
+
+  index.max_id = value;
+  observed_count++;
 }
 
 template <typename i_t, typename f_t>
@@ -411,42 +461,36 @@ struct parse_state_t {
   cuopt::linear_programming::io::mps_data_model_t<i_t, f_t>& problem;
   cursor_t& cursor;
 
-  // Temporary string_view storage (points into input buffer, no allocation)
+  // backed by the input buffer
   std::vector<std::string_view> row_names_sv;
+  // backed by the arena allocator
   std::vector<std::string_view> var_names_sv;
   std::vector<chunk_name_arena_t> var_name_arenas;
   std::string_view problem_name_sv;
   std::string_view objective_name_sv;
-  std::vector<std::string_view> ignored_objective_names_sv;
+  // secondary 'N' rows in ROWS — rare; membership distinguishes them from unknown row names
+  std::unordered_set<std::string_view> ignored_objective_names;
 
-  // Optional dense ordered column index for labels like V0, V1, ...
-  bool col_dense_ordered = false;
-  std::string col_dense_prefix_storage;
-  std::string_view col_dense_prefix;
-  uint64_t col_dense_min_id  = 0;
-  uint64_t col_dense_max_id  = 0;
-  size_t col_dense_pad_width = 0;
-  bool col_dense_zero_padded = false;
+  // Column name lookup for labels like V0, V1, ...
+  index_mode_t col_index_mode = index_mode_t::hash;
+  dense_name_index_t col_dense;
 
   // Row name hash table - sized at runtime based on row count
   size_t row_hash_buckets = 0;
   size_t row_hash_mask    = 0;  // buckets - 1, for fast modulo via &
   mmap_region_t row_hash_region;
-  hash_slot_var_t* row_names_ht                                                 = nullptr;
+  hash_slot_var_t* row_names_ht = nullptr;
+  // compute hash, select the subtable from high hash bits,
+  // then run the same open-addressing probe loop inside that subtable.
   size_t row_hash_partition_count                                               = 0;
   std::array<row_hash_partition_t, MPS_ROW_HASH_PARTITIONS> row_hash_partitions = {};
-  // Overflow map for row names longer than HASH_KEY_BYTES
+  // Overflow map for row names longer than HASH_KEY_BYTES (usually very rare)
   std::unordered_map<std::string_view, size_t> row_names_long;
 
-  // Optional dense ordered row index for labels like R0001, R0002, ...
-  row_index_mode_t row_index_mode = row_index_mode_t::hash;
-  bool row_dense_candidate        = true;
-  std::string_view row_dense_prefix;
-  uint64_t row_dense_min_id  = 0;
-  uint64_t row_dense_max_id  = 0;
-  uint64_t row_dense_base_id = 0;
-  size_t row_dense_pad_width = 0;
-  bool row_dense_zero_padded = false;
+  // Row name lookup for labels like R0001, R0002, ...
+  index_mode_t row_index_mode = index_mode_t::hash;
+  bool row_dense_candidate    = true;
+  dense_name_index_t row_dense;
 
   // var_names still uses STL (only used in parse_bounds, not as hot)
   std::unordered_map<std::string_view, size_t> var_names_map;
@@ -457,7 +501,7 @@ struct parse_state_t {
     char type = 'C';
   };
 
-  // Some writers introduce zero-column variables only in BOUNDS.
+  // some writers introduce zero-column variables only in BOUNDS.
   std::map<std::string_view, bounds_only_var_t> bounds_only_vars;
 
   parse_state_t(cuopt::linear_programming::io::mps_data_model_t<i_t, f_t>& p, cursor_t& c)
@@ -471,77 +515,13 @@ struct parse_state_t {
     init_row_hash_table_impl();
   }
 
-  bool row_dense_has_expected_width(uint64_t value, size_t suffix_width) const
-  {
-    return dense_suffix_width_ok(value, suffix_width, row_dense_zero_padded, row_dense_pad_width);
-  }
-
-  bool col_dense_has_expected_width(uint64_t value, size_t suffix_width) const
-  {
-    return dense_suffix_width_ok(value, suffix_width, col_dense_zero_padded, col_dense_pad_width);
-  }
-
-  bool is_ignored_objective_name(std::string_view name) const
-  {
-    return std::find(ignored_objective_names_sv.begin(), ignored_objective_names_sv.end(), name) !=
-           ignored_objective_names_sv.end();
-  }
-
-  void add_ignored_objective_name(std::string_view name)
-  {
-    if (name == objective_name_sv || is_ignored_objective_name(name)) { return; }
-    ignored_objective_names_sv.push_back(name);
-  }
-
   void observe_objective_row_name(std::string_view name)
   {
     if (objective_name_sv.empty()) {
       objective_name_sv = name;
-    } else {
-      add_ignored_objective_name(name);
+    } else if (name != objective_name_sv) {
+      ignored_objective_names.insert(name);
     }
-  }
-
-  void observe_row_name_for_dense_index(std::string_view name, size_t row_index)
-  {
-    if (!row_dense_candidate) { return; }
-
-    std::string_view prefix;
-    uint64_t value      = 0;
-    size_t suffix_width = 0;
-    if (!parse_trailing_u64(name, prefix, value, suffix_width)) {
-      row_dense_candidate = false;
-      return;
-    }
-
-    if (row_index == 0) {
-      row_dense_prefix      = prefix;
-      row_dense_min_id      = value;
-      row_dense_max_id      = value;
-      row_dense_base_id     = value;
-      row_dense_pad_width   = suffix_width;
-      row_dense_zero_padded = dense_suffix_is_zero_padded(name, suffix_width);
-      return;
-    }
-
-    if (prefix != row_dense_prefix) {
-      row_dense_candidate = false;
-      return;
-    }
-
-    if (row_dense_base_id > std::numeric_limits<uint64_t>::max() - row_index) {
-      row_dense_candidate = false;
-      return;
-    }
-
-    uint64_t expected = row_dense_base_id + row_index;
-    if (value != expected || !row_dense_has_expected_width(value, suffix_width)) {
-      row_dense_candidate = false;
-      return;
-    }
-
-    row_dense_min_id = std::min(row_dense_min_id, value);
-    row_dense_max_id = std::max(row_dense_max_id, value);
   }
 
   bool init_row_dense_ordered_table()
@@ -549,23 +529,22 @@ struct parse_state_t {
     scoped_timer_t timer("row_dense_finalize");
     size_t n_rows = row_names_sv.size();
     if (!row_dense_candidate || n_rows == 0) { return false; }
-    if (row_dense_max_id < row_dense_min_id) { return false; }
-    uint64_t dense_count = row_dense_max_id - row_dense_min_id + 1;
+    if (row_dense.max_id < row_dense.min_id) { return false; }
+    uint64_t dense_count = row_dense.max_id - row_dense.min_id + 1;
     if (dense_count != n_rows) { return false; }
 
-    row_index_mode = row_index_mode_t::dense_ordered;
+    row_index_mode = index_mode_t::dense_ordered;
     return true;
   }
 
   size_t row_hash_bucket_count_for(size_t n_rows) const
   {
 #ifdef MPS_FAST_COMPACT_ROW_HASH
-    // Keep the row hash compact. Probe counts are usually low, and a smaller
+    // probe counts are usually low, and a smaller
     // table reduces cache/TLB footprint on medium instances.
-    return next_power_of_2(std::max(n_rows + n_rows / 2, (size_t)64));
+    return cuda::next_power_of_two(std::max(n_rows + n_rows / 2, (size_t)64));
 #else
-    // Original conservative sizing policy.
-    return next_power_of_2(std::max((size_t)(n_rows * 2), (size_t)64));
+    return cuda::next_power_of_two(std::max((size_t)(n_rows * 2), (size_t)64));
 #endif
   }
 
@@ -582,11 +561,13 @@ struct parse_state_t {
 
     if (use_partitioned) {
       scoped_timer_t timer("row_hash_partition_metadata");
+      // Pre-hash once, count rows per partition, then pack row indices by partition.
+      // This turns the build into disjoint single-writer table fills.
       row_hashes.resize(n_rows);
       size_t inline_rows = 0;
       for (size_t idx = 0; idx < n_rows; ++idx) {
         std::string_view name = row_names_sv[idx];
-        if (__unlikely(name.size() > HASH_KEY_BYTES)) {
+        if (UNLIKELY(name.size() > HASH_KEY_BYTES)) {
           row_names_long[name] = idx;
           continue;
         }
@@ -603,7 +584,7 @@ struct parse_state_t {
       row_order.resize(inline_rows);
       auto next_offsets = partition_offsets;
       for (size_t idx = 0; idx < n_rows; ++idx) {
-        if (__unlikely(row_names_sv[idx].size() > HASH_KEY_BYTES)) { continue; }
+        if (UNLIKELY(row_names_sv[idx].size() > HASH_KEY_BYTES)) { continue; }
         size_t part                     = row_hash_partition_for(row_hashes[idx]);
         row_order[next_offsets[part]++] = idx;
       }
@@ -639,7 +620,7 @@ struct parse_state_t {
           next_slots += row_hash_partitions[p].buckets;
         }
       }
-      // Request huge pages to reduce TLB misses
+      // request huge pages to reduce TLB misses
       row_hash_region.advise(MADV_HUGEPAGE);
     }
 
@@ -666,6 +647,7 @@ struct parse_state_t {
         std::vector<size_t> partition_total_probes(MPS_ROW_HASH_PARTITIONS, 0);
         std::vector<size_t> partition_max_probes(MPS_ROW_HASH_PARTITIONS, 0);
 #endif
+// initialize the row hash tables in parallel
 #pragma omp parallel for schedule(static) num_threads(num_threads)
         for (int part_id = 0; part_id < (int)MPS_ROW_HASH_PARTITIONS; ++part_id) {
           size_t p = (size_t)part_id;
@@ -675,6 +657,7 @@ struct parse_state_t {
           size_t local_max_probes   = 0;
 #endif
           const auto& part = row_hash_partitions[p];
+          // Each worker owns its subtable, so row_insert_into remains the plain serial probe loop.
           for (size_t pos = partition_offsets[p]; pos < partition_offsets[p + 1]; ++pos) {
             size_t idx = row_order[pos];
 #ifdef MPS_FAST_PERF_COUNTERS
@@ -745,24 +728,9 @@ struct parse_state_t {
 #endif
   }
 
-  size_t row_lookup_dense_ordered(std::string_view name) const
-  {
-    std::string_view prefix;
-    uint64_t value      = 0;
-    size_t suffix_width = 0;
-    if (!parse_trailing_u64(name, prefix, value, suffix_width)) { return SIZE_MAX; }
-    if (prefix != row_dense_prefix || !row_dense_has_expected_width(value, suffix_width)) {
-      return SIZE_MAX;
-    }
-    if (value < row_dense_min_id || value > row_dense_max_id) { return SIZE_MAX; }
-    return (size_t)(value - row_dense_min_id);
-  }
-
   size_t row_lookup(std::string_view name) const
   {
-    if (__likely(row_index_mode == row_index_mode_t::dense_ordered)) {
-      return row_lookup_dense_ordered(name);
-    }
+    if (LIKELY(row_index_mode == index_mode_t::dense_ordered)) { return row_dense.lookup(name); }
     return row_lookup_hash(name);
   }
 
@@ -771,10 +739,10 @@ struct parse_state_t {
     const char* start = cursor.ptr;
     const char* p     = start;
 
-    size_t prefix_len = row_dense_prefix.size();
+    size_t prefix_len = row_dense.prefix.size();
     if (prefix_len > 0) {
       if ((size_t)(cursor.end - p) < prefix_len ||
-          std::memcmp(p, row_dense_prefix.data(), prefix_len) != 0) {
+          std::memcmp(p, row_dense.prefix.data(), prefix_len) != 0) {
         cursor.read_field();
         return SIZE_MAX;
       }
@@ -783,21 +751,12 @@ struct parse_state_t {
 
     const char* digits_start = p;
     uint64_t value           = 0;
-    while (p < cursor.end && is_decimal_digit(*p)) {
-      uint64_t digit = (uint64_t)(*p - '0');
-      if (value > (std::numeric_limits<uint64_t>::max() - digit) / 10) {
-        cursor.ptr = start;
-        cursor.read_field();
-        return SIZE_MAX;
-      }
-      value = value * 10 + digit;
-      p++;
-    }
+    fp64::parse_u64_digits_advance(p, cursor.end, value);
 
     size_t suffix_width = (size_t)(p - digits_start);
-    if (suffix_width == 0 || p >= cursor.end || *p > ' ' ||
-        !row_dense_has_expected_width(value, suffix_width) || value < row_dense_min_id ||
-        value > row_dense_max_id) {
+    if (suffix_width == 0 || suffix_width > dense_suffix_max_digits || p >= cursor.end ||
+        *p > ' ' || !row_dense.suffix_width_ok(value, suffix_width) || value < row_dense.min_id ||
+        value > row_dense.max_id) {
       cursor.ptr = start;
       cursor.read_field();
       return SIZE_MAX;
@@ -805,12 +764,12 @@ struct parse_state_t {
 
     cursor.ptr = p;
     cursor.skip_ws();
-    return (size_t)(value - row_dense_min_id);
+    return (size_t)(value - row_dense.min_id);
   }
 
   size_t read_row_lookup(cursor_t& cursor) const
   {
-    if (__likely(row_index_mode == row_index_mode_t::dense_ordered)) {
+    if (LIKELY(row_index_mode == index_mode_t::dense_ordered)) {
       return read_row_lookup_dense_ordered(cursor);
     }
 
@@ -820,13 +779,14 @@ struct parse_state_t {
 
   size_t row_lookup_hash(std::string_view name) const
   {
-    if (__unlikely(name.size() > HASH_KEY_BYTES)) {
+    if (UNLIKELY(name.size() > HASH_KEY_BYTES)) {
       auto it = row_names_long.find(name);
       return it != row_names_long.end() ? it->second : SIZE_MAX;
     }
     hash_key_t key = make_key(name.data(), name.size());
     uint32_t hash  = fnv1a_hash(name.data(), name.size());
-    if (__likely(row_hash_partition_count != 0)) {
+    if (LIKELY(row_hash_partition_count != 0)) {
+      // Lookups mirror the build routing and probe only the selected subtable.
       const auto& part = row_hash_partitions[row_hash_partition_for(hash)];
       return row_lookup_in(part.slots, part.buckets, part.mask, key, hash);
     }
@@ -845,43 +805,9 @@ struct parse_state_t {
     return SIZE_MAX;
   }
 
-  size_t col_lookup_dense_ordered(std::string_view name) const
-  {
-    std::string_view prefix;
-    uint64_t value      = 0;
-    size_t suffix_width = 0;
-    if (!parse_trailing_u64(name, prefix, value, suffix_width)) { return SIZE_MAX; }
-    if (prefix != col_dense_prefix || !col_dense_has_expected_width(value, suffix_width)) {
-      return SIZE_MAX;
-    }
-    if (value < col_dense_min_id || value > col_dense_max_id) { return SIZE_MAX; }
-    return (size_t)(value - col_dense_min_id);
-  }
-
-  void dense_col_name(size_t idx, std::string& out) const
-  {
-    uint64_t value = col_dense_min_id + idx;
-    char digits_buf[32];
-    auto [digits_end, ec] = std::to_chars(digits_buf, digits_buf + sizeof(digits_buf), value);
-    if (ec != std::errc()) {
-      out.assign(col_dense_prefix);
-      return;
-    }
-    size_t digits_len = (size_t)(digits_end - digits_buf);
-    size_t width = col_dense_zero_padded ? std::max(col_dense_pad_width, digits_len) : digits_len;
-    out.resize(col_dense_prefix.size() + width);
-    std::memcpy(out.data(), col_dense_prefix.data(), col_dense_prefix.size());
-    char* suffix = out.data() + col_dense_prefix.size();
-    if (width > digits_len) {
-      std::memset(suffix, '0', width - digits_len);
-      suffix += width - digits_len;
-    }
-    std::memcpy(suffix, digits_buf, digits_len);
-  }
-
   size_t row_insert(std::string_view name, size_t index)
   {
-    if (__unlikely(name.size() > HASH_KEY_BYTES)) {
+    if (UNLIKELY(name.size() > HASH_KEY_BYTES)) {
       row_names_long[name] = index;
       return 0;
     }
@@ -906,7 +832,8 @@ struct parse_state_t {
       if (slot >= &slots[buckets]) { slot = &slots[0]; }
       if (slot->count == 0) {
         key_store(slot->key, key);            // Writes 32 bytes, including garbage in last 4
-        slot->count = (uint32_t)(index + 1);  // Overwrite last 4 bytes with actual count
+        slot->count = (uint32_t)(index + 1);  // Overwrite last 4 bytes with actual count. i trust
+                                              // the compiler to optimize this
         return i + 1;
       }
       if (key_cmpeq(slot->key, key)) {
@@ -914,7 +841,8 @@ struct parse_state_t {
         return i + 1;
       }
     }
-    __builtin_trap();
+    // can't happen, the table is properly sized to fit all rows
+    __builtin_unreachable();
   }
 };
 
@@ -922,31 +850,13 @@ struct parse_state_t {
 // Section parsers
 // =============================================================================
 
-static std::string_view read_rest_of_line_trimmed(cursor_t& cursor)
-{
-  const char* begin = cursor.ptr;
-  const char* end   = begin;
-  while (end < cursor.end && *end != '\n' && *end != '\r') {
-    ++end;
-  }
-
-  while (begin < end && (*begin == ' ' || *begin == '\t')) {
-    ++begin;
-  }
-  while (end > begin && (end[-1] == ' ' || end[-1] == '\t')) {
-    --end;
-  }
-  cursor.ptr = end;
-  return std::string_view(begin, (size_t)(end - begin));
-}
-
 template <typename i_t, typename f_t>
 static void parse_name_section(parse_state_t<i_t, f_t>& state)
 {
   scoped_timer_t timer("parse_name");
   if (peek(state.cursor) == "ROWS") { return; }
   expect(state.cursor, "NAME");
-  if (!state.cursor.eol()) { state.problem_name_sv = read_rest_of_line_trimmed(state.cursor); }
+  if (!state.cursor.eol()) { state.problem_name_sv = state.cursor.read_rest_of_line_trimmed(); }
   expect_eol(state.cursor);
 }
 
@@ -974,19 +884,18 @@ static void parse_objname_section(parse_state_t<i_t, f_t>& state)
 {
   scoped_timer_t timer("parse_objname");
   if (accept(state.cursor, "OBJNAME")) {
-    if (state.cursor.eol()) { expect_eol(state.cursor); }
-    state.objective_name_sv = state.cursor.read_field();
+    if (!state.cursor.eol()) { state.objective_name_sv = state.cursor.read_rest_of_line_trimmed(); }
     accept_comment(state.cursor);
     expect_eol(state.cursor);
   }
 }
 
-struct RowChunkBoundary {
+struct row_chunk_boundary_t {
   const char* start;
   const char* end;
 };
 
-struct RowChunkInfo {
+struct row_chunk_info_t {
   size_t constraints = 0;
   bool malformed     = false;
   std::vector<std::string_view> objective_names;
@@ -1007,7 +916,7 @@ static bool parse_rows_line_fast(const char*& p,
                                  char& row_type,
                                  std::string_view& row_name)
 {
-  p = cursor_t::simd_scan<true>(p, end);
+  p = cursor_t::simd_scan<skip_whitespace>(p, end);
   if (p >= end) { return false; }
   if (*p == '\n') {
     p++;
@@ -1019,26 +928,29 @@ static bool parse_rows_line_fast(const char*& p,
   }
 
   row_type = *p++;
-  p        = cursor_t::simd_scan<true>(p, end);
+  p        = cursor_t::simd_scan<skip_whitespace>(p, end);
 
   const char* name_start = p;
-  p                      = cursor_t::simd_scan<false>(p, end);
+  p                      = cursor_t::simd_scan<until_whitespace>(p, end);
   if (name_start == p) { return false; }
   row_name = std::string_view(name_start, (size_t)(p - name_start));
 
   // ROWS only uses fields 1-2. Fields 3-6 are ignored by the MPS spec, and
   // field 3 may start with '$' to comment the rest of the record.
+  // could be SIMD'd, but in practice the newline is right after the row name
   p = rows_find_next_line(p, end);
   return true;
 }
 
-static std::vector<RowChunkBoundary> compute_row_chunk_boundaries(const char* rows_start,
-                                                                  const char* rows_end,
-                                                                  int num_threads)
+// row chunks are established based on byte count, thus boundaries can land in the middle of a row
+// this cleans up chunks to have row line boundaries
+static std::vector<row_chunk_boundary_t> compute_row_chunk_boundaries(const char* rows_start,
+                                                                      const char* rows_end,
+                                                                      int num_threads)
 {
   scoped_timer_t timer("rows_compute_chunk_boundaries");
 
-  std::vector<RowChunkBoundary> boundaries((size_t)num_threads);
+  std::vector<row_chunk_boundary_t> boundaries((size_t)num_threads);
   size_t total_size = (size_t)(rows_end - rows_start);
   size_t chunk_size = total_size / (size_t)num_threads;
 
@@ -1057,6 +969,7 @@ static std::vector<RowChunkBoundary> compute_row_chunk_boundaries(const char* ro
   return boundaries;
 }
 
+// reads the row section in chunks and inserts into the worker's hash table partition
 template <typename i_t, typename f_t>
 static bool parse_rows_section_parallel_impl(parse_state_t<i_t, f_t>& state,
                                              const char* rows_start,
@@ -1066,7 +979,7 @@ static bool parse_rows_section_parallel_impl(parse_state_t<i_t, f_t>& state,
   scoped_timer_t timer("parse_rows_parallel");
 
   auto boundaries = compute_row_chunk_boundaries(rows_start, rows_end, num_threads);
-  std::vector<RowChunkInfo> infos((size_t)num_threads);
+  std::vector<row_chunk_info_t> infos((size_t)num_threads);
 
   {
     scoped_timer_t timer("rows_count_parallel");
@@ -1075,7 +988,7 @@ static bool parse_rows_section_parallel_impl(parse_state_t<i_t, f_t>& state,
       MPS_NVTX_RANGE(std::string("rows_count_chunk ") + std::to_string(t), nvtx::colors::rows);
       const char* p   = boundaries[(size_t)t].start;
       const char* end = boundaries[(size_t)t].end;
-      RowChunkInfo info;
+      row_chunk_info_t info;
 
       while (p < end) {
         char row_type = 0;
@@ -1104,10 +1017,12 @@ static bool parse_rows_section_parallel_impl(parse_state_t<i_t, f_t>& state,
     }
   }
 
-  for (const auto& info : infos) {
-    if (info.malformed) { return false; }
+  if (std::any_of(
+        infos.begin(), infos.end(), [](const row_chunk_info_t& info) { return info.malformed; })) {
+    return false;
   }
 
+  // prefix sum to do a paralle scatter of every row entries into the global output arrays
   std::vector<size_t> offsets((size_t)num_threads + 1, 0);
   {
     scoped_timer_t timer("rows_prefix_sum");
@@ -1133,7 +1048,7 @@ static bool parse_rows_section_parallel_impl(parse_state_t<i_t, f_t>& state,
   }
   for (const auto& info : infos) {
     for (std::string_view name : info.objective_names) {
-      state.add_ignored_objective_name(name);
+      if (name != state.objective_name_sv) { state.ignored_objective_names.insert(name); }
     }
   }
 
@@ -1141,7 +1056,6 @@ static bool parse_rows_section_parallel_impl(parse_state_t<i_t, f_t>& state,
   std::string_view dense_prefix;
   uint64_t dense_base_id = 0;
   size_t dense_pad_width = 0;
-  bool dense_zero_padded = false;
 
   if (dense_candidate) {
     std::string_view first_name;
@@ -1157,9 +1071,8 @@ static bool parse_rows_section_parallel_impl(parse_state_t<i_t, f_t>& state,
     if (!parse_trailing_u64(first_name, dense_prefix, first_value, first_suffix_width)) {
       dense_candidate = false;
     } else {
-      dense_base_id     = first_value;
-      dense_pad_width   = first_suffix_width;
-      dense_zero_padded = dense_suffix_is_zero_padded(first_name, first_suffix_width);
+      dense_base_id   = first_value;
+      dense_pad_width = dense_initial_pad_width(first_name, first_suffix_width);
     }
   }
 
@@ -1175,6 +1088,13 @@ static bool parse_rows_section_parallel_impl(parse_state_t<i_t, f_t>& state,
       size_t out      = offsets[(size_t)t];
 
       bool local_dense_ok = dense_candidate;
+      dense_name_index_t dense_index;
+      if (local_dense_ok) {
+        dense_index.prefix.assign(dense_prefix);
+        dense_index.min_id    = dense_base_id;
+        dense_index.max_id    = dense_base_id;
+        dense_index.pad_width = dense_pad_width;
+      }
 
       while (p < end) {
         char row_type = 0;
@@ -1194,14 +1114,9 @@ static bool parse_rows_section_parallel_impl(parse_state_t<i_t, f_t>& state,
         state.problem.row_types_[out] = row_type;
 
         if (local_dense_ok) {
-          std::string_view prefix;
-          uint64_t value      = 0;
-          size_t suffix_width = 0;
-          uint64_t expected   = dense_base_id + out;
-          local_dense_ok =
-            parse_trailing_u64(row_name, prefix, value, suffix_width) && prefix == dense_prefix &&
-            value == expected &&
-            dense_suffix_width_ok(value, suffix_width, dense_zero_padded, dense_pad_width);
+          size_t observed_count = out;
+          observe_dense_name(
+            local_dense_ok, dense_index, observed_count, row_name, dense_base_id + out);
         }
         out++;
       }
@@ -1217,12 +1132,10 @@ static bool parse_rows_section_parallel_impl(parse_state_t<i_t, f_t>& state,
     }
     state.row_dense_candidate = dense_candidate;
     if (dense_candidate) {
-      state.row_dense_prefix      = dense_prefix;
-      state.row_dense_min_id      = dense_base_id;
-      state.row_dense_max_id      = dense_base_id + total_rows - 1;
-      state.row_dense_base_id     = dense_base_id;
-      state.row_dense_pad_width   = dense_pad_width;
-      state.row_dense_zero_padded = dense_zero_padded;
+      state.row_dense.prefix.assign(dense_prefix);
+      state.row_dense.min_id    = dense_base_id;
+      state.row_dense.max_id    = dense_base_id + total_rows - 1;
+      state.row_dense.pad_width = dense_pad_width;
     }
   }
 
@@ -1238,9 +1151,6 @@ static void parse_rows_section_serial_impl(parse_state_t<i_t, f_t>& state, const
     auto row_type = state.cursor.ptr[0];
     state.cursor.advance(1);
     state.cursor.skip_ws();
-    // if (row_type != "E" && row_type != "L" && row_type != "G" && row_type != "N") {
-    //   state.cursor.error("expected E, L, G, or N, got '%s'", row_type.data());
-    // }
 
     auto row_name = state.cursor.read_field();
     // ROWS fields after the row name are unused; tolerate annotations/comments there.
@@ -1252,7 +1162,12 @@ static void parse_rows_section_serial_impl(parse_state_t<i_t, f_t>& state, const
     } else {
       size_t row_idx = state.row_names_sv.size();
       state.row_names_sv.push_back(row_name);
-      state.observe_row_name_for_dense_index(row_name, row_idx);
+      observe_dense_name(
+        state.row_dense_candidate,
+        state.row_dense,
+        row_idx,
+        row_name,
+        row_idx == 0 ? std::numeric_limits<uint64_t>::max() : state.row_dense.min_id + row_idx);
       state.problem.row_types_.push_back(row_type);
     }
     expect_eol(state.cursor);
@@ -1272,20 +1187,17 @@ static void parse_rows_section(parse_state_t<i_t, f_t>& state, const char* rows_
     size_t rows_bytes    = (size_t)(rows_end - state.cursor.ptr);
     int num_threads      = phase_thread_count(MPS_ROWS_THREAD_CAP);
     bool parsed_parallel = false;
-    if (rows_bytes >= 512ull * 1024ull * 1024ull && num_threads > 1) {
+    if (rows_bytes >= 512 * MiB && num_threads > 1) {
       parsed_parallel =
         parse_rows_section_parallel_impl<i_t, f_t>(state, state.cursor.ptr, rows_end, num_threads);
+      // serial fallback in case a likely malformed chunk has been encounter
+      // makes error reporting much easier
       if (!parsed_parallel) {
         state.row_names_sv.clear();
         state.problem.row_types_.clear();
-        state.row_dense_candidate   = true;
-        state.row_dense_prefix      = {};
-        state.row_dense_min_id      = 0;
-        state.row_dense_max_id      = 0;
-        state.row_dense_base_id     = 0;
-        state.row_dense_pad_width   = 0;
-        state.row_dense_zero_padded = false;
-        state.cursor.ptr            = rows_start;
+        state.row_dense_candidate = true;
+        state.row_dense.reset();
+        state.cursor.ptr = rows_start;
         parse_rows_section_serial_impl(state, rows_end);
       }
     } else {
@@ -1303,71 +1215,61 @@ static void parse_rows_section(parse_state_t<i_t, f_t>& state, const char* rows_
   }
 }
 
-// =============================================================================
-// Parallel COLUMNS parser
-// =============================================================================
+// Columns parser
 
-struct MarkerInfo {
+// integer variable markers
+struct marker_info_t {
   enum Type { INTORG, INTEND };
   Type type;
   size_t after_local_var_idx;  // SIZE_MAX means "before first variable"
 };
 
-struct RowCountBlock {
+struct row_count_block_t {
   size_t block_id       = 0;
   size_t storage_offset = 0;
 };
 
-struct DenseColChunkStats {
-  bool candidate = true;
-  std::string_view prefix;
-  uint64_t first_id = 0;
-  uint64_t last_id  = 0;
-  size_t pad_width  = 0;
-  bool zero_padded  = false;
-  size_t count      = 0;
-};
-
-struct ChunkResult {
+// Each column parsing worker owns chunks of the global CSC which are parsed in parallel and then
+// later scattered into the final CSR
+struct chunk_result_t {
   std::vector<double> values;
   std::vector<uint32_t> row_indices;
   std::vector<size_t> col_offsets;
   std::vector<std::string_view> var_names;
   chunk_name_arena_t var_name_arena;
-  std::vector<MarkerInfo> markers;
+  std::vector<marker_info_t> markers;
   std::vector<std::pair<size_t, double>> objective_entries;  // local_col_idx -> coefficient
-  // Sparse per-row scratch: each touched 4096-row block stores counts after parsing,
-  // then the same slots become CSR write cursors. This avoids scanning/allocating
-  // chunks*n_rows entries when a chunk only touches clustered row ranges. The
-  // block payloads live in one arena per chunk so scatter has hugepage-friendly
-  // write-position metadata instead of many independent 32 KiB allocations.
+  // COLUMNS is parsed as chunk-local CSC. To build the global CSR, each chunk needs row counts
+  // first, then row-local write cursors for scatter. Store those counts only for touched
+  // 4096-row blocks instead of allocating a dense chunks*n_rows matrix
+  // The same slots are rewritten as write cursors after the global CSR row offsets are known
   std::vector<int64_t> row_count_storage;
-  std::vector<RowCountBlock> row_count_blocks;
+  std::vector<row_count_block_t> row_count_blocks;
   std::vector<int32_t> row_count_block_dir;
-  std::string_view first_var_name;
-  std::string_view last_var_name;
-  DenseColChunkStats dense_col_stats;
+  dense_observe_state_t dense_col_stats;
 };
 
-struct ChunkBoundary {
+struct chunk_boundary_t {
   const char* start;
   const char* end;
 };
 
-struct BoundsChunkBoundary {
+struct bounds_chunk_boundary_t {
   const char* start;
   const char* end;
 };
 
-static inline int64_t& column_row_count_slot(ChunkResult& result, size_t row_idx)
+// enables representing row counts per chunk as a sparse representation w/ 4096 granularity
+// works well since nnzs are often clustered around the same matrix blocks
+static inline int64_t& column_row_count_slot(chunk_result_t& result, size_t row_idx)
 {
   size_t block_id   = row_idx / COLUMN_ROW_COUNT_BLOCK_ROWS;
   size_t local      = row_idx - block_id * COLUMN_ROW_COUNT_BLOCK_ROWS;
   int32_t block_pos = result.row_count_block_dir[block_id];
-  if (__unlikely(block_pos < 0)) {
+  if (UNLIKELY(block_pos < 0)) {
     block_pos                            = (int32_t)result.row_count_blocks.size();
     result.row_count_block_dir[block_id] = block_pos;
-    RowCountBlock block;
+    row_count_block_t block;
     block.block_id       = block_id;
     block.storage_offset = result.row_count_storage.size();
     result.row_count_storage.resize(block.storage_offset + COLUMN_ROW_COUNT_BLOCK_ROWS, 0);
@@ -1377,68 +1279,17 @@ static inline int64_t& column_row_count_slot(ChunkResult& result, size_t row_idx
     .row_count_storage[result.row_count_blocks[(size_t)block_pos].storage_offset + local];
 }
 
-static void observe_dense_col_name(DenseColChunkStats& stats, std::string_view name)
-{
-  if (!stats.candidate) { return; }
-
-  std::string_view prefix;
-  uint64_t value      = 0;
-  size_t suffix_width = 0;
-  if (!parse_trailing_u64(name, prefix, value, suffix_width)) {
-    stats.candidate = false;
-    return;
-  }
-
-  if (stats.count == 0) {
-    stats.prefix      = prefix;
-    stats.first_id    = value;
-    stats.last_id     = value;
-    stats.pad_width   = suffix_width;
-    stats.zero_padded = dense_suffix_is_zero_padded(name, suffix_width);
-    stats.count       = 1;
-    return;
-  }
-
-  if (prefix != stats.prefix) {
-    stats.candidate = false;
-    return;
-  }
-  if (stats.last_id == std::numeric_limits<uint64_t>::max() || value != stats.last_id + 1) {
-    stats.candidate = false;
-    return;
-  }
-  if (!dense_suffix_width_ok(value, suffix_width, stats.zero_padded, stats.pad_width)) {
-    stats.candidate = false;
-    return;
-  }
-  stats.last_id = value;
-  stats.count++;
-}
-
-static bool dense_col_chunk_padding_compatible(const DenseColChunkStats& stats,
-                                               bool global_zero_padded,
+static bool dense_col_chunk_padding_compatible(const dense_observe_state_t& stats,
                                                size_t global_pad_width)
 {
-  if (global_zero_padded) {
-    return stats.pad_width == global_pad_width ||
-           (!stats.zero_padded && decimal_digits_u64(stats.first_id) >= global_pad_width);
+  if (global_pad_width > 0) {
+    return stats.index.pad_width == global_pad_width ||
+           (stats.index.pad_width == 0 &&
+            decimal_digits_u64(stats.index.min_id) >= global_pad_width);
   }
-  return !stats.zero_padded;
+  return stats.index.pad_width == 0;
 }
 
-// Read first field (column name) from a line without modifying any state
-static std::string_view peek_line_column_name(const char* line_start, const char* end)
-{
-  const char* p = line_start;
-  while (p < end && *p <= ' ' && *p != '\n')
-    p++;
-  const char* field_start = p;
-  while (p < end && *p > ' ')
-    p++;
-  return std::string_view(field_start, (size_t)(p - field_start));
-}
-
-// Find the start of the next line
 static const char* find_next_line(const char* p, const char* end)
 {
   while (p < end && *p != '\n')
@@ -1471,16 +1322,15 @@ static const char* find_line_start(const char* section_start, const char* p)
   return p;
 }
 
-static std::vector<BoundsChunkBoundary> compute_bounds_chunk_boundaries(const char* section_start,
-                                                                        const char* section_end,
-                                                                        int num_threads)
+static std::vector<bounds_chunk_boundary_t> compute_bounds_chunk_boundaries(
+  const char* section_start, const char* section_end, int num_threads)
 {
   scoped_timer_t timer("bounds_compute_chunk_boundaries");
 
   const size_t total_size = (size_t)(section_end - section_start);
   const size_t chunk_size = total_size / (size_t)num_threads;
 
-  std::vector<BoundsChunkBoundary> boundaries((size_t)num_threads);
+  std::vector<bounds_chunk_boundary_t> boundaries((size_t)num_threads);
   boundaries[0].start = section_start;
   for (int t = 0; t < num_threads; ++t) {
     if (t == num_threads - 1) {
@@ -1506,19 +1356,17 @@ static std::vector<BoundsChunkBoundary> compute_bounds_chunk_boundaries(const ch
   return boundaries;
 }
 
-static std::vector<ChunkBoundary> compute_chunk_boundaries(const char* columns_start,
-                                                           const char* columns_end,
-                                                           int num_threads)
+static std::vector<chunk_boundary_t> compute_chunk_boundaries(const char* columns_start,
+                                                              const char* columns_end,
+                                                              int num_threads)
 {
   scoped_timer_t timer("compute_chunk_boundaries");
 
   size_t total_size = (size_t)(columns_end - columns_start);
   size_t chunk_size = total_size / (size_t)num_threads;
 
-  std::vector<ChunkBoundary> boundaries(num_threads);
+  std::vector<chunk_boundary_t> boundaries(num_threads);
 
-  // Parallel boundary finding - each thread finds its own end at a column transition
-  // #pragma omp parallel for
   for (int t = 0; t < num_threads; t++) {
     if (t == 0) { boundaries[t].start = columns_start; }
 
@@ -1533,7 +1381,7 @@ static std::vector<ChunkBoundary> compute_chunk_boundaries(const char* columns_s
       if (line_start < columns_end) line_start++;
 
       // Read column name at this line
-      std::string_view col_name = peek_line_column_name(line_start, columns_end);
+      std::string_view col_name = cursor_t::peek_field_at(line_start, columns_end);
 
       // Scan forward until column name changes (to avoid splitting a column)
       const char* boundary = line_start;
@@ -1541,9 +1389,9 @@ static std::vector<ChunkBoundary> compute_chunk_boundaries(const char* columns_s
         const char* next_line = find_next_line(boundary, columns_end);
         if (next_line >= columns_end) break;
 
-        std::string_view next_col = peek_line_column_name(next_line, columns_end);
+        std::string_view next_col = cursor_t::peek_field_at(next_line, columns_end);
         if (next_col != col_name && !next_col.empty() && next_col[0] != '\'') {
-          // Found a column transition (and it's not a MARKER line)
+          // Found a column transition. Marker-state fixup later handles any split near markers.
           boundary = next_line;
           break;
         }
@@ -1562,11 +1410,11 @@ static std::vector<ChunkBoundary> compute_chunk_boundaries(const char* columns_s
 }
 
 template <typename i_t, typename f_t>
-static ChunkResult parse_columns_chunk(const char* chunk_start,
-                                       const char* chunk_end,
-                                       const parse_state_t<i_t, f_t>& state)
+static chunk_result_t parse_columns_chunk(const char* chunk_start,
+                                          const char* chunk_end,
+                                          const parse_state_t<i_t, f_t>& state)
 {
-  ChunkResult result;
+  chunk_result_t result;
 
   if (chunk_start >= chunk_end) {
     result.col_offsets.push_back(0);
@@ -1576,7 +1424,7 @@ static ChunkResult parse_columns_chunk(const char* chunk_start,
   size_t chunk_size     = (size_t)(chunk_end - chunk_start);
   size_t estimated_nnz  = chunk_size / 100;
   size_t estimated_cols = estimated_nnz / 10;
-  if (__unlikely(state.problem.n_constraints_ > (i_t)std::numeric_limits<int32_t>::max())) {
+  if (UNLIKELY(state.problem.n_constraints_ > (i_t)std::numeric_limits<int32_t>::max())) {
     state.cursor.error("fast COLUMNS path requires <= INT32_MAX rows for chunk row indices");
   }
   result.values.reserve(estimated_nnz);
@@ -1585,8 +1433,8 @@ static ChunkResult parse_columns_chunk(const char* chunk_start,
   result.var_names.reserve(estimated_cols);
   result.var_name_arena.reserve(std::max<size_t>(4096, estimated_cols * 16));
   result.objective_entries.reserve(estimated_cols);
-  size_t n_row_blocks = ((size_t)state.problem.n_constraints_ + COLUMN_ROW_COUNT_BLOCK_ROWS - 1) /
-                        COLUMN_ROW_COUNT_BLOCK_ROWS;
+  size_t n_row_blocks =
+    cuda::ceil_div((size_t)state.problem.n_constraints_, COLUMN_ROW_COUNT_BLOCK_ROWS);
   result.row_count_block_dir.resize(n_row_blocks, -1);
   size_t estimated_touched_blocks = std::min(n_row_blocks, std::max<size_t>(16, estimated_nnz));
   result.row_count_blocks.reserve(estimated_touched_blocks);
@@ -1598,31 +1446,35 @@ static ChunkResult parse_columns_chunk(const char* chunk_start,
   cursor.skip_ws();
 
   while (!cursor.done()) {
-    if (__unlikely(*cursor.ptr == 'R')) {
+    if (UNLIKELY(*cursor.ptr == 'R')) {
       auto next = cursor.peek_field();
       // RHS section is mandatory right after COLUMNS section
       if (next == "RHS") { break; }
     }
 
     auto [var_name, field2] = cursor.read_two_fields();
-    if (__unlikely(!field2.empty() && field2[0] == '$')) {
+    if (UNLIKELY(!field2.empty() && field2[0] == '$')) {
       cursor.skip_to_eol();
       expect_eol(cursor);
       continue;
     }
 
     // Check for integer marker
-    if (__unlikely(field2[0] == '\'' && field2 == "'MARKER'")) {
+    if (UNLIKELY(field2[0] == '\'' && field2 == "'MARKER'")) {
       auto marker_type = cursor.read_field();
 
-      MarkerInfo marker;
+      marker_info_t marker;
       marker.after_local_var_idx =
         result.var_names.empty() ? SIZE_MAX : result.var_names.size() - 1;
 
       if (marker_type == "'INTORG'") {
-        marker.type = MarkerInfo::INTORG;
+        marker.type = marker_info_t::INTORG;
+      } else if (marker_type == "'INTEND'") {
+        marker.type = marker_info_t::INTEND;
       } else {
-        marker.type = MarkerInfo::INTEND;
+        cursor.error("unknown integer marker type in COLUMNS: %.*s",
+                     (int)marker_type.size(),
+                     marker_type.data());
       }
       result.markers.push_back(marker);
 
@@ -1649,32 +1501,33 @@ static ChunkResult parse_columns_chunk(const char* chunk_start,
       value = sign * fp64::parse_fp64_advance(cursor.ptr, cursor.end);
     }
     // usually EOL directly follows
-    if (__unlikely(!cursor.eol())) { cursor.skip_ws(); }
+    if (UNLIKELY(!cursor.eol())) { cursor.skip_ws(); }
     accept_comment(cursor);
 
     if (prev_var_name != var_name) {
       std::string_view owned_var_name = result.var_name_arena.copy(var_name);
       result.var_names.push_back(owned_var_name);
-      observe_dense_col_name(result.dense_col_stats, owned_var_name);
+      observe_dense_name(result.dense_col_stats.candidate,
+                         result.dense_col_stats.index,
+                         result.dense_col_stats.count,
+                         owned_var_name);
       result.col_offsets.push_back(result.values.size());
       prev_var_name = owned_var_name;
-      if (result.first_var_name.empty()) { result.first_var_name = owned_var_name; }
-      result.last_var_name = owned_var_name;
     }
 
     auto add_entry = [&](std::string_view rn, double val) {
       size_t row_idx = state.row_lookup(rn);
-      if (__likely(row_idx != SIZE_MAX)) {
+      if (LIKELY(row_idx != SIZE_MAX)) {
         assert(row_idx <= (size_t)std::numeric_limits<int32_t>::max());
         result.values.push_back(val);
         result.row_indices.push_back((uint32_t)row_idx);
         column_row_count_slot(result, row_idx)++;
-      } else if (__likely(rn == state.objective_name_sv)) {
+      } else if (LIKELY(rn == state.objective_name_sv)) {
         result.objective_entries.push_back({result.var_names.size() - 1, val});
-      } else if (state.is_ignored_objective_name(rn)) {
+      } else if (state.ignored_objective_names.count(rn)) {
         return;
       } else {
-        state.cursor.error("unknown row name in COLUMNS: %.*s", (int)rn.size(), rn.data());
+        cursor.error("unknown row name in COLUMNS: %.*s", (int)rn.size(), rn.data());
       }
     };
 
@@ -1683,7 +1536,7 @@ static ChunkResult parse_columns_chunk(const char* chunk_start,
     // Optional second entry on same line
     if (!cursor.eol()) {
       auto row_name2 = cursor.read_field();
-      if (__unlikely(!row_name2.empty() && row_name2[0] == '$')) {
+      if (UNLIKELY(!row_name2.empty() && row_name2[0] == '$')) {
         cursor.skip_to_eol();
         expect_eol(cursor);
         continue;
@@ -1714,8 +1567,8 @@ struct column_merge_shape_t {
 };
 
 template <typename i_t>
-static column_merge_shape_t<i_t> compute_column_merge_shape(const std::vector<ChunkResult>& chunks,
-                                                            i_t n_rows)
+static column_merge_shape_t<i_t> compute_column_merge_shape(
+  const std::vector<chunk_result_t>& chunks, i_t n_rows)
 {
   column_merge_shape_t<i_t> shape;
   shape.num_chunks = (int)chunks.size();
@@ -1752,7 +1605,7 @@ static column_merge_shape_t<i_t> compute_column_merge_shape(const std::vector<Ch
 
 template <typename i_t, typename f_t>
 static void detect_dense_column_metadata(parse_state_t<i_t, f_t>& state,
-                                         const std::vector<ChunkResult>& chunks,
+                                         const std::vector<chunk_result_t>& chunks,
                                          const column_merge_shape_t<i_t>& shape)
 {
   scoped_timer_t timer("columns_dense_metadata");
@@ -1763,7 +1616,6 @@ static void detect_dense_column_metadata(parse_state_t<i_t, f_t>& state,
   uint64_t dense_min_id     = 0;
   uint64_t dense_max_id     = 0;
   size_t dense_pad_width    = 0;
-  bool dense_zero_padded    = false;
 
   for (int t = 0; t < shape.num_chunks && dense_ok; ++t) {
     const auto& stats = chunks[(size_t)t].dense_col_stats;
@@ -1773,28 +1625,28 @@ static void detect_dense_column_metadata(parse_state_t<i_t, f_t>& state,
       break;
     }
     if (!have_first) {
-      have_first        = true;
-      dense_prefix      = stats.prefix;
-      expected_next_id  = stats.first_id;
-      dense_min_id      = stats.first_id;
-      dense_pad_width   = stats.pad_width;
-      dense_zero_padded = stats.zero_padded;
+      have_first       = true;
+      dense_prefix     = stats.index.prefix;
+      expected_next_id = stats.index.min_id;
+      dense_min_id     = stats.index.min_id;
+      dense_pad_width  = stats.index.pad_width;
     }
-    if (stats.prefix != dense_prefix || stats.first_id != expected_next_id ||
-        !dense_col_chunk_padding_compatible(stats, dense_zero_padded, dense_pad_width)) {
+    if (stats.index.prefix != dense_prefix || stats.index.min_id != expected_next_id ||
+        !dense_col_chunk_padding_compatible(stats, dense_pad_width)) {
       dense_ok = false;
       break;
     }
-    if (stats.last_id < stats.first_id || stats.last_id - stats.first_id + 1 != stats.count) {
+    if (stats.index.max_id < stats.index.min_id ||
+        stats.index.max_id - stats.index.min_id + 1 != stats.count) {
       dense_ok = false;
       break;
     }
-    dense_max_id = stats.last_id;
-    if (stats.last_id == std::numeric_limits<uint64_t>::max()) {
+    dense_max_id = stats.index.max_id;
+    if (stats.index.max_id == std::numeric_limits<uint64_t>::max()) {
       dense_ok = false;
       break;
     }
-    expected_next_id = stats.last_id + 1;
+    expected_next_id = stats.index.max_id + 1;
   }
 
   if (!have_first || dense_max_id < dense_min_id ||
@@ -1802,20 +1654,18 @@ static void detect_dense_column_metadata(parse_state_t<i_t, f_t>& state,
     dense_ok = false;
   }
 
-  state.col_dense_ordered = dense_ok;
+  state.col_index_mode = dense_ok ? index_mode_t::dense_ordered : index_mode_t::hash;
   if (dense_ok) {
-    state.col_dense_prefix_storage.assign(dense_prefix);
-    state.col_dense_prefix      = state.col_dense_prefix_storage;
-    state.col_dense_min_id      = dense_min_id;
-    state.col_dense_max_id      = dense_max_id;
-    state.col_dense_pad_width   = dense_pad_width;
-    state.col_dense_zero_padded = dense_zero_padded;
+    state.col_dense.prefix.assign(dense_prefix);
+    state.col_dense.min_id    = dense_min_id;
+    state.col_dense.max_id    = dense_max_id;
+    state.col_dense.pad_width = dense_pad_width;
   }
 }
 
 template <typename i_t, typename f_t>
 static std::vector<i_t> build_csr_row_offsets(parse_state_t<i_t, f_t>& state,
-                                              const std::vector<ChunkResult>& chunks,
+                                              const std::vector<chunk_result_t>& chunks,
                                               const column_merge_shape_t<i_t>& shape)
 {
   std::vector<i_t> global_row_counts((size_t)shape.n_rows, 0);
@@ -1846,7 +1696,7 @@ static std::vector<i_t> build_csr_row_offsets(parse_state_t<i_t, f_t>& state,
 }
 
 template <typename i_t>
-static void convert_counts_to_write_positions(std::vector<ChunkResult>& chunks,
+static void convert_counts_to_write_positions(std::vector<chunk_result_t>& chunks,
                                               const column_merge_shape_t<i_t>& shape,
                                               const std::vector<i_t>& row_offsets,
                                               std::vector<i_t>& global_row_counts)
@@ -1870,7 +1720,8 @@ static void convert_counts_to_write_positions(std::vector<ChunkResult>& chunks,
   }
 }
 
-static void materialize_chunk_row_count_storage(std::vector<ChunkResult>& chunks, int num_threads)
+static void materialize_chunk_row_count_storage(std::vector<chunk_result_t>& chunks,
+                                                int num_threads)
 {
   scoped_timer_t timer("columns_row_count_storage_hugepages");
 #pragma omp parallel for num_threads(num_threads)
@@ -1901,7 +1752,7 @@ static void allocate_column_outputs(parse_state_t<i_t, f_t>& state,
     }
 #pragma omp section
     {
-      if (!state.col_dense_ordered) {
+      if (state.col_index_mode != index_mode_t::dense_ordered) {
         state.var_name_arenas.clear();
         state.var_name_arenas.resize((size_t)shape.num_chunks);
         state.var_names_sv.resize(shape.total_cols);
@@ -1916,7 +1767,7 @@ static void allocate_column_outputs(parse_state_t<i_t, f_t>& state,
 
 template <typename i_t, typename f_t>
 static void scatter_column_chunks_to_csr(parse_state_t<i_t, f_t>& state,
-                                         std::vector<ChunkResult>& chunks,
+                                         std::vector<chunk_result_t>& chunks,
                                          const column_merge_shape_t<i_t>& shape,
                                          int num_threads)
 {
@@ -1942,7 +1793,7 @@ static void scatter_column_chunks_to_csr(parse_state_t<i_t, f_t>& state,
           size_t block_id                = row_idx / COLUMN_ROW_COUNT_BLOCK_ROWS;
           size_t local                   = row_idx - block_id * COLUMN_ROW_COUNT_BLOCK_ROWS;
           int32_t block_pos              = chunk.row_count_block_dir[block_id];
-          RowCountBlock& block           = chunk.row_count_blocks[(size_t)block_pos];
+          row_count_block_t& block       = chunk.row_count_blocks[(size_t)block_pos];
           int64_t& write_pos             = chunk.row_count_storage[block.storage_offset + local];
           i_t dest                       = (i_t)write_pos++;
           state.problem.A_[dest]         = (f_t)chunk.values[idx];
@@ -1958,7 +1809,7 @@ static void scatter_column_chunks_to_csr(parse_state_t<i_t, f_t>& state,
 #endif
   }
 
-  if (!state.col_dense_ordered) {
+  if (state.col_index_mode != index_mode_t::dense_ordered) {
     scoped_timer_t names_timer("scatter_var_names");
 #pragma omp parallel for num_threads(num_threads)
     for (int t = 0; t < shape.num_chunks; t++) {
@@ -1975,13 +1826,13 @@ static void scatter_column_chunks_to_csr(parse_state_t<i_t, f_t>& state,
 }
 
 struct global_marker_t {
-  MarkerInfo::Type type;
+  marker_info_t::Type type;
   size_t global_var_idx;
 };
 
 template <typename i_t, typename f_t>
 static void apply_column_integer_markers(parse_state_t<i_t, f_t>& state,
-                                         const std::vector<ChunkResult>& chunks,
+                                         const std::vector<chunk_result_t>& chunks,
                                          const column_merge_shape_t<i_t>& shape)
 {
   scoped_timer_t timer("columns_apply_markers");
@@ -1999,7 +1850,7 @@ static void apply_column_integer_markers(parse_state_t<i_t, f_t>& state,
     }
   }
 
-  std::sort(all_markers.begin(), all_markers.end(), [](const auto& a, const auto& b) {
+  std::stable_sort(all_markers.begin(), all_markers.end(), [](const auto& a, const auto& b) {
     if (a.global_var_idx == SIZE_MAX && b.global_var_idx != SIZE_MAX) return true;
     if (b.global_var_idx == SIZE_MAX && a.global_var_idx != SIZE_MAX) return false;
     return a.global_var_idx < b.global_var_idx;
@@ -2010,7 +1861,7 @@ static void apply_column_integer_markers(parse_state_t<i_t, f_t>& state,
   for (size_t v = 0; v < shape.total_cols; v++) {
     while (marker_idx < all_markers.size() && (all_markers[marker_idx].global_var_idx == SIZE_MAX ||
                                                all_markers[marker_idx].global_var_idx < v)) {
-      is_integer = all_markers[marker_idx].type == MarkerInfo::INTORG;
+      is_integer = all_markers[marker_idx].type == marker_info_t::INTORG;
       marker_idx++;
     }
     state.problem.var_types_[v] = is_integer ? 'I' : 'C';
@@ -2019,7 +1870,7 @@ static void apply_column_integer_markers(parse_state_t<i_t, f_t>& state,
 
 template <typename i_t, typename f_t>
 static void assign_column_objective_entries(parse_state_t<i_t, f_t>& state,
-                                            const std::vector<ChunkResult>& chunks,
+                                            const std::vector<chunk_result_t>& chunks,
                                             const column_merge_shape_t<i_t>& shape)
 {
   scoped_timer_t timer("columns_objective_entries");
@@ -2034,7 +1885,7 @@ static void assign_column_objective_entries(parse_state_t<i_t, f_t>& state,
 
 template <typename i_t, typename f_t>
 static void merge_chunk_results_to_csr(parse_state_t<i_t, f_t>& state,
-                                       std::vector<ChunkResult>& chunks,
+                                       std::vector<chunk_result_t>& chunks,
                                        int num_threads)
 {
   scoped_timer_t timer("merge_chunks_to_csr");
@@ -2071,11 +1922,10 @@ static void parse_columns_section_parallel(parse_state_t<i_t, f_t>& state,
   size_t chunk_limited_threads = std::max<size_t>(1, columns_bytes / MPS_COLUMNS_MIN_CHUNK_BYTES);
   num_threads = std::max(1, std::min<int>(num_threads, (int)chunk_limited_threads));
 
-  // Compute chunk boundaries
   auto chunk_bounds = compute_chunk_boundaries(columns_start, columns_end, num_threads);
 
   // Parse chunks in parallel
-  std::vector<ChunkResult> results(num_threads);
+  std::vector<chunk_result_t> results(num_threads);
 
   {
     scoped_timer_t timer("parse_columns_chunk_parallel");
@@ -2145,7 +1995,7 @@ static void parse_rhs_section(parse_state_t<i_t, f_t>& state, cursor_t& cursor)
       return;
     }
     // Other objectives, ignored currently. cold path
-    if (state.is_ignored_objective_name(row_name)) { return; }
+    if (state.ignored_objective_names.count(row_name)) { return; }
     // Unexpected!
     error_unknown_row(cursor, row_start, "RHS");
   };
@@ -2175,6 +2025,8 @@ static void parse_rhs_section(parse_state_t<i_t, f_t>& state, cursor_t& cursor)
   }
 }
 
+// does the job on 99% of instances, in the vast majority of cases bound names are sequential with
+// occasional sparsity
 static size_t find_var_after_hint(const std::vector<std::string_view>& var_names,
                                   std::string_view var_name,
                                   size_t hint_idx)
@@ -2230,7 +2082,7 @@ static bool apply_bound_record(std::string_view bound_type,
     if (first_bound_for_var && value < f_t{0}) { set_lb(-std::numeric_limits<f_t>::infinity()); }
     set_type('I');
   } else if (bound_type == "SC") {
-    if (__unlikely(!has_value)) {
+    if (UNLIKELY(!has_value)) {
       error("SC bound requires an upper bound value", bound_type);
       return false;
     }
@@ -2252,7 +2104,7 @@ static bool parse_bounds_section_parallel_dense(parse_state_t<i_t, f_t>& state,
 {
   const size_t bounds_bytes   = (size_t)(bounds_body_end - bounds_body_start);
   const int num_threads       = phase_thread_count(MPS_BOUNDS_THREAD_CAP);
-  const bool use_dense_lookup = state.col_dense_ordered;
+  const bool use_dense_lookup = state.col_index_mode == index_mode_t::dense_ordered;
   const size_t min_parallel_bytes =
     use_dense_lookup ? MPS_BOUNDS_PARALLEL_MIN_BYTES : MPS_BOUNDS_ORDERED_HINT_PARALLEL_MIN_BYTES;
   if (bounds_bytes < min_parallel_bytes || num_threads < 2) { return false; }
@@ -2261,7 +2113,7 @@ static bool parse_bounds_section_parallel_dense(parse_state_t<i_t, f_t>& state,
     use_dense_lookup ? "parse_bounds_parallel_dense" : "parse_bounds_parallel_ordered_hint",
     nvtx::colors::bounds);
 
-  struct BoundsParallelStats {
+  struct bounds_parallel_stats_t {
     size_t lines            = 0;
     size_t dense_hits       = 0;
     size_t dense_misses     = 0;
@@ -2273,7 +2125,7 @@ static bool parse_bounds_section_parallel_dense(parse_state_t<i_t, f_t>& state,
     char error_msg[192]     = {};
   };
 
-  std::vector<BoundsParallelStats> stats((size_t)num_threads);
+  std::vector<bounds_parallel_stats_t> stats((size_t)num_threads);
   auto boundaries =
     compute_bounds_chunk_boundaries(bounds_body_start, bounds_body_end, num_threads);
 
@@ -2297,12 +2149,14 @@ static bool parse_bounds_section_parallel_dense(parse_state_t<i_t, f_t>& state,
       size_t prev_var = SIZE_MAX;
       size_t hint_idx = 0;
       auto lookup_var = [&](std::string_view var_name) {
-        if (use_dense_lookup) { return state.col_lookup_dense_ordered(var_name); }
+        if (use_dense_lookup) { return state.col_dense.lookup(var_name); }
+        // quite often variables are in order, so a cheap lookup trick is to look for the variable
+        // right after this one
         return find_var_after_hint(state.var_names_sv, var_name, hint_idx);
       };
       try {
         while (cursor.ptr < cursor.end) {
-          if (__unlikely(*cursor.ptr == '$')) {
+          if (UNLIKELY(*cursor.ptr == '$')) {
             cursor.skip_to_eol();
             expect_eol(cursor);
             local.comments++;
@@ -2310,8 +2164,8 @@ static bool parse_bounds_section_parallel_dense(parse_state_t<i_t, f_t>& state,
           }
 
           auto bound_type = cursor.read_field();
-          if (__unlikely(bound_type.empty())) { break; }
-          if (__unlikely(bound_type[0] == '$')) {
+          if (UNLIKELY(bound_type.empty())) { break; }
+          if (UNLIKELY(bound_type[0] == '$')) {
             cursor.skip_to_eol();
             expect_eol(cursor);
             local.comments++;
@@ -2321,7 +2175,7 @@ static bool parse_bounds_section_parallel_dense(parse_state_t<i_t, f_t>& state,
           auto bound_name = cursor.read_field();
           (void)bound_name;
           auto var_name = cursor.read_field();
-          if (__unlikely(!var_name.empty() && var_name[0] == '$')) {
+          if (UNLIKELY(!var_name.empty() && var_name[0] == '$')) {
             cursor.skip_to_eol();
             expect_eol(cursor);
             local.comments++;
@@ -2329,7 +2183,7 @@ static bool parse_bounds_section_parallel_dense(parse_state_t<i_t, f_t>& state,
           }
 
           size_t var_idx = lookup_var(var_name);
-          if (__unlikely(var_idx == SIZE_MAX)) {
+          if (UNLIKELY(var_idx == SIZE_MAX)) {
             local.dense_misses++;
             break;
           }
@@ -2435,36 +2289,14 @@ static bool parse_bounds_section_parallel_dense(parse_state_t<i_t, f_t>& state,
 }
 
 template <typename i_t, typename f_t>
-static void parse_bounds_section(parse_state_t<i_t, f_t>& state,
-                                 cursor_t& cursor,
-                                 bool allow_parallel_dense = false)
+static void init_variable_bounds_defaults(parse_state_t<i_t, f_t>& state)
 {
   size_t n_vars = (size_t)state.problem.n_vars_;
-
-  // Initialize bounds with defaults
   {
     scoped_timer_t timer("bounds_init_defaults");
-    const bool parallel_init =
-      n_vars >= MPS_BOUNDS_PARALLEL_INIT_MIN_VARS && omp_get_max_threads() >= 2;
-
-    if (parallel_init) {
-#pragma omp parallel sections num_threads(2)
-      {
-#pragma omp section
-        {
-          state.problem.variable_lower_bounds_.resize(n_vars, f_t{0});
-        }
-#pragma omp section
-        {
-          state.problem.variable_upper_bounds_.resize(n_vars, std::numeric_limits<f_t>::infinity());
-        }
-      }
-    } else {
-      state.problem.variable_lower_bounds_.resize(n_vars, f_t{0});
-      state.problem.variable_upper_bounds_.resize(n_vars, std::numeric_limits<f_t>::infinity());
-    }
+    state.problem.variable_lower_bounds_.resize(n_vars, f_t{0});
+    state.problem.variable_upper_bounds_.resize(n_vars, std::numeric_limits<f_t>::infinity());
   }
-
   {
     scoped_timer_t timer("bounds_madvise_pretouch");
     materialize_vector_hugepages("variable_lower_bounds",
@@ -2474,6 +2306,35 @@ static void parse_bounds_section(parse_state_t<i_t, f_t>& state,
                                  state.problem.variable_upper_bounds_,
                                  materialize_touch_t::write_4kb);
   }
+}
+
+template <typename i_t, typename f_t, typename HasBound>
+static void apply_unspecified_integer_bounds(parse_state_t<i_t, f_t>& state, HasBound&& has_bound)
+{
+  scoped_timer_t timer("bounds_integer_defaults");
+  size_t n_vars = (size_t)state.problem.n_vars_;
+  for (size_t i = 0; i < n_vars; ++i) {
+    if (!has_bound(i) && state.problem.var_types_[i] == 'I') {
+      state.problem.variable_lower_bounds_[i] = f_t{0};
+      state.problem.variable_upper_bounds_[i] = f_t{1};
+    }
+  }
+}
+
+template <typename i_t, typename f_t>
+static void init_variable_bounds_without_bounds_section(parse_state_t<i_t, f_t>& state)
+{
+  init_variable_bounds_defaults(state);
+  apply_unspecified_integer_bounds(state, [](size_t) { return false; });
+}
+
+template <typename i_t, typename f_t>
+static void parse_bounds_section(parse_state_t<i_t, f_t>& state,
+                                 cursor_t& cursor,
+                                 bool allow_parallel_dense = false)
+{
+  size_t n_vars = (size_t)state.problem.n_vars_;
+  init_variable_bounds_defaults(state);
 
   std::vector<uint64_t> bound_seen((n_vars + 63) / 64, 0);
   auto has_bound = [&](size_t var_idx) {
@@ -2482,18 +2343,9 @@ static void parse_bounds_section(parse_state_t<i_t, f_t>& state,
   auto mark_bound = [&](size_t var_idx) {
     bound_seen[var_idx >> 6] |= uint64_t{1} << (var_idx & 63);
   };
-  auto apply_unspecified_integer_bounds = [&]() {
-    scoped_timer_t timer("bounds_integer_defaults");
-    for (size_t i = 0; i < n_vars; ++i) {
-      if (!has_bound(i) && state.problem.var_types_[i] == 'I') {
-        state.problem.variable_lower_bounds_[i] = f_t{0};
-        state.problem.variable_upper_bounds_[i] = f_t{1};
-      }
-    }
-  };
 
   if (!accept_section(cursor, "BOUNDS")) {
-    apply_unspecified_integer_bounds();
+    apply_unspecified_integer_bounds(state, has_bound);
     return;
   }
 
@@ -2523,17 +2375,18 @@ static void parse_bounds_section(parse_state_t<i_t, f_t>& state,
       auto bound_name = cursor.read_field();
       (void)bound_name;
       auto var_name = cursor.read_field();
-      if (__unlikely(!var_name.empty() && var_name[0] == '$')) {
+      if (UNLIKELY(!var_name.empty() && var_name[0] == '$')) {
         cursor.skip_to_eol();
         expect_eol(cursor);
         continue;
       }
 
       // optimized lookup using hint (bounds often in same order as columns)
-      size_t var_idx                                               = SIZE_MAX;
+      size_t var_idx = SIZE_MAX;
+      // handle annoying bounds-only vars that weren't declared in COLUMNS
       typename parse_state_t<i_t, f_t>::bounds_only_var_t* aux_var = nullptr;
-      if (__likely(state.col_dense_ordered)) {
-        var_idx = state.col_lookup_dense_ordered(var_name);
+      if (LIKELY(state.col_index_mode == index_mode_t::dense_ordered)) {
+        var_idx = state.col_dense.lookup(var_name);
         if (var_idx == SIZE_MAX) { aux_var = &state.bounds_only_vars[var_name]; }
       } else {
         var_idx = find_var_after_hint(state.var_names_sv, var_name, hint_idx);
@@ -2586,15 +2439,12 @@ static void parse_bounds_section(parse_state_t<i_t, f_t>& state,
       expect_eol(cursor);
     }
   }
-  apply_unspecified_integer_bounds();
+  apply_unspecified_integer_bounds(state, has_bound);
 }
 
 template <typename i_t, typename f_t>
-static void parse_ranges_section(parse_state_t<i_t, f_t>& state, cursor_t& cursor)
+static void init_constraint_bounds_from_rows(parse_state_t<i_t, f_t>& state)
 {
-  scoped_timer_t timer("parse_ranges");
-
-  // Initialize constraint bounds from row_types and b_
   state.problem.constraint_lower_bounds_.resize((size_t)state.problem.n_constraints_);
   state.problem.constraint_upper_bounds_.resize((size_t)state.problem.n_constraints_);
 
@@ -2612,6 +2462,13 @@ static void parse_ranges_section(parse_state_t<i_t, f_t>& state, cursor_t& curso
       state.problem.constraint_upper_bounds_[i] = std::numeric_limits<f_t>::infinity();
     }
   }
+}
+
+template <typename i_t, typename f_t>
+static void parse_ranges_section(parse_state_t<i_t, f_t>& state, cursor_t& cursor)
+{
+  scoped_timer_t timer("parse_ranges");
+  init_constraint_bounds_from_rows(state);
 
   if (!accept_section(cursor, "RANGES")) { return; }
 
@@ -2654,7 +2511,7 @@ static void parse_ranges_section(parse_state_t<i_t, f_t>& state, cursor_t& curso
     accept_comment(cursor);
     if (!cursor.eol()) {
       auto row_name2 = cursor.read_field();
-      if (__unlikely(!row_name2.empty() && row_name2[0] == '$')) {
+      if (UNLIKELY(!row_name2.empty() && row_name2[0] == '$')) {
         cursor.skip_to_eol();
         expect_eol(cursor);
         continue;
@@ -2667,10 +2524,14 @@ static void parse_ranges_section(parse_state_t<i_t, f_t>& state, cursor_t& curso
   }
 }
 
+// quadratric stuff is bare bones for now, optimize if needed
+
 template <typename i_t, typename f_t>
 static void build_var_name_map_if_needed(parse_state_t<i_t, f_t>& state)
 {
-  if (state.col_dense_ordered || !state.var_names_map.empty()) { return; }
+  if (state.col_index_mode == index_mode_t::dense_ordered || !state.var_names_map.empty()) {
+    return;
+  }
   scoped_timer_t timer("quadratic_build_var_name_map");
   state.var_names_map.reserve((size_t)state.problem.n_vars_ * 2);
   for (size_t i = 0; i < state.var_names_sv.size(); ++i) {
@@ -2681,7 +2542,7 @@ static void build_var_name_map_if_needed(parse_state_t<i_t, f_t>& state)
 template <typename i_t, typename f_t>
 static size_t lookup_quadratic_var(parse_state_t<i_t, f_t>& state, std::string_view name)
 {
-  if (state.col_dense_ordered) { return state.col_lookup_dense_ordered(name); }
+  if (state.col_index_mode == index_mode_t::dense_ordered) { return state.col_dense.lookup(name); }
   auto it = state.var_names_map.find(name);
   return it == state.var_names_map.end() ? SIZE_MAX : it->second;
 }
@@ -2695,14 +2556,14 @@ static void build_quadratic_csr(parse_state_t<i_t, f_t>& state,
   const size_t n_vars = (size_t)state.problem.n_vars_;
   if (entries.empty()) { return; }
 
-  struct ExpandedEntry {
+  struct expanded_entry_t {
     size_t row;
     size_t col;
     size_t seq;
     f_t value;
   };
 
-  std::vector<ExpandedEntry> expanded;
+  std::vector<expanded_entry_t> expanded;
   expanded.reserve(symmetric_upper_triangular ? entries.size() * 2 : entries.size());
   size_t seq = 0;
   for (const auto& [row_i, col_i, value] : entries) {
@@ -2779,14 +2640,14 @@ static void parse_quadratic_sections(parse_state_t<i_t, f_t>& state, cursor_t& c
     if (active_entries == nullptr) { break; }
 
     auto var1 = cursor.read_field();
-    if (__unlikely(var1.empty())) { break; }
-    if (__unlikely(var1[0] == '$')) {
+    if (UNLIKELY(var1.empty())) { break; }
+    if (UNLIKELY(var1[0] == '$')) {
       cursor.skip_to_eol();
       expect_eol(cursor);
       continue;
     }
     auto var2 = cursor.read_field();
-    if (__unlikely(!var2.empty() && var2[0] == '$')) {
+    if (UNLIKELY(!var2.empty() && var2[0] == '$')) {
       cursor.skip_to_eol();
       expect_eol(cursor);
       continue;
@@ -2847,37 +2708,29 @@ static void parse_rhs_range(parse_state_t<i_t, f_t>& state, mps_phase_range_t ra
 }
 
 template <typename i_t, typename f_t>
-static void parse_bounds_range(parse_state_t<i_t, f_t>& state,
-                               mps_phase_range_t range,
-                               const char* fallback_ptr)
+static void parse_bounds_range(parse_state_t<i_t, f_t>& state, mps_phase_range_t range)
 {
-  if (range.present) {
-    cursor_t cursor(range.begin, (size_t)(range.end - range.begin));
-    parse_bounds_section(state, cursor, range.present);
-  } else {
-    cursor_t cursor(fallback_ptr, 16);
-    parse_bounds_section(state, cursor, range.present);
+  if (!range.present) {
+    init_variable_bounds_without_bounds_section(state);
+    return;
   }
+  cursor_t cursor(range.begin, (size_t)(range.end - range.begin));
+  parse_bounds_section(state, cursor, true);
 }
 
 template <typename i_t, typename f_t>
-static void parse_ranges_range(parse_state_t<i_t, f_t>& state,
-                               mps_phase_range_t range,
-                               const char* fallback_ptr)
+static void parse_ranges_range(parse_state_t<i_t, f_t>& state, mps_phase_range_t range)
 {
-  if (range.present) {
-    cursor_t cursor(range.begin, (size_t)(range.end - range.begin));
-    parse_ranges_section(state, cursor);
-  } else {
-    cursor_t cursor(fallback_ptr, 16);
-    parse_ranges_section(state, cursor);
+  if (!range.present) {
+    init_constraint_bounds_from_rows(state);
+    return;
   }
+  cursor_t cursor(range.begin, (size_t)(range.end - range.begin));
+  parse_ranges_section(state, cursor);
 }
 
 template <typename i_t, typename f_t>
-static void parse_quadratic_range(parse_state_t<i_t, f_t>& state,
-                                  mps_phase_range_t range,
-                                  const char*)
+static void parse_quadratic_range(parse_state_t<i_t, f_t>& state, mps_phase_range_t range)
 {
   if (!range.present) { return; }
   cursor_t cursor(range.begin, (size_t)(range.end - range.begin));
@@ -2917,16 +2770,17 @@ static void materialize_problem_names(parse_state_t<i_t, f_t>& state)
 
   {
     scoped_timer_t timer("materialize_problem_var_names");
-    size_t n = state.col_dense_ordered ? (size_t)state.problem.n_vars_ : state.var_names_sv.size();
+    const bool col_dense_ordered = state.col_index_mode == index_mode_t::dense_ordered;
+    size_t n = col_dense_ordered ? (size_t)state.problem.n_vars_ : state.var_names_sv.size();
     state.problem.var_names_.resize(n);
-    if (state.col_dense_ordered && n >= 1'000'000 && num_threads > 1) {
+    if (col_dense_ordered && n >= 1'000'000 && num_threads > 1) {
 #pragma omp parallel for schedule(static) num_threads(num_threads)
       for (size_t i = 0; i < n; ++i) {
-        state.dense_col_name(i, state.problem.var_names_[i]);
+        state.col_dense.format_name(i, state.problem.var_names_[i]);
       }
-    } else if (state.col_dense_ordered) {
+    } else if (col_dense_ordered) {
       for (size_t i = 0; i < n; ++i) {
-        state.dense_col_name(i, state.problem.var_names_[i]);
+        state.col_dense.format_name(i, state.problem.var_names_[i]);
       }
     } else if (n >= 1'000'000 && num_threads > 1) {
 #pragma omp parallel for schedule(static) num_threads(num_threads)
@@ -2969,7 +2823,7 @@ static std::size_t init_problem_storage(
   problem.objective_scaling_factor_ = f_t{1};
   problem.objective_offset_         = f_t{0};
 
-  std::size_t reserve_size = std::max<std::size_t>(reserve_hint, 1024 * 1024);
+  std::size_t reserve_size = std::max<std::size_t>(reserve_hint, 1 * MiB);
   std::size_t reserve_dim  = std::max((size_t)1000, reserve_size / 1000);
   problem.A_offsets_.reserve(reserve_dim);
   problem.b_.reserve(reserve_dim);
@@ -2984,26 +2838,14 @@ static std::size_t init_problem_storage(
   return reserve_dim;
 }
 
-static const char* trailing_endata_cursor_end(mps_phase_registry_t& registry)
-{
-  mps_phase_range_t quadratic = registry.range(mps_phase_kind::quadratic);
-  if (quadratic.present) { return quadratic.end; }
-  mps_phase_range_t bounds = registry.range(mps_phase_kind::bounds);
-  if (bounds.present) { return bounds.end; }
-  mps_phase_range_t ranges = registry.range(mps_phase_kind::ranges);
-  if (ranges.present) { return ranges.end; }
-  return registry.range(mps_phase_kind::rhs).end;
-}
-
 template <typename Stream, typename i_t, typename f_t>
 static cuopt::linear_programming::io::mps_data_model_t<i_t, f_t> parse_mps_fast_stream(
   Stream& stream, const char* total_timer_name, const char* producer_task_name)
 {
-  omp_set_max_active_levels(2);
+  omp_max_active_levels_guard_t omp_active_levels(2);
 
   input_stream_view_t input = stream.view();
-  timer_io_context_t timer_io_context(input.compressed_size);
-  auto total_timer = std::make_unique<scoped_timer_t>(total_timer_name);
+  auto total_timer          = std::make_unique<scoped_timer_t>(total_timer_name);
   cuopt::linear_programming::io::mps_data_model_t<i_t, f_t> problem;
   std::size_t reserve_dim = init_problem_storage(problem, stream.reserve_size_hint());
 
@@ -3159,7 +3001,7 @@ static cuopt::linear_programming::io::mps_data_model_t<i_t, f_t> parse_mps_fast_
       {
         run_parser_task([&] {
           MPS_NVTX_RANGE("task_ranges", nvtx::colors::ranges);
-          parse_ranges_range(state, input.registry->range(mps_phase_kind::ranges), input.data);
+          parse_ranges_range(state, input.registry->range(mps_phase_kind::ranges));
           phase_end("ranges");
         });
       }
@@ -3168,7 +3010,7 @@ static cuopt::linear_programming::io::mps_data_model_t<i_t, f_t> parse_mps_fast_
       {
         run_parser_task([&] {
           MPS_NVTX_RANGE("task_bounds", nvtx::colors::bounds);
-          parse_bounds_range(state, input.registry->range(mps_phase_kind::bounds), input.data);
+          parse_bounds_range(state, input.registry->range(mps_phase_kind::bounds));
           phase_end("bounds");
         });
       }
@@ -3177,8 +3019,7 @@ static cuopt::linear_programming::io::mps_data_model_t<i_t, f_t> parse_mps_fast_
       {
         run_parser_task([&] {
           MPS_NVTX_RANGE("task_quadratic", nvtx::colors::generic);
-          parse_quadratic_range(
-            state, input.registry->range(mps_phase_kind::quadratic), input.data);
+          parse_quadratic_range(state, input.registry->range(mps_phase_kind::quadratic));
           phase_end("quadratic");
         });
       }
@@ -3192,93 +3033,34 @@ static cuopt::linear_programming::io::mps_data_model_t<i_t, f_t> parse_mps_fast_
   append_bounds_only_variables(state);
 
   input.size = stream.size();
-  cursor.ptr = trailing_endata_cursor_end(*input.registry);
   cursor.end = input.data + input.size;
-  if (!cursor.done()) { expect(cursor, "ENDATA"); }
+  if (!input.registry->endata_ready() || !input.registry->endata_present()) {
+    cursor.ptr =
+      input.registry->endata_ready() ? input.registry->endata_begin() : input.data + input.size;
+    cursor.error("missing ENDATA");
+  }
+  cursor.ptr = input.registry->endata_begin();
+  expect(cursor, "ENDATA");
 
   total_timer.reset();
   flush_timers();
   return problem;
 }
 
-struct small_raw_read_t {
-  bool use_small_path = false;
+struct padded_memory_input_t {
   std::vector<char> buffer;
-  std::size_t size = 0;
+  std::size_t input_size      = 0;
+  std::size_t compressed_size = 0;
 };
 
-static small_raw_read_t try_read_small_raw_file(const std::string& path)
+static padded_memory_input_t read_compressed_mps_file(const std::string& path)
 {
-  FILE* file = std::fopen(path.c_str(), "rb");
-  if (file == nullptr) {
-    mps_parser_fail(error_type_t::RuntimeError,
-                    "Failed to open raw MPS file '%s': %s",
-                    path.c_str(),
-                    std::strerror(errno));
-  }
-  std::unique_ptr<FILE, decltype(&std::fclose)> file_guard(file, &std::fclose);
+  std::vector<char> buffer = cuopt::linear_programming::io::detail::file_to_string(path);
+  if (buffer.empty()) { buffer.push_back('\0'); }
 
-  if (std::fseek(file, 0, SEEK_END) != 0) {
-    mps_parser_fail(error_type_t::RuntimeError, "Failed to seek raw MPS file '%s'", path.c_str());
-  }
-  long file_size_long = std::ftell(file);
-  if (file_size_long < 0) {
-    mps_parser_fail(
-      error_type_t::RuntimeError, "Failed to determine raw MPS file size '%s'", path.c_str());
-  }
-  std::size_t file_size = (std::size_t)file_size_long;
-  if (file_size > MPS_SMALL_RAW_FILE_BYTES) { return {}; }
-  if (std::fseek(file, 0, SEEK_SET) != 0) {
-    mps_parser_fail(error_type_t::RuntimeError, "Failed to rewind raw MPS file '%s'", path.c_str());
-  }
-
-  if (file_size > std::numeric_limits<std::size_t>::max() - input_buffer_padding_bytes) {
-    mps_parser_fail(error_type_t::OutOfMemoryError, "small raw input padding size overflow");
-  }
-  std::vector<char> buffer(file_size + input_buffer_padding_bytes);
-  if (file_size != 0 && std::fread(buffer.data(), 1, file_size, file) != file_size) {
-    mps_parser_fail(error_type_t::RuntimeError, "Failed to read raw MPS file '%s'", path.c_str());
-  }
-  return {true, std::move(buffer), file_size};
-}
-
-template <typename i_t, typename f_t>
-static cuopt::linear_programming::io::mps_data_model_t<i_t, f_t> parse_mps_fast_small_raw_file(
-  std::vector<char> buffer, std::size_t input_size)
-{
-  auto total_timer = std::make_unique<scoped_timer_t>("parse_mps_fast_file_raw_small (total)");
-  const char* data = buffer.data();
-  const char* end  = data + input_size;
-
-  mps_phase_registry_t registry;
-  mps_section_block_scanner_t scanner(data, 1, registry);
-  scanner.observe_block(0, data, end);
-  scanner.publish_ready(input_size);
-
-  cuopt::linear_programming::io::mps_data_model_t<i_t, f_t> problem;
-  std::size_t reserve_dim = init_problem_storage(problem, input_size);
-
-  cursor_t cursor(data, input_size);
-  parse_state_t<i_t, f_t> state(problem, cursor);
-  state.row_names_sv.reserve(reserve_dim);
-
-  parse_header_range(state, registry.range(mps_phase_kind::header));
-  parse_rows_range(state, registry.range(mps_phase_kind::rows));
-  parse_columns_range(state, registry.range(mps_phase_kind::columns), 1);
-  materialize_problem_names(state);
-  parse_rhs_range(state, registry.range(mps_phase_kind::rhs));
-  parse_ranges_range(state, registry.range(mps_phase_kind::ranges), data);
-  parse_bounds_range(state, registry.range(mps_phase_kind::bounds), data);
-  parse_quadratic_range(state, registry.range(mps_phase_kind::quadratic), data);
-  append_bounds_only_variables(state);
-
-  cursor.ptr = trailing_endata_cursor_end(registry);
-  cursor.end = end;
-  if (!cursor.done()) { expect(cursor, "ENDATA"); }
-
-  total_timer.reset();
-  flush_timers();
-  return problem;
+  std::size_t input_size = buffer.size() - 1;
+  buffer.resize(input_size + input_buffer_padding_bytes, '\0');
+  return {std::move(buffer), input_size, get_file_size(path)};
 }
 
 template <typename i_t, typename f_t>
@@ -3286,22 +3068,30 @@ cuopt::linear_programming::io::mps_data_model_t<i_t, f_t> parse_mps_fast_file(
   const std::string& path, FileReadMethod read_method)
 {
   FileReadMethod effective_method = effective_file_read_method(path, read_method);
-  if (effective_method == FileReadMethod::Lz4) {
-    Lz4InputStream stream(path);
-    return parse_mps_fast_stream<Lz4InputStream, i_t, f_t>(
-      stream, "parse_mps_fast_file_lz4 (total)", "task_lz4_read_decode");
-  }
-  if (effective_method == FileReadMethod::Read) {
-    small_raw_read_t small_raw = try_read_small_raw_file(path);
-    if (small_raw.use_small_path) {
-      return parse_mps_fast_small_raw_file<i_t, f_t>(std::move(small_raw.buffer), small_raw.size);
+  switch (effective_method) {
+    case FileReadMethod::Lz4: {
+      lz4_input_stream_t stream(path);
+      return parse_mps_fast_stream<lz4_input_stream_t, i_t, f_t>(
+        stream, "parse_mps_fast_file_lz4 (total)", "task_lz4_read_decode");
     }
-    RawInputStream stream(path);
-    return parse_mps_fast_stream<RawInputStream, i_t, f_t>(
-      stream, "parse_mps_fast_file_raw (total)", "task_raw_read");
+    case FileReadMethod::Gzip:
+    case FileReadMethod::Bzip2: {
+      padded_memory_input_t input = read_compressed_mps_file(path);
+      memory_input_stream_t stream(
+        std::move(input.buffer), input.input_size, input.compressed_size);
+      const char* timer_name = effective_method == FileReadMethod::Gzip
+                                 ? "parse_mps_fast_file_gzip (total)"
+                                 : "parse_mps_fast_file_bzip2 (total)";
+      return parse_mps_fast_stream<memory_input_stream_t, i_t, f_t>(
+        stream, timer_name, "task_memory_scan");
+    }
+    case FileReadMethod::Read: {
+      raw_input_stream_t stream(path);
+      return parse_mps_fast_stream<raw_input_stream_t, i_t, f_t>(
+        stream, "parse_mps_fast_file_raw (total)", "task_raw_read");
+    }
   }
-  mps_parser_fail(error_type_t::RuntimeError,
-                  "single-path parser supports raw read and LZ4 inputs only");
+  __builtin_unreachable();
 }
 
 template cuopt::linear_programming::io::mps_data_model_t<int, float> parse_mps_fast_file(

@@ -15,15 +15,20 @@
 #include <simde/x86/avx2.h>
 #include <simde/x86/sse4.2.h>
 
-#ifndef __likely
-#define __likely(x) __builtin_expect(!!(x), 1)
+#ifndef LIKELY
+#define LIKELY(x) __builtin_expect(!!(x), 1)
 #endif
 
-#ifndef __unlikely
-#define __unlikely(x) __builtin_expect(!!(x), 0)
+#ifndef UNLIKELY
+#define UNLIKELY(x) __builtin_expect(!!(x), 0)
 #endif
 
 namespace mps_fast {
+
+enum scan_mode {
+  skip_whitespace,
+  until_whitespace,
+};
 
 struct cursor_t {
   const char* start;
@@ -67,12 +72,12 @@ struct cursor_t {
     ptr += n;
   }
 
-  template <bool skip_ws_mode>
+  template <scan_mode mode>
   static const char* scalar_scan(const char* p, const char* end)
   {
     while (p < end) {
       unsigned char c = (unsigned char)*p;
-      if constexpr (skip_ws_mode) {
+      if constexpr (mode == skip_whitespace) {
         if (c > 32 || c == '\n') return p;
       } else {
         if (c <= 32) return p;
@@ -82,7 +87,7 @@ struct cursor_t {
     return end;
   }
 
-  template <bool skip_ws_mode>
+  template <scan_mode mode>
   static const char* simd_scan(const char* p, const char* end)
   {
     const simde__m256i v32 = simde_mm256_set1_epi8(32);
@@ -93,7 +98,7 @@ struct cursor_t {
       simde__m256i gt32 = simde_mm256_cmpgt_epi8(data, v32);
 
       unsigned int mask;
-      if (skip_ws_mode) {
+      if constexpr (mode == skip_whitespace) {
         simde__m256i is_nl = simde_mm256_cmpeq_epi8(data, vnl);
         mask = (unsigned int)simde_mm256_movemask_epi8(simde_mm256_or_si256(gt32, is_nl));
       } else {
@@ -103,10 +108,10 @@ struct cursor_t {
       if (mask != 0) { return p + __builtin_ctz(mask); }
       p += 32;
     }
-    return scalar_scan<skip_ws_mode>(p, end);
+    return scalar_scan<mode>(p, end);
   }
 
-  void skip_ws() { ptr = simd_scan<true>(ptr, end); }
+  void skip_ws() { ptr = simd_scan<skip_whitespace>(ptr, end); }
 
   bool eol() const { return ptr < end && (*ptr == '\n' || *ptr == '\r'); }
 
@@ -135,13 +140,31 @@ struct cursor_t {
     }
   }
 
+  std::string_view read_rest_of_line_trimmed()
+  {
+    const char* begin    = ptr;
+    const char* line_end = begin;
+    while (line_end < end && *line_end != '\n' && *line_end != '\r') {
+      ++line_end;
+    }
+
+    while (begin < line_end && (*begin == ' ' || *begin == '\t')) {
+      ++begin;
+    }
+    while (line_end > begin && (line_end[-1] == ' ' || line_end[-1] == '\t')) {
+      --line_end;
+    }
+    ptr = line_end;
+    return std::string_view(begin, (std::size_t)(line_end - begin));
+  }
+
   inline __attribute__((always_inline)) std::string_view read_field()
   {
-    if (__unlikely(done())) { return {}; }
+    if (UNLIKELY(done())) { return {}; }
 
     const char* field_start = ptr;
-    if (__unlikely(end - ptr < 32)) {
-      ptr                   = scalar_scan<false>(ptr, end);
+    if (UNLIKELY(end - ptr < 32)) {
+      ptr                   = scalar_scan<until_whitespace>(ptr, end);
       const char* field_end = ptr;
       if (ptr < end) { skip_ws(); }
       return std::string_view(field_start, field_end - field_start);
@@ -150,14 +173,14 @@ struct cursor_t {
     const simde__m256i v32 = simde_mm256_set1_epi8(32);
     const simde__m256i vnl = simde_mm256_set1_epi8('\n');
 
-    // Input buffers are padded by file_reader/lz4_file_reader/small_raw_read,
-    // so this unaligned 32-byte load is valid whenever end - ptr >= 32.
+    // All input streams provide trailing padding, so this unaligned 32-byte load is valid
+    // whenever end - ptr >= 32.
     simde__m256i data    = simde_mm256_loadu_si256((const simde__m256i*)ptr);
     simde__m256i gt32    = simde_mm256_cmpgt_epi8(data, v32);
     unsigned int ws_mask = ~(unsigned int)simde_mm256_movemask_epi8(gt32);
 
-    if (__unlikely(ws_mask == 0)) {
-      ptr                   = simd_scan<false>(ptr + 32, end);
+    if (UNLIKELY(ws_mask == 0)) {
+      ptr                   = simd_scan<until_whitespace>(ptr + 32, end);
       const char* field_end = ptr;
       if (ptr < end) { skip_ws(); }
       return std::string_view(field_start, field_end - field_start);
@@ -171,7 +194,7 @@ struct cursor_t {
       (unsigned int)simde_mm256_movemask_epi8(simde_mm256_or_si256(gt32, is_nl));
     unsigned int after_field = stop_mask & ~((1u << field_end_off) - 1);
 
-    if (__likely(after_field != 0)) {
+    if (LIKELY(after_field != 0)) {
       ptr = ptr + __builtin_ctz(after_field);
     } else {
       ptr = field_end;
@@ -183,9 +206,16 @@ struct cursor_t {
 
   inline __attribute__((always_inline)) std::string_view peek_field()
   {
-    if (__unlikely(done())) { return {}; }
-    const char* field_end = simd_scan<false>(ptr, end);
+    if (UNLIKELY(done())) { return {}; }
+    const char* field_end = simd_scan<until_whitespace>(ptr, end);
     return std::string_view(ptr, field_end - ptr);
+  }
+
+  static inline std::string_view peek_field_at(const char* line_start, const char* section_end)
+  {
+    cursor_t cursor(line_start, (std::size_t)(section_end - line_start));
+    cursor.skip_ws();
+    return cursor.peek_field();
   }
 
   inline __attribute__((always_inline)) std::pair<std::string_view, std::string_view>
@@ -197,7 +227,7 @@ struct cursor_t {
       return std::pair<std::string_view, std::string_view>{f1, f2};
     };
 
-    if (__unlikely(end - ptr < 32)) { return slow(); }
+    if (UNLIKELY(end - ptr < 32)) { return slow(); }
 
     const char* field1_start = ptr;
     const simde__m256i v32   = simde_mm256_set1_epi8(32);
@@ -213,21 +243,21 @@ struct cursor_t {
     unsigned int nl_mask        = (unsigned int)simde_mm256_movemask_epi8(is_nl);
     unsigned int stop_mask      = printable_mask | nl_mask;
 
-    if (__unlikely(ws_mask == 0)) { return slow(); }
+    if (UNLIKELY(ws_mask == 0)) { return slow(); }
     int field1_end_off = __builtin_ctz(ws_mask);
 
     unsigned int after_field1 = stop_mask & ~((1u << field1_end_off) - 1);
-    if (__unlikely(after_field1 == 0)) { return slow(); }
+    if (UNLIKELY(after_field1 == 0)) { return slow(); }
     int field2_start_off = __builtin_ctz(after_field1);
 
-    if (__unlikely(ptr[field2_start_off] == '\n')) { return slow(); }
+    if (UNLIKELY(ptr[field2_start_off] == '\n')) { return slow(); }
 
     unsigned int ws_after_field2_start = ws_mask & ~((1u << field2_start_off) - 1);
-    if (__unlikely(ws_after_field2_start == 0)) { return slow(); }
+    if (UNLIKELY(ws_after_field2_start == 0)) { return slow(); }
     int field2_end_off = __builtin_ctz(ws_after_field2_start);
 
     unsigned int after_field2 = stop_mask & ~((1u << field2_end_off) - 1);
-    if (__likely(after_field2 != 0)) {
+    if (LIKELY(after_field2 != 0)) {
       ptr = ptr + __builtin_ctz(after_field2);
     } else {
       ptr = ptr + field2_end_off;
@@ -242,7 +272,7 @@ struct cursor_t {
 static inline void expect(cursor_t& cursor, const char* field)
 {
   auto id = cursor.read_field();
-  if (__unlikely(id != field)) {
+  if (UNLIKELY(id != field)) {
     cursor.error("expected '%s', got '%.*s'", field, (int)id.size(), id.data());
   }
 }
@@ -260,7 +290,7 @@ static inline void accept_comment_line(cursor_t& cursor)
 
 static inline void expect_eol(cursor_t& cursor)
 {
-  if (__unlikely(!cursor.eol())) {
+  if (UNLIKELY(!cursor.eol())) {
     auto got = cursor.peek_field();
     cursor.error("expected end of line, got '%.*s'", (int)got.size(), got.data());
   }
@@ -269,20 +299,18 @@ static inline void expect_eol(cursor_t& cursor)
     while (cursor.eol()) {
       cursor.consume_eol();
     }
-    if (__unlikely(cursor.done())) { return; }
+    if (UNLIKELY(cursor.done())) { return; }
 
-    if (__unlikely(cursor.ptr[0] == '*' || cursor.ptr[0] == '$')) {
+    if (UNLIKELY(cursor.ptr[0] == '*' || cursor.ptr[0] == '$')) {
       cursor.skip_comment_line();
       continue;
     }
 
-    if (__likely(cursor.ptr[0] == ' ') && __likely(cursor.ptr + 1 < cursor.end)) {
-      cursor.ptr += 1;
-    }
+    if (LIKELY(cursor.ptr[0] == ' ') && LIKELY(cursor.ptr + 1 < cursor.end)) { cursor.ptr += 1; }
 
-    if (__unlikely(cursor.done())) { return; }
+    if (UNLIKELY(cursor.done())) { return; }
     char c = cursor.ptr[0];
-    if (__unlikely(!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')))) {
+    if (UNLIKELY(!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')))) {
       cursor.skip_ws();
       if (cursor.eol()) { continue; }
     }
@@ -344,7 +372,7 @@ static inline bool accept_section(cursor_t& cursor, const char* section)
 
 static inline bool accept_comment(cursor_t& cursor)
 {
-  if (__unlikely(!cursor.done() && cursor.ptr[0] == '$')) {
+  if (UNLIKELY(!cursor.done() && cursor.ptr[0] == '$')) {
     cursor.skip_to_eol();
     return true;
   }

@@ -815,6 +815,49 @@ void lz4_and_raw_paths_match_on_multiblock_input()
   expect_vector_eq(lz4.variable_upper_bounds_, raw.variable_upper_bounds_, "lz4 upper bounds");
 }
 
+void gzip_bzip2_and_raw_paths_match()
+{
+  std::string mps;
+  mps += "NAME COMPRESSED\nROWS\n N OBJ\n L R1\n G R2\nCOLUMNS\n";
+  mps += " X1 OBJ 1 R1 2.5\n X2 R1 -3.25 R2 4\n";
+  mps += "RHS\n RHS1 R1 7 R2 8\nBOUNDS\n BV BND X1\n UP BND X2 10\nENDATA\n";
+
+  TempMpsFile raw_file(std::move(mps));
+  TempOwnedPath gzip_file(raw_file.path + ".gz");
+  TempOwnedPath bzip2_file(raw_file.path + ".bz2");
+
+  const std::string gzip_cmd  = "gzip -c " + raw_file.path + " > " + gzip_file.path;
+  const std::string bzip2_cmd = "bzip2 -c " + raw_file.path + " > " + bzip2_file.path;
+  if (std::system(gzip_cmd.c_str()) != 0) { throw skip_test("gzip CLI unavailable"); }
+  if (std::system(bzip2_cmd.c_str()) != 0) { throw skip_test("bzip2 CLI unavailable"); }
+
+  auto raw =
+    mps_fast::parse_mps_fast_file<int, double>(raw_file.path, mps_fast::FileReadMethod::Read);
+  auto gzip =
+    mps_fast::parse_mps_fast_file<int, double>(gzip_file.path, mps_fast::FileReadMethod::Read);
+  auto bzip2 =
+    mps_fast::parse_mps_fast_file<int, double>(bzip2_file.path, mps_fast::FileReadMethod::Read);
+
+  expect_model_shapes(gzip, raw.n_constraints_, raw.n_vars_, raw.nnz_, "gzip parity");
+  expect_model_shapes(bzip2, raw.n_constraints_, raw.n_vars_, raw.nnz_, "bzip2 parity");
+  expect_vector_eq(gzip.A_, raw.A_, "gzip A values");
+  expect_vector_eq(bzip2.A_, raw.A_, "bzip2 A values");
+  expect_vector_eq(gzip.A_indices_, raw.A_indices_, "gzip A indices");
+  expect_vector_eq(bzip2.A_indices_, raw.A_indices_, "bzip2 A indices");
+  expect_vector_eq(gzip.A_offsets_, raw.A_offsets_, "gzip A offsets");
+  expect_vector_eq(bzip2.A_offsets_, raw.A_offsets_, "bzip2 A offsets");
+  expect_vector_eq(gzip.c_, raw.c_, "gzip objective");
+  expect_vector_eq(bzip2.c_, raw.c_, "bzip2 objective");
+  expect_vector_eq(gzip.b_, raw.b_, "gzip rhs");
+  expect_vector_eq(bzip2.b_, raw.b_, "bzip2 rhs");
+  expect_vector_eq(gzip.variable_lower_bounds_, raw.variable_lower_bounds_, "gzip lower bounds");
+  expect_vector_eq(bzip2.variable_lower_bounds_, raw.variable_lower_bounds_, "bzip2 lower bounds");
+  expect_vector_eq(gzip.variable_upper_bounds_, raw.variable_upper_bounds_, "gzip upper bounds");
+  expect_vector_eq(bzip2.variable_upper_bounds_, raw.variable_upper_bounds_, "bzip2 upper bounds");
+  expect_vector_eq(gzip.var_types_, raw.var_types_, "gzip var types");
+  expect_vector_eq(bzip2.var_types_, raw.var_types_, "bzip2 var types");
+}
+
 }  // namespace
 
 int main()
@@ -846,6 +889,7 @@ int main()
     {"LargeColumnsRepeatedColumnChunkBoundary", large_columns_repeated_column_chunk_boundary},
     {"LargeBoundsRepeatedVarStaysOrdered", large_bounds_repeated_var_stays_ordered},
     {"Lz4AndRawPathsMatchOnMultiblockInput", lz4_and_raw_paths_match_on_multiblock_input},
+    {"GzipBzip2AndRawPathsMatch", gzip_bzip2_and_raw_paths_match},
   };
 
   int failed = 0;
