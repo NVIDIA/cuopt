@@ -5,6 +5,8 @@
  */
 /* clang-format on */
 
+#pragma once
+
 #include "feasibility_jump.cuh"
 
 #include <mip_heuristics/logger.cuh>
@@ -95,5 +97,141 @@ __global__ void compute_mtm_moves_kernel(typename fj_t<i_t, f_t>::climber_data_t
 
 template <typename i_t, typename f_t>
 __global__ void select_variable_kernel(typename fj_t<i_t, f_t>::climber_data_t::view_t fj);
+
+template <typename i_t, typename f_t>
+void launch_load_balancing_prepare_iteration(dim3 grid,
+                                             dim3 blocks,
+                                             void** kernel_args,
+                                             rmm::cuda_stream_view stream);
+
+template <typename i_t, typename f_t>
+std::pair<dim3, dim3> get_launch_dims_update_assignment_kernel(int TPB,
+                                                               const raft::handle_t* handle_ptr);
+
+template <typename i_t, typename f_t>
+void launch_update_assignment_kernel(dim3 grid,
+                                     dim3 blocks,
+                                     void** kernel_args,
+                                     rmm::cuda_stream_view stream);
+
+template <typename i_t, typename f_t, MTMMoveType move_type, bool is_binary_pb>
+std::pair<dim3, dim3> get_launch_dims_compute_mtm_moves_kernel(int TPB,
+                                                               const raft::handle_t* handle_ptr);
+
+template <typename i_t, typename f_t>
+std::pair<dim3, dim3> get_launch_dims_handle_local_minimum_kernel(int TPB,
+                                                                  const raft::handle_t* handle_ptr);
+
+template <typename i_t, typename f_t>
+std::pair<dim3, dim3> get_launch_dims_update_lift_moves_kernel(int TPB,
+                                                               const raft::handle_t* handle_ptr);
+
+template <typename i_t, typename f_t>
+std::pair<dim3, dim3> get_launch_dims_load_balancing_compute_workid_mappings(
+  int TPB, const raft::handle_t* handle_ptr);
+
+template <typename i_t, typename f_t>
+std::pair<dim3, dim3> get_launch_dims_load_balancing_compute_scores_binary(
+  int TPB, const raft::handle_t* handle_ptr);
+
+template <typename i_t, typename f_t>
+std::pair<dim3, dim3> get_launch_dims_load_balancing_mtm_compute_candidates(
+  int TPB, const raft::handle_t* handle_ptr);
+
+template <typename i_t, typename f_t>
+std::pair<dim3, dim3> get_launch_dims_load_balancing_mtm_compute_scores(
+  int TPB, const raft::handle_t* handle_ptr);
+
+template <typename i_t, typename f_t>
+std::pair<dim3, dim3> get_launch_dims_load_balancing_prepare_iteration(
+  int TPB, const raft::handle_t* handle_ptr);
+
+template <typename i_t, typename f_t, MTMMoveType move_type, bool is_binary_pb>
+void launch_compute_mtm_moves_kernel(dim3 grid,
+                                     dim3 blocks,
+                                     void** kernel_args,
+                                     rmm::cuda_stream_view stream);
+
+template <typename i_t, typename f_t>
+void launch_load_balancing_sanity_checks(dim3 grid,
+                                         dim3 blocks,
+                                         void** kernel_args,
+                                         rmm::cuda_stream_view stream);
+
+template <typename i_t, typename f_t>
+void launch_handle_local_minimum_kernel(dim3 grid,
+                                        dim3 blocks,
+                                        void** kernel_args,
+                                        rmm::cuda_stream_view stream);
+
+template <typename i_t, typename f_t>
+std::pair<dim3, dim3> get_launch_dims_update_changed_constraints_kernel(
+  int TPB, const raft::handle_t* handle_ptr);
+
+template <typename i_t, typename f_t>
+void launch_update_changed_constraints_kernel(dim3 grid,
+                                              dim3 blocks,
+                                              void** kernel_args,
+                                              rmm::cuda_stream_view stream);
+
+template <typename i_t, typename f_t>
+void launch_update_lift_moves_kernel(dim3 grid,
+                                     dim3 blocks,
+                                     void** kernel_args,
+                                     rmm::cuda_stream_view stream);
+
+template <typename i_t, typename f_t>
+void launch_update_breakthrough_moves_kernel(dim3 grid,
+                                             dim3 blocks,
+                                             void** kernel_args,
+                                             rmm::cuda_stream_view stream);
+
+template <typename i_t, typename f_t>
+void launch_select_variable_kernel(dim3 grid,
+                                   dim3 blocks,
+                                   void** kernel_args,
+                                   rmm::cuda_stream_view stream);
+
+template <typename i_t, typename f_t>
+void launch_init_lhs_and_violation(dim3 grid,
+                                   dim3 blocks,
+                                   void** kernel_args,
+                                   rmm::cuda_stream_view stream);
+
+template <typename i_t, typename f_t>
+void launch_update_best_solution_kernel(dim3 grid,
+                                        dim3 blocks,
+                                        void** kernel_args,
+                                        rmm::cuda_stream_view stream);
+
+template <typename i_t, typename f_t>
+void launch_load_balancing_compute_workid_mappings(dim3 grid,
+                                                   dim3 blocks,
+                                                   void** kernel_args,
+                                                   rmm::cuda_stream_view stream);
+
+template <typename i_t, typename f_t>
+void launch_load_balancing_init_cstr_bounds_csr(dim3 grid,
+                                                dim3 blocks,
+                                                void** kernel_args,
+                                                rmm::cuda_stream_view stream);
+
+template <typename i_t, typename f_t>
+void launch_load_balancing_compute_scores_binary(dim3 grid,
+                                                 dim3 blocks,
+                                                 void** kernel_args,
+                                                 rmm::cuda_stream_view stream);
+
+template <typename i_t, typename f_t>
+void launch_load_balancing_mtm_compute_candidates(dim3 grid,
+                                                  dim3 blocks,
+                                                  void** kernel_args,
+                                                  rmm::cuda_stream_view stream);
+
+template <typename i_t, typename f_t>
+void launch_load_balancing_mtm_compute_scores(dim3 grid,
+                                              dim3 blocks,
+                                              void** kernel_args,
+                                              rmm::cuda_stream_view stream);
 
 }  // namespace cuopt::linear_programming::detail

@@ -85,6 +85,10 @@ void populate_from_mps_data_model(optimization_problem_interface_t<i_t, f_t>* pr
                                          n_nonzeros,
                                          A_offsets.data(),
                                          n_constraints + 1);
+    } else {
+      // Set empty constraint matrix
+      std::vector<i_t> offsets(1, 0);
+      problem->set_csr_constraint_matrix(nullptr, 0, nullptr, 0, offsets.data(), 1);
     }
   }
 

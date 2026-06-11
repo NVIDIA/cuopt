@@ -1,7 +1,7 @@
 ---
 name: cuopt-numerical-optimization-api-python
 version: "26.08.00"
-description: Solve Linear Programming (LP), Mixed-Integer Linear Programming (MILP), and Quadratic Programming (QP, beta) with the Python API. Use when the user asks about optimization with linear or quadratic objectives, linear constraints, integer variables, scheduling, resource allocation, facility location, production planning, portfolio optimization, or least squares.
+description: Solve LP, MILP, QP (beta) with cuOpt Python API — linear/quadratic objectives, integer variables, scheduling, portfolio, least squares.
 license: Apache-2.0
 metadata:
   author: NVIDIA cuOpt Team
@@ -209,7 +209,11 @@ from cuopt.linear_programming.problem import LinearExpression
 
 # Build as list of (vars, coeffs) instead of v1*c1 + v2*c2 + ...
 vars_list = [x, y, z]
-coeffs_list = [1.0, 2.0, 3.0]
+coeffs_list = [
+    1.0,
+    2.0,
+    3.0,
+]
 expr = LinearExpression(vars_list, coeffs_list, constant=0.0)
 problem.addConstraint(expr <= 100)
 ```
@@ -249,13 +253,14 @@ settings.set_parameter("log_to_console", 1)
 | QP rejected with MAXIMIZE | QP only supports MINIMIZE | Negate the objective: minimize `-f(x)` |
 | QP returns non-optimal | Q not PSD or variables badly scaled | Check Q is PSD; rescale variables to similar magnitudes |
 
-## Getting Dual Values (LP only)
+## Getting Dual Values (LP / QP)
+
+Duals and reduced costs are returned for **LP and QP**. They are not returned for a problem with quadratic constraints (every value comes back as `NaN`), so read them only when all constraints are linear. MILP returns no duals.
 
 ```python
 if problem.Status.name == "Optimal":
-    constraint = problem.getConstraint("resource_a")
-    shadow_price = constraint.DualValue
-    print(f"Shadow price: {shadow_price}")
+    constraint = problem.getConstraint("resource_a")   # linear constraint
+    print(f"Dual value: {constraint.DualValue}")       # NaN if the model has quadratic constraints
 ```
 
 ## Reference Models

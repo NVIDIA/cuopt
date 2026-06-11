@@ -78,25 +78,59 @@ enum ResultFieldId {
   RESULT_WS_LAST_RESTART_GAP_DUAL = 11;
 }
 
+// ArrayFieldId names the top-level OptimizationProblem array a chunk
+// targets when ArrayChunk.container_field_num is unset.  The trailing
+// comment on each entry describes the raw byte layout the server
+// expects in ArrayChunk.data: chunks carry native-endian element
+// bytes (memcpy'd directly from the client's std::vector), NOT a
+// protobuf-encoded value.  total_elements counts logical elements
+// (e.g. number of doubles), so data.size() must equal
+// chunk_elements * element_size_bytes.
 enum ArrayFieldId {
-  FIELD_VARIABLE_NAMES = 0;
-  FIELD_ROW_NAMES = 1;
-  FIELD_A_VALUES = 2;
-  FIELD_A_INDICES = 3;
-  FIELD_A_OFFSETS = 4;
-  FIELD_C = 5;
-  FIELD_B = 6;
-  FIELD_VARIABLE_LOWER_BOUNDS = 7;
-  FIELD_VARIABLE_UPPER_BOUNDS = 8;
-  FIELD_CONSTRAINT_LOWER_BOUNDS = 9;
-  FIELD_CONSTRAINT_UPPER_BOUNDS = 10;
-  FIELD_ROW_TYPES = 11;
-  FIELD_VARIABLE_TYPES = 12;
-  FIELD_INITIAL_PRIMAL_SOLUTION = 13;
-  FIELD_INITIAL_DUAL_SOLUTION = 14;
-  FIELD_Q_VALUES = 15;
-  FIELD_Q_INDICES = 16;
-  FIELD_Q_OFFSETS = 17;
+  FIELD_VARIABLE_NAMES = 0;            // NUL-terminated UTF-8 strings concatenated; total_elements = byte length
+  FIELD_ROW_NAMES = 1;                 // NUL-terminated UTF-8 strings concatenated; total_elements = byte length
+  FIELD_A_VALUES = 2;                  // raw IEEE-754 fixed64 (little-endian on supported platforms), 8 B/elem
+  FIELD_A_INDICES = 3;                 // raw int32 (little-endian on supported platforms), 4 B/elem
+  FIELD_A_OFFSETS = 4;                 // raw int32 (little-endian on supported platforms), 4 B/elem
+  FIELD_C = 5;                         // raw IEEE-754 fixed64 (little-endian on supported platforms), 8 B/elem
+  FIELD_B = 6;                         // raw IEEE-754 fixed64 (little-endian on supported platforms), 8 B/elem
+  FIELD_VARIABLE_LOWER_BOUNDS = 7;     // raw IEEE-754 fixed64 (little-endian on supported platforms), 8 B/elem
+  FIELD_VARIABLE_UPPER_BOUNDS = 8;     // raw IEEE-754 fixed64 (little-endian on supported platforms), 8 B/elem
+  FIELD_CONSTRAINT_LOWER_BOUNDS = 9;   // raw IEEE-754 fixed64 (little-endian on supported platforms), 8 B/elem
+  FIELD_CONSTRAINT_UPPER_BOUNDS = 10;  // raw IEEE-754 fixed64 (little-endian on supported platforms), 8 B/elem
+  FIELD_ROW_TYPES = 11;                // raw bytes (1 B/elem)
+  FIELD_VARIABLE_TYPES = 12;           // raw variable_type (4 B/elem)
+  FIELD_INITIAL_PRIMAL_SOLUTION = 13;  // raw IEEE-754 fixed64 (little-endian on supported platforms), 8 B/elem
+  FIELD_INITIAL_DUAL_SOLUTION = 14;    // raw IEEE-754 fixed64 (little-endian on supported platforms), 8 B/elem
+  FIELD_Q_VALUES = 15;                 // raw IEEE-754 fixed64 (little-endian on supported platforms), 8 B/elem
+  FIELD_Q_INDICES = 16;                // raw int32 (little-endian on supported platforms), 4 B/elem
+  FIELD_Q_OFFSETS = 17;                // raw int32 (little-endian on supported platforms), 4 B/elem
+}
+
+message QuadraticConstraint {
+  // ArrayId names the per-entry array a chunk targets when this
+  // QuadraticConstraint is addressed via container chunks (i.e.
+  // ArrayChunk.container_field_num set to this message's parent
+  // field_num and ArrayChunk.container_index = entry index).
+  // Each value's trailing comment gives the raw byte layout
+  // ArrayChunk.data must carry — native-endian element bytes,
+  // not a protobuf-encoded value.
+  enum ArrayId {
+    LINEAR_VALUES = 0;   // raw IEEE-754 fixed64 (little-endian on supported platforms), 8 B/elem
+    LINEAR_INDICES = 1;  // raw int32 (little-endian on supported platforms), 4 B/elem
+    ROWS = 2;            // raw int32 (little-endian on supported platforms), 4 B/elem
+    COLS = 3;            // raw int32 (little-endian on supported platforms), 4 B/elem
+    VALS = 4;            // raw IEEE-754 fixed64 (little-endian on supported platforms), 8 B/elem
+  }
+  int32 constraint_row_index = 1;
+  string constraint_row_name = 2;
+  int32 constraint_row_type = 3;
+  double rhs_value = 4;
+  repeated double linear_values = 5;
+  repeated int32 linear_indices = 6;
+  repeated int32 rows = 7;
+  repeated int32 cols = 8;
+  repeated double vals = 9;
 }
 
 message OptimizationProblem {
@@ -123,6 +157,7 @@ message OptimizationProblem {
   repeated double Q_values = 22;
   repeated int32 Q_indices = 23;
   repeated int32 Q_offsets = 24;
+  repeated QuadraticConstraint quadratic_constraints = 25;
 }
 
 message PDLPSolverSettings {

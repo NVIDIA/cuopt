@@ -35,12 +35,151 @@ HEADER = """\
 // ============================================================================
 """
 
+# ============================================================================
+# Protobuf wire-size estimator constants
+#
+# The estimators below produce a conservative upper bound on the serialized
+# protobuf size — used to size the output byte buffer before encoding.
+# Accuracy is not the goal; over-allocating slightly is preferred to under-
+# allocating (which would force a reallocation mid-encode).  Per-value
+# approximations:
+#
+#   int32 varint     : up to 5 bytes (worst-case 32-bit varint encoding;
+#                      VarintSize32 is 1..5)
+#   enum varint      : up to 4 bytes (proto3 enums encode as varints; small
+#                      enum values are 1..2 bytes in practice, 4 is a safe
+#                      pad)
+#   fixed64 double   : 8 bytes (sizeof(double); cuopt fixes doubles as
+#                      protobuf `double`, which is fixed64 on the wire)
+#   string framing   : tag byte + 1-byte length prefix ≈ 2 bytes (added to
+#                      s.size() per string)
+#   per-entry frame  : ~32 bytes for the per-element wrapper of a
+#                      repeated nested message (tag + length prefix + slop)
+#   message envelope : 256 or 512 bytes of slop for the outer message
+#                      (header, settings sub-messages, scalar fields, etc.)
+#
+# Tags themselves are 1–5 bytes per field; the estimator treats them as
+# subsumed by the framing/padding above rather than tracking them per-field.
+# ============================================================================
+
+PROTO_SIZE = {
+    "int32_varint": 5,
+    "enum_varint": 4,
+    "string_framing": 2,
+    "per_entry_framing": 32,
+    "outer_envelope": 512,
+}
+
+# Header block prepended to each generated size-estimator body so the
+# magic numbers visible inline make sense to a reader.
+SIZE_ESTIMATOR_BODY_DOC = """\
+// Protobuf wire-size estimate (conservative upper bound).  Each literal
+// below corresponds to a protobuf wire-format encoding:
+//   * 5             : int32 field, varint (max 5B per value, strict bound)
+//   * 4             : enum field, varint (4B per value, generous for the
+//                     short enum values cuopt uses; small enums fit in
+//                     1-2B in practice)
+//   * sizeof(double): double field, fixed64 (8B per value, exact)
+//   * s.size() + 2  : string field, length-delimited (string body plus 2B
+//                     of tag+length framing; long strings absorbed by the
+//                     envelope slop below)
+//   * 32            : per-entry framing for an element of a repeated
+//                     nested message (tag + length prefix; 32B slop
+//                     budget per entry)
+//   * 512           : outer message envelope slop (header + settings +
+//                     scalar fields)
+// See generate_conversions.py: PROTO_SIZE for definitions.
+"""
+
 
 def write_file(path, content):
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w") as f:
         f.write(content)
     print(f"  wrote {path}")
+
+
+# Heuristic: anything containing one of these characters is treated as an
+# already-complete C++ expression and passed through.  Anything else is a
+# bare identifier that needs a `()` suffix to become a call.
+_EXPR_MARKER_CHARS = "().[]"
+
+
+def _normalize_call_expr(v):
+    """Normalize an expression-shaped callable (``getter:``,
+    ``presence_check:``, or any future "expression returning a value"
+    attribute) to a complete C++ expression.  Accepts both forms: a bare
+    method name (``get_X``) gets ``()`` appended; an already-complete
+    expression (``get_X()``, ``get_error_status().what()``, ...) passes
+    through unchanged.
+
+    Distinct from :func:`_normalize_setter_name`, which strips ``()``
+    because setter args are template-driven by the generator rather than
+    written into the YAML.
+
+    ``None`` passes through so callers can keep using
+    ``f.get("getter", default)``.
+    """
+    if v is None or not isinstance(v, str):
+        return v
+    if "->" in v:
+        return v
+    if any(c in v for c in _EXPR_MARKER_CHARS):
+        return v
+    return f"{v}()"
+
+
+def _normalize_setter_name(v):
+    """Normalize a `setter:` value to a bare method name.  Strips a trailing
+    `()` if the YAML author wrote it that way; otherwise leaves the value
+    alone.  The generator owns the argument list (single value, multiple
+    arrays, ``std::move(_entries)``, etc.), so the setter on the wire must
+    be a name template, not a call expression.
+
+    `None` passes through so callers can keep using ``f.get("setter")``.
+    """
+    if v is None or not isinstance(v, str):
+        return v
+    if v.endswith("()"):
+        return v[:-2]
+    return v
+
+
+def _normalize_callables_in_dict(d):
+    """Mutate `d` in place to normalize any `getter`/`presence_check`/
+    `setter` keys it carries.  Safe to call on any dict that may or may not
+    contain those keys; used at section-level entry points where the keys
+    appear by convention rather than via `parse_field`.
+    """
+    if not isinstance(d, dict):
+        return
+    for key in ("getter", "presence_check"):
+        if key in d:
+            d[key] = _normalize_call_expr(d[key])
+    if "setter" in d:
+        d["setter"] = _normalize_setter_name(d["setter"])
+
+
+def _normalize_registry_callables(registry):
+    """Walk the loaded registry once and normalize every section-level
+    ``getter`` / ``presence_check`` / ``setter`` key, so authors can write
+    either ``get_X`` or ``get_X()`` and either ``set_X`` or ``set_X()``
+    without breaking codegen.  Per-field callables are normalized by
+    :func:`parse_field`; this pass handles the section-level keys
+    (warm-start, setter_groups, and the ``repeated_messages`` body — though
+    the latter is also normalized lazily in :func:`_iter_repeated_messages`
+    in case callers reach it directly).
+    """
+    for section in registry.values():
+        if not isinstance(section, dict):
+            continue
+        _normalize_callables_in_dict(section.get("warm_start"))
+        for gdef in (section.get("setter_groups") or {}).values():
+            _normalize_callables_in_dict(gdef)
+        for entry in section.get("repeated_messages") or []:
+            if isinstance(entry, dict) and len(entry) == 1:
+                body = next(iter(entry.values()))
+                _normalize_callables_in_dict(body)
 
 
 def parse_field(entry):
@@ -60,6 +199,7 @@ def parse_field(entry):
         if isinstance(val, dict):
             result = {"name": name}
             result.update(val)
+            _normalize_callables_in_dict(result)
             return result
         if val is None:
             return {"name": name}
@@ -167,6 +307,33 @@ def _default_element_size(f):
     return 8
 
 
+def _array_wire_type_comment(f):
+    """Short human-readable description of an array field's chunked wire form.
+
+    External clients reassembling chunks need to know the element width and
+    byte layout — the chunk's `data` is raw native-endian bytes, *not* a
+    protobuf-encoded value.  This helper produces a consistent trailing
+    comment used in the generated proto enums (e.g. ArrayFieldId, nested
+    repeated_messages ArrayId enums).
+    """
+    ftype = f.get("type", "repeated double")
+    size = _default_element_size(f)
+    if "double" in ftype:
+        return f"raw IEEE-754 fixed64 (little-endian on supported platforms), {size} B/elem"
+    if "int32" in ftype:
+        return (
+            f"raw int32 (little-endian on supported platforms), {size} B/elem"
+        )
+    if ftype == "bytes":
+        return "raw bytes (1 B/elem)"
+    if ftype == "repeated string":
+        return "NUL-terminated UTF-8 strings concatenated; total_elements = byte length"
+    if ftype.startswith("repeated "):
+        elem = ftype.split()[-1]
+        return f"raw {elem} ({size} B/elem)"
+    return f"raw bytes ({size} B/elem)"
+
+
 # ============================================================================
 # Enum helpers — convention-based derivation
 # ============================================================================
@@ -252,8 +419,15 @@ def _proto_cpp_name(name):
 # ============================================================================
 
 
-def _problem_getter_root(f):
-    """Get the getter root for a problem field (setter_getter_root or name)."""
+def _getter_root(f):
+    """Get the getter/setter root for a field (setter_getter_root or name).
+
+    Shared by problem and solution arrays so both follow the same
+    `setter_getter_root` semantics: the YAML field name is the wire-side
+    identity, the root is the C++-side identity, and they're allowed to
+    diverge when the C++ accessor doesn't match the wire field name (e.g.
+    `mip_solution` field on the wire ↔ `get_solution_host()` in C++).
+    """
     return f.get("setter_getter_root", f["name"])
 
 
@@ -261,7 +435,7 @@ def _default_problem_getter(f, is_scalar):
     """Default getter for an optimization_problem field."""
     if "getter" in f:
         return f["getter"]
-    root = _problem_getter_root(f)
+    root = _getter_root(f)
     if is_scalar:
         return f"get_{root}()"
     ftype = f.get("type", "repeated double")
@@ -274,8 +448,26 @@ def _default_problem_setter(f):
     """Default setter name for an optimization_problem field."""
     if "setter" in f:
         return f["setter"]
-    root = _problem_getter_root(f)
+    root = _getter_root(f)
     return f"set_{root}"
+
+
+def _default_solution_array_getter(f):
+    """Default getter for a solution array field.
+
+    Mirrors `_default_problem_getter` so the `repeated string` exception
+    (no `_host` suffix) and the `setter_getter_root` override apply
+    uniformly to problem and solution arrays. String arrays return a
+    `std::vector<std::string>` directly; the `_host()` mirror only exists
+    for numeric host buffers.
+    """
+    if "getter" in f:
+        return f["getter"]
+    root = _getter_root(f)
+    ftype = f.get("type", "repeated double")
+    if ftype == "repeated string":
+        return f"get_{root}()"
+    return f"get_{root}_host()"
 
 
 def _find_problem_field(obj, name):
@@ -349,6 +541,173 @@ def _problem_field_proto_type(registry, ftype):
     return ftype
 
 
+# ============================================================================
+# repeated_messages helpers
+#
+# A `repeated_messages` entry on a parent section describes a
+# `repeated <MessageType> <name> = <num>;` field together with the per-entry
+# scalar and array fields. Arrays inside each entry are chunked via the
+# (container_field_num, container_index, field_id) protocol on ArrayChunk;
+# `array_id` is *container-relative* (small dense int starting from 0 within
+# each container, independent of the top-level ArrayFieldId namespace).
+#
+# These helpers are scope-agnostic — every caller that hosts a
+# `repeated_messages:` block passes its own `obj`.  Today only
+# optimization_problem uses them (e.g. for QuadraticConstraint); the
+# mechanism would apply unchanged to a solution or settings section if one
+# ever grew a nested repeated message.
+# ============================================================================
+
+
+def _iter_repeated_messages(obj):
+    """Yield (name, body) for every repeated_messages entry under `obj`.
+
+    Raises if the shape is malformed so misconfigurations surface at codegen
+    time rather than as broken generated code."""
+    for entry in obj.get("repeated_messages", []) or []:
+        if not isinstance(entry, dict) or len(entry) != 1:
+            raise ValueError(
+                f"repeated_messages: expected single-key dict, got {entry!r}"
+            )
+        name = next(iter(entry))
+        body = entry[name]
+        if not isinstance(body, dict):
+            raise ValueError(
+                f"repeated_messages.{name}: body must be a mapping, got {body!r}"
+            )
+        for required in ("field_num", "message_type"):
+            if required not in body:
+                raise ValueError(
+                    f"repeated_messages.{name}: missing required key {required!r}"
+                )
+        _normalize_callables_in_dict(body)
+        yield name, body
+
+
+def _repeated_message_scalars(body):
+    """Yield parsed scalar field dicts for a repeated_messages entry."""
+    for entry in body.get("scalars", []) or []:
+        yield parse_field(entry)
+
+
+def _repeated_message_arrays(body):
+    """Yield parsed array field dicts for a repeated_messages entry."""
+    for entry in body.get("arrays", []) or []:
+        yield parse_field(entry)
+
+
+def _repeated_message_companion_pairs(name, body):
+    """Return validated (a_field, b_field) tuples whose .size() must match
+    on decode. Raises at codegen time if the registry names a field that does
+    not appear in arrays for this entry, so misconfigurations don't silently
+    skip the validation."""
+    pairs = body.get("companion_pairs") or []
+    if not pairs:
+        return []
+    array_fields = {f["name"]: f for f in _repeated_message_arrays(body)}
+    out = []
+    for raw in pairs:
+        if not isinstance(raw, list) or len(raw) != 2:
+            raise ValueError(
+                f"repeated_messages.{name}.companion_pairs: expected list of "
+                f"[a, b] pairs, got {raw!r}"
+            )
+        a_name, b_name = raw
+        a = array_fields.get(a_name)
+        b = array_fields.get(b_name)
+        if a is None or b is None:
+            raise ValueError(
+                f"repeated_messages.{name}.companion_pairs: pair "
+                f"[{a_name}, {b_name}] references field(s) not in arrays"
+            )
+        out.append((a, b))
+    return out
+
+
+def generate_repeated_messages_proto(registry, obj):
+    """Emit `message <MessageType> { ... }` blocks for every repeated_messages
+    entry on `obj`. Returns the assembled text (empty string if none).
+
+    Each block carries:
+      * a nested `enum ArrayId { ... }` listing the container-relative
+        array_id values used in `ArrayChunk.field_id` when this entry is
+        targeted via container chunks (each enum value carries a trailing
+        comment giving the chunk's raw byte layout, so external clients can
+        produce correctly-sized native-endian buffers without consulting the
+        C++ source),
+      * its scalar fields,
+      * its array fields,
+    with proto tags drawn from the per-entry `field_num` attribute (local to
+    the nested message; independent of the parent's tag pool).
+
+    The nested ArrayId enum is the public, stable name for container-relative
+    chunk routing — clients should reference (e.g.)
+    `QuadraticConstraint.LINEAR_VALUES` rather than the bare integer 0 when
+    populating ArrayChunk.field_id under
+    `container_field_num = OptimizationProblem.quadratic_constraints field
+    number`.  Internally the C++ codegen still uses the raw `array_id`
+    integers from field_registry.yaml; the proto enum is for clients."""
+    blocks = []
+    for _name, body in _iter_repeated_messages(obj):
+        msg_type = body["message_type"]
+        lines = [f"message {msg_type} {{"]
+        # Nested ArrayId enum: container-relative array routing ids,
+        # each annotated with the chunk's raw byte layout.
+        array_fields = [
+            f
+            for f in _repeated_message_arrays(body)
+            if f.get("array_id") is not None
+        ]
+        if array_fields:
+            lines.append(
+                "  // ArrayId names the per-entry array a chunk targets when this"
+            )
+            lines.append(
+                f"  // {msg_type} is addressed via container chunks (i.e."
+            )
+            lines.append(
+                "  // ArrayChunk.container_field_num set to this message's parent"
+            )
+            lines.append(
+                "  // field_num and ArrayChunk.container_index = entry index)."
+            )
+            lines.append(
+                "  // Each value's trailing comment gives the raw byte layout"
+            )
+            lines.append(
+                "  // ArrayChunk.data must carry — native-endian element bytes,"
+            )
+            lines.append("  // not a protobuf-encoded value.")
+            lines.append("  enum ArrayId {")
+            sorted_fields = sorted(array_fields, key=lambda f: f["array_id"])
+            inner_rows = [
+                (f, f"    {f['name'].upper()} = {f['array_id']};")
+                for f in sorted_fields
+            ]
+            inner_max = max((len(line) for _, line in inner_rows), default=0)
+            for f, line in inner_rows:
+                comment = _array_wire_type_comment(f)
+                pad = " " * max(1, (inner_max + 2) - len(line))
+                lines.append(f"{line}{pad}// {comment}")
+            lines.append("  }")
+        for f in _repeated_message_scalars(body):
+            num = f.get("field_num")
+            if num is None:
+                continue
+            ptype = _settings_field_proto_type(registry, f)
+            lines.append(f"  {ptype} {f['name']} = {num};")
+        for f in _repeated_message_arrays(body):
+            num = f.get("field_num")
+            if num is None:
+                continue
+            ftype = f.get("type", "repeated double")
+            ptype = _problem_field_proto_type(registry, ftype)
+            lines.append(f"  {ptype} {f['name']} = {num};")
+        lines.append("}")
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks)
+
+
 def _settings_field_proto_type(registry, f):
     """Map settings field type to proto type."""
     ftype = f.get("type", "double")
@@ -365,6 +724,285 @@ def _solution_scalar_proto_type(registry, f):
     if edef:
         return _enum_proto_type(ftype, edef)
     return ftype
+
+
+# ============================================================================
+# Scalar emission helpers — shared across settings, problem, and solution
+#
+# These helpers centralize how a scalar field is serialized to proto and
+# deserialized back, including the proto3-presence (`optional:`) and
+# value-mapping (`sentinel:`) wrappers.  All three top-level sections
+# (settings, optimization_problem, lp/mip_solution) go through them so the
+# `optional` / `sentinel` semantics are uniform.
+# ============================================================================
+
+
+def _scalar_to_proto_value_expr(cpp_source, f, registry):
+    """Build the to-proto value expression for a scalar (no sentinel wrapping).
+
+    Honors `type:` (enum lookup) and the resolved `to_proto_cast`.  Caller
+    wraps the expression in a setter call.
+    """
+    ftype = f.get("type", "double")
+    edef = _lookup_enum(registry, ftype)
+    if edef:
+        to_fn = _enum_to_proto_fn(ftype, edef)
+        return f"{to_fn}({cpp_source})"
+    to_proto_cast = _resolved_to_proto_cast(f)
+    if to_proto_cast:
+        return f"static_cast<{to_proto_cast}>({cpp_source})"
+    return cpp_source
+
+
+def _scalar_from_proto_value_expr(proto_source, f, registry, auto_cast=False):
+    """Build the from-proto value expression for a scalar (no guard wrapping).
+
+    Honors `type:` (enum lookup) and `from_proto_cast:`.  When `auto_cast`
+    is true, falls back to `_from_proto_cast(ftype)` for non-enum non-cast
+    fields — this is how solution scalars pick up `static_cast<f_t>` /
+    `static_cast<i_t>` automatically.  Settings and problem scalars set
+    `auto_cast=False` since their C++ targets accept the proto types
+    directly.
+    """
+    ftype = f.get("type", "double")
+    from_proto_cast = f.get("from_proto_cast")
+    edef = _lookup_enum(registry, ftype)
+    if edef:
+        from_fn = _enum_from_proto_fn(ftype, edef)
+        return f"{from_fn}({proto_source})"
+    if from_proto_cast:
+        return f"static_cast<{from_proto_cast}>({proto_source})"
+    if auto_cast:
+        cast = _from_proto_cast(ftype)
+        if cast:
+            return f"static_cast<{cast}>({proto_source})"
+    return proto_source
+
+
+# Sentinel shorthand conventions.  The verbose form of `sentinel:` (a dict
+# with `to_proto`, `proto_value`, `from_proto_guard`, `from_proto_cast`) is
+# always supported; these named conventions are sugar for the common case.
+# Each convention provides the wire-side knobs (`proto_value`,
+# `from_proto_guard`) and a function to derive the C++-side knobs
+# (`to_proto`, `from_proto_cast`) from the field's `type` so int/float
+# fields don't need to re-specify them.
+_INT_TYPES = ("int32", "int64")
+_FLOAT_TYPES = ("double",)
+
+
+def _sentinel_cpp_type_for(field_type, field_name, convention_name):
+    """Pick the C++ type (i_t / f_t) for sentinel expansion based on
+    the field's `type`.  Errors out for types where sentinel doesn't apply
+    (bool, string, enums)."""
+    if field_type in _INT_TYPES:
+        return "i_t"
+    if field_type in _FLOAT_TYPES:
+        return "f_t"
+    raise ValueError(
+        f"Sentinel convention {convention_name!r} on field "
+        f"{field_name!r} requires an integer or floating-point type; "
+        f"got type={field_type!r}.  Use the verbose `sentinel: {{...}}` "
+        f"form for non-numeric sentinels."
+    )
+
+
+SENTINEL_CONVENTIONS = {
+    # "no limit" sentinel: C++ `max()` round-trips through wire `-1`.
+    # Wire side is shared; C++ side is type-derived (i_t for ints,
+    # f_t for floats).  Used today by pdlp.iteration_limit and
+    # mip.node_limit; safe to use on any numeric scalar whose C++
+    # default is `std::numeric_limits<T>::max()`.
+    "max_as_negative_1": {
+        "proto_value": -1,
+        "from_proto_guard": ">= 0",
+    },
+}
+
+
+def _resolve_sentinel(f):
+    """Return the fully-expanded sentinel dict for a field, or None.
+
+    Accepts both the verbose dict form (returned as-is) and the named
+    shorthand form (a string keying into `SENTINEL_CONVENTIONS`, expanded
+    using the field's `type` to pick `i_t` vs `f_t`).
+    """
+    s = f.get("sentinel")
+    if s is None:
+        return None
+    if isinstance(s, dict):
+        return s
+    if isinstance(s, str):
+        if s not in SENTINEL_CONVENTIONS:
+            raise ValueError(
+                f"Unknown sentinel convention {s!r} on field "
+                f"{f.get('name')!r}; expected one of: "
+                f"{sorted(SENTINEL_CONVENTIONS)}, or the verbose "
+                f"`sentinel: {{to_proto: ..., proto_value: ..., "
+                f"from_proto_guard: ..., from_proto_cast: ...}}` form."
+            )
+        ftype = f.get("type", "double")
+        cpp_type = _sentinel_cpp_type_for(ftype, f.get("name"), s)
+        return {
+            **SENTINEL_CONVENTIONS[s],
+            "to_proto": f"std::numeric_limits<{cpp_type}>::max()",
+            "from_proto_cast": cpp_type,
+        }
+    raise ValueError(
+        f"Invalid sentinel value {s!r} on field {f.get('name')!r}: "
+        f"expected a convention name (string) or a verbose dict."
+    )
+
+
+# Wire type -> C++ cast target used when auto-deriving `to_proto_cast`.
+# The keys are the YAML `type:` values for scalar wire types; the values
+# are the C++ types the proto setters accept.
+_WIRE_TO_CAST_TARGET = {
+    "int32": "int32_t",
+    "int64": "int64_t",
+    "double": "double",
+    "bool": "bool",
+}
+
+
+def _resolved_to_proto_cast(f, sentinel=None):
+    """Resolve the to-proto cast target for a scalar field.
+
+    Resolution order:
+      1. Explicit `to_proto_cast:` on the field — used as-is.
+      2. Field-level `from_proto_cast:` is set — derive the cast target
+         from the wire `type:`.  The presence of `from_proto_cast` signals
+         that the C++ side diverges from the wire, so the to-proto direction
+         needs the symmetric cast back to the wire's C++ type.
+      3. Sentinel + int64 wire type — preserved widening case for int64
+         sentinel fields where the C++ source (e.g. `i_t = int32_t`) is
+         narrower than the wire setter signature.
+      4. Otherwise — no cast.
+
+    Returns the cast target string (e.g. ``"int32_t"``) or None.
+    """
+    if "to_proto_cast" in f:
+        return f["to_proto_cast"]
+    if "from_proto_cast" in f:
+        return _WIRE_TO_CAST_TARGET.get(f.get("type", "double"))
+    if sentinel is not None and f.get("type") == "int64":
+        return "int64_t"
+    return None
+
+
+def emit_scalar_to_proto(setter_call_lhs, cpp_source, f, registry, indent):
+    """Emit lines that write a scalar from C++ to proto.
+
+    `setter_call_lhs` is the call prefix (e.g. ``"pb_settings->set_iteration_limit"``);
+    the helper appends ``(value);``.  When `sentinel:` is set the emission is
+    wrapped in an if/else that maps the C++ sentinel value to its proto
+    counterpart.
+    """
+    sentinel = _resolve_sentinel(f)
+
+    if sentinel:
+        sv, pv = sentinel["to_proto"], sentinel["proto_value"]
+        to_cast = _resolved_to_proto_cast(f, sentinel=sentinel)
+        value_expr = (
+            f"static_cast<{to_cast}>({cpp_source})" if to_cast else cpp_source
+        )
+        return [
+            f"{indent}if ({cpp_source} == {sv}) {{",
+            f"{indent}  {setter_call_lhs}({pv});",
+            f"{indent}}} else {{",
+            f"{indent}  {setter_call_lhs}({value_expr});",
+            f"{indent}}}",
+        ]
+    value_expr = _scalar_to_proto_value_expr(cpp_source, f, registry)
+    return [f"{indent}{setter_call_lhs}({value_expr});"]
+
+
+def emit_scalar_from_proto_assign(
+    assign_template, proto_accessor, f, registry, indent, has_check=None
+):
+    """Emit lines that read a scalar from proto into a mutable target
+    (settings struct member or problem setter call).
+
+    `assign_template(value_expr)` returns the full assignment statement,
+    e.g. ``lambda v: f"settings.X = {v};"`` or
+    ``lambda v: f"cpu_problem.set_X({v});"``.
+
+    `has_check` is the C++ presence expression
+    (e.g. ``"pb_settings.has_X()"``) used to gate the assignment when
+    `optional:` is set; pass ``None`` if the surrounding proto doesn't
+    support presence tracking (e.g. hand-written messages that don't
+    declare ``optional``).
+
+    Skip-on-absent (`optional`) and skip-on-sentinel-value (`sentinel`)
+    both serve to preserve the target's in-class default.
+    """
+    sentinel = _resolve_sentinel(f)
+    is_optional = bool(f.get("optional")) and has_check is not None
+
+    body_lines = []
+    if sentinel:
+        guard = sentinel["from_proto_guard"]
+        from_cast = sentinel.get("from_proto_cast", f.get("from_proto_cast"))
+        if from_cast:
+            value_expr = f"static_cast<{from_cast}>({proto_accessor})"
+        else:
+            value_expr = proto_accessor
+        body_lines.append(f"if ({proto_accessor} {guard}) {{")
+        body_lines.append(f"  {assign_template(value_expr)}")
+        body_lines.append("}")
+    else:
+        value_expr = _scalar_from_proto_value_expr(
+            proto_accessor, f, registry, auto_cast=False
+        )
+        body_lines.append(assign_template(value_expr))
+
+    out = []
+    if is_optional:
+        out.append(f"{indent}if ({has_check}) {{")
+        for bl in body_lines:
+            out.append(f"{indent}  {bl}")
+        out.append(f"{indent}}}")
+    else:
+        for bl in body_lines:
+            out.append(f"{indent}{bl}")
+    return out
+
+
+def emit_scalar_from_proto_local(
+    local_name, proto_accessor, f, registry, indent
+):
+    """Emit lines that read a scalar from proto into a freshly declared local.
+
+    Used by the solution path, which is constructor-built and must always
+    produce a value (no skip-to-preserve semantic).  For sentinel fields,
+    the local takes the C++ sentinel value when the wire matches the
+    sentinel, round-tripping the value through the wire.
+
+    `optional` is meaningless here because the constructor still needs an
+    argument; we silently ignore it for solutions.  Future-proofing a
+    solution scalar with `optional:` purely affects the proto declaration
+    (presence-tracking on the wire) — the C++ side reads the proto3 zero
+    if absent, exactly as before.
+    """
+    sentinel = _resolve_sentinel(f)
+    if sentinel:
+        guard = sentinel["from_proto_guard"]
+        cpp_sentinel = sentinel["to_proto"]
+        from_cast = sentinel.get("from_proto_cast", f.get("from_proto_cast"))
+        if from_cast:
+            real_expr = f"static_cast<{from_cast}>({proto_accessor})"
+        else:
+            real_expr = _scalar_from_proto_value_expr(
+                proto_accessor, f, registry, auto_cast=True
+            )
+        return [
+            f"{indent}auto {local_name} = ({proto_accessor} {guard})",
+            f"{indent}    ? {real_expr}",
+            f"{indent}    : {cpp_sentinel};",
+        ]
+    value_expr = _scalar_from_proto_value_expr(
+        proto_accessor, f, registry, auto_cast=True
+    )
+    return [f"{indent}auto {local_name} = {value_expr};"]
 
 
 # ============================================================================
@@ -508,39 +1146,88 @@ def generate_proto_result_enums(registry):
 
 
 def generate_array_field_id_enum(registry):
-    """Generate ArrayFieldId enum for the proto file."""
+    """Generate ArrayFieldId enum for the proto file.
+
+    Each entry carries a trailing comment giving the on-the-wire element
+    layout for the chunk's `data` payload, so external clients can produce
+    correctly-sized native-endian byte buffers without consulting the C++
+    source.
+    """
     obj = registry.get("optimization_problem", {})
-    entries = []
+    rows = []
     for entry in obj.get("arrays", []):
         f = parse_field(entry)
-        afid = _field_array_id_name(f)
         afnum = f.get("array_id")
-        if afnum is not None:
-            entries.append((afnum, f"  {afid} = {afnum};"))
-    entries.sort(key=lambda x: x[0])
-    return "\n".join(e[1] for e in entries)
+        if afnum is None:
+            continue
+        afid = _field_array_id_name(f)
+        rows.append(
+            (afnum, f"  {afid} = {afnum};", _array_wire_type_comment(f))
+        )
+    rows.sort(key=lambda x: x[0])
+    # Align trailing comments on the longest `<indent><NAME> = <NUM>;` prefix.
+    max_prefix = max((len(line) for _, line, _ in rows), default=0)
+    entries = []
+    for afnum, line, comment in rows:
+        pad = " " * max(1, (max_prefix + 2) - len(line))
+        entries.append(f"{line}{pad}// {comment}")
+    return "\n".join(entries)
 
 
 def generate_array_field_element_size_inc(registry):
-    """Generate body of array_field_element_size() switch function.
+    """Generate body of array_field_element_size(container_field_num, field_id).
 
-    Emits every known ArrayFieldId case explicitly and returns -1 after the
-    switch for unrecognized values, rather than a default case. A default
-    case would silently coerce an unknown field id to some size and mask
-    enum-vs-code drift; the -1 sentinel lets callers detect the mismatch."""
+    For top-level chunks (container_field_num < 0) the switch dispatches on
+    ArrayFieldId values.  For container chunks (container_field_num >= 0) the
+    outer switch dispatches on the container's parent field_num, then an
+    inner switch dispatches on the container-relative array_id.
+
+    Every known case is emitted explicitly and the function returns -1 after
+    the switch for unrecognized values, rather than a default case.  A
+    default case would silently coerce unknown ids to some size and mask
+    registry-vs-code drift; the -1 sentinel lets callers detect the mismatch
+    and reject the chunk."""
     obj = registry.get("optimization_problem", {})
+    lines = ["  if (container_field_num < 0) {"]
+    lines.append("    switch (field_id) {")
     cases_by_size = {}
     for entry in obj.get("arrays", []):
         f = parse_field(entry)
         afid = _field_array_id_name(f)
         size = _default_element_size(f)
         cases_by_size.setdefault(size, []).append(afid)
-    lines = ["  switch (field_id) {"]
     for size in sorted(cases_by_size.keys()):
         for afid in cases_by_size[size]:
-            lines.append(f"    case cuopt::remote::{afid}:")
-        lines.append(f"      return {size};")
+            lines.append(f"      case cuopt::remote::{afid}:")
+        lines.append(f"        return {size};")
+    lines.append("    }")
+    lines.append("    return -1;")
     lines.append("  }")
+
+    rm_entries = list(_iter_repeated_messages(obj))
+    if rm_entries:
+        lines.append("  switch (container_field_num) {")
+        for name, body in rm_entries:
+            cfn = body["field_num"]
+            msg_type = body["message_type"]
+            lines.append(f"    case {cfn}: {{  // {msg_type} ({name})")
+            lines.append("      switch (field_id) {")
+            inner_by_size = {}
+            for f in _repeated_message_arrays(body):
+                aid = f.get("array_id")
+                if aid is None:
+                    continue
+                size = _default_element_size(f)
+                inner_by_size.setdefault(size, []).append((aid, f["name"]))
+            for size in sorted(inner_by_size.keys()):
+                for aid, fname in sorted(inner_by_size[size]):
+                    lines.append(
+                        f"        case {aid}: return {size};  // {fname}"
+                    )
+            lines.append("      }")
+            lines.append("      return -1;")
+            lines.append("    }")
+        lines.append("  }")
     lines.append("  return -1;")
     return "\n".join(lines)
 
@@ -584,95 +1271,47 @@ def generate_settings_message_proto(registry, message_name, obj):
 
 
 def generate_settings_to_proto_body(registry, obj_name, obj, indent="  "):
+    # Two presence mechanisms (handled by `emit_scalar_to_proto`):
+    #   * `sentinel` -> if/else wrapping so a C++ sentinel value (e.g.
+    #     std::numeric_limits<i_t>::max()) is emitted as a reserved proto
+    #     value (e.g. -1).
+    # (`optional` only affects the from-proto direction and the proto
+    # declaration; the to-proto setter always writes a value.)
     lines, ind = [], indent
     for f in parse_settings_fields(obj.get("fields", [])):
-        name, ftype = f["name"], f.get("type", "double")
-        pname = _proto_cpp_name(name)
         cpp_member = f.get("member", f["name"])
-        sentinel = f.get("sentinel")
-        to_proto_cast = f.get("to_proto_cast")
-
-        edef = _lookup_enum(registry, ftype)
-        to_fn = _enum_to_proto_fn(ftype, edef) if edef else None
-
-        if sentinel:
-            sv, pv = sentinel["to_proto"], sentinel["proto_value"]
-            lines.append(f"{ind}if (settings.{cpp_member} == {sv}) {{")
-            lines.append(f"{ind}  pb_settings->set_{pname}({pv});")
-            lines.append(f"{ind}}} else {{")
-            cast = to_proto_cast or ("int64_t" if ftype == "int64" else None)
-            expr = (
-                f"static_cast<{cast}>(settings.{cpp_member})"
-                if cast
-                else f"settings.{cpp_member}"
+        setter_lhs = f"pb_settings->set_{_proto_cpp_name(f['name'])}"
+        lines.extend(
+            emit_scalar_to_proto(
+                setter_lhs, f"settings.{cpp_member}", f, registry, ind
             )
-            lines.append(f"{ind}  pb_settings->set_{pname}({expr});")
-            lines.append(f"{ind}}}")
-        elif to_fn:
-            lines.append(
-                f"{ind}pb_settings->set_{pname}({to_fn}(settings.{cpp_member}));"
-            )
-        elif to_proto_cast:
-            lines.append(
-                f"{ind}pb_settings->set_{pname}(static_cast<{to_proto_cast}>(settings.{cpp_member}));"
-            )
-        else:
-            lines.append(
-                f"{ind}pb_settings->set_{pname}(settings.{cpp_member});"
-            )
+        )
     return "\n".join(lines)
 
 
 def generate_proto_to_settings_body(registry, obj_name, obj, indent="  "):
+    # Two presence mechanisms (handled by `emit_scalar_from_proto_assign`):
+    #   * `optional` -> wrap the body in `if (pb.has_X())` so an omitted
+    #     wire field preserves the C++ struct's in-class default.
+    #   * `sentinel` -> wrap the body (or its remaining inner content) in
+    #     `if (pb.X() <guard>)` so a reserved value on the wire is treated
+    #     as "use default" (e.g. -1 for iteration_limit).
+    # When both are set, the optional guard runs first, then the sentinel
+    # value-guard runs inside it.
     lines, ind = [], indent
     for f in parse_settings_fields(obj.get("fields", [])):
-        name, ftype = f["name"], f.get("type", "double")
-        pname = _proto_cpp_name(name)
+        pname = _proto_cpp_name(f["name"])
         cpp_member = f.get("member", f["name"])
-        from_proto_cast = f.get("from_proto_cast")
-        sentinel = f.get("sentinel")
-        is_optional = bool(f.get("optional"))
-
-        edef = _lookup_enum(registry, ftype)
-        from_fn = _enum_from_proto_fn(ftype, edef) if edef else None
-
-        # Two presence mechanisms can each appear independently or together:
-        #   * `optional` -> wrap the body in `if (pb.has_X())` so an omitted
-        #     wire field preserves the C++ struct's in-class default.
-        #   * `sentinel` -> wrap the body (or its remaining inner content) in
-        #     `if (pb.X() <guard>)` so a reserved value on the wire is treated
-        #     as "use default" (e.g. -1 for iteration_limit).
-        # When both are set, the optional guard runs first, then the sentinel
-        # value-guard runs inside it.
-        body_lines = []
-        if sentinel:
-            guard = sentinel["from_proto_guard"]
-            cast = sentinel.get("from_proto_cast", from_proto_cast)
-            expr = (
-                f"static_cast<{cast}>(pb_settings.{pname}())"
-                if cast
-                else f"pb_settings.{pname}()"
+        lines.extend(
+            emit_scalar_from_proto_assign(
+                lambda v, m=cpp_member: f"settings.{m} = {v};",
+                f"pb_settings.{pname}()",
+                f,
+                registry,
+                ind,
+                has_check=f"pb_settings.has_{pname}()",
             )
-            body_lines.append(f"if (pb_settings.{pname}() {guard}) {{")
-            body_lines.append(f"  settings.{cpp_member} = {expr};")
-            body_lines.append("}")
-        else:
-            if from_fn:
-                rhs = f"{from_fn}(pb_settings.{pname}())"
-            elif from_proto_cast:
-                rhs = f"static_cast<{from_proto_cast}>(pb_settings.{pname}())"
-            else:
-                rhs = f"pb_settings.{pname}()"
-            body_lines.append(f"settings.{cpp_member} = {rhs};")
-
-        if is_optional:
-            lines.append(f"{ind}if (pb_settings.has_{pname}()) {{")
-            for bl in body_lines:
-                lines.append(f"{ind}  {bl}")
-            lines.append(f"{ind}}}")
-        else:
-            for bl in body_lines:
-                lines.append(f"{ind}{bl}")
+        )
     return "\n".join(lines)
 
 
@@ -717,7 +1356,8 @@ def generate_lp_solution_message_proto(registry):
         num = f.get("field_num")
         if num is not None:
             ptype = _solution_scalar_proto_type(registry, f)
-            lines.append((num, f"  {ptype} {f['name']} = {num};"))
+            prefix = "optional " if f.get("optional") else ""
+            lines.append((num, f"  {prefix}{ptype} {f['name']} = {num};"))
     lines.sort(key=lambda x: x[0])
     return "\n".join(item[1] for item in lines)
 
@@ -735,7 +1375,8 @@ def generate_mip_solution_message_proto(registry):
         num = f.get("field_num")
         if num is not None:
             ptype = _solution_scalar_proto_type(registry, f)
-            lines.append((num, f"  {ptype} {f['name']} = {num};"))
+            prefix = "optional " if f.get("optional") else ""
+            lines.append((num, f"  {prefix}{ptype} {f['name']} = {num};"))
     lines.sort(key=lambda x: x[0])
     return "\n".join(item[1] for item in lines)
 
@@ -752,7 +1393,8 @@ def generate_optimization_problem_proto(registry):
             ptype = _problem_field_proto_type(
                 registry, f.get("type", "double")
             )
-            lines.append((num, f"  {ptype} {f['name']} = {num};"))
+            prefix = "optional " if f.get("optional") else ""
+            lines.append((num, f"  {prefix}{ptype} {f['name']} = {num};"))
     for entry in obj.get("arrays", []):
         f = parse_field(entry)
         num = f.get("field_num")
@@ -761,6 +1403,10 @@ def generate_optimization_problem_proto(registry):
                 registry, f.get("type", "repeated double")
             )
             lines.append((num, f"  {ptype} {f['name']} = {num};"))
+    for name, body in _iter_repeated_messages(obj):
+        num = body["field_num"]
+        msg_type = body["message_type"]
+        lines.append((num, f"  repeated {msg_type} {name} = {num};"))
     lines.sort(key=lambda x: x[0])
     return "\n".join(item[1] for item in lines)
 
@@ -777,7 +1423,8 @@ def generate_chunked_result_header_proto(registry):
             num = f.get("field_num")
             if num is not None:
                 ptype = _solution_scalar_proto_type(registry, f)
-                lines.append((num, f"  {ptype} {f['name']} = {num};"))
+                prefix = "optional " if f.get("optional") else ""
+                lines.append((num, f"  {prefix}{ptype} {f['name']} = {num};"))
         ws = obj.get("warm_start", {})
         ws_ch_prefix = ws.get("chunked_header_prefix", "")
         for entry in ws.get("scalars", []):
@@ -809,7 +1456,11 @@ def generate_data_proto(registry):
         + "\n}"
     )
     opt_prob = ""
+    nested_msgs = ""
     if "optimization_problem" in registry:
+        nested_msgs = generate_repeated_messages_proto(
+            registry, registry["optimization_problem"]
+        )
         opt_prob = (
             "message OptimizationProblem {\n"
             + generate_optimization_problem_proto(registry)
@@ -860,7 +1511,17 @@ def generate_data_proto(registry):
     if "optimization_problem" in registry:
         afid_body = generate_array_field_id_enum(registry)
         if afid_body:
-            afid = "enum ArrayFieldId {\n" + afid_body + "\n}\n"
+            afid_doc = (
+                "// ArrayFieldId names the top-level OptimizationProblem array a chunk\n"
+                "// targets when ArrayChunk.container_field_num is unset.  The trailing\n"
+                "// comment on each entry describes the raw byte layout the server\n"
+                "// expects in ArrayChunk.data: chunks carry native-endian element\n"
+                "// bytes (memcpy'd directly from the client's std::vector), NOT a\n"
+                "// protobuf-encoded value.  total_elements counts logical elements\n"
+                "// (e.g. number of doubles), so data.size() must equal\n"
+                "// chunk_elements * element_size_bytes.\n"
+            )
+            afid = afid_doc + "enum ArrayFieldId {\n" + afid_body + "\n}\n"
     parts = [
         "// AUTO-GENERATED by src/grpc/codegen/generate_conversions.py from field_registry.yaml",
         "// DO NOT EDIT — regenerate with: python cpp/src/grpc/codegen/generate_conversions.py",
@@ -874,6 +1535,11 @@ def generate_data_proto(registry):
         rfid,
         "",
         afid,
+    ]
+    if nested_msgs:
+        parts.append(nested_msgs)
+        parts.append("")
+    parts += [
         opt_prob,
         pdlp_s,
         "",
@@ -908,26 +1574,22 @@ def _gen_solution_to_proto(registry, obj_name, obj, indent="  "):
         name = f["name"]
         pname = _proto_cpp_name(name)
         getter = f.get("getter", f"get_{name}()")
-        to_cast = f.get("to_proto_cast")
-        edef = _lookup_enum(registry, f.get("type", "double"))
-        if edef:
-            to_fn = _enum_to_proto_fn(f["type"], edef)
-            lines.append(
-                f"{ind}pb_solution->set_{pname}({to_fn}(solution.{getter}));"
+        lines.extend(
+            emit_scalar_to_proto(
+                f"pb_solution->set_{pname}",
+                f"solution.{getter}",
+                f,
+                registry,
+                ind,
             )
-        elif to_cast:
-            lines.append(
-                f"{ind}pb_solution->set_{pname}(static_cast<{to_cast}>(solution.{getter}));"
-            )
-        else:
-            lines.append(f"{ind}pb_solution->set_{pname}(solution.{getter});")
+        )
 
     lines.append("")
 
     for entry in obj.get("arrays", []):
         f = parse_field(entry)
         pname = _proto_cpp_name(f["name"])
-        getter = f.get("getter", f"get_{f['name']}_host()")
+        getter = _default_solution_array_getter(f)
         var = f"_{f['name']}"
         lines.append(f"{ind}const auto& {var} = solution.{getter};")
         lines.append(
@@ -994,26 +1656,11 @@ def _gen_proto_to_solution(registry, obj_name, obj, indent="  "):
         pname = _proto_cpp_name(name)
         if f.get("proto_only"):
             continue
-        ftype = f.get("type", "double")
-        from_cast = f.get("from_proto_cast")
-        edef = _lookup_enum(registry, ftype)
-        if edef:
-            from_fn = _enum_from_proto_fn(ftype, edef)
-            lines.append(
-                f"{ind}auto _{name} = {from_fn}(pb_solution.{pname}());"
+        lines.extend(
+            emit_scalar_from_proto_local(
+                f"_{name}", f"pb_solution.{pname}()", f, registry, ind
             )
-        elif from_cast:
-            lines.append(
-                f"{ind}auto _{name} = static_cast<{from_cast}>(pb_solution.{pname}());"
-            )
-        else:
-            cast = _from_proto_cast(ftype)
-            if cast:
-                lines.append(
-                    f"{ind}auto _{name} = static_cast<{cast}>(pb_solution.{pname}());"
-                )
-            else:
-                lines.append(f"{ind}auto _{name} = pb_solution.{pname}();")
+        )
         scalar_vars[name] = f"_{name}"
 
     array_names = [parse_field(e)["name"] for e in obj.get("arrays", [])]
@@ -1021,7 +1668,6 @@ def _gen_proto_to_solution(registry, obj_name, obj, indent="  "):
     args = [f"std::move({n})" for n in array_names]
     args += [scalar_vars.get(s, f"_{s}") for s in arg_scalars]
 
-    # Warm start
     if ws:
         accessor_getter = "warm_start_data"
         lines.append("")
@@ -1075,25 +1721,21 @@ def _gen_chunked_header(registry, obj_name, obj, indent="  "):
         name = f["name"]
         pname = _proto_cpp_name(name)
         getter = f.get("getter", f"get_{name}()")
-        to_cast = f.get("to_proto_cast")
-        edef = _lookup_enum(registry, f.get("type", "double"))
-        if edef:
-            to_fn = _enum_to_proto_fn(f["type"], edef)
-            lines.append(
-                f"{ind}header->set_{pname}({to_fn}(solution.{getter}));"
+        lines.extend(
+            emit_scalar_to_proto(
+                f"header->set_{pname}",
+                f"solution.{getter}",
+                f,
+                registry,
+                ind,
             )
-        elif to_cast:
-            lines.append(
-                f"{ind}header->set_{pname}(static_cast<{to_cast}>(solution.{getter}));"
-            )
-        else:
-            lines.append(f"{ind}header->set_{pname}(solution.{getter});")
+        )
 
     lines.append("")
 
     for entry in obj.get("arrays", []):
         f = parse_field(entry)
-        getter = f.get("getter", f"get_{f['name']}_host()")
+        getter = _default_solution_array_getter(f)
         eid = _field_result_id_name(f)
         lines.append(
             f"{ind}add_result_array_descriptor(header, cuopt::remote::{eid}, solution.{getter}.size(), sizeof(double));"
@@ -1143,7 +1785,7 @@ def _gen_collect_arrays(registry, obj_name, obj, indent="  "):
 
     for entry in obj.get("arrays", []):
         f = parse_field(entry)
-        getter = f.get("getter", f"get_{f['name']}_host()")
+        getter = _default_solution_array_getter(f)
         eid = _field_result_id_name(f)
         var = f"_{f['name']}"
         lines.append(f"{ind}const auto& {var} = solution.{getter};")
@@ -1194,24 +1836,11 @@ def _gen_chunked_to_solution(registry, obj_name, obj, indent="  "):
         pname = _proto_cpp_name(name)
         if f.get("proto_only"):
             continue
-        ftype = f.get("type", "double")
-        from_cast = f.get("from_proto_cast")
-        edef = _lookup_enum(registry, ftype)
-        if edef:
-            from_fn = _enum_from_proto_fn(ftype, edef)
-            lines.append(f"{ind}auto _{name} = {from_fn}(h.{pname}());")
-        elif from_cast:
-            lines.append(
-                f"{ind}auto _{name} = static_cast<{from_cast}>(h.{pname}());"
+        lines.extend(
+            emit_scalar_from_proto_local(
+                f"_{name}", f"h.{pname}()", f, registry, ind
             )
-        else:
-            cast = _from_proto_cast(ftype)
-            if cast:
-                lines.append(
-                    f"{ind}auto _{name} = static_cast<{cast}>(h.{pname}());"
-                )
-            else:
-                lines.append(f"{ind}auto _{name} = h.{pname}();")
+        )
         scalar_vars[name] = f"_{name}"
 
     array_names = [parse_field(e)["name"] for e in obj.get("arrays", [])]
@@ -1272,37 +1901,6 @@ def _gen_chunked_to_solution(registry, obj_name, obj, indent="  "):
     return "\n".join(lines)
 
 
-def _gen_estimate_size(registry, obj_name, obj, indent="  "):
-    """Generate body of estimate_{lp,mip}_solution_proto_size()."""
-    ind = indent
-    lines = [f"{ind}size_t est = 0;"]
-
-    for entry in obj.get("arrays", []):
-        f = parse_field(entry)
-        getter = f.get("getter", f"get_{f['name']}_host()")
-        size_getter = getter.replace("_host()", "_size()")
-        lines.append(
-            f"{ind}est += static_cast<size_t>(solution.{size_getter}) * sizeof(double);"
-        )
-
-    ws = obj.get("warm_start")
-    if ws:
-        check = ws.get("presence_check", "has_warm_start_data()")
-        ws_getter = ws.get("getter", "get_cpu_pdlp_warm_start_data()")
-        lines.append(f"{ind}if (solution.{check}) {{")
-        lines.append(f"{ind}  const auto& ws = solution.{ws_getter};")
-        for entry in ws.get("arrays", []):
-            f = parse_field(entry)
-            member = f.get("member", f["name"])
-            lines.append(f"{ind}  est += ws.{member}.size() * sizeof(double);")
-        lines.append(f"{ind}}}")
-
-    overhead = 512 if ws else 256
-    lines.append(f"{ind}est += {overhead};")
-    lines.append(f"{ind}return est;")
-    return "\n".join(lines)
-
-
 # ============================================================================
 # Problem conversion code generation
 # ============================================================================
@@ -1319,26 +1917,19 @@ def _gen_problem_to_proto(registry, indent="  "):
         for fname in gdef.get("fields", []):
             grouped_fields.add(fname)
 
-    # Scalars
     for entry in obj.get("scalars", []):
         f = parse_field(entry)
         pname = _proto_cpp_name(f["name"])
         getter = _default_problem_getter(f, is_scalar=True)
-        ftype = f.get("type", "double")
-        edef = _lookup_enum(registry, ftype)
-        if edef:
-            to_fn = _enum_to_proto_fn(ftype, edef)
-            lines.append(
-                f"{ind}pb_problem->set_{pname}({to_fn}(cpu_problem.{getter}));"
+        setter_lhs = f"pb_problem->set_{pname}"
+        lines.extend(
+            emit_scalar_to_proto(
+                setter_lhs, f"cpu_problem.{getter}", f, registry, ind
             )
-        else:
-            lines.append(
-                f"{ind}pb_problem->set_{pname}(cpu_problem.{getter});"
-            )
+        )
 
     lines.append("")
 
-    # Non-grouped arrays
     for entry in obj.get("arrays", []):
         f = parse_field(entry)
         name = f["name"]
@@ -1400,6 +1991,44 @@ def _gen_problem_to_proto(registry, indent="  "):
             )
             lines.append(f"{ind}}}")
 
+    # repeated_messages — emit per-entry encode loop (unary path: scalars and
+    # arrays both go inline into the nested proto message).
+    for name, body in _iter_repeated_messages(obj):
+        presence = body.get("presence_check")
+        getter = body.get("getter")
+        if not presence or not getter:
+            raise ValueError(
+                f"repeated_messages.{name}: requires both 'presence_check' "
+                f"and 'getter' for unary encode"
+            )
+        lines.append("")
+        lines.append(f"{ind}if (cpu_problem.{presence}) {{")
+        lines.append(
+            f"{ind}  for (const auto& _entry : cpu_problem.{getter}) {{"
+        )
+        lines.append(f"{ind}    auto* pb_entry = pb_problem->add_{name}();")
+        for f in _repeated_message_scalars(body):
+            sp = _proto_cpp_name(f["name"])
+            member = f.get("member", f["name"])
+            to_cast = _resolved_to_proto_cast(f)
+            if to_cast:
+                lines.append(
+                    f"{ind}    pb_entry->set_{sp}(static_cast<{to_cast}>(_entry.{member}));"
+                )
+            else:
+                lines.append(f"{ind}    pb_entry->set_{sp}(_entry.{member});")
+        for f in _repeated_message_arrays(body):
+            ap = _proto_cpp_name(f["name"])
+            member = f.get("member", f["name"])
+            ftype = f.get("type", "repeated double")
+            cast = _array_element_cast(ftype) or "double"
+            lines.append(
+                f"{ind}    for (const auto& v : _entry.{member}) "
+                f"pb_entry->add_{ap}(static_cast<{cast}>(v));"
+            )
+        lines.append(f"{ind}  }}")
+        lines.append(f"{ind}}}")
+
     return "\n".join(lines)
 
 
@@ -1413,21 +2042,20 @@ def _gen_proto_to_problem(registry, indent="  "):
     for gdef in setter_groups.values():
         for fname in gdef.get("fields", []):
             grouped_fields.add(fname)
-    # Scalars
     for entry in obj.get("scalars", []):
         f = parse_field(entry)
-        name = f["name"]
-        pname = _proto_cpp_name(name)
+        pname = _proto_cpp_name(f["name"])
         setter = _default_problem_setter(f)
-        ftype = f.get("type", "double")
-        edef = _lookup_enum(registry, ftype)
-        if edef:
-            from_fn = _enum_from_proto_fn(ftype, edef)
-            lines.append(
-                f"{ind}cpu_problem.{setter}({from_fn}(pb_problem.{pname}()));"
+        lines.extend(
+            emit_scalar_from_proto_assign(
+                lambda v, s=setter: f"cpu_problem.{s}({v});",
+                f"pb_problem.{pname}()",
+                f,
+                registry,
+                ind,
+                has_check=f"pb_problem.has_{pname}()",
             )
-        else:
-            lines.append(f"{ind}cpu_problem.{setter}(pb_problem.{pname}());")
+        )
 
     lines.append("")
 
@@ -1537,14 +2165,83 @@ def _gen_proto_to_problem(registry, indent="  "):
             )
             lines.append(f"{ind}}}")
 
+    # repeated_messages — emit per-entry decode loop (unary path: scalars and
+    # arrays are both read inline from the nested proto message).
+    for name, body in _iter_repeated_messages(obj):
+        setter = body.get("setter")
+        cpp_inner = body.get("cpp_inner_type")
+        if not setter or not cpp_inner:
+            raise ValueError(
+                f"repeated_messages.{name}: requires both 'setter' and "
+                f"'cpp_inner_type' for unary decode"
+            )
+        lines.append("")
+        lines.append(f"{ind}if (pb_problem.{name}_size() > 0) {{")
+        lines.append(f"{ind}  std::vector<{cpp_inner}> _entries;")
+        lines.append(f"{ind}  _entries.reserve(pb_problem.{name}_size());")
+        lines.append(
+            f"{ind}  for (const auto& pb_entry : pb_problem.{name}()) {{"
+        )
+        lines.append(f"{ind}    {cpp_inner} _entry;")
+        for f in _repeated_message_scalars(body):
+            sp = _proto_cpp_name(f["name"])
+            member = f.get("member", f["name"])
+            from_cast = f.get("from_proto_cast")
+            ftype = f.get("type", "double")
+            if from_cast:
+                lines.append(
+                    f"{ind}    _entry.{member} = static_cast<{from_cast}>(pb_entry.{sp}());"
+                )
+            elif _from_proto_cast(ftype):
+                lines.append(
+                    f"{ind}    _entry.{member} = static_cast<{_from_proto_cast(ftype)}>(pb_entry.{sp}());"
+                )
+            else:
+                lines.append(f"{ind}    _entry.{member} = pb_entry.{sp}();")
+        for f in _repeated_message_arrays(body):
+            ap = _proto_cpp_name(f["name"])
+            member = f.get("member", f["name"])
+            lines.append(
+                f"{ind}    _entry.{member}.assign(pb_entry.{ap}().begin(), pb_entry.{ap}().end());"
+            )
+        for a, b in _repeated_message_companion_pairs(name, body):
+            a_mem = a.get("member", a["name"])
+            b_mem = b.get("member", b["name"])
+            lines.append(
+                f"{ind}    if (_entry.{a_mem}.size() != _entry.{b_mem}.size()) {{"
+            )
+            lines.append(
+                f'{ind}      throw std::invalid_argument("{setter}: {a["name"]}/'
+                f'{b["name"]} size mismatch");'
+            )
+            lines.append(f"{ind}    }}")
+        lines.append(f"{ind}    _entries.push_back(std::move(_entry));")
+        lines.append(f"{ind}  }}")
+        lines.append(f"{ind}  cpu_problem.{setter}(std::move(_entries));")
+        lines.append(f"{ind}}}")
+
     return "\n".join(lines)
 
 
 def _gen_estimate_problem_size(registry, indent="  "):
-    """Generate body of estimate_problem_proto_size()."""
+    """Generate body of estimate_problem_proto_size().
+
+    Each emitted line is annotated with an inline comment explaining what
+    the literal represents in protobuf wire format.  See PROTO_SIZE and
+    SIZE_ESTIMATOR_BODY_DOC for the size model.
+    """
     obj = registry.get("optimization_problem", {})
     ind = indent
-    lines = [f"{ind}size_t est = 0;"]
+    vi = PROTO_SIZE["int32_varint"]
+    ev = PROTO_SIZE["enum_varint"]
+    sf = PROTO_SIZE["string_framing"]
+    pf = PROTO_SIZE["per_entry_framing"]
+    env = PROTO_SIZE["outer_envelope"]
+
+    lines = []
+    for doc_line in SIZE_ESTIMATOR_BODY_DOC.rstrip("\n").splitlines():
+        lines.append(f"{ind}{doc_line}")
+    lines.append(f"{ind}size_t est = 0;")
 
     for entry in obj.get("arrays", []):
         f = parse_field(entry)
@@ -1554,22 +2251,91 @@ def _gen_estimate_problem_size(registry, indent="  "):
         getter = _default_problem_getter(f, is_scalar=False)
         if ftype == "repeated string":
             lines.append(
-                f"{ind}for (const auto& s : cpu_problem.{getter}) est += s.size() + 2;"
+                f"{ind}for (const auto& s : cpu_problem.{getter}) "
+                f"est += s.size() + {sf};"
+                f"  // string field, length-delimited (body + {sf}B framing)"
             )
         elif ftype == "bytes":
-            lines.append(f"{ind}est += cpu_problem.{getter}.size();")
+            lines.append(
+                f"{ind}est += cpu_problem.{getter}.size();"
+                f"  // bytes field, length-delimited (payload only; framing in envelope)"
+            )
         elif "int32" in ftype:
-            lines.append(f"{ind}est += cpu_problem.{getter}.size() * 5;")
+            lines.append(
+                f"{ind}est += cpu_problem.{getter}.size() * {vi};"
+                f"  // int32 field, varint (max {vi}B per value)"
+            )
         elif ftype.startswith("repeated ") and _is_repeated_enum(
             registry, ftype
         ):
-            lines.append(f"{ind}est += cpu_problem.{getter}.size() * 4;")
+            lines.append(
+                f"{ind}est += cpu_problem.{getter}.size() * {ev};"
+                f"  // enum field, varint ({ev}B per value, generous for short enums)"
+            )
         else:
             lines.append(
                 f"{ind}est += cpu_problem.{getter}.size() * sizeof(double);"
+                f"  // double field, fixed64 (8B per value)"
             )
 
-    lines.append(f"{ind}est += 512;")
+    # repeated_messages — accumulate per-entry scalar + array contributions.
+    # Per-entry overhead is the nested message wrapper; inner scalars/arrays
+    # contribute their own wire sizes inside the loop.
+    for name, body in _iter_repeated_messages(obj):
+        presence = body.get("presence_check")
+        getter = body.get("getter")
+        if not presence or not getter:
+            continue
+        lines.append(f"{ind}if (cpu_problem.{presence}) {{")
+        lines.append(
+            f"{ind}  for (const auto& _entry : cpu_problem.{getter}) {{"
+        )
+        lines.append(
+            f"{ind}    est += {pf};"
+            f"  // per-entry framing: {pf}B slop budget"
+            f" for nested message header"
+        )
+        for f in _repeated_message_scalars(body):
+            member = f.get("member", f["name"])
+            ftype = f.get("type", "double")
+            if ftype == "string":
+                lines.append(
+                    f"{ind}    est += _entry.{member}.size() + {sf};"
+                    f"  // {member}: string field, length-delimited"
+                    f" (body + {sf}B framing)"
+                )
+            elif "int" in ftype:
+                lines.append(
+                    f"{ind}    est += {vi};"
+                    f"  // {member}: int32 field, varint"
+                    f" (max {vi}B per value)"
+                )
+            else:
+                lines.append(
+                    f"{ind}    est += sizeof(double);"
+                    f"  // {member}: double field, fixed64 (8B per value)"
+                )
+        for f in _repeated_message_arrays(body):
+            member = f.get("member", f["name"])
+            ftype = f.get("type", "repeated double")
+            if "int32" in ftype:
+                lines.append(
+                    f"{ind}    est += _entry.{member}.size() * {vi};"
+                    f"  // int32 field, varint (max {vi}B per value)"
+                )
+            else:
+                lines.append(
+                    f"{ind}    est += _entry.{member}.size() * sizeof(double);"
+                    f"  // double field, fixed64 (8B per value)"
+                )
+        lines.append(f"{ind}  }}")
+        lines.append(f"{ind}}}")
+
+    lines.append(
+        f"{ind}est += {env};"
+        f"  // outer message envelope: {env}B slop budget"
+        f" for header + settings + scalar fields"
+    )
     lines.append(f"{ind}return est;")
     return "\n".join(lines)
 
@@ -1593,15 +2359,15 @@ def _gen_populate_chunked_header(registry, solver_type, indent="  "):
         f = parse_field(entry)
         pname = _proto_cpp_name(f["name"])
         getter = _default_problem_getter(f, is_scalar=True)
-        ftype = f.get("type", "double")
-        edef = _lookup_enum(registry, ftype)
-        if edef:
-            to_fn = _enum_to_proto_fn(ftype, edef)
-            lines.append(
-                f"{ind}header->set_{pname}({to_fn}(cpu_problem.{getter}));"
+        lines.extend(
+            emit_scalar_to_proto(
+                f"header->set_{pname}",
+                f"cpu_problem.{getter}",
+                f,
+                registry,
+                ind,
             )
-        else:
-            lines.append(f"{ind}header->set_{pname}(cpu_problem.{getter});")
+        )
 
     lines.append("")
 
@@ -1615,6 +2381,32 @@ def _gen_populate_chunked_header(registry, solver_type, indent="  "):
         )
         lines.append(f"{ind}header->set_enable_incumbents(enable_incumbents);")
 
+    # repeated_messages — populate per-entry scalars in the header.  Arrays
+    # for each entry travel separately via container-keyed ArrayChunks.
+    for name, body in _iter_repeated_messages(obj):
+        presence = body.get("presence_check")
+        getter = body.get("getter")
+        if not presence or not getter:
+            continue
+        lines.append("")
+        lines.append(f"{ind}if (cpu_problem.{presence}) {{")
+        lines.append(
+            f"{ind}  for (const auto& _entry : cpu_problem.{getter}) {{"
+        )
+        lines.append(f"{ind}    auto* pb_entry = header->add_{name}();")
+        for f in _repeated_message_scalars(body):
+            sp = _proto_cpp_name(f["name"])
+            member = f.get("member", f["name"])
+            to_cast = _resolved_to_proto_cast(f)
+            if to_cast:
+                lines.append(
+                    f"{ind}    pb_entry->set_{sp}(static_cast<{to_cast}>(_entry.{member}));"
+                )
+            else:
+                lines.append(f"{ind}    pb_entry->set_{sp}(_entry.{member});")
+        lines.append(f"{ind}  }}")
+        lines.append(f"{ind}}}")
+
     return "\n".join(lines)
 
 
@@ -1624,20 +2416,24 @@ def _gen_chunked_header_to_problem(registry, indent="  "):
     ind = indent
     lines = []
 
+    # `ChunkedProblemHeader` is hand-written (see cuopt_remote_service.proto);
+    # it does not declare `optional` for any field, so we pass has_check=None
+    # to suppress the has_X() guard.  `sentinel:` still applies — the wire
+    # mapping must stay consistent with the unary path.
     for entry in obj.get("scalars", []):
         f = parse_field(entry)
-        name = f["name"]
-        pname = _proto_cpp_name(name)
+        pname = _proto_cpp_name(f["name"])
         setter = _default_problem_setter(f)
-        ftype = f.get("type", "double")
-        edef = _lookup_enum(registry, ftype)
-        if edef:
-            from_fn = _enum_from_proto_fn(ftype, edef)
-            lines.append(
-                f"{ind}cpu_problem.{setter}({from_fn}(header.{pname}()));"
+        lines.extend(
+            emit_scalar_from_proto_assign(
+                lambda v, s=setter: f"cpu_problem.{s}({v});",
+                f"header.{pname}()",
+                f,
+                registry,
+                ind,
+                has_check=None,
             )
-        else:
-            lines.append(f"{ind}cpu_problem.{setter}(header.{pname}());")
+        )
 
     lines.append("")
 
@@ -1874,6 +2670,152 @@ def _gen_chunked_arrays_to_problem(registry, indent="  "):
             lines.append(f"{ind}}}")
         lines.append("")
 
+    # repeated_messages — reconstruct each entry from scalars (carried in
+    # `header`) + arrays (carried in `container_arrays`, keyed by
+    # (container_field_num, container_index, container-relative field_id)).
+    rm_entries = list(_iter_repeated_messages(obj))
+    if rm_entries:
+        lines.append("")
+        lines.append(
+            f"{ind}auto container_get_doubles = [&](int32_t _cfn, "
+            f"int32_t _ci, int32_t _fid) -> std::vector<f_t> {{"
+        )
+        lines.append(
+            f"{ind}  auto it = container_arrays.find(container_array_key_t{{_cfn, _ci, _fid}});"
+        )
+        lines.append(
+            f"{ind}  if (it == container_arrays.end() || it->second.empty()) return {{}};"
+        )
+        lines.append(f"{ind}  if (it->second.size() % sizeof(double) != 0) {{")
+        lines.append(
+            f'{ind}    throw std::invalid_argument("container_get_doubles: payload size " '
+            f'+ std::to_string(it->second.size()) + " is not a multiple of sizeof(double)");'
+        )
+        lines.append(f"{ind}  }}")
+        lines.append(f"{ind}  size_t n = it->second.size() / sizeof(double);")
+        lines.append(f"{ind}  if constexpr (std::is_same_v<f_t, double>) {{")
+        lines.append(f"{ind}    std::vector<double> v(n);")
+        lines.append(
+            f"{ind}    std::memcpy(v.data(), it->second.data(), n * sizeof(double));"
+        )
+        lines.append(f"{ind}    return v;")
+        lines.append(f"{ind}  }} else {{")
+        lines.append(f"{ind}    std::vector<double> tmp(n);")
+        lines.append(
+            f"{ind}    std::memcpy(tmp.data(), it->second.data(), n * sizeof(double));"
+        )
+        lines.append(
+            f"{ind}    return std::vector<f_t>(tmp.begin(), tmp.end());"
+        )
+        lines.append(f"{ind}  }}")
+        lines.append(f"{ind}}};")
+        lines.append("")
+        lines.append(
+            f"{ind}auto container_get_ints = [&](int32_t _cfn, "
+            f"int32_t _ci, int32_t _fid) -> std::vector<i_t> {{"
+        )
+        lines.append(
+            f"{ind}  auto it = container_arrays.find(container_array_key_t{{_cfn, _ci, _fid}});"
+        )
+        lines.append(
+            f"{ind}  if (it == container_arrays.end() || it->second.empty()) return {{}};"
+        )
+        lines.append(
+            f"{ind}  if (it->second.size() % sizeof(int32_t) != 0) {{"
+        )
+        lines.append(
+            f'{ind}    throw std::invalid_argument("container_get_ints: payload size " '
+            f'+ std::to_string(it->second.size()) + " is not a multiple of sizeof(int32_t)");'
+        )
+        lines.append(f"{ind}  }}")
+        lines.append(f"{ind}  size_t n = it->second.size() / sizeof(int32_t);")
+        lines.append(f"{ind}  if constexpr (std::is_same_v<i_t, int32_t>) {{")
+        lines.append(f"{ind}    std::vector<int32_t> v(n);")
+        lines.append(
+            f"{ind}    std::memcpy(v.data(), it->second.data(), n * sizeof(int32_t));"
+        )
+        lines.append(f"{ind}    return v;")
+        lines.append(f"{ind}  }} else {{")
+        lines.append(f"{ind}    std::vector<int32_t> tmp(n);")
+        lines.append(
+            f"{ind}    std::memcpy(tmp.data(), it->second.data(), n * sizeof(int32_t));"
+        )
+        lines.append(
+            f"{ind}    return std::vector<i_t>(tmp.begin(), tmp.end());"
+        )
+        lines.append(f"{ind}  }}")
+        lines.append(f"{ind}}};")
+
+        for name, body in rm_entries:
+            setter = body.get("setter")
+            cpp_inner = body.get("cpp_inner_type")
+            cfn = body["field_num"]
+            if not setter or not cpp_inner:
+                raise ValueError(
+                    f"repeated_messages.{name}: requires both 'setter' and "
+                    f"'cpp_inner_type' for chunked decode"
+                )
+            lines.append("")
+            lines.append(f"{ind}if (header.{name}_size() > 0) {{")
+            lines.append(f"{ind}  std::vector<{cpp_inner}> _entries;")
+            lines.append(f"{ind}  _entries.reserve(header.{name}_size());")
+            lines.append(
+                f"{ind}  for (int32_t _ci = 0; _ci < header.{name}_size(); ++_ci) {{"
+            )
+            lines.append(
+                f"{ind}    const auto& pb_entry = header.{name}(_ci);"
+            )
+            lines.append(f"{ind}    {cpp_inner} _entry;")
+            for f in _repeated_message_scalars(body):
+                sp = _proto_cpp_name(f["name"])
+                member = f.get("member", f["name"])
+                from_cast = f.get("from_proto_cast")
+                ftype = f.get("type", "double")
+                if from_cast:
+                    lines.append(
+                        f"{ind}    _entry.{member} = static_cast<{from_cast}>(pb_entry.{sp}());"
+                    )
+                elif _from_proto_cast(ftype):
+                    lines.append(
+                        f"{ind}    _entry.{member} = static_cast<{_from_proto_cast(ftype)}>(pb_entry.{sp}());"
+                    )
+                else:
+                    lines.append(
+                        f"{ind}    _entry.{member} = pb_entry.{sp}();"
+                    )
+            for f in _repeated_message_arrays(body):
+                member = f.get("member", f["name"])
+                array_id = f.get("array_id")
+                if array_id is None:
+                    raise ValueError(
+                        f"repeated_messages.{name}.arrays.{f['name']}: "
+                        "missing required 'array_id' (container-relative routing id)"
+                    )
+                ftype = f.get("type", "repeated double")
+                fn = (
+                    "container_get_ints"
+                    if "int32" in ftype
+                    else "container_get_doubles"
+                )
+                lines.append(
+                    f"{ind}    _entry.{member} = {fn}({cfn}, _ci, {array_id});"
+                )
+            for a, b in _repeated_message_companion_pairs(name, body):
+                a_mem = a.get("member", a["name"])
+                b_mem = b.get("member", b["name"])
+                lines.append(
+                    f"{ind}    if (_entry.{a_mem}.size() != _entry.{b_mem}.size()) {{"
+                )
+                lines.append(
+                    f'{ind}      throw std::invalid_argument("{setter}: {a["name"]}/'
+                    f'{b["name"]} size mismatch");'
+                )
+                lines.append(f"{ind}    }}")
+            lines.append(f"{ind}    _entries.push_back(std::move(_entry));")
+            lines.append(f"{ind}  }}")
+            lines.append(f"{ind}  cpu_problem.{setter}(std::move(_entries));")
+            lines.append(f"{ind}}}")
+
     return "\n".join(lines).rstrip()
 
 
@@ -1982,6 +2924,38 @@ def _gen_build_array_chunk_requests(registry, indent="  "):
                 f"{ind}  chunk_typed_array(requests, cuopt::remote::{afid}, _{f['name']}, upload_id, chunk_size_bytes);"
             )
             lines.append(f"{ind}}}")
+
+    # repeated_messages — for each entry, emit one chunk-batch per array
+    # field, tagged with the container's (field_num, index) so the worker
+    # can route chunks back to the right entry.
+    for name, body in _iter_repeated_messages(obj):
+        presence = body.get("presence_check")
+        getter = body.get("getter")
+        if not presence or not getter:
+            continue
+        cfn = body["field_num"]
+        lines.append("")
+        lines.append(f"{ind}if (problem.{presence}) {{")
+        lines.append(f"{ind}  const auto& _entries = problem.{getter};")
+        lines.append(
+            f"{ind}  for (size_t _idx = 0; _idx < _entries.size(); ++_idx) {{"
+        )
+        lines.append(f"{ind}    const auto& _entry = _entries[_idx];")
+        lines.append(f"{ind}    int32_t _ci = static_cast<int32_t>(_idx);")
+        for f in _repeated_message_arrays(body):
+            member = f.get("member", f["name"])
+            array_id = f.get("array_id")
+            if array_id is None:
+                raise ValueError(
+                    f"repeated_messages.{name}.arrays.{f['name']}: "
+                    "missing required 'array_id' (container-relative routing id)"
+                )
+            lines.append(
+                f"{ind}    chunk_container_typed_array(requests, {cfn}, _ci, "
+                f"{array_id}, _entry.{member}, upload_id, chunk_size_bytes);"
+            )
+        lines.append(f"{ind}  }}")
+        lines.append(f"{ind}}}")
 
     lines.append("")
     lines.append(f"{ind}return requests;")
@@ -2109,7 +3083,34 @@ def _validate_registry_uniqueness(registry):
         for fk in field_keys:
             pairs.extend(_iter_named_field_nums(section.get(fk, [])))
         pairs.extend(_iter_named_embed_field_nums(section))
+        # repeated_messages parent-field tags share OptimizationProblem's pool.
+        for name, body in _iter_repeated_messages(section):
+            if "field_num" in body:
+                pairs.append((body["field_num"], f"repeated_messages:{name}"))
         _check_unique(msg, pairs, errors)
+
+    # Per-container namespaces inside repeated_messages: each container has
+    # its own proto field_num pool (the nested message) and its own
+    # container-relative array_id pool. Validate both per entry.
+    problem = registry.get("optimization_problem") or {}
+    for name, body in _iter_repeated_messages(problem):
+        msg_label = body.get("message_type", name)
+        inner_pairs = []
+        for f in _repeated_message_scalars(body):
+            if "field_num" in f:
+                inner_pairs.append((f["field_num"], f"scalars.{f['name']}"))
+        for f in _repeated_message_arrays(body):
+            if "field_num" in f:
+                inner_pairs.append((f["field_num"], f"arrays.{f['name']}"))
+        _check_unique(msg_label, inner_pairs, errors)
+
+        aid_pairs = []
+        for f in _repeated_message_arrays(body):
+            if "array_id" in f:
+                aid_pairs.append(
+                    (f["array_id"], f"arrays.{f['name']}.array_id")
+                )
+        _check_unique(f"{msg_label}::array_id", aid_pairs, errors)
 
     # Settings messages use the nested `fields:` layout.
     for msg, key in [
@@ -2393,6 +3394,22 @@ def auto_assign_field_numbers(data):
                     entries = sub.get(list_key)
                     if entries:
                         _normalize_bare_strings(entries)
+        # repeated_messages: normalize the parent list itself plus each
+        # entry's inner scalars/arrays so bare-string entries (e.g. just
+        # a field name with no body) participate in autonumbering.
+        rm_entries = section.get("repeated_messages")
+        if rm_entries:
+            _normalize_bare_strings(rm_entries)
+            for rm_entry in rm_entries:
+                if not isinstance(rm_entry, dict) or len(rm_entry) != 1:
+                    continue
+                body = next(iter(rm_entry.values()))
+                if not isinstance(body, dict):
+                    continue
+                for list_key in ["scalars", "arrays"]:
+                    inner = body.get(list_key)
+                    if inner:
+                        _normalize_bare_strings(inner)
 
     total = 0
 
@@ -2401,13 +3418,20 @@ def auto_assign_field_numbers(data):
         if not section:
             continue
 
-        # field_num — single contiguous pool across scalars and arrays
+        # field_num — single contiguous pool across scalars, arrays, and
+        # repeated_messages parent tags.  All three live in the
+        # OptimizationProblem proto's field-number namespace, so the
+        # autonumberer must seed itself with whichever tags are already
+        # pinned across all three lists before handing out new ones.
         scalars = section.get("scalars", [])
         arrays = section.get("arrays", [])
+        rm_entries = section.get("repeated_messages") or []
         lo, hi = FIELD_NUM_RANGES[f"{section_key}.field_num"]
-        existing_fn = _collect_field_nums(
-            scalars, "field_num"
-        ) | _collect_field_nums(arrays, "field_num")
+        existing_fn = (
+            _collect_field_nums(scalars, "field_num")
+            | _collect_field_nums(arrays, "field_num")
+            | _collect_field_nums(rm_entries, "field_num")
+        )
         total += _assign_to_field_list(
             scalars,
             "field_num",
@@ -2424,8 +3448,16 @@ def auto_assign_field_numbers(data):
             existing_fn,
             f"{section_key}.arrays.field_num",
         )
+        total += _assign_to_field_list(
+            rm_entries,
+            "field_num",
+            lo,
+            hi,
+            existing_fn,
+            f"{section_key}.repeated_messages.field_num",
+        )
 
-        # array_id — separate namespace
+        # array_id — separate namespace (top-level ArrayFieldId pool).
         lo, hi = FIELD_NUM_RANGES[f"{section_key}.array_id"]
         existing_aid = _collect_field_nums(arrays, "array_id")
         total += _assign_to_field_list(
@@ -2436,6 +3468,51 @@ def auto_assign_field_numbers(data):
             existing_aid,
             f"{section_key}.arrays.array_id",
         )
+
+        # Per-container nested namespaces inside each repeated_messages
+        # entry: the nested message has its own field_num pool starting at
+        # 1 (no cap) and a separate per-entry array_id pool starting at 0
+        # (no cap, independent of the global ArrayFieldId pool).  Each
+        # entry is autonumbered in isolation so two different containers
+        # may reuse the same inner tags without conflict.
+        for rm_entry in rm_entries:
+            if not isinstance(rm_entry, dict) or len(rm_entry) != 1:
+                continue
+            inner_name = next(iter(rm_entry))
+            body = rm_entry[inner_name]
+            if not isinstance(body, dict):
+                continue
+            inner_scalars = body.get("scalars", []) or []
+            inner_arrays = body.get("arrays", []) or []
+            inner_label = f"{section_key}.repeated_messages.{inner_name}"
+            inner_existing_fn = _collect_field_nums(
+                inner_scalars, "field_num"
+            ) | _collect_field_nums(inner_arrays, "field_num")
+            total += _assign_to_field_list(
+                inner_scalars,
+                "field_num",
+                1,
+                None,
+                inner_existing_fn,
+                f"{inner_label}.scalars.field_num",
+            )
+            total += _assign_to_field_list(
+                inner_arrays,
+                "field_num",
+                1,
+                None,
+                inner_existing_fn,
+                f"{inner_label}.arrays.field_num",
+            )
+            inner_existing_aid = _collect_field_nums(inner_arrays, "array_id")
+            total += _assign_to_field_list(
+                inner_arrays,
+                "array_id",
+                0,
+                None,
+                inner_existing_aid,
+                f"{inner_label}.arrays.array_id",
+            )
 
     # Collect all solution array_ids into a shared pool (ResultFieldId is global).
     shared_result_ids = set()
@@ -2618,6 +3695,8 @@ def main():
     with open(args.registry) as f:
         registry = yaml.safe_load(f)
 
+    _normalize_registry_callables(registry)
+
     if not _registry_has_field_numbers(registry):
         print(
             "ERROR: Registry has no field_num or array_id values assigned.\n"
@@ -2701,10 +3780,6 @@ def main():
         write_file(
             os.path.join(outdir, f"generated_chunked_to_{label}_solution.inc"),
             HEADER + _gen_chunked_to_solution(registry, key, obj) + "\n",
-        )
-        write_file(
-            os.path.join(outdir, f"generated_estimate_{label}_size.inc"),
-            HEADER + _gen_estimate_size(registry, key, obj) + "\n",
         )
 
     # Problem conversion .inc files

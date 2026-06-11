@@ -118,41 +118,40 @@ bool is_free_keyword(std::string_view lower) { return lower == "free"; }
 
 bool is_infinity_text(std::string_view lower) { return lower == "inf" || lower == "infinity"; }
 
-// Builds the symmetric Q in CSR from LP-format raw upper-triangular triples.
+// Builds the symmetric Q in COO from LP-format raw upper-triangular triples.
 // Each input triple (i, j, c) with i <= j represents `c * x_i * x_j` in the
 // LP source. The output Q satisfies x^T Q x = sum of those terms.
 //   Diagonal (i == j): Q[i,i] = c (one entry).
 //   Off-diagonal (i != j): Q[i,j] = Q[j,i] = c/2 (two entries; symmetric split).
 template <typename i_t, typename f_t>
-void build_symmetric_q_csr(const std::vector<std::tuple<i_t, i_t, f_t>>& raw_triples,
-                           i_t n_vars,
-                           std::vector<f_t>& out_values,
-                           std::vector<i_t>& out_indices,
-                           std::vector<i_t>& out_offsets)
+void build_symmetric_q_coo(const coo_entries_t<i_t, f_t>& raw_triples,
+                           std::vector<i_t>& out_row_indices,
+                           std::vector<i_t>& out_col_indices,
+                           std::vector<f_t>& out_values)
 {
-  std::vector<std::vector<std::pair<i_t, f_t>>> row_data(n_vars);
-  for (const auto& [i, j, c] : raw_triples) {
-    if (i == j) {
-      row_data[i].emplace_back(i, c);
-    } else {
-      row_data[i].emplace_back(j, c / f_t(2));
-      row_data[j].emplace_back(i, c / f_t(2));
-    }
-  }
-  for (auto& row : row_data) {
-    std::sort(row.begin(), row.end());
-  }
-  out_offsets.clear();
-  out_indices.clear();
+  out_row_indices.clear();
+  out_col_indices.clear();
   out_values.clear();
-  out_offsets.reserve(static_cast<size_t>(n_vars) + 1);
-  out_offsets.push_back(0);
-  for (i_t r = 0; r < n_vars; ++r) {
-    for (const auto& [col, val] : row_data[r]) {
-      out_values.push_back(val);
-      out_indices.push_back(col);
+  out_row_indices.reserve(raw_triples.size() * 2);
+  out_col_indices.reserve(raw_triples.size() * 2);
+  out_values.reserve(raw_triples.size() * 2);
+
+  for (size_t p = 0; p < raw_triples.size(); p++) {
+    const i_t i = raw_triples.rows[p];
+    const i_t j = raw_triples.cols[p];
+    const f_t c = raw_triples.vals[p];
+    if (i == j) {
+      out_row_indices.push_back(i);
+      out_col_indices.push_back(i);
+      out_values.push_back(c);
+    } else {
+      out_row_indices.push_back(i);
+      out_col_indices.push_back(j);
+      out_values.push_back(c / 2);
+      out_row_indices.push_back(j);
+      out_col_indices.push_back(i);
+      out_values.push_back(c / 2);
     }
-    out_offsets.push_back(static_cast<i_t>(out_values.size()));
   }
 }
 
@@ -264,7 +263,7 @@ class LpParseEngine {
   enum class BracketRole { Objective, Constraint };
   void parse_quadratic_bracket(int outer_sign,
                                BracketRole role,
-                               std::vector<std::tuple<i_t, i_t, f_t>>& out_quad_entries);
+                               coo_entries_t<i_t, f_t>& out_quad_entries);
 
   // Atomic readers.
   f_t parse_signed_number();
@@ -830,15 +829,16 @@ void LpParseEngine<i_t, f_t>::parse_linear_expression(std::vector<LinearTerm>& o
 }
 
 template <typename i_t, typename f_t>
-void LpParseEngine<i_t, f_t>::parse_quadratic_bracket(
-  int outer_sign, BracketRole role, std::vector<std::tuple<i_t, i_t, f_t>>& out_quad_entries)
+void LpParseEngine<i_t, f_t>::parse_quadratic_bracket(int outer_sign,
+                                                      BracketRole role,
+                                                      coo_entries_t<i_t, f_t>& out_quad_entries)
 {
   expect(LpTokenKind::LBracket, "'[' at start of quadratic section");
 
   // Accumulate raw LP-format entries first (diagonal vs off-diagonal), then
   // apply the role-specific convention and outer sign after we see the
   // closing bracket.
-  std::vector<std::tuple<i_t, i_t, f_t>> raw_quad;
+  coo_entries_t<i_t, f_t> raw_quad;
 
   int sign   = 1;
   bool first = true;
@@ -939,9 +939,12 @@ void LpParseEngine<i_t, f_t>::parse_quadratic_bracket(
     // directly to cuOpt's set_quadratic_objective_matrix, which internally
     // computes H = Q + Q^T; the solver then minimizes (1/2) x^T H x, which
     // recovers the user's intended objective.
-    for (auto& [a, b, v] : raw_quad) {
-      v /= f_t(2);
-      out_quad_entries.emplace_back(a, b, sign_scale * v);
+    out_quad_entries.rows.insert(
+      out_quad_entries.rows.end(), raw_quad.rows.begin(), raw_quad.rows.end());
+    out_quad_entries.cols.insert(
+      out_quad_entries.cols.end(), raw_quad.cols.begin(), raw_quad.cols.end());
+    for (size_t p = 0; p < raw_quad.size(); p++) {
+      out_quad_entries.vals.push_back(sign_scale * raw_quad.vals[p] / f_t(2));
     }
   } else {
     // Constraint: '/ 2' is forbidden — the LP convention is that constraint
@@ -964,8 +967,12 @@ void LpParseEngine<i_t, f_t>::parse_quadratic_bracket(
     // Coefficients are at face value — the post-pass that flushes the
     // quadratic_constraint_block_t to the data model handles the symmetric
     // expansion and the /2 split for off-diagonals.
-    for (auto& [a, b, v] : raw_quad) {
-      out_quad_entries.emplace_back(a, b, sign_scale * v);
+    out_quad_entries.rows.insert(
+      out_quad_entries.rows.end(), raw_quad.rows.begin(), raw_quad.rows.end());
+    out_quad_entries.cols.insert(
+      out_quad_entries.cols.end(), raw_quad.cols.begin(), raw_quad.cols.end());
+    for (size_t p = 0; p < raw_quad.size(); p++) {
+      out_quad_entries.vals.push_back(sign_scale * raw_quad.vals[p]);
     }
   }
 }
@@ -1044,7 +1051,7 @@ void LpParseEngine<i_t, f_t>::parse_constraints_section()
     // Mirrors the objective handling; if present, this row becomes a
     // quadratic constraint and is stored on quadratic_constraint_blocks
     // instead of the linear arrays.
-    std::vector<std::tuple<i_t, i_t, f_t>> qc_triples;
+    coo_entries_t<i_t, f_t> qc_triples;
     bool is_quadratic_row = false;
     int quad_sign         = 1;
     if (peek().kind == LpTokenKind::Plus && peek(1).kind == LpTokenKind::LBracket) {
@@ -1473,8 +1480,9 @@ void finalize_problem(mps_data_model_t<i_t, f_t>& problem, lp_parser_t<i_t, f_t>
   // recovers the user's intended objective.
   if (!parser.quadobj_entries.empty()) {
     std::vector<std::vector<std::pair<i_t, f_t>>> row_data(n_vars);
-    for (const auto& [row, col, val] : parser.quadobj_entries) {
-      row_data[row].emplace_back(col, val);
+    for (size_t p = 0; p < parser.quadobj_entries.size(); p++) {
+      row_data[parser.quadobj_entries.rows[p]].emplace_back(parser.quadobj_entries.cols[p],
+                                                            parser.quadobj_entries.vals[p]);
     }
     for (auto& row : row_data) {
       std::sort(row.begin(), row.end());
@@ -1503,14 +1511,13 @@ template <typename i_t, typename f_t>
 void flush_quadratic_constraints(mps_data_model_t<i_t, f_t>& problem,
                                  const lp_parser_t<i_t, f_t>& parser)
 {
-  const i_t n_vars           = static_cast<i_t>(parser.var_names.size());
   const i_t linear_row_count = static_cast<i_t>(parser.row_names.size());
-  i_t k                      = 0;
-  for (const auto& block : parser.quadratic_constraint_blocks) {
+  for (i_t k = 0; k < static_cast<i_t>(parser.quadratic_constraint_blocks.size()); k++) {
+    const auto& block = parser.quadratic_constraint_blocks[k];
+    std::vector<i_t> q_row_indices;
+    std::vector<i_t> q_col_indices;
     std::vector<f_t> q_values;
-    std::vector<i_t> q_indices;
-    std::vector<i_t> q_offsets;
-    build_symmetric_q_csr(block.quad_triples, n_vars, q_values, q_indices, q_offsets);
+    build_symmetric_q_coo(block.quad_triples, q_row_indices, q_col_indices, q_values);
     problem.append_quadratic_constraint(linear_row_count + k,
                                         block.row_name,
                                         static_cast<char>(block.row_type),
@@ -1518,9 +1525,8 @@ void flush_quadratic_constraints(mps_data_model_t<i_t, f_t>& problem,
                                         block.linear_indices,
                                         block.rhs_value,
                                         q_values,
-                                        q_indices,
-                                        q_offsets);
-    ++k;
+                                        q_row_indices,
+                                        q_col_indices);
   }
 }
 

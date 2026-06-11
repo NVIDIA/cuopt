@@ -114,22 +114,6 @@ cpu_mip_solution_t<i_t, f_t> map_proto_to_mip_solution(
 }
 
 // ============================================================================
-// Size estimation
-// ============================================================================
-
-template <typename i_t, typename f_t>
-size_t estimate_lp_solution_proto_size(const cpu_lp_solution_t<i_t, f_t>& solution)
-{
-#include "generated_estimate_lp_size.inc"
-}
-
-template <typename i_t, typename f_t>
-size_t estimate_mip_solution_proto_size(const cpu_mip_solution_t<i_t, f_t>& solution)
-{
-#include "generated_estimate_mip_size.inc"
-}
-
-// ============================================================================
 // Chunked result header population
 // ============================================================================
 
@@ -217,9 +201,6 @@ template void map_mip_solution_to_proto(const cpu_mip_solution_t<int32_t, float>
                                         cuopt::remote::MIPSolution* pb_solution);
 template cpu_mip_solution_t<int32_t, float> map_proto_to_mip_solution(
   const cuopt::remote::MIPSolution& pb_solution);
-template size_t estimate_lp_solution_proto_size(const cpu_lp_solution_t<int32_t, float>& solution);
-template size_t estimate_mip_solution_proto_size(
-  const cpu_mip_solution_t<int32_t, float>& solution);
 template void populate_chunked_result_header_lp(const cpu_lp_solution_t<int32_t, float>& solution,
                                                 cuopt::remote::ChunkedResultHeader* header);
 template void populate_chunked_result_header_mip(const cpu_mip_solution_t<int32_t, float>& solution,
@@ -253,9 +234,6 @@ template void map_mip_solution_to_proto(const cpu_mip_solution_t<int32_t, double
                                         cuopt::remote::MIPSolution* pb_solution);
 template cpu_mip_solution_t<int32_t, double> map_proto_to_mip_solution(
   const cuopt::remote::MIPSolution& pb_solution);
-template size_t estimate_lp_solution_proto_size(const cpu_lp_solution_t<int32_t, double>& solution);
-template size_t estimate_mip_solution_proto_size(
-  const cpu_mip_solution_t<int32_t, double>& solution);
 template void populate_chunked_result_header_lp(const cpu_lp_solution_t<int32_t, double>& solution,
                                                 cuopt::remote::ChunkedResultHeader* header);
 template void populate_chunked_result_header_mip(

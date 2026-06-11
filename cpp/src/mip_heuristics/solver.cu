@@ -377,6 +377,9 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
       context.settings.strong_chvatal_gomory_cuts;
     branch_and_bound_settings.cut_change_threshold  = context.settings.cut_change_threshold;
     branch_and_bound_settings.cut_min_orthogonality = context.settings.cut_min_orthogonality;
+    // Forward the run-level benchmark_info_t so B&B can publish root LP
+    // bounds (before / after cuts) for gap-closed-by-cuts measurement.
+    branch_and_bound_settings.benchmark_info_ptr = context.settings.benchmark_info_ptr;
     branch_and_bound_settings.mip_batch_pdlp_strong_branching =
       context.settings.mip_batch_pdlp_strong_branching;
     branch_and_bound_settings.mip_batch_pdlp_reliability_branching =
@@ -392,6 +395,8 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
         ? 2
         : context.settings.reduced_cost_strengthening;
     branch_and_bound_settings.symmetry = context.settings.symmetry;
+
+    branch_and_bound_settings.diving_settings = context.settings.diving_params;
 
     // Set the branch and bound -> primal heuristics callback
     branch_and_bound_settings.solution_callback =
@@ -451,7 +456,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
       branch_and_bound->set_concurrent_lp_root_solve(true);
 
       context.problem_ptr->branch_and_bound_callback =
-        std::bind(&dual_simplex::branch_and_bound_t<i_t, f_t>::set_new_solution,
+        std::bind(&dual_simplex::branch_and_bound_t<i_t, f_t>::set_solution_from_heuristics,
                   branch_and_bound.get(),
                   std::placeholders::_1);
     } else if (context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC) {
@@ -488,7 +493,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
 #pragma omp taskgroup
   {
     if (!context.settings.heuristics_only) {
-#pragma omp task default(shared)
+#pragma omp task default(shared) priority(CUOPT_CRITICAL_TASK_PRIORITY)
       {
         branch_and_bound_status = branch_and_bound->solve(branch_and_bound_solution);
       }

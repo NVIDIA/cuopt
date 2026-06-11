@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -8,6 +8,10 @@
 #pragma once
 
 #include <cub/cub.cuh>
+
+#include <raft/core/copy.hpp>
+#include <raft/core/device_span.hpp>
+#include <raft/core/host_span.hpp>
 
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
@@ -28,6 +32,7 @@ struct norm_inf_max {
 template <typename i_t, typename f_t, typename InputIteratorT>
 f_t device_custom_vector_norm_inf(InputIteratorT in, i_t size, rmm::cuda_stream_view stream_view)
 {
+  if (size == 0) { return 0; }
   // FIXME: Tmp storage stored in vector_math class.
   auto d_out = rmm::device_scalar<f_t>(stream_view);
   rmm::device_uvector<uint8_t> d_temp_storage(0, stream_view);
@@ -62,12 +67,26 @@ f_t device_vector_norm_inf(const rmm::device_uvector<f_t>& in, rmm::cuda_stream_
   return device_custom_vector_norm_inf<i_t, f_t>(in.data(), in.size(), stream_view);
 }
 
+template <typename i_t, typename f_t>
+f_t device_vector_norm_inf(raft::device_span<const f_t> in, rmm::cuda_stream_view stream_view)
+{
+  return device_custom_vector_norm_inf<i_t, f_t>(in.data(), in.size(), stream_view);
+}
+
 // TMP we should just have a CPU and GPU version to do the comparison
 // Should never have to norm inf a CPU vector if we are using the GPU
 template <typename i_t, typename f_t, typename Allocator>
 f_t vector_norm_inf(const std::vector<f_t, Allocator>& x, rmm::cuda_stream_view stream_view)
 {
   const auto d_x = device_copy(x, stream_view);
+  return device_vector_norm_inf<i_t, f_t>(d_x, stream_view);
+}
+
+template <typename i_t, typename f_t>
+f_t vector_norm_inf(raft::host_span<const f_t> x, rmm::cuda_stream_view stream_view)
+{
+  rmm::device_uvector<f_t> d_x(x.size(), stream_view);
+  raft::copy(d_x.data(), x.data(), x.size(), stream_view);
   return device_vector_norm_inf<i_t, f_t>(d_x, stream_view);
 }
 
