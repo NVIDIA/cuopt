@@ -583,12 +583,12 @@ void convert_quadratic_constraints_to_second_order_cones(
 
     } else {
       // =========================================================================
-      // General convex quadratic constraint path:
-      //   x^T Q x + c^T x <= alpha
+      // General convex quadratic constraint path (QCMATRIX storage, no extra 1/2 on quad part):
+      //   sum_k v_k x_{r_k} x_{c_k} + c^T x <= alpha
 
       // Invalidate affine head for this QC — the general path handles the linear part directly
       qc_affine_heads[qc_i] = -1;
-      // where Q is (possibly unsymmetric) and H = Q + Q^T must be PSD.
+      // H below satisfies (1/2) x^T H x = that QCMATRIX sum; H must be PSD.
       // =========================================================================
       const f_t alpha = qc.rhs_value;
 
@@ -1404,16 +1404,42 @@ bool lorentz_cone_block_at_apex(const std::vector<f_t>& x,
 }
 
 /**
- * Recover the usual KKT multiplier mu >= 0 on a Lorentz cone block (head, tails…):
- *   g = -s x_head^2 + s sum_{i in tail} x_i^2 <= 0,
- *   mu = z_head / (2 s x_head) when not at the apex.
+ * Recover the SOC KKT multiplier from barrier primal/reduced-cost pair (x_head, z_head).
  *
- * Used for LORENTZ, ROTATED, and AFFINE QCs on the lifted Lorentz block [s0, s1, tails…].
- * For AFFINE, the linear part is absorbed into t via a linking equality; the recovered
- * mu here is the KKT multiplier on the user QC row (tail stationarity), but we can use the head
- * term to recover the QC multiplier due to the optimality conditions of a second-order cone.
+ * Barrier Lorentz block (uniform scale s > 0):
+ *   phi = -s * x_head^2 + s * sum_{i in tail} x_i^2 <= 0.
  *
- * At the apex (||x||_inf <= apex_tol), grad g = 0 so mu is not unique; return 0.
+ * At a non-apex point, cone stationarity in the barrier's (x, z) coordinates gives
+ *   nu_bar = z_head / (2 * s * x_head),
+ * where nu_bar is the cone dual in barrier export coordinates (not necessarily the textbook
+ * multiplier nu on phi <= 0 with the same sign).  LORENTZ / ROTATED / AFFINE paths validate
+ * that nu_bar equals the exported user QC dual when the user row is already in phi-form.
+ *
+ * At the apex (||x||_inf <= apex_tol), grad phi = 0 so the multiplier is not unique; return 0.
+ *
+ * --- GENERAL (LDLT) path: extra factor of 2 (see path_t::GENERAL in dual projection) ---
+ *
+ * User QC (QCMATRIX / Python API) is stored without an extra 1/2 on the quadratic part:
+ *   g(x) = sum_k v_k x_{r_k} x_{c_k} + c^T x - alpha <= 0
+ * (MPS QCMATRIX coeffs are literal; unlike QUADOBJ/QMATRIX objectives where MPS uses 1/2 x^T Q x
+ * and the parser applies a 0.5 scale — see mps_parser.cpp value_scale notes.)
+ * LDLT builds symmetric H so (1/2) x^T H x equals that QCMATRIX sum; equivalently
+ *   g(x) = (1/2) x^T H x + c^T x - alpha <= 0.
+ * LDLT lift (rank r) adds y, s_0, s_{r+1} and equalities
+ *   y_k = sqrt(D_k) (L^T P x)_k,
+ *   s_0 + c^T x = alpha + 1/2,   s_{r+1} + c^T x = alpha - 1/2.
+ * On that manifold: (1/2)||y||^2 = (1/2) x^T H x and s_0 - s_{r+1} = 1, hence
+ *   g = (1/2)||y||^2 + 1/2 - s_0  and  phi = -s_0^2 + ||y||^2 + s_{r+1}^2 <= 0
+ * describe the same QC inequality (g <= 0 <=> phi <= 0).
+ *
+ * Sensitivity / scaling on the LDLT coords (not MPS 1/2 objective vs constraint, and not a
+ * joint (lambda + 2*nu) = 0 identity with textbook signs):  d g / d y_k = y_k because
+ * g carries (1/2)||y||^2, while d phi / d y_k = 2 y_k on tails.  With lambda_user >= 0
+ * the exported KKT multiplier on g and nu_bar from the head formula satisfy
+ *   lambda_user = 2 * nu_bar  (sign included: both are >= 0 at an active optimum in tests).
+ *
+ * nu_bar is recovered from (x, z) on the packed cone head via the formula above; export
+ *   lambda_user = 2 * nu_bar = z_head / (s * x_head).
  */
 template <typename i_t, typename f_t>
 f_t qc_multiplier_from_lorentz_soc_kkt(const std::vector<f_t>& x,
@@ -1482,32 +1508,22 @@ void project_barrier_qcqp_duals_to_model(const dual_simplex::user_problem_t<i_t,
     cuopt_expects(cone_offset + dim <= user_problem.num_cols,
                   error_type_t::RuntimeError,
                   "Cone dual block exceeds expanded column count");
-    const f_t s     = entry.uniform_s > 0 ? entry.uniform_s : f_t(1);
-    const f_t inv_s = f_t(1) / s;
-    f_t lambda      = 0;
+    const f_t s = entry.uniform_s > 0 ? entry.uniform_s : f_t(1);
+    f_t lambda  = 0;
 
     switch (entry.path) {
       case path_t::LORENTZ:
       case path_t::ROTATED:
-        lambda =
-          qc_multiplier_from_lorentz_soc_kkt<i_t, f_t>(solution.x, solution.z, cone_offset, dim, s);
-        break;
       case path_t::AFFINE:
-        // Same Lorentz-head recovery as LORENTZ/ROTATED on [s0, s1, tails…].  The affine
-        // link row (t + (1/s) a^T x = 0) dual is an equality multiplier on x in a, not part
-        // of the QC multiplier on g(x) <= 0.
+        // Lorentz-head recovery on [s0, s1, tails…].  Link-row duals are equality multipliers.
         lambda =
           qc_multiplier_from_lorentz_soc_kkt<i_t, f_t>(solution.x, solution.z, cone_offset, dim, s);
         break;
       case path_t::GENERAL:
-        // LDLT lift: s0 + c^T x = alpha+1/2, s_{r+1} + c^T x = alpha-1/2  =>
-        // KKT multiplier on the QC row is y_{s_{r+1}} - y_{s0}.
-        if (entry.s0_link_row >= 0 && entry.s0_link_row < static_cast<i_t>(solution.y.size())) {
-          lambda = -solution.y[entry.s0_link_row];
-          if (entry.sr1_link_row >= 0 && entry.sr1_link_row < static_cast<i_t>(solution.y.size())) {
-            lambda += solution.y[entry.sr1_link_row];
-          }
-        }
+        // User g uses (1/2)||y||^2; expanded phi uses ||y||^2 on tails => lambda_user = 2*nu_bar.
+        // nu_bar from cone head (z, x); see @ref qc_multiplier_from_lorentz_soc_kkt comment block.
+        lambda = f_t(2) * qc_multiplier_from_lorentz_soc_kkt<i_t, f_t>(
+                            solution.x, solution.z, cone_offset, dim, s);
         break;
     }
 

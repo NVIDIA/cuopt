@@ -17,6 +17,7 @@
 #include <raft/core/cusparse_macros.hpp>
 
 #include <cmath>
+#include <iostream>
 #include <vector>
 
 namespace cuopt::linear_programming::detail::test {
@@ -60,6 +61,29 @@ static f_t qc_dual_from_projected_solution(
 {
   const i_t m_linear = user_problem.original_num_rows;
   return solution.y[m_linear + qc_index];
+}
+
+static void print_lp_solution_debug(
+  const char* label,
+  const cuopt::linear_programming::dual_simplex::lp_solution_t<i_t, f_t>& solution)
+{
+  std::cout << "=== " << label << " ===\n";
+  std::cout << "  objective = " << solution.objective << '\n';
+  std::cout << "  x[" << solution.x.size() << "]:";
+  for (size_t i = 0; i < solution.x.size(); ++i) {
+    std::cout << ' ' << i << ':' << solution.x[i];
+  }
+  std::cout << '\n';
+  std::cout << "  y[" << solution.y.size() << "]:";
+  for (size_t i = 0; i < solution.y.size(); ++i) {
+    std::cout << ' ' << i << ':' << solution.y[i];
+  }
+  std::cout << '\n';
+  std::cout << "  z[" << solution.z.size() << "]:";
+  for (size_t i = 0; i < solution.z.size(); ++i) {
+    std::cout << ' ' << i << ':' << solution.z[i];
+  }
+  std::cout << '\n';
 }
 
 // Test: general convex quadratic constraint with dense PD Q matrix.
@@ -1194,6 +1218,307 @@ TEST(qc_dual_recovery, rotated_path)
   EXPECT_NEAR(solution.x[2], -3.0, 1e-4);
   EXPECT_NEAR(solution.x[3], 0.0, 1e-4);
   EXPECT_NEAR(qc_dual_from_projected_solution(user_problem, solution), 0.5, 1e-4);
+}
+
+// min 2*x0+x1  s.t. 2*x0^2+2*x0*x1+2*x1^2<=1, x0-3*x1=0
+//   =>  x0=-3/sqrt(26), x1=-1/sqrt(26), mu_QC=7/(2*sqrt(26)), y_KKT=-3/26.
+TEST(qc_dual_recovery, general_path)
+{
+  raft::handle_t handle{};
+  init_handler(&handle);
+
+  using namespace cuopt::linear_programming::dual_simplex;
+  user_problem_t<i_t, f_t> user_problem(&handle);
+
+  constexpr int m  = 1;
+  constexpr int n  = 2;
+  constexpr int nz = 2;
+
+  user_problem.num_rows  = m;
+  user_problem.num_cols  = n;
+  user_problem.objective = {2.0, 1.0};
+
+  user_problem.A.m      = m;
+  user_problem.A.n      = n;
+  user_problem.A.nz_max = nz;
+  user_problem.A.reallocate(nz);
+  user_problem.A.col_start = {0, 1, 2};
+  user_problem.A.i[0]      = 0;
+  user_problem.A.x[0]      = 1.0;
+  user_problem.A.i[1]      = 0;
+  user_problem.A.x[1]      = -3.0;
+
+  user_problem.rhs            = {0.0};
+  user_problem.row_sense      = {'E'};
+  user_problem.lower          = {-inf, -inf};
+  user_problem.upper          = {inf, inf};
+  user_problem.num_range_rows = 0;
+  user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
+
+  qc_t qc;
+  qc.constraint_row_index = 0;
+  qc.constraint_row_name  = "general_qc";
+  qc.constraint_row_type  = 'L';
+  qc.rhs_value            = 1.0;
+  qc.rows                 = {0, 1, 1};
+  qc.cols                 = {0, 0, 1};
+  qc.vals                 = {2.0, 2.0, 2.0};  // 2*x0^2 + 2*x0*x1 + 2*x1^2
+
+  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
+  csr_A.m         = m;
+  csr_A.n         = n;
+  csr_A.row_start = {0, 2};
+  csr_A.j         = {0, 1};
+  csr_A.x         = {1.0, -3.0};
+
+  std::vector<qc_t> qcs = {qc};
+  convert_quadratic_constraints_to_second_order_cones<i_t, f_t>(n, qcs, csr_A, user_problem);
+  csr_A.to_compressed_col(user_problem.A);
+
+  ASSERT_EQ(user_problem.qc_dual_recovery.size(), 1u);
+  const auto& meta = user_problem.qc_dual_recovery[0];
+  EXPECT_EQ(meta.path, qc_soc_path_t::GENERAL);
+  EXPECT_GE(meta.s0_link_row, 0);
+  EXPECT_GE(meta.sr1_link_row, 0);
+
+  lp_solution_t<i_t, f_t> solution(user_problem.num_rows, user_problem.num_cols);
+
+  simplex_solver_settings_t<i_t, f_t> settings;
+  settings.barrier          = true;
+  settings.barrier_presolve = true;
+  settings.dualize          = 0;
+  ASSERT_EQ(solve_linear_program_with_barrier(user_problem, settings, solution),
+            lp_status_t::OPTIMAL);
+
+  std::cout << "qc_dual_recovery.general_path debug:\n";
+  std::cout << "  expanded num_rows=" << user_problem.num_rows
+            << " num_cols=" << user_problem.num_cols
+            << " original_num_rows=" << user_problem.original_num_rows
+            << " original_num_cols=" << user_problem.original_num_cols
+            << " cone_var_start=" << user_problem.cone_var_start << '\n';
+  std::cout << "  s0_link_row=" << meta.s0_link_row << " sr1_link_row=" << meta.sr1_link_row
+            << " cone_index=" << meta.cone_index << '\n';
+  if (!user_problem.second_order_cone_dims.empty()) {
+    std::cout << "  cone_dim=" << user_problem.second_order_cone_dims[0] << '\n';
+  }
+  print_lp_solution_debug("expanded barrier (pre-projection)", solution);
+
+  project_barrier_qcqp_duals_to_model(user_problem, solution);
+  print_lp_solution_debug("after project_barrier_qcqp_duals_to_model", solution);
+
+  project_barrier_solution_to_model_variables(user_problem, solution);
+  print_lp_solution_debug("user model (final)", solution);
+
+  const f_t inv_sqrt26 = 1.0 / std::sqrt(26.0);
+  EXPECT_NEAR(solution.objective, -7.0 * inv_sqrt26, 1e-4);
+  EXPECT_NEAR(solution.x[0], -3.0 * inv_sqrt26, 1e-4);
+  EXPECT_NEAR(solution.x[1], -inv_sqrt26, 1e-4);
+  EXPECT_GT(std::abs(solution.x[0] - solution.x[1]), 1e-3);
+  EXPECT_NEAR(solution.y[0], 3.0 / 26.0, 1e-4);  // EQ x0 - 3*x1 = 0  (y_KKT = -3/26)
+  EXPECT_NEAR(
+    qc_dual_from_projected_solution(user_problem, solution), 7.0 * inv_sqrt26 / 2.0, 1e-4);
+}
+
+// min x0+2*x1  s.t. (x0+x1)^2<=1, x0-2*x1=0  (rank-1 PSD QC, LDLT rank r=1)
+//   =>  x0=-2/3, x1=-1/3, obj=-4/3, mu_QC=2/3, y_KKT=1/3.
+TEST(qc_dual_recovery, general_path_rank_one)
+{
+  raft::handle_t handle{};
+  init_handler(&handle);
+
+  using namespace cuopt::linear_programming::dual_simplex;
+  user_problem_t<i_t, f_t> user_problem(&handle);
+
+  constexpr int m  = 1;
+  constexpr int n  = 2;
+  constexpr int nz = 2;
+
+  user_problem.num_rows  = m;
+  user_problem.num_cols  = n;
+  user_problem.objective = {1.0, 2.0};
+
+  user_problem.A.m      = m;
+  user_problem.A.n      = n;
+  user_problem.A.nz_max = nz;
+  user_problem.A.reallocate(nz);
+  user_problem.A.col_start = {0, 1, 2};
+  user_problem.A.i[0]      = 0;
+  user_problem.A.x[0]      = 1.0;
+  user_problem.A.i[1]      = 0;
+  user_problem.A.x[1]      = -2.0;
+
+  user_problem.rhs            = {0.0};
+  user_problem.row_sense      = {'E'};
+  user_problem.lower          = {-inf, -inf};
+  user_problem.upper          = {inf, inf};
+  user_problem.num_range_rows = 0;
+  user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
+
+  // (x0+x1)^2 <= 1  via Q COO (0,0,1), (1,0,2), (1,1,1)  ->  H = [2,2;2,2], rank 1.
+  // Cross term needs coefficient 2 (not 1): vals {1,1,1} would give x0^2+x0*x1+x1^2, full rank.
+  qc_t qc;
+  qc.constraint_row_index = 0;
+  qc.constraint_row_name  = "rank1_general_qc";
+  qc.constraint_row_type  = 'L';
+  qc.rhs_value            = 1.0;
+  qc.rows                 = {0, 1, 1};
+  qc.cols                 = {0, 0, 1};
+  qc.vals                 = {1.0, 2.0, 1.0};
+
+  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
+  csr_A.m         = m;
+  csr_A.n         = n;
+  csr_A.row_start = {0, 2};
+  csr_A.j         = {0, 1};
+  csr_A.x         = {1.0, -2.0};
+
+  std::vector<qc_t> qcs = {qc};
+  convert_quadratic_constraints_to_second_order_cones<i_t, f_t>(n, qcs, csr_A, user_problem);
+  csr_A.to_compressed_col(user_problem.A);
+
+  ASSERT_EQ(user_problem.qc_dual_recovery.size(), 1u);
+  const auto& meta = user_problem.qc_dual_recovery[0];
+  EXPECT_EQ(meta.path, qc_soc_path_t::GENERAL);
+  EXPECT_GE(meta.s0_link_row, 0);
+  EXPECT_GE(meta.sr1_link_row, 0);
+  ASSERT_EQ(user_problem.second_order_cone_dims.size(), 1u);
+  EXPECT_EQ(user_problem.second_order_cone_dims[0], 3);  // rank 1 + 2 slacks
+
+  lp_solution_t<i_t, f_t> solution(user_problem.num_rows, user_problem.num_cols);
+
+  simplex_solver_settings_t<i_t, f_t> settings;
+  settings.barrier          = true;
+  settings.barrier_presolve = true;
+  settings.dualize          = 0;
+  ASSERT_EQ(solve_linear_program_with_barrier(user_problem, settings, solution),
+            lp_status_t::OPTIMAL);
+
+  std::cout << "qc_dual_recovery.general_path_rank_one debug:\n";
+  std::cout << "  expanded num_rows=" << user_problem.num_rows
+            << " num_cols=" << user_problem.num_cols
+            << " original_num_rows=" << user_problem.original_num_rows
+            << " original_num_cols=" << user_problem.original_num_cols
+            << " cone_var_start=" << user_problem.cone_var_start << '\n';
+  std::cout << "  s0_link_row=" << meta.s0_link_row << " sr1_link_row=" << meta.sr1_link_row
+            << " cone_index=" << meta.cone_index << '\n';
+  if (!user_problem.second_order_cone_dims.empty()) {
+    std::cout << "  cone_dim=" << user_problem.second_order_cone_dims[0] << '\n';
+  }
+  print_lp_solution_debug("expanded barrier (pre-projection)", solution);
+
+  project_barrier_qcqp_duals_to_model(user_problem, solution);
+  print_lp_solution_debug("after project_barrier_qcqp_duals_to_model", solution);
+
+  project_barrier_solution_to_model_variables(user_problem, solution);
+  print_lp_solution_debug("user model (final)", solution);
+
+  EXPECT_NEAR(solution.objective, -4.0 / 3.0, 1e-4);
+  EXPECT_NEAR(solution.x[0], -2.0 / 3.0, 1e-4);
+  EXPECT_NEAR(solution.x[1], -1.0 / 3.0, 1e-4);
+  EXPECT_NEAR(solution.y[0], -1.0 / 3.0, 1e-4);  // EQ x0 - 2*x1 = 0  (y_KKT = 1/3)
+  EXPECT_NEAR(qc_dual_from_projected_solution(user_problem, solution), 2.0 / 3.0, 1e-4);
+}
+
+// min x0+x1  s.t. 2*x0^2+2*x0*x1+2*x1^2+x0+x1<=3, x0-x1=0  (QC linear part c!=0)
+//   =>  x0=x1=(-1-sqrt(19))/6, obj=(-1-sqrt(19))/3, mu_QC=1/sqrt(19), y_KKT=0.
+TEST(qc_dual_recovery, general_path_linear_qc)
+{
+  raft::handle_t handle{};
+  init_handler(&handle);
+
+  using namespace cuopt::linear_programming::dual_simplex;
+  user_problem_t<i_t, f_t> user_problem(&handle);
+
+  constexpr int m  = 1;
+  constexpr int n  = 2;
+  constexpr int nz = 2;
+
+  user_problem.num_rows  = m;
+  user_problem.num_cols  = n;
+  user_problem.objective = {1.0, 1.0};
+
+  user_problem.A.m      = m;
+  user_problem.A.n      = n;
+  user_problem.A.nz_max = nz;
+  user_problem.A.reallocate(nz);
+  user_problem.A.col_start = {0, 1, 2};
+  user_problem.A.i[0]      = 0;
+  user_problem.A.x[0]      = 1.0;
+  user_problem.A.i[1]      = 0;
+  user_problem.A.x[1]      = -1.0;
+
+  user_problem.rhs            = {0.0};
+  user_problem.row_sense      = {'E'};
+  user_problem.lower          = {-inf, -inf};
+  user_problem.upper          = {inf, inf};
+  user_problem.num_range_rows = 0;
+  user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
+
+  qc_t qc;
+  qc.constraint_row_index = 0;
+  qc.constraint_row_name  = "linear_general_qc";
+  qc.constraint_row_type  = 'L';
+  qc.rhs_value            = 3.0;
+  qc.rows                 = {0, 1, 1};
+  qc.cols                 = {0, 0, 1};
+  qc.vals                 = {2.0, 2.0, 2.0};
+  qc.linear_indices       = {0, 1};
+  qc.linear_values        = {1.0, 1.0};  // + x0 + x1
+
+  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
+  csr_A.m         = m;
+  csr_A.n         = n;
+  csr_A.row_start = {0, 2};
+  csr_A.j         = {0, 1};
+  csr_A.x         = {1.0, -1.0};
+
+  std::vector<qc_t> qcs = {qc};
+  convert_quadratic_constraints_to_second_order_cones<i_t, f_t>(n, qcs, csr_A, user_problem);
+  csr_A.to_compressed_col(user_problem.A);
+
+  ASSERT_EQ(user_problem.qc_dual_recovery.size(), 1u);
+  const auto& meta = user_problem.qc_dual_recovery[0];
+  EXPECT_EQ(meta.path, qc_soc_path_t::GENERAL);
+  EXPECT_GE(meta.s0_link_row, 0);
+  EXPECT_GE(meta.sr1_link_row, 0);
+
+  lp_solution_t<i_t, f_t> solution(user_problem.num_rows, user_problem.num_cols);
+
+  simplex_solver_settings_t<i_t, f_t> settings;
+  settings.barrier          = true;
+  settings.barrier_presolve = true;
+  settings.dualize          = 0;
+  ASSERT_EQ(solve_linear_program_with_barrier(user_problem, settings, solution),
+            lp_status_t::OPTIMAL);
+
+  std::cout << "qc_dual_recovery.general_path_linear_qc debug:\n";
+  std::cout << "  expanded num_rows=" << user_problem.num_rows
+            << " num_cols=" << user_problem.num_cols
+            << " original_num_rows=" << user_problem.original_num_rows
+            << " original_num_cols=" << user_problem.original_num_cols
+            << " cone_var_start=" << user_problem.cone_var_start << '\n';
+  std::cout << "  s0_link_row=" << meta.s0_link_row << " sr1_link_row=" << meta.sr1_link_row
+            << " cone_index=" << meta.cone_index << '\n';
+  if (!user_problem.second_order_cone_dims.empty()) {
+    std::cout << "  cone_dim=" << user_problem.second_order_cone_dims[0] << '\n';
+  }
+  print_lp_solution_debug("expanded barrier (pre-projection)", solution);
+
+  project_barrier_qcqp_duals_to_model(user_problem, solution);
+  print_lp_solution_debug("after project_barrier_qcqp_duals_to_model", solution);
+
+  project_barrier_solution_to_model_variables(user_problem, solution);
+  print_lp_solution_debug("user model (final)", solution);
+
+  const f_t sqrt19 = std::sqrt(19.0);
+  const f_t t_star = (-1.0 - sqrt19) / 6.0;
+  const f_t mu_qc  = 1.0 / sqrt19;
+
+  EXPECT_NEAR(solution.objective, 2.0 * t_star, 1e-4);
+  EXPECT_NEAR(solution.x[0], t_star, 1e-4);
+  EXPECT_NEAR(solution.x[1], t_star, 1e-4);
+  EXPECT_NEAR(solution.y[0], 0.0, 1e-4);  // EQ x0 - x1 = 0
+  EXPECT_NEAR(qc_dual_from_projected_solution(user_problem, solution), mu_qc, 1e-4);
 }
 
 }  // namespace cuopt::linear_programming::detail::test
