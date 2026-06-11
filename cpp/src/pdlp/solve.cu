@@ -761,6 +761,11 @@ static optimization_problem_solution_t<i_t, f_t> run_pdlp_solver(
   const timer_t& timer,
   bool is_batch_mode)
 {
+  cuopt_expects(!settings.hyper_params.use_distributed_pdlp,
+    error_type_t::ValidationError,
+    "Distributed PDLP must be entered via solve_lp(mps_data_model, ...) "
+    "so the master GPU never materializes the full problem. Call sites "
+    "with a problem_t cannot dispatch to distributed mode.");
   detail::pdlp_graph_disabled_flag().store(settings.hyper_params.pdlp_disable_graph,
                                            std::memory_order_relaxed);
 
@@ -778,15 +783,6 @@ static optimization_problem_solution_t<i_t, f_t> run_pdlp_solver(
     }
   }
 #endif
-  // Distributed PDLP cannot enter through this path: by the time we have a
-  // problem_t, the full problem already lives on the master GPU, which defeats
-  // the purpose of distributed mode. Callers must route to
-  // solve_lp_distributed_from_mps via solve_lp(mps_data_model, ...).
-  cuopt_expects(!settings.hyper_params.use_distributed_pdlp,
-                error_type_t::ValidationError,
-                "Distributed PDLP must be entered via solve_lp(mps_data_model, ...) "
-                "so the master GPU never materializes the full problem. Call sites "
-                "with a problem_t cannot dispatch to distributed mode.");
   detail::pdlp_solver_t<i_t, f_t> solver(problem, settings, is_batch_mode);
   if (settings.inside_mip) { solver.set_inside_mip(true); }
   return solver.run_solver(timer);
