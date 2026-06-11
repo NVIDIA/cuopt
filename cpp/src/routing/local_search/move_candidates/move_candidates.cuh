@@ -124,7 +124,6 @@ class move_path_t {
   /// Reset per-iteration move state
   void reset(solution_handle_t<i_t, f_t> const* sol_handle)
   {
-    // set_value_to_zero_async() is capture-safe (no host source).
     n_insertions.set_value_to_zero_async(sol_handle->get_stream());
     async_fill(loop_closed, 1, sol_handle->get_stream());
     async_fill(changed_routes, 0, sol_handle->get_stream());
