@@ -55,7 +55,6 @@ struct ret_cycles_t {
     return h;
   }
 
-  /// Device view of the cycle output buffers.
   struct view_t {
     /// Append a vertex to the in-progress cycle (`*n_cycles_`): writes at
     /// `offsets[*n_cycles_] + curr_cycle_size` into the flat `paths` buffer and
