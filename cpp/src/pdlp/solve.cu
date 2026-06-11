@@ -2250,6 +2250,10 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
                 "use_distributed_pdlp; please set settings.presolver = presolver_t::None");
 
   pdlp_solver_settings_t<i_t, f_t> settings_resolved = settings;
+  cuopt_expects(settings_resolved.method == method_t::PDLP,
+                error_type_t::ValidationError,
+                "Distributed MPS solve currently supports only method_t::PDLP");
+  if (use_pdlp_solver_mode) { set_pdlp_solver_mode(settings_resolved); }
 
   detail::pdlp_graph_disabled_flag().store(settings_resolved.hyper_params.pdlp_disable_graph,
                                            std::memory_order_relaxed);
