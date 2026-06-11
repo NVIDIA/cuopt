@@ -212,6 +212,7 @@ cusparse_spmvop_descr_uptr make_spmvop_descr(cusparseHandle_t handle,
 {
   static const auto fn =
     dynamic_load_runtime::function<cusparseSpMVOp_createDescr_sig>("cusparseSpMVOp_createDescr");
+  if (!fn.has_value()) { EXE_CUOPT_FAIL("Unable to resolve cusparseSpMVOp_createDescr at runtime"); }
   cusparseSpMVOpDescr_t descr{nullptr};
   RAFT_CUSPARSE_TRY((*fn)(handle, &descr, opA, matA, vecX, vecY, vecZ, computeType, buffer.data()));
   return cusparse_spmvop_descr_uptr{descr};
@@ -221,6 +222,7 @@ cusparse_spmvop_plan_uptr make_spmvop_plan(cusparseHandle_t handle, cusparseSpMV
 {
   static const auto fn =
     dynamic_load_runtime::function<cusparseSpMVOp_createPlan_sig>("cusparseSpMVOp_createPlan");
+  if (!fn.has_value()) { EXE_CUOPT_FAIL("Unable to resolve cusparseSpMVOp_createPlan at runtime"); }
   cusparseSpMVOpPlan_t plan{nullptr};
   // cuOpt does not supply user-provided LTO IR; pass nullptr/0 so cuSPARSE JITs internally.
   RAFT_CUSPARSE_TRY((*fn)(handle, descr, &plan, /*ltoIRBuf=*/nullptr, /*ltoIRSize=*/0));
