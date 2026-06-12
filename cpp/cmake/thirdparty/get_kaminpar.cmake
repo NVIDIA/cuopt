@@ -14,6 +14,8 @@ function(find_and_configure_kaminpar)
 
     rapids_cpm_find(KaMinPar ${PKG_VERSION}
         GLOBAL_TARGETS KaMinPar::KaMinPar
+        BUILD_EXPORT_SET cuopt-exports
+        INSTALL_EXPORT_SET cuopt-exports
         CPM_ARGS
         GIT_REPOSITORY https://github.com/KaHIP/KaMinPar.git
         GIT_TAG ${PKG_PINNED_TAG}
