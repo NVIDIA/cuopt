@@ -5,6 +5,7 @@
  */
 /* clang-format on */
 
+#include <cuopt/error.hpp>
 #include <cuopt/linear_programming/backend_selection.hpp>
 #include <cuopt/linear_programming/cpu_optimization_problem.hpp>
 #include <cuopt/linear_programming/io/parser.hpp>
@@ -178,6 +179,13 @@ int run_single_file(const std::string& file_path,
       auto& lp_settings = settings.get_pdlp_settings();
 
       if (lp_settings.hyper_params.use_distributed_pdlp) {
+        // handle_ptr is only created for the GPU memory backend (see above). Distributed PDLP is
+        // GPU-only.
+        cuopt::cuopt_expects(
+          handle_ptr != nullptr,
+          cuopt::error_type_t::ValidationError,
+          "Distributed PDLP requires the GPU memory backend; no GPU handle is available for the "
+          "selected memory backend.");
         cuopt::linear_programming::solve_lp(handle_ptr.get(), mps_data_model, lp_settings);
       } else {
         cuopt::linear_programming::solve_lp(problem_interface.get(), lp_settings);
