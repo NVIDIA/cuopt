@@ -3053,7 +3053,10 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
         // 1. At the very beginning of the solver, when no steps have been taken yet
         // 2. After a single step, since average of one step is the same step
         if (internal_solver_iterations_ <= 1) {
-          if (multi_gpu_engine) { assert(false && "Not implemented"); }
+          cuopt_expects(!multi_gpu_engine.has_value(),
+                        error_type_t::RuntimeError,
+                        "Distributed PDLP does not support average restart; run with "
+                        "never_restart_to_average = true.");
           raft::copy(unscaled_primal_avg_solution_.data(),
                      pdhg_solver_.get_primal_solution().data(),
                      primal_size_h_,
