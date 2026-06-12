@@ -92,9 +92,11 @@ subject to  f2(x) ≤ ε2
 
 Sweep each `ε_k` across the range from the payoff table. Each `(ε2, ε3, …)` combination is a single standard cuOpt solve. This recovers the **full** frontier, including the concave regions weighted-sum cannot reach, which is why it's the default when completeness matters. The cost is more solves (a grid over the constrained objectives) and bookkeeping of the ε values.
 
-ε-constrain *linear* objectives directly. A quadratic objective (e.g. risk `xᵀΣx`) is simplest kept as the objective `f1` while you ε-constrain the linear ones. A **convex** quadratic objective *can* instead be ε-constrained directly: add it as a quadratic constraint `xᵀQx ≤ ε` (Q positive semidefinite, inequality only), which cuOpt routes through the barrier solver as a second-order cone. Non-convex or equality quadratic constraints are unsupported, and the MILP path stays linear-constraint only.
+ε-constrain *linear* objectives directly. A quadratic objective (e.g. risk `xᵀΣx`) is simplest kept as the objective `f1` while you ε-constrain the linear ones. A **convex** quadratic objective *can* instead be ε-constrained directly: add it as a quadratic constraint `xᵀQx ≤ ε`, which cuOpt supports. Non-convex or equality quadratic constraints are unsupported, and the MILP path stays linear-constraint only.
 
 Spot it in existing code: a hand-coded loop over a target or budget value (a return target, a cost cap) is already the ε-constraint method — name it as such, filter dominated points, and read the swept constraint's dual (LP/QP only).
+
+**Read that dual as the local exchange rate.** Where the frontier is smooth, the dual on a swept ε-constraint is its slope — how much the kept objective `f1` moves per unit of the bound — at no cost beyond the solve already run; at a kink it gives only a one-sided rate. A **zero** dual means the bound is slack: the sweep has run past the frontier's edge. This reading needs LP/QP and a *linear* ε-constraint (MILP optima and problems with quadratic constraints return no duals) — where duals are unavailable, difference adjacent frontier points instead.
 
 **Picking a method:** weighted-sum for a quick convex sketch or when you know the frontier is convex (e.g. a pure-LP/QP tradeoff); ε-constraint when the problem is MILP, when the frontier may be non-convex, or when the user needs a faithful and complete curve.
 
@@ -117,14 +119,15 @@ Practical notes:
 - **Cap each MILP solve.** Set a per-solve time limit on MILP sweeps (see `cuopt-numerical-optimization-api-python`) — a sweep is many solves, and branch-and-bound can over-spend certifying optimality past a tiny gap, while cuOpt sets no limit by default and won't warn. Report the points as optimal *to the gap you set*, not certified optimal.
 - **Filter dominated points.** A correct sweep can still emit dominated points (especially weighted-sum near the hull, or MILP). Drop them; they are not part of the frontier.
 - **Resolution is a budget.** Curve fidelity trades against solve count. Start coarse to see the shape, then refine the grid only where the curve bends.
+- **Spend the budget where the slope changes (LP/QP).** Because the ε-constraint dual is the frontier's local slope, compare it across solved points: where it barely changes, the curve is nearly straight — interpolate rather than add solves; where it jumps by more than the solve tolerance, the frontier bends between those points — refine there (smaller differences are solver noise, not curvature). This concentrates solves where the curve actually bends instead of spreading them over a uniform grid. On MILP, judge where to refine from the gaps between primal objective values instead.
 - **Verify, don't assume.** When you claim one method beats another, measure it — e.g. count the efficient points ε-constraint recovered that weighted-sum missed — rather than asserting it; and flag any solve returning feasible-but-not-`Optimal` so a non-certified point is never read as exact.
 
 ## Step 5 — interpret the frontier
 
-- **Report tradeoffs, not single numbers.** A frontier point means nothing in isolation. Quote the exchange rate — "≈ $4k of extra cost per 1% of added coverage in this region" — so the user can judge whether a move is worth it.
-- **Flag knee points; don't auto-pick them.** The "knee" is where the curve bends most sharply — beyond it you pay a lot for a little. It's often the best-balanced compromise and worth highlighting, but the final choice is the user's preference, not a rule.
+- **Report tradeoffs, not single numbers.** A frontier point means nothing in isolation. Quote the exchange rate — "≈ $4k of extra cost per 1% of added coverage in this region" — so the user can judge whether a move is worth it. On an LP/QP frontier this exchange rate is the swept constraint's dual at that point — the local slope of the frontier, accurate to the solve's optimality tolerance (tighten it before relying on a dual); on MILP, estimate it from the gap to the adjacent frontier point.
+- **Flag knee points; don't auto-pick them.** The "knee" is where the curve bends most sharply — beyond it you pay a lot for a little. It's often the best-balanced compromise and worth highlighting, but the final choice is the user's preference, not a rule. At the knee the slope is two-sided — the dual just below differs from just above — so quote the exchange rate there as a range, not one number.
 - **Treat dominated or gappy output as a diagnostic.** If dominated points survive filtering, or the frontier is implausibly sparse or perfectly linear, suspect the sweep or the model — most often weighted-sum hiding a concave region (switch to ε-constraint) or a normalization mistake.
-- **State the weighting/ε you used.** Every reported point is conditional on its scalarization. Make that explicit so a single solve is never mistaken for "the" optimum.
+- **State the weighting/ε you used.** Every reported point is conditional on its scalarization. Make that explicit so a single solve is never mistaken for "the" optimum. On LP/QP, the ε-constraint duals are the *implicit weights* at that point — the effective price the solution puts on each constrained objective, and the weights a weighted-sum solve would need to reproduce that tradeoff. Reporting them makes the accepted tradeoff ratio explicit.
 
 ## Interfaces
 
