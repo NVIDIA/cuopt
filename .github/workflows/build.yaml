@@ -130,6 +130,7 @@ jobs:
       date: ${{ inputs.date }}
       package-name: libcuopt
       package-type: cpp
+      publish-wheel-search-key: cuopt_wheel_cpp_libcuopt
   wheel-build-cuopt:
     needs: [wheel-build-libcuopt]
     permissions:
@@ -167,6 +168,7 @@ jobs:
       date: ${{ inputs.date }}
       package-name: cuopt
       package-type: python
+      publish-wheel-search-key: cuopt_wheel_python_cuopt_
   wheel-build-cuopt-server:
     permissions:
       actions: read
@@ -206,6 +208,7 @@ jobs:
       date: ${{ inputs.date }}
       package-name: cuopt_server
       package-type: python
+      publish-wheel-search-key: cuopt_wheel_python_cuopt-server
   docs-build:
     needs: [python-build]
     permissions:
@@ -267,6 +270,7 @@ jobs:
       date: ${{ inputs.date }}
       package-name: cuopt_sh_client
       package-type: python
+      publish-wheel-search-key: cuopt_wheel_python_cuopt-sh-client
   tests:
     # Docker image build / tests aren't necessary for the 'test.yaml' workflow,
     # so 'test.yaml' can be triggered without waiting for those.

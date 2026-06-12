@@ -259,6 +259,112 @@ branch_variable_t<i_t> coefficient_diving(const lp_problem_t<i_t, f_t>& lp_probl
   return {branch_var, round_dir};
 }
 
+template <typename i_t, typename f_t>
+branch_variable_t<i_t> farkas_diving(const lp_problem_t<i_t, f_t>& lp,
+                                     const std::vector<i_t>& fractional,
+                                     const std::vector<f_t>& solution,
+                                     f_t zero_tol,
+                                     logger_t& log)
+{
+  if (fractional.size() == 0) return {-1, branch_direction_t::NONE};
+
+  i_t branch_var               = -1;
+  f_t max_score                = -1;
+  branch_direction_t round_dir = branch_direction_t::NONE;
+
+  for (i_t j : fractional) {
+    f_t c                  = lp.objective[j];
+    f_t f_down             = solution[j] - std::floor(solution[j]);
+    f_t f_up               = std::ceil(solution[j]) - solution[j];
+    f_t score              = 0;
+    branch_direction_t dir = branch_direction_t::NONE;
+
+    if (c > zero_tol) {
+      dir = branch_direction_t::DOWN;
+    } else if (c < -zero_tol) {
+      dir = branch_direction_t::UP;
+    } else if (f_down < 0.5) {
+      dir = branch_direction_t::DOWN;
+    } else {
+      dir = branch_direction_t::UP;
+    }
+
+    if (dir == branch_direction_t::UP) {
+      score = std::isfinite(lp.upper[j])
+                ? (lp.upper[j] - std::floor(solution[j])) * f_up * std::abs(c)
+                : std::numeric_limits<f_t>::infinity();
+    } else {
+      score = std::isfinite(lp.lower[j])
+                ? (std::ceil(solution[j]) - lp.lower[j]) * f_down * std::abs(c)
+                : std::numeric_limits<f_t>::infinity();
+    }
+
+    if (score > max_score) {
+      max_score  = score;
+      branch_var = j;
+      round_dir  = dir;
+    }
+  }
+
+  assert(round_dir != branch_direction_t::NONE);
+  assert(branch_var >= 0);
+
+  log.debug("Farkas diving: selected var %d with val = %e, round dir = %d\n",
+            branch_var,
+            solution[branch_var],
+            round_dir);
+
+  return {branch_var, round_dir};
+}
+
+template <typename i_t, typename f_t>
+branch_variable_t<i_t> vector_length_diving(const lp_problem_t<i_t, f_t>& lp,
+                                            const std::vector<i_t>& fractional,
+                                            const std::vector<f_t>& solution,
+                                            logger_t& log)
+{
+  if (fractional.size() == 0) return {-1, branch_direction_t::NONE};
+
+  constexpr f_t eps            = 1E-6;
+  i_t branch_var               = -1;
+  f_t min_score                = std::numeric_limits<f_t>::infinity();
+  branch_direction_t round_dir = branch_direction_t::NONE;
+
+  for (i_t j : fractional) {
+    f_t c                  = lp.objective[j];
+    f_t f_down             = solution[j] - std::floor(solution[j]);
+    f_t f_up               = std::ceil(solution[j]) - solution[j];
+    i_t column_length      = lp.A.col_start[j + 1] - lp.A.col_start[j];
+    f_t score              = 0;
+    branch_direction_t dir = branch_direction_t::NONE;
+
+    if (c < 0) {
+      dir   = branch_direction_t::DOWN;
+      score = (f_down * std::abs(c) + eps) / (column_length + 1);
+    } else {
+      dir   = branch_direction_t::UP;
+      score = (f_up * std::abs(c) + eps) / (column_length + 1);
+    }
+
+    if (score < min_score) {
+      branch_var = j;
+      round_dir  = dir;
+      min_score  = score;
+    }
+  }
+
+  assert(round_dir != branch_direction_t::NONE);
+  assert(branch_var >= 0);
+
+  log.debug("Vector length diving: selected var %d with val = %e, round dir = %d and score = %e\n",
+            branch_var,
+            solution[branch_var],
+            round_dir,
+            min_score);
+
+  return {branch_var, round_dir};
+}
+
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 template branch_variable_t<int> line_search_diving(const std::vector<int>& fractional,
                                                    const std::vector<double>& solution,
@@ -287,6 +393,18 @@ template branch_variable_t<int> coefficient_diving(const lp_problem_t<int, doubl
                                                    const std::vector<int>& up_locks,
                                                    const std::vector<int>& down_locks,
                                                    logger_t& log);
+
+template branch_variable_t<int> farkas_diving(const lp_problem_t<int, double>& lp_problem,
+                                              const std::vector<int>& fractional,
+                                              const std::vector<double>& solution,
+                                              double zero_tol,
+                                              logger_t& log);
+
+template branch_variable_t<int> vector_length_diving(const lp_problem_t<int, double>& lp_problem,
+                                                     const std::vector<int>& fractional,
+                                                     const std::vector<double>& solution,
+                                                     logger_t& log);
+
 #endif
 
 }  // namespace cuopt::linear_programming::dual_simplex
