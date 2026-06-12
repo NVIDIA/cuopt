@@ -115,10 +115,12 @@
   "mip_hyper_heuristic_related_vars_time_limit"
 
 /* @brief Diving heuristic toggles: -1 automatic, 0 disabled, 1 enabled */
-#define CUOPT_MIP_HYPER_DIVING_LINE_SEARCH "mip_hyper_diving_line_search"
-#define CUOPT_MIP_HYPER_DIVING_PSEUDOCOST  "mip_hyper_diving_pseudocost"
-#define CUOPT_MIP_HYPER_DIVING_GUIDED      "mip_hyper_diving_guided"
-#define CUOPT_MIP_HYPER_DIVING_COEFFICIENT "mip_hyper_diving_coefficient"
+#define CUOPT_MIP_HYPER_DIVING_LINE_SEARCH   "mip_hyper_diving_line_search"
+#define CUOPT_MIP_HYPER_DIVING_PSEUDOCOST    "mip_hyper_diving_pseudocost"
+#define CUOPT_MIP_HYPER_DIVING_GUIDED        "mip_hyper_diving_guided"
+#define CUOPT_MIP_HYPER_DIVING_COEFFICIENT   "mip_hyper_diving_coefficient"
+#define CUOPT_MIP_HYPER_DIVING_FARKAS        "mip_hyper_diving_farkas"
+#define CUOPT_MIP_HYPER_DIVING_VECTOR_LENGTH "mip_hyper_diving_vector_length"
 /* @brief Diving heuristic limits */
 #define CUOPT_MIP_HYPER_DIVING_MIN_NODE_DEPTH         "mip_hyper_diving_min_node_depth"
 #define CUOPT_MIP_HYPER_DIVING_NODE_LIMIT             "mip_hyper_diving_node_limit"

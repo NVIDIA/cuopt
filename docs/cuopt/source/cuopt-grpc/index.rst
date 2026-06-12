@@ -3,7 +3,7 @@
    SPDX-License-Identifier: Apache-2.0
 
 ==========================
-gRPC remote execution
+gRPC Remote Execution
 ==========================
 
 **NVIDIA cuOpt gRPC remote execution** runs optimization solves on a remote GPU host. Clients can be the **Python** API, **C API**, **`cuopt_cli`**, or a **custom** program that speaks ``CuOptRemoteService`` over gRPC. For Python, the C API, and ``cuopt_cli``, set ``CUOPT_REMOTE_HOST`` and ``CUOPT_REMOTE_PORT`` to forward solves to ``cuopt_grpc_server``.

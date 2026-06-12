@@ -336,6 +336,14 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
 {
   try {
     mip_solver_settings_t<i_t, f_t> settings(settings_const);
+    cuopt_expects(std::isfinite(settings.tolerances.absolute_tolerance) &&
+                    settings.tolerances.absolute_tolerance > f_t(0) &&
+                    std::isfinite(settings.semi_continuous_big_m) &&
+                    settings.semi_continuous_big_m > settings.tolerances.absolute_tolerance,
+                  error_type_t::ValidationError,
+                  "mip_absolute_tolerance must be finite and strictly positive, and "
+                  "mip_semi_continuous_big_m must be finite and greater than "
+                  "mip_absolute_tolerance");
     if (settings.presolver == presolver_t::Default || settings.presolver == presolver_t::PSLP) {
       if (settings.presolver == presolver_t::PSLP) {
         CUOPT_LOG_INFO(
