@@ -2273,6 +2273,13 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
   cuopt_expects(!settings_resolved.inside_mip,
                 error_type_t::ValidationError,
                 "Distributed PDLP is not yet supported from inside MIP.");
+  // Reject initial solution and warm starts as they are not supported yes for distributed PDLP
+  cuopt_expects(!settings_resolved.has_initial_primal_solution() &&
+                  !settings_resolved.has_initial_dual_solution() &&
+                  !settings_resolved.get_pdlp_warm_start_data().is_populated(),
+                error_type_t::ValidationError,
+                "Distributed PDLP does not support initial primal/dual solutions or warm-start "
+                "data.");
 
   init_logger_t log(settings_resolved.log_file, settings_resolved.log_to_console);
   print_version_info();
