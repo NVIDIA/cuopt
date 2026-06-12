@@ -11,7 +11,11 @@
 
 #include <omp.h>
 
-namespace mps_fast {
+// The section scanner handles freshly read/decoded blocks and scans them for section titles while
+// they're still warm in cache it then publishes read/decoded input ranges to the parser workers,
+// which handle their respective sections in parallel.
+
+namespace cuopt::linear_programming::io::detail {
 
 enum class mps_section_kind {
   rows,
@@ -78,8 +82,16 @@ class mps_section_block_scanner_t {
                               std::size_t block_count,
                               mps_phase_registry_t& registry);
 
+  // Records a freshly decoded block, scans it for section titles, advances the
+  // contiguous decoded-byte frontier across out-of-order completions, and
+  // publishes any newly available section ranges. Producers only need to feed
+  // blocks in any order; the frontier and publication live entirely here.
   void observe_block(std::size_t block_index, const char* begin, const char* end);
   void publish_ready(std::size_t ready_bytes);
+
+  // Current contiguous decoded-byte frontier; producers use this as the final
+  // view size once all blocks have been observed.
+  std::size_t ready_bytes() const noexcept;
 
  private:
   static constexpr std::size_t section_count = 9;
@@ -92,7 +104,8 @@ class mps_section_block_scanner_t {
   void scan_section_range(const char* begin, const char* end);
   void scan_boundary(std::size_t left_index, std::size_t right_index);
   void record_section_hit(mps_section_kind kind, const char* ptr);
-  void publish_section_ranges();
+  void notify_ready_phases();
+  void advance_ready_frontier();
 
   const char* data_        = nullptr;
   std::size_t block_count_ = 0;
@@ -103,6 +116,8 @@ class mps_section_block_scanner_t {
   std::unique_ptr<std::atomic_size_t[]> block_end_offsets_;
   std::atomic_size_t ready_bytes_{0};
   std::atomic<const char*> section_hits_[section_count]{};
+  std::mutex frontier_mutex_;
+  std::size_t next_block_ = 0;
 };
 
-}  // namespace mps_fast
+}  // namespace cuopt::linear_programming::io::detail

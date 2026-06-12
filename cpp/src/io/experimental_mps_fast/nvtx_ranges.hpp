@@ -14,7 +14,7 @@
 #include <unistd.h>
 #endif
 
-namespace mps_fast::nvtx {
+namespace cuopt::linear_programming::io::detail::nvtx {
 
 namespace colors {
 constexpr std::uint32_t generic  = 0xff8b949e;
@@ -92,7 +92,9 @@ class scoped_range_t {
   scoped_range_t& operator=(const scoped_range_t&) = delete;
 
  private:
-  void push(const char* name, std::uint32_t color, std::uint32_t category)
+  void push([[maybe_unused]] const char* name,
+            [[maybe_unused]] std::uint32_t color,
+            [[maybe_unused]] std::uint32_t category)
   {
 #ifdef MPS_FAST_NVTX
     nvtxEventAttributes_t event{};
@@ -105,10 +107,6 @@ class scoped_range_t {
     event.category      = category;
     nvtxRangePushEx(&event);
     active_ = true;
-#else
-    (void)name;
-    (void)color;
-    (void)category;
 #endif
   }
 
@@ -118,18 +116,17 @@ class scoped_range_t {
 #endif
 };
 
-inline void name_current_thread(const char* name)
+inline void name_current_thread([[maybe_unused]] const char* name)
 {
 #ifdef MPS_FAST_NVTX
   nvtxNameOsThreadA((std::uint32_t)::syscall(SYS_gettid), name);
-#else
-  (void)name;
 #endif
 }
 
-}  // namespace mps_fast::nvtx
+}  // namespace cuopt::linear_programming::io::detail::nvtx
 
 #define MPS_FAST_NVTX_CONCAT_INNER(a, b) a##b
 #define MPS_FAST_NVTX_CONCAT(a, b)       MPS_FAST_NVTX_CONCAT_INNER(a, b)
-#define MPS_NVTX_RANGE(name, color) \
-  ::mps_fast::nvtx::scoped_range_t MPS_FAST_NVTX_CONCAT(_mps_nvtx_range_, __LINE__)(name, color)
+#define MPS_NVTX_RANGE(name, color)                                                   \
+  ::cuopt::linear_programming::io::detail::nvtx::scoped_range_t MPS_FAST_NVTX_CONCAT( \
+    _mps_nvtx_range_, __LINE__)(name, color)

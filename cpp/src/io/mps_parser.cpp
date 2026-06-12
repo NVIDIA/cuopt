@@ -797,9 +797,9 @@ void mps_parser_t<i_t, f_t>::parse_rows(std::string_view line)
   }
   if (type == Objective) {
     // Keep only the first name or OBJNAME since it was set before
-    if (objective_name.empty())
-      objective_name = name;
-    else
+    if (objective_name.empty()) objective_name = name;
+    // aligns with CPLEX/SCIP behavior
+    else if (name != objective_name)
       ignored_objective_names.emplace(name);
     // If we wanted to strictly follow MPS definition: a new objective row ('N') should be treated
     // as an unbounded constraints, aka an extra contraints row with lower bound -infinity and upper

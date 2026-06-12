@@ -17,6 +17,8 @@
 #include <string_view>
 #include <vector>
 
+namespace cuopt::linear_programming::io::detail {
+
 namespace {
 
 uint64_t bits(double value) { return std::bit_cast<uint64_t>(value); }
@@ -27,36 +29,37 @@ double reference_strtod(std::string_view token)
   for (char& c : normalized) {
     if (c == 'd' || c == 'D') { c = 'e'; }
   }
-  char* end    = nullptr;
-  errno        = 0;
-  double value = std::strtod(normalized.c_str(), &end);
-  ASSERT_EQ(end, normalized.c_str() + normalized.size());
-  return value;
+  char* end = nullptr;
+  errno     = 0;
+  return std::strtod(normalized.c_str(), &end);
 }
 
 double parse_token(std::string_view token)
 {
   const char* p = token.data();
-  return mps_fast::fp64::parse_fp64_advance(p, token.data() + token.size());
-}
-
-double parse_padded_token(std::string_view token)
-{
-  std::string padded(token);
-  padded.append(40, ' ');
-  const char* p = padded.data();
-  double value  = mps_fast::fp64::parse_fp64_advance(p, padded.data() + padded.size());
-  ASSERT_EQ(p, padded.data() + token.size());
-  return value;
+  return fp64::parse_fp64_advance(p, token.data() + token.size());
 }
 
 void check_bitwise_strtod(std::string_view token)
 {
-  const double ref        = reference_strtod(token);
+  std::string normalized(token);
+  for (char& c : normalized) {
+    if (c == 'd' || c == 'D') { c = 'e'; }
+  }
+  char* end        = nullptr;
+  errno            = 0;
+  const double ref = std::strtod(normalized.c_str(), &end);
+  EXPECT_EQ(end, normalized.c_str() + normalized.size());
+
+  std::string padded(token);
+  padded.append(40, ' ');
+  const char* p             = padded.data();
+  const double padded_value = fp64::parse_fp64_advance(p, padded.data() + padded.size());
+  EXPECT_EQ(p, padded.data() + token.size());
+
   const uint64_t ref_bits = bits(ref);
   EXPECT_EQ(ref_bits, bits(parse_token(token))) << "token parse mismatch for '" << token << "'";
-  EXPECT_EQ(ref_bits, bits(parse_padded_token(token)))
-    << "padded parse mismatch for '" << token << "'";
+  EXPECT_EQ(ref_bits, bits(padded_value)) << "padded parse mismatch for '" << token << "'";
 }
 
 std::string random_token(std::mt19937_64& rng)
@@ -155,7 +158,7 @@ TEST(FastFp64ParserTest, CursorAdvancesToTokenEnd)
   std::setlocale(LC_NUMERIC, "C");
   std::string text = "123.45  ABC";
   const char* p    = text.data();
-  double value     = mps_fast::fp64::parse_fp64_advance(p, text.data() + text.size());
+  double value     = fp64::parse_fp64_advance(p, text.data() + text.size());
 
   EXPECT_EQ(bits(reference_strtod("123.45")), bits(value));
   EXPECT_EQ(text.data() + 6, p);
@@ -172,3 +175,5 @@ TEST(FastFp64ParserTest, FixedSeedRandomDifferential)
     check_bitwise_strtod(token);
   }
 }
+
+}  // namespace cuopt::linear_programming::io::detail

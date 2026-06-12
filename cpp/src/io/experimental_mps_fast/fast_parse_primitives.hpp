@@ -20,7 +20,7 @@
 #define UNLIKELY(x) __builtin_expect(!!(x), 0)
 #endif
 
-namespace mps_fast {
+namespace cuopt::linear_programming::io::detail {
 
 enum scan_mode {
   skip_whitespace,
@@ -379,4 +379,4 @@ static inline bool accept_comment(cursor_t& cursor)
   return false;
 }
 
-}  // namespace mps_fast
+}  // namespace cuopt::linear_programming::io::detail

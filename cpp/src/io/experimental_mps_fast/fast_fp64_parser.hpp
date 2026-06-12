@@ -15,7 +15,7 @@
 #include <stdexcept>
 #include <string_view>
 
-namespace mps_fast {
+namespace cuopt::linear_programming::io::detail {
 
 using cuopt::linear_programming::io::error_type_t;
 using cuopt::linear_programming::io::mps_parser_expects;
@@ -428,4 +428,4 @@ static inline double parse_fp64_advance(const char*& p, const char* end)
 }
 
 }  // namespace fp64
-}  // namespace mps_fast
+}  // namespace cuopt::linear_programming::io::detail

@@ -26,6 +26,7 @@
 #include <cctype>
 #include <cerrno>
 #include <chrono>
+#include <concepts>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -47,7 +48,7 @@
 #define MPS_FAST_COMPACT_ROW_HASH
 #define MPS_FAST_THP_PREFAULT
 
-namespace mps_fast {
+namespace cuopt::linear_programming::io::detail {
 
 static constexpr size_t KiB = 1024;
 static constexpr size_t MiB = 1024 * KiB;
@@ -171,12 +172,11 @@ enum class materialize_touch_t {
 
 // instanciate a range using mmap anon pages with hugepage hints, and materialize them
 // by touching each to nudge the kernel into invoking its THP mechanism
-static void materialize_hugepages(const char* label,
+static void materialize_hugepages([[maybe_unused]] const char* label,
                                   void* data,
                                   size_t bytes,
                                   materialize_touch_t touch)
 {
-  (void)label;
   if (data == nullptr || bytes == 0) return;
 
   constexpr size_t two_mb = 2 * MiB;
@@ -208,7 +208,7 @@ static void materialize_vector_hugepages(const char* label,
 
 class scoped_timer_t {
  public:
-  scoped_timer_t(const char* name, double* accumulator = nullptr)
+  scoped_timer_t([[maybe_unused]] const char* name, double* accumulator = nullptr)
 #ifdef MPS_FAST_TIMERS
     : name_(name),
       accumulator_(accumulator),
@@ -217,7 +217,6 @@ class scoped_timer_t {
 #else
     : accumulator_(accumulator)
   {
-    (void)name;
   }
 #endif
 
@@ -441,7 +440,7 @@ static inline void observe_dense_name(bool& candidate,
 
 template <typename i_t, typename f_t>
 struct parse_state_t {
-  cuopt::linear_programming::io::mps_data_model_t<i_t, f_t>& problem;
+  mps_data_model_t<i_t, f_t>& problem;
   cursor_t& cursor;
 
   // backed by the input buffer
@@ -484,10 +483,7 @@ struct parse_state_t {
   // some writers introduce zero-column variables only in BOUNDS.
   std::map<std::string_view, bounds_only_var_t> bounds_only_vars;
 
-  parse_state_t(cuopt::linear_programming::io::mps_data_model_t<i_t, f_t>& p, cursor_t& c)
-    : problem(p), cursor(c)
-  {
-  }
+  parse_state_t(mps_data_model_t<i_t, f_t>& p, cursor_t& c) : problem(p), cursor(c) {}
 
   void init_row_hash_table()
   {
@@ -718,7 +714,8 @@ static void parse_objname_section(parse_state_t<i_t, f_t>& state)
 {
   scoped_timer_t timer("parse_objname");
   if (accept(state.cursor, "OBJNAME")) {
-    if (!state.cursor.eol()) { state.objective_name_sv = state.cursor.read_rest_of_line_trimmed(); }
+    if (state.cursor.eol()) { expect_eol(state.cursor); }
+    state.objective_name_sv = state.cursor.read_field();
     accept_comment(state.cursor);
     expect_eol(state.cursor);
   }
@@ -1752,10 +1749,9 @@ template <typename i_t, typename f_t>
 static void materialize_problem_csr(parse_state_t<i_t, f_t>& state)
 {
   scoped_timer_t timer("materialize_problem_csr");
-  size_t nnz              = state.temp_csr_nnz;
-  const char* env_threads = std::getenv("MPS_CSR_COPY_THREADS");
-  int copy_threads        = env_threads ? std::atoi(env_threads) : 2;
-  copy_threads            = std::max(1, std::min(copy_threads, MPS_LARGE_FILE_THREAD_CAP));
+  size_t nnz       = state.temp_csr_nnz;
+  int copy_threads = 2;
+  copy_threads     = std::max(1, std::min(copy_threads, MPS_LARGE_FILE_THREAD_CAP));
 
   int resize_threads = copy_threads > 1 ? 2 : 1;
 #pragma omp parallel sections num_threads(resize_threads)
@@ -1904,8 +1900,7 @@ static void parse_rhs_section(parse_state_t<i_t, f_t>& state, cursor_t& cursor)
   };
 
   while (cursor.ptr < cursor.end) {
-    auto rhs_name = cursor.read_field();
-    (void)rhs_name;
+    [[maybe_unused]] auto rhs_name = cursor.read_field();
     if (accept_comment(cursor)) {
       expect_eol(cursor);
       continue;
@@ -2075,9 +2070,8 @@ static bool parse_bounds_section_parallel_dense(parse_state_t<i_t, f_t>& state,
             continue;
           }
 
-          auto bound_name = cursor.read_field();
-          (void)bound_name;
-          auto var_name = cursor.read_field();
+          [[maybe_unused]] auto bound_name = cursor.read_field();
+          auto var_name                    = cursor.read_field();
           if (UNLIKELY(!var_name.empty() && var_name[0] == '$')) {
             cursor.skip_to_eol();
             expect_eol(cursor);
@@ -2274,10 +2268,9 @@ static void parse_bounds_section(parse_state_t<i_t, f_t>& state,
   {
     scoped_timer_t timer("parse_bounds");
     while (!cursor.done()) {
-      auto bound_type = cursor.read_field();
-      auto bound_name = cursor.read_field();
-      (void)bound_name;
-      auto var_name = cursor.read_field();
+      auto bound_type                  = cursor.read_field();
+      [[maybe_unused]] auto bound_name = cursor.read_field();
+      auto var_name                    = cursor.read_field();
       if (UNLIKELY(!var_name.empty() && var_name[0] == '$')) {
         cursor.skip_to_eol();
         expect_eol(cursor);
@@ -2335,7 +2328,7 @@ static void parse_bounds_section(parse_state_t<i_t, f_t>& state,
         }
         cursor.error("%s", msg);
       };
-      (void)apply_bound_record(
+      [[maybe_unused]] bool bound_applied = apply_bound_record(
         bound_type, value, has_value, first_bound_for_var, set_lb, set_ub, set_type, set_error);
       if (aux_var == nullptr) { mark_bound(var_idx); }
 
@@ -2401,8 +2394,7 @@ static void parse_ranges_section(parse_state_t<i_t, f_t>& state, cursor_t& curso
   };
 
   while (cursor.ptr < cursor.end) {
-    auto range_name = cursor.read_field();
-    (void)range_name;
+    [[maybe_unused]] auto range_name = cursor.read_field();
     if (accept_comment(cursor)) {
       expect_eol(cursor);
       continue;
@@ -2716,8 +2708,8 @@ static void append_bounds_only_variables(parse_state_t<i_t, f_t>& state)
 }
 
 template <typename i_t, typename f_t>
-static std::size_t init_problem_storage(
-  cuopt::linear_programming::io::mps_data_model_t<i_t, f_t>& problem, std::size_t reserve_hint)
+static std::size_t init_problem_storage(mps_data_model_t<i_t, f_t>& problem,
+                                        std::size_t reserve_hint)
 {
   problem.n_vars_                   = 0;
   problem.n_constraints_            = 0;
@@ -2741,15 +2733,30 @@ static std::size_t init_problem_storage(
   return reserve_dim;
 }
 
-template <typename Stream, typename i_t, typename f_t>
-static cuopt::linear_programming::io::mps_data_model_t<i_t, f_t> parse_mps_fast_stream(
-  Stream& stream, const char* total_timer_name, const char* producer_task_name)
+// Contract every input stream fed to parse_mps_fast_stream must satisfy.
+template <typename Stream>
+concept InputStream = requires(Stream stream)
+{
+  {stream.data()}->std::convertible_to<const char*>;
+  {stream.mutable_data()}->std::convertible_to<char*>;
+  {stream.size()}->std::convertible_to<std::size_t>;
+  {stream.compressed_size()}->std::convertible_to<std::size_t>;
+  {stream.reserve_size_hint()}->std::convertible_to<std::size_t>;
+  {stream.registry()}->std::same_as<mps_phase_registry_t&>;
+  {stream.view()}->std::same_as<input_stream_view_t>;
+  {stream.run_decode_tasks()}->std::same_as<void>;
+};
+
+template <InputStream Stream, typename i_t, typename f_t>
+static mps_data_model_t<i_t, f_t> parse_mps_fast_stream(Stream& stream,
+                                                        const char* total_timer_name,
+                                                        const char* producer_task_name)
 {
   omp_max_active_levels_guard_t omp_active_levels(2);
 
   input_stream_view_t input = stream.view();
   auto total_timer          = std::make_unique<scoped_timer_t>(total_timer_name);
-  cuopt::linear_programming::io::mps_data_model_t<i_t, f_t> problem;
+  mps_data_model_t<i_t, f_t> problem;
   std::size_t reserve_dim = init_problem_storage(problem, stream.reserve_size_hint());
 
   cursor_t cursor(input.data, 0);
@@ -2758,24 +2765,14 @@ static cuopt::linear_programming::io::mps_data_model_t<i_t, f_t> parse_mps_fast_
 
   auto phase_end = [](const char*) { flush_timers(); };
 
-  std::mutex task_error_mutex;
-  std::exception_ptr first_task_error = nullptr;
-  std::atomic<bool> task_failed{false};
-
-  auto mark_task_error = [&](std::exception_ptr eptr) {
-    {
-      std::lock_guard<std::mutex> lock(task_error_mutex);
-      if (!first_task_error) { first_task_error = eptr; }
-    }
-    task_failed.store(true, std::memory_order_release);
-  };
+  parallel_error_latch_t parser_tasks;
 
   auto run_parser_task = [&](auto&& fn) {
-    if (task_failed.load(std::memory_order_acquire)) { return; }
+    if (parser_tasks.stopped()) { return; }
     try {
       fn();
     } catch (...) {
-      mark_task_error(std::current_exception());
+      parser_tasks.capture(std::current_exception());
     }
   };
 
@@ -2851,7 +2848,7 @@ static cuopt::linear_programming::io::mps_data_model_t<i_t, f_t> parse_mps_fast_
         try {
           stream.run_decode_tasks();
         } catch (...) {
-          mark_task_error(std::current_exception());
+          parser_tasks.capture(std::current_exception());
           unblock_phase_waiters_after_error();
         }
       }
@@ -2940,19 +2937,20 @@ static cuopt::linear_programming::io::mps_data_model_t<i_t, f_t> parse_mps_fast_
     }
   }
 
-  if (first_task_error) { std::rethrow_exception(first_task_error); }
+  parser_tasks.rethrow_if_error();
 
   append_bounds_only_variables(state);
 
   input.size = stream.size();
   cursor.end = input.data + input.size;
-  if (!input.registry->endata_ready() || !input.registry->endata_present()) {
-    cursor.ptr =
-      input.registry->endata_ready() ? input.registry->endata_begin() : input.data + input.size;
-    cursor.error("missing ENDATA");
+  if (!input.registry->endata_ready()) {
+    cursor.ptr = input.data + input.size;
+    cursor.error("input ended before ENDATA boundary was resolved");
   }
-  cursor.ptr = input.registry->endata_begin();
-  expect(cursor, "ENDATA");
+  if (input.registry->endata_present()) {
+    cursor.ptr = input.registry->endata_begin();
+    expect(cursor, "ENDATA");
+  }
 
   total_timer.reset();
   flush_timers();
@@ -2967,7 +2965,7 @@ struct padded_memory_input_t {
 
 static padded_memory_input_t read_compressed_mps_file(const std::string& path)
 {
-  std::vector<char> buffer = cuopt::linear_programming::io::detail::file_to_string(path);
+  std::vector<char> buffer = file_to_string(path);
   if (buffer.empty()) { buffer.push_back('\0'); }
 
   std::size_t input_size = buffer.size() - 1;
@@ -2976,8 +2974,7 @@ static padded_memory_input_t read_compressed_mps_file(const std::string& path)
 }
 
 template <typename i_t, typename f_t>
-cuopt::linear_programming::io::mps_data_model_t<i_t, f_t> parse_mps_fast_file(
-  const std::string& path, FileReadMethod read_method)
+mps_data_model_t<i_t, f_t> parse_mps_fast_file(const std::string& path, FileReadMethod read_method)
 {
   FileReadMethod effective_method = effective_file_read_method(path, read_method);
   switch (effective_method) {
@@ -3006,13 +3003,13 @@ cuopt::linear_programming::io::mps_data_model_t<i_t, f_t> parse_mps_fast_file(
   __builtin_unreachable();
 }
 
-template cuopt::linear_programming::io::mps_data_model_t<int, float> parse_mps_fast_file(
-  const std::string& path, FileReadMethod read_method);
-template cuopt::linear_programming::io::mps_data_model_t<int, double> parse_mps_fast_file(
-  const std::string& path, FileReadMethod read_method);
-template cuopt::linear_programming::io::mps_data_model_t<int64_t, float> parse_mps_fast_file(
-  const std::string& path, FileReadMethod read_method);
-template cuopt::linear_programming::io::mps_data_model_t<int64_t, double> parse_mps_fast_file(
-  const std::string& path, FileReadMethod read_method);
+template mps_data_model_t<int, float> parse_mps_fast_file(const std::string& path,
+                                                          FileReadMethod read_method);
+template mps_data_model_t<int, double> parse_mps_fast_file(const std::string& path,
+                                                           FileReadMethod read_method);
+template mps_data_model_t<int64_t, float> parse_mps_fast_file(const std::string& path,
+                                                              FileReadMethod read_method);
+template mps_data_model_t<int64_t, double> parse_mps_fast_file(const std::string& path,
+                                                               FileReadMethod read_method);
 
-}  // namespace mps_fast
+}  // namespace cuopt::linear_programming::io::detail

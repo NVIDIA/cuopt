@@ -44,7 +44,7 @@ template <typename i_t, typename f_t>
 mps_data_model_t<i_t, f_t> read_mps_fast_experimental(const std::string& mps_file_path)
 {
   CUOPT_LOG_INFO("Using experimental fast MPS parser for '%s'", mps_file_path.c_str());
-  return mps_fast::parse_mps_fast_file<i_t, f_t>(mps_file_path);
+  return detail::parse_mps_fast_file<i_t, f_t>(mps_file_path);
 }
 
 template mps_data_model_t<int, float> read_mps_fast_experimental(const std::string& mps_file_path);

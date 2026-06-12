@@ -26,7 +26,7 @@
 #include <utility>
 #include <vector>
 
-namespace mps_fast {
+namespace cuopt::linear_programming::io::detail {
 
 using cuopt::linear_programming::io::error_type_t;
 using cuopt::linear_programming::io::mps_parser_fail;
@@ -104,6 +104,27 @@ std::size_t system_page_size()
   return page_size;
 }
 
+bool pread_full(int fd, char* dst, std::size_t bytes, std::size_t offset)
+{
+  std::size_t done = 0;
+  while (done < bytes) {
+    std::size_t remaining = bytes - done;
+    std::size_t chunk =
+      std::min<std::size_t>(remaining, (std::size_t)std::numeric_limits<ssize_t>::max());
+    ssize_t got = ::pread(fd, dst + done, chunk, (off_t)(offset + done));
+    if (got < 0) {
+      if (errno == EINTR) { continue; }
+      return false;
+    }
+    if (got == 0) {
+      errno = EIO;
+      return false;
+    }
+    done += (std::size_t)got;
+  }
+  return true;
+}
+
 raw_input_stream_t::raw_input_stream_t(const std::string& path) : path_(path)
 {
   MPS_NVTX_RANGE("raw_input_construct", nvtx::colors::io);
@@ -118,9 +139,6 @@ raw_input_stream_t::raw_input_stream_t(const std::string& path) : path_(path)
   file_size_         = get_file_size(buffered_fd_, path);
   fd_                = buffered_fd_;
   bool use_direct_io = file_size_ > raw_input_direct_io_threshold_bytes;
-  if (const char* raw_direct = std::getenv("MPS_FAST_RAW_DIRECT_IO")) {
-    use_direct_io = raw_direct[0] != '0';
-  }
   if (use_direct_io) {
 #ifdef O_DIRECT
     int direct_fd = ::open(path.c_str(), O_RDONLY | O_DIRECT);
@@ -140,8 +158,6 @@ raw_input_stream_t::raw_input_stream_t(const std::string& path) : path_(path)
   output_data_ = output_region_.char_data();
   output_region_.advise(MADV_HUGEPAGE);
 
-  block_done_.resize(window_count_, 0);
-  block_end_.resize(window_count_, 0);
   section_scanner_ =
     std::make_unique<mps_section_block_scanner_t>(output_data_, window_count_, registry_);
 }
@@ -157,10 +173,20 @@ char* raw_input_stream_t::mutable_data() noexcept { return output_data_; }
 std::size_t raw_input_stream_t::size() const noexcept { return output_view_size_; }
 std::size_t raw_input_stream_t::compressed_size() const noexcept { return file_size_; }
 std::size_t raw_input_stream_t::reserve_size_hint() const noexcept { return file_size_; }
-mps_phase_registry_t& raw_input_stream_t::registry() noexcept { return registry_; }
-input_stream_view_t raw_input_stream_t::view() noexcept
+
+void raw_input_stream_t::read_window_payload(std::size_t offset, std::size_t size)
 {
-  return {output_data_, output_data_, output_view_size_, file_size_, &registry_};
+  if (pread_full(fd_, output_data_ + offset, size, offset)) { return; }
+  // O_DIRECT can reject an unaligned request with EINVAL; fall back to the
+  // buffered descriptor for this window when that happens.
+  if (direct_io_ && errno == EINVAL && buffered_fd_ >= 0 &&
+      pread_full(buffered_fd_, output_data_ + offset, size, offset)) {
+    return;
+  }
+  mps_parser_fail(error_type_t::RuntimeError,
+                  "Failed to pread raw MPS file '%s': %s",
+                  path_.c_str(),
+                  std::strerror(errno));
 }
 
 void raw_input_stream_t::run_decode_tasks()
@@ -177,96 +203,24 @@ void raw_input_stream_t::run_decode_tasks()
   std::size_t thread_count = std::min(raw_input_max_read_threads, hw_threads);
   thread_count             = std::max<std::size_t>(1, std::min(thread_count, window_count_));
 
-  std::atomic_size_t next_window{0};
-  std::exception_ptr first_error = nullptr;
-  std::mutex error_mutex;
-  std::atomic_bool stop{false};
-
-  auto mark_error = [&](std::exception_ptr eptr) {
-    std::lock_guard<std::mutex> lock(error_mutex);
-    if (!first_error) {
-      first_error = eptr;
-      stop.store(true, std::memory_order_release);
-    }
-  };
-
-  auto read_window = [&](std::size_t index) {
-    MPS_NVTX_RANGE("raw_window_read", nvtx::colors::io);
-    std::size_t offset = index * window_bytes_;
-    std::size_t size   = std::min(window_bytes_, file_size_ - offset);
-    std::size_t done   = 0;
-    {
-      MPS_NVTX_RANGE("raw_window_pread", nvtx::colors::io);
-      while (done < size) {
-        ssize_t got =
-          ::pread(fd_, output_data_ + offset + done, size - done, (off_t)(offset + done));
-        if (got < 0) {
-          if (errno == EINTR) { continue; }
-          if (direct_io_ && errno == EINVAL && buffered_fd_ >= 0) {
-            got = ::pread(
-              buffered_fd_, output_data_ + offset + done, size - done, (off_t)(offset + done));
-            if (got >= 0) {
-              done += (std::size_t)got;
-              continue;
-            }
-            if (errno == EINTR) { continue; }
-          }
-          mps_parser_fail(error_type_t::RuntimeError,
-                          "Failed to pread raw MPS file '%s': %s",
-                          path_.c_str(),
-                          std::strerror(errno));
-        }
-        if (got == 0) {
-          mps_parser_fail(error_type_t::RuntimeError,
-                          "Unexpected EOF while reading raw MPS file '%s'",
-                          path_.c_str());
-        }
-        done += (std::size_t)got;
+  // Each window is read independently and handed to the scanner, which owns the
+  // contiguous decoded-byte frontier and the parallel section publication.
+  parallel_error_latch_t latch;
+  parallel_for_indexed(
+    window_count_, thread_count, latch, "raw-input-read-", [&](std::size_t index) {
+      MPS_NVTX_RANGE("raw_window_read", nvtx::colors::io);
+      std::size_t offset = index * window_bytes_;
+      std::size_t size   = std::min(window_bytes_, file_size_ - offset);
+      {
+        MPS_NVTX_RANGE("raw_window_pread", nvtx::colors::io);
+        read_window_payload(offset, size);
       }
-    }
-
-    {
       MPS_NVTX_RANGE("raw_window_scan_publish", nvtx::colors::io);
       section_scanner_->observe_block(index, output_data_ + offset, output_data_ + offset + size);
-      frontier_mutex_.lock();
-      block_done_[index] = 1;
-      block_end_[index]  = offset + size;
-      std::size_t before = ready_bytes_;
-      while (next_block_ < block_done_.size() && block_done_[next_block_]) {
-        ready_bytes_ = block_end_[next_block_];
-        ++next_block_;
-      }
-      std::size_t after = ready_bytes_;
-      frontier_mutex_.unlock();
-      if (after > before) { section_scanner_->publish_ready(after); }
-    }
-  };
-
-  std::vector<std::thread> workers;
-  workers.reserve(thread_count);
-  for (std::size_t t = 0; t < thread_count; ++t) {
-    workers.emplace_back([&, t] {
-      std::string thread_name = "raw-input-read-" + std::to_string(t);
-      nvtx::name_current_thread(thread_name.c_str());
-      MPS_NVTX_RANGE("raw_worker_loop", nvtx::colors::io);
-      while (!stop.load(std::memory_order_acquire)) {
-        std::size_t index = next_window.fetch_add(1, std::memory_order_relaxed);
-        if (index >= window_count_) { break; }
-        try {
-          read_window(index);
-        } catch (...) {
-          mark_error(std::current_exception());
-          return;
-        }
-      }
     });
-  }
-  for (auto& worker : workers) {
-    worker.join();
-  }
-  if (first_error) { std::rethrow_exception(first_error); }
+  latch.rethrow_if_error();
 
-  output_view_size_ = ready_bytes_;
+  output_view_size_ = section_scanner_->ready_bytes();
   section_scanner_->publish_ready(output_view_size_);
 }
 
@@ -283,17 +237,12 @@ char* memory_input_stream_t::mutable_data() noexcept { return buffer_.data(); }
 std::size_t memory_input_stream_t::size() const noexcept { return input_size_; }
 std::size_t memory_input_stream_t::compressed_size() const noexcept { return compressed_size_; }
 std::size_t memory_input_stream_t::reserve_size_hint() const noexcept { return input_size_; }
-mps_phase_registry_t& memory_input_stream_t::registry() noexcept { return registry_; }
-input_stream_view_t memory_input_stream_t::view() noexcept
-{
-  return {buffer_.data(), buffer_.data(), input_size_, compressed_size_, &registry_};
-}
 
 void memory_input_stream_t::run_decode_tasks()
 {
   MPS_NVTX_RANGE("memory_input_scan", nvtx::colors::io);
+  // Single block: observe_block advances the frontier and publishes.
   section_scanner_->observe_block(0, buffer_.data(), buffer_.data() + input_size_);
-  section_scanner_->publish_ready(input_size_);
 }
 
 bool has_lz4_extension(const std::string& path) noexcept { return path_has_suffix(path, ".lz4"); }
@@ -332,4 +281,4 @@ const char* file_read_method_name(FileReadMethod method) noexcept
   }
 }
 
-}  // namespace mps_fast
+}  // namespace cuopt::linear_programming::io::detail

@@ -19,7 +19,7 @@
 #include <stdexcept>
 #include <string>
 
-namespace mps_fast {
+namespace cuopt::linear_programming::io::detail {
 
 using cuopt::linear_programming::io::error_type_t;
 using cuopt::linear_programming::io::mps_parser_expects;
@@ -131,4 +131,4 @@ class mmap_region_t {
   std::size_t size_ = 0;
 };
 
-}  // namespace mps_fast
+}  // namespace cuopt::linear_programming::io::detail

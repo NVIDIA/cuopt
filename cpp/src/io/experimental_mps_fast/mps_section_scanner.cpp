@@ -16,7 +16,7 @@
 #include <simde/x86/avx2.h>
 #include <simde/x86/sse4.2.h>
 
-namespace mps_fast {
+namespace cuopt::linear_programming::io::detail {
 
 using cuopt::linear_programming::io::error_type_t;
 using cuopt::linear_programming::io::mps_parser_expects;
@@ -202,7 +202,7 @@ void mps_section_block_scanner_t::record_section_hit(mps_section_kind kind, cons
   const char* expected           = nullptr;
   if (slot.compare_exchange_strong(
         expected, ptr, std::memory_order_release, std::memory_order_acquire)) {
-    publish_section_ranges();
+    notify_ready_phases();
   }
 }
 
@@ -252,13 +252,14 @@ void mps_section_block_scanner_t::scan_section_range(const char* begin, const ch
   }
 
   // In compliant MPS, indicator records begin in column 1 while data records
-  // begin in column 2+. Treat start-of-file or "\n[nonblank]" as the cheap
-  // candidate signal, then run the exact section matcher only for candidates.
+  // begin in column 2+. use "\n[nonblank]" as a needle for the SIMD scan
   const simde__m256i newline = simde_mm256_set1_epi8('\n');
   while ((std::size_t)(end - p) >= kSimdWidth) {
     // The first-line path above increments p when p == data_, so p - 1 is
     // in-bounds here. Loading the previous vector lets us test "\nX" for all
     // 32 candidate column-1 bytes with one AVX2 mask.
+    // loadu is comparable to aligned reads on modern SSE/AVX.
+    // might warrant some checks on ARM though
     simde__m256i current  = simde_mm256_loadu_si256(reinterpret_cast<const simde__m256i*>(p));
     simde__m256i previous = simde_mm256_loadu_si256(reinterpret_cast<const simde__m256i*>(p - 1));
     std::uint32_t mask    = (std::uint32_t)simde_mm256_movemask_epi8(simde_mm256_and_si256(
@@ -290,6 +291,8 @@ void mps_section_block_scanner_t::scan_boundary(std::size_t left_index, std::siz
   scan_section_range(data_ + begin, data_ + end);
 }
 
+// scans a freshly decoded block for section titles, along with the start/end boundaries if a
+// section title straddles blocks
 void mps_section_block_scanner_t::observe_block(std::size_t block_index,
                                                 const char* begin,
                                                 const char* end)
@@ -311,6 +314,26 @@ void mps_section_block_scanner_t::observe_block(std::size_t block_index,
       block_decoded_[block_index + 1].load(std::memory_order_acquire)) {
     scan_boundary(block_index, block_index + 1);
   }
+
+  advance_ready_frontier();
+}
+
+void mps_section_block_scanner_t::advance_ready_frontier()
+{
+  std::size_t new_ready = 0;
+  bool grew             = false;
+  {
+    // block_decoded_ is stored with release after the begin/end offsets, so an
+    // acquire load of a set flag makes the matching end offset visible here.
+    std::lock_guard<std::mutex> lock(frontier_mutex_);
+    while (next_block_ < block_count_ &&
+           block_decoded_[next_block_].load(std::memory_order_acquire)) {
+      new_ready = block_end_offsets_[next_block_].load(std::memory_order_acquire);
+      ++next_block_;
+      grew = true;
+    }
+  }
+  if (grew) { publish_ready(new_ready); }
 }
 
 void mps_section_block_scanner_t::publish_ready(std::size_t ready_bytes)
@@ -318,10 +341,15 @@ void mps_section_block_scanner_t::publish_ready(std::size_t ready_bytes)
   ready_bytes_.store(ready_bytes, std::memory_order_release);
   std::size_t begin = ready_bytes > boundary_overlap ? ready_bytes - boundary_overlap : 0;
   scan_section_range(data_ + begin, data_ + ready_bytes);
-  publish_section_ranges();
+  notify_ready_phases();
 }
 
-void mps_section_block_scanner_t::publish_section_ranges()
+std::size_t mps_section_block_scanner_t::ready_bytes() const noexcept
+{
+  return ready_bytes_.load(std::memory_order_acquire);
+}
+
+void mps_section_block_scanner_t::notify_ready_phases()
 {
   // Publication model: each present phase runs from its own section header to
   // the first later section header that has been discovered. Optional sections
@@ -430,4 +458,4 @@ void mps_section_block_scanner_t::publish_section_ranges()
   }
 }
 
-}  // namespace mps_fast
+}  // namespace cuopt::linear_programming::io::detail

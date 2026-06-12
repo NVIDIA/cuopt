@@ -931,18 +931,24 @@ TEST_F(mip_partial_bounds_test, lp)
                            ::testing::Values(default_mps_reader_param, fast_mps_reader_param), \
                            mps_reader_param_name)
 
+#define INSTANTIATE_DEFAULT_MPS_READER_TEST(Fixture) \
+  INSTANTIATE_TEST_SUITE_P(                          \
+    mps_readers, Fixture, ::testing::Values(default_mps_reader_param), mps_reader_param_name)
+
 INSTANTIATE_MPS_READER_TEST(good_mps_1_test);
 INSTANTIATE_MPS_READER_TEST(up_low_bounds_test);
-INSTANTIATE_MPS_READER_TEST(some_var_bounds_test);
-INSTANTIATE_MPS_READER_TEST(fixed_var_bound_test);
-INSTANTIATE_MPS_READER_TEST(free_var_bound_test);
-INSTANTIATE_MPS_READER_TEST(lower_inf_var_bound_test);
-INSTANTIATE_MPS_READER_TEST(upper_inf_var_bound_test);
 INSTANTIATE_MPS_READER_TEST(mip_with_bounds_test);
 INSTANTIATE_MPS_READER_TEST(mip_no_bounds_test);
 INSTANTIATE_MPS_READER_TEST(mip_partial_bounds_test);
+// fast mps parser doesn't support fixed format
+INSTANTIATE_DEFAULT_MPS_READER_TEST(some_var_bounds_test);
+INSTANTIATE_DEFAULT_MPS_READER_TEST(fixed_var_bound_test);
+INSTANTIATE_DEFAULT_MPS_READER_TEST(free_var_bound_test);
+INSTANTIATE_DEFAULT_MPS_READER_TEST(lower_inf_var_bound_test);
+INSTANTIATE_DEFAULT_MPS_READER_TEST(upper_inf_var_bound_test);
 
 #undef INSTANTIATE_MPS_READER_TEST
+#undef INSTANTIATE_DEFAULT_MPS_READER_TEST
 
 #ifdef MPS_PARSER_WITH_BZIP2
 TEST(mps_parser, good_mps_file_bzip2_compressed)
