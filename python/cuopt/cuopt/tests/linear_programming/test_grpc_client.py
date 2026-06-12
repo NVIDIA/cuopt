@@ -10,6 +10,8 @@ from cuopt.linear_programming import SolverSettings
 from cuopt.linear_programming.internals import GetSolutionCallback
 from cuopt.linear_programming.problem import INTEGER, MAXIMIZE, Problem
 
+from grpc_server_fixtures import GRPC_PORT_OFFSET_CLIENT
+
 _DEMO_LP_NAMES = ["x", "y"]
 _MIP_NAMES = ["x", "y"]
 
@@ -40,10 +42,13 @@ def _poll_until_complete(
 
 @pytest.mark.filterwarnings("ignore::DeprecationWarning")
 class TestGrpcClient:
-    def test_submit_status_result_delete(self, grpc_client_port):
+    grpc_port_offset = GRPC_PORT_OFFSET_CLIENT
+    grpc_server_yield = "port"
+
+    def test_submit_status_result_delete(self, grpc_server):
         problem = _demo_lp_problem()
         settings = SolverSettings()
-        client = Client("localhost", grpc_client_port)
+        client = Client("localhost", grpc_server)
 
         job_id = client.submit(problem, settings)
         assert job_id
@@ -67,11 +72,11 @@ class TestGrpcClient:
 
         client.delete(job_id)
 
-    def test_submit_with_log_stream(self, grpc_client_port):
+    def test_submit_with_log_stream(self, grpc_server):
         problem = _demo_lp_problem()
         settings = SolverSettings()
 
-        client = Client("localhost", grpc_client_port)
+        client = Client("localhost", grpc_server)
         job_id = client.submit(problem, settings)
 
         received = []
@@ -91,11 +96,11 @@ class TestGrpcClient:
 
         client.delete(job_id)
 
-    def test_logs_not_ready(self, grpc_client_port):
+    def test_logs_not_ready(self, grpc_server):
         problem = _demo_lp_problem()
         settings = SolverSettings()
 
-        client = Client("localhost", grpc_client_port)
+        client = Client("localhost", grpc_server)
         job_id = client.submit(problem, settings)
 
         with pytest.raises(JobNotReadyError):
@@ -106,7 +111,7 @@ class TestGrpcClient:
 
         client.delete(job_id)
 
-    def test_mip_submit_and_result(self, grpc_client_port):
+    def test_mip_submit_and_result(self, grpc_server):
         problem = Problem("grpc_mip")
         x = problem.addVariable(lb=0, ub=10, vtype=INTEGER, name="x")
         y = problem.addVariable(lb=0, ub=10, vtype=INTEGER, name="y")
@@ -114,7 +119,7 @@ class TestGrpcClient:
         problem.addConstraint(x - y >= 0, name="c2")
         problem.setObjective(x + 2 * y, sense=MAXIMIZE)
 
-        client = Client("localhost", grpc_client_port)
+        client = Client("localhost", grpc_server)
         job_id = client.submit(problem, SolverSettings())
         assert client.wait(job_id, timeout=120) == JobStatus.COMPLETED
 
@@ -123,7 +128,7 @@ class TestGrpcClient:
         assert solution.get_primal_objective() == pytest.approx(15.0, rel=1e-3)
         client.delete(job_id)
 
-    def test_mip_incumbent_stream(self, grpc_client_port):
+    def test_mip_incumbent_stream(self, grpc_server):
         class IncumbentCollector(GetSolutionCallback):
             def __init__(self):
                 super().__init__()
@@ -151,7 +156,7 @@ class TestGrpcClient:
         settings.set_mip_callback(collector, None)
         settings.set_parameter("time_limit", 30)
 
-        client = Client("localhost", grpc_client_port)
+        client = Client("localhost", grpc_server)
         job_id = client.submit(problem, settings)
         client.start_incumbent_stream(job_id, settings=settings)
 

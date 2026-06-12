@@ -8,9 +8,18 @@ Import this module in test files that need a live server::
 
     pytest_plugins = ["grpc_server_fixtures"]
 
-Class-scoped fixtures start one server per test class and tear it down after
-the class finishes. Port offsets are added to ``CUOPT_TEST_PORT_BASE`` (default
-18000) so parallel test classes do not collide.
+Class-scoped ``grpc_server`` starts one server per test class. Configure it on
+the test class::
+
+    class TestMyGrpcFeature:
+        grpc_port_offset = GRPC_PORT_OFFSET_CLIENT
+        grpc_server_yield = "port"   # or "env" (default)
+
+        def test_foo(self, grpc_server):
+            ...
+
+Port offsets are added to ``CUOPT_TEST_PORT_BASE`` (default 18000) so parallel
+test classes do not collide.
 """
 
 import os
@@ -22,7 +31,7 @@ import time
 
 import pytest
 
-# Port offsets (added to CUOPT_TEST_PORT_BASE). Keep unique per fixture/class.
+# Port offsets (added to CUOPT_TEST_PORT_BASE). Keep unique per test class.
 GRPC_PORT_OFFSET_CPU_ONLY = 600
 GRPC_PORT_OFFSET_CLI = 700
 GRPC_PORT_OFFSET_CLIENT = 800
@@ -123,24 +132,31 @@ def stop_grpc_server(proc):
 
 
 @pytest.fixture(scope="class")
-def grpc_cpu_only_env():
-    """CPU-only remote env (``CUOPT_REMOTE_*``) with server on offset 600."""
-    proc, env = start_grpc_server(GRPC_PORT_OFFSET_CPU_ONLY)
-    yield env
-    stop_grpc_server(proc)
+def grpc_server(request):
+    """Class-scoped server; see module docstring for configuration."""
+    cls = request.cls
+    if cls is None:
+        pytest.fail("grpc_server requires a class-scoped test class")
 
+    port_offset = getattr(cls, "grpc_port_offset", None)
+    if port_offset is None:
+        pytest.fail(
+            f"{cls.__name__} must set grpc_port_offset "
+            f"(e.g. GRPC_PORT_OFFSET_CLIENT)"
+        )
 
-@pytest.fixture(scope="class")
-def grpc_cli_cpu_only_env():
-    """CPU-only remote env with server on offset 700 (cuopt_cli tests)."""
-    proc, env = start_grpc_server(GRPC_PORT_OFFSET_CLI)
-    yield env
-    stop_grpc_server(proc)
+    yield_kind = getattr(cls, "grpc_server_yield", "env")
+    if yield_kind not in ("env", "port"):
+        pytest.fail(
+            f"{cls.__name__}.grpc_server_yield must be 'env' or 'port', "
+            f"got {yield_kind!r}"
+        )
 
-
-@pytest.fixture(scope="class")
-def grpc_client_port():
-    """Listening port for ``cuopt.grpc.Client`` tests (offset 800)."""
-    proc, env = start_grpc_server(GRPC_PORT_OFFSET_CLIENT)
-    yield int(env["CUOPT_REMOTE_PORT"])
-    stop_grpc_server(proc)
+    proc, env = start_grpc_server(port_offset)
+    try:
+        if yield_kind == "port":
+            yield int(env["CUOPT_REMOTE_PORT"])
+        else:
+            yield env
+    finally:
+        stop_grpc_server(proc)
