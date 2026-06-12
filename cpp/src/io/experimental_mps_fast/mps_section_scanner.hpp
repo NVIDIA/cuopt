@@ -51,8 +51,8 @@ class mps_phase_registry_t {
   void attach_event(mps_phase_kind phase, omp_event_handle_t event);
 
   bool ready(mps_phase_kind phase) const;
-  // range() is lock-free: callers must observe ready(phase)==true first. The
-  // acquire load in ready() pairs with publish()'s release store before ranges_.
+  // range() acquire-loads ready_[phase] (pairs with publish()'s release store) before
+  // reading ranges_[phase]. Callers must not invoke range() until the phase is published.
   mps_phase_range_t range(mps_phase_kind phase) const;
 
   void publish_endata(const char* begin, bool present);

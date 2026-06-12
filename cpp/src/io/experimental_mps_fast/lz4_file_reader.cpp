@@ -462,15 +462,22 @@ struct lz4_pipeline_t {
 
   void run()
   {
+    std::exception_ptr startup_error;
     {
       scoped_thread_group background;
-      background.reserve(io_threads + 1);
-      background.emplace([this] { run_scanner_stage(); });
-      for (std::size_t t = 0; t < io_threads; ++t) {
-        background.emplace([this, t] { run_decoder_stage(t); });
+      try {
+        background.reserve(io_threads + 1);
+        background.emplace([this] { run_scanner_stage(); });
+        for (std::size_t t = 0; t < io_threads; ++t) {
+          background.emplace([this, t] { run_decoder_stage(t); });
+        }
+        run_readers();
+      } catch (...) {
+        startup_error = std::current_exception();
+        fail_and_notify(startup_error);
       }
-      run_readers();
     }
+    if (startup_error) { std::rethrow_exception(startup_error); }
     latch.rethrow_if_error();
   }
 

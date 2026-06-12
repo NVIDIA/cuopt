@@ -117,7 +117,8 @@ bool mps_phase_registry_t::ready(mps_phase_kind phase) const
 mps_phase_range_t mps_phase_registry_t::range(mps_phase_kind phase) const
 {
   std::size_t idx = phase_index(phase);
-  assert(ready_[idx].load(std::memory_order_acquire));
+  bool is_ready   = ready_[idx].load(std::memory_order_acquire);
+  assert(is_ready);
   return ranges_[idx];
 }
 
