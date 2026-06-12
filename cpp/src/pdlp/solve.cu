@@ -762,10 +762,10 @@ static optimization_problem_solution_t<i_t, f_t> run_pdlp_solver(
   bool is_batch_mode)
 {
   cuopt_expects(!settings.hyper_params.use_distributed_pdlp,
-    error_type_t::ValidationError,
-    "Distributed PDLP must be entered via solve_lp(mps_data_model, ...) "
-    "so the master GPU never materializes the full problem. Call sites "
-    "with a problem_t cannot dispatch to distributed mode.");
+                error_type_t::ValidationError,
+                "Distributed PDLP must be entered via solve_lp(mps_data_model, ...) "
+                "so the master GPU never materializes the full problem. Call sites "
+                "with a problem_t cannot dispatch to distributed mode.");
   detail::pdlp_graph_disabled_flag().store(settings.hyper_params.pdlp_disable_graph,
                                            std::memory_order_relaxed);
 
