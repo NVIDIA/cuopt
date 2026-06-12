@@ -33,6 +33,7 @@ namespace fp64 {
 // Fast FP64 parser optimized for the <=19digits case, based on the Eisel-Lemire algorithm
 // see Daniel Lemire, Number Parsing at a Gigabyte per Second, Software: Practice and Experience 51
 // (8), 2021.
+// verified on a large corpus of FP64 values: https://github.com/lemire/simple_fastfloat_benchmark
 
 struct power_10_lut_entry_t {
   uint64_t high;
@@ -181,6 +182,8 @@ struct parsed_decimal_t {
 static inline bool is_digit(char c) noexcept { return c >= '0' && c <= '9'; }
 
 // SWAR 8char run of digits -> integer representation
+// better and more portable than AVX2 stuff since AVX2 doesn't like swizzling across 16B lanes
+// saw no real difference w/ 16B SSE
 static inline bool parse_8_digits(const char* p, uint32_t& out)
 {
   // comply with strict aliasing rules
@@ -313,7 +316,7 @@ static inline bool parse_decimal_advance(const char*& p, const char* end, parsed
 static inline double fallback_strtod(std::string_view s)
 {
   char stack_buf[32];
-  // The MPS specs mandate that numeric tokens are no longer than 25 characters
+  // The MPS specs mandate that numeric tokens are not longer than 25 characters
   if (s.size() >= sizeof(stack_buf)) {
     mps_parser_fail(error_type_t::ValidationError, "MPS numeric token exceeds supported length");
   }

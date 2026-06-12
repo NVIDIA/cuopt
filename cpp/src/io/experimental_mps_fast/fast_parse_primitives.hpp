@@ -7,9 +7,6 @@
 
 #include <cstdarg>
 #include <cstddef>
-#include <cstdint>
-#include <stdexcept>
-#include <string_view>
 #include <utility>
 
 #include <simde/x86/avx2.h>
@@ -30,6 +27,8 @@ enum scan_mode {
   until_whitespace,
 };
 
+// util to serially scan along an in-memory input buffer
+// contains optimized primitives for most parsing operations
 struct cursor_t {
   const char* start;
   const char* ptr;
@@ -39,7 +38,8 @@ struct cursor_t {
 
   bool done() const { return ptr >= end; }
 
-  std::pair<std::size_t, std::size_t> position() const
+  // used in error reporting
+  std::pair<std::size_t, std::size_t> linecol_position() const
   {
     std::size_t line       = 1;
     const char* line_start = start;
@@ -55,7 +55,7 @@ struct cursor_t {
 
   [[noreturn]] void error(const char* msg, ...)
   {
-    auto [line, col] = position();
+    auto [line, col] = linecol_position();
     va_list args;
     va_start(args, msg);
     char msg_buf[512];
@@ -66,9 +66,7 @@ struct cursor_t {
 
   void advance(std::size_t n)
   {
-    if (ptr + n > end) {
-      mps_parser_fail(error_type_t::ValidationError, "cursor advanced past end of file");
-    }
+    if (ptr + n > end) { mps_parser_fail(error_type_t::ValidationError, "Unexpected end of file"); }
     ptr += n;
   }
 
@@ -87,10 +85,11 @@ struct cursor_t {
     return end;
   }
 
+  // scans for the first non-whitespace (or vice versa)
   template <scan_mode mode>
   static const char* simd_scan(const char* p, const char* end)
   {
-    const simde__m256i v32 = simde_mm256_set1_epi8(32);
+    const simde__m256i v32 = simde_mm256_set1_epi8(32);  // space/control characters
     const simde__m256i vnl = simde_mm256_set1_epi8('\n');
 
     while (p + 32 <= end) {
@@ -125,6 +124,7 @@ struct cursor_t {
     if (ptr < end && *ptr == '\n') { ptr++; }
   }
 
+  // could be SIMD but comments are usually rare
   void skip_comment_line()
   {
     while (!done() && *ptr != '\n' && *ptr != '\r') {
@@ -140,6 +140,7 @@ struct cursor_t {
     }
   }
 
+  // useful for parsing NAME/OBJNAME which may span multiple "fields" according to the MPS spec
   std::string_view read_rest_of_line_trimmed()
   {
     const char* begin    = ptr;
@@ -173,8 +174,8 @@ struct cursor_t {
     const simde__m256i v32 = simde_mm256_set1_epi8(32);
     const simde__m256i vnl = simde_mm256_set1_epi8('\n');
 
-    // All input streams provide trailing padding, so this unaligned 32-byte load is valid
-    // whenever end - ptr >= 32.
+    // all input streams provide trailing padding, so this 32B load is valid
+    // whenever end - ptr >= 32
     simde__m256i data    = simde_mm256_loadu_si256((const simde__m256i*)ptr);
     simde__m256i gt32    = simde_mm256_cmpgt_epi8(data, v32);
     unsigned int ws_mask = ~(unsigned int)simde_mm256_movemask_epi8(gt32);
@@ -204,6 +205,7 @@ struct cursor_t {
     return std::string_view(field_start, field_end - field_start);
   }
 
+  // read but do not consume
   inline __attribute__((always_inline)) std::string_view peek_field()
   {
     if (UNLIKELY(done())) { return {}; }
@@ -218,6 +220,7 @@ struct cursor_t {
     return cursor.peek_field();
   }
 
+  // usually in MPS fields go in pair. these can usually be extracted in a single 32B load
   inline __attribute__((always_inline)) std::pair<std::string_view, std::string_view>
   read_two_fields()
   {
@@ -234,31 +237,30 @@ struct cursor_t {
     const simde__m256i vnl   = simde_mm256_set1_epi8('\n');
 
     // Same padded-buffer contract as read_field().
-    simde__m256i data  = simde_mm256_loadu_si256((const simde__m256i*)ptr);
-    simde__m256i gt32  = simde_mm256_cmpgt_epi8(data, v32);
-    simde__m256i is_nl = simde_mm256_cmpeq_epi8(data, vnl);
+    simde__m256i data = simde_mm256_loadu_si256((const simde__m256i*)ptr);
+    simde__m256i gt32 = simde_mm256_cmpgt_epi8(data, v32);
 
     unsigned int printable_mask = (unsigned int)simde_mm256_movemask_epi8(gt32);
     unsigned int ws_mask        = ~printable_mask;
-    unsigned int nl_mask        = (unsigned int)simde_mm256_movemask_epi8(is_nl);
-    unsigned int stop_mask      = printable_mask | nl_mask;
 
     if (UNLIKELY(ws_mask == 0)) { return slow(); }
     int field1_end_off = __builtin_ctz(ws_mask);
 
-    unsigned int after_field1 = stop_mask & ~((1u << field1_end_off) - 1);
-    if (UNLIKELY(after_field1 == 0)) { return slow(); }
-    int field2_start_off = __builtin_ctz(after_field1);
+    unsigned int printable_after_field1 = printable_mask >> field1_end_off;
+    if (UNLIKELY(printable_after_field1 == 0)) { return slow(); }
+    int field2_start_off = field1_end_off + __builtin_ctz(printable_after_field1);
 
     if (UNLIKELY(ptr[field2_start_off] == '\n')) { return slow(); }
 
-    unsigned int ws_after_field2_start = ws_mask & ~((1u << field2_start_off) - 1);
+    unsigned int ws_after_field2_start = ws_mask >> field2_start_off;
     if (UNLIKELY(ws_after_field2_start == 0)) { return slow(); }
-    int field2_end_off = __builtin_ctz(ws_after_field2_start);
+    int field2_end_off = field2_start_off + __builtin_ctz(ws_after_field2_start);
 
-    unsigned int after_field2 = stop_mask & ~((1u << field2_end_off) - 1);
-    if (LIKELY(after_field2 != 0)) {
-      ptr = ptr + __builtin_ctz(after_field2);
+    simde__m256i is_nl     = simde_mm256_cmpeq_epi8(data, vnl);
+    unsigned int stop_mask = printable_mask | (unsigned int)simde_mm256_movemask_epi8(is_nl);
+    unsigned int stop_after_field2 = stop_mask >> field2_end_off;
+    if (LIKELY(stop_after_field2 != 0)) {
+      ptr = ptr + field2_end_off + __builtin_ctz(stop_after_field2);
     } else {
       ptr = ptr + field2_end_off;
       skip_ws();
@@ -346,8 +348,6 @@ static inline double expect_number(cursor_t& cursor)
 static inline double expect_number_fast_pm_one(cursor_t& cursor)
 {
   const char* p = cursor.ptr;
-  // Kept bounded despite the global padding invariant: this path is also used
-  // on section-local cursors whose logical end may precede the physical buffer.
   if (cursor.end - p >= 3 && p[0] == '-' && p[1] == '1' && p[2] <= ' ') {
     cursor.ptr = p + 2;
     cursor.skip_ws();

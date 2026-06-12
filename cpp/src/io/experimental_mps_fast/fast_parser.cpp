@@ -28,6 +28,7 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <exception>
 #include <limits>
@@ -67,12 +68,6 @@ static constexpr size_t MPS_BOUNDS_ORDERED_HINT_PARALLEL_MIN_BYTES = 8 * MiB;
 static constexpr size_t MPS_COLUMNS_MIN_CHUNK_BYTES = 1 * MiB;
 // parser-wide thread cap switch; very small files lose to scheduling overhead
 static constexpr size_t MPS_MEDIUM_FILE_THREAD_THRESHOLD_BYTES = 100ull * 1000ull * 1000ull;
-// below this, the serial row-hash build is usually cheaper than partition setup
-static constexpr size_t MPS_ROW_HASH_PARTITIONED_MIN_ROWS = 64 * KiB;
-// number of partitions for the row hash table, used to avoid races and atomics during row hash
-// table initialization
-static constexpr int MPS_ROW_HASH_PARTITION_BITS = 5;
-static constexpr size_t MPS_ROW_HASH_PARTITIONS  = (size_t{1} << MPS_ROW_HASH_PARTITION_BITS);
 // thread caps for small and large files
 static constexpr int MPS_SMALL_FILE_THREAD_CAP = 16;
 static constexpr int MPS_LARGE_FILE_THREAD_CAP = 32;
@@ -131,12 +126,6 @@ class chunk_name_arena_t {
   std::vector<slab_t> slabs_;
   size_t next_slab_size_ = 64 * KiB;
 };
-
-// returns the hash table partition to use for a given hash
-static inline size_t row_hash_partition_for(uint32_t hash)
-{
-  return (size_t)(hash >> (32 - MPS_ROW_HASH_PARTITION_BITS));
-}
 
 struct timer_entry_t {
   const char* name;
@@ -452,12 +441,6 @@ static inline void observe_dense_name(bool& candidate,
 
 template <typename i_t, typename f_t>
 struct parse_state_t {
-  struct row_hash_partition_t {
-    hash_slot_var_t* slots = nullptr;
-    size_t buckets         = 0;
-    size_t mask            = 0;
-  };
-
   cuopt::linear_programming::io::mps_data_model_t<i_t, f_t>& problem;
   cursor_t& cursor;
 
@@ -475,17 +458,7 @@ struct parse_state_t {
   index_mode_t col_index_mode = index_mode_t::hash;
   dense_name_index_t col_dense;
 
-  // Row name hash table - sized at runtime based on row count
-  size_t row_hash_buckets = 0;
-  size_t row_hash_mask    = 0;  // buckets - 1, for fast modulo via &
-  mmap_region_t row_hash_region;
-  hash_slot_var_t* row_names_ht = nullptr;
-  // compute hash, select the subtable from high hash bits,
-  // then run the same open-addressing probe loop inside that subtable.
-  size_t row_hash_partition_count                                               = 0;
-  std::array<row_hash_partition_t, MPS_ROW_HASH_PARTITIONS> row_hash_partitions = {};
-  // Overflow map for row names longer than HASH_KEY_BYTES (usually very rare)
-  std::unordered_map<std::string_view, size_t> row_names_long;
+  smallstr_hash_table_t row_hash_;
 
   // Row name lookup for labels like R0001, R0002, ...
   index_mode_t row_index_mode = index_mode_t::hash;
@@ -494,6 +467,13 @@ struct parse_state_t {
 
   // var_names still uses STL (only used in parse_bounds, not as hot)
   std::unordered_map<std::string_view, size_t> var_names_map;
+
+  mmap_region_t temp_A_region;
+  mmap_region_t temp_A_indices_region;
+  f_t* temp_A                = nullptr;
+  i_t* temp_A_indices        = nullptr;
+  size_t temp_csr_nnz        = 0;
+  bool temp_csr_materialized = false;
 
   struct bounds_only_var_t {
     f_t lb    = f_t{0};
@@ -537,23 +517,17 @@ struct parse_state_t {
     return true;
   }
 
-  size_t row_hash_bucket_count_for(size_t n_rows) const
-  {
-#ifdef MPS_FAST_COMPACT_ROW_HASH
-    // probe counts are usually low, and a smaller
-    // table reduces cache/TLB footprint on medium instances.
-    return cuda::next_power_of_two(std::max(n_rows + n_rows / 2, (size_t)64));
-#else
-    return cuda::next_power_of_two(std::max((size_t)(n_rows * 2), (size_t)64));
-#endif
-  }
-
   void init_row_hash_table_impl()
   {
     scoped_timer_t timer("row_hash_init_total");
     size_t n_rows              = row_names_sv.size();
     const int num_threads      = phase_thread_count(MPS_ROWS_THREAD_CAP);
     const bool use_partitioned = n_rows >= MPS_ROW_HASH_PARTITIONED_MIN_ROWS && num_threads > 1;
+#ifdef MPS_FAST_COMPACT_ROW_HASH
+    constexpr bool compact_row_hash = true;
+#else
+    constexpr bool compact_row_hash = false;
+#endif
     std::vector<uint32_t> row_hashes;
     std::vector<size_t> row_order;
     std::array<size_t, MPS_ROW_HASH_PARTITIONS> partition_counts      = {};
@@ -561,19 +535,17 @@ struct parse_state_t {
 
     if (use_partitioned) {
       scoped_timer_t timer("row_hash_partition_metadata");
-      // Pre-hash once, count rows per partition, then pack row indices by partition.
-      // This turns the build into disjoint single-writer table fills.
       row_hashes.resize(n_rows);
       size_t inline_rows = 0;
       for (size_t idx = 0; idx < n_rows; ++idx) {
         std::string_view name = row_names_sv[idx];
         if (UNLIKELY(name.size() > HASH_KEY_BYTES)) {
-          row_names_long[name] = idx;
+          row_hash_.note_long_name(name, idx);
           continue;
         }
         uint32_t hash   = fnv1a_hash(name.data(), name.size());
         row_hashes[idx] = hash;
-        ++partition_counts[row_hash_partition_for(hash)];
+        ++partition_counts[hash_partition_for(hash)];
         ++inline_rows;
       }
 
@@ -585,102 +557,55 @@ struct parse_state_t {
       auto next_offsets = partition_offsets;
       for (size_t idx = 0; idx < n_rows; ++idx) {
         if (UNLIKELY(row_names_sv[idx].size() > HASH_KEY_BYTES)) { continue; }
-        size_t part                     = row_hash_partition_for(row_hashes[idx]);
+        size_t part                     = hash_partition_for(row_hashes[idx]);
         row_order[next_offsets[part]++] = idx;
       }
     }
 
     if (use_partitioned) {
-      row_hash_partition_count = MPS_ROW_HASH_PARTITIONS;
-      size_t total_buckets     = 0;
-      for (size_t p = 0; p < MPS_ROW_HASH_PARTITIONS; ++p) {
-        row_hash_partitions[p].buckets = row_hash_bucket_count_for(partition_counts[p]);
-        row_hash_partitions[p].mask    = row_hash_partitions[p].buckets - 1;
-        total_buckets += row_hash_partitions[p].buckets;
-      }
-      row_hash_buckets = total_buckets;
-      row_hash_mask    = row_hash_buckets - 1;
+      row_hash_.configure_partitioned_buckets(partition_counts, compact_row_hash);
     } else {
-      row_hash_partition_count = 0;
-      row_hash_buckets         = row_hash_bucket_count_for(n_rows);
-      row_hash_mask            = row_hash_buckets - 1;
+      row_hash_.configure_serial_buckets(n_rows, compact_row_hash);
     }
-    size_t row_hash_mmap_size = row_hash_buckets * sizeof(hash_slot_var_t);
 
     {
       scoped_timer_t timer("row_hash_mmap");
-      // Use mmap for allocation - the OS provides zero'd pages
-      row_hash_region = mmap_region_t::anonymous(
-        row_hash_mmap_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, "row hash table");
-      row_names_ht = (hash_slot_var_t*)row_hash_region.data();
-      if (use_partitioned) {
-        hash_slot_var_t* next_slots = row_names_ht;
-        for (size_t p = 0; p < MPS_ROW_HASH_PARTITIONS; ++p) {
-          row_hash_partitions[p].slots = next_slots;
-          next_slots += row_hash_partitions[p].buckets;
-        }
-      }
-      // request huge pages to reduce TLB misses
-      row_hash_region.advise(MADV_HUGEPAGE);
+      row_hash_.allocate_mmap("row hash table");
     }
 
-    // pre-touch the 2MB huge pages to nudge the kernel into allocating them
 #ifdef MPS_FAST_THP_PREFAULT
     {
       scoped_timer_t timer("row_hash_thp_prefault");
-      materialize_hugepages(
-        "row_names_ht", row_names_ht, row_hash_region.size(), materialize_touch_t::write_2mb);
+      materialize_hugepages("row_names_ht",
+                            row_hash_.slots(),
+                            row_hash_.region().size(),
+                            materialize_touch_t::write_2mb);
     }
 #endif
 
     {
       scoped_timer_t timer("row_hash_insert_all");
-#ifdef MPS_FAST_PERF_COUNTERS
-      size_t total_probes = 0;
-      size_t max_probes   = 0;
-      size_t long_names   = row_names_long.size();
-#endif
+      row_hash_.reset_build_probe_stats();
       if (use_partitioned) {
         scoped_timer_t timer("row_hash_insert_partitioned");
 #ifdef MPS_FAST_PERF_COUNTERS
         std::vector<perf_counter_snapshot_t> perf_snapshots(MPS_ROW_HASH_PARTITIONS);
-        std::vector<size_t> partition_total_probes(MPS_ROW_HASH_PARTITIONS, 0);
-        std::vector<size_t> partition_max_probes(MPS_ROW_HASH_PARTITIONS, 0);
 #endif
-// initialize the row hash tables in parallel
 #pragma omp parallel for schedule(static) num_threads(num_threads)
         for (int part_id = 0; part_id < (int)MPS_ROW_HASH_PARTITIONS; ++part_id) {
           size_t p = (size_t)part_id;
 #ifdef MPS_FAST_PERF_COUNTERS
           thread_perf_counters_t perf_counters;
-          size_t local_total_probes = 0;
-          size_t local_max_probes   = 0;
 #endif
-          const auto& part = row_hash_partitions[p];
-          // Each worker owns its subtable, so row_insert_into remains the plain serial probe loop.
           for (size_t pos = partition_offsets[p]; pos < partition_offsets[p + 1]; ++pos) {
             size_t idx = row_order[pos];
-#ifdef MPS_FAST_PERF_COUNTERS
-            size_t probes = row_insert_into(
-              part.slots, part.buckets, part.mask, row_names_sv[idx], row_hashes[idx], idx);
-            local_total_probes += probes;
-            local_max_probes = std::max(local_max_probes, probes);
-#else
-            row_insert_into(
-              part.slots, part.buckets, part.mask, row_names_sv[idx], row_hashes[idx], idx);
-#endif
+            row_hash_.insert_partition(p, row_names_sv[idx], row_hashes[idx], idx);
           }
 #ifdef MPS_FAST_PERF_COUNTERS
-          partition_total_probes[p] = local_total_probes;
-          partition_max_probes[p]   = local_max_probes;
-          perf_snapshots[p]         = perf_counters.stop();
+          perf_snapshots[p] = perf_counters.stop();
 #endif
         }
 #ifdef MPS_FAST_PERF_COUNTERS
-        for (size_t p = 0; p < MPS_ROW_HASH_PARTITIONS; ++p) {
-          total_probes += partition_total_probes[p];
-          max_probes = std::max(max_probes, partition_max_probes[p]);
-        }
         print_perf_totals("row_hash_insert_partitioned", perf_snapshots);
 #endif
       } else {
@@ -688,42 +613,19 @@ struct parse_state_t {
         thread_perf_counters_t perf_counters;
 #endif
         for (size_t idx = 0; idx < n_rows; ++idx) {
-#ifdef MPS_FAST_PERF_COUNTERS
-          size_t probes = row_insert(row_names_sv[idx], idx);
-          if (probes == 0) {
-            ++long_names;
-          } else {
-            total_probes += probes;
-            max_probes = std::max(max_probes, probes);
-          }
-#else
-          row_insert(row_names_sv[idx], idx);
-#endif
+          row_hash_.insert_serial(row_names_sv[idx], idx);
         }
 #ifdef MPS_FAST_PERF_COUNTERS
         print_perf_totals("row_hash_insert_all", {perf_counters.stop()});
 #endif
       }
-#ifdef MPS_FAST_PERF_COUNTERS
-      size_t probed_rows = n_rows - long_names;
-      double mean_probes = probed_rows == 0 ? 0.0 : (double)total_probes / (double)probed_rows;
-      double load_factor = row_hash_buckets == 0 ? 0.0 : (double)n_rows / (double)row_hash_buckets;
-      std::fprintf(stderr,
-                   "[ROW_HASH_PROBES] rows=%zu buckets=%zu load=%.3f long=%zu mean=%.3f max=%zu\n",
-                   n_rows,
-                   row_hash_buckets,
-                   load_factor,
-                   long_names,
-                   mean_probes,
-                   max_probes);
-#endif
+      row_hash_.print_build_probe_report(n_rows);
     }
 
-    // Force the kernel to please please collapse the page range into THP pages
 #ifdef MPS_FAST_MADV_COLLAPSE
     {
       scoped_timer_t timer("row_hash_madv_collapse");
-      row_hash_region.advise(MADV_COLLAPSE);
+      row_hash_.region().advise(MADV_COLLAPSE);
     }
 #endif
   }
@@ -731,7 +633,7 @@ struct parse_state_t {
   size_t row_lookup(std::string_view name) const
   {
     if (LIKELY(row_index_mode == index_mode_t::dense_ordered)) { return row_dense.lookup(name); }
-    return row_lookup_hash(name);
+    return row_hash_.lookup(name);
   }
 
   size_t read_row_lookup_dense_ordered(cursor_t& cursor) const
@@ -774,75 +676,7 @@ struct parse_state_t {
     }
 
     auto row_name = cursor.read_field();
-    return row_lookup_hash(row_name);
-  }
-
-  size_t row_lookup_hash(std::string_view name) const
-  {
-    if (UNLIKELY(name.size() > HASH_KEY_BYTES)) {
-      auto it = row_names_long.find(name);
-      return it != row_names_long.end() ? it->second : SIZE_MAX;
-    }
-    hash_key_t key = make_key(name.data(), name.size());
-    uint32_t hash  = fnv1a_hash(name.data(), name.size());
-    if (LIKELY(row_hash_partition_count != 0)) {
-      // Lookups mirror the build routing and probe only the selected subtable.
-      const auto& part = row_hash_partitions[row_hash_partition_for(hash)];
-      return row_lookup_in(part.slots, part.buckets, part.mask, key, hash);
-    }
-    return row_lookup_in(row_names_ht, row_hash_buckets, row_hash_mask, key, hash);
-  }
-
-  size_t row_lookup_in(
-    const hash_slot_var_t* slots, size_t buckets, size_t mask, hash_key_t key, uint32_t hash) const
-  {
-    const hash_slot_var_t* slot = &slots[hash & (uint32_t)mask];
-    for (size_t i = 0; i < buckets; ++i, ++slot) {
-      if (slot >= &slots[buckets]) { slot = &slots[0]; }
-      if (slot->count == 0) { return SIZE_MAX; }
-      if (key_cmpeq(slot->key, key)) { return slot->count - 1; }
-    }
-    return SIZE_MAX;
-  }
-
-  size_t row_insert(std::string_view name, size_t index)
-  {
-    if (UNLIKELY(name.size() > HASH_KEY_BYTES)) {
-      row_names_long[name] = index;
-      return 0;
-    }
-    return row_insert_into(row_names_ht,
-                           row_hash_buckets,
-                           row_hash_mask,
-                           name,
-                           fnv1a_hash(name.data(), name.size()),
-                           index);
-  }
-
-  size_t row_insert_into(hash_slot_var_t* slots,
-                         size_t buckets,
-                         size_t mask,
-                         std::string_view name,
-                         uint32_t hash,
-                         size_t index)
-  {
-    hash_key_t key        = make_key(name.data(), name.size());
-    hash_slot_var_t* slot = &slots[hash & (uint32_t)mask];
-    for (size_t i = 0; i < buckets; ++i, ++slot) {
-      if (slot >= &slots[buckets]) { slot = &slots[0]; }
-      if (slot->count == 0) {
-        key_store(slot->key, key);            // Writes 32 bytes, including garbage in last 4
-        slot->count = (uint32_t)(index + 1);  // Overwrite last 4 bytes with actual count. i trust
-                                              // the compiler to optimize this
-        return i + 1;
-      }
-      if (key_cmpeq(slot->key, key)) {
-        slot->count = (uint32_t)(index + 1);
-        return i + 1;
-      }
-    }
-    // can't happen, the table is properly sized to fit all rows
-    __builtin_unreachable();
+    return row_hash_.lookup(row_name);
   }
 };
 
@@ -1736,19 +1570,28 @@ template <typename i_t, typename f_t>
 static void allocate_column_outputs(parse_state_t<i_t, f_t>& state,
                                     const column_merge_shape_t<i_t>& shape)
 {
-  scoped_timer_t timer("allocate_csr_arrays");
+  scoped_timer_t timer("allocate_temp_csr_arrays");
+  size_t values_bytes  = shape.total_nnz * sizeof(f_t);
+  size_t indices_bytes = shape.total_nnz * sizeof(i_t);
+  state.temp_csr_nnz   = shape.total_nnz;
 
-  // problem_t uses std::vector, so these resize() calls zero-initialize large arrays.
-  // Running them in parallel hides part of that page-fault and initialization cost.
 #pragma omp parallel sections num_threads(4)
   {
 #pragma omp section
     {
-      state.problem.A_.resize(shape.total_nnz);
+      state.temp_A_region = mmap_region_t::anonymous(
+        std::max<size_t>(values_bytes, 1), PROT_READ | PROT_WRITE, MAP_PRIVATE, "temp CSR values");
+      state.temp_A = (f_t*)state.temp_A_region.data();
+      state.temp_A_region.advise(MADV_HUGEPAGE);
     }
 #pragma omp section
     {
-      state.problem.A_indices_.resize(shape.total_nnz);
+      state.temp_A_indices_region = mmap_region_t::anonymous(std::max<size_t>(indices_bytes, 1),
+                                                             PROT_READ | PROT_WRITE,
+                                                             MAP_PRIVATE,
+                                                             "temp CSR column indices");
+      state.temp_A_indices        = (i_t*)state.temp_A_indices_region.data();
+      state.temp_A_indices_region.advise(MADV_HUGEPAGE);
     }
 #pragma omp section
     {
@@ -1788,16 +1631,16 @@ static void scatter_column_chunks_to_csr(parse_state_t<i_t, f_t>& state,
         size_t col_start = chunk.col_offsets[local_col];
         size_t col_end   = chunk.col_offsets[local_col + 1];
         for (size_t idx = col_start; idx < col_end; idx++) {
-          i_t row                        = (i_t)chunk.row_indices[idx];
-          size_t row_idx                 = (size_t)row;
-          size_t block_id                = row_idx / COLUMN_ROW_COUNT_BLOCK_ROWS;
-          size_t local                   = row_idx - block_id * COLUMN_ROW_COUNT_BLOCK_ROWS;
-          int32_t block_pos              = chunk.row_count_block_dir[block_id];
-          row_count_block_t& block       = chunk.row_count_blocks[(size_t)block_pos];
-          int64_t& write_pos             = chunk.row_count_storage[block.storage_offset + local];
-          i_t dest                       = (i_t)write_pos++;
-          state.problem.A_[dest]         = (f_t)chunk.values[idx];
-          state.problem.A_indices_[dest] = global_col;
+          i_t row                    = (i_t)chunk.row_indices[idx];
+          size_t row_idx             = (size_t)row;
+          size_t block_id            = row_idx / COLUMN_ROW_COUNT_BLOCK_ROWS;
+          size_t local               = row_idx - block_id * COLUMN_ROW_COUNT_BLOCK_ROWS;
+          int32_t block_pos          = chunk.row_count_block_dir[block_id];
+          row_count_block_t& block   = chunk.row_count_blocks[(size_t)block_pos];
+          int64_t& write_pos         = chunk.row_count_storage[block.storage_offset + local];
+          i_t dest                   = (i_t)write_pos++;
+          state.temp_A[dest]         = (f_t)chunk.values[idx];
+          state.temp_A_indices[dest] = global_col;
         }
       }
 #ifdef MPS_FAST_PERF_COUNTERS
@@ -1903,6 +1746,66 @@ static void merge_chunk_results_to_csr(parse_state_t<i_t, f_t>& state,
 
   state.problem.n_vars_ = (i_t)shape.total_cols;
   state.problem.nnz_    = (i_t)shape.total_nnz;
+}
+
+template <typename i_t, typename f_t>
+static void materialize_problem_csr(parse_state_t<i_t, f_t>& state)
+{
+  scoped_timer_t timer("materialize_problem_csr");
+  size_t nnz              = state.temp_csr_nnz;
+  const char* env_threads = std::getenv("MPS_CSR_COPY_THREADS");
+  int copy_threads        = env_threads ? std::atoi(env_threads) : 2;
+  copy_threads            = std::max(1, std::min(copy_threads, MPS_LARGE_FILE_THREAD_CAP));
+
+  int resize_threads = copy_threads > 1 ? 2 : 1;
+#pragma omp parallel sections num_threads(resize_threads)
+  {
+#pragma omp section
+    {
+      state.problem.A_.resize(nnz);
+    }
+#pragma omp section
+    {
+      state.problem.A_indices_.resize(nnz);
+    }
+  }
+
+  size_t value_bytes = nnz * sizeof(f_t);
+  size_t index_bytes = nnz * sizeof(i_t);
+  size_t total_bytes = value_bytes + index_bytes;
+  // Copy A_ and A_indices overlapping with the other phases
+  // this hides the latency costs of heap alloc and default init with other parsing/IO
+  // instead of making it blocking for the column parse
+  // TODO: just have A_ and A_indices_ be mmap anon allocs directly in the mps_data_model_t
+  // but that'd require careful work around avoiding breaking changes and the API esp cython stuff
+  if (total_bytes != 0) {
+#pragma omp parallel for num_threads(copy_threads) schedule(static)
+    for (int t = 0; t < copy_threads; ++t) {
+      size_t begin = (total_bytes * (size_t)t) / (size_t)copy_threads;
+      size_t end   = (total_bytes * (size_t)(t + 1)) / (size_t)copy_threads;
+      if (begin < value_bytes) {
+        size_t value_end = std::min(end, value_bytes);
+        if (value_end > begin) {
+          std::memcpy((char*)state.problem.A_.data() + begin,
+                      (const char*)state.temp_A + begin,
+                      value_end - begin);
+        }
+      }
+      if (end > value_bytes) {
+        size_t index_begin = begin > value_bytes ? begin - value_bytes : 0;
+        size_t index_end   = end - value_bytes;
+        std::memcpy((char*)state.problem.A_indices_.data() + index_begin,
+                    (const char*)state.temp_A_indices + index_begin,
+                    index_end - index_begin);
+      }
+    }
+  }
+
+  state.temp_A                = nullptr;
+  state.temp_A_indices        = nullptr;
+  state.temp_csr_materialized = true;
+  state.temp_A_region.reset();
+  state.temp_A_indices_region.reset();
 }
 
 template <typename i_t, typename f_t>
@@ -2891,6 +2794,7 @@ static cuopt::linear_programming::io::mps_data_model_t<i_t, f_t> parse_mps_fast_
   int rhs_ready = 0, bounds_ready = 0, ranges_ready = 0, quadratic_ready = 0;
   int header_done = 0, rows_done = 0, columns_done = 0;
   int rhs_done = 0, bounds_done = 0, ranges_done = 0, quadratic_done = 0, names_done = 0;
+  int csr_done = 0;
 
   const std::size_t parser_size = std::max(stream.reserve_size_hint(), input.compressed_size);
   const int parser_threads      = parser_thread_cap_for_size(parser_size);
@@ -2985,6 +2889,14 @@ static cuopt::linear_programming::io::mps_data_model_t<i_t, f_t> parse_mps_fast_
           MPS_NVTX_RANGE("task_materialize_names", nvtx::colors::names);
           scoped_timer_t timer("materialize_problem_names_task");
           materialize_problem_names(state);
+        });
+      }
+
+#pragma omp task depend(in : columns_done) depend(out : csr_done)
+      {
+        run_parser_task([&] {
+          MPS_NVTX_RANGE("task_materialize_csr", nvtx::colors::alloc);
+          materialize_problem_csr(state);
         });
       }
 

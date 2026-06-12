@@ -5,7 +5,6 @@
 
 set(MPS_FAST_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/experimental_mps_fast/fast_parser.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/experimental_mps_fast/fast_parser_adapter.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/experimental_mps_fast/file_reader.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/experimental_mps_fast/lz4_file_reader.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/experimental_mps_fast/mps_section_scanner.cpp
