@@ -1,0 +1,168 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+import time
+
+import pytest
+
+from cuopt.grpc import Client, JobNotReadyError, JobStatus
+from cuopt.linear_programming import SolverSettings
+from cuopt.linear_programming.internals import GetSolutionCallback
+from cuopt.linear_programming.problem import INTEGER, MAXIMIZE, Problem
+
+_DEMO_LP_NAMES = ["x", "y"]
+_MIP_NAMES = ["x", "y"]
+
+
+def _demo_lp_problem():
+    problem = Problem("grpc_demo")
+    x = problem.addVariable(lb=0.0, ub=2.0, name="x")
+    y = problem.addVariable(lb=0.0, name="y")
+    problem.addConstraint(3 * x + 4 * y <= 5.4, name="c1")
+    problem.addConstraint(2.7 * x + 10.1 * y <= 4.9, name="c2")
+    problem.setObjective(0.2 * x + 0.1 * y, sense=MAXIMIZE)
+    return problem
+
+
+def _poll_until_complete(
+    client, job_id, names, timeout=120, poll_interval=0.05
+):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        status = client.status(job_id)
+        if status not in (JobStatus.QUEUED, JobStatus.PROCESSING):
+            return status
+        if client.result(job_id, names) is not None:
+            return JobStatus.COMPLETED
+        time.sleep(poll_interval)
+    return client.status(job_id)
+
+
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
+class TestGrpcClient:
+    def test_submit_status_result_delete(self, grpc_client_port):
+        problem = _demo_lp_problem()
+        settings = SolverSettings()
+        client = Client("localhost", grpc_client_port)
+
+        job_id = client.submit(problem, settings)
+        assert job_id
+
+        assert client.result(job_id, _DEMO_LP_NAMES) is None
+        assert client.status(job_id) in (
+            JobStatus.QUEUED,
+            JobStatus.PROCESSING,
+            JobStatus.COMPLETED,
+        )
+
+        terminal = client.wait(job_id, timeout=120)
+        assert terminal == JobStatus.COMPLETED
+
+        solution = client.result(job_id, _DEMO_LP_NAMES)
+        assert solution is not None
+        assert solution.get_primal_objective() == pytest.approx(0.36, rel=1e-3)
+        vars_ = solution.get_vars()
+        assert vars_["x"] == pytest.approx(1.8, rel=1e-3)
+        assert vars_["y"] == pytest.approx(0.0, rel=1e-3)
+
+        client.delete(job_id)
+
+    def test_submit_with_log_stream(self, grpc_client_port):
+        problem = _demo_lp_problem()
+        settings = SolverSettings()
+
+        client = Client("localhost", grpc_client_port)
+        job_id = client.submit(problem, settings)
+
+        received = []
+        client.start_log_stream(job_id, callback=received.append)
+
+        terminal = _poll_until_complete(client, job_id, _DEMO_LP_NAMES)
+        assert terminal == JobStatus.COMPLETED
+        client.join_log_stream(job_id)
+
+        solution = client.result(job_id, _DEMO_LP_NAMES)
+        assert solution is not None
+
+        bulk_logs = client.logs(job_id)
+        assert bulk_logs
+        assert received
+        assert len(received) == len(bulk_logs)
+
+        client.delete(job_id)
+
+    def test_logs_not_ready(self, grpc_client_port):
+        problem = _demo_lp_problem()
+        settings = SolverSettings()
+
+        client = Client("localhost", grpc_client_port)
+        job_id = client.submit(problem, settings)
+
+        with pytest.raises(JobNotReadyError):
+            client.logs(job_id)
+
+        assert client.wait(job_id, timeout=120) == JobStatus.COMPLETED
+        assert client.logs(job_id)
+
+        client.delete(job_id)
+
+    def test_mip_submit_and_result(self, grpc_client_port):
+        problem = Problem("grpc_mip")
+        x = problem.addVariable(lb=0, ub=10, vtype=INTEGER, name="x")
+        y = problem.addVariable(lb=0, ub=10, vtype=INTEGER, name="y")
+        problem.addConstraint(x + y <= 10, name="c1")
+        problem.addConstraint(x - y >= 0, name="c2")
+        problem.setObjective(x + 2 * y, sense=MAXIMIZE)
+
+        client = Client("localhost", grpc_client_port)
+        job_id = client.submit(problem, SolverSettings())
+        assert client.wait(job_id, timeout=120) == JobStatus.COMPLETED
+
+        solution = client.result(job_id, _MIP_NAMES)
+        assert solution is not None
+        assert solution.get_primal_objective() == pytest.approx(15.0, rel=1e-3)
+        client.delete(job_id)
+
+    def test_mip_incumbent_stream(self, grpc_client_port):
+        class IncumbentCollector(GetSolutionCallback):
+            def __init__(self):
+                super().__init__()
+                self.entries = []
+
+            def get_solution(
+                self, solution, solution_cost, solution_bound, user_data
+            ):
+                self.entries.append(
+                    {
+                        "solution": solution.tolist(),
+                        "cost": float(solution_cost[0]),
+                    }
+                )
+
+        problem = Problem("grpc_mip_incumbent")
+        x = problem.addVariable(lb=0, ub=10, vtype=INTEGER, name="x")
+        y = problem.addVariable(lb=0, ub=10, vtype=INTEGER, name="y")
+        problem.addConstraint(x + y <= 10, name="c1")
+        problem.addConstraint(x - y >= 0, name="c2")
+        problem.setObjective(x + 2 * y, sense=MAXIMIZE)
+
+        collector = IncumbentCollector()
+        settings = SolverSettings()
+        settings.set_mip_callback(collector, None)
+        settings.set_parameter("time_limit", 30)
+
+        client = Client("localhost", grpc_client_port)
+        job_id = client.submit(problem, settings)
+        client.start_incumbent_stream(job_id, settings=settings)
+
+        terminal = _poll_until_complete(client, job_id, _MIP_NAMES)
+        assert terminal == JobStatus.COMPLETED
+        client.join_incumbent_stream(job_id)
+
+        assert collector.entries
+        bulk = client.incumbents(job_id)
+        assert bulk
+
+        solution = client.result(job_id, _MIP_NAMES)
+        assert solution is not None
+        client.delete(job_id)
