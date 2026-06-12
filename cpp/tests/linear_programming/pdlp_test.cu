@@ -108,7 +108,7 @@ TEST(pdlp_class, distributed_partition_metis_export_import_roundtrip)
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::linear_programming::io::mps_data_model_t<int, double> mps =
-    cuopt::linear_programming::io::parse_mps<int, double>(path, true);
+    cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   const int n_vars = static_cast<int>(mps.get_objective_coefficients().size());
   const int n_cstr = static_cast<int>(mps.get_constraint_lower_bounds().size());
@@ -173,7 +173,7 @@ void expect_distributed_matches_base(raft::handle_t const& handle,
   };
 
   auto path                                 = make_path_absolute(mps_rel_path);
-  io::mps_data_model_t<int, double> problem = io::parse_mps<int, double>(path, fixed_mps_format);
+  io::mps_data_model_t<int, double> problem = io::read_mps<int, double>(path, fixed_mps_format);
 
   // Shared settings: PDLP, no presolve (distributed requires presolver == None, so the
   // base run must match to keep the two problems identical).
