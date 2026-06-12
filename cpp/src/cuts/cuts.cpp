@@ -1073,13 +1073,10 @@ std::vector<std::vector<int>> find_violated_odd_cycles_for_test(
 
   std::vector<std::vector<int>> result;
   std::vector<int> bipartite_path;
-  std::vector<int> cycle_local;
-  std::vector<char> already_used(n_vertices, 0);
   dijkstra_scratch_t<int, double> dijkstra_scratch;
 
   for (int s = 0; s < num_local; ++s) {
     if (toc(start_time) >= time_limit) { break; }
-    if (already_used[s]) { continue; }
 
     double total_weight = 0;
     if (!dijkstra_odd_cycle<int, double>(s,
@@ -1093,7 +1090,6 @@ std::vector<std::vector<int>> find_violated_odd_cycles_for_test(
                                          dijkstra_scratch)) {
       continue;
     }
-    cycle_local.clear();
     if (bipartite_path.size() < 4) { continue; }
     std::vector<int> seq;
     seq.reserve(bipartite_path.size());
@@ -1114,9 +1110,6 @@ std::vector<std::vector<int>> find_violated_odd_cycles_for_test(
     }
     if (!simple) { continue; }
     result.push_back(seq);
-    for (const auto v : seq) {
-      already_used[v] = 1;
-    }
   }
   return result;
 }

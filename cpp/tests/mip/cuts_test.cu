@@ -1456,6 +1456,28 @@ TEST(cuts, zero_half_unit_separator_disjoint_pentagons)
   EXPECT_TRUE(found_right);
 }
 
+TEST(cuts, zero_half_unit_separator_overlapping_pentagons)
+{
+  std::vector<std::vector<int>> adj = {
+    {1, 4, 5, 8},
+    {0, 2},
+    {1, 3},
+    {2, 4},
+    {3, 0},
+    {0, 6},
+    {5, 7},
+    {6, 8},
+    {7, 0},
+  };
+  std::vector<double> x_values(9, 0.5);
+  auto cycles = dual_simplex::find_violated_odd_cycles_for_test(
+    adj, x_values, 1e-6, std::numeric_limits<double>::infinity());
+  cycles = canonicalize_cycles(std::move(cycles));
+
+  EXPECT_NE(std::find(cycles.begin(), cycles.end(), std::vector<int>{0, 1, 2, 3, 4}), cycles.end());
+  EXPECT_NE(std::find(cycles.begin(), cycles.end(), std::vector<int>{0, 5, 6, 7, 8}), cycles.end());
+}
+
 TEST(cuts, zero_half_end_to_end_pentagon_tightens_lp_relaxation)
 {
   const raft::handle_t handle{};
