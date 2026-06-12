@@ -4,9 +4,7 @@
 """
 Shared cuopt_grpc_server helpers and pytest fixtures for LP tests.
 
-Import this module in test files that need a live server::
-
-    pytest_plugins = ["grpc_server_fixtures"]
+Registered via ``pytest_plugins`` in ``python/cuopt/conftest.py``.
 
 Class-scoped ``grpc_server`` starts one server per test class. Configure it on
 the test class::
@@ -95,6 +93,7 @@ def start_grpc_server(port_offset):
         pytest.skip("cuopt_grpc_server not found")
 
     port = int(os.environ.get("CUOPT_TEST_PORT_BASE", "18000")) + port_offset
+    env = cpu_only_env(port)
     proc = subprocess.Popen(
         [
             server_bin,
@@ -106,6 +105,7 @@ def start_grpc_server(port_offset):
         ],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+        env=env,
     )
     time.sleep(0.5)
     if proc.poll() is not None:
@@ -118,11 +118,15 @@ def start_grpc_server(port_offset):
         proc.wait()
         pytest.fail("cuopt_grpc_server failed to start within 15s")
 
-    return proc, cpu_only_env(port)
+    return proc, env
 
 
 def stop_grpc_server(proc):
     """Gracefully shut down a server process."""
+    if proc.poll() is not None:
+        proc.wait()
+        return
+
     proc.send_signal(signal.SIGTERM)
     try:
         proc.wait(timeout=5)

@@ -10,7 +10,7 @@ from cuopt.linear_programming import SolverSettings
 from cuopt.linear_programming.internals import GetSolutionCallback
 from cuopt.linear_programming.problem import INTEGER, MAXIMIZE, Problem
 
-from grpc_server_fixtures import GRPC_PORT_OFFSET_CLIENT
+from cuopt.grpc_server_fixtures import GRPC_PORT_OFFSET_CLIENT
 
 _DEMO_LP_NAMES = ["x", "y"]
 _MIP_NAMES = ["x", "y"]
@@ -84,7 +84,11 @@ class TestGrpcClient:
 
         terminal = _poll_until_complete(client, job_id, _DEMO_LP_NAMES)
         assert terminal == JobStatus.COMPLETED
-        client.join_log_stream(job_id)
+        state = client.join_log_stream(job_id)
+        assert state is not None
+        assert state["live_lines"] > 0, (
+            "Log streaming failed; only backfill worked"
+        )
 
         solution = client.result(job_id, _DEMO_LP_NAMES)
         assert solution is not None
