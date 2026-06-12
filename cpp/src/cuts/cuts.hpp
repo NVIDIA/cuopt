@@ -305,23 +305,7 @@ class cut_pool_t {
   // We expect that the cut is violated by the current relaxation xstar.
   void add_cut(cut_type_t cut_type, const inequality_t<i_t, f_t>& cut);
 
-  // Backward-compatible scoring entry-point. Falls back to the legacy
-  // geometric-distance / nnz-penalty score when bounds are not provided.
   void score_cuts(std::vector<f_t>& x_relax);
-
-  // HiGHS-like active-support scoring with adaptive threshold, adaptive
-  // parallelism rejection, and violation-based aging. Selected
-  // rows remain in the pool so they can be reconsidered if later removed
-  // from the LP and violated again.
-  void score_cuts(const std::vector<f_t>& x_relax,
-                  const std::vector<f_t>& lower,
-                  const std::vector<f_t>& upper,
-                  f_t feastol);
-  void score_cuts(const std::vector<f_t>& x_relax,
-                  const std::vector<f_t>& lower,
-                  const std::vector<f_t>& upper,
-                  const std::vector<variable_type_t>& var_types,
-                  f_t feastol);
 
   // We return the cuts in the form best_cuts*x <= best_rhs
   i_t get_best_cuts(csr_matrix_t<i_t, f_t>& best_cuts,
@@ -334,51 +318,9 @@ class cut_pool_t {
 
   i_t pool_size() const { return cut_storage_.m; }
 
-  // Number of nonzeros in the cut at row `row` of the cut pool.
-  i_t cut_nz(i_t row) const { return cut_storage_.row_length(row); }
-
   void print_cutpool_types() { print_cut_types("In cut pool", cut_type_, settings_); }
 
   void check_for_duplicate_cuts();
-
-  // The clique cut family (Bron-Kerbosch + extension) emits cousin
-  // cliques whose support sets agree in |k-1| of |k| vertices. The
-  // selection-stage orthogonality scan catches them but only after the
-  // full insert + dedup + score cost has been paid. The cousin filter
-  // intercepts at insert: we min-hash the cut's column-support set,
-  // bucket on the first sketch hash, and when an existing pool entry
-  // collides with estimated Jaccard >= jaccard_tau we keep the
-  // higher-scoring representative (or, if no score was supplied, the
-  // earlier-inserted one).
-  //
-  // Defaults: jaccard_tau=0.95, k=8, enable=true, size_weight=0.0.
-  // These match "config 3 / cousin_loose" from the clique-sweep on
-  // commit 0b04683b — the configuration that won the gap-closed-pct
-  // comparison and was promoted to be the production default for the
-  // clique cut family. Callers can still override at runtime via
-  // set_clique_cousin_* if they want to experiment.
-  void set_clique_cousin_filter_enable(bool v) { clique_cousin_filter_enable_ = v; }
-  void set_clique_cousin_jaccard_tau(f_t v) { clique_cousin_jaccard_tau_ = v; }
-  void set_clique_cousin_minhash_k(i_t v) { clique_cousin_minhash_k_ = v; }
-  void set_clique_cousin_size_weight(f_t v) { clique_cousin_size_weight_ = v; }
-
-  bool clique_cousin_filter_enable() const { return clique_cousin_filter_enable_; }
-  f_t clique_cousin_jaccard_tau() const { return clique_cousin_jaccard_tau_; }
-  i_t clique_cousin_minhash_k() const { return clique_cousin_minhash_k_; }
-  f_t clique_cousin_size_weight() const { return clique_cousin_size_weight_; }
-
-  // Per-pool tally for log lines (instance-level diagnostic). All three
-  // counters are reset by reset_cousin_stats() and incremented inside
-  // add_cut() / cousin replacement.
-  i_t cousin_drops() const { return cousin_drops_; }
-  i_t cousin_replaces() const { return cousin_replaces_; }
-  i_t clique_inserts() const { return clique_inserts_; }
-  void reset_cousin_stats()
-  {
-    cousin_drops_    = 0;
-    cousin_replaces_ = 0;
-    clique_inserts_  = 0;
-  }
 
  private:
   f_t cut_distance(i_t row, const std::vector<f_t>& x, f_t& cut_violation, f_t& cut_norm);
@@ -390,16 +332,8 @@ class cut_pool_t {
 
   csr_matrix_t<i_t, f_t> cut_storage_;
   std::vector<f_t> rhs_storage_;
-  // Age convention:
-  //   age >= 0 : cut is in the pool, available for selection. Newly added
-  //              cuts start at max(0, pool_age_limit_ - 5). Each separation
-  //              round, non-violated cuts have age++ and are deleted once
-  //              age >= effective_age_limit; violated cuts reset to age = 0.
   std::vector<i_t> cut_age_;
   std::vector<cut_type_t> cut_type_;
-  // 1 / sqrt(sum a_j^2). 0.0 means the cut is degenerate / removed.
-  std::vector<f_t> cut_inv_norm_;
-  std::vector<f_t> cut_max_abs_coef_;
 
   i_t scored_cuts_;
   std::vector<f_t> cut_distances_;
@@ -408,24 +342,6 @@ class cut_pool_t {
   std::vector<f_t> cut_scores_;
   std::vector<i_t> best_cuts_;
   const f_t min_cut_distance_{1e-4};
-
-  std::vector<std::vector<uint64_t>> clique_support_minhash_;
-  std::vector<f_t> clique_cousin_score_;
-  std::unordered_map<uint64_t, std::vector<i_t>> clique_cousin_buckets_;
-  f_t clique_cousin_jaccard_tau_{static_cast<f_t>(0.95)};
-  i_t clique_cousin_minhash_k_{8};
-  bool clique_cousin_filter_enable_{true};
-  // When > 0, the cousin filter's "score" used to pick a winner is
-  // boosted as: effective_score = base_score * (1 + size_weight * log2(1 + clique_size)).
-  // This biases cousin replacement toward larger cliques (more variables
-  // covered, larger integer support). 0 disables the tilt.
-  f_t clique_cousin_size_weight_{static_cast<f_t>(0.0)};
-
-  // Diagnostic counters reset at the start of each cut pass via
-  // reset_cousin_stats().
-  i_t cousin_drops_{0};
-  i_t cousin_replaces_{0};
-  i_t clique_inserts_{0};
 };
 
 template <typename i_t, typename f_t>
@@ -682,42 +598,14 @@ class mixed_integer_rounding_cut_t;
 template <typename i_t, typename f_t>
 class variable_bounds_t;
 
-// Shared fractional conflict-graph subgraph used by both the clique-cut and
-// zero-half cut separators. Built once per cut pass in
-// cut_generation_t::generate_cuts and consumed by both routines so neither
-// has to rebuild the same vertex/weight/adjacency tables.
-//
-// Vertex indexing: each fractional binary variable j contributes two CG
-// vertices — the original literal `j` and the complement literal
-// `j + num_vars`. Local indices are dense in `[0, vertices.size())`.
 template <typename i_t, typename f_t>
 struct fractional_conflict_subgraph_t {
-  // Number of variables in the original problem; CG vertex indices are in
-  // [0, 2 * num_vars).
   i_t num_vars{0};
-
-  // Global CG vertex indices (length = 2 * #fractional binary vars).
   std::vector<i_t> vertices;
-
-  // LP value of the literal at each local index. weights[k] = x_j for the
-  // original copy of variable j; 1 - x_j for the complement copy.
   std::vector<f_t> weights;
-
-  // Inverse mapping: vertex_to_local[CG_vertex] = local_idx (or -1 if not
-  // in the subgraph). Sized 2 * num_vars when ready.
   std::vector<i_t> vertex_to_local;
-
-  // 1 if CG_vertex is in the subgraph, 0 otherwise. Sized 2 * num_vars when
-  // ready.
   std::vector<char> in_subgraph;
-
-  // For each local index l, adj_local[l] is the list of local indices of
-  // its neighbors (CG neighbors restricted to the subgraph).
   std::vector<std::vector<i_t>> adj_local;
-
-  // True iff a build completed for the current cut pass. May be true with
-  // an empty subgraph (no fractional binaries), in which case both
-  // separators have nothing to do but the build itself succeeded.
   bool ready{false};
 
   i_t num_local() const { return static_cast<i_t>(vertices.size()); }
@@ -835,12 +723,6 @@ class cut_generation_t {
                                    const std::vector<f_t>& xstar,
                                    f_t start_time);
 
-  // Resolve the async clique-table future (if still pending) and build the
-  // fractional conflict-graph subgraph against the current xstar. Both the
-  // clique-cut and zero-half cut separators consume the result via sub_cg_.
-  // Skips cleanly (sub_cg_.ready = false) if the clique table is missing or
-  // empty, if budgets are exceeded, or if cut routines depending on it are
-  // disabled. Safe to call multiple times per cut pass.
   void prepare_fractional_sub_cg(const simplex_solver_settings_t<i_t, f_t>& settings,
                                  const std::vector<f_t>& xstar,
                                  f_t start_time);
@@ -852,9 +734,6 @@ class cut_generation_t {
   const probing_implied_bound_t<i_t, f_t>& probing_implied_bound_;
   std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table_;
   omp_atomic_t<bool>* signal_extend_{nullptr};
-  // Cached fractional sub-CG, rebuilt at the top of each generate_cuts call
-  // by prepare_fractional_sub_cg. Both clique cuts and zero-half cuts read
-  // from this and skip if !sub_cg_.ready.
   fractional_conflict_subgraph_t<i_t, f_t> sub_cg_;
 };
 

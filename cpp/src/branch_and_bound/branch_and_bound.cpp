@@ -2650,18 +2650,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   };
   cuopt::scope_guard root_cut_cpufj_guard([&]() { stop_root_cut_cpufj(); });
 
-  f_t cut_generation_start_time    = tic();
-  auto publish_cut_generation_time = [&](bool force_time_limit_value = false) {
-    if (settings_.benchmark_info_ptr == nullptr) { return; }
-    f_t cut_generation_time = toc(cut_generation_start_time);
-    if (force_time_limit_value) { cut_generation_time = settings_.time_limit; }
-    if (cut_generation_time < static_cast<f_t>(0.0)) {
-      cut_generation_time = static_cast<f_t>(0.0);
-    }
-    settings_.benchmark_info_ptr->cut_generation_time_sec =
-      static_cast<double>(cut_generation_time);
-  };
-  i_t cut_pool_size = 0;
+  f_t cut_generation_start_time = tic();
+  i_t cut_pool_size             = 0;
   for (i_t cut_pass = 0; cut_pass < settings_.max_cut_passes; cut_pass++) {
     if (num_fractional == 0) {
       // LP relaxation is already integer-feasible — solved at the root
