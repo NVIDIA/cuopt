@@ -69,7 +69,11 @@ void apply_grpc_client_env_overrides(grpc_client_config_t& config)
 
     const char* client_cert = get_env("CUOPT_TLS_CLIENT_CERT");
     const char* client_key  = get_env("CUOPT_TLS_CLIENT_KEY");
-    if (client_cert && client_key) {
+    if (client_cert != nullptr || client_key != nullptr) {
+      if (client_cert == nullptr || client_key == nullptr) {
+        throw std::invalid_argument(
+          "CUOPT_TLS_CLIENT_CERT and CUOPT_TLS_CLIENT_KEY must both be set for mTLS");
+      }
       config.tls_client_cert = read_pem_file(client_cert);
       config.tls_client_key  = read_pem_file(client_key);
     }
@@ -78,6 +82,11 @@ void apply_grpc_client_env_overrides(grpc_client_config_t& config)
 
 grpc_client_config_t make_grpc_client_config(const std::string& host, int port)
 {
+  if (host.empty()) { throw std::invalid_argument("gRPC host must not be empty"); }
+  if (port <= 0 || port > 65535) {
+    throw std::invalid_argument("gRPC port must be between 1 and 65535");
+  }
+
   grpc_client_config_t config;
   config.server_address = host + ":" + std::to_string(port);
   apply_grpc_client_env_overrides(config);

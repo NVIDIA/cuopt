@@ -123,10 +123,18 @@ grpc_status_result_t grpc_python_client_t::status(const std::string& job_id)
 
 grpc_status_result_t grpc_python_client_t::wait(const std::string& job_id, int timeout_seconds)
 {
-  if (timeout_seconds <= 0) { return map_status_result(impl_->client.wait_for_completion(job_id)); }
+  if (timeout_seconds < 0) {
+    grpc_status_result_t out;
+    out.success       = false;
+    out.error_message = "timeout_seconds must be non-negative";
+    out.status        = grpc_job_status_t::NOT_FOUND;
+    return out;
+  }
+
+  if (timeout_seconds == 0) { return map_status_result(impl_->client.wait_for_completion(job_id)); }
 
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(timeout_seconds);
-  const int poll_ms   = std::max(impl_->client.is_connected() ? 1000 : 1000, 1);
+  const int poll_ms   = 1000;
 
   while (std::chrono::steady_clock::now() < deadline) {
     auto st = status(job_id);

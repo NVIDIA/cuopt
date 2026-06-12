@@ -74,7 +74,11 @@ cdef int _invoke_log_callback(
             if _call_log_callback(callback, text, bool(job_complete)) is False:
                 return 0
             return 1
-        except Exception:
+        except Exception as exc:
+            cb = <object>userdata
+            state = getattr(cb, "state", None)
+            if state is not None:
+                state["error"] = exc
             return 0
 
 
@@ -84,6 +88,25 @@ def _call_log_callback(callback, line, job_complete):
         return callback(line, job_complete)
     except TypeError:
         return callback(line)
+
+
+class _LogStreamHandler:
+    """Bridge user callback with stream state for C log streaming."""
+
+    __slots__ = ("state", "callback")
+
+    def __init__(self, state, callback):
+        self.state = state
+        self.callback = callback
+
+    def __call__(self, line, job_complete):
+        self.state["lines"].append(line)
+        self.state["live_lines"] += 1
+        try:
+            return _call_log_callback(self.callback, line, job_complete)
+        except Exception as exc:
+            self.state["error"] = exc
+            raise
 
 
 def _call_incumbent_callback(callback, index, objective, assignment, job_complete):
@@ -259,20 +282,18 @@ cdef class Client:
             "from_byte": from_byte,
             "live_lines": 0,
             "backfilled": False,
+            "error": None,
         }
         self._log_stream_state[job_id] = state
 
-        def wrapped(line, job_complete):
-            state["lines"].append(line)
-            state["live_lines"] += 1
-            _call_log_callback(callback, line, job_complete)
+        handler = _LogStreamHandler(state, callback)
 
         # Use a dedicated connection so StreamLogs can run concurrently with
         # status/result polling on this client.
         log_client = Client(self._host, self._port)
         thread = threading.Thread(
             target=self._run_log_stream,
-            args=(log_client, job_id, wrapped, from_byte),
+            args=(log_client, job_id, handler, from_byte),
             daemon=True,
         )
         self._log_threads[job_id] = thread
@@ -285,15 +306,28 @@ cdef class Client:
         Returns a dict with stream stats (``live_lines``, ``lines``, ``backfilled``)
         when a stream was started for ``job_id``, else ``None``.
         """
-        thread = self._log_threads.pop(job_id, None)
+        thread = self._log_threads.get(job_id)
         if thread is not None:
             thread.join(timeout)
+            if thread.is_alive():
+                exc = self._log_thread_errors.get(job_id)
+                if exc is not None:
+                    raise exc
+                return self._log_stream_state.get(job_id)
+            self._log_threads.pop(job_id, None)
+
         exc = self._log_thread_errors.pop(job_id, None)
         if exc is not None:
             raise exc
 
         state = self._log_stream_state.pop(job_id, None)
-        if state is not None and state["live_lines"] == 0:
+        if state is None:
+            return None
+
+        if state.get("error") is not None:
+            raise state["error"]
+
+        if state["live_lines"] == 0:
             self._backfill_log_stream(job_id, state)
         return state
 
