@@ -461,7 +461,7 @@ if (HOST_LINEINFO)
     set_source_files_properties(${CUOPT_SRC_FILES} DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTIES COMPILE_OPTIONS "-g1")
 endif ()
 
-# Needed for the fast MPS parser
+# Needed for the fast MPS parser, available on all x86-64-v3 compliant x86 CPUs (essentially since Haswell ~2013)
 if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$" AND
         CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang|AppleClang)$")
     set_property(SOURCE ${MPS_FAST_SRC_FILES} DIRECTORY ${CMAKE_SOURCE_DIR}
