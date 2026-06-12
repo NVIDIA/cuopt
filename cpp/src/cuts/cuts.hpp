@@ -295,8 +295,6 @@ class cut_pool_t {
       rhs_storage_(0),
       cut_age_(0),
       cut_type_(0),
-      cut_inv_norm_(0),
-      cut_max_abs_coef_(0),
       scored_cuts_(0)
   {
   }

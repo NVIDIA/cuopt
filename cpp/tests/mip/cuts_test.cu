@@ -63,6 +63,27 @@ End
 )LP");
 }
 
+io::mps_data_model_t<int, double> create_pairwise_pentagon_set_packing_problem()
+{
+  return cuopt::test::parse_inline_lp(R"LP(
+Minimize
+  obj: -x0 - x1 - x2 - x3 - x4
+Subject To
+  c1: x0 + x1 <= 1
+  c2: x1 + x2 <= 1
+  c3: x2 + x3 <= 1
+  c4: x3 + x4 <= 1
+  c5: x4 + x0 <= 1
+Binaries
+  x0
+  x1
+  x2
+  x3
+  x4
+End
+)LP");
+}
+
 // Same triangle conflicts plus an isolated binary x3 with no conflict rows.
 io::mps_data_model_t<int, double> create_pairwise_triangle_with_isolated_variable_problem()
 {
