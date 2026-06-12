@@ -33,7 +33,7 @@ import pytest
 GRPC_PORT_OFFSET_CPU_ONLY = 600
 GRPC_PORT_OFFSET_CLI = 700
 GRPC_PORT_OFFSET_CLIENT = 800
-GRPC_PORT_OFFSET_TLS = 800
+GRPC_PORT_OFFSET_TLS = 850
 GRPC_PORT_OFFSET_MTLS = 900
 
 
@@ -71,6 +71,27 @@ def wait_for_port(port, timeout=15):
             with socket.create_connection(("127.0.0.1", port), timeout=1):
                 return True
         except OSError:
+            time.sleep(0.2)
+    return False
+
+
+def wait_for_grpc_client(port, timeout=30):
+    """Block until cuopt.grpc.Client can connect (TCP up is not enough)."""
+    from cuopt.grpc import Client, GrpcError
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if not wait_for_port(port, timeout=1):
+            time.sleep(0.2)
+            continue
+        try:
+            try:
+                client = Client("localhost", port, tls=False)
+            except TypeError:
+                client = Client("localhost", port)
+            del client
+            return True
+        except GrpcError:
             time.sleep(0.2)
     return False
 
@@ -126,10 +147,13 @@ def start_grpc_server(port_offset):
             f"cuopt_grpc_server exited immediately (rc={proc.returncode}), "
             "binary may be unable to load shared libraries in this environment"
         )
-    if not wait_for_port(port, timeout=15):
+    if not wait_for_grpc_client(port, timeout=30):
         proc.kill()
         proc.wait()
-        pytest.fail("cuopt_grpc_server failed to start within 15s")
+        pytest.fail(
+            "cuopt_grpc_server TCP port opened but gRPC client could not connect "
+            "within 30s"
+        )
 
     return proc, client_env
 
