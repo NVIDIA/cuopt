@@ -27,6 +27,7 @@ for package_name in cuopt cuopt_server; do
 done
 
 # populates `RATTLER_CHANNELS` array and `RATTLER_ARGS` array
+source ./ci/use_conda_packages_from_prs.sh
 source rapids-rattler-channel-string
 
 # Override `rapids-rattler-channelstring` while cuOpt is not on the standard RAPIDS release cycle

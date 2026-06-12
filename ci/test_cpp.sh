@@ -11,6 +11,7 @@ rapids-logger "Configuring conda strict channel priority"
 conda config --set channel_priority strict
 
 CPP_CHANNEL=$(rapids-download-from-github "$(rapids-artifact-name conda_cpp libcuopt cuopt --cuda "$RAPIDS_CUDA_VERSION")")
+source ./ci/use_conda_packages_from_prs.sh
 
 rapids-logger "Generate C++ testing dependencies"
 rapids-dependency-file-generator \

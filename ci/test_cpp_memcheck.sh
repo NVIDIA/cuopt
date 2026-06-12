@@ -15,6 +15,7 @@ set -euo pipefail
 rapids-logger "Configuring conda strict channel priority"
 conda config --set channel_priority strict
 
+source ./ci/use_conda_packages_from_prs.sh
 RAPIDS_VERSION="$(rapids-version)"
 
 rapids-logger "Generate C++ testing dependencies"

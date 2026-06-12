@@ -18,6 +18,7 @@ CUOPT_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_pyt
 CUOPT_SERVER_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_python cuopt-server cuopt --pure --arch any --cuda "$RAPIDS_CUDA_VERSION")")
 CUOPT_SH_CLIENT_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_python cuopt-sh-client cuopt --pure --arch any)")
 
+source ./ci/use_wheels_from_prs.sh
 # generate constraints (possibly pinning to oldest support versions of dependencies)
 rapids-generate-pip-constraints test_python "${PIP_CONSTRAINT}"
 

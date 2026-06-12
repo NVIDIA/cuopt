@@ -14,6 +14,7 @@ rapids-logger "Downloading artifacts from previous jobs"
 CPP_CHANNEL=$(rapids-download-from-github "$(rapids-artifact-name conda_cpp libcuopt cuopt --cuda "$RAPIDS_CUDA_VERSION")")
 PYTHON_CHANNEL=$(rapids-download-from-github "$(rapids-artifact-name conda_python cuopt cuopt --py "$RAPIDS_PY_VERSION" --cuda "$RAPIDS_CUDA_VERSION")")
 
+source ./ci/use_conda_packages_from_prs.sh
 rapids-logger "Generate notebook testing dependencies"
 
 ENV_YAML_DIR="$(mktemp -d)"

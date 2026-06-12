@@ -20,6 +20,7 @@ LIBCUOPT_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_
 CUOPT_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_python cuopt cuopt --py "$RAPIDS_PY_VERSION" --cuda "$RAPIDS_CUDA_VERSION")")
 CUOPT_SH_CLIENT_WHEELHOUSE=$(rapids-download-from-github "$(rapids-artifact-name wheel_python cuopt-sh-client cuopt --pure --arch any)")
 
+source ./ci/use_wheels_from_prs.sh
 # update pip constraints.txt to ensure all future 'pip install' (including those in ci/thirdparty-testing)
 # use these wheels for cuopt packages
 cat > "${PIP_CONSTRAINT}" <<EOF
