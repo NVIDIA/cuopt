@@ -75,8 +75,8 @@ def wait_for_port(port, timeout=15):
     return False
 
 
-def cpu_only_env(port):
-    """Return an env dict that hides all GPUs and enables remote mode."""
+def client_remote_env(port):
+    """Env for a CPU-only client process talking to a remote gRPC server."""
     env = os.environ.copy()
     for key in [k for k in env if k.startswith("CUOPT_TLS_")]:
         env.pop(key)
@@ -86,14 +86,27 @@ def cpu_only_env(port):
     return env
 
 
+def server_env():
+    """Env for ``cuopt_grpc_server`` — keep GPU access; drop client-only vars."""
+    env = os.environ.copy()
+    for key in list(env):
+        if key.startswith("CUOPT_TLS_") or key.startswith("CUOPT_REMOTE_"):
+            env.pop(key)
+    return env
+
+
+# Backward-compatible alias used by tests that yield client env dicts.
+cpu_only_env = client_remote_env
+
+
 def start_grpc_server(port_offset):
-    """Locate the server, start it on BASE + port_offset, return (proc, env)."""
+    """Locate the server, start it on BASE + port_offset, return (proc, client_env)."""
     server_bin = find_grpc_server()
     if server_bin is None:
         pytest.skip("cuopt_grpc_server not found")
 
     port = int(os.environ.get("CUOPT_TEST_PORT_BASE", "18000")) + port_offset
-    env = cpu_only_env(port)
+    client_env = client_remote_env(port)
     proc = subprocess.Popen(
         [
             server_bin,
@@ -105,7 +118,7 @@ def start_grpc_server(port_offset):
         ],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
-        env=env,
+        env=server_env(),
     )
     time.sleep(0.5)
     if proc.poll() is not None:
@@ -118,7 +131,7 @@ def start_grpc_server(port_offset):
         proc.wait()
         pytest.fail("cuopt_grpc_server failed to start within 15s")
 
-    return proc, env
+    return proc, client_env
 
 
 def stop_grpc_server(proc):
@@ -156,11 +169,11 @@ def grpc_server(request):
             f"got {yield_kind!r}"
         )
 
-    proc, env = start_grpc_server(port_offset)
+    proc, client_env = start_grpc_server(port_offset)
     try:
         if yield_kind == "port":
-            yield int(env["CUOPT_REMOTE_PORT"])
+            yield int(client_env["CUOPT_REMOTE_PORT"])
         else:
-            yield env
+            yield client_env
     finally:
         stop_grpc_server(proc)
