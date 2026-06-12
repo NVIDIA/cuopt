@@ -37,11 +37,14 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace cuopt::linear_programming::io::detail {
 
 inline constexpr std::size_t input_buffer_padding_bytes = 64;
+
+void ensure_input_buffer_padding(std::vector<char>& buffer, std::size_t input_size);
 
 struct lz4_pipeline_t;
 
@@ -122,6 +125,27 @@ class parallel_error_latch_t {
   std::atomic_bool stopped_{false};
 };
 
+class scoped_thread_group {
+ public:
+  void reserve(std::size_t count) { threads_.reserve(count); }
+
+  template <typename F>
+  void emplace(F&& f)
+  {
+    threads_.emplace_back(std::forward<F>(f));
+  }
+
+  ~scoped_thread_group()
+  {
+    for (auto& thread : threads_) {
+      if (thread.joinable()) { thread.join(); }
+    }
+  }
+
+ private:
+  std::vector<std::thread> threads_;
+};
+
 // Work-stealing parallel loop over [0, count). Each of thread_count workers pulls
 // the next index from a shared counter and invokes body(index). An exception
 // escaping body is captured into the latch and stops the loop; the caller is
@@ -136,10 +160,10 @@ void parallel_for_indexed(std::size_t count,
                           Body body)
 {
   std::atomic_size_t next{0};
-  std::vector<std::thread> workers;
+  scoped_thread_group workers;
   workers.reserve(thread_count);
   for (std::size_t t = 0; t < thread_count; ++t) {
-    workers.emplace_back([&, t] {
+    workers.emplace([&, t] {
       if (thread_name_prefix != nullptr) {
         std::string name = thread_name_prefix + std::to_string(t);
         nvtx::name_current_thread(name.c_str());
@@ -155,9 +179,6 @@ void parallel_for_indexed(std::size_t count,
         }
       }
     });
-  }
-  for (auto& worker : workers) {
-    worker.join();
   }
 }
 

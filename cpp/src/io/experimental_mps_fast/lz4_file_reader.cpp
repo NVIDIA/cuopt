@@ -6,6 +6,7 @@
 #include "nvtx_ranges.hpp"
 
 #include <utilities/error.hpp>
+#include <utilities/scope_guard.hpp>
 
 #include <cuda/cmath>
 
@@ -344,12 +345,15 @@ lz4_input_stream_t::lz4_input_stream_t(const std::string& path) : path_(path)
 
   ensure_lz4_runtime_available();
 
-  fd_ = open_lz4_fd(path);
-  ::posix_fadvise(fd_, 0, 0, POSIX_FADV_SEQUENTIAL);
+  int fd = open_lz4_fd(path);
+  cuopt::scope_guard close_fd([&] {
+    if (fd >= 0) { ::close(fd); }
+  });
+  ::posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL);
 
-  compressed_size_ = get_file_size(fd_, path);
+  compressed_size_ = get_file_size(fd, path);
 
-  lz4_frame_header_t header = parse_lz4_frame_header(fd_, path, compressed_size_);
+  lz4_frame_header_t header = parse_lz4_frame_header(fd, path, compressed_size_);
   block_max_size_           = header.block_max_size;
   content_size_             = header.content_size;
   header_size_              = header.header_size;
@@ -378,6 +382,9 @@ lz4_input_stream_t::lz4_input_stream_t(const std::string& path) : path_(path)
 
   section_scanner_ =
     std::make_unique<mps_section_block_scanner_t>(output_data_, block_slot_count_, registry_);
+
+  fd_ = fd;
+  fd  = -1;
 }
 
 lz4_input_stream_t::~lz4_input_stream_t()
@@ -455,13 +462,14 @@ struct lz4_pipeline_t {
 
   void run()
   {
-    std::thread scanner(&lz4_pipeline_t::run_scanner_stage, this);
-    start_decoders();
-    run_readers();
-
-    scanner.join();
-    for (auto& worker : decoders) {
-      worker.join();
+    {
+      scoped_thread_group background;
+      background.reserve(io_threads + 1);
+      background.emplace([this] { run_scanner_stage(); });
+      for (std::size_t t = 0; t < io_threads; ++t) {
+        background.emplace([this, t] { run_decoder_stage(t); });
+      }
+      run_readers();
     }
     latch.rethrow_if_error();
   }
@@ -546,14 +554,6 @@ struct lz4_pipeline_t {
       window_done[index] = 1;
     }
     window_cv.notify_all();
-  }
-
-  void start_decoders()
-  {
-    decoders.reserve(io_threads);
-    for (std::size_t t = 0; t < io_threads; ++t) {
-      decoders.emplace_back(&lz4_pipeline_t::run_decoder_stage, this, t);
-    }
   }
 
   void run_decoder_stage(std::size_t tid)
@@ -846,7 +846,6 @@ struct lz4_pipeline_t {
 
   std::atomic_size_t blocks_scanned{0};
   std::vector<std::vector<char>> crossing_payloads;
-  std::vector<std::thread> decoders;
 };
 
 void lz4_input_stream_t::run_decode_tasks()

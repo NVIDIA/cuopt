@@ -309,7 +309,7 @@ int main(int argc, char* argv[])
     .help(
       "MPS reader implementation: default uses the production parser; experimental-fast uses the "
       "experimental "
-      "SIMD parser for LP/MIP .mps and .mps.lz4 files")
+      "SIMD parser for LP/MIP .mps, .mps.lz4, .mps.gz, and .mps.bz2 files")
     .default_value(std::string("default"))
     .choices("default", "experimental-fast");
 

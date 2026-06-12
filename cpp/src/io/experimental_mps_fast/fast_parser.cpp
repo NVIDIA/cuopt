@@ -2,7 +2,6 @@
 // reserved. SPDX-License-Identifier: Apache-2.0
 
 #include "fast_parser.hpp"
-#include <file_to_string.hpp>
 #include "fast_parse_primitives.hpp"
 #include "file_reader.hpp"
 #include "hash_table_smallstr.hpp"
@@ -20,12 +19,11 @@
 
 #include <omp.h>
 #include <algorithm>
-#include <array>
-#include <atomic>
 #include <cassert>
 #include <cctype>
 #include <cerrno>
-#include <chrono>
+#include <charconv>
+#include <climits>
 #include <concepts>
 #include <cstdint>
 #include <cstdio>
@@ -36,14 +34,13 @@
 #include <map>
 #include <memory>
 #include <mutex>
-#include <stdexcept>
 #include <string>
 #include <string_view>
-#include <tuple>
-#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
+
+#include <file_to_string.hpp>
 
 #define MPS_FAST_COMPACT_ROW_HASH
 #define MPS_FAST_THP_PREFAULT
@@ -863,6 +860,9 @@ static bool parse_rows_section_parallel_impl(parse_state_t<i_t, f_t>& state,
   }
 
   size_t total_rows = offsets[(size_t)num_threads];
+  if (UNLIKELY(total_rows > (size_t)INT_MAX)) {
+    state.cursor.error("fast MPS parser requires <= INT_MAX rows, got %zu", total_rows);
+  }
   {
     scoped_timer_t timer("rows_resize_outputs");
     state.row_names_sv.resize(total_rows);
@@ -1002,6 +1002,10 @@ static void parse_rows_section_serial_impl(parse_state_t<i_t, f_t>& state, const
       state.problem.row_types_.push_back(row_type);
     }
     expect_eol(state.cursor);
+  }
+  if (UNLIKELY(state.row_names_sv.size() > (size_t)INT_MAX)) {
+    state.cursor.error("fast MPS parser requires <= INT_MAX rows, got %zu",
+                       state.row_names_sv.size());
   }
 }
 
@@ -2969,7 +2973,7 @@ static padded_memory_input_t read_compressed_mps_file(const std::string& path)
   if (buffer.empty()) { buffer.push_back('\0'); }
 
   std::size_t input_size = buffer.size() - 1;
-  buffer.resize(input_size + input_buffer_padding_bytes, '\0');
+  ensure_input_buffer_padding(buffer, input_size);
   return {std::move(buffer), input_size, get_file_size(path)};
 }
 

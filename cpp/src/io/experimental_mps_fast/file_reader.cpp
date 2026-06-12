@@ -5,6 +5,7 @@
 #include "nvtx_ranges.hpp"
 
 #include <utilities/error.hpp>
+#include <utilities/scope_guard.hpp>
 
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -65,6 +66,18 @@ std::size_t add_input_padding(std::size_t size)
 }
 
 }  // namespace
+
+void ensure_input_buffer_padding(std::vector<char>& buffer, std::size_t input_size)
+{
+  if (input_size > buffer.size()) {
+    mps_parser_fail(error_type_t::ValidationError,
+                    "input_size %zu exceeds buffer size %zu",
+                    input_size,
+                    buffer.size());
+  }
+  std::size_t required = add_input_padding(input_size);
+  if (buffer.size() < required) { buffer.resize(required, '\0'); }
+}
 
 std::size_t get_file_size(int fd, const std::string& path)
 {
@@ -128,22 +141,29 @@ bool pread_full(int fd, char* dst, std::size_t bytes, std::size_t offset)
 raw_input_stream_t::raw_input_stream_t(const std::string& path) : path_(path)
 {
   MPS_NVTX_RANGE("raw_input_construct", nvtx::colors::io);
-  buffered_fd_ = ::open(path.c_str(), O_RDONLY);
-  if (buffered_fd_ < 0) {
+  int buffered_fd = ::open(path.c_str(), O_RDONLY);
+  cuopt::scope_guard close_buffered([&] {
+    if (buffered_fd >= 0) { ::close(buffered_fd); }
+  });
+  if (buffered_fd < 0) {
     mps_parser_fail(error_type_t::RuntimeError,
                     "Failed to open raw MPS file '%s': %s",
                     path.c_str(),
                     std::strerror(errno));
   }
 
-  file_size_         = get_file_size(buffered_fd_, path);
-  fd_                = buffered_fd_;
-  bool use_direct_io = file_size_ > raw_input_direct_io_threshold_bytes;
-  if (use_direct_io) {
+  int direct_fd = -1;
+  cuopt::scope_guard close_direct([&] {
+    if (direct_fd >= 0) { ::close(direct_fd); }
+  });
+
+  file_size_  = get_file_size(buffered_fd, path);
+  int read_fd = buffered_fd;
+  if (file_size_ > raw_input_direct_io_threshold_bytes) {
 #ifdef O_DIRECT
-    int direct_fd = ::open(path.c_str(), O_RDONLY | O_DIRECT);
+    direct_fd = ::open(path.c_str(), O_RDONLY | O_DIRECT);
     if (direct_fd >= 0) {
-      fd_        = direct_fd;
+      read_fd    = direct_fd;
       direct_io_ = true;
     }
 #endif
@@ -160,6 +180,11 @@ raw_input_stream_t::raw_input_stream_t(const std::string& path) : path_(path)
 
   section_scanner_ =
     std::make_unique<mps_section_block_scanner_t>(output_data_, window_count_, registry_);
+
+  buffered_fd_ = buffered_fd;
+  buffered_fd  = -1;
+  fd_          = read_fd;
+  if (read_fd == direct_fd) { direct_fd = -1; }
 }
 
 raw_input_stream_t::~raw_input_stream_t()
@@ -229,6 +254,7 @@ memory_input_stream_t::memory_input_stream_t(std::vector<char> buffer,
                                              std::size_t compressed_size)
   : buffer_(std::move(buffer)), input_size_(input_size), compressed_size_(compressed_size)
 {
+  ensure_input_buffer_padding(buffer_, input_size_);
   section_scanner_ = std::make_unique<mps_section_block_scanner_t>(buffer_.data(), 1, registry_);
 }
 

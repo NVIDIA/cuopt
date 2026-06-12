@@ -246,18 +246,22 @@ struct cursor_t {
     if (UNLIKELY(ws_mask == 0)) { return slow(); }
     int field1_end_off = __builtin_ctz(ws_mask);
 
-    unsigned int printable_after_field1 = printable_mask >> field1_end_off;
-    if (UNLIKELY(printable_after_field1 == 0)) { return slow(); }
-    int field2_start_off = field1_end_off + __builtin_ctz(printable_after_field1);
-
-    if (UNLIKELY(ptr[field2_start_off] == '\n')) { return slow(); }
+    simde__m256i is_nl                = simde_mm256_cmpeq_epi8(data, vnl);
+    unsigned int nl_mask              = (unsigned int)simde_mm256_movemask_epi8(is_nl);
+    unsigned int barrier_after_field1 = (printable_mask | nl_mask) >> field1_end_off;
+    if (UNLIKELY(barrier_after_field1 == 0)) { return slow(); }
+    int field2_rel_off = __builtin_ctz(barrier_after_field1);
+    if (UNLIKELY(ptr[field1_end_off + field2_rel_off] == '\n' ||
+                 ptr[field1_end_off + field2_rel_off] == '\r')) {
+      return slow();
+    }
+    int field2_start_off = field1_end_off + field2_rel_off;
 
     unsigned int ws_after_field2_start = ws_mask >> field2_start_off;
     if (UNLIKELY(ws_after_field2_start == 0)) { return slow(); }
     int field2_end_off = field2_start_off + __builtin_ctz(ws_after_field2_start);
 
-    simde__m256i is_nl     = simde_mm256_cmpeq_epi8(data, vnl);
-    unsigned int stop_mask = printable_mask | (unsigned int)simde_mm256_movemask_epi8(is_nl);
+    unsigned int stop_mask         = printable_mask | nl_mask;
     unsigned int stop_after_field2 = stop_mask >> field2_end_off;
     if (LIKELY(stop_after_field2 != 0)) {
       ptr = ptr + field2_end_off + __builtin_ctz(stop_after_field2);
