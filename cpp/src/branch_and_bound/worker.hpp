@@ -8,6 +8,7 @@
 #pragma once
 
 #include <branch_and_bound/constants.hpp>
+#include <branch_and_bound/diving_heuristics.hpp>
 #include <branch_and_bound/mip_node.hpp>
 #include <branch_and_bound/node_queue.hpp>
 #include <branch_and_bound/symmetry.hpp>
@@ -41,22 +42,6 @@ struct branch_and_bound_stats_t {
   omp_atomic_t<int64_t> lexical_reduction_fixings_applied = 0;
   omp_atomic_t<int64_t> lexical_reduction_pruned_nodes    = 0;
 };
-
-template <typename f_t, typename i_t>
-bool is_search_strategy_enabled(search_strategy_t strategy,
-                                bool has_incumbent,
-                                diving_heuristics_settings_t<i_t, f_t> settings)
-{
-  switch (strategy) {
-    case BEST_FIRST: return true;
-    case PSEUDOCOST_DIVING: return settings.pseudocost_diving != 0;
-    case LINE_SEARCH_DIVING: return settings.line_search_diving != 0;
-    case GUIDED_DIVING: return settings.guided_diving != 0 && has_incumbent;
-    case COEFFICIENT_DIVING: return settings.coefficient_diving != 0;
-  }
-
-  return false;
-}
 
 template <typename i_t, typename f_t>
 class branch_and_bound_worker_t {
@@ -191,12 +176,11 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
   // of workers allows the solver to be more deterministic.
   void calculate_num_diving_workers(i_t num_bfs_workers,
                                     i_t total_diving_workers,
-                                    bool has_incumbent,
-                                    const diving_heuristics_settings_t<i_t, f_t>& settings)
+                                    const mip_diving_hyper_params_t<i_t, f_t>& settings)
   {
     i_t num_active = 0;
     for (i_t i = 1; i < num_search_strategies; ++i) {
-      num_active += is_search_strategy_enabled(search_strategies[i], has_incumbent, settings);
+      num_active += is_search_strategy_enabled(search_strategies[i], settings);
     }
 
     total_max_diving_workers = 0;
@@ -204,7 +188,7 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
     if (num_active == 0) { return; }
 
     for (size_t i = 1, k = 0; i < num_search_strategies; ++i) {
-      if (is_search_strategy_enabled(search_strategies[i], has_incumbent, settings)) {
+      if (is_search_strategy_enabled(search_strategies[i], settings)) {
         // Calculate the number of workers for a given diving heuristic
         auto [type_start, type_end] = calculate_index_range(k, total_diving_workers, num_active);
         i_t workers_per_type        = type_end - type_start;
