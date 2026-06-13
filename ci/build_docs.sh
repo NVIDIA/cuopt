@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 set -euo pipefail
@@ -17,8 +17,8 @@ RAPIDS_VERSION_MAJOR_MINOR="$(rapids-version-major-minor)"
 export RAPIDS_VERSION_MAJOR_MINOR
 
 rapids-logger "Downloading artifacts from previous jobs"
-CPP_CHANNEL=$(rapids-download-conda-from-github cpp)
-PYTHON_CHANNEL=$(rapids-download-conda-from-github python)
+CPP_CHANNEL=$(rapids-download-from-github "$(rapids-artifact-name conda_cpp libcuopt cuopt --cuda "$RAPIDS_CUDA_VERSION")")
+PYTHON_CHANNEL=$(rapids-download-from-github "$(rapids-artifact-name conda_python cuopt cuopt --py "$RAPIDS_PY_VERSION" --cuda "$RAPIDS_CUDA_VERSION")")
 
 rapids-logger "Generating conda environment YAML"
 

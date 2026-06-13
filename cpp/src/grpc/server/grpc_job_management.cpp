@@ -8,6 +8,8 @@
 #include "grpc_pipe_serialization.hpp"
 #include "grpc_server_types.hpp"
 
+#include <fstream>
+
 // write_to_pipe / read_from_pipe are defined in grpc_pipe_io.cpp
 
 bool send_job_data_pipe(int worker_idx, const std::vector<uint8_t>& data)
@@ -83,6 +85,8 @@ std::pair<bool, std::string> submit_job_async(std::vector<uint8_t>&& request_dat
   }
   if (slot < 0) { return {false, "Job queue full"}; }
 
+  create_job_log_file(job_id);
+
   // Populate the slot while we hold the `claimed` flag.
   copy_cstr(job_queue[slot].job_id, job_id);
   job_queue[slot].problem_category = problem_category;
@@ -136,6 +140,8 @@ std::pair<bool, std::string> submit_chunked_job_async(PendingChunkedUpload&& chu
     }
   }
   if (slot < 0) { return {false, "Job queue full"}; }
+
+  create_job_log_file(job_id);
 
   copy_cstr(job_queue[slot].job_id, job_id);
   job_queue[slot].problem_category = problem_category;
@@ -208,6 +214,14 @@ void ensure_log_dir_exists()
 {
   struct stat st;
   if (stat(LOG_DIR.c_str(), &st) != 0) { mkdir(LOG_DIR.c_str(), 0755); }
+}
+
+// Create an empty per-job log file at submit time so StreamLogs can tail it
+// immediately. The worker truncates and repopulates it when the solve starts.
+void create_job_log_file(const std::string& job_id)
+{
+  ensure_log_dir_exists();
+  std::ofstream out(get_log_file_path(job_id), std::ios::out | std::ios::trunc);
 }
 
 void delete_log_file(const std::string& job_id)

@@ -141,6 +141,10 @@ bool multi_probe_t<i_t, f_t>::calculate_bounds_update(problem_t<i_t, f_t>& pb,
   constexpr i_t zero       = 0;
   constexpr auto n_threads = 256;
 
+  upd_0.candidate_bound_scale =
+    pb.tolerances.absolute_tolerance / context.settings.semi_continuous_big_m;
+  upd_1.candidate_bound_scale =
+    pb.tolerances.absolute_tolerance / context.settings.semi_continuous_big_m;
   if (skip_0 && skip_1) {
     return false;
   } else if (skip_0) {
