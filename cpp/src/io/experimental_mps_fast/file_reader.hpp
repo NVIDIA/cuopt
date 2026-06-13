@@ -283,6 +283,9 @@ class raw_input_stream_t : public input_stream_base_t<raw_input_stream_t> {
   std::size_t file_size_          = 0;
   std::size_t window_bytes_       = 0;
   std::size_t window_count_       = 0;
+#ifdef MPS_FAST_TIMERS
+  std::vector<uint32_t> read_window_ms_;
+#endif
   std::unique_ptr<mps_section_block_scanner_t> section_scanner_;
 };
 

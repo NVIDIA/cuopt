@@ -10,11 +10,13 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/statfs.h>
 #include <unistd.h>
 
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -37,6 +39,7 @@ namespace {
 constexpr std::size_t raw_input_window_bytes              = 64ull * 1024ull * 1024ull;
 constexpr std::size_t raw_input_max_read_threads          = 8;
 constexpr std::size_t raw_input_direct_io_threshold_bytes = 1ull * 1024ull * 1024ull * 1024ull;
+constexpr long nfs_super_magic                            = 0x6969;
 
 bool path_has_suffix(const std::string& path, const char* suffix) noexcept
 {
@@ -63,6 +66,12 @@ std::size_t add_input_padding(std::size_t size)
     mps_parser_fail(error_type_t::OutOfMemoryError, "input padding size overflow");
   }
   return size + input_buffer_padding_bytes;
+}
+
+bool is_nfs_backed_path(const std::string& path) noexcept
+{
+  struct statfs fs;
+  return ::statfs(path.c_str(), &fs) == 0 && fs.f_type == nfs_super_magic;
 }
 
 }  // namespace
@@ -157,9 +166,13 @@ raw_input_stream_t::raw_input_stream_t(const std::string& path) : path_(path)
     if (direct_fd >= 0) { ::close(direct_fd); }
   });
 
-  file_size_  = get_file_size(buffered_fd, path);
-  int read_fd = buffered_fd;
-  if (file_size_ > raw_input_direct_io_threshold_bytes) {
+  file_size_                   = get_file_size(buffered_fd, path);
+  int read_fd                  = buffered_fd;
+  bool large_enough_for_direct = file_size_ > raw_input_direct_io_threshold_bytes;
+  bool nfs_backed              = is_nfs_backed_path(path);
+  // Buffered reads are consistently faster than O_DIRECT on our NFS mounts;
+  // keep direct I/O for large local files where it wins.
+  if (large_enough_for_direct && !nfs_backed) {
 #ifdef O_DIRECT
     direct_fd = ::open(path.c_str(), O_RDONLY | O_DIRECT);
     if (direct_fd >= 0) {
@@ -231,6 +244,9 @@ void raw_input_stream_t::run_decode_tasks()
   // Each window is read independently and handed to the scanner, which owns the
   // contiguous decoded-byte frontier and the parallel section publication.
   parallel_error_latch_t latch;
+#ifdef MPS_FAST_TIMERS
+  auto read_wall_start = std::chrono::steady_clock::now();
+#endif
   parallel_for_indexed(
     window_count_, thread_count, latch, "raw-input-read-", [&](std::size_t index) {
       MPS_NVTX_RANGE("raw_window_read", nvtx::colors::io);
@@ -238,12 +254,55 @@ void raw_input_stream_t::run_decode_tasks()
       std::size_t size   = std::min(window_bytes_, file_size_ - offset);
       {
         MPS_NVTX_RANGE("raw_window_pread", nvtx::colors::io);
+#ifdef MPS_FAST_TIMERS
+        auto start = std::chrono::steady_clock::now();
+#endif
         read_window_payload(offset, size);
+#ifdef MPS_FAST_TIMERS
+        auto end     = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+        read_window_ms_[index] =
+          (uint32_t)std::min<long long>(elapsed.count(), std::numeric_limits<uint32_t>::max());
+#endif
       }
       MPS_NVTX_RANGE("raw_window_scan_publish", nvtx::colors::io);
       section_scanner_->observe_block(index, output_data_ + offset, output_data_ + offset + size);
     });
+#ifdef MPS_FAST_TIMERS
+  auto read_wall_end = std::chrono::steady_clock::now();
+#endif
   latch.rethrow_if_error();
+
+#ifdef MPS_FAST_TIMERS
+  if (!read_window_ms_.empty()) {
+    std::vector<uint32_t> sorted = read_window_ms_;
+    std::sort(sorted.begin(), sorted.end());
+    auto percentile = [&](double pct) {
+      std::size_t idx = (std::size_t)std::min<double>((double)(sorted.size() - 1),
+                                                      pct * (double)(sorted.size() - 1));
+      return sorted[idx];
+    };
+    uint64_t total_ms = 0;
+    for (uint32_t value : read_window_ms_) {
+      total_ms += value;
+    }
+    std::fprintf(
+      stderr,
+      "[RAW_READ_LATENCY] windows=%zu wall_ms=%lld total_window_ms=%llu avg_ms=%.3f min_ms=%u "
+      "p50_ms=%u p90_ms=%u p99_ms=%u max_ms=%u\n",
+      read_window_ms_.size(),
+      (long long)std::chrono::duration_cast<std::chrono::milliseconds>(read_wall_end -
+                                                                       read_wall_start)
+        .count(),
+      (unsigned long long)total_ms,
+      (double)total_ms / (double)read_window_ms_.size(),
+      sorted.front(),
+      percentile(0.50),
+      percentile(0.90),
+      percentile(0.99),
+      sorted.back());
+  }
+#endif
 
   output_view_size_ = section_scanner_->ready_bytes();
   section_scanner_->publish_ready(output_view_size_);
