@@ -207,6 +207,59 @@ TEST(general_quadratic, rejects_non_convex)
     cuopt::logic_error);
 }
 
+// Test: cross-only indefinite Q (issue #1434). H = [[0, 2]; [2, 0]] has zero diagonals so LDLT
+// returns rank 0 without a negative pivot; must still be rejected as non-convex.
+TEST(general_quadratic, rejects_cross_only_indefinite)
+{
+  raft::handle_t handle{};
+  init_handler(&handle);
+
+  using namespace cuopt::linear_programming::dual_simplex;
+  user_problem_t<i_t, f_t> user_problem(&handle);
+
+  constexpr int m  = 0;
+  constexpr int n  = 2;
+  constexpr int nz = 0;
+
+  user_problem.num_rows  = m;
+  user_problem.num_cols  = n;
+  user_problem.objective = {1.0, 1.0};
+
+  user_problem.A.m      = m;
+  user_problem.A.n      = n;
+  user_problem.A.nz_max = nz;
+  user_problem.A.reallocate(nz);
+  user_problem.A.col_start = {0, 0, 0};
+
+  user_problem.rhs.clear();
+  user_problem.row_sense.clear();
+  user_problem.lower          = {-1.0, -1.0};
+  user_problem.upper          = {1.0, 1.0};
+  user_problem.num_range_rows = 0;
+  user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
+
+  // Q COO: (0,1,2) → 2*x0*x1 <= 0.5, H = [[0, 2]; [2, 0]]
+  qc_t qc;
+  qc.constraint_row_index = 0;
+  qc.constraint_row_name  = "cross_only_indefinite";
+  qc.constraint_row_type  = 'L';
+  qc.rhs_value            = 0.5;
+  qc.rows                 = {0};
+  qc.cols                 = {1};
+  qc.vals                 = {2.0};
+
+  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
+  csr_A.m         = m;
+  csr_A.n         = n;
+  csr_A.row_start = {0};
+
+  std::vector<qc_t> qcs = {qc};
+
+  EXPECT_THROW(
+    (convert_quadratic_constraints_to_second_order_cones<i_t, f_t>(n, qcs, csr_A, user_problem)),
+    cuopt::logic_error);
+}
+
 // Test: rank-deficient PSD Q (e.g., Q = v*v^T with v = [1, 1])
 // minimize x0 + x1
 // subject to (x0 + x1)^2 <= 4   (i.e., |x0 + x1| <= 2)

@@ -659,9 +659,15 @@ void convert_quadratic_constraints_to_second_order_cones(
                     "Quadratic constraint '%s' is non-convex (Q matrix is indefinite)",
                     qc.constraint_row_name.c_str());
 
-      // Since q_nnz >= 1 is enforced above, Q is nonzero and rank must be >= 1.
-      // (A nonzero Q entry produces a nonzero H diagonal or off-diagonal, guaranteeing rank > 0.)
-      assert(rank >= 1);
+      // q_nnz >= 1 implies H is nonzero, but diagonal LDLT may still return rank 0 (e.g. cross-only
+      // indefinite H with zero diagonals). Reject before building a degenerate r=0 SOC lift.
+      cuopt_expects(rank >= 1,
+                    error_type_t::ValidationError,
+                    "Quadratic constraint '%s' is non-convex or could not be converted to a "
+                    "second-order cone (LDLT rank %d; Q may be indefinite or have zero diagonal "
+                    "with cross terms)",
+                    qc.constraint_row_name.c_str(),
+                    static_cast<int>(rank));
 
       // Step 4: Build standard SOC of dimension rank + 2.
       // New variables: y_0,...,y_{r-1}, s_0 (head), s_{r+1} (tail)

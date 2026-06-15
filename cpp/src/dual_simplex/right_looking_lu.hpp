@@ -43,7 +43,8 @@ i_t right_looking_lu_row_permutation_only(const csc_matrix_t<i_t, f_t>& A,
 //   D = diagonal factor (length = rank)
 // Returns:
 //   rank >= 0: number of successful pivots with D(k,k) >= pivot_tol (PSD case).
-//   INDEFINITE_MATRIX_RETURN (-4): a negative pivot was encountered (matrix is not PSD).
+//   INDEFINITE_MATRIX_RETURN (-4): a negative pivot was encountered, or the matrix is nonzero
+//     but no acceptable diagonal pivot was found (matrix is not PSD).
 //   CONCURRENT_HALT_RETURN (-2): concurrent halt requested.
 //   TIME_LIMIT_RETURN (-3): time limit exceeded.
 template <typename i_t, typename f_t>
