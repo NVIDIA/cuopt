@@ -136,10 +136,12 @@ std::vector<rank_data_t<i_t, f_t>> partition_loader_t<i_t, f_t>::create_rank_dat
     for (auto owned_cstr : rd.owned_cstr_indices) {
       i_t cstr_len  = A_row_offsets[owned_cstr + 1] - A_row_offsets[owned_cstr];
       i_t row_start = A_row_offsets[owned_cstr];
-      local_A_col_indices.insert(
-        local_A_col_indices.end(), A_col_indices.begin() + row_start, A_col_indices.begin() + row_start + cstr_len);
-      local_A_values.insert(
-        local_A_values.end(), A_values.begin() + row_start, A_values.begin() + row_start + cstr_len);
+      local_A_col_indices.insert(local_A_col_indices.end(),
+                                 A_col_indices.begin() + row_start,
+                                 A_col_indices.begin() + row_start + cstr_len);
+      local_A_values.insert(local_A_values.end(),
+                            A_values.begin() + row_start,
+                            A_values.begin() + row_start + cstr_len);
       local_A_nnz += cstr_len;
       local_A_row_offsets.push_back(local_A_nnz);
     }
@@ -163,9 +165,9 @@ std::vector<rank_data_t<i_t, f_t>> partition_loader_t<i_t, f_t>::create_rank_dat
       rank_data[peer].var_send_per_peer[rank] = std::move(needed_var_from_peer[peer]);
     }
 
-    rd.h_A_row_offsets   = std::move(local_A_row_offsets);
-    rd.h_A_col_indices   = std::move(local_A_col_indices);
-    rd.h_A_values        = std::move(local_A_values);
+    rd.h_A_row_offsets = std::move(local_A_row_offsets);
+    rd.h_A_col_indices = std::move(local_A_col_indices);
+    rd.h_A_values      = std::move(local_A_values);
 
     // ---- A_t side ----
     std::vector<i_t> local_A_t_row_offsets;
@@ -183,8 +185,9 @@ std::vector<rank_data_t<i_t, f_t>> partition_loader_t<i_t, f_t>::create_rank_dat
       local_A_t_col_indices.insert(local_A_t_col_indices.end(),
                                    A_t_col_indices.begin() + row_start,
                                    A_t_col_indices.begin() + row_start + var_len);
-      local_A_t_values.insert(
-        local_A_t_values.end(), A_t_values.begin() + row_start, A_t_values.begin() + row_start + var_len);
+      local_A_t_values.insert(local_A_t_values.end(),
+                              A_t_values.begin() + row_start,
+                              A_t_values.begin() + row_start + var_len);
       local_A_t_nnz += var_len;
       local_A_t_row_offsets.push_back(local_A_t_nnz);
     }
@@ -207,9 +210,9 @@ std::vector<rank_data_t<i_t, f_t>> partition_loader_t<i_t, f_t>::create_rank_dat
       rank_data[peer].cstr_send_per_peer[rank] = std::move(needed_cstr_from_peer[peer]);
     }
 
-    rd.h_A_t_row_offsets   = std::move(local_A_t_row_offsets);
-    rd.h_A_t_col_indices   = std::move(local_A_t_col_indices);
-    rd.h_A_t_values        = std::move(local_A_t_values);
+    rd.h_A_t_row_offsets = std::move(local_A_t_row_offsets);
+    rd.h_A_t_col_indices = std::move(local_A_t_col_indices);
+    rd.h_A_t_values      = std::move(local_A_t_values);
 
     rd.total_var_size  = rd.owned_var_size + static_cast<i_t>(seen_needed_vars.size());
     rd.total_cstr_size = rd.owned_cstr_size + static_cast<i_t>(seen_needed_cstrs.size());

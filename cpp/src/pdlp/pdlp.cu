@@ -514,11 +514,10 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
     } else if (partitioner_choice == "kaminpar") {
       kind = partitioner_kind_t::KaMinPar;
     } else {
-      cuopt_expects(
-        false,
-        error_type_t::ValidationError,
-        "Unknown distributed_pdlp_partitioner '%s' (expected auto|dummy|kaminpar)",
-        settings.distributed_pdlp_partitioner.c_str());
+      cuopt_expects(false,
+                    error_type_t::ValidationError,
+                    "Unknown distributed_pdlp_partitioner '%s' (expected auto|dummy|kaminpar)",
+                    settings.distributed_pdlp_partitioner.c_str());
       kind = partitioner_kind_t::Dummy;  // unreachable; silences -Wmaybe-uninitialized
     }
     const bool needs_graph = (kind == partitioner_kind_t::KaMinPar);
