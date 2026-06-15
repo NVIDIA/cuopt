@@ -35,20 +35,30 @@ class mmap_region_t {
   mmap_region_t(const mmap_region_t&)            = delete;
   mmap_region_t& operator=(const mmap_region_t&) = delete;
 
-  mmap_region_t(mmap_region_t&& other) noexcept : ptr_(other.ptr_), size_(other.size_)
+  mmap_region_t(mmap_region_t&& other) noexcept
+    : ptr_(other.ptr_),
+      size_(other.size_),
+      unmap_ptr_(other.unmap_ptr_),
+      unmap_size_(other.unmap_size_)
   {
-    other.ptr_  = nullptr;
-    other.size_ = 0;
+    other.ptr_        = nullptr;
+    other.size_       = 0;
+    other.unmap_ptr_  = nullptr;
+    other.unmap_size_ = 0;
   }
 
   mmap_region_t& operator=(mmap_region_t&& other) noexcept
   {
     if (this != &other) {
       reset();
-      ptr_        = other.ptr_;
-      size_       = other.size_;
-      other.ptr_  = nullptr;
-      other.size_ = 0;
+      ptr_              = other.ptr_;
+      size_             = other.size_;
+      unmap_ptr_        = other.unmap_ptr_;
+      unmap_size_       = other.unmap_size_;
+      other.ptr_        = nullptr;
+      other.size_       = 0;
+      other.unmap_ptr_  = nullptr;
+      other.unmap_size_ = 0;
     }
     return *this;
   }
@@ -93,11 +103,7 @@ class mmap_region_t {
 
     uintptr_t raw_addr     = reinterpret_cast<uintptr_t>(raw);
     uintptr_t aligned_addr = (raw_addr + alignment - 1) & ~(uintptr_t)(alignment - 1);
-    std::size_t prefix     = (std::size_t)(aligned_addr - raw_addr);
-    std::size_t suffix     = raw_size - prefix - size;
-    if (prefix > 0) { ::munmap(raw, prefix); }
-    if (suffix > 0) { ::munmap(reinterpret_cast<void*>(aligned_addr + size), suffix); }
-    return mmap_region_t(reinterpret_cast<void*>(aligned_addr), size);
+    return mmap_region_t(reinterpret_cast<void*>(aligned_addr), size, raw, raw_size);
   }
 
   static void map_fixed_or_throw(
@@ -112,9 +118,13 @@ class mmap_region_t {
 
   void reset() noexcept
   {
-    if (ptr_ != nullptr && size_ != 0) { ::munmap(ptr_, size_); }
-    ptr_  = nullptr;
-    size_ = 0;
+    void* base      = unmap_ptr_ != nullptr ? unmap_ptr_ : ptr_;
+    std::size_t len = unmap_ptr_ != nullptr ? unmap_size_ : size_;
+    if (base != nullptr && len != 0) { ::munmap(base, len); }
+    ptr_        = nullptr;
+    size_       = 0;
+    unmap_ptr_  = nullptr;
+    unmap_size_ = 0;
   }
 
   void advise(int advice) const noexcept
@@ -127,8 +137,15 @@ class mmap_region_t {
   std::size_t size() const noexcept { return size_; }
 
  private:
-  void* ptr_        = nullptr;
-  std::size_t size_ = 0;
+  mmap_region_t(void* ptr, std::size_t size, void* unmap_ptr, std::size_t unmap_size) noexcept
+    : ptr_(ptr), size_(size), unmap_ptr_(unmap_ptr), unmap_size_(unmap_size)
+  {
+  }
+
+  void* ptr_              = nullptr;
+  std::size_t size_       = 0;
+  void* unmap_ptr_        = nullptr;
+  std::size_t unmap_size_ = 0;
 };
 
 }  // namespace cuopt::linear_programming::io::detail

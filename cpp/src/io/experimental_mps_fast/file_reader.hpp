@@ -159,6 +159,8 @@ void parallel_for_indexed(std::size_t count,
                           const char* thread_name_prefix,
                           Body body)
 {
+  assert(thread_count > 0);
+
   std::atomic_size_t next{0};
   scoped_thread_group workers;
   workers.reserve(thread_count);

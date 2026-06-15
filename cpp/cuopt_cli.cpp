@@ -308,8 +308,8 @@ int main(int argc, char* argv[])
   program.add_argument("--mps-reader")
     .help(
       "MPS reader implementation: default uses the production parser; experimental-fast uses the "
-      "experimental "
-      "SIMD parser for LP/MIP .mps, .mps.lz4, .mps.gz, and .mps.bz2 files")
+      "experimental SIMD parser for free-format LP/MIP/QP/QCQP (SOCP) .mps/.qps files and their "
+      ".gz/.bz2/.lz4 compressed variants")
     .default_value(std::string("default"))
     .choices("default", "experimental-fast");
 

@@ -947,8 +947,9 @@ INSTANTIATE_DEFAULT_MPS_READER_TEST(free_var_bound_test);
 INSTANTIATE_DEFAULT_MPS_READER_TEST(lower_inf_var_bound_test);
 INSTANTIATE_DEFAULT_MPS_READER_TEST(upper_inf_var_bound_test);
 
-#undef INSTANTIATE_MPS_READER_TEST
-#undef INSTANTIATE_DEFAULT_MPS_READER_TEST
+// NOTE: INSTANTIATE_MPS_READER_TEST / INSTANTIATE_DEFAULT_MPS_READER_TEST are intentionally
+// left defined here; the QP/QCQP file fixtures below reuse them. They are #undef-ed after the
+// last instantiation.
 
 #ifdef MPS_PARSER_WITH_BZIP2
 TEST(mps_parser, good_mps_file_bzip2_compressed)
@@ -1051,13 +1052,14 @@ TEST(qps_parser, quadratic_objective_basic)
   EXPECT_EQ(1.0, model.get_quadratic_objective_values()[1]);
 }
 
+class qps_file_reader_test : public parser_fixture_base {};
+
 // Test actual QPS files from the dataset
-TEST(qps_parser, test_qps_files)
+TEST_P(qps_file_reader_test, test_qps_files)
 {
   // Test QP_Test_1.qps if it exists
   if (file_exists("quadratic_programming/QP_Test_1.qps")) {
-    auto parsed_data = read_mps<int, double>(
-      cuopt::test::get_rapids_dataset_root_dir() + "/quadratic_programming/QP_Test_1.qps", false);
+    auto parsed_data = read_mps_file("quadratic_programming/QP_Test_1.qps", false);
 
     EXPECT_EQ("QP_Test_1", parsed_data.get_problem_name());
     EXPECT_EQ(2, parsed_data.get_n_variables());    // C------1 and C------2
@@ -1076,8 +1078,7 @@ TEST(qps_parser, test_qps_files)
 
   // Test QP_Test_2.qps if it exists
   if (file_exists("quadratic_programming/QP_Test_2.qps")) {
-    auto parsed_data = read_mps<int, double>(
-      cuopt::test::get_rapids_dataset_root_dir() + "/quadratic_programming/QP_Test_2.qps", false);
+    auto parsed_data = read_mps_file("quadratic_programming/QP_Test_2.qps", false);
 
     EXPECT_EQ("QP_Test_2", parsed_data.get_problem_name());
     EXPECT_EQ(3, parsed_data.get_n_variables());    // C------1, C------2, C------3
@@ -2635,6 +2636,19 @@ TEST(read, qps_extension_dispatches_to_mps_parser)
   EXPECT_EQ(m.get_variable_names()[0], "x");
 }
 
+TEST(read, qps_extension_dispatches_to_fast_experimental_reader)
+{
+  temp_file_t tmp(".qps");
+  {
+    std::ofstream out(tmp.string());
+    out << kTrivialMps;
+  }
+  auto m = read<int, double>(tmp.string(), mps_reader_type_t::fast_experimental);
+  ASSERT_EQ(m.get_variable_names().size(), 1u);
+  EXPECT_EQ(m.get_variable_names()[0], "x");
+  EXPECT_NEAR(m.get_variable_upper_bounds()[0], 10.0, tolerance);
+}
+
 TEST(read, mps_gz_extension_dispatches_to_mps_parser)
 {
   auto m = read<int, double>(cuopt::test::get_rapids_dataset_root_dir() +
@@ -2849,13 +2863,12 @@ TEST(qps_parser, qcmatrix_append_api)
 }
 
 // QCQP MPS: each quadratic constraint bundles row + linear + rhs + quadratic.
-TEST(qps_parser, qcmatrix_mps_linear_rhs_and_bounds)
+TEST_P(qps_file_reader_test, qcmatrix_mps_linear_rhs_and_bounds)
 {
   if (!file_exists("qcqp/QC_Test_1.mps")) {
     GTEST_SKIP() << "qcqp/QC_Test_1.mps not in dataset root";
   }
-  const auto model = read_mps<int, double>(
-    cuopt::test::get_rapids_dataset_root_dir() + "/qcqp/QC_Test_1.mps", false);
+  const auto model = read_mps_file("qcqp/QC_Test_1.mps", false);
 
   ASSERT_TRUE(model.has_quadratic_constraints());
   const auto& qcs = model.get_quadratic_constraints();
@@ -2901,13 +2914,12 @@ TEST(qps_parser, qcmatrix_mps_linear_rhs_and_bounds)
   EXPECT_DOUBLE_EQ(10.0, qcs[1].rhs_value);
 }
 
-TEST(qps_parser, qcqp_p0033_mps_sections)
+TEST_P(qps_file_reader_test, qcqp_p0033_mps_sections)
 {
   if (!file_exists("qcqp/p0033_qc1.mps")) {
     GTEST_SKIP() << "qcqp/p0033_qc1.mps not in dataset root";
   }
-  const auto model = read_mps<int, double>(
-    cuopt::test::get_rapids_dataset_root_dir() + "/qcqp/p0033_qc1.mps", false);
+  const auto model = read_mps_file("qcqp/p0033_qc1.mps", false);
 
   EXPECT_EQ(12, model.get_n_constraints());
   EXPECT_EQ(33, model.get_n_variables());
@@ -2950,4 +2962,9 @@ TEST(mps_roundtrip, qcqp_p0033_qc1)
   auto reloaded_2 = read_mps<int, double>(temp_file_2.string(), false);
   compare_data_models(reloaded, reloaded_2);
 }
+
+INSTANTIATE_MPS_READER_TEST(qps_file_reader_test);
+
+#undef INSTANTIATE_MPS_READER_TEST
+#undef INSTANTIATE_DEFAULT_MPS_READER_TEST
 }  // namespace cuopt::linear_programming::io

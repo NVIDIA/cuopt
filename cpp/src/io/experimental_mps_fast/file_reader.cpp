@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <cerrno>
 #include <chrono>
 #include <cstdint>
@@ -46,8 +47,12 @@ constexpr long nfs_super_magic                            = 0x6969;
 bool path_has_suffix(const std::string& path, const char* suffix) noexcept
 {
   std::size_t suffix_len = std::strlen(suffix);
-  return path.size() >= suffix_len &&
-         path.compare(path.size() - suffix_len, suffix_len, suffix) == 0;
+  if (path.size() < suffix_len) { return false; }
+  for (std::size_t i = 0; i < suffix_len; ++i) {
+    unsigned char path_char = path[path.size() - suffix_len + i];
+    if (std::tolower(path_char) != suffix[i]) { return false; }
+  }
+  return true;
 }
 
 std::size_t add_input_padding(std::size_t size)
@@ -97,6 +102,7 @@ std::size_t get_file_size(const std::string& path)
 {
   int fd = ::open(path.c_str(), O_RDONLY);
   if (fd < 0) {
+    ::close(fd);
     mps_parser_fail(error_type_t::RuntimeError,
                     "Failed to open file '%s': %s",
                     path.c_str(),
@@ -173,6 +179,9 @@ raw_input_stream_t::raw_input_stream_t(const std::string& path) : path_(path)
   }
   window_bytes_ = raw_input_window_bytes;
   window_count_ = std::max<std::size_t>(1, (file_size_ + window_bytes_ - 1) / window_bytes_);
+#ifdef MPS_FAST_TIMERS
+  read_window_ms_.assign(window_count_, 0);
+#endif
 
   output_mapped_size_ =
     cuda::round_up(std::max<std::size_t>(add_input_padding(file_size_), 1), system_page_size());

@@ -125,6 +125,7 @@ mps_phase_range_t mps_phase_registry_t::range(mps_phase_kind phase) const
 void mps_phase_registry_t::publish_endata(const char* begin, bool present)
 {
   std::lock_guard<std::mutex> lock(mutex_);
+  if (endata_ready_.load(std::memory_order_acquire)) { return; }
   endata_begin_   = begin;
   endata_present_ = present;
   endata_ready_.store(true, std::memory_order_release);
@@ -167,6 +168,12 @@ static section_record_match_t is_section_record(const char* line_start,
     const char* after = line_start + record.len;
     while (after < line_end && (*after == ' ' || *after == '\t' || *after == '\r')) {
       ++after;
+    }
+    // QCMATRIX records are of the form "QCMATRIX <row>"
+    if (record.kind == mps_section_kind::qcmatrix) {
+      if (after == line_end) { return section_record_match_t::invalid; }
+      *kind = record.kind;
+      return section_record_match_t::section;
     }
     if (after != line_end) { return section_record_match_t::invalid; }
     *kind = record.kind;

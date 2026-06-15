@@ -165,6 +165,15 @@ TEST(FastFp64ParserTest, CursorAdvancesToTokenEnd)
   EXPECT_EQ(std::string_view("  ABC"), std::string_view(p, 5));
 }
 
+TEST(FastFp64ParserTest, RejectsMalformedNumericSuffix)
+{
+  std::setlocale(LC_NUMERIC, "C");
+  for (const char* token : {"1x", "1e", "1d+", "1e+"}) {
+    SCOPED_TRACE(token);
+    EXPECT_THROW(parse_token(token), std::exception);
+  }
+}
+
 TEST(FastFp64ParserTest, FixedSeedRandomDifferential)
 {
   std::setlocale(LC_NUMERIC, "C");

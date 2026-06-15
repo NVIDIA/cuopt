@@ -557,32 +557,29 @@ struct lz4_pipeline_t {
 
   void read_window(std::size_t index)
   {
-    auto& w = windows[index];
-    w.data.reset(new char[w.size]);
-    add_compressed_resident(w.size);
-    bool ok = false;
-    {
-      MPS_NVTX_RANGE("lz4_window_pread", nvtx::colors::io);
-      ok = pread_full(input.fd_, w.data.get(), w.size, w.file_offset);
-    }
-    if (!ok) {
-      // Capture-and-notify locally so scanner/decoder waiters wake; do not let
-      // the exception escape to parallel_for_indexed without the cv notify.
-      try {
+    try {
+      auto& w = windows[index];
+      w.data.reset(new char[w.size]);
+      add_compressed_resident(w.size);
+      bool ok = false;
+      {
+        MPS_NVTX_RANGE("lz4_window_pread", nvtx::colors::io);
+        ok = pread_full(input.fd_, w.data.get(), w.size, w.file_offset);
+      }
+      if (!ok) {
         mps_parser_fail(error_type_t::RuntimeError,
                         "Failed to pread LZ4 resident window: %s",
                         std::strerror(errno));
-      } catch (...) {
-        fail_and_notify(std::current_exception());
       }
-      return;
+      {
+        MPS_NVTX_RANGE("lz4_window_publish", nvtx::colors::generic);
+        std::lock_guard<std::mutex> lock(window_mutex);
+        window_done[index] = 1;
+      }
+      window_cv.notify_all();
+    } catch (...) {
+      fail_and_notify(std::current_exception());
     }
-    {
-      MPS_NVTX_RANGE("lz4_window_publish", nvtx::colors::generic);
-      std::lock_guard<std::mutex> lock(window_mutex);
-      window_done[index] = 1;
-    }
-    window_cv.notify_all();
   }
 
   void run_decoder_stage(std::size_t tid)

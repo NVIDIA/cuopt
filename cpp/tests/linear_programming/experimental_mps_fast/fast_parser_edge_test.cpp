@@ -5,6 +5,7 @@
 #include "mps_section_scanner.hpp"
 
 #include <cuopt/linear_programming/io/parser.hpp>
+#include <mps_parser_internal.hpp>
 
 #include <gtest/gtest.h>
 
@@ -148,13 +149,38 @@ void check_models_match_reference_bitwise(const parser_model_t<int, double>& fas
   EXPECT_EQ(reference.row_types_, fast.row_types_) << std::string(context) + " row_types";
   EXPECT_EQ(reference.var_names_, fast.var_names_) << std::string(context) + " var_names";
   EXPECT_EQ(reference.row_names_, fast.row_names_) << std::string(context) + " row_names";
+
+  ASSERT_EQ(reference.quadratic_constraints_.size(), fast.quadratic_constraints_.size())
+    << std::string(context) + " quadratic_constraints size";
+  for (size_t q = 0; q < reference.quadratic_constraints_.size(); ++q) {
+    const auto& ref_qc  = reference.quadratic_constraints_[q];
+    const auto& fast_qc = fast.quadratic_constraints_[q];
+    SCOPED_TRACE(std::string(context) + " quadratic_constraint " + std::to_string(q));
+    EXPECT_EQ(ref_qc.constraint_row_index, fast_qc.constraint_row_index);
+    EXPECT_EQ(ref_qc.constraint_row_name, fast_qc.constraint_row_name);
+    EXPECT_EQ(ref_qc.constraint_row_type, fast_qc.constraint_row_type);
+    EXPECT_EQ(bits(ref_qc.rhs_value), bits(fast_qc.rhs_value));
+    expect_vectors_bitwise_equal(
+      ref_qc.linear_values, fast_qc.linear_values, "linear_values", context);
+    EXPECT_EQ(ref_qc.linear_indices, fast_qc.linear_indices);
+    expect_vectors_bitwise_equal(ref_qc.vals, fast_qc.vals, "qc_vals", context);
+    EXPECT_EQ(ref_qc.rows, fast_qc.rows);
+    EXPECT_EQ(ref_qc.cols, fast_qc.cols);
+  }
+}
+
+mps_data_model_t<int, double> parse_reference_model(const std::string& path)
+{
+  mps_data_model_t<int, double> reference;
+  mps_parser_t<int, double> parser(reference, path, false);
+  return reference;
 }
 
 void verify_fixture_bitwise(std::string_view fixture_name, std::string contents)
 {
   TempMpsFile file(std::move(contents));
   auto fast      = parse_mps_fast_file<int, double>(file.path, FileReadMethod::Read);
-  auto reference = read_mps<int, double>(file.path, false);
+  auto reference = parse_reference_model(file.path);
   check_models_match_reference_bitwise(fast, reference, fixture_name);
 }
 
@@ -300,6 +326,27 @@ TEST(FastMpsParserEdgeTest, ScannerRejectsUnknownColumnOneRecordsAfterRows)
       scanner.publish_ready(mps.size());
     },
     std::logic_error);
+}
+
+TEST(FastMpsParserEdgeTest, ParserRejectsUnknownSectionRecords)
+{
+  TempMpsFile file(
+    "NAME BAD_UNKNOWN_SECTION\n"
+    "ROWS\n"
+    " N OBJ\n"
+    " L R1\n"
+    "COLUMNS\n"
+    " X1 OBJ 1 R1 2\n"
+    "RHS\n"
+    " RHS1 R1 3\n"
+    "BOUNDS\n"
+    " FR BND1 X1\n"
+    "QSECTION      R1\n"
+    " X1 X1 1\n"
+    "ENDATA\n");
+
+  EXPECT_THROW(((void)parse_mps_fast_file<int, double>(file.path, FileReadMethod::Read)),
+               std::exception);
 }
 
 TEST(FastMpsParserEdgeTest, BoundsDefaultsAndTypesMatchReference)
@@ -784,6 +831,106 @@ TEST(FastMpsParserEdgeTest, GzipBzip2AndRawPathsMatch)
   EXPECT_EQ(raw.variable_upper_bounds_, bzip2.variable_upper_bounds_) << "bzip2 upper bounds";
   EXPECT_EQ(raw.var_types_, gzip.var_types_) << "gzip var types";
   EXPECT_EQ(raw.var_types_, bzip2.var_types_) << "bzip2 var types";
+}
+
+TEST(FastMpsParserEdgeTest, QcMatrixRowsMatchReferenceBitwise)
+{
+  verify_fixture_bitwise("qcmatrix rows",
+                         "NAME QCMATRIX_TEST\n"
+                         "ROWS\n"
+                         " N OBJ\n"
+                         " L LIN\n"
+                         " L QC1\n"
+                         " G QC2\n"
+                         "COLUMNS\n"
+                         " X1 OBJ 1 LIN 2\n"
+                         " X1 QC1 3 QC2 4\n"
+                         " X2 OBJ 2 LIN 5\n"
+                         " X2 QC1 6 QC2 7\n"
+                         "RHS\n"
+                         " RHS1 LIN 10 QC1 11\n"
+                         " RHS1 QC2 12\n"
+                         "QCMATRIX   QC1\n"
+                         " X1 X1 1.25\n"
+                         " X1 X2 -2.5\n"
+                         "QCMATRIX   QC2\n"
+                         " X2 X2 3.75\n"
+                         "ENDATA\n");
+}
+
+TEST(FastMpsParserEdgeTest, QcMatrixMalformedCasesMatchReference)
+{
+  const std::vector<std::string> cases = {
+    "NAME DUP_QC\n"
+    "ROWS\n"
+    " N OBJ\n"
+    " L QC1\n"
+    "COLUMNS\n"
+    " X1 OBJ 1 QC1 2\n"
+    "RHS\n"
+    " RHS1 QC1 3\n"
+    "QCMATRIX QC1\n"
+    " X1 X1 1\n"
+    "QCMATRIX QC1\n"
+    " X1 X1 2\n"
+    "ENDATA\n",
+    "NAME BAD_QC_ROW\n"
+    "ROWS\n"
+    " N OBJ\n"
+    " L QC1\n"
+    "COLUMNS\n"
+    " X1 OBJ 1 QC1 2\n"
+    "RHS\n"
+    " RHS1 QC1 3\n"
+    "QCMATRIX UNKNOWN\n"
+    " X1 X1 1\n"
+    "ENDATA\n",
+    "NAME BAD_QC_VAR\n"
+    "ROWS\n"
+    " N OBJ\n"
+    " L QC1\n"
+    "COLUMNS\n"
+    " X1 OBJ 1 QC1 2\n"
+    "RHS\n"
+    " RHS1 QC1 3\n"
+    "QCMATRIX QC1\n"
+    " X1 XBAD 1\n"
+    "ENDATA\n"};
+
+  for (const auto& mps : cases) {
+    TempMpsFile file(mps);
+    EXPECT_THROW(((void)parse_reference_model(file.path)), std::exception);
+    EXPECT_THROW(((void)parse_mps_fast_file<int, double>(file.path, FileReadMethod::Read)),
+                 std::exception);
+  }
+}
+
+TEST(FastMpsParserEdgeTest, QuadraticParserRejectsUnknownColumnOneRecords)
+{
+  const std::vector<std::string> records = {"QSECTION      QC1",
+                                            "CSECTION      QC1        0              QUAD"};
+
+  for (const auto& record : records) {
+    TempMpsFile file(
+      "NAME BAD_QUAD_RECORD\n"
+      "ROWS\n"
+      " N OBJ\n"
+      " L QC1\n"
+      "COLUMNS\n"
+      " X1 OBJ 1 QC1 2\n"
+      " X2 OBJ 3 QC1 4\n"
+      "RHS\n"
+      " RHS1 QC1 5\n"
+      "QMATRIX\n"
+      " X1 X1 1\n" +
+      record +
+      "\n"
+      " X2 X2 2\n"
+      "ENDATA\n");
+    EXPECT_THROW(((void)parse_mps_fast_file<int, double>(file.path, FileReadMethod::Read)),
+                 std::exception)
+      << record;
+  }
 }
 
 }  // namespace cuopt::linear_programming::io::detail

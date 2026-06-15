@@ -36,6 +36,7 @@
 #include <mutex>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -493,6 +494,14 @@ struct parse_state_t {
 
   // some writers introduce zero-column variables only in BOUNDS.
   std::map<std::string_view, bounds_only_var_t> bounds_only_vars;
+
+  struct qcmatrix_block_t {
+    size_t row_idx = SIZE_MAX;
+    std::string_view row_name;
+    std::vector<std::tuple<i_t, i_t, f_t>> entries;
+  };
+
+  std::vector<qcmatrix_block_t> qcmatrix_blocks;
 
   parse_state_t(mps_data_model_t<i_t, f_t>& p, cursor_t& c) : problem(p), cursor(c) {}
 
@@ -2558,11 +2567,13 @@ static void parse_quadratic_sections(parse_state_t<i_t, f_t>& state, cursor_t& c
   auto add_entry = [&](std::string_view var1, std::string_view var2, f_t value) {
     size_t var1_idx = lookup_quadratic_var(state, var1);
     if (var1_idx == SIZE_MAX) {
-      cursor.error("unknown variable name in QUADOBJ/QMATRIX: %.*s", (int)var1.size(), var1.data());
+      cursor.error(
+        "unknown variable name in quadratic section: %.*s", (int)var1.size(), var1.data());
     }
     size_t var2_idx = lookup_quadratic_var(state, var2);
     if (var2_idx == SIZE_MAX) {
-      cursor.error("unknown variable name in QUADOBJ/QMATRIX: %.*s", (int)var2.size(), var2.data());
+      cursor.error(
+        "unknown variable name in quadratic section: %.*s", (int)var2.size(), var2.data());
     }
     active_entries->emplace_back((i_t)var1_idx, (i_t)var2_idx, value);
   };
@@ -2576,17 +2587,41 @@ static void parse_quadratic_sections(parse_state_t<i_t, f_t>& state, cursor_t& c
       active_entries = &qmatrix_entries;
       continue;
     }
-    if (accept_section(cursor, "QCMATRIX")) {
-      cursor.error("QCMATRIX sections are not supported by the experimental fast MPS parser");
+    if (accept(cursor, "QCMATRIX")) {
+      auto row_name = cursor.read_field();
+      if (row_name.empty()) { cursor.error("QCMATRIX missing constraint row name"); }
+      size_t row_idx = state.row_lookup(row_name);
+      if (row_idx == SIZE_MAX) {
+        cursor.error(
+          "unknown constraint row name in QCMATRIX: %.*s", (int)row_name.size(), row_name.data());
+      }
+      char row_type = state.problem.row_types_[row_idx];
+      if (row_type != 'L' && row_type != 'G') {
+        cursor.error(
+          "QCMATRIX row must have ROWS type L or G: %.*s", (int)row_name.size(), row_name.data());
+      }
+      expect_eol(cursor);
+      typename parse_state_t<i_t, f_t>::qcmatrix_block_t block;
+      block.row_idx  = row_idx;
+      block.row_name = row_name;
+      state.qcmatrix_blocks.push_back(std::move(block));
+      active_entries = &state.qcmatrix_blocks.back().entries;
+      continue;
     }
     if (active_entries == nullptr) { break; }
 
-    auto var1 = cursor.read_field();
+    const char* field_start = cursor.ptr;
+    auto var1               = cursor.read_field();
     if (UNLIKELY(var1.empty())) { break; }
-    if (UNLIKELY(var1[0] == '$')) {
+    if (UNLIKELY(var1[0] == '$' || var1[0] == '*')) {
       cursor.skip_to_eol();
       expect_eol(cursor);
       continue;
+    }
+    const bool starts_column_one =
+      field_start == cursor.start || field_start[-1] == '\n' || field_start[-1] == '\r';
+    if (UNLIKELY(starts_column_one)) {
+      cursor.error("unknown quadratic section record: %.*s", (int)var1.size(), var1.data());
     }
     auto var2 = cursor.read_field();
     if (UNLIKELY(!var2.empty() && var2[0] == '$')) {
@@ -2677,6 +2712,120 @@ static void parse_quadratic_range(parse_state_t<i_t, f_t>& state, mps_phase_rang
   if (!range.present) { return; }
   cursor_t cursor(range.begin, (size_t)(range.end - range.begin));
   parse_quadratic_sections(state, cursor);
+}
+
+template <typename i_t, typename f_t>
+static void finalize_qcmatrix_constraints(parse_state_t<i_t, f_t>& state)
+{
+  if (state.qcmatrix_blocks.empty()) { return; }
+  scoped_timer_t timer("finalize_qcmatrix_constraints");
+  const size_t original_rows = (size_t)state.problem.n_constraints_;
+  std::vector<uint8_t> quadratic_rows(original_rows, 0);
+  std::vector<uint8_t> seen_rows(original_rows, 0);
+  size_t active_blocks = 0;
+
+  for (const auto& block : state.qcmatrix_blocks) {
+    if (block.entries.empty()) { continue; }
+    if (block.row_idx >= original_rows) {
+      state.cursor.error("QCMATRIX row index is out of range");
+    }
+    if (seen_rows[block.row_idx]) {
+      state.cursor.error("duplicate QCMATRIX block for constraint row: %.*s",
+                         (int)block.row_name.size(),
+                         block.row_name.data());
+    }
+    seen_rows[block.row_idx]      = 1;
+    quadratic_rows[block.row_idx] = 1;
+    ++active_blocks;
+  }
+
+  if (active_blocks == 0) { return; }
+
+  // rebuild the A_ matrix. fairly ugly and brute force, could do better if we parsed the QCMATRIX
+  // entries before building the CSR in COLUMNS but unclear if worth it
+  for (const auto& block : state.qcmatrix_blocks) {
+    if (block.entries.empty()) { continue; }
+
+    size_t linear_begin = (size_t)state.problem.A_offsets_[block.row_idx];
+    size_t linear_end   = (size_t)state.problem.A_offsets_[block.row_idx + 1];
+    typename mps_data_model_t<i_t, f_t>::quadratic_constraint_t qc;
+    qc.constraint_row_index = (i_t)block.row_idx;
+    qc.constraint_row_name  = state.problem.row_names_[block.row_idx];
+    qc.constraint_row_type  = state.problem.row_types_[block.row_idx];
+    qc.rhs_value            = state.problem.b_[block.row_idx];
+    qc.linear_values.assign(state.problem.A_.begin() + linear_begin,
+                            state.problem.A_.begin() + linear_end);
+    qc.linear_indices.assign(state.problem.A_indices_.begin() + linear_begin,
+                             state.problem.A_indices_.begin() + linear_end);
+
+    std::vector<size_t> perm(block.entries.size());
+    for (size_t i = 0; i < perm.size(); ++i) {
+      perm[i] = i;
+    }
+    std::sort(perm.begin(), perm.end(), [&](size_t a, size_t b) {
+      const auto& ea = block.entries[a];
+      const auto& eb = block.entries[b];
+      if (std::get<0>(ea) != std::get<0>(eb)) { return std::get<0>(ea) < std::get<0>(eb); }
+      return std::get<1>(ea) < std::get<1>(eb);
+    });
+
+    qc.rows.reserve(block.entries.size());
+    qc.cols.reserve(block.entries.size());
+    qc.vals.reserve(block.entries.size());
+    for (size_t idx : perm) {
+      const auto& [row, col, val] = block.entries[idx];
+      qc.rows.push_back(row);
+      qc.cols.push_back(col);
+      qc.vals.push_back(val);
+    }
+    state.problem.quadratic_constraints_.push_back(std::move(qc));
+  }
+
+  std::vector<f_t> new_A;
+  std::vector<i_t> new_A_indices;
+  std::vector<i_t> new_A_offsets;
+  std::vector<f_t> new_b;
+  std::vector<f_t> new_clb;
+  std::vector<f_t> new_cub;
+  std::vector<std::string> new_row_names;
+  std::vector<char> new_row_types;
+
+  new_A.reserve(state.problem.A_.size());
+  new_A_indices.reserve(state.problem.A_indices_.size());
+  new_A_offsets.reserve(original_rows + 1 - active_blocks);
+  new_b.reserve(original_rows - active_blocks);
+  new_clb.reserve(original_rows - active_blocks);
+  new_cub.reserve(original_rows - active_blocks);
+  new_row_names.reserve(original_rows - active_blocks);
+  new_row_types.reserve(original_rows - active_blocks);
+  new_A_offsets.push_back(0);
+
+  for (size_t row = 0; row < original_rows; ++row) {
+    if (quadratic_rows[row]) { continue; }
+    size_t begin = (size_t)state.problem.A_offsets_[row];
+    size_t end   = (size_t)state.problem.A_offsets_[row + 1];
+    new_A.insert(new_A.end(), state.problem.A_.begin() + begin, state.problem.A_.begin() + end);
+    new_A_indices.insert(new_A_indices.end(),
+                         state.problem.A_indices_.begin() + begin,
+                         state.problem.A_indices_.begin() + end);
+    new_A_offsets.push_back((i_t)new_A.size());
+    new_b.push_back(state.problem.b_[row]);
+    new_clb.push_back(state.problem.constraint_lower_bounds_[row]);
+    new_cub.push_back(state.problem.constraint_upper_bounds_[row]);
+    new_row_names.push_back(std::move(state.problem.row_names_[row]));
+    new_row_types.push_back(state.problem.row_types_[row]);
+  }
+
+  state.problem.A_                       = std::move(new_A);
+  state.problem.A_indices_               = std::move(new_A_indices);
+  state.problem.A_offsets_               = std::move(new_A_offsets);
+  state.problem.b_                       = std::move(new_b);
+  state.problem.constraint_lower_bounds_ = std::move(new_clb);
+  state.problem.constraint_upper_bounds_ = std::move(new_cub);
+  state.problem.row_names_               = std::move(new_row_names);
+  state.problem.row_types_               = std::move(new_row_types);
+  state.problem.n_constraints_           = (i_t)state.problem.b_.size();
+  state.problem.nnz_                     = (i_t)state.problem.A_.size();
 }
 
 template <typename i_t, typename f_t>
@@ -2995,6 +3144,7 @@ static mps_data_model_t<i_t, f_t> parse_mps_fast_stream(Stream& stream,
 
   parser_tasks.rethrow_if_error();
 
+  finalize_qcmatrix_constraints(state);
   append_bounds_only_variables(state);
 
   input.size = stream.size();

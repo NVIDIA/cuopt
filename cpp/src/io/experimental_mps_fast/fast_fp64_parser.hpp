@@ -423,7 +423,12 @@ static inline double parse_fp64_advance(const char*& p, const char* end)
   }
 
   double v = assemble_fp64(dec);
-  if (v == v) return v;
+  if (v == v) {
+    if (p < end && (unsigned char)*p > 32) {
+      mps_parser_fail(error_type_t::ValidationError, "Invalid or out-of-range MPS numeric token");
+    }
+    return v;
+  }
   return fallback_strtod(std::string_view(start, (size_t)(p - start)));
 }
 
