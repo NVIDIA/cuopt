@@ -239,7 +239,9 @@ class mps_data_model_t {
    * - row identity and type (from ROWS),
    * - sparse linear coefficients (from COLUMNS),
    * - RHS value (from RHS),
-   * - quadratic matrix Q in COO (SoA: row, col, value) from QCMATRIX — one triplet per nonzero.
+   * - quadratic matrix Q in canonical COO (SoA: row, col, value): one triplet per variable pair,
+   *   sorted by (row, col). Off-diagonal cross terms store the full coefficient on x_i*x_j
+   *   (e.g. -2*d for rotated SOC), not as symmetric halves.
    */
   struct quadratic_constraint_t {
     /** ROWS declaration index (among all constraint rows), not an index into the linear CSR. */
@@ -251,7 +253,8 @@ class mps_data_model_t {
     std::vector<f_t> linear_values{};
     std::vector<i_t> linear_indices{};
     f_t rhs_value{f_t(0)};
-    /** Q nonzeros: parallel arrays, same length (COO / SoA). Sorted by (row, col) in append. */
+    /** Q in canonical COO: parallel arrays, same length, sorted by (row, col);
+     * one entry per variable pair (full cross coefficient, not MPS symmetric halves). */
     std::vector<i_t> rows{};
     std::vector<i_t> cols{};
     std::vector<f_t> vals{};
@@ -262,7 +265,9 @@ class mps_data_model_t {
    * @note All span inputs are host memory; the model copies this data.
    * @param linear_values, linear_indices Same nnz; can be empty for a purely quadratic row (rare).
    * @param vals, rows, cols COO triplets for Q; same length; may all be empty if Q is empty.
-   *        Stored sorted by (row, col).
+   *        Stored sorted by (row, col) in canonical form (one entry per variable pair).
+   * @param require_symmetric_q_offdiagonal When true (MPS QCMATRIX), each off-diagonal pair must
+   *        appear symmetrically in the input before canonicalization.
    * @param constraint_row_type MPS ROWS type: 'L' (<=) or 'G' (>=). Stored as given; 'G' rows are
    *        converted to '<=' form when building the SOCP for the barrier solver. Equality ('E') is
    *        not supported.
@@ -275,7 +280,8 @@ class mps_data_model_t {
                                    f_t rhs_value,
                                    std::span<const f_t> vals,
                                    std::span<const i_t> rows,
-                                   std::span<const i_t> cols);
+                                   std::span<const i_t> cols,
+                                   bool require_symmetric_q_offdiagonal = false);
 
   const std::vector<quadratic_constraint_t>& get_quadratic_constraints() const;
 
@@ -384,5 +390,14 @@ class mps_data_model_t {
   std::vector<quadratic_constraint_t> quadratic_constraints_;
 
 };  // class mps_data_model_t
+
+/**
+ * @brief Canonicalize Q COO on each quadratic constraint in place (merge duplicates, collapse
+ * symmetric MPS halves when requested). Implemented in mps_data_model.cpp.
+ */
+template <typename i_t, typename f_t>
+void canonicalize_quadratic_constraints(
+  std::vector<typename mps_data_model_t<i_t, f_t>::quadratic_constraint_t>& constraints,
+  bool require_symmetric_q_offdiagonal = false);
 
 }  // namespace cuopt::linear_programming::io

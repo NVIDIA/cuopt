@@ -742,16 +742,15 @@ TEST(general_quadratic, rotated_soc_heads_nonneg_accepted)
   user_problem.num_range_rows = 0;
   user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
 
-  // Q COO: x0^2 + x1^2 - 2*y*z <= 0
-  // Diagonal: (0,0,1), (1,1,1). Off-diagonal: (2,3,-1), (3,2,-1)
+  // Q COO: x0^2 + x1^2 - 2*y*z <= 0 (canonical single cross term)
   qc_t qc;
   qc.constraint_row_index = 0;
   qc.constraint_row_name  = "rsoc_valid";
   qc.constraint_row_type  = 'L';
   qc.rhs_value            = 0.0;
-  qc.rows                 = {0, 1, 2, 3};
-  qc.cols                 = {0, 1, 3, 2};
-  qc.vals                 = {1.0, 1.0, -1.0, -1.0};
+  qc.rows                 = {0, 1, 2};
+  qc.cols                 = {0, 1, 3};
+  qc.vals                 = {1.0, 1.0, -2.0};
 
   dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
   csr_A.m         = m;
@@ -806,9 +805,9 @@ TEST(general_quadratic, rotated_soc_heads_free_rejected)
   qc.constraint_row_name  = "rsoc_invalid";
   qc.constraint_row_type  = 'L';
   qc.rhs_value            = 0.0;
-  qc.rows                 = {0, 1, 2, 3};
-  qc.cols                 = {0, 1, 3, 2};
-  qc.vals                 = {1.0, 1.0, -1.0, -1.0};
+  qc.rows                 = {0, 1, 2};
+  qc.cols                 = {0, 1, 3};
+  qc.vals                 = {1.0, 1.0, -2.0};
 
   dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
   csr_A.m         = m;

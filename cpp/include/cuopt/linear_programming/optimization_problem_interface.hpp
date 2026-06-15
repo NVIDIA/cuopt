@@ -75,6 +75,10 @@ class optimization_problem_interface_t {
 
   /**
    * @brief Store quadratic constraints for MPS round-trip (linear + Q parts per QC row).
+   *
+   * Q COO must already be in canonical form (one entry per variable pair). Callers that ingest
+   * raw API/MPS data should canonicalize before calling this (see append_quadratic_constraint,
+   * add_quadratic_constraint, populate_from_data_model_view, or gRPC decode).
    */
   virtual void set_quadratic_constraints(std::vector<quadratic_constraint_t> constraints) = 0;
 
@@ -84,6 +88,7 @@ class optimization_problem_interface_t {
    * Quadratic matrix Q is COO (row_index, col_index, coeff spans). Linear term d uses parallel
    * linear_values and linear_indices (empty allowed). constraint_row_index is assigned
    * automatically as n_linear_constraints + n_existing_quadratic_constraints.
+   * Q is canonicalized on ingest (merge duplicates, collapse matching symmetric pairs).
    */
   virtual void add_quadratic_constraint(char constraint_row_type,
                                         f_t rhs_value,

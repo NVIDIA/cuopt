@@ -461,7 +461,8 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
                                         b_values[row_id],
                                         block.entries.vals,
                                         block.entries.rows,
-                                        block.entries.cols);
+                                        block.entries.cols,
+                                        true);
   }
 
   if (!quadratic_row_ids.empty()) {

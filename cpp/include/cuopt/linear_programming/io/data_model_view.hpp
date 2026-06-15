@@ -418,9 +418,15 @@ class data_model_view_t {
 
   /**
    * @brief Quadratic constraints (MPS QCMATRIX); owned copy for writers when not using spans.
+   *
+   * Q COO is stored as supplied (not canonicalized here). Canonicalization runs when
+   * constraints are copied into the solver (populate_from_data_model_view) or written
+   * to MPS (mps_writer QCMATRIX emission).
    */
   void set_quadratic_constraints(
     std::vector<typename mps_data_model_t<i_t, f_t>::quadratic_constraint_t> constraints);
+  /** @copydoc set_quadratic_constraints(std::vector<typename mps_data_model_t<i_t,
+   * f_t>::quadratic_constraint_t>) */
   template <typename qc_t>
   void set_quadratic_constraints(const std::vector<qc_t>& constraints)
   {
