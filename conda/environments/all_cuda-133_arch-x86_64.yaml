@@ -18,14 +18,14 @@ dependencies:
 - cuda-nvtx-dev
 - cuda-python>=13.0.1,<14.0
 - cuda-sanitizer-api
-- cuda-version=13.2
+- cuda-version=13.3
 - cudf==26.8.*,>=0.0.0a0
 - cupy>=13.6.0,!=14.0.0,!=14.1.0
 - cxx-compiler
 - cython>=3.0.3
 - doxygen=1.9.1
 - fastapi
-- gcc_linux-aarch64=14.*
+- gcc_linux-64=14.*
 - ipython
 - jsonref==1.1.0
 - libabseil
@@ -77,7 +77,7 @@ dependencies:
 - sphinx_rtd_theme
 - sphinxcontrib-openapi
 - sphinxcontrib-websupport
-- sysroot_linux-aarch64==2.28
+- sysroot_linux-64==2.28
 - tbb-devel
 - uvicorn==0.34.*
 - zlib
@@ -85,4 +85,4 @@ dependencies:
   - nvidia-sphinx-theme
   - swagger-plugin-for-sphinx
   - veroviz
-name: all_cuda-132_arch-aarch64
+name: all_cuda-133_arch-x86_64

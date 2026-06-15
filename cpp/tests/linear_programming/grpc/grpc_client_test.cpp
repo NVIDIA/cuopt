@@ -16,6 +16,8 @@
 
 #include "grpc_client_test_helper.hpp"
 
+#include <utilities/inline_lp_test_utils.hpp>
+
 #include <cuopt/linear_programming/cpu_optimization_problem.hpp>
 #include <cuopt/linear_programming/cpu_optimization_problem_solution.hpp>
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
@@ -913,53 +915,35 @@ namespace {
 
 cpu_optimization_problem_t<int32_t, double> create_test_lp_problem()
 {
+  auto data = cuopt::test::parse_inline_lp(R"LP(
+Minimize
+  obj: x
+Subject To
+  c1: x >= 1
+Bounds
+  0 <= x <= 10
+End
+)LP");
   cpu_optimization_problem_t<int32_t, double> problem;
-
-  // minimize x  subject to x >= 1
-  std::vector<double> obj    = {1.0};
-  std::vector<double> var_lb = {0.0};
-  std::vector<double> var_ub = {10.0};
-  std::vector<double> con_lb = {1.0};
-  std::vector<double> con_ub = {1e20};
-  std::vector<double> A_vals = {1.0};
-  std::vector<int32_t> A_idx = {0};
-  std::vector<int32_t> A_off = {0, 1};
-
-  problem.set_objective_coefficients(obj.data(), 1);
-  problem.set_maximize(false);
-  problem.set_variable_lower_bounds(var_lb.data(), 1);
-  problem.set_variable_upper_bounds(var_ub.data(), 1);
-  problem.set_csr_constraint_matrix(A_vals.data(), 1, A_idx.data(), 1, A_off.data(), 2);
-  problem.set_constraint_lower_bounds(con_lb.data(), 1);
-  problem.set_constraint_upper_bounds(con_ub.data(), 1);
-
+  populate_from_mps_data_model(&problem, data);
   return problem;
 }
 
 cpu_optimization_problem_t<int32_t, double> create_test_mip_problem()
 {
+  auto data = cuopt::test::parse_inline_lp(R"LP(
+Minimize
+  obj: x
+Subject To
+  c1: x >= 1
+Bounds
+  0 <= x <= 10
+Generals
+  x
+End
+)LP");
   cpu_optimization_problem_t<int32_t, double> problem;
-
-  // minimize x  subject to x >= 1, x integer
-  std::vector<double> obj    = {1.0};
-  std::vector<double> var_lb = {0.0};
-  std::vector<double> var_ub = {10.0};
-  std::vector<var_t> var_ty  = {var_t::INTEGER};
-  std::vector<double> con_lb = {1.0};
-  std::vector<double> con_ub = {1e20};
-  std::vector<double> A_vals = {1.0};
-  std::vector<int32_t> A_idx = {0};
-  std::vector<int32_t> A_off = {0, 1};
-
-  problem.set_objective_coefficients(obj.data(), 1);
-  problem.set_maximize(false);
-  problem.set_variable_lower_bounds(var_lb.data(), 1);
-  problem.set_variable_upper_bounds(var_ub.data(), 1);
-  problem.set_variable_types(var_ty.data(), 1);
-  problem.set_csr_constraint_matrix(A_vals.data(), 1, A_idx.data(), 1, A_off.data(), 2);
-  problem.set_constraint_lower_bounds(con_lb.data(), 1);
-  problem.set_constraint_upper_bounds(con_ub.data(), 1);
-
+  populate_from_mps_data_model(&problem, data);
   return problem;
 }
 

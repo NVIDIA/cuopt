@@ -1174,6 +1174,7 @@ cuopt_int_t cuOptGetErrorString(cuOptSolution solution,
 {
   if (solution == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   if (error_string_ptr == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  if (error_string_size < 0) { return CUOPT_INVALID_ARGUMENT; }
   solution_and_stream_view_t* solution_and_stream_view =
     static_cast<solution_and_stream_view_t*>(solution);
   std::string error_string = solution_and_stream_view->get_solution()->get_error_status().what();

@@ -53,6 +53,11 @@ struct lp_problem_t {
   i_t cone_var_start{0};
   std::vector<i_t> second_order_cone_dims;
 
+  // Maximum and minimum value of the coefficients in the objective function. This is used
+  // for determine the "objective dynamism" in Farkas diving.
+  f_t max_abs_obj_coeff = 0;
+  f_t min_abs_obj_coeff = 0;
+
   void write_mps(const std::string& path) const
   {
     std::ofstream mps_file(path);

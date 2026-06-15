@@ -18,6 +18,7 @@
 #include <utilities/common_utils.hpp>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/error.hpp>
+#include <utilities/inline_lp_test_utils.hpp>
 #include <utilities/timer.hpp>
 
 #include <raft/core/handle.hpp>
@@ -44,138 +45,96 @@ namespace {
 
 constexpr double kCliqueTestTol = 1e-6;
 
+// Pairwise binary conflicts forming a triangle.
 io::mps_data_model_t<int, double> create_pairwise_triangle_set_packing_problem()
 {
-  // Maximize x0 + x1 + x2 via minimizing -x0 - x1 - x2.
-  // Pairwise conflicts:
-  //   x0 + x1 <= 1
-  //   x1 + x2 <= 1
-  //   x0 + x2 <= 1
-  io::mps_data_model_t<int, double> problem;
-  std::vector<int> offsets         = {0, 2, 4, 6};
-  std::vector<int> indices         = {0, 1, 1, 2, 0, 2};
-  std::vector<double> coefficients = {1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
-  problem.set_csr_constraint_matrix(coefficients, indices, offsets);
-  std::vector<double> lower_bounds = {-std::numeric_limits<double>::infinity(),
-                                      -std::numeric_limits<double>::infinity(),
-                                      -std::numeric_limits<double>::infinity()};
-  std::vector<double> upper_bounds = {1.0, 1.0, 1.0};
-  problem.set_constraint_lower_bounds(lower_bounds);
-  problem.set_constraint_upper_bounds(upper_bounds);
-  std::vector<double> var_lower_bounds = {0.0, 0.0, 0.0};
-  std::vector<double> var_upper_bounds = {1.0, 1.0, 1.0};
-  problem.set_variable_lower_bounds(var_lower_bounds);
-  problem.set_variable_upper_bounds(var_upper_bounds);
-  std::vector<double> objective_coefficients = {-1.0, -1.0, -1.0};
-  problem.set_objective_coefficients(objective_coefficients);
-  std::vector<char> variable_types = {'I', 'I', 'I'};
-  problem.set_variable_types(variable_types);
-  problem.set_maximize(false);
-  return problem;
+  return cuopt::test::parse_inline_lp(R"LP(
+Minimize
+  obj: -x0 - x1 - x2
+Subject To
+  c1: x0 + x1 <= 1
+  c2: x1 + x2 <= 1
+  c3: x0 + x2 <= 1
+Binaries
+  x0
+  x1
+  x2
+End
+)LP");
 }
 
+// Same triangle conflicts plus an isolated binary x3 with no conflict rows.
 io::mps_data_model_t<int, double> create_pairwise_triangle_with_isolated_variable_problem()
 {
-  // Same triangle conflicts as create_pairwise_triangle_set_packing_problem(),
-  // plus an isolated binary variable x3 with no conflict rows.
-  io::mps_data_model_t<int, double> problem;
-  std::vector<int> offsets         = {0, 2, 4, 6};
-  std::vector<int> indices         = {0, 1, 1, 2, 0, 2};
-  std::vector<double> coefficients = {1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
-  problem.set_csr_constraint_matrix(coefficients, indices, offsets);
-  std::vector<double> lower_bounds = {-std::numeric_limits<double>::infinity(),
-                                      -std::numeric_limits<double>::infinity(),
-                                      -std::numeric_limits<double>::infinity()};
-  std::vector<double> upper_bounds = {1.0, 1.0, 1.0};
-  problem.set_constraint_lower_bounds(lower_bounds);
-  problem.set_constraint_upper_bounds(upper_bounds);
-  std::vector<double> var_lower_bounds = {0.0, 0.0, 0.0, 0.0};
-  std::vector<double> var_upper_bounds = {1.0, 1.0, 1.0, 1.0};
-  problem.set_variable_lower_bounds(var_lower_bounds);
-  problem.set_variable_upper_bounds(var_upper_bounds);
-  std::vector<double> objective_coefficients = {-1.0, -1.0, -1.0, 0.0};
-  problem.set_objective_coefficients(objective_coefficients);
-  std::vector<char> variable_types = {'I', 'I', 'I', 'I'};
-  problem.set_variable_types(variable_types);
-  problem.set_maximize(false);
-  return problem;
+  return cuopt::test::parse_inline_lp(R"LP(
+Minimize
+  obj: -x0 - x1 - x2
+Subject To
+  c1: x0 + x1 <= 1
+  c2: x1 + x2 <= 1
+  c3: x0 + x2 <= 1
+Binaries
+  x0
+  x1
+  x2
+  x3
+End
+)LP");
 }
 
+// x0 + y1 <= 1  (must be ignored for clique graph because y1 is continuous)
+// x0 + x2 <= 1  (must generate a conflict edge)
 io::mps_data_model_t<int, double> create_binary_continuous_mixed_conflict_problem()
 {
-  // x0 + y1 <= 1  (must be ignored for clique graph because y1 is continuous)
-  // x0 + x2 <= 1  (must generate a conflict edge)
-  io::mps_data_model_t<int, double> problem;
-  std::vector<int> offsets         = {0, 2, 4};
-  std::vector<int> indices         = {0, 1, 0, 2};
-  std::vector<double> coefficients = {1.0, 1.0, 1.0, 1.0};
-  problem.set_csr_constraint_matrix(coefficients, indices, offsets);
-  std::vector<double> lower_bounds = {-std::numeric_limits<double>::infinity(),
-                                      -std::numeric_limits<double>::infinity()};
-  std::vector<double> upper_bounds = {1.0, 1.0};
-  problem.set_constraint_lower_bounds(lower_bounds);
-  problem.set_constraint_upper_bounds(upper_bounds);
-  std::vector<double> var_lower_bounds = {0.0, 0.0, 0.0};
-  std::vector<double> var_upper_bounds = {1.0, 1.0, 1.0};
-  problem.set_variable_lower_bounds(var_lower_bounds);
-  problem.set_variable_upper_bounds(var_upper_bounds);
-  std::vector<double> objective_coefficients = {0.0, 0.0, 0.0};
-  problem.set_objective_coefficients(objective_coefficients);
-  std::vector<char> variable_types = {'I', 'C', 'I'};
-  problem.set_variable_types(variable_types);
-  problem.set_maximize(false);
-  return problem;
+  return cuopt::test::parse_inline_lp(R"LP(
+Minimize
+  obj: 0 x0 + 0 y1 + 0 x2
+Subject To
+  c1: x0 + y1 <= 1
+  c2: x0 + x2 <= 1
+Bounds
+  0 <= y1 <= 1
+Binaries
+  x0
+  x2
+End
+)LP");
 }
 
+// x0 + x1 <= 1 but x1 has upper bound 0.9999999, so this row should not be
+// treated as a binary conflict row.
 io::mps_data_model_t<int, double> create_near_binary_bound_conflict_problem()
 {
-  // x0 + x1 <= 1 but x1 has upper bound 0.9999999, so this row should not be
-  // treated as a binary conflict row.
-  io::mps_data_model_t<int, double> problem;
-  std::vector<int> offsets         = {0, 2};
-  std::vector<int> indices         = {0, 1};
-  std::vector<double> coefficients = {1.0, 1.0};
-  problem.set_csr_constraint_matrix(coefficients, indices, offsets);
-  std::vector<double> lower_bounds = {-std::numeric_limits<double>::infinity()};
-  std::vector<double> upper_bounds = {1.0};
-  problem.set_constraint_lower_bounds(lower_bounds);
-  problem.set_constraint_upper_bounds(upper_bounds);
-  std::vector<double> var_lower_bounds = {0.0, 0.0};
-  std::vector<double> var_upper_bounds = {1.0, 0.9999999};
-  problem.set_variable_lower_bounds(var_lower_bounds);
-  problem.set_variable_upper_bounds(var_upper_bounds);
-  std::vector<double> objective_coefficients = {0.0, 0.0};
-  problem.set_objective_coefficients(objective_coefficients);
-  std::vector<char> variable_types = {'I', 'I'};
-  problem.set_variable_types(variable_types);
-  problem.set_maximize(false);
-  return problem;
+  return cuopt::test::parse_inline_lp(R"LP(
+Minimize
+  obj: 0 x0 + 0 x1
+Subject To
+  c1: x0 + x1 <= 1
+Bounds
+  0 <= x0 <= 1
+  0 <= x1 <= 0.9999999
+Generals
+  x0
+  x1
+End
+)LP");
 }
 
+// Creates base clique {x2, x3} and additional clique inducing conflict {x1, x3}.
 io::mps_data_model_t<int, double> create_weighted_addtl_conflict_problem()
 {
-  // One weighted binary knapsack row:
-  //   1*x0 + 2*x1 + 3*x2 + 4*x3 <= 5
-  // This creates base clique {x2, x3} and additional clique inducing conflict {x1, x3}.
-  io::mps_data_model_t<int, double> problem;
-  std::vector<int> offsets         = {0, 4};
-  std::vector<int> indices         = {0, 1, 2, 3};
-  std::vector<double> coefficients = {1.0, 2.0, 3.0, 4.0};
-  problem.set_csr_constraint_matrix(coefficients, indices, offsets);
-  std::vector<double> lower_bounds = {-std::numeric_limits<double>::infinity()};
-  std::vector<double> upper_bounds = {5.0};
-  problem.set_constraint_lower_bounds(lower_bounds);
-  problem.set_constraint_upper_bounds(upper_bounds);
-  std::vector<double> var_lower_bounds = {0.0, 0.0, 0.0, 0.0};
-  std::vector<double> var_upper_bounds = {1.0, 1.0, 1.0, 1.0};
-  problem.set_variable_lower_bounds(var_lower_bounds);
-  problem.set_variable_upper_bounds(var_upper_bounds);
-  std::vector<double> objective_coefficients = {0.0, 0.0, 0.0, 0.0};
-  problem.set_objective_coefficients(objective_coefficients);
-  std::vector<char> variable_types = {'I', 'I', 'I', 'I'};
-  problem.set_variable_types(variable_types);
-  problem.set_maximize(false);
-  return problem;
+  return cuopt::test::parse_inline_lp(R"LP(
+Minimize
+  obj: 0 x0 + 0 x1 + 0 x2 + 0 x3
+Subject To
+  c1: x0 + 2 x1 + 3 x2 + 4 x3 <= 5
+Binaries
+  x0
+  x1
+  x2
+  x3
+End
+)LP");
 }
 
 detail::clique_table_t<int, double> build_clique_table_for_model_with_min_size(
@@ -809,47 +768,23 @@ std::optional<size_t> isolate_first_lp_infeasible_literal_cut_by_bisection(
 
 }  // namespace
 
-// Problem data for the mixed integer linear programming problem
 io::mps_data_model_t<int, double> create_cuts_problem_1()
 {
-  // Create problem instance
-  io::mps_data_model_t<int, double> problem;
-
-  // Solve the problem
-  // minimize -7*x1 -2*x2
-  // subject to -1*x1 + 2*x2 <= 4
-  //            5*x1 + 1*x2 <= 20
-  //            -2*x1 -2*x2 <= -7
-
-  // Set up constraint matrix in CSR format
-  std::vector<int> offsets         = {0, 2, 4, 6};
-  std::vector<int> indices         = {0, 1, 0, 1, 0, 1};
-  std::vector<double> coefficients = {-1.0, 2.0, 5.0, 1.0, -2.0, -2.0};
-  problem.set_csr_constraint_matrix(coefficients, indices, offsets);
-
-  // Set constraint bounds
-  std::vector<double> lower_bounds = {-std::numeric_limits<double>::infinity(),
-                                      -std::numeric_limits<double>::infinity(),
-                                      -std::numeric_limits<double>::infinity()};
-  std::vector<double> upper_bounds = {4.0, 20.0, -7.0};
-  problem.set_constraint_lower_bounds(lower_bounds);
-  problem.set_constraint_upper_bounds(upper_bounds);
-
-  // Set variable bounds
-  std::vector<double> var_lower_bounds = {0.0, 0.0};
-  std::vector<double> var_upper_bounds = {10.0, 10.0};
-  problem.set_variable_lower_bounds(var_lower_bounds);
-  problem.set_variable_upper_bounds(var_upper_bounds);
-
-  // Set objective coefficients (minimize -7*x1 -2*x2)
-  std::vector<double> objective_coefficients = {-7.0, -2.0};
-  problem.set_objective_coefficients(objective_coefficients);
-
-  // Set variable types
-  std::vector<char> variable_types = {'I', 'I'};
-  problem.set_variable_types(variable_types);
-
-  return problem;
+  return cuopt::test::parse_inline_lp(R"LP(
+Minimize
+  obj: -7 x1 - 2 x2
+Subject To
+  c1: -x1 + 2 x2 <= 4
+  c2: 5 x1 + x2 <= 20
+  c3: -2 x1 - 2 x2 <= -7
+Bounds
+  0 <= x1 <= 10
+  0 <= x2 <= 10
+Generals
+  x1
+  x2
+End
+)LP");
 }
 
 TEST(cuts, test_cuts_1)
@@ -873,46 +808,20 @@ TEST(cuts, test_cuts_1)
   EXPECT_LE(solution.get_num_nodes(), 2);
 }
 
-// Problem data for the mixed integer linear programming problem
 io::mps_data_model_t<int, double> create_cuts_problem_2()
 {
-  // Create problem instance
-  io::mps_data_model_t<int, double> problem;
-
-  // Solve the problem
-  // minimize -86*y1 -4*y2 -40*y3
-  // subject to 774*y1 + 76*y2 + 42*y3 <= 875
-  //            67*y1 + 27*y2 + 53*y3 <= 875
-  //            y1, y2, y3 in {0, 1}
-
-  // Set up constraint matrix in CSR format
-  std::vector<int> offsets         = {0, 3, 6};
-  std::vector<int> indices         = {0, 1, 2, 0, 1, 2};
-  std::vector<double> coefficients = {774.0, 76.0, 42.0, 67.0, 27.0, 53.0};
-  problem.set_csr_constraint_matrix(coefficients, indices, offsets);
-
-  // Set constraint bounds
-  std::vector<double> lower_bounds = {-std::numeric_limits<double>::infinity(),
-                                      -std::numeric_limits<double>::infinity()};
-  std::vector<double> upper_bounds = {875.0, 875.0};
-  problem.set_constraint_lower_bounds(lower_bounds);
-  problem.set_constraint_upper_bounds(upper_bounds);
-
-  // Set variable bounds
-  std::vector<double> var_lower_bounds = {0.0, 0.0, 0.0};
-  std::vector<double> var_upper_bounds = {1.0, 1.0, 1.0};
-  problem.set_variable_lower_bounds(var_lower_bounds);
-  problem.set_variable_upper_bounds(var_upper_bounds);
-
-  // Set objective coefficients (minimize -86*y1 -4*y2 -40*y3)
-  std::vector<double> objective_coefficients = {-86.0, -4.0, -40.0};
-  problem.set_objective_coefficients(objective_coefficients);
-
-  // Set variable types
-  std::vector<char> variable_types = {'I', 'I', 'I'};
-  problem.set_variable_types(variable_types);
-
-  return problem;
+  return cuopt::test::parse_inline_lp(R"LP(
+Minimize
+  obj: -86 y1 - 4 y2 - 40 y3
+Subject To
+  c1: 774 y1 + 76 y2 + 42 y3 <= 875
+  c2: 67 y1 + 27 y2 + 53 y3 <= 875
+Binaries
+  y1
+  y2
+  y3
+End
+)LP");
 }
 
 TEST(cuts, test_cuts_2)
@@ -1411,35 +1320,29 @@ TEST(cuts, clique_neos8_phase4_lp_infeasibility_binary_search)
 // but violates the generated c-MIR flow-cover cut. This is a reduced version of a
 // standard flow-cover example; the test checks validity instead of exact coefficients
 // because the approximate single-node-flow selection may choose a different valid cut.
+// Index layout (x0,x1,x2,y0,y1,y2 → 0..5) is load-bearing — downstream test
+// helpers index into the primal via point[j] for binaries and point[3+j] for
+// flows. Keep the variable order matching that layout.
 io::mps_data_model_t<int, double> create_small_single_node_flow_problem()
 {
-  io::mps_data_model_t<int, double> problem;
-
-  std::vector<int> offsets         = {0, 3, 5, 7, 9};
-  std::vector<int> indices         = {3, 4, 5, 0, 3, 1, 4, 2, 5};
-  std::vector<double> coefficients = {1.0, 1.0, -1.0, -3.0, 1.0, -6.0, 1.0, -3.0, 1.0};
-  problem.set_csr_constraint_matrix(std::span<const double>{coefficients},
-                                    std::span<const int>{indices},
-                                    std::span<const int>{offsets});
-
-  std::vector<double> lower_bounds(4, -std::numeric_limits<double>::infinity());
-  std::vector<double> upper_bounds = {4.0, 0.0, 0.0, 0.0};
-  problem.set_constraint_lower_bounds(std::span<const double>{lower_bounds});
-  problem.set_constraint_upper_bounds(std::span<const double>{upper_bounds});
-
-  std::vector<double> var_lower_bounds(6, 0.0);
-  std::vector<double> var_upper_bounds = {1.0, 1.0, 1.0, 3.0, 6.0, 3.0};
-  problem.set_variable_lower_bounds(std::span<const double>{var_lower_bounds});
-  problem.set_variable_upper_bounds(std::span<const double>{var_upper_bounds});
-
-  std::vector<double> objective_coefficients(6, 0.0);
-  problem.set_objective_coefficients(std::span<const double>{objective_coefficients});
-
-  std::vector<char> variable_types = {'I', 'I', 'I', 'C', 'C', 'C'};
-  problem.set_variable_types(variable_types);
-
-  problem.set_maximize(false);
-  return problem;
+  return cuopt::test::parse_inline_lp(R"LP(
+Minimize
+  obj: 0 x0 + 0 x1 + 0 x2 + 0 y0 + 0 y1 + 0 y2
+Subject To
+  c1: y0 + y1 - y2 <= 4
+  c2: -3 x0 + y0 <= 0
+  c3: -6 x1 + y1 <= 0
+  c4: -3 x2 + y2 <= 0
+Bounds
+  0 <= y0 <= 3
+  0 <= y1 <= 6
+  0 <= y2 <= 3
+Binaries
+  x0
+  x1
+  x2
+End
+)LP");
 }
 
 struct flow_cover_test_problem_t {
