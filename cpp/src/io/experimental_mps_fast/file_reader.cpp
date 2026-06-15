@@ -102,12 +102,15 @@ std::size_t get_file_size(const std::string& path)
 {
   int fd = ::open(path.c_str(), O_RDONLY);
   if (fd < 0) {
-    ::close(fd);
     mps_parser_fail(error_type_t::RuntimeError,
                     "Failed to open file '%s': %s",
                     path.c_str(),
                     std::strerror(errno));
   }
+  cuopt::scope_guard close_fd([&] {
+    if (fd >= 0) { ::close(fd); }
+  });
+
   std::size_t size = get_file_size(fd, path);
   ::close(fd);
   return size;
