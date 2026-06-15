@@ -8,6 +8,8 @@
 #include <cuopt/linear_programming/io/mps_data_model.hpp>
 #include <utilities/error.hpp>
 
+#include <quadratic_constraint_coo.hpp>
+
 #include <algorithm>
 #include <numeric>
 #include <utility>
@@ -148,7 +150,8 @@ void mps_data_model_t<i_t, f_t>::append_quadratic_constraint(i_t constraint_row_
                                                              f_t rhs_value,
                                                              std::span<const f_t> vals,
                                                              std::span<const i_t> rows,
-                                                             std::span<const i_t> cols)
+                                                             std::span<const i_t> cols,
+                                                             bool require_symmetric_q_offdiagonal)
 {
   mps_parser_expects(constraint_row_index >= 0,
                      error_type_t::ValidationError,
@@ -194,26 +197,10 @@ void mps_data_model_t<i_t, f_t>::append_quadratic_constraint(i_t constraint_row_
     qc.cols.clear();
     qc.vals.clear();
   } else {
-    std::vector<i_t> wr(rows.begin(), rows.end());
-    std::vector<i_t> wc(cols.begin(), cols.end());
-    std::vector<f_t> wv(vals.begin(), vals.end());
-
-    std::vector<size_t> perm(q_nnz);
-    std::iota(perm.begin(), perm.end(), size_t{0});
-    std::sort(perm.begin(), perm.end(), [&](size_t a, size_t b) {
-      if (wr[a] != wr[b]) { return wr[a] < wr[b]; }
-      return wc[a] < wc[b];
-    });
-
-    qc.rows.resize(q_nnz);
-    qc.cols.resize(q_nnz);
-    qc.vals.resize(q_nnz);
-    for (size_t t = 0; t < q_nnz; ++t) {
-      const size_t ix = perm[t];
-      qc.rows[t]      = wr[ix];
-      qc.cols[t]      = wc[ix];
-      qc.vals[t]      = wv[ix];
-    }
+    qc.rows.assign(rows.begin(), rows.end());
+    qc.cols.assign(cols.begin(), cols.end());
+    qc.vals.assign(vals.begin(), vals.end());
+    canonicalize_qc_entry(qc, require_symmetric_q_offdiagonal);
   }
 
   quadratic_constraints_.push_back(std::move(qc));
@@ -473,10 +460,25 @@ bool mps_data_model_t<i_t, f_t>::has_quadratic_constraints() const noexcept
   return !quadratic_constraints_.empty();
 }
 
+template <typename i_t, typename f_t>
+void canonicalize_quadratic_constraints(
+  std::vector<typename mps_data_model_t<i_t, f_t>::quadratic_constraint_t>& constraints,
+  bool require_symmetric_q_offdiagonal)
+{
+  for (auto& qc : constraints) {
+    canonicalize_qc_entry(qc, require_symmetric_q_offdiagonal);
+  }
+}
+
 // NOTE: Explicitly instantiate all types here in order to avoid linker error
 template class mps_data_model_t<int, float>;
 
 template class mps_data_model_t<int, double>;
+
+template void canonicalize_quadratic_constraints<int, float>(
+  std::vector<mps_data_model_t<int, float>::quadratic_constraint_t>&, bool);
+template void canonicalize_quadratic_constraints<int, double>(
+  std::vector<mps_data_model_t<int, double>::quadratic_constraint_t>&, bool);
 //  TODO current raft to cusparse wrappers only support int64_t
 //  can be CUSPARSE_INDEX_16U, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_64I
 

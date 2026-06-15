@@ -96,6 +96,7 @@
       if (_entry.cols.size() != _entry.vals.size()) {
         throw std::invalid_argument("set_quadratic_constraints: cols/vals size mismatch");
       }
+      io::canonicalize_qc_entry(_entry);
       _entries.push_back(std::move(_entry));
     }
     cpu_problem.set_quadratic_constraints(std::move(_entries));

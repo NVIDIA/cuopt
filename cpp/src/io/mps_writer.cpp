@@ -9,6 +9,7 @@
 
 #include <cuopt/linear_programming/io/data_model_view.hpp>
 #include <cuopt/linear_programming/io/mps_data_model.hpp>
+#include <quadratic_constraint_coo.hpp>
 #include <utilities/error.hpp>
 #include <utilities/sparse_matrix_helpers.hpp>
 
@@ -498,11 +499,13 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
   if (problem_.has_quadratic_constraints()) {
     for (const auto& qc : problem_.get_quadratic_constraints()) {
       mps_file << "QCMATRIX   " << qc.constraint_row_name << "\n";
-      const i_t nnz = qc.vals.size();
+      typename mps_data_model_t<i_t, f_t>::quadratic_constraint_t qc_canon = qc;
+      canonicalize_qc_entry(qc_canon);
+      const i_t nnz = static_cast<i_t>(qc_canon.vals.size());
       for (i_t p = 0; p < nnz; ++p) {
-        const i_t i              = qc.rows[p];
-        const i_t j              = qc.cols[p];
-        f_t v                    = qc.vals[p];
+        const i_t i              = qc_canon.rows[p];
+        const i_t j              = qc_canon.cols[p];
+        f_t v                    = qc_canon.vals[p];
         std::string row_var_name = static_cast<size_t>(i) < problem_.get_variable_names().size()
                                      ? problem_.get_variable_names()[i]
                                      : "C" + std::to_string(i);
@@ -510,7 +513,14 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
                                      ? problem_.get_variable_names()[j]
                                      : "C" + std::to_string(j);
         if (v != 0) {
-          mps_file << "    " << row_var_name << " " << col_var_name << " " << v << "\n";
+          if (i != j) {
+            // MPS QCMATRIX uses symmetric halves for cross terms.
+            const f_t half = v / f_t(2);
+            mps_file << "    " << row_var_name << " " << col_var_name << " " << half << "\n";
+            mps_file << "    " << col_var_name << " " << row_var_name << " " << half << "\n";
+          } else {
+            mps_file << "    " << row_var_name << " " << col_var_name << " " << v << "\n";
+          }
         }
       }
     }

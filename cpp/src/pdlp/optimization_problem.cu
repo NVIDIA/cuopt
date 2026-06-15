@@ -10,6 +10,8 @@
 #include <cuopt/linear_programming/optimization_problem_utils.hpp>
 #include <cuopt/linear_programming/solve_remote.hpp>
 
+#include <quadratic_constraint_coo.hpp>
+
 #include <cuopt/error.hpp>
 #include <cuopt/linear_programming/csr_matrix_utils.hpp>
 #include <cuopt/linear_programming/io/writer.hpp>
@@ -242,6 +244,7 @@ void optimization_problem_t<i_t, f_t>::add_quadratic_constraint(char constraint_
   qc.vals.assign(coeff.begin(), coeff.end());
   qc.linear_values.assign(linear_values.begin(), linear_values.end());
   qc.linear_indices.assign(linear_indices.begin(), linear_indices.end());
+  io::canonicalize_qc_entry(qc);
   quadratic_constraints_.push_back(std::move(qc));
 }
 

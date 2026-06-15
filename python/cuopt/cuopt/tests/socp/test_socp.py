@@ -173,9 +173,9 @@ def test_general_quadratic_unsymmetric():
     s.t. 2*x0^2 + 3*x0*x1 + 2*x1^2 <= 1  (unsymmetric Q: cross term only as x0*x1)
          x0 - x1 = 0
 
-    Q is given unsymmetrically: the 3*x0*x1 term is stored as a single
-    entry (row=0, col=1, val=3) rather than symmetric (0,1,1.5)+(1,0,1.5).
-    After symmetrization H = [4 3; 3 4], eigenvalues 1 and 7 (PD).
+    Q is given unsymmetrically: the 3*x0*x1 term is one canonical cross entry
+    (not duplicate COO halves). Hessian H = (Q + Q^T)/2 is [4 3; 3 4],
+    eigenvalues 1 and 7 (PD).
 
     With x0 = x1 = t: 2t^2 + 3t^2 + 2t^2 = 7t^2 <= 1
     min 2t at t = -1/sqrt(7), obj = -2/sqrt(7) ≈ -0.755929

@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #include <cuopt/linear_programming/io/data_model_view.hpp>
+
 #include <utilities/error.hpp>
 
 #include <span>

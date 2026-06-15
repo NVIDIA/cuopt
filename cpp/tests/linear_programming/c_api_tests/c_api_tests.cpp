@@ -256,6 +256,39 @@ TEST(c_api, test_general_quadratic_constraint_problem)
   EXPECT_NEAR(solution_values[1], -1.0 / sqrt(7.0), 1e-4);
 }
 
+TEST(c_api, test_rotated_soc_constraint_problem)
+{
+  cuopt_int_t termination_status;
+  cuopt_float_t objective;
+  cuopt_float_t solution_values[4];
+  EXPECT_EQ(test_rotated_soc_constraint_problem(&termination_status, &objective, solution_values),
+            CUOPT_SUCCESS);
+  EXPECT_EQ(termination_status, CUOPT_TERMINATION_STATUS_OPTIMAL);
+  // Optimal: x1 = x2 = 1, x3 = x4 = sqrt(2), obj = 2*sqrt(2)
+  EXPECT_NEAR(objective, 2.0 * sqrt(2.0), 1e-4);
+  EXPECT_NEAR(solution_values[0], 1.0, 1e-4);
+  EXPECT_NEAR(solution_values[1], 1.0, 1e-4);
+  EXPECT_NEAR(solution_values[2], sqrt(2.0), 1e-4);
+  EXPECT_NEAR(solution_values[3], sqrt(2.0), 1e-4);
+}
+
+TEST(c_api, test_rotated_soc_standard_cross_term_problem)
+{
+  cuopt_int_t termination_status;
+  cuopt_float_t objective;
+  cuopt_float_t solution_values[4];
+  EXPECT_EQ(
+    test_rotated_soc_standard_cross_term_problem(&termination_status, &objective, solution_values),
+    CUOPT_SUCCESS);
+  EXPECT_EQ(termination_status, CUOPT_TERMINATION_STATUS_OPTIMAL);
+  // ||tail||^2 <= 2*x3*x4 with canonical Q[x3,x4] = -2: x1 = x2 = x3 = x4 = 1, obj = 2
+  EXPECT_NEAR(objective, 2.0, 1e-4);
+  EXPECT_NEAR(solution_values[0], 1.0, 1e-4);
+  EXPECT_NEAR(solution_values[1], 1.0, 1e-4);
+  EXPECT_NEAR(solution_values[2], 1.0, 1e-4);
+  EXPECT_NEAR(solution_values[3], 1.0, 1e-4);
+}
+
 TEST(c_api, test_write_problem)
 {
   const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
