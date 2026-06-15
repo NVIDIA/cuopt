@@ -45,7 +45,7 @@ cuopt::linear_programming::optimization_problem_solution_t<i_t, f_t> solve_lp_wi
  * pipeline, which still allocates the full problem on master. The shim exists
  * so the public-facing call site is already in place; subsequent commits will
  * replace the body with:
- *   1. host-side METIS partitioning straight off the MPS CSR
+ *   1. host-side graph partitioning straight off the MPS CSR
  *   2. per-shard host CSR slicing
  *   3. construction of an mGPU-native pdlp_solver_t whose master only holds
  *      scalar metadata + gather buffers (no full A / A^T / scaled copies).

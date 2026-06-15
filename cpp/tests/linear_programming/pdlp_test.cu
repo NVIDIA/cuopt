@@ -99,9 +99,9 @@ TEST(pdlp_class, run_double)
 }
 
 // Distributed-PDLP partition round-trip: partition the afiro constraint/variable
-// bipartite graph with METIS, write it out, read it back, and confirm the parsed
+// bipartite graph with KaMinPar, write it out, read it back, and confirm the parsed
 // vector is identical to what the partitioner produced.
-TEST(pdlp_class, distributed_partition_metis_export_import_roundtrip)
+TEST(pdlp_class, distributed_partition_kaminpar_export_import_roundtrip)
 {
   using namespace cuopt::linear_programming::detail;
   namespace ds = cuopt::linear_programming::dual_simplex;
@@ -141,13 +141,13 @@ TEST(pdlp_class, distributed_partition_metis_export_import_roundtrip)
   input.A_t.num_rows    = n_vars;
   input.A_t.num_cols    = n_cstr;
 
-  auto partitioner       = make_partitioner<int, double>(partitioner_kind_t::Metis);
+  auto partitioner       = make_partitioner<int, double>(partitioner_kind_t::KaMinPar);
   std::vector<int> parts = partitioner->partition(input);
   ASSERT_EQ(parts.size(), static_cast<std::size_t>(n_cstr + n_vars));
 
   std::string dir = ::testing::TempDir();
   if (!dir.empty() && dir.back() != '/') { dir.push_back('/'); }
-  const std::string out_path = dir + "afiro_metis_roundtrip.parts";
+  const std::string out_path = dir + "afiro_kaminpar_roundtrip.parts";
 
   partition_loader_t<int, double>::export_distributed_pdlp_partition_file(out_path, parts);
   std::vector<int> reloaded =

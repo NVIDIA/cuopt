@@ -31,19 +31,18 @@ struct partitioner_input_t {
   i_t nb_parts{0};
   // Number of CPU threads the partitioner may use. Only honored by the
   // multi-threaded KaMinPar backend; <= 0 means "auto" (all hardware threads).
-  // Serial backends (METIS, Dummy) ignore it.
+  // Serial backend (Dummy) ignore it.
   i_t nb_threads{0};
   // Constraint matrix A (rows = constraints, cols = variables).
   csr_host_view_t<i_t, f_t> A{};
   // Transpose A_t (rows = variables, cols = constraints). Optional for partitioners
-  // that build a bipartite graph (e.g. METIS); dummy partitioner ignores both matrices.
+  // that build a bipartite graph (e.g. KaMinPar); dummy partitioner ignores both matrices.
   csr_host_view_t<i_t, f_t> A_t{};
 };
 
 // Dummy: round-robin, no graph (single-shard / debugging).
-// Metis: serial METIS_PartGraphKway.
 // KaMinPar: multi-threaded KaMinPar (preferred for multi-shard partitioning).
-enum class partitioner_kind_t { Dummy, Metis, KaMinPar };
+enum class partitioner_kind_t { Dummy, KaMinPar };
 
 template <typename i_t, typename f_t>
 class partitioner_i {

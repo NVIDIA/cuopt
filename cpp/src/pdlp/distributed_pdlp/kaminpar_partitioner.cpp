@@ -23,8 +23,8 @@
 
 namespace cuopt::linear_programming::detail {
 
-// Builds the bipartite constraint/variable graph induced by A (identical layout
-// to metis_partitioner_t) and runs the multi-threaded KaMinPar k-way kernel.
+// Builds the bipartite constraint/variable graph induced by A and runs the
+// multi-threaded KaMinPar k-way kernel.
 //   * nodes [0, nb_cstr)              : constraint nodes
 //   * nodes [nb_cstr, nb_cstr+nb_vars): variable nodes
 //   * undirected edges from each A nonzero (one half via A, one via A_t)
@@ -106,7 +106,7 @@ std::vector<i_t> kaminpar_partitioner_t<i_t, f_t>::partition(
   engine.copy_graph(std::span<const kaminpar::shm::EdgeID>(xadj),
                     std::span<const kaminpar::shm::NodeID>(adjncy));
   engine.set_k(static_cast<kaminpar::shm::BlockID>(input.nb_parts));
-  // ~3% imbalance, matching METIS_PartGraphKway's default balance constraint.
+  // ~3% imbalance balance constraint.
   engine.set_uniform_max_block_weights(0.03);
 
   auto t0 = std::chrono::high_resolution_clock::now();

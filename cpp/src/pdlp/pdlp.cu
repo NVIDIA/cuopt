@@ -511,20 +511,17 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
         (distributed_pdlp_num_gpus == 1) ? partitioner_kind_t::Dummy : partitioner_kind_t::KaMinPar;
     } else if (partitioner_choice == "dummy") {
       kind = partitioner_kind_t::Dummy;
-    } else if (partitioner_choice == "metis") {
-      kind = partitioner_kind_t::Metis;
     } else if (partitioner_choice == "kaminpar") {
       kind = partitioner_kind_t::KaMinPar;
     } else {
       cuopt_expects(
         false,
         error_type_t::ValidationError,
-        "Unknown distributed_pdlp_partitioner '%s' (expected auto|dummy|metis|kaminpar)",
+        "Unknown distributed_pdlp_partitioner '%s' (expected auto|dummy|kaminpar)",
         settings.distributed_pdlp_partitioner.c_str());
       kind = partitioner_kind_t::Dummy;  // unreachable; silences -Wmaybe-uninitialized
     }
-    const bool needs_graph =
-      (kind == partitioner_kind_t::Metis || kind == partitioner_kind_t::KaMinPar);
+    const bool needs_graph = (kind == partitioner_kind_t::KaMinPar);
     if (needs_graph) {
       // partitioner_input_t holds non-const std::vector<i_t>* pointers; we
       // already have the data in our local mutable buffers above.
@@ -536,11 +533,10 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
       partition_input.A_t.col_indices = &h_A_t_col_indices;
       partition_input.A_t.num_rows    = n_vars;
       partition_input.A_t.num_cols    = n_cstr;
-      // 0 => KaMinPar auto-detects and uses all hardware threads (ignored by METIS).
+      // 0 => KaMinPar auto-detects and uses all hardware threads.
       partition_input.nb_threads = 0;
     }
     const char* kind_name = (kind == partitioner_kind_t::Dummy)      ? "dummy"
-                            : (kind == partitioner_kind_t::Metis)    ? "metis"
                             : (kind == partitioner_kind_t::KaMinPar) ? "kaminpar"
                                                                      : "unknown";
     CUOPT_LOG_INFO(

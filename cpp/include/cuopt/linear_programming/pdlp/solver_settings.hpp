@@ -319,10 +319,9 @@ class pdlp_solver_settings_t {
   // Which graph partitioner distributed PDLP uses. One of:
   //   "auto"     - 1 GPU => Dummy; otherwise KaMinPar
   //   "dummy"    - round-robin, no graph (trivial)
-  //   "metis"    - serial METIS_PartGraphKway
   //   "kaminpar" - multi-threaded KaMinPar
   // Exposed as the distributed_pdlp_partitioner parameter
-  // (CLI: --distributed-pdlp-partitioner <auto|dummy|metis|kaminpar>).
+  // (CLI: --distributed-pdlp-partitioner <auto|dummy|kaminpar>).
   std::string distributed_pdlp_partitioner{"auto"};
   // Set to true inside the shards
   bool is_distributed_sub_pdlp{false};
