@@ -884,6 +884,12 @@ branch_variable_t<i_t> branch_and_bound_t<i_t, f_t>::variable_selection(
       mutex_upper_.unlock();
       return guided_diving(pc_, fractional, solution, current_incumbent, log);
 
+    case FARKAS_DIVING:
+      return farkas_diving(worker->leaf_problem, fractional, solution, settings_.zero_tol, log);
+
+    case VECTOR_LENGTH_DIVING:
+      return vector_length_diving(worker->leaf_problem, fractional, solution, log);
+
     default:
       log.debug("Unknown variable selection method: %d\n", worker->search_strategy);
       return {-1, branch_direction_t::NONE};
@@ -1149,6 +1155,13 @@ struct deterministic_diving_policy_t
                                             this->bnb.var_down_locks_,
                                             log);
       }
+
+      case VECTOR_LENGTH_DIVING:
+        return vector_length_diving(this->worker.leaf_problem, fractional, x, log);
+
+      case FARKAS_DIVING:
+        return farkas_diving(
+          this->worker.leaf_problem, fractional, x, this->bnb.settings_.zero_tol, log);
 
       default: CUOPT_LOG_ERROR("Invalid diving method!"); return {-1, branch_direction_t::NONE};
     }
@@ -1745,6 +1758,18 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
   mip_diving_hyper_params_t<i_t, f_t> diving_settings = settings_.diving_settings;
   if (diving_settings.guided_diving != 0 && !has_solver_space_incumbent()) {
     diving_settings.guided_diving = 0;
+  }
+
+  if (diving_settings.farkas_diving != 0) {
+    f_t obj_dyn;
+    if (std::abs(original_lp_.min_abs_obj_coeff) < settings_.zero_tol) {
+      obj_dyn = std::abs(original_lp_.max_abs_obj_coeff) < settings_.zero_tol
+                  ? 0
+                  : std::numeric_limits<f_t>::infinity();
+    } else {
+      obj_dyn = std::log10(original_lp_.max_abs_obj_coeff / original_lp_.min_abs_obj_coeff);
+    }
+    if (obj_dyn < diving_settings.farkas_obj_dynamism_tol) { diving_settings.farkas_diving = 0; }
   }
 
   worker->calculate_num_diving_workers(

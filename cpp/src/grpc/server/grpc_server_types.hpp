@@ -340,6 +340,7 @@ inline void signal_handler(int signal)
 
 std::string generate_job_id();
 void ensure_log_dir_exists();
+void create_job_log_file(const std::string& job_id);
 void delete_log_file(const std::string& job_id);
 void cleanup_shared_memory();
 void spawn_workers();
