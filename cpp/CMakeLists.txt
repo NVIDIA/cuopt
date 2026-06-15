@@ -584,6 +584,22 @@ target_include_directories(cuopt
 target_link_libraries(cuopt PRIVATE $<TARGET_FILE:PSLP>)
 add_dependencies(cuopt PSLP)
 
+# Link KaMinPar by file to avoid export dependency tracking (mirrors PSLP above).
+# KaMinPar is a from-source static library fully embedded into libcuopt.so; it is never
+# installed (INSTALL_KAMINPAR OFF) and consumers of cuopt::cuopt never use it, so it must
+# not leak into cuopt's exported link interface (otherwise rapids_export fails with
+# "target KaMinPar is not in any export set"). libKaMinPar.a is self-contained (the
+# kaminpar-common OBJECT lib is archived into it); we only need its public headers
+# (<kaminpar.h>, which pulls in stdlib + TBB) at compile time.
+target_include_directories(cuopt SYSTEM PRIVATE
+        $<TARGET_PROPERTY:KaMinPar::KaMinPar,INTERFACE_INCLUDE_DIRECTORIES>)
+target_link_libraries(cuopt PRIVATE $<TARGET_FILE:KaMinPar::KaMinPar>)
+# Real (non-imported) target only exists when KaMinPar is built from source via CPM;
+# force it to build before cuopt since it is EXCLUDE_FROM_ALL.
+if (TARGET KaMinPar)
+        add_dependencies(cuopt KaMinPar)
+endif ()
+
 # ##################################################################################################
 # - link libraries --------------------------------------------------------------------------------
 
@@ -635,7 +651,6 @@ target_link_libraries(cuopt
         PRIVATE
         ${CUOPT_PRIVATE_CUDA_LIBS}
         nccl_external
-        KaMinPar::KaMinPar
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:protobuf::libprotobuf>
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:gRPC::grpc++>
 )

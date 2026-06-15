@@ -12,10 +12,14 @@ function(find_and_configure_kaminpar)
     set(oneValueArgs VERSION PINNED_TAG)
     cmake_parse_arguments(PKG "" "${oneValueArgs}" "" ${ARGN})
 
+    # NOTE: KaMinPar is intentionally NOT added to cuopt's BUILD/INSTALL export sets.
+    # It is a from-source static dependency that is fully embedded into libcuopt.so and
+    # never installed (INSTALL_KAMINPAR OFF below). Registering it in cuopt-exports would
+    # both break export generation ("target KaMinPar is not in any export set") and emit a
+    # bogus find_dependency(KaMinPar) into the installed cuopt config. It is linked by file
+    # in cpp/CMakeLists.txt (mirroring PSLP) so it stays out of cuopt's export interface.
     rapids_cpm_find(KaMinPar ${PKG_VERSION}
         GLOBAL_TARGETS KaMinPar::KaMinPar
-        BUILD_EXPORT_SET cuopt-exports
-        INSTALL_EXPORT_SET cuopt-exports
         CPM_ARGS
         GIT_REPOSITORY https://github.com/KaHIP/KaMinPar.git
         GIT_TAG ${PKG_PINNED_TAG}
