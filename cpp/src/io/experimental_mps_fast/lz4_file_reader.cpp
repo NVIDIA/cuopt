@@ -240,20 +240,16 @@ class lz4_resident_windows_t {
     if (windows_.empty()) {
       mps_parser_fail(error_type_t::RuntimeError, "LZ4 resident window lookup with no windows");
     }
-    std::size_t lo = 0;
-    std::size_t hi = windows_.size();
-    while (lo < hi) {
-      std::size_t mid = lo + (hi - lo) / 2;
-      const auto& w   = windows_[mid];
-      if (offset < w.file_offset) {
-        hi = mid;
-      } else if (offset >= w.file_offset + w.size) {
-        lo = mid + 1;
-      } else {
-        return w;
-      }
+    std::size_t window_stride = windows_.size() > 1 ? windows_[1].file_offset : windows_[0].size;
+    std::size_t idx           = offset / window_stride;
+    if (idx >= windows_.size()) {
+      mps_parser_fail(error_type_t::RuntimeError, "LZ4 offset outside resident windows");
     }
-    mps_parser_fail(error_type_t::RuntimeError, "LZ4 offset outside resident windows");
+    const auto& w = windows_[idx];
+    if (offset >= w.file_offset + w.size) {
+      mps_parser_fail(error_type_t::RuntimeError, "LZ4 offset outside resident windows");
+    }
+    return w;
   }
 
   std::vector<lz4_resident_window_t>& windows_;
@@ -431,22 +427,34 @@ struct resident_block_desc_t {
   bool uncompressed               = false;
 };
 
+struct window_state_t {
+  std::atomic<uint32_t> decode_refs{0};
+  std::atomic<uint8_t> released{0};
+};
+
 // Two distinct units flow through this pipeline:
 //   * window  - a fixed-size span of the compressed file read by the I/O stage.
 //   * block   - a single independent LZ4 data block (decompressed unit) that the
 //               metadata scanner discovers inside the resident windows.
 // Windows feed blocks; the decoded blocks are handed to the section scanner,
 // which owns the contiguous decoded-byte frontier and section publication.
+//
+// Locking (the grouped members below repeat each guard in context):
+//   * window_mutex          - guards window_done[]   (reader -> scanner readiness)
+//   * desc_mutex            - guards desc_queue + scanner_done (scanner -> decoders)
+//   * window_release_mutex  - serializes freeing a window buffer + RSS accounting
+//   * window_state_[].decode_refs/.released, scanned_through_, blocks_scanned,
+//     compressed_resident_bytes - lock-free atomics
+// Locks are never nested. The scanner thread is the sole writer of the frame walk,
+// so offset / decompressed_offset are mutated without locking.
 struct lz4_pipeline_t {
   explicit lz4_pipeline_t(lz4_input_stream_t& input_)
     : input(input_),
       window_count(cuda::ceil_div(input.compressed_size_, window_bytes)),
       windows(window_count),
+      window_state_(std::make_unique<window_state_t[]>(window_count)),
       io_threads(std::min(lz4_input_max_io_threads, window_count)),
-      window_done(window_count, 0),
-      window_refs(window_count),
-      window_scanned(window_count),
-      window_released(window_count)
+      window_done(window_count, 0)
   {
     for (std::size_t i = 0; i < window_count; ++i) {
       std::size_t offset     = i * window_bytes;
@@ -454,12 +462,23 @@ struct lz4_pipeline_t {
       windows[i].index       = i;
       windows[i].file_offset = offset;
       windows[i].size        = size;
-      window_refs[i].store(0, std::memory_order_relaxed);
-      window_scanned[i].store(0, std::memory_order_relaxed);
-      window_released[i].store(0, std::memory_order_relaxed);
     }
   }
 
+  // Runs the three-stage pipeline to completion:
+  //
+  //   readers --window_done/window_cv--> scanner --desc_queue/desc_cv--> decoders
+  //
+  //   * readers  (io_threads): pread fixed compressed windows into RAM, mark ready.
+  //   * scanner  (1 thread)  : walk the LZ4 frame in order, slice it into block
+  //                            descriptors, push them to decoders in batches.
+  //   * decoders (io_threads): decompress blocks into the output buffer and hand
+  //                            each to the section scanner, which advances the
+  //                            decoded-byte frontier and publishes section ranges.
+  //
+  // Consumers are spawned first so they are parked waiting before the readers (which
+  // run on this thread) start producing. scoped_thread_group joins the background
+  // threads on scope exit; any stage's failure is captured in `latch` and rethrown here.
   void run()
   {
     std::exception_ptr startup_error;
@@ -471,7 +490,7 @@ struct lz4_pipeline_t {
         for (std::size_t t = 0; t < io_threads; ++t) {
           background.emplace([this, t] { run_decoder_stage(t); });
         }
-        run_readers();
+        run_readers();  // produce on the calling thread, now that consumers are parked
       } catch (...) {
         startup_error = std::current_exception();
         fail_and_notify(startup_error);
@@ -503,12 +522,11 @@ struct lz4_pipeline_t {
   void try_release_window(std::size_t index)
   {
     if (index >= window_count) { return; }
-    if (window_scanned[index].load(std::memory_order_acquire) == 0) { return; }
-    if (window_refs[index].load(std::memory_order_acquire) != 0) { return; }
+    if (index >= scanned_through_.load(std::memory_order_acquire)) { return; }
+    window_state_t& state = window_state_[index];
+    if (state.decode_refs.load(std::memory_order_acquire) != 0) { return; }
     uint8_t expected = 0;
-    if (!window_released[index].compare_exchange_strong(expected, 1, std::memory_order_acq_rel)) {
-      return;
-    }
+    if (!state.released.compare_exchange_strong(expected, 1, std::memory_order_acq_rel)) { return; }
     std::lock_guard<std::mutex> lock(window_release_mutex);
     if (windows[index].data) {
       windows[index].data.reset();
@@ -518,9 +536,13 @@ struct lz4_pipeline_t {
 
   void mark_windows_scanned_before(std::size_t offset)
   {
-    std::size_t last_excl = std::min(window_count, offset / window_bytes);
-    for (std::size_t wi = 0; wi < last_excl; ++wi) {
-      window_scanned[wi].store(1, std::memory_order_release);
+    assert(offset >= last_mark_offset_);
+    last_mark_offset_               = offset;
+    std::size_t new_scanned_through = std::min(window_count, offset / window_bytes);
+    std::size_t prev                = scanned_through_.load(std::memory_order_relaxed);
+    if (new_scanned_through <= prev) { return; }
+    scanned_through_.store(new_scanned_through, std::memory_order_release);
+    for (std::size_t wi = prev; wi < new_scanned_through; ++wi) {
       try_release_window(wi);
     }
   }
@@ -625,7 +647,8 @@ struct lz4_pipeline_t {
   void release_block_window_ref(const resident_block_desc_t& block)
   {
     if (block.window_index == std::numeric_limits<std::size_t>::max()) { return; }
-    uint32_t old = window_refs[block.window_index].fetch_sub(1, std::memory_order_acq_rel);
+    uint32_t old =
+      window_state_[block.window_index].decode_refs.fetch_sub(1, std::memory_order_acq_rel);
     assert(old > 0);
     if (old == 1) { try_release_window(block.window_index); }
   }
@@ -743,6 +766,7 @@ struct lz4_pipeline_t {
                                        std::size_t& offset,
                                        std::size_t& decompressed_offset)
   {
+    // --- Decode the block-size word and validate it ---------------------------
     bool uncompressed              = (raw_block_size & lz4_uncompressed_block) != 0;
     std::size_t block_payload_size = raw_block_size & lz4_block_size_mask;
     if (block_payload_size == 0) {
@@ -757,12 +781,16 @@ struct lz4_pipeline_t {
                       "LZ4 frame contains more blocks than content size allows");
     }
 
+    // --- Wait until the payload bytes are resident ----------------------------
     wait_range_ready(offset, block_payload_size);
     if (offset + block_payload_size > input.compressed_size_) {
       mps_parser_fail(error_type_t::ValidationError,
                       "truncated LZ4 frame while reading block payload");
     }
 
+    // --- Determine the decompressed size --------------------------------------
+    // Compressed blocks expand to block_max_size_ (or the content-size remainder
+    // for the final block); uncompressed blocks keep their payload size.
     std::size_t decompressed_size = block_payload_size;
     if (!uncompressed) {
       decompressed_size =
@@ -775,6 +803,12 @@ struct lz4_pipeline_t {
       mps_parser_fail(error_type_t::ValidationError, "LZ4 block exceeds declared content size");
     }
 
+    // --- Stage the payload for the decoder ------------------------------------
+    // Fast path: the whole payload lives in one window, so point the decoder
+    // straight at it (zero copy) and pin that window with a decode_refs bump until
+    // the decode completes. Otherwise it straddles a window boundary: copy it out
+    // into crossing_payloads, which stays alive for the whole run, so no window pin
+    // is needed (and the source window can be released as soon as it is scanned).
     const char* src          = resident.ptr_if_contiguous(offset, block_payload_size);
     std::size_t window_index = std::numeric_limits<std::size_t>::max();
     if (src == nullptr) {
@@ -783,9 +817,10 @@ struct lz4_pipeline_t {
       src = crossing_payloads.back().data();
     } else {
       window_index = offset / window_bytes;
-      window_refs[window_index].fetch_add(1, std::memory_order_acq_rel);
+      window_state_[window_index].decode_refs.fetch_add(1, std::memory_order_acq_rel);
     }
 
+    // --- Record the descriptor and advance past the block (+ optional checksum) -
     resident_block_desc_t block{src,
                                 block_payload_size,
                                 decompressed_offset,
@@ -829,28 +864,50 @@ struct lz4_pipeline_t {
     }
   }
 
+  // ---- Input + chunking (immutable after construction) ------------------------
+  // The compressed file is split into fixed-size `windows`; `io_threads` reader
+  // threads pull them by index.
   lz4_input_stream_t& input;
   const std::size_t window_bytes = lz4_pipeline_batch_bytes;
   const std::size_t window_count;
   std::vector<lz4_resident_window_t> windows;
   const std::size_t io_threads;
 
+  // First-error-wins latch shared by all three stages: stops the pipeline and
+  // retains the first exception for run() to rethrow after the threads join.
   parallel_error_latch_t latch;
 
+  // ---- Reader -> scanner readiness  (guarded by window_mutex) -----------------
+  // A reader sets window_done[i]=1 once window i is resident; the scanner blocks
+  // on window_cv until every window covering the bytes it needs is ready.
   std::vector<unsigned char> window_done;
-  std::vector<std::atomic<uint32_t>> window_refs;
-  std::vector<std::atomic<uint8_t>> window_scanned;
-  std::vector<std::atomic<uint8_t>> window_released;
   std::mutex window_mutex;
   std::condition_variable window_cv;
+
+  // ---- Window lifecycle / early release ---------------------------------------
+  // windows[i].data is freed exactly once, when the metadata scan has passed window i
+  // (scanned_through_ > i) AND no decoder still pins it (window_state_[i].decode_refs == 0).
+  // scanned_through_ advances monotonically in mark_windows_scanned_before (last_mark_offset_
+  // asserts that monotonicity); decode_refs bumps in scan_one_block and drops in
+  // release_block_window_ref; the per-window `released` CAS makes the free exactly-once.
+  // window_release_mutex serializes the data.reset() + compressed_resident_bytes accounting.
+  std::unique_ptr<window_state_t[]> window_state_;
+  std::atomic_size_t scanned_through_{0};
+  std::size_t last_mark_offset_{0};
   std::mutex window_release_mutex;
   std::atomic_size_t compressed_resident_bytes{0};
 
+  // ---- Scanner -> decoder queue  (guarded by desc_mutex) ----------------------
+  // The scanner pushes batches of block descriptors; decoders pop them via desc_cv.
+  // scanner_done signals the scanner has emitted its final batch.
   std::deque<std::vector<resident_block_desc_t>> desc_queue;
   bool scanner_done = false;
   std::mutex desc_mutex;
   std::condition_variable desc_cv;
 
+  // ---- Scanner scratch / progress ---------------------------------------------
+  // blocks_scanned doubles as the running block index; crossing_payloads holds staged
+  // copies of blocks that straddle a window boundary (see scan_one_block).
   std::atomic_size_t blocks_scanned{0};
   std::vector<std::vector<char>> crossing_payloads;
 };

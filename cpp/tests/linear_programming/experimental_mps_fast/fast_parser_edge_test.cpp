@@ -21,6 +21,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 #include <unistd.h>
@@ -91,6 +92,19 @@ std::string_view range_text(const mps_phase_range_t& range)
 
 uint64_t bits(double value) { return std::bit_cast<uint64_t>(value); }
 
+template <typename T>
+void expect_vectors_bitwise_equal(const std::vector<T>& reference,
+                                  const std::vector<T>& fast,
+                                  std::string_view field,
+                                  std::string_view context)
+{
+  static_assert(std::is_trivially_copyable_v<T>);
+  SCOPED_TRACE(std::string(context) + " " + std::string(field));
+  ASSERT_EQ(reference.size(), fast.size()) << "size";
+  if (reference.empty()) { return; }
+  EXPECT_EQ(0, std::memcmp(reference.data(), fast.data(), reference.size() * sizeof(T)));
+}
+
 void check_models_match_reference_bitwise(const parser_model_t<int, double>& fast,
                                           const mps_data_model_t<int, double>& reference,
                                           std::string_view context)
@@ -109,19 +123,27 @@ void check_models_match_reference_bitwise(const parser_model_t<int, double>& fas
   EXPECT_EQ(bits(reference.objective_offset_), bits(fast.objective_offset_))
     << std::string(context) + " objective_offset";
 
-  EXPECT_EQ(reference.A_, fast.A_) << std::string(context) + " A";
+  expect_vectors_bitwise_equal(reference.A_, fast.A_, "A", context);
   EXPECT_EQ(reference.A_indices_, fast.A_indices_) << std::string(context) + " A_indices";
   EXPECT_EQ(reference.A_offsets_, fast.A_offsets_) << std::string(context) + " A_offsets";
-  EXPECT_EQ(reference.b_, fast.b_) << std::string(context) + " b";
-  EXPECT_EQ(reference.c_, fast.c_) << std::string(context) + " c";
-  EXPECT_EQ(reference.variable_lower_bounds_, fast.variable_lower_bounds_)
-    << std::string(context) + " variable_lower_bounds";
-  EXPECT_EQ(reference.variable_upper_bounds_, fast.variable_upper_bounds_)
-    << std::string(context) + " variable_upper_bounds";
-  EXPECT_EQ(reference.constraint_lower_bounds_, fast.constraint_lower_bounds_)
-    << std::string(context) + " constraint_lower_bounds";
-  EXPECT_EQ(reference.constraint_upper_bounds_, fast.constraint_upper_bounds_)
-    << std::string(context) + " constraint_upper_bounds";
+  expect_vectors_bitwise_equal(reference.b_, fast.b_, "b", context);
+  expect_vectors_bitwise_equal(reference.c_, fast.c_, "c", context);
+  expect_vectors_bitwise_equal(reference.variable_lower_bounds_,
+                               fast.variable_lower_bounds_,
+                               "variable_lower_bounds",
+                               context);
+  expect_vectors_bitwise_equal(reference.variable_upper_bounds_,
+                               fast.variable_upper_bounds_,
+                               "variable_upper_bounds",
+                               context);
+  expect_vectors_bitwise_equal(reference.constraint_lower_bounds_,
+                               fast.constraint_lower_bounds_,
+                               "constraint_lower_bounds",
+                               context);
+  expect_vectors_bitwise_equal(reference.constraint_upper_bounds_,
+                               fast.constraint_upper_bounds_,
+                               "constraint_upper_bounds",
+                               context);
   EXPECT_EQ(reference.var_types_, fast.var_types_) << std::string(context) + " var_types";
   EXPECT_EQ(reference.row_types_, fast.row_types_) << std::string(context) + " row_types";
   EXPECT_EQ(reference.var_names_, fast.var_names_) << std::string(context) + " var_names";

@@ -61,6 +61,9 @@ class mps_phase_registry_t {
   bool endata_present() const;
 
  private:
+  // mutex_ guards ranges_/events_/has_event_/event_fulfilled_ and the endata_* fields for writers.
+  // Readers observe ready_[phase] / endata_ready_ (release-stored under the lock on publish,
+  // acquire-loaded here) and may then read the matching range lock-free -- see range()'s contract.
   static constexpr std::size_t phase_count = 7;
 
   static std::size_t phase_index(mps_phase_kind phase);
@@ -76,6 +79,19 @@ class mps_phase_registry_t {
   mutable std::mutex mutex_;
 };
 
+// Turns out-of-order decoded blocks into ordered section-range publications for the parser:
+//
+//   producer --observe_block(i,...)--> [SIMD-scan block i for section titles] --> section_hits_
+//                                       [advance contiguous decoded-byte frontier (ready_bytes_)]
+//                                       --> notify_ready_phases --> registry --> parser tasks
+//
+// Producers (the LZ4 decoders / raw readers) call observe_block for each block in any order.
+// Per block the scanner (1) SIMD-scans it for section titles starting in column 1 and records
+// the first byte of each section via a first-writer-wins CAS; (2) advances a contiguous
+// decoded-byte frontier across whatever leading blocks are now present; and (3) recomputes which
+// phases are fully bounded and publishes their [begin,end) ranges to the registry, unblocking the
+// matching parser task. A title can straddle two blocks, so adjacent decoded blocks are also
+// rescanned over a small overlap (boundary_overlap).
 class mps_section_block_scanner_t {
  public:
   mps_section_block_scanner_t(const char* data,
@@ -107,6 +123,13 @@ class mps_section_block_scanner_t {
   void notify_ready_phases();
   void advance_ready_frontier();
 
+  // Concurrency: observe_block runs concurrently on many producer threads.
+  //   * frontier_mutex_ guards next_block_ and the ready_bytes_ frontier advance.
+  //   * publish_mutex_  serializes notify_ready_phases so each phase publishes once, in order.
+  //   * block_decoded_[i] is release-stored after block_begin/end_offsets_[i] (relaxed), so an
+  //     acquire-load of a set flag makes those offsets visible to the reader.
+  //   * section_hits_[k] is a first-writer-wins CAS holding the earliest byte of section k.
+  //   * registry_ carries its own internal lock.
   const char* data_        = nullptr;
   std::size_t block_count_ = 0;
   mps_phase_registry_t& registry_;

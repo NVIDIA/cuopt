@@ -7,6 +7,8 @@
 #include <utilities/error.hpp>
 #include <utilities/scope_guard.hpp>
 
+#include <cuda/cmath>
+
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -46,18 +48,6 @@ bool path_has_suffix(const std::string& path, const char* suffix) noexcept
   std::size_t suffix_len = std::strlen(suffix);
   return path.size() >= suffix_len &&
          path.compare(path.size() - suffix_len, suffix_len, suffix) == 0;
-}
-
-std::size_t round_up_to_multiple(std::size_t value, std::size_t alignment)
-{
-  if (alignment == 0) { return value; }
-  std::size_t remainder = value % alignment;
-  if (remainder == 0) { return value; }
-  std::size_t increment = alignment - remainder;
-  if (value > std::numeric_limits<std::size_t>::max() - increment) {
-    mps_parser_fail(error_type_t::OutOfMemoryError, "allocation size overflow");
-  }
-  return value + increment;
 }
 
 std::size_t add_input_padding(std::size_t size)
@@ -184,8 +174,8 @@ raw_input_stream_t::raw_input_stream_t(const std::string& path) : path_(path)
   window_bytes_ = raw_input_window_bytes;
   window_count_ = std::max<std::size_t>(1, (file_size_ + window_bytes_ - 1) / window_bytes_);
 
-  output_mapped_size_ = round_up_to_multiple(
-    std::max<std::size_t>(add_input_padding(file_size_), 1), system_page_size());
+  output_mapped_size_ =
+    cuda::round_up(std::max<std::size_t>(add_input_padding(file_size_), 1), system_page_size());
   output_region_ = mmap_region_t::anonymous(
     output_mapped_size_, PROT_READ | PROT_WRITE, MAP_PRIVATE, "raw input buffer");
   output_data_ = output_region_.char_data();

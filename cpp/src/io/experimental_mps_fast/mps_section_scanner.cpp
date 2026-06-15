@@ -303,11 +303,14 @@ void mps_section_block_scanner_t::observe_block(std::size_t block_index,
                     "MPS section scanner observed invalid LZ4 block index");
   }
 
+  // --- Scan this block, then record its extent and mark it decoded. The release store on
+  //     block_decoded_ publishes the two relaxed offset stores above it.
   scan_section_range(begin, end);
   block_begin_offsets_[block_index].store((std::size_t)(begin - data_), std::memory_order_relaxed);
   block_end_offsets_[block_index].store((std::size_t)(end - data_), std::memory_order_relaxed);
   block_decoded_[block_index].store(1, std::memory_order_release);
 
+  // --- Rescan the seams with already-decoded neighbors, in case a title straddles the boundary.
   if (block_index > 0 && block_decoded_[block_index - 1].load(std::memory_order_acquire)) {
     scan_boundary(block_index - 1, block_index);
   }
@@ -316,6 +319,7 @@ void mps_section_block_scanner_t::observe_block(std::size_t block_index,
     scan_boundary(block_index, block_index + 1);
   }
 
+  // --- Extend the contiguous decoded-byte frontier and publish any newly bounded phases.
   advance_ready_frontier();
 }
 
@@ -324,8 +328,6 @@ void mps_section_block_scanner_t::advance_ready_frontier()
   std::size_t new_ready = 0;
   bool grew             = false;
   {
-    // block_decoded_ is stored with release after the begin/end offsets, so an
-    // acquire load of a set flag makes the matching end offset visible here.
     std::lock_guard<std::mutex> lock(frontier_mutex_);
     while (next_block_ < block_count_ &&
            block_decoded_[next_block_].load(std::memory_order_acquire)) {
@@ -409,6 +411,13 @@ void mps_section_block_scanner_t::notify_ready_phases()
     }
   };
 
+  // Three publication shapes follow:
+  //   (1) mandatory header/rows/columns -- each spans from its start to the next mandatory
+  //       section; published as soon as that bounding section is available.
+  //   (2) optional rhs/ranges/bounds via publish_optional -- present=true once bounded, or
+  //       present=false once a later section proves the optional one cannot still appear.
+  //   (3) quadratic -- starts at the earliest of the three quad markers (quadobj/qmatrix/qcmatrix).
+  // final_boundary (ENDATA, or the final ready frontier for truncated files) closes the tail.
   if (available(rows) && !registry_.ready(mps_phase_kind::header)) {
     registry_.publish(mps_phase_kind::header, {data_, rows, true});
   }

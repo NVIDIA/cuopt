@@ -435,6 +435,20 @@ static inline void observe_dense_name(bool& candidate,
   observed_count++;
 }
 
+// Maps MPS row/column names to indices via one of two strategies, chosen per problem:
+//
+//   * dense_ordered - when every name in a section is a shared prefix followed by a
+//     contiguous run of integers (e.g. R0001, R0002, ... or x1, x2, ...). The index is
+//     then computed straight from the parsed integer (value - min_id), so no hash table
+//     is built or probed. This is the common, fast case for solver-generated models.
+//   * hash          - the general fallback (smallstr_hash_table_t) for arbitrary names.
+//
+// Each section decides its own mode while scanning: it stays a dense_ordered "candidate"
+// as long as names keep matching the prefix + consecutive-integer + zero-pad-width rule
+// (see observe_dense_name), and the first violation drops it to the hash path. The chosen
+// mode lives in row_index_mode / col_index_mode, and every lookup branches on it
+// (row_lookup / read_row_lookup vs the dense_ordered variants below). Holding this in mind
+// explains most of the paired/dual code paths throughout this file.
 template <typename i_t, typename f_t>
 struct parse_state_t {
   mps_data_model_t<i_t, f_t>& problem;
@@ -510,6 +524,51 @@ struct parse_state_t {
     return true;
   }
 
+  // Insert all rows into the hash table. The perf-counter instrumentation is isolated in
+  // these two helpers so its #ifdefs do not fragment init_row_hash_table_impl's setup flow;
+  // both compile down to a bare insert loop when MPS_FAST_PERF_COUNTERS is off.
+  void insert_rows_partitioned(
+    int num_threads,
+    const std::array<size_t, MPS_ROW_HASH_PARTITIONS + 1>& partition_offsets,
+    const std::vector<size_t>& row_order,
+    const std::vector<uint32_t>& row_hashes)
+  {
+    scoped_timer_t timer("row_hash_insert_partitioned");
+#ifdef MPS_FAST_PERF_COUNTERS
+    std::vector<perf_counter_snapshot_t> perf_snapshots(MPS_ROW_HASH_PARTITIONS);
+#endif
+#pragma omp parallel for schedule(static) num_threads(num_threads)
+    for (int part_id = 0; part_id < (int)MPS_ROW_HASH_PARTITIONS; ++part_id) {
+      size_t p = (size_t)part_id;
+#ifdef MPS_FAST_PERF_COUNTERS
+      thread_perf_counters_t perf_counters;
+#endif
+      for (size_t pos = partition_offsets[p]; pos < partition_offsets[p + 1]; ++pos) {
+        size_t idx = row_order[pos];
+        row_hash_.insert_partition(p, row_names_sv[idx], row_hashes[idx], idx);
+      }
+#ifdef MPS_FAST_PERF_COUNTERS
+      perf_snapshots[p] = perf_counters.stop();
+#endif
+    }
+#ifdef MPS_FAST_PERF_COUNTERS
+    print_perf_totals("row_hash_insert_partitioned", perf_snapshots);
+#endif
+  }
+
+  void insert_rows_serial(size_t n_rows)
+  {
+#ifdef MPS_FAST_PERF_COUNTERS
+    thread_perf_counters_t perf_counters;
+#endif
+    for (size_t idx = 0; idx < n_rows; ++idx) {
+      row_hash_.insert_serial(row_names_sv[idx], idx);
+    }
+#ifdef MPS_FAST_PERF_COUNTERS
+    print_perf_totals("row_hash_insert_all", {perf_counters.stop()});
+#endif
+  }
+
   void init_row_hash_table_impl()
   {
     scoped_timer_t timer("row_hash_init_total");
@@ -580,37 +639,9 @@ struct parse_state_t {
       scoped_timer_t timer("row_hash_insert_all");
       row_hash_.reset_build_probe_stats();
       if (use_partitioned) {
-        scoped_timer_t timer("row_hash_insert_partitioned");
-#ifdef MPS_FAST_PERF_COUNTERS
-        std::vector<perf_counter_snapshot_t> perf_snapshots(MPS_ROW_HASH_PARTITIONS);
-#endif
-#pragma omp parallel for schedule(static) num_threads(num_threads)
-        for (int part_id = 0; part_id < (int)MPS_ROW_HASH_PARTITIONS; ++part_id) {
-          size_t p = (size_t)part_id;
-#ifdef MPS_FAST_PERF_COUNTERS
-          thread_perf_counters_t perf_counters;
-#endif
-          for (size_t pos = partition_offsets[p]; pos < partition_offsets[p + 1]; ++pos) {
-            size_t idx = row_order[pos];
-            row_hash_.insert_partition(p, row_names_sv[idx], row_hashes[idx], idx);
-          }
-#ifdef MPS_FAST_PERF_COUNTERS
-          perf_snapshots[p] = perf_counters.stop();
-#endif
-        }
-#ifdef MPS_FAST_PERF_COUNTERS
-        print_perf_totals("row_hash_insert_partitioned", perf_snapshots);
-#endif
+        insert_rows_partitioned(num_threads, partition_offsets, row_order, row_hashes);
       } else {
-#ifdef MPS_FAST_PERF_COUNTERS
-        thread_perf_counters_t perf_counters;
-#endif
-        for (size_t idx = 0; idx < n_rows; ++idx) {
-          row_hash_.insert_serial(row_names_sv[idx], idx);
-        }
-#ifdef MPS_FAST_PERF_COUNTERS
-        print_perf_totals("row_hash_insert_all", {perf_counters.stop()});
-#endif
+        insert_rows_serial(n_rows);
       }
       row_hash_.print_build_probe_report(n_rows);
     }
@@ -798,6 +829,11 @@ static std::vector<row_chunk_boundary_t> compute_row_chunk_boundaries(const char
 }
 
 // reads the row section in chunks and inserts into the worker's hash table partition
+// Parallel ROWS parser: count constraints per chunk, prefix-sum, then fill the output arrays
+// in parallel (with per-chunk dense-name reconciliation at the end). Must keep the same line
+// grammar as its serial twin parse_rows_section_serial_impl; parse_rows_section chooses between
+// them by size. Returns false if a chunk hit a malformed line (nothing committed for the fill
+// pass), so the caller can reset and retry serially for clean error reporting.
 template <typename i_t, typename f_t>
 static bool parse_rows_section_parallel_impl(parse_state_t<i_t, f_t>& state,
                                              const char* rows_start,
@@ -1808,6 +1844,9 @@ static void materialize_problem_csr(parse_state_t<i_t, f_t>& state)
   state.temp_A_indices_region.reset();
 }
 
+// COLUMNS is always parsed chunk-parallel: each chunk is counted/parsed by parse_columns_chunk
+// and the per-chunk results are stitched together by merge_chunk_results_to_csr. There is no
+// separate serial implementation -- a single thread just runs one chunk through the same path.
 template <typename i_t, typename f_t>
 static void parse_columns_section_parallel(parse_state_t<i_t, f_t>& state,
                                            int num_threads,
@@ -1997,6 +2036,10 @@ static bool apply_bound_record(std::string_view bound_type,
   return true;
 }
 
+// Parallel BOUNDS parser for the common dense/ordered-name case. Returns false when the section
+// is too small or not safely parallelizable, so parse_bounds_section resets and falls back to its
+// serial path. Bound-type semantics (LO/UP/FX/...) are shared with the serial path through
+// apply_bound_record, so the two cannot drift.
 template <typename i_t, typename f_t>
 static bool parse_bounds_section_parallel_dense(parse_state_t<i_t, f_t>& state,
                                                 cursor_t& cursor,
@@ -2791,6 +2834,10 @@ static mps_data_model_t<i_t, f_t> parse_mps_fast_stream(Stream& stream,
     input.registry->publish(mps_phase_kind::quadratic, empty);
   };
 
+  // These ints carry no data; they exist only as OpenMP task-dependency tokens. A task's
+  // depend(out: X) "produces" X and depend(in: X) waits on it, so the phase ordering in the
+  // task graph below (e.g. bounds after columns_done, because bounds reference variable names)
+  // is expressed purely through which tokens each task depends on.
   int header_ready = 0, rows_ready = 0, columns_ready = 0;
   int rhs_ready = 0, bounds_ready = 0, ranges_ready = 0, quadratic_ready = 0;
   int header_done = 0, rows_done = 0, columns_done = 0;
@@ -2807,6 +2854,11 @@ static mps_data_model_t<i_t, f_t> parse_mps_fast_stream(Stream& stream,
 
 #pragma omp single
     {
+      // Bridge between the producer and the parse tasks: each detached task below blocks
+      // until run_decode_tasks() publishes that phase's byte range into the registry, then
+      // completes its event and fulfills depend(out: <phase>_ready) -- releasing the matching
+      // parse task. This is what lets ROWS parsing start the instant the ROWS bytes are
+      // decoded, overlapping with the decode of later sections.
       omp_event_handle_t ev_header;
 #pragma omp task detach(ev_header) depend(out : header_ready)
       {
