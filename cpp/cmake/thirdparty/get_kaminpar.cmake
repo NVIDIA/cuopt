@@ -46,6 +46,14 @@ function(find_and_configure_kaminpar)
 
     if(KaMinPar_ADDED)
         message(VERBOSE "CUOPT: Using KaMinPar located in ${KaMinPar_SOURCE_DIR}")
+        # KaMinPar's public header pulls in <tbb/global_control.h>. On older TBB releases
+        # that header is gated behind TBB_PREVIEW_GLOBAL_CONTROL (KaMinPar upstream assumes a
+        # newer oneTBB and never defines it). Define it on KaMinParCommon PUBLIC so it
+        # propagates to all KaMinPar translation units (KaMinPar links KaMinParCommon PUBLIC).
+        # Harmless on newer oneTBB where global_control is no longer a preview feature.
+        if(TARGET KaMinParCommon)
+            target_compile_definitions(KaMinParCommon PUBLIC TBB_PREVIEW_GLOBAL_CONTROL)
+        endif()
     else()
         message(VERBOSE "CUOPT: Using KaMinPar located in ${KaMinPar_DIR}")
     endif()
