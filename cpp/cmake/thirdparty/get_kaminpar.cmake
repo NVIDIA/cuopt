@@ -42,6 +42,14 @@ function(find_and_configure_kaminpar)
             # Large LP constraint graphs can exceed 2^31 directed edges.
             "KAMINPAR_64BIT_EDGE_IDS ON"
             "INSTALL_KAMINPAR OFF"
+            # Build KaMinPar as a STATIC library that is embedded into libcuopt.so (linked
+            # by file in cpp/CMakeLists.txt). The wheel build configures with
+            # BUILD_SHARED_LIBS=ON; without this override KaMinPar would build a separate
+            # libKaMinPar.so that is neither embedded nor shipped in the wheel. Forcing PIC
+            # is required so the static objects can be linked into the shared libcuopt.so
+            # (KaMinPar's KaMinParCommon OBJECT lib otherwise lacks -fPIC).
+            "BUILD_SHARED_LIBS OFF"
+            "CMAKE_POSITION_INDEPENDENT_CODE ON"
     )
 
     if(KaMinPar_ADDED)
@@ -51,6 +59,14 @@ function(find_and_configure_kaminpar)
         # newer oneTBB and never defines it). Define it on KaMinParCommon PUBLIC so it
         # propagates to all KaMinPar translation units (KaMinPar links KaMinParCommon PUBLIC).
         # Harmless on newer oneTBB where global_control is no longer a preview feature.
+        # Also force PIC on every KaMinPar target (the KaMinParCommon OBJECT library does not
+        # reliably inherit CMAKE_POSITION_INDEPENDENT_CODE) so the static archive can be
+        # embedded into the shared libcuopt.so.
+        foreach(_kaminpar_tgt KaMinParCommon KaMinPar KaMinParIO)
+            if(TARGET ${_kaminpar_tgt})
+                set_target_properties(${_kaminpar_tgt} PROPERTIES POSITION_INDEPENDENT_CODE ON)
+            endif()
+        endforeach()
         if(TARGET KaMinParCommon)
             target_compile_definitions(KaMinParCommon PUBLIC TBB_PREVIEW_GLOBAL_CONTROL)
         endif()
