@@ -6,6 +6,7 @@
 
 #include <pdlp/distributed_pdlp/rank_data.hpp>
 
+#include <cuopt/linear_programming/io/mps_data_model.hpp>
 #include <cuopt/linear_programming/optimization_problem.hpp>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include <mip_heuristics/problem/problem.cuh>
@@ -51,23 +52,7 @@ struct pdlp_shard_t {
   pdlp_shard_t(int device_id,
                rank_data_t<i_t, f_t>&& rd,
                ncclComm_t raw_comm,
-               std::vector<f_t> const& h_global_obj,
-               std::vector<f_t> const& h_global_var_lower,
-               std::vector<f_t> const& h_global_var_upper,
-               std::vector<f_t> const& h_global_cstr_lower,
-               std::vector<f_t> const& h_global_cstr_upper,
-               std::vector<f_t> const& h_global_obj_scaled,
-               std::vector<f_t> const& h_global_var_lower_scaled,
-               std::vector<f_t> const& h_global_var_upper_scaled,
-               std::vector<f_t> const& h_global_cstr_lower_scaled,
-               std::vector<f_t> const& h_global_cstr_upper_scaled,
-               std::vector<f_t> const& h_global_cummulative_cstr_scaling,
-               std::vector<f_t> const& h_global_cummulative_var_scaling,
-               f_t h_bound_rescaling,
-               f_t h_objective_rescaling,
-               bool maximize,
-               f_t objective_offset,
-               f_t objective_scaling_factor,
+               io::mps_data_model_t<i_t, f_t> const& mps,
                pdlp_solver_settings_t<i_t, f_t> const& settings);
 
   pdlp_shard_t(const pdlp_shard_t&)            = delete;

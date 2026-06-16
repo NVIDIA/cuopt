@@ -10,6 +10,7 @@
 #include <utilities/cuda_helpers.cuh>
 #include <utilities/event_handler.cuh>
 
+#include <cuopt/linear_programming/io/mps_data_model.hpp>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
@@ -75,25 +76,10 @@ struct mgpu_weighted_sq_op_t {
 
 template <typename i_t, typename f_t>
 struct multi_gpu_engine_t {
-  // Constructs shards from rank_data
+  // Constructs shards from rank_data. The global (unpartitioned) problem is
+  // read straight from `mps`; each shard slices out the entries it owns.
   multi_gpu_engine_t(std::vector<rank_data_t<i_t, f_t>>&& rank_data,
-                     std::vector<f_t> const& h_global_obj,
-                     std::vector<f_t> const& h_global_var_lower,
-                     std::vector<f_t> const& h_global_var_upper,
-                     std::vector<f_t> const& h_global_cstr_lower,
-                     std::vector<f_t> const& h_global_cstr_upper,
-                     std::vector<f_t> const& h_global_obj_scaled,
-                     std::vector<f_t> const& h_global_var_lower_scaled,
-                     std::vector<f_t> const& h_global_var_upper_scaled,
-                     std::vector<f_t> const& h_global_cstr_lower_scaled,
-                     std::vector<f_t> const& h_global_cstr_upper_scaled,
-                     std::vector<f_t> const& h_global_cummulative_cstr_scaling,
-                     std::vector<f_t> const& h_global_cummulative_var_scaling,
-                     f_t h_bound_rescaling,
-                     f_t h_objective_rescaling,
-                     bool maximize,
-                     f_t objective_offset,
-                     f_t objective_scaling_factor,
+                     io::mps_data_model_t<i_t, f_t> const& mps,
                      pdlp_solver_settings_t<i_t, f_t> const& sub_solver_settings);
 
   multi_gpu_engine_t(const multi_gpu_engine_t&)            = delete;

@@ -432,25 +432,6 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
                 error_type_t::ValidationError,
                 "mps variable_upper_bounds size must equal n_variables");
 
-  const bool maximize          = mps.get_sense();
-  f_t objective_offset         = mps.get_objective_offset();
-  f_t objective_scaling_factor = mps.get_objective_scaling_factor();
-
-  // Objective: copy (mutable so we can negate for maximize, matching
-  // problem_helpers.cuh::convert_to_maximization_problem).
-  std::vector<f_t> h_obj = mps.get_objective_coefficients();
-  if (maximize) {
-    for (auto& v : h_obj)
-      v = -v;
-    objective_offset         = -objective_offset;
-    objective_scaling_factor = -objective_scaling_factor;
-  }
-
-  // Bounds (copy from mps; engine ctor takes by const ref to std::vector).
-  std::vector<f_t> h_var_lower  = mps.get_variable_lower_bounds();
-  std::vector<f_t> h_var_upper  = mps.get_variable_upper_bounds();
-  std::vector<f_t> h_cstr_lower = mps.get_constraint_lower_bounds();
-  std::vector<f_t> h_cstr_upper = mps.get_constraint_upper_bounds();
 
   // A (CSR) — mutable copies for the engine + partitioner consumers below.
   std::vector<i_t> h_A_row_offsets = mps.get_constraint_matrix_offsets();
@@ -472,22 +453,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   std::vector<i_t> h_A_t_col_indices = std::move(AT_as_csc.i);
   std::vector<f_t> h_A_t_values      = std::move(AT_as_csc.x);
 
-  // ----- 3. Identity scaling for V1 -----
-  // Real multi-GPU scaling is a TODO; ship the unscaled problem to shards as
-  // both "unscaled" and "scaled" so the engine and per-shard pdlp_solver_t
-  // can run end-to-end. Scaling factor vectors are 1.0 everywhere so the
-  // shard-side unscale at the end is a no-op.
-  std::vector<f_t> h_obj_scaled        = h_obj;
-  std::vector<f_t> h_var_lower_scaled  = h_var_lower;
-  std::vector<f_t> h_var_upper_scaled  = h_var_upper;
-  std::vector<f_t> h_cstr_lower_scaled = h_cstr_lower;
-  std::vector<f_t> h_cstr_upper_scaled = h_cstr_upper;
-  std::vector<f_t> h_cummulative_cstr_scaling(n_cstr, f_t(1.0));
-  std::vector<f_t> h_cummulative_var_scaling(n_vars, f_t(1.0));
-  const f_t h_bound_rescaling     = f_t(1.0);
-  const f_t h_objective_rescaling = f_t(1.0);
-
-  // ----- 4. Partition -----
+  // ----- 3. Partition -----
   std::vector<i_t> parts;
   if (!settings.multi_gpu_partition_file.empty()) {
     parts = partition_loader_t<i_t, f_t>::parse_distributed_pdlp_partition_file(
@@ -557,7 +523,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
               << settings.multi_gpu_export_partition_file << std::endl;
   }
 
-  // ----- 5. Build per-rank data -----
+  // ----- 4. Build per-rank data -----
   CUOPT_LOG_INFO("distributed_pdlp: building rank_data for %d parts ...",
                  settings.distributed_pdlp_num_gpus);
   auto rank_data_t0 = std::chrono::high_resolution_clock::now();
@@ -577,7 +543,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   CUOPT_LOG_INFO("distributed_pdlp: rank_data build done in %.3f s",
                  std::chrono::duration<double>(rank_data_t1 - rank_data_t0).count());
 
-  // ----- 6. Per-shard settings -----
+  // ----- 5. Per-shard settings -----
   pdlp_solver_settings_t<i_t, f_t> sub_pdlp_settings                    = settings;
   sub_pdlp_settings.num_gpus                                            = 1;
   sub_pdlp_settings.distributed_pdlp_num_gpus                           = 1;
@@ -587,26 +553,8 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   sub_pdlp_settings.hyper_params.default_l_inf_ruiz_iterations          = 0;
   sub_pdlp_settings.hyper_params.default_alpha_pock_chambolle_rescaling = 0.0;
 
-  // ----- 7. Construct the engine: NCCL comms + per-shard pdlp_solver_t -----
-  multi_gpu_engine.emplace(std::move(sub_pdlp_rank_data),
-                           h_obj,
-                           h_var_lower,
-                           h_var_upper,
-                           h_cstr_lower,
-                           h_cstr_upper,
-                           h_obj_scaled,
-                           h_var_lower_scaled,
-                           h_var_upper_scaled,
-                           h_cstr_lower_scaled,
-                           h_cstr_upper_scaled,
-                           h_cummulative_cstr_scaling,
-                           h_cummulative_var_scaling,
-                           h_bound_rescaling,
-                           h_objective_rescaling,
-                           maximize,
-                           objective_offset,
-                           objective_scaling_factor,
-                           sub_pdlp_settings);
+  // ----- 6. Construct the engine: NCCL comms + per-shard pdlp_solver_t -----
+  multi_gpu_engine.emplace(std::move(sub_pdlp_rank_data), mps, sub_pdlp_settings);
 
   // ----- 8 Distributed Scaling -----
   for (auto& shard : multi_gpu_engine->shards) {

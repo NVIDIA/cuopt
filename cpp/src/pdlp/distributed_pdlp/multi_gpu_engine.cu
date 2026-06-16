@@ -25,23 +25,7 @@ namespace cuopt::linear_programming::detail {
 template <typename i_t, typename f_t>
 multi_gpu_engine_t<i_t, f_t>::multi_gpu_engine_t(
   std::vector<rank_data_t<i_t, f_t>>&& rank_data,
-  std::vector<f_t> const& h_global_obj,
-  std::vector<f_t> const& h_global_var_lower,
-  std::vector<f_t> const& h_global_var_upper,
-  std::vector<f_t> const& h_global_cstr_lower,
-  std::vector<f_t> const& h_global_cstr_upper,
-  std::vector<f_t> const& h_global_obj_scaled,
-  std::vector<f_t> const& h_global_var_lower_scaled,
-  std::vector<f_t> const& h_global_var_upper_scaled,
-  std::vector<f_t> const& h_global_cstr_lower_scaled,
-  std::vector<f_t> const& h_global_cstr_upper_scaled,
-  std::vector<f_t> const& h_global_cummulative_cstr_scaling,
-  std::vector<f_t> const& h_global_cummulative_var_scaling,
-  f_t h_bound_rescaling,
-  f_t h_objective_rescaling,
-  bool maximize,
-  f_t objective_offset,
-  f_t objective_scaling_factor,
+  io::mps_data_model_t<i_t, f_t> const& mps,
   pdlp_solver_settings_t<i_t, f_t> const& sub_solver_settings)
   : stream()
 {
@@ -64,27 +48,8 @@ multi_gpu_engine_t<i_t, f_t>::multi_gpu_engine_t(
   auto shard_build_t0 = std::chrono::high_resolution_clock::now();
   for (int r = 0; r < nb_parts; ++r) {
     raft::device_setter guard(devices[r]);  // shard ctor needs device set
-    shards.emplace_back(std::make_unique<pdlp_shard_t<i_t, f_t>>(devices[r],
-                                                                 std::move(rank_data[r]),
-                                                                 raw_comms[r],
-                                                                 h_global_obj,
-                                                                 h_global_var_lower,
-                                                                 h_global_var_upper,
-                                                                 h_global_cstr_lower,
-                                                                 h_global_cstr_upper,
-                                                                 h_global_obj_scaled,
-                                                                 h_global_var_lower_scaled,
-                                                                 h_global_var_upper_scaled,
-                                                                 h_global_cstr_lower_scaled,
-                                                                 h_global_cstr_upper_scaled,
-                                                                 h_global_cummulative_cstr_scaling,
-                                                                 h_global_cummulative_var_scaling,
-                                                                 h_bound_rescaling,
-                                                                 h_objective_rescaling,
-                                                                 maximize,
-                                                                 objective_offset,
-                                                                 objective_scaling_factor,
-                                                                 sub_solver_settings));
+    shards.emplace_back(std::make_unique<pdlp_shard_t<i_t, f_t>>(
+      devices[r], std::move(rank_data[r]), raw_comms[r], mps, sub_solver_settings));
   }
   auto shard_build_t1 = std::chrono::high_resolution_clock::now();
   CUOPT_LOG_INFO("distributed_pdlp: shard build done in %.3f s",
