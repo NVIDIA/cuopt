@@ -593,10 +593,16 @@ add_dependencies(cuopt PSLP)
 # (<kaminpar.h>, which pulls in stdlib + TBB) at compile time.
 target_include_directories(cuopt SYSTEM PRIVATE
         $<TARGET_PROPERTY:KaMinPar::KaMinPar,INTERFACE_INCLUDE_DIRECTORIES>)
-# kaminpar_partitioner.cpp includes <kaminpar.h>, which pulls in <tbb/global_control.h>.
-# On older TBB that header is gated behind TBB_PREVIEW_GLOBAL_CONTROL. Since KaMinPar is
-# linked by file (no PUBLIC propagation of its compile definitions), define it on cuopt too.
-target_compile_definitions(cuopt PRIVATE TBB_PREVIEW_GLOBAL_CONTROL)
+# kaminpar_partitioner.cpp includes <kaminpar.h>. Because KaMinPar is linked by file, cuopt
+# does NOT inherit KaMinPar's PUBLIC compile definitions, so we must replicate the ones that
+# affect what <kaminpar.h> compiles to:
+#   * TBB_PREVIEW_GLOBAL_CONTROL  - <kaminpar.h> includes <tbb/global_control.h>, which older
+#                                   TBB gates behind this macro.
+#   * KAMINPAR_64BIT_EDGE_IDS     - selects EdgeID = uint64 in <kaminpar.h>. MUST stay in sync
+#                                   with the KAMINPAR_64BIT_* options in get_kaminpar.cmake;
+#                                   otherwise the public API types (e.g. copy_graph's span<>
+#                                   widths) mismatch the prebuilt archive => undefined refs.
+target_compile_definitions(cuopt PRIVATE TBB_PREVIEW_GLOBAL_CONTROL KAMINPAR_64BIT_EDGE_IDS)
 target_link_libraries(cuopt PRIVATE $<TARGET_FILE:KaMinPar::KaMinPar>)
 # Real (non-imported) target only exists when KaMinPar is built from source via CPM;
 # force it to build before cuopt since it is EXCLUDE_FROM_ALL.
