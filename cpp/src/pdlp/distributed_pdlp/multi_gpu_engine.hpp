@@ -411,25 +411,20 @@ struct multi_gpu_engine_t {
                                  .get_reduced_cost();
 
       if (nv > 0) {
-        RAFT_CUDA_TRY(
-          cudaMemcpyAsync(tmp_primal.data(),
-                          s.sub_pdlp->pdhg_solver_.get_potential_next_primal_solution().data(),
-                          static_cast<std::size_t>(nv) * sizeof(f_t),
-                          cudaMemcpyDeviceToHost,
-                          s.stream.view().value()));
-        RAFT_CUDA_TRY(cudaMemcpyAsync(tmp_reduced_cost.data(),
-                                      sub_reduced_cost.data(),
-                                      static_cast<std::size_t>(nv) * sizeof(f_t),
-                                      cudaMemcpyDeviceToHost,
-                                      s.stream.view().value()));
+        raft::copy(tmp_primal.data(),
+                   s.sub_pdlp->pdhg_solver_.get_potential_next_primal_solution().data(),
+                   static_cast<std::size_t>(nv),
+                   s.stream.view());
+        raft::copy(tmp_reduced_cost.data(),
+                   sub_reduced_cost.data(),
+                   static_cast<std::size_t>(nv),
+                   s.stream.view());
       }
       if (nc > 0) {
-        RAFT_CUDA_TRY(
-          cudaMemcpyAsync(tmp_dual.data(),
-                          s.sub_pdlp->pdhg_solver_.get_potential_next_dual_solution().data(),
-                          static_cast<std::size_t>(nc) * sizeof(f_t),
-                          cudaMemcpyDeviceToHost,
-                          s.stream.view().value()));
+        raft::copy(tmp_dual.data(),
+                   s.sub_pdlp->pdhg_solver_.get_potential_next_dual_solution().data(),
+                   static_cast<std::size_t>(nc),
+                   s.stream.view());
       }
       RAFT_CUDA_TRY(cudaStreamSynchronize(s.stream.view().value()));
 
@@ -456,21 +451,15 @@ struct multi_gpu_engine_t {
 
     // Host -> master device. engine.stream lives on the master device
     // (created at engine construction when master device was current).
-    RAFT_CUDA_TRY(cudaMemcpyAsync(master_pdhg.get_potential_next_primal_solution().data(),
-                                  h_primal.data(),
-                                  total_vars * sizeof(f_t),
-                                  cudaMemcpyHostToDevice,
-                                  stream.view().value()));
-    RAFT_CUDA_TRY(cudaMemcpyAsync(master_pdhg.get_potential_next_dual_solution().data(),
-                                  h_dual.data(),
-                                  total_cstrs * sizeof(f_t),
-                                  cudaMemcpyHostToDevice,
-                                  stream.view().value()));
-    RAFT_CUDA_TRY(cudaMemcpyAsync(master_reduced_cost.data(),
-                                  h_reduced_cost.data(),
-                                  total_vars * sizeof(f_t),
-                                  cudaMemcpyHostToDevice,
-                                  stream.view().value()));
+    raft::copy(master_pdhg.get_potential_next_primal_solution().data(),
+               h_primal.data(),
+               total_vars,
+               stream.view());
+    raft::copy(master_pdhg.get_potential_next_dual_solution().data(),
+               h_dual.data(),
+               total_cstrs,
+               stream.view());
+    raft::copy(master_reduced_cost.data(), h_reduced_cost.data(), total_vars, stream.view());
     RAFT_CUDA_TRY(cudaStreamSynchronize(stream.view().value()));
   }
 
