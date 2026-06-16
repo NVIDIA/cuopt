@@ -190,7 +190,10 @@ void expect_distributed_matches_base(raft::handle_t const& handle,
   pdlp_solver_settings_t<int, double> dist_settings = base_settings;
   dist_settings.hyper_params.use_distributed_pdlp   = true;
   dist_settings.distributed_pdlp_num_gpus           = -1;
-  auto dist                                         = solve_lp(&handle, problem, dist_settings);
+  // Disable CUDA-graph capture for the distributed run (execute each iteration
+  // eagerly); KaMinPar graph partitioning is left enabled.
+  dist_settings.hyper_params.pdlp_disable_graph = true;
+  auto dist                                     = solve_lp(&handle, problem, dist_settings);
 
   // ----- termination status -----
   ASSERT_EQ(static_cast<int>(base.get_termination_status()), CUOPT_TERMINATION_STATUS_OPTIMAL)
