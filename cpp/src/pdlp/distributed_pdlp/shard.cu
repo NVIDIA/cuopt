@@ -32,6 +32,7 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
     handle(stream.view()),
     comm(raw_comm, nccl_comm_deleter_t{device_id}),
     rank_data(std::move(rd)),
+    local_to_global_var_d(static_cast<std::size_t>(rank_data.total_var_size), stream.view()),
     opt_problem(std::nullopt),
     sub_problem(std::nullopt),
     sub_pdlp(nullptr)
@@ -223,6 +224,15 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
   };
   build_send_plan(rank_data.var_send_per_peer, var_send_indices_d, var_send_buf_d);
   build_send_plan(rank_data.cstr_send_per_peer, cstr_send_indices_d, cstr_send_buf_d);
+
+  // ---- 7. Upload the immutable local->global variable map once. ----
+  // Reused by the engine's distributed scaling scatter/gather.
+  if (rank_data.total_var_size > 0) {
+    raft::copy(local_to_global_var_d.data(),
+               rank_data.local_to_global_var.data(),
+               rank_data.local_to_global_var.size(),
+               stream_view);
+  }
 
   handle.sync_stream(stream_view);
 }

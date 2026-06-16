@@ -17,6 +17,7 @@
 #include <raft/core/cusparse_macros.hpp>
 #include <raft/core/device_setter.hpp>
 #include <raft/linalg/detail/cublas_wrappers.hpp>
+#include <raft/linalg/reduce.cuh>
 
 #include <rmm/cuda_stream.hpp>
 #include <rmm/device_buffer.hpp>
@@ -24,10 +25,7 @@
 
 #include <thrust/execution_policy.h>
 #include <thrust/gather.h>
-#include <thrust/iterator/transform_iterator.h>
-#include <thrust/iterator/zip_iterator.h>
 #include <thrust/scatter.h>
-#include <cub/device/device_reduce.cuh>
 #include <cub/device/device_transform.cuh>
 #include <cuda/std/tuple>
 
@@ -49,29 +47,6 @@ namespace cuopt::linear_programming::detail {
 template <typename f_t>
 struct sqrt_inplace_op_t {
   __host__ __device__ f_t operator()(f_t x) const { return raft::sqrt(x); }
-};
-
-// Squared-norm contribution of a constraint's [lower, upper] bound pair, used to
-// build the distributed bound rescaling (mirrors rhs_sum_of_squares_t). Defined
-// at namespace scope to avoid extended-lambda-in-template restrictions.
-template <typename f_t>
-struct mgpu_rhs_sq_op_t {
-  __host__ __device__ f_t operator()(const thrust::tuple<f_t, f_t>& t) const
-  {
-    const f_t lower = thrust::get<0>(t);
-    const f_t upper = thrust::get<1>(t);
-    f_t sum         = f_t(0);
-    if (isfinite(lower) && (lower != upper)) sum += lower * lower;
-    if (isfinite(upper)) sum += upper * upper;
-    return sum;
-  }
-};
-
-// Weighted square of an objective coefficient (mirrors weighted_square_op).
-template <typename f_t>
-struct mgpu_weighted_sq_op_t {
-  f_t weight;
-  __host__ __device__ f_t operator()(f_t v) const { return v * v * weight; }
 };
 
 template <typename i_t, typename f_t>
@@ -109,7 +84,9 @@ struct multi_gpu_engine_t {
       cub::DeviceTransform::Transform(cub_inputs, out(sub), sz(sub), op, shard.stream.view());
     });
   }
+
   // --- 2) convenience: single input accessor (delegates) ---
+  // Allows to use distributed_transform on single input without having to do a std::make_tuple(in)
   template <typename InAccess, typename OutAccess, typename SizeAccess, typename Op>
   void distributed_transform(InAccess in, OutAccess out, SizeAccess sz, Op op)
   {
@@ -119,11 +96,22 @@ struct multi_gpu_engine_t {
   // -------- Halo exchange (variables / x) ---------------------------------
   // Fills the halo slice [owned_var_size, total_var_size) of the per-shard
   // input buffer returned by `buf_access(pdhg)` (the buffer A @ x will read).
-  // Step 1: thrust::gather per-peer outgoing values into staging buffers.
-  // Step 2: a single NCCL group with matched ncclSend / ncclRecv across all
-  // (rank, peer) pairs.
   template <typename BufAccess>
   void halo_exchange_var(BufAccess&& buf_access)
+  {
+    halo_exchange_var_shard([&](pdlp_shard_t<i_t, f_t>& s) -> rmm::device_uvector<f_t>& {
+      return buf_access(s.sub_pdlp->pdhg_solver_);
+    });
+  }
+
+  // Core variable halo exchange. ShardBufAccess maps a shard to the var-shaped
+  // device buffer to synchronize (owned slice [0, owned_var_size) followed by
+  // the per-peer halo tail).
+  // Step 1: thrust::gather per-peer outgoing values into staging buffers.
+  // Step 2: a single NCCL group with matched ncclSend / ncclRecv across all
+  // (rank, peer) pairs, receiving into each shard's halo region.
+  template <typename ShardBufAccess>
+  void halo_exchange_var_shard(ShardBufAccess&& buf_access)
   {
     const int nb = static_cast<int>(shards.size());
 
@@ -131,7 +119,7 @@ struct multi_gpu_engine_t {
     for (int r = 0; r < nb; ++r) {
       auto& s = *shards[r];
       raft::device_setter guard(s.device_id);
-      auto& x = buf_access(s.sub_pdlp->pdhg_solver_);
+      auto& x = buf_access(s);
       for (int peer = 0; peer < nb; ++peer) {
         if (peer == r) continue;
         if (s.var_send_indices_d[peer].size() == 0) continue;
@@ -162,7 +150,7 @@ struct multi_gpu_engine_t {
       auto& s  = *shards[r];
       auto& rd = s.rank_data;
       raft::device_setter guard(s.device_id);
-      auto& x = buf_access(s.sub_pdlp->pdhg_solver_);
+      auto& x = buf_access(s);
       for (int peer = 0; peer < nb; ++peer) {
         if (peer == r) continue;
         f_t* recv_ptr = x.data() + rd.owned_var_size + rd.var_recv_offsets[peer];
@@ -179,16 +167,27 @@ struct multi_gpu_engine_t {
 
   // -------- Halo exchange (constraints / y) -------------------------------
   // Same as halo_exchange_var but for a constraint-shaped buffer (the input
-  // A_T @ y will read) and constraint halos.
+  // A_T @ y will read) and constraint halos. buf_access maps a
+  // pdhg_solver_t to the cstr-shaped buffer to exchange.
   template <typename BufAccess>
   void halo_exchange_cstr(BufAccess&& buf_access)
   {
+    halo_exchange_cstr_shard([&](pdlp_shard_t<i_t, f_t>& s) -> rmm::device_uvector<f_t>& {
+      return buf_access(s.sub_pdlp->pdhg_solver_);
+    });
+  }
+
+  // Same as halo_exchange_var_shard for cstr
+  template <typename ShardBufAccess>
+  void halo_exchange_cstr_shard(ShardBufAccess&& buf_access)
+  {
     const int nb = static_cast<int>(shards.size());
 
+    // Gather each owner's owned values that peers need.
     for (int r = 0; r < nb; ++r) {
       auto& s = *shards[r];
       raft::device_setter guard(s.device_id);
-      auto& y = buf_access(s.sub_pdlp->pdhg_solver_);
+      auto& y = buf_access(s);
       for (int peer = 0; peer < nb; ++peer) {
         if (peer == r) continue;
         if (s.cstr_send_indices_d[peer].size() == 0) continue;
@@ -218,7 +217,7 @@ struct multi_gpu_engine_t {
       auto& s  = *shards[r];
       auto& rd = s.rank_data;
       raft::device_setter guard(s.device_id);
-      auto& y = buf_access(s.sub_pdlp->pdhg_solver_);
+      auto& y = buf_access(s);
       for (int peer = 0; peer < nb; ++peer) {
         if (peer == r) continue;
         f_t* recv_ptr = y.data() + rd.owned_cstr_size + rd.cstr_recv_offsets[peer];
@@ -234,60 +233,13 @@ struct multi_gpu_engine_t {
   }
 
   // -------- Broadcast owned constraint (row) scaling into halo ------------
+  // The cumulative constraint-matrix (row) scaling is computed only on owned
+  // rows; push each owner's values into the peers' halo copies.
   void broadcast_constraint_scaling_to_halo()
   {
-    const int nb    = static_cast<int>(shards.size());
-    auto buf_access = [](pdlp_shard_t<i_t, f_t>& s) -> rmm::device_uvector<f_t>& {
+    halo_exchange_cstr_shard([](pdlp_shard_t<i_t, f_t>& s) -> rmm::device_uvector<f_t>& {
       return s.sub_pdlp->get_initial_scaling_strategy().get_cummulative_constraint_matrix_scaling();
-    };
-
-    // Gather each owner's owned scaling values that peers need.
-    for (int r = 0; r < nb; ++r) {
-      auto& s = *shards[r];
-      raft::device_setter guard(s.device_id);
-      auto& y = buf_access(s);
-      for (int peer = 0; peer < nb; ++peer) {
-        if (peer == r) continue;
-        if (s.cstr_send_indices_d[peer].size() == 0) continue;
-        thrust::gather(rmm::exec_policy_nosync(s.stream.view()),
-                       s.cstr_send_indices_d[peer].begin(),
-                       s.cstr_send_indices_d[peer].end(),
-                       y.begin(),
-                       s.cstr_send_buf_d[peer].begin());
-      }
-    }
-
-    ncclGroupStart();
-    for (int r = 0; r < nb; ++r) {
-      auto& s = *shards[r];
-      raft::device_setter guard(s.device_id);
-      for (int peer = 0; peer < nb; ++peer) {
-        if (peer == r) continue;
-        ncclSend(s.cstr_send_buf_d[peer].data(),
-                 s.cstr_send_buf_d[peer].size(),
-                 ncclFloat64,
-                 peer,
-                 s.comm.get(),
-                 s.stream.view().value());
-      }
-    }
-    for (int r = 0; r < nb; ++r) {
-      auto& s  = *shards[r];
-      auto& rd = s.rank_data;
-      raft::device_setter guard(s.device_id);
-      auto& y = buf_access(s);
-      for (int peer = 0; peer < nb; ++peer) {
-        if (peer == r) continue;
-        f_t* recv_ptr = y.data() + rd.owned_cstr_size + rd.cstr_recv_offsets[peer];
-        ncclRecv(recv_ptr,
-                 static_cast<size_t>(rd.cstr_recv_counts[peer]),
-                 ncclFloat64,
-                 peer,
-                 s.comm.get(),
-                 s.stream.view().value());
-      }
-    }
-    ncclGroupEnd();
+    });
   }
 
   // -------- NCCL allreduce (sum, in place) --------------------------------
@@ -357,71 +309,62 @@ struct multi_gpu_engine_t {
   {
     const int nb = static_cast<int>(shards.size());
 
-    std::vector<rmm::device_uvector<f_t>> bound_sq;
-    std::vector<rmm::device_uvector<f_t>> obj_sq;
-    bound_sq.reserve(nb);
-    obj_sq.reserve(nb);
+    // Per-shard packed partial squared norms: [0] = bound (rhs) sq, [1] = obj sq.
+    std::vector<rmm::device_uvector<f_t>> sq;
+    sq.reserve(nb);
 
-    // 1) per-shard partial squared norms over OWNED entries only (halo rhs is
-    //    +/-inf and would otherwise double-count owned entries shared as halo).
+    // 1) per-shard partial squared norms over OWNED entries only 
     for (int r = 0; r < nb; ++r) {
       auto& s = *shards[r];
       raft::device_setter guard(s.device_id);
-      bound_sq.emplace_back(1, s.stream.view());
-      obj_sq.emplace_back(1, s.stream.view());
+      sq.emplace_back(2, s.stream.view());
 
       const auto& scaled     = s.sub_pdlp->get_initial_scaling_strategy().get_scaled_op_problem();
       const int n_owned_cstr = static_cast<int>(s.rank_data.owned_cstr_size);
       const int n_owned_var  = static_cast<int>(s.rank_data.owned_var_size);
 
-      auto bound_in = thrust::make_transform_iterator(
-        thrust::make_zip_iterator(scaled.constraint_lower_bounds.data(),
-                                  scaled.constraint_upper_bounds.data()),
-        mgpu_rhs_sq_op_t<f_t>{});
-      size_t tmp_bytes_b = 0;
-      cub::DeviceReduce::Sum(
-        nullptr, tmp_bytes_b, bound_in, bound_sq[r].data(), n_owned_cstr, s.stream.view().value());
-      rmm::device_buffer scratch_b(tmp_bytes_b, s.stream.view());
-      cub::DeviceReduce::Sum(scratch_b.data(),
-                             tmp_bytes_b,
-                             bound_in,
-                             bound_sq[r].data(),
-                             n_owned_cstr,
-                             s.stream.view().value());
+      // Squared-norm contribution of each constraint's [lower, upper] bound pair
+      // (mirrors rhs_sum_of_squares_t). The lower bound is the reduce input; the
+      // matching upper bound is fetched by index inside the op.
+      const f_t* upper = scaled.constraint_upper_bounds.data();
+      auto bound_op    = [upper] __device__(f_t lower, i_t i) {
+        const f_t u = upper[i];
+        f_t sum     = f_t(0);
+        if (isfinite(lower) && (lower != u)) sum += lower * lower;
+        if (isfinite(u)) sum += u * u;
+        return sum;
+      };
+      raft::linalg::reduce<true, true, f_t, f_t, i_t>(sq[r].data() + 0,
+                                                      scaled.constraint_lower_bounds.data(),
+                                                      n_owned_cstr,
+                                                      1,
+                                                      f_t(0),
+                                                      s.stream.view(),
+                                                      false,
+                                                      bound_op,
+                                                      raft::Sum<f_t>());
 
-      auto obj_in        = thrust::make_transform_iterator(scaled.objective_coefficients.data(),
-                                                    mgpu_weighted_sq_op_t<f_t>{c_scaling_weight});
-      size_t tmp_bytes_o = 0;
-      cub::DeviceReduce::Sum(
-        nullptr, tmp_bytes_o, obj_in, obj_sq[r].data(), n_owned_var, s.stream.view().value());
-      rmm::device_buffer scratch_o(tmp_bytes_o, s.stream.view());
-      cub::DeviceReduce::Sum(scratch_o.data(),
-                             tmp_bytes_o,
-                             obj_in,
-                             obj_sq[r].data(),
-                             n_owned_var,
-                             s.stream.view().value());
+      // Weighted sum of squares of the objective coefficients.
+      auto obj_op = [c_scaling_weight] __device__(f_t v, i_t) { return v * v * c_scaling_weight; };
+      raft::linalg::reduce<true, true, f_t, f_t, i_t>(sq[r].data() + 1,
+                                                      scaled.objective_coefficients.data(),
+                                                      n_owned_var,
+                                                      1,
+                                                      f_t(0),
+                                                      s.stream.view(),
+                                                      false,
+                                                      obj_op,
+                                                      raft::Sum<f_t>());
     }
 
-    // 2) NCCL allreduce SUM -> every shard holds the global squared norms.
+    // 2) NCCL allreduce SUM (both scalars at once) -> every shard holds the
+    //    global squared norms.
     ncclGroupStart();
     for (int r = 0; r < nb; ++r) {
       auto& s = *shards[r];
       raft::device_setter guard(s.device_id);
-      ncclAllReduce(bound_sq[r].data(),
-                    bound_sq[r].data(),
-                    1,
-                    ncclFloat64,
-                    ncclSum,
-                    s.comm.get(),
-                    s.stream.view().value());
-      ncclAllReduce(obj_sq[r].data(),
-                    obj_sq[r].data(),
-                    1,
-                    ncclFloat64,
-                    ncclSum,
-                    s.comm.get(),
-                    s.stream.view().value());
+      ncclAllReduce(
+        sq[r].data(), sq[r].data(), 2, ncclFloat64, ncclSum, s.comm.get(), s.stream.view().value());
     }
     ncclGroupEnd();
 
@@ -429,13 +372,11 @@ struct multi_gpu_engine_t {
     for (int r = 0; r < nb; ++r) {
       auto& s = *shards[r];
       raft::device_setter guard(s.device_id);
-      f_t h_bound_sq = f_t(0);
-      f_t h_obj_sq   = f_t(0);
-      raft::copy(&h_bound_sq, bound_sq[r].data(), 1, s.stream.view());
-      raft::copy(&h_obj_sq, obj_sq[r].data(), 1, s.stream.view());
+      f_t h_sq[2] = {f_t(0), f_t(0)};
+      raft::copy(h_sq, sq[r].data(), 2, s.stream.view());
       s.stream.synchronize();
-      const f_t bound_rescaling     = f_t(1) / (std::sqrt(h_bound_sq) + f_t(1));
-      const f_t objective_rescaling = f_t(1) / (std::sqrt(h_obj_sq) + f_t(1));
+      const f_t bound_rescaling     = f_t(1) / (std::sqrt(h_sq[0]) + f_t(1));
+      const f_t objective_rescaling = f_t(1) / (std::sqrt(h_sq[1]) + f_t(1));
       s.sub_pdlp->get_initial_scaling_strategy().apply_distributed_bound_objective_rescaling(
         bound_rescaling, objective_rescaling);
     }
@@ -476,18 +417,8 @@ struct multi_gpu_engine_t {
   }
 
   // -------- High-level: A @ x and A_T @ y ---------------------------------
-  // Thin wrappers used from pdhg_solver_t::compute_A_x / compute_At_y when an
-  // engine is wired in. They drive the per-shard plan-based SpMV via the
-  // canonical cusparse_view bindings (no rebinding) so the descriptor binding
-  // is never disturbed by mGPU machinery.
-  //
-  // The halo-exchange MUST target the exact buffer the canonical descriptor
-  // is bound to in the PDHG cusparse_view (see cusparse_view.cu lines 516-519
-  // and 595-599):
-  //   - cv.reflected_primal_solution -> reflected_primal_ (var-shaped)
-  //   - cv.dual_solution             -> current.dual_solution_ (cstr-shaped)
-  // For 1 shard the halo-exchange is a no-op, but the buffer choice is what
-  // makes multi-shard correctness work, so we keep it accurate either way.
+  // Distributed counterpart to pdhg_solver_t::compute_A_x()
+  // We don't use distributed_spmv_A() because we are using SpMVOp rather than SpMV
   void distributed_compute_A_x()
   {
     halo_exchange_var(
@@ -495,6 +426,8 @@ struct multi_gpu_engine_t {
     for_each_shard([](auto& shard) { shard.sub_pdlp->pdhg_solver_.spmvop_A_x(); });
   }
 
+  // Distributed counterpart to pdhg_solver_t::compute_At_y()
+  // We don't use distributed_spmv_At() because we are using SpMVOp rather than SpMV
   void distributed_compute_At_y()
   {
     halo_exchange_cstr(
@@ -503,34 +436,23 @@ struct multi_gpu_engine_t {
   }
 
   // -------- Distributed Ruiz inf-scaling -----------------------------------
-  void alloc_global_var_scratch(i_t n_global_vars,
-                                std::vector<rmm::device_uvector<f_t>>& global_var_buf,
-                                std::vector<rmm::device_uvector<i_t>>& local_to_global_var_d)
+  std::vector<rmm::device_uvector<f_t>> alloc_global_var_scratch(i_t n_global_vars)
   {
     const int nb = static_cast<int>(shards.size());
+    std::vector<rmm::device_uvector<f_t>> global_var_buf;
     global_var_buf.reserve(nb);
-    local_to_global_var_d.reserve(nb);
     for (int r = 0; r < nb; ++r) {
       auto& s = *shards[r];
       raft::device_setter guard(s.device_id);
       global_var_buf.emplace_back(static_cast<std::size_t>(n_global_vars), s.stream.view());
-      local_to_global_var_d.emplace_back(static_cast<std::size_t>(s.rank_data.total_var_size),
-                                         s.stream.view());
-      if (s.rank_data.total_var_size > 0) {
-        RAFT_CUDA_TRY(cudaMemcpyAsync(local_to_global_var_d.back().data(),
-                                      s.rank_data.local_to_global_var.data(),
-                                      sizeof(i_t) * s.rank_data.local_to_global_var.size(),
-                                      cudaMemcpyHostToDevice,
-                                      s.stream.view().value()));
-      }
     }
+    return global_var_buf;
   }
 
   void reduce_iteration_variable_scaling_across_shards(
     ncclRedOp_t op,
     i_t n_global_vars,
-    std::vector<rmm::device_uvector<f_t>>& global_var_buf,
-    std::vector<rmm::device_uvector<i_t>>& local_to_global_var_d)
+    std::vector<rmm::device_uvector<f_t>>& global_var_buf)
   {
     const int nb = static_cast<int>(shards.size());
 
@@ -549,7 +471,7 @@ struct multi_gpu_engine_t {
         thrust::scatter(rmm::exec_policy_nosync(s.stream.view()),
                         iter_var_scaling.begin(),
                         iter_var_scaling.begin() + s.rank_data.total_var_size,
-                        local_to_global_var_d[r].begin(),
+                        s.local_to_global_var_d.begin(),
                         global_var_buf[r].begin());
       }
     }
@@ -576,8 +498,8 @@ struct multi_gpu_engine_t {
         s.sub_pdlp->get_initial_scaling_strategy().get_iteration_variable_scaling();
       if (s.rank_data.total_var_size > 0) {
         thrust::gather(rmm::exec_policy_nosync(s.stream.view()),
-                       local_to_global_var_d[r].begin(),
-                       local_to_global_var_d[r].begin() + s.rank_data.total_var_size,
+                       s.local_to_global_var_d.begin(),
+                       s.local_to_global_var_d.begin() + s.rank_data.total_var_size,
                        global_var_buf[r].begin(),
                        iter_var_scaling.begin());
       }
@@ -589,9 +511,7 @@ struct multi_gpu_engine_t {
     if (num_iter <= 0 || n_global_vars <= 0) return;
     raft::common::nvtx::range scope("distributed_ruiz_inf_scaling");
 
-    std::vector<rmm::device_uvector<f_t>> global_var_buf;
-    std::vector<rmm::device_uvector<i_t>> local_to_global_var_d;
-    alloc_global_var_scratch(n_global_vars, global_var_buf, local_to_global_var_d);
+    auto global_var_buf = alloc_global_var_scratch(n_global_vars);
 
     for (int it = 0; it < num_iter; ++it) {
       // 1) per-shard local kernel: writes iteration_variable_scaling (per-column
@@ -601,8 +521,7 @@ struct multi_gpu_engine_t {
       });
 
       // 2) cross-shard column inf-norm reduction (MAX).
-      reduce_iteration_variable_scaling_across_shards(
-        ncclMax, n_global_vars, global_var_buf, local_to_global_var_d);
+      reduce_iteration_variable_scaling_across_shards(ncclMax, n_global_vars, global_var_buf);
 
       // 3) per-shard fold into cumulative + reset iter vectors.
       for_each_shard([](auto& shard) {
@@ -617,17 +536,17 @@ struct multi_gpu_engine_t {
 
   // Distributed Pock-Chambolle: one pass, mirroring single-GPU
   // pock_chambolle_scaling but with the per-column sum-of-powers reduced across
-  // shards (SUM) between the local kernels and the cumulative fold. Rows are
-  // owned exclusively, so the row half stays local. Runs after the distributed
-  // Ruiz pass, matching the single-GPU order (Ruiz then Pock-Chambolle).
+  // shards (SUM) between the local kernels and the cumulative fold. Each shard
+  // stores its owned rows complete, so the row half is computed locally (then
+  // broadcast to halo copies); only the column half is split across shards and
+  // needs the reduction. Runs after the distributed Ruiz pass, matching the
+  // single-GPU order (Ruiz then Pock-Chambolle).
   void distributed_pock_chambolle_scaling(f_t alpha, i_t n_global_vars)
   {
     if (n_global_vars <= 0) return;
     raft::common::nvtx::range scope("distributed_pock_chambolle_scaling");
 
-    std::vector<rmm::device_uvector<f_t>> global_var_buf;
-    std::vector<rmm::device_uvector<i_t>> local_to_global_var_d;
-    alloc_global_var_scratch(n_global_vars, global_var_buf, local_to_global_var_d);
+    auto global_var_buf = alloc_global_var_scratch(n_global_vars);
 
     // 1) per-shard local kernels: row sum (complete) + column sum (partial).
     for_each_shard([alpha](auto& shard) {
@@ -636,8 +555,7 @@ struct multi_gpu_engine_t {
     });
 
     // 2) cross-shard column sum-of-powers reduction (SUM).
-    reduce_iteration_variable_scaling_across_shards(
-      ncclSum, n_global_vars, global_var_buf, local_to_global_var_d);
+    reduce_iteration_variable_scaling_across_shards(ncclSum, n_global_vars, global_var_buf);
 
     // 3) per-shard fold into cumulative (cumulative /= sqrt(iteration)).
     for_each_shard([](auto& shard) {

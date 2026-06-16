@@ -66,6 +66,12 @@ struct pdlp_shard_t {
   raft::handle_t handle;
   nccl_comm_unique_ptr_t comm;
   rank_data_t<i_t, f_t> rank_data;
+
+  // Persistent device copy of rank_data.local_to_global_var (immutable after
+  // partitioning), sized total_var_size. Uploaded once at construction and
+  // reused by the engine's distributed scaling scatter/gather, so that map does
+  // not have to be re-uploaded on every scaling pass.
+  rmm::device_uvector<i_t> local_to_global_var_d;
   std::optional<optimization_problem_t<i_t, f_t>> opt_problem;
   std::optional<problem_t<i_t, f_t>> sub_problem;
   std::unique_ptr<pdlp_solver_t<i_t, f_t>> sub_pdlp;
