@@ -6,9 +6,6 @@
 #include <pdlp/cusparse_view.hpp>
 #include <pdlp/distributed_pdlp/distributed_algorithms.hpp>
 #include <pdlp/distributed_pdlp/multi_gpu_engine.hpp>
-// The bodies below call shard.sub_pdlp->get_initial_scaling_strategy() and
-// shard.sub_pdlp->pdhg_solver_.spmv_* — pdlp_solver_t / pdhg_solver_t must be
-// complete at the explicit instantiation point below.
 #include <pdlp/pdlp.cuh>
 
 #include <raft/core/nvtx.hpp>
@@ -43,8 +40,7 @@ void distributed_bound_objective_rescaling(multi_gpu_engine_t<i_t, f_t>& engine,
     const int n_owned_var  = static_cast<int>(s.rank_data.owned_var_size);
 
     // Squared-norm contribution of each constraint's [lower, upper] bound pair
-    // (mirrors rhs_sum_of_squares_t). The lower bound is the reduce input; the
-    // matching upper bound is fetched by index inside the op.
+    // (mirrors rhs_sum_of_squares_t).
     const f_t* upper = scaled.constraint_upper_bounds.data();
     auto bound_op    = [upper] __device__(f_t lower, i_t i) {
       const f_t u = upper[i];
@@ -430,10 +426,7 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
   };
 
   // ===== Power iteration =====
-  // Mirrors single-GPU compute_initial_step_size: z is the carried iterate
-  // (A Aᵀ q each step); at the top of each iteration q := z then q is
-  // normalized; the residual z − σ²q is written back into q only to drive
-  // the convergence check (next iteration's q := z discards it).
+  // Mirrors single-GPU compute_initial_step_size
   for (int it = 0; it < max_iterations; ++it) {
     // q := z on the owned slice (the carried iterate), then normalize.
     for (int r = 0; r < nb; ++r) {
@@ -461,7 +454,7 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
 
     // atq = A^T q : halo-exchange q, then per-shard SpMV. spmv_At_into
     // rebinds the dual_solution dnvec to q[r].data() and restores the
-    // canonical binding after the call (see pdhg.cu:643-644).
+    // canonical binding after the call
     halo_exchange_cstr_bufs(q);
     for (int r = 0; r < nb; ++r) {
       auto& s = *engine.shards[r];
