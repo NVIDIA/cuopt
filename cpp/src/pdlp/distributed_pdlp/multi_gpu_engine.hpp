@@ -242,6 +242,17 @@ struct multi_gpu_engine_t {
     });
   }
 
+  // -------- Broadcast owned variable (column) scaling into halo -----------
+  // The cumulative variable (column) scaling is computed only on owned columns;
+  // push each owner's values into the peers' halo copies so the next scaling
+  // iteration's row / column inf-norm kernels read correct factors on halo.
+  void broadcast_variable_scaling_to_halo()
+  {
+    halo_exchange_var_shard([](pdlp_shard_t<i_t, f_t>& s) -> rmm::device_uvector<f_t>& {
+      return s.sub_pdlp->get_initial_scaling_strategy().get_cummulative_variable_scaling();
+    });
+  }
+
   // -------- NCCL allreduce (sum, in place) --------------------------------
   // Per-shard in-place sum-allreduce. Each shard's stream issues an
   // ncclAllReduce(buf, buf, count, ncclFloat64, ncclSum, ...) inside a single
@@ -436,131 +447,76 @@ struct multi_gpu_engine_t {
   }
 
   // -------- Distributed Ruiz inf-scaling -----------------------------------
-  std::vector<rmm::device_uvector<f_t>> alloc_global_var_scratch(i_t n_global_vars)
-  {
-    const int nb = static_cast<int>(shards.size());
-    std::vector<rmm::device_uvector<f_t>> global_var_buf;
-    global_var_buf.reserve(nb);
-    for (int r = 0; r < nb; ++r) {
-      auto& s = *shards[r];
-      raft::device_setter guard(s.device_id);
-      global_var_buf.emplace_back(static_cast<std::size_t>(n_global_vars), s.stream.view());
-    }
-    return global_var_buf;
-  }
-
-  void reduce_iteration_variable_scaling_across_shards(
-    ncclRedOp_t op,
-    i_t n_global_vars,
-    std::vector<rmm::device_uvector<f_t>>& global_var_buf)
-  {
-    const int nb = static_cast<int>(shards.size());
-
-    // Zero global buffers, then scatter each shard's local values into their
-    // global column indices.
-    for (int r = 0; r < nb; ++r) {
-      auto& s = *shards[r];
-      raft::device_setter guard(s.device_id);
-      RAFT_CUDA_TRY(cudaMemsetAsync(global_var_buf[r].data(),
-                                    0,
-                                    sizeof(f_t) * static_cast<std::size_t>(n_global_vars),
-                                    s.stream.view().value()));
-      auto& iter_var_scaling =
-        s.sub_pdlp->get_initial_scaling_strategy().get_iteration_variable_scaling();
-      if (s.rank_data.total_var_size > 0) {
-        thrust::scatter(rmm::exec_policy_nosync(s.stream.view()),
-                        iter_var_scaling.begin(),
-                        iter_var_scaling.begin() + s.rank_data.total_var_size,
-                        s.local_to_global_var_d.begin(),
-                        global_var_buf[r].begin());
-      }
-    }
-
-    ncclGroupStart();
-    for (int r = 0; r < nb; ++r) {
-      auto& s = *shards[r];
-      raft::device_setter guard(s.device_id);
-      ncclAllReduce(global_var_buf[r].data(),
-                    global_var_buf[r].data(),
-                    static_cast<size_t>(n_global_vars),
-                    ncclFloat64,
-                    op,
-                    s.comm.get(),
-                    s.stream.view().value());
-    }
-    ncclGroupEnd();
-
-    // Gather the global per-column value back into each shard's local iter vector.
-    for (int r = 0; r < nb; ++r) {
-      auto& s = *shards[r];
-      raft::device_setter guard(s.device_id);
-      auto& iter_var_scaling =
-        s.sub_pdlp->get_initial_scaling_strategy().get_iteration_variable_scaling();
-      if (s.rank_data.total_var_size > 0) {
-        thrust::gather(rmm::exec_policy_nosync(s.stream.view()),
-                       s.local_to_global_var_d.begin(),
-                       s.local_to_global_var_d.begin() + s.rank_data.total_var_size,
-                       global_var_buf[r].begin(),
-                       iter_var_scaling.begin());
-      }
-    }
-  }
-
+  // Each shard owns its rows AND its columns and stores both complete (h_A =
+  // owned rows, h_A_t = owned columns), exactly like the SpMV path. So every
+  // owned row's inf-norm (from the row-major matrix) and every owned column's
+  // inf-norm (from the transpose A_T) is computed locally and completely -- no
+  // cross-shard reduction. The only cross-shard step is a halo broadcast of
+  // both cumulative scalings before each iteration, so the row kernel sees
+  // correct column factors on its halo columns and the column kernel sees
+  // correct row factors on its halo rows (the same forward halo exchange SpMV
+  // uses, just carrying a scaling factor instead of x / y).
   void distributed_ruiz_inf_scaling(int num_iter, i_t n_global_vars)
   {
     if (num_iter <= 0 || n_global_vars <= 0) return;
     raft::common::nvtx::range scope("distributed_ruiz_inf_scaling");
 
-    auto global_var_buf = alloc_global_var_scratch(n_global_vars);
-
     for (int it = 0; it < num_iter; ++it) {
-      // 1) per-shard local kernel: writes iteration_variable_scaling (per-column
-      //    inf-norm partial) and iteration_constraint_matrix_scaling (row, complete).
+      // Refresh halo copies of both cumulative scalings (owner -> halo) so the
+      // per-shard kernels read correct opposite-axis factors on their halo.
+      broadcast_variable_scaling_to_halo();
+      broadcast_constraint_scaling_to_halo();
+
+      // Per-shard local kernels: row inf-norm (owned rows, complete) + column
+      // inf-norm from A_T (owned columns, complete; halo columns -> 0).
       for_each_shard([](auto& shard) {
         shard.sub_pdlp->get_initial_scaling_strategy().ruiz_iter_compute_local_iteration_vectors();
       });
 
-      // 2) cross-shard column inf-norm reduction (MAX).
-      reduce_iteration_variable_scaling_across_shards(ncclMax, n_global_vars, global_var_buf);
-
-      // 3) per-shard fold into cumulative + reset iter vectors.
+      // Fold into cumulative on owned entries (halo entries get refreshed by
+      // the next iteration's broadcast).
       for_each_shard([](auto& shard) {
         shard.sub_pdlp->get_initial_scaling_strategy().ruiz_iter_apply_cumulative_update();
       });
     }
 
-    // Make sure per-shard cumulative writes are observable on subsequent
-    // calls (e.g., the next distributed_max_singular_value).
+    // Final refresh so downstream consumers (the scaled problem, the next
+    // distributed_max_singular_value, etc.) see correct halo factors.
+    broadcast_variable_scaling_to_halo();
+    broadcast_constraint_scaling_to_halo();
+
     for_each_shard([](auto& shard) { shard.stream.synchronize(); });
   }
 
   // Distributed Pock-Chambolle: one pass, mirroring single-GPU
-  // pock_chambolle_scaling but with the per-column sum-of-powers reduced across
-  // shards (SUM) between the local kernels and the cumulative fold. Each shard
-  // stores its owned rows complete, so the row half is computed locally (then
-  // broadcast to halo copies); only the column half is split across shards and
-  // needs the reduction. Runs after the distributed Ruiz pass, matching the
+  // pock_chambolle_scaling. Row sum-of-powers come from the row-major matrix
+  // (owned rows, complete) and column sum-of-powers from A_T (owned columns,
+  // complete) -- no cross-shard reduction, only the halo broadcast of both
+  // cumulative scalings. Runs after the distributed Ruiz pass, matching the
   // single-GPU order (Ruiz then Pock-Chambolle).
   void distributed_pock_chambolle_scaling(f_t alpha, i_t n_global_vars)
   {
     if (n_global_vars <= 0) return;
     raft::common::nvtx::range scope("distributed_pock_chambolle_scaling");
 
-    auto global_var_buf = alloc_global_var_scratch(n_global_vars);
+    // Refresh halo copies of both cumulative scalings so the row kernel sees
+    // correct column factors on halo columns and the A_T column kernel sees
+    // correct row factors on halo rows.
+    broadcast_variable_scaling_to_halo();
+    broadcast_constraint_scaling_to_halo();
 
-    // 1) per-shard local kernels: row sum (complete) + column sum (partial).
     for_each_shard([alpha](auto& shard) {
       shard.sub_pdlp->get_initial_scaling_strategy().pock_chambolle_compute_local_iteration_vectors(
         alpha);
     });
 
-    // 2) cross-shard column sum-of-powers reduction (SUM).
-    reduce_iteration_variable_scaling_across_shards(ncclSum, n_global_vars, global_var_buf);
-
-    // 3) per-shard fold into cumulative (cumulative /= sqrt(iteration)).
     for_each_shard([](auto& shard) {
       shard.sub_pdlp->get_initial_scaling_strategy().pock_chambolle_apply_cumulative_update();
     });
+
+    // Final refresh for downstream consumers.
+    broadcast_variable_scaling_to_halo();
+    broadcast_constraint_scaling_to_halo();
 
     for_each_shard([](auto& shard) { shard.stream.synchronize(); });
   }

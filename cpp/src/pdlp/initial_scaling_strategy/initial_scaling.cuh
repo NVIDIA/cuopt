@@ -80,6 +80,12 @@ class pdlp_initial_scaling_strategy_t {
   {
     return cummulative_constraint_matrix_scaling_;
   }
+  // Mutable access needed by distributed PDLP to broadcast owned variable
+  // (column) scaling into the halo copies between scaling iterations.
+  rmm::device_uvector<f_t>& get_cummulative_variable_scaling()
+  {
+    return cummulative_variable_scaling_;
+  }
   const rmm::device_uvector<f_t>& get_variable_scaling_vector() const;
   const problem_t<i_t, f_t>& get_scaled_op_problem();
 

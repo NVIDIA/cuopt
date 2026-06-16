@@ -566,19 +566,17 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
     shard->stream.synchronize();
   }
 
-  // Distributed scaling
+  // Distributed scaling. Each pass keeps the halo copies of both cumulative
+  // scalings refreshed internally (owner -> halo broadcast), so no extra halo
+  // push is needed here.
   if (settings_.hyper_params.do_ruiz_scaling) {
     multi_gpu_engine->distributed_ruiz_inf_scaling(
       settings_.hyper_params.default_l_inf_ruiz_iterations, n_vars);
   }
-  // push local scaling to halo
-  multi_gpu_engine->broadcast_constraint_scaling_to_halo();
   if (settings_.hyper_params.do_pock_chambolle_scaling) {
     multi_gpu_engine->distributed_pock_chambolle_scaling(
       static_cast<f_t>(settings_.hyper_params.default_alpha_pock_chambolle_rescaling), n_vars);
   }
-  // Refresh the halo constraint scaling after Pock-Chambolle
-  multi_gpu_engine->broadcast_constraint_scaling_to_halo();
 
   for (auto& shard : multi_gpu_engine->shards) {
     raft::device_setter guard(shard->device_id);

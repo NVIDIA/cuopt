@@ -187,8 +187,10 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::bound_objective_rescaling()
   h_objective_rescaling_ = cuopt::host_copy(objective_rescaling_, stream_view_);
 }
 
+// Row inf-norm of the scaled matrix, over the row-major matrix: each row is
+// reduced from its own nonzeros. (Owns the complete row in distributed PDLP.)
 template <typename i_t, typename f_t>
-__global__ void inf_norm_row_and_col_kernel(
+__global__ void inf_norm_row_kernel(
   const typename problem_t<i_t, f_t>::view_t op_problem,
   typename pdlp_initial_scaling_strategy_t<i_t, f_t>::view_t initial_scaling_view)
 {
@@ -202,14 +204,37 @@ __global__ void inf_norm_row_and_col_kernel(
       f_t scaled_val =
         (op_problem.coefficients[row_offset + j] * constraint_scale_factor) * variable_scale_factor;
       f_t abs_val = raft::abs(scaled_val);
-
-      // row part
       if (abs_val > initial_scaling_view.iteration_constraint_matrix_scaling[row]) {
         raft::myAtomicMax(&initial_scaling_view.iteration_constraint_matrix_scaling[row], abs_val);
       }
+    }
+  }
+}
 
-      // col part
-      // Add max with abs val in objective_matrix here for QP for cols
+// Column inf-norm of the scaled matrix, over the TRANSPOSE A_T: each column is
+// reduced from its own nonzeros. Computing it from A_T (instead of the
+// row-major matrix) makes every OWNED column complete in distributed PDLP
+// without any cross-shard reduction (halo columns have no A_T rows -> 0),
+// mirroring pock_chambolle_scaling_kernel_col. The scaled value uses the same
+// operands and order as the row kernel, so results are identical to the fused
+// single-GPU computation (max is exact in floating point).
+template <typename i_t, typename f_t>
+__global__ void inf_norm_col_kernel(
+  const typename problem_t<i_t, f_t>::view_t op_problem,
+  typename pdlp_initial_scaling_strategy_t<i_t, f_t>::view_t initial_scaling_view,
+  const f_t* A_T,
+  const i_t* A_T_offsets,
+  const i_t* A_T_indices)
+{
+  for (int col = blockIdx.x; col < op_problem.n_variables; col += gridDim.x) {
+    i_t col_offset            = A_T_offsets[col];
+    i_t nnz_in_col            = A_T_offsets[col + 1] - col_offset;
+    f_t variable_scale_factor = initial_scaling_view.cummulative_variable_scaling[col];
+    for (int j = threadIdx.x; j < nnz_in_col; j += blockDim.x) {
+      i_t row                     = A_T_indices[col_offset + j];
+      f_t constraint_scale_factor = initial_scaling_view.cummulative_constraint_matrix_scaling[row];
+      f_t scaled_val = (A_T[col_offset + j] * constraint_scale_factor) * variable_scale_factor;
+      f_t abs_val    = raft::abs(scaled_val);
       if (abs_val > initial_scaling_view.iteration_variable_scaling[col]) {
         raft::myAtomicMax(&initial_scaling_view.iteration_variable_scaling[col], abs_val);
       }
@@ -220,12 +245,27 @@ __global__ void inf_norm_row_and_col_kernel(
 template <typename i_t, typename f_t>
 void pdlp_initial_scaling_strategy_t<i_t, f_t>::ruiz_iter_compute_local_iteration_vectors()
 {
-  // find inf norm over rows and columns of the scaled matrix in given iteration
+  // find inf norm over rows and columns of the scaled matrix in given iteration.
+  // Rows are reduced from the row-major matrix and columns from the transpose
+  // A_T (both kernels atomicMax into zero-initialized iteration vectors).
+  RAFT_CUDA_TRY(cudaMemsetAsync(
+    iteration_constraint_matrix_scaling_.data(), 0, sizeof(f_t) * dual_size_h_, stream_view_));
+  RAFT_CUDA_TRY(cudaMemsetAsync(
+    iteration_variable_scaling_.data(), 0, sizeof(f_t) * primal_size_h_, stream_view_));
+
   i_t number_of_blocks = op_problem_scaled_.n_constraints / block_size;
   if (op_problem_scaled_.n_constraints % block_size) number_of_blocks++;
   i_t number_of_threads = std::min(op_problem_scaled_.n_variables, (i_t)block_size);
-  inf_norm_row_and_col_kernel<i_t, f_t><<<number_of_blocks, number_of_threads, 0, stream_view_>>>(
+  inf_norm_row_kernel<i_t, f_t><<<number_of_blocks, number_of_threads, 0, stream_view_>>>(
     op_problem_scaled_.view(), this->view());
+  RAFT_CUDA_TRY(cudaPeekAtLastError());
+
+  inf_norm_col_kernel<i_t, f_t><<<op_problem_scaled_.n_variables, (i_t)block_size, 0, stream_view_>>>(
+    op_problem_scaled_.view(),
+    this->view(),
+    A_T_.data(),
+    A_T_offsets_.data(),
+    A_T_indices_.data());
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 
   if (running_mip_) { reset_integer_variables(); }
@@ -1080,9 +1120,16 @@ pdlp_initial_scaling_strategy_t<i_t, f_t>::view()
 #define INSTANTIATE(F_TYPE)                                                                   \
   template class pdlp_initial_scaling_strategy_t<int, F_TYPE>;                                \
                                                                                               \
-  template __global__ void inf_norm_row_and_col_kernel<int, F_TYPE>(                          \
+  template __global__ void inf_norm_row_kernel<int, F_TYPE>(                                  \
     const typename problem_t<int, F_TYPE>::view_t op_problem,                                 \
     typename pdlp_initial_scaling_strategy_t<int, F_TYPE>::view_t initial_scaling_view);      \
+                                                                                              \
+  template __global__ void inf_norm_col_kernel<int, F_TYPE>(                                  \
+    const typename problem_t<int, F_TYPE>::view_t op_problem,                                 \
+    typename pdlp_initial_scaling_strategy_t<int, F_TYPE>::view_t initial_scaling_view,       \
+    const F_TYPE* A_T,                                                                        \
+    const int* A_T_offsets,                                                                   \
+    const int* A_T_indices);                                                                  \
                                                                                               \
   template __global__ void pock_chambolle_scaling_kernel_col<int, F_TYPE, 128>(               \
     const typename problem_t<int, F_TYPE>::view_t op_problem,                                 \
