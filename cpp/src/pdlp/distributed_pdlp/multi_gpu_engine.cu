@@ -37,19 +37,28 @@ multi_gpu_engine_t<i_t, f_t>::multi_gpu_engine_t(
   std::vector<int> devices(nb_parts);
   std::iota(devices.begin(), devices.end(), 0);
 
-  // Create NCCL Comms then let shards own them
-  std::vector<ncclComm_t> raw_comms(nb_parts);
+  // Create NCCL Comms, then immediately wrap each in a RAII owner so they are
+  // destroyed on any exception (e.g. a shard ctor throwing) before being
+  // handed off to a shard.
+  std::vector<ncclComm_t> raw_comms(nb_parts, nullptr);
   cuopt_expects(ncclCommInitAll(raw_comms.data(), nb_parts, devices.data()) == ncclSuccess,
                 error_type_t::RuntimeError,
                 "ncclCommInitAll failed");
 
-  // 3. Construct one shard per rank, pinned to its device.
+  std::vector<nccl_comm_unique_ptr_t> comms;
+  comms.reserve(nb_parts);
+  for (int r = 0; r < nb_parts; ++r) {
+    comms.emplace_back(raw_comms[r], nccl_comm_deleter_t{devices[r]});
+  }
+
+  // 3. Construct one shard per rank, pinned to its device. Ownership of each
+  //    communicator moves into its shard.
   CUOPT_LOG_INFO("distributed_pdlp: building %d shard solver(s) ...", nb_parts);
   auto shard_build_t0 = std::chrono::high_resolution_clock::now();
   for (int r = 0; r < nb_parts; ++r) {
     raft::device_setter guard(devices[r]);  // shard ctor needs device set
     shards.emplace_back(std::make_unique<pdlp_shard_t<i_t, f_t>>(
-      devices[r], std::move(rank_data[r]), raw_comms[r], mps, sub_solver_settings));
+      devices[r], std::move(rank_data[r]), std::move(comms[r]), mps, sub_solver_settings));
   }
   auto shard_build_t1 = std::chrono::high_resolution_clock::now();
   CUOPT_LOG_INFO("distributed_pdlp: shard build done in %.3f s",

@@ -24,13 +24,13 @@ pdlp_shard_t<i_t, f_t>::~pdlp_shard_t() = default;
 template <typename i_t, typename f_t>
 pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
                                      rank_data_t<i_t, f_t>&& rd,
-                                     ncclComm_t raw_comm,
+                                     nccl_comm_unique_ptr_t&& comm,
                                      io::mps_data_model_t<i_t, f_t> const& mps,
                                      pdlp_solver_settings_t<i_t, f_t> const& settings)
   : device_id(device_id),
     stream(),
     handle(stream.view()),
-    comm(raw_comm, nccl_comm_deleter_t{device_id}),
+    comm(std::move(comm)),
     rank_data(std::move(rd)),
     opt_problem(std::nullopt),
     sub_problem(std::nullopt),

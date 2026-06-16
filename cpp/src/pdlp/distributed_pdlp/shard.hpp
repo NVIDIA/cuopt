@@ -51,7 +51,7 @@ struct pdlp_shard_t {
   // Owns necessary multi-gpu data (rank_data, device_id, nccl_comm)
   pdlp_shard_t(int device_id,
                rank_data_t<i_t, f_t>&& rd,
-               ncclComm_t raw_comm,
+               nccl_comm_unique_ptr_t&& comm,
                io::mps_data_model_t<i_t, f_t> const& mps,
                pdlp_solver_settings_t<i_t, f_t> const& settings);
 
