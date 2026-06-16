@@ -12,8 +12,7 @@ namespace cuopt::linear_programming::detail {
 // Multi-threaded k-way partitioner backed by KaMinPar. Builds a
 // constraint/variable bipartite graph and runs the
 // shared-memory parallel KaMinPar kernel so partitioning scales across all CPU
-// cores of a node (set via partitioner_input_t::nb_threads; <= 0 => all
-// hardware threads).
+// cores of a node
 template <typename i_t, typename f_t>
 class kaminpar_partitioner_t : public partitioner_i<i_t, f_t> {
  public:

@@ -27,7 +27,7 @@ namespace cuopt::linear_programming::detail {
 // multi-threaded KaMinPar k-way kernel.
 //   * nodes [0, nb_cstr)              : constraint nodes
 //   * nodes [nb_cstr, nb_cstr+nb_vars): variable nodes
-//   * undirected edges from each A nonzero (one half via A, one via A_t)
+//   * each edge is a nnz between a constraint and a variable
 template <typename i_t, typename f_t>
 std::vector<i_t> kaminpar_partitioner_t<i_t, f_t>::partition(
   partitioner_input_t<i_t, f_t> const& input) const
@@ -39,9 +39,7 @@ std::vector<i_t> kaminpar_partitioner_t<i_t, f_t>::partition(
                 error_type_t::ValidationError,
                 "kaminpar_partitioner: invalid problem dimensions");
 
-  // The k-way kernel needs at least 2 blocks. For the single-shard case the
-  // partition is trivial (everything in block 0); short-circuit so KaMinPar can
-  // still be selected with distributed_pdlp_num_gpus == 1 without crashing.
+  // return trivial partition if only one part
   if (input.nb_parts == 1) {
     CUOPT_LOG_INFO("KaMinPar: nb_parts == 1, returning trivial single-block partition");
     return std::vector<i_t>(static_cast<std::size_t>(input.nb_cstr + input.nb_vars), i_t{0});
@@ -84,6 +82,9 @@ std::vector<i_t> kaminpar_partitioner_t<i_t, f_t>::partition(
   std::vector<kaminpar::shm::EdgeID> xadj(static_cast<std::size_t>(nvtx) + 1);
   std::vector<kaminpar::shm::NodeID> adjncy(2 * static_cast<std::size_t>(nnz));
 
+  // CSR already represents an adjency list of cstr -> variables.
+  // Adding the transpose to represent the var -> cstr edges. 
+  // Casting the types to KaMinPar friendly types
   for (i_t i = 0; i <= nb_cstr; ++i) {
     xadj[i] = static_cast<kaminpar::shm::EdgeID>(A_offsets[i]);
   }
@@ -106,13 +107,17 @@ std::vector<i_t> kaminpar_partitioner_t<i_t, f_t>::partition(
   engine.copy_graph(std::span<const kaminpar::shm::EdgeID>(xadj),
                     std::span<const kaminpar::shm::NodeID>(adjncy));
   engine.set_k(static_cast<kaminpar::shm::BlockID>(input.nb_parts));
-  // ~3% imbalance balance constraint.
+
+  // Allow up to 3% number of nodes imbalance. Could be knobbed for maximum performance
   engine.set_uniform_max_block_weights(0.03);
 
+  // The actual partition computation
   auto t0 = std::chrono::high_resolution_clock::now();
+  
   const kaminpar::shm::EdgeWeight edge_cut =
     engine.compute_partition(std::span<kaminpar::shm::BlockID>(block_of));
-  auto t1         = std::chrono::high_resolution_clock::now();
+  
+    auto t1         = std::chrono::high_resolution_clock::now();
   const double dt = std::chrono::duration<double>(t1 - t0).count();
 
   CUOPT_LOG_INFO(
