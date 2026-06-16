@@ -232,27 +232,6 @@ struct multi_gpu_engine_t {
     ncclGroupEnd();
   }
 
-  // -------- Broadcast owned constraint (row) scaling into halo ------------
-  // The cumulative constraint-matrix (row) scaling is computed only on owned
-  // rows; push each owner's values into the peers' halo copies.
-  void broadcast_constraint_scaling_to_halo()
-  {
-    halo_exchange_cstr_shard([](pdlp_shard_t<i_t, f_t>& s) -> rmm::device_uvector<f_t>& {
-      return s.sub_pdlp->get_initial_scaling_strategy().get_cummulative_constraint_matrix_scaling();
-    });
-  }
-
-  // -------- Broadcast owned variable (column) scaling into halo -----------
-  // The cumulative variable (column) scaling is computed only on owned columns;
-  // push each owner's values into the peers' halo copies so the next scaling
-  // iteration's row / column inf-norm kernels read correct factors on halo.
-  void broadcast_variable_scaling_to_halo()
-  {
-    halo_exchange_var_shard([](pdlp_shard_t<i_t, f_t>& s) -> rmm::device_uvector<f_t>& {
-      return s.sub_pdlp->get_initial_scaling_strategy().get_cummulative_variable_scaling();
-    });
-  }
-
   // -------- NCCL allreduce (sum, in place) --------------------------------
   // Per-shard in-place sum-allreduce. Each shard's stream issues an
   // ncclAllReduce(buf, buf, count, ncclFloat64, ncclSum, ...) inside a single
@@ -347,121 +326,11 @@ struct multi_gpu_engine_t {
   // -------- High-level: A @ x and A_T @ y ---------------------------------
   // Distributed counterpart to pdhg_solver_t::compute_A_x()
   // We don't use distributed_spmv_A() because we are using SpMVOp rather than SpMV
-  void distributed_compute_A_x()
-  {
-    halo_exchange_var(
-      [](auto& pdhg) -> rmm::device_uvector<f_t>& { return pdhg.get_reflected_primal(); });
-    for_each_shard([](auto& shard) { shard.sub_pdlp->pdhg_solver_.spmvop_A_x(); });
-  }
+  void distributed_compute_A_x();
 
   // Distributed counterpart to pdhg_solver_t::compute_At_y()
   // We don't use distributed_spmv_At() because we are using SpMVOp rather than SpMV
-  void distributed_compute_At_y()
-  {
-    halo_exchange_cstr(
-      [](auto& pdhg) -> rmm::device_uvector<f_t>& { return pdhg.get_dual_solution(); });
-    for_each_shard([](auto& shard) { shard.sub_pdlp->pdhg_solver_.spmvop_At_y(); });
-  }
-
-  // -------- Solution gather (shards -> master) ----------------------------
-  // Assembles the global potential_next primal/dual solutions and the
-  // reduced_cost on the master from the owned slices distributed across
-  // shards. Each shard's first owned_var_size (resp. owned_cstr_size) entries
-  // of its potential_next_primal_solution_ / reduced_cost_ (resp.
-  // potential_next_dual_solution_) are the live, up-to-date owned values; the
-  // master buffers are not updated during iterations and would otherwise
-  // return stale data.
-  //
-  // Used right before fill_return_problem_solution() at the return sites in
-  // pdlp_solver_t::check_termination() and pdlp_solver_t::check_limits(): the
-  // user-visible solution must contain gathered global values for primal,
-  // dual, and reduced_cost.
-  //
-  // Mirrors the metis_tests engine::get_x_output / get_y_output pattern:
-  // per shard: alloc small host tmp, copy owned slice device->host, sync,
-  // host-scatter via rank_data.local_to_global_{var,cstr} into a contiguous
-  // host buffer. Then one host->device copy into the master buffer per field.
-  //
-  // master_pdhg          : provides destinations for primal / dual.
-  // master_reduced_cost  : destination for the reduced_cost (var-shaped, lives
-  //                        in the master pdlp_solver_t's termination strategy
-  //                        convergence_information_).
-  void gather_potential_next_solutions_to_master(pdhg_solver_t<i_t, f_t>& master_pdhg,
-                                                 rmm::device_uvector<f_t>& master_reduced_cost)
-  {
-    const std::size_t total_vars  = master_pdhg.get_potential_next_primal_solution().size();
-    const std::size_t total_cstrs = master_pdhg.get_potential_next_dual_solution().size();
-
-    std::vector<f_t> h_primal(total_vars);
-    std::vector<f_t> h_dual(total_cstrs);
-    std::vector<f_t> h_reduced_cost(total_vars);
-
-    for (auto& s_uptr : shards) {
-      auto& s = *s_uptr;
-      raft::device_setter guard(s.device_id);
-      const i_t nv = s.rank_data.owned_var_size;
-      const i_t nc = s.rank_data.owned_cstr_size;
-
-      std::vector<f_t> tmp_primal(nv);
-      std::vector<f_t> tmp_dual(nc);
-      std::vector<f_t> tmp_reduced_cost(nv);
-
-      auto& sub_reduced_cost = s.sub_pdlp->get_current_termination_strategy()
-                                 .get_convergence_information()
-                                 .get_reduced_cost();
-
-      if (nv > 0) {
-        raft::copy(tmp_primal.data(),
-                   s.sub_pdlp->pdhg_solver_.get_potential_next_primal_solution().data(),
-                   static_cast<std::size_t>(nv),
-                   s.stream.view());
-        raft::copy(tmp_reduced_cost.data(),
-                   sub_reduced_cost.data(),
-                   static_cast<std::size_t>(nv),
-                   s.stream.view());
-      }
-      if (nc > 0) {
-        raft::copy(tmp_dual.data(),
-                   s.sub_pdlp->pdhg_solver_.get_potential_next_dual_solution().data(),
-                   static_cast<std::size_t>(nc),
-                   s.stream.view());
-      }
-      RAFT_CUDA_TRY(cudaStreamSynchronize(s.stream.view().value()));
-
-      if (nv > 0) {
-        thrust::scatter(thrust::host,
-                        tmp_primal.begin(),
-                        tmp_primal.end(),
-                        s.rank_data.local_to_global_var.begin(),
-                        h_primal.begin());
-        thrust::scatter(thrust::host,
-                        tmp_reduced_cost.begin(),
-                        tmp_reduced_cost.end(),
-                        s.rank_data.local_to_global_var.begin(),
-                        h_reduced_cost.begin());
-      }
-      if (nc > 0) {
-        thrust::scatter(thrust::host,
-                        tmp_dual.begin(),
-                        tmp_dual.end(),
-                        s.rank_data.local_to_global_cstr.begin(),
-                        h_dual.begin());
-      }
-    }
-
-    // Host -> master device. engine.stream lives on the master device
-    // (created at engine construction when master device was current).
-    raft::copy(master_pdhg.get_potential_next_primal_solution().data(),
-               h_primal.data(),
-               total_vars,
-               stream.view());
-    raft::copy(master_pdhg.get_potential_next_dual_solution().data(),
-               h_dual.data(),
-               total_cstrs,
-               stream.view());
-    raft::copy(master_reduced_cost.data(), h_reduced_cost.data(), total_vars, stream.view());
-    RAFT_CUDA_TRY(cudaStreamSynchronize(stream.view().value()));
-  }
+  void distributed_compute_At_y();
 
   // Engine-level stream for fork/join orchestration (master side).
   rmm::cuda_stream stream;
@@ -480,52 +349,18 @@ struct multi_gpu_engine_t {
   std::vector<std::unique_ptr<cuopt::event_handler_t>> sync_shard_ready_events_;
 
   // Forks master stream to shards, so that the captured graph can see the work on the shards
-  void graph_capture_fork_to_shards(rmm::cuda_stream_view master_stream)
-  {
-    graph_master_ready_event_->record(master_stream);
-    for (auto& s : shards) {
-      raft::device_setter guard(s->device_id);
-      graph_master_ready_event_->stream_wait(s->stream.view());
-    }
-  }
+  void graph_capture_fork_to_shards(rmm::cuda_stream_view master_stream);
 
   // Joins shards back to master stream for correct graph capture
-  void graph_capture_join_from_shards(rmm::cuda_stream_view master_stream)
-  {
-    const int nb = static_cast<int>(shards.size());
-    for (int r = 0; r < nb; ++r) {
-      raft::device_setter guard(shards[r]->device_id);
-      graph_shard_ready_events_[r]->record(shards[r]->stream.view());
-    }
-    for (auto& e : graph_shard_ready_events_) {
-      e->stream_wait(master_stream);
-    }
-  }
+  void graph_capture_join_from_shards(rmm::cuda_stream_view master_stream);
 
   // Functionnaly same as graph_capture_fork_to_shards but on a different event to avoid race
   // conditions Can be used as a way to sync shards with master stream
-  void sync_await_master(rmm::cuda_stream_view master_stream)
-  {
-    sync_master_ready_event_->record(master_stream);
-    for (auto& s : shards) {
-      raft::device_setter guard(s->device_id);
-      sync_master_ready_event_->stream_wait(s->stream.view());
-    }
-  }
+  void sync_await_master(rmm::cuda_stream_view master_stream);
 
   // Same as sync_await_master
   // Can be used as a way to sync master stream with shards
-  void sync_await_shards(rmm::cuda_stream_view master_stream)
-  {
-    const int nb = static_cast<int>(shards.size());
-    for (int r = 0; r < nb; ++r) {
-      raft::device_setter guard(shards[r]->device_id);
-      sync_shard_ready_events_[r]->record(shards[r]->stream.view());
-    }
-    for (auto& e : sync_shard_ready_events_) {
-      e->stream_wait(master_stream);
-    }
-  }
+  void sync_await_shards(rmm::cuda_stream_view master_stream);
 };
 
 }  // namespace cuopt::linear_programming::detail

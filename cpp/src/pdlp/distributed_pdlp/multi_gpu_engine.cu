@@ -4,9 +4,6 @@
  */
 
 #include <pdlp/distributed_pdlp/multi_gpu_engine.hpp>
-// compute_A_x() / compute_At_y() (defined inline in the engine header) call
-// shard.sub_pdlp->pdhg_solver_.compute_* — pdlp_solver_t must be complete at
-// the explicit instantiation point below.
 #include <pdlp/pdlp.cuh>
 
 #include <cuopt/error.hpp>
@@ -40,13 +37,13 @@ multi_gpu_engine_t<i_t, f_t>::multi_gpu_engine_t(
   // Create NCCL Comms, then immediately wrap each in a RAII owner so they are
   // destroyed on any exception (e.g. a shard ctor throwing) before being
   // handed off to a shard.
+  std::vector<nccl_comm_unique_ptr_t> comms;
+  comms.reserve(nb_parts);
   std::vector<ncclComm_t> raw_comms(nb_parts, nullptr);
   cuopt_expects(ncclCommInitAll(raw_comms.data(), nb_parts, devices.data()) == ncclSuccess,
                 error_type_t::RuntimeError,
                 "ncclCommInitAll failed");
 
-  std::vector<nccl_comm_unique_ptr_t> comms;
-  comms.reserve(nb_parts);
   for (int r = 0; r < nb_parts; ++r) {
     comms.emplace_back(raw_comms[r], nccl_comm_deleter_t{devices[r]});
   }
@@ -75,6 +72,72 @@ multi_gpu_engine_t<i_t, f_t>::multi_gpu_engine_t(
     raft::device_setter guard(devices[r]);
     graph_shard_ready_events_.emplace_back(std::make_unique<cuopt::event_handler_t>());
     sync_shard_ready_events_.emplace_back(std::make_unique<cuopt::event_handler_t>());
+  }
+}
+
+// -------- High-level: A @ x and A_T @ y -----------------------------------
+template <typename i_t, typename f_t>
+void multi_gpu_engine_t<i_t, f_t>::distributed_compute_A_x()
+{
+  halo_exchange_var(
+    [](auto& pdhg) -> rmm::device_uvector<f_t>& { return pdhg.get_reflected_primal(); });
+  for_each_shard([](auto& shard) { shard.sub_pdlp->pdhg_solver_.spmvop_A_x(); });
+}
+
+template <typename i_t, typename f_t>
+void multi_gpu_engine_t<i_t, f_t>::distributed_compute_At_y()
+{
+  halo_exchange_cstr(
+    [](auto& pdhg) -> rmm::device_uvector<f_t>& { return pdhg.get_dual_solution(); });
+  for_each_shard([](auto& shard) { shard.sub_pdlp->pdhg_solver_.spmvop_At_y(); });
+}
+
+// -------- Cross-stream fork / join / sync ---------------------------------
+template <typename i_t, typename f_t>
+void multi_gpu_engine_t<i_t, f_t>::graph_capture_fork_to_shards(
+  rmm::cuda_stream_view master_stream)
+{
+  graph_master_ready_event_->record(master_stream);
+  for (auto& s : shards) {
+    raft::device_setter guard(s->device_id);
+    graph_master_ready_event_->stream_wait(s->stream.view());
+  }
+}
+
+template <typename i_t, typename f_t>
+void multi_gpu_engine_t<i_t, f_t>::graph_capture_join_from_shards(
+  rmm::cuda_stream_view master_stream)
+{
+  const int nb = static_cast<int>(shards.size());
+  for (int r = 0; r < nb; ++r) {
+    raft::device_setter guard(shards[r]->device_id);
+    graph_shard_ready_events_[r]->record(shards[r]->stream.view());
+  }
+  for (auto& e : graph_shard_ready_events_) {
+    e->stream_wait(master_stream);
+  }
+}
+
+template <typename i_t, typename f_t>
+void multi_gpu_engine_t<i_t, f_t>::sync_await_master(rmm::cuda_stream_view master_stream)
+{
+  sync_master_ready_event_->record(master_stream);
+  for (auto& s : shards) {
+    raft::device_setter guard(s->device_id);
+    sync_master_ready_event_->stream_wait(s->stream.view());
+  }
+}
+
+template <typename i_t, typename f_t>
+void multi_gpu_engine_t<i_t, f_t>::sync_await_shards(rmm::cuda_stream_view master_stream)
+{
+  const int nb = static_cast<int>(shards.size());
+  for (int r = 0; r < nb; ++r) {
+    raft::device_setter guard(shards[r]->device_id);
+    sync_shard_ready_events_[r]->record(shards[r]->stream.view());
+  }
+  for (auto& e : sync_shard_ready_events_) {
+    e->stream_wait(master_stream);
   }
 }
 

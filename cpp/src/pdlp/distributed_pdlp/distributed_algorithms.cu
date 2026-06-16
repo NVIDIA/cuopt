@@ -18,6 +18,105 @@
 
 namespace cuopt::linear_programming::detail {
 
+// -------- Broadcast owned constraint (row) scaling into halo --------------
+template <typename i_t, typename f_t>
+void broadcast_constraint_scaling_to_halo(multi_gpu_engine_t<i_t, f_t>& engine)
+{
+  engine.halo_exchange_cstr_shard([](pdlp_shard_t<i_t, f_t>& s) -> rmm::device_uvector<f_t>& {
+    return s.sub_pdlp->get_initial_scaling_strategy().get_cummulative_constraint_matrix_scaling();
+  });
+}
+
+// -------- Broadcast owned variable (column) scaling into halo -------------
+template <typename i_t, typename f_t>
+void broadcast_variable_scaling_to_halo(multi_gpu_engine_t<i_t, f_t>& engine)
+{
+  engine.halo_exchange_var_shard([](pdlp_shard_t<i_t, f_t>& s) -> rmm::device_uvector<f_t>& {
+    return s.sub_pdlp->get_initial_scaling_strategy().get_cummulative_variable_scaling();
+  });
+}
+
+// -------- Solution gather (shards -> master) ------------------------------
+template <typename i_t, typename f_t>
+void gather_potential_next_solutions_to_master(multi_gpu_engine_t<i_t, f_t>& engine,
+                                               pdhg_solver_t<i_t, f_t>& master_pdhg,
+                                               rmm::device_uvector<f_t>& master_reduced_cost)
+{
+  const std::size_t total_vars  = master_pdhg.get_potential_next_primal_solution().size();
+  const std::size_t total_cstrs = master_pdhg.get_potential_next_dual_solution().size();
+
+  std::vector<f_t> h_primal(total_vars);
+  std::vector<f_t> h_dual(total_cstrs);
+  std::vector<f_t> h_reduced_cost(total_vars);
+
+  for (auto& s_uptr : engine.shards) {
+    auto& s = *s_uptr;
+    raft::device_setter guard(s.device_id);
+    const i_t nv = s.rank_data.owned_var_size;
+    const i_t nc = s.rank_data.owned_cstr_size;
+
+    std::vector<f_t> tmp_primal(nv);
+    std::vector<f_t> tmp_dual(nc);
+    std::vector<f_t> tmp_reduced_cost(nv);
+
+    auto& sub_reduced_cost = s.sub_pdlp->get_current_termination_strategy()
+                               .get_convergence_information()
+                               .get_reduced_cost();
+
+    if (nv > 0) {
+      raft::copy(tmp_primal.data(),
+                 s.sub_pdlp->pdhg_solver_.get_potential_next_primal_solution().data(),
+                 static_cast<std::size_t>(nv),
+                 s.stream.view());
+      raft::copy(tmp_reduced_cost.data(),
+                 sub_reduced_cost.data(),
+                 static_cast<std::size_t>(nv),
+                 s.stream.view());
+    }
+    if (nc > 0) {
+      raft::copy(tmp_dual.data(),
+                 s.sub_pdlp->pdhg_solver_.get_potential_next_dual_solution().data(),
+                 static_cast<std::size_t>(nc),
+                 s.stream.view());
+    }
+    RAFT_CUDA_TRY(cudaStreamSynchronize(s.stream.view().value()));
+
+    if (nv > 0) {
+      thrust::scatter(thrust::host,
+                      tmp_primal.begin(),
+                      tmp_primal.end(),
+                      s.rank_data.local_to_global_var.begin(),
+                      h_primal.begin());
+      thrust::scatter(thrust::host,
+                      tmp_reduced_cost.begin(),
+                      tmp_reduced_cost.end(),
+                      s.rank_data.local_to_global_var.begin(),
+                      h_reduced_cost.begin());
+    }
+    if (nc > 0) {
+      thrust::scatter(thrust::host,
+                      tmp_dual.begin(),
+                      tmp_dual.end(),
+                      s.rank_data.local_to_global_cstr.begin(),
+                      h_dual.begin());
+    }
+  }
+
+  // Host -> master device. engine.stream lives on the master device
+  // (created at engine construction when master device was current).
+  raft::copy(master_pdhg.get_potential_next_primal_solution().data(),
+             h_primal.data(),
+             total_vars,
+             engine.stream.view());
+  raft::copy(master_pdhg.get_potential_next_dual_solution().data(),
+             h_dual.data(),
+             total_cstrs,
+             engine.stream.view());
+  raft::copy(
+    master_reduced_cost.data(), h_reduced_cost.data(), total_vars, engine.stream.view());
+  RAFT_CUDA_TRY(cudaStreamSynchronize(engine.stream.view().value()));
+}
+
 // -------- Distributed bound / objective rescaling -------------------------
 template <typename i_t, typename f_t>
 void distributed_bound_objective_rescaling(multi_gpu_engine_t<i_t, f_t>& engine,
@@ -116,8 +215,8 @@ void distributed_ruiz_inf_scaling(multi_gpu_engine_t<i_t, f_t>& engine,
   for (int it = 0; it < num_iter; ++it) {
     // Refresh halo copies of both cumulative scalings (owner -> halo) so the
     // per-shard kernels read correct opposite-axis factors on their halo.
-    engine.broadcast_variable_scaling_to_halo();
-    engine.broadcast_constraint_scaling_to_halo();
+    broadcast_variable_scaling_to_halo(engine);
+    broadcast_constraint_scaling_to_halo(engine);
 
     // Per-shard local kernels: row inf-norm (owned rows, complete) + column
     // inf-norm from A_T (owned columns, complete; halo columns -> 0).
@@ -134,8 +233,8 @@ void distributed_ruiz_inf_scaling(multi_gpu_engine_t<i_t, f_t>& engine,
 
   // Final refresh so downstream consumers (the scaled problem, the next
   // distributed_max_singular_value, etc.) see correct halo factors.
-  engine.broadcast_variable_scaling_to_halo();
-  engine.broadcast_constraint_scaling_to_halo();
+  broadcast_variable_scaling_to_halo(engine);
+  broadcast_constraint_scaling_to_halo(engine);
 
   engine.for_each_shard([](auto& shard) { shard.stream.synchronize(); });
 }
@@ -153,8 +252,8 @@ void distributed_pock_chambolle_scaling(multi_gpu_engine_t<i_t, f_t>& engine,
   raft::common::nvtx::range scope("distributed_pock_chambolle_scaling");
 
   // Refresh halo copies of both cumulative scalings
-  engine.broadcast_variable_scaling_to_halo();
-  engine.broadcast_constraint_scaling_to_halo();
+  broadcast_variable_scaling_to_halo(engine);
+  broadcast_constraint_scaling_to_halo(engine);
 
   engine.for_each_shard([alpha](auto& shard) {
     shard.sub_pdlp->get_initial_scaling_strategy().pock_chambolle_compute_local_iteration_vectors(
@@ -166,8 +265,8 @@ void distributed_pock_chambolle_scaling(multi_gpu_engine_t<i_t, f_t>& engine,
   });
 
   // Final refresh for downstream consumers.
-  engine.broadcast_variable_scaling_to_halo();
-  engine.broadcast_constraint_scaling_to_halo();
+  broadcast_variable_scaling_to_halo(engine);
+  broadcast_constraint_scaling_to_halo(engine);
 
   engine.for_each_shard([](auto& shard) { shard.stream.synchronize(); });
 }
@@ -509,6 +608,10 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
 }
 
 // ----- Explicit instantiations (mirror multi_gpu_engine_t<int, double>) -----
+template void broadcast_constraint_scaling_to_halo<int, double>(
+  multi_gpu_engine_t<int, double>& engine);
+template void broadcast_variable_scaling_to_halo<int, double>(
+  multi_gpu_engine_t<int, double>& engine);
 template void distributed_bound_objective_rescaling<int, double>(
   multi_gpu_engine_t<int, double>& engine, double c_scaling_weight);
 template void distributed_ruiz_inf_scaling<int, double>(multi_gpu_engine_t<int, double>& engine,
@@ -520,5 +623,9 @@ template double distributed_max_singular_value<int, double>(multi_gpu_engine_t<i
                                                             int n_global_cstrs,
                                                             int max_iterations,
                                                             double tolerance);
+template void gather_potential_next_solutions_to_master<int, double>(
+  multi_gpu_engine_t<int, double>& engine,
+  pdhg_solver_t<int, double>& master_pdhg,
+  rmm::device_uvector<double>& master_reduced_cost);
 
 }  // namespace cuopt::linear_programming::detail

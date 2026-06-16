@@ -4,11 +4,28 @@
  */
 #pragma once
 
-// Algorithm-level distributed PDLP numerical methods.
+#include <rmm/device_uvector.hpp>
+
+// Algorithm-level distributed PDLP
 namespace cuopt::linear_programming::detail {
 
 template <typename i_t, typename f_t>
 struct multi_gpu_engine_t;
+
+template <typename i_t, typename f_t>
+class pdhg_solver_t;
+
+// Broadcast the owned constraint (row) cumulative scaling into every peer's
+// halo copy. The factor is computed only on owned rows; this pushes each
+// owner's values out so halo rows carry correct factors for the next pass.
+template <typename i_t, typename f_t>
+void broadcast_constraint_scaling_to_halo(multi_gpu_engine_t<i_t, f_t>& engine);
+
+// Broadcast the owned variable (column) cumulative scaling into every peer's
+// halo copy, so the next scaling iteration's row / column inf-norm kernels read
+// correct factors on their halo columns.
+template <typename i_t, typename f_t>
+void broadcast_variable_scaling_to_halo(multi_gpu_engine_t<i_t, f_t>& engine);
 
 // Global bound/objective rescaling: allreduce the owned partial squared norms
 // of the constraint bounds and (weighted) objective, then apply the identical
@@ -40,5 +57,12 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
                                    i_t n_global_cstrs,
                                    int max_iterations = 5000,
                                    f_t tolerance      = 1e-4);
+
+// Gather the global potential_next primal/dual solutions and the reduced cost
+// onto the master from the owned slices distributed across shards.
+template <typename i_t, typename f_t>
+void gather_potential_next_solutions_to_master(multi_gpu_engine_t<i_t, f_t>& engine,
+                                               pdhg_solver_t<i_t, f_t>& master_pdhg,
+                                               rmm::device_uvector<f_t>& master_reduced_cost);
 
 }  // namespace cuopt::linear_programming::detail
