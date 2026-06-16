@@ -20,6 +20,7 @@
 #include <dual_simplex/sparse_matrix.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include "cuopt/linear_programming/pdlp/solver_solution.hpp"
+#include "distributed_pdlp/distributed_algorithms.hpp"
 #include "distributed_pdlp/multi_gpu_engine.hpp"
 
 #include <utilities/copy_helpers.hpp>
@@ -570,12 +571,14 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   // scalings refreshed internally (owner -> halo broadcast), so no extra halo
   // push is needed here.
   if (settings_.hyper_params.do_ruiz_scaling) {
-    multi_gpu_engine->distributed_ruiz_inf_scaling(
-      settings_.hyper_params.default_l_inf_ruiz_iterations, n_vars);
+    distributed_ruiz_inf_scaling(
+      *multi_gpu_engine, settings_.hyper_params.default_l_inf_ruiz_iterations, n_vars);
   }
   if (settings_.hyper_params.do_pock_chambolle_scaling) {
-    multi_gpu_engine->distributed_pock_chambolle_scaling(
-      static_cast<f_t>(settings_.hyper_params.default_alpha_pock_chambolle_rescaling), n_vars);
+    distributed_pock_chambolle_scaling(
+      *multi_gpu_engine,
+      static_cast<f_t>(settings_.hyper_params.default_alpha_pock_chambolle_rescaling),
+      n_vars);
   }
 
   for (auto& shard : multi_gpu_engine->shards) {
@@ -596,13 +599,14 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
 
   // Global bound/objective rescaling: allreduce the owned partial squared-norms
   if (settings_.hyper_params.bound_objective_rescaling && !inside_mip_) {
-    multi_gpu_engine->distributed_bound_objective_rescaling(
+    distributed_bound_objective_rescaling(
+      *multi_gpu_engine,
       static_cast<f_t>(settings_.hyper_params.initial_primal_weight_c_scaling));
   }
 
   // ----- 8b. Seed initial step-size / primal-weight (distributed, scales to N shards) -----
   constexpr f_t kStepSizeScale = f_t{0.998};
-  const f_t sigma_max          = multi_gpu_engine->distributed_max_singular_value(n_cstr);
+  const f_t sigma_max          = distributed_max_singular_value(*multi_gpu_engine, n_cstr);
   const f_t h_primal_weight    = f_t{1};
   const f_t h_step_size        = (sigma_max > f_t{0}) ? kStepSizeScale / sigma_max : f_t{1};
   // With primal_weight = 1 the adaptive step-size strategy collapses to
