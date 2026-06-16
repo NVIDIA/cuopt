@@ -447,6 +447,7 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
   }
 
   // QCMATRIX: one symmetric Q per constraint row (no extra ½ factor vs file coeffs).
+  // require_symmetric_q_offdiagonal=true: MPS encodes each cross term as (i,j,v) and (j,i,v).
   for (const auto& block : qcmatrix_blocks_) {
     const i_t row_id = block.constraint_row_id;
     mps_parser_expects(row_id >= 0 && row_id < static_cast<i_t>(row_types.size()),

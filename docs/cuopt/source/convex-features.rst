@@ -165,9 +165,10 @@ Rotated second-order cone constraints must be specified as a quadratic constrain
 
    x_2^2 + x_3^2 + ... + x_n^2 - 2 * x_0 * x_1 <= 0,  x_0 >= 0,  x_1 >= 0.
 
-In the Python and C APIs, write the cross term naturally as ``-2 * x_0 * x_1``. MPS QCMATRIX
-files must supply symmetric halves (see the MPS examples); cuOpt canonicalizes them internally to
-one cross coefficient per variable pair.
+In the Python and C APIs, supply one cross coefficient per variable pair (e.g. ``-2 * x_0 * x_1``);
+cuOpt stores one canonical COO entry per pair. The MPS QCMATRIX interchange format requires each
+off-diagonal to appear symmetrically in the file; the parser validates that before merging the two
+halves into one stored coefficient (see the MPS examples).
 
 .. code-block:: text
 
@@ -214,12 +215,6 @@ When any quadratic constraint is present, cuOpt automatically selects the barrie
     problem.addConstraint(
         x2*x2 + x3*x3 - 2*x0*x1 <= 0, name="rotated_soc"
     )
-
-.. note::
-   MPS QCMATRIX files require symmetric cross-term halves; the Python and C APIs accept a single
-   cross coefficient per variable pair. Use ``-2*x0*x1`` for the standard form
-   ``||tail||^2 <= 2*x0*x1``; use ``-x0*x1`` (or MPS halves ``-0.5`` each) for
-   ``||tail||^2 <= x0*x1``.
 
 **C API:** Use :c:func:`cuOptAddQuadraticConstraint` to add convex quadratic constraints or second-order and rotated second-order cone constraints expressed as quadratic inequalities.
 

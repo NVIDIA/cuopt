@@ -1773,7 +1773,6 @@ cuopt_int_t test_rotated_soc_constraint_problem(cuopt_int_t* termination_status_
     CUOPT_INFINITY, CUOPT_INFINITY, CUOPT_INFINITY, CUOPT_INFINITY};
   char variable_types[] = {CUOPT_CONTINUOUS, CUOPT_CONTINUOUS, CUOPT_CONTINUOUS, CUOPT_CONTINUOUS};
 
-  // Canonical cross term Q[x3, x4] = -1 (not MPS symmetric halves).
   cuopt_int_t qc_row_index[] = {0, 1, 2};
   cuopt_int_t qc_col_index[] = {0, 1, 3};
   cuopt_float_t qc_coeff[]   = {1.0, 1.0, -1.0};

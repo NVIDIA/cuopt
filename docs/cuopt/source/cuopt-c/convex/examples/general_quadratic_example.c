@@ -77,8 +77,7 @@ cuopt_int_t test_general_quadratic()
   cuopt_float_t var_upper_bounds[] = {CUOPT_INFINITY, CUOPT_INFINITY};
   char variable_types[]            = {CUOPT_CONTINUOUS, CUOPT_CONTINUOUS};
 
-  // General convex quadratic constraint 2*x^2 + 2*x*y + 2*y^2 <= 6 in canonical
-  // COO form. The cross term 2*x*y is one entry Q[0,1] = 2 (not MPS halves).
+  // General convex quadratic constraint 2*x^2 + 2*x*y + 2*y^2 <= 6 in canonical COO form.
   cuopt_int_t q_row_index[]  = {0, 1, 0};
   cuopt_int_t q_col_index[]  = {0, 1, 1};
   cuopt_float_t q_coeff[]    = {2.0, 2.0, 2.0};

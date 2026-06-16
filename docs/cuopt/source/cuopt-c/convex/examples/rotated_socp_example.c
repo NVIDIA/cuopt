@@ -13,9 +13,6 @@
  *               x1^2 + x2^2 <= x3*x4
  *               x3 >= 0, x4 >= 0,  x1, x2 free
  *
- * The cone cross term is supplied as one canonical COO entry
- * Q[x3, x4] = -1 (i.e. -x3*x4 in x^T Q x for ||tail||^2 <= x3*x4).
- *
  * Optimal: x1 = x2 = 1, x3 = x4 = sqrt(2) ~= 1.414214, objective = 2*sqrt(2) ~= 2.828427.
  *
  * Build:
@@ -76,7 +73,7 @@ cuopt_int_t test_rotated_socp()
   char variable_types[] = {
     CUOPT_CONTINUOUS, CUOPT_CONTINUOUS, CUOPT_CONTINUOUS, CUOPT_CONTINUOUS};
 
-  // Rotated cone x1^2 + x2^2 <= x3*x4 (canonical cross term Q[x3,x4] = -1).
+  // Rotated cone x1^2 + x2^2 <= x3*x4.
   cuopt_int_t q_row_index[]  = {0, 1, 2};
   cuopt_int_t q_col_index[]  = {0, 1, 3};
   cuopt_float_t q_coeff[]    = {1.0, 1.0, -1.0};

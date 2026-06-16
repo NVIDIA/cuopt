@@ -75,10 +75,6 @@ class optimization_problem_interface_t {
 
   /**
    * @brief Store quadratic constraints for MPS round-trip (linear + Q parts per QC row).
-   *
-   * Q COO must already be in canonical form (one entry per variable pair). Callers that ingest
-   * raw API/MPS data should canonicalize before calling this (see append_quadratic_constraint,
-   * add_quadratic_constraint, populate_from_data_model_view, or gRPC decode).
    */
   virtual void set_quadratic_constraints(std::vector<quadratic_constraint_t> constraints) = 0;
 

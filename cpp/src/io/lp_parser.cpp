@@ -220,8 +220,9 @@ class LpParseEngine {
   //   Objective:  must be followed by '/ 2'; the inner-coefficient convention
   //               is QUADOBJ-style 0.5 x^T Q x, so off-diagonals are halved
   //               and linear-inside-bracket terms also get /2.
-  //   Constraint: must NOT be followed by '/ 2'; coefficients are face value
-  //               for x^T Q x (canonicalized in append_quadratic_constraint).
+  //   Constraint: must NOT be followed by '/ 2'; coefficients are taken at
+  //               face value (x^T Q x); bracket must contain at least one
+  //               quadratic term.
   enum class BracketRole { Objective, Constraint };
   void parse_quadratic_bracket(int outer_sign,
                                BracketRole role,

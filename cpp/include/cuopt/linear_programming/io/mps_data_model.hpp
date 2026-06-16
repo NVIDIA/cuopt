@@ -253,8 +253,7 @@ class mps_data_model_t {
     std::vector<f_t> linear_values{};
     std::vector<i_t> linear_indices{};
     f_t rhs_value{f_t(0)};
-    /** Q in canonical COO: parallel arrays, same length, sorted by (row, col);
-     * one entry per variable pair (full cross coefficient, not MPS symmetric halves). */
+
     std::vector<i_t> rows{};
     std::vector<i_t> cols{};
     std::vector<f_t> vals{};
@@ -265,9 +264,11 @@ class mps_data_model_t {
    * @note All span inputs are host memory; the model copies this data.
    * @param linear_values, linear_indices Same nnz; can be empty for a purely quadratic row (rare).
    * @param vals, rows, cols COO triplets for Q; same length; may all be empty if Q is empty.
-   *        Stored sorted by (row, col) in canonical form (one entry per variable pair).
-   * @param require_symmetric_q_offdiagonal When true (MPS QCMATRIX), each off-diagonal pair must
-   *        appear symmetrically in the input before canonicalization.
+   *        Canonicalized on ingest to one triplet per variable pair (full x^T Q x coefficient).
+   * @param require_symmetric_q_offdiagonal Input validation only (default false). When false,
+   *        a single off-diagonal (i,j,v) per cross term is accepted (API/LP/C style). When true
+   *        (MPS QCMATRIX), each off-diagonal pair must appear as both (i,j,v) and (j,i,v) with
+   *        equal v before the halves merge to one stored entry; does not change canonical output.
    * @param constraint_row_type MPS ROWS type: 'L' (<=) or 'G' (>=). Stored as given; 'G' rows are
    *        converted to '<=' form when building the SOCP for the barrier solver. Equality ('E') is
    *        not supported.
@@ -392,8 +393,10 @@ class mps_data_model_t {
 };  // class mps_data_model_t
 
 /**
- * @brief Canonicalize Q COO on each quadratic constraint in place (merge duplicates, collapse
- * symmetric MPS halves when requested). Implemented in mps_data_model.cpp.
+ * @brief Canonicalize Q COO on each quadratic constraint in place.
+ *
+ * @param require_symmetric_q_offdiagonal Passed to canonicalize_qc_entry: when true, validates
+ *        MPS QCMATRIX symmetric-half input before merging to one entry per variable pair.
  */
 template <typename i_t, typename f_t>
 void canonicalize_quadratic_constraints(

@@ -269,9 +269,8 @@ Rotated Second-Order Cone Example
 ---------------------------------
 
 This example adds a **rotated** cone with :c:func:`cuOptAddQuadraticConstraint`. The
-cone ``x1^2 + x2^2 <= x3*x4`` uses the canonical cross term ``Q[x3, x4] = -1``
-(i.e. ``-x3*x4`` in ``x^T Q x``). MPS QCMATRIX uses symmetric halves instead; see
-:doc:`/convex-features` for other RSOC forms.
+cone ``x1^2 + x2^2 <= x3*x4`` is expressed as ``x1^2 + x2^2 - x3*x4 <= 0``. See :doc:`/convex-features`
+for other RSOC forms.
 It minimizes ``x3 + x4`` subject to ``x1 + x2 >= 2`` and the rotated cone.
 
 The example code is available at ``examples/cuopt-c/lp/rotated_socp_example.c`` (:download:`download <examples/rotated_socp_example.c>`):
@@ -319,7 +318,7 @@ General Convex Quadratic Constraint Example
 This example adds a general convex quadratic constraint with
 :c:func:`cuOptAddQuadraticConstraint`. Here we add the convex quadratic constraint
 ``2*x^2 + 2*x*y + 2*y^2 <= 6``. Note that the quadratic matrix Q that encodes this
-   constraint need not be symmetric. Here the term ``2*x*y`` is supplied as a single entry ``Q[0,1] = 2``.
+constraint need not be symmetric. Here the term ``2*x*y`` is supplied as a single entry ``Q[0,1] = 2``.
 
 The example code is available at ``examples/cuopt-c/lp/general_quadratic_example.c`` (:download:`download <examples/general_quadratic_example.c>`):
 

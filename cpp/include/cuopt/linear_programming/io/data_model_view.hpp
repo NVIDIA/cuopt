@@ -417,11 +417,9 @@ class data_model_view_t {
   bool is_Q_symmetrized() const noexcept;
 
   /**
-   * @brief Quadratic constraints (MPS QCMATRIX); owned copy for writers when not using spans.
+   * @brief Set quadratic constraints (linear part + Q in COO) on the view.
    *
-   * Q COO is stored as supplied (not canonicalized here). Canonicalization runs when
-   * constraints are copied into the solver (populate_from_data_model_view) or written
-   * to MPS (mps_writer QCMATRIX emission).
+   * Stores an owned copy retrievable via get_quadratic_constraints().
    */
   void set_quadratic_constraints(
     std::vector<typename mps_data_model_t<i_t, f_t>::quadratic_constraint_t> constraints);
