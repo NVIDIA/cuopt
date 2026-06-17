@@ -395,12 +395,11 @@ class mps_data_model_t {
 /**
  * @brief Canonicalize Q COO on each quadratic constraint in place.
  *
- * @param require_symmetric_q_offdiagonal Passed to canonicalize_coo_matrix: when true, validates
- *        MPS QCMATRIX symmetric-half input before merging to one entry per variable pair.
+ * Used for raw API / data_model_view input (single cross term per pair). MPS QCMATRIX
+ * symmetric-half validation is done in append_quadratic_constraint instead.
  */
 template <typename i_t, typename f_t>
 void canonicalize_quadratic_constraints(
-  std::vector<typename mps_data_model_t<i_t, f_t>::quadratic_constraint_t>& constraints,
-  bool require_symmetric_q_offdiagonal = false);
+  std::vector<typename mps_data_model_t<i_t, f_t>::quadratic_constraint_t>& constraints);
 
 }  // namespace cuopt::linear_programming::io

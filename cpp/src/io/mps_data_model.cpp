@@ -462,11 +462,10 @@ bool mps_data_model_t<i_t, f_t>::has_quadratic_constraints() const noexcept
 
 template <typename i_t, typename f_t>
 void canonicalize_quadratic_constraints(
-  std::vector<typename mps_data_model_t<i_t, f_t>::quadratic_constraint_t>& constraints,
-  bool require_symmetric_q_offdiagonal)
+  std::vector<typename mps_data_model_t<i_t, f_t>::quadratic_constraint_t>& constraints)
 {
   for (auto& qc : constraints) {
-    canonicalize_coo_matrix(qc.rows, qc.cols, qc.vals, require_symmetric_q_offdiagonal);
+    canonicalize_coo_matrix(qc.rows, qc.cols, qc.vals);
   }
 }
 
@@ -476,9 +475,9 @@ template class mps_data_model_t<int, float>;
 template class mps_data_model_t<int, double>;
 
 template void canonicalize_quadratic_constraints<int, float>(
-  std::vector<mps_data_model_t<int, float>::quadratic_constraint_t>&, bool);
+  std::vector<mps_data_model_t<int, float>::quadratic_constraint_t>&);
 template void canonicalize_quadratic_constraints<int, double>(
-  std::vector<mps_data_model_t<int, double>::quadratic_constraint_t>&, bool);
+  std::vector<mps_data_model_t<int, double>::quadratic_constraint_t>&);
 //  TODO current raft to cusparse wrappers only support int64_t
 //  can be CUSPARSE_INDEX_16U, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_64I
 
