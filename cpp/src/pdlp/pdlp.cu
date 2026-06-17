@@ -568,8 +568,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   }
 
   // Distributed scaling. Each pass keeps the halo copies of both cumulative
-  // scalings refreshed internally (owner -> halo broadcast), so no extra halo
-  // push is needed here.
+  // scalings refreshed internally (owner -> halo broadcast)
   if (settings_.hyper_params.do_ruiz_scaling) {
     distributed_ruiz_inf_scaling(
       *multi_gpu_engine, settings_.hyper_params.default_l_inf_ruiz_iterations, n_vars);
@@ -2303,6 +2302,26 @@ void pdlp_solver_t<i_t, f_t>::resize_and_swap_all_context_loop(
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
 }
 
+// delta = reflected - current, for both primal and dual, written into the
+// saddle-point delta buffers. Shared by the single-GPU and per-shard
+// (distributed) paths so the two only differ by which pdhg/stream they pass.
+template <typename i_t, typename f_t>
+static void compute_primal_dual_deltas(pdhg_solver_t<i_t, f_t>& pdhg, rmm::cuda_stream_view stream)
+{
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(pdhg.get_reflected_primal().data(), pdhg.get_primal_solution().data()),
+    pdhg.get_saddle_point_state().get_delta_primal().data(),
+    pdhg.get_primal_solution().size(),
+    cuda::std::minus<f_t>{},
+    stream);
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(pdhg.get_reflected_dual().data(), pdhg.get_dual_solution().data()),
+    pdhg.get_saddle_point_state().get_delta_dual().data(),
+    pdhg.get_dual_solution().size(),
+    cuda::std::minus<f_t>{},
+    stream);
+}
+
 template <typename i_t, typename f_t>
 void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarted)
 {
@@ -2329,44 +2348,19 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
                  dual_size_h_ * climber_strategies_.size(),
                "delta_dual_ size mismatch");
 
-  // Computing the deltas
+  // Computing the deltas (delta = reflected - current)
   // TODO batch mdoe: this only works if everyone restarts
   if (is_distributed_master()) {
-    // Go faire une fonction compute_delta_primal, compute_delta primal ?
-    for (auto& shard : multi_gpu_engine->shards) {
-      raft::device_setter guard(shard->device_id);
-      auto& sub_pdhg = shard->sub_pdlp->pdhg_solver_;
-      cub::DeviceTransform::Transform(cuda::std::make_tuple(sub_pdhg.get_reflected_primal().data(),
-                                                            sub_pdhg.get_primal_solution().data()),
-                                      sub_pdhg.get_saddle_point_state().get_delta_primal().data(),
-                                      sub_pdhg.get_primal_solution().size(),
-                                      cuda::std::minus<f_t>{},
-                                      shard->stream.view());
-      cub::DeviceTransform::Transform(cuda::std::make_tuple(sub_pdhg.get_reflected_dual().data(),
-                                                            sub_pdhg.get_dual_solution().data()),
-                                      sub_pdhg.get_saddle_point_state().get_delta_dual().data(),
-                                      sub_pdhg.get_dual_solution().size(),
-                                      cuda::std::minus<f_t>{},
-                                      shard->stream.view());
-    }
+    multi_gpu_engine->for_each_shard([](auto& shard) {
+      compute_primal_dual_deltas(shard.sub_pdlp->pdhg_solver_, shard.stream.view());
+    });
   } else {
-    cub::DeviceTransform::Transform(
-      cuda::std::make_tuple(pdhg_solver_.get_reflected_primal().data(),
-                            pdhg_solver_.get_primal_solution().data()),
-      pdhg_solver_.get_saddle_point_state().get_delta_primal().data(),
-      pdhg_solver_.get_primal_solution().size(),
-      cuda::std::minus<f_t>{},
-      stream_view_.value());
-    cub::DeviceTransform::Transform(cuda::std::make_tuple(pdhg_solver_.get_reflected_dual().data(),
-                                                          pdhg_solver_.get_dual_solution().data()),
-                                    pdhg_solver_.get_saddle_point_state().get_delta_dual().data(),
-                                    pdhg_solver_.get_dual_solution().size(),
-                                    cuda::std::minus<f_t>{},
-                                    stream_view_.value());
+    compute_primal_dual_deltas(pdhg_solver_, stream_view_);
   }
 
   auto& cusparse_view = pdhg_solver_.get_cusparse_view();
 
+  // Distributed compute_fixed_error second part
   if (is_distributed_master()) {
     // SpMV is the first operation in compute_interaction_and_movement so we can do halo before and
     // call it naturally we then reduce the local dot products
@@ -2382,7 +2376,6 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
         cusparseDnVecSetValues(sub_cv.potential_next_dual_solution,
                                (void*)sub_pdlp.pdhg_solver_.get_reflected_dual().data()));
 
-      // Ensure norm is on owned size
       sub_pdlp.step_size_strategy_.compute_interaction_and_movement(
         sub_pdlp.pdhg_solver_.get_primal_tmp_resource(),
         sub_cv,
@@ -2713,7 +2706,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
 
   bool warm_start_was_given = settings_.get_pdlp_warm_start_data().is_populated();
 
-  // In distributed mode, skip all setup, it is done before
+  // In distributed mode, skip all setup, it is already done
   if (!settings_.hyper_params.use_distributed_pdlp) {
     // TODO handle that properly
     if (settings_.hyper_params.compute_initial_step_size_before_scaling &&
