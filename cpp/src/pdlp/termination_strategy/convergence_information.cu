@@ -534,29 +534,15 @@ void convergence_information_t<i_t, f_t>::distributed_compute_dual_residual_and_
 {
   // 1) Halo-exchange potential_next_dual_solution on every shard so the
   //    A_T_shard @ y SpMV inside compute_dual_residual reads correct values
-  //    in the cstr halo region. The SpMV is driven through the eval view's
-  //    cv.dual_solution descriptor, which (cuPDLPx, see
-  //    cusparse_view.cu:931-937) is bound to _potential_next_dual -- not to
-  //    current.dual_solution. So we must halo-exchange the same buffer.
+  //    in the cstr halo region
   engine.halo_exchange_cstr([](pdhg_solver_t<i_t, f_t>& pdhg) -> rmm::device_uvector<f_t>& {
     return pdhg.get_potential_next_dual_solution();
   });
 
-  // 2-3) Per-shard:
-  //      - compute_dual_residual: shard.dual_residual_ has owned-var entries
-  //        correct, halo var entries garbage (their A_T row isn't on this
-  //        shard).
-  //      - compute_dual_objective_owned_partial: writes a *partial*
-  //        dot(slack[0:nv], x[0:nv]) + Σ primal_slack[0:nc] into
-  //        shard.dual_objective_, with NO scaling/offset. Relies on
-  //        primal_slack_ already populated by the per-shard
-  //        compute_primal_residual above.
-  //
+
   // Same primal_iterate fix as the primal block above: use the shard's
   // (fresh, unscaled) potential_next_primal_solution, matching single-GPU
-  // cuPDLPx (pdlp.cu:1190-1203). The previous code's get_primal_solution()
-  // would mix scaled x with unscaled dual_slack in the dual_objective
-  // cublasdot.
+  // cuPDLPx.
   engine.for_each_shard([](auto& shard) {
     auto& sub_pdlp = *shard.sub_pdlp;
     auto& sub_conv = sub_pdlp.get_current_termination_strategy().get_convergence_information();
@@ -572,7 +558,7 @@ void convergence_information_t<i_t, f_t>::distributed_compute_dual_residual_and_
   });
 
   // 4) Allreduce dual_objective_ across shards (sum, in place), mirror to
-  //    master, then apply offset/scaling once (per-shard would over-count it).
+  //    master, then apply offset/scaling once
   engine.allreduce_sum_inplace([](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
     return sp.get_current_termination_strategy()
       .get_convergence_information()
@@ -639,8 +625,9 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
   print("dual_slack", dual_slack);
 #endif
 
-  if (auto* engine = current_pdhg_solver.get_mgpu_engine()) {
-    distributed_compute_primal_residual_and_objective(*engine, settings);
+  if (current_pdhg_solver.is_distributed_master()) {
+    distributed_compute_primal_residual_and_objective(*current_pdhg_solver.get_mgpu_engine(),
+                                                      settings);
   } else {
     compute_primal_residual(
       op_problem_cusparse_view_, current_pdhg_solver.get_dual_tmp_resource(), dual_iterate);
@@ -652,8 +639,8 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
 #endif
 
   // L2 Norm
-  if (auto* engine = current_pdhg_solver.get_mgpu_engine()) {
-    distributed_compute_primal_residual_l2_norm(*engine);
+  if (current_pdhg_solver.is_distributed_master()) {
+    distributed_compute_primal_residual_l2_norm(*current_pdhg_solver.get_mgpu_engine());
   } else if (!batch_mode_) {
     my_l2_norm<i_t, f_t>(primal_residual_, l2_primal_residual_, handle_ptr_);
   } else {
@@ -697,8 +684,8 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
                                                    std::numeric_limits<f_t>::lowest());
   }
 
-  if (auto* engine = current_pdhg_solver.get_mgpu_engine()) {
-    distributed_compute_dual_residual_and_objective(*engine);
+  if (current_pdhg_solver.is_distributed_master()) {
+    distributed_compute_dual_residual_and_objective(*current_pdhg_solver.get_mgpu_engine());
   } else {
     compute_dual_residual(op_problem_cusparse_view_,
                           current_pdhg_solver.get_primal_tmp_resource(),
@@ -711,8 +698,8 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
   print("Dual Residual", dual_residual_);
 #endif
 
-  if (auto* engine = current_pdhg_solver.get_mgpu_engine()) {
-    distributed_compute_dual_residual_l2_norm(*engine);
+  if (current_pdhg_solver.is_distributed_master()) {
+    distributed_compute_dual_residual_l2_norm(*current_pdhg_solver.get_mgpu_engine());
   } else if (!batch_mode_) {
     my_l2_norm<i_t, f_t>(dual_residual_, l2_dual_residual_, handle_ptr_);
   } else {

@@ -134,8 +134,7 @@ class convergence_information_t {
   // Multi-GPU shard helper: writes a partial dot(c[0:n_owned], x[0:n_owned])
   // into primal_objective_ (no scaling, no offset). Master is responsible for
   // allreduce SUM across shards and then applying scaling + offset once on the
-  // reduced value. n_owned must be <= primal_size_h_; pass owned_var_size on
-  // each shard.
+  // reduced value
   void compute_primal_objective_owned_partial(rmm::device_uvector<f_t>& primal_solution,
                                               i_t n_owned);
 
