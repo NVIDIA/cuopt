@@ -5,9 +5,6 @@
  */
 /* clang-format on */
 #include <pdlp/pdhg.hpp>
-// pdlp.cuh defines pdlp_solver_t which the engine's compute_A_x/compute_At_y
-// template bodies dereference via shard.sub_pdlp->pdhg_solver_. Must be a
-// complete type at the point of template instantiation below.
 #include <pdlp/distributed_pdlp/multi_gpu_engine.hpp>
 #include <pdlp/pdlp.cuh>
 #include <pdlp/pdlp_climber_strategy.hpp>
@@ -512,9 +509,7 @@ void pdhg_solver_t<i_t, f_t>::compute_At_y()
   // A_t @ y
 
   // Multi-GPU dispatch: when the master pdhg has an engine, drive halo
-  // exchange + per-shard SpMV via the engine. Shards' pdhg_solver_ have no
-  // engine pointer set, so their compute_At_y falls through to the cusparse
-  // path below on each shard's local A_t.
+  // exchange + per-shard SpMV via the engine.
   if (is_distributed_master()) {
     mgpu_engine_->distributed_compute_At_y();
     return;
@@ -623,48 +618,48 @@ void pdhg_solver_t<i_t, f_t>::compute_A_x()
   }
 }
 
+// out_desc = A^T @ in_buf, on this shard's local matrix. in_buf is an arbitrary
+// caller-owned (constraint/dual-shaped) buffer; we wrap it in a throwaway dense
+// descriptor instead of hijacking a canonical solution descriptor, so no shared
+// cusparse_view_ state is mutated. Used by the distributed max-singular-value
+// power iteration to SpMV scratch buffers.
 template <typename i_t, typename f_t>
 void pdhg_solver_t<i_t, f_t>::spmv_At_into(rmm::device_uvector<f_t>& in_buf,
                                            cusparseDnVecDescr_t out_desc)
 {
-  RAFT_CUSPARSE_TRY(cusparseDnVecSetValues(cusparse_view_.dual_solution, in_buf.data()));
+  cusparse_dn_vec_descr_wrapper_t<f_t> in_vec;
+  in_vec.create(in_buf.size(), in_buf.data());
   RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
                                                        CUSPARSE_OPERATION_NON_TRANSPOSE,
                                                        reusable_device_scalar_value_1_.data(),
                                                        cusparse_view_.A_T,
-                                                       cusparse_view_.dual_solution,
+                                                       in_vec,
                                                        reusable_device_scalar_value_0_.data(),
                                                        out_desc,
                                                        CUSPARSE_SPMV_CSR_ALG2,
                                                        (f_t*)cusparse_view_.buffer_transpose.data(),
                                                        stream_view_));
-  // Restore the canonical binding so subsequent code on this shard that reads
-  // cv.dual_solution sees the dual_solution_ buffer it was constructed with.
-  RAFT_CUSPARSE_TRY(cusparseDnVecSetValues(cusparse_view_.dual_solution,
-                                           current_saddle_point_state_.get_dual_solution().data()));
 }
 
+// out_desc = A @ in_buf, the spmv_A_into counterpart of spmv_At_into: wraps the
+// arbitrary (variable/primal-shaped) in_buf in a throwaway descriptor.
 template <typename i_t, typename f_t>
 void pdhg_solver_t<i_t, f_t>::spmv_A_into(rmm::device_uvector<f_t>& in_buf,
                                           cusparseDnVecDescr_t out_desc)
 {
-  RAFT_CUSPARSE_TRY(
-    cusparseDnVecSetValues(cusparse_view_.reflected_primal_solution, in_buf.data()));
+  cusparse_dn_vec_descr_wrapper_t<f_t> in_vec;
+  in_vec.create(in_buf.size(), in_buf.data());
   RAFT_CUSPARSE_TRY(
     raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
                                        CUSPARSE_OPERATION_NON_TRANSPOSE,
                                        reusable_device_scalar_value_1_.data(),
                                        cusparse_view_.A,
-                                       cusparse_view_.reflected_primal_solution,
+                                       in_vec,
                                        reusable_device_scalar_value_0_.data(),
                                        out_desc,
                                        CUSPARSE_SPMV_CSR_ALG2,
                                        (f_t*)cusparse_view_.buffer_non_transpose.data(),
                                        stream_view_));
-  // Restore the canonical binding so subsequent code on this shard that reads
-  // cv.reflected_primal_solution sees the reflected_primal_ buffer.
-  RAFT_CUSPARSE_TRY(
-    cusparseDnVecSetValues(cusparse_view_.reflected_primal_solution, reflected_primal_.data()));
 }
 
 template <typename i_t, typename f_t>
