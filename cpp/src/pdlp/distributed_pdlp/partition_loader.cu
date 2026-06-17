@@ -23,8 +23,7 @@ std::vector<i_t> partition_loader_t<i_t, f_t>::parse_distributed_pdlp_partition_
                 "Failed to open partition file: %s",
                 file.c_str());
 
-  // One integer per line; operator>> skips whitespace so blank lines and
-  // trailing newlines are tolerated.
+  // One integer per line
   std::vector<i_t> parts;
   i_t part = 0;
   while (part_file >> part) {
@@ -98,7 +97,7 @@ std::vector<rank_data_t<i_t, f_t>> partition_loader_t<i_t, f_t>::create_rank_dat
     ++owned_var_counts[owner];
     owned_A_t_nnz[owner] += (A_t_row_offsets[j + 1] - A_t_row_offsets[j]);
   }
-
+  // Reserve exact capacities
   for (i_t rank = 0; rank < nb_parts; ++rank) {
     rank_data[rank].owned_cstr_indices.reserve(static_cast<std::size_t>(owned_cstr_counts[rank]));
     rank_data[rank].owned_var_indices.reserve(static_cast<std::size_t>(owned_var_counts[rank]));
@@ -129,10 +128,8 @@ std::vector<rank_data_t<i_t, f_t>> partition_loader_t<i_t, f_t>::create_rank_dat
     i_t local_A_nnz = 0;
     local_A_row_offsets.push_back(local_A_nnz);
 
-    // For each owned constraint, build local matrix A. We walk both the
-    // unscaled and scaled global value arrays in lockstep so the produced
-    // local arrays share identical (offsets, col_indices) and differ only
-    // in values.
+    // For each owned constraint, add associated matrix row to local A
+    // Keep the same indices here but re-order later
     for (auto owned_cstr : rd.owned_cstr_indices) {
       i_t cstr_len  = A_row_offsets[owned_cstr + 1] - A_row_offsets[owned_cstr];
       i_t row_start = A_row_offsets[owned_cstr];
@@ -146,8 +143,10 @@ std::vector<rank_data_t<i_t, f_t>> partition_loader_t<i_t, f_t>::create_rank_dat
       local_A_row_offsets.push_back(local_A_nnz);
     }
 
+    // Compute halo
     std::vector<std::vector<i_t>> needed_var_from_peer(nb_parts);
     std::unordered_set<i_t> seen_needed_vars;
+
     // size / 2 + 1 is a heuristic to avoid overestimating and resizing
     seen_needed_vars.reserve(local_A_col_indices.size() / 2 + 1);
     for (auto indice : local_A_col_indices) {
@@ -157,6 +156,7 @@ std::vector<rank_data_t<i_t, f_t>> partition_loader_t<i_t, f_t>::create_rank_dat
       }
     }
 
+    // Compute counts and offsets of halo data to stack them all at the end of the vector
     for (i_t peer = 0; peer < nb_parts; peer++) {
       i_t nb_recv_from_peer    = needed_var_from_peer[peer].size();
       rd.var_recv_counts[peer] = nb_recv_from_peer;
@@ -170,6 +170,7 @@ std::vector<rank_data_t<i_t, f_t>> partition_loader_t<i_t, f_t>::create_rank_dat
     rd.h_A_values      = std::move(local_A_values);
 
     // ---- A_t side ----
+    // conceptually same as A side
     std::vector<i_t> local_A_t_row_offsets;
     std::vector<i_t> local_A_t_col_indices;
     std::vector<f_t> local_A_t_values;
@@ -228,7 +229,6 @@ std::vector<rank_data_t<i_t, f_t>> partition_loader_t<i_t, f_t>::create_rank_dat
 
   // 3. Generate local indices for contiguous [[self], [peer1], ..., [peer_k]]
   //    Build scatter_gather_maps
-  // 3. Build local<->global maps in parallel across ranks.
 #pragma omp parallel for
   for (i_t rank = 0; rank < nb_parts; rank++) {
     auto& rd = rank_data[rank];
@@ -269,6 +269,7 @@ std::vector<rank_data_t<i_t, f_t>> partition_loader_t<i_t, f_t>::create_rank_dat
   }
 
   // 4. Remap global -> local everywhere
+  // Including in A_local and At_local
 #pragma omp parallel for
   for (i_t rank = 0; rank < nb_parts; rank++) {
     auto& rd = rank_data[rank];
