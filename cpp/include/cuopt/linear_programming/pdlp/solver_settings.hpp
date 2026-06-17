@@ -313,15 +313,12 @@ class pdlp_solver_settings_t {
   std::string multi_gpu_partition_file{""};
   // If non-empty, the partition computed for distributed PDLP is written to this
   // path (one part-id per line) right after partitioning. The file can be fed
-  // back via multi_gpu_partition_file. Exposed as the multi_gpu_export_partition_file
-  // parameter (CLI: --multi-gpu-export-partition-file <path>).
+  // back via multi_gpu_partition_file.
   std::string multi_gpu_export_partition_file{""};
   // Which graph partitioner distributed PDLP uses. One of:
   //   "auto"     - 1 GPU => Dummy; otherwise KaMinPar
   //   "dummy"    - round-robin, no graph (trivial)
   //   "kaminpar" - multi-threaded KaMinPar
-  // Exposed as the distributed_pdlp_partitioner parameter
-  // (CLI: --distributed-pdlp-partitioner <auto|dummy|kaminpar>).
   std::string distributed_pdlp_partitioner{"auto"};
   // Set to true inside the shards
   bool is_distributed_sub_pdlp{false};
