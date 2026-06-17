@@ -211,13 +211,7 @@ __global__ void inf_norm_row_kernel(
   }
 }
 
-// Column inf-norm of the scaled matrix, over the TRANSPOSE A_T: each column is
-// reduced from its own nonzeros. Computing it from A_T (instead of the
-// row-major matrix) makes every OWNED column complete in distributed PDLP
-// without any cross-shard reduction (halo columns have no A_T rows -> 0),
-// mirroring pock_chambolle_scaling_kernel_col. The scaled value uses the same
-// operands and order as the row kernel, so results are identical to the fused
-// single-GPU computation (max is exact in floating point).
+// Column inf-norm of the scaled matrix
 template <typename i_t, typename f_t>
 __global__ void inf_norm_col_kernel(
   const typename problem_t<i_t, f_t>::view_t op_problem,
