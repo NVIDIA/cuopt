@@ -11,7 +11,6 @@
 #include <cuopt/linear_programming/io/mps_writer.hpp>
 #include <cuopt/linear_programming/io/parser.hpp>
 #include <mps_parser_internal.hpp>
-#include <quadratic_constraint_coo.hpp>
 
 #include <gtest/gtest.h>
 
@@ -2722,58 +2721,67 @@ TEST(mps_bounds, invalid_bound_type)
   ASSERT_THROW(read_from_mps("linear_programming/bad-mps-bound-1.mps", false), std::logic_error);
 }
 
-TEST(qc_coo_canonicalize, merges_duplicate_entries)
+TEST(append_quadratic_constraint, merges_duplicate_entries)
 {
-  std::vector<int> rows    = {0, 0};
-  std::vector<int> cols    = {1, 1};
-  std::vector<double> vals = {2.0, 3.0};
-  canonicalize_qc_coo(rows, cols, vals);
-  ASSERT_EQ(rows.size(), 1u);
-  EXPECT_EQ(rows[0], 0);
-  EXPECT_EQ(cols[0], 1);
-  EXPECT_NEAR(vals[0], 5.0, tolerance);
+  using model_t = mps_data_model_t<int, double>;
+  model_t model;
+  const std::vector<double> vals = {2.0, 3.0};
+  const std::vector<int> rows    = {0, 0};
+  const std::vector<int> cols    = {1, 1};
+  model.append_quadratic_constraint(0, "QC0", 'L', {}, {}, 0.0, vals, rows, cols);
+
+  ASSERT_TRUE(model.has_quadratic_constraints());
+  const auto& qc = model.get_quadratic_constraints().back();
+  ASSERT_EQ(qc.rows.size(), 1u);
+  EXPECT_EQ(qc.rows[0], 0);
+  EXPECT_EQ(qc.cols[0], 1);
+  EXPECT_NEAR(qc.vals[0], 5.0, tolerance);
 }
 
-TEST(qc_coo_canonicalize, collapses_symmetric_mps_halves)
+TEST(append_quadratic_constraint, collapses_symmetric_mps_halves)
 {
-  std::vector<int> rows    = {0, 1};
-  std::vector<int> cols    = {1, 0};
-  std::vector<double> vals = {2.0, 2.0};
-  qc_coo_canonicalize_options_t<double> opts;
-  opts.require_symmetric_offdiagonal_pairs = true;
-  opts.constraint_name                     = "QC0";
-  canonicalize_qc_coo(rows, cols, vals, opts);
-  ASSERT_EQ(rows.size(), 1u);
-  EXPECT_EQ(rows[0], 0);
-  EXPECT_EQ(cols[0], 1);
-  EXPECT_NEAR(vals[0], 4.0, tolerance);
+  using model_t = mps_data_model_t<int, double>;
+  model_t model;
+  const std::vector<double> vals = {2.0, 2.0};
+  const std::vector<int> rows    = {0, 1};
+  const std::vector<int> cols    = {1, 0};
+  model.append_quadratic_constraint(0, "QC0", 'L', {}, {}, 0.0, vals, rows, cols, true);
+
+  ASSERT_TRUE(model.has_quadratic_constraints());
+  const auto& qc = model.get_quadratic_constraints().back();
+  ASSERT_EQ(qc.rows.size(), 1u);
+  EXPECT_EQ(qc.rows[0], 0);
+  EXPECT_EQ(qc.cols[0], 1);
+  EXPECT_NEAR(qc.vals[0], 4.0, tolerance);
 }
 
-TEST(qc_coo_canonicalize, keeps_genuinely_unsymmetric_pairs)
+TEST(append_quadratic_constraint, sums_both_orientations_for_off_diagonal_pair)
 {
-  std::vector<int> rows    = {0, 1};
-  std::vector<int> cols    = {1, 0};
-  std::vector<double> vals = {2.0, 3.0};
-  // Default opts (API path): do not collapse mismatched off-diagonal halves.
-  canonicalize_qc_coo(rows, cols, vals);
-  ASSERT_EQ(rows.size(), 2u);
-  EXPECT_EQ(rows[0], 0);
-  EXPECT_EQ(cols[0], 1);
-  EXPECT_NEAR(vals[0], 2.0, tolerance);
-  EXPECT_EQ(rows[1], 1);
-  EXPECT_EQ(cols[1], 0);
-  EXPECT_NEAR(vals[1], 3.0, tolerance);
+  using model_t = mps_data_model_t<int, double>;
+  model_t model;
+  const std::vector<double> vals = {2.0, 3.0};
+  const std::vector<int> rows    = {0, 1};
+  const std::vector<int> cols    = {1, 0};
+  model.append_quadratic_constraint(0, "QC0", 'L', {}, {}, 0.0, vals, rows, cols);
+
+  ASSERT_TRUE(model.has_quadratic_constraints());
+  const auto& qc = model.get_quadratic_constraints().back();
+  ASSERT_EQ(qc.rows.size(), 1u);
+  EXPECT_EQ(qc.rows[0], 0);
+  EXPECT_EQ(qc.cols[0], 1);
+  EXPECT_NEAR(qc.vals[0], 5.0, tolerance);
 }
 
-TEST(qc_coo_canonicalize, mps_requires_matching_symmetric_half)
+TEST(append_quadratic_constraint, mps_requires_matching_symmetric_half)
 {
-  std::vector<int> rows    = {0};
-  std::vector<int> cols    = {1};
-  std::vector<double> vals = {2.0};
-  qc_coo_canonicalize_options_t<double> opts;
-  opts.require_symmetric_offdiagonal_pairs = true;
-  opts.constraint_name                     = "QC0";
-  EXPECT_THROW(canonicalize_qc_coo(rows, cols, vals, opts), std::logic_error);
+  using model_t = mps_data_model_t<int, double>;
+  model_t model;
+  const std::vector<double> vals = {2.0};
+  const std::vector<int> rows    = {0};
+  const std::vector<int> cols    = {1};
+  EXPECT_THROW(
+    model.append_quadratic_constraint(0, "QC0", 'L', {}, {}, 0.0, vals, rows, cols, true),
+    std::logic_error);
 }
 
 TEST(qps_parser, qcmatrix_append_api)

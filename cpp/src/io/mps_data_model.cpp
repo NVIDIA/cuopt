@@ -200,7 +200,7 @@ void mps_data_model_t<i_t, f_t>::append_quadratic_constraint(i_t constraint_row_
     qc.rows.assign(rows.begin(), rows.end());
     qc.cols.assign(cols.begin(), cols.end());
     qc.vals.assign(vals.begin(), vals.end());
-    canonicalize_qc_entry(qc, require_symmetric_q_offdiagonal);
+    canonicalize_coo_matrix(qc.rows, qc.cols, qc.vals, require_symmetric_q_offdiagonal);
   }
 
   quadratic_constraints_.push_back(std::move(qc));
@@ -466,7 +466,7 @@ void canonicalize_quadratic_constraints(
   bool require_symmetric_q_offdiagonal)
 {
   for (auto& qc : constraints) {
-    canonicalize_qc_entry(qc, require_symmetric_q_offdiagonal);
+    canonicalize_coo_matrix(qc.rows, qc.cols, qc.vals, require_symmetric_q_offdiagonal);
   }
 }
 

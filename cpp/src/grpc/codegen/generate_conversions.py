@@ -2216,7 +2216,9 @@ def _gen_proto_to_problem(registry, indent="  "):
             )
             lines.append(f"{ind}    }}")
         if name == "quadratic_constraints":
-            lines.append(f"{ind}    io::canonicalize_qc_entry(_entry);")
+            lines.append(
+                f"{ind}    io::canonicalize_coo_matrix(_entry.rows, _entry.cols, _entry.vals);"
+            )
         lines.append(f"{ind}    _entries.push_back(std::move(_entry));")
         lines.append(f"{ind}  }}")
         lines.append(f"{ind}  cpu_problem.{setter}(std::move(_entries));")
@@ -2814,7 +2816,9 @@ def _gen_chunked_arrays_to_problem(registry, indent="  "):
                 )
                 lines.append(f"{ind}    }}")
             if name == "quadratic_constraints":
-                lines.append(f"{ind}    io::canonicalize_qc_entry(_entry);")
+                lines.append(
+                    f"{ind}    io::canonicalize_coo_matrix(_entry.rows, _entry.cols, _entry.vals);"
+                )
             lines.append(f"{ind}    _entries.push_back(std::move(_entry));")
             lines.append(f"{ind}  }}")
             lines.append(f"{ind}  cpu_problem.{setter}(std::move(_entries));")

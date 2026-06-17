@@ -395,7 +395,7 @@ class mps_data_model_t {
 /**
  * @brief Canonicalize Q COO on each quadratic constraint in place.
  *
- * @param require_symmetric_q_offdiagonal Passed to canonicalize_qc_entry: when true, validates
+ * @param require_symmetric_q_offdiagonal Passed to canonicalize_coo_matrix: when true, validates
  *        MPS QCMATRIX symmetric-half input before merging to one entry per variable pair.
  */
 template <typename i_t, typename f_t>

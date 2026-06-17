@@ -4,6 +4,9 @@
  */
 #include <quadratic_constraint_coo.hpp>
 
+#include <cmath>
+#include <limits>
+
 namespace cuopt::linear_programming::io {
 
 namespace {
@@ -16,36 +19,29 @@ struct pair_hash {
   }
 };
 
-template <typename f_t>
-bool approx_eq(f_t a, f_t b, f_t tol)
-{
-  const f_t scale = std::max({f_t(1), std::abs(a), std::abs(b)});
-  return std::abs(a - b) <= tol * scale;
-}
-
 template <typename i_t, typename f_t>
 f_t lookup_coeff(const std::unordered_map<std::pair<i_t, i_t>, f_t, pair_hash<i_t>>& agg,
                  i_t r,
-                 i_t c,
-                 f_t tol)
+                 i_t c)
 {
+  const f_t eps = std::numeric_limits<f_t>::epsilon();
   const auto it = agg.find({r, c});
-  if (it == agg.end()) { return f_t(0); }
-  return std::abs(it->second) > tol ? it->second : f_t(0);
+  if (it == agg.end() || std::abs(it->second) <= eps) { return f_t(0); }
+  return it->second;
 }
 
 }  // namespace
 
 template <typename i_t, typename f_t>
-void canonicalize_qc_coo(std::vector<i_t>& rows,
-                         std::vector<i_t>& cols,
-                         std::vector<f_t>& vals,
-                         const qc_coo_canonicalize_options_t<f_t>& opts)
+void canonicalize_coo_matrix(std::vector<i_t>& rows,
+                             std::vector<i_t>& cols,
+                             std::vector<f_t>& vals,
+                             bool require_symmetric_offdiagonal_pairs)
 {
   const size_t n = vals.size();
   cuopt_expects(rows.size() == n && cols.size() == n,
                 error_type_t::ValidationError,
-                "Q COO rows/cols/vals length mismatch");
+                "COO rows/cols/vals length mismatch");
 
   if (n == 0) {
     rows.clear();
@@ -54,19 +50,21 @@ void canonicalize_qc_coo(std::vector<i_t>& rows,
     return;
   }
 
+  // Aggregate duplicate entries
   std::unordered_map<std::pair<i_t, i_t>, f_t, pair_hash<i_t>> agg;
   agg.reserve(n);
   for (size_t t = 0; t < n; ++t) {
     const i_t r = rows[t];
     const i_t c = cols[t];
     const f_t v = vals[t];
-    if (std::abs(v) <= opts.tol) { continue; }
+    if (std::abs(v) <= std::numeric_limits<f_t>::epsilon()) { continue; }
     agg[{r, c}] += v;
   }
 
   std::vector<std::tuple<i_t, i_t, f_t>> out;
   out.reserve(agg.size());
 
+  // One lower-triangular entry per off-diagonal variable pair: coeff = sum of both orientations.
   std::unordered_map<std::pair<i_t, i_t>, char, pair_hash<i_t>> visited;
   for (const auto& [rc, v] : agg) {
     if (rc.first == rc.second) { continue; }
@@ -75,27 +73,24 @@ void canonicalize_qc_coo(std::vector<i_t>& rows,
     if (visited[{lo, hi}]) { continue; }
     visited[{lo, hi}] = 1;
 
-    const f_t v_lo_hi    = lookup_coeff(agg, lo, hi, opts.tol);
-    const f_t v_hi_lo    = lookup_coeff(agg, hi, lo, opts.tol);
-    const bool has_lo_hi = std::abs(v_lo_hi) > opts.tol;
-    const bool has_hi_lo = std::abs(v_hi_lo) > opts.tol;
+    const f_t eps        = std::numeric_limits<f_t>::epsilon();
+    const f_t v_lo_hi    = lookup_coeff(agg, lo, hi);
+    const f_t v_hi_lo    = lookup_coeff(agg, hi, lo);
+    const bool has_lo_hi = std::abs(v_lo_hi) > eps;
+    const bool has_hi_lo = std::abs(v_hi_lo) > eps;
 
-    if (opts.require_symmetric_offdiagonal_pairs) {
+    if (require_symmetric_offdiagonal_pairs) {
       cuopt_expects(has_lo_hi && has_hi_lo,
                     error_type_t::ValidationError,
-                    "Quadratic constraint '%s' QCMATRIX off-diagonal (%d,%d) requires a matching "
-                    "(%d,%d) entry",
-                    opts.constraint_name.c_str(),
+                    "QCMATRIX off-diagonal (%d,%d) requires a matching (%d,%d) entry",
                     static_cast<int>(lo),
                     static_cast<int>(hi),
                     static_cast<int>(hi),
                     static_cast<int>(lo));
       cuopt_expects(
-        approx_eq(v_lo_hi, v_hi_lo, opts.tol),
+        std::abs(v_lo_hi - v_hi_lo) <= eps,
         error_type_t::ValidationError,
-        "Quadratic constraint '%s' QCMATRIX symmetric off-diagonals (%d,%d) and (%d,%d) must "
-        "match; got %.17g and %.17g",
-        opts.constraint_name.c_str(),
+        "QCMATRIX symmetric off-diagonals (%d,%d) and (%d,%d) must match; got %.17g and %.17g",
         static_cast<int>(lo),
         static_cast<int>(hi),
         static_cast<int>(hi),
@@ -104,16 +99,14 @@ void canonicalize_qc_coo(std::vector<i_t>& rows,
         static_cast<double>(v_hi_lo));
     }
 
-    if (has_lo_hi && has_hi_lo && approx_eq(v_lo_hi, v_hi_lo, opts.tol)) {
-      out.emplace_back(lo, hi, v_lo_hi + v_hi_lo);
-    } else {
-      if (has_lo_hi) { out.emplace_back(lo, hi, v_lo_hi); }
-      if (has_hi_lo) { out.emplace_back(hi, lo, v_hi_lo); }
-    }
+    const f_t cross = v_lo_hi + v_hi_lo;
+    if (std::abs(cross) > eps) { out.emplace_back(lo, hi, cross); }
   }
 
   for (const auto& [rc, v] : agg) {
-    if (rc.first == rc.second) { out.emplace_back(rc.first, rc.second, v); }
+    if (rc.first == rc.second && std::abs(v) > std::numeric_limits<f_t>::epsilon()) {
+      out.emplace_back(rc.first, rc.second, v);
+    }
   }
 
   std::sort(out.begin(), out.end(), [](const auto& a, const auto& b) {
@@ -131,13 +124,13 @@ void canonicalize_qc_coo(std::vector<i_t>& rows,
   }
 }
 
-template void canonicalize_qc_coo<int, float>(std::vector<int>&,
-                                              std::vector<int>&,
-                                              std::vector<float>&,
-                                              const qc_coo_canonicalize_options_t<float>&);
-template void canonicalize_qc_coo<int, double>(std::vector<int>&,
-                                               std::vector<int>&,
-                                               std::vector<double>&,
-                                               const qc_coo_canonicalize_options_t<double>&);
+template void canonicalize_coo_matrix<int, float>(std::vector<int>&,
+                                                  std::vector<int>&,
+                                                  std::vector<float>&,
+                                                  bool);
+template void canonicalize_coo_matrix<int, double>(std::vector<int>&,
+                                                   std::vector<int>&,
+                                                   std::vector<double>&,
+                                                   bool);
 
 }  // namespace cuopt::linear_programming::io
