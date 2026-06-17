@@ -515,7 +515,7 @@ void pdhg_solver_t<i_t, f_t>::compute_At_y()
   // exchange + per-shard SpMV via the engine. Shards' pdhg_solver_ have no
   // engine pointer set, so their compute_At_y falls through to the cusparse
   // path below on each shard's local A_t.
-  if (mgpu_engine_ != nullptr) {
+  if (is_distributed_master()) {
     mgpu_engine_->distributed_compute_At_y();
     return;
   }
@@ -573,7 +573,7 @@ void pdhg_solver_t<i_t, f_t>::compute_A_x()
   // Multi-GPU dispatch: see compute_At_y. The engine halo-updates the
   // reflected_primal vector (the buffer this SpMV reads) and then drives
   // per-shard local cusparse SpMV.
-  if (mgpu_engine_ != nullptr) {
+  if (is_distributed_master()) {
     mgpu_engine_->distributed_compute_A_x();
     return;
   }
@@ -1245,7 +1245,7 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
 
   using f_t2 = typename type_2<f_t>::type;
 
-  if (mgpu_engine_ != nullptr) { mgpu_engine_->sync_await_shards(stream_view_); }
+  if (is_distributed_master()) { mgpu_engine_->sync_await_shards(stream_view_); }
 
   // Compute next primal solution reflected.
 
@@ -1257,10 +1257,10 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
       // the capture or run outside the graph, leaving the captured graph
       // empty (or broken) -- which produces the cycling/stall behavior we
       // observed on larger problems. Mirrors metis_tests bench.cu fork/join.
-      if (mgpu_engine_ != nullptr) { mgpu_engine_->graph_capture_fork_to_shards(stream_view_); }
+      if (is_distributed_master()) { mgpu_engine_->graph_capture_fork_to_shards(stream_view_); }
 
       compute_At_y();
-      if (mgpu_engine_ != nullptr) {
+      if (is_distributed_master()) {
         for (auto& shard : mgpu_engine_->shards) {
           raft::device_setter guard(shard->device_id);
           auto& sub_pdlp = *shard->sub_pdlp;
@@ -1327,7 +1327,7 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
       // Compute next dual
       compute_A_x();
 
-      if (mgpu_engine_ != nullptr) {
+      if (is_distributed_master()) {
         for (auto& shard : mgpu_engine_->shards) {
           raft::device_setter guard(shard->device_id);
           auto& sub_pdlp = *shard->sub_pdlp;
@@ -1360,12 +1360,12 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
       // Multi-GPU: close the fork by joining every shard stream back into
       // the master stream so cudaStreamEndCapture sees a single graph
       // spanning all streams.
-      if (mgpu_engine_ != nullptr) { mgpu_engine_->graph_capture_join_from_shards(stream_view_); }
+      if (is_distributed_master()) { mgpu_engine_->graph_capture_join_from_shards(stream_view_); }
     });
 
   } else {
     graph_all.run(should_major, [&]() {
-      if (mgpu_engine_ != nullptr) { mgpu_engine_->graph_capture_fork_to_shards(stream_view_); }
+      if (is_distributed_master()) { mgpu_engine_->graph_capture_fork_to_shards(stream_view_); }
 
       // Compute next primal
       compute_At_y();
@@ -1378,7 +1378,7 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
             current_saddle_point_state_.get_current_AtY());
 #endif
 
-      if (mgpu_engine_ != nullptr) {
+      if (is_distributed_master()) {
         for (auto& shard : mgpu_engine_->shards) {
           raft::device_setter guard(shard->device_id);
           auto& sub_pdlp = *shard->sub_pdlp;
@@ -1446,7 +1446,7 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
       // Compute next dual
       compute_A_x();
 
-      if (mgpu_engine_ != nullptr) {
+      if (is_distributed_master()) {
         for (auto& shard : mgpu_engine_->shards) {
           raft::device_setter guard(shard->device_id);
           auto& sub_pdlp = *shard->sub_pdlp;
@@ -1472,12 +1472,12 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
       print("reflected_dual_", reflected_dual_);
 #endif
 
-      if (mgpu_engine_ != nullptr) { mgpu_engine_->graph_capture_join_from_shards(stream_view_); }
+      if (is_distributed_master()) { mgpu_engine_->graph_capture_join_from_shards(stream_view_); }
     });
   }
 
   // sync to master stream after the graph is captured
-  if (mgpu_engine_ != nullptr) { mgpu_engine_->sync_await_master(stream_view_); }
+  if (is_distributed_master()) { mgpu_engine_->sync_await_master(stream_view_); }
 }
 
 template <typename i_t, typename f_t>

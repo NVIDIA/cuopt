@@ -215,6 +215,11 @@ class pdlp_solver_t {
   detail::pdhg_solver_t<i_t, f_t> pdhg_solver_;
   void halpern_update();
 
+  // This solver is the distributed-PDLP master orchestrator iff it owns the
+  // multi-GPU engine. Shards (sub-solvers) leave the optional empty -> false.
+  // Single-GPU PDLP reports false.
+  bool is_distributed_master() const { return multi_gpu_engine.has_value(); }
+
  private:
   void compute_fixed_error(std::vector<int>& has_restarted);
 

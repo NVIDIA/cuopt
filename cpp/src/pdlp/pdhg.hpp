@@ -107,12 +107,17 @@ class pdhg_solver_t {
   void primal_reflected_projection_transform(rmm::device_uvector<f_t>& primal_step_size);
   void dual_reflected_projection_transform(rmm::device_uvector<f_t>& dual_step_size);
 
-  // Master PDLP wires up the engine pointer here after the engine is built.
-  // Only the master's pdhg_solver_ holds a non-null engine; shards leave it
-  // null and run single-GPU SpMV on their local matrix. The engine pointer is
-  // the single source of truth for wether the code is distributed PDLP or not
+  // Master PDLP wires the engine pointer here after the engine is built. Only
+  // the master's pdhg_solver_ holds a non-null engine; shards leave it null and
+  // run single-GPU SpMV on their local matrix.
   void set_multi_gpu_engine(multi_gpu_engine_t<i_t, f_t>* engine) { mgpu_engine_ = engine; }
   multi_gpu_engine_t<i_t, f_t>* get_mgpu_engine() const { return mgpu_engine_; }
+
+  // True only on the master pdhg of a distributed run (the one wired to the
+  // engine, which orchestrates the shards).
+  // Shards report false.
+  // Single-GPU PDHG reports false.
+  bool is_distributed_master() const { return mgpu_engine_ != nullptr; }
 
   i_t total_pdhg_iterations_;
 

@@ -2331,7 +2331,7 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
 
   // Computing the deltas
   // TODO batch mdoe: this only works if everyone restarts
-  if (multi_gpu_engine) {
+  if (is_distributed_master()) {
     // Go faire une fonction compute_delta_primal, compute_delta primal ?
     for (auto& shard : multi_gpu_engine->shards) {
       raft::device_setter guard(shard->device_id);
@@ -2367,7 +2367,7 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
 
   auto& cusparse_view = pdhg_solver_.get_cusparse_view();
 
-  if (multi_gpu_engine) {
+  if (is_distributed_master()) {
     // SpMV is the first operation in compute_interaction_and_movement so we can do halo before and
     // call it naturally we then reduce the local dot products
     multi_gpu_engine->halo_exchange_cstr(
@@ -2468,7 +2468,7 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
 
   // Put back, already done in multi-gpu side
-  if (!multi_gpu_engine) {
+  if (!is_distributed_master()) {
     RAFT_CUSPARSE_TRY(
       cusparseDnVecSetValues(cusparse_view.potential_next_dual_solution,
                              (void*)pdhg_solver_.get_potential_next_dual_solution().data()));
@@ -3000,7 +3000,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
         // 1. At the very beginning of the solver, when no steps have been taken yet
         // 2. After a single step, since average of one step is the same step
         if (internal_solver_iterations_ <= 1) {
-          cuopt_expects(!multi_gpu_engine.has_value(),
+          cuopt_expects(!is_distributed_master(),
                         error_type_t::RuntimeError,
                         "Distributed PDLP does not support average restart; run with "
                         "never_restart_to_average = true.");
@@ -3057,7 +3057,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
         initial_scaling_strategy_.unscale_solutions(pdhg_solver_.get_primal_solution(),
                                                     pdhg_solver_.get_dual_solution());
       } else {
-        if (multi_gpu_engine) {
+        if (is_distributed_master()) {
           // The only branch in cuPDLPx (Stable3)
           multi_gpu_engine->for_each_shard([&](auto& shard) {
             auto& sub = *shard.sub_pdlp;
@@ -3103,7 +3103,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
           initial_scaling_strategy_.scale_solutions(pdhg_solver_.get_primal_solution(),
                                                     pdhg_solver_.get_dual_solution());
         } else {
-          if (multi_gpu_engine) {
+          if (is_distributed_master()) {
             // The only branch in cuPDLPx (Stable3)
             multi_gpu_engine->for_each_shard([&](auto& shard) {
               auto& sub = *shard.sub_pdlp;
@@ -3215,7 +3215,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
           transpose_problem_fields(/*to_row=*/true);
         }
       }
-      if (multi_gpu_engine) {
+      if (is_distributed_master()) {
         multi_gpu_engine->for_each_shard([&](auto& shard) { shard.sub_pdlp->halpern_update(); });
       } else {
         halpern_update();
@@ -3226,7 +3226,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     ++internal_solver_iterations_;
     if (settings_.hyper_params.never_restart_to_average) {
       restart_strategy_.increment_iteration_since_last_restart();
-      if (multi_gpu_engine) {
+      if (is_distributed_master()) {
         multi_gpu_engine->for_each_shard([&](auto& shard) {
           shard.sub_pdlp->restart_strategy_.increment_iteration_since_last_restart();
         });
