@@ -112,8 +112,7 @@ void gather_potential_next_solutions_to_master(multi_gpu_engine_t<i_t, f_t>& eng
              h_dual.data(),
              total_cstrs,
              engine.stream.view());
-  raft::copy(
-    master_reduced_cost.data(), h_reduced_cost.data(), total_vars, engine.stream.view());
+  raft::copy(master_reduced_cost.data(), h_reduced_cost.data(), total_vars, engine.stream.view());
   RAFT_CUDA_TRY(cudaStreamSynchronize(engine.stream.view().value()));
 }
 
@@ -177,8 +176,13 @@ void distributed_bound_objective_rescaling(multi_gpu_engine_t<i_t, f_t>& engine,
   for (int r = 0; r < nb; ++r) {
     auto& s = *engine.shards[r];
     raft::device_setter guard(s.device_id);
-    ncclAllReduce(
-      sq[r].data(), sq[r].data(), 2, nccl_data_type<f_t>(), ncclSum, s.comm.get(), s.stream.view().value());
+    ncclAllReduce(sq[r].data(),
+                  sq[r].data(),
+                  2,
+                  nccl_data_type<f_t>(),
+                  ncclSum,
+                  s.comm.get(),
+                  s.stream.view().value());
   }
   ncclGroupEnd();
 
@@ -610,22 +614,24 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
 // ----- Explicit instantiations (mirror multi_gpu_engine_t<int, {double,float}>) -----
 #define INSTANTIATE(F_TYPE)                                                                       \
   template void broadcast_constraint_scaling_to_halo<int, F_TYPE>(                                \
-    multi_gpu_engine_t<int, F_TYPE>& engine);                                                     \
-  template void broadcast_variable_scaling_to_halo<int, F_TYPE>(                                  \
-    multi_gpu_engine_t<int, F_TYPE>& engine);                                                     \
+    multi_gpu_engine_t<int, F_TYPE> & engine);                                                    \
+  template void broadcast_variable_scaling_to_halo<int, F_TYPE>(multi_gpu_engine_t<int, F_TYPE> & \
+                                                                engine);                          \
   template void distributed_bound_objective_rescaling<int, F_TYPE>(                               \
-    multi_gpu_engine_t<int, F_TYPE>& engine, F_TYPE c_scaling_weight);                            \
+    multi_gpu_engine_t<int, F_TYPE> & engine, F_TYPE c_scaling_weight);                           \
   template void distributed_ruiz_inf_scaling<int, F_TYPE>(                                        \
-    multi_gpu_engine_t<int, F_TYPE>& engine, int num_iter, int n_global_vars);                    \
+    multi_gpu_engine_t<int, F_TYPE> & engine, int num_iter, int n_global_vars);                   \
   template void distributed_pock_chambolle_scaling<int, F_TYPE>(                                  \
-    multi_gpu_engine_t<int, F_TYPE>& engine, F_TYPE alpha, int n_global_vars);                    \
+    multi_gpu_engine_t<int, F_TYPE> & engine, F_TYPE alpha, int n_global_vars);                   \
   template F_TYPE distributed_max_singular_value<int, F_TYPE>(                                    \
-    multi_gpu_engine_t<int, F_TYPE>& engine, int n_global_cstrs, int max_iterations,              \
+    multi_gpu_engine_t<int, F_TYPE> & engine,                                                     \
+    int n_global_cstrs,                                                                           \
+    int max_iterations,                                                                           \
     F_TYPE tolerance);                                                                            \
   template void gather_potential_next_solutions_to_master<int, F_TYPE>(                           \
-    multi_gpu_engine_t<int, F_TYPE>& engine,                                                      \
-    pdhg_solver_t<int, F_TYPE>& master_pdhg,                                                      \
-    rmm::device_uvector<F_TYPE>& master_reduced_cost);
+    multi_gpu_engine_t<int, F_TYPE> & engine,                                                     \
+    pdhg_solver_t<int, F_TYPE> & master_pdhg,                                                     \
+    rmm::device_uvector<F_TYPE> & master_reduced_cost);
 
 INSTANTIATE(double)
 INSTANTIATE(float)

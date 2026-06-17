@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
-#include <pdlp/pdhg.hpp>
 #include <pdlp/distributed_pdlp/multi_gpu_engine.hpp>
+#include <pdlp/pdhg.hpp>
 #include <pdlp/pdlp.cuh>
 #include <pdlp/pdlp_climber_strategy.hpp>
 #include <pdlp/pdlp_constants.hpp>

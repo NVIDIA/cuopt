@@ -94,13 +94,13 @@ class pdhg_solver_t {
   void spmvop_A_x();
 
   // Parameterized SpMVs used by the multi-GPU engine.
-  // Both temporarily hijack a canonical input descriptor in cusparse_view_,run the local SpMV into `out_desc`, then restore the
-  // descriptor to its original buffer so other code on this shard is unaffected.
-  // No multi-GPU dispatch inside — the engine is the orchestrator.
+  // Both temporarily hijack a canonical input descriptor in cusparse_view_,run the local SpMV into
+  // `out_desc`, then restore the descriptor to its original buffer so other code on this shard is
+  // unaffected. No multi-GPU dispatch inside — the engine is the orchestrator.
   void spmv_At_into(rmm::device_uvector<f_t>& in_buf, cusparseDnVecDescr_t out_desc);
   void spmv_A_into(rmm::device_uvector<f_t>& in_buf, cusparseDnVecDescr_t out_desc);
 
-  // Pure cub-transform extractions. Allows for clearer containment of the calls and ensures 
+  // Pure cub-transform extractions. Allows for clearer containment of the calls and ensures
   // the single-GPU vs distributed-GPU uses the same calls
   void primal_reflected_major_projection_transform(rmm::device_uvector<f_t>& primal_step_size);
   void dual_reflected_major_projection_transform(rmm::device_uvector<f_t>& dual_step_size);

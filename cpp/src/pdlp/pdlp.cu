@@ -433,7 +433,6 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
                 error_type_t::ValidationError,
                 "mps variable_upper_bounds size must equal n_variables");
 
-
   // A (CSR) — mutable copies for the engine + partitioner consumers below.
   std::vector<i_t> h_A_row_offsets = mps.get_constraint_matrix_offsets();
   std::vector<i_t> h_A_col_indices = mps.get_constraint_matrix_indices();
@@ -599,8 +598,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   // Global bound/objective rescaling: allreduce the owned partial squared-norms
   if (settings_.hyper_params.bound_objective_rescaling && !inside_mip_) {
     distributed_bound_objective_rescaling(
-      *multi_gpu_engine,
-      static_cast<f_t>(settings_.hyper_params.initial_primal_weight_c_scaling));
+      *multi_gpu_engine, static_cast<f_t>(settings_.hyper_params.initial_primal_weight_c_scaling));
   }
 
   // ----- 8b. Seed initial step-size / primal-weight (distributed, scales to N shards) -----

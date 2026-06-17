@@ -261,7 +261,8 @@ struct multi_gpu_engine_t {
     for (auto& s : shards) {
       raft::device_setter guard(s->device_id);
       f_t* buf = ptr_access(*s->sub_pdlp);
-      ncclAllReduce(buf, buf, count, nccl_data_type<f_t>(), ncclSum, s->comm.get(), s->stream.view().value());
+      ncclAllReduce(
+        buf, buf, count, nccl_data_type<f_t>(), ncclSum, s->comm.get(), s->stream.view().value());
     }
     ncclGroupEnd();
   }

@@ -254,12 +254,13 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::ruiz_iter_compute_local_iteratio
     op_problem_scaled_.view(), this->view());
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 
-  inf_norm_col_kernel<i_t, f_t><<<op_problem_scaled_.n_variables, (i_t)block_size, 0, stream_view_>>>(
-    op_problem_scaled_.view(),
-    this->view(),
-    A_T_.data(),
-    A_T_offsets_.data(),
-    A_T_indices_.data());
+  inf_norm_col_kernel<i_t, f_t>
+    <<<op_problem_scaled_.n_variables, (i_t)block_size, 0, stream_view_>>>(
+      op_problem_scaled_.view(),
+      this->view(),
+      A_T_.data(),
+      A_T_offsets_.data(),
+      A_T_indices_.data());
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 
   if (running_mip_) { reset_integer_variables(); }

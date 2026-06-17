@@ -94,8 +94,7 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_compute_At_y()
 
 // -------- Cross-stream fork / join / sync ---------------------------------
 template <typename i_t, typename f_t>
-void multi_gpu_engine_t<i_t, f_t>::graph_capture_fork_to_shards(
-  rmm::cuda_stream_view master_stream)
+void multi_gpu_engine_t<i_t, f_t>::graph_capture_fork_to_shards(rmm::cuda_stream_view master_stream)
 {
   graph_master_ready_event_->record(master_stream);
   for (auto& s : shards) {

@@ -504,8 +504,9 @@ void convergence_information_t<i_t, f_t>::distributed_compute_primal_residual_an
       .get_primal_objective()
       .data();
   });
-  copy_scalar_from_shard0(
-    engine, [](convergence_information_t<i_t, f_t>& c) -> f_t* { return c.primal_objective_.data(); });
+  copy_scalar_from_shard0(engine, [](convergence_information_t<i_t, f_t>& c) -> f_t* {
+    return c.primal_objective_.data();
+  });
   apply_primal_objective_scaling_and_offset();
 }
 
@@ -539,7 +540,6 @@ void convergence_information_t<i_t, f_t>::distributed_compute_dual_residual_and_
     return pdhg.get_potential_next_dual_solution();
   });
 
-
   // Same primal_iterate fix as the primal block above: use the shard's
   // (fresh, unscaled) potential_next_primal_solution, matching single-GPU
   // cuPDLPx.
@@ -565,8 +565,9 @@ void convergence_information_t<i_t, f_t>::distributed_compute_dual_residual_and_
       .get_dual_objective()
       .data();
   });
-  copy_scalar_from_shard0(
-    engine, [](convergence_information_t<i_t, f_t>& c) -> f_t* { return c.dual_objective_.data(); });
+  copy_scalar_from_shard0(engine, [](convergence_information_t<i_t, f_t>& c) -> f_t* {
+    return c.dual_objective_.data();
+  });
   apply_dual_objective_scaling_and_offset();
 }
 
