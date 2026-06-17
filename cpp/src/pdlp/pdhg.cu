@@ -756,10 +756,6 @@ struct primal_reflected_major_projection {
   const f_t* scalar_;
 };
 
-// Pure cub-transform extract — body byte-identical to the non-batch inline
-// path in compute_next_primal_dual_solution_reflected. The platform dispatch
-// (single-GPU vs per-shard fan-out) lives at the call site, not here.
-// Placed after primal_reflected_major_projection so the functor is visible.
 template <typename i_t, typename f_t>
 void pdhg_solver_t<i_t, f_t>::primal_reflected_major_projection_transform(
   rmm::device_uvector<f_t>& primal_step_size)
@@ -1246,22 +1242,17 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
 
   if (should_major) {
     graph_all.run(should_major, [&]() {
-      // Multi-GPU: splice shard streams into the capture so their kernels and
-      // NCCL collectives are recorded into the same graph. Without this, work
-      // issued on shard.stream from inside this lambda would either invalidate
-      // the capture or run outside the graph, leaving the captured graph
-      // empty (or broken) -- which produces the cycling/stall behavior we
-      // observed on larger problems. Mirrors metis_tests bench.cu fork/join.
+      // Adds all the shards streams into the graph capture
       if (is_distributed_master()) { mgpu_engine_->graph_capture_fork_to_shards(stream_view_); }
 
       compute_At_y();
+
       if (is_distributed_master()) {
-        for (auto& shard : mgpu_engine_->shards) {
-          raft::device_setter guard(shard->device_id);
-          auto& sub_pdlp = *shard->sub_pdlp;
+        mgpu_engine_->for_each_shard([](auto& shard) {
+          auto& sub_pdlp = *shard.sub_pdlp;
           sub_pdlp.pdhg_solver_.primal_reflected_major_projection_transform(
             sub_pdlp.get_primal_step_size());
-        }
+        });
       } else if (!batch_mode_) {
         primal_reflected_major_projection_transform(primal_step_size);
       } else {
@@ -1323,12 +1314,11 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
       compute_A_x();
 
       if (is_distributed_master()) {
-        for (auto& shard : mgpu_engine_->shards) {
-          raft::device_setter guard(shard->device_id);
-          auto& sub_pdlp = *shard->sub_pdlp;
+        mgpu_engine_->for_each_shard([](auto& shard) {
+          auto& sub_pdlp = *shard.sub_pdlp;
           sub_pdlp.pdhg_solver_.dual_reflected_major_projection_transform(
             sub_pdlp.get_dual_step_size());
-        }
+        });
       } else if (!batch_mode_) {
         dual_reflected_major_projection_transform(dual_step_size);
       } else {
@@ -1360,6 +1350,7 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
 
   } else {
     graph_all.run(should_major, [&]() {
+      // Same reason as above, adds all the shards streams into the graph capture
       if (is_distributed_master()) { mgpu_engine_->graph_capture_fork_to_shards(stream_view_); }
 
       // Compute next primal
@@ -1374,12 +1365,11 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
 #endif
 
       if (is_distributed_master()) {
-        for (auto& shard : mgpu_engine_->shards) {
-          raft::device_setter guard(shard->device_id);
-          auto& sub_pdlp = *shard->sub_pdlp;
+        mgpu_engine_->for_each_shard([](auto& shard) {
+          auto& sub_pdlp = *shard.sub_pdlp;
           sub_pdlp.pdhg_solver_.primal_reflected_projection_transform(
             sub_pdlp.get_primal_step_size());
-        }
+        });
       } else if (!batch_mode_) {
         primal_reflected_projection_transform(primal_step_size);
       } else {
@@ -1442,11 +1432,10 @@ void pdhg_solver_t<i_t, f_t>::compute_next_primal_dual_solution_reflected(
       compute_A_x();
 
       if (is_distributed_master()) {
-        for (auto& shard : mgpu_engine_->shards) {
-          raft::device_setter guard(shard->device_id);
-          auto& sub_pdlp = *shard->sub_pdlp;
+        mgpu_engine_->for_each_shard([](auto& shard) {
+          auto& sub_pdlp = *shard.sub_pdlp;
           sub_pdlp.pdhg_solver_.dual_reflected_projection_transform(sub_pdlp.get_dual_step_size());
-        }
+        });
       } else if (!batch_mode_) {
         dual_reflected_projection_transform(dual_step_size);
       } else {
