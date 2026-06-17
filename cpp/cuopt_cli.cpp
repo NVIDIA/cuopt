@@ -179,8 +179,6 @@ int run_single_file(const std::string& file_path,
       auto& lp_settings = settings.get_pdlp_settings();
 
       if (lp_settings.hyper_params.use_distributed_pdlp) {
-        // handle_ptr is only created for the GPU memory backend (see above). Distributed PDLP is
-        // GPU-only.
         cuopt::cuopt_expects(
           handle_ptr != nullptr,
           cuopt::error_type_t::ValidationError,
@@ -434,10 +432,9 @@ int main(int argc, char* argv[])
   std::vector<rmm::mr::cuda_async_memory_resource> memory_resources;
 
   if (memory_backend == cuopt::linear_programming::memory_backend_t::GPU) {
-    // Distributed PDLP scales one shard per GPU and uses its own knob; everything else
-    // (concurrent, batch, MIP) uses num_gpus which is capped at 2.
-    // For distributed PDLP, -1 means "auto-detect": resolve to the visible device
-    // count so the RMM memory pools match what solve.cu will eventually dispatch.
+    // Get the right number of GPUs
+    // Distributed PDLP uses its own knob: distributed_pdlp_num_gpus
+    // Everything else uses num_gpus which is capped at 2
     const bool use_distributed_pdlp = settings.get_parameter<bool>(CUOPT_USE_DISTRIBUTED_PDLP);
     int requested_gpus              = use_distributed_pdlp
                                         ? settings.get_parameter<int>(CUOPT_DISTRIBUTED_PDLP_NUM_GPUS)
