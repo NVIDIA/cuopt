@@ -607,25 +607,29 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
   return std::sqrt(std::max(sigma_sq_h, f_t(0)));
 }
 
-// ----- Explicit instantiations (mirror multi_gpu_engine_t<int, double>) -----
-template void broadcast_constraint_scaling_to_halo<int, double>(
-  multi_gpu_engine_t<int, double>& engine);
-template void broadcast_variable_scaling_to_halo<int, double>(
-  multi_gpu_engine_t<int, double>& engine);
-template void distributed_bound_objective_rescaling<int, double>(
-  multi_gpu_engine_t<int, double>& engine, double c_scaling_weight);
-template void distributed_ruiz_inf_scaling<int, double>(multi_gpu_engine_t<int, double>& engine,
-                                                        int num_iter,
-                                                        int n_global_vars);
-template void distributed_pock_chambolle_scaling<int, double>(
-  multi_gpu_engine_t<int, double>& engine, double alpha, int n_global_vars);
-template double distributed_max_singular_value<int, double>(multi_gpu_engine_t<int, double>& engine,
-                                                            int n_global_cstrs,
-                                                            int max_iterations,
-                                                            double tolerance);
-template void gather_potential_next_solutions_to_master<int, double>(
-  multi_gpu_engine_t<int, double>& engine,
-  pdhg_solver_t<int, double>& master_pdhg,
-  rmm::device_uvector<double>& master_reduced_cost);
+// ----- Explicit instantiations (mirror multi_gpu_engine_t<int, {double,float}>) -----
+#define INSTANTIATE(F_TYPE)                                                                       \
+  template void broadcast_constraint_scaling_to_halo<int, F_TYPE>(                                \
+    multi_gpu_engine_t<int, F_TYPE>& engine);                                                     \
+  template void broadcast_variable_scaling_to_halo<int, F_TYPE>(                                  \
+    multi_gpu_engine_t<int, F_TYPE>& engine);                                                     \
+  template void distributed_bound_objective_rescaling<int, F_TYPE>(                               \
+    multi_gpu_engine_t<int, F_TYPE>& engine, F_TYPE c_scaling_weight);                            \
+  template void distributed_ruiz_inf_scaling<int, F_TYPE>(                                        \
+    multi_gpu_engine_t<int, F_TYPE>& engine, int num_iter, int n_global_vars);                    \
+  template void distributed_pock_chambolle_scaling<int, F_TYPE>(                                  \
+    multi_gpu_engine_t<int, F_TYPE>& engine, F_TYPE alpha, int n_global_vars);                    \
+  template F_TYPE distributed_max_singular_value<int, F_TYPE>(                                    \
+    multi_gpu_engine_t<int, F_TYPE>& engine, int n_global_cstrs, int max_iterations,              \
+    F_TYPE tolerance);                                                                            \
+  template void gather_potential_next_solutions_to_master<int, F_TYPE>(                           \
+    multi_gpu_engine_t<int, F_TYPE>& engine,                                                      \
+    pdhg_solver_t<int, F_TYPE>& master_pdhg,                                                      \
+    rmm::device_uvector<F_TYPE>& master_reduced_cost);
+
+INSTANTIATE(double)
+INSTANTIATE(float)
+
+#undef INSTANTIATE
 
 }  // namespace cuopt::linear_programming::detail

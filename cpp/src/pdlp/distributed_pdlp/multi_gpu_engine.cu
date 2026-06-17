@@ -142,6 +142,6 @@ void multi_gpu_engine_t<i_t, f_t>::sync_await_shards(rmm::cuda_stream_view maste
 }
 
 template struct multi_gpu_engine_t<int, double>;
-// template struct multi_gpu_engine_t<int, float>;
+template struct multi_gpu_engine_t<int, float>;
 
 }  // namespace cuopt::linear_programming::detail
