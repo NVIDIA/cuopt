@@ -179,6 +179,20 @@ class convergence_information_t {
 
   void compute_reduced_costs_dual_objective_contribution();
 
+  // ----- Distributed-PDLP sub-steps of compute_convergence_information -----
+  // Each is the multi-GPU equivalent of the single-GPU block it replaces
+  void distributed_compute_primal_residual_and_objective(
+    multi_gpu_engine_t<i_t, f_t>& engine, const pdlp_solver_settings_t<i_t, f_t>& settings);
+  void distributed_compute_primal_residual_l2_norm(multi_gpu_engine_t<i_t, f_t>& engine);
+  void distributed_compute_dual_residual_and_objective(multi_gpu_engine_t<i_t, f_t>& engine);
+  void distributed_compute_dual_residual_l2_norm(multi_gpu_engine_t<i_t, f_t>& engine);
+
+  // Mirror one per-shard convergence scalar from shard 0 to master (after a
+  // cross-shard reduction has made every shard agree). `pick(conv)` selects the
+  // f_t* field; it is applied to both master (*this) and shard 0's instance.
+  template <typename Pick>
+  void copy_scalar_from_shard0(multi_gpu_engine_t<i_t, f_t>& engine, Pick&& pick);
+
   // Ctor helpers — each handles both batch and non-batch internally.
   void init_objective_offsets();
   void init_l2_norms();
