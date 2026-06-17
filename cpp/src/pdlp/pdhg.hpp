@@ -83,8 +83,7 @@ class pdhg_solver_t {
   void refine_initial_primal_projection(const rmm::device_uvector<f_t>& bound_rescaling);
 
   // SpMV primitives. Public so the multi-GPU engine can drive them per-shard
-  // after halo-exchanging the relevant vector. Single-GPU PDLP still calls
-  // them internally via take_step / compute_next_*.
+  // after halo-exchanging the relevant vector.
   //
   // If set_multi_gpu_engine() has been called, these dispatch to the engine
   // (halo exchange + per-shard SpMV). Otherwise they run the single-GPU
@@ -95,38 +94,24 @@ class pdhg_solver_t {
   void spmvop_A_x();
 
   // Parameterized SpMVs used by the multi-GPU engine.
-  // Both temporarily hijack a canonical input descriptor in cusparse_view_
-  // (cv.dual_solution for At, cv.reflected_primal_solution for A) to point at
-  // `in_buf.data()`, run the local SpMV into `out_desc`, then restore the
+  // Both temporarily hijack a canonical input descriptor in cusparse_view_,run the local SpMV into `out_desc`, then restore the
   // descriptor to its original buffer so other code on this shard is unaffected.
   // No multi-GPU dispatch inside — the engine is the orchestrator.
   void spmv_At_into(rmm::device_uvector<f_t>& in_buf, cusparseDnVecDescr_t out_desc);
   void spmv_A_into(rmm::device_uvector<f_t>& in_buf, cusparseDnVecDescr_t out_desc);
 
-  // Pure cub-transform extractions. Each one is byte-identical to the inline
-  // cub call it replaces — no platform dispatch inside. Callers handle the
-  // single-GPU vs per-shard branching at the call site (see the
-  // "if (mgpu_engine_) for shard..." blocks in compute_next_*).
+  // Pure cub-transform extractions. Allows for clearer containment of the calls and ensures 
+  // the single-GPU vs distributed-GPU uses the same calls
   void primal_reflected_major_projection_transform(rmm::device_uvector<f_t>& primal_step_size);
   void dual_reflected_major_projection_transform(rmm::device_uvector<f_t>& dual_step_size);
   void primal_reflected_projection_transform(rmm::device_uvector<f_t>& primal_step_size);
   void dual_reflected_projection_transform(rmm::device_uvector<f_t>& dual_step_size);
 
   // Master PDLP wires up the engine pointer here after the engine is built.
-  // Shards' pdhg_solver_ leaves this null so each shard runs single-GPU SpMV
-  // on its local matrix. Also flips is_multi_gpu_ — convenience flag that any
-  // pdhg participating in a distributed run (master OR shard) carries true.
-  void set_multi_gpu_engine(multi_gpu_engine_t<i_t, f_t>* engine)
-  {
-    mgpu_engine_  = engine;
-    is_multi_gpu_ = (engine != nullptr);
-  }
-
-  // Mark a shard's pdhg_solver_ as part of a distributed run without giving it
-  // an engine (shards don't orchestrate; they only run local SpMV on owned
-  // rows). Called from shard.cu right after sub_pdlp is constructed.
-  void set_is_multi_gpu(bool v) { is_multi_gpu_ = v; }
-  bool is_multi_gpu() const { return is_multi_gpu_; }
+  // Only the master's pdhg_solver_ holds a non-null engine; shards leave it
+  // null and run single-GPU SpMV on their local matrix. The engine pointer is
+  // the single source of truth for wether the code is distributed PDLP or not
+  void set_multi_gpu_engine(multi_gpu_engine_t<i_t, f_t>* engine) { mgpu_engine_ = engine; }
   multi_gpu_engine_t<i_t, f_t>* get_mgpu_engine() const { return mgpu_engine_; }
 
   i_t total_pdhg_iterations_;
@@ -148,7 +133,6 @@ class pdhg_solver_t {
   void compute_primal_projection(rmm::device_uvector<f_t>& primal_step_size);
 
   bool batch_mode_{false};
-  bool is_multi_gpu_{false};
   raft::handle_t const* handle_ptr_{nullptr};
   rmm::cuda_stream_view stream_view_;
 
@@ -202,7 +186,7 @@ class pdhg_solver_t {
   cuda::fast_mod_div<size_t> batch_size_divisor_;
 
   // Non-owning. Set on the master pdhg_solver_ in distributed mode; null
-  // (default) means single-GPU path. See compute_At_y / compute_A_x.
+  // (default) means single-GPU path.
   multi_gpu_engine_t<i_t, f_t>* mgpu_engine_{nullptr};
 };
 

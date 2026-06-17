@@ -127,11 +127,9 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
              stream_view);
   handle.sync_stream(stream_view);
 
-  // ---- 5. Build sub_pdlp (single-GPU mode; multi_gpu flags cleared by caller). ----
+  // ---- 5. Build sub_pdlp (single-GPU mode). ----
   sub_pdlp = std::make_unique<pdlp_solver_t<i_t, f_t>>(
     *sub_problem, settings, /*is_legacy_batch_mode=*/false);
-
-  sub_pdlp->pdhg_solver_.set_is_multi_gpu(true);
 
   // Inject this shard's unscaled buffers into op_problem_scaled (distributed
   // scaling runs later and will scale them).

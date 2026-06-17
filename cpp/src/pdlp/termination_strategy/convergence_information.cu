@@ -491,10 +491,7 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
   print("dual_slack", dual_slack);
 #endif
 
-  if (current_pdhg_solver.is_multi_gpu()) {
-    auto* engine = current_pdhg_solver.get_mgpu_engine();
-    cuopt_assert(engine != nullptr,
-                 "mGPU branch reached but current_pdhg_solver has no engine (shard pdhg?)");
+  if (auto* engine = current_pdhg_solver.get_mgpu_engine()) {
     cuopt_expects(!settings.per_constraint_residual,
                   error_type_t::ValidationError,
                   "per_constraint_residual is not yet supported in multi-GPU mode");
@@ -547,8 +544,7 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
 #endif
 
   // L2 Norm
-  if (current_pdhg_solver.is_multi_gpu()) {
-    auto* engine = current_pdhg_solver.get_mgpu_engine();
+  if (auto* engine = current_pdhg_solver.get_mgpu_engine()) {
     engine->distributed_l2_norm(
       [](pdlp_solver_t<i_t, f_t>& sp) -> rmm::device_uvector<f_t>& {
         return sp.get_current_termination_strategy().get_convergence_information().primal_residual_;
@@ -613,9 +609,7 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
                                                    std::numeric_limits<f_t>::lowest());
   }
 
-  if (current_pdhg_solver.is_multi_gpu()) {
-    auto* engine = current_pdhg_solver.get_mgpu_engine();
-
+  if (auto* engine = current_pdhg_solver.get_mgpu_engine()) {
     // 1) Halo-exchange potential_next_dual_solution on every shard so the
     //    A_T_shard @ y SpMV inside compute_dual_residual reads correct values
     //    in the cstr halo region. The SpMV is driven through the eval view's
@@ -687,10 +681,9 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
   print("Dual Residual", dual_residual_);
 #endif
 
-  if (current_pdhg_solver.is_multi_gpu()) {
+  if (auto* engine = current_pdhg_solver.get_mgpu_engine()) {
     // Multi-GPU dual residual L2 norm: same pattern as the primal L2 above,
     // but the dual residual is var-shaped so we clip to owned_var_size.
-    auto* engine = current_pdhg_solver.get_mgpu_engine();
     engine->distributed_l2_norm(
       [](pdlp_solver_t<i_t, f_t>& sp) -> rmm::device_uvector<f_t>& {
         return sp.get_current_termination_strategy().get_convergence_information().dual_residual_;
