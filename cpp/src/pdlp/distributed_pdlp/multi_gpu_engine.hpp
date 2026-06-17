@@ -35,9 +35,25 @@
 #include <memory>
 #include <random>
 #include <tuple>
+#include <type_traits>
 #include <vector>
 
 namespace cuopt::linear_programming::detail {
+
+// Maps the solver floating-point type to the matching NCCL datatype so that
+// halo exchanges / all-reduces transfer the correct element size for both
+// double and float instantiations.
+template <typename f_t>
+constexpr ncclDataType_t nccl_data_type()
+{
+  static_assert(std::is_same_v<f_t, double> || std::is_same_v<f_t, float>,
+                "Unsupported floating-point type for NCCL transfers");
+  if constexpr (std::is_same_v<f_t, double>) {
+    return ncclFloat64;
+  } else {
+    return ncclFloat32;
+  }
+}
 
 // Element-wise sqrt functor. Defined at namespace scope (not as a local
 // extended HD lambda) because nvcc disallows extended __host__ __device__
@@ -140,7 +156,7 @@ struct multi_gpu_engine_t {
         if (peer == r) continue;
         ncclSend(s.var_send_buf_d[peer].data(),
                  s.var_send_buf_d[peer].size(),
-                 ncclFloat64,
+                 nccl_data_type<f_t>(),
                  peer,
                  s.comm.get(),
                  s.stream.view().value());
@@ -156,7 +172,7 @@ struct multi_gpu_engine_t {
         f_t* recv_ptr = x.data() + rd.owned_var_size + rd.var_recv_offsets[peer];
         ncclRecv(recv_ptr,
                  static_cast<size_t>(rd.var_recv_counts[peer]),
-                 ncclFloat64,
+                 nccl_data_type<f_t>(),
                  peer,
                  s.comm.get(),
                  s.stream.view().value());
@@ -207,7 +223,7 @@ struct multi_gpu_engine_t {
         if (peer == r) continue;
         ncclSend(s.cstr_send_buf_d[peer].data(),
                  s.cstr_send_buf_d[peer].size(),
-                 ncclFloat64,
+                 nccl_data_type<f_t>(),
                  peer,
                  s.comm.get(),
                  s.stream.view().value());
@@ -223,7 +239,7 @@ struct multi_gpu_engine_t {
         f_t* recv_ptr = y.data() + rd.owned_cstr_size + rd.cstr_recv_offsets[peer];
         ncclRecv(recv_ptr,
                  static_cast<size_t>(rd.cstr_recv_counts[peer]),
-                 ncclFloat64,
+                 nccl_data_type<f_t>(),
                  peer,
                  s.comm.get(),
                  s.stream.view().value());
@@ -234,7 +250,7 @@ struct multi_gpu_engine_t {
 
   // -------- NCCL allreduce (sum, in place) --------------------------------
   // Per-shard in-place sum-allreduce. Each shard's stream issues an
-  // ncclAllReduce(buf, buf, count, ncclFloat64, ncclSum, ...) inside a single
+  // ncclAllReduce(buf, buf, count, nccl_data_type<f_t>(), ncclSum, ...) inside a single
   // group. After this returns, every shard's buffer holds the global sum.
   //
   // PtrAccess: pdlp_solver_t<i_t,f_t>& -> f_t*  (e.g. into step_size_strategy_).
@@ -245,7 +261,7 @@ struct multi_gpu_engine_t {
     for (auto& s : shards) {
       raft::device_setter guard(s->device_id);
       f_t* buf = ptr_access(*s->sub_pdlp);
-      ncclAllReduce(buf, buf, count, ncclFloat64, ncclSum, s->comm.get(), s->stream.view().value());
+      ncclAllReduce(buf, buf, count, nccl_data_type<f_t>(), ncclSum, s->comm.get(), s->stream.view().value());
     }
     ncclGroupEnd();
   }

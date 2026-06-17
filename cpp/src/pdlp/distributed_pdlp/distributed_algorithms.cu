@@ -178,7 +178,7 @@ void distributed_bound_objective_rescaling(multi_gpu_engine_t<i_t, f_t>& engine,
     auto& s = *engine.shards[r];
     raft::device_setter guard(s.device_id);
     ncclAllReduce(
-      sq[r].data(), sq[r].data(), 2, ncclFloat64, ncclSum, s.comm.get(), s.stream.view().value());
+      sq[r].data(), sq[r].data(), 2, nccl_data_type<f_t>(), ncclSum, s.comm.get(), s.stream.view().value());
   }
   ncclGroupEnd();
 
@@ -383,7 +383,7 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
         if (peer == r) continue;
         ncclSend(s.cstr_send_buf_d[peer].data(),
                  s.cstr_send_buf_d[peer].size(),
-                 ncclFloat64,
+                 nccl_data_type<f_t>(),
                  peer,
                  s.comm.get(),
                  s.stream.view().value());
@@ -399,7 +399,7 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
         f_t* recv_ptr = y.data() + rd.owned_cstr_size + rd.cstr_recv_offsets[peer];
         ncclRecv(recv_ptr,
                  static_cast<size_t>(rd.cstr_recv_counts[peer]),
-                 ncclFloat64,
+                 nccl_data_type<f_t>(),
                  peer,
                  s.comm.get(),
                  s.stream.view().value());
@@ -430,7 +430,7 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
         if (peer == r) continue;
         ncclSend(s.var_send_buf_d[peer].data(),
                  s.var_send_buf_d[peer].size(),
-                 ncclFloat64,
+                 nccl_data_type<f_t>(),
                  peer,
                  s.comm.get(),
                  s.stream.view().value());
@@ -446,7 +446,7 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
         f_t* recv_ptr = x.data() + rd.owned_var_size + rd.var_recv_offsets[peer];
         ncclRecv(recv_ptr,
                  static_cast<size_t>(rd.var_recv_counts[peer]),
-                 ncclFloat64,
+                 nccl_data_type<f_t>(),
                  peer,
                  s.comm.get(),
                  s.stream.view().value());
@@ -480,7 +480,7 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
       ncclAllReduce(out[r].data(),
                     out[r].data(),
                     1,
-                    ncclFloat64,
+                    nccl_data_type<f_t>(),
                     ncclSum,
                     s.comm.get(),
                     s.stream.view().value());
@@ -516,7 +516,7 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
       ncclAllReduce(out[r].data(),
                     out[r].data(),
                     1,
-                    ncclFloat64,
+                    nccl_data_type<f_t>(),
                     ncclSum,
                     s.comm.get(),
                     s.stream.view().value());
