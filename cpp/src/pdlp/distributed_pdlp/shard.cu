@@ -18,6 +18,7 @@
 namespace cuopt::linear_programming::detail {
 
 // This must be done in .cu file because the pdlp_solver_t is not already complete in the hpp file
+// This is caused by the problematic cyclic include of pdlp_solver_t
 template <typename i_t, typename f_t>
 pdlp_shard_t<i_t, f_t>::~pdlp_shard_t() = default;
 
@@ -78,19 +79,6 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
     h_cstr_upper[i] = g_cstr_upper[g];
   }
 
-  // Identity scaling: cumulative scaling factors are 1 and the bound /
-  // objective rescaling scalars are 1. The "scaled" arrays injected below are
-  // just the unscaled slices.
-  const std::vector<f_t>& h_obj_scaled        = h_obj;
-  const std::vector<f_t>& h_var_lower_scaled  = h_var_lower;
-  const std::vector<f_t>& h_var_upper_scaled  = h_var_upper;
-  const std::vector<f_t>& h_cstr_lower_scaled = h_cstr_lower;
-  const std::vector<f_t>& h_cstr_upper_scaled = h_cstr_upper;
-  const std::vector<f_t> h_cstr_scaling_local(rank_data.total_cstr_size, f_t{1});
-  const std::vector<f_t> h_var_scaling_local(rank_data.total_var_size, f_t{1});
-  const f_t h_bound_rescaling     = f_t{1};
-  const f_t h_objective_rescaling = f_t{1};
-
   // ---- 2. Build optimization_problem_t on this shard's device (UNSCALED). ----
   opt_problem.emplace(&handle);
   opt_problem->set_csr_constraint_matrix(rank_data.h_A_values.data(),
@@ -114,7 +102,7 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
   opt_problem->set_objective_scaling_factor(objective_scaling_factor);
   opt_problem->set_problem_category(problem_category_t::LP);
 
-  // ---- 3. Build problem_t from opt_problem (still UNSCALED). ----
+  // ---- 3. Build problem_t from opt_problem (UNSCALED). ----
   sub_problem.emplace(*opt_problem);
 
   // ---- 4. Override reverse_* with the real local A_T from rank_data. ----
@@ -145,9 +133,8 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
 
   sub_pdlp->pdhg_solver_.set_is_multi_gpu(true);
 
-  // Re-inject master-scaled buffers inside sub_pdlp.
-  // Need to also re-inject the offsets and variables arrays to revert
-  // the csrsort done by problem_t's constructor.
+  // Inject this shard's unscaled buffers into op_problem_scaled (distributed
+  // scaling runs later and will scale them).
   auto& scaled = sub_pdlp->get_op_problem_scaled();
   raft::copy(scaled.offsets.data(),
              rank_data.h_A_row_offsets.data(),
@@ -161,48 +148,32 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
              rank_data.h_A_values.data(),
              rank_data.h_A_values.size(),
              stream_view);
-  // A_T side: all three arrays were already overridden together from
-  // rank_data on sub_problem (see step 4 above) and deep-copied into the
-  // scaled problem, so reverse_offsets / reverse_constraints already match
-  // h_A_t_values's order. At this stage distributed initial scaling starts from
-  // identity, so the matrix values are injected from the unscaled host slices.
   raft::copy(scaled.reverse_coefficients.data(),
              rank_data.h_A_t_values.data(),
              rank_data.h_A_t_values.size(),
              stream_view);
+  raft::copy(scaled.objective_coefficients.data(), h_obj.data(), h_obj.size(), stream_view);
   raft::copy(
-    scaled.objective_coefficients.data(), h_obj_scaled.data(), h_obj_scaled.size(), stream_view);
-  raft::copy(scaled.constraint_lower_bounds.data(),
-             h_cstr_lower_scaled.data(),
-             h_cstr_lower_scaled.size(),
-             stream_view);
-  raft::copy(scaled.constraint_upper_bounds.data(),
-             h_cstr_upper_scaled.data(),
-             h_cstr_upper_scaled.size(),
-             stream_view);
+    scaled.constraint_lower_bounds.data(), h_cstr_lower.data(), h_cstr_lower.size(), stream_view);
+  raft::copy(
+    scaled.constraint_upper_bounds.data(), h_cstr_upper.data(), h_cstr_upper.size(), stream_view);
 
   using f_t2 = typename type_2<f_t>::type;
-  std::vector<f_t2> h_var_bounds_scaled_packed(rank_data.total_var_size);
+  std::vector<f_t2> h_var_bounds_packed(rank_data.total_var_size);
   for (i_t i = 0; i < rank_data.total_var_size; ++i) {
-    h_var_bounds_scaled_packed[i].x = h_var_lower_scaled[i];
-    h_var_bounds_scaled_packed[i].y = h_var_upper_scaled[i];
+    h_var_bounds_packed[i].x = h_var_lower[i];
+    h_var_bounds_packed[i].y = h_var_upper[i];
   }
   raft::copy(scaled.variable_bounds.data(),
-             h_var_bounds_scaled_packed.data(),
-             h_var_bounds_scaled_packed.size(),
+             h_var_bounds_packed.data(),
+             h_var_bounds_packed.size(),
              stream_view);
 
   combine_constraint_bounds<i_t, f_t>(scaled, scaled.combined_bounds);
 
-  // Inject master-scaled buffers inside sub_pdlp.initil_strategy
-  auto& scaling = sub_pdlp->get_initial_scaling_strategy();
-  scaling.set_cummulative_scaling(h_cstr_scaling_local, h_var_scaling_local);
-  scaling.set_h_bound_rescaling(h_bound_rescaling);
-  scaling.set_h_objective_rescaling(h_objective_rescaling);
-
   sub_pdlp->pdhg_solver_.get_cusparse_view().create_spmv_op_plans(
     /* is_reflected */ true);
-  // ---- 6. Build per-peer halo-exchange plans (ported from metis_tests). ----
+  // ---- 6. Build per-peer halo-exchange plans ----
   // For each peer p, we precompute:
   //   send_indices_d[p] : local indices to gather (uploaded from host send plan)
   //   send_buf_d[p]     : f_t staging buffer sized to match

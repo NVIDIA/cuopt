@@ -57,7 +57,7 @@ struct pdlp_shard_t {
 
   pdlp_shard_t(const pdlp_shard_t&)            = delete;
   pdlp_shard_t& operator=(const pdlp_shard_t&) = delete;
-  // Move ops are implicitly deleted (user-declared dtor + deleted copy).
+  // Move ops are implicitly deleted
   // Intentional: shard owns device-affine resources and must never move.
   // Store as std::unique_ptr in any container.
 
@@ -70,8 +70,6 @@ struct pdlp_shard_t {
   std::optional<problem_t<i_t, f_t>> sub_problem;
   std::unique_ptr<pdlp_solver_t<i_t, f_t>> sub_pdlp;
 
-  // Per-peer halo-exchange state. Inner index = peer rank.
-  // Slot for self (peer == this rank) is present but unused (size 0).
   // var_send_indices_d[peer] : local indices into primal vector to gather and ncclSend
   // var_send_buf_d    [peer] : staging buffer for outgoing variable values
   // cstr_send_indices_d/cstr_send_buf_d : same, for dual vector

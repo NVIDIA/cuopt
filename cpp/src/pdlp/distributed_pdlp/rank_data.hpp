@@ -9,6 +9,7 @@
 #include <vector>
 
 namespace cuopt::linear_programming::detail {
+// Pure data class representing most of the distributed data needed for operatiosn
 template <typename i_t, typename f_t>
 struct rank_data_t {
   rank_data_t(std::size_t nb_parts)
