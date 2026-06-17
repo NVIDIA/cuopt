@@ -310,42 +310,9 @@ struct multi_gpu_engine_t {
     });
   }
 
-  // -------- Generic distributed SpMVs -------------------------------------
-  // distributed_spmv_A : halo-update the var-shaped input buffer returned by
-  // `in_buf(pdhg)`, then per-shard A @ in_buf -> out_desc.
-  // distributed_spmv_At: halo-update the cstr-shaped input buffer returned by
-  // `in_buf(pdhg)`, then per-shard A_T @ in_buf -> out_desc.
-  //
-  // Accessor signatures:
-  //   in_buf  (pdhg_solver_t<i_t,f_t>&) -> rmm::device_uvector<f_t>&
-  //   out_desc(pdhg_solver_t<i_t,f_t>&) -> cusparseDnVecDescr_t
-  template <typename InBufAccess, typename OutDescAccess>
-  void distributed_spmv_A(InBufAccess&& in_buf, OutDescAccess&& out_desc)
-  {
-    halo_exchange_var(in_buf);
-    for_each_shard([&](auto& shard) {
-      auto& sub_pdhg = shard.sub_pdlp->pdhg_solver_;
-      sub_pdhg.spmv_A_into(in_buf(sub_pdhg), out_desc(sub_pdhg));
-    });
-  }
-
-  template <typename InBufAccess, typename OutDescAccess>
-  void distributed_spmv_At(InBufAccess&& in_buf, OutDescAccess&& out_desc)
-  {
-    halo_exchange_cstr(in_buf);
-    for_each_shard([&](auto& shard) {
-      auto& sub_pdhg = shard.sub_pdlp->pdhg_solver_;
-      sub_pdhg.spmv_At_into(in_buf(sub_pdhg), out_desc(sub_pdhg));
-    });
-  }
-
   // -------- High-level: A @ x and A_T @ y ---------------------------------
-  // Distributed counterpart to pdhg_solver_t::compute_A_x()
-  // We don't use distributed_spmv_A() because we are using SpMVOp rather than SpMV
+  // Distributed counterpart to pdhg_solver_t::compute_A_x() / compute_At_y().
   void distributed_compute_A_x();
-
-  // Distributed counterpart to pdhg_solver_t::compute_At_y()
-  // We don't use distributed_spmv_At() because we are using SpMVOp rather than SpMV
   void distributed_compute_At_y();
 
   // Engine-level stream for fork/join orchestration (master side).
