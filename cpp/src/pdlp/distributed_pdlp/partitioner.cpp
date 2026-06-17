@@ -3,10 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-// Plain C++ translation unit (not .cu): KaMinPar's public header is C++20 host code
-// and pulls in TBB; keeping it out of nvcc avoids device-compiler friction.
+// Plain C++ translation unit (not .cu): this file contains no device code, and
+// KaMinPar's public header (<kaminpar.h>) is C++20 host code that pulls in TBB.
+// Keeping the whole partitioner implementation out of nvcc avoids
+// device-compiler friction.
 
-#include <pdlp/distributed_pdlp/kaminpar_partitioner.hpp>
 #include <pdlp/distributed_pdlp/partitioner.hpp>
 
 #include <utilities/logger.hpp>
@@ -15,6 +16,7 @@
 
 #include <kaminpar.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstddef>
 #include <span>
@@ -22,6 +24,31 @@
 #include <vector>
 
 namespace cuopt::linear_programming::detail {
+
+template <typename i_t, typename f_t>
+std::vector<i_t> dummy_partitioner_t<i_t, f_t>::partition(
+  partitioner_input_t<i_t, f_t> const& input) const
+{
+  cuopt_expects(input.nb_parts > 0,
+                error_type_t::ValidationError,
+                "dummy_partitioner: nb_parts must be positive");
+  cuopt_expects(input.nb_cstr >= 0 && input.nb_vars >= 0,
+                error_type_t::ValidationError,
+                "dummy_partitioner: invalid problem dimensions");
+
+  const std::size_t nvtx =
+    static_cast<std::size_t>(input.nb_cstr) + static_cast<std::size_t>(input.nb_vars);
+  std::vector<i_t> parts(nvtx);
+  for (std::size_t i = 0; i < nvtx; ++i) {
+    parts[i] = static_cast<i_t>(i % static_cast<std::size_t>(input.nb_parts));
+  }
+  validate_partition(parts,
+                     static_cast<int>(input.nb_cstr),
+                     static_cast<int>(input.nb_vars),
+                     static_cast<int>(input.nb_parts),
+                     "dummy_partitioner");
+  return parts;
+}
 
 // Builds the bipartite constraint/variable graph induced by A and runs the
 // multi-threaded KaMinPar k-way kernel.
@@ -83,7 +110,7 @@ std::vector<i_t> kaminpar_partitioner_t<i_t, f_t>::partition(
   std::vector<kaminpar::shm::NodeID> adjncy(2 * static_cast<std::size_t>(nnz));
 
   // CSR already represents an adjency list of cstr -> variables.
-  // Adding the transpose to represent the var -> cstr edges. 
+  // Adding the transpose to represent the var -> cstr edges.
   // Casting the types to KaMinPar friendly types
   for (i_t i = 0; i <= nb_cstr; ++i) {
     xadj[i] = static_cast<kaminpar::shm::EdgeID>(A_offsets[i]);
@@ -113,11 +140,11 @@ std::vector<i_t> kaminpar_partitioner_t<i_t, f_t>::partition(
 
   // The actual partition computation
   auto t0 = std::chrono::high_resolution_clock::now();
-  
+
   const kaminpar::shm::EdgeWeight edge_cut =
     engine.compute_partition(std::span<kaminpar::shm::BlockID>(block_of));
-  
-    auto t1         = std::chrono::high_resolution_clock::now();
+
+  auto t1         = std::chrono::high_resolution_clock::now();
   const double dt = std::chrono::duration<double>(t1 - t0).count();
 
   CUOPT_LOG_INFO(
@@ -143,6 +170,49 @@ std::vector<i_t> kaminpar_partitioner_t<i_t, f_t>::partition(
   return parts;
 }
 
+void validate_partition(
+  std::vector<int> const& parts, int nb_cstr, int nb_vars, int nb_parts, char const* context)
+{
+  const std::size_t expected =
+    static_cast<std::size_t>(nb_cstr) + static_cast<std::size_t>(nb_vars);
+  cuopt_expects(parts.size() == expected,
+                error_type_t::ValidationError,
+                "%s: expected %zu part entries (cstrs + vars), got %zu",
+                context,
+                expected,
+                parts.size());
+  cuopt_expects(
+    nb_parts > 0, error_type_t::ValidationError, "%s: nb_parts must be positive", context);
+  if (parts.empty()) { return; }
+  const auto [min_it, max_it] = std::minmax_element(parts.begin(), parts.end());
+  cuopt_expects(*min_it >= 0,
+                error_type_t::ValidationError,
+                "%s: partition ids must be non-negative (min=%d)",
+                context,
+                static_cast<int>(*min_it));
+  cuopt_expects(*max_it < nb_parts,
+                error_type_t::ValidationError,
+                "%s: partition ids must be in [0, %d) (max=%d)",
+                context,
+                static_cast<int>(nb_parts),
+                static_cast<int>(*max_it));
+}
+
+template <typename i_t, typename f_t>
+std::unique_ptr<partitioner_i<i_t, f_t>> make_partitioner(partitioner_kind_t kind)
+{
+  switch (kind) {
+    case partitioner_kind_t::Dummy: return std::make_unique<dummy_partitioner_t<i_t, f_t>>();
+    case partitioner_kind_t::KaMinPar: return std::make_unique<kaminpar_partitioner_t<i_t, f_t>>();
+  }
+  cuopt_expects(
+    false, error_type_t::RuntimeError, "make_partitioner: unsupported partitioner kind");
+  return nullptr;
+}
+
+template class dummy_partitioner_t<int, double>;
 template class kaminpar_partitioner_t<int, double>;
+template std::unique_ptr<partitioner_i<int, double>> make_partitioner<int, double>(
+  partitioner_kind_t);
 
 }  // namespace cuopt::linear_programming::detail

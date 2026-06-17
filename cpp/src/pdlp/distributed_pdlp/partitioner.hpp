@@ -30,13 +30,11 @@ struct partitioner_input_t {
   i_t nb_vars{0};
   i_t nb_parts{0};
   // Number of CPU threads the partitioner may use. Only honored by the
-  // multi-threaded KaMinPar backend; <= 0 means "auto" (all hardware threads).
-  // Serial backend (Dummy) ignore it.
+  // multi-threaded KaMinPar backend. <= 0 means "auto"
   i_t nb_threads{0};
   // Constraint matrix A (rows = constraints, cols = variables).
   csr_host_view_t<i_t, f_t> A{};
-  // Transpose A_t (rows = variables, cols = constraints). Optional for partitioners
-  // that build a bipartite graph (e.g. KaMinPar); dummy partitioner ignores both matrices.
+  // Transpose A_t (rows = variables, cols = constraints)
   csr_host_view_t<i_t, f_t> A_t{};
 };
 
@@ -53,6 +51,15 @@ class partitioner_i {
 
 template <typename i_t, typename f_t>
 class dummy_partitioner_t : public partitioner_i<i_t, f_t> {
+ public:
+  std::vector<i_t> partition(partitioner_input_t<i_t, f_t> const& input) const override;
+};
+
+// Multi-threaded k-way partitioner backed by KaMinPar. Builds a
+// constraint/variable bipartite graph and runs the shared-memory parallel
+// KaMinPar kernel so partitioning scales across all CPU cores of a node.
+template <typename i_t, typename f_t>
+class kaminpar_partitioner_t : public partitioner_i<i_t, f_t> {
  public:
   std::vector<i_t> partition(partitioner_input_t<i_t, f_t> const& input) const override;
 };

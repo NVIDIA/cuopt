@@ -593,7 +593,7 @@ add_dependencies(cuopt PSLP)
 # (<kaminpar.h>, which pulls in stdlib + TBB) at compile time.
 target_include_directories(cuopt SYSTEM PRIVATE
         $<TARGET_PROPERTY:KaMinPar::KaMinPar,INTERFACE_INCLUDE_DIRECTORIES>)
-# kaminpar_partitioner.cpp includes <kaminpar.h>. Because KaMinPar is linked by file, cuopt
+# partitioner.cpp includes <kaminpar.h>. Because KaMinPar is linked by file, cuopt
 # does NOT inherit KaMinPar's PUBLIC compile definitions, so we must replicate the ones that
 # affect what <kaminpar.h> compiles to:
 #   * TBB_PREVIEW_GLOBAL_CONTROL  - <kaminpar.h> includes <tbb/global_control.h>, which older
