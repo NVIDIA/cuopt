@@ -6,7 +6,6 @@
 #pragma once
 
 #include <memory>
-#include <string>
 #include <vector>
 
 namespace cuopt::linear_programming::detail {

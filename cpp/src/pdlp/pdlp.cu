@@ -397,6 +397,9 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
                 error_type_t::ValidationError,
                 "Distributed mGPU pdlp_solver_t ctor requires a shape-0 "
                 "placeholder problem (n_variables == n_constraints == nnz == 0)");
+  cuopt_expects(settings.hyper_params.never_restart_to_average,
+                error_type_t::ValidationError,
+                "Distributed PDLP requires never_restart_to_average = true");
   const int distributed_pdlp_num_gpus = settings.distributed_pdlp_num_gpus;
   CUOPT_LOG_INFO("Solving with distributed PDLP on %d GPU (mps direct path)",
                  distributed_pdlp_num_gpus);
@@ -2991,10 +2994,6 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
         // 1. At the very beginning of the solver, when no steps have been taken yet
         // 2. After a single step, since average of one step is the same step
         if (internal_solver_iterations_ <= 1) {
-          cuopt_expects(!is_distributed_master(),
-                        error_type_t::RuntimeError,
-                        "Distributed PDLP does not support average restart; run with "
-                        "never_restart_to_average = true.");
           raft::copy(unscaled_primal_avg_solution_.data(),
                      pdhg_solver_.get_primal_solution().data(),
                      primal_size_h_,
