@@ -211,6 +211,11 @@ class pdlp_solver_t {
   detail::adaptive_step_size_strategy_t<i_t, f_t> step_size_strategy_;
 
  public:
+  // std::optional because multi_gpu_engine_t is non-default-constructible
+  // (collectively bootstraps NCCL, owns RMM resources). Stays nullopt in
+  // single-GPU mode; emplaced by the multi-GPU ctor.
+  std::optional<multi_gpu_engine_t<i_t, f_t>> multi_gpu_engine;
+
   // Inner solver
   detail::pdhg_solver_t<i_t, f_t> pdhg_solver_;
   void halpern_update();
@@ -279,10 +284,6 @@ class pdlp_solver_t {
   // Flag to indicate if solver is being called from MIP. No logging is done in this case.
   bool inside_mip_{false};
 
-  // std::optional because multi_gpu_engine_t is non-default-constructible
-  // (collectively bootstraps NCCL, owns RMM resources). Stays nullopt in
-  // single-GPU mode; emplaced by the multi-GPU ctor.
-  std::optional<multi_gpu_engine_t<i_t, f_t>> multi_gpu_engine;
 };
 
 }  // namespace cuopt::linear_programming::detail
