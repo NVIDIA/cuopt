@@ -2032,11 +2032,6 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
   std::vector<i_t>& nonbasic_list,
   std::vector<f_t>& edge_norms)
 {
-  f_t start_time          = tic();
-  f_t user_objective      = 0;
-  i_t iter                = 0;
-  std::string solver_name = "";
-
   lp_status_t root_status;
 
 // Launch a task for solving the root LP relaxation via dual simplex.
@@ -2143,40 +2138,18 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
       // Set the edge norms to a default value
       edge_norms.resize(original_lp_.num_cols, -1.0);
       set_uninitialized_steepest_edge_norms<i_t, f_t>(original_lp_, basic_list, edge_norms);
-      user_objective = root_crossover_soln_.user_objective;
-      iter           = root_crossover_soln_.iterations;
-      solver_name    = method_to_string(root_relax_solved_by);
 
     } else {
 // Wait for the dual simplex to finish (after telling PDLP/Barrier to stop)
 #pragma omp taskwait depend(in : root_status)
-      user_objective       = root_relax_soln_.user_objective;
-      iter                 = root_relax_soln_.iterations;
       root_relax_solved_by = DualSimplex;
-      solver_name          = "Dual Simplex";
     }
   } else {
     // Wait for the dual simplex to finish (crossover do not produced a solution)
 #pragma omp taskwait depend(in : root_status)
-    user_objective       = root_relax_soln_.user_objective;
-    iter                 = root_relax_soln_.iterations;
     root_relax_solved_by = DualSimplex;
-    solver_name          = "Dual Simplex";
   }
 
-  settings_.log.printf("\n");
-  if (root_status == lp_status_t::OPTIMAL) {
-    settings_.log.printf("Root relaxation solution found in %d iterations and %.2fs by %s\n",
-                         iter,
-                         toc(start_time),
-                         solver_name.c_str());
-    settings_.log.printf("Root relaxation objective %+.8e\n", user_objective);
-  } else {
-    settings_.log.printf("Root relaxation returned: %s\n",
-                         simplex::lp_status_to_string(root_status).c_str());
-  }
-
-  settings_.log.printf("\n");
   is_root_solution_set = true;
 
   return root_status;
@@ -2542,6 +2515,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   lp_status_t root_status;
   solving_root_relaxation_ = true;
 
+  f_t root_relax_start_time = tic();
   if (!enable_concurrent_lp_root_solve()) {
     // RINS/SUBMIP path
     settings_.log.printf("\nSolving LP root relaxation with dual simplex\n");
@@ -2554,16 +2528,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                                            nonbasic_list,
                                                            root_vstatus_,
                                                            edge_norms_);
-    if (root_status == lp_status_t::OPTIMAL) {
-      settings_.log.printf("\n");
-      settings_.log.printf(
-        "Root relaxation solution found in %d iterations and %.2fs by Dual Simplex\n",
-        root_relax_soln_.iterations,
-        toc(exploration_stats_.start_time));
-      settings_.log.printf("Root relaxation objective %+.8e\n",
-                           compute_user_objective(original_lp_, root_relax_soln_.x));
-      settings_.log.printf("\n");
-    }
 
   } else {
     settings_.log.printf("\nSolving LP root relaxation in concurrent mode\n");
@@ -2577,7 +2541,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   }
   solving_root_relaxation_               = false;
   exploration_stats_.total_lp_iters      = root_relax_soln_.iterations;
-  exploration_stats_.total_lp_solve_time = toc(exploration_stats_.start_time);
+  f_t root_relax_elapsed_time            = toc(root_relax_start_time);
+  exploration_stats_.total_lp_solve_time = root_relax_elapsed_time;
 
   if (root_status == lp_status_t::INFEASIBLE) {
     settings_.log.printf("MIP Infeasible\n");
@@ -2617,6 +2582,14 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 #pragma omp taskwait depend(in : *clique_signal)
     return solver_status_;
   }
+
+  assert(root_status == lp_status_t::OPTIMAL);
+  settings_.log.print_format(
+    "\nRoot relaxation solution found in {} iterations and {:.2f}s by {}\n",
+    root_relax_soln_.iterations,
+    root_relax_elapsed_time,
+    method_to_string(root_relax_solved_by));
+  settings_.log.printf("Root relaxation objective %+.8e\n\n", root_relax_soln_.user_objective);
 
   assert(root_vstatus_.size() == original_lp_.num_cols);
   set_uninitialized_steepest_edge_norms<i_t, f_t>(original_lp_, basic_list, edge_norms_);
@@ -2812,6 +2785,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                          original_lp_.num_rows,
                          original_lp_.num_cols,
                          original_lp_.A.col_start[original_lp_.A.n]);
+  } else {
+    settings_.log.printf("\n");
   }
 
   if (enable_root_cut_cpufj && cut_info.has_cuts()) {
