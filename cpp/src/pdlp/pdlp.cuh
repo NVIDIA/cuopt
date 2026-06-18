@@ -283,7 +283,6 @@ class pdlp_solver_t {
   primal_quality_adapter_t best_primal_quality_so_far_;
   // Flag to indicate if solver is being called from MIP. No logging is done in this case.
   bool inside_mip_{false};
-
 };
 
 }  // namespace cuopt::linear_programming::detail
