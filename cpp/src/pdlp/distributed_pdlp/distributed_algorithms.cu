@@ -172,19 +172,19 @@ void distributed_bound_objective_rescaling(multi_gpu_engine_t<i_t, f_t>& engine,
 
   // 2) NCCL allreduce SUM (both scalars at once) -> every shard holds the
   //    global squared norms.
-  ncclGroupStart();
+  CUOPT_NCCL_TRY(ncclGroupStart());
   for (int r = 0; r < nb; ++r) {
     auto& s = *engine.shards[r];
     raft::device_setter guard(s.device_id);
-    ncclAllReduce(sq[r].data(),
-                  sq[r].data(),
-                  2,
-                  nccl_data_type<f_t>(),
-                  ncclSum,
-                  s.comm.get(),
-                  s.stream.view().value());
+    CUOPT_NCCL_TRY(ncclAllReduce(sq[r].data(),
+                                 sq[r].data(),
+                                 2,
+                                 nccl_data_type<f_t>(),
+                                 ncclSum,
+                                 s.comm.get(),
+                                 s.stream.view().value()));
   }
-  ncclGroupEnd();
+  CUOPT_NCCL_TRY(ncclGroupEnd());
 
   // 3) derive the identical scalars and apply on every shard.
   for (int r = 0; r < nb; ++r) {
@@ -379,18 +379,18 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
                        s.cstr_send_buf_d[peer].begin());
       }
     }
-    ncclGroupStart();
+    CUOPT_NCCL_TRY(ncclGroupStart());
     for (int r = 0; r < nb; ++r) {
       auto& s = *engine.shards[r];
       raft::device_setter guard(s.device_id);
       for (int peer = 0; peer < nb; ++peer) {
         if (peer == r) continue;
-        ncclSend(s.cstr_send_buf_d[peer].data(),
-                 s.cstr_send_buf_d[peer].size(),
-                 nccl_data_type<f_t>(),
-                 peer,
-                 s.comm.get(),
-                 s.stream.view().value());
+        CUOPT_NCCL_TRY(ncclSend(s.cstr_send_buf_d[peer].data(),
+                                s.cstr_send_buf_d[peer].size(),
+                                nccl_data_type<f_t>(),
+                                peer,
+                                s.comm.get(),
+                                s.stream.view().value()));
       }
     }
     for (int r = 0; r < nb; ++r) {
@@ -401,15 +401,15 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
       for (int peer = 0; peer < nb; ++peer) {
         if (peer == r) continue;
         f_t* recv_ptr = y.data() + rd.owned_cstr_size + rd.cstr_recv_offsets[peer];
-        ncclRecv(recv_ptr,
-                 static_cast<size_t>(rd.cstr_recv_counts[peer]),
-                 nccl_data_type<f_t>(),
-                 peer,
-                 s.comm.get(),
-                 s.stream.view().value());
+        CUOPT_NCCL_TRY(ncclRecv(recv_ptr,
+                                static_cast<size_t>(rd.cstr_recv_counts[peer]),
+                                nccl_data_type<f_t>(),
+                                peer,
+                                s.comm.get(),
+                                s.stream.view().value()));
       }
     }
-    ncclGroupEnd();
+    CUOPT_NCCL_TRY(ncclGroupEnd());
   };
   auto halo_exchange_var_bufs = [&](std::vector<rmm::device_uvector<f_t>>& bufs) {
     for (int r = 0; r < nb; ++r) {
@@ -426,18 +426,18 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
                        s.var_send_buf_d[peer].begin());
       }
     }
-    ncclGroupStart();
+    CUOPT_NCCL_TRY(ncclGroupStart());
     for (int r = 0; r < nb; ++r) {
       auto& s = *engine.shards[r];
       raft::device_setter guard(s.device_id);
       for (int peer = 0; peer < nb; ++peer) {
         if (peer == r) continue;
-        ncclSend(s.var_send_buf_d[peer].data(),
-                 s.var_send_buf_d[peer].size(),
-                 nccl_data_type<f_t>(),
-                 peer,
-                 s.comm.get(),
-                 s.stream.view().value());
+        CUOPT_NCCL_TRY(ncclSend(s.var_send_buf_d[peer].data(),
+                                s.var_send_buf_d[peer].size(),
+                                nccl_data_type<f_t>(),
+                                peer,
+                                s.comm.get(),
+                                s.stream.view().value()));
       }
     }
     for (int r = 0; r < nb; ++r) {
@@ -448,15 +448,15 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
       for (int peer = 0; peer < nb; ++peer) {
         if (peer == r) continue;
         f_t* recv_ptr = x.data() + rd.owned_var_size + rd.var_recv_offsets[peer];
-        ncclRecv(recv_ptr,
-                 static_cast<size_t>(rd.var_recv_counts[peer]),
-                 nccl_data_type<f_t>(),
-                 peer,
-                 s.comm.get(),
-                 s.stream.view().value());
+        CUOPT_NCCL_TRY(ncclRecv(recv_ptr,
+                                static_cast<size_t>(rd.var_recv_counts[peer]),
+                                nccl_data_type<f_t>(),
+                                peer,
+                                s.comm.get(),
+                                s.stream.view().value()));
       }
     }
-    ncclGroupEnd();
+    CUOPT_NCCL_TRY(ncclGroupEnd());
   };
 
   // Per-shard partial reductions over the OWNED cstr slice + NCCL allreduce.
@@ -477,19 +477,19 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
                                                       out[r].data(),
                                                       s.stream.view().value()));
     }
-    ncclGroupStart();
+    CUOPT_NCCL_TRY(ncclGroupStart());
     for (int r = 0; r < nb; ++r) {
       auto& s = *engine.shards[r];
       raft::device_setter guard(s.device_id);
-      ncclAllReduce(out[r].data(),
-                    out[r].data(),
-                    1,
-                    nccl_data_type<f_t>(),
-                    ncclSum,
-                    s.comm.get(),
-                    s.stream.view().value());
+      CUOPT_NCCL_TRY(ncclAllReduce(out[r].data(),
+                                   out[r].data(),
+                                   1,
+                                   nccl_data_type<f_t>(),
+                                   ncclSum,
+                                   s.comm.get(),
+                                   s.stream.view().value()));
     }
-    ncclGroupEnd();
+    CUOPT_NCCL_TRY(ncclGroupEnd());
     for (int r = 0; r < nb; ++r) {
       auto& s = *engine.shards[r];
       raft::device_setter guard(s.device_id);
@@ -513,19 +513,19 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
                                                       out[r].data(),
                                                       s.stream.view().value()));
     }
-    ncclGroupStart();
+    CUOPT_NCCL_TRY(ncclGroupStart());
     for (int r = 0; r < nb; ++r) {
       auto& s = *engine.shards[r];
       raft::device_setter guard(s.device_id);
-      ncclAllReduce(out[r].data(),
-                    out[r].data(),
-                    1,
-                    nccl_data_type<f_t>(),
-                    ncclSum,
-                    s.comm.get(),
-                    s.stream.view().value());
+      CUOPT_NCCL_TRY(ncclAllReduce(out[r].data(),
+                                   out[r].data(),
+                                   1,
+                                   nccl_data_type<f_t>(),
+                                   ncclSum,
+                                   s.comm.get(),
+                                   s.stream.view().value()));
     }
-    ncclGroupEnd();
+    CUOPT_NCCL_TRY(ncclGroupEnd());
   };
 
   // ===== Power iteration =====

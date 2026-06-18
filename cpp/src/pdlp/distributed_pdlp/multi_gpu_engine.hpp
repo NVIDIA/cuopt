@@ -4,6 +4,7 @@
  */
 #pragma once
 
+#include <pdlp/distributed_pdlp/nccl_helpers.hpp>
 #include <pdlp/distributed_pdlp/rank_data.hpp>
 #include <pdlp/distributed_pdlp/shard.hpp>
 #include <pdlp/pdhg.hpp>
@@ -148,18 +149,18 @@ struct multi_gpu_engine_t {
     }
 
     // Step 2: matched send / recv across the whole topology in one NCCL group.
-    ncclGroupStart();
+    CUOPT_NCCL_TRY(ncclGroupStart());
     for (int r = 0; r < nb; ++r) {
       auto& s = *shards[r];
       raft::device_setter guard(s.device_id);
       for (int peer = 0; peer < nb; ++peer) {
         if (peer == r) continue;
-        ncclSend(s.var_send_buf_d[peer].data(),
-                 s.var_send_buf_d[peer].size(),
-                 nccl_data_type<f_t>(),
-                 peer,
-                 s.comm.get(),
-                 s.stream.view().value());
+        CUOPT_NCCL_TRY(ncclSend(s.var_send_buf_d[peer].data(),
+                                s.var_send_buf_d[peer].size(),
+                                nccl_data_type<f_t>(),
+                                peer,
+                                s.comm.get(),
+                                s.stream.view().value()));
       }
     }
     for (int r = 0; r < nb; ++r) {
@@ -170,15 +171,15 @@ struct multi_gpu_engine_t {
       for (int peer = 0; peer < nb; ++peer) {
         if (peer == r) continue;
         f_t* recv_ptr = x.data() + rd.owned_var_size + rd.var_recv_offsets[peer];
-        ncclRecv(recv_ptr,
-                 static_cast<size_t>(rd.var_recv_counts[peer]),
-                 nccl_data_type<f_t>(),
-                 peer,
-                 s.comm.get(),
-                 s.stream.view().value());
+        CUOPT_NCCL_TRY(ncclRecv(recv_ptr,
+                                static_cast<size_t>(rd.var_recv_counts[peer]),
+                                nccl_data_type<f_t>(),
+                                peer,
+                                s.comm.get(),
+                                s.stream.view().value()));
       }
     }
-    ncclGroupEnd();
+    CUOPT_NCCL_TRY(ncclGroupEnd());
   }
 
   // -------- Halo exchange (constraints / y) -------------------------------
@@ -215,18 +216,18 @@ struct multi_gpu_engine_t {
       }
     }
 
-    ncclGroupStart();
+    CUOPT_NCCL_TRY(ncclGroupStart());
     for (int r = 0; r < nb; ++r) {
       auto& s = *shards[r];
       raft::device_setter guard(s.device_id);
       for (int peer = 0; peer < nb; ++peer) {
         if (peer == r) continue;
-        ncclSend(s.cstr_send_buf_d[peer].data(),
-                 s.cstr_send_buf_d[peer].size(),
-                 nccl_data_type<f_t>(),
-                 peer,
-                 s.comm.get(),
-                 s.stream.view().value());
+        CUOPT_NCCL_TRY(ncclSend(s.cstr_send_buf_d[peer].data(),
+                                s.cstr_send_buf_d[peer].size(),
+                                nccl_data_type<f_t>(),
+                                peer,
+                                s.comm.get(),
+                                s.stream.view().value()));
       }
     }
     for (int r = 0; r < nb; ++r) {
@@ -237,15 +238,15 @@ struct multi_gpu_engine_t {
       for (int peer = 0; peer < nb; ++peer) {
         if (peer == r) continue;
         f_t* recv_ptr = y.data() + rd.owned_cstr_size + rd.cstr_recv_offsets[peer];
-        ncclRecv(recv_ptr,
-                 static_cast<size_t>(rd.cstr_recv_counts[peer]),
-                 nccl_data_type<f_t>(),
-                 peer,
-                 s.comm.get(),
-                 s.stream.view().value());
+        CUOPT_NCCL_TRY(ncclRecv(recv_ptr,
+                                static_cast<size_t>(rd.cstr_recv_counts[peer]),
+                                nccl_data_type<f_t>(),
+                                peer,
+                                s.comm.get(),
+                                s.stream.view().value()));
       }
     }
-    ncclGroupEnd();
+    CUOPT_NCCL_TRY(ncclGroupEnd());
   }
 
   // -------- NCCL allreduce (sum, in place) --------------------------------
@@ -257,14 +258,14 @@ struct multi_gpu_engine_t {
   template <typename PtrAccess>
   void allreduce_sum_inplace(PtrAccess&& ptr_access, size_t count = 1)
   {
-    ncclGroupStart();
+    CUOPT_NCCL_TRY(ncclGroupStart());
     for (auto& s : shards) {
       raft::device_setter guard(s->device_id);
       f_t* buf = ptr_access(*s->sub_pdlp);
-      ncclAllReduce(
-        buf, buf, count, nccl_data_type<f_t>(), ncclSum, s->comm.get(), s->stream.view().value());
+      CUOPT_NCCL_TRY(ncclAllReduce(
+        buf, buf, count, nccl_data_type<f_t>(), ncclSum, s->comm.get(), s->stream.view().value()));
     }
-    ncclGroupEnd();
+    CUOPT_NCCL_TRY(ncclGroupEnd());
   }
 
   // -------- Distributed L2 norm ------------------------------------------
