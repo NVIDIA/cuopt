@@ -23,7 +23,7 @@
 #include <thrust/tabulate.h>
 #include <thrust/tuple.h>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::math_optimization::dual_simplex {
 
 template <typename IndexType, typename ValueType>
 class device_csr_matrix_t;
@@ -388,4 +388,4 @@ void device_csc_matrix_t<i_t, f_t>::to_compressed_row(device_csr_matrix_t<i_t, f
                       thrust::device_pointer_cast(Arow.x.data()));
 }
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::math_optimization::dual_simplex

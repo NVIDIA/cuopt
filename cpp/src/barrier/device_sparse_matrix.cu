@@ -10,7 +10,7 @@
 
 #include <dual_simplex/sparse_matrix.hpp>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::math_optimization::dual_simplex {
 
 template <typename i_t, typename f_t>
 template <typename Allocator>
@@ -65,4 +65,4 @@ template void csc_matrix_t<int, double>::scale_columns<PinnedHostAllocator<doubl
 
 #endif
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::math_optimization::dual_simplex

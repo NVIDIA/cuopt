@@ -17,7 +17,7 @@
 
 #pragma once
 
-#include <cuopt/linear_programming/mip/solver_settings.hpp>
+#include <cuopt/math_optimization/mip/solver_settings.hpp>
 #include <dual_simplex/user_problem.hpp>
 
 #include <memory>
@@ -31,7 +31,7 @@
 #include <utility>
 #include <vector>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::math_optimization::detail {
 
 struct clique_config_t {
   int min_clique_size               = 512;
@@ -222,7 +222,7 @@ void build_clique_table(const dual_simplex::user_problem_t<i_t, f_t>& problem,
 template <typename i_t, typename f_t>
 void fill_var_clique_maps(clique_table_t<i_t, f_t>& clique_table);
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::math_optimization::detail
 
 // Possible application to rounding procedure, keeping it as reference
 

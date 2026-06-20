@@ -8,10 +8,10 @@
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 #include "mip_utils.cuh"
 
-#include <cuopt/linear_programming/io/parser.hpp>
-#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
-#include <cuopt/linear_programming/pdlp/solver_solution.hpp>
-#include <cuopt/linear_programming/solve.hpp>
+#include <cuopt/math_optimization/io/parser.hpp>
+#include <cuopt/math_optimization/pdlp/solver_settings.hpp>
+#include <cuopt/math_optimization/pdlp/solver_solution.hpp>
+#include <cuopt/math_optimization/solve.hpp>
 #include <cuts/cuts.hpp>
 #include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
 #include <mip_heuristics/problem/problem.cuh>
@@ -39,7 +39,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace cuopt::linear_programming::test {
+namespace cuopt::math_optimization::test {
 
 namespace {
 
@@ -169,7 +169,7 @@ io::mps_data_model_t<int, double>& get_neos8_model_cached()
   static std::unique_ptr<io::mps_data_model_t<int, double>> model_ptr;
   std::call_once(init_flag, []() {
     const auto neos8_path = make_path_absolute("mip/neos8.mps");
-    auto neos8_model      = cuopt::linear_programming::io::read_mps<int, double>(neos8_path, false);
+    auto neos8_model      = cuopt::math_optimization::io::read_mps<int, double>(neos8_path, false);
     model_ptr = std::make_unique<io::mps_data_model_t<int, double>>(std::move(neos8_model));
   });
   cuopt_assert(model_ptr != nullptr, "Failed to initialize cached neos8 model");
@@ -1508,4 +1508,4 @@ TEST(cuts, flow_cover_generates_valid_single_node_flow_cut)
   EXPECT_GT(generated_cuts, 0);
 }
 
-}  // namespace cuopt::linear_programming::test
+}  // namespace cuopt::math_optimization::test

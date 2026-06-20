@@ -33,7 +33,7 @@
 #include <queue>
 #include <string>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::math_optimization::dual_simplex {
 
 namespace {
 
@@ -846,4 +846,4 @@ template int solve_mip_with_guess<int, double>(
 
 #endif
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::math_optimization::dual_simplex

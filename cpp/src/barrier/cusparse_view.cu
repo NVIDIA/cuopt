@@ -22,7 +22,7 @@
 
 #include <dlfcn.h>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::math_optimization::dual_simplex {
 
 #define CUDA_VER_12_4_UP (CUDART_VERSION >= 12040)
 
@@ -424,4 +424,4 @@ cusparse_view_t<int, double>::transpose_spmv<std::allocator<double>, std::alloca
   double beta,
   std::vector<double, std::allocator<double>>& y);
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::math_optimization::dual_simplex

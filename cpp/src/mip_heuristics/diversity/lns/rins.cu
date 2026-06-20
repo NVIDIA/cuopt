@@ -26,7 +26,7 @@
 #include <dual_simplex/tic_toc.hpp>
 #include <utilities/scope_guard.hpp>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::math_optimization::detail {
 template <typename i_t, typename f_t>
 rins_t<i_t, f_t>::rins_t(mip_solver_context_t<i_t, f_t>& context_,
                          diversity_manager_t<i_t, f_t>& dm_,
@@ -234,7 +234,7 @@ void rins_t<i_t, f_t>::run_rins()
   f_t current_mip_gap = compute_rel_mip_gap(prev_obj, lower_bound);
 
   // run sub-mip
-  namespace dual_simplex = cuopt::linear_programming::dual_simplex;
+  namespace dual_simplex = cuopt::math_optimization::dual_simplex;
   dual_simplex::user_problem_t<i_t, f_t> branch_and_bound_problem(&rins_handle);
   dual_simplex::simplex_solver_settings_t<i_t, f_t> branch_and_bound_settings;
   dual_simplex::mip_solution_t<i_t, f_t> branch_and_bound_solution(1);
@@ -351,4 +351,4 @@ template class rins_t<int, float>;
 template class rins_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::math_optimization::detail

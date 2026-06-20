@@ -20,7 +20,7 @@
 
 #include <mip_heuristics/feasibility_jump/fj_cpu.cuh>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::math_optimization::detail {
 
 template <typename i_t, typename f_t>
 local_search_t<i_t, f_t>::local_search_t(mip_solver_context_t<i_t, f_t>& context_,
@@ -903,4 +903,4 @@ template class local_search_t<int, float>;
 template class local_search_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::math_optimization::detail

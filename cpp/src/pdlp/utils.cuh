@@ -30,7 +30,7 @@
 #include <thrust/transform_reduce.h>
 #include <thrust/tuple.h>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::math_optimization::detail {
 
 template <typename f_t, int BLOCK_SIZE>
 DI f_t deterministic_block_reduce(raft::device_span<f_t> shared, f_t val)
@@ -671,4 +671,4 @@ void inline my_inf_norm(const rmm::device_uvector<f_t>& input_vector,
   my_inf_norm(input_vector, result.data(), handle_ptr);
 }
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::math_optimization::detail

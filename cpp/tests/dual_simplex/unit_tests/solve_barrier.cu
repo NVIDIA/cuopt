@@ -12,9 +12,9 @@
 
 #include <gtest/gtest.h>
 
-#include <cuopt/linear_programming/constants.h>
-#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
-#include <cuopt/linear_programming/solve.hpp>
+#include <cuopt/math_optimization/constants.h>
+#include <cuopt/math_optimization/pdlp/solver_settings.hpp>
+#include <cuopt/math_optimization/solve.hpp>
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/scaling.hpp>
 #include <dual_simplex/solve.hpp>
@@ -24,10 +24,10 @@
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/cusparse_macros.hpp>
 
-#include <cuopt/linear_programming/io/parser.hpp>
+#include <cuopt/math_optimization/io/parser.hpp>
 #include <utilities/logger.hpp>
 
-namespace cuopt::linear_programming::dual_simplex::test {
+namespace cuopt::math_optimization::dual_simplex::test {
 
 // This serves as both a warm up but also a mandatory initial call to setup cuSparse and cuBLAS
 static void init_handler(const raft::handle_t* handle_ptr)
@@ -42,7 +42,7 @@ static void init_handler(const raft::handle_t* handle_ptr)
 TEST(barrier, chess_set)
 {
   cuopt::init_logger_t log("", true);
-  namespace dual_simplex = cuopt::linear_programming::dual_simplex;
+  namespace dual_simplex = cuopt::math_optimization::dual_simplex;
   raft::handle_t handle{};
   init_handler(&handle);
   dual_simplex::user_problem_t<int, double> user_problem(&handle);
@@ -119,7 +119,7 @@ TEST(barrier, dual_variable_greater_than)
 
   raft::handle_t handle{};
   init_handler(&handle);
-  cuopt::linear_programming::dual_simplex::user_problem_t<int, double> user_problem(&handle);
+  cuopt::math_optimization::dual_simplex::user_problem_t<int, double> user_problem(&handle);
   constexpr int m  = 2;
   constexpr int n  = 2;
   constexpr int nz = 4;
@@ -197,11 +197,11 @@ TEST(barrier, min_x_squared_free_variable_dual_correction)
 
   auto path =
     cuopt::test::get_rapids_dataset_root_dir() + "/quadratic_programming/min_x_squared.mps";
-  auto mps_data = cuopt::linear_programming::io::read_mps<int, double>(path);
+  auto mps_data = cuopt::math_optimization::io::read_mps<int, double>(path);
 
-  auto settings = cuopt::linear_programming::pdlp_solver_settings_t<int, double>{};
+  auto settings = cuopt::math_optimization::pdlp_solver_settings_t<int, double>{};
 
-  auto solution = cuopt::linear_programming::solve_lp(&handle, mps_data, settings);
+  auto solution = cuopt::math_optimization::solve_lp(&handle, mps_data, settings);
 
   EXPECT_EQ((int)solution.get_termination_status(), CUOPT_TERMINATION_STATUS_OPTIMAL);
 
@@ -217,4 +217,4 @@ TEST(barrier, min_x_squared_free_variable_dual_correction)
   EXPECT_NEAR(h_z[0], 0.0, tol);
 }
 
-}  // namespace cuopt::linear_programming::dual_simplex::test
+}  // namespace cuopt::math_optimization::dual_simplex::test

@@ -20,7 +20,7 @@
 
 #include <thrust/tabulate.h>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::math_optimization::detail {
 
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> get_relaxed_lp_solution(
@@ -228,4 +228,4 @@ INSTANTIATE(double)
 
 #undef INSTANTIATE
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::math_optimization::detail

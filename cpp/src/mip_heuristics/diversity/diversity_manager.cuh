@@ -18,8 +18,8 @@
 #include "recombiners/recombiner_stats.hpp"
 #include "recombiners/sub_mip.cuh"
 
-#include <cuopt/linear_programming/mip/solver_settings.hpp>
-#include <cuopt/linear_programming/mip/solver_stats.hpp>
+#include <cuopt/math_optimization/mip/solver_settings.hpp>
+#include <cuopt/math_optimization/mip/solver_stats.hpp>
 
 #include <mip_heuristics/diversity/lns/rins.cuh>
 #include <mip_heuristics/local_search/local_search.cuh>
@@ -29,7 +29,7 @@
 
 #include <cstdint>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::math_optimization::detail {
 
 template <typename i_t, typename f_t>
 class diversity_manager_t {
@@ -110,4 +110,4 @@ class diversity_manager_t {
   bool run_only_sub_mip_recombiner{false};
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::math_optimization::detail

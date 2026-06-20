@@ -27,7 +27,7 @@
 #include <limits>
 #include <vector>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::math_optimization::detail {
 
 namespace {
 
@@ -416,4 +416,4 @@ template void expand_initial_solutions_for_semi_continuous(mip_solver_settings_t
                                                            rmm::cuda_stream_view);
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::math_optimization::detail

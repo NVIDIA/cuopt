@@ -8,9 +8,9 @@
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 #include "mip_utils.cuh"
 
-#include <cuopt/linear_programming/io/parser.hpp>
-#include <cuopt/linear_programming/mip/solver_settings.hpp>
-#include <cuopt/linear_programming/mip/solver_stats.hpp>
+#include <cuopt/math_optimization/io/parser.hpp>
+#include <cuopt/math_optimization/mip/solver_settings.hpp>
+#include <cuopt/math_optimization/mip/solver_stats.hpp>
 #include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/relaxed_lp/relaxed_lp.cuh>
 #include <pdlp/pdlp.cuh>
@@ -29,7 +29,7 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::linear_programming::test {
+namespace cuopt::math_optimization::test {
 
 void init_handler(const raft::handle_t* handle_ptr)
 {
@@ -45,8 +45,8 @@ void test_bounds_standardization_test(std::string test_instance)
   const raft::handle_t handle_{};
   std::cout << "Running: " << test_instance << std::endl;
   auto path = make_path_absolute(test_instance);
-  cuopt::linear_programming::io::mps_data_model_t<int, double> problem =
-    cuopt::linear_programming::io::read_mps<int, double>(path, false);
+  cuopt::math_optimization::io::mps_data_model_t<int, double> problem =
+    cuopt::math_optimization::io::read_mps<int, double>(path, false);
   handle_.sync_stream();
   auto op_problem = mps_data_model_to_optimization_problem(&handle_, problem);
   problem_checking_t<int, double>::check_problem_representation(op_problem);
@@ -87,7 +87,7 @@ void test_bounds_standardization_test(std::string test_instance)
   // not applied
   op_problem.set_problem_category(problem_category_t::LP);
   auto settings             = pdlp_solver_settings_t<int, double>{};
-  settings.pdlp_solver_mode = cuopt::linear_programming::pdlp_solver_mode_t::Stable1;
+  settings.pdlp_solver_mode = cuopt::math_optimization::pdlp_solver_mode_t::Stable1;
   settings.set_optimality_tolerance(1e-4);
   settings.tolerances.relative_primal_tolerance = 1e-6;
   settings.tolerances.relative_dual_tolerance   = 1e-6;
@@ -104,4 +104,4 @@ TEST(mip_solve, bounds_standardization_test)
   }
 }
 
-}  // namespace cuopt::linear_programming::test
+}  // namespace cuopt::math_optimization::test

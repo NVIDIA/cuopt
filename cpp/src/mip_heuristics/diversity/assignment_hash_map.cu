@@ -15,7 +15,7 @@
 #include <cuda/std/functional>
 
 namespace cuopt {
-namespace linear_programming {
+namespace math_optimization {
 namespace detail {
 
 struct combine_hash {
@@ -158,5 +158,5 @@ template class assignment_hash_map_t<int, double>;
 #endif
 
 }  // namespace detail
-}  // namespace linear_programming
+}  // namespace math_optimization
 }  // namespace cuopt

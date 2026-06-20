@@ -5,7 +5,7 @@
  */
 /* clang-format on */
 
-#include <cuopt/linear_programming/io/parser.hpp>
+#include <cuopt/math_optimization/io/parser.hpp>
 
 #include <file_to_string.hpp>
 #include <lp_parser.hpp>
@@ -25,7 +25,7 @@
 #include <utility>
 #include <vector>
 
-namespace cuopt::linear_programming::io {
+namespace cuopt::math_optimization::io {
 
 namespace {
 
@@ -1576,4 +1576,4 @@ template mps_data_model_t<int, double> read_lp<int, double>(const std::string&);
 template mps_data_model_t<int, float> read_lp_from_string<int, float>(std::string_view);
 template mps_data_model_t<int, double> read_lp_from_string<int, double>(std::string_view);
 
-}  // namespace cuopt::linear_programming::io
+}  // namespace cuopt::math_optimization::io

@@ -18,7 +18,7 @@
 
 #include <mutex>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::math_optimization::detail {
 
 constexpr double weight_increase_ratio       = 2.;
 constexpr double weight_decrease_ratio       = 0.9;
@@ -901,4 +901,4 @@ template class population_t<int, float>;
 template class population_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::math_optimization::detail

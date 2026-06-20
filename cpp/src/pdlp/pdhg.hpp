@@ -6,7 +6,7 @@
 /* clang-format on */
 
 #pragma once
-#include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/math_optimization/pdlp/pdlp_hyper_params.cuh>
 #include <mip_heuristics/problem/problem.cuh>
 #include <pdlp/cusparse_view.hpp>
 #include <pdlp/pdlp_climber_strategy.hpp>
@@ -23,7 +23,7 @@
 #include <tuple>
 #include <vector>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::math_optimization::detail {
 template <typename i_t, typename f_t>
 class pdhg_solver_t {
  public:
@@ -152,4 +152,4 @@ class pdhg_solver_t {
   cuda::fast_mod_div<size_t> batch_size_divisor_;
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::math_optimization::detail

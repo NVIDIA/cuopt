@@ -1,21 +1,21 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 #pragma once
 
-#include <cuopt/linear_programming/mip/solver_settings.hpp>
-#include <cuopt/linear_programming/optimization_problem.hpp>
-#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
+#include <cuopt/math_optimization/mip/solver_settings.hpp>
+#include <cuopt/math_optimization/optimization_problem.hpp>
+#include <cuopt/math_optimization/pdlp/solver_settings.hpp>
 
 namespace rmm {
 template <typename T>
 class device_uvector;
 }  // namespace rmm
 
-namespace cuopt::linear_programming {
+namespace cuopt::math_optimization {
 
 namespace detail {
 template <typename i_t, typename f_t>
@@ -48,4 +48,4 @@ class problem_checking_t {
     const mip_solver_settings_t<i_t, f_t>& settings);
 };
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::math_optimization

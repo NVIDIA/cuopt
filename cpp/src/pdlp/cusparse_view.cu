@@ -27,7 +27,7 @@ struct double_to_float_functor {
   __host__ __device__ float operator()(double val) const { return static_cast<float>(val); }
 };
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::math_optimization::detail {
 
 // cusparse_sp_mat_descr_wrapper_t implementation
 template <typename i_t, typename f_t>
@@ -1542,4 +1542,4 @@ template void my_cusparsespmm_preprocess<double>(cusparseHandle_t,
 #endif
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::math_optimization::detail

@@ -25,7 +25,7 @@
   } while (0)
 #endif
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::math_optimization::detail {
 
 template <typename i_t>
 static inline i_t positive_modulo(i_t i, i_t n)
@@ -257,4 +257,4 @@ INSTANTIATE(double)
 
 #undef INSTANTIATE
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::math_optimization::detail

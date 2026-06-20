@@ -7,7 +7,7 @@
 
 #include <branch_and_bound/diving_heuristics.hpp>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::math_optimization::dual_simplex {
 
 template <typename i_t, typename f_t>
 branch_variable_t<i_t> line_search_diving(const std::vector<i_t>& fractional,
@@ -407,4 +407,4 @@ template branch_variable_t<int> vector_length_diving(const lp_problem_t<int, dou
 
 #endif
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::math_optimization::dual_simplex

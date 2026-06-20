@@ -6,7 +6,7 @@
 /* clang-format on */
 #pragma once
 
-#include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/math_optimization/pdlp/pdlp_hyper_params.cuh>
 #include <pdlp/pdlp_climber_strategy.hpp>
 #include <pdlp/saddle_point.hpp>
 
@@ -25,7 +25,7 @@
 // cuSPARSE 12.8 ships with CUDA Toolkit 13.3
 #define CUOPT_CUSPARSE_VER_12_8_UP (CUSPARSE_VERSION >= 12800)
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::math_optimization::detail {
 
 template <typename i_t, typename f_t>
 class cusparse_sp_mat_descr_wrapper_t {
@@ -373,4 +373,4 @@ void cusparse_spmvop_run(cusparseHandle_t handle,
                          cudaStream_t stream);
 #endif  // CUOPT_CUSPARSE_VER_12_7_UP
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::math_optimization::detail

@@ -8,7 +8,7 @@
 #include <gtest/gtest.h>
 
 #include <barrier/translate_soc.hpp>
-#include <cuopt/linear_programming/optimization_problem_interface.hpp>
+#include <cuopt/math_optimization/optimization_problem_interface.hpp>
 #include <dual_simplex/solve.hpp>
 #include <dual_simplex/sparse_matrix.hpp>
 #include <dual_simplex/user_problem.hpp>
@@ -19,7 +19,7 @@
 #include <cmath>
 #include <vector>
 
-namespace cuopt::linear_programming::detail::test {
+namespace cuopt::math_optimization::detail::test {
 
 using i_t  = int;
 using f_t  = double;
@@ -46,7 +46,7 @@ TEST(general_quadratic, dense_pd_2x2_solve)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
+  using namespace cuopt::math_optimization::dual_simplex;
   user_problem_t<i_t, f_t> user_problem(&handle);
 
   // Need at least one linear constraint for the barrier solver.
@@ -159,7 +159,7 @@ TEST(general_quadratic, rejects_non_convex)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
+  using namespace cuopt::math_optimization::dual_simplex;
   user_problem_t<i_t, f_t> user_problem(&handle);
 
   constexpr int m  = 0;
@@ -217,7 +217,7 @@ TEST(general_quadratic, rank_deficient_psd_solve)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
+  using namespace cuopt::math_optimization::dual_simplex;
   user_problem_t<i_t, f_t> user_problem(&handle);
 
   constexpr int m  = 1;
@@ -302,7 +302,7 @@ TEST(general_quadratic, with_inequality_constraint)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
+  using namespace cuopt::math_optimization::dual_simplex;
   user_problem_t<i_t, f_t> user_problem(&handle);
 
   // 2 constraints: one equality, one inequality
@@ -400,7 +400,7 @@ TEST(general_quadratic, least_squares_b_in_range)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
+  using namespace cuopt::math_optimization::dual_simplex;
   user_problem_t<i_t, f_t> user_problem(&handle);
 
   // Variables: x0, x1, u (u = t - b^T*b = t - 5).
@@ -519,7 +519,7 @@ TEST(general_quadratic, least_squares_b_not_in_range)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
+  using namespace cuopt::math_optimization::dual_simplex;
   user_problem_t<i_t, f_t> user_problem(&handle);
 
   constexpr int m  = 1;
@@ -592,7 +592,7 @@ TEST(general_quadratic, soc_head_nonneg_accepted)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
+  using namespace cuopt::math_optimization::dual_simplex;
   user_problem_t<i_t, f_t> user_problem(&handle);
 
   // Variables: x0, x1, t. Constraint: x0^2 + x1^2 - t^2 <= 0
@@ -659,7 +659,7 @@ TEST(general_quadratic, soc_head_free_rejected)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
+  using namespace cuopt::math_optimization::dual_simplex;
   user_problem_t<i_t, f_t> user_problem(&handle);
 
   constexpr int m  = 1;
@@ -715,7 +715,7 @@ TEST(general_quadratic, rotated_soc_heads_nonneg_accepted)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
+  using namespace cuopt::math_optimization::dual_simplex;
   user_problem_t<i_t, f_t> user_problem(&handle);
 
   // Variables: x0, x1, y, z. Constraint: x0^2 + x1^2 - 2*y*z <= 0
@@ -774,7 +774,7 @@ TEST(general_quadratic, rotated_soc_heads_free_rejected)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
+  using namespace cuopt::math_optimization::dual_simplex;
   user_problem_t<i_t, f_t> user_problem(&handle);
 
   constexpr int m  = 1;
@@ -824,4 +824,4 @@ TEST(general_quadratic, rotated_soc_heads_free_rejected)
     cuopt::logic_error);
 }
 
-}  // namespace cuopt::linear_programming::detail::test
+}  // namespace cuopt::math_optimization::detail::test

@@ -46,7 +46,7 @@
 #define CPUFJ_NVTX_RANGE(name) ((void)0)
 #endif
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::math_optimization::detail {
 
 template <typename i_t, typename f_t>
 void finalize_fj_cpu_host_initialization(
@@ -1893,4 +1893,4 @@ template void finalize_fj_cpu_host_initialization(
   const typename mip_solver_settings_t<int, double>::tolerances_t& tolerances);
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::math_optimization::detail

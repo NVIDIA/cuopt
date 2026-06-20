@@ -6,7 +6,7 @@
 /* clang-format on */
 
 #include <cuopt/error.hpp>
-#include <cuopt/linear_programming/solve_remote.hpp>
+#include <cuopt/math_optimization/solve_remote.hpp>
 #include <pdlp/cusparse_view.hpp>
 #include <pdlp/optimal_batch_size_handler/optimal_batch_size_handler.hpp>
 #include <pdlp/pdlp.cuh>
@@ -25,17 +25,17 @@
 #include <mip_heuristics/solver.cuh>
 #include <mip_heuristics/utilities/sort_csr.cuh>
 
-#include <cuopt/linear_programming/backend_selection.hpp>
-#include <cuopt/linear_programming/cpu_optimization_problem.hpp>
-#include <cuopt/linear_programming/cpu_optimization_problem_solution.hpp>
-#include <cuopt/linear_programming/optimization_problem.hpp>
-#include <cuopt/linear_programming/optimization_problem_solution.hpp>
-#include <cuopt/linear_programming/optimization_problem_utils.hpp>
-#include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
-#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
-#include <cuopt/linear_programming/solve.hpp>
+#include <cuopt/math_optimization/backend_selection.hpp>
+#include <cuopt/math_optimization/cpu_optimization_problem.hpp>
+#include <cuopt/math_optimization/cpu_optimization_problem_solution.hpp>
+#include <cuopt/math_optimization/optimization_problem.hpp>
+#include <cuopt/math_optimization/optimization_problem_solution.hpp>
+#include <cuopt/math_optimization/optimization_problem_utils.hpp>
+#include <cuopt/math_optimization/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/math_optimization/pdlp/solver_settings.hpp>
+#include <cuopt/math_optimization/solve.hpp>
 
-#include <cuopt/linear_programming/io/mps_data_model.hpp>
+#include <cuopt/math_optimization/io/mps_data_model.hpp>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/omp_helpers.hpp>
 #include <utilities/version_info.hpp>
@@ -68,7 +68,7 @@
 #define CUOPT_LOG_CONDITIONAL_INFO(condition, ...) \
   if ((condition)) { CUOPT_LOG_INFO(__VA_ARGS__); }
 
-namespace cuopt::linear_programming {
+namespace cuopt::math_optimization {
 
 template <typename From, typename To>
 extern rmm::device_uvector<To> gpu_cast(const rmm::device_uvector<From>& src,
@@ -1016,7 +1016,7 @@ static void apply_batch_settings_overrides(
       return given_value == default_value ? override_value : given_value;
     };
 
-  batch_settings.method               = cuopt::linear_programming::method_t::PDLP;
+  batch_settings.method               = cuopt::math_optimization::method_t::PDLP;
   batch_settings.presolver            = presolver_t::None;
   batch_settings.pdlp_solver_mode     = pdlp_solver_mode_t::Stable3;
   batch_settings.detect_infeasibility = false;
@@ -1458,7 +1458,7 @@ size_t compute_optimal_batch_size(const optimization_problem_t<i_t, f_t>& proble
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> batch_pdlp_solve(
   raft::handle_t const* handle_ptr,
-  const cuopt::linear_programming::io::mps_data_model_t<i_t, f_t>& mps_model,
+  const cuopt::math_optimization::io::mps_data_model_t<i_t, f_t>& mps_model,
   const std::vector<i_t>& fractional,
   const std::vector<f_t>& root_soln_x,
   pdlp_solver_settings_t<i_t, f_t> const& settings_const)
@@ -1965,7 +1965,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
         std::max(1.0, std::min(0.1 * lp_timer.remaining_time(), 60.0));
       presolver = std::make_unique<detail::third_party_presolve_t<i_t, f_t>>();
       result    = presolver->apply(op_problem,
-                                cuopt::linear_programming::problem_category_t::LP,
+                                cuopt::math_optimization::problem_category_t::LP,
                                 settings.presolver,
                                 settings.dual_postsolve,
                                 settings.tolerances.absolute_primal_tolerance,
@@ -2004,7 +2004,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
         presolver->undo(empty_primal,
                         empty_dual,
                         empty_reduced_costs,
-                        cuopt::linear_programming::problem_category_t::LP,
+                        cuopt::math_optimization::problem_category_t::LP,
                         false,  // status_to_skip
                         settings.dual_postsolve,
                         op_problem.get_handle_ptr()->get_stream());
@@ -2075,7 +2075,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
       presolver->undo(primal_solution,
                       dual_solution,
                       reduced_costs,
-                      cuopt::linear_programming::problem_category_t::LP,
+                      cuopt::math_optimization::problem_category_t::LP,
                       status_to_skip,
                       settings.dual_postsolve,
                       op_problem.get_handle_ptr()->get_stream());
@@ -2116,14 +2116,14 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
 }
 
 template <typename i_t, typename f_t>
-cuopt::linear_programming::optimization_problem_t<i_t, f_t> mps_data_model_to_optimization_problem(
+cuopt::math_optimization::optimization_problem_t<i_t, f_t> mps_data_model_to_optimization_problem(
   raft::handle_t const* handle_ptr,
-  const cuopt::linear_programming::io::mps_data_model_t<i_t, f_t>& data_model)
+  const cuopt::math_optimization::io::mps_data_model_t<i_t, f_t>& data_model)
 {
   cuopt_expects(handle_ptr != nullptr,
                 error_type_t::ValidationError,
                 "handle_ptr must not be null for GPU-backed problem construction");
-  cuopt::linear_programming::optimization_problem_t<i_t, f_t> op_problem(handle_ptr);
+  cuopt::math_optimization::optimization_problem_t<i_t, f_t> op_problem(handle_ptr);
   op_problem.set_maximize(data_model.get_sense());
 
   if (data_model.get_constraint_matrix_values().size() != 0) {
@@ -2208,7 +2208,7 @@ cuopt::linear_programming::optimization_problem_t<i_t, f_t> mps_data_model_to_op
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> solve_lp(
   raft::handle_t const* handle_ptr,
-  const cuopt::linear_programming::io::mps_data_model_t<i_t, f_t>& mps_data_model,
+  const cuopt::math_optimization::io::mps_data_model_t<i_t, f_t>& mps_data_model,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   bool problem_checking,
   bool use_pdlp_solver_mode)
@@ -2313,7 +2313,7 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
                                                                                                  \
   template optimization_problem_solution_t<int, F_TYPE> solve_lp(                                \
     raft::handle_t const* handle_ptr,                                                            \
-    const cuopt::linear_programming::io::mps_data_model_t<int, F_TYPE>& mps_data_model,          \
+    const cuopt::math_optimization::io::mps_data_model_t<int, F_TYPE>& mps_data_model,           \
     pdlp_solver_settings_t<int, F_TYPE> const& settings,                                         \
     bool problem_checking,                                                                       \
     bool use_pdlp_solver_mode);                                                                  \
@@ -2340,7 +2340,7 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
                                                                                                  \
   template optimization_problem_solution_t<int, F_TYPE> batch_pdlp_solve(                        \
     raft::handle_t const* handle_ptr,                                                            \
-    const cuopt::linear_programming::io::mps_data_model_t<int, F_TYPE>& mps_data_model,          \
+    const cuopt::math_optimization::io::mps_data_model_t<int, F_TYPE>& mps_data_model,           \
     const std::vector<int>& fractional,                                                          \
     const std::vector<F_TYPE>& root_soln_x,                                                      \
     pdlp_solver_settings_t<int, F_TYPE> const& settings);                                        \
@@ -2356,7 +2356,7 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
                                                                                                  \
   template optimization_problem_t<int, F_TYPE> mps_data_model_to_optimization_problem(           \
     raft::handle_t const* handle_ptr,                                                            \
-    const cuopt::linear_programming::io::mps_data_model_t<int, F_TYPE>& data_model);             \
+    const cuopt::math_optimization::io::mps_data_model_t<int, F_TYPE>& data_model);              \
   template void set_pdlp_solver_mode(pdlp_solver_settings_t<int, F_TYPE>& settings);
 
 #if MIP_INSTANTIATE_FLOAT
@@ -2367,4 +2367,4 @@ INSTANTIATE(float)
 INSTANTIATE(double)
 #endif
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::math_optimization

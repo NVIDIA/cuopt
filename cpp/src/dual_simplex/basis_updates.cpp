@@ -14,7 +14,7 @@
 #include <cmath>
 #include <limits>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::math_optimization::dual_simplex {
 
 template <typename i_t, typename f_t>
 i_t basis_update_t<i_t, f_t>::b_solve(const std::vector<f_t>& rhs, std::vector<f_t>& solution) const
@@ -2455,4 +2455,4 @@ template class basis_update_t<int, double>;
 template class basis_update_mpf_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::math_optimization::dual_simplex

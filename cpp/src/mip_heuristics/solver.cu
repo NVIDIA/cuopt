@@ -33,7 +33,7 @@
 #include <memory>
 #include <thread>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::math_optimization::detail {
 
 // This serves as both a warm up but also a mandatory initial call to setup cuSparse and cuBLAS
 static void init_handler(const raft::handle_t* handle_ptr)
@@ -296,19 +296,19 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   // Detect symmetry after all presolve steps (PaPILO, cuOpt probing, bounds, trivial presolve).
   // context.problem_ptr is the final reduced problem with correct variable indices.
   if (context.settings.symmetry != 0 && !context.problem_ptr->empty) {
-    cuopt::linear_programming::dual_simplex::simplex_solver_settings_t<i_t, f_t> simplex_settings;
+    cuopt::math_optimization::dual_simplex::simplex_solver_settings_t<i_t, f_t> simplex_settings;
     simplex_settings.set_log(true);
     simplex_settings.time_limit = context.settings.time_limit;
-    cuopt::linear_programming::dual_simplex::user_problem_t<i_t, f_t> post_presolve_problem =
+    cuopt::math_optimization::dual_simplex::user_problem_t<i_t, f_t> post_presolve_problem =
       cuopt_problem_to_user_problem<i_t, f_t>(context.problem_ptr->handle_ptr,
                                               *context.problem_ptr);
     bool has_symmetry_post = false;
-    context.symmetry       = cuopt::linear_programming::dual_simplex::detect_symmetry(
+    context.symmetry       = cuopt::math_optimization::dual_simplex::detect_symmetry(
       post_presolve_problem, simplex_settings, has_symmetry_post);
   }
 #endif
 
-  namespace dual_simplex                             = cuopt::linear_programming::dual_simplex;
+  namespace dual_simplex                             = cuopt::math_optimization::dual_simplex;
   dual_simplex::mip_status_t branch_and_bound_status = dual_simplex::mip_status_t::UNSET;
   dual_simplex::user_problem_t<i_t, f_t> branch_and_bound_problem(context.problem_ptr->handle_ptr);
   context.problem_ptr->recompute_objective_integrality();
@@ -541,4 +541,4 @@ template class mip_solver_t<int, float>;
 template class mip_solver_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::math_optimization::detail

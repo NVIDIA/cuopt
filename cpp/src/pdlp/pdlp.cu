@@ -6,9 +6,9 @@
 /* clang-format on */
 
 #include <cuopt/error.hpp>
-#include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
-#include <cuopt/linear_programming/pdlp/pdlp_warm_start_data.hpp>
-#include <cuopt/linear_programming/solver_settings.hpp>
+#include <cuopt/math_optimization/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/math_optimization/pdlp/pdlp_warm_start_data.hpp>
+#include <cuopt/math_optimization/solver_settings.hpp>
 
 #include <pdlp/cusparse_view.hpp>
 #include <pdlp/pdlp.cuh>
@@ -16,7 +16,7 @@
 #include <pdlp/utils.cuh>
 
 #include <mip_heuristics/mip_constants.hpp>
-#include "cuopt/linear_programming/pdlp/solver_solution.hpp"
+#include "cuopt/math_optimization/pdlp/solver_solution.hpp"
 
 #include <utilities/copy_helpers.hpp>
 #include <utilities/macros.cuh>
@@ -45,7 +45,7 @@
 #include <tuple>
 #include <unordered_set>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::math_optimization::detail {
 
 // Templated wrapper for cuBLAS geam function
 // cublasSgeam for float, cublasDgeam for double
@@ -3226,4 +3226,4 @@ template __global__ void compute_weights_initial_primal_weight_from_squared_norm
   const pdlp_hyper_params::pdlp_hyper_params_t hyper_params);
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::math_optimization::detail

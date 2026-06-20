@@ -7,9 +7,9 @@
 
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 
-#include <cuopt/linear_programming/io/mps_data_model.hpp>
-#include <cuopt/linear_programming/io/parser.hpp>
-#include <cuopt/linear_programming/solve.hpp>
+#include <cuopt/math_optimization/io/mps_data_model.hpp>
+#include <cuopt/math_optimization/io/parser.hpp>
+#include <cuopt/math_optimization/solve.hpp>
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
 #include <mip_heuristics/problem/problem.cuh>
 #include <pdlp/utils.cuh>
@@ -27,19 +27,19 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::linear_programming::test {
+namespace cuopt::math_optimization::test {
 
 TEST(problem, find_implied_integers)
 {
   const raft::handle_t handle_{};
 
   auto path           = make_path_absolute("mip/fiball.mps");
-  auto mps_data_model = cuopt::linear_programming::io::read_mps<int, double>(path, false);
+  auto mps_data_model = cuopt::math_optimization::io::read_mps<int, double>(path, false);
   auto op_problem     = mps_data_model_to_optimization_problem(&handle_, mps_data_model);
   auto presolver      = std::make_unique<detail::third_party_presolve_t<int, double>>();
   auto result         = presolver->apply(op_problem,
-                                 cuopt::linear_programming::problem_category_t::MIP,
-                                 cuopt::linear_programming::presolver_t::Papilo,
+                                 cuopt::math_optimization::problem_category_t::MIP,
+                                 cuopt::math_optimization::presolver_t::Papilo,
                                  false,
                                  1e-6,
                                  1e-12,
@@ -63,4 +63,4 @@ TEST(problem, find_implied_integers)
             ((int)detail::problem_t<int, double>::var_flags_t::VAR_IMPLIED_INTEGER));
 }
 
-}  // namespace cuopt::linear_programming::test
+}  // namespace cuopt::math_optimization::test

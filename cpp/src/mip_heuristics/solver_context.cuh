@@ -5,7 +5,7 @@
  */
 /* clang-format on */
 
-#include <cuopt/linear_programming/mip/solver_stats.hpp>
+#include <cuopt/math_optimization/mip/solver_stats.hpp>
 
 #include <mip_heuristics/problem/problem.cuh>
 #include <mip_heuristics/relaxed_lp/lp_state.cuh>
@@ -18,14 +18,14 @@
 #pragma once
 
 // Forward declare
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::math_optimization::dual_simplex {
 template <typename i_t, typename f_t>
 class branch_and_bound_t;
 }
 
 #include <branch_and_bound/symmetry.hpp>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::math_optimization::detail {
 
 template <typename i_t, typename f_t>
 class diversity_manager_t;
@@ -79,4 +79,4 @@ struct mip_solver_context_t {
   std::unique_ptr<dual_simplex::mip_symmetry_t<i_t, f_t>> symmetry;
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::math_optimization::detail

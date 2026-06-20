@@ -22,7 +22,7 @@
 #include <queue>
 #include <vector>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::math_optimization::dual_simplex {
 
 template <typename i_t, typename f_t>
 struct backlog_node_compare_t {
@@ -455,4 +455,4 @@ class deterministic_diving_worker_pool_t
   }
 };
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::math_optimization::dual_simplex

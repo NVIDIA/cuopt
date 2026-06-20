@@ -20,7 +20,7 @@
 
 #include "cudss.h"
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::math_optimization::dual_simplex {
 
 template <typename i_t, typename f_t>
 class sparse_cholesky_base_t {
@@ -896,4 +896,4 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
   void* cuGetErrorString_func;
 };
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::math_optimization::dual_simplex

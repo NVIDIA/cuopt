@@ -11,8 +11,8 @@
 #include <pdlp/pdhg.hpp>
 #include <pdlp/saddle_point.hpp>
 
-#include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
-#include <cuopt/linear_programming/utilities/segmented_sum_handler.cuh>
+#include <cuopt/math_optimization/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/math_optimization/utilities/segmented_sum_handler.cuh>
 
 #include <mip_heuristics/problem/problem.cuh>
 
@@ -23,7 +23,7 @@
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::math_optimization::detail {
 template <typename i_t, typename f_t>
 class infeasibility_information_t {
  public:
@@ -136,4 +136,4 @@ class infeasibility_information_t {
   const std::vector<pdlp_climber_strategy_t>& climber_strategies_;
   const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params_;
 };
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::math_optimization::detail

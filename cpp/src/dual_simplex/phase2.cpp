@@ -42,7 +42,7 @@
 #include <ctime>
 #include <map>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::math_optimization::dual_simplex {
 
 constexpr int FEATURE_LOG_INTERVAL = 100;
 
@@ -3802,4 +3802,4 @@ template void compute_initial_nonbasic_end<int, double>(const std::vector<int>& 
                                                         std::vector<int>& nonbasic_end);
 #endif
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::math_optimization::dual_simplex

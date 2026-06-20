@@ -27,7 +27,7 @@
 #include <numeric>
 #include <queue>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::math_optimization::dual_simplex {
 
 namespace {
 
@@ -5599,4 +5599,4 @@ template void verify_cuts_against_saved_solution<int, double>(
   const std::vector<double>& saved_solution);
 #endif
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::math_optimization::dual_simplex

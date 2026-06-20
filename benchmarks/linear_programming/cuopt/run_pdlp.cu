@@ -5,11 +5,11 @@
  */
 /* clang-format on */
 
-#include <cuopt/linear_programming/io/parser.hpp>
-#include <cuopt/linear_programming/optimization_problem_interface.hpp>
-#include <cuopt/linear_programming/pdlp/solver_solution.hpp>
-#include <cuopt/linear_programming/solve.hpp>
-#include <cuopt/linear_programming/solver_settings.hpp>
+#include <cuopt/math_optimization/io/parser.hpp>
+#include <cuopt/math_optimization/optimization_problem_interface.hpp>
+#include <cuopt/math_optimization/pdlp/solver_solution.hpp>
+#include <cuopt/math_optimization/solve.hpp>
+#include <cuopt/math_optimization/solver_settings.hpp>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/cusparse_macros.hpp>
@@ -85,50 +85,50 @@ static void parse_arguments(argparse::ArgumentParser& program)
     .choices("default", "single", "double", "mixed");
 }
 
-static cuopt::linear_programming::presolver_t string_to_presolver(const std::string& presolver)
+static cuopt::math_optimization::presolver_t string_to_presolver(const std::string& presolver)
 {
-  if (presolver == "None") return cuopt::linear_programming::presolver_t::None;
-  if (presolver == "Papilo") return cuopt::linear_programming::presolver_t::Papilo;
-  if (presolver == "PSLP") return cuopt::linear_programming::presolver_t::PSLP;
-  if (presolver == "Default") return cuopt::linear_programming::presolver_t::Default;
-  return cuopt::linear_programming::presolver_t::Default;
+  if (presolver == "None") return cuopt::math_optimization::presolver_t::None;
+  if (presolver == "Papilo") return cuopt::math_optimization::presolver_t::Papilo;
+  if (presolver == "PSLP") return cuopt::math_optimization::presolver_t::PSLP;
+  if (presolver == "Default") return cuopt::math_optimization::presolver_t::Default;
+  return cuopt::math_optimization::presolver_t::Default;
 }
 
-static cuopt::linear_programming::pdlp_precision_t string_to_pdlp_precision(
+static cuopt::math_optimization::pdlp_precision_t string_to_pdlp_precision(
   const std::string& precision)
 {
-  if (precision == "single") return cuopt::linear_programming::pdlp_precision_t::SinglePrecision;
-  if (precision == "double") return cuopt::linear_programming::pdlp_precision_t::DoublePrecision;
-  if (precision == "mixed") return cuopt::linear_programming::pdlp_precision_t::MixedPrecision;
-  return cuopt::linear_programming::pdlp_precision_t::DefaultPrecision;
+  if (precision == "single") return cuopt::math_optimization::pdlp_precision_t::SinglePrecision;
+  if (precision == "double") return cuopt::math_optimization::pdlp_precision_t::DoublePrecision;
+  if (precision == "mixed") return cuopt::math_optimization::pdlp_precision_t::MixedPrecision;
+  return cuopt::math_optimization::pdlp_precision_t::DefaultPrecision;
 }
 
-static cuopt::linear_programming::pdlp_solver_mode_t string_to_pdlp_solver_mode(
+static cuopt::math_optimization::pdlp_solver_mode_t string_to_pdlp_solver_mode(
   const std::string& mode)
 {
-  if (mode == "Stable1") return cuopt::linear_programming::pdlp_solver_mode_t::Stable1;
+  if (mode == "Stable1") return cuopt::math_optimization::pdlp_solver_mode_t::Stable1;
   if (mode == "Stable2")
-    return cuopt::linear_programming::pdlp_solver_mode_t::Stable2;
+    return cuopt::math_optimization::pdlp_solver_mode_t::Stable2;
   else if (mode == "Methodical1")
-    return cuopt::linear_programming::pdlp_solver_mode_t::Methodical1;
+    return cuopt::math_optimization::pdlp_solver_mode_t::Methodical1;
   else if (mode == "Fast1")
-    return cuopt::linear_programming::pdlp_solver_mode_t::Fast1;
+    return cuopt::math_optimization::pdlp_solver_mode_t::Fast1;
   else if (mode == "Stable3")
-    return cuopt::linear_programming::pdlp_solver_mode_t::Stable3;
-  return cuopt::linear_programming::pdlp_solver_mode_t::Stable3;
+    return cuopt::math_optimization::pdlp_solver_mode_t::Stable3;
+  return cuopt::math_optimization::pdlp_solver_mode_t::Stable3;
 }
 
-static cuopt::linear_programming::pdlp_solver_settings_t<int, double> create_solver_settings(
+static cuopt::math_optimization::pdlp_solver_settings_t<int, double> create_solver_settings(
   const argparse::ArgumentParser& program)
 {
-  cuopt::linear_programming::pdlp_solver_settings_t<int, double> settings{};
+  cuopt::math_optimization::pdlp_solver_settings_t<int, double> settings{};
 
   settings.time_limit      = program.get<double>("--time-limit");
   settings.iteration_limit = program.get<int>("--iteration-limit");
   settings.set_optimality_tolerance(program.get<double>("--optimality-tolerance"));
   settings.pdlp_solver_mode =
     string_to_pdlp_solver_mode(program.get<std::string>("--pdlp-solver-mode"));
-  settings.method = static_cast<cuopt::linear_programming::method_t>(program.get<int>("--method"));
+  settings.method = static_cast<cuopt::math_optimization::method_t>(program.get<int>("--method"));
   settings.crossover      = program.get<int>("--crossover");
   settings.presolver      = string_to_presolver(program.get<std::string>("--presolver"));
   settings.pdlp_precision = string_to_pdlp_precision(program.get<std::string>("--pdlp-precision"));
@@ -148,13 +148,13 @@ static int run_solver(const argparse::ArgumentParser& program, const raft::handl
   }
 
   // Parse MPS file
-  cuopt::linear_programming::io::mps_data_model_t<int, double> op_problem =
-    cuopt::linear_programming::io::read_mps<int, double>(program.get<std::string>("--path"));
+  cuopt::math_optimization::io::mps_data_model_t<int, double> op_problem =
+    cuopt::math_optimization::io::read_mps<int, double>(program.get<std::string>("--path"));
 
   // Solve LP problem
   bool problem_checking = true;
-  cuopt::linear_programming::optimization_problem_solution_t<int, double> solution =
-    cuopt::linear_programming::solve_lp(
+  cuopt::math_optimization::optimization_problem_solution_t<int, double> solution =
+    cuopt::math_optimization::solve_lp(
       &handle_, op_problem, settings, problem_checking, use_pdlp_solver_mode);
 
   // Write solution to file if requested

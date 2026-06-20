@@ -7,8 +7,8 @@
 
 #pragma once
 
-#include <cuopt/linear_programming/optimization_problem.hpp>
-#include <cuopt/linear_programming/optimization_problem_interface.hpp>
+#include <cuopt/math_optimization/optimization_problem.hpp>
+#include <cuopt/math_optimization/optimization_problem_interface.hpp>
 
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/sparse_matrix.hpp>
@@ -23,7 +23,7 @@
 #include <utility>
 #include <vector>
 
-namespace cuopt::linear_programming {
+namespace cuopt::math_optimization {
 
 template <typename i_t, typename f_t>
 static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_user_problem(
@@ -88,8 +88,8 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_user_problem(
   for (int j = 0; j < n; ++j) {
     user_problem.var_types[j] =
       variable_types[j] == var_t::CONTINUOUS
-        ? cuopt::linear_programming::dual_simplex::variable_type_t::CONTINUOUS
-        : cuopt::linear_programming::dual_simplex::variable_type_t::INTEGER;
+        ? cuopt::math_optimization::dual_simplex::variable_type_t::CONTINUOUS
+        : cuopt::math_optimization::dual_simplex::variable_type_t::INTEGER;
   }
 
   user_problem.Q_offsets = problem.get_quadratic_objective_offsets();
@@ -182,8 +182,8 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_user_problem(
   for (int j = 0; j < n; ++j) {
     user_problem.var_types[j] =
       model_variable_types[j] == var_t::CONTINUOUS
-        ? cuopt::linear_programming::dual_simplex::variable_type_t::CONTINUOUS
-        : cuopt::linear_programming::dual_simplex::variable_type_t::INTEGER;
+        ? cuopt::math_optimization::dual_simplex::variable_type_t::CONTINUOUS
+        : cuopt::math_optimization::dual_simplex::variable_type_t::INTEGER;
   }
 
   user_problem.Q_offsets = model.Q_offsets;
@@ -304,8 +304,8 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_optimization_problem_to_user
     user_problem.var_types[j] =
       model_variable_types.empty() ||
           model_variable_types[static_cast<std::size_t>(j)] == var_t::CONTINUOUS
-        ? cuopt::linear_programming::dual_simplex::variable_type_t::CONTINUOUS
-        : cuopt::linear_programming::dual_simplex::variable_type_t::INTEGER;
+        ? cuopt::math_optimization::dual_simplex::variable_type_t::CONTINUOUS
+        : cuopt::math_optimization::dual_simplex::variable_type_t::INTEGER;
   }
 
   user_problem.Q_offsets = model.get_quadratic_objective_offsets();
@@ -415,4 +415,4 @@ void translate_to_crossover_problem(const detail::problem_t<i_t, f_t>& problem,
   CUOPT_LOG_DEBUG("Finished translating");
 }
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::math_optimization

@@ -24,7 +24,7 @@
 #include <cuda/functional>
 #include <raft/linalg/binary_op.cuh>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::math_optimization::detail {
 
 template <typename f_t>
 rmm::device_uvector<f_t> get_lower_bounds(
@@ -651,4 +651,4 @@ template class solution_t<int, float>;
 template class solution_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::math_optimization::detail

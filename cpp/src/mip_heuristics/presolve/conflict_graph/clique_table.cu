@@ -30,7 +30,7 @@
 #include <utilities/macros.cuh>
 #include <utilities/timer.hpp>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::math_optimization::detail {
 
 // do constraints with only binary variables.
 template <typename i_t, typename f_t>
@@ -785,4 +785,4 @@ INSTANTIATE(double)
 #endif
 #undef INSTANTIATE
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::math_optimization::detail

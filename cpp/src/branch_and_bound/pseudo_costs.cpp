@@ -17,7 +17,7 @@
 
 #include <mip_heuristics/mip_constants.hpp>
 
-#include <cuopt/linear_programming/solve.hpp>
+#include <cuopt/math_optimization/solve.hpp>
 
 #include <utilities/copy_helpers.hpp>
 
@@ -25,7 +25,7 @@
 
 #include <omp.h>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::math_optimization::dual_simplex {
 namespace {
 
 static bool is_dual_simplex_done(dual::status_t status)
@@ -530,7 +530,7 @@ std::pair<f_t, dual::status_t> trial_branching(const lp_problem_t<i_t, f_t>& ori
 }  // namespace
 
 template <typename i_t, typename f_t>
-static cuopt::linear_programming::io::mps_data_model_t<i_t, f_t> simplex_problem_to_mps_data_model(
+static cuopt::math_optimization::io::mps_data_model_t<i_t, f_t> simplex_problem_to_mps_data_model(
   const dual_simplex::lp_problem_t<i_t, f_t>& lp,
   const std::vector<i_t>& new_slacks,
   const std::vector<f_t>& root_soln,
@@ -549,7 +549,7 @@ static cuopt::linear_programming::io::mps_data_model_t<i_t, f_t> simplex_problem
   // subject to  lb <= A*x <= ub
   //             l <= x <= u
 
-  cuopt::linear_programming::io::mps_data_model_t<i_t, f_t> mps_model;
+  cuopt::math_optimization::io::mps_data_model_t<i_t, f_t> mps_model;
   int m = lp.num_rows;
   int n = lp.num_cols - new_slacks.size();
   original_root_soln_x.resize(n);
@@ -1994,4 +1994,4 @@ template void strong_branching<int, double>(const lp_problem_t<int, double>& ori
 
 #endif
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::math_optimization::dual_simplex

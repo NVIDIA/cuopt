@@ -7,7 +7,7 @@
 
 #include "c_api_tests.h"
 
-#include <cuopt/linear_programming/cuopt_c.h>
+#include <cuopt/math_optimization/cuopt_c.h>
 
 #include <cuda_runtime.h>
 #include <stdio.h>

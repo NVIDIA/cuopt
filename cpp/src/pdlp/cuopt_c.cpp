@@ -5,19 +5,19 @@
  */
 /* clang-format on */
 
-#include <cuopt/linear_programming/cuopt_c.h>
+#include <cuopt/math_optimization/cuopt_c.h>
 
-#include <cuopt/linear_programming/cpu_optimization_problem_solution.hpp>
-#include <cuopt/linear_programming/optimization_problem_interface.hpp>
-#include <cuopt/linear_programming/optimization_problem_solution.hpp>
-#include <cuopt/linear_programming/optimization_problem_utils.hpp>
-#include <cuopt/linear_programming/solve.hpp>
-#include <cuopt/linear_programming/solver_settings.hpp>
+#include <cuopt/math_optimization/cpu_optimization_problem_solution.hpp>
+#include <cuopt/math_optimization/optimization_problem_interface.hpp>
+#include <cuopt/math_optimization/optimization_problem_solution.hpp>
+#include <cuopt/math_optimization/optimization_problem_utils.hpp>
+#include <cuopt/math_optimization/solve.hpp>
+#include <cuopt/math_optimization/solver_settings.hpp>
 #include <cuopt/utilities/timestamp_utils.hpp>
 #include <pdlp/cuopt_c_internal.hpp>
 #include <utilities/logger.hpp>
 
-#include <cuopt/linear_programming/io/parser.hpp>
+#include <cuopt/math_optimization/io/parser.hpp>
 
 #include <cuopt/version_config.hpp>
 
@@ -27,8 +27,8 @@
 #include <string>
 #include <vector>
 
-using namespace cuopt::linear_programming::io;
-using namespace cuopt::linear_programming;
+using namespace cuopt::math_optimization::io;
+using namespace cuopt::math_optimization;
 
 class c_get_solution_callback_t : public cuopt::internals::get_solution_callback_t {
  public:
@@ -828,7 +828,7 @@ cuopt_int_t cuOptGetVariableTypes(cuOptOptimizationProblem problem, char* variab
     static_cast<problem_and_stream_view_t*>(problem);
 
   cuopt_int_t size = problem_and_stream_view->get_problem()->get_n_variables();
-  std::vector<cuopt::linear_programming::var_t> variable_types_host(size);
+  std::vector<cuopt::math_optimization::var_t> variable_types_host(size);
   problem_and_stream_view->get_problem()->copy_variable_types_to_host(variable_types_host.data(),
                                                                       size);
 

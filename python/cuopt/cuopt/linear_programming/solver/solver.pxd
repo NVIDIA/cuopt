@@ -23,11 +23,11 @@ from cuopt.linear_programming.solver_settings.solver_settings cimport (
 )
 
 
-cdef extern from "cuopt/linear_programming/optimization_problem.hpp" namespace "cuopt::linear_programming": # noqa
-    ctypedef enum problem_category_t "cuopt::linear_programming::problem_category_t": # noqa
-        LP "cuopt::linear_programming::problem_category_t::LP"
-        MIP "cuopt::linear_programming::problem_category_t::MIP"
-        IP "cuopt::linear_programming::problem_category_t::IP"
+cdef extern from "cuopt/math_optimization/optimization_problem.hpp" namespace "cuopt::math_optimization": # noqa
+    ctypedef enum problem_category_t "cuopt::math_optimization::problem_category_t": # noqa
+        LP "cuopt::math_optimization::problem_category_t::LP"
+        MIP "cuopt::math_optimization::problem_category_t::MIP"
+        IP "cuopt::math_optimization::problem_category_t::IP"
 
 cdef extern from "cuopt/error.hpp" namespace "cuopt": # noqa
     ctypedef enum error_type_t "cuopt::error_type_t": # noqa
@@ -36,33 +36,33 @@ cdef extern from "cuopt/error.hpp" namespace "cuopt": # noqa
         OutOfMemoryError "cuopt::error_type_t::OutOfMemoryError" # noqa
         RuntimeError "cuopt::error_type_t::RuntimeError" # noqa
 
-cdef extern from "cuopt/linear_programming/mip/solver_solution.hpp" namespace "cuopt::linear_programming": # noqa
-    ctypedef enum mip_termination_status_t "cuopt::linear_programming::mip_termination_status_t": # noqa
-        NoTermination "cuopt::linear_programming::mip_termination_status_t::NoTermination" # noqa
-        Optimal "cuopt::linear_programming::mip_termination_status_t::Optimal"
-        FeasibleFound "cuopt::linear_programming::mip_termination_status_t::FeasibleFound" # noqa
-        Infeasible "cuopt::linear_programming::mip_termination_status_t::Infeasible" # noqa
-        Unbounded "cuopt::linear_programming::mip_termination_status_t::Unbounded" # noqa
-        TimeLimit "cuopt::linear_programming::mip_termination_status_t::TimeLimit" # noqa
-        WorkLimit "cuopt::linear_programming::mip_termination_status_t::WorkLimit" # noqa
-        UnboundedOrInfeasible "cuopt::linear_programming::mip_termination_status_t::UnboundedOrInfeasible" # noqa
+cdef extern from "cuopt/math_optimization/mip/solver_solution.hpp" namespace "cuopt::math_optimization": # noqa
+    ctypedef enum mip_termination_status_t "cuopt::math_optimization::mip_termination_status_t": # noqa
+        NoTermination "cuopt::math_optimization::mip_termination_status_t::NoTermination" # noqa
+        Optimal "cuopt::math_optimization::mip_termination_status_t::Optimal"
+        FeasibleFound "cuopt::math_optimization::mip_termination_status_t::FeasibleFound" # noqa
+        Infeasible "cuopt::math_optimization::mip_termination_status_t::Infeasible" # noqa
+        Unbounded "cuopt::math_optimization::mip_termination_status_t::Unbounded" # noqa
+        TimeLimit "cuopt::math_optimization::mip_termination_status_t::TimeLimit" # noqa
+        WorkLimit "cuopt::math_optimization::mip_termination_status_t::WorkLimit" # noqa
+        UnboundedOrInfeasible "cuopt::math_optimization::mip_termination_status_t::UnboundedOrInfeasible" # noqa
 
 
-cdef extern from "cuopt/linear_programming/pdlp/solver_solution.hpp" namespace "cuopt::linear_programming": # noqa
-    ctypedef enum pdlp_termination_status_t "cuopt::linear_programming::pdlp_termination_status_t": # noqa
-        NoTermination "cuopt::linear_programming::pdlp_termination_status_t::NoTermination" # noqa
-        NumericalError "cuopt::linear_programming::pdlp_termination_status_t::NumericalError" # noqa
-        Optimal "cuopt::linear_programming::pdlp_termination_status_t::Optimal" # noqa
-        PrimalInfeasible "cuopt::linear_programming::pdlp_termination_status_t::PrimalInfeasible" # noqa
-        DualInfeasible "cuopt::linear_programming::pdlp_termination_status_t::DualInfeasible" # noqa
-        IterationLimit "cuopt::linear_programming::pdlp_termination_status_t::IterationLimit" # noqa
-        TimeLimit "cuopt::linear_programming::pdlp_termination_status_t::TimeLimit" # noqa
-        ConcurrentLimit "cuopt::linear_programming::pdlp_termination_status_t::ConcurrentLimit" # noqa
-        PrimalFeasible "cuopt::linear_programming::pdlp_termination_status_t::PrimalFeasible" # noqa
-        UnboundedOrInfeasible "cuopt::linear_programming::pdlp_termination_status_t::UnboundedOrInfeasible" # noqa
+cdef extern from "cuopt/math_optimization/pdlp/solver_solution.hpp" namespace "cuopt::math_optimization": # noqa
+    ctypedef enum pdlp_termination_status_t "cuopt::math_optimization::pdlp_termination_status_t": # noqa
+        NoTermination "cuopt::math_optimization::pdlp_termination_status_t::NoTermination" # noqa
+        NumericalError "cuopt::math_optimization::pdlp_termination_status_t::NumericalError" # noqa
+        Optimal "cuopt::math_optimization::pdlp_termination_status_t::Optimal" # noqa
+        PrimalInfeasible "cuopt::math_optimization::pdlp_termination_status_t::PrimalInfeasible" # noqa
+        DualInfeasible "cuopt::math_optimization::pdlp_termination_status_t::DualInfeasible" # noqa
+        IterationLimit "cuopt::math_optimization::pdlp_termination_status_t::IterationLimit" # noqa
+        TimeLimit "cuopt::math_optimization::pdlp_termination_status_t::TimeLimit" # noqa
+        ConcurrentLimit "cuopt::math_optimization::pdlp_termination_status_t::ConcurrentLimit" # noqa
+        PrimalFeasible "cuopt::math_optimization::pdlp_termination_status_t::PrimalFeasible" # noqa
+        UnboundedOrInfeasible "cuopt::math_optimization::pdlp_termination_status_t::UnboundedOrInfeasible" # noqa
 
 
-cdef extern from "cuopt/linear_programming/utilities/cython_types.hpp" namespace "cuopt::cython": # noqa
+cdef extern from "cuopt/math_optimization/utilities/cython_types.hpp" namespace "cuopt::cython": # noqa
     # Inner struct types for LP solution vectors (GPU backend)
     cdef cppclass lp_gpu_solutions_t "cuopt::cython::linear_programming_ret_t::gpu_solutions_t": # noqa
         unique_ptr[device_buffer] primal_solution_
@@ -93,7 +93,7 @@ cdef extern from "cuopt/linear_programming/utilities/cython_types.hpp" namespace
         vector[double] last_restart_duality_gap_primal_solution_
         vector[double] last_restart_duality_gap_dual_solution_
 
-cdef extern from "cuopt/linear_programming/utilities/cython_solve.hpp" namespace "cuopt::cython": # noqa
+cdef extern from "cuopt/math_optimization/utilities/cython_solve.hpp" namespace "cuopt::cython": # noqa
     # Unified LP solution struct — solutions_ variant accessed via helpers
     cdef cppclass linear_programming_ret_t:
         # PDLP warm start scalars
@@ -156,7 +156,7 @@ cdef extern from "cuopt/linear_programming/utilities/cython_solve.hpp" namespace
 cdef extern from *:
     """
     #include <variant>
-    #include <cuopt/linear_programming/utilities/cython_solve.hpp>
+    #include <cuopt/math_optimization/utilities/cython_solve.hpp>
 
     // MIP: extract GPU (unique_ptr<device_buffer>) or CPU (vector<double>) solution
     inline std::unique_ptr<rmm::device_buffer>& get_gpu_mip_solution(cuopt::cython::mip_ret_t& m) {

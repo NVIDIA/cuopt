@@ -11,7 +11,7 @@
 #include <branch_and_bound/pseudo_costs.hpp>
 #include <branch_and_bound/symmetry.hpp>
 
-#include <cuopt/linear_programming/mip/solver_settings.hpp>  // benchmark_info_t
+#include <cuopt/math_optimization/mip/solver_settings.hpp>  // benchmark_info_t
 
 #include <cuts/cuts.hpp>
 #include <mip_heuristics/feasibility_jump/cpu_fj_thread.cuh>
@@ -44,7 +44,7 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::math_optimization::dual_simplex {
 namespace {
 
 template <typename f_t>
@@ -4188,4 +4188,4 @@ template class branch_and_bound_t<int, double>;
 
 #endif
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::math_optimization::dual_simplex

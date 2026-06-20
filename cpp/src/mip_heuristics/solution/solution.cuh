@@ -7,9 +7,9 @@
 
 #pragma once
 
-#include <cuopt/linear_programming/mip/solver_settings.hpp>
-#include <cuopt/linear_programming/mip/solver_solution.hpp>
-#include <cuopt/linear_programming/mip/solver_stats.hpp>
+#include <cuopt/math_optimization/mip/solver_settings.hpp>
+#include <cuopt/math_optimization/mip/solver_solution.hpp>
+#include <cuopt/math_optimization/mip/solver_stats.hpp>
 #include <mip_heuristics/diversity/weights.cuh>
 #include <mip_heuristics/problem/problem.cuh>
 #include <mip_heuristics/relaxed_lp/lp_state.cuh>
@@ -19,7 +19,7 @@
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::math_optimization::detail {
 
 template <typename i_t, typename f_t>
 class solution_t {
@@ -154,4 +154,4 @@ class solution_t {
   void test_variable_bounds(bool check_integer = true, i_t* is_feasible = nullptr);
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::math_optimization::detail

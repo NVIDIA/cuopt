@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include <cuopt/linear_programming/mip/diving_hyper_params.hpp>
+#include <cuopt/math_optimization/mip/diving_hyper_params.hpp>
 
 #include <branch_and_bound/pseudo_costs.hpp>
 
@@ -16,7 +16,7 @@
 
 #include <vector>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::math_optimization::dual_simplex {
 
 // When `log_diving_type` is true, each diving strategy gets its own letter;
 // otherwise every dive collapses to 'D'.
@@ -100,4 +100,4 @@ branch_variable_t<i_t> vector_length_diving(const lp_problem_t<i_t, f_t>& lp,
                                             const std::vector<f_t>& solution,
                                             logger_t& log);
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::math_optimization::dual_simplex

@@ -15,7 +15,7 @@
 
 #include <thrust/fill.h>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::math_optimization::detail {
 
 template <typename i_t, typename f_t>
 saddle_point_state_t<i_t, f_t>::saddle_point_state_t(
@@ -179,4 +179,4 @@ template class saddle_point_state_t<int, float>;
 template class saddle_point_state_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::math_optimization::detail

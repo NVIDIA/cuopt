@@ -50,7 +50,7 @@
 #include <thrust/iterator/zip_iterator.h>
 #include <thrust/reduce.h>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::math_optimization::dual_simplex {
 
 template <typename i_t, typename f_t>
 bool validate_barrier_cone_layout(const lp_problem_t<i_t, f_t>& problem,
@@ -4448,4 +4448,4 @@ template class sparse_cholesky_cudss_t<int, double>;
 template class iteration_data_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::math_optimization::dual_simplex

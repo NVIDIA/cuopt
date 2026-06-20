@@ -15,12 +15,12 @@
 #include <utilities/omp_helpers.hpp>
 #include <utilities/timer.hpp>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::math_optimization::dual_simplex {
 template <typename i_t, typename f_t>
 class branch_and_bound_t;
 }
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::math_optimization::detail {
 
 // make sure RANDOM is always the last
 enum class ls_method_t : int {
@@ -131,4 +131,4 @@ class local_search_t {
   population_t<i_t, f_t>* pop_ptr{nullptr};
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::math_optimization::detail
