@@ -182,7 +182,7 @@ class mip_solver_settings_t {
   benchmark_info_t* benchmark_info_ptr = nullptr;
 
   // TODO check with Akif and Alice
-  pdlp_hyper_params::pdlp_hyper_params_t hyper_params;
+  pdlp::pdlp_hyper_params_t hyper_params;
 
   mip_heuristics_hyper_params_t<i_t, f_t> heuristic_params;
 

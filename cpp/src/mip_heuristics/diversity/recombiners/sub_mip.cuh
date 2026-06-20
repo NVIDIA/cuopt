@@ -73,7 +73,7 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
     this->compute_vars_to_fix(offspring, vars_to_fix, n_vars_from_other, n_vars_from_guiding);
     auto [fixed_problem, fixed_assignment, variable_map] = offspring.fix_variables(vars_to_fix);
     // TODO ask Akif and Alice if this is ok
-    pdlp_initial_scaling_strategy_t<i_t, f_t> scaling(
+    pdlp::pdlp_initial_scaling_strategy_t<i_t, f_t> scaling(
       fixed_problem.handle_ptr,
       fixed_problem,
       context.settings.hyper_params.default_l_inf_ruiz_iterations,

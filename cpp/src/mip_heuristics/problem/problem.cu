@@ -102,7 +102,7 @@ void problem_t<i_t, f_t>::op_problem_cstr_body(const optimization_problem_t<i_t,
   compute_auxiliary_data();
   // Check after modifications
   cuopt_func_call(check_problem_representation(true, is_mip));
-  combine_constraint_bounds<i_t, f_t>(*this, combined_bounds);
+  pdlp::combine_constraint_bounds<i_t, f_t>(*this, combined_bounds);
 }
 
 template <typename i_t, typename f_t>
@@ -1223,7 +1223,7 @@ void problem_t<i_t, f_t>::insert_constraints(constraints_delta_t<i_t, f_t>& h_co
   cuopt_assert(offsets.element(n_constraints, handle_ptr->get_stream()) == nnz,
                "nnz and offset should match!");
   cuopt_assert(offsets.size() == n_constraints + 1, "offset size should match!");
-  combine_constraint_bounds<i_t, f_t>(*this, combined_bounds);
+  pdlp::combine_constraint_bounds<i_t, f_t>(*this, combined_bounds);
 }
 
 // Best rational approximation p/q to x with q <= max_denom, via continued fractions.
@@ -1911,7 +1911,7 @@ void problem_t<i_t, f_t>::remove_given_variables(problem_t<i_t, f_t>& original_p
   variables.resize(nnz, handle_ptr->get_stream());
   compute_transpose_of_problem();
   compute_auxiliary_data();
-  combine_constraint_bounds<i_t, f_t>(*this, combined_bounds);
+  pdlp::combine_constraint_bounds<i_t, f_t>(*this, combined_bounds);
   handle_ptr->sync_stream();
   recompute_auxilliary_data();
   cuopt_func_call(check_problem_representation(true));
@@ -1982,8 +1982,8 @@ void problem_t<i_t, f_t>::fill_integer_fixed_problem(rmm::device_uvector<f_t>& a
   cuopt_assert(integer_fixed_problem->n_variables > 0, "Integer fixed problem not computed");
   copy_rhs_from_problem(handle_ptr);
   integer_fixed_problem->fix_given_variables(*this, assignment, integer_indices, handle_ptr);
-  combine_constraint_bounds<i_t, f_t>(*integer_fixed_problem,
-                                      integer_fixed_problem->combined_bounds);
+  pdlp::combine_constraint_bounds<i_t, f_t>(*integer_fixed_problem,
+                                            integer_fixed_problem->combined_bounds);
   cuopt_func_call(integer_fixed_problem->check_problem_representation(true));
 }
 
@@ -2229,7 +2229,7 @@ void problem_t<i_t, f_t>::set_constraints_from_host_user_problem(
 
   compute_transpose_of_problem();
   combined_bounds.resize(n_constraints, stream);
-  combine_constraint_bounds<i_t, f_t>(*this, combined_bounds);
+  pdlp::combine_constraint_bounds<i_t, f_t>(*this, combined_bounds);
 }
 
 template <typename i_t, typename f_t>

@@ -365,7 +365,7 @@ void trivial_presolve(problem_t<i_t, f_t>& problem, bool remap_cache_ids = false
   problem.recompute_auxilliary_data(
     false);  // check problem representation later once cstr bounds are computed
   cuopt_func_call(test_reverse_matches(problem));
-  combine_constraint_bounds<i_t, f_t>(problem, problem.combined_bounds);
+  pdlp::combine_constraint_bounds<i_t, f_t>(problem, problem.combined_bounds);
   // The problem has been solved by presolve. Mark its empty status as valid
   if (problem.n_variables == 0) { problem.empty = true; }
   problem.check_problem_representation(true);

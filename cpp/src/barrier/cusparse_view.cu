@@ -255,10 +255,10 @@ cusparse_view_t<i_t, f_t>::~cusparse_view_t()
 }
 
 template <typename i_t, typename f_t>
-detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_view_t<i_t, f_t>::create_vector(
+pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_view_t<i_t, f_t>::create_vector(
   rmm::device_uvector<f_t> const& vec)
 {
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> descr;
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> descr;
   descr.create(vec.size(), const_cast<f_t*>(vec.data()));
   return descr;
 }
@@ -282,16 +282,16 @@ void cusparse_view_t<i_t, f_t>::spmv(f_t alpha,
                                      f_t beta,
                                      rmm::device_uvector<f_t>& y)
 {
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> x_cusparse = create_vector(x);
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> y_cusparse = create_vector(y);
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> x_cusparse = create_vector(x);
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> y_cusparse = create_vector(y);
   spmv(alpha, x_cusparse, beta, y_cusparse);
 }
 
 template <typename i_t, typename f_t>
 void cusparse_view_t<i_t, f_t>::spmv(f_t alpha,
-                                     detail::cusparse_dn_vec_descr_wrapper_t<f_t> const& x,
+                                     pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> const& x,
                                      f_t beta,
-                                     detail::cusparse_dn_vec_descr_wrapper_t<f_t> const& y)
+                                     pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> const& y)
 {
   // Would be simpler if we could pass host data direclty but other cusparse calls with the same
   // handler depend on device data
@@ -334,17 +334,16 @@ void cusparse_view_t<i_t, f_t>::transpose_spmv(f_t alpha,
                                                f_t beta,
                                                rmm::device_uvector<f_t>& y)
 {
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> x_cusparse = create_vector(x);
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> y_cusparse = create_vector(y);
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> x_cusparse = create_vector(x);
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> y_cusparse = create_vector(y);
   transpose_spmv(alpha, x_cusparse, beta, y_cusparse);
 }
 
 template <typename i_t, typename f_t>
-void cusparse_view_t<i_t, f_t>::transpose_spmv(
-  f_t alpha,
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> const& x,
-  f_t beta,
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> const& y)
+void cusparse_view_t<i_t, f_t>::transpose_spmv(f_t alpha,
+                                               pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> const& x,
+                                               f_t beta,
+                                               pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> const& y)
 {
   // Would be simpler if we could pass host data direct;y but other cusparse calls with the same
   // handler depend on device data

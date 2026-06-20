@@ -86,7 +86,7 @@ static void init_handler(const raft::handle_t* handle_ptr)
 
 // Corresponds to the first good general settings we found
 // It's what was used for the GTC results
-static void set_Stable1(pdlp_hyper_params::pdlp_hyper_params_t& hyper_params)
+static void set_Stable1(pdlp::pdlp_hyper_params_t& hyper_params)
 {
   hyper_params.initial_step_size_scaling                                  = 1.6;
   hyper_params.default_l_inf_ruiz_iterations                              = 1;
@@ -129,7 +129,7 @@ static void set_Stable1(pdlp_hyper_params::pdlp_hyper_params_t& hyper_params)
 
 // Even better general setting due to proper primal gradient handling for KKT restart and initial
 // projection
-static void set_Stable2(pdlp_hyper_params::pdlp_hyper_params_t& hyper_params)
+static void set_Stable2(pdlp::pdlp_hyper_params_t& hyper_params)
 {
   hyper_params.initial_step_size_scaling                                  = 1.0;
   hyper_params.default_l_inf_ruiz_iterations                              = 10;
@@ -186,7 +186,7 @@ static void set_Stable2(pdlp_hyper_params::pdlp_hyper_params_t& hyper_params)
  *   year={2024}
  * }
  */
-static void set_Stable3(pdlp_hyper_params::pdlp_hyper_params_t& hyper_params)
+static void set_Stable3(pdlp::pdlp_hyper_params_t& hyper_params)
 {
   hyper_params.initial_step_size_scaling                = 1.0;
   hyper_params.default_l_inf_ruiz_iterations            = 10;
@@ -229,7 +229,7 @@ static void set_Stable3(pdlp_hyper_params::pdlp_hyper_params_t& hyper_params)
 }
 
 // Legacy/Original/Initial PDLP settings
-static void set_Methodical1(pdlp_hyper_params::pdlp_hyper_params_t& hyper_params)
+static void set_Methodical1(pdlp::pdlp_hyper_params_t& hyper_params)
 {
   hyper_params.initial_step_size_scaling                                  = 1.0;
   hyper_params.default_l_inf_ruiz_iterations                              = 5;
@@ -272,7 +272,7 @@ static void set_Methodical1(pdlp_hyper_params::pdlp_hyper_params_t& hyper_params
 
 // Can be extremly faster but usually leads to more divergence
 // Used for the blog post results
-static void set_Fast1(pdlp_hyper_params::pdlp_hyper_params_t& hyper_params)
+static void set_Fast1(pdlp::pdlp_hyper_params_t& hyper_params)
 {
   hyper_params.initial_step_size_scaling                                  = 0.8;
   hyper_params.default_l_inf_ruiz_iterations                              = 6;
@@ -706,7 +706,7 @@ static optimization_problem_solution_t<i_t, double> run_pdlp_solver_in_fp32(
   fs.num_gpus                     = settings.num_gpus;
   fs.concurrent_halt              = settings.concurrent_halt;
 
-  detail::pdlp_solver_t<i_t, float> solver(float_problem, fs, is_batch_mode);
+  pdlp::pdlp_solver_t<i_t, float> solver(float_problem, fs, is_batch_mode);
   if (settings.inside_mip) { solver.set_inside_mip(true); }
   auto float_sol = solver.run_solver(timer);
 
@@ -775,7 +775,7 @@ static optimization_problem_solution_t<i_t, f_t> run_pdlp_solver(
     }
   }
 #endif
-  detail::pdlp_solver_t<i_t, f_t> solver(problem, settings, is_batch_mode);
+  pdlp::pdlp_solver_t<i_t, f_t> solver(problem, settings, is_batch_mode);
   if (settings.inside_mip) { solver.set_inside_mip(true); }
   return solver.run_solver(timer);
 }
@@ -792,7 +792,7 @@ optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& 
                   "PDLP batch mode is not supported for float precision. Use double precision.");
   }
   cuopt_expects(!(settings.pdlp_precision == pdlp_precision_t::MixedPrecision &&
-                  !detail::is_cusparse_runtime_mixed_precision_supported()),
+                  !pdlp::is_cusparse_runtime_mixed_precision_supported()),
                 error_type_t::ValidationError,
                 "Mixed-precision SpMV requires cuSPARSE runtime 12.5 or later.");
   cuopt_expects(
@@ -1327,7 +1327,7 @@ static optimization_problem_solution_t<i_t, f_t> run_batch_pdlp_splitting(
   }
 
   size_t optimal_batch_size = use_optimal_batch_size
-                                ? detail::optimal_batch_size_handler(problem, memory_max_batch_size)
+                                ? pdlp::optimal_batch_size_handler(problem, memory_max_batch_size)
                                 : max_batch_size;
   if (settings.fixed_batch_size > 0) { optimal_batch_size = settings.fixed_batch_size; }
   cuopt_assert(optimal_batch_size != 0 && optimal_batch_size <= max_batch_size,
@@ -1448,7 +1448,7 @@ size_t compute_optimal_batch_size(const optimization_problem_t<i_t, f_t>& proble
   // Now find the optimal batch size [0, memory_max_batch_size]
 
   const size_t optimal_batch_size = static_cast<size_t>(
-    detail::optimal_batch_size_handler(problem, static_cast<int>(memory_max_batch_size)));
+    pdlp::optimal_batch_size_handler(problem, static_cast<int>(memory_max_batch_size)));
 #ifdef BATCH_VERBOSE_MODE
   std::cout << "Optimal batch size: " << optimal_batch_size << std::endl;
 #endif

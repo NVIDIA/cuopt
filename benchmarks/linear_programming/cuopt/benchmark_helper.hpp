@@ -57,9 +57,8 @@ void parse_value(std::istringstream& iss, bool& value)
   iss >> std::boolalpha >> value;
 }
 
-void fill_pdlp_hyper_params(
-  const std::string& pdlp_hyper_params_path,
-  cuopt::math_optimization::pdlp_hyper_params::pdlp_hyper_params_t& params)
+void fill_pdlp_hyper_params(const std::string& pdlp_hyper_params_path,
+                            cuopt::math_optimization::pdlp::pdlp_hyper_params_t& params)
 {
   if (!std::filesystem::exists(pdlp_hyper_params_path)) {
     std::cerr << "PDLP config file path is not a valid: " << pdlp_hyper_params_path << std::endl;

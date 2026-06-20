@@ -55,7 +55,7 @@ optimization_problem_solution_t<i_t, f_t> get_relaxed_lp_solution(
   pdlp_settings.presolver                            = presolver_t::None;
   set_pdlp_solver_mode(pdlp_settings);
   // TODO: set Stable3 here?
-  pdlp_solver_t<i_t, f_t> lp_solver(op_problem, pdlp_settings);
+  pdlp::pdlp_solver_t<i_t, f_t> lp_solver(op_problem, pdlp_settings);
   if (settings.has_initial_primal) {
     i_t prev_size = lp_state.prev_dual.size();
     CUOPT_LOG_DEBUG(

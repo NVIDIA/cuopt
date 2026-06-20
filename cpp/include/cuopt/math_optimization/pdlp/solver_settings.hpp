@@ -314,7 +314,7 @@ class pdlp_solver_settings_t {
   // Shared strong branching solved flags for cooperative DS + PDLP
   cuda::std::span<std::atomic<int>> shared_sb_solved;
   static constexpr f_t minimal_absolute_tolerance = 1.0e-12;
-  pdlp_hyper_params::pdlp_hyper_params_t hyper_params;
+  pdlp::pdlp_hyper_params_t hyper_params;
   // Holds per-climber variable-bound overrides in the format:
   // (climber id, variable index, new lower bound, new upper bound).
   // Per-climber objective coefficients / offsets / constraint bounds must be pre-expanded directly

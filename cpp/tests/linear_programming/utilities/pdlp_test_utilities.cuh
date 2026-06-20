@@ -191,7 +191,7 @@ static void test_constraint_sanity(
       }
     }
 
-    auto functor = cuopt::math_optimization::detail::violation<double>{};
+    auto functor = cuopt::math_optimization::pdlp::violation<double>{};
 
     // Compute violation to lower/upper bound
 
@@ -217,7 +217,7 @@ static void test_constraint_sanity(
                    constraint_lower_bounds.cend(),
                    constraint_upper_bounds.cbegin(),
                    combined_bounds.begin(),
-                   cuopt::math_optimization::detail::combine_finite_abs_bounds<double>{});
+                   cuopt::math_optimization::pdlp::combine_finite_abs_bounds<double>{});
 
     double l2_norm_primal_right_hand_side = std::accumulate(
       combined_bounds.cbegin(), combined_bounds.cend(), 0.0, [](double acc, double val) {

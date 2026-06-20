@@ -61,7 +61,7 @@ HDI f_t get_cstr_tolerance(f_t lb, f_t ub, f_t abs_tol, f_t rel_tol)
   // we normally have combined bounds in the problem, but to reduce a memory request we can
   // recompute here
   if (USE_REL_TOLERANCE) {
-    f_t max_bound = combine_finite_abs_bounds<f_t>{}(lb, ub);
+    f_t max_bound = pdlp::combine_finite_abs_bounds<f_t>{}(lb, ub);
     tolerance += max_bound * rel_tol;
   }
   return tolerance;

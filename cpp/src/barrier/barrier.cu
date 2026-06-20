@@ -1723,13 +1723,13 @@ class iteration_data_t {
   // v = alpha * A * Dinv * A^T * y + beta * v
   void gpu_adat_multiply(f_t alpha,
                          const rmm::device_uvector<f_t>& y,
-                         detail::cusparse_dn_vec_descr_wrapper_t<f_t> const& cusparse_y,
+                         pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> const& cusparse_y,
 
                          f_t beta,
                          rmm::device_uvector<f_t>& v,
-                         detail::cusparse_dn_vec_descr_wrapper_t<f_t> const& cusparse_v,
+                         pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> const& cusparse_v,
                          rmm::device_uvector<f_t>& u,
-                         detail::cusparse_dn_vec_descr_wrapper_t<f_t> const& cusparse_u,
+                         pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> const& cusparse_u,
                          cusparse_view_t<i_t, f_t>& cusparse_view,
                          const rmm::device_uvector<f_t>& d_inv_diag) const
   {
@@ -1968,20 +1968,20 @@ class iteration_data_t {
 
   cusparse_info_t<i_t, f_t> cusparse_info;
   cusparse_view_t<i_t, f_t> cusparse_view_;
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_tmp4_;
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_h_;
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dx_residual_;
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dy_;
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dx_residual_5_;
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dx_residual_6_;
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dx_;
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dx_residual_3_;
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dx_residual_4_;
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_r1_;
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dual_residual_;
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_y_residual_;
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_tmp4_;
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_h_;
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dx_residual_;
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dy_;
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dx_residual_5_;
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dx_residual_6_;
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dx_;
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dx_residual_3_;
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dx_residual_4_;
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_r1_;
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dual_residual_;
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_y_residual_;
   // GPU ADAT multiply
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_u_;
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_u_;
 
   // Device vectors
 

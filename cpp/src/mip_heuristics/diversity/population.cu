@@ -514,7 +514,7 @@ void population_t<i_t, f_t>::normalize_weights()
   CUOPT_LOG_DEBUG("Normalizing weights");
 
   rmm::device_scalar<f_t> l2_norm(problem_ptr->handle_ptr->get_stream());
-  my_l2_norm<i_t, f_t>(weights.cstr_weights, l2_norm, problem_ptr->handle_ptr);
+  pdlp::my_l2_norm<i_t, f_t>(weights.cstr_weights, l2_norm, problem_ptr->handle_ptr);
   thrust::transform(
     problem_ptr->handle_ptr->get_thrust_policy(),
     weights.cstr_weights.begin(),
@@ -558,7 +558,7 @@ void population_t<i_t, f_t>::compute_new_weights()
   auto settings  = context.settings;
 
   rmm::device_scalar<f_t> l2_norm(problem_ptr->handle_ptr->get_stream());
-  my_l2_norm<i_t, f_t>(weights.cstr_weights, l2_norm, problem_ptr->handle_ptr);
+  pdlp::my_l2_norm<i_t, f_t>(weights.cstr_weights, l2_norm, problem_ptr->handle_ptr);
 
   if (!best_sol.get_feasible()) {
     CUOPT_LOG_DEBUG("Increasing weights!");

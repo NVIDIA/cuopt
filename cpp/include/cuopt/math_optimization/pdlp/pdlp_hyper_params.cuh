@@ -7,7 +7,7 @@
 
 #pragma once
 
-namespace cuopt::math_optimization::pdlp_hyper_params {
+namespace cuopt::math_optimization::pdlp {
 
 struct pdlp_hyper_params_t {
   double initial_step_size_scaling                  = 1.0;
@@ -58,4 +58,4 @@ struct pdlp_hyper_params_t {
 // TODO most likely we want to get rid of pdlp_solver_mode and just have prebuilt
 // constpexr version of each (Stable2, Stable1, Methodical1, Fast1, Stable3...)
 
-}  // namespace cuopt::math_optimization::pdlp_hyper_params
+}  // namespace cuopt::math_optimization::pdlp
