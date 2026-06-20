@@ -19,7 +19,7 @@
 #include <utilities/device_utils.cuh>
 #include <utilities/macros.cuh>
 
-namespace cuopt::math_optimization::detail {
+namespace cuopt::math_optimization::mip {
 
 HDI uint64_t hash_64(uint64_t x)
 {
@@ -212,4 +212,4 @@ struct contiguous_set_t {
   bitmap_t<uint32_t> validity_bitmap;
 };
 
-}  // namespace cuopt::math_optimization::detail
+}  // namespace cuopt::math_optimization::mip

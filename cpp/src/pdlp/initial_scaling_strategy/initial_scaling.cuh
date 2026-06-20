@@ -47,7 +47,7 @@ class pdlp_initial_scaling_strategy_t {
   };  // struct view_t
 
   pdlp_initial_scaling_strategy_t(raft::handle_t const* handle_ptr,
-                                  detail::problem_t<i_t, f_t>& op_problem_scaled,
+                                  mip::problem_t<i_t, f_t>& op_problem_scaled,
                                   i_t number_of_ruiz_iterations,
                                   f_t alpha,
                                   rmm::device_uvector<f_t>& A_T,
@@ -73,10 +73,10 @@ class pdlp_initial_scaling_strategy_t {
   void unscale_solutions(rmm::device_uvector<f_t>& primal_solution,
                          rmm::device_uvector<f_t>& dual_solution,
                          rmm::device_uvector<f_t>& dual_slack) const;
-  void unscale_solutions(detail::solution_t<i_t, f_t>& solution) const;
+  void unscale_solutions(mip::solution_t<i_t, f_t>& solution) const;
   const rmm::device_uvector<f_t>& get_constraint_matrix_scaling_vector() const;
   const rmm::device_uvector<f_t>& get_variable_scaling_vector() const;
-  const detail::problem_t<i_t, f_t>& get_scaled_op_problem();
+  const mip::problem_t<i_t, f_t>& get_scaled_op_problem();
 
   f_t get_h_bound_rescaling() const;
   f_t get_h_objective_rescaling() const;
@@ -104,7 +104,7 @@ class pdlp_initial_scaling_strategy_t {
 
   i_t primal_size_h_;
   i_t dual_size_h_;
-  detail::problem_t<i_t, f_t>& op_problem_scaled_;
+  mip::problem_t<i_t, f_t>& op_problem_scaled_;
 
   rmm::device_uvector<f_t> iteration_constraint_matrix_scaling_;
   rmm::device_uvector<f_t> iteration_variable_scaling_;

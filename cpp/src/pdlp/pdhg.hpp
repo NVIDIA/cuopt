@@ -28,7 +28,7 @@ template <typename i_t, typename f_t>
 class pdhg_solver_t {
  public:
   pdhg_solver_t(raft::handle_t const* handle_ptr,
-                detail::problem_t<i_t, f_t>& op_problem,
+                mip::problem_t<i_t, f_t>& op_problem,
                 bool is_legacy_batch_mode,
                 const std::vector<pdlp_climber_strategy_t>& climber_strategies,
                 const pdlp::pdlp_hyper_params_t& hyper_params,
@@ -102,7 +102,7 @@ class pdhg_solver_t {
   raft::handle_t const* handle_ptr_{nullptr};
   rmm::cuda_stream_view stream_view_;
 
-  detail::problem_t<i_t, f_t>* problem_ptr;
+  mip::problem_t<i_t, f_t>* problem_ptr;
 
   i_t primal_size_h_;
   i_t dual_size_h_;

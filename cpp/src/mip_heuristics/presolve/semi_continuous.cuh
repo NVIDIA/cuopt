@@ -10,7 +10,7 @@
 #include <cuopt/math_optimization/mip/solver_settings.hpp>
 #include <cuopt/math_optimization/optimization_problem.hpp>
 
-namespace cuopt::math_optimization::detail {
+namespace cuopt::math_optimization::mip {
 
 /**
  * @brief Reformulate semi-continuous variables in-place inside the MIP solver.
@@ -67,4 +67,4 @@ template <typename i_t, typename f_t>
 void strip_semi_continuous_auxiliaries_from_assignment(std::vector<f_t>& assignment,
                                                        i_t original_num_variables);
 
-}  // namespace cuopt::math_optimization::detail
+}  // namespace cuopt::math_optimization::mip

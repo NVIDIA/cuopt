@@ -48,7 +48,7 @@
 
 #include <cuda_profiler_api.h>
 
-namespace cuopt::math_optimization::detail {
+namespace cuopt::math_optimization::mip {
 
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::op_problem_cstr_body(const optimization_problem_t<i_t, f_t>& problem_)
@@ -1363,7 +1363,7 @@ void problem_t<i_t, f_t>::set_implied_integers(const std::vector<i_t>& implied_i
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::recompute_objective_integrality()
 {
-  using cuopt::math_optimization::detail::is_integer;
+  using cuopt::math_optimization::mip::is_integer;
 
   objective_is_integral =
     thrust::all_of(handle_ptr->get_thrust_policy(),
@@ -1449,7 +1449,7 @@ void problem_t<i_t, f_t>::compute_objective_step()
     }
 
     if (objective_is_integral) {
-      f_t g = dual_simplex::gcd_of_integer_values(nonzero_coefs);
+      f_t g = mip::gcd_of_integer_values(nonzero_coefs);
       if (g > 0) {
         objective_step.step_size = g;
         objective_step.bias      = 0;
@@ -1467,7 +1467,7 @@ void problem_t<i_t, f_t>::compute_objective_step()
       for (f_t c : nonzero_coefs) {
         scaled_coefs.push_back(std::round(static_cast<f_t>(scaling_factor) * c));
       }
-      f_t g = dual_simplex::gcd_of_integer_values(scaled_coefs);
+      f_t g = mip::gcd_of_integer_values(scaled_coefs);
       if (g > 0) {
         f_t sf                   = static_cast<f_t>(scaling_factor);
         objective_step.step_size = g / sf;
@@ -1487,7 +1487,7 @@ void problem_t<i_t, f_t>::compute_objective_step()
   auto h_con_lb  = cuopt::host_copy(constraint_lower_bounds, handle_ptr->get_stream());
   auto h_con_ub  = cuopt::host_copy(constraint_upper_bounds, handle_ptr->get_stream());
 
-  objective_step = dual_simplex::compute_objective_step_info<i_t, f_t>(
+  objective_step = mip::compute_objective_step_info<i_t, f_t>(
     h_obj_coefs, is_lattice_known_initially, h_offsets, h_vars, h_coefs, h_con_lb, h_con_ub);
 }
 
@@ -1804,8 +1804,8 @@ problem_t<i_t, f_t> problem_t<i_t, f_t>::get_problem_after_fixing_vars(
   cuopt_assert(result_end - variable_map.data() == variable_map.size(),
                "Size issue in set_difference");
   CUOPT_LOG_DEBUG("Fixing assignment hash 0x%x, vars to fix: 0x%x",
-                  detail::compute_hash(assignment, handle_ptr->get_stream()),
-                  detail::compute_hash(variables_to_fix, handle_ptr->get_stream()));
+                  mip::compute_hash(assignment, handle_ptr->get_stream()),
+                  mip::compute_hash(variables_to_fix, handle_ptr->get_stream()));
   problem.fix_given_variables(*this, assignment, variables_to_fix, handle_ptr);
   RAFT_CHECK_CUDA(handle_ptr->get_stream());
   problem.remove_given_variables(*this, assignment, variable_map, handle_ptr);
@@ -2386,17 +2386,17 @@ uint32_t problem_t<i_t, f_t>::get_fingerprint() const
   // CSR representation should be unique and sorted at this point
   auto stream = handle_ptr->get_stream();
 
-  uint32_t h_coeff      = detail::compute_hash(coefficients, stream);
-  uint32_t h_vars       = detail::compute_hash(variables, stream);
-  uint32_t h_offsets    = detail::compute_hash(offsets, stream);
-  uint32_t h_rev_coeff  = detail::compute_hash(reverse_coefficients, stream);
-  uint32_t h_rev_off    = detail::compute_hash(reverse_offsets, stream);
-  uint32_t h_rev_constr = detail::compute_hash(reverse_constraints, stream);
-  uint32_t h_obj        = detail::compute_hash(objective_coefficients, stream);
-  uint32_t h_varbounds  = detail::compute_hash(variable_bounds, stream);
-  uint32_t h_clb        = detail::compute_hash(constraint_lower_bounds, stream);
-  uint32_t h_cub        = detail::compute_hash(constraint_upper_bounds, stream);
-  uint32_t h_vartypes   = detail::compute_hash(variable_types, stream);
+  uint32_t h_coeff      = mip::compute_hash(coefficients, stream);
+  uint32_t h_vars       = mip::compute_hash(variables, stream);
+  uint32_t h_offsets    = mip::compute_hash(offsets, stream);
+  uint32_t h_rev_coeff  = mip::compute_hash(reverse_coefficients, stream);
+  uint32_t h_rev_off    = mip::compute_hash(reverse_offsets, stream);
+  uint32_t h_rev_constr = mip::compute_hash(reverse_constraints, stream);
+  uint32_t h_obj        = mip::compute_hash(objective_coefficients, stream);
+  uint32_t h_varbounds  = mip::compute_hash(variable_bounds, stream);
+  uint32_t h_clb        = mip::compute_hash(constraint_lower_bounds, stream);
+  uint32_t h_cub        = mip::compute_hash(constraint_upper_bounds, stream);
+  uint32_t h_vartypes   = mip::compute_hash(variable_types, stream);
   uint32_t h_obj_off    = detail::compute_hash(presolve_data.objective_offset);
   uint32_t h_obj_scale  = detail::compute_hash(presolve_data.objective_scaling_factor);
 
@@ -2496,4 +2496,4 @@ template class problem_t<int, float>;
 template class problem_t<int, double>;
 #endif
 
-}  // namespace cuopt::math_optimization::detail
+}  // namespace cuopt::math_optimization::mip

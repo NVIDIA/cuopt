@@ -7,7 +7,7 @@
 
 #pragma once
 
-namespace cuopt::math_optimization::detail {
+namespace cuopt::math_optimization::mip {
 
 struct bp_recombiner_config_t {
   static constexpr double bounds_prop_time_limit          = 2.;
@@ -125,4 +125,4 @@ struct sub_mip_recombiner_config_t {
   }
 };
 
-}  // namespace cuopt::math_optimization::detail
+}  // namespace cuopt::math_optimization::mip

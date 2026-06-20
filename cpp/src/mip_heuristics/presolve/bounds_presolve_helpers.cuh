@@ -15,7 +15,7 @@
 
 #include "bounds_update_data.cuh"
 
-namespace cuopt::math_optimization::detail {
+namespace cuopt::math_optimization::mip {
 
 template <typename f_t>
 struct tuple_plus_t {
@@ -35,4 +35,4 @@ struct tuple_plus_t {
   }
 };
 
-}  // namespace cuopt::math_optimization::detail
+}  // namespace cuopt::math_optimization::mip

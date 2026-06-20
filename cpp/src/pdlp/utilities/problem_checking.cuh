@@ -17,10 +17,10 @@ class device_uvector;
 
 namespace cuopt::math_optimization {
 
-namespace detail {
+namespace mip {
 template <typename i_t, typename f_t>
 class problem_t;
-}  // namespace detail
+}  // namespace mip
 
 template <typename i_t, typename f_t>
 class problem_checking_t {
@@ -30,9 +30,9 @@ class problem_checking_t {
   static void check_problem_representation(const optimization_problem_t<i_t, f_t>& op_problem);
   static bool has_crossing_bounds(const optimization_problem_t<i_t, f_t>& op_problem);
 
-  static void check_scaled_problem(detail::problem_t<i_t, f_t> const& scaled_problem,
-                                   detail::problem_t<i_t, f_t> const& op_problem);
-  static void check_unscaled_solution(detail::problem_t<i_t, f_t>& op_problem,
+  static void check_scaled_problem(mip::problem_t<i_t, f_t> const& scaled_problem,
+                                   mip::problem_t<i_t, f_t> const& op_problem);
+  static void check_unscaled_solution(mip::problem_t<i_t, f_t>& op_problem,
                                       rmm::device_uvector<f_t> const& assignment);
   static void check_initial_primal_representation(
     const optimization_problem_t<i_t, f_t>& op_problem,

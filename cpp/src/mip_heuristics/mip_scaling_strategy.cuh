@@ -13,7 +13,7 @@
 
 #include <rmm/cuda_stream_view.hpp>
 
-namespace cuopt::math_optimization::detail {
+namespace cuopt::math_optimization::mip {
 
 template <typename i_t, typename f_t>
 class mip_scaling_strategy_t {
@@ -29,4 +29,4 @@ class mip_scaling_strategy_t {
   optimization_problem_type_t& op_problem_scaled_;
 };
 
-}  // namespace cuopt::math_optimization::detail
+}  // namespace cuopt::math_optimization::mip

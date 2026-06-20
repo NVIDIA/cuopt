@@ -55,10 +55,10 @@ class pdlp_solver_t {
    *
    * For full description of algorithm, see https://arxiv.org/abs/2106.04756
    *
-   * @param[in] op_problem An detail::problem_t<i_t, f_t> object with a
+   * @param[in] op_problem An mip::problem_t<i_t, f_t> object with a
    * representation of a linear program
    */
-  pdlp_solver_t(detail::problem_t<i_t, f_t>& op_problem,
+  pdlp_solver_t(mip::problem_t<i_t, f_t>& op_problem,
                 pdlp_solver_settings_t<i_t, f_t> const& settings,
                 bool is_batch_mode = false);
 
@@ -76,7 +76,7 @@ class pdlp_solver_t {
   void resize_and_swap_all_context_loop(
     const std::unordered_set<i_t>& climber_strategies_to_remove);
 
-  void set_problem_ptr(detail::problem_t<i_t, f_t>* problem_ptr_);
+  void set_problem_ptr(mip::problem_t<i_t, f_t>* problem_ptr_);
 
   // Interface to let MIP set an initial solution
   // Users will keep on using the optimization_problem to provide an initial solution
@@ -148,13 +148,12 @@ class pdlp_solver_t {
   rmm::cuda_stream_view stream_view_;
   // Intentionnaly take a copy to avoid an unintentional modification in the calling context
   const pdlp_solver_settings_t<i_t, f_t> settings_;
-  dual_simplex::shared_strong_branching_context_view_t<i_t, f_t> sb_view_{
-    settings_.shared_sb_solved};
+  mip::shared_strong_branching_context_view_t<i_t, f_t> sb_view_{settings_.shared_sb_solved};
 
-  detail::problem_t<i_t, f_t>* problem_ptr;
+  mip::problem_t<i_t, f_t>* problem_ptr;
   // Combined bounds in op_problem_scaled_ will only be scaled if
   // compute_initial_primal_weight_before_scaling is false because of compute_initial_primal_weight
-  detail::problem_t<i_t, f_t> op_problem_scaled_;
+  mip::problem_t<i_t, f_t> op_problem_scaled_;
 
   rmm::device_uvector<f_t> unscaled_primal_avg_solution_;
   rmm::device_uvector<f_t> unscaled_dual_avg_solution_;

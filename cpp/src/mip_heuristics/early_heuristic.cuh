@@ -21,7 +21,7 @@
 #include <limits>
 #include <vector>
 
-namespace cuopt::math_optimization::detail {
+namespace cuopt::math_optimization::mip {
 
 template <typename f_t>
 using early_incumbent_callback_t = std::function<void(
@@ -113,4 +113,4 @@ class early_heuristic_t {
   std::chrono::steady_clock::time_point start_time_;
 };
 
-}  // namespace cuopt::math_optimization::detail
+}  // namespace cuopt::math_optimization::mip

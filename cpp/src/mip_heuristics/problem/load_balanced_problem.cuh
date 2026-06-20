@@ -28,7 +28,7 @@
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
 
-namespace cuopt::math_optimization::detail {
+namespace cuopt::math_optimization::mip {
 
 template <typename i_t, typename f_t>
 class load_balanced_bounds_presolve_t;
@@ -86,4 +86,4 @@ class load_balanced_problem_t {
   vertex_bin_t<i_t> vars_binner;
 };
 
-}  // namespace cuopt::math_optimization::detail
+}  // namespace cuopt::math_optimization::mip

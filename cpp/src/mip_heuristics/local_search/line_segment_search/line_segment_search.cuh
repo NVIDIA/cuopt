@@ -11,7 +11,7 @@
 #include <mip_heuristics/local_search/rounding/constraint_prop.cuh>
 #include <utilities/timer.hpp>
 
-namespace cuopt::math_optimization::detail {
+namespace cuopt::math_optimization::mip {
 
 struct line_segment_settings_t {
   bool recombiner_mode        = false;
@@ -54,4 +54,4 @@ class line_segment_search_t {
   line_segment_settings_t settings;
 };
 
-}  // namespace cuopt::math_optimization::detail
+}  // namespace cuopt::math_optimization::mip

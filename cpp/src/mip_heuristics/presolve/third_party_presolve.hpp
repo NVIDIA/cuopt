@@ -20,7 +20,7 @@ template <typename T>
 class PostsolveStorage;
 }
 
-namespace cuopt::math_optimization::detail {
+namespace cuopt::math_optimization::mip {
 
 template <typename f_t>
 struct papilo_postsolve_deleter {
@@ -107,4 +107,4 @@ class third_party_presolve_t {
   std::vector<i_t> original_to_reduced_map_{};
 };
 
-}  // namespace cuopt::math_optimization::detail
+}  // namespace cuopt::math_optimization::mip

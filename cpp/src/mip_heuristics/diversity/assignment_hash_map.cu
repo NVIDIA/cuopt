@@ -16,7 +16,7 @@
 
 namespace cuopt {
 namespace math_optimization {
-namespace detail {
+namespace mip {
 
 struct combine_hash {
   DI size_t operator()(size_t hash_1, size_t hash_2)
@@ -157,6 +157,6 @@ template class assignment_hash_map_t<int, float>;
 template class assignment_hash_map_t<int, double>;
 #endif
 
-}  // namespace detail
+}  // namespace mip
 }  // namespace math_optimization
 }  // namespace cuopt

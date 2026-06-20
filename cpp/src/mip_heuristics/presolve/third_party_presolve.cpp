@@ -44,7 +44,7 @@
 
 #include <raft/core/nvtx.hpp>
 
-namespace cuopt::math_optimization::detail {
+namespace cuopt::math_optimization::mip {
 
 template <typename i_t, typename f_t>
 papilo::Problem<f_t> build_papilo_problem(const optimization_problem_t<i_t, f_t>& op_problem,
@@ -550,7 +550,7 @@ void set_presolve_methods(papilo::Presolve<f_t>& presolver,
 
   if (category == problem_category_t::MIP) {
     // cuOpt custom GF2 presolver
-    presolver.addPresolveMethod(uptr(new cuopt::math_optimization::detail::GF2Presolve<f_t>()));
+    presolver.addPresolveMethod(uptr(new cuopt::math_optimization::mip::GF2Presolve<f_t>()));
   }
   // fast presolvers
   presolver.addPresolveMethod(uptr(new papilo::SingletonCols<f_t>()));
@@ -899,4 +899,4 @@ template struct papilo_postsolve_deleter<double>;
 template class third_party_presolve_t<int, double>;
 #endif
 
-}  // namespace cuopt::math_optimization::detail
+}  // namespace cuopt::math_optimization::mip

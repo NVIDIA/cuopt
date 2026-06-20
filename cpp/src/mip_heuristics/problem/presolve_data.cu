@@ -22,14 +22,14 @@
 #include <thrust/gather.h>
 
 namespace cuopt {
-namespace math_optimization::detail {
+namespace math_optimization::mip {
 
 template <typename i_t, typename f_t>
 bool presolve_data_t<i_t, f_t>::pre_process_assignment(problem_t<i_t, f_t>& problem,
                                                        rmm::device_uvector<f_t>& assignment)
 {
   raft::common::nvtx::range fun_scope("pre_process_assignment");
-  auto has_nans = cuopt::math_optimization::detail::has_nans(problem.handle_ptr, assignment);
+  auto has_nans = cuopt::math_optimization::mip::has_nans(problem.handle_ptr, assignment);
   if (has_nans) {
     CUOPT_LOG_DEBUG("Solution discarded due to nans");
     return false;
@@ -80,7 +80,7 @@ bool presolve_data_t<i_t, f_t>::pre_process_assignment(problem_t<i_t, f_t>& prob
                  assignment.begin());
   problem.handle_ptr->sync_stream();
 
-  auto has_integrality_discrepancy = cuopt::math_optimization::detail::has_integrality_discrepancy(
+  auto has_integrality_discrepancy = cuopt::math_optimization::mip::has_integrality_discrepancy(
     problem.handle_ptr,
     problem.integer_indices,
     assignment,
@@ -90,9 +90,8 @@ bool presolve_data_t<i_t, f_t>::pre_process_assignment(problem_t<i_t, f_t>& prob
     return false;
   }
 
-  auto has_variable_bounds_violation =
-    cuopt::math_optimization::detail::has_variable_bounds_violation(
-      problem.handle_ptr, assignment, &problem);
+  auto has_variable_bounds_violation = cuopt::math_optimization::mip::has_variable_bounds_violation(
+    problem.handle_ptr, assignment, &problem);
   if (has_variable_bounds_violation) {
     CUOPT_LOG_DEBUG("Solution discarded due to variable bounds violation");
     return false;
@@ -250,5 +249,5 @@ template class presolve_data_t<int, float>;
 template class presolve_data_t<int, double>;
 #endif
 
-}  // namespace math_optimization::detail
+}  // namespace math_optimization::mip
 }  // namespace cuopt

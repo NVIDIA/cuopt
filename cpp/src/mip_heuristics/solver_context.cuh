@@ -18,14 +18,14 @@
 #pragma once
 
 // Forward declare
-namespace cuopt::math_optimization::dual_simplex {
+namespace cuopt::math_optimization::mip {
 template <typename i_t, typename f_t>
 class branch_and_bound_t;
 }
 
 #include <branch_and_bound/symmetry.hpp>
 
-namespace cuopt::math_optimization::detail {
+namespace cuopt::math_optimization::mip {
 
 template <typename i_t, typename f_t>
 class diversity_manager_t;
@@ -53,7 +53,7 @@ struct mip_solver_context_t {
 
   raft::handle_t const* const handle_ptr;
   problem_t<i_t, f_t>* problem_ptr;
-  dual_simplex::branch_and_bound_t<i_t, f_t>* branch_and_bound_ptr{nullptr};
+  mip::branch_and_bound_t<i_t, f_t>* branch_and_bound_ptr{nullptr};
   diversity_manager_t<i_t, f_t>* diversity_manager_ptr{nullptr};
   std::atomic<bool> preempt_heuristic_solver_ = false;
   const mip_solver_settings_t<i_t, f_t> settings;
@@ -76,7 +76,7 @@ struct mip_solver_context_t {
   std::vector<f_t> initial_incumbent_assignment{};
 
   // Symmetry information for orbital fixing during B&B. Null if no exploitable symmetry.
-  std::unique_ptr<dual_simplex::mip_symmetry_t<i_t, f_t>> symmetry;
+  std::unique_ptr<mip::mip_symmetry_t<i_t, f_t>> symmetry;
 };
 
-}  // namespace cuopt::math_optimization::detail
+}  // namespace cuopt::math_optimization::mip

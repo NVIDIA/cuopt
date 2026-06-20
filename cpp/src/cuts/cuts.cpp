@@ -27,7 +27,10 @@
 #include <numeric>
 #include <queue>
 
-namespace cuopt::math_optimization::dual_simplex {
+namespace cuopt::math_optimization::mip {
+
+using namespace cuopt::math_optimization::dual_simplex;  // shared simplex types (lp_problem_t,
+                                                         // etc.)
 
 namespace {
 
@@ -354,7 +357,7 @@ void bron_kerbosch(bk_bitset_context_t<i_t, f_t>& ctx,
 
 template <typename i_t, typename f_t>
 void extend_clique_vertices(std::vector<i_t>& clique_vertices,
-                            detail::clique_table_t<i_t, f_t>& graph,
+                            mip::clique_table_t<i_t, f_t>& graph,
                             const std::vector<f_t>& xstar,
                             const std::vector<f_t>& reduced_costs,
                             i_t num_vars,
@@ -5599,4 +5602,4 @@ template void verify_cuts_against_saved_solution<int, double>(
   const std::vector<double>& saved_solution);
 #endif
 
-}  // namespace cuopt::math_optimization::dual_simplex
+}  // namespace cuopt::math_optimization::mip

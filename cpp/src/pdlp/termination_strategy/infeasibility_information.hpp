@@ -28,8 +28,8 @@ template <typename i_t, typename f_t>
 class infeasibility_information_t {
  public:
   infeasibility_information_t(raft::handle_t const* handle_ptr,
-                              detail::problem_t<i_t, f_t>& op_problem,
-                              const detail::problem_t<i_t, f_t>&
+                              mip::problem_t<i_t, f_t>& op_problem,
+                              const mip::problem_t<i_t, f_t>&
                                 op_problem_scaled,  // Only used for cuPDLPx infeasibility detection
                               cusparse_view_t<i_t, f_t>& cusparse_view,
                               const cusparse_view_t<i_t, f_t>& scaled_cusparse_view,
@@ -90,7 +90,7 @@ class infeasibility_information_t {
   i_t primal_size_h_;
   i_t dual_size_h_;
 
-  detail::problem_t<i_t, f_t>* problem_ptr;
+  mip::problem_t<i_t, f_t>* problem_ptr;
   cusparse_view_t<i_t, f_t>& op_problem_cusparse_view_;
   const cusparse_view_t<i_t, f_t>& scaled_cusparse_view_;
 
@@ -130,7 +130,7 @@ class infeasibility_information_t {
   const rmm::device_scalar<f_t> reusable_device_scalar_value_neg_1_;
 
   const pdlp_initial_scaling_strategy_t<i_t, f_t>& scaling_strategy_;
-  const detail::problem_t<i_t, f_t>& op_problem_scaled_;
+  const mip::problem_t<i_t, f_t>& op_problem_scaled_;
 
   detail::segmented_sum_handler_t<i_t, f_t> segmented_sum_handler_;
   const std::vector<pdlp_climber_strategy_t>& climber_strategies_;

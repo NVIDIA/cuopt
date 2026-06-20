@@ -7,7 +7,7 @@
 
 #pragma once
 
-namespace cuopt::math_optimization::detail {
+namespace cuopt::math_optimization::mip {
 
 struct ls_config_t {
   static constexpr bool use_line_segment                     = true;
@@ -16,4 +16,4 @@ struct ls_config_t {
   static constexpr bool use_cutting_plane_from_best_solution = false;
 };
 
-}  // namespace cuopt::math_optimization::detail
+}  // namespace cuopt::math_optimization::mip

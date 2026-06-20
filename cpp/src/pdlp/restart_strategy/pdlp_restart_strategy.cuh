@@ -112,7 +112,7 @@ class pdlp_restart_strategy_t {
   void resize_context(i_t new_size);
 
   pdlp_restart_strategy_t(raft::handle_t const* handle_ptr,
-                          detail::problem_t<i_t, f_t>& op_problem,
+                          mip::problem_t<i_t, f_t>& op_problem,
                           const cusparse_view_t<i_t, f_t>& cusparse_view,
                           const i_t primal_size,
                           const i_t dual_size,
@@ -308,7 +308,7 @@ class pdlp_restart_strategy_t {
   i_t primal_size_h_;
   i_t dual_size_h_;
 
-  detail::problem_t<i_t, f_t>* problem_ptr;
+  mip::problem_t<i_t, f_t>* problem_ptr;
 
   rmm::device_scalar<f_t> primal_norm_weight_;
   rmm::device_scalar<f_t> dual_norm_weight_;

@@ -7,7 +7,7 @@
 
 #pragma once
 
-namespace cuopt::math_optimization::detail {
+namespace cuopt::math_optimization::mip {
 
 enum class termination_criterion_t {
   TIME_LIMIT,
@@ -17,4 +17,4 @@ enum class termination_criterion_t {
   NO_UPDATE
 };
 
-}  // namespace cuopt::math_optimization::detail
+}  // namespace cuopt::math_optimization::mip

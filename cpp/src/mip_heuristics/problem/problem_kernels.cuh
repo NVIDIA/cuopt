@@ -11,7 +11,7 @@
 
 #include "problem.cuh"
 
-namespace cuopt::math_optimization::detail {
+namespace cuopt::math_optimization::mip {
 
 template <typename i_t, typename f_t>
 __global__ void compute_new_offsets(const typename problem_t<i_t, f_t>::view_t orig_problem,
@@ -77,4 +77,4 @@ __global__ void compute_related_vars_unique(const typename problem_t<i_t, f_t>::
   }
 }
 
-}  // namespace cuopt::math_optimization::detail
+}  // namespace cuopt::math_optimization::mip

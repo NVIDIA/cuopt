@@ -37,7 +37,7 @@ namespace cuopt::math_optimization::pdlp {
 template <typename i_t, typename f_t>
 convergence_information_t<i_t, f_t>::convergence_information_t(
   raft::handle_t const* handle_ptr,
-  detail::problem_t<i_t, f_t>& op_problem,
+  mip::problem_t<i_t, f_t>& op_problem,
   cusparse_view_t<i_t, f_t>& cusparse_view,
   i_t primal_size,
   i_t dual_size,

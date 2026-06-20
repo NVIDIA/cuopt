@@ -153,7 +153,7 @@ static size_t batch_size_handler(const pdlp_solver_settings_t<i_t, f_t>& setting
 }
 
 template <typename i_t, typename f_t>
-pdlp_solver_t<i_t, f_t>::pdlp_solver_t(detail::problem_t<i_t, f_t>& op_problem,
+pdlp_solver_t<i_t, f_t>::pdlp_solver_t(mip::problem_t<i_t, f_t>& op_problem,
                                        pdlp_solver_settings_t<i_t, f_t> const& settings,
                                        bool is_legacy_batch_mode)
   : original_batch_size_(batch_size_handler(settings)),

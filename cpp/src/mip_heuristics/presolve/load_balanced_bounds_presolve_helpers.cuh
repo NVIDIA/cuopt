@@ -21,7 +21,7 @@
 
 #include <cuda_runtime_api.h>
 
-namespace cuopt::math_optimization::detail {
+namespace cuopt::math_optimization::mip {
 
 #define CUDA_VER_13_0_UP (CUDART_VERSION >= 13000)
 
@@ -1158,4 +1158,4 @@ void create_update_bounds_heavy_vars(cudaGraph_t upd_graph,
   }
 }
 
-}  // namespace cuopt::math_optimization::detail
+}  // namespace cuopt::math_optimization::mip

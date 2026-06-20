@@ -14,7 +14,7 @@
 #include <mip_heuristics/solution/solution.cuh>
 #include "lp_state.cuh"
 
-namespace cuopt::math_optimization::detail {
+namespace cuopt::math_optimization::mip {
 
 struct relaxed_lp_settings_t {
   double tolerance                  = 1e-4;
@@ -49,4 +49,4 @@ bool run_lp_with_vars_fixed(problem_t<i_t, f_t>& op_problem,
                             bool check_fixed_assignment_feasibility    = false,
                             bool use_integer_fixed_problem             = false);
 
-}  // namespace cuopt::math_optimization::detail
+}  // namespace cuopt::math_optimization::mip

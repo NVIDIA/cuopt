@@ -265,7 +265,7 @@ struct rhs_sum_of_squares_t {
 };
 
 template <typename i_t, typename f_t>
-void inline combine_constraint_bounds(const detail::problem_t<i_t, f_t>& op_problem,
+void inline combine_constraint_bounds(const mip::problem_t<i_t, f_t>& op_problem,
                                       rmm::device_uvector<f_t>& combined_bounds)
 {
   cuopt_assert(

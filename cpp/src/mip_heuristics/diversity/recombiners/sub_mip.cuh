@@ -16,7 +16,7 @@
 #include <dual_simplex/tic_toc.hpp>
 #include <pdlp/initial_scaling_strategy/initial_scaling.cuh>
 
-namespace cuopt::math_optimization::detail {
+namespace cuopt::math_optimization::mip {
 
 template <typename i_t, typename f_t>
 class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
@@ -91,8 +91,8 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
     trivial_presolve(fixed_problem);
     fixed_problem.check_problem_representation(true);
     // brute force rounding threshold is 8
-    const bool run_sub_mip                             = fixed_problem.n_integer_vars > 8;
-    dual_simplex::mip_status_t branch_and_bound_status = dual_simplex::mip_status_t::UNSET;
+    const bool run_sub_mip                    = fixed_problem.n_integer_vars > 8;
+    mip::mip_status_t branch_and_bound_status = mip::mip_status_t::UNSET;
     dual_simplex::mip_solution_t<i_t, f_t> branch_and_bound_solution(1);
     if (run_sub_mip) {
       // run sub-mip
@@ -120,9 +120,8 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
 
       // disable B&B logs, so that it is not interfering with the main B&B thread
       branch_and_bound_settings.log.log = false;
-      dual_simplex::probing_implied_bound_t<i_t, f_t> empty_probing(
-        branch_and_bound_problem.num_cols);
-      dual_simplex::branch_and_bound_t<i_t, f_t> branch_and_bound(
+      mip::probing_implied_bound_t<i_t, f_t> empty_probing(branch_and_bound_problem.num_cols);
+      mip::branch_and_bound_t<i_t, f_t> branch_and_bound(
         branch_and_bound_problem, branch_and_bound_settings, dual_simplex::tic(), empty_probing);
       branch_and_bound_status = branch_and_bound.solve(branch_and_bound_solution);
       if (solution_vector.size() > 0) {
@@ -162,7 +161,7 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
     // bool same_as_parents = this->check_if_offspring_is_same_as_parents(offspring, a, b);
     // adjust the max_n_of_vars_from_other
     if (n_different_vars > (i_t)sub_mip_recombiner_config_t::max_n_of_vars_from_other) {
-      if (branch_and_bound_status == dual_simplex::mip_status_t::OPTIMAL) {
+      if (branch_and_bound_status == mip::mip_status_t::OPTIMAL) {
         sub_mip_recombiner_config_t::increase_max_n_of_vars_from_other();
       } else {
         sub_mip_recombiner_config_t::decrease_max_n_of_vars_from_other();
@@ -206,4 +205,4 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
   population_t<i_t, f_t>& population;
 };
 
-}  // namespace cuopt::math_optimization::detail
+}  // namespace cuopt::math_optimization::mip

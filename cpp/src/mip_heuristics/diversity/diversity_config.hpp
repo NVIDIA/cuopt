@@ -9,7 +9,7 @@
 
 #include <cstddef>
 
-namespace cuopt::math_optimization::detail {
+namespace cuopt::math_optimization::mip {
 
 struct diversity_config_t {
   double time_ratio_of_probing_cache = 0.1;
@@ -28,4 +28,4 @@ struct diversity_config_t {
   bool halve_population              = false;
 };
 
-}  // namespace cuopt::math_optimization::detail
+}  // namespace cuopt::math_optimization::mip

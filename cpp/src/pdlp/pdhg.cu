@@ -43,7 +43,7 @@ namespace cuopt::math_optimization::pdlp {
 template <typename i_t, typename f_t>
 pdhg_solver_t<i_t, f_t>::pdhg_solver_t(
   raft::handle_t const* handle_ptr,
-  detail::problem_t<i_t, f_t>& op_problem_scaled,
+  mip::problem_t<i_t, f_t>& op_problem_scaled,
   bool is_legacy_batch_mode,  // Batch mode with streams
   const std::vector<pdlp_climber_strategy_t>& climber_strategies,
   const pdlp::pdlp_hyper_params_t& hyper_params,

@@ -7,7 +7,7 @@
 
 #pragma once
 
-namespace cuopt::math_optimization::dual_simplex {
+namespace cuopt::math_optimization::mip {
 
 constexpr int num_search_strategies = 7;
 
@@ -41,4 +41,4 @@ enum class branch_direction_t { NONE = -1, DOWN = 0, UP = 1 };
 
 enum class branch_and_bound_mode_t { PARALLEL = 0, DETERMINISTIC = 1 };
 
-}  // namespace cuopt::math_optimization::dual_simplex
+}  // namespace cuopt::math_optimization::mip

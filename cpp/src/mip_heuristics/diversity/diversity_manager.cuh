@@ -29,7 +29,7 @@
 
 #include <cstdint>
 
-namespace cuopt::math_optimization::detail {
+namespace cuopt::math_optimization::mip {
 
 template <typename i_t, typename f_t>
 class diversity_manager_t {
@@ -73,7 +73,7 @@ class diversity_manager_t {
                             const std::vector<f_t>& dual_solution,
                             f_t objective);
   mip_solver_context_t<i_t, f_t>& context;
-  dual_simplex::branch_and_bound_t<i_t, f_t>* branch_and_bound_ptr;
+  mip::branch_and_bound_t<i_t, f_t>* branch_and_bound_ptr;
   problem_t<i_t, f_t>* problem_ptr;
   diversity_config_t diversity_config;
   population_t<i_t, f_t> population;
@@ -110,4 +110,4 @@ class diversity_manager_t {
   bool run_only_sub_mip_recombiner{false};
 };
 
-}  // namespace cuopt::math_optimization::detail
+}  // namespace cuopt::math_optimization::mip

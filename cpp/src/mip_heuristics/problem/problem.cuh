@@ -37,7 +37,7 @@
 
 namespace cuopt {
 
-namespace math_optimization::detail {
+namespace math_optimization::mip {
 
 template <typename i_t, typename f_t>
 struct clique_table_t;
@@ -346,5 +346,5 @@ class problem_t {
   std::vector<f_t> Q_values;
 };
 
-}  // namespace math_optimization::detail
+}  // namespace math_optimization::mip
 }  // namespace cuopt

@@ -27,12 +27,15 @@
 #include <cmath>
 #include <cstdint>
 
-namespace cuopt::math_optimization::detail {
+namespace cuopt::math_optimization::mip {
 template <typename i_t, typename f_t>
 struct clique_table_t;
 }
 
-namespace cuopt::math_optimization::dual_simplex {
+namespace cuopt::math_optimization::mip {
+
+using namespace cuopt::math_optimization::dual_simplex;  // shared simplex types (lp_problem_t,
+                                                         // etc.)
 
 enum cut_type_t : int8_t {
   MIXED_INTEGER_GOMORY   = 0,
@@ -592,8 +595,8 @@ class cut_generation_t {
                    const std::vector<variable_type_t>& var_types,
                    const user_problem_t<i_t, f_t>& user_problem,
                    const probing_implied_bound_t<i_t, f_t>& probing_implied_bound,
-                   std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table = nullptr,
-                   omp_atomic_t<bool>* signal_extend                              = nullptr)
+                   std::shared_ptr<mip::clique_table_t<i_t, f_t>> clique_table = nullptr,
+                   omp_atomic_t<bool>* signal_extend                           = nullptr)
     : cut_pool_(cut_pool),
       knapsack_generation_(lp, settings, Arow, new_slacks, var_types),
       flow_cover_generation_(lp, settings, Arow, new_slacks),
@@ -678,7 +681,7 @@ class cut_generation_t {
   flow_cover_generation_t<i_t, f_t> flow_cover_generation_;
   const user_problem_t<i_t, f_t>& user_problem_;
   const probing_implied_bound_t<i_t, f_t>& probing_implied_bound_;
-  std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table_;
+  std::shared_ptr<mip::clique_table_t<i_t, f_t>> clique_table_;
   omp_atomic_t<bool>* signal_extend_{nullptr};
 };
 
@@ -1069,4 +1072,4 @@ i_t remove_cuts(lp_problem_t<i_t, f_t>& lp,
                 std::vector<i_t>& nonbasic_list,
                 basis_update_mpf_t<i_t, f_t>& basis_update);
 
-}  // namespace cuopt::math_optimization::dual_simplex
+}  // namespace cuopt::math_optimization::mip

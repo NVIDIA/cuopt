@@ -20,7 +20,10 @@
 #include <numeric>
 #include <sstream>
 
-namespace cuopt::math_optimization::dual_simplex {
+namespace cuopt::math_optimization::mip {
+
+using namespace cuopt::math_optimization::dual_simplex;  // shared simplex types (lp_problem_t,
+                                                         // etc.)
 
 // permutation_t stores a dense permutation plus its support (non-identity entries).
 template <typename i_t>
@@ -1138,4 +1141,4 @@ std::unique_ptr<mip_symmetry_t<i_t, f_t>> detect_symmetry(
   return result;
 }
 
-}  // namespace cuopt::math_optimization::dual_simplex
+}  // namespace cuopt::math_optimization::mip

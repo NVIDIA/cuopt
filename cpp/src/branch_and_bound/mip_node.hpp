@@ -21,7 +21,10 @@
 #include <memory>
 #include <vector>
 
-namespace cuopt::math_optimization::dual_simplex {
+namespace cuopt::math_optimization::mip {
+
+using namespace cuopt::math_optimization::dual_simplex;  // shared simplex types (lp_problem_t,
+                                                         // etc.)
 
 enum class node_status_t : int {
   PENDING          = 0,  // Node is still in the tree, waiting to be solved
@@ -459,4 +462,4 @@ class search_tree_t {
   static constexpr bool write_graphviz = false;
 };
 
-}  // namespace cuopt::math_optimization::dual_simplex
+}  // namespace cuopt::math_optimization::mip

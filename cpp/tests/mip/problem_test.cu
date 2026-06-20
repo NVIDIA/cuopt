@@ -42,7 +42,7 @@
 namespace cuopt::math_optimization::test {
 
 namespace lp  = cuopt::math_optimization;
-namespace dtl = cuopt::math_optimization::detail;
+namespace dtl = cuopt::math_optimization::mip;
 
 template <typename i_t, typename T>
 thrust::host_vector<T> rand_vec(i_t size, T dist_beg, T dist_end)
@@ -192,7 +192,7 @@ void test_equal_val_bounds(i_t n_cnst, i_t n_var)
 
   problem.preprocess_problem();
 
-  detail::trivial_presolve(problem);
+  mip::trivial_presolve(problem);
 
   EXPECT_EQ(selected_vars.size() + problem.n_variables, n_var);
 }
@@ -322,7 +322,7 @@ TEST(problem, setting_both_rhs_and_constraints_bounds)
     raft::handle_t handle;
     optimization_problem_t<int, double> op_problem(&handle);
     fill_problem(op_problem);
-    cuopt::math_optimization::detail::problem_t<int, double> problem(op_problem);
+    cuopt::math_optimization::mip::problem_t<int, double> problem(op_problem);
 
     const auto constraints_lower_bounds =
       host_copy(problem.constraint_lower_bounds, handle.get_stream());
@@ -342,7 +342,7 @@ TEST(problem, setting_both_rhs_and_constraints_bounds)
     double upper[] = {3.0};
     op_problem.set_constraint_lower_bounds(lower, 1);
     op_problem.set_constraint_upper_bounds(upper, 1);
-    cuopt::math_optimization::detail::problem_t<int, double> problem(op_problem);
+    cuopt::math_optimization::mip::problem_t<int, double> problem(op_problem);
 
     const auto constraints_lower_bounds =
       host_copy(problem.constraint_lower_bounds, handle.get_stream());
@@ -362,7 +362,7 @@ TEST(problem, setting_both_rhs_and_constraints_bounds)
     op_problem.set_constraint_lower_bounds(lower, 1);
     op_problem.set_constraint_upper_bounds(upper, 1);
     fill_problem(op_problem);
-    cuopt::math_optimization::detail::problem_t<int, double> problem(op_problem);
+    cuopt::math_optimization::mip::problem_t<int, double> problem(op_problem);
 
     const auto constraints_lower_bounds =
       host_copy(problem.constraint_lower_bounds, handle.get_stream());
@@ -381,7 +381,7 @@ TEST(optimization_problem_t_DeathTest, test_check_problem_validity)
 
   raft::handle_t handle;
   auto op_problem        = optimization_problem_t<int, double>(&handle);
-  using custom_problem_t = cuopt::math_optimization::detail::problem_t<int, double>;
+  using custom_problem_t = cuopt::math_optimization::mip::problem_t<int, double>;
 
   // Check if assert if nothing
   EXPECT_DEATH({ custom_problem_t problem(op_problem); }, "");

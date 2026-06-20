@@ -24,7 +24,10 @@
 #include <cstdint>
 #include <limits>
 
-namespace cuopt::math_optimization::dual_simplex {
+namespace cuopt::math_optimization::mip {
+
+using namespace cuopt::math_optimization::dual_simplex;  // shared simplex types (lp_problem_t,
+                                                         // etc.)
 
 template <typename i_t, typename f_t>
 struct mip_symmetry_t;
@@ -290,4 +293,4 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
                       mip_symmetry_t<i_t, f_t>* symmetry,
                       pseudo_costs_t<i_t, f_t>& pc);
 
-}  // namespace cuopt::math_optimization::dual_simplex
+}  // namespace cuopt::math_optimization::mip

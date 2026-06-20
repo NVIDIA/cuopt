@@ -267,7 +267,7 @@ TEST(ScalingIntegrity, IntegerCoefficientsPreservedAfterScaling)
     }
   }
 
-  detail::mip_scaling_strategy_t<int, double> scaling(op_problem);
+  mip::mip_scaling_strategy_t<int, double> scaling(op_problem);
   scaling.scale_problem();
 
   auto post_values =
@@ -318,7 +318,7 @@ TEST(ScalingIntegrity, NoObjectiveScalingPreservesIntegerCoefficients)
     }
   }
 
-  detail::mip_scaling_strategy_t<int, double> scaling(op_problem);
+  mip::mip_scaling_strategy_t<int, double> scaling(op_problem);
   scaling.scale_problem(/*scale_objective=*/false);
 
   auto post_values =

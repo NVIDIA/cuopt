@@ -29,7 +29,7 @@
 #include <thrust/gather.h>
 #include <thrust/tabulate.h>
 
-namespace cuopt::math_optimization::detail {
+namespace cuopt::math_optimization::mip {
 
 template <typename i_t, typename f_t>
 feasibility_pump_t<i_t, f_t>::feasibility_pump_t(
@@ -589,4 +589,4 @@ template class feasibility_pump_t<int, float>;
 template class feasibility_pump_t<int, double>;
 #endif
 
-}  // namespace cuopt::math_optimization::detail
+}  // namespace cuopt::math_optimization::mip

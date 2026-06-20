@@ -12,7 +12,10 @@
 #include <cstdint>
 #include <vector>
 
-namespace cuopt::math_optimization::dual_simplex {
+namespace cuopt::math_optimization::mip {
+
+using namespace cuopt::math_optimization::dual_simplex;  // shared simplex types (objective_step_t,
+                                                         // etc.)
 
 // Pure-host computation of the objective step for the case where lattice propagation is
 // required (i.e. at least one variable with nonzero objective coefficient is continuous
@@ -52,4 +55,4 @@ bool propagate_lattice(i_t n_vars,
                        const std::vector<f_t>& obj_coefs,
                        std::vector<f_t>& lattice_step);
 
-}  // namespace cuopt::math_optimization::dual_simplex
+}  // namespace cuopt::math_optimization::mip

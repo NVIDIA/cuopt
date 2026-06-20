@@ -15,10 +15,10 @@
 
 namespace cuopt::math_optimization {
 
-namespace detail {
+namespace mip {
 template <typename i_t, typename f_t>
 class problem_t;
-}  // namespace detail
+}  // namespace mip
 
 template <typename i_t, typename f_t>
 cuopt::math_optimization::optimization_problem_t<i_t, f_t> mps_data_model_to_optimization_problem(
@@ -27,7 +27,7 @@ cuopt::math_optimization::optimization_problem_t<i_t, f_t> mps_data_model_to_opt
 
 template <typename i_t, typename f_t>
 cuopt::math_optimization::optimization_problem_solution_t<i_t, f_t> solve_lp_with_method(
-  detail::problem_t<i_t, f_t>& problem,
+  mip::problem_t<i_t, f_t>& problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   const timer_t& timer,
   bool is_batch_mode = false);

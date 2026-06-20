@@ -13,7 +13,7 @@
 #include <utilities/timer.hpp>
 #pragma once
 
-namespace cuopt::math_optimization::detail {
+namespace cuopt::math_optimization::mip {
 
 template <typename i_t, typename f_t>
 class mip_solver_t {
@@ -32,4 +32,4 @@ class mip_solver_t {
   timer_t timer_;
 };
 
-}  // namespace cuopt::math_optimization::detail
+}  // namespace cuopt::math_optimization::mip

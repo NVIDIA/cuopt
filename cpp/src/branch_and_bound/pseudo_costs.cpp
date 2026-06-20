@@ -25,7 +25,10 @@
 
 #include <omp.h>
 
-namespace cuopt::math_optimization::dual_simplex {
+namespace cuopt::math_optimization::mip {
+
+using namespace cuopt::math_optimization::dual_simplex;  // shared simplex types (lp_problem_t,
+                                                         // etc.)
 namespace {
 
 static bool is_dual_simplex_done(dual::status_t status)
@@ -1994,4 +1997,4 @@ template void strong_branching<int, double>(const lp_problem_t<int, double>& ori
 
 #endif
 
-}  // namespace cuopt::math_optimization::dual_simplex
+}  // namespace cuopt::math_optimization::mip

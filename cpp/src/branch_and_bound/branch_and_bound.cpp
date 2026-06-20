@@ -44,7 +44,10 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::math_optimization::dual_simplex {
+namespace cuopt::math_optimization::mip {
+
+using namespace cuopt::math_optimization::dual_simplex;  // shared simplex types (lp_problem_t,
+                                                         // etc.)
 namespace {
 
 template <typename f_t>
@@ -223,7 +226,7 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
   const simplex_solver_settings_t<i_t, f_t>& solver_settings,
   f_t start_time,
   const probing_implied_bound_t<i_t, f_t>& probing_implied_bound,
-  std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table,
+  std::shared_ptr<mip::clique_table_t<i_t, f_t>> clique_table,
   mip_symmetry_t<i_t, f_t>* symmetry)
   : original_problem_(user_problem),
     settings_(solver_settings),
@@ -655,8 +658,8 @@ void branch_and_bound_t<i_t, f_t>::repair_heuristic_solutions()
 }
 
 template <typename i_t, typename f_t>
-void branch_and_bound_t<i_t, f_t>::set_solution_at_root(mip_solution_t<i_t, f_t>& solution,
-                                                        const cut_info_t<i_t, f_t>& cut_info)
+void branch_and_bound_t<i_t, f_t>::set_solution_at_root(
+  dual_simplex::mip_solution_t<i_t, f_t>& solution, const cut_info_t<i_t, f_t>& cut_info)
 {
   mutex_upper_.lock();
   incumbent_.set_incumbent_solution(root_objective_, root_relax_soln_.x);
@@ -684,8 +687,8 @@ void branch_and_bound_t<i_t, f_t>::set_solution_at_root(mip_solution_t<i_t, f_t>
 }
 
 template <typename i_t, typename f_t>
-void branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t, f_t>& solution,
-                                                      f_t lower_bound)
+void branch_and_bound_t<i_t, f_t>::set_final_solution(
+  dual_simplex::mip_solution_t<i_t, f_t>& solution, f_t lower_bound)
 {
   if (solver_status_ == mip_status_t::NUMERICAL) {
     settings_.log.printf("Numerical issue encountered. Stopping the solver...\n");
@@ -2153,7 +2156,7 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
 template <typename i_t, typename f_t>
 auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   [[maybe_unused]] i_t cut_pass,
-  mip_solution_t<i_t, f_t>& solution,
+  dual_simplex::mip_solution_t<i_t, f_t>& solution,
   i_t& num_fractional,
   std::vector<i_t>& fractional,
   cut_generation_t<i_t, f_t>& cut_generation,
@@ -2433,7 +2436,7 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
 }
 
 template <typename i_t, typename f_t>
-mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solution)
+mip_status_t branch_and_bound_t<i_t, f_t>::solve(dual_simplex::mip_solution_t<i_t, f_t>& solution)
 {
   raft::common::nvtx::range scope("BB::solve");
 
@@ -2491,7 +2494,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     {
       user_problem_t<i_t, f_t> problem_copy = original_problem_;
       timer_t timer(std::numeric_limits<double>::infinity());
-      detail::find_initial_cliques(
+      mip::find_initial_cliques(
         problem_copy, tolerances_for_clique, &clique_table_, timer, clique_signal);
     }
   }
@@ -2652,7 +2655,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   }
 
   constexpr bool enable_root_cut_cpufj = true;
-  std::unique_ptr<detail::fj_cpu_task_t<i_t, f_t>> root_cut_cpufj_task;
+  std::unique_ptr<mip::fj_cpu_task_t<i_t, f_t>> root_cut_cpufj_task;
   auto root_cut_cpufj_improvement_callback =
     [this](f_t obj, const std::vector<f_t>& assignment, double work_units) {
       std::vector<f_t> user_assignment;
@@ -2670,7 +2673,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     };
   auto stop_root_cut_cpufj = [&]() {
     if (!root_cut_cpufj_task) { return; }
-    detail::stop_fj_cpu_task(*root_cut_cpufj_task);
+    mip::stop_fj_cpu_task(*root_cut_cpufj_task);
     root_cut_cpufj_task.reset();
   };
   cuopt::scope_guard root_cut_cpufj_guard([&]() { stop_root_cut_cpufj(); });
@@ -2699,9 +2702,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     if (root_cut_cpufj_task) {
 #pragma omp task shared(root_cut_cpufj_task) priority(CUOPT_DEFAULT_TASK_PRIORITY) default(none) \
   depend(out : *root_cut_cpufj_task)
-      detail::run_fj_cpu_task(*root_cut_cpufj_task,
-                              std::numeric_limits<f_t>::infinity(),
-                              std::numeric_limits<f_t>::infinity());
+      mip::run_fj_cpu_task(*root_cut_cpufj_task,
+                           std::numeric_limits<f_t>::infinity(),
+                           std::numeric_limits<f_t>::infinity());
     }
 
     cut_pass_result = do_cut_pass(cut_pass,
@@ -2724,7 +2727,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                   saved_solution);
 
     if (root_cut_cpufj_task) {
-      detail::stop_fj_cpu_task(*root_cut_cpufj_task);
+      mip::stop_fj_cpu_task(*root_cut_cpufj_task);
 #pragma omp taskwait depend(in : *root_cut_cpufj_task)
     }
 
@@ -2742,12 +2745,12 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
         cut_pass + 1 < settings_.max_cut_passes) {
       f_t root_cut_cpufj_build_start_time = tic();
       root_cut_cpufj_task =
-        detail::make_fj_cpu_task_from_host_lp<i_t, f_t>(original_lp_,
-                                                        var_types_,
-                                                        root_relax_soln_.x,
-                                                        settings_,
-                                                        root_cut_cpufj_improvement_callback,
-                                                        "[RootCut CPUFJ] ");
+        mip::make_fj_cpu_task_from_host_lp<i_t, f_t>(original_lp_,
+                                                     var_types_,
+                                                     root_relax_soln_.x,
+                                                     settings_,
+                                                     root_cut_cpufj_improvement_callback,
+                                                     "[RootCut CPUFJ] ");
       settings_.log.debug("Root cut CPUFJ problem build time after pass %d: %.6f seconds\n",
                           cut_pass,
                           toc(root_cut_cpufj_build_start_time));
@@ -2784,13 +2787,13 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     int64_t root_cut_cpufj_seed =
       settings_.deterministic ? static_cast<int64_t>(settings_.random_seed) : -1;
     root_cut_cpufj_task =
-      detail::make_fj_cpu_task_from_host_lp<i_t, f_t>(original_lp_,
-                                                      var_types_,
-                                                      root_relax_soln_.x,
-                                                      settings_,
-                                                      root_cut_cpufj_improvement_callback,
-                                                      "[RootCut CPUFJ] ",
-                                                      root_cut_cpufj_seed);
+      mip::make_fj_cpu_task_from_host_lp<i_t, f_t>(original_lp_,
+                                                   var_types_,
+                                                   root_relax_soln_.x,
+                                                   settings_,
+                                                   root_cut_cpufj_improvement_callback,
+                                                   "[RootCut CPUFJ] ",
+                                                   root_cut_cpufj_seed);
     settings_.log.debug("Root cut CPUFJ final problem build time: %.6f seconds\n",
                         toc(root_cut_cpufj_build_start_time));
     f_t remaining_time = f_t(settings_.time_limit - toc(exploration_stats_.start_time));
@@ -2798,7 +2801,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     // at 1s so generous budgets don't grant CPUFJ more than the historical ceiling.
     f_t fj_time_limit =
       settings_.deterministic ? remaining_time : std::min(remaining_time * f_t{0.5}, f_t{1});
-    detail::run_fj_cpu_task(*root_cut_cpufj_task, fj_time_limit, 0.5);
+    mip::run_fj_cpu_task(*root_cut_cpufj_task, fj_time_limit, 0.5);
     root_cut_cpufj_task.reset();
   }
 
@@ -4188,4 +4191,4 @@ template class branch_and_bound_t<int, double>;
 
 #endif
 
-}  // namespace cuopt::math_optimization::dual_simplex
+}  // namespace cuopt::math_optimization::mip

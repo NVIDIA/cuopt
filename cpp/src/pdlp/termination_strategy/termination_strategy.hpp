@@ -32,8 +32,8 @@ template <typename i_t, typename f_t>
 class pdlp_termination_strategy_t {
  public:
   pdlp_termination_strategy_t(raft::handle_t const* handle_ptr,
-                              detail::problem_t<i_t, f_t>& op_problem,
-                              const detail::problem_t<i_t, f_t>& scaled_op_problem,
+                              mip::problem_t<i_t, f_t>& op_problem,
+                              const mip::problem_t<i_t, f_t>& scaled_op_problem,
                               cusparse_view_t<i_t, f_t>& cusparse_view,
                               const cusparse_view_t<i_t, f_t>& scaled_cusparse_view,
                               const i_t primal_size,
@@ -215,7 +215,7 @@ class pdlp_termination_strategy_t {
   raft::handle_t const* handle_ptr_{nullptr};
   rmm::cuda_stream_view stream_view_;
 
-  detail::problem_t<i_t, f_t>* problem_ptr;
+  mip::problem_t<i_t, f_t>* problem_ptr;
 
   convergence_information_t<i_t, f_t> convergence_information_;
   infeasibility_information_t<i_t, f_t> infeasibility_information_;

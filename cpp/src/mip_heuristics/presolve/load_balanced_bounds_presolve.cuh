@@ -20,7 +20,7 @@
 #include "load_balanced_partition_helpers.cuh"
 #include "utils.cuh"
 
-namespace cuopt::math_optimization::detail {
+namespace cuopt::math_optimization::mip {
 
 template <typename i_t, typename f_t>
 class load_balanced_problem_t;
@@ -262,4 +262,4 @@ class load_balanced_bounds_presolve_t {
   i_t solve_iter;
 };
 
-}  // namespace cuopt::math_optimization::detail
+}  // namespace cuopt::math_optimization::mip

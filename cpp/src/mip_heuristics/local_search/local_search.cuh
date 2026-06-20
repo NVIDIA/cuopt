@@ -20,7 +20,7 @@ template <typename i_t, typename f_t>
 class branch_and_bound_t;
 }
 
-namespace cuopt::math_optimization::detail {
+namespace cuopt::math_optimization::mip {
 
 // make sure RANDOM is always the last
 enum class ls_method_t : int {
@@ -88,7 +88,7 @@ class local_search_t {
   i_t ls_threads() const { return ls_cpu_fj.size() + scratch_cpu_fj.size(); }
 
   // Start CPUFJ thread for deterministic mode with B&B integration
-  void start_cpufj_deterministic(dual_simplex::branch_and_bound_t<i_t, f_t>& bb);
+  void start_cpufj_deterministic(mip::branch_and_bound_t<i_t, f_t>& bb);
   void stop_cpufj_deterministic();
   void save_solution_and_add_cutting_plane(solution_t<i_t, f_t>& solution,
                                            rmm::device_uvector<f_t>& best_solution,
@@ -131,4 +131,4 @@ class local_search_t {
   population_t<i_t, f_t>* pop_ptr{nullptr};
 };
 
-}  // namespace cuopt::math_optimization::detail
+}  // namespace cuopt::math_optimization::mip

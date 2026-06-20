@@ -10,7 +10,7 @@
 #include <rmm/device_uvector.hpp>
 
 namespace cuopt {
-namespace math_optimization::detail {
+namespace math_optimization::mip {
 
 template <typename i_t, typename f_t>
 struct problem_fixing_helpers_t {
@@ -30,5 +30,5 @@ struct problem_fixing_helpers_t {
   rmm::device_uvector<i_t> variable_fix_mask;
 };
 
-}  // namespace math_optimization::detail
+}  // namespace math_optimization::mip
 }  // namespace cuopt

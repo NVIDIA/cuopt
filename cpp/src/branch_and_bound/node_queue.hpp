@@ -13,7 +13,10 @@
 #include <utility>
 #include <vector>
 
-namespace cuopt::math_optimization::dual_simplex {
+namespace cuopt::math_optimization::mip {
+
+using namespace cuopt::math_optimization::dual_simplex;  // shared simplex types (lp_problem_t,
+                                                         // etc.)
 
 // This is a generic heap implementation based
 // on the STL functions. The main benefit here is
@@ -209,4 +212,4 @@ class node_queue_t {
   omp_atomic_t<f_t> lower_bound_{std::numeric_limits<f_t>::infinity()};
 };
 
-}  // namespace cuopt::math_optimization::dual_simplex
+}  // namespace cuopt::math_optimization::mip

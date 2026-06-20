@@ -30,7 +30,7 @@ template <typename i_t, typename f_t>
 class convergence_information_t {
  public:
   convergence_information_t(raft::handle_t const* handle_ptr,
-                            detail::problem_t<i_t, f_t>& op_problem,
+                            mip::problem_t<i_t, f_t>& op_problem,
                             cusparse_view_t<i_t, f_t>& cusparse_view,
                             i_t primal_size,
                             i_t dual_size,
@@ -157,7 +157,7 @@ class convergence_information_t {
   i_t primal_size_h_;
   i_t dual_size_h_;
 
-  detail::problem_t<i_t, f_t>* problem_ptr;
+  mip::problem_t<i_t, f_t>* problem_ptr;
   cusparse_view_t<i_t, f_t>& op_problem_cusparse_view_;
 
   rmm::device_uvector<f_t> l2_norm_primal_linear_objective_;

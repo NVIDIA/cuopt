@@ -220,7 +220,7 @@ int optimal_batch_size_handler(const optimization_problem_t<i_t, f_t>& op_proble
   double best_ratio;
   rmm::cuda_stream_view stream_view = op_problem.get_handle_ptr()->get_stream();
 
-  detail::problem_t<i_t, f_t> problem(op_problem);
+  mip::problem_t<i_t, f_t> problem(op_problem);
 
   // Init cuSparse views
   cusparse_sp_mat_descr_wrapper_t<i_t, f_t> A;

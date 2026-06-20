@@ -19,7 +19,7 @@
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
 
-namespace cuopt::math_optimization::detail {
+namespace cuopt::math_optimization::mip {
 
 template <typename i_t, typename f_t>
 class solution_t {
@@ -93,9 +93,9 @@ class solution_t {
   f_t get_total_excess();
   // brings all vars within bounds
   void clamp_within_bounds();
-  mip_solution_t<i_t, f_t> get_solution(bool output_feasible,
-                                        solver_stats_t<i_t, f_t> stats,
-                                        bool log_stats = true);
+  cuopt::math_optimization::mip_solution_t<i_t, f_t> get_solution(bool output_feasible,
+                                                                  solver_stats_t<i_t, f_t> stats,
+                                                                  bool log_stats = true);
   f_t compute_max_constraint_violation();
   f_t compute_max_int_violation();
   f_t compute_max_variable_violation();
@@ -154,4 +154,4 @@ class solution_t {
   void test_variable_bounds(bool check_integer = true, i_t* is_feasible = nullptr);
 };
 
-}  // namespace cuopt::math_optimization::detail
+}  // namespace cuopt::math_optimization::mip

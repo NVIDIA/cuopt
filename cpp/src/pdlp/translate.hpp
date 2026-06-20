@@ -101,7 +101,7 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_user_problem(
 
 template <typename i_t, typename f_t>
 static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_user_problem(
-  raft::handle_t const* handle_ptr, detail::problem_t<i_t, f_t>& model)
+  raft::handle_t const* handle_ptr, mip::problem_t<i_t, f_t>& model)
 {
   dual_simplex::user_problem_t<i_t, f_t> user_problem(handle_ptr);
 
@@ -323,7 +323,7 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_optimization_problem_to_user
 }
 
 template <typename i_t, typename f_t>
-void translate_to_crossover_problem(const detail::problem_t<i_t, f_t>& problem,
+void translate_to_crossover_problem(const mip::problem_t<i_t, f_t>& problem,
                                     optimization_problem_solution_t<i_t, f_t>& sol,
                                     dual_simplex::lp_problem_t<i_t, f_t>& lp,
                                     dual_simplex::lp_solution_t<i_t, f_t>& initial_solution)

@@ -158,7 +158,7 @@ template <typename i_t, typename f_t>
 class cusparse_view_t {
  public:
   cusparse_view_t(raft::handle_t const* handle_ptr,
-                  const detail::problem_t<i_t, f_t>& op_problem,
+                  const mip::problem_t<i_t, f_t>& op_problem,
                   saddle_point_state_t<i_t, f_t>& current_saddle_point_state,
                   rmm::device_uvector<f_t>& _tmp_primal,
                   rmm::device_uvector<f_t>& _tmp_dual,
@@ -169,7 +169,7 @@ class cusparse_view_t {
                   bool enable_mixed_precision_spmv);
 
   cusparse_view_t(raft::handle_t const* handle_ptr,
-                  const detail::problem_t<i_t, f_t>& op_problem,
+                  const mip::problem_t<i_t, f_t>& op_problem,
                   rmm::device_uvector<f_t>& _primal_solution,
                   rmm::device_uvector<f_t>& _dual_solution,
                   rmm::device_uvector<f_t>& _tmp_primal,
@@ -183,7 +183,7 @@ class cusparse_view_t {
                   const pdlp::pdlp_hyper_params_t& hyper_params);
 
   cusparse_view_t(raft::handle_t const* handle_ptr,
-                  const detail::problem_t<i_t, f_t>& op_problem,
+                  const mip::problem_t<i_t, f_t>& op_problem,
                   const cusparse_view_t<i_t, f_t>& existing_cusparse_view,
                   f_t* _primal_solution,
                   f_t* _dual_solution,
@@ -297,8 +297,7 @@ class cusparse_view_t {
 
   // Redirects the cuSPARSE CSR structure pointers from op_problem_scaled_ to the original problem
   // so the duplicated row/column buffers can be freed.
-  void redirect_cusparse_csr_structure_pointers(
-    const detail::problem_t<i_t, f_t>& original_problem);
+  void redirect_cusparse_csr_structure_pointers(const mip::problem_t<i_t, f_t>& original_problem);
   // Creates SpMVOp plans. Must be called after scale_problem() so plans use the scaled matrix.
   void create_spmv_op_plans(bool is_reflected);
 };

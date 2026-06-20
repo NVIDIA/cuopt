@@ -14,7 +14,7 @@
 #include <rmm/device_uvector.hpp>
 
 namespace cuopt {
-namespace math_optimization::detail {
+namespace math_optimization::mip {
 
 template <typename i_t, typename f_t>
 class problem_t;
@@ -133,5 +133,5 @@ class presolve_data_t {
   std::vector<substitution_t<i_t, f_t>> variable_substitutions;
 };
 
-}  // namespace math_optimization::detail
+}  // namespace math_optimization::mip
 }  // namespace cuopt

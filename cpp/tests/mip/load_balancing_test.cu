@@ -44,7 +44,7 @@ void init_handler(const raft::handle_t* handle_ptr)
 }
 
 std::tuple<std::vector<int>, std::vector<double>, std::vector<double>> select_k_random(
-  detail::problem_t<int, double>& problem, int sample_size)
+  mip::problem_t<int, double>& problem, int sample_size)
 {
   auto seed = std::random_device{}();
   std::cerr << "Tested with seed " << seed << "\n";
@@ -90,9 +90,9 @@ convert_probe_tuple(std::tuple<std::vector<int>, std::vector<double>, std::vecto
 }
 
 std::tuple<std::vector<double>, std::vector<double>, std::vector<double>, std::vector<double>>
-bounds_probe_results(detail::bound_presolve_t<int, double>& bnd_prb_0,
-                     detail::bound_presolve_t<int, double>& bnd_prb_1,
-                     detail::problem_t<int, double>& problem,
+bounds_probe_results(mip::bound_presolve_t<int, double>& bnd_prb_0,
+                     mip::bound_presolve_t<int, double>& bnd_prb_1,
+                     mip::problem_t<int, double>& problem,
                      const std::pair<std::vector<thrust::pair<int, double>>,
                                      std::vector<thrust::pair<int, double>>>& probe)
 {
@@ -126,14 +126,14 @@ void test_multi_probe(std::string path)
   handle_.sync_stream();
   auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps_problem);
   problem_checking_t<int, double>::check_problem_representation(op_problem);
-  detail::problem_t<int, double> problem(op_problem);
+  mip::problem_t<int, double> problem(op_problem);
   mip_solver_settings_t<int, double> default_settings{};
-  detail::mip_scaling_strategy_t<int, double> scaling(problem);
-  detail::mip_solver_t<int, double> solver(problem, default_settings, scaling, cuopt::timer_t(0));
-  detail::load_balanced_problem_t<int, double> lb_problem(problem);
-  detail::load_balanced_bounds_presolve_t<int, double> lb_prs(lb_problem, solver.context);
+  mip::mip_scaling_strategy_t<int, double> scaling(problem);
+  mip::mip_solver_t<int, double> solver(problem, default_settings, scaling, cuopt::timer_t(0));
+  mip::load_balanced_problem_t<int, double> lb_problem(problem);
+  mip::load_balanced_bounds_presolve_t<int, double> lb_prs(lb_problem, solver.context);
 
-  detail::bound_presolve_t<int, double> bnd_prb(solver.context);
+  mip::bound_presolve_t<int, double> bnd_prb(solver.context);
 
   auto probe_tuple       = select_k_random(problem, 100);
   auto bounds_probe_vals = convert_probe_tuple(probe_tuple);

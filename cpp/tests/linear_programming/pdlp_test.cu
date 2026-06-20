@@ -472,7 +472,7 @@ TEST(pdlp_class, initial_solution_test)
 
   auto op_problem = cuopt::math_optimization::mps_data_model_to_optimization_problem<int, double>(
     &handle_, mps_data_model);
-  cuopt::math_optimization::detail::problem_t<int, double> problem(op_problem);
+  cuopt::math_optimization::mip::problem_t<int, double> problem(op_problem);
 
   auto solver_settings = pdlp_solver_settings_t<int, double>{};
   // We are just testing initial scaling on initial solution scheme so we don't care about solver
@@ -750,7 +750,7 @@ TEST(pdlp_class, initial_primal_weight_step_size_test)
 
   auto op_problem = cuopt::math_optimization::mps_data_model_to_optimization_problem<int, double>(
     &handle_, mps_data_model);
-  cuopt::math_optimization::detail::problem_t<int, double> problem(op_problem);
+  cuopt::math_optimization::mip::problem_t<int, double> problem(op_problem);
 
   auto solver_settings = pdlp_solver_settings_t<int, double>{};
   // We are just testing initial scaling on initial solution scheme so we don't care about solver
@@ -854,7 +854,7 @@ End
   raft::copy(
     d_initial_primal.data(), h_initial_primal.data(), h_initial_primal.size(), handle.get_stream());
 
-  auto problem = cuopt::math_optimization::detail::problem_t<int, double>(op_problem);
+  auto problem = cuopt::math_optimization::mip::problem_t<int, double>(op_problem);
 
   pdlp_solver_settings_t<int, double> solver_settings;
   solver_settings.tolerances.relative_primal_tolerance = 0;  // Shouldn't matter
@@ -4082,7 +4082,7 @@ TEST(pdlp_class, precision_single_pslp_presolve)
 
 TEST(pdlp_class, shared_sb_context_unit)
 {
-  using namespace cuopt::math_optimization::dual_simplex;
+  using namespace cuopt::math_optimization::mip;
 
   constexpr int N = 10;
   shared_strong_branching_context_t<int, double> ctx(N);
@@ -4129,7 +4129,7 @@ TEST(pdlp_class, shared_sb_context_unit)
 
 TEST(pdlp_class, shared_sb_view_batch_pre_solved)
 {
-  using namespace cuopt::math_optimization::dual_simplex;
+  using namespace cuopt::math_optimization::mip;
 
   const raft::handle_t handle_{};
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
@@ -4189,7 +4189,7 @@ TEST(pdlp_class, shared_sb_view_batch_pre_solved)
 
 TEST(pdlp_class, shared_sb_view_concurrent_mark)
 {
-  using namespace cuopt::math_optimization::dual_simplex;
+  using namespace cuopt::math_optimization::mip;
 
   const raft::handle_t handle_{};
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
@@ -4261,7 +4261,7 @@ TEST(pdlp_class, shared_sb_view_concurrent_mark)
 
 TEST(pdlp_class, shared_sb_view_all_infeasible)
 {
-  using namespace cuopt::math_optimization::dual_simplex;
+  using namespace cuopt::math_optimization::mip;
 
   const raft::handle_t handle_{};
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
@@ -4475,7 +4475,7 @@ TEST(pdlp_class, batch_bound_objective_rescaling_factors_match_input_expansion)
     hyper_params.do_pock_chambolle_scaling = false;
     hyper_params.bound_objective_rescaling = true;
 
-    cuopt::math_optimization::detail::problem_t<int, double> problem(gpu_op);
+    cuopt::math_optimization::mip::problem_t<int, double> problem(gpu_op);
     cuopt::math_optimization::pdlp::pdlp_initial_scaling_strategy_t<int, double> scaling(
       &handle_,
       problem,

@@ -14,7 +14,7 @@
 
 #include <vector>
 
-namespace cuopt::math_optimization::detail {
+namespace cuopt::math_optimization::mip {
 
 template <typename i_t, typename f_t>
 struct constraints_delta_t {
@@ -65,4 +65,4 @@ struct variables_delta_t {
   }
 };
 
-}  // namespace cuopt::math_optimization::detail
+}  // namespace cuopt::math_optimization::mip

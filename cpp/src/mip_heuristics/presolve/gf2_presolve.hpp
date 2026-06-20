@@ -20,7 +20,7 @@
 #pragma GCC diagnostic pop
 #endif
 
-namespace cuopt::math_optimization::detail {
+namespace cuopt::math_optimization::mip {
 
 template <typename f_t>
 class GF2Presolve : public papilo::PresolveMethod<f_t> {
@@ -66,4 +66,4 @@ class GF2Presolve : public papilo::PresolveMethod<f_t> {
   }
 };
 
-}  // namespace cuopt::math_optimization::detail
+}  // namespace cuopt::math_optimization::mip

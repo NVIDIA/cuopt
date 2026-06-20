@@ -16,7 +16,10 @@
 
 #include <vector>
 
-namespace cuopt::math_optimization::dual_simplex {
+namespace cuopt::math_optimization::mip {
+
+using namespace cuopt::math_optimization::dual_simplex;  // shared simplex types (lp_problem_t,
+                                                         // etc.)
 
 // When `log_diving_type` is true, each diving strategy gets its own letter;
 // otherwise every dive collapses to 'D'.
@@ -100,4 +103,4 @@ branch_variable_t<i_t> vector_length_diving(const lp_problem_t<i_t, f_t>& lp,
                                             const std::vector<f_t>& solution,
                                             logger_t& log);
 
-}  // namespace cuopt::math_optimization::dual_simplex
+}  // namespace cuopt::math_optimization::mip

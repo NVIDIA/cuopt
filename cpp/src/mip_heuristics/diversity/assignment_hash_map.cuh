@@ -11,7 +11,7 @@
 
 namespace cuopt {
 namespace math_optimization {
-namespace detail {
+namespace mip {
 
 template <typename i_t, typename f_t>
 class assignment_hash_map_t {
@@ -30,6 +30,6 @@ class assignment_hash_map_t {
   rmm::device_buffer temp_storage;
 };
 
-}  // namespace detail
+}  // namespace mip
 }  // namespace math_optimization
 }  // namespace cuopt

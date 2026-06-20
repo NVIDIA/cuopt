@@ -443,7 +443,7 @@ optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
 
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
-  detail::problem_t<i_t, f_t>& problem,
+  mip::problem_t<i_t, f_t>& problem,
   const dual_simplex::lp_solution_t<i_t, f_t>& solution,
   dual_simplex::lp_status_t status,
   f_t duration,
@@ -544,7 +544,7 @@ run_barrier(dual_simplex::user_problem_t<i_t, f_t>& user_problem,
 
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> run_barrier(
-  detail::problem_t<i_t, f_t>& problem,
+  mip::problem_t<i_t, f_t>& problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   const timer_t& timer)
 {
@@ -618,7 +618,7 @@ run_dual_simplex(dual_simplex::user_problem_t<i_t, f_t>& user_problem,
 
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> run_dual_simplex(
-  detail::problem_t<i_t, f_t>& problem,
+  mip::problem_t<i_t, f_t>& problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   const timer_t& timer)
 {
@@ -639,7 +639,7 @@ optimization_problem_solution_t<i_t, f_t> run_dual_simplex(
 
 template <typename i_t>
 static optimization_problem_solution_t<i_t, double> run_pdlp_solver_in_fp32(
-  detail::problem_t<i_t, double>& problem,
+  mip::problem_t<i_t, double>& problem,
   pdlp_solver_settings_t<i_t, double> const& settings,
   const timer_t& timer,
   bool is_batch_mode)
@@ -653,7 +653,7 @@ static optimization_problem_solution_t<i_t, double> run_pdlp_solver_in_fp32(
   float_op.set_objective_scaling_factor(
     static_cast<float>(problem.presolve_data.objective_scaling_factor));
 
-  detail::problem_t<i_t, float> float_problem(float_op);
+  mip::problem_t<i_t, float> float_problem(float_op);
 
   auto objective_name = problem.objective_name;
   auto var_names      = problem.var_names;
@@ -662,7 +662,7 @@ static optimization_problem_solution_t<i_t, double> run_pdlp_solver_in_fp32(
   // When crossover is on, run_pdlp needs the problem data after we return.
   if (!settings.crossover) {
     {
-      [[maybe_unused]] auto discard = detail::problem_t<i_t, double>(std::move(problem));
+      [[maybe_unused]] auto discard = mip::problem_t<i_t, double>(std::move(problem));
     }
   }
 
@@ -756,7 +756,7 @@ static optimization_problem_solution_t<i_t, double> run_pdlp_solver_in_fp32(
 
 template <typename i_t, typename f_t>
 static optimization_problem_solution_t<i_t, f_t> run_pdlp_solver(
-  detail::problem_t<i_t, f_t>& problem,
+  mip::problem_t<i_t, f_t>& problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   const timer_t& timer,
   bool is_batch_mode)
@@ -781,7 +781,7 @@ static optimization_problem_solution_t<i_t, f_t> run_pdlp_solver(
 }
 
 template <typename i_t, typename f_t>
-optimization_problem_solution_t<i_t, f_t> run_pdlp(detail::problem_t<i_t, f_t>& problem,
+optimization_problem_solution_t<i_t, f_t> run_pdlp(mip::problem_t<i_t, f_t>& problem,
                                                    pdlp_solver_settings_t<i_t, f_t> const& settings,
                                                    const timer_t& timer,
                                                    bool is_batch_mode)
@@ -1511,7 +1511,7 @@ void run_dual_simplex_thread(
 
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> run_concurrent(
-  detail::problem_t<i_t, f_t>& problem,
+  mip::problem_t<i_t, f_t>& problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   const timer_t& timer,
   bool is_batch_mode)
@@ -1756,7 +1756,7 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
 
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> solve_lp_with_method(
-  detail::problem_t<i_t, f_t>& problem,
+  mip::problem_t<i_t, f_t>& problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   const timer_t& timer,
   bool is_batch_mode)
@@ -1927,7 +1927,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     validate_new_bounds(op_problem, settings);
 
     auto lp_timer = cuopt::timer_t(settings.time_limit);
-    detail::problem_t<i_t, f_t> problem(op_problem);
+    mip::problem_t<i_t, f_t> problem(op_problem);
     // handle default presolve
     if (settings.presolver == presolver_t::Default) {
       constexpr i_t presolve_nnz_threshold = 8000;
@@ -1948,22 +1948,22 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     }
 
     [[maybe_unused]] double presolve_time = 0.0;
-    std::unique_ptr<detail::third_party_presolve_t<i_t, f_t>> presolver;
+    std::unique_ptr<mip::third_party_presolve_t<i_t, f_t>> presolver;
     auto run_presolve = settings.presolver != presolver_t::None;
     run_presolve = run_presolve && settings.get_pdlp_warm_start_data().total_pdlp_iterations_ == -1;
 
     // Declare result at outer scope so that result.reduced_problem (which may be
     // referenced by problem.original_problem_ptr) remains alive through the solve.
-    std::optional<detail::third_party_presolve_result_t<i_t, f_t>> result;
+    std::optional<mip::third_party_presolve_result_t<i_t, f_t>> result;
 
     if (run_presolve) {
-      detail::sort_csr(op_problem);
+      mip::sort_csr(op_problem);
       // allocate no more than 10% of the time limit to presolve.
       // Note that this is not the presolve time, but the time limit for presolve.
       // But no less than 1 second, to avoid early timeout triggering known crashes
       const double presolve_time_limit =
         std::max(1.0, std::min(0.1 * lp_timer.remaining_time(), 60.0));
-      presolver = std::make_unique<detail::third_party_presolve_t<i_t, f_t>>();
+      presolver = std::make_unique<mip::third_party_presolve_t<i_t, f_t>>();
       result    = presolver->apply(op_problem,
                                 cuopt::math_optimization::problem_category_t::LP,
                                 settings.presolver,
@@ -1971,16 +1971,16 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
                                 settings.tolerances.absolute_primal_tolerance,
                                 settings.tolerances.relative_primal_tolerance,
                                 presolve_time_limit);
-      if (result->status == detail::third_party_presolve_status_t::INFEASIBLE) {
+      if (result->status == mip::third_party_presolve_status_t::INFEASIBLE) {
         return optimization_problem_solution_t<i_t, f_t>(
           pdlp_termination_status_t::PrimalInfeasible, op_problem.get_handle_ptr()->get_stream());
       }
-      if (result->status == detail::third_party_presolve_status_t::UNBNDORINFEAS) {
+      if (result->status == mip::third_party_presolve_status_t::UNBNDORINFEAS) {
         return optimization_problem_solution_t<i_t, f_t>(
           pdlp_termination_status_t::UnboundedOrInfeasible,
           op_problem.get_handle_ptr()->get_stream());
       }
-      if (result->status == detail::third_party_presolve_status_t::UNBOUNDED) {
+      if (result->status == mip::third_party_presolve_status_t::UNBOUNDED) {
         return optimization_problem_solution_t<i_t, f_t>(pdlp_termination_status_t::DualInfeasible,
                                                          op_problem.get_handle_ptr()->get_stream());
       }
@@ -2036,7 +2036,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
                                                          std::move(status_vec));
       }
 
-      problem       = detail::problem_t<i_t, f_t>(result->reduced_problem);
+      problem       = mip::problem_t<i_t, f_t>(result->reduced_problem);
       presolve_time = lp_timer.elapsed_time();
       CUOPT_LOG_INFO("%s presolve time: %.2fs",
                      settings.presolver == presolver_t::PSLP ? "PSLP" : "Papilo",
@@ -2333,7 +2333,7 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
     bool);                                                                                       \
                                                                                                  \
   template optimization_problem_solution_t<int, F_TYPE> solve_lp_with_method(                    \
-    detail::problem_t<int, F_TYPE>& problem,                                                     \
+    mip::problem_t<int, F_TYPE>& problem,                                                        \
     pdlp_solver_settings_t<int, F_TYPE> const& settings,                                         \
     const timer_t& timer,                                                                        \
     bool is_batch_mode);                                                                         \

@@ -36,7 +36,7 @@
 #include <cstdint>
 #include <limits>
 
-namespace cuopt::math_optimization::detail {
+namespace cuopt::math_optimization::mip {
 
 constexpr int row_scaling_max_iterations             = 8;
 constexpr double row_scaling_min_initial_log2_spread = 12.0;
@@ -879,4 +879,4 @@ INSTANTIATE(float)
 INSTANTIATE(double)
 #endif
 
-}  // namespace cuopt::math_optimization::detail
+}  // namespace cuopt::math_optimization::mip
