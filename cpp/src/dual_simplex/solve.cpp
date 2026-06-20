@@ -361,7 +361,7 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
   simplex_solver_settings_t<i_t, f_t> barrier_settings = settings;
   dualize_info_t<i_t, f_t> dualize_info;
   convert_user_problem(user_problem, barrier_settings, original_lp, new_slacks, dualize_info);
-  if (!validate_barrier_cone_layout(original_lp, barrier_settings)) {
+  if (!barrier::validate_barrier_cone_layout(original_lp, barrier_settings)) {
     return lp_status_t::NUMERICAL_ISSUES;
   }
 
@@ -387,7 +387,7 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
   // Solve using barrier
   lp_solution_t<i_t, f_t> barrier_solution(barrier_lp.num_rows, barrier_lp.num_cols);
 
-  barrier_solver_t<i_t, f_t> barrier_solver(barrier_lp, presolve_info, barrier_settings);
+  barrier::barrier_solver_t<i_t, f_t> barrier_solver(barrier_lp, presolve_info, barrier_settings);
   lp_status_t barrier_status = barrier_solver.solve(start_time, barrier_solution);
   if (barrier_status == lp_status_t::OPTIMAL) {
 #ifdef COMPUTE_SCALED_RESIDUALS

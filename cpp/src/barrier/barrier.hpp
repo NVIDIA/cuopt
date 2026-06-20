@@ -16,7 +16,10 @@
 #include <dual_simplex/tic_toc.hpp>
 
 #include <rmm/device_uvector.hpp>
-namespace cuopt::math_optimization::dual_simplex {
+namespace cuopt::math_optimization::barrier {
+
+using namespace cuopt::math_optimization::dual_simplex;  // shared simplex types (lp_problem_t, inf,
+                                                         // etc.)
 
 /** Validates SOC layout on an lp_problem_t before barrier presolve/solve. */
 template <typename i_t, typename f_t>
@@ -116,4 +119,4 @@ class barrier_solver_t {
   rmm::cuda_stream_view stream_view_;
 };
 
-}  // namespace cuopt::math_optimization::dual_simplex
+}  // namespace cuopt::math_optimization::barrier

@@ -2331,8 +2331,8 @@ f_t knapsack_generation_t<i_t, f_t>::solve_knapsack_problem(const std::vector<f_
   solution.assign(n, 0.0);
 
   // dp(j, v) = minimum weight using first j items to get value v
-  dense_matrix_t<i_t, i_t> dp(n + 1, sum_value + 1, INT_INF);
-  dense_matrix_t<i_t, uint8_t> take(n + 1, sum_value + 1, 0);
+  barrier::dense_matrix_t<i_t, i_t> dp(n + 1, sum_value + 1, INT_INF);
+  barrier::dense_matrix_t<i_t, uint8_t> take(n + 1, sum_value + 1, 0);
   dp(0, 0) = 0;
 
   // 4. Dynamic programming
@@ -2402,8 +2402,8 @@ f_t knapsack_generation_t<i_t, f_t>::exact_knapsack_problem_integer_values_fract
   solution.assign(n, 0.0);
 
   // dp(j, v) = minimum weight using first j items to get value v
-  dense_matrix_t<i_t, f_t> dp(n + 1, sum_value + 1, inf);
-  dense_matrix_t<i_t, uint8_t> take(n + 1, sum_value + 1, 0);
+  barrier::dense_matrix_t<i_t, f_t> dp(n + 1, sum_value + 1, inf);
+  barrier::dense_matrix_t<i_t, uint8_t> take(n + 1, sum_value + 1, 0);
   dp(0, 0) = 0;
 
   // 4. Dynamic programming

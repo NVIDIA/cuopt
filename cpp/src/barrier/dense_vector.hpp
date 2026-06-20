@@ -12,7 +12,10 @@
 #include <cstdio>
 #include <vector>
 
-namespace cuopt::math_optimization::dual_simplex {
+namespace cuopt::math_optimization::barrier {
+
+using namespace cuopt::math_optimization::dual_simplex;  // shared simplex types (lp_problem_t, inf,
+                                                         // etc.)
 
 template <typename i_t, typename f_t, typename Allocator = std::allocator<f_t>>
 class dense_vector_t : public std::vector<f_t, Allocator> {
@@ -246,4 +249,4 @@ std::vector<T> copy(const std::vector<T, Alloc>& src)
   return std::vector<T>(src.begin(), src.end());
 }
 
-}  // namespace cuopt::math_optimization::dual_simplex
+}  // namespace cuopt::math_optimization::barrier
