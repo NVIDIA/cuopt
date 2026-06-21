@@ -11,7 +11,7 @@
 #include <cuopt/linear_programming/cpu_optimization_problem.hpp>
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
-#include <quadratic_constraint_coo.hpp>
+#include <mps_parser_internal.hpp>
 #include "grpc_settings_mapper.hpp"
 
 #include <algorithm>

@@ -264,11 +264,8 @@ class mps_data_model_t {
    * @note All span inputs are host memory; the model copies this data.
    * @param linear_values, linear_indices Same nnz; can be empty for a purely quadratic row (rare).
    * @param vals, rows, cols COO triplets for Q; same length; may all be empty if Q is empty.
-   *        Canonicalized on ingest to one triplet per variable pair (full x^T Q x coefficient).
-   * @param require_symmetric_q_offdiagonal Input validation only (default false). When false,
-   *        a single off-diagonal (i,j,v) per cross term is accepted (API/LP/C style). When true
-   *        (MPS QCMATRIX), each off-diagonal pair must appear as both (i,j,v) and (j,i,v) with
-   *        equal v before the halves merge to one stored entry; does not change canonical output.
+   *        Canonicalized on ingest to one triplet per variable pair (full x^T Q x coefficient),
+   *        stored in upper-triangular (min row, max col) form.
    * @param constraint_row_type MPS ROWS type: 'L' (<=) or 'G' (>=). Stored as given; 'G' rows are
    *        converted to '<=' form when building the SOCP for the barrier solver. Equality ('E') is
    *        not supported.
@@ -281,8 +278,7 @@ class mps_data_model_t {
                                    f_t rhs_value,
                                    std::span<const f_t> vals,
                                    std::span<const i_t> rows,
-                                   std::span<const i_t> cols,
-                                   bool require_symmetric_q_offdiagonal = false);
+                                   std::span<const i_t> cols);
 
   const std::vector<quadratic_constraint_t>& get_quadratic_constraints() const;
 
@@ -396,7 +392,7 @@ class mps_data_model_t {
  * @brief Canonicalize Q COO on each quadratic constraint in place.
  *
  * Used for raw API / data_model_view input (single cross term per pair). MPS QCMATRIX
- * symmetric-half validation is done in append_quadratic_constraint instead.
+ * symmetric-half validation is done in the MPS parser before append.
  */
 template <typename i_t, typename f_t>
 void canonicalize_quadratic_constraints(

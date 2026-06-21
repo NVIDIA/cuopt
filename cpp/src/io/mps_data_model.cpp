@@ -8,7 +8,7 @@
 #include <cuopt/linear_programming/io/mps_data_model.hpp>
 #include <utilities/error.hpp>
 
-#include <quadratic_constraint_coo.hpp>
+#include <mps_parser_internal.hpp>
 
 #include <algorithm>
 #include <numeric>
@@ -150,8 +150,7 @@ void mps_data_model_t<i_t, f_t>::append_quadratic_constraint(i_t constraint_row_
                                                              f_t rhs_value,
                                                              std::span<const f_t> vals,
                                                              std::span<const i_t> rows,
-                                                             std::span<const i_t> cols,
-                                                             bool require_symmetric_q_offdiagonal)
+                                                             std::span<const i_t> cols)
 {
   mps_parser_expects(constraint_row_index >= 0,
                      error_type_t::ValidationError,
@@ -200,7 +199,7 @@ void mps_data_model_t<i_t, f_t>::append_quadratic_constraint(i_t constraint_row_
     qc.rows.assign(rows.begin(), rows.end());
     qc.cols.assign(cols.begin(), cols.end());
     qc.vals.assign(vals.begin(), vals.end());
-    canonicalize_coo_matrix(qc.rows, qc.cols, qc.vals, require_symmetric_q_offdiagonal);
+    canonicalize_coo_matrix(qc.rows, qc.cols, qc.vals);
   }
 
   quadratic_constraints_.push_back(std::move(qc));

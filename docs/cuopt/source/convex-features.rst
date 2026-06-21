@@ -165,24 +165,15 @@ Rotated second-order cone constraints must be specified as a quadratic constrain
 
    x_2^2 + x_3^2 + ... + x_n^2 - 2 * x_0 * x_1 <= 0,  x_0 >= 0,  x_1 >= 0.
 
-In the Python and C APIs, supply one cross coefficient per variable pair (e.g. ``-2 * x_0 * x_1``);
-cuOpt stores one canonical COO entry per pair. The MPS QCMATRIX interchange format requires each
-off-diagonal to appear symmetrically in the file; the parser validates that before merging the two
-halves into one stored coefficient (see the MPS examples).
+In the Python and C APIs, supply one cross coefficient per variable pair (e.g. ``-2 * x_0 * x_1``
+in the quadratic expression). cuOpt canonicalizes input to one stored COO entry per pair.
 
 .. code-block:: text
 
-   Q[x_0, x_1] = -2 * d    (API / canonical internal form)
+   Q[x_0, x_1] = -2 * d    (stored canonical coefficient for the cross term)
 
-MPS interchange format uses symmetric halves:
-
-.. code-block:: text
-
-   Q[x_0, x_1] = Q[x_1, x_0] = -d   (MPS; canonicalizes to stored ``-2*d``)
-
-For example, MPS halves ``-0.5`` give stored ``-1`` and the cone
-``||tail||^2 <= x_0 * x_1``. A single API term ``-2*x_0*x_1`` gives stored ``-2``
-and the cone ``||tail||^2 <= 2*x_0*x_1``.
+For example, a single API term ``-2 * x_0 * x_1`` is stored as ``-2`` and defines the cone
+``||tail||^2 <= 2 * x_0 * x_1``.
 
 When any quadratic constraint is present, cuOpt automatically selects the barrier method and disables presolve optimizations that apply only to linear problems.
 

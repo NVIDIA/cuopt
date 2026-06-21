@@ -9,7 +9,7 @@
 
 #include <cuopt/linear_programming/io/data_model_view.hpp>
 #include <cuopt/linear_programming/io/mps_data_model.hpp>
-#include <quadratic_constraint_coo.hpp>
+#include <mps_parser_internal.hpp>
 #include <utilities/error.hpp>
 #include <utilities/sparse_matrix_helpers.hpp>
 

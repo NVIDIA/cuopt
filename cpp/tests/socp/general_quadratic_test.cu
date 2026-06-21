@@ -79,7 +79,7 @@ TEST(general_quadratic, dense_pd_2x2_solve)
   user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
 
   // Build quadratic constraint: x^T [2 1; 1 2] x <= 1
-  // Q in COO (lower triangular stored):
+  // Q in COO:
   // (0,0,2), (1,0,1), (1,1,2)
   qc_t qc;
   qc.constraint_row_index = 0;

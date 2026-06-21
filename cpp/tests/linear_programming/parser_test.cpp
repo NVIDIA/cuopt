@@ -12,6 +12,7 @@
 #include <cuopt/linear_programming/io/parser.hpp>
 #include <mps_parser_internal.hpp>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -30,6 +31,8 @@
 #include <vector>
 
 namespace cuopt::linear_programming::io {
+
+using ::testing::ElementsAre;
 
 constexpr double tolerance = 1e-6;
 
@@ -2156,8 +2159,8 @@ End
   EXPECT_NEAR(qc.rhs_value, 10.0, tolerance);
   EXPECT_TRUE(qc.linear_indices.empty());
   // Q = diag(1, 1) stored as COO triplets (row, col, value).
-  EXPECT_EQ(qc.rows, (std::vector<int>{0, 1}));
-  EXPECT_EQ(qc.cols, (std::vector<int>{0, 1}));
+  EXPECT_THAT(qc.rows, ElementsAre(0, 1));
+  EXPECT_THAT(qc.cols, ElementsAre(0, 1));
   ASSERT_EQ(qc.vals.size(), 2u);
   EXPECT_NEAR(qc.vals[0], 1.0, tolerance);
   EXPECT_NEAR(qc.vals[1], 1.0, tolerance);
@@ -2176,8 +2179,8 @@ End
 )LP");
   ASSERT_EQ(m.get_quadratic_constraints().size(), 1u);
   const auto& qc = nth_qc(m, 0);
-  EXPECT_EQ(qc.rows, (std::vector<int>{0, 0, 1}));
-  EXPECT_EQ(qc.cols, (std::vector<int>{0, 1, 1}));
+  EXPECT_THAT(qc.rows, ElementsAre(0, 0, 1));
+  EXPECT_THAT(qc.cols, ElementsAre(0, 1, 1));
   ASSERT_EQ(qc.vals.size(), 3u);
   EXPECT_NEAR(qc.vals[0], 1.0, tolerance);  // (0, 0)
   EXPECT_NEAR(qc.vals[1], 4.0, tolerance);  // (0, 1)
@@ -2745,7 +2748,8 @@ TEST(append_quadratic_constraint, collapses_symmetric_mps_halves)
   const std::vector<double> vals = {2.0, 2.0};
   const std::vector<int> rows    = {0, 1};
   const std::vector<int> cols    = {1, 0};
-  model.append_quadratic_constraint(0, "QC0", 'L', {}, {}, 0.0, vals, rows, cols, true);
+  check_symmetric_offdiagonal_pairs(rows, cols, vals);
+  model.append_quadratic_constraint(0, "QC0", 'L', {}, {}, 0.0, vals, rows, cols);
 
   ASSERT_TRUE(model.has_quadratic_constraints());
   const auto& qc = model.get_quadratic_constraints().back();
@@ -2772,18 +2776,6 @@ TEST(append_quadratic_constraint, sums_both_orientations_for_off_diagonal_pair)
   EXPECT_NEAR(qc.vals[0], 5.0, tolerance);
 }
 
-TEST(append_quadratic_constraint, mps_requires_matching_symmetric_half)
-{
-  using model_t = mps_data_model_t<int, double>;
-  model_t model;
-  const std::vector<double> vals = {2.0};
-  const std::vector<int> rows    = {0};
-  const std::vector<int> cols    = {1};
-  EXPECT_THROW(
-    model.append_quadratic_constraint(0, "QC0", 'L', {}, {}, 0.0, vals, rows, cols, true),
-    std::logic_error);
-}
-
 TEST(qps_parser, qcmatrix_append_api)
 {
   using model_t = mps_data_model_t<int, double>;
@@ -2805,6 +2797,7 @@ TEST(qps_parser, qcmatrix_append_api)
   const std::vector<int> mps_qc0_col_indices  = {0, 1, 0, 1};
   const std::vector<double> qc0_linear_values = {1.0, 1.0};
   const std::vector<int> qc0_linear_indices   = {0, 1};
+  check_symmetric_offdiagonal_pairs(mps_qc0_row_indices, mps_qc0_col_indices, mps_qc0_values);
   model.append_quadratic_constraint(0,
                                     "QC0",
                                     'L',
@@ -2813,8 +2806,7 @@ TEST(qps_parser, qcmatrix_append_api)
                                     5.0,
                                     mps_qc0_values,
                                     mps_qc0_row_indices,
-                                    mps_qc0_col_indices,
-                                    true);
+                                    mps_qc0_col_indices);
 
   // API-style canonical COO [[4, 2], [2, 6]] -> stored unchanged after merge/sort
   const std::vector<double> api_qc1_values    = {4.0, 2.0, 6.0};
@@ -2860,20 +2852,11 @@ TEST(qps_parser, qcmatrix_append_api)
   EXPECT_EQ(api_qc1_row_indices, qcs[1].rows);
   EXPECT_EQ(api_qc1_col_indices, qcs[1].cols);
 
-  // Missing symmetric half is rejected when require_symmetric_q_offdiagonal=true.
+  // Missing symmetric half is rejected by check_symmetric_offdiagonal_pairs().
   const std::vector<double> bad_values   = {2.0};
   const std::vector<int> bad_row_indices = {0};
   const std::vector<int> bad_col_indices = {1};
-  EXPECT_THROW(model.append_quadratic_constraint(2,
-                                                 "QC_bad",
-                                                 'L',
-                                                 std::vector<double>{},
-                                                 std::vector<int>{},
-                                                 0.0,
-                                                 bad_values,
-                                                 bad_row_indices,
-                                                 bad_col_indices,
-                                                 true),
+  EXPECT_THROW(check_symmetric_offdiagonal_pairs(bad_row_indices, bad_col_indices, bad_values),
                std::logic_error);
 }
 

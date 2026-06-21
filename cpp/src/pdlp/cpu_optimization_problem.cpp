@@ -14,7 +14,7 @@
 
 #include <cuopt/linear_programming/io/writer.hpp>
 #include <mip_heuristics/mip_constants.hpp>
-#include <quadratic_constraint_coo.hpp>
+#include <mps_parser_internal.hpp>
 #include <utilities/logger.hpp>
 
 #include <algorithm>

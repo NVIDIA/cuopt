@@ -10,7 +10,6 @@ set(PARSERS_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/mps_data_model.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/mps_parser.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/mps_writer.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/quadratic_constraint_coo.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/parser.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/writer.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/utilities/cython_parser.cpp

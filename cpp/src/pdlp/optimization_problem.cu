@@ -10,7 +10,7 @@
 #include <cuopt/linear_programming/optimization_problem_utils.hpp>
 #include <cuopt/linear_programming/solve_remote.hpp>
 
-#include <quadratic_constraint_coo.hpp>
+#include <mps_parser_internal.hpp>
 
 #include <cuopt/error.hpp>
 #include <cuopt/linear_programming/csr_matrix_utils.hpp>
