@@ -882,7 +882,7 @@ void optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_
       variable_types.resize(enum_variable_types.size());
       // Convert enum types to char types
       for (size_t i = 0; i < variable_types.size(); ++i) {
-        variable_types[i] = detail::var_type_to_char(enum_variable_types[i]);
+        variable_types[i] = var_type_to_char(enum_variable_types[i]);
       }
     }
 

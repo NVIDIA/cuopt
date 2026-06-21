@@ -785,7 +785,7 @@ void cpu_optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_f
     var_types_char.resize(variable_types_.size());
 
     for (size_t i = 0; i < var_types_char.size(); ++i) {
-      var_types_char[i] = detail::var_type_to_char(variable_types_[i]);
+      var_types_char[i] = var_type_to_char(variable_types_[i]);
     }
   } else if (get_n_variables() > 0) {
     // Variable types not set (e.g. pure LP); default to all continuous

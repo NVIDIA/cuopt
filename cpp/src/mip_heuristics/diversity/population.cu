@@ -280,11 +280,11 @@ void population_t<i_t, f_t>::invoke_get_solution_callback(
              temp_sol.assignment.size(),
              temp_sol.handle_ptr->get_stream());
   temp_sol.handle_ptr->sync_stream();
-  if (detail::mip_solver_settings_accessor<i_t, f_t>::has_semi_continuous_callback_translation(
+  if (mip_solver_settings_accessor<i_t, f_t>::has_semi_continuous_callback_translation(
         context.settings)) {
     mip::strip_semi_continuous_auxiliaries_from_assignment(
       user_assignment_vec,
-      detail::mip_solver_settings_accessor<i_t, f_t>::get_semi_continuous_original_num_variables(
+      mip_solver_settings_accessor<i_t, f_t>::get_semi_continuous_original_num_variables(
         context.settings));
   }
   callback->get_solution(user_assignment_vec.data(),
@@ -323,11 +323,12 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
       f_t user_bound              = context.stats.get_solution_bound();
       auto callback_num_variables = problem_ptr->original_problem_ptr->get_n_variables();
       const bool has_semi_continuous_callback_translation =
-        detail::mip_solver_settings_accessor<i_t, f_t>::has_semi_continuous_callback_translation(
+        mip_solver_settings_accessor<i_t, f_t>::has_semi_continuous_callback_translation(
           context.settings);
       if (has_semi_continuous_callback_translation) {
-        callback_num_variables = detail::mip_solver_settings_accessor<i_t, f_t>::
-          get_semi_continuous_original_num_variables(context.settings);
+        callback_num_variables =
+          mip_solver_settings_accessor<i_t, f_t>::get_semi_continuous_original_num_variables(
+            context.settings);
       }
       rmm::device_uvector<f_t> incumbent_assignment(callback_num_variables,
                                                     sol.handle_ptr->get_stream());
@@ -351,8 +352,8 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
       if (has_semi_continuous_callback_translation) {
         mip::append_semi_continuous_auxiliaries_to_assignment(
           h_incumbent_assignment,
-          detail::mip_solver_settings_accessor<i_t, f_t>::
-            get_semi_continuous_binary_to_original_indices(context.settings),
+          mip_solver_settings_accessor<i_t, f_t>::get_semi_continuous_binary_to_original_indices(
+            context.settings),
           context.settings.get_tolerances());
       }
       incumbent_assignment.resize(h_incumbent_assignment.size(), sol.handle_ptr->get_stream());

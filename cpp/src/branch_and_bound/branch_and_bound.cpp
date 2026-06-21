@@ -3381,7 +3381,7 @@ void branch_and_bound_t<i_t, f_t>::deterministic_sync_callback()
       }
     }
 
-    state_hash = detail::compute_hash(state_data);
+    state_hash = cuopt::compute_hash(state_data);
     state_hash ^= pc_.compute_state_hash();
   }
 

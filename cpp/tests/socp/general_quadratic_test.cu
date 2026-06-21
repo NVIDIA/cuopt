@@ -19,7 +19,7 @@
 #include <cmath>
 #include <vector>
 
-namespace cuopt::math_optimization::detail::test {
+namespace cuopt::math_optimization::barrier::test {
 
 using i_t  = int;
 using f_t  = double;
@@ -824,4 +824,4 @@ TEST(general_quadratic, rotated_soc_heads_free_rejected)
     cuopt::logic_error);
 }
 
-}  // namespace cuopt::math_optimization::detail::test
+}  // namespace cuopt::math_optimization::barrier::test

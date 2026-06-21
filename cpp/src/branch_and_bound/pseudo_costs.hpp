@@ -206,8 +206,8 @@ class pseudo_costs_t {
 
   uint32_t compute_state_hash() const
   {
-    return detail::compute_hash(pseudo_cost_sum_down) ^ detail::compute_hash(pseudo_cost_sum_up) ^
-           detail::compute_hash(pseudo_cost_num_down) ^ detail::compute_hash(pseudo_cost_num_up);
+    return cuopt::compute_hash(pseudo_cost_sum_down) ^ cuopt::compute_hash(pseudo_cost_sum_up) ^
+           cuopt::compute_hash(pseudo_cost_num_down) ^ cuopt::compute_hash(pseudo_cost_num_up);
   }
 
   f_t calculate_pseudocost_score(i_t j,

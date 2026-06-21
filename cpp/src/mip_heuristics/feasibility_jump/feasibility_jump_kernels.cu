@@ -1449,7 +1449,7 @@ template <typename i_t, typename f_t>
 std::pair<dim3, dim3> get_launch_dims_update_assignment_kernel(int TPB,
                                                                const raft::handle_t* handle_ptr)
 {
-  return detail::get_launch_dims_max_occupancy(
+  return cuopt::get_launch_dims_max_occupancy(
     (void*)update_assignment_kernel<i_t, f_t>, TPB, handle_ptr);
 }
 
@@ -1467,7 +1467,7 @@ template <typename i_t, typename f_t, MTMMoveType move_type, bool is_binary_pb>
 std::pair<dim3, dim3> get_launch_dims_compute_mtm_moves_kernel(int TPB,
                                                                const raft::handle_t* handle_ptr)
 {
-  return detail::get_launch_dims_max_occupancy(
+  return cuopt::get_launch_dims_max_occupancy(
     (void*)compute_mtm_moves_kernel<i_t, f_t, move_type, is_binary_pb>, TPB, handle_ptr);
 }
 
@@ -1475,7 +1475,7 @@ template <typename i_t, typename f_t>
 std::pair<dim3, dim3> get_launch_dims_handle_local_minimum_kernel(int TPB,
                                                                   const raft::handle_t* handle_ptr)
 {
-  return detail::get_launch_dims_max_occupancy(
+  return cuopt::get_launch_dims_max_occupancy(
     (void*)handle_local_minimum_kernel<i_t, f_t>, TPB, handle_ptr);
 }
 
@@ -1483,7 +1483,7 @@ template <typename i_t, typename f_t>
 std::pair<dim3, dim3> get_launch_dims_update_lift_moves_kernel(int TPB,
                                                                const raft::handle_t* handle_ptr)
 {
-  return detail::get_launch_dims_max_occupancy(
+  return cuopt::get_launch_dims_max_occupancy(
     (void*)update_lift_moves_kernel<i_t, f_t>, TPB, handle_ptr);
 }
 
@@ -1491,7 +1491,7 @@ template <typename i_t, typename f_t>
 std::pair<dim3, dim3> get_launch_dims_load_balancing_compute_workid_mappings(
   int TPB, const raft::handle_t* handle_ptr)
 {
-  return detail::get_launch_dims_max_occupancy(
+  return cuopt::get_launch_dims_max_occupancy(
     (void*)load_balancing_compute_workid_mappings<i_t, f_t>, TPB, handle_ptr);
 }
 
@@ -1499,7 +1499,7 @@ template <typename i_t, typename f_t>
 std::pair<dim3, dim3> get_launch_dims_load_balancing_compute_scores_binary(
   int TPB, const raft::handle_t* handle_ptr)
 {
-  return detail::get_launch_dims_max_occupancy(
+  return cuopt::get_launch_dims_max_occupancy(
     (void*)load_balancing_compute_scores_binary<i_t, f_t>, TPB, handle_ptr);
 }
 
@@ -1507,7 +1507,7 @@ template <typename i_t, typename f_t>
 std::pair<dim3, dim3> get_launch_dims_load_balancing_mtm_compute_candidates(
   int TPB, const raft::handle_t* handle_ptr)
 {
-  return detail::get_launch_dims_max_occupancy(
+  return cuopt::get_launch_dims_max_occupancy(
     (void*)load_balancing_mtm_compute_candidates<i_t, f_t>, TPB, handle_ptr);
 }
 
@@ -1515,7 +1515,7 @@ template <typename i_t, typename f_t>
 std::pair<dim3, dim3> get_launch_dims_load_balancing_mtm_compute_scores(
   int TPB, const raft::handle_t* handle_ptr)
 {
-  return detail::get_launch_dims_max_occupancy(
+  return cuopt::get_launch_dims_max_occupancy(
     (void*)load_balancing_mtm_compute_scores<i_t, f_t>, TPB, handle_ptr);
 }
 
@@ -1523,7 +1523,7 @@ template <typename i_t, typename f_t>
 std::pair<dim3, dim3> get_launch_dims_load_balancing_prepare_iteration(
   int TPB, const raft::handle_t* handle_ptr)
 {
-  return detail::get_launch_dims_max_occupancy(
+  return cuopt::get_launch_dims_max_occupancy(
     (void*)load_balancing_prepare_iteration<i_t, f_t>, TPB, handle_ptr);
 }
 
@@ -1566,7 +1566,7 @@ template <typename i_t, typename f_t>
 std::pair<dim3, dim3> get_launch_dims_update_changed_constraints_kernel(
   int TPB, const raft::handle_t* handle_ptr)
 {
-  return detail::get_launch_dims_max_occupancy(
+  return cuopt::get_launch_dims_max_occupancy(
     (void*)update_changed_constraints_kernel<i_t, f_t>, TPB, handle_ptr);
 }
 

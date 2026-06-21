@@ -94,7 +94,6 @@ TEST(pdlp_class, run_double)
 
 TEST(pdlp_class, precision_mixed)
 {
-  using namespace cuopt::math_optimization::detail;
   using namespace cuopt::math_optimization::pdlp;
   if (!is_cusparse_runtime_mixed_precision_supported()) {
     const raft::handle_t handle_{};

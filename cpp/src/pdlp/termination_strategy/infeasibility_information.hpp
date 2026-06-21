@@ -132,7 +132,7 @@ class infeasibility_information_t {
   const pdlp_initial_scaling_strategy_t<i_t, f_t>& scaling_strategy_;
   const mip::problem_t<i_t, f_t>& op_problem_scaled_;
 
-  detail::segmented_sum_handler_t<i_t, f_t> segmented_sum_handler_;
+  cuopt::segmented_sum_handler_t<i_t, f_t> segmented_sum_handler_;
   const std::vector<pdlp_climber_strategy_t>& climber_strategies_;
   const pdlp::pdlp_hyper_params_t& hyper_params_;
 };

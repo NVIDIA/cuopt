@@ -150,7 +150,7 @@ template <typename i_t, typename f_t>
 void pdlp_initial_scaling_strategy_t<i_t, f_t>::bound_objective_rescaling()
 {
   // TODO: test bound obj scaling w/ MIP
-  detail::segmented_sum_handler_t<i_t, f_t> segmented_sum_handler(stream_view_);
+  cuopt::segmented_sum_handler_t<i_t, f_t> segmented_sum_handler(stream_view_);
 
   // ------- Constraints bounds scaling -------
   // This works whether we have different bounds per climber or not because of the

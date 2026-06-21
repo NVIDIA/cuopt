@@ -9,7 +9,7 @@
 
 #include <rmm/device_uvector.hpp>
 
-namespace cuopt::math_optimization::detail {
+namespace cuopt {
 
 template <typename i_t, typename f_t, typename T>
 struct double_buffer_t {
@@ -40,4 +40,4 @@ struct double_buffer_t {
   rmm::device_uvector<T> bufs[2];
 };
 
-}  // namespace cuopt::math_optimization::detail
+}  // namespace cuopt

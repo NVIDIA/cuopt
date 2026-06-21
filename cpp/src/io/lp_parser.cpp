@@ -314,7 +314,7 @@ void LpParseEngine<i_t, f_t>::read_and_tokenize(const std::string& file)
   // way as .mps.gz / .mps.bz2 (dlopen-loaded libz / libbz2). The returned
   // buffer is null-terminated; strip it before constructing the string view
   // since `tokenize` walks the entire string range.
-  auto buf = detail::file_to_string(file);
+  auto buf = file_to_string(file);
   std::string text(buf.data(), buf.size() > 0 ? buf.size() - 1 : 0);
   tokenize(text);
 }

@@ -21,7 +21,7 @@
 
 #include <cub/cub.cuh>
 
-namespace cuopt::math_optimization::detail {
+namespace cuopt {
 
 template <typename i_t, typename f_t>
 struct segmented_sum_handler_t {
@@ -83,4 +83,4 @@ struct segmented_sum_handler_t {
   rmm::cuda_stream_view stream_view_;
 };
 
-}  // namespace cuopt::math_optimization::detail
+}  // namespace cuopt

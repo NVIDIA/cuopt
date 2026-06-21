@@ -26,7 +26,7 @@
 #include <utility>
 #include <vector>
 
-namespace cuopt::math_optimization::detail {
+namespace cuopt::math_optimization::barrier {
 
 /** Convert MPS >= ('G') quadratic row to <= ('L') form on a working copy for SOC conversion. */
 template <typename qc_t, typename f_t>
@@ -1352,4 +1352,4 @@ void project_barrier_solution_to_model_variables(
   solution.z = std::move(model_z);
 }
 
-}  // namespace cuopt::math_optimization::detail
+}  // namespace cuopt::math_optimization::barrier

@@ -353,7 +353,7 @@ class mip_node_t {
       path_steps.push_back(step);
       node = node->parent;
     }
-    return detail::compute_hash(path_steps);
+    return cuopt::compute_hash(path_steps);
   }
 };
 

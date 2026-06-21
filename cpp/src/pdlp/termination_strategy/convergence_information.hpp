@@ -201,7 +201,7 @@ class convergence_information_t {
   const rmm::device_scalar<f_t> reusable_device_scalar_value_1_;
   const rmm::device_scalar<f_t> reusable_device_scalar_value_0_;
   const rmm::device_scalar<f_t> reusable_device_scalar_value_neg_1_;
-  detail::segmented_sum_handler_t<i_t, f_t> segmented_sum_handler_;
+  cuopt::segmented_sum_handler_t<i_t, f_t> segmented_sum_handler_;
 
   rmm::device_uvector<f_t> dual_dot_;
   rmm::device_uvector<f_t> sum_primal_slack_;

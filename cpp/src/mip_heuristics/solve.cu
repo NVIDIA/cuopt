@@ -116,14 +116,14 @@ mip_solution_t<i_t, f_t> run_mip_solver(
     if (settings.get_mip_callbacks().size() > 0) {
       auto callback_num_variables = problem.original_problem_ptr->get_n_variables();
       const bool has_semi_continuous_callback_translation =
-        detail::mip_solver_settings_accessor<i_t, f_t>::has_semi_continuous_callback_translation(
-          settings);
+        mip_solver_settings_accessor<i_t, f_t>::has_semi_continuous_callback_translation(settings);
       if (problem.has_papilo_presolve_data()) {
         callback_num_variables = problem.get_papilo_original_num_variables();
       }
       if (has_semi_continuous_callback_translation) {
-        callback_num_variables = detail::mip_solver_settings_accessor<i_t, f_t>::
-          get_semi_continuous_original_num_variables(settings);
+        callback_num_variables =
+          mip_solver_settings_accessor<i_t, f_t>::get_semi_continuous_original_num_variables(
+            settings);
       }
       for (auto callback : settings.get_mip_callbacks()) {
         callback->template setup<f_t>(callback_num_variables);
@@ -164,12 +164,12 @@ mip_solution_t<i_t, f_t> run_mip_solver(
                      temp_sol.assignment.size(),
                      temp_sol.handle_ptr->get_stream());
           solution.handle_ptr->sync_stream();
-          if (detail::mip_solver_settings_accessor<i_t, f_t>::
-                has_semi_continuous_callback_translation(settings)) {
+          if (mip_solver_settings_accessor<i_t, f_t>::has_semi_continuous_callback_translation(
+                settings)) {
             mip::strip_semi_continuous_auxiliaries_from_assignment(
               user_assignment_vec,
-              detail::mip_solver_settings_accessor<i_t, f_t>::
-                get_semi_continuous_original_num_variables(settings));
+              mip_solver_settings_accessor<i_t, f_t>::get_semi_continuous_original_num_variables(
+                settings));
           }
           get_sol_callback->get_solution(user_assignment_vec.data(),
                                          user_objective_vec.data(),
@@ -260,10 +260,11 @@ mip_solution_t<i_t, f_t> run_mip_solver(
          mip_callbacks,
          no_bound,
          has_semi_continuous_callback_translation =
-           detail::mip_solver_settings_accessor<i_t, f_t>::has_semi_continuous_callback_translation(
+           mip_solver_settings_accessor<i_t, f_t>::has_semi_continuous_callback_translation(
              settings),
-         semi_continuous_original_num_variables = detail::mip_solver_settings_accessor<i_t, f_t>::
-           get_semi_continuous_original_num_variables(settings),
+         semi_continuous_original_num_variables =
+           mip_solver_settings_accessor<i_t, f_t>::get_semi_continuous_original_num_variables(
+             settings),
          ctx_ptr = &solver.context,
          early_fj_start](f_t solver_obj,
                          f_t user_obj,
@@ -399,7 +400,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
                                                         op_problem.get_handle_ptr()->get_stream());
     }
     if (has_semi_continuous) {
-      detail::mip_solver_settings_accessor<i_t, f_t>::set_semi_continuous_callback_translation(
+      mip_solver_settings_accessor<i_t, f_t>::set_semi_continuous_callback_translation(
         settings, n_orig_before_sc, semi_continuous_binary_to_original_indices);
     }
 
@@ -414,10 +415,11 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
 
     for (auto callback : settings.get_mip_callbacks()) {
       auto callback_num_variables = op_problem.get_n_variables();
-      if (detail::mip_solver_settings_accessor<i_t, f_t>::has_semi_continuous_callback_translation(
+      if (mip_solver_settings_accessor<i_t, f_t>::has_semi_continuous_callback_translation(
             settings)) {
-        callback_num_variables = detail::mip_solver_settings_accessor<i_t, f_t>::
-          get_semi_continuous_original_num_variables(settings);
+        callback_num_variables =
+          mip_solver_settings_accessor<i_t, f_t>::get_semi_continuous_original_num_variables(
+            settings);
       }
       callback->template setup<f_t>(callback_num_variables);
     }
@@ -496,10 +498,11 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
          early_fj_start,
          mip_callbacks = settings.get_mip_callbacks(),
          has_semi_continuous_callback_translation =
-           detail::mip_solver_settings_accessor<i_t, f_t>::has_semi_continuous_callback_translation(
+           mip_solver_settings_accessor<i_t, f_t>::has_semi_continuous_callback_translation(
              settings),
-         semi_continuous_original_num_variables = detail::mip_solver_settings_accessor<i_t, f_t>::
-           get_semi_continuous_original_num_variables(settings),
+         semi_continuous_original_num_variables =
+           mip_solver_settings_accessor<i_t, f_t>::get_semi_continuous_original_num_variables(
+             settings),
          no_bound](f_t solver_obj,
                    f_t user_obj,
                    const std::vector<f_t>& assignment,

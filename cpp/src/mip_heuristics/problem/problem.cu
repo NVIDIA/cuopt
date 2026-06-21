@@ -2397,8 +2397,8 @@ uint32_t problem_t<i_t, f_t>::get_fingerprint() const
   uint32_t h_clb        = mip::compute_hash(constraint_lower_bounds, stream);
   uint32_t h_cub        = mip::compute_hash(constraint_upper_bounds, stream);
   uint32_t h_vartypes   = mip::compute_hash(variable_types, stream);
-  uint32_t h_obj_off    = detail::compute_hash(presolve_data.objective_offset);
-  uint32_t h_obj_scale  = detail::compute_hash(presolve_data.objective_scaling_factor);
+  uint32_t h_obj_off    = cuopt::compute_hash(presolve_data.objective_offset);
+  uint32_t h_obj_scale  = cuopt::compute_hash(presolve_data.objective_scaling_factor);
 
   std::vector<uint32_t> hashes = {
     h_coeff,
@@ -2415,7 +2415,7 @@ uint32_t problem_t<i_t, f_t>::get_fingerprint() const
     h_obj_off,
     h_obj_scale,
   };
-  return detail::compute_hash(hashes);
+  return cuopt::compute_hash(hashes);
 }
 
 template <typename i_t, typename f_t>

@@ -525,7 +525,7 @@ run_barrier(dual_simplex::user_problem_t<i_t, f_t>& user_problem,
   auto status = dual_simplex::solve_linear_program_with_barrier<i_t, f_t>(
     user_problem, barrier_settings, timer.get_tic_start(), solution);
 
-  detail::project_barrier_solution_to_model_variables(user_problem, solution);
+  barrier::project_barrier_solution_to_model_variables(user_problem, solution);
 
   CUOPT_LOG_CONDITIONAL_INFO(
     !settings.inside_mip, "Barrier finished in %.2f seconds", timer.elapsed_time());
@@ -2162,7 +2162,7 @@ cuopt::math_optimization::optimization_problem_t<i_t, f_t> mps_data_model_to_opt
     std::transform(data_model.get_variable_types().cbegin(),
                    data_model.get_variable_types().cend(),
                    enum_variable_types.begin(),
-                   detail::char_to_var_type);
+                   char_to_var_type);
     op_problem.set_variable_types(enum_variable_types.data(), enum_variable_types.size());
   }
 

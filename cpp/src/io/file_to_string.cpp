@@ -207,7 +207,7 @@ std::vector<char> zlib_file_to_string(const std::string& file)
 }  // end namespace
 #endif  // MPS_PARSER_WITH_ZLIB
 
-namespace cuopt::math_optimization::io::detail {
+namespace cuopt::math_optimization::io {
 
 std::vector<char> file_to_string(const std::string& file)
 {
@@ -252,4 +252,4 @@ std::vector<char> file_to_string(const std::string& file)
   return buf;
 }
 
-}  // namespace cuopt::math_optimization::io::detail
+}  // namespace cuopt::math_optimization::io

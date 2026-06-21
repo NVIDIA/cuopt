@@ -758,7 +758,7 @@ mps_parser_t<i_t, f_t>::mps_parser_t(mps_data_model_t<i_t, f_t>& problem,
 {
   // raft::common::nvtx::range fun_scope("mps parser");
 
-  std::vector<char> buf = detail::file_to_string(file);
+  std::vector<char> buf = file_to_string(file);
   parse_string(buf.data());
   fill_problem(problem);
 }

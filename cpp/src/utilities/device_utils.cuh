@@ -12,7 +12,7 @@
 
 #include <utility>
 
-namespace cuopt::math_optimization::detail {
+namespace cuopt {
 
 #define FIRST_THREAD (threadIdx.x == 0 && blockIdx.x == 0)
 #define TH_ID_X      threadIdx.x + blockIdx.x* blockDim.x
@@ -32,4 +32,4 @@ inline std::pair<dim3, dim3> get_launch_dims_max_occupancy(void* kernel_address,
   return {dim_grid, dim_block};
 }
 
-}  // namespace cuopt::math_optimization::detail
+}  // namespace cuopt

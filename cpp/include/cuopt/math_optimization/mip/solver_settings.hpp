@@ -57,10 +57,8 @@ class solver_settings_t;
 template <typename i_t, typename f_t>
 class mip_solver_settings_t;
 
-namespace detail {
 template <typename i_t, typename f_t>
 struct mip_solver_settings_accessor;
-}  // namespace detail
 
 template <typename i_t, typename f_t>
 class mip_solver_settings_t {
@@ -194,10 +192,8 @@ class mip_solver_settings_t {
   std::vector<i_t> semi_continuous_binary_to_original_indices_;
 
   friend class solver_settings_t<i_t, f_t>;
-  friend struct detail::mip_solver_settings_accessor<i_t, f_t>;
+  friend struct mip_solver_settings_accessor<i_t, f_t>;
 };
-
-namespace detail {
 
 template <typename i_t, typename f_t>
 struct mip_solver_settings_accessor {
@@ -232,7 +228,5 @@ struct mip_solver_settings_accessor {
     return settings.semi_continuous_binary_to_original_indices_;
   }
 };
-
-}  // namespace detail
 
 }  // namespace cuopt::math_optimization
