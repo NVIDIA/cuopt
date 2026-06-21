@@ -14,7 +14,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from cuopt.linear_programming.problem import EQ, GE, LE, Problem
+from cuopt.linear_programming.problem import EQ, GE, LE, MAXIMIZE, Problem
 from cuopt.linear_programming.solver.solver_parameters import CUOPT_METHOD
 from cuopt.linear_programming.solver_settings import (
     SolverMethod,
@@ -27,6 +27,11 @@ EXPECTED_SOCP_1_Y = 5.0
 
 EXPECTED_SOCP_3_OBJECTIVE = -1.932105
 EXPECTED_SOCP_3_X = (0.83666003, -0.54772256)
+
+# Rotated SOC with a single canonical cross term (-2*t*u); optimum max v0+v1 is sqrt(2).
+_SQRT2 = np.sqrt(2.0)
+EXPECTED_ROTATED_SOC_NATURAL_CROSS_OBJECTIVE = _SQRT2
+EXPECTED_ROTATED_SOC_NATURAL_CROSS_V = _SQRT2 / 2.0
 
 OBJ_TOL = 1e-6
 PRIMAL_TOL = 1e-6
@@ -82,6 +87,27 @@ def build_socp_3() -> tuple[Problem, tuple]:
     _soc_two_dim_constraint(problem, x0, x1, mat2, h2)
     _soc_two_dim_constraint(problem, x0, x1, mat3, h3)
     return problem, (x0, x1, h1, h2, h3)
+
+
+def build_rotated_soc_natural_cross_term_example() -> tuple[Problem, tuple]:
+    """Rotated SOC with the natural single cross term ``-2*t*u``.
+
+    max  v0 + v1
+    s.t. t = 0.5, u = 1.0
+         t + u + v0 + v1 <= 100
+         v0^2 + v1^2 - 2*t*u <= 0
+    """
+    problem = Problem("rotated_soc_natural_cross")
+    t = problem.addVariable(lb=0.5, ub=0.5, name="t")
+    u = problem.addVariable(lb=1.0, ub=1.0, name="u")
+    v0 = problem.addVariable(lb=-np.inf, name="v0")
+    v1 = problem.addVariable(lb=-np.inf, name="v1")
+    problem.addConstraint(t + u + v0 + v1 <= 100.0, name="slack")
+    problem.addConstraint(
+        v0 * v0 + v1 * v1 - 2 * t * u <= 0.0, name="rotated_soc"
+    )
+    problem.setObjective(v0 + v1, sense=MAXIMIZE)
+    return problem, (t, u, v0, v1)
 
 
 def _quadratic_constraint_violation(constr, variables) -> float:
@@ -167,6 +193,26 @@ def test_socp_3_barrier_solution():
     assert h3.Value == pytest.approx(1.0, abs=PRIMAL_TOL)
 
 
+def test_rotated_soc_natural_cross_term_barrier_solution():
+    """Barrier solve for rotated SOC with a single ``-2*t*u`` cross term."""
+    problem, (t, u, v0, v1) = build_rotated_soc_natural_cross_term_example()
+    solution = _solve(problem)
+    _assert_solution_on_original_model(problem, solution)
+    _assert_feasible(problem)
+
+    assert problem.ObjValue == pytest.approx(
+        EXPECTED_ROTATED_SOC_NATURAL_CROSS_OBJECTIVE, abs=OBJ_TOL
+    )
+    assert t.Value == pytest.approx(0.5, abs=PRIMAL_TOL)
+    assert u.Value == pytest.approx(1.0, abs=PRIMAL_TOL)
+    assert v0.Value == pytest.approx(
+        EXPECTED_ROTATED_SOC_NATURAL_CROSS_V, abs=PRIMAL_TOL
+    )
+    assert v1.Value == pytest.approx(
+        EXPECTED_ROTATED_SOC_NATURAL_CROSS_V, abs=PRIMAL_TOL
+    )
+
+
 def test_general_quadratic_unsymmetric():
     """
     Min x0 + x1
@@ -214,7 +260,7 @@ def test_maximize_with_quadratic_constraint():
     are present (regression for a bug where the QCQP path ignored the
     objective sense).
     """
-    from cuopt.linear_programming.problem import MAXIMIZE, MINIMIZE
+    from cuopt.linear_programming.problem import MINIMIZE
 
     # Solve as MINIMIZE first to establish baseline
     prob_min = Problem("qc_maximize_min")
