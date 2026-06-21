@@ -336,10 +336,10 @@ class branch_and_bound_t {
   void dive_with(diving_worker_t<i_t, f_t>* worker);
 
   // Solve the LP relaxation of a leaf node
-  dual::status_t solve_node_lp(mip_node_t<i_t, f_t>* node_ptr,
-                               branch_and_bound_worker_t<i_t, f_t>* worker,
-                               branch_and_bound_stats_t<i_t, f_t>& stats,
-                               logger_t& log);
+  dual_status_t solve_node_lp(mip_node_t<i_t, f_t>* node_ptr,
+                              branch_and_bound_worker_t<i_t, f_t>* worker,
+                              branch_and_bound_stats_t<i_t, f_t>& stats,
+                              logger_t& log);
 
   // Apply symmetry-based bound reductions (orbital fixing and, when
   // settings_.symmetry == 2, lexical reduction) to the current node.
@@ -360,7 +360,7 @@ class branch_and_bound_t {
     mip_node_t<i_t, f_t>* node_ptr,
     search_tree_t<i_t, f_t>& search_tree,
     WorkerT* worker,
-    dual::status_t lp_status,
+    dual_status_t lp_status,
     Policy& policy);
 
   // Opportunistic tree update wrapper.
@@ -368,7 +368,7 @@ class branch_and_bound_t {
     mip_node_t<i_t, f_t>* node_ptr,
     search_tree_t<i_t, f_t>& search_tree,
     branch_and_bound_worker_t<i_t, f_t>* worker,
-    dual::status_t lp_status,
+    dual_status_t lp_status,
     logger_t& log);
 
   // ============================================================================

@@ -147,28 +147,28 @@ void set_uninitialized_steepest_edge_norms(const lp_problem_t<i_t, f_t>& lp,
   }
 }
 
-dual::status_t convert_lp_status_to_dual_status(lp_status_t status)
+dual_status_t convert_lp_status_to_dual_status(lp_status_t status)
 {
   if (status == lp_status_t::OPTIMAL) {
-    return dual::status_t::OPTIMAL;
+    return dual_status_t::OPTIMAL;
   } else if (status == lp_status_t::INFEASIBLE) {
-    return dual::status_t::DUAL_UNBOUNDED;
+    return dual_status_t::DUAL_UNBOUNDED;
   } else if (status == lp_status_t::ITERATION_LIMIT) {
-    return dual::status_t::ITERATION_LIMIT;
+    return dual_status_t::ITERATION_LIMIT;
   } else if (status == lp_status_t::TIME_LIMIT) {
-    return dual::status_t::TIME_LIMIT;
+    return dual_status_t::TIME_LIMIT;
   } else if (status == lp_status_t::WORK_LIMIT) {
-    return dual::status_t::WORK_LIMIT;
+    return dual_status_t::WORK_LIMIT;
   } else if (status == lp_status_t::NUMERICAL_ISSUES) {
-    return dual::status_t::NUMERICAL;
+    return dual_status_t::NUMERICAL;
   } else if (status == lp_status_t::CUTOFF) {
-    return dual::status_t::CUTOFF;
+    return dual_status_t::CUTOFF;
   } else if (status == lp_status_t::CONCURRENT_LIMIT) {
-    return dual::status_t::CONCURRENT_LIMIT;
+    return dual_status_t::CONCURRENT_LIMIT;
   } else if (status == lp_status_t::UNSET) {
-    return dual::status_t::UNSET;
+    return dual_status_t::UNSET;
   } else {
-    return dual::status_t::NUMERICAL;
+    return dual_status_t::NUMERICAL;
   }
 }
 
@@ -582,11 +582,11 @@ bool branch_and_bound_t<i_t, f_t>::repair_solution(const std::vector<f_t>& edge_
   lp_settings.inside_mip           = 2;
   std::vector<f_t> leaf_edge_norms = edge_norms;
   // should probably set the cut off here lp_settings.cut_off
-  dual::status_t lp_status = dual_phase2(
+  dual_status_t lp_status = dual_phase2(
     2, 0, lp_start_time, repair_lp, lp_settings, vstatus, lp_solution, iter, leaf_edge_norms);
   repaired_solution = lp_solution.x;
 
-  if (lp_status == dual::status_t::OPTIMAL) {
+  if (lp_status == dual_status_t::OPTIMAL) {
     f_t primal_error;
     f_t bound_error;
     i_t num_fractional;
@@ -1204,7 +1204,7 @@ std::pair<node_status_t, branch_direction_t> branch_and_bound_t<i_t, f_t>::updat
   mip_node_t<i_t, f_t>* node_ptr,
   search_tree_t<i_t, f_t>& search_tree,
   WorkerT* worker,
-  dual::status_t lp_status,
+  dual_status_t lp_status,
   Policy& policy)
 {
   const f_t abs_fathom_tol               = settings_.absolute_mip_gap_tol / 10;
@@ -1217,20 +1217,20 @@ std::pair<node_status_t, branch_direction_t> branch_and_bound_t<i_t, f_t>::updat
   worker->recompute_basis  = true;
   worker->recompute_bounds = true;
 
-  if (lp_status == dual::status_t::DUAL_UNBOUNDED) {
+  if (lp_status == dual_status_t::DUAL_UNBOUNDED) {
     node_ptr->lower_bound = inf;
     policy.graphviz(search_tree, node_ptr, "infeasible", 0.0);
     search_tree.update(node_ptr, node_status_t::INFEASIBLE);
     status = node_status_t::INFEASIBLE;
 
-  } else if (lp_status == dual::status_t::CUTOFF) {
+  } else if (lp_status == dual_status_t::CUTOFF) {
     f_t leaf_obj          = compute_objective(leaf_problem, leaf_solution.x);
     node_ptr->lower_bound = upper_bound;
     policy.graphviz(search_tree, node_ptr, "cut off", leaf_obj);
     search_tree.update(node_ptr, node_status_t::FATHOMED);
     status = node_status_t::FATHOMED;
 
-  } else if (lp_status == dual::status_t::OPTIMAL) {
+  } else if (lp_status == dual_status_t::OPTIMAL) {
     std::vector<i_t> leaf_fractional;
     i_t num_frac = fractional_variables(settings_, leaf_solution.x, var_types_, leaf_fractional);
 
@@ -1308,10 +1308,10 @@ std::pair<node_status_t, branch_direction_t> branch_and_bound_t<i_t, f_t>::updat
       search_tree.update(node_ptr, node_status_t::FATHOMED);
       status = node_status_t::FATHOMED;
     }
-  } else if (lp_status == dual::status_t::TIME_LIMIT) {
+  } else if (lp_status == dual_status_t::TIME_LIMIT) {
     policy.graphviz(search_tree, node_ptr, "timeout", 0.0);
     status = node_status_t::PENDING;
-  } else if (lp_status == dual::status_t::WORK_LIMIT) {
+  } else if (lp_status == dual_status_t::WORK_LIMIT) {
     policy.graphviz(search_tree, node_ptr, "work limit", 0.0);
     status = node_status_t::PENDING;
   } else {
@@ -1330,7 +1330,7 @@ std::pair<node_status_t, branch_direction_t> branch_and_bound_t<i_t, f_t>::updat
   mip_node_t<i_t, f_t>* node_ptr,
   search_tree_t<i_t, f_t>& search_tree,
   branch_and_bound_worker_t<i_t, f_t>* worker,
-  dual::status_t lp_status,
+  dual_status_t lp_status,
   logger_t& log)
 {
   nondeterministic_policy_t<i_t, f_t> policy{*this, worker, log};
@@ -1380,7 +1380,7 @@ bool branch_and_bound_t<i_t, f_t>::apply_symmetry_reductions(
 }
 
 template <typename i_t, typename f_t>
-dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
+dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   mip_node_t<i_t, f_t>* node_ptr,
   branch_and_bound_worker_t<i_t, f_t>* worker,
   branch_and_bound_stats_t<i_t, f_t>& stats,
@@ -1452,7 +1452,7 @@ dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
     f_t factor                  = settings_.diving_settings.iteration_limit_factor;
     int64_t max_iter            = factor * bnb_lp_iters;
     lp_settings.iteration_limit = max_iter - stats.total_lp_iters;
-    if (lp_settings.iteration_limit <= 0) { return dual::status_t::ITERATION_LIMIT; }
+    if (lp_settings.iteration_limit <= 0) { return dual_status_t::ITERATION_LIMIT; }
   }
 
 #ifdef LOG_NODE_SIMPLEX
@@ -1477,9 +1477,9 @@ dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
     node_ptr->vstatus[node_ptr->branch_var]);
 #endif
 
-  bool feasible            = worker->set_lp_variable_bounds(node_ptr, settings_);
-  dual::status_t lp_status = dual::status_t::DUAL_UNBOUNDED;
-  worker->leaf_edge_norms  = edge_norms_;
+  bool feasible           = worker->set_lp_variable_bounds(node_ptr, settings_);
+  dual_status_t lp_status = dual_status_t::DUAL_UNBOUNDED;
+  worker->leaf_edge_norms = edge_norms_;
   if (worker->recompute_bounds && worker->orbital_fixing && worker->search_strategy == BEST_FIRST) {
     worker->orbital_fixing->reset(symmetry_, node_ptr);
   }
@@ -1505,7 +1505,7 @@ dual::status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
                                                   node_iter,
                                                   worker->leaf_edge_norms);
 
-      if (lp_status == dual::status_t::NUMERICAL) {
+      if (lp_status == dual_status_t::NUMERICAL) {
         log.debug("Numerical issue node %d. Resolving from scratch.\n", node_ptr->node_id);
         lp_status_t second_status =
           solve_linear_program_with_advanced_basis(worker->leaf_problem,
@@ -1621,24 +1621,24 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
       break;
     }
 
-    dual::status_t lp_status = solve_node_lp(node_ptr, worker, exploration_stats_, settings_.log);
+    dual_status_t lp_status = solve_node_lp(node_ptr, worker, exploration_stats_, settings_.log);
     ++exploration_stats_.nodes_since_last_log;
     ++exploration_stats_.nodes_explored;
     --exploration_stats_.nodes_unexplored;
     --exploration_stats_.nodes_being_solved;
 
-    if (lp_status == dual::status_t::TIME_LIMIT) {
+    if (lp_status == dual_status_t::TIME_LIMIT) {
       solver_status_ = mip_status_t::TIME_LIMIT;
       stack.push_front(node_ptr);
       break;
     }
 
-    if (lp_status == dual::status_t::CONCURRENT_LIMIT) {
+    if (lp_status == dual_status_t::CONCURRENT_LIMIT) {
       stack.push_front(node_ptr);
       break;
     }
 
-    if (lp_status == dual::status_t::ITERATION_LIMIT) {
+    if (lp_status == dual_status_t::ITERATION_LIMIT) {
       stack.push_front(node_ptr);
       break;
     }
@@ -1890,15 +1890,15 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker)
     }
     if (dive_stats.nodes_explored >= diving_node_limit) { break; }
 
-    dual::status_t lp_status = solve_node_lp(node_ptr, worker, dive_stats, log);
+    dual_status_t lp_status = solve_node_lp(node_ptr, worker, dive_stats, log);
     ++dive_stats.nodes_explored;
 
-    if (lp_status == dual::status_t::TIME_LIMIT) {
+    if (lp_status == dual_status_t::TIME_LIMIT) {
       solver_status_ = mip_status_t::TIME_LIMIT;
       break;
     }
-    if (lp_status == dual::status_t::CONCURRENT_LIMIT) { break; }
-    if (lp_status == dual::status_t::ITERATION_LIMIT) { break; }
+    if (lp_status == dual_status_t::CONCURRENT_LIMIT) { break; }
+    if (lp_status == dual_status_t::ITERATION_LIMIT) { break; }
 
     auto [node_status, round_dir] = update_tree(node_ptr, dive_tree, worker, lp_status, log);
 
@@ -2321,31 +2321,31 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   bool initialize_basis       = false;
   lp_settings.concurrent_halt = NULL;
   f_t dual_phase2_start_time  = tic();
-  dual::status_t cut_status   = dual_phase2_with_advanced_basis(2,
-                                                              0,
-                                                              initialize_basis,
-                                                              exploration_stats_.start_time,
-                                                              original_lp_,
-                                                              lp_settings,
-                                                              root_vstatus_,
-                                                              basis_update,
-                                                              basic_list,
-                                                              nonbasic_list,
-                                                              root_relax_soln_,
-                                                              iter,
-                                                              edge_norms_);
+  dual_status_t cut_status    = dual_phase2_with_advanced_basis(2,
+                                                             0,
+                                                             initialize_basis,
+                                                             exploration_stats_.start_time,
+                                                             original_lp_,
+                                                             lp_settings,
+                                                             root_vstatus_,
+                                                             basis_update,
+                                                             basic_list,
+                                                             nonbasic_list,
+                                                             root_relax_soln_,
+                                                             iter,
+                                                             edge_norms_);
   exploration_stats_.total_lp_iters += iter;
   f_t dual_phase2_time = toc(dual_phase2_start_time);
   if (dual_phase2_time > 1.0) {
     settings_.log.debug("Dual phase2 time %.2f seconds\n", dual_phase2_time);
   }
-  if (cut_status == dual::status_t::TIME_LIMIT) {
+  if (cut_status == dual_status_t::TIME_LIMIT) {
     solver_status_ = mip_status_t::TIME_LIMIT;
     set_final_solution(solution, root_objective_);
     return {cut_pass_action_t::RETURN, solver_status_};
   }
 
-  if (cut_status != dual::status_t::OPTIMAL) {
+  if (cut_status != dual_status_t::OPTIMAL) {
     settings_.log.printf("Numerical issue at root node. Resolving from scratch\n");
     lp_status_t scratch_status =
       solve_linear_program_with_advanced_basis(original_lp_,
@@ -2363,7 +2363,7 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
       exploration_stats_.total_lp_iters += root_relax_soln_.iterations;
       root_objective_ = compute_objective(original_lp_, root_relax_soln_.x);
     } else {
-      settings_.log.printf("Cut status %s\n", dual::status_to_string(cut_status).c_str());
+      settings_.log.printf("Cut status %s\n", dual_status_to_string(cut_status).c_str());
 #ifdef WRITE_CUT_INFEASIBLE_MPS
       original_lp_.write_mps("cut_infeasible.mps");
 #endif
@@ -3526,22 +3526,22 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node_deterministic(
   f_t lp_start_time                = tic();
   std::vector<f_t> leaf_edge_norms = edge_norms_;
 
-  dual::status_t lp_status = dual_phase2_with_advanced_basis(2,
-                                                             0,
-                                                             worker.recompute_bounds_and_basis,
-                                                             lp_start_time,
-                                                             worker.leaf_problem,
-                                                             lp_settings,
-                                                             worker.leaf_vstatus,
-                                                             worker.basis_factors,
-                                                             worker.basic_list,
-                                                             worker.nonbasic_list,
-                                                             worker.leaf_solution,
-                                                             node_iter,
-                                                             leaf_edge_norms,
-                                                             &worker.work_context);
+  dual_status_t lp_status = dual_phase2_with_advanced_basis(2,
+                                                            0,
+                                                            worker.recompute_bounds_and_basis,
+                                                            lp_start_time,
+                                                            worker.leaf_problem,
+                                                            lp_settings,
+                                                            worker.leaf_vstatus,
+                                                            worker.basis_factors,
+                                                            worker.basic_list,
+                                                            worker.nonbasic_list,
+                                                            worker.leaf_solution,
+                                                            node_iter,
+                                                            leaf_edge_norms,
+                                                            &worker.work_context);
 
-  if (lp_status == dual::status_t::NUMERICAL) {
+  if (lp_status == dual_status_t::NUMERICAL) {
     settings_.log.printf("Numerical issue node %d. Resolving from scratch.\n", node_ptr->node_id);
     lp_status_t second_status = solve_linear_program_with_advanced_basis(worker.leaf_problem,
                                                                          lp_start_time,
@@ -4140,22 +4140,22 @@ void branch_and_bound_t<i_t, f_t>::deterministic_dive(
     std::vector<f_t> leaf_edge_norms = edge_norms_;
 
     decompress_vstatus(node_ptr->packed_vstatus, worker.leaf_problem.num_cols, worker.leaf_vstatus);
-    dual::status_t lp_status = dual_phase2_with_advanced_basis(2,
-                                                               0,
-                                                               worker.recompute_bounds_and_basis,
-                                                               lp_start_time,
-                                                               worker.leaf_problem,
-                                                               lp_settings,
-                                                               worker.leaf_vstatus,
-                                                               worker.basis_factors,
-                                                               worker.basic_list,
-                                                               worker.nonbasic_list,
-                                                               worker.leaf_solution,
-                                                               node_iter,
-                                                               leaf_edge_norms,
-                                                               &worker.work_context);
+    dual_status_t lp_status = dual_phase2_with_advanced_basis(2,
+                                                              0,
+                                                              worker.recompute_bounds_and_basis,
+                                                              lp_start_time,
+                                                              worker.leaf_problem,
+                                                              lp_settings,
+                                                              worker.leaf_vstatus,
+                                                              worker.basis_factors,
+                                                              worker.basic_list,
+                                                              worker.nonbasic_list,
+                                                              worker.leaf_solution,
+                                                              node_iter,
+                                                              leaf_edge_norms,
+                                                              &worker.work_context);
 
-    if (lp_status == dual::status_t::NUMERICAL) {
+    if (lp_status == dual_status_t::NUMERICAL) {
       lp_status_t second_status = solve_linear_program_with_advanced_basis(worker.leaf_problem,
                                                                            lp_start_time,
                                                                            lp_settings,
@@ -4175,8 +4175,8 @@ void branch_and_bound_t<i_t, f_t>::deterministic_dive(
 
     worker.clock = worker.work_context.global_work_units_elapsed;
 
-    if (lp_status == dual::status_t::TIME_LIMIT || lp_status == dual::status_t::WORK_LIMIT ||
-        lp_status == dual::status_t::ITERATION_LIMIT) {
+    if (lp_status == dual_status_t::TIME_LIMIT || lp_status == dual_status_t::WORK_LIMIT ||
+        lp_status == dual_status_t::ITERATION_LIMIT) {
       break;
     }
 

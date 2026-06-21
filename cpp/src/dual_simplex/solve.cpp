@@ -200,7 +200,7 @@ lp_status_t solve_linear_program_with_advanced_basis(
   i_t iter = 0;
   lp_solution_t<i_t, f_t> phase1_solution(phase1_problem.num_rows, phase1_problem.num_cols);
   edge_norms.clear();
-  dual::status_t phase1_status;
+  dual_status_t phase1_status;
   {
     raft::common::nvtx::range scope_phase1("DualSimplex::phase1");
     phase1_status = dual_phase2(1,
@@ -214,17 +214,17 @@ lp_status_t solve_linear_program_with_advanced_basis(
                                 edge_norms,
                                 work_unit_context);
   }
-  if (phase1_status == dual::status_t::NUMERICAL) {
+  if (phase1_status == dual_status_t::NUMERICAL) {
     settings.log.printf("Failed in Phase 1\n");
     return lp_status_t::NUMERICAL_ISSUES;
   }
-  if (phase1_status == dual::status_t::DUAL_UNBOUNDED) {
+  if (phase1_status == dual_status_t::DUAL_UNBOUNDED) {
     return lp_status_t::UNBOUNDED_OR_INFEASIBLE;
   }
-  if (phase1_status == dual::status_t::TIME_LIMIT) { return lp_status_t::TIME_LIMIT; }
-  if (phase1_status == dual::status_t::WORK_LIMIT) { return lp_status_t::WORK_LIMIT; }
-  if (phase1_status == dual::status_t::ITERATION_LIMIT) { return lp_status_t::ITERATION_LIMIT; }
-  if (phase1_status == dual::status_t::CONCURRENT_LIMIT) {
+  if (phase1_status == dual_status_t::TIME_LIMIT) { return lp_status_t::TIME_LIMIT; }
+  if (phase1_status == dual_status_t::WORK_LIMIT) { return lp_status_t::WORK_LIMIT; }
+  if (phase1_status == dual_status_t::ITERATION_LIMIT) { return lp_status_t::ITERATION_LIMIT; }
+  if (phase1_status == dual_status_t::CONCURRENT_LIMIT) {
     original_solution.iterations = iter;
     return lp_status_t::CONCURRENT_LIMIT;
   }
@@ -237,21 +237,21 @@ lp_status_t solve_linear_program_with_advanced_basis(
     vstatus = phase1_vstatus;
     edge_norms.clear();
     bool initialize_basis_update = true;
-    dual::status_t status        = dual_phase2_with_advanced_basis(2,
-                                                            iter == 0 ? 1 : 0,
-                                                            initialize_basis_update,
-                                                            start_time,
-                                                            lp,
-                                                            settings,
-                                                            vstatus,
-                                                            ft,
-                                                            basic_list,
-                                                            nonbasic_list,
-                                                            solution,
-                                                            iter,
-                                                            edge_norms,
-                                                            work_unit_context);
-    if (status == dual::status_t::NUMERICAL) {
+    dual_status_t status         = dual_phase2_with_advanced_basis(2,
+                                                           iter == 0 ? 1 : 0,
+                                                           initialize_basis_update,
+                                                           start_time,
+                                                           lp,
+                                                           settings,
+                                                           vstatus,
+                                                           ft,
+                                                           basic_list,
+                                                           nonbasic_list,
+                                                           solution,
+                                                           iter,
+                                                           edge_norms,
+                                                           work_unit_context);
+    if (status == dual_status_t::NUMERICAL) {
       // Became dual infeasible. Try phase 1 again
       phase1_vstatus = vstatus;
       settings.log.printf("Running Phase 1 again\n");
@@ -289,10 +289,10 @@ lp_status_t solve_linear_program_with_advanced_basis(
                                                work_unit_context);
     }
     constexpr bool primal_cleanup = false;
-    if (status == dual::status_t::OPTIMAL && primal_cleanup) {
+    if (status == dual_status_t::OPTIMAL && primal_cleanup) {
       primal_phase2(2, start_time, lp, settings, vstatus, solution, iter);
     }
-    if (status == dual::status_t::OPTIMAL) {
+    if (status == dual_status_t::OPTIMAL) {
       std::vector<f_t> unscaled_x(lp.num_cols);
       std::vector<f_t> unscaled_y(lp.num_rows);
       std::vector<f_t> unscaled_z(lp.num_cols);
@@ -319,16 +319,16 @@ lp_status_t solve_linear_program_with_advanced_basis(
       original_solution.l2_dual_residual   = solution.l2_dual_residual;
       lp_status                            = lp_status_t::OPTIMAL;
     }
-    if (status == dual::status_t::DUAL_UNBOUNDED) { lp_status = lp_status_t::INFEASIBLE; }
-    if (status == dual::status_t::TIME_LIMIT) { lp_status = lp_status_t::TIME_LIMIT; }
-    if (status == dual::status_t::WORK_LIMIT) { lp_status = lp_status_t::WORK_LIMIT; }
-    if (status == dual::status_t::ITERATION_LIMIT) { lp_status = lp_status_t::ITERATION_LIMIT; }
-    if (status == dual::status_t::CONCURRENT_LIMIT) {
+    if (status == dual_status_t::DUAL_UNBOUNDED) { lp_status = lp_status_t::INFEASIBLE; }
+    if (status == dual_status_t::TIME_LIMIT) { lp_status = lp_status_t::TIME_LIMIT; }
+    if (status == dual_status_t::WORK_LIMIT) { lp_status = lp_status_t::WORK_LIMIT; }
+    if (status == dual_status_t::ITERATION_LIMIT) { lp_status = lp_status_t::ITERATION_LIMIT; }
+    if (status == dual_status_t::CONCURRENT_LIMIT) {
       original_solution.iterations = iter;
       return lp_status_t::CONCURRENT_LIMIT;
     }
-    if (status == dual::status_t::NUMERICAL) { lp_status = lp_status_t::NUMERICAL_ISSUES; }
-    if (status == dual::status_t::CUTOFF) { lp_status = lp_status_t::CUTOFF; }
+    if (status == dual_status_t::NUMERICAL) { lp_status = lp_status_t::NUMERICAL_ISSUES; }
+    if (status == dual_status_t::CUTOFF) { lp_status = lp_status_t::CUTOFF; }
     original_solution.iterations = iter;
   } else {
     // Dual infeasible -> Primal unbounded or infeasible
