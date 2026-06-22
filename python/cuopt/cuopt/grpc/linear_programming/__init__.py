@@ -6,6 +6,7 @@ from cuopt.grpc.linear_programming.grpc_client import (
     GrpcError,
     JobNotReadyError,
     JobStatus,
+    TlsConfig,
 )
 
-__all__ = ["Client", "GrpcError", "JobNotReadyError", "JobStatus"]
+__all__ = ["Client", "GrpcError", "JobNotReadyError", "JobStatus", "TlsConfig"]

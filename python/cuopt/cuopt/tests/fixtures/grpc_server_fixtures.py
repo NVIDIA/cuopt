@@ -20,6 +20,7 @@ Port offsets are added to ``CUOPT_TEST_PORT_BASE`` (default 18000) so parallel
 test classes do not collide.
 """
 
+import logging
 import os
 import shutil
 import signal
@@ -28,6 +29,8 @@ import subprocess
 import time
 
 import pytest
+
+logger = logging.getLogger(__name__)
 
 # Port offsets (added to CUOPT_TEST_PORT_BASE). Keep unique per test class.
 GRPC_PORT_OFFSET_CPU_ONLY = 600
@@ -166,6 +169,177 @@ def kill_server(proc):
 
 # Backward-compatible alias used by tests that yield client env dicts.
 cpu_only_env = client_remote_env
+
+
+def generate_test_certs(cert_dir):
+    """Generate a CA, server cert, and client cert for TLS/mTLS tests."""
+    if not shutil.which("openssl"):
+        return False
+
+    def _run(cmd):
+        result = subprocess.run(cmd, capture_output=True, timeout=30)
+        if result.returncode != 0:
+            logger.warning(
+                "cert command failed: %s (rc=%d)\nstdout: %s\nstderr: %s",
+                cmd,
+                result.returncode,
+                result.stdout.decode(errors="replace"),
+                result.stderr.decode(errors="replace"),
+            )
+            return False
+        return True
+
+    ca_key = os.path.join(cert_dir, "ca.key")
+    ca_crt = os.path.join(cert_dir, "ca.crt")
+    if not _run(
+        [
+            "openssl",
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-keyout",
+            ca_key,
+            "-out",
+            ca_crt,
+            "-days",
+            "1",
+            "-nodes",
+            "-subj",
+            "/CN=TestCA",
+        ]
+    ):
+        return False
+
+    server_key = os.path.join(cert_dir, "server.key")
+    server_csr = os.path.join(cert_dir, "server.csr")
+    server_crt = os.path.join(cert_dir, "server.crt")
+    server_ext = os.path.join(cert_dir, "server.ext")
+    if not _run(
+        [
+            "openssl",
+            "req",
+            "-newkey",
+            "rsa:2048",
+            "-keyout",
+            server_key,
+            "-out",
+            server_csr,
+            "-nodes",
+            "-subj",
+            "/CN=localhost",
+        ]
+    ):
+        return False
+    with open(server_ext, "w", encoding="utf-8") as f:
+        f.write("subjectAltName=DNS:localhost,IP:127.0.0.1\n")
+    if not _run(
+        [
+            "openssl",
+            "x509",
+            "-req",
+            "-in",
+            server_csr,
+            "-CA",
+            ca_crt,
+            "-CAkey",
+            ca_key,
+            "-CAcreateserial",
+            "-out",
+            server_crt,
+            "-days",
+            "1",
+            "-extfile",
+            server_ext,
+        ]
+    ):
+        return False
+
+    client_key = os.path.join(cert_dir, "client.key")
+    client_csr = os.path.join(cert_dir, "client.csr")
+    client_crt = os.path.join(cert_dir, "client.crt")
+    if not _run(
+        [
+            "openssl",
+            "req",
+            "-newkey",
+            "rsa:2048",
+            "-keyout",
+            client_key,
+            "-out",
+            client_csr,
+            "-nodes",
+            "-subj",
+            "/CN=TestClient",
+        ]
+    ):
+        return False
+    if not _run(
+        [
+            "openssl",
+            "x509",
+            "-req",
+            "-in",
+            client_csr,
+            "-CA",
+            ca_crt,
+            "-CAkey",
+            ca_key,
+            "-CAcreateserial",
+            "-out",
+            client_crt,
+            "-days",
+            "1",
+        ]
+    ):
+        return False
+
+    return True
+
+
+def start_tls_grpc_server(port_offset, cert_dir, require_client_cert=False):
+    """Start a TLS-enabled cuopt_grpc_server and return (proc, port)."""
+    server_bin = find_grpc_server()
+    if server_bin is None:
+        pytest.skip("cuopt_grpc_server not found")
+
+    port = int(os.environ.get("CUOPT_TEST_PORT_BASE", "18000")) + port_offset
+    args = [
+        server_bin,
+        "--port",
+        str(port),
+        "--workers",
+        "1",
+        "--tls",
+        "--tls-cert",
+        os.path.join(cert_dir, "server.crt"),
+        "--tls-key",
+        os.path.join(cert_dir, "server.key"),
+    ]
+    if require_client_cert:
+        args.extend(
+            [
+                "--tls-root",
+                os.path.join(cert_dir, "ca.crt"),
+                "--require-client-cert",
+            ]
+        )
+
+    proc = spawn_server(
+        args,
+        env=server_env(),
+    )
+    time.sleep(0.5)
+    if proc.poll() is not None:
+        pytest.skip(
+            f"cuopt_grpc_server exited immediately (rc={proc.returncode}), "
+            "binary may be unable to load shared libraries in this environment"
+        )
+    if not wait_for_port(port, timeout=15):
+        kill_server(proc)
+        pytest.fail("TLS cuopt_grpc_server failed to start within 15s")
+
+    return proc, port
 
 
 def start_grpc_server(port_offset):

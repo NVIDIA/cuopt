@@ -64,9 +64,41 @@ struct grpc_python_client_t::impl_t {
   }
 };
 
+namespace {
+
+cuopt::mathematical_optimization::grpc_client_config_t make_config(
+  const std::string& host, int port, const grpc_python_client_connect_options_t& options)
+{
+  using cuopt::mathematical_optimization::grpc_explicit_tls_t;
+  using cuopt::mathematical_optimization::grpc_tls_mode_t;
+  using cuopt::mathematical_optimization::make_grpc_client_config;
+
+  switch (options.tls_mode) {
+    case grpc_python_tls_mode_t::ENV: return make_grpc_client_config(host, port);
+    case grpc_python_tls_mode_t::DISABLED:
+      return make_grpc_client_config(host, port, grpc_tls_mode_t::DISABLED, nullptr);
+    case grpc_python_tls_mode_t::EXPLICIT: {
+      grpc_explicit_tls_t tls;
+      tls.root_certs  = options.tls_root_certs;
+      tls.client_cert = options.tls_client_cert;
+      tls.client_key  = options.tls_client_key;
+      return make_grpc_client_config(host, port, grpc_tls_mode_t::EXPLICIT, &tls);
+    }
+  }
+  throw std::invalid_argument("invalid TLS mode");
+}
+
+}  // namespace
+
 grpc_python_client_t::grpc_python_client_t(const std::string& host, int port)
-  : impl_(std::make_unique<impl_t>(
-      cuopt::mathematical_optimization::make_grpc_client_config(host, port)))
+  : grpc_python_client_t(host, port, grpc_python_client_connect_options_t{})
+{
+}
+
+grpc_python_client_t::grpc_python_client_t(const std::string& host,
+                                           int port,
+                                           const grpc_python_client_connect_options_t& options)
+  : impl_(std::make_unique<impl_t>(make_config(host, port, options)))
 {
 }
 

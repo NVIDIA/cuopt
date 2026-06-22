@@ -11,7 +11,9 @@ from cuopt.grpc.linear_programming.grpc_client cimport (
     grpc_job_status_t,
     grpc_logs_result_t,
     grpc_log_line_callback_t,
+    grpc_python_client_connect_options_t,
     grpc_python_client_t,
+    grpc_python_tls_mode_t,
     grpc_result_outcome_t,
     grpc_status_result_t,
     grpc_submit_result_t,
@@ -90,6 +92,57 @@ def _call_log_callback(callback, line, job_complete):
         return callback(line)
 
 
+def _load_pem(value):
+    """Return PEM contents from a PEM string or a readable file path."""
+    if value is None:
+        return None
+    text = str(value)
+    if "-----BEGIN" in text:
+        return text
+    with open(text, "r", encoding="utf-8") as handle:
+        return handle.read()
+
+
+class TlsConfig:
+    """
+    TLS / mTLS settings for :class:`Client`.
+
+    Each argument may be PEM text or a path to a PEM file. For mTLS, pass both
+    ``client_cert`` and ``client_key``.
+    """
+
+    __slots__ = ("root_certs", "client_cert", "client_key")
+
+    def __init__(self, root_certs, client_cert=None, client_key=None):
+        if (client_cert is None) != (client_key is None):
+            raise ValueError(
+                "client_cert and client_key must both be set for mTLS, "
+                "or neither for server TLS only"
+            )
+        self.root_certs = _load_pem(root_certs)
+        self.client_cert = _load_pem(client_cert) if client_cert is not None else None
+        self.client_key = _load_pem(client_key) if client_key is not None else None
+
+
+cdef grpc_python_client_connect_options_t _connect_options_from_tls(tls):
+    cdef grpc_python_client_connect_options_t options
+    options.tls_mode = grpc_python_tls_mode_t.ENV
+    options.tls_root_certs = string()
+    options.tls_client_cert = string()
+    options.tls_client_key = string()
+
+    if tls is False:
+        options.tls_mode = grpc_python_tls_mode_t.DISABLED
+    elif isinstance(tls, TlsConfig):
+        options.tls_mode = grpc_python_tls_mode_t.EXPLICIT
+        options.tls_root_certs = tls.root_certs.encode("utf-8")
+        if tls.client_cert is not None:
+            options.tls_client_cert = tls.client_cert.encode("utf-8")
+            options.tls_client_key = tls.client_key.encode("utf-8")
+
+    return options
+
+
 class _LogStreamHandler:
     """Bridge user callback with stream state for C log streaming."""
 
@@ -144,10 +197,27 @@ cdef class Client:
     cdef dict _incumbent_thread_errors
     cdef str _host
     cdef int _port
+    cdef object _tls
 
-    def __init__(self, str host, int port):
+    def __init__(self, str host, int port, *, tls=None):
+        """
+        Connect to ``cuopt_grpc_server`` at ``host:port``.
+
+        ``tls`` controls transport security:
+
+        * ``None`` (default) — read ``CUOPT_TLS_*`` from the environment.
+        * ``False`` — plain TCP; ignore ``CUOPT_TLS_*``.
+        * :class:`TlsConfig` — use explicit PEM material for this client.
+        """
+        if tls is not None and tls is not False and not isinstance(tls, TlsConfig):
+            raise TypeError("tls must be None, False, or TlsConfig")
+
+        cdef grpc_python_client_connect_options_t options
         cdef string host_cpp = host.encode("utf-8")
-        self._client.reset(new grpc_python_client_t(host_cpp, port))
+        cdef string error_out
+
+        options = _connect_options_from_tls(tls)
+        self._client.reset(new grpc_python_client_t(host_cpp, port, options))
         self._job_is_mip = {}
         self._log_threads = {}
         self._log_thread_errors = {}
@@ -156,9 +226,13 @@ cdef class Client:
         self._incumbent_thread_errors = {}
         self._host = host
         self._port = port
-        cdef string error_out
+        self._tls = tls
         if not self._client.get().connect(error_out):
             raise GrpcError(error_out.decode("utf-8"))
+
+    def _spawn_client(self):
+        """Create a sibling connection with the same host/port/TLS settings."""
+        return Client(self._host, self._port, tls=self._tls)
 
     def submit(self, problem, SolverSettings settings not None):
         cdef DataModel data_model
@@ -290,7 +364,7 @@ cdef class Client:
 
         # Use a dedicated connection so StreamLogs can run concurrently with
         # status/result polling on this client.
-        log_client = Client(self._host, self._port)
+        log_client = self._spawn_client()
         thread = threading.Thread(
             target=self._run_log_stream,
             args=(log_client, job_id, handler, from_byte),
@@ -431,7 +505,7 @@ cdef class Client:
                 )
             return True
 
-        incumbent_client = Client(self._host, self._port)
+        incumbent_client = self._spawn_client()
         thread = threading.Thread(
             target=self._run_incumbent_stream,
             args=(

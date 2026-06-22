@@ -33,7 +33,14 @@ sys.path.insert(
     0,
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "fixtures"),
 )
-from grpc_server_fixtures import kill_server, spawn_server  # noqa: E402
+from grpc_server_fixtures import (  # noqa: E402
+    GRPC_PORT_OFFSET_MTLS,
+    GRPC_PORT_OFFSET_TLS,
+    generate_test_certs,
+    kill_server,
+    spawn_server,
+    start_tls_grpc_server,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -137,135 +144,6 @@ def _parse_cli_output(output):
             continue
 
     return result
-
-
-def _generate_test_certs(cert_dir):
-    """Generate a CA, server cert, and client cert for TLS/mTLS tests.
-
-    Returns True on success, False if openssl is missing or a command fails.
-    """
-    if not shutil.which("openssl"):
-        return False
-
-    def _run(cmd):
-        result = subprocess.run(cmd, capture_output=True, timeout=30)
-        if result.returncode != 0:
-            logger.warning(
-                "cert command failed: %s (rc=%d)\nstdout: %s\nstderr: %s",
-                cmd,
-                result.returncode,
-                result.stdout.decode(errors="replace"),
-                result.stderr.decode(errors="replace"),
-            )
-            return False
-        return True
-
-    ca_key = os.path.join(cert_dir, "ca.key")
-    ca_crt = os.path.join(cert_dir, "ca.crt")
-    if not _run(
-        [
-            "openssl",
-            "req",
-            "-x509",
-            "-newkey",
-            "rsa:2048",
-            "-keyout",
-            ca_key,
-            "-out",
-            ca_crt,
-            "-days",
-            "1",
-            "-nodes",
-            "-subj",
-            "/CN=TestCA",
-        ]
-    ):
-        return False
-
-    server_key = os.path.join(cert_dir, "server.key")
-    server_csr = os.path.join(cert_dir, "server.csr")
-    server_crt = os.path.join(cert_dir, "server.crt")
-    server_ext = os.path.join(cert_dir, "server.ext")
-    if not _run(
-        [
-            "openssl",
-            "req",
-            "-newkey",
-            "rsa:2048",
-            "-keyout",
-            server_key,
-            "-out",
-            server_csr,
-            "-nodes",
-            "-subj",
-            "/CN=localhost",
-        ]
-    ):
-        return False
-    with open(server_ext, "w") as f:
-        f.write("subjectAltName=DNS:localhost,IP:127.0.0.1\n")
-    if not _run(
-        [
-            "openssl",
-            "x509",
-            "-req",
-            "-in",
-            server_csr,
-            "-CA",
-            ca_crt,
-            "-CAkey",
-            ca_key,
-            "-CAcreateserial",
-            "-out",
-            server_crt,
-            "-days",
-            "1",
-            "-extfile",
-            server_ext,
-        ]
-    ):
-        return False
-
-    client_key = os.path.join(cert_dir, "client.key")
-    client_csr = os.path.join(cert_dir, "client.csr")
-    client_crt = os.path.join(cert_dir, "client.crt")
-    if not _run(
-        [
-            "openssl",
-            "req",
-            "-newkey",
-            "rsa:2048",
-            "-keyout",
-            client_key,
-            "-out",
-            client_csr,
-            "-nodes",
-            "-subj",
-            "/CN=TestClient",
-        ]
-    ):
-        return False
-    if not _run(
-        [
-            "openssl",
-            "x509",
-            "-req",
-            "-in",
-            client_csr,
-            "-CA",
-            ca_crt,
-            "-CAkey",
-            ca_key,
-            "-CAcreateserial",
-            "-out",
-            client_crt,
-            "-days",
-            "1",
-        ]
-    ):
-        return False
-
-    return True
 
 
 def _tls_env(port, cert_dir, mtls=False):
@@ -723,36 +601,14 @@ class TestTLSExecution:
     @pytest.fixture(scope="class")
     def tls_env_with_server(self, tmp_path_factory):
         cert_dir = str(tmp_path_factory.mktemp("tls_certs"))
-        if not _generate_test_certs(cert_dir):
+        if not generate_test_certs(cert_dir):
             pytest.skip("openssl not available or cert generation failed")
 
-        server_bin = _find_grpc_server()
-        if server_bin is None:
-            pytest.skip("cuopt_grpc_server not found")
-
-        port = int(os.environ.get("CUOPT_TEST_PORT_BASE", "18000")) + 850
-        proc = spawn_server(
-            [
-                server_bin,
-                "--port",
-                str(port),
-                "--workers",
-                "1",
-                "--tls",
-                "--tls-cert",
-                os.path.join(cert_dir, "server.crt"),
-                "--tls-key",
-                os.path.join(cert_dir, "server.key"),
-            ],
-        )
-        if not _wait_for_port(port, timeout=15):
+        proc, port = start_tls_grpc_server(GRPC_PORT_OFFSET_TLS, cert_dir)
+        try:
+            yield _tls_env(port, cert_dir, mtls=False)
+        finally:
             kill_server(proc)
-            pytest.fail("TLS cuopt_grpc_server failed to start within 15s")
-
-        env = _tls_env(port, cert_dir, mtls=False)
-        yield env
-
-        _stop_grpc_server(proc)
 
     def test_lp_solve_tls(self, tls_env_with_server):
         """LP solve succeeds over a TLS channel."""
@@ -779,38 +635,16 @@ class TestMTLSExecution:
     @pytest.fixture(scope="class")
     def mtls_server_info(self, tmp_path_factory):
         cert_dir = str(tmp_path_factory.mktemp("mtls_certs"))
-        if not _generate_test_certs(cert_dir):
+        if not generate_test_certs(cert_dir):
             pytest.skip("openssl not available or cert generation failed")
 
-        server_bin = _find_grpc_server()
-        if server_bin is None:
-            pytest.skip("cuopt_grpc_server not found")
-
-        port = int(os.environ.get("CUOPT_TEST_PORT_BASE", "18000")) + 900
-        proc = spawn_server(
-            [
-                server_bin,
-                "--port",
-                str(port),
-                "--workers",
-                "1",
-                "--tls",
-                "--tls-cert",
-                os.path.join(cert_dir, "server.crt"),
-                "--tls-key",
-                os.path.join(cert_dir, "server.key"),
-                "--tls-root",
-                os.path.join(cert_dir, "ca.crt"),
-                "--require-client-cert",
-            ],
+        proc, port = start_tls_grpc_server(
+            GRPC_PORT_OFFSET_MTLS, cert_dir, require_client_cert=True
         )
-        if not _wait_for_port(port, timeout=15):
+        try:
+            yield {"port": port, "cert_dir": cert_dir}
+        finally:
             kill_server(proc)
-            pytest.fail("mTLS cuopt_grpc_server failed to start within 15s")
-
-        yield {"port": port, "cert_dir": cert_dir}
-
-        kill_server(proc)
 
     def test_lp_solve_mtls(self, mtls_server_info):
         """LP solve succeeds over an mTLS channel with valid client cert."""

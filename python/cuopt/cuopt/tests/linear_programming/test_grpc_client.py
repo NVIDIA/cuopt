@@ -11,13 +11,21 @@ from cuopt.grpc.linear_programming import (
     GrpcError,
     JobNotReadyError,
     JobStatus,
+    TlsConfig,
 )
 from cuopt.linear_programming import Read, SolverSettings
 from cuopt.linear_programming.internals import GetSolutionCallback
 from cuopt.linear_programming.problem import INTEGER, MAXIMIZE, Problem
 from cuopt.linear_programming.solver.solver_parameters import CUOPT_TIME_LIMIT
 
-from grpc_server_fixtures import GRPC_PORT_OFFSET_CLIENT
+from grpc_server_fixtures import (
+    GRPC_PORT_OFFSET_CLIENT,
+    GRPC_PORT_OFFSET_MTLS,
+    GRPC_PORT_OFFSET_TLS,
+    generate_test_certs,
+    start_tls_grpc_server,
+    stop_grpc_server,
+)
 
 RAPIDS_DATASET_ROOT_DIR = os.getenv("RAPIDS_DATASET_ROOT_DIR")
 if RAPIDS_DATASET_ROOT_DIR is None:
@@ -61,6 +69,30 @@ def _infeasible_lp_problem():
     problem.addConstraint(x <= 1, name="c2")
     problem.setObjective(x, sense=MAXIMIZE)
     return problem
+
+
+def _assert_demo_lp_solution(client):
+    job_id = client.submit(_demo_lp_problem(), SolverSettings())
+    try:
+        assert client.wait(job_id, timeout=120) == JobStatus.COMPLETED
+        solution = client.result(job_id, _DEMO_LP_NAMES)
+        assert solution is not None
+        assert solution.get_primal_objective() == pytest.approx(0.36, rel=1e-3)
+    finally:
+        client.delete(job_id)
+
+
+class TestTlsConfig:
+    def test_mtls_requires_both_client_materials(self):
+        pem = "-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----"
+        with pytest.raises(ValueError, match="client_cert and client_key"):
+            TlsConfig(pem, client_cert="client.crt")
+
+    def test_accepts_pem_string(self):
+        pem = "-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----"
+        cfg = TlsConfig(pem)
+        assert cfg.root_certs == pem
+        assert cfg.client_cert is None
 
 
 @pytest.mark.xdist_group(name="grpc_server")
@@ -254,3 +286,68 @@ class TestGrpcClient:
         solution = client.result(job_id, _MIP_NAMES)
         assert solution is not None
         client.delete(job_id)
+
+
+@pytest.mark.xdist_group(name="grpc_server")
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
+class TestGrpcClientTls:
+    @pytest.fixture(scope="class")
+    def tls_server_info(self, tmp_path_factory):
+        cert_dir = str(tmp_path_factory.mktemp("grpc_tls_certs"))
+        if not generate_test_certs(cert_dir):
+            pytest.skip("openssl not available or cert generation failed")
+
+        proc, port = start_tls_grpc_server(GRPC_PORT_OFFSET_TLS, cert_dir)
+        try:
+            yield {"port": port, "cert_dir": cert_dir}
+        finally:
+            stop_grpc_server(proc)
+
+    @pytest.fixture(scope="class")
+    def mtls_server_info(self, tmp_path_factory):
+        cert_dir = str(tmp_path_factory.mktemp("grpc_mtls_certs"))
+        if not generate_test_certs(cert_dir):
+            pytest.skip("openssl not available or cert generation failed")
+
+        proc, port = start_tls_grpc_server(
+            GRPC_PORT_OFFSET_MTLS, cert_dir, require_client_cert=True
+        )
+        try:
+            yield {"port": port, "cert_dir": cert_dir}
+        finally:
+            stop_grpc_server(proc)
+
+    def test_submit_with_explicit_tls_config(self, tls_server_info):
+        cert_dir = tls_server_info["cert_dir"]
+        client = Client(
+            "localhost",
+            tls_server_info["port"],
+            tls=TlsConfig(os.path.join(cert_dir, "ca.crt")),
+        )
+        _assert_demo_lp_solution(client)
+
+    def test_tls_server_rejects_plain_client(self, tls_server_info):
+        with pytest.raises(GrpcError):
+            Client("localhost", tls_server_info["port"], tls=False)
+
+    def test_submit_with_explicit_mtls_config(self, mtls_server_info):
+        cert_dir = mtls_server_info["cert_dir"]
+        client = Client(
+            "localhost",
+            mtls_server_info["port"],
+            tls=TlsConfig(
+                os.path.join(cert_dir, "ca.crt"),
+                client_cert=os.path.join(cert_dir, "client.crt"),
+                client_key=os.path.join(cert_dir, "client.key"),
+            ),
+        )
+        _assert_demo_lp_solution(client)
+
+    def test_mtls_server_rejects_missing_client_cert(self, mtls_server_info):
+        cert_dir = mtls_server_info["cert_dir"]
+        with pytest.raises(GrpcError):
+            Client(
+                "localhost",
+                mtls_server_info["port"],
+                tls=TlsConfig(os.path.join(cert_dir, "ca.crt")),
+            )

@@ -46,7 +46,7 @@ const char* get_env(const char* name)
 
 }  // namespace
 
-void apply_grpc_client_env_overrides(grpc_client_config_t& config)
+void apply_grpc_client_env_overrides(grpc_client_config_t& config, bool apply_tls)
 {
   constexpr int64_t kMinChunkSize   = 4096;
   constexpr int64_t kMaxChunkSize   = 2LL * 1024 * 1024 * 1024;
@@ -60,6 +60,8 @@ void apply_grpc_client_env_overrides(grpc_client_config_t& config)
   if (msg >= kMinMessageSize && msg <= kMaxMessageSize) { config.max_message_bytes = msg; }
 
   config.enable_debug_log = (parse_env_int64("CUOPT_GRPC_DEBUG", 0) != 0);
+
+  if (!apply_tls) { return; }
 
   if (parse_env_int64("CUOPT_TLS_ENABLED", 0) != 0) {
     config.enable_tls = true;
@@ -80,16 +82,63 @@ void apply_grpc_client_env_overrides(grpc_client_config_t& config)
   }
 }
 
-grpc_client_config_t make_grpc_client_config(const std::string& host, int port)
+namespace {
+
+void validate_host_port(const std::string& host, int port)
 {
   if (host.empty()) { throw std::invalid_argument("gRPC host must not be empty"); }
   if (port <= 0 || port > 65535) {
     throw std::invalid_argument("gRPC port must be between 1 and 65535");
   }
+}
+
+void apply_explicit_tls(grpc_client_config_t& config, const grpc_explicit_tls_t& tls)
+{
+  if (tls.root_certs.empty()) {
+    throw std::invalid_argument("TLS root_certs must not be empty when tls is configured");
+  }
+  const bool has_client_cert = !tls.client_cert.empty();
+  const bool has_client_key  = !tls.client_key.empty();
+  if (has_client_cert != has_client_key) {
+    throw std::invalid_argument(
+      "client_cert and client_key must both be set for mTLS, or neither for server TLS only");
+  }
+
+  config.enable_tls      = true;
+  config.tls_root_certs  = tls.root_certs;
+  config.tls_client_cert = tls.client_cert;
+  config.tls_client_key  = tls.client_key;
+}
+
+}  // namespace
+
+grpc_client_config_t make_grpc_client_config(const std::string& host, int port)
+{
+  return make_grpc_client_config(host, port, grpc_tls_mode_t::ENV, nullptr);
+}
+
+grpc_client_config_t make_grpc_client_config(const std::string& host,
+                                             int port,
+                                             grpc_tls_mode_t tls_mode,
+                                             const grpc_explicit_tls_t* explicit_tls)
+{
+  validate_host_port(host, port);
 
   grpc_client_config_t config;
   config.server_address = host + ":" + std::to_string(port);
-  apply_grpc_client_env_overrides(config);
+
+  switch (tls_mode) {
+    case grpc_tls_mode_t::ENV: apply_grpc_client_env_overrides(config, true); break;
+    case grpc_tls_mode_t::DISABLED: apply_grpc_client_env_overrides(config, false); break;
+    case grpc_tls_mode_t::EXPLICIT:
+      if (explicit_tls == nullptr) {
+        throw std::invalid_argument("explicit_tls is required for EXPLICIT TLS mode");
+      }
+      apply_explicit_tls(config, *explicit_tls);
+      apply_grpc_client_env_overrides(config, false);
+      break;
+  }
+
   return config;
 }
 
