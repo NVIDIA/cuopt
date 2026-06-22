@@ -6,7 +6,7 @@
 /* clang-format on */
 #pragma once
 
-#include <cuopt/math_optimization/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
 #include <utilities/event_handler.cuh>
 #include <utilities/unique_pinned_ptr.hpp>
 
@@ -24,7 +24,7 @@
 
 #include <thrust/universal_vector.h>
 
-namespace cuopt::math_optimization::pdlp {
+namespace cuopt::mathematical_optimization::pdlp {
 template <typename i_t, typename f_t>
 class adaptive_step_size_strategy_t {
  public:
@@ -120,4 +120,4 @@ class adaptive_step_size_strategy_t {
   const std::vector<pdlp_climber_strategy_t>& climber_strategies_;
   const pdlp::pdlp_hyper_params_t& hyper_params_;
 };
-}  // namespace cuopt::math_optimization::pdlp
+}  // namespace cuopt::mathematical_optimization::pdlp

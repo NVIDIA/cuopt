@@ -13,7 +13,7 @@
 #include <dual_simplex/types.hpp>
 #include <dual_simplex/user_problem.hpp>
 
-namespace cuopt::math_optimization::simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 enum class crossover_status_t : int8_t {
   OPTIMAL          = 0,
@@ -32,4 +32,4 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& problem,
                              lp_solution_t<i_t, f_t>& solution,
                              std::vector<variable_status_t>& vstatus);
 
-}  // namespace cuopt::math_optimization::simplex
+}  // namespace cuopt::mathematical_optimization::simplex

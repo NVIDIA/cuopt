@@ -12,7 +12,7 @@
 #include <span>
 #include <vector>
 
-namespace cuopt::math_optimization::mip {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 struct shared_strong_branching_context_t {
@@ -57,4 +57,4 @@ struct shared_strong_branching_context_view_t {
   }
 };
 
-}  // namespace cuopt::math_optimization::mip
+}  // namespace cuopt::mathematical_optimization::mip

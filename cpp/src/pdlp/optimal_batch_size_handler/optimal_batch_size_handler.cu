@@ -15,7 +15,7 @@
 
 #include <mip_heuristics/mip_constants.hpp>
 
-namespace cuopt::math_optimization::pdlp {
+namespace cuopt::mathematical_optimization::pdlp {
 
 template <typename i_t, typename f_t>
 struct SpMM_benchmarks_context_t {
@@ -443,4 +443,4 @@ template int optimal_batch_size_handler<int, double>(
   const optimization_problem_t<int, double>& op_problem, int max_batch_size);
 #endif
 
-}  // namespace cuopt::math_optimization::pdlp
+}  // namespace cuopt::mathematical_optimization::pdlp

@@ -9,8 +9,8 @@
 
 #include <dual_simplex/types.hpp>
 
-namespace cuopt::math_optimization::simplex {
+namespace cuopt::mathematical_optimization::simplex {
 double tic();
 double toc(double start);
 
-}  // namespace cuopt::math_optimization::simplex
+}  // namespace cuopt::mathematical_optimization::simplex

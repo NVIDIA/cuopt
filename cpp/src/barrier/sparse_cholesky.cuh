@@ -20,7 +20,7 @@
 
 #include "cudss.h"
 
-namespace cuopt::math_optimization::barrier {
+namespace cuopt::mathematical_optimization::barrier {
 
 template <typename i_t, typename f_t>
 class sparse_cholesky_base_t {
@@ -894,4 +894,4 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
   void* cuGetErrorString_func;
 };
 
-}  // namespace cuopt::math_optimization::barrier
+}  // namespace cuopt::mathematical_optimization::barrier

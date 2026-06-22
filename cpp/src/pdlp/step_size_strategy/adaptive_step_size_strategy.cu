@@ -5,7 +5,7 @@
  */
 /* clang-format on */
 
-#include <cuopt/math_optimization/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
 
 #include <pdlp/pdlp_climber_strategy.hpp>
 #include <pdlp/pdlp_constants.hpp>
@@ -33,7 +33,7 @@
 
 #include <limits>
 
-namespace cuopt::math_optimization::pdlp {
+namespace cuopt::mathematical_optimization::pdlp {
 
 template <typename i_t, typename f_t>
 adaptive_step_size_strategy_t<i_t, f_t>::adaptive_step_size_strategy_t(
@@ -585,4 +585,4 @@ INSTANTIATE(float)
 INSTANTIATE(double)
 #endif
 
-}  // namespace cuopt::math_optimization::pdlp
+}  // namespace cuopt::mathematical_optimization::pdlp

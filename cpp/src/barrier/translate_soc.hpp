@@ -8,7 +8,7 @@
 #pragma once
 
 #include <cuopt/error.hpp>
-#include <cuopt/math_optimization/optimization_problem_interface.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 
 #include <dual_simplex/right_looking_lu.hpp>
 #include <dual_simplex/solution.hpp>
@@ -26,7 +26,7 @@
 #include <utility>
 #include <vector>
 
-namespace cuopt::math_optimization::barrier {
+namespace cuopt::mathematical_optimization::barrier {
 
 /** Convert MPS >= ('G') quadratic row to <= ('L') form on a working copy for SOC conversion. */
 template <typename qc_t, typename f_t>
@@ -818,8 +818,8 @@ void convert_quadratic_constraints_to_second_order_cones(
     user_problem.objective.resize(n_aug, 0);
     user_problem.lower.resize(n_aug, -inf);
     user_problem.upper.resize(n_aug, inf);
-    user_problem.var_types.resize(n_aug,
-                                  cuopt::math_optimization::simplex::variable_type_t::CONTINUOUS);
+    user_problem.var_types.resize(
+      n_aug, cuopt::mathematical_optimization::simplex::variable_type_t::CONTINUOUS);
     if (!user_problem.col_names.empty()) { user_problem.col_names.resize(n_aug); }
 
     for (size_t qc_i = 0; qc_i < qcs.size(); ++qc_i) {
@@ -890,18 +890,18 @@ void convert_quadratic_constraints_to_second_order_cones(
 
     for (const rotated_soc_t& rc : rotated_cones) {
       cuopt_expects(user_problem.var_types[rc.head0] ==
-                      cuopt::math_optimization::simplex::variable_type_t::CONTINUOUS,
+                      cuopt::mathematical_optimization::simplex::variable_type_t::CONTINUOUS,
                     error_type_t::ValidationError,
                     "Rotated SOC head variables must be continuous");
       if (!rc.head1_is_constant_half) {
         cuopt_expects(user_problem.var_types[rc.head1] ==
-                        cuopt::math_optimization::simplex::variable_type_t::CONTINUOUS,
+                        cuopt::mathematical_optimization::simplex::variable_type_t::CONTINUOUS,
                       error_type_t::ValidationError,
                       "Rotated SOC head variables must be continuous");
       }
       for (const i_t t : rc.tails) {
         cuopt_expects(user_problem.var_types[t] ==
-                        cuopt::math_optimization::simplex::variable_type_t::CONTINUOUS,
+                        cuopt::mathematical_optimization::simplex::variable_type_t::CONTINUOUS,
                       error_type_t::ValidationError,
                       "Rotated SOC tail variables must be continuous");
       }
@@ -922,8 +922,8 @@ void convert_quadratic_constraints_to_second_order_cones(
     user_problem.objective.resize(n_prob, 0);
     user_problem.lower.resize(n_prob, -inf);
     user_problem.upper.resize(n_prob, inf);
-    user_problem.var_types.resize(n_prob,
-                                  cuopt::math_optimization::simplex::variable_type_t::CONTINUOUS);
+    user_problem.var_types.resize(
+      n_prob, cuopt::mathematical_optimization::simplex::variable_type_t::CONTINUOUS);
     if (!user_problem.col_names.empty()) {
       user_problem.col_names.resize(n_prob);
       for (i_t j = n_old; j < n_prob; ++j) {
@@ -1063,8 +1063,8 @@ void convert_quadratic_constraints_to_second_order_cones(
       user_problem.objective.resize(n_new, 0);
       user_problem.lower.resize(n_new, -std::numeric_limits<f_t>::infinity());
       user_problem.upper.resize(n_new, std::numeric_limits<f_t>::infinity());
-      user_problem.var_types.resize(n_new,
-                                    cuopt::math_optimization::simplex::variable_type_t::CONTINUOUS);
+      user_problem.var_types.resize(
+        n_new, cuopt::mathematical_optimization::simplex::variable_type_t::CONTINUOUS);
       if (!user_problem.col_names.empty()) { user_problem.col_names.resize(n_new); }
 
       for (const auto& [alias, original] : cone_alias_pairs) {
@@ -1150,8 +1150,8 @@ void convert_quadratic_constraints_to_second_order_cones(
       user_problem.objective.resize(n_new, 0);
       user_problem.lower.resize(n_new, neg_inf);
       user_problem.upper.resize(n_new, pos_inf);
-      user_problem.var_types.resize(n_new,
-                                    cuopt::math_optimization::simplex::variable_type_t::CONTINUOUS);
+      user_problem.var_types.resize(
+        n_new, cuopt::mathematical_optimization::simplex::variable_type_t::CONTINUOUS);
       if (!user_problem.col_names.empty()) { user_problem.col_names.resize(n_new); }
 
       for (const auto& [alias, original] : bound_split_pairs) {
@@ -1350,4 +1350,4 @@ void project_barrier_solution_to_model_variables(
   solution.z = std::move(model_z);
 }
 
-}  // namespace cuopt::math_optimization::barrier
+}  // namespace cuopt::mathematical_optimization::barrier

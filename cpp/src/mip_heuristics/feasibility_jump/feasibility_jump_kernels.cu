@@ -25,7 +25,7 @@ namespace cg = cooperative_groups;
 #define CONSTRAINT_FLAG_INSERT 0
 #define CONSTRAINT_FLAG_REMOVE 1
 
-namespace cuopt::math_optimization::mip {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 DI thrust::pair<f_t, f_t> move_objective_score(
@@ -1805,4 +1805,4 @@ CUOPT_INSTANTIATE(double)
 
 #undef CUOPT_INSTANTIATE
 
-}  // namespace cuopt::math_optimization::mip
+}  // namespace cuopt::mathematical_optimization::mip

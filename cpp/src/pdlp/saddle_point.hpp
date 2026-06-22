@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include <cuopt/math_optimization/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
 
 #include <raft/core/handle.hpp>
 
@@ -17,7 +17,7 @@
 
 #include <pdlp/swap_and_resize_helper.cuh>
 
-namespace cuopt::math_optimization::pdlp {
+namespace cuopt::mathematical_optimization::pdlp {
 /**
  * @brief Structure to hold the current solution to the saddle point problem
  *
@@ -115,4 +115,4 @@ class saddle_point_state_t {
   rmm::device_uvector<f_t> next_AtY_;
 };
 
-}  // namespace cuopt::math_optimization::pdlp
+}  // namespace cuopt::mathematical_optimization::pdlp

@@ -12,9 +12,9 @@
 #include <pdlp/termination_strategy/convergence_information.hpp>
 #include <pdlp/termination_strategy/infeasibility_information.hpp>
 
-#include <cuopt/math_optimization/pdlp/pdlp_warm_start_data.hpp>
-#include <cuopt/math_optimization/pdlp/solver_settings.hpp>
-#include <cuopt/math_optimization/pdlp/solver_solution.hpp>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_warm_start_data.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>
 #include <mip_heuristics/problem/problem.cuh>
 
 #include <utilities/unique_pinned_ptr.hpp>
@@ -27,7 +27,7 @@
 
 #include <thrust/universal_vector.h>
 
-namespace cuopt::math_optimization::pdlp {
+namespace cuopt::mathematical_optimization::pdlp {
 template <typename i_t, typename f_t>
 class pdlp_termination_strategy_t {
  public:
@@ -235,4 +235,4 @@ class pdlp_termination_strategy_t {
 
   const std::vector<pdlp_climber_strategy_t>& climber_strategies_;
 };
-}  // namespace cuopt::math_optimization::pdlp
+}  // namespace cuopt::mathematical_optimization::pdlp

@@ -5,8 +5,8 @@
 
 #include "grpc_client.hpp"
 
-#include <cuopt/math_optimization/constants.h>
-#include <cuopt/math_optimization/cpu_optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/constants.h>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
 #include <utilities/logger.hpp>
 #include "grpc_problem_mapper.hpp"
 #include "grpc_service_mapper.hpp"
@@ -28,7 +28,7 @@
 #include <sstream>
 #include <thread>
 
-namespace cuopt::math_optimization {
+namespace cuopt::mathematical_optimization {
 
 // =============================================================================
 // Constants
@@ -1255,4 +1255,4 @@ template bool grpc_client_t::upload_chunked_arrays(
   std::string& job_id_out);
 #endif
 
-}  // namespace cuopt::math_optimization
+}  // namespace cuopt::mathematical_optimization

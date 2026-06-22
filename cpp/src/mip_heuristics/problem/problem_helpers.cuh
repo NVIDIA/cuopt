@@ -24,7 +24,7 @@
 #include <thrust/sort.h>
 #include <thrust/tuple.h>
 
-namespace cuopt::math_optimization::mip {
+namespace cuopt::mathematical_optimization::mip {
 template <typename f_t>
 struct transform_bounds_functor {
   __device__ thrust::tuple<f_t, f_t> operator()(const thrust::tuple<char, f_t>& input) const
@@ -424,4 +424,4 @@ static void convert_greater_to_less(mip::problem_t<i_t, f_t>& problem)
   handle_ptr->sync_stream();
 }
 
-}  // namespace cuopt::math_optimization::mip
+}  // namespace cuopt::mathematical_optimization::mip

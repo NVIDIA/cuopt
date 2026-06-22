@@ -8,8 +8,8 @@
 #pragma once
 
 #include <branch_and_bound/shared_strong_branching_context.hpp>
-#include <cuopt/math_optimization/pdlp/solver_settings.hpp>
-#include <cuopt/math_optimization/pdlp/solver_solution.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>
 
 #include <pdlp/cusparse_view.hpp>
 #include <pdlp/initial_scaling_strategy/initial_scaling.cuh>
@@ -33,7 +33,7 @@
 #include <optional>
 #include <unordered_set>
 
-namespace cuopt::math_optimization::pdlp {
+namespace cuopt::mathematical_optimization::pdlp {
 /**
  * @brief Solver for an optimization problem (Currently only linear program) to be solved,
  * pdlp_parameters and pdlp_internal_state
@@ -248,4 +248,4 @@ class pdlp_solver_t {
   bool inside_mip_{false};
 };
 
-}  // namespace cuopt::math_optimization::pdlp
+}  // namespace cuopt::mathematical_optimization::pdlp

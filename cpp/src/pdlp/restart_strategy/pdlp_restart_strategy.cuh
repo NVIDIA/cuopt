@@ -15,7 +15,7 @@
 #include <pdlp/swap_and_resize_helper.cuh>
 #include <pdlp/termination_strategy/convergence_information.hpp>
 
-#include <cuopt/math_optimization/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
 
 #include <mip_heuristics/problem/problem.cuh>
 
@@ -28,7 +28,7 @@
 
 #include <raft/core/device_span.hpp>
 
-namespace cuopt::math_optimization::pdlp {
+namespace cuopt::mathematical_optimization::pdlp {
 template <typename i_t, typename f_t>
 class pdlp_restart_strategy_t {
  public:
@@ -411,4 +411,4 @@ bool is_cupdlpx_restart(const pdlp::pdlp_hyper_params_t& hyper_params)
          static_cast<int>(pdlp_restart_strategy_t<i_t, f_t>::restart_strategy_t::CUPDLPX_RESTART);
 }
 
-}  // namespace cuopt::math_optimization::pdlp
+}  // namespace cuopt::mathematical_optimization::pdlp

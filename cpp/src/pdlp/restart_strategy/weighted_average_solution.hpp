@@ -15,7 +15,7 @@
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
 
-namespace cuopt::math_optimization::pdlp {
+namespace cuopt::mathematical_optimization::pdlp {
 template <typename i_t, typename f_t>
 class weighted_average_solution_t {
  public:
@@ -52,4 +52,4 @@ class weighted_average_solution_t {
   // Graph to capture the average computation
   ping_pong_graph_t<i_t> graph;
 };
-}  // namespace cuopt::math_optimization::pdlp
+}  // namespace cuopt::mathematical_optimization::pdlp

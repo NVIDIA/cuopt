@@ -13,7 +13,7 @@
 #include <utility>
 #include <vector>
 
-namespace cuopt::math_optimization::mip {
+namespace cuopt::mathematical_optimization::mip {
 
 // This is a generic heap implementation based
 // on the STL functions. The main benefit here is
@@ -209,4 +209,4 @@ class node_queue_t {
   omp_atomic_t<f_t> lower_bound_{std::numeric_limits<f_t>::infinity()};
 };
 
-}  // namespace cuopt::math_optimization::mip
+}  // namespace cuopt::mathematical_optimization::mip

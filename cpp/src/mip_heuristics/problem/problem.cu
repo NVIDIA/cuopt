@@ -48,7 +48,7 @@
 
 #include <cuda_profiler_api.h>
 
-namespace cuopt::math_optimization::mip {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::op_problem_cstr_body(const optimization_problem_t<i_t, f_t>& problem_)
@@ -1363,7 +1363,7 @@ void problem_t<i_t, f_t>::set_implied_integers(const std::vector<i_t>& implied_i
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::recompute_objective_integrality()
 {
-  using cuopt::math_optimization::mip::is_integer;
+  using cuopt::mathematical_optimization::mip::is_integer;
 
   objective_is_integral =
     thrust::all_of(handle_ptr->get_thrust_policy(),
@@ -2153,7 +2153,7 @@ void problem_t<i_t, f_t>::preprocess_problem()
 
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::set_constraints_from_host_user_problem(
-  const cuopt::math_optimization::simplex::user_problem_t<i_t, f_t>& user_problem)
+  const cuopt::mathematical_optimization::simplex::user_problem_t<i_t, f_t>& user_problem)
 {
   raft::common::nvtx::range fun_scope("set_constraints_from_host_user_problem");
   cuopt_assert(user_problem.handle_ptr == handle_ptr, "handle mismatch");
@@ -2274,7 +2274,7 @@ void problem_t<i_t, f_t>::papilo_uncrush_assignment(rmm::device_uvector<f_t>& as
 
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::get_host_user_problem(
-  cuopt::math_optimization::simplex::user_problem_t<i_t, f_t>& user_problem) const
+  cuopt::mathematical_optimization::simplex::user_problem_t<i_t, f_t>& user_problem) const
 {
   raft::common::nvtx::range fun_scope("get_host_user_problem");
   // std::lock_guard<std::mutex> lock(problem_mutex);
@@ -2361,9 +2361,10 @@ void problem_t<i_t, f_t>::get_host_user_problem(
 
   auto model_variable_types = cuopt::host_copy(variable_types, stream);
   for (int j = 0; j < n; ++j) {
-    user_problem.var_types[j] = model_variable_types[j] == var_t::CONTINUOUS
-                                  ? cuopt::math_optimization::simplex::variable_type_t::CONTINUOUS
-                                  : cuopt::math_optimization::simplex::variable_type_t::INTEGER;
+    user_problem.var_types[j] =
+      model_variable_types[j] == var_t::CONTINUOUS
+        ? cuopt::mathematical_optimization::simplex::variable_type_t::CONTINUOUS
+        : cuopt::mathematical_optimization::simplex::variable_type_t::INTEGER;
   }
 }
 
@@ -2495,4 +2496,4 @@ template class problem_t<int, float>;
 template class problem_t<int, double>;
 #endif
 
-}  // namespace cuopt::math_optimization::mip
+}  // namespace cuopt::mathematical_optimization::mip

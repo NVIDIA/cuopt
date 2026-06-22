@@ -13,9 +13,9 @@
 
 #include <mip_heuristics/mip_constants.hpp>
 
-#include <cuopt/math_optimization/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
 
-namespace cuopt::math_optimization::pdlp {
+namespace cuopt::mathematical_optimization::pdlp {
 template <typename i_t, typename f_t>
 localized_duality_gap_container_t<i_t, f_t>::localized_duality_gap_container_t(
   raft::handle_t const* handle_ptr,
@@ -151,4 +151,4 @@ template struct localized_duality_gap_container_t<int, float>;
 template struct localized_duality_gap_container_t<int, double>;
 #endif
 
-}  // namespace cuopt::math_optimization::pdlp
+}  // namespace cuopt::mathematical_optimization::pdlp

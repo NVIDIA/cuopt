@@ -17,7 +17,7 @@
 
 using cuopt::ins_vector;
 
-namespace cuopt::math_optimization::simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 namespace {
 
@@ -1813,4 +1813,4 @@ template int right_looking_ldlt<int, double>(const csc_matrix_t<int, double>& A,
                                              double& work_estimate);
 #endif
 
-}  // namespace cuopt::math_optimization::simplex
+}  // namespace cuopt::mathematical_optimization::simplex

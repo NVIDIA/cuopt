@@ -12,7 +12,7 @@
 
 #pragma once
 
-namespace cuopt::math_optimization::barrier {
+namespace cuopt::mathematical_optimization::barrier {
 
 template <typename i_t, typename f_t>
 class dense_matrix_t {
@@ -242,4 +242,4 @@ class dense_matrix_t {
   std::vector<f_t> values;
 };
 
-}  // namespace cuopt::math_optimization::barrier
+}  // namespace cuopt::mathematical_optimization::barrier

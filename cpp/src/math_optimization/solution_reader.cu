@@ -16,7 +16,7 @@
 #include <string>
 #include <unordered_map>
 
-namespace cuopt::math_optimization {
+namespace cuopt::mathematical_optimization {
 
 /**
  * @brief Represents information about a solution including variables, objective value, and status
@@ -135,4 +135,4 @@ std::vector<double> solution_reader_t::get_variable_values_from_sol_file(
   return values;
 }
 
-}  // namespace cuopt::math_optimization
+}  // namespace cuopt::mathematical_optimization

@@ -5,15 +5,15 @@
 
 #include "grpc_service_mapper.hpp"
 
-#include <cuopt/math_optimization/constants.h>
+#include <cuopt/mathematical_optimization/constants.h>
 #include <cuopt_remote.pb.h>
 #include <cuopt_remote_service.pb.h>
-#include <cuopt/math_optimization/cpu_optimization_problem.hpp>
-#include <cuopt/math_optimization/optimization_problem_interface.hpp>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 #include "grpc_problem_mapper.hpp"
 #include "grpc_settings_mapper.hpp"
 
-namespace cuopt::math_optimization {
+namespace cuopt::mathematical_optimization {
 
 template <typename i_t, typename f_t>
 cuopt::remote::SubmitJobRequest build_lp_submit_request(
@@ -88,4 +88,4 @@ template cuopt::remote::SubmitJobRequest build_mip_submit_request(
   bool enable_incumbents);
 #endif
 
-}  // namespace cuopt::math_optimization
+}  // namespace cuopt::mathematical_optimization

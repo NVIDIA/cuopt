@@ -23,7 +23,7 @@
 
 constexpr bool fj_only_run = false;
 
-namespace cuopt::math_optimization::mip {
+namespace cuopt::mathematical_optimization::mip {
 
 size_t fp_recombiner_config_t::max_n_of_vars_from_other =
   fp_recombiner_config_t::initial_n_of_vars_from_other;
@@ -966,4 +966,4 @@ template class diversity_manager_t<int, float>;
 template class diversity_manager_t<int, double>;
 #endif
 
-}  // namespace cuopt::math_optimization::mip
+}  // namespace cuopt::mathematical_optimization::mip

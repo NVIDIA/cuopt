@@ -7,14 +7,14 @@
 
 #pragma once
 
-#include <cuopt/math_optimization/optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem.hpp>
 
 #include <thrust/sequence.h>
 #include <thrust/uninitialized_fill.h>
 #include <rmm/device_uvector.hpp>
 
 namespace cuopt {
-namespace math_optimization::mip {
+namespace mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 class problem_t;
@@ -133,5 +133,5 @@ class presolve_data_t {
   std::vector<substitution_t<i_t, f_t>> variable_substitutions;
 };
 
-}  // namespace math_optimization::mip
+}  // namespace mathematical_optimization::mip
 }  // namespace cuopt

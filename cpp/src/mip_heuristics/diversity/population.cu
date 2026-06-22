@@ -18,7 +18,7 @@
 
 #include <mutex>
 
-namespace cuopt::math_optimization::mip {
+namespace cuopt::mathematical_optimization::mip {
 
 constexpr double weight_increase_ratio       = 2.;
 constexpr double weight_decrease_ratio       = 0.9;
@@ -902,4 +902,4 @@ template class population_t<int, float>;
 template class population_t<int, double>;
 #endif
 
-}  // namespace cuopt::math_optimization::mip
+}  // namespace cuopt::mathematical_optimization::mip

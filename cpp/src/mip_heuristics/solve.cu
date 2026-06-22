@@ -6,7 +6,7 @@
 /* clang-format on */
 
 #include <cuopt/error.hpp>
-#include <cuopt/math_optimization/solve_remote.hpp>
+#include <cuopt/mathematical_optimization/solve_remote.hpp>
 
 #include <mip_heuristics/feasibility_jump/early_cpufj.cuh>
 #include <mip_heuristics/feasibility_jump/early_gpufj.cuh>
@@ -29,15 +29,15 @@
 #include <utilities/seed_generator.cuh>
 #include <utilities/version_info.hpp>
 
-#include <cuopt/math_optimization/backend_selection.hpp>
-#include <cuopt/math_optimization/cpu_optimization_problem.hpp>
-#include <cuopt/math_optimization/mip/solver_settings.hpp>
-#include <cuopt/math_optimization/mip/solver_solution.hpp>
-#include <cuopt/math_optimization/optimization_problem.hpp>
-#include <cuopt/math_optimization/optimization_problem_solution.hpp>
-#include <cuopt/math_optimization/pdlp/pdlp_hyper_params.cuh>
-#include <cuopt/math_optimization/solve.hpp>
-#include <cuopt/math_optimization/utilities/internals.hpp>
+#include <cuopt/mathematical_optimization/backend_selection.hpp>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_solution.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_solution.hpp>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/mathematical_optimization/solve.hpp>
+#include <cuopt/mathematical_optimization/utilities/internals.hpp>
 
 #include <branch_and_bound/symmetry.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
@@ -50,7 +50,7 @@
 //   Presolve runs at full power; symmetry detection on whatever structure remains.
 #define DETECT_SYMMETRY_AFTER_PRESOLVE
 
-#include <cuopt/math_optimization/io/mps_data_model.hpp>
+#include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/cusparse_macros.hpp>
@@ -65,7 +65,7 @@
 #include <cmath>
 #include <sstream>
 
-namespace cuopt::math_optimization {
+namespace cuopt::mathematical_optimization {
 
 // This serves as both a warm up but also a mandatory initial call to setup cuSparse and cuBLAS
 static void init_handler(const raft::handle_t* handle_ptr)
@@ -555,7 +555,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
       }
       presolver   = std::make_unique<mip::third_party_presolve_t<i_t, f_t>>();
       auto result = presolver->apply(op_problem,
-                                     cuopt::math_optimization::problem_category_t::MIP,
+                                     cuopt::mathematical_optimization::problem_category_t::MIP,
                                      settings.presolver,
                                      dual_postsolve,
                                      settings.tolerances.absolute_tolerance,
@@ -644,7 +644,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
       presolver->undo(primal_solution,
                       dual_solution,
                       reduced_costs,
-                      cuopt::math_optimization::problem_category_t::MIP,
+                      cuopt::mathematical_optimization::problem_category_t::MIP,
                       status_to_skip,
                       dual_postsolve,
                       op_problem.get_handle_ptr()->get_stream());
@@ -911,20 +911,20 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip(
   }
 }
 
-#define INSTANTIATE(F_TYPE)                                                               \
-  template mip_solution_t<int, F_TYPE> solve_mip(                                         \
-    optimization_problem_t<int, F_TYPE>& op_problem,                                      \
-    mip_solver_settings_t<int, F_TYPE> const& settings);                                  \
-                                                                                          \
-  template mip_solution_t<int, F_TYPE> solve_mip(                                         \
-    raft::handle_t const* handle_ptr,                                                     \
-    const cuopt::math_optimization::io::mps_data_model_t<int, F_TYPE>& mps_data_model,    \
-    mip_solver_settings_t<int, F_TYPE> const& settings);                                  \
-                                                                                          \
-  template std::unique_ptr<mip_solution_interface_t<int, F_TYPE>> solve_mip(              \
-    cpu_optimization_problem_t<int, F_TYPE>&, mip_solver_settings_t<int, F_TYPE> const&); \
-                                                                                          \
-  template std::unique_ptr<mip_solution_interface_t<int, F_TYPE>> solve_mip(              \
+#define INSTANTIATE(F_TYPE)                                                                    \
+  template mip_solution_t<int, F_TYPE> solve_mip(                                              \
+    optimization_problem_t<int, F_TYPE>& op_problem,                                           \
+    mip_solver_settings_t<int, F_TYPE> const& settings);                                       \
+                                                                                               \
+  template mip_solution_t<int, F_TYPE> solve_mip(                                              \
+    raft::handle_t const* handle_ptr,                                                          \
+    const cuopt::mathematical_optimization::io::mps_data_model_t<int, F_TYPE>& mps_data_model, \
+    mip_solver_settings_t<int, F_TYPE> const& settings);                                       \
+                                                                                               \
+  template std::unique_ptr<mip_solution_interface_t<int, F_TYPE>> solve_mip(                   \
+    cpu_optimization_problem_t<int, F_TYPE>&, mip_solver_settings_t<int, F_TYPE> const&);      \
+                                                                                               \
+  template std::unique_ptr<mip_solution_interface_t<int, F_TYPE>> solve_mip(                   \
     optimization_problem_interface_t<int, F_TYPE>*, mip_solver_settings_t<int, F_TYPE> const&);
 
 #if MIP_INSTANTIATE_FLOAT
@@ -935,4 +935,4 @@ INSTANTIATE(float)
 INSTANTIATE(double)
 #endif
 
-}  // namespace cuopt::math_optimization
+}  // namespace cuopt::mathematical_optimization

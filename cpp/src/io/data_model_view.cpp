@@ -5,12 +5,12 @@
  */
 /* clang-format on */
 
-#include <cuopt/math_optimization/io/data_model_view.hpp>
+#include <cuopt/mathematical_optimization/io/data_model_view.hpp>
 #include <utilities/error.hpp>
 
 #include <span>
 
-namespace cuopt::math_optimization::io {
+namespace cuopt::mathematical_optimization::io {
 
 template <typename i_t, typename f_t>
 void data_model_view_t<i_t, f_t>::set_maximize(bool maximize)
@@ -381,4 +381,4 @@ template class data_model_view_t<int, float>;
 
 template class data_model_view_t<int, double>;
 
-}  // namespace cuopt::math_optimization::io
+}  // namespace cuopt::mathematical_optimization::io

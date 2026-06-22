@@ -7,13 +7,13 @@
 
 #pragma once
 
-#include <cuopt/math_optimization/optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem.hpp>
 
-#include <cuopt/math_optimization/io/mps_data_model.hpp>
+#include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
 
 #include <raft/core/handle.hpp>
 
-namespace cuopt::math_optimization {
+namespace cuopt::mathematical_optimization {
 
 namespace mip {
 template <typename i_t, typename f_t>
@@ -21,12 +21,13 @@ class problem_t;
 }  // namespace mip
 
 template <typename i_t, typename f_t>
-cuopt::math_optimization::optimization_problem_t<i_t, f_t> mps_data_model_to_optimization_problem(
+cuopt::mathematical_optimization::optimization_problem_t<i_t, f_t>
+mps_data_model_to_optimization_problem(
   raft::handle_t const* handle_ptr,
-  const cuopt::math_optimization::io::mps_data_model_t<i_t, f_t>& data_model);
+  const cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t>& data_model);
 
 template <typename i_t, typename f_t>
-cuopt::math_optimization::optimization_problem_solution_t<i_t, f_t> solve_lp_with_method(
+cuopt::mathematical_optimization::optimization_problem_solution_t<i_t, f_t> solve_lp_with_method(
   mip::problem_t<i_t, f_t>& problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   const timer_t& timer,
@@ -82,8 +83,8 @@ cuopt::math_optimization::optimization_problem_solution_t<i_t, f_t> solve_lp_wit
  * @endcode
  */
 template <typename i_t, typename f_t>
-cuopt::math_optimization::optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
-  cuopt::math_optimization::optimization_problem_t<i_t, f_t>& problem,
+cuopt::mathematical_optimization::optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
+  cuopt::mathematical_optimization::optimization_problem_t<i_t, f_t>& problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings);
 
 /**
@@ -101,7 +102,7 @@ cuopt::math_optimization::optimization_problem_solution_t<i_t, f_t> run_batch_pd
 */
 template <typename i_t, typename f_t>
 size_t compute_optimal_batch_size(
-  const cuopt::math_optimization::optimization_problem_t<i_t, f_t>& problem,
+  const cuopt::mathematical_optimization::optimization_problem_t<i_t, f_t>& problem,
   bool per_climber_objectives,
   bool per_climber_constraint_bounds,
   bool collect_solutions = false);  // Only for testing
@@ -109,4 +110,4 @@ size_t compute_optimal_batch_size(
 template <typename i_t, typename f_t>
 void set_pdlp_solver_mode(pdlp_solver_settings_t<i_t, f_t>& settings);
 
-}  // namespace cuopt::math_optimization
+}  // namespace cuopt::mathematical_optimization

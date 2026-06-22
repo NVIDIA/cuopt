@@ -21,7 +21,7 @@
 // Only owns data linked to the associated matrix
 // Associated dense vector should be owned by the calling object
 // This allows handling many different X Y vector along with one common matrix
-namespace cuopt::math_optimization::barrier {
+namespace cuopt::mathematical_optimization::barrier {
 
 template <typename i_t, typename f_t>
 class cusparse_view_t {
@@ -73,4 +73,4 @@ class cusparse_view_t {
   rmm::device_scalar<f_t> d_minus_one_;
   rmm::device_scalar<f_t> d_zero_;
 };
-}  // namespace cuopt::math_optimization::barrier
+}  // namespace cuopt::mathematical_optimization::barrier

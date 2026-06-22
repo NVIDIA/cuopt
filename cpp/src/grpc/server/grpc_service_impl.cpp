@@ -9,7 +9,7 @@
 #include "grpc_pipe_serialization.hpp"
 #include "grpc_server_types.hpp"
 
-using namespace cuopt::math_optimization;
+using namespace cuopt::mathematical_optimization;
 
 class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::Service {
  public:
@@ -166,7 +166,7 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     // container-relative field_id can coexist without colliding.
     ChunkedUploadState::FieldMeta* meta_ptr = nullptr;
     if (is_container) {
-      cuopt::math_optimization::container_array_key_t key{
+      cuopt::mathematical_optimization::container_array_key_t key{
         cfn_for_size, ac.container_index(), field_id};
       meta_ptr = &state.container_field_meta[key];
     } else {

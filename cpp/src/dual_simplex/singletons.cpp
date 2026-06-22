@@ -11,7 +11,7 @@
 
 #include <cstdio>
 
-namespace cuopt::math_optimization::simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 // Destroys the queue but prints it
 template <typename i_t>
@@ -315,4 +315,4 @@ template int find_singletons<int, double>(const csc_matrix_t<int, double>& A,
                                           double& work_estimate);
 #endif
 
-}  // namespace cuopt::math_optimization::simplex
+}  // namespace cuopt::mathematical_optimization::simplex

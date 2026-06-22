@@ -9,7 +9,7 @@
 
 #include <mip_heuristics/problem/problem.cuh>
 
-namespace cuopt::math_optimization::mip {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t>
 __device__ __forceinline__ void detect_range_sub_warp(i_t* id_warp_beg,
@@ -633,4 +633,4 @@ __global__ void lb_upd_bnd_sub_warp_kernel(bounds_update_view_t view,
   }
 }
 
-}  // namespace cuopt::math_optimization::mip
+}  // namespace cuopt::mathematical_optimization::mip

@@ -10,7 +10,7 @@
 #include <branch_and_bound/worker.hpp>
 #include <utilities/circular_deque.hpp>
 
-namespace cuopt::math_optimization::mip {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename WorkerType>
 class worker_pool_t {
@@ -106,4 +106,4 @@ using bfs_worker_pool_t = worker_pool_t<bfs_worker_t<i_t, f_t>>;
 template <typename i_t, typename f_t>
 using diving_worker_pool_t = worker_pool_t<diving_worker_t<i_t, f_t>>;
 
-}  // namespace cuopt::math_optimization::mip
+}  // namespace cuopt::mathematical_optimization::mip

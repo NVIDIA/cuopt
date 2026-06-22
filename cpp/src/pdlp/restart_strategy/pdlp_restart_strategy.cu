@@ -7,7 +7,7 @@
 
 #include <cuopt/error.hpp>
 
-#include <cuopt/math_optimization/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
 #include <pdlp/pdlp_constants.hpp>
 #include <pdlp/restart_strategy/pdlp_restart_strategy.cuh>
 #include <pdlp/swap_and_resize_helper.cuh>
@@ -50,7 +50,7 @@
 
 namespace cg = cooperative_groups;
 
-namespace cuopt::math_optimization::pdlp {
+namespace cuopt::mathematical_optimization::pdlp {
 
 template <typename i_t, typename f_t, int BLOCK_SIZE>
 __global__ void solve_bound_constrained_trust_region_kernel(
@@ -2539,4 +2539,4 @@ INSTANTIATE(float)
 INSTANTIATE(double)
 #endif
 
-}  // namespace cuopt::math_optimization::pdlp
+}  // namespace cuopt::mathematical_optimization::pdlp

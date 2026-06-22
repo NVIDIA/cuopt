@@ -7,11 +7,11 @@
 
 #pragma once
 
-#include <cuopt/math_optimization/io/parser.hpp>
-#include <cuopt/math_optimization/optimization_problem_interface.hpp>
-#include <cuopt/math_optimization/pdlp/pdlp_hyper_params.cuh>
-#include <cuopt/math_optimization/pdlp/solver_solution.hpp>
-#include <cuopt/math_optimization/solve.hpp>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/cusparse_macros.hpp>
@@ -58,7 +58,7 @@ void parse_value(std::istringstream& iss, bool& value)
 }
 
 void fill_pdlp_hyper_params(const std::string& pdlp_hyper_params_path,
-                            cuopt::math_optimization::pdlp::pdlp_hyper_params_t& params)
+                            cuopt::mathematical_optimization::pdlp::pdlp_hyper_params_t& params)
 {
   if (!std::filesystem::exists(pdlp_hyper_params_path)) {
     std::cerr << "PDLP config file path is not a valid: " << pdlp_hyper_params_path << std::endl;
@@ -204,8 +204,9 @@ std::vector<T> read_vector_from_file(const std::string& filename)
 }
 
 template <typename i_t, typename f_t>
-void write_problem_info(const cuopt::math_optimization::io::mps_data_model_t<i_t, f_t>& op_problem,
-                        const std::string& filename)
+void write_problem_info(
+  const cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t>& op_problem,
+  const std::string& filename)
 {
   std::ofstream file(filename);
   if (!file) {
@@ -221,8 +222,9 @@ void write_problem_info(const cuopt::math_optimization::io::mps_data_model_t<i_t
 }
 
 template <typename i_t, typename f_t>
-void read_problem_info(cuopt::math_optimization::optimization_problem_t<i_t, f_t>& op_problem,
-                       const std::string& filename)
+void read_problem_info(
+  cuopt::mathematical_optimization::optimization_problem_t<i_t, f_t>& op_problem,
+  const std::string& filename)
 {
   std::ifstream file(filename);
   if (!file) {
@@ -273,8 +275,8 @@ void mps_file_to_binary(const std::filesystem::path& filename)
 
   std::string p = std::string(filename);
 
-  cuopt::math_optimization::io::mps_data_model_t<int, double> op_problem =
-    cuopt::math_optimization::io::read_mps<int, double>(p);
+  cuopt::mathematical_optimization::io::mps_data_model_t<int, double> op_problem =
+    cuopt::mathematical_optimization::io::read_mps<int, double>(p);
 
   auto filename_string = filename.filename().string();
 

@@ -26,7 +26,7 @@
  *   ./simple_socp_example
  */
 
-#include <cuopt/math_optimization/cuopt_c.h>
+#include <cuopt/mathematical_optimization/cuopt_c.h>
 #include <stdio.h>
 #include <stdlib.h>
 

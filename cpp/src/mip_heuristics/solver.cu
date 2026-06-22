@@ -33,7 +33,7 @@
 #include <memory>
 #include <thread>
 
-namespace cuopt::math_optimization::mip {
+namespace cuopt::mathematical_optimization::mip {
 
 // This serves as both a warm up but also a mandatory initial call to setup cuSparse and cuBLAS
 static void init_handler(const raft::handle_t* handle_ptr)
@@ -296,19 +296,19 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   // Detect symmetry after all presolve steps (PaPILO, cuOpt probing, bounds, trivial presolve).
   // context.problem_ptr is the final reduced problem with correct variable indices.
   if (context.settings.symmetry != 0 && !context.problem_ptr->empty) {
-    cuopt::math_optimization::simplex::simplex_solver_settings_t<i_t, f_t> simplex_settings;
+    cuopt::mathematical_optimization::simplex::simplex_solver_settings_t<i_t, f_t> simplex_settings;
     simplex_settings.set_log(true);
     simplex_settings.time_limit = context.settings.time_limit;
-    cuopt::math_optimization::simplex::user_problem_t<i_t, f_t> post_presolve_problem =
+    cuopt::mathematical_optimization::simplex::user_problem_t<i_t, f_t> post_presolve_problem =
       cuopt_problem_to_user_problem<i_t, f_t>(context.problem_ptr->handle_ptr,
                                               *context.problem_ptr);
     bool has_symmetry_post = false;
-    context.symmetry       = cuopt::math_optimization::mip::detect_symmetry(
+    context.symmetry       = cuopt::mathematical_optimization::mip::detect_symmetry(
       post_presolve_problem, simplex_settings, has_symmetry_post);
   }
 #endif
 
-  namespace simplex                         = cuopt::math_optimization::simplex;
+  namespace simplex                         = cuopt::mathematical_optimization::simplex;
   mip::mip_status_t branch_and_bound_status = mip::mip_status_t::UNSET;
   simplex::user_problem_t<i_t, f_t> branch_and_bound_problem(context.problem_ptr->handle_ptr);
   context.problem_ptr->recompute_objective_integrality();
@@ -541,4 +541,4 @@ template class mip_solver_t<int, float>;
 template class mip_solver_t<int, double>;
 #endif
 
-}  // namespace cuopt::math_optimization::mip
+}  // namespace cuopt::mathematical_optimization::mip

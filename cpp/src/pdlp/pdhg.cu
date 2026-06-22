@@ -38,7 +38,7 @@
 #include <utility>
 #include <vector>
 
-namespace cuopt::math_optimization::pdlp {
+namespace cuopt::mathematical_optimization::pdlp {
 
 template <typename i_t, typename f_t>
 pdhg_solver_t<i_t, f_t>::pdhg_solver_t(
@@ -1502,4 +1502,4 @@ template class pdhg_solver_t<int, float>;
 template class pdhg_solver_t<int, double>;
 #endif
 
-}  // namespace cuopt::math_optimization::pdlp
+}  // namespace cuopt::mathematical_optimization::pdlp

@@ -12,7 +12,7 @@ from libcpp.string cimport string
 from libcpp.vector cimport vector
 
 
-cdef extern from "cuopt/math_optimization/io/mps_data_model.hpp" namespace "cuopt::math_optimization::io": # noqa
+cdef extern from "cuopt/mathematical_optimization/io/mps_data_model.hpp" namespace "cuopt::mathematical_optimization::io": # noqa
 
     cdef cppclass mps_data_model_t[i_t, f_t]:
         cppclass quadratic_constraint_t:
@@ -49,7 +49,7 @@ cdef extern from "cuopt/math_optimization/io/mps_data_model.hpp" namespace "cuop
         string problem_name_
         const vector[quadratic_constraint_t]& get_quadratic_constraints() const
 
-cdef extern from "cuopt/math_optimization/io/utilities/cython_parser.hpp" namespace "cuopt::cython": # noqa
+cdef extern from "cuopt/mathematical_optimization/io/utilities/cython_parser.hpp" namespace "cuopt::cython": # noqa
 
     cdef unique_ptr[mps_data_model_t[int, double]] call_read(
         const string& file_path,

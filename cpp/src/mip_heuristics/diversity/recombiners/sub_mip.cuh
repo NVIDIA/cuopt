@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include "cuopt/math_optimization/mip/solver_settings.hpp"
+#include "cuopt/mathematical_optimization/mip/solver_settings.hpp"
 #include "recombiner.cuh"
 
 #include <branch_and_bound/branch_and_bound.hpp>
@@ -16,7 +16,7 @@
 #include <dual_simplex/tic_toc.hpp>
 #include <pdlp/initial_scaling_strategy/initial_scaling.cuh>
 
-namespace cuopt::math_optimization::mip {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
@@ -96,7 +96,7 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
     simplex::mip_solution_t<i_t, f_t> branch_and_bound_solution(1);
     if (run_sub_mip) {
       // run sub-mip
-      namespace simplex = cuopt::math_optimization::simplex;
+      namespace simplex = cuopt::mathematical_optimization::simplex;
       simplex::user_problem_t<i_t, f_t> branch_and_bound_problem(offspring.handle_ptr);
       simplex::simplex_solver_settings_t<i_t, f_t> branch_and_bound_settings;
       fixed_problem.get_host_user_problem(branch_and_bound_problem);
@@ -205,4 +205,4 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
   population_t<i_t, f_t>& population;
 };
 
-}  // namespace cuopt::math_optimization::mip
+}  // namespace cuopt::mathematical_optimization::mip

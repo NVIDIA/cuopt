@@ -8,7 +8,7 @@
 #include "problem_checking.cuh"
 
 #include <cuopt/error.hpp>
-#include <cuopt/math_optimization/optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <utilities/copy_helpers.hpp>
 
@@ -18,7 +18,7 @@
 #include <thrust/logical.h>
 #include <thrust/sort.h>
 
-namespace cuopt::math_optimization {
+namespace cuopt::mathematical_optimization {
 
 template <typename i_t, typename f_t>
 void problem_checking_t<i_t, f_t>::check_csr_representation(
@@ -386,4 +386,4 @@ INSTANTIATE(double)
 
 #undef INSTANTIATE
 
-}  // namespace cuopt::math_optimization
+}  // namespace cuopt::mathematical_optimization

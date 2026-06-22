@@ -9,7 +9,7 @@
 #include "mip_utils.cuh"
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
-#include <cuopt/math_optimization/io/parser.hpp>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
 #include <mip_heuristics/mip_scaling_strategy.cuh>
 #include <mip_heuristics/presolve/bounds_presolve.cuh>
 #include <mip_heuristics/presolve/load_balanced_bounds_presolve.cuh>
@@ -30,7 +30,7 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::math_optimization::test {
+namespace cuopt::mathematical_optimization::test {
 
 inline auto make_async() { return rmm::mr::cuda_async_memory_resource(); }
 
@@ -121,8 +121,8 @@ void test_multi_probe(std::string path)
   auto memory_resource = make_async();
   rmm::mr::set_current_device_resource(memory_resource);
   const raft::handle_t handle_{};
-  cuopt::math_optimization::io::mps_data_model_t<int, double> mps_problem =
-    cuopt::math_optimization::io::read_mps<int, double>(path, false);
+  cuopt::mathematical_optimization::io::mps_data_model_t<int, double> mps_problem =
+    cuopt::mathematical_optimization::io::read_mps<int, double>(path, false);
   handle_.sync_stream();
   auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps_problem);
   problem_checking_t<int, double>::check_problem_representation(op_problem);
@@ -168,4 +168,4 @@ TEST(presolve, multi_probe)
   }
 }
 
-}  // namespace cuopt::math_optimization::test
+}  // namespace cuopt::mathematical_optimization::test

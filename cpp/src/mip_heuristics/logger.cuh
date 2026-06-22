@@ -9,7 +9,7 @@
 
 #include <utilities/logger.hpp>
 
-namespace cuopt::math_optimization::mip {
+namespace cuopt::mathematical_optimization::mip {
 
 // Default to info level if not specified.
 #if !defined(CUOPT_LOG_ACTIVE_LEVEL)
@@ -53,4 +53,4 @@ namespace cuopt::math_optimization::mip {
 #define DEVICE_LOG_CRITICAL(...) void(0)
 #endif
 
-}  // namespace cuopt::math_optimization::mip
+}  // namespace cuopt::mathematical_optimization::mip

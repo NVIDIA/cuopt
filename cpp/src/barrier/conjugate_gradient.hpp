@@ -16,7 +16,7 @@
 #include <cstdio>
 #include <vector>
 
-namespace cuopt::math_optimization::barrier {
+namespace cuopt::mathematical_optimization::barrier {
 
 template <typename i_t, typename f_t, typename T>
 i_t preconditioned_conjugate_gradient(const T& op,
@@ -120,4 +120,4 @@ i_t preconditioned_conjugate_gradient(const T& op,
   return iter;
 }
 
-}  // namespace cuopt::math_optimization::barrier
+}  // namespace cuopt::mathematical_optimization::barrier

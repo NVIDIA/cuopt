@@ -5,24 +5,26 @@
  */
 /* clang-format on */
 
-#include <cuopt/math_optimization/io/parser.hpp>
-#include <cuopt/math_optimization/io/utilities/cython_parser.hpp>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
+#include <cuopt/mathematical_optimization/io/utilities/cython_parser.hpp>
 
 namespace cuopt {
 namespace cython {
 
-std::unique_ptr<cuopt::math_optimization::io::mps_data_model_t<int, double>> call_read(
+std::unique_ptr<cuopt::mathematical_optimization::io::mps_data_model_t<int, double>> call_read(
   const std::string& file_path, bool fixed_mps_format)
 {
-  return std::make_unique<cuopt::math_optimization::io::mps_data_model_t<int, double>>(
-    std::move(cuopt::math_optimization::io::read<int, double>(file_path, fixed_mps_format)));
+  return std::make_unique<cuopt::mathematical_optimization::io::mps_data_model_t<int, double>>(
+    std::move(
+      cuopt::mathematical_optimization::io::read<int, double>(file_path, fixed_mps_format)));
 }
 
-std::unique_ptr<cuopt::math_optimization::io::mps_data_model_t<int, double>> call_parse_mps(
+std::unique_ptr<cuopt::mathematical_optimization::io::mps_data_model_t<int, double>> call_parse_mps(
   const std::string& mps_file_path, bool fixed_mps_format)
 {
-  return std::make_unique<cuopt::math_optimization::io::mps_data_model_t<int, double>>(std::move(
-    cuopt::math_optimization::io::read_mps<int, double>(mps_file_path, fixed_mps_format)));
+  return std::make_unique<cuopt::mathematical_optimization::io::mps_data_model_t<int, double>>(
+    std::move(cuopt::mathematical_optimization::io::read_mps<int, double>(mps_file_path,
+                                                                          fixed_mps_format)));
 }
 
 }  // namespace cython

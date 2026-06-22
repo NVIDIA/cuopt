@@ -9,8 +9,8 @@
 
 #include <utilities/copy_helpers.hpp>
 
-#include <cuopt/math_optimization/pdlp/pdlp_hyper_params.cuh>
-#include <cuopt/math_optimization/utilities/segmented_sum_handler.cuh>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/mathematical_optimization/utilities/segmented_sum_handler.cuh>
 #include <mip_heuristics/mip_constants.hpp>
 #include <pdlp/initial_scaling_strategy/initial_scaling.cuh>
 #include <pdlp/pdlp_constants.hpp>
@@ -29,7 +29,7 @@
 #include <thrust/iterator/zip_iterator.h>
 #include <thrust/scatter.h>
 
-namespace cuopt::math_optimization::pdlp {
+namespace cuopt::mathematical_optimization::pdlp {
 
 template <typename f_t>
 struct weighted_square_op {
@@ -972,4 +972,4 @@ INSTANTIATE(float)
 INSTANTIATE(double)
 #endif
 
-}  // namespace cuopt::math_optimization::pdlp
+}  // namespace cuopt::mathematical_optimization::pdlp

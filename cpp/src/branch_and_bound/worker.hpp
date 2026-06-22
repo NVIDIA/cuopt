@@ -20,7 +20,7 @@
 
 #include <vector>
 
-namespace cuopt::math_optimization::mip {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 struct branch_and_bound_stats_t {
@@ -256,4 +256,4 @@ class diving_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
   bfs_worker_t<i_t, f_t>* bfs_worker{nullptr};
 };
 
-}  // namespace cuopt::math_optimization::mip
+}  // namespace cuopt::mathematical_optimization::mip

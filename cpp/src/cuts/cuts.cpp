@@ -27,10 +27,10 @@
 #include <numeric>
 #include <queue>
 
-namespace cuopt::math_optimization::mip {
+namespace cuopt::mathematical_optimization::mip {
 
-using namespace cuopt::math_optimization::simplex;  // shared simplex types (lp_problem_t,
-                                                    // etc.)
+using namespace cuopt::mathematical_optimization::simplex;  // shared simplex types (lp_problem_t,
+                                                            // etc.)
 
 namespace {
 
@@ -5602,4 +5602,4 @@ template void verify_cuts_against_saved_solution<int, double>(
   const std::vector<double>& saved_solution);
 #endif
 
-}  // namespace cuopt::math_optimization::mip
+}  // namespace cuopt::mathematical_optimization::mip

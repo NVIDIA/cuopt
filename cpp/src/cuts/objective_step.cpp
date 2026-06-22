@@ -14,10 +14,10 @@
 #include <cstdint>
 #include <vector>
 
-namespace cuopt::math_optimization::mip {
+namespace cuopt::mathematical_optimization::mip {
 
-using namespace cuopt::math_optimization::simplex;  // shared simplex types (objective_step_t,
-                                                    // etc.)
+using namespace cuopt::mathematical_optimization::simplex;  // shared simplex types
+                                                            // (objective_step_t, etc.)
 
 namespace {
 
@@ -411,4 +411,4 @@ template objective_step_t<float> compute_objective_step_info<int, float>(const s
                                                                          const std::vector<float>&,
                                                                          const std::vector<float>&);
 
-}  // namespace cuopt::math_optimization::mip
+}  // namespace cuopt::mathematical_optimization::mip

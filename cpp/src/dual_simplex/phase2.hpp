@@ -21,7 +21,7 @@ namespace cuopt {
 struct work_limit_context_t;
 }
 
-namespace cuopt::math_optimization::simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 enum class dual_status_t {
   OPTIMAL          = 0,
@@ -107,4 +107,4 @@ void compute_initial_nonbasic_end(const std::vector<i_t>& basic_mark,
                                   csr_matrix_t<i_t, f_t>& Arow,
                                   std::vector<i_t>& nonbasic_end);
 
-}  // namespace cuopt::math_optimization::simplex
+}  // namespace cuopt::mathematical_optimization::simplex

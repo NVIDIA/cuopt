@@ -14,7 +14,7 @@ import ctypes
 import numpy as np
 
 
-cdef extern from "cuopt/math_optimization/utilities/callbacks_implems.hpp" namespace "cuopt::internals":  # noqa
+cdef extern from "cuopt/mathematical_optimization/utilities/callbacks_implems.hpp" namespace "cuopt::internals":  # noqa
     cdef cppclass Callback:
         pass
 

@@ -11,7 +11,7 @@
 
 #include <raft/util/reduction.cuh>
 
-namespace cuopt::math_optimization::mip {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 __global__ void compute_constraint_values(typename solution_t<i_t, f_t>::view_t sol)
@@ -58,4 +58,4 @@ __global__ void compute_feasibility_kernel(
   }
 }
 
-}  // namespace cuopt::math_optimization::mip
+}  // namespace cuopt::mathematical_optimization::mip

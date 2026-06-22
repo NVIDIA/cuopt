@@ -27,12 +27,12 @@
 #include <cmath>
 #include <cstdint>
 
-namespace cuopt::math_optimization::mip {
+namespace cuopt::mathematical_optimization::mip {
 template <typename i_t, typename f_t>
 struct clique_table_t;
 }
 
-namespace cuopt::math_optimization::mip {
+namespace cuopt::mathematical_optimization::mip {
 
 enum cut_type_t : int8_t {
   MIXED_INTEGER_GOMORY   = 0,
@@ -1077,4 +1077,4 @@ i_t remove_cuts(simplex::lp_problem_t<i_t, f_t>& lp,
                 std::vector<i_t>& nonbasic_list,
                 simplex::basis_update_mpf_t<i_t, f_t>& basis_update);
 
-}  // namespace cuopt::math_optimization::mip
+}  // namespace cuopt::mathematical_optimization::mip

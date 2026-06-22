@@ -6,7 +6,7 @@
 /* clang-format on */
 #pragma once
 
-#include <cuopt/math_optimization/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
 #include <pdlp/pdlp_climber_strategy.hpp>
 #include <pdlp/swap_and_resize_helper.cuh>
 
@@ -17,7 +17,7 @@
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
 
-namespace cuopt::math_optimization::pdlp {
+namespace cuopt::mathematical_optimization::pdlp {
 template <typename i_t, typename f_t>
 struct localized_duality_gap_container_t {
  public:
@@ -77,4 +77,4 @@ struct localized_duality_gap_container_t {
   rmm::device_uvector<f_t> primal_solution_tr_;
   rmm::device_uvector<f_t> dual_solution_tr_;
 };
-}  // namespace cuopt::math_optimization::pdlp
+}  // namespace cuopt::mathematical_optimization::pdlp

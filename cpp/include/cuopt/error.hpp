@@ -6,7 +6,7 @@
 /* clang-format on */
 #pragma once
 
-#include "cuopt/math_optimization/constants.h"
+#include "cuopt/mathematical_optimization/constants.h"
 
 #include <stdarg.h>
 

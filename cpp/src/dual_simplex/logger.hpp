@@ -17,7 +17,7 @@
 #include <cstdio>
 #include <cstring>
 
-namespace cuopt::math_optimization::simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 class logger_t {
  public:
@@ -128,4 +128,4 @@ class logger_t {
   std::FILE* log_file;
 };
 
-}  // namespace cuopt::math_optimization::simplex
+}  // namespace cuopt::mathematical_optimization::simplex

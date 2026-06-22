@@ -11,7 +11,7 @@
 #include <pdlp/termination_strategy/infeasibility_information.hpp>
 #include <pdlp/utils.cuh>
 
-#include <cuopt/math_optimization/utilities/segmented_sum_handler.cuh>
+#include <cuopt/mathematical_optimization/utilities/segmented_sum_handler.cuh>
 
 #include <mip_heuristics/mip_constants.hpp>
 
@@ -34,7 +34,7 @@
 #include <thrust/transform_reduce.h>
 #include <thrust/tuple.h>
 
-namespace cuopt::math_optimization::pdlp {
+namespace cuopt::mathematical_optimization::pdlp {
 template <typename i_t, typename f_t>
 infeasibility_information_t<i_t, f_t>::infeasibility_information_t(
   raft::handle_t const* handle_ptr,
@@ -769,4 +769,4 @@ template __global__ void compute_remaining_stats_kernel<int, double>(
   typename infeasibility_information_t<int, double>::view_t infeasibility_information_view);
 #endif
 
-}  // namespace cuopt::math_optimization::pdlp
+}  // namespace cuopt::mathematical_optimization::pdlp

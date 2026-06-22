@@ -5,15 +5,15 @@
  */
 /* clang-format on */
 
-#include <cuopt/math_optimization/mip/solver_settings.hpp>
-#include <cuopt/math_optimization/mip/solver_stats.hpp>
-#include <cuopt/math_optimization/pdlp/solver_solution.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_stats.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>
 #include <mip_heuristics/problem/problem.cuh>
 #include <mip_heuristics/solver_context.cuh>
 #include <utilities/timer.hpp>
 #pragma once
 
-namespace cuopt::math_optimization::mip {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 class mip_solver_t {
@@ -32,4 +32,4 @@ class mip_solver_t {
   timer_t timer_;
 };
 
-}  // namespace cuopt::math_optimization::mip
+}  // namespace cuopt::mathematical_optimization::mip

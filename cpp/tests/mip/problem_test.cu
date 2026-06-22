@@ -7,9 +7,9 @@
 
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 
-#include <cuopt/math_optimization/io/mps_data_model.hpp>
-#include <cuopt/math_optimization/io/parser.hpp>
-#include <cuopt/math_optimization/solve.hpp>
+#include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
 #include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/problem/problem.cuh>
 #include <pdlp/utils.cuh>
@@ -39,10 +39,10 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::math_optimization::test {
+namespace cuopt::mathematical_optimization::test {
 
-namespace lp  = cuopt::math_optimization;
-namespace dtl = cuopt::math_optimization::mip;
+namespace lp  = cuopt::mathematical_optimization;
+namespace dtl = cuopt::mathematical_optimization::mip;
 
 template <typename i_t, typename T>
 thrust::host_vector<T> rand_vec(i_t size, T dist_beg, T dist_end)
@@ -205,7 +205,7 @@ TEST(problem, run_small_tests)
   }
 }
 
-namespace ds = cuopt::math_optimization::simplex;
+namespace ds = cuopt::mathematical_optimization::simplex;
 
 template <typename i_t, typename f_t>
 void test_roundtrip_equivalence(i_t n_cnst, i_t n_var)
@@ -322,7 +322,7 @@ TEST(problem, setting_both_rhs_and_constraints_bounds)
     raft::handle_t handle;
     optimization_problem_t<int, double> op_problem(&handle);
     fill_problem(op_problem);
-    cuopt::math_optimization::mip::problem_t<int, double> problem(op_problem);
+    cuopt::mathematical_optimization::mip::problem_t<int, double> problem(op_problem);
 
     const auto constraints_lower_bounds =
       host_copy(problem.constraint_lower_bounds, handle.get_stream());
@@ -342,7 +342,7 @@ TEST(problem, setting_both_rhs_and_constraints_bounds)
     double upper[] = {3.0};
     op_problem.set_constraint_lower_bounds(lower, 1);
     op_problem.set_constraint_upper_bounds(upper, 1);
-    cuopt::math_optimization::mip::problem_t<int, double> problem(op_problem);
+    cuopt::mathematical_optimization::mip::problem_t<int, double> problem(op_problem);
 
     const auto constraints_lower_bounds =
       host_copy(problem.constraint_lower_bounds, handle.get_stream());
@@ -362,7 +362,7 @@ TEST(problem, setting_both_rhs_and_constraints_bounds)
     op_problem.set_constraint_lower_bounds(lower, 1);
     op_problem.set_constraint_upper_bounds(upper, 1);
     fill_problem(op_problem);
-    cuopt::math_optimization::mip::problem_t<int, double> problem(op_problem);
+    cuopt::mathematical_optimization::mip::problem_t<int, double> problem(op_problem);
 
     const auto constraints_lower_bounds =
       host_copy(problem.constraint_lower_bounds, handle.get_stream());
@@ -381,7 +381,7 @@ TEST(optimization_problem_t_DeathTest, test_check_problem_validity)
 
   raft::handle_t handle;
   auto op_problem        = optimization_problem_t<int, double>(&handle);
-  using custom_problem_t = cuopt::math_optimization::mip::problem_t<int, double>;
+  using custom_problem_t = cuopt::mathematical_optimization::mip::problem_t<int, double>;
 
   // Check if assert if nothing
   EXPECT_DEATH({ custom_problem_t problem(op_problem); }, "");
@@ -484,4 +484,4 @@ TEST(optimization_problem_t_DeathTest, test_check_problem_validity)
 }
 #endif
 
-}  // namespace cuopt::math_optimization::test
+}  // namespace cuopt::mathematical_optimization::test

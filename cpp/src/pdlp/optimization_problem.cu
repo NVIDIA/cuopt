@@ -5,14 +5,14 @@
  */
 /* clang-format on */
 
-#include <cuopt/math_optimization/cpu_optimization_problem.hpp>
-#include <cuopt/math_optimization/optimization_problem.hpp>
-#include <cuopt/math_optimization/optimization_problem_utils.hpp>
-#include <cuopt/math_optimization/solve_remote.hpp>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
+#include <cuopt/mathematical_optimization/solve_remote.hpp>
 
 #include <cuopt/error.hpp>
-#include <cuopt/math_optimization/csr_matrix_utils.hpp>
-#include <cuopt/math_optimization/io/writer.hpp>
+#include <cuopt/mathematical_optimization/csr_matrix_utils.hpp>
+#include <cuopt/mathematical_optimization/io/writer.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/logger.hpp>
@@ -49,7 +49,7 @@
 #include <stdexcept>
 #include <unordered_map>
 
-namespace cuopt::math_optimization {
+namespace cuopt::mathematical_optimization {
 
 template <typename i_t, typename f_t>
 optimization_problem_t<i_t, f_t>::optimization_problem_t(raft::handle_t const* handle_ptr)
@@ -795,7 +795,7 @@ typename optimization_problem_t<i_t, f_t>::view_t optimization_problem_t<i_t, f_
 template <typename i_t, typename f_t>
 void optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_path)
 {
-  cuopt::math_optimization::io::data_model_view_t<i_t, f_t> data_model_view;
+  cuopt::mathematical_optimization::io::data_model_view_t<i_t, f_t> data_model_view;
 
   // Set optimization sense
   data_model_view.set_maximize(get_sense());
@@ -905,7 +905,7 @@ void optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_
     data_model_view.set_quadratic_constraints(quadratic_constraints_);
   }
 
-  cuopt::math_optimization::io::write_mps(data_model_view, mps_file_path);
+  cuopt::mathematical_optimization::io::write_mps(data_model_view, mps_file_path);
 }
 
 template <typename i_t, typename f_t>
@@ -1641,4 +1641,4 @@ template optimization_problem_t<int32_t, float>
     rmm::cuda_stream_view) const;
 #endif
 
-}  // namespace cuopt::math_optimization
+}  // namespace cuopt::mathematical_optimization

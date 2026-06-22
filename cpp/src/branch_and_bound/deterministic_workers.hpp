@@ -22,7 +22,7 @@
 #include <queue>
 #include <vector>
 
-namespace cuopt::math_optimization::mip {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 struct backlog_node_compare_t {
@@ -457,4 +457,4 @@ class deterministic_diving_worker_pool_t
   }
 };
 
-}  // namespace cuopt::math_optimization::mip
+}  // namespace cuopt::mathematical_optimization::mip

@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include <cuopt/math_optimization/constants.h>
+#include <cuopt/mathematical_optimization/constants.h>
 
 #define MIP_INSTANTIATE_FLOAT  CUOPT_INSTANTIATE_FLOAT
 #define MIP_INSTANTIATE_DOUBLE CUOPT_INSTANTIATE_DOUBLE

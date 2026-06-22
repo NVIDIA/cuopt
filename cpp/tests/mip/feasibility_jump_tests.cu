@@ -9,9 +9,9 @@
 #include "mip_utils.cuh"
 
 #include <cuopt/error.hpp>
-#include <cuopt/math_optimization/io/parser.hpp>
-#include <cuopt/math_optimization/solve.hpp>
-#include <cuopt/math_optimization/utilities/internals.hpp>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
+#include <cuopt/mathematical_optimization/utilities/internals.hpp>
 #include <mip_heuristics/feasibility_jump/feasibility_jump.cuh>
 #include <mip_heuristics/mip_scaling_strategy.cuh>
 #include <mip_heuristics/solution/solution.cuh>
@@ -35,7 +35,7 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::math_optimization::test {
+namespace cuopt::mathematical_optimization::test {
 
 void init_handler(const raft::handle_t* handle_ptr)
 {
@@ -68,8 +68,8 @@ static fj_state_t run_fj(std::string test_instance,
   std::cout << "Running: " << test_instance << std::endl;
 
   auto path = cuopt::test::get_rapids_dataset_root_dir() + ("/mip/" + test_instance);
-  cuopt::math_optimization::io::mps_data_model_t<int, double> mps_problem =
-    cuopt::math_optimization::io::read_mps<int, double>(path, false);
+  cuopt::mathematical_optimization::io::mps_data_model_t<int, double> mps_problem =
+    cuopt::mathematical_optimization::io::read_mps<int, double>(path, false);
   handle_.sync_stream();
   auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps_problem);
   problem_checking_t<int, double>::check_problem_representation(op_problem);
@@ -259,4 +259,4 @@ TEST(mip_solve, feasibility_jump_obj_runoff_test)
   }
 }
 
-}  // namespace cuopt::math_optimization::test
+}  // namespace cuopt::mathematical_optimization::test

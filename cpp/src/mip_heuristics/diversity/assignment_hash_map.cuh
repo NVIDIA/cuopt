@@ -10,7 +10,7 @@
 #include <mip_heuristics/solution/solution.cuh>
 
 namespace cuopt {
-namespace math_optimization {
+namespace mathematical_optimization {
 namespace mip {
 
 template <typename i_t, typename f_t>
@@ -31,5 +31,5 @@ class assignment_hash_map_t {
 };
 
 }  // namespace mip
-}  // namespace math_optimization
+}  // namespace mathematical_optimization
 }  // namespace cuopt

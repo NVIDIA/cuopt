@@ -15,7 +15,7 @@
 #include <cuda/std/functional>
 
 namespace cuopt {
-namespace math_optimization {
+namespace mathematical_optimization {
 namespace mip {
 
 struct combine_hash {
@@ -158,5 +158,5 @@ template class assignment_hash_map_t<int, double>;
 #endif
 
 }  // namespace mip
-}  // namespace math_optimization
+}  // namespace mathematical_optimization
 }  // namespace cuopt

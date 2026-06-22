@@ -7,7 +7,7 @@
 
 #include <utilities/common_utils.hpp>
 
-#include <cuopt/math_optimization/io/parser.hpp>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
 #include <mip_heuristics/problem/problem.cuh>
 #include <pdlp/utilities/problem_checking.cuh>
 #include <utilities/error.hpp>
@@ -22,16 +22,16 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::math_optimization {
+namespace cuopt::mathematical_optimization {
 
-cuopt::math_optimization::io::mps_data_model_t<int, double> read_from_mps(
+cuopt::mathematical_optimization::io::mps_data_model_t<int, double> read_from_mps(
   const std::string& file, bool fixed_mps_format = true)
 {
   std::string rel_file{};
   // assume relative paths are relative to RAPIDS_DATASET_ROOT_DIR
   const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
   rel_file                                = rapidsDatasetRootDir + "/" + file;
-  return cuopt::math_optimization::io::read_mps<int, double>(rel_file, fixed_mps_format);
+  return cuopt::mathematical_optimization::io::read_mps<int, double>(rel_file, fixed_mps_format);
 }
 
 TEST(optimization_problem_t, good_mps_file_1)
@@ -590,4 +590,4 @@ TEST(optimization_problem_t, good_mps_mip_file_no_marker)
   EXPECT_EQ(10., h_upper_bounds[1]);
 }
 
-}  // namespace cuopt::math_optimization
+}  // namespace cuopt::mathematical_optimization

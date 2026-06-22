@@ -33,7 +33,7 @@
 
 #include <unordered_set>
 
-namespace cuopt::math_optimization::mip {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 void test_renumbered_coo(raft::device_span<i_t> coo_major, const problem_t<i_t, f_t>& pb)
@@ -371,4 +371,4 @@ void trivial_presolve(problem_t<i_t, f_t>& problem, bool remap_cache_ids = false
   problem.check_problem_representation(true);
 }
 
-}  // namespace cuopt::math_optimization::mip
+}  // namespace cuopt::mathematical_optimization::mip

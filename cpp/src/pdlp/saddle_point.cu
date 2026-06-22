@@ -15,7 +15,7 @@
 
 #include <thrust/fill.h>
 
-namespace cuopt::math_optimization::pdlp {
+namespace cuopt::mathematical_optimization::pdlp {
 
 template <typename i_t, typename f_t>
 saddle_point_state_t<i_t, f_t>::saddle_point_state_t(raft::handle_t const* handle_ptr,
@@ -178,4 +178,4 @@ template class saddle_point_state_t<int, float>;
 template class saddle_point_state_t<int, double>;
 #endif
 
-}  // namespace cuopt::math_optimization::pdlp
+}  // namespace cuopt::mathematical_optimization::pdlp

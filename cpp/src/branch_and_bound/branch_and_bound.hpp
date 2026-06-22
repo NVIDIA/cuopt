@@ -30,7 +30,7 @@
 #include <utilities/work_limit_context.hpp>
 #include <utilities/work_unit_scheduler.hpp>
 
-#include <cuopt/math_optimization/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 
 #include <omp.h>
 
@@ -40,12 +40,12 @@
 #include <memory>
 #include <vector>
 
-namespace cuopt::math_optimization::mip {
+namespace cuopt::mathematical_optimization::mip {
 template <typename i_t, typename f_t>
 struct clique_table_t;
 }
 
-namespace cuopt::math_optimization::mip {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 struct mip_symmetry_t;
@@ -475,4 +475,4 @@ class branch_and_bound_t {
   heap_t<diving_entry_t, diving_score_comp> diving_heap_;
 };
 
-}  // namespace cuopt::math_optimization::mip
+}  // namespace cuopt::mathematical_optimization::mip

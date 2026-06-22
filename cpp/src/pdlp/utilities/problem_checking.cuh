@@ -6,16 +6,16 @@
 /* clang-format on */
 #pragma once
 
-#include <cuopt/math_optimization/mip/solver_settings.hpp>
-#include <cuopt/math_optimization/optimization_problem.hpp>
-#include <cuopt/math_optimization/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 
 namespace rmm {
 template <typename T>
 class device_uvector;
 }  // namespace rmm
 
-namespace cuopt::math_optimization {
+namespace cuopt::mathematical_optimization {
 
 namespace mip {
 template <typename i_t, typename f_t>
@@ -48,4 +48,4 @@ class problem_checking_t {
     const mip_solver_settings_t<i_t, f_t>& settings);
 };
 
-}  // namespace cuopt::math_optimization
+}  // namespace cuopt::mathematical_optimization

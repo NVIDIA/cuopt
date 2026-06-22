@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include <cuopt/math_optimization/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
 #include <pdlp/pdhg.hpp>
 #include <pdlp/swap_and_resize_helper.cuh>
 
@@ -21,7 +21,7 @@
 #include <limits>
 #include <vector>
 
-namespace cuopt::math_optimization::pdlp {
+namespace cuopt::mathematical_optimization::pdlp {
 
 template <typename i_t, typename f_t>
 class pdlp_initial_scaling_strategy_t {
@@ -125,4 +125,4 @@ class pdlp_initial_scaling_strategy_t {
   const pdlp::pdlp_hyper_params_t& hyper_params_;
   bool running_mip_;
 };
-}  // namespace cuopt::math_optimization::pdlp
+}  // namespace cuopt::mathematical_optimization::pdlp

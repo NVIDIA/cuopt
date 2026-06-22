@@ -16,15 +16,15 @@
 #include <dual_simplex/tic_toc.hpp>
 #include <dual_simplex/user_problem.hpp>
 
-#include <cuopt/math_optimization/io/parser.hpp>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
 #include <utilities/logger.hpp>
 
-namespace cuopt::math_optimization::simplex::test {
+namespace cuopt::mathematical_optimization::simplex::test {
 
 TEST(dual_simplex, chess_set)
 {
   cuopt::init_logger_t log("", true);
-  namespace simplex = cuopt::math_optimization::simplex;
+  namespace simplex = cuopt::mathematical_optimization::simplex;
   raft::handle_t handle{};
   simplex::user_problem_t<int, double> user_problem(&handle);
   // maximize   5*xs + 20*xl
@@ -109,7 +109,7 @@ TEST(dual_simplex, burglar)
   //           take[i] binary for all i
 
   raft::handle_t handle{};
-  cuopt::math_optimization::simplex::user_problem_t<int, double> user_problem(&handle);
+  cuopt::mathematical_optimization::simplex::user_problem_t<int, double> user_problem(&handle);
   constexpr int m  = 1;
   constexpr int n  = num_items;
   constexpr int nz = num_items;
@@ -152,12 +152,13 @@ TEST(dual_simplex, burglar)
   user_problem.obj_constant = 0.0;
   user_problem.var_types.resize(n);
   for (int j = 0; j < num_items; ++j) {
-    user_problem.var_types[j] = cuopt::math_optimization::simplex::variable_type_t::INTEGER;
+    user_problem.var_types[j] = cuopt::mathematical_optimization::simplex::variable_type_t::INTEGER;
   }
 
-  cuopt::math_optimization::simplex::simplex_solver_settings_t<int, double> settings;
+  cuopt::mathematical_optimization::simplex::simplex_solver_settings_t<int, double> settings;
   std::vector<double> solution(num_items);
-  EXPECT_EQ((cuopt::math_optimization::simplex::solve(user_problem, settings, solution)), 0);
+  EXPECT_EQ((cuopt::mathematical_optimization::simplex::solve(user_problem, settings, solution)),
+            0);
   double objective = 0.0;
   for (int j = 0; j < num_items; ++j) {
     objective += value[j] * solution[j];
@@ -185,7 +186,7 @@ TEST(dual_simplex, empty_columns)
   //           take[i] binary for all i
 
   raft::handle_t handle{};
-  cuopt::math_optimization::simplex::user_problem_t<int, double> user_problem(&handle);
+  cuopt::mathematical_optimization::simplex::user_problem_t<int, double> user_problem(&handle);
   constexpr int m  = 1;
   constexpr int n  = num_items;
   constexpr int nz = num_items - 1;
@@ -232,16 +233,17 @@ TEST(dual_simplex, empty_columns)
   user_problem.obj_constant = 0.0;
   user_problem.var_types.resize(n);
   for (int j = 0; j < num_items; ++j) {
-    user_problem.var_types[j] = cuopt::math_optimization::simplex::variable_type_t::CONTINUOUS;
+    user_problem.var_types[j] =
+      cuopt::mathematical_optimization::simplex::variable_type_t::CONTINUOUS;
   }
 
-  cuopt::math_optimization::simplex::simplex_solver_settings_t<int, double> settings;
+  cuopt::mathematical_optimization::simplex::simplex_solver_settings_t<int, double> settings;
 
-  cuopt::math_optimization::simplex::lp_solution_t<int, double> solution(user_problem.num_rows,
-                                                                         user_problem.num_cols);
-  EXPECT_EQ(
-    (cuopt::math_optimization::simplex::solve_linear_program(user_problem, settings, solution)),
-    cuopt::math_optimization::simplex::lp_status_t::OPTIMAL);
+  cuopt::mathematical_optimization::simplex::lp_solution_t<int, double> solution(
+    user_problem.num_rows, user_problem.num_cols);
+  EXPECT_EQ((cuopt::mathematical_optimization::simplex::solve_linear_program(
+              user_problem, settings, solution)),
+            cuopt::mathematical_optimization::simplex::lp_status_t::OPTIMAL);
   double objective = 0.0;
   for (int j = 0; j < num_items; ++j) {
     objective += value[j] * solution.x[j];
@@ -267,7 +269,7 @@ TEST(dual_simplex, dual_variable_greater_than)
   //             x0, x1 >= 0
 
   raft::handle_t handle{};
-  cuopt::math_optimization::simplex::user_problem_t<int, double> user_problem(&handle);
+  cuopt::mathematical_optimization::simplex::user_problem_t<int, double> user_problem(&handle);
   constexpr int m  = 2;
   constexpr int n  = 2;
   constexpr int nz = 4;
@@ -330,4 +332,4 @@ TEST(dual_simplex, dual_variable_greater_than)
   EXPECT_NEAR(solution.z[1], 0.0, 1e-6);
 }
 
-}  // namespace cuopt::math_optimization::simplex::test
+}  // namespace cuopt::mathematical_optimization::simplex::test

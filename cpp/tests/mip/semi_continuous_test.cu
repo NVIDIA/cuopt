@@ -5,12 +5,12 @@
  */
 /* clang-format on */
 
-#include "cuopt/math_optimization/mip/solver_settings.hpp"
+#include "cuopt/mathematical_optimization/mip/solver_settings.hpp"
 
 #include "../utilities/inline_lp_test_utils.hpp"
 #include "../utilities/inline_mps_test_utils.hpp"
 
-#include <cuopt/math_optimization/solve.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
 #include <utilities/copy_helpers.hpp>
 
 #include <raft/core/handle.hpp>
@@ -22,7 +22,7 @@
 #include <utility>
 #include <vector>
 
-namespace cuopt::math_optimization::test {
+namespace cuopt::mathematical_optimization::test {
 
 struct sc_result_t {
   std::string name;
@@ -142,4 +142,4 @@ TEST(mip_solve, semi_continuous_equal_bounds_supported)
   }
 }
 
-}  // namespace cuopt::math_optimization::test
+}  // namespace cuopt::mathematical_optimization::test

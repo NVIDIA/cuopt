@@ -11,7 +11,7 @@
 #include <branch_and_bound/pseudo_costs.hpp>
 #include <branch_and_bound/symmetry.hpp>
 
-#include <cuopt/math_optimization/mip/solver_settings.hpp>  // benchmark_info_t
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>  // benchmark_info_t
 
 #include <cuts/cuts.hpp>
 #include <mip_heuristics/feasibility_jump/cpu_fj_thread.cuh>
@@ -44,10 +44,10 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::math_optimization::mip {
+namespace cuopt::mathematical_optimization::mip {
 
-using namespace cuopt::math_optimization::simplex;  // shared simplex types (lp_problem_t,
-                                                    // etc.)
+using namespace cuopt::mathematical_optimization::simplex;  // shared simplex types (lp_problem_t,
+                                                            // etc.)
 namespace {
 
 template <typename f_t>
@@ -4191,4 +4191,4 @@ template class branch_and_bound_t<int, double>;
 
 #endif
 
-}  // namespace cuopt::math_optimization::mip
+}  // namespace cuopt::mathematical_optimization::mip

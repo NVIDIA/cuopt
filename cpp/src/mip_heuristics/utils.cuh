@@ -17,11 +17,11 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/hashing.hpp>
 
-#include <cuopt/math_optimization/mip/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
 
 #pragma once
 
-namespace cuopt::math_optimization::mip {
+namespace cuopt::mathematical_optimization::mip {
 
 // TODO templatize as needed
 constexpr double default_cont_upper = std::numeric_limits<double>::infinity();
@@ -421,4 +421,4 @@ bool has_variable_bounds_violation(const raft::handle_t* handle_ptr,
     has_variable_bounds_violation_functor<i_t, f_t>(assignment.data(), problem_ptr->view()));
 }
 
-}  // namespace cuopt::math_optimization::mip
+}  // namespace cuopt::mathematical_optimization::mip

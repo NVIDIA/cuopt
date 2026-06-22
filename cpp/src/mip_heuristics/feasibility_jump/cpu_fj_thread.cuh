@@ -17,7 +17,7 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::math_optimization::mip {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 struct fj_cpu_climber_t;
@@ -53,4 +53,4 @@ void run_fj_cpu_task(fj_cpu_task_t<i_t, f_t>& task,
 template <typename i_t, typename f_t>
 void stop_fj_cpu_task(fj_cpu_task_t<i_t, f_t>& task);
 
-}  // namespace cuopt::math_optimization::mip
+}  // namespace cuopt::mathematical_optimization::mip
