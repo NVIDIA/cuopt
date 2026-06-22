@@ -18,8 +18,8 @@
 
 namespace cuopt::math_optimization::mip {
 
-using namespace cuopt::math_optimization::dual_simplex;  // shared simplex types (lp_problem_t,
-                                                         // etc.)
+using namespace cuopt::math_optimization::simplex;  // shared simplex types (lp_problem_t,
+                                                    // etc.)
 
 // When `log_diving_type` is true, each diving strategy gets its own letter;
 // otherwise every dive collapses to 'D'.

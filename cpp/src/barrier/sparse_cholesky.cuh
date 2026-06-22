@@ -22,8 +22,8 @@
 
 namespace cuopt::math_optimization::barrier {
 
-using namespace cuopt::math_optimization::dual_simplex;  // shared simplex types (lp_problem_t, inf,
-                                                         // etc.)
+using namespace cuopt::math_optimization::simplex;  // shared simplex types (lp_problem_t, inf,
+                                                    // etc.)
 
 template <typename i_t, typename f_t>
 class sparse_cholesky_base_t {
@@ -854,9 +854,9 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     raft::copy(x_host.data(), x.data(), n, stream);
     cudaStreamSynchronize(stream);
     settings_.log.printf("RHS norm %.16e, hash: %zu, Solution norm %.16e, hash: %zu\n",
-                         dual_simplex::vector_norm2<i_t, f_t>(b_host),
+                         simplex::vector_norm2<i_t, f_t>(b_host),
                          compute_hash(b_host),
-                         dual_simplex::vector_norm2<i_t, f_t>(x_host),
+                         simplex::vector_norm2<i_t, f_t>(x_host),
                          compute_hash(x_host));
 #endif
 

@@ -234,10 +234,10 @@ void rins_t<i_t, f_t>::run_rins()
   f_t current_mip_gap = compute_rel_mip_gap(prev_obj, lower_bound);
 
   // run sub-mip
-  namespace dual_simplex = cuopt::math_optimization::dual_simplex;
-  dual_simplex::user_problem_t<i_t, f_t> branch_and_bound_problem(&rins_handle);
-  dual_simplex::simplex_solver_settings_t<i_t, f_t> branch_and_bound_settings;
-  dual_simplex::mip_solution_t<i_t, f_t> branch_and_bound_solution(1);
+  namespace simplex = cuopt::math_optimization::simplex;
+  simplex::user_problem_t<i_t, f_t> branch_and_bound_problem(&rins_handle);
+  simplex::simplex_solver_settings_t<i_t, f_t> branch_and_bound_settings;
+  simplex::mip_solution_t<i_t, f_t> branch_and_bound_solution(1);
   mip::mip_status_t branch_and_bound_status = mip::mip_status_t::UNSET;
   fixed_problem.get_host_user_problem(branch_and_bound_problem);
   branch_and_bound_solution.resize(branch_and_bound_problem.num_cols);
@@ -264,7 +264,7 @@ void rins_t<i_t, f_t>::run_rins()
   };
   mip::probing_implied_bound_t<i_t, f_t> empty_probing(branch_and_bound_problem.num_cols);
   mip::branch_and_bound_t<i_t, f_t> branch_and_bound(
-    branch_and_bound_problem, branch_and_bound_settings, dual_simplex::tic(), empty_probing);
+    branch_and_bound_problem, branch_and_bound_settings, simplex::tic(), empty_probing);
   branch_and_bound.set_initial_guess(cuopt::host_copy(fixed_assignment, rins_handle.get_stream()));
   branch_and_bound_status = branch_and_bound.solve(branch_and_bound_solution);
 

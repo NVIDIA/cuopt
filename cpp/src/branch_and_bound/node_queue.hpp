@@ -15,8 +15,8 @@
 
 namespace cuopt::math_optimization::mip {
 
-using namespace cuopt::math_optimization::dual_simplex;  // shared simplex types (lp_problem_t,
-                                                         // etc.)
+using namespace cuopt::math_optimization::simplex;  // shared simplex types (lp_problem_t,
+                                                    // etc.)
 
 // This is a generic heap implementation based
 // on the STL functions. The main benefit here is

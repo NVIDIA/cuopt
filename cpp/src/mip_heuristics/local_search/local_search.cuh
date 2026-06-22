@@ -15,7 +15,7 @@
 #include <utilities/omp_helpers.hpp>
 #include <utilities/timer.hpp>
 
-namespace cuopt::math_optimization::dual_simplex {
+namespace cuopt::math_optimization::simplex {
 template <typename i_t, typename f_t>
 class branch_and_bound_t;
 }

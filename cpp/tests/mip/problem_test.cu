@@ -205,7 +205,7 @@ TEST(problem, run_small_tests)
   }
 }
 
-namespace ds = cuopt::math_optimization::dual_simplex;
+namespace ds = cuopt::math_optimization::simplex;
 
 template <typename i_t, typename f_t>
 void test_roundtrip_equivalence(i_t n_cnst, i_t n_var)

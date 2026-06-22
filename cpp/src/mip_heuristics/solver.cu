@@ -60,7 +60,7 @@ mip_solver_t<i_t, f_t>::mip_solver_t(const problem_t<i_t, f_t>& op_problem,
 template <typename i_t, typename f_t>
 struct branch_and_bound_solution_helper_t {
   branch_and_bound_solution_helper_t(diversity_manager_t<i_t, f_t>* dm,
-                                     dual_simplex::simplex_solver_settings_t<i_t, f_t>& settings)
+                                     simplex::simplex_solver_settings_t<i_t, f_t>& settings)
     : dm(dm), settings_(settings) {};
 
   void solution_callback(std::vector<f_t>& solution, f_t objective)
@@ -83,14 +83,14 @@ struct branch_and_bound_solution_helper_t {
 
   void preempt_heuristic_solver() { dm->population.preempt_heuristic_solver(); }
   diversity_manager_t<i_t, f_t>* dm;
-  dual_simplex::simplex_solver_settings_t<i_t, f_t>& settings_;
+  simplex::simplex_solver_settings_t<i_t, f_t>& settings_;
 };
 
 // Extract probing cache into CPU-only CSR struct for implied bounds cuts
 template <typename i_t, typename f_t>
 void extract_probing_implied_bounds(
   const problem_t<i_t, f_t>& op_problem,
-  const dual_simplex::user_problem_t<i_t, f_t>& branch_and_bound_problem,
+  const simplex::user_problem_t<i_t, f_t>& branch_and_bound_problem,
   const probing_cache_t<i_t, f_t>& probing_cache,
   mip::probing_implied_bound_t<i_t, f_t>& probing_implied_bound)
 
@@ -296,10 +296,10 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   // Detect symmetry after all presolve steps (PaPILO, cuOpt probing, bounds, trivial presolve).
   // context.problem_ptr is the final reduced problem with correct variable indices.
   if (context.settings.symmetry != 0 && !context.problem_ptr->empty) {
-    cuopt::math_optimization::dual_simplex::simplex_solver_settings_t<i_t, f_t> simplex_settings;
+    cuopt::math_optimization::simplex::simplex_solver_settings_t<i_t, f_t> simplex_settings;
     simplex_settings.set_log(true);
     simplex_settings.time_limit = context.settings.time_limit;
-    cuopt::math_optimization::dual_simplex::user_problem_t<i_t, f_t> post_presolve_problem =
+    cuopt::math_optimization::simplex::user_problem_t<i_t, f_t> post_presolve_problem =
       cuopt_problem_to_user_problem<i_t, f_t>(context.problem_ptr->handle_ptr,
                                               *context.problem_ptr);
     bool has_symmetry_post = false;
@@ -308,9 +308,9 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   }
 #endif
 
-  namespace dual_simplex                    = cuopt::math_optimization::dual_simplex;
+  namespace simplex                         = cuopt::math_optimization::simplex;
   mip::mip_status_t branch_and_bound_status = mip::mip_status_t::UNSET;
-  dual_simplex::user_problem_t<i_t, f_t> branch_and_bound_problem(context.problem_ptr->handle_ptr);
+  simplex::user_problem_t<i_t, f_t> branch_and_bound_problem(context.problem_ptr->handle_ptr);
   context.problem_ptr->recompute_objective_integrality();
   if (context.settings.objective_step) { context.problem_ptr->compute_objective_step(); }
   if (context.problem_ptr->is_objective_integral()) {
@@ -328,17 +328,17 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
   if (context.settings.objective_step) {
     branch_and_bound_problem.objective_step = context.problem_ptr->get_objective_step();
   }
-  dual_simplex::simplex_solver_settings_t<i_t, f_t> branch_and_bound_settings;
+  simplex::simplex_solver_settings_t<i_t, f_t> branch_and_bound_settings;
   std::unique_ptr<mip::branch_and_bound_t<i_t, f_t>> branch_and_bound;
   branch_and_bound_solution_helper_t solution_helper(&dm, branch_and_bound_settings);
-  dual_simplex::mip_solution_t<i_t, f_t> branch_and_bound_solution(1);
+  simplex::mip_solution_t<i_t, f_t> branch_and_bound_solution(1);
 
   mip::probing_implied_bound_t<i_t, f_t> probing_implied_bound;
 
   i_t num_threads = omp_get_num_threads();
 
   if (!context.settings.heuristics_only) {
-    // Convert the presolved problem to dual_simplex::user_problem_t
+    // Convert the presolved problem to simplex::user_problem_t
     op_problem_.get_host_user_problem(branch_and_bound_problem);
     // Resize the solution now that we know the number of columns/variables
     branch_and_bound_solution.resize(branch_and_bound_problem.num_cols);

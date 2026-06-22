@@ -12,7 +12,7 @@
 #include <utilities/omp_helpers.hpp>
 #include <vector>
 
-namespace cuopt::math_optimization::dual_simplex {
+namespace cuopt::math_optimization::simplex {
 
 template <typename i_t, typename f_t>
 class lp_solution_t {
@@ -78,4 +78,4 @@ class mip_solution_t {
   omp_atomic_t<bool> has_incumbent;
 };
 
-}  // namespace cuopt::math_optimization::dual_simplex
+}  // namespace cuopt::math_optimization::simplex

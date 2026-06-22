@@ -142,7 +142,7 @@ mip::clique_table_t<int, double> build_clique_table_for_model_with_min_size(
 {
   auto op_problem = mps_data_model_to_optimization_problem(&handle, model);
   mip::problem_t<int, double> mip_problem(op_problem);
-  dual_simplex::user_problem_t<int, double> host_problem(op_problem.get_handle_ptr());
+  simplex::user_problem_t<int, double> host_problem(op_problem.get_handle_ptr());
   mip_problem.get_host_user_problem(host_problem);
 
   mip::clique_config_t clique_config;
@@ -847,7 +847,7 @@ TEST(cuts, test_cuts_2)
 
 TEST(cuts, test_duplicate_cuts_detection)
 {
-  dual_simplex::simplex_solver_settings_t<int, double> settings;
+  simplex::simplex_solver_settings_t<int, double> settings;
   mip::cut_pool_t<int, double> cut_pool(4, settings);
   mip::inequality_t<int, double> cut1;
   cut1.push_back(0, 1.0);
@@ -1346,11 +1346,11 @@ End
 
 struct flow_cover_test_problem_t {
   raft::handle_t handle;
-  dual_simplex::simplex_solver_settings_t<int, double> settings;
-  dual_simplex::lp_problem_t<int, double> lp;
-  dual_simplex::csr_matrix_t<int, double> Arow;
+  simplex::simplex_solver_settings_t<int, double> settings;
+  simplex::lp_problem_t<int, double> lp;
+  simplex::csr_matrix_t<int, double> Arow;
   std::vector<int> new_slacks;
-  std::vector<dual_simplex::variable_type_t> var_types;
+  std::vector<simplex::variable_type_t> var_types;
 
   flow_cover_test_problem_t() : handle(), settings(), lp(&handle, 1, 1, 1), Arow(0, 0, 0) {}
 };
@@ -1361,16 +1361,15 @@ flow_cover_test_problem_t build_flow_cover_test_problem(
   flow_cover_test_problem_t test_problem;
   auto op_problem = mps_data_model_to_optimization_problem(&test_problem.handle, model);
   mip::problem_t<int, double> mip_problem(op_problem);
-  dual_simplex::user_problem_t<int, double> host_problem(op_problem.get_handle_ptr());
+  simplex::user_problem_t<int, double> host_problem(op_problem.get_handle_ptr());
   mip_problem.get_host_user_problem(host_problem);
 
-  dual_simplex::dualize_info_t<int, double> dualize_info;
-  dual_simplex::convert_user_problem(
+  simplex::dualize_info_t<int, double> dualize_info;
+  simplex::convert_user_problem(
     host_problem, test_problem.settings, test_problem.lp, test_problem.new_slacks, dualize_info);
   test_problem.var_types = host_problem.var_types;
   if (test_problem.lp.num_cols > static_cast<int>(test_problem.var_types.size())) {
-    test_problem.var_types.resize(test_problem.lp.num_cols,
-                                  dual_simplex::variable_type_t::CONTINUOUS);
+    test_problem.var_types.resize(test_problem.lp.num_cols, simplex::variable_type_t::CONTINUOUS);
   }
   test_problem.lp.A.to_compressed_row(test_problem.Arow);
   return test_problem;

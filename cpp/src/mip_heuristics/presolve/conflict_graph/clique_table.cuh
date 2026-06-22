@@ -205,14 +205,14 @@ struct clique_table_t {
 };
 
 template <typename i_t, typename f_t>
-void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
+void find_initial_cliques(simplex::user_problem_t<i_t, f_t>& problem,
                           typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances,
                           std::shared_ptr<clique_table_t<i_t, f_t>>* clique_table_out,
                           cuopt::timer_t& timer,
                           omp_atomic_t<bool>* signal_extend = nullptr);
 
 template <typename i_t, typename f_t>
-void build_clique_table(const dual_simplex::user_problem_t<i_t, f_t>& problem,
+void build_clique_table(const simplex::user_problem_t<i_t, f_t>& problem,
                         clique_table_t<i_t, f_t>& clique_table,
                         typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances,
                         bool remove_small_cliques,

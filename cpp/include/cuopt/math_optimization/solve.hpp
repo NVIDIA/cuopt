@@ -93,7 +93,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
  *   subject to lb <= A*x <= ub
  *   x_j >= ceil(root_soln[j])
  *
- * @param[in] user_problem  A dual_simplex::user_problem_t<i_t, f_t> object with a
+ * @param[in] user_problem  A simplex::user_problem_t<i_t, f_t> object with a
  * representation of a linear program.
  * @param[in] fractional  A vector of indexes of the fractional variables.
  * @param[in] root_soln_x  The corresponding root solution values for the fractional variables. Size

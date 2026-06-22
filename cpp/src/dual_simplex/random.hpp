@@ -9,7 +9,7 @@
 
 #include <random>
 
-namespace cuopt::math_optimization::dual_simplex {
+namespace cuopt::math_optimization::simplex {
 
 template <typename i_t, typename f_t>
 class random_t {
@@ -34,4 +34,4 @@ class random_t {
   std::mt19937 gen;
 };
 
-}  // namespace cuopt::math_optimization::dual_simplex
+}  // namespace cuopt::math_optimization::simplex

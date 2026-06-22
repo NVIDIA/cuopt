@@ -93,12 +93,12 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
     // brute force rounding threshold is 8
     const bool run_sub_mip                    = fixed_problem.n_integer_vars > 8;
     mip::mip_status_t branch_and_bound_status = mip::mip_status_t::UNSET;
-    dual_simplex::mip_solution_t<i_t, f_t> branch_and_bound_solution(1);
+    simplex::mip_solution_t<i_t, f_t> branch_and_bound_solution(1);
     if (run_sub_mip) {
       // run sub-mip
-      namespace dual_simplex = cuopt::math_optimization::dual_simplex;
-      dual_simplex::user_problem_t<i_t, f_t> branch_and_bound_problem(offspring.handle_ptr);
-      dual_simplex::simplex_solver_settings_t<i_t, f_t> branch_and_bound_settings;
+      namespace simplex = cuopt::math_optimization::simplex;
+      simplex::user_problem_t<i_t, f_t> branch_and_bound_problem(offspring.handle_ptr);
+      simplex::simplex_solver_settings_t<i_t, f_t> branch_and_bound_settings;
       fixed_problem.get_host_user_problem(branch_and_bound_problem);
       branch_and_bound_solution.resize(branch_and_bound_problem.num_cols);
       // Fill in the settings for branch and bound
@@ -122,7 +122,7 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
       branch_and_bound_settings.log.log = false;
       mip::probing_implied_bound_t<i_t, f_t> empty_probing(branch_and_bound_problem.num_cols);
       mip::branch_and_bound_t<i_t, f_t> branch_and_bound(
-        branch_and_bound_problem, branch_and_bound_settings, dual_simplex::tic(), empty_probing);
+        branch_and_bound_problem, branch_and_bound_settings, simplex::tic(), empty_probing);
       branch_and_bound_status = branch_and_bound.solve(branch_and_bound_solution);
       if (solution_vector.size() > 0) {
         cuopt_assert(fixed_assignment.size() == branch_and_bound_solution.x.size(),

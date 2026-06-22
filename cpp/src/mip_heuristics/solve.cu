@@ -209,10 +209,10 @@ mip_solution_t<i_t, f_t> run_mip_solver(
         scaled_problem.n_variables);
       symmetry.reset();
       if (settings.symmetry != 0) {
-        dual_simplex::simplex_solver_settings_t<i_t, f_t> simplex_settings;
+        simplex::simplex_solver_settings_t<i_t, f_t> simplex_settings;
         simplex_settings.set_log(true);
         simplex_settings.time_limit = settings.time_limit;
-        dual_simplex::user_problem_t<i_t, f_t> reduced_user_problem =
+        simplex::user_problem_t<i_t, f_t> reduced_user_problem =
           cuopt_problem_to_user_problem<i_t, f_t>(
             scaled_problem.original_problem_ptr->get_handle_ptr(), scaled_problem);
         bool has_symmetry_reduced = false;
@@ -431,10 +431,10 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
     bool has_symmetry = false;
     if (settings.symmetry != 0) {
       mip::problem_t<i_t, f_t> problem(op_problem);
-      dual_simplex::simplex_solver_settings_t<i_t, f_t> simplex_settings;
+      simplex::simplex_solver_settings_t<i_t, f_t> simplex_settings;
       simplex_settings.set_log(true);
       simplex_settings.time_limit = settings.time_limit;
-      dual_simplex::user_problem_t<i_t, f_t> user_problem =
+      simplex::user_problem_t<i_t, f_t> user_problem =
         cuopt_problem_to_user_problem<i_t, f_t>(op_problem.get_handle_ptr(), problem);
       symmetry = mip::detect_symmetry(user_problem, simplex_settings, has_symmetry);
       if (has_symmetry) { settings.presolver = presolver_t::None; }

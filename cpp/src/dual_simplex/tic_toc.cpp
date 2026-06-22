@@ -9,7 +9,7 @@
 
 #include <sys/time.h>
 
-namespace cuopt::math_optimization::dual_simplex {
+namespace cuopt::math_optimization::simplex {
 
 double tic()
 {
@@ -24,4 +24,4 @@ double toc(double start)
   return (now - start);
 }
 
-}  // namespace cuopt::math_optimization::dual_simplex
+}  // namespace cuopt::math_optimization::simplex

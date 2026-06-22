@@ -19,7 +19,7 @@
 
 #include <array>
 
-namespace cuopt::math_optimization::dual_simplex {
+namespace cuopt::math_optimization::simplex {
 
 namespace {
 
@@ -1636,4 +1636,4 @@ template crossover_status_t crossover<int, double>(
 
 #endif
 
-}  // namespace cuopt::math_optimization::dual_simplex
+}  // namespace cuopt::math_optimization::simplex

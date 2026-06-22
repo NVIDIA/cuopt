@@ -15,7 +15,7 @@
 // matrix_transpose_vector_multiply) specialized with barrier's
 // PinnedHostAllocator. They must live in the dual_simplex namespace (where the
 // templates are declared), even though the file resides under barrier/.
-namespace cuopt::math_optimization::dual_simplex {
+namespace cuopt::math_optimization::simplex {
 
 using cuopt::math_optimization::barrier::PinnedHostAllocator;
 
@@ -72,4 +72,4 @@ template void csc_matrix_t<int, double>::scale_columns<PinnedHostAllocator<doubl
 
 #endif
 
-}  // namespace cuopt::math_optimization::dual_simplex
+}  // namespace cuopt::math_optimization::simplex

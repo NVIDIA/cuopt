@@ -47,8 +47,8 @@ struct clique_table_t;
 
 namespace cuopt::math_optimization::mip {
 
-using namespace cuopt::math_optimization::dual_simplex;  // shared simplex types (lp_problem_t,
-                                                         // etc.)
+using namespace cuopt::math_optimization::simplex;  // shared simplex types (lp_problem_t,
+                                                    // etc.)
 
 template <typename i_t, typename f_t>
 struct mip_symmetry_t;
@@ -154,7 +154,7 @@ class branch_and_bound_t {
                                 std::vector<f_t>& upper_bounds);
 
   // The main entry routine. Returns the solver status and populates solution with the incumbent.
-  mip_status_t solve(dual_simplex::mip_solution_t<i_t, f_t>& solution);
+  mip_status_t solve(simplex::mip_solution_t<i_t, f_t>& solution);
 
   work_limit_context_t& get_work_unit_context() { return work_unit_context_; }
 
@@ -202,7 +202,7 @@ class branch_and_bound_t {
   omp_atomic_t<f_t> upper_bound_;
 
   // Solver-space incumbent tracked directly by B&B.
-  dual_simplex::mip_solution_t<i_t, f_t> incumbent_;
+  simplex::mip_solution_t<i_t, f_t> incumbent_;
 
   // Whether obj should replace the stored incumbent. Must be called under mutex_upper_.
   // Compares against the stored incumbent's objective, NOT against upper_bound_, because
@@ -278,7 +278,7 @@ class branch_and_bound_t {
   };
 
   cut_pass_result_t do_cut_pass(i_t cut_pass,
-                                dual_simplex::mip_solution_t<i_t, f_t>& solution,
+                                simplex::mip_solution_t<i_t, f_t>& solution,
                                 i_t& num_fractional,
                                 std::vector<i_t>& fractional,
                                 cut_generation_t<i_t, f_t>& cut_generation,
@@ -297,12 +297,12 @@ class branch_and_bound_t {
                                 const std::vector<f_t>& saved_solution);
 
   // Set the solution when found at the root node
-  void set_solution_at_root(dual_simplex::mip_solution_t<i_t, f_t>& solution,
+  void set_solution_at_root(simplex::mip_solution_t<i_t, f_t>& solution,
                             const cut_info_t<i_t, f_t>& cut_info);
   void update_user_bound(f_t lower_bound);
 
   // Set the final solution.
-  void set_final_solution(dual_simplex::mip_solution_t<i_t, f_t>& solution, f_t lower_bound);
+  void set_final_solution(simplex::mip_solution_t<i_t, f_t>& solution, f_t lower_bound);
 
   // Update the incumbent solution with the new feasible solution
   // found during branch and bound.

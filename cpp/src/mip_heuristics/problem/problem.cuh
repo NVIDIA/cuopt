@@ -123,7 +123,7 @@ class problem_t {
   f_t get_user_obj_from_solver_obj(f_t solver_obj) const;
   f_t get_solver_obj_from_user_obj(f_t user_obj) const;
   bool is_objective_integral() const { return objective_is_integral; }
-  const cuopt::math_optimization::dual_simplex::objective_step_t<f_t>& get_objective_step() const
+  const cuopt::math_optimization::simplex::objective_step_t<f_t>& get_objective_step() const
   {
     return objective_step;
   }
@@ -139,9 +139,9 @@ class problem_t {
   std::shared_ptr<clique_table_t<i_t, f_t>> clique_table;
 
   void get_host_user_problem(
-    cuopt::math_optimization::dual_simplex::user_problem_t<i_t, f_t>& user_problem) const;
+    cuopt::math_optimization::simplex::user_problem_t<i_t, f_t>& user_problem) const;
   void set_constraints_from_host_user_problem(
-    const cuopt::math_optimization::dual_simplex::user_problem_t<i_t, f_t>& user_problem);
+    const cuopt::math_optimization::simplex::user_problem_t<i_t, f_t>& user_problem);
 
   uint32_t get_fingerprint() const;
 
@@ -329,7 +329,7 @@ class problem_t {
   bool is_scaled_{false};
   bool preprocess_called{false};
   bool objective_is_integral{false};
-  cuopt::math_optimization::dual_simplex::objective_step_t<f_t> objective_step;
+  cuopt::math_optimization::simplex::objective_step_t<f_t> objective_step;
   // this LP state keeps the warm start data of some solution of
   // 1. Original problem: it is unchanged and part of it is used
   // to warm start slightly modified problems.

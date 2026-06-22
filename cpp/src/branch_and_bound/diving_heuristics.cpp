@@ -9,8 +9,8 @@
 
 namespace cuopt::math_optimization::mip {
 
-using namespace cuopt::math_optimization::dual_simplex;  // shared simplex types (lp_problem_t,
-                                                         // etc.)
+using namespace cuopt::math_optimization::simplex;  // shared simplex types (lp_problem_t,
+                                                    // etc.)
 
 template <typename i_t, typename f_t>
 branch_variable_t<i_t> line_search_diving(const std::vector<i_t>& fractional,

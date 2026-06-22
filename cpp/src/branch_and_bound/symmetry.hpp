@@ -22,8 +22,8 @@
 
 namespace cuopt::math_optimization::mip {
 
-using namespace cuopt::math_optimization::dual_simplex;  // shared simplex types (lp_problem_t,
-                                                         // etc.)
+using namespace cuopt::math_optimization::simplex;  // shared simplex types (lp_problem_t,
+                                                    // etc.)
 
 // permutation_t stores a dense permutation plus its support (non-identity entries).
 template <typename i_t>

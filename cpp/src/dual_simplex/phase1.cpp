@@ -15,7 +15,7 @@
 #include <cstdio>
 #include <limits>
 
-namespace cuopt::math_optimization::dual_simplex {
+namespace cuopt::math_optimization::simplex {
 
 template <typename i_t, typename f_t>
 i_t create_phase1_problem(const lp_problem_t<i_t, f_t>& lp, lp_problem_t<i_t, f_t>& out)
@@ -93,4 +93,4 @@ template int create_phase1_problem<int, double>(const lp_problem_t<int, double>&
 
 #endif
 
-}  // namespace cuopt::math_optimization::dual_simplex
+}  // namespace cuopt::math_optimization::simplex

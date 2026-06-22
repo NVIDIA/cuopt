@@ -15,7 +15,7 @@
 #include <cstdio>
 #include <vector>
 
-namespace cuopt::math_optimization::dual_simplex {
+namespace cuopt::math_optimization::simplex {
 
 template <typename i_t, typename f_t, typename Allocator>
 f_t vector_norm2_squared(const std::vector<f_t, Allocator>& x)
@@ -211,4 +211,4 @@ template int inverse_permutation<int>(const std::vector<int>& p, std::vector<int
 
 #endif
 
-}  // namespace cuopt::math_optimization::dual_simplex
+}  // namespace cuopt::math_optimization::simplex

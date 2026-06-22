@@ -24,7 +24,7 @@ namespace cuopt::math_optimization {
 struct benchmark_info_t;
 }
 
-namespace cuopt::math_optimization::dual_simplex {
+namespace cuopt::math_optimization::simplex {
 
 template <typename i_t, typename f_t>
 struct simplex_solver_settings_t {
@@ -228,4 +228,4 @@ struct simplex_solver_settings_t {
   cuopt::math_optimization::benchmark_info_t* benchmark_info_ptr = nullptr;
 };
 
-}  // namespace cuopt::math_optimization::dual_simplex
+}  // namespace cuopt::math_optimization::simplex

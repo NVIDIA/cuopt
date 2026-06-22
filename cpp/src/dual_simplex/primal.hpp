@@ -15,7 +15,7 @@
 
 #include <vector>
 
-namespace cuopt::math_optimization::dual_simplex {
+namespace cuopt::math_optimization::simplex {
 
 enum class primal_status_t {
   OPTIMAL          = 0,
@@ -36,4 +36,4 @@ primal_status_t primal_phase2(i_t phase,
                               lp_solution_t<i_t, f_t>& sol,
                               i_t& iter);
 
-}  // namespace cuopt::math_optimization::dual_simplex
+}  // namespace cuopt::math_optimization::simplex

@@ -33,12 +33,12 @@
 #include <queue>
 #include <string>
 
-namespace cuopt::math_optimization::dual_simplex {
+namespace cuopt::math_optimization::simplex {
 
 namespace {
 
 template <typename i_t, typename f_t>
-void write_matlab(const std::string& filename, const dual_simplex::lp_problem_t<i_t, f_t>& lp)
+void write_matlab(const std::string& filename, const simplex::lp_problem_t<i_t, f_t>& lp)
 {
   FILE* fid = fopen(filename.c_str(), "w");
   if (fid == NULL) { printf("Can't open file %s\n", filename.c_str()); }
@@ -846,4 +846,4 @@ template int solve_mip_with_guess<int, double>(
 
 #endif
 
-}  // namespace cuopt::math_optimization::dual_simplex
+}  // namespace cuopt::math_optimization::simplex

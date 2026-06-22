@@ -27,8 +27,8 @@
 
 namespace cuopt::math_optimization::mip {
 
-using namespace cuopt::math_optimization::dual_simplex;  // shared simplex types (lp_problem_t,
-                                                         // etc.)
+using namespace cuopt::math_optimization::simplex;  // shared simplex types (lp_problem_t,
+                                                    // etc.)
 namespace {
 
 static bool is_dual_simplex_done(dual_status_t status)
@@ -534,7 +534,7 @@ std::pair<f_t, dual_status_t> trial_branching(const lp_problem_t<i_t, f_t>& orig
 
 template <typename i_t, typename f_t>
 static cuopt::math_optimization::io::mps_data_model_t<i_t, f_t> simplex_problem_to_mps_data_model(
-  const dual_simplex::lp_problem_t<i_t, f_t>& lp,
+  const simplex::lp_problem_t<i_t, f_t>& lp,
   const std::vector<i_t>& new_slacks,
   const std::vector<f_t>& root_soln,
   std::vector<f_t>& original_root_soln_x)
@@ -558,7 +558,7 @@ static cuopt::math_optimization::io::mps_data_model_t<i_t, f_t> simplex_problem_
   original_root_soln_x.resize(n);
 
   // Remove slacks from A
-  dual_simplex::csc_matrix_t<i_t, f_t> A_no_slacks = lp.A;
+  simplex::csc_matrix_t<i_t, f_t> A_no_slacks = lp.A;
   std::vector<i_t> cols_to_remove(lp.A.n, 0);
   for (i_t j : new_slacks) {
     cols_to_remove[j] = 1;
@@ -570,7 +570,7 @@ static cuopt::math_optimization::io::mps_data_model_t<i_t, f_t> simplex_problem_
   }
 
   // Convert CSC to CSR using built-in method
-  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, 0);
+  simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, 0);
   A_no_slacks.to_compressed_row(csr_A);
 
   int nz = csr_A.row_start[m];

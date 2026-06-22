@@ -42,7 +42,7 @@
 #include <ctime>
 #include <map>
 
-namespace cuopt::math_optimization::dual_simplex {
+namespace cuopt::math_optimization::simplex {
 
 constexpr int FEATURE_LOG_INTERVAL = 100;
 
@@ -3294,7 +3294,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
         dual_infeasibility(lp, settings, vstatus, z, settings.tight_tol, settings.dual_tol);
       phase2_work_estimate += 3 * n;
       settings.log.printf("Dual infeasibility %e\n", dual_infeas);
-      const f_t primal_inf = dual_simplex::primal_infeasibility(lp, settings, vstatus, x);
+      const f_t primal_inf = simplex::primal_infeasibility(lp, settings, vstatus, x);
       phase2_work_estimate += 3 * n;
       settings.log.printf("Primal infeasibility %e\n", primal_inf);
       settings.log.printf("Updates %d\n", ft.num_updates());
@@ -3791,4 +3791,4 @@ template void compute_initial_nonbasic_end<int, double>(const std::vector<int>& 
                                                         std::vector<int>& nonbasic_end);
 #endif
 
-}  // namespace cuopt::math_optimization::dual_simplex
+}  // namespace cuopt::math_optimization::simplex

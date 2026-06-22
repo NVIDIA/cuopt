@@ -12,8 +12,8 @@
 
 namespace cuopt::math_optimization::barrier {
 
-using namespace cuopt::math_optimization::dual_simplex;  // shared simplex types (lp_problem_t, inf,
-                                                         // etc.)
+using namespace cuopt::math_optimization::simplex;  // shared simplex types (lp_problem_t, inf,
+                                                    // etc.)
 
 template <typename T>
 struct PinnedHostAllocator {
@@ -58,7 +58,7 @@ template class PinnedHostAllocator<int>;
 
 }  // namespace cuopt::math_optimization::barrier
 
-namespace cuopt::math_optimization::dual_simplex {
+namespace cuopt::math_optimization::simplex {
 
 // Explicit instantiation of the shared dual_simplex vector_math template with
 // barrier's PinnedHostAllocator must live in dual_simplex (the template's namespace).
@@ -68,4 +68,4 @@ vector_norm_inf<int, double, cuopt::math_optimization::barrier::PinnedHostAlloca
   const std::vector<double, cuopt::math_optimization::barrier::PinnedHostAllocator<double>>& x);
 #endif
 
-}  // namespace cuopt::math_optimization::dual_simplex
+}  // namespace cuopt::math_optimization::simplex

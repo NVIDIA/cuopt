@@ -46,8 +46,8 @@
 
 namespace cuopt::math_optimization::mip {
 
-using namespace cuopt::math_optimization::dual_simplex;  // shared simplex types (lp_problem_t,
-                                                         // etc.)
+using namespace cuopt::math_optimization::simplex;  // shared simplex types (lp_problem_t,
+                                                    // etc.)
 namespace {
 
 template <typename f_t>
@@ -658,8 +658,8 @@ void branch_and_bound_t<i_t, f_t>::repair_heuristic_solutions()
 }
 
 template <typename i_t, typename f_t>
-void branch_and_bound_t<i_t, f_t>::set_solution_at_root(
-  dual_simplex::mip_solution_t<i_t, f_t>& solution, const cut_info_t<i_t, f_t>& cut_info)
+void branch_and_bound_t<i_t, f_t>::set_solution_at_root(simplex::mip_solution_t<i_t, f_t>& solution,
+                                                        const cut_info_t<i_t, f_t>& cut_info)
 {
   mutex_upper_.lock();
   incumbent_.set_incumbent_solution(root_objective_, root_relax_soln_.x);
@@ -687,8 +687,8 @@ void branch_and_bound_t<i_t, f_t>::set_solution_at_root(
 }
 
 template <typename i_t, typename f_t>
-void branch_and_bound_t<i_t, f_t>::set_final_solution(
-  dual_simplex::mip_solution_t<i_t, f_t>& solution, f_t lower_bound)
+void branch_and_bound_t<i_t, f_t>::set_final_solution(simplex::mip_solution_t<i_t, f_t>& solution,
+                                                      f_t lower_bound)
 {
   if (solver_status_ == mip_status_t::NUMERICAL) {
     settings_.log.printf("Numerical issue encountered. Stopping the solver...\n");
@@ -2156,7 +2156,7 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
 template <typename i_t, typename f_t>
 auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   [[maybe_unused]] i_t cut_pass,
-  dual_simplex::mip_solution_t<i_t, f_t>& solution,
+  simplex::mip_solution_t<i_t, f_t>& solution,
   i_t& num_fractional,
   std::vector<i_t>& fractional,
   cut_generation_t<i_t, f_t>& cut_generation,
@@ -2436,7 +2436,7 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
 }
 
 template <typename i_t, typename f_t>
-mip_status_t branch_and_bound_t<i_t, f_t>::solve(dual_simplex::mip_solution_t<i_t, f_t>& solution)
+mip_status_t branch_and_bound_t<i_t, f_t>::solve(simplex::mip_solution_t<i_t, f_t>& solution)
 {
   raft::common::nvtx::range scope("BB::solve");
 

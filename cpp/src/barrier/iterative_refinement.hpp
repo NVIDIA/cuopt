@@ -30,8 +30,8 @@
 
 namespace cuopt::math_optimization::barrier {
 
-using namespace cuopt::math_optimization::dual_simplex;  // shared simplex types (lp_problem_t, inf,
-                                                         // etc.)
+using namespace cuopt::math_optimization::simplex;  // shared simplex types (lp_problem_t, inf,
+                                                    // etc.)
 
 // Functors for device operations (defined at namespace scope to avoid CUDA lambda restrictions)
 template <typename T>

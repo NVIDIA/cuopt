@@ -14,8 +14,8 @@
 
 namespace cuopt::math_optimization::barrier {
 
-using namespace cuopt::math_optimization::dual_simplex;  // shared simplex types (lp_problem_t, inf,
-                                                         // etc.)
+using namespace cuopt::math_optimization::simplex;  // shared simplex types (lp_problem_t, inf,
+                                                    // etc.)
 
 template <typename i_t, typename f_t>
 class dense_matrix_t {

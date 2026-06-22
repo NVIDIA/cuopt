@@ -1415,7 +1415,7 @@ void problem_t<i_t, f_t>::recompute_objective_integrality()
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::compute_objective_step()
 {
-  f_t start_time = dual_simplex::tic();
+  f_t start_time = simplex::tic();
   // Copy info from device to host
   auto h_obj_coefs = cuopt::host_copy(objective_coefficients, handle_ptr->get_stream());
   auto h_var_types = cuopt::host_copy(variable_types, handle_ptr->get_stream());
@@ -2153,7 +2153,7 @@ void problem_t<i_t, f_t>::preprocess_problem()
 
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::set_constraints_from_host_user_problem(
-  const cuopt::math_optimization::dual_simplex::user_problem_t<i_t, f_t>& user_problem)
+  const cuopt::math_optimization::simplex::user_problem_t<i_t, f_t>& user_problem)
 {
   raft::common::nvtx::range fun_scope("set_constraints_from_host_user_problem");
   cuopt_assert(user_problem.handle_ptr == handle_ptr, "handle mismatch");
@@ -2165,7 +2165,7 @@ void problem_t<i_t, f_t>::set_constraints_from_host_user_problem(
   cuopt_assert(user_problem.range_rows.size() == user_problem.range_value.size(),
                "range rows/value size mismatch");
 
-  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(n_constraints, n_variables, user_problem.A.nnz());
+  simplex::csr_matrix_t<i_t, f_t> csr_A(n_constraints, n_variables, user_problem.A.nnz());
   user_problem.A.to_compressed_row(csr_A);
   nnz   = csr_A.row_start[n_constraints];
   empty = (nnz == 0 && n_constraints == 0 && n_variables == 0);
@@ -2274,7 +2274,7 @@ void problem_t<i_t, f_t>::papilo_uncrush_assignment(rmm::device_uvector<f_t>& as
 
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::get_host_user_problem(
-  cuopt::math_optimization::dual_simplex::user_problem_t<i_t, f_t>& user_problem) const
+  cuopt::math_optimization::simplex::user_problem_t<i_t, f_t>& user_problem) const
 {
   raft::common::nvtx::range fun_scope("get_host_user_problem");
   // std::lock_guard<std::mutex> lock(problem_mutex);
@@ -2286,7 +2286,7 @@ void problem_t<i_t, f_t>::get_host_user_problem(
   auto stream            = handle_ptr->get_stream();
   user_problem.objective = cuopt::host_copy(objective_coefficients, stream);
 
-  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
+  simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
   csr_A.x         = std::vector<f_t>(cuopt::host_copy(coefficients, stream));
   csr_A.j         = std::vector<i_t>(cuopt::host_copy(variables, stream));
   csr_A.row_start = std::vector<i_t>(cuopt::host_copy(offsets, stream));
@@ -2361,10 +2361,9 @@ void problem_t<i_t, f_t>::get_host_user_problem(
 
   auto model_variable_types = cuopt::host_copy(variable_types, stream);
   for (int j = 0; j < n; ++j) {
-    user_problem.var_types[j] =
-      model_variable_types[j] == var_t::CONTINUOUS
-        ? cuopt::math_optimization::dual_simplex::variable_type_t::CONTINUOUS
-        : cuopt::math_optimization::dual_simplex::variable_type_t::INTEGER;
+    user_problem.var_types[j] = model_variable_types[j] == var_t::CONTINUOUS
+                                  ? cuopt::math_optimization::simplex::variable_type_t::CONTINUOUS
+                                  : cuopt::math_optimization::simplex::variable_type_t::INTEGER;
   }
 }
 

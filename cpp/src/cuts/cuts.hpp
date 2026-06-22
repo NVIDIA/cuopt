@@ -34,8 +34,8 @@ struct clique_table_t;
 
 namespace cuopt::math_optimization::mip {
 
-using namespace cuopt::math_optimization::dual_simplex;  // shared simplex types (lp_problem_t,
-                                                         // etc.)
+using namespace cuopt::math_optimization::simplex;  // shared simplex types (lp_problem_t,
+                                                    // etc.)
 
 enum cut_type_t : int8_t {
   MIXED_INTEGER_GOMORY   = 0,

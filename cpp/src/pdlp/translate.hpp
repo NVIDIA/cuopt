@@ -26,10 +26,10 @@
 namespace cuopt::math_optimization {
 
 template <typename i_t, typename f_t>
-static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_user_problem(
+static simplex::user_problem_t<i_t, f_t> cuopt_problem_to_user_problem(
   raft::handle_t const* handle_ptr, const optimization_problem_interface_t<i_t, f_t>& problem)
 {
-  dual_simplex::user_problem_t<i_t, f_t> user_problem(handle_ptr);
+  simplex::user_problem_t<i_t, f_t> user_problem(handle_ptr);
 
   int m                  = problem.get_n_constraints();
   int n                  = problem.get_n_variables();
@@ -40,7 +40,7 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_user_problem(
   user_problem.num_cols  = n;
   user_problem.objective = problem.get_objective_coefficients_host();
 
-  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, static_cast<i_t>(A_values.size()));
+  simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, static_cast<i_t>(A_values.size()));
   csr_A.x         = std::move(A_values);
   csr_A.j         = std::move(A_indices);
   csr_A.row_start = std::move(A_offsets);
@@ -86,10 +86,9 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_user_problem(
 
   auto variable_types = problem.get_variable_types_host();
   for (int j = 0; j < n; ++j) {
-    user_problem.var_types[j] =
-      variable_types[j] == var_t::CONTINUOUS
-        ? cuopt::math_optimization::dual_simplex::variable_type_t::CONTINUOUS
-        : cuopt::math_optimization::dual_simplex::variable_type_t::INTEGER;
+    user_problem.var_types[j] = variable_types[j] == var_t::CONTINUOUS
+                                  ? cuopt::math_optimization::simplex::variable_type_t::CONTINUOUS
+                                  : cuopt::math_optimization::simplex::variable_type_t::INTEGER;
   }
 
   user_problem.Q_offsets = problem.get_quadratic_objective_offsets();
@@ -100,10 +99,10 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_user_problem(
 }
 
 template <typename i_t, typename f_t>
-static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_user_problem(
+static simplex::user_problem_t<i_t, f_t> cuopt_problem_to_user_problem(
   raft::handle_t const* handle_ptr, mip::problem_t<i_t, f_t>& model)
 {
-  dual_simplex::user_problem_t<i_t, f_t> user_problem(handle_ptr);
+  simplex::user_problem_t<i_t, f_t> user_problem(handle_ptr);
 
   int m                  = model.n_constraints;
   int n                  = model.n_variables;
@@ -112,7 +111,7 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_user_problem(
   user_problem.num_cols  = n;
   user_problem.objective = cuopt::host_copy(model.objective_coefficients, handle_ptr->get_stream());
 
-  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
+  simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
   csr_A.x = std::vector<f_t>(cuopt::host_copy(model.coefficients, handle_ptr->get_stream()));
   csr_A.j = std::vector<i_t>(cuopt::host_copy(model.variables, handle_ptr->get_stream()));
   csr_A.row_start = std::vector<i_t>(cuopt::host_copy(model.offsets, handle_ptr->get_stream()));
@@ -180,10 +179,9 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_user_problem(
 
   auto model_variable_types = cuopt::host_copy(model.variable_types, handle_ptr->get_stream());
   for (int j = 0; j < n; ++j) {
-    user_problem.var_types[j] =
-      model_variable_types[j] == var_t::CONTINUOUS
-        ? cuopt::math_optimization::dual_simplex::variable_type_t::CONTINUOUS
-        : cuopt::math_optimization::dual_simplex::variable_type_t::INTEGER;
+    user_problem.var_types[j] = model_variable_types[j] == var_t::CONTINUOUS
+                                  ? cuopt::math_optimization::simplex::variable_type_t::CONTINUOUS
+                                  : cuopt::math_optimization::simplex::variable_type_t::INTEGER;
   }
 
   user_problem.Q_offsets = model.Q_offsets;
@@ -201,10 +199,10 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_problem_to_user_problem(
 }
 
 template <typename i_t, typename f_t>
-static dual_simplex::user_problem_t<i_t, f_t> cuopt_optimization_problem_to_user_problem(
+static simplex::user_problem_t<i_t, f_t> cuopt_optimization_problem_to_user_problem(
   raft::handle_t const* handle_ptr, optimization_problem_t<i_t, f_t>& model)
 {
-  dual_simplex::user_problem_t<i_t, f_t> user_problem(handle_ptr);
+  simplex::user_problem_t<i_t, f_t> user_problem(handle_ptr);
 
   i_t const m  = model.get_n_constraints();
   i_t const n  = model.get_n_variables();
@@ -224,7 +222,7 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_optimization_problem_to_user
     }
   }
 
-  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
+  simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
   csr_A.x         = model.get_constraint_matrix_values_host();
   csr_A.j         = model.get_constraint_matrix_indices_host();
   csr_A.row_start = model.get_constraint_matrix_offsets_host();
@@ -304,8 +302,8 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_optimization_problem_to_user
     user_problem.var_types[j] =
       model_variable_types.empty() ||
           model_variable_types[static_cast<std::size_t>(j)] == var_t::CONTINUOUS
-        ? cuopt::math_optimization::dual_simplex::variable_type_t::CONTINUOUS
-        : cuopt::math_optimization::dual_simplex::variable_type_t::INTEGER;
+        ? cuopt::math_optimization::simplex::variable_type_t::CONTINUOUS
+        : cuopt::math_optimization::simplex::variable_type_t::INTEGER;
   }
 
   user_problem.Q_offsets = model.get_quadratic_objective_offsets();
@@ -325,16 +323,15 @@ static dual_simplex::user_problem_t<i_t, f_t> cuopt_optimization_problem_to_user
 template <typename i_t, typename f_t>
 void translate_to_crossover_problem(const mip::problem_t<i_t, f_t>& problem,
                                     optimization_problem_solution_t<i_t, f_t>& sol,
-                                    dual_simplex::lp_problem_t<i_t, f_t>& lp,
-                                    dual_simplex::lp_solution_t<i_t, f_t>& initial_solution)
+                                    simplex::lp_problem_t<i_t, f_t>& lp,
+                                    simplex::lp_solution_t<i_t, f_t>& initial_solution)
 {
   CUOPT_LOG_DEBUG("Starting translation");
 
   auto stream                     = problem.handle_ptr->get_stream();
   std::vector<f_t> pdlp_objective = cuopt::host_copy(problem.objective_coefficients, stream);
 
-  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(
-    problem.n_constraints, problem.n_variables, problem.nnz);
+  simplex::csr_matrix_t<i_t, f_t> csr_A(problem.n_constraints, problem.n_variables, problem.nnz);
   csr_A.x         = std::vector<f_t>(cuopt::host_copy(problem.coefficients, stream));
   csr_A.j         = std::vector<i_t>(cuopt::host_copy(problem.variables, stream));
   csr_A.row_start = std::vector<i_t>(cuopt::host_copy(problem.offsets, stream));
@@ -347,7 +344,7 @@ void translate_to_crossover_problem(const mip::problem_t<i_t, f_t>& problem,
   std::vector<f_t> slack(problem.n_constraints);
   std::vector<f_t> tmp_x = cuopt::host_copy(sol.get_primal_solution(), stream);
   stream.synchronize();
-  dual_simplex::matrix_vector_multiply(lp.A, f_t(1.0), tmp_x, f_t(0.0), slack);
+  simplex::matrix_vector_multiply(lp.A, f_t(1.0), tmp_x, f_t(0.0), slack);
   CUOPT_LOG_DEBUG("Multiplied A and x");
 
   lp.A.col_start.resize(problem.n_variables + problem.n_constraints + 1);
