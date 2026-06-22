@@ -60,8 +60,8 @@ template class PinnedHostAllocator<int>;
 
 namespace cuopt::math_optimization::simplex {
 
-// Explicit instantiation of the shared dual_simplex vector_math template with
-// barrier's PinnedHostAllocator must live in dual_simplex (the template's namespace).
+// Explicit instantiation of the shared simplex vector_math template with
+// barrier's PinnedHostAllocator must live in simplex (the template's namespace).
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 template double
 vector_norm_inf<int, double, cuopt::math_optimization::barrier::PinnedHostAllocator<double>>(
