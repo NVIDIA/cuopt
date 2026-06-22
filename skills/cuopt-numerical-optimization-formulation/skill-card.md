@@ -9,7 +9,7 @@ NVIDIA <br>
 ### License/Terms of Use: <br>
 Apache 2.0 <br>
 ## Use Case: <br>
-Developers and engineers formulating linear programming (LP), mixed-integer linear programming (MILP), and quadratic programming (QP) optimization problems for the NVIDIA cuOpt solver. <br>
+Developers and engineers formulating linear, mixed-integer, and quadratic optimization problems with NVIDIA cuOpt, parsing unstructured problem statements into structured mathematical formulations. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
@@ -19,24 +19,24 @@ Risk: Review before execution as proposals could introduce incorrect or misleadi
 Mitigation: Review and scan skill before deployment. <br>
 
 ## Reference(s): <br>
-- [NVIDIA cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html) <br>
+- [cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html) <br>
 - [cuOpt Examples](https://github.com/NVIDIA/cuopt-examples) <br>
 
 
 ## Skill Output: <br>
-**Output Type(s):** [Analysis, Code] <br>
-**Output Format:** [Markdown with mathematical formulations] <br>
+**Output Type(s):** [Analysis] <br>
+**Output Format:** [Markdown] <br>
 **Output Parameters:** [1D] <br>
 **Other Properties Related to Output:** [None] <br>
 
 ## Evaluation Agents Used: <br>
-- `claude-code` <br>
-- `codex` <br>
+- claude-code <br>
+- codex <br>
 
 
 
 ## Evaluation Tasks: <br>
-Evaluated against 3 evaluation tasks (3 positive skill-activation cases) using NVSkills-Eval external profile in astra-sandbox environment. <br>
+Evaluated against 3 internal skill-activation tasks (NVSkills-Eval, external profile, astra-sandbox environment). <br>
 
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
@@ -61,9 +61,9 @@ Underlying evaluation signals used in this run: <br>
 | Dimension | Num | `claude-code` | `codex` |
 |---|---:|---:|---:|
 | Security | 3 | 100% (+0%) | 100% (+0%) |
-| Correctness | 3 | 60% (+17%) | 47% (+13%) |
+| Correctness | 3 | 67% (+20%) | 33% (-3%) |
 | Discoverability | 3 | 33% (+33%) | 0% (+0%) |
-| Effectiveness | 3 | 79% (-0%) | 77% (+14%) |
+| Effectiveness | 3 | 89% (+2%) | 69% (+1%) |
 | Efficiency | 3 | 49% (+22%) | 28% (-0%) |
 
 ## Skill Version(s): <br>
