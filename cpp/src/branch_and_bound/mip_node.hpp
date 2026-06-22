@@ -23,9 +23,6 @@
 
 namespace cuopt::math_optimization::mip {
 
-using namespace cuopt::math_optimization::simplex;  // shared simplex types (lp_problem_t,
-                                                    // etc.)
-
 enum class node_status_t : int {
   PENDING          = 0,  // Node is still in the tree, waiting to be solved
   INTEGER_FEASIBLE = 1,  // Node has an integer feasible solution
@@ -100,7 +97,7 @@ class mip_node_t {
     children[1] = nullptr;
   }
 
-  mip_node_t(f_t root_lower_bound, const std::vector<variable_status_t>& basis)
+  mip_node_t(f_t root_lower_bound, const std::vector<simplex::variable_status_t>& basis)
     : status(node_status_t::PENDING),
       lower_bound(root_lower_bound),
       depth(0),
@@ -116,14 +113,14 @@ class mip_node_t {
     children[1] = nullptr;
   }
 
-  mip_node_t(const lp_problem_t<i_t, f_t>& problem,
+  mip_node_t(const simplex::lp_problem_t<i_t, f_t>& problem,
              mip_node_t* parent_node,
              i_t node_num,
              i_t branch_variable,
              branch_direction_t branch_direction,
              f_t branch_var_value,
              i_t integer_inf,
-             const std::vector<variable_status_t>& basis)
+             const std::vector<simplex::variable_status_t>& basis)
     : status(node_status_t::PENDING),
       lower_bound(parent_node->lower_bound),
       depth(parent_node->depth + 1),
@@ -386,9 +383,9 @@ class search_tree_t {
               const i_t branch_var,
               const f_t fractional_val,
               const i_t integer_infeasible,
-              const std::vector<variable_status_t>& parent_vstatus,
-              const lp_problem_t<i_t, f_t>& original_lp,
-              logger_t& log)
+              const std::vector<simplex::variable_status_t>& parent_vstatus,
+              const simplex::lp_problem_t<i_t, f_t>& original_lp,
+              simplex::logger_t& log)
   {
     i_t id = num_nodes.fetch_add(2);
 
@@ -428,7 +425,7 @@ class search_tree_t {
                               std::move(up_child));  // child pointers moved into the tree
   }
 
-  void graphviz_node(logger_t& log,
+  void graphviz_node(simplex::logger_t& log,
                      const mip_node_t<i_t, f_t>* node_ptr,
                      const std::string label,
                      const f_t val)
@@ -438,7 +435,7 @@ class search_tree_t {
     }
   }
 
-  void graphviz_edge(logger_t& log,
+  void graphviz_edge(simplex::logger_t& log,
                      const mip_node_t<i_t, f_t>* origin_ptr,
                      const mip_node_t<i_t, f_t>* dest_ptr,
                      const i_t branch_var,

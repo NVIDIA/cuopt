@@ -23,13 +23,11 @@
 // This allows handling many different X Y vector along with one common matrix
 namespace cuopt::math_optimization::barrier {
 
-using namespace cuopt::math_optimization::simplex;  // shared simplex types (lp_problem_t, inf,
-                                                    // etc.)
 template <typename i_t, typename f_t>
 class cusparse_view_t {
  public:
   // TMP matrix data should already be on the GPU and in CSR not CSC
-  cusparse_view_t(raft::handle_t const* handle_ptr, const csc_matrix_t<i_t, f_t>& A);
+  cusparse_view_t(raft::handle_t const* handle_ptr, const simplex::csc_matrix_t<i_t, f_t>& A);
   ~cusparse_view_t();
 
   pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> create_vector(rmm::device_uvector<f_t> const& vec);

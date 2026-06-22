@@ -9,6 +9,8 @@
 #include "grpc_pipe_serialization.hpp"
 #include "grpc_server_types.hpp"
 
+using namespace cuopt::math_optimization;
+
 class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::Service {
  public:
   // Unary submit: the entire problem fits in a single gRPC message.

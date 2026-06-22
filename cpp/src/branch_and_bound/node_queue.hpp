@@ -15,9 +15,6 @@
 
 namespace cuopt::math_optimization::mip {
 
-using namespace cuopt::math_optimization::simplex;  // shared simplex types (lp_problem_t,
-                                                    // etc.)
-
 // This is a generic heap implementation based
 // on the STL functions. The main benefit here is
 // that we access the underlying container.
@@ -111,7 +108,7 @@ class node_queue_t {
     return node;
   }
 
-  bool diving_init(const lp_problem_t<i_t, f_t>& lp,
+  bool diving_init(const simplex::lp_problem_t<i_t, f_t>& lp,
                    mip_node_t<i_t, f_t>& start_node,
                    std::vector<f_t>& start_lower,
                    std::vector<f_t>& start_upper,

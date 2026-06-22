@@ -60,8 +60,9 @@ using grpc::ServerWriter;
 using grpc::Status;
 using grpc::StatusCode;
 
-using namespace cuopt::math_optimization;
-// Note: NOT using "using namespace cuopt::remote" to avoid JobStatus enum conflict
+// Note: cuopt::math_optimization names are fully qualified below to avoid leaking
+// a header-scope using-namespace directive, and to avoid a JobStatus enum conflict
+// with cuopt::remote.
 
 // =============================================================================
 // Shared Memory Structures (must match between main process and workers)

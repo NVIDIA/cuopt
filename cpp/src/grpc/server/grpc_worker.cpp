@@ -9,6 +9,8 @@
 #include "grpc_pipe_serialization.hpp"
 #include "grpc_server_types.hpp"
 
+using namespace cuopt::math_optimization;
+
 // ---------------------------------------------------------------------------
 // Data-transfer structs used to pass results between decomposed functions.
 // ---------------------------------------------------------------------------

@@ -18,12 +18,9 @@
 
 namespace cuopt::math_optimization::barrier {
 
-using namespace cuopt::math_optimization::simplex;  // shared simplex types (lp_problem_t, inf,
-                                                    // etc.)
-
 template <typename i_t, typename f_t, typename T>
 i_t preconditioned_conjugate_gradient(const T& op,
-                                      const simplex_solver_settings_t<i_t, f_t>& settings,
+                                      const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
                                       const dense_vector_t<i_t, f_t>& b,
                                       f_t tolerance,
                                       dense_vector_t<i_t, f_t>& xinout)

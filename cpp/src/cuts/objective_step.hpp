@@ -14,9 +14,6 @@
 
 namespace cuopt::math_optimization::mip {
 
-using namespace cuopt::math_optimization::simplex;  // shared simplex types (objective_step_t,
-                                                    // etc.)
-
 // Pure-host computation of the objective step for the case where lattice propagation is
 // required (i.e. at least one variable with nonzero objective coefficient is continuous
 // and not implied-integer). Returns a default-constructed (zero) objective_step_t when no
@@ -26,7 +23,7 @@ using namespace cuopt::math_optimization::simplex;  // shared simplex types (obj
 // objective coefficient is already lattice-known, step = gcd(|c_j|) can be computed
 // without ever touching the constraint matrix.
 template <typename i_t, typename f_t>
-objective_step_t<f_t> compute_objective_step_info(
+simplex::objective_step_t<f_t> compute_objective_step_info(
   const std::vector<f_t>& obj_coefs,
   const std::vector<bool>& is_lattice_known_initially,
   const std::vector<i_t>& offsets,
