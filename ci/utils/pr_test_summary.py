@@ -181,7 +181,9 @@ def _build_body(failed, passed, skipped, job_analysis):
                 continue
             if crash and not tests:
                 summary = f"💥 crashed ({crash})"
-                detail = "Process was terminated before the test run completed."
+                detail = (
+                    "Process was terminated before the test run completed."
+                )
             else:
                 n = len(tests)
                 noun = "test" if n == 1 else "tests"
