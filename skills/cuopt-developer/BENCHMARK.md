@@ -1,17 +1,17 @@
 # Evaluation Report
 
-Evaluation of the `cuopt-multi-objective-exploration` skill before publication through NVSkills-Eval.
+Evaluation of the `cuopt-developer` skill before publication through NVSkills-Eval.
 
 This benchmark summarizes 3-Tier Evaluation from NVSkills-Eval results for the skill. The goal is to document whether the skill is safe, discoverable, effective, and useful for agents before it is published for broader workflow use.
 
 ## Evaluation Summary
 
-- Skill: `cuopt-multi-objective-exploration`
-- Evaluation date: 2026-06-12
+- Skill: `cuopt-developer`
+- Evaluation date: 2026-06-08
 - NVSkills-Eval profile: `external`
 - Environment: `astra-sandbox`
-- Dataset: 4 evaluation tasks
-- Attempts per task: 1
+- Dataset: 3 evaluation tasks
+- Attempts per task: 2
 - Pass threshold: 50%
 - Overall verdict: PASS
 
@@ -42,10 +42,10 @@ Underlying evaluation signals used in this run:
 
 ## Test Tasks
 
-The benchmark dataset contained 4 evaluation tasks:
+The benchmark dataset contained 3 evaluation tasks:
 
 - Positive tasks: 3 tasks where the skill was expected to activate.
-- Negative tasks: 1 tasks where no skill was expected.
+- Negative tasks: 0 tasks where no skill was expected.
 - Unlabeled tasks: 0 tasks where positive/negative intent could not be inferred.
 
 Task composition is derived from the evaluation dataset when possible. Entries with `expected_skill` set are treated as positive skill-activation cases, while entries with `expected_skill: null` are treated as negative activation cases.
@@ -54,27 +54,34 @@ Task composition is derived from the evaluation dataset when possible. Entries w
 
 | Dimension | Num | `claude-code` | `codex` |
 |---|---:|---:|---:|
-| Security | 4 | 100% (+0%) | 100% (+0%) |
-| Correctness | 4 | 88% (+38%) | 76% (+20%) |
-| Discoverability | 4 | 75% (+50%) | 66% (+35%) |
-| Effectiveness | 4 | 87% (+15%) | 77% (+5%) |
-| Efficiency | 4 | 76% (+33%) | 65% (+22%) |
+| Security | 6 | 100% (+0%) | 100% (+0%) |
+| Correctness | 6 | 78% (-1%) | 90% (+5%) |
+| Discoverability | 6 | 62% (+11%) | 66% (+7%) |
+| Effectiveness | 6 | 81% (-3%) | 93% (+10%) |
+| Efficiency | 6 | 61% (+15%) | 59% (+7%) |
 
 Score values show skill-assisted performance. Values in parentheses show uplift versus the no-skill baseline when baseline data is available.
 
 ## Tier 1: Static Validation Summary
 
-Tier 1 validation passed with observations. NVSkills-Eval ran 1 checks and found 3 total findings.
+Tier 1 validation passed with observations. NVSkills-Eval ran 9 checks and found 9 total findings.
 
 Top findings:
 
-- MEDIUM SCHEMA/body_recommended_section: Missing recommended section: '## Instructions' (`skills/cuopt-multi-objective-exploration/SKILL.md`)
-- MEDIUM SCHEMA/body_recommended_section: Missing recommended section: '## Examples' (`skills/cuopt-multi-objective-exploration/SKILL.md`)
-- LOW SCHEMA/author_format: Author must be of the form 'Name <email@host>' (`skills/cuopt-multi-objective-exploration/SKILL.md`)
+- MEDIUM QUALITY/quality_efficiency: Deeply nested references in contributing.md (`skills/cuopt-developer/SKILL.md`)
+- MEDIUM SCHEMA/body_recommended_section: Missing recommended section: '## Instructions' (`skills/cuopt-developer/SKILL.md`)
+- MEDIUM SCHEMA/body_recommended_section: Missing recommended section: '## Examples' (`skills/cuopt-developer/SKILL.md`)
+- LOW QUALITY/quality_discoverability: No '## Purpose' section (`skills/cuopt-developer/SKILL.md`)
+- LOW QUALITY/quality_reliability: No prerequisites/requirements documented (`skills/cuopt-developer/SKILL.md`)
 
 ## Tier 2: Deduplication Summary
 
-This tier was not run or did not produce findings in this report.
+Tier 2 validation passed. NVSkills-Eval ran 2 checks and found 0 total findings.
+
+Notable observations:
+
+- Context Deduplication: Collected 9 file(s)
+- Inter-Skill Deduplication: Parsed skill 'cuopt-developer': 148 char description
 
 ## Publication Recommendation
 

@@ -42,6 +42,7 @@
 #include <cuopt/linear_programming/optimization_problem_interface.hpp>
 #include <cuopt/linear_programming/optimization_problem_utils.hpp>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
+#include <utilities/inline_lp_test_utils.hpp>
 #include "grpc_client.hpp"
 
 #include "grpc_test_log_capture.hpp"
@@ -391,30 +392,18 @@ class GrpcIntegrationTestBase : public ::testing::Test {
 
   cpu_optimization_problem_t<int32_t, double> create_simple_mip()
   {
+    auto data = cuopt::test::parse_inline_lp(R"LP(
+Minimize
+  obj: x0 + 2 x1
+Subject To
+  c1: x0 + x1 >= 1
+Binaries
+  x0
+  x1
+End
+)LP");
     cpu_optimization_problem_t<int32_t, double> problem;
-
-    std::vector<double> c = {1.0, 2.0};
-    problem.set_objective_coefficients(c.data(), 2);
-    problem.set_maximize(false);
-
-    std::vector<double> A_values   = {1.0, 1.0};
-    std::vector<int32_t> A_indices = {0, 1};
-    std::vector<int32_t> A_offsets = {0, 2};
-    problem.set_csr_constraint_matrix(A_values.data(), 2, A_indices.data(), 2, A_offsets.data(), 2);
-
-    std::vector<double> var_lb = {0.0, 0.0};
-    std::vector<double> var_ub = {1.0, 1.0};
-    problem.set_variable_lower_bounds(var_lb.data(), 2);
-    problem.set_variable_upper_bounds(var_ub.data(), 2);
-
-    std::vector<var_t> var_types = {var_t::INTEGER, var_t::INTEGER};
-    problem.set_variable_types(var_types.data(), 2);
-
-    std::vector<double> con_lb = {1.0};
-    std::vector<double> con_ub = {std::numeric_limits<double>::infinity()};
-    problem.set_constraint_lower_bounds(con_lb.data(), 1);
-    problem.set_constraint_upper_bounds(con_ub.data(), 1);
-
+    populate_from_mps_data_model(&problem, data);
     return problem;
   }
 

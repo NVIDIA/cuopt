@@ -9,7 +9,6 @@
 
 #include <branch_and_bound/constants.hpp>
 #include <branch_and_bound/mip_node.hpp>
-#include <branch_and_bound/worker.hpp>
 
 #include <dual_simplex/basis_updates.hpp>
 #include <dual_simplex/logger.hpp>
@@ -29,6 +28,12 @@ namespace cuopt::linear_programming::dual_simplex {
 
 template <typename i_t, typename f_t>
 struct mip_symmetry_t;
+
+template <typename i_t, typename f_t>
+struct branch_and_bound_worker_t;
+
+template <typename i_t, typename f_t>
+struct branch_and_bound_stats_t;
 
 template <typename i_t, typename f_t>
 struct reliability_branching_settings_t {
