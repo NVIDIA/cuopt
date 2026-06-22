@@ -150,28 +150,51 @@ void my_cusparsespmm_preprocess(cusparseHandle_t handle,
 }
 #endif
 
-#if CUDA_VER_13_2_UP
-// SpMVOp symbols. Resolved at runtime via dlsym, because the runtime minor version might not match
-// the compiled minor version. We can go back to direct linking once CUDA 14 is adopted
-using cusparseSpMVOp_destroyDescr_sig = cusparse_sig<cusparseSpMVOpDescr_t>;
-using cusparseSpMVOp_destroyPlan_sig  = cusparse_sig<cusparseSpMVOpPlan_t>;
-using cusparseSpMVOp_bufferSize_sig   = cusparse_sig<cusparseHandle_t,
-                                                     cusparseOperation_t,
-                                                     cusparseSpMatDescr_t,
-                                                     cusparseDnVecDescr_t,
-                                                     cusparseDnVecDescr_t,
-                                                     cusparseDnVecDescr_t,
-                                                     cudaDataType,
-                                                     size_t*>;
-using cusparseSpMVOp_createDescr_sig  = cusparse_sig<cusparseHandle_t,
-                                                     cusparseSpMVOpDescr_t*,
-                                                     cusparseOperation_t,
-                                                     cusparseSpMatDescr_t,
-                                                     cusparseDnVecDescr_t,
-                                                     cusparseDnVecDescr_t,
-                                                     cusparseDnVecDescr_t,
-                                                     cudaDataType,
-                                                     void*>;
+#if CUOPT_CUSPARSE_VER_12_7_UP
+// SpMVOp symbols. Resolved at runtime via dlsym, because the runtime cuSPARSE version
+// might not match the headers used at compile time. cuSPARSE 12.7 corresponds to CUDA
+// Toolkit 13.2; cuSPARSE 12.8 corresponds to CUDA Toolkit 13.3. We can go back to
+// direct linking once CUDA 14 is adopted.
+using cusparseSpMVOp_destroyDescr_sig     = cusparse_sig<cusparseSpMVOpDescr_t>;
+using cusparseSpMVOp_destroyPlan_sig      = cusparse_sig<cusparseSpMVOpPlan_t>;
+using cusparseSpMVOp_bufferSize_12_7_sig  = cusparse_sig<cusparseHandle_t,
+                                                         cusparseOperation_t,
+                                                         cusparseSpMatDescr_t,
+                                                         cusparseDnVecDescr_t,
+                                                         cusparseDnVecDescr_t,
+                                                         cusparseDnVecDescr_t,
+                                                         cudaDataType,
+                                                         size_t*>;
+using cusparseSpMVOp_createDescr_12_7_sig = cusparse_sig<cusparseHandle_t,
+                                                         cusparseSpMVOpDescr_t*,
+                                                         cusparseOperation_t,
+                                                         cusparseSpMatDescr_t,
+                                                         cusparseDnVecDescr_t,
+                                                         cusparseDnVecDescr_t,
+                                                         cusparseDnVecDescr_t,
+                                                         cudaDataType,
+                                                         void*>;
+#if CUOPT_CUSPARSE_VER_12_8_UP
+using cusparseSpMVOp_bufferSize_12_8_sig  = cusparse_sig<cusparseHandle_t,
+                                                         cusparseOperation_t,
+                                                         cusparseConstSpMatDescr_t,
+                                                         cusparseConstDnVecDescr_t,
+                                                         cusparseDnVecDescr_t,
+                                                         cusparseDnVecDescr_t,
+                                                         cudaDataType,
+                                                         cusparseSpMVOpAlg_t,
+                                                         size_t*>;
+using cusparseSpMVOp_createDescr_12_8_sig = cusparse_sig<cusparseHandle_t,
+                                                         cusparseSpMVOpDescr_t*,
+                                                         cusparseOperation_t,
+                                                         cusparseConstSpMatDescr_t,
+                                                         cusparseConstDnVecDescr_t,
+                                                         cusparseDnVecDescr_t,
+                                                         cusparseDnVecDescr_t,
+                                                         cudaDataType,
+                                                         cusparseSpMVOpAlg_t,
+                                                         void*>;
+#endif  // CUOPT_CUSPARSE_VER_12_8_UP
 using cusparseSpMVOp_createPlan_sig =
   cusparse_sig<cusparseHandle_t, cusparseSpMVOpDescr_t, cusparseSpMVOpPlan_t*, char*, size_t>;
 using cusparseSpMVOp_sig = cusparse_sig<cusparseHandle_t,
@@ -184,6 +207,71 @@ using cusparseSpMVOp_sig = cusparse_sig<cusparseHandle_t,
 
 // dlsym-resolved create/destroy. The *_destroy_sig variants are reused by the
 // deleters; the *_create_sig variants are reused by make_spmvop_{descr,plan}.
+//
+// `cusparse_spmvop_buffer_size` and `cusparse_spmvop_create_descr` dispatch
+// between the cuSPARSE 12.7 and 12.8 signatures at runtime (cuSPARSE 12.8 added
+// a `cusparseSpMVOpAlg_t` parameter), since the compiled headers may not match
+// the runtime cuSPARSE version.
+
+namespace {
+
+bool is_cusparse_runtime_12_8_or_newer()
+{
+  // cuSPARSE 12.8 is the version shipped with CUDA Toolkit 13.3.
+  int major = 0, minor = 0;
+  auto status = cusparseGetProperty(libraryPropertyType_t::MAJOR_VERSION, &major);
+  if (status != CUSPARSE_STATUS_SUCCESS) { return false; }
+  status = cusparseGetProperty(libraryPropertyType_t::MINOR_VERSION, &minor);
+  if (status != CUSPARSE_STATUS_SUCCESS) { return false; }
+  return (major > 12) || (major == 12 && minor >= 8);
+}
+
+cusparseStatus_t cusparse_spmvop_buffer_size(cusparseHandle_t handle,
+                                             cusparseOperation_t opA,
+                                             cusparseSpMatDescr_t matA,
+                                             cusparseDnVecDescr_t vecX,
+                                             cusparseDnVecDescr_t vecY,
+                                             cusparseDnVecDescr_t vecZ,
+                                             cudaDataType computeType,
+                                             size_t* bufferSize)
+{
+#if CUOPT_CUSPARSE_VER_12_8_UP
+  if (is_cusparse_runtime_12_8_or_newer()) {
+    static const auto fn = dynamic_load_runtime::function<cusparseSpMVOp_bufferSize_12_8_sig>(
+      "cusparseSpMVOp_bufferSize");
+    return (*fn)(
+      handle, opA, matA, vecX, vecY, vecZ, computeType, CUSPARSE_SPMVOP_ALG_DEFAULT, bufferSize);
+  }
+#endif  // CUOPT_CUSPARSE_VER_12_8_UP
+  static const auto fn =
+    dynamic_load_runtime::function<cusparseSpMVOp_bufferSize_12_7_sig>("cusparseSpMVOp_bufferSize");
+  return (*fn)(handle, opA, matA, vecX, vecY, vecZ, computeType, bufferSize);
+}
+
+cusparseStatus_t cusparse_spmvop_create_descr(cusparseHandle_t handle,
+                                              cusparseSpMVOpDescr_t* descr,
+                                              cusparseOperation_t opA,
+                                              cusparseSpMatDescr_t matA,
+                                              cusparseDnVecDescr_t vecX,
+                                              cusparseDnVecDescr_t vecY,
+                                              cusparseDnVecDescr_t vecZ,
+                                              cudaDataType computeType,
+                                              void* buffer)
+{
+#if CUOPT_CUSPARSE_VER_12_8_UP
+  if (is_cusparse_runtime_12_8_or_newer()) {
+    static const auto fn = dynamic_load_runtime::function<cusparseSpMVOp_createDescr_12_8_sig>(
+      "cusparseSpMVOp_createDescr");
+    return (*fn)(
+      handle, descr, opA, matA, vecX, vecY, vecZ, computeType, CUSPARSE_SPMVOP_ALG_DEFAULT, buffer);
+  }
+#endif  // CUOPT_CUSPARSE_VER_12_8_UP
+  static const auto fn = dynamic_load_runtime::function<cusparseSpMVOp_createDescr_12_7_sig>(
+    "cusparseSpMVOp_createDescr");
+  return (*fn)(handle, descr, opA, matA, vecX, vecY, vecZ, computeType, buffer);
+}
+
+}  // namespace
 
 void cusparse_spmvop_descr_deleter_t::operator()(cusparseSpMVOpDescr_t descr) const noexcept
 {
@@ -210,13 +298,9 @@ cusparse_spmvop_descr_uptr make_spmvop_descr(cusparseHandle_t handle,
                                              cudaDataType computeType,
                                              rmm::device_uvector<uint8_t>& buffer)
 {
-  static const auto fn =
-    dynamic_load_runtime::function<cusparseSpMVOp_createDescr_sig>("cusparseSpMVOp_createDescr");
-  if (!fn.has_value()) {
-    EXE_CUOPT_FAIL("Unable to resolve cusparseSpMVOp_createDescr at runtime");
-  }
   cusparseSpMVOpDescr_t descr{nullptr};
-  RAFT_CUSPARSE_TRY((*fn)(handle, &descr, opA, matA, vecX, vecY, vecZ, computeType, buffer.data()));
+  RAFT_CUSPARSE_TRY(cusparse_spmvop_create_descr(
+    handle, &descr, opA, matA, vecX, vecY, vecZ, computeType, buffer.data()));
   return cusparse_spmvop_descr_uptr{descr};
 }
 
@@ -244,7 +328,7 @@ void cusparse_spmvop_run(cusparseHandle_t handle,
   RAFT_CUSPARSE_TRY(cusparseSetStream(handle, stream));
   RAFT_CUSPARSE_TRY((*func)(handle, plan, alpha, beta, vecX, vecY, vecZ));
 }
-#endif
+#endif  // CUOPT_CUSPARSE_VER_12_7_UP
 
 // This cstr is used in pdhg, step size strategy and in cuPDLPx infeasible detection
 // A_T is owned by the scaled problem
@@ -1156,36 +1240,39 @@ bool is_cusparse_runtime_mixed_precision_supported()
 
 bool is_cusparse_runtime_spmvop_supported()
 {
-#if CUDA_VER_13_2_UP
-  // Probe the runtimme to ensure cusparseSpMVOp is supported
+#if CUOPT_CUSPARSE_VER_12_7_UP
+#if !CUOPT_CUSPARSE_VER_12_8_UP
+  // Headers older than cuSPARSE 12.8 (CUDA Toolkit 13.3) cannot name the newer SpMVOp
+  // descriptor types, so do not call the older 12.7 signature against a 12.8+ runtime.
+  if (is_cusparse_runtime_12_8_or_newer()) { return false; }
+#endif  // !CUOPT_CUSPARSE_VER_12_8_UP
+  // Probe the runtime to ensure cusparseSpMVOp is supported.
   static const bool supported =
     dynamic_load_runtime::function<cusparseSpMVOp_sig>("cusparseSpMVOp").has_value();
   return supported;
 #else
   return false;
-#endif
+#endif  // CUOPT_CUSPARSE_VER_12_7_UP
 }
 
 // Creates SpMVOp plans. Must be called after scale_problem() so plans use the scaled matrix.
 template <typename i_t, typename f_t>
 void cusparse_view_t<i_t, f_t>::create_spmv_op_plans(bool is_reflected)
 {
-#if CUDA_VER_13_2_UP
+#if CUOPT_CUSPARSE_VER_12_7_UP
   if (!is_cusparse_runtime_spmvop_supported() || !(std::is_same_v<f_t, double>)) { return; }
-  static const auto buffer_size =
-    dynamic_load_runtime::function<cusparseSpMVOp_bufferSize_sig>("cusparseSpMVOp_bufferSize");
   RAFT_CUSPARSE_TRY(
     cusparseSetStream(handle_ptr_->get_cusparse_handle(), handle_ptr_->get_stream()));
   // Prepare buffers for At_y SpMVOp
   size_t buffer_size_transpose = 0;
-  RAFT_CUSPARSE_TRY((*buffer_size)(handle_ptr_->get_cusparse_handle(),
-                                   CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                   A_T.get(),
-                                   dual_solution.get(),
-                                   current_AtY.get(),
-                                   current_AtY.get(),
-                                   CUDA_R_64F,
-                                   &buffer_size_transpose));
+  RAFT_CUSPARSE_TRY(cusparse_spmvop_buffer_size(handle_ptr_->get_cusparse_handle(),
+                                                CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                                A_T.get(),
+                                                dual_solution.get(),
+                                                current_AtY.get(),
+                                                current_AtY.get(),
+                                                CUDA_R_64F,
+                                                &buffer_size_transpose));
   buffer_transpose_spmvop.resize(buffer_size_transpose, handle_ptr_->get_stream());
 
   spmv_op_descr_A_t_ = make_spmvop_descr(handle_ptr_->get_cusparse_handle(),
@@ -1203,14 +1290,14 @@ void cusparse_view_t<i_t, f_t>::create_spmv_op_plans(bool is_reflected)
   // Only prepare buffers for A_x if we are using reflected_halpern
   if (is_reflected) {
     size_t buffer_size_non_transpose = 0;
-    RAFT_CUSPARSE_TRY((*buffer_size)(handle_ptr_->get_cusparse_handle(),
-                                     CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                     A.get(),
-                                     reflected_primal_solution.get(),
-                                     dual_gradient.get(),
-                                     dual_gradient.get(),
-                                     CUDA_R_64F,
-                                     &buffer_size_non_transpose));
+    RAFT_CUSPARSE_TRY(cusparse_spmvop_buffer_size(handle_ptr_->get_cusparse_handle(),
+                                                  CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                                  A.get(),
+                                                  reflected_primal_solution.get(),
+                                                  dual_gradient.get(),
+                                                  dual_gradient.get(),
+                                                  CUDA_R_64F,
+                                                  &buffer_size_non_transpose));
     buffer_non_transpose_spmvop.resize(buffer_size_non_transpose, handle_ptr_->get_stream());
 
     spmv_op_descr_A_ = make_spmvop_descr(handle_ptr_->get_cusparse_handle(),
@@ -1224,7 +1311,7 @@ void cusparse_view_t<i_t, f_t>::create_spmv_op_plans(bool is_reflected)
 
     spmv_op_plan_A_ = make_spmvop_plan(handle_ptr_->get_cusparse_handle(), spmv_op_descr_A_.get());
   }
-#endif
+#endif  // CUOPT_CUSPARSE_VER_12_7_UP
 }
 
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT

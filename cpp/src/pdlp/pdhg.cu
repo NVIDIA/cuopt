@@ -447,7 +447,7 @@ void pdhg_solver_t<i_t, f_t>::compute_next_dual_solution(rmm::device_uvector<f_t
 template <typename i_t, typename f_t>
 void pdhg_solver_t<i_t, f_t>::spmvop_At_y()
 {
-#if CUDA_VER_13_2_UP
+#if CUOPT_CUSPARSE_VER_12_7_UP
   if (is_cusparse_runtime_spmvop_supported()) {
     cusparse_spmvop_run(handle_ptr_->get_cusparse_handle(),
                         cusparse_view_.spmv_op_plan_A_t_.get(),
@@ -475,7 +475,7 @@ void pdhg_solver_t<i_t, f_t>::spmvop_At_y()
 template <typename i_t, typename f_t>
 void pdhg_solver_t<i_t, f_t>::spmvop_A_x()
 {
-#if CUDA_VER_13_2_UP
+#if CUOPT_CUSPARSE_VER_12_7_UP
   if (is_cusparse_runtime_spmvop_supported()) {
     cusparse_spmvop_run(handle_ptr_->get_cusparse_handle(),
                         cusparse_view_.spmv_op_plan_A_.get(),

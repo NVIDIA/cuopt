@@ -7,7 +7,6 @@
 #pragma once
 
 #include <barrier/dense_vector.hpp>
-#include <barrier/pinned_host_allocator.hpp>
 
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
@@ -49,13 +48,6 @@ class barrier_solver_t {
                               f_t& dual_residual_norm,
                               f_t& complementarity_residual_norm);
 
-  template <typename AllocatorA>
-  void compute_residuals(const dense_vector_t<i_t, f_t, AllocatorA>& w,
-                         const dense_vector_t<i_t, f_t, AllocatorA>& x,
-                         const dense_vector_t<i_t, f_t, AllocatorA>& y,
-                         const dense_vector_t<i_t, f_t, AllocatorA>& v,
-                         const dense_vector_t<i_t, f_t, AllocatorA>& z,
-                         iteration_data_t<i_t, f_t>& data);
   void compute_primal_dual_step_length(iteration_data_t<i_t, f_t>& data,
                                        f_t step_scale,
                                        f_t& step_primal,
@@ -101,11 +93,6 @@ class barrier_solver_t {
                                       const rmm::device_uvector<f_t>& x,
                                       const rmm::device_uvector<f_t>& dx);
   i_t gpu_compute_search_direction(iteration_data_t<i_t, f_t>& data,
-                                   pinned_dense_vector_t<i_t, f_t>& dw,
-                                   pinned_dense_vector_t<i_t, f_t>& dx,
-                                   pinned_dense_vector_t<i_t, f_t>& dy,
-                                   pinned_dense_vector_t<i_t, f_t>& dv,
-                                   pinned_dense_vector_t<i_t, f_t>& dz,
                                    f_t& dual_perturb,
                                    f_t& primal_perturb,
                                    f_t& max_residual);
