@@ -12,8 +12,10 @@ Usage (called from a GitHub Actions step):
     python3 ci/utils/pr_test_summary.py
 """
 
+import io
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.request
@@ -31,6 +33,11 @@ _MARKER = "<!-- pr-test-summary -->"
 _HTTP_TIMEOUT_SEC = 30
 # Maximum failed test names shown per job dropdown.
 _MAX_TESTS = 50
+
+# gtest prints "[  FAILED  ] Suite.Test (12 ms)" per failing test and again,
+# without the timing suffix, in the end-of-run "listed below" block. Capture the
+# "Suite.Test" name; the dedup set collapses the duplicate.
+_GTEST_FAILED = re.compile(r"\[  FAILED  \] (\S+\.\S+?)(?: \(\d+ ms\))?$")
 
 # Ordered by specificity; first match wins.
 _CRASH_PATTERNS = [
@@ -93,48 +100,63 @@ def _is_test_job(name):
 
 
 def _analyze_job_log(job_id, repo, token):
-    """Return (failed_test_ids, crash_description_or_None) from a job's log."""
+    """Return (failed_test_ids, crash_description_or_None) from a job's log.
+
+    Streams the whole log line by line (bounded memory: only matched failures
+    are retained). Truncating to a tail window does not work — the pytest
+    summary is not necessarily near the end (a job may run several test suites,
+    e.g. cuopt then cuopt_server), so a fixed window can drop it entirely.
+    Recognizes both pytest ("short test summary info") and gtest/ctest
+    ("[  FAILED  ] Suite.Test") output.
+    """
     req = urllib.request.Request(
         f"https://api.github.com/repos/{repo}/actions/jobs/{job_id}/logs",
         headers=_headers(token),
     )
+    failed = []
+    seen = set()
+    crash = None
+    in_pytest_summary = False
+
+    def _add(test_id):
+        if test_id and test_id not in seen:
+            seen.add(test_id)
+            failed.append(test_id)
+
     try:
         with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT_SEC) as resp:
-            # Stream the log, retaining only the last 512 KB so the pytest
-            # summary section at the end of the output is always captured.
-            chunks = []
-            total = 0
-            while chunk := resp.read(65536):
-                chunks.append(chunk)
-                total += len(chunk)
-                if total > 512 * 1024:
-                    chunks = chunks[-8:]
-                    total = sum(len(c) for c in chunks)
+            for raw in io.TextIOWrapper(
+                resp, encoding="utf-8", errors="replace"
+            ):
+                # Strip GHA timestamp prefix: "2024-01-15T10:30:45.1234567Z text"
+                parts = raw.rstrip("\n").split("Z ", 1)
+                line = (
+                    parts[1]
+                    if len(parts) > 1 and len(parts[0]) < 35
+                    else raw.rstrip("\n")
+                )
+
+                if crash is None:
+                    crash = next(
+                        (d for p, d in _CRASH_PATTERNS if p in line), None
+                    )
+
+                # gtest / ctest failures (C++ test jobs).
+                m = _GTEST_FAILED.match(line)
+                if m:
+                    _add(m.group(1))
+                    continue
+
+                # pytest failures (Python test jobs).
+                if "short test summary info" in line:
+                    in_pytest_summary = True
+                elif in_pytest_summary:
+                    if line.startswith(("FAILED ", "ERROR ")):
+                        _add(line.split(" ", 1)[1].split(" - ")[0].strip())
+                    elif line.startswith("="):
+                        in_pytest_summary = False
     except (urllib.error.HTTPError, urllib.error.URLError):
         return [], None
-
-    text = b"".join(chunks).decode("utf-8", errors="replace")
-
-    crash = next(
-        (desc for pattern, desc in _CRASH_PATTERNS if pattern in text), None
-    )
-
-    failed = []
-    in_summary = False
-    for raw in text.splitlines():
-        # Strip GHA timestamp prefix: "2024-01-15T10:30:45.1234567Z content"
-        parts = raw.split("Z ", 1)
-        line = parts[1] if len(parts) > 1 and len(parts[0]) < 35 else raw
-
-        if "short test summary info" in line:
-            in_summary = True
-        elif in_summary:
-            if line.startswith(("FAILED ", "ERROR ")):
-                test_id = line.split(" ", 1)[1].split(" - ")[0].strip()
-                if test_id:
-                    failed.append(test_id)
-            elif line.startswith("=") and failed:
-                break
 
     return failed[:_MAX_TESTS], crash
 
@@ -159,7 +181,7 @@ def _build_body(failed, passed, skipped, job_analysis):
                 continue
             if crash and not tests:
                 summary = f"💥 crashed ({crash})"
-                detail = "Process was terminated before pytest completed."
+                detail = "Process was terminated before the test run completed."
             else:
                 n = len(tests)
                 noun = "test" if n == 1 else "tests"
