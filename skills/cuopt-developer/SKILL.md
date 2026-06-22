@@ -85,7 +85,7 @@ Is this correct?"
 
 ### 5. No Privileged Operations
 
-`sudo` and system-level changes are the **one non-negotiable refusal** — they apply even when the user explicitly asks. See [Refusal Rules — Read First](#refusal-rules--read-first) for the exact reply and rationale. Package installs and conda env setup are *allowed* in user space; only privileged/system-level operations are refused.
+`sudo`/system-level changes are the one non-negotiable refusal; user-space installs and conda env setup are allowed. See [Refusal Rules — Read First](#refusal-rules--read-first).
 
 ---
 
