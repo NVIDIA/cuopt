@@ -21,7 +21,7 @@ Add TLS or tuning variables from :doc:`advanced` if your deployment uses them.
 
    Routing solve over gRPC is not supported. For solving routing problems remotely today, use the HTTP/JSON :doc:`REST self-hosted server <../cuopt-server/index>` and :doc:`Examples <../cuopt-server/examples/index>`.
 
-Where to find examples
+Where to Find Examples
 ======================
 
 Python (LP / QP / MILP)
@@ -43,7 +43,7 @@ C API (LP / QP / MILP)
 
 * :doc:`../cuopt-cli/cli-examples` — ``cuopt_cli`` invocations. With the exports above, the CLI forwards solves to ``cuopt_grpc_server``.
 
-Minimal demos (this section)
+Minimal Demos (This Section)
 ----------------------------
 
 Bundled with the gRPC docs source for a quick copy-paste path (also walked through in :doc:`quick-start`):
@@ -51,12 +51,12 @@ Bundled with the gRPC docs source for a quick copy-paste path (also walked throu
 * :download:`remote_lp_demo.py <examples/remote_lp_demo.py>`
 * :download:`remote_lp_demo.mps <examples/remote_lp_demo.mps>`
 
-Custom gRPC client
+Custom gRPC Client
 ------------------
 
 Integrations that do **not** use the bundled Python / C / CLI stack should speak ``CuOptRemoteService`` directly. See :doc:`api`, :doc:`grpc-server-architecture`, and ``cpp/docs/grpc-server-architecture.md`` in the repository for protos and server behavior.
 
-More samples
+More Samples
 ============
 
 * `NVIDIA cuOpt examples on GitHub <https://github.com/NVIDIA/cuopt-examples>`_ — set the remote environment on the **client** before running notebooks or scripts.
