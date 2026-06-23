@@ -7,9 +7,11 @@
 
 #pragma once
 
+#include <optional>
 #include <vector>
 
 #include <cuopt/linear_programming/constants.h>
+#include <cuopt/linear_programming/mip/diving_hyper_params.hpp>
 #include <cuopt/linear_programming/mip/heuristics_hyper_params.hpp>
 #include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
 #include <cuopt/linear_programming/utilities/internals.hpp>
@@ -25,11 +27,40 @@ struct benchmark_info_t {
   double last_improvement_of_best_feasible    = 0;
   double last_improvement_after_recombination = 0;
   double objective_of_initial_population      = std::numeric_limits<double>::max();
+  // LP relaxation objective at the root node, BEFORE any cuts have been
+  // added. quiet_NaN() means "B&B did not run cut passes / value was
+  // never written" — distinguishes it from a legitimate 0.0.
+  double root_lp_no_cuts = std::numeric_limits<double>::quiet_NaN();
+  // LP relaxation objective at the root node, AFTER the full cut loop
+  // (final pass result). The dual gap "by cuts at the root" is then
+  //   gap_after_cuts = opt - root_lp_with_cuts        (in B&B's solver
+  //                                                    objective sense)
+  // and the classical "gap closed by cuts" metric is
+  //   gap_closed_pct = 100 * (root_lp_with_cuts - root_lp_no_cuts)
+  //                          / (opt - root_lp_no_cuts).
+  // quiet_NaN() means "B&B did not finish the cut loop / value not written".
+  double root_lp_with_cuts = std::numeric_limits<double>::quiet_NaN();
+
+  // Wall-clock time spent inside the root-node cut generation loop
+  // (sum of generate_cuts + score_cuts + check_for_duplicate_cuts +
+  // get_best_cuts + add_cuts + post-cut LP resolves), in seconds.
+  // Published by branch_and_bound.cpp::solve() at the same point that
+  // root_lp_with_cuts is finalised. quiet_NaN() means "cut loop did
+  // not run / value never written".
+  double cut_generation_time_sec = std::numeric_limits<double>::quiet_NaN();
 };
 
 // Forward declare solver_settings_t for friend class
 template <typename i_t, typename f_t>
 class solver_settings_t;
+
+template <typename i_t, typename f_t>
+class mip_solver_settings_t;
+
+namespace detail {
+template <typename i_t, typename f_t>
+struct mip_solver_settings_accessor;
+}  // namespace detail
 
 template <typename i_t, typename f_t>
 class mip_solver_settings_t {
@@ -86,18 +117,22 @@ class mip_solver_settings_t {
 
   f_t time_limit                = std::numeric_limits<f_t>::infinity();
   f_t work_limit                = std::numeric_limits<f_t>::infinity();
+  f_t semi_continuous_big_m     = f_t(1e10);
   i_t node_limit                = std::numeric_limits<i_t>::max();
   bool heuristics_only          = false;
   i_t reliability_branching     = -1;
   i_t num_cpu_threads           = -1;  // -1 means use default number of threads in branch and bound
+  i_t symmetry                  = -1;
   i_t max_cut_passes            = 10;  // number of cut passes to make
   i_t mir_cuts                  = -1;
   i_t mixed_integer_gomory_cuts = -1;
   i_t knapsack_cuts             = -1;
+  i_t flow_cover_cuts           = -1;
   i_t clique_cuts               = -1;
   i_t implied_bound_cuts        = -1;
   i_t strong_chvatal_gomory_cuts = -1;
   i_t reduced_cost_strengthening = -1;
+  i_t objective_step             = 1;  // 0 = disable objective step tightening, 1 = enable
   f_t cut_change_threshold       = -1.0;
   f_t cut_min_orthogonality      = 0.5;
   i_t mip_batch_pdlp_strong_branching{
@@ -117,6 +152,14 @@ class mip_solver_settings_t {
   std::vector<std::shared_ptr<rmm::device_uvector<f_t>>> initial_solutions;
   int mip_scaling = CUOPT_MIP_SCALING_NO_OBJECTIVE;
   presolver_t presolver{presolver_t::Default};
+  /**
+   * @brief Enable the cuOpt internal probing-cache step of presolve (MIP only).
+   *
+   * Probing is part of cuOpt's internal MIP presolve and runs only when the
+   * higher-level presolve is enabled (i.e. `presolver != presolver_t::None`).
+   * When this is `false`, probing is skipped even if presolve is otherwise on.
+   */
+  bool probing{true};
   /**
    * @brief Determinism mode for MIP solver.
    *
@@ -141,12 +184,55 @@ class mip_solver_settings_t {
   // TODO check with Akif and Alice
   pdlp_hyper_params::pdlp_hyper_params_t hyper_params;
 
-  mip_heuristics_hyper_params_t heuristic_params;
+  mip_heuristics_hyper_params_t<i_t, f_t> heuristic_params;
+
+  mip_diving_hyper_params_t<i_t, f_t> diving_params;
 
  private:
   std::vector<internals::base_solution_callback_t*> mip_callbacks_;
+  std::optional<i_t> semi_continuous_original_num_variables_;
+  std::vector<i_t> semi_continuous_binary_to_original_indices_;
 
   friend class solver_settings_t<i_t, f_t>;
+  friend struct detail::mip_solver_settings_accessor<i_t, f_t>;
 };
+
+namespace detail {
+
+template <typename i_t, typename f_t>
+struct mip_solver_settings_accessor {
+  static void clear_mip_callbacks(mip_solver_settings_t<i_t, f_t>& settings)
+  {
+    settings.mip_callbacks_.clear();
+  }
+
+  static void set_semi_continuous_callback_translation(mip_solver_settings_t<i_t, f_t>& settings,
+                                                       i_t original_num_variables,
+                                                       std::vector<i_t> binary_to_original_indices)
+  {
+    settings.semi_continuous_original_num_variables_     = original_num_variables;
+    settings.semi_continuous_binary_to_original_indices_ = std::move(binary_to_original_indices);
+  }
+
+  static bool has_semi_continuous_callback_translation(
+    const mip_solver_settings_t<i_t, f_t>& settings)
+  {
+    return settings.semi_continuous_original_num_variables_.has_value();
+  }
+
+  static i_t get_semi_continuous_original_num_variables(
+    const mip_solver_settings_t<i_t, f_t>& settings)
+  {
+    return settings.semi_continuous_original_num_variables_.value_or(0);
+  }
+
+  static const std::vector<i_t>& get_semi_continuous_binary_to_original_indices(
+    const mip_solver_settings_t<i_t, f_t>& settings)
+  {
+    return settings.semi_continuous_binary_to_original_indices_;
+  }
+};
+
+}  // namespace detail
 
 }  // namespace cuopt::linear_programming

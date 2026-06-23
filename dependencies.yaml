@@ -7,7 +7,7 @@ files:
   all:
     output: conda
     matrix:
-      cuda: ["12.9", "13.1"]
+      cuda: ["12.9", "13.3"]
       arch: [x86_64, aarch64]
     includes:
       - build_common
@@ -54,7 +54,6 @@ files:
       - depends_on_cuopt
       - depends_on_cuopt_server
       - depends_on_cuopt_sh_client
-      - depends_on_mps_parser
       - test_python_common
       - test_python_cuopt
       - test_python_cuopt_server
@@ -80,44 +79,8 @@ files:
         - depends_on_cuopt
         - depends_on_cuopt_server
         - depends_on_cuopt_sh_client
-        - depends_on_mps_parser
         - docs
         - py_version
-  py_build_cuopt_mps_parser:
-    output: pyproject
-    pyproject_dir: python/cuopt/cuopt/linear_programming/
-    extras:
-      table: build-system
-    includes:
-      - rapids_build_backend
-  py_rapids_build_cuopt_mps_parser:
-    output: pyproject
-    pyproject_dir: python/cuopt/cuopt/linear_programming/
-    extras:
-      table: tool.rapids-build-backend
-      key: requires
-    includes:
-      - build_common
-      - build_python_common
-      - depends_on_rapids_logger
-      - run_common
-  py_test_cuopt_mps_parser:
-    output: pyproject
-    pyproject_dir: python/cuopt/cuopt/linear_programming/
-    extras:
-      table: project.optional-dependencies
-      key: test
-    includes:
-      - test_python_common
-      - depends_on_rapids_logger
-  py_run_cuopt_mps_parser:
-    output: pyproject
-    pyproject_dir: python/cuopt/cuopt/linear_programming/
-    extras:
-      table: project
-    includes:
-      - run_common
-      - depends_on_rapids_logger
   py_build_libcuopt:
     output: pyproject
     pyproject_dir: python/libcuopt
@@ -136,7 +99,6 @@ files:
       - depends_on_libraft_headers
       - depends_on_librmm
       - depends_on_rapids_logger
-      - depends_on_mps_parser
   py_run_libcuopt:
     output: pyproject
     pyproject_dir: python/libcuopt
@@ -147,7 +109,6 @@ files:
       - depends_on_libraft_headers
       - depends_on_librmm
       - depends_on_rapids_logger
-      - depends_on_mps_parser
   py_build_cuopt:
     output: pyproject
     pyproject_dir: python/cuopt
@@ -165,7 +126,6 @@ files:
       - build_common
       - build_python_common
       - depends_on_libcuopt
-      - depends_on_mps_parser
       - depends_on_rapids_logger
       - depends_on_cupy
       - depends_on_pylibraft
@@ -180,7 +140,6 @@ files:
       - run_cuopt
       - depends_on_cupy
       - depends_on_libcuopt
-      - depends_on_mps_parser
       - depends_on_rmm
       - depends_on_cudf
       - depends_on_pylibraft
@@ -244,7 +203,14 @@ files:
       table: project
     includes:
       - run_cuopt_sh_client
-      - depends_on_mps_parser
+  py_mps_cuopt_sh_client:
+    output: pyproject
+    pyproject_dir: python/cuopt_self_hosted/
+    extras:
+      table: project.optional-dependencies
+      key: mps
+    includes:
+      - mps_cuopt_sh_client
 channels:
   - rapidsai-nightly
   - rapidsai
@@ -272,7 +238,7 @@ dependencies:
     common:
       - output_types: [conda, requirements, pyproject]
         packages:
-          - &cmake_ver cmake>=3.30.4
+          - &cmake_ver cmake>=4.0
           - &ninja ninja
       - output_types: conda
         packages:
@@ -299,6 +265,7 @@ dependencies:
         packages:
           - libboost-devel
           - cpp-argparse
+          - &pyyaml pyyaml>=6.0.0
           - tbb-devel
           - zlib
           - bzip2
@@ -313,11 +280,12 @@ dependencies:
       - output_types: [conda]
         packages:
           - cuda-sanitizer-api
+          - *pyyaml
   test_cpp_cuopt:
     common:
       - output_types: [conda]
         packages:
-          - libcuopt-tests==26.6.*,>=0.0.0a0
+          - libcuopt-tests==26.8.*,>=0.0.0a0
   build_wheels:
     common:
       - output_types: [requirements, pyproject]
@@ -340,6 +308,7 @@ dependencies:
         packages:
           - pytest<9.0
           - pytest-cov
+          - pytest-rerunfailures
   test_python_cuopt:
     common:
       - output_types: [conda]
@@ -355,7 +324,7 @@ dependencies:
           - numba-cuda>=0.22.1
           - numba>=0.60.0,<0.65.0
           - &pandas pandas>=2.0
-          - &pyyaml pyyaml>=6.0.0
+          - *pyyaml
           - scipy>=1.14.1
     specific:
       - output_types: [conda, requirements, pyproject]
@@ -415,11 +384,23 @@ dependencies:
       - output_types: [requirements, pyproject]
         packages:
           - *msgpack
+  mps_cuopt_sh_client:
+    # Optional dependency exposed as the `cuopt-sh-client[mps]` extra.
+    # cuopt-sh-client itself is a CUDA-free thin client, but the MPS
+    # parser ships inside cuopt, which on PyPI only exists as the
+    # CUDA-suffixed cuopt-cu12 / cuopt-cu13 wheels. Those two cannot
+    # coexist (both install to the same `cuopt/` directory), so a user
+    # who already has cuopt-cu12 installed should NOT pull this extra
+    # and should pip-install cuopt-cu12 manually instead.
+    common:
+      - output_types: [requirements, pyproject]
+        packages:
+          - cuopt-cu13==26.8.*,>=0.0.0a0
   depends_on_libcuopt:
     common:
       - output_types: conda
         packages:
-          - &libcuopt_unsuffixed libcuopt==26.6.*,>=0.0.0a0
+          - &libcuopt_unsuffixed libcuopt==26.8.*,>=0.0.0a0
       - output_types: requirements
         packages:
           # pip recognizes the index as a global option for the requirements.txt file
@@ -432,18 +413,18 @@ dependencies:
               cuda: "12.*"
               cuda_suffixed: "true"
             packages:
-              - libcuopt-cu12==26.6.*,>=0.0.0a0
+              - libcuopt-cu12==26.8.*,>=0.0.0a0
           - matrix:
               cuda: "13.*"
               cuda_suffixed: "true"
             packages:
-              - libcuopt-cu13==26.6.*,>=0.0.0a0
+              - libcuopt-cu13==26.8.*,>=0.0.0a0
           - {matrix: null, packages: [*libcuopt_unsuffixed]}
   depends_on_cuopt:
     common:
       - output_types: conda
         packages:
-          - &cuopt_unsuffixed cuopt==26.6.*,>=0.0.0a0
+          - &cuopt_unsuffixed cuopt==26.8.*,>=0.0.0a0
       - output_types: requirements
         packages:
           # pip recognizes the index as a global option for the requirements.txt file
@@ -456,18 +437,18 @@ dependencies:
               cuda: "12.*"
               cuda_suffixed: "true"
             packages:
-              - cuopt-cu12==26.6.*,>=0.0.0a0
+              - cuopt-cu12==26.8.*,>=0.0.0a0
           - matrix:
               cuda: "13.*"
               cuda_suffixed: "true"
             packages:
-              - cuopt-cu13==26.6.*,>=0.0.0a0
+              - cuopt-cu13==26.8.*,>=0.0.0a0
           - {matrix: null, packages: [*cuopt_unsuffixed]}
   depends_on_cuopt_server:
     common:
       - output_types: conda
         packages:
-          - &cuopt_server_unsuffixed cuopt-server==26.6.*,>=0.0.0a0
+          - &cuopt_server_unsuffixed cuopt-server==26.8.*,>=0.0.0a0
       - output_types: requirements
         packages:
           # pip recognizes the index as a global option for the requirements.txt file
@@ -480,28 +461,18 @@ dependencies:
               cuda: "12.*"
               cuda_suffixed: "true"
             packages:
-              - cuopt-server-cu12==26.6.*,>=0.0.0a0
+              - cuopt-server-cu12==26.8.*,>=0.0.0a0
           - matrix:
               cuda: "13.*"
               cuda_suffixed: "true"
             packages:
-              - cuopt-server-cu13==26.6.*,>=0.0.0a0
+              - cuopt-server-cu13==26.8.*,>=0.0.0a0
           - {matrix: null, packages: [*cuopt_server_unsuffixed]}
   depends_on_cuopt_sh_client:
     common:
       - output_types: [conda, requirements, pyproject]
         packages:
-          - &cuopt_sh_client_unsuffixed cuopt-sh-client==26.6.*,>=0.0.0a0
-      - output_types: requirements
-        packages:
-          # pip recognizes the index as a global option for the requirements.txt file
-          - --extra-index-url=https://pypi.nvidia.com
-          - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
-  depends_on_mps_parser:
-    common:
-      - output_types: [requirements, pyproject, conda]
-        packages:
-          - cuopt-mps-parser==26.6.*,>=0.0.0a0
+          - &cuopt_sh_client_unsuffixed cuopt-sh-client==26.8.*,>=0.0.0a0
       - output_types: requirements
         packages:
           # pip recognizes the index as a global option for the requirements.txt file
@@ -511,12 +482,12 @@ dependencies:
     common:
       - output_types: conda
         packages:
-          - libraft-headers==26.6.*,>=0.0.0a0
+          - libraft-headers==26.8.*,>=0.0.0a0
   depends_on_librmm:
     common:
       - output_types: conda
         packages:
-          - &librmm_unsuffixed librmm==26.6.*,>=0.0.0a0
+          - &librmm_unsuffixed librmm==26.8.*,>=0.0.0a0
       - output_types: requirements
         packages:
           # pip recognizes the index as a global option for the requirements.txt file
@@ -528,18 +499,18 @@ dependencies:
               cuda: "12.*"
               cuda_suffixed: "true"
             packages:
-              - librmm-cu12==26.6.*,>=0.0.0a0
+              - librmm-cu12==26.8.*,>=0.0.0a0
           - matrix:
               cuda: "13.*"
               cuda_suffixed: "true"
             packages:
-              - librmm-cu13==26.6.*,>=0.0.0a0
+              - librmm-cu13==26.8.*,>=0.0.0a0
           - {matrix: null, packages: [*librmm_unsuffixed]}
   depends_on_cupy:
     common:
       - output_types: conda
         packages:
-          - cupy>=13.6.0
+          - cupy>=13.6.0,!=14.0.0,!=14.1.0
     # NOTE: This is intentionally not broken into groups by a 'cuda_suffixed' selector like
     #       other packages with -cu{nn}x suffixes in this file.
     #       All RAPIDS wheel builds (including in devcontainers) expect cupy to be suffixed.
@@ -549,11 +520,11 @@ dependencies:
           - matrix:
               cuda: "12.*"
             packages:
-              - cupy-cuda12x>=13.6.0
+              - cupy-cuda12x>=13.6.0,!=14.0.0,!=14.1.0
           # fallback to CUDA 13 versions if 'cuda' is '13.*' or not provided
           - matrix:
             packages:
-              - cupy-cuda13x>=13.6.0
+              - cupy-cuda13x>=13.6.0,!=14.0.0,!=14.1.0
   depends_on_rapids_logger:
     common:
       - output_types: [conda, requirements, pyproject]
@@ -568,7 +539,7 @@ dependencies:
     common:
       - output_types: conda
         packages:
-          - &rmm_unsuffixed rmm==26.6.*,>=0.0.0a0
+          - &rmm_unsuffixed rmm==26.8.*,>=0.0.0a0
       - output_types: requirements
         packages:
           # pip recognizes the index as a global option for the requirements.txt file
@@ -580,12 +551,12 @@ dependencies:
               cuda: "12.*"
               cuda_suffixed: "true"
             packages:
-              - rmm-cu12==26.6.*,>=0.0.0a0
+              - rmm-cu12==26.8.*,>=0.0.0a0
           - matrix:
               cuda: "13.*"
               cuda_suffixed: "true"
             packages:
-              - rmm-cu13==26.6.*,>=0.0.0a0
+              - rmm-cu13==26.8.*,>=0.0.0a0
           - matrix:
             packages:
               - *rmm_unsuffixed
@@ -594,7 +565,7 @@ dependencies:
     common:
       - output_types: conda
         packages:
-          - &cudf_unsuffixed cudf==26.6.*,>=0.0.0a0
+          - &cudf_unsuffixed cudf==26.8.*,>=0.0.0a0
       - output_types: requirements
         packages:
           - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
@@ -605,12 +576,12 @@ dependencies:
               cuda: "12.*"
               cuda_suffixed: "true"
             packages:
-              - cudf-cu12==26.6.*,>=0.0.0a0
+              - cudf-cu12==26.8.*,>=0.0.0a0
           - matrix:
               cuda: "13.*"
               cuda_suffixed: "true"
             packages:
-              - cudf-cu13==26.6.*,>=0.0.0a0
+              - cudf-cu13==26.8.*,>=0.0.0a0
           - matrix:
             packages:
               - *cudf_unsuffixed
@@ -619,7 +590,7 @@ dependencies:
     common:
       - output_types: conda
         packages:
-          - &pylibraft_unsuffixed pylibraft==26.6.*,>=0.0.0a0
+          - &pylibraft_unsuffixed pylibraft==26.8.*,>=0.0.0a0
       - output_types: requirements
         packages:
           - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
@@ -630,12 +601,12 @@ dependencies:
               cuda: "12.*"
               cuda_suffixed: "true"
             packages:
-              - pylibraft-cu12==26.6.*,>=0.0.0a0
+              - pylibraft-cu12==26.8.*,>=0.0.0a0
           - matrix:
               cuda: "13.*"
               cuda_suffixed: "true"
             packages:
-              - pylibraft-cu13==26.6.*,>=0.0.0a0
+              - pylibraft-cu13==26.8.*,>=0.0.0a0
           - matrix:
             packages:
               - *pylibraft_unsuffixed
@@ -669,6 +640,14 @@ dependencies:
               cuda: "13.1"
             packages:
               - cuda-version=13.1
+          - matrix:
+              cuda: "13.2"
+            packages:
+              - cuda-version=13.2
+          - matrix:
+              cuda: "13.3"
+            packages:
+              - cuda-version=13.3
       - output_types: requirements
         matrices:
           # if use_cuda_wheels=false is provided, do not add dependencies on any CUDA wheels
@@ -714,15 +693,26 @@ dependencies:
               use_cuda_wheels: "true"
             packages:
               - cuda-toolkit==13.1.*
+          - matrix:
+              cuda: "13.2"
+              use_cuda_wheels: "true"
+            packages:
+              - cuda-toolkit==13.2.*
+          - matrix:
+              cuda: "13.3"
+              use_cuda_wheels: "true"
+            packages:
+              - cuda-toolkit==13.3.*
   cuda:
     common:
       - output_types: [conda]
         packages:
-          - libcudss-dev >=0.7
+          - libcudss-dev >=0.7,<0.8
           - libcurand-dev
           - libcusolver-dev
           - libcusparse-dev
           - cuda-nvtx-dev
+          - libnvjitlink-dev
 
 
   cuda_wheels:
@@ -745,14 +735,14 @@ dependencies:
               use_cuda_wheels: "true"
             packages:
               - cuda-toolkit[cublas,cudart,curand,cusolver,cusparse,nvtx]==12.*
-              - nvidia-cudss-cu12
+              - nvidia-cudss-cu12>=0.7,<0.8
               - nvidia-nvjitlink-cu12>=12.9,<13
           - matrix:
               cuda: "13.*"
               use_cuda_wheels: "true"
             packages:
               - &ctk_cu13 cuda-toolkit[cublas,cudart,curand,cusolver,cusparse,nvtx]==13.*
-              - &cudss_cu13 nvidia-cudss-cu13
+              - &cudss_cu13 nvidia-cudss-cu13>=0.7,<0.8
               - &nvjitlink_cu13 nvidia-nvjitlink>=13.0,<14
           # if no matching matrix selectors passed, list the CUDA 13 requirement
           # (just as a source of documentation, as this populates pyproject.toml in source control)
@@ -766,6 +756,7 @@ dependencies:
       - output_types: [conda, requirements]
         packages:
           - pre-commit
+          - ruamel.yaml>=0.18
       - output_types: conda
         packages:
           - clang==20.1.8

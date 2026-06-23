@@ -1,12 +1,21 @@
 ---
 name: cuopt-user-rules
-version: "26.06.00"
-description: Base behavior rules for using NVIDIA cuOpt. Read this FIRST before any cuOpt user task (routing, LP/MILP, QP, installation, server). Covers handling incomplete questions, clarifying data requirements, verifying understanding, and running commands safely.
+version: "26.08.00"
+description: Base rules for end users calling NVIDIA cuOpt (routing/LP/MILP/QP/install/server). Not for cuOpt internals — use cuopt-developer for those.
+license: Apache-2.0
+metadata:
+  author: NVIDIA cuOpt Team
+  tags:
+    - cuopt
+    - user-rules
+    - guidelines
 ---
+
+
 
 # cuOpt User Rules
 
-**Read this before using any cuOpt skill.** These rules ensure you help users effectively and safely.
+**Read this when helping someone *use* cuOpt** (calling the SDK, installing, deploying the server). For modifying cuOpt itself, switch to `cuopt-developer`.
 
 ---
 
@@ -114,9 +123,7 @@ Do not bury the objective value only in the middle of a paragraph; it must appea
 Provide diagnostic code snippets when helpful.
 
 ### Post-correction check (mandatory)
-<!-- skill-evolution:start — post-correction hook -->
 If the result required a correction, retry, or workaround to reach this point, you MUST evaluate the skill-evolution workflow (`skills/skill-evolution/SKILL.md`) before moving on. Do not skip this step.
-<!-- skill-evolution:end -->
 
 ---
 
@@ -132,12 +139,12 @@ If the result required a correction, retry, or workaround to reach this point, y
 
    | Language / Interface | Package | Check |
    |----------------------|---------|-------|
-   | **Python** | `cuopt` (pip/conda) | `import cuopt` |
-   | **C** | `libcuopt` (conda/system) | `find libcuopt.so` or header check |
+   | **Python** | `cuopt` (pip/conda) — also pulls in `libcuopt` | `import cuopt` |
+   | **C** | `libcuopt` (pip/conda) — already present if `cuopt` is installed | `find libcuopt.so` or header check |
    | REST Server | `cuopt-server` or Docker | `curl /cuopt/health` |
    | CLI | `cuopt` package includes CLI | `cuopt_cli --help` |
 
-   **Note:** `libcuopt` (C library) is separate from the Python package — C and Python use different installs.
+   **Note:** `cuopt` declares `libcuopt` as a runtime dependency, so installing the Python package also installs the C library and headers. Installing `libcuopt` on its own does **not** install the Python API.
 
 3. **If not installed, ask how they want to access:**
    - "Would you like help installing cuOpt, or do you have access another way?"
@@ -173,7 +180,7 @@ If the result required a correction, retry, or workaround to reach this point, y
 | Action | Rule |
 |--------|------|
 | Shell commands | Show command, explain what it does, ask "Should I run this?" |
-| Package installs | **Never** run installs yourself — give the exact command, user runs it (see below). |
+| Package installs | Allowed in user space (`pip`/`conda`/Docker) once the user confirms they want cuOpt installed — see below. Only `sudo`/system-level installs are off-limits. |
 | Examples/scripts | Show the code first, ask "Would you like me to run this?" |
 | File writes | Explain what will change, ask before writing |
 
@@ -185,25 +192,26 @@ If the result required a correction, retry, or workaround to reach this point, y
 
 ## No Privileged Operations
 
-**Never do these without explicit user request AND confirmation:**
+> **🔒 MANDATORY — this is the one non-negotiable refusal.** It applies even when the user explicitly asks.
+
+**Never do these:**
 
 - Use `sudo` or run as root
-- Modify system files or configurations
-- Add package repositories or keys
+- Modify system files or configurations (e.g. `/etc`)
+- Add system-level package repositories or keys
 - Change firewall, network, or driver settings
-- Write files outside the workspace
+
+If a task seems to need one of these, stop and explain what's needed — the user runs the privileged step themselves. Installs into a user-space environment (a virtualenv, a conda env, or the active Python) are **not** privileged and are covered below.
 
 ---
 
-## Never Install Packages Automatically
+## Installing Packages
 
-> **🔒 MANDATORY — You MUST NOT install, upgrade, or modify packages.** Provide the exact command; the user runs it. No exceptions.
+Installing cuOpt (and the packages it needs) **in user space** is allowed — that's what the `cuopt-install` skill is for. The rule is *get the user's go-ahead*, not *refuse*:
 
-| Forbidden | What to do instead |
-|-----------|--------------------|
-| `pip install ...`, `conda install ...`, `apt install ...`, any package manager | Give the exact command and ask the user to run it. Say why the package is needed. |
-
-**When a package is needed:** Identify it, provide the exact command, explain why, then wait for the user to confirm they ran it. Even if the user says "just install it", give the command and require them to execute it themselves.
+1. **Confirm first.** Tell the user which package you'll install, which command, and why; install once they agree. (Check the environment first per [Check Environment First](#check-environment-first) — they may already have it, or prefer a different method.)
+2. **Stay in user space.** Use `pip`, `conda`/`mamba`, or Docker into the active env. Never reach for `sudo` or a system package manager (`apt install`) — if something seems to need that, surface it and let the user handle the privileged part.
+3. **Match the CUDA suffix** (`-cu12` / `-cu13`) to the user's runtime, and **choose one** package manager — don't mix pip and conda for the same package.
 
 ---
 
@@ -218,5 +226,6 @@ If the result required a correction, retry, or workaround to reach this point, y
 - [Google Colab notebooks](https://colab.research.google.com/github/nvidia/cuopt-examples/)
 
 ### Support
-- [NVIDIA Developer Forums](https://forums.developer.nvidia.com/c/ai-data-science/nvidia-cuopt/514)
-- [GitHub Issues](https://github.com/NVIDIA/cuopt/issues)
+- [File a Bug](https://github.com/NVIDIA/cuopt/issues/new?template=bug_report.md)
+- [Ask a Question](https://github.com/NVIDIA/cuopt/issues/new?template=submit-question.md)
+- [All Issues](https://github.com/NVIDIA/cuopt/issues)

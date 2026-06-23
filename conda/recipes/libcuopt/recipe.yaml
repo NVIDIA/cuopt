@@ -29,7 +29,7 @@ cache:
         export CXXFLAGS=$(echo $CXXFLAGS | sed -E 's@\-fdebug\-prefix\-map[^ ]*@@g')
         set +x
 
-        ./build.sh -n -v ${BUILD_EXTRA_FLAGS} libmps_parser libcuopt deb --allgpuarch --cmake-args=\"-DCMAKE_INSTALL_LIBDIR=lib\"
+        ./build.sh -n -v ${BUILD_EXTRA_FLAGS} libcuopt deb --allgpuarch --cmake-args=\"-DCMAKE_INSTALL_LIBDIR=lib -DBUILD_LP_BENCHMARKS=ON -DBUILD_MIP_BENCHMARKS=ON\"
       secrets:
         - AWS_ACCESS_KEY_ID
         - AWS_SECRET_ACCESS_KEY
@@ -84,9 +84,10 @@ cache:
       - librmm =${{ minor_version }}
       - rapids-logger =0.2
       - cuda-nvtx-dev
-      - libcudss-dev >=0.7
+      - libcudss-dev >=0.7,<0.8
       - libcurand-dev
       - libcusparse-dev
+      - libnvjitlink-dev
       - libboost-devel
       - tbb-devel
       - zlib
@@ -99,59 +100,6 @@ cache:
       - re2
 
 outputs:
-  - package:
-      name: libmps-parser
-      version: ${{ version }}
-    build:
-      script:
-        content: |
-          cmake --install cpp/libmps_parser/build
-      dynamic_linking:
-        overlinking_behavior: "error"
-      prefix_detection:
-        ignore:
-          # See https://github.com/rapidsai/build-planning/issues/160
-          - lib/libmps_parser.so
-      string: ${{ date_string }}_${{ head_rev }}
-    requirements:
-      build:
-        - cmake ${{ cmake_version }}
-        - ${{ stdlib("c") }}
-        - zlib
-        - bzip2
-      host:
-        - zlib
-        - bzip2
-      run:
-        - zlib
-        - bzip2
-      ignore_run_exports:
-        by_name:
-          - c-ares
-          - cuda-nvtx
-          - cuda-version
-          - libabseil
-          - libboost
-          - libcudss
-          - libcurand
-          - libcusparse
-          - libgrpc
-          - libprotobuf
-          - librmm
-          - libbz2
-          - libzlib
-          - openssl
-          - re2
-          - tbb
-    tests:
-    - package_contents:
-        files:
-          - lib/libmps_parser.so
-    about:
-      homepage: ${{ load_from_file("python/cuopt/cuopt/linear_programming/pyproject.toml").project.urls.Homepage }}
-      license: ${{ load_from_file("python/cuopt/cuopt/linear_programming/pyproject.toml").project.license }}
-      summary: ${{ load_from_file("python/cuopt/cuopt/linear_programming/pyproject.toml").project.description }}
-
   - package:
       name: libcuopt
       version: ${{ version }}
@@ -171,14 +119,14 @@ outputs:
         - cmake ${{ cmake_version }}
         - ${{ stdlib("c") }}
       host:
-        - ${{ pin_subpackage("libmps-parser", exact=True) }}
         - libboost-devel
         - cuda-version =${{ cuda_version }}
         - rapids-logger =0.2
         - librmm =${{ minor_version }}
         - libcublas
-        - libcudss-dev >=0.7
+        - libcudss-dev >=0.7,<0.8
         - libcusparse-dev
+        - libnvjitlink-dev
         - openssl
         - c-ares
         - libuuid
@@ -189,11 +137,10 @@ outputs:
         - tbb-devel
       run:
         - ${{ pin_compatible("cuda-version", upper_bound="x", lower_bound="x") }}
-        - ${{ pin_subpackage("libmps-parser", exact=True) }}
         - libboost-devel
         - librmm =${{ minor_version }}
         - cuda-nvrtc
-        - libcudss
+        - libcudss >=0.7,<0.8
         - openssl
         - c-ares
         - libuuid
@@ -238,10 +185,9 @@ outputs:
         - ${{ stdlib("c") }}
       host:
         - ${{ pin_subpackage("libcuopt", exact=True) }}
-        - ${{ pin_subpackage("libmps-parser", exact=True) }}
         - libboost-devel
         - libcublas
-        - libcudss-dev >=0.7
+        - libcudss-dev >=0.7,<0.8
         - libcusparse-dev
         - openssl
         - c-ares
@@ -250,7 +196,6 @@ outputs:
         - libabseil
       run:
         - ${{ pin_subpackage("libcuopt", exact=True) }}
-        - ${{ pin_subpackage("libmps-parser", exact=True) }}
       ignore_run_exports:
         by_name:
           - cuda-nvtx

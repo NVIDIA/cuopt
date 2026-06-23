@@ -6,13 +6,14 @@
 /* clang-format on */
 #include "initial_solution_reader.hpp"
 #include "mip_test_instances.hpp"
+#include "miplib2017_bks.hpp"
 
 #include <cstdio>
+#include <cuopt/linear_programming/io/parser.hpp>
 #include <cuopt/linear_programming/mip/solver_settings.hpp>
 #include <cuopt/linear_programming/mip/solver_solution.hpp>
 #include <cuopt/linear_programming/optimization_problem_interface.hpp>
 #include <cuopt/linear_programming/solve.hpp>
-#include <mps_parser/parser.hpp>
 #include <utilities/logger.hpp>
 
 #include <raft/core/handle.hpp>
@@ -22,8 +23,6 @@
 #include <rmm/mr/logging_resource_adaptor.hpp>
 #include <rmm/mr/pool_memory_resource.hpp>
 #include <rmm/mr/tracking_resource_adaptor.hpp>
-
-#include <rmm/mr/owning_wrapper.hpp>
 
 #include <fcntl.h>
 #include <omp.h>
@@ -85,7 +84,7 @@ void write_to_output_file(const std::string& out_dir,
   }
 }
 
-inline auto make_async() { return std::make_shared<rmm::mr::cuda_async_memory_resource>(); }
+inline auto make_async() { return rmm::mr::cuda_async_memory_resource(); }
 
 void read_single_solution_from_path(const std::string& path,
                                     const std::vector<std::string>& var_names,
@@ -168,12 +167,13 @@ int run_single_file(std::string file_path,
   }
 
   constexpr bool input_mps_strict = false;
-  cuopt::mps_parser::mps_data_model_t<int, double> mps_data_model;
+  cuopt::linear_programming::io::mps_data_model_t<int, double> mps_data_model;
   bool parsing_failed = false;
   {
     CUOPT_LOG_INFO("running file %s on gpu : %d", base_filename.c_str(), device);
     try {
-      mps_data_model = cuopt::mps_parser::parse_mps<int, double>(file_path, input_mps_strict);
+      mps_data_model =
+        cuopt::linear_programming::io::read_mps<int, double>(file_path, input_mps_strict);
     } catch (const std::logic_error& e) {
       CUOPT_LOG_ERROR("MPS parser execption: %s", e.what());
       parsing_failed = true;
@@ -240,6 +240,43 @@ int run_single_file(std::string file_path,
   } else {
     CUOPT_LOG_INFO("%s: no solution found", base_filename.c_str());
   }
+
+  // Per-instance "gap closed to BKS" stat. Emits a single
+  // grep-friendly "MIPLIBGapStat ..." line via printf so cross-branch
+  // comparison is just `grep '^MIPLIBGapStat' branchA.log` then diff.
+  // BKS values are looked up from the in-source MIPLIB2017 benchmark-set
+  // table (miplib2017_bks.hpp); unknown instances emit "opt=TBD"
+  // and infeasibility-flagged instances emit "opt=Infeasible".
+  {
+    const double _gap_seconds = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                  std::chrono::high_resolution_clock::now() - start_run_solver)
+                                  .count() /
+                                1000.0;
+    std::string _status_str;
+    switch (solution.get_termination_status()) {
+      case cuopt::linear_programming::mip_termination_status_t::Optimal:
+        _status_str = "Optimal";
+        break;
+      case cuopt::linear_programming::mip_termination_status_t::FeasibleFound:
+        _status_str = "FeasibleFound";
+        break;
+      case cuopt::linear_programming::mip_termination_status_t::TimeLimit:
+        _status_str = "TimeLimit";
+        break;
+      case cuopt::linear_programming::mip_termination_status_t::Infeasible:
+        _status_str = "Infeasible";
+        break;
+      default: _status_str = "Other"; break;
+    }
+    cuopt_bench::print_miplib_gap_stat(base_filename,
+                                       solution,
+                                       _gap_seconds,
+                                       _status_str,
+                                       benchmark_info.root_lp_no_cuts,
+                                       benchmark_info.root_lp_with_cuts,
+                                       benchmark_info.cut_generation_time_sec);
+  }
+
   std::stringstream ss;
   int decimal_places = 2;
   double mip_gap     = solution.get_mip_gap();
@@ -274,7 +311,7 @@ void run_single_file_mp(std::string file_path,
 {
   std::cout << "running file " << file_path << " on gpu : " << device << std::endl;
   auto memory_resource = make_async();
-  rmm::mr::set_current_device_resource(memory_resource.get());
+  rmm::mr::set_current_device_resource(memory_resource);
   int sol_found = run_single_file(file_path,
                                   device,
                                   batch_id,
@@ -426,7 +463,7 @@ int main(int argc, char* argv[])
     //   smt_file >> smt_active;
     //   if (smt_active) { num_cpu_threads /= 2; }
     // }
-    num_cpu_threads = std::max(num_cpu_threads, 1);
+    num_cpu_threads = std::max(num_cpu_threads, 2);
   }
 
   if (program.is_used("--out-dir")) {
@@ -535,31 +572,36 @@ int main(int argc, char* argv[])
     merge_result_files(out_dir, result_file, n_gpus, batch_num);
   } else {
     auto memory_resource = make_async();
+    auto run_single      = [&]() {
+      run_single_file(path,
+                      0,
+                      0,
+                      n_gpus,
+                      out_dir,
+                      initial_solution_file,
+                      heuristics_only,
+                      num_cpu_threads,
+                      write_log_file,
+                      log_to_console,
+                      reliability_branching,
+                      time_limit,
+                      work_limit,
+                      deterministic);
+    };
     if (memory_limit > 0) {
       auto limiting_adaptor =
-        rmm::mr::limiting_resource_adaptor(memory_resource.get(), memory_limit * 1024ULL * 1024ULL);
-      rmm::mr::set_current_device_resource(&limiting_adaptor);
+        rmm::mr::limiting_resource_adaptor(memory_resource, memory_limit * 1024ULL * 1024ULL);
+      rmm::mr::set_current_device_resource(limiting_adaptor);
+      run_single();
     } else if (track_allocations) {
-      rmm::mr::tracking_resource_adaptor tracking_adaptor(memory_resource.get(),
+      rmm::mr::tracking_resource_adaptor tracking_adaptor(memory_resource,
                                                           /*capture_stacks=*/true);
-      rmm::mr::set_current_device_resource(&tracking_adaptor);
+      rmm::mr::set_current_device_resource(tracking_adaptor);
+      run_single();
     } else {
-      rmm::mr::set_current_device_resource(memory_resource.get());
+      rmm::mr::set_current_device_resource(memory_resource);
+      run_single();
     }
-    run_single_file(path,
-                    0,
-                    0,
-                    n_gpus,
-                    out_dir,
-                    initial_solution_file,
-                    heuristics_only,
-                    num_cpu_threads,
-                    write_log_file,
-                    log_to_console,
-                    reliability_branching,
-                    time_limit,
-                    work_limit,
-                    deterministic);
   }
 
   return 0;

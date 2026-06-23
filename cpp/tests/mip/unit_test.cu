@@ -8,120 +8,63 @@
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 #include "mip_utils.cuh"
 
+#include <cuopt/linear_programming/io/parser.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <mip_heuristics/mip_scaling_strategy.cuh>
-#include <mps_parser/parser.hpp>
 #include <pdlp/utilities/problem_checking.cuh>
 #include <utilities/common_utils.hpp>
 #include <utilities/copy_helpers.hpp>
-#include <utilities/error.hpp>
+#include <utilities/inline_lp_test_utils.hpp>
 
 #include <raft/core/handle.hpp>
-#include <raft/util/cudart_utils.hpp>
 
 #include <gtest/gtest.h>
 
-#include <cstdint>
-#include <sstream>
-#include <string>
-#include <vector>
-
 namespace cuopt::linear_programming::test {
 
-// Create standard LP test problem matching Python test
-mps_parser::mps_data_model_t<int, double> create_std_lp_problem()
+io::mps_data_model_t<int, double> create_std_lp_problem()
 {
-  mps_parser::mps_data_model_t<int, double> problem;
-
-  // Set up constraint matrix in CSR format
-  std::vector<int> offsets         = {0, 2};
-  std::vector<int> indices         = {0, 1};
-  std::vector<double> coefficients = {1.0, 1.0};
-  problem.set_csr_constraint_matrix(coefficients.data(),
-                                    coefficients.size(),
-                                    indices.data(),
-                                    indices.size(),
-                                    offsets.data(),
-                                    offsets.size());
-
-  // Set constraint bounds
-  std::vector<double> lower_bounds = {0.0};
-  std::vector<double> upper_bounds = {5000.0};
-  problem.set_constraint_lower_bounds(lower_bounds.data(), lower_bounds.size());
-  problem.set_constraint_upper_bounds(upper_bounds.data(), upper_bounds.size());
-
-  // Set variable bounds
-  std::vector<double> var_lower = {0.0, 0.0};
-  std::vector<double> var_upper = {3000.0, 5000.0};
-  problem.set_variable_lower_bounds(var_lower.data(), var_lower.size());
-  problem.set_variable_upper_bounds(var_upper.data(), var_upper.size());
-
-  // Set objective coefficients
-  std::vector<double> obj_coeffs = {1.2, 1.7};
-  problem.set_objective_coefficients(obj_coeffs.data(), obj_coeffs.size());
-  problem.set_maximize(false);
-
-  return problem;
+  return cuopt::test::parse_inline_lp(R"LP(
+Minimize
+  obj: 1.2 x1 + 1.7 x2
+Subject To
+  c1_ub: x1 + x2 <= 5000
+  c1_lb: x1 + x2 >= 0
+Bounds
+  0 <= x1 <= 3000
+  0 <= x2 <= 5000
+End
+)LP");
 }
 
-mps_parser::mps_data_model_t<int, double> create_single_var_lp_problem()
+io::mps_data_model_t<int, double> create_single_var_lp_problem()
 {
-  mps_parser::mps_data_model_t<int, double> problem;
-
-  // Set up constraint matrix in CSR format
-  std::vector<int> offsets         = {0, 1};
-  std::vector<int> indices         = {0};
-  std::vector<double> coefficients = {1.0};
-  problem.set_csr_constraint_matrix(coefficients.data(),
-                                    coefficients.size(),
-                                    indices.data(),
-                                    indices.size(),
-                                    offsets.data(),
-                                    offsets.size());
-
-  // Set constraint bounds
-  std::vector<double> lower_bounds = {0.0};
-  std::vector<double> upper_bounds = {0.0};
-  problem.set_constraint_lower_bounds(lower_bounds.data(), lower_bounds.size());
-  problem.set_constraint_upper_bounds(upper_bounds.data(), upper_bounds.size());
-
-  // Set variable bounds
-  std::vector<double> var_lower = {0.0};
-  std::vector<double> var_upper = {0.0};
-  problem.set_variable_lower_bounds(var_lower.data(), var_lower.size());
-  problem.set_variable_upper_bounds(var_upper.data(), var_upper.size());
-
-  // Set objective coefficients
-  std::vector<double> obj_coeffs = {-0.23};
-  problem.set_objective_coefficients(obj_coeffs.data(), obj_coeffs.size());
-  problem.set_maximize(false);
-
-  return problem;
+  return cuopt::test::parse_inline_lp(R"LP(
+Minimize
+  obj: -0.23 x
+Subject To
+  c1: x = 0
+Bounds
+  x = 0
+End
+)LP");
 }
 
-// Create standard MILP test problem matching Python test
-mps_parser::mps_data_model_t<int, double> create_std_milp_problem(bool maximize)
+io::mps_data_model_t<int, double> create_std_milp_problem(bool maximize)
 {
   auto problem = create_std_lp_problem();
-
-  // Set variable types for MILP
+  problem.set_maximize(maximize);
   std::vector<char> var_types = {'I', 'C'};
   problem.set_variable_types(var_types);
-  problem.set_maximize(maximize);
-
   return problem;
 }
 
-// Create standard MILP test problem matching Python test
-mps_parser::mps_data_model_t<int, double> create_single_var_milp_problem(bool maximize)
+io::mps_data_model_t<int, double> create_single_var_milp_problem(bool maximize)
 {
   auto problem = create_single_var_lp_problem();
-
-  // Set variable types for MILP
+  problem.set_maximize(maximize);
   std::vector<char> var_types = {'I'};
   problem.set_variable_types(var_types);
-  problem.set_maximize(maximize);
-
   return problem;
 }
 
@@ -129,45 +72,16 @@ TEST(LPTest, TestSampleLP2)
 {
   raft::handle_t handle;
 
-  // Construct a simple LP problem:
-  // Minimize:    x
-  // Subject to:  x <= 1
-  //              x <= 1
-  //              x >= 0
+  // Two identical row constraints exercise duplicate-row handling.
+  auto problem = cuopt::test::parse_inline_lp(R"LP(
+Minimize
+  obj: x
+Subject To
+  c1: x <= 1
+  c2: x <= 1
+End
+)LP");
 
-  // One variable, two constraints (both x <= 1)
-  std::vector<double> A_values = {1.0, 1.0};
-  std::vector<int> A_indices   = {0, 0};
-  std::vector<int> A_offsets   = {0, 1, 2};  // CSR: 2 constraints, 1 variable
-
-  std::vector<double> b       = {1.0, 1.0};  // RHS for both constraints
-  std::vector<double> b_lower = {-std::numeric_limits<double>::infinity(),
-                                 -std::numeric_limits<double>::infinity()};
-
-  std::vector<double> c = {1.0};  // Objective: Minimize x
-
-  std::vector<char> row_types = {'L', 'L'};  // Both constraints are <=
-
-  // Build the problem
-  mps_parser::mps_data_model_t<int, double> problem;
-  problem.set_csr_constraint_matrix(A_values.data(),
-                                    A_values.size(),
-                                    A_indices.data(),
-                                    A_indices.size(),
-                                    A_offsets.data(),
-                                    A_offsets.size());
-  problem.set_constraint_upper_bounds(b.data(), b.size());
-  problem.set_constraint_lower_bounds(b_lower.data(), b_lower.size());
-
-  // Set variable bounds (x >= 0)
-  std::vector<double> var_lower = {0.0};
-  std::vector<double> var_upper = {std::numeric_limits<double>::infinity()};
-  problem.set_variable_lower_bounds(var_lower.data(), var_lower.size());
-  problem.set_variable_upper_bounds(var_upper.data(), var_upper.size());
-
-  problem.set_objective_coefficients(c.data(), c.size());
-  problem.set_maximize(false);
-  // Set up solver settings
   cuopt::linear_programming::pdlp_solver_settings_t<int, double> settings{};
   settings.set_optimality_tolerance(1e-2);
   settings.method     = cuopt::linear_programming::method_t::PDLP;
@@ -217,8 +131,8 @@ TEST(ErrorTest, TestError)
   // Set constraint bounds
   std::vector<double> lower_bounds = {1.0};
   std::vector<double> upper_bounds = {1.0, 1.0};
-  problem.set_constraint_lower_bounds(lower_bounds.data(), lower_bounds.size());
-  problem.set_constraint_upper_bounds(upper_bounds.data(), upper_bounds.size());
+  problem.set_constraint_lower_bounds(lower_bounds);
+  problem.set_constraint_upper_bounds(upper_bounds);
 
   auto result = cuopt::linear_programming::solve_mip(&handle, problem, settings);
 
@@ -297,46 +211,32 @@ INSTANTIATE_TEST_SUITE_P(
 // Scaling integrality preservation test
 // ---------------------------------------------------------------------------
 
-static mps_parser::mps_data_model_t<int, double> create_wide_spread_milp()
+// Coefficient spread (~log2(100000/1) ≈ 17) exceeds the scaler's 12-threshold
+// so the scaling path is exercised; row 4 omits x3 so the integer-only row
+// stays integer.
+static io::mps_data_model_t<int, double> create_wide_spread_milp()
 {
-  mps_parser::mps_data_model_t<int, double> problem;
-
-  // 6 rows, 4 variables (x0=INT, x1=INT, x2=INT, x3=CONT)
-  // Coefficient spread: ~log2(100000/1) ≈ 17, well above the 12-threshold.
-  // clang-format off
-  std::vector<double> values = {
-    3.0, 7.0, 2.0, 1.5,          // row 0: small ints + cont
-    100000.0, 50000.0, 25000.0, 999.9, // row 1: large ints + cont
-    5.0, 11.0, 13.0, 0.3,        // row 2: small primes + cont
-    60000.0, 30000.0, 9000.0, 42.42,   // row 3: large + cont
-    1.0, 1.0, 1.0, 0.0,          // row 4: unit row (no cont)
-    8.0, 4.0, 6.0, 3.14          // row 5: small ints + cont
-  };
-  // clang-format on
-  std::vector<int> indices = {0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3,
-                              0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3};
-  std::vector<int> offsets = {0, 4, 8, 12, 16, 20, 24};
-  problem.set_csr_constraint_matrix(
-    values.data(), values.size(), indices.data(), indices.size(), offsets.data(), offsets.size());
-
-  std::vector<double> cl = {0, 0, 0, 0, 0, 0};
-  std::vector<double> cu = {1e6, 1e8, 1e4, 1e8, 100, 1e4};
-  problem.set_constraint_lower_bounds(cl.data(), cl.size());
-  problem.set_constraint_upper_bounds(cu.data(), cu.size());
-
-  std::vector<double> vl = {0, 0, 0, 0};
-  std::vector<double> vu = {1000, 1000, 1000, 1e6};
-  problem.set_variable_lower_bounds(vl.data(), vl.size());
-  problem.set_variable_upper_bounds(vu.data(), vu.size());
-
-  std::vector<double> obj = {1.0, 2.0, 3.0, 0.5};
-  problem.set_objective_coefficients(obj.data(), obj.size());
-  problem.set_maximize(false);
-
-  std::vector<char> var_types = {'I', 'I', 'I', 'C'};
-  problem.set_variable_types(var_types);
-
-  return problem;
+  return cuopt::test::parse_inline_lp(R"LP(
+Minimize
+  obj: x0 + 2 x1 + 3 x2 + 0.5 x3
+Subject To
+  c0: 3 x0 + 7 x1 + 2 x2 + 1.5 x3 <= 1e6
+  c1: 100000 x0 + 50000 x1 + 25000 x2 + 999.9 x3 <= 1e8
+  c2: 5 x0 + 11 x1 + 13 x2 + 0.3 x3 <= 1e4
+  c3: 60000 x0 + 30000 x1 + 9000 x2 + 42.42 x3 <= 1e8
+  c4: x0 + x1 + x2 <= 100
+  c5: 8 x0 + 4 x1 + 6 x2 + 3.14 x3 <= 1e4
+Bounds
+  0 <= x0 <= 1000
+  0 <= x1 <= 1000
+  0 <= x2 <= 1000
+  0 <= x3 <= 1e6
+Generals
+  x0
+  x1
+  x2
+End
+)LP");
 }
 
 TEST(ScalingIntegrity, IntegerCoefficientsPreservedAfterScaling)

@@ -8,16 +8,17 @@
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 #include "mip_utils.cuh"
 
+#include <cuopt/linear_programming/io/parser.hpp>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include <cuopt/linear_programming/pdlp/solver_solution.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <cuts/cuts.hpp>
 #include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
 #include <mip_heuristics/problem/problem.cuh>
-#include <mps_parser/parser.hpp>
 #include <utilities/common_utils.hpp>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/error.hpp>
+#include <utilities/inline_lp_test_utils.hpp>
 #include <utilities/timer.hpp>
 
 #include <raft/core/handle.hpp>
@@ -32,6 +33,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <sstream>
 #include <string>
 #include <unordered_set>
@@ -43,169 +45,100 @@ namespace {
 
 constexpr double kCliqueTestTol = 1e-6;
 
-mps_parser::mps_data_model_t<int, double> create_pairwise_triangle_set_packing_problem()
+// Pairwise binary conflicts forming a triangle.
+io::mps_data_model_t<int, double> create_pairwise_triangle_set_packing_problem()
 {
-  // Maximize x0 + x1 + x2 via minimizing -x0 - x1 - x2.
-  // Pairwise conflicts:
-  //   x0 + x1 <= 1
-  //   x1 + x2 <= 1
-  //   x0 + x2 <= 1
-  mps_parser::mps_data_model_t<int, double> problem;
-  std::vector<int> offsets         = {0, 2, 4, 6};
-  std::vector<int> indices         = {0, 1, 1, 2, 0, 2};
-  std::vector<double> coefficients = {1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
-  problem.set_csr_constraint_matrix(coefficients.data(),
-                                    coefficients.size(),
-                                    indices.data(),
-                                    indices.size(),
-                                    offsets.data(),
-                                    offsets.size());
-  std::vector<double> lower_bounds = {-std::numeric_limits<double>::infinity(),
-                                      -std::numeric_limits<double>::infinity(),
-                                      -std::numeric_limits<double>::infinity()};
-  std::vector<double> upper_bounds = {1.0, 1.0, 1.0};
-  problem.set_constraint_lower_bounds(lower_bounds.data(), lower_bounds.size());
-  problem.set_constraint_upper_bounds(upper_bounds.data(), upper_bounds.size());
-  std::vector<double> var_lower_bounds = {0.0, 0.0, 0.0};
-  std::vector<double> var_upper_bounds = {1.0, 1.0, 1.0};
-  problem.set_variable_lower_bounds(var_lower_bounds.data(), var_lower_bounds.size());
-  problem.set_variable_upper_bounds(var_upper_bounds.data(), var_upper_bounds.size());
-  std::vector<double> objective_coefficients = {-1.0, -1.0, -1.0};
-  problem.set_objective_coefficients(objective_coefficients.data(), objective_coefficients.size());
-  std::vector<char> variable_types = {'I', 'I', 'I'};
-  problem.set_variable_types(variable_types);
-  problem.set_maximize(false);
-  return problem;
+  return cuopt::test::parse_inline_lp(R"LP(
+Minimize
+  obj: -x0 - x1 - x2
+Subject To
+  c1: x0 + x1 <= 1
+  c2: x1 + x2 <= 1
+  c3: x0 + x2 <= 1
+Binaries
+  x0
+  x1
+  x2
+End
+)LP");
 }
 
-mps_parser::mps_data_model_t<int, double> create_pairwise_triangle_with_isolated_variable_problem()
+// Same triangle conflicts plus an isolated binary x3 with no conflict rows.
+io::mps_data_model_t<int, double> create_pairwise_triangle_with_isolated_variable_problem()
 {
-  // Same triangle conflicts as create_pairwise_triangle_set_packing_problem(),
-  // plus an isolated binary variable x3 with no conflict rows.
-  mps_parser::mps_data_model_t<int, double> problem;
-  std::vector<int> offsets         = {0, 2, 4, 6};
-  std::vector<int> indices         = {0, 1, 1, 2, 0, 2};
-  std::vector<double> coefficients = {1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
-  problem.set_csr_constraint_matrix(coefficients.data(),
-                                    coefficients.size(),
-                                    indices.data(),
-                                    indices.size(),
-                                    offsets.data(),
-                                    offsets.size());
-  std::vector<double> lower_bounds = {-std::numeric_limits<double>::infinity(),
-                                      -std::numeric_limits<double>::infinity(),
-                                      -std::numeric_limits<double>::infinity()};
-  std::vector<double> upper_bounds = {1.0, 1.0, 1.0};
-  problem.set_constraint_lower_bounds(lower_bounds.data(), lower_bounds.size());
-  problem.set_constraint_upper_bounds(upper_bounds.data(), upper_bounds.size());
-  std::vector<double> var_lower_bounds = {0.0, 0.0, 0.0, 0.0};
-  std::vector<double> var_upper_bounds = {1.0, 1.0, 1.0, 1.0};
-  problem.set_variable_lower_bounds(var_lower_bounds.data(), var_lower_bounds.size());
-  problem.set_variable_upper_bounds(var_upper_bounds.data(), var_upper_bounds.size());
-  std::vector<double> objective_coefficients = {-1.0, -1.0, -1.0, 0.0};
-  problem.set_objective_coefficients(objective_coefficients.data(), objective_coefficients.size());
-  std::vector<char> variable_types = {'I', 'I', 'I', 'I'};
-  problem.set_variable_types(variable_types);
-  problem.set_maximize(false);
-  return problem;
+  return cuopt::test::parse_inline_lp(R"LP(
+Minimize
+  obj: -x0 - x1 - x2
+Subject To
+  c1: x0 + x1 <= 1
+  c2: x1 + x2 <= 1
+  c3: x0 + x2 <= 1
+Binaries
+  x0
+  x1
+  x2
+  x3
+End
+)LP");
 }
 
-mps_parser::mps_data_model_t<int, double> create_binary_continuous_mixed_conflict_problem()
+// x0 + y1 <= 1  (must be ignored for clique graph because y1 is continuous)
+// x0 + x2 <= 1  (must generate a conflict edge)
+io::mps_data_model_t<int, double> create_binary_continuous_mixed_conflict_problem()
 {
-  // x0 + y1 <= 1  (must be ignored for clique graph because y1 is continuous)
-  // x0 + x2 <= 1  (must generate a conflict edge)
-  mps_parser::mps_data_model_t<int, double> problem;
-  std::vector<int> offsets         = {0, 2, 4};
-  std::vector<int> indices         = {0, 1, 0, 2};
-  std::vector<double> coefficients = {1.0, 1.0, 1.0, 1.0};
-  problem.set_csr_constraint_matrix(coefficients.data(),
-                                    coefficients.size(),
-                                    indices.data(),
-                                    indices.size(),
-                                    offsets.data(),
-                                    offsets.size());
-  std::vector<double> lower_bounds = {-std::numeric_limits<double>::infinity(),
-                                      -std::numeric_limits<double>::infinity()};
-  std::vector<double> upper_bounds = {1.0, 1.0};
-  problem.set_constraint_lower_bounds(lower_bounds.data(), lower_bounds.size());
-  problem.set_constraint_upper_bounds(upper_bounds.data(), upper_bounds.size());
-  std::vector<double> var_lower_bounds = {0.0, 0.0, 0.0};
-  std::vector<double> var_upper_bounds = {1.0, 1.0, 1.0};
-  problem.set_variable_lower_bounds(var_lower_bounds.data(), var_lower_bounds.size());
-  problem.set_variable_upper_bounds(var_upper_bounds.data(), var_upper_bounds.size());
-  std::vector<double> objective_coefficients = {0.0, 0.0, 0.0};
-  problem.set_objective_coefficients(objective_coefficients.data(), objective_coefficients.size());
-  std::vector<char> variable_types = {'I', 'C', 'I'};
-  problem.set_variable_types(variable_types);
-  problem.set_maximize(false);
-  return problem;
+  return cuopt::test::parse_inline_lp(R"LP(
+Minimize
+  obj: 0 x0 + 0 y1 + 0 x2
+Subject To
+  c1: x0 + y1 <= 1
+  c2: x0 + x2 <= 1
+Bounds
+  0 <= y1 <= 1
+Binaries
+  x0
+  x2
+End
+)LP");
 }
 
-mps_parser::mps_data_model_t<int, double> create_near_binary_bound_conflict_problem()
+// x0 + x1 <= 1 but x1 has upper bound 0.9999999, so this row should not be
+// treated as a binary conflict row.
+io::mps_data_model_t<int, double> create_near_binary_bound_conflict_problem()
 {
-  // x0 + x1 <= 1 but x1 has upper bound 0.9999999, so this row should not be
-  // treated as a binary conflict row.
-  mps_parser::mps_data_model_t<int, double> problem;
-  std::vector<int> offsets         = {0, 2};
-  std::vector<int> indices         = {0, 1};
-  std::vector<double> coefficients = {1.0, 1.0};
-  problem.set_csr_constraint_matrix(coefficients.data(),
-                                    coefficients.size(),
-                                    indices.data(),
-                                    indices.size(),
-                                    offsets.data(),
-                                    offsets.size());
-  std::vector<double> lower_bounds = {-std::numeric_limits<double>::infinity()};
-  std::vector<double> upper_bounds = {1.0};
-  problem.set_constraint_lower_bounds(lower_bounds.data(), lower_bounds.size());
-  problem.set_constraint_upper_bounds(upper_bounds.data(), upper_bounds.size());
-  std::vector<double> var_lower_bounds = {0.0, 0.0};
-  std::vector<double> var_upper_bounds = {1.0, 0.9999999};
-  problem.set_variable_lower_bounds(var_lower_bounds.data(), var_lower_bounds.size());
-  problem.set_variable_upper_bounds(var_upper_bounds.data(), var_upper_bounds.size());
-  std::vector<double> objective_coefficients = {0.0, 0.0};
-  problem.set_objective_coefficients(objective_coefficients.data(), objective_coefficients.size());
-  std::vector<char> variable_types = {'I', 'I'};
-  problem.set_variable_types(variable_types);
-  problem.set_maximize(false);
-  return problem;
+  return cuopt::test::parse_inline_lp(R"LP(
+Minimize
+  obj: 0 x0 + 0 x1
+Subject To
+  c1: x0 + x1 <= 1
+Bounds
+  0 <= x0 <= 1
+  0 <= x1 <= 0.9999999
+Generals
+  x0
+  x1
+End
+)LP");
 }
 
-mps_parser::mps_data_model_t<int, double> create_weighted_addtl_conflict_problem()
+// Creates base clique {x2, x3} and additional clique inducing conflict {x1, x3}.
+io::mps_data_model_t<int, double> create_weighted_addtl_conflict_problem()
 {
-  // One weighted binary knapsack row:
-  //   1*x0 + 2*x1 + 3*x2 + 4*x3 <= 5
-  // This creates base clique {x2, x3} and additional clique inducing conflict {x1, x3}.
-  mps_parser::mps_data_model_t<int, double> problem;
-  std::vector<int> offsets         = {0, 4};
-  std::vector<int> indices         = {0, 1, 2, 3};
-  std::vector<double> coefficients = {1.0, 2.0, 3.0, 4.0};
-  problem.set_csr_constraint_matrix(coefficients.data(),
-                                    coefficients.size(),
-                                    indices.data(),
-                                    indices.size(),
-                                    offsets.data(),
-                                    offsets.size());
-  std::vector<double> lower_bounds = {-std::numeric_limits<double>::infinity()};
-  std::vector<double> upper_bounds = {5.0};
-  problem.set_constraint_lower_bounds(lower_bounds.data(), lower_bounds.size());
-  problem.set_constraint_upper_bounds(upper_bounds.data(), upper_bounds.size());
-  std::vector<double> var_lower_bounds = {0.0, 0.0, 0.0, 0.0};
-  std::vector<double> var_upper_bounds = {1.0, 1.0, 1.0, 1.0};
-  problem.set_variable_lower_bounds(var_lower_bounds.data(), var_lower_bounds.size());
-  problem.set_variable_upper_bounds(var_upper_bounds.data(), var_upper_bounds.size());
-  std::vector<double> objective_coefficients = {0.0, 0.0, 0.0, 0.0};
-  problem.set_objective_coefficients(objective_coefficients.data(), objective_coefficients.size());
-  std::vector<char> variable_types = {'I', 'I', 'I', 'I'};
-  problem.set_variable_types(variable_types);
-  problem.set_maximize(false);
-  return problem;
+  return cuopt::test::parse_inline_lp(R"LP(
+Minimize
+  obj: 0 x0 + 0 x1 + 0 x2 + 0 x3
+Subject To
+  c1: x0 + 2 x1 + 3 x2 + 4 x3 <= 5
+Binaries
+  x0
+  x1
+  x2
+  x3
+End
+)LP");
 }
 
 detail::clique_table_t<int, double> build_clique_table_for_model_with_min_size(
-  const raft::handle_t& handle,
-  const mps_parser::mps_data_model_t<int, double>& model,
-  int min_clique_size)
+  const raft::handle_t& handle, const io::mps_data_model_t<int, double>& model, int min_clique_size)
 {
   auto op_problem = mps_data_model_to_optimization_problem(&handle, model);
   detail::problem_t<int, double> mip_problem(op_problem);
@@ -225,19 +158,19 @@ detail::clique_table_t<int, double> build_clique_table_for_model_with_min_size(
 }
 
 detail::clique_table_t<int, double> build_clique_table_for_model(
-  const raft::handle_t& handle, const mps_parser::mps_data_model_t<int, double>& model)
+  const raft::handle_t& handle, const io::mps_data_model_t<int, double>& model)
 {
   return build_clique_table_for_model_with_min_size(handle, model, 1);
 }
 
-mps_parser::mps_data_model_t<int, double>& get_neos8_model_cached()
+io::mps_data_model_t<int, double>& get_neos8_model_cached()
 {
   static std::once_flag init_flag;
-  static std::unique_ptr<mps_parser::mps_data_model_t<int, double>> model_ptr;
+  static std::unique_ptr<io::mps_data_model_t<int, double>> model_ptr;
   std::call_once(init_flag, []() {
     const auto neos8_path = make_path_absolute("mip/neos8.mps");
-    auto neos8_model      = cuopt::mps_parser::parse_mps<int, double>(neos8_path, false);
-    model_ptr = std::make_unique<mps_parser::mps_data_model_t<int, double>>(std::move(neos8_model));
+    auto neos8_model      = cuopt::linear_programming::io::read_mps<int, double>(neos8_path, false);
+    model_ptr = std::make_unique<io::mps_data_model_t<int, double>>(std::move(neos8_model));
   });
   cuopt_assert(model_ptr != nullptr, "Failed to initialize cached neos8 model");
   return *model_ptr;
@@ -361,7 +294,7 @@ double original_clique_sum(const std::vector<int>& clique_vars,
   return lhs;
 }
 
-std::string format_phase2_panic_dump(const mps_parser::mps_data_model_t<int, double>& problem,
+std::string format_phase2_panic_dump(const io::mps_data_model_t<int, double>& problem,
                                      const std::vector<int>& clique_vars,
                                      const std::vector<double>& x_star)
 {
@@ -519,7 +452,7 @@ neos8_lp_solution_cache_t& get_neos8_lp_relaxation_solution_cached()
   return *solution_ptr;
 }
 
-bool is_binary_var_for_clique_literals(const mps_parser::mps_data_model_t<int, double>& problem,
+bool is_binary_var_for_clique_literals(const io::mps_data_model_t<int, double>& problem,
                                        int var_idx,
                                        double bound_tol)
 {
@@ -531,7 +464,7 @@ bool is_binary_var_for_clique_literals(const mps_parser::mps_data_model_t<int, d
 }
 
 std::vector<std::vector<int>> build_fractional_literal_cliques_for_assignment(
-  const mps_parser::mps_data_model_t<int, double>& problem,
+  const io::mps_data_model_t<int, double>& problem,
   detail::clique_table_t<int, double>& clique_table,
   const std::vector<double>& assignment,
   double integer_tol,
@@ -694,23 +627,22 @@ std::optional<size_t> isolate_first_invalid_literal_cut_by_bisection(
   return lo;
 }
 
-mps_parser::mps_data_model_t<int, double>& get_neos8_lp_relaxation_model_cached()
+io::mps_data_model_t<int, double>& get_neos8_lp_relaxation_model_cached()
 {
   static std::once_flag init_flag;
-  static std::unique_ptr<mps_parser::mps_data_model_t<int, double>> model_ptr;
+  static std::unique_ptr<io::mps_data_model_t<int, double>> model_ptr;
   std::call_once(init_flag, []() {
     auto lp_relaxation = get_neos8_model_cached();
     std::vector<char> all_continuous(lp_relaxation.get_n_variables(), 'C');
     lp_relaxation.set_variable_types(all_continuous);
-    model_ptr =
-      std::make_unique<mps_parser::mps_data_model_t<int, double>>(std::move(lp_relaxation));
+    model_ptr = std::make_unique<io::mps_data_model_t<int, double>>(std::move(lp_relaxation));
   });
   cuopt_assert(model_ptr != nullptr, "Failed to initialize cached neos8 LP relaxation model");
   return *model_ptr;
 }
 
-mps_parser::mps_data_model_t<int, double> append_literal_cut_prefix_to_lp_model(
-  const mps_parser::mps_data_model_t<int, double>& base_lp_model,
+io::mps_data_model_t<int, double> append_literal_cut_prefix_to_lp_model(
+  const io::mps_data_model_t<int, double>& base_lp_model,
   const std::vector<std::vector<int>>& dumped_cuts,
   size_t prefix_end_exclusive,
   int num_vars)
@@ -721,8 +653,10 @@ mps_parser::mps_data_model_t<int, double> append_literal_cut_prefix_to_lp_model(
   std::vector<double> matrix_values  = base_lp_model.get_constraint_matrix_values();
   std::vector<int> matrix_indices    = base_lp_model.get_constraint_matrix_indices();
   std::vector<int> matrix_offsets    = base_lp_model.get_constraint_matrix_offsets();
+  std::vector<double> constraint_rhs = base_lp_model.get_constraint_bounds();
   std::vector<double> constraint_lbs = base_lp_model.get_constraint_lower_bounds();
   std::vector<double> constraint_ubs = base_lp_model.get_constraint_upper_bounds();
+  std::vector<char> row_types        = base_lp_model.get_row_types();
   std::vector<std::string> row_names = base_lp_model.get_row_names();
   if (matrix_offsets.empty()) { matrix_offsets.push_back(0); }
 
@@ -768,19 +702,22 @@ mps_parser::mps_data_model_t<int, double> append_literal_cut_prefix_to_lp_model(
       matrix_values.push_back(coeff);
     }
     matrix_offsets.push_back(static_cast<int>(matrix_indices.size()));
+    // Keep RHS / ROWS metadata aligned with appended bounds.
+    // Literal cut is lhs >= rhs, so row type is 'G'.
+    if (!constraint_rhs.empty()) {
+      constraint_rhs.push_back(static_cast<double>(num_complements - 1));
+    }
     constraint_lbs.push_back(static_cast<double>(num_complements - 1));
     constraint_ubs.push_back(std::numeric_limits<double>::infinity());
+    if (!row_types.empty()) { row_types.push_back('G'); }
     row_names.push_back("literal_cut_" + std::to_string(cut_idx));
   }
 
-  model_with_cuts.set_csr_constraint_matrix(matrix_values.data(),
-                                            matrix_values.size(),
-                                            matrix_indices.data(),
-                                            matrix_indices.size(),
-                                            matrix_offsets.data(),
-                                            matrix_offsets.size());
-  model_with_cuts.set_constraint_lower_bounds(constraint_lbs.data(), constraint_lbs.size());
-  model_with_cuts.set_constraint_upper_bounds(constraint_ubs.data(), constraint_ubs.size());
+  model_with_cuts.set_csr_constraint_matrix(matrix_values, matrix_indices, matrix_offsets);
+  if (!constraint_rhs.empty()) { model_with_cuts.set_constraint_bounds(constraint_rhs); }
+  model_with_cuts.set_constraint_lower_bounds(constraint_lbs);
+  model_with_cuts.set_constraint_upper_bounds(constraint_ubs);
+  if (!row_types.empty()) { model_with_cuts.set_row_types(row_types); }
   model_with_cuts.set_row_names(row_names);
   return model_with_cuts;
 }
@@ -831,52 +768,23 @@ std::optional<size_t> isolate_first_lp_infeasible_literal_cut_by_bisection(
 
 }  // namespace
 
-// Problem data for the mixed integer linear programming problem
-mps_parser::mps_data_model_t<int, double> create_cuts_problem_1()
+io::mps_data_model_t<int, double> create_cuts_problem_1()
 {
-  // Create problem instance
-  mps_parser::mps_data_model_t<int, double> problem;
-
-  // Solve the problem
-  // minimize -7*x1 -2*x2
-  // subject to -1*x1 + 2*x2 <= 4
-  //            5*x1 + 1*x2 <= 20
-  //            -2*x1 -2*x2 <= -7
-
-  // Set up constraint matrix in CSR format
-  std::vector<int> offsets         = {0, 2, 4, 6};
-  std::vector<int> indices         = {0, 1, 0, 1, 0, 1};
-  std::vector<double> coefficients = {-1.0, 2.0, 5.0, 1.0, -2.0, -2.0};
-  problem.set_csr_constraint_matrix(coefficients.data(),
-                                    coefficients.size(),
-                                    indices.data(),
-                                    indices.size(),
-                                    offsets.data(),
-                                    offsets.size());
-
-  // Set constraint bounds
-  std::vector<double> lower_bounds = {-std::numeric_limits<double>::infinity(),
-                                      -std::numeric_limits<double>::infinity(),
-                                      -std::numeric_limits<double>::infinity()};
-  std::vector<double> upper_bounds = {4.0, 20.0, -7.0};
-  problem.set_constraint_lower_bounds(lower_bounds.data(), lower_bounds.size());
-  problem.set_constraint_upper_bounds(upper_bounds.data(), upper_bounds.size());
-
-  // Set variable bounds
-  std::vector<double> var_lower_bounds = {0.0, 0.0};
-  std::vector<double> var_upper_bounds = {10.0, 10.0};
-  problem.set_variable_lower_bounds(var_lower_bounds.data(), var_lower_bounds.size());
-  problem.set_variable_upper_bounds(var_upper_bounds.data(), var_upper_bounds.size());
-
-  // Set objective coefficients (minimize -7*x1 -2*x2)
-  std::vector<double> objective_coefficients = {-7.0, -2.0};
-  problem.set_objective_coefficients(objective_coefficients.data(), objective_coefficients.size());
-
-  // Set variable types
-  std::vector<char> variable_types = {'I', 'I'};
-  problem.set_variable_types(variable_types);
-
-  return problem;
+  return cuopt::test::parse_inline_lp(R"LP(
+Minimize
+  obj: -7 x1 - 2 x2
+Subject To
+  c1: -x1 + 2 x2 <= 4
+  c2: 5 x1 + x2 <= 20
+  c3: -2 x1 - 2 x2 <= -7
+Bounds
+  0 <= x1 <= 10
+  0 <= x2 <= 10
+Generals
+  x1
+  x2
+End
+)LP");
 }
 
 TEST(cuts, test_cuts_1)
@@ -900,51 +808,20 @@ TEST(cuts, test_cuts_1)
   EXPECT_LE(solution.get_num_nodes(), 2);
 }
 
-// Problem data for the mixed integer linear programming problem
-mps_parser::mps_data_model_t<int, double> create_cuts_problem_2()
+io::mps_data_model_t<int, double> create_cuts_problem_2()
 {
-  // Create problem instance
-  mps_parser::mps_data_model_t<int, double> problem;
-
-  // Solve the problem
-  // minimize -86*y1 -4*y2 -40*y3
-  // subject to 774*y1 + 76*y2 + 42*y3 <= 875
-  //            67*y1 + 27*y2 + 53*y3 <= 875
-  //            y1, y2, y3 in {0, 1}
-
-  // Set up constraint matrix in CSR format
-  std::vector<int> offsets         = {0, 3, 6};
-  std::vector<int> indices         = {0, 1, 2, 0, 1, 2};
-  std::vector<double> coefficients = {774.0, 76.0, 42.0, 67.0, 27.0, 53.0};
-  problem.set_csr_constraint_matrix(coefficients.data(),
-                                    coefficients.size(),
-                                    indices.data(),
-                                    indices.size(),
-                                    offsets.data(),
-                                    offsets.size());
-
-  // Set constraint bounds
-  std::vector<double> lower_bounds = {-std::numeric_limits<double>::infinity(),
-                                      -std::numeric_limits<double>::infinity()};
-  std::vector<double> upper_bounds = {875.0, 875.0};
-  problem.set_constraint_lower_bounds(lower_bounds.data(), lower_bounds.size());
-  problem.set_constraint_upper_bounds(upper_bounds.data(), upper_bounds.size());
-
-  // Set variable bounds
-  std::vector<double> var_lower_bounds = {0.0, 0.0, 0.0};
-  std::vector<double> var_upper_bounds = {1.0, 1.0, 1.0};
-  problem.set_variable_lower_bounds(var_lower_bounds.data(), var_lower_bounds.size());
-  problem.set_variable_upper_bounds(var_upper_bounds.data(), var_upper_bounds.size());
-
-  // Set objective coefficients (minimize -86*y1 -4*y2 -40*y3)
-  std::vector<double> objective_coefficients = {-86.0, -4.0, -40.0};
-  problem.set_objective_coefficients(objective_coefficients.data(), objective_coefficients.size());
-
-  // Set variable types
-  std::vector<char> variable_types = {'I', 'I', 'I'};
-  problem.set_variable_types(variable_types);
-
-  return problem;
+  return cuopt::test::parse_inline_lp(R"LP(
+Minimize
+  obj: -86 y1 - 4 y2 - 40 y3
+Subject To
+  c1: 774 y1 + 76 y2 + 42 y3 <= 875
+  c2: 67 y1 + 27 y2 + 53 y3 <= 875
+Binaries
+  y1
+  y2
+  y3
+End
+)LP");
 }
 
 TEST(cuts, test_cuts_2)
@@ -1097,7 +974,7 @@ TEST(cuts, clique_phase1_remove_small_cliques_preserves_addtl_conflicts)
   EXPECT_TRUE(clique_table.first.empty());
   EXPECT_TRUE(clique_table.addtl_cliques.empty());
 
-  // Conflicts must remain materialized in adj_list_small_cliques after removals.
+  // Conflicts must remain materialized in small_clique_adj after removals.
   EXPECT_TRUE(clique_table.check_adjacency(1, 3));
   EXPECT_TRUE(clique_table.check_adjacency(3, 1));
   EXPECT_TRUE(clique_table.check_adjacency(2, 3));
@@ -1276,7 +1153,7 @@ TEST(cuts, clique_neos8_phase1_addtl_suffix_conflicts_materialized)
 TEST(cuts, clique_neos8_phase1_symmetry_and_degree_cache_consistency)
 {
   auto& clique_table   = get_neos8_clique_table_cached();
-  const int n_vertices = static_cast<int>(clique_table.var_clique_map_first.size());
+  const int n_vertices = static_cast<int>(clique_table.var_clique_first.n_keys());
   ASSERT_GT(n_vertices, 0);
 
   const int sample_size = std::min(n_vertices, 24);
@@ -1432,6 +1309,203 @@ TEST(cuts, clique_neos8_phase4_lp_infeasibility_binary_search)
     isolate_first_lp_infeasible_literal_cut_by_bisection(cuts_for_lp_search, num_vars);
   ASSERT_TRUE(first_infeasible.has_value());
   EXPECT_EQ(first_infeasible.value(), injected_index);
+}
+
+// Minimal 0-1 single-node-flow relaxation for the flow-cover separator.
+//
+//   y0 + y1 - y2 <= 4
+//   0 <= y0 <= 3*x0, 0 <= y1 <= 6*x1, 0 <= y2 <= 3*x2
+//
+// The fractional point x* = (1, 2/3, 1), y* = (3, 4, 3) satisfies the relaxation
+// but violates the generated c-MIR flow-cover cut. This is a reduced version of a
+// standard flow-cover example; the test checks validity instead of exact coefficients
+// because the approximate single-node-flow selection may choose a different valid cut.
+// Index layout (x0,x1,x2,y0,y1,y2 → 0..5) is load-bearing — downstream test
+// helpers index into the primal via point[j] for binaries and point[3+j] for
+// flows. Keep the variable order matching that layout.
+io::mps_data_model_t<int, double> create_small_single_node_flow_problem()
+{
+  return cuopt::test::parse_inline_lp(R"LP(
+Minimize
+  obj: 0 x0 + 0 x1 + 0 x2 + 0 y0 + 0 y1 + 0 y2
+Subject To
+  c1: y0 + y1 - y2 <= 4
+  c2: -3 x0 + y0 <= 0
+  c3: -6 x1 + y1 <= 0
+  c4: -3 x2 + y2 <= 0
+Bounds
+  0 <= y0 <= 3
+  0 <= y1 <= 6
+  0 <= y2 <= 3
+Binaries
+  x0
+  x1
+  x2
+End
+)LP");
+}
+
+struct flow_cover_test_problem_t {
+  raft::handle_t handle;
+  dual_simplex::simplex_solver_settings_t<int, double> settings;
+  dual_simplex::lp_problem_t<int, double> lp;
+  dual_simplex::csr_matrix_t<int, double> Arow;
+  std::vector<int> new_slacks;
+  std::vector<dual_simplex::variable_type_t> var_types;
+
+  flow_cover_test_problem_t() : handle(), settings(), lp(&handle, 1, 1, 1), Arow(0, 0, 0) {}
+};
+
+flow_cover_test_problem_t build_flow_cover_test_problem(
+  const io::mps_data_model_t<int, double>& model)
+{
+  flow_cover_test_problem_t test_problem;
+  auto op_problem = mps_data_model_to_optimization_problem(&test_problem.handle, model);
+  detail::problem_t<int, double> mip_problem(op_problem);
+  dual_simplex::user_problem_t<int, double> host_problem(op_problem.get_handle_ptr());
+  mip_problem.get_host_user_problem(host_problem);
+
+  dual_simplex::dualize_info_t<int, double> dualize_info;
+  dual_simplex::convert_user_problem(
+    host_problem, test_problem.settings, test_problem.lp, test_problem.new_slacks, dualize_info);
+  test_problem.var_types = host_problem.var_types;
+  if (test_problem.lp.num_cols > static_cast<int>(test_problem.var_types.size())) {
+    test_problem.var_types.resize(test_problem.lp.num_cols,
+                                  dual_simplex::variable_type_t::CONTINUOUS);
+  }
+  test_problem.lp.A.to_compressed_row(test_problem.Arow);
+  return test_problem;
+}
+
+std::vector<double> single_node_flow_fractional_solution(int num_cols)
+{
+  std::vector<double> xstar(num_cols, 0.0);
+  xstar[0] = 1.0;
+  xstar[1] = 2.0 / 3.0;
+  xstar[2] = 1.0;
+  xstar[3] = 3.0;
+  xstar[4] = 4.0;
+  xstar[5] = 3.0;
+  return xstar;
+}
+
+bool single_node_flow_y_feasible(const std::vector<double>& y)
+{
+  const double activity = y[0] + y[1] - y[2];
+  return activity <= 4.0 + 1e-8;
+}
+
+void expect_single_node_flow_cut_valid_at_point(const dual_simplex::inequality_t<int, double>& cut,
+                                                const std::vector<double>& point,
+                                                const std::string& label)
+{
+  EXPECT_GE(cut.vector.dot(point), cut.rhs - 1e-7) << label;
+}
+
+void expect_single_node_flow_cut_valid_at_extreme_points(
+  const dual_simplex::inequality_t<int, double>& cut, int num_cols)
+{
+  const std::vector<double> capacities = {3.0, 6.0, 3.0};
+  const std::vector<double> flow_signs = {1.0, 1.0, -1.0};
+  int checked_points                   = 0;
+
+  for (int x_mask = 0; x_mask < 8; x_mask++) {
+    std::vector<double> y_upper(3, 0.0);
+    for (int j = 0; j < 3; j++) {
+      if (((x_mask >> j) & 1) != 0) { y_upper[j] = capacities[j]; }
+    }
+
+    for (int y_mask = 0; y_mask < 8; y_mask++) {
+      std::vector<double> y(3, 0.0);
+      for (int j = 0; j < 3; j++) {
+        if (((y_mask >> j) & 1) != 0) { y[j] = y_upper[j]; }
+      }
+      if (!single_node_flow_y_feasible(y)) { continue; }
+
+      std::vector<double> point(num_cols, 0.0);
+      for (int j = 0; j < 3; j++) {
+        point[j]     = ((x_mask >> j) & 1) != 0 ? 1.0 : 0.0;
+        point[3 + j] = y[j];
+      }
+      expect_single_node_flow_cut_valid_at_point(
+        cut,
+        point,
+        "box vertex x_mask=" + std::to_string(x_mask) + " y_mask=" + std::to_string(y_mask));
+      checked_points++;
+    }
+
+    for (int free_j = 0; free_j < 3; free_j++) {
+      for (int bound_mask = 0; bound_mask < 4; bound_mask++) {
+        std::vector<double> y(3, 0.0);
+        int bit = 0;
+        for (int j = 0; j < 3; j++) {
+          if (j == free_j) { continue; }
+          if (((bound_mask >> bit) & 1) != 0) { y[j] = y_upper[j]; }
+          bit++;
+        }
+
+        double fixed_activity = 0.0;
+        for (int j = 0; j < 3; j++) {
+          if (j != free_j) { fixed_activity += flow_signs[j] * y[j]; }
+        }
+
+        const double y_free = (4.0 - fixed_activity) / flow_signs[free_j];
+        if (y_free < -1e-8 || y_free > y_upper[free_j] + 1e-8) { continue; }
+        y[free_j] = std::max(0.0, std::min(y_upper[free_j], y_free));
+        if (!single_node_flow_y_feasible(y)) { continue; }
+
+        std::vector<double> point(num_cols, 0.0);
+        for (int j = 0; j < 3; j++) {
+          point[j]     = ((x_mask >> j) & 1) != 0 ? 1.0 : 0.0;
+          point[3 + j] = y[j];
+        }
+        expect_single_node_flow_cut_valid_at_point(
+          cut,
+          point,
+          "flow-tight vertex x_mask=" + std::to_string(x_mask) +
+            " free_j=" + std::to_string(free_j) + " bound_mask=" + std::to_string(bound_mask));
+        checked_points++;
+      }
+    }
+  }
+
+  EXPECT_GT(checked_points, 0);
+}
+
+TEST(cuts, flow_cover_generates_valid_single_node_flow_cut)
+{
+  auto test_problem = build_flow_cover_test_problem(create_small_single_node_flow_problem());
+  const std::vector<double> xstar = single_node_flow_fractional_solution(test_problem.lp.num_cols);
+
+  dual_simplex::flow_cover_generation_t<int, double> generator(
+    test_problem.lp, test_problem.settings, test_problem.Arow, test_problem.new_slacks);
+  dual_simplex::variable_bounds_t<int, double> variable_bounds(test_problem.lp,
+                                                               test_problem.settings,
+                                                               test_problem.var_types,
+                                                               test_problem.Arow,
+                                                               test_problem.new_slacks);
+  ASSERT_GT(generator.num_constraints(), 0);
+
+  int generated_cuts = 0;
+  for (const auto& flow_cover_row : generator.get_constraints()) {
+    dual_simplex::inequality_t<int, double> cut(test_problem.lp.num_cols);
+    const int status = generator.generate_cut(test_problem.lp,
+                                              test_problem.settings,
+                                              test_problem.Arow,
+                                              variable_bounds,
+                                              test_problem.var_types,
+                                              xstar,
+                                              flow_cover_row,
+                                              cut);
+    if (status != 0) { continue; }
+
+    EXPECT_LT(cut.vector.dot(xstar), cut.rhs - 1e-6)
+      << "row=" << flow_cover_row.row << " reverse=" << flow_cover_row.reverse;
+    expect_single_node_flow_cut_valid_at_extreme_points(cut, test_problem.lp.num_cols);
+    generated_cuts++;
+  }
+
+  EXPECT_GT(generated_cuts, 0);
 }
 
 }  // namespace cuopt::linear_programming::test

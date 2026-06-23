@@ -14,6 +14,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -41,6 +42,8 @@ class mip_solution_interface_t;
 template <typename i_t, typename f_t>
 class cpu_optimization_problem_t : public optimization_problem_interface_t<i_t, f_t> {
  public:
+  using typename optimization_problem_interface_t<i_t, f_t>::quadratic_constraint_t;
+
   cpu_optimization_problem_t();
 
   // Setters
@@ -111,7 +114,30 @@ class cpu_optimization_problem_t : public optimization_problem_interface_t<i_t, 
   const std::vector<i_t>& get_quadratic_objective_offsets() const override;
   const std::vector<i_t>& get_quadratic_objective_indices() const override;
   const std::vector<f_t>& get_quadratic_objective_values() const override;
+  const std::vector<i_t>& get_quadratic_objective_offsets_host() const
+  {
+    return get_quadratic_objective_offsets();
+  }
+  const std::vector<i_t>& get_quadratic_objective_indices_host() const
+  {
+    return get_quadratic_objective_indices();
+  }
+  const std::vector<f_t>& get_quadratic_objective_values_host() const
+  {
+    return get_quadratic_objective_values();
+  }
   bool has_quadratic_objective() const override;
+
+  void set_quadratic_constraints(std::vector<quadratic_constraint_t> constraints) override;
+  void add_quadratic_constraint(char constraint_row_type,
+                                f_t rhs_value,
+                                std::span<const i_t> row_index,
+                                std::span<const i_t> col_index,
+                                std::span<const f_t> coeff,
+                                std::span<const f_t> linear_values,
+                                std::span<const i_t> linear_indices) override;
+  bool has_quadratic_constraints() const override;
+  const std::vector<quadratic_constraint_t>& get_quadratic_constraints() const override;
 
   // Host getters - these are the only supported getters for CPU implementation
   std::vector<f_t> get_constraint_matrix_values_host() const override;
@@ -184,6 +210,8 @@ class cpu_optimization_problem_t : public optimization_problem_interface_t<i_t, 
   std::vector<i_t> Q_offsets_;
   std::vector<i_t> Q_indices_;
   std::vector<f_t> Q_values_;
+
+  std::vector<quadratic_constraint_t> quadratic_constraints_{};
 
   std::vector<f_t> variable_lower_bounds_;
   std::vector<f_t> variable_upper_bounds_;

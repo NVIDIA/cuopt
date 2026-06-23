@@ -5,6 +5,11 @@ MILP Features
 Availability
 ------------
 
+The cuOpt MIP solver is in **beta** and under active development. The solver
+currently excels at finding high-quality feasible solutions quickly with
+GPU-accelerated primal heuristics. Proving feasible solutions optimal remains
+under active development.
+
 The MILP solver can be accessed in the following ways:
 
 - **Third-Party Modeling Languages**: cuOpt's LP and MILP solver can be called directly from the following third-party modeling languages. This allows you to leverage GPU acceleration while maintaining your existing optimization workflow in these modeling languages.
@@ -21,7 +26,7 @@ The MILP solver can be accessed in the following ways:
 
 - **As a Self-Hosted Service**: cuOpt's MILP solver can be deployed in your own infrastructure, enabling you to maintain full control while integrating it into your existing systems.
 
-Each option provide the same powerful mixed-integer linear optimization capabilities while offering flexibility in deployment and integration.
+Each option provides the same mixed-integer optimization capabilities while offering flexibility in deployment and integration.
 
 Variable Bounds
 ---------------
@@ -78,4 +83,9 @@ The user may specify a time limit to the solver. By default the solver runs unti
 
 .. note::
 
-  Note that time_limit applies only to solve time inside the LP solver. This does not include time for network transfer, validation of input, and other operations that occur outside the solver. The overhead associated with these operations are usually small compared to the solve time.
+  Note that ``time_limit`` applies only to solve time inside the LP solver. This does not include time for network transfer, validation of input, and other operations that occur outside the solver. The overhead associated with these operations are usually small compared to the solve time.
+
+Node Limit
+--------------
+
+The user may specify a maximum number of branch-and-bound nodes via ``node_limit``. The solver stops once this limit is reached and returns the current best feasible solution, if any. If both ``time_limit`` and ``node_limit`` are set, the solver stops at whichever limit is hit first. By default there is no node limit.

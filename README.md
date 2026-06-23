@@ -2,7 +2,7 @@
 # cuOpt - GPU-accelerated Optimization
 
 [![Build Status](https://github.com/NVIDIA/cuopt/actions/workflows/build.yaml/badge.svg)](https://github.com/NVIDIA/cuopt/actions/workflows/build.yaml)
-[![Version](https://img.shields.io/badge/version-26.06.00-blue)](https://github.com/NVIDIA/cuopt/releases)
+[![Version](https://img.shields.io/badge/version-26.08.00-blue)](https://github.com/NVIDIA/cuopt/releases)
 [![Documentation](https://img.shields.io/badge/docs-latest-brightgreen)](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html)
 [![Docker Hub](https://img.shields.io/badge/docker-nvidia%2Fcuopt-blue?logo=docker)](https://hub.docker.com/r/nvidia/cuopt)
 [![Examples](https://img.shields.io/badge/examples-cuopt--examples-orange)](https://github.com/NVIDIA/cuopt-examples)
@@ -12,7 +12,11 @@
 
 
 
-NVIDIA® cuOpt™ is a GPU-accelerated optimization engine that excels in mixed integer linear programming (MILP), linear programming (LP), quadratic programming (QP), and vehicle routing problems (VRP). It enables near real-time solutions for large-scale LPs with millions of variables and constraints, and MIPs with hundreds of thousands of variables. cuOpt offers easy integration into existing modeling languages and seamless deployment across hybrid and multi-cloud environments.
+NVIDIA® cuOpt™ is a GPU-accelerated optimization engine that excels in linear programming (LP), quadratic programming (QP), and vehicle routing problems (VRP), with support for quadratically constrained quadratic programming (QCQP) (beta), second-order cone programming (SOCP) (beta), and mixed integer linear programming (MILP) (beta). cuOpt enables near real-time solutions for large-scale LPs with millions of variables and constraints and offers easy integration into existing modeling languages with seamless deployment across hybrid and multi-cloud environments.
+
+The cuOpt MIP solver is in beta and under active development. The solver currently excels at finding high-quality feasible solutions quickly with GPU-accelerated primal heuristics. Proving feasible solutions optimal remains under active development.
+
+cuOpt offers easy integration into existing solvers, and seamlessly extends into agent-first optimization workflows through open-source cuOpt agent skills.
 
 The core engine is written in C++ and wrapped with a C API, Python API and Server API.
 
@@ -28,18 +32,24 @@ cuOpt supports the following APIs:
 
 - C API support
     - Linear Programming (LP)
-    - Mixed Integer Linear Programming (MILP)
     - Quadratic Programming (QP)
+    - Quadratically Constrained Quadratic Programming (QCQP) (beta)
+    - Second-Order Cone Programming (SOCP) (beta)
+    - Mixed Integer Linear Programming (MILP) (beta)
 - C++ API support
     - cuOpt is written in C++ and includes a native C++ API. However, we do not provide documentation for the C++ API at this time. We anticipate that the C++ API will change significantly in the future. Use it at your own risk.
 - Python support
     - Routing (TSP, VRP, and PDP)
-    - Linear Programming (LP), Mixed Integer Linear Programming (MILP) and Quadratic Programming (QP)
-        - Algebraic modeling Python API allows users to easily build constraints and objectives
+    - Linear Programming (LP)
+    - Quadratic Programming (QP)
+    - Quadratically Constrained Quadratic Programming (QCQP) (beta)
+    - Second-Order Cone Programming (SOCP) (beta)
+    - Mixed Integer Linear Programming (MILP) (beta)
+    - Algebraic modeling Python API allows users to easily build constraints and objectives
 - Server support
     - Linear Programming (LP)
-    - Mixed Integer Linear Programming (MILP)
     - Routing (TSP, VRP, and PDP)
+    - Mixed Integer Linear Programming (MILP) (beta)
 
 This repo is also hosted as a [COIN-OR](http://github.com/coin-or/cuopt/) project.
 
@@ -83,7 +93,7 @@ For CUDA 12.x:
 pip install \
   --extra-index-url=https://pypi.nvidia.com \
   nvidia-cuda-runtime-cu12==12.9.* \
-  cuopt-server-cu12==26.06.* cuopt-sh-client==26.06.*
+  cuopt-server-cu12==26.6.* cuopt-sh-client==26.6.*
 ```
 
 Development wheels are available as nightlies, please update `--extra-index-url` to `https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/` to install latest nightly packages.
@@ -91,7 +101,7 @@ Development wheels are available as nightlies, please update `--extra-index-url`
 pip install --pre \
   --extra-index-url=https://pypi.nvidia.com \
   --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
-  cuopt-server-cu12==26.06.* cuopt-sh-client==26.06.*
+  cuopt-server-cu12==26.6.* cuopt-sh-client==26.6.*
 ```
 
 For CUDA 13.x:
@@ -99,7 +109,7 @@ For CUDA 13.x:
 ```bash
 pip install \
   --extra-index-url=https://pypi.nvidia.com \
-  cuopt-server-cu13==26.06.* cuopt-sh-client==26.06.*
+  cuopt-server-cu13==26.6.* cuopt-sh-client==26.6.*
 ```
 
 Development wheels are available as nightlies, please update `--extra-index-url` to `https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/` to install latest nightly packages.
@@ -107,7 +117,7 @@ Development wheels are available as nightlies, please update `--extra-index-url`
 pip install --pre \
   --extra-index-url=https://pypi.nvidia.com \
   --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
-  cuopt-server-cu13==26.06.* cuopt-sh-client==26.06.*
+  cuopt-server-cu13==26.6.* cuopt-sh-client==26.6.*
 ```
 
 
@@ -137,6 +147,8 @@ docker pull nvidia/cuopt:latest-cuda13.0-py3.13
 ```
 
 Note: The ``latest`` tag is the latest stable release of cuOpt. If you want to use a specific version, you can use the ``<version>-cuda12.9-py3.13`` or ``<version>-cuda13.0-py3.13`` tag. For example, to use cuOpt 25.10.0, you can use the ``25.10.0-cuda12.9-py3.13`` or ``25.10.0-cuda13.0-py3.13`` tag. Please refer to [cuOpt dockerhub page](https://hub.docker.com/r/nvidia/cuopt/tags) for the list of available tags.
+
+Nightly container images are built from the HEAD of the development branch and use the upcoming CUDA/Python defaults (`cuda12.9-py3.14` and `cuda13.1-py3.14`). They are tagged as ``<version>a-cuda12.9-py3.14`` or ``<version>a-cuda13.1-py3.14`` (note the ``a`` alpha suffix). See the [cuOpt dockerhub page](https://hub.docker.com/r/nvidia/cuopt/tags) for the full list.
 
 More information about the cuOpt container can be found [here](https://docs.nvidia.com/cuopt/user-guide/latest/cuopt-server/quick-start.html#container-from-docker-hub).
 

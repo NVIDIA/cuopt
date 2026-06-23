@@ -1,6 +1,23 @@
 Examples
 ========
 
+Input File Format
+#################
+
+``cuopt_cli`` accepts both **MPS** and **LP** format input files. The
+format is dispatched automatically from the file extension
+(case-insensitive):
+
+- ``*.lp``, ``*.lp.gz``, ``*.lp.bz2`` → parsed as LP format
+- ``*.mps``, ``*.mps.gz``, ``*.mps.bz2`` (and the equivalent ``*.qps``
+  variants) → parsed as MPS / QPS
+
+Any other extension (including no extension) is rejected with an error
+listing the supported suffixes. See ``read`` in
+``cuopt/linear_programming/io/parser.hpp`` (and the Python
+:func:`~cuopt.linear_programming.io.Read` wrapper).
+
+
 Basic Usage
 ###########
 

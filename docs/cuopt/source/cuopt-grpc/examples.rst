@@ -21,28 +21,29 @@ Add TLS or tuning variables from :doc:`advanced` if your deployment uses them.
 
    Routing solve over gRPC is not supported. For solving routing problems remotely today, use the HTTP/JSON :doc:`REST self-hosted server <../cuopt-server/index>` and :doc:`Examples <../cuopt-server/examples/index>`.
 
-Where to find examples
+Where to Find Examples
 ======================
 
 Python (LP / QP / MILP)
 -----------------------
 
-* :doc:`../cuopt-python/lp-qp-milp/lp-qp-milp-examples` — runnable Python samples (LP, QP, MILP). With ``CUOPT_REMOTE_HOST`` and ``CUOPT_REMOTE_PORT`` set on the client, solves go to the remote server automatically.
+* :doc:`../cuopt-python/convex/convex-examples` — runnable Python samples (LP, QP). With ``CUOPT_REMOTE_HOST`` and ``CUOPT_REMOTE_PORT`` set on the client, solves go to the remote server automatically.
+* :doc:`../cuopt-python/mip/mip-examples` — runnable Python samples (MILP). With ``CUOPT_REMOTE_HOST`` and ``CUOPT_REMOTE_PORT`` set on the client, solves go to the remote server automatically.
 
 C API (LP / QP / MILP)
 ----------------------
 
-* :doc:`../cuopt-c/lp-qp-milp/lp-qp-example` — LP and QP C examples.
-* :doc:`../cuopt-c/lp-qp-milp/milp-examples` — MILP C examples.
+* :doc:`../cuopt-c/convex/convex-examples` — LP and QP C examples.
+* :doc:`../cuopt-c/mip/mip-examples` — MILP C examples.
 
-  Compile and run these programs with the same exports in the shell; ``solve_lp`` / ``solve_mip`` use gRPC when both remote variables are set (see :doc:`../cuopt-c/lp-qp-milp/lp-qp-milp-c-api` for API reference).
+  Compile and run these programs with the same exports in the shell; ``solve_lp`` / ``solve_mip`` use gRPC when both remote variables are set (see :doc:`../cuopt-c/convex/convex-c-api` for API reference).
 
 ``cuopt_cli``
 -------------
 
 * :doc:`../cuopt-cli/cli-examples` — ``cuopt_cli`` invocations. With the exports above, the CLI forwards solves to ``cuopt_grpc_server``.
 
-Minimal demos (this section)
+Minimal Demos (This Section)
 ----------------------------
 
 Bundled with the gRPC docs source for a quick copy-paste path (also walked through in :doc:`quick-start`):
@@ -50,12 +51,12 @@ Bundled with the gRPC docs source for a quick copy-paste path (also walked throu
 * :download:`remote_lp_demo.py <examples/remote_lp_demo.py>`
 * :download:`remote_lp_demo.mps <examples/remote_lp_demo.mps>`
 
-Custom gRPC client
+Custom gRPC Client
 ------------------
 
 Integrations that do **not** use the bundled Python / C / CLI stack should speak ``CuOptRemoteService`` directly. See :doc:`api`, :doc:`grpc-server-architecture`, and ``cpp/docs/grpc-server-architecture.md`` in the repository for protos and server behavior.
 
-More samples
+More Samples
 ============
 
 * `NVIDIA cuOpt examples on GitHub <https://github.com/NVIDIA/cuopt-examples>`_ — set the remote environment on the **client** before running notebooks or scripts.

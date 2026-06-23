@@ -8,7 +8,7 @@ General FAQ
 .. dropdown:: Where can I find cuOpt container images?
 
     There are two options:
-    - NVIDIA docker hub (https://hub.docker.com/r/nvidia/)
+    - NVIDIA Docker Hub (https://hub.docker.com/r/nvidia/cuopt)
     - NVIDIA NGC registry (https://catalog.ngc.nvidia.com/orgs/nvidia/teams/cuopt/containers/cuopt/tags) with NVAIE license.
 
 .. dropdown:: How to get a NVAIE license?
@@ -67,7 +67,7 @@ General FAQ
 
      2. Try to locate the process that is using port 5000 and stop it if possible. A tool like ``netstat`` run as the root user can help identify ports mapped to processes, and ``docker ps -a`` will show running containers.
 
-     3. Alternatively, use port mapping to launch cuOpt on a different port such as 5001 (note the omission of ``–network=host`` flag):
+     3. Alternatively, use port mapping to launch cuOpt on a different port such as 5001 (note the omission of ``--network=host`` flag):
 
      4. If running locally, you can also use ``ps -aux | grep cuopt_server`` to find the process and kill it.
 
@@ -80,6 +80,27 @@ General FAQ
    #. The time limit supplied governs the run time of the solver only, but there are other overheads such as network delay, ETL, validation or the solver being busy with other requests.
 
    #. The complete round-trip solve time might be more than what was set.
+
+.. dropdown:: Why am I getting "libssl.so.3: cannot open shared object file" or "libcrypto.so.3: cannot open shared object file" when importing cuOpt?
+
+   The cuOpt wheel links against OpenSSL 3 and intentionally does not bundle ``libssl.so.3`` / ``libcrypto.so.3``; the host must provide them. This keeps libcrypto and any FIPS provider (system or mounted) byte-version-matched at runtime.
+
+   Most modern Linux distributions provide OpenSSL 3 out of the box: Ubuntu 22.04+, Debian 12+, RHEL/Rocky/Alma 9+, and Fedora 36+. For older distributions:
+
+   - **RHEL / Rocky / Alma / CentOS 8**: install the ``openssl3`` runtime package from EPEL:
+
+     .. code-block:: bash
+
+         dnf install -y epel-release
+         dnf install -y openssl3
+         # Verify
+         ldconfig -p | grep -E 'libssl\.so\.3|libcrypto\.so\.3'
+
+   - **Ubuntu 20.04**: install OpenSSL 3 from a PPA or backport, or use the cuOpt container image (Ubuntu 22.04 base) instead.
+
+   - **Other distributions**: install your distribution's OpenSSL 3 development/runtime package, or use the cuOpt container.
+
+   After installing, re-run ``pip install`` (or restart the Python process) and the import should succeed.
 
 .. dropdown:: Why am I getting "libcuopt.so: cannot open shared object file: No such file or directory" error?
 
@@ -113,7 +134,7 @@ General FAQ
 
      .. code-block:: bash
 
-        curl -s -o /dev/null -w '%{http_code}\\n' localhost:5000/cuopt/health 200
+        curl -s -o /dev/null -w '%{http_code}\\n' localhost:5000/cuopt/health
 
 
     If this command returns 200, cuOpt is running and listening on the specified port.
@@ -121,10 +142,10 @@ General FAQ
 
     If this command returns something other than 200, check the following:
 
-       -  Check that a cuOpt container is running with ``docker -ps``.
-       -  Examine the cuOpt container log for errors.
-       - Did you include the ``–network=host`` or a ``-p`` port-mapping flag to docker when you launched cuOpt? If you used port mapping, did you perform the health check using the correct port?
-       -  Restart cuOpt and see if that corrects the problem.
+    -  Check that a cuOpt container is running with ``docker ps``.
+    -  Examine the cuOpt container log for errors.
+    -  Did you include the ``--network=host`` or a ``-p`` port-mapping flag to docker when you launched cuOpt? If you used port mapping, did you perform the health check using the correct port?
+    -  Restart cuOpt and see if that corrects the problem.
 
    2. cuOpt microservice health-check from a remote host.
 
@@ -133,7 +154,7 @@ General FAQ
       .. code-block:: bash
           :linenos:
 
-           curl -s -o /dev/null -w '%{http_code}\\n' <ip>::5000/cuopt/health
+           curl -s -o /dev/null -w '%{http_code}\\n' <ip>:5000/cuopt/health
            200
 
     If this command does not return 200, but a health check locally on the cuOpt host does return 200, the problem is a network configuration or firewall issue. The host is not reachable, or the cuOpt port is not open to incoming traffic.
@@ -298,7 +319,7 @@ Routing FAQ
 
     So in either case, task locations are actually integer indices into another structure.
 
-    If you have (lat, long) values, then you can generate a cost matrix using a map API. cuOpt does not directly connect to a third-party map engine, but that can be done outside of cuOpt as shown `here <https://github.com/NVIDIA/cuopt-examples/blob/branch-23.10/notebooks/routing/service/cost_matrix_creation.ipynb>`__.
+    If you have (lat, long) values, then you can generate a cost matrix using a map API. cuOpt does not directly connect to a third-party map engine, but that can be done outside of cuOpt and the resulting cost matrix passed in.
 
 .. dropdown:: Is it possible to define constraints such as refrigerated vehicles required for certain orders?
 
@@ -344,6 +365,9 @@ Linear Programming FAQs
 
 .. dropdown:: How small and how many problems can I give when using the batch mode?
 
+    LP batch mode is deprecated; see :ref:`Batch Mode <batch-mode>` in
+    :doc:`convex-features`.
+
     The batch mode allows solving many LPs in parallel to try to fully utilize the GPU when LP problems are too small. Using H100 SXM, the problem should be of at least 1K elements, and giving more than 100 LPs will usually not increase performance.
 
 .. dropdown:: Can the solver run on dense problems?
@@ -364,7 +388,7 @@ Linear Programming FAQs
     - Hardware: If using self-hosted, you should use a recent server-grade GPU. We recommend H100 SXM (not the PCIE version).
     - Tolerance: The set tolerance usually has a massive impact on performance. Try the lowest possible value using ``set_optimality_tolerance`` until you have reached your lowest possible acceptable accuracy.
     - PDLP Solver mode: PDLP solver mode will change the way PDLP internally optimizes the problem. The mode choice can drastically impact how fast a specific problem will be solved. You should test the different modes to see which one fits your problem best.
-    - Batch mode: In case you know upfront that you need to solve multiple LP problems, instead of solving them sequentially, you should use the batch mode which can solve multiple LPs in parallel.
+    - Batch mode: Deprecated for LP; prefer sequential ``cuopt.linear_programming.Solve`` calls (see :ref:`Batch Mode <batch-mode>`). While available, batch mode can solve multiple LPs in parallel.
     - Presolve: Presolve can reduce problem size and improve solve time.
 
 .. dropdown:: What solver mode should I choose?
@@ -397,6 +421,15 @@ Linear Programming FAQs
 
 Mixed Integer Linear Programming FAQs
 --------------------------------------
+
+.. dropdown:: How do I run the MIP solver with cuOpt?
+
+    You can run the cuOpt MIP solver through the Python, C, CLI, or server APIs
+    by providing a model with integer or binary variables. The cuOpt MIP solver
+    is in **beta** and under active development. The solver currently excels at
+    finding high-quality feasible solutions quickly with GPU-accelerated primal
+    heuristics. Proving feasible solutions optimal remains under active
+    development.
 
 .. dropdown:: What are the limitations of the MILP solver?
 

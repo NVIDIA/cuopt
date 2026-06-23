@@ -7,7 +7,6 @@
 #pragma once
 
 #include <barrier/dense_vector.hpp>
-#include <barrier/pinned_host_allocator.hpp>
 
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
@@ -19,11 +18,10 @@
 #include <rmm/device_uvector.hpp>
 namespace cuopt::linear_programming::dual_simplex {
 
+/** Validates SOC layout on an lp_problem_t before barrier presolve/solve. */
 template <typename i_t, typename f_t>
-struct barrier_solver_settings_t {
-  i_t iteration_limit = 1000;
-  f_t step_scale      = 0.9;
-};
+bool validate_barrier_cone_layout(const lp_problem_t<i_t, f_t>& problem,
+                                  const simplex_solver_settings_t<i_t, f_t>& settings);
 
 template <typename i_t, typename f_t>
 class iteration_data_t;  // Forward declare
@@ -34,15 +32,12 @@ class barrier_solver_t {
   barrier_solver_t(const lp_problem_t<i_t, f_t>& lp,
                    const presolve_info_t<i_t, f_t>& presolve,
                    const simplex_solver_settings_t<i_t, f_t>& settings);
-  lp_status_t solve(f_t start_time,
-                    const barrier_solver_settings_t<i_t, f_t>& options,
-                    lp_solution_t<i_t, f_t>& solution);
+  lp_status_t solve(f_t start_time, lp_solution_t<i_t, f_t>& solution);
 
  private:
   void my_pop_range(bool debug) const;
   void create_Q(const lp_problem_t<i_t, f_t>& lp, csc_matrix_t<i_t, f_t>& Q);
   int initial_point(iteration_data_t<i_t, f_t>& data);
-
   void compute_residual_norms(const dense_vector_t<i_t, f_t>& w,
                               const dense_vector_t<i_t, f_t>& x,
                               const dense_vector_t<i_t, f_t>& y,
@@ -53,13 +48,6 @@ class barrier_solver_t {
                               f_t& dual_residual_norm,
                               f_t& complementarity_residual_norm);
 
-  template <typename AllocatorA>
-  void compute_residuals(const dense_vector_t<i_t, f_t, AllocatorA>& w,
-                         const dense_vector_t<i_t, f_t, AllocatorA>& x,
-                         const dense_vector_t<i_t, f_t, AllocatorA>& y,
-                         const dense_vector_t<i_t, f_t, AllocatorA>& v,
-                         const dense_vector_t<i_t, f_t, AllocatorA>& z,
-                         iteration_data_t<i_t, f_t>& data);
   void compute_primal_dual_step_length(iteration_data_t<i_t, f_t>& data,
                                        f_t step_scale,
                                        f_t& step_primal,
@@ -101,20 +89,16 @@ class barrier_solver_t {
                                   f_t& dual_residual_norm,
                                   f_t& complementarity_residual_norm);
 
-  f_t gpu_max_step_to_boundary(iteration_data_t<i_t, f_t>& data,
-                               const rmm::device_uvector<f_t>& x,
-                               const rmm::device_uvector<f_t>& dx);
+  f_t compute_nonnegative_step_length(iteration_data_t<i_t, f_t>& data,
+                                      const rmm::device_uvector<f_t>& x,
+                                      const rmm::device_uvector<f_t>& dx);
   i_t gpu_compute_search_direction(iteration_data_t<i_t, f_t>& data,
-                                   pinned_dense_vector_t<i_t, f_t>& dw,
-                                   pinned_dense_vector_t<i_t, f_t>& dx,
-                                   pinned_dense_vector_t<i_t, f_t>& dy,
-                                   pinned_dense_vector_t<i_t, f_t>& dv,
-                                   pinned_dense_vector_t<i_t, f_t>& dz,
+                                   f_t& dual_perturb,
+                                   f_t& primal_perturb,
                                    f_t& max_residual);
 
  private:
-  lp_status_t check_for_suboptimal_solution(const barrier_solver_settings_t<i_t, f_t>& options,
-                                            iteration_data_t<i_t, f_t>& data,
+  lp_status_t check_for_suboptimal_solution(iteration_data_t<i_t, f_t>& data,
                                             f_t start_time,
                                             i_t iter,
                                             f_t& primal_objective,

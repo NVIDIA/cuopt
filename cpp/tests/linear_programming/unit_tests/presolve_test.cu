@@ -7,12 +7,12 @@
 
 #include "../utilities/pdlp_test_utilities.cuh"
 
+#include <cuopt/linear_programming/io/mps_data_model.hpp>
+#include <cuopt/linear_programming/io/parser.hpp>
 #include <cuopt/linear_programming/pdlp/solver_settings.hpp>
 #include <cuopt/linear_programming/solve.hpp>
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
 #include <mip_heuristics/utilities/sort_csr.cuh>
-#include <mps_parser/mps_data_model.hpp>
-#include <mps_parser/parser.hpp>
 #include <pdlp/utils.cuh>
 #include <utilities/base_fixture.hpp>
 #include <utilities/common_utils.hpp>
@@ -216,7 +216,7 @@ TEST(pslp_presolve, postsolve_accuracy_afiro)
   constexpr double expected_obj = -464.75314;  // Known optimal objective for afiro
 
   auto path           = make_path_absolute("linear_programming/afiro_original.mps");
-  auto mps_data_model = cuopt::mps_parser::parse_mps<int, double>(path, true);
+  auto mps_data_model = cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   // Store original problem data for later verification
   const auto& orig_coefficients = mps_data_model.get_constraint_matrix_values();
@@ -276,7 +276,7 @@ TEST(pslp_presolve, postsolve_dual_accuracy_afiro)
   const raft::handle_t handle_{};
 
   auto path           = make_path_absolute("linear_programming/afiro_original.mps");
-  auto mps_data_model = cuopt::mps_parser::parse_mps<int, double>(path, true);
+  auto mps_data_model = cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   const int orig_n_vars        = mps_data_model.get_n_variables();
   const int orig_n_constraints = mps_data_model.get_n_constraints();
@@ -312,7 +312,7 @@ TEST(pslp_presolve, postsolve_accuracy_larger_problem)
   constexpr double tolerance = 1e-4;
 
   auto path           = make_path_absolute("linear_programming/ex10/ex10.mps");
-  auto mps_data_model = cuopt::mps_parser::parse_mps<int, double>(path, false);
+  auto mps_data_model = cuopt::linear_programming::io::read_mps<int, double>(path, false);
 
   // Store original problem dimensions
   const auto& orig_coefficients = mps_data_model.get_constraint_matrix_values();
@@ -362,7 +362,7 @@ TEST(pslp_presolve, compare_with_no_presolve)
   constexpr double obj_tolerance = 1e-3;
 
   auto path           = make_path_absolute("linear_programming/afiro_original.mps");
-  auto mps_data_model = cuopt::mps_parser::parse_mps<int, double>(path, true);
+  auto mps_data_model = cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   // Solve without presolve
   auto settings_no_presolve      = pdlp_solver_settings_t<int, double>{};
@@ -432,7 +432,7 @@ TEST(pslp_presolve, postsolve_reduced_costs)
   const raft::handle_t handle_{};
 
   auto path           = make_path_absolute("linear_programming/afiro_original.mps");
-  auto mps_data_model = cuopt::mps_parser::parse_mps<int, double>(path, true);
+  auto mps_data_model = cuopt::linear_programming::io::read_mps<int, double>(path, true);
 
   const int orig_n_vars = mps_data_model.get_n_variables();
 
@@ -465,8 +465,9 @@ TEST(pslp_presolve, postsolve_multiple_problems)
   };
 
   for (const auto& [name, expected_obj] : instances) {
-    auto path           = make_path_absolute("linear_programming/" + name + ".mps");
-    auto mps_data_model = cuopt::mps_parser::parse_mps<int, double>(path, name == "afiro_original");
+    auto path = make_path_absolute("linear_programming/" + name + ".mps");
+    auto mps_data_model =
+      cuopt::linear_programming::io::read_mps<int, double>(path, name == "afiro_original");
 
     const int orig_n_vars        = mps_data_model.get_n_variables();
     const int orig_n_constraints = mps_data_model.get_n_constraints();
@@ -508,7 +509,7 @@ TEST_P(dual_crush_round_trip, kkt_check)
 
   const auto& param = GetParam();
   auto path         = make_path_absolute(param.mps_path);
-  auto mps          = cuopt::mps_parser::parse_mps<int, double>(path, false);
+  auto mps          = cuopt::linear_programming::io::read_mps<int, double>(path, false);
   auto op_problem =
     cuopt::linear_programming::mps_data_model_to_optimization_problem<int, double>(&handle_, mps);
 
@@ -766,7 +767,7 @@ TEST_P(crush_warmstart, round_trip)
   auto stream = handle_.get_stream();
 
   auto path = make_path_absolute(GetParam());
-  auto mps  = cuopt::mps_parser::parse_mps<int, double>(path, false);
+  auto mps  = cuopt::linear_programming::io::read_mps<int, double>(path, false);
   auto op_problem =
     cuopt::linear_programming::mps_data_model_to_optimization_problem<int, double>(&handle_, mps);
 

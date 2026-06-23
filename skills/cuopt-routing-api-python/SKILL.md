@@ -1,8 +1,19 @@
 ---
 name: cuopt-routing-api-python
-version: "26.06.00"
+version: "26.08.00"
 description: Vehicle routing (VRP, TSP, PDP) with cuOpt — Python API only. Use when the user is building or solving routing in Python.
+license: Apache-2.0
+metadata:
+  author: NVIDIA cuOpt Team
+  tags:
+    - cuopt
+    - routing
+    - vrp
+    - tsp
+    - python
 ---
+
+
 
 # cuOpt Routing — Python API
 
@@ -83,9 +94,7 @@ ss.set_error_logging_mode(True)
 | Infeasible orders | Increase fleet or capacity |
 | Status != 0 with time windows | Add `add_transit_time_matrix()` |
 | Wrong cost | Check cost_matrix is symmetric |
-<!-- skill-evolution:start — WaypointMatrix.compute_waypoint_sequence mutates route_df -->
 | `compute_waypoint_sequence` alters route_df | It replaces the `location` column with waypoint ids in place — pass `route_df.copy()` if you still need cost-matrix indices (e.g. when iterating per truck) |
-<!-- skill-evolution:end -->
 
 ## Debugging
 
@@ -95,8 +104,8 @@ ss.set_error_logging_mode(True)
 
 ## Examples
 
-- [examples.md](resources/examples.md) — VRP, PDP, multi-depot
-- [server_examples.md](resources/server_examples.md) — REST client (curl, Python)
+- [examples.md](references/examples.md) — VRP, PDP, multi-depot
+- [server_examples.md](references/server_examples.md) — REST client (curl, Python)
 - **Reference models:** This skill's `assets/` — [vrp_basic](assets/vrp_basic/), [pdp_basic](assets/pdp_basic/). See [assets/README.md](assets/README.md).
 
 ## Escalate

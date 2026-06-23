@@ -12,4 +12,5 @@ This section contains details on Server options supported and open-api specifica
 
    server-cli.rst
    ../../open-api.rst
-   ../../lp-qp-milp-settings.rst
+   ../../convex-settings.rst
+   ../../mip-settings.rst

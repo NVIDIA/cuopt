@@ -15,12 +15,13 @@
 
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <string>
 #include <vector>
 
 namespace cuopt::linear_programming {
 
-enum class var_t { CONTINUOUS = 0, INTEGER };
+enum class var_t { CONTINUOUS = 0, INTEGER, SEMI_CONTINUOUS };
 enum class problem_category_t : int8_t { LP = 0, MIP = 1, IP = 2 };
 
 template <typename i_t, typename f_t>
@@ -56,7 +57,67 @@ class optimization_problem_interface_t {
   static_assert(std::is_floating_point<f_t>::value,
                 "'optimization_problem_interface_t' accepts only floating point types for weights");
 
+  /** Quadratic constraint bundle used by core optimization problem interfaces. */
+  struct quadratic_constraint_t {
+    i_t constraint_row_index{};
+    std::string constraint_row_name{};
+    char constraint_row_type{};
+    std::vector<f_t> linear_values{};
+    std::vector<i_t> linear_indices{};
+    f_t rhs_value{f_t(0)};
+    /** Q in COO: parallel arrays, same length. */
+    std::vector<i_t> rows{};
+    std::vector<i_t> cols{};
+    std::vector<f_t> vals{};
+  };
+
   virtual ~optimization_problem_interface_t() = default;
+
+  /**
+   * @brief Store quadratic constraints for MPS round-trip (linear + Q parts per QC row).
+   */
+  virtual void set_quadratic_constraints(std::vector<quadratic_constraint_t> constraints) = 0;
+
+  /**
+   * @brief Append one quadratic constraint x^T Q x + d^T x {<=, >=} rhs.
+   *
+   * Quadratic matrix Q is COO (row_index, col_index, coeff spans). Linear term d uses parallel
+   * linear_values and linear_indices (empty allowed). constraint_row_index is assigned
+   * automatically as n_linear_constraints + n_existing_quadratic_constraints.
+   */
+  virtual void add_quadratic_constraint(char constraint_row_type,
+                                        f_t rhs_value,
+                                        std::span<const i_t> row_index,
+                                        std::span<const i_t> col_index,
+                                        std::span<const f_t> coeff,
+                                        std::span<const f_t> linear_values,
+                                        std::span<const i_t> linear_indices) = 0;
+  template <typename qc_t,
+            typename = std::enable_if_t<!std::is_same_v<qc_t, quadratic_constraint_t>>>
+  void set_quadratic_constraints(const std::vector<qc_t>& constraints)
+  {
+    std::vector<quadratic_constraint_t> converted_constraints;
+    converted_constraints.reserve(constraints.size());
+    for (const auto& qc : constraints) {
+      converted_constraints.push_back(
+        {static_cast<i_t>(qc.constraint_row_index),
+         qc.constraint_row_name,
+         qc.constraint_row_type,
+         std::vector<f_t>(qc.linear_values.begin(), qc.linear_values.end()),
+         std::vector<i_t>(qc.linear_indices.begin(), qc.linear_indices.end()),
+         static_cast<f_t>(qc.rhs_value),
+         std::vector<i_t>(qc.rows.begin(), qc.rows.end()),
+         std::vector<i_t>(qc.cols.begin(), qc.cols.end()),
+         std::vector<f_t>(qc.vals.begin(), qc.vals.end())});
+    }
+    set_quadratic_constraints(std::move(converted_constraints));
+  }
+
+  /** @brief Whether quadratic constraint metadata is present (for MPS export). */
+  virtual bool has_quadratic_constraints() const = 0;
+
+  /** @brief Quadratic constraints for MPS export (empty if none). */
+  virtual const std::vector<quadratic_constraint_t>& get_quadratic_constraints() const = 0;
 
   // ============================================================================
   // Setters (accept both CPU and GPU pointers)

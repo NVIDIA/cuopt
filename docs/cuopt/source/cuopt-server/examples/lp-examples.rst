@@ -4,6 +4,12 @@ LP Python Examples
 
 The following example showcases how to use the ``CuOptServiceSelfHostClient`` to solve a simple LP problem in normal mode and batch mode (where multiple problems are solved at once).
 
+.. note::
+   LP batch mode is deprecated and will be removed in a future release. Prefer
+   sequential ``cuopt.linear_programming.Solve`` calls. Server and CLI batch
+   paths still use batch solve today; check response ``warnings`` or logs for the
+   deprecation notice.
+
 The OpenAPI specification for the server is available in :doc:`open-api spec <../../open-api>`. The example data is structured as per the OpenAPI specification for the server, please refer :doc:`LPData under "POST /cuopt/request" <../../open-api>` under schema section. LP and MILP share same spec.
 
 If you want to run server locally, please run the following command in a terminal or tmux session so you can test examples in another terminal.
@@ -202,10 +208,13 @@ The response would be as follows:
     }
 
 
-Using MPS file directly
------------------------
+Using MPS or LP file directly
+-----------------------------
 
-An example on using .mps files as input is shown below:
+The self-hosted client accepts both MPS and LP format files — the client
+dispatches on the file extension (``.lp`` ⇒ LP parser, otherwise MPS) and
+sends the parsed data model to the server. An example on using .mps files
+as input is shown below:
 
 :download:`mps_file_example.py <lp/examples/mps_file_example.py>`
 
@@ -258,10 +267,17 @@ The response is:
     }
 
 
-Generate Datamodel from MPS Parser
-----------------------------------
+Generate Datamodel using Problem File Parser
+--------------------------------------------
 
-Use a datamodel generated from mps file as input; this yields a solution object in response. For more details please refer to :doc:`LP/QP/MILP parameters <../../lp-qp-milp-settings>`.
+Use a :class:`~cuopt.linear_programming.data_model.DataModel` built with
+:func:`~cuopt.linear_programming.io.Read` as input to ``get_LP_solve``;
+the client dispatches on the file extension (``.mps`` / ``.qps`` vs ``.lp``,
+including ``.gz`` / ``.bz2`` compressed variants). For solver settings see
+:doc:`convex optimization parameters <../../convex-settings>` and :doc:`MIP parameters <../../mip-settings>`.
+
+MPS format
+~~~~~~~~~~
 
 :download:`mps_datamodel_example.py <lp/examples/mps_datamodel_example.py>`
 
@@ -269,8 +285,17 @@ Use a datamodel generated from mps file as input; this yields a solution object 
    :language: python
    :linenos:
 
+LP format
+~~~~~~~~~
 
-The response would be as follows:
+:download:`lp_datamodel_example.py <lp/examples/lp_datamodel_example.py>`
+
+.. literalinclude:: lp/examples/lp_datamodel_example.py
+   :language: python
+   :linenos:
+
+Expected output (either example, same problem instance)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: text
    :linenos:
@@ -279,7 +304,7 @@ The response would be as follows:
     1
     Objective Value:
     -0.36000000000000004
-    Mps Parse time: 0.000 sec
+    MPS Parse time: 0.000 sec
     Network time: 1.062 sec
     Engine Solve time: 0.004 sec
     Total end to end time: 1.066 sec
@@ -405,9 +430,13 @@ In case the user needs to update solver settings through CLI, the option ``-ss``
 In the case of batch mode, you can send a bunch of ``mps`` files at once, and acquire results. The batch mode works only for ``mps`` in the case of CLI:
 
 .. note::
+   LP batch mode is deprecated; see :ref:`Batch Mode <batch-mode>` in
+   :doc:`../../convex-features`.
+
+.. note::
    Batch mode is not available for MILP problems.
 
-A sample MPS file (:download:`sample.mps <https://people.math.sc.edu/Burkardt/datasets/mps/testprob.mps>`):
+A sample MPS file (:download:`sample.mps <lp/examples/sample.mps>`):
 
 .. literalinclude:: lp/examples/sample.mps
    :language: text

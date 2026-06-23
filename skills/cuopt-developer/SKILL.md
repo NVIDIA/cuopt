@@ -1,7 +1,16 @@
 ---
 name: cuopt-developer
-version: "26.06.00"
-description: Contribute to NVIDIA cuOpt codebase including C++/CUDA, Python, server, docs, and CI. Use when the user wants to modify solver internals, add features, submit PRs, or understand the codebase architecture.
+version: "26.08.00"
+description: Modify, build, test, debug, and contribute to NVIDIA cuOpt (C++/CUDA, Python, server, CI). Use for solver internals, PRs, DCO, and code conventions.
+license: Apache-2.0
+metadata:
+  author: NVIDIA cuOpt Team
+  tags:
+    - cuopt
+    - development
+    - contributing
+    - cpp-cuda
+    - python-bindings
 ---
 
 # cuOpt Developer Skill
@@ -9,6 +18,24 @@ description: Contribute to NVIDIA cuOpt codebase including C++/CUDA, Python, ser
 Contribute to the NVIDIA cuOpt codebase. This skill is for modifying cuOpt itself, not for using it.
 
 **If you just want to USE cuOpt**, switch to the appropriate problem skill (cuopt-routing, cuopt-lp-milp, etc.)
+
+**First-time dev environment setup?** See [references/first_time_setup.md](references/first_time_setup.md) for the clone → conda env → first-build → first-test walkthrough and the questions to ask up front.
+
+---
+
+## Refusal Rules — Read First
+
+**One rule is non-negotiable** and applies even when the user explicitly asks otherwise — refuse and ask, don't comply silently:
+
+**Privileged / system-level operations** — `sudo`, running as root, editing system files (`/etc`), changing drivers or kernel settings, adding system-level package repositories or keys. Do not run these. Reply:
+> I won't run `sudo` or change system-level state for cuOpt. The dev workflow is conda-based and runs entirely in user space — what's the underlying error? It's usually fixable without root.
+
+**Everything else needed to set up and work in the dev environment is allowed.** On a clean machine, go ahead and build a working `cuopt` env — the guidance below is about doing it the *reproducible* way, not refusing:
+
+- **Environment setup is allowed.** You may create and activate the conda env from the checked-in `conda/environments/all_cuda-*.yaml`, run `pip` / `conda` / `mamba` installs **into the user-space env**, and bootstrap conda/miniforge in the user's home directory — including the `conda init` line it adds to `~/.bashrc`. Bootstrapping conda must not require `sudo`; install it into `$HOME`, not a system path.
+- **A new *permanent* project dependency is different from a one-off install.** A package the project should always ship belongs in `dependencies.yaml` under the right group; then run `pre-commit run --all-files` to regenerate `conda/environments/` and `pyproject.toml` so other contributors get it too. A throwaway install to unblock your own build doesn't need this round-trip.
+- **Don't bypass CI checks** (`--no-verify`, skipping pre-commit or tests). If hooks feel slow, diagnose with `pre-commit run --all-files --verbose` or tune the offending hook — don't skip it.
+- **Be careful with destructive commands** (`rm -rf`, `git reset --hard`, `git push --force`, killing processes, dropping data). Confirm intent before running and prefer the safer alternative (e.g. `./build.sh clean` for a stale build dir).
 
 ---
 
@@ -47,21 +74,18 @@ Is this correct?"
 - `pytest`, `ctest` (running tests)
 - `pre-commit run`, `./ci/check_style.sh` (formatting)
 - `git status`, `git diff`, `git log` (read-only git)
+- Environment setup: create/activate the conda env from `conda/environments/*.yaml`, and `pip`/`conda`/`mamba` installs into that env
 
 **Set up pre-commit hooks** (once per clone):
 - `pre-commit install` — hooks then run automatically on every `git commit`. If a hook fails, the commit is blocked until you fix the issue.
 
 **Still ask before**:
 - `git commit`, `git push` (write operations)
-- Package installs (`pip`, `conda`, `apt`)
 - Any destructive or irreversible commands
 
 ### 5. No Privileged Operations
 
-Same as user rules — never without explicit request:
-- No `sudo`
-- No system file changes
-- No writes outside workspace
+`sudo`/system-level changes are the one non-negotiable refusal; user-space installs and conda env setup are allowed. See [Refusal Rules — Read First](#refusal-rules--read-first).
 
 ---
 
@@ -139,45 +163,32 @@ cuopt/
 
 ## Build & Test
 
-### PARALLEL_LEVEL
+### Pre-flight Checks (Required Before First Build or Test)
 
-`PARALLEL_LEVEL` controls the number of parallel compile jobs. It defaults to `$(nproc)` (all cores), which can cause OOM on machines with limited RAM — CUDA compilation is memory-intensive. Set it based on your system's available RAM (roughly 4-8 GB per job):
+Skipping any of these surfaces as confusing runtime errors later. Run them in order:
 
-```bash
-export PARALLEL_LEVEL=8   # adjust based on available RAM
-```
+1. **Check CUDA driver compatibility.** Run `nvidia-smi` and read the *CUDA Version* in the top-right corner — that's the maximum CUDA your driver supports. Pick a conda env file from `conda/environments/all_cuda-<ver>_arch-<arch>.yaml` whose CUDA major version is **≤** that. A mismatch builds successfully but fails at runtime inside RMM with `cudaMallocAsync not supported with this CUDA driver/runtime version` — verify this *before* the build, not after.
+2. **Create and activate the conda env** before *any* build, test, or `pre-commit` command — this is allowed and expected (see [Refusal Rules](#refusal-rules--read-first)). Use a **local prefix env** (`./.cuopt_env`) per [CONTRIBUTING.md](../../CONTRIBUTING.md), with the env file you picked in step 1 (swap `conda`→`mamba` if available):
+   ```bash
+   conda env create -p ./.cuopt_env --file conda/environments/all_cuda-<ver>_arch-$(uname -m).yaml
+   conda activate ./.cuopt_env
+   ```
+   Tests link against libraries compiled inside that env; a fresh shell without `conda activate ./.cuopt_env` hits cryptic linker errors.
+3. **Set `PARALLEL_LEVEL`** if RAM is constrained — see [references/build_and_test.md](references/build_and_test.md). The default `$(nproc)` can OOM mid-build because CUDA compilation needs ~4–8 GB per job.
+4. **For tests, fetch datasets first.** cuOpt tests need MPS files not in the repo — follow the dataset download steps in [CONTRIBUTING.md](../../CONTRIBUTING.md) ("Building for development" section) and export `RAPIDS_DATASET_ROOT_DIR`.
 
-### Build Everything
-
-```bash
-./build.sh
-```
-
-### Build Specific Components
-
-```bash
-./build.sh --help      # Lists build options
-./build.sh libcuopt    # C++ library
-./build.sh libmps_parser libcuopt --skip-routing-build --skip-tests-build --skip-c-python-adapters --cache-tool=ccache  # native LP/MIP-focused build without routing/tests/adapters
-./build.sh cuopt       # Python package
-./build.sh cuopt_server # Server
-./build.sh docs        # Documentation
-```
-
-### Run Tests
+### Quick Reference
 
 ```bash
-# C++ tests
-ctest --test-dir cpp/build
-
-# Python tests
-pytest -v python/cuopt/cuopt/tests
-
-# Server tests
-pytest -v python/cuopt_server/tests
+./build.sh             # Build everything
+./build.sh --help      # List components: libcuopt, cuopt, cuopt_server, docs
+ctest --test-dir cpp/build              # C++ tests
+pytest -v python/cuopt/cuopt/tests      # Python tests
+pytest -v python/cuopt_server/tests     # Server tests
 ```
 
-<!-- skill-evolution:start — always fetch datasets before running tests -->
+For component-specific build commands, run-test detail, and `PARALLEL_LEVEL` configuration, see [references/build_and_test.md](references/build_and_test.md).
+
 #### Download test datasets before running tests
 
 cuOpt tests depend on MPS/data files that are not checked into the repo. A
@@ -191,144 +202,22 @@ Before running any C++ or Python tests, follow the dataset download and
 If a test fails with a missing-file error, run the matching download step from
 `CONTRIBUTING.md` and re-run the test. Do not report missing-dataset failures
 back to the user as the task outcome.
-<!-- skill-evolution:end -->
 
 ## Python Bindings
 
-cuOpt uses Cython to bridge Python and C++. See [resources/python_bindings.md](resources/python_bindings.md) for the full architecture, parameter flow walkthrough, key files, and Cython patterns.
+cuOpt uses Cython to bridge Python and C++. See [references/python_bindings.md](references/python_bindings.md) for the full architecture, parameter flow walkthrough, key files, and Cython patterns.
 
-## Before You Commit
+## Contributing — Commits, PRs, Common Tasks
 
-### 1. Install Pre-commit Hooks
-
-Run once per clone to have style checks run automatically on every `git commit`:
-
-```bash
-pre-commit install
-```
-
-If a hook fails, the commit is blocked — fix the issues and commit again. To check all files manually (e.g., before pushing), run `pre-commit run --all-files --show-diff-on-failure`.
-
-### 2. Make Meaningful Commits
-
-Group related changes into logical commits rather than committing all files at once. Each commit should represent one coherent change (e.g., separate the C++ change from the Python binding update from the test addition). This makes `git log` and `git bisect` useful for debugging later.
-
-### 3. Sign Your Commits (DCO Required)
-
-```bash
-git commit -s -m "Your message"
-```
-
-### 4. Use Forks for Pull Requests
-
-Never push branches directly to the main cuOpt repository. Use the fork workflow:
-
-```bash
-# 1. Clone the main repo
-git clone git@github.com:NVIDIA/cuopt.git
-cd cuopt
-
-# 2. Add your fork as a remote
-git remote add fork git@github.com:<your-username>/cuopt.git
-
-# 3. Create a branch from the appropriate base (see branching strategy below)
-git checkout -b my-feature-branch
-
-# 4. Make changes, commit, then push to your fork
-git push fork my-feature-branch
-
-# 5. Create PR from your fork → upstream base branch
-```
-
-This applies to both human contributors and AI agents. Agents must never push to the upstream repo directly — provide the push command for the user to review and execute from their fork.
-
-### Pull Requests Created by Agents
-
-When an AI agent creates a pull request, it **must be a draft PR** (`gh pr create --draft`). This gives the developer time to review and iterate on the changes before any reviewers get pinged. The developer will mark it as ready for review when satisfied.
-
-### PR Descriptions
-
-Keep PR summaries **short and informative**. State what changed and why in a few bullet points. Avoid verbose explanations, full file listings, or restating the diff. Reviewers read the code — the summary should give them context, not a transcript.
+For pre-commit setup, DCO sign-off (`git commit -s`), the fork-based PR workflow, the draft-PR rule for agents, PR-description rules (keep it short — no "how it works" walkthroughs or file tables), script and CI/workflow authoring principles (extend existing files before adding new ones; no speculative flags, restated defaults, or silent fallbacks), and step-by-step common-task recipes (adding a solver parameter, dependency, server endpoint, or CUDA kernel), see [references/contributing.md](references/contributing.md).
 
 ## Coding Conventions
 
-### C++ Naming
+For C++ naming (`snake_case`, `d_`/`h_` prefixes, `_t` suffix), file extensions (`.hpp`/`.cpp`/`.cu`/`.cuh` and which compiler each uses), include order, Python style, error handling (`CUOPT_EXPECTS`, `RAFT_CUDA_TRY`), memory management (RMM patterns, no raw `new`/`delete`), and test-impact rules, see [references/conventions.md](references/conventions.md).
 
-| Element | Convention | Example |
-|---------|------------|---------|
-| Variables | `snake_case` | `num_locations` |
-| Functions | `snake_case` | `solve_problem()` |
-| Classes | `snake_case` | `data_model` |
-| Test cases | `PascalCase` | `SolverTest` |
-| Device data | `d_` prefix | `d_locations_` |
-| Host data | `h_` prefix | `h_data_` |
-| Template params | `_t` suffix | `value_t` |
-| Private members | `_` suffix | `n_locations_` |
+## Troubleshooting & CI
 
-### File Extensions
-
-| Extension | Usage |
-|-----------|-------|
-| `.hpp` | C++ headers |
-| `.cpp` | C++ source |
-| `.cu` | CUDA source (nvcc required) |
-| `.cuh` | CUDA headers with device code |
-
-### Include Order
-
-1. Local headers
-2. RAPIDS headers
-3. Related libraries
-4. Dependencies
-5. STL
-
-### Python Style
-
-- Follow PEP 8
-- Use type hints
-- Tests use pytest
-
-## Error Handling
-
-### Runtime Assertions
-
-```cpp
-CUOPT_EXPECTS(condition, "Error message");
-CUOPT_FAIL("Unreachable code reached");
-```
-
-### CUDA Error Checking
-
-```cpp
-RAFT_CUDA_TRY(cudaMemcpy(...));
-```
-
-## Memory Management
-
-```cpp
-// ❌ WRONG
-int* data = new int[100];
-
-// ✅ CORRECT - use RMM
-rmm::device_uvector<int> data(100, stream);
-```
-
-- All operations should accept `cuda_stream_view`
-- Views (`*_view` suffix) are non-owning
-
-Read existing code in `cpp/src/` for real examples of RMM allocation, stream-ordering, RAFT utilities, and kernel launch patterns.
-
-## Test Impact Check
-
-**Before any behavioral change, ask:**
-
-1. What scenarios must be covered?
-2. What's the expected behavior contract?
-3. Where should tests live?
-   - C++ gtests: `cpp/tests/`
-   - Python pytest: `python/.../tests/`
-
-**Add at least one regression test for new behavior.**
+For build/test pitfalls (Cython rebuild, OOM, CUDA driver mismatch, missing `nvcc`) and CI failure diagnostics (style checks, DCO failures, dependency drift), see [references/troubleshooting.md](references/troubleshooting.md).
 
 ## Key Files Reference
 
@@ -341,77 +230,28 @@ Read existing code in `cpp/src/` for real examples of RMM allocation, stream-ord
 | Test data | `datasets/` |
 | CI scripts | `ci/` |
 
-## Common Tasks
-
-### Adding a Solver Parameter
-
-1. Add to settings struct in `cpp/include/cuopt/` and wire into `set_parameter_from_string()` in `cpp/src/`
-2. Expose in Python — if using the string-based interface, the parameter is auto-discovered (no `.pyx` change needed). Add a convenience method in `SolverSettings` if warranted. See [resources/python_bindings.md](resources/python_bindings.md) for the full checklist.
-3. Add to server schema (`docs/cuopt/source/cuopt_spec.yaml`) if applicable
-4. Add tests at C++ and Python levels
-5. Rebuild: `./build.sh libcuopt && ./build.sh cuopt`
-6. Update documentation
-
-### Adding a Dependency
-
-All dependencies are managed through `dependencies.yaml` — never edit `conda/environments/*.yaml` or `pyproject.toml` files directly. The file uses [RAPIDS dependency-file-generator](https://github.com/rapidsai/dependency-file-generator) format:
-
-1. Find the appropriate group in `dependencies.yaml` (e.g., `build_cpp`, `run_common`, `test_python_common`)
-2. Add the package under the correct `output_types` (`conda`, `requirements`, `pyproject`, or a combination)
-3. Run `pre-commit run --all-files` — the RAPIDS dependency file generator hook regenerates downstream files automatically
-4. Verify: check that `conda/environments/` and relevant `pyproject.toml` files were updated
-
-### Adding a Server Endpoint
-
-1. Add route in `python/cuopt_server/cuopt_server/webserver.py`
-2. Update OpenAPI spec `docs/cuopt/source/cuopt_spec.yaml`
-3. Add tests in `python/cuopt_server/tests/`
-4. Update documentation
-
-### Modifying CUDA Kernels
-
-1. Edit kernel in `cpp/src/`
-2. Follow stream-ordering patterns
-3. Run C++ tests: `ctest --test-dir cpp/build`
-4. Run benchmarks to check performance
-
-## Common Pitfalls
-
-| Problem | Solution |
-|---------|----------|
-| Cython changes not reflected | Rerun: `./build.sh cuopt` |
-| Missing `nvcc` | Set `$CUDACXX` or add CUDA to `$PATH` |
-| OOM during build | Lower `PARALLEL_LEVEL` (e.g., `export PARALLEL_LEVEL=8`) |
-| CUDA out of memory | Reduce problem size |
-| Build fails with CUDA errors on older driver | Conda installs `cuda-nvcc` for the latest supported CUDA (e.g., 13.1), but your GPU driver may not support it. Check with `nvidia-smi` — the top-right shows max CUDA version. Override with: `conda install cuda-nvcc=12.9` (or whichever version your driver supports). See [CUDA compatibility matrix](https://docs.nvidia.com/deploy/cuda-compatibility/) |
-| Slow debug library loading | Device symbols cause delay |
-
-## CI Gotchas
-
-| Failure | Cause | Fix |
-|---------|-------|-----|
-| Style check | Formatting drift | Run `pre-commit run --all-files` and commit fixes |
-| DCO sign-off | Missing `-s` flag | `git commit --amend -s` (or rebase to fix older commits) |
-| Dependency mismatch | Edited `pyproject.toml` or `conda/environments/` directly | Edit `dependencies.yaml` instead, let pre-commit regenerate |
-| Skill validation | Missing frontmatter or version mismatch | Run `./ci/utils/validate_skills.sh` locally to diagnose |
-
-For CI scripts and pipeline details, see [ci/README.md](../../ci/README.md).
-
 ## Canonical Documentation
 
 - **Contributing/build/test**: [CONTRIBUTING.md](../../CONTRIBUTING.md)
 - **CI scripts**: [ci/README.md](../../ci/README.md)
 - **Release scripts**: [ci/release/README.md](../../ci/release/README.md)
 - **Docs build**: [docs/cuopt/README.md](../../docs/cuopt/README.md)
-- **Python binding architecture**: [resources/python_bindings.md](resources/python_bindings.md)
+- **Python binding architecture**: [references/python_bindings.md](references/python_bindings.md)
 
-## Third-Party Code
+_Shell-execution, install, conda-env, and sudo policies are covered by [Refusal Rules — Read First](#refusal-rules--read-first) at the top of this skill._
 
-**Always ask before including external code.** When copying or adapting external code, you must attribute it properly, verify license compatibility, and flag it in the PR. See the [Third-Party Code section in CONTRIBUTING.md](../../CONTRIBUTING.md#third-party-code) for the full process.
+## VRP dimension internals (routing engine)
 
-## Security Rules
+When implementing or debugging **VRP dimensions** (constraints, objectives, forward/backward propagation, `combine`, local-search deltas), read:
 
-- **No shell commands by default** - provide instructions, only run if asked
-- **No package installs by default** - ask before pip/conda/apt
-- **No privileged changes** - never use sudo without explicit request
-- **Workspace-only file changes** - ask for permission for writes outside repo
+- **`references/vrp_skills.md`** — architecture contracts, required interfaces, and implementation checklist.
+
+Read it **before** adding a new dimension or changing combine semantics.
+
+## Numerical issues in non-routing solver internals
+
+When a bug surfaces as **wrong-but-plausible** solver output (invalid lower bound, unexpectedly large duals, 10× iteration blow-up after a small change) rather than a crash, read:
+
+- **`resources/numerical_debugging.md`** — methodology for locating catastrophic-cancellation sites, the cancellation patterns endemic to cMIR / flow-cover / MIR-style cut construction, and threshold guidance for numerical guards.
+
+Apply the *instrument-first, guard-at-the-exact-site* workflow it describes before patching — speculative fixes on these symptoms usually miss.

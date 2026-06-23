@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include <branch_and_bound/constants.hpp>
+
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/types.hpp>
 
@@ -14,6 +16,7 @@
 #include <utilities/omp_helpers.hpp>
 
 #include <cmath>
+#include <cstdio>
 #include <list>
 #include <memory>
 #include <vector>
@@ -29,9 +32,11 @@ enum class node_status_t : int {
   NUMERICAL        = 5   // Encountered numerical issue when solving the LP relaxation
 };
 
-enum class rounding_direction_t : int8_t { NONE = -1, DOWN = 0, UP = 1 };
-
-bool inactive_status(node_status_t status);
+inline bool inactive_status(node_status_t status)
+{
+  return (status == node_status_t::FATHOMED || status == node_status_t::INTEGER_FEASIBLE ||
+          status == node_status_t::INFEASIBLE || status == node_status_t::NUMERICAL);
+}
 
 template <typename i_t, typename f_t>
 class mip_node_t {
@@ -40,22 +45,39 @@ class mip_node_t {
   {
     // Iterative teardown to avoid stack overflow on deep trees.
     // Detach all descendants breadth-first, then destroy them as leaves.
-    std::vector<std::unique_ptr<mip_node_t>> nodes;
-    for (auto& c : children) {
-      if (c) { nodes.push_back(std::move(c)); }
-    }
-    // nodes.size() grows so that this loop only terminates when only leaves remain
-    for (size_t i = 0; i < nodes.size(); ++i) {
-      for (auto& c : nodes[i]->children) {
+    // vector::push_back can throw bad_alloc; the catch-all keeps the destructor
+    // exception-free. Under OOM, any not-yet-detached descendants are destroyed
+    // via the recursive unique_ptr chain in `children` as this frame unwinds.
+    try {
+      std::vector<std::unique_ptr<mip_node_t>> nodes;
+      for (auto& c : children) {
         if (c) { nodes.push_back(std::move(c)); }
       }
-    }
+      // nodes.size() grows so that this loop only terminates when only leaves remain
+      for (size_t i = 0; i < nodes.size(); ++i) {
+        for (auto& c : nodes[i]->children) {
+          if (c) { nodes.push_back(std::move(c)); }
+        }
+      }
 
-    // scope-exit ensure destruction of all detached leaves
+      // scope-exit ensure destruction of all detached leaves
+    } catch (const std::exception& e) {
+      // fprintf to stderr is allocation-free and cannot throw; using the
+      // project logger here would risk a secondary bad_alloc that would
+      // escape the destructor and re-introduce std::terminate.
+      std::fprintf(stderr,
+                   "mip_node_t destructor: iterative teardown failed (%s); falling back to "
+                   "recursive unique_ptr destruction.\n",
+                   e.what());
+    } catch (...) {
+      std::fprintf(stderr,
+                   "mip_node_t destructor: iterative teardown failed (unknown exception); "
+                   "falling back to recursive unique_ptr destruction.\n");
+    }
   }
 
-  mip_node_t(mip_node_t&&)            = default;
-  mip_node_t& operator=(mip_node_t&&) = default;
+  mip_node_t(mip_node_t&&) noexcept            = default;
+  mip_node_t& operator=(mip_node_t&&) noexcept = default;
 
   mip_node_t()
     : status(node_status_t::PENDING),
@@ -64,12 +86,12 @@ class mip_node_t {
       parent(nullptr),
       node_id(0),
       branch_var(-1),
-      branch_dir(rounding_direction_t::NONE),
+      branch_dir(branch_direction_t::NONE),
       branch_var_lower(-std::numeric_limits<f_t>::infinity()),
       branch_var_upper(std::numeric_limits<f_t>::infinity()),
       fractional_val(std::numeric_limits<f_t>::infinity()),
       objective_estimate(std::numeric_limits<f_t>::infinity()),
-      vstatus(0)
+      packed_vstatus(0)
   {
     children[0] = nullptr;
     children[1] = nullptr;
@@ -82,10 +104,10 @@ class mip_node_t {
       parent(nullptr),
       node_id(0),
       branch_var(-1),
-      branch_dir(rounding_direction_t::NONE),
+      branch_dir(branch_direction_t::NONE),
       integer_infeasible(-1),
       objective_estimate(std::numeric_limits<f_t>::infinity()),
-      vstatus(basis)
+      packed_vstatus(compress_vstatus(basis))
   {
     children[0] = nullptr;
     children[1] = nullptr;
@@ -95,7 +117,7 @@ class mip_node_t {
              mip_node_t* parent_node,
              i_t node_num,
              i_t branch_variable,
-             rounding_direction_t branch_direction,
+             branch_direction_t branch_direction,
              f_t branch_var_value,
              i_t integer_inf,
              const std::vector<variable_status_t>& basis)
@@ -109,12 +131,12 @@ class mip_node_t {
       fractional_val(branch_var_value),
       integer_infeasible(integer_inf),
       objective_estimate(parent_node->objective_estimate),
-      vstatus(basis)
+      packed_vstatus(compress_vstatus(basis))
   {
-    branch_var_lower = branch_direction == rounding_direction_t::DOWN ? problem.lower[branch_var]
-                                                                      : std::ceil(branch_var_value);
-    branch_var_upper = branch_direction == rounding_direction_t::DOWN ? std::floor(branch_var_value)
-                                                                      : problem.upper[branch_var];
+    branch_var_lower = branch_direction == branch_direction_t::DOWN ? problem.lower[branch_var]
+                                                                    : std::ceil(branch_var_value);
+    branch_var_upper = branch_direction == branch_direction_t::DOWN ? std::floor(branch_var_value)
+                                                                    : problem.upper[branch_var];
     children[0]      = nullptr;
     children[1]      = nullptr;
   }
@@ -164,7 +186,7 @@ class mip_node_t {
     children[0] = std::move(down_child);
     children[1] = std::move(up_child);
     // When we add children we no longer need to store our basis
-    vstatus.clear();
+    packed_vstatus = {};
   }
 
   bool is_inactive() const
@@ -252,7 +274,7 @@ class mip_node_t {
   // This method creates a copy of the current node
   // with its parent set to `nullptr`
   // This detaches the node from the tree.
-  mip_node_t<i_t, f_t> detach_copy() const
+  mip_node_t detach_copy() const
   {
     mip_node_t<i_t, f_t> copy;
     copy.lower_bound        = lower_bound;
@@ -260,7 +282,7 @@ class mip_node_t {
     copy.depth              = depth;
     copy.node_id            = node_id;
     copy.integer_infeasible = integer_infeasible;
-    copy.vstatus            = vstatus;
+    copy.packed_vstatus     = packed_vstatus;
     copy.branch_var         = branch_var;
     copy.branch_dir         = branch_dir;
     copy.branch_var_lower   = branch_var_lower;
@@ -271,6 +293,8 @@ class mip_node_t {
     copy.children[1]        = nullptr;
     copy.status             = node_status_t::PENDING;
 
+    copy.orbital_fix_zero = orbital_fix_zero;
+    copy.orbital_fix_one  = orbital_fix_one;
     copy.origin_worker_id = origin_worker_id;
     copy.creation_seq     = creation_seq;
     return copy;
@@ -282,7 +306,7 @@ class mip_node_t {
   i_t depth;
   i_t node_id;
   i_t branch_var;
-  rounding_direction_t branch_dir;
+  branch_direction_t branch_dir;
   f_t branch_var_lower;
   f_t branch_var_upper;
   f_t fractional_val;
@@ -291,7 +315,17 @@ class mip_node_t {
   mip_node_t<i_t, f_t>* parent;
   std::unique_ptr<mip_node_t> children[2];
 
-  std::vector<variable_status_t> vstatus;
+  std::vector<uint8_t> packed_vstatus;
+
+  // Indicate if we can dive from this node or not. This is set to false when
+  // this node was already selected for diving once.
+  omp_atomic_t<bool> can_dive{true};
+
+  // Cumulative orbital fixing bound changes from root to this node.
+  // Stored so that when a child starts a new plunge, the parent's
+  // orbital fixings can be restored without re-derivation.
+  std::vector<i_t> orbital_fix_zero;
+  std::vector<i_t> orbital_fix_one;
 
   // Worker-local identification for deterministic ordering:
   // - origin_worker_id: which worker created this node
@@ -312,7 +346,7 @@ class mip_node_t {
     const mip_node_t* node = this;
     while (node != nullptr && node->branch_var >= 0) {
       uint64_t step = static_cast<uint64_t>(node->branch_var) << 1;
-      step |= (node->branch_dir == rounding_direction_t::UP) ? 1 : 0;
+      step |= (node->branch_dir == branch_direction_t::UP) ? 1 : 0;
       path_steps.push_back(step);
       node = node->parent;
     }
@@ -359,7 +393,7 @@ class search_tree_t {
                                                              parent_node,
                                                              ++id,
                                                              branch_var,
-                                                             rounding_direction_t::DOWN,
+                                                             branch_direction_t::DOWN,
                                                              fractional_val,
                                                              integer_infeasible,
                                                              parent_vstatus);
@@ -367,14 +401,14 @@ class search_tree_t {
                   parent_node,
                   down_child.get(),
                   branch_var,
-                  rounding_direction_t::DOWN,
+                  branch_direction_t::DOWN,
                   std::floor(fractional_val));
 
     auto up_child = std::make_unique<mip_node_t<i_t, f_t>>(original_lp,
                                                            parent_node,
                                                            ++id,
                                                            branch_var,
-                                                           rounding_direction_t::UP,
+                                                           branch_direction_t::UP,
                                                            fractional_val,
                                                            integer_infeasible,
                                                            parent_vstatus);
@@ -383,7 +417,7 @@ class search_tree_t {
                   parent_node,
                   up_child.get(),
                   branch_var,
-                  rounding_direction_t::UP,
+                  branch_direction_t::UP,
                   std::ceil(fractional_val));
 
     assert(parent_vstatus.size() == original_lp.num_cols);
@@ -405,7 +439,7 @@ class search_tree_t {
                      const mip_node_t<i_t, f_t>* origin_ptr,
                      const mip_node_t<i_t, f_t>* dest_ptr,
                      const i_t branch_var,
-                     rounding_direction_t branch_dir,
+                     branch_direction_t branch_dir,
                      const f_t bound)
   {
     if (write_graphviz) {
@@ -413,7 +447,7 @@ class search_tree_t {
                  origin_ptr->node_id,
                  dest_ptr->node_id,
                  branch_var,
-                 branch_dir == rounding_direction_t::DOWN ? "<=" : ">=",
+                 branch_dir == branch_direction_t::DOWN ? "<=" : ">=",
                  bound);
     }
   }

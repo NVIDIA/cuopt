@@ -103,6 +103,12 @@ contributing to. Start with _Step 3_ from above, commenting on the issue to let
 others know you are working on it. If you have any questions related to the
 implementation of the issue, ask them in the issue instead of the PR.
 
+### NVSkills CI for skill changes
+
+PRs that change content under `skills/` must be validated by NVSkills CI before merge. A maintainer or admin comments `/nvskills-ci` on the PR; the `nv-nvskill-ci[bot]` pushes a signature commit (`Attach NVSkills validation signatures`) that must remain in the PR. Re-comment `/nvskills-ci` after any further pushes to re-sign.
+
+NVSkills CI requires the PR to originate from a branch in `NVIDIA/cuopt`; fork-based PRs are not supported.
+
 ## Setting up your build environment
 
 The following instructions are for developers and contributors to NVIDIA cuOpt development. These
@@ -157,7 +163,7 @@ Please install conda if you don't have it already. You can install [miniforge](h
 # create the conda environment (assuming in base `cuopt` directory)
 # note: cuOpt currently doesn't support `channel_priority: strict`;
 # use `channel_priority: flexible` instead
-conda env create -p ./.cuopt_env --file conda/environments/all_cuda-131_arch-$(uname -m).yaml
+conda env create -p ./.cuopt_env --file conda/environments/all_cuda-133_arch-$(uname -m).yaml
 # activate the environment
 conda activate ./.cuopt_env
 ```
@@ -167,7 +173,7 @@ conda activate ./.cuopt_env
   pinnings are changed.
 
 - A `build.sh` script is provided in `$CUOPT_HOME`. Running the script with no additional arguments
-  will install the `libmps_parser`, `libcuopt`, `cuopt_mps_parser`, `cuopt`, `cuopt-server`, `cuopt-sh-client` libraries and build the`documentation`. By default, the libraries are
+  will install the `libcuopt`, `cuopt`, `cuopt-server`, `cuopt-sh-client` libraries and build the`documentation`. By default, the libraries are
   installed to the `$CONDA_PREFIX` directory. To install into a different location, set the location
   in `$INSTALL_PREFIX`. Finally, note that the script depends on the `nvcc` executable being on your
   path, or defined in `$CUDACXX`.
@@ -177,11 +183,10 @@ cd $CUOPT_HOME
 
 # Choose one of the following commands, depending on whether
 # you want to build and install the libcuopt C++ library only,
-# or include the libcuopt and/or cuopt Python libraries:
+# or include the cuopt Python libraries:
 
-./build.sh  # All the libraries
-./build.sh libmps_parser  # libmps_parser only
-./build.sh libmps_parser libcuopt  # libmps_parser and libcuopt only
+./build.sh           # All the libraries
+./build.sh libcuopt  # libcuopt C++ only
 ```
 
 - For the complete list of libraries as well as details about the script usage, run the `help` command:
@@ -198,7 +203,7 @@ cd $CUOPT_HOME
 This is only available to be built through source code and libcuopt is not being released as deb package in any official space.
 
 ```bash
-./build.sh libmps_parser libcuopt deb
+./build.sh libcuopt deb
 ```
 
 #### Building for development

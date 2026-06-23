@@ -67,8 +67,6 @@ class pdlp_solver_t {
   f_t get_primal_weight_h(i_t id) const;
   f_t get_step_size_h(i_t id) const;
   i_t get_total_pdhg_iterations() const;
-  f_t get_relative_dual_tolerance_factor() const;
-  f_t get_relative_primal_tolerance_factor() const;
   detail::pdlp_termination_strategy_t<i_t, f_t>& get_current_termination_strategy();
 
   void swap_context(const thrust::universal_host_pinned_vector<swap_pair_t<i_t>>& swap_pairs);
@@ -87,7 +85,6 @@ class pdlp_solver_t {
   void set_initial_primal_weight(f_t initial_primal_weight);
   void set_initial_step_size(f_t initial_primal_weight);
   void set_initial_k(i_t initial_k);
-  void set_relative_dual_tolerance_factor(f_t dual_tolerance_factor);
   void set_relative_primal_tolerance_factor(f_t primal_tolerance_factor);
 
   using primal_quality_adapter_t =
@@ -111,6 +108,13 @@ class pdlp_solver_t {
   std::optional<optimization_problem_solution_t<i_t, f_t>> check_termination(const timer_t& timer);
   std::optional<optimization_problem_solution_t<i_t, f_t>> check_batch_termination(
     const timer_t& timer);
+  // Snapshot the current iterate of climber `i` (batch-local index) into
+  // `batch_solution_to_return_` at its `original_index` slot
+  void snapshot_climber_into_return(size_t i);
+  // flush GPU termination stats into `batch_solution_to_return_` and construct the final solution.
+  optimization_problem_solution_t<i_t, f_t> finalize_batch_return();
+  optimization_problem_solution_t<i_t, f_t> finalize_batch_return_with_limit_reached(
+    pdlp_termination_status_t limit_reached_status);
   std::optional<optimization_problem_solution_t<i_t, f_t>> check_limits(const timer_t& timer);
   void record_best_primal_so_far(const detail::pdlp_termination_strategy_t<i_t, f_t>& current,
                                  const detail::pdlp_termination_strategy_t<i_t, f_t>& average,
@@ -132,6 +136,11 @@ class pdlp_solver_t {
   void update_primal_dual_solutions(std::optional<const rmm::device_uvector<f_t>*> primal,
                                     std::optional<const rmm::device_uvector<f_t>*> dual);
 
+  // Initial number of climbers (derived from settings.fixed_batch_size / settings.new_bounds at
+  // ctor time).
+  // Stable throughout solving — use this whenever you need the ORIGINAL batch size, since
+  // `climber_strategies_` shrinks as climbers finish via resize_and_swap_all_context_loop.
+  const size_t original_batch_size_;
   std::vector<pdlp_climber_strategy_t> climber_strategies_;
   bool batch_mode_{false};
 
@@ -185,6 +194,7 @@ class pdlp_solver_t {
 
   pdlp_warm_start_data_t<i_t, f_t> get_filled_warmed_start_data();
 
+  void transpose_problem_fields(bool to_row);
   void transpose_primal_dual_to_row(rmm::device_uvector<f_t>& primal_to_transpose,
                                     rmm::device_uvector<f_t>& dual_to_transpose,
                                     rmm::device_uvector<f_t>& dual_slack_to_transpose);

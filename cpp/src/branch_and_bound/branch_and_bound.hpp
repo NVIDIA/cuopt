@@ -8,12 +8,12 @@
 #pragma once
 
 #include <branch_and_bound/bb_event.hpp>
-#include <branch_and_bound/branch_and_bound_worker.hpp>
 #include <branch_and_bound/deterministic_workers.hpp>
-#include <branch_and_bound/diving_heuristics.hpp>
 #include <branch_and_bound/mip_node.hpp>
 #include <branch_and_bound/node_queue.hpp>
 #include <branch_and_bound/pseudo_costs.hpp>
+#include <branch_and_bound/worker.hpp>
+#include <branch_and_bound/worker_pool.hpp>
 
 #include <cuts/cuts.hpp>
 
@@ -46,6 +46,9 @@ struct clique_table_t;
 }
 
 namespace cuopt::linear_programming::dual_simplex {
+
+template <typename i_t, typename f_t>
+struct mip_symmetry_t;
 
 enum class mip_status_t {
   OPTIMAL    = 0,  // The optimal integer solution was found
@@ -80,7 +83,8 @@ class branch_and_bound_t {
                      const simplex_solver_settings_t<i_t, f_t>& solver_settings,
                      f_t start_time,
                      const probing_implied_bound_t<i_t, f_t>& probing_implied_bound,
-                     std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table = nullptr);
+                     std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table = nullptr,
+                     mip_symmetry_t<i_t, f_t>* symmetry                             = nullptr);
 
   // Set an initial guess based on the user_problem. This should be called before solve.
   void set_initial_guess(const std::vector<f_t>& user_guess) { guess_ = user_guess; }
@@ -108,7 +112,7 @@ class branch_and_bound_t {
   }
 
   // Set a solution based on the user problem during the course of the solve
-  void set_new_solution(const std::vector<f_t>& solution);
+  void set_solution_from_heuristics(const std::vector<f_t>& solution);
 
   // This queues the solution to be processed at the correct work unit timestamp
   void queue_external_solution_deterministic(const std::vector<f_t>& solution, double work_unit_ts);
@@ -162,8 +166,8 @@ class branch_and_bound_t {
   const simplex_solver_settings_t<i_t, f_t> settings_;
   const probing_implied_bound_t<i_t, f_t>& probing_implied_bound_;
   std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table_;
-  std::future<std::shared_ptr<detail::clique_table_t<i_t, f_t>>> clique_table_future_;
-  std::atomic<bool> signal_extend_cliques_{false};
+  omp_atomic_t<bool> signal_extend_cliques_{false};
+  mip_symmetry_t<i_t, f_t>* symmetry_;
 
   work_limit_context_t work_unit_context_{"B&B"};
 
@@ -235,18 +239,14 @@ class branch_and_bound_t {
   // Pseudocosts
   pseudo_costs_t<i_t, f_t> pc_;
 
-  // Heap storing the nodes waiting to be explored.
-  node_queue_t<i_t, f_t> node_queue_;
-
   // Search tree
   search_tree_t<i_t, f_t> search_tree_;
 
-  // Count the number of workers per type that either are being executed or
-  // are waiting to be executed.
-  std::array<omp_atomic_t<i_t>, num_search_strategies> active_workers_per_strategy_;
+  // Worker pool dedicated to the best-first search
+  bfs_worker_pool_t<i_t, f_t> bfs_worker_pool_;
 
-  // Worker pool
-  branch_and_bound_worker_pool_t<i_t, f_t> worker_pool_;
+  // Worker pool dedicated to diving
+  diving_worker_pool_t<i_t, f_t> diving_worker_pool_;
 
   // Global status of the solver.
   omp_atomic_t<mip_status_t> solver_status_;
@@ -258,8 +258,9 @@ class branch_and_bound_t {
   i_t min_node_queue_size_;
 
   // In case, a best-first thread encounters a numerical issue when solving a node,
-  // its blocks the progression of the lower bound.
-  omp_atomic_t<f_t> lower_bound_ceiling_;
+  // its blocks the progression of the lower bound as it cannot explore the
+  // corresponding subtree.
+  omp_atomic_t<f_t> lower_bound_numerical_;
   std::function<void(f_t)> user_bound_callback_;
 
   void report_heuristic(f_t obj);
@@ -269,6 +270,31 @@ class branch_and_bound_t {
               i_t node_depth,
               i_t node_int_infeas,
               double work_time = -1);
+
+  enum class cut_pass_action_t { CONTINUE, BREAK, RETURN };
+  struct cut_pass_result_t {
+    cut_pass_action_t action{cut_pass_action_t::CONTINUE};
+    mip_status_t status{mip_status_t::UNSET};
+  };
+
+  cut_pass_result_t do_cut_pass(i_t cut_pass,
+                                mip_solution_t<i_t, f_t>& solution,
+                                i_t& num_fractional,
+                                std::vector<i_t>& fractional,
+                                cut_generation_t<i_t, f_t>& cut_generation,
+                                basis_update_mpf_t<i_t, f_t>& basis_update,
+                                std::vector<i_t>& basic_list,
+                                std::vector<i_t>& nonbasic_list,
+                                variable_bounds_t<i_t, f_t>& variable_bounds,
+                                cut_pool_t<i_t, f_t>& cut_pool,
+                                cut_info_t<i_t, f_t>& cut_info,
+                                simplex_solver_settings_t<i_t, f_t>& lp_settings,
+                                i_t original_rows,
+                                f_t& last_upper_bound,
+                                f_t& last_objective,
+                                f_t root_relax_objective,
+                                i_t& cut_pool_size,
+                                const std::vector<f_t>& saved_solution);
 
   // Set the solution when found at the root node
   void set_solution_at_root(mip_solution_t<i_t, f_t>& solution,
@@ -288,28 +314,40 @@ class branch_and_bound_t {
   // Repairs low-quality solutions from the heuristics, if it is applicable.
   void repair_heuristic_solutions();
 
+  // Launch a new diving worker from a given best-first worker.
+  bool launch_diving_worker(bfs_worker_t<i_t, f_t>* bfs_worker);
+
+  // Launch a new best-first worker from a given bfs worker.
+  void launch_bfs_worker(bfs_worker_t<i_t, f_t>* worker);
+
+  // Perform best-first search with a given bfs worker.
+  void best_first_search_with(bfs_worker_t<i_t, f_t>* worker);
+
   // We use best-first to pick the `start_node` and then perform a depth-first search
   // from this node (i.e., a plunge). It can only backtrack to a sibling node.
   // Unexplored nodes in the subtree are inserted back into the global heap.
-  void plunge_with(branch_and_bound_worker_t<i_t, f_t>* worker);
+  void plunge_with(bfs_worker_t<i_t, f_t>* worker, mip_node_t<i_t, f_t>* start_node);
+
+  // A worker attempts to steal nodes from another worker
+  void work_stealing(bfs_worker_t<i_t, f_t>* worker);
 
   // Perform a deep dive in the subtree determined by the `start_node` in order
   // to find integer feasible solutions.
-  void dive_with(branch_and_bound_worker_t<i_t, f_t>* worker);
-
-  // Run the scheduler whose will schedule and manage
-  // all the other workers.
-  void run_scheduler();
-
-  // Run the branch-and-bound algorithm in single threaded mode.
-  // This disable all diving heuristics.
-  void single_threaded_solve();
+  void dive_with(diving_worker_t<i_t, f_t>* worker);
 
   // Solve the LP relaxation of a leaf node
   dual::status_t solve_node_lp(mip_node_t<i_t, f_t>* node_ptr,
                                branch_and_bound_worker_t<i_t, f_t>* worker,
                                branch_and_bound_stats_t<i_t, f_t>& stats,
                                logger_t& log);
+
+  // Apply symmetry-based bound reductions (orbital fixing and, when
+  // settings_.symmetry == 2, lexical reduction) to the current node.
+  // Tightens worker->leaf_problem bounds and updates stats. Returns false
+  // if lexical reduction proves the node infeasible.
+  bool apply_symmetry_reductions(mip_node_t<i_t, f_t>* node_ptr,
+                                 branch_and_bound_worker_t<i_t, f_t>* worker,
+                                 branch_and_bound_stats_t<i_t, f_t>& stats);
 
   // Selects the variable to branch on.
   branch_variable_t<i_t> variable_selection(mip_node_t<i_t, f_t>* node_ptr,
@@ -318,7 +356,7 @@ class branch_and_bound_t {
 
   // Policy-based tree update shared between opportunistic and deterministic codepaths.
   template <typename WorkerT, typename Policy>
-  std::pair<node_status_t, rounding_direction_t> update_tree_impl(
+  std::pair<node_status_t, branch_direction_t> update_tree_impl(
     mip_node_t<i_t, f_t>* node_ptr,
     search_tree_t<i_t, f_t>& search_tree,
     WorkerT* worker,
@@ -326,7 +364,7 @@ class branch_and_bound_t {
     Policy& policy);
 
   // Opportunistic tree update wrapper.
-  std::pair<node_status_t, rounding_direction_t> update_tree(
+  std::pair<node_status_t, branch_direction_t> update_tree(
     mip_node_t<i_t, f_t>* node_ptr,
     search_tree_t<i_t, f_t>& search_tree,
     branch_and_bound_worker_t<i_t, f_t>* worker,
