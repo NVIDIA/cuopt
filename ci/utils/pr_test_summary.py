@@ -37,6 +37,7 @@ class _DropAuthOnRedirect(urllib.request.HTTPRedirectHandler):
                     del new_req.headers[key]
         return new_req
 
+
 # Job name prefixes that are considered test jobs.
 _TEST_PREFIXES = (
     "conda-cpp-tests",
@@ -174,7 +175,10 @@ def _analyze_job_log(job_id, repo, token):
                     elif line.startswith("="):
                         in_pytest_summary = False
     except (urllib.error.HTTPError, urllib.error.URLError) as exc:
-        print(f"Warning: could not fetch logs for job {job_id}: {exc}", file=sys.stderr)
+        print(
+            f"Warning: could not fetch logs for job {job_id}: {exc}",
+            file=sys.stderr,
+        )
         return [], None
 
     return failed[:_MAX_TESTS], crash
