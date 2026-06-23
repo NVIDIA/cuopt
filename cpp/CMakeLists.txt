@@ -458,13 +458,13 @@ set(CUOPT_SRC_FILES)
 set(MPS_FAST_SRC_FILES)
 add_subdirectory(src)
 if (HOST_LINEINFO)
-    set_source_files_properties(${CUOPT_SRC_FILES} DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTIES COMPILE_OPTIONS "-g1")
+    set_source_files_properties(${CUOPT_SRC_FILES} DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTIES COMPILE_OPTIONS "-g1")
 endif ()
 
 # Needed for the fast MPS parser, available on all x86-64-v3 compliant x86 CPUs (essentially since Haswell ~2013)
 if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$" AND
         CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang|AppleClang)$")
-    set_property(SOURCE ${MPS_FAST_SRC_FILES} DIRECTORY ${CMAKE_SOURCE_DIR}
+    set_property(SOURCE ${MPS_FAST_SRC_FILES} DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             APPEND PROPERTY COMPILE_OPTIONS "-mbmi2;-mavx2;-msse4.2")
 endif ()
 
@@ -475,7 +475,7 @@ endif ()
 # Must happen before gRPC files are appended to CUOPT_SRC_FILES.
 # Uses APPEND to preserve any existing per-file options (e.g. -g1 from HOST_LINEINFO).
 if (DEFINE_ASSERT)
-    set_property(SOURCE ${CUOPT_SRC_FILES} DIRECTORY ${CMAKE_SOURCE_DIR}
+    set_property(SOURCE ${CUOPT_SRC_FILES} DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             APPEND PROPERTY COMPILE_OPTIONS "-UNDEBUG")
 endif ()
 
@@ -500,7 +500,7 @@ if (NOT SKIP_GRPC_BUILD)
     # The conda-forge abseil shared library is built with NDEBUG and does not
     # export that symbol (abseil-cpp#1624).  Without this, Debug builds fail
     # at runtime with "undefined symbol: absl::…::Mutex::Dtor".
-    set_property(SOURCE ${GRPC_INFRA_FILES} DIRECTORY ${CMAKE_SOURCE_DIR}
+    set_property(SOURCE ${GRPC_INFRA_FILES} DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             APPEND PROPERTY COMPILE_OPTIONS "-DNDEBUG")
 endif (NOT SKIP_GRPC_BUILD)
 
@@ -627,9 +627,16 @@ target_link_libraries(cuopt
         PRIVATE
         ${CUOPT_PRIVATE_CUDA_LIBS}
         simde::simde
+        OpenMP::OpenMP_CXX
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:protobuf::libprotobuf>
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:gRPC::grpc++>
 )
+
+# Link with -fopenmp so the compiler driver pulls in its own (matching) libgomp
+# and orders its lib dir ahead of the system one. Without it, OpenMP is supplied
+# only as a bare -lgomp, which can resolve to an older system libgomp missing
+# OpenMP 5.0 symbols such as omp_fulfill_event (used by the fast MPS parser).
+target_link_options(cuopt PRIVATE $<$<LINK_LANGUAGE:CXX>:-fopenmp>)
 
 
 # ##################################################################################################
@@ -754,6 +761,7 @@ if (NOT BUILD_LP_ONLY)
     )
 
     target_link_options(cuopt_cli PRIVATE -pie)
+    target_link_options(cuopt_cli PRIVATE $<$<LINK_LANGUAGE:CXX>:-fopenmp>)
 
     target_include_directories(cuopt_cli
             PRIVATE
@@ -813,6 +821,7 @@ if (BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
             OpenMP::OpenMP_CXX
             PRIVATE
     )
+    target_link_options(solve_MIP PRIVATE $<$<LINK_LANGUAGE:CXX>:-fopenmp>)
     if (NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
         target_link_options(solve_MIP PRIVATE -Wl,--enable-new-dtags)
     endif ()
@@ -843,6 +852,7 @@ if (BUILD_LP_BENCHMARKS)
             OpenMP::OpenMP_CXX
             PRIVATE
     )
+    target_link_options(solve_LP PRIVATE $<$<LINK_LANGUAGE:CXX>:-fopenmp>)
     if (NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
         target_link_options(solve_LP PRIVATE -Wl,--enable-new-dtags)
     endif ()
@@ -874,6 +884,7 @@ if (NOT SKIP_GRPC_BUILD)
     )
 
     target_link_options(cuopt_grpc_server PRIVATE -pie)
+    target_link_options(cuopt_grpc_server PRIVATE $<$<LINK_LANGUAGE:CXX>:-fopenmp>)
 
     target_include_directories(cuopt_grpc_server
             PRIVATE
