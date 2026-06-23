@@ -4,7 +4,8 @@
 """
 Shared cuopt_grpc_server helpers and pytest fixtures for LP tests.
 
-Registered via ``pytest_plugins`` in ``python/cuopt/conftest.py``.
+Registered via ``pytest_plugins`` in ``python/cuopt/conftest.py`` as
+``cuopt.tests.fixtures.grpc_server_fixtures``.
 
 Class-scoped ``grpc_server`` starts one server per test class. Configure it on
 the test class::
@@ -76,8 +77,8 @@ def wait_for_port(port, timeout=15):
 
 
 def wait_for_grpc_client(port, timeout=30):
-    """Block until cuopt.grpc.Client can connect (TCP up is not enough)."""
-    from cuopt.grpc import Client, GrpcError
+    """Block until cuopt.grpc.numerical.Client can connect (TCP up is not enough)."""
+    from cuopt.grpc.numerical import Client, GrpcError
 
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:

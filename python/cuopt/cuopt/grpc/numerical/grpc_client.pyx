@@ -6,7 +6,7 @@
 # cython: embedsignature = True
 # cython: language_level = 3
 
-from cuopt.grpc.grpc_client cimport (
+from cuopt.grpc.numerical.grpc_client cimport (
     grpc_incumbents_result_t,
     grpc_job_status_t,
     grpc_logs_result_t,

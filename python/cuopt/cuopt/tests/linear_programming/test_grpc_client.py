@@ -1,16 +1,27 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import os
+
+import cuopt.grpc as grpc_pkg
 import time
 
 import pytest
 
-from cuopt.grpc import Client, JobNotReadyError, JobStatus
-from cuopt.linear_programming import SolverSettings
+from cuopt.grpc.numerical import Client, GrpcError, JobNotReadyError, JobStatus
+from cuopt.linear_programming import Read, SolverSettings
 from cuopt.linear_programming.internals import GetSolutionCallback
 from cuopt.linear_programming.problem import INTEGER, MAXIMIZE, Problem
+from cuopt.linear_programming.solver.solver_parameters import CUOPT_TIME_LIMIT
 
-from cuopt.grpc_server_fixtures import GRPC_PORT_OFFSET_CLIENT
+from cuopt.tests.fixtures.grpc_server_fixtures import GRPC_PORT_OFFSET_CLIENT
+
+RAPIDS_DATASET_ROOT_DIR = os.getenv("RAPIDS_DATASET_ROOT_DIR")
+if RAPIDS_DATASET_ROOT_DIR is None:
+    RAPIDS_DATASET_ROOT_DIR = os.getcwd()
+    RAPIDS_DATASET_ROOT_DIR = os.path.join(RAPIDS_DATASET_ROOT_DIR, "datasets")
+
+_SWATH1_MPS = os.path.join(RAPIDS_DATASET_ROOT_DIR, "mip", "swath1.mps")
 
 _DEMO_LP_NAMES = ["x", "y"]
 _MIP_NAMES = ["x", "y"]
@@ -38,6 +49,12 @@ def _poll_until_complete(
             return JobStatus.COMPLETED
         time.sleep(poll_interval)
     return client.status(job_id)
+
+
+def test_grpc_package_is_namespace_only():
+    """cuopt.grpc is a namespace; domain clients live in subpackages."""
+    assert "Client" not in grpc_pkg.__dict__
+    assert "numerical" in (grpc_pkg.__doc__ or "")
 
 
 @pytest.mark.filterwarnings("ignore::DeprecationWarning")
@@ -130,6 +147,25 @@ class TestGrpcClient:
         solution = client.result(job_id, _MIP_NAMES)
         assert solution is not None
         assert solution.get_primal_objective() == pytest.approx(15.0, rel=1e-3)
+        client.delete(job_id)
+
+    def test_cancel_job(self, grpc_server):
+        problem = Read(_SWATH1_MPS)
+        settings = SolverSettings()
+        settings.set_parameter(CUOPT_TIME_LIMIT, 10)
+
+        client = Client("localhost", grpc_server)
+        job_id = client.submit(problem, settings)
+
+        assert client.status(job_id) in (
+            JobStatus.QUEUED,
+            JobStatus.PROCESSING,
+        )
+        client.cancel(job_id)
+
+        assert client.status(job_id) == JobStatus.CANCELLED
+        with pytest.raises(GrpcError):
+            client.result(job_id)
         client.delete(job_id)
 
     def test_mip_incumbent_stream(self, grpc_server):
