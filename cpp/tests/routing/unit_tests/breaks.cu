@@ -430,12 +430,6 @@ TEST(vehicle_breaks, non_uniform_breaks)
   check_route(data_model, h_routing_solution);
 }
 
-// Intentional failure to exercise the PR test summary comment feature.
-TEST(vehicle_breaks, ci_summary_demo_failure)
-{
-  EXPECT_TRUE(false) << "Intentional failure: remove after verifying PR summary comment.";
-}
-
 }  // namespace test
 }  // namespace routing
 }  // namespace cuopt
