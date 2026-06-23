@@ -12,17 +12,33 @@
 #include <rmm/mr/cuda_memory_resource.hpp>
 #include <rmm/mr/pool_memory_resource.hpp>
 
+#include <cerrno>
+#include <climits>
+#include <limits>
 #include <memory>
 
 namespace {
 
-void init_worker_rmm_pool()
+int parse_pool_gigs_env()
 {
   int pool_gigs = 1;
   if (const char* env = std::getenv("CUOPT_GIGABYTES_PER_PROC")) {
-    const int parsed = std::atoi(env);
-    if (parsed > 0) { pool_gigs = parsed; }
+    char* end              = nullptr;
+    errno                  = 0;
+    const long long parsed = std::strtoll(env, &end, 10);
+    if (errno == 0 && end != env && *end == '\0' && parsed > 0 &&
+        parsed <= std::numeric_limits<int>::max()) {
+      pool_gigs = static_cast<int>(parsed);
+    } else {
+      SERVER_LOG_WARN("[Worker] Ignoring invalid CUOPT_GIGABYTES_PER_PROC='%s'", env);
+    }
   }
+  return pool_gigs;
+}
+
+void init_worker_rmm_pool()
+{
+  const int pool_gigs = parse_pool_gigs_env();
 
   // Keep the pool alive for the lifetime of this worker process.
   static std::unique_ptr<rmm::mr::pool_memory_resource> pool_mr;
@@ -39,15 +55,14 @@ void init_worker_rmm_pool()
 
 }  // namespace
 
-void init_worker_cuda_environment(int worker_id)
+bool init_worker_cuda_environment(int worker_id)
 {
   int device_count            = 0;
   const cudaError_t count_err = cudaGetDeviceCount(&device_count);
   if (count_err != cudaSuccess || device_count <= 0) {
-    SERVER_LOG_WARN("[Worker %d] cudaGetDeviceCount failed (%s); using default device",
-                    worker_id,
-                    cudaGetErrorString(count_err));
-    return;
+    SERVER_LOG_ERROR(
+      "[Worker %d] cudaGetDeviceCount failed (%s)", worker_id, cudaGetErrorString(count_err));
+    return false;
   }
 
   const int device          = worker_id % device_count;
@@ -55,12 +70,13 @@ void init_worker_cuda_environment(int worker_id)
   if (set_err != cudaSuccess) {
     SERVER_LOG_ERROR(
       "[Worker %d] cudaSetDevice(%d) failed: %s", worker_id, device, cudaGetErrorString(set_err));
-    return;
+    return false;
   }
 
   init_worker_rmm_pool();
 
   SERVER_LOG_INFO("[Worker %d] Using CUDA device %d of %d", worker_id, device, device_count);
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -579,7 +595,10 @@ void worker_process(int worker_id)
 {
   SERVER_LOG_INFO("[Worker %d] Started (PID: %d)", worker_id, getpid());
 
-  init_worker_cuda_environment(worker_id);
+  if (!init_worker_cuda_environment(worker_id)) {
+    SERVER_LOG_ERROR("[Worker %d] CUDA environment initialization failed; exiting", worker_id);
+    _exit(1);
+  }
 
   shm_ctrl->active_workers++;
 

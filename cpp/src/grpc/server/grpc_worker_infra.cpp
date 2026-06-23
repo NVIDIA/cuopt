@@ -13,6 +13,7 @@
 
 namespace {
 
+// GPU discovery for startup logging only. Avoids CUDA calls in the parent before fork().
 int count_cuda_visible_devices()
 {
   const char* visible = std::getenv("CUDA_VISIBLE_DEVICES");

@@ -347,7 +347,7 @@ void create_job_log_file(const std::string& job_id);
 void delete_log_file(const std::string& job_id);
 void cleanup_shared_memory();
 void log_worker_gpu_layout();
-void init_worker_cuda_environment(int worker_id);
+bool init_worker_cuda_environment(int worker_id);
 void spawn_workers();
 void wait_for_workers();
 void worker_monitor_thread();
