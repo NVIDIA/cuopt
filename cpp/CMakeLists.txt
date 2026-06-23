@@ -633,10 +633,11 @@ target_link_libraries(cuopt
 )
 
 # Link with -fopenmp so the compiler driver pulls in its own (matching) libgomp
-# and orders its lib dir ahead of the system one. Without it, OpenMP is supplied
-# only as a bare -lgomp, which can resolve to an older system libgomp missing
-# OpenMP 5.0 symbols such as omp_fulfill_event (used by the fast MPS parser).
-target_link_options(cuopt PRIVATE $<$<LINK_LANGUAGE:CXX>:-fopenmp>)
+# and orders its lib dir ahead of the system one. OpenMP::OpenMP_CXX alone supplies
+# a bare -lgomp, which can resolve to an older system libgomp missing OpenMP 5.0
+# symbols such as omp_fulfill_event (used by the fast MPS parser). Plain -fopenmp
+# (not gated on LINK_LANGUAGE:CXX) is required because cuopt is CUDA-linked.
+target_link_options(cuopt PRIVATE -fopenmp)
 
 
 # ##################################################################################################
@@ -760,8 +761,7 @@ if (NOT BUILD_LP_ONLY)
             "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
     )
 
-    target_link_options(cuopt_cli PRIVATE -pie)
-    target_link_options(cuopt_cli PRIVATE $<$<LINK_LANGUAGE:CXX>:-fopenmp>)
+    target_link_options(cuopt_cli PRIVATE -pie -fopenmp)
 
     target_include_directories(cuopt_cli
             PRIVATE
@@ -821,7 +821,7 @@ if (BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
             OpenMP::OpenMP_CXX
             PRIVATE
     )
-    target_link_options(solve_MIP PRIVATE $<$<LINK_LANGUAGE:CXX>:-fopenmp>)
+    target_link_options(solve_MIP PRIVATE -fopenmp)
     if (NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
         target_link_options(solve_MIP PRIVATE -Wl,--enable-new-dtags)
     endif ()
@@ -852,7 +852,7 @@ if (BUILD_LP_BENCHMARKS)
             OpenMP::OpenMP_CXX
             PRIVATE
     )
-    target_link_options(solve_LP PRIVATE $<$<LINK_LANGUAGE:CXX>:-fopenmp>)
+    target_link_options(solve_LP PRIVATE -fopenmp)
     if (NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
         target_link_options(solve_LP PRIVATE -Wl,--enable-new-dtags)
     endif ()
@@ -883,8 +883,7 @@ if (NOT SKIP_GRPC_BUILD)
             PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
     )
 
-    target_link_options(cuopt_grpc_server PRIVATE -pie)
-    target_link_options(cuopt_grpc_server PRIVATE $<$<LINK_LANGUAGE:CXX>:-fopenmp>)
+    target_link_options(cuopt_grpc_server PRIVATE -pie -fopenmp)
 
     target_include_directories(cuopt_grpc_server
             PRIVATE
