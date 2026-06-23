@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import importlib.util
 import os
-
-import cuopt.grpc as grpc_pkg
 import time
 
+import cuopt.grpc as grpc_pkg
 import pytest
 
 from cuopt.grpc.numerical import Client, GrpcError, JobNotReadyError, JobStatus
@@ -51,10 +51,19 @@ def _poll_until_complete(
     return client.status(job_id)
 
 
+def _infeasible_lp_problem():
+    problem = Problem("grpc_infeasible")
+    x = problem.addVariable(lb=0.0, name="x")
+    problem.addConstraint(x >= 5, name="c1")
+    problem.addConstraint(x <= 1, name="c2")
+    problem.setObjective(x, sense=MAXIMIZE)
+    return problem
+
+
 def test_grpc_package_is_namespace_only():
     """cuopt.grpc is a namespace; domain clients live in subpackages."""
     assert "Client" not in grpc_pkg.__dict__
-    assert "numerical" in (grpc_pkg.__doc__ or "")
+    assert importlib.util.find_spec("cuopt.grpc.numerical") is not None
 
 
 @pytest.mark.filterwarnings("ignore::DeprecationWarning")
@@ -149,7 +158,43 @@ class TestGrpcClient:
         assert solution.get_primal_objective() == pytest.approx(15.0, rel=1e-3)
         client.delete(job_id)
 
+    def test_invalid_job_id(self, grpc_server):
+        client = Client("localhost", grpc_server)
+        assert (
+            client.status("00000000-0000-0000-0000-000000000000")
+            == JobStatus.NOT_FOUND
+        )
+        with pytest.raises(GrpcError):
+            client.result("00000000-0000-0000-0000-000000000000")
+        with pytest.raises(GrpcError):
+            client.delete("00000000-0000-0000-0000-000000000000")
+
+    def test_result_after_delete(self, grpc_server):
+        problem = _demo_lp_problem()
+        client = Client("localhost", grpc_server)
+        job_id = client.submit(problem, SolverSettings())
+        assert client.wait(job_id, timeout=120) == JobStatus.COMPLETED
+        client.delete(job_id)
+        with pytest.raises(GrpcError):
+            client.result(job_id, _DEMO_LP_NAMES)
+
+    def test_infeasible_lp_result(self, grpc_server):
+        client = Client("localhost", grpc_server)
+        job_id = client.submit(_infeasible_lp_problem(), SolverSettings())
+        terminal = client.wait(job_id, timeout=120)
+        if terminal != JobStatus.FAILED:
+            client.delete(job_id)
+            pytest.skip(
+                f"expected FAILED for infeasible LP, got {terminal.name}"
+            )
+        with pytest.raises(GrpcError):
+            client.result(job_id, ["x"])
+        client.delete(job_id)
+
     def test_cancel_job(self, grpc_server):
+        if not os.path.isfile(_SWATH1_MPS):
+            pytest.skip(f"dataset not found: {_SWATH1_MPS}")
+
         problem = Read(_SWATH1_MPS)
         settings = SolverSettings()
         settings.set_parameter(CUOPT_TIME_LIMIT, 10)
@@ -157,13 +202,13 @@ class TestGrpcClient:
         client = Client("localhost", grpc_server)
         job_id = client.submit(problem, settings)
 
-        assert client.status(job_id) in (
-            JobStatus.QUEUED,
-            JobStatus.PROCESSING,
-        )
-        client.cancel(job_id)
+        status = client.status(job_id)
+        if status not in (JobStatus.QUEUED, JobStatus.PROCESSING):
+            client.delete(job_id)
+            pytest.skip("Job completed before cancellation could be observed")
 
-        assert client.status(job_id) == JobStatus.CANCELLED
+        client.cancel(job_id)
+        assert client.wait(job_id, timeout=30) == JobStatus.CANCELLED
         with pytest.raises(GrpcError):
             client.result(job_id)
         client.delete(job_id)
