@@ -21,7 +21,6 @@
 #include <sstream>
 #include <string>
 #include <tuple>
-#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
@@ -157,24 +156,6 @@ void triples_to_csr_flat(const coo_entries_t<i_t, f_t>& entries,
   out_offsets = std::move(scratch.row_off);
 }
 
-template <typename i_t>
-struct qcmatrix_pair_hash {
-  size_t operator()(const std::pair<i_t, i_t>& p) const noexcept
-  {
-    return std::hash<i_t>{}(p.first) ^ (std::hash<i_t>{}(p.second) << 1);
-  }
-};
-
-template <typename i_t, typename f_t>
-f_t qcmatrix_lookup_coeff(
-  const std::unordered_map<std::pair<i_t, i_t>, f_t, qcmatrix_pair_hash<i_t>>& agg, i_t r, i_t c)
-{
-  const f_t eps = std::numeric_limits<f_t>::epsilon();
-  const auto it = agg.find({r, c});
-  if (it == agg.end() || std::abs(it->second) <= eps) { return f_t(0); }
-  return it->second;
-}
-
 }  // namespace
 
 namespace cuopt::linear_programming::io {
@@ -206,54 +187,58 @@ void check_symmetric_offdiagonal_pairs(const std::vector<i_t>& rows,
   mps_parser_expects(rows.size() == n && cols.size() == n,
                      error_type_t::ValidationError,
                      "COO rows/cols/vals length mismatch");
+  if (n == 0) { return; }
 
-  std::unordered_map<std::pair<i_t, i_t>, f_t, qcmatrix_pair_hash<i_t>> agg;
-  agg.reserve(n);
+  // Build two index permutations of the COO entries: one ordered by (row, col)
+  // and one by (col, row). The transpose of the k-th (row, col)-ordered entry is
+  // the k-th (col, row)-ordered entry, so walking both in lockstep proves the
+  // entry set equals its transpose (i.e. Q is symmetric) in O(n log n).
+  // Diagonal entries are their own transpose and validate trivially.
+  std::vector<size_t> row_major(n);
+  std::vector<size_t> col_major(n);
   for (size_t t = 0; t < n; ++t) {
-    const i_t r    = rows[t];
-    const i_t c    = cols[t];
-    const f_t v    = vals[t];
-    const auto key = std::make_pair(r, c);
-    mps_parser_expects(agg.find(key) == agg.end(),
+    row_major[t] = t;
+    col_major[t] = t;
+  }
+  std::sort(row_major.begin(), row_major.end(), [&](size_t a, size_t b) {
+    return rows[a] != rows[b] ? rows[a] < rows[b] : cols[a] < cols[b];
+  });
+  std::sort(col_major.begin(), col_major.end(), [&](size_t a, size_t b) {
+    return cols[a] != cols[b] ? cols[a] < cols[b] : rows[a] < rows[b];
+  });
+
+  // Reject duplicate (row, col) entries; duplicates are adjacent in row-major order.
+  for (size_t k = 1; k < n; ++k) {
+    const size_t prev = row_major[k - 1];
+    const size_t cur  = row_major[k];
+    mps_parser_expects(rows[prev] != rows[cur] || cols[prev] != cols[cur],
                        error_type_t::ValidationError,
                        "QCMATRIX duplicate entry (%d,%d)",
-                       static_cast<int>(r),
-                       static_cast<int>(c));
-    agg.emplace(key, v);
+                       rows[cur],
+                       cols[cur]);
   }
 
   const f_t eps = std::numeric_limits<f_t>::epsilon();
-  std::unordered_map<std::pair<i_t, i_t>, char, qcmatrix_pair_hash<i_t>> visited;
-  for (const auto& kv : agg) {
-    const auto& rc = kv.first;
-    if (rc.first == rc.second) { continue; }
-    const i_t lo = std::min(rc.first, rc.second);
-    const i_t hi = std::max(rc.first, rc.second);
-    if (visited[{lo, hi}]) { continue; }
-    visited[{lo, hi}] = 1;
-
-    const f_t v_lo_hi    = qcmatrix_lookup_coeff(agg, lo, hi);
-    const f_t v_hi_lo    = qcmatrix_lookup_coeff(agg, hi, lo);
-    const bool has_lo_hi = std::abs(v_lo_hi) > eps;
-    const bool has_hi_lo = std::abs(v_hi_lo) > eps;
-
-    mps_parser_expects(has_lo_hi && has_hi_lo,
+  for (size_t k = 0; k < n; ++k) {
+    const size_t a = row_major[k];  // entry (r, c)
+    const size_t b = col_major[k];  // its required transpose partner (c, r)
+    mps_parser_expects(rows[a] == cols[b] && cols[a] == rows[b],
                        error_type_t::ValidationError,
                        "QCMATRIX off-diagonal (%d,%d) requires a matching (%d,%d) entry",
-                       static_cast<int>(lo),
-                       static_cast<int>(hi),
-                       static_cast<int>(hi),
-                       static_cast<int>(lo));
+                       rows[a],
+                       cols[a],
+                       cols[a],
+                       rows[a]);
     mps_parser_expects(
-      std::abs(v_lo_hi - v_hi_lo) <= eps,
+      std::abs(vals[a] - vals[b]) <= eps,
       error_type_t::ValidationError,
       "QCMATRIX symmetric off-diagonals (%d,%d) and (%d,%d) must match; got %.17g and %.17g",
-      static_cast<int>(lo),
-      static_cast<int>(hi),
-      static_cast<int>(hi),
-      static_cast<int>(lo),
-      static_cast<double>(v_lo_hi),
-      static_cast<double>(v_hi_lo));
+      rows[a],
+      cols[a],
+      cols[a],
+      rows[a],
+      vals[a],
+      vals[b]);
   }
 }
 
@@ -272,53 +257,41 @@ void canonicalize_coo_matrix(std::vector<i_t>& rows, std::vector<i_t>& cols, std
     return;
   }
 
-  std::unordered_map<std::pair<i_t, i_t>, f_t, qcmatrix_pair_hash<i_t>> agg;
-  agg.reserve(n);
+  // Map every entry to its upper-triangular key (min(r,c), max(r,c)). Both
+  // orientations of an off-diagonal pair and any duplicate entries collapse to
+  // the same key, so summing the values per key yields the full x^T Q x
+  // coefficient for that variable pair.
+  std::vector<std::tuple<i_t, i_t, f_t>> triples;
+  triples.reserve(n);
   for (size_t t = 0; t < n; ++t) {
-    const i_t r = rows[t];
-    const i_t c = cols[t];
-    const f_t v = vals[t];
-    if (std::abs(v) <= std::numeric_limits<f_t>::epsilon()) { continue; }
-    agg[{r, c}] += v;
+    triples.emplace_back(std::min(rows[t], cols[t]), std::max(rows[t], cols[t]), vals[t]);
   }
 
-  std::vector<std::tuple<i_t, i_t, f_t>> out;
-  out.reserve(agg.size());
-
-  std::unordered_map<std::pair<i_t, i_t>, char, qcmatrix_pair_hash<i_t>> visited;
-  for (const auto& [rc, v] : agg) {
-    if (rc.first == rc.second) { continue; }
-    const i_t lo = std::min(rc.first, rc.second);
-    const i_t hi = std::max(rc.first, rc.second);
-    if (visited[{lo, hi}]) { continue; }
-    visited[{lo, hi}] = 1;
-
-    const f_t eps     = std::numeric_limits<f_t>::epsilon();
-    const f_t v_lo_hi = qcmatrix_lookup_coeff(agg, lo, hi);
-    const f_t v_hi_lo = qcmatrix_lookup_coeff(agg, hi, lo);
-
-    const f_t cross = v_lo_hi + v_hi_lo;
-    if (std::abs(cross) > eps) { out.emplace_back(lo, hi, cross); }
-  }
-
-  for (const auto& [rc, v] : agg) {
-    if (rc.first == rc.second && std::abs(v) > std::numeric_limits<f_t>::epsilon()) {
-      out.emplace_back(rc.first, rc.second, v);
-    }
-  }
-
-  std::sort(out.begin(), out.end(), [](const auto& a, const auto& b) {
+  // Sort triples by (row, col) key.
+  std::sort(triples.begin(), triples.end(), [](const auto& a, const auto& b) {
     if (std::get<0>(a) != std::get<0>(b)) { return std::get<0>(a) < std::get<0>(b); }
     return std::get<1>(a) < std::get<1>(b);
   });
 
-  rows.resize(out.size());
-  cols.resize(out.size());
-  vals.resize(out.size());
-  for (size_t t = 0; t < out.size(); ++t) {
-    rows[t] = std::get<0>(out[t]);
-    cols[t] = std::get<1>(out[t]);
-    vals[t] = std::get<2>(out[t]);
+  // Merge equal keys (contiguous after the sort) and drop near-zero sums.
+  rows.clear();
+  cols.clear();
+  vals.clear();
+  for (size_t i = 0; i < triples.size();) {
+    const i_t r = std::get<0>(triples[i]);
+    const i_t c = std::get<1>(triples[i]);
+    f_t sum     = f_t(0);
+    size_t j    = i;
+    for (; j < triples.size() && std::get<0>(triples[j]) == r && std::get<1>(triples[j]) == c;
+         ++j) {
+      sum += std::get<2>(triples[j]);
+    }
+    if (std::abs(sum) > std::numeric_limits<f_t>::epsilon()) {
+      rows.push_back(r);
+      cols.push_back(c);
+      vals.push_back(sum);
+    }
+    i = j;
   }
 }
 
@@ -593,14 +566,12 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
   }
 
   // QCMATRIX: one symmetric Q per constraint row (no extra ½ factor vs file coeffs).
-  // MPS encodes each cross term as (i,j,v) and (j,i,v); validate before append.
   for (const auto& block : qcmatrix_blocks_) {
     const i_t row_id = block.constraint_row_id;
     mps_parser_expects(row_id >= 0 && row_id < static_cast<i_t>(row_types.size()),
                        error_type_t::ValidationError,
                        "QCMATRIX row index %d is out of range for constraints",
                        static_cast<int>(row_id));
-    check_symmetric_offdiagonal_pairs(block.entries.rows, block.entries.cols, block.entries.vals);
     problem.append_quadratic_constraint(row_id,
                                         row_names[row_id],
                                         static_cast<char>(row_types[row_id]),
@@ -1390,6 +1361,8 @@ void mps_parser_t<i_t, f_t>::flush_qcmatrix_block()
                        "Duplicate QCMATRIX block for the same constraint row (index %d)",
                        static_cast<int>(qcmatrix_active_row_id_));
   }
+  check_symmetric_offdiagonal_pairs(
+    qcmatrix_current_entries_.rows, qcmatrix_current_entries_.cols, qcmatrix_current_entries_.vals);
   qcmatrix_raw_block_t block;
   block.constraint_row_id = qcmatrix_active_row_id_;
   block.entries           = std::move(qcmatrix_current_entries_);

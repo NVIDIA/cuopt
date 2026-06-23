@@ -2748,7 +2748,6 @@ TEST(append_quadratic_constraint, collapses_symmetric_mps_halves)
   const std::vector<double> vals = {2.0, 2.0};
   const std::vector<int> rows    = {0, 1};
   const std::vector<int> cols    = {1, 0};
-  check_symmetric_offdiagonal_pairs(rows, cols, vals);
   model.append_quadratic_constraint(0, "QC0", 'L', {}, {}, 0.0, vals, rows, cols);
 
   ASSERT_TRUE(model.has_quadratic_constraints());
@@ -2797,7 +2796,6 @@ TEST(qps_parser, qcmatrix_append_api)
   const std::vector<int> mps_qc0_col_indices  = {0, 1, 0, 1};
   const std::vector<double> qc0_linear_values = {1.0, 1.0};
   const std::vector<int> qc0_linear_indices   = {0, 1};
-  check_symmetric_offdiagonal_pairs(mps_qc0_row_indices, mps_qc0_col_indices, mps_qc0_values);
   model.append_quadratic_constraint(0,
                                     "QC0",
                                     'L',
@@ -2851,6 +2849,84 @@ TEST(qps_parser, qcmatrix_append_api)
   EXPECT_EQ(api_qc1_values, qcs[1].vals);
   EXPECT_EQ(api_qc1_row_indices, qcs[1].rows);
   EXPECT_EQ(api_qc1_col_indices, qcs[1].cols);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Symmetric-half validation runs during parsing.
+// ---------------------------------------------------------------------------------------------
+TEST(qps_parser, qcmatrix_missing_symmetric_half_throws)
+{
+  const char* mps = R"(NAME qc_missing_half
+ROWS
+ N  OBJ
+ L  LIN0
+ L  QC0
+COLUMNS
+    x         OBJ       1.0
+    x         LIN0      1.0
+    x         QC0       1.0
+    y         OBJ       1.0
+    y         LIN0      1.0
+    y         QC0       1.0
+RHS
+    RHS1      LIN0      10.0
+    RHS1      QC0       1.0
+QCMATRIX  QC0
+    x         y         2.0
+ENDATA
+)";
+  EXPECT_THROW(cuopt::test::inline_mps::parse_inline_mps(mps), std::logic_error);
+}
+
+TEST(qps_parser, qcmatrix_asymmetric_values_throw)
+{
+  const char* mps = R"(NAME qc_value_mismatch
+ROWS
+ N  OBJ
+ L  LIN0
+ L  QC0
+COLUMNS
+    x         OBJ       1.0
+    x         LIN0      1.0
+    x         QC0       1.0
+    y         OBJ       1.0
+    y         LIN0      1.0
+    y         QC0       1.0
+RHS
+    RHS1      LIN0      10.0
+    RHS1      QC0       1.0
+QCMATRIX  QC0
+    x         y         2.0
+    y         x         3.0
+ENDATA
+)";
+  EXPECT_THROW(cuopt::test::inline_mps::parse_inline_mps(mps), std::logic_error);
+}
+
+TEST(qps_parser, qcmatrix_duplicate_entry_throws)
+{
+  const char* mps = R"(NAME qc_duplicate
+ROWS
+ N  OBJ
+ L  LIN0
+ L  QC0
+COLUMNS
+    x         OBJ       1.0
+    x         LIN0      1.0
+    x         QC0       1.0
+    y         OBJ       1.0
+    y         LIN0      1.0
+    y         QC0       1.0
+RHS
+    RHS1      LIN0      10.0
+    RHS1      QC0       1.0
+QCMATRIX  QC0
+    x         y         2.0
+    x         y         2.0
+    y         x         2.0
+ENDATA
+)";
+  EXPECT_THROW(cuopt::test::inline_mps::parse_inline_mps(mps), std::logic_error);
 }
 
 // QCQP MPS: each quadratic constraint bundles row + linear + rhs + quadratic.
