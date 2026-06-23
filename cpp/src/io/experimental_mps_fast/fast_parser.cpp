@@ -3137,8 +3137,6 @@ static mps_data_model_t<i_t, f_t> parse_mps_fast_stream(Stream& stream,
           phase_end("quadratic");
         });
       }
-
-#pragma omp taskwait
     }
   }
 

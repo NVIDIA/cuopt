@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -157,9 +158,13 @@ inline mps_data_model_t<i_t, f_t> read(const std::string& path,
   std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
     return static_cast<char>(std::tolower(c));
   });
-  if (lower.ends_with(".mps.lz4") || lower.ends_with(".mps.bz2") || lower.ends_with(".mps.gz") ||
-      lower.ends_with(".mps") || lower.ends_with(".qps.lz4") || lower.ends_with(".qps.bz2") ||
-      lower.ends_with(".qps.gz") || lower.ends_with(".qps")) {
+  for (const char* compression_suffix : {".bz2", ".gz", ".lz4"}) {
+    if (lower.ends_with(compression_suffix)) {
+      lower.resize(lower.size() - std::strlen(compression_suffix));
+      break;
+    }
+  }
+  if (lower.ends_with(".mps") || lower.ends_with(".qps")) {
     if (mps_reader == mps_reader_type_t::fast_experimental) {
       if (fixed_mps_format) {
         throw std::logic_error(
@@ -169,10 +174,7 @@ inline mps_data_model_t<i_t, f_t> read(const std::string& path,
     }
     return read_mps<i_t, f_t>(path, fixed_mps_format);
   }
-  if (lower.ends_with(".lp.lz4") || lower.ends_with(".lp.bz2") || lower.ends_with(".lp.gz") ||
-      lower.ends_with(".lp")) {
-    return read_lp<i_t, f_t>(path);
-  }
+  if (lower.ends_with(".lp")) { return read_lp<i_t, f_t>(path); }
   throw std::logic_error(
     "read: unrecognized input file extension. Supported (case-insensitive): "
     ".mps, .mps.gz, .mps.bz2, .mps.lz4, .qps, .qps.gz, .qps.bz2, .qps.lz4, "
