@@ -210,17 +210,22 @@ void check_symmetric_offdiagonal_pairs(const std::vector<i_t>& rows,
   std::unordered_map<std::pair<i_t, i_t>, f_t, qcmatrix_pair_hash<i_t>> agg;
   agg.reserve(n);
   for (size_t t = 0; t < n; ++t) {
-    const i_t r = rows[t];
-    const i_t c = cols[t];
-    const f_t v = vals[t];
-    if (std::abs(v) <= std::numeric_limits<f_t>::epsilon()) { continue; }
-    agg[{r, c}] += v;
+    const i_t r    = rows[t];
+    const i_t c    = cols[t];
+    const f_t v    = vals[t];
+    const auto key = std::make_pair(r, c);
+    mps_parser_expects(agg.find(key) == agg.end(),
+                       error_type_t::ValidationError,
+                       "QCMATRIX duplicate entry (%d,%d)",
+                       static_cast<int>(r),
+                       static_cast<int>(c));
+    agg.emplace(key, v);
   }
 
   const f_t eps = std::numeric_limits<f_t>::epsilon();
   std::unordered_map<std::pair<i_t, i_t>, char, qcmatrix_pair_hash<i_t>> visited;
-  for (const auto& [rc, coeff] : agg) {
-    (void)coeff;
+  for (const auto& kv : agg) {
+    const auto& rc = kv.first;
     if (rc.first == rc.second) { continue; }
     const i_t lo = std::min(rc.first, rc.second);
     const i_t hi = std::max(rc.first, rc.second);

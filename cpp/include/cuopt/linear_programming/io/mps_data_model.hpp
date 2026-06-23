@@ -389,10 +389,13 @@ class mps_data_model_t {
 };  // class mps_data_model_t
 
 /**
- * @brief Canonicalize Q COO on each quadratic constraint in place.
+ * @brief Canonicalize each quadratic constraint's Q matrix.
  *
- * Used for raw API / data_model_view input (single cross term per pair). MPS QCMATRIX
- * symmetric-half validation is done in the MPS parser before append.
+ * Merge duplicate COO entries and off-diagonal variable pairs, then store Q in
+ * upper-triangular form with one coefficient per variable pair (the full x^T Q x
+ * contribution for that pair).
+ *
+ * @param constraints Quadratic constraints whose rows, cols, and vals are updated.
  */
 template <typename i_t, typename f_t>
 void canonicalize_quadratic_constraints(

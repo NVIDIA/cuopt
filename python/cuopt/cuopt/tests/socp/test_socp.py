@@ -21,18 +21,6 @@ from cuopt.linear_programming.solver_settings import (
     SolverSettings,
 )
 
-EXPECTED_SOCP_1_OBJECTIVE = -13.548638904065102
-EXPECTED_SOCP_1_X = (-3.874621860638774, -2.129788233677883, 2.33480343377204)
-EXPECTED_SOCP_1_Y = 5.0
-
-EXPECTED_SOCP_3_OBJECTIVE = -1.932105
-EXPECTED_SOCP_3_X = (0.83666003, -0.54772256)
-
-# Rotated SOC with a single canonical cross term (-2*t*u); optimum max v0+v1 is sqrt(2).
-_SQRT2 = np.sqrt(2.0)
-EXPECTED_ROTATED_SOC_NATURAL_CROSS_OBJECTIVE = _SQRT2
-EXPECTED_ROTATED_SOC_NATURAL_CROSS_V = _SQRT2 / 2.0
-
 OBJ_TOL = 1e-6
 PRIMAL_TOL = 1e-6
 FEAS_TOL = 1e-6
@@ -168,13 +156,13 @@ def test_socp_1_barrier_solution():
     _assert_solution_on_original_model(problem, solution)
     _assert_feasible(problem)
 
-    assert problem.ObjValue == pytest.approx(
-        EXPECTED_SOCP_1_OBJECTIVE, abs=OBJ_TOL
-    )
-    assert x0.Value == pytest.approx(EXPECTED_SOCP_1_X[0], abs=PRIMAL_TOL)
-    assert x1.Value == pytest.approx(EXPECTED_SOCP_1_X[1], abs=PRIMAL_TOL)
-    assert x2.Value == pytest.approx(EXPECTED_SOCP_1_X[2], abs=PRIMAL_TOL)
-    assert y.Value == pytest.approx(EXPECTED_SOCP_1_Y, abs=PRIMAL_TOL)
+    expected_obj = -13.548638904065102
+    expected_x = (-3.874621860638774, -2.129788233677883, 2.33480343377204)
+    assert problem.ObjValue == pytest.approx(expected_obj, abs=OBJ_TOL)
+    assert x0.Value == pytest.approx(expected_x[0], abs=PRIMAL_TOL)
+    assert x1.Value == pytest.approx(expected_x[1], abs=PRIMAL_TOL)
+    assert x2.Value == pytest.approx(expected_x[2], abs=PRIMAL_TOL)
+    assert y.Value == pytest.approx(5.0, abs=PRIMAL_TOL)
 
 
 def test_socp_3_barrier_solution():
@@ -183,11 +171,11 @@ def test_socp_3_barrier_solution():
     _assert_solution_on_original_model(problem, solution)
     _assert_feasible(problem)
 
-    assert problem.ObjValue == pytest.approx(
-        EXPECTED_SOCP_3_OBJECTIVE, abs=OBJ_TOL
-    )
-    assert x0.Value == pytest.approx(EXPECTED_SOCP_3_X[0], abs=PRIMAL_TOL)
-    assert x1.Value == pytest.approx(EXPECTED_SOCP_3_X[1], abs=PRIMAL_TOL)
+    expected_obj = -1.932105
+    expected_x = (0.83666003, -0.54772256)
+    assert problem.ObjValue == pytest.approx(expected_obj, abs=OBJ_TOL)
+    assert x0.Value == pytest.approx(expected_x[0], abs=PRIMAL_TOL)
+    assert x1.Value == pytest.approx(expected_x[1], abs=PRIMAL_TOL)
     assert h1.Value == pytest.approx(1.0, abs=PRIMAL_TOL)
     assert h2.Value == pytest.approx(1.0, abs=PRIMAL_TOL)
     assert h3.Value == pytest.approx(1.0, abs=PRIMAL_TOL)
@@ -200,17 +188,15 @@ def test_rotated_soc_natural_cross_term_barrier_solution():
     _assert_solution_on_original_model(problem, solution)
     _assert_feasible(problem)
 
-    assert problem.ObjValue == pytest.approx(
-        EXPECTED_ROTATED_SOC_NATURAL_CROSS_OBJECTIVE, abs=OBJ_TOL
-    )
+    # Single canonical cross term -2*t*u; optimum max v0+v1 is sqrt(2).
+    sqrt2 = np.sqrt(2.0)
+    expected_obj = sqrt2
+    expected_v = sqrt2 / 2.0
+    assert problem.ObjValue == pytest.approx(expected_obj, abs=OBJ_TOL)
     assert t.Value == pytest.approx(0.5, abs=PRIMAL_TOL)
     assert u.Value == pytest.approx(1.0, abs=PRIMAL_TOL)
-    assert v0.Value == pytest.approx(
-        EXPECTED_ROTATED_SOC_NATURAL_CROSS_V, abs=PRIMAL_TOL
-    )
-    assert v1.Value == pytest.approx(
-        EXPECTED_ROTATED_SOC_NATURAL_CROSS_V, abs=PRIMAL_TOL
-    )
+    assert v0.Value == pytest.approx(expected_v, abs=PRIMAL_TOL)
+    assert v1.Value == pytest.approx(expected_v, abs=PRIMAL_TOL)
 
 
 def test_general_quadratic_unsymmetric():

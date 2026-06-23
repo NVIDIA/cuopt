@@ -73,7 +73,7 @@ class lp_parser_t {
     std::vector<i_t> linear_indices{};
     std::vector<f_t> linear_values{};
     f_t rhs_value{};
-    // Upper-triangular (i <= j) face-value triples from the LP source; each
+    // Upper-triangular (i <= j) Q triples as written in the LP source; each
     // contributes c * x_i * x_j to x^T Q x. Canonicalized in
     // append_quadratic_constraint().
     coo_entries_t<i_t, f_t> quad_triples{};

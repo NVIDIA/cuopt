@@ -44,11 +44,10 @@ struct coo_entries_t {
 };
 
 /**
- * @brief Validate MPS QCMATRIX off-diagonal entries appear in both orientations with equal
- * coefficients.
+ * @brief Validate MPS QCMATRIX COO entries before canonicalization.
  *
- * QCMATRIX encodes each cross term as matching (i,j,v) and (j,i,v) entries before
- * canonicalization.
+ * - Reject duplicate (row, col) indices.
+ * - Require each off-diagonal pair as matching (i,j,v) and (j,i,v) entries.
  */
 template <typename i_t, typename f_t>
 void check_symmetric_offdiagonal_pairs(const std::vector<i_t>& rows,

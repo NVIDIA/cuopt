@@ -220,9 +220,9 @@ class LpParseEngine {
   //   Objective:  must be followed by '/ 2'; the inner-coefficient convention
   //               is QUADOBJ-style 0.5 x^T Q x, so off-diagonals are halved
   //               and linear-inside-bracket terms also get /2.
-  //   Constraint: must NOT be followed by '/ 2'; coefficients are taken at
-  //               face value (x^T Q x); bracket must contain at least one
-  //               quadratic term.
+  //   Constraint: must NOT be followed by '/ 2'; Q coefficients are stored as upper triangular
+  //   form;
+  //               bracket must contain at least one quadratic term.
   enum class BracketRole { Objective, Constraint };
   void parse_quadratic_bracket(int outer_sign,
                                BracketRole role,
@@ -910,8 +910,8 @@ void LpParseEngine<i_t, f_t>::parse_quadratic_bracket(int outer_sign,
       out_quad_entries.vals.push_back(sign_scale * raw_quad.vals[p] / f_t(2));
     }
   } else {
-    // Constraint: '/ 2' is forbidden — the LP convention is that constraint
-    // quadratic brackets carry bare face-value coefficients of x^T Q x.
+    // Constraint: '/ 2' is forbidden — the LP convention is that x^T Q x is written as upper
+    // triangular form.
     mps_parser_expects(!(peek().kind == LpTokenKind::Slash && peek(1).kind == LpTokenKind::Number &&
                          peek(1).text == "2"),
                        error_type_t::ValidationError,
@@ -927,7 +927,7 @@ void LpParseEngine<i_t, f_t>::parse_quadratic_bracket(int outer_sign,
                        "constraint must contain at least one quadratic term",
                        peek().line);
 
-    // Coefficients are face value for x^T Q x; canonicalization runs in
+    // Q coefficients are stored as upper triangular form; canonicalization runs in
     // append_quadratic_constraint() when the block is flushed to the data model.
     out_quad_entries.rows.insert(
       out_quad_entries.rows.end(), raw_quad.rows.begin(), raw_quad.rows.end());

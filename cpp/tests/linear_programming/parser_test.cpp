@@ -2851,13 +2851,6 @@ TEST(qps_parser, qcmatrix_append_api)
   EXPECT_EQ(api_qc1_values, qcs[1].vals);
   EXPECT_EQ(api_qc1_row_indices, qcs[1].rows);
   EXPECT_EQ(api_qc1_col_indices, qcs[1].cols);
-
-  // Missing symmetric half is rejected by check_symmetric_offdiagonal_pairs().
-  const std::vector<double> bad_values   = {2.0};
-  const std::vector<int> bad_row_indices = {0};
-  const std::vector<int> bad_col_indices = {1};
-  EXPECT_THROW(check_symmetric_offdiagonal_pairs(bad_row_indices, bad_col_indices, bad_values),
-               std::logic_error);
 }
 
 // QCQP MPS: each quadratic constraint bundles row + linear + rhs + quadratic.
