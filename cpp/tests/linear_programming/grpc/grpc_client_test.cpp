@@ -2433,7 +2433,7 @@ TEST(MapperRoundtrip, QuadraticConstraintsChunkedPath)
     for (int c = r; c < n0_linear && q_idx < n0_q; ++c, ++q_idx) {
       qr0[q_idx] = r;
       qc0[q_idx] = c;
-      qv0[q_idx] = -0.25 * q_idx + 7.0;
+      qv0[q_idx] = -0.25 * q_idx + 7.125;
     }
   }
   ASSERT_EQ(q_idx, n0_q);

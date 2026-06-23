@@ -504,7 +504,7 @@ void convert_quadratic_constraints_to_second_order_cones(
                       qc.constraint_row_name.c_str(),
                       static_cast<int>(q_nnz - 1),
                       tail_vars.size());
-        cuopt_expects(q_nnz >= 3,
+        cuopt_expects(q_nnz >= 2,
                       error_type_t::ValidationError,
                       "Quadratic constraint '%s' rotated SOC Q must have at least 1 tail entry",
                       qc.constraint_row_name.c_str());
