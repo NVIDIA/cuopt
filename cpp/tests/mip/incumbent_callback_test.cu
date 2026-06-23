@@ -216,8 +216,8 @@ TEST(mip_solve, initial_solution_survives_papilo_crush)
 
   const raft::handle_t handle_{};
   auto path = make_path_absolute("mip/pk1.mps");
-  cuopt::mps_parser::mps_data_model_t<int, double> mps_problem =
-    cuopt::mps_parser::parse_mps<int, double>(path, false);
+  cuopt::linear_programming::io::mps_data_model_t<int, double> mps_problem =
+    cuopt::linear_programming::io::read_mps<int, double>(path, false);
   handle_.sync_stream();
   auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps_problem);
   auto stream     = op_problem.get_handle_ptr()->get_stream();

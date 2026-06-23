@@ -483,6 +483,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
   population.initialize_population();
   population.allocate_solutions();
   add_user_given_solutions(initial_sol_vector);
+  population.add_solutions_from_vec(std::move(initial_sol_vector));
   if (check_b_b_preemption()) { return population.best_feasible(); }
   // Run CPUFJ early to find quick initial solutions
   ls_cpufj_raii_guard_t ls_cpufj_raii_guard(ls);  // RAII to stop cpufj threads on solve stop
@@ -639,8 +640,6 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     population.add_solution(std::move(lp_rounded_sol));
     ls.start_cpufj_lptopt_scratch_threads(population);
   }
-
-  population.add_solutions_from_vec(std::move(initial_sol_vector));
 
   if (check_b_b_preemption()) { return population.best_feasible(); }
 

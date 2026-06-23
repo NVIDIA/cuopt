@@ -911,7 +911,8 @@ void third_party_presolve_t<i_t, f_t>::crush_primal_solution(
  * then projects onto the surviving columns/rows via origcol/origrow_mapping.
  *
  * Only two reductions actually transform survivor coordinates:
- *   kParallelCol             — merges x[col1] into x[col2]
+ *   kParallelCol             — merges x[col1] into x[col2]; survivor rc is z[col2] if
+ *                              nonzero, else z[col1] / scale (inverse of PaPILO postsolve)
  *   kRowBoundChangeForcedByRow — conditionally transfers y[deleted_row] → y[kept_row]
  */
 template <typename i_t, typename f_t>
@@ -977,6 +978,13 @@ void third_party_presolve_t<i_t, f_t>::crush_primal_dual_solution(
         int col2         = indices[first + 2];
         const f_t& scale = values[first + 4];
         x[col2] += scale * x[col1];
+        if (crush_rc) {
+          // Inverse of Postsolve::apply_parallel_col_to_original_solution reduced-cost split.
+          if (num.isZero(z[col2]) && !num.isZero(z[col1])) {
+            cuopt_assert(!num.isZero(scale), "parallel column scale must be nonzero");
+            z[col2] = z[col1] / scale;
+          }
+        }
         break;
       }
 
@@ -1083,14 +1091,14 @@ void third_party_presolve_t<i_t, f_t>::crush_primal_dual_solution(
   // Cancel contributions from removed rows.  The original-space z was
   // computed as z = c - A^T y over ALL rows.  The reduced-space stationarity
   // only involves surviving rows, so we must add back the terms from removed
-  // rows: z[j] += y[i] * a_{i,j} for every removed row i with y[i] != 0.
+  // rows: z[j] += y[i] * a_{i,j} for every removed row i with materially nonzero y[i].
   if (crush_rc) {
     std::vector<bool> row_survives((int)storage.nRowsOriginal, false);
     for (size_t k = 0; k < row_map.size(); ++k) {
       row_survives[row_map[k]] = true;
     }
     for (int i = 0; i < (int)storage.nRowsOriginal; ++i) {
-      if (row_survives[i] || y[i] == 0) continue;
+      if (row_survives[i] || num.isZero(y[i])) continue;
       for (i_t p = A_offsets[i]; p < A_offsets[i + 1]; ++p) {
         z[A_indices[p]] += y[i] * get_coeff(i, A_indices[p]);
       }
