@@ -43,6 +43,7 @@ dependencies:
 - msgpack-numpy==0.4.8
 - msgpack-python==1.1.2
 - myst-parser
+- nccl >=2.19
 - ninja
 - notebook
 - numba-cuda>=0.22.1

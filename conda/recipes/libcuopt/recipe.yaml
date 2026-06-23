@@ -89,6 +89,7 @@ cache:
       - libcusparse-dev
       - libnvjitlink-dev
       - libboost-devel
+      - nccl >=2.19
       - tbb-devel
       - zlib
       - bzip2
@@ -127,6 +128,7 @@ outputs:
         - libcudss-dev >=0.7,<0.8
         - libcusparse-dev
         - libnvjitlink-dev
+        - nccl >=2.19
         - openssl
         - c-ares
         - libuuid
@@ -141,6 +143,7 @@ outputs:
         - librmm =${{ minor_version }}
         - cuda-nvrtc
         - libcudss >=0.7,<0.8
+        - nccl >=2.19
         - openssl
         - c-ares
         - libuuid
@@ -189,6 +192,7 @@ outputs:
         - libcublas
         - libcudss-dev >=0.7,<0.8
         - libcusparse-dev
+        - nccl >=2.19
         - openssl
         - c-ares
         - libgrpc >=1.78.0,<1.80.0a0
