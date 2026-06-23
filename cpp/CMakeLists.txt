@@ -202,6 +202,21 @@ endif ()
 find_package(OpenMP REQUIRED)
 message(VERBOSE "cuOpt: OpenMP found in ${OpenMP_CXX_INCLUDE_DIRS}")
 
+# Resolve libgomp from the active C++ compiler, not FindOpenMP's generic -lgomp (which can
+# resolve to an older system libgomp on Rocky/RHEL wheel builders). The fast MPS parser uses
+# OpenMP 5.0 detached tasks (omp_fulfill_event); compile and link must use the same libgomp.
+execute_process(
+        COMMAND ${CMAKE_CXX_COMPILER} -print-file-name=libgomp.so
+        OUTPUT_VARIABLE CUOPT_LIBGOMP_FILE
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+if (NOT IS_ABSOLUTE "${CUOPT_LIBGOMP_FILE}")
+    message(FATAL_ERROR "Could not resolve libgomp from ${CMAKE_CXX_COMPILER}: '${CUOPT_LIBGOMP_FILE}'")
+endif ()
+get_filename_component(CUOPT_LIBGOMP_DIR "${CUOPT_LIBGOMP_FILE}" DIRECTORY)
+message(STATUS "cuOpt: libgomp for OpenMP link = ${CUOPT_LIBGOMP_FILE}")
+list(APPEND CUOPT_CXX_FLAGS -fopenmp)
+
 # MPS/QPS parser supports compressed inputs via bzip2, zlib and lz4
 option(CUOPT_PARSER_WITH_BZIP2 "Build MPS parser with bzip2 decompression" ON)
 option(CUOPT_PARSER_WITH_ZLIB "Build MPS parser with zlib decompression" ON)
@@ -513,6 +528,7 @@ set_target_properties(cuopt
         INSTALL_RPATH "\$ORIGIN"
         INTERFACE_POSITION_INDEPENDENT_CODE ON
         CXX_SCAN_FOR_MODULES OFF
+        LINKER_LANGUAGE CXX
 )
 
 target_compile_definitions(cuopt
@@ -582,8 +598,7 @@ add_dependencies(cuopt PSLP)
 set(CUOPT_PRIVATE_CUDA_LIBS
         CUDA::curand
         CUDA::cusolver
-        TBB::tbb
-        OpenMP::OpenMP_CXX)
+        TBB::tbb)
 
 list(PREPEND CUOPT_PRIVATE_CUDA_LIBS CUDA::cublasLt)
 
@@ -627,17 +642,15 @@ target_link_libraries(cuopt
         PRIVATE
         ${CUOPT_PRIVATE_CUDA_LIBS}
         simde::simde
-        OpenMP::OpenMP_CXX
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:protobuf::libprotobuf>
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:gRPC::grpc++>
 )
 
-# Link with -fopenmp so the compiler driver pulls in its own (matching) libgomp
-# and orders its lib dir ahead of the system one. OpenMP::OpenMP_CXX alone supplies
-# a bare -lgomp, which can resolve to an older system libgomp missing OpenMP 5.0
-# symbols such as omp_fulfill_event (used by the fast MPS parser). Plain -fopenmp
-# (not gated on LINK_LANGUAGE:CXX) is required because cuopt is CUDA-linked.
-target_link_options(cuopt PRIVATE -fopenmp)
+# Force libgomp from the active C++ toolchain into libcuopt.so. OpenMP::OpenMP_CXX and/or
+# -fopenmp alone can leave omp_fulfill_event undefined (CUDA-linked target + --as-needed) or
+# resolve a trailing bare -lgomp to an older system libgomp at executable link time.
+target_link_directories(cuopt PRIVATE ${CUOPT_LIBGOMP_DIR})
+target_link_libraries(cuopt PRIVATE "-Wl,--no-as-needed" gomp "-Wl,--as-needed")
 
 
 # ##################################################################################################
@@ -761,7 +774,7 @@ if (NOT BUILD_LP_ONLY)
             "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
     )
 
-    target_link_options(cuopt_cli PRIVATE -pie -fopenmp)
+    target_link_options(cuopt_cli PRIVATE -pie)
 
     target_include_directories(cuopt_cli
             PRIVATE
@@ -776,7 +789,6 @@ if (NOT BUILD_LP_ONLY)
     target_link_libraries(cuopt_cli
             PUBLIC
             cuopt
-            OpenMP::OpenMP_CXX
             ${CUDSS_LIBRARIES}
             TBB::tbb
             PRIVATE
@@ -818,10 +830,8 @@ if (BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
     target_link_libraries(solve_MIP
             PUBLIC
             cuopt
-            OpenMP::OpenMP_CXX
             PRIVATE
     )
-    target_link_options(solve_MIP PRIVATE -fopenmp)
     if (NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
         target_link_options(solve_MIP PRIVATE -Wl,--enable-new-dtags)
     endif ()
@@ -849,10 +859,8 @@ if (BUILD_LP_BENCHMARKS)
     target_link_libraries(solve_LP
             PUBLIC
             cuopt
-            OpenMP::OpenMP_CXX
             PRIVATE
     )
-    target_link_options(solve_LP PRIVATE -fopenmp)
     if (NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
         target_link_options(solve_LP PRIVATE -Wl,--enable-new-dtags)
     endif ()
@@ -883,7 +891,7 @@ if (NOT SKIP_GRPC_BUILD)
             PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
     )
 
-    target_link_options(cuopt_grpc_server PRIVATE -pie -fopenmp)
+    target_link_options(cuopt_grpc_server PRIVATE -pie)
 
     target_include_directories(cuopt_grpc_server
             PRIVATE
@@ -903,7 +911,6 @@ if (NOT SKIP_GRPC_BUILD)
     target_link_libraries(cuopt_grpc_server
             PUBLIC
             cuopt
-            OpenMP::OpenMP_CXX
             PRIVATE
             protobuf::libprotobuf
             gRPC::grpc++
