@@ -20,6 +20,23 @@ import sys
 import urllib.error
 import urllib.request
 
+
+class _DropAuthOnRedirect(urllib.request.HTTPRedirectHandler):
+    """Strip auth headers before following redirects to presigned URLs (e.g. S3).
+
+    GitHub's job-log endpoint issues a 302 to a presigned S3 URL. Forwarding
+    the Authorization header causes S3 to return 400 ("Only one auth mechanism
+    allowed"), so we strip it before following the redirect.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        new_req = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new_req is not None:
+            for key in list(new_req.headers):
+                if key.lower() in ("authorization", "x-github-api-version"):
+                    del new_req.headers[key]
+        return new_req
+
 # Job name prefixes that are considered test jobs.
 _TEST_PREFIXES = (
     "conda-cpp-tests",
@@ -124,7 +141,8 @@ def _analyze_job_log(job_id, repo, token):
             failed.append(test_id)
 
     try:
-        with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT_SEC) as resp:
+        opener = urllib.request.build_opener(_DropAuthOnRedirect)
+        with opener.open(req, timeout=_HTTP_TIMEOUT_SEC) as resp:
             for raw in io.TextIOWrapper(
                 resp, encoding="utf-8", errors="replace"
             ):
@@ -155,7 +173,8 @@ def _analyze_job_log(job_id, repo, token):
                         _add(line.split(" ", 1)[1].split(" - ")[0].strip())
                     elif line.startswith("="):
                         in_pytest_summary = False
-    except (urllib.error.HTTPError, urllib.error.URLError):
+    except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+        print(f"Warning: could not fetch logs for job {job_id}: {exc}", file=sys.stderr)
         return [], None
 
     return failed[:_MAX_TESTS], crash
