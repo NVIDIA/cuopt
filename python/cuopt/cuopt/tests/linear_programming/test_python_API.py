@@ -461,7 +461,9 @@ def test_incumbent_get_set_solutions():
 
 
 def test_warm_start():
-    file_path = RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
+    file_path = (
+        RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
+    )
     problem = Problem.readMPS(file_path)
 
     settings = SolverSettings()

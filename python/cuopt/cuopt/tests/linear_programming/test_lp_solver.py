@@ -609,7 +609,9 @@ def test_parser_and_batch_solver():
 
 
 def test_warm_start():
-    file_path = RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
+    file_path = (
+        RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
+    )
     data_model_obj = Read(file_path)
 
     settings = solver_settings.SolverSettings()
