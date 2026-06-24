@@ -307,6 +307,8 @@ class pdlp_solver_settings_t {
   presolver_t presolver{presolver_t::Default};
   bool dual_postsolve{true};
   int num_gpus{1};
+  // Dispatch the LP to the multi-GPU distributed PDLP engine
+  bool use_distributed_pdlp{false};
   // Number of GPUs to use specifically for distributed PDLP (use_distributed_pdlp=true).
   // -1 means auto-detect
   int distributed_pdlp_num_gpus{-1};

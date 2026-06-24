@@ -49,8 +49,8 @@ cuopt::linear_programming::optimization_problem_solution_t<i_t, f_t> solve_lp_wi
  * and returns the gathered solution.
  *
  * Resolves the `distributed_pdlp_num_gpus == -1` sentinel against the
- * visible-device count and propagates `pdlp_disable_graph` to the CUDA-graph
- * flag. Several configurations are rejected up front (see @pre).
+ * visible-device count. Several configurations are rejected up front
+ * (see @pre).
  *
  * @param handle_ptr  Master raft handle (its stream owns the gather buffers and
  *                    any master-side aggregator allocations). Must be non-null.
@@ -63,7 +63,7 @@ cuopt::linear_programming::optimization_problem_solution_t<i_t, f_t> solve_lp_wi
  * @param use_pdlp_solver_mode  When true, applies set_pdlp_solver_mode() to the
  *                    resolved settings before solving.
  *
- * @pre `settings.hyper_params.use_distributed_pdlp == true`, `method == PDLP`,
+ * @pre `settings.use_distributed_pdlp == true`, `method == PDLP`,
  *      `presolver == None`, `pdlp_precision == DefaultPrecision`, not inside
  *      MIP, and no initial primal/dual or warm-start data.
  */

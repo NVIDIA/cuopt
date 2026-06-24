@@ -90,7 +90,6 @@
 #define CUOPT_MULTI_GPU_EXPORT_PARTITION_FILE "multi_gpu_export_partition_file"
 #define CUOPT_DISTRIBUTED_PDLP_PARTITIONER    "distributed_pdlp_partitioner"
 #define CUOPT_USE_DISTRIBUTED_PDLP            "use_distributed_pdlp"
-#define CUOPT_PDLP_DISABLE_GRAPH              "pdlp_disable_graph"
 #define CUOPT_USER_PROBLEM_FILE               "user_problem_file"
 #define CUOPT_PRESOLVE_FILE                   "presolve_file"
 #define CUOPT_RANDOM_SEED                     "random_seed"

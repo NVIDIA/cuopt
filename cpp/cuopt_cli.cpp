@@ -178,7 +178,7 @@ int run_single_file(const std::string& file_path,
     } else {
       auto& lp_settings = settings.get_pdlp_settings();
 
-      if (lp_settings.hyper_params.use_distributed_pdlp) {
+      if (lp_settings.use_distributed_pdlp) {
         cuopt::cuopt_expects(
           handle_ptr != nullptr,
           cuopt::error_type_t::ValidationError,

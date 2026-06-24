@@ -12,24 +12,9 @@
 
 #include <rmm/cuda_stream_view.hpp>
 
-#include <atomic>
 #include <utility>
 
 namespace cuopt::linear_programming::detail {
-
-// Debug/diagnostic toggle: when set, ping_pong_graph_t::run() bypasses CUDA
-// graph capture and executes its work eagerly on every iteration. Useful for
-// for debugging
-inline std::atomic<bool>& pdlp_graph_disabled_flag()
-{
-  static std::atomic<bool> s_flag{false};
-  return s_flag;
-}
-
-inline bool pdlp_graph_disabled()
-{
-  return pdlp_graph_disabled_flag().load(std::memory_order_relaxed);
-}
 
 // Two-slot CUDA-graph cache for PDLP. PDLP swaps pointers (rather than
 // copying vectors) at the end of adaptive pdhg step, so the captured graph
@@ -64,7 +49,7 @@ class ping_pong_graph_t {
 #ifdef CUPDLP_DEBUG_MODE
     work();
 #else
-    if (is_legacy_batch_mode_ || pdlp_graph_disabled()) {
+    if (is_legacy_batch_mode_) {
       work();
       return;
     }

@@ -2708,7 +2708,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
   bool warm_start_was_given = settings_.get_pdlp_warm_start_data().is_populated();
 
   // In distributed mode, skip all setup, it is already done
-  if (!settings_.hyper_params.use_distributed_pdlp) {
+  if (!settings_.use_distributed_pdlp) {
     // TODO handle that properly
     if (settings_.hyper_params.compute_initial_step_size_before_scaling &&
         !settings_.get_initial_step_size().has_value())

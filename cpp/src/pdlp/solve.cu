@@ -761,13 +761,11 @@ static optimization_problem_solution_t<i_t, f_t> run_pdlp_solver(
   const timer_t& timer,
   bool is_batch_mode)
 {
-  cuopt_expects(!settings.hyper_params.use_distributed_pdlp,
+  cuopt_expects(!settings.use_distributed_pdlp,
                 error_type_t::ValidationError,
                 "Distributed PDLP must be entered via solve_lp(mps_data_model, ...) "
                 "so the master GPU never materializes the full problem. Call sites "
                 "with a problem_t cannot dispatch to distributed mode.");
-  detail::pdlp_graph_disabled_flag().store(settings.hyper_params.pdlp_disable_graph,
-                                           std::memory_order_relaxed);
 
   if (problem.n_constraints == 0) {
     CUOPT_LOG_CONDITIONAL_INFO(
@@ -2221,7 +2219,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
   bool problem_checking,
   bool use_pdlp_solver_mode)
 {
-  if (settings.hyper_params.use_distributed_pdlp) {
+  if (settings.use_distributed_pdlp) {
     return solve_lp_distributed_from_mps(
       handle_ptr, mps_data_model, settings, problem_checking, use_pdlp_solver_mode);
   }
@@ -2240,10 +2238,9 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
   cuopt_expects(handle_ptr != nullptr,
                 error_type_t::ValidationError,
                 "solve_lp_distributed_from_mps: handle_ptr must not be null");
-  cuopt_expects(settings.hyper_params.use_distributed_pdlp,
+  cuopt_expects(settings.use_distributed_pdlp,
                 error_type_t::ValidationError,
-                "solve_lp_distributed_from_mps: settings.hyper_params.use_distributed_pdlp "
-                "must be true");
+                "solve_lp_distributed_from_mps: settings.use_distributed_pdlp must be true");
   cuopt_expects(settings.presolver == cuopt::linear_programming::presolver_t::None,
                 error_type_t::ValidationError,
                 "solve_lp_distributed_from_mps: presolve is not yet supported with "
@@ -2254,9 +2251,6 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
                 error_type_t::ValidationError,
                 "Distributed MPS solve currently supports only method_t::PDLP");
   if (use_pdlp_solver_mode) { set_pdlp_solver_mode(settings_resolved); }
-
-  detail::pdlp_graph_disabled_flag().store(settings_resolved.hyper_params.pdlp_disable_graph,
-                                           std::memory_order_relaxed);
 
   if (settings_resolved.distributed_pdlp_num_gpus == -1) {
     settings_resolved.distributed_pdlp_num_gpus = raft::device_setter::get_device_count();
