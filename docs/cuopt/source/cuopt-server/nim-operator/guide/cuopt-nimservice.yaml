@@ -9,7 +9,7 @@ metadata:
 spec:
   image:
     repository: nvcr.io/nvidia/cuopt/cuopt
-    tag: "25.12.0-cuda12.9-py3.13"
+    tag: "26.6.0-cu12"
     pullPolicy: IfNotPresent
     pullSecrets:
       - ngc-secret
