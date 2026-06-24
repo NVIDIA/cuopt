@@ -96,6 +96,7 @@ jobs:
       wheel_lean_filter: ${{ steps.set-filters.outputs.wheel_lean_filter }}
       libcuopt_filter: ${{ steps.set-filters.outputs.libcuopt_filter }}
       cuopt_server_filter: ${{ steps.set-filters.outputs.cuopt_server_filter }}
+      cuopt_server_test_filter: ${{ steps.set-filters.outputs.cuopt_server_test_filter }}
       cuopt_sh_client_filter: ${{ steps.set-filters.outputs.cuopt_sh_client_filter }}
     steps:
       - name: Set matrix filters
@@ -109,6 +110,7 @@ jobs:
             echo "wheel_lean_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
             echo "libcuopt_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
             echo "cuopt_server_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
+            echo "cuopt_server_test_filter=[map(select(.ARCH == \"amd64\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
             echo "cuopt_sh_client_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
           else
             echo "conda_lean_filter=." >> $GITHUB_OUTPUT
@@ -116,6 +118,7 @@ jobs:
             echo "wheel_lean_filter=." >> $GITHUB_OUTPUT
             echo "libcuopt_filter=group_by([.ARCH, (.CUDA_VER|split(\".\")|map(tonumber)|.[0])]) | map(max_by(.PY_VER|split(\".\")|map(tonumber)))" >> $GITHUB_OUTPUT
             echo "cuopt_server_filter=map(select(.ARCH == \"amd64\")) | group_by(.CUDA_VER|split(\".\")|map(tonumber)|.[0]) | map(max_by([(.PY_VER|split(\".\")|map(tonumber)), (.CUDA_VER|split(\".\")|map(tonumber))]))" >> $GITHUB_OUTPUT
+            echo "cuopt_server_test_filter=map(select(.ARCH == \"amd64\")) | group_by(.CUDA_VER | split(\".\") | map(tonumber) | .[0]) | map(max_by([(.PY_VER | split(\".\") | map(tonumber)), (.CUDA_VER | split(\".\") | map(tonumber))]))" >> $GITHUB_OUTPUT
             echo "cuopt_sh_client_filter=[map(select(.ARCH == \"amd64\")) | min_by((.PY_VER | split(\".\") | map(tonumber)), (.CUDA_VER | split(\".\") | map(-tonumber)))]" >> $GITHUB_OUTPUT
           fi
 
@@ -598,7 +601,7 @@ jobs:
     with:
       build_type: pull-request
       script: ci/test_wheel_cuopt_server.sh
-      matrix_filter: ${{ needs.compute-matrix-filters.outputs.wheel_lean_filter }}
+      matrix_filter: ${{ needs.compute-matrix-filters.outputs.cuopt_server_test_filter }}
     secrets:
       script-env-secret-1-key: CUOPT_S3_URI
       script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
