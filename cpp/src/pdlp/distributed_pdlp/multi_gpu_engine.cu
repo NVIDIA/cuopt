@@ -33,7 +33,7 @@ bool pair_is_nvlink(int a, int b)
   return rank >= 1;
 }
 
-// Distributed PDLP iterations are dominated by NCCL halo exchanges. 
+// Distributed PDLP iterations are dominated by NCCL halo exchanges.
 // Warn if the GPU set isn't a fully-meshed NVLink topology so the
 // user knows why iterations may be slow.
 void warn_if_not_fully_nvlink(std::vector<int> const& devices)

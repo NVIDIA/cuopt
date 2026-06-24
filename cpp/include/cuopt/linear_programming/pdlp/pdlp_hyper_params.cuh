@@ -47,12 +47,12 @@ struct pdlp_hyper_params_t {
   bool bound_objective_rescaling                                  = true;
   bool use_reflected_primal_dual                                  = true;
   bool use_fixed_point_error                                      = true;
-  double reflection_coefficient = 1.0;
-  double restart_k_p            = 0.99;
-  double restart_k_i            = 0.01;
-  double restart_k_d            = 0.0;
-  double restart_i_smooth       = 0.3;
-  bool use_conditional_major    = true;
+  double reflection_coefficient                                   = 1.0;
+  double restart_k_p                                              = 0.99;
+  double restart_k_i                                              = 0.01;
+  double restart_k_d                                              = 0.0;
+  double restart_i_smooth                                         = 0.3;
+  bool use_conditional_major                                      = true;
 };
 
 // TODO most likely we want to get rid of pdlp_solver_mode and just have prebuilt

@@ -190,7 +190,7 @@ void expect_distributed_matches_base(raft::handle_t const& handle,
   pdlp_solver_settings_t<int, double> dist_settings = base_settings;
   dist_settings.use_distributed_pdlp                = true;
   dist_settings.distributed_pdlp_num_gpus           = -1;
-  auto dist = solve_lp(&handle, problem, dist_settings);
+  auto dist                                         = solve_lp(&handle, problem, dist_settings);
 
   // ----- termination status -----
   ASSERT_EQ(static_cast<int>(base.get_termination_status()), CUOPT_TERMINATION_STATUS_OPTIMAL)
