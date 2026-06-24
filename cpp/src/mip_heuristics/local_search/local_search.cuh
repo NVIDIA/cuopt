@@ -15,11 +15,6 @@
 #include <utilities/omp_helpers.hpp>
 #include <utilities/timer.hpp>
 
-namespace cuopt::mathematical_optimization::simplex {
-template <typename i_t, typename f_t>
-class branch_and_bound_t;
-}
-
 namespace cuopt::mathematical_optimization::mip {
 
 // make sure RANDOM is always the last
