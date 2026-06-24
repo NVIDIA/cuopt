@@ -7,11 +7,11 @@ This benchmark summarizes 3-Tier Evaluation from NVSkills-Eval results for the s
 ## Evaluation Summary
 
 - Skill: `cuopt-multi-objective-exploration`
-- Evaluation date: 2026-06-04
+- Evaluation date: 2026-06-12
 - NVSkills-Eval profile: `external`
 - Environment: `astra-sandbox`
-- Dataset: 3 evaluation tasks
-- Attempts per task: 2
+- Dataset: 4 evaluation tasks
+- Attempts per task: 1
 - Pass threshold: 50%
 - Overall verdict: PASS
 
@@ -42,9 +42,9 @@ Underlying evaluation signals used in this run:
 
 ## Test Tasks
 
-The benchmark dataset contained 3 evaluation tasks:
+The benchmark dataset contained 4 evaluation tasks:
 
-- Positive tasks: 2 tasks where the skill was expected to activate.
+- Positive tasks: 3 tasks where the skill was expected to activate.
 - Negative tasks: 1 tasks where no skill was expected.
 - Unlabeled tasks: 0 tasks where positive/negative intent could not be inferred.
 
@@ -54,34 +54,27 @@ Task composition is derived from the evaluation dataset when possible. Entries w
 
 | Dimension | Num | `claude-code` | `codex` |
 |---|---:|---:|---:|
-| Security | 6 | 100% (+0%) | 100% (+0%) |
-| Correctness | 6 | 82% (+27%) | 78% (+15%) |
-| Discoverability | 6 | 67% (+33%) | 64% (+23%) |
-| Effectiveness | 6 | 87% (+16%) | 80% (+8%) |
-| Efficiency | 6 | 71% (+22%) | 63% (+13%) |
+| Security | 4 | 100% (+0%) | 100% (+0%) |
+| Correctness | 4 | 88% (+38%) | 76% (+20%) |
+| Discoverability | 4 | 75% (+50%) | 66% (+35%) |
+| Effectiveness | 4 | 87% (+15%) | 77% (+5%) |
+| Efficiency | 4 | 76% (+33%) | 65% (+22%) |
 
 Score values show skill-assisted performance. Values in parentheses show uplift versus the no-skill baseline when baseline data is available.
 
 ## Tier 1: Static Validation Summary
 
-Tier 1 validation passed with observations. NVSkills-Eval ran 9 checks and found 9 total findings.
+Tier 1 validation passed with observations. NVSkills-Eval ran 1 checks and found 3 total findings.
 
 Top findings:
 
 - MEDIUM SCHEMA/body_recommended_section: Missing recommended section: '## Instructions' (`skills/cuopt-multi-objective-exploration/SKILL.md`)
 - MEDIUM SCHEMA/body_recommended_section: Missing recommended section: '## Examples' (`skills/cuopt-multi-objective-exploration/SKILL.md`)
-- LOW QUALITY/quality_discoverability: Description doesn't mention WHEN to use this skill (`skills/cuopt-multi-objective-exploration/SKILL.md`)
-- LOW QUALITY/quality_discoverability: No '## Purpose' section (`skills/cuopt-multi-objective-exploration/SKILL.md`)
-- LOW QUALITY/quality_reliability: No mention of error handling or validation (`skills/cuopt-multi-objective-exploration/SKILL.md`)
+- LOW SCHEMA/author_format: Author must be of the form 'Name <email@host>' (`skills/cuopt-multi-objective-exploration/SKILL.md`)
 
 ## Tier 2: Deduplication Summary
 
-Tier 2 validation passed. NVSkills-Eval ran 2 checks and found 0 total findings.
-
-Notable observations:
-
-- Context Deduplication: Collected 1 file(s)
-- Inter-Skill Deduplication: Parsed skill 'cuopt-multi-objective-exploration': 145 char description
+This tier was not run or did not produce findings in this report.
 
 ## Publication Recommendation
 
