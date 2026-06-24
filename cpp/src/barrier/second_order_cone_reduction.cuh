@@ -10,8 +10,8 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/macros.cuh>
 
+#include <cub/block/block_reduce.cuh>
 #include <cub/device/device_reduce.cuh>
-#include <cub/device/device_segmented_reduce.cuh>
 #include <cub/warp/warp_reduce.cuh>
 
 #include <rmm/device_buffer.hpp>
@@ -24,7 +24,6 @@
 
 #include <thrust/iterator/constant_iterator.h>
 #include <thrust/iterator/discard_iterator.h>
-#include <thrust/iterator/permutation_iterator.h>
 
 #include <algorithm>
 #include <concepts>
@@ -46,14 +45,22 @@ __global__ void __launch_bounds__(warps_per_cta* raft::WarpSize)
                               OutputIt output,
                               value_t init);
 
+template <std::integral i_t, typename value_t, int block_dim, typename InputIt, typename OutputIt>
+__global__ void __launch_bounds__(block_dim)
+  block_per_cone_reduce_kernel(InputIt input,
+                               raft::device_span<const i_t> medium_cone_ids,
+                               raft::device_span<const std::size_t> cone_offsets,
+                               OutputIt output,
+                               value_t init);
+
 /**
  * Segmented-sum dispatcher for packed second-order cone vectors.
  *
  * Cone dimensions are fixed for a solve, so the constructor partitions cone
  * ids once by reduction strategy. Each call then reuses those partitions:
- * small cones use one warp per cone, medium cones use CUB DeviceSegmentedReduce,
+ * small cones use one warp per cone, medium cones use one block per cone,
  * and large cones use CUB DeviceReduce one cone at a time. The object owns the
- * CUB workspace for those medium/large paths. Call `prepare_workspace` once
+ * CUB workspace for the large-cone path. Call `prepare_workspace` once
  * before using a CUB-backed path.
  */
 template <std::integral i_t, i_t warp_cone_dim = 64, i_t large_cone_cutoff = 32768>
@@ -69,7 +76,7 @@ struct segmented_sum_t {
   std::vector<i_t> large_cone_ids;
   std::vector<i_t> large_cone_dimensions;
 
-  // Maximum CUB temporary storage needed by prepared medium/large reductions.
+  // Maximum CUB temporary storage needed by prepared large reductions.
   std::size_t cub_workspace_bytes = 0;
   rmm::device_buffer cub_workspace;
 
@@ -79,24 +86,6 @@ struct segmented_sum_t {
   {
     auto input  = thrust::make_constant_iterator(value_t{});
     auto output = thrust::make_discard_iterator();
-
-    if (!medium_cone_ids.is_empty()) {
-      const auto medium_begin_offsets =
-        thrust::make_permutation_iterator(cone_offsets.data(), medium_cone_ids.begin());
-      const auto medium_end_offsets =
-        thrust::make_permutation_iterator(cone_offsets.data() + 1, medium_cone_ids.begin());
-
-      std::size_t temp_storage_bytes = 0;
-      RAFT_CUDA_TRY(cub::DeviceSegmentedReduce::Sum(nullptr,
-                                                    temp_storage_bytes,
-                                                    input,
-                                                    output,
-                                                    medium_cone_ids.size(),
-                                                    medium_begin_offsets,
-                                                    medium_end_offsets,
-                                                    stream.value()));
-      cub_workspace_bytes = std::max(cub_workspace_bytes, temp_storage_bytes);
-    }
 
     for (std::size_t i = 0; i < large_cone_ids.size(); ++i) {
       std::size_t temp_storage_bytes = 0;
@@ -109,7 +98,7 @@ struct segmented_sum_t {
       cub_workspace_bytes = std::max(cub_workspace_bytes, temp_storage_bytes);
     }
 
-    if (cub_workspace.size() < cub_workspace_bytes) {
+    if (cub_workspace_bytes > 0 && cub_workspace.size() < cub_workspace_bytes) {
       cub_workspace.resize(cub_workspace_bytes, stream);
     }
   }
@@ -138,31 +127,17 @@ struct segmented_sum_t {
     }
 
     if (!medium_cone_ids.is_empty()) {
-      cuopt_assert(cub_workspace_bytes > 0 && cub_workspace.size() >= cub_workspace_bytes,
-                   "segmented_sum_t::prepare_workspace must be called before reducing medium or "
-                   "large cones");
-
-      const auto medium_output = thrust::make_permutation_iterator(output, medium_cone_ids.begin());
-      const auto medium_begin_offsets =
-        thrust::make_permutation_iterator(cone_offsets.data(), medium_cone_ids.begin());
-      const auto medium_end_offsets =
-        thrust::make_permutation_iterator(cone_offsets.data() + 1, medium_cone_ids.begin());
-
-      std::size_t temp_storage_bytes = cub_workspace_bytes;
-      RAFT_CUDA_TRY(cub::DeviceSegmentedReduce::Sum(cub_workspace.data(),
-                                                    temp_storage_bytes,
-                                                    input,
-                                                    medium_output,
-                                                    medium_cone_ids.size(),
-                                                    medium_begin_offsets,
-                                                    medium_end_offsets,
-                                                    stream.value()));
+      constexpr int medium_block_dim = 256;
+      const auto n_medium            = medium_cone_ids.size();
+      block_per_cone_reduce_kernel<i_t, value_t, medium_block_dim>
+        <<<n_medium, medium_block_dim, 0, stream.value()>>>(
+          input, cuopt::make_span(medium_cone_ids), cone_offsets, output, init);
+      RAFT_CUDA_TRY(cudaPeekAtLastError());
     }
 
     if (!large_cone_ids.empty()) {
       cuopt_assert(cub_workspace_bytes > 0 && cub_workspace.size() >= cub_workspace_bytes,
-                   "segmented_sum_t::prepare_workspace must be called before reducing medium or "
-                   "large cones");
+                   "segmented_sum_t::prepare_workspace must be called before reducing large cones");
 
       for (std::size_t i = 0; i < large_cone_ids.size(); ++i) {
         std::size_t temp_storage_bytes = cub_workspace_bytes;
@@ -256,6 +231,57 @@ __global__ void __launch_bounds__(warps_per_cta* raft::WarpSize)
 
   sum = warp_reduce_t(temp_storage[warp_idx]).Sum(sum);
   if (lane_id == 0) { output[cone] = sum; }
+}
+
+template <std::integral i_t, typename value_t, int block_dim, typename InputIt, typename OutputIt>
+__global__ void __launch_bounds__(block_dim)
+  block_per_cone_reduce_kernel(InputIt input,
+                               raft::device_span<const i_t> medium_cone_ids,
+                               raft::device_span<const std::size_t> cone_offsets,
+                               OutputIt output,
+                               value_t init)
+{
+  static_assert(block_dim > 0);
+  static_assert(block_dim <= 1024);
+
+  constexpr int items_per_thread = 4;
+
+  using block_reduce_t = cub::BlockReduce<value_t, block_dim>;
+  __shared__ typename block_reduce_t::TempStorage temp_storage;
+
+  const auto slot = blockIdx.x;
+  if (slot >= medium_cone_ids.size()) { return; }
+
+  const auto cone = medium_cone_ids[slot];
+  const auto off  = cone_offsets[cone];
+  const auto dim  = cone_offsets[cone + 1] - off;
+
+  value_t acc[items_per_thread];
+#pragma unroll
+  for (int k = 0; k < items_per_thread; ++k) {
+    acc[k] = value_t{0};
+  }
+
+  // Thread t owns elements t, t+block_dim, ..., t+(items_per_thread-1)*block_dim
+  // within each tile of `block_dim * items_per_thread` consecutive entries, so
+  // every warp load stays coalesced.
+  const std::size_t tile = static_cast<std::size_t>(block_dim) * items_per_thread;
+  for (std::size_t tile_start = 0; tile_start < dim; tile_start += tile) {
+#pragma unroll
+    for (int k = 0; k < items_per_thread; ++k) {
+      const std::size_t idx = tile_start + threadIdx.x + static_cast<std::size_t>(k) * block_dim;
+      if (idx < dim) { acc[k] = acc[k] + input[off + idx]; }
+    }
+  }
+
+  value_t sum = init;
+#pragma unroll
+  for (int k = 0; k < items_per_thread; ++k) {
+    sum = sum + acc[k];
+  }
+
+  sum = block_reduce_t(temp_storage).Sum(sum);
+  if (threadIdx.x == 0) { output[cone] = sum; }
 }
 
 }  // namespace cuopt::linear_programming::dual_simplex

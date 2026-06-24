@@ -283,6 +283,7 @@ class pdlp_solver_settings_t {
   bool eliminate_dense_columns{true};
   pdlp_precision_t pdlp_precision{pdlp_precision_t::DefaultPrecision};
   bool barrier_iterative_refinement{true};
+  i_t barrier_soc_threshold{5};
   f_t barrier_step_scale{0.9};
   bool save_best_primal_so_far{false};
   /**

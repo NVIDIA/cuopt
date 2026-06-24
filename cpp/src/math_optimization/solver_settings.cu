@@ -132,6 +132,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_DUALIZE, &pdlp_settings.dualize, -1, 1, -1},
     {CUOPT_ORDERING, &pdlp_settings.ordering, -1, 1, -1},
     {CUOPT_BARRIER_DUAL_INITIAL_POINT, &pdlp_settings.barrier_dual_initial_point, -1, 1, -1},
+    {CUOPT_BARRIER_SOC_THRESHOLD, &pdlp_settings.barrier_soc_threshold, 0, 1000000, 5, "SOC dimension above which rank-2 sparse KKT expansion is used"},
     {CUOPT_MIP_CUT_PASSES, &mip_settings.max_cut_passes, -1, std::numeric_limits<i_t>::max(), 10},
     {CUOPT_MIP_MIXED_INTEGER_ROUNDING_CUTS, &mip_settings.mir_cuts, -1, 1, -1},
     {CUOPT_MIP_MIXED_INTEGER_GOMORY_CUTS, &mip_settings.mixed_integer_gomory_cuts, -1, 1, -1},

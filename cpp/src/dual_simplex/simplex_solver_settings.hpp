@@ -69,6 +69,7 @@ struct simplex_solver_settings_t {
       eliminate_dense_columns(true),
       barrier_iterative_refinement(true),
       barrier_step_scale(0.9),
+      barrier_soc_threshold(5),
       num_gpus(1),
       folding(-1),
       augmented(0),
@@ -157,6 +158,7 @@ struct simplex_solver_settings_t {
   bool eliminate_dense_columns;       // true to eliminate dense columns from A*D*A^T
   bool barrier_iterative_refinement;  // true to use iterative refinement for barrier method
   f_t barrier_step_scale;             // step scale for barrier method
+  i_t barrier_soc_threshold;          // SOC dimension above which rank-2 sparse scaling is used
   int num_gpus;   // Number of GPUs to use (maximum of 2 gpus are supported at the moment)
   i_t folding;    // -1 automatic, 0 don't fold, 1 fold
   i_t augmented;  // -1 automatic, 0 to solve with ADAT, 1 to solve with augmented system

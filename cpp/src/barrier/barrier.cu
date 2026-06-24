@@ -40,6 +40,8 @@
 #include <optional>
 #include <span>
 
+#include <cstdio>
+
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/nvtx.hpp>
 #include <raft/linalg/dot.cuh>
@@ -262,6 +264,16 @@ class iteration_data_t {
       d_augmented_diagonal_indices_(0, lp.handle_ptr->get_stream()),
       d_cone_csr_indices_(0, lp.handle_ptr->get_stream()),
       d_cone_Q_values_(0, lp.handle_ptr->get_stream()),
+      d_dense_cone_block_offsets_(0, lp.handle_ptr->get_stream()),
+      d_dense_cone_ids_(0, lp.handle_ptr->get_stream()),
+      d_sparse_hessian_diag_(0, lp.handle_ptr->get_stream()),
+      d_sparse_hessian_Q_(0, lp.handle_ptr->get_stream()),
+      d_sparse_exp_v_col_(0, lp.handle_ptr->get_stream()),
+      d_sparse_exp_u_col_(0, lp.handle_ptr->get_stream()),
+      d_sparse_exp_v_row_(0, lp.handle_ptr->get_stream()),
+      d_sparse_exp_u_row_(0, lp.handle_ptr->get_stream()),
+      d_sparse_expansion_D_(0, lp.handle_ptr->get_stream()),
+      d_sparse_Hs_diag_(0, lp.handle_ptr->get_stream()),
       use_augmented(false),
       has_factorization(false),
       n_direct_free_linear(0),
@@ -406,7 +418,8 @@ class iteration_data_t {
         std::span<const i_t>(lp.second_order_cone_dims.data(), lp.second_order_cone_dims.size()),
         raft::device_span<f_t>{},
         raft::device_span<f_t>{},
-        stream_view_);
+        stream_view_,
+        settings.barrier_soc_threshold);
       cuopt_assert(cone_count() > 0, "second-order cone topology must contain at least one cone");
       cuopt_assert(cone_entry_count() == total_cone_dim, "second-order cone entry count mismatch");
     }
@@ -506,7 +519,7 @@ class iteration_data_t {
 
       if (use_augmented) {
         settings.log.printf("Linear system               : augmented\n");
-        const i_t augmented_size = lp.num_cols + lp.num_rows;
+        const i_t augmented_size = augmented_system_size(lp.num_cols, lp.num_rows);
         d_augmented_rhs_.resize(augmented_size, stream_view_);
         d_augmented_soln_.resize(augmented_size, stream_view_);
       } else {
@@ -599,8 +612,9 @@ class iteration_data_t {
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
     {
       raft::common::nvtx::range scope("Barrier: LP Data: Cholesky init");
-      i_t factorization_size = use_augmented ? lp.num_rows + lp.num_cols : lp.num_rows;
-      chol                   = std::make_unique<sparse_cholesky_cudss_t<i_t, f_t>>(
+      i_t factorization_size =
+        use_augmented ? augmented_system_size(lp.num_cols, lp.num_rows) : lp.num_rows;
+      chol = std::make_unique<sparse_cholesky_cudss_t<i_t, f_t>>(
         handle_ptr, settings, factorization_size);
       chol->set_positive_definite(false);
     }
@@ -653,14 +667,21 @@ class iteration_data_t {
 
   i_t cone_end() const { return cone_start() + cone_entry_count(); }
 
-  i_t linear_xz_size(std::size_t full_xz_size) const
+  i_t augmented_expansion_count() const
   {
-    return has_cones() ? cone_start() : static_cast<i_t>(full_xz_size);
+    return has_cones() && cones().has_sparse_cones() ? cones().expansion_var_count() : i_t(0);
   }
+
+  i_t augmented_system_size(i_t n, i_t m) const { return n + m + augmented_expansion_count(); }
 
   bool is_cone_variable(i_t variable) const
   {
     return has_cones() && variable >= cone_start() && variable < cone_end();
+  }
+
+  i_t linear_xz_size(std::size_t full_xz_size) const
+  {
+    return has_cones() ? cone_start() : static_cast<i_t>(full_xz_size);
   }
 
   f_t complementarity_degree(std::size_t num_primal_variables, i_t num_upper_bounds) const
@@ -678,52 +699,89 @@ class iteration_data_t {
 
   void form_augmented(bool first_call = false)
   {
-    i_t n                  = A.n;
-    i_t m                  = A.m;
-    i_t nnzA               = A.col_start[n];
-    i_t nnzQ               = Q.n > 0 ? Q.col_start[n] : 0;
-    i_t factorization_size = n + m;
+    i_t n    = A.n;
+    i_t m    = A.m;
+    i_t nnzA = A.col_start[n];
+    i_t nnzQ = Q.n > 0 ? Q.col_start[n] : 0;
 
-    const bool has_soc  = has_cones();
-    const i_t m_c       = cone_entry_count();
-    i_t total_block_nnz = 0;
+    const bool has_soc     = has_cones();
+    const i_t m_c          = cone_entry_count();
+    const i_t p            = augmented_expansion_count();
+    i_t factorization_size = augmented_system_size(n, m);
+
+    i_t dense_soc_kkt_nnz = 0;
 
     std::vector<std::size_t> cone_offsets_host;
-    std::vector<std::size_t> cone_block_offsets_host;
+    std::vector<std::size_t> dense_cone_block_offsets_host;
+    std::vector<i_t> dense_cone_ids_host;
+    std::vector<i_t> cone_sparse_idx;
+    std::vector<i_t> sparse_cone_ids_host;
+    std::vector<std::size_t> sparse_entry_offsets;
     std::vector<i_t> local_to_cone;
 
     if (first_call) {
+      const i_t n_sparse_soc = has_soc ? cones().n_sparse_cones : i_t(0);
       if (has_soc) {
         raft::common::nvtx::range scope("Barrier: augmented: SOC offsets");
-        // Initialize the cone block offsets
         const i_t n_cones = cone_count();
+        // TODO: Once form_augmented() is moved to GPU, we can avoid D2H round-trip.
         cone_offsets_host.resize(n_cones + 1);
-        cone_block_offsets_host.resize(n_cones + 1);
         raft::copy(
           cone_offsets_host.data(), cones().cone_offsets.data(), n_cones + 1, stream_view_);
         handle_ptr->sync_stream();
-        for (i_t k = 0; k < n_cones; ++k) {
-          const auto q_k                 = cone_offsets_host[k + 1] - cone_offsets_host[k];
-          cone_block_offsets_host[k + 1] = cone_block_offsets_host[k] + q_k * q_k;
-        }
-        total_block_nnz = static_cast<i_t>(cone_block_offsets_host[n_cones]);
 
-        // Precompute: for each local cone entry, which cone does it belong to?
+        cone_sparse_idx.assign(n_cones, i_t(-1));
+        if (n_sparse_soc > 0) {
+          // TODO: Once form_augmented() is moved to GPU, we can avoid D2H round-trip for
+          // sparse_cone_ids / sparse_cone_dims.
+          sparse_cone_ids_host = cuopt::host_copy(cones().sparse_cone_ids, stream_view_);
+          for (i_t s = 0; s < n_sparse_soc; ++s) {
+            cone_sparse_idx[sparse_cone_ids_host[s]] = s;
+          }
+          sparse_entry_offsets.resize(n_sparse_soc + 1, 0);
+          const auto sparse_dims_host = cuopt::host_copy(cones().sparse_cone_dims, stream_view_);
+          for (i_t s = 0; s < n_sparse_soc; ++s) {
+            sparse_entry_offsets[s + 1] = sparse_entry_offsets[s] + sparse_dims_host[s];
+          }
+        }
+
+        dense_cone_ids_host.reserve(n_cones);
+        dense_cone_block_offsets_host = {0};
+        dense_cone_block_offsets_host.reserve(n_cones + 1);
+        for (i_t k = 0; k < n_cones; ++k) {
+          if (cone_sparse_idx[k] < 0) {
+            dense_cone_ids_host.push_back(k);
+            const auto q_k = cone_offsets_host[k + 1] - cone_offsets_host[k];
+            dense_cone_block_offsets_host.push_back(dense_cone_block_offsets_host.back() +
+                                                    q_k * q_k);
+          }
+        }
+        dense_soc_kkt_nnz = static_cast<i_t>(dense_cone_block_offsets_host.back());
+
         local_to_cone.resize(m_c);
         for (i_t k = 0; k < n_cones; ++k) {
           const i_t lo = cone_offsets_host[k];
           const i_t hi = cone_offsets_host[k + 1];
-          for (i_t p = lo; p < hi; p++) {
-            local_to_cone[p] = k;
+          for (i_t idx = lo; idx < hi; idx++) {
+            local_to_cone[idx] = k;
           }
         }
       }
 
-      i_t new_nnz = 2 * nnzA + n + m + nnzQ + total_block_nnz;  // conservative estimate of nnz
-      csr_matrix_t<i_t, f_t> augmented_CSR(n + m, n + m, new_nnz);
-      std::vector<i_t> augmented_diagonal_indices(n + m, -1);
-      std::vector<i_t> cone_csr_indices_host(total_block_nnz, -1);
-      std::vector<f_t> cone_Q_values_host(total_block_nnz, f_t(0));
+      const size_t n_sparse_entries = p > 0 ? cones().n_sparse_cone_entries : size_t{0};
+      const i_t sparse_soc_kkt_nnz  = static_cast<i_t>(5 * n_sparse_entries + p);
+      i_t new_nnz = 2 * nnzA + n + m + p + nnzQ + dense_soc_kkt_nnz + sparse_soc_kkt_nnz;
+      csr_matrix_t<i_t, f_t> augmented_CSR(factorization_size, factorization_size, new_nnz);
+      std::vector<i_t> augmented_diagonal_indices(factorization_size, -1);
+      std::vector<i_t> cone_csr_indices_host(dense_soc_kkt_nnz, -1);
+      std::vector<f_t> cone_Q_values_host(dense_soc_kkt_nnz, f_t(0));
+      std::vector<i_t> sparse_hessian_diag_host(n_sparse_entries, -1);
+      std::vector<f_t> sparse_hessian_Q_host(n_sparse_entries, f_t(0));
+      std::vector<i_t> sparse_exp_v_col_host(n_sparse_entries, -1);
+      std::vector<i_t> sparse_exp_u_col_host(n_sparse_entries, -1);
+      std::vector<i_t> sparse_exp_v_row_host(n_sparse_entries, -1);
+      std::vector<i_t> sparse_exp_u_row_host(n_sparse_entries, -1);
+      std::vector<i_t> sparse_expansion_D_host(p, -1);
       i_t q            = 0;
       i_t off_diag_Qnz = 0;
 
@@ -735,50 +793,101 @@ class iteration_data_t {
           const bool is_cone_row = is_cone_variable(i);
 
           if (is_cone_row) {
-            // Determine which cone this variable belongs to and its local row
             i_t local_idx = i - cone_start();
             i_t k         = local_to_cone[local_idx];
             i_t local_r =
               static_cast<i_t>(static_cast<std::size_t>(local_idx) - cone_offsets_host[k]);
             i_t q_k            = static_cast<i_t>(cone_offsets_host[k + 1] - cone_offsets_host[k]);
             i_t cone_col_start = cone_start() + static_cast<i_t>(cone_offsets_host[k]);
-            i_t block_base     = static_cast<i_t>(cone_block_offsets_host[k]) + local_r * q_k;
+            i_t cone_col_end   = cone_col_start + q_k;
 
-            // Merge-join: Q entries (sorted) with dense cone block columns (contiguous)
             i_t qp    = (nnzQ > 0) ? Q.col_start[i] : 0;
             i_t q_end = (nnzQ > 0) ? Q.col_start[i + 1] : 0;
 
-            // Q entries before cone block
-            for (; qp < q_end && Q.i[qp] < cone_col_start; qp++) {
-              augmented_CSR.j[q]   = Q.i[qp];
-              augmented_CSR.x[q++] = -Q.x[qp];
-              off_diag_Qnz++;
-            }
+            // Row of sparse SOC.
+            if (cone_sparse_idx[k] >= 0) {
+              const i_t sparse_idx  = cone_sparse_idx[k];
+              const size_t flat_idx = sparse_entry_offsets[sparse_idx] + local_r;
+              const i_t exp_v_col   = n + m + 2 * sparse_idx;
+              const i_t exp_u_col   = n + m + 2 * sparse_idx + 1;
 
-            // Dense cone block, absorbing any Q entries that fall inside
-            for (i_t c = 0; c < q_k; c++) {
-              i_t col         = cone_col_start + c;
-              f_t q_contrib   = f_t(0);
-              f_t initial_val = (c == local_r) ? f_t(-dual_perturb)
-                                               : f_t(0);  // diagonal entry of the cone block column
+              // Handle off-diagonal entries of sparse SOC before diagonal entry.
+              for (; qp < q_end && Q.i[qp] < cone_col_start; qp++) {
+                augmented_CSR.j[q]   = Q.i[qp];
+                augmented_CSR.x[q++] = -Q.x[qp];
+                off_diag_Qnz++;
+              }
 
-              if (qp < q_end && Q.i[qp] == col) {
+              // Handle diagonal entry of sparse SOC.
+              f_t q_contrib = f_t(0);
+              if (qp < q_end && Q.i[qp] == i) {
                 q_contrib = Q.x[qp];
                 qp++;
               }
+              sparse_hessian_diag_host[flat_idx] = q;
+              sparse_hessian_Q_host[flat_idx]    = q_contrib;
+              augmented_diagonal_indices[i]      = q;
+              augmented_CSR.j[q]                 = i;
+              augmented_CSR.x[q++]               = -dual_perturb - q_contrib;
 
-              cone_csr_indices_host[block_base + c] = q;
-              cone_Q_values_host[block_base + c]    = q_contrib;
-              if (col == i) { augmented_diagonal_indices[i] = q; }
-              augmented_CSR.j[q]   = col;
-              augmented_CSR.x[q++] = initial_val - q_contrib;
-            }
+              // Handle expansion columns of sparse SOC.
+              sparse_exp_v_col_host[flat_idx] = q;
+              augmented_CSR.j[q]              = exp_v_col;
+              augmented_CSR.x[q++]            = f_t(0);
 
-            // Q entries after cone block
-            for (; qp < q_end; qp++) {
-              augmented_CSR.j[q]   = Q.i[qp];
-              augmented_CSR.x[q++] = -Q.x[qp];
-              off_diag_Qnz++;
+              sparse_exp_u_col_host[flat_idx] = q;
+              augmented_CSR.j[q]              = exp_u_col;
+              augmented_CSR.x[q++]            = f_t(0);
+
+              // Handle off-diagonal entries of dense SOC before diagonal entry.
+              for (; qp < q_end && Q.i[qp] < cone_col_end; qp++) {
+                if (Q.i[qp] == i) { continue; }
+                augmented_CSR.j[q]   = Q.i[qp];
+                augmented_CSR.x[q++] = -Q.x[qp];
+                off_diag_Qnz++;
+              }
+              for (; qp < q_end; qp++) {
+                augmented_CSR.j[q]   = Q.i[qp];
+                augmented_CSR.x[q++] = -Q.x[qp];
+                off_diag_Qnz++;
+              }
+            } else {
+              // Row of dense SOC.
+              i_t dense_idx = 0;
+              for (i_t t = 0; t < k; ++t) {
+                if (cone_sparse_idx[t] < 0) { ++dense_idx; }
+              }
+              i_t block_base =
+                static_cast<i_t>(dense_cone_block_offsets_host[dense_idx]) + local_r * q_k;
+
+              for (; qp < q_end && Q.i[qp] < cone_col_start; qp++) {
+                augmented_CSR.j[q]   = Q.i[qp];
+                augmented_CSR.x[q++] = -Q.x[qp];
+                off_diag_Qnz++;
+              }
+
+              for (i_t c = 0; c < q_k; c++) {
+                i_t col         = cone_col_start + c;
+                f_t q_contrib   = f_t(0);
+                f_t initial_val = (c == local_r) ? f_t(-dual_perturb) : f_t(0);
+
+                if (qp < q_end && Q.i[qp] == col) {
+                  q_contrib = Q.x[qp];
+                  qp++;
+                }
+
+                cone_csr_indices_host[block_base + c] = q;
+                cone_Q_values_host[block_base + c]    = q_contrib;
+                if (col == i) { augmented_diagonal_indices[i] = q; }
+                augmented_CSR.j[q]   = col;
+                augmented_CSR.x[q++] = initial_val - q_contrib;
+              }
+
+              for (; qp < q_end; qp++) {
+                augmented_CSR.j[q]   = Q.i[qp];
+                augmented_CSR.x[q++] = -Q.x[qp];
+                off_diag_Qnz++;
+              }
             }
           } else if (nnzQ == 0) {
             augmented_diagonal_indices[i] = q;
@@ -816,27 +925,77 @@ class iteration_data_t {
         }
 
         for (i_t k = n; k < n + m; ++k) {
-          // A block, we can use AT in csc directly
           augmented_CSR.row_start[k] = q;
           const i_t l                = k - n;
           const i_t col_beg          = AT.col_start[l];
           const i_t col_end          = AT.col_start[l + 1];
-          for (i_t p = col_beg; p < col_end; ++p) {
-            augmented_CSR.j[q]   = AT.i[p];
-            augmented_CSR.x[q++] = AT.x[p];
+          for (i_t idx = col_beg; idx < col_end; ++idx) {
+            augmented_CSR.j[q]   = AT.i[idx];
+            augmented_CSR.x[q++] = AT.x[idx];
           }
           augmented_diagonal_indices[k] = q;
           augmented_CSR.j[q]            = k;
           augmented_CSR.x[q++]          = primal_perturb;
         }
-        augmented_CSR.row_start[n + m] = q;
-        augmented_CSR.nz_max           = q;
+
+        // Handle expansion rows of sparse SOC.
+        for (i_t s = 0; s < n_sparse_soc; ++s) {
+          const i_t k   = sparse_cone_ids_host[s];
+          const i_t q_k = static_cast<i_t>(cone_offsets_host[k + 1] - cone_offsets_host[k]);
+          const i_t cone_col_start = cone_start() + static_cast<i_t>(cone_offsets_host[k]);
+          const size_t flat_base   = sparse_entry_offsets[s];
+          const i_t prow_v         = n + m + 2 * s;
+          const i_t prow_u         = n + m + 2 * s + 1;
+
+          augmented_CSR.row_start[prow_v] = q;
+          for (i_t j = 0; j < q_k; ++j) {
+            sparse_exp_v_row_host[flat_base + j] = q;
+            augmented_CSR.j[q]                   = cone_col_start + j;
+            augmented_CSR.x[q++]                 = f_t(0);
+          }
+          sparse_expansion_D_host[2 * s] = q;
+          augmented_CSR.j[q]             = prow_v;
+          augmented_CSR.x[q++]           = f_t(0);
+
+          augmented_CSR.row_start[prow_u] = q;
+          for (i_t j = 0; j < q_k; ++j) {
+            sparse_exp_u_row_host[flat_base + j] = q;
+            augmented_CSR.j[q]                   = cone_col_start + j;
+            augmented_CSR.x[q++]                 = f_t(0);
+          }
+          sparse_expansion_D_host[2 * s + 1] = q;
+          augmented_CSR.j[q]                 = prow_u;
+          augmented_CSR.x[q++]               = f_t(0);
+        }
+
+        augmented_CSR.row_start[factorization_size] = q;
+        augmented_CSR.nz_max                        = q;
         augmented_CSR.j.resize(q);
         augmented_CSR.x.resize(q);
-        i_t expected_nnz = 2 * nnzA + (n - m_c) + total_block_nnz + m + off_diag_Qnz;
+        i_t expected_nnz =
+          2 * nnzA + (n - m_c) + dense_soc_kkt_nnz + m + off_diag_Qnz + sparse_soc_kkt_nnz;
         settings_.log.debug("augmented nz %d predicted %d\n", q, expected_nnz);
-        cuopt_assert(q == expected_nnz, "augmented nnz != predicted");
+        cuopt_assert(q == expected_nnz, "augmented nz != predicted");
         cuopt_assert(A.col_start[n] == AT.col_start[m], "A nz != AT nz");
+
+        if (n_sparse_entries > 0) {
+          for (size_t e = 0; e < n_sparse_entries; ++e) {
+            cuopt_assert(sparse_hessian_diag_host[e] >= 0,
+                         "sparse Hessian diagonal CSR index unset");
+            cuopt_assert(sparse_exp_v_col_host[e] >= 0,
+                         "sparse expansion v-column CSR index unset");
+            cuopt_assert(sparse_exp_u_col_host[e] >= 0,
+                         "sparse expansion u-column CSR index unset");
+            cuopt_assert(sparse_exp_v_row_host[e] >= 0, "sparse expansion v-row CSR index unset");
+            cuopt_assert(sparse_exp_u_row_host[e] >= 0, "sparse expansion u-row CSR index unset");
+          }
+          for (i_t s = 0; s < n_sparse_soc; ++s) {
+            cuopt_assert(sparse_expansion_D_host[2 * s] >= 0,
+                         "sparse expansion v diagonal CSR index unset");
+            cuopt_assert(sparse_expansion_D_host[2 * s + 1] >= 0,
+                         "sparse expansion u diagonal CSR index unset");
+          }
+        }
       }
 
       {
@@ -850,16 +1009,72 @@ class iteration_data_t {
                    handle_ptr->get_stream());
 
         if (has_soc) {
-          d_cone_csr_indices_.resize(total_block_nnz, handle_ptr->get_stream());
+          d_cone_csr_indices_.resize(dense_soc_kkt_nnz, handle_ptr->get_stream());
           raft::copy(d_cone_csr_indices_.data(),
                      cone_csr_indices_host.data(),
-                     total_block_nnz,
+                     dense_soc_kkt_nnz,
                      handle_ptr->get_stream());
-          d_cone_Q_values_.resize(total_block_nnz, handle_ptr->get_stream());
+          d_cone_Q_values_.resize(dense_soc_kkt_nnz, handle_ptr->get_stream());
           raft::copy(d_cone_Q_values_.data(),
                      cone_Q_values_host.data(),
-                     total_block_nnz,
+                     dense_soc_kkt_nnz,
                      handle_ptr->get_stream());
+
+          d_dense_cone_block_offsets_.resize(dense_cone_block_offsets_host.size(),
+                                             handle_ptr->get_stream());
+          raft::copy(d_dense_cone_block_offsets_.data(),
+                     dense_cone_block_offsets_host.data(),
+                     dense_cone_block_offsets_host.size(),
+                     handle_ptr->get_stream());
+          d_dense_cone_ids_.resize(dense_cone_ids_host.size(), handle_ptr->get_stream());
+          if (!dense_cone_ids_host.empty()) {
+            raft::copy(d_dense_cone_ids_.data(),
+                       dense_cone_ids_host.data(),
+                       dense_cone_ids_host.size(),
+                       handle_ptr->get_stream());
+          }
+
+          const size_t n_sparse_entries = cones().n_sparse_cone_entries;
+          d_sparse_hessian_diag_.resize(n_sparse_entries, handle_ptr->get_stream());
+          d_sparse_hessian_Q_.resize(n_sparse_entries, handle_ptr->get_stream());
+          d_sparse_exp_v_col_.resize(n_sparse_entries, handle_ptr->get_stream());
+          d_sparse_exp_u_col_.resize(n_sparse_entries, handle_ptr->get_stream());
+          d_sparse_exp_v_row_.resize(n_sparse_entries, handle_ptr->get_stream());
+          d_sparse_exp_u_row_.resize(n_sparse_entries, handle_ptr->get_stream());
+          d_sparse_expansion_D_.resize(p, handle_ptr->get_stream());
+          d_sparse_Hs_diag_.resize(n_sparse_entries, handle_ptr->get_stream());
+          if (n_sparse_entries > 0) {
+            raft::copy(d_sparse_hessian_diag_.data(),
+                       sparse_hessian_diag_host.data(),
+                       n_sparse_entries,
+                       handle_ptr->get_stream());
+            raft::copy(d_sparse_hessian_Q_.data(),
+                       sparse_hessian_Q_host.data(),
+                       n_sparse_entries,
+                       handle_ptr->get_stream());
+            raft::copy(d_sparse_exp_v_col_.data(),
+                       sparse_exp_v_col_host.data(),
+                       n_sparse_entries,
+                       handle_ptr->get_stream());
+            raft::copy(d_sparse_exp_u_col_.data(),
+                       sparse_exp_u_col_host.data(),
+                       n_sparse_entries,
+                       handle_ptr->get_stream());
+            raft::copy(d_sparse_exp_v_row_.data(),
+                       sparse_exp_v_row_host.data(),
+                       n_sparse_entries,
+                       handle_ptr->get_stream());
+            raft::copy(d_sparse_exp_u_row_.data(),
+                       sparse_exp_u_row_host.data(),
+                       n_sparse_entries,
+                       handle_ptr->get_stream());
+          }
+          if (p > 0) {
+            raft::copy(d_sparse_expansion_D_.data(),
+                       sparse_expansion_D_host.data(),
+                       sparse_expansion_D_host.size(),
+                       handle_ptr->get_stream());
+          }
         }
 
         handle_ptr->sync_stream();
@@ -868,11 +1083,11 @@ class iteration_data_t {
       csc_matrix_t<i_t, f_t> augmented_transpose(1, 1, 1);
       augmented.transpose(augmented_transpose);
       settings_.log.printf("Aug nnz %d Aug^T nnz %d\n",
-                           augmented.col_start[m + n],
-                           augmented_transpose.col_start[m + n]);
+                           augmented.col_start[factorization_size],
+                           augmented_transpose.col_start[factorization_size]);
       augmented.check_matrix();
       augmented_transpose.check_matrix();
-      csc_matrix_t<i_t, f_t> error(m + n, m + n, 1);
+      csc_matrix_t<i_t, f_t> error(factorization_size, factorization_size, 1);
       add(augmented, augmented_transpose, 1.0, -1.0, error);
       settings_.log.printf("|| Aug - Aug^T ||_1 %e\n", error.norm1());
       cuopt_assert(error.norm1() <= 1e-2, "|| Aug - Aug^T ||_1 > 1e-2");
@@ -909,14 +1124,41 @@ class iteration_data_t {
       RAFT_CHECK_CUDA(handle_ptr->get_stream());
 
       if (has_soc) {
-        scatter_hessian_into_augmented(cones(),
-                                       device_augmented.x,
-                                       d_cone_csr_indices_,
-                                       d_cone_Q_values_,
-                                       handle_ptr->get_stream(),
-                                       dual_perturb);
-        RAFT_CHECK_CUDA(handle_ptr->get_stream());
+        if (cones().has_sparse_cones()) {
+          launch_get_Hs_sparse(cones(), d_sparse_Hs_diag_, handle_ptr->get_stream());
+          scatter_sparse_hessian_diag_into_augmented(device_augmented.x,
+                                                     d_sparse_hessian_diag_,
+                                                     d_sparse_Hs_diag_,
+                                                     d_sparse_hessian_Q_,
+                                                     handle_ptr->get_stream(),
+                                                     dual_perturb);
+          update_sparse_expansion_in_augmented(device_augmented.x,
+                                               d_sparse_exp_v_col_,
+                                               d_sparse_exp_u_col_,
+                                               d_sparse_exp_v_row_,
+                                               d_sparse_exp_u_row_,
+                                               d_sparse_expansion_D_,
+                                               cones().sparse_v,
+                                               cones().sparse_u,
+                                               cones().eta,
+                                               cones().sparse_cone_ids,
+                                               handle_ptr->get_stream(),
+                                               dual_perturb);
+          RAFT_CHECK_CUDA(handle_ptr->get_stream());
+        }
+        if (cones().n_dense_cones() > 0) {
+          scatter_dense_hessian_into_augmented(cones(),
+                                               device_augmented.x,
+                                               d_cone_csr_indices_,
+                                               d_cone_Q_values_,
+                                               d_dense_cone_block_offsets_,
+                                               d_dense_cone_ids_,
+                                               handle_ptr->get_stream(),
+                                               dual_perturb);
+          RAFT_CHECK_CUDA(handle_ptr->get_stream());
+        }
       }
+      handle_ptr->sync_stream();
     }
   }
 
@@ -1400,6 +1642,15 @@ class iteration_data_t {
     }
   }
 
+  void restore_saved_iterate()
+  {
+    x = x_save;
+    y = y_save;
+    z = z_save;
+    v = v_save;
+    w = w_save;
+  }
+
   void to_solution(const lp_problem_t<i_t, f_t>& lp,
                    i_t iterations,
                    f_t objective,
@@ -1809,18 +2060,28 @@ class iteration_data_t {
     const i_t m        = A.m;
     const i_t n        = A.n;
     const bool has_soc = has_cones();
+    const i_t p        = augmented_expansion_count();
+    const i_t sys_size = augmented_system_size(n, m);
+    cuopt_assert(static_cast<i_t>(x.size()) >= sys_size, "augmented_multiply: x too small");
+    cuopt_assert(static_cast<i_t>(y.size()) >= sys_size, "augmented_multiply: y too small");
 
     rmm::device_uvector<f_t> d_x1(n, handle_ptr->get_stream());
     rmm::device_uvector<f_t> d_x2(m, handle_ptr->get_stream());
     rmm::device_uvector<f_t> d_y1(n, handle_ptr->get_stream());
     rmm::device_uvector<f_t> d_y2(m, handle_ptr->get_stream());
+    rmm::device_uvector<f_t> d_y_exp(p, handle_ptr->get_stream());
+    rmm::device_uvector<f_t> d_y_exp_orig(p, handle_ptr->get_stream());
 
     raft::copy(d_x1.data(), x.data(), n, handle_ptr->get_stream());
     raft::copy(d_x2.data(), x.data() + n, m, handle_ptr->get_stream());
     raft::copy(d_y1.data(), y.data(), n, handle_ptr->get_stream());
     raft::copy(d_y2.data(), y.data() + n, m, handle_ptr->get_stream());
+    if (p > 0) {
+      raft::copy(d_y_exp_orig.data(), y.data() + n + m, p, handle_ptr->get_stream());
+      thrust::fill_n(rmm::exec_policy(stream_view_), d_y_exp.begin(), p, f_t(0));
+    }
 
-    // y1 <- alpha ( -D * x_1 + A^T x_2) + beta * y1
+    // y1 <- alpha ( -(Q + D + H) * x_1 + A^T x_2) + beta * y1
 
     rmm::device_uvector<f_t> d_r1(n, handle_ptr->get_stream());
     thrust::fill_n(rmm::exec_policy(stream_view_), d_r1.begin(), n, f_t(0));
@@ -1835,14 +2096,31 @@ class iteration_data_t {
                                               stream_view_);
     RAFT_CHECK_CUDA(stream_view_);
 
-    // r1 <- D * x_1 + H x_1  (cone Hessian block H = S^T S; accumulate_cone_hessian_matvec)
+    // r1 <- D * x_1 + H x_1 on cone rows
+    // (dense cones: explicit dense H block; sparse cones: rank-2 expansion, which adds
+    //  Hs_diag .* x_cone to r1 here and writes the expansion rows into d_y_exp)
     if (has_soc) {
       const i_t m_c = cone_entry_count();
-      accumulate_cone_hessian_matvec(raft::device_span<const f_t>(d_x1.data() + cone_start(), m_c),
-                                     cones(),
-                                     raft::device_span<f_t>(d_r1.data() + cone_start(), m_c),
-                                     stream_view_);
-      RAFT_CHECK_CUDA(stream_view_);
+      if (cones().has_sparse_cones()) {
+        launch_sparse_augmented_matvec(
+          raft::device_span<const f_t>(x.data(), x.size()),
+          raft::device_span<f_t>(d_r1.data(), d_r1.size()),
+          raft::device_span<f_t>(d_y_exp.data(), d_y_exp.size()),
+          cones(),
+          raft::device_span<const f_t>(d_sparse_Hs_diag_.data(), d_sparse_Hs_diag_.size()),
+          cone_start(),
+          n,
+          m,
+          handle_ptr->get_stream());
+        RAFT_CHECK_CUDA(stream_view_);
+      }
+      if (cones().n_dense_cones() > 0) {
+        launch_dense_hessian_matvec(raft::device_span<const f_t>(d_x1.data() + cone_start(), m_c),
+                                    cones(),
+                                    raft::device_span<f_t>(d_r1.data() + cone_start(), m_c),
+                                    stream_view_);
+        RAFT_CHECK_CUDA(stream_view_);
+      }
     }
 
     // r1 <- Q x1 + D x1 + H x1  (cone: same H as above)
@@ -1861,8 +2139,13 @@ class iteration_data_t {
     // matrix_vector_multiply(A, alpha, x1, beta, y2);
     cusparse_view_.spmv(alpha, d_x1, beta, d_y2);
 
+    if (p > 0) {
+      axpy(alpha, d_y_exp.data(), beta, d_y_exp_orig.data(), d_y_exp.data(), p, stream_view_);
+    }
+
     raft::copy(y.data(), d_y1.data(), n, stream_view_);
     raft::copy(y.data() + n, d_y2.data(), m, stream_view_);
+    if (p > 0) { raft::copy(y.data() + n + m, d_y_exp.data(), p, stream_view_); }
     handle_ptr->sync_stream();
   }
 
@@ -1944,6 +2227,16 @@ class iteration_data_t {
   rmm::device_uvector<i_t> d_augmented_diagonal_indices_;
   rmm::device_uvector<i_t> d_cone_csr_indices_;
   rmm::device_uvector<f_t> d_cone_Q_values_;
+  rmm::device_uvector<size_t> d_dense_cone_block_offsets_;
+  rmm::device_uvector<i_t> d_dense_cone_ids_;
+  rmm::device_uvector<i_t> d_sparse_hessian_diag_;
+  rmm::device_uvector<f_t> d_sparse_hessian_Q_;
+  rmm::device_uvector<i_t> d_sparse_exp_v_col_;
+  rmm::device_uvector<i_t> d_sparse_exp_u_col_;
+  rmm::device_uvector<i_t> d_sparse_exp_v_row_;
+  rmm::device_uvector<i_t> d_sparse_exp_u_row_;
+  rmm::device_uvector<i_t> d_sparse_expansion_D_;
+  rmm::device_uvector<f_t> d_sparse_Hs_diag_;
   bool indefinite_Q;
   cusparse_view_t<i_t, f_t> cusparse_Q_view_;
 
@@ -2064,7 +2357,7 @@ void cholesky_debug_check(const iteration_data_t<i_t, f_t>& data,
   // return;
   srand(42);
 
-  i_t vec_size = use_augmented ? lp.num_cols + lp.num_rows : lp.num_rows;
+  i_t vec_size = use_augmented ? data.augmented_system_size(lp.num_cols, lp.num_rows) : lp.num_rows;
   // 1. Create a random test vector
   dense_vector_t<i_t, f_t> test_vec(vec_size);
   for (size_t i = 0; i < test_vec.size(); i++) {
@@ -2224,14 +2517,16 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   data.inv_diag.pairwise_product(Fu, DinvFu);
   dense_vector_t<i_t, f_t> q(lp.num_rows);
   if (use_augmented) {
-    dense_vector_t<i_t, f_t> rhs(lp.num_cols + lp.num_rows);
+    const i_t aug_size = data.augmented_system_size(lp.num_cols, lp.num_rows);
+    dense_vector_t<i_t, f_t> rhs(aug_size);
+    rhs.set_scalar(0.0);
     for (i_t k = 0; k < lp.num_cols; k++) {
       rhs[k] = -Fu[k];
     }
     for (i_t k = 0; k < lp.num_rows; k++) {
       rhs[lp.num_cols + k] = rhs_x[k];
     }
-    dense_vector_t<i_t, f_t> soln(lp.num_cols + lp.num_rows);
+    dense_vector_t<i_t, f_t> soln(aug_size);
     i_t solve_status = data.chol->solve(rhs, soln);
     struct op_t {
       op_t(iteration_data_t<i_t, f_t>& data) : data_(data) {}
@@ -2374,12 +2669,13 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
       }
     }
   } else if (use_augmented) {
-    dense_vector_t<i_t, f_t> dual_rhs(lp.num_cols + lp.num_rows);
+    const i_t aug_size = data.augmented_system_size(lp.num_cols, lp.num_rows);
+    dense_vector_t<i_t, f_t> dual_rhs(aug_size);
     dual_rhs.set_scalar(0.0);
     for (i_t k = 0; k < lp.num_cols; k++) {
       dual_rhs[k] = data.c[k];
     }
-    dense_vector_t<i_t, f_t> py(lp.num_cols + lp.num_rows);
+    dense_vector_t<i_t, f_t> py(aug_size);
     data.chol->solve(dual_rhs, py);
     for (i_t k = 0; k < lp.num_cols; k++) {
       data.z[k] = py[k];
@@ -2646,6 +2942,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
     cones.x     = raft::device_span<f_t>(data.d_x_.data() + cone_var_start, m_c);
     cones.z     = raft::device_span<f_t>(data.d_z_.data() + cone_var_start, m_c);
     launch_nt_scaling(cones, stream_view_);
+    if (cones.has_sparse_cones()) { launch_update_scaling_sparse(cones, stream_view_); }
   }
 
   max_residual = 0.0;
@@ -2852,6 +3149,14 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
     raft::copy(data.d_augmented_rhs_.data(), data.d_r1_.data(), lp.num_cols, stream_view_);
     raft::copy(
       data.d_augmented_rhs_.data() + lp.num_cols, data.d_h_.data(), lp.num_rows, stream_view_);
+    const i_t expansion_count = data.augmented_expansion_count();
+    if (expansion_count > 0) {
+      const i_t expansion_start = lp.num_cols + lp.num_rows;
+      thrust::fill_n(rmm::exec_policy(stream_view_),
+                     data.d_augmented_rhs_.begin() + expansion_start,
+                     expansion_count,
+                     f_t(0));
+    }
     data.chol->solve(data.d_augmented_rhs_, data.d_augmented_soln_);
     struct op_t {
       op_t(iteration_data_t<i_t, f_t>& data) : data_(data) {}
@@ -3956,11 +4261,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::check_for_suboptimal_solution(
       data.relative_dual_residual_save < settings.barrier_relaxed_optimality_tol &&
       data.relative_complementarity_residual_save < settings.barrier_relaxed_complementarity_tol) {
     settings.log.printf("Restoring previous solution\n");
-    raft::copy(data.x.data(), data.d_x_.data(), data.d_x_.size(), stream_view_);
-    raft::copy(data.y.data(), data.d_y_.data(), data.d_y_.size(), stream_view_);
-    raft::copy(data.z.data(), data.d_z_.data(), data.d_z_.size(), stream_view_);
-    raft::copy(data.v.data(), data.d_v_.data(), data.d_v_.size(), stream_view_);
-    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+    data.restore_saved_iterate();
     data.to_solution(lp,
                      iter,
                      primal_objective_save,
