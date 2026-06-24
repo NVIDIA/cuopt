@@ -1,16 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Post or update a sticky PR comment summarizing CI test job failures.
-
-Reads GITHUB_REPOSITORY, GITHUB_RUN_ID, GITHUB_REF, and GH_TOKEN from the
-environment.  Finds every test job in the current workflow run, then posts (or
-updates) a single comment on the pull request listing any failed jobs with
-direct log links and a collapsible list of individual failed test names.
-
-Usage (called from a GitHub Actions step):
-    python3 ci/utils/pr_test_summary.py
-"""
+"""Post or update a sticky PR comment summarizing CI test job failures."""
 
 import io
 import json
@@ -19,24 +10,6 @@ import re
 import sys
 import urllib.error
 import urllib.request
-
-
-class _DropAuthOnRedirect(urllib.request.HTTPRedirectHandler):
-    """Strip auth headers before following redirects to presigned URLs (e.g. S3).
-
-    GitHub's job-log endpoint issues a 302 to a presigned S3 URL. Forwarding
-    the Authorization header causes S3 to return 400 ("Only one auth mechanism
-    allowed"), so we strip it before following the redirect.
-    """
-
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        new_req = super().redirect_request(req, fp, code, msg, headers, newurl)
-        if new_req is not None:
-            for key in list(new_req.headers):
-                if key.lower() in ("authorization", "x-github-api-version"):
-                    del new_req.headers[key]
-        return new_req
-
 
 # Job name prefixes that are considered test jobs.
 _TEST_PREFIXES = (
@@ -49,28 +22,23 @@ _TEST_PREFIXES = (
 
 _MARKER = "<!-- pr-test-summary -->"
 _HTTP_TIMEOUT_SEC = 30
-# Maximum failed test names shown per job dropdown.
 _MAX_TESTS = 50
 
-# gtest prints "[  FAILED  ] Suite.Test (12 ms)" per failing test and again,
-# without the timing suffix, in the end-of-run "listed below" block. Capture the
-# "Suite.Test" name; the dedup set collapses the duplicate.
+# gtest prints "[  FAILED  ] Suite.Test (12 ms)" per failing test and again
+# without the timing suffix; the dedup set collapses the duplicate.
 _GTEST_FAILED = re.compile(r"\[  FAILED  \] (\S+\.\S+?)(?: \(\d+ ms\))?$")
 
-# Ordered by specificity; first match wins.
-_CRASH_PATTERNS = [
-    ("Segmentation fault", "SIGSEGV (segfault)"),
-    ("SIGSEGV", "SIGSEGV (segfault)"),
-    ("signal 11", "SIGSEGV (signal 11)"),
-    ("Aborted (core dumped)", "SIGABRT"),
-    ("SIGABRT", "SIGABRT"),
-    ("signal 6", "SIGABRT (signal 6)"),
-    ("SIGKILL", "SIGKILL"),
-    ("signal 9", "SIGKILL (signal 9)"),
-    ("Out of memory", "OOM"),
-    ("oom-kill", "OOM"),
-    ("core dumped", "core dumped"),
-]
+
+class _DropAuthOnRedirect(urllib.request.HTTPRedirectHandler):
+    # GitHub's job-log endpoint redirects to a presigned S3 URL. Forwarding
+    # the Authorization header causes S3 to return 400, so strip it first.
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        new_req = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new_req is not None:
+            for key in list(new_req.headers):
+                if key.lower() in ("authorization", "x-github-api-version"):
+                    del new_req.headers[key]
+        return new_req
 
 
 def _headers(token):
@@ -82,13 +50,11 @@ def _headers(token):
 
 
 def _paginate(path, token):
-    """Yield all items from a paginated GitHub REST API GET endpoint."""
     url = f"https://api.github.com{path}?per_page=100"
     while url:
         req = urllib.request.Request(url, headers=_headers(token))
         with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT_SEC) as resp:
             data = json.loads(resp.read())
-            # Jobs endpoint wraps items in {"jobs": [...]}; comments is a bare list.
             yield from (data["jobs"] if isinstance(data, dict) else data)
             link = resp.headers.get("Link", "")
             url = next(
@@ -113,27 +79,16 @@ def _api(path, token, method, payload):
 
 
 def _is_test_job(name):
-    # Matrix jobs use " / " or " (" as separator depending on GHA version.
-    return any(name == p or name.startswith(p + " ") for p in _TEST_PREFIXES)
+    return any(name.startswith(p) for p in _TEST_PREFIXES)
 
 
 def _analyze_job_log(job_id, repo, token):
-    """Return (failed_test_ids, crash_description_or_None) from a job's log.
-
-    Streams the whole log line by line (bounded memory: only matched failures
-    are retained). Truncating to a tail window does not work — the pytest
-    summary is not necessarily near the end (a job may run several test suites,
-    e.g. cuopt then cuopt_server), so a fixed window can drop it entirely.
-    Recognizes both pytest ("short test summary info") and gtest/ctest
-    ("[  FAILED  ] Suite.Test") output.
-    """
     req = urllib.request.Request(
         f"https://api.github.com/repos/{repo}/actions/jobs/{job_id}/logs",
         headers=_headers(token),
     )
     failed = []
     seen = set()
-    crash = None
     in_pytest_summary = False
 
     def _add(test_id):
@@ -155,18 +110,11 @@ def _analyze_job_log(job_id, repo, token):
                     else raw.rstrip("\n")
                 )
 
-                if crash is None:
-                    crash = next(
-                        (d for p, d in _CRASH_PATTERNS if p in line), None
-                    )
-
-                # gtest / ctest failures (C++ test jobs).
                 m = _GTEST_FAILED.match(line)
                 if m:
                     _add(m.group(1))
                     continue
 
-                # pytest failures (Python test jobs).
                 if "short test summary info" in line:
                     in_pytest_summary = True
                 elif in_pytest_summary:
@@ -179,9 +127,8 @@ def _analyze_job_log(job_id, repo, token):
             f"Warning: could not fetch logs for job {job_id}: {exc}",
             file=sys.stderr,
         )
-        return [], None
 
-    return failed[:_MAX_TESTS], crash
+    return failed[:_MAX_TESTS]
 
 
 def _build_body(failed, passed, skipped, job_analysis):
@@ -199,27 +146,16 @@ def _build_body(failed, passed, skipped, job_analysis):
             )
 
         for job in failed:
-            tests, crash = job_analysis.get(job["id"], ([], None))
-            if not tests and not crash:
+            tests = job_analysis[job["id"]]
+            if not tests:
                 continue
-            if crash and not tests:
-                summary = f"💥 crashed ({crash})"
-                detail = (
-                    "Process was terminated before the test run completed."
-                )
-            else:
-                n = len(tests)
-                noun = "test" if n == 1 else "tests"
-                summary = f"{n} failed {noun}" + (
-                    f" · 💥 {crash}" if crash else ""
-                )
-                detail = "\n".join(f"- `{t}`" for t in tests)
+            n = len(tests)
             lines += [
                 "",
                 "<details>",
-                f"<summary><code>{job['name']}</code> — {summary}</summary>",
+                f"<summary><code>{job['name']}</code> — {n} failed {'test' if n == 1 else 'tests'}</summary>",
                 "",
-                detail,
+                "\n".join(f"- `{t}`" for t in tests),
                 "",
                 "</details>",
             ]
@@ -231,7 +167,7 @@ def main():
     token = os.environ["GH_TOKEN"]
     repo = os.environ["GITHUB_REPOSITORY"]
     run_id = os.environ["GITHUB_RUN_ID"]
-    ref = os.environ["GITHUB_REF"]  # refs/heads/pull-request/NNN
+    ref = os.environ["GITHUB_REF"]
 
     branch = ref.removeprefix("refs/heads/")
     if not branch.startswith("pull-request/"):
