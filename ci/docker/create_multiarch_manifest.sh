@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 set -euo pipefail
@@ -57,16 +57,28 @@ create_manifest() {
     echo "✓ Successfully created and pushed manifest: $manifest_name"
 }
 
+# Short cu<major> alias (e.g. cu12/cu13), matching the pip/conda wheel suffix.
+# Aliases point at the same per-arch images as the fully-qualified tags.
+CUDA_MAJOR="${CUDA_SHORT%%.*}"
+
 # Create manifest for dockerhub and nvstaging
 echo "=== Creating Docker Hub manifests ==="
 create_manifest \
     "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}" \
     "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-amd64" \
     "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-arm64"
+create_manifest \
+    "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cu${CUDA_MAJOR}" \
+    "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-amd64" \
+    "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-arm64"
 
 echo "=== Creating NVCR staging manifests ==="
 create_manifest \
     "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}" \
+    "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-amd64" \
+    "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-arm64"
+create_manifest \
+    "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cu${CUDA_MAJOR}" \
     "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-amd64" \
     "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-arm64"
 
@@ -79,10 +91,18 @@ if [[ "${IMAGE_TAG_PREFIX}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ "${IMAGE_TAG_PR
         "nvidia/cuopt:latest-cuda${CUDA_SHORT}-py${PYTHON_SHORT}" \
         "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-amd64" \
         "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-arm64"
+    create_manifest \
+        "nvidia/cuopt:latest-cu${CUDA_MAJOR}" \
+        "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-amd64" \
+        "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-arm64"
 
     echo "Creating NVCR staging latest manifest..."
     create_manifest \
         "nvcr.io/nvstaging/nvaie/cuopt:latest-cuda${CUDA_SHORT}-py${PYTHON_SHORT}" \
+        "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-amd64" \
+        "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-arm64"
+    create_manifest \
+        "nvcr.io/nvstaging/nvaie/cuopt:latest-cu${CUDA_MAJOR}" \
         "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-amd64" \
         "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-arm64"
 else
