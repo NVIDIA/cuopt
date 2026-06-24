@@ -90,12 +90,20 @@ A wrong merge resolution frequently **compiles cleanly and fails silently**: a d
 
 ### Adding a Solver Parameter
 
-1. Add to settings struct in `cpp/include/cuopt/` and wire into `set_parameter_from_string()` in `cpp/src/`
-2. Expose in Python — if using the string-based interface, the parameter is auto-discovered (no `.pyx` change needed). Add a convenience method in `SolverSettings` if warranted. See [python_bindings.md](python_bindings.md) for the full checklist.
-3. Add to server schema (`docs/cuopt/source/cuopt_spec.yaml`) if applicable
-4. Add tests at C++ and Python levels
-5. Rebuild: `./build.sh libcuopt && ./build.sh cuopt`
-6. Update documentation
+Internal settings struct fields (e.g. a new MIP cut toggle) are often **already
+read by the solver** but not yet exposed to the CLI/string interface, Python, or
+the server. To fully expose one, wire it through every layer below — missing any
+one silently drops the parameter from that interface. Use a sibling parameter
+(e.g. `clique_cuts`) as the template and grep for it across the repo to find
+every spot.
+
+1. **Settings struct** — add the field in `cpp/include/cuopt/.../solver_settings.hpp` (and the internal `simplex_solver_settings.hpp` if the solver reads it there). Default to `-1` (automatic) for cut toggles.
+2. **C constant** — add a `#define CUOPT_MIP_<NAME> "mip_<name>"` in `cpp/include/cuopt/linear_programming/constants.h`, next to the related parameters.
+3. **String-parameter registry** — add a tuple to the `int_parameters` (or `float_parameters`) table in `cpp/src/math_optimization/solver_settings.cu`: `{CUOPT_MIP_<NAME>, &mip_settings.<field>, <min>, <max>, <default>}`. This single registry is what drives CLI parsing, `set_parameter`/`get_parameter`, and Python auto-discovery — no `.pyx` change needed.
+4. **gRPC/server path** — add the field under the right message in `cpp/src/grpc/codegen/field_registry.yaml` with the next free `field_num` for that message, then regenerate with `python cpp/src/grpc/codegen/generate_conversions.py` (needs `pyyaml`). The generated `cuopt_remote_data.proto` and `generated_*_to_*.inc` files are **auto-generated — never hand-edit** unless you cannot run the generator, in which case mirror the sibling parameter exactly (proto fields are ordered by `field_num`; the `.inc` files follow registry declaration order).
+5. **Docs** — add a `.. doxygendefine:: CUOPT_MIP_<NAME>` to `docs/cuopt/source/cuopt-c/mip/mip-c-api.rst` and a settings section to `docs/cuopt/source/mip-settings.rst`. Add to the server schema (`docs/cuopt/source/cuopt_spec.yaml`) if applicable.
+6. **Tests** — add C++ and Python coverage.
+7. **Rebuild**: `./build.sh libcuopt && ./build.sh cuopt`
 
 ### Adding a Dependency
 

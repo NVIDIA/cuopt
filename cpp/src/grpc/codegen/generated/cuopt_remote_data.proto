@@ -248,6 +248,7 @@ message MIPSolverSettings {
   optional int32 cycle_detection_length = 49;
   optional double relaxed_lp_time_limit = 50;
   optional double related_vars_time_limit = 51;
+  optional int32 zero_half_cuts = 52;
 }
 
 message PDLPWarmStartData {

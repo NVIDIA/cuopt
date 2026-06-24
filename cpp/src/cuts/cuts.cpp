@@ -114,16 +114,14 @@ clique_cut_build_status_t build_clique_cut(const std::vector<i_t>& clique_vertic
   seen_complement.reserve(clique_vertices.size());
   for (const auto vertex_idx : clique_vertices) {
     cuopt_assert(vertex_idx >= 0 && vertex_idx < 2 * num_vars, "Clique vertex out of range");
-    const i_t var_idx     = vertex_idx % num_vars;
-    const bool complement = vertex_idx >= num_vars;
-    const f_t lower_bound = lower_bounds[var_idx];
-    const f_t upper_bound = upper_bounds[var_idx];
+    const i_t var_idx                      = vertex_idx % num_vars;
+    const bool complement                  = vertex_idx >= num_vars;
+    [[maybe_unused]] const f_t lower_bound = lower_bounds[var_idx];
+    [[maybe_unused]] const f_t upper_bound = upper_bounds[var_idx];
     cuopt_assert(var_types[var_idx] != variable_type_t::CONTINUOUS,
                  "Clique contains continuous variable");
     cuopt_assert(lower_bound >= -bound_tol, "Clique variable lower bound below zero");
     cuopt_assert(upper_bound <= 1 + bound_tol, "Clique variable upper bound above one");
-    static_cast<void>(lower_bound);
-    static_cast<void>(upper_bound);
 
     if (complement) {
       cuopt_assert(seen_complement.count(var_idx) == 0, "Duplicate complement in clique");
