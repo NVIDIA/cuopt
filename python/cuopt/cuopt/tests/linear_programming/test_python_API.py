@@ -475,11 +475,13 @@ def test_warm_start():
     settings.set_parameter(CUOPT_INFEASIBILITY_DETECTION, False)
 
     problem.solve(settings)
+    assert problem.Status.name == "Optimal"
     warmstart_data = problem.get_pdlp_warm_start_data()
     settings.set_pdlp_warm_start_data(warmstart_data)
 
     settings.set_optimality_tolerance(1e-3)
     problem.solve(settings)
+    assert problem.Status.name == "Optimal"
 
 
 def test_mip_start():

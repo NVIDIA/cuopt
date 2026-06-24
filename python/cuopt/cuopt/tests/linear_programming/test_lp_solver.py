@@ -622,10 +622,12 @@ def test_warm_start():
     settings.set_parameter(CUOPT_PRESOLVE, 0)
 
     solution = solver.Solve(data_model_obj, settings)
+    assert solution.get_termination_reason() == "Optimal"
     settings.set_pdlp_warm_start_data(solution.get_pdlp_warm_start_data())
 
     settings.set_optimality_tolerance(1e-3)
-    solver.Solve(data_model_obj, settings)
+    solution2 = solver.Solve(data_model_obj, settings)
+    assert solution2.get_termination_reason() == "Optimal"
 
     # Should raise an exception as problems are different
     file_path = RAPIDS_DATASET_ROOT_DIR + "/linear_programming/good-mps-1.mps"
