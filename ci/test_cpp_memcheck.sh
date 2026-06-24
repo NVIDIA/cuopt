@@ -19,9 +19,12 @@ source ./ci/use_conda_packages_from_prs.sh
 RAPIDS_VERSION="$(rapids-version)"
 
 rapids-logger "Generate C++ testing dependencies"
+source ./ci/use_conda_packages_from_prs.sh
 rapids-dependency-file-generator \
   --output conda \
   --file-key test_cpp \
+  --prepend-channel "${LIBRAFT_CHANNEL}" \
+  --prepend-channel "${RAFT_CHANNEL}" \
   --matrix "cuda=${RAPIDS_CUDA_VERSION%.*};arch=$(arch)" | tee env.yaml
 
 rapids-mamba-retry env create --yes -f env.yaml -n test
