@@ -239,8 +239,8 @@ class mps_data_model_t {
    * - row identity and type (from ROWS),
    * - sparse linear coefficients (from COLUMNS),
    * - RHS value (from RHS),
-   * - quadratic matrix Q in canonical COO (SoA: row, col, value): one triplet per variable pair,
-   *   sorted by (row, col). Off-diagonal cross terms store the full coefficient on x_i*x_j
+   * - quadratic matrix Q in upper-triangular COO format.
+   *   Off-diagonal cross terms store the full coefficient on x_i*x_j
    *   (e.g. -2*d for rotated SOC), not as symmetric halves.
    */
   struct quadratic_constraint_t {

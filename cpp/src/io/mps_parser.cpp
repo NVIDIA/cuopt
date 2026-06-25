@@ -257,41 +257,44 @@ void canonicalize_coo_matrix(std::vector<i_t>& rows, std::vector<i_t>& cols, std
     return;
   }
 
-  // Map every entry to its upper-triangular key (min(r,c), max(r,c)). Both
-  // orientations of an off-diagonal pair and any duplicate entries collapse to
-  // the same key, so summing the values per key yields the full x^T Q x
-  // coefficient for that variable pair.
-  std::vector<std::tuple<i_t, i_t, f_t>> triples;
-  triples.reserve(n);
+  std::vector<i_t> i(n);
+  std::vector<i_t> j(n);
+  std::vector<f_t> x(n);
   for (size_t t = 0; t < n; ++t) {
-    triples.emplace_back(std::min(rows[t], cols[t]), std::max(rows[t], cols[t]), vals[t]);
+    i[t] = std::min(rows[t], cols[t]);
+    j[t] = std::max(rows[t], cols[t]);
+    x[t] = vals[t];
   }
 
-  // Sort triples by (row, col) key.
-  std::sort(triples.begin(), triples.end(), [](const auto& a, const auto& b) {
-    if (std::get<0>(a) != std::get<0>(b)) { return std::get<0>(a) < std::get<0>(b); }
-    return std::get<1>(a) < std::get<1>(b);
+  std::vector<size_t> order(n);
+  for (size_t t = 0; t < n; ++t) {
+    order[t] = t;
+  }
+  std::sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+    return i[a] != i[b] ? i[a] < i[b] : j[a] < j[b];
   });
 
-  // Merge equal keys (contiguous after the sort) and drop near-zero sums.
   rows.clear();
   cols.clear();
   vals.clear();
-  for (size_t i = 0; i < triples.size();) {
-    const i_t r = std::get<0>(triples[i]);
-    const i_t c = std::get<1>(triples[i]);
-    f_t sum     = f_t(0);
-    size_t j    = i;
-    for (; j < triples.size() && std::get<0>(triples[j]) == r && std::get<1>(triples[j]) == c;
-         ++j) {
-      sum += std::get<2>(triples[j]);
+  const f_t eps = std::numeric_limits<f_t>::epsilon();
+  for (size_t k = 0; k < n;) {
+    const size_t a = order[k];
+    const i_t r    = i[a];
+    const i_t c    = j[a];
+    f_t sum        = x[a];
+    size_t m       = k + 1;
+    for (; m < n; ++m) {
+      const size_t b = order[m];
+      if (i[b] != r || j[b] != c) { break; }
+      sum += x[b];
     }
-    if (std::abs(sum) > std::numeric_limits<f_t>::epsilon()) {
+    if (std::abs(sum) > eps) {
       rows.push_back(r);
       cols.push_back(c);
       vals.push_back(sum);
     }
-    i = j;
+    k = m;
   }
 }
 
