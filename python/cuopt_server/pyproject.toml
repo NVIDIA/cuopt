@@ -22,12 +22,12 @@ license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
     "cuopt==26.8.*,>=0.0.0a0",
-    "cupy-cuda13x>=13.6.0,!=14.0.0,!=14.1.0",
+    "cupy-cuda13x[ctk]>=14.0.1,!=14.1.0",
     "fastapi",
     "jsonref==1.1.0",
     "msgpack-numpy==0.4.8",
     "msgpack==1.1.2",
-    "numpy>=1.23.5,<3.0",
+    "numpy>=2.0,<3.0",
     "pandas>=2.0",
     "psutil>=6.0.0",
     "uvicorn==0.34.*",
