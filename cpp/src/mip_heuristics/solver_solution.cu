@@ -242,7 +242,7 @@ void mip_solution_t<i_t, f_t>::log_detailed_summary() const
     case mip_termination_status_t::Optimal:
     case mip_termination_status_t::FeasibleFound:
       CUOPT_LOG_INFO("%s\n",
-                     std::format("Best objective {:.4g}, best bound {:.4g}, gap {:.2f}%.",
+                     std::format("Best objective {:.6g}, best bound {:.6g}, gap {:.2f}%.",
                                  objective_,
                                  stats_.get_solution_bound(),
                                  mip_gap_ * 100)
