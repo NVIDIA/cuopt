@@ -24,7 +24,22 @@
       "Builds a payoff table (each objective alone) for ranges/normalization",
       "Traces the Pareto frontier via repeated single-objective cuOpt solves; prefers epsilon-constraint over weighted-sum for completeness on a non-convex/MILP problem",
       "Filters dominated and duplicate portfolios",
-      "Reports the tradeoff and flags the knee, leaving the final pick to the lead"
+      "Reports the tradeoff and flags the knee, leaving the final pick to the lead",
+      "Since supplier selection is MILP (no duals), estimates the cost/resilience exchange rate by differencing adjacent frontier points, not from constraint duals"
+    ]
+  },
+  {
+    "id": "multiobj-explore-eval-004-dual-exchange-rate",
+    "question": "An analyst is building a risk-return efficient frontier across a set of assets: minimize portfolio variance and maximize expected return, with no fixed risk appetite. Using cuOpt, how would you trace the frontier, and at each point how would you tell the investor the rate at which they are paying variance for extra return without spending additional solves?",
+    "expected_skill": "cuopt-multi-objective-exploration",
+    "expected_script": null,
+    "ground_truth": "The agent recognizes a two-objective tradeoff (variance vs return) with no fixed weighting and traces the frontier by epsilon-constraint: it keeps the quadratic variance as the objective and sweeps a linear return floor (return >= epsilon), each value a single convex QP solve. At each solved point it reads the dual value on the binding (linear) return-floor constraint as the marginal variance per unit of required return -- the local exchange rate, i.e. the slope (tangent) of the frontier at that point -- taken directly off the solve at no extra cost rather than by differencing two adjacent points, and accurate to the solve's optimality tolerance. It notes the dual reading applies to continuous LP/QP solutions, not MILP, and that the swept constraint must be linear since any quadratic constraint makes cuOpt return no duals for the whole solve. It filters dominated points, flags the knee, and leaves the risk appetite to the investor, deferring per-solve mechanics to the api-* skills and formulation to cuopt-numerical-optimization-formulation.",
+    "expected_behavior": [
+      "Frames variance vs return as two competing objectives with no agreed weighting",
+      "Traces the frontier via epsilon-constraint, keeping the quadratic variance as the objective and sweeping a linear return floor (each a single QP solve)",
+      "Reads the swept (linear) constraint's dual as the local exchange rate (marginal variance per unit return) and slope of the frontier, taken straight off each solve rather than by differencing",
+      "Notes the dual / exchange-rate reading applies to continuous LP/QP, not MILP, and is accurate to the solve tolerance",
+      "Filters dominated points, flags the knee, and leaves the final risk appetite to the investor"
     ]
   },
   {
@@ -37,6 +52,21 @@
       "Recognizes a single objective with a hard constraint, not a tradeoff",
       "Does NOT trace a frontier or sweep the budget as if it were a tradeoff dial",
       "Returns one recommended supplier set (one solve), citing the binding budget and demand coverage"
+    ]
+  },
+  {
+    "id": "multiobj-explore-eval-005-latent-objective",
+    "question": "A planner runs a multi-period production model to MAXIMIZE priority-weighted finished-goods inventory at the end of a 10-period horizon. The model also carries full cost data — per-item unit and holding costs, per-resource hourly production cost — but the current objective ignores it, and leadership has set no budget. The planner asks: 'Push supply as high as it will go — what's the plan?' Using cuOpt, how would you respond?",
+    "expected_skill": "cuopt-multi-objective-exploration",
+    "expected_script": null,
+    "ground_truth": "The agent recognizes that cost is a SECOND objective sitting latent in the problem — the data is present and no budget pins it down — and does NOT simply return the single maximum-supply plan, nor silently fold cost into a weighted-sum blend (maximize supply minus lambda*cost) with a self-chosen lambda. It surfaces the supply-vs-cost tradeoff and traces the Pareto frontier with cuOpt by epsilon-constraint (cap total cost, maximize supply, sweep the cap from tight to slack). Because the model is a MILP (no usable duals), it estimates the supply-per-dollar exchange rate by differencing adjacent frontier points, reports supply in interpretable units rather than the raw priority-weighted total, flags the knee where supply per dollar collapses, names two or three candidate operating points, and defers the budget decision to leadership. It distinguishes this from a hard-budget case: cost is unconstrained here, so the right move is to expose the tradeoff, not to pick one plan. It defers per-solve mechanics to the api-* skills and formulation to cuopt-numerical-optimization-formulation.",
+    "expected_behavior": [
+      "Recognizes a LATENT second objective (cost) present in the data but unstated; does NOT optimize the single stated objective (supply) in isolation",
+      "Does NOT silently collapse to a weighted-sum blend (maximize supply minus lambda*cost) with a self-chosen weight",
+      "Surfaces the supply-vs-cost tradeoff and traces the Pareto frontier via epsilon-constraint (sweep a total-cost cap, maximize supply)",
+      "Since the model is MILP (no duals), estimates the supply-per-dollar exchange rate by differencing adjacent frontier points",
+      "Reports supply in interpretable units, flags the knee, names candidate operating points, and defers the budget call to leadership",
+      "Distinguishes this from a hard-budget case (cf. the decoy): cost is unconstrained here, so it exposes the tradeoff rather than returning a single plan"
     ]
   }
 ]

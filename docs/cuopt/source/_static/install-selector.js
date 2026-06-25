@@ -40,22 +40,22 @@
   var CONTAINER_CUOPT_LIB = {
     stable: {
       cu12: {
-        default: "docker pull nvidia/cuopt:latest-cuda12.9-py3.13",
-        run: "docker run --gpus all -it --rm nvidia/cuopt:latest-cuda12.9-py3.13 /bin/bash",
+        default: "docker pull nvidia/cuopt:latest-cu12",
+        run: "docker run --gpus all -it --rm nvidia/cuopt:latest-cu12 /bin/bash",
       },
       cu13: {
-        default: "docker pull nvidia/cuopt:latest-cuda13.0-py3.13",
-        run: "docker run --gpus all -it --rm nvidia/cuopt:latest-cuda13.0-py3.13 /bin/bash",
+        default: "docker pull nvidia/cuopt:latest-cu13",
+        run: "docker run --gpus all -it --rm nvidia/cuopt:latest-cu13 /bin/bash",
       },
     },
     nightly: {
       cu12: {
-        default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cuda12.9-py3.14",
-        run: "docker run --gpus all -it --rm nvidia/cuopt:" + V_NEXT + ".0a-cuda12.9-py3.14 /bin/bash",
+        default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cu12",
+        run: "docker run --gpus all -it --rm nvidia/cuopt:" + V_NEXT + ".0a-cu12 /bin/bash",
       },
       cu13: {
-        default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cuda13.1-py3.14",
-        run: "docker run --gpus all -it --rm nvidia/cuopt:" + V_NEXT + ".0a-cuda13.1-py3.14 /bin/bash",
+        default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cu13",
+        run: "docker run --gpus all -it --rm nvidia/cuopt:" + V_NEXT + ".0a-cu13 /bin/bash",
       },
     },
   };
@@ -207,22 +207,22 @@
       container: {
         stable: {
           cu12: {
-            default: "docker pull nvidia/cuopt:latest-cuda12.9-py3.13",
-            run: "docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:latest-cuda12.9-py3.13",
+            default: "docker pull nvidia/cuopt:latest-cu12",
+            run: "docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:latest-cu12",
           },
           cu13: {
-            default: "docker pull nvidia/cuopt:latest-cuda13.0-py3.13",
-            run: "docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:latest-cuda13.0-py3.13",
+            default: "docker pull nvidia/cuopt:latest-cu13",
+            run: "docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:latest-cu13",
           },
         },
         nightly: {
           cu12: {
-            default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cuda12.9-py3.14",
-            run: "docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:" + V_NEXT + ".0a-cuda12.9-py3.14",
+            default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cu12",
+            run: "docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:" + V_NEXT + ".0a-cu12",
           },
           cu13: {
-            default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cuda13.1-py3.14",
-            run: "docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:" + V_NEXT + ".0a-cuda13.1-py3.14",
+            default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cu13",
+            run: "docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:" + V_NEXT + ".0a-cu13",
           },
         },
       },
@@ -268,7 +268,7 @@
       var cudaKey = cuda || "cu12";
       var c = data[release][cudaKey] || data[release].cu12;
       var hubPull = c.default;
-      var tag = "latest-cuda12.9-py3.13";
+      var tag = "latest-cu12";
       var tm = hubPull.match(/docker pull nvidia\/cuopt:(\S+)/);
       if (tm) tag = tm[1];
       var registry = getSelectedValue("cuopt-registry") || "hub";

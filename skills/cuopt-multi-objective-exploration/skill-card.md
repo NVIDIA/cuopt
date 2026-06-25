@@ -9,7 +9,7 @@ NVIDIA <br>
 ### License/Terms of Use: <br>
 Apache 2.0 <br>
 ## Use Case: <br>
-Developers and optimization engineers exploring multi-objective tradeoffs across LP, MILP, QP, and routing problems to present decision-makers with the full Pareto frontier rather than a single collapsed optimum. <br>
+Developers and engineers exploring tradeoffs between competing objectives in optimization problems, using cuOpt to trace Pareto frontiers and interpret exchange rates across cost, service level, risk, and other conflicting goals. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
@@ -20,7 +20,7 @@ Mitigation: Review and scan skill before deployment. <br>
 
 ## Reference(s): <br>
 - [cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html) <br>
-- [cuopt-examples](https://github.com/NVIDIA/cuopt-examples) <br>
+- [cuOpt Examples](https://github.com/NVIDIA/cuopt-examples) <br>
 
 
 ## Skill Output: <br>
@@ -30,13 +30,13 @@ Mitigation: Review and scan skill before deployment. <br>
 **Other Properties Related to Output:** [None] <br>
 
 ## Evaluation Agents Used: <br>
-- Claude Code (`claude-code`) <br>
-- Codex (`codex`) <br>
+- claude-code <br>
+- codex <br>
 
 
 
 ## Evaluation Tasks: <br>
-Evaluated against 3 internal evaluation tasks (2 positive skill-activation, 1 negative) with 2 attempts per task. <br>
+Evaluated against 4 tasks (3 positive skill-activation, 1 negative) via NVSkills-Eval external profile. <br>
 
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
@@ -60,11 +60,11 @@ Underlying evaluation signals used in this run: <br>
 ## Evaluation Results: <br>
 | Dimension | Num | `claude-code` | `codex` |
 |---|---:|---:|---:|
-| Security | 6 | 100% (+0%) | 100% (+0%) |
-| Correctness | 6 | 82% (+27%) | 78% (+15%) |
-| Discoverability | 6 | 67% (+33%) | 64% (+23%) |
-| Effectiveness | 6 | 87% (+16%) | 80% (+8%) |
-| Efficiency | 6 | 71% (+22%) | 63% (+13%) |
+| Security | 4 | 100% (+0%) | 100% (+0%) |
+| Correctness | 4 | 88% (+38%) | 76% (+20%) |
+| Discoverability | 4 | 75% (+50%) | 66% (+35%) |
+| Effectiveness | 4 | 87% (+15%) | 77% (+5%) |
+| Efficiency | 4 | 76% (+33%) | 65% (+22%) |
 
 ## Testing Completed: <br>
 **[x] Agent Red-Teaming** <br>
