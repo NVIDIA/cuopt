@@ -30,8 +30,10 @@ namespace cuopt::mathematical_optimization::mip {
 using simplex::basis_update_mpf_t;
 using simplex::compute_initial_nonbasic_end;
 using simplex::compute_objective;
+using simplex::csc_matrix_t;
 using simplex::csr_matrix_t;
 using simplex::dual_status_t;
+using simplex::logger_t;
 using simplex::lp_problem_t;
 using simplex::lp_solution_t;
 using simplex::simplex_solver_settings_t;
@@ -40,6 +42,7 @@ using simplex::tic;
 using simplex::toc;
 using simplex::variable_status_t;
 using simplex::variable_type_t;
+using simplex::vector_norm_inf;
 
 namespace {
 
@@ -151,7 +154,7 @@ objective_change_estimate_t<f_t> single_pivot_objective_change_estimate(
       dual_residual[j] -= lp.objective[j];
     }
     simplex::matrix_transpose_vector_multiply(lp.A, 1.0, lp_solution.y, 1.0, dual_residual);
-    f_t dual_residual_norm = simplex::vector_norm_inf<i_t, f_t>(dual_residual);
+    f_t dual_residual_norm = vector_norm_inf<i_t, f_t>(dual_residual);
     settings.log.printf("Dual residual norm: %e\n", dual_residual_norm);
   }
 #endif
@@ -570,7 +573,7 @@ simplex_problem_to_mps_data_model(const lp_problem_t<i_t, f_t>& lp,
   original_root_soln_x.resize(n);
 
   // Remove slacks from A
-  simplex::csc_matrix_t<i_t, f_t> A_no_slacks = lp.A;
+  csc_matrix_t<i_t, f_t> A_no_slacks = lp.A;
   std::vector<i_t> cols_to_remove(lp.A.n, 0);
   for (i_t j : new_slacks) {
     cols_to_remove[j] = 1;
@@ -903,7 +906,7 @@ static void batch_pdlp_strong_branching_task(
 
 template <typename i_t, typename f_t>
 static void batch_pdlp_reliability_branching_task(
-  simplex::logger_t& log,
+  logger_t& log,
   i_t rb_mode,
   i_t num_candidates,
   f_t start_time,

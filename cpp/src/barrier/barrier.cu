@@ -66,6 +66,7 @@ using simplex::multiply;
 using simplex::simplex_solver_settings_t;
 using simplex::tic;
 using simplex::toc;
+using simplex::vector_norm1;
 
 template <typename i_t, typename f_t>
 bool validate_barrier_cone_layout(const lp_problem_t<i_t, f_t>& problem,
@@ -2352,7 +2353,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     // y = 0
     data.y.set_scalar(0.0);
 
-    f_t epsilon = 1.0 + simplex::vector_norm1<i_t, f_t>(lp.objective);
+    f_t epsilon = 1.0 + vector_norm1<i_t, f_t>(lp.objective);
 
     // A^T y + z - E^T v  - Q x = c
     // when y = 0, z - E^T v = c + Q x

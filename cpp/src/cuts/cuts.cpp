@@ -38,11 +38,14 @@ using simplex::lp_problem_t;
 using simplex::lp_solution_t;
 using simplex::matrix_vector_multiply;
 using simplex::simplex_solver_settings_t;
+using simplex::sparse_dot;
 using simplex::sparse_vector_t;
 using simplex::tic;
 using simplex::toc;
 using simplex::variable_status_t;
 using simplex::variable_type_t;
+using simplex::vector_norm2;
+using simplex::vector_norm_inf;
 
 namespace {
 
@@ -607,12 +610,12 @@ f_t cut_pool_t<i_t, f_t>::cut_orthogonality(i_t i, i_t j)
   const i_t j_end   = cut_storage_.row_start[j + 1];
   const i_t j_nz    = j_end - j_start;
 
-  f_t dot = simplex::sparse_dot(cut_storage_.j.data() + i_start,
-                                cut_storage_.x.data() + i_start,
-                                i_nz,
-                                cut_storage_.j.data() + j_start,
-                                cut_storage_.x.data() + j_start,
-                                j_nz);
+  f_t dot = sparse_dot(cut_storage_.j.data() + i_start,
+                       cut_storage_.x.data() + i_start,
+                       i_nz,
+                       cut_storage_.j.data() + j_start,
+                       cut_storage_.x.data() + j_start,
+                       j_nz);
 
   f_t norm_i = cut_norms_[i];
   f_t norm_j = cut_norms_[j];
@@ -3909,7 +3912,7 @@ void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::compute_initial_scores
 {
   const bool verbose  = false;
   const i_t n         = lp.num_cols;
-  const f_t obj_norm  = simplex::vector_norm2<i_t, f_t>(lp.objective);
+  const f_t obj_norm  = vector_norm2<i_t, f_t>(lp.objective);
   const f_t obj_denom = std::max(1.0, obj_norm);
 
   // Compute initial scores for all rows
@@ -5488,7 +5491,7 @@ void read_saved_solution_for_cut_verification(const lp_problem_t<i_t, f_t>& lp,
       std::vector<f_t> residual = lp.rhs;
       matrix_vector_multiply(lp.A, 1.0, saved_solution, -1.0, residual);
       settings.log.printf("Saved solution: || A*x - b ||_inf %e\n",
-                          simplex::vector_norm_inf<i_t, f_t>(residual));
+                          vector_norm_inf<i_t, f_t>(residual));
       f_t infeas = 0;
       for (i_t j = 0; j < lp.num_cols; j++) {
         if (saved_solution[j] < lp.lower[j] - 1e-6) {
@@ -5522,7 +5525,7 @@ void write_solution_for_cut_verification(const lp_problem_t<i_t, f_t>& lp,
 
     std::vector<f_t> residual = lp.rhs;
     matrix_vector_multiply(lp.A, 1.0, solution, -1.0, residual);
-    printf("|| A*x - b ||_inf %e\n", simplex::vector_norm_inf<i_t, f_t>(residual));
+    printf("|| A*x - b ||_inf %e\n", vector_norm_inf<i_t, f_t>(residual));
     auto hash_combine_f = [](size_t seed, f_t x) {
       seed ^= std::hash<f_t>{}(x) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
       return seed;

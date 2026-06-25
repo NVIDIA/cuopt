@@ -61,6 +61,7 @@ using simplex::logger_t;
 using simplex::lp_problem_t;
 using simplex::lp_solution_t;
 using simplex::lp_status_t;
+using simplex::matrix_vector_multiply;
 using simplex::mip_solution_t;
 using simplex::simplex_solver_settings_t;
 using simplex::solve_linear_program_with_advanced_basis;
@@ -70,6 +71,7 @@ using simplex::uncrush_primal_solution;
 using simplex::user_problem_t;
 using simplex::variable_status_t;
 using simplex::variable_type_t;
+using simplex::vector_norm_inf;
 
 namespace {
 
@@ -124,8 +126,8 @@ bool check_guess(const lp_problem_t<i_t, f_t>& original_lp,
   bool feasible = false;
   std::vector<f_t> residual(original_lp.num_rows);
   residual = original_lp.rhs;
-  simplex::matrix_vector_multiply(original_lp.A, 1.0, guess, -1.0, residual);
-  primal_error           = simplex::vector_norm_inf<i_t, f_t>(residual);
+  matrix_vector_multiply(original_lp.A, 1.0, guess, -1.0, residual);
+  primal_error           = vector_norm_inf<i_t, f_t>(residual);
   bound_error            = 0.0;
   constexpr bool verbose = false;
   for (i_t j = 0; j < original_lp.num_cols; j++) {
