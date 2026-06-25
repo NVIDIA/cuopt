@@ -271,6 +271,9 @@ void update_Arow(i_t leaving,
 // This is a Farkas certificate for the infeasibility of the primal problem
 //
 // A*x = b, l <= x <= u
+
+namespace phase2 {
+
 template <typename i_t, typename f_t>
 void compute_farkas_certificate(const lp_problem_t<i_t, f_t>& lp,
                                 const simplex_solver_settings_t<i_t, f_t>& settings,
@@ -2489,6 +2492,8 @@ class phase2_timers_t {
   bool record_time;
 };
 
+}  // namespace phase2
+
 template <typename i_t, typename f_t>
 dual_status_t dual_phase2(i_t phase,
                           i_t slack_basis,
@@ -2575,7 +2580,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
   std::vector<f_t> z_old                     = z;
   phase2_work_estimate += 4 * n;
 
-  bound_info(lp, settings);
+  phase2::bound_info(lp, settings);
   phase2_work_estimate += 2 * n;
 
   f_t refactor_work = 0.0;
@@ -2620,12 +2625,13 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
       "|| y || %e || cB || %e\n", vector_norm_inf<i_t, f_t>(y), vector_norm_inf<i_t, f_t>(c_basic));
   }
 
-  compute_reduced_costs(objective, lp.A, y, basic_list, nonbasic_list, z, phase2_work_estimate);
+  phase2::compute_reduced_costs(
+    objective, lp.A, y, basic_list, nonbasic_list, z, phase2_work_estimate);
   if constexpr (print_norms) { settings.log.printf("|| z || %e\n", vector_norm_inf<i_t, f_t>(z)); }
 
 #ifdef COMPUTE_DUAL_RESIDUAL
   std::vector<f_t> dual_res1;
-  compute_dual_residual(lp.A, objective, y, z, dual_res1);
+  phase2::compute_dual_residual(lp.A, objective, y, z, dual_res1);
   f_t dual_res_norm = vector_norm_inf<i_t, f_t>(dual_res1);
   if (dual_res_norm > settings.tight_tol) {
     settings.log.printf("|| A'*y + z - c || %e\n", dual_res_norm);
@@ -2633,19 +2639,19 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
   assert(dual_res_norm < 1e-3);
 #endif
 
-  set_primal_variables_on_bounds(lp, settings, z, vstatus, x);
+  phase2::set_primal_variables_on_bounds(lp, settings, z, vstatus, x);
   phase2_work_estimate += 5 * (n - m);
 
 #ifdef PRINT_VSTATUS_CHANGES
   i_t num_vstatus_changes;
   i_t num_z_changes;
-  vstatus_changes(vstatus, vstatus_old, z, z_old, num_vstatus_changes, num_z_changes);
+  phase2::vstatus_changes(vstatus, vstatus_old, z, z_old, num_vstatus_changes, num_z_changes);
   settings.log.printf("Number of vstatus changes %d\n", num_vstatus_changes);
   settings.log.printf("Number of z changes %d\n", num_z_changes);
 #endif
 
   const f_t init_dual_inf =
-    dual_infeasibility(lp, settings, vstatus, z, settings.tight_tol, settings.dual_tol);
+    phase2::dual_infeasibility(lp, settings, vstatus, z, settings.tight_tol, settings.dual_tol);
   phase2_work_estimate += 3 * n;
   if (init_dual_inf > settings.dual_tol) {
     settings.log.printf("Initial dual infeasibility %e\n", init_dual_inf);
@@ -2658,15 +2664,15 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
   }
   phase2_work_estimate += 3 * n;
 
-  compute_primal_variables(ft,
-                           lp.rhs,
-                           lp.A,
-                           basic_list,
-                           nonbasic_list,
-                           settings.tight_tol,
-                           x,
-                           xB_workspace,
-                           phase2_work_estimate);
+  phase2::compute_primal_variables(ft,
+                                   lp.rhs,
+                                   lp.A,
+                                   basic_list,
+                                   nonbasic_list,
+                                   settings.tight_tol,
+                                   x,
+                                   xB_workspace,
+                                   phase2_work_estimate);
 
   if (toc(start_time) > settings.time_limit) { return dual_status_t::TIME_LIMIT; }
   if (print_norms) { settings.log.printf("|| x || %e\n", vector_norm2<i_t, f_t>(x)); }
@@ -2685,14 +2691,14 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
     delta_y_steepest_edge.resize(n);
     phase2_work_estimate += n;
     if (slack_basis) {
-      initialize_steepest_edge_norms_from_slack_basis(
+      phase2::initialize_steepest_edge_norms_from_slack_basis(
         basic_list, nonbasic_list, delta_y_steepest_edge);
       phase2_work_estimate += 2 * n;
     } else {
       std::fill(delta_y_steepest_edge.begin(), delta_y_steepest_edge.end(), -1);
       phase2_work_estimate += n;
       f_t steepest_edge_start = tic();
-      i_t status              = initialize_steepest_edge_norms(
+      i_t status              = phase2::initialize_steepest_edge_norms(
         lp, settings, start_time, basic_list, ft, delta_y_steepest_edge, phase2_work_estimate);
       f_t steepest_edge_time = toc(steepest_edge_start);
       if (status == CONCURRENT_HALT_RETURN) { return dual_status_t::CONCURRENT_LIMIT; }
@@ -2738,24 +2744,26 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
   delta_z_indices.reserve(n);
   phase2_work_estimate += n;
 
-  reset_basis_mark(basic_list, nonbasic_list, basic_mark, nonbasic_mark, phase2_work_estimate);
+  phase2::reset_basis_mark(
+    basic_list, nonbasic_list, basic_mark, nonbasic_mark, phase2_work_estimate);
 
   std::vector<uint8_t> bounded_variables(n, 0);
-  compute_bounded_info(lp.lower, lp.upper, bounded_variables);
+  phase2::compute_bounded_info(lp.lower, lp.upper, bounded_variables);
   phase2_work_estimate += 4 * n;
 
   f_t primal_infeasibility;
-  f_t primal_infeasibility_squared = compute_initial_primal_infeasibilities(lp,
-                                                                            settings,
-                                                                            basic_list,
-                                                                            x,
-                                                                            squared_infeasibilities,
-                                                                            infeasibility_indices,
-                                                                            primal_infeasibility);
+  f_t primal_infeasibility_squared =
+    phase2::compute_initial_primal_infeasibilities(lp,
+                                                   settings,
+                                                   basic_list,
+                                                   x,
+                                                   squared_infeasibilities,
+                                                   infeasibility_indices,
+                                                   primal_infeasibility);
   phase2_work_estimate += 4 * m + 2 * n;
 
 #ifdef CHECK_BASIC_INFEASIBILITIES
-  check_basic_infeasibilities(basic_list, basic_mark, infeasibility_indices, 0);
+  phase2::check_basic_infeasibilities(basic_list, basic_mark, infeasibility_indices, 0);
 #endif
 
   csr_matrix_t<i_t, f_t> Arow(1, 1, 0);
@@ -2785,7 +2793,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
   i_t num_refactors         = 0;
   i_t total_bound_flips     = 0;
   f_t delta_y_nz_percentage = 0.0;
-  phase2_timers_t<i_t, f_t> timers(false);
+  phase2::phase2_timers_t<i_t, f_t> timers(false);
 
   // Sparse vectors for main loop (declared outside loop for instrumentation)
   sparse_vector_t<i_t, f_t> delta_y_sparse(m, 0);
@@ -2831,20 +2839,20 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
     {
       PHASE2_NVTX_RANGE("DualSimplex::pricing");
       if (settings.use_steepest_edge_pricing) {
-        leaving_index = steepest_edge_pricing_with_infeasibilities(lp,
-                                                                   settings,
-                                                                   x,
-                                                                   delta_y_steepest_edge,
-                                                                   basic_mark,
-                                                                   squared_infeasibilities,
-                                                                   infeasibility_indices,
-                                                                   direction,
-                                                                   basic_leaving_index,
-                                                                   max_val,
-                                                                   phase2_work_estimate);
+        leaving_index = phase2::steepest_edge_pricing_with_infeasibilities(lp,
+                                                                           settings,
+                                                                           x,
+                                                                           delta_y_steepest_edge,
+                                                                           basic_mark,
+                                                                           squared_infeasibilities,
+                                                                           infeasibility_indices,
+                                                                           direction,
+                                                                           basic_leaving_index,
+                                                                           max_val,
+                                                                           phase2_work_estimate);
       } else {
         // Max infeasibility pricing
-        leaving_index = phase2_pricing(
+        leaving_index = phase2::phase2_pricing(
           lp, settings, x, basic_list, direction, basic_leaving_index, primal_infeasibility);
       }
     }
@@ -2881,13 +2889,14 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
 #endif
 
 #ifdef CHECK_PRIMAL_INFEASIBILITIES
-      primal_infeasibility_squared = compute_initial_primal_infeasibilities(lp,
-                                                                            settings,
-                                                                            basic_list,
-                                                                            x,
-                                                                            squared_infeasibilities,
-                                                                            infeasibility_indices,
-                                                                            primal_infeasibility);
+      primal_infeasibility_squared =
+        phase2::compute_initial_primal_infeasibilities(lp,
+                                                       settings,
+                                                       basic_list,
+                                                       x,
+                                                       squared_infeasibilities,
+                                                       infeasibility_indices,
+                                                       primal_infeasibility);
       if (primal_infeasibility > settings.primal_tol) {
         const i_t nz = infeasibility_indices.size();
         for (i_t k = 0; k < nz; ++k) {
@@ -2931,21 +2940,21 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
           if (refactor_status > 0) { return dual_status_t::NUMERICAL; }
           refactor_work = ft.work_estimate() - refactor_start_work;
 
-          reset_basis_mark(
+          phase2::reset_basis_mark(
             basic_list, nonbasic_list, basic_mark, nonbasic_mark, phase2_work_estimate);
           compute_initial_nonbasic_end(basic_mark, Arow, nonbasic_end);
 
-          compute_primal_solution_from_basis(
+          phase2::compute_primal_solution_from_basis(
             lp, ft, basic_list, nonbasic_list, vstatus, x, xB_workspace, phase2_work_estimate);
 
           primal_infeasibility_squared =
-            compute_initial_primal_infeasibilities(lp,
-                                                   settings,
-                                                   basic_list,
-                                                   x,
-                                                   squared_infeasibilities,
-                                                   infeasibility_indices,
-                                                   primal_infeasibility);
+            phase2::compute_initial_primal_infeasibilities(lp,
+                                                           settings,
+                                                           basic_list,
+                                                           x,
+                                                           squared_infeasibilities,
+                                                           infeasibility_indices,
+                                                           primal_infeasibility);
           phase2_work_estimate += 4 * m + 2 * n;
           iterations_since_refactor = 0;
           solve_work                = 0.0;
@@ -2960,23 +2969,23 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
         }
       }
 
-      prepare_optimality(0,
-                         primal_infeasibility,
-                         lp,
-                         settings,
-                         ft,
-                         objective,
-                         basic_list,
-                         nonbasic_list,
-                         vstatus,
-                         phase,
-                         start_time,
-                         max_val,
-                         iter,
-                         x,
-                         y,
-                         z,
-                         sol);
+      phase2::prepare_optimality(0,
+                                 primal_infeasibility,
+                                 lp,
+                                 settings,
+                                 ft,
+                                 objective,
+                                 basic_list,
+                                 nonbasic_list,
+                                 vstatus,
+                                 phase,
+                                 start_time,
+                                 max_val,
+                                 iter,
+                                 x,
+                                 y,
+                                 z,
+                                 sol);
       status = dual_status_t::OPTIMAL;
       break;
     }
@@ -2995,7 +3004,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
     f_t btran_start_work = ft.work_estimate();
     {
       PHASE2_NVTX_RANGE("DualSimplex::btran");
-      compute_delta_y(ft, basic_leaving_index, direction, delta_y_sparse, UTsol_sparse);
+      phase2::compute_delta_y(ft, basic_leaving_index, direction, delta_y_sparse, UTsol_sparse);
     }
     timers.btran_time += timers.stop_timer();
     solve_work += (ft.work_estimate() - btran_start_work);
@@ -3070,7 +3079,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
     std::vector<f_t> zeros(n, 0.0);
     std::vector<f_t> delta_y_dense(m);
     delta_y_sparse.to_dense(delta_y_dense);
-    compute_dual_residual(lp.A, zeros, delta_y_dense, delta_z, dual_residual);
+    phase2::compute_dual_residual(lp.A, zeros, delta_y_dense, delta_z, dual_residual);
     // || A'*delta_y + delta_z ||_inf
     f_t dual_residual_norm = vector_norm_inf<i_t, f_t>(dual_residual);
     settings.log.printf(
@@ -3086,15 +3095,15 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
     {
       PHASE2_NVTX_RANGE("DualSimplex::ratio_test");
       if (harris_ratio) {
-        f_t max_step_length = first_stage_harris(lp, vstatus, nonbasic_list, z, delta_z);
-        entering_index      = second_stage_harris(lp,
-                                             vstatus,
-                                             nonbasic_list,
-                                             z,
-                                             delta_z,
-                                             max_step_length,
-                                             step_length,
-                                             nonbasic_entering_index);
+        f_t max_step_length = phase2::first_stage_harris(lp, vstatus, nonbasic_list, z, delta_z);
+        entering_index      = phase2::second_stage_harris(lp,
+                                                     vstatus,
+                                                     nonbasic_list,
+                                                     z,
+                                                     delta_z,
+                                                     max_step_length,
+                                                     step_length,
+                                                     nonbasic_entering_index);
       } else if (bound_flip_ratio) {
         timers.start_timer();
         f_t slope = direction == 1 ? (lp.lower[leaving_index] - x[leaving_index])
@@ -3121,7 +3130,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
         }
         timers.bfrt_time += timers.stop_timer();
       } else {
-        entering_index = phase2_ratio_test(
+        entering_index = phase2::phase2_ratio_test(
           lp, settings, vstatus, nonbasic_list, z, delta_z, step_length, nonbasic_entering_index);
       }
     }
@@ -3130,7 +3139,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
     if (entering_index == RATIO_TEST_NO_ENTERING_VARIABLE) {
       settings.log.printf("No entering variable found. Iter %d\n", iter);
       settings.log.printf("Scaled infeasibility %e\n", max_val);
-      f_t perturbation = amount_of_perturbation(lp, objective);
+      f_t perturbation = phase2::amount_of_perturbation(lp, objective);
       phase2_work_estimate += 2 * n;
 
       if (perturbation > 0.0 && phase == 2) {
@@ -3138,10 +3147,10 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
         std::vector<f_t> unperturbed_y(m);
         std::vector<f_t> unperturbed_z(n);
         phase2_work_estimate += m + n;
-        compute_dual_solution_from_basis(
+        phase2::compute_dual_solution_from_basis(
           lp, ft, basic_list, nonbasic_list, unperturbed_y, unperturbed_z, phase2_work_estimate);
         {
-          const f_t dual_infeas = dual_infeasibility(
+          const f_t dual_infeas = phase2::dual_infeasibility(
             lp, settings, vstatus, unperturbed_z, settings.tight_tol, settings.dual_tol);
           phase2_work_estimate += 3 * n;
           settings.log.printf("Dual infeasibility after removing perturbation %e\n", dual_infeas);
@@ -3154,49 +3163,49 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
 
             std::vector<f_t> unperturbed_x(n);
             phase2_work_estimate += n;
-            compute_primal_solution_from_basis(lp,
-                                               ft,
-                                               basic_list,
-                                               nonbasic_list,
-                                               vstatus,
-                                               unperturbed_x,
-                                               xB_workspace,
-                                               phase2_work_estimate);
+            phase2::compute_primal_solution_from_basis(lp,
+                                                       ft,
+                                                       basic_list,
+                                                       nonbasic_list,
+                                                       vstatus,
+                                                       unperturbed_x,
+                                                       xB_workspace,
+                                                       phase2_work_estimate);
             x = unperturbed_x;
             primal_infeasibility_squared =
-              compute_initial_primal_infeasibilities(lp,
-                                                     settings,
-                                                     basic_list,
-                                                     x,
-                                                     squared_infeasibilities,
-                                                     infeasibility_indices,
-                                                     primal_infeasibility);
+              phase2::compute_initial_primal_infeasibilities(lp,
+                                                             settings,
+                                                             basic_list,
+                                                             x,
+                                                             squared_infeasibilities,
+                                                             infeasibility_indices,
+                                                             primal_infeasibility);
             phase2_work_estimate += 4 * m + 2 * n;
             settings.log.printf("Updated primal infeasibility: %e\n", primal_infeasibility);
 
             objective = lp.objective;
             phase2_work_estimate += 2 * n;
             // Need to reset the objective value, since we have recomputed x
-            obj = compute_perturbed_objective(objective, x);
+            obj = phase2::compute_perturbed_objective(objective, x);
             phase2_work_estimate += 2 * n;
             if (dual_infeas <= settings.dual_tol && primal_infeasibility <= settings.primal_tol) {
-              prepare_optimality(1,
-                                 primal_infeasibility,
-                                 lp,
-                                 settings,
-                                 ft,
-                                 objective,
-                                 basic_list,
-                                 nonbasic_list,
-                                 vstatus,
-                                 phase,
-                                 start_time,
-                                 max_val,
-                                 iter,
-                                 x,
-                                 y,
-                                 z,
-                                 sol);
+              phase2::prepare_optimality(1,
+                                         primal_infeasibility,
+                                         lp,
+                                         settings,
+                                         ft,
+                                         objective,
+                                         basic_list,
+                                         nonbasic_list,
+                                         vstatus,
+                                         phase,
+                                         start_time,
+                                         max_val,
+                                         iter,
+                                         x,
+                                         y,
+                                         z,
+                                         sol);
               status = dual_status_t::OPTIMAL;
               break;
             }
@@ -3204,54 +3213,55 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
               "Continuing with perturbation removed and steepest edge norms reset\n");
             // Clear delta_z before restarting the iteration
             phase2_work_estimate += 3 * delta_z_indices.size();
-            clear_delta_z(entering_index, leaving_index, delta_z_mark, delta_z_indices, delta_z);
+            phase2::clear_delta_z(
+              entering_index, leaving_index, delta_z_mark, delta_z_indices, delta_z);
             continue;
           } else {
             std::vector<f_t> unperturbed_x(n);
             phase2_work_estimate += n;
-            compute_primal_solution_from_basis(lp,
-                                               ft,
-                                               basic_list,
-                                               nonbasic_list,
-                                               vstatus,
-                                               unperturbed_x,
-                                               xB_workspace,
-                                               phase2_work_estimate);
+            phase2::compute_primal_solution_from_basis(lp,
+                                                       ft,
+                                                       basic_list,
+                                                       nonbasic_list,
+                                                       vstatus,
+                                                       unperturbed_x,
+                                                       xB_workspace,
+                                                       phase2_work_estimate);
             x = unperturbed_x;
             phase2_work_estimate += 2 * n;
             primal_infeasibility_squared =
-              compute_initial_primal_infeasibilities(lp,
-                                                     settings,
-                                                     basic_list,
-                                                     x,
-                                                     squared_infeasibilities,
-                                                     infeasibility_indices,
-                                                     primal_infeasibility);
+              phase2::compute_initial_primal_infeasibilities(lp,
+                                                             settings,
+                                                             basic_list,
+                                                             x,
+                                                             squared_infeasibilities,
+                                                             infeasibility_indices,
+                                                             primal_infeasibility);
             phase2_work_estimate += 4 * m + 2 * n;
 
-            const f_t orig_dual_infeas =
-              dual_infeasibility(lp, settings, vstatus, z, settings.tight_tol, settings.dual_tol);
+            const f_t orig_dual_infeas = phase2::dual_infeasibility(
+              lp, settings, vstatus, z, settings.tight_tol, settings.dual_tol);
             phase2_work_estimate += 3 * n;
 
             if (primal_infeasibility <= settings.primal_tol &&
                 orig_dual_infeas <= settings.dual_tol) {
-              prepare_optimality(2,
-                                 primal_infeasibility,
-                                 lp,
-                                 settings,
-                                 ft,
-                                 objective,
-                                 basic_list,
-                                 nonbasic_list,
-                                 vstatus,
-                                 phase,
-                                 start_time,
-                                 max_val,
-                                 iter,
-                                 x,
-                                 y,
-                                 z,
-                                 sol);
+              phase2::prepare_optimality(2,
+                                         primal_infeasibility,
+                                         lp,
+                                         settings,
+                                         ft,
+                                         objective,
+                                         basic_list,
+                                         nonbasic_list,
+                                         vstatus,
+                                         phase,
+                                         start_time,
+                                         max_val,
+                                         iter,
+                                         x,
+                                         y,
+                                         z,
+                                         sol);
               status = dual_status_t::OPTIMAL;
               break;
             }
@@ -3271,30 +3281,30 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
           delta_y_sparse.to_dense(my_delta_y);
 
           // TODO(CMM): Do I use the perturbed or unperturbed objective?
-          const f_t obj_val = compute_perturbed_objective(objective, x);
-          compute_farkas_certificate(lp,
-                                     settings,
-                                     vstatus,
-                                     x,
-                                     y,
-                                     z,
-                                     my_delta_y,
-                                     delta_z,
-                                     direction,
-                                     leaving_index,
-                                     obj_val,
-                                     farkas_y,
-                                     farkas_zl,
-                                     farkas_zu,
-                                     farkas_constant);
+          const f_t obj_val = phase2::compute_perturbed_objective(objective, x);
+          phase2::compute_farkas_certificate(lp,
+                                             settings,
+                                             vstatus,
+                                             x,
+                                             y,
+                                             z,
+                                             my_delta_y,
+                                             delta_z,
+                                             direction,
+                                             leaving_index,
+                                             obj_val,
+                                             farkas_y,
+                                             farkas_zl,
+                                             farkas_zu,
+                                             farkas_constant);
         }
       }
 
       const f_t dual_infeas =
-        dual_infeasibility(lp, settings, vstatus, z, settings.tight_tol, settings.dual_tol);
+        phase2::dual_infeasibility(lp, settings, vstatus, z, settings.tight_tol, settings.dual_tol);
       phase2_work_estimate += 3 * n;
       settings.log.printf("Dual infeasibility %e\n", dual_infeas);
-      const f_t primal_inf = simplex::primal_infeasibility(lp, settings, vstatus, x);
+      const f_t primal_inf = simplex::phase2::primal_infeasibility(lp, settings, vstatus, x);
       phase2_work_estimate += 3 * n;
       settings.log.printf("Primal infeasibility %e\n", primal_inf);
       settings.log.printf("Updates %d\n", ft.num_updates());
@@ -3311,14 +3321,14 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
     // Update dual variables
     // y <- y + steplength * delta_y
     // z <- z + steplength * delta_z
-    i_t update_dual_variables_status = update_dual_variables(delta_y_sparse,
-                                                             delta_z_indices,
-                                                             delta_z,
-                                                             step_length,
-                                                             leaving_index,
-                                                             y,
-                                                             z,
-                                                             phase2_work_estimate);
+    i_t update_dual_variables_status = phase2::update_dual_variables(delta_y_sparse,
+                                                                     delta_z_indices,
+                                                                     delta_z,
+                                                                     step_length,
+                                                                     leaving_index,
+                                                                     y,
+                                                                     z,
+                                                                     phase2_work_estimate);
     if (update_dual_variables_status == -1) {
       settings.log.printf("Numerical issues encountered in update_dual_variables.\n");
       return dual_status_t::NUMERICAL;
@@ -3327,7 +3337,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
 
 #ifdef COMPUTE_DUAL_RESIDUAL
     std::vector<f_t> dual_res1;
-    compute_dual_residual(lp.A, objective, y, z, dual_res1);
+    phase2::compute_dual_residual(lp.A, objective, y, z, dual_res1);
     f_t dual_res_norm = vector_norm_inf<i_t, f_t>(dual_res1);
     if (dual_res_norm > settings.dual_tol) {
       settings.log.printf("|| A'*y + z - c || %e steplength %e\n", dual_res_norm, step_length);
@@ -3336,20 +3346,20 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
 
     timers.start_timer();
     // Update primal variable
-    const i_t num_flipped = flip_bounds(lp,
-                                        settings,
-                                        bounded_variables,
-                                        objective,
-                                        z,
-                                        delta_z_indices,
-                                        nonbasic_list,
-                                        entering_index,
-                                        vstatus,
-                                        delta_x_flip,
-                                        atilde_mark,
-                                        atilde,
-                                        atilde_index,
-                                        phase2_work_estimate);
+    const i_t num_flipped = phase2::flip_bounds(lp,
+                                                settings,
+                                                bounded_variables,
+                                                objective,
+                                                z,
+                                                delta_z_indices,
+                                                nonbasic_list,
+                                                entering_index,
+                                                vstatus,
+                                                delta_x_flip,
+                                                atilde_mark,
+                                                atilde,
+                                                atilde_index,
+                                                phase2_work_estimate);
 
     timers.flip_time += timers.stop_timer();
     total_bound_flips += num_flipped;
@@ -3357,17 +3367,17 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
     delta_xB_0_sparse.clear();
     if (num_flipped > 0) {
       timers.start_timer();
-      adjust_for_flips(ft,
-                       basic_list,
-                       delta_z_indices,
-                       atilde_index,
-                       atilde,
-                       atilde_mark,
-                       atilde_sparse,
-                       delta_xB_0_sparse,
-                       delta_x_flip,
-                       x,
-                       phase2_work_estimate);
+      phase2::adjust_for_flips(ft,
+                               basic_list,
+                               delta_z_indices,
+                               atilde_index,
+                               atilde,
+                               atilde_mark,
+                               atilde_sparse,
+                               delta_xB_0_sparse,
+                               delta_x_flip,
+                               x,
+                               phase2_work_estimate);
       timers.ftran_time += timers.stop_timer();
     }
 
@@ -3378,21 +3388,21 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
     f_t ftran_start_work = ft.work_estimate();
     {
       PHASE2_NVTX_RANGE("DualSimplex::ftran");
-      if (compute_delta_x(lp,
-                          ft,
-                          entering_index,
-                          leaving_index,
-                          basic_leaving_index,
-                          direction,
-                          basic_list,
-                          delta_x_flip,
-                          rhs_sparse,
-                          delta_z,
-                          x,
-                          utilde_sparse,
-                          scaled_delta_xB_sparse,
-                          delta_x,
-                          phase2_work_estimate) == -1) {
+      if (phase2::compute_delta_x(lp,
+                                  ft,
+                                  entering_index,
+                                  leaving_index,
+                                  basic_leaving_index,
+                                  direction,
+                                  basic_list,
+                                  delta_x_flip,
+                                  rhs_sparse,
+                                  delta_z,
+                                  x,
+                                  utilde_sparse,
+                                  scaled_delta_xB_sparse,
+                                  delta_x,
+                                  phase2_work_estimate) == -1) {
         settings.log.printf("Failed to compute delta_x. Iter %d\n", iter);
         return dual_status_t::NUMERICAL;
       }
@@ -3412,19 +3422,19 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
 
     timers.start_timer();
     f_t se_norms_start_work        = ft.work_estimate();
-    const i_t steepest_edge_status = update_steepest_edge_norms(settings,
-                                                                basic_list,
-                                                                ft,
-                                                                direction,
-                                                                delta_y_sparse,
-                                                                steepest_edge_norm_check,
-                                                                scaled_delta_xB_sparse,
-                                                                basic_leaving_index,
-                                                                entering_index,
-                                                                v,
-                                                                v_sparse,
-                                                                delta_y_steepest_edge,
-                                                                phase2_work_estimate);
+    const i_t steepest_edge_status = phase2::update_steepest_edge_norms(settings,
+                                                                        basic_list,
+                                                                        ft,
+                                                                        direction,
+                                                                        delta_y_sparse,
+                                                                        steepest_edge_norm_check,
+                                                                        scaled_delta_xB_sparse,
+                                                                        basic_leaving_index,
+                                                                        entering_index,
+                                                                        v,
+                                                                        v_sparse,
+                                                                        delta_y_steepest_edge,
+                                                                        phase2_work_estimate);
 #ifdef STEEPEST_EDGE_DEBUG
     if (steepest_edge_status == -1) {
       settings.log.printf("Num updates %d\n", ft.num_updates());
@@ -3441,7 +3451,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
 
     timers.start_timer();
     // x <- x + delta_x
-    update_primal_variables(
+    phase2::update_primal_variables(
       scaled_delta_xB_sparse, basic_list, delta_x, entering_index, x, phase2_work_estimate);
     timers.vector_time += timers.stop_timer();
 
@@ -3457,77 +3467,77 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
     timers.start_timer();
     // TODO(CMM): Do I also need to update the objective due to the bound flips?
     // TODO(CMM): I'm using the unperturbed objective here, should this be the perturbed objective?
-    update_objective(basic_list,
-                     scaled_delta_xB_sparse.i,
-                     lp.objective,
-                     delta_x,
-                     entering_index,
-                     obj,
-                     phase2_work_estimate);
+    phase2::update_objective(basic_list,
+                             scaled_delta_xB_sparse.i,
+                             lp.objective,
+                             delta_x,
+                             entering_index,
+                             obj,
+                             phase2_work_estimate);
     timers.objective_time += timers.stop_timer();
 
     timers.start_timer();
     // Update primal infeasibilities due to changes in basic variables
     // from flipping bounds
 #ifdef CHECK_BASIC_INFEASIBILITIES
-    check_basic_infeasibilities(basic_list, basic_mark, infeasibility_indices, 2);
+    phase2::check_basic_infeasibilities(basic_list, basic_mark, infeasibility_indices, 2);
 #endif
-    bool needs_cleanup = update_primal_infeasibilities(lp,
-                                                       settings,
-                                                       basic_list,
-                                                       x,
-                                                       entering_index,
-                                                       leaving_index,
-                                                       delta_xB_0_sparse.i,
-                                                       squared_infeasibilities,
-                                                       infeasibility_indices,
-                                                       primal_infeasibility_squared,
-                                                       phase2_work_estimate);
+    bool needs_cleanup = phase2::update_primal_infeasibilities(lp,
+                                                               settings,
+                                                               basic_list,
+                                                               x,
+                                                               entering_index,
+                                                               leaving_index,
+                                                               delta_xB_0_sparse.i,
+                                                               squared_infeasibilities,
+                                                               infeasibility_indices,
+                                                               primal_infeasibility_squared,
+                                                               phase2_work_estimate);
     // Update primal infeasibilities due to changes in basic variables
     // from the leaving and entering variables
-    needs_cleanup |= update_primal_infeasibilities(lp,
-                                                   settings,
-                                                   basic_list,
-                                                   x,
-                                                   entering_index,
-                                                   leaving_index,
-                                                   scaled_delta_xB_sparse.i,
-                                                   squared_infeasibilities,
-                                                   infeasibility_indices,
-                                                   primal_infeasibility_squared,
-                                                   phase2_work_estimate);
+    needs_cleanup |= phase2::update_primal_infeasibilities(lp,
+                                                           settings,
+                                                           basic_list,
+                                                           x,
+                                                           entering_index,
+                                                           leaving_index,
+                                                           scaled_delta_xB_sparse.i,
+                                                           squared_infeasibilities,
+                                                           infeasibility_indices,
+                                                           primal_infeasibility_squared,
+                                                           phase2_work_estimate);
     // Update the entering variable
     {
       const f_t old_val = squared_infeasibilities[entering_index];
-      update_single_primal_infeasibility(lp.lower,
-                                         lp.upper,
-                                         x,
-                                         settings.primal_tol,
-                                         squared_infeasibilities,
-                                         infeasibility_indices,
-                                         entering_index,
-                                         primal_infeasibility_squared);
+      phase2::update_single_primal_infeasibility(lp.lower,
+                                                 lp.upper,
+                                                 x,
+                                                 settings.primal_tol,
+                                                 squared_infeasibilities,
+                                                 infeasibility_indices,
+                                                 entering_index,
+                                                 primal_infeasibility_squared);
       needs_cleanup |= (old_val != 0.0 && squared_infeasibilities[entering_index] == 0.0);
     }
 
     if (needs_cleanup) {
-      clean_up_infeasibilities(
+      phase2::clean_up_infeasibilities(
         squared_infeasibilities, infeasibility_indices, phase2_work_estimate);
     }
 
 #if CHECK_PRIMAL_INFEASIBILITIES
-    check_primal_infeasibilities(
+    phase2::check_primal_infeasibilities(
       lp, settings, basic_list, x, squared_infeasibilities, infeasibility_indices);
 #endif
     timers.update_infeasibility_time += timers.stop_timer();
 
     // Clear delta_x
-    clear_delta_x(
+    phase2::clear_delta_x(
       basic_list, entering_index, scaled_delta_xB_sparse, delta_x, phase2_work_estimate);
 
     timers.start_timer();
     f_t sum_perturb = 0.0;
-    compute_perturbation(
+    phase2::compute_perturbation(
       lp, settings, delta_z_indices, z, objective, sum_perturb, phase2_work_estimate);
     timers.perturb_time += timers.stop_timer();
 
@@ -3549,7 +3559,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
       leaving_index, entering_index, lp.A, row_mark, nonbasic_end, Arow, phase2_work_estimate);
 
 #ifdef CHECK_BASIC_INFEASIBILITIES
-    check_basic_infeasibilities(basic_list, basic_mark, infeasibility_indices, 5);
+    phase2::check_basic_infeasibilities(basic_list, basic_mark, infeasibility_indices, 5);
 #endif
 
     timers.start_timer();
@@ -3565,7 +3575,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
       if (!should_refactor) {
         i_t recommend_refactor = ft.update(utilde_sparse, UTsol_sparse, basic_leaving_index);
 #ifdef CHECK_UPDATE
-        check_update(lp, settings, ft, basic_list, basic_leaving_index);
+        phase2::check_update(lp, settings, ft, basic_list, basic_leaving_index);
 #endif
         should_refactor = recommend_refactor == 1;
         timers.lu_update_time += timers.stop_timer();
@@ -3573,7 +3583,7 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
       }
 
 #ifdef CHECK_BASIC_INFEASIBILITIES
-      check_basic_infeasibilities(basic_list, basic_mark, infeasibility_indices, 6);
+      phase2::check_basic_infeasibilities(basic_list, basic_mark, infeasibility_indices, 6);
 #endif
       if (should_refactor) {
         PHASE2_NVTX_RANGE("DualSimplex::refactorization");
@@ -3614,37 +3624,37 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
         }
         refactor_work = ft.work_estimate() - refactor_start_work;
 
-        reset_basis_mark(
+        phase2::reset_basis_mark(
           basic_list, nonbasic_list, basic_mark, nonbasic_mark, phase2_work_estimate);
         compute_initial_nonbasic_end(basic_mark, Arow, nonbasic_end);
         if (should_recompute_x) {
           std::vector<f_t> unperturbed_x(n);
           phase2_work_estimate += n;
-          compute_primal_solution_from_basis(lp,
-                                             ft,
-                                             basic_list,
-                                             nonbasic_list,
-                                             vstatus,
-                                             unperturbed_x,
-                                             xB_workspace,
-                                             phase2_work_estimate);
+          phase2::compute_primal_solution_from_basis(lp,
+                                                     ft,
+                                                     basic_list,
+                                                     nonbasic_list,
+                                                     vstatus,
+                                                     unperturbed_x,
+                                                     xB_workspace,
+                                                     phase2_work_estimate);
           x = unperturbed_x;
           phase2_work_estimate += 2 * n;
         }
         primal_infeasibility_squared =
-          compute_initial_primal_infeasibilities(lp,
-                                                 settings,
-                                                 basic_list,
-                                                 x,
-                                                 squared_infeasibilities,
-                                                 infeasibility_indices,
-                                                 primal_infeasibility);
+          phase2::compute_initial_primal_infeasibilities(lp,
+                                                         settings,
+                                                         basic_list,
+                                                         x,
+                                                         squared_infeasibilities,
+                                                         infeasibility_indices,
+                                                         primal_infeasibility);
         phase2_work_estimate += 4 * m + 2 * n;
         iterations_since_refactor = 0;
         solve_work                = 0.0;
       }
 #ifdef CHECK_BASIC_INFEASIBILITIES
-      check_basic_infeasibilities(basic_list, basic_mark, infeasibility_indices, 7);
+      phase2::check_basic_infeasibilities(basic_list, basic_mark, infeasibility_indices, 7);
 #endif
     }
     timers.lu_factorization_time += timers.stop_timer();
@@ -3652,19 +3662,19 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
 #ifdef STEEPEST_EDGE_DEBUG
     if (iter < 100 || iter % 100 == 0))
     {
-      check_steepest_edge_norms(settings, basic_list, ft, delta_y_steepest_edge);
+      phase2::check_steepest_edge_norms(settings, basic_list, ft, delta_y_steepest_edge);
     }
 #endif
 
 #ifdef CHECK_BASIS_MARK
-    check_basis_mark(settings, basic_list, nonbasic_list, basic_mark, nonbasic_mark);
+    phase2::check_basis_mark(settings, basic_list, nonbasic_list, basic_mark, nonbasic_mark);
 #endif
 
     iter++;
 
     // Clear delta_z
     phase2_work_estimate += 3 * delta_z_indices.size();
-    clear_delta_z(entering_index, leaving_index, delta_z_mark, delta_z_indices, delta_z);
+    phase2::clear_delta_z(entering_index, leaving_index, delta_z_mark, delta_z_indices, delta_z);
 
     f_t now = toc(start_time);
 
