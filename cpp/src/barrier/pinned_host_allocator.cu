@@ -12,9 +12,6 @@
 
 namespace cuopt::mathematical_optimization::barrier {
 
-using namespace cuopt::mathematical_optimization::simplex;  // shared simplex types (lp_problem_t,
-                                                            // inf, etc.)
-
 template <typename T>
 struct PinnedHostAllocator {
   using value_type = T;

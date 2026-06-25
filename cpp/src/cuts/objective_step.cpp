@@ -16,8 +16,7 @@
 
 namespace cuopt::mathematical_optimization::mip {
 
-using namespace cuopt::mathematical_optimization::simplex;  // shared simplex types
-                                                            // (objective_step_t, etc.)
+using simplex::objective_step_t;
 
 namespace {
 

@@ -24,9 +24,6 @@
 
 namespace cuopt::mathematical_optimization::barrier {
 
-using namespace cuopt::mathematical_optimization::simplex;  // shared simplex types (lp_problem_t,
-                                                            // inf, etc.)
-
 #define CUDA_VER_12_4_UP (CUDART_VERSION >= 12040)
 
 #if CUDA_VER_12_4_UP
@@ -129,7 +126,7 @@ static cusparseSpMVAlg_t get_spmv_alg(int num_rows)
 
 template <typename i_t, typename f_t>
 cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
-                                           const csc_matrix_t<i_t, f_t>& A)
+                                           const simplex::csc_matrix_t<i_t, f_t>& A)
   : handle_ptr_(handle_ptr),
     A_offsets_(0, handle_ptr->get_stream()),
     A_indices_(0, handle_ptr->get_stream()),
@@ -149,7 +146,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
   // TMP matrix data should already be on the GPU
   constexpr bool debug = false;
   if (debug) { printf("A hash: %zu\n", A.hash()); }
-  csr_matrix_t<i_t, f_t> A_csr(A.m, A.n, 1);
+  simplex::csr_matrix_t<i_t, f_t> A_csr(A.m, A.n, 1);
   A.to_compressed_row(A_csr);
   i_t rows                        = A_csr.m;
   i_t cols                        = A_csr.n;

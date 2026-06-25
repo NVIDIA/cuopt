@@ -67,6 +67,9 @@
 
 namespace cuopt::mathematical_optimization {
 
+using simplex::simplex_solver_settings_t;
+using simplex::user_problem_t;
+
 // This serves as both a warm up but also a mandatory initial call to setup cuSparse and cuBLAS
 static void init_handler(const raft::handle_t* handle_ptr)
 {
@@ -209,12 +212,11 @@ mip_solution_t<i_t, f_t> run_mip_solver(
         scaled_problem.n_variables);
       symmetry.reset();
       if (settings.symmetry != 0) {
-        simplex::simplex_solver_settings_t<i_t, f_t> simplex_settings;
+        simplex_solver_settings_t<i_t, f_t> simplex_settings;
         simplex_settings.set_log(true);
-        simplex_settings.time_limit = settings.time_limit;
-        simplex::user_problem_t<i_t, f_t> reduced_user_problem =
-          cuopt_problem_to_user_problem<i_t, f_t>(
-            scaled_problem.original_problem_ptr->get_handle_ptr(), scaled_problem);
+        simplex_settings.time_limit                   = settings.time_limit;
+        user_problem_t<i_t, f_t> reduced_user_problem = cuopt_problem_to_user_problem<i_t, f_t>(
+          scaled_problem.original_problem_ptr->get_handle_ptr(), scaled_problem);
         bool has_symmetry_reduced = false;
         symmetry =
           mip::detect_symmetry(reduced_user_problem, simplex_settings, has_symmetry_reduced);
@@ -431,10 +433,10 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
     bool has_symmetry = false;
     if (settings.symmetry != 0) {
       mip::problem_t<i_t, f_t> problem(op_problem);
-      simplex::simplex_solver_settings_t<i_t, f_t> simplex_settings;
+      simplex_solver_settings_t<i_t, f_t> simplex_settings;
       simplex_settings.set_log(true);
       simplex_settings.time_limit = settings.time_limit;
-      simplex::user_problem_t<i_t, f_t> user_problem =
+      user_problem_t<i_t, f_t> user_problem =
         cuopt_problem_to_user_problem<i_t, f_t>(op_problem.get_handle_ptr(), problem);
       symmetry = mip::detect_symmetry(user_problem, simplex_settings, has_symmetry);
       if (has_symmetry) { settings.presolver = presolver_t::None; }

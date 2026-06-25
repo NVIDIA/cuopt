@@ -46,8 +46,31 @@
 
 namespace cuopt::mathematical_optimization::mip {
 
-using namespace cuopt::mathematical_optimization::simplex;  // shared simplex types (lp_problem_t,
-                                                            // etc.)
+using simplex::basis_update_mpf_t;
+using simplex::bounds_strengthening_t;
+using simplex::compute_objective;
+using simplex::compute_user_objective;
+using simplex::crossover_status_t;
+using simplex::crush_primal_solution;
+using simplex::csr_matrix_t;
+using simplex::decompress_vstatus;
+using simplex::dual_phase2_with_advanced_basis;
+using simplex::dual_status_t;
+using simplex::inf;
+using simplex::logger_t;
+using simplex::lp_problem_t;
+using simplex::lp_solution_t;
+using simplex::lp_status_t;
+using simplex::mip_solution_t;
+using simplex::simplex_solver_settings_t;
+using simplex::solve_linear_program_with_advanced_basis;
+using simplex::tic;
+using simplex::toc;
+using simplex::uncrush_primal_solution;
+using simplex::user_problem_t;
+using simplex::variable_status_t;
+using simplex::variable_type_t;
+
 namespace {
 
 template <typename f_t>
@@ -101,8 +124,8 @@ bool check_guess(const lp_problem_t<i_t, f_t>& original_lp,
   bool feasible = false;
   std::vector<f_t> residual(original_lp.num_rows);
   residual = original_lp.rhs;
-  matrix_vector_multiply(original_lp.A, 1.0, guess, -1.0, residual);
-  primal_error           = vector_norm_inf<i_t, f_t>(residual);
+  simplex::matrix_vector_multiply(original_lp.A, 1.0, guess, -1.0, residual);
+  primal_error           = simplex::vector_norm_inf<i_t, f_t>(residual);
   bound_error            = 0.0;
   constexpr bool verbose = false;
   for (i_t j = 0; j < original_lp.num_cols; j++) {
@@ -247,8 +270,9 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
   original_problem_.A.print_matrix();
 #endif
 
-  dualize_info_t<i_t, f_t> dualize_info;
-  convert_user_problem(original_problem_, settings_, original_lp_, new_slacks_, dualize_info);
+  simplex::dualize_info_t<i_t, f_t> dualize_info;
+  simplex::convert_user_problem(
+    original_problem_, settings_, original_lp_, new_slacks_, dualize_info);
   full_variable_types(original_problem_, original_lp_, var_types_);
 
   // Check slack
@@ -582,7 +606,7 @@ bool branch_and_bound_t<i_t, f_t>::repair_solution(const std::vector<f_t>& edge_
   lp_settings.inside_mip           = 2;
   std::vector<f_t> leaf_edge_norms = edge_norms;
   // should probably set the cut off here lp_settings.cut_off
-  dual_status_t lp_status = dual_phase2(
+  dual_status_t lp_status = simplex::dual_phase2(
     2, 0, lp_start_time, repair_lp, lp_settings, vstatus, lp_solution, iter, leaf_edge_norms);
   repaired_solution = lp_solution.x;
 
@@ -658,7 +682,7 @@ void branch_and_bound_t<i_t, f_t>::repair_heuristic_solutions()
 }
 
 template <typename i_t, typename f_t>
-void branch_and_bound_t<i_t, f_t>::set_solution_at_root(simplex::mip_solution_t<i_t, f_t>& solution,
+void branch_and_bound_t<i_t, f_t>::set_solution_at_root(mip_solution_t<i_t, f_t>& solution,
                                                         const cut_info_t<i_t, f_t>& cut_info)
 {
   mutex_upper_.lock();
@@ -687,7 +711,7 @@ void branch_and_bound_t<i_t, f_t>::set_solution_at_root(simplex::mip_solution_t<
 }
 
 template <typename i_t, typename f_t>
-void branch_and_bound_t<i_t, f_t>::set_final_solution(simplex::mip_solution_t<i_t, f_t>& solution,
+void branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t, f_t>& solution,
                                                       f_t lower_bound)
 {
   if (solver_status_ == mip_status_t::NUMERICAL) {
@@ -2040,13 +2064,13 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
     std::vector<f_t> crushed_root_y;
     std::vector<f_t> crushed_root_z;
 
-    f_t dual_res_inf = crush_dual_solution(original_problem_,
-                                           original_lp_,
-                                           new_slacks_,
-                                           root_crossover_soln_.y,
-                                           root_crossover_soln_.z,
-                                           crushed_root_y,
-                                           crushed_root_z);
+    f_t dual_res_inf = simplex::crush_dual_solution(original_problem_,
+                                                    original_lp_,
+                                                    new_slacks_,
+                                                    root_crossover_soln_.y,
+                                                    root_crossover_soln_.z,
+                                                    crushed_root_y,
+                                                    crushed_root_z);
 
     root_crossover_soln_.x = crushed_root_x;
     root_crossover_soln_.y = crushed_root_y;
@@ -2144,7 +2168,7 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
     settings_.log.printf("Root relaxation objective %+.8e\n", user_objective);
   } else {
     settings_.log.printf("Root relaxation returned: %s\n",
-                         lp_status_to_string(root_status).c_str());
+                         simplex::lp_status_to_string(root_status).c_str());
   }
 
   settings_.log.printf("\n");
@@ -2156,7 +2180,7 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
 template <typename i_t, typename f_t>
 auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   [[maybe_unused]] i_t cut_pass,
-  simplex::mip_solution_t<i_t, f_t>& solution,
+  mip_solution_t<i_t, f_t>& solution,
   i_t& num_fractional,
   std::vector<i_t>& fractional,
   cut_generation_t<i_t, f_t>& cut_generation,
@@ -2363,7 +2387,7 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
       exploration_stats_.total_lp_iters += root_relax_soln_.iterations;
       root_objective_ = compute_objective(original_lp_, root_relax_soln_.x);
     } else {
-      settings_.log.printf("Cut status %s\n", dual_status_to_string(cut_status).c_str());
+      settings_.log.printf("Cut status %s\n", simplex::dual_status_to_string(cut_status).c_str());
 #ifdef WRITE_CUT_INFEASIBLE_MPS
       original_lp_.write_mps("cut_infeasible.mps");
 #endif
@@ -2436,7 +2460,7 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
 }
 
 template <typename i_t, typename f_t>
-mip_status_t branch_and_bound_t<i_t, f_t>::solve(simplex::mip_solution_t<i_t, f_t>& solution)
+mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solution)
 {
   raft::common::nvtx::range scope("BB::solve");
 
@@ -2588,12 +2612,12 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(simplex::mip_solution_t<i_t, f_
     uncrush_primal_solution(original_problem_, original_lp_, root_relax_soln_.x, original_x);
     std::vector<f_t> original_dual;
     std::vector<f_t> original_z;
-    uncrush_dual_solution(original_problem_,
-                          original_lp_,
-                          root_relax_soln_.y,
-                          root_relax_soln_.z,
-                          original_dual,
-                          original_z);
+    simplex::uncrush_dual_solution(original_problem_,
+                                   original_lp_,
+                                   root_relax_soln_.y,
+                                   root_relax_soln_.z,
+                                   original_dual,
+                                   original_z);
     settings_.set_simplex_solution_callback(
       original_x, original_dual, compute_user_objective(original_lp_, root_objective_));
   }

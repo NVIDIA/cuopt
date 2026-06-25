@@ -48,6 +48,10 @@
 
 namespace cuopt::mathematical_optimization::mip {
 
+using simplex::lp_problem_t;
+using simplex::simplex_solver_settings_t;
+using simplex::variable_type_t;
+
 template <typename i_t, typename f_t>
 void finalize_fj_cpu_host_initialization(
   fj_cpu_climber_t<i_t, f_t>& fj_cpu,
@@ -1416,10 +1420,10 @@ void finalize_fj_cpu_host_initialization(
 
 template <typename i_t, typename f_t>
 static std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_from_host_lp(
-  const simplex::lp_problem_t<i_t, f_t>& problem,
-  const std::vector<simplex::variable_type_t>& variable_types,
+  const lp_problem_t<i_t, f_t>& problem,
+  const std::vector<variable_type_t>& variable_types,
   const std::vector<f_t>& seed_assignment,
-  const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+  const simplex_solver_settings_t<i_t, f_t>& settings,
   std::atomic<bool>& preemption_flag,
   int64_t seed)
 {
@@ -1454,7 +1458,7 @@ static std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_from_host_lp(
     variable_bounds[j]  = f_t2{problem.lower[j], problem.upper[j]};
     const auto var_type = variable_types[j];
     cpufj_variable_types[j] =
-      var_type == simplex::variable_type_t::CONTINUOUS ? var_t::CONTINUOUS : var_t::INTEGER;
+      var_type == variable_type_t::CONTINUOUS ? var_t::CONTINUOUS : var_t::INTEGER;
 
     const bool is_integer = cpufj_variable_types[j] == var_t::INTEGER;
     const bool is_binary  = is_integer &&
@@ -1475,7 +1479,7 @@ static std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_from_host_lp(
   for (i_t j = 0; j < n_variables; ++j) {
     f_t value = j < static_cast<i_t>(seed_assignment.size()) ? seed_assignment[j] : f_t{0};
     value     = std::clamp(value, problem.lower[j], problem.upper[j]);
-    if (variable_types[j] != simplex::variable_type_t::CONTINUOUS) {
+    if (variable_types[j] != variable_type_t::CONTINUOUS) {
       value = std::clamp(std::round(value), problem.lower[j], problem.upper[j]);
     }
     projected_seed[j] = value;
@@ -1795,10 +1799,10 @@ void fj_cpu_task_t<i_t, f_t>::fj_cpu_deleter_t::operator()(fj_cpu_climber_t<i_t,
 
 template <typename i_t, typename f_t>
 std::unique_ptr<fj_cpu_task_t<i_t, f_t>> make_fj_cpu_task_from_host_lp(
-  const simplex::lp_problem_t<i_t, f_t>& problem,
-  const std::vector<simplex::variable_type_t>& variable_types,
+  const lp_problem_t<i_t, f_t>& problem,
+  const std::vector<variable_type_t>& variable_types,
   const std::vector<f_t>& seed_assignment,
-  const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+  const simplex_solver_settings_t<i_t, f_t>& settings,
   std::function<void(f_t, const std::vector<f_t>&, double)> improvement_callback,
   std::string log_prefix,
   int64_t seed)
@@ -1841,10 +1845,10 @@ template std::unique_ptr<fj_cpu_climber_t<int, float>> init_fj_cpu_standalone(
   std::atomic<bool>& preemption_flag,
   fj_settings_t settings);
 template std::unique_ptr<fj_cpu_task_t<int, float>> make_fj_cpu_task_from_host_lp(
-  const simplex::lp_problem_t<int, float>& problem,
-  const std::vector<simplex::variable_type_t>& variable_types,
+  const lp_problem_t<int, float>& problem,
+  const std::vector<variable_type_t>& variable_types,
   const std::vector<float>& seed_assignment,
-  const simplex::simplex_solver_settings_t<int, float>& settings,
+  const simplex_solver_settings_t<int, float>& settings,
   std::function<void(float, const std::vector<float>&, double)> improvement_callback,
   std::string log_prefix,
   int64_t seed);
@@ -1873,10 +1877,10 @@ template std::unique_ptr<fj_cpu_climber_t<int, double>> init_fj_cpu_standalone(
   std::atomic<bool>& preemption_flag,
   fj_settings_t settings);
 template std::unique_ptr<fj_cpu_task_t<int, double>> make_fj_cpu_task_from_host_lp(
-  const simplex::lp_problem_t<int, double>& problem,
-  const std::vector<simplex::variable_type_t>& variable_types,
+  const lp_problem_t<int, double>& problem,
+  const std::vector<variable_type_t>& variable_types,
   const std::vector<double>& seed_assignment,
-  const simplex::simplex_solver_settings_t<int, double>& settings,
+  const simplex_solver_settings_t<int, double>& settings,
   std::function<void(double, const std::vector<double>&, double)> improvement_callback,
   std::string log_prefix,
   int64_t seed);

@@ -27,8 +27,20 @@
 
 namespace cuopt::mathematical_optimization::mip {
 
-using namespace cuopt::mathematical_optimization::simplex;  // shared simplex types (lp_problem_t,
-                                                            // etc.)
+using simplex::basis_update_mpf_t;
+using simplex::compute_initial_nonbasic_end;
+using simplex::compute_objective;
+using simplex::csr_matrix_t;
+using simplex::dual_status_t;
+using simplex::lp_problem_t;
+using simplex::lp_solution_t;
+using simplex::simplex_solver_settings_t;
+using simplex::sparse_vector_t;
+using simplex::tic;
+using simplex::toc;
+using simplex::variable_status_t;
+using simplex::variable_type_t;
+
 namespace {
 
 static bool is_dual_simplex_done(dual_status_t status)
@@ -50,7 +62,7 @@ f_t compute_step_length(const simplex_solver_settings_t<i_t, f_t>& settings,
                         const std::vector<f_t>& delta_z,
                         const std::vector<i_t>& delta_z_indices)
 {
-  f_t step_length = inf;
+  f_t step_length = simplex::inf;
   f_t pivot_tol   = settings.pivot_tol;
   const i_t nz    = delta_z_indices.size();
   for (i_t h = 0; h < nz; h++) {
@@ -107,28 +119,28 @@ objective_change_estimate_t<f_t> single_pivot_objective_change_estimate(
   std::vector<i_t> delta_z_indices;
   // delta_z starts out all zero
   if (use_transpose) {
-    compute_delta_z(Arow,
-                    delta_y,
-                    variable_j,
-                    direction,
-                    nonbasic_end,
-                    workspace,
-                    delta_z_indices,
-                    delta_z,
-                    work_estimate);
+    simplex::compute_delta_z(Arow,
+                             delta_y,
+                             variable_j,
+                             direction,
+                             nonbasic_end,
+                             workspace,
+                             delta_z_indices,
+                             delta_z,
+                             work_estimate);
   } else {
     std::vector<f_t> delta_y_dense(lp.num_rows, 0);
     delta_y.to_dense(delta_y_dense);
-    compute_reduced_cost_update(lp,
-                                basic_list,
-                                nonbasic_list,
-                                delta_y_dense,
-                                variable_j,
-                                direction,
-                                workspace,
-                                delta_z_indices,
-                                delta_z,
-                                work_estimate);
+    simplex::compute_reduced_cost_update(lp,
+                                         basic_list,
+                                         nonbasic_list,
+                                         delta_y_dense,
+                                         variable_j,
+                                         direction,
+                                         workspace,
+                                         delta_z_indices,
+                                         delta_z,
+                                         work_estimate);
   }
 
   // Verify dual feasibility
@@ -138,8 +150,8 @@ objective_change_estimate_t<f_t> single_pivot_objective_change_estimate(
     for (i_t j = 0; j < lp.num_cols; j++) {
       dual_residual[j] -= lp.objective[j];
     }
-    matrix_transpose_vector_multiply(lp.A, 1.0, lp_solution.y, 1.0, dual_residual);
-    f_t dual_residual_norm = vector_norm_inf<i_t, f_t>(dual_residual);
+    simplex::matrix_transpose_vector_multiply(lp.A, 1.0, lp_solution.y, 1.0, dual_residual);
+    f_t dual_residual_norm = simplex::vector_norm_inf<i_t, f_t>(dual_residual);
     settings.log.printf("Dual residual norm: %e\n", dual_residual_norm);
   }
 #endif
@@ -361,15 +373,15 @@ void strong_branch_helper(i_t start,
       i_t iter                               = 0;
       std::vector<variable_status_t> vstatus = root_vstatus;
       std::vector<f_t> child_edge_norms      = edge_norms;
-      dual_status_t status                   = dual_phase2(2,
-                                         0,
-                                         lp_start_time,
-                                         child_problem,
-                                         child_settings,
-                                         vstatus,
-                                         solution,
-                                         iter,
-                                         child_edge_norms);
+      dual_status_t status                   = simplex::dual_phase2(2,
+                                                  0,
+                                                  lp_start_time,
+                                                  child_problem,
+                                                  child_settings,
+                                                  vstatus,
+                                                  solution,
+                                                  iter,
+                                                  child_edge_norms);
 
       f_t obj = std::numeric_limits<f_t>::quiet_NaN();
       if (status == dual_status_t::DUAL_UNBOUNDED) {
@@ -497,26 +509,26 @@ std::pair<f_t, dual_status_t> trial_branching(const lp_problem_t<i_t, f_t>& orig
   // Only refactor the basis if we encounter numerical issues.
   child_basis_factors.set_refactor_frequency(iter_limit);
 
-  dual_status_t status = dual_phase2_with_advanced_basis(2,
-                                                         0,
-                                                         initialize_basis,
-                                                         start_time,
-                                                         child_problem,
-                                                         child_settings,
-                                                         child_vstatus,
-                                                         child_basis_factors,
-                                                         child_basic_list,
-                                                         child_nonbasic_list,
-                                                         solution,
-                                                         iter,
-                                                         child_edge_norms);
+  dual_status_t status = simplex::dual_phase2_with_advanced_basis(2,
+                                                                  0,
+                                                                  initialize_basis,
+                                                                  start_time,
+                                                                  child_problem,
+                                                                  child_settings,
+                                                                  child_vstatus,
+                                                                  child_basis_factors,
+                                                                  child_basic_list,
+                                                                  child_nonbasic_list,
+                                                                  solution,
+                                                                  iter,
+                                                                  child_edge_norms);
 
   settings.log.debug("Trial branching on variable %d. Lo: %e Up: %e. Iter %d. Status %s. Obj %e\n",
                      branch_var,
                      child_problem.lower[branch_var],
                      child_problem.upper[branch_var],
                      iter,
-                     dual_status_to_string(status).c_str(),
+                     simplex::dual_status_to_string(status).c_str(),
                      compute_objective(child_problem, solution.x));
 
   if (status == dual_status_t::DUAL_UNBOUNDED) {
@@ -534,7 +546,7 @@ std::pair<f_t, dual_status_t> trial_branching(const lp_problem_t<i_t, f_t>& orig
 
 template <typename i_t, typename f_t>
 static cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t>
-simplex_problem_to_mps_data_model(const simplex::lp_problem_t<i_t, f_t>& lp,
+simplex_problem_to_mps_data_model(const lp_problem_t<i_t, f_t>& lp,
                                   const std::vector<i_t>& new_slacks,
                                   const std::vector<f_t>& root_soln,
                                   std::vector<f_t>& original_root_soln_x)
@@ -570,7 +582,7 @@ simplex_problem_to_mps_data_model(const simplex::lp_problem_t<i_t, f_t>& lp,
   }
 
   // Convert CSC to CSR using built-in method
-  simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, 0);
+  csr_matrix_t<i_t, f_t> csr_A(m, n, 0);
   A_no_slacks.to_compressed_row(csr_A);
 
   int nz = csr_A.row_start[m];
@@ -729,7 +741,7 @@ static void batch_pdlp_strong_branching_task(
 
   std::vector<f_t> original_root_soln_y, original_root_soln_z;
   // TODO put back later once Chris has this part
-  /*uncrush_dual_solution(
+  /*simplex::uncrush_dual_solution(
     original_problem, original_lp, root_soln_y, root_soln_z, original_root_soln_y,
     original_root_soln_z);*/
 
@@ -891,7 +903,7 @@ static void batch_pdlp_strong_branching_task(
 
 template <typename i_t, typename f_t>
 static void batch_pdlp_reliability_branching_task(
-  logger_t& log,
+  simplex::logger_t& log,
   i_t rb_mode,
   i_t num_candidates,
   f_t start_time,

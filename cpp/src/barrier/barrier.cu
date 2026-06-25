@@ -52,8 +52,20 @@
 
 namespace cuopt::mathematical_optimization::barrier {
 
-using namespace cuopt::mathematical_optimization::simplex;  // shared simplex types (lp_problem_t,
-                                                            // inf, etc.)
+using simplex::compute_user_objective;
+using simplex::csc_matrix_t;
+using simplex::csr_matrix_t;
+using simplex::device_vector_norm_inf;
+using simplex::float64_t;
+using simplex::inf;
+using simplex::lp_problem_t;
+using simplex::lp_solution_t;
+using simplex::lp_status_t;
+using simplex::matrix_vector_multiply;
+using simplex::multiply;
+using simplex::simplex_solver_settings_t;
+using simplex::tic;
+using simplex::toc;
 
 template <typename i_t, typename f_t>
 bool validate_barrier_cone_layout(const lp_problem_t<i_t, f_t>& problem,
@@ -1781,7 +1793,7 @@ class iteration_data_t {
 
     // u = A^T * y
     dense_vector_t<i_t, f_t> u(n);
-    matrix_transpose_vector_multiply(A, 1.0, y, 0.0, u);
+    simplex::matrix_transpose_vector_multiply(A, 1.0, y, 0.0, u);
     if (debug) { printf("||u|| = %.16e\n", simplex::vector_norm2<i_t, f_t>(u)); }
 
     // w = Dinv * u
@@ -2121,7 +2133,7 @@ void cholesky_debug_check(const iteration_data_t<i_t, f_t>& data,
 
 template <typename i_t, typename f_t>
 barrier_solver_t<i_t, f_t>::barrier_solver_t(const lp_problem_t<i_t, f_t>& lp,
-                                             const presolve_info_t<i_t, f_t>& presolve,
+                                             const simplex::presolve_info_t<i_t, f_t>& presolve,
                                              const simplex_solver_settings_t<i_t, f_t>& settings)
   : lp(lp), settings(settings), presolve_info(presolve), stream_view_(lp.handle_ptr->get_stream())
 {
@@ -3004,7 +3016,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       raft::common::nvtx::range fun_scope("Barrier: dx_residual_2 GPU");
 
       // norm_inf(D^-1 * (A'*dy - r1) - dx)
-      const f_t dx_residual_2_norm = device_custom_vector_norm_inf<i_t, f_t>(
+      const f_t dx_residual_2_norm = simplex::device_custom_vector_norm_inf<i_t, f_t>(
         thrust::make_transform_iterator(
           thrust::make_zip_iterator(data.d_inv_diag.data(), data.d_r1_.data(), data.d_dx_.data()),
           [] HD(thrust::tuple<f_t, f_t, f_t> t) -> f_t {

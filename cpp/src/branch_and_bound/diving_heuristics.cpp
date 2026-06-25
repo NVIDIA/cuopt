@@ -9,8 +9,8 @@
 
 namespace cuopt::mathematical_optimization::mip {
 
-using namespace cuopt::mathematical_optimization::simplex;  // shared simplex types (lp_problem_t,
-                                                            // etc.)
+using simplex::logger_t;
+using simplex::lp_problem_t;
 
 template <typename i_t, typename f_t>
 branch_variable_t<i_t> line_search_diving(const std::vector<i_t>& fractional,
@@ -24,7 +24,7 @@ branch_variable_t<i_t> line_search_diving(const std::vector<i_t>& fractional,
   branch_direction_t round_dir = branch_direction_t::NONE;
 
   for (i_t j : fractional) {
-    f_t score              = inf;
+    f_t score              = simplex::inf;
     branch_direction_t dir = branch_direction_t::NONE;
 
     if (solution[j] < root_solution[j] - eps) {
