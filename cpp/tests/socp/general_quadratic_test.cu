@@ -5,13 +5,20 @@
  */
 /* clang-format on */
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 #include <barrier/translate_soc.hpp>
+#include <cuopt/linear_programming/io/parser.hpp>
+#include <cuopt/linear_programming/optimization_problem.hpp>
 #include <cuopt/linear_programming/optimization_problem_interface.hpp>
+#include <cuopt/linear_programming/optimization_problem_utils.hpp>
+#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
+#include <cuopt/linear_programming/solve.hpp>
 #include <dual_simplex/solve.hpp>
 #include <dual_simplex/sparse_matrix.hpp>
 #include <dual_simplex/user_problem.hpp>
+#include <utilities/error.hpp>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/cusparse_macros.hpp>
@@ -207,57 +214,42 @@ TEST(general_quadratic, rejects_non_convex)
     cuopt::logic_error);
 }
 
-// Test: cross-only indefinite Q (issue #1434). H = [[0, 2]; [2, 0]] has zero diagonals so LDLT
-// returns rank 0 without a negative pivot; must still be rejected as non-convex.
+// End-to-end: cross-only indefinite Q (issue #1434). H = [[0, 2]; [2, 0]] has zero diagonals so
+// LDLT returns rank 0 without a negative pivot; must still be rejected as non-convex via
+// solve_qcqp.
 TEST(general_quadratic, rejects_cross_only_indefinite)
 {
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
-  user_problem_t<i_t, f_t> user_problem(&handle);
+  // H = [[0, 2]; [2, 0]] from [ 4 x * y ] in LP bracket notation.
+  auto problem = cuopt::linear_programming::io::read_lp_from_string<i_t, f_t>(R"LP(
+Minimize
+  obj: x + y
+Subject To
+  q0: [ 4 x * y ] <= 0.5
+Bounds
+  -1 <= x <= 1
+  -1 <= y <= 1
+End
+)LP");
 
-  constexpr int m  = 0;
-  constexpr int n  = 2;
-  constexpr int nz = 0;
+  ASSERT_TRUE(problem.has_quadratic_constraints());
+  ASSERT_EQ(problem.get_quadratic_constraints().size(), 1u);
 
-  user_problem.num_rows  = m;
-  user_problem.num_cols  = n;
-  user_problem.objective = {1.0, 1.0};
+  cuopt::linear_programming::optimization_problem_t<i_t, f_t> op_problem(&handle);
+  cuopt::linear_programming::populate_from_mps_data_model(&op_problem, problem);
+  ASSERT_TRUE(op_problem.has_quadratic_constraints())
+    << "populate_from_mps_data_model dropped quadratic constraints";
+  ASSERT_EQ(op_problem.get_quadratic_constraints().size(), 1u);
 
-  user_problem.A.m      = m;
-  user_problem.A.n      = n;
-  user_problem.A.nz_max = nz;
-  user_problem.A.reallocate(nz);
-  user_problem.A.col_start = {0, 0, 0};
+  cuopt::linear_programming::pdlp_solver_settings_t<i_t, f_t> settings;
+  auto solution = cuopt::linear_programming::solve_lp(op_problem, settings);
 
-  user_problem.rhs.clear();
-  user_problem.row_sense.clear();
-  user_problem.lower          = {-1.0, -1.0};
-  user_problem.upper          = {1.0, 1.0};
-  user_problem.num_range_rows = 0;
-  user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
-
-  // Q COO: (0,1,2) → 2*x0*x1 <= 0.5, H = [[0, 2]; [2, 0]]
-  qc_t qc;
-  qc.constraint_row_index = 0;
-  qc.constraint_row_name  = "cross_only_indefinite";
-  qc.constraint_row_type  = 'L';
-  qc.rhs_value            = 0.5;
-  qc.rows                 = {0};
-  qc.cols                 = {1};
-  qc.vals                 = {2.0};
-
-  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
-  csr_A.m         = m;
-  csr_A.n         = n;
-  csr_A.row_start = {0};
-
-  std::vector<qc_t> qcs = {qc};
-
-  EXPECT_THROW(
-    (convert_quadratic_constraints_to_second_order_cones<i_t, f_t>(n, qcs, csr_A, user_problem)),
-    cuopt::logic_error);
+  const auto error_status = solution.get_error_status();
+  EXPECT_EQ(error_status.get_error_type(), cuopt::error_type_t::ValidationError);
+  EXPECT_THAT(error_status.what(), testing::HasSubstr("non-convex"));
+  EXPECT_THAT(error_status.what(), testing::HasSubstr("q0"));
 }
 
 // Test: rank-deficient PSD Q (e.g., Q = v*v^T with v = [1, 1])
