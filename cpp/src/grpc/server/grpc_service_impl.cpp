@@ -9,8 +9,6 @@
 #include "grpc_pipe_serialization.hpp"
 #include "grpc_server_types.hpp"
 
-using namespace cuopt::mathematical_optimization;
-
 class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::Service {
  public:
   // Unary submit: the entire problem fits in a single gRPC message.
@@ -361,12 +359,12 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     // back from the worker pipe by the result retrieval thread.
     if (it->second.problem_category == cuopt::remote::MIP) {
       cuopt::remote::MIPSolution mip_solution;
-      build_mip_solution_proto<int, double>(
+      cuopt::mathematical_optimization::build_mip_solution_proto<int, double>(
         it->second.result_header, it->second.result_arrays, &mip_solution);
       response->mutable_mip_solution()->Swap(&mip_solution);
     } else {
       cuopt::remote::LPSolution lp_solution;
-      build_lp_solution_proto<int, double>(
+      cuopt::mathematical_optimization::build_lp_solution_proto<int, double>(
         it->second.result_header, it->second.result_arrays, &lp_solution);
       response->mutable_lp_solution()->Swap(&lp_solution);
     }
