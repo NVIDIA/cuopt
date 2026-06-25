@@ -14,50 +14,10 @@
 
 #include <chrono>
 #include <numeric>
-#include <string>
 
 #include <utilities/logger.hpp>
 
 namespace cuopt::linear_programming::detail {
-
-namespace {
-
-// return true if the two GPUs are NVLink connected
-bool pair_is_nvlink(int a, int b)
-{
-  int can = 0, rank = 0;
-  if (cudaDeviceCanAccessPeer(&can, a, b) != cudaSuccess || !can) return false;
-  if (cudaDeviceGetP2PAttribute(&rank, cudaDevP2PAttrPerformanceRank, a, b) != cudaSuccess) {
-    return false;
-  }
-  return rank >= 1;
-}
-
-// Distributed PDLP iterations are dominated by NCCL halo exchanges.
-// Warn if the GPU set isn't a fully-meshed NVLink topology so the
-// user knows why iterations may be slow.
-void warn_if_not_fully_nvlink(std::vector<int> const& devices)
-{
-  if (devices.size() <= 1) return;
-
-  std::string bad;
-  for (size_t a = 0; a < devices.size(); ++a) {
-    for (size_t b = a + 1; b < devices.size(); ++b) {
-      if (!pair_is_nvlink(devices[a], devices[b]) || !pair_is_nvlink(devices[b], devices[a])) {
-        bad += " (" + std::to_string(devices[a]) + "," + std::to_string(devices[b]) + ")";
-      }
-    }
-  }
-  if (bad.empty()) return;
-
-  CUOPT_LOG_WARN(
-    "distributed_pdlp: GPU pair(s) not NVLink-class:%s. NCCL halo exchanges "
-    "will be bottlenecked by the slowest link; for best performance use a "
-    "system with full NVLink (e.g. NVSwitch on DGX). See `nvidia-smi topo -m`.",
-    bad.c_str());
-}
-
-}  // namespace
 
 template <typename i_t, typename f_t>
 multi_gpu_engine_t<i_t, f_t>::multi_gpu_engine_t(
@@ -73,8 +33,6 @@ multi_gpu_engine_t<i_t, f_t>::multi_gpu_engine_t(
   shards.reserve(nb_parts);
   std::vector<int> devices(nb_parts);
   std::iota(devices.begin(), devices.end(), 0);
-
-  warn_if_not_fully_nvlink(devices);
 
   // Create NCCL Comms, then immediately wrap each in a RAII owner so they are
   // destroyed on any exception (e.g. a shard ctor throwing) before being
