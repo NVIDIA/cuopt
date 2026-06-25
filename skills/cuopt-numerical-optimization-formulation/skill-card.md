@@ -9,7 +9,7 @@ NVIDIA <br>
 ### License/Terms of Use: <br>
 Apache 2.0 <br>
 ## Use Case: <br>
-Developers and engineers formulating linear, mixed-integer, and quadratic optimization problems with NVIDIA cuOpt, parsing unstructured problem statements into structured mathematical formulations. <br>
+Developers and engineers use this skill to parse optimization problem descriptions and formulate them as LP, MILP, or QP models with correct parameters, constraints, decision variables, and objectives before solving with cuOpt. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
@@ -24,19 +24,19 @@ Mitigation: Review and scan skill before deployment. <br>
 
 
 ## Skill Output: <br>
-**Output Type(s):** [Analysis] <br>
-**Output Format:** [Markdown] <br>
+**Output Type(s):** [Analysis, Code] <br>
+**Output Format:** [Markdown with mathematical formulations] <br>
 **Output Parameters:** [1D] <br>
 **Other Properties Related to Output:** [None] <br>
 
 ## Evaluation Agents Used: <br>
-- claude-code <br>
-- codex <br>
+- `claude-code` <br>
+- `codex` <br>
 
 
 
 ## Evaluation Tasks: <br>
-Evaluated against 3 internal skill-activation tasks (NVSkills-Eval, external profile, astra-sandbox environment). <br>
+Evaluated against 3 internal evaluation tasks (all positive skill-activation cases) via NVSkills-Eval external profile. <br>
 
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
@@ -61,10 +61,15 @@ Underlying evaluation signals used in this run: <br>
 | Dimension | Num | `claude-code` | `codex` |
 |---|---:|---:|---:|
 | Security | 3 | 100% (+0%) | 100% (+0%) |
-| Correctness | 3 | 67% (+20%) | 33% (-3%) |
-| Discoverability | 3 | 33% (+33%) | 0% (+0%) |
-| Effectiveness | 3 | 89% (+2%) | 69% (+1%) |
-| Efficiency | 3 | 49% (+22%) | 28% (-0%) |
+| Correctness | 3 | 83% (+33%) | 33% (-7%) |
+| Discoverability | 3 | 67% (+67%) | 0% (+0%) |
+| Effectiveness | 3 | 98% (+5%) | 67% (-11%) |
+| Efficiency | 3 | 72% (+45%) | 28% (-0%) |
+
+## Testing Completed: <br>
+**[x] Agent Red-Teaming** <br>
+**[ ] Network Security** <br>
+**[ ] Product Security** <br>
 
 ## Skill Version(s): <br>
 26.08.00 (source: frontmatter) <br>
