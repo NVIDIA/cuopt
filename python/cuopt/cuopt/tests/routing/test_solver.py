@@ -3,6 +3,7 @@
 
 import os
 import numpy as np
+import pytest
 
 import cudf
 
@@ -262,3 +263,74 @@ def test_prize_collection():
     assert objectives[routing.Objective.COST] == 13.0
     assert sol.get_status() == 0
     assert sol.get_vehicle_count() >= 2
+
+
+# Cost matrix from issue #904 (7 locations: depot 0 + orders 1-6)
+_ISSUE_904_COST_MATRIX = [
+    [0, 17, 12, 11, 10, 18, 10],
+    [16, 0, 15, 11, 19, 15, 16],
+    [19, 19, 0, 11, 16, 11, 17],
+    [17, 19, 17, 0, 11, 18, 19],
+    [10, 19, 19, 19, 0, 17, 15],
+    [12, 18, 15, 18, 18, 0, 14],
+    [12, 12, 11, 19, 10, 17, 0],
+]
+
+
+def _build_min_vehicles_data_model(vehicle_fixed_costs, min_vehicles=3):
+    """Builds min vehicles regression data model"""
+    n_locations = 7
+    n_vehicles = 3
+    n_orders = 6
+    dm = routing.DataModel(n_locations, n_vehicles, n_orders)
+    dm.add_cost_matrix(
+        cudf.DataFrame(_ISSUE_904_COST_MATRIX).astype(np.float32)
+    )
+    # Capacity 10 lets all 6 orders fit on one vehicle; min_vehicles must still
+    # force 3 routes.
+    dm.add_capacity_dimension(
+        "demand",
+        cudf.Series([1] * n_orders, dtype=np.int32),
+        cudf.Series([10] * n_vehicles, dtype=np.int32),
+    )
+    dm.set_order_locations(cudf.Series([1, 2, 3, 4, 5, 6], dtype=np.int32))
+    dm.set_vehicle_fixed_costs(
+        cudf.Series(vehicle_fixed_costs, dtype=np.float32)
+    )
+    dm.set_min_vehicles(min_vehicles)
+    dm.set_objective_function(
+        cudf.Series(
+            [routing.Objective.COST, routing.Objective.VEHICLE_FIXED_COST]
+        ),
+        cudf.Series([1.0, 1.0], dtype=np.float32),
+    )
+    return dm
+
+
+@pytest.mark.parametrize(
+    "vehicle_fixed_costs",
+    [
+        [10.0, 20.0, 30.0],  # non-zero fixed costs (the bug case in #904)
+        [
+            0.0,
+            0.0,
+            0.0,
+        ],  # zero fixed costs (H100 12.2/13.1 compat crashed in debug)
+    ],
+)
+def test_min_vehicles_respected(vehicle_fixed_costs):
+    """
+    Regression for https://github.com/NVIDIA/cuopt/issues/904.
+    Verifies that min_vehicles is respected and no crash occurs, regardless of
+    vehicle fixed costs.
+    """
+    dm = _build_min_vehicles_data_model(
+        vehicle_fixed_costs=vehicle_fixed_costs
+    )
+    ss = routing.SolverSettings()
+    ss.set_time_limit(3)
+
+    sol = routing.Solve(dm, ss)
+
+    assert sol.get_status() == 0, sol.get_message()
+    assert sol.get_vehicle_count() >= 3
