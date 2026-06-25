@@ -2492,7 +2492,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       user_problem_t<i_t, f_t> problem_copy = original_problem_;
       timer_t timer(std::numeric_limits<double>::infinity());
       detail::find_initial_cliques(
-        problem_copy, tolerances_for_clique, &clique_table_, timer, clique_signal);
+        problem_copy, tolerances_for_clique, clique_table_, timer, clique_signal);
     }
   }
 

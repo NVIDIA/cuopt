@@ -3178,14 +3178,15 @@ void cut_generation_t<i_t, f_t>::prepare_fractional_sub_cg(
   if (settings.clique_cuts == 0 && settings.zero_half_cuts == 0) { return; }
   if (toc(start_time) >= settings.time_limit) { return; }
 
-  // Resolve the background clique-table task, if still pending. Both the
-  // clique-cut and zero-half routines depend on the conflict graph; the first
-  // to need it pays for the join here so we avoid duplicating the wait below.
-  // The clique table is produced by an OpenMP task (spawned in
-  // branch_and_bound) that signals completion through *signal_extend_; we
-  // request early completion and block on the task's output dependency.
-  if (clique_table_ == nullptr) {
-    if (signal_extend_) { signal_extend_->store(true, std::memory_order_release); }
+  // The clique table is produced by a background OpenMP task (spawned in
+  // branch_and_bound). Its base cliques are published early, but the extension
+  // phase keeps mutating the same table. Now that cut generation needs the
+  // table, signal the task to stop extending and block until it finishes, so the
+  // table is no longer mutated while we read it below. The wait must happen
+  // unconditionally (even when the pointer is already non-null), otherwise we
+  // would race the still-running extension.
+  if (signal_extend_) {
+    signal_extend_->store(true, std::memory_order_release);
 #pragma omp taskwait depend(in : *signal_extend_)
   }
 
