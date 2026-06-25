@@ -613,7 +613,9 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                            op_problem_scaled.n_variables,
                            current_saddle_point_state.get_next_AtY().data(),
                            CUSPARSE_ORDER_COL);
-    cuopt_assert(_reflected_primal_solution.size() > 0, "Reflected primal solution empty");
+    cuopt_assert(_reflected_primal_solution.size() >=
+                   static_cast<size_t>(op_problem_scaled.n_variables) * climber_strategies.size(),
+                 "Reflected primal solution undersized");
     batch_reflected_primal_solutions.create(op_problem_scaled.n_variables,
                                             climber_strategies.size(),
                                             climber_strategies.size(),
@@ -664,7 +666,9 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   tmp_primal.create(op_problem_scaled.n_variables, _tmp_primal.data());
   tmp_dual.create(op_problem_scaled.n_constraints, _tmp_dual.data());
   if (hyper_params.use_reflected_primal_dual) {
-    cuopt_assert(_reflected_primal_solution.size() > 0, "Reflected primal solution empty");
+    cuopt_assert(_reflected_primal_solution.size() >=
+                   static_cast<size_t>(op_problem_scaled.n_variables),
+                 "Reflected primal solution undersized");
     reflected_primal_solution.create(op_problem_scaled.n_variables,
                                      _reflected_primal_solution.data());
   }
