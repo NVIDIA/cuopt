@@ -140,15 +140,15 @@ Users can pull the cuOpt container from the NVIDIA container registry.
 
 ```bash
 # For CUDA 12.x
-docker pull nvidia/cuopt:latest-cuda12.9-py3.13
+docker pull nvidia/cuopt:latest-cu12
 
 # For CUDA 13.x
-docker pull nvidia/cuopt:latest-cuda13.0-py3.13
+docker pull nvidia/cuopt:latest-cu13
 ```
 
-Note: The ``latest`` tag is the latest stable release of cuOpt. If you want to use a specific version, you can use the ``<version>-cuda12.9-py3.13`` or ``<version>-cuda13.0-py3.13`` tag. For example, to use cuOpt 25.10.0, you can use the ``25.10.0-cuda12.9-py3.13`` or ``25.10.0-cuda13.0-py3.13`` tag. Please refer to [cuOpt dockerhub page](https://hub.docker.com/r/nvidia/cuopt/tags) for the list of available tags.
+Note: The ``latest`` tag is the latest stable release of cuOpt. If you want to use a specific version, you can use the ``<version>-cu12`` or ``<version>-cu13`` tag. For example, to use cuOpt 26.6.0, you can use the ``26.6.0-cu12`` or ``26.6.0-cu13`` tag. Fully-qualified tags that also pin the CUDA minor and Python version (for example ``26.6.0-cuda12.9-py3.14``) are published alongside the short tags. Please refer to [cuOpt dockerhub page](https://hub.docker.com/r/nvidia/cuopt/tags) for the list of available tags.
 
-Nightly container images are built from the HEAD of the development branch and use the upcoming CUDA/Python defaults (`cuda12.9-py3.14` and `cuda13.1-py3.14`). They are tagged as ``<version>a-cuda12.9-py3.14`` or ``<version>a-cuda13.1-py3.14`` (note the ``a`` alpha suffix). See the [cuOpt dockerhub page](https://hub.docker.com/r/nvidia/cuopt/tags) for the full list.
+Nightly container images are built from the HEAD of the development branch. They are tagged as ``<version>a-cu12`` or ``<version>a-cu13`` (note the ``a`` alpha suffix). See the [cuOpt dockerhub page](https://hub.docker.com/r/nvidia/cuopt/tags) for the full list.
 
 More information about the cuOpt container can be found [here](https://docs.nvidia.com/cuopt/user-guide/latest/cuopt-server/quick-start.html#container-from-docker-hub).
 

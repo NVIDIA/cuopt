@@ -437,6 +437,13 @@ endif ()
 
 set(CUOPT_SRC_FILES)
 add_subdirectory(src)
+
+# nvcc 13.0.3 ICE (signal 11) compiling sliding_window.cu with 7 GPU architectures;
+# --split-compile breaks the codegen into per-arch sub-jobs to avoid the crash
+set_source_files_properties(
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/routing/local_search/sliding_window.cu
+    PROPERTIES COMPILE_OPTIONS "--split-compile=0")
+
 if (HOST_LINEINFO)
     set_source_files_properties(${CUOPT_SRC_FILES} DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTIES COMPILE_OPTIONS "-g1")
 endif ()
