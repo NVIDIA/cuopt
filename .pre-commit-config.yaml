@@ -8,7 +8,13 @@ repos:
       - id: end-of-file-fixer
         exclude: ^(datasets|helmchart)/.*\.(mps|json|yaml|yml|txt)$|^skills/.*/skill\.oms\.sig$
       - id: trailing-whitespace
-        exclude: ^datasets/.*\.(mps|json|yaml|yml|txt)$|^skills/.*/skill\.oms\.sig$|^skills/.*/skill-card\.md$|^skills/.*/BENCHMARK\.md$
+        exclude: |
+          (?x)^(
+            ^datasets/.*\.(mps|json|yaml|yml|txt)$|
+            ^skills/.*/skill\.oms\.sig$|
+            ^skills/.*/skill-card\.md$|
+            ^skills/.*/BENCHMARK\.md$
+          )
       - id: check-builtin-literals
       - id: check-executables-have-shebangs
       - id: check-json
