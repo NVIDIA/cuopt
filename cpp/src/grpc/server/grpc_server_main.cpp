@@ -260,6 +260,7 @@ int main(int argc, char** argv)
     }
 
     signal(SIGPIPE, SIG_IGN);
+    log_worker_gpu_layout();
     spawn_workers();
 
     cuopt_expects(!worker_pids.empty(), error_type_t::RuntimeError, "No workers started");

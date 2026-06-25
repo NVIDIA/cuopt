@@ -249,6 +249,9 @@ inline std::vector<pid_t> worker_pids;
 
 inline ServerConfig config;
 
+// Physical GPU count used for startup logging only (no CUDA calls in the parent).
+inline int visible_gpu_count = 0;
+
 inline std::vector<WorkerPipes> worker_pipes;
 inline std::mutex worker_pipes_mutex;
 
@@ -343,6 +346,8 @@ void ensure_log_dir_exists();
 void create_job_log_file(const std::string& job_id);
 void delete_log_file(const std::string& job_id);
 void cleanup_shared_memory();
+void log_worker_gpu_layout();
+bool init_worker_cuda_environment(int worker_id);
 void spawn_workers();
 void wait_for_workers();
 void worker_monitor_thread();
