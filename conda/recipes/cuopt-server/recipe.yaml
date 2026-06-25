@@ -37,7 +37,7 @@ requirements:
     - jsonref =1.1.0
     - msgpack-python =1.1.2
     - msgpack-numpy =0.4.8
-    - numpy >=1.23,<3.0
+    - numpy >=2.0,<3.0
     - pandas>=2
     - psutil>=6.0.0
     - python

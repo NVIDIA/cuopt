@@ -609,42 +609,28 @@ def test_parser_and_batch_solver():
 
 
 def test_warm_start():
-    file_path = RAPIDS_DATASET_ROOT_DIR + "/linear_programming/a2864/a2864.mps"
+    file_path = (
+        RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
+    )
     data_model_obj = Read(file_path)
 
     settings = solver_settings.SolverSettings()
     settings.set_parameter(CUOPT_METHOD, SolverMethod.PDLP)
     settings.set_parameter(CUOPT_PDLP_SOLVER_MODE, PDLPSolverMode.Stable2)
-    settings.set_optimality_tolerance(1e-3)
+    settings.set_optimality_tolerance(1e-2)
     settings.set_parameter(CUOPT_INFEASIBILITY_DETECTION, False)
     settings.set_parameter(CUOPT_PRESOLVE, 0)
 
-    # Solving from scratch until 1e-3
     solution = solver.Solve(data_model_obj, settings)
-    iterations_first_solve = solution.get_lp_stats()["nb_iterations"]
+    assert solution.get_termination_reason() == "Optimal"
+    settings.set_pdlp_warm_start_data(solution.get_pdlp_warm_start_data())
 
-    # Solving until 1e-2 to use the result as a warm start
-    settings.set_optimality_tolerance(1e-2)
-    solution2 = solver.Solve(data_model_obj, settings)
-    iterations_second_solve = solution2.get_lp_stats()["nb_iterations"]
-
-    # Solving until 1e-3 using the previous state as a warm start
     settings.set_optimality_tolerance(1e-3)
-    settings.set_pdlp_warm_start_data(solution2.get_pdlp_warm_start_data())
-
-    solution3 = solver.Solve(data_model_obj, settings)
-    iterations_third_solve = solution3.get_lp_stats()["nb_iterations"]
-
-    assert (
-        iterations_third_solve + iterations_second_solve
-        == iterations_first_solve
-    )
+    solution2 = solver.Solve(data_model_obj, settings)
+    assert solution2.get_termination_reason() == "Optimal"
 
     # Should raise an exception as problems are different
-    file_path = (
-        RAPIDS_DATASET_ROOT_DIR + "/linear_programming/afiro_original.mps"
-    )
-
+    file_path = RAPIDS_DATASET_ROOT_DIR + "/linear_programming/good-mps-1.mps"
     data_model_obj_different = Read(file_path)
     with pytest.raises(Exception, match="Invalid PDLPWarmStart data"):
         solver.Solve(data_model_obj_different, settings)

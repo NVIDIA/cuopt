@@ -7,10 +7,10 @@ This benchmark summarizes 3-Tier Evaluation from NVSkills-Eval results for the s
 ## Evaluation Summary
 
 - Skill: `cuopt-multi-objective-exploration`
-- Evaluation date: 2026-06-12
+- Evaluation date: 2026-06-25
 - NVSkills-Eval profile: `external`
 - Environment: `astra-sandbox`
-- Dataset: 4 evaluation tasks
+- Dataset: 5 evaluation tasks
 - Attempts per task: 1
 - Pass threshold: 50%
 - Overall verdict: PASS
@@ -42,9 +42,9 @@ Underlying evaluation signals used in this run:
 
 ## Test Tasks
 
-The benchmark dataset contained 4 evaluation tasks:
+The benchmark dataset contained 5 evaluation tasks:
 
-- Positive tasks: 3 tasks where the skill was expected to activate.
+- Positive tasks: 4 tasks where the skill was expected to activate.
 - Negative tasks: 1 tasks where no skill was expected.
 - Unlabeled tasks: 0 tasks where positive/negative intent could not be inferred.
 
@@ -54,11 +54,11 @@ Task composition is derived from the evaluation dataset when possible. Entries w
 
 | Dimension | Num | `claude-code` | `codex` |
 |---|---:|---:|---:|
-| Security | 4 | 100% (+0%) | 100% (+0%) |
-| Correctness | 4 | 88% (+38%) | 76% (+20%) |
-| Discoverability | 4 | 75% (+50%) | 66% (+35%) |
-| Effectiveness | 4 | 87% (+15%) | 77% (+5%) |
-| Efficiency | 4 | 76% (+33%) | 65% (+22%) |
+| Security | 5 | 100% (+0%) | 100% (+0%) |
+| Correctness | 5 | 70% (+38%) | 80% (+22%) |
+| Discoverability | 5 | 60% (+40%) | 72% (+42%) |
+| Effectiveness | 5 | 78% (+25%) | 69% (+6%) |
+| Efficiency | 5 | 66% (+26%) | 71% (+30%) |
 
 Score values show skill-assisted performance. Values in parentheses show uplift versus the no-skill baseline when baseline data is available.
 
