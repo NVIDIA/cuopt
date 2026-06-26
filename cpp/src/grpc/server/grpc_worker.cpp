@@ -9,6 +9,76 @@
 #include "grpc_pipe_serialization.hpp"
 #include "grpc_server_types.hpp"
 
+#include <rmm/mr/cuda_memory_resource.hpp>
+#include <rmm/mr/pool_memory_resource.hpp>
+
+#include <cerrno>
+#include <climits>
+#include <limits>
+#include <memory>
+
+namespace {
+
+int parse_pool_gigs_env()
+{
+  int pool_gigs = 1;
+  if (const char* env = std::getenv("CUOPT_GIGABYTES_PER_PROC")) {
+    char* end              = nullptr;
+    errno                  = 0;
+    const long long parsed = std::strtoll(env, &end, 10);
+    if (errno == 0 && end != env && *end == '\0' && parsed > 0 &&
+        parsed <= std::numeric_limits<int>::max()) {
+      pool_gigs = static_cast<int>(parsed);
+    } else {
+      SERVER_LOG_WARN("[Worker] Ignoring invalid CUOPT_GIGABYTES_PER_PROC='%s'", env);
+    }
+  }
+  return pool_gigs;
+}
+
+void init_worker_rmm_pool()
+{
+  const int pool_gigs = parse_pool_gigs_env();
+
+  // Keep the pool alive for the lifetime of this worker process.
+  static std::unique_ptr<rmm::mr::pool_memory_resource> pool_mr;
+  static bool initialized = false;
+  if (initialized) { return; }
+
+  pool_mr = std::make_unique<rmm::mr::pool_memory_resource>(
+    rmm::mr::cuda_memory_resource(), static_cast<std::size_t>(pool_gigs) * (1ULL << 30));
+  rmm::mr::set_current_device_resource(*pool_mr);
+  initialized = true;
+
+  SERVER_LOG_INFO("[Worker] RMM pool size: %d GiB", pool_gigs);
+}
+
+}  // namespace
+
+bool init_worker_cuda_environment(int worker_id)
+{
+  int device_count            = 0;
+  const cudaError_t count_err = cudaGetDeviceCount(&device_count);
+  if (count_err != cudaSuccess || device_count <= 0) {
+    SERVER_LOG_ERROR(
+      "[Worker %d] cudaGetDeviceCount failed (%s)", worker_id, cudaGetErrorString(count_err));
+    return false;
+  }
+
+  const int device          = worker_id % device_count;
+  const cudaError_t set_err = cudaSetDevice(device);
+  if (set_err != cudaSuccess) {
+    SERVER_LOG_ERROR(
+      "[Worker %d] cudaSetDevice(%d) failed: %s", worker_id, device, cudaGetErrorString(set_err));
+    return false;
+  }
+
+  init_worker_rmm_pool();
+
+  SERVER_LOG_INFO("[Worker %d] Using CUDA device %d of %d", worker_id, device, device_count);
+  return true;
+}
+
 // ---------------------------------------------------------------------------
 // Data-transfer structs used to pass results between decomposed functions.
 // ---------------------------------------------------------------------------
@@ -524,6 +594,11 @@ static void publish_result(const SolveResult& sr, const std::string& job_id, int
 void worker_process(int worker_id)
 {
   SERVER_LOG_INFO("[Worker %d] Started (PID: %d)", worker_id, getpid());
+
+  if (!init_worker_cuda_environment(worker_id)) {
+    SERVER_LOG_ERROR("[Worker %d] CUDA environment initialization failed; exiting", worker_id);
+    _exit(1);
+  }
 
   shm_ctrl->active_workers++;
 
