@@ -21,9 +21,9 @@
 
 #include <algorithm>
 #include <cmath>
-#include <dual_simplex/sparse_matrix.hpp>
-#include <dual_simplex/sparse_vector.hpp>
 #include <limits>
+#include <linear_algebra/sparse_matrix.hpp>
+#include <linear_algebra/sparse_vector.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/utils.cuh>
 #include <utilities/logger.hpp>
@@ -32,7 +32,6 @@
 
 namespace cuopt::mathematical_optimization::mip {
 
-using simplex::csr_matrix_t;
 using simplex::user_problem_t;
 
 // do constraints with only binary variables.

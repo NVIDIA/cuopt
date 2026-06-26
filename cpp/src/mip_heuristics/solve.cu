@@ -8,6 +8,7 @@
 #include <cuopt/error.hpp>
 #include <cuopt/mathematical_optimization/solve_remote.hpp>
 
+#include <linear_algebra/sort_csr.cuh>
 #include <mip_heuristics/feasibility_jump/early_cpufj.cuh>
 #include <mip_heuristics/feasibility_jump/early_gpufj.cuh>
 #include <mip_heuristics/mip_constants.hpp>
@@ -16,7 +17,6 @@
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
 #include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/solver.cuh>
-#include <mip_heuristics/utilities/sort_csr.cuh>
 #include <mip_heuristics/utils.cuh>
 
 #include <pdlp/pdlp.cuh>
@@ -545,7 +545,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
 
     auto constexpr const dual_postsolve = false;
     if (run_presolve) {
-      mip::sort_csr(op_problem);
+      sort_csr(op_problem);
       // allocate not more than 10% of the time limit to presolve.
       // Note that this is not the presolve time, but the time limit for presolve.
       const auto& hp = settings.heuristic_params;

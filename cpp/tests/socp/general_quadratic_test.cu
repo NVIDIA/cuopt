@@ -10,8 +10,8 @@
 #include <barrier/translate_soc.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 #include <dual_simplex/solve.hpp>
-#include <dual_simplex/sparse_matrix.hpp>
 #include <dual_simplex/user_problem.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/cusparse_macros.hpp>
@@ -21,8 +21,6 @@
 
 namespace cuopt::mathematical_optimization::barrier::test {
 
-using simplex::csr_matrix_t;
-using simplex::inf;
 using simplex::lp_solution_t;
 using simplex::lp_status_t;
 using simplex::simplex_solver_settings_t;
