@@ -666,9 +666,9 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   tmp_primal.create(op_problem_scaled.n_variables, _tmp_primal.data());
   tmp_dual.create(op_problem_scaled.n_constraints, _tmp_dual.data());
   if (hyper_params.use_reflected_primal_dual) {
-    cuopt_assert(_reflected_primal_solution.size() >=
-                   static_cast<size_t>(op_problem_scaled.n_variables),
-                 "Reflected primal solution undersized");
+    cuopt_assert(
+      _reflected_primal_solution.size() >= static_cast<size_t>(op_problem_scaled.n_variables),
+      "Reflected primal solution undersized");
     reflected_primal_solution.create(op_problem_scaled.n_variables,
                                      _reflected_primal_solution.data());
   }
