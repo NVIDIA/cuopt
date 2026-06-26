@@ -309,6 +309,7 @@ dependencies:
           - pytest<9.0
           - pytest-cov
           - pytest-rerunfailures
+          - pytest-xdist
   test_python_cuopt:
     common:
       - output_types: [conda]
