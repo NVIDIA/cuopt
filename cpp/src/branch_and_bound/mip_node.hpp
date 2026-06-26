@@ -383,9 +383,9 @@ class search_tree_t {
               const i_t branch_var,
               const f_t fractional_val,
               const i_t integer_infeasible,
-              const std::vector<variable_status_t>& parent_vstatus,
-              const lp_problem_t<i_t, f_t>& original_lp,
-              logger_t& log)
+              const std::vector<simplex::variable_status_t>& parent_vstatus,
+              const simplex::lp_problem_t<i_t, f_t>& original_lp,
+              simplex::logger_t& log)
   {
     i_t id = num_nodes.fetch_add(2);
 
@@ -425,7 +425,7 @@ class search_tree_t {
                               std::move(up_child));  // child pointers moved into the tree
   }
 
-  void graphviz_node(logger_t& log,
+  void graphviz_node(simplex::logger_t& log,
                      const mip_node_t<i_t, f_t>* node_ptr,
                      const std::string label,
                      const f_t val)
@@ -435,7 +435,7 @@ class search_tree_t {
     }
   }
 
-  void graphviz_edge(logger_t& log,
+  void graphviz_edge(simplex::logger_t& log,
                      const mip_node_t<i_t, f_t>* origin_ptr,
                      const mip_node_t<i_t, f_t>* dest_ptr,
                      const i_t branch_var,
@@ -459,4 +459,4 @@ class search_tree_t {
   static constexpr bool write_graphviz = false;
 };
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::mip

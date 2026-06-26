@@ -593,7 +593,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
       }
       CUOPT_LOG_INFO("Papilo presolve time: %.2f", presolve_time);
 
-      if (result.status == detail::third_party_presolve_status_t::OPTIMAL) {
+      if (result.status == mip::third_party_presolve_status_t::OPTIMAL) {
         CUOPT_LOG_INFO("Optimal solution found during presolve.");
       }
     }
