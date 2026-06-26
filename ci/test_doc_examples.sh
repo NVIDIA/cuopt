@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 # Bash strict mode
@@ -470,16 +470,16 @@ find_cuopt_libraries() {
         if [ -z "${include_path}" ]; then
             # Search for cuopt_c.h
             local found_header
-            found_header=$(find "${search_dir}" -name "cuopt_c.h" -path "*/linear_programming/*" 2>/dev/null | head -1)
+            found_header=$(find "${search_dir}" -name "cuopt_c.h" -path "*/mathematical_optimization/*" 2>/dev/null | head -1)
 
             if [ -n "${found_header}" ]; then
                 # Check if this is a Python package installation (contains libcuopt/include)
                 if echo "${found_header}" | grep -q "/libcuopt/include/"; then
-                    # Python package structure: /path/to/libcuopt/include/cuopt/linear_programming/cuopt_c.h
+                    # Python package structure: /path/to/libcuopt/include/cuopt/mathematical_optimization/cuopt_c.h
                     # Extract the include directory by going up 3 directories from the header file
                     include_path=$(dirname "$(dirname "$(dirname "${found_header}")")")
                 else
-                    # Standard installation: /path/to/include/cuopt/linear_programming/cuopt_c.h
+                    # Standard installation: /path/to/include/cuopt/mathematical_optimization/cuopt_c.h
                     # Extract the include directory by going up 2 directories
                     include_path=$(dirname "$(dirname "${found_header}")")
                 fi

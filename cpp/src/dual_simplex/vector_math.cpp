@@ -15,7 +15,7 @@
 #include <cstdio>
 #include <vector>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 template <typename i_t, typename f_t, typename Allocator>
 f_t vector_norm2_squared(const std::vector<f_t, Allocator>& x)
@@ -177,10 +177,10 @@ template double vector_norm2_squared<int, double, std::allocator<double>>(
 template double vector_norm2<int, double, std::allocator<double>>(
   const std::vector<double, std::allocator<double>>& x);
 
-template double vector_norm2_squared<int, double, PinnedHostAllocator<double>>(
-  const std::vector<double, PinnedHostAllocator<double>>&);
-template double vector_norm2<int, double, PinnedHostAllocator<double>>(
-  const std::vector<double, PinnedHostAllocator<double>>&);
+template double vector_norm2_squared<int, double, barrier::PinnedHostAllocator<double>>(
+  const std::vector<double, barrier::PinnedHostAllocator<double>>&);
+template double vector_norm2<int, double, barrier::PinnedHostAllocator<double>>(
+  const std::vector<double, barrier::PinnedHostAllocator<double>>&);
 
 template double vector_norm1<int, double>(const std::vector<double>& x);
 
@@ -211,4 +211,4 @@ template int inverse_permutation<int>(const std::vector<int>& p, std::vector<int
 
 #endif
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

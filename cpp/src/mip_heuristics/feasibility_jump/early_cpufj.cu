@@ -9,7 +9,7 @@
 
 #include <mip_heuristics/mip_constants.hpp>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 early_cpufj_t<i_t, f_t>::early_cpufj_t(
@@ -75,4 +75,4 @@ template class early_cpufj_t<int, float>;
 template class early_cpufj_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

@@ -10,7 +10,7 @@
 #include <utilities/copy_helpers.hpp>
 #include "bounds_update_data.cuh"
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 bounds_update_data_t<i_t, f_t>::bounds_update_data_t(problem_t<i_t, f_t>& problem)
@@ -88,4 +88,4 @@ template class bounds_update_data_t<int, float>;
 template class bounds_update_data_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

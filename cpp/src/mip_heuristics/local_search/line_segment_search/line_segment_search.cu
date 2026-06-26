@@ -13,7 +13,7 @@
 #include <thrust/tabulate.h>
 #include <thrust/transform.h>
 #include <queue>
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 line_segment_search_t<i_t, f_t>::line_segment_search_t(
@@ -298,4 +298,4 @@ template class line_segment_search_t<int, float>;
 template class line_segment_search_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

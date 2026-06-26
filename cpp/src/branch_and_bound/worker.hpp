@@ -20,7 +20,7 @@
 
 #include <vector>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 struct branch_and_bound_stats_t {
@@ -54,16 +54,16 @@ class branch_and_bound_worker_t {
   omp_atomic_t<bool> is_active;
   omp_atomic_t<f_t> lower_bound;
 
-  lp_problem_t<i_t, f_t> leaf_problem;
-  lp_solution_t<i_t, f_t> leaf_solution;
-  std::vector<variable_status_t> leaf_vstatus;
+  simplex::lp_problem_t<i_t, f_t> leaf_problem;
+  simplex::lp_solution_t<i_t, f_t> leaf_solution;
+  std::vector<simplex::variable_status_t> leaf_vstatus;
   std::vector<f_t> leaf_edge_norms;
 
-  basis_update_mpf_t<i_t, f_t> basis_factors;
+  simplex::basis_update_mpf_t<i_t, f_t> basis_factors;
   std::vector<i_t> basic_list;
   std::vector<i_t> nonbasic_list;
 
-  bounds_strengthening_t<i_t, f_t> node_presolver;
+  simplex::bounds_strengthening_t<i_t, f_t> node_presolver;
   std::vector<bool> bounds_changed;
 
   std::vector<f_t> start_lower;
@@ -90,10 +90,10 @@ class branch_and_bound_worker_t {
   bool recompute_bounds = true;
 
   branch_and_bound_worker_t(i_t worker_id,
-                            const lp_problem_t<i_t, f_t>& original_lp,
-                            const csr_matrix_t<i_t, f_t>& Arow,
-                            const std::vector<variable_type_t>& var_type,
-                            const simplex_solver_settings_t<i_t, f_t>& settings,
+                            const simplex::lp_problem_t<i_t, f_t>& original_lp,
+                            const simplex::csr_matrix_t<i_t, f_t>& Arow,
+                            const std::vector<simplex::variable_type_t>& var_type,
+                            const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
                             uint64_t rng_offset = 0)
     : worker_id(worker_id),
       search_strategy(BEST_FIRST),
@@ -114,7 +114,7 @@ class branch_and_bound_worker_t {
 
   // Set the variables bounds for the LP relaxation in the current node.
   bool set_lp_variable_bounds(mip_node_t<i_t, f_t>* node_ptr,
-                              const simplex_solver_settings_t<i_t, f_t>& settings)
+                              const simplex::simplex_solver_settings_t<i_t, f_t>& settings)
   {
     // Reset the bound_changed markers
     std::fill(bounds_changed.begin(), bounds_changed.end(), false);
@@ -142,10 +142,10 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
  public:
   using Base = branch_and_bound_worker_t<i_t, f_t>;
   bfs_worker_t(i_t worker_id,
-               const lp_problem_t<i_t, f_t>& original_lp,
-               const csr_matrix_t<i_t, f_t>& Arow,
-               const std::vector<variable_type_t>& var_type,
-               const simplex_solver_settings_t<i_t, f_t>& settings,
+               const simplex::lp_problem_t<i_t, f_t>& original_lp,
+               const simplex::csr_matrix_t<i_t, f_t>& Arow,
+               const std::vector<simplex::variable_type_t>& var_type,
+               const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
                uint64_t rng_offset = 0)
     : Base(worker_id, original_lp, Arow, var_type, settings, rng_offset)
   {
@@ -228,7 +228,7 @@ class diving_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
   using Base::Base;
 
   // Apply bound strengthening to the starting variable bounds
-  bool presolve_start_bounds(const simplex_solver_settings_t<i_t, f_t>& settings)
+  bool presolve_start_bounds(const simplex::simplex_solver_settings_t<i_t, f_t>& settings)
   {
     return this->node_presolver.bounds_strengthening(
       settings, this->bounds_changed, this->start_lower, this->start_upper);
@@ -256,4 +256,4 @@ class diving_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
   bfs_worker_t<i_t, f_t>* bfs_worker{nullptr};
 };
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::mip

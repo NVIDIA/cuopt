@@ -27,7 +27,25 @@
 #include <numeric>
 #include <queue>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::mip {
+
+using simplex::basis_update_mpf_t;
+using simplex::csc_matrix_t;
+using simplex::csr_matrix_t;
+using simplex::form_b;
+using simplex::inf;
+using simplex::lp_problem_t;
+using simplex::lp_solution_t;
+using simplex::matrix_vector_multiply;
+using simplex::simplex_solver_settings_t;
+using simplex::sparse_dot;
+using simplex::sparse_vector_t;
+using simplex::tic;
+using simplex::toc;
+using simplex::variable_status_t;
+using simplex::variable_type_t;
+using simplex::vector_norm2;
+using simplex::vector_norm_inf;
 
 namespace {
 
@@ -354,7 +372,7 @@ void bron_kerbosch(bk_bitset_context_t<i_t, f_t>& ctx,
 
 template <typename i_t, typename f_t>
 void extend_clique_vertices(std::vector<i_t>& clique_vertices,
-                            detail::clique_table_t<i_t, f_t>& graph,
+                            mip::clique_table_t<i_t, f_t>& graph,
                             const std::vector<f_t>& xstar,
                             const std::vector<f_t>& reduced_costs,
                             i_t num_vars,
@@ -2331,8 +2349,8 @@ f_t knapsack_generation_t<i_t, f_t>::solve_knapsack_problem(const std::vector<f_
   solution.assign(n, 0.0);
 
   // dp(j, v) = minimum weight using first j items to get value v
-  dense_matrix_t<i_t, i_t> dp(n + 1, sum_value + 1, INT_INF);
-  dense_matrix_t<i_t, uint8_t> take(n + 1, sum_value + 1, 0);
+  barrier::dense_matrix_t<i_t, i_t> dp(n + 1, sum_value + 1, INT_INF);
+  barrier::dense_matrix_t<i_t, uint8_t> take(n + 1, sum_value + 1, 0);
   dp(0, 0) = 0;
 
   // 4. Dynamic programming
@@ -2402,8 +2420,8 @@ f_t knapsack_generation_t<i_t, f_t>::exact_knapsack_problem_integer_values_fract
   solution.assign(n, 0.0);
 
   // dp(j, v) = minimum weight using first j items to get value v
-  dense_matrix_t<i_t, f_t> dp(n + 1, sum_value + 1, inf);
-  dense_matrix_t<i_t, uint8_t> take(n + 1, sum_value + 1, 0);
+  barrier::dense_matrix_t<i_t, f_t> dp(n + 1, sum_value + 1, inf);
+  barrier::dense_matrix_t<i_t, uint8_t> take(n + 1, sum_value + 1, 0);
   dp(0, 0) = 0;
 
   // 4. Dynamic programming
@@ -3395,7 +3413,7 @@ i_t tableau_equality_t<i_t, f_t>::generate_base_equality(
   u_bar.to_dense(u_bar_dense);
 
   std::vector<f_t> BTu_bar(lp.num_rows);
-  b_transpose_multiply(lp, basic_list, u_bar_dense, BTu_bar);
+  simplex::b_transpose_multiply(lp, basic_list, u_bar_dense, BTu_bar);
   for (i_t k = 0; k < lp.num_rows; k++) {
     if (k == i) {
       settings.log.printf("BTu_bar %d error %e\n", k, std::abs(BTu_bar[k] - 1.0));
@@ -5599,4 +5617,4 @@ template void verify_cuts_against_saved_solution<int, double>(
   const std::vector<double>& saved_solution);
 #endif
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::mip

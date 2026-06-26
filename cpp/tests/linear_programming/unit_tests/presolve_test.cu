@@ -7,10 +7,10 @@
 
 #include "../utilities/pdlp_test_utilities.cuh"
 
-#include <cuopt/linear_programming/io/mps_data_model.hpp>
-#include <cuopt/linear_programming/io/parser.hpp>
-#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
-#include <cuopt/linear_programming/solve.hpp>
+#include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
 #include <pdlp/utils.cuh>
 #include <utilities/base_fixture.hpp>
@@ -28,7 +28,7 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::linear_programming::test {
+namespace cuopt::mathematical_optimization::test {
 
 // Helper function to compute constraint residuals for the original problem
 static void compute_constraint_residuals(const std::vector<double>& coefficients,
@@ -108,7 +108,7 @@ TEST(pslp_presolve, postsolve_accuracy_afiro)
   constexpr double expected_obj = -464.75314;  // Known optimal objective for afiro
 
   auto path           = make_path_absolute("linear_programming/afiro_original.mps");
-  auto mps_data_model = cuopt::linear_programming::io::read_mps<int, double>(path, true);
+  auto mps_data_model = cuopt::mathematical_optimization::io::read_mps<int, double>(path, true);
 
   // Store original problem data for later verification
   const auto& orig_coefficients = mps_data_model.get_constraint_matrix_values();
@@ -124,8 +124,8 @@ TEST(pslp_presolve, postsolve_accuracy_afiro)
   const int orig_n_constraints  = mps_data_model.get_n_constraints();
 
   // Solve with PSLP presolve enabled
-  auto solver_settings                                 = pdlp_solver_settings_t<int, double>{};
-  solver_settings.method                               = cuopt::linear_programming::method_t::PDLP;
+  auto solver_settings   = pdlp_solver_settings_t<int, double>{};
+  solver_settings.method = cuopt::mathematical_optimization::method_t::PDLP;
   solver_settings.tolerances.relative_primal_tolerance = 1e-6;
   solver_settings.tolerances.relative_dual_tolerance   = 1e-6;
   solver_settings.tolerances.absolute_primal_tolerance = 1e-6;
@@ -168,14 +168,14 @@ TEST(pslp_presolve, postsolve_dual_accuracy_afiro)
   const raft::handle_t handle_{};
 
   auto path           = make_path_absolute("linear_programming/afiro_original.mps");
-  auto mps_data_model = cuopt::linear_programming::io::read_mps<int, double>(path, true);
+  auto mps_data_model = cuopt::mathematical_optimization::io::read_mps<int, double>(path, true);
 
   const int orig_n_vars        = mps_data_model.get_n_variables();
   const int orig_n_constraints = mps_data_model.get_n_constraints();
 
   // Solve with PSLP presolve and dual postsolve enabled
   auto solver_settings      = pdlp_solver_settings_t<int, double>{};
-  solver_settings.method    = cuopt::linear_programming::method_t::PDLP;
+  solver_settings.method    = cuopt::mathematical_optimization::method_t::PDLP;
   solver_settings.presolver = presolver_t::PSLP;
 
   optimization_problem_solution_t<int, double> solution =
@@ -204,7 +204,7 @@ TEST(pslp_presolve, postsolve_accuracy_larger_problem)
   constexpr double tolerance = 1e-4;
 
   auto path           = make_path_absolute("linear_programming/ex10/ex10.mps");
-  auto mps_data_model = cuopt::linear_programming::io::read_mps<int, double>(path, false);
+  auto mps_data_model = cuopt::mathematical_optimization::io::read_mps<int, double>(path, false);
 
   // Store original problem dimensions
   const auto& orig_coefficients = mps_data_model.get_constraint_matrix_values();
@@ -218,9 +218,9 @@ TEST(pslp_presolve, postsolve_accuracy_larger_problem)
   const int orig_n_constraints  = mps_data_model.get_n_constraints();
 
   // Solve with PSLP presolve
-  auto solver_settings                                 = pdlp_solver_settings_t<int, double>{};
-  solver_settings.method                               = cuopt::linear_programming::method_t::PDLP;
-  solver_settings.presolver                            = presolver_t::PSLP;
+  auto solver_settings      = pdlp_solver_settings_t<int, double>{};
+  solver_settings.method    = cuopt::mathematical_optimization::method_t::PDLP;
+  solver_settings.presolver = presolver_t::PSLP;
   solver_settings.tolerances.relative_primal_tolerance = 1e-6;
   solver_settings.tolerances.relative_dual_tolerance   = 1e-6;
   solver_settings.tolerances.absolute_primal_tolerance = 1e-6;
@@ -254,11 +254,11 @@ TEST(pslp_presolve, compare_with_no_presolve)
   constexpr double obj_tolerance = 1e-3;
 
   auto path           = make_path_absolute("linear_programming/afiro_original.mps");
-  auto mps_data_model = cuopt::linear_programming::io::read_mps<int, double>(path, true);
+  auto mps_data_model = cuopt::mathematical_optimization::io::read_mps<int, double>(path, true);
 
   // Solve without presolve
   auto settings_no_presolve      = pdlp_solver_settings_t<int, double>{};
-  settings_no_presolve.method    = cuopt::linear_programming::method_t::PDLP;
+  settings_no_presolve.method    = cuopt::mathematical_optimization::method_t::PDLP;
   settings_no_presolve.presolver = presolver_t::None;
   settings_no_presolve.tolerances.relative_primal_tolerance = 1e-6;
   settings_no_presolve.tolerances.relative_dual_tolerance   = 1e-6;
@@ -271,9 +271,9 @@ TEST(pslp_presolve, compare_with_no_presolve)
     solve_lp(&handle_, mps_data_model, settings_no_presolve);
 
   // Solve with PSLP presolve
-  auto settings_pslp                                 = pdlp_solver_settings_t<int, double>{};
-  settings_pslp.method                               = cuopt::linear_programming::method_t::PDLP;
-  settings_pslp.presolver                            = presolver_t::PSLP;
+  auto settings_pslp      = pdlp_solver_settings_t<int, double>{};
+  settings_pslp.method    = cuopt::mathematical_optimization::method_t::PDLP;
+  settings_pslp.presolver = presolver_t::PSLP;
   settings_pslp.tolerances.relative_primal_tolerance = 1e-6;
   settings_pslp.tolerances.relative_dual_tolerance   = 1e-6;
   settings_pslp.tolerances.absolute_primal_tolerance = 1e-6;
@@ -324,13 +324,13 @@ TEST(pslp_presolve, postsolve_reduced_costs)
   const raft::handle_t handle_{};
 
   auto path           = make_path_absolute("linear_programming/afiro_original.mps");
-  auto mps_data_model = cuopt::linear_programming::io::read_mps<int, double>(path, true);
+  auto mps_data_model = cuopt::mathematical_optimization::io::read_mps<int, double>(path, true);
 
   const int orig_n_vars = mps_data_model.get_n_variables();
 
   // Solve with PSLP and dual postsolve
   auto solver_settings      = pdlp_solver_settings_t<int, double>{};
-  solver_settings.method    = cuopt::linear_programming::method_t::PDLP;
+  solver_settings.method    = cuopt::mathematical_optimization::method_t::PDLP;
   solver_settings.presolver = presolver_t::PSLP;
 
   optimization_problem_solution_t<int, double> solution =
@@ -359,13 +359,13 @@ TEST(pslp_presolve, postsolve_multiple_problems)
   for (const auto& [name, expected_obj] : instances) {
     auto path = make_path_absolute("linear_programming/" + name + ".mps");
     auto mps_data_model =
-      cuopt::linear_programming::io::read_mps<int, double>(path, name == "afiro_original");
+      cuopt::mathematical_optimization::io::read_mps<int, double>(path, name == "afiro_original");
 
     const int orig_n_vars        = mps_data_model.get_n_variables();
     const int orig_n_constraints = mps_data_model.get_n_constraints();
 
     auto solver_settings      = pdlp_solver_settings_t<int, double>{};
-    solver_settings.method    = cuopt::linear_programming::method_t::PDLP;
+    solver_settings.method    = cuopt::mathematical_optimization::method_t::PDLP;
     solver_settings.presolver = presolver_t::PSLP;
 
     optimization_problem_solution_t<int, double> solution =
@@ -384,6 +384,6 @@ TEST(pslp_presolve, postsolve_multiple_problems)
   }
 }
 
-}  // namespace cuopt::linear_programming::test
+}  // namespace cuopt::mathematical_optimization::test
 
 CUOPT_TEST_PROGRAM_MAIN()

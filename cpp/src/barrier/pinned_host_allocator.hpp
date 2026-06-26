@@ -9,7 +9,7 @@
 
 #include <barrier/dense_vector.hpp>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::barrier {
 
 // Custom allocator to build pinned memory vector
 template <typename T>
@@ -32,4 +32,4 @@ bool operator!=(const PinnedHostAllocator<T>&, const PinnedHostAllocator<U>&) no
 template <typename i_t, typename f_t>
 using pinned_dense_vector_t = dense_vector_t<i_t, f_t, PinnedHostAllocator<f_t>>;
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::barrier

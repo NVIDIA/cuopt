@@ -12,7 +12,7 @@
 
 #include <vector>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 // A sparse vector stored as a list of nonzero coefficients and their indices
 template <typename i_t, typename f_t>
@@ -71,4 +71,4 @@ class sparse_vector_t {
   std::vector<f_t> x;
 };
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

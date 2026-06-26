@@ -16,7 +16,7 @@
 #include <cassert>
 #include <cmath>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 uint8_t encode(variable_status_t vstatus)
 {
@@ -325,4 +325,4 @@ template int initial_basis_selection<int, double>(
 
 #endif
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

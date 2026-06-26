@@ -772,8 +772,8 @@ WARN_LOGFILE           =
 # Note: If this tag is empty the current directory is searched.
 
 INPUT                  = main_page.md \
-                         ../include/cuopt/linear_programming/cuopt_c.h \
-                         ../include/cuopt/linear_programming/constants.h \
+                         ../include/cuopt/mathematical_optimization/cuopt_c.h \
+                         ../include/cuopt/mathematical_optimization/constants.h \
                          /usr/include/stdint.h
 
 # This tag can be used to specify the character encoding of the source files

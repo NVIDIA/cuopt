@@ -12,7 +12,7 @@
 
 #include <optional>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 template <typename i_t, typename f_t>
 i_t right_looking_lu(const csc_matrix_t<i_t, f_t>& A,
@@ -56,4 +56,4 @@ i_t right_looking_ldlt(const csc_matrix_t<i_t, f_t>& A,
                        std::vector<f_t>& D,
                        f_t& work_estimate);
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex
