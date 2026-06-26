@@ -69,6 +69,35 @@ struct user_problem_t {
   // expanded layout (num_cols) and must be projected back via original_col_to_expanded_col.
   i_t original_num_cols{0};
   std::vector<i_t> original_col_to_expanded_col;
+  // Linear constraint count before QCMATRIX->SOC expansion (user-facing rows).
+  i_t original_num_rows{0};
+  /** How each quadratic constraint was recognized during SOC conversion. */
+  enum class qc_soc_recognition_path_t : int8_t {
+    LORENTZ = 0,
+    AFFINE  = 1,
+    ROTATED = 2,
+    GENERAL = 3,
+  };
+  /** Per-QC metadata for @ref project_barrier_qcqp_duals_to_model (barrier SOCP -> user QCQP). */
+  struct qc_dual_recovery_entry_t {
+    qc_soc_recognition_path_t path{qc_soc_recognition_path_t::LORENTZ};
+    /** Uniform diagonal scale s in -s x_head^2 + s||tail||^2 <= 0 (Lorentz/rotated/affine). */
+    f_t uniform_s{1};
+    i_t cone_index{-1};
+    /** Expanded-model equality row for t = -(1/s)a^T x (affine path); -1 if none. */
+    i_t affine_link_row{-1};
+    /** Expanded-model rows for s0 + c^T x = alpha + 1/2 and s_{r+1} + c^T x = alpha - 1/2. */
+    i_t s0_link_row{-1};
+    i_t sr1_link_row{-1};
+    /** Rotated lift: equality rows s0 = h(x_h0+x_h1), s1 = h(x_h0-x_h1) (-1 if not rotated). */
+    i_t rsoc_s0_lift_row{-1};
+    i_t rsoc_s1_lift_row{-1};
+    /** h = (1/sqrt(2))*sqrt(d/s) in the two-head lift; inv_sqrt(2) for constant-half affine lift.
+     */
+    f_t rsoc_head_lift_h{0};
+    bool rsoc_head1_is_constant_half{false};
+  };
+  std::vector<qc_dual_recovery_entry_t> qc_dual_recovery;
 };
 
 }  // namespace cuopt::linear_programming::dual_simplex

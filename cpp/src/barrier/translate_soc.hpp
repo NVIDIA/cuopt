@@ -16,6 +16,8 @@
 #include <dual_simplex/tic_toc.hpp>
 #include <dual_simplex/user_problem.hpp>
 
+#include <utilities/logger.hpp>
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -62,6 +64,10 @@ void convert_quadratic_constraints_to_second_order_cones(
   cuopt_expects(!qcs.empty(),
                 error_type_t::ValidationError,
                 "Quadratic-constraint flag is set, but no constraints were provided");
+
+  user_problem.original_num_rows = csr_A.m;
+  user_problem.qc_dual_recovery.clear();
+  user_problem.qc_dual_recovery.resize(qcs.size());
 
   // Use a practical tolerance for text-parsed MPS numeric values.
   const f_t tol = std::numeric_limits<f_t>::epsilon() * 2;
@@ -564,14 +570,25 @@ void convert_quadratic_constraints_to_second_order_cones(
       cone_vars.push_back(std::move(cone));
       cone_is_rotated.push_back(is_rotated);
 
+      auto& dual_meta      = user_problem.qc_dual_recovery[qc_i];
+      dual_meta.uniform_s  = uniform_s;
+      dual_meta.cone_index = static_cast<i_t>(cone_dims.size()) - 1;
+      if (has_linear_part) {
+        dual_meta.path = dual_simplex::user_problem_t<i_t, f_t>::qc_soc_recognition_path_t::AFFINE;
+      } else if (is_rotated) {
+        dual_meta.path = dual_simplex::user_problem_t<i_t, f_t>::qc_soc_recognition_path_t::ROTATED;
+      } else {
+        dual_meta.path = dual_simplex::user_problem_t<i_t, f_t>::qc_soc_recognition_path_t::LORENTZ;
+      }
+
     } else {
       // =========================================================================
-      // General convex quadratic constraint path:
-      //   x^T Q x + c^T x <= alpha
+      // General convex quadratic constraint path (QCMATRIX storage, no extra 1/2 on quad part):
+      //   sum_k v_k x_{r_k} x_{c_k} + c^T x <= alpha
 
       // Invalidate affine head for this QC — the general path handles the linear part directly
       qc_affine_heads[qc_i] = -1;
-      // where Q is (possibly unsymmetric) and H = Q + Q^T must be PSD.
+      // H below satisfies (1/2) x^T H x = that QCMATRIX sum; H must be PSD.
       // =========================================================================
       const f_t alpha = qc.rhs_value;
 
@@ -798,6 +815,13 @@ void convert_quadratic_constraints_to_second_order_cones(
       cone_dims.push_back(cone_dim);
       cone_vars.push_back(std::move(cone));
       cone_is_rotated.push_back(is_rotated);
+
+      auto& dual_meta = user_problem.qc_dual_recovery[qc_i];
+      dual_meta.path  = dual_simplex::user_problem_t<i_t, f_t>::qc_soc_recognition_path_t::GENERAL;
+      dual_meta.uniform_s    = 1;
+      dual_meta.cone_index   = static_cast<i_t>(cone_dims.size()) - 1;
+      dual_meta.s0_link_row  = m_before + r;
+      dual_meta.sr1_link_row = m_before + r + 1;
     }
   }
 
@@ -865,6 +889,7 @@ void convert_quadratic_constraints_to_second_order_cones(
         user_problem.row_names[row_write_cursor] =
           "_CUOPT_qc_linear_link_" + qc.constraint_row_name;
       }
+      user_problem.qc_dual_recovery[qc_i].affine_link_row = row_write_cursor;
       ++row_write_cursor;
     }
 
@@ -965,10 +990,13 @@ void convert_quadratic_constraints_to_second_order_cones(
       is_cone_var[slack_base]     = 1;
       is_cone_var[slack_base + 1] = 1;
 
-      eq_row.n = n_prob;
+      eq_row.n        = n_prob;
+      auto& rsoc_meta = user_problem.qc_dual_recovery[static_cast<i_t>(ci)];
       // If the second head is not constant half, we need to lift it.
       if (!rc.head1_is_constant_half) {
-        const f_t h = inv_sqrt_2 * rc.head_lift_sqrt_ratio;
+        const f_t h                           = inv_sqrt_2 * rc.head_lift_sqrt_ratio;
+        rsoc_meta.rsoc_head_lift_h            = h;
+        rsoc_meta.rsoc_head1_is_constant_half = false;
         // s_0 - h * x_h0 - h * x_h1 = 0  (h = inv_sqrt_2 * sqrt(d/s))
         eq_row.i = {rc.head0, rc.head1, slack_base};
         eq_row.x = {-h, -h, f_t(1)};
@@ -976,6 +1004,7 @@ void convert_quadratic_constraints_to_second_order_cones(
         csr_A.append_row(eq_row);
         user_problem.row_sense[row_idx] = 'E';
         user_problem.rhs[row_idx]       = 0;
+        rsoc_meta.rsoc_s0_lift_row      = row_idx;
         ++row_idx;
 
         // s_1 - h * x_h0 + h * x_h1 = 0
@@ -985,12 +1014,15 @@ void convert_quadratic_constraints_to_second_order_cones(
         csr_A.append_row(eq_row);
         user_problem.row_sense[row_idx] = 'E';
         user_problem.rhs[row_idx]       = 0;
+        rsoc_meta.rsoc_s1_lift_row      = row_idx;
         ++row_idx;
 
         is_cone_var[rc.head0] = 0;
         is_cone_var[rc.head1] = 0;
       } else {
         // One head is constant half, so we can lift it directly.
+        rsoc_meta.rsoc_head_lift_h            = inv_sqrt_2;
+        rsoc_meta.rsoc_head1_is_constant_half = true;
         // s_0 - inv_sqrt_2 * x_h0 = inv_sqrt_2 * (1/2)
         eq_row.i = {rc.head0, slack_base};
         eq_row.x = {-inv_sqrt_2, f_t(1)};
@@ -998,6 +1030,7 @@ void convert_quadratic_constraints_to_second_order_cones(
         csr_A.append_row(eq_row);
         user_problem.row_sense[row_idx] = 'E';
         user_problem.rhs[row_idx]       = inv_sqrt_2 * half;
+        rsoc_meta.rsoc_s0_lift_row      = row_idx;
         ++row_idx;
 
         // s_1 - inv_sqrt_2 * x_h0 = -inv_sqrt_2 * (1/2)
@@ -1007,6 +1040,7 @@ void convert_quadratic_constraints_to_second_order_cones(
         csr_A.append_row(eq_row);
         user_problem.row_sense[row_idx] = 'E';
         user_problem.rhs[row_idx]       = -inv_sqrt_2 * half;
+        rsoc_meta.rsoc_s1_lift_row      = row_idx;
         ++row_idx;
 
         is_cone_var[rc.head0] = 0;
@@ -1350,6 +1384,154 @@ void project_barrier_solution_to_model_variables(
   solution.resize(m, n_original);
   solution.x = std::move(model_x);
   solution.z = std::move(model_z);
+}
+
+/**
+ * True when the Lorentz cone block is at (or numerically indistinguishable from) the apex.
+ * Feasibility with tiny head implies tiny tails; grad g ≈ 0 so the QC multiplier is not unique.
+ */
+template <typename i_t, typename f_t>
+bool lorentz_cone_block_at_apex(const std::vector<f_t>& x,
+                                i_t cone_offset,
+                                i_t cone_dim,
+                                f_t apex_tol = 1e-6)
+{
+  f_t cone_inf = 0;
+  for (i_t k = 0; k < cone_dim; ++k) {
+    cone_inf = std::max(cone_inf, std::abs(x[cone_offset + k]));
+  }
+  return cone_inf <= apex_tol;
+}
+
+/**
+ * Recover the SOC KKT multiplier from barrier primal/reduced-cost pair (x_head, z_head).
+ *
+ * Barrier Lorentz block (uniform scale s > 0):
+ *   phi = -s * x_head^2 + s * sum_{i in tail} x_i^2 <= 0.
+ *
+ * At a non-apex point, cone stationarity in the barrier's (x, z) coordinates gives
+ *   nu_bar = z_head / (2 * s * x_head),
+ * where nu_bar is the cone dual in barrier export coordinates (not necessarily the textbook
+ * multiplier nu on phi <= 0 with the same sign).  LORENTZ / ROTATED / AFFINE paths validate
+ * that nu_bar equals the exported user QC dual when the user row is already in phi-form.
+ *
+ * At the apex (||x||_inf <= apex_tol), grad phi = 0 so the multiplier is not unique; return 0.
+ *
+ * --- GENERAL (LDLT) path: extra factor of 2 (see path_t::GENERAL in dual projection) ---
+ *
+ * User QC (QCMATRIX / Python API) is stored without an extra 1/2 on the quadratic part:
+ *   g(x) = sum_k v_k x_{r_k} x_{c_k} + c^T x - alpha <= 0
+ * (MPS QCMATRIX coeffs are literal; unlike QUADOBJ/QMATRIX objectives where MPS uses 1/2 x^T Q x
+ * and the parser applies a 0.5 scale — see mps_parser.cpp value_scale notes.)
+ * LDLT builds symmetric H so (1/2) x^T H x equals that QCMATRIX sum; equivalently
+ *   g(x) = (1/2) x^T H x + c^T x - alpha <= 0.
+ * LDLT lift (rank r) adds y, s_0, s_{r+1} and equalities
+ *   y_k = sqrt(D_k) (L^T P x)_k,
+ *   s_0 + c^T x = alpha + 1/2,   s_{r+1} + c^T x = alpha - 1/2.
+ * On that manifold: (1/2)||y||^2 = (1/2) x^T H x and s_0 - s_{r+1} = 1, hence
+ *   g = (1/2)||y||^2 + 1/2 - s_0  and  phi = -s_0^2 + ||y||^2 + s_{r+1}^2 <= 0
+ * describe the same QC inequality (g <= 0 <=> phi <= 0).
+ *
+ * Sensitivity / scaling on the LDLT coords (not MPS 1/2 objective vs constraint, and not a
+ * joint (lambda + 2*nu) = 0 identity with textbook signs):  d g / d y_k = y_k because
+ * g carries (1/2)||y||^2, while d phi / d y_k = 2 y_k on tails.  With lambda_user >= 0
+ * the exported KKT multiplier on g and nu_bar from the head formula satisfy
+ *   lambda_user = 2 * nu_bar  (sign included: both are >= 0 at an active optimum in tests).
+ *
+ * nu_bar is recovered from (x, z) on the packed cone head via the formula above; export
+ *   lambda_user = 2 * nu_bar = z_head / (s * x_head).
+ */
+template <typename i_t, typename f_t>
+f_t qc_multiplier_from_lorentz_soc_kkt(const std::vector<f_t>& x,
+                                       const std::vector<f_t>& z,
+                                       i_t cone_offset,
+                                       i_t cone_dim,
+                                       f_t uniform_s,
+                                       f_t apex_tol = 1e-6)
+{
+  if (cone_dim <= 0 || uniform_s <= 0) { return f_t(0); }
+  const i_t head_col = cone_offset;
+  cuopt_expects(head_col >= 0 && head_col < static_cast<i_t>(x.size()),
+                error_type_t::RuntimeError,
+                "SOC head column index out of range");
+  cuopt_expects(static_cast<i_t>(z.size()) == static_cast<i_t>(x.size()),
+                error_type_t::RuntimeError,
+                "SOC KKT recovery requires x and z of equal length");
+  // primal solution is 0, so mu is not unique and we return 0.
+  if (lorentz_cone_block_at_apex<i_t, f_t>(x, cone_offset, cone_dim, apex_tol)) { return f_t(0); }
+
+  // otherwise, we can compute mu = z_head / (2 s x_head)
+  const f_t denom_scale = f_t(2) * uniform_s;
+  return z[head_col] / (denom_scale * x[head_col]);
+}
+
+/**
+ * Map barrier duals from the expanded SOC model to the original QCQP layout.
+ *
+ * Must run before @ref project_barrier_solution_to_model_variables while @p solution.z still
+ * includes the trailing cone block (cone duals live in z[cone_var_start:)).
+ *
+ * Output layout for @p solution.y:
+ *   [0, original_num_rows)                 — dual multipliers for user linear rows
+ *   [original_num_rows, original_num_rows + n_qc) — KKT multiplier mu >= 0 on each g(x) <= 0
+ */
+template <typename i_t, typename f_t>
+void project_barrier_qcqp_duals_to_model(const dual_simplex::user_problem_t<i_t, f_t>& user_problem,
+                                         dual_simplex::lp_solution_t<i_t, f_t>& solution)
+{
+  const i_t m_linear = user_problem.original_num_rows;
+  const i_t n_qc     = static_cast<i_t>(user_problem.qc_dual_recovery.size());
+  if (m_linear <= 0 && n_qc == 0) { return; }
+  // Duals are in expanded-model row order (same layout as uncrushed barrier y). User linear
+  // rows stay at indices [0, m_linear); QC multipliers are appended after projection.
+  if (static_cast<i_t>(solution.y.size()) < m_linear) { return; }
+  if (static_cast<i_t>(solution.z.size()) < user_problem.num_cols) { return; }
+  if (user_problem.second_order_cone_dims.size() != static_cast<size_t>(n_qc)) { return; }
+
+  const i_t n_out = m_linear + n_qc;
+  std::vector<f_t> model_y(n_out, f_t(0));
+  for (i_t i = 0; i < m_linear && i < static_cast<i_t>(solution.y.size()); ++i) {
+    model_y[i] = solution.y[i];
+  }
+
+  i_t cone_offset = user_problem.cone_var_start;
+  using path_t    = typename dual_simplex::user_problem_t<i_t, f_t>::qc_soc_recognition_path_t;
+
+  for (i_t qi = 0; qi < n_qc; ++qi) {
+    const auto& entry = user_problem.qc_dual_recovery[static_cast<size_t>(qi)];
+    cuopt_expects(entry.cone_index >= 0 &&
+                    entry.cone_index < static_cast<i_t>(user_problem.second_order_cone_dims.size()),
+                  error_type_t::RuntimeError,
+                  "Invalid cone index %d for quadratic constraint dual recovery",
+                  static_cast<int>(entry.cone_index));
+    const i_t dim = user_problem.second_order_cone_dims[static_cast<size_t>(entry.cone_index)];
+    cuopt_expects(cone_offset + dim <= user_problem.num_cols,
+                  error_type_t::RuntimeError,
+                  "Cone dual block exceeds expanded column count");
+    const f_t s = entry.uniform_s > 0 ? entry.uniform_s : f_t(1);
+    f_t lambda  = 0;
+
+    switch (entry.path) {
+      case path_t::LORENTZ:
+      case path_t::ROTATED:
+      case path_t::AFFINE:
+        // Lorentz-head recovery on [s0, s1, tails…].  Link-row duals are equality multipliers.
+        lambda =
+          qc_multiplier_from_lorentz_soc_kkt<i_t, f_t>(solution.x, solution.z, cone_offset, dim, s);
+        break;
+      case path_t::GENERAL:
+        // User g uses (1/2)||y||^2; expanded phi uses ||y||^2 on tails => lambda_user = 2*nu_bar.
+        // nu_bar from cone head (z, x); see @ref qc_multiplier_from_lorentz_soc_kkt comment block.
+        lambda = f_t(2) * qc_multiplier_from_lorentz_soc_kkt<i_t, f_t>(
+                            solution.x, solution.z, cone_offset, dim, s);
+        break;
+    }
+
+    model_y[m_linear + qi] = lambda;
+    cone_offset += dim;
+  }
+
+  solution.y = std::move(model_y);
 }
 
 }  // namespace cuopt::linear_programming::detail
