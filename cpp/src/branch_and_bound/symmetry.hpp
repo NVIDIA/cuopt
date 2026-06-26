@@ -20,7 +20,7 @@
 #include <numeric>
 #include <sstream>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::mip {
 
 // permutation_t stores a dense permutation plus its support (non-identity entries).
 template <typename i_t>
@@ -338,9 +338,9 @@ class orbital_fixing_t {
   // Returns the number of free variables in conflicting orbits (orbits with
   // both zero and one sources).
   i_t orbital_fixing(mip_symmetry_t<i_t, f_t>* symmetry,
-                     const simplex_solver_settings_t<i_t, f_t>& settings,
+                     const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
                      mip_node_t<i_t, f_t>* node_ptr,
-                     lp_problem_t<i_t, f_t>& problem,
+                     simplex::lp_problem_t<i_t, f_t>& problem,
                      const std::vector<f_t>& start_lower,
                      const std::vector<f_t>& start_upper)
   {
@@ -605,7 +605,7 @@ class lexical_reduction_t {
   // Return -1 to prune the node, otherwise return the number of fixings applied.
   i_t lexical_reduce(mip_symmetry_t<i_t, f_t>* symmetry,
                      mip_node_t<i_t, f_t>* node_ptr,
-                     lp_problem_t<i_t, f_t>& problem)
+                     simplex::lp_problem_t<i_t, f_t>& problem)
   {
     reverse_branched_variables_.clear();
     mip_node_t<i_t, f_t>* node = node_ptr;
@@ -680,22 +680,22 @@ class lexical_reduction_t {
 
 template <typename i_t, typename f_t>
 std::unique_ptr<mip_symmetry_t<i_t, f_t>> detect_symmetry(
-  const user_problem_t<i_t, f_t>& user_problem,
-  const simplex_solver_settings_t<i_t, f_t>& settings,
+  const simplex::user_problem_t<i_t, f_t>& user_problem,
+  const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
   bool& has_symmetry)
 {
   has_symmetry = false;
 
-  f_t start_time = tic();
-  lp_problem_t<i_t, f_t> problem(user_problem.handle_ptr, 1, 1, 1);
+  f_t start_time = simplex::tic();
+  simplex::lp_problem_t<i_t, f_t> problem(user_problem.handle_ptr, 1, 1, 1);
   std::vector<i_t> new_slacks;
-  dualize_info_t<i_t, f_t> dualize_info;
+  simplex::dualize_info_t<i_t, f_t> dualize_info;
   convert_user_problem(user_problem, settings, problem, new_slacks, dualize_info);
-  std::vector<variable_type_t> var_types = user_problem.var_types;
+  std::vector<simplex::variable_type_t> var_types = user_problem.var_types;
   if (problem.num_cols > user_problem.num_cols) {
     var_types.resize(problem.num_cols);
     for (i_t k = user_problem.num_cols; k < problem.num_cols; k++) {
-      var_types[k] = variable_type_t::CONTINUOUS;
+      var_types[k] = simplex::variable_type_t::CONTINUOUS;
     }
   }
 
@@ -729,12 +729,12 @@ std::unique_ptr<mip_symmetry_t<i_t, f_t>> detect_symmetry(
     return var_types[a] < var_types[b];
   });
   std::vector<i_t> var_colors(problem.num_cols, -1);
-  i_t var_color             = 0;
-  f_t last_obj              = problem.objective[obj_perm[0]];
-  f_t last_lower            = problem.lower[obj_perm[0]];
-  f_t last_upper            = problem.upper[obj_perm[0]];
-  variable_type_t last_type = var_types[obj_perm[0]];
-  var_colors[obj_perm[0]]   = var_color;
+  i_t var_color                      = 0;
+  f_t last_obj                       = problem.objective[obj_perm[0]];
+  f_t last_lower                     = problem.lower[obj_perm[0]];
+  f_t last_upper                     = problem.upper[obj_perm[0]];
+  simplex::variable_type_t last_type = var_types[obj_perm[0]];
+  var_colors[obj_perm[0]]            = var_color;
   for (i_t k = 1; k < problem.num_cols; k++) {
     const i_t j   = obj_perm[k];
     const f_t obj = problem.objective[j];
@@ -835,7 +835,7 @@ std::unique_ptr<mip_symmetry_t<i_t, f_t>> detect_symmetry(
   // Let r_i be the vertex associated with the row i
   // Let V_i,c be the set of variables in row i with the same color c
   // We create a new vertex w_i,c and edges (v_j, w_i,c) and (w_i,c, r_i) for all v_j in V_i,c
-  csr_matrix_t<i_t, f_t> A_row(problem.num_rows, problem.num_cols, 0);
+  simplex::csr_matrix_t<i_t, f_t> A_row(problem.num_rows, problem.num_cols, 0);
   problem.A.to_compressed_row(A_row);
 
   std::vector<f_t> nonzeros = A_row.x;
@@ -937,8 +937,8 @@ std::unique_ptr<mip_symmetry_t<i_t, f_t>> detect_symmetry(
 
 #endif
 
-  settings.log.printf("Graph construction time %f\n", toc(start_time));
-  f_t dejavu_start_time = tic();
+  settings.log.printf("Graph construction time %f\n", simplex::toc(start_time));
+  f_t dejavu_start_time = simplex::tic();
 
   // The graph should now be described by:
   // vertices, edge_in, edge_out, vertex_colors
@@ -970,7 +970,7 @@ std::unique_ptr<mip_symmetry_t<i_t, f_t>> detect_symmetry(
   result->num_original_vars = num_original_vars;
   result->is_binary.resize(num_original_vars, 0);
   for (i_t j = 0; j < num_original_vars; j++) {
-    if (var_types[j] != variable_type_t::CONTINUOUS) {
+    if (var_types[j] != simplex::variable_type_t::CONTINUOUS) {
       if (user_problem.lower[j] == 0.0 && user_problem.upper[j] == 1.0) {
         result->is_binary[j] = 1;
         result->binary_variables.push_back(j);
@@ -1060,7 +1060,7 @@ std::unique_ptr<mip_symmetry_t<i_t, f_t>> detect_symmetry(
                       grp_size_str.str().c_str(),
                       num_dejavu_generators,
                       projected_count);
-  settings.log.printf("Dejavu time %f\n", toc(dejavu_start_time));
+  settings.log.printf("Dejavu time %f\n", simplex::toc(dejavu_start_time));
 
   result->num_generators = result->generators.num_generators();
   if (projected_count > static_cast<int>(result->num_generators)) {
@@ -1114,7 +1114,7 @@ std::unique_ptr<mip_symmetry_t<i_t, f_t>> detect_symmetry(
                    (total_vars_in_orbits >= 10);
   }
 
-  settings.log.printf("Total symmetry detection time %f\n", toc(start_time));
+  settings.log.printf("Total symmetry detection time %f\n", simplex::toc(start_time));
 
   if (!has_symmetry) {
     settings.log.printf(
@@ -1138,4 +1138,4 @@ std::unique_ptr<mip_symmetry_t<i_t, f_t>> detect_symmetry(
   return result;
 }
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::mip

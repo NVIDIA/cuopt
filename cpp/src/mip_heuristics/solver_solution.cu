@@ -5,7 +5,7 @@
  */
 /* clang-format on */
 
-#include <cuopt/linear_programming/mip/solver_solution.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_solution.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <utilities/logger.hpp>
 
@@ -15,7 +15,7 @@
 #include <raft/util/cudart_utils.hpp>
 #include <vector>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 template <typename i_t, typename f_t>
 mip_solution_t<i_t, f_t>::mip_solution_t(rmm::device_uvector<f_t> solution,
@@ -262,4 +262,4 @@ template class mip_solution_t<int, float>;
 #if MIP_INSTANTIATE_DOUBLE
 template class mip_solution_t<int, double>;
 #endif
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

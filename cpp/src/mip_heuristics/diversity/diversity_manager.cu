@@ -23,7 +23,7 @@
 
 constexpr bool fj_only_run = false;
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 size_t fp_recombiner_config_t::max_n_of_vars_from_other =
   fp_recombiner_config_t::initial_n_of_vars_from_other;
@@ -262,7 +262,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
   //     !problem_ptr->empty) {
   //   f_t time_limit_for_clique_table = std::min(3., presolve_timer.remaining_time() / 5);
   //   timer_t clique_timer(time_limit_for_clique_table);
-  //   dual_simplex::user_problem_t<i_t, f_t> host_problem(problem_ptr->handle_ptr);
+  //   simplex::user_problem_t<i_t, f_t> host_problem(problem_ptr->handle_ptr);
   //   problem_ptr->get_host_user_problem(host_problem);
   //   std::shared_ptr<clique_table_t<i_t, f_t>> clique_table;
   //   constexpr bool modify_problem_with_cliques = false;
@@ -966,4 +966,4 @@ template class diversity_manager_t<int, float>;
 template class diversity_manager_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

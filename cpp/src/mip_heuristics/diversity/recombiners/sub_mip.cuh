@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include "cuopt/linear_programming/mip/solver_settings.hpp"
+#include "cuopt/mathematical_optimization/mip/solver_settings.hpp"
 #include "recombiner.cuh"
 
 #include <branch_and_bound/branch_and_bound.hpp>
@@ -16,7 +16,7 @@
 #include <dual_simplex/tic_toc.hpp>
 #include <pdlp/initial_scaling_strategy/initial_scaling.cuh>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
@@ -73,7 +73,7 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
     this->compute_vars_to_fix(offspring, vars_to_fix, n_vars_from_other, n_vars_from_guiding);
     auto [fixed_problem, fixed_assignment, variable_map] = offspring.fix_variables(vars_to_fix);
     // TODO ask Akif and Alice if this is ok
-    pdlp_initial_scaling_strategy_t<i_t, f_t> scaling(
+    pdlp::pdlp_initial_scaling_strategy_t<i_t, f_t> scaling(
       fixed_problem.handle_ptr,
       fixed_problem,
       context.settings.hyper_params.default_l_inf_ruiz_iterations,
@@ -91,14 +91,14 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
     trivial_presolve(fixed_problem);
     fixed_problem.check_problem_representation(true);
     // brute force rounding threshold is 8
-    const bool run_sub_mip                             = fixed_problem.n_integer_vars > 8;
-    dual_simplex::mip_status_t branch_and_bound_status = dual_simplex::mip_status_t::UNSET;
-    dual_simplex::mip_solution_t<i_t, f_t> branch_and_bound_solution(1);
+    const bool run_sub_mip                    = fixed_problem.n_integer_vars > 8;
+    mip::mip_status_t branch_and_bound_status = mip::mip_status_t::UNSET;
+    simplex::mip_solution_t<i_t, f_t> branch_and_bound_solution(1);
     if (run_sub_mip) {
       // run sub-mip
-      namespace dual_simplex = cuopt::linear_programming::dual_simplex;
-      dual_simplex::user_problem_t<i_t, f_t> branch_and_bound_problem(offspring.handle_ptr);
-      dual_simplex::simplex_solver_settings_t<i_t, f_t> branch_and_bound_settings;
+      namespace simplex = cuopt::mathematical_optimization::simplex;
+      simplex::user_problem_t<i_t, f_t> branch_and_bound_problem(offspring.handle_ptr);
+      simplex::simplex_solver_settings_t<i_t, f_t> branch_and_bound_settings;
       fixed_problem.get_host_user_problem(branch_and_bound_problem);
       branch_and_bound_solution.resize(branch_and_bound_problem.num_cols);
       // Fill in the settings for branch and bound
@@ -120,10 +120,9 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
 
       // disable B&B logs, so that it is not interfering with the main B&B thread
       branch_and_bound_settings.log.log = false;
-      dual_simplex::probing_implied_bound_t<i_t, f_t> empty_probing(
-        branch_and_bound_problem.num_cols);
-      dual_simplex::branch_and_bound_t<i_t, f_t> branch_and_bound(
-        branch_and_bound_problem, branch_and_bound_settings, dual_simplex::tic(), empty_probing);
+      mip::probing_implied_bound_t<i_t, f_t> empty_probing(branch_and_bound_problem.num_cols);
+      mip::branch_and_bound_t<i_t, f_t> branch_and_bound(
+        branch_and_bound_problem, branch_and_bound_settings, simplex::tic(), empty_probing);
       branch_and_bound_status = branch_and_bound.solve(branch_and_bound_solution);
       if (solution_vector.size() > 0) {
         cuopt_assert(fixed_assignment.size() == branch_and_bound_solution.x.size(),
@@ -162,7 +161,7 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
     // bool same_as_parents = this->check_if_offspring_is_same_as_parents(offspring, a, b);
     // adjust the max_n_of_vars_from_other
     if (n_different_vars > (i_t)sub_mip_recombiner_config_t::max_n_of_vars_from_other) {
-      if (branch_and_bound_status == dual_simplex::mip_status_t::OPTIMAL) {
+      if (branch_and_bound_status == mip::mip_status_t::OPTIMAL) {
         sub_mip_recombiner_config_t::increase_max_n_of_vars_from_other();
       } else {
         sub_mip_recombiner_config_t::decrease_max_n_of_vars_from_other();
@@ -206,4 +205,4 @@ class sub_mip_recombiner_t : public recombiner_t<i_t, f_t> {
   population_t<i_t, f_t>& population;
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

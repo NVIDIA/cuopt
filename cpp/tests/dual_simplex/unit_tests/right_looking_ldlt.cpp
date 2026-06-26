@@ -16,7 +16,7 @@
 #include <numeric>
 #include <vector>
 
-namespace cuopt::linear_programming::dual_simplex::test {
+namespace cuopt::mathematical_optimization::simplex::test {
 
 // Helper: build a CSC lower-triangle matrix from dense symmetric input (column-major, full matrix).
 // Only stores entries (i, j) with i >= j.
@@ -602,4 +602,4 @@ TEST(right_looking_ldlt, large_arrowhead_markowitz)
   EXPECT_NE(perm[0], 0) << "Markowitz should not pick the dense node (index 0) first";
 }
 
-}  // namespace cuopt::linear_programming::dual_simplex::test
+}  // namespace cuopt::mathematical_optimization::simplex::test

@@ -44,7 +44,7 @@
 
 #include <raft/core/nvtx.hpp>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 papilo::Problem<f_t> build_papilo_problem(const optimization_problem_t<i_t, f_t>& op_problem,
@@ -550,7 +550,8 @@ void set_presolve_methods(papilo::Presolve<f_t>& presolver,
 
   if (category == problem_category_t::MIP) {
     // cuOpt custom GF2 presolver
-    presolver.addPresolveMethod(uptr(new cuopt::linear_programming::detail::GF2Presolve<f_t>()));
+    presolver.addPresolveMethod(
+      uptr(new cuopt::mathematical_optimization::mip::GF2Presolve<f_t>()));
   }
   // fast presolvers
   presolver.addPresolveMethod(uptr(new papilo::SingletonCols<f_t>()));
@@ -661,7 +662,7 @@ template <typename i_t, typename f_t>
 third_party_presolve_result_t<i_t, f_t> third_party_presolve_t<i_t, f_t>::apply(
   optimization_problem_t<i_t, f_t> const& op_problem,
   problem_category_t category,
-  cuopt::linear_programming::presolver_t presolver,
+  cuopt::mathematical_optimization::presolver_t presolver,
   bool dual_postsolve,
   f_t absolute_tolerance,
   f_t relative_tolerance,
@@ -671,12 +672,12 @@ third_party_presolve_result_t<i_t, f_t> third_party_presolve_t<i_t, f_t>::apply(
   presolver_ = presolver;
   maximize_  = op_problem.get_sense();
   if (category == problem_category_t::MIP &&
-      presolver == cuopt::linear_programming::presolver_t::PSLP) {
+      presolver == cuopt::mathematical_optimization::presolver_t::PSLP) {
     cuopt_expects(
       false, error_type_t::RuntimeError, "PSLP presolver is not supported for MIP problems");
   }
 
-  if (presolver == cuopt::linear_programming::presolver_t::PSLP) {
+  if (presolver == cuopt::mathematical_optimization::presolver_t::PSLP) {
     return apply_pslp(op_problem, time_limit);
   }
 
@@ -775,7 +776,7 @@ void third_party_presolve_t<i_t, f_t>::undo(rmm::device_uvector<f_t>& primal_sol
                                             bool dual_postsolve,
                                             rmm::cuda_stream_view stream_view)
 {
-  if (presolver_ == cuopt::linear_programming::presolver_t::PSLP) {
+  if (presolver_ == cuopt::mathematical_optimization::presolver_t::PSLP) {
     undo_pslp(primal_solution, dual_solution, reduced_costs, stream_view);
     return;
   }
@@ -856,7 +857,7 @@ template <typename i_t, typename f_t>
 void third_party_presolve_t<i_t, f_t>::uncrush_primal_solution(
   const std::vector<f_t>& reduced_primal, std::vector<f_t>& full_primal) const
 {
-  if (presolver_ == cuopt::linear_programming::presolver_t::PSLP) {
+  if (presolver_ == cuopt::mathematical_optimization::presolver_t::PSLP) {
     cuopt_expects(false,
                   error_type_t::RuntimeError,
                   "This code path should be never called, as this is meant for callbacks and they "
@@ -899,4 +900,4 @@ template struct papilo_postsolve_deleter<double>;
 template class third_party_presolve_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

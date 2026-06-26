@@ -13,10 +13,10 @@
 #include "cuopt_remote.pb.h"
 #include "cuopt_remote_service.grpc.pb.h"
 
-#include <cuopt/linear_programming/cpu_optimization_problem_solution.hpp>
-#include <cuopt/linear_programming/optimization_problem_interface.hpp>
-#include <cuopt/linear_programming/solve.hpp>
-#include <cuopt/linear_programming/utilities/internals.hpp>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem_solution.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
+#include <cuopt/mathematical_optimization/utilities/internals.hpp>
 #include "grpc_problem_mapper.hpp"
 #include "grpc_server_logger.hpp"
 #include "grpc_settings_mapper.hpp"
@@ -60,8 +60,9 @@ using grpc::ServerWriter;
 using grpc::Status;
 using grpc::StatusCode;
 
-using namespace cuopt::linear_programming;
-// Note: NOT using "using namespace cuopt::remote" to avoid JobStatus enum conflict
+// Note: cuopt::mathematical_optimization names are fully qualified below to avoid leaking
+// a header-scope using-namespace directive, and to avoid a JobStatus enum conflict
+// with cuopt::remote.
 
 // =============================================================================
 // Shared Memory Structures (must match between main process and workers)
@@ -216,7 +217,7 @@ struct ChunkedUploadState {
   // Top-level and container fields stay in separate maps so a top-level
   // field_id and a container-relative field_id can coexist without
   // colliding on the int32_t key.
-  std::map<cuopt::linear_programming::container_array_key_t, FieldMeta> container_field_meta;
+  std::map<cuopt::mathematical_optimization::container_array_key_t, FieldMeta> container_field_meta;
   std::vector<cuopt::remote::ArrayChunk> chunks;
   int64_t total_chunks = 0;
   int64_t total_bytes  = 0;

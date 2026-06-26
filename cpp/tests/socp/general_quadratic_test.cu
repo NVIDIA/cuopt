@@ -8,7 +8,7 @@
 #include <gtest/gtest.h>
 
 #include <barrier/translate_soc.hpp>
-#include <cuopt/linear_programming/optimization_problem_interface.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 #include <dual_simplex/solve.hpp>
 #include <dual_simplex/sparse_matrix.hpp>
 #include <dual_simplex/user_problem.hpp>
@@ -19,7 +19,16 @@
 #include <cmath>
 #include <vector>
 
-namespace cuopt::linear_programming::detail::test {
+namespace cuopt::mathematical_optimization::barrier::test {
+
+using simplex::csr_matrix_t;
+using simplex::inf;
+using simplex::lp_solution_t;
+using simplex::lp_status_t;
+using simplex::simplex_solver_settings_t;
+using simplex::solve_linear_program_with_barrier;
+using simplex::user_problem_t;
+using simplex::variable_type_t;
 
 using i_t  = int;
 using f_t  = double;
@@ -46,7 +55,6 @@ TEST(general_quadratic, dense_pd_2x2_solve)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<i_t, f_t> user_problem(&handle);
 
   // Need at least one linear constraint for the barrier solver.
@@ -91,7 +99,7 @@ TEST(general_quadratic, dense_pd_2x2_solve)
   qc.vals                 = {2.0, 1.0, 2.0};
 
   // Convert to CSR for translation (must include the linear constraint row)
-  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
+  csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
   csr_A.m         = m;
   csr_A.n         = n;
   csr_A.row_start = {0, 2};
@@ -159,7 +167,6 @@ TEST(general_quadratic, rejects_non_convex)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<i_t, f_t> user_problem(&handle);
 
   constexpr int m  = 0;
@@ -194,7 +201,7 @@ TEST(general_quadratic, rejects_non_convex)
   qc.cols                 = {0, 0, 1};
   qc.vals                 = {1.0, 4.0, 1.0};
 
-  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
+  csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
   csr_A.m         = m;
   csr_A.n         = n;
   csr_A.row_start = {0};
@@ -217,7 +224,6 @@ TEST(general_quadratic, rank_deficient_psd_solve)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<i_t, f_t> user_problem(&handle);
 
   constexpr int m  = 1;
@@ -257,7 +263,7 @@ TEST(general_quadratic, rank_deficient_psd_solve)
   qc.cols                 = {0, 0, 1};
   qc.vals                 = {1.0, 2.0, 1.0};
 
-  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
+  csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
   csr_A.m         = m;
   csr_A.n         = n;
   csr_A.row_start = {0, 2};
@@ -302,7 +308,6 @@ TEST(general_quadratic, with_inequality_constraint)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<i_t, f_t> user_problem(&handle);
 
   // 2 constraints: one equality, one inequality
@@ -348,7 +353,7 @@ TEST(general_quadratic, with_inequality_constraint)
   qc.vals                 = {2.0, 1.0, 2.0};
 
   // Build CSR matching the A matrix
-  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
+  csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
   csr_A.m         = m;
   csr_A.n         = n;
   csr_A.row_start = {0, 2, 4};
@@ -400,7 +405,6 @@ TEST(general_quadratic, least_squares_b_in_range)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<i_t, f_t> user_problem(&handle);
 
   // Variables: x0, x1, u (u = t - b^T*b = t - 5).
@@ -460,7 +464,7 @@ TEST(general_quadratic, least_squares_b_in_range)
   qc.linear_indices       = {0, 1, 2};
 
   // Build CSR with the linear constraint: x0 + x1 = 2
-  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
+  csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
   csr_A.m         = m;
   csr_A.n         = n;
   csr_A.row_start = {0, 2};
@@ -519,7 +523,6 @@ TEST(general_quadratic, least_squares_b_not_in_range)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<i_t, f_t> user_problem(&handle);
 
   constexpr int m  = 1;
@@ -562,7 +565,7 @@ TEST(general_quadratic, least_squares_b_not_in_range)
   qc.linear_indices       = {0, 1, 2};
 
   // Build CSR: x0 + x1 = 2
-  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
+  csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
   csr_A.m         = m;
   csr_A.n         = n;
   csr_A.row_start = {0, 2};
@@ -592,7 +595,6 @@ TEST(general_quadratic, soc_head_nonneg_accepted)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<i_t, f_t> user_problem(&handle);
 
   // Variables: x0, x1, t. Constraint: x0^2 + x1^2 - t^2 <= 0
@@ -637,7 +639,7 @@ TEST(general_quadratic, soc_head_nonneg_accepted)
   qc.cols                 = {0, 1, 2};
   qc.vals                 = {1.0, 1.0, -1.0};
 
-  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, 1);
+  csr_matrix_t<i_t, f_t> csr_A(m, n, 1);
   csr_A.m         = m;
   csr_A.n         = n;
   csr_A.row_start = {0, 1};
@@ -659,7 +661,6 @@ TEST(general_quadratic, soc_head_free_rejected)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<i_t, f_t> user_problem(&handle);
 
   constexpr int m  = 1;
@@ -695,7 +696,7 @@ TEST(general_quadratic, soc_head_free_rejected)
   qc.cols                 = {0, 1, 2};
   qc.vals                 = {1.0, 1.0, -1.0};
 
-  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
+  csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
   csr_A.m         = m;
   csr_A.n         = n;
   csr_A.row_start = {0, 1};
@@ -715,7 +716,6 @@ TEST(general_quadratic, rotated_soc_heads_nonneg_accepted)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<i_t, f_t> user_problem(&handle);
 
   // Variables: x0, x1, y, z. Constraint: x0^2 + x1^2 - 2*y*z <= 0
@@ -753,7 +753,7 @@ TEST(general_quadratic, rotated_soc_heads_nonneg_accepted)
   qc.cols                 = {0, 1, 3, 2};
   qc.vals                 = {1.0, 1.0, -1.0, -1.0};
 
-  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
+  csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
   csr_A.m         = m;
   csr_A.n         = n;
   csr_A.row_start = {0, 1};
@@ -774,7 +774,6 @@ TEST(general_quadratic, rotated_soc_heads_free_rejected)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<i_t, f_t> user_problem(&handle);
 
   constexpr int m  = 1;
@@ -810,7 +809,7 @@ TEST(general_quadratic, rotated_soc_heads_free_rejected)
   qc.cols                 = {0, 1, 3, 2};
   qc.vals                 = {1.0, 1.0, -1.0, -1.0};
 
-  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
+  csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
   csr_A.m         = m;
   csr_A.n         = n;
   csr_A.row_start = {0, 1};
@@ -824,4 +823,4 @@ TEST(general_quadratic, rotated_soc_heads_free_rejected)
     cuopt::logic_error);
 }
 
-}  // namespace cuopt::linear_programming::detail::test
+}  // namespace cuopt::mathematical_optimization::barrier::test

@@ -731,7 +731,7 @@ mip_settings:
 
     # MIP heuristic hyper-parameters (nested: settings.heuristic_params.<field>)
     # Tuning knobs for MIP GPU heuristics; see mip_heuristics_hyper_params_t
-    # in cpp/include/cuopt/linear_programming/mip/heuristics_hyper_params.hpp.
+    # in cpp/include/cuopt/mathematical_optimization/mip/heuristics_hyper_params.hpp.
     # All fields carry non-zero defaults on the C++ side, so they are declared
     # `optional` in the proto: a client that omits any of them gets the C++
     # default rather than the proto3 wire zero (0).

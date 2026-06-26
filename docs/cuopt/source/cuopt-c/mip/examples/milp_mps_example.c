@@ -6,7 +6,7 @@
  * Example program for solving MPS files with cuOpt MILP solver
  */
 
-#include <cuopt/linear_programming/cuopt_c.h>
+#include <cuopt/mathematical_optimization/cuopt_c.h>
 #include <stdio.h>
 #include <stdlib.h>
 

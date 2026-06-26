@@ -30,7 +30,7 @@
 #include <utilities/work_limit_context.hpp>
 #include <utilities/work_unit_scheduler.hpp>
 
-#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 
 #include <omp.h>
 
@@ -40,12 +40,12 @@
 #include <memory>
 #include <vector>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 template <typename i_t, typename f_t>
 struct clique_table_t;
 }
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 struct mip_symmetry_t;
@@ -62,9 +62,6 @@ enum class mip_status_t {
 };
 
 template <typename i_t, typename f_t>
-class bounds_strengthening_t;
-
-template <typename i_t, typename f_t>
 void upper_bound_callback(f_t upper_bound);
 
 template <typename i_t, typename f_t>
@@ -79,12 +76,12 @@ struct deterministic_diving_policy_t;
 template <typename i_t, typename f_t>
 class branch_and_bound_t {
  public:
-  branch_and_bound_t(const user_problem_t<i_t, f_t>& user_problem,
-                     const simplex_solver_settings_t<i_t, f_t>& solver_settings,
+  branch_and_bound_t(const simplex::user_problem_t<i_t, f_t>& user_problem,
+                     const simplex::simplex_solver_settings_t<i_t, f_t>& solver_settings,
                      f_t start_time,
                      const probing_implied_bound_t<i_t, f_t>& probing_implied_bound,
-                     std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table = nullptr,
-                     mip_symmetry_t<i_t, f_t>* symmetry                             = nullptr);
+                     std::shared_ptr<mip::clique_table_t<i_t, f_t>> clique_table = nullptr,
+                     mip_symmetry_t<i_t, f_t>* symmetry                          = nullptr);
 
   // Set an initial guess based on the user_problem. This should be called before solve.
   void set_initial_guess(const std::vector<f_t>& user_guess) { guess_ = user_guess; }
@@ -141,20 +138,21 @@ class branch_and_bound_t {
   bool enable_concurrent_lp_root_solve() const { return enable_concurrent_lp_root_solve_; }
   std::atomic<int>* get_root_concurrent_halt() { return &root_concurrent_halt_; }
   void set_root_concurrent_halt(int value) { root_concurrent_halt_ = value; }
-  lp_status_t solve_root_relaxation(simplex_solver_settings_t<i_t, f_t> const& lp_settings,
-                                    lp_solution_t<i_t, f_t>& root_relax_soln,
-                                    std::vector<variable_status_t>& root_vstatus,
-                                    basis_update_mpf_t<i_t, f_t>& basis_update,
-                                    std::vector<i_t>& basic_list,
-                                    std::vector<i_t>& nonbasic_list,
-                                    std::vector<f_t>& edge_norms);
+  simplex::lp_status_t solve_root_relaxation(
+    simplex::simplex_solver_settings_t<i_t, f_t> const& lp_settings,
+    simplex::lp_solution_t<i_t, f_t>& root_relax_soln,
+    std::vector<simplex::variable_status_t>& root_vstatus,
+    simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
+    std::vector<i_t>& basic_list,
+    std::vector<i_t>& nonbasic_list,
+    std::vector<f_t>& edge_norms);
 
   i_t find_reduced_cost_fixings(f_t upper_bound,
                                 std::vector<f_t>& lower_bounds,
                                 std::vector<f_t>& upper_bounds);
 
   // The main entry routine. Returns the solver status and populates solution with the incumbent.
-  mip_status_t solve(mip_solution_t<i_t, f_t>& solution);
+  mip_status_t solve(simplex::mip_solution_t<i_t, f_t>& solution);
 
   work_limit_context_t& get_work_unit_context() { return work_unit_context_; }
 
@@ -162,10 +160,10 @@ class branch_and_bound_t {
   producer_sync_t& get_producer_sync() { return producer_sync_; }
 
  private:
-  const user_problem_t<i_t, f_t>& original_problem_;
-  const simplex_solver_settings_t<i_t, f_t> settings_;
+  const simplex::user_problem_t<i_t, f_t>& original_problem_;
+  const simplex::simplex_solver_settings_t<i_t, f_t> settings_;
   const probing_implied_bound_t<i_t, f_t>& probing_implied_bound_;
-  std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table_;
+  std::shared_ptr<mip::clique_table_t<i_t, f_t>> clique_table_;
   omp_atomic_t<bool> signal_extend_cliques_{false};
   mip_symmetry_t<i_t, f_t>* symmetry_;
 
@@ -175,10 +173,10 @@ class branch_and_bound_t {
   std::vector<f_t> guess_;
 
   // LP relaxation
-  csr_matrix_t<i_t, f_t> Arow_;
-  lp_problem_t<i_t, f_t> original_lp_;
+  simplex::csr_matrix_t<i_t, f_t> Arow_;
+  simplex::lp_problem_t<i_t, f_t> original_lp_;
   std::vector<i_t> new_slacks_;
-  std::vector<variable_type_t> var_types_;
+  std::vector<simplex::variable_type_t> var_types_;
 
   // Variable locks (see definition 3.3 from T. Achterberg, “Constraint Integer Programming,”
   // PhD, Technischen Universität Berlin, Berlin, 2007. doi: 10.14279/depositonce-1634).
@@ -202,7 +200,7 @@ class branch_and_bound_t {
   omp_atomic_t<f_t> upper_bound_;
 
   // Solver-space incumbent tracked directly by B&B.
-  mip_solution_t<i_t, f_t> incumbent_;
+  simplex::mip_solution_t<i_t, f_t> incumbent_;
 
   // Whether obj should replace the stored incumbent. Must be called under mutex_upper_.
   // Compares against the stored incumbent's objective, NOT against upper_bound_, because
@@ -221,11 +219,11 @@ class branch_and_bound_t {
   std::vector<std::vector<f_t>> repair_queue_;
 
   // Variables for the root node in the search tree.
-  std::vector<variable_status_t> root_vstatus_;
-  std::vector<variable_status_t> crossover_vstatus_;
+  std::vector<simplex::variable_status_t> root_vstatus_;
+  std::vector<simplex::variable_status_t> crossover_vstatus_;
   f_t root_objective_;
-  lp_solution_t<i_t, f_t> root_relax_soln_;
-  lp_solution_t<i_t, f_t> root_crossover_soln_;
+  simplex::lp_solution_t<i_t, f_t> root_relax_soln_;
+  simplex::lp_solution_t<i_t, f_t> root_crossover_soln_;
   method_t root_relax_solved_by{Unset};
   std::vector<f_t> edge_norms_;
   std::atomic<bool> root_crossover_solution_set_{false};
@@ -278,17 +276,17 @@ class branch_and_bound_t {
   };
 
   cut_pass_result_t do_cut_pass(i_t cut_pass,
-                                mip_solution_t<i_t, f_t>& solution,
+                                simplex::mip_solution_t<i_t, f_t>& solution,
                                 i_t& num_fractional,
                                 std::vector<i_t>& fractional,
                                 cut_generation_t<i_t, f_t>& cut_generation,
-                                basis_update_mpf_t<i_t, f_t>& basis_update,
+                                simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
                                 std::vector<i_t>& basic_list,
                                 std::vector<i_t>& nonbasic_list,
                                 variable_bounds_t<i_t, f_t>& variable_bounds,
                                 cut_pool_t<i_t, f_t>& cut_pool,
                                 cut_info_t<i_t, f_t>& cut_info,
-                                simplex_solver_settings_t<i_t, f_t>& lp_settings,
+                                simplex::simplex_solver_settings_t<i_t, f_t>& lp_settings,
                                 i_t original_rows,
                                 f_t& last_upper_bound,
                                 f_t& last_objective,
@@ -297,12 +295,12 @@ class branch_and_bound_t {
                                 const std::vector<f_t>& saved_solution);
 
   // Set the solution when found at the root node
-  void set_solution_at_root(mip_solution_t<i_t, f_t>& solution,
+  void set_solution_at_root(simplex::mip_solution_t<i_t, f_t>& solution,
                             const cut_info_t<i_t, f_t>& cut_info);
   void update_user_bound(f_t lower_bound);
 
   // Set the final solution.
-  void set_final_solution(mip_solution_t<i_t, f_t>& solution, f_t lower_bound);
+  void set_final_solution(simplex::mip_solution_t<i_t, f_t>& solution, f_t lower_bound);
 
   // Update the incumbent solution with the new feasible solution
   // found during branch and bound.
@@ -336,10 +334,10 @@ class branch_and_bound_t {
   void dive_with(diving_worker_t<i_t, f_t>* worker);
 
   // Solve the LP relaxation of a leaf node
-  dual::status_t solve_node_lp(mip_node_t<i_t, f_t>* node_ptr,
-                               branch_and_bound_worker_t<i_t, f_t>* worker,
-                               branch_and_bound_stats_t<i_t, f_t>& stats,
-                               logger_t& log);
+  simplex::dual_status_t solve_node_lp(mip_node_t<i_t, f_t>* node_ptr,
+                                       branch_and_bound_worker_t<i_t, f_t>* worker,
+                                       branch_and_bound_stats_t<i_t, f_t>& stats,
+                                       simplex::logger_t& log);
 
   // Apply symmetry-based bound reductions (orbital fixing and, when
   // settings_.symmetry == 2, lexical reduction) to the current node.
@@ -360,7 +358,7 @@ class branch_and_bound_t {
     mip_node_t<i_t, f_t>* node_ptr,
     search_tree_t<i_t, f_t>& search_tree,
     WorkerT* worker,
-    dual::status_t lp_status,
+    simplex::dual_status_t lp_status,
     Policy& policy);
 
   // Opportunistic tree update wrapper.
@@ -368,15 +366,15 @@ class branch_and_bound_t {
     mip_node_t<i_t, f_t>* node_ptr,
     search_tree_t<i_t, f_t>& search_tree,
     branch_and_bound_worker_t<i_t, f_t>* worker,
-    dual::status_t lp_status,
-    logger_t& log);
+    simplex::dual_status_t lp_status,
+    simplex::logger_t& log);
 
   // ============================================================================
   // Deterministic BSP (Bulk Synchronous Parallel) methods for deterministic parallel B&B
   // ============================================================================
 
   // Main deterministic coordinator loop
-  void run_deterministic_coordinator(const csr_matrix_t<i_t, f_t>& Arow);
+  void run_deterministic_coordinator(const simplex::csr_matrix_t<i_t, f_t>& Arow);
 
   // Gather all events generated, sort by WU timestamp, apply
   void deterministic_sort_replay_events(const bb_event_batch_t<i_t, f_t>& events);
@@ -477,4 +475,4 @@ class branch_and_bound_t {
   heap_t<diving_entry_t, diving_score_comp> diving_heap_;
 };
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::mip

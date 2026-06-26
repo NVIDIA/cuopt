@@ -7,9 +7,9 @@
 
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 
-#include <cuopt/linear_programming/io/mps_data_model.hpp>
-#include <cuopt/linear_programming/io/parser.hpp>
-#include <cuopt/linear_programming/solve.hpp>
+#include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
 #include <mip_heuristics/problem/problem.cuh>
 #include <pdlp/utils.cuh>
@@ -27,28 +27,28 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::linear_programming::test {
+namespace cuopt::mathematical_optimization::test {
 
 TEST(problem, find_implied_integers)
 {
   const raft::handle_t handle_{};
 
   auto path           = make_path_absolute("mip/fiball.mps");
-  auto mps_data_model = cuopt::linear_programming::io::read_mps<int, double>(path, false);
+  auto mps_data_model = cuopt::mathematical_optimization::io::read_mps<int, double>(path, false);
   auto op_problem     = mps_data_model_to_optimization_problem(&handle_, mps_data_model);
-  auto presolver      = std::make_unique<detail::third_party_presolve_t<int, double>>();
+  auto presolver      = std::make_unique<mip::third_party_presolve_t<int, double>>();
   auto result         = presolver->apply(op_problem,
-                                 cuopt::linear_programming::problem_category_t::MIP,
-                                 cuopt::linear_programming::presolver_t::Papilo,
+                                 cuopt::mathematical_optimization::problem_category_t::MIP,
+                                 cuopt::mathematical_optimization::presolver_t::Papilo,
                                  false,
                                  1e-6,
                                  1e-12,
                                  20,
                                  1);
-  ASSERT_NE(result.status, detail::third_party_presolve_status_t::INFEASIBLE);
-  ASSERT_NE(result.status, detail::third_party_presolve_status_t::UNBNDORINFEAS);
+  ASSERT_NE(result.status, mip::third_party_presolve_status_t::INFEASIBLE);
+  ASSERT_NE(result.status, mip::third_party_presolve_status_t::UNBNDORINFEAS);
 
-  auto problem = detail::problem_t<int, double>(result.reduced_problem);
+  auto problem = mip::problem_t<int, double>(result.reduced_problem);
   problem.set_implied_integers(result.implied_integer_indices);
   ASSERT_TRUE(result.implied_integer_indices.size() > 0);
   auto var_types = host_copy(problem.variable_types, handle_.get_stream());
@@ -60,7 +60,7 @@ TEST(problem, find_implied_integers)
   ASSERT_EQ(problem.presolve_data.var_flags.size(), var_types.size());
   // Ensure it is an implied integer
   EXPECT_EQ(problem.presolve_data.var_flags.element(it - var_types.begin(), handle_.get_stream()),
-            ((int)detail::problem_t<int, double>::var_flags_t::VAR_IMPLIED_INTEGER));
+            ((int)mip::problem_t<int, double>::var_flags_t::VAR_IMPLIED_INTEGER));
 }
 
-}  // namespace cuopt::linear_programming::test
+}  // namespace cuopt::mathematical_optimization::test

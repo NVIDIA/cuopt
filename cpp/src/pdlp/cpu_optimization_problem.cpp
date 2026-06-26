@@ -6,13 +6,13 @@
 /* clang-format on */
 
 #include <cuopt/error.hpp>
-#include <cuopt/linear_programming/cpu_optimization_problem.hpp>
-#include <cuopt/linear_programming/csr_matrix_utils.hpp>
-#include <cuopt/linear_programming/optimization_problem.hpp>
-#include <cuopt/linear_programming/optimization_problem_utils.hpp>
-#include <cuopt/linear_programming/solve_remote.hpp>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/csr_matrix_utils.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
+#include <cuopt/mathematical_optimization/solve_remote.hpp>
 
-#include <cuopt/linear_programming/io/writer.hpp>
+#include <cuopt/mathematical_optimization/io/writer.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <utilities/logger.hpp>
 
@@ -22,7 +22,7 @@
 #include <stdexcept>
 #include <unordered_map>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 // ==============================================================================
 // Constructor
@@ -723,7 +723,7 @@ template <typename i_t, typename f_t>
 void cpu_optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_path)
 {
   // Data is already in host memory, so we can directly create a view and write
-  cuopt::linear_programming::io::data_model_view_t<i_t, f_t> data_model_view;
+  cuopt::mathematical_optimization::io::data_model_view_t<i_t, f_t> data_model_view;
 
   // Set optimization sense
   data_model_view.set_maximize(maximize_);
@@ -785,7 +785,7 @@ void cpu_optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_f
     var_types_char.resize(variable_types_.size());
 
     for (size_t i = 0; i < var_types_char.size(); ++i) {
-      var_types_char[i] = detail::var_type_to_char(variable_types_[i]);
+      var_types_char[i] = var_type_to_char(variable_types_[i]);
     }
   } else if (get_n_variables() > 0) {
     // Variable types not set (e.g. pure LP); default to all continuous
@@ -811,7 +811,7 @@ void cpu_optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_f
     data_model_view.set_quadratic_constraints(quadratic_constraints_);
   }
 
-  cuopt::linear_programming::io::write_mps(data_model_view, mps_file_path);
+  cuopt::mathematical_optimization::io::write_mps(data_model_view, mps_file_path);
 }
 
 // ==============================================================================
@@ -1104,4 +1104,4 @@ template class cpu_optimization_problem_t<int32_t, float>;
 template class cpu_optimization_problem_t<int32_t, double>;
 #endif
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

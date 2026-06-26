@@ -24,7 +24,7 @@
 
 #include <unordered_set>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 // checks whether the values of a variable are equal when we consider them in a diversity
 // measurement context
@@ -224,4 +224,4 @@ class recombiner_t {
   static std::vector<recombiner_enum_t> enabled_recombiners;
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

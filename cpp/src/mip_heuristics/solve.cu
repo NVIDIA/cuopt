@@ -6,7 +6,7 @@
 /* clang-format on */
 
 #include <cuopt/error.hpp>
-#include <cuopt/linear_programming/solve_remote.hpp>
+#include <cuopt/mathematical_optimization/solve_remote.hpp>
 
 #include <mip_heuristics/feasibility_jump/early_cpufj.cuh>
 #include <mip_heuristics/feasibility_jump/early_gpufj.cuh>
@@ -29,15 +29,15 @@
 #include <utilities/seed_generator.cuh>
 #include <utilities/version_info.hpp>
 
-#include <cuopt/linear_programming/backend_selection.hpp>
-#include <cuopt/linear_programming/cpu_optimization_problem.hpp>
-#include <cuopt/linear_programming/mip/solver_settings.hpp>
-#include <cuopt/linear_programming/mip/solver_solution.hpp>
-#include <cuopt/linear_programming/optimization_problem.hpp>
-#include <cuopt/linear_programming/optimization_problem_solution.hpp>
-#include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
-#include <cuopt/linear_programming/solve.hpp>
-#include <cuopt/linear_programming/utilities/internals.hpp>
+#include <cuopt/mathematical_optimization/backend_selection.hpp>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_solution.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_solution.hpp>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/mathematical_optimization/solve.hpp>
+#include <cuopt/mathematical_optimization/utilities/internals.hpp>
 
 #include <branch_and_bound/symmetry.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
@@ -50,7 +50,7 @@
 //   Presolve runs at full power; symmetry detection on whatever structure remains.
 #define DETECT_SYMMETRY_AFTER_PRESOLVE
 
-#include <cuopt/linear_programming/io/mps_data_model.hpp>
+#include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/cusparse_macros.hpp>
@@ -65,7 +65,10 @@
 #include <cmath>
 #include <sstream>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
+
+using simplex::simplex_solver_settings_t;
+using simplex::user_problem_t;
 
 // This serves as both a warm up but also a mandatory initial call to setup cuSparse and cuBLAS
 static void init_handler(const raft::handle_t* handle_ptr)
@@ -87,8 +90,8 @@ static void invoke_solution_callbacks(
   f_t bound)
 {
   if (strip_semi_continuous_auxiliaries) {
-    detail::strip_semi_continuous_auxiliaries_from_assignment(
-      assignment, semi_continuous_original_num_variables);
+    mip::strip_semi_continuous_auxiliaries_from_assignment(assignment,
+                                                           semi_continuous_original_num_variables);
   }
   std::vector<f_t> obj_vec   = {objective};
   std::vector<f_t> bound_vec = {bound};
@@ -104,26 +107,26 @@ static void invoke_solution_callbacks(
 
 template <typename i_t, typename f_t>
 mip_solution_t<i_t, f_t> run_mip_solver(
-  detail::problem_t<i_t, f_t>& problem,
+  mip::problem_t<i_t, f_t>& problem,
   mip_solver_settings_t<i_t, f_t> const& settings,
   timer_t& timer,
   f_t& initial_upper_bound,
   std::vector<f_t>& initial_incumbent_assignment,
-  std::unique_ptr<dual_simplex::mip_symmetry_t<i_t, f_t>> symmetry = nullptr)
+  std::unique_ptr<mip::mip_symmetry_t<i_t, f_t>> symmetry = nullptr)
 {
   try {
     raft::common::nvtx::range fun_scope("run_mip");
     if (settings.get_mip_callbacks().size() > 0) {
       auto callback_num_variables = problem.original_problem_ptr->get_n_variables();
       const bool has_semi_continuous_callback_translation =
-        detail::mip_solver_settings_accessor<i_t, f_t>::has_semi_continuous_callback_translation(
-          settings);
+        mip_solver_settings_accessor<i_t, f_t>::has_semi_continuous_callback_translation(settings);
       if (problem.has_papilo_presolve_data()) {
         callback_num_variables = problem.get_papilo_original_num_variables();
       }
       if (has_semi_continuous_callback_translation) {
-        callback_num_variables = detail::mip_solver_settings_accessor<i_t, f_t>::
-          get_semi_continuous_original_num_variables(settings);
+        callback_num_variables =
+          mip_solver_settings_accessor<i_t, f_t>::get_semi_continuous_original_num_variables(
+            settings);
       }
       for (auto callback : settings.get_mip_callbacks()) {
         callback->template setup<f_t>(callback_num_variables);
@@ -131,7 +134,7 @@ mip_solution_t<i_t, f_t> run_mip_solver(
     }
     // if the input problem is empty: early exit
     if (problem.empty) {
-      detail::solution_t<i_t, f_t> solution(problem);
+      mip::solution_t<i_t, f_t> solution(problem);
       problem.preprocess_problem();
       thrust::for_each(
         problem.handle_ptr->get_thrust_policy(),
@@ -164,12 +167,12 @@ mip_solution_t<i_t, f_t> run_mip_solver(
                      temp_sol.assignment.size(),
                      temp_sol.handle_ptr->get_stream());
           solution.handle_ptr->sync_stream();
-          if (detail::mip_solver_settings_accessor<i_t, f_t>::
-                has_semi_continuous_callback_translation(settings)) {
-            detail::strip_semi_continuous_auxiliaries_from_assignment(
+          if (mip_solver_settings_accessor<i_t, f_t>::has_semi_continuous_callback_translation(
+                settings)) {
+            mip::strip_semi_continuous_auxiliaries_from_assignment(
               user_assignment_vec,
-              detail::mip_solver_settings_accessor<i_t, f_t>::
-                get_semi_continuous_original_num_variables(settings));
+              mip_solver_settings_accessor<i_t, f_t>::get_semi_continuous_original_num_variables(
+                settings));
           }
           get_sol_callback->get_solution(user_assignment_vec.data(),
                                          user_objective_vec.data(),
@@ -180,7 +183,7 @@ mip_solution_t<i_t, f_t> run_mip_solver(
       return solution.get_solution(true, stats, false);
     }
     // problem contains unpreprocessed data
-    detail::problem_t<i_t, f_t> scaled_problem(problem);
+    mip::problem_t<i_t, f_t> scaled_problem(problem);
     cuopt_func_call(auto saved_problem = scaled_problem);
     CUOPT_LOG_INFO("Objective offset %f scaling_factor %f",
                    problem.presolve_data.objective_offset,
@@ -194,7 +197,7 @@ mip_solution_t<i_t, f_t> run_mip_solver(
     scaled_problem.preprocess_problem();
     scaled_problem.related_vars_time_limit = settings.heuristic_params.related_vars_time_limit;
     const i_t n_vars_before                = scaled_problem.n_variables;
-    detail::trivial_presolve(scaled_problem);
+    mip::trivial_presolve(scaled_problem);
 
 #ifdef DETECT_SYMMETRY_BEFORE_PRESOLVE
     // Trivial presolve may remove unused variables and renumber the remaining ones.
@@ -209,15 +212,14 @@ mip_solution_t<i_t, f_t> run_mip_solver(
         scaled_problem.n_variables);
       symmetry.reset();
       if (settings.symmetry != 0) {
-        dual_simplex::simplex_solver_settings_t<i_t, f_t> simplex_settings;
+        simplex_solver_settings_t<i_t, f_t> simplex_settings;
         simplex_settings.set_log(true);
-        simplex_settings.time_limit = settings.time_limit;
-        dual_simplex::user_problem_t<i_t, f_t> reduced_user_problem =
-          cuopt_problem_to_user_problem<i_t, f_t>(
-            scaled_problem.original_problem_ptr->get_handle_ptr(), scaled_problem);
+        simplex_settings.time_limit                   = settings.time_limit;
+        user_problem_t<i_t, f_t> reduced_user_problem = cuopt_problem_to_user_problem<i_t, f_t>(
+          scaled_problem.original_problem_ptr->get_handle_ptr(), scaled_problem);
         bool has_symmetry_reduced = false;
-        symmetry                  = dual_simplex::detect_symmetry(
-          reduced_user_problem, simplex_settings, has_symmetry_reduced);
+        symmetry =
+          mip::detect_symmetry(reduced_user_problem, simplex_settings, has_symmetry_reduced);
       }
     }
 #endif
@@ -225,7 +227,7 @@ mip_solution_t<i_t, f_t> run_mip_solver(
     // Note: DETECT_SYMMETRY_AFTER_PRESOLVE detection is done in solver.cu::run_solver()
     // after cuOpt's presolve (probing cache, bounds propagation, trivial presolve) completes.
 
-    detail::mip_solver_t<i_t, f_t> solver(scaled_problem, settings, timer);
+    mip::mip_solver_t<i_t, f_t> solver(scaled_problem, settings, timer);
     // initial_upper_bound is in user-space (representation-invariant).
     // It will be converted to the target solver-space at each consumption point.
     solver.context.initial_upper_bound          = initial_upper_bound;
@@ -233,7 +235,7 @@ mip_solution_t<i_t, f_t> run_mip_solver(
     solver.context.symmetry                     = std::move(symmetry);
     if (timer.check_time_limit()) {
       CUOPT_LOG_INFO("Time limit reached before main solve");
-      detail::solution_t<i_t, f_t> sol(problem);
+      mip::solution_t<i_t, f_t> sol(problem);
       auto stats                 = solver.get_solver_stats();
       stats.total_solve_time     = timer.elapsed_time();
       sol.post_process_completed = true;
@@ -246,7 +248,7 @@ mip_solution_t<i_t, f_t> run_mip_solver(
     // optimization_problem_t). Its solver-space differs from both the first-pass FJ (original
     // problem) and B&B (post-trivial- presolve), so initial_upper_bound (user-space) is converted
     // via problem.get_solver_obj_from_user_obj.
-    std::unique_ptr<detail::early_cpufj_t<i_t, f_t>> early_cpufj;
+    std::unique_ptr<mip::early_cpufj_t<i_t, f_t>> early_cpufj;
     bool run_early_cpufj = problem.has_papilo_presolve_data() &&
                            settings.determinism_mode != CUOPT_MODE_DETERMINISTIC &&
                            problem.original_problem_ptr->get_n_integers() > 0;
@@ -260,10 +262,11 @@ mip_solution_t<i_t, f_t> run_mip_solver(
          mip_callbacks,
          no_bound,
          has_semi_continuous_callback_translation =
-           detail::mip_solver_settings_accessor<i_t, f_t>::has_semi_continuous_callback_translation(
+           mip_solver_settings_accessor<i_t, f_t>::has_semi_continuous_callback_translation(
              settings),
-         semi_continuous_original_num_variables = detail::mip_solver_settings_accessor<i_t, f_t>::
-           get_semi_continuous_original_num_variables(settings),
+         semi_continuous_original_num_variables =
+           mip_solver_settings_accessor<i_t, f_t>::get_semi_continuous_original_num_variables(
+             settings),
          ctx_ptr = &solver.context,
          early_fj_start](f_t solver_obj,
                          f_t user_obj,
@@ -288,7 +291,7 @@ mip_solution_t<i_t, f_t> run_mip_solver(
                                     user_assignment,
                                     no_bound);
         };
-      early_cpufj = std::make_unique<detail::early_cpufj_t<i_t, f_t>>(
+      early_cpufj = std::make_unique<mip::early_cpufj_t<i_t, f_t>>(
         *problem.original_problem_ptr, settings.get_tolerances(), incumbent_callback);
       // Convert initial_upper_bound from user-space to the CPUFJ's solver-space (papilo-presolved).
       // problem.get_solver_obj_from_user_obj uses the papilo offset/scale (matching the CPUFJ).
@@ -322,7 +325,7 @@ mip_solution_t<i_t, f_t> run_mip_solver(
 
     int hidesol =
       std::getenv("CUOPT_MIP_HIDE_SOLUTION") ? atoi(std::getenv("CUOPT_MIP_HIDE_SOLUTION")) : 0;
-    if (!hidesol) { detail::print_solution(scaled_problem.handle_ptr, sol.get_solution()); }
+    if (!hidesol) { mip::print_solution(scaled_problem.handle_ptr, sol.get_solution()); }
     return sol;
   } catch (const std::exception& e) {
     CUOPT_LOG_ERROR("Unexpected error in run_mip: %s", e.what());
@@ -391,16 +394,15 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
     const auto original_variable_names = op_problem.get_variable_names();
     std::vector<uint8_t> sc_used_fallback_big_m;
     std::vector<i_t> semi_continuous_binary_to_original_indices;
-    const bool has_semi_continuous = detail::reformulate_semi_continuous(
+    const bool has_semi_continuous = mip::reformulate_semi_continuous(
       op_problem, settings, &sc_used_fallback_big_m, &semi_continuous_binary_to_original_indices);
     if (has_semi_continuous && !settings.initial_solutions.empty()) {
-      detail::expand_initial_solutions_for_semi_continuous(
-        settings,
-        semi_continuous_binary_to_original_indices,
-        op_problem.get_handle_ptr()->get_stream());
+      mip::expand_initial_solutions_for_semi_continuous(settings,
+                                                        semi_continuous_binary_to_original_indices,
+                                                        op_problem.get_handle_ptr()->get_stream());
     }
     if (has_semi_continuous) {
-      detail::mip_solver_settings_accessor<i_t, f_t>::set_semi_continuous_callback_translation(
+      mip_solver_settings_accessor<i_t, f_t>::set_semi_continuous_callback_translation(
         settings, n_orig_before_sc, semi_continuous_binary_to_original_indices);
     }
 
@@ -415,39 +417,40 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
 
     for (auto callback : settings.get_mip_callbacks()) {
       auto callback_num_variables = op_problem.get_n_variables();
-      if (detail::mip_solver_settings_accessor<i_t, f_t>::has_semi_continuous_callback_translation(
+      if (mip_solver_settings_accessor<i_t, f_t>::has_semi_continuous_callback_translation(
             settings)) {
-        callback_num_variables = detail::mip_solver_settings_accessor<i_t, f_t>::
-          get_semi_continuous_original_num_variables(settings);
+        callback_num_variables =
+          mip_solver_settings_accessor<i_t, f_t>::get_semi_continuous_original_num_variables(
+            settings);
       }
       callback->template setup<f_t>(callback_num_variables);
     }
 
     // Start symmetry detection
-    std::unique_ptr<dual_simplex::mip_symmetry_t<i_t, f_t>> symmetry;
+    std::unique_ptr<mip::mip_symmetry_t<i_t, f_t>> symmetry;
 
 #ifdef DETECT_SYMMETRY_BEFORE_PRESOLVE
     bool has_symmetry = false;
     if (settings.symmetry != 0) {
-      detail::problem_t<i_t, f_t> problem(op_problem);
-      dual_simplex::simplex_solver_settings_t<i_t, f_t> simplex_settings;
+      mip::problem_t<i_t, f_t> problem(op_problem);
+      simplex_solver_settings_t<i_t, f_t> simplex_settings;
       simplex_settings.set_log(true);
       simplex_settings.time_limit = settings.time_limit;
-      dual_simplex::user_problem_t<i_t, f_t> user_problem =
+      user_problem_t<i_t, f_t> user_problem =
         cuopt_problem_to_user_problem<i_t, f_t>(op_problem.get_handle_ptr(), problem);
-      symmetry = dual_simplex::detect_symmetry(user_problem, simplex_settings, has_symmetry);
+      symmetry = mip::detect_symmetry(user_problem, simplex_settings, has_symmetry);
       if (has_symmetry) { settings.presolver = presolver_t::None; }
     }
 #endif
 
     if (settings.mip_scaling != CUOPT_MIP_SCALING_OFF) {
-      detail::mip_scaling_strategy_t<i_t, f_t> scaling(op_problem);
+      mip::mip_scaling_strategy_t<i_t, f_t> scaling(op_problem);
       scaling.scale_problem(settings.mip_scaling != CUOPT_MIP_SCALING_NO_OBJECTIVE);
     }
     double presolve_time = 0.0;
-    std::unique_ptr<detail::third_party_presolve_t<i_t, f_t>> presolver;
-    std::optional<detail::third_party_presolve_result_t<i_t, f_t>> presolve_result_opt;
-    detail::problem_t<i_t, f_t> problem(
+    std::unique_ptr<mip::third_party_presolve_t<i_t, f_t>> presolver;
+    std::optional<mip::third_party_presolve_result_t<i_t, f_t>> presolve_result_opt;
+    mip::problem_t<i_t, f_t> problem(
       op_problem, settings.get_tolerances(), settings.determinism_mode == CUOPT_MODE_DETERMINISTIC);
 
     auto run_presolve              = settings.presolver != presolver_t::None;
@@ -481,8 +484,8 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
     std::vector<f_t> early_best_user_assignment;
     std::mutex early_callback_mutex;
 
-    std::unique_ptr<detail::early_cpufj_t<i_t, f_t>> early_cpufj;
-    std::unique_ptr<detail::early_gpufj_t<i_t, f_t>> early_gpufj;
+    std::unique_ptr<mip::early_cpufj_t<i_t, f_t>> early_cpufj;
+    std::unique_ptr<mip::early_gpufj_t<i_t, f_t>> early_gpufj;
 
     bool run_early_fj = run_presolve && settings.determinism_mode != CUOPT_MODE_DETERMINISTIC &&
                         op_problem.get_n_integers() > 0 && op_problem.get_n_constraints() > 0;
@@ -497,10 +500,11 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
          early_fj_start,
          mip_callbacks = settings.get_mip_callbacks(),
          has_semi_continuous_callback_translation =
-           detail::mip_solver_settings_accessor<i_t, f_t>::has_semi_continuous_callback_translation(
+           mip_solver_settings_accessor<i_t, f_t>::has_semi_continuous_callback_translation(
              settings),
-         semi_continuous_original_num_variables = detail::mip_solver_settings_accessor<i_t, f_t>::
-           get_semi_continuous_original_num_variables(settings),
+         semi_continuous_original_num_variables =
+           mip_solver_settings_accessor<i_t, f_t>::get_semi_continuous_original_num_variables(
+             settings),
          no_bound](f_t solver_obj,
                    f_t user_obj,
                    const std::vector<f_t>& assignment,
@@ -528,21 +532,21 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
         };
 
       // Start early CPUFJ on original problem (will restart on presolved problem after Papilo)
-      early_cpufj = std::make_unique<detail::early_cpufj_t<i_t, f_t>>(
+      early_cpufj = std::make_unique<mip::early_cpufj_t<i_t, f_t>>(
         op_problem, settings.get_tolerances(), early_fj_callback);
       early_cpufj->start();
       CUOPT_LOG_DEBUG("Started early CPUFJ on original problem");
 
       // Start early GPU FJ (uses GPU while CPU is busy with Papilo)
       early_gpufj =
-        std::make_unique<detail::early_gpufj_t<i_t, f_t>>(op_problem, settings, early_fj_callback);
+        std::make_unique<mip::early_gpufj_t<i_t, f_t>>(op_problem, settings, early_fj_callback);
       early_gpufj->start();
       CUOPT_LOG_DEBUG("Started early GPUFJ during presolve");
     }
 
     auto constexpr const dual_postsolve = false;
     if (run_presolve) {
-      detail::sort_csr(op_problem);
+      mip::sort_csr(op_problem);
       // allocate not more than 10% of the time limit to presolve.
       // Note that this is not the presolve time, but the time limit for presolve.
       const auto& hp = settings.heuristic_params;
@@ -551,9 +555,9 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
       if (settings.determinism_mode == CUOPT_MODE_DETERMINISTIC) {
         presolve_time_limit = std::numeric_limits<double>::infinity();
       }
-      presolver   = std::make_unique<detail::third_party_presolve_t<i_t, f_t>>();
+      presolver   = std::make_unique<mip::third_party_presolve_t<i_t, f_t>>();
       auto result = presolver->apply(op_problem,
-                                     cuopt::linear_programming::problem_category_t::MIP,
+                                     cuopt::mathematical_optimization::problem_category_t::MIP,
                                      settings.presolver,
                                      dual_postsolve,
                                      settings.tolerances.absolute_tolerance,
@@ -561,24 +565,24 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
                                      presolve_time_limit,
                                      settings.num_cpu_threads);
 
-      if (result.status == detail::third_party_presolve_status_t::INFEASIBLE) {
+      if (result.status == mip::third_party_presolve_status_t::INFEASIBLE) {
         return mip_solution_t<i_t, f_t>(mip_termination_status_t::Infeasible,
                                         solver_stats_t<i_t, f_t>{},
                                         op_problem.get_handle_ptr()->get_stream());
       }
-      if (result.status == detail::third_party_presolve_status_t::UNBNDORINFEAS) {
+      if (result.status == mip::third_party_presolve_status_t::UNBNDORINFEAS) {
         return mip_solution_t<i_t, f_t>(mip_termination_status_t::UnboundedOrInfeasible,
                                         solver_stats_t<i_t, f_t>{},
                                         op_problem.get_handle_ptr()->get_stream());
       }
-      if (result.status == detail::third_party_presolve_status_t::UNBOUNDED) {
+      if (result.status == mip::third_party_presolve_status_t::UNBOUNDED) {
         return mip_solution_t<i_t, f_t>(mip_termination_status_t::Unbounded,
                                         solver_stats_t<i_t, f_t>{},
                                         op_problem.get_handle_ptr()->get_stream());
       }
       presolve_result_opt.emplace(std::move(result));
 
-      problem = detail::problem_t<i_t, f_t>(presolve_result_opt->reduced_problem);
+      problem = mip::problem_t<i_t, f_t>(presolve_result_opt->reduced_problem);
       problem.set_papilo_presolve_data(presolver.get(),
                                        presolve_result_opt->reduced_to_original_map,
                                        presolve_result_opt->original_to_reduced_map,
@@ -642,7 +646,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
       presolver->undo(primal_solution,
                       dual_solution,
                       reduced_costs,
-                      cuopt::linear_programming::problem_category_t::MIP,
+                      cuopt::mathematical_optimization::problem_category_t::MIP,
                       status_to_skip,
                       dual_postsolve,
                       op_problem.get_handle_ptr()->get_stream());
@@ -655,8 +659,8 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
                      reduced_costs.data(),
                      reduced_costs.data() + reduced_costs.size(),
                      std::numeric_limits<f_t>::signaling_NaN());
-        detail::problem_t<i_t, f_t> full_problem(op_problem);
-        detail::solution_t<i_t, f_t> full_sol(full_problem);
+        mip::problem_t<i_t, f_t> full_problem(op_problem);
+        mip::solution_t<i_t, f_t> full_sol(full_problem);
         full_sol.copy_new_assignment(
           cuopt::host_copy(primal_solution, op_problem.get_handle_ptr()->get_stream()));
         full_sol.compute_feasibility();
@@ -686,8 +690,8 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
         !sol_has_incumbent || (is_maximization ? early_best_user_obj > sol.get_objective_value()
                                                : early_best_user_obj < sol.get_objective_value());
       if (early_heuristic_is_better) {
-        detail::problem_t<i_t, f_t> full_problem(op_problem);
-        detail::solution_t<i_t, f_t> fallback_sol(full_problem);
+        mip::problem_t<i_t, f_t> full_problem(op_problem);
+        mip::solution_t<i_t, f_t> fallback_sol(full_problem);
         fallback_sol.copy_new_assignment(early_best_user_assignment);
         fallback_sol.compute_feasibility();
         if (fallback_sol.get_feasible()) {
@@ -909,20 +913,20 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip(
   }
 }
 
-#define INSTANTIATE(F_TYPE)                                                               \
-  template mip_solution_t<int, F_TYPE> solve_mip(                                         \
-    optimization_problem_t<int, F_TYPE>& op_problem,                                      \
-    mip_solver_settings_t<int, F_TYPE> const& settings);                                  \
-                                                                                          \
-  template mip_solution_t<int, F_TYPE> solve_mip(                                         \
-    raft::handle_t const* handle_ptr,                                                     \
-    const cuopt::linear_programming::io::mps_data_model_t<int, F_TYPE>& mps_data_model,   \
-    mip_solver_settings_t<int, F_TYPE> const& settings);                                  \
-                                                                                          \
-  template std::unique_ptr<mip_solution_interface_t<int, F_TYPE>> solve_mip(              \
-    cpu_optimization_problem_t<int, F_TYPE>&, mip_solver_settings_t<int, F_TYPE> const&); \
-                                                                                          \
-  template std::unique_ptr<mip_solution_interface_t<int, F_TYPE>> solve_mip(              \
+#define INSTANTIATE(F_TYPE)                                                                    \
+  template mip_solution_t<int, F_TYPE> solve_mip(                                              \
+    optimization_problem_t<int, F_TYPE>& op_problem,                                           \
+    mip_solver_settings_t<int, F_TYPE> const& settings);                                       \
+                                                                                               \
+  template mip_solution_t<int, F_TYPE> solve_mip(                                              \
+    raft::handle_t const* handle_ptr,                                                          \
+    const cuopt::mathematical_optimization::io::mps_data_model_t<int, F_TYPE>& mps_data_model, \
+    mip_solver_settings_t<int, F_TYPE> const& settings);                                       \
+                                                                                               \
+  template std::unique_ptr<mip_solution_interface_t<int, F_TYPE>> solve_mip(                   \
+    cpu_optimization_problem_t<int, F_TYPE>&, mip_solver_settings_t<int, F_TYPE> const&);      \
+                                                                                               \
+  template std::unique_ptr<mip_solution_interface_t<int, F_TYPE>> solve_mip(                   \
     optimization_problem_interface_t<int, F_TYPE>*, mip_solver_settings_t<int, F_TYPE> const&);
 
 #if MIP_INSTANTIATE_FLOAT
@@ -933,4 +937,4 @@ INSTANTIATE(float)
 INSTANTIATE(double)
 #endif
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

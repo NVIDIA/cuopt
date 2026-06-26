@@ -8,7 +8,7 @@
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 #include "mip_utils.cuh"
 
-#include <cuopt/linear_programming/mip/solver_solution.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_solution.hpp>
 #include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/relaxed_lp/relaxed_lp.cuh>
 #include <pdlp/pdlp.cuh>
@@ -32,7 +32,7 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::linear_programming::test {
+namespace cuopt::mathematical_optimization::test {
 
 TEST(mip_solve, fixed_problem_test)
 {
@@ -75,4 +75,4 @@ TEST(mip_solve, mip_presolved_to_lp)
   EXPECT_NEAR(obj_val, 0, 1e-5);
 }
 
-}  // namespace cuopt::linear_programming::test
+}  // namespace cuopt::mathematical_optimization::test
