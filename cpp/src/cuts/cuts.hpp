@@ -721,9 +721,9 @@ class cut_generation_t {
                                    const std::vector<f_t>& xstar,
                                    f_t start_time);
 
-  void prepare_fractional_sub_cg(const simplex_solver_settings_t<i_t, f_t>& settings,
-                                 const std::vector<f_t>& xstar,
-                                 f_t start_time);
+  void prepare_fractional_sub_conflict_graph(const simplex_solver_settings_t<i_t, f_t>& settings,
+                                             const std::vector<f_t>& xstar,
+                                             f_t start_time);
 
   cut_pool_t<i_t, f_t>& cut_pool_;
   knapsack_generation_t<i_t, f_t> knapsack_generation_;

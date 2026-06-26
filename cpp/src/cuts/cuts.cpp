@@ -112,7 +112,7 @@ clique_cut_build_status_t build_clique_cut(const std::vector<i_t>& clique_vertic
   std::unordered_set<i_t> complement_pairs;
   seen_original.reserve(clique_vertices.size());
   seen_complement.reserve(clique_vertices.size());
-  for (const auto vertex_idx : clique_vertices) {
+  for (const i_t vertex_idx : clique_vertices) {
     cuopt_assert(vertex_idx >= 0 && vertex_idx < 2 * num_vars, "Clique vertex out of range");
     const i_t var_idx                      = vertex_idx % num_vars;
     const bool complement                  = vertex_idx >= num_vars;
@@ -148,7 +148,7 @@ clique_cut_build_status_t build_clique_cut(const std::vector<i_t>& clique_vertic
   // variable from the support and bump rhs by 1, producing a fixing cut.
   const bool has_pair = complement_pairs.size() == 1;
   i_t num_complements = 0;
-  for (const auto vertex_idx : clique_vertices) {
+  for (const i_t vertex_idx : clique_vertices) {
     const i_t var_idx     = vertex_idx % num_vars;
     const bool complement = vertex_idx >= num_vars;
     if (has_pair && complement_pairs.count(var_idx) > 0) { continue; }
@@ -228,7 +228,7 @@ inline size_t bitset_words(size_t n) { return (n + 63) / 64; }
 
 inline bool bitset_any(const std::vector<uint64_t>& bs)
 {
-  for (auto word : bs) {
+  for (const uint64_t word : bs) {
     if (word != 0) { return true; }
   }
   return false;
@@ -342,7 +342,7 @@ void bron_kerbosch(bk_bitset_context_t<i_t, f_t>& ctx,
   ctx.add_work(static_cast<f_t>(2 * ctx.words + num_candidates));
   ctx.add_work(static_cast<f_t>(num_candidates) * static_cast<f_t>(7 * ctx.words + 6));
   // note that candidates will include pivot if it is in P
-  for (auto v : candidates) {
+  for (const i_t v : candidates) {
     if (ctx.over_call_limit()) {
       ctx.call_limit_reached = true;
       return;
@@ -381,7 +381,7 @@ i_t min_degree_anchor(const std::vector<i_t>& seed,
 {
   i_t smallest_degree     = std::numeric_limits<i_t>::max();
   i_t smallest_degree_var = -1;
-  for (auto v : seed) {
+  for (const i_t v : seed) {
     if (toc(start_time) >= time_limit) { return -1; }
     i_t degree = graph.get_degree_of_var(v);
     if (degree < smallest_degree) {
@@ -432,11 +432,11 @@ void greedy_extend_clique(std::vector<i_t>& selected,
                           f_t* work_estimate,
                           f_t max_work_estimate)
 {
-  for (const auto candidate : candidates) {
+  for (const i_t candidate : candidates) {
     if (toc(start_time) >= time_limit) { return; }
     bool add   = true;
     i_t checks = 0;
-    for (const auto v : selected) {
+    for (const i_t v : selected) {
       checks++;
       if (!graph.check_adjacency(candidate, v)) {
         add = false;
@@ -472,12 +472,12 @@ void extend_clique_vertices(std::vector<i_t>& clique_vertices,
   const i_t smallest_degree_var = min_degree_anchor(clique_vertices, graph, start_time, time_limit);
   if (smallest_degree_var < 0) { return; }
 
-  auto adj_set = graph.get_adj_set_of_var(smallest_degree_var);
+  std::unordered_set<i_t> adj_set = graph.get_adj_set_of_var(smallest_degree_var);
   std::unordered_set<i_t> clique_members(clique_vertices.begin(), clique_vertices.end());
   std::vector<i_t> candidates;
   candidates.reserve(adj_set.size());
   // the candidate list if only the integer valued vertices
-  for (const auto& candidate : adj_set) {
+  for (const i_t& candidate : adj_set) {
     if (toc(start_time) >= time_limit) { return; }
     if (clique_members.count(candidate) != 0) { continue; }
     i_t var_idx = candidate % num_vars;
@@ -592,7 +592,7 @@ clique_cut_build_status_t build_zero_half_cut(const std::vector<i_t>& cycle_vert
                     verts.size(),
                     static_cast<double>(weight),
                     static_cast<int>(is_cycle));
-    for (const auto vertex_idx : verts) {
+    for (const i_t vertex_idx : verts) {
       ZERO_HALF_DEBUG("  acc vertex_idx=%lld (range [0, %lld))",
                       static_cast<long long>(vertex_idx),
                       static_cast<long long>(2 * num_vars));
@@ -635,7 +635,7 @@ clique_cut_build_status_t build_zero_half_cut(const std::vector<i_t>& cycle_vert
   const f_t coeff_zero_tol = static_cast<f_t>(1e-12);
   cut.i.reserve(coeff_by_var.size());
   cut.x.reserve(coeff_by_var.size());
-  for (const auto& kv : coeff_by_var) {
+  for (const std::pair<const i_t, f_t>& kv : coeff_by_var) {
     if (std::abs(kv.second) <= coeff_zero_tol) { continue; }
     // Each variable appears at most once on the cycle (contributing +/-1) and
     // at most once among the wheel centers (contributing +/-m), so no final
@@ -723,10 +723,10 @@ bool dijkstra_odd_cycle(i_t source_local,
 
   scratch.ensure_size(static_cast<std::size_t>(total_idx));
   ++scratch.gen;
-  const std::uint64_t gen = scratch.gen;
-  auto& dist              = scratch.dist;
-  auto& prev              = scratch.prev;
-  auto& stamp             = scratch.stamp;
+  const std::uint64_t gen           = scratch.gen;
+  std::vector<f_t>& dist            = scratch.dist;
+  std::vector<i_t>& prev            = scratch.prev;
+  std::vector<std::uint64_t>& stamp = scratch.stamp;
   // dist[v]/prev[v] are valid only if last written this call (stamp[v] == gen);
   // otherwise the node is unreached, i.e. distance infinity.
   auto cur_dist = [&](i_t v) -> f_t { return stamp[v] == gen ? dist[v] : f_inf; };
@@ -753,12 +753,12 @@ bool dijkstra_odd_cycle(i_t source_local,
     const i_t v_part  = 1 - u_part;
     cuopt_assert(u_part == 0 || u_part == 1, "Bipartite part out of range");
 
-    const auto& neigh = local_adj[u_local];
+    const std::vector<i_t>& neigh = local_adj[u_local];
     if (add_work_estimate(static_cast<f_t>(neigh.size()) + 4.0, work_estimate, max_work_estimate)) {
       ZERO_HALF_DEBUG("dijkstra_odd_cycle work_limit hit pops=%lld", static_cast<long long>(pops));
       return false;
     }
-    for (const auto v_local : neigh) {
+    for (const i_t v_local : neigh) {
       cuopt_assert(v_local >= 0 && v_local < num_local, "Zero-half Dijkstra neighbor out of range");
       f_t edge_w = (static_cast<f_t>(1) - weights[u_local] - weights[v_local]) / 2;
       if (edge_w < 0) { edge_w = 0; }
@@ -846,7 +846,7 @@ bool path_to_odd_cycle(const std::vector<i_t>& bipartite_path,
 
   std::vector<i_t> local_seq;
   local_seq.reserve(bipartite_path.size());
-  for (const auto bv : bipartite_path) {
+  for (const i_t bv : bipartite_path) {
     local_seq.push_back(bv % num_local);
   }
   cuopt_assert(local_seq.front() == local_seq.back(), "Zero-half cycle path endpoints must match");
@@ -856,7 +856,7 @@ bool path_to_odd_cycle(const std::vector<i_t>& bipartite_path,
 
   std::unordered_set<i_t> seen_local;
   seen_local.reserve(local_seq.size());
-  for (const auto lv : local_seq) {
+  for (const i_t lv : local_seq) {
     if (!seen_local.insert(lv).second) {
       // Same CG vertex appears twice in the path; reject (degenerate cycle)
       ZERO_HALF_DEBUG("path_to_odd_cycle duplicate local vertex lv=%lld",
@@ -868,7 +868,7 @@ bool path_to_odd_cycle(const std::vector<i_t>& bipartite_path,
   cycle_vertices.reserve(local_seq.size());
   std::unordered_set<i_t> seen_var;
   seen_var.reserve(local_seq.size());
-  for (const auto lv : local_seq) {
+  for (const i_t lv : local_seq) {
     const i_t global = vertices[lv];
     cuopt_assert(global >= 0 && global < 2 * num_vars, "Zero-half global vertex out of range");
     const i_t var_idx = global % num_vars;
@@ -915,16 +915,20 @@ void extend_to_odd_wheel(const std::vector<i_t>& cycle_vertices,
                   static_cast<long long>(smallest_degree_var));
   if (smallest_degree_var < 0) { return; }
 
-  auto adj_set = graph.get_adj_set_of_var(smallest_degree_var);
+  std::unordered_set<i_t> adj_set = graph.get_adj_set_of_var(smallest_degree_var);
   ZERO_HALF_DEBUG("extend_to_odd_wheel adj_set.size=%zu", adj_set.size());
-  std::unordered_set<i_t> cycle_members(cycle_vertices.begin(), cycle_vertices.end());
+  std::vector<char> cycle_members(2 * num_vars, 0);
+  for (const i_t v : cycle_vertices) {
+    cuopt_assert(v >= 0 && v < 2 * num_vars, "Zero-half cycle vertex out of range");
+    cycle_members[v] = 1;
+  }
   std::vector<i_t> candidates;
   candidates.reserve(adj_set.size());
-  for (const auto candidate : adj_set) {
+  for (const i_t candidate : adj_set) {
     if (toc(start_time) >= time_limit) { return; }
-    if (cycle_members.count(candidate) != 0) { continue; }
+    if (cycle_members[candidate] != 0) { continue; }
     bool adj_to_all = true;
-    for (const auto v : cycle_vertices) {
+    for (const i_t v : cycle_vertices) {
       if (candidate == v) {
         adj_to_all = false;
         break;
@@ -971,7 +975,7 @@ void extend_to_odd_wheel(const std::vector<i_t>& cycle_vertices,
   // every other center. This is exactly what makes the m-weighted wheel lift a
   // valid zero-half inequality.
   for (size_t a = 0; a < wheel_centers.size(); ++a) {
-    for (const auto cv : cycle_vertices) {
+    for (const i_t cv : cycle_vertices) {
       cuopt_assert(graph.check_adjacency(wheel_centers[a], cv),
                    "Zero-half wheel center not adjacent to every cycle vertex");
     }
@@ -1011,7 +1015,7 @@ std::vector<std::vector<int>> find_maximal_cliques_for_test(
   const size_t words = bitset_words(n_vertices);
   std::vector<std::vector<uint64_t>> adj_bitset(n_vertices, std::vector<uint64_t>(words, 0));
   for (size_t v = 0; v < n_vertices; ++v) {
-    for (const auto& nbr : adjacency_list[v]) {
+    for (const int& nbr : adjacency_list[v]) {
       cuopt_assert(nbr >= 0 && static_cast<size_t>(nbr) < n_vertices,
                    "Neighbor index out of range in clique test helper");
       bitset_set(adj_bitset[v], static_cast<size_t>(nbr));
@@ -1057,7 +1061,7 @@ std::vector<std::vector<int>> find_violated_odd_cycles_for_test(
   std::vector<std::vector<int>> adj_local(n_vertices);
   for (size_t v = 0; v < n_vertices; ++v) {
     adj_local[v].reserve(adjacency_list[v].size());
-    for (const auto nbr : adjacency_list[v]) {
+    for (const int nbr : adjacency_list[v]) {
       cuopt_assert(nbr >= 0 && static_cast<size_t>(nbr) < n_vertices,
                    "Neighbor index out of range in odd-cycle test helper");
       adj_local[v].push_back(nbr);
@@ -1091,7 +1095,7 @@ std::vector<std::vector<int>> find_violated_odd_cycles_for_test(
     if (bipartite_path.size() < 4) { continue; }
     std::vector<int> seq;
     seq.reserve(bipartite_path.size());
-    for (const auto bv : bipartite_path) {
+    for (const int bv : bipartite_path) {
       seq.push_back(bv % num_local);
     }
     cuopt_assert(seq.front() == seq.back(), "Odd-cycle test helper path endpoints must match");
@@ -1100,7 +1104,7 @@ std::vector<std::vector<int>> find_violated_odd_cycles_for_test(
     bool simple = true;
     std::unordered_set<int> seen;
     seen.reserve(seq.size());
-    for (const auto v : seq) {
+    for (const int v : seq) {
       if (!seen.insert(v).second) {
         simple = false;
         break;
@@ -3168,7 +3172,7 @@ void cut_generation_t<i_t, f_t>::generate_implied_bound_cuts(
 }
 
 template <typename i_t, typename f_t>
-void cut_generation_t<i_t, f_t>::prepare_fractional_sub_cg(
+void cut_generation_t<i_t, f_t>::prepare_fractional_sub_conflict_graph(
   const simplex_solver_settings_t<i_t, f_t>& settings,
   const std::vector<f_t>& xstar,
   f_t start_time)
@@ -3197,11 +3201,11 @@ void cut_generation_t<i_t, f_t>::prepare_fractional_sub_cg(
 
   const i_t num_vars = user_problem_.num_cols;
   cuopt_assert(clique_table_->n_variables == num_vars,
-               "prepare_fractional_sub_cg clique table variable count mismatch");
+               "prepare_fractional_sub_conflict_graph clique table variable count mismatch");
   cuopt_assert(static_cast<size_t>(num_vars) <= xstar.size(),
-               "prepare_fractional_sub_cg xstar size mismatch");
+               "prepare_fractional_sub_conflict_graph xstar size mismatch");
   cuopt_assert(user_problem_.var_types.size() == static_cast<size_t>(num_vars),
-               "prepare_fractional_sub_cg user problem var_types size mismatch");
+               "prepare_fractional_sub_conflict_graph user problem var_types size mismatch");
 
   const f_t bound_tol         = settings.primal_tol;
   f_t work_estimate           = 0.0;
@@ -3262,17 +3266,18 @@ void cut_generation_t<i_t, f_t>::prepare_fractional_sub_cg(
       sub_cg_.clear();
       return;
     }
-    const i_t v_idx = sub_cg_.vertices[idx];
-    auto adj_set    = clique_table_->get_adj_set_of_var(v_idx);
+    const i_t v_idx                 = sub_cg_.vertices[idx];
+    std::unordered_set<i_t> adj_set = clique_table_->get_adj_set_of_var(v_idx);
     total_adj_entries += adj_set.size();
-    auto& adj = sub_cg_.adj_local[idx];
+    std::vector<i_t>& adj = sub_cg_.adj_local[idx];
     adj.reserve(adj_set.size());
-    for (const auto neighbor : adj_set) {
+    for (const i_t neighbor : adj_set) {
       cuopt_assert(neighbor >= 0 && neighbor < 2 * num_vars,
-                   "prepare_fractional_sub_cg neighbor out of range");
+                   "prepare_fractional_sub_conflict_graph neighbor out of range");
       if (!sub_cg_.in_subgraph[neighbor]) { continue; }
       const i_t local_neighbor = sub_cg_.vertex_to_local[neighbor];
-      cuopt_assert(local_neighbor >= 0, "prepare_fractional_sub_cg local_neighbor out of range");
+      cuopt_assert(local_neighbor >= 0,
+                   "prepare_fractional_sub_conflict_graph local_neighbor out of range");
       adj.push_back(local_neighbor);
     }
     kept_adj_entries += adj.size();
@@ -3280,7 +3285,7 @@ void cut_generation_t<i_t, f_t>::prepare_fractional_sub_cg(
     {
       std::unordered_set<i_t> adj_global;
       adj_global.reserve(adj.size());
-      for (const auto neighbor : adj) {
+      for (const i_t neighbor : adj) {
         const i_t v = sub_cg_.vertices[neighbor];
         cuopt_assert(adj_global.insert(v).second,
                      "Duplicate neighbor in fractional sub-CG adjacency list");
@@ -3296,14 +3301,16 @@ void cut_generation_t<i_t, f_t>::prepare_fractional_sub_cg(
   }
 
   sub_cg_.ready = true;
-  CLIQUE_CUTS_DEBUG("prepare_fractional_sub_cg ready vertices=%lld raw_adj=%lld kept_adj=%lld",
-                    static_cast<long long>(sub_cg_.vertices.size()),
-                    static_cast<long long>(total_adj_entries),
-                    static_cast<long long>(kept_adj_entries));
-  ZERO_HALF_DEBUG("prepare_fractional_sub_cg ready vertices=%lld raw_adj=%lld kept_adj=%lld",
-                  static_cast<long long>(sub_cg_.vertices.size()),
-                  static_cast<long long>(total_adj_entries),
-                  static_cast<long long>(kept_adj_entries));
+  CLIQUE_CUTS_DEBUG(
+    "prepare_fractional_sub_conflict_graph ready vertices=%lld raw_adj=%lld kept_adj=%lld",
+    static_cast<long long>(sub_cg_.vertices.size()),
+    static_cast<long long>(total_adj_entries),
+    static_cast<long long>(kept_adj_entries));
+  ZERO_HALF_DEBUG(
+    "prepare_fractional_sub_conflict_graph ready vertices=%lld raw_adj=%lld kept_adj=%lld",
+    static_cast<long long>(sub_cg_.vertices.size()),
+    static_cast<long long>(total_adj_entries),
+    static_cast<long long>(kept_adj_entries));
 }
 
 template <typename i_t, typename f_t>
@@ -3378,7 +3385,7 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
   // each recomputing them. Done here, after the cut routines that don't
   // need the clique table, to give the background clique-table thread as
   // much time as possible to finish before we join it.
-  prepare_fractional_sub_cg(settings, xstar, start_time);
+  prepare_fractional_sub_conflict_graph(settings, xstar, start_time);
 
   // Generate Clique cuts (last to give background clique table generation maximum time)
   if (settings.clique_cuts != 0) {
@@ -3477,7 +3484,7 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
                     static_cast<double>(toc(start_time)));
 
   // The fractional conflict-graph subgraph is built once per cut pass in
-  // prepare_fractional_sub_cg() (called from generate_cuts) and shared with
+  // prepare_fractional_sub_conflict_graph() (called from generate_cuts) and shared with
   // the zero-half cut separator. Skip if the build was unable to produce a
   // useable sub-CG (clique table missing/empty, work/time budget hit, etc.).
   if (!sub_cg_.ready) {
@@ -3501,9 +3508,9 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
   f_t work_estimate           = 0.0;
   const f_t max_work_estimate = 1e8;
 
-  const auto& vertices  = sub_cg_.vertices;
-  const auto& weights   = sub_cg_.weights;
-  const auto& adj_local = sub_cg_.adj_local;
+  const std::vector<i_t>& vertices               = sub_cg_.vertices;
+  const std::vector<f_t>& weights                = sub_cg_.weights;
+  const std::vector<std::vector<i_t>>& adj_local = sub_cg_.adj_local;
 
   CLIQUE_CUTS_DEBUG("generate_clique_cuts fractional subgraph vertices=%lld (literals=%lld)",
                     static_cast<long long>(vertices.size() / 2),
@@ -3514,7 +3521,7 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
   size_t local_adj_entries = 0;
   for (size_t v = 0; v < adj_local.size(); ++v) {
     local_adj_entries += adj_local[v].size();
-    for (const auto neighbor : adj_local[v]) {
+    for (const i_t neighbor : adj_local[v]) {
       bitset_set(adj_bitset[v], static_cast<size_t>(neighbor));
     }
   }
@@ -3563,14 +3570,14 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
   size_t rejected_cliques  = 0;
   size_t extension_gain    = 0;
 #endif
-  for (auto& clique_local : ctx.cliques) {
+  for (std::vector<i_t>& clique_local : ctx.cliques) {
     if (toc(start_time) >= settings.time_limit) { return true; }
 #if DEBUG_CLIQUE_CUTS
     candidate_cliques++;
 #endif
     std::vector<i_t> clique_vertices;
     clique_vertices.reserve(clique_local.size());
-    for (auto local_idx : clique_local) {
+    for (const i_t local_idx : clique_local) {
       clique_vertices.push_back(vertices[local_idx]);
     }
     work_estimate += 3.0 * static_cast<f_t>(clique_local.size());
@@ -3593,18 +3600,18 @@ bool cut_generation_t<i_t, f_t>::generate_clique_cuts(
 #endif
     if (work_estimate > max_work_estimate) { return true; }
     if (toc(start_time) >= settings.time_limit) { return true; }
-    const auto build_status = build_clique_cut<i_t, f_t>(clique_vertices,
-                                                         num_vars,
-                                                         var_types,
-                                                         user_problem_.lower,
-                                                         user_problem_.upper,
-                                                         xstar,
-                                                         bound_tol,
-                                                         min_violation,
-                                                         cut,
-                                                         cut_rhs,
-                                                         &work_estimate,
-                                                         max_work_estimate);
+    const clique_cut_build_status_t build_status = build_clique_cut<i_t, f_t>(clique_vertices,
+                                                                              num_vars,
+                                                                              var_types,
+                                                                              user_problem_.lower,
+                                                                              user_problem_.upper,
+                                                                              xstar,
+                                                                              bound_tol,
+                                                                              min_violation,
+                                                                              cut,
+                                                                              cut_rhs,
+                                                                              &work_estimate,
+                                                                              max_work_estimate);
     if (work_estimate > max_work_estimate) { return true; }
     if (build_status == clique_cut_build_status_t::INFEASIBLE) {
       settings.log.debug("Detected contradictory variable/complement clique\n");
@@ -3677,7 +3684,7 @@ bool cut_generation_t<i_t, f_t>::generate_zero_half_cuts(
     sub_cg_.vertices.size());
 
   // The fractional conflict-graph subgraph is built once per cut pass in
-  // prepare_fractional_sub_cg() (called from generate_cuts) and shared with
+  // prepare_fractional_sub_conflict_graph() (called from generate_cuts) and shared with
   // the clique-cut separator. Skip if the build was unable to produce a
   // useable sub-CG (clique table missing/empty, work/time budget hit, etc.).
   if (!sub_cg_.ready) {
@@ -3706,11 +3713,11 @@ bool cut_generation_t<i_t, f_t>::generate_zero_half_cuts(
   f_t work_estimate           = 0.0;
   const f_t max_work_estimate = 1e8;
 
-  const auto& vertices        = sub_cg_.vertices;
-  const auto& weights         = sub_cg_.weights;
-  const auto& adj_local       = sub_cg_.adj_local;
-  const auto& vertex_to_local = sub_cg_.vertex_to_local;
-  const i_t num_local         = sub_cg_.num_local();
+  const std::vector<i_t>& vertices               = sub_cg_.vertices;
+  const std::vector<f_t>& weights                = sub_cg_.weights;
+  const std::vector<std::vector<i_t>>& adj_local = sub_cg_.adj_local;
+  const std::vector<i_t>& vertex_to_local        = sub_cg_.vertex_to_local;
+  const i_t num_local                            = sub_cg_.num_local();
   ZERO_HALF_DEBUG("starting separation loop num_local=%lld", static_cast<long long>(num_local));
 
   sparse_vector_t<i_t, f_t> cut(lp.num_cols, 0);
@@ -3778,19 +3785,20 @@ bool cut_generation_t<i_t, f_t>::generate_zero_half_cuts(
     ZERO_HALF_DEBUG("calling build_zero_half_cut cycle=%zu wheel=%zu",
                     cycle_vertices.size(),
                     wheel_centers.size());
-    const auto build_status = build_zero_half_cut<i_t, f_t>(cycle_vertices,
-                                                            wheel_centers,
-                                                            num_vars,
-                                                            var_types,
-                                                            user_problem_.lower,
-                                                            user_problem_.upper,
-                                                            xstar,
-                                                            bound_tol,
-                                                            min_violation,
-                                                            cut,
-                                                            cut_rhs,
-                                                            &work_estimate,
-                                                            max_work_estimate);
+    const clique_cut_build_status_t build_status =
+      build_zero_half_cut<i_t, f_t>(cycle_vertices,
+                                    wheel_centers,
+                                    num_vars,
+                                    var_types,
+                                    user_problem_.lower,
+                                    user_problem_.upper,
+                                    xstar,
+                                    bound_tol,
+                                    min_violation,
+                                    cut,
+                                    cut_rhs,
+                                    &work_estimate,
+                                    max_work_estimate);
     ZERO_HALF_DEBUG("build_zero_half_cut returned status=%d", static_cast<int>(build_status));
     if (work_estimate > max_work_estimate) { break; }
     if (build_status == clique_cut_build_status_t::INFEASIBLE) {
@@ -3813,7 +3821,7 @@ bool cut_generation_t<i_t, f_t>::generate_zero_half_cuts(
       added_per_var++;
       // mark all CG vertices that participated so we do not re-derive the same
       // cycle from a different source vertex
-      for (const auto v : cycle_vertices) {
+      for (const i_t v : cycle_vertices) {
         if (v < 0 || v >= 2 * num_vars) {
           ZERO_HALF_DEBUG("mark already_used: cycle v OUT_OF_RANGE v=%lld",
                           static_cast<long long>(v));

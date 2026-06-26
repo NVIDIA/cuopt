@@ -208,7 +208,7 @@ struct clique_table_t {
 // published to `clique_table_out` before the (optional, signal-gated) extension
 // phase begins, so cut generation can pick up the table while extension keeps
 // running concurrently. Consumers MUST set `*signal_extend` and join the
-// producing task before reading the table (see prepare_fractional_sub_cg), since
+// producing task before reading the table (see prepare_fractional_sub_conflict_graph), since
 // the extension phase keeps mutating the same object after it is published.
 template <typename i_t, typename f_t>
 void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
