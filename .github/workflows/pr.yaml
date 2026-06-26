@@ -17,8 +17,6 @@ permissions: {}
 jobs:
   pr-builder:
     needs:
-      - check-lean-ci
-      - prevent-merge-with-lean-ci
       - compute-matrix-filters
       - changed-files
       - checks
@@ -41,60 +39,11 @@ jobs:
     if: always()
     with:
       needs: ${{ toJSON(needs) }}
-  check-lean-ci:
-    permissions:
-      contents: read
-      pull-requests: read
-    runs-on: ubuntu-latest
-    outputs:
-      lean_ci_enabled: ${{ steps.check-label.outputs.lean_ci_enabled }}
-    steps:
-      - name: Check for lean-ci label
-        id: check-label
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          # Extract PR number from branch name (pull-request/123 -> 123)
-          PR_NUMBER=$(echo "$GITHUB_REF" | sed 's|refs/heads/pull-request/||')
-          echo "Checking PR #$PR_NUMBER for lean-ci label..."
-
-          # Check if the PR has the 'lean-ci' label
-          if gh pr view "$PR_NUMBER" --repo "${{ github.repository }}" --json labels --jq '.labels[].name' | grep -q "^lean-ci$"; then
-            echo "lean_ci_enabled=true" >> $GITHUB_OUTPUT
-            echo "⚠️  Lean CI is enabled (lean-ci label found)"
-          else
-            echo "lean_ci_enabled=false" >> $GITHUB_OUTPUT
-            echo "✅ Full CI is enabled"
-          fi
-
-  prevent-merge-with-lean-ci:
-    permissions:
-      contents: read
-    runs-on: ubuntu-latest
-    needs: check-lean-ci
-    steps:
-      - name: Check lean-ci status
-        env:
-          LEAN_CI: ${{ needs.check-lean-ci.outputs.lean_ci_enabled }}
-        run: |
-          if [ "$LEAN_CI" == "true" ]; then
-            echo "❌ ERROR: This PR has the 'lean-ci' label enabled."
-            echo "Lean CI is only for testing purposes and should not be merged."
-            echo "Please remove the 'lean-ci' label and run full CI before merging."
-            exit 1
-          else
-            echo "✅ No lean-ci label found. PR can be merged."
-            exit 0
-          fi
   compute-matrix-filters:
-    needs: check-lean-ci
     permissions:
       contents: read
     runs-on: ubuntu-latest
     outputs:
-      conda_lean_filter: ${{ steps.set-filters.outputs.conda_lean_filter }}
-      conda_test_filter: ${{ steps.set-filters.outputs.conda_test_filter }}
-      wheel_lean_filter: ${{ steps.set-filters.outputs.wheel_lean_filter }}
       libcuopt_filter: ${{ steps.set-filters.outputs.libcuopt_filter }}
       cuopt_server_filter: ${{ steps.set-filters.outputs.cuopt_server_filter }}
       cuopt_server_test_filter: ${{ steps.set-filters.outputs.cuopt_server_test_filter }}
@@ -102,26 +51,11 @@ jobs:
     steps:
       - name: Set matrix filters
         id: set-filters
-        env:
-          LEAN_CI: ${{ needs.check-lean-ci.outputs.lean_ci_enabled }}
         run: |
-          if [ "$LEAN_CI" == "true" ]; then
-            echo "conda_lean_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.11\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
-            echo "conda_test_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.13\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
-            echo "wheel_lean_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
-            echo "libcuopt_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
-            echo "cuopt_server_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
-            echo "cuopt_server_test_filter=[map(select(.ARCH == \"amd64\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
-            echo "cuopt_sh_client_filter=[map(select(.ARCH == \"amd64\" and .PY_VER == \"3.12\")) | max_by(.CUDA_VER | split(\".\") | map(tonumber))]" >> $GITHUB_OUTPUT
-          else
-            echo "conda_lean_filter=." >> $GITHUB_OUTPUT
-            echo "conda_test_filter=." >> $GITHUB_OUTPUT
-            echo "wheel_lean_filter=." >> $GITHUB_OUTPUT
-            echo "libcuopt_filter=group_by([.ARCH, (.CUDA_VER|split(\".\")|map(tonumber)|.[0])]) | map(max_by(.PY_VER|split(\".\")|map(tonumber)))" >> $GITHUB_OUTPUT
-            echo "cuopt_server_filter=map(select(.ARCH == \"amd64\")) | group_by(.CUDA_VER|split(\".\")|map(tonumber)|.[0]) | map(max_by([(.PY_VER|split(\".\")|map(tonumber)), (.CUDA_VER|split(\".\")|map(tonumber))]))" >> $GITHUB_OUTPUT
-            echo "cuopt_server_test_filter=map(select(.ARCH == \"amd64\")) | group_by(.CUDA_VER | split(\".\") | map(tonumber) | .[0]) | map(max_by([(.PY_VER | split(\".\") | map(tonumber)), (.CUDA_VER | split(\".\") | map(tonumber))]))" >> $GITHUB_OUTPUT
-            echo "cuopt_sh_client_filter=[map(select(.ARCH == \"amd64\")) | min_by((.PY_VER | split(\".\") | map(tonumber)), (.CUDA_VER | split(\".\") | map(-tonumber)))]" >> $GITHUB_OUTPUT
-          fi
+          echo "libcuopt_filter=group_by([.ARCH, (.CUDA_VER|split(\".\")|map(tonumber)|.[0])]) | map(max_by(.PY_VER|split(\".\")|map(tonumber)))" >> $GITHUB_OUTPUT
+          echo "cuopt_server_filter=map(select(.ARCH == \"amd64\")) | group_by(.CUDA_VER|split(\".\")|map(tonumber)|.[0]) | map(max_by([(.PY_VER|split(\".\")|map(tonumber)), (.CUDA_VER|split(\".\")|map(tonumber))]))" >> $GITHUB_OUTPUT
+          echo "cuopt_server_test_filter=map(select(.ARCH == \"amd64\")) | group_by(.CUDA_VER | split(\".\") | map(tonumber) | .[0]) | map(max_by([(.PY_VER | split(\".\") | map(tonumber)), (.CUDA_VER | split(\".\") | map(tonumber))]))" >> $GITHUB_OUTPUT
+          echo "cuopt_sh_client_filter=[map(select(.ARCH == \"amd64\")) | min_by((.PY_VER | split(\".\") | map(tonumber)), (.CUDA_VER | split(\".\") | map(-tonumber)))]" >> $GITHUB_OUTPUT
 
   changed-files:
     permissions:
@@ -413,9 +347,8 @@ jobs:
     with:
       build_type: pull-request
       script: ci/build_cpp.sh
-      matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_lean_filter }}
   conda-cpp-tests:
-    needs: [conda-cpp-build, changed-files, compute-matrix-filters]
+    needs: [conda-cpp-build, changed-files]
     permissions:
       actions: read
       contents: read
@@ -427,7 +360,6 @@ jobs:
     with:
       build_type: pull-request
       script: ci/test_cpp.sh
-      matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_test_filter }}
     secrets:
       script-env-secret-1-key: CUOPT_S3_URI
       script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
@@ -436,7 +368,7 @@ jobs:
       script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
       script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
   conda-python-build:
-    needs: [conda-cpp-build, compute-matrix-filters, changed-files]
+    needs: [conda-cpp-build, changed-files]
     # Consumed by conda-python-tests and docs-build.
     if: >-
       fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_conda ||
@@ -452,9 +384,8 @@ jobs:
     with:
       build_type: pull-request
       script: ci/build_python.sh
-      matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_test_filter }}
   conda-python-tests:
-    needs: [conda-python-build, changed-files, compute-matrix-filters]
+    needs: [conda-python-build, changed-files]
     permissions:
       actions: read
       contents: read
@@ -467,7 +398,6 @@ jobs:
       run_codecov: false
       build_type: pull-request
       script: ci/test_python.sh
-      matrix_filter: ${{ needs.compute-matrix-filters.outputs.conda_test_filter }}
     secrets:
       script-env-secret-1-key: CUOPT_S3_URI
       script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
@@ -528,9 +458,8 @@ jobs:
       script: ci/build_wheel_cuopt.sh
       package-name: cuopt
       package-type: python
-      matrix_filter: ${{ needs.compute-matrix-filters.outputs.wheel_lean_filter }}
   wheel-tests-cuopt:
-    needs: [wheel-build-cuopt, wheel-build-cuopt-sh-client, changed-files, compute-matrix-filters]
+    needs: [wheel-build-cuopt, wheel-build-cuopt-sh-client, changed-files]
     permissions:
       actions: read
       contents: read
@@ -542,7 +471,6 @@ jobs:
     with:
       build_type: pull-request
       script: ci/test_wheel_cuopt.sh
-      matrix_filter: ${{ needs.compute-matrix-filters.outputs.wheel_lean_filter }}
     secrets:
       script-env-secret-1-key: CUOPT_S3_URI
       script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
