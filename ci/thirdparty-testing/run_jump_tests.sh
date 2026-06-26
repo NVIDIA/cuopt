@@ -42,6 +42,13 @@ if [ -f test/MOI_wrapper.jl ]; then
     sed -i '/^function test_air05()/,/^end$/s/^/# /' test/MOI_wrapper.jl
 fi
 
+# Patch MOI_wrapper.jl to skip test_conic_SecondOrderCone_negative_initial_bound,
+# which crashes Julia's JIT during type inference for the MOI bridge delete path.
+rapids-logger "Excluding test_conic_SecondOrderCone_negative_initial_bound from bridge optimizer tests"
+if [ -f test/MOI_wrapper.jl ]; then
+    sed -i 's/"test_conic_SecondOrderCone_negative_post_bound_3",/"test_conic_SecondOrderCone_negative_post_bound_3",\n            "test_conic_SecondOrderCone_negative_initial_bound",/' test/MOI_wrapper.jl
+fi
+
 # Find libcuopt.so and add its directory to LD_LIBRARY_PATH
 LIBCUOPT_PATH=$(find /pyenv/ -name "libcuopt.so" -type f 2>/dev/null | head -1)
 
