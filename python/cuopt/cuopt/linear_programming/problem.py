@@ -18,8 +18,20 @@ import warnings
 
 # ---- Display helpers for __str__/__repr__ ----
 
-_SENSE_SYMBOLS = {LE: "<=", GE: ">=", EQ: "=="}
+# Keyed by the underlying CType char codes ("L"/"G"/"E"). CType is a
+# ``(str, Enum)`` whose members compare and hash equal to these codes, so the
+# lookup works whether ``Constraint.Sense`` holds a CType member or a raw
+# string. Using the codes (rather than the LE/GE/EQ aliases) also keeps this
+# module-level table independent of definition order.
+_SENSE_SYMBOLS = {"L": "<=", "G": ">=", "E": "=="}
 _TYPE_NAMES = {"C": "CONTINUOUS", "I": "INTEGER", "S": "SEMI_CONTINUOUS"}
+
+# Maximum number of terms rendered when stringifying a linear or quadratic
+# expression. Beyond this, the head is shown followed by a ``... (N more
+# terms)`` marker so that printing a model with thousands of terms stays
+# readable in a REPL or notebook instead of flooding the output. Set to
+# ``None`` to disable truncation entirely.
+_MAX_DISPLAY_TERMS = 10
 
 
 def _var_display_name(var):
@@ -47,10 +59,21 @@ class _ExprBuilder:
     The first term is emitted without a sign; subsequent terms are joined
     with ' + ' or ' - ' separators. A coefficient of 1.0 or -1.0 is
     elided, so '1.0 * x' becomes 'x' and '-1.0 * x' becomes '-x'.
+
+    When ``max_terms`` is set, only the first ``max_terms`` non-zero terms
+    are rendered; any remaining terms are counted and summarized as a
+    trailing ``... (N more terms)`` marker. This keeps the output bounded
+    for expressions with very many terms. ``max_terms=None`` (the default)
+    renders every term.
     """
 
-    def __init__(self):
+    def __init__(self, max_terms=None):
         self.parts = []
+        self.max_terms = max_terms
+        # Non-zero terms seen so far (rendered + hidden).
+        self.n_terms = 0
+        # Non-zero terms omitted because the cap was reached.
+        self.n_hidden = 0
 
     def add_linear(self, coef, var):
         """Add a linear term ``coef * var``."""
@@ -90,20 +113,30 @@ class _ExprBuilder:
         self._append(f"{abs(value)}", negative=value < 0)
 
     def _append(self, term, negative):
+        self.n_terms += 1
+        if self.max_terms is not None and self.n_terms > self.max_terms:
+            # Past the cap: count the term but don't render it.
+            self.n_hidden += 1
+            return
         if not self.parts:
             self.parts.append(f"-{term}" if negative else term)
         else:
             self.parts.append(f" - {term}" if negative else f" + {term}")
 
     def build(self):
-        if not self.parts:
+        if not self.parts and not self.n_hidden:
             return "0.0"
-        return "".join(self.parts)
+        result = "".join(self.parts)
+        if self.n_hidden:
+            plural = "term" if self.n_hidden == 1 else "terms"
+            marker = f"... ({self.n_hidden} more {plural})"
+            result = f"{result} + {marker}" if result else marker
+        return result
 
 
-def _format_linear(vars, coeffs, constant):
+def _format_linear(vars, coeffs, constant, max_terms=None):
     """Format a linear expression as an algebraic string."""
-    builder = _ExprBuilder()
+    builder = _ExprBuilder(max_terms=max_terms)
     for var, coef in zip(vars, coeffs):
         builder.add_linear(coef, var)
     builder.add_constant(constant)
@@ -997,7 +1030,7 @@ class QuadraticExpression:
         raise ValueError("Equality constraints are not supported.")
 
     def __str__(self):
-        builder = _ExprBuilder()
+        builder = _ExprBuilder(max_terms=_MAX_DISPLAY_TERMS)
         if self.qmatrix is not None:
             for row, col, val in zip(
                 self.qmatrix.row, self.qmatrix.col, self.qmatrix.data
@@ -1407,7 +1440,12 @@ class LinearExpression:
                 return Constraint(expr, EQ, 0.0)
 
     def __str__(self):
-        return _format_linear(self.vars, self.coefficients, self.constant)
+        return _format_linear(
+            self.vars,
+            self.coefficients,
+            self.constant,
+            max_terms=_MAX_DISPLAY_TERMS,
+        )
 
     def __repr__(self):
         return f"<cuopt.LinearExpression: {self}>"

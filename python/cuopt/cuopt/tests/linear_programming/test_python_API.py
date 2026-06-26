@@ -1014,3 +1014,47 @@ def test_str_and_repr():
     empty_prob = Problem()
     assert "Problem: <unnamed>" in str(empty_prob)
     assert "<cuopt.Problem '<unnamed>'" in repr(empty_prob)
+
+
+def test_str_truncation_large_expression():
+    """Large expressions truncate so a model with thousands of terms stays
+    readable in a REPL or notebook instead of flooding the output."""
+    from cuopt.linear_programming.problem import _MAX_DISPLAY_TERMS
+
+    cap = _MAX_DISPLAY_TERMS
+    n = cap * 3  # comfortably over the cap
+
+    prob = Problem("trunc_test")
+    xs = [prob.addVariable(name=f"x{i}") for i in range(n)]
+
+    # === LinearExpression: head is rendered, tail is summarized ===
+    expr = 1 * xs[0]
+    for i in range(1, n):
+        expr = expr + (i + 1) * xs[i]
+    s = str(expr)
+    # Exactly `cap` terms rendered (all positive -> all " + " separators),
+    # plus the trailing marker joined with one more " + ".
+    assert s.count(" + ") == cap
+    assert s.startswith("x0 + ")
+    assert s.endswith(f"... ({n - cap} more terms)")
+    # repr wraps the same (truncated) string.
+    assert repr(expr) == f"<cuopt.LinearExpression: {s}>"
+
+    # === Exactly at the cap: no truncation ===
+    at_cap = 1 * xs[0]
+    for i in range(1, cap):
+        at_cap = at_cap + xs[i]
+    assert "more terms" not in str(at_cap)
+
+    # === One over the cap: singular "term" wording ===
+    over = at_cap + xs[cap]
+    assert str(over).endswith("... (1 more term)")
+
+    # === QuadraticExpression also truncates ===
+    qexpr = xs[0] * xs[0]
+    for i in range(1, n):
+        qexpr = qexpr + xs[i] * xs[i]
+    qs = str(qexpr)
+    assert qs.count("^2") <= cap
+    assert qs.endswith(f"... ({n - cap} more terms)")
+    assert repr(qexpr) == f"<cuopt.QuadraticExpression: {qs}>"
