@@ -149,7 +149,6 @@ mip_solution_t<i_t, f_t> run_mip_solver(
       auto stats = solver_stats_t<i_t, f_t>{};
       stats.set_solution_bound(solution.get_user_objective());
       // log the objective for scripts which need it
-      CUOPT_LOG_INFO("Best feasible: %f", solution.get_user_objective());
       for (auto callback : settings.get_mip_callbacks()) {
         if (callback->get_type() == internals::base_solution_callback_type::GET_SOLUTION) {
           auto temp_sol(solution);
@@ -593,6 +592,10 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
         CUOPT_LOG_INFO("%d implied integers", presolve_result_opt->implied_integer_indices.size());
       }
       CUOPT_LOG_INFO("Papilo presolve time: %.2f", presolve_time);
+
+      if (result.status == detail::third_party_presolve_status_t::OPTIMAL) {
+        CUOPT_LOG_INFO("Optimal solution found during presolve.");
+      }
     }
 
     // Stop early GPU FJ now that Papilo presolve is complete

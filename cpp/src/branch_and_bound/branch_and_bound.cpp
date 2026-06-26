@@ -2558,7 +2558,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   exploration_stats_.total_lp_solve_time = root_relax_elapsed_time;
 
   if (root_status == lp_status_t::INFEASIBLE) {
-    settings_.log.printf("The root LP relaxation is infeasible\n",
+    settings_.log.printf("\nThe root LP relaxation is infeasible\n",
                          lp_status_to_string(root_status).c_str());
     signal_extend_cliques_.store(true, std::memory_order_release);
 #pragma omp taskwait depend(in : *clique_signal)
@@ -2566,7 +2566,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   }
 
   if (root_status == lp_status_t::UNBOUNDED) {
-    settings_.log.printf("The root relaxation is unbounded\n",
+    settings_.log.printf("\nThe root relaxation is unbounded\n",
                          lp_status_to_string(root_status).c_str());
     if (settings_.heuristic_preemption_callback != nullptr) {
       settings_.heuristic_preemption_callback();
@@ -2577,6 +2577,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   }
 
   if (root_status == lp_status_t::TIME_LIMIT) {
+    settings_.log.printf("\n");
     solver_status_ = mip_status_t::TIME_LIMIT;
     set_final_solution(solution, -inf);
     signal_extend_cliques_.store(true, std::memory_order_release);
@@ -2585,6 +2586,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   }
 
   if (root_status == lp_status_t::WORK_LIMIT) {
+    settings_.log.printf("\n");
     solver_status_ = mip_status_t::WORK_LIMIT;
     set_final_solution(solution, -inf);
     signal_extend_cliques_.store(true, std::memory_order_release);
@@ -2593,6 +2595,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   }
 
   if (root_status == lp_status_t::NUMERICAL_ISSUES) {
+    settings_.log.printf("\n");
     solver_status_ = mip_status_t::NUMERICAL;
     set_final_solution(solution, -inf);
     signal_extend_cliques_.store(true, std::memory_order_release);
