@@ -3610,7 +3610,7 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
   }
   f_t start_time = tic();
 
-  settings.log.debug("Computing variable bounds...");
+  settings.log.printf("Computing variable bounds...");
 
   std::vector<i_t> num_integer_in_row(lp.num_rows, 0);
 
@@ -3782,8 +3782,9 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
       }
     }
   }
+
   upper_offsets[lp.num_cols] = upper_edges;
-  settings.log.debug("%d variable upper bounds in %.2f seconds\n", upper_edges, toc(start_time));
+  settings.log.print_format("{} variable upper bounds in {:.2f}s\n", upper_edges, toc(start_time));
 
   // Now go through all continuous variables and use the activiites to get lower variable bounds
   i_t lower_edges = 0;
@@ -3873,8 +3874,9 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
       }
     }
   }
+
   lower_offsets[lp.num_cols] = lower_edges;
-  settings.log.debug("%d variable lower bounds in %.2f seconds\n", lower_edges, toc(start_time));
+  settings.log.print_format("{} variable lower bounds in {:.2f}s\n", lower_edges, toc(start_time));
 }
 
 template <typename i_t, typename f_t>

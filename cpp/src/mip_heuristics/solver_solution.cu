@@ -242,7 +242,7 @@ void mip_solution_t<i_t, f_t>::log_detailed_summary() const
     case mip_termination_status_t::Optimal:
     case mip_termination_status_t::FeasibleFound:
       CUOPT_LOG_INFO("%s\n",
-                     std::format("Best objective {:.6g}, best bound {:.6g}, gap {:.2f}%.",
+                     std::format("Best objective {:.6e}, best bound {:.6e}, gap {:.2f}%.",
                                  objective_,
                                  stats_.get_solution_bound(),
                                  mip_gap_ * 100)
@@ -250,7 +250,7 @@ void mip_solution_t<i_t, f_t>::log_detailed_summary() const
       break;
 
     case mip_termination_status_t::Infeasible:
-      CUOPT_LOG_INFO("No integer feasible solution exists.\n");
+      CUOPT_LOG_INFO("Problem has no integer feasible solution.\n");
       break;
 
     case mip_termination_status_t::TimeLimit:

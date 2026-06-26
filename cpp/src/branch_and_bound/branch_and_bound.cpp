@@ -226,7 +226,7 @@ f_t user_relative_gap(f_t user_obj, f_t user_lower_bound)
 template <typename f_t>
 std::string to_percentage(f_t value)
 {
-  if (value == std::numeric_limits<f_t>::infinity()) return "---";
+  if (value == std::numeric_limits<f_t>::infinity()) return "-";
   if (value > 1e-3) { return std::format("{:5.1f}%", value * 100); }
   return std::format("{:5.2f}%", value * 100);
 }
@@ -2558,13 +2558,16 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   exploration_stats_.total_lp_solve_time = root_relax_elapsed_time;
 
   if (root_status == lp_status_t::INFEASIBLE) {
-    settings_.log.printf("MIP Infeasible\n");
+    settings_.log.printf("The root LP relaxation is infeasible\n",
+                         lp_status_to_string(root_status).c_str());
     signal_extend_cliques_.store(true, std::memory_order_release);
 #pragma omp taskwait depend(in : *clique_signal)
     return mip_status_t::INFEASIBLE;
   }
+
   if (root_status == lp_status_t::UNBOUNDED) {
-    settings_.log.printf("MIP Unbounded\n");
+    settings_.log.printf("The root relaxation is unbounded\n",
+                         lp_status_to_string(root_status).c_str());
     if (settings_.heuristic_preemption_callback != nullptr) {
       settings_.heuristic_preemption_callback();
     }
@@ -2572,6 +2575,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 #pragma omp taskwait depend(in : *clique_signal)
     return mip_status_t::UNBOUNDED;
   }
+
   if (root_status == lp_status_t::TIME_LIMIT) {
     solver_status_ = mip_status_t::TIME_LIMIT;
     set_final_solution(solution, -inf);
