@@ -5,17 +5,17 @@
 
 #include "grpc_settings_mapper.hpp"
 
-#include <cuopt/linear_programming/constants.h>
+#include <cuopt/mathematical_optimization/constants.h>
 #include <cuopt_remote.pb.h>
-#include <cuopt/linear_programming/mip/solver_settings.hpp>
-#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
-#include <cuopt/linear_programming/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/solver_settings.hpp>
 
 #include <limits>
 #include <stdexcept>
 #include <string>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 namespace {
 #include "generated_enum_converters_settings.inc"
@@ -113,4 +113,4 @@ template void map_proto_to_mip_settings(const cuopt::remote::MIPSolverSettings& 
                                         mip_solver_settings_t<int32_t, double>& settings);
 #endif
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

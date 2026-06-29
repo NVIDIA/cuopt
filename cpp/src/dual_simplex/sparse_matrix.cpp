@@ -25,7 +25,7 @@
 #include <cmath>
 #include <cstdio>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 template <typename i_t, typename f_t>
 void csc_matrix_t<i_t, f_t>::reallocate(i_t new_nz)
@@ -1006,4 +1006,4 @@ matrix_transpose_vector_multiply<int, double, std::allocator<double>, std::alloc
 
 #endif
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

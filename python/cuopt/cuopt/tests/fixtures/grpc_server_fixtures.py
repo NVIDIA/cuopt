@@ -77,8 +77,8 @@ def wait_for_port(port, timeout=15):
 
 
 def wait_for_grpc_client(port, timeout=30):
-    """Block until cuopt.grpc.numerical.Client can connect (TCP up is not enough)."""
-    from cuopt.grpc.numerical import Client, GrpcError
+    """Block until cuopt.grpc.mathematical_optimization.Client can connect (TCP up is not enough)."""
+    from cuopt.grpc.mathematical_optimization import Client, GrpcError
 
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:

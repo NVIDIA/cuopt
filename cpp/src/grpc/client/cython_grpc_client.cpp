@@ -8,10 +8,10 @@
 #include <cuopt/grpc/cython_grpc_client.hpp>
 #include <cuopt/grpc/grpc_client_env.hpp>
 
-#include <cuopt/linear_programming/cpu_optimization_problem.hpp>
-#include <cuopt/linear_programming/io/data_model_view.hpp>
-#include <cuopt/linear_programming/optimization_problem_utils.hpp>
-#include <cuopt/linear_programming/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/io/data_model_view.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
+#include <cuopt/mathematical_optimization/solver_settings.hpp>
 
 #include "grpc_client.hpp"
 
@@ -23,9 +23,9 @@ namespace cuopt::cython {
 
 namespace {
 
-grpc_job_status_t map_job_status(cuopt::linear_programming::job_status_t status)
+grpc_job_status_t map_job_status(cuopt::mathematical_optimization::job_status_t status)
 {
-  using js = cuopt::linear_programming::job_status_t;
+  using js = cuopt::mathematical_optimization::job_status_t;
   switch (status) {
     case js::QUEUED: return grpc_job_status_t::QUEUED;
     case js::PROCESSING: return grpc_job_status_t::PROCESSING;
@@ -37,7 +37,8 @@ grpc_job_status_t map_job_status(cuopt::linear_programming::job_status_t status)
   }
 }
 
-grpc_status_result_t map_status_result(const cuopt::linear_programming::job_status_result_t& in)
+grpc_status_result_t map_status_result(
+  const cuopt::mathematical_optimization::job_status_result_t& in)
 {
   grpc_status_result_t out;
   out.success           = in.success;
@@ -56,15 +57,16 @@ bool is_in_flight(grpc_job_status_t status)
 }  // namespace
 
 struct grpc_python_client_t::impl_t {
-  cuopt::linear_programming::grpc_client_t client;
-  explicit impl_t(cuopt::linear_programming::grpc_client_config_t config)
+  cuopt::mathematical_optimization::grpc_client_t client;
+  explicit impl_t(cuopt::mathematical_optimization::grpc_client_config_t config)
     : client(std::move(config))
   {
   }
 };
 
 grpc_python_client_t::grpc_python_client_t(const std::string& host, int port)
-  : impl_(std::make_unique<impl_t>(cuopt::linear_programming::make_grpc_client_config(host, port)))
+  : impl_(std::make_unique<impl_t>(
+      cuopt::mathematical_optimization::make_grpc_client_config(host, port)))
 {
 }
 
@@ -80,8 +82,8 @@ bool grpc_python_client_t::connect(std::string& error_out)
 }
 
 grpc_submit_result_t grpc_python_client_t::submit(
-  cuopt::linear_programming::io::data_model_view_t<int, double>* data_model,
-  cuopt::linear_programming::solver_settings_t<int, double>* settings,
+  cuopt::mathematical_optimization::io::data_model_view_t<int, double>* data_model,
+  cuopt::mathematical_optimization::solver_settings_t<int, double>* settings,
   bool enable_incumbents)
 {
   grpc_submit_result_t out;
@@ -90,13 +92,14 @@ grpc_submit_result_t grpc_python_client_t::submit(
     return out;
   }
 
-  cuopt::linear_programming::cpu_optimization_problem_t<int, double> cpu_problem;
-  cuopt::linear_programming::populate_from_data_model_view(
+  cuopt::mathematical_optimization::cpu_optimization_problem_t<int, double> cpu_problem;
+  cuopt::mathematical_optimization::populate_from_data_model_view(
     &cpu_problem, data_model, settings, nullptr);
 
   const bool is_mip =
-    cpu_problem.get_problem_category() == cuopt::linear_programming::problem_category_t::MIP ||
-    cpu_problem.get_problem_category() == cuopt::linear_programming::problem_category_t::IP;
+    cpu_problem.get_problem_category() ==
+      cuopt::mathematical_optimization::problem_category_t::MIP ||
+    cpu_problem.get_problem_category() == cuopt::mathematical_optimization::problem_category_t::IP;
 
   if (is_mip) {
     auto sub =
@@ -196,7 +199,7 @@ grpc_result_outcome_t grpc_python_client_t::result(const std::string& job_id, bo
       out.solution.reset();
       return out;
     }
-    out.solution->problem_type = cuopt::linear_programming::problem_category_t::MIP;
+    out.solution->problem_type = cuopt::mathematical_optimization::problem_category_t::MIP;
     out.solution->mip_ret      = remote.solution->to_cpu_mip_ret_t();
   } else {
     auto remote = impl_->client.get_lp_result<int, double>(job_id);
@@ -205,7 +208,7 @@ grpc_result_outcome_t grpc_python_client_t::result(const std::string& job_id, bo
       out.solution.reset();
       return out;
     }
-    out.solution->problem_type = cuopt::linear_programming::problem_category_t::LP;
+    out.solution->problem_type = cuopt::mathematical_optimization::problem_category_t::LP;
     out.solution->lp_ret       = remote.solution->to_cpu_linear_programming_ret_t();
   }
 

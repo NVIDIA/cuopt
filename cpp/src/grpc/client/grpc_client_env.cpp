@@ -14,7 +14,7 @@
 #include <sstream>
 #include <stdexcept>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 namespace {
 
@@ -93,4 +93,4 @@ grpc_client_config_t make_grpc_client_config(const std::string& host, int port)
   return config;
 }
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

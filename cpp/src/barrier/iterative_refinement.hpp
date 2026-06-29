@@ -28,7 +28,7 @@
 #include <limits>
 #include <vector>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::barrier {
 
 // Functors for device operations (defined at namespace scope to avoid CUDA lambda restrictions)
 template <typename T>
@@ -413,4 +413,4 @@ f_t iterative_refinement(T& op, const rmm::device_uvector<f_t>& b, rmm::device_u
   return iterative_refinement_gmres<i_t, f_t, T>(op, b, x);
 }
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::barrier

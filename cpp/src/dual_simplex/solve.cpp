@@ -33,12 +33,12 @@
 #include <queue>
 #include <string>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 namespace {
 
 template <typename i_t, typename f_t>
-void write_matlab(const std::string& filename, const dual_simplex::lp_problem_t<i_t, f_t>& lp)
+void write_matlab(const std::string& filename, const simplex::lp_problem_t<i_t, f_t>& lp)
 {
   FILE* fid = fopen(filename.c_str(), "w");
   if (fid == NULL) { printf("Can't open file %s\n", filename.c_str()); }
@@ -200,7 +200,7 @@ lp_status_t solve_linear_program_with_advanced_basis(
   i_t iter = 0;
   lp_solution_t<i_t, f_t> phase1_solution(phase1_problem.num_rows, phase1_problem.num_cols);
   edge_norms.clear();
-  dual::status_t phase1_status;
+  dual_status_t phase1_status;
   {
     raft::common::nvtx::range scope_phase1("DualSimplex::phase1");
     phase1_status = dual_phase2(1,
@@ -214,17 +214,17 @@ lp_status_t solve_linear_program_with_advanced_basis(
                                 edge_norms,
                                 work_unit_context);
   }
-  if (phase1_status == dual::status_t::NUMERICAL) {
+  if (phase1_status == dual_status_t::NUMERICAL) {
     settings.log.printf("Failed in Phase 1\n");
     return lp_status_t::NUMERICAL_ISSUES;
   }
-  if (phase1_status == dual::status_t::DUAL_UNBOUNDED) {
+  if (phase1_status == dual_status_t::DUAL_UNBOUNDED) {
     return lp_status_t::UNBOUNDED_OR_INFEASIBLE;
   }
-  if (phase1_status == dual::status_t::TIME_LIMIT) { return lp_status_t::TIME_LIMIT; }
-  if (phase1_status == dual::status_t::WORK_LIMIT) { return lp_status_t::WORK_LIMIT; }
-  if (phase1_status == dual::status_t::ITERATION_LIMIT) { return lp_status_t::ITERATION_LIMIT; }
-  if (phase1_status == dual::status_t::CONCURRENT_LIMIT) {
+  if (phase1_status == dual_status_t::TIME_LIMIT) { return lp_status_t::TIME_LIMIT; }
+  if (phase1_status == dual_status_t::WORK_LIMIT) { return lp_status_t::WORK_LIMIT; }
+  if (phase1_status == dual_status_t::ITERATION_LIMIT) { return lp_status_t::ITERATION_LIMIT; }
+  if (phase1_status == dual_status_t::CONCURRENT_LIMIT) {
     original_solution.iterations = iter;
     return lp_status_t::CONCURRENT_LIMIT;
   }
@@ -237,21 +237,21 @@ lp_status_t solve_linear_program_with_advanced_basis(
     vstatus = phase1_vstatus;
     edge_norms.clear();
     bool initialize_basis_update = true;
-    dual::status_t status        = dual_phase2_with_advanced_basis(2,
-                                                            iter == 0 ? 1 : 0,
-                                                            initialize_basis_update,
-                                                            start_time,
-                                                            lp,
-                                                            settings,
-                                                            vstatus,
-                                                            ft,
-                                                            basic_list,
-                                                            nonbasic_list,
-                                                            solution,
-                                                            iter,
-                                                            edge_norms,
-                                                            work_unit_context);
-    if (status == dual::status_t::NUMERICAL) {
+    dual_status_t status         = dual_phase2_with_advanced_basis(2,
+                                                           iter == 0 ? 1 : 0,
+                                                           initialize_basis_update,
+                                                           start_time,
+                                                           lp,
+                                                           settings,
+                                                           vstatus,
+                                                           ft,
+                                                           basic_list,
+                                                           nonbasic_list,
+                                                           solution,
+                                                           iter,
+                                                           edge_norms,
+                                                           work_unit_context);
+    if (status == dual_status_t::NUMERICAL) {
       // Became dual infeasible. Try phase 1 again
       phase1_vstatus = vstatus;
       settings.log.printf("Running Phase 1 again\n");
@@ -289,10 +289,10 @@ lp_status_t solve_linear_program_with_advanced_basis(
                                                work_unit_context);
     }
     constexpr bool primal_cleanup = false;
-    if (status == dual::status_t::OPTIMAL && primal_cleanup) {
+    if (status == dual_status_t::OPTIMAL && primal_cleanup) {
       primal_phase2(2, start_time, lp, settings, vstatus, solution, iter);
     }
-    if (status == dual::status_t::OPTIMAL) {
+    if (status == dual_status_t::OPTIMAL) {
       std::vector<f_t> unscaled_x(lp.num_cols);
       std::vector<f_t> unscaled_y(lp.num_rows);
       std::vector<f_t> unscaled_z(lp.num_cols);
@@ -319,16 +319,16 @@ lp_status_t solve_linear_program_with_advanced_basis(
       original_solution.l2_dual_residual   = solution.l2_dual_residual;
       lp_status                            = lp_status_t::OPTIMAL;
     }
-    if (status == dual::status_t::DUAL_UNBOUNDED) { lp_status = lp_status_t::INFEASIBLE; }
-    if (status == dual::status_t::TIME_LIMIT) { lp_status = lp_status_t::TIME_LIMIT; }
-    if (status == dual::status_t::WORK_LIMIT) { lp_status = lp_status_t::WORK_LIMIT; }
-    if (status == dual::status_t::ITERATION_LIMIT) { lp_status = lp_status_t::ITERATION_LIMIT; }
-    if (status == dual::status_t::CONCURRENT_LIMIT) {
+    if (status == dual_status_t::DUAL_UNBOUNDED) { lp_status = lp_status_t::INFEASIBLE; }
+    if (status == dual_status_t::TIME_LIMIT) { lp_status = lp_status_t::TIME_LIMIT; }
+    if (status == dual_status_t::WORK_LIMIT) { lp_status = lp_status_t::WORK_LIMIT; }
+    if (status == dual_status_t::ITERATION_LIMIT) { lp_status = lp_status_t::ITERATION_LIMIT; }
+    if (status == dual_status_t::CONCURRENT_LIMIT) {
       original_solution.iterations = iter;
       return lp_status_t::CONCURRENT_LIMIT;
     }
-    if (status == dual::status_t::NUMERICAL) { lp_status = lp_status_t::NUMERICAL_ISSUES; }
-    if (status == dual::status_t::CUTOFF) { lp_status = lp_status_t::CUTOFF; }
+    if (status == dual_status_t::NUMERICAL) { lp_status = lp_status_t::NUMERICAL_ISSUES; }
+    if (status == dual_status_t::CUTOFF) { lp_status = lp_status_t::CUTOFF; }
     original_solution.iterations = iter;
   } else {
     // Dual infeasible -> Primal unbounded or infeasible
@@ -361,7 +361,7 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
   simplex_solver_settings_t<i_t, f_t> barrier_settings = settings;
   dualize_info_t<i_t, f_t> dualize_info;
   convert_user_problem(user_problem, barrier_settings, original_lp, new_slacks, dualize_info);
-  if (!validate_barrier_cone_layout(original_lp, barrier_settings)) {
+  if (!barrier::validate_barrier_cone_layout(original_lp, barrier_settings)) {
     return lp_status_t::NUMERICAL_ISSUES;
   }
 
@@ -387,7 +387,7 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
   // Solve using barrier
   lp_solution_t<i_t, f_t> barrier_solution(barrier_lp.num_rows, barrier_lp.num_cols);
 
-  barrier_solver_t<i_t, f_t> barrier_solver(barrier_lp, presolve_info, barrier_settings);
+  barrier::barrier_solver_t<i_t, f_t> barrier_solver(barrier_lp, presolve_info, barrier_settings);
   lp_status_t barrier_status = barrier_solver.solve(start_time, barrier_solution);
   if (barrier_status == lp_status_t::OPTIMAL) {
 #ifdef COMPUTE_SCALED_RESIDUALS
@@ -725,11 +725,11 @@ i_t solve(const user_problem_t<i_t, f_t>& problem,
 {
   i_t status;
   if (is_mip(problem) && !settings.relaxation) {
-    probing_implied_bound_t<i_t, f_t> empty_probing(problem.num_cols);
-    branch_and_bound_t branch_and_bound(problem, settings, tic(), empty_probing);
+    mip::probing_implied_bound_t<i_t, f_t> empty_probing(problem.num_cols);
+    mip::branch_and_bound_t branch_and_bound(problem, settings, tic(), empty_probing);
     mip_solution_t<i_t, f_t> mip_solution(problem.num_cols);
-    mip_status_t mip_status = branch_and_bound.solve(mip_solution);
-    if (mip_status == mip_status_t::OPTIMAL) {
+    mip::mip_status_t mip_status = branch_and_bound.solve(mip_solution);
+    if (mip_status == mip::mip_status_t::OPTIMAL) {
       status = 0;
     } else {
       status = -1;
@@ -765,11 +765,11 @@ i_t solve_mip_with_guess(const user_problem_t<i_t, f_t>& problem,
 {
   i_t status;
   if (is_mip(problem)) {
-    probing_implied_bound_t<i_t, f_t> empty_probing(problem.num_cols);
-    branch_and_bound_t branch_and_bound(problem, settings, tic(), empty_probing);
+    mip::probing_implied_bound_t<i_t, f_t> empty_probing(problem.num_cols);
+    mip::branch_and_bound_t branch_and_bound(problem, settings, tic(), empty_probing);
     branch_and_bound.set_initial_guess(guess);
-    mip_status_t mip_status = branch_and_bound.solve(solution);
-    if (mip_status == mip_status_t::OPTIMAL) {
+    mip::mip_status_t mip_status = branch_and_bound.solve(solution);
+    if (mip_status == mip::mip_status_t::OPTIMAL) {
       status = 0;
     } else {
       status = -1;
@@ -846,4 +846,4 @@ template int solve_mip_with_guess<int, double>(
 
 #endif
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

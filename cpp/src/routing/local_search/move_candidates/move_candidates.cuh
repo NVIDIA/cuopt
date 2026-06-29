@@ -121,10 +121,10 @@ class move_path_t {
     }
   }
 
+  /// Reset per-iteration move state
   void reset(solution_handle_t<i_t, f_t> const* sol_handle)
   {
-    constexpr i_t zero_val = 0;
-    n_insertions.set_value_async(zero_val, sol_handle->get_stream());
+    n_insertions.set_value_to_zero_async(sol_handle->get_stream());
     async_fill(loop_closed, 1, sol_handle->get_stream());
     async_fill(changed_routes, 0, sol_handle->get_stream());
   }

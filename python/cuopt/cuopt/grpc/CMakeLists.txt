@@ -3,4 +3,4 @@
 # SPDX-License-Identifier: Apache-2.0
 # cmake-format: on
 
-add_subdirectory(numerical)
+add_subdirectory(mathematical_optimization)

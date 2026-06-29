@@ -7,14 +7,14 @@
 
 #pragma once
 
-#include <cuopt/linear_programming/io/mps_data_model.hpp>
+#include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
 #include <mps_parser_internal.hpp>
 
 #include <string>
 #include <string_view>
 #include <vector>
 
-namespace cuopt::linear_programming::io {
+namespace cuopt::mathematical_optimization::io {
 
 /**
  * @brief Parser for the LP format.
@@ -81,4 +81,4 @@ class lp_parser_t {
   std::vector<quadratic_constraint_block_t> quadratic_constraint_blocks{};
 };
 
-}  // namespace cuopt::linear_programming::io
+}  // namespace cuopt::mathematical_optimization::io

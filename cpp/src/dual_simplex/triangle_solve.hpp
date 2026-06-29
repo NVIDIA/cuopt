@@ -13,7 +13,7 @@
 
 #include <optional>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 #define FLIP(i)      (-(i) - 2)  // flips an unsigned integer about -1
 #define UNFLIP(i)    (((i) < 0) ? FLIP(i) : (i))
@@ -171,4 +171,4 @@ i_t sparse_triangle_solve(const sparse_vector_t<i_t, f_t>& b,
                           f_t* x,
                           f_t& work_estimate);
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

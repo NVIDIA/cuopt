@@ -15,7 +15,7 @@
 #include <raft/linalg/binary_op.cuh>
 #include <raft/linalg/divide.cuh>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 template <typename i_t, typename f_t>
 weighted_average_solution_t<i_t, f_t>::weighted_average_solution_t(raft::handle_t const* handle_ptr,
                                                                    i_t primal_size,
@@ -152,4 +152,4 @@ template __global__ void add_weight_sums<double>(const double* primal_weight,
 template class weighted_average_solution_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

@@ -7,7 +7,7 @@
 
 #include "grpc_client.hpp"
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 /**
  * @brief Apply CUOPT_GRPC_* / CUOPT_TLS_* / CUOPT_CHUNK_SIZE env overrides.
@@ -19,4 +19,4 @@ void apply_grpc_client_env_overrides(grpc_client_config_t& config);
  */
 grpc_client_config_t make_grpc_client_config(const std::string& host, int port);
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

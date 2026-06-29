@@ -6,15 +6,16 @@
 /* clang-format on */
 
 #include <cuopt/grpc/grpc_client_env.hpp>
-#include <cuopt/linear_programming/cpu_optimization_problem.hpp>
-#include <cuopt/linear_programming/cpu_optimization_problem_solution.hpp>
-#include <cuopt/linear_programming/cpu_pdlp_warm_start_data.hpp>
-#include <cuopt/linear_programming/solve.hpp>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem_solution.hpp>
+#include <cuopt/mathematical_optimization/cpu_pdlp_warm_start_data.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
 #include <utilities/logger.hpp>
 #include "grpc_client.hpp"
 
 #include <cmath>
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <sstream>
@@ -22,7 +23,7 @@
 
 #include <thrust/count.h>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 // Buffer added to the solver's time_limit to account for worker startup,
 // GPU init, and result pipe transfer.
@@ -223,4 +224,4 @@ template std::unique_ptr<lp_solution_interface_t<int, double>> solve_lp_remote(
 template std::unique_ptr<mip_solution_interface_t<int, double>> solve_mip_remote(
   cpu_optimization_problem_t<int, double> const&, mip_solver_settings_t<int, double> const&);
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

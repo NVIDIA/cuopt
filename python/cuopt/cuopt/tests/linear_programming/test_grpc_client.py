@@ -8,7 +8,12 @@ import time
 import cuopt.grpc as grpc_pkg
 import pytest
 
-from cuopt.grpc.numerical import Client, GrpcError, JobNotReadyError, JobStatus
+from cuopt.grpc.mathematical_optimization import (
+    Client,
+    GrpcError,
+    JobNotReadyError,
+    JobStatus,
+)
 from cuopt.linear_programming import Read, SolverSettings
 from cuopt.linear_programming.internals import GetSolutionCallback
 from cuopt.linear_programming.problem import INTEGER, MAXIMIZE, Problem
@@ -63,7 +68,10 @@ def _infeasible_lp_problem():
 def test_grpc_package_is_namespace_only():
     """cuopt.grpc is a namespace; domain clients live in subpackages."""
     assert "Client" not in grpc_pkg.__dict__
-    assert importlib.util.find_spec("cuopt.grpc.numerical") is not None
+    assert (
+        importlib.util.find_spec("cuopt.grpc.mathematical_optimization")
+        is not None
+    )
 
 
 @pytest.mark.filterwarnings("ignore::DeprecationWarning")

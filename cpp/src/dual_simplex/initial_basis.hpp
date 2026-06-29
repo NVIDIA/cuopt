@@ -12,7 +12,7 @@
 #include <dual_simplex/sparse_matrix.hpp>
 #include <dual_simplex/types.hpp>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 enum class variable_status_t : int8_t {
   BASIC          = 0,
@@ -36,4 +36,4 @@ i_t initial_basis_selection(const lp_problem_t<i_t, f_t>& problem,
                             std::vector<variable_status_t>& vstatus,
                             std::vector<i_t>& dependent_rows);
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

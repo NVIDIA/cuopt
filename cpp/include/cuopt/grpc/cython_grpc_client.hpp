@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include <cuopt/linear_programming/utilities/cython_solve.hpp>
+#include <cuopt/mathematical_optimization/utilities/cython_solve.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -13,18 +13,18 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 template <typename i_t, typename f_t>
 class solver_settings_t;
 namespace io {
 template <typename i_t, typename f_t>
 class data_model_view_t;
 }  // namespace io
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization
 
 namespace cuopt::cython {
 
-/** Mirrors cuopt::linear_programming::job_status_t for the Python bindings. */
+/** Mirrors cuopt::mathematical_optimization::job_status_t for the Python bindings. */
 enum class grpc_job_status_t : int {
   QUEUED     = 0,
   PROCESSING = 1,
@@ -99,8 +99,8 @@ class grpc_python_client_t {
   bool connect(std::string& error_out);
 
   grpc_submit_result_t submit(
-    cuopt::linear_programming::io::data_model_view_t<int, double>* data_model,
-    cuopt::linear_programming::solver_settings_t<int, double>* settings,
+    cuopt::mathematical_optimization::io::data_model_view_t<int, double>* data_model,
+    cuopt::mathematical_optimization::solver_settings_t<int, double>* settings,
     bool enable_incumbents = false);
 
   grpc_status_result_t status(const std::string& job_id);

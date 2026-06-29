@@ -7,13 +7,13 @@
 
 #pragma once
 
-#include <cuopt/linear_programming/cuopt_c.h>
-#include <cuopt/linear_programming/backend_selection.hpp>
-#include <cuopt/linear_programming/cpu_optimization_problem.hpp>
-#include <cuopt/linear_programming/mip/solver_solution.hpp>
-#include <cuopt/linear_programming/optimization_problem.hpp>
-#include <cuopt/linear_programming/optimization_problem_solution_interface.hpp>
-#include <cuopt/linear_programming/pdlp/solver_solution.hpp>
+#include <cuopt/mathematical_optimization/cuopt_c.h>
+#include <cuopt/mathematical_optimization/backend_selection.hpp>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_solution.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_solution_interface.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>
 
 #include <raft/core/handle.hpp>
 
@@ -21,7 +21,7 @@
 
 #include <memory>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 struct problem_and_stream_view_t {
   problem_and_stream_view_t(memory_backend_t mem_backend)
@@ -187,4 +187,4 @@ struct solution_and_stream_view_t {
   memory_backend_t memory_backend;  // Track if GPU or CPU memory for data access
 };
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

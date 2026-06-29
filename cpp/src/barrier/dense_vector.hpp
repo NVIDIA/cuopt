@@ -12,7 +12,7 @@
 #include <cstdio>
 #include <vector>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::barrier {
 
 template <typename i_t, typename f_t, typename Allocator = std::allocator<f_t>>
 class dense_vector_t : public std::vector<f_t, Allocator> {
@@ -56,7 +56,7 @@ class dense_vector_t : public std::vector<f_t, Allocator> {
   f_t minimum() const
   {
     const i_t n = this->size();
-    f_t min_x   = inf;
+    f_t min_x   = simplex::inf;
     for (i_t i = 0; i < n; i++) {
       min_x = std::min(min_x, (*this)[i]);
     }
@@ -66,7 +66,7 @@ class dense_vector_t : public std::vector<f_t, Allocator> {
   f_t maximum() const
   {
     const i_t n = this->size();
-    f_t max_x   = -inf;
+    f_t max_x   = -simplex::inf;
     for (i_t i = 0; i < n; i++) {
       max_x = std::max(max_x, (*this)[i]);
     }
@@ -186,7 +186,7 @@ class dense_vector_t : public std::vector<f_t, Allocator> {
 
   void ensure_positive(f_t epsilon_adjust, const std::vector<i_t>& mask)
   {
-    f_t min_x   = inf;
+    f_t min_x   = simplex::inf;
     const i_t n = this->size();
     for (i_t i = 0; i < n; i++) {
       if (mask[i]) { min_x = std::min(min_x, (*this)[i]); }
@@ -246,4 +246,4 @@ std::vector<T> copy(const std::vector<T, Alloc>& src)
   return std::vector<T>(src.begin(), src.end());
 }
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::barrier

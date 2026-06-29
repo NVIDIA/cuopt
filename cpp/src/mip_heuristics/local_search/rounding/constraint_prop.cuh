@@ -17,7 +17,7 @@
 #include <raft/random/rng_device.cuh>
 #include <utilities/timer.hpp>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 struct repair_stats_t {
   size_t repair_attempts                           = 0;
@@ -158,4 +158,4 @@ struct constraint_prop_t {
   f_t max_time_for_bounds_prop = 5.;
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

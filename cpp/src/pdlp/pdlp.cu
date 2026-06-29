@@ -6,9 +6,9 @@
 /* clang-format on */
 
 #include <cuopt/error.hpp>
-#include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
-#include <cuopt/linear_programming/pdlp/pdlp_warm_start_data.hpp>
-#include <cuopt/linear_programming/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_warm_start_data.hpp>
+#include <cuopt/mathematical_optimization/solver_settings.hpp>
 
 #include <pdlp/cusparse_view.hpp>
 #include <pdlp/pdlp.cuh>
@@ -16,7 +16,7 @@
 #include <pdlp/utils.cuh>
 
 #include <mip_heuristics/mip_constants.hpp>
-#include "cuopt/linear_programming/pdlp/solver_solution.hpp"
+#include "cuopt/mathematical_optimization/pdlp/solver_solution.hpp"
 
 #include <utilities/copy_helpers.hpp>
 #include <utilities/macros.cuh>
@@ -45,7 +45,7 @@
 #include <tuple>
 #include <unordered_set>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 
 // Templated wrapper for cuBLAS geam function
 // cublasSgeam for float, cublasDgeam for double
@@ -153,7 +153,7 @@ static size_t batch_size_handler(const pdlp_solver_settings_t<i_t, f_t>& setting
 }
 
 template <typename i_t, typename f_t>
-pdlp_solver_t<i_t, f_t>::pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
+pdlp_solver_t<i_t, f_t>::pdlp_solver_t(mip::problem_t<i_t, f_t>& op_problem,
                                        pdlp_solver_settings_t<i_t, f_t> const& settings,
                                        bool is_legacy_batch_mode)
   : original_batch_size_(batch_size_handler(settings)),
@@ -576,8 +576,8 @@ void pdlp_solver_t<i_t, f_t>::set_inside_mip(bool inside_mip)
 
 template <typename i_t, typename f_t>
 void pdlp_solver_t<i_t, f_t>::record_best_primal_so_far(
-  const detail::pdlp_termination_strategy_t<i_t, f_t>& current,
-  const detail::pdlp_termination_strategy_t<i_t, f_t>& average,
+  const pdlp::pdlp_termination_strategy_t<i_t, f_t>& current,
+  const pdlp::pdlp_termination_strategy_t<i_t, f_t>& average,
   const pdlp_termination_status_t& termination_current,
   const pdlp_termination_status_t& termination_average)
 {
@@ -617,7 +617,7 @@ void pdlp_solver_t<i_t, f_t>::record_best_primal_so_far(
 
     rmm::device_uvector<f_t>* primal_to_set;
     rmm::device_uvector<f_t>* dual_to_set;
-    detail::pdlp_termination_strategy_t<i_t, f_t>* termination_strategy_to_use;
+    pdlp::pdlp_termination_strategy_t<i_t, f_t>* termination_strategy_to_use;
     std::string_view debug_string;
 
     if (best_overall == current_quality) {
@@ -2690,7 +2690,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
 
       if (settings_.hyper_params.restart_strategy !=
             static_cast<int>(
-              detail::pdlp_restart_strategy_t<i_t, f_t>::restart_strategy_t::NO_RESTART) &&
+              pdlp::pdlp_restart_strategy_t<i_t, f_t>::restart_strategy_t::NO_RESTART) &&
           (is_major_iteration || artificial_restart_check_main_loop)) {
         restart_strategy_.compute_restart(
           pdhg_solver_,
@@ -2939,7 +2939,7 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
     void* d_temp_storage      = NULL;
     size_t temp_storage_bytes = 0;
 
-    detail::max_abs_value<f_t> red_op;
+    pdlp::max_abs_value<f_t> red_op;
     cub::DeviceReduce::Reduce(d_temp_storage,
                               temp_storage_bytes,
                               op_problem_scaled_.coefficients.data(),
@@ -3090,7 +3090,7 @@ __global__ void compute_weights_initial_primal_weight_from_squared_norms(
   raft::device_span<f_t> primal_weight,
   raft::device_span<f_t> best_primal_weight,
   int batch_size,
-  const pdlp_hyper_params::pdlp_hyper_params_t hyper_params)
+  const pdlp::pdlp_hyper_params_t hyper_params)
 {
   const int id = threadIdx.x + blockIdx.x * blockDim.x;
   if (id >= batch_size) { return; }
@@ -3123,21 +3123,20 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_primal_weight()
 
   // Here we use the combined bounds of the op_problem_scaled which may or may not be scaled yet
   // based on pdlp config
-  detail::combine_constraint_bounds<i_t, f_t>(op_problem_scaled_,
-                                              op_problem_scaled_.combined_bounds);
+  pdlp::combine_constraint_bounds<i_t, f_t>(op_problem_scaled_, op_problem_scaled_.combined_bounds);
   rmm::device_scalar<f_t> c_vec_norm{0.0, stream_view_};
-  detail::my_l2_weighted_norm<i_t, f_t>(op_problem_scaled_.objective_coefficients,
-                                        settings_.hyper_params.initial_primal_weight_c_scaling,
-                                        c_vec_norm,
-                                        stream_view_);
+  pdlp::my_l2_weighted_norm<i_t, f_t>(op_problem_scaled_.objective_coefficients,
+                                      settings_.hyper_params.initial_primal_weight_c_scaling,
+                                      c_vec_norm,
+                                      stream_view_);
 
   rmm::device_scalar<f_t> b_vec_norm{0.0, stream_view_};
   if (settings_.hyper_params.initial_primal_weight_combined_bounds) {
     // => same as sqrt(dot(b,b))
-    detail::my_l2_weighted_norm<i_t, f_t>(op_problem_scaled_.combined_bounds,
-                                          settings_.hyper_params.initial_primal_weight_b_scaling,
-                                          b_vec_norm,
-                                          stream_view_);
+    pdlp::my_l2_weighted_norm<i_t, f_t>(op_problem_scaled_.combined_bounds,
+                                        settings_.hyper_params.initial_primal_weight_b_scaling,
+                                        b_vec_norm,
+                                        stream_view_);
 
   } else {
     if (settings_.hyper_params.bound_objective_rescaling) {
@@ -3196,7 +3195,7 @@ i_t pdlp_solver_t<i_t, f_t>::get_total_pdhg_iterations() const
 }
 
 template <typename i_t, typename f_t>
-detail::pdlp_termination_strategy_t<i_t, f_t>&
+pdlp::pdlp_termination_strategy_t<i_t, f_t>&
 pdlp_solver_t<i_t, f_t>::get_current_termination_strategy()
 {
   return current_termination_strategy_;
@@ -3211,7 +3210,7 @@ template __global__ void compute_weights_initial_primal_weight_from_squared_norm
   raft::device_span<float> primal_weight,
   raft::device_span<float> best_primal_weight,
   int batch_size,
-  const pdlp_hyper_params::pdlp_hyper_params_t hyper_params);
+  const pdlp::pdlp_hyper_params_t hyper_params);
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
@@ -3223,7 +3222,7 @@ template __global__ void compute_weights_initial_primal_weight_from_squared_norm
   raft::device_span<double> primal_weight,
   raft::device_span<double> best_primal_weight,
   int batch_size,
-  const pdlp_hyper_params::pdlp_hyper_params_t hyper_params);
+  const pdlp::pdlp_hyper_params_t hyper_params);
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

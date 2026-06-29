@@ -11,7 +11,7 @@
 #include <pdlp/termination_strategy/infeasibility_information.hpp>
 #include <pdlp/utils.cuh>
 
-#include <cuopt/linear_programming/utilities/segmented_sum_handler.cuh>
+#include <cuopt/mathematical_optimization/utilities/segmented_sum_handler.cuh>
 
 #include <mip_heuristics/mip_constants.hpp>
 
@@ -34,12 +34,12 @@
 #include <thrust/transform_reduce.h>
 #include <thrust/tuple.h>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 template <typename i_t, typename f_t>
 infeasibility_information_t<i_t, f_t>::infeasibility_information_t(
   raft::handle_t const* handle_ptr,
-  problem_t<i_t, f_t>& op_problem,
-  const problem_t<i_t, f_t>& op_problem_scaled,
+  mip::problem_t<i_t, f_t>& op_problem,
+  const mip::problem_t<i_t, f_t>& op_problem_scaled,
   cusparse_view_t<i_t, f_t>& cusparse_view,
   const cusparse_view_t<i_t, f_t>& scaled_cusparse_view,
   i_t primal_size,
@@ -47,7 +47,7 @@ infeasibility_information_t<i_t, f_t>::infeasibility_information_t(
   const pdlp_initial_scaling_strategy_t<i_t, f_t>& scaling_strategy,
   bool infeasibility_detection,
   const std::vector<pdlp_climber_strategy_t>& climber_strategies,
-  const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params)
+  const pdlp::pdlp_hyper_params_t& hyper_params)
   : handle_ptr_(handle_ptr),
     stream_view_(handle_ptr_->get_stream()),
     primal_size_h_(primal_size),
@@ -769,4 +769,4 @@ template __global__ void compute_remaining_stats_kernel<int, double>(
   typename infeasibility_information_t<int, double>::view_t infeasibility_information_view);
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp
