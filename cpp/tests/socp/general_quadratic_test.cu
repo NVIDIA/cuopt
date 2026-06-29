@@ -226,7 +226,7 @@ TEST(general_quadratic, rejects_cross_only_indefinite)
   init_handler(&handle);
 
   // H = [[0, 2]; [2, 0]] from [ 4 x * y ] in LP bracket notation.
-  auto mps = io::read_lp_from_string<i_t, f_t>(R"LP(
+  auto lp = io::read_lp_from_string<i_t, f_t>(R"LP(
 Minimize
   obj: x + y
 Subject To
@@ -237,19 +237,20 @@ Bounds
 End
 )LP");
 
-  ASSERT_TRUE(mps.has_quadratic_constraints());
-  ASSERT_EQ(mps.get_quadratic_constraints().size(), 1u);
+  ASSERT_TRUE(lp.has_quadratic_constraints());
+  ASSERT_EQ(lp.get_quadratic_constraints().size(), 1u);
 
-  const i_t n = mps.get_n_variables();
-  const i_t m = mps.get_n_constraints();
+  const i_t n = lp.get_n_variables();
+  const i_t m = lp.get_n_constraints();
   EXPECT_EQ(n, 2);
   EXPECT_EQ(m, 0);
 
   user_problem_t<i_t, f_t> user_problem(&handle);
   user_problem.num_rows  = m;
   user_problem.num_cols  = n;
-  user_problem.objective = mps.get_objective_coefficients();
+  user_problem.objective = lp.get_objective_coefficients();
 
+  // Initialize the empty A matrix
   user_problem.A.m      = m;
   user_problem.A.n      = n;
   user_problem.A.nz_max = 0;
@@ -258,12 +259,12 @@ End
 
   user_problem.rhs.clear();
   user_problem.row_sense.clear();
-  user_problem.lower          = mps.get_variable_lower_bounds();
-  user_problem.upper          = mps.get_variable_upper_bounds();
+  user_problem.lower          = lp.get_variable_lower_bounds();
+  user_problem.upper          = lp.get_variable_upper_bounds();
   user_problem.num_range_rows = 0;
   user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
 
-  const auto& src_qc = mps.get_quadratic_constraints()[0];
+  const auto& src_qc = lp.get_quadratic_constraints()[0];
   qc_t qc;
   qc.constraint_row_index = src_qc.constraint_row_index;
   qc.constraint_row_name  = src_qc.constraint_row_name;
