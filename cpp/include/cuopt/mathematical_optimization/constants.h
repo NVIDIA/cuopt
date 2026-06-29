@@ -72,6 +72,7 @@
 #define CUOPT_MIP_FLOW_COVER_CUTS                  "mip_flow_cover_cuts"
 #define CUOPT_MIP_IMPLIED_BOUND_CUTS               "mip_implied_bound_cuts"
 #define CUOPT_MIP_CLIQUE_CUTS                      "mip_clique_cuts"
+#define CUOPT_MIP_ZERO_HALF_CUTS                   "mip_zero_half_cuts"
 #define CUOPT_MIP_STRONG_CHVATAL_GOMORY_CUTS       "mip_strong_chvatal_gomory_cuts"
 #define CUOPT_MIP_REDUCED_COST_STRENGTHENING       "mip_reduced_cost_strengthening"
 #define CUOPT_MIP_OBJECTIVE_STEP                   "mip_objective_step"
