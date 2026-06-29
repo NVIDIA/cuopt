@@ -16,7 +16,7 @@
 
 #include <cub/cub.cuh>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 enum class weight_strategy_t { Increment, Multiply };
 
@@ -234,4 +234,4 @@ void launch_load_balancing_mtm_compute_scores(dim3 grid,
                                               void** kernel_args,
                                               rmm::cuda_stream_view stream);
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

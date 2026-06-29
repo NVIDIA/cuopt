@@ -26,7 +26,7 @@
 #include <dual_simplex/tic_toc.hpp>
 #include <utilities/scope_guard.hpp>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 template <typename i_t, typename f_t>
 rins_t<i_t, f_t>::rins_t(mip_solver_context_t<i_t, f_t>& context_,
                          diversity_manager_t<i_t, f_t>& dm_,
@@ -234,11 +234,11 @@ void rins_t<i_t, f_t>::run_rins()
   f_t current_mip_gap = compute_rel_mip_gap(prev_obj, lower_bound);
 
   // run sub-mip
-  namespace dual_simplex = cuopt::linear_programming::dual_simplex;
-  dual_simplex::user_problem_t<i_t, f_t> branch_and_bound_problem(&rins_handle);
-  dual_simplex::simplex_solver_settings_t<i_t, f_t> branch_and_bound_settings;
-  dual_simplex::mip_solution_t<i_t, f_t> branch_and_bound_solution(1);
-  dual_simplex::mip_status_t branch_and_bound_status = dual_simplex::mip_status_t::UNSET;
+  namespace simplex = cuopt::mathematical_optimization::simplex;
+  simplex::user_problem_t<i_t, f_t> branch_and_bound_problem(&rins_handle);
+  simplex::simplex_solver_settings_t<i_t, f_t> branch_and_bound_settings;
+  simplex::mip_solution_t<i_t, f_t> branch_and_bound_solution(1);
+  mip::mip_status_t branch_and_bound_status = mip::mip_status_t::UNSET;
   fixed_problem.get_host_user_problem(branch_and_bound_problem);
   branch_and_bound_solution.resize(branch_and_bound_problem.num_cols);
   // Fill in the settings for branch and bound
@@ -262,9 +262,9 @@ void rins_t<i_t, f_t>::run_rins()
                                                                        f_t objective) {
     rins_solution_queue.push_back(solution);
   };
-  dual_simplex::probing_implied_bound_t<i_t, f_t> empty_probing(branch_and_bound_problem.num_cols);
-  dual_simplex::branch_and_bound_t<i_t, f_t> branch_and_bound(
-    branch_and_bound_problem, branch_and_bound_settings, dual_simplex::tic(), empty_probing);
+  mip::probing_implied_bound_t<i_t, f_t> empty_probing(branch_and_bound_problem.num_cols);
+  mip::branch_and_bound_t<i_t, f_t> branch_and_bound(
+    branch_and_bound_problem, branch_and_bound_settings, simplex::tic(), empty_probing);
   branch_and_bound.set_initial_guess(cuopt::host_copy(fixed_assignment, rins_handle.get_stream()));
   branch_and_bound_status = branch_and_bound.solve(branch_and_bound_solution);
 
@@ -275,18 +275,18 @@ void rins_t<i_t, f_t>::run_rins()
     // RINS submip may have just proved the initial guess is the optimal, therefore the queue might
     // be empty in that case
   }
-  if (branch_and_bound_status == dual_simplex::mip_status_t::OPTIMAL) {
+  if (branch_and_bound_status == mip::mip_status_t::OPTIMAL) {
     CUOPT_LOG_DEBUG("RINS submip optimal");
     // do goldilocks update
     fixrate    = std::max(fixrate - f_t(0.05), static_cast<f_t>(settings.min_fixrate));
     time_limit = std::max(time_limit - f_t(2), static_cast<f_t>(settings.min_time_limit));
-  } else if (branch_and_bound_status == dual_simplex::mip_status_t::TIME_LIMIT) {
+  } else if (branch_and_bound_status == mip::mip_status_t::TIME_LIMIT) {
     CUOPT_LOG_DEBUG("RINS submip time limit");
     // do goldilocks update
     fixrate    = std::min(fixrate + f_t(0.05), static_cast<f_t>(settings.max_fixrate));
     time_limit = std::min(time_limit + f_t(2),
                           static_cast<f_t>(context.settings.heuristic_params.rins_max_time_limit));
-  } else if (branch_and_bound_status == dual_simplex::mip_status_t::INFEASIBLE) {
+  } else if (branch_and_bound_status == mip::mip_status_t::INFEASIBLE) {
     CUOPT_LOG_DEBUG("RINS submip infeasible");
     // do goldilocks update, decreasing fixrate
     fixrate = std::max(fixrate - f_t(0.05), static_cast<f_t>(settings.min_fixrate));
@@ -351,4 +351,4 @@ template class rins_t<int, float>;
 template class rins_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

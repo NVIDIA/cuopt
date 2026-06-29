@@ -15,15 +15,14 @@
 
 #include <thrust/fill.h>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 
 template <typename i_t, typename f_t>
-saddle_point_state_t<i_t, f_t>::saddle_point_state_t(
-  raft::handle_t const* handle_ptr,
-  const i_t primal_size,
-  const i_t dual_size,
-  const size_t batch_size,
-  const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params)
+saddle_point_state_t<i_t, f_t>::saddle_point_state_t(raft::handle_t const* handle_ptr,
+                                                     const i_t primal_size,
+                                                     const i_t dual_size,
+                                                     const size_t batch_size,
+                                                     const pdlp::pdlp_hyper_params_t& hyper_params)
   : primal_size_{primal_size},
     dual_size_{dual_size},
     primal_solution_{batch_size * primal_size, handle_ptr->get_stream()},
@@ -179,4 +178,4 @@ template class saddle_point_state_t<int, float>;
 template class saddle_point_state_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

@@ -5,7 +5,7 @@
  */
 /* clang-format on */
 
-#include <cuopt/linear_programming/backend_selection.hpp>
+#include <cuopt/mathematical_optimization/backend_selection.hpp>
 #include <utilities/logger.hpp>
 
 #include <algorithm>
@@ -14,7 +14,7 @@
 #include <cstdlib>
 #include <string>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 bool is_remote_execution_enabled()
 {
@@ -47,4 +47,4 @@ memory_backend_t get_memory_backend_type()
   return use_cpu_memory_for_local() ? memory_backend_t::CPU : memory_backend_t::GPU;
 }
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

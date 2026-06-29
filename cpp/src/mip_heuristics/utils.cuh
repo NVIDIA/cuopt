@@ -17,11 +17,11 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/hashing.hpp>
 
-#include <cuopt/linear_programming/mip/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
 
 #pragma once
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 // TODO templatize as needed
 constexpr double default_cont_upper = std::numeric_limits<double>::infinity();
@@ -35,7 +35,7 @@ inline uint32_t compute_hash(raft::device_span<i_t> values, rmm::cuda_stream_vie
 {
   auto h_contents = cuopt::host_copy(values, stream);
   RAFT_CHECK_CUDA(stream);
-  return compute_hash(h_contents);
+  return cuopt::compute_hash(h_contents);
 }
 
 template <typename i_t>
@@ -43,7 +43,7 @@ inline uint32_t compute_hash(const rmm::device_uvector<i_t>& values, rmm::cuda_s
 {
   auto h_contents = cuopt::host_copy(values, stream);
   RAFT_CHECK_CUDA(stream);
-  return compute_hash(h_contents);
+  return cuopt::compute_hash(h_contents);
 }
 
 template <typename i_t, typename f_t>
@@ -61,7 +61,7 @@ HDI f_t get_cstr_tolerance(f_t lb, f_t ub, f_t abs_tol, f_t rel_tol)
   // we normally have combined bounds in the problem, but to reduce a memory request we can
   // recompute here
   if (USE_REL_TOLERANCE) {
-    f_t max_bound = combine_finite_abs_bounds<f_t>{}(lb, ub);
+    f_t max_bound = pdlp::combine_finite_abs_bounds<f_t>{}(lb, ub);
     tolerance += max_bound * rel_tol;
   }
   return tolerance;
@@ -421,4 +421,4 @@ bool has_variable_bounds_violation(const raft::handle_t* handle_ptr,
     has_variable_bounds_violation_functor<i_t, f_t>(assignment.data(), problem_ptr->view()));
 }
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

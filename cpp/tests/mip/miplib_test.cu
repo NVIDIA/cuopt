@@ -7,12 +7,12 @@
 
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 #include "branch_and_bound/branch_and_bound.hpp"
-#include "cuopt/linear_programming/mip/solver_settings.hpp"
+#include "cuopt/mathematical_optimization/mip/solver_settings.hpp"
 #include "dual_simplex/simplex_solver_settings.hpp"
 #include "mip_utils.cuh"
 
-#include <cuopt/linear_programming/io/parser.hpp>
-#include <cuopt/linear_programming/solve.hpp>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
 #include <utilities/common_utils.hpp>
 #include <utilities/error.hpp>
 
@@ -26,7 +26,7 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::linear_programming::test {
+namespace cuopt::mathematical_optimization::test {
 
 struct result_map_t {
   std::string file;
@@ -38,8 +38,8 @@ void test_miplib_file(result_map_t test_instance, mip_solver_settings_t<int, dou
   const raft::handle_t handle_{};
 
   auto path = make_path_absolute(test_instance.file);
-  cuopt::linear_programming::io::mps_data_model_t<int, double> problem =
-    cuopt::linear_programming::io::read_mps<int, double>(path, false);
+  cuopt::mathematical_optimization::io::mps_data_model_t<int, double> problem =
+    cuopt::mathematical_optimization::io::read_mps<int, double>(path, false);
   handle_.sync_stream();
   // set the time limit depending on we are in assert mode or not
 #ifdef ASSERT_MODE
@@ -80,8 +80,8 @@ TEST(mip_solve, low_thread_count_test)
   const raft::handle_t handle_{};
 
   auto path = make_path_absolute("mip/dominating_set.mps");
-  cuopt::linear_programming::io::mps_data_model_t<int, double> problem =
-    cuopt::linear_programming::io::read_mps<int, double>(path, false);
+  cuopt::mathematical_optimization::io::mps_data_model_t<int, double> problem =
+    cuopt::mathematical_optimization::io::read_mps<int, double>(path, false);
   handle_.sync_stream();
 
   mip_solution_t<int, double> solution = solve_mip(&handle_, problem, settings);
@@ -104,8 +104,8 @@ TEST(mip_solve, node_limit_test)
   const raft::handle_t handle_{};
 
   auto path = make_path_absolute("mip/swath1.mps");
-  cuopt::linear_programming::io::mps_data_model_t<int, double> problem =
-    cuopt::linear_programming::io::read_mps<int, double>(path, false);
+  cuopt::mathematical_optimization::io::mps_data_model_t<int, double> problem =
+    cuopt::mathematical_optimization::io::read_mps<int, double>(path, false);
   handle_.sync_stream();
 
   mip_solution_t<int, double> solution = solve_mip(&handle_, problem, settings);
@@ -117,4 +117,4 @@ TEST(mip_solve, node_limit_test)
   test_variable_bounds(problem, solution.get_solution(), settings);
 }
 
-}  // namespace cuopt::linear_programming::test
+}  // namespace cuopt::mathematical_optimization::test

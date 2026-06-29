@@ -7,7 +7,7 @@
 
 #include <pdlp/utilities/ping_pong_graph.cuh>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 
 template <typename i_t>
 ping_pong_graph_t<i_t>::ping_pong_graph_t(rmm::cuda_stream_view stream_view,
@@ -18,4 +18,4 @@ ping_pong_graph_t<i_t>::ping_pong_graph_t(rmm::cuda_stream_view stream_view,
 
 template class ping_pong_graph_t<int>;
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

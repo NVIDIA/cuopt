@@ -6,18 +6,18 @@
 /* clang-format on */
 
 #include <cuopt/error.hpp>
-#include <cuopt/linear_programming/backend_selection.hpp>
-#include <cuopt/linear_programming/cpu_optimization_problem.hpp>
-#include <cuopt/linear_programming/cpu_optimization_problem_solution.hpp>
-#include <cuopt/linear_programming/io/data_model_view.hpp>
-#include <cuopt/linear_programming/io/mps_data_model.hpp>
-#include <cuopt/linear_programming/io/writer.hpp>
-#include <cuopt/linear_programming/optimization_problem.hpp>
-#include <cuopt/linear_programming/optimization_problem_solution.hpp>
-#include <cuopt/linear_programming/optimization_problem_utils.hpp>
-#include <cuopt/linear_programming/solve.hpp>
-#include <cuopt/linear_programming/solver_settings.hpp>
-#include <cuopt/linear_programming/utilities/cython_solve.hpp>
+#include <cuopt/mathematical_optimization/backend_selection.hpp>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem_solution.hpp>
+#include <cuopt/mathematical_optimization/io/data_model_view.hpp>
+#include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
+#include <cuopt/mathematical_optimization/io/writer.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_solution.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
+#include <cuopt/mathematical_optimization/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/utilities/cython_solve.hpp>
 #include <mip_heuristics/logger.hpp>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/logger.hpp>
@@ -42,21 +42,22 @@ namespace cython {
  * @param solver_settings PDLP solver settings object
  * @return lp_solution_interface_t pointer (raw pointer, caller owns)
  */
-cuopt::linear_programming::lp_solution_interface_t<int, double>* call_solve_lp(
-  cuopt::linear_programming::optimization_problem_interface_t<int, double>* problem_interface,
-  cuopt::linear_programming::pdlp_solver_settings_t<int, double>& solver_settings,
+cuopt::mathematical_optimization::lp_solution_interface_t<int, double>* call_solve_lp(
+  cuopt::mathematical_optimization::optimization_problem_interface_t<int, double>*
+    problem_interface,
+  cuopt::mathematical_optimization::pdlp_solver_settings_t<int, double>& solver_settings,
   bool is_batch_mode)
 {
   raft::common::nvtx::range fun_scope("Call Solve LP");
-  cuopt_expects(
-    problem_interface->get_problem_category() == cuopt::linear_programming::problem_category_t::LP,
-    error_type_t::ValidationError,
-    "LP solve cannot be called on a MIP problem!");
+  cuopt_expects(problem_interface->get_problem_category() ==
+                  cuopt::mathematical_optimization::problem_category_t::LP,
+                error_type_t::ValidationError,
+                "LP solve cannot be called on a MIP problem!");
   const bool problem_checking     = true;
   const bool use_pdlp_solver_mode = true;
 
   // Solve returns unique_ptr<lp_solution_interface_t>
-  auto solution_interface = cuopt::linear_programming::solve_lp(
+  auto solution_interface = cuopt::mathematical_optimization::solve_lp(
     problem_interface, solver_settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
 
   // Return raw pointer (Python wrapper will own and manage lifecycle)
@@ -70,58 +71,59 @@ cuopt::linear_programming::lp_solution_interface_t<int, double>* call_solve_lp(
  * @param solver_settings MIP solver settings object
  * @return mip_solution_interface_t pointer (raw pointer, caller owns)
  */
-cuopt::linear_programming::mip_solution_interface_t<int, double>* call_solve_mip(
-  cuopt::linear_programming::optimization_problem_interface_t<int, double>* problem_interface,
-  cuopt::linear_programming::mip_solver_settings_t<int, double>& solver_settings)
+cuopt::mathematical_optimization::mip_solution_interface_t<int, double>* call_solve_mip(
+  cuopt::mathematical_optimization::optimization_problem_interface_t<int, double>*
+    problem_interface,
+  cuopt::mathematical_optimization::mip_solver_settings_t<int, double>& solver_settings)
 {
   raft::common::nvtx::range fun_scope("Call Solve MIP");
   cuopt_expects((problem_interface->get_problem_category() ==
-                 cuopt::linear_programming::problem_category_t::MIP) or
+                 cuopt::mathematical_optimization::problem_category_t::MIP) or
                   (problem_interface->get_problem_category() ==
-                   cuopt::linear_programming::problem_category_t::IP),
+                   cuopt::mathematical_optimization::problem_category_t::IP),
                 error_type_t::ValidationError,
                 "MIP solve cannot be called on an LP problem!");
 
   // Solve returns unique_ptr<mip_solution_interface_t>
   auto solution_interface =
-    cuopt::linear_programming::solve_mip(problem_interface, solver_settings);
+    cuopt::mathematical_optimization::solve_mip(problem_interface, solver_settings);
 
   // Return raw pointer (Python wrapper will own and manage lifecycle)
   return solution_interface.release();
 }
 
 std::unique_ptr<solver_ret_t> call_solve(
-  cuopt::linear_programming::io::data_model_view_t<int, double>* data_model,
-  cuopt::linear_programming::solver_settings_t<int, double>* solver_settings,
+  cuopt::mathematical_optimization::io::data_model_view_t<int, double>* data_model,
+  cuopt::mathematical_optimization::solver_settings_t<int, double>* solver_settings,
   unsigned int flags,
   bool is_batch_mode)
 {
   raft::common::nvtx::range fun_scope("Call Solve");
 
   // Determine memory backend based on execution mode
-  auto memory_backend = cuopt::linear_programming::get_memory_backend_type();
+  auto memory_backend = cuopt::mathematical_optimization::get_memory_backend_type();
 
   solver_ret_t response;
 
   // Create problem instance and CUDA resources based on memory backend
-  if (memory_backend == cuopt::linear_programming::memory_backend_t::GPU) {
+  if (memory_backend == cuopt::mathematical_optimization::memory_backend_t::GPU) {
     // GPU memory backend: Create CUDA resources and GPU problem
     rmm::cuda_stream stream(static_cast<rmm::cuda_stream::flags>(flags));
     const raft::handle_t handle_{stream};
 
-    auto problem = cuopt::linear_programming::optimization_problem_t<int, double>(&handle_);
-    cuopt::linear_programming::populate_from_data_model_view(
+    auto problem = cuopt::mathematical_optimization::optimization_problem_t<int, double>(&handle_);
+    cuopt::mathematical_optimization::populate_from_data_model_view(
       &problem, data_model, solver_settings, &handle_);
 
     // Call appropriate solve function and convert to ret struct
-    if (problem.get_problem_category() == linear_programming::problem_category_t::LP) {
+    if (problem.get_problem_category() == mathematical_optimization::problem_category_t::LP) {
       // Solve and get solution interface pointer
       auto lp_solution_ptr =
-        std::unique_ptr<linear_programming::lp_solution_interface_t<int, double>>(
+        std::unique_ptr<mathematical_optimization::lp_solution_interface_t<int, double>>(
           call_solve_lp(&problem, solver_settings->get_pdlp_settings(), is_batch_mode));
 
       response.lp_ret       = lp_solution_ptr->to_python_lp_ret();
-      response.problem_type = linear_programming::problem_category_t::LP;
+      response.problem_type = mathematical_optimization::problem_category_t::LP;
 
       // The solve's local stream is destroyed when this function returns, so reassociate
       // all returned device_buffers with a long-lived stream for safe deallocation later.
@@ -143,11 +145,11 @@ std::unique_ptr<solver_ret_t> call_solve(
     } else {
       // MIP solve
       auto mip_solution_ptr =
-        std::unique_ptr<linear_programming::mip_solution_interface_t<int, double>>(
+        std::unique_ptr<mathematical_optimization::mip_solution_interface_t<int, double>>(
           call_solve_mip(&problem, solver_settings->get_mip_settings()));
 
       response.mip_ret      = mip_solution_ptr->to_python_mip_ret();
-      response.problem_type = linear_programming::problem_category_t::MIP;
+      response.problem_type = mathematical_optimization::problem_category_t::MIP;
 
       // Same stream reassociation as the LP path above.
       auto& gpu_sol = std::get<gpu_buffer>(response.mip_ret.solution_);
@@ -175,26 +177,26 @@ std::unique_ptr<solver_ret_t> call_solve(
 
   } else {
     // CPU memory backend: pure data container, no CUDA resources needed
-    auto cpu_problem = cuopt::linear_programming::cpu_optimization_problem_t<int, double>();
-    cuopt::linear_programming::populate_from_data_model_view(
+    auto cpu_problem = cuopt::mathematical_optimization::cpu_optimization_problem_t<int, double>();
+    cuopt::mathematical_optimization::populate_from_data_model_view(
       &cpu_problem, data_model, solver_settings, nullptr);
 
     // Call appropriate solve function and convert to ret struct
-    if (cpu_problem.get_problem_category() == linear_programming::problem_category_t::LP) {
+    if (cpu_problem.get_problem_category() == mathematical_optimization::problem_category_t::LP) {
       auto lp_solution_ptr =
-        std::unique_ptr<linear_programming::lp_solution_interface_t<int, double>>(
+        std::unique_ptr<mathematical_optimization::lp_solution_interface_t<int, double>>(
           call_solve_lp(&cpu_problem, solver_settings->get_pdlp_settings(), is_batch_mode));
 
       response.lp_ret       = lp_solution_ptr->to_python_lp_ret();
-      response.problem_type = linear_programming::problem_category_t::LP;
+      response.problem_type = mathematical_optimization::problem_category_t::LP;
 
     } else {
       auto mip_solution_ptr =
-        std::unique_ptr<linear_programming::mip_solution_interface_t<int, double>>(
+        std::unique_ptr<mathematical_optimization::mip_solution_interface_t<int, double>>(
           call_solve_mip(&cpu_problem, solver_settings->get_mip_settings()));
 
       response.mip_ret      = mip_solution_ptr->to_python_mip_ret();
-      response.problem_type = linear_programming::problem_category_t::MIP;
+      response.problem_type = mathematical_optimization::problem_category_t::MIP;
     }
   }
 
@@ -202,7 +204,8 @@ std::unique_ptr<solver_ret_t> call_solve(
 }
 
 static int compute_max_thread(
-  const std::vector<cuopt::linear_programming::io::data_model_view_t<int, double>*>& data_models)
+  const std::vector<cuopt::mathematical_optimization::io::data_model_view_t<int, double>*>&
+    data_models)
 {
   constexpr std::size_t max_total = 4;
 
@@ -238,8 +241,8 @@ static int compute_max_thread(
 }
 
 std::pair<std::vector<std::unique_ptr<solver_ret_t>>, double> solve_batch_remote(
-  std::vector<cuopt::linear_programming::io::data_model_view_t<int, double>*> data_models,
-  cuopt::linear_programming::solver_settings_t<int, double>* solver_settings)
+  std::vector<cuopt::mathematical_optimization::io::data_model_view_t<int, double>*> data_models,
+  cuopt::mathematical_optimization::solver_settings_t<int, double>* solver_settings)
 {
   cuopt_expects(
     false,
@@ -250,12 +253,12 @@ std::pair<std::vector<std::unique_ptr<solver_ret_t>>, double> solve_batch_remote
 }
 
 std::pair<std::vector<std::unique_ptr<solver_ret_t>>, double> call_batch_solve(
-  std::vector<cuopt::linear_programming::io::data_model_view_t<int, double>*> data_models,
-  cuopt::linear_programming::solver_settings_t<int, double>* solver_settings)
+  std::vector<cuopt::mathematical_optimization::io::data_model_view_t<int, double>*> data_models,
+  cuopt::mathematical_optimization::solver_settings_t<int, double>* solver_settings)
 {
   raft::common::nvtx::range fun_scope("Call batch solve");
 
-  if (cuopt::linear_programming::is_remote_execution_enabled()) {
+  if (cuopt::mathematical_optimization::is_remote_execution_enabled()) {
     return solve_batch_remote(data_models, solver_settings);
   }
 

@@ -21,7 +21,7 @@
 #include <thrust/random.h>
 #include <thrust/shuffle.h>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 bool check_brute_force_rounding(solution_t<i_t, f_t>& solution)
@@ -189,4 +189,4 @@ INSTANTIATE(double)
 
 #undef INSTANTIATE
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

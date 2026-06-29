@@ -9,7 +9,7 @@
 
 #include <cstdint>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 // Forward declarations
 template <typename i_t, typename f_t>
@@ -58,4 +58,4 @@ template <typename i_t, typename f_t>
 void map_proto_to_mip_settings(const cuopt::remote::MIPSolverSettings& pb_settings,
                                mip_solver_settings_t<i_t, f_t>& settings);
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

@@ -14,7 +14,7 @@
 #include <dual_simplex/solve.hpp>
 #include <dual_simplex/tic_toc.hpp>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 namespace {
 
@@ -246,13 +246,13 @@ f_t primal_infeasibility(const lp_problem_t<i_t, f_t>& lp,
 // after dual simplex has found a primal feasible solution
 // The implementation currently cycles. So is not enabled at this time.
 template <typename i_t, typename f_t>
-primal::status_t primal_phase2(i_t phase,
-                               f_t start_time,
-                               const lp_problem_t<i_t, f_t>& lp,
-                               const simplex_solver_settings_t<i_t, f_t>& settings,
-                               std::vector<variable_status_t>& vstatus,
-                               lp_solution_t<i_t, f_t>& sol,
-                               i_t& iter)
+primal_status_t primal_phase2(i_t phase,
+                              f_t start_time,
+                              const lp_problem_t<i_t, f_t>& lp,
+                              const simplex_solver_settings_t<i_t, f_t>& settings,
+                              std::vector<variable_status_t>& vstatus,
+                              lp_solution_t<i_t, f_t>& sol,
+                              i_t& iter)
 {
   const i_t m = lp.num_rows;
   const i_t n = lp.num_cols;
@@ -308,12 +308,12 @@ primal::status_t primal_phase2(i_t phase,
                              slacks_needed,
                              work_estimate);
   if (rank == CONCURRENT_HALT_RETURN) {
-    return primal::status_t::CONCURRENT_LIMIT;
+    return primal_status_t::CONCURRENT_LIMIT;
   } else if (rank == TIME_LIMIT_RETURN) {
-    return primal::status_t::TIME_LIMIT;
+    return primal_status_t::TIME_LIMIT;
   } else if (rank < 0) {
-    return toc(start_time) > settings.time_limit ? primal::status_t::TIME_LIMIT
-                                                 : primal::status_t::NUMERICAL;
+    return toc(start_time) > settings.time_limit ? primal_status_t::TIME_LIMIT
+                                                 : primal_status_t::NUMERICAL;
   } else if (rank != m) {
     settings.log.debug("Failed to factorize basis. rank %d m %d\n", rank, m);
     basis_repair(lp.A,
@@ -340,13 +340,13 @@ primal::status_t primal_phase2(i_t phase,
                            slacks_needed,
                            work_estimate);
     if (rank == CONCURRENT_HALT_RETURN) {
-      return primal::status_t::CONCURRENT_LIMIT;
+      return primal_status_t::CONCURRENT_LIMIT;
     } else if (rank == TIME_LIMIT_RETURN) {
-      return primal::status_t::TIME_LIMIT;
+      return primal_status_t::TIME_LIMIT;
     } else if (rank < 0) {
       settings.log.printf("Failed to factorize basis after repair. rank %d m %d\n", rank, m);
-      return toc(start_time) > settings.time_limit ? primal::status_t::TIME_LIMIT
-                                                   : primal::status_t::NUMERICAL;
+      return toc(start_time) > settings.time_limit ? primal_status_t::TIME_LIMIT
+                                                   : primal_status_t::NUMERICAL;
     } else {
       settings.log.debug("Basis repaired\n");
     }
@@ -443,7 +443,7 @@ primal::status_t primal_phase2(i_t phase,
         dual_inf,
         primal_inf,
         iter);
-      return primal::status_t::OPTIMAL;
+      return primal_status_t::OPTIMAL;
     }
 
     std::vector<f_t> scaled_delta_xB(m);
@@ -476,7 +476,7 @@ primal::status_t primal_phase2(i_t phase,
     i_t leaving_index = ratio_test(lp, vstatus, basic_list, x, delta_x, step_length, basic_leaving);
     if (leaving_index == -1) {
       settings.log.printf("No leaving variable. Primal unbounded?\n");
-      return primal::status_t::PRIMAL_UNBOUNDED;
+      return primal_status_t::PRIMAL_UNBOUNDED;
     }
     assert(step_length >= 0.0);
 
@@ -540,14 +540,14 @@ primal::status_t primal_phase2(i_t phase,
     iter++;
   }
 
-  if (iter == iter_limit) { return primal::status_t::ITERATION_LIMIT; }
+  if (iter == iter_limit) { return primal_status_t::ITERATION_LIMIT; }
 
-  return primal::status_t::NUMERICAL;
+  return primal_status_t::NUMERICAL;
 }
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 
-template primal::status_t primal_phase2<int, double>(
+template primal_status_t primal_phase2<int, double>(
   int phase,
   double start_time,
   const lp_problem_t<int, double>& lp,
@@ -558,4 +558,4 @@ template primal::status_t primal_phase2<int, double>(
 
 #endif
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex
