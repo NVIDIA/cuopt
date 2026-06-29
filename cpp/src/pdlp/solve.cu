@@ -2124,7 +2124,90 @@ cuopt::linear_programming::optimization_problem_t<i_t, f_t> mps_data_model_to_op
                 error_type_t::ValidationError,
                 "handle_ptr must not be null for GPU-backed problem construction");
   cuopt::linear_programming::optimization_problem_t<i_t, f_t> op_problem(handle_ptr);
-  populate_from_mps_data_model(&op_problem, data_model);
+  op_problem.set_maximize(data_model.get_sense());
+
+  if (data_model.get_constraint_matrix_values().size() != 0) {
+    op_problem.set_csr_constraint_matrix(data_model.get_constraint_matrix_values().data(),
+                                         data_model.get_constraint_matrix_values().size(),
+                                         data_model.get_constraint_matrix_indices().data(),
+                                         data_model.get_constraint_matrix_indices().size(),
+                                         data_model.get_constraint_matrix_offsets().data(),
+                                         data_model.get_constraint_matrix_offsets().size());
+  } else {
+    // Set empty constraint matrix
+    std::vector<i_t> offsets(1, 0);
+    op_problem.set_csr_constraint_matrix(nullptr, 0, nullptr, 0, offsets.data(), 1);
+  }
+
+  if (data_model.get_constraint_bounds().size() != 0) {
+    op_problem.set_constraint_bounds(data_model.get_constraint_bounds().data(),
+                                     data_model.get_constraint_bounds().size());
+  }
+  if (data_model.get_objective_coefficients().size() != 0) {
+    op_problem.set_objective_coefficients(data_model.get_objective_coefficients().data(),
+                                          data_model.get_objective_coefficients().size());
+  }
+  op_problem.set_objective_scaling_factor(data_model.get_objective_scaling_factor());
+  op_problem.set_objective_offset(data_model.get_objective_offset());
+  if (data_model.get_variable_lower_bounds().size() != 0) {
+    op_problem.set_variable_lower_bounds(data_model.get_variable_lower_bounds().data(),
+                                         data_model.get_variable_lower_bounds().size());
+  }
+  if (data_model.get_variable_upper_bounds().size() != 0) {
+    op_problem.set_variable_upper_bounds(data_model.get_variable_upper_bounds().data(),
+                                         data_model.get_variable_upper_bounds().size());
+  }
+  if (data_model.get_variable_types().size() != 0) {
+    std::vector<var_t> enum_variable_types(data_model.get_variable_types().size());
+    std::transform(data_model.get_variable_types().cbegin(),
+                   data_model.get_variable_types().cend(),
+                   enum_variable_types.begin(),
+                   detail::char_to_var_type);
+    op_problem.set_variable_types(enum_variable_types.data(), enum_variable_types.size());
+  }
+
+  if (data_model.get_row_types().size() != 0) {
+    op_problem.set_row_types(data_model.get_row_types().data(), data_model.get_row_types().size());
+  }
+  if (data_model.get_constraint_lower_bounds().size() != 0) {
+    op_problem.set_constraint_lower_bounds(data_model.get_constraint_lower_bounds().data(),
+                                           data_model.get_constraint_lower_bounds().size());
+  }
+  if (data_model.get_constraint_upper_bounds().size() != 0) {
+    op_problem.set_constraint_upper_bounds(data_model.get_constraint_upper_bounds().data(),
+                                           data_model.get_constraint_upper_bounds().size());
+  }
+
+  if (data_model.get_objective_name().size() != 0) {
+    op_problem.set_objective_name(data_model.get_objective_name());
+  }
+  auto problem_name = data_model.get_problem_name();
+  op_problem.set_problem_name(problem_name);
+  if (data_model.get_variable_names().size() != 0) {
+    op_problem.set_variable_names(data_model.get_variable_names());
+  }
+  if (data_model.get_row_names().size() != 0) {
+    op_problem.set_row_names(data_model.get_row_names());
+  }
+
+  if (data_model.get_quadratic_objective_values().size() != 0) {
+    const std::vector<f_t> Q_values  = data_model.get_quadratic_objective_values();
+    const std::vector<i_t> Q_indices = data_model.get_quadratic_objective_indices();
+    const std::vector<i_t> Q_offsets = data_model.get_quadratic_objective_offsets();
+    op_problem.set_quadratic_objective_matrix(Q_values.data(),
+                                              Q_values.size(),
+                                              Q_indices.data(),
+                                              Q_indices.size(),
+                                              Q_offsets.data(),
+                                              Q_offsets.size());
+  }
+
+  // Preserve quadratic constraints.
+  if (data_model.has_quadratic_constraints()) {
+    static_cast<cuopt::linear_programming::optimization_problem_interface_t<i_t, f_t>&>(op_problem)
+      .set_quadratic_constraints(data_model.get_quadratic_constraints());
+  }
+
   return op_problem;
 }
 
