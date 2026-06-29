@@ -10,7 +10,7 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::linear_programming::io::detail {
+namespace cuopt::mathematical_optimization::io {
 
 // Reads `file` into a buffer and appends a trailing '\0'.
 //
@@ -21,4 +21,4 @@ namespace cuopt::linear_programming::io::detail {
 // The returned buffer's size includes the null terminator.
 std::vector<char> file_to_string(const std::string& file);
 
-}  // namespace cuopt::linear_programming::io::detail
+}  // namespace cuopt::mathematical_optimization::io

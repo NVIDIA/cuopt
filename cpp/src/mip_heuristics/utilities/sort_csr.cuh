@@ -15,7 +15,7 @@
 
 namespace cuopt {
 
-namespace linear_programming::detail {
+namespace mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 void sort_csr(optimization_problem_t<i_t, f_t>& op_problem)
@@ -53,5 +53,5 @@ void sort_csr(optimization_problem_t<i_t, f_t>& op_problem)
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view));
 }
 
-}  // namespace linear_programming::detail
+}  // namespace mathematical_optimization::mip
 }  // namespace cuopt

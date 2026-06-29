@@ -15,7 +15,7 @@
 
 #include <string>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 enum class variable_type_t : int8_t {
   CONTINUOUS = 0,
@@ -71,4 +71,4 @@ struct user_problem_t {
   std::vector<i_t> original_col_to_expanded_col;
 };
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

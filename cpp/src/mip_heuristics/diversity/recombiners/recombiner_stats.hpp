@@ -9,7 +9,7 @@
 
 #include <mip_heuristics/problem/problem.cuh>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 enum class recombiner_enum_t : int { BOUND_PROP = 0, FP, LINE_SEGMENT, SUB_MIP, SIZE };
 
@@ -126,4 +126,4 @@ struct all_recombine_stats {
   }
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

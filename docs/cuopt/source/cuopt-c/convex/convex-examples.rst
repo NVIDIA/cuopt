@@ -154,7 +154,7 @@ used — it dispatches on the file extension (case-insensitive):
 ``.lp`` / ``.lp.gz`` / ``.lp.bz2`` → LP parser; ``.mps`` / ``.qps`` and
 their ``.gz`` / ``.bz2`` variants → MPS parser; unknown extensions are
 rejected. See the ``read_lp`` declaration in
-``cuopt/linear_programming/io/parser.hpp`` for the supported subset of
+``cuopt/mathematical_optimization/io/parser.hpp`` for the supported subset of
 the LP format.
 
 The example code is available at ``examples/cuopt-c/lp/lp_file_example.c`` (:download:`download <examples/lp_file_example.c>`):

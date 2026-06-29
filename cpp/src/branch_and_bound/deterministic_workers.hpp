@@ -22,7 +22,7 @@
 #include <queue>
 #include <vector>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 struct backlog_node_compare_t {
@@ -85,10 +85,10 @@ class deterministic_worker_base_t : public branch_and_bound_worker_t<i_t, f_t> {
   double total_nowork_time{0.0};
 
   deterministic_worker_base_t(int id,
-                              const lp_problem_t<i_t, f_t>& original_lp,
-                              const csr_matrix_t<i_t, f_t>& Arow,
-                              const std::vector<variable_type_t>& var_types,
-                              const simplex_solver_settings_t<i_t, f_t>& settings,
+                              const simplex::lp_problem_t<i_t, f_t>& original_lp,
+                              const simplex::csr_matrix_t<i_t, f_t>& Arow,
+                              const std::vector<simplex::variable_type_t>& var_types,
+                              const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
                               const std::string& context_name)
     : base_t(id, original_lp, Arow, var_types, settings),
       work_context(context_name),
@@ -137,10 +137,10 @@ class deterministic_bfs_worker_t
   i_t total_nodes_assigned{0};
 
   explicit deterministic_bfs_worker_t(int id,
-                                      const lp_problem_t<i_t, f_t>& original_lp,
-                                      const csr_matrix_t<i_t, f_t>& Arow,
-                                      const std::vector<variable_type_t>& var_types,
-                                      const simplex_solver_settings_t<i_t, f_t>& settings)
+                                      const simplex::lp_problem_t<i_t, f_t>& original_lp,
+                                      const simplex::csr_matrix_t<i_t, f_t>& Arow,
+                                      const std::vector<simplex::variable_type_t>& var_types,
+                                      const simplex::simplex_solver_settings_t<i_t, f_t>& settings)
     : base_t(id, original_lp, Arow, var_types, settings, "BB_Worker_" + std::to_string(id))
   {
   }
@@ -293,13 +293,14 @@ class deterministic_diving_worker_t
   i_t total_dives{0};
   i_t lp_iters_this_dive{0};
 
-  explicit deterministic_diving_worker_t(int id,
-                                         search_strategy_t type,
-                                         const lp_problem_t<i_t, f_t>& original_lp,
-                                         const csr_matrix_t<i_t, f_t>& Arow,
-                                         const std::vector<variable_type_t>& var_types,
-                                         const simplex_solver_settings_t<i_t, f_t>& settings,
-                                         const std::vector<f_t>* root_sol)
+  explicit deterministic_diving_worker_t(
+    int id,
+    search_strategy_t type,
+    const simplex::lp_problem_t<i_t, f_t>& original_lp,
+    const simplex::csr_matrix_t<i_t, f_t>& Arow,
+    const std::vector<simplex::variable_type_t>& var_types,
+    const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+    const std::vector<f_t>* root_sol)
     : base_t(id, original_lp, Arow, var_types, settings, "Diving_Worker_" + std::to_string(id)),
       diving_type(type),
       root_solution(root_sol)
@@ -315,7 +316,8 @@ class deterministic_diving_worker_t
 
   bool has_work_impl() const { return !dive_queue.empty(); }
 
-  void enqueue_dive_node(mip_node_t<i_t, f_t>* node, const lp_problem_t<i_t, f_t>& original_lp)
+  void enqueue_dive_node(mip_node_t<i_t, f_t>* node,
+                         const simplex::lp_problem_t<i_t, f_t>& original_lp)
   {
     dive_queue_entry_t<i_t, f_t> entry;
     entry.resolved_lower = original_lp.lower;
@@ -402,10 +404,10 @@ class deterministic_bfs_worker_pool_t
 
  public:
   deterministic_bfs_worker_pool_t(int num_workers,
-                                  const lp_problem_t<i_t, f_t>& original_lp,
-                                  const csr_matrix_t<i_t, f_t>& Arow,
-                                  const std::vector<variable_type_t>& var_types,
-                                  const simplex_solver_settings_t<i_t, f_t>& settings)
+                                  const simplex::lp_problem_t<i_t, f_t>& original_lp,
+                                  const simplex::csr_matrix_t<i_t, f_t>& Arow,
+                                  const std::vector<simplex::variable_type_t>& var_types,
+                                  const simplex::simplex_solver_settings_t<i_t, f_t>& settings)
   {
     this->workers_.reserve(num_workers);
     for (int i = 0; i < num_workers; ++i) {
@@ -437,10 +439,10 @@ class deterministic_diving_worker_pool_t
  public:
   deterministic_diving_worker_pool_t(int num_workers,
                                      const std::vector<search_strategy_t>& diving_types,
-                                     const lp_problem_t<i_t, f_t>& original_lp,
-                                     const csr_matrix_t<i_t, f_t>& Arow,
-                                     const std::vector<variable_type_t>& var_types,
-                                     const simplex_solver_settings_t<i_t, f_t>& settings,
+                                     const simplex::lp_problem_t<i_t, f_t>& original_lp,
+                                     const simplex::csr_matrix_t<i_t, f_t>& Arow,
+                                     const std::vector<simplex::variable_type_t>& var_types,
+                                     const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
                                      const std::vector<f_t>* root_solution)
   {
     this->workers_.reserve(num_workers);
@@ -455,4 +457,4 @@ class deterministic_diving_worker_pool_t
   }
 };
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::mip

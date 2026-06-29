@@ -15,10 +15,9 @@
 
 #include <vector>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
-namespace primal {
-enum class status_t {
+enum class primal_status_t {
   OPTIMAL          = 0,
   PRIMAL_UNBOUNDED = 1,
   NUMERICAL        = 2,
@@ -27,15 +26,14 @@ enum class status_t {
   ITERATION_LIMIT  = 5,
   CONCURRENT_LIMIT = 6
 };
-}
 
 template <typename i_t, typename f_t>
-primal::status_t primal_phase2(i_t phase,
-                               f_t start_time,
-                               const lp_problem_t<i_t, f_t>& lp,
-                               const simplex_solver_settings_t<i_t, f_t>& settings,
-                               std::vector<variable_status_t>& vstatus,
-                               lp_solution_t<i_t, f_t>& sol,
-                               i_t& iter);
+primal_status_t primal_phase2(i_t phase,
+                              f_t start_time,
+                              const lp_problem_t<i_t, f_t>& lp,
+                              const simplex_solver_settings_t<i_t, f_t>& settings,
+                              std::vector<variable_status_t>& vstatus,
+                              lp_solution_t<i_t, f_t>& sol,
+                              i_t& iter);
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

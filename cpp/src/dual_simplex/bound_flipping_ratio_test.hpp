@@ -12,7 +12,7 @@
 
 #include <vector>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 #define RATIO_TEST_NO_ENTERING_VARIABLE -1
 #define RATIO_TEST_CONCURRENT_LIMIT     CONCURRENT_HALT_RETURN  // -2
@@ -103,4 +103,4 @@ class bound_flipping_ratio_test_t {
   f_t work_estimate_;
 };
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

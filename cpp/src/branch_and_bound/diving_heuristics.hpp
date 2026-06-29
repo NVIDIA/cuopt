@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include <cuopt/linear_programming/mip/diving_hyper_params.hpp>
+#include <cuopt/mathematical_optimization/mip/diving_hyper_params.hpp>
 
 #include <branch_and_bound/pseudo_costs.hpp>
 
@@ -16,7 +16,7 @@
 
 #include <vector>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::mip {
 
 // When `log_diving_type` is true, each diving strategy gets its own letter;
 // otherwise every dive collapses to 'D'.
@@ -56,48 +56,48 @@ template <typename i_t, typename f_t>
 branch_variable_t<i_t> line_search_diving(const std::vector<i_t>& fractional,
                                           const std::vector<f_t>& solution,
                                           const std::vector<f_t>& root_solution,
-                                          logger_t& log);
+                                          simplex::logger_t& log);
 
 template <typename i_t, typename f_t>
 branch_variable_t<i_t> pseudocost_diving(pseudo_costs_t<i_t, f_t>& pc,
                                          const std::vector<i_t>& fractional,
                                          const std::vector<f_t>& solution,
                                          const std::vector<f_t>& root_solution,
-                                         logger_t& log);
+                                         simplex::logger_t& log);
 
 template <typename i_t, typename f_t>
 branch_variable_t<i_t> guided_diving(pseudo_costs_t<i_t, f_t>& pc,
                                      const std::vector<i_t>& fractional,
                                      const std::vector<f_t>& solution,
                                      const std::vector<f_t>& incumbent,
-                                     logger_t& log);
+                                     simplex::logger_t& log);
 
 // Calculate the variable locks assuming that the constraints
 // has the following format: `Ax = b`.
 template <typename i_t, typename f_t>
-void calculate_variable_locks(const lp_problem_t<i_t, f_t>& lp_problem,
+void calculate_variable_locks(const simplex::lp_problem_t<i_t, f_t>& lp_problem,
                               std::vector<i_t>& up_locks,
                               std::vector<i_t>& down_locks);
 
 template <typename i_t, typename f_t>
-branch_variable_t<i_t> coefficient_diving(const lp_problem_t<i_t, f_t>& lp_problem,
+branch_variable_t<i_t> coefficient_diving(const simplex::lp_problem_t<i_t, f_t>& lp_problem,
                                           const std::vector<i_t>& fractional,
                                           const std::vector<f_t>& solution,
                                           const std::vector<i_t>& up_locks,
                                           const std::vector<i_t>& down_locks,
-                                          logger_t& log);
+                                          simplex::logger_t& log);
 
 template <typename i_t, typename f_t>
-branch_variable_t<i_t> farkas_diving(const lp_problem_t<i_t, f_t>& lp,
+branch_variable_t<i_t> farkas_diving(const simplex::lp_problem_t<i_t, f_t>& lp,
                                      const std::vector<i_t>& fractional,
                                      const std::vector<f_t>& solution,
                                      f_t zero_tol,
-                                     logger_t& log);
+                                     simplex::logger_t& log);
 
 template <typename i_t, typename f_t>
-branch_variable_t<i_t> vector_length_diving(const lp_problem_t<i_t, f_t>& lp,
+branch_variable_t<i_t> vector_length_diving(const simplex::lp_problem_t<i_t, f_t>& lp,
                                             const std::vector<i_t>& fractional,
                                             const std::vector<f_t>& solution,
-                                            logger_t& log);
+                                            simplex::logger_t& log);
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::mip

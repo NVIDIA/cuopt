@@ -10,7 +10,7 @@
 #include <branch_and_bound/worker.hpp>
 #include <utilities/circular_deque.hpp>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename WorkerType>
 class worker_pool_t {
@@ -19,11 +19,11 @@ class worker_pool_t {
   using f_t = typename WorkerType::float_type;
 
   void init(i_t num_workers,
-            const lp_problem_t<i_t, f_t>& original_lp,
-            const csr_matrix_t<i_t, f_t>& Arow,
-            const std::vector<variable_type_t>& var_type,
+            const simplex::lp_problem_t<i_t, f_t>& original_lp,
+            const simplex::csr_matrix_t<i_t, f_t>& Arow,
+            const std::vector<simplex::variable_type_t>& var_type,
             mip_symmetry_t<i_t, f_t>* symmetry,
-            const simplex_solver_settings_t<i_t, f_t>& settings,
+            const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
             const uint64_t rng_offset = 0)
   {
     assert(!is_initialized_);
@@ -106,4 +106,4 @@ using bfs_worker_pool_t = worker_pool_t<bfs_worker_t<i_t, f_t>>;
 template <typename i_t, typename f_t>
 using diving_worker_pool_t = worker_pool_t<diving_worker_t<i_t, f_t>>;
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::mip

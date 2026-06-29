@@ -23,7 +23,7 @@
 
 #include <raft/util/cuda_utils.cuh>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 
 template <typename i_t>
 struct swap_pair_t {
@@ -97,4 +97,4 @@ void host_vector_swap(host_vector_t& host_vector, int left_swap_index, int right
   // Swap the id to swap to the end
   std::swap(host_vector[left_swap_index], host_vector[right_swap_index]);
 }
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

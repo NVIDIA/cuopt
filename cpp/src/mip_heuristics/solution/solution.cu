@@ -24,7 +24,7 @@
 #include <cuda/functional>
 #include <raft/linalg/binary_op.cuh>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename f_t>
 rmm::device_uvector<f_t> get_lower_bounds(
@@ -318,7 +318,7 @@ f_t solution_t<i_t, f_t>::compute_l2_residual()
     handle_ptr->get_cublas_handle(), CUBLAS_POINTER_MODE_DEVICE, handle_ptr->get_stream()));
   RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsesetpointermode(
     handle_ptr->get_cusparse_handle(), CUSPARSE_POINTER_MODE_DEVICE, handle_ptr->get_stream()));
-  my_l2_norm<i_t, f_t>(combined_excess, l2_residual, handle_ptr);
+  pdlp::my_l2_norm<i_t, f_t>(combined_excess, l2_residual, handle_ptr);
   return l2_residual.value(handle_ptr->get_stream());
 }
 
@@ -599,9 +599,8 @@ f_t solution_t<i_t, f_t>::compute_max_variable_violation()
 
 // returns the solution after applying the conversions
 template <typename i_t, typename f_t>
-mip_solution_t<i_t, f_t> solution_t<i_t, f_t>::get_solution(bool output_feasible,
-                                                            solver_stats_t<i_t, f_t> stats,
-                                                            bool log_stats)
+cuopt::mathematical_optimization::mip_solution_t<i_t, f_t> solution_t<i_t, f_t>::get_solution(
+  bool output_feasible, solver_stats_t<i_t, f_t> stats, bool log_stats)
 {
   cuopt::default_logger().flush();
   cuopt_expects(
@@ -624,22 +623,24 @@ mip_solution_t<i_t, f_t> solution_t<i_t, f_t>::get_solution(bool output_feasible
     auto term_reason =
       not_optimal ? mip_termination_status_t::FeasibleFound : mip_termination_status_t::Optimal;
     if (is_problem_fully_reduced) { term_reason = mip_termination_status_t::Optimal; }
-    auto sol = mip_solution_t<i_t, f_t>(std::move(assignment),
-                                        problem_ptr->var_names,
-                                        h_user_obj,
-                                        rel_mip_gap,
-                                        term_reason,
-                                        max_constraint_violation,
-                                        max_int_violation,
-                                        max_variable_bound_violation,
-                                        stats);
+    auto sol =
+      cuopt::mathematical_optimization::mip_solution_t<i_t, f_t>(std::move(assignment),
+                                                                 problem_ptr->var_names,
+                                                                 h_user_obj,
+                                                                 rel_mip_gap,
+                                                                 term_reason,
+                                                                 max_constraint_violation,
+                                                                 max_int_violation,
+                                                                 max_variable_bound_violation,
+                                                                 stats);
     if (log_stats) { sol.log_detailed_summary(); }
     return sol;
   } else {
-    return mip_solution_t<i_t, f_t>{is_problem_fully_reduced ? mip_termination_status_t::Infeasible
-                                                             : mip_termination_status_t::TimeLimit,
-                                    stats,
-                                    handle_ptr->get_stream()};
+    return cuopt::mathematical_optimization::mip_solution_t<i_t, f_t>{
+      is_problem_fully_reduced ? mip_termination_status_t::Infeasible
+                               : mip_termination_status_t::TimeLimit,
+      stats,
+      handle_ptr->get_stream()};
   }
 }
 
@@ -651,4 +652,4 @@ template class solution_t<int, float>;
 template class solution_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

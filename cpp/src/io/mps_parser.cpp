@@ -23,10 +23,10 @@
 #include <utility>
 
 namespace {
-using cuopt::linear_programming::io::coo_entries_t;
-using cuopt::linear_programming::io::error_type_t;
-using cuopt::linear_programming::io::mps_parser_expects;
-using cuopt::linear_programming::io::mps_parser_expects_fatal;
+using cuopt::mathematical_optimization::io::coo_entries_t;
+using cuopt::mathematical_optimization::io::error_type_t;
+using cuopt::mathematical_optimization::io::mps_parser_expects;
+using cuopt::mathematical_optimization::io::mps_parser_expects_fatal;
 
 std::vector<char> string_to_buffer(std::string_view input)
 {
@@ -156,7 +156,7 @@ void triples_to_csr_flat(const coo_entries_t<i_t, f_t>& entries,
 
 }  // namespace
 
-namespace cuopt::linear_programming::io {
+namespace cuopt::mathematical_optimization::io {
 
 template <typename i_t>
 std::string_view get_next_string(std::string_view line, i_t& pos, i_t& end)
@@ -758,7 +758,7 @@ mps_parser_t<i_t, f_t>::mps_parser_t(mps_data_model_t<i_t, f_t>& problem,
 {
   // raft::common::nvtx::range fun_scope("mps parser");
 
-  std::vector<char> buf = detail::file_to_string(file);
+  std::vector<char> buf = file_to_string(file);
   parse_string(buf.data());
   fill_problem(problem);
 }
@@ -1538,4 +1538,4 @@ template class mps_parser_t<int, float>;
 
 template class mps_parser_t<int, double>;
 
-}  // namespace cuopt::linear_programming::io
+}  // namespace cuopt::mathematical_optimization::io

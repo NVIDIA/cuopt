@@ -12,20 +12,20 @@
 
 #include <mip_heuristics/mip_constants.hpp>
 
-#include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
-#include <cuopt/linear_programming/pdlp/pdlp_warm_start_data.hpp>
-#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_warm_start_data.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 
 #include <raft/core/nvtx.hpp>
 #include <raft/util/cuda_utils.cuh>
 #include <raft/util/cudart_utils.hpp>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 template <typename i_t, typename f_t>
 pdlp_termination_strategy_t<i_t, f_t>::pdlp_termination_strategy_t(
   raft::handle_t const* handle_ptr,
-  problem_t<i_t, f_t>& op_problem,
-  const problem_t<i_t, f_t>& scaled_op_problem,
+  mip::problem_t<i_t, f_t>& op_problem,
+  const mip::problem_t<i_t, f_t>& scaled_op_problem,
   cusparse_view_t<i_t, f_t>& cusparse_view,
   const cusparse_view_t<i_t, f_t>& scaled_cusparse_view,
   const i_t primal_size,
@@ -710,4 +710,4 @@ INSTANTIATE(double)
 
 #undef INSTANTIATE
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

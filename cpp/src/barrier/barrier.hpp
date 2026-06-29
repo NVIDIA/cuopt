@@ -16,12 +16,12 @@
 #include <dual_simplex/tic_toc.hpp>
 
 #include <rmm/device_uvector.hpp>
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::barrier {
 
-/** Validates SOC layout on an lp_problem_t before barrier presolve/solve. */
+/** Validates SOC layout on an simplex::lp_problem_t before barrier presolve/solve. */
 template <typename i_t, typename f_t>
-bool validate_barrier_cone_layout(const lp_problem_t<i_t, f_t>& problem,
-                                  const simplex_solver_settings_t<i_t, f_t>& settings);
+bool validate_barrier_cone_layout(const simplex::lp_problem_t<i_t, f_t>& problem,
+                                  const simplex::simplex_solver_settings_t<i_t, f_t>& settings);
 
 template <typename i_t, typename f_t>
 class iteration_data_t;  // Forward declare
@@ -29,14 +29,14 @@ class iteration_data_t;  // Forward declare
 template <typename i_t, typename f_t>
 class barrier_solver_t {
  public:
-  barrier_solver_t(const lp_problem_t<i_t, f_t>& lp,
-                   const presolve_info_t<i_t, f_t>& presolve,
-                   const simplex_solver_settings_t<i_t, f_t>& settings);
-  lp_status_t solve(f_t start_time, lp_solution_t<i_t, f_t>& solution);
+  barrier_solver_t(const simplex::lp_problem_t<i_t, f_t>& lp,
+                   const simplex::presolve_info_t<i_t, f_t>& presolve,
+                   const simplex::simplex_solver_settings_t<i_t, f_t>& settings);
+  simplex::lp_status_t solve(f_t start_time, simplex::lp_solution_t<i_t, f_t>& solution);
 
  private:
   void my_pop_range(bool debug) const;
-  void create_Q(const lp_problem_t<i_t, f_t>& lp, csc_matrix_t<i_t, f_t>& Q);
+  void create_Q(const simplex::lp_problem_t<i_t, f_t>& lp, simplex::csc_matrix_t<i_t, f_t>& Q);
   int initial_point(iteration_data_t<i_t, f_t>& data);
   void compute_residual_norms(const dense_vector_t<i_t, f_t>& w,
                               const dense_vector_t<i_t, f_t>& x,
@@ -98,22 +98,22 @@ class barrier_solver_t {
                                    f_t& max_residual);
 
  private:
-  lp_status_t check_for_suboptimal_solution(iteration_data_t<i_t, f_t>& data,
-                                            f_t start_time,
-                                            i_t iter,
-                                            f_t& primal_objective,
-                                            f_t& primal_residual_norm,
-                                            f_t& dual_residual_norm,
-                                            f_t& complementarity_residual_norm,
-                                            f_t& relative_primal_residual,
-                                            f_t& relative_dual_residual,
-                                            f_t& relative_complementarity_residual,
-                                            lp_solution_t<i_t, f_t>& solution);
+  simplex::lp_status_t check_for_suboptimal_solution(iteration_data_t<i_t, f_t>& data,
+                                                     f_t start_time,
+                                                     i_t iter,
+                                                     f_t& primal_objective,
+                                                     f_t& primal_residual_norm,
+                                                     f_t& dual_residual_norm,
+                                                     f_t& complementarity_residual_norm,
+                                                     f_t& relative_primal_residual,
+                                                     f_t& relative_dual_residual,
+                                                     f_t& relative_complementarity_residual,
+                                                     simplex::lp_solution_t<i_t, f_t>& solution);
 
-  const lp_problem_t<i_t, f_t>& lp;
-  const simplex_solver_settings_t<i_t, f_t>& settings;
-  const presolve_info_t<i_t, f_t>& presolve_info;
+  const simplex::lp_problem_t<i_t, f_t>& lp;
+  const simplex::simplex_solver_settings_t<i_t, f_t>& settings;
+  const simplex::presolve_info_t<i_t, f_t>& presolve_info;
   rmm::cuda_stream_view stream_view_;
 };
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::barrier

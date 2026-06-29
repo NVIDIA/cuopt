@@ -16,7 +16,7 @@
 #include <mip_heuristics/mip_constants.hpp>
 #include <utilities/seed_generator.cuh>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 lb_bounds_repair_t<i_t, f_t>::lb_bounds_repair_t(const raft::handle_t* handle_ptr)
@@ -489,4 +489,4 @@ template class lb_bounds_repair_t<int, float>;
 template class lb_bounds_repair_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

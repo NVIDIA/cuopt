@@ -15,7 +15,7 @@
 #include <mip_heuristics/solution/solution.cuh>
 #include <utilities/seed_generator.cuh>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
@@ -248,4 +248,4 @@ class bound_prop_recombiner_t : public recombiner_t<i_t, f_t> {
   thrust::default_random_engine rng;
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

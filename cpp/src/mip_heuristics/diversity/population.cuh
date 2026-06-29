@@ -19,7 +19,7 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 // forward declare
 template <typename i_t, typename f_t>
@@ -214,4 +214,4 @@ class population_t {
   cuopt::timer_t timer;
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

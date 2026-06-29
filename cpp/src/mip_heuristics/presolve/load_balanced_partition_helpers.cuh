@@ -15,7 +15,7 @@
 #include <rmm/device_uvector.hpp>
 #include <utilities/copy_helpers.hpp>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename degree_t>
 constexpr int BitsPWrd = sizeof(degree_t) * 8;
@@ -276,4 +276,4 @@ log_dist_t<i_t> vertex_bin_t<i_t>::run(rmm::device_uvector<i_t>& reorganized_ver
   return log_dist_t<i_t>(reorganized_vertices, bin_offsets_);
 }
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

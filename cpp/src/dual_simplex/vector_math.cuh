@@ -17,7 +17,7 @@
 #include <rmm/device_uvector.hpp>
 
 #include <vector>
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 struct norm_inf_max {
   template <typename f_t>
@@ -90,4 +90,4 @@ f_t vector_norm_inf(raft::host_span<const f_t> x, rmm::cuda_stream_view stream_v
   return device_vector_norm_inf<i_t, f_t>(d_x, stream_view);
 }
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex
