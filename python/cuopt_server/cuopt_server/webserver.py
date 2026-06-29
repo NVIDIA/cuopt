@@ -225,8 +225,7 @@ def validate_file_path(cuopt_data_file):
         raise HTTPException(
             status_code=400,
             detail=(
-                "specified data file is not a regular file: "
-                f"{cuopt_data_file}"
+                f"specified data file is not a regular file: {cuopt_data_file}"
             ),
         )
 
