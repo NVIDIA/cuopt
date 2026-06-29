@@ -47,7 +47,7 @@
 #include <thread>
 #include <vector>
 
-namespace cuopt::linear_programming::testing {
+namespace cuopt::mathematical_optimization::testing {
 
 /**
  * @brief Log entry with metadata
@@ -378,4 +378,4 @@ class GrpcTestLogCapture {
   std::atomic<bool> test_start_marked_{false};
 };
 
-}  // namespace cuopt::linear_programming::testing
+}  // namespace cuopt::mathematical_optimization::testing

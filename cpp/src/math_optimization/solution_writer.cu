@@ -13,7 +13,7 @@
 
 #include <fstream>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 template <typename f_t>
 void solution_writer_t::write_solution_to_sol_file(const std::string& filename,
@@ -60,4 +60,4 @@ template void solution_writer_t::write_solution_to_sol_file<double>(
   const std::vector<double>& variable_values);
 #endif
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

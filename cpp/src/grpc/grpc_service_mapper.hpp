@@ -10,7 +10,7 @@
 
 #include <string>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 // Forward declarations
 template <typename i_t, typename f_t>
@@ -105,4 +105,4 @@ inline cuopt::remote::DeleteRequest build_delete_request(const std::string& job_
   return request;
 }
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

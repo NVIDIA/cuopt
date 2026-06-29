@@ -15,7 +15,7 @@
 
 #include <numeric>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 // Forrest-Tomlin update to the LU factorization of a basis matrix B
 template <typename i_t, typename f_t>
@@ -484,4 +484,4 @@ class basis_update_mpf_t {
   mutable f_t work_estimate_{0.0};
 };
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

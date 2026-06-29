@@ -19,7 +19,7 @@
 
 #include <array>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 namespace {
 
@@ -1423,7 +1423,7 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
   } else if (dual_feasible && !primal_feasible) {
     i_t dual_iter = 0;
     std::vector<f_t> edge_norms;
-    dual::status_t status =
+    dual_status_t status =
       dual_phase2(2, 0, start_time, lp, settings, vstatus, solution, dual_iter, edge_norms);
     if (toc(start_time) > settings.time_limit) {
       settings.log.printf("Time limit exceeded\n");
@@ -1437,7 +1437,7 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
     dual_infeas   = dual_infeasibility(lp, settings, vstatus, solution.z);
     primal_res    = primal_residual(lp, solution);
     dual_res      = dual_residual(lp, solution);
-    if (status != dual::status_t::OPTIMAL) {
+    if (status != dual_status_t::OPTIMAL) {
       print_crossover_info(lp, settings, vstatus, solution, "Dual phase 2 complete");
     }
     solution.iterations += dual_iter;
@@ -1469,10 +1469,10 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
     i_t iter = 0;
     lp_solution_t<i_t, f_t> phase1_solution(phase1_problem.num_rows, phase1_problem.num_cols);
     std::vector<f_t> junk;
-    dual::status_t phase1_status = dual_phase2(
+    dual_status_t phase1_status = dual_phase2(
       1, 1, start_time, phase1_problem, settings, phase1_vstatus, phase1_solution, iter, junk);
-    if (phase1_status == dual::status_t::NUMERICAL ||
-        phase1_status == dual::status_t::DUAL_UNBOUNDED) {
+    if (phase1_status == dual_status_t::NUMERICAL ||
+        phase1_status == dual_status_t::DUAL_UNBOUNDED) {
       settings.log.printf("Failed in Phase 1\n");
       phase1_solution.objective = -std::numeric_limits<f_t>::infinity();
     }
@@ -1581,8 +1581,8 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
       }
       settings.log.debug("Num flips %d\n", num_flips);
       print_crossover_info(lp, settings, vstatus, solution, "Dual phase 1 complete");
-      dual_infeas           = dual_infeasibility(lp, settings, vstatus, solution.z);
-      dual::status_t status = dual::status_t::NUMERICAL;
+      dual_infeas          = dual_infeasibility(lp, settings, vstatus, solution.z);
+      dual_status_t status = dual_status_t::NUMERICAL;
       if (dual_infeas <= settings.dual_tol) {
         std::vector<f_t> edge_norms;
         status = dual_phase2(
@@ -1601,7 +1601,7 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
       dual_infeas   = dual_infeasibility(lp, settings, vstatus, solution.z);
       primal_res    = primal_residual(lp, solution);
       dual_res      = dual_residual(lp, solution);
-      if (status != dual::status_t::OPTIMAL) {
+      if (status != dual_status_t::OPTIMAL) {
         print_crossover_info(lp, settings, vstatus, solution, "Dual phase 2 complete");
       }
       primal_feasible = primal_infeas <= primal_tol && primal_res <= primal_tol;
@@ -1636,4 +1636,4 @@ template crossover_status_t crossover<int, double>(
 
 #endif
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

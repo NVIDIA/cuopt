@@ -7,16 +7,16 @@
 
 #pragma once
 
-#include <cuopt/linear_programming/io/parser.hpp>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
 
 #include <string_view>
 
 namespace cuopt::test {
 
-inline cuopt::linear_programming::io::mps_data_model_t<int, double> parse_inline_lp(
+inline cuopt::mathematical_optimization::io::mps_data_model_t<int, double> parse_inline_lp(
   std::string_view lp_text)
 {
-  return cuopt::linear_programming::io::read_lp_from_string<int, double>(lp_text);
+  return cuopt::mathematical_optimization::io::read_lp_from_string<int, double>(lp_text);
 }
 
 }  // namespace cuopt::test

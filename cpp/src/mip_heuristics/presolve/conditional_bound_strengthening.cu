@@ -26,7 +26,7 @@
 #include "conditional_bound_strengthening.cuh"
 
 #include <unordered_set>
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 constexpr size_t max_pair_per_row = 100;
 
@@ -723,4 +723,4 @@ template class conditional_bound_strengthening_t<int, float>;
 #if MIP_INSTANTIATE_DOUBLE
 template class conditional_bound_strengthening_t<int, double>;
 #endif
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

@@ -12,7 +12,7 @@
 
 #include <mip_heuristics/problem/problem.cuh>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 struct bounds_update_data_t {
@@ -45,4 +45,4 @@ struct bounds_update_data_t {
   view_t view();
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

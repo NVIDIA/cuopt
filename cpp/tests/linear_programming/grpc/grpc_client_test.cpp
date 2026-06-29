@@ -18,12 +18,12 @@
 
 #include <utilities/inline_lp_test_utils.hpp>
 
-#include <cuopt/linear_programming/cpu_optimization_problem.hpp>
-#include <cuopt/linear_programming/cpu_optimization_problem_solution.hpp>
-#include <cuopt/linear_programming/mip/solver_settings.hpp>
-#include <cuopt/linear_programming/optimization_problem_interface.hpp>
-#include <cuopt/linear_programming/optimization_problem_utils.hpp>
-#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem_solution.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 #include "grpc_client.hpp"
 #include "grpc_problem_mapper.hpp"
 #include "grpc_service_mapper.hpp"
@@ -38,7 +38,7 @@
 
 #include <map>
 
-using namespace cuopt::linear_programming;
+using namespace cuopt::mathematical_optimization;
 using namespace ::testing;
 
 /**

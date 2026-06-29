@@ -13,16 +13,16 @@
 
 #include <mip_heuristics/mip_constants.hpp>
 
-#include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 template <typename i_t, typename f_t>
 localized_duality_gap_container_t<i_t, f_t>::localized_duality_gap_container_t(
   raft::handle_t const* handle_ptr,
   i_t primal_size,
   i_t dual_size,
   const std::vector<pdlp_climber_strategy_t>& climber_strategies,
-  const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params)
+  const pdlp::pdlp_hyper_params_t& hyper_params)
   : primal_size_h_(primal_size),
     dual_size_h_(dual_size),
     lagrangian_value_{handle_ptr->get_stream()},
@@ -151,4 +151,4 @@ template struct localized_duality_gap_container_t<int, float>;
 template struct localized_duality_gap_container_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

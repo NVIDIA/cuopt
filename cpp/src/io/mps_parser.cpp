@@ -25,10 +25,10 @@
 #include <utility>
 
 namespace {
-using cuopt::linear_programming::io::coo_entries_t;
-using cuopt::linear_programming::io::error_type_t;
-using cuopt::linear_programming::io::mps_parser_expects;
-using cuopt::linear_programming::io::mps_parser_expects_fatal;
+using cuopt::mathematical_optimization::io::coo_entries_t;
+using cuopt::mathematical_optimization::io::error_type_t;
+using cuopt::mathematical_optimization::io::mps_parser_expects;
+using cuopt::mathematical_optimization::io::mps_parser_expects_fatal;
 
 std::vector<char> string_to_buffer(std::string_view input)
 {
@@ -158,7 +158,7 @@ void triples_to_csr_flat(const coo_entries_t<i_t, f_t>& entries,
 
 }  // namespace
 
-namespace cuopt::linear_programming::io {
+namespace cuopt::mathematical_optimization::io {
 
 namespace {
 
@@ -973,7 +973,7 @@ mps_parser_t<i_t, f_t>::mps_parser_t(mps_data_model_t<i_t, f_t>& problem,
 {
   // raft::common::nvtx::range fun_scope("mps parser");
 
-  std::vector<char> buf = detail::file_to_string(file);
+  std::vector<char> buf = file_to_string(file);
   parse_string(buf.data());
   fill_problem(problem);
 }
@@ -1762,4 +1762,4 @@ template void canonicalize_coo_matrix<int, double>(std::vector<int>&,
                                                    std::vector<int>&,
                                                    std::vector<double>&);
 
-}  // namespace cuopt::linear_programming::io
+}  // namespace cuopt::mathematical_optimization::io

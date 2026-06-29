@@ -13,7 +13,7 @@
 
 #include <utilities/copy_helpers.hpp>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t>
 struct non_zero_degree_t {
@@ -184,4 +184,4 @@ struct is_zero_t {
   __device__ bool operator()(const i_t x) { return (x == 0); }
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

@@ -10,7 +10,7 @@
 #include <mip_heuristics/utils.cuh>
 #include "bounds_update_data.cuh"
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 // Activity calculation
 
@@ -398,4 +398,4 @@ __global__ void update_bounds_kernel(typename problem_t<i_t, f_t>::view_t pb,
   }
 }
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

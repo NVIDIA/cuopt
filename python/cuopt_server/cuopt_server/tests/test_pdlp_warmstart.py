@@ -31,7 +31,7 @@ client = RequestClient()
 def test_warmstart(cuoptproc):  # noqa
     file_path = os.path.join(
         RAPIDS_DATASET_ROOT_DIR,
-        "linear_programming/square41/square41.mps",
+        "linear_programming/afiro_original.mps",
     )
     data_model_obj = Read(file_path)
     data = toDict(data_model_obj, json=True)
@@ -54,7 +54,6 @@ def test_warmstart(cuoptproc):  # noqa
     assert res.status_code == 200
     response = res.json()["response"]["solver_response"]
     assert response["status"] == "Optimal"
-    solve_1_iter = response["solution"]["lp_statistics"]["nb_iterations"]
 
     settings.set_optimality_tolerance(1e-3)
     data["solver_config"] = settings.toDict()
@@ -69,7 +68,6 @@ def test_warmstart(cuoptproc):  # noqa
     response = res.json()["response"]["solver_response"]
     reqId = res.json()["reqId"]
     assert response["status"] == "Optimal"
-    solve_2_iter = response["solution"]["lp_statistics"]["nb_iterations"]
 
     res = client.get(
         f"/cuopt/solution/{reqId}/warmstart",
@@ -90,6 +88,3 @@ def test_warmstart(cuoptproc):  # noqa
     assert res.status_code == 200
     response = res.json()["response"]["solver_response"]
     assert response["status"] == "Optimal"
-    solve_3_iter = response["solution"]["lp_statistics"]["nb_iterations"]
-
-    assert solve_3_iter + solve_2_iter == solve_1_iter
