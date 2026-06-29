@@ -556,12 +556,16 @@ pdlp_termination_strategy_t<i_t, f_t>::fill_return_problem_solution(
   std::vector<pdlp_termination_status_t>&& termination_status,
   bool deep_copy)
 {
-  cuopt_assert(
-    primal_iterate.size() == current_pdhg_solver.get_primal_size() * termination_status.size(),
-    "Primal iterate size mismatch");
-  cuopt_assert(
-    dual_iterate.size() == current_pdhg_solver.get_dual_size() * termination_status.size(),
-    "Dual iterate size mismatch");
+  // Skip the size checks on the distributed master: its pdhg_solver_ is built from a
+  // shape-0 placeholder while termination_strategy is built from the full problem size
+  if (!current_pdhg_solver.is_distributed_master()) {
+    cuopt_assert(
+      primal_iterate.size() == current_pdhg_solver.get_primal_size() * termination_status.size(),
+      "Primal iterate size mismatch");
+    cuopt_assert(
+      dual_iterate.size() == current_pdhg_solver.get_dual_size() * termination_status.size(),
+      "Dual iterate size mismatch");
+  }
 
   // In distributed PDLP, gather solutions to master here
   if (!deep_copy) {

@@ -2331,23 +2331,40 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
 #ifdef CUPDLP_DEBUG_MODE
   printf("Computing compute_fixed_point_error \n");
 #endif
-  cuopt_assert(
-    pdhg_solver_.get_reflected_primal().size() == primal_size_h_ * climber_strategies_.size(),
-    "reflected_primal_ size mismatch");
-  cuopt_assert(
-    pdhg_solver_.get_reflected_dual().size() == dual_size_h_ * climber_strategies_.size(),
-    "reflected_dual_ size mismatch");
-  cuopt_assert(
-    pdhg_solver_.get_primal_solution().size() == primal_size_h_ * climber_strategies_.size(),
-    "primal_solution_ size mismatch");
-  cuopt_assert(pdhg_solver_.get_dual_solution().size() == dual_size_h_ * climber_strategies_.size(),
-               "dual_solution_ size mismatch");
-  cuopt_assert(pdhg_solver_.get_saddle_point_state().get_delta_primal().size() ==
-                 primal_size_h_ * climber_strategies_.size(),
-               "delta_primal_ size mismatch");
-  cuopt_assert(pdhg_solver_.get_saddle_point_state().get_delta_dual().size() ==
-                 dual_size_h_ * climber_strategies_.size(),
-               "delta_dual_ size mismatch");
+  if (is_distributed_master()) {
+    // The master's own pdhg_solver_ buffers are built from a shape-0 placeholder and must be empty
+    cuopt_assert(pdhg_solver_.get_reflected_primal().size() == 0,
+                 "master must not own a reflected_primal_ buffer (shards compute it)");
+    cuopt_assert(pdhg_solver_.get_reflected_dual().size() == 0,
+                 "master must not own a reflected_dual_ buffer (shards compute it)");
+    cuopt_assert(pdhg_solver_.get_primal_solution().size() == 0,
+                 "master must not own a primal_solution_ buffer (shards compute it)");
+    cuopt_assert(pdhg_solver_.get_dual_solution().size() == 0,
+                 "master must not own a dual_solution_ buffer (shards compute it)");
+    cuopt_assert(pdhg_solver_.get_saddle_point_state().get_delta_primal().size() == 0,
+                 "master must not own a delta_primal_ buffer (shards compute it)");
+    cuopt_assert(pdhg_solver_.get_saddle_point_state().get_delta_dual().size() == 0,
+                 "master must not own a delta_dual_ buffer (shards compute it)");
+  } else {
+    cuopt_assert(
+      pdhg_solver_.get_reflected_primal().size() == primal_size_h_ * climber_strategies_.size(),
+      "reflected_primal_ size mismatch");
+    cuopt_assert(
+      pdhg_solver_.get_reflected_dual().size() == dual_size_h_ * climber_strategies_.size(),
+      "reflected_dual_ size mismatch");
+    cuopt_assert(
+      pdhg_solver_.get_primal_solution().size() == primal_size_h_ * climber_strategies_.size(),
+      "primal_solution_ size mismatch");
+    cuopt_assert(
+      pdhg_solver_.get_dual_solution().size() == dual_size_h_ * climber_strategies_.size(),
+      "dual_solution_ size mismatch");
+    cuopt_assert(pdhg_solver_.get_saddle_point_state().get_delta_primal().size() ==
+                   primal_size_h_ * climber_strategies_.size(),
+                 "delta_primal_ size mismatch");
+    cuopt_assert(pdhg_solver_.get_saddle_point_state().get_delta_dual().size() ==
+                   dual_size_h_ * climber_strategies_.size(),
+                 "delta_dual_ size mismatch");
+  }
 
   // Computing the deltas (delta = reflected - current)
   // TODO batch mdoe: this only works if everyone restarts
