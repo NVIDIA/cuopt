@@ -7,7 +7,7 @@ This benchmark summarizes 3-Tier Evaluation from NVSkills-Eval results for the s
 ## Evaluation Summary
 
 - Skill: `cuopt-multi-objective-exploration`
-- Evaluation date: 2026-06-26
+- Evaluation date: 2026-06-29
 - NVSkills-Eval profile: `external`
 - Environment: `astra-sandbox`
 - Dataset: 5 evaluation tasks
@@ -55,10 +55,10 @@ Task composition is derived from the evaluation dataset when possible. Entries w
 | Dimension | Num | `claude-code` | `codex` |
 |---|---:|---:|---:|
 | Security | 5 | 100% (+0%) | 100% (+0%) |
-| Correctness | 5 | 90% (+37%) | 76% (+24%) |
-| Discoverability | 5 | 80% (+60%) | 71% (+41%) |
-| Effectiveness | 5 | 91% (+20%) | 68% (+10%) |
-| Efficiency | 5 | 80% (+40%) | 71% (+30%) |
+| Correctness | 5 | 90% (+0%) | 87% (-8%) |
+| Discoverability | 5 | 78% (-2%) | 73% (-22%) |
+| Effectiveness | 5 | 85% (-6%) | 85% (+2%) |
+| Efficiency | 5 | 75% (-3%) | 71% (-21%) |
 
 Score values show skill-assisted performance. Values in parentheses show uplift versus the no-skill baseline when baseline data is available.
 
