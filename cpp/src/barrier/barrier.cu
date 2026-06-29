@@ -683,9 +683,11 @@ class iteration_data_t {
 
   i_t cone_end() const { return cone_start() + cone_entry_count(); }
 
+  bool has_sparse_cones() const { return has_cones() && cones_->n_sparse_cones > 0; }
+
   i_t augmented_expansion_count() const
   {
-    return has_cones() && cones().has_sparse_cones() ? cones().expansion_var_count() : i_t(0);
+    return has_sparse_cones() ? cones().expansion_var_count() : i_t(0);
   }
 
   i_t augmented_system_size(i_t n, i_t m) const { return n + m + augmented_expansion_count(); }
@@ -2563,7 +2565,8 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     } op(data);
 
     if (settings.barrier_iterative_refinement) {
-      iterative_refinement<i_t, f_t, op_t>(op, rhs, soln);
+      const f_t ir_tol = data.has_sparse_cones() ? f_t(1e-12) : f_t(1e-8);
+      iterative_refinement<i_t, f_t, op_t>(op, rhs, soln, ir_tol);
     }
 
     for (i_t k = 0; k < lp.num_cols; k++) {
@@ -3196,8 +3199,9 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       }
     } op(data);
     if (settings.barrier_iterative_refinement) {
-      const f_t solve_err =
-        iterative_refinement<i_t, f_t, op_t>(op, data.d_augmented_rhs_, data.d_augmented_soln_);
+      const f_t ir_tol    = data.has_sparse_cones() ? f_t(1e-12) : f_t(1e-8);
+      const f_t solve_err = iterative_refinement<i_t, f_t, op_t>(
+        op, data.d_augmented_rhs_, data.d_augmented_soln_, ir_tol);
       if (solve_err > 1e-1) {
         settings.log.printf("|| Aug (dx, dy) - aug_rhs || %e after IR\n", solve_err);
       }

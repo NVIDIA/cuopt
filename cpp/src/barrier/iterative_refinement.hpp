@@ -88,7 +88,8 @@ f_t vector_norm2(const rmm::device_uvector<f_t>& x)
 template <typename i_t, typename f_t, typename T>
 f_t iterative_refinement_simple(T& op,
                                 const rmm::device_uvector<f_t>& b,
-                                rmm::device_uvector<f_t>& x)
+                                rmm::device_uvector<f_t>& x,
+                                f_t tol = 1e-8)
 {
   rmm::device_uvector<f_t> x_sav(x, x.stream());
 
@@ -105,7 +106,7 @@ f_t iterative_refinement_simple(T& op,
   }
   rmm::device_uvector<f_t> delta_x(x.size(), op.data_.handle_ptr->get_stream());
   i_t iter = 0;
-  while (error > 1e-8 && iter < 30) {
+  while (error > tol && iter < 30) {
     thrust::fill(op.data_.handle_ptr->get_thrust_policy(),
                  delta_x.data(),
                  delta_x.data() + delta_x.size(),
@@ -154,7 +155,8 @@ f_t iterative_refinement_simple(T& op,
 template <typename i_t, typename f_t, typename T>
 f_t iterative_refinement_gmres(T& op,
                                const rmm::device_uvector<f_t>& b,
-                               rmm::device_uvector<f_t>& x)
+                               rmm::device_uvector<f_t>& x,
+                               f_t tol = 1e-8)
 {
   // Parameters
   // Ideally, we do not need to restart here. But having restarts helps as a checkpoint to get
@@ -162,7 +164,6 @@ f_t iterative_refinement_gmres(T& op,
   // are not converging after some point
   const int max_restarts = 3;
   const int m            = 10;  // Krylov space dimension
-  const f_t tol          = 1e-8;
 
   rmm::device_uvector<f_t> r(x.size(), x.stream());
   rmm::device_uvector<f_t> x_sav(x, x.stream());
@@ -188,7 +189,7 @@ f_t iterative_refinement_gmres(T& op,
 
   f_t norm_r = vector_norm_inf<f_t>(r);
   if (show_info) { CUOPT_LOG_INFO("GMRES IR: initial residual = %e, |b| = %e", norm_r, bnorm); }
-  if (norm_r <= 1e-8) { return norm_r; }
+  if (norm_r <= tol) { return norm_r; }
 
   f_t residual      = norm_r;
   f_t best_residual = norm_r;
@@ -392,13 +393,16 @@ f_t iterative_refinement_gmres(T& op,
 }
 
 template <typename i_t, typename f_t, typename T>
-f_t iterative_refinement(T& op, const dense_vector_t<i_t, f_t>& b, dense_vector_t<i_t, f_t>& x)
+f_t iterative_refinement(T& op,
+                         const dense_vector_t<i_t, f_t>& b,
+                         dense_vector_t<i_t, f_t>& x,
+                         f_t tol = 1e-8)
 {
   rmm::device_uvector<f_t> d_b(b.size(), op.data_.handle_ptr->get_stream());
   raft::copy(d_b.data(), b.data(), b.size(), op.data_.handle_ptr->get_stream());
   rmm::device_uvector<f_t> d_x(x.size(), op.data_.handle_ptr->get_stream());
   raft::copy(d_x.data(), x.data(), x.size(), op.data_.handle_ptr->get_stream());
-  auto err = iterative_refinement_gmres<i_t, f_t, T>(op, d_b, d_x);
+  auto err = iterative_refinement_gmres<i_t, f_t, T>(op, d_b, d_x, tol);
 
   raft::copy(x.data(), d_x.data(), x.size(), op.data_.handle_ptr->get_stream());
 
@@ -407,9 +411,12 @@ f_t iterative_refinement(T& op, const dense_vector_t<i_t, f_t>& b, dense_vector_
 }
 
 template <typename i_t, typename f_t, typename T>
-f_t iterative_refinement(T& op, const rmm::device_uvector<f_t>& b, rmm::device_uvector<f_t>& x)
+f_t iterative_refinement(T& op,
+                         const rmm::device_uvector<f_t>& b,
+                         rmm::device_uvector<f_t>& x,
+                         f_t tol = 1e-8)
 {
-  return iterative_refinement_gmres<i_t, f_t, T>(op, b, x);
+  return iterative_refinement_gmres<i_t, f_t, T>(op, b, x, tol);
 }
 
 }  // namespace cuopt::mathematical_optimization::barrier
