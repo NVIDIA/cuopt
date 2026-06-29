@@ -435,8 +435,8 @@ int main(int argc, char* argv[])
   auto memory_backend = cuopt::mathematical_optimization::get_memory_backend_type();
   std::vector<rmm::mr::cuda_async_memory_resource> memory_resources;
 
-if (memory_backend == cuopt::mathematical_optimization::memory_backend_t::GPU) {
-  // Get the right number of GPUs
+  if (memory_backend == cuopt::mathematical_optimization::memory_backend_t::GPU) {
+    // Get the right number of GPUs
     // Distributed PDLP uses its own knob: distributed_pdlp_num_gpus
     // Everything else uses num_gpus which is capped at 2
     const bool use_distributed_pdlp = settings.get_parameter<bool>(CUOPT_USE_DISTRIBUTED_PDLP);

@@ -613,15 +613,17 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
     cuopt_assert(dual_residual_.size() == 0,
                  "master must not own a dual_residual_ buffer (shards compute it)");
   } else {
-    cuopt_assert(primal_iterate.size() == primal_size_h_ * climber_strategies_.size(),
-                 "primal_iterate size must be equal to primal_size_h_ * climber_strategies_.size()");
+    cuopt_assert(
+      primal_iterate.size() == primal_size_h_ * climber_strategies_.size(),
+      "primal_iterate size must be equal to primal_size_h_ * climber_strategies_.size()");
     cuopt_assert(dual_iterate.size() == dual_size_h_ * climber_strategies_.size(),
                  "dual_iterate size must be equal to dual_size_h_ * climber_strategies_.size()");
     cuopt_assert(
       primal_residual_.size() == dual_size_h_ * climber_strategies_.size(),
       "primal_residual_ size must be equal to dual_size_h_ * climber_strategies_.size()");
-    cuopt_assert(dual_residual_.size() == primal_size_h_ * climber_strategies_.size(),
-                 "dual_residual_ size must be equal to primal_size_h_ * climber_strategies_.size()");
+    cuopt_assert(
+      dual_residual_.size() == primal_size_h_ * climber_strategies_.size(),
+      "dual_residual_ size must be equal to primal_size_h_ * climber_strategies_.size()");
   }
   raft::common::nvtx::range fun_scope("compute_convergence_information");
 
