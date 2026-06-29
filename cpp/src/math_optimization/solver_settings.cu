@@ -6,7 +6,7 @@
 /* clang-format on */
 
 #include <cuopt/error.hpp>
-#include <cuopt/linear_programming/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/solver_settings.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <utilities/logger.hpp>
 
@@ -16,7 +16,7 @@
 #include <fstream>
 #include <sstream>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 namespace {
 
@@ -672,4 +672,4 @@ template bool solver_settings_t<int, double>::get_parameter(const std::string& n
 template std::string solver_settings_t<int, double>::get_parameter(const std::string& name) const;
 #endif
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

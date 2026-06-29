@@ -50,7 +50,23 @@
 #include <thrust/iterator/zip_iterator.h>
 #include <thrust/reduce.h>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::barrier {
+
+using simplex::compute_user_objective;
+using simplex::csc_matrix_t;
+using simplex::csr_matrix_t;
+using simplex::device_vector_norm_inf;
+using simplex::float64_t;
+using simplex::inf;
+using simplex::lp_problem_t;
+using simplex::lp_solution_t;
+using simplex::lp_status_t;
+using simplex::matrix_vector_multiply;
+using simplex::multiply;
+using simplex::simplex_solver_settings_t;
+using simplex::tic;
+using simplex::toc;
+using simplex::vector_norm1;
 
 template <typename i_t, typename f_t>
 bool validate_barrier_cone_layout(const lp_problem_t<i_t, f_t>& problem,
@@ -1008,9 +1024,9 @@ class iteration_data_t {
   {
     if (n_dense_columns == 0) {
       // Solve ADAT * x = b
-      if (debug) { settings_.log.printf("||b|| = %.16e\n", vector_norm2<i_t, f_t>(b)); }
+      if (debug) { settings_.log.printf("||b|| = %.16e\n", simplex::vector_norm2<i_t, f_t>(b)); }
       i_t solve_status = chol->solve(b, x);
-      if (debug) { settings_.log.printf("||x|| = %.16e\n", vector_norm2<i_t, f_t>(x)); }
+      if (debug) { settings_.log.printf("||x|| = %.16e\n", simplex::vector_norm2<i_t, f_t>(x)); }
       return solve_status;
     } else {
       // Use Sherman Morrison followed by PCG
@@ -1046,9 +1062,9 @@ class iteration_data_t {
       dense_vector_t<i_t, f_t> w(AD.m);
       const bool debug      = false;
       const bool full_debug = false;
-      if (debug) { settings_.log.printf("||b|| = %.16e\n", vector_norm2<i_t, f_t>(b)); }
+      if (debug) { settings_.log.printf("||b|| = %.16e\n", simplex::vector_norm2<i_t, f_t>(b)); }
       i_t solve_status = chol->solve(b, w);
-      if (debug) { settings_.log.printf("||w|| = %.16e\n", vector_norm2<i_t, f_t>(w)); }
+      if (debug) { settings_.log.printf("||w|| = %.16e\n", simplex::vector_norm2<i_t, f_t>(w)); }
       if (solve_status != 0) {
         settings_.log.printf("Linear solve failed in Sherman Morrison after ADAT solve\n");
         return solve_status;
@@ -1086,7 +1102,7 @@ class iteration_data_t {
             matrix_vector_multiply(ADAT, 1.0, M_col, -1.0, M_residual);
             settings_.log.printf(
               "|| A_sparse * D_sparse * A_sparse^T * M(:, k) - AD_dense(:, k) ||_2 = %e\n",
-              vector_norm2<i_t, f_t>(M_residual));
+              simplex::vector_norm2<i_t, f_t>(M_residual));
           }
         }
         // A_sparse * D_sparse * A_sparse^T * M = U = AD_dense
@@ -1138,7 +1154,8 @@ class iteration_data_t {
       if (debug) {
         dense_vector_t<i_t, f_t> H_residual = g;
         H.matrix_vector_multiply(1.0, y, -1.0, H_residual);
-        settings_.log.printf("|| H * y - g ||_2 = %e\n", vector_norm2<i_t, f_t>(H_residual));
+        settings_.log.printf("|| H * y - g ||_2 = %e\n",
+                             simplex::vector_norm2<i_t, f_t>(H_residual));
       }
 
       // x = (A_sparse * D_sparse * A_sparse^T)^{-1} * (b - U * y)
@@ -1157,14 +1174,15 @@ class iteration_data_t {
         dense_vector_t<i_t, f_t> solve_residual = v;
         matrix_vector_multiply(ADAT, 1.0, x, -1.0, solve_residual);
         settings_.log.printf("|| A_sparse * D * A_sparse^T * x - v ||_2 = %e\n",
-                             vector_norm2<i_t, f_t>(solve_residual));
+                             simplex::vector_norm2<i_t, f_t>(solve_residual));
       }
 
       if (debug) {
         // Check U^T * x - y = 0;
         dense_vector_t<i_t, f_t> residual_2 = y;
         AD_dense.transpose_multiply(1.0, x, -1.0, residual_2);
-        settings_.log.printf("|| U^T * x - y ||_2 = %e\n", vector_norm2<i_t, f_t>(residual_2));
+        settings_.log.printf("|| U^T * x - y ||_2 = %e\n",
+                             simplex::vector_norm2<i_t, f_t>(residual_2));
       }
 
       if (debug) {
@@ -1173,7 +1191,7 @@ class iteration_data_t {
         AD_dense.matrix_vector_multiply(1.0, y, -1.0, residual_1);
         matrix_vector_multiply(ADAT, 1.0, x, 1.0, residual_1);
         settings_.log.printf("|| A_sparse * D_sparse * A_sparse^T * x + U * y - b ||_2 = %e\n",
-                             vector_norm2<i_t, f_t>(residual_1));
+                             simplex::vector_norm2<i_t, f_t>(residual_1));
       }
 
       if (full_debug && debug) {
@@ -1198,7 +1216,7 @@ class iteration_data_t {
 
           adat_multiply(-1.0, ei, 1.0, u);
 
-          max_error = std::max(max_error, vector_norm2<i_t, f_t>(u));
+          max_error = std::max(max_error, simplex::vector_norm2<i_t, f_t>(u));
         }
         settings_.log.printf("|| ADAT(e_i) - ADA^T * e_i ||_2 = %e\n", max_error);
       }
@@ -1338,7 +1356,7 @@ class iteration_data_t {
 
           adat_multiply(-1.0, ei, 1.0, u);
 
-          max_error = std::max(max_error, vector_norm2<i_t, f_t>(u));
+          max_error = std::max(max_error, simplex::vector_norm2<i_t, f_t>(u));
         }
         settings_.log.printf(
           "|| (A_sparse * D_sparse * A_sparse^T + U * V^T) * e_i - ADA^T * e_i ||_2 = %e\n",
@@ -1349,7 +1367,7 @@ class iteration_data_t {
         dense_vector_t<i_t, f_t> total_residual = b;
         adat_multiply(1.0, x, -1.0, total_residual);
         settings_.log.printf("|| A * D * A^T * x - b ||_2 = %e\n",
-                             vector_norm2<i_t, f_t>(total_residual));
+                             simplex::vector_norm2<i_t, f_t>(total_residual));
       }
 
       // Now do some rounds of PCG
@@ -1418,7 +1436,7 @@ class iteration_data_t {
     dense_vector_t<i_t, f_t> dual_res = z_tilde;
     dual_res.axpy(-1.0, lp.objective, 1.0);
     cusparse_view.transpose_spmv(1.0, solution.y, 1.0, dual_res);
-    f_t dual_residual_norm = vector_norm_inf<i_t, f_t>(dual_res, stream_view_);
+    f_t dual_residual_norm = simplex::vector_norm_inf<i_t, f_t>(dual_res, stream_view_);
 #ifdef PRINT_INFO
     settings_.log.printf("Solution Dual residual: %e\n", dual_residual_norm);
 #endif
@@ -1723,13 +1741,13 @@ class iteration_data_t {
   // v = alpha * A * Dinv * A^T * y + beta * v
   void gpu_adat_multiply(f_t alpha,
                          const rmm::device_uvector<f_t>& y,
-                         detail::cusparse_dn_vec_descr_wrapper_t<f_t> const& cusparse_y,
+                         pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> const& cusparse_y,
 
                          f_t beta,
                          rmm::device_uvector<f_t>& v,
-                         detail::cusparse_dn_vec_descr_wrapper_t<f_t> const& cusparse_v,
+                         pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> const& cusparse_v,
                          rmm::device_uvector<f_t>& u,
-                         detail::cusparse_dn_vec_descr_wrapper_t<f_t> const& cusparse_u,
+                         pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> const& cusparse_u,
                          cusparse_view_t<i_t, f_t>& cusparse_view,
                          const rmm::device_uvector<f_t>& d_inv_diag) const
   {
@@ -1776,20 +1794,20 @@ class iteration_data_t {
 
     // u = A^T * y
     dense_vector_t<i_t, f_t> u(n);
-    matrix_transpose_vector_multiply(A, 1.0, y, 0.0, u);
-    if (debug) { printf("||u|| = %.16e\n", vector_norm2<i_t, f_t>(u)); }
+    simplex::matrix_transpose_vector_multiply(A, 1.0, y, 0.0, u);
+    if (debug) { printf("||u|| = %.16e\n", simplex::vector_norm2<i_t, f_t>(u)); }
 
     // w = Dinv * u
     dense_vector_t<i_t, f_t> w(n);
     inv_diag.pairwise_product(u, w);
-    if (debug) { printf("||inv_diag|| = %.16e\n", vector_norm2<i_t, f_t>(inv_diag)); }
+    if (debug) { printf("||inv_diag|| = %.16e\n", simplex::vector_norm2<i_t, f_t>(inv_diag)); }
 
     // v = alpha * A * w + beta * v = alpha * A * Dinv * A^T * y + beta * v
     matrix_vector_multiply(A, alpha, w, beta, v);
     if (debug) {
-      printf("||A|| = %.16e\n", vector_norm2<i_t, f_t>(A.x));
-      printf("||w|| = %.16e\n", vector_norm2<i_t, f_t>(w));
-      printf("||v|| = %.16e\n", vector_norm2<i_t, f_t>(v));
+      printf("||A|| = %.16e\n", simplex::vector_norm2<i_t, f_t>(A.x));
+      printf("||w|| = %.16e\n", simplex::vector_norm2<i_t, f_t>(w));
+      printf("||v|| = %.16e\n", simplex::vector_norm2<i_t, f_t>(v));
     }
   }
 
@@ -1968,20 +1986,20 @@ class iteration_data_t {
 
   cusparse_info_t<i_t, f_t> cusparse_info;
   cusparse_view_t<i_t, f_t> cusparse_view_;
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_tmp4_;
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_h_;
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dx_residual_;
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dy_;
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dx_residual_5_;
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dx_residual_6_;
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dx_;
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dx_residual_3_;
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dx_residual_4_;
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_r1_;
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dual_residual_;
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_y_residual_;
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_tmp4_;
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_h_;
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dx_residual_;
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dy_;
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dx_residual_5_;
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dx_residual_6_;
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dx_;
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dx_residual_3_;
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dx_residual_4_;
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_r1_;
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_dual_residual_;
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_y_residual_;
   // GPU ADAT multiply
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_u_;
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_u_;
 
   // Device vectors
 
@@ -2116,7 +2134,7 @@ void cholesky_debug_check(const iteration_data_t<i_t, f_t>& data,
 
 template <typename i_t, typename f_t>
 barrier_solver_t<i_t, f_t>::barrier_solver_t(const lp_problem_t<i_t, f_t>& lp,
-                                             const presolve_info_t<i_t, f_t>& presolve,
+                                             const simplex::presolve_info_t<i_t, f_t>& presolve,
                                              const simplex_solver_settings_t<i_t, f_t>& settings)
   : lp(lp), settings(settings), presolve_info(presolve), stream_view_(lp.handle_ptr->get_stream())
 {
@@ -2156,8 +2174,8 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   //   LP block: e = 1,  SOC block: e = (sqrt(2), 0, ..., 0)
   if (data.has_cones()) {
     const i_t cs     = data.cone_start();
-    const f_t norm_b = vector_norm_inf<i_t, f_t>(lp.rhs);
-    const f_t norm_c = vector_norm_inf<i_t, f_t>(lp.objective);
+    const f_t norm_b = simplex::vector_norm_inf<i_t, f_t>(lp.rhs);
+    const f_t norm_c = simplex::vector_norm_inf<i_t, f_t>(lp.objective);
     const f_t mu     = std::sqrt((1.0 + norm_b) * (1.0 + norm_c));
     const f_t sqrt2  = std::sqrt(2.0);
     const f_t x_soc  = mu * sqrt2;
@@ -2263,19 +2281,19 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     // rhs_x <-  A * Dinv * F * u  - b
     data.cusparse_view_.spmv(1.0, DinvFu, -1.0, rhs_x);
 #ifdef PRINT_INFO
-    settings.log.printf("||DinvFu|| = %e\n", vector_norm2<i_t, f_t>(DinvFu));
+    settings.log.printf("||DinvFu|| = %e\n", simplex::vector_norm2<i_t, f_t>(DinvFu));
 #endif
 
     // Solve A*Dinv*A'*q = A*Dinv*F*u - b
 #ifdef PRINT_INFO
-    settings.log.printf("||rhs_x|| = %.16e\n", vector_norm2<i_t, f_t>(rhs_x));
+    settings.log.printf("||rhs_x|| = %.16e\n", simplex::vector_norm2<i_t, f_t>(rhs_x));
 #endif
     // i_t solve_status = data.chol->solve(rhs_x, q);
     i_t solve_status = data.solve_adat(rhs_x, q);
     if (solve_status != 0) { return status; }
 #ifdef PRINT_INFO
     settings.log.printf("Initial solve status %d\n", solve_status);
-    settings.log.printf("||q|| = %.16e\n", vector_norm2<i_t, f_t>(q));
+    settings.log.printf("||q|| = %.16e\n", simplex::vector_norm2<i_t, f_t>(q));
 #endif
 
     // rhs_x <- A*Dinv*A'*q - rhs_x
@@ -2283,7 +2301,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     // matrix_vector_multiply(data.ADAT, 1.0, q, -1.0, rhs_x);
 #ifdef PRINT_INFO
     settings.log.printf("|| A*Dinv*A'*q - (A*Dinv*F*u - b) || = %.16e\n",
-                        vector_norm2<i_t, f_t>(rhs_x));
+                        simplex::vector_norm2<i_t, f_t>(rhs_x));
 #endif
 
     // x = Dinv*(F*u - A'*q)
@@ -2309,7 +2327,8 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   data.cusparse_view_.spmv(1.0, data.x, -1.0, init_primal_residual);
   data.handle_ptr->get_stream().synchronize();
 #ifdef PRINT_INFO
-  settings.log.printf("||b - A * x||: %.16e\n", vector_norm2<i_t, f_t>(init_primal_residual));
+  settings.log.printf("||b - A * x||: %.16e\n",
+                      simplex::vector_norm2<i_t, f_t>(init_primal_residual));
 #endif
 
   if (data.n_upper_bounds > 0) {
@@ -2319,7 +2338,8 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
       init_bound_residual[k] = lp.upper[j] - data.w[k] - data.x[j];
     }
 #ifdef PRINT_INFO
-    settings.log.printf("|| u - w - x||: %e\n", vector_norm2<i_t, f_t>(init_bound_residual));
+    settings.log.printf("|| u - w - x||: %e\n",
+                        simplex::vector_norm2<i_t, f_t>(init_bound_residual));
 #endif
   }
 
@@ -2433,7 +2453,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   }
 #ifdef PRINT_INFO
   settings.log.printf("||A^T y + z - E*v - Q*x - c ||: %e\n",
-                      vector_norm2<i_t, f_t>(init_dual_residual));
+                      simplex::vector_norm2<i_t, f_t>(init_dual_residual));
 #endif
   // Make sure (w, x, v, z) > 0. Skip free variables being handled directly.
   data.w.ensure_positive(epsilon_adjust);
@@ -2997,7 +3017,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       raft::common::nvtx::range fun_scope("Barrier: dx_residual_2 GPU");
 
       // norm_inf(D^-1 * (A'*dy - r1) - dx)
-      const f_t dx_residual_2_norm = device_custom_vector_norm_inf<i_t, f_t>(
+      const f_t dx_residual_2_norm = simplex::device_custom_vector_norm_inf<i_t, f_t>(
         thrust::make_transform_iterator(
           thrust::make_zip_iterator(data.d_inv_diag.data(), data.d_r1_.data(), data.d_dx_.data()),
           [] HD(thrust::tuple<f_t, f_t, f_t> t) -> f_t {
@@ -3076,7 +3096,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
     lp.A.transpose(Atranspose);
     multiply(ADinv, Atranspose, ADinvAT);
     matrix_vector_multiply(ADinvAT, 1.0, dy, -1.0, dx_residual_4);
-    const f_t dx_residual_4_norm = vector_norm_inf<i_t, f_t>(dx_residual_4, stream_view_);
+    const f_t dx_residual_4_norm = simplex::vector_norm_inf<i_t, f_t>(dx_residual_4, stream_view_);
     max_residual                 = std::max(max_residual, dx_residual_4_norm);
     if (dx_residual_4_norm > 1e-2) {
       settings.log.printf("|| ADAT * dy - A * D^-1 * r1 - A * dx || = %.2e\n", dx_residual_4_norm);
@@ -4107,8 +4127,8 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
     f_t mu;
     compute_mu(data, mu);
 
-    f_t norm_b = vector_norm_inf<i_t, f_t>(data.b, stream_view_);
-    f_t norm_c = vector_norm_inf<i_t, f_t>(data.c, stream_view_);
+    f_t norm_b = simplex::vector_norm_inf<i_t, f_t>(data.b, stream_view_);
+    f_t norm_c = simplex::vector_norm_inf<i_t, f_t>(data.c, stream_view_);
 
     f_t quad_objective = 0.0;
     if (data.Q.n > 0) {
@@ -4448,4 +4468,4 @@ template class sparse_cholesky_cudss_t<int, double>;
 template class iteration_data_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::barrier

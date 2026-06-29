@@ -7,7 +7,10 @@
 
 #include <branch_and_bound/diving_heuristics.hpp>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::mip {
+
+using simplex::logger_t;
+using simplex::lp_problem_t;
 
 template <typename i_t, typename f_t>
 branch_variable_t<i_t> line_search_diving(const std::vector<i_t>& fractional,
@@ -21,7 +24,7 @@ branch_variable_t<i_t> line_search_diving(const std::vector<i_t>& fractional,
   branch_direction_t round_dir = branch_direction_t::NONE;
 
   for (i_t j : fractional) {
-    f_t score              = inf;
+    f_t score              = simplex::inf;
     branch_direction_t dir = branch_direction_t::NONE;
 
     if (solution[j] < root_solution[j] - eps) {
@@ -407,4 +410,4 @@ template branch_variable_t<int> vector_length_diving(const lp_problem_t<int, dou
 
 #endif
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::mip

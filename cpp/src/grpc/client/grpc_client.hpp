@@ -5,10 +5,10 @@
 
 #pragma once
 
-#include <cuopt/linear_programming/cpu_optimization_problem_solution.hpp>
-#include <cuopt/linear_programming/mip/solver_settings.hpp>
-#include <cuopt/linear_programming/optimization_problem_interface.hpp>
-#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem_solution.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 
 #include "../cuopt_default_grpc_port.h"
 
@@ -35,7 +35,7 @@ class ResultResponse;
 class SubmitJobRequest;
 }  // namespace cuopt::remote
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 // Forward declarations for test helper functions (implemented in grpc_client.cpp)
 void grpc_test_inject_mock_stub(class grpc_client_t& client, std::shared_ptr<void> stub);
@@ -478,4 +478,4 @@ class grpc_client_t {
                              std::string& job_id_out);
 };
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

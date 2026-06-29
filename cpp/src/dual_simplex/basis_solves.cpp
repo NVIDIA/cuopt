@@ -15,7 +15,7 @@
 
 #include <raft/core/nvtx.hpp>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 // Work = 3 * m
 template <typename i_t>
@@ -998,4 +998,4 @@ template int b_solve<int, double>(const csc_matrix_t<int, double>& L,
                                   std::vector<double>& solution);
 #endif
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

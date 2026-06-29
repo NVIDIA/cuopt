@@ -30,7 +30,10 @@
 #include <utilities/macros.cuh>
 #include <utilities/timer.hpp>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
+
+using simplex::csr_matrix_t;
+using simplex::user_problem_t;
 
 // do constraints with only binary variables.
 template <typename i_t, typename f_t>
@@ -99,7 +102,7 @@ void sort_csr_by_constraint_coefficients(
 
 template <typename i_t, typename f_t>
 void make_coeff_positive_knapsack_constraint(
-  const dual_simplex::user_problem_t<i_t, f_t>& problem,
+  const user_problem_t<i_t, f_t>& problem,
   std::vector<knapsack_constraint_t<i_t, f_t>>& knapsack_constraints,
   typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances)
 {
@@ -132,9 +135,9 @@ void make_coeff_positive_knapsack_constraint(
 // convert all the knapsack constraints
 // if a binary variable has a negative coefficient, put its negation in the constraint
 template <typename i_t, typename f_t>
-void fill_knapsack_constraints(const dual_simplex::user_problem_t<i_t, f_t>& problem,
+void fill_knapsack_constraints(const user_problem_t<i_t, f_t>& problem,
                                std::vector<knapsack_constraint_t<i_t, f_t>>& knapsack_constraints,
-                               dual_simplex::csr_matrix_t<i_t, f_t>& A)
+                               csr_matrix_t<i_t, f_t>& A)
 {
   // we might add additional constraints for the equality constraints
   i_t added_constraints = 0;
@@ -154,7 +157,7 @@ void fill_knapsack_constraints(const dual_simplex::user_problem_t<i_t, f_t>& pro
     bool all_binary = true;
     // check if all variables are binary (any non-continuous with bounds [0,1])
     for (i_t j = constraint_range.first; j < constraint_range.second; j++) {
-      if (problem.var_types[A.j[j]] == dual_simplex::variable_type_t::CONTINUOUS ||
+      if (problem.var_types[A.j[j]] == simplex::variable_type_t::CONTINUOUS ||
           problem.lower[A.j[j]] != 0 || problem.upper[A.j[j]] != 1) {
         all_binary = false;
         break;
@@ -593,7 +596,7 @@ void clique_table_t<i_t, f_t>::set_small_clique_adj_for_test(
 }
 
 template <typename i_t, typename f_t>
-void build_clique_table(const dual_simplex::user_problem_t<i_t, f_t>& problem,
+void build_clique_table(const user_problem_t<i_t, f_t>& problem,
                         clique_table_t<i_t, f_t>& clique_table,
                         typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances,
                         bool remove_small_cliques_flag,
@@ -605,7 +608,7 @@ void build_clique_table(const dual_simplex::user_problem_t<i_t, f_t>& problem,
   cuopt_assert(problem.var_types.size() == static_cast<size_t>(problem.num_cols),
                "Problem variable types size mismatch");
   std::vector<knapsack_constraint_t<i_t, f_t>> knapsack_constraints;
-  dual_simplex::csr_matrix_t<i_t, f_t> A(problem.num_rows, problem.num_cols, 0);
+  csr_matrix_t<i_t, f_t> A(problem.num_rows, problem.num_cols, 0);
   problem.A.to_compressed_row(A);
   fill_knapsack_constraints(problem, knapsack_constraints, A);
   make_coeff_positive_knapsack_constraint(problem, knapsack_constraints, tolerances);
@@ -662,7 +665,7 @@ void print_clique_table(const clique_table_t<i_t, f_t>& clique_table)
 }
 
 template <typename i_t, typename f_t>
-void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
+void find_initial_cliques(user_problem_t<i_t, f_t>& problem,
                           typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances,
                           std::shared_ptr<clique_table_t<i_t, f_t>>* clique_table_out,
                           cuopt::timer_t& timer,
@@ -680,7 +683,7 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
   double t_remove = 0.;
 #endif
   std::vector<knapsack_constraint_t<i_t, f_t>> knapsack_constraints;
-  dual_simplex::csr_matrix_t<i_t, f_t> A(problem.num_rows, problem.num_cols, 0);
+  csr_matrix_t<i_t, f_t> A(problem.num_rows, problem.num_cols, 0);
   problem.A.to_compressed_row(A);
   fill_knapsack_constraints(problem, knapsack_constraints, A);
 #ifdef DEBUG_CLIQUE_TABLE
@@ -762,13 +765,13 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
 
 #define INSTANTIATE(F_TYPE)                                                                    \
   template void find_initial_cliques<int, F_TYPE>(                                             \
-    dual_simplex::user_problem_t<int, F_TYPE> & problem,                                       \
+    user_problem_t<int, F_TYPE> & problem,                                                     \
     typename mip_solver_settings_t<int, F_TYPE>::tolerances_t tolerances,                      \
     std::shared_ptr<clique_table_t<int, F_TYPE>> * clique_table_out,                           \
     cuopt::timer_t & timer,                                                                    \
     omp_atomic_t<bool> * signal_extend);                                                       \
   template void build_clique_table<int, F_TYPE>(                                               \
-    const dual_simplex::user_problem_t<int, F_TYPE>& problem,                                  \
+    const user_problem_t<int, F_TYPE>& problem,                                                \
     clique_table_t<int, F_TYPE>& clique_table,                                                 \
     typename mip_solver_settings_t<int, F_TYPE>::tolerances_t tolerances,                      \
     bool remove_small_cliques_flag,                                                            \
@@ -785,4 +788,4 @@ INSTANTIATE(double)
 #endif
 #undef INSTANTIATE
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

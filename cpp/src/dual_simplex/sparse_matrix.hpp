@@ -16,7 +16,7 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 template <typename i_t, typename f_t>
 class csr_matrix_t;  // Forward declaration of CSR matrix needed to define CSC
@@ -56,7 +56,7 @@ class csc_matrix_t {
 
   // Convert the CSC matrix to a CSR matrix
   i_t to_compressed_row(
-    cuopt::linear_programming::dual_simplex::csr_matrix_t<i_t, f_t>& Arow) const;
+    cuopt::mathematical_optimization::simplex::csr_matrix_t<i_t, f_t>& Arow) const;
 
   // Permutes rows of a sparse matrix A. Computes C = A(p, :)
   i_t permute_rows(const std::vector<i_t>& pinv, csc_matrix_t<i_t, f_t>& C) const;
@@ -312,4 +312,4 @@ i_t matrix_vector_multiply(
   return 0;
 }
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

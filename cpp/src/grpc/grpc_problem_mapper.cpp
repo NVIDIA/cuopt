@@ -5,12 +5,12 @@
 
 #include "grpc_problem_mapper.hpp"
 
-#include <cuopt/linear_programming/constants.h>
+#include <cuopt/mathematical_optimization/constants.h>
 #include <cuopt_remote.pb.h>
 #include <cuopt_remote_service.pb.h>
-#include <cuopt/linear_programming/cpu_optimization_problem.hpp>
-#include <cuopt/linear_programming/mip/solver_settings.hpp>
-#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 #include "grpc_settings_mapper.hpp"
 
 #include <algorithm>
@@ -21,7 +21,7 @@
 #include <string>
 #include <type_traits>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 namespace {
 #include "generated_enum_converters_problem.inc"
@@ -272,4 +272,4 @@ template std::vector<cuopt::remote::SendArrayChunkRequest> build_array_chunk_req
   int64_t chunk_size_bytes);
 #endif
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

@@ -11,7 +11,7 @@
 #include <cassert>
 #include <cstdio>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 template <typename i_t, typename f_t>
 sparse_vector_t<i_t, f_t>::sparse_vector_t(const csc_matrix_t<i_t, f_t>& A, i_t col)
@@ -285,4 +285,4 @@ void sparse_vector_t<i_t, f_t>::squeeze(sparse_vector_t<i_t, f_t>& y) const
 template class sparse_vector_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

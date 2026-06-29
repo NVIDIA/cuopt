@@ -17,7 +17,7 @@
 #include "bounds_update_data.cuh"
 #include "utils.cuh"
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 class multi_probe_t {
@@ -83,4 +83,4 @@ class multi_probe_t {
   i_t redund_constraints_count_1 = 0;
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

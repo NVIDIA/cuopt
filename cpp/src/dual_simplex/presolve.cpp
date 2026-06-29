@@ -17,7 +17,7 @@
 #include <cmath>
 #include <iostream>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 template <typename i_t, typename f_t>
 /** Number of leading linear columns; SOCP cone variables occupy [linear_cols, num_cols). */
@@ -1942,4 +1942,4 @@ template void uncrush_solution<int, double>(const presolve_info_t<int, double>& 
 
 #endif
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

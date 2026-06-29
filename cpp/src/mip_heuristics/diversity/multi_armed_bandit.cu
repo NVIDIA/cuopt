@@ -12,7 +12,7 @@
 
 #include <cuopt/error.hpp>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 mab_t::mab_t(int n_arms, int seed, double alpha, std::string bandit_name)
   : mab_arm_stats_(n_arms), mab_rng_(seed), bandit_name(bandit_name), mab_alpha_(alpha)
@@ -190,4 +190,4 @@ template void mab_t::add_mab_reward<recombiner_work_normalized_reward_t>(
   int, double, double, double, recombiner_work_normalized_reward_t);
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

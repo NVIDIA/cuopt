@@ -34,6 +34,7 @@ jobs:
       - wheel-tests-cuopt-server
       - wheel-build-cuopt-sh-client
       - test-self-hosted-server
+      - pr-test-summary
     permissions:
       contents: read
     uses: rapidsai/shared-workflows/.github/workflows/pr-builder.yaml@main
@@ -623,3 +624,25 @@ jobs:
     with:
       build_type: pull-request
       script: ci/test_self_hosted_service.sh
+  pr-test-summary:
+    needs:
+      - conda-cpp-tests
+      - conda-python-tests
+      - wheel-tests-cuopt
+      - wheel-tests-cuopt-server
+      - test-self-hosted-server
+    if: always()
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          sparse-checkout: ci/utils/pr_test_summary.py
+          sparse-checkout-cone-mode: false
+      - run: python3 ci/utils/pr_test_summary.py
+        env:
+          GH_TOKEN: ${{ github.token }}

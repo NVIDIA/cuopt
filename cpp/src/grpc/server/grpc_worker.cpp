@@ -17,6 +17,10 @@
 #include <limits>
 #include <memory>
 
+using cuopt::mathematical_optimization::map_proto_to_mip_settings;
+using cuopt::mathematical_optimization::map_proto_to_pdlp_settings;
+using cuopt::mathematical_optimization::map_proto_to_problem;
+
 namespace {
 
 int parse_pool_gigs_env()
@@ -84,9 +88,9 @@ bool init_worker_cuda_environment(int worker_id)
 // ---------------------------------------------------------------------------
 
 struct DeserializedJob {
-  cpu_optimization_problem_t<int, double> problem;
-  pdlp_solver_settings_t<int, double> lp_settings;
-  mip_solver_settings_t<int, double> mip_settings;
+  cuopt::mathematical_optimization::cpu_optimization_problem_t<int, double> problem;
+  cuopt::mathematical_optimization::pdlp_solver_settings_t<int, double> lp_settings;
+  cuopt::mathematical_optimization::mip_solver_settings_t<int, double> mip_settings;
   bool enable_incumbents = true;
   bool success           = false;
 };
@@ -288,7 +292,7 @@ static DeserializedJob read_problem_from_pipe(int worker_id, const JobQueueEntry
     // This avoids a single giant protobuf allocation for large problems.
     cuopt::remote::ChunkedProblemHeader chunked_header;
     std::map<int32_t, std::vector<uint8_t>> arrays;
-    std::map<cuopt::linear_programming::container_array_key_t, std::vector<uint8_t>>
+    std::map<cuopt::mathematical_optimization::container_array_key_t, std::vector<uint8_t>>
       container_arrays;
     if (!read_chunked_request_from_pipe(read_fd, chunked_header, arrays, container_arrays)) {
       return dj;
@@ -319,7 +323,8 @@ static DeserializedJob read_problem_from_pipe(int worker_id, const JobQueueEntry
       map_proto_to_mip_settings(chunked_header.mip_settings(), dj.mip_settings);
     }
     dj.enable_incumbents = chunked_header.enable_incumbents();
-    map_chunked_arrays_to_problem(chunked_header, arrays, container_arrays, dj.problem);
+    cuopt::mathematical_optimization::map_chunked_arrays_to_problem(
+      chunked_header, arrays, container_arrays, dj.problem);
   } else {
     // Unary path: the entire SubmitJobRequest was serialized as a single
     // protobuf blob.  Simpler but copies more memory for large problems.
@@ -386,7 +391,7 @@ static SolveResult run_mip_solve(DeserializedJob& dj,
     auto gpu_problem = dj.problem.to_optimization_problem(&handle);
 
     SERVER_LOG_INFO("[Worker] Calling solve_mip...");
-    auto gpu_solution = solve_mip(*gpu_problem, dj.mip_settings);
+    auto gpu_solution = cuopt::mathematical_optimization::solve_mip(*gpu_problem, dj.mip_settings);
     SERVER_LOG_INFO("[Worker] solve_mip done");
 
     // solve_mip_helper catches cuopt::logic_error internally and stashes it
@@ -405,21 +410,22 @@ static SolveResult run_mip_solve(DeserializedJob& dj,
 
     auto host_solution = device_to_host<double>(gpu_solution.get_solution());
 
-    cpu_mip_solution_t<int, double> cpu_solution(std::move(host_solution),
-                                                 gpu_solution.get_termination_status(),
-                                                 gpu_solution.get_objective_value(),
-                                                 gpu_solution.get_mip_gap(),
-                                                 gpu_solution.get_solution_bound(),
-                                                 gpu_solution.get_total_solve_time(),
-                                                 gpu_solution.get_presolve_time(),
-                                                 gpu_solution.get_max_constraint_violation(),
-                                                 gpu_solution.get_max_int_violation(),
-                                                 gpu_solution.get_max_variable_bound_violation(),
-                                                 gpu_solution.get_num_nodes(),
-                                                 gpu_solution.get_num_simplex_iterations());
+    cuopt::mathematical_optimization::cpu_mip_solution_t<int, double> cpu_solution(
+      std::move(host_solution),
+      gpu_solution.get_termination_status(),
+      gpu_solution.get_objective_value(),
+      gpu_solution.get_mip_gap(),
+      gpu_solution.get_solution_bound(),
+      gpu_solution.get_total_solve_time(),
+      gpu_solution.get_presolve_time(),
+      gpu_solution.get_max_constraint_violation(),
+      gpu_solution.get_max_int_violation(),
+      gpu_solution.get_max_variable_bound_violation(),
+      gpu_solution.get_num_nodes(),
+      gpu_solution.get_num_simplex_iterations());
 
-    populate_chunked_result_header_mip(cpu_solution, &sr.header);
-    sr.arrays = collect_mip_solution_arrays(cpu_solution);
+    cuopt::mathematical_optimization::populate_chunked_result_header_mip(cpu_solution, &sr.header);
+    sr.arrays = cuopt::mathematical_optimization::collect_mip_solution_arrays(cpu_solution);
     SERVER_LOG_INFO("[Worker] Result path: MIP solution -> %zu array(s)", sr.arrays.size());
     sr.success = true;
   } catch (const cuopt::logic_error& e) {
@@ -446,7 +452,7 @@ static SolveResult run_lp_solve(DeserializedJob& dj,
     auto gpu_problem = dj.problem.to_optimization_problem(&handle);
 
     SERVER_LOG_INFO("[Worker] Calling solve_lp...");
-    auto gpu_solution = solve_lp(*gpu_problem, dj.lp_settings);
+    auto gpu_solution = cuopt::mathematical_optimization::solve_lp(*gpu_problem, dj.lp_settings);
     SERVER_LOG_INFO("[Worker] solve_lp done");
 
     // solve_lp / solve_qcqp catch cuopt::logic_error internally and stash it
@@ -473,25 +479,26 @@ static SolveResult run_lp_solve(DeserializedJob& dj,
 
     // Warm-start data lets clients resume an interrupted LP solve from
     // where it left off without starting over.
-    auto cpu_ws =
-      convert_to_cpu_warmstart(gpu_solution.get_pdlp_warm_start_data(), handle.get_stream());
+    auto cpu_ws = cuopt::mathematical_optimization::convert_to_cpu_warmstart(
+      gpu_solution.get_pdlp_warm_start_data(), handle.get_stream());
 
-    cpu_lp_solution_t<int, double> cpu_solution(std::move(host_primal),
-                                                std::move(host_dual),
-                                                std::move(host_reduced_cost),
-                                                gpu_solution.get_termination_status(),
-                                                gpu_solution.get_objective_value(),
-                                                gpu_solution.get_dual_objective_value(),
-                                                term_info.solve_time,
-                                                term_info.l2_primal_residual,
-                                                term_info.l2_dual_residual,
-                                                term_info.gap,
-                                                term_info.number_of_steps_taken,
-                                                term_info.solved_by,
-                                                std::move(cpu_ws));
+    cuopt::mathematical_optimization::cpu_lp_solution_t<int, double> cpu_solution(
+      std::move(host_primal),
+      std::move(host_dual),
+      std::move(host_reduced_cost),
+      gpu_solution.get_termination_status(),
+      gpu_solution.get_objective_value(),
+      gpu_solution.get_dual_objective_value(),
+      term_info.solve_time,
+      term_info.l2_primal_residual,
+      term_info.l2_dual_residual,
+      term_info.gap,
+      term_info.number_of_steps_taken,
+      term_info.solved_by,
+      std::move(cpu_ws));
 
-    populate_chunked_result_header_lp(cpu_solution, &sr.header);
-    sr.arrays = collect_lp_solution_arrays(cpu_solution);
+    cuopt::mathematical_optimization::populate_chunked_result_header_lp(cpu_solution, &sr.header);
+    sr.arrays = cuopt::mathematical_optimization::collect_lp_solution_arrays(cpu_solution);
     SERVER_LOG_INFO("[Worker] Result path: LP solution -> %zu array(s)", sr.arrays.size());
     sr.success = true;
   } catch (const cuopt::logic_error& e) {

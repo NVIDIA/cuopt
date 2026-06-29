@@ -17,7 +17,7 @@ namespace cuopt {
 struct work_limit_context_t;
 }
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 template <typename i_t, typename f_t>
 bool is_mip(const user_problem_t<i_t, f_t>& problem);
@@ -123,4 +123,4 @@ i_t solve(const user_problem_t<i_t, f_t>& user_problem,
           const simplex_solver_settings_t<i_t, f_t>& settings,
           std::vector<f_t>& primal_solution);
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

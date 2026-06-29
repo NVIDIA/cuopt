@@ -15,7 +15,7 @@
 #include <utilities/timer.hpp>
 #include "bounds_repair.cuh"
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 struct lb_bounds_t {
@@ -87,4 +87,4 @@ class lb_bounds_repair_t {
   i_t cycle_write_pos = 0;
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

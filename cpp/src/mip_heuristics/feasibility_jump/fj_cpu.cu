@@ -46,7 +46,11 @@
 #define CPUFJ_NVTX_RANGE(name) ((void)0)
 #endif
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
+
+using simplex::lp_problem_t;
+using simplex::simplex_solver_settings_t;
+using simplex::variable_type_t;
 
 template <typename i_t, typename f_t>
 void finalize_fj_cpu_host_initialization(
@@ -1416,10 +1420,10 @@ void finalize_fj_cpu_host_initialization(
 
 template <typename i_t, typename f_t>
 static std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_from_host_lp(
-  const dual_simplex::lp_problem_t<i_t, f_t>& problem,
-  const std::vector<dual_simplex::variable_type_t>& variable_types,
+  const lp_problem_t<i_t, f_t>& problem,
+  const std::vector<variable_type_t>& variable_types,
   const std::vector<f_t>& seed_assignment,
-  const dual_simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+  const simplex_solver_settings_t<i_t, f_t>& settings,
   std::atomic<bool>& preemption_flag,
   int64_t seed)
 {
@@ -1438,7 +1442,7 @@ static std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_from_host_lp(
   const i_t n_variables   = problem.num_cols;
   const i_t n_constraints = problem.num_rows;
 
-  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(problem.num_rows, problem.num_cols, problem.A.nnz());
+  simplex::csr_matrix_t<i_t, f_t> csr_A(problem.num_rows, problem.num_cols, problem.A.nnz());
   problem.A.to_compressed_row(csr_A);
   std::vector<f_t> coefficients            = csr_A.x;
   std::vector<i_t> variables               = csr_A.j;
@@ -1454,7 +1458,7 @@ static std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_from_host_lp(
     variable_bounds[j]  = f_t2{problem.lower[j], problem.upper[j]};
     const auto var_type = variable_types[j];
     cpufj_variable_types[j] =
-      var_type == dual_simplex::variable_type_t::CONTINUOUS ? var_t::CONTINUOUS : var_t::INTEGER;
+      var_type == variable_type_t::CONTINUOUS ? var_t::CONTINUOUS : var_t::INTEGER;
 
     const bool is_integer = cpufj_variable_types[j] == var_t::INTEGER;
     const bool is_binary  = is_integer &&
@@ -1465,7 +1469,7 @@ static std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_from_host_lp(
   }
 
   const i_t nnz = static_cast<i_t>(variables.size());
-  dual_simplex::csc_matrix_t<i_t, f_t> reverse_csc(n_constraints, n_variables, nnz);
+  simplex::csc_matrix_t<i_t, f_t> reverse_csc(n_constraints, n_variables, nnz);
   csr_A.to_compressed_col(reverse_csc);
   std::vector<f_t> reverse_coefficients = std::move(reverse_csc.x);
   std::vector<i_t> reverse_constraints  = std::move(reverse_csc.i);
@@ -1475,7 +1479,7 @@ static std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_from_host_lp(
   for (i_t j = 0; j < n_variables; ++j) {
     f_t value = j < static_cast<i_t>(seed_assignment.size()) ? seed_assignment[j] : f_t{0};
     value     = std::clamp(value, problem.lower[j], problem.upper[j]);
-    if (variable_types[j] != dual_simplex::variable_type_t::CONTINUOUS) {
+    if (variable_types[j] != variable_type_t::CONTINUOUS) {
       value = std::clamp(std::round(value), problem.lower[j], problem.upper[j]);
     }
     projected_seed[j] = value;
@@ -1795,10 +1799,10 @@ void fj_cpu_task_t<i_t, f_t>::fj_cpu_deleter_t::operator()(fj_cpu_climber_t<i_t,
 
 template <typename i_t, typename f_t>
 std::unique_ptr<fj_cpu_task_t<i_t, f_t>> make_fj_cpu_task_from_host_lp(
-  const dual_simplex::lp_problem_t<i_t, f_t>& problem,
-  const std::vector<dual_simplex::variable_type_t>& variable_types,
+  const lp_problem_t<i_t, f_t>& problem,
+  const std::vector<variable_type_t>& variable_types,
   const std::vector<f_t>& seed_assignment,
-  const dual_simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+  const simplex_solver_settings_t<i_t, f_t>& settings,
   std::function<void(f_t, const std::vector<f_t>&, double)> improvement_callback,
   std::string log_prefix,
   int64_t seed)
@@ -1841,10 +1845,10 @@ template std::unique_ptr<fj_cpu_climber_t<int, float>> init_fj_cpu_standalone(
   std::atomic<bool>& preemption_flag,
   fj_settings_t settings);
 template std::unique_ptr<fj_cpu_task_t<int, float>> make_fj_cpu_task_from_host_lp(
-  const dual_simplex::lp_problem_t<int, float>& problem,
-  const std::vector<dual_simplex::variable_type_t>& variable_types,
+  const lp_problem_t<int, float>& problem,
+  const std::vector<variable_type_t>& variable_types,
   const std::vector<float>& seed_assignment,
-  const dual_simplex::simplex_solver_settings_t<int, float>& settings,
+  const simplex_solver_settings_t<int, float>& settings,
   std::function<void(float, const std::vector<float>&, double)> improvement_callback,
   std::string log_prefix,
   int64_t seed);
@@ -1873,10 +1877,10 @@ template std::unique_ptr<fj_cpu_climber_t<int, double>> init_fj_cpu_standalone(
   std::atomic<bool>& preemption_flag,
   fj_settings_t settings);
 template std::unique_ptr<fj_cpu_task_t<int, double>> make_fj_cpu_task_from_host_lp(
-  const dual_simplex::lp_problem_t<int, double>& problem,
-  const std::vector<dual_simplex::variable_type_t>& variable_types,
+  const lp_problem_t<int, double>& problem,
+  const std::vector<variable_type_t>& variable_types,
   const std::vector<double>& seed_assignment,
-  const dual_simplex::simplex_solver_settings_t<int, double>& settings,
+  const simplex_solver_settings_t<int, double>& settings,
   std::function<void(double, const std::vector<double>&, double)> improvement_callback,
   std::string log_prefix,
   int64_t seed);
@@ -1893,4 +1897,4 @@ template void finalize_fj_cpu_host_initialization(
   const typename mip_solver_settings_t<int, double>::tolerances_t& tolerances);
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip
