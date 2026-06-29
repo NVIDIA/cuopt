@@ -393,7 +393,7 @@ void bron_kerbosch(bk_bitset_context_t<i_t, f_t>& ctx,
 // the seed is empty or the time limit is hit while scanning.
 template <typename i_t, typename f_t>
 i_t min_degree_anchor(const std::vector<i_t>& seed,
-                      detail::clique_table_t<i_t, f_t>& graph,
+                      mip::clique_table_t<i_t, f_t>& graph,
                       f_t start_time,
                       f_t time_limit)
 {
@@ -443,7 +443,7 @@ void sort_candidates_by_reduced_cost(std::vector<i_t>& candidates,
 template <typename i_t, typename f_t>
 void greedy_extend_clique(std::vector<i_t>& selected,
                           const std::vector<i_t>& candidates,
-                          detail::clique_table_t<i_t, f_t>& graph,
+                          mip::clique_table_t<i_t, f_t>& graph,
                           f_t adj_check_cost,
                           f_t start_time,
                           f_t time_limit,
@@ -909,7 +909,7 @@ bool path_to_odd_cycle(const std::vector<i_t>& bipartite_path,
 template <typename i_t, typename f_t>
 void extend_to_odd_wheel(const std::vector<i_t>& cycle_vertices,
                          std::vector<i_t>& wheel_centers,
-                         detail::clique_table_t<i_t, f_t>& graph,
+                         mip::clique_table_t<i_t, f_t>& graph,
                          const std::vector<f_t>& reduced_costs,
                          i_t num_vars,
                          f_t start_time,

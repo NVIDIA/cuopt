@@ -709,9 +709,9 @@ class cut_generation_t {
                             f_t start_time);
 
   // Generate zero-half (odd-cycle / odd-wheel) cuts from the conflict graph
-  bool generate_zero_half_cuts(const lp_problem_t<i_t, f_t>& lp,
-                               const simplex_solver_settings_t<i_t, f_t>& settings,
-                               const std::vector<variable_type_t>& var_types,
+  bool generate_zero_half_cuts(const simplex::lp_problem_t<i_t, f_t>& lp,
+                               const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+                               const std::vector<simplex::variable_type_t>& var_types,
                                const std::vector<f_t>& xstar,
                                const std::vector<f_t>& reduced_costs,
                                f_t start_time);
@@ -723,9 +723,10 @@ class cut_generation_t {
                                    const std::vector<f_t>& xstar,
                                    f_t start_time);
 
-  void prepare_fractional_sub_conflict_graph(const simplex_solver_settings_t<i_t, f_t>& settings,
-                                             const std::vector<f_t>& xstar,
-                                             f_t start_time);
+  void prepare_fractional_sub_conflict_graph(
+    const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+    const std::vector<f_t>& xstar,
+    f_t start_time);
 
   cut_pool_t<i_t, f_t>& cut_pool_;
   knapsack_generation_t<i_t, f_t> knapsack_generation_;

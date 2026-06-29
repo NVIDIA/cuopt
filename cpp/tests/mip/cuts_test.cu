@@ -1377,7 +1377,7 @@ TEST(cuts, zero_half_unit_separator_simple_pentagon)
     {3, 0},
   };
   std::vector<double> x_values(5, 0.5);
-  auto cycles = dual_simplex::find_violated_odd_cycles_for_test(
+  auto cycles = mip::find_violated_odd_cycles_for_test(
     adj, x_values, 1e-6, std::numeric_limits<double>::infinity());
   ASSERT_FALSE(cycles.empty());
   cycles = canonicalize_cycles(std::move(cycles));
@@ -1406,7 +1406,7 @@ TEST(cuts, zero_half_unit_separator_no_cycle_for_4_cycle)
     {2, 0},
   };
   std::vector<double> x_values(4, 0.5);
-  auto cycles = dual_simplex::find_violated_odd_cycles_for_test(
+  auto cycles = mip::find_violated_odd_cycles_for_test(
     adj, x_values, 1e-6, std::numeric_limits<double>::infinity());
   EXPECT_TRUE(cycles.empty());
 }
@@ -1420,7 +1420,7 @@ TEST(cuts, zero_half_unit_separator_skips_triangle)
     {0, 1},
   };
   std::vector<double> x_values(3, 0.5);
-  auto cycles = dual_simplex::find_violated_odd_cycles_for_test(
+  auto cycles = mip::find_violated_odd_cycles_for_test(
     adj, x_values, 1e-6, std::numeric_limits<double>::infinity());
   for (const auto& cycle : cycles) {
     EXPECT_GE(cycle.size(), 5u);
@@ -1439,7 +1439,7 @@ TEST(cuts, zero_half_unit_separator_no_cycle_when_integer_solution)
   };
   std::vector<double> x_values = {1.0, 0.0, 1.0, 0.0, 0.0};
   // x_v interpreted as conflict-graph vertex weight (here just x_j directly).
-  auto cycles = dual_simplex::find_violated_odd_cycles_for_test(
+  auto cycles = mip::find_violated_odd_cycles_for_test(
     adj, x_values, 1e-6, std::numeric_limits<double>::infinity());
   EXPECT_TRUE(cycles.empty());
 }
@@ -1460,7 +1460,7 @@ TEST(cuts, zero_half_unit_separator_disjoint_pentagons)
     {8, 5},
   };
   std::vector<double> x_values(10, 0.5);
-  auto cycles = dual_simplex::find_violated_odd_cycles_for_test(
+  auto cycles = mip::find_violated_odd_cycles_for_test(
     adj, x_values, 1e-6, std::numeric_limits<double>::infinity());
   ASSERT_GE(cycles.size(), 2u);
   cycles           = canonicalize_cycles(std::move(cycles));
@@ -1491,7 +1491,7 @@ TEST(cuts, zero_half_unit_separator_overlapping_pentagons)
     {7, 0},
   };
   std::vector<double> x_values(9, 0.5);
-  auto cycles = dual_simplex::find_violated_odd_cycles_for_test(
+  auto cycles = mip::find_violated_odd_cycles_for_test(
     adj, x_values, 1e-6, std::numeric_limits<double>::infinity());
   cycles = canonicalize_cycles(std::move(cycles));
 
@@ -1544,7 +1544,7 @@ TEST(cuts, zero_half_unit_separator_seven_cycle_violated_below_half)
     {5, 0},
   };
   std::vector<double> x_values(7, 0.45);
-  auto cycles = dual_simplex::find_violated_odd_cycles_for_test(
+  auto cycles = mip::find_violated_odd_cycles_for_test(
     adj, x_values, 1e-6, std::numeric_limits<double>::infinity());
   ASSERT_FALSE(cycles.empty());
   bool found_seven = false;
