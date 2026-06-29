@@ -1,0 +1,17 @@
+SkillCritic FAIL: cuopt-user-rules
+Build: SkillCritic 0.5.0
+Mode: llm
+Skill category: procedural (70% confidence)
+Semantic agreement: 0.54 (Flow diagrams diverge: 53.8% semantic agreement, 48.7% weakest pair, 47.2% weakest topology, 47.6% weakest source coverage, 71.4% source-order agreement.)
+Consensus decision: fail
+Complexity: very-high (10.0/10)
+Loop boundedness: unbounded
+Loop termination classes: unbounded
+Stability: single-run
+Findings: 2 high/critical, 2 medium, 2 low/info
+- [MEDIUM/SOURCE_DEFECT] unbounded-correction-loop at /home/luffy/Projects/cuopt_5/skills/cuopt-user-rules/SKILL.md:122: The mandatory post-correction skill-evaluation loop has no hard bound on correction cycles; only advisory language ('avoid spinning through many model variants') limits retries.
+- [LOW/HYPOTHESIS] missing-verify-permission-denied-path at /home/luffy/Projects/cuopt_5/skills/cuopt-user-rules/SKILL.md:160: The skill requires asking before running verification commands but does not specify what to do if the user declines permission.
+- [LOW/RECONSTRUCTION_DEFECT] scope-gate-omitted-from-reconstruction at /home/luffy/Projects/cuopt_5/skills/cuopt-user-rules/SKILL.md:19: The reconstructed flow omits the source's required handoff for requests about modifying cuOpt internals.
+- [HIGH/UNCERTAINTY] flow-consensus at /home/luffy/Projects/cuopt_5/skills/cuopt-user-rules/SKILL.md:1: Flow diagrams diverge: 53.8% semantic agreement, 48.7% weakest pair, 47.2% weakest topology, 47.6% weakest source coverage, 71.4% source-order agreement.
+- [HIGH/UNCERTAINTY] very-high-flow-complexity at skills/cuopt-user-rules/SKILL.md:19: Flow complexity is very-high with score 10.0/10.
+- [MEDIUM/UNCERTAINTY] unbounded-cycle at skills/cuopt-user-rules/SKILL.md:127: The flow contains a cycle but the skill does not clearly bound the loop.
