@@ -8,9 +8,9 @@
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 #include "mip_utils.cuh"
 
-#include <cuopt/linear_programming/io/parser.hpp>
-#include <cuopt/linear_programming/solve.hpp>
-#include <cuopt/linear_programming/utilities/internals.hpp>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
+#include <cuopt/mathematical_optimization/utilities/internals.hpp>
 #include <utilities/common_utils.hpp>
 #include <utilities/error.hpp>
 
@@ -32,7 +32,7 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::linear_programming::test {
+namespace cuopt::mathematical_optimization::test {
 
 class test_set_solution_callback_t : public cuopt::internals::set_solution_callback_t {
  public:
@@ -89,9 +89,10 @@ class test_get_solution_callback_t : public cuopt::internals::get_solution_callb
   int n_variables;
 };
 
-void check_solutions(const test_get_solution_callback_t& get_solution_callback,
-                     const cuopt::linear_programming::io::mps_data_model_t<int, double>& op_problem,
-                     const cuopt::linear_programming::mip_solver_settings_t<int, double>& settings)
+void check_solutions(
+  const test_get_solution_callback_t& get_solution_callback,
+  const cuopt::mathematical_optimization::io::mps_data_model_t<int, double>& op_problem,
+  const cuopt::mathematical_optimization::mip_solver_settings_t<int, double>& settings)
 {
   for (const auto& solution : get_solution_callback.solutions) {
     EXPECT_EQ(solution.first.size(), op_problem.get_variable_lower_bounds().size());
@@ -112,8 +113,8 @@ void test_incumbent_callback(std::string test_instance, bool include_set_callbac
   const raft::handle_t handle_{};
   std::cout << "Running: " << test_instance << std::endl;
   auto path = make_path_absolute(test_instance);
-  cuopt::linear_programming::io::mps_data_model_t<int, double> mps_problem =
-    cuopt::linear_programming::io::read_mps<int, double>(path, false);
+  cuopt::mathematical_optimization::io::mps_data_model_t<int, double> mps_problem =
+    cuopt::mathematical_optimization::io::read_mps<int, double>(path, false);
   handle_.sync_stream();
   auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps_problem);
 
@@ -164,8 +165,8 @@ TEST(mip_solve, early_heuristic_incumbent_fallback)
 
   const raft::handle_t handle_{};
   auto path = make_path_absolute("mip/pk1.mps");
-  cuopt::linear_programming::io::mps_data_model_t<int, double> mps_problem =
-    cuopt::linear_programming::io::read_mps<int, double>(path, false);
+  cuopt::mathematical_optimization::io::mps_data_model_t<int, double> mps_problem =
+    cuopt::mathematical_optimization::io::read_mps<int, double>(path, false);
   handle_.sync_stream();
   auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps_problem);
 
@@ -194,4 +195,4 @@ TEST(mip_solve, early_heuristic_incumbent_fallback)
   if (!callback_solutions.empty()) { check_solutions(get_cb, mps_problem, settings); }
 }
 
-}  // namespace cuopt::linear_programming::test
+}  // namespace cuopt::mathematical_optimization::test

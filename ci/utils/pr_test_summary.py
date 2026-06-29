@@ -139,12 +139,6 @@ def _build_body(failed, passed, skipped, job_analysis):
         lines.append(
             f"**{len(failed)} failed** · {len(passed)} passed · {len(skipped)} skipped"
         )
-        lines += ["", "| Job | Logs |", "|-----|------|"]
-        for job in failed:
-            lines.append(
-                f"| ❌ `{job['name']}` | [View logs]({job['html_url']}) |"
-            )
-
         for job in failed:
             tests = job_analysis[job["id"]]
             if not tests:

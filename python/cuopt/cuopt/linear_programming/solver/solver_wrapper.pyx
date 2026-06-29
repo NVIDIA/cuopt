@@ -72,7 +72,7 @@ from cuopt.utilities import InputValidationError, get_data_ptr, series_from_buf
 import pyarrow as pa
 
 
-cdef extern from "cuopt/linear_programming/utilities/internals.hpp" namespace "cuopt::internals": # noqa
+cdef extern from "cuopt/mathematical_optimization/utilities/internals.hpp" namespace "cuopt::internals": # noqa
     cdef cppclass base_solution_callback_t
 
 

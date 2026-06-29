@@ -8,10 +8,10 @@
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 #include "mip_utils.cuh"
 
-#include <cuopt/linear_programming/io/parser.hpp>
-#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
-#include <cuopt/linear_programming/pdlp/solver_solution.hpp>
-#include <cuopt/linear_programming/solve.hpp>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
 #include <cuts/cuts.hpp>
 #include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
 #include <mip_heuristics/problem/problem.cuh>
@@ -39,7 +39,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace cuopt::linear_programming::test {
+namespace cuopt::mathematical_optimization::test {
 
 namespace {
 
@@ -137,27 +137,27 @@ End
 )LP");
 }
 
-detail::clique_table_t<int, double> build_clique_table_for_model_with_min_size(
+mip::clique_table_t<int, double> build_clique_table_for_model_with_min_size(
   const raft::handle_t& handle, const io::mps_data_model_t<int, double>& model, int min_clique_size)
 {
   auto op_problem = mps_data_model_to_optimization_problem(&handle, model);
-  detail::problem_t<int, double> mip_problem(op_problem);
-  dual_simplex::user_problem_t<int, double> host_problem(op_problem.get_handle_ptr());
+  mip::problem_t<int, double> mip_problem(op_problem);
+  simplex::user_problem_t<int, double> host_problem(op_problem.get_handle_ptr());
   mip_problem.get_host_user_problem(host_problem);
 
-  detail::clique_config_t clique_config;
+  mip::clique_config_t clique_config;
   clique_config.min_clique_size = min_clique_size;
-  detail::clique_table_t<int, double> clique_table(2 * host_problem.num_cols,
-                                                   clique_config.min_clique_size,
-                                                   clique_config.max_clique_size_for_extension);
+  mip::clique_table_t<int, double> clique_table(2 * host_problem.num_cols,
+                                                clique_config.min_clique_size,
+                                                clique_config.max_clique_size_for_extension);
 
   mip_solver_settings_t<int, double> settings;
   cuopt::timer_t timer(std::numeric_limits<double>::infinity());
-  detail::build_clique_table(host_problem, clique_table, settings.tolerances, true, true, timer);
+  mip::build_clique_table(host_problem, clique_table, settings.tolerances, true, true, timer);
   return clique_table;
 }
 
-detail::clique_table_t<int, double> build_clique_table_for_model(
+mip::clique_table_t<int, double> build_clique_table_for_model(
   const raft::handle_t& handle, const io::mps_data_model_t<int, double>& model)
 {
   return build_clique_table_for_model_with_min_size(handle, model, 1);
@@ -169,30 +169,30 @@ io::mps_data_model_t<int, double>& get_neos8_model_cached()
   static std::unique_ptr<io::mps_data_model_t<int, double>> model_ptr;
   std::call_once(init_flag, []() {
     const auto neos8_path = make_path_absolute("mip/neos8.mps");
-    auto neos8_model      = cuopt::linear_programming::io::read_mps<int, double>(neos8_path, false);
+    auto neos8_model =
+      cuopt::mathematical_optimization::io::read_mps<int, double>(neos8_path, false);
     model_ptr = std::make_unique<io::mps_data_model_t<int, double>>(std::move(neos8_model));
   });
   cuopt_assert(model_ptr != nullptr, "Failed to initialize cached neos8 model");
   return *model_ptr;
 }
 
-detail::clique_table_t<int, double>& get_neos8_clique_table_cached()
+mip::clique_table_t<int, double>& get_neos8_clique_table_cached()
 {
   static std::once_flag init_flag;
-  static std::unique_ptr<detail::clique_table_t<int, double>> clique_table_ptr;
+  static std::unique_ptr<mip::clique_table_t<int, double>> clique_table_ptr;
   std::call_once(init_flag, []() {
     const raft::handle_t handle{};
     auto& neos8_model = get_neos8_model_cached();
     auto clique_table = build_clique_table_for_model(handle, neos8_model);
-    clique_table_ptr =
-      std::make_unique<detail::clique_table_t<int, double>>(std::move(clique_table));
+    clique_table_ptr  = std::make_unique<mip::clique_table_t<int, double>>(std::move(clique_table));
   });
   cuopt_assert(clique_table_ptr != nullptr, "Failed to initialize cached neos8 clique table");
   return *clique_table_ptr;
 }
 
 std::vector<std::vector<char>> build_original_adjacency_matrix(
-  detail::clique_table_t<int, double>& clique_table, int num_vars)
+  mip::clique_table_t<int, double>& clique_table, int num_vars)
 {
   std::vector<std::vector<char>> adj(num_vars, std::vector<char>(num_vars, 0));
   for (int i = 0; i < num_vars; ++i) {
@@ -279,7 +279,7 @@ std::vector<std::vector<int>> maximal_cliques_from_production_algorithm(
 {
   const auto adj_list = adjacency_matrix_to_list(adj);
   std::vector<double> weights(adj_list.size(), 1.0);
-  auto cliques = dual_simplex::find_maximal_cliques_for_test(
+  auto cliques = mip::find_maximal_cliques_for_test(
     adj_list, weights, 0.0, 100000, std::numeric_limits<double>::infinity());
   return canonicalize_cliques(std::move(cliques));
 }
@@ -465,7 +465,7 @@ bool is_binary_var_for_clique_literals(const io::mps_data_model_t<int, double>& 
 
 std::vector<std::vector<int>> build_fractional_literal_cliques_for_assignment(
   const io::mps_data_model_t<int, double>& problem,
-  detail::clique_table_t<int, double>& clique_table,
+  mip::clique_table_t<int, double>& clique_table,
   const std::vector<double>& assignment,
   double integer_tol,
   double bound_tol,
@@ -512,7 +512,7 @@ std::vector<std::vector<int>> build_fractional_literal_cliques_for_assignment(
     }
   }
 
-  auto cliques_local = dual_simplex::find_maximal_cliques_for_test(
+  auto cliques_local = mip::find_maximal_cliques_for_test(
     adj_local, weights, 1.0 + kCliqueTestTol, max_calls, std::numeric_limits<double>::infinity());
   std::vector<std::vector<int>> cliques_global;
   cliques_global.reserve(cliques_local.size());
@@ -848,49 +848,49 @@ TEST(cuts, test_cuts_2)
 
 TEST(cuts, test_duplicate_cuts_detection)
 {
-  dual_simplex::simplex_solver_settings_t<int, double> settings;
-  dual_simplex::cut_pool_t<int, double> cut_pool(4, settings);
-  dual_simplex::inequality_t<int, double> cut1;
+  simplex::simplex_solver_settings_t<int, double> settings;
+  mip::cut_pool_t<int, double> cut_pool(4, settings);
+  mip::inequality_t<int, double> cut1;
   cut1.push_back(0, 1.0);
   cut1.push_back(1, 2.0);
   cut1.rhs = 1.0;
-  cut_pool.add_cut(dual_simplex::cut_type_t::MIXED_INTEGER_GOMORY, cut1);
-  dual_simplex::inequality_t<int, double> cut2;
+  cut_pool.add_cut(mip::cut_type_t::MIXED_INTEGER_GOMORY, cut1);
+  mip::inequality_t<int, double> cut2;
   cut2.push_back(0, 2.0);
   cut2.push_back(1, 4.0);
   cut2.rhs = 2.0;
-  cut_pool.add_cut(dual_simplex::cut_type_t::MIXED_INTEGER_GOMORY, cut2);
-  dual_simplex::inequality_t<int, double> cut3;
+  cut_pool.add_cut(mip::cut_type_t::MIXED_INTEGER_GOMORY, cut2);
+  mip::inequality_t<int, double> cut3;
   cut3.push_back(0, 0.1);
   cut3.push_back(2, 0.2);
   cut3.rhs = 1.0;
-  cut_pool.add_cut(dual_simplex::cut_type_t::MIXED_INTEGER_GOMORY, cut3);
-  dual_simplex::inequality_t<int, double> cut4;
+  cut_pool.add_cut(mip::cut_type_t::MIXED_INTEGER_GOMORY, cut3);
+  mip::inequality_t<int, double> cut4;
   cut4.push_back(0, 0.2);
   cut4.push_back(2, 0.4);
   cut4.rhs = 1.0;
-  cut_pool.add_cut(dual_simplex::cut_type_t::MIXED_INTEGER_GOMORY, cut4);
-  dual_simplex::inequality_t<int, double> cut5;
+  cut_pool.add_cut(mip::cut_type_t::MIXED_INTEGER_GOMORY, cut4);
+  mip::inequality_t<int, double> cut5;
   cut5.push_back(1, 10.0);
   cut5.push_back(3, 20.0);
   cut5.rhs = 0.1;
-  cut_pool.add_cut(dual_simplex::cut_type_t::MIXED_INTEGER_GOMORY, cut5);
-  dual_simplex::inequality_t<int, double> cut6;
+  cut_pool.add_cut(mip::cut_type_t::MIXED_INTEGER_GOMORY, cut5);
+  mip::inequality_t<int, double> cut6;
   cut6.push_back(1, 20.0);
   cut6.push_back(3, 40.0);
   cut6.rhs = 0.2;
-  cut_pool.add_cut(dual_simplex::cut_type_t::MIXED_INTEGER_GOMORY, cut6);
-  dual_simplex::inequality_t<int, double> cut7;
+  cut_pool.add_cut(mip::cut_type_t::MIXED_INTEGER_GOMORY, cut6);
+  mip::inequality_t<int, double> cut7;
   cut7.push_back(0, 1.0);
   cut7.push_back(1, 1.0);
   cut7.push_back(2, 1.0);
   cut7.push_back(3, 1.0);
   cut7.rhs = 1.0;
-  cut_pool.add_cut(dual_simplex::cut_type_t::MIXED_INTEGER_GOMORY, cut7);
-  dual_simplex::inequality_t<int, double> cut8;
+  cut_pool.add_cut(mip::cut_type_t::MIXED_INTEGER_GOMORY, cut7);
+  mip::inequality_t<int, double> cut8;
   cut8.push_back(1, 3.0);
   cut8.rhs = 7.0;
-  cut_pool.add_cut(dual_simplex::cut_type_t::MIXED_INTEGER_GOMORY, cut8);
+  cut_pool.add_cut(mip::cut_type_t::MIXED_INTEGER_GOMORY, cut8);
 
   cut_pool.check_for_duplicate_cuts();
 }
@@ -1347,11 +1347,11 @@ End
 
 struct flow_cover_test_problem_t {
   raft::handle_t handle;
-  dual_simplex::simplex_solver_settings_t<int, double> settings;
-  dual_simplex::lp_problem_t<int, double> lp;
-  dual_simplex::csr_matrix_t<int, double> Arow;
+  simplex::simplex_solver_settings_t<int, double> settings;
+  simplex::lp_problem_t<int, double> lp;
+  simplex::csr_matrix_t<int, double> Arow;
   std::vector<int> new_slacks;
-  std::vector<dual_simplex::variable_type_t> var_types;
+  std::vector<simplex::variable_type_t> var_types;
 
   flow_cover_test_problem_t() : handle(), settings(), lp(&handle, 1, 1, 1), Arow(0, 0, 0) {}
 };
@@ -1361,17 +1361,16 @@ flow_cover_test_problem_t build_flow_cover_test_problem(
 {
   flow_cover_test_problem_t test_problem;
   auto op_problem = mps_data_model_to_optimization_problem(&test_problem.handle, model);
-  detail::problem_t<int, double> mip_problem(op_problem);
-  dual_simplex::user_problem_t<int, double> host_problem(op_problem.get_handle_ptr());
+  mip::problem_t<int, double> mip_problem(op_problem);
+  simplex::user_problem_t<int, double> host_problem(op_problem.get_handle_ptr());
   mip_problem.get_host_user_problem(host_problem);
 
-  dual_simplex::dualize_info_t<int, double> dualize_info;
-  dual_simplex::convert_user_problem(
+  simplex::dualize_info_t<int, double> dualize_info;
+  simplex::convert_user_problem(
     host_problem, test_problem.settings, test_problem.lp, test_problem.new_slacks, dualize_info);
   test_problem.var_types = host_problem.var_types;
   if (test_problem.lp.num_cols > static_cast<int>(test_problem.var_types.size())) {
-    test_problem.var_types.resize(test_problem.lp.num_cols,
-                                  dual_simplex::variable_type_t::CONTINUOUS);
+    test_problem.var_types.resize(test_problem.lp.num_cols, simplex::variable_type_t::CONTINUOUS);
   }
   test_problem.lp.A.to_compressed_row(test_problem.Arow);
   return test_problem;
@@ -1395,15 +1394,15 @@ bool single_node_flow_y_feasible(const std::vector<double>& y)
   return activity <= 4.0 + 1e-8;
 }
 
-void expect_single_node_flow_cut_valid_at_point(const dual_simplex::inequality_t<int, double>& cut,
+void expect_single_node_flow_cut_valid_at_point(const mip::inequality_t<int, double>& cut,
                                                 const std::vector<double>& point,
                                                 const std::string& label)
 {
   EXPECT_GE(cut.vector.dot(point), cut.rhs - 1e-7) << label;
 }
 
-void expect_single_node_flow_cut_valid_at_extreme_points(
-  const dual_simplex::inequality_t<int, double>& cut, int num_cols)
+void expect_single_node_flow_cut_valid_at_extreme_points(const mip::inequality_t<int, double>& cut,
+                                                         int num_cols)
 {
   const std::vector<double> capacities = {3.0, 6.0, 3.0};
   const std::vector<double> flow_signs = {1.0, 1.0, -1.0};
@@ -1477,18 +1476,18 @@ TEST(cuts, flow_cover_generates_valid_single_node_flow_cut)
   auto test_problem = build_flow_cover_test_problem(create_small_single_node_flow_problem());
   const std::vector<double> xstar = single_node_flow_fractional_solution(test_problem.lp.num_cols);
 
-  dual_simplex::flow_cover_generation_t<int, double> generator(
+  mip::flow_cover_generation_t<int, double> generator(
     test_problem.lp, test_problem.settings, test_problem.Arow, test_problem.new_slacks);
-  dual_simplex::variable_bounds_t<int, double> variable_bounds(test_problem.lp,
-                                                               test_problem.settings,
-                                                               test_problem.var_types,
-                                                               test_problem.Arow,
-                                                               test_problem.new_slacks);
+  mip::variable_bounds_t<int, double> variable_bounds(test_problem.lp,
+                                                      test_problem.settings,
+                                                      test_problem.var_types,
+                                                      test_problem.Arow,
+                                                      test_problem.new_slacks);
   ASSERT_GT(generator.num_constraints(), 0);
 
   int generated_cuts = 0;
   for (const auto& flow_cover_row : generator.get_constraints()) {
-    dual_simplex::inequality_t<int, double> cut(test_problem.lp.num_cols);
+    mip::inequality_t<int, double> cut(test_problem.lp.num_cols);
     const int status = generator.generate_cut(test_problem.lp,
                                               test_problem.settings,
                                               test_problem.Arow,
@@ -1508,4 +1507,4 @@ TEST(cuts, flow_cover_generates_valid_single_node_flow_cut)
   EXPECT_GT(generated_cuts, 0);
 }
 
-}  // namespace cuopt::linear_programming::test
+}  // namespace cuopt::mathematical_optimization::test

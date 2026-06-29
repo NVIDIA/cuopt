@@ -22,7 +22,7 @@
 
 #include <dlfcn.h>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::barrier {
 
 #define CUDA_VER_12_4_UP (CUDART_VERSION >= 12040)
 
@@ -126,7 +126,7 @@ static cusparseSpMVAlg_t get_spmv_alg(int num_rows)
 
 template <typename i_t, typename f_t>
 cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
-                                           const csc_matrix_t<i_t, f_t>& A)
+                                           const simplex::csc_matrix_t<i_t, f_t>& A)
   : handle_ptr_(handle_ptr),
     A_offsets_(0, handle_ptr->get_stream()),
     A_indices_(0, handle_ptr->get_stream()),
@@ -146,7 +146,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
   // TMP matrix data should already be on the GPU
   constexpr bool debug = false;
   if (debug) { printf("A hash: %zu\n", A.hash()); }
-  csr_matrix_t<i_t, f_t> A_csr(A.m, A.n, 1);
+  simplex::csr_matrix_t<i_t, f_t> A_csr(A.m, A.n, 1);
   A.to_compressed_row(A_csr);
   i_t rows                        = A_csr.m;
   i_t cols                        = A_csr.n;
@@ -255,10 +255,10 @@ cusparse_view_t<i_t, f_t>::~cusparse_view_t()
 }
 
 template <typename i_t, typename f_t>
-detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_view_t<i_t, f_t>::create_vector(
+pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_view_t<i_t, f_t>::create_vector(
   rmm::device_uvector<f_t> const& vec)
 {
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> descr;
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> descr;
   descr.create(vec.size(), const_cast<f_t*>(vec.data()));
   return descr;
 }
@@ -282,16 +282,16 @@ void cusparse_view_t<i_t, f_t>::spmv(f_t alpha,
                                      f_t beta,
                                      rmm::device_uvector<f_t>& y)
 {
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> x_cusparse = create_vector(x);
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> y_cusparse = create_vector(y);
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> x_cusparse = create_vector(x);
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> y_cusparse = create_vector(y);
   spmv(alpha, x_cusparse, beta, y_cusparse);
 }
 
 template <typename i_t, typename f_t>
 void cusparse_view_t<i_t, f_t>::spmv(f_t alpha,
-                                     detail::cusparse_dn_vec_descr_wrapper_t<f_t> const& x,
+                                     pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> const& x,
                                      f_t beta,
-                                     detail::cusparse_dn_vec_descr_wrapper_t<f_t> const& y)
+                                     pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> const& y)
 {
   // Would be simpler if we could pass host data direclty but other cusparse calls with the same
   // handler depend on device data
@@ -334,17 +334,16 @@ void cusparse_view_t<i_t, f_t>::transpose_spmv(f_t alpha,
                                                f_t beta,
                                                rmm::device_uvector<f_t>& y)
 {
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> x_cusparse = create_vector(x);
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> y_cusparse = create_vector(y);
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> x_cusparse = create_vector(x);
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> y_cusparse = create_vector(y);
   transpose_spmv(alpha, x_cusparse, beta, y_cusparse);
 }
 
 template <typename i_t, typename f_t>
-void cusparse_view_t<i_t, f_t>::transpose_spmv(
-  f_t alpha,
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> const& x,
-  f_t beta,
-  detail::cusparse_dn_vec_descr_wrapper_t<f_t> const& y)
+void cusparse_view_t<i_t, f_t>::transpose_spmv(f_t alpha,
+                                               pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> const& x,
+                                               f_t beta,
+                                               pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> const& y)
 {
   // Would be simpler if we could pass host data direct;y but other cusparse calls with the same
   // handler depend on device data
@@ -424,4 +423,4 @@ cusparse_view_t<int, double>::transpose_spmv<std::allocator<double>, std::alloca
   double beta,
   std::vector<double, std::allocator<double>>& y);
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::barrier

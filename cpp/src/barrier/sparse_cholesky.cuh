@@ -20,14 +20,14 @@
 
 #include "cudss.h"
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::barrier {
 
 template <typename i_t, typename f_t>
 class sparse_cholesky_base_t {
  public:
   virtual ~sparse_cholesky_base_t()                                                 = default;
-  virtual i_t analyze(const csc_matrix_t<i_t, f_t>& A_in)                           = 0;
-  virtual i_t factorize(const csc_matrix_t<i_t, f_t>& A_in)                         = 0;
+  virtual i_t analyze(const simplex::csc_matrix_t<i_t, f_t>& A_in)                  = 0;
+  virtual i_t factorize(const simplex::csc_matrix_t<i_t, f_t>& A_in)                = 0;
   virtual i_t analyze(device_csr_matrix_t<i_t, f_t>& A_in)                          = 0;
   virtual i_t factorize(device_csr_matrix_t<i_t, f_t>& A_in)                        = 0;
   virtual i_t solve(const dense_vector_t<i_t, f_t>& b, dense_vector_t<i_t, f_t>& x) = 0;
@@ -135,7 +135,7 @@ template <typename i_t, typename f_t>
 class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
  public:
   sparse_cholesky_cudss_t(raft::handle_t const* handle_ptr,
-                          const simplex_solver_settings_t<i_t, f_t>& settings,
+                          const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
                           i_t size)
     : handle_ptr_(handle_ptr),
       n(size),
@@ -157,11 +157,10 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
 
     if (CUDART_VERSION >= 13000 && settings_.concurrent_halt != nullptr &&
         settings_.num_gpus == 1) {
-      cuGetErrorString_func = cuopt::detail::get_driver_entry_point("cuGetErrorString");
+      cuGetErrorString_func = cuopt::get_driver_entry_point("cuGetErrorString");
       // 1. Set up the GPU resources
       CUdevResource initial_device_GPU_resources = {};
-      auto cuDeviceGetDevResource_func =
-        cuopt::detail::get_driver_entry_point("cuDeviceGetDevResource");
+      auto cuDeviceGetDevResource_func = cuopt::get_driver_entry_point("cuDeviceGetDevResource");
       CU_CHECK(reinterpret_cast<decltype(::cuDeviceGetDevResource)*>(cuDeviceGetDevResource_func)(
                  handle_ptr_->get_device(), &initial_device_GPU_resources, CU_DEV_RESOURCE_TYPE_SM),
                reinterpret_cast<decltype(::cuGetErrorString)*>(cuGetErrorString_func));
@@ -180,7 +179,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       auto barrier_sms = raft::alignTo(static_cast<i_t>(total_SMs * 0.75f), 8);
       CUdevResource resource;
       auto cuDevSmResourceSplitByCount_func =
-        cuopt::detail::get_driver_entry_point("cuDevSmResourceSplitByCount");
+        cuopt::get_driver_entry_point("cuDevSmResourceSplitByCount");
       auto n_groups  = 1u;
       auto use_flags = CU_DEV_SM_RESOURCE_SPLIT_IGNORE_SM_COSCHEDULING;  // or 0
       CU_CHECK(
@@ -202,7 +201,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       auto constexpr const n_resource_desc = 1;
       CUdevResourceDesc resource_desc;
       auto cuDevResourceGenerateDesc_func =
-        cuopt::detail::get_driver_entry_point("cuDevResourceGenerateDesc");
+        cuopt::get_driver_entry_point("cuDevResourceGenerateDesc");
       CU_CHECK(reinterpret_cast<decltype(::cuDevResourceGenerateDesc)*>(
                  cuDevResourceGenerateDesc_func)(&resource_desc, &resource, n_resource_desc),
                reinterpret_cast<decltype(::cuGetErrorString)*>(cuGetErrorString_func));
@@ -225,15 +224,14 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       cudaStream_t cuda_stream    = handle_ptr_->get_stream();
       cudaError_t priority_result = cudaStreamGetPriority(cuda_stream, &stream_priority);
       RAFT_CUDA_TRY(priority_result);
-      auto cuGreenCtxCreate_func = cuopt::detail::get_driver_entry_point("cuGreenCtxCreate");
+      auto cuGreenCtxCreate_func = cuopt::get_driver_entry_point("cuGreenCtxCreate");
       CU_CHECK(reinterpret_cast<decltype(::cuGreenCtxCreate)*>(cuGreenCtxCreate_func)(
                  &barrier_green_ctx,
                  resource_desc,
                  handle_ptr_->get_device(),
                  CU_GREEN_CTX_DEFAULT_STREAM),
                reinterpret_cast<decltype(::cuGetErrorString)*>(cuGetErrorString_func));
-      auto cuGreenCtxStreamCreate_func =
-        cuopt::detail::get_driver_entry_point("cuGreenCtxStreamCreate");
+      auto cuGreenCtxStreamCreate_func = cuopt::get_driver_entry_point("cuGreenCtxStreamCreate");
       CU_CHECK(reinterpret_cast<decltype(::cuGreenCtxStreamCreate)*>(cuGreenCtxStreamCreate_func)(
                  &stream, barrier_green_ctx, CU_STREAM_NON_BLOCKING, stream_priority),
                reinterpret_cast<decltype(::cuGetErrorString)*>(cuGetErrorString_func));
@@ -374,10 +372,10 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     CUDA_CALL_AND_CHECK_EXIT(cudaStreamSynchronize(stream), "cudaStreamSynchronize");
 #if CUDART_VERSION >= 13000
     if (settings_.concurrent_halt != nullptr && settings_.num_gpus == 1) {
-      auto cuStreamDestroy_func = cuopt::detail::get_driver_entry_point("cuStreamDestroy");
+      auto cuStreamDestroy_func = cuopt::get_driver_entry_point("cuStreamDestroy");
       CU_CHECK(reinterpret_cast<decltype(::cuStreamDestroy)*>(cuStreamDestroy_func)(stream),
                reinterpret_cast<decltype(::cuGetErrorString)*>(cuGetErrorString_func));
-      auto cuGreenCtxDestroy_func = cuopt::detail::get_driver_entry_point("cuGreenCtxDestroy");
+      auto cuGreenCtxDestroy_func = cuopt::get_driver_entry_point("cuGreenCtxDestroy");
       CU_CHECK(
         reinterpret_cast<decltype(::cuGreenCtxDestroy)*>(cuGreenCtxDestroy_func)(barrier_green_ctx),
         reinterpret_cast<decltype(::cuGetErrorString)*>(cuGetErrorString_func));
@@ -392,8 +390,8 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
 
 #ifdef WRITE_MATRIX_MARKET
     {
-      csr_matrix_t<i_t, f_t> Arow_host = Arow.to_host(Arow.row_start.stream());
-      csc_matrix_t<i_t, f_t> A_col(Arow_host.m, Arow_host.n, 1);
+      simplex::csr_matrix_t<i_t, f_t> Arow_host = Arow.to_host(Arow.row_start.stream());
+      simplex::csc_matrix_t<i_t, f_t> A_col(Arow_host.m, Arow_host.n, 1);
       Arow_host.to_compressed_col(A_col);
       FILE* fid = fopen("A_to_factorize.mtx", "w");
       settings_.log.printf("writing matrix matrix\n");
@@ -475,7 +473,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     }
 
     // Perform symbolic analysis
-    f_t start_symbolic = tic();
+    f_t start_symbolic = simplex::tic();
     f_t start_symbolic_factor;
 
     {
@@ -492,9 +490,9 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
           status);
         return -1;
       }
-      f_t reordering_time = toc(start_symbolic);
+      f_t reordering_time = simplex::toc(start_symbolic);
       settings_.log.printf("Reordering time             : %.2fs\n", reordering_time);
-      start_symbolic_factor = tic();
+      start_symbolic_factor = simplex::tic();
 
       status = cudssExecute(
         handle, CUDSS_PHASE_SYMBOLIC_FACTORIZATION, solverConfig, solverData, A, cudss_x, cudss_b);
@@ -510,9 +508,9 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       }
     }
     RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
-    f_t symbolic_factorization_time = toc(start_symbolic_factor);
+    f_t symbolic_factorization_time = simplex::toc(start_symbolic_factor);
     settings_.log.printf("Symbolic factorization time : %.2fs\n", symbolic_factorization_time);
-    settings_.log.printf("Total symbolic time         : %.2fs\n", toc(start_symbolic));
+    settings_.log.printf("Total symbolic time         : %.2fs\n", simplex::toc(start_symbolic));
     int64_t lu_nz       = 0;
     size_t size_written = 0;
     CUDSS_CALL_AND_CHECK(
@@ -534,8 +532,8 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
 // #define PRINT_MATRIX_NORM
 #ifdef PRINT_MATRIX_NORM
     cudaStreamSynchronize(stream);
-    csr_matrix_t<i_t, f_t> Arow_host = Arow.to_host(Arow.row_start.stream());
-    csc_matrix_t<i_t, f_t> A_col(Arow_host.m, Arow_host.n, 1);
+    simplex::csr_matrix_t<i_t, f_t> Arow_host = Arow.to_host(Arow.row_start.stream());
+    simplex::csc_matrix_t<i_t, f_t> A_col(Arow_host.m, Arow_host.n, 1);
     Arow_host.to_compressed_col(A_col);
     settings_.log.printf(
       "before factorize || A to factor|| = %.16e hash: %zu\n", A_col.norm1(), A_col.hash());
@@ -553,7 +551,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     CUDSS_CALL_AND_CHECK(
       cudssMatrixSetValues(A, Arow.x.data()), status, "cudssMatrixSetValues for A");
 
-    f_t start_numeric = tic();
+    f_t start_numeric = simplex::tic();
     status            = cudssExecute(
       handle, CUDSS_PHASE_FACTORIZATION, solverConfig, solverData, A, cudss_x, cudss_b);
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
@@ -571,7 +569,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
 #endif
 
-    f_t numeric_time = toc(start_numeric);
+    f_t numeric_time = simplex::toc(start_numeric);
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
       return CONCURRENT_HALT_RETURN;
     }
@@ -601,9 +599,9 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     return 0;
   }
 
-  i_t analyze(const csc_matrix_t<i_t, f_t>& A_in) override
+  i_t analyze(const simplex::csc_matrix_t<i_t, f_t>& A_in) override
   {
-    csr_matrix_t<i_t, f_t> Arow(A_in.n, A_in.m, A_in.col_start[A_in.n]);
+    simplex::csr_matrix_t<i_t, f_t> Arow(A_in.n, A_in.m, A_in.col_start[A_in.n]);
 
 #ifdef WRITE_MATRIX_MARKET
     FILE* fid = fopen("A.mtx", "w");
@@ -694,18 +692,18 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
       return CONCURRENT_HALT_RETURN;
     }
-    f_t start_analysis = tic();
+    f_t start_analysis = simplex::tic();
     CUDSS_CALL_AND_CHECK(
       cudssExecute(handle, CUDSS_PHASE_REORDERING, solverConfig, solverData, A, cudss_x, cudss_b),
       status,
       "cudssExecute for reordering");
 
-    f_t reorder_time = toc(start_analysis);
+    f_t reorder_time = simplex::toc(start_analysis);
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
       return CONCURRENT_HALT_RETURN;
     }
 
-    f_t start_symbolic = tic();
+    f_t start_symbolic = simplex::tic();
 
     CUDSS_CALL_AND_CHECK(
       cudssExecute(
@@ -713,8 +711,8 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       status,
       "cudssExecute for symbolic factorization");
 
-    f_t symbolic_time = toc(start_symbolic);
-    f_t analysis_time = toc(start_analysis);
+    f_t symbolic_time = simplex::toc(start_symbolic);
+    f_t analysis_time = simplex::toc(start_analysis);
     settings_.log.printf("Symbolic factorization time : %.2fs\n", symbolic_time);
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
       RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
@@ -735,9 +733,9 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
 
     return 0;
   }
-  i_t factorize(const csc_matrix_t<i_t, f_t>& A_in) override
+  i_t factorize(const simplex::csc_matrix_t<i_t, f_t>& A_in) override
   {
-    csr_matrix_t<i_t, f_t> Arow(A_in.n, A_in.m, A_in.col_start[A_in.n]);
+    simplex::csr_matrix_t<i_t, f_t> Arow(A_in.n, A_in.m, A_in.col_start[A_in.n]);
     A_in.to_compressed_row(Arow);
 
     if (A_in.n != n) { settings_.log.printf("Error A in n %d != size %d\n", A_in.n, n); }
@@ -759,14 +757,14 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     CUDSS_CALL_AND_CHECK(
       cudssMatrixSetValues(A, csr_values_d), status, "cudssMatrixSetValues for A");
 
-    f_t start_numeric = tic();
+    f_t start_numeric = simplex::tic();
     CUDSS_CALL_AND_CHECK(
       cudssExecute(
         handle, CUDSS_PHASE_FACTORIZATION, solverConfig, solverData, A, cudss_x, cudss_b),
       status,
       "cudssExecute for factorization");
 
-    f_t numeric_time = toc(start_numeric);
+    f_t numeric_time = simplex::toc(start_numeric);
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
       return CONCURRENT_HALT_RETURN;
     }
@@ -853,9 +851,9 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     raft::copy(x_host.data(), x.data(), n, stream);
     cudaStreamSynchronize(stream);
     settings_.log.printf("RHS norm %.16e, hash: %zu, Solution norm %.16e, hash: %zu\n",
-                         vector_norm2<i_t, f_t>(b_host),
+                         simplex::vector_norm2<i_t, f_t>(b_host),
                          compute_hash(b_host),
-                         vector_norm2<i_t, f_t>(x_host),
+                         simplex::vector_norm2<i_t, f_t>(x_host),
                          compute_hash(x_host));
 #endif
 
@@ -890,10 +888,10 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
   f_t* x_values_d;
   f_t* b_values_d;
 
-  const simplex_solver_settings_t<i_t, f_t>& settings_;
+  const simplex::simplex_solver_settings_t<i_t, f_t>& settings_;
   CUgreenCtx barrier_green_ctx;
   CUstream stream;
   void* cuGetErrorString_func;
 };
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::barrier

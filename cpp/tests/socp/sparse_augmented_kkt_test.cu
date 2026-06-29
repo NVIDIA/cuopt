@@ -16,7 +16,7 @@
 #include <cmath>
 #include <vector>
 
-namespace cuopt::linear_programming::dual_simplex::test {
+namespace cuopt::mathematical_optimization::barrier::test {
 
 TEST(sparse_augmented_kkt, cone_counts_and_expansion_size)
 {
@@ -350,4 +350,4 @@ TEST(sparse_augmented_kkt, update_scaling_sparse_dim_1000)
   EXPECT_NEAR(yexp_host[1], eta_sq * x_exp_u + dot_u, 1e-9);
 }
 
-}  // namespace cuopt::linear_programming::dual_simplex::test
+}  // namespace cuopt::mathematical_optimization::barrier::test

@@ -14,7 +14,7 @@
 #include <mip_heuristics/relaxed_lp/relaxed_lp.cuh>
 #include <mip_heuristics/utils.cuh>
 
-#include <cuopt/linear_programming/pdlp/solver_solution.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>
 #include <pdlp/pdlp.cuh>
 
 #include <utilities/copy_helpers.hpp>
@@ -29,7 +29,7 @@
 #include <thrust/gather.h>
 #include <thrust/tabulate.h>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 feasibility_pump_t<i_t, f_t>::feasibility_pump_t(
@@ -589,4 +589,4 @@ template class feasibility_pump_t<int, float>;
 template class feasibility_pump_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

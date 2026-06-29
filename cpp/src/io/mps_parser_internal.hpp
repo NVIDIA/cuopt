@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include <cuopt/linear_programming/io/mps_data_model.hpp>
+#include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
 
 #include <stdarg.h>
 #include <limits>
@@ -16,7 +16,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace cuopt::linear_programming::io {
+namespace cuopt::mathematical_optimization::io {
 
 /**
  * Sparse COO (coordinate) entries for a matrix: parallel row/col/val vectors.
@@ -221,4 +221,4 @@ class mps_parser_t {
 
 };  // class mps_parser_t
 
-}  // namespace cuopt::linear_programming::io
+}  // namespace cuopt::mathematical_optimization::io

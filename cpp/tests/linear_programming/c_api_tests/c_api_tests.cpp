@@ -13,13 +13,13 @@
 #include <iostream>
 #include <string>
 
-#include <cuopt/linear_programming/cuopt_c.h>
+#include <cuopt/mathematical_optimization/cuopt_c.h>
 #include <pdlp/cuopt_c_internal.hpp>
 
 #include <utilities/common_utils.hpp>
 #include <utilities/error.hpp>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 bool is_cusparse_runtime_mixed_precision_supported();
 }
 
@@ -285,7 +285,7 @@ TEST(c_api, test_maximize_problem_dual_variables)
 
 static bool test_mps_roundtrip(const std::string& mps_file_path)
 {
-  using cuopt::linear_programming::problem_and_stream_view_t;
+  using cuopt::mathematical_optimization::problem_and_stream_view_t;
 
   cuOptOptimizationProblem original_handle = nullptr;
   cuOptOptimizationProblem reread_handle   = nullptr;
@@ -406,12 +406,12 @@ TEST(c_api, pdlp_precision_single)
 
 TEST(c_api, pdlp_precision_mixed)
 {
-  using namespace cuopt::linear_programming::detail;
+  using namespace cuopt::mathematical_optimization::pdlp;
   const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
   std::string filename           = rapidsDatasetRootDir + "/linear_programming/afiro_original.mps";
   cuopt_int_t termination_status = -1;
   cuopt_float_t objective;
-  if (!is_cusparse_runtime_mixed_precision_supported()) {
+  if (!cuopt::mathematical_optimization::pdlp::is_cusparse_runtime_mixed_precision_supported()) {
     auto status = test_pdlp_precision_mixed(filename.c_str(), &termination_status, &objective);
     bool solve_returned_error = (status != CUOPT_SUCCESS);
     bool solve_returned_non_optimal =

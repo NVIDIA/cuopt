@@ -15,8 +15,8 @@
 #include <cuda/std/functional>
 
 namespace cuopt {
-namespace linear_programming {
-namespace detail {
+namespace mathematical_optimization {
+namespace mip {
 
 struct combine_hash {
   DI size_t operator()(size_t hash_1, size_t hash_2)
@@ -157,6 +157,6 @@ template class assignment_hash_map_t<int, float>;
 template class assignment_hash_map_t<int, double>;
 #endif
 
-}  // namespace detail
-}  // namespace linear_programming
+}  // namespace mip
+}  // namespace mathematical_optimization
 }  // namespace cuopt

@@ -13,7 +13,7 @@
 
 #include <utilities/timer.hpp>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 class bound_presolve_t;
@@ -121,4 +121,4 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
                            problem_t<i_t, f_t>& problem,
                            timer_t timer);
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

@@ -35,13 +35,13 @@
 #include <mutex>
 #include <sstream>
 
-#include <cuopt/linear_programming/cpu_optimization_problem.hpp>
-#include <cuopt/linear_programming/io/parser.hpp>
-#include <cuopt/linear_programming/mip/solver_settings.hpp>
-#include <cuopt/linear_programming/optimization_problem.hpp>
-#include <cuopt/linear_programming/optimization_problem_interface.hpp>
-#include <cuopt/linear_programming/optimization_problem_utils.hpp>
-#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 #include <utilities/inline_lp_test_utils.hpp>
 #include "grpc_client.hpp"
 
@@ -66,8 +66,8 @@
 #include <string>
 #include <thread>
 
-using namespace cuopt::linear_programming;
-using cuopt::linear_programming::testing::GrpcTestLogCapture;
+using namespace cuopt::mathematical_optimization;
+using cuopt::mathematical_optimization::testing::GrpcTestLogCapture;
 
 namespace {
 
@@ -384,7 +384,7 @@ class GrpcIntegrationTestBase : public ::testing::Test {
   // optional .gz/.bz2).  See io::read() in parser.hpp.
   cpu_optimization_problem_t<int32_t, double> load_problem_from_file(const std::string& path)
   {
-    auto mps_data = cuopt::linear_programming::io::read<int32_t, double>(path);
+    auto mps_data = cuopt::mathematical_optimization::io::read<int32_t, double>(path);
     cpu_optimization_problem_t<int32_t, double> problem;
     populate_from_mps_data_model(&problem, mps_data);
     return problem;

@@ -8,7 +8,7 @@
 #include "problem_checking.cuh"
 
 #include <cuopt/error.hpp>
-#include <cuopt/linear_programming/optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <utilities/copy_helpers.hpp>
 
@@ -18,7 +18,7 @@
 #include <thrust/logical.h>
 #include <thrust/sort.h>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 template <typename i_t, typename f_t>
 void problem_checking_t<i_t, f_t>::check_csr_representation(
@@ -289,7 +289,7 @@ void problem_checking_t<i_t, f_t>::check_problem_representation(
 
 template <typename i_t, typename f_t>
 void problem_checking_t<i_t, f_t>::check_scaled_problem(
-  detail::problem_t<i_t, f_t> const& scaled_problem, detail::problem_t<i_t, f_t> const& op_problem)
+  mip::problem_t<i_t, f_t> const& scaled_problem, mip::problem_t<i_t, f_t> const& op_problem)
 {
   using f_t2 = typename type_2<f_t>::type;
   // original problem to host
@@ -328,7 +328,7 @@ void problem_checking_t<i_t, f_t>::check_scaled_problem(
 
 template <typename i_t, typename f_t>
 void problem_checking_t<i_t, f_t>::check_unscaled_solution(
-  detail::problem_t<i_t, f_t>& op_problem, rmm::device_uvector<f_t> const& assignment)
+  mip::problem_t<i_t, f_t>& op_problem, rmm::device_uvector<f_t> const& assignment)
 {
   using f_t2              = typename type_2<f_t>::type;
   auto& d_variable_bounds = op_problem.variable_bounds;
@@ -386,4 +386,4 @@ INSTANTIATE(double)
 
 #undef INSTANTIATE
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

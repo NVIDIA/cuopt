@@ -12,9 +12,9 @@
 #include <pdlp/saddle_point.hpp>
 #include <pdlp/swap_and_resize_helper.cuh>
 
-#include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
-#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
-#include <cuopt/linear_programming/utilities/segmented_sum_handler.cuh>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/utilities/segmented_sum_handler.cuh>
 
 #include <mip_heuristics/problem/problem.cuh>
 
@@ -25,12 +25,12 @@
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 template <typename i_t, typename f_t>
 class convergence_information_t {
  public:
   convergence_information_t(raft::handle_t const* handle_ptr,
-                            problem_t<i_t, f_t>& op_problem,
+                            mip::problem_t<i_t, f_t>& op_problem,
                             cusparse_view_t<i_t, f_t>& cusparse_view,
                             i_t primal_size,
                             i_t dual_size,
@@ -157,7 +157,7 @@ class convergence_information_t {
   i_t primal_size_h_;
   i_t dual_size_h_;
 
-  problem_t<i_t, f_t>* problem_ptr;
+  mip::problem_t<i_t, f_t>* problem_ptr;
   cusparse_view_t<i_t, f_t>& op_problem_cusparse_view_;
 
   rmm::device_uvector<f_t> l2_norm_primal_linear_objective_;
@@ -201,12 +201,12 @@ class convergence_information_t {
   const rmm::device_scalar<f_t> reusable_device_scalar_value_1_;
   const rmm::device_scalar<f_t> reusable_device_scalar_value_0_;
   const rmm::device_scalar<f_t> reusable_device_scalar_value_neg_1_;
-  segmented_sum_handler_t<i_t, f_t> segmented_sum_handler_;
+  cuopt::segmented_sum_handler_t<i_t, f_t> segmented_sum_handler_;
 
   rmm::device_uvector<f_t> dual_dot_;
   rmm::device_uvector<f_t> sum_primal_slack_;
 
   const std::vector<pdlp_climber_strategy_t>& climber_strategies_;
-  const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params_;
+  const pdlp::pdlp_hyper_params_t& hyper_params_;
 };
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp
