@@ -160,6 +160,119 @@ void triples_to_csr_flat(const coo_entries_t<i_t, f_t>& entries,
 
 namespace cuopt::linear_programming::io {
 
+namespace {
+
+// Given an index permutation that orders the COO entries by (row, col), merge runs of equal
+// (row, col) by summing coefficients and drop entries that cancel to ~0.
+template <typename i_t, typename f_t>
+void emit_merged_sorted_coo(const std::vector<size_t>& order,
+                            const std::vector<i_t>& i,
+                            const std::vector<i_t>& j,
+                            const std::vector<f_t>& x,
+                            std::vector<i_t>& rows,
+                            std::vector<i_t>& cols,
+                            std::vector<f_t>& vals)
+{
+  const size_t n = order.size();
+  rows.clear();
+  cols.clear();
+  vals.clear();
+  const f_t eps = std::numeric_limits<f_t>::epsilon();
+  for (size_t k = 0; k < n;) {
+    const size_t a = order[k];
+    const i_t r    = i[a];
+    const i_t c    = j[a];
+    f_t sum        = x[a];
+    size_t m       = k + 1;
+    for (; m < n; ++m) {
+      const size_t b = order[m];
+      if (i[b] != r || j[b] != c) { break; }
+      sum += x[b];
+    }
+    if (std::abs(sum) > eps) {
+      rows.push_back(r);
+      cols.push_back(c);
+      vals.push_back(sum);
+    }
+    k = m;
+  }
+}
+
+// Threshold below which comparison sort is always preferred.
+constexpr size_t sort_threshold = 128;
+
+size_t canonicalize_coo_log2_ceil(size_t v)
+{
+  if (v <= 1) { return 1; }
+  size_t bits = 0;
+  for (size_t x = v - 1; x != 0; x >>= 1) {
+    ++bits;
+  }
+  return bits;
+}
+
+// Determine which sort to use based on the number of nonzeros and the dimension.
+template <typename i_t>
+bool prefer_counting_sort(size_t nnz, i_t dim)
+{
+  if (nnz <= sort_threshold) { return false; }
+  const size_t counting_cost   = nnz + 2 * static_cast<size_t>(dim);
+  const size_t comparison_cost = nnz * canonicalize_coo_log2_ceil(nnz);
+  return counting_cost < comparison_cost;
+}
+
+// Return an index permutation ordering the COO entries by (row, col) via std::sort: O(nnz log nnz).
+template <typename i_t>
+std::vector<size_t> canonicalize_coo_comparison_sort_order(const std::vector<i_t>& i,
+                                                           const std::vector<i_t>& j)
+{
+  const size_t n = i.size();
+  std::vector<size_t> order(n);
+  for (size_t t = 0; t < n; ++t) {
+    order[t] = t;
+  }
+  std::sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+    return i[a] != i[b] ? i[a] < i[b] : j[a] < j[b];
+  });
+  return order;
+}
+
+// Return an index permutation ordering the COO entries by (row, col) via two counting
+// passes (column then row); the row pass preserves the column order. O(nnz + 2*dim).
+template <typename i_t>
+std::vector<size_t> canonicalize_coo_counting_sort_order(const std::vector<i_t>& i,
+                                                         const std::vector<i_t>& j,
+                                                         i_t dim)
+{
+  const size_t n = i.size();
+  std::vector<size_t> src(n);
+  std::vector<size_t> dst(n);
+  for (size_t t = 0; t < n; ++t) {
+    src[t] = t;
+  }
+  std::vector<i_t> count(dim + 1);
+
+  auto counting_pass = [&](const std::vector<i_t>& key) {
+    std::fill(count.begin(), count.end(), 0);
+    for (size_t t = 0; t < n; ++t) {
+      count[key[src[t]] + 1]++;
+    }
+    for (i_t b = 0; b < dim; ++b) {
+      count[b + 1] += count[b];
+    }
+    for (size_t t = 0; t < n; ++t) {
+      dst[count[key[src[t]]]++] = src[t];
+    }
+    src.swap(dst);
+  };
+
+  counting_pass(j);
+  counting_pass(i);
+  return src;
+}
+
+}  // namespace
+
 template <typename i_t>
 std::string_view get_next_string(std::string_view line, i_t& pos, i_t& end)
 {
@@ -266,36 +379,16 @@ void canonicalize_coo_matrix(std::vector<i_t>& rows, std::vector<i_t>& cols, std
     x[t] = vals[t];
   }
 
-  std::vector<size_t> order(n);
+  i_t dim = 1;
   for (size_t t = 0; t < n; ++t) {
-    order[t] = t;
+    dim = std::max(dim, static_cast<i_t>(i[t] + 1));
+    dim = std::max(dim, static_cast<i_t>(j[t] + 1));
   }
-  std::sort(order.begin(), order.end(), [&](size_t a, size_t b) {
-    return i[a] != i[b] ? i[a] < i[b] : j[a] < j[b];
-  });
 
-  rows.clear();
-  cols.clear();
-  vals.clear();
-  const f_t eps = std::numeric_limits<f_t>::epsilon();
-  for (size_t k = 0; k < n;) {
-    const size_t a = order[k];
-    const i_t r    = i[a];
-    const i_t c    = j[a];
-    f_t sum        = x[a];
-    size_t m       = k + 1;
-    for (; m < n; ++m) {
-      const size_t b = order[m];
-      if (i[b] != r || j[b] != c) { break; }
-      sum += x[b];
-    }
-    if (std::abs(sum) > eps) {
-      rows.push_back(r);
-      cols.push_back(c);
-      vals.push_back(sum);
-    }
-    k = m;
-  }
+  const std::vector<size_t> order = prefer_counting_sort(n, dim)
+                                      ? canonicalize_coo_counting_sort_order(i, j, dim)
+                                      : canonicalize_coo_comparison_sort_order(i, j);
+  emit_merged_sorted_coo(order, i, j, x, rows, cols, vals);
 }
 
 BoundType convert(std::string_view str)
