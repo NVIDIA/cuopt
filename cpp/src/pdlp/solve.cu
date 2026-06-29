@@ -2221,7 +2221,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
   raft::handle_t const* handle_ptr,
-  const cuopt::linear_programming::io::mps_data_model_t<i_t, f_t>& mps_data_model,
+  const cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t>& mps_data_model,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   bool problem_checking,
   bool use_pdlp_solver_mode)
@@ -2232,7 +2232,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
   cuopt_expects(settings.use_distributed_pdlp,
                 error_type_t::ValidationError,
                 "solve_lp_distributed_from_mps: settings.use_distributed_pdlp must be true");
-  cuopt_expects(settings.presolver == cuopt::linear_programming::presolver_t::None,
+  cuopt_expects(settings.presolver == cuopt::mathematical_optimization::presolver_t::None,
                 error_type_t::ValidationError,
                 "solve_lp_distributed_from_mps: presolve is not yet supported with "
                 "use_distributed_pdlp; please set settings.presolver = presolver_t::None");
@@ -2284,15 +2284,15 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
   auto lp_timer = cuopt::timer_t(settings_resolved.time_limit);
 
   // Shape-0 placeholder: needed to build an empty pdlp_solver
-  cuopt::linear_programming::optimization_problem_t<i_t, f_t> placeholder_op(handle_ptr);
+  cuopt::mathematical_optimization::optimization_problem_t<i_t, f_t> placeholder_op(handle_ptr);
   {
     std::vector<i_t> empty_offsets = {0};
     placeholder_op.set_csr_constraint_matrix(
       nullptr, 0, nullptr, 0, empty_offsets.data(), static_cast<i_t>(empty_offsets.size()));
   }
-  detail::problem_t<i_t, f_t> placeholder_problem(placeholder_op);
+  mip::problem_t<i_t, f_t> placeholder_problem(placeholder_op);
 
-  detail::pdlp_solver_t<i_t, f_t> solver(placeholder_problem, mps_data_model, settings_resolved);
+  pdlp::pdlp_solver_t<i_t, f_t> solver(placeholder_problem, mps_data_model, settings_resolved);
 
   auto sol = solver.run_solver(lp_timer);
 

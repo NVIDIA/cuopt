@@ -8,7 +8,7 @@
 #include <memory>
 #include <vector>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 
 // Non-owning view of a host CSR matrix (A or A_t).
 template <typename i_t, typename f_t>
@@ -72,4 +72,4 @@ void validate_partition(std::vector<int> const& parts,
 template <typename i_t, typename f_t>
 std::unique_ptr<partitioner_i<i_t, f_t>> make_partitioner(partitioner_kind_t kind);
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

@@ -8,7 +8,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 // Pure data class representing most of the distributed data needed for operatiosn
 template <typename i_t, typename f_t>
 struct rank_data_t {
@@ -57,4 +57,4 @@ struct rank_data_t {
   std::vector<i_t> h_A_t_col_indices;
   std::vector<f_t> h_A_t_values;
 };
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

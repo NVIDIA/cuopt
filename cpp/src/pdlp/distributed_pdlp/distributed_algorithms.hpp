@@ -7,7 +7,7 @@
 #include <rmm/device_uvector.hpp>
 
 // Algorithm-level distributed PDLP
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 
 template <typename i_t, typename f_t>
 struct multi_gpu_engine_t;
@@ -65,4 +65,4 @@ void gather_potential_next_solutions_to_master(multi_gpu_engine_t<i_t, f_t>& eng
                                                pdhg_solver_t<i_t, f_t>& master_pdhg,
                                                rmm::device_uvector<f_t>& master_reduced_cost);
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

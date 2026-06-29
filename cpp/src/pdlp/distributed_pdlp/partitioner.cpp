@@ -23,7 +23,7 @@
 #include <thread>
 #include <vector>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 
 template <typename i_t, typename f_t>
 std::vector<i_t> dummy_partitioner_t<i_t, f_t>::partition(
@@ -215,4 +215,4 @@ template class kaminpar_partitioner_t<int, double>;
 template std::unique_ptr<partitioner_i<int, double>> make_partitioner<int, double>(
   partitioner_kind_t);
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

@@ -15,7 +15,7 @@
 #include <cassert>
 #include <limits>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 
 // This must be done in .cu file because the pdlp_solver_t is not already complete in the hpp file
 // This is caused by the problematic cyclic include of pdlp_solver_t
@@ -199,4 +199,4 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
 template struct pdlp_shard_t<int, double>;
 template struct pdlp_shard_t<int, float>;
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

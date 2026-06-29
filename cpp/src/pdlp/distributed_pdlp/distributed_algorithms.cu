@@ -16,7 +16,7 @@
 #include <random>
 #include <vector>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 
 // -------- Broadcast owned constraint (row) scaling into halo --------------
 template <typename i_t, typename f_t>
@@ -638,4 +638,4 @@ INSTANTIATE(float)
 
 #undef INSTANTIATE
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

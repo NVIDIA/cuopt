@@ -69,9 +69,10 @@ cuopt::mathematical_optimization::optimization_problem_solution_t<i_t, f_t> solv
  *      MIP, and no initial primal/dual or warm-start data.
  */
 template <typename i_t, typename f_t>
-cuopt::linear_programming::optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
+cuopt::mathematical_optimization::optimization_problem_solution_t<i_t, f_t>
+solve_lp_distributed_from_mps(
   raft::handle_t const* handle_ptr,
-  const cuopt::linear_programming::io::mps_data_model_t<i_t, f_t>& mps_data_model,
+  const cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t>& mps_data_model,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   bool problem_checking,
   bool use_pdlp_solver_mode);

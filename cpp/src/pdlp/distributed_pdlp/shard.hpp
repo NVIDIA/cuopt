@@ -6,9 +6,9 @@
 
 #include <pdlp/distributed_pdlp/rank_data.hpp>
 
-#include <cuopt/linear_programming/io/mps_data_model.hpp>
-#include <cuopt/linear_programming/optimization_problem.hpp>
-#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 #include <mip_heuristics/problem/problem.cuh>
 
 #include <raft/core/device_setter.hpp>
@@ -22,7 +22,7 @@
 #include <optional>
 #include <vector>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 
 // Forward-declare to break the cyclic include with pdlp.cuh
 // (pdlp.cuh -> multi_gpu_engine.hpp -> shard.hpp -> pdlp.cuh).
@@ -67,7 +67,7 @@ struct pdlp_shard_t {
   nccl_comm_unique_ptr_t comm;
   rank_data_t<i_t, f_t> rank_data;
   std::optional<optimization_problem_t<i_t, f_t>> opt_problem;
-  std::optional<problem_t<i_t, f_t>> sub_problem;
+  std::optional<mip::problem_t<i_t, f_t>> sub_problem;
   std::unique_ptr<pdlp_solver_t<i_t, f_t>> sub_pdlp;
 
   // var_send_indices_d[peer] : local indices into primal vector to gather and ncclSend
@@ -79,4 +79,4 @@ struct pdlp_shard_t {
   std::vector<rmm::device_uvector<f_t>> cstr_send_buf_d;
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

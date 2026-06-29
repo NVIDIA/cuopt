@@ -17,7 +17,7 @@
 
 #include <utilities/logger.hpp>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 
 template <typename i_t, typename f_t>
 multi_gpu_engine_t<i_t, f_t>::multi_gpu_engine_t(
@@ -143,4 +143,4 @@ void multi_gpu_engine_t<i_t, f_t>::sync_await_shards(rmm::cuda_stream_view maste
 template struct multi_gpu_engine_t<int, double>;
 template struct multi_gpu_engine_t<int, float>;
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

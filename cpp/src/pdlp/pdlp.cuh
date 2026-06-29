@@ -65,8 +65,8 @@ class pdlp_solver_t {
                 bool is_batch_mode = false);
 
   // Distributed Solver Constructor
-  pdlp_solver_t(problem_t<i_t, f_t>& placeholder_problem,
-                cuopt::linear_programming::io::mps_data_model_t<i_t, f_t> const& mps,
+  pdlp_solver_t(mip::problem_t<i_t, f_t>& placeholder_problem,
+                cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> const& mps,
                 pdlp_solver_settings_t<i_t, f_t> const& settings);
 
   optimization_problem_solution_t<i_t, f_t> run_solver(const timer_t& timer);
@@ -106,12 +106,12 @@ class pdlp_solver_t {
   void compute_initial_primal_weight();
 
   // Needed by multi-GPU to mutate them
-  problem_t<i_t, f_t>& get_op_problem_scaled() { return op_problem_scaled_; }
-  detail::pdlp_initial_scaling_strategy_t<i_t, f_t>& get_initial_scaling_strategy()
+  mip::problem_t<i_t, f_t>& get_op_problem_scaled() { return op_problem_scaled_; }
+  pdlp_initial_scaling_strategy_t<i_t, f_t>& get_initial_scaling_strategy()
   {
     return initial_scaling_strategy_;
   }
-  detail::pdlp_restart_strategy_t<i_t, f_t>& get_restart_strategy() { return restart_strategy_; }
+  pdlp_restart_strategy_t<i_t, f_t>& get_restart_strategy() { return restart_strategy_; }
 
   // Per-shard primal/dual step sizes are private state on pdlp_solver_t but
   // are needed inside the multi-GPU dispatch paths that fan out a master cub

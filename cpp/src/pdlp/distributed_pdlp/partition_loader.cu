@@ -11,7 +11,7 @@
 #include <unordered_set>
 #include <utility>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 
 template <typename i_t, typename f_t>
 std::vector<i_t> partition_loader_t<i_t, f_t>::parse_distributed_pdlp_partition_file(
@@ -294,4 +294,4 @@ std::vector<rank_data_t<i_t, f_t>> partition_loader_t<i_t, f_t>::create_rank_dat
 
 template struct partition_loader_t<int, double>;
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

@@ -103,12 +103,12 @@ TEST(pdlp_class, run_double)
 // vector is identical to what the partitioner produced.
 TEST(pdlp_class, distributed_partition_kaminpar_export_import_roundtrip)
 {
-  using namespace cuopt::linear_programming::detail;
-  namespace ds = cuopt::linear_programming::dual_simplex;
+  using namespace cuopt::mathematical_optimization::pdlp;
+  namespace ds = cuopt::mathematical_optimization::simplex;
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
-  cuopt::linear_programming::io::mps_data_model_t<int, double> mps =
-    cuopt::linear_programming::io::read_mps<int, double>(path, true);
+  cuopt::mathematical_optimization::io::mps_data_model_t<int, double> mps =
+    cuopt::mathematical_optimization::io::read_mps<int, double>(path, true);
 
   const int n_vars = static_cast<int>(mps.get_objective_coefficients().size());
   const int n_cstr = static_cast<int>(mps.get_constraint_lower_bounds().size());

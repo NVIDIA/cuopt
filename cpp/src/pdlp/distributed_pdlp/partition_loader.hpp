@@ -10,7 +10,7 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 
 template <typename i_t, typename f_t>
 struct partition_loader_t {
@@ -40,4 +40,4 @@ struct partition_loader_t {
     i_t nnz);
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

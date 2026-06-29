@@ -11,8 +11,8 @@
 #include <utilities/cuda_helpers.cuh>
 #include <utilities/event_handler.cuh>
 
-#include <cuopt/linear_programming/io/mps_data_model.hpp>
-#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/cusparse_macros.hpp>
@@ -39,7 +39,7 @@
 #include <type_traits>
 #include <vector>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 
 // Maps the solver floating-point type to the matching NCCL datatype so that
 // halo exchanges / all-reduces transfer the correct element size for both
@@ -348,4 +348,4 @@ struct multi_gpu_engine_t {
   void sync_await_shards(rmm::cuda_stream_view master_stream);
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

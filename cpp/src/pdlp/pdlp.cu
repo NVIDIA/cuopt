@@ -386,8 +386,8 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(mip::problem_t<i_t, f_t>& op_problem,
 // builds the engine from the mps_data_model
 template <typename i_t, typename f_t>
 pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
-  problem_t<i_t, f_t>& placeholder_problem,
-  cuopt::linear_programming::io::mps_data_model_t<i_t, f_t> const& mps,
+  mip::problem_t<i_t, f_t>& placeholder_problem,
+  cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> const& mps,
   pdlp_solver_settings_t<i_t, f_t> const& settings)
   // Makes all inner feilds of master 0 size
   : pdlp_solver_t(placeholder_problem, settings, /*is_legacy_batch_mode=*/false)
@@ -445,7 +445,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   // CSC(A) and CSR(A^T) share the same memory layout, so the CSC produced
   // by dual_simplex::csr_matrix_t::to_compressed_col IS the CSR of A^T.
   // O(nnz + n_vars) counting sort, same as problem_t::compute_transpose.
-  namespace ds = cuopt::linear_programming::dual_simplex;
+  namespace ds = cuopt::mathematical_optimization::simplex;
   ds::csr_matrix_t<i_t, f_t> A_csr(n_cstr, n_vars, nnz);
   A_csr.row_start = h_A_row_offsets;
   A_csr.j         = h_A_col_indices;

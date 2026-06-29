@@ -8,7 +8,7 @@
 
 #include <nccl.h>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 
 // Wraps a NCCL call and throws cuopt::logic_error (RuntimeError) on any non-
 // ncclSuccess return code.
@@ -23,4 +23,4 @@ namespace cuopt::linear_programming::detail {
                            ::ncclGetErrorString(_cuopt_nccl_status)); \
   } while (0)
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp
