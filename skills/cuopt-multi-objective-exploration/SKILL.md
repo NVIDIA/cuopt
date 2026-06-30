@@ -135,4 +135,4 @@ Practical notes:
 This skill is solver- and interface-agnostic. The per-solve mechanics — building the objective, adding the ε constraints, passing a warm start, reading status — live in the API skills:
 
 - `cuopt-numerical-optimization-api-python` / `-api-c` / `-api-cli` — LP, MILP, QP solves.
-- `cuopt-routing-formulation` + `cuopt-routing-api-python` — the same frontier workflow applies to routing tradeoffs (distance vs. vehicles vs. time).
+- `cuopt-routing-api-python` — the same frontier workflow applies to routing tradeoffs (distance vs. vehicles vs. time).

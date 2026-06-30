@@ -63,6 +63,27 @@ End
 )LP");
 }
 
+io::mps_data_model_t<int, double> create_pairwise_pentagon_set_packing_problem()
+{
+  return cuopt::test::parse_inline_lp(R"LP(
+Minimize
+  obj: -x0 - x1 - x2 - x3 - x4
+Subject To
+  c1: x0 + x1 <= 1
+  c2: x1 + x2 <= 1
+  c3: x2 + x3 <= 1
+  c4: x3 + x4 <= 1
+  c5: x4 + x0 <= 1
+Binaries
+  x0
+  x1
+  x2
+  x3
+  x4
+End
+)LP");
+}
+
 // Same triangle conflicts plus an isolated binary x3 with no conflict rows.
 io::mps_data_model_t<int, double> create_pairwise_triangle_with_isolated_variable_problem()
 {
@@ -337,6 +358,18 @@ std::string format_phase2_panic_dump(const io::mps_data_model_t<int, double>& pr
 void disable_non_clique_cuts(mip_solver_settings_t<int, double>& settings)
 {
   settings.clique_cuts                = 1;
+  settings.zero_half_cuts             = 0;
+  settings.max_cut_passes             = 10;
+  settings.mixed_integer_gomory_cuts  = 0;
+  settings.knapsack_cuts              = 0;
+  settings.mir_cuts                   = 0;
+  settings.strong_chvatal_gomory_cuts = 0;
+}
+
+void disable_non_zero_half_cuts(mip_solver_settings_t<int, double>& settings)
+{
+  settings.clique_cuts                = 1;
+  settings.zero_half_cuts             = 1;
   settings.max_cut_passes             = 10;
   settings.mixed_integer_gomory_cuts  = 0;
   settings.knapsack_cuts              = 0;
@@ -348,6 +381,7 @@ void disable_all_cuts(mip_solver_settings_t<int, double>& settings)
 {
   settings.max_cut_passes             = 0;
   settings.clique_cuts                = 0;
+  settings.zero_half_cuts             = 0;
   settings.mixed_integer_gomory_cuts  = 0;
   settings.knapsack_cuts              = 0;
   settings.mir_cuts                   = 0;
@@ -1309,6 +1343,218 @@ TEST(cuts, clique_neos8_phase4_lp_infeasibility_binary_search)
     isolate_first_lp_infeasible_literal_cut_by_bisection(cuts_for_lp_search, num_vars);
   ASSERT_TRUE(first_infeasible.has_value());
   EXPECT_EQ(first_infeasible.value(), injected_index);
+}
+
+// ---- Zero-half cut tests --------------------------------------------------
+
+namespace {
+
+std::vector<std::vector<int>> canonicalize_cycles(std::vector<std::vector<int>> cycles)
+{
+  for (auto& cycle : cycles) {
+    if (cycle.empty()) { continue; }
+    auto min_it = std::min_element(cycle.begin(), cycle.end());
+    std::rotate(cycle.begin(), min_it, cycle.end());
+    if (cycle.size() >= 3 && cycle[1] > cycle.back()) {
+      std::reverse(cycle.begin() + 1, cycle.end());
+    }
+  }
+  std::sort(cycles.begin(), cycles.end());
+  cycles.erase(std::unique(cycles.begin(), cycles.end()), cycles.end());
+  return cycles;
+}
+
+}  // namespace
+
+TEST(cuts, zero_half_unit_separator_simple_pentagon)
+{
+  // 5-cycle: 0-1-2-3-4-0. All vertices fractional at 0.5.
+  std::vector<std::vector<int>> adj = {
+    {1, 4},
+    {0, 2},
+    {1, 3},
+    {2, 4},
+    {3, 0},
+  };
+  std::vector<double> x_values(5, 0.5);
+  auto cycles = mip::find_violated_odd_cycles_for_test(
+    adj, x_values, 1e-6, std::numeric_limits<double>::infinity());
+  ASSERT_FALSE(cycles.empty());
+  cycles = canonicalize_cycles(std::move(cycles));
+  std::vector<int> expected{0, 1, 2, 3, 4};
+  bool found = false;
+  for (const auto& cycle : cycles) {
+    if (cycle.size() == 5) {
+      auto sorted = cycle;
+      std::sort(sorted.begin(), sorted.end());
+      if (sorted == expected) {
+        found = true;
+        break;
+      }
+    }
+  }
+  EXPECT_TRUE(found);
+}
+
+TEST(cuts, zero_half_unit_separator_no_cycle_for_4_cycle)
+{
+  // Even cycle: 0-1-2-3-0
+  std::vector<std::vector<int>> adj = {
+    {1, 3},
+    {0, 2},
+    {1, 3},
+    {2, 0},
+  };
+  std::vector<double> x_values(4, 0.5);
+  auto cycles = mip::find_violated_odd_cycles_for_test(
+    adj, x_values, 1e-6, std::numeric_limits<double>::infinity());
+  EXPECT_TRUE(cycles.empty());
+}
+
+TEST(cuts, zero_half_unit_separator_skips_triangle)
+{
+  // Triangle 0-1-2-0 ; size-3 cycles must be left to the clique separator.
+  std::vector<std::vector<int>> adj = {
+    {1, 2},
+    {0, 2},
+    {0, 1},
+  };
+  std::vector<double> x_values(3, 0.5);
+  auto cycles = mip::find_violated_odd_cycles_for_test(
+    adj, x_values, 1e-6, std::numeric_limits<double>::infinity());
+  for (const auto& cycle : cycles) {
+    EXPECT_GE(cycle.size(), 5u);
+  }
+}
+
+TEST(cuts, zero_half_unit_separator_no_cycle_when_integer_solution)
+{
+  // 5-cycle but x_values are integer feasible: (1, 0, 1, 0, 0) -- no violation.
+  std::vector<std::vector<int>> adj = {
+    {1, 4},
+    {0, 2},
+    {1, 3},
+    {2, 4},
+    {3, 0},
+  };
+  std::vector<double> x_values = {1.0, 0.0, 1.0, 0.0, 0.0};
+  // x_v interpreted as conflict-graph vertex weight (here just x_j directly).
+  auto cycles = mip::find_violated_odd_cycles_for_test(
+    adj, x_values, 1e-6, std::numeric_limits<double>::infinity());
+  EXPECT_TRUE(cycles.empty());
+}
+
+TEST(cuts, zero_half_unit_separator_disjoint_pentagons)
+{
+  // Two disjoint 5-cycles share no vertices: {0..4} and {5..9}.
+  std::vector<std::vector<int>> adj = {
+    {1, 4},
+    {0, 2},
+    {1, 3},
+    {2, 4},
+    {3, 0},
+    {6, 9},
+    {5, 7},
+    {6, 8},
+    {7, 9},
+    {8, 5},
+  };
+  std::vector<double> x_values(10, 0.5);
+  auto cycles = mip::find_violated_odd_cycles_for_test(
+    adj, x_values, 1e-6, std::numeric_limits<double>::infinity());
+  ASSERT_GE(cycles.size(), 2u);
+  cycles           = canonicalize_cycles(std::move(cycles));
+  bool found_left  = false;
+  bool found_right = false;
+  for (const auto& cycle : cycles) {
+    if (cycle.size() != 5) { continue; }
+    auto sorted = cycle;
+    std::sort(sorted.begin(), sorted.end());
+    if (sorted == std::vector<int>{0, 1, 2, 3, 4}) { found_left = true; }
+    if (sorted == std::vector<int>{5, 6, 7, 8, 9}) { found_right = true; }
+  }
+  EXPECT_TRUE(found_left);
+  EXPECT_TRUE(found_right);
+}
+
+TEST(cuts, zero_half_unit_separator_overlapping_pentagons)
+{
+  std::vector<std::vector<int>> adj = {
+    {1, 4, 5, 8},
+    {0, 2},
+    {1, 3},
+    {2, 4},
+    {3, 0},
+    {0, 6},
+    {5, 7},
+    {6, 8},
+    {7, 0},
+  };
+  std::vector<double> x_values(9, 0.5);
+  auto cycles = mip::find_violated_odd_cycles_for_test(
+    adj, x_values, 1e-6, std::numeric_limits<double>::infinity());
+  cycles = canonicalize_cycles(std::move(cycles));
+
+  EXPECT_NE(std::find(cycles.begin(), cycles.end(), std::vector<int>{0, 1, 2, 3, 4}), cycles.end());
+  EXPECT_NE(std::find(cycles.begin(), cycles.end(), std::vector<int>{0, 5, 6, 7, 8}), cycles.end());
+}
+
+TEST(cuts, zero_half_end_to_end_pentagon_tightens_lp_relaxation)
+{
+  const raft::handle_t handle{};
+  auto mip_problem = create_pairwise_pentagon_set_packing_problem();
+
+  // First solve the LP relaxation (no cuts) to confirm the baseline value 2.5.
+  auto lp_relaxation = mip_problem;
+  std::vector<char> all_continuous(lp_relaxation.get_n_variables(), 'C');
+  lp_relaxation.set_variable_types(all_continuous);
+
+  pdlp_solver_settings_t<int, double> lp_settings{};
+  lp_settings.time_limit = 10.0;
+  lp_settings.presolver  = presolver_t::None;
+  lp_settings.set_optimality_tolerance(1e-8);
+  auto lp_solution = solve_lp(&handle, lp_relaxation, lp_settings);
+  ASSERT_EQ(lp_solution.get_termination_status(), pdlp_termination_status_t::Optimal);
+  const double lp_obj_no_cuts = lp_solution.get_objective_value();
+  EXPECT_NEAR(lp_obj_no_cuts, -2.5, kCliqueTestTol);
+
+  // Optimal IP value is 2 (independent set of size 2), so the LP gap is 0.5.
+  mip_solver_settings_t<int, double> settings;
+  settings.time_limit = 10.0;
+  settings.presolver  = presolver_t::None;
+  disable_non_zero_half_cuts(settings);
+
+  auto mip_solution = solve_mip(&handle, mip_problem, settings);
+  ASSERT_EQ(mip_solution.get_termination_status(), mip_termination_status_t::Optimal);
+  EXPECT_NEAR(mip_solution.get_objective_value(), -2.0, kCliqueTestTol);
+}
+
+TEST(cuts, zero_half_unit_separator_seven_cycle_violated_below_half)
+{
+  // 7-cycle: 0-1-2-3-4-5-6-0, all weights 0.4. Each edge weight = (1-0.4-0.4)/2 = 0.1
+  // total path weight from j1 to j2 of length 7 = 0.7 — not below 0.5, so no cut.
+  // Make weights slightly higher: 0.45 → edge weight = 0.05, total = 7*0.05 = 0.35 < 0.5.
+  std::vector<std::vector<int>> adj = {
+    {1, 6},
+    {0, 2},
+    {1, 3},
+    {2, 4},
+    {3, 5},
+    {4, 6},
+    {5, 0},
+  };
+  std::vector<double> x_values(7, 0.45);
+  auto cycles = mip::find_violated_odd_cycles_for_test(
+    adj, x_values, 1e-6, std::numeric_limits<double>::infinity());
+  ASSERT_FALSE(cycles.empty());
+  bool found_seven = false;
+  for (const auto& cycle : cycles) {
+    if (cycle.size() == 7) {
+      found_seven = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(found_seven);
 }
 
 // Minimal 0-1 single-node-flow relaxation for the flow-cover separator.

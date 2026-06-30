@@ -57,22 +57,10 @@
       "description": "Trace and interpret the Pareto frontier across competing objectives using repeated single-objective cuOpt solves (weighted-sum and ε-constraint)."
     },
     {
-      "name": "cuopt-routing-formulation",
-      "source": "./skills/cuopt-routing-formulation",
-      "skills": "./",
-      "description": "Vehicle routing (VRP, TSP, PDP) — problem types and data requirements. Domain concepts; no API or interface."
-    },
-    {
       "name": "cuopt-routing-api-python",
       "source": "./skills/cuopt-routing-api-python",
       "skills": "./",
       "description": "Vehicle routing (VRP, TSP, PDP) with cuOpt — Python API only. Use when the user is building or solving routing in Python."
-    },
-    {
-      "name": "cuopt-server-common",
-      "source": "./skills/cuopt-server-common",
-      "skills": "./",
-      "description": "cuOpt REST server — what it does and how requests flow. Domain concepts; no deploy or client code."
     },
     {
       "name": "cuopt-server-api-python",

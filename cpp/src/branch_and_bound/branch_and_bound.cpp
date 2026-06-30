@@ -2493,7 +2493,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   omp_atomic_t<bool>* clique_signal = &signal_extend_cliques_;
 
-  if (settings_.clique_cuts != 0 && clique_table_ == nullptr &&
+  if ((settings_.clique_cuts != 0 || settings_.zero_half_cuts != 0) && clique_table_ == nullptr &&
       omp_get_num_threads() >= CUOPT_MIP_CLIQUE_CUTS_REQUIRED_THREAD_COUNT) {
     signal_extend_cliques_.store(false, std::memory_order_release);
     typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances_for_clique{};
@@ -2510,7 +2510,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       user_problem_t<i_t, f_t> problem_copy = original_problem_;
       timer_t timer(std::numeric_limits<double>::infinity());
       mip::find_initial_cliques(
-        problem_copy, tolerances_for_clique, &clique_table_, timer, clique_signal);
+        problem_copy, tolerances_for_clique, clique_table_, timer, clique_signal);
     }
   }
 

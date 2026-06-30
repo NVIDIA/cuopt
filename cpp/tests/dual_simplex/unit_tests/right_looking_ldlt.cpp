@@ -512,6 +512,26 @@ TEST(right_looking_ldlt, indefinite_2x2)
   EXPECT_EQ(result, INDEFINITE_MATRIX_RETURN);
 }
 
+// Test 14b: Cross-only indefinite matrix (zero diagonals, no 1x1 pivot).
+// A = [0, 2; 2, 0] has eigenvalues +2 and -2 (indefinite).
+TEST(right_looking_ldlt, indefinite_cross_only_2x2)
+{
+  const int n               = 2;
+  std::vector<double> dense = {0.0, 2.0, 2.0, 0.0};
+  auto A                    = dense_to_lower_csc(n, dense);
+
+  simplex_solver_settings_t<int, double> settings;
+  std::vector<int> perm;
+  csc_matrix_t<int, double> L(n, n, 1);
+  std::vector<double> D;
+  double work_estimate = 0;
+  double start_time    = tic();
+
+  int result = right_looking_ldlt(A, settings, 1e-12, start_time, perm, L, D, work_estimate);
+
+  EXPECT_EQ(result, INDEFINITE_MATRIX_RETURN);
+}
+
 // Test 15: Larger indefinite matrix (4x4 with mixed eigenvalues).
 // A = [2, 1, 0, 1; 1, 0, 1, 0; 0, 1, 2, -1; 1, 0, -1, -1]
 TEST(right_looking_ldlt, indefinite_4x4)

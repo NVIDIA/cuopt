@@ -2199,6 +2199,13 @@ mps_data_model_to_optimization_problem(
                                               Q_offsets.size());
   }
 
+  // Preserve quadratic constraints.
+  if (data_model.has_quadratic_constraints()) {
+    static_cast<cuopt::mathematical_optimization::optimization_problem_interface_t<i_t, f_t>&>(
+      op_problem)
+      .set_quadratic_constraints(data_model.get_quadratic_constraints());
+  }
+
   return op_problem;
 }
 

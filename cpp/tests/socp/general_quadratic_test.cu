@@ -5,9 +5,12 @@
  */
 /* clang-format on */
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 #include <barrier/translate_soc.hpp>
+#include <cuopt/error.hpp>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 #include <dual_simplex/solve.hpp>
 #include <dual_simplex/sparse_matrix.hpp>
@@ -212,6 +215,90 @@ TEST(general_quadratic, rejects_non_convex)
   EXPECT_THROW(
     (convert_quadratic_constraints_to_second_order_cones<i_t, f_t>(n, qcs, csr_A, user_problem)),
     cuopt::logic_error);
+}
+
+// End-to-end: cross-only indefinite Q (issue #1434). H = [[0, 2]; [2, 0]] has zero diagonals so
+// LDLT returns rank 0 without a negative pivot; must still be rejected as non-convex via
+// solve_qcqp.
+TEST(general_quadratic, rejects_cross_only_indefinite)
+{
+  raft::handle_t handle{};
+  init_handler(&handle);
+
+  // H = [[0, 2]; [2, 0]] from [ 4 x * y ] in LP bracket notation.
+  auto lp = io::read_lp_from_string<i_t, f_t>(R"LP(
+Minimize
+  obj: x + y
+Subject To
+  q0: [ 4 x * y ] <= 0.5
+Bounds
+  -1 <= x <= 1
+  -1 <= y <= 1
+End
+)LP");
+
+  ASSERT_TRUE(lp.has_quadratic_constraints());
+  ASSERT_EQ(lp.get_quadratic_constraints().size(), 1u);
+
+  const i_t n = lp.get_n_variables();
+  const i_t m = lp.get_n_constraints();
+  EXPECT_EQ(n, 2);
+  EXPECT_EQ(m, 0);
+
+  user_problem_t<i_t, f_t> user_problem(&handle);
+  user_problem.num_rows  = m;
+  user_problem.num_cols  = n;
+  user_problem.objective = lp.get_objective_coefficients();
+
+  // Initialize the empty A matrix
+  user_problem.A.m      = m;
+  user_problem.A.n      = n;
+  user_problem.A.nz_max = 0;
+  user_problem.A.reallocate(0);
+  user_problem.A.col_start.assign(n + 1, 0);
+
+  user_problem.rhs.clear();
+  user_problem.row_sense.clear();
+  user_problem.lower          = lp.get_variable_lower_bounds();
+  user_problem.upper          = lp.get_variable_upper_bounds();
+  user_problem.num_range_rows = 0;
+  user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
+
+  const auto& src_qc = lp.get_quadratic_constraints()[0];
+  qc_t qc;
+  qc.constraint_row_index = src_qc.constraint_row_index;
+  qc.constraint_row_name  = src_qc.constraint_row_name;
+  qc.constraint_row_type  = src_qc.constraint_row_type;
+  qc.linear_values        = src_qc.linear_values;
+  qc.linear_indices       = src_qc.linear_indices;
+  qc.rhs_value            = src_qc.rhs_value;
+  qc.rows                 = src_qc.rows;
+  qc.cols                 = src_qc.cols;
+  qc.vals                 = src_qc.vals;
+
+  csr_matrix_t<i_t, f_t> csr_A(m, n, 0);
+  csr_A.m         = m;
+  csr_A.n         = n;
+  csr_A.row_start = {0};
+
+  std::vector<qc_t> qcs = {qc};
+
+  simplex_solver_settings_t<i_t, f_t> settings;
+  settings.barrier          = true;
+  settings.barrier_presolve = true;
+  settings.dualize          = 0;
+
+  try {
+    convert_quadratic_constraints_to_second_order_cones<i_t, f_t>(n, qcs, csr_A, user_problem);
+    csr_A.to_compressed_col(user_problem.A);
+    lp_solution_t<i_t, f_t> solution(user_problem.num_rows, user_problem.num_cols);
+    (void)solve_linear_program_with_barrier(user_problem, settings, solution);
+    FAIL() << "Expected ValidationError for cross-only indefinite Q";
+  } catch (const cuopt::logic_error& e) {
+    EXPECT_EQ(e.get_error_type(), cuopt::error_type_t::ValidationError);
+    EXPECT_THAT(e.what(), testing::HasSubstr("non-convex"));
+    EXPECT_THAT(e.what(), testing::HasSubstr("q0"));
+  }
 }
 
 // Test: rank-deficient PSD Q (e.g., Q = v*v^T with v = [1, 1])

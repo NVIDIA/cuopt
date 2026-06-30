@@ -667,7 +667,7 @@ void print_clique_table(const clique_table_t<i_t, f_t>& clique_table)
 template <typename i_t, typename f_t>
 void find_initial_cliques(user_problem_t<i_t, f_t>& problem,
                           typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances,
-                          std::shared_ptr<clique_table_t<i_t, f_t>>* clique_table_out,
+                          std::shared_ptr<clique_table_t<i_t, f_t>>& clique_table_out,
                           cuopt::timer_t& timer,
                           omp_atomic_t<bool>* signal_extend)
 {
@@ -698,53 +698,48 @@ void find_initial_cliques(user_problem_t<i_t, f_t>& problem,
   t_sort = stage_timer.elapsed_time();
 #endif
   clique_config_t clique_config;
-  std::shared_ptr<clique_table_t<i_t, f_t>> clique_table_shared;
-  clique_table_t<i_t, f_t> clique_table_local(2 * problem.num_cols,
-                                              clique_config.min_clique_size,
-                                              clique_config.max_clique_size_for_extension);
-  clique_table_t<i_t, f_t>* clique_table_ptr = &clique_table_local;
-  if (clique_table_out != nullptr) {
-    clique_table_shared =
-      std::make_shared<clique_table_t<i_t, f_t>>(2 * problem.num_cols,
-                                                 clique_config.min_clique_size,
-                                                 clique_config.max_clique_size_for_extension);
-    clique_table_ptr = clique_table_shared.get();
-  }
-  clique_table_ptr->tolerances             = tolerances;
+  auto clique_table =
+    std::make_shared<clique_table_t<i_t, f_t>>(2 * problem.num_cols,
+                                               clique_config.min_clique_size,
+                                               clique_config.max_clique_size_for_extension);
+  clique_table->tolerances                 = tolerances;
   double time_limit_for_additional_cliques = timer.remaining_time() / 2;
   cuopt::timer_t additional_cliques_timer(time_limit_for_additional_cliques);
   double find_work_estimate = 0.0;
   // Always build base cliques in full; signal_extend only gates the extension phase.
   for (const auto& knapsack_constraint : knapsack_constraints) {
     if (timer.check_time_limit()) { break; }
-    find_cliques_from_constraint(knapsack_constraint, *clique_table_ptr, additional_cliques_timer);
+    find_cliques_from_constraint(knapsack_constraint, *clique_table, additional_cliques_timer);
     find_work_estimate += knapsack_constraint.entries.size();
   }
 #ifdef DEBUG_CLIQUE_TABLE
   t_find = stage_timer.elapsed_time();
 #endif
   CUOPT_LOG_DEBUG("Number of cliques: %d, additional cliques: %d, find_work=%.0f",
-                  clique_table_ptr->first.size(),
-                  clique_table_ptr->addtl_cliques.size(),
+                  clique_table->first.size(),
+                  clique_table->addtl_cliques.size(),
                   find_work_estimate);
-  remove_small_cliques(*clique_table_ptr, timer);
+  remove_small_cliques(*clique_table, timer);
 #ifdef DEBUG_CLIQUE_TABLE
   t_small = stage_timer.elapsed_time();
 #endif
-  fill_var_clique_maps(*clique_table_ptr);
+  fill_var_clique_maps(*clique_table);
 #ifdef DEBUG_CLIQUE_TABLE
   t_maps = stage_timer.elapsed_time();
 #endif
-  if (clique_table_out != nullptr) { *clique_table_out = std::move(clique_table_shared); }
+  // Publish the base table so cut generation can start using it; the extension
+  // phase below keeps mutating *clique_table, so the consumer must signal this
+  // task to stop and join it (taskwait) before reading the table.
+  clique_table_out       = clique_table;
   double extend_work     = 0.0;
   i_t n_extended_cliques = extend_cliques(knapsack_constraints,
-                                          *clique_table_ptr,
+                                          *clique_table,
                                           timer,
                                           &extend_work,
                                           clique_config.min_extend_work,
                                           clique_config.max_extend_work,
                                           signal_extend);
-  if (n_extended_cliques > 0) { fill_var_clique_maps(*clique_table_ptr); }
+  if (n_extended_cliques > 0) { fill_var_clique_maps(*clique_table); }
 #ifdef DEBUG_CLIQUE_TABLE
   t_extend = stage_timer.elapsed_time();
   CUOPT_LOG_DEBUG(
@@ -767,7 +762,7 @@ void find_initial_cliques(user_problem_t<i_t, f_t>& problem,
   template void find_initial_cliques<int, F_TYPE>(                                             \
     user_problem_t<int, F_TYPE> & problem,                                                     \
     typename mip_solver_settings_t<int, F_TYPE>::tolerances_t tolerances,                      \
-    std::shared_ptr<clique_table_t<int, F_TYPE>> * clique_table_out,                           \
+    std::shared_ptr<clique_table_t<int, F_TYPE>> & clique_table_out,                           \
     cuopt::timer_t & timer,                                                                    \
     omp_atomic_t<bool> * signal_extend);                                                       \
   template void build_clique_table<int, F_TYPE>(                                               \

@@ -44,8 +44,10 @@ static simplex::user_problem_t<i_t, f_t> cuopt_problem_to_user_problem(
   csr_A.x         = std::move(A_values);
   csr_A.j         = std::move(A_indices);
   csr_A.row_start = std::move(A_offsets);
-
-  csr_A.to_compressed_col(user_problem.A);
+  if (m == 0) {
+    csr_A.row_start.resize(1);
+    csr_A.row_start[0] = 0;
+  }
 
   user_problem.rhs.resize(m);
   user_problem.row_sense.resize(m);
@@ -95,6 +97,13 @@ static simplex::user_problem_t<i_t, f_t> cuopt_problem_to_user_problem(
   user_problem.Q_offsets = problem.get_quadratic_objective_offsets();
   user_problem.Q_indices = problem.get_quadratic_objective_indices();
   user_problem.Q_values  = problem.get_quadratic_objective_values();
+
+  if (problem.has_quadratic_constraints()) {
+    barrier::convert_quadratic_constraints_to_second_order_cones<i_t, f_t>(
+      n, problem.get_quadratic_constraints(), csr_A, user_problem);
+  }
+
+  csr_A.to_compressed_col(user_problem.A);
 
   return user_problem;
 }

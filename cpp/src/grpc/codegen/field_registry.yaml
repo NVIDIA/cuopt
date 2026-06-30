@@ -682,6 +682,10 @@ mip_settings:
       field_num: 22
       type: int32
       optional: true
+  - zero_half_cuts:
+      field_num: 52
+      type: int32
+      optional: true
   - implied_bound_cuts:
       field_num: 31
       type: int32
