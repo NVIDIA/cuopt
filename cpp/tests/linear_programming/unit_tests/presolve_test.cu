@@ -509,13 +509,12 @@ TEST_P(dual_crush_round_trip, kkt_check)
 
   const auto& param = GetParam();
   auto path         = make_path_absolute(param.mps_path);
-  auto mps          = cuopt::linear_programming::io::read_mps<int, double>(path, false);
-  auto op_problem =
-    cuopt::linear_programming::mps_data_model_to_optimization_problem<int, double>(&handle_, mps);
+  auto mps          = cuopt::mathematical_optimization::io::read_mps<int, double>(path, false);
+  auto op_problem   = mps_data_model_to_optimization_problem(&handle_, mps);
 
   // Step 1: Presolve with a single presolver instance (same one used for crush later)
-  detail::sort_csr(op_problem);
-  detail::third_party_presolve_t<int, double> presolver;
+  mip::sort_csr(op_problem);
+  mip::third_party_presolve_t<int, double> presolver;
   auto result = presolver.apply(op_problem,
                                 problem_category_t::LP,
                                 presolver_t::Papilo,
@@ -523,8 +522,8 @@ TEST_P(dual_crush_round_trip, kkt_check)
                                 /*abs_tol=*/1e-6,
                                 /*rel_tol=*/1e-9,
                                 /*time_limit=*/60.0);
-  ASSERT_TRUE(result.status == detail::third_party_presolve_status_t::REDUCED ||
-              result.status == detail::third_party_presolve_status_t::UNCHANGED);
+  ASSERT_TRUE(result.status == mip::third_party_presolve_status_t::REDUCED ||
+              result.status == mip::third_party_presolve_status_t::UNCHANGED);
 
   // Step 2: Solve the reduced problem (no presolve, we already did it)
   auto settings           = pdlp_solver_settings_t<int, double>{};
@@ -532,13 +531,13 @@ TEST_P(dual_crush_round_trip, kkt_check)
   settings.dual_postsolve = true;
   settings.time_limit     = 60.0;
   if (param.use_pdlp) {
-    settings.method                               = cuopt::linear_programming::method_t::PDLP;
-    settings.tolerances.absolute_dual_tolerance   = 1e-7;
-    settings.tolerances.relative_dual_tolerance   = 0;
+    settings.method                             = cuopt::mathematical_optimization::method_t::PDLP;
+    settings.tolerances.absolute_dual_tolerance = 1e-7;
+    settings.tolerances.relative_dual_tolerance = 0;
     settings.tolerances.absolute_primal_tolerance = 1e-7;
     settings.tolerances.relative_primal_tolerance = 0;
   } else {
-    settings.method = cuopt::linear_programming::method_t::DualSimplex;
+    settings.method = cuopt::mathematical_optimization::method_t::DualSimplex;
   }
 
   auto reduced_solution = solve_lp(result.reduced_problem, settings);
@@ -766,14 +765,13 @@ TEST_P(crush_warmstart, round_trip)
   const raft::handle_t handle_{};
   auto stream = handle_.get_stream();
 
-  auto path = make_path_absolute(GetParam());
-  auto mps  = cuopt::linear_programming::io::read_mps<int, double>(path, false);
-  auto op_problem =
-    cuopt::linear_programming::mps_data_model_to_optimization_problem<int, double>(&handle_, mps);
+  auto path       = make_path_absolute(GetParam());
+  auto mps        = cuopt::mathematical_optimization::io::read_mps<int, double>(path, false);
+  auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps);
 
   // Step 1: Presolve
-  detail::sort_csr(op_problem);
-  detail::third_party_presolve_t<int, double> presolver;
+  mip::sort_csr(op_problem);
+  mip::third_party_presolve_t<int, double> presolver;
   auto result = presolver.apply(op_problem,
                                 problem_category_t::LP,
                                 presolver_t::Papilo,
@@ -781,8 +779,8 @@ TEST_P(crush_warmstart, round_trip)
                                 /*abs_tol=*/1e-6,
                                 /*rel_tol=*/1e-9,
                                 /*time_limit=*/60.0);
-  ASSERT_TRUE(result.status == detail::third_party_presolve_status_t::REDUCED ||
-              result.status == detail::third_party_presolve_status_t::UNCHANGED);
+  ASSERT_TRUE(result.status == mip::third_party_presolve_status_t::REDUCED ||
+              result.status == mip::third_party_presolve_status_t::UNCHANGED);
 
   int n_red_vars = result.reduced_problem.get_n_variables();
   int n_red_cons = result.reduced_problem.get_n_constraints();
@@ -791,7 +789,7 @@ TEST_P(crush_warmstart, round_trip)
   auto settings           = pdlp_solver_settings_t<int, double>{};
   settings.presolver      = presolver_t::None;
   settings.dual_postsolve = true;
-  settings.method         = cuopt::linear_programming::method_t::PDLP;
+  settings.method         = cuopt::mathematical_optimization::method_t::PDLP;
   settings.time_limit     = 60.0;
 
   auto cold_solution = solve_lp(result.reduced_problem, settings);

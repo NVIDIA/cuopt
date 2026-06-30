@@ -888,7 +888,7 @@ template <typename i_t, typename f_t>
 void third_party_presolve_t<i_t, f_t>::crush_primal_solution(
   const std::vector<f_t>& original_primal, std::vector<f_t>& reduced_primal) const
 {
-  cuopt_expects(presolver_ == cuopt::linear_programming::presolver_t::Papilo,
+  cuopt_expects(presolver_ == cuopt::mathematical_optimization::presolver_t::Papilo,
                 error_type_t::RuntimeError,
                 "Primal crushing is only supported for PaPILO presolve");
   cuopt_assert(papilo_post_solve_storage_ != nullptr, "No postsolve storage available");
@@ -930,7 +930,7 @@ void third_party_presolve_t<i_t, f_t>::crush_primal_dual_solution(
   const std::vector<i_t>& A_indices,
   const std::vector<i_t>& A_offsets) const
 {
-  cuopt_expects(presolver_ == cuopt::linear_programming::presolver_t::Papilo,
+  cuopt_expects(presolver_ == cuopt::mathematical_optimization::presolver_t::Papilo,
                 error_type_t::RuntimeError,
                 "Crushing is only supported for PaPILO presolve");
   cuopt_assert(papilo_post_solve_storage_ != nullptr, "No postsolve storage available");
