@@ -23,24 +23,13 @@ Confirm problem type and formulation (variables, objective, constraints, variabl
 
 This skill is **CLI only** (MPS or LP file input).
 
-## Input formats
-
-`cuopt_cli` dispatches the parser automatically by file extension (case-insensitive):
-
-| Extension | Parser |
-|-----------|--------|
-| `.lp`, `.lp.gz`, `.lp.bz2` | LP format |
-| `.mps`, `.qps` and their `.gz` / `.bz2` variants | MPS format (QPS = quadratic MPS) |
-
-Any other extension is rejected. The `.gz` and `.bz2` compressed variants are read transparently.
-
 ## Basic usage
 
 ```bash
 cuopt_cli <problem-file> [options]
 ```
 
-The first positional argument is the input file; format is chosen by its extension (see above), and `.gz` / `.bz2` files are read transparently.
+The first positional argument is the input file. The format is chosen automatically from the extension — MPS, QPS, and LP files are all accepted (including `.gz` / `.bz2` compressed variants); run `cuopt_cli --help` for the exact list of supported extensions.
 
 ## Options
 
