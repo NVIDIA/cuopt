@@ -175,11 +175,9 @@ void expect_distributed_matches_base(raft::handle_t const& handle,
   auto path                                 = make_path_absolute(mps_rel_path);
   io::mps_data_model_t<int, double> problem = io::read_mps<int, double>(path, fixed_mps_format);
 
-  // Shared settings: PDLP, no presolve (distributed requires presolver == None, so the
-  // base run must match to keep the two problems identical).
+  // Shared settings: method is PDLP
   pdlp_solver_settings_t<int, double> base_settings{};
   base_settings.method    = method_t::PDLP;
-  base_settings.presolver = presolver_t::None;
 
   // ----- base: single-GPU PDLP (materialize the full problem on one GPU) -----
   auto base_op = mps_data_model_to_optimization_problem<int, double>(&handle, problem);
