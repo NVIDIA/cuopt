@@ -222,6 +222,24 @@ ObjSenseType convert_to_obj_sense(const std::string& str)
   }
 }
 
+RowType convert_to_row_type(char c)
+{
+  switch (c) {
+    case 'N': return Objective;
+    case 'L': return LesserThanOrEqual;
+    case 'G': return GreaterThanOrEqual;
+    case 'E': return Equality;
+    default:
+      mps_parser_expects(
+        false,
+        error_type_t::ValidationError,
+        "Invalid row type '%c' (0x%02x) found in ROWS section; expected N, L, G, or E",
+        (c >= 0x20 && c < 0x7f) ? c : '?',
+        static_cast<unsigned char>(c));
+      return Objective;  // unreachable; mps_parser_expects throws
+  }
+}
+
 template <typename i_t, typename f_t>
 void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
 {
@@ -785,13 +803,13 @@ void mps_parser_t<i_t, f_t>::parse_rows(std::string_view line)
   std::string name;
 
   if (fixed_mps_format) {
-    type = static_cast<RowType>(line[1]);
+    type = convert_to_row_type(line[1]);
     name = trim(line.substr(4, 8));  // max of 8 chars allowed
   } else {
     std::stringstream ss{std::string(line)};
     char read_word;
     ss >> read_word;
-    type = static_cast<RowType>(read_word);
+    type = convert_to_row_type(read_word);
 
     ss >> name;
   }
