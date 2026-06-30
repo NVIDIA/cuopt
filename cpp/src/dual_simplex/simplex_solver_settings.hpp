@@ -10,7 +10,7 @@
 #include <cuopt/mathematical_optimization/mip/diving_hyper_params.hpp>
 
 #include <dual_simplex/logger.hpp>
-#include <dual_simplex/types.hpp>
+#include <math_optimization/types.hpp>
 
 #include <omp.h>
 #include <algorithm>

@@ -6,12 +6,12 @@
 /* clang-format on */
 #pragma once
 
-#include <barrier/dense_vector.hpp>
 #include <barrier/device_sparse_matrix.cuh>
+#include <linear_algebra/dense_vector.hpp>
 
 #include <dual_simplex/simplex_solver_settings.hpp>
-#include <dual_simplex/sparse_matrix.hpp>
-#include <dual_simplex/tic_toc.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
+#include <math_optimization/tic_toc.hpp>
 
 #include <cuda_runtime.h>
 #include <utilities/driver_helpers.cuh>
@@ -26,8 +26,8 @@ template <typename i_t, typename f_t>
 class sparse_cholesky_base_t {
  public:
   virtual ~sparse_cholesky_base_t()                                                 = default;
-  virtual i_t analyze(const simplex::csc_matrix_t<i_t, f_t>& A_in)                  = 0;
-  virtual i_t factorize(const simplex::csc_matrix_t<i_t, f_t>& A_in)                = 0;
+  virtual i_t analyze(const csc_matrix_t<i_t, f_t>& A_in)                           = 0;
+  virtual i_t factorize(const csc_matrix_t<i_t, f_t>& A_in)                         = 0;
   virtual i_t analyze(device_csr_matrix_t<i_t, f_t>& A_in)                          = 0;
   virtual i_t factorize(device_csr_matrix_t<i_t, f_t>& A_in)                        = 0;
   virtual i_t solve(const dense_vector_t<i_t, f_t>& b, dense_vector_t<i_t, f_t>& x) = 0;
@@ -390,8 +390,8 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
 
 #ifdef WRITE_MATRIX_MARKET
     {
-      simplex::csr_matrix_t<i_t, f_t> Arow_host = Arow.to_host(Arow.row_start.stream());
-      simplex::csc_matrix_t<i_t, f_t> A_col(Arow_host.m, Arow_host.n, 1);
+      csr_matrix_t<i_t, f_t> Arow_host = Arow.to_host(Arow.row_start.stream());
+      csc_matrix_t<i_t, f_t> A_col(Arow_host.m, Arow_host.n, 1);
       Arow_host.to_compressed_col(A_col);
       FILE* fid = fopen("A_to_factorize.mtx", "w");
       settings_.log.printf("writing matrix matrix\n");
@@ -473,7 +473,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     }
 
     // Perform symbolic analysis
-    f_t start_symbolic = simplex::tic();
+    f_t start_symbolic = tic();
     f_t start_symbolic_factor;
 
     {
@@ -490,9 +490,9 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
           status);
         return -1;
       }
-      f_t reordering_time = simplex::toc(start_symbolic);
+      f_t reordering_time = toc(start_symbolic);
       settings_.log.printf("Reordering time             : %.2fs\n", reordering_time);
-      start_symbolic_factor = simplex::tic();
+      start_symbolic_factor = tic();
 
       status = cudssExecute(
         handle, CUDSS_PHASE_SYMBOLIC_FACTORIZATION, solverConfig, solverData, A, cudss_x, cudss_b);
@@ -508,9 +508,9 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       }
     }
     RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
-    f_t symbolic_factorization_time = simplex::toc(start_symbolic_factor);
+    f_t symbolic_factorization_time = toc(start_symbolic_factor);
     settings_.log.printf("Symbolic factorization time : %.2fs\n", symbolic_factorization_time);
-    settings_.log.printf("Total symbolic time         : %.2fs\n", simplex::toc(start_symbolic));
+    settings_.log.printf("Total symbolic time         : %.2fs\n", toc(start_symbolic));
     int64_t lu_nz       = 0;
     size_t size_written = 0;
     CUDSS_CALL_AND_CHECK(
@@ -532,8 +532,8 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
 // #define PRINT_MATRIX_NORM
 #ifdef PRINT_MATRIX_NORM
     cudaStreamSynchronize(stream);
-    simplex::csr_matrix_t<i_t, f_t> Arow_host = Arow.to_host(Arow.row_start.stream());
-    simplex::csc_matrix_t<i_t, f_t> A_col(Arow_host.m, Arow_host.n, 1);
+    csr_matrix_t<i_t, f_t> Arow_host = Arow.to_host(Arow.row_start.stream());
+    csc_matrix_t<i_t, f_t> A_col(Arow_host.m, Arow_host.n, 1);
     Arow_host.to_compressed_col(A_col);
     settings_.log.printf(
       "before factorize || A to factor|| = %.16e hash: %zu\n", A_col.norm1(), A_col.hash());
@@ -551,7 +551,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     CUDSS_CALL_AND_CHECK(
       cudssMatrixSetValues(A, Arow.x.data()), status, "cudssMatrixSetValues for A");
 
-    f_t start_numeric = simplex::tic();
+    f_t start_numeric = tic();
     status            = cudssExecute(
       handle, CUDSS_PHASE_FACTORIZATION, solverConfig, solverData, A, cudss_x, cudss_b);
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
@@ -569,7 +569,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
 #endif
 
-    f_t numeric_time = simplex::toc(start_numeric);
+    f_t numeric_time = toc(start_numeric);
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
       return CONCURRENT_HALT_RETURN;
     }
@@ -599,9 +599,9 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     return 0;
   }
 
-  i_t analyze(const simplex::csc_matrix_t<i_t, f_t>& A_in) override
+  i_t analyze(const csc_matrix_t<i_t, f_t>& A_in) override
   {
-    simplex::csr_matrix_t<i_t, f_t> Arow(A_in.n, A_in.m, A_in.col_start[A_in.n]);
+    csr_matrix_t<i_t, f_t> Arow(A_in.n, A_in.m, A_in.col_start[A_in.n]);
 
 #ifdef WRITE_MATRIX_MARKET
     FILE* fid = fopen("A.mtx", "w");
@@ -692,18 +692,18 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
       return CONCURRENT_HALT_RETURN;
     }
-    f_t start_analysis = simplex::tic();
+    f_t start_analysis = tic();
     CUDSS_CALL_AND_CHECK(
       cudssExecute(handle, CUDSS_PHASE_REORDERING, solverConfig, solverData, A, cudss_x, cudss_b),
       status,
       "cudssExecute for reordering");
 
-    f_t reorder_time = simplex::toc(start_analysis);
+    f_t reorder_time = toc(start_analysis);
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
       return CONCURRENT_HALT_RETURN;
     }
 
-    f_t start_symbolic = simplex::tic();
+    f_t start_symbolic = tic();
 
     CUDSS_CALL_AND_CHECK(
       cudssExecute(
@@ -711,8 +711,8 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
       status,
       "cudssExecute for symbolic factorization");
 
-    f_t symbolic_time = simplex::toc(start_symbolic);
-    f_t analysis_time = simplex::toc(start_analysis);
+    f_t symbolic_time = toc(start_symbolic);
+    f_t analysis_time = toc(start_analysis);
     settings_.log.printf("Symbolic factorization time : %.2fs\n", symbolic_time);
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
       RAFT_CUDA_TRY(cudaStreamSynchronize(stream));
@@ -733,9 +733,9 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
 
     return 0;
   }
-  i_t factorize(const simplex::csc_matrix_t<i_t, f_t>& A_in) override
+  i_t factorize(const csc_matrix_t<i_t, f_t>& A_in) override
   {
-    simplex::csr_matrix_t<i_t, f_t> Arow(A_in.n, A_in.m, A_in.col_start[A_in.n]);
+    csr_matrix_t<i_t, f_t> Arow(A_in.n, A_in.m, A_in.col_start[A_in.n]);
     A_in.to_compressed_row(Arow);
 
     if (A_in.n != n) { settings_.log.printf("Error A in n %d != size %d\n", A_in.n, n); }
@@ -757,14 +757,14 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     CUDSS_CALL_AND_CHECK(
       cudssMatrixSetValues(A, csr_values_d), status, "cudssMatrixSetValues for A");
 
-    f_t start_numeric = simplex::tic();
+    f_t start_numeric = tic();
     CUDSS_CALL_AND_CHECK(
       cudssExecute(
         handle, CUDSS_PHASE_FACTORIZATION, solverConfig, solverData, A, cudss_x, cudss_b),
       status,
       "cudssExecute for factorization");
 
-    f_t numeric_time = simplex::toc(start_numeric);
+    f_t numeric_time = toc(start_numeric);
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) {
       return CONCURRENT_HALT_RETURN;
     }
@@ -851,9 +851,9 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     raft::copy(x_host.data(), x.data(), n, stream);
     cudaStreamSynchronize(stream);
     settings_.log.printf("RHS norm %.16e, hash: %zu, Solution norm %.16e, hash: %zu\n",
-                         simplex::vector_norm2<i_t, f_t>(b_host),
+                         vector_norm2<i_t, f_t>(b_host),
                          compute_hash(b_host),
-                         simplex::vector_norm2<i_t, f_t>(x_host),
+                         vector_norm2<i_t, f_t>(x_host),
                          compute_hash(x_host));
 #endif
 

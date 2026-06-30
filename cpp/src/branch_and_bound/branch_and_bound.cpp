@@ -26,8 +26,8 @@
 #include <dual_simplex/phase2.hpp>
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/random.hpp>
-#include <dual_simplex/tic_toc.hpp>
 #include <dual_simplex/user_problem.hpp>
+#include <math_optimization/tic_toc.hpp>
 
 #include <raft/core/nvtx.hpp>
 #include <utilities/circular_deque.hpp>
@@ -52,26 +52,20 @@ using simplex::compute_objective;
 using simplex::compute_user_objective;
 using simplex::crossover_status_t;
 using simplex::crush_primal_solution;
-using simplex::csr_matrix_t;
 using simplex::decompress_vstatus;
 using simplex::dual_phase2_with_advanced_basis;
 using simplex::dual_status_t;
-using simplex::inf;
 using simplex::logger_t;
 using simplex::lp_problem_t;
 using simplex::lp_solution_t;
 using simplex::lp_status_t;
-using simplex::matrix_vector_multiply;
 using simplex::mip_solution_t;
 using simplex::simplex_solver_settings_t;
 using simplex::solve_linear_program_with_advanced_basis;
-using simplex::tic;
-using simplex::toc;
 using simplex::uncrush_primal_solution;
 using simplex::user_problem_t;
 using simplex::variable_status_t;
 using simplex::variable_type_t;
-using simplex::vector_norm_inf;
 
 namespace {
 

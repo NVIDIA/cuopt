@@ -6,10 +6,10 @@
 /* clang-format on */
 
 // #include <dual_simplex/dense_vector.hpp>
-#include <dual_simplex/sparse_matrix.hpp>
-#include <dual_simplex/sparse_vector.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
+#include <linear_algebra/sparse_vector.hpp>
 
-#include <dual_simplex/types.hpp>
+#include <math_optimization/types.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 
 // #include <thrust/for_each.h>
@@ -25,7 +25,7 @@
 #include <cmath>
 #include <cstdio>
 
-namespace cuopt::mathematical_optimization::simplex {
+namespace cuopt::mathematical_optimization {
 
 template <typename i_t, typename f_t>
 void csc_matrix_t<i_t, f_t>::reallocate(i_t new_nz)
@@ -1006,4 +1006,4 @@ matrix_transpose_vector_multiply<int, double, std::allocator<double>, std::alloc
 
 #endif
 
-}  // namespace cuopt::mathematical_optimization::simplex
+}  // namespace cuopt::mathematical_optimization

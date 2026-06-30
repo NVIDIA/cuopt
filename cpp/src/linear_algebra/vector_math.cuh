@@ -12,12 +12,19 @@
 #include <raft/core/copy.hpp>
 #include <raft/core/device_span.hpp>
 #include <raft/core/host_span.hpp>
+#include <raft/util/cuda_rt_essentials.hpp>
 
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
+#include <rmm/exec_policy.hpp>
 
+#include <thrust/execution_policy.h>
+#include <thrust/functional.h>
+#include <thrust/transform_reduce.h>
+
+#include <cmath>
 #include <vector>
-namespace cuopt::mathematical_optimization::simplex {
+namespace cuopt::mathematical_optimization {
 
 struct norm_inf_max {
   template <typename f_t>
@@ -90,4 +97,36 @@ f_t vector_norm_inf(raft::host_span<const f_t> x, rmm::cuda_stream_view stream_v
   return device_vector_norm_inf<i_t, f_t>(d_x, stream_view);
 }
 
-}  // namespace cuopt::mathematical_optimization::simplex
+template <typename f_t>
+f_t vector_norm_inf(const rmm::device_uvector<f_t>& x)
+{
+  auto begin   = x.data();
+  auto end     = x.data() + x.size();
+  auto max_abs = thrust::transform_reduce(
+    rmm::exec_policy(x.stream()),
+    begin,
+    end,
+    [] __host__ __device__(f_t val) { return abs(val); },
+    static_cast<f_t>(0),
+    thrust::maximum<f_t>{});
+  RAFT_CHECK_CUDA(x.stream());
+  return max_abs;
+}
+
+template <typename f_t>
+f_t vector_norm2(const rmm::device_uvector<f_t>& x)
+{
+  auto begin          = x.data();
+  auto end            = x.data() + x.size();
+  auto sum_of_squares = thrust::transform_reduce(
+    rmm::exec_policy(x.stream()),
+    begin,
+    end,
+    [] __host__ __device__(f_t val) { return val * val; },
+    f_t(0),
+    thrust::plus<f_t>{});
+  RAFT_CHECK_CUDA(x.stream());
+  return std::sqrt(sum_of_squares);
+}
+
+}  // namespace cuopt::mathematical_optimization

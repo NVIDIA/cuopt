@@ -8,7 +8,7 @@
 #pragma once
 
 #include <dual_simplex/simplex_solver_settings.hpp>
-#include <dual_simplex/sparse_matrix.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
 
 #include <optional>
 

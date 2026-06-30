@@ -7,15 +7,16 @@
 
 #pragma once
 
-#include <mip_heuristics/problem/problem.cuh>
+#include <cuopt/mathematical_optimization/optimization_problem.hpp>
 
 #include <cub/cub.cuh>
 
+#include <raft/core/nvtx.hpp>
 #include <rmm/device_uvector.hpp>
 
 namespace cuopt {
 
-namespace mathematical_optimization::mip {
+namespace mathematical_optimization {
 
 template <typename i_t, typename f_t>
 void sort_csr(optimization_problem_t<i_t, f_t>& op_problem)
@@ -53,5 +54,5 @@ void sort_csr(optimization_problem_t<i_t, f_t>& op_problem)
   RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view));
 }
 
-}  // namespace mathematical_optimization::mip
+}  // namespace mathematical_optimization
 }  // namespace cuopt
