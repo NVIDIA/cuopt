@@ -37,36 +37,22 @@ Any other extension is rejected. The `.gz` and `.bz2` compressed variants are re
 ## Basic usage
 
 ```bash
-# Solve LP or MILP from an MPS file
-cuopt_cli problem.mps
-
-# Solve from an LP-format file (dispatched by the .lp extension)
-cuopt_cli problem.lp
-
-# Compressed input is read transparently
-cuopt_cli problem.mps.gz
-
-# With options
-cuopt_cli problem.mps --time-limit 120 --mip-relative-tolerance 0.01
+cuopt_cli <problem-file> [options]
 ```
 
-## Common options
+The first positional argument is the input file; format is chosen by its extension (see above), and `.gz` / `.bz2` files are read transparently.
 
-```bash
-cuopt_cli --help
+## Options
 
-# Time limit (seconds)
-cuopt_cli problem.mps --time-limit 120
+**`cuopt_cli --help` is the authoritative list — don't work from a hard-coded subset.** The CLI exposes every solver setting as a flag, generated from the parameter list at runtime: take any parameter documented in the cuOpt settings reference and replace underscores with hyphens (`time_limit` → `--time-limit`, `mip_relative_gap` → `--mip-relative-gap`). So if a parameter is documented, the flag exists; `--help` and the [solver-settings docs](https://docs.nvidia.com/cuopt/user-guide/latest/) are the sources of truth for names, meanings, and defaults.
 
-# MIP gap tolerance (stop when within X% of optimal)
-cuopt_cli problem.mps --mip-relative-tolerance 0.001
+A few options are CLI-specific (not solver parameters) and worth knowing because you wouldn't derive them from a parameter name:
 
-# MIP absolute tolerance
-cuopt_cli problem.mps --mip-absolute-tolerance 0.0001
+- `--params-file <file>` — supply many parameters from a `key = value` config file instead of repeating flags.
+- `--relaxation` — solve the continuous relaxation of a MILP (drop integrality).
+- `--initial-solution <file>` — warm-start from a solution file.
 
-# Presolve, iteration limit, method
-cuopt_cli problem.mps --presolve --iteration-limit 10000 --method 1
-```
+Run `cuopt_cli --help` for the complete, current set.
 
 ## Authoring input files
 
