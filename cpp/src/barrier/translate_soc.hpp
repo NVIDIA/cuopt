@@ -12,9 +12,9 @@
 
 #include <dual_simplex/right_looking_lu.hpp>
 #include <dual_simplex/solution.hpp>
-#include <dual_simplex/sparse_matrix.hpp>
-#include <dual_simplex/tic_toc.hpp>
 #include <dual_simplex/user_problem.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
+#include <math_optimization/tic_toc.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -56,7 +56,7 @@ void convert_quadratic_constraints_to_second_order_cones(
   i_t n,
   const std::vector<typename optimization_problem_interface_t<i_t, f_t>::quadratic_constraint_t>&
     qcs,
-  simplex::csr_matrix_t<i_t, f_t>& csr_A,
+  csr_matrix_t<i_t, f_t>& csr_A,
   simplex::user_problem_t<i_t, f_t>& user_problem)
 {
   cuopt_expects(!qcs.empty(),
@@ -624,7 +624,7 @@ void convert_quadratic_constraints_to_second_order_cones(
         }
       }
 
-      simplex::csc_matrix_t<i_t, f_t> H_csc(n_local, n_local, h_nnz);
+      csc_matrix_t<i_t, f_t> H_csc(n_local, n_local, h_nnz);
       {
         i_t p = 0;
         for (i_t j = 0; j < n_local; j++) {
@@ -644,10 +644,10 @@ void convert_quadratic_constraints_to_second_order_cones(
       // Step 2: Factorize H = P * L * D * L^T * P^T
       simplex::simplex_solver_settings_t<i_t, f_t> ldlt_settings;
       std::vector<i_t> ldlt_perm;
-      simplex::csc_matrix_t<i_t, f_t> L_factor(n, n, 1);
+      csc_matrix_t<i_t, f_t> L_factor(n, n, 1);
       std::vector<f_t> D_factor;
       f_t ldlt_work  = 0;
-      f_t ldlt_start = simplex::tic();
+      f_t ldlt_start = tic();
 
       i_t rank = simplex::right_looking_ldlt(
         H_csc, ldlt_settings, f_t(1e-12), ldlt_start, ldlt_perm, L_factor, D_factor, ldlt_work);
@@ -712,7 +712,7 @@ void convert_quadratic_constraints_to_second_order_cones(
       user_problem.row_sense.resize(m_before + n_new_rows);
       if (!user_problem.row_names.empty()) { user_problem.row_names.resize(m_before + n_new_rows); }
 
-      simplex::sparse_vector_t<i_t, f_t> eq_row;
+      sparse_vector_t<i_t, f_t> eq_row;
       eq_row.n = csr_A.n;
 
       // y-linking rows: y_k - sqrt(D[k]) * [row k of L^T P] * x = 0
@@ -843,7 +843,7 @@ void convert_quadratic_constraints_to_second_order_cones(
     if (!user_problem.row_names.empty()) { user_problem.row_names.resize(m_aug); }
 
     csr_A.n = std::max(csr_A.n, n_aug);
-    simplex::sparse_vector_t<i_t, f_t> eq_row;
+    sparse_vector_t<i_t, f_t> eq_row;
     eq_row.n = csr_A.n;
 
     for (size_t qc_i = 0; qc_i < qcs.size(); ++qc_i) {
@@ -951,7 +951,7 @@ void convert_quadratic_constraints_to_second_order_cones(
 
     csr_A.n = n_prob;
 
-    simplex::sparse_vector_t<i_t, f_t> eq_row;
+    sparse_vector_t<i_t, f_t> eq_row;
     size_t ri      = 0;
     i_t slack_base = n_old;
     i_t row_idx    = m_old;
@@ -1090,7 +1090,7 @@ void convert_quadratic_constraints_to_second_order_cones(
       if (!user_problem.row_names.empty()) { user_problem.row_names.resize(m_new); }
 
       csr_A.n = n_new;
-      simplex::sparse_vector_t<i_t, f_t> eq_row;
+      sparse_vector_t<i_t, f_t> eq_row;
       eq_row.n    = n_new;
       i_t row_idx = m_old;
       for (const auto& [alias, original] : cone_alias_pairs) {
@@ -1173,7 +1173,7 @@ void convert_quadratic_constraints_to_second_order_cones(
       if (!user_problem.row_names.empty()) { user_problem.row_names.resize(m_new); }
 
       csr_A.n = n_new;
-      simplex::sparse_vector_t<i_t, f_t> eq_row;
+      sparse_vector_t<i_t, f_t> eq_row;
       eq_row.n    = n_new;
       i_t row_idx = m_old;
       for (const auto& [alias, original] : bound_split_pairs) {

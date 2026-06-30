@@ -9,9 +9,9 @@
 
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/solution.hpp>
-#include <dual_simplex/sparse_matrix.hpp>
-#include <dual_simplex/types.hpp>
 #include <dual_simplex/user_problem.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
+#include <math_optimization/types.hpp>
 
 #include <fstream>
 #include <iomanip>

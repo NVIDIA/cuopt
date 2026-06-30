@@ -9,7 +9,7 @@
 #include <cuts/rational.hpp>
 
 #include <dual_simplex/basis_solves.hpp>
-#include <dual_simplex/tic_toc.hpp>
+#include <math_optimization/tic_toc.hpp>
 #include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
 #include <utilities/logger.hpp>
 #include <utilities/macros.cuh>
@@ -23,7 +23,7 @@
 #include <tuple>
 #include <unordered_set>
 
-#include <barrier/dense_matrix.hpp>
+#include <linear_algebra/dense_matrix.hpp>
 
 #include <numeric>
 #include <queue>
@@ -31,22 +31,12 @@
 namespace cuopt::mathematical_optimization::mip {
 
 using simplex::basis_update_mpf_t;
-using simplex::csc_matrix_t;
-using simplex::csr_matrix_t;
 using simplex::form_b;
-using simplex::inf;
 using simplex::lp_problem_t;
 using simplex::lp_solution_t;
-using simplex::matrix_vector_multiply;
 using simplex::simplex_solver_settings_t;
-using simplex::sparse_dot;
-using simplex::sparse_vector_t;
-using simplex::tic;
-using simplex::toc;
 using simplex::variable_status_t;
 using simplex::variable_type_t;
-using simplex::vector_norm2;
-using simplex::vector_norm_inf;
 
 namespace {
 
@@ -2961,8 +2951,8 @@ f_t knapsack_generation_t<i_t, f_t>::solve_knapsack_problem(const std::vector<f_
   solution.assign(n, 0.0);
 
   // dp(j, v) = minimum weight using first j items to get value v
-  barrier::dense_matrix_t<i_t, i_t> dp(n + 1, sum_value + 1, INT_INF);
-  barrier::dense_matrix_t<i_t, uint8_t> take(n + 1, sum_value + 1, 0);
+  dense_matrix_t<i_t, i_t> dp(n + 1, sum_value + 1, INT_INF);
+  dense_matrix_t<i_t, uint8_t> take(n + 1, sum_value + 1, 0);
   dp(0, 0) = 0;
 
   // 4. Dynamic programming
@@ -3032,8 +3022,8 @@ f_t knapsack_generation_t<i_t, f_t>::exact_knapsack_problem_integer_values_fract
   solution.assign(n, 0.0);
 
   // dp(j, v) = minimum weight using first j items to get value v
-  barrier::dense_matrix_t<i_t, f_t> dp(n + 1, sum_value + 1, inf);
-  barrier::dense_matrix_t<i_t, uint8_t> take(n + 1, sum_value + 1, 0);
+  dense_matrix_t<i_t, f_t> dp(n + 1, sum_value + 1, inf);
+  dense_matrix_t<i_t, uint8_t> take(n + 1, sum_value + 1, 0);
   dp(0, 0) = 0;
 
   // 4. Dynamic programming

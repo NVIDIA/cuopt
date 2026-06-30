@@ -7,12 +7,12 @@
 
 #pragma once
 
-#include <dual_simplex/sparse_matrix.hpp>
-#include <dual_simplex/types.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
+#include <math_optimization/types.hpp>
 
 #include <vector>
 
-namespace cuopt::mathematical_optimization::simplex {
+namespace cuopt::mathematical_optimization {
 
 // A sparse vector stored as a list of nonzero coefficients and their indices
 template <typename i_t, typename f_t>
@@ -71,4 +71,4 @@ class sparse_vector_t {
   std::vector<f_t> x;
 };
 
-}  // namespace cuopt::mathematical_optimization::simplex
+}  // namespace cuopt::mathematical_optimization

@@ -11,8 +11,8 @@
 #include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 
 #include <dual_simplex/presolve.hpp>
-#include <dual_simplex/sparse_matrix.hpp>
-#include <dual_simplex/sparse_vector.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
+#include <linear_algebra/sparse_vector.hpp>
 
 #include <barrier/translate_soc.hpp>
 
@@ -40,7 +40,7 @@ static simplex::user_problem_t<i_t, f_t> cuopt_problem_to_user_problem(
   user_problem.num_cols  = n;
   user_problem.objective = problem.get_objective_coefficients_host();
 
-  simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, static_cast<i_t>(A_values.size()));
+  csr_matrix_t<i_t, f_t> csr_A(m, n, static_cast<i_t>(A_values.size()));
   csr_A.x         = std::move(A_values);
   csr_A.j         = std::move(A_indices);
   csr_A.row_start = std::move(A_offsets);
@@ -121,7 +121,7 @@ static simplex::user_problem_t<i_t, f_t> cuopt_problem_to_user_problem(
   user_problem.num_cols  = n;
   user_problem.objective = cuopt::host_copy(model.objective_coefficients, handle_ptr->get_stream());
 
-  simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
+  csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
   csr_A.x = std::vector<f_t>(cuopt::host_copy(model.coefficients, handle_ptr->get_stream()));
   csr_A.j = std::vector<i_t>(cuopt::host_copy(model.variables, handle_ptr->get_stream()));
   csr_A.row_start = std::vector<i_t>(cuopt::host_copy(model.offsets, handle_ptr->get_stream()));
@@ -233,7 +233,7 @@ static simplex::user_problem_t<i_t, f_t> cuopt_optimization_problem_to_user_prob
     }
   }
 
-  simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
+  csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
   csr_A.x         = model.get_constraint_matrix_values_host();
   csr_A.j         = model.get_constraint_matrix_indices_host();
   csr_A.row_start = model.get_constraint_matrix_offsets_host();
@@ -342,7 +342,7 @@ void translate_to_crossover_problem(const mip::problem_t<i_t, f_t>& problem,
   auto stream                     = problem.handle_ptr->get_stream();
   std::vector<f_t> pdlp_objective = cuopt::host_copy(problem.objective_coefficients, stream);
 
-  simplex::csr_matrix_t<i_t, f_t> csr_A(problem.n_constraints, problem.n_variables, problem.nnz);
+  csr_matrix_t<i_t, f_t> csr_A(problem.n_constraints, problem.n_variables, problem.nnz);
   csr_A.x         = std::vector<f_t>(cuopt::host_copy(problem.coefficients, stream));
   csr_A.j         = std::vector<i_t>(cuopt::host_copy(problem.variables, stream));
   csr_A.row_start = std::vector<i_t>(cuopt::host_copy(problem.offsets, stream));
@@ -355,7 +355,7 @@ void translate_to_crossover_problem(const mip::problem_t<i_t, f_t>& problem,
   std::vector<f_t> slack(problem.n_constraints);
   std::vector<f_t> tmp_x = cuopt::host_copy(sol.get_primal_solution(), stream);
   stream.synchronize();
-  simplex::matrix_vector_multiply(lp.A, f_t(1.0), tmp_x, f_t(0.0), slack);
+  matrix_vector_multiply(lp.A, f_t(1.0), tmp_x, f_t(0.0), slack);
   CUOPT_LOG_DEBUG("Multiplied A and x");
 
   lp.A.col_start.resize(problem.n_variables + problem.n_constraints + 1);

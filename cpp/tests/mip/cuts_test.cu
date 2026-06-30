@@ -1595,7 +1595,7 @@ struct flow_cover_test_problem_t {
   raft::handle_t handle;
   simplex::simplex_solver_settings_t<int, double> settings;
   simplex::lp_problem_t<int, double> lp;
-  simplex::csr_matrix_t<int, double> Arow;
+  csr_matrix_t<int, double> Arow;
   std::vector<int> new_slacks;
   std::vector<simplex::variable_type_t> var_types;
 

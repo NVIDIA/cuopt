@@ -9,8 +9,8 @@
 
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/presolve.hpp>
-#include <dual_simplex/sparse_matrix.hpp>
-#include <dual_simplex/types.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
+#include <math_optimization/types.hpp>
 
 namespace cuopt::mathematical_optimization::simplex {
 

@@ -19,11 +19,11 @@
 #include <pdlp/utils.cuh>
 #include <utilities/logger.hpp>
 
+#include <linear_algebra/sort_csr.cuh>
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
 #include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/solver.cuh>
-#include <mip_heuristics/utilities/sort_csr.cuh>
 
 #include <cuopt/mathematical_optimization/backend_selection.hpp>
 #include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
@@ -44,7 +44,7 @@
 
 #include <dual_simplex/crossover.hpp>
 #include <dual_simplex/solve.hpp>
-#include <dual_simplex/tic_toc.hpp>
+#include <math_optimization/tic_toc.hpp>
 #include <pdlp/utilities/problem_checking.cuh>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
@@ -491,8 +491,8 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   const timer_t& timer)
 {
-  f_t norm_user_objective = simplex::vector_norm2<i_t, f_t>(user_problem.objective);
-  f_t norm_rhs            = simplex::vector_norm2<i_t, f_t>(user_problem.rhs);
+  f_t norm_user_objective = vector_norm2<i_t, f_t>(user_problem.objective);
+  f_t norm_rhs            = vector_norm2<i_t, f_t>(user_problem.rhs);
 
   simplex::simplex_solver_settings_t<i_t, f_t> barrier_settings;
   barrier_settings.num_gpus                        = settings.num_gpus;
@@ -581,8 +581,8 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   const timer_t& timer)
 {
-  f_t norm_user_objective = simplex::vector_norm2<i_t, f_t>(user_problem.objective);
-  f_t norm_rhs            = simplex::vector_norm2<i_t, f_t>(user_problem.rhs);
+  f_t norm_user_objective = vector_norm2<i_t, f_t>(user_problem.objective);
+  f_t norm_rhs            = vector_norm2<i_t, f_t>(user_problem.rhs);
 
   simplex::simplex_solver_settings_t<i_t, f_t> dual_simplex_settings;
   dual_simplex_settings.time_limit      = settings.time_limit;
@@ -1947,7 +1947,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     std::optional<mip::third_party_presolve_result_t<i_t, f_t>> result;
 
     if (run_presolve) {
-      mip::sort_csr(op_problem);
+      sort_csr(op_problem);
       // allocate no more than 10% of the time limit to presolve.
       // Note that this is not the presolve time, but the time limit for presolve.
       // But no less than 1 second, to avoid early timeout triggering known crashes

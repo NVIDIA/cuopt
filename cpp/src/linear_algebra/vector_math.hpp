@@ -11,7 +11,7 @@
 #include <cmath>
 #include <vector>
 
-namespace cuopt::mathematical_optimization::simplex {
+namespace cuopt::mathematical_optimization {
 
 // Computes || x ||_inf = max_j | x |_j
 template <typename i_t, typename f_t, typename Allocator>
@@ -69,4 +69,4 @@ i_t inverse_permute_vector(const std::vector<i_t>& p,
 template <typename i_t>
 i_t inverse_permutation(const std::vector<i_t>& p, std::vector<i_t>& pinv);
 
-}  // namespace cuopt::mathematical_optimization::simplex
+}  // namespace cuopt::mathematical_optimization

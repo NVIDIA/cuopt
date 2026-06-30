@@ -6,7 +6,7 @@
 /* clang-format on */
 
 #include <dual_simplex/scaling.hpp>
-#include <dual_simplex/sparse_matrix.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
 
 #include <cmath>
 
