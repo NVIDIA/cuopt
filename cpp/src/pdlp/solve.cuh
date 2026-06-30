@@ -65,8 +65,8 @@ cuopt::mathematical_optimization::optimization_problem_solution_t<i_t, f_t> solv
  *                    resolved settings before solving.
  *
  * @pre `settings.use_distributed_pdlp == true`, `method == PDLP`,
- *      `presolver == None`, `pdlp_precision == DefaultPrecision`, not inside
- *      MIP, and no initial primal/dual or warm-start data.
+ *      `pdlp_precision == DefaultPrecision`, not inside MIP, and no initial
+ *      primal/dual or warm-start data.
  */
 template <typename i_t, typename f_t>
 cuopt::mathematical_optimization::optimization_problem_solution_t<i_t, f_t>

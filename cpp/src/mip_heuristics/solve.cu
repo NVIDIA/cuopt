@@ -448,7 +448,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
     }
     double presolve_time = 0.0;
     std::unique_ptr<mip::third_party_presolve_t<i_t, f_t>> presolver;
-    std::optional<mip::third_party_presolve_result_t<i_t, f_t>> presolve_result_opt;
+    std::optional<mip::third_party_presolve_device_result_t<i_t, f_t>> presolve_result_opt;
     mip::problem_t<i_t, f_t> problem(
       op_problem, settings.get_tolerances(), settings.determinism_mode == CUOPT_MODE_DETERMINISTIC);
 
@@ -555,14 +555,15 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
         presolve_time_limit = std::numeric_limits<double>::infinity();
       }
       presolver   = std::make_unique<mip::third_party_presolve_t<i_t, f_t>>();
-      auto result = presolver->apply(op_problem,
-                                     cuopt::mathematical_optimization::problem_category_t::MIP,
-                                     settings.presolver,
-                                     dual_postsolve,
-                                     settings.tolerances.absolute_tolerance,
-                                     settings.tolerances.relative_tolerance,
-                                     presolve_time_limit,
-                                     settings.num_cpu_threads);
+      auto result = presolver->apply_presolve_from_op_problem(
+        op_problem,
+        cuopt::mathematical_optimization::problem_category_t::MIP,
+        settings.presolver,
+        dual_postsolve,
+        settings.tolerances.absolute_tolerance,
+        settings.tolerances.relative_tolerance,
+        presolve_time_limit,
+        settings.num_cpu_threads);
 
       if (result.status == mip::third_party_presolve_status_t::INFEASIBLE) {
         return mip_solution_t<i_t, f_t>(mip_termination_status_t::Infeasible,

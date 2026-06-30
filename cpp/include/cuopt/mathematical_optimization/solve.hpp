@@ -148,6 +148,15 @@ optimization_problem_t<i_t, f_t> mps_data_model_to_optimization_problem(
   raft::handle_t const* handle_ptr,
   const cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t>& data_model);
 
+// Device->host projection of an optimization_problem_t onto an
+// mps_data_model_t. The inverse of mps_data_model_to_optimization_problem
+// above. Copies every vector buffer (CSR, var/row bounds, types, optional
+// row_types + RHS) and the relevant metadata (objective offset/scale, names,
+// sense). One stream sync at the end.
+template <typename i_t, typename f_t>
+cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t>
+op_problem_to_mps_data_model(const optimization_problem_t<i_t, f_t>& op_problem);
+
 // ============================================================================
 // CPU problem overloads (convert to GPU, solve, convert solution back)
 // ============================================================================

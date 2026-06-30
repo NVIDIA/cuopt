@@ -37,14 +37,15 @@ TEST(problem, find_implied_integers)
   auto mps_data_model = cuopt::mathematical_optimization::io::read_mps<int, double>(path, false);
   auto op_problem     = mps_data_model_to_optimization_problem(&handle_, mps_data_model);
   auto presolver      = std::make_unique<mip::third_party_presolve_t<int, double>>();
-  auto result         = presolver->apply(op_problem,
-                                 cuopt::mathematical_optimization::problem_category_t::MIP,
-                                 cuopt::mathematical_optimization::presolver_t::Papilo,
-                                 false,
-                                 1e-6,
-                                 1e-12,
-                                 20,
-                                 1);
+  auto result         = presolver->apply_presolve_from_op_problem(
+    op_problem,
+    cuopt::mathematical_optimization::problem_category_t::MIP,
+    cuopt::mathematical_optimization::presolver_t::Papilo,
+    false,
+    1e-6,
+    1e-12,
+    20,
+    1);
   ASSERT_NE(result.status, mip::third_party_presolve_status_t::INFEASIBLE);
   ASSERT_NE(result.status, mip::third_party_presolve_status_t::UNBNDORINFEAS);
 
