@@ -428,7 +428,13 @@ def _start_grpc_server_fixture(port_offset):
     if server_bin is None:
         pytest.skip("cuopt_grpc_server not found")
 
-    port = int(os.environ.get("CUOPT_TEST_PORT_BASE", "18000")) + port_offset
+    _worker = os.environ.get("PYTEST_XDIST_WORKER", "gw0")
+    worker_id = int(_worker[2:]) if _worker.startswith("gw") else 0
+    port = (
+        int(os.environ.get("CUOPT_TEST_PORT_BASE", "18000"))
+        + port_offset
+        + worker_id
+    )
     proc = subprocess.Popen(
         [server_bin, "--port", str(port), "--workers", "1"],
         stdout=subprocess.DEVNULL,
