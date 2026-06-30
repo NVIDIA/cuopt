@@ -42,7 +42,6 @@ if [ -f test/MOI_wrapper.jl ]; then
     sed -i '/^function test_air05()/,/^end$/s/^/# /' test/MOI_wrapper.jl
 fi
 
-
 # Find libcuopt.so and add its directory to LD_LIBRARY_PATH
 LIBCUOPT_PATH=$(find /pyenv/ -name "libcuopt.so" -type f 2>/dev/null | head -1)
 
