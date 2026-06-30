@@ -1,5 +1,5 @@
 ## Description: <br>
-LP, MILP, and QP (beta) with cuOpt — CLI only (MPS files, cuopt_cli). Use when the user is solving LP, MILP, or QP from MPS via command line. <br>
+LP, MILP, and QP (beta) with cuOpt — CLI only (MPS/LP/QPS files, cuopt_cli). Use when the user is solving LP, MILP, or QP from an MPS or LP file via command line. <br>
 
 This skill is ready for commercial/non-commercial use. <br>
 
@@ -9,7 +9,7 @@ NVIDIA <br>
 ### License/Terms of Use: <br>
 Apache 2.0 <br>
 ## Use Case: <br>
-Developers and engineers solving LP, MILP, and QP optimization problems from MPS files via the cuopt_cli command-line interface. <br>
+Developers and engineers solving LP, MILP, and QP optimization problems from MPS or LP format files via the cuopt_cli command-line interface. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
