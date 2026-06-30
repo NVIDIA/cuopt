@@ -44,6 +44,8 @@
 
 #include <raft/core/nvtx.hpp>
 
+#include <unordered_map>
+
 namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
@@ -954,13 +956,14 @@ void third_party_presolve_t<i_t, f_t>::crush_primal_dual_solution(
 
   // Track current coefficient values for entries modified by kCoefficientChange,
   // so repeated changes to the same (row, col) are handled correctly.
-  std::map<std::pair<int, int>, f_t> coeff_current;
+  std::unordered_map<i_t, f_t> coeff_current;
 
-  // Look up the current value of a_{row,col}: use coeff_current if it was
-  // modified by a prior kCoefficientChange, otherwise fall back to the
-  // original CSR.
+  const i_t n_cols_original = (i_t)storage.nColsOriginal;
+
+  auto coeff_key = [&](int row, int col) -> i_t { return (i_t)row * n_cols_original + (i_t)col; };
+
   auto get_coeff = [&](int row, int col) -> f_t {
-    auto it = coeff_current.find({row, col});
+    auto it = coeff_current.find(coeff_key(row, col));
     if (it != coeff_current.end()) return it->second;
     for (i_t p = A_offsets[row]; p < A_offsets[row + 1]; ++p) {
       if (A_indices[p] == col) return A_values[p];
@@ -1024,11 +1027,11 @@ void third_party_presolve_t<i_t, f_t>::crush_primal_dual_solution(
 
       case ReductionType::kCoefficientChange: {
         if (!crush_rc) break;
-        int row                   = indices[first];
-        int col                   = indices[first + 1];
-        f_t a_new                 = values[first];
-        f_t a_old                 = get_coeff(row, col);
-        coeff_current[{row, col}] = a_new;
+        int row                            = indices[first];
+        int col                            = indices[first + 1];
+        f_t a_new                          = values[first];
+        f_t a_old                          = get_coeff(row, col);
+        coeff_current[coeff_key(row, col)] = a_new;
         z[col] += (a_old - a_new) * y[row];
         break;
       }
