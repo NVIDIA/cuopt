@@ -2271,9 +2271,10 @@ cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> op_problem_to_m
   stream.synchronize();
 
   if (!h_offsets.empty()) {
-    mps.set_csr_constraint_matrix(std::span<const f_t>(h_coefficients.data(), h_coefficients.size()),
-                                  std::span<const i_t>(h_indices.data(), h_indices.size()),
-                                  std::span<const i_t>(h_offsets.data(), h_offsets.size()));
+    mps.set_csr_constraint_matrix(
+      std::span<const f_t>(h_coefficients.data(), h_coefficients.size()),
+      std::span<const i_t>(h_indices.data(), h_indices.size()),
+      std::span<const i_t>(h_offsets.data(), h_offsets.size()));
   } else {
     // set_csr_constraint_matrix rejects empty offsets — synthesize the [0]
     // sentinel that downstream consumers expect for a zero-row problem.
@@ -2305,10 +2306,8 @@ cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> op_problem_to_m
   }
   if (!h_var_types_enum.empty()) {
     std::vector<char> h_var_types_char(h_var_types_enum.size());
-    std::transform(h_var_types_enum.begin(),
-                   h_var_types_enum.end(),
-                   h_var_types_char.begin(),
-                   var_type_to_char);
+    std::transform(
+      h_var_types_enum.begin(), h_var_types_enum.end(), h_var_types_char.begin(), var_type_to_char);
     mps.set_variable_types(h_var_types_char);
   }
 
@@ -2418,16 +2417,16 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
       presolve_time_limit);
 
     if (host_res->status == mip::third_party_presolve_status_t::INFEASIBLE) {
-      return optimization_problem_solution_t<i_t, f_t>(
-        pdlp_termination_status_t::PrimalInfeasible, handle_ptr->get_stream());
+      return optimization_problem_solution_t<i_t, f_t>(pdlp_termination_status_t::PrimalInfeasible,
+                                                       handle_ptr->get_stream());
     }
     if (host_res->status == mip::third_party_presolve_status_t::UNBNDORINFEAS) {
       return optimization_problem_solution_t<i_t, f_t>(
         pdlp_termination_status_t::UnboundedOrInfeasible, handle_ptr->get_stream());
     }
     if (host_res->status == mip::third_party_presolve_status_t::UNBOUNDED) {
-      return optimization_problem_solution_t<i_t, f_t>(
-        pdlp_termination_status_t::DualInfeasible, handle_ptr->get_stream());
+      return optimization_problem_solution_t<i_t, f_t>(pdlp_termination_status_t::DualInfeasible,
+                                                       handle_ptr->get_stream());
     }
 
     // Presolve completely solved the problem. Mirroring single-GPU solve
@@ -2482,11 +2481,10 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
     CUOPT_LOG_INFO("%s presolve time: %.2fs",
                    settings_resolved.presolver == presolver_t::PSLP ? "PSLP" : "Papilo",
                    presolve_time);
-    CUOPT_LOG_INFO(
-      "Distributed-solving reduced problem: %d constraints, %d variables, %d nonzeros",
-      host_res->reduced_problem.get_n_constraints(),
-      host_res->reduced_problem.get_n_variables(),
-      host_res->reduced_problem.get_nnz());
+    CUOPT_LOG_INFO("Distributed-solving reduced problem: %d constraints, %d variables, %d nonzeros",
+                   host_res->reduced_problem.get_n_constraints(),
+                   host_res->reduced_problem.get_n_variables(),
+                   host_res->reduced_problem.get_nnz());
   }
 
   // mps_for_solver is what the distributed solver actually sees.

@@ -22,7 +22,7 @@ class PostsolveStorage;
 // Forward declaration for Papilo Problem class
 template <typename T>
 class Problem;
-}
+}  // namespace papilo
 
 // Forward declaration for mps_data_model_t
 namespace cuopt::mathematical_optimization::io {

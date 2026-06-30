@@ -78,7 +78,8 @@ pslp_input_t<i_t, f_t> build_pslp_host_arrays_from_mps_data(
   const auto& h_row_types = mps.get_row_types();
 
   if (maximize) {
-    for (auto& c : arrays.obj_coeffs) c = -c;
+    for (auto& c : arrays.obj_coeffs)
+      c = -c;
   }
 
   if (arrays.constr_lb.empty() && arrays.constr_ub.empty()) {
@@ -110,8 +111,9 @@ pslp_input_t<i_t, f_t> build_pslp_host_arrays_from_mps_data(
 // Single source of truth for papilo input construction, the op_problem path
 // reaches this via op_problem_to_mps_data_model first.
 template <typename i_t, typename f_t>
-papilo::Problem<f_t> build_papilo_problem_from_mps_data(
-  const io::mps_data_model_t<i_t, f_t>& mps, problem_category_t category, bool maximize)
+papilo::Problem<f_t> build_papilo_problem_from_mps_data(const io::mps_data_model_t<i_t, f_t>& mps,
+                                                        problem_category_t category,
+                                                        bool maximize)
 {
   raft::common::nvtx::range fun_scope("Build papilo problem from mps_data_model");
   papilo::ProblemBuilder<f_t> builder;
@@ -137,7 +139,8 @@ papilo::Problem<f_t> build_papilo_problem_from_mps_data(
   const auto& h_var_types = mps.get_variable_types();
 
   if (maximize) {
-    for (auto& c : h_obj_coeffs) c = -c;
+    for (auto& c : h_obj_coeffs)
+      c = -c;
   }
 
   if (h_constr_lb.empty() && h_constr_ub.empty()) {
@@ -276,10 +279,10 @@ io::mps_data_model_t<i_t, f_t> build_mps_data_from_pslp(Presolver* pslp_presolve
 
     std::vector<f_t> h_obj_coeffs(reduced_prob->c, reduced_prob->c + n_cols);
     if (maximize) {
-      for (auto& c : h_obj_coeffs) c = -c;
+      for (auto& c : h_obj_coeffs)
+        c = -c;
     }
-    mps.set_objective_coefficients(
-      std::span<const f_t>(h_obj_coeffs.data(), h_obj_coeffs.size()));
+    mps.set_objective_coefficients(std::span<const f_t>(h_obj_coeffs.data(), h_obj_coeffs.size()));
     mps.set_constraint_lower_bounds(
       std::span<const f_t>(reduced_prob->lhs, static_cast<size_t>(n_rows)));
     mps.set_constraint_upper_bounds(
@@ -289,8 +292,7 @@ io::mps_data_model_t<i_t, f_t> build_mps_data_from_pslp(Presolver* pslp_presolve
     mps.set_variable_upper_bounds(
       std::span<const f_t>(reduced_prob->ubs, static_cast<size_t>(n_cols)));
   } else {
-    cuopt_expects(
-      false, error_type_t::ValidationError, "PSLP only supports double precision");
+    cuopt_expects(false, error_type_t::ValidationError, "PSLP only supports double precision");
   }
   return mps;
 }
@@ -298,8 +300,8 @@ io::mps_data_model_t<i_t, f_t> build_mps_data_from_pslp(Presolver* pslp_presolve
 // Host-only result builder: write the (reduced) papilo::Problem into a fresh
 // mps_data_model_t.
 template <typename i_t, typename f_t>
-io::mps_data_model_t<i_t, f_t> build_mps_data_from_papilo(papilo::Problem<f_t> const& papilo_problem,
-                                                          bool maximize)
+io::mps_data_model_t<i_t, f_t> build_mps_data_from_papilo(
+  papilo::Problem<f_t> const& papilo_problem, bool maximize)
 {
   raft::common::nvtx::range fun_scope("Build mps_data_model from papilo");
   io::mps_data_model_t<i_t, f_t> mps;
@@ -532,7 +534,7 @@ third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_pslp(
     settings->verbose  = false;
     settings->max_time = time_limit;
 
-    auto start_time     = std::chrono::high_resolution_clock::now();
+    auto start_time      = std::chrono::high_resolution_clock::now();
     Presolver* presolver = new_presolver(arrays.coefficients.data(),
                                          arrays.indices.data(),
                                          arrays.offsets.data(),
@@ -547,8 +549,8 @@ third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_pslp(
                                          settings);
     assert(presolver != nullptr && "Presolver initialization failed");
     const PresolveStatus pslp_status = run_presolver(presolver);
-    auto end_time   = std::chrono::high_resolution_clock::now();
-    auto duration   = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    auto end_time                    = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
     CUOPT_LOG_DEBUG("PSLP presolver time: %d milliseconds", duration.count());
     CUOPT_LOG_INFO("PSLP Presolved problem: %d constraints, %d variables, %d non-zeros",
                    presolver->stats->n_rows_reduced,
@@ -729,8 +731,8 @@ third_party_presolve_t<i_t, f_t>::apply_presolve_from_mps_data(
   if (presolver == cuopt::mathematical_optimization::presolver_t::PSLP) {
     if constexpr (std::is_same_v<f_t, double>) {
       const f_t original_obj_offset = mps.get_objective_offset();
-      auto arrays = build_pslp_host_arrays_from_mps_data(mps, maximize_);
-      auto status = apply_pslp(arrays, time_limit);
+      auto arrays                   = build_pslp_host_arrays_from_mps_data(mps, maximize_);
+      auto status                   = apply_pslp(arrays, time_limit);
 
       if (status == third_party_presolve_status_t::INFEASIBLE ||
           status == third_party_presolve_status_t::UNBNDORINFEAS) {
@@ -738,8 +740,8 @@ third_party_presolve_t<i_t, f_t>::apply_presolve_from_mps_data(
           status, io::mps_data_model_t<i_t, f_t>{}, {}, {}, {}};
       }
 
-      auto reduced_mps = build_mps_data_from_pslp<i_t, f_t>(
-        pslp_presolver_, maximize_, original_obj_offset);
+      auto reduced_mps =
+        build_mps_data_from_pslp<i_t, f_t>(pslp_presolver_, maximize_, original_obj_offset);
       reduced_mps.set_problem_name(mps.get_problem_name());
       reduced_mps.set_objective_scaling_factor(mps.get_objective_scaling_factor());
       return third_party_presolve_host_result_t<i_t, f_t>{
@@ -747,12 +749,11 @@ third_party_presolve_t<i_t, f_t>::apply_presolve_from_mps_data(
     } else {
       cuopt_expects(
         false, error_type_t::ValidationError, "PSLP presolver only supports double precision");
-      return third_party_presolve_host_result_t<i_t, f_t>{
-        third_party_presolve_status_t::UNCHANGED,
-        io::mps_data_model_t<i_t, f_t>{},
-        {},
-        {},
-        {}};  // unreachable
+      return third_party_presolve_host_result_t<i_t, f_t>{third_party_presolve_status_t::UNCHANGED,
+                                                          io::mps_data_model_t<i_t, f_t>{},
+                                                          {},
+                                                          {},
+                                                          {}};  // unreachable
     }
   } else {
     // Papilo branch:  host gather  ->  apply_papilo (host)  ->  host build
@@ -786,12 +787,11 @@ third_party_presolve_t<i_t, f_t>::apply_presolve_from_mps_data(
       }
     }
 
-    return third_party_presolve_host_result_t<i_t, f_t>{
-      status,
-      std::move(reduced_mps),
-      std::move(implied_integer_indices),
-      reduced_to_original_map_,
-      original_to_reduced_map_};
+    return third_party_presolve_host_result_t<i_t, f_t>{status,
+                                                        std::move(reduced_mps),
+                                                        std::move(implied_integer_indices),
+                                                        reduced_to_original_map_,
+                                                        original_to_reduced_map_};
   }
 }
 
@@ -803,8 +803,7 @@ void third_party_presolve_t<i_t, f_t>::undo_pslp_host(std::vector<f_t>& primal_s
   if constexpr (std::is_same_v<f_t, double>) {
     // PSLP postsolve reads from the passed-in host buffers and writes the
     // uncrushed solution into pslp_presolver_->sol->{x, y, z}.
-    postsolve(
-      pslp_presolver_, primal_solution.data(), dual_solution.data(), reduced_costs.data());
+    postsolve(pslp_presolver_, primal_solution.data(), dual_solution.data(), reduced_costs.data());
 
     auto uncrushed_sol = pslp_presolver_->sol;
     const int n_cols   = uncrushed_sol->dim_x;

@@ -177,7 +177,7 @@ void expect_distributed_matches_base(raft::handle_t const& handle,
 
   // Shared settings: method is PDLP
   pdlp_solver_settings_t<int, double> base_settings{};
-  base_settings.method    = method_t::PDLP;
+  base_settings.method = method_t::PDLP;
 
   // ----- base: single-GPU PDLP (materialize the full problem on one GPU) -----
   auto base_op = mps_data_model_to_optimization_problem<int, double>(&handle, problem);

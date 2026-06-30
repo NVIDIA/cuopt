@@ -154,8 +154,8 @@ optimization_problem_t<i_t, f_t> mps_data_model_to_optimization_problem(
 // row_types + RHS) and the relevant metadata (objective offset/scale, names,
 // sense). One stream sync at the end.
 template <typename i_t, typename f_t>
-cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t>
-op_problem_to_mps_data_model(const optimization_problem_t<i_t, f_t>& op_problem);
+cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> op_problem_to_mps_data_model(
+  const optimization_problem_t<i_t, f_t>& op_problem);
 
 // ============================================================================
 // CPU problem overloads (convert to GPU, solve, convert solution back)
