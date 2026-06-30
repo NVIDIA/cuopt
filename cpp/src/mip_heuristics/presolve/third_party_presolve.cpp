@@ -768,32 +768,39 @@ third_party_presolve_result_t<i_t, f_t> third_party_presolve_t<i_t, f_t>::apply(
 }
 
 template <typename i_t, typename f_t>
-void third_party_presolve_t<i_t, f_t>::undo(rmm::device_uvector<f_t>& primal_solution,
-                                            rmm::device_uvector<f_t>& dual_solution,
-                                            rmm::device_uvector<f_t>& reduced_costs,
-                                            problem_category_t category,
-                                            bool status_to_skip,
-                                            bool dual_postsolve,
-                                            rmm::cuda_stream_view stream_view)
+void third_party_presolve_t<i_t, f_t>::undo_pslp_host(std::vector<f_t>& primal_solution,
+                                                      std::vector<f_t>& dual_solution,
+                                                      std::vector<f_t>& reduced_costs)
 {
-  if (presolver_ == cuopt::mathematical_optimization::presolver_t::PSLP) {
-    undo_pslp(primal_solution, dual_solution, reduced_costs, stream_view);
-    return;
+  if constexpr (std::is_same_v<f_t, double>) {
+    // PSLP postsolve reads from the passed-in host buffers and writes the
+    // uncrushed solution into pslp_presolver_->sol->{x, y, z}.
+    postsolve(
+      pslp_presolver_, primal_solution.data(), dual_solution.data(), reduced_costs.data());
+
+    auto uncrushed_sol = pslp_presolver_->sol;
+    const int n_cols   = uncrushed_sol->dim_x;
+    const int n_rows   = uncrushed_sol->dim_y;
+
+    primal_solution.assign(uncrushed_sol->x, uncrushed_sol->x + n_cols);
+    dual_solution.assign(uncrushed_sol->y, uncrushed_sol->y + n_rows);
+    reduced_costs.assign(uncrushed_sol->z, uncrushed_sol->z + n_cols);
+  } else {
+    cuopt_expects(
+      false, error_type_t::ValidationError, "PSLP postsolve only supports double precision");
   }
+}
 
-  if (status_to_skip) { return; }
-
-  std::vector<f_t> primal_sol_vec_h(primal_solution.size());
-  raft::copy(primal_sol_vec_h.data(), primal_solution.data(), primal_solution.size(), stream_view);
-  std::vector<f_t> dual_sol_vec_h(dual_solution.size());
-  raft::copy(dual_sol_vec_h.data(), dual_solution.data(), dual_solution.size(), stream_view);
-  std::vector<f_t> reduced_costs_vec_h(reduced_costs.size());
-  raft::copy(reduced_costs_vec_h.data(), reduced_costs.data(), reduced_costs.size(), stream_view);
-
-  papilo::Solution<f_t> reduced_sol(primal_sol_vec_h);
+template <typename i_t, typename f_t>
+void third_party_presolve_t<i_t, f_t>::undo_papilo_host(std::vector<f_t>& primal_solution,
+                                                        std::vector<f_t>& dual_solution,
+                                                        std::vector<f_t>& reduced_costs,
+                                                        bool dual_postsolve)
+{
+  papilo::Solution<f_t> reduced_sol(primal_solution);
   if (dual_postsolve) {
-    reduced_sol.dual         = dual_sol_vec_h;
-    reduced_sol.reducedCosts = reduced_costs_vec_h;
+    reduced_sol.dual         = dual_solution;
+    reduced_sol.reducedCosts = reduced_costs;
     reduced_sol.type         = papilo::SolutionType::kPrimalDual;
   }
   papilo::Solution<f_t> full_sol;
@@ -806,50 +813,64 @@ void third_party_presolve_t<i_t, f_t>::undo(rmm::device_uvector<f_t>& primal_sol
   auto status = post_solver.undo(reduced_sol, full_sol, *papilo_post_solve_storage_, is_optimal);
   check_postsolve_status(status);
 
-  primal_solution.resize(full_sol.primal.size(), stream_view);
-  dual_solution.resize(full_sol.dual.size(), stream_view);
-  reduced_costs.resize(full_sol.reducedCosts.size(), stream_view);
-  raft::copy(primal_solution.data(), full_sol.primal.data(), full_sol.primal.size(), stream_view);
-  raft::copy(dual_solution.data(), full_sol.dual.data(), full_sol.dual.size(), stream_view);
-  raft::copy(
-    reduced_costs.data(), full_sol.reducedCosts.data(), full_sol.reducedCosts.size(), stream_view);
+  primal_solution = std::move(full_sol.primal);
+  dual_solution   = std::move(full_sol.dual);
+  reduced_costs   = std::move(full_sol.reducedCosts);
 }
 
 template <typename i_t, typename f_t>
-void third_party_presolve_t<i_t, f_t>::undo_pslp(rmm::device_uvector<f_t>& primal_solution,
-                                                 rmm::device_uvector<f_t>& dual_solution,
-                                                 rmm::device_uvector<f_t>& reduced_costs,
-                                                 rmm::cuda_stream_view stream_view)
+void third_party_presolve_t<i_t, f_t>::undo_host(std::vector<f_t>& primal_solution,
+                                                 std::vector<f_t>& dual_solution,
+                                                 std::vector<f_t>& reduced_costs,
+                                                 problem_category_t /*category*/,
+                                                 bool status_to_skip,
+                                                 bool dual_postsolve)
 {
-  if constexpr (std::is_same_v<f_t, double>) {
-    // PSLP uses double internally, so we can use the data directly
-    std::vector<double> h_primal_solution(primal_solution.size());
-    std::vector<double> h_dual_solution(dual_solution.size());
-    std::vector<double> h_reduced_costs(reduced_costs.size());
-    raft::copy(
-      h_primal_solution.data(), primal_solution.data(), primal_solution.size(), stream_view);
-    raft::copy(h_dual_solution.data(), dual_solution.data(), dual_solution.size(), stream_view);
-    raft::copy(h_reduced_costs.data(), reduced_costs.data(), reduced_costs.size(), stream_view);
-    stream_view.synchronize();
-
-    postsolve(
-      pslp_presolver_, h_primal_solution.data(), h_dual_solution.data(), h_reduced_costs.data());
-
-    auto uncrushed_sol = pslp_presolver_->sol;
-    int n_cols         = uncrushed_sol->dim_x;
-    int n_rows         = uncrushed_sol->dim_y;
-
-    primal_solution.resize(n_cols, stream_view);
-    dual_solution.resize(n_rows, stream_view);
-    reduced_costs.resize(n_cols, stream_view);
-    raft::copy(primal_solution.data(), uncrushed_sol->x, n_cols, stream_view);
-    raft::copy(dual_solution.data(), uncrushed_sol->y, n_rows, stream_view);
-    raft::copy(reduced_costs.data(), uncrushed_sol->z, n_cols, stream_view);
-  } else {
-    cuopt_expects(
-      false, error_type_t::ValidationError, "PSLP postsolve only supports double precision");
+  // Matches apply()'s dispatch: PSLP is the only branch that's special-cased;
+  // every other value of `presolver_` (Papilo / Default / None) runs the
+  // Papilo postsolve, which is a no-op short-circuit on status_to_skip.
+  if (presolver_ == cuopt::mathematical_optimization::presolver_t::PSLP) {
+    undo_pslp_host(primal_solution, dual_solution, reduced_costs);
+    return;
   }
 
+  if (status_to_skip) { return; }
+  undo_papilo_host(primal_solution, dual_solution, reduced_costs, dual_postsolve);
+}
+
+template <typename i_t, typename f_t>
+void third_party_presolve_t<i_t, f_t>::undo(rmm::device_uvector<f_t>& primal_solution,
+                                            rmm::device_uvector<f_t>& dual_solution,
+                                            rmm::device_uvector<f_t>& reduced_costs,
+                                            problem_category_t category,
+                                            bool status_to_skip,
+                                            bool dual_postsolve,
+                                            rmm::cuda_stream_view stream_view)
+{
+  // PSLP path always runs (it owns the lifted solution in-place); the Papilo
+  // path (used for Papilo/Default/None) is allowed to short-circuit via
+  // status_to_skip without touching the data. Mirror that here so we don't pay
+  // for unnecessary D->H->D copies.
+  if (status_to_skip && presolver_ != cuopt::mathematical_optimization::presolver_t::PSLP) {
+    return;
+  }
+
+  std::vector<f_t> h_primal(primal_solution.size());
+  std::vector<f_t> h_dual(dual_solution.size());
+  std::vector<f_t> h_rc(reduced_costs.size());
+  raft::copy(h_primal.data(), primal_solution.data(), primal_solution.size(), stream_view);
+  raft::copy(h_dual.data(), dual_solution.data(), dual_solution.size(), stream_view);
+  raft::copy(h_rc.data(), reduced_costs.data(), reduced_costs.size(), stream_view);
+  stream_view.synchronize();
+
+  undo_host(h_primal, h_dual, h_rc, category, status_to_skip, dual_postsolve);
+
+  primal_solution.resize(h_primal.size(), stream_view);
+  dual_solution.resize(h_dual.size(), stream_view);
+  reduced_costs.resize(h_rc.size(), stream_view);
+  raft::copy(primal_solution.data(), h_primal.data(), h_primal.size(), stream_view);
+  raft::copy(dual_solution.data(), h_dual.data(), h_dual.size(), stream_view);
+  raft::copy(reduced_costs.data(), h_rc.data(), h_rc.size(), stream_view);
   stream_view.synchronize();
 }
 

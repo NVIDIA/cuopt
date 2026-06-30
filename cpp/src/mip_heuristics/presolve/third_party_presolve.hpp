@@ -76,6 +76,15 @@ class third_party_presolve_t {
             bool dual_postsolve,
             rmm::cuda_stream_view stream_view);
 
+  // Host-only postsolve. Resizes the vectors to original-problem dimensions.
+  // The device-side `undo` above is a thin shim around this method.
+  void undo_host(std::vector<f_t>& primal_solution,
+                 std::vector<f_t>& dual_solution,
+                 std::vector<f_t>& reduced_costs,
+                 problem_category_t category,
+                 bool status_to_skip,
+                 bool dual_postsolve);
+
   void uncrush_primal_solution(const std::vector<f_t>& reduced_primal,
                                std::vector<f_t>& full_primal) const;
   const std::vector<i_t>& get_reduced_to_original_map() const { return reduced_to_original_map_; }
@@ -87,10 +96,16 @@ class third_party_presolve_t {
   third_party_presolve_result_t<i_t, f_t> apply_pslp(
     optimization_problem_t<i_t, f_t> const& op_problem, const double time_limit);
 
-  void undo_pslp(rmm::device_uvector<f_t>& primal_solution,
-                 rmm::device_uvector<f_t>& dual_solution,
-                 rmm::device_uvector<f_t>& reduced_costs,
-                 rmm::cuda_stream_view stream_view);
+  // Host-only per-backend postsolve helpers. Both resize their vector args
+  // to original-problem dimensions.
+  void undo_pslp_host(std::vector<f_t>& primal_solution,
+                      std::vector<f_t>& dual_solution,
+                      std::vector<f_t>& reduced_costs);
+
+  void undo_papilo_host(std::vector<f_t>& primal_solution,
+                        std::vector<f_t>& dual_solution,
+                        std::vector<f_t>& reduced_costs,
+                        bool dual_postsolve);
 
   bool maximize_ = false;
   cuopt::mathematical_optimization::presolver_t presolver_ =
