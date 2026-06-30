@@ -9,7 +9,7 @@
 
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/solution.hpp>
-#include <dual_simplex/types.hpp>
+#include <math_optimization/types.hpp>
 
 #include <limits>
 #include <vector>

@@ -120,9 +120,9 @@ def _parse_cli_output(output):
             result["status"] = "Optimal"
             continue
 
-        # MIP solution: "Solution objective: 2.000000 , ..."
+        # MIP solution: "Best objective 2.000000 , ..."
         m = re.match(
-            r"Solution objective:\s*([+-]?\d+\.?\d*(?:[eE][+-]?\d+)?)",
+            r"Best objective \s*([+-]?\d+\.?\d*(?:[eE][+-]?\d+)?)",
             stripped,
         )
         if m:

@@ -683,12 +683,12 @@ third_party_presolve_result_t<i_t, f_t> third_party_presolve_t<i_t, f_t>::apply(
 
   papilo::Problem<f_t> papilo_problem = build_papilo_problem(op_problem, category, maximize_);
 
-  CUOPT_LOG_INFO("Original problem: %d constraints, %d variables, %d nonzeros",
-                 papilo_problem.getNRows(),
-                 papilo_problem.getNCols(),
-                 papilo_problem.getConstraintMatrix().getNnz());
+  CUOPT_LOG_DEBUG("Original problem: %d constraints, %d variables, %d nonzeros",
+                  papilo_problem.getNRows(),
+                  papilo_problem.getNCols(),
+                  papilo_problem.getConstraintMatrix().getNnz());
 
-  CUOPT_LOG_INFO("Calling Papilo presolver (git hash %s)", PAPILO_GITHASH);
+  CUOPT_LOG_INFO("\nRunning Papilo presolve (git hash %s)", PAPILO_GITHASH);
   if (category == problem_category_t::MIP) { dual_postsolve = false; }
   papilo::Presolve<f_t> papilo_presolver;
   set_presolve_methods(papilo_presolver, category, dual_postsolve);
@@ -735,7 +735,7 @@ third_party_presolve_result_t<i_t, f_t> third_party_presolve_t<i_t, f_t>::apply(
 
   // Check if presolve found the optimal solution (problem fully reduced)
   if (papilo_problem.getNRows() == 0 && papilo_problem.getNCols() == 0) {
-    CUOPT_LOG_INFO("Optimal solution found during presolve");
+    status = third_party_presolve_status_t::OPTIMAL;
   }
 
   auto opt_problem = build_optimization_problem<i_t, f_t>(

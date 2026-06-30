@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include <barrier/dense_vector.hpp>
+#include <linear_algebra/dense_vector.hpp>
 
 namespace cuopt::mathematical_optimization::barrier {
 

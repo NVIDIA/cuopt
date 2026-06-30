@@ -20,11 +20,11 @@
 #include <dual_simplex/primal.hpp>
 #include <dual_simplex/scaling.hpp>
 #include <dual_simplex/singletons.hpp>
-#include <dual_simplex/sparse_matrix.hpp>
-#include <dual_simplex/tic_toc.hpp>
 #include <dual_simplex/triangle_solve.hpp>
-#include <dual_simplex/types.hpp>
 #include <dual_simplex/user_problem.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
+#include <math_optimization/tic_toc.hpp>
+#include <math_optimization/types.hpp>
 
 #include <raft/core/nvtx.hpp>
 

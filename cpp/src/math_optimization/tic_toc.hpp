@@ -7,10 +7,10 @@
 
 #pragma once
 
-#include <dual_simplex/types.hpp>
+#include <math_optimization/types.hpp>
 
-namespace cuopt::mathematical_optimization::simplex {
+namespace cuopt::mathematical_optimization {
 double tic();
 double toc(double start);
 
-}  // namespace cuopt::mathematical_optimization::simplex
+}  // namespace cuopt::mathematical_optimization

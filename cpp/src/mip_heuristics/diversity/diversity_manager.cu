@@ -223,7 +223,7 @@ template <typename i_t, typename f_t>
 bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_timer)
 {
   raft::common::nvtx::range fun_scope("run_presolve");
-  CUOPT_LOG_INFO("Starting cuOpt presolve");
+  CUOPT_LOG_INFO("\nRunning cuOpt presolve");
   timer_t presolve_timer(time_limit);
 
   auto term_crit = ls.constraint_prop.bounds_update.solve(*problem_ptr);

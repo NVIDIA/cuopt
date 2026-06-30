@@ -13,7 +13,7 @@
 #include <dual_simplex/basis_updates.hpp>
 #include <dual_simplex/logger.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
-#include <dual_simplex/types.hpp>
+#include <math_optimization/types.hpp>
 
 #include <utilities/omp_helpers.hpp>
 #include <utilities/pcgenerator.hpp>
@@ -213,12 +213,12 @@ class pseudo_costs_t {
                                  f_t avg_down,
                                  f_t avg_up) const;
 
-  std::shared_ptr<simplex::csc_matrix_t<i_t, f_t>> AT;  // Transpose of the constraint matrix A
+  std::shared_ptr<csc_matrix_t<i_t, f_t>> AT;  // Transpose of the constraint matrix A
   std::shared_ptr<batch_pdlp_warm_cache_t<i_t, f_t>> pdlp_warm_cache;
 
   reliability_branching_settings_t<i_t, f_t> reliability_branching_settings;
   simplex::simplex_solver_settings_t<i_t, f_t> settings;
-  simplex::csr_matrix_t<i_t, f_t> Arow;
+  csr_matrix_t<i_t, f_t> Arow;
 
  protected:
   std::vector<omp_atomic_t<f_t>> pseudo_cost_sum_up;
