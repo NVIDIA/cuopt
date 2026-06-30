@@ -17,7 +17,7 @@
 #include <pdlp/swap_and_resize_helper.cuh>
 #include <pdlp/utils.cuh>
 
-#include <dual_simplex/sparse_matrix.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include "cuopt/mathematical_optimization/pdlp/solver_solution.hpp"
 #include "distributed_pdlp/distributed_algorithms.hpp"
@@ -443,9 +443,9 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
 
   // ----- 2. Transpose A -> A^T on the host (one-shot CSR transpose) -----
   // CSC(A) and CSR(A^T) share the same memory layout, so the CSC produced
-  // by dual_simplex::csr_matrix_t::to_compressed_col IS the CSR of A^T.
+  // by csr_matrix_t::to_compressed_col IS the CSR of A^T.
   // O(nnz + n_vars) counting sort, same as problem_t::compute_transpose.
-  namespace ds = cuopt::mathematical_optimization::simplex;
+  namespace ds = cuopt::mathematical_optimization;
   ds::csr_matrix_t<i_t, f_t> A_csr(n_cstr, n_vars, nnz);
   A_csr.row_start = h_A_row_offsets;
   A_csr.j         = h_A_col_indices;

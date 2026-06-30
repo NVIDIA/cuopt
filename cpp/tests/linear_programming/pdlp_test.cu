@@ -16,7 +16,7 @@
 #include <pdlp/solve.cuh>
 #include <pdlp/utils.cuh>
 
-#include <dual_simplex/sparse_matrix.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
 
 #include "utilities/pdlp_test_utilities.cuh"
 
@@ -104,7 +104,7 @@ TEST(pdlp_class, run_double)
 TEST(pdlp_class, distributed_partition_kaminpar_export_import_roundtrip)
 {
   using namespace cuopt::mathematical_optimization::pdlp;
-  namespace ds = cuopt::mathematical_optimization::simplex;
+  namespace ds = cuopt::mathematical_optimization;
 
   auto path = make_path_absolute("linear_programming/afiro_original.mps");
   cuopt::mathematical_optimization::io::mps_data_model_t<int, double> mps =
