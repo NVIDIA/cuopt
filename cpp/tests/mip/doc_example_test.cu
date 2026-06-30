@@ -8,8 +8,8 @@
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 #include "mip_utils.cuh"
 
-#include <cuopt/linear_programming/io/parser.hpp>
-#include <cuopt/linear_programming/solve.hpp>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
 #include <utilities/common_utils.hpp>
 #include <utilities/inline_lp_test_utils.hpp>
 
@@ -19,7 +19,7 @@
 
 #include <filesystem>
 
-namespace cuopt::linear_programming::test {
+namespace cuopt::mathematical_optimization::test {
 
 io::mps_data_model_t<int, double> create_doc_example_problem()
 {
@@ -87,14 +87,14 @@ TEST(docs, user_problem_file)
 
   settings.time_limit        = test_time_limit;
   settings.user_problem_file = user_problem_path;
-  settings.presolver         = cuopt::linear_programming::presolver_t::None;
+  settings.presolver         = cuopt::mathematical_optimization::presolver_t::None;
   EXPECT_EQ(solve_mip(&handle_, problem, settings).get_termination_status(),
             mip_termination_status_t::Optimal);
 
   EXPECT_TRUE(std::filesystem::exists(user_problem_path));
 
-  cuopt::linear_programming::io::mps_data_model_t<int, double> problem2 =
-    cuopt::linear_programming::io::read_mps<int, double>(user_problem_path, false);
+  cuopt::mathematical_optimization::io::mps_data_model_t<int, double> problem2 =
+    cuopt::mathematical_optimization::io::read_mps<int, double>(user_problem_path, false);
 
   EXPECT_EQ(problem2.get_n_variables(), problem.get_n_variables());
   EXPECT_EQ(problem2.get_n_constraints(), problem.get_n_constraints());
@@ -124,4 +124,4 @@ TEST(docs, user_problem_file)
   }
 }
 
-}  // namespace cuopt::linear_programming::test
+}  // namespace cuopt::mathematical_optimization::test

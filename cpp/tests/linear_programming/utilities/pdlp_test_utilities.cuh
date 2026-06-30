@@ -6,10 +6,10 @@
 /* clang-format on */
 #pragma once
 
-#include <cuopt/linear_programming/optimization_problem.hpp>
-#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
-#include <cuopt/linear_programming/pdlp/solver_solution.hpp>
-#include <cuopt/linear_programming/solve.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
 
 #include <mps_parser_internal.hpp>
 #include <pdlp/solve.cuh>
@@ -22,7 +22,7 @@
 
 #include <gtest/gtest.h>
 
-namespace cuopt::linear_programming::test {
+namespace cuopt::mathematical_optimization::test {
 constexpr double tolerance = 1e-6f;
 
 static std::string make_path_absolute(const std::string& file)
@@ -37,16 +37,16 @@ static std::string make_path_absolute(const std::string& file)
 // Wrapper for the batch PDLP flow: convert and potentially expand the problem and call
 // run_batch_pdlp.
 template <typename i_t, typename f_t>
-static cuopt::linear_programming::optimization_problem_solution_t<i_t, f_t> solve_lp_batch(
+static cuopt::mathematical_optimization::optimization_problem_solution_t<i_t, f_t> solve_lp_batch(
   raft::handle_t const* handle_ptr,
-  const cuopt::linear_programming::io::mps_data_model_t<i_t, f_t>& mps_data_model,
-  const cuopt::linear_programming::pdlp_solver_settings_t<i_t, f_t>& settings)
+  const cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t>& mps_data_model,
+  const cuopt::mathematical_optimization::pdlp_solver_settings_t<i_t, f_t>& settings)
 {
-  auto gpu_op = cuopt::linear_programming::mps_data_model_to_optimization_problem<i_t, f_t>(
+  auto gpu_op = cuopt::mathematical_optimization::mps_data_model_to_optimization_problem<i_t, f_t>(
     handle_ptr, mps_data_model);
   auto batch_settings                                = settings;
   batch_settings.generate_batch_primal_dual_solution = true;
-  return cuopt::linear_programming::run_batch_pdlp(gpu_op, batch_settings);
+  return cuopt::mathematical_optimization::run_batch_pdlp(gpu_op, batch_settings);
 }
 
 // Overwrites the device_uvector with the host-side contents, resizing as needed.
@@ -70,10 +70,11 @@ static void assign_device_uvector_from_host(rmm::device_uvector<f_t>& target,
 //   - per_climber_constraint_lower_bounds / upper_bounds: size (batch_size * n_constraints).
 //   - per_climber_objective_offsets: size (batch_size).
 template <typename i_t, typename f_t>
-static cuopt::linear_programming::optimization_problem_solution_t<i_t, f_t> solve_lp_batch_fixed(
+static cuopt::mathematical_optimization::optimization_problem_solution_t<i_t, f_t>
+solve_lp_batch_fixed(
   raft::handle_t const* handle_ptr,
-  const cuopt::linear_programming::io::mps_data_model_t<i_t, f_t>& mps_data_model,
-  cuopt::linear_programming::pdlp_solver_settings_t<i_t, f_t> settings,
+  const cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t>& mps_data_model,
+  cuopt::mathematical_optimization::pdlp_solver_settings_t<i_t, f_t> settings,
   i_t batch_size,
   const std::vector<f_t>& per_climber_objective_coefficients  = {},
   const std::vector<f_t>& per_climber_constraint_lower_bounds = {},
@@ -81,7 +82,7 @@ static cuopt::linear_programming::optimization_problem_solution_t<i_t, f_t> solv
   const std::vector<f_t>& per_climber_objective_offsets       = {},
   bool use_direct_api                                         = false)
 {
-  auto gpu_op = cuopt::linear_programming::mps_data_model_to_optimization_problem<i_t, f_t>(
+  auto gpu_op = cuopt::mathematical_optimization::mps_data_model_to_optimization_problem<i_t, f_t>(
     handle_ptr, mps_data_model);
   auto stream = handle_ptr->get_stream();
 
@@ -106,13 +107,15 @@ static cuopt::linear_programming::optimization_problem_solution_t<i_t, f_t> solv
 
   settings.generate_batch_primal_dual_solution = true;
   settings.fixed_batch_size                    = batch_size;
-  if (use_direct_api) { return cuopt::linear_programming::solve_lp(gpu_op, settings, false); }
-  return cuopt::linear_programming::run_batch_pdlp(gpu_op, settings);
+  if (use_direct_api) {
+    return cuopt::mathematical_optimization::solve_lp(gpu_op, settings, false);
+  }
+  return cuopt::mathematical_optimization::run_batch_pdlp(gpu_op, settings);
 }
 
 // Compute on the CPU x * c to check that the returned objective value is correct
 static void test_objective_sanity(
-  const cuopt::linear_programming::io::mps_data_model_t<int, double>& op_problem,
+  const cuopt::mathematical_optimization::io::mps_data_model_t<int, double>& op_problem,
   const rmm::device_uvector<double>& primal_solution,
   double objective_value,
   double epsilon = tolerance)
@@ -137,7 +140,7 @@ static void test_objective_sanity(
 
 // Compute on the CPU x * c to check that the returned objective value is correct
 static void test_objective_sanity(
-  const cuopt::linear_programming::io::mps_data_model_t<int, double>& op_problem,
+  const cuopt::mathematical_optimization::io::mps_data_model_t<int, double>& op_problem,
   const std::vector<double>& primal_solution,
   double objective_value,
   double epsilon = tolerance)
@@ -164,7 +167,7 @@ static void test_objective_sanity(
 //  Check that it respect the absolute/relative tolerance
 // Check that the primal variables respected the variable bounds
 static void test_constraint_sanity(
-  const cuopt::linear_programming::io::mps_data_model_t<int, double>& op_problem,
+  const cuopt::mathematical_optimization::io::mps_data_model_t<int, double>& op_problem,
   const optimization_problem_solution_t<int, double>::additional_termination_information_t&
     termination_information,
   const rmm::device_uvector<double>& primal_solution,
@@ -191,7 +194,7 @@ static void test_constraint_sanity(
       }
     }
 
-    auto functor = cuopt::linear_programming::detail::violation<double>{};
+    auto functor = cuopt::mathematical_optimization::pdlp::violation<double>{};
 
     // Compute violation to lower/upper bound
 
@@ -217,7 +220,7 @@ static void test_constraint_sanity(
                    constraint_lower_bounds.cend(),
                    constraint_upper_bounds.cbegin(),
                    combined_bounds.begin(),
-                   cuopt::linear_programming::detail::combine_finite_abs_bounds<double>{});
+                   cuopt::mathematical_optimization::pdlp::combine_finite_abs_bounds<double>{});
 
     double l2_norm_primal_right_hand_side = std::accumulate(
       combined_bounds.cbegin(), combined_bounds.cend(), 0.0, [](double acc, double val) {
@@ -247,4 +250,4 @@ static void test_constraint_sanity(
   }
 }
 
-}  // namespace cuopt::linear_programming::test
+}  // namespace cuopt::mathematical_optimization::test

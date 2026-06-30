@@ -27,7 +27,7 @@
 #include <limits>
 #include <vector>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 namespace {
 
@@ -73,28 +73,27 @@ std::vector<f_t> call_host_bounds_strengthening(const optimization_problem_t<i_t
   auto user_problem =
     cuopt_problem_to_user_problem<i_t, f_t>(op_problem.get_handle_ptr(), op_problem);
 
-  dual_simplex::lp_problem_t<i_t, f_t> lp_problem(op_problem.get_handle_ptr(), 1, 1, 1);
+  simplex::lp_problem_t<i_t, f_t> lp_problem(op_problem.get_handle_ptr(), 1, 1, 1);
   std::vector<i_t> new_slacks;
-  dual_simplex::dualize_info_t<i_t, f_t> dualize_info;
-  dual_simplex::simplex_solver_settings_t<i_t, f_t> simplex_settings;
+  simplex::dualize_info_t<i_t, f_t> dualize_info;
+  simplex::simplex_solver_settings_t<i_t, f_t> simplex_settings;
   simplex_settings.primal_tol  = settings.tolerances.presolve_absolute_tolerance;
   simplex_settings.integer_tol = settings.tolerances.integrality_tolerance;
   simplex_settings.set_log(false);
 
-  dual_simplex::convert_user_problem(
+  simplex::convert_user_problem(
     user_problem, simplex_settings, lp_problem, new_slacks, dualize_info);
 
   auto var_types = user_problem.var_types;
-  var_types.resize(lp_problem.num_cols, dual_simplex::variable_type_t::CONTINUOUS);
+  var_types.resize(lp_problem.num_cols, simplex::variable_type_t::CONTINUOUS);
 
-  dual_simplex::csr_matrix_t<i_t, f_t> Arow(1, 1, 1);
+  simplex::csr_matrix_t<i_t, f_t> Arow(1, 1, 1);
   lp_problem.A.to_compressed_row(Arow);
 
   // convert_user_problem returns an equality-form LP. Empty row_sense makes
   // bounds_strengthening_t use rhs as both lower and upper row bounds.
   std::vector<char> row_sense;
-  dual_simplex::bounds_strengthening_t<i_t, f_t> strengthening(
-    lp_problem, Arow, row_sense, var_types);
+  simplex::bounds_strengthening_t<i_t, f_t> strengthening(lp_problem, Arow, row_sense, var_types);
   std::vector<bool> bounds_changed(lp_problem.num_cols, false);
   for (i_t idx : sc_indices) {
     bounds_changed[idx] = true;
@@ -416,4 +415,4 @@ template void expand_initial_solutions_for_semi_continuous(mip_solver_settings_t
                                                            rmm::cuda_stream_view);
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

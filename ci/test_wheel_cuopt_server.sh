@@ -35,9 +35,6 @@ rapids-pip-retry install \
     "${CUOPT_SH_CLIENT_WHEELHOUSE}"/cuopt_sh_client*.whl \
     "${LIBCUOPT_WHEELHOUSE}"/libcuopt*.whl
 
-./datasets/linear_programming/download_pdlp_test_dataset.sh
-./datasets/mip/download_miplib_test_dataset.sh
-
 RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
 export RAPIDS_DATASET_ROOT_DIR
 

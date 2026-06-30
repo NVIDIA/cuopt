@@ -14,7 +14,7 @@
 #include <mip_heuristics/solution/solution.cuh>
 #include <utilities/seed_generator.cuh>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 class line_segment_recombiner_t : public recombiner_t<i_t, f_t> {
@@ -125,4 +125,4 @@ class line_segment_recombiner_t : public recombiner_t<i_t, f_t> {
   line_segment_search_t<i_t, f_t>& line_segment_search;
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

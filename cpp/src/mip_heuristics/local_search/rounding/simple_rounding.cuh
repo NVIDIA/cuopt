@@ -9,7 +9,7 @@
 
 #include <mip_heuristics/solution/solution.cuh>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 void invoke_round_nearest(solution_t<i_t, f_t>& solution);
@@ -26,4 +26,4 @@ void invoke_correct_integers(solution_t<i_t, f_t>& solution, f_t tol);
 template <typename i_t, typename f_t>
 bool check_brute_force_rounding(solution_t<i_t, f_t>& solution);
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

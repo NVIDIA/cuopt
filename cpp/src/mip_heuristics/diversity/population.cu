@@ -18,7 +18,7 @@
 
 #include <mutex>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 constexpr double weight_increase_ratio       = 2.;
 constexpr double weight_decrease_ratio       = 0.9;
@@ -280,11 +280,11 @@ void population_t<i_t, f_t>::invoke_get_solution_callback(
              temp_sol.assignment.size(),
              temp_sol.handle_ptr->get_stream());
   temp_sol.handle_ptr->sync_stream();
-  if (detail::mip_solver_settings_accessor<i_t, f_t>::has_semi_continuous_callback_translation(
+  if (mip_solver_settings_accessor<i_t, f_t>::has_semi_continuous_callback_translation(
         context.settings)) {
-    detail::strip_semi_continuous_auxiliaries_from_assignment(
+    mip::strip_semi_continuous_auxiliaries_from_assignment(
       user_assignment_vec,
-      detail::mip_solver_settings_accessor<i_t, f_t>::get_semi_continuous_original_num_variables(
+      mip_solver_settings_accessor<i_t, f_t>::get_semi_continuous_original_num_variables(
         context.settings));
   }
   callback->get_solution(user_assignment_vec.data(),
@@ -323,11 +323,12 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
       f_t user_bound              = context.stats.get_solution_bound();
       auto callback_num_variables = problem_ptr->original_problem_ptr->get_n_variables();
       const bool has_semi_continuous_callback_translation =
-        detail::mip_solver_settings_accessor<i_t, f_t>::has_semi_continuous_callback_translation(
+        mip_solver_settings_accessor<i_t, f_t>::has_semi_continuous_callback_translation(
           context.settings);
       if (has_semi_continuous_callback_translation) {
-        callback_num_variables = detail::mip_solver_settings_accessor<i_t, f_t>::
-          get_semi_continuous_original_num_variables(context.settings);
+        callback_num_variables =
+          mip_solver_settings_accessor<i_t, f_t>::get_semi_continuous_original_num_variables(
+            context.settings);
       }
       rmm::device_uvector<f_t> incumbent_assignment(callback_num_variables,
                                                     sol.handle_ptr->get_stream());
@@ -349,10 +350,10 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
       if (outside_sol_objective == inf) { return; }
       d_outside_sol_objective.set_value_async(outside_sol_objective, sol.handle_ptr->get_stream());
       if (has_semi_continuous_callback_translation) {
-        detail::append_semi_continuous_auxiliaries_to_assignment(
+        mip::append_semi_continuous_auxiliaries_to_assignment(
           h_incumbent_assignment,
-          detail::mip_solver_settings_accessor<i_t, f_t>::
-            get_semi_continuous_binary_to_original_indices(context.settings),
+          mip_solver_settings_accessor<i_t, f_t>::get_semi_continuous_binary_to_original_indices(
+            context.settings),
           context.settings.get_tolerances());
       }
       incumbent_assignment.resize(h_incumbent_assignment.size(), sol.handle_ptr->get_stream());
@@ -514,7 +515,7 @@ void population_t<i_t, f_t>::normalize_weights()
   CUOPT_LOG_DEBUG("Normalizing weights");
 
   rmm::device_scalar<f_t> l2_norm(problem_ptr->handle_ptr->get_stream());
-  my_l2_norm<i_t, f_t>(weights.cstr_weights, l2_norm, problem_ptr->handle_ptr);
+  pdlp::my_l2_norm<i_t, f_t>(weights.cstr_weights, l2_norm, problem_ptr->handle_ptr);
   thrust::transform(
     problem_ptr->handle_ptr->get_thrust_policy(),
     weights.cstr_weights.begin(),
@@ -558,7 +559,7 @@ void population_t<i_t, f_t>::compute_new_weights()
   auto settings  = context.settings;
 
   rmm::device_scalar<f_t> l2_norm(problem_ptr->handle_ptr->get_stream());
-  my_l2_norm<i_t, f_t>(weights.cstr_weights, l2_norm, problem_ptr->handle_ptr);
+  pdlp::my_l2_norm<i_t, f_t>(weights.cstr_weights, l2_norm, problem_ptr->handle_ptr);
 
   if (!best_sol.get_feasible()) {
     CUOPT_LOG_DEBUG("Increasing weights!");
@@ -901,4 +902,4 @@ template class population_t<int, float>;
 template class population_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

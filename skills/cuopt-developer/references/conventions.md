@@ -47,6 +47,29 @@ CUOPT_EXPECTS(condition, "Error message");
 CUOPT_FAIL("Unreachable code reached");
 ```
 
+### Assert-only variables
+
+A variable used only inside `cuopt_assert` (or any assertion that compiles out in
+release builds) triggers an unused-variable warning when asserts are disabled.
+Mark it `[[maybe_unused]]` at the declaration — do **not** suppress the warning
+with `static_cast<void>(var);` (or `(void)var;`) statements after the asserts.
+
+```cpp
+// ❌ WRONG — trailing void-casts to silence the warning
+const f_t lower_bound = lower_bounds[var_idx];
+const f_t upper_bound = upper_bounds[var_idx];
+cuopt_assert(lower_bound >= -bound_tol, "...");
+cuopt_assert(upper_bound <= 1 + bound_tol, "...");
+static_cast<void>(lower_bound);
+static_cast<void>(upper_bound);
+
+// ✅ CORRECT — annotate at the declaration
+[[maybe_unused]] const f_t lower_bound = lower_bounds[var_idx];
+[[maybe_unused]] const f_t upper_bound = upper_bounds[var_idx];
+cuopt_assert(lower_bound >= -bound_tol, "...");
+cuopt_assert(upper_bound <= 1 + bound_tol, "...");
+```
+
 ### CUDA Error Checking
 
 ```cpp

@@ -24,7 +24,7 @@
 // constraint bounds which should help reduce the gap between LP relaxation and optimal integer
 // solutions We need to implement variable bounds improvement as well
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 class conditional_bound_strengthening_t {
@@ -48,4 +48,4 @@ class conditional_bound_strengthening_t {
   rmm::device_uvector<i_t> locks_per_constraint;
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

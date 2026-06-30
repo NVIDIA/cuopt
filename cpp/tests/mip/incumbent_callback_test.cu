@@ -8,9 +8,9 @@
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 #include "mip_utils.cuh"
 
-#include <cuopt/linear_programming/io/parser.hpp>
-#include <cuopt/linear_programming/solve.hpp>
-#include <cuopt/linear_programming/utilities/internals.hpp>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
+#include <cuopt/mathematical_optimization/utilities/internals.hpp>
 #include <utilities/common_utils.hpp>
 #include <utilities/error.hpp>
 
@@ -32,7 +32,7 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::linear_programming::test {
+namespace cuopt::mathematical_optimization::test {
 
 class scoped_env_restore_t {
  public:
@@ -105,9 +105,10 @@ class test_get_solution_callback_t : public cuopt::internals::get_solution_callb
   int n_variables;
 };
 
-void check_solutions(const test_get_solution_callback_t& get_solution_callback,
-                     const cuopt::linear_programming::io::mps_data_model_t<int, double>& op_problem,
-                     const cuopt::linear_programming::mip_solver_settings_t<int, double>& settings)
+void check_solutions(
+  const test_get_solution_callback_t& get_solution_callback,
+  const cuopt::mathematical_optimization::io::mps_data_model_t<int, double>& op_problem,
+  const cuopt::mathematical_optimization::mip_solver_settings_t<int, double>& settings)
 {
   for (const auto& solution : get_solution_callback.solutions) {
     EXPECT_EQ(solution.first.size(), op_problem.get_variable_lower_bounds().size());
@@ -128,8 +129,8 @@ void test_incumbent_callback(std::string test_instance, bool include_set_callbac
   const raft::handle_t handle_{};
   std::cout << "Running: " << test_instance << std::endl;
   auto path = make_path_absolute(test_instance);
-  cuopt::linear_programming::io::mps_data_model_t<int, double> mps_problem =
-    cuopt::linear_programming::io::read_mps<int, double>(path, false);
+  cuopt::mathematical_optimization::io::mps_data_model_t<int, double> mps_problem =
+    cuopt::mathematical_optimization::io::read_mps<int, double>(path, false);
   handle_.sync_stream();
   auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps_problem);
 
@@ -180,8 +181,8 @@ TEST(mip_solve, early_heuristic_incumbent_fallback)
 
   const raft::handle_t handle_{};
   auto path = make_path_absolute("mip/pk1.mps");
-  cuopt::linear_programming::io::mps_data_model_t<int, double> mps_problem =
-    cuopt::linear_programming::io::read_mps<int, double>(path, false);
+  cuopt::mathematical_optimization::io::mps_data_model_t<int, double> mps_problem =
+    cuopt::mathematical_optimization::io::read_mps<int, double>(path, false);
   handle_.sync_stream();
   auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps_problem);
 
@@ -264,4 +265,116 @@ TEST(mip_solve, initial_solution_survives_papilo_crush)
   if (!callback_solutions.empty()) { check_solutions(get_cb, mps_problem, settings2); }
 }
 
-}  // namespace cuopt::linear_programming::test
+// Verify that a user-provided MIP start in original space is correctly crushed
+// through PaPILO presolve and accepted into the heuristic population.
+TEST(mip_solve, initial_solution_survives_papilo_crush)
+{
+  scoped_env_restore_t disable_gpu_heuristics_env("CUOPT_DISABLE_GPU_HEURISTICS", "1");
+
+  const raft::handle_t handle_{};
+  auto path = make_path_absolute("mip/pk1.mps");
+  cuopt::linear_programming::io::mps_data_model_t<int, double> mps_problem =
+    cuopt::linear_programming::io::read_mps<int, double>(path, false);
+  handle_.sync_stream();
+  auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps_problem);
+  auto stream     = op_problem.get_handle_ptr()->get_stream();
+
+  // Step 1: solve to get a reference feasible solution. Pkl is easily solved to optimality
+  auto settings1       = mip_solver_settings_t<int, double>{};
+  settings1.time_limit = 5.;
+  settings1.presolver  = presolver_t::Papilo;
+  auto result1         = solve_mip(op_problem, settings1);
+  auto status1         = result1.get_termination_status();
+  ASSERT_TRUE(status1 == mip_termination_status_t::FeasibleFound ||
+              status1 == mip_termination_status_t::Optimal)
+    << "Reference solve must find a feasible solution";
+  auto reference_obj      = result1.get_objective_value();
+  auto reference_solution = cuopt::host_copy(result1.get_solution(), stream);
+  ASSERT_EQ((int)reference_solution.size(), op_problem.get_n_variables());
+
+  // Step 2: feed the reference solution as a MIP start with presolve ON
+  // and GPU heuristics disabled. B&B runs with node_limit=0 so it exits
+  // immediately. The only way we get a good objective is if the MIP start
+  // was crushed through PaPILO and accepted by add_user_given_solutions.
+  // Early FJ is not strong enough to find the 11 optimal in the given time frame.
+  auto settings2       = mip_solver_settings_t<int, double>{};
+  settings2.time_limit = 5.;
+  settings2.presolver  = presolver_t::Papilo;
+  settings2.node_limit = 0;
+  settings2.add_initial_solution(reference_solution.data(), reference_solution.size(), stream);
+
+  int user_data = 0;
+  std::vector<std::pair<std::vector<double>, double>> callback_solutions;
+  test_get_solution_callback_t get_cb(callback_solutions, op_problem.get_n_variables(), &user_data);
+  settings2.set_mip_callback(&get_cb, &user_data);
+
+  auto result2 = solve_mip(op_problem, settings2);
+
+  auto status2 = result2.get_termination_status();
+  EXPECT_TRUE(status2 == mip_termination_status_t::FeasibleFound ||
+              status2 == mip_termination_status_t::Optimal)
+    << "Crushed MIP start should yield a feasible result, got "
+    << mip_solution_t<int, double>::get_termination_status_string(status2);
+  EXPECT_TRUE(std::isfinite(result2.get_objective_value()));
+  EXPECT_NEAR(result2.get_objective_value(), reference_obj, 1e-4);
+
+  if (!callback_solutions.empty()) { check_solutions(get_cb, mps_problem, settings2); }
+}
+
+// Verify that a user-provided MIP start in original space is correctly crushed
+// through PaPILO presolve and accepted into the heuristic population.
+TEST(mip_solve, initial_solution_survives_papilo_crush)
+{
+  scoped_env_restore_t disable_gpu_heuristics_env("CUOPT_DISABLE_GPU_HEURISTICS", "1");
+
+  const raft::handle_t handle_{};
+  auto path = make_path_absolute("mip/pk1.mps");
+  cuopt::linear_programming::io::mps_data_model_t<int, double> mps_problem =
+    cuopt::linear_programming::io::read_mps<int, double>(path, false);
+  handle_.sync_stream();
+  auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps_problem);
+  auto stream     = op_problem.get_handle_ptr()->get_stream();
+
+  // Step 1: solve to get a reference feasible solution. Pkl is easily solved to optimality
+  auto settings1       = mip_solver_settings_t<int, double>{};
+  settings1.time_limit = 5.;
+  settings1.presolver  = presolver_t::Papilo;
+  auto result1         = solve_mip(op_problem, settings1);
+  auto status1         = result1.get_termination_status();
+  ASSERT_TRUE(status1 == mip_termination_status_t::FeasibleFound ||
+              status1 == mip_termination_status_t::Optimal)
+    << "Reference solve must find a feasible solution";
+  auto reference_obj      = result1.get_objective_value();
+  auto reference_solution = cuopt::host_copy(result1.get_solution(), stream);
+  ASSERT_EQ((int)reference_solution.size(), op_problem.get_n_variables());
+
+  // Step 2: feed the reference solution as a MIP start with presolve ON
+  // and GPU heuristics disabled. B&B runs with node_limit=0 so it exits
+  // immediately. The only way we get a good objective is if the MIP start
+  // was crushed through PaPILO and accepted by add_user_given_solutions.
+  // Early FJ is not strong enough to find the 11 optimal in the given time frame.
+  auto settings2       = mip_solver_settings_t<int, double>{};
+  settings2.time_limit = 5.;
+  settings2.presolver  = presolver_t::Papilo;
+  settings2.node_limit = 0;
+  settings2.add_initial_solution(reference_solution.data(), reference_solution.size(), stream);
+
+  int user_data = 0;
+  std::vector<std::pair<std::vector<double>, double>> callback_solutions;
+  test_get_solution_callback_t get_cb(callback_solutions, op_problem.get_n_variables(), &user_data);
+  settings2.set_mip_callback(&get_cb, &user_data);
+
+  auto result2 = solve_mip(op_problem, settings2);
+
+  auto status2 = result2.get_termination_status();
+  EXPECT_TRUE(status2 == mip_termination_status_t::FeasibleFound ||
+              status2 == mip_termination_status_t::Optimal)
+    << "Crushed MIP start should yield a feasible result, got "
+    << mip_solution_t<int, double>::get_termination_status_string(status2);
+  EXPECT_TRUE(std::isfinite(result2.get_objective_value()));
+  EXPECT_NEAR(result2.get_objective_value(), reference_obj, 1e-4);
+
+  if (!callback_solutions.empty()) { check_solutions(get_cb, mps_problem, settings2); }
+}
+
+}  // namespace cuopt::mathematical_optimization::test

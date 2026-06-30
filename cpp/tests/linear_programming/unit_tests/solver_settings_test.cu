@@ -5,7 +5,7 @@
  */
 /* clang-format on */
 
-#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 
 #include <utilities/copy_helpers.hpp>
 #include <utilities/error.hpp>
@@ -19,12 +19,12 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 TEST(SolverSettingsTest, TestSetGet)
 {
-  cuopt::linear_programming::pdlp_solver_settings_t<int, double> solver_settings =
-    cuopt::linear_programming::pdlp_solver_settings_t<int, double>{};
+  cuopt::mathematical_optimization::pdlp_solver_settings_t<int, double> solver_settings =
+    cuopt::mathematical_optimization::pdlp_solver_settings_t<int, double>{};
 
   const double tolerance_value = 1e-5;
 
@@ -54,8 +54,8 @@ TEST(SolverSettingsTest, TestSetGet)
   EXPECT_TRUE(solver_settings.detect_infeasibility);
 
   // To avoid the "," inside the macros which are interpreted as extra parameters
-  auto Stable3 = cuopt::linear_programming::pdlp_solver_mode_t::Stable3;
-  auto Fast1   = cuopt::linear_programming::pdlp_solver_mode_t::Fast1;
+  auto Stable3 = cuopt::mathematical_optimization::pdlp_solver_mode_t::Stable3;
+  auto Fast1   = cuopt::mathematical_optimization::pdlp_solver_mode_t::Fast1;
   EXPECT_EQ(solver_settings.pdlp_solver_mode, Stable3);
   solver_settings.pdlp_solver_mode = Fast1;
   EXPECT_EQ(solver_settings.pdlp_solver_mode, Fast1);
@@ -75,8 +75,8 @@ TEST(SolverSettingsTest, warm_start_smaller_vector)
 {
   const raft::handle_t handle_{};
 
-  cuopt::linear_programming::pdlp_solver_settings_t<int, double> solver_settings =
-    cuopt::linear_programming::pdlp_solver_settings_t<int, double>{};
+  cuopt::mathematical_optimization::pdlp_solver_settings_t<int, double> solver_settings =
+    cuopt::mathematical_optimization::pdlp_solver_settings_t<int, double>{};
 
   std::vector<double> primal      = {0.0, 1.0, 2.0, 3.0};
   std::vector<double> dual        = {0.0, 1.0, 2.0, 3.0};
@@ -175,8 +175,8 @@ TEST(SolverSettingsTest, warm_start_bigger_vector)
 {
   const raft::handle_t handle_{};
 
-  cuopt::linear_programming::pdlp_solver_settings_t<int, double> solver_settings =
-    cuopt::linear_programming::pdlp_solver_settings_t<int, double>{};
+  cuopt::mathematical_optimization::pdlp_solver_settings_t<int, double> solver_settings =
+    cuopt::mathematical_optimization::pdlp_solver_settings_t<int, double>{};
 
   std::vector<double> primal      = {0.0, 1.0, 2.0, 3.0};
   std::vector<double> dual        = {0.0, 1.0, 2.0};
@@ -272,4 +272,4 @@ TEST(SolverSettingsTest, warm_start_bigger_vector)
   EXPECT_EQ(h_last_restart_duality_gap_dual_solution, dual_expected);
 }
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

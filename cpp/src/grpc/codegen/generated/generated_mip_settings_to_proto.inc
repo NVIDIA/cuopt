@@ -31,6 +31,7 @@
   pb_settings->set_mixed_integer_gomory_cuts(settings.mixed_integer_gomory_cuts);
   pb_settings->set_knapsack_cuts(settings.knapsack_cuts);
   pb_settings->set_clique_cuts(settings.clique_cuts);
+  pb_settings->set_zero_half_cuts(settings.zero_half_cuts);
   pb_settings->set_implied_bound_cuts(settings.implied_bound_cuts);
   pb_settings->set_strong_chvatal_gomory_cuts(settings.strong_chvatal_gomory_cuts);
   pb_settings->set_reduced_cost_strengthening(settings.reduced_cost_strengthening);

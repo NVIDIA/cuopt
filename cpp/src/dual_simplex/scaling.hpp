@@ -14,7 +14,7 @@
 
 #include <vector>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 template <typename i_t, typename f_t>
 i_t scaling(const lp_problem_t<i_t, f_t>& unscaled,
@@ -33,4 +33,4 @@ void unscale_solution(const std::vector<f_t>& column_scaling,
                       std::vector<f_t>& unscaled_y,
                       std::vector<f_t>& unscaled_z);
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

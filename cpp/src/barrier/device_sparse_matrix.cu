@@ -10,7 +10,14 @@
 
 #include <dual_simplex/sparse_matrix.hpp>
 
-namespace cuopt::linear_programming::dual_simplex {
+// This translation unit provides out-of-line definitions and explicit
+// instantiations of shared simplex sparse-matrix templates (csc_matrix_t,
+// matrix_transpose_vector_multiply) specialized with barrier's
+// PinnedHostAllocator. They must live in the simplex namespace (where the
+// templates are declared), even though the file resides under barrier/.
+namespace cuopt::mathematical_optimization::simplex {
+
+using cuopt::mathematical_optimization::barrier::PinnedHostAllocator;
 
 template <typename i_t, typename f_t>
 template <typename Allocator>
@@ -65,4 +72,4 @@ template void csc_matrix_t<int, double>::scale_columns<PinnedHostAllocator<doubl
 
 #endif
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

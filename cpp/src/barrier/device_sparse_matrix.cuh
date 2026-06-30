@@ -23,7 +23,7 @@
 #include <thrust/tabulate.h>
 #include <thrust/tuple.h>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::barrier {
 
 template <typename IndexType, typename ValueType>
 class device_csr_matrix_t;
@@ -125,7 +125,7 @@ class device_csc_matrix_t {
   {
   }
 
-  device_csc_matrix_t(const csc_matrix_t<i_t, f_t>& A, rmm::cuda_stream_view stream)
+  device_csc_matrix_t(const simplex::csc_matrix_t<i_t, f_t>& A, rmm::cuda_stream_view stream)
     : m(A.m),
       n(A.n),
       nz_max(A.col_start[A.n]),
@@ -146,16 +146,16 @@ class device_csc_matrix_t {
     nz_max = nnz;
   }
 
-  csc_matrix_t<i_t, f_t> to_host(rmm::cuda_stream_view stream)
+  simplex::csc_matrix_t<i_t, f_t> to_host(rmm::cuda_stream_view stream)
   {
-    csc_matrix_t<i_t, f_t> A(m, n, nz_max);
+    simplex::csc_matrix_t<i_t, f_t> A(m, n, nz_max);
     A.col_start = cuopt::host_copy(col_start, stream);
     A.i         = cuopt::host_copy(i, stream);
     A.x         = cuopt::host_copy(x, stream);
     return A;
   }
 
-  void copy(csc_matrix_t<i_t, f_t>& A, rmm::cuda_stream_view stream)
+  void copy(simplex::csc_matrix_t<i_t, f_t>& A, rmm::cuda_stream_view stream)
   {
     m      = A.m;
     n      = A.n;
@@ -168,7 +168,7 @@ class device_csc_matrix_t {
     raft::copy(x.data(), A.x.data(), A.x.size(), stream);
   }
 
-  /** Same semantics as csc_matrix_t::to_compressed_row, entirely on device. */
+  /** Same semantics as simplex::csc_matrix_t::to_compressed_row, entirely on device. */
   void to_compressed_row(device_csr_matrix_t<i_t, f_t>& Arow, rmm::cuda_stream_view stream) const;
 
   void form_col_index(rmm::cuda_stream_view stream)
@@ -252,7 +252,7 @@ class device_csr_matrix_t {
   {
   }
 
-  device_csr_matrix_t(const csr_matrix_t<i_t, f_t>& A, rmm::cuda_stream_view stream)
+  device_csr_matrix_t(const simplex::csr_matrix_t<i_t, f_t>& A, rmm::cuda_stream_view stream)
     : m(A.m),
       n(A.n),
       nz_max(A.row_start[A.m]),
@@ -273,16 +273,16 @@ class device_csr_matrix_t {
     nz_max = nnz;
   }
 
-  csr_matrix_t<i_t, f_t> to_host(rmm::cuda_stream_view stream)
+  simplex::csr_matrix_t<i_t, f_t> to_host(rmm::cuda_stream_view stream)
   {
-    csr_matrix_t<i_t, f_t> A(m, n, nz_max);
+    simplex::csr_matrix_t<i_t, f_t> A(m, n, nz_max);
     A.row_start = cuopt::host_copy(row_start, stream);
     A.j         = cuopt::host_copy(j, stream);
     A.x         = cuopt::host_copy(x, stream);
     return A;
   }
 
-  void copy(csr_matrix_t<i_t, f_t>& A, rmm::cuda_stream_view stream)
+  void copy(simplex::csr_matrix_t<i_t, f_t>& A, rmm::cuda_stream_view stream)
   {
     m      = A.m;
     n      = A.n;
@@ -388,4 +388,4 @@ void device_csc_matrix_t<i_t, f_t>::to_compressed_row(device_csr_matrix_t<i_t, f
                       thrust::device_pointer_cast(Arow.x.data()));
 }
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::barrier
