@@ -22,8 +22,8 @@ If you have built it locally, libcuopt.so will be in the build directory ``cpp/b
 
    # Find the cuopt header file and assign to INCLUDE_PATH
    INCLUDE_PATH=$(find / -name "cuopt_c.h" -path "*/linear_programming/*" -printf "%h\n" | sed 's/\/linear_programming//' 2>/dev/null)
-   # Find the libcuopt library and assign to LIBCUOPT_LIBRARY_PATH
-   LIBCUOPT_LIBRARY_PATH=$(find / -name "libcuopt.so" 2>/dev/null)
+   # Find the libcuopt library directory and assign to LIBCUOPT_LIBRARY_PATH
+   LIBCUOPT_LIBRARY_PATH=$(dirname $(find / -name "libcuopt.so" 2>/dev/null))
 
 
 Build and run the example
@@ -95,8 +95,8 @@ If you have built it locally, libcuopt.so will be in the build directory ``cpp/b
 
    # Find the cuopt header file and assign to INCLUDE_PATH
    INCLUDE_PATH=$(find / -name "cuopt_c.h" -path "*/linear_programming/*" -printf "%h\n" | sed 's/\/linear_programming//' 2>/dev/null)
-   # Find the libcuopt library and assign to LIBCUOPT_LIBRARY_PATH
-   LIBCUOPT_LIBRARY_PATH=$(find / -name "libcuopt.so" 2>/dev/null)
+   # Find the libcuopt library directory and assign to LIBCUOPT_LIBRARY_PATH
+   LIBCUOPT_LIBRARY_PATH=$(dirname $(find / -name "libcuopt.so" 2>/dev/null))
 
 A sample MILP MPS file (:download:`download mip_sample.mps <https://raw.githubusercontent.com/coin-or/SYMPHONY/master/Datasets/sample.mps>`):
 

@@ -15,14 +15,14 @@
  * the MPS-parser-to-problem pipeline and legitimately needs a real file.
  */
 
-#include <cuopt/linear_programming/cpu_optimization_problem.hpp>
-#include <cuopt/linear_programming/cpu_optimization_problem_solution.hpp>
-#include <cuopt/linear_programming/cpu_pdlp_warm_start_data.hpp>
-#include <cuopt/linear_programming/io/parser.hpp>
-#include <cuopt/linear_programming/optimization_problem.hpp>
-#include <cuopt/linear_programming/optimization_problem_solution.hpp>
-#include <cuopt/linear_programming/optimization_problem_utils.hpp>
-#include <cuopt/linear_programming/solve.hpp>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem_solution.hpp>
+#include <cuopt/mathematical_optimization/cpu_pdlp_warm_start_data.hpp>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_solution.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
 #include <utilities/common_utils.hpp>
 #include <utilities/copy_helpers.hpp>
 
@@ -31,7 +31,7 @@
 #include <numeric>
 #include <stdexcept>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 // =============================================================================
 // Helpers: build tiny problems and solutions with known data
@@ -368,7 +368,7 @@ TEST_F(SolutionInterfaceTest, cpu_problem_to_optimization_problem)
 // This test legitimately uses the MPS parser since it tests that pipeline
 TEST_F(SolutionInterfaceTest, mps_data_model_to_optimization_problem)
 {
-  auto mps_data = cuopt::linear_programming::io::read_mps<int, double>(lp_file_);
+  auto mps_data = cuopt::mathematical_optimization::io::read_mps<int, double>(lp_file_);
   raft::handle_t handle;
 
   auto problem = mps_data_model_to_optimization_problem(&handle, mps_data);
@@ -398,6 +398,30 @@ TEST_F(SolutionInterfaceTest, mps_data_model_to_optimization_problem)
     EXPECT_GE(csr_indices[i], 0) << "Negative column index at " << i;
     EXPECT_LT(csr_indices[i], mps_data.get_n_variables()) << "Out-of-range column index at " << i;
   }
+}
+
+TEST_F(SolutionInterfaceTest, mps_data_model_to_optimization_problem_quadratic_constraints)
+{
+  auto mps_data = cuopt::mathematical_optimization::io::read_lp_from_string<int, double>(R"LP(
+Minimize
+  obj: x + y
+Subject To
+  q0: [ 4 x * y ] <= 0.5
+Bounds
+  -1 <= x <= 1
+  -1 <= y <= 1
+End
+)LP");
+  ASSERT_TRUE(mps_data.has_quadratic_constraints());
+  ASSERT_EQ(mps_data.get_quadratic_constraints().size(), 1u);
+
+  raft::handle_t handle;
+  auto problem = mps_data_model_to_optimization_problem(&handle, mps_data);
+
+  ASSERT_TRUE(problem.has_quadratic_constraints());
+  ASSERT_EQ(problem.get_quadratic_constraints().size(), 1u);
+  EXPECT_EQ(problem.get_quadratic_constraints()[0].constraint_row_name, "q0");
+  EXPECT_NEAR(problem.get_quadratic_constraints()[0].rhs_value, 0.5, 1e-9);
 }
 
 // =============================================================================
@@ -523,4 +547,4 @@ TEST_F(SolutionInterfaceTest, cpu_problem_copy_to_host_methods)
   }
 }
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

@@ -9,6 +9,7 @@ set(UTIL_SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/utilities/seed_generator.cu
                    ${CMAKE_CURRENT_SOURCE_DIR}/utilities/timestamp_utils.cpp
                    ${CMAKE_CURRENT_SOURCE_DIR}/utilities/work_unit_scheduler.cpp)
 
+add_subdirectory(linear_algebra)
 add_subdirectory(pdlp)
 add_subdirectory(math_optimization)
 add_subdirectory(mip_heuristics)

@@ -5,7 +5,7 @@
  */
 /* clang-format on */
 
-#include <cuopt/linear_programming/io/parser.hpp>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
 
 #include <file_to_string.hpp>
 #include <lp_parser.hpp>
@@ -25,7 +25,7 @@
 #include <utility>
 #include <vector>
 
-namespace cuopt::linear_programming::io {
+namespace cuopt::mathematical_optimization::io {
 
 namespace {
 
@@ -314,7 +314,7 @@ void LpParseEngine<i_t, f_t>::read_and_tokenize(const std::string& file)
   // way as .mps.gz / .mps.bz2 (dlopen-loaded libz / libbz2). The returned
   // buffer is null-terminated; strip it before constructing the string view
   // since `tokenize` walks the entire string range.
-  auto buf = detail::file_to_string(file);
+  auto buf = file_to_string(file);
   std::string text(buf.data(), buf.size() > 0 ? buf.size() - 1 : 0);
   tokenize(text);
 }
@@ -1576,4 +1576,4 @@ template mps_data_model_t<int, double> read_lp<int, double>(const std::string&);
 template mps_data_model_t<int, float> read_lp_from_string<int, float>(std::string_view);
 template mps_data_model_t<int, double> read_lp_from_string<int, double>(std::string_view);
 
-}  // namespace cuopt::linear_programming::io
+}  // namespace cuopt::mathematical_optimization::io

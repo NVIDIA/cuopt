@@ -52,7 +52,7 @@
 // entries [cone_offsets[i], cone_offsets[i + 1]) belong to cone i.
 // =============================================================================
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::barrier {
 
 inline constexpr int soc_block_size = 256;
 
@@ -1078,4 +1078,4 @@ void compute_combined_cone_rhs_term(raft::device_span<const f_t> dx_aff,
   apply_w<i_t, f_t>(scratch_cone, out, cones, stream);
 }
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::barrier

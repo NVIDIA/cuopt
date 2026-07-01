@@ -5,14 +5,14 @@
  */
 /* clang-format on */
 
-#include <cuopt/linear_programming/io/mps_data_model.hpp>
+#include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
 #include <utilities/error.hpp>
 
 #include <algorithm>
 #include <numeric>
 #include <utility>
 
-namespace cuopt::linear_programming::io {
+namespace cuopt::mathematical_optimization::io {
 
 template <typename i_t, typename f_t>
 void mps_data_model_t<i_t, f_t>::set_csr_constraint_matrix(std::span<const f_t> A_values,
@@ -480,4 +480,4 @@ template class mps_data_model_t<int, double>;
 //  TODO current raft to cusparse wrappers only support int64_t
 //  can be CUSPARSE_INDEX_16U, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_64I
 
-}  // namespace cuopt::linear_programming::io
+}  // namespace cuopt::mathematical_optimization::io

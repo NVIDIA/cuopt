@@ -6,11 +6,11 @@
 /* clang-format on */
 
 #include <cuopt/error.hpp>
-#include <cuopt/linear_programming/mip/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <raft/util/cudart_utils.hpp>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 template <typename i_t, typename f_t>
 void mip_solver_settings_t<i_t, f_t>::add_initial_solution(const f_t* initial_solution,
@@ -55,4 +55,4 @@ template class mip_solver_settings_t<int, float>;
 template class mip_solver_settings_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

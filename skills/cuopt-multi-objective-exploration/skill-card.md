@@ -7,12 +7,18 @@ This skill is ready for commercial/non-commercial use. <br>
 NVIDIA <br>
 
 ### License/Terms of Use: <br>
-Apache 2.0 <br>
+Apache-2.0 <br>
 ## Use Case: <br>
-Developers and engineers exploring tradeoffs between competing objectives in optimization problems, using cuOpt to trace Pareto frontiers and interpret exchange rates across cost, service level, risk, and other conflicting goals. <br>
+Developers and engineers exploring tradeoffs between competing objectives in optimization problems, using cuOpt to trace the Pareto frontier and interpret exchange rates rather than collapsing to a single weighted answer. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
+
+## Requirements / Dependencies: <br>
+**Requires API Key or External Credential:** [Not Specified] <br>
+**Credential Type(s):** [None identified] <br>  
+
+Do not include secrets in prompts/logs/output; use least-privilege credentials; rotate keys as appropriate. <br>
 
 ## Known Risks and Mitigations: <br>
 Risk: Review before execution as proposals could introduce incorrect or misleading guidance into skills. <br>
@@ -20,12 +26,12 @@ Mitigation: Review and scan skill before deployment. <br>
 
 ## Reference(s): <br>
 - [cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html) <br>
-- [cuOpt Examples](https://github.com/NVIDIA/cuopt-examples) <br>
+- [cuopt-examples](https://github.com/NVIDIA/cuopt-examples) <br>
 
 
 ## Skill Output: <br>
-**Output Type(s):** [Analysis, Code] <br>
-**Output Format:** [Markdown with inline code blocks] <br>
+**Output Type(s):** [Analysis, Configuration instructions] <br>
+**Output Format:** [Markdown with inline formulations and solver-call patterns] <br>
 **Output Parameters:** [1D] <br>
 **Other Properties Related to Output:** [None] <br>
 
@@ -36,7 +42,7 @@ Mitigation: Review and scan skill before deployment. <br>
 
 
 ## Evaluation Tasks: <br>
-Evaluated against 4 tasks (3 positive skill-activation, 1 negative) via NVSkills-Eval external profile. <br>
+Evaluated against 5 internal evaluation tasks (4 positive skill-activation, 1 negative). <br>
 
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
@@ -60,16 +66,11 @@ Underlying evaluation signals used in this run: <br>
 ## Evaluation Results: <br>
 | Dimension | Num | `claude-code` | `codex` |
 |---|---:|---:|---:|
-| Security | 4 | 100% (+0%) | 100% (+0%) |
-| Correctness | 4 | 88% (+38%) | 76% (+20%) |
-| Discoverability | 4 | 75% (+50%) | 66% (+35%) |
-| Effectiveness | 4 | 87% (+15%) | 77% (+5%) |
-| Efficiency | 4 | 76% (+33%) | 65% (+22%) |
-
-## Testing Completed: <br>
-**[x] Agent Red-Teaming** <br>
-**[ ] Network Security** <br>
-**[ ] Product Security** <br>
+| Security | 5 | 100% (+0%) | 100% (+0%) |
+| Correctness | 5 | 90% (+0%) | 87% (-8%) |
+| Discoverability | 5 | 78% (-2%) | 73% (-22%) |
+| Effectiveness | 5 | 85% (-6%) | 85% (+2%) |
+| Efficiency | 5 | 75% (-3%) | 71% (-21%) |
 
 ## Skill Version(s): <br>
 26.08.00 (source: frontmatter) <br>

@@ -9,7 +9,7 @@
 
 #include "utils.cuh"
 
-#include <cuopt/linear_programming/mip/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
 #include <mip_heuristics/diversity/weights.cuh>
 #include <mip_heuristics/logger.cuh>
 #include <mip_heuristics/problem/problem.cuh>
@@ -25,7 +25,7 @@
 #define FJ_DEBUG_LOAD_BALANCING 0
 #define FJ_SINGLE_STEP          0
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename f_t>
 using fj_improvement_callback_t =
@@ -641,4 +641,4 @@ class fj_t {
   f_t last_reported_objective_{std::numeric_limits<f_t>::infinity()};
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

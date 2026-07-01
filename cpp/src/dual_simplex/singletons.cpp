@@ -7,11 +7,11 @@
 
 #include <dual_simplex/singletons.hpp>
 #include <dual_simplex/triangle_solve.hpp>
-#include <dual_simplex/types.hpp>
+#include <math_optimization/types.hpp>
 
 #include <cstdio>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 // Destroys the queue but prints it
 template <typename i_t>
@@ -315,4 +315,4 @@ template int find_singletons<int, double>(const csc_matrix_t<int, double>& A,
                                           double& work_estimate);
 #endif
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

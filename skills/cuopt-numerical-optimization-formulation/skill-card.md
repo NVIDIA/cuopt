@@ -9,10 +9,16 @@ NVIDIA <br>
 ### License/Terms of Use: <br>
 Apache 2.0 <br>
 ## Use Case: <br>
-Developers and engineers formulating linear, mixed-integer, and quadratic optimization problems with NVIDIA cuOpt, parsing unstructured problem statements into structured mathematical formulations. <br>
+Developers and engineers use this skill to parse natural-language optimization problem descriptions and formulate them as LP, MILP, or QP models with identified parameters, constraints, decision variables, and objectives. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
+
+## Requirements / Dependencies: <br>
+**Requires API Key or External Credential:** [No] <br>
+**Credential Type(s):** [None] <br>  
+
+Do not include secrets in prompts/logs/output; use least-privilege credentials; rotate keys as appropriate. <br>
 
 ## Known Risks and Mitigations: <br>
 Risk: Review before execution as proposals could introduce incorrect or misleading guidance into skills. <br>
@@ -20,11 +26,11 @@ Mitigation: Review and scan skill before deployment. <br>
 
 ## Reference(s): <br>
 - [cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html) <br>
-- [cuOpt Examples](https://github.com/NVIDIA/cuopt-examples) <br>
+- [cuopt-examples](https://github.com/NVIDIA/cuopt-examples) <br>
 
 
 ## Skill Output: <br>
-**Output Type(s):** [Analysis] <br>
+**Output Type(s):** [Analysis, Formulation guidance] <br>
 **Output Format:** [Markdown] <br>
 **Output Parameters:** [1D] <br>
 **Other Properties Related to Output:** [None] <br>
@@ -36,7 +42,7 @@ Mitigation: Review and scan skill before deployment. <br>
 
 
 ## Evaluation Tasks: <br>
-Evaluated against 3 internal skill-activation tasks (NVSkills-Eval, external profile, astra-sandbox environment). <br>
+Evaluated against 3 internal evaluation tasks (all positive skill-activation cases). <br>
 
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
@@ -61,10 +67,15 @@ Underlying evaluation signals used in this run: <br>
 | Dimension | Num | `claude-code` | `codex` |
 |---|---:|---:|---:|
 | Security | 3 | 100% (+0%) | 100% (+0%) |
-| Correctness | 3 | 67% (+20%) | 33% (-3%) |
+| Correctness | 3 | 67% (+23%) | 37% (+0%) |
 | Discoverability | 3 | 33% (+33%) | 0% (+0%) |
-| Effectiveness | 3 | 89% (+2%) | 69% (+1%) |
+| Effectiveness | 3 | 93% (+10%) | 71% (+1%) |
 | Efficiency | 3 | 49% (+22%) | 28% (-0%) |
+
+## Testing Completed: <br>
+**[x] Agent Red-Teaming** <br>
+**[ ] Network Security** <br>
+**[ ] Product Security** <br>
 
 ## Skill Version(s): <br>
 26.08.00 (source: frontmatter) <br>

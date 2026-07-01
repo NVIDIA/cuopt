@@ -16,7 +16,7 @@
 #include <cstddef>
 #include <vector>
 
-namespace cuopt::linear_programming::dual_simplex::test {
+namespace cuopt::mathematical_optimization::barrier::test {
 
 TEST(second_order_cone_kernels, topology_and_scratch_layout)
 {
@@ -581,4 +581,4 @@ TEST(second_order_cone_kernels, combined_cone_rhs_matches_host_reference)
   }
 }
 
-}  // namespace cuopt::linear_programming::dual_simplex::test
+}  // namespace cuopt::mathematical_optimization::barrier::test

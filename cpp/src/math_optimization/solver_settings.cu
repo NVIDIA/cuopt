@@ -6,7 +6,7 @@
 /* clang-format on */
 
 #include <cuopt/error.hpp>
-#include <cuopt/linear_programming/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/solver_settings.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <utilities/logger.hpp>
 
@@ -16,7 +16,7 @@
 #include <fstream>
 #include <sstream>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 namespace {
 
@@ -138,6 +138,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_KNAPSACK_CUTS, &mip_settings.knapsack_cuts, -1, 1, -1},
     {CUOPT_MIP_FLOW_COVER_CUTS, &mip_settings.flow_cover_cuts, -1, 1, -1},
     {CUOPT_MIP_CLIQUE_CUTS, &mip_settings.clique_cuts, -1, 1, -1},
+    {CUOPT_MIP_ZERO_HALF_CUTS, &mip_settings.zero_half_cuts, -1, 1, -1},
     {CUOPT_MIP_IMPLIED_BOUND_CUTS, &mip_settings.implied_bound_cuts, -1, 1, -1},
     {CUOPT_MIP_STRONG_CHVATAL_GOMORY_CUTS, &mip_settings.strong_chvatal_gomory_cuts, -1, 1, -1},
     {CUOPT_MIP_REDUCED_COST_STRENGTHENING, &mip_settings.reduced_cost_strengthening, -1, std::numeric_limits<i_t>::max(), -1},
@@ -672,4 +673,4 @@ template bool solver_settings_t<int, double>::get_parameter(const std::string& n
 template std::string solver_settings_t<int, double>::get_parameter(const std::string& name) const;
 #endif
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

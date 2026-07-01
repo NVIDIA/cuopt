@@ -5,7 +5,7 @@
  */
 /* clang-format on */
 
-#include <cuopt/linear_programming/io/parser.hpp>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
 
 #include <experimental_mps_fast/fast_parser.hpp>
 #include <mps_parser_internal.hpp>
@@ -14,7 +14,11 @@
 
 #include <cstdint>
 
-namespace cuopt::linear_programming::io {
+#include <utilities/logger.hpp>
+
+#include <cstdint>
+
+namespace cuopt::mathematical_optimization::io {
 
 template <typename i_t, typename f_t>
 mps_data_model_t<i_t, f_t> read_mps(const std::string& mps_file, bool fixed_mps_format)
@@ -54,4 +58,4 @@ template mps_data_model_t<int64_t, float> read_mps_fast_experimental(
 template mps_data_model_t<int64_t, double> read_mps_fast_experimental(
   const std::string& mps_file_path);
 
-}  // namespace cuopt::linear_programming::io
+}  // namespace cuopt::mathematical_optimization::io

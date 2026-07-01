@@ -8,8 +8,8 @@
 #include <utilities/common_utils.hpp>
 #include <utilities/inline_mps_test_utils.hpp>
 
-#include <cuopt/linear_programming/io/mps_writer.hpp>
-#include <cuopt/linear_programming/io/parser.hpp>
+#include <cuopt/mathematical_optimization/io/mps_writer.hpp>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
 #include <mps_parser_internal.hpp>
 
 #include <gtest/gtest.h>
@@ -29,7 +29,7 @@
 #include <system_error>
 #include <vector>
 
-namespace cuopt::linear_programming::io {
+namespace cuopt::mathematical_optimization::io {
 
 constexpr double tolerance = 1e-6;
 
@@ -2967,4 +2967,4 @@ INSTANTIATE_MPS_READER_TEST(qps_file_reader_test);
 
 #undef INSTANTIATE_MPS_READER_TEST
 #undef INSTANTIATE_DEFAULT_MPS_READER_TEST
-}  // namespace cuopt::linear_programming::io
+}  // namespace cuopt::mathematical_optimization::io

@@ -7,12 +7,12 @@
 
 #pragma once
 
-#include <dual_simplex/sparse_matrix.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
 
 #include <numeric>
 #include <queue>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 template <typename i_t>
 struct row_col_graph_t {
@@ -52,4 +52,4 @@ i_t find_singletons(const csc_matrix_t<i_t, f_t>& A,
                     std::vector<i_t>& col_perm,
                     f_t& work_estimate);
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex
