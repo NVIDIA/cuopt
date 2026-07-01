@@ -11,8 +11,8 @@
 #include <cuopt/mathematical_optimization/io/parser.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/solve.hpp>
+#include <linear_algebra/sort_csr.cuh>
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
-#include <mip_heuristics/utilities/sort_csr.cuh>
 #include <pdlp/utils.cuh>
 #include <utilities/base_fixture.hpp>
 #include <utilities/common_utils.hpp>
@@ -513,7 +513,7 @@ TEST_P(dual_crush_round_trip, kkt_check)
   auto op_problem   = mps_data_model_to_optimization_problem(&handle_, mps);
 
   // Step 1: Presolve with a single presolver instance (same one used for crush later)
-  mip::sort_csr(op_problem);
+  sort_csr(op_problem);
   mip::third_party_presolve_t<int, double> presolver;
   auto result = presolver.apply(op_problem,
                                 problem_category_t::LP,
@@ -770,7 +770,7 @@ TEST_P(crush_warmstart, round_trip)
   auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps);
 
   // Step 1: Presolve
-  mip::sort_csr(op_problem);
+  sort_csr(op_problem);
   mip::third_party_presolve_t<int, double> presolver;
   auto result = presolver.apply(op_problem,
                                 problem_category_t::LP,
