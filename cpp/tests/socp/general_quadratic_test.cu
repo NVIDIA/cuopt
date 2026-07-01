@@ -12,6 +12,8 @@
 #include <cuopt/error.hpp>
 #include <cuopt/mathematical_optimization/io/parser.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
 #include <dual_simplex/solve.hpp>
 #include <dual_simplex/user_problem.hpp>
 #include <linear_algebra/sparse_matrix.hpp>
@@ -908,97 +910,40 @@ TEST(general_quadratic, rotated_soc_heads_free_rejected)
     cuopt::logic_error);
 }
 
-// Test: QCQP with rotated SOC constraint and quadratic objective.
-// minimize (1/2)*x^2 - x   (quadratic objective, unconstrained min at x=1)
-// subject to x^2 - 2*t*u <= 0  (rotated SOC: x^2 <= 2*t*u)
-//            t = 1, u = 0.5    (so x^2 <= 1, i.e., x in [-1, 1])
-// Optimal: x = 1 (at boundary), objective = (1/2)*1 - 1 = -0.5
-TEST(general_quadratic, qcqp_rotated_soc_with_quadratic_objective)
+// Test QCQP with rotated SOC constraint and quadratic objective using high-level API.
+// This is the recommended way to solve QCQP problems.
+// minimize (1/2)*x^2 - x   (quadratic objective)
+// subject to x^2 - 2*t*u <= 0  (rotated SOC)
+//            t = 1, u = 0.5
+// Optimal: x = 1, objective = -0.5
+TEST(general_quadratic, qcqp_rotated_soc)
 {
   raft::handle_t handle{};
-  init_handler(&handle);
 
-  user_problem_t<i_t, f_t> user_problem(&handle);
+  auto problem = io::read_lp_from_string<i_t, f_t>(R"LP(
+Minimize
+  - x + [ x ^2 ] / 2
+Subject To
+  t_eq: t = 1
+  u_eq: u = 0.5
+  rsoc: [ x ^2 - 2 t * u ] <= 0
+Bounds
+  x free
+  t >= 0
+  u >= 0
+End
+)LP");
 
-  // Variables: x (index 0), t (index 1), u (index 2)
-  constexpr int m  = 2;  // two linear constraints: t = 1, u = 0.5
-  constexpr int n  = 3;
-  constexpr int nz = 2;
+  ASSERT_TRUE(problem.has_quadratic_objective());
+  ASSERT_TRUE(problem.has_quadratic_constraints());
+  ASSERT_EQ(problem.get_quadratic_constraints().size(), 1u);
 
-  user_problem.num_rows  = m;
-  user_problem.num_cols  = n;
-  user_problem.objective = {-1.0, 0.0, 0.0};  // linear part: -x
+  pdlp_solver_settings_t<i_t, f_t> settings;
+  auto solution = solve_lp(&handle, problem, settings);
 
-  // Quadratic objective: (1/2)*x^T*Q*x where Q[0,0] = 1 gives (1/2)*x^2
-  // Q stored in CSR format
-  user_problem.Q_offsets = {0, 1, 1, 1};  // one entry in row 0
-  user_problem.Q_indices = {0};           // column 0
-  user_problem.Q_values  = {1.0};         // coefficient (solver uses 1/2 * x^T Q x)
-
-  // CSC matrix A: t = 1 (row 0), u = 0.5 (row 1)
-  // Column 0 (x): no entries
-  // Column 1 (t): entry in row 0
-  // Column 2 (u): entry in row 1
-  user_problem.A.m      = m;
-  user_problem.A.n      = n;
-  user_problem.A.nz_max = nz;
-  user_problem.A.reallocate(nz);
-  user_problem.A.col_start = {0, 0, 1, 2};
-  user_problem.A.i[0]      = 0;  // t in row 0
-  user_problem.A.x[0]      = 1.0;
-  user_problem.A.i[1]      = 1;  // u in row 1
-  user_problem.A.x[1]      = 1.0;
-
-  user_problem.rhs            = {1.0, 0.5};  // t = 1, u = 0.5
-  user_problem.row_sense      = {'E', 'E'};
-  user_problem.lower          = {-inf, 0.0, 0.0};  // t >= 0, u >= 0 for valid rotated SOC
-  user_problem.upper          = {inf, inf, inf};
-  user_problem.num_range_rows = 0;
-  user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
-
-  // Rotated SOC: x^2 - 2*t*u <= 0
-  // Q COO: (0,0,1) for x^2, (1,2,-2) for -2*t*u (canonical form: single cross term)
-  qc_t qc;
-  qc.constraint_row_index = 0;
-  qc.constraint_row_name  = "rsoc";
-  qc.constraint_row_type  = 'L';
-  qc.rhs_value            = 0.0;
-  qc.rows                 = {0, 1};
-  qc.cols                 = {0, 2};
-  qc.vals                 = {1.0, -2.0};
-
-  // Build CSR from the constraint matrix
-  csr_matrix_t<i_t, f_t> csr_A(m, n, nz);
-  csr_A.m         = m;
-  csr_A.n         = n;
-  csr_A.row_start = {0, 1, 2};
-  csr_A.j         = {1, 2};  // t in row 0, u in row 1
-  csr_A.x         = {1.0, 1.0};
-
-  std::vector<qc_t> qcs = {qc};
-
-  // Convert quadratic constraints to SOC - this should NOT throw with quadratic objective
-  convert_quadratic_constraints_to_second_order_cones<i_t, f_t>(n, qcs, csr_A, user_problem);
-
-  // Convert CSR back to CSC for the barrier solver
-  csr_A.to_compressed_col(user_problem.A);
-
-  // Verify rotated SOC was detected and cones were created
-  EXPECT_GT(user_problem.second_order_cone_dims.size(), 0u);
-
-  // Solve via barrier
-  simplex_solver_settings_t<i_t, f_t> settings;
-  settings.barrier          = true;
-  settings.barrier_presolve = true;
-  settings.dualize          = 0;
-
-  lp_solution_t<i_t, f_t> solution(user_problem.num_rows, user_problem.num_cols);
-  auto status = solve_linear_program_with_barrier(user_problem, settings, solution);
-
-  EXPECT_EQ(status, lp_status_t::OPTIMAL);
-  // With t=1, u=0.5: rotated SOC gives x^2 <= 2*1*0.5 = 1, so x in [-1, 1]
-  // Objective = (1/2)*x^2 - x, minimized at x=1 (on boundary), giving obj = 0.5 - 1 = -0.5
-  EXPECT_NEAR(solution.objective, -0.5, 1e-4);
+  EXPECT_EQ(solution.get_termination_status(), pdlp_termination_status_t::Optimal);
+  // Optimal: x=1, objective = (1/2)*1 - 1 = -0.5
+  EXPECT_NEAR(solution.get_objective_value(), -0.5, 1e-4);
 }
 
 }  // namespace cuopt::mathematical_optimization::barrier::test
