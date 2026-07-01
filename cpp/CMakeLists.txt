@@ -198,7 +198,7 @@ if (PARALLEL_LEVEL AND NOT "${PARALLEL_LEVEL}" STREQUAL "")
 endif ()
 
 # The MIP solver requires OpenMP for both C++ and CUDA host code.
-rapids_find_package(OpenMP REQUIRED COMPONENTS CXX CUDA BUILD_EXPORT_SET cuopt-exports)
+find_package(OpenMP REQUIRED COMPONENTS CXX CUDA)
 message(VERBOSE "cuOpt: OpenMP found in ${OpenMP_CXX_INCLUDE_DIRS}")
 
 # MPS/QPS parser supports compressed inputs via bzip2, zlib and lz4
@@ -636,9 +636,6 @@ target_link_libraries(cuopt
         OpenMP::OpenMP_CUDA
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:protobuf::libprotobuf>
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:gRPC::grpc++>
-        INTERFACE
-        "$<BUILD_INTERFACE:OpenMP::OpenMP_CXX>"
-        "$<BUILD_INTERFACE:OpenMP::OpenMP_CUDA>"
 )
 
 # ##################################################################################################

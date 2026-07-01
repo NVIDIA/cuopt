@@ -15,14 +15,6 @@ project(
   LANGUAGES CXX CUDA
 )
 
-option(CUOPT_BUILD_WHEELS "Configure wheel-specific linkage" OFF)
-set(
-  CUOPT_OPENMP_RUNTIME_LIBRARY
-  ""
-  CACHE FILEPATH
-  "Exact OpenMP runtime to link into wheel binaries"
-)
-
 # Debug: Print CUDA compiler version early
 message(STATUS "=============================================================")
 message(STATUS "libcuopt: CMAKE_CUDA_COMPILER_VERSION = ${CMAKE_CUDA_COMPILER_VERSION}")
@@ -76,39 +68,6 @@ target_link_libraries(cuopt PRIVATE
 target_link_libraries(cuopt_cli PRIVATE
     argparse
 )
-
-if(CUOPT_BUILD_WHEELS)
-  if(NOT IS_ABSOLUTE "${CUOPT_OPENMP_RUNTIME_LIBRARY}" OR
-     NOT EXISTS "${CUOPT_OPENMP_RUNTIME_LIBRARY}")
-    message(
-      FATAL_ERROR
-      "CUOPT_OPENMP_RUNTIME_LIBRARY must name an existing absolute library"
-    )
-  endif()
-
-  message(
-    STATUS
-    "Wheel OpenMP runtime: ${CUOPT_OPENMP_RUNTIME_LIBRARY}"
-  )
-
-  # Keep the exact OpenMP runtime attached even when the executable's only
-  # reference to it comes through libcuopt.so.
-  foreach(_target IN ITEMS cuopt cuopt_cli cuopt_grpc_server)
-    if(TARGET ${_target})
-      target_link_libraries(
-        ${_target}
-        PRIVATE
-        "-Wl,--no-as-needed"
-        "${CUOPT_OPENMP_RUNTIME_LIBRARY}"
-        "-Wl,--as-needed"
-      )
-    endif()
-  endforeach()
-
-  # Report unresolved runtime symbols while linking libcuopt.so rather than
-  # deferring the failure until cuopt_cli or cuopt_grpc_server is linked.
-  target_link_options(cuopt PRIVATE "LINKER:-z,defs")
-endif()
 
 set(rpaths
   "$ORIGIN/../lib64"
