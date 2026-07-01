@@ -11,6 +11,7 @@
 #include <vector>
 
 #include <cuopt/mathematical_optimization/constants.h>
+#include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/mip/diving_hyper_params.hpp>
 #include <cuopt/mathematical_optimization/mip/heuristics_hyper_params.hpp>
 #include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
@@ -21,7 +22,8 @@
 
 #include <vector>
 
-namespace cuopt::mathematical_optimization {
+namespace cuopt {
+namespace CUOPT_EXPORT mathematical_optimization {
 
 struct benchmark_info_t {
   double last_improvement_of_best_feasible    = 0;
@@ -230,4 +232,5 @@ struct mip_solver_settings_accessor {
   }
 };
 
-}  // namespace cuopt::mathematical_optimization
+}  // namespace CUOPT_EXPORT mathematical_optimization
+}  // namespace cuopt

@@ -9,6 +9,7 @@
 
 #include <cuopt/mathematical_optimization/constants.h>
 #include <cuopt/error.hpp>
+#include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/pdlp/pdlp_warm_start_data.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/utilities/internals.hpp>
@@ -22,7 +23,8 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::mathematical_optimization {
+namespace cuopt {
+namespace CUOPT_EXPORT mathematical_optimization {
 
 // Possible reasons for terminating
 enum class pdlp_termination_status_t : int8_t {
@@ -310,4 +312,5 @@ class optimization_problem_solution_t : public base_solution_t {
   /** error struct */
   cuopt::logic_error error_status_;
 };
-}  // namespace cuopt::mathematical_optimization
+}  // namespace CUOPT_EXPORT mathematical_optimization
+}  // namespace cuopt

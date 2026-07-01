@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
 #include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/mip/solver_solution.hpp>
@@ -23,7 +24,8 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::mathematical_optimization {
+namespace cuopt {
+namespace CUOPT_EXPORT mathematical_optimization {
 
 /**
  * @brief Linear programming solve function.
@@ -213,4 +215,5 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip(
 
 // Remote execution functions are declared in solve_remote.hpp (included above)
 
-}  // namespace cuopt::mathematical_optimization
+}  // namespace CUOPT_EXPORT mathematical_optimization
+}  // namespace cuopt

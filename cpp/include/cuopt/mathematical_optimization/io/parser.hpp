@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
 
 #include <algorithm>
@@ -15,7 +16,9 @@
 #include <string>
 #include <string_view>
 
-namespace cuopt::mathematical_optimization::io {
+namespace cuopt {
+namespace CUOPT_EXPORT mathematical_optimization {
+namespace io {
 
 /**
  * @brief Reads the equation from an MPS or QPS file.
@@ -145,4 +148,6 @@ inline mps_data_model_t<i_t, f_t> read(const std::string& path, bool fixed_mps_f
     path);
 }
 
-}  // namespace cuopt::mathematical_optimization::io
+}  // namespace io
+}  // namespace CUOPT_EXPORT mathematical_optimization
+}  // namespace cuopt

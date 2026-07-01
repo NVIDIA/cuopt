@@ -9,12 +9,17 @@
 #define CUOPT_C_API_H
 
 #include <cuopt/mathematical_optimization/constants.h>
+#include <cuopt/export.hpp>
 
 #include <stdint.h>
 
 #ifdef __cplusplus
 
 extern "C" {
+#endif
+
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC visibility push(default)
 #endif
 
 /**
@@ -1054,6 +1059,10 @@ cuopt_int_t cuOptGetDualObjectiveValue(cuOptSolution solution,
  * @return A status code indicating success or failure.
  */
 cuopt_int_t cuOptGetReducedCosts(cuOptSolution solution, cuopt_float_t* reduced_cost_ptr);
+
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC visibility pop
+#endif
 
 #ifdef __cplusplus
 }

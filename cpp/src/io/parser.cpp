@@ -5,6 +5,7 @@
  */
 /* clang-format on */
 
+#include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/io/parser.hpp>
 
 #include <mps_parser_internal.hpp>
@@ -28,11 +29,13 @@ mps_data_model_t<i_t, f_t> read_mps_from_string(std::string_view mps_contents,
   return problem;
 }
 
-template mps_data_model_t<int, float> read_mps(const std::string& mps_file, bool fixed_mps_format);
-template mps_data_model_t<int, double> read_mps(const std::string& mps_file, bool fixed_mps_format);
-template mps_data_model_t<int, float> read_mps_from_string(std::string_view mps_contents,
-                                                           bool fixed_mps_format);
-template mps_data_model_t<int, double> read_mps_from_string(std::string_view mps_contents,
+template CUOPT_EXPORT mps_data_model_t<int, float> read_mps(const std::string& mps_file,
                                                             bool fixed_mps_format);
+template CUOPT_EXPORT mps_data_model_t<int, double> read_mps(const std::string& mps_file,
+                                                             bool fixed_mps_format);
+template CUOPT_EXPORT mps_data_model_t<int, float> read_mps_from_string(
+  std::string_view mps_contents, bool fixed_mps_format);
+template CUOPT_EXPORT mps_data_model_t<int, double> read_mps_from_string(
+  std::string_view mps_contents, bool fixed_mps_format);
 
 }  // namespace cuopt::mathematical_optimization::io
