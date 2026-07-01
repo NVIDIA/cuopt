@@ -507,6 +507,17 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     sol                           = dm.run_solver();
   }  // implicit barrier for all tasks created in B&B and heuristics
 
+  if (!context.settings.heuristics_only && branch_and_bound->has_solver_space_incumbent()) {
+    solution_t<i_t, f_t> branch_and_bound_sol(*context.problem_ptr);
+    branch_and_bound_sol.copy_new_assignment(branch_and_bound_solution.x);
+    branch_and_bound_sol.compute_feasibility();
+
+    if (branch_and_bound_sol.get_feasible() &&
+        (!sol.get_feasible() || branch_and_bound_sol.get_objective() < sol.get_objective())) {
+      sol = std::move(branch_and_bound_sol);
+    }
+  }
+
   if (!context.settings.heuristics_only) {
     if (branch_and_bound_solution.lower_bound > -std::numeric_limits<f_t>::infinity()) {
       context.stats.set_solution_bound(
