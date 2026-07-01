@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/cpu_pdlp_warm_start_data.hpp>
 #include <cuopt/mathematical_optimization/mip/solver_solution.hpp>
 #include <cuopt/mathematical_optimization/mip/solver_stats.hpp>
@@ -18,7 +19,8 @@
 
 #include <vector>
 
-namespace cuopt::mathematical_optimization {
+namespace cuopt {
+namespace CUOPT_EXPORT mathematical_optimization {
 
 /**
  * @brief CPU-backed LP solution (uses std::vector instead of rmm::device_uvector)
@@ -389,4 +391,5 @@ class cpu_mip_solution_t : public mip_solution_interface_t<i_t, f_t> {
   i_t num_simplex_iterations_;
 };
 
-}  // namespace cuopt::mathematical_optimization
+}  // namespace CUOPT_EXPORT mathematical_optimization
+}  // namespace cuopt

@@ -510,6 +510,8 @@ if (NOT SKIP_GRPC_BUILD)
     # at runtime with "undefined symbol: absl::…::Mutex::Dtor".
     set_property(SOURCE ${GRPC_INFRA_FILES} DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             APPEND PROPERTY COMPILE_OPTIONS "-DNDEBUG")
+    set_property(SOURCE ${PROTO_SRCS} ${GRPC_PROTO_SRCS} ${GRPC_SERVICE_SRCS} ${DATA_PROTO_SRCS} DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+            APPEND PROPERTY COMPILE_OPTIONS "$<$<COMPILE_LANGUAGE:CXX>:-fvisibility=default>")
 endif (NOT SKIP_GRPC_BUILD)
 
 add_library(cuopt SHARED
@@ -522,6 +524,14 @@ set_target_properties(cuopt
         INTERFACE_POSITION_INDEPENDENT_CODE ON
         CXX_SCAN_FOR_MODULES OFF
 )
+
+if (NOT BUILD_TESTS)
+    set_target_properties(cuopt
+            PROPERTIES CXX_VISIBILITY_PRESET hidden
+            CUDA_VISIBILITY_PRESET hidden
+            VISIBILITY_INLINES_HIDDEN ON
+    )
+endif ()
 
 target_compile_definitions(cuopt
         PUBLIC "CUOPT_LOG_ACTIVE_LEVEL=RAPIDS_LOGGER_LOG_LEVEL_${LIBCUOPT_LOGGING_LEVEL}"

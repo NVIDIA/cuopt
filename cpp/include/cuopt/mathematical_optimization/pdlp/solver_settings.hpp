@@ -8,6 +8,7 @@
 #pragma once
 
 #include <cuopt/mathematical_optimization/constants.h>
+#include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/cpu_pdlp_warm_start_data.hpp>
 #include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
 #include <cuopt/mathematical_optimization/pdlp/pdlp_warm_start_data.hpp>
@@ -21,7 +22,8 @@
 
 #include <cuda/std/span>
 
-namespace cuopt::mathematical_optimization {
+namespace cuopt {
+namespace CUOPT_EXPORT mathematical_optimization {
 
 // Forward declare solver_settings_t for friend class
 template <typename i_t, typename f_t>
@@ -351,4 +353,5 @@ class pdlp_solver_settings_t {
   friend class solver_settings_t<i_t, f_t>;
 };
 
-}  // namespace cuopt::mathematical_optimization
+}  // namespace CUOPT_EXPORT mathematical_optimization
+}  // namespace cuopt
