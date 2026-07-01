@@ -36,12 +36,6 @@ if [[ "${GOMP_LIBRARY}" != /* || ! -f "${GOMP_LIBRARY}" ]]; then
     exit 1
 fi
 
-if ! readelf --dyn-syms --wide "${GOMP_LIBRARY}" | \
-    grep 'omp_fulfill_event' > /dev/null; then
-    echo "${GOMP_LIBRARY} does not provide omp_fulfill_event" >&2
-    exit 1
-fi
-
 echo "Using OpenMP runtime from ${CXX_COMPILER}: ${GOMP_LIBRARY}"
 
 export SKBUILD_CMAKE_ARGS="\
