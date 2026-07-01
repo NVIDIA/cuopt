@@ -816,6 +816,7 @@ if (BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
             PUBLIC
             cuopt
             PRIVATE
+            OpenMP::OpenMP_CXX
     )
     if (NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
         target_link_options(solve_MIP PRIVATE -Wl,--enable-new-dtags)

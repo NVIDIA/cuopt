@@ -246,6 +246,6 @@ inline double fetch_max(omp_atomic_t<double>& atomic_var, double other)
   return old;
 }
 
-#endif
-
 }  // namespace cuopt
+
+#endif

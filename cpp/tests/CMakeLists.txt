@@ -23,6 +23,8 @@ if(BUILD_TESTS)
   target_link_libraries(cuopttestutils
       PUBLIC
       cuopt
+      OpenMP::OpenMP_CXX
+      OpenMP::OpenMP_CUDA
       GTest::gmock
       GTest::gtest
   )
@@ -56,6 +58,8 @@ function(ConfigureTest CMAKE_TEST_NAME)
        PRIVATE
         cuopt
         cuopttestutils
+        OpenMP::OpenMP_CXX
+        OpenMP::OpenMP_CUDA
         GTest::gmock
         GTest::gmock_main
         GTest::gtest
