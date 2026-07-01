@@ -238,21 +238,39 @@ void mip_solution_t<i_t, f_t>::log_summary() const
 template <typename i_t, typename f_t>
 void mip_solution_t<i_t, f_t>::log_detailed_summary() const
 {
-  CUOPT_LOG_INFO(
-    "Solution objective: %f , relative_mip_gap %f solution_bound %f presolve_time %f "
-    "total_solve_time %f "
-    "max constraint violation %f max int violation %f max var bounds violation %f "
-    "nodes %d simplex_iterations %d",
-    objective_,
-    mip_gap_,
-    stats_.get_solution_bound(),
-    stats_.presolve_time,
-    stats_.total_solve_time,
-    max_constraint_violation_,
-    max_int_violation_,
-    max_variable_bound_violation_,
-    stats_.num_nodes,
-    stats_.num_simplex_iterations);
+  switch (termination_status_) {
+    case mip_termination_status_t::Optimal:
+    case mip_termination_status_t::FeasibleFound:
+      CUOPT_LOG_INFO("%s\n",
+                     std::format("Best objective {:.6e}, best bound {:.6e}, gap {:.2f}%.",
+                                 objective_,
+                                 stats_.get_solution_bound(),
+                                 mip_gap_ * 100)
+                       .c_str());
+      break;
+
+    case mip_termination_status_t::Infeasible:
+      CUOPT_LOG_INFO("Problem has no integer feasible solution.\n");
+      break;
+
+    case mip_termination_status_t::TimeLimit:
+      CUOPT_LOG_INFO("No feasible solution was found within the time limit.\n");
+      break;
+
+    case mip_termination_status_t::WorkLimit:
+      CUOPT_LOG_INFO("No feasible solution was found within the work limit.\n");
+      break;
+
+    case mip_termination_status_t::Unbounded: CUOPT_LOG_INFO("The problem is unbounded.\n"); break;
+
+    case mip_termination_status_t::UnboundedOrInfeasible:
+      CUOPT_LOG_INFO("The problem is unbounded or infeasible.\n");
+      break;
+
+    case mip_termination_status_t::NoTermination:
+      CUOPT_LOG_INFO("Warning: The solver did not terminate successfully.\n");
+      break;
+  }
 }
 
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT

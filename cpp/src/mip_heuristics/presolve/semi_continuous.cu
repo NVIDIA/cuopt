@@ -87,7 +87,7 @@ std::vector<f_t> call_host_bounds_strengthening(const optimization_problem_t<i_t
   auto var_types = user_problem.var_types;
   var_types.resize(lp_problem.num_cols, simplex::variable_type_t::CONTINUOUS);
 
-  simplex::csr_matrix_t<i_t, f_t> Arow(1, 1, 1);
+  csr_matrix_t<i_t, f_t> Arow(1, 1, 1);
   lp_problem.A.to_compressed_row(Arow);
 
   // convert_user_problem returns an equality-form LP. Empty row_sense makes

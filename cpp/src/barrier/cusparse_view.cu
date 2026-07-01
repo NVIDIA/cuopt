@@ -6,10 +6,10 @@
 /* clang-format on */
 
 #include <barrier/cusparse_view.hpp>
-#include <barrier/dense_vector.hpp>
 #include <barrier/pinned_host_allocator.hpp>
+#include <linear_algebra/dense_vector.hpp>
 
-#include <dual_simplex/sparse_matrix.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
 
 #include <utilities/copy_helpers.hpp>
 #include <utilities/macros.cuh>
@@ -126,7 +126,7 @@ static cusparseSpMVAlg_t get_spmv_alg(int num_rows)
 
 template <typename i_t, typename f_t>
 cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
-                                           const simplex::csc_matrix_t<i_t, f_t>& A)
+                                           const csc_matrix_t<i_t, f_t>& A)
   : handle_ptr_(handle_ptr),
     A_offsets_(0, handle_ptr->get_stream()),
     A_indices_(0, handle_ptr->get_stream()),
@@ -146,7 +146,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
   // TMP matrix data should already be on the GPU
   constexpr bool debug = false;
   if (debug) { printf("A hash: %zu\n", A.hash()); }
-  simplex::csr_matrix_t<i_t, f_t> A_csr(A.m, A.n, 1);
+  csr_matrix_t<i_t, f_t> A_csr(A.m, A.n, 1);
   A.to_compressed_row(A_csr);
   i_t rows                        = A_csr.m;
   i_t cols                        = A_csr.n;

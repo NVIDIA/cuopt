@@ -13,8 +13,8 @@
 
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/solve.hpp>
-#include <dual_simplex/tic_toc.hpp>
 #include <dual_simplex/user_problem.hpp>
+#include <math_optimization/tic_toc.hpp>
 
 #include <cuopt/mathematical_optimization/io/parser.hpp>
 #include <utilities/logger.hpp>
@@ -65,8 +65,8 @@ TEST(dual_simplex, chess_set)
   user_problem.lower[0] = 0;
   user_problem.lower[1] = 0.0;
   user_problem.upper.resize(n);
-  user_problem.upper[0]       = simplex::inf;
-  user_problem.upper[1]       = simplex::inf;
+  user_problem.upper[0]       = inf;
+  user_problem.upper[1]       = inf;
   user_problem.num_range_rows = 0;
   user_problem.problem_name   = "chess set";
   user_problem.row_names.resize(m);
@@ -313,8 +313,8 @@ TEST(dual_simplex, dual_variable_greater_than)
   user_problem.lower[1] = 0.0;
 
   user_problem.upper.resize(n);
-  user_problem.upper[0] = simplex::inf;
-  user_problem.upper[1] = simplex::inf;
+  user_problem.upper[0] = inf;
+  user_problem.upper[1] = inf;
 
   user_problem.num_range_rows = 0;
   user_problem.problem_name   = "dual_variable_greater_than";

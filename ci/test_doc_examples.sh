@@ -457,7 +457,7 @@ find_cuopt_libraries() {
     fi
 
     # Search in common locations including Python site-packages
-    local search_dirs=("${HOME}" "${CONDA_PREFIX}" "/usr" "/opt")
+    local search_dirs=("${HOME}" "${CONDA_PREFIX:-}" "/usr" "/opt")
     if [ -n "${site_packages}" ] && [ -d "${site_packages}" ]; then
         search_dirs+=("${site_packages}")
     fi

@@ -20,7 +20,7 @@ class worker_pool_t {
 
   void init(i_t num_workers,
             const simplex::lp_problem_t<i_t, f_t>& original_lp,
-            const simplex::csr_matrix_t<i_t, f_t>& Arow,
+            const csr_matrix_t<i_t, f_t>& Arow,
             const std::vector<simplex::variable_type_t>& var_type,
             mip_symmetry_t<i_t, f_t>* symmetry,
             const simplex::simplex_solver_settings_t<i_t, f_t>& settings,

@@ -86,7 +86,7 @@ class deterministic_worker_base_t : public branch_and_bound_worker_t<i_t, f_t> {
 
   deterministic_worker_base_t(int id,
                               const simplex::lp_problem_t<i_t, f_t>& original_lp,
-                              const simplex::csr_matrix_t<i_t, f_t>& Arow,
+                              const csr_matrix_t<i_t, f_t>& Arow,
                               const std::vector<simplex::variable_type_t>& var_types,
                               const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
                               const std::string& context_name)
@@ -138,7 +138,7 @@ class deterministic_bfs_worker_t
 
   explicit deterministic_bfs_worker_t(int id,
                                       const simplex::lp_problem_t<i_t, f_t>& original_lp,
-                                      const simplex::csr_matrix_t<i_t, f_t>& Arow,
+                                      const csr_matrix_t<i_t, f_t>& Arow,
                                       const std::vector<simplex::variable_type_t>& var_types,
                                       const simplex::simplex_solver_settings_t<i_t, f_t>& settings)
     : base_t(id, original_lp, Arow, var_types, settings, "BB_Worker_" + std::to_string(id))
@@ -297,7 +297,7 @@ class deterministic_diving_worker_t
     int id,
     search_strategy_t type,
     const simplex::lp_problem_t<i_t, f_t>& original_lp,
-    const simplex::csr_matrix_t<i_t, f_t>& Arow,
+    const csr_matrix_t<i_t, f_t>& Arow,
     const std::vector<simplex::variable_type_t>& var_types,
     const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
     const std::vector<f_t>* root_sol)
@@ -405,7 +405,7 @@ class deterministic_bfs_worker_pool_t
  public:
   deterministic_bfs_worker_pool_t(int num_workers,
                                   const simplex::lp_problem_t<i_t, f_t>& original_lp,
-                                  const simplex::csr_matrix_t<i_t, f_t>& Arow,
+                                  const csr_matrix_t<i_t, f_t>& Arow,
                                   const std::vector<simplex::variable_type_t>& var_types,
                                   const simplex::simplex_solver_settings_t<i_t, f_t>& settings)
   {
@@ -440,7 +440,7 @@ class deterministic_diving_worker_pool_t
   deterministic_diving_worker_pool_t(int num_workers,
                                      const std::vector<search_strategy_t>& diving_types,
                                      const simplex::lp_problem_t<i_t, f_t>& original_lp,
-                                     const simplex::csr_matrix_t<i_t, f_t>& Arow,
+                                     const csr_matrix_t<i_t, f_t>& Arow,
                                      const std::vector<simplex::variable_type_t>& var_types,
                                      const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
                                      const std::vector<f_t>* root_solution)

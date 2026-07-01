@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include <dual_simplex/types.hpp>
+#include <math_optimization/types.hpp>
 
 #include <utilities/omp_helpers.hpp>
 #include <vector>

@@ -12,7 +12,7 @@
 #include <dual_simplex/logger.hpp>
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
-#include <dual_simplex/types.hpp>
+#include <math_optimization/types.hpp>
 #include <utilities/memory_instrumentation.hpp>
 
 #include <vector>

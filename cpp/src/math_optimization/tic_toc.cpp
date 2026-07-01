@@ -5,11 +5,11 @@
  */
 /* clang-format on */
 
-#include <dual_simplex/tic_toc.hpp>
+#include <math_optimization/tic_toc.hpp>
 
 #include <sys/time.h>
 
-namespace cuopt::mathematical_optimization::simplex {
+namespace cuopt::mathematical_optimization {
 
 double tic()
 {
@@ -24,4 +24,4 @@ double toc(double start)
   return (now - start);
 }
 
-}  // namespace cuopt::mathematical_optimization::simplex
+}  // namespace cuopt::mathematical_optimization

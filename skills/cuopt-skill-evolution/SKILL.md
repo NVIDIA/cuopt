@@ -97,7 +97,7 @@ If a draft proposal feels heavy-handed or rigid, rewrite it as if explaining the
 Always place the learning in the **single skill where it has the widest effect**. Do NOT duplicate the same content across multiple skills.
 
 Choose the target using this priority:
-1. **Common / concept skill** (e.g. `cuopt-numerical-optimization-formulation`, `cuopt-routing-formulation`, `cuopt-user-rules`) — if the learning applies regardless of language or interface, put it here. All downstream API skills already read the common skill.
+1. **Common / concept skill** (e.g. `cuopt-numerical-optimization-formulation`, `cuopt-user-rules`) — if the learning applies regardless of language or interface, put it here. All downstream API skills already read the common skill.
 2. **API skill** (e.g. `cuopt-numerical-optimization-api-python`, `cuopt-routing-api-python`) — if the learning is specific to one API or language.
 3. **New skill** — only if the learning doesn't fit any existing skill.
 

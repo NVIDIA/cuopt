@@ -7,8 +7,8 @@
 
 #include <raft/util/cuda_utils.cuh>
 
-#include <dual_simplex/types.hpp>
-#include <dual_simplex/vector_math.hpp>
+#include <linear_algebra/vector_math.hpp>
+#include <math_optimization/types.hpp>
 
 namespace cuopt::mathematical_optimization::barrier {
 
@@ -55,10 +55,10 @@ template class PinnedHostAllocator<int>;
 
 }  // namespace cuopt::mathematical_optimization::barrier
 
-namespace cuopt::mathematical_optimization::simplex {
+namespace cuopt::mathematical_optimization {
 
-// Explicit instantiation of the shared simplex vector_math template with
-// barrier's PinnedHostAllocator must live in simplex (the template's namespace).
+// Explicit instantiation of the shared vector_math template with barrier's
+// PinnedHostAllocator must live in mathematical_optimization (the template's namespace).
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 template double
 vector_norm_inf<int,
@@ -68,4 +68,4 @@ vector_norm_inf<int,
     x);
 #endif
 
-}  // namespace cuopt::mathematical_optimization::simplex
+}  // namespace cuopt::mathematical_optimization

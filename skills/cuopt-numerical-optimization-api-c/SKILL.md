@@ -14,6 +14,7 @@ metadata:
 ---
 
 
+
 # cuOpt Numerical Optimization — C API
 
 Solve LP, MILP, and QP problems via the cuOpt C API. The same library, headers, build pattern, and core calls (`cuOptCreate*Problem`, `cuOptSolve`, `cuOptGetObjectiveValue`) apply across all three; QP extends the API with quadratic-objective creation calls.
