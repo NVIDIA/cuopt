@@ -27,6 +27,5 @@ foreach(target
     PRIVATE
       cuopt
       cuopttestutils
-      OpenMP::OpenMP_CXX
   )
 endforeach()

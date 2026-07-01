@@ -27,7 +27,16 @@ fi
 # Install Protobuf + gRPC (protoc + grpc_cpp_plugin)
 bash ci/utils/install_protobuf_grpc.sh
 
-export SKBUILD_CMAKE_ARGS="-DCUOPT_BUILD_WHEELS=ON;-DDISABLE_DEPRECATION_WARNING=ON"
+# The fast MPS parser requires OpenMP 5 symbols from the active GCC toolset. Pin FindOpenMP to
+# that compiler's libgomp instead of the older system runtime on Rocky/RHEL wheel builders.
+CXX_COMPILER="${CXX:-g++}"
+GOMP_LIBRARY="$("${CXX_COMPILER}" -print-file-name=libgomp.so)"
+if [[ "${GOMP_LIBRARY}" != /* || ! -f "${GOMP_LIBRARY}" ]]; then
+    echo "Could not resolve libgomp from ${CXX_COMPILER}: '${GOMP_LIBRARY}'" >&2
+    exit 1
+fi
+
+export SKBUILD_CMAKE_ARGS="-DCUOPT_BUILD_WHEELS=ON;-DDISABLE_DEPRECATION_WARNING=ON;-DOpenMP_gomp_LIBRARY:FILEPATH=${GOMP_LIBRARY}"
 
 # OpenSSL 3 hints for libcuopt's own find_package(OpenSSL).
 #

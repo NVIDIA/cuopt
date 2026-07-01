@@ -186,7 +186,6 @@ list(APPEND CUOPT_CUDA_FLAGS -Xfatbin=-compress-all)
 if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.9 AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0)
     list(APPEND CUOPT_CUDA_FLAGS -Xfatbin=--compress-level=3)
 endif ()
-list(APPEND CUOPT_CUDA_FLAGS -fopenmp)
 
 # Add jobserver flags for parallel compilation if PARALLEL_LEVEL is set
 if (PARALLEL_LEVEL AND NOT "${PARALLEL_LEVEL}" STREQUAL "")
@@ -198,24 +197,9 @@ if (PARALLEL_LEVEL AND NOT "${PARALLEL_LEVEL}" STREQUAL "")
     endif ()
 endif ()
 
-# The MIP solver requires OpenMP to work
-find_package(OpenMP REQUIRED)
+# The MIP solver requires OpenMP for both C++ and CUDA host code.
+rapids_find_package(OpenMP REQUIRED COMPONENTS CXX CUDA BUILD_EXPORT_SET cuopt-exports)
 message(VERBOSE "cuOpt: OpenMP found in ${OpenMP_CXX_INCLUDE_DIRS}")
-
-# Resolve libgomp from the active C++ compiler, not FindOpenMP's generic -lgomp (which can
-# resolve to an older system libgomp on Rocky/RHEL wheel builders). The fast MPS parser uses
-# OpenMP 5.0 detached tasks (omp_fulfill_event); compile and link must use the same libgomp.
-execute_process(
-        COMMAND ${CMAKE_CXX_COMPILER} -print-file-name=libgomp.so
-        OUTPUT_VARIABLE CUOPT_LIBGOMP_FILE
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-if (NOT IS_ABSOLUTE "${CUOPT_LIBGOMP_FILE}")
-    message(FATAL_ERROR "Could not resolve libgomp from ${CMAKE_CXX_COMPILER}: '${CUOPT_LIBGOMP_FILE}'")
-endif ()
-get_filename_component(CUOPT_LIBGOMP_DIR "${CUOPT_LIBGOMP_FILE}" DIRECTORY)
-message(STATUS "cuOpt: libgomp for OpenMP link = ${CUOPT_LIBGOMP_FILE}")
-list(APPEND CUOPT_CXX_FLAGS -fopenmp)
 
 # MPS/QPS parser supports compressed inputs via bzip2, zlib and lz4
 option(CUOPT_PARSER_WITH_BZIP2 "Build MPS parser with bzip2 decompression" ON)
@@ -528,7 +512,6 @@ set_target_properties(cuopt
         INSTALL_RPATH "\$ORIGIN"
         INTERFACE_POSITION_INDEPENDENT_CODE ON
         CXX_SCAN_FOR_MODULES OFF
-        LINKER_LANGUAGE CXX
 )
 
 target_compile_definitions(cuopt
@@ -642,16 +625,13 @@ target_link_libraries(cuopt
         PRIVATE
         ${CUOPT_PRIVATE_CUDA_LIBS}
         simde::simde
+        OpenMP::OpenMP_CXX
+        OpenMP::OpenMP_CUDA
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:protobuf::libprotobuf>
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:gRPC::grpc++>
+        INTERFACE
+        "$<BUILD_INTERFACE:OpenMP::OpenMP_CXX>"
 )
-
-# Force libgomp from the active C++ toolchain into libcuopt.so. OpenMP::OpenMP_CXX and/or
-# -fopenmp alone can leave omp_fulfill_event undefined (CUDA-linked target + --as-needed) or
-# resolve a trailing bare -lgomp to an older system libgomp at executable link time.
-target_link_directories(cuopt PRIVATE ${CUOPT_LIBGOMP_DIR})
-target_link_libraries(cuopt PRIVATE "-Wl,--no-as-needed" gomp "-Wl,--as-needed")
-
 
 # ##################################################################################################
 # - generate tests --------------------------------------------------------------------------------
