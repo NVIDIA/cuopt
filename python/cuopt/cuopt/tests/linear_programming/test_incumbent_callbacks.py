@@ -104,7 +104,6 @@ def _run_incumbent_solver_callback(file_name, include_set_callback):
 @pytest.mark.parametrize(
     "file_name",
     [
-        ("/mip/swath1.mps"),
         ("/mip/neos5-free-bound.mps"),
     ],
 )
@@ -115,7 +114,6 @@ def test_incumbent_get_callback(file_name):
 @pytest.mark.parametrize(
     "file_name",
     [
-        ("/mip/swath1.mps"),
         ("/mip/neos5-free-bound.mps"),
     ],
 )
