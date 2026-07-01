@@ -27,8 +27,8 @@ fi
 # Install Protobuf + gRPC (protoc + grpc_cpp_plugin)
 bash ci/utils/install_protobuf_grpc.sh
 
-# The fast MPS parser requires OpenMP 5 symbols from the active GCC toolset. Pin FindOpenMP to
-# that compiler's libgomp instead of the older system runtime on Rocky/RHEL wheel builders.
+# The wheel must link against the active GCC toolset's OpenMP runtime. Rocky/RHEL's system
+# libgomp is older and does not provide the OpenMP 5 symbols required by libcuopt.
 CXX_COMPILER="${CXX:-g++}"
 GOMP_LIBRARY="$("${CXX_COMPILER}" -print-file-name=libgomp.so)"
 if [[ "${GOMP_LIBRARY}" != /* || ! -f "${GOMP_LIBRARY}" ]]; then
@@ -36,7 +36,19 @@ if [[ "${GOMP_LIBRARY}" != /* || ! -f "${GOMP_LIBRARY}" ]]; then
     exit 1
 fi
 
-export SKBUILD_CMAKE_ARGS="-DCUOPT_BUILD_WHEELS=ON;-DDISABLE_DEPRECATION_WARNING=ON;-DOpenMP_gomp_LIBRARY:FILEPATH=${GOMP_LIBRARY}"
+if ! readelf --dyn-syms --wide "${GOMP_LIBRARY}" | \
+    grep 'omp_fulfill_event' > /dev/null; then
+    echo "${GOMP_LIBRARY} does not provide omp_fulfill_event" >&2
+    exit 1
+fi
+
+echo "Using OpenMP runtime from ${CXX_COMPILER}: ${GOMP_LIBRARY}"
+
+export SKBUILD_CMAKE_ARGS="\
+-DCUOPT_BUILD_WHEELS=ON;\
+-DDISABLE_DEPRECATION_WARNING=ON;\
+-DOpenMP_gomp_LIBRARY:FILEPATH=${GOMP_LIBRARY};\
+-DCUOPT_OPENMP_RUNTIME_LIBRARY:FILEPATH=${GOMP_LIBRARY}"
 
 # OpenSSL 3 hints for libcuopt's own find_package(OpenSSL).
 #
