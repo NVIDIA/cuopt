@@ -80,6 +80,9 @@ max_allowed_size_compressed = '55Mi'
 
 [tool.pytest.ini_options]
 testpaths = ["cuopt/tests"]
+# Avoid prepending the project root onto sys.path, which would shadow the
+# installed cuopt wheel (Cython extensions live in site-packages, not source).
+addopts = "--import-mode=importlib"
 
 [tool.scikit-build]
 build-dir = "build/{wheel_tag}"
