@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-from cuopt.grpc.mathematical_optimization.grpc_client import (
+from cuopt.grpc.linear_programming.grpc_client import (
     Client,
     GrpcError,
     JobNotReadyError,

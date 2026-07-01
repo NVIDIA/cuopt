@@ -131,8 +131,9 @@ cdef object _vector_to_numpy(const vector[double]& vec):
 
 def _vars_dict(variable_names, primal_solution):
     if len(primal_solution) == 0:
-        # Unbounded/infeasible solves may return no primal vector; match legacy
-        # dict(zip(names, primal)) behavior (empty dict, not a length error).
+        # No primal vector (infeasible/unbounded/etc.): match prior
+        # behavior (implemented as dict(zip(names, primal)) before
+        # refactor for gRPC, which yielded {}).
         return {}
     if variable_names is None or len(variable_names) == 0:
         return {f"x{i}": v for i, v in enumerate(primal_solution)}

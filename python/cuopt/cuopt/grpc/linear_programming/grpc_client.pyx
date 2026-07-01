@@ -6,7 +6,7 @@
 # cython: embedsignature = True
 # cython: language_level = 3
 
-from cuopt.grpc.mathematical_optimization.grpc_client cimport (
+from cuopt.grpc.linear_programming.grpc_client cimport (
     grpc_incumbents_result_t,
     grpc_job_status_t,
     grpc_logs_result_t,

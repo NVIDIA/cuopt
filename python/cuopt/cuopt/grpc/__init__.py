@@ -5,11 +5,13 @@
 
 This package is the namespace for domain-specific async clients:
 
-- :mod:`cuopt.grpc.mathematical_optimization` — LP/MILP/QP (submit, result, incumbents)
+- :mod:`cuopt.grpc.linear_programming` — LP/MILP/QP (submit, result, incumbents)
 - :mod:`cuopt.grpc.routing` — VRP/TSP/PDP (future)
 
-Longer term, shared job lifecycle (connect, status, wait, cancel, delete,
-logs) may live here as a base client type that domain clients extend or
-compose. Import domain clients explicitly, e.g.
-``from cuopt.grpc.mathematical_optimization import Client``.
+Shared job lifecycle (connect, status, wait, cancel, delete, logs) may live
+here later as a base client type. Import domain clients explicitly, e.g.
+``from cuopt.grpc.linear_programming import Client``.
+
+Do not re-export ``Client`` from this package — callers must choose the
+domain-specific client (``linear_programming``, ``routing``, etc.).
 """

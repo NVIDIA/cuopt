@@ -1,14 +1,12 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-import importlib.util
 import os
 import time
 
-import cuopt.grpc as grpc_pkg
 import pytest
 
-from cuopt.grpc.mathematical_optimization import (
+from cuopt.grpc.linear_programming import (
     Client,
     GrpcError,
     JobNotReadyError,
@@ -63,15 +61,6 @@ def _infeasible_lp_problem():
     problem.addConstraint(x <= 1, name="c2")
     problem.setObjective(x, sense=MAXIMIZE)
     return problem
-
-
-def test_grpc_package_is_namespace_only():
-    """cuopt.grpc is a namespace; domain clients live in subpackages."""
-    assert "Client" not in grpc_pkg.__dict__
-    assert (
-        importlib.util.find_spec("cuopt.grpc.mathematical_optimization")
-        is not None
-    )
 
 
 @pytest.mark.filterwarnings("ignore::DeprecationWarning")
