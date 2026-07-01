@@ -17,32 +17,38 @@ fi
 # Install Boost and TBB
 bash ci/utils/install_boost_tbb.sh
 
-# Install libuuid (needed by cuopt_grpc_server)
+# Install libuuid and LLVM's OpenMP runtime
 if command -v dnf &> /dev/null; then
-    dnf install -y libuuid-devel
+    # LLVM Toolset is distributed as a module on Rocky/RHEL 8.
+    dnf module install -y llvm-toolset
+    dnf install -y libuuid-devel libomp-devel
 elif command -v apt-get &> /dev/null; then
-    apt-get update && apt-get install -y uuid-dev
+    apt-get update
+    apt-get install -y uuid-dev libomp-dev
 fi
 
 # Install Protobuf + gRPC (protoc + grpc_cpp_plugin)
 bash ci/utils/install_protobuf_grpc.sh
 
-# The wheel must link against the active GCC toolset's OpenMP runtime. Rocky/RHEL's system
-# libgomp is older and does not provide the OpenMP 5 symbols required by libcuopt.
-CXX_COMPILER="${CXX:-g++}"
-GOMP_LIBRARY="$("${CXX_COMPILER}" -print-file-name=libgomp.so)"
-if [[ "${GOMP_LIBRARY}" != /* || ! -f "${GOMP_LIBRARY}" ]]; then
-    echo "Could not resolve libgomp from ${CXX_COMPILER}: '${GOMP_LIBRARY}'" >&2
+# Compile with GCC, but use LLVM libomp as the OpenMP runtime bundled in the wheel. Resolve the
+# versioned ELF library rather than an unversioned linker script or compiler-toolset indirection.
+LIBOMP_LIBRARY="$(
+    ldconfig -p |
+        awk '$1 ~ /^libomp\.so(\.[0-9]+)*$/ && !library { library = $NF }
+             END { print library }'
+)"
+if [[ "${LIBOMP_LIBRARY}" != /* || ! -f "${LIBOMP_LIBRARY}" ]]; then
+    echo "Could not resolve the LLVM OpenMP runtime: '${LIBOMP_LIBRARY}'" >&2
     exit 1
 fi
 
-echo "Using OpenMP runtime from ${CXX_COMPILER}: ${GOMP_LIBRARY}"
+echo "Using LLVM OpenMP runtime: ${LIBOMP_LIBRARY}"
 
 export SKBUILD_CMAKE_ARGS="\
 -DCUOPT_BUILD_WHEELS=ON;\
 -DDISABLE_DEPRECATION_WARNING=ON;\
--DOpenMP_gomp_LIBRARY:FILEPATH=${GOMP_LIBRARY};\
--DCUOPT_OPENMP_RUNTIME_LIBRARY:FILEPATH=${GOMP_LIBRARY}"
+-DOpenMP_gomp_LIBRARY:FILEPATH=${LIBOMP_LIBRARY};\
+-DCUOPT_OPENMP_RUNTIME_LIBRARY:FILEPATH=${LIBOMP_LIBRARY}"
 
 # OpenSSL 3 hints for libcuopt's own find_package(OpenSSL).
 #
