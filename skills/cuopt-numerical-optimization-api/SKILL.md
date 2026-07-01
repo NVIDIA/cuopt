@@ -32,6 +32,12 @@ Choose the reference for the user's interface:
 
 If the interface is not yet clear, ask before writing any code.
 
+**Already using a modeling language?** cuOpt also works as a solver backend for third-party
+modeling tools — **AMPL, GAMS / GAMSPy, PuLP, and JuMP** — with near-zero code changes (point the
+model's solver at cuOpt). Prefer this when the user already has a model in one of these tools rather
+than porting it to the cuOpt API. See
+[Third-Party Modeling Languages](https://docs.nvidia.com/cuopt/user-guide/latest/thirdparty_modeling_languages/index.html).
+
 ## Choosing LP vs MILP vs QP
 
 **Decide from the objective and variables:**
