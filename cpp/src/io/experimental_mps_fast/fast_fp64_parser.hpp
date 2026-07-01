@@ -15,11 +15,11 @@
 #include <stdexcept>
 #include <string_view>
 
-namespace cuopt::linear_programming::io::detail {
+namespace cuopt::mathematical_optimization::io::detail {
 
-using cuopt::linear_programming::io::error_type_t;
-using cuopt::linear_programming::io::mps_parser_expects;
-using cuopt::linear_programming::io::mps_parser_fail;
+using cuopt::mathematical_optimization::io::error_type_t;
+using cuopt::mathematical_optimization::io::mps_parser_expects;
+using cuopt::mathematical_optimization::io::mps_parser_fail;
 
 namespace fp64 {
 
@@ -433,4 +433,4 @@ static inline double parse_fp64_advance(const char*& p, const char* end)
 }
 
 }  // namespace fp64
-}  // namespace cuopt::linear_programming::io::detail
+}  // namespace cuopt::mathematical_optimization::io::detail

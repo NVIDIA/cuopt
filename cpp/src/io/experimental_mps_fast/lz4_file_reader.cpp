@@ -39,11 +39,11 @@
 #include <utility>
 #include <vector>
 
-namespace cuopt::linear_programming::io::detail {
+namespace cuopt::mathematical_optimization::io::detail {
 
-using cuopt::linear_programming::io::error_type_t;
-using cuopt::linear_programming::io::mps_parser_expects;
-using cuopt::linear_programming::io::mps_parser_fail;
+using cuopt::mathematical_optimization::io::error_type_t;
+using cuopt::mathematical_optimization::io::mps_parser_expects;
+using cuopt::mathematical_optimization::io::mps_parser_fail;
 
 namespace {
 
@@ -917,4 +917,4 @@ void lz4_input_stream_t::run_decode_tasks()
   pipeline.finalize();
 }
 
-}  // namespace cuopt::linear_programming::io::detail
+}  // namespace cuopt::mathematical_optimization::io::detail

@@ -638,6 +638,7 @@ target_link_libraries(cuopt
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:gRPC::grpc++>
         INTERFACE
         "$<BUILD_INTERFACE:OpenMP::OpenMP_CXX>"
+        "$<BUILD_INTERFACE:OpenMP::OpenMP_CUDA>"
 )
 
 # ##################################################################################################

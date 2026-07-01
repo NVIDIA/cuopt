@@ -32,10 +32,10 @@
 #include <utility>
 #include <vector>
 
-namespace cuopt::linear_programming::io::detail {
+namespace cuopt::mathematical_optimization::io::detail {
 
-using cuopt::linear_programming::io::error_type_t;
-using cuopt::linear_programming::io::mps_parser_fail;
+using cuopt::mathematical_optimization::io::error_type_t;
+using cuopt::mathematical_optimization::io::mps_parser_fail;
 
 namespace {
 
@@ -368,4 +368,4 @@ const char* file_read_method_name(FileReadMethod method) noexcept
   }
 }
 
-}  // namespace cuopt::linear_programming::io::detail
+}  // namespace cuopt::mathematical_optimization::io::detail

@@ -15,7 +15,7 @@
 // they're still warm in cache it then publishes read/decoded input ranges to the parser workers,
 // which handle their respective sections in parallel.
 
-namespace cuopt::linear_programming::io::detail {
+namespace cuopt::mathematical_optimization::io::detail {
 
 enum class mps_section_kind {
   rows,
@@ -143,4 +143,4 @@ class mps_section_block_scanner_t {
   std::size_t next_block_ = 0;
 };
 
-}  // namespace cuopt::linear_programming::io::detail
+}  // namespace cuopt::mathematical_optimization::io::detail

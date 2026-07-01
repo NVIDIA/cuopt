@@ -14,7 +14,7 @@
 #include <cstdio>
 #include <vector>
 
-namespace cuopt::linear_programming::io::detail {
+namespace cuopt::mathematical_optimization::io::detail {
 
 // Utils to return to total resident set size (used physical pages)
 static size_t parse_status_kb_line(const char* line, const char* key)
@@ -191,4 +191,4 @@ static inline void print_perf_totals(const char* label,
   std::fprintf(stderr, " ipc=%.3f cache_miss_rate=%.6f\n", ipc, miss_rate);
 }
 
-}  // namespace cuopt::linear_programming::io::detail
+}  // namespace cuopt::mathematical_optimization::io::detail

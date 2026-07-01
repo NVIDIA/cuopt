@@ -46,7 +46,7 @@
 #define MPS_FAST_COMPACT_ROW_HASH
 #define MPS_FAST_THP_PREFAULT
 
-namespace cuopt::linear_programming::io::detail {
+namespace cuopt::mathematical_optimization::io::detail {
 
 static constexpr size_t KiB = 1024;
 static constexpr size_t MiB = 1024 * KiB;
@@ -3216,4 +3216,4 @@ template mps_data_model_t<int64_t, float> parse_mps_fast_file(const std::string&
 template mps_data_model_t<int64_t, double> parse_mps_fast_file(const std::string& path,
                                                                FileReadMethod read_method);
 
-}  // namespace cuopt::linear_programming::io::detail
+}  // namespace cuopt::mathematical_optimization::io::detail

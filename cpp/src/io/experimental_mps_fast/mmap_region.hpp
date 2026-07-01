@@ -19,11 +19,11 @@
 #include <stdexcept>
 #include <string>
 
-namespace cuopt::linear_programming::io::detail {
+namespace cuopt::mathematical_optimization::io::detail {
 
-using cuopt::linear_programming::io::error_type_t;
-using cuopt::linear_programming::io::mps_parser_expects;
-using cuopt::linear_programming::io::mps_parser_fail;
+using cuopt::mathematical_optimization::io::error_type_t;
+using cuopt::mathematical_optimization::io::mps_parser_expects;
+using cuopt::mathematical_optimization::io::mps_parser_fail;
 
 // Move-only owner for a Linux mmap range. Fixed sub-maps inside a reserved range
 // are still released by unmapping the owning outer range.
@@ -148,4 +148,4 @@ class mmap_region_t {
   std::size_t unmap_size_ = 0;
 };
 
-}  // namespace cuopt::linear_programming::io::detail
+}  // namespace cuopt::mathematical_optimization::io::detail

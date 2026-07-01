@@ -14,7 +14,7 @@
 #include <unistd.h>
 #endif
 
-namespace cuopt::linear_programming::io::detail::nvtx {
+namespace cuopt::mathematical_optimization::io::detail::nvtx {
 
 namespace colors {
 constexpr std::uint32_t generic  = 0xff8b949e;
@@ -123,10 +123,10 @@ inline void name_current_thread([[maybe_unused]] const char* name)
 #endif
 }
 
-}  // namespace cuopt::linear_programming::io::detail::nvtx
+}  // namespace cuopt::mathematical_optimization::io::detail::nvtx
 
 #define MPS_FAST_NVTX_CONCAT_INNER(a, b) a##b
 #define MPS_FAST_NVTX_CONCAT(a, b)       MPS_FAST_NVTX_CONCAT_INNER(a, b)
-#define MPS_NVTX_RANGE(name, color)                                                   \
-  ::cuopt::linear_programming::io::detail::nvtx::scoped_range_t MPS_FAST_NVTX_CONCAT( \
+#define MPS_NVTX_RANGE(name, color)                                                          \
+  ::cuopt::mathematical_optimization::io::detail::nvtx::scoped_range_t MPS_FAST_NVTX_CONCAT( \
     _mps_nvtx_range_, __LINE__)(name, color)

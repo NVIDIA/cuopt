@@ -16,11 +16,11 @@
 #include <simde/x86/avx2.h>
 #include <simde/x86/sse4.2.h>
 
-namespace cuopt::linear_programming::io::detail {
+namespace cuopt::mathematical_optimization::io::detail {
 
-using cuopt::linear_programming::io::error_type_t;
-using cuopt::linear_programming::io::mps_parser_expects;
-using cuopt::linear_programming::io::mps_parser_fail;
+using cuopt::mathematical_optimization::io::error_type_t;
+using cuopt::mathematical_optimization::io::mps_parser_expects;
+using cuopt::mathematical_optimization::io::mps_parser_fail;
 
 namespace {
 
@@ -475,4 +475,4 @@ void mps_section_block_scanner_t::notify_ready_phases()
   }
 }
 
-}  // namespace cuopt::linear_programming::io::detail
+}  // namespace cuopt::mathematical_optimization::io::detail

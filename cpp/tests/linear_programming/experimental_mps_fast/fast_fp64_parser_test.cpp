@@ -17,7 +17,7 @@
 #include <string_view>
 #include <vector>
 
-namespace cuopt::linear_programming::io::detail {
+namespace cuopt::mathematical_optimization::io::detail {
 
 namespace {
 
@@ -185,4 +185,4 @@ TEST(FastFp64ParserTest, FixedSeedRandomDifferential)
   }
 }
 
-}  // namespace cuopt::linear_programming::io::detail
+}  // namespace cuopt::mathematical_optimization::io::detail

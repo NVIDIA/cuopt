@@ -4,7 +4,7 @@
 #include "fast_parser.hpp"
 #include "mps_section_scanner.hpp"
 
-#include <cuopt/linear_programming/io/parser.hpp>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
 #include <mps_parser_internal.hpp>
 
 #include <gtest/gtest.h>
@@ -27,7 +27,7 @@
 
 #include <unistd.h>
 
-namespace cuopt::linear_programming::io::detail {
+namespace cuopt::mathematical_optimization::io::detail {
 
 namespace {
 
@@ -933,4 +933,4 @@ TEST(FastMpsParserEdgeTest, QuadraticParserRejectsUnknownColumnOneRecords)
   }
 }
 
-}  // namespace cuopt::linear_programming::io::detail
+}  // namespace cuopt::mathematical_optimization::io::detail

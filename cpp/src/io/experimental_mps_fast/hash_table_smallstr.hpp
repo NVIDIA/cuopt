@@ -25,7 +25,7 @@
 #include <string_view>
 #include <unordered_map>
 
-namespace cuopt::linear_programming::io::detail {
+namespace cuopt::mathematical_optimization::io::detail {
 
 // below this threshold, the serial row-hash build is usually cheaper than partition setup
 inline constexpr size_t MPS_ROW_HASH_PARTITIONED_MIN_ROWS = 64 * 1024;
@@ -301,4 +301,4 @@ class smallstr_hash_table_t {
 #endif
 };
 
-}  // namespace cuopt::linear_programming::io::detail
+}  // namespace cuopt::mathematical_optimization::io::detail

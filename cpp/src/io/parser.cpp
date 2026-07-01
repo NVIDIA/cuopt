@@ -14,10 +14,6 @@
 
 #include <cstdint>
 
-#include <utilities/logger.hpp>
-
-#include <cstdint>
-
 namespace cuopt::mathematical_optimization::io {
 
 template <typename i_t, typename f_t>

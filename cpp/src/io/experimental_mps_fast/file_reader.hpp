@@ -40,7 +40,7 @@
 #include <utility>
 #include <vector>
 
-namespace cuopt::linear_programming::io::detail {
+namespace cuopt::mathematical_optimization::io::detail {
 
 inline constexpr std::size_t input_buffer_padding_bytes = 64;
 
@@ -316,4 +316,4 @@ class memory_input_stream_t : public input_stream_base_t<memory_input_stream_t> 
   std::unique_ptr<mps_section_block_scanner_t> section_scanner_;
 };
 
-}  // namespace cuopt::linear_programming::io::detail
+}  // namespace cuopt::mathematical_optimization::io::detail
