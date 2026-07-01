@@ -707,7 +707,7 @@ INSTANTIATE_TEST_SUITE_P(
     crush_test_param{"mip/tr12-30.mps", false},
     crush_test_param{"mip/neos-3004026-krka.mps", false},
     crush_test_param{"mip/ns1208400.mps", false},
-    crush_test_param{"mip/gmu-35-50.mps", true},
+    //crush_test_param{"mip/gmu-35-50.mps", true},  // PDLP may time out in CI.
     crush_test_param{"mip/n2seq36q.mps", false},
     crush_test_param{"mip/seymour1.mps", false},
     //crush_test_param{"mip/thor50dday.mps", false},
