@@ -588,7 +588,8 @@ add_dependencies(cuopt PSLP)
 set(CUOPT_PRIVATE_CUDA_LIBS
         CUDA::curand
         CUDA::cusolver
-        TBB::tbb)
+        TBB::tbb
+        OpenMP::OpenMP_CXX)
 
 list(PREPEND CUOPT_PRIVATE_CUDA_LIBS CUDA::cublasLt)
 
@@ -774,6 +775,7 @@ if (NOT BUILD_LP_ONLY)
     target_link_libraries(cuopt_cli
             PUBLIC
             cuopt
+            OpenMP::OpenMP_CXX
             ${CUDSS_LIBRARIES}
             TBB::tbb
             PRIVATE
@@ -815,8 +817,8 @@ if (BUILD_MIP_BENCHMARKS AND NOT BUILD_LP_ONLY)
     target_link_libraries(solve_MIP
             PUBLIC
             cuopt
-            PRIVATE
             OpenMP::OpenMP_CXX
+            PRIVATE
     )
     if (NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
         target_link_options(solve_MIP PRIVATE -Wl,--enable-new-dtags)
@@ -845,6 +847,7 @@ if (BUILD_LP_BENCHMARKS)
     target_link_libraries(solve_LP
             PUBLIC
             cuopt
+            OpenMP::OpenMP_CXX
             PRIVATE
     )
     if (NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
@@ -897,6 +900,7 @@ if (NOT SKIP_GRPC_BUILD)
     target_link_libraries(cuopt_grpc_server
             PUBLIC
             cuopt
+            OpenMP::OpenMP_CXX
             PRIVATE
             protobuf::libprotobuf
             gRPC::grpc++
