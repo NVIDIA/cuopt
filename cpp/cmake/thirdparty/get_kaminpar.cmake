@@ -12,6 +12,16 @@ function(find_and_configure_kaminpar)
     set(oneValueArgs VERSION PINNED_TAG)
     cmake_parse_arguments(PKG "" "${oneValueArgs}" "" ${ARGN})
 
+    # Silence the (many) warnings from KaMinPar and its bundled third-party
+    # dependencies (KaHyPar, KaGen, growt, ...). They are compiled from pinned
+    # upstream source we do not maintain, so their diagnostics only drown out
+    # cuOpt's own build output. Appending -w here is function-scoped: the CPM
+    # add_subdirectory below inherits these flags, but cuOpt's targets (compiled
+    # in the parent scope with -Wall -Werror) are unaffected. A system/conda
+    # install of KaMinPar builds nothing, so the flag is simply unused there.
+    string(APPEND CMAKE_C_FLAGS " -w")
+    string(APPEND CMAKE_CXX_FLAGS " -w")
+
     # NOTE: KaMinPar is intentionally NOT added to cuopt's BUILD/INSTALL export sets.
     # It is a from-source static dependency that is fully embedded into libcuopt.so and
     # never installed (INSTALL_KAMINPAR OFF below). Registering it in cuopt-exports would
