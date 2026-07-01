@@ -136,7 +136,9 @@ of our latest development branch. Just replace `-c rapidsai` with `-c rapidsai-n
 
 ### Container
 
-Users can pull the cuOpt container from the NVIDIA container registry.
+cuOpt ships two container variants on Docker Hub — an Ubuntu-based image for general use and a Red Hat Universal Base Image 10 (UBI10) image for FIPS 140-3 compliant environments.
+
+#### Ubuntu image
 
 ```bash
 # For CUDA 12.x
@@ -146,9 +148,25 @@ docker pull nvidia/cuopt:latest-cu12
 docker pull nvidia/cuopt:latest-cu13
 ```
 
-Note: The ``latest`` tag is the latest stable release of cuOpt. If you want to use a specific version, you can use the ``<version>-cu12`` or ``<version>-cu13`` tag. For example, to use cuOpt 26.6.0, you can use the ``26.6.0-cu12`` or ``26.6.0-cu13`` tag. Fully-qualified tags that also pin the CUDA minor and Python version (for example ``26.6.0-cuda12.9-py3.14``) are published alongside the short tags. Please refer to [cuOpt dockerhub page](https://hub.docker.com/r/nvidia/cuopt/tags) for the list of available tags.
+The `latest` tag is the latest stable release. To pin a specific version use `<version>-cu12` / `<version>-cu13` (e.g. `26.6.0-cu13`). Fully-qualified tags that also pin the CUDA minor and Python version (e.g. `26.6.0-cuda13.3-py3.14`) are published alongside the short tags. See the [cuOpt Docker Hub page](https://hub.docker.com/r/nvidia/cuopt/tags) for the full list.
 
-Nightly container images are built from the HEAD of the development branch. They are tagged as ``<version>a-cu12`` or ``<version>a-cu13`` (note the ``a`` alpha suffix). See the [cuOpt dockerhub page](https://hub.docker.com/r/nvidia/cuopt/tags) for the full list.
+#### UBI10 image (FIPS 140-3)
+
+Based on Red Hat Universal Base Image 10 (RHEL 10), which ships OpenSSL 3.5 validated under FIPS 140-3. Use this image in environments with strict FIPS or RHEL compliance requirements.
+
+```bash
+# For CUDA 12.x
+docker pull nvidia/cuopt:latest-cu12-ubi10
+
+# For CUDA 13.x
+docker pull nvidia/cuopt:latest-cu13-ubi10
+```
+
+Fully-qualified tags follow the pattern `<version>-cuda<X.Y>-ubi10` (e.g. `26.6.0-cuda13.3-ubi10`). Nightly builds use the `<version>a-cu<N>-ubi10` tag scheme. See the [cuOpt Docker Hub page](https://hub.docker.com/r/nvidia/cuopt/tags) for the full list.
+
+Both images include the same cuOpt packages (`libcuopt`, `cuopt`, `cuopt-server`, `cuopt-sh-client`) and expose the same server entrypoint. They are built and tested for x86-64 and ARM64.
+
+Nightly container images for both variants are built from the HEAD of the development branch. They are tagged as `<version>a-cu12` / `<version>a-cu13` (Ubuntu) and `<version>a-cu12-ubi10` / `<version>a-cu13-ubi10` (UBI10).
 
 More information about the cuOpt container can be found [here](https://docs.nvidia.com/cuopt/user-guide/latest/cuopt-server/quick-start.html#container-from-docker-hub).
 
