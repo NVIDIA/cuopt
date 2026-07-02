@@ -4,8 +4,7 @@
 """
 Shared cuopt_grpc_server helpers and pytest fixtures for LP tests.
 
-Registered via ``pytest_plugins`` in ``python/cuopt/conftest.py`` as
-``cuopt.tests.fixtures.grpc_server_fixtures``.
+Registered via ``pytest_plugins`` in ``python/cuopt/cuopt/tests/conftest.py``.
 
 Class-scoped ``grpc_server`` starts one server per test class. Configure it on
 the test class::

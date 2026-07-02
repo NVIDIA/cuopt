@@ -17,7 +17,7 @@ from cuopt.linear_programming.internals import GetSolutionCallback
 from cuopt.linear_programming.problem import INTEGER, MAXIMIZE, Problem
 from cuopt.linear_programming.solver.solver_parameters import CUOPT_TIME_LIMIT
 
-from cuopt.tests.fixtures.grpc_server_fixtures import GRPC_PORT_OFFSET_CLIENT
+from grpc_server_fixtures import GRPC_PORT_OFFSET_CLIENT
 
 RAPIDS_DATASET_ROOT_DIR = os.getenv("RAPIDS_DATASET_ROOT_DIR")
 if RAPIDS_DATASET_ROOT_DIR is None:
