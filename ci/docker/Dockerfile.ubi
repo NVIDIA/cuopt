@@ -6,13 +6,13 @@ ARG CUDA_VER=unset
 ARG CUOPT_VER=unset
 
 # Stage 1: source for libnvrtc / libnvJitLink (not in base image)
-FROM nvcr.io/nvidia/cuda:${CUDA_VER}-runtime-ubi10 AS cuda-libs
+FROM nvidia/cuda:${CUDA_VER}-runtime-ubi10 AS cuda-libs
 
 # Stage 2: source for CUDA headers needed for CuPy/NVRTC runtime compilation
-FROM nvcr.io/nvidia/cuda:${CUDA_VER}-devel-ubi10 AS cuda-headers
+FROM nvidia/cuda:${CUDA_VER}-devel-ubi10 AS cuda-headers
 
 # Stage 3: small base — install Python + cuOpt via pip
-FROM nvcr.io/nvidia/cuda:${CUDA_VER}-base-ubi10 AS python-env
+FROM nvidia/cuda:${CUDA_VER}-base-ubi10 AS python-env
 
 ARG CUDA_VER
 ARG CUOPT_VER
