@@ -7,16 +7,16 @@ This skill is ready for commercial/non-commercial use. <br>
 NVIDIA <br>
 
 ### License/Terms of Use: <br>
-Apache 2.0 <br>
+Apache-2.0 <br>
 ## Use Case: <br>
-Developers and engineers exploring tradeoffs between competing objectives in optimization problems, tracing Pareto frontiers to make informed multi-objective decisions rather than accepting a single implicit weighting. <br>
+Developers and engineers exploring tradeoffs between competing objectives in optimization problems, using cuOpt to trace the Pareto frontier and interpret exchange rates rather than collapsing to a single weighted answer. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
 
 ## Requirements / Dependencies: <br>
-**Requires API Key or External Credential:** [No] <br>
-**Credential Type(s):** [None] <br>  
+**Requires API Key or External Credential:** [Not Specified] <br>
+**Credential Type(s):** [None identified] <br>  
 
 Do not include secrets in prompts/logs/output; use least-privilege credentials; rotate keys as appropriate. <br>
 
@@ -26,23 +26,23 @@ Mitigation: Review and scan skill before deployment. <br>
 
 ## Reference(s): <br>
 - [cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html) <br>
-- [cuOpt Examples](https://github.com/NVIDIA/cuopt-examples) <br>
+- [cuopt-examples](https://github.com/NVIDIA/cuopt-examples) <br>
 
 
 ## Skill Output: <br>
 **Output Type(s):** [Analysis, Configuration instructions] <br>
-**Output Format:** [Markdown with inline code blocks] <br>
+**Output Format:** [Markdown with inline formulations and solver-call patterns] <br>
 **Output Parameters:** [1D] <br>
 **Other Properties Related to Output:** [None] <br>
 
 ## Evaluation Agents Used: <br>
-- Claude Code (`claude-code`) <br>
-- Codex (`codex`) <br>
+- claude-code <br>
+- codex <br>
 
 
 
 ## Evaluation Tasks: <br>
-Evaluated against 5 evaluation tasks (4 positive activation, 1 negative activation) using NVSkills-Eval external profile in astra-sandbox environment. <br>
+Evaluated against 5 internal evaluation tasks (4 positive skill-activation, 1 negative). <br>
 
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
@@ -67,10 +67,10 @@ Underlying evaluation signals used in this run: <br>
 | Dimension | Num | `claude-code` | `codex` |
 |---|---:|---:|---:|
 | Security | 5 | 100% (+0%) | 100% (+0%) |
-| Correctness | 5 | 90% (+37%) | 76% (+24%) |
-| Discoverability | 5 | 80% (+60%) | 71% (+41%) |
-| Effectiveness | 5 | 91% (+20%) | 68% (+10%) |
-| Efficiency | 5 | 80% (+40%) | 71% (+30%) |
+| Correctness | 5 | 90% (+0%) | 87% (-8%) |
+| Discoverability | 5 | 78% (-2%) | 73% (-22%) |
+| Effectiveness | 5 | 85% (-6%) | 85% (+2%) |
+| Efficiency | 5 | 75% (-3%) | 71% (-21%) |
 
 ## Skill Version(s): <br>
 26.08.00 (source: frontmatter) <br>

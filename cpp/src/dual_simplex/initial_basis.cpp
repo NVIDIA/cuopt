@@ -9,7 +9,7 @@
 
 #include <dual_simplex/right_looking_lu.hpp>
 #include <dual_simplex/singletons.hpp>
-#include <dual_simplex/tic_toc.hpp>
+#include <math_optimization/tic_toc.hpp>
 
 #include <raft/core/nvtx.hpp>
 

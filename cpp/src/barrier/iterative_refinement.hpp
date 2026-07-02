@@ -6,11 +6,12 @@
 /* clang-format on */
 #pragma once
 
-#include <barrier/dense_vector.hpp>
+#include <linear_algebra/dense_vector.hpp>
 
 #include <dual_simplex/simplex_solver_settings.hpp>
-#include <dual_simplex/types.hpp>
-#include <dual_simplex/vector_math.hpp>
+#include <linear_algebra/vector_math.cuh>
+#include <linear_algebra/vector_math.hpp>
+#include <math_optimization/types.hpp>
 
 #include <thrust/execution_policy.h>
 #include <thrust/extrema.h>
@@ -53,38 +54,6 @@ struct subtract_scaled_op {
   T scale;
   __host__ __device__ T operator()(T a, T b) const { return a - scale * b; }
 };
-
-template <typename f_t>
-f_t vector_norm_inf(const rmm::device_uvector<f_t>& x)
-{
-  auto begin   = x.data();
-  auto end     = x.data() + x.size();
-  auto max_abs = thrust::transform_reduce(
-    rmm::exec_policy(x.stream()),
-    begin,
-    end,
-    [] __host__ __device__(f_t val) { return abs(val); },
-    static_cast<f_t>(0),
-    thrust::maximum<f_t>{});
-  RAFT_CHECK_CUDA(x.stream());
-  return max_abs;
-}
-
-template <typename f_t>
-f_t vector_norm2(const rmm::device_uvector<f_t>& x)
-{
-  auto begin          = x.data();
-  auto end            = x.data() + x.size();
-  auto sum_of_squares = thrust::transform_reduce(
-    rmm::exec_policy(x.stream()),
-    begin,
-    end,
-    [] __host__ __device__(f_t val) { return val * val; },
-    f_t(0),
-    thrust::plus<f_t>{});
-  RAFT_CHECK_CUDA(x.stream());
-  return std::sqrt(sum_of_squares);
-}
 
 template <typename i_t, typename f_t, typename T>
 f_t iterative_refinement_simple(T& op,

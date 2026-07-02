@@ -5,14 +5,14 @@
  */
 /* clang-format on */
 
-#include <barrier/dense_vector.hpp>
+#include <linear_algebra/dense_vector.hpp>
 
-#include <dual_simplex/sparse_matrix.hpp>
-#include <dual_simplex/types.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
+#include <math_optimization/types.hpp>
 
 #pragma once
 
-namespace cuopt::mathematical_optimization::barrier {
+namespace cuopt::mathematical_optimization {
 
 template <typename i_t, typename f_t>
 class dense_matrix_t {
@@ -32,7 +32,7 @@ class dense_matrix_t {
 
   f_t operator()(i_t row, i_t col) const { return values[col * m + row]; }
 
-  void from_sparse(const simplex::csc_matrix_t<i_t, f_t>& A, i_t sparse_column, i_t dense_column)
+  void from_sparse(const csc_matrix_t<i_t, f_t>& A, i_t sparse_column, i_t dense_column)
   {
     for (i_t i = 0; i < m; i++) {
       this->operator()(i, dense_column) = 0.0;
@@ -242,4 +242,4 @@ class dense_matrix_t {
   std::vector<f_t> values;
 };
 
-}  // namespace cuopt::mathematical_optimization::barrier
+}  // namespace cuopt::mathematical_optimization

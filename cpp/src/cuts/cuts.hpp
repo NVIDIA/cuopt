@@ -9,9 +9,9 @@
 #include <dual_simplex/basis_updates.hpp>
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
-#include <dual_simplex/sparse_vector.hpp>
-#include <dual_simplex/types.hpp>
 #include <dual_simplex/user_problem.hpp>
+#include <linear_algebra/sparse_vector.hpp>
+#include <math_optimization/types.hpp>
 
 #include <algorithm>
 #include <array>
@@ -112,11 +112,10 @@ template <typename i_t, typename f_t>
 struct inequality_t {
   inequality_t() : vector(), rhs(0.0) {}
   inequality_t(i_t num_cols) : vector(num_cols, 0), rhs(0.0) {}
-  inequality_t(simplex::csr_matrix_t<i_t, f_t>& A, i_t row, f_t rhs_value)
-    : vector(A, row), rhs(rhs_value)
+  inequality_t(csr_matrix_t<i_t, f_t>& A, i_t row, f_t rhs_value) : vector(A, row), rhs(rhs_value)
   {
   }
-  simplex::sparse_vector_t<i_t, f_t> vector;
+  sparse_vector_t<i_t, f_t> vector;
   f_t rhs;
 
   void push_back(i_t j, f_t x)
@@ -264,7 +263,7 @@ void write_solution_for_cut_verification(const simplex::lp_problem_t<i_t, f_t>& 
                                          const std::vector<f_t>& solution);
 
 template <typename i_t, typename f_t>
-void verify_cuts_against_saved_solution(const simplex::csr_matrix_t<i_t, f_t>& cuts,
+void verify_cuts_against_saved_solution(const csr_matrix_t<i_t, f_t>& cuts,
                                         const std::vector<f_t>& cut_rhs,
                                         const std::vector<f_t>& saved_solution);
 
@@ -308,7 +307,7 @@ class cut_pool_t {
   void score_cuts(std::vector<f_t>& x_relax);
 
   // We return the cuts in the form best_cuts*x <= best_rhs
-  i_t get_best_cuts(simplex::csr_matrix_t<i_t, f_t>& best_cuts,
+  i_t get_best_cuts(csr_matrix_t<i_t, f_t>& best_cuts,
                     std::vector<f_t>& best_rhs,
                     std::vector<cut_type_t>& best_cut_types);
 
@@ -330,7 +329,7 @@ class cut_pool_t {
   i_t original_vars_;
   const simplex::simplex_solver_settings_t<i_t, f_t>& settings_;
 
-  simplex::csr_matrix_t<i_t, f_t> cut_storage_;
+  csr_matrix_t<i_t, f_t> cut_storage_;
   std::vector<f_t> rhs_storage_;
   std::vector<i_t> cut_age_;
   std::vector<cut_type_t> cut_type_;
@@ -393,7 +392,7 @@ template <typename i_t, typename f_t>
 struct flow_cover_context_t {
   const simplex::lp_problem_t<i_t, f_t>& lp;
   const simplex::simplex_solver_settings_t<i_t, f_t>& settings;
-  simplex::csr_matrix_t<i_t, f_t>& Arow;
+  csr_matrix_t<i_t, f_t>& Arow;
   const variable_bounds_t<i_t, f_t>& variable_bounds;
   const std::vector<simplex::variable_type_t>& var_types;
   const std::vector<f_t>& xstar;
@@ -410,12 +409,12 @@ class flow_cover_generation_t {
  public:
   flow_cover_generation_t(const simplex::lp_problem_t<i_t, f_t>& lp,
                           const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
-                          simplex::csr_matrix_t<i_t, f_t>& Arow,
+                          csr_matrix_t<i_t, f_t>& Arow,
                           const std::vector<i_t>& new_slacks);
 
   i_t generate_cut(const simplex::lp_problem_t<i_t, f_t>& lp,
                    const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
-                   simplex::csr_matrix_t<i_t, f_t>& Arow,
+                   csr_matrix_t<i_t, f_t>& Arow,
                    const variable_bounds_t<i_t, f_t>& variable_bounds,
                    const std::vector<simplex::variable_type_t>& var_types,
                    const std::vector<f_t>& xstar,
@@ -533,13 +532,13 @@ class knapsack_generation_t {
  public:
   knapsack_generation_t(const simplex::lp_problem_t<i_t, f_t>& lp,
                         const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
-                        simplex::csr_matrix_t<i_t, f_t>& Arow,
+                        csr_matrix_t<i_t, f_t>& Arow,
                         const std::vector<i_t>& new_slacks,
                         const std::vector<simplex::variable_type_t>& var_types);
 
   i_t generate_knapsack_cut(const simplex::lp_problem_t<i_t, f_t>& lp,
                             const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
-                            simplex::csr_matrix_t<i_t, f_t>& Arow,
+                            csr_matrix_t<i_t, f_t>& Arow,
                             const std::vector<i_t>& new_slacks,
                             const std::vector<simplex::variable_type_t>& var_types,
                             const std::vector<f_t>& xstar,
@@ -629,7 +628,7 @@ class cut_generation_t {
   cut_generation_t(cut_pool_t<i_t, f_t>& cut_pool,
                    const simplex::lp_problem_t<i_t, f_t>& lp,
                    const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
-                   simplex::csr_matrix_t<i_t, f_t>& Arow,
+                   csr_matrix_t<i_t, f_t>& Arow,
                    const std::vector<i_t>& new_slacks,
                    const std::vector<simplex::variable_type_t>& var_types,
                    const simplex::user_problem_t<i_t, f_t>& user_problem,
@@ -648,7 +647,7 @@ class cut_generation_t {
 
   bool generate_cuts(const simplex::lp_problem_t<i_t, f_t>& lp,
                      const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
-                     simplex::csr_matrix_t<i_t, f_t>& Arow,
+                     csr_matrix_t<i_t, f_t>& Arow,
                      const std::vector<i_t>& new_slacks,
                      const std::vector<simplex::variable_type_t>& var_types,
                      simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
@@ -664,7 +663,7 @@ class cut_generation_t {
   // Generate all mixed integer gomory cuts
   void generate_gomory_cuts(const simplex::lp_problem_t<i_t, f_t>& lp,
                             const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
-                            simplex::csr_matrix_t<i_t, f_t>& Arow,
+                            csr_matrix_t<i_t, f_t>& Arow,
                             const std::vector<i_t>& new_slacks,
                             const std::vector<simplex::variable_type_t>& var_types,
                             simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
@@ -675,7 +674,7 @@ class cut_generation_t {
   // Generate all mixed integer rounding cuts
   void generate_mir_cuts(const simplex::lp_problem_t<i_t, f_t>& lp,
                          const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
-                         simplex::csr_matrix_t<i_t, f_t>& Arow,
+                         csr_matrix_t<i_t, f_t>& Arow,
                          const std::vector<i_t>& new_slacks,
                          const std::vector<simplex::variable_type_t>& var_types,
                          const std::vector<f_t>& xstar,
@@ -685,7 +684,7 @@ class cut_generation_t {
   // Generate all knapsack cuts
   void generate_knapsack_cuts(const simplex::lp_problem_t<i_t, f_t>& lp,
                               const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
-                              simplex::csr_matrix_t<i_t, f_t>& Arow,
+                              csr_matrix_t<i_t, f_t>& Arow,
                               const std::vector<i_t>& new_slacks,
                               const std::vector<simplex::variable_type_t>& var_types,
                               const std::vector<f_t>& xstar,
@@ -694,7 +693,7 @@ class cut_generation_t {
   // Generate all flow cover cuts
   void generate_flow_cover_cuts(const simplex::lp_problem_t<i_t, f_t>& lp,
                                 const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
-                                simplex::csr_matrix_t<i_t, f_t>& Arow,
+                                csr_matrix_t<i_t, f_t>& Arow,
                                 const std::vector<simplex::variable_type_t>& var_types,
                                 const std::vector<f_t>& xstar,
                                 variable_bounds_t<i_t, f_t>& variable_bounds,
@@ -817,7 +816,7 @@ class tableau_equality_t {
   // Generates the base inequalities: C*x == d that will be turned into cuts
   i_t generate_base_equality(const simplex::lp_problem_t<i_t, f_t>& lp,
                              const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
-                             simplex::csr_matrix_t<i_t, f_t>& Arow,
+                             csr_matrix_t<i_t, f_t>& Arow,
                              const std::vector<simplex::variable_type_t>& var_types,
                              simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
                              const std::vector<f_t>& xstar,
@@ -840,7 +839,7 @@ class variable_bounds_t {
   variable_bounds_t(const simplex::lp_problem_t<i_t, f_t>& lp,
                     const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
                     const std::vector<simplex::variable_type_t>& var_types,
-                    const simplex::csr_matrix_t<i_t, f_t>& Arow,
+                    const csr_matrix_t<i_t, f_t>& Arow,
                     const std::vector<i_t>& new_slacks);
 
   std::vector<i_t> upper_offsets;
@@ -887,15 +886,14 @@ class variable_bounds_t {
   {
     if (num_lower_inf == 0) {
       return activity - lower_activity_i - lower_activity_j;
-    } else if (num_lower_inf == 1 && lower_activity_j == -simplex::inf) {
+    } else if (num_lower_inf == 1 && lower_activity_j == -inf) {
       return activity - lower_activity_i;
-    } else if (num_lower_inf == 1 && lower_activity_i == -simplex::inf) {
+    } else if (num_lower_inf == 1 && lower_activity_i == -inf) {
       return activity - lower_activity_j;
-    } else if (num_lower_inf == 2 && lower_activity_i == -simplex::inf &&
-               lower_activity_j == -simplex::inf) {
+    } else if (num_lower_inf == 2 && lower_activity_i == -inf && lower_activity_j == -inf) {
       return activity;
     } else {
-      return -simplex::inf;
+      return -inf;
     }
   }
 
@@ -914,15 +912,14 @@ class variable_bounds_t {
   {
     if (num_upper_inf == 0) {
       return activity - upper_activity_i - upper_activity_j;
-    } else if (num_upper_inf == 1 && upper_activity_j == simplex::inf) {
+    } else if (num_upper_inf == 1 && upper_activity_j == inf) {
       return activity - upper_activity_i;
-    } else if (num_upper_inf == 1 && upper_activity_i == simplex::inf) {
+    } else if (num_upper_inf == 1 && upper_activity_i == inf) {
       return activity - upper_activity_j;
-    } else if (num_upper_inf == 2 && upper_activity_i == simplex::inf &&
-               upper_activity_j == simplex::inf) {
+    } else if (num_upper_inf == 2 && upper_activity_i == inf && upper_activity_j == inf) {
       return activity;
     } else {
-      return simplex::inf;
+      return inf;
     }
   }
 
@@ -944,7 +941,7 @@ class complemented_mixed_integer_rounding_cut_t {
 
   void compute_initial_scores_for_rows(const simplex::lp_problem_t<i_t, f_t>& lp,
                                        const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
-                                       const simplex::csr_matrix_t<i_t, f_t>& Arow,
+                                       const csr_matrix_t<i_t, f_t>& Arow,
                                        const std::vector<f_t>& xstar,
                                        const std::vector<f_t>& ystar,
                                        std::vector<f_t>& score);
@@ -1011,14 +1008,14 @@ class complemented_mixed_integer_rounding_cut_t {
                                  inequality_t<i_t, f_t>& cut);
 
   void substitute_slacks(const simplex::lp_problem_t<i_t, f_t>& lp,
-                         simplex::csr_matrix_t<i_t, f_t>& Arow,
+                         csr_matrix_t<i_t, f_t>& Arow,
                          inequality_t<i_t, f_t>& cut);
 
   // Combine the pivot row with the inequality to eliminate the variable j
   // The new inequality is returned in inequality and inequality_rhs
   // The multiplier for the pivot row is returned
   f_t combine_rows(const simplex::lp_problem_t<i_t, f_t>& lp,
-                   simplex::csr_matrix_t<i_t, f_t>& Arow,
+                   csr_matrix_t<i_t, f_t>& Arow,
                    i_t j,
                    const inequality_t<i_t, f_t>& pivot_row,
                    inequality_t<i_t, f_t>& inequality);
@@ -1103,7 +1100,7 @@ class strong_cg_cut_t {
 
 template <typename i_t, typename f_t>
 i_t add_cuts(const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
-             const simplex::csr_matrix_t<i_t, f_t>& cuts,
+             const csr_matrix_t<i_t, f_t>& cuts,
              const std::vector<f_t>& cut_rhs,
              simplex::lp_problem_t<i_t, f_t>& lp,
              std::vector<i_t>& new_slacks,
@@ -1118,7 +1115,7 @@ template <typename i_t, typename f_t>
 i_t remove_cuts(simplex::lp_problem_t<i_t, f_t>& lp,
                 const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
                 f_t start_time,
-                simplex::csr_matrix_t<i_t, f_t>& Arow,
+                csr_matrix_t<i_t, f_t>& Arow,
                 std::vector<i_t>& new_slacks,
                 i_t original_rows,
                 std::vector<simplex::variable_type_t>& var_types,

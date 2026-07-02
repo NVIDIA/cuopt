@@ -7,15 +7,15 @@
 
 #include <barrier/pinned_host_allocator.hpp>
 
-#include <dual_simplex/types.hpp>
-#include <dual_simplex/vector_math.hpp>
+#include <linear_algebra/vector_math.hpp>
+#include <math_optimization/types.hpp>
 
 #include <cassert>
 #include <cmath>
 #include <cstdio>
 #include <vector>
 
-namespace cuopt::mathematical_optimization::simplex {
+namespace cuopt::mathematical_optimization {
 
 template <typename i_t, typename f_t, typename Allocator>
 f_t vector_norm2_squared(const std::vector<f_t, Allocator>& x)
@@ -211,4 +211,4 @@ template int inverse_permutation<int>(const std::vector<int>& p, std::vector<int
 
 #endif
 
-}  // namespace cuopt::mathematical_optimization::simplex
+}  // namespace cuopt::mathematical_optimization

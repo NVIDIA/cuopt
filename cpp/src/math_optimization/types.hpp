@@ -10,7 +10,7 @@
 #include <cstdint>
 #include <limits>
 
-namespace cuopt::mathematical_optimization::simplex {
+namespace cuopt::mathematical_optimization {
 
 #define DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 
@@ -26,4 +26,4 @@ constexpr float64_t inf = std::numeric_limits<float64_t>::infinity();
 // We return this constant to signal that a matrix is indefinite (has a negative pivot)
 #define INDEFINITE_MATRIX_RETURN -4
 
-}  // namespace cuopt::mathematical_optimization::simplex
+}  // namespace cuopt::mathematical_optimization
