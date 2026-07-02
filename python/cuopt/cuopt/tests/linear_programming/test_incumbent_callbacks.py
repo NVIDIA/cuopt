@@ -86,23 +86,14 @@ def _run_incumbent_solver_callback(file_name, include_set_callback):
         settings.set_mip_callback(set_callback, user_data)
     solution = solver.Solve(data_model_obj, settings)
 
-    termination = solution.get_termination_status()
-    assert termination in (
-        MILPTerminationStatus.FeasibleFound,
-        MILPTerminationStatus.Optimal,
-    )
-
-    # Incumbent callbacks only fire during branch-and-bound. If the problem is
-    # solved at the root node (presolve or integral LP relaxation), no
-    # callbacks are triggered — skip rather than fail in that case.
-    if get_callback.n_callbacks == 0:
-        pytest.skip(
-            f"No incumbent callbacks fired (termination={termination}); "
-            "problem was likely solved at the root node without branching"
-        )
-
+    assert get_callback.n_callbacks > 0
     if include_set_callback:
         assert set_callback.n_callbacks > 0
+    assert (
+        solution.get_termination_status()
+        == MILPTerminationStatus.FeasibleFound
+        or MILPTerminationStatus.Optimal
+    )
 
     for sol in get_callback.solutions:
         utils.check_solution(
