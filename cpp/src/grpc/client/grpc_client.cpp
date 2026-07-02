@@ -312,6 +312,13 @@ void grpc_client_t::stop_log_streaming()
 
 void grpc_client_t::drain_log_streaming()
 {
+  // No-op when streaming was never started (config_.stream_logs or
+  // config_.log_callback disabled): log_stream_done_ stays false but
+  // log_thread_ is null, so stop_log_streaming() is also a no-op.
+  // Avoid the polling loop entirely to prevent a 5-second delay on the
+  // common non-streaming solve path.
+  if (!log_thread_) return;
+
   // On the success path the server drains all pending log lines and then sends
   // a job_complete sentinel; the streaming thread exits naturally when that
   // sentinel arrives.  Poll for natural completion (up to kDrainTimeout) so
