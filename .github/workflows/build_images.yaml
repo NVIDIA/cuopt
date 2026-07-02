@@ -113,6 +113,7 @@ jobs:
           docker push "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-py${PYTHON_SHORT}-${ARCH}"
 
       - name: Build UBI10 image and push to DockerHub and NGC
+        if: ${{ startsWith(inputs.CUDA_VER, '13.') }}
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: ./ci/docker/context
@@ -127,6 +128,7 @@ jobs:
           tags: nvidia/cuopt:${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ steps.trim.outputs.CUDA_SHORT }}-ubi10-${{ matrix.ARCH }}
 
       - name: Push UBI10 image to NGC
+        if: ${{ startsWith(inputs.CUDA_VER, '13.') }}
         env:
           IMAGE_TAG_PREFIX: ${{ inputs.IMAGE_TAG_PREFIX }}
           ARCH: ${{ matrix.ARCH }}

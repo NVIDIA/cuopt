@@ -72,6 +72,7 @@ jobs:
 
   test-ubi10:
     name: test-images-ubi10 (${{ inputs.ARCH }}, ${{ inputs.IMAGE_TAG_PREFIX }}-cuda${{ needs.prepare.outputs.CUDA_SHORT }}-ubi10)
+    if: ${{ startsWith(inputs.CUDA_VER, '13.') }}
     runs-on: "linux-${{ inputs.ARCH }}-gpu-a100-latest-1"
     needs: prepare
     container:
