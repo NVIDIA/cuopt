@@ -319,6 +319,7 @@ void grpc_client_t::drain_log_streaming()
   // common non-streaming solve path.
   if (!log_thread_) return;
 
+
   // On the success path the server drains all pending log lines and then sends
   // a job_complete sentinel; the streaming thread exits naturally when that
   // sentinel arrives.  Poll for natural completion (up to kDrainTimeout) so
