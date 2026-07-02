@@ -93,6 +93,10 @@ cdef extern from "cuopt/linear_programming/utilities/cython_types.hpp" namespace
         vector[double] last_restart_duality_gap_primal_solution_
         vector[double] last_restart_duality_gap_dual_solution_
 
+cdef extern from "cuopt/linear_programming/utilities/lp_solve_session.hpp" namespace "cuopt::cython": # noqa
+    cdef cppclass lp_solve_session_t:
+        pass
+
 cdef extern from "cuopt/linear_programming/utilities/cython_solve.hpp" namespace "cuopt::cython": # noqa
     # Unified LP solution struct — solutions_ variant accessed via helpers
     cdef cppclass linear_programming_ret_t:
@@ -117,6 +121,7 @@ cdef extern from "cuopt/linear_programming/utilities/cython_solve.hpp" namespace
         int nb_iterations_
         double solve_time_
         method_t solved_by_
+        unique_ptr[lp_solve_session_t] lp_solve_session
         bool is_gpu()
 
     # Unified MIP solution struct — solution_ variant accessed via helpers
@@ -144,6 +149,9 @@ cdef extern from "cuopt/linear_programming/utilities/cython_solve.hpp" namespace
     cdef unique_ptr[solver_ret_t] call_solve(
         data_model_view_t[int, double]* data_model,
         solver_settings_t[int, double]* solver_settings,
+        unsigned int flags,
+        bool is_batch_mode,
+        lp_solve_session_t* session_in,
     ) except + nogil
 
     cdef pair[vector[unique_ptr[solver_ret_t]], double] call_batch_solve( # noqa

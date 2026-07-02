@@ -10,6 +10,7 @@
 #include <cuopt/linear_programming/mip/solver_solution.hpp>
 #include <cuopt/linear_programming/pdlp/solver_solution.hpp>
 #include <cuopt/linear_programming/utilities/internals.hpp>
+#include <cuopt/linear_programming/utilities/lp_solve_session.hpp>
 
 #include <rmm/device_buffer.hpp>
 
@@ -84,6 +85,9 @@ struct linear_programming_ret_t {
   int nb_iterations_{};
   double solve_time_{};
   linear_programming::method_t solved_by_{};
+
+  /** GPU barrier session (stream + handle + symbolic cache); moved to Python capsule when set. */
+  std::unique_ptr<lp_solve_session_t> lp_solve_session;
 
   bool is_gpu() const { return std::holds_alternative<gpu_solutions_t>(solutions_); }
 };

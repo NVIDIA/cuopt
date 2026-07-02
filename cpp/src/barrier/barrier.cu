@@ -7,6 +7,8 @@
 
 #include <barrier/barrier.hpp>
 
+#include <barrier/barrier_factorization_sparsity_hash.hpp>
+#include <barrier/barrier_symbolic_cache.hpp>
 #include <barrier/conjugate_gradient.hpp>
 #include <barrier/cusparse_info.hpp>
 #include <barrier/cusparse_view.hpp>
@@ -28,6 +30,10 @@
 
 #include <dual_simplex/vector_math.cuh>
 
+#include <cuopt/linear_programming/utilities/solver_cache_profiler.hpp>
+
+#include <cuopt/linear_programming/utilities/lp_solve_session.hpp>
+
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
 
@@ -37,6 +43,7 @@
 #include <utilities/macros.cuh>
 
 #include <numeric>
+#include <memory>
 #include <optional>
 #include <span>
 
@@ -211,7 +218,8 @@ class iteration_data_t {
                    i_t num_upper_bounds,
                    const std::vector<i_t>& direct_free_variables,
                    const csc_matrix_t<i_t, f_t>& Qin,
-                   const simplex_solver_settings_t<i_t, f_t>& settings)
+                   const simplex_solver_settings_t<i_t, f_t>& settings,
+                   barrier_symbolic_cache_t<i_t, f_t>* adopt_symbolic = nullptr)
     : upper_bounds(num_upper_bounds),
       c(lp.objective),
       b(lp.rhs),
@@ -246,7 +254,7 @@ class iteration_data_t {
       Q(Qin),
       cusparse_Q_view_(lp.handle_ptr, Q),
       cusparse_view_(lp.handle_ptr, lp.A),
-      cusparse_info(lp.handle_ptr),
+      cusparse_info_(nullptr),
       device_AD(lp.num_cols, lp.num_rows, 0, lp.handle_ptr->get_stream()),
       device_A(lp.num_cols, lp.num_rows, 0, lp.handle_ptr->get_stream()),
       device_ADAT(lp.num_rows, lp.num_rows, 0, lp.handle_ptr->get_stream()),
@@ -324,12 +332,14 @@ class iteration_data_t {
       indefinite_Q(false),
       Q_diagonal(false),
       symbolic_status(0),
+      adopted_symbolic_(false),
       cone_combined_step_(false),
       cone_sigma_mu_(f_t(0))
   {
     raft::common::nvtx::range fun_scope("Barrier: LP Data Creation");
 
     {
+      CUOPT_CACHE_PROFILE_SCOPE(cuopt::linear_programming::cache_profile::cache_id::C09);
       raft::common::nvtx::range scope("Barrier: LP Data: direct free linear");
       // Setup tracking of direct free variables (linear columns only j < cone_start)
       n_direct_free_linear = direct_free_variables.size();
@@ -352,6 +362,7 @@ class iteration_data_t {
     bool has_Q   = Q.x.size() > 0;
     indefinite_Q = false;
     {
+      CUOPT_CACHE_PROFILE_SCOPE(cuopt::linear_programming::cache_profile::cache_id::C09);
       raft::common::nvtx::range scope("Barrier: LP Data: Q setup");
       if (has_Q) {
         Qdiag.resize(lp.num_cols, 0.0);
@@ -393,6 +404,7 @@ class iteration_data_t {
     }
 
     if (!lp.second_order_cone_dims.empty()) {
+      CUOPT_CACHE_PROFILE_SCOPE(cuopt::linear_programming::cache_profile::cache_id::C08);
       raft::common::nvtx::range scope("Barrier: LP Data: SOC setup");
       cone_var_start_ = lp.cone_var_start;
       i_t total_cone_dim =
@@ -412,6 +424,7 @@ class iteration_data_t {
     }
 
     {
+      CUOPT_CACHE_PROFILE_SCOPE(cuopt::linear_programming::cache_profile::cache_id::C09);
       raft::common::nvtx::range scope("Barrier: LP Data: complementarity buffers");
       const i_t linear_xz_rhs_size = linear_xz_size(lp.num_cols);
       d_complementarity_xz_rhs_.resize(linear_xz_rhs_size, stream_view_);
@@ -431,6 +444,7 @@ class iteration_data_t {
     }
 
     {
+      CUOPT_CACHE_PROFILE_SCOPE(cuopt::linear_programming::cache_profile::cache_id::C09);
       raft::common::nvtx::range scope("Barrier: LP Data: upper bounds");
       // Create the upper bounds vector
       n_upper_bounds = 0;
@@ -444,6 +458,7 @@ class iteration_data_t {
 
     std::vector<i_t> dense_columns_unordered;
     {
+      CUOPT_CACHE_PROFILE_SCOPE(cuopt::linear_programming::cache_profile::cache_id::C04);
       raft::common::nvtx::range scope("Barrier: LP Data: dense columns and augmented");
       // Decide if we are going to use the augmented system or not
       n_dense_columns      = 0;
@@ -515,6 +530,7 @@ class iteration_data_t {
     }
 
     {
+      CUOPT_CACHE_PROFILE_SCOPE(cuopt::linear_programming::cache_profile::cache_id::C09);
       raft::common::nvtx::range scope("Barrier: LP Data: diag and inv_diag");
       // D = I + EET
       diag.set_scalar(1.0);
@@ -545,6 +561,7 @@ class iteration_data_t {
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
 
     {
+      CUOPT_CACHE_PROFILE_SCOPE(cuopt::linear_programming::cache_profile::cache_id::C09);
       raft::common::nvtx::range scope("Barrier: LP Data: AD matrix setup");
       // Copy A into AD
       AD = lp.A;
@@ -580,6 +597,7 @@ class iteration_data_t {
 
     // device_AD / device_A / ADAT path is only used when forming ADAT (!use_augmented).
     if (!use_augmented) {
+      CUOPT_CACHE_PROFILE_SCOPE(cuopt::linear_programming::cache_profile::cache_id::C09);
       raft::common::nvtx::range scope("Barrier: LP Data: device AD path");
       device_AD.copy(AD, handle_ptr->get_stream());
       d_original_A_values.resize(device_AD.x.size(), handle_ptr->get_stream());
@@ -598,34 +616,418 @@ class iteration_data_t {
 
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
     {
+      CUOPT_CACHE_PROFILE_SCOPE(cuopt::linear_programming::cache_profile::cache_id::C06);
       raft::common::nvtx::range scope("Barrier: LP Data: Cholesky init");
       i_t factorization_size = use_augmented ? lp.num_rows + lp.num_cols : lp.num_rows;
-      chol                   = std::make_unique<sparse_cholesky_cudss_t<i_t, f_t>>(
-        handle_ptr, settings, factorization_size);
-      chol->set_positive_definite(false);
-    }
-    if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
-    {
-      raft::common::nvtx::range scope("Barrier: LP Data: symbolic analysis");
-      // Perform symbolic analysis
-      symbolic_status = 0;
-      if (use_augmented) {
-        {
-          raft::common::nvtx::range form_scope("Barrier: LP Data: form augmented");
-          // Build the sparsity pattern of the augmented system
-          form_augmented(true);
+
+      auto adopt_augmented_symbolic = [&]() -> bool {
+        if (has_cones() || !use_augmented || adopt_symbolic == nullptr) { return false; }
+
+        const barrier_sparsity_hash_t host_hash = hash_augmented_kkt_sparsity(A, AT, Q);
+        const bool matched =
+          adopt_symbolic->matches_reuse(host_hash, true, handle_ptr);
+        if (!matched) { return false; }
+
+        chol = adopt_symbolic->chol;
+        static_cast<sparse_cholesky_base_t<i_t, f_t>*>(chol.get())->rebind_settings(settings);
+        pinned_device_augmented_ = &adopt_symbolic->device_augmented;
+        d_augmented_diagonal_indices_.resize(adopt_symbolic->d_augmented_diagonal_indices_.size(),
+                                             stream_view_);
+        raft::copy(d_augmented_diagonal_indices_.data(),
+                   adopt_symbolic->d_augmented_diagonal_indices_.data(),
+                   adopt_symbolic->d_augmented_diagonal_indices_.size(),
+                   stream_view_);
+        handle_ptr->sync_stream();
+        static_cast<sparse_cholesky_base_t<i_t, f_t>*>(chol.get())->rebind_csr_matrix(aug_mat());
+        adopted_symbolic_ = true;
+        symbolic_status   = 0;
+        return true;
+      };
+
+      auto unpin_adat_workspace = [&]() {
+        pinned_device_ADAT_         = nullptr;
+        pinned_device_A_            = nullptr;
+        pinned_device_AD_           = nullptr;
+        pinned_d_original_A_values_ = nullptr;
+        pinned_device_A_x_values_   = nullptr;
+        pinned_cusparse_info_       = nullptr;
+      };
+
+      auto pin_adat_from_cache = [&](barrier_symbolic_cache_t<i_t, f_t>& cache) {
+        pinned_device_ADAT_         = &cache.device_ADAT;
+        pinned_device_A_            = &cache.device_A;
+        pinned_device_AD_           = &cache.device_AD;
+        pinned_d_original_A_values_ = &cache.d_original_A_values;
+        pinned_device_A_x_values_   = &cache.device_A_x_values;
+        pinned_cusparse_info_       = cache.cusparse_info.get();
+      };
+
+      auto adopt_adat_symbolic = [&]() -> bool {
+        if (has_cones() || use_augmented || adopt_symbolic == nullptr || n_dense_columns > 0) {
+          return false;
+        }
+        if (!adopt_symbolic->valid || adopt_symbolic->use_augmented) { return false; }
+
+        pin_adat_from_cache(*adopt_symbolic);
+        form_adat(true);
+        if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
+          unpin_adat_workspace();
+          return false;
+        }
+
+        const barrier_sparsity_hash_t adat_hash =
+          hash_device_csr_sparsity_pattern(adat_mat(), stream_view_);
+        const bool matched =
+          adopt_symbolic->matches_reuse(adat_hash, false, handle_ptr);
+        if (!matched) {
+          unpin_adat_workspace();
+          adopt_symbolic->clear();
+          return false;
+        }
+
+        chol = adopt_symbolic->chol;
+        static_cast<sparse_cholesky_base_t<i_t, f_t>*>(chol.get())->rebind_settings(settings);
+        handle_ptr->sync_stream();
+        static_cast<sparse_cholesky_base_t<i_t, f_t>*>(chol.get())->rebind_csr_matrix(adat_mat());
+        adopted_symbolic_ = true;
+        symbolic_status   = 0;
+        return true;
+      };
+
+      if (!adopt_augmented_symbolic() && !adopt_adat_symbolic()) {
+        if (use_augmented) {
+          {
+            CUOPT_CACHE_PROFILE_SCOPE(cuopt::linear_programming::cache_profile::cache_id::C05);
+            raft::common::nvtx::range form_scope("Barrier: LP Data: form augmented");
+            form_augmented(true);
+          }
+        } else {
+          {
+            CUOPT_CACHE_PROFILE_SCOPE(cuopt::linear_programming::cache_profile::cache_id::C05);
+            raft::common::nvtx::range form_scope("Barrier: LP Data: form ADAT");
+            form_adat(true);
+          }
         }
         if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
-        symbolic_status = chol->analyze(device_augmented);
-      } else {
-        {
-          raft::common::nvtx::range form_scope("Barrier: LP Data: form ADAT");
-          form_adat(true);
-        }
+
+        chol = std::make_shared<sparse_cholesky_cudss_t<i_t, f_t>>(
+          handle_ptr, settings, factorization_size);
+        chol->set_positive_definite(false);
         if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
-        symbolic_status = chol->analyze(device_ADAT);
+        symbolic_status = 0;
+        {
+          CUOPT_CACHE_PROFILE_SCOPE(cuopt::linear_programming::cache_profile::cache_id::C07);
+          raft::common::nvtx::range analyze_scope("Barrier: LP Data: symbolic analysis");
+          if (use_augmented) {
+            symbolic_status = chol->analyze(aug_mat());
+          } else {
+            symbolic_status = chol->analyze(adat_mat());
+          }
+        }
       }
     }
+  }
+
+  [[nodiscard]] bool adopted_symbolic() const { return adopted_symbolic_; }
+
+  device_csr_matrix_t<i_t, f_t>& augmented_system() { return aug_mat(); }
+  const device_csr_matrix_t<i_t, f_t>& augmented_system() const { return aug_mat(); }
+
+  void store_symbolic_cache(barrier_symbolic_cache_t<i_t, f_t>& cache)
+  {
+    if (symbolic_status != 0 || has_cones()) { return; }
+    auto* cudss_chol = dynamic_cast<sparse_cholesky_cudss_t<i_t, f_t>*>(chol.get());
+    if (cudss_chol == nullptr) { return; }
+
+    cache.chol       = std::static_pointer_cast<sparse_cholesky_cudss_t<i_t, f_t>>(chol);
+    cache.handle_ptr = handle_ptr;
+
+    if (use_augmented) {
+      cache.cusparse_info.reset();
+      cache.use_augmented = true;
+
+      if (pinned_device_augmented_ != nullptr) {
+        // Warm reuse: sparsity_hash unchanged since adopt (values-only refresh); unpin only.
+        pinned_device_augmented_ = nullptr;
+      } else {
+        cache.sparsity_hash =
+          hash_device_csr_sparsity_pattern(device_augmented, handle_ptr->get_stream());
+        cache.device_augmented              = std::move(device_augmented);
+        cache.d_augmented_diagonal_indices_ = std::move(d_augmented_diagonal_indices_);
+      }
+
+#ifndef NDEBUG
+      const barrier_sparsity_hash_t host_hash = hash_augmented_kkt_sparsity(A, AT, Q);
+      cuopt_assert(cache.sparsity_hash == host_hash,
+                   "store_symbolic_cache: device/host augmented sparsity hash mismatch");
+#endif
+
+      cache.valid = true;
+      settings_.log.printf(
+        "Barrier: stored augmented symbolic cache hash=0x%016llx\n",
+        static_cast<unsigned long long>(cache.sparsity_hash));
+      return;
+    }
+
+    if (n_dense_columns > 0) { return; }
+
+    cache.use_augmented = false;
+    if (pinned_device_ADAT_ != nullptr) {
+      // Warm reuse: sparsity_hash unchanged since adopt (values-only refresh); unpin only.
+      pinned_device_ADAT_         = nullptr;
+      pinned_device_A_            = nullptr;
+      pinned_device_AD_           = nullptr;
+      pinned_d_original_A_values_ = nullptr;
+      pinned_device_A_x_values_   = nullptr;
+      pinned_cusparse_info_       = nullptr;
+    } else {
+      cache.sparsity_hash =
+        hash_device_csr_sparsity_pattern(device_ADAT, handle_ptr->get_stream());
+      cache.device_ADAT         = std::move(device_ADAT);
+      cache.device_A            = std::move(device_A);
+      cache.device_AD           = std::move(device_AD);
+      cache.d_original_A_values = std::move(d_original_A_values);
+      cache.device_A_x_values   = std::move(device_A_x_values);
+      cache.cusparse_info       = std::move(cusparse_info_);
+    }
+
+    cache.valid = true;
+    settings_.log.printf(
+      "Barrier: stored ADAT symbolic cache hash=0x%016llx\n",
+      static_cast<unsigned long long>(cache.sparsity_hash));
+  }
+
+  bool refresh_augmented_values()
+  {
+    i_t n    = A.n;
+    i_t m    = A.m;
+    i_t nnzA = A.col_start[n];
+    i_t nnzQ = Q.n > 0 ? Q.col_start[n] : 0;
+
+    i_t new_nnz = 2 * nnzA + n + m + nnzQ;
+    csr_matrix_t<i_t, f_t> augmented_CSR(n + m, n + m, new_nnz);
+    i_t q            = 0;
+    i_t off_diag_Qnz = 0;
+
+    for (i_t i = 0; i < n; i++) {
+      augmented_CSR.row_start[i] = q;
+      if (nnzQ == 0) {
+        augmented_CSR.j[q]   = i;
+        augmented_CSR.x[q++] = -diag[i] - dual_perturb;
+      } else {
+        const i_t q_col_beg = Q.col_start[i];
+        const i_t q_col_end = Q.col_start[i + 1];
+        bool has_diagonal   = false;
+        for (i_t p = q_col_beg; p < q_col_end; ++p) {
+          augmented_CSR.j[q] = Q.i[p];
+          if (Q.i[p] == i) {
+            has_diagonal         = true;
+            augmented_CSR.x[q++] = -Q.x[p] - diag[i] - dual_perturb;
+          } else {
+            off_diag_Qnz++;
+            augmented_CSR.x[q++] = -Q.x[p];
+          }
+        }
+        if (!has_diagonal) {
+          augmented_CSR.j[q]   = i;
+          augmented_CSR.x[q++] = -diag[i] - dual_perturb;
+        }
+      }
+      const i_t col_beg = A.col_start[i];
+      const i_t col_end = A.col_start[i + 1];
+      for (i_t p = col_beg; p < col_end; ++p) {
+        augmented_CSR.j[q]   = A.i[p] + n;
+        augmented_CSR.x[q++] = A.x[p];
+      }
+    }
+
+    for (i_t k = n; k < n + m; ++k) {
+      augmented_CSR.row_start[k] = q;
+      const i_t l                = k - n;
+      const i_t col_beg          = AT.col_start[l];
+      const i_t col_end          = AT.col_start[l + 1];
+      for (i_t p = col_beg; p < col_end; ++p) {
+        augmented_CSR.j[q]   = AT.i[p];
+        augmented_CSR.x[q++] = AT.x[p];
+      }
+      augmented_CSR.j[q]   = k;
+      augmented_CSR.x[q++] = primal_perturb;
+    }
+    augmented_CSR.row_start[n + m] = q;
+    if (q != static_cast<i_t>(aug_mat().x.size()) || q != 2 * nnzA + n + m + off_diag_Qnz) {
+      return false;
+    }
+
+    augmented_CSR.j.resize(q);
+    augmented_CSR.x.resize(q);
+    raft::copy(aug_mat().x.data(), augmented_CSR.x.data(), q, handle_ptr->get_stream());
+    RAFT_CHECK_CUDA(handle_ptr->get_stream());
+    return true;
+  }
+
+  bool rebuild_augmented_symbolic()
+  {
+    if (!use_augmented) { return false; }
+
+    settings_.log.printf(
+      "Barrier: augmented nnz mismatch on cached symbolic; rebuilding symbolic analysis\n");
+
+    adopted_symbolic_        = false;
+    pinned_device_augmented_ = nullptr;
+
+    const i_t factorization_size = A.n + A.m;
+    chol                         = std::make_shared<sparse_cholesky_cudss_t<i_t, f_t>>(
+      handle_ptr, settings_, factorization_size);
+    chol->set_positive_definite(false);
+    if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return false; }
+
+    form_augmented(true);
+    if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return false; }
+
+    symbolic_status = chol->analyze(aug_mat());
+    if (symbolic_status != 0) { return false; }
+
+    reset_for_new_solve();
+    return true;
+  }
+
+  bool refresh_adat_values()
+  {
+    if (use_augmented || n_dense_columns > 0) { return false; }
+
+    const i_t expected_nnz = static_cast<i_t>(adat_mat().x.size());
+    form_adat(false);
+    handle_ptr->sync_stream();
+    return static_cast<i_t>(adat_mat().x.size()) == expected_nnz;
+  }
+
+  bool rebuild_adat_symbolic()
+  {
+    if (use_augmented || n_dense_columns > 0) { return false; }
+
+    settings_.log.printf(
+      "Barrier: ADAT nnz mismatch on cached symbolic; rebuilding symbolic analysis\n");
+
+    adopted_symbolic_           = false;
+    pinned_device_ADAT_         = nullptr;
+    pinned_device_A_            = nullptr;
+    pinned_device_AD_           = nullptr;
+    pinned_d_original_A_values_ = nullptr;
+    pinned_device_A_x_values_   = nullptr;
+    pinned_cusparse_info_       = nullptr;
+    cusparse_info_.reset();
+
+    const i_t factorization_size = A.m;
+    chol                         = std::make_shared<sparse_cholesky_cudss_t<i_t, f_t>>(
+      handle_ptr, settings_, factorization_size);
+    chol->set_positive_definite(false);
+    if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return false; }
+
+    form_adat(true);
+    if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return false; }
+
+    symbolic_status = chol->analyze(adat_mat());
+    if (symbolic_status != 0) { return false; }
+
+    reset_for_new_solve();
+    return true;
+  }
+
+  bool refresh_lp_numerics(const lp_problem_t<i_t, f_t>& lp)
+  {
+    raft::common::nvtx::range fun_scope("Barrier: refresh LP numerics");
+
+    c = lp.objective;
+    b = lp.rhs;
+
+    AD = A;
+    if (!use_augmented && n_dense_columns > 0) { AD.remove_columns(cols_to_remove); }
+    AT.transpose(AD);
+
+    const bool has_Q = Q.n > 0;
+    if (has_Q) {
+      for (i_t j = 0; j < Q.n; j++) {
+        Qdiag[j] = 0.0;
+        const i_t col_start = Q.col_start[j];
+        const i_t col_end   = Q.col_start[j + 1];
+        for (i_t p = col_start; p < col_end; p++) {
+          const i_t row = Q.i[p];
+          if (j == row) {
+            Qdiag[j] = Q.x[p];
+            break;
+          }
+        }
+      }
+      if (d_Q_diag_.size() > 0) {
+        raft::copy(d_Q_diag_.data(), Qdiag.data(), Qdiag.size(), stream_view_);
+      }
+    }
+
+    diag.set_scalar(1.0);
+    if (n_upper_bounds > 0) {
+      for (i_t k = 0; k < n_upper_bounds; k++) {
+        const i_t j = upper_bounds[k];
+        diag[j]     = 2.0;
+      }
+    }
+    if (has_Q && !use_augmented) {
+      for (i_t j = 0; j < Q.n; j++) {
+        diag[j] += Qdiag[j];
+      }
+    }
+
+    inv_diag.set_scalar(1.0);
+    if (use_augmented) { diag.multiply_scalar(-1.0); }
+    if (n_upper_bounds > 0 || (has_Q && !use_augmented)) { diag.inverse(inv_diag); }
+    raft::copy(d_inv_diag.data(), inv_diag.data(), inv_diag.size(), stream_view_);
+    inv_sqrt_diag.set_scalar(1.0);
+    if (n_upper_bounds > 0 || (has_Q && !use_augmented)) { inv_diag.sqrt(inv_sqrt_diag); }
+
+    if (!use_augmented) {
+      ad_mat().copy(AD, handle_ptr->get_stream());
+      raft::copy(original_a_values().data(),
+                 ad_mat().x.data(),
+                 ad_mat().x.size(),
+                 handle_ptr->get_stream());
+      raft::copy(a_x_values().data(), ad_mat().x.data(), ad_mat().x.size(), handle_ptr->get_stream());
+      ad_mat().to_compressed_row(a_mat(), handle_ptr->get_stream());
+      RAFT_CHECK_CUDA(handle_ptr->get_stream());
+
+      if (adopted_symbolic_) {
+        if (!refresh_adat_values()) {
+          if (!rebuild_adat_symbolic()) { return false; }
+        } else {
+          handle_ptr->sync_stream();
+          if (chol != nullptr) { chol->rebind_csr_matrix(adat_mat()); }
+        }
+      }
+    }
+
+    if (use_augmented) {
+      if (!refresh_augmented_values()) {
+        if (!rebuild_augmented_symbolic()) { return false; }
+      }
+    }
+
+    cusparse_view_.update_matrix_values(A);
+    if (Q.n > 0) { cusparse_Q_view_.update_matrix_values(Q); }
+
+    reset_for_new_solve();
+    return true;
+  }
+
+  void reset_for_new_solve()
+  {
+    has_factorization = false;
+    has_solve_info    = false;
+    relative_primal_residual_save          = inf;
+    relative_dual_residual_save            = inf;
+    relative_complementarity_residual_save = inf;
+    primal_residual_norm_save              = inf;
+    dual_residual_norm_save                = inf;
+    complementarity_residual_norm_save     = inf;
+    if (chol != nullptr) { chol->invalidate_numeric_factor(); }
+    handle_ptr->sync_stream();
   }
 
   bool has_cones() const { return cones_.has_value(); }
@@ -887,7 +1289,7 @@ class iteration_data_t {
       thrust::for_each_n(rmm::exec_policy(handle_ptr->get_stream()),
                          thrust::make_counting_iterator<i_t>(0),
                          linear_n,
-                         [span_x             = cuopt::make_span(device_augmented.x),
+                         [span_x             = cuopt::make_span(aug_mat().x),
                           span_diag_indices  = cuopt::make_span(d_augmented_diagonal_indices_),
                           span_q_diag        = cuopt::make_span(d_Q_diag_),
                           span_diag          = cuopt::make_span(d_diag_),
@@ -901,7 +1303,7 @@ class iteration_data_t {
       thrust::for_each_n(rmm::exec_policy(handle_ptr->get_stream()),
                          thrust::make_counting_iterator<i_t>(n),
                          i_t(m),
-                         [span_x               = cuopt::make_span(device_augmented.x),
+                         [span_x               = cuopt::make_span(aug_mat().x),
                           span_diag_indices    = cuopt::make_span(d_augmented_diagonal_indices_),
                           primal_perturb_value = primal_perturb] __device__(i_t j) {
                            span_x[span_diag_indices[j]] = primal_perturb_value;
@@ -910,7 +1312,7 @@ class iteration_data_t {
 
       if (has_soc) {
         scatter_hessian_into_augmented(cones(),
-                                       device_augmented.x,
+                                       aug_mat().x,
                                        d_cone_csr_indices_,
                                        d_cone_Q_values_,
                                        handle_ptr->get_stream(),
@@ -929,9 +1331,9 @@ class iteration_data_t {
 
     {
       raft::common::nvtx::range scope("Barrier: Form ADAT: restore A");
-      raft::copy(device_AD.x.data(),
-                 d_original_A_values.data(),
-                 d_original_A_values.size(),
+      raft::copy(ad_mat().x.data(),
+                 original_a_values().data(),
+                 original_a_values().size(),
                  handle_ptr->get_stream());
     }
     {
@@ -963,20 +1365,23 @@ class iteration_data_t {
       raft::common::nvtx::range scope("Barrier: Form ADAT: scale AD");
       thrust::for_each_n(rmm::exec_policy(stream_view_),
                          thrust::make_counting_iterator<i_t>(0),
-                         i_t(device_AD.x.size()),
-                         [span_x       = cuopt::make_span(device_AD.x),
+                         i_t(ad_mat().x.size()),
+                         [span_x       = cuopt::make_span(ad_mat().x),
                           span_scale   = cuopt::make_span(d_inv_diag_prime),
-                          span_col_ind = cuopt::make_span(device_AD.col_index)] __device__(i_t i) {
+                          span_col_ind = cuopt::make_span(ad_mat().col_index)] __device__(i_t i) {
                            span_x[i] *= span_scale[span_col_ind[i]];
                          });
       RAFT_CHECK_CUDA(stream_view_);
     }
     if (settings_.concurrent_halt != nullptr && *settings_.concurrent_halt == 1) { return; }
-    if (first_call) {
+    if (first_call && pinned_cusparse_info_ == nullptr) {
       raft::common::nvtx::range scope("Barrier: Form ADAT: cusparse init");
       try {
+        if (!cusparse_info_) {
+          cusparse_info_ = std::make_unique<cusparse_info_t<i_t, f_t>>(handle_ptr);
+        }
         initialize_cusparse_data<i_t, f_t>(
-          handle_ptr, device_A, device_AD, device_ADAT, cusparse_info);
+          handle_ptr, a_mat(), ad_mat(), adat_mat(), spgemm_info());
       } catch (const raft::cuda_error& e) {
         settings_.log.printf("Error in initialize_cusparse_data: %s\n", e.what());
         return;
@@ -986,11 +1391,11 @@ class iteration_data_t {
 
     {
       raft::common::nvtx::range scope("Barrier: Form ADAT: ADAT multiply");
-      multiply_kernels<i_t, f_t>(handle_ptr, device_A, device_AD, device_ADAT, cusparse_info);
+      multiply_kernels<i_t, f_t>(handle_ptr, a_mat(), ad_mat(), adat_mat(), spgemm_info());
       handle_ptr->sync_stream();
     }
 
-    auto adat_nnz       = device_ADAT.row_start.element(device_ADAT.m, handle_ptr->get_stream());
+    auto adat_nnz       = adat_mat().row_start.element(adat_mat().m, handle_ptr->get_stream());
     float64_t adat_time = toc(start_form_adat);
 
     if (num_factorizations == 0) {
@@ -1000,7 +1405,7 @@ class iteration_data_t {
       settings_.log.printf(
         "ADAT density                : %.2f\n",
         static_cast<float64_t>(adat_nnz) /
-          (static_cast<float64_t>(device_ADAT.m) * static_cast<float64_t>(device_ADAT.m)));
+          (static_cast<float64_t>(adat_mat().m) * static_cast<float64_t>(adat_mat().m)));
     }
   }
 
@@ -1944,6 +2349,53 @@ class iteration_data_t {
   rmm::device_uvector<i_t> d_augmented_diagonal_indices_;
   rmm::device_uvector<i_t> d_cone_csr_indices_;
   rmm::device_uvector<f_t> d_cone_Q_values_;
+  device_csr_matrix_t<i_t, f_t>* pinned_device_augmented_{nullptr};
+  device_csr_matrix_t<i_t, f_t>* pinned_device_ADAT_{nullptr};
+  device_csr_matrix_t<i_t, f_t>* pinned_device_A_{nullptr};
+  device_csc_matrix_t<i_t, f_t>* pinned_device_AD_{nullptr};
+  rmm::device_uvector<f_t>* pinned_d_original_A_values_{nullptr};
+  rmm::device_uvector<f_t>* pinned_device_A_x_values_{nullptr};
+  cusparse_info_t<i_t, f_t>* pinned_cusparse_info_{nullptr};
+
+  device_csr_matrix_t<i_t, f_t>& aug_mat()
+  {
+    return pinned_device_augmented_ != nullptr ? *pinned_device_augmented_ : device_augmented;
+  }
+  const device_csr_matrix_t<i_t, f_t>& aug_mat() const
+  {
+    return pinned_device_augmented_ != nullptr ? *pinned_device_augmented_ : device_augmented;
+  }
+  device_csr_matrix_t<i_t, f_t>& adat_mat()
+  {
+    return pinned_device_ADAT_ != nullptr ? *pinned_device_ADAT_ : device_ADAT;
+  }
+  const device_csr_matrix_t<i_t, f_t>& adat_mat() const
+  {
+    return pinned_device_ADAT_ != nullptr ? *pinned_device_ADAT_ : device_ADAT;
+  }
+  device_csr_matrix_t<i_t, f_t>& a_mat()
+  {
+    return pinned_device_A_ != nullptr ? *pinned_device_A_ : device_A;
+  }
+  device_csc_matrix_t<i_t, f_t>& ad_mat()
+  {
+    return pinned_device_AD_ != nullptr ? *pinned_device_AD_ : device_AD;
+  }
+  rmm::device_uvector<f_t>& original_a_values()
+  {
+    return pinned_d_original_A_values_ != nullptr ? *pinned_d_original_A_values_
+                                                  : d_original_A_values;
+  }
+  rmm::device_uvector<f_t>& a_x_values()
+  {
+    return pinned_device_A_x_values_ != nullptr ? *pinned_device_A_x_values_ : device_A_x_values;
+  }
+  cusparse_info_t<i_t, f_t>& spgemm_info()
+  {
+    cuopt_assert(pinned_cusparse_info_ != nullptr || cusparse_info_ != nullptr,
+                 "spgemm_info: cusparse workspace unset");
+    return pinned_cusparse_info_ != nullptr ? *pinned_cusparse_info_ : *cusparse_info_;
+  }
   bool indefinite_Q;
   cusparse_view_t<i_t, f_t> cusparse_Q_view_;
 
@@ -1952,6 +2404,7 @@ class iteration_data_t {
 
   bool use_augmented;
   i_t symbolic_status;
+  bool adopted_symbolic_;
   i_t n_direct_free_linear{0};
   rmm::device_uvector<i_t>
     d_is_direct_free_linear_;  // 1 if variable is free in the linear block, else 0
@@ -1960,13 +2413,13 @@ class iteration_data_t {
   f_t dual_perturb{1e-8};
   f_t primal_perturb{1e-8};
 
-  std::unique_ptr<sparse_cholesky_base_t<i_t, f_t>> chol;
+  std::shared_ptr<sparse_cholesky_base_t<i_t, f_t>> chol;
 
   bool has_factorization;
   bool has_solve_info;
   i_t num_factorizations;
 
-  cusparse_info_t<i_t, f_t> cusparse_info;
+  std::unique_ptr<cusparse_info_t<i_t, f_t>> cusparse_info_;
   cusparse_view_t<i_t, f_t> cusparse_view_;
   detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_tmp4_;
   detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_h_;
@@ -2198,13 +2651,13 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   // Perform a numerical factorization
   i_t status;
   if (use_augmented) {
-    status = data.chol->factorize(data.device_augmented);
+    status = data.chol->factorize(data.aug_mat());
 
 #ifdef CHOLESKY_DEBUG_CHECK
     cholesky_debug_check(data, lp, use_augmented);
 #endif
   } else {
-    status = data.chol->factorize(data.device_ADAT);
+    status = data.chol->factorize(data.adat_mat());
   }
   if (status == CONCURRENT_HALT_RETURN) { return CONCURRENT_HALT_RETURN; }
   if (status != 0) {
@@ -2761,7 +3214,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
         return CONCURRENT_HALT_RETURN;
       }
-      status = data.chol->factorize(data.device_augmented);
+      status = data.chol->factorize(data.aug_mat());
 
 #ifdef CHOLESKY_DEBUG_CHECK
       cholesky_debug_check(data, lp, use_augmented);
@@ -2776,7 +3229,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
         return CONCURRENT_HALT_RETURN;
       }
       // factorize
-      status = data.chol->factorize(data.device_ADAT);
+      status = data.chol->factorize(data.adat_mat());
     }
     data.has_factorization = true;
     data.num_factorizations++;
@@ -3995,7 +4448,9 @@ lp_status_t barrier_solver_t<i_t, f_t>::check_for_suboptimal_solution(
 }
 
 template <typename i_t, typename f_t>
-lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t, f_t>& solution)
+lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time,
+                                              lp_solution_t<i_t, f_t>& solution,
+                                              cuopt::cython::lp_solve_session_t* session)
 {
   settings.log.printf("Barrier solver started at %.2f seconds\n", toc(start_time));
   try {
@@ -4031,18 +4486,57 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
     }
 
     csc_matrix_t<i_t, f_t> Q(lp.num_cols, 0, 0);
-    if (lp.Q.n > 0) { create_Q(lp, Q); }
+    std::unique_ptr<iteration_data_t<i_t, f_t>> owned_data;
 
-    iteration_data_t<i_t, f_t> data(
-      lp, num_upper_bounds, presolve_info.direct_free_variables, Q, settings);
+    auto finish_session = [&](lp_status_t status) -> lp_status_t {
+      if (session == nullptr) { return status; }
+      if (owned_data) {
+        if (status == lp_status_t::OPTIMAL) {
+          session->store_symbolic_cache(*owned_data);
+        } else {
+          session->clear_symbolic_cache();
+        }
+      }
+      return status;
+    };
+
+    if (lp.Q.n > 0) { create_Q(lp, Q); }
+    barrier_symbolic_cache_t<i_t, f_t>* adopt_cache = nullptr;
+    if (session != nullptr) { adopt_cache = session->symbolic_cache_for_reuse(lp.handle_ptr); }
+    owned_data = std::make_unique<iteration_data_t<i_t, f_t>>(
+      lp, num_upper_bounds, presolve_info.direct_free_variables, Q, settings, adopt_cache);
+    iteration_data_t<i_t, f_t>& data = *owned_data;
+
+    if (data.adopted_symbolic()) {
+      try {
+        if (!data.refresh_lp_numerics(lp)) {
+          settings.log.printf(
+            "Barrier: hash match but numeric refresh and symbolic rebuild failed\n");
+          if (session != nullptr) { session->clear_symbolic_cache(); }
+          return finish_session(lp_status_t::NUMERICAL_ISSUES);
+        }
+        if (data.adopted_symbolic()) {
+          settings.log.printf("Barrier: reusing cuDSS symbolic analysis (sparsity hash match)\n");
+        } else {
+          settings.log.printf(
+            "Barrier: rebuilt cuDSS symbolic analysis (%s nnz mismatch)\n",
+            data.use_augmented ? "augmented" : "adat");
+        }
+      } catch (const raft::cuda_error&) {
+        settings.log.printf(
+          "Barrier: hash match but numeric refresh failed (CUDA); clearing symbolic cache\n");
+        if (session != nullptr) { session->clear_symbolic_cache(); }
+        return finish_session(lp_status_t::NUMERICAL_ISSUES);
+      }
+    }
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       settings.log.printf("Barrier solver halted\n");
-      return lp_status_t::CONCURRENT_LIMIT;
+      return finish_session(lp_status_t::CONCURRENT_LIMIT);
     }
-    if (data.indefinite_Q) { return lp_status_t::NUMERICAL_ISSUES; }
+    if (data.indefinite_Q) { return finish_session(lp_status_t::NUMERICAL_ISSUES); }
     if (data.symbolic_status != 0) {
       settings.log.printf("Error in symbolic analysis\n");
-      return lp_status_t::NUMERICAL_ISSUES;
+      return finish_session(lp_status_t::NUMERICAL_ISSUES);
     }
 
     data.cusparse_dual_residual_ = data.cusparse_view_.create_vector(data.d_dual_residual_);
@@ -4056,21 +4550,21 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
 
     if (toc(start_time) > settings.time_limit) {
       settings.log.printf("Barrier time limit exceeded\n");
-      return lp_status_t::TIME_LIMIT;
+      return finish_session(lp_status_t::TIME_LIMIT);
     }
 
     i_t initial_status = initial_point(data);
     if (toc(start_time) > settings.time_limit) {
       settings.log.printf("Barrier time limit exceeded\n");
-      return lp_status_t::TIME_LIMIT;
+      return finish_session(lp_status_t::TIME_LIMIT);
     }
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
       settings.log.printf("Barrier solver halted\n");
-      return lp_status_t::CONCURRENT_LIMIT;
+      return finish_session(lp_status_t::CONCURRENT_LIMIT);
     }
     if (initial_status != 0) {
       settings.log.printf("Unable to compute initial point\n");
-      return lp_status_t::NUMERICAL_ISSUES;
+      return finish_session(lp_status_t::NUMERICAL_ISSUES);
     }
     // Upload initial point to device and compute initial residuals/norms on GPU
     data.d_complementarity_wv_residual_.resize(data.n_upper_bounds, stream_view_);
@@ -4175,11 +4669,11 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
 
       if (toc(start_time) > settings.time_limit) {
         settings.log.printf("Barrier time limit exceeded\n");
-        return lp_status_t::TIME_LIMIT;
+        return finish_session(lp_status_t::TIME_LIMIT);
       }
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
         settings.log.printf("Barrier solver halted\n");
-        return lp_status_t::CONCURRENT_LIMIT;
+        return finish_session(lp_status_t::CONCURRENT_LIMIT);
       }
 
       // Compute the affine step. This is the call that (re)factorizes the
@@ -4192,7 +4686,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
         gpu_compute_search_direction(data, dual_perturb, primal_perturb, max_affine_residual);
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
         settings.log.printf("Barrier solver halted\n");
-        return lp_status_t::CONCURRENT_LIMIT;
+        return finish_session(lp_status_t::CONCURRENT_LIMIT);
       }
       // D2D: save affine directions on device (same stream — no sync needed)
       data.d_dx_aff_.resize(data.d_dx_.size(), stream_view_);
@@ -4207,25 +4701,25 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
       raft::copy(data.d_dy_aff_.data(), data.d_dy_.data(), data.d_dy_.size(), stream_view_);
 
       if (status < 0) {
-        return check_for_suboptimal_solution(data,
-                                             start_time,
-                                             iter,
-                                             primal_objective,
-                                             primal_residual_norm,
-                                             dual_residual_norm,
-                                             complementarity_residual_norm,
-                                             relative_primal_residual,
-                                             relative_dual_residual,
-                                             relative_complementarity_residual,
-                                             solution);
+        return finish_session(check_for_suboptimal_solution(data,
+                                                            start_time,
+                                                            iter,
+                                                            primal_objective,
+                                                            primal_residual_norm,
+                                                            dual_residual_norm,
+                                                            complementarity_residual_norm,
+                                                            relative_primal_residual,
+                                                            relative_dual_residual,
+                                                            relative_complementarity_residual,
+                                                            solution));
       }
       if (toc(start_time) > settings.time_limit) {
         settings.log.printf("Barrier time limit exceeded\n");
-        return lp_status_t::TIME_LIMIT;
+        return finish_session(lp_status_t::TIME_LIMIT);
       }
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
         settings.log.printf("Barrier solver halted\n");
-        return lp_status_t::CONCURRENT_LIMIT;
+        return finish_session(lp_status_t::CONCURRENT_LIMIT);
       }
 
       f_t mu_aff, sigma, new_mu;
@@ -4241,30 +4735,30 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
         gpu_compute_search_direction(data, dual_perturb, primal_perturb, max_corrector_residual);
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
         settings.log.printf("Barrier solver halted\n");
-        return lp_status_t::CONCURRENT_LIMIT;
+        return finish_session(lp_status_t::CONCURRENT_LIMIT);
       }
       if (status < 0) {
-        return check_for_suboptimal_solution(data,
-                                             start_time,
-                                             iter,
-                                             primal_objective,
-                                             primal_residual_norm,
-                                             dual_residual_norm,
-                                             complementarity_residual_norm,
-                                             relative_primal_residual,
-                                             relative_dual_residual,
-                                             relative_complementarity_residual,
-                                             solution);
+        return finish_session(check_for_suboptimal_solution(data,
+                                                            start_time,
+                                                            iter,
+                                                            primal_objective,
+                                                            primal_residual_norm,
+                                                            dual_residual_norm,
+                                                            complementarity_residual_norm,
+                                                            relative_primal_residual,
+                                                            relative_dual_residual,
+                                                            relative_complementarity_residual,
+                                                            solution));
       }
       data.has_factorization = false;
       data.has_solve_info    = false;
       if (toc(start_time) > settings.time_limit) {
         settings.log.printf("Barrier time limit exceeded\n");
-        return lp_status_t::TIME_LIMIT;
+        return finish_session(lp_status_t::TIME_LIMIT);
       }
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
         settings.log.printf("Barrier solver halted\n");
-        return lp_status_t::CONCURRENT_LIMIT;
+        return finish_session(lp_status_t::CONCURRENT_LIMIT);
       }
 
       compute_final_direction(data);
@@ -4331,17 +4825,17 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
 
       if (primal_objective != primal_objective || dual_objective != dual_objective) {
         settings.log.printf("Numerical error in objective\n");
-        return check_for_suboptimal_solution(data,
-                                             start_time,
-                                             iter,
-                                             primal_objective,
-                                             primal_residual_norm,
-                                             dual_residual_norm,
-                                             complementarity_residual_norm,
-                                             relative_primal_residual,
-                                             relative_dual_residual,
-                                             relative_complementarity_residual,
-                                             solution);
+        return finish_session(check_for_suboptimal_solution(data,
+                                                            start_time,
+                                                            iter,
+                                                            primal_objective,
+                                                            primal_residual_norm,
+                                                            dual_residual_norm,
+                                                            complementarity_residual_norm,
+                                                            relative_primal_residual,
+                                                            relative_dual_residual,
+                                                            relative_complementarity_residual,
+                                                            solution));
       }
 
       settings.log.printf("%3d   %+.12e %+.12e %.2e %.2e %.2e %.1f\n",
@@ -4389,7 +4883,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
                          primal_residual_norm,
                          data.cusparse_view_,
                          solution);
-        return lp_status_t::OPTIMAL;
+        return finish_session(lp_status_t::OPTIMAL);
       }
 
       // Check if the solution is getting worse
@@ -4403,17 +4897,17 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
             data.relative_dual_residual_save < settings.barrier_relaxed_optimality_tol &&
             data.relative_complementarity_residual_save <
               settings.barrier_relaxed_complementarity_tol) {
-          return check_for_suboptimal_solution(data,
-                                               start_time,
-                                               iter,
-                                               primal_objective,
-                                               primal_residual_norm,
-                                               dual_residual_norm,
-                                               complementarity_residual_norm,
-                                               relative_primal_residual,
-                                               relative_dual_residual,
-                                               relative_complementarity_residual,
-                                               solution);
+          return finish_session(check_for_suboptimal_solution(data,
+                                                              start_time,
+                                                              iter,
+                                                              primal_objective,
+                                                              primal_residual_norm,
+                                                              dual_residual_norm,
+                                                              complementarity_residual_norm,
+                                                              relative_primal_residual,
+                                                              relative_dual_residual,
+                                                              relative_complementarity_residual,
+                                                              solution));
         }
       }
     }
@@ -4429,7 +4923,7 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
                      primal_residual_norm,
                      data.cusparse_view_,
                      solution);
-    return lp_status_t::ITERATION_LIMIT;
+    return finish_session(lp_status_t::ITERATION_LIMIT);
   } catch (const raft::cuda_error& e) {
     settings.log.printf("Error in barrier_solver_t: %s\n", e.what());
     return lp_status_t::NUMERICAL_ISSUES;
@@ -4439,6 +4933,13 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
   }
 }
 
+template <typename i_t, typename f_t>
+void barrier_store_symbolic_cache_from_iteration_data(iteration_data_t<i_t, f_t>& data,
+                                                      barrier_symbolic_cache_t<i_t, f_t>& cache)
+{
+  data.store_symbolic_cache(cache);
+}
+
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 template bool validate_barrier_cone_layout<int, double>(
   const lp_problem_t<int, double>& problem, const simplex_solver_settings_t<int, double>& settings);
@@ -4446,6 +4947,9 @@ template class barrier_solver_t<int, double>;
 template class sparse_cholesky_base_t<int, double>;
 template class sparse_cholesky_cudss_t<int, double>;
 template class iteration_data_t<int, double>;
+
+template void barrier_store_symbolic_cache_from_iteration_data<int, double>(
+  iteration_data_t<int, double>& data, barrier_symbolic_cache_t<int, double>& cache);
 #endif
 
 }  // namespace cuopt::linear_programming::dual_simplex

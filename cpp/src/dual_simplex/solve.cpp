@@ -351,7 +351,8 @@ template <typename i_t, typename f_t>
 lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& user_problem,
                                               const simplex_solver_settings_t<i_t, f_t>& settings,
                                               f_t start_time,
-                                              lp_solution_t<i_t, f_t>& solution)
+                                              lp_solution_t<i_t, f_t>& solution,
+                                              cuopt::cython::lp_solve_session_t* session)
 {
   lp_status_t status = lp_status_t::UNSET;
   lp_problem_t<i_t, f_t> original_lp(user_problem.handle_ptr, 1, 1, 1);
@@ -388,7 +389,7 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
   lp_solution_t<i_t, f_t> barrier_solution(barrier_lp.num_rows, barrier_lp.num_cols);
 
   barrier_solver_t<i_t, f_t> barrier_solver(barrier_lp, presolve_info, barrier_settings);
-  lp_status_t barrier_status = barrier_solver.solve(start_time, barrier_solution);
+  lp_status_t barrier_status = barrier_solver.solve(start_time, barrier_solution, session);
   if (barrier_status == lp_status_t::OPTIMAL) {
 #ifdef COMPUTE_SCALED_RESIDUALS
     std::vector<f_t> scaled_residual = barrier_lp.rhs;
@@ -672,10 +673,11 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
 template <typename i_t, typename f_t>
 lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& user_problem,
                                               const simplex_solver_settings_t<i_t, f_t>& settings,
-                                              lp_solution_t<i_t, f_t>& solution)
+                                              lp_solution_t<i_t, f_t>& solution,
+                                              cuopt::cython::lp_solve_session_t* session)
 {
   f_t start_time = tic();
-  return solve_linear_program_with_barrier(user_problem, settings, start_time, solution);
+  return solve_linear_program_with_barrier(user_problem, settings, start_time, solution, session);
 }
 
 template <typename i_t, typename f_t>
@@ -817,13 +819,15 @@ template lp_status_t solve_linear_program_with_advanced_basis(
 template lp_status_t solve_linear_program_with_barrier(
   const user_problem_t<int, double>& user_problem,
   const simplex_solver_settings_t<int, double>& settings,
-  lp_solution_t<int, double>& solution);
+  lp_solution_t<int, double>& solution,
+  cuopt::cython::lp_solve_session_t* session);
 
 template lp_status_t solve_linear_program_with_barrier(
   const user_problem_t<int, double>& user_problem,
   const simplex_solver_settings_t<int, double>& settings,
   double start_time,
-  lp_solution_t<int, double>& solution);
+  lp_solution_t<int, double>& solution,
+  cuopt::cython::lp_solve_session_t* session);
 
 template lp_status_t solve_linear_program(const user_problem_t<int, double>& user_problem,
                                           const simplex_solver_settings_t<int, double>& settings,

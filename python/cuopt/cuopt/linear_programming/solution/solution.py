@@ -123,6 +123,11 @@ class Solution:
         Note: Applicable to only LP
         Whether the LP was solved by Dual Simplex, PDLP or Barrier. This is populated
         by the solver using the values from SolverMethod.
+    lp_solve_session: optional
+        GPU barrier/QCQP only: ``PyCapsule`` owning ``cuopt::cython::lp_solve_session_t*``
+        (name ``cuopt.lp_solve_session``). Pass to a subsequent solve to reuse the GPU handle
+        and cuDSS symbolic analysis when sparsity is unchanged. ``None`` on reuse solves or when
+        session persistence was not enabled.
     """
 
     def __init__(
@@ -168,6 +173,7 @@ class Solution:
         max_variable_bound_violation=0.0,
         num_nodes=0,
         num_simplex_iterations=0,
+        lp_solve_session=None,
     ):
         self.problem_category = problem_category
         self.primal_solution = primal_solution
@@ -210,6 +216,7 @@ class Solution:
             "nb_iterations": nb_iterations,
         }
         self.reduced_cost = reduced_cost
+        self.lp_solve_session = lp_solve_session
         self.milp_stats = {
             "mip_gap": mip_gap,
             "solution_bound": solution_bound,

@@ -16,6 +16,11 @@
 #include <dual_simplex/tic_toc.hpp>
 
 #include <rmm/device_uvector.hpp>
+
+namespace cuopt::cython {
+class lp_solve_session_t;
+}  // namespace cuopt::cython
+
 namespace cuopt::linear_programming::dual_simplex {
 
 /** Validates SOC layout on an lp_problem_t before barrier presolve/solve. */
@@ -32,7 +37,9 @@ class barrier_solver_t {
   barrier_solver_t(const lp_problem_t<i_t, f_t>& lp,
                    const presolve_info_t<i_t, f_t>& presolve,
                    const simplex_solver_settings_t<i_t, f_t>& settings);
-  lp_status_t solve(f_t start_time, lp_solution_t<i_t, f_t>& solution);
+  lp_status_t solve(f_t start_time,
+                     lp_solution_t<i_t, f_t>& solution,
+                     cuopt::cython::lp_solve_session_t* session = nullptr);
 
  private:
   void my_pop_range(bool debug) const;

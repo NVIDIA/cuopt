@@ -11,6 +11,7 @@
 #include <cuopt/linear_programming/optimization_problem_solution_interface.hpp>
 #include <cuopt/linear_programming/solver_settings.hpp>
 #include <cuopt/linear_programming/utilities/cython_types.hpp>
+#include <cuopt/linear_programming/utilities/lp_solve_session.hpp>
 
 #include <cuopt/linear_programming/io/data_model_view.hpp>
 #include <memory>
@@ -55,7 +56,8 @@ std::unique_ptr<solver_ret_t> call_solve(
   cuopt::linear_programming::io::data_model_view_t<int, double>*,
   linear_programming::solver_settings_t<int, double>*,
   unsigned int flags = cudaStreamNonBlocking,
-  bool is_batch_mode = false);
+  bool is_batch_mode = false,
+  lp_solve_session_t* session_in = nullptr);
 
 std::pair<std::vector<std::unique_ptr<solver_ret_t>>, double> solve_batch_remote(
   std::vector<cuopt::linear_programming::io::data_model_view_t<int, double>*>,

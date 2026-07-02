@@ -11,7 +11,7 @@ from cuopt.utilities import catch_cuopt_exception
 
 
 @catch_cuopt_exception
-def Solve(data_model, solver_settings=None):
+def Solve(data_model, solver_settings=None, session=None):
     """
     Solve the Linear Program passed as input and returns the solution.
 
@@ -35,6 +35,9 @@ def Solve(data_model, solver_settings=None):
     solver_settings: SolverSettings
         Settings to configure solver configurations.
         By default, it uses default solver settings to solve.
+    session: PyCapsule, optional
+        Reuse capsule ``cuopt.lp_solve_session`` from a prior barrier/QCQP solve
+        (``Solution.lp_solve_session``).
 
     Returns
     -------
@@ -103,6 +106,7 @@ def Solve(data_model, solver_settings=None):
         data_model,
         solver_settings,
         mip=is_mip(data_model.get_variable_types()),
+        session=session,
     )
     if emit_stamps:
         print(f"CUOPT_SOLVE_RETURN: {time.time()}")

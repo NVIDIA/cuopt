@@ -18,6 +18,8 @@
 #include <cuopt/linear_programming/solve.hpp>
 #include <cuopt/linear_programming/solver_settings.hpp>
 #include <cuopt/linear_programming/utilities/cython_solve.hpp>
+#include <cuopt/linear_programming/utilities/lp_solve_session.hpp>
+#include <cuopt/linear_programming/utilities/solver_cache_profiler.hpp>
 #include <mip_heuristics/logger.hpp>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/logger.hpp>
@@ -30,10 +32,24 @@
 #include <utility>
 #include <vector>
 
+#include <chrono>
+
 #include <unistd.h>
 
 namespace cuopt {
 namespace cython {
+
+namespace {
+
+bool uses_barrier_session_path(
+  cuopt::linear_programming::solver_settings_t<int, double>& solver_settings,
+  cuopt::linear_programming::io::data_model_view_t<int, double> const& data_model)
+{
+  if (data_model.has_quadratic_objective() || data_model.has_quadratic_constraints()) { return true; }
+  return solver_settings.get_pdlp_settings().method == cuopt::linear_programming::method_t::Barrier;
+}
+
+}  // namespace
 
 /**
  * @brief Wrapper for linear_programming to expose the API to cython
@@ -94,24 +110,68 @@ std::unique_ptr<solver_ret_t> call_solve(
   cuopt::linear_programming::io::data_model_view_t<int, double>* data_model,
   cuopt::linear_programming::solver_settings_t<int, double>* solver_settings,
   unsigned int flags,
-  bool is_batch_mode)
+  bool is_batch_mode,
+  lp_solve_session_t* session_in)
 {
   raft::common::nvtx::range fun_scope("Call Solve");
+
+  namespace cache_profile = cuopt::linear_programming::cache_profile;
+  if (cache_profile::enabled()) { cache_profile::reset(); }
+
+  cuopt_expects(data_model != nullptr,
+                error_type_t::ValidationError,
+                "call_solve: data_model is null.");
+  cuopt_expects(solver_settings != nullptr,
+                error_type_t::ValidationError,
+                "call_solve: solver_settings is null.");
 
   // Determine memory backend based on execution mode
   auto memory_backend = cuopt::linear_programming::get_memory_backend_type();
 
   solver_ret_t response;
 
+  auto& pdlp_settings = solver_settings->get_pdlp_settings();
+  const bool session_enabled = pdlp_settings.session_enabled;
+  const bool barrier_path    = uses_barrier_session_path(*solver_settings, *data_model);
+  const bool want_session    = (session_in != nullptr || session_enabled) && barrier_path &&
+                            memory_backend == cuopt::linear_programming::memory_backend_t::GPU &&
+                            !is_batch_mode;
+
+  std::unique_ptr<lp_solve_session_t> owned_session;
+  lp_solve_session_t* active_session = session_in;
+  pdlp_settings.lp_solve_session     = nullptr;
+
+  rmm::cuda_stream ephemeral_stream(static_cast<rmm::cuda_stream::flags>(flags));
+  raft::handle_t ephemeral_handle(ephemeral_stream);
+  raft::handle_t* solve_handle = &ephemeral_handle;
+
   // Create problem instance and CUDA resources based on memory backend
   if (memory_backend == cuopt::linear_programming::memory_backend_t::GPU) {
-    // GPU memory backend: Create CUDA resources and GPU problem
-    rmm::cuda_stream stream(static_cast<rmm::cuda_stream::flags>(flags));
-    const raft::handle_t handle_{stream};
+    if (want_session) {
+      if (active_session == nullptr) {
+        const auto handle_start = std::chrono::steady_clock::now();
+        owned_session           = lp_solve_session_t::create(flags);
+        active_session          = owned_session.get();
+        if (cache_profile::enabled()) {
+          const double elapsed =
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - handle_start).count();
+          cache_profile::add(cache_profile::cache_id::C01, elapsed);
+        }
+      }
+      solve_handle                   = active_session->handle_ptr();
+      pdlp_settings.lp_solve_session = active_session;
+    } else {
+      const auto handle_start = std::chrono::steady_clock::now();
+      if (cache_profile::enabled()) {
+        const double elapsed =
+          std::chrono::duration<double>(std::chrono::steady_clock::now() - handle_start).count();
+        cache_profile::add(cache_profile::cache_id::C01, elapsed);
+      }
+    }
 
-    auto problem = cuopt::linear_programming::optimization_problem_t<int, double>(&handle_);
+    auto problem = cuopt::linear_programming::optimization_problem_t<int, double>(solve_handle);
     cuopt::linear_programming::populate_from_data_model_view(
-      &problem, data_model, solver_settings, &handle_);
+      &problem, data_model, solver_settings, solve_handle);
 
     // Call appropriate solve function and convert to ret struct
     if (problem.get_problem_category() == linear_programming::problem_category_t::LP) {
@@ -139,6 +199,8 @@ std::unique_ptr<solver_ret_t> call_solve(
       gpu_sols.sum_dual_solutions_->set_stream(rmm::cuda_stream_per_thread);
       gpu_sols.last_restart_duality_gap_primal_solution_->set_stream(rmm::cuda_stream_per_thread);
       gpu_sols.last_restart_duality_gap_dual_solution_->set_stream(rmm::cuda_stream_per_thread);
+
+      if (owned_session) { response.lp_ret.lp_solve_session = std::move(owned_session); }
 
     } else {
       // MIP solve
@@ -197,6 +259,10 @@ std::unique_ptr<solver_ret_t> call_solve(
       response.problem_type = linear_programming::problem_category_t::MIP;
     }
   }
+
+  if (cache_profile::enabled()) { cache_profile::log_summary(); }
+
+  pdlp_settings.lp_solve_session = nullptr;
 
   return std::make_unique<solver_ret_t>(std::move(response));
 }
@@ -285,7 +351,7 @@ std::pair<std::vector<std::unique_ptr<solver_ret_t>>, double> call_batch_solve(
 
 #pragma omp parallel for num_threads(max_thread)
   for (std::size_t i = 0; i < size; ++i)
-    list[i] = call_solve(data_models[i], solver_settings, cudaStreamNonBlocking, is_batch_mode);
+    list[i] = call_solve(data_models[i], solver_settings, cudaStreamNonBlocking, is_batch_mode, nullptr);
 
   auto end      = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start_solver);

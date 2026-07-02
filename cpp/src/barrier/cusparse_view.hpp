@@ -55,6 +55,8 @@ class cusparse_view_t {
                       f_t beta,
                       detail::cusparse_dn_vec_descr_wrapper_t<f_t> const& y);
 
+  void update_matrix_values(const csc_matrix_t<i_t, f_t>& A);
+
   raft::handle_t const* handle_ptr_{nullptr};
 
  private:

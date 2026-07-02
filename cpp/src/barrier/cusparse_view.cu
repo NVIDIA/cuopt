@@ -255,6 +255,16 @@ cusparse_view_t<i_t, f_t>::~cusparse_view_t()
 }
 
 template <typename i_t, typename f_t>
+void cusparse_view_t<i_t, f_t>::update_matrix_values(const csc_matrix_t<i_t, f_t>& A)
+{
+  const auto stream = handle_ptr_->get_stream();
+  raft::copy(A_T_data_.data(), A.x.data(), A.x.size(), stream);
+  csr_matrix_t<i_t, f_t> A_csr(A.m, A.n, 1);
+  A.to_compressed_row(A_csr);
+  raft::copy(A_data_.data(), A_csr.x.data(), A_csr.x.size(), stream);
+}
+
+template <typename i_t, typename f_t>
 detail::cusparse_dn_vec_descr_wrapper_t<f_t> cusparse_view_t<i_t, f_t>::create_vector(
   rmm::device_uvector<f_t> const& vec)
 {

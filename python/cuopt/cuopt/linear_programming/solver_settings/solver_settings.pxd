@@ -30,6 +30,14 @@ cdef extern from "cuopt/linear_programming/pdlp/solver_settings.hpp" namespace "
         Barrier "cuopt::linear_programming::method_t::Barrier" # noqa
         Unset "cuopt::linear_programming::method_t::Unset" # noqa
 
+    cdef cppclass pdlp_solver_settings_t[i_t, f_t]:
+        bool session_enabled
+        lp_solve_session_t* lp_solve_session
+
+cdef extern from "cuopt/linear_programming/utilities/lp_solve_session.hpp" namespace "cuopt::cython": # noqa
+    cdef cppclass lp_solve_session_t:
+        pass
+
 cdef extern from "cuopt/linear_programming/solver_settings.hpp" namespace "cuopt::linear_programming": # noqa
 
     cdef cppclass solver_settings_t[i_t, f_t]:
@@ -90,9 +98,12 @@ cdef extern from "cuopt/linear_programming/solver_settings.hpp" namespace "cuopt
 
         void load_parameters_from_file(const string& path) except +
 
+        pdlp_solver_settings_t[i_t, f_t]& get_pdlp_settings()
+
 
 cdef class SolverSettings:
     cdef unique_ptr[solver_settings_t[int, double]] c_solver_settings
     cdef public dict settings_dict
     cdef public object pdlp_warm_start_data
     cdef public list mip_callbacks
+    cdef public bint session_enabled
