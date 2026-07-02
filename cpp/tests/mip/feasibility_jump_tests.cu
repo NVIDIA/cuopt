@@ -9,9 +9,9 @@
 #include "mip_utils.cuh"
 
 #include <cuopt/error.hpp>
-#include <cuopt/linear_programming/io/parser.hpp>
-#include <cuopt/linear_programming/solve.hpp>
-#include <cuopt/linear_programming/utilities/internals.hpp>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
+#include <cuopt/mathematical_optimization/utilities/internals.hpp>
 #include <mip_heuristics/feasibility_jump/feasibility_jump.cuh>
 #include <mip_heuristics/mip_scaling_strategy.cuh>
 #include <mip_heuristics/solution/solution.cuh>
@@ -35,7 +35,7 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::linear_programming::test {
+namespace cuopt::mathematical_optimization::test {
 
 void init_handler(const raft::handle_t* handle_ptr)
 {
@@ -51,7 +51,7 @@ struct fj_tweaks_t {
 };
 
 struct fj_state_t {
-  detail::solution_t<int, double> solution;
+  mip::solution_t<int, double> solution;
   std::vector<double> solution_vector;
   int minimums;
   double incumbent_objective;
@@ -60,7 +60,7 @@ struct fj_state_t {
 
 // Helper function to setup MIP solver and run FJ with given settings and initial solution
 static fj_state_t run_fj(std::string test_instance,
-                         const detail::fj_settings_t& fj_settings,
+                         const mip::fj_settings_t& fj_settings,
                          fj_tweaks_t tweaks                   = {},
                          std::vector<double> initial_solution = {})
 {
@@ -68,24 +68,24 @@ static fj_state_t run_fj(std::string test_instance,
   std::cout << "Running: " << test_instance << std::endl;
 
   auto path = cuopt::test::get_rapids_dataset_root_dir() + ("/mip/" + test_instance);
-  cuopt::linear_programming::io::mps_data_model_t<int, double> mps_problem =
-    cuopt::linear_programming::io::read_mps<int, double>(path, false);
+  cuopt::mathematical_optimization::io::mps_data_model_t<int, double> mps_problem =
+    cuopt::mathematical_optimization::io::read_mps<int, double>(path, false);
   handle_.sync_stream();
   auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps_problem);
   problem_checking_t<int, double>::check_problem_representation(op_problem);
 
   init_handler(op_problem.get_handle_ptr());
   // run the problem constructor of MIP, so that we do bounds standardization
-  detail::problem_t<int, double> problem(op_problem);
+  mip::problem_t<int, double> problem(op_problem);
   problem.preprocess_problem();
-  detail::mip_scaling_strategy_t<int, double> scaling(problem);
+  mip::mip_scaling_strategy_t<int, double> scaling(problem);
 
   auto settings       = mip_solver_settings_t<int, double>{};
   settings.time_limit = 30.;
   auto timer          = cuopt::timer_t(30);
-  detail::mip_solver_t<int, double> solver(problem, settings, scaling, timer);
+  mip::mip_solver_t<int, double> solver(problem, settings, scaling, timer);
 
-  detail::solution_t<int, double> solution(*solver.context.problem_ptr);
+  mip::solution_t<int, double> solution(*solver.context.problem_ptr);
   if (initial_solution.size() > 0) {
     expand_device_copy(solution.assignment, initial_solution, solution.handle_ptr->get_stream());
   } else {
@@ -96,7 +96,7 @@ static fj_state_t run_fj(std::string test_instance,
   }
   solution.clamp_within_bounds();
 
-  detail::fj_t<int, double> fj(solver.context, fj_settings);
+  mip::fj_t<int, double> fj(solver.context, fj_settings);
   fj.reset_weights(solution.handle_ptr->get_stream(), 1.);
   fj.objective_weight.set_value_async(tweaks.objective_weight, solution.handle_ptr->get_stream());
   solution.handle_ptr->sync_stream();
@@ -115,9 +115,9 @@ static fj_state_t run_fj(std::string test_instance,
 // Ensure this is fixed on instances that historically triggered it.
 static bool run_fj_check_no_obj_runoff(std::string test_instance)
 {
-  detail::fj_settings_t fj_settings;
+  mip::fj_settings_t fj_settings;
   fj_settings.time_limit             = 30.;
-  fj_settings.mode                   = detail::fj_mode_t::EXIT_NON_IMPROVING;
+  fj_settings.mode                   = mip::fj_mode_t::EXIT_NON_IMPROVING;
   fj_settings.n_of_minimums_for_exit = 20000 * 1000;
   fj_settings.update_weights         = true;
   fj_settings.feasibility_run        = false;
@@ -137,9 +137,9 @@ static bool run_fj_check_objective(std::string test_instance, int iter_limit, do
   // tolerance
   obj_target += 1e-4;
 
-  detail::fj_settings_t fj_settings;
+  mip::fj_settings_t fj_settings;
   fj_settings.time_limit             = 30.;
-  fj_settings.mode                   = detail::fj_mode_t::EXIT_NON_IMPROVING;
+  fj_settings.mode                   = mip::fj_mode_t::EXIT_NON_IMPROVING;
   fj_settings.n_of_minimums_for_exit = 20000 * 1000;
   fj_settings.update_weights         = true;
   fj_settings.feasibility_run        = obj_target == +std::numeric_limits<double>::infinity();
@@ -164,9 +164,9 @@ static bool run_fj_check_objective(std::string test_instance, int iter_limit, do
 
 static bool run_fj_check_feasible(std::string test_instance)
 {
-  detail::fj_settings_t fj_settings;
+  mip::fj_settings_t fj_settings;
   fj_settings.time_limit             = 30.;
-  fj_settings.mode                   = detail::fj_mode_t::EXIT_NON_IMPROVING;
+  fj_settings.mode                   = mip::fj_mode_t::EXIT_NON_IMPROVING;
   fj_settings.n_of_minimums_for_exit = 20000 * 1000;
   fj_settings.update_weights         = true;
   fj_settings.feasibility_run        = false;
@@ -259,4 +259,4 @@ TEST(mip_solve, feasibility_jump_obj_runoff_test)
   }
 }
 
-}  // namespace cuopt::linear_programming::test
+}  // namespace cuopt::mathematical_optimization::test

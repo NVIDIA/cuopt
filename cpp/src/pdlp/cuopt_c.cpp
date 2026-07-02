@@ -5,19 +5,19 @@
  */
 /* clang-format on */
 
-#include <cuopt/linear_programming/cuopt_c.h>
+#include <cuopt/mathematical_optimization/cuopt_c.h>
 
-#include <cuopt/linear_programming/cpu_optimization_problem_solution.hpp>
-#include <cuopt/linear_programming/optimization_problem_interface.hpp>
-#include <cuopt/linear_programming/optimization_problem_solution.hpp>
-#include <cuopt/linear_programming/optimization_problem_utils.hpp>
-#include <cuopt/linear_programming/solve.hpp>
-#include <cuopt/linear_programming/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem_solution.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_solution.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
+#include <cuopt/mathematical_optimization/solver_settings.hpp>
 #include <cuopt/utilities/timestamp_utils.hpp>
 #include <pdlp/cuopt_c_internal.hpp>
 #include <utilities/logger.hpp>
 
-#include <cuopt/linear_programming/io/parser.hpp>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
 
 #include <cuopt/version_config.hpp>
 
@@ -27,8 +27,15 @@
 #include <string>
 #include <vector>
 
-using namespace cuopt::linear_programming::io;
-using namespace cuopt::linear_programming;
+using cuopt::mathematical_optimization::char_to_var_type;
+using cuopt::mathematical_optimization::get_memory_backend_type;
+using cuopt::mathematical_optimization::is_valid_public_var_type_code;
+using cuopt::mathematical_optimization::problem_and_stream_view_t;
+using cuopt::mathematical_optimization::problem_category_t;
+using cuopt::mathematical_optimization::solution_and_stream_view_t;
+using cuopt::mathematical_optimization::solver_settings_t;
+using cuopt::mathematical_optimization::var_t;
+using cuopt::mathematical_optimization::io::mps_data_model_t;
 
 class c_get_solution_callback_t : public cuopt::internals::get_solution_callback_t {
  public:
@@ -197,7 +204,7 @@ cuopt_int_t cuOptReadProblem(const char* filename, cuOptOptimizationProblem* pro
   try {
     // Dispatches on file extension; see read for the enumerated rules.
     mps_data_model_ptr = std::make_unique<mps_data_model_t<cuopt_int_t, cuopt_float_t>>(
-      read<cuopt_int_t, cuopt_float_t>(filename_str));
+      cuopt::mathematical_optimization::io::read<cuopt_int_t, cuopt_float_t>(filename_str));
   } catch (const std::exception& e) {
     CUOPT_LOG_INFO("Error parsing input file: %s", e.what());
     delete problem_and_stream;
@@ -211,7 +218,8 @@ cuopt_int_t cuOptReadProblem(const char* filename, cuOptOptimizationProblem* pro
   }
 
   // Populate interface directly from MPS data model (avoids temporary GPU allocation)
-  populate_from_mps_data_model(problem_and_stream->get_problem(), *mps_data_model_ptr);
+  cuopt::mathematical_optimization::populate_from_mps_data_model(problem_and_stream->get_problem(),
+                                                                 *mps_data_model_ptr);
 
   *problem_ptr = static_cast<cuOptOptimizationProblem>(problem_and_stream);
   return CUOPT_SUCCESS;
@@ -263,9 +271,7 @@ cuopt_int_t cuOptCreateProblem(cuopt_int_t num_constraints,
     return CUOPT_INVALID_ARGUMENT;
   }
   for (int j = 0; j < num_variables; j++) {
-    if (!detail::is_valid_public_var_type_code(variable_types[j])) {
-      return CUOPT_INVALID_ARGUMENT;
-    }
+    if (!is_valid_public_var_type_code(variable_types[j])) { return CUOPT_INVALID_ARGUMENT; }
   }
 
   problem_and_stream_view_t* problem_and_stream =
@@ -290,7 +296,7 @@ cuopt_int_t cuOptCreateProblem(cuopt_int_t num_constraints,
     // Set variable types (problem category is auto-detected)
     std::vector<var_t> variable_types_host(num_variables);
     for (int j = 0; j < num_variables; j++) {
-      variable_types_host[j] = detail::char_to_var_type(variable_types[j]);
+      variable_types_host[j] = char_to_var_type(variable_types[j]);
     }
     problem->set_variable_types(variable_types_host.data(), num_variables);
 
@@ -328,9 +334,7 @@ cuopt_int_t cuOptCreateRangedProblem(cuopt_int_t num_constraints,
   }
   if (variable_types != nullptr) {
     for (int j = 0; j < num_variables; j++) {
-      if (!detail::is_valid_public_var_type_code(variable_types[j])) {
-        return CUOPT_INVALID_ARGUMENT;
-      }
+      if (!is_valid_public_var_type_code(variable_types[j])) { return CUOPT_INVALID_ARGUMENT; }
     }
   }
 
@@ -358,7 +362,7 @@ cuopt_int_t cuOptCreateRangedProblem(cuopt_int_t num_constraints,
     std::vector<var_t> variable_types_host(num_variables);
     if (variable_types != nullptr) {
       for (cuopt_int_t j = 0; j < num_variables; ++j) {
-        variable_types_host[j] = detail::char_to_var_type(variable_types[j]);
+        variable_types_host[j] = char_to_var_type(variable_types[j]);
       }
     } else {
       // Default to all continuous
@@ -828,13 +832,14 @@ cuopt_int_t cuOptGetVariableTypes(cuOptOptimizationProblem problem, char* variab
     static_cast<problem_and_stream_view_t*>(problem);
 
   cuopt_int_t size = problem_and_stream_view->get_problem()->get_n_variables();
-  std::vector<cuopt::linear_programming::var_t> variable_types_host(size);
+  std::vector<var_t> variable_types_host(size);
   problem_and_stream_view->get_problem()->copy_variable_types_to_host(variable_types_host.data(),
                                                                       size);
 
   // Convert var_t enum to C API char values
   for (size_t j = 0; j < variable_types_host.size(); j++) {
-    variable_types_ptr[j] = detail::var_type_to_char(variable_types_host[j]);
+    variable_types_ptr[j] =
+      cuopt::mathematical_optimization::var_type_to_char(variable_types_host[j]);
   }
   return CUOPT_SUCCESS;
 }
@@ -1079,20 +1084,21 @@ cuopt_int_t cuOptSolve(cuOptOptimizationProblem problem,
     static_cast<problem_and_stream_view_t*>(problem);
 
   // Get the problem interface (GPU or CPU backed)
-  optimization_problem_interface_t<cuopt_int_t, cuopt_float_t>* problem_interface =
-    problem_and_stream_view->get_problem();
+  cuopt::mathematical_optimization::optimization_problem_interface_t<cuopt_int_t, cuopt_float_t>*
+    problem_interface = problem_and_stream_view->get_problem();
 
   try {
     if (problem_interface->get_problem_category() == problem_category_t::MIP ||
         problem_interface->get_problem_category() == problem_category_t::IP) {
       solver_settings_t<cuopt_int_t, cuopt_float_t>* solver_settings =
         get_settings_handle(settings)->settings;
-      mip_solver_settings_t<cuopt_int_t, cuopt_float_t>& mip_settings =
-        solver_settings->get_mip_settings();
+      cuopt::mathematical_optimization::mip_solver_settings_t<cuopt_int_t, cuopt_float_t>&
+        mip_settings = solver_settings->get_mip_settings();
 
       // Solve returns unique_ptr<mip_solution_interface_t>
       auto solution_interface =
-        solve_mip<cuopt_int_t, cuopt_float_t>(problem_interface, mip_settings);
+        cuopt::mathematical_optimization::solve_mip<cuopt_int_t, cuopt_float_t>(problem_interface,
+                                                                                mip_settings);
 
       auto solution_holder =
         std::make_unique<solution_and_stream_view_t>(true, problem_and_stream_view->memory_backend);
@@ -1107,12 +1113,13 @@ cuopt_int_t cuOptSolve(cuOptOptimizationProblem problem,
     } else {
       solver_settings_t<cuopt_int_t, cuopt_float_t>* solver_settings =
         get_settings_handle(settings)->settings;
-      pdlp_solver_settings_t<cuopt_int_t, cuopt_float_t>& pdlp_settings =
-        solver_settings->get_pdlp_settings();
+      cuopt::mathematical_optimization::pdlp_solver_settings_t<cuopt_int_t, cuopt_float_t>&
+        pdlp_settings = solver_settings->get_pdlp_settings();
 
       // Solve returns unique_ptr<lp_solution_interface_t>
       auto solution_interface =
-        solve_lp<cuopt_int_t, cuopt_float_t>(problem_interface, pdlp_settings);
+        cuopt::mathematical_optimization::solve_lp<cuopt_int_t, cuopt_float_t>(problem_interface,
+                                                                               pdlp_settings);
 
       auto solution_holder = std::make_unique<solution_and_stream_view_t>(
         false, problem_and_stream_view->memory_backend);

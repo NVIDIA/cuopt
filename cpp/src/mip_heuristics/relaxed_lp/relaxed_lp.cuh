@@ -7,14 +7,14 @@
 
 #pragma once
 
-#include <cuopt/linear_programming/mip/solver_settings.hpp>
-#include <cuopt/linear_programming/pdlp/solver_solution.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>
 #include <mip_heuristics/presolve/bounds_presolve.cuh>
 #include <mip_heuristics/problem/problem.cuh>
 #include <mip_heuristics/solution/solution.cuh>
 #include "lp_state.cuh"
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 struct relaxed_lp_settings_t {
   double tolerance                  = 1e-4;
@@ -49,4 +49,4 @@ bool run_lp_with_vars_fixed(problem_t<i_t, f_t>& op_problem,
                             bool check_fixed_assignment_feasibility    = false,
                             bool use_integer_fixed_problem             = false);
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

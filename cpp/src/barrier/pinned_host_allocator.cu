@@ -1,16 +1,16 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 
 #include <raft/util/cuda_utils.cuh>
 
-#include <dual_simplex/types.hpp>
-#include <dual_simplex/vector_math.hpp>
+#include <linear_algebra/vector_math.hpp>
+#include <math_optimization/types.hpp>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::barrier {
 
 template <typename T>
 struct PinnedHostAllocator {
@@ -45,8 +45,6 @@ bool operator!=(const PinnedHostAllocator<T>&, const PinnedHostAllocator<U>&) no
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 template class PinnedHostAllocator<double>;
-template double vector_norm_inf<int, double, PinnedHostAllocator<double>>(
-  const std::vector<double, PinnedHostAllocator<double>>& x);
 
 template bool operator==(const PinnedHostAllocator<double>&,
                          const PinnedHostAllocator<double>&) noexcept;
@@ -55,4 +53,19 @@ template bool operator!=(const PinnedHostAllocator<double>&,
 #endif
 template class PinnedHostAllocator<int>;
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::barrier
+
+namespace cuopt::mathematical_optimization {
+
+// Explicit instantiation of the shared vector_math template with barrier's
+// PinnedHostAllocator must live in mathematical_optimization (the template's namespace).
+#ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
+template double
+vector_norm_inf<int,
+                double,
+                cuopt::mathematical_optimization::barrier::PinnedHostAllocator<double>>(
+  const std::vector<double, cuopt::mathematical_optimization::barrier::PinnedHostAllocator<double>>&
+    x);
+#endif
+
+}  // namespace cuopt::mathematical_optimization

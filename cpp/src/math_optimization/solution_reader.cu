@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -16,7 +16,7 @@
 #include <string>
 #include <unordered_map>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 /**
  * @brief Represents information about a solution including variables, objective value, and status
@@ -135,4 +135,4 @@ std::vector<double> solution_reader_t::get_variable_values_from_sol_file(
   return values;
 }
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

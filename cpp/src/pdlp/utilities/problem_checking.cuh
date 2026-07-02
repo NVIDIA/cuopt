@@ -1,26 +1,26 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 #pragma once
 
-#include <cuopt/linear_programming/mip/solver_settings.hpp>
-#include <cuopt/linear_programming/optimization_problem.hpp>
-#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 
 namespace rmm {
 template <typename T>
 class device_uvector;
 }  // namespace rmm
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
-namespace detail {
+namespace mip {
 template <typename i_t, typename f_t>
 class problem_t;
-}  // namespace detail
+}  // namespace mip
 
 template <typename i_t, typename f_t>
 class problem_checking_t {
@@ -30,9 +30,9 @@ class problem_checking_t {
   static void check_problem_representation(const optimization_problem_t<i_t, f_t>& op_problem);
   static bool has_crossing_bounds(const optimization_problem_t<i_t, f_t>& op_problem);
 
-  static void check_scaled_problem(detail::problem_t<i_t, f_t> const& scaled_problem,
-                                   detail::problem_t<i_t, f_t> const& op_problem);
-  static void check_unscaled_solution(detail::problem_t<i_t, f_t>& op_problem,
+  static void check_scaled_problem(mip::problem_t<i_t, f_t> const& scaled_problem,
+                                   mip::problem_t<i_t, f_t> const& op_problem);
+  static void check_unscaled_solution(mip::problem_t<i_t, f_t>& op_problem,
                                       rmm::device_uvector<f_t> const& assignment);
   static void check_initial_primal_representation(
     const optimization_problem_t<i_t, f_t>& op_problem,
@@ -48,4 +48,4 @@ class problem_checking_t {
     const mip_solver_settings_t<i_t, f_t>& settings);
 };
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
 #include <pdlp/pdhg.hpp>
 #include <pdlp/swap_and_resize_helper.cuh>
 
@@ -21,7 +21,7 @@
 #include <limits>
 #include <vector>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 
 template <typename i_t, typename f_t>
 class pdlp_initial_scaling_strategy_t {
@@ -47,14 +47,14 @@ class pdlp_initial_scaling_strategy_t {
   };  // struct view_t
 
   pdlp_initial_scaling_strategy_t(raft::handle_t const* handle_ptr,
-                                  problem_t<i_t, f_t>& op_problem_scaled,
+                                  mip::problem_t<i_t, f_t>& op_problem_scaled,
                                   i_t number_of_ruiz_iterations,
                                   f_t alpha,
                                   rmm::device_uvector<f_t>& A_T,
                                   rmm::device_uvector<i_t>& A_T_offsets,
                                   rmm::device_uvector<i_t>& A_T_indices,
                                   pdhg_solver_t<i_t, f_t>* pdhg_solver_ptr,
-                                  const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params,
+                                  const pdlp::pdlp_hyper_params_t& hyper_params,
                                   i_t original_batch_size,
                                   bool running_mip = false);
 
@@ -73,10 +73,10 @@ class pdlp_initial_scaling_strategy_t {
   void unscale_solutions(rmm::device_uvector<f_t>& primal_solution,
                          rmm::device_uvector<f_t>& dual_solution,
                          rmm::device_uvector<f_t>& dual_slack) const;
-  void unscale_solutions(solution_t<i_t, f_t>& solution) const;
+  void unscale_solutions(mip::solution_t<i_t, f_t>& solution) const;
   const rmm::device_uvector<f_t>& get_constraint_matrix_scaling_vector() const;
   const rmm::device_uvector<f_t>& get_variable_scaling_vector() const;
-  const problem_t<i_t, f_t>& get_scaled_op_problem();
+  const mip::problem_t<i_t, f_t>& get_scaled_op_problem();
 
   f_t get_h_bound_rescaling() const;
   f_t get_h_objective_rescaling() const;
@@ -104,7 +104,7 @@ class pdlp_initial_scaling_strategy_t {
 
   i_t primal_size_h_;
   i_t dual_size_h_;
-  problem_t<i_t, f_t>& op_problem_scaled_;
+  mip::problem_t<i_t, f_t>& op_problem_scaled_;
 
   rmm::device_uvector<f_t> iteration_constraint_matrix_scaling_;
   rmm::device_uvector<f_t> iteration_variable_scaling_;
@@ -122,7 +122,7 @@ class pdlp_initial_scaling_strategy_t {
   rmm::device_uvector<f_t>& A_T_;
   rmm::device_uvector<i_t>& A_T_offsets_;
   rmm::device_uvector<i_t>& A_T_indices_;
-  const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params_;
+  const pdlp::pdlp_hyper_params_t& hyper_params_;
   bool running_mip_;
 };
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

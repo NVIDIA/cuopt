@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -15,7 +15,7 @@
 
 #include "bounds_update_data.cuh"
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename f_t>
 struct tuple_plus_t {
@@ -35,4 +35,4 @@ struct tuple_plus_t {
   }
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

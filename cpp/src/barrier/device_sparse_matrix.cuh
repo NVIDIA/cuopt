@@ -7,8 +7,8 @@
 
 #pragma once
 
-#include <dual_simplex/sparse_matrix.hpp>
-#include <dual_simplex/types.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
+#include <math_optimization/types.hpp>
 
 #include <cub/cub.cuh>
 #include <rmm/device_scalar.hpp>
@@ -23,7 +23,7 @@
 #include <thrust/tabulate.h>
 #include <thrust/tuple.h>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::barrier {
 
 template <typename IndexType, typename ValueType>
 class device_csr_matrix_t;
@@ -168,7 +168,8 @@ class device_csc_matrix_t {
     raft::copy(x.data(), A.x.data(), A.x.size(), stream);
   }
 
-  /** Same semantics as csc_matrix_t::to_compressed_row, entirely on device. */
+  /** Same semantics as csc_matrix_t::to_compressed_row, entirely on
+   * device. */
   void to_compressed_row(device_csr_matrix_t<i_t, f_t>& Arow, rmm::cuda_stream_view stream) const;
 
   void form_col_index(rmm::cuda_stream_view stream)
@@ -388,4 +389,4 @@ void device_csc_matrix_t<i_t, f_t>::to_compressed_row(device_csr_matrix_t<i_t, f
                       thrust::device_pointer_cast(Arow.x.data()));
 }
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::barrier

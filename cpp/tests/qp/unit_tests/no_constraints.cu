@@ -7,14 +7,14 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/inline_lp_test_utils.hpp>
 
-#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
-#include <cuopt/linear_programming/solve.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
 
 #include <raft/core/handle.hpp>
 
 #include <gtest/gtest.h>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 TEST(no_constraints_test, simple_test)
 {
@@ -40,4 +40,4 @@ End
   EXPECT_NEAR(sol_vec[1], 0.0, 1e-6);
 }
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

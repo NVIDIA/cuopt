@@ -5,10 +5,10 @@
  */
 /* clang-format on */
 
-#include <cuopt/linear_programming/io/mps_writer.hpp>
+#include <cuopt/mathematical_optimization/io/mps_writer.hpp>
 
-#include <cuopt/linear_programming/io/data_model_view.hpp>
-#include <cuopt/linear_programming/io/mps_data_model.hpp>
+#include <cuopt/mathematical_optimization/io/data_model_view.hpp>
+#include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
 #include <utilities/error.hpp>
 #include <utilities/sparse_matrix_helpers.hpp>
 
@@ -21,7 +21,7 @@
 #include <memory>
 #include <vector>
 
-namespace cuopt::linear_programming::io {
+namespace cuopt::mathematical_optimization::io {
 
 namespace {
 
@@ -523,4 +523,4 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
 template class mps_writer_t<int, float>;
 template class mps_writer_t<int, double>;
 
-}  // namespace cuopt::linear_programming::io
+}  // namespace cuopt::mathematical_optimization::io

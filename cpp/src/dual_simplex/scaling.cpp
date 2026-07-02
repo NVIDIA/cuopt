@@ -6,11 +6,11 @@
 /* clang-format on */
 
 #include <dual_simplex/scaling.hpp>
-#include <dual_simplex/sparse_matrix.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
 
 #include <cmath>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 template <typename i_t, typename f_t>
 i_t scaling(const lp_problem_t<i_t, f_t>& unscaled,
@@ -286,4 +286,4 @@ template void unscale_solution<int, double>(const std::vector<double>& column_sc
 
 #endif
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

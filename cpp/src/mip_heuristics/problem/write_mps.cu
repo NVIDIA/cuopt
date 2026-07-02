@@ -16,7 +16,7 @@
 
 #include "utilities/copy_helpers.hpp"
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::write_as_mps(const std::string& path)
@@ -162,4 +162,4 @@ template void problem_t<int, float>::write_as_mps(const std::string& path);
 template void problem_t<int, double>::write_as_mps(const std::string& path);
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

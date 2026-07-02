@@ -11,7 +11,7 @@
 #include <optional>
 #include <vector>
 
-#include <cuopt/linear_programming/optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem.hpp>
 
 #include <PSLP/PSLP_API.h>
 
@@ -20,7 +20,7 @@ template <typename T>
 class PostsolveStorage;
 }
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename f_t>
 struct papilo_postsolve_deleter {
@@ -58,14 +58,15 @@ class third_party_presolve_t {
   third_party_presolve_t(third_party_presolve_t&&)                 = delete;
   third_party_presolve_t& operator=(third_party_presolve_t&&)      = delete;
 
-  third_party_presolve_result_t<i_t, f_t> apply(optimization_problem_t<i_t, f_t> const& op_problem,
-                                                problem_category_t category,
-                                                cuopt::linear_programming::presolver_t presolver,
-                                                bool dual_postsolve,
-                                                f_t absolute_tolerance,
-                                                f_t relative_tolerance,
-                                                double time_limit,
-                                                i_t num_cpu_threads = 0);
+  third_party_presolve_result_t<i_t, f_t> apply(
+    optimization_problem_t<i_t, f_t> const& op_problem,
+    problem_category_t category,
+    cuopt::mathematical_optimization::presolver_t presolver,
+    bool dual_postsolve,
+    f_t absolute_tolerance,
+    f_t relative_tolerance,
+    double time_limit,
+    i_t num_cpu_threads = 0);
 
   void undo(rmm::device_uvector<f_t>& primal_solution,
             rmm::device_uvector<f_t>& dual_solution,
@@ -91,8 +92,9 @@ class third_party_presolve_t {
                  rmm::device_uvector<f_t>& reduced_costs,
                  rmm::cuda_stream_view stream_view);
 
-  bool maximize_                                    = false;
-  cuopt::linear_programming::presolver_t presolver_ = cuopt::linear_programming::presolver_t::PSLP;
+  bool maximize_ = false;
+  cuopt::mathematical_optimization::presolver_t presolver_ =
+    cuopt::mathematical_optimization::presolver_t::PSLP;
   // PSLP settings
   Settings* pslp_stgs_{nullptr};
   Presolver* pslp_presolver_{nullptr};
@@ -107,4 +109,4 @@ class third_party_presolve_t {
   std::vector<i_t> original_to_reduced_map_{};
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

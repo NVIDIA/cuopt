@@ -9,7 +9,7 @@
 
 #include <optional>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 // NOTE: lower_triangular_solve, lower_triangular_transpose_solve,
 // upper_triangular_solve, and upper_triangular_transpose_solve are now
@@ -186,4 +186,4 @@ template int sparse_triangle_solve<int, double, false>(const sparse_vector_t<int
                                                        double& work_estimate);
 #endif
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

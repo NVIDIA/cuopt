@@ -11,8 +11,6 @@
 
 namespace cuopt {
 
-namespace detail {
-
 inline auto get_driver_entry_point(const char* name)
 {
   void* func = nullptr;
@@ -30,5 +28,4 @@ inline auto get_driver_entry_point(const char* name)
   return func;
 }
 
-}  // namespace detail
 }  // namespace cuopt

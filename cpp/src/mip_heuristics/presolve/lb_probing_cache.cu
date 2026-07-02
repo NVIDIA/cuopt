@@ -16,7 +16,7 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/timer.hpp>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 void lb_probing_cache_t<i_t, f_t>::update_bounds_with_selected(
@@ -415,4 +415,4 @@ INSTANTIATE(double)
 
 #undef INSTANTIATE
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

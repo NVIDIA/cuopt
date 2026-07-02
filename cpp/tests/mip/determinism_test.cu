@@ -8,10 +8,10 @@
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 #include "mip_utils.cuh"
 
-#include <cuopt/linear_programming/constants.h>
-#include <cuopt/linear_programming/io/parser.hpp>
-#include <cuopt/linear_programming/mip/solver_settings.hpp>
-#include <cuopt/linear_programming/solve.hpp>
+#include <cuopt/mathematical_optimization/constants.h>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
 #include <utilities/common_utils.hpp>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/error.hpp>
@@ -27,7 +27,7 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::linear_programming::test {
+namespace cuopt::mathematical_optimization::test {
 
 namespace {
 
@@ -246,4 +246,4 @@ INSTANTIATE_TEST_SUITE_P(
     return name + "_threads" + std::to_string(threads);
   });
 
-}  // namespace cuopt::linear_programming::test
+}  // namespace cuopt::mathematical_optimization::test
