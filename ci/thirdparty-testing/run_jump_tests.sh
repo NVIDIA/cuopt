@@ -67,5 +67,5 @@ try
 catch
 end
 println("Running Pkg.test() for cuOpt.jl");
-Pkg.test(; coverage=true)
+Pkg.test(; coverage=false)
 '
