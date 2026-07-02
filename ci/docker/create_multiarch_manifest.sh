@@ -109,43 +109,48 @@ else
     echo "Skipping latest manifest creation (IMAGE_TAG_PREFIX='${IMAGE_TAG_PREFIX}' is not a release version)"
 fi
 
-echo "=== Creating UBI10 manifests ==="
-create_manifest \
-    "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10" \
-    "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-amd64" \
-    "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-arm64"
-create_manifest \
-    "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cu${CUDA_MAJOR}-ubi10" \
-    "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-amd64" \
-    "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-arm64"
-
-create_manifest \
-    "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10" \
-    "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-amd64" \
-    "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-arm64"
-create_manifest \
-    "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cu${CUDA_MAJOR}-ubi10" \
-    "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-amd64" \
-    "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-arm64"
-
-if [[ "${IMAGE_TAG_PREFIX}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ "${IMAGE_TAG_PREFIX}" != *"a"* ]]; then
+# UBI10 CUDA base images are only published for CUDA 13.x and later
+if [[ "${CUDA_MAJOR}" == "13" ]]; then
+    echo "=== Creating UBI10 manifests ==="
     create_manifest \
-        "nvidia/cuopt:latest-cuda${CUDA_SHORT}-ubi10" \
+        "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10" \
         "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-amd64" \
         "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-arm64"
     create_manifest \
-        "nvidia/cuopt:latest-cu${CUDA_MAJOR}-ubi10" \
+        "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cu${CUDA_MAJOR}-ubi10" \
         "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-amd64" \
         "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-arm64"
 
     create_manifest \
-        "nvcr.io/nvstaging/nvaie/cuopt:latest-cuda${CUDA_SHORT}-ubi10" \
+        "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10" \
         "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-amd64" \
         "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-arm64"
     create_manifest \
-        "nvcr.io/nvstaging/nvaie/cuopt:latest-cu${CUDA_MAJOR}-ubi10" \
+        "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cu${CUDA_MAJOR}-ubi10" \
         "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-amd64" \
         "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-arm64"
+
+    if [[ "${IMAGE_TAG_PREFIX}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ "${IMAGE_TAG_PREFIX}" != *"a"* ]]; then
+        create_manifest \
+            "nvidia/cuopt:latest-cuda${CUDA_SHORT}-ubi10" \
+            "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-amd64" \
+            "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-arm64"
+        create_manifest \
+            "nvidia/cuopt:latest-cu${CUDA_MAJOR}-ubi10" \
+            "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-amd64" \
+            "nvidia/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-arm64"
+
+        create_manifest \
+            "nvcr.io/nvstaging/nvaie/cuopt:latest-cuda${CUDA_SHORT}-ubi10" \
+            "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-amd64" \
+            "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-arm64"
+        create_manifest \
+            "nvcr.io/nvstaging/nvaie/cuopt:latest-cu${CUDA_MAJOR}-ubi10" \
+            "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-amd64" \
+            "nvcr.io/nvstaging/nvaie/cuopt:${IMAGE_TAG_PREFIX}-cuda${CUDA_SHORT}-ubi10-arm64"
+    fi
+else
+    echo "Skipping UBI10 manifests (CUDA_MAJOR='${CUDA_MAJOR}' — UBI10 base images require CUDA 13+)"
 fi
 
 echo "=== Multi-architecture manifest creation completed ==="
