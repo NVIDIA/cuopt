@@ -828,22 +828,28 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
       // final solver summary) between our last getline and the job-complete
       // marker, and a single extra read would silently drop everything after
       // the first of those lines.
-      std::string msg;
-      JobStatus s = check_job_status(job_id, msg);
-      if (s == JobStatus::COMPLETED || s == JobStatus::FAILED || s == JobStatus::CANCELLED) {
+      std::string term_msg;
+      JobStatus term_status = check_job_status(job_id, term_msg);
+      if (term_status == JobStatus::COMPLETED || term_status == JobStatus::FAILED ||
+          term_status == JobStatus::CANCELLED) {
         std::streampos read_start = in.tellg();
         if (read_start >= 0) { current_offset = static_cast<int64_t>(read_start); }
 
+        bool drain_ok = true;
         while (std::getline(in, line)) {
           std::streampos read_end  = in.tellg();
           int64_t next_byte_offset = current_offset + static_cast<int64_t>(line.size());
           if (read_end >= 0) { next_byte_offset = static_cast<int64_t>(read_end); }
-          if (!write_log_message(line, next_byte_offset, false)) { break; }
+          if (!write_log_message(line, next_byte_offset, false)) {
+            drain_ok = false;
+            break;
+          }
           current_offset = next_byte_offset;
         }
 
         // Empty line + job_complete=true tells the client the log stream is done.
-        (void)write_log_message("", current_offset);
+        // Skip sentinel if the Write() failed mid-drain — stream is already broken.
+        if (drain_ok) { (void)write_log_message("", current_offset); }
         return Status::OK;
       }
 
