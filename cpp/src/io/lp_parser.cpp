@@ -118,43 +118,6 @@ bool is_free_keyword(std::string_view lower) { return lower == "free"; }
 
 bool is_infinity_text(std::string_view lower) { return lower == "inf" || lower == "infinity"; }
 
-// Builds the symmetric Q in COO from LP-format raw upper-triangular triples.
-// Each input triple (i, j, c) with i <= j represents `c * x_i * x_j` in the
-// LP source. The output Q satisfies x^T Q x = sum of those terms.
-//   Diagonal (i == j): Q[i,i] = c (one entry).
-//   Off-diagonal (i != j): Q[i,j] = Q[j,i] = c/2 (two entries; symmetric split).
-template <typename i_t, typename f_t>
-void build_symmetric_q_coo(const coo_entries_t<i_t, f_t>& raw_triples,
-                           std::vector<i_t>& out_row_indices,
-                           std::vector<i_t>& out_col_indices,
-                           std::vector<f_t>& out_values)
-{
-  out_row_indices.clear();
-  out_col_indices.clear();
-  out_values.clear();
-  out_row_indices.reserve(raw_triples.size() * 2);
-  out_col_indices.reserve(raw_triples.size() * 2);
-  out_values.reserve(raw_triples.size() * 2);
-
-  for (size_t p = 0; p < raw_triples.size(); p++) {
-    const i_t i = raw_triples.rows[p];
-    const i_t j = raw_triples.cols[p];
-    const f_t c = raw_triples.vals[p];
-    if (i == j) {
-      out_row_indices.push_back(i);
-      out_col_indices.push_back(i);
-      out_values.push_back(c);
-    } else {
-      out_row_indices.push_back(i);
-      out_col_indices.push_back(j);
-      out_values.push_back(c / 2);
-      out_row_indices.push_back(j);
-      out_col_indices.push_back(i);
-      out_values.push_back(c / 2);
-    }
-  }
-}
-
 // ===========================================================================
 // Token stream
 // ===========================================================================
@@ -257,9 +220,8 @@ class LpParseEngine {
   //   Objective:  must be followed by '/ 2'; the inner-coefficient convention
   //               is QUADOBJ-style 0.5 x^T Q x, so off-diagonals are halved
   //               and linear-inside-bracket terms also get /2.
-  //   Constraint: must NOT be followed by '/ 2'; coefficients are taken at
-  //               face value (x^T Q x); bracket must contain at least one
-  //               quadratic term.
+  //   Constraint: must NOT be followed by '/ 2'; only the upper triangle of Q is stored;
+  //               bracket must contain at least one quadratic term.
   enum class BracketRole { Objective, Constraint };
   void parse_quadratic_bracket(int outer_sign,
                                BracketRole role,
@@ -947,8 +909,8 @@ void LpParseEngine<i_t, f_t>::parse_quadratic_bracket(int outer_sign,
       out_quad_entries.vals.push_back(sign_scale * raw_quad.vals[p] / f_t(2));
     }
   } else {
-    // Constraint: '/ 2' is forbidden — the LP convention is that constraint
-    // quadratic brackets carry bare face-value coefficients of x^T Q x.
+    // Constraint: '/ 2' is forbidden — the LP convention is that x^T Q x is written as upper
+    // triangular form.
     mps_parser_expects(!(peek().kind == LpTokenKind::Slash && peek(1).kind == LpTokenKind::Number &&
                          peek(1).text == "2"),
                        error_type_t::ValidationError,
@@ -964,9 +926,6 @@ void LpParseEngine<i_t, f_t>::parse_quadratic_bracket(int outer_sign,
                        "constraint must contain at least one quadratic term",
                        peek().line);
 
-    // Coefficients are at face value — the post-pass that flushes the
-    // quadratic_constraint_block_t to the data model handles the symmetric
-    // expansion and the /2 split for off-diagonals.
     out_quad_entries.rows.insert(
       out_quad_entries.rows.end(), raw_quad.rows.begin(), raw_quad.rows.end());
     out_quad_entries.cols.insert(
@@ -1514,19 +1473,15 @@ void flush_quadratic_constraints(mps_data_model_t<i_t, f_t>& problem,
   const i_t linear_row_count = static_cast<i_t>(parser.row_names.size());
   for (i_t k = 0; k < static_cast<i_t>(parser.quadratic_constraint_blocks.size()); k++) {
     const auto& block = parser.quadratic_constraint_blocks[k];
-    std::vector<i_t> q_row_indices;
-    std::vector<i_t> q_col_indices;
-    std::vector<f_t> q_values;
-    build_symmetric_q_coo(block.quad_triples, q_row_indices, q_col_indices, q_values);
     problem.append_quadratic_constraint(linear_row_count + k,
                                         block.row_name,
                                         static_cast<char>(block.row_type),
                                         block.linear_values,
                                         block.linear_indices,
                                         block.rhs_value,
-                                        q_values,
-                                        q_row_indices,
-                                        q_col_indices);
+                                        block.quad_triples.vals,
+                                        block.quad_triples.rows,
+                                        block.quad_triples.cols);
   }
 }
 

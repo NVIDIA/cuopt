@@ -1,0 +1,79 @@
+# syntax=docker/dockerfile:1.2
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+ARG CUDA_VER=unset
+ARG CUOPT_VER=unset
+
+# Stage 1: source for libnvrtc / libnvJitLink (not in base image)
+FROM nvcr.io/nvidia/cuda:${CUDA_VER}-runtime-ubi10 AS cuda-libs
+
+# Stage 2: source for CUDA headers needed for CuPy/NVRTC runtime compilation
+FROM nvcr.io/nvidia/cuda:${CUDA_VER}-devel-ubi10 AS cuda-headers
+
+# Stage 3: small base — install Python + cuOpt via pip
+FROM nvcr.io/nvidia/cuda:${CUDA_VER}-base-ubi10 AS python-env
+
+ARG CUDA_VER
+ARG CUOPT_VER
+
+# gcc is required for building psutils
+RUN dnf install -y \
+        gcc \
+        python3-devel \
+        python3-pip \
+    && dnf clean all \
+    && python3 -m pip install --upgrade pip
+
+RUN alternatives --install /usr/bin/python  python  /usr/bin/python3 100
+
+FROM python-env AS install-env
+
+ARG CUDA_VER
+ARG CUOPT_VER
+
+RUN \
+    cuda_suffix=cu$(echo ${CUDA_VER} | cut -d'.' -f1) && \
+    cuda_major_minor=$(echo ${CUDA_VER} | cut -d'.' -f1-2) && \
+    python -m pip install \
+      --extra-index-url https://pypi.nvidia.com \
+      --extra-index-url https://pypi.anaconda.org/rapidsai-wheels-nightly/simple \
+      --no-cache-dir \
+      "pyyaml" \
+      "cuopt-server-${cuda_suffix}==${CUOPT_VER}" \
+      "cuopt-${cuda_suffix}==${CUOPT_VER}" \
+      "libcuopt-${cuda_suffix}==${CUOPT_VER}" \
+      "cuopt-sh-client==${CUOPT_VER}" && \
+    python -m pip list
+
+# Remove build-only deps to reduce CVE surface area
+RUN dnf remove -y gcc && dnf clean all
+
+FROM install-env AS cuopt-final
+
+# On UBI10: libcuopt, cuopt, rapids_logger install to lib64; cuopt_server to lib.
+ENV PATH="/usr/local/cuda/bin:/usr/bin:/usr/local/bin:/usr/local/nvidia/bin/:/usr/local/lib64/python3.12/site-packages/libcuopt/bin:${PATH}"
+ENV LD_LIBRARY_PATH="/usr/lib64:/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/lib/wsl/lib:/usr/local/lib64/python3.12/site-packages/libcuopt/lib64/:/usr/local/lib64/python3.12/site-packages/rapids_logger/lib64:/usr/local/lib/python3.12/site-packages/nvidia/cu13/lib:${LD_LIBRARY_PATH}"
+
+# Directory creation, permissions
+RUN mkdir -p /opt/cuopt && \
+    chmod 777 /opt/cuopt && \
+    chmod -R 755 /usr/local/lib64/python3.12/site-packages/cuopt* && \
+    chmod -R 755 /usr/local/lib64/python3.12/site-packages/libcuopt* && \
+    chmod -R 755 /usr/local/lib/python3.12/site-packages/cuopt_* && \
+    chmod -R 755 /usr/local/bin/*
+
+WORKDIR /opt/cuopt
+
+COPY ./LICENSE ./VERSION ./THIRD_PARTY_LICENSES ./COMMIT_SHA ./COMMIT_TIME /opt/cuopt/
+
+# Copy CUDA libraries from the runtime stage
+COPY --from=cuda-libs /usr/local/cuda/lib64/libnvrtc* /usr/local/cuda/lib64/
+COPY --from=cuda-libs /usr/local/cuda/lib64/libnvJitLink* /usr/local/cuda/lib64/
+
+# Copy CUDA headers needed for runtime compilation (e.g., CuPy NVRTC)
+COPY --from=cuda-headers /usr/local/cuda/include/ /usr/local/cuda/include/
+
+COPY ./entrypoint.sh /opt/cuopt/entrypoint.sh
+ENTRYPOINT ["/opt/cuopt/entrypoint.sh"]
+CMD ["python", "-m", "cuopt_server.cuopt_service"]

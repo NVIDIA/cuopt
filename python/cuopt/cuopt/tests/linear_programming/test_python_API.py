@@ -333,10 +333,11 @@ def test_read_write_mps_and_relaxation():
     assert prob.IsMIP
     prob.solve()
 
-    expected_values_mip = [1.0, 1.0, 1.0, 0.0, 2.0]
     assert prob.Status.name == "Optimal"
-    for i, v in enumerate(prob.getVariables()):
-        assert v.getValue() == pytest.approx(expected_values_mip[i])
+    # This MIP has multiple optimal integer solutions. For example, both
+    # (1, 1, 1, 0, 2) and (0, 1, 3, 0, 2) have objective value 14.
+    # Presolve is therefore free to return either incumbent.
+    assert prob.ObjValue == pytest.approx(14.0)
 
     # Relax the Problem into LP and solve
     lp_prob = prob.relax()

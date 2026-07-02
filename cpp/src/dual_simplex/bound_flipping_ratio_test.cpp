@@ -7,7 +7,7 @@
 
 #include <dual_simplex/bound_flipping_ratio_test.hpp>
 
-#include <dual_simplex/tic_toc.hpp>
+#include <math_optimization/tic_toc.hpp>
 
 #include <algorithm>
 #include <cmath>

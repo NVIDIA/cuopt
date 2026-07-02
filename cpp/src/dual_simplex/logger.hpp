@@ -16,6 +16,8 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
+#include <format>
+#include <utility>
 
 namespace cuopt::mathematical_optimization::simplex {
 
@@ -84,6 +86,29 @@ class logger_t {
     }
   }
 
+  template <typename... Args>
+  void print_format(std::format_string<Args...> fmt, Args&&... args)
+  {
+    if (log) {
+      std::string msg = std::format(fmt, std::forward<Args>(args)...);
+      if (log_to_console) {
+#ifdef CUOPT_LOG_ACTIVE_LEVEL
+        std::string msg_no_newline = msg;
+        if (msg_no_newline.size() > 0 && msg.ends_with("\n")) { msg_no_newline.pop_back(); }
+
+        CUOPT_LOG_INFO("%s%s", log_prefix.c_str(), msg_no_newline.c_str());
+#else
+        std::printf("%s", msg.c_str());
+        fflush(stdout);
+#endif
+      }
+      if (log_to_file && log_file != nullptr) {
+        std::fprintf(log_file, "%s", msg.c_str());
+        fflush(log_file);
+      }
+    }
+  }
+
   void debug([[maybe_unused]] const char* fmt, ...)
   {
     if (log) {
@@ -113,6 +138,28 @@ class logger_t {
         va_start(args, fmt);
         std::vfprintf(log_file, fmt, args);
         va_end(args);
+        fflush(log_file);
+      }
+    }
+  }
+
+  template <typename... Args>
+  void debug_format(std::format_string<Args...> fmt, Args&&... args)
+  {
+    if (log) {
+      std::string msg = std::format(fmt, std::forward<Args>(args)...);
+      if (log_to_console) {
+#ifdef CUOPT_LOG_DEBUG
+        std::string msg_no_newline = msg;
+        if (msg_no_newline.size() > 0 && msg.ends_with("\n")) { msg_no_newline.pop_back(); }
+        CUOPT_LOG_TRACE("%s%s", log_prefix.c_str(), msg_no_newline.c_str());
+#else
+        std::printf("%s", msg.c_str());
+        fflush(stdout);
+#endif
+      }
+      if (log_to_file && log_file != nullptr) {
+        std::fprintf(log_file, "%s", msg.c_str());
         fflush(log_file);
       }
     }

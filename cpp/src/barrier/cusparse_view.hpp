@@ -6,7 +6,7 @@
 /* clang-format on */
 #pragma once
 
-#include <dual_simplex/sparse_matrix.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
 
 #include <pdlp/cusparse_view.hpp>
 
@@ -27,7 +27,7 @@ template <typename i_t, typename f_t>
 class cusparse_view_t {
  public:
   // TMP matrix data should already be on the GPU and in CSR not CSC
-  cusparse_view_t(raft::handle_t const* handle_ptr, const simplex::csc_matrix_t<i_t, f_t>& A);
+  cusparse_view_t(raft::handle_t const* handle_ptr, const csc_matrix_t<i_t, f_t>& A);
   ~cusparse_view_t();
 
   pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> create_vector(rmm::device_uvector<f_t> const& vec);

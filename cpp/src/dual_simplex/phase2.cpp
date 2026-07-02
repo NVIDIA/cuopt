@@ -13,8 +13,8 @@
 #include <dual_simplex/phase2.hpp>
 #include <dual_simplex/random.hpp>
 #include <dual_simplex/solve.hpp>
-#include <dual_simplex/sparse_matrix.hpp>
-#include <dual_simplex/tic_toc.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
+#include <math_optimization/tic_toc.hpp>
 
 #include <utilities/scope_guard.hpp>
 #include <utilities/timing_utils.hpp>

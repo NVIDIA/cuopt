@@ -47,6 +47,14 @@
         default: "docker pull nvidia/cuopt:latest-cu13",
         run: "docker run --gpus all -it --rm nvidia/cuopt:latest-cu13 /bin/bash",
       },
+      "cu12-ubi10": {
+        default: "docker pull nvidia/cuopt:latest-cu12-ubi10",
+        run: "docker run --gpus all -it --rm nvidia/cuopt:latest-cu12-ubi10 /bin/bash",
+      },
+      "cu13-ubi10": {
+        default: "docker pull nvidia/cuopt:latest-cu13-ubi10",
+        run: "docker run --gpus all -it --rm nvidia/cuopt:latest-cu13-ubi10 /bin/bash",
+      },
     },
     nightly: {
       cu12: {
@@ -56,6 +64,14 @@
       cu13: {
         default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cu13",
         run: "docker run --gpus all -it --rm nvidia/cuopt:" + V_NEXT + ".0a-cu13 /bin/bash",
+      },
+      "cu12-ubi10": {
+        default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cu12-ubi10",
+        run: "docker run --gpus all -it --rm nvidia/cuopt:" + V_NEXT + ".0a-cu12-ubi10 /bin/bash",
+      },
+      "cu13-ubi10": {
+        default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cu13-ubi10",
+        run: "docker run --gpus all -it --rm nvidia/cuopt:" + V_NEXT + ".0a-cu13-ubi10 /bin/bash",
       },
     },
   };
@@ -214,6 +230,14 @@
             default: "docker pull nvidia/cuopt:latest-cu13",
             run: "docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:latest-cu13",
           },
+          "cu12-ubi10": {
+            default: "docker pull nvidia/cuopt:latest-cu12-ubi10",
+            run: "docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:latest-cu12-ubi10",
+          },
+          "cu13-ubi10": {
+            default: "docker pull nvidia/cuopt:latest-cu13-ubi10",
+            run: "docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:latest-cu13-ubi10",
+          },
         },
         nightly: {
           cu12: {
@@ -223,6 +247,14 @@
           cu13: {
             default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cu13",
             run: "docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:" + V_NEXT + ".0a-cu13",
+          },
+          "cu12-ubi10": {
+            default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cu12-ubi10",
+            run: "docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:" + V_NEXT + ".0a-cu12-ubi10",
+          },
+          "cu13-ubi10": {
+            default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cu13-ubi10",
+            run: "docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:" + V_NEXT + ".0a-cu13-ubi10",
           },
         },
       },
@@ -265,8 +297,11 @@
 
     var cmd = "";
     if (method === "container") {
-      var cudaKey = cuda || "cu12";
-      var c = data[release][cudaKey] || data[release].cu12;
+      var variant = getSelectedValue("cuopt-variant") || "ubuntu";
+      var baseCuda = cuda || "cu12";
+      var cudaKey = baseCuda + (variant === "ubi10" ? "-ubi10" : "");
+      var fallbackKey = "cu12" + (variant === "ubi10" ? "-ubi10" : "");
+      var c = data[release][cudaKey] || data[release][fallbackKey];
       var hubPull = c.default;
       var tag = "latest-cu12";
       var tm = hubPull.match(/docker pull nvidia\/cuopt:(\S+)/);
@@ -346,6 +381,10 @@
       hasCudaVariants(ifaceForVariants, method);
     cudaRow.style.display = showCuda ? "table-row" : "none";
     releaseRow.style.display = releaseVisible ? "table-row" : "none";
+    var variantRow = document.getElementById("cuopt-variant-row");
+    if (variantRow) {
+      variantRow.style.display = method === "container" ? "table-row" : "none";
+    }
     var registryRow = document.getElementById("cuopt-registry-row");
     if (registryRow) {
       registryRow.style.display = method === "container" ? "table-row" : "none";
@@ -395,6 +434,10 @@
       '<label class="cuopt-opt"><input type="radio" name="cuopt-cuda" value="cu12" checked> 12.x</label>' +
       '<label class="cuopt-opt"><input type="radio" name="cuopt-cuda" value="cu13"> 13.x</label>' +
       '</td></tr>' +
+      '<tr id="cuopt-variant-row" style="display:none;"><td class="cuopt-opt-label">Variant</td><td class="cuopt-opt-group" role="group" aria-label="Container variant">' +
+      '<label class="cuopt-opt"><input type="radio" name="cuopt-variant" value="ubuntu" checked> Ubuntu</label>' +
+      '<label class="cuopt-opt"><input type="radio" name="cuopt-variant" value="ubi10"> UBI10 (FIPS 140-3)</label>' +
+      '</td></tr>' +
       '<tr id="cuopt-registry-row" style="display:none;"><td class="cuopt-opt-label">Registry</td><td class="cuopt-opt-group" role="group" aria-label="Container registry">' +
       '<label class="cuopt-opt"><input type="radio" name="cuopt-registry" value="hub" checked> Docker Hub</label>' +
       '<label class="cuopt-opt"><input type="radio" name="cuopt-registry" value="ngc"> NVIDIA NGC</label>' +
@@ -405,7 +448,7 @@
       '<div class="cuopt-install-copy-wrap"><button type="button" id="cuopt-copy-btn" class="cuopt-install-copy-btn" style="display:none;">Copy command</button></div>' +
       "</div></div>";
 
-    ["cuopt-iface", "cuopt-method", "cuopt-release", "cuopt-cuda", "cuopt-registry"].forEach(
+    ["cuopt-iface", "cuopt-method", "cuopt-release", "cuopt-cuda", "cuopt-variant", "cuopt-registry"].forEach(
       function (name) {
         var inputs = document.querySelectorAll('input[name="' + name + '"]');
         inputs.forEach(function (input) {
