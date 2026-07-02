@@ -835,7 +835,7 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
         if (read_start >= 0) { current_offset = static_cast<int64_t>(read_start); }
 
         while (std::getline(in, line)) {
-          std::streampos read_end = in.tellg();
+          std::streampos read_end  = in.tellg();
           int64_t next_byte_offset = current_offset + static_cast<int64_t>(line.size());
           if (read_end >= 0) { next_byte_offset = static_cast<int64_t>(read_end); }
           if (!write_log_message(line, next_byte_offset, false)) { break; }
