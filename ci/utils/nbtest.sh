@@ -34,7 +34,7 @@ for nb in "$@"; do
 
     # Skip notebooks that are not yet supported
     SKIP_NOTEBOOKS=(
-        "trnsport_cuopt"
+        "transport_cuopt"
         "Production_Planning_Example_Pulp"
         "Simple_LP_pulp"
         "Simple_MIP_pulp"
