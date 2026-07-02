@@ -9,14 +9,14 @@ NVIDIA <br>
 ### License/Terms of Use: <br>
 Apache 2.0 <br>
 ## Use Case: <br>
-Developers and engineers who modify, build, test, debug, and contribute to the NVIDIA cuOpt optimization engine codebase, including C++/CUDA solver internals, Python bindings, server components, and CI workflows. <br>
+Developers and engineers who modify, build, test, and contribute to the NVIDIA cuOpt GPU-accelerated optimization engine codebase. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
 
 ## Requirements / Dependencies: <br>
 **Requires API Key or External Credential:** [Not Specified] <br>
-**Credential Type(s):** [None identified] <br>  
+**Credential Type(s):** [None identified] <br>
 
 Do not include secrets in prompts/logs/output; use least-privilege credentials; rotate keys as appropriate. <br>
 
@@ -25,21 +25,21 @@ Risk: Review before execution as proposals could introduce incorrect or misleadi
 Mitigation: Review and scan skill before deployment. <br>
 
 ## Reference(s): <br>
-- [Build and Test](references/build_and_test.md) <br>
-- [Contributing](references/contributing.md) <br>
-- [Conventions](references/conventions.md) <br>
-- [First Time Setup](references/first_time_setup.md) <br>
-- [Python Bindings](references/python_bindings.md) <br>
-- [Troubleshooting](references/troubleshooting.md) <br>
-- [VRP Skills](references/vrp_skills.md) <br>
-- [Numerical Debugging](resources/numerical_debugging.md) <br>
+- [first_time_setup.md](references/first_time_setup.md) <br>
+- [build_and_test.md](references/build_and_test.md) <br>
+- [contributing.md](references/contributing.md) <br>
+- [conventions.md](references/conventions.md) <br>
+- [python_bindings.md](references/python_bindings.md) <br>
+- [troubleshooting.md](references/troubleshooting.md) <br>
+- [vrp_skills.md](references/vrp_skills.md) <br>
+- [numerical_debugging.md](resources/numerical_debugging.md) <br>
 - [cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html) <br>
-- [cuOpt Examples](https://github.com/NVIDIA/cuopt-examples) <br>
+- [cuopt-examples](https://github.com/NVIDIA/cuopt-examples) <br>
 
 
 ## Skill Output: <br>
-**Output Type(s):** [Code, Shell commands, Configuration instructions] <br>
-**Output Format:** [Markdown with inline bash code blocks] <br>
+**Output Type(s):** [Shell commands, Code, Configuration instructions] <br>
+**Output Format:** [Markdown with inline code blocks] <br>
 **Output Parameters:** [1D] <br>
 **Other Properties Related to Output:** [None] <br>
 
@@ -50,7 +50,7 @@ Mitigation: Review and scan skill before deployment. <br>
 
 
 ## Evaluation Tasks: <br>
-Evaluated against 3 evaluation tasks in the astra-sandbox environment using the external NVSkills-Eval profile. All tasks were positive skill-activation cases with 1 attempt per task and a 50% pass threshold. Overall verdict: PASS. <br>
+Evaluated against 3 evaluation tasks in the NVSkills-Eval external profile (astra-sandbox environment, 1 attempt per task, 50% pass threshold). <br>
 
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
@@ -75,10 +75,10 @@ Underlying evaluation signals used in this run: <br>
 | Dimension | Num | `claude-code` | `codex` |
 |---|---:|---:|---:|
 | Security | 3 | 100% (+0%) | 100% (+0%) |
-| Correctness | 3 | 75% (+20%) | 89% (+26%) |
-| Discoverability | 3 | 42% (+25%) | 72% (+41%) |
-| Effectiveness | 3 | 95% (+40%) | 90% (+29%) |
-| Efficiency | 3 | 48% (+22%) | 69% (+34%) |
+| Correctness | 3 | 75% (+20%) | 90% (+43%) |
+| Discoverability | 3 | 42% (+25%) | 79% (+52%) |
+| Effectiveness | 3 | 95% (+26%) | 78% (+35%) |
+| Efficiency | 3 | 48% (+22%) | 77% (+35%) |
 
 ## Skill Version(s): <br>
 26.08.00 (source: frontmatter) <br>
