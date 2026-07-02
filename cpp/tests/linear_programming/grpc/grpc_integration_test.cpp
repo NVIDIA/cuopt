@@ -29,6 +29,7 @@
 #include <gtest/gtest.h>
 
 #include <atomic>
+#include <cerrno>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -54,6 +55,7 @@
 
 #include <fcntl.h>
 #include <signal.h>
+#include <sys/prctl.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -71,14 +73,26 @@ using cuopt::mathematical_optimization::testing::GrpcTestLogCapture;
 
 namespace {
 
-// =============================================================================
-// Server Process Manager
-// =============================================================================
+// GRPC_INTEGRATION_TEST
+//   `-- cuopt_grpc_server parent (pid_, leads process group pgid_ == pid_)
+//         `-- GPU worker (inherits pgid_)
+//
+// The server is forked into its own process group so stop() can signal the whole
+// group. Killing the server parent orphans its GPU worker, so this test process
+// also marks itself a subreaper (PR_SET_CHILD_SUBREAPER): the orphan reparents
+// here and stop() reaps the entire group, even inside a container whose PID 1
+// does not reap. Polling kill(-pgid_, 0) instead is not enough -- it counts an
+// unreaped zombie as a live member and can never observe a grandchild's death.
 
 class ServerProcess {
  public:
-  ServerProcess() : pid_(-1), port_(0) {}
-  ~ServerProcess() { stop(); }
+  ServerProcess() : pid_(-1), pgid_(-1), port_(0) {}
+  ServerProcess(const ServerProcess&)            = delete;
+  ServerProcess& operator=(const ServerProcess&) = delete;
+  ~ServerProcess()
+  {
+    if (!stop()) { std::cerr << "Failed to clean up test server process group\n"; }
+  }
 
   void set_tls_config(const std::string& root_certs,
                       const std::string& client_cert = "",
@@ -91,7 +105,10 @@ class ServerProcess {
 
   bool start(int port, const std::vector<std::string>& extra_args = {})
   {
-    port_ = port;
+    if (pid_ > 0) {
+      std::cerr << "Cannot reuse a ServerProcess while it still owns a process lifecycle\n";
+      return false;
+    }
 
     std::string server_path = find_server_binary();
     if (server_path.empty()) {
@@ -99,13 +116,20 @@ class ServerProcess {
       return false;
     }
 
-    pid_ = fork();
+    // Reparent any process orphaned by killing the server (i.e. the GPU worker)
+    // onto this test process so stop() can reap it without relying on init.
+    prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
+
+    port_ = port;
+    pid_  = fork();
     if (pid_ < 0) {
       std::cerr << "fork() failed\n";
       return false;
     }
 
     if (pid_ == 0) {
+      setpgid(0, 0);  // child leads its own group; parent mirrors this below
+
       std::vector<const char*> args;
       args.push_back(server_path.c_str());
       args.push_back("--port");
@@ -131,30 +155,37 @@ class ServerProcess {
       _exit(127);
     }
 
-    return wait_for_ready(15000);
+    // Mirror the child's setpgid() so the group is established regardless of which
+    // process runs first; the child is a fresh fork, so its group id is its pid.
+    setpgid(pid_, pid_);
+    pgid_ = pid_;
+
+    if (!wait_for_ready(15000)) {
+      if (!stop()) { std::cerr << "Failed to clean up server after readiness failure\n"; }
+      return false;
+    }
+
+    return true;
   }
 
-  void stop()
+  bool stop()
   {
-    if (pid_ > 0) {
-      kill(pid_, SIGTERM);
+    if (pid_ <= 0) return true;
 
-      int status;
-      int wait_ms = 0;
-      while (wait_ms < 5000) {
-        int ret = waitpid(pid_, &status, WNOHANG);
-        if (ret != 0) break;
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        wait_ms += 100;
+    // Ask the whole group (server + GPU worker) to exit gracefully, then reap
+    // every member. Killing the server parent can orphan a mid-solve worker;
+    // because we are a subreaper it reparents here and reap_group() collects it.
+    kill(-pgid_, SIGTERM);
+    if (!reap_group(std::chrono::seconds(15))) {
+      kill(-pgid_, SIGKILL);
+      if (!reap_group(std::chrono::seconds(15))) {
+        std::cerr << "Server process group " << pgid_ << " did not exit\n";
+        return false;
       }
-
-      if (waitpid(pid_, &status, WNOHANG) == 0) {
-        kill(pid_, SIGKILL);
-        waitpid(pid_, &status, 0);
-      }
-
-      pid_ = -1;
     }
+
+    clear_lifecycle_state();
+    return true;
   }
 
   int port() const { return port_; }
@@ -172,6 +203,32 @@ class ServerProcess {
   }
 
  private:
+  void clear_lifecycle_state()
+  {
+    pid_  = -1;
+    pgid_ = -1;
+    port_ = 0;
+  }
+
+  // Reap every member of the server's process group, returning true once the
+  // group is fully drained. start() makes this process a subreaper, so a worker
+  // orphaned when the server parent dies reparents here and is reaped too --
+  // first the parent, then (once its death reparents the worker) the worker.
+  bool reap_group(std::chrono::milliseconds timeout)
+  {
+    auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (true) {
+      int status = 0;
+      pid_t ret  = waitpid(-pgid_, &status, WNOHANG);
+      if (ret > 0) continue;  // reaped a member; keep draining
+      if (ret < 0 && errno == EINTR) continue;
+      if (ret < 0 && errno == ECHILD) return true;  // no members left
+      // ret == 0: members remain but none have exited yet.
+      if (std::chrono::steady_clock::now() >= deadline) return false;
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+  }
+
   std::string find_in_path(const std::string& name)
   {
     const char* path_env = std::getenv("PATH");
@@ -246,8 +303,8 @@ class ServerProcess {
       grpc_client_t client(config);
       if (client.connect()) { return true; }
 
-      int status;
-      if (waitpid(pid_, &status, WNOHANG) != 0) {
+      int status = 0;
+      if (waitpid(pid_, &status, WNOHANG) == pid_) {
         std::cerr << "Server process died during startup\n";
         return false;
       }
@@ -257,6 +314,7 @@ class ServerProcess {
   }
 
   pid_t pid_;
+  pid_t pgid_;
   int port_;
   std::string tls_root_certs_;
   std::string tls_client_cert_;
@@ -516,7 +574,7 @@ class DefaultServerTests : public GrpcIntegrationTestBase {
 
   static void TearDownTestSuite()
   {
-    if (s_server_) s_server_->stop();
+    if (s_server_) EXPECT_TRUE(s_server_->stop());
     s_server_.reset();
   }
 
@@ -1083,7 +1141,7 @@ class ChunkedUploadTests : public GrpcIntegrationTestBase {
 
   static void TearDownTestSuite()
   {
-    if (s_server_) s_server_->stop();
+    if (s_server_) EXPECT_TRUE(s_server_->stop());
     s_server_.reset();
   }
 
@@ -1399,7 +1457,7 @@ class PathSelectionTests : public GrpcIntegrationTestBase {
 
   static void TearDownTestSuite()
   {
-    if (s_server_) s_server_->stop();
+    if (s_server_) EXPECT_TRUE(s_server_->stop());
     s_server_.reset();
   }
 
@@ -1583,7 +1641,7 @@ TEST_F(PathSelectionTests, UnaryUploadMIPWithPathLogging)
 class ErrorRecoveryTests : public GrpcIntegrationTestBase {
  protected:
   void SetUp() override { port_ = get_test_port(); }
-  void TearDown() override { server_.stop(); }
+  void TearDown() override { EXPECT_TRUE(server_.stop()); }
 
   bool start_server(const std::vector<std::string>& extra_args = {})
   {
@@ -1602,7 +1660,7 @@ TEST_F(ErrorRecoveryTests, ClientReconnectsAfterServerRestart)
   auto status_before = client->check_status("test-job");
   EXPECT_TRUE(status_before.success);
 
-  server_.stop();
+  ASSERT_TRUE(server_.stop());
   EXPECT_FALSE(server_.is_running());
 
   auto status_down = client->check_status("test-job");
@@ -1630,7 +1688,7 @@ TEST_F(ErrorRecoveryTests, ClientHandlesServerCrashDuringSolve)
   ASSERT_TRUE(submit_result.success);
 
   std::this_thread::sleep_for(std::chrono::milliseconds(500));
-  server_.stop();
+  EXPECT_TRUE(server_.stop());
 
   auto status_result = client->check_status(submit_result.job_id);
   EXPECT_FALSE(status_result.success);
@@ -1694,7 +1752,7 @@ TEST_F(ErrorRecoveryTests, ChunkedUploadAfterServerRestart)
   auto result1 = client->solve_mip(problem, settings, false);
   EXPECT_TRUE(result1.success) << result1.error_message;
 
-  server_.stop();
+  ASSERT_TRUE(server_.stop());
   ASSERT_TRUE(start_server({"--max-message-mb", "256"}));
 
   auto client2 = create_client(config);
@@ -1745,7 +1803,7 @@ class TlsServerTests : public GrpcIntegrationTestBase {
 
   static void TearDownTestSuite()
   {
-    if (s_server_) s_server_->stop();
+    if (s_server_) EXPECT_TRUE(s_server_->stop());
     s_server_.reset();
   }
 
@@ -1846,7 +1904,7 @@ class MtlsServerTests : public GrpcIntegrationTestBase {
 
   static void TearDownTestSuite()
   {
-    if (s_server_) s_server_->stop();
+    if (s_server_) EXPECT_TRUE(s_server_->stop());
     s_server_.reset();
   }
 
@@ -1917,7 +1975,7 @@ class ChunkValidationTests : public GrpcIntegrationTestBase {
 
   static void TearDownTestSuite()
   {
-    if (s_server_) s_server_->stop();
+    if (s_server_) EXPECT_TRUE(s_server_->stop());
     s_server_.reset();
   }
 

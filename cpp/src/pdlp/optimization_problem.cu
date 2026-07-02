@@ -10,6 +10,8 @@
 #include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
 #include <cuopt/mathematical_optimization/solve_remote.hpp>
 
+#include <mps_parser_internal.hpp>
+
 #include <cuopt/error.hpp>
 #include <cuopt/mathematical_optimization/csr_matrix_utils.hpp>
 #include <cuopt/mathematical_optimization/io/writer.hpp>
@@ -242,6 +244,7 @@ void optimization_problem_t<i_t, f_t>::add_quadratic_constraint(char constraint_
   qc.vals.assign(coeff.begin(), coeff.end());
   qc.linear_values.assign(linear_values.begin(), linear_values.end());
   qc.linear_indices.assign(linear_indices.begin(), linear_indices.end());
+  io::canonicalize_coo_matrix(qc.rows, qc.cols, qc.vals);
   quadratic_constraints_.push_back(std::move(qc));
 }
 

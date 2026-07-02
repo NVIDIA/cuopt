@@ -10,8 +10,8 @@
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/solution.hpp>
-#include <dual_simplex/types.hpp>
 #include <dual_simplex/user_problem.hpp>
+#include <math_optimization/types.hpp>
 
 namespace cuopt::mathematical_optimization::simplex {
 

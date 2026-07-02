@@ -84,6 +84,7 @@ class optimization_problem_interface_t {
    * Quadratic matrix Q is COO (row_index, col_index, coeff spans). Linear term d uses parallel
    * linear_values and linear_indices (empty allowed). constraint_row_index is assigned
    * automatically as n_linear_constraints + n_existing_quadratic_constraints.
+   * Q is canonicalized on ingest (merge duplicates, collapse matching symmetric pairs).
    */
   virtual void add_quadratic_constraint(char constraint_row_type,
                                         f_t rhs_value,

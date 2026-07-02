@@ -24,6 +24,7 @@
 #define DETECT_SYMMETRY_AFTER_PRESOLVE
 
 #include <mip_heuristics/feasibility_jump/early_cpufj.cuh>
+#include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/cusparse_macros.hpp>
@@ -183,7 +184,7 @@ void extract_probing_implied_bounds(const problem_t<i_t, f_t>& op_problem,
     }
   }
 
-  CUOPT_LOG_INFO("Probing implied bounds: %d zero entries, %d one entries", zero_nnz, one_nnz);
+  CUOPT_LOG_INFO("\nProbing implied bounds: %d zero entries, %d one entries", zero_nnz, one_nnz);
 }
 
 template <typename i_t, typename f_t>
@@ -374,6 +375,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     branch_and_bound_settings.flow_cover_cuts    = context.settings.flow_cover_cuts;
     branch_and_bound_settings.implied_bound_cuts = context.settings.implied_bound_cuts;
     branch_and_bound_settings.clique_cuts        = context.settings.clique_cuts;
+    branch_and_bound_settings.zero_half_cuts     = context.settings.zero_half_cuts;
     branch_and_bound_settings.strong_chvatal_gomory_cuts =
       context.settings.strong_chvatal_gomory_cuts;
     branch_and_bound_settings.cut_change_threshold  = context.settings.cut_change_threshold;
@@ -504,6 +506,17 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     context.diversity_manager_ptr = &dm;
     sol                           = dm.run_solver();
   }  // implicit barrier for all tasks created in B&B and heuristics
+
+  if (!context.settings.heuristics_only && branch_and_bound->has_solver_space_incumbent()) {
+    solution_t<i_t, f_t> branch_and_bound_sol(*context.problem_ptr);
+    branch_and_bound_sol.copy_new_assignment(branch_and_bound_solution.x);
+    branch_and_bound_sol.compute_feasibility();
+
+    if (branch_and_bound_sol.get_feasible() &&
+        (!sol.get_feasible() || branch_and_bound_sol.get_objective() < sol.get_objective())) {
+      sol = std::move(branch_and_bound_sol);
+    }
+  }
 
   if (!context.settings.heuristics_only) {
     if (branch_and_bound_solution.lower_bound > -std::numeric_limits<f_t>::infinity()) {

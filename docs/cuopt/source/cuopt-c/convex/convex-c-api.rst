@@ -68,9 +68,8 @@ For problems with quadratic constraints, first create a problem, and then use
    supports three types of quadratic constraints:
    - **Convex quadratic constraints** of the form ``x^T Q x + d^T x <= alpha`` where ``H=(Q+Q^T)/2`` is a symmetric positive semidefinite matrix. `Q` need not be symmetric.
    - **Second-order cone constraints** of the form ``sum_{i=1}^n x_i^2 <= x_0``, ``x_0 >= 0``
-   - **Rotated second-order cone constraints** of the form ``sum_{i=2}^n x_i^2  - 0. 5 * x_0 * x_1 - 0. 5 * x_1 * x_0 <= 0``, ``x_0 >= 0``, ``x_1 >= 0``
+   - **Rotated second-order cone constraints** of the form ``sum_{i=2}^n x_i^2 - 2 * x_0 * x_1 <= 0``, ``x_0 >= 0``, ``x_1 >= 0`` (supply ``Q[x_0, x_1] = -2`` in COO, or ``-x_0*x_1`` for the ``<= x_0*x_1`` cone form; see :doc:`/convex-features`)
 
-   For the rotated second-order cone constraints, cuOpt expects the quadratic matrix to be symmetric.
    Only ``CUOPT_LESS_THAN`` and ``CUOPT_GREATER_THAN`` sense is supported; equality constraints are not supported.
 
 A optimization problem must be destroyed with the following function

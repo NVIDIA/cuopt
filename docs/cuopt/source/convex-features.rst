@@ -157,20 +157,23 @@ Second-order cone constraints must be specified as a quadratic constraint with a
 These constraints are of the form:
 
 
-   x_2^2 + x_2^2 + ... + x_n^2 <= x_0 * x_1,  x_0 >= 0,  x_1 >= 0.
+   x_2^2 + x_3^2 + ... + x_n^2 <= 2 * x_0 * x_1,  x_0 >= 0,  x_1 >= 0.
 
 Rotated second-order cone constraints must be specified as a quadratic constraint with a bounds on the x_0 and x_1 variables:
 
 .. code-block:: text
 
-   x_2^2 + x_2^2 + ... + x_n^2 - 0.5 * x_0 * x_1 - 0.5 * x_1 * x_0 <= 0,  x_0 >= 0,  x_1 >= 0.
+   x_2^2 + x_3^2 + ... + x_n^2 - 2 * x_0 * x_1 <= 0,  x_0 >= 0,  x_1 >= 0.
 
-Note that for rotated second-order cone constraints, cuOpt expects the quadratic matrix to be symmetric.
-For any cross term, provide both ``Q_i,j`` and ``Q_j,i``. cuOpt expects only symmetric ``Q``:
+In the Python and C APIs, supply one cross coefficient per variable pair (e.g. ``-2 * x_0 * x_1``
+in the quadratic expression). cuOpt canonicalizes input to one stored COO entry per pair.
 
 .. code-block:: text
 
-   Q[x_0, x_1] = Q[x_1, x_0] = -0.5.
+   Q[x_0, x_1] = -2 * d    (stored canonical coefficient for the cross term)
+
+For example, a single API term ``-2 * x_0 * x_1`` is stored as ``-2`` and defines the cone
+``||tail||^2 <= 2 * x_0 * x_1``.
 
 When any quadratic constraint is present, cuOpt automatically selects the barrier method and disables presolve optimizations that apply only to linear problems.
 
@@ -188,7 +191,7 @@ When any quadratic constraint is present, cuOpt automatically selects the barrie
 
     problem.addConstraint(x1*x1 + x2*x2 - x0*x0 <= 0, name="soc")
 
-**Python example — rotated cone** ``x_2^2 + x_3^2 <= x_0 * x_1``:
+**Python example — rotated cone** ``x_2^2 + x_3^2 <= 2 * x_0 * x_1``:
 
 .. code-block:: python
 
@@ -199,16 +202,10 @@ When any quadratic constraint is present, cuOpt automatically selects the barrie
     x3 = problem.addVariable(name="x2")
 
     problem.addConstraint(x1 + x2 >= 2)
-    # x2^2 + x3^2 <= x0 * x1. cuOpt expects a symmetric Q, so the cross term is
-    # supplied as the two equal halves -0.5*x0*x1 and -0.5*x1*x0
-    # (i.e. Q[x0,x1] = Q[x1,x0] = -0.5).
+    # x2^2 + x3^2 <= 2*x0*x1
     problem.addConstraint(
-        x2*x2 + x3*x3 - 0.5*x0*x1 - 0.5*x1*x0 <= 0, name="rotated_soc"
+        x2*x2 + x3*x3 - 2*x0*x1 <= 0, name="rotated_soc"
     )
-
-.. note::
-   cuOpt expects the quadratic matrix ``Q`` to be symmetric. Supply each cross
-   term as two equal halves, as in ``-0.5*x0*x1 - 0.5*x1*x0`` above.
 
 **C API:** Use :c:func:`cuOptAddQuadraticConstraint` to add convex quadratic constraints or second-order and rotated second-order cone constraints expressed as quadratic inequalities.
 

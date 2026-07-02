@@ -26,8 +26,8 @@
 #include <dual_simplex/phase2.hpp>
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/random.hpp>
-#include <dual_simplex/tic_toc.hpp>
 #include <dual_simplex/user_problem.hpp>
+#include <math_optimization/tic_toc.hpp>
 
 #include <raft/core/nvtx.hpp>
 #include <utilities/circular_deque.hpp>
@@ -52,26 +52,20 @@ using simplex::compute_objective;
 using simplex::compute_user_objective;
 using simplex::crossover_status_t;
 using simplex::crush_primal_solution;
-using simplex::csr_matrix_t;
 using simplex::decompress_vstatus;
 using simplex::dual_phase2_with_advanced_basis;
 using simplex::dual_status_t;
-using simplex::inf;
 using simplex::logger_t;
 using simplex::lp_problem_t;
 using simplex::lp_solution_t;
 using simplex::lp_status_t;
-using simplex::matrix_vector_multiply;
 using simplex::mip_solution_t;
 using simplex::simplex_solver_settings_t;
 using simplex::solve_linear_program_with_advanced_basis;
-using simplex::tic;
-using simplex::toc;
 using simplex::uncrush_primal_solution;
 using simplex::user_problem_t;
 using simplex::variable_status_t;
 using simplex::variable_type_t;
-using simplex::vector_norm_inf;
 
 namespace {
 
@@ -213,34 +207,22 @@ f_t compute_user_abs_gap(const lp_problem_t<i_t, f_t>& lp, f_t obj_value, f_t lo
   return gap;
 }
 
-template <typename i_t, typename f_t>
-f_t user_relative_gap(const lp_problem_t<i_t, f_t>& lp, f_t obj_value, f_t lower_bound)
+template <typename f_t>
+f_t user_relative_gap(f_t user_obj, f_t user_lower_bound)
 {
-  f_t user_obj         = compute_user_objective(lp, obj_value);
-  f_t user_lower_bound = compute_user_objective(lp, lower_bound);
-  f_t user_mip_gap     = user_obj == 0.0
-                           ? (user_lower_bound == 0.0 ? 0.0 : std::numeric_limits<f_t>::infinity())
-                           : compute_user_abs_gap(lp, obj_value, lower_bound) / std::abs(user_obj);
+  f_t user_mip_gap = user_obj == 0.0
+                       ? (user_lower_bound == 0.0 ? 0.0 : std::numeric_limits<f_t>::infinity())
+                       : std::abs(user_obj - user_lower_bound) / std::abs(user_obj);
   if (std::isnan(user_mip_gap)) { return std::numeric_limits<f_t>::infinity(); }
   return user_mip_gap;
 }
 
-template <typename i_t, typename f_t>
-std::string user_mip_gap(const lp_problem_t<i_t, f_t>& lp, f_t obj_value, f_t lower_bound)
+template <typename f_t>
+std::string to_percentage(f_t value)
 {
-  const f_t user_mip_gap = user_relative_gap(lp, obj_value, lower_bound);
-  if (user_mip_gap == std::numeric_limits<f_t>::infinity()) {
-    return "   -  ";
-  } else {
-    constexpr int BUFFER_LEN = 32;
-    char buffer[BUFFER_LEN];
-    if (user_mip_gap > 1e-3) {
-      snprintf(buffer, BUFFER_LEN - 1, "%5.1f%%", user_mip_gap * 100);
-    } else {
-      snprintf(buffer, BUFFER_LEN - 1, "%5.2f%%", user_mip_gap * 100);
-    }
-    return std::string(buffer);
-  }
+  if (value == std::numeric_limits<f_t>::infinity()) return "-";
+  if (value > 1e-3) { return std::format("{:5.1f}%", value * 100); }
+  return std::format("{:5.2f}%", value * 100);
 }
 
 }  // namespace
@@ -332,28 +314,57 @@ void branch_and_bound_t<i_t, f_t>::set_initial_upper_bound(f_t bound)
 }
 
 template <typename i_t, typename f_t>
+void branch_and_bound_t<i_t, f_t>::print_table_header()
+{
+  std::string header = std::format("{:^1}|{:^12}|{:^12}|{:^19}|{:^15}|{:^8}|{:^7}|{:^11}|{:^11}|",
+                                   "",
+                                   "Explored",
+                                   "Unexplored",
+                                   "Objective",
+                                   "Bound",
+                                   "IntInf",
+                                   "Depth",
+                                   "Iter/Node",
+                                   "Gap");
+  if (settings_.deterministic) { header += std::format("{:^8}|", "Work"); }
+  header += std::format("{:^8}|", "Time");
+  settings_.log.printf("%s\n", header.c_str());
+}
+
+template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::report_heuristic(f_t obj)
 {
   if (is_running_) {
-    f_t user_obj         = compute_user_objective(original_lp_, obj);
-    f_t user_lower       = compute_user_objective(original_lp_, get_lower_bound());
-    std::string user_gap = user_mip_gap<i_t, f_t>(original_lp_, obj, get_lower_bound());
+    f_t lower_bound           = get_lower_bound();
+    f_t user_obj              = compute_user_objective(original_lp_, obj);
+    f_t user_lower            = compute_user_objective(original_lp_, lower_bound);
+    f_t user_gap              = user_relative_gap(user_obj, user_lower);
+    std::string user_gap_text = to_percentage(user_gap);
 
-    settings_.log.printf(
-      "H                            %+13.6e    %+10.6e                               %s %9.2f\n",
-      user_obj,
-      user_lower,
-      user_gap.c_str(),
-      toc(exploration_stats_.start_time));
+    std::string log_line =
+      std::format("H {:>12} {:>12} {:^+19.6e} {:^+15.6e} {:>8} {:>7} {:^11} {:^11}",
+                  "",  // nodes explored
+                  "",  // nodes unexplored
+                  user_obj,
+                  user_lower,
+                  "",  // integer infeasible
+                  "",  // depth
+                  "",  // iter/node
+                  user_gap_text);
+
+    if (settings_.deterministic) { log_line += std::format("{:^8}", ""); }
+    log_line += std::format(" {:>8.2f}", toc(exploration_stats_.start_time));
+    settings_.log.printf("%s\n", log_line.c_str());
   } else {
     if (solving_root_relaxation_.load()) {
-      f_t user_obj = compute_user_objective(original_lp_, obj);
-      std::string user_gap =
-        user_mip_gap<i_t, f_t>(original_lp_, obj, root_lp_current_lower_bound_.load());
-      settings_.log.printf(
-        "New solution from primal heuristics. Objective %+.6e. Gap %s. Time %.2f\n",
+      f_t user_obj   = compute_user_objective(original_lp_, obj);
+      f_t user_lower = compute_user_objective(original_lp_, root_lp_current_lower_bound_.load());
+      f_t user_gap   = user_relative_gap(user_obj, user_lower);
+      std::string user_gap_text = to_percentage(user_gap);
+      settings_.log.print_format(
+        "New solution from primal heuristics. Objective {:+.6e}. Gap {}. Time {:.2f}\n",
         user_obj,
-        user_gap.c_str(),
+        user_gap_text,
         toc(exploration_stats_.start_time));
     } else {
       settings_.log.printf("New solution from primal heuristics. Objective %+.6e. Time %.2f\n",
@@ -374,34 +385,23 @@ void branch_and_bound_t<i_t, f_t>::report(
   const f_t user_lower       = compute_user_objective(original_lp_, lower_bound);
   const f_t iters            = static_cast<f_t>(exploration_stats_.total_lp_iters);
   const f_t iter_node        = nodes_explored > 0 ? iters / nodes_explored : iters;
-  const std::string user_gap = user_mip_gap<i_t, f_t>(original_lp_, obj, lower_bound);
-  if (work_time >= 0) {
-    settings_.log.printf(
-      "%c %10d   %10lu    %+13.6e    %+10.6e   %6d %6d   %7.1e     %s %9.2f %9.2f\n",
-      symbol,
-      nodes_explored,
-      nodes_unexplored,
-      user_obj,
-      user_lower,
-      node_int_infeas,
-      node_depth,
-      iter_node,
-      user_gap.c_str(),
-      work_time,
-      toc(exploration_stats_.start_time));
-  } else {
-    settings_.log.printf("%c %10d   %10lu    %+13.6e    %+10.6e   %6d %6d   %7.1e     %s %9.2f\n",
-                         symbol,
-                         nodes_explored,
-                         nodes_unexplored,
-                         user_obj,
-                         user_lower,
-                         node_int_infeas,
-                         node_depth,
-                         iter_node,
-                         user_gap.c_str(),
-                         toc(exploration_stats_.start_time));
-  }
+  f_t user_gap               = user_relative_gap(user_obj, user_lower);
+  std::string user_gap_text  = to_percentage(user_gap);
+
+  std::string log_line =
+    std::format("{:^1} {:>12} {:>12} {:^+19.6e} {:^+15.6e} {:>8} {:>7} {:^11.1e} {:^11}",
+                symbol,
+                nodes_explored,
+                nodes_unexplored,
+                user_obj,
+                user_lower,
+                node_int_infeas,
+                node_depth,
+                iter_node,
+                user_gap_text);
+  if (work_time >= 0) { log_line += std::format(" {:>8.2f}", work_time); }
+  log_line += std::format(" {:>8.2f}", toc(exploration_stats_.start_time));
+  settings_.log.printf("%s\n", log_line.c_str());
 }
 
 template <typename i_t, typename f_t>
@@ -736,36 +736,33 @@ void branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t, f_t>& 
     settings_.heuristic_preemption_callback();
   }
 
-  f_t obj              = compute_user_objective(original_lp_, upper_bound_.load());
+  f_t user_obj         = compute_user_objective(original_lp_, upper_bound_.load());
   f_t user_bound       = compute_user_objective(original_lp_, lower_bound);
-  f_t gap              = std::abs(obj - user_bound);
-  f_t gap_rel          = user_relative_gap(original_lp_, upper_bound_.load(), lower_bound);
+  f_t gap              = std::abs(user_obj - user_bound);
+  f_t gap_rel          = user_relative_gap(user_obj, user_bound);
   bool is_maximization = original_lp_.obj_scale < 0.0;
 
-  settings_.log.printf("Explored %d nodes in %.2fs.\n",
-                       exploration_stats_.nodes_explored,
-                       toc(exploration_stats_.start_time));
+  settings_.log.print_format("Explored {} nodes ({} simplex iterations) in {:.2f}s.",
+                             exploration_stats_.nodes_explored.load(),
+                             exploration_stats_.total_lp_iters.load(),
+                             toc(exploration_stats_.start_time));
+
   if (exploration_stats_.orbital_fixing_nodes.load() > 0 ||
       exploration_stats_.orbital_conflict_nodes.load() > 0) {
-    settings_.log.printf(
-      "Orbital fixing applied at %lld nodes, %lld total variable fixings, "
-      "%lld nodes with conflicting orbits\n",
-      (long long)exploration_stats_.orbital_fixing_nodes.load(),
-      (long long)exploration_stats_.orbital_fixings_applied.load(),
-      (long long)exploration_stats_.orbital_conflict_nodes.load());
+    settings_.log.print_format(
+      "Orbital fixing applied at {} nodes, {} total variable fixings, "
+      "{} nodes with conflicting orbits\n",
+      exploration_stats_.orbital_fixing_nodes.load(),
+      exploration_stats_.orbital_fixings_applied.load(),
+      exploration_stats_.orbital_conflict_nodes.load());
   }
   if (exploration_stats_.lexical_reduction_nodes.load() > 0) {
-    settings_.log.printf(
-      "Lexical reduction applied at %lld nodes, %lld total variable fixings, %lld nodes pruned\n",
-      (long long)exploration_stats_.lexical_reduction_nodes.load(),
-      (long long)exploration_stats_.lexical_reduction_fixings_applied.load(),
-      (long long)exploration_stats_.lexical_reduction_pruned_nodes.load());
+    settings_.log.print_format(
+      "Lexical reduction applied at {} nodes, {} total variable fixings, {} nodes pruned\n",
+      exploration_stats_.lexical_reduction_nodes.load(),
+      exploration_stats_.lexical_reduction_fixings_applied.load(),
+      exploration_stats_.lexical_reduction_pruned_nodes.load());
   }
-  settings_.log.printf("Absolute Gap %e Objective %.16e %s Bound %.16e\n",
-                       gap,
-                       obj,
-                       is_maximization ? "Upper" : "Lower",
-                       user_bound);
 
   if (gap <= settings_.absolute_mip_gap_tol || gap_rel <= settings_.relative_mip_gap_tol) {
     solver_status_ = mip_status_t::OPTIMAL;
@@ -791,7 +788,6 @@ void branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t, f_t>& 
   if (solver_status_ == mip_status_t::UNSET) {
     if (exploration_stats_.nodes_explored > 0 && exploration_stats_.nodes_unexplored == 0 &&
         upper_bound_ == inf) {
-      settings_.log.printf("Integer infeasible.\n");
       solver_status_ = mip_status_t::INFEASIBLE;
       if (settings_.heuristic_preemption_callback != nullptr) {
         settings_.heuristic_preemption_callback();
@@ -1532,7 +1528,7 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
                                                   worker->leaf_edge_norms);
 
       if (lp_status == dual_status_t::NUMERICAL) {
-        log.debug("Numerical issue node %d. Resolving from scratch.\n", node_ptr->node_id);
+        log.debug_format("Numerical issue node {}. Resolving from scratch.\n", node_ptr->node_id);
         lp_status_t second_status =
           solve_linear_program_with_advanced_basis(worker->leaf_problem,
                                                    lp_start_time,
@@ -1577,7 +1573,9 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
 
   f_t lower_bound = get_lower_bound();
   f_t upper_bound = upper_bound_;
-  f_t rel_gap     = user_relative_gap(original_lp_, upper_bound, lower_bound);
+  f_t user_obj    = compute_user_objective(original_lp_, upper_bound);
+  f_t user_lower  = compute_user_objective(original_lp_, lower_bound);
+  f_t rel_gap     = user_relative_gap(user_obj, user_lower);
   f_t abs_gap     = compute_user_abs_gap(original_lp_, upper_bound, lower_bound);
 
   while (stack.size() > 0 && (solver_status_ == mip_status_t::UNSET && is_running_) &&
@@ -1709,7 +1707,9 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
 
     lower_bound = get_lower_bound();
     upper_bound = upper_bound_;
-    rel_gap     = user_relative_gap(original_lp_, upper_bound, lower_bound);
+    user_obj    = compute_user_objective(original_lp_, upper_bound);
+    user_lower  = compute_user_objective(original_lp_, lower_bound);
+    rel_gap     = user_relative_gap(user_obj, user_lower);
     abs_gap     = compute_user_abs_gap(original_lp_, upper_bound, lower_bound);
   }
 
@@ -1778,8 +1778,10 @@ template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>* worker)
 {
   f_t lower_bound = get_lower_bound();
+  f_t user_obj    = compute_user_objective(original_lp_, upper_bound_.load());
+  f_t user_lower  = compute_user_objective(original_lp_, lower_bound);
   f_t abs_gap     = compute_user_abs_gap(original_lp_, upper_bound_.load(), lower_bound);
-  f_t rel_gap     = user_relative_gap(original_lp_, upper_bound_.load(), lower_bound);
+  f_t rel_gap     = user_relative_gap(user_obj, user_lower);
   f_t steal_chance =
     settings_.bnb_steal_chance >= 0 ? settings_.bnb_steal_chance : MIP_DEFAULT_STEAL_CHANCE;
   node_queue_t<i_t, f_t>& node_queue = worker->node_queue;
@@ -1840,8 +1842,10 @@ void branch_and_bound_t<i_t, f_t>::best_first_search_with(bfs_worker_t<i_t, f_t>
     plunge_with(worker, start_node);
 
     lower_bound = get_lower_bound();
+    user_obj    = compute_user_objective(original_lp_, upper_bound_.load());
+    user_lower  = compute_user_objective(original_lp_, lower_bound);
     abs_gap     = compute_user_abs_gap(original_lp_, upper_bound_.load(), lower_bound);
-    rel_gap     = user_relative_gap(original_lp_, upper_bound_.load(), lower_bound);
+    rel_gap     = user_relative_gap(user_obj, user_lower);
 
     if (abs_gap <= settings_.absolute_mip_gap_tol || rel_gap <= settings_.relative_mip_gap_tol) {
       node_concurrent_halt_ = 1;
@@ -1894,7 +1898,9 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker)
 
   f_t lower_bound = get_lower_bound();
   f_t upper_bound = upper_bound_;
-  f_t rel_gap     = user_relative_gap(original_lp_, upper_bound, lower_bound);
+  f_t user_obj    = compute_user_objective(original_lp_, upper_bound);
+  f_t user_lower  = compute_user_objective(original_lp_, lower_bound);
+  f_t rel_gap     = user_relative_gap(user_obj, user_lower);
   f_t abs_gap     = compute_user_abs_gap(original_lp_, upper_bound, lower_bound);
 
   while (stack.size() > 0 && (solver_status_ == mip_status_t::UNSET && is_running_) &&
@@ -1950,7 +1956,9 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker)
 
     lower_bound = get_lower_bound();
     upper_bound = upper_bound_;
-    rel_gap     = user_relative_gap(original_lp_, upper_bound, lower_bound);
+    user_obj    = compute_user_objective(original_lp_, upper_bound);
+    user_lower  = compute_user_objective(original_lp_, lower_bound);
+    rel_gap     = user_relative_gap(user_obj, user_lower);
     abs_gap     = compute_user_abs_gap(original_lp_, upper_bound, lower_bound);
   }
 
@@ -2029,11 +2037,6 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
   std::vector<i_t>& nonbasic_list,
   std::vector<f_t>& edge_norms)
 {
-  f_t start_time          = tic();
-  f_t user_objective      = 0;
-  i_t iter                = 0;
-  std::string solver_name = "";
-
   lp_status_t root_status;
 
 // Launch a task for solving the root LP relaxation via dual simplex.
@@ -2140,40 +2143,18 @@ lp_status_t branch_and_bound_t<i_t, f_t>::solve_root_relaxation(
       // Set the edge norms to a default value
       edge_norms.resize(original_lp_.num_cols, -1.0);
       set_uninitialized_steepest_edge_norms<i_t, f_t>(original_lp_, basic_list, edge_norms);
-      user_objective = root_crossover_soln_.user_objective;
-      iter           = root_crossover_soln_.iterations;
-      solver_name    = method_to_string(root_relax_solved_by);
 
     } else {
 // Wait for the dual simplex to finish (after telling PDLP/Barrier to stop)
 #pragma omp taskwait depend(in : root_status)
-      user_objective       = root_relax_soln_.user_objective;
-      iter                 = root_relax_soln_.iterations;
       root_relax_solved_by = DualSimplex;
-      solver_name          = "Dual Simplex";
     }
   } else {
     // Wait for the dual simplex to finish (crossover do not produced a solution)
 #pragma omp taskwait depend(in : root_status)
-    user_objective       = root_relax_soln_.user_objective;
-    iter                 = root_relax_soln_.iterations;
     root_relax_solved_by = DualSimplex;
-    solver_name          = "Dual Simplex";
   }
 
-  settings_.log.printf("\n");
-  if (root_status == lp_status_t::OPTIMAL) {
-    settings_.log.printf("Root relaxation solution found in %d iterations and %.2fs by %s\n",
-                         iter,
-                         toc(start_time),
-                         solver_name.c_str());
-    settings_.log.printf("Root relaxation objective %+.8e\n", user_objective);
-  } else {
-    settings_.log.printf("Root relaxation returned: %s\n",
-                         simplex::lp_status_to_string(root_status).c_str());
-  }
-
-  settings_.log.printf("\n");
   is_root_solution_set = true;
 
   return root_status;
@@ -2438,8 +2419,10 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   f_t obj = upper_bound_.load();
   report(' ', obj, root_objective_, 0, num_fractional);
 
-  f_t rel_gap = user_relative_gap(original_lp_, upper_bound_.load(), root_objective_);
-  f_t abs_gap = compute_user_abs_gap(original_lp_, upper_bound_.load(), root_objective_);
+  f_t user_obj   = compute_user_objective(original_lp_, upper_bound_.load());
+  f_t user_lower = compute_user_objective(original_lp_, root_objective_);
+  f_t rel_gap    = user_relative_gap(user_obj, user_lower);
+  f_t abs_gap    = compute_user_abs_gap(original_lp_, upper_bound_.load(), root_objective_);
   if (rel_gap < settings_.relative_mip_gap_tol || abs_gap < settings_.absolute_mip_gap_tol) {
     if (num_fractional == 0) { set_solution_at_root(solution, cut_info); }
     set_final_solution(solution, root_objective_);
@@ -2476,8 +2459,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   exploration_stats_.nodes_explored   = 0;
   original_lp_.A.to_compressed_row(Arow_);
 
-  settings_.log.printf("Reduced cost strengthening enabled: %d\n",
-                       settings_.reduced_cost_strengthening);
+  settings_.log.debug("Reduced cost strengthening enabled: %d\n",
+                      settings_.reduced_cost_strengthening);
 
   variable_bounds_t<i_t, f_t> variable_bounds(
     original_lp_, settings_, var_types_, Arow_, new_slacks_);
@@ -2504,7 +2487,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   omp_atomic_t<bool>* clique_signal = &signal_extend_cliques_;
 
-  if (settings_.clique_cuts != 0 && clique_table_ == nullptr &&
+  if ((settings_.clique_cuts != 0 || settings_.zero_half_cuts != 0) && clique_table_ == nullptr &&
       omp_get_num_threads() >= CUOPT_MIP_CLIQUE_CUTS_REQUIRED_THREAD_COUNT) {
     signal_extend_cliques_.store(false, std::memory_order_release);
     typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances_for_clique{};
@@ -2521,7 +2504,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       user_problem_t<i_t, f_t> problem_copy = original_problem_;
       timer_t timer(std::numeric_limits<double>::infinity());
       mip::find_initial_cliques(
-        problem_copy, tolerances_for_clique, &clique_table_, timer, clique_signal);
+        problem_copy, tolerances_for_clique, clique_table_, timer, clique_signal);
     }
   }
 
@@ -2539,6 +2522,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   lp_status_t root_status;
   solving_root_relaxation_ = true;
 
+  f_t root_relax_start_time = tic();
   if (!enable_concurrent_lp_root_solve()) {
     // RINS/SUBMIP path
     settings_.log.printf("\nSolving LP root relaxation with dual simplex\n");
@@ -2551,6 +2535,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                                                            nonbasic_list,
                                                            root_vstatus_,
                                                            edge_norms_);
+
   } else {
     settings_.log.printf("\nSolving LP root relaxation in concurrent mode\n");
     root_status = solve_root_relaxation(lp_settings,
@@ -2563,16 +2548,20 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   }
   solving_root_relaxation_               = false;
   exploration_stats_.total_lp_iters      = root_relax_soln_.iterations;
-  exploration_stats_.total_lp_solve_time = toc(exploration_stats_.start_time);
+  f_t root_relax_elapsed_time            = toc(root_relax_start_time);
+  exploration_stats_.total_lp_solve_time = root_relax_elapsed_time;
 
   if (root_status == lp_status_t::INFEASIBLE) {
-    settings_.log.printf("MIP Infeasible\n");
+    settings_.log.printf("\nThe root LP relaxation is infeasible\n",
+                         lp_status_to_string(root_status).c_str());
     signal_extend_cliques_.store(true, std::memory_order_release);
 #pragma omp taskwait depend(in : *clique_signal)
     return mip_status_t::INFEASIBLE;
   }
+
   if (root_status == lp_status_t::UNBOUNDED) {
-    settings_.log.printf("MIP Unbounded\n");
+    settings_.log.printf("\nThe root relaxation is unbounded\n",
+                         lp_status_to_string(root_status).c_str());
     if (settings_.heuristic_preemption_callback != nullptr) {
       settings_.heuristic_preemption_callback();
     }
@@ -2580,7 +2569,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 #pragma omp taskwait depend(in : *clique_signal)
     return mip_status_t::UNBOUNDED;
   }
+
   if (root_status == lp_status_t::TIME_LIMIT) {
+    settings_.log.printf("\n");
     solver_status_ = mip_status_t::TIME_LIMIT;
     set_final_solution(solution, -inf);
     signal_extend_cliques_.store(true, std::memory_order_release);
@@ -2589,6 +2580,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   }
 
   if (root_status == lp_status_t::WORK_LIMIT) {
+    settings_.log.printf("\n");
     solver_status_ = mip_status_t::WORK_LIMIT;
     set_final_solution(solution, -inf);
     signal_extend_cliques_.store(true, std::memory_order_release);
@@ -2597,12 +2589,21 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   }
 
   if (root_status == lp_status_t::NUMERICAL_ISSUES) {
+    settings_.log.printf("\n");
     solver_status_ = mip_status_t::NUMERICAL;
     set_final_solution(solution, -inf);
     signal_extend_cliques_.store(true, std::memory_order_release);
 #pragma omp taskwait depend(in : *clique_signal)
     return solver_status_;
   }
+
+  assert(root_status == lp_status_t::OPTIMAL);
+  settings_.log.print_format(
+    "\nRoot relaxation solution found in {} iterations and {:.2f}s by {}\n",
+    root_relax_soln_.iterations,
+    root_relax_elapsed_time,
+    method_to_string(root_relax_solved_by));
+  settings_.log.printf("Root relaxation objective %+.8e\n\n", root_relax_soln_.user_objective);
 
   assert(root_vstatus_.size() == original_lp_.num_cols);
   set_uninitialized_steepest_edge_norms<i_t, f_t>(original_lp_, basic_list, edge_norms_);
@@ -2644,11 +2645,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   is_running_            = true;
   lower_bound_numerical_ = inf;
 
-  if (num_fractional != 0 && settings_.max_cut_passes > 0) {
-    settings_.log.printf(
-      " | Explored | Unexplored |    Objective    |     Bound     | IntInf | Depth | Iter/Node | "
-      "Gap    |  Time  |\n");
-  }
+  if (num_fractional != 0 && settings_.max_cut_passes > 0) { print_table_header(); }
 
   cut_pool_t<i_t, f_t> cut_pool(original_lp_.num_cols, settings_);
   cut_generation_t<i_t, f_t> cut_generation(cut_pool,
@@ -2694,6 +2691,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       if (settings_.deterministic) {
         queue_external_solution_deterministic(user_assignment, work_units);
       } else {
+        if (settings_.solution_callback != nullptr) {
+          settings_.solution_callback(user_assignment, obj);
+        }
         set_solution_from_heuristics(user_assignment);
       }
     };
@@ -2802,6 +2802,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
                          original_lp_.num_rows,
                          original_lp_.num_cols,
                          original_lp_.A.col_start[original_lp_.A.n]);
+  } else {
+    settings_.log.printf("\n");
   }
 
   if (enable_root_cut_cpufj && cut_info.has_cuts()) {
@@ -2943,16 +2945,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   if (settings_.diving_settings.coefficient_diving != 0) {
     calculate_variable_locks(original_lp_, var_up_locks_, var_down_locks_);
   }
-
-  if (settings_.deterministic) {
-    settings_.log.printf(
-      " | Explored | Unexplored |    Objective    |     Bound     | IntInf | Depth | Iter/Node "
-      "|   Gap    |  Work |  Time  |\n");
-  } else {
-    settings_.log.printf(
-      " | Explored | Unexplored |    Objective    |     Bound     | IntInf | Depth | Iter/Node "
-      "|   Gap    |  Time  |\n");
-  }
+  print_table_header();
 
 #pragma omp taskgroup
   {
@@ -2985,6 +2978,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   }  // Implicit barrier for all tasks created within the group (RINS, B&B workers)
 
   is_running_ = false;
+  settings_.log.printf("\n");
 
   // Compute final lower bound
   f_t lower_bound;
@@ -3423,8 +3417,10 @@ void branch_and_bound_t<i_t, f_t>::deterministic_sync_callback()
 
   f_t lower_bound = deterministic_compute_lower_bound();
   f_t upper_bound = upper_bound_.load();
+  f_t user_obj    = compute_user_objective(original_lp_, upper_bound);
+  f_t user_lower  = compute_user_objective(original_lp_, lower_bound);
   f_t abs_gap     = compute_user_abs_gap(original_lp_, upper_bound, lower_bound);
-  f_t rel_gap     = user_relative_gap(original_lp_, upper_bound, lower_bound);
+  f_t rel_gap     = user_relative_gap(user_obj, user_lower);
 
   // Apply limit-based statuses first so a definitive answer (gap closure or tree exhaustion)
   // detected in the same callback can override them. Otherwise a long producer wait that
@@ -3464,9 +3460,8 @@ void branch_and_bound_t<i_t, f_t>::deterministic_sync_callback()
     exploration_stats_.last_log = tic();
   }
 
-  f_t obj              = compute_user_objective(original_lp_, upper_bound);
-  f_t user_lower       = compute_user_objective(original_lp_, lower_bound);
-  std::string gap_user = user_mip_gap<i_t, f_t>(original_lp_, upper_bound, lower_bound);
+  f_t user_gap              = user_relative_gap(user_obj, user_lower);
+  std::string user_gap_text = to_percentage(user_gap);
 
   std::string idle_workers;
   i_t idle_count = 0;
@@ -3480,9 +3475,9 @@ void branch_and_bound_t<i_t, f_t>::deterministic_sync_callback()
                        deterministic_current_horizon_,
                        exploration_stats_.nodes_explored,
                        exploration_stats_.nodes_unexplored,
-                       obj,
+                       user_obj,
                        user_lower,
-                       gap_user.c_str(),
+                       user_gap_text.c_str(),
                        toc(exploration_stats_.start_time),
                        state_hash,
                        idle_workers.empty() ? "" : " ",
@@ -3568,7 +3563,8 @@ node_status_t branch_and_bound_t<i_t, f_t>::solve_node_deterministic(
                                                             &worker.work_context);
 
   if (lp_status == dual_status_t::NUMERICAL) {
-    settings_.log.printf("Numerical issue node %d. Resolving from scratch.\n", node_ptr->node_id);
+    settings_.log.print_format("Numerical issue node {}. Resolving from scratch.\n",
+                               node_ptr->node_id);
     lp_status_t second_status = solve_linear_program_with_advanced_basis(worker.leaf_problem,
                                                                          lp_start_time,
                                                                          lp_settings,
