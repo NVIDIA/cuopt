@@ -16,6 +16,8 @@
 #include <cuopt/mathematical_optimization/cuopt_c.h>
 #include <pdlp/cuopt_c_internal.hpp>
 
+#include <cuda_runtime.h>
+
 #include <utilities/common_utils.hpp>
 #include <utilities/error.hpp>
 
@@ -666,6 +668,18 @@ TEST_F(CpuOnlyWithServerTest, mip_solve)
   const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
   std::string mip_file                    = rapidsDatasetRootDir + "/mip/bb_optimality.mps";
   EXPECT_EQ(test_cpu_only_mip_execution(mip_file.c_str()), CUOPT_SUCCESS);
+}
+
+TEST(c_api, gpu_problem_rejects_remote_after_create)
+{
+  int device_count = 0;
+  if (cudaGetDeviceCount(&device_count) != cudaSuccess || device_count <= 0) {
+    GTEST_SKIP() << "Requires a visible CUDA device to create a GPU-backed problem";
+  }
+
+  const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
+  std::string lp_file = rapidsDatasetRootDir + "/linear_programming/afiro_original.mps";
+  EXPECT_EQ(test_gpu_problem_remote_after_create(lp_file.c_str()), CUOPT_SUCCESS);
 }
 
 // Note: cuopt_cli subprocess tests are in Python (test_cpu_only_execution.py)

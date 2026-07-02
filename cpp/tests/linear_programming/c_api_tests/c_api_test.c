@@ -2617,3 +2617,105 @@ DONE:
   cuOptDestroySolution(&solution);
   return status;
 }
+
+/**
+ * Read a problem as a GPU-backed handle (remote env and CUOPT_USE_CPU_MEM_FOR_LOCAL
+ * must be unset), then enable remote execution and verify cuOptSolve rejects the GPU problem.
+ */
+cuopt_int_t test_gpu_problem_remote_after_create(const char* filename)
+{
+  cuOptOptimizationProblem problem = NULL;
+  cuOptSolverSettings settings     = NULL;
+  cuOptSolution solution           = NULL;
+  cuopt_int_t status;
+
+  const char* orig_remote_host = getenv("CUOPT_REMOTE_HOST");
+  const char* orig_remote_port = getenv("CUOPT_REMOTE_PORT");
+  const char* orig_use_cpu_mem   = getenv("CUOPT_USE_CPU_MEM_FOR_LOCAL");
+  const int host_was_set         = (orig_remote_host != NULL);
+  const int port_was_set         = (orig_remote_port != NULL);
+  const int use_cpu_mem_was_set  = (orig_use_cpu_mem != NULL);
+  char saved_remote_host[256]      = "";
+  char saved_remote_port[64]     = "";
+  char saved_use_cpu_mem[64]       = "";
+
+  if (host_was_set) {
+    strncpy(saved_remote_host, orig_remote_host, sizeof(saved_remote_host) - 1);
+    saved_remote_host[sizeof(saved_remote_host) - 1] = '\0';
+  }
+  if (port_was_set) {
+    strncpy(saved_remote_port, orig_remote_port, sizeof(saved_remote_port) - 1);
+    saved_remote_port[sizeof(saved_remote_port) - 1] = '\0';
+  }
+  if (use_cpu_mem_was_set) {
+    strncpy(saved_use_cpu_mem, orig_use_cpu_mem, sizeof(saved_use_cpu_mem) - 1);
+    saved_use_cpu_mem[sizeof(saved_use_cpu_mem) - 1] = '\0';
+  }
+
+  unsetenv("CUOPT_REMOTE_HOST");
+  unsetenv("CUOPT_REMOTE_PORT");
+  unsetenv("CUOPT_USE_CPU_MEM_FOR_LOCAL");
+
+  printf("Testing GPU problem rejects remote solve after create...\n");
+  printf("  (read with remote unset, then set CUOPT_REMOTE_* before solve)\n");
+
+  status = cuOptReadProblem(filename, &problem);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error reading problem: %d\n", status);
+    goto DONE;
+  }
+
+  setenv("CUOPT_REMOTE_HOST", "localhost", 1);
+  setenv("CUOPT_REMOTE_PORT", "18500", 1);
+
+  status = cuOptCreateSolverSettings(&settings);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating solver settings: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptSetParameter(settings, "log_to_console", "true");
+  if (status != CUOPT_SUCCESS) {
+    printf("Error setting log_to_console: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptSetIntegerParameter(settings, CUOPT_METHOD, CUOPT_METHOD_PDLP);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error setting method: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptSolve(problem, settings, &solution);
+  if (status != CUOPT_VALIDATION_ERROR) {
+    printf("Expected CUOPT_VALIDATION_ERROR (%d), got %d\n", CUOPT_VALIDATION_ERROR, status);
+    status = -1;
+    goto DONE;
+  }
+
+  printf("GPU problem correctly rejected remote solve with CUOPT_VALIDATION_ERROR\n");
+  status = CUOPT_SUCCESS;
+
+DONE:
+  cuOptDestroyProblem(&problem);
+  cuOptDestroySolverSettings(&settings);
+  cuOptDestroySolution(&solution);
+
+  if (host_was_set) {
+    setenv("CUOPT_REMOTE_HOST", saved_remote_host, 1);
+  } else {
+    unsetenv("CUOPT_REMOTE_HOST");
+  }
+  if (port_was_set) {
+    setenv("CUOPT_REMOTE_PORT", saved_remote_port, 1);
+  } else {
+    unsetenv("CUOPT_REMOTE_PORT");
+  }
+  if (use_cpu_mem_was_set) {
+    setenv("CUOPT_USE_CPU_MEM_FOR_LOCAL", saved_use_cpu_mem, 1);
+  } else {
+    unsetenv("CUOPT_USE_CPU_MEM_FOR_LOCAL");
+  }
+
+  return status;
+}

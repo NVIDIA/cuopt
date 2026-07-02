@@ -74,6 +74,9 @@ cuopt_int_t test_pdlp_precision_mixed(const char* filename,
 cuopt_int_t test_cpu_only_execution(const char* filename);
 cuopt_int_t test_cpu_only_mip_execution(const char* filename);
 
+/* GPU-backed problem created before remote env is set must reject remote solve */
+cuopt_int_t test_gpu_problem_remote_after_create(const char* filename);
+
 #ifdef __cplusplus
 }
 #endif

@@ -895,7 +895,13 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip(
 
     // Local execution - dispatch to appropriate overload based on problem type
     auto* cpu_prob = dynamic_cast<cpu_optimization_problem_t<i_t, f_t>*>(problem_interface);
-    if (cpu_prob != nullptr) { return solve_mip(*cpu_prob, settings); }
+    if (cpu_prob != nullptr) {
+      cuopt_expects(cpu_memory_backend_solve_allowed(),
+                    error_type_t::ValidationError,
+                    "A CPU-memory problem requires remote execution. Set CUOPT_REMOTE_HOST and "
+                    "CUOPT_REMOTE_PORT to solve on a remote GPU server.");
+      return solve_mip(*cpu_prob, settings);
+    }
 
     // GPU problem: call GPU solver directly
     auto* gpu_prob = dynamic_cast<optimization_problem_t<i_t, f_t>*>(problem_interface);
