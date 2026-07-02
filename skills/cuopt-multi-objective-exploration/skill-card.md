@@ -9,14 +9,14 @@ NVIDIA <br>
 ### License/Terms of Use: <br>
 Apache-2.0 <br>
 ## Use Case: <br>
-Developers and engineers exploring tradeoffs between competing objectives in optimization problems, using cuOpt to trace the Pareto frontier and interpret exchange rates rather than collapsing to a single weighted answer. <br>
+Developers and engineers exploring multi-objective tradeoffs use this skill to orchestrate repeated cuOpt solves and trace Pareto frontiers, enabling informed tradeoff decisions rather than single-objective optima. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
 
 ## Requirements / Dependencies: <br>
 **Requires API Key or External Credential:** [Not Specified] <br>
-**Credential Type(s):** [None identified] <br>  
+**Credential Type(s):** [None identified] <br>
 
 Do not include secrets in prompts/logs/output; use least-privilege credentials; rotate keys as appropriate. <br>
 
@@ -31,7 +31,7 @@ Mitigation: Review and scan skill before deployment. <br>
 
 ## Skill Output: <br>
 **Output Type(s):** [Analysis, Configuration instructions] <br>
-**Output Format:** [Markdown with inline formulations and solver-call patterns] <br>
+**Output Format:** [Markdown with structured frontier tables and tradeoff commentary] <br>
 **Output Parameters:** [1D] <br>
 **Other Properties Related to Output:** [None] <br>
 
@@ -42,7 +42,7 @@ Mitigation: Review and scan skill before deployment. <br>
 
 
 ## Evaluation Tasks: <br>
-Evaluated against 5 internal evaluation tasks (4 positive skill-activation, 1 negative). <br>
+Evaluated against 5 internal tasks (4 positive skill-activation cases, 1 negative activation case) in the astra-sandbox environment using NVSkills-Eval external profile. <br>
 
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
@@ -67,10 +67,10 @@ Underlying evaluation signals used in this run: <br>
 | Dimension | Num | `claude-code` | `codex` |
 |---|---:|---:|---:|
 | Security | 5 | 100% (+0%) | 100% (+0%) |
-| Correctness | 5 | 90% (+0%) | 87% (-8%) |
-| Discoverability | 5 | 78% (-2%) | 73% (-22%) |
-| Effectiveness | 5 | 85% (-6%) | 85% (+2%) |
-| Efficiency | 5 | 75% (-3%) | 71% (-21%) |
+| Correctness | 5 | 90% (+54%) | 68% (+15%) |
+| Discoverability | 5 | 80% (+60%) | 75% (+50%) |
+| Effectiveness | 5 | 92% (+40%) | 63% (-1%) |
+| Efficiency | 5 | 80% (+40%) | 76% (+35%) |
 
 ## Skill Version(s): <br>
 26.08.00 (source: frontmatter) <br>

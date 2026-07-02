@@ -1,5 +1,5 @@
 ## Description: <br>
-After solving a non-trivial problem, detect generalizable learnings and propose skill updates. Always active — applies to every interaction. <br>
+Model and solve LP, MILP, and QP (beta) problems using NVIDIA cuOpt's GPU-accelerated solver across Python, C, and CLI interfaces. <br>
 
 This skill is ready for commercial/non-commercial use. <br>
 
@@ -7,16 +7,16 @@ This skill is ready for commercial/non-commercial use. <br>
 NVIDIA <br>
 
 ### License/Terms of Use: <br>
-Apache 2.0 <br>
+Apache-2.0 <br>
 ## Use Case: <br>
-Developers and AI agents using cuOpt skills to capture generalizable patterns, gotchas, and fixes discovered during problem-solving interactions and propose them as skill updates. <br>
+Developers and engineers solving linear programming, mixed-integer linear programming, and quadratic programming problems using NVIDIA cuOpt's Python, C, or CLI interfaces. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
 
 ## Requirements / Dependencies: <br>
-**Requires API Key or External Credential:** [Not Specified] <br>
-**Credential Type(s):** [None identified] <br>
+**Requires API Key or External Credential:** [No] <br>
+**Credential Type(s):** [None] <br>
 
 Do not include secrets in prompts/logs/output; use least-privilege credentials; rotate keys as appropriate. <br>
 
@@ -25,25 +25,28 @@ Risk: Review before execution as proposals could introduce incorrect or misleadi
 Mitigation: Review and scan skill before deployment. <br>
 
 ## Reference(s): <br>
-- [SKILL.md](skills/cuopt-skill-evolution/SKILL.md) <br>
+- [Python API Reference](references/python_api.md) <br>
+- [C API Reference](references/c_api.md) <br>
+- [CLI API Reference](references/cli_api.md) <br>
+- [QP Examples](references/qp_examples.md) <br>
 - [cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html) <br>
-- [cuopt-examples](https://github.com/NVIDIA/cuopt-examples) <br>
+- [Third-Party Modeling Languages](https://docs.nvidia.com/cuopt/user-guide/latest/thirdparty_modeling_languages/index.html) <br>
 
 
 ## Skill Output: <br>
-**Output Type(s):** [Analysis, Code] <br>
-**Output Format:** [Markdown with inline diff blocks] <br>
+**Output Type(s):** [Code, Shell commands, Configuration instructions] <br>
+**Output Format:** [Markdown with inline code blocks (Python, C, bash)] <br>
 **Output Parameters:** [1D] <br>
-**Other Properties Related to Output:** [Proposals require explicit user approval before application] <br>
+**Other Properties Related to Output:** [None] <br>
 
 ## Evaluation Agents Used: <br>
-- `claude-code` <br>
-- `codex` <br>
+- claude-code <br>
+- codex <br>
 
 
 
 ## Evaluation Tasks: <br>
-Evaluated against 1 evaluation task in the NVSkills-Eval `external` profile on `astra-sandbox` environment. <br>
+Evaluated against 9 internal evaluation tasks (NVSkills-Eval external profile, astra-sandbox environment). <br>
 
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
@@ -67,11 +70,11 @@ Underlying evaluation signals used in this run: <br>
 ## Evaluation Results: <br>
 | Dimension | Num | `claude-code` | `codex` |
 |---|---:|---:|---:|
-| Security | 1 | 100% (+0%) | 100% (+0%) |
-| Correctness | 1 | 25% (+0%) | 0% (+0%) |
-| Discoverability | 1 | 38% (-12%) | 0% (+0%) |
-| Effectiveness | 1 | 10% (+0%) | 14% (+0%) |
-| Efficiency | 1 | 42% (-18%) | 28% (-0%) |
+| Security | 8 | 100% (+0%) | 100% (+0%) |
+| Correctness | 8 | 76% (+33%) | 70% (+12%) |
+| Discoverability | 8 | 67% (+58%) | 51% (+31%) |
+| Effectiveness | 8 | 73% (+20%) | 69% (+7%) |
+| Efficiency | 8 | 71% (+46%) | 55% (+28%) |
 
 ## Skill Version(s): <br>
 26.08.00 (source: frontmatter) <br>
