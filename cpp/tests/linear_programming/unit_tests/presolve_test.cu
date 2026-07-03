@@ -515,7 +515,7 @@ TEST_P(dual_crush_round_trip, kkt_check)
   // Step 1: Presolve with a single presolver instance (same one used for crush later)
   sort_csr(op_problem);
   mip::third_party_presolve_t<int, double> presolver;
-  auto result = presolver.apply(op_problem,
+  auto result = presolver.apply_presolve_from_op_problem(op_problem,
                                 problem_category_t::LP,
                                 presolver_t::Papilo,
                                 /*dual_postsolve=*/true,
@@ -772,7 +772,7 @@ TEST_P(crush_warmstart, round_trip)
   // Step 1: Presolve
   sort_csr(op_problem);
   mip::third_party_presolve_t<int, double> presolver;
-  auto result = presolver.apply(op_problem,
+  auto result = presolver.apply_presolve_from_op_problem(op_problem,
                                 problem_category_t::LP,
                                 presolver_t::Papilo,
                                 /*dual_postsolve=*/true,
