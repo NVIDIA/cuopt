@@ -42,6 +42,10 @@ ConfigureTest(EMPTY_FIXED_PROBLEMS_TEST
 ConfigureTest(PRESOLVE_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/presolve_test.cu
     LABELS numopt)
+ConfigureTest(GF2_PRESOLVE_TEST
+    ${CMAKE_CURRENT_SOURCE_DIR}/gf2_presolve_test.cpp
+    ${CUOPT_TEST_DIR}/../src/mip_heuristics/presolve/gf2_presolve.cpp
+    LABELS numopt)
 # Disable for now
 # ConfigureTest(FEASIBILITY_JUMP_TEST
 #    ${CMAKE_CURRENT_SOURCE_DIR}/feasibility_jump_tests.cu
