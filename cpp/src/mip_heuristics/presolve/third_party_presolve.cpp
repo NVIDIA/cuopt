@@ -176,7 +176,7 @@ papilo::Problem<f_t> build_papilo_problem_from_mps_data(const io::mps_data_model
 
   if (category == problem_category_t::MIP) {
     for (size_t i = 0; i < h_var_types.size(); ++i) {
-      builder.setColIntegral(i, h_var_types[i] == var_t::INTEGER);
+      builder.setColIntegral(i, char_to_var_type(h_var_types[i]) == var_t::INTEGER);
     }
   }
 
