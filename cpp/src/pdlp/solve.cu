@@ -2500,6 +2500,9 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
     placeholder_op.set_csr_constraint_matrix(
       nullptr, 0, nullptr, 0, empty_offsets.data(), static_cast<i_t>(empty_offsets.size()));
   }
+  placeholder_op.set_objective_offset(mps_for_solver.get_objective_offset());
+  placeholder_op.set_objective_scaling_factor(mps_for_solver.get_objective_scaling_factor());
+  placeholder_op.set_maximize(mps_for_solver.get_sense());
   mip::problem_t<i_t, f_t> placeholder_problem(placeholder_op);
 
   pdlp::pdlp_solver_t<i_t, f_t> solver(placeholder_problem, mps_for_solver, settings_resolved);
