@@ -420,12 +420,8 @@ __global__ void pock_chambolle_scaling_kernel_col(
   if (threadIdx.x == 0) initial_scaling_view.iteration_variable_scaling[col] = accumulated_value;
 }
 
-// Local half of one Pock-Chambolle pass: writes the per-row and per-column
-// sums-of-powers into iteration_constraint_matrix_scaling_ /
-// iteration_variable_scaling_
 template <typename i_t, typename f_t>
-void pdlp_initial_scaling_strategy_t<i_t, f_t>::pock_chambolle_compute_local_iteration_vectors(
-  f_t alpha)
+void pdlp_initial_scaling_strategy_t<i_t, f_t>::pock_chambolle_scaling(f_t alpha)
 {
   // Reset the iteration_scaling vectors to all 0
   RAFT_CUDA_TRY(cudaMemsetAsync(
@@ -460,12 +456,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::pock_chambolle_compute_local_ite
       A_T_offsets_.data(),
       A_T_indices_.data());
   RAFT_CUDA_TRY(cudaPeekAtLastError());
-}
 
-// Fold half of one Pock-Chambolle pass: cumulative /= sqrt(iteration).
-template <typename i_t, typename f_t>
-void pdlp_initial_scaling_strategy_t<i_t, f_t>::pock_chambolle_apply_cumulative_update()
-{
   if (running_mip_) { reset_integer_variables(); }
 
   // divide the sqrt of the vectors of the sums from above to the respective scaling vectors
@@ -482,13 +473,6 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::pock_chambolle_apply_cumulative_
                          primal_size_h_,
                          a_divides_sqrt_b_bounded<f_t>(),
                          stream_view_);
-}
-
-template <typename i_t, typename f_t>
-void pdlp_initial_scaling_strategy_t<i_t, f_t>::pock_chambolle_scaling(f_t alpha)
-{
-  pock_chambolle_compute_local_iteration_vectors(alpha);
-  pock_chambolle_apply_cumulative_update();
 }
 
 template <typename i_t, typename f_t>

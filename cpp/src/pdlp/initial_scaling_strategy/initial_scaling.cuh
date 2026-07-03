@@ -123,8 +123,7 @@ class pdlp_initial_scaling_strategy_t {
 
   void ruiz_iter_compute_local_iteration_vectors();
   void ruiz_iter_apply_cumulative_update();
-  void pock_chambolle_compute_local_iteration_vectors(f_t alpha);
-  void pock_chambolle_apply_cumulative_update();
+  // Shard-local end-to-end Pock-Chambolle pass. Exposed for distributed PDLP:
   void pock_chambolle_scaling(f_t alpha);
   rmm::device_uvector<f_t>& get_iteration_variable_scaling() { return iteration_variable_scaling_; }
 
