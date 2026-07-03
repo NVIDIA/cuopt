@@ -1471,6 +1471,7 @@ void flush_quadratic_constraints(mps_data_model_t<i_t, f_t>& problem,
                                  const lp_parser_t<i_t, f_t>& parser)
 {
   const i_t linear_row_count = static_cast<i_t>(parser.row_names.size());
+  coo_canonicalization_workspace_t<i_t, f_t> qc_workspace;
   for (i_t k = 0; k < static_cast<i_t>(parser.quadratic_constraint_blocks.size()); k++) {
     const auto& block = parser.quadratic_constraint_blocks[k];
     problem.append_quadratic_constraint(linear_row_count + k,
@@ -1481,7 +1482,8 @@ void flush_quadratic_constraints(mps_data_model_t<i_t, f_t>& problem,
                                         block.rhs_value,
                                         block.quad_triples.vals,
                                         block.quad_triples.rows,
-                                        block.quad_triples.cols);
+                                        block.quad_triples.cols,
+                                        qc_workspace);
   }
 }
 

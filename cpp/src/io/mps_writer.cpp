@@ -497,10 +497,11 @@ void mps_writer_t<i_t, f_t>::write(const std::string& mps_file_path)
 
   // QCMATRIX sections for quadratic constraints (QCQP)
   if (problem_.has_quadratic_constraints()) {
+    coo_canonicalization_workspace_t<i_t, f_t> workspace;
     for (const auto& qc : problem_.get_quadratic_constraints()) {
       mps_file << "QCMATRIX   " << qc.constraint_row_name << "\n";
       typename mps_data_model_t<i_t, f_t>::quadratic_constraint_t qc_canon = qc;
-      canonicalize_coo_matrix(qc_canon.rows, qc_canon.cols, qc_canon.vals);
+      canonicalize_coo_matrix(qc_canon.rows, qc_canon.cols, qc_canon.vals, workspace);
       const i_t nnz = static_cast<i_t>(qc_canon.vals.size());
       for (i_t p = 0; p < nnz; ++p) {
         const i_t i              = qc_canon.rows[p];

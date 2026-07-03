@@ -16,6 +16,72 @@
 namespace cuopt::mathematical_optimization::io {
 
 /**
+ * @brief Reusable workspace for COO canonicalization.
+ *
+ * Lookup vectors grow to fit the largest variable index seen so far. Each call resets only
+ * entries that were touched. A workspace must not be shared across concurrent calls.
+ */
+template <typename i_t, typename f_t>
+class coo_canonicalization_workspace_t {
+ public:
+  static_assert(std::is_integral_v<i_t> && std::is_signed_v<i_t>,
+                "coo_canonicalization_workspace_t: i_t must be signed integral");
+
+  [[nodiscard]] i_t max_index_capacity() const noexcept { return row_perm_.size(); }
+
+ private:
+  static constexpr i_t invalid_index = -1;
+
+  struct active_row_t {
+    i_t row;
+    i_t count;
+  };
+
+  struct entry_t {
+    i_t row;
+    i_t col;
+    f_t val;
+  };
+
+  std::vector<i_t> row_perm_;
+  std::vector<i_t> col_position_;
+  std::vector<active_row_t> active_rows_;
+  std::vector<i_t> offsets_;
+  std::vector<i_t> cursor_;
+  std::vector<i_t> permutation_;
+  std::vector<entry_t> entries_;
+  std::vector<i_t> output_rows_;
+  std::vector<i_t> output_cols_;
+  std::vector<f_t> output_vals_;
+
+  void ensure_index_capacity(i_t max_index)
+  {
+    const size_t needed = static_cast<size_t>(max_index) + 1;
+    if (row_perm_.size() < needed) {
+      row_perm_.resize(needed, invalid_index);
+      col_position_.resize(needed, invalid_index);
+    }
+  }
+
+  template <typename index_t, typename value_t>
+  friend void canonicalize_coo_matrix(
+    std::vector<index_t>& rows,
+    std::vector<index_t>& cols,
+    std::vector<value_t>& vals,
+    coo_canonicalization_workspace_t<index_t, value_t>& workspace);
+};
+
+/**
+ * @brief Canonicalize a symmetric matrix in COO form to upper-triangular storage
+ *        using reusable workspace storage. Defined in mps_parser.cpp.
+ */
+template <typename i_t, typename f_t>
+void canonicalize_coo_matrix(std::vector<i_t>& rows,
+                             std::vector<i_t>& cols,
+                             std::vector<f_t>& vals,
+                             coo_canonicalization_workspace_t<i_t, f_t>& workspace);
+
+/**
  * @brief A representation of a linear programming (LP) optimization problem
  *
  * @tparam f_t  Data type of the variables and their weights in the equations
@@ -278,7 +344,8 @@ class mps_data_model_t {
                                    f_t rhs_value,
                                    std::span<const f_t> vals,
                                    std::span<const i_t> rows,
-                                   std::span<const i_t> cols);
+                                   std::span<const i_t> cols,
+                                   coo_canonicalization_workspace_t<i_t, f_t>& workspace);
 
   const std::vector<quadratic_constraint_t>& get_quadratic_constraints() const;
 
@@ -397,8 +464,15 @@ class mps_data_model_t {
  *
  * @param constraints Quadratic constraints whose rows, cols, and vals are updated.
  */
-template <typename i_t, typename f_t>
-void canonicalize_quadratic_constraints(
-  std::vector<typename mps_data_model_t<i_t, f_t>::quadratic_constraint_t>& constraints);
+template <typename qc_t>
+void canonicalize_quadratic_constraints(std::vector<qc_t>& constraints)
+{
+  using i_t = typename decltype(qc_t::rows)::value_type;
+  using f_t = typename decltype(qc_t::vals)::value_type;
+  coo_canonicalization_workspace_t<i_t, f_t> workspace;
+  for (auto& qc : constraints) {
+    canonicalize_coo_matrix(qc.rows, qc.cols, qc.vals, workspace);
+  }
+}
 
 }  // namespace cuopt::mathematical_optimization::io

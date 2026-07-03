@@ -8,6 +8,7 @@
 #pragma once
 
 #include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
+#include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
 
 #include <raft/core/handle.hpp>
 #include <rmm/device_uvector.hpp>
@@ -224,6 +225,9 @@ class cpu_optimization_problem_t : public optimization_problem_interface_t<i_t, 
   std::string problem_name_;
   std::vector<std::string> var_names_{};
   std::vector<std::string> row_names_{};
+
+  /** Reused while adding quadratic constraints. */
+  mutable io::coo_canonicalization_workspace_t<i_t, f_t> qc_coo_workspace_{};
 };
 
 }  // namespace cuopt::mathematical_optimization

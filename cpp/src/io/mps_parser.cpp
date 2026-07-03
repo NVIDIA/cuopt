@@ -243,8 +243,13 @@ void check_symmetric_offdiagonal_pairs(const std::vector<i_t>& rows,
 }
 
 template <typename i_t, typename f_t>
-void canonicalize_coo_matrix(std::vector<i_t>& rows, std::vector<i_t>& cols, std::vector<f_t>& vals)
+void canonicalize_coo_matrix(std::vector<i_t>& rows,
+                             std::vector<i_t>& cols,
+                             std::vector<f_t>& vals,
+                             coo_canonicalization_workspace_t<i_t, f_t>& workspace)
 {
+  using workspace_t = coo_canonicalization_workspace_t<i_t, f_t>;
+
   const size_t n = vals.size();
   mps_parser_expects(rows.size() == n && cols.size() == n,
                      error_type_t::ValidationError,
@@ -256,78 +261,124 @@ void canonicalize_coo_matrix(std::vector<i_t>& rows, std::vector<i_t>& cols, std
     return;
   }
 
-  // Canonical coordinates place each entry in the upper triangle:
-  // row = min(r, c), col = max(r, c).
-  i_t min_idx = std::min(rows[0], cols[0]);
-  i_t max_row = 0;
-  i_t max_col = 0;
+  i_t max_index = 0;
   for (size_t k = 0; k < n; ++k) {
-    const i_t r = std::min(rows[k], cols[k]);
-    const i_t c = std::max(rows[k], cols[k]);
-    min_idx     = std::min(min_idx, r);
-    max_row     = std::max(max_row, r);
-    max_col     = std::max(max_col, c);
+    mps_parser_expects(rows[k] >= 0 && cols[k] >= 0,
+                       error_type_t::ValidationError,
+                       "COO indices must be non-negative");
+    max_index = std::max(max_index, std::max(rows[k], cols[k]));
   }
+  workspace.ensure_index_capacity(max_index);
 
-  // Bucket entry indices by canonical row via a stable counting sort.
-  std::vector<i_t> offsets(static_cast<size_t>(max_row - min_idx) + 2, 0);
-  for (size_t k = 0; k < n; ++k) {
-    offsets[static_cast<size_t>(std::min(rows[k], cols[k]) - min_idx) + 1]++;
-  }
-  for (i_t r = 0; r <= max_row - min_idx; ++r) {
-    offsets[static_cast<size_t>(r) + 1] += offsets[static_cast<size_t>(r)];
-  }
-  std::vector<i_t> perm(n);
-  std::vector<i_t> cursor(offsets.begin(), offsets.end() - 1);
-  for (size_t k = 0; k < n; ++k) {
-    const i_t r                          = std::min(rows[k], cols[k]) - min_idx;
-    perm[static_cast<size_t>(cursor[r])] = static_cast<i_t>(k);
-    cursor[static_cast<size_t>(r)]++;
-  }
+  auto& active_rows = workspace.active_rows_;
+  auto& offsets     = workspace.offsets_;
+  auto& cursor      = workspace.cursor_;
+  auto& permutation = workspace.permutation_;
+  auto& entries     = workspace.entries_;
+  auto& output_rows = workspace.output_rows_;
+  auto& output_cols = workspace.output_cols_;
+  auto& output_vals = workspace.output_vals_;
 
-  // Merge duplicate (row, col) entries within each canonical row using a marker array
-  // (marker[c] holds 1 + the output position of column c in the current row), then sort
-  // each row's entries by column.
-  struct entry_t {
-    i_t row;
-    i_t col;
-    f_t val;
+  active_rows.clear();
+  offsets.clear();
+  cursor.clear();
+  permutation.clear();
+  entries.clear();
+  output_rows.clear();
+  output_cols.clear();
+  output_vals.clear();
+
+  const auto reset_lookup_entries = [&]() noexcept {
+    for (const auto& active : active_rows) {
+      workspace.row_perm_[active.row] = workspace_t::invalid_index;
+    }
+    for (const auto& entry : entries) {
+      workspace.col_position_[entry.col] = workspace_t::invalid_index;
+    }
   };
-  std::vector<entry_t> entries;
-  entries.reserve(n);
-  std::vector<i_t> marker(static_cast<size_t>(max_col - min_idx) + 1, 0);
-  for (i_t r = 0; r <= max_row - min_idx; ++r) {
-    const i_t row_start = static_cast<i_t>(entries.size());
-    for (i_t p = offsets[static_cast<size_t>(r)]; p < offsets[static_cast<size_t>(r) + 1]; ++p) {
-      const i_t k   = perm[static_cast<size_t>(p)];
-      const i_t row = std::min(rows[static_cast<size_t>(k)], cols[static_cast<size_t>(k)]);
-      const i_t col = std::max(rows[static_cast<size_t>(k)], cols[static_cast<size_t>(k)]);
-      const i_t c   = col - min_idx;
-      if (marker[static_cast<size_t>(c)] <= row_start) {
-        entries.push_back(entry_t{row, col, vals[static_cast<size_t>(k)]});
-        marker[static_cast<size_t>(c)] = static_cast<i_t>(entries.size());
-      } else {
-        entries[static_cast<size_t>(marker[static_cast<size_t>(c)] - 1)].val +=
-          vals[static_cast<size_t>(k)];
+
+  try {
+    // Discover active canonical rows and count entries in first-appearance order.
+    for (size_t k = 0; k < n; ++k) {
+      const i_t row = std::min(rows[k], cols[k]);
+      if (workspace.row_perm_[row] == workspace_t::invalid_index) {
+        const i_t id = active_rows.size();
+        active_rows.push_back(typename workspace_t::active_row_t{row, 0});
+        workspace.row_perm_[row] = id;
+      }
+      active_rows[workspace.row_perm_[row]].count++;
+    }
+
+    std::sort(active_rows.begin(), active_rows.end(), [](const auto& lhs, const auto& rhs) {
+      return lhs.row < rhs.row;
+    });
+    const size_t n_active_rows = active_rows.size();
+    for (size_t id = 0; id < n_active_rows; ++id) {
+      workspace.row_perm_[active_rows[id].row] = id;
+    }
+
+    offsets.resize(n_active_rows + 1);
+    offsets[0] = 0;
+    for (size_t id = 0; id < n_active_rows; ++id) {
+      offsets[id + 1] = offsets[id] + active_rows[id].count;
+    }
+
+    cursor.assign(offsets.begin(), offsets.end() - 1);
+    permutation.resize(n);
+    for (size_t k = 0; k < n; ++k) {
+      const i_t row       = std::min(rows[k], cols[k]);
+      const i_t dense_row = workspace.row_perm_[row];
+      permutation[cursor[dense_row]] = k;
+      cursor[dense_row]++;
+    }
+
+    entries.reserve(n);
+    for (size_t dense_row = 0; dense_row < n_active_rows; ++dense_row) {
+      const size_t row_output_start = entries.size();
+      const i_t row                 = active_rows[dense_row].row;
+
+      for (i_t p = offsets[dense_row]; p < offsets[dense_row + 1]; ++p) {
+        const i_t k   = permutation[p];
+        const i_t col = std::max(rows[k], cols[k]);
+
+        if (workspace.col_position_[col] == workspace_t::invalid_index) {
+          const i_t position = entries.size();
+          entries.push_back(typename workspace_t::entry_t{row, col, vals[k]});
+          workspace.col_position_[col] = position;
+        } else {
+          entries[workspace.col_position_[col]].val += vals[k];
+        }
+      }
+
+      const size_t row_output_end = entries.size();
+      for (size_t p = row_output_start; p < row_output_end; ++p) {
+        workspace.col_position_[entries[p].col] = workspace_t::invalid_index;
+      }
+      std::sort(entries.begin() + row_output_start,
+                entries.begin() + row_output_end,
+                [](const auto& lhs, const auto& rhs) { return lhs.col < rhs.col; });
+    }
+
+    const f_t eps = std::numeric_limits<f_t>::epsilon();
+    output_rows.reserve(entries.size());
+    output_cols.reserve(entries.size());
+    output_vals.reserve(entries.size());
+    for (const auto& entry : entries) {
+      if (std::abs(entry.val) > eps) {
+        output_rows.push_back(entry.row);
+        output_cols.push_back(entry.col);
+        output_vals.push_back(entry.val);
       }
     }
-    std::sort(entries.begin() + row_start,
-              entries.end(),
-              [](const entry_t& lhs, const entry_t& rhs) { return lhs.col < rhs.col; });
+  } catch (...) {
+    reset_lookup_entries();
+    throw;
   }
 
-  // Emit canonical COO, dropping entries whose coefficients cancelled to ~0.
-  const f_t eps = std::numeric_limits<f_t>::epsilon();
-  rows.clear();
-  cols.clear();
-  vals.clear();
-  for (const entry_t& e : entries) {
-    if (std::abs(e.val) > eps) {
-      rows.push_back(e.row);
-      cols.push_back(e.col);
-      vals.push_back(e.val);
-    }
-  }
+  reset_lookup_entries();
+  rows = std::move(output_rows);
+  cols = std::move(output_cols);
+  vals = std::move(output_vals);
 }
 
 BoundType convert(std::string_view str)
@@ -619,6 +670,7 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
   }
 
   // QCMATRIX: one symmetric Q per constraint row (no extra ½ factor vs file coeffs).
+  coo_canonicalization_workspace_t<i_t, f_t> qc_workspace;
   for (const auto& block : qcmatrix_blocks_) {
     const i_t row_id = block.constraint_row_id;
     mps_parser_expects(row_id >= 0 && row_id < static_cast<i_t>(row_types.size()),
@@ -633,7 +685,8 @@ void mps_parser_t<i_t, f_t>::fill_problem(mps_data_model_t<i_t, f_t>& problem)
                                         b_values[row_id],
                                         block.entries.vals,
                                         block.entries.rows,
-                                        block.entries.cols);
+                                        block.entries.cols,
+                                        qc_workspace);
   }
 
   if (!quadratic_row_ids.empty()) {
@@ -1714,9 +1767,11 @@ template class mps_parser_t<int, double>;
 
 template void canonicalize_coo_matrix<int, float>(std::vector<int>&,
                                                   std::vector<int>&,
-                                                  std::vector<float>&);
+                                                  std::vector<float>&,
+                                                  coo_canonicalization_workspace_t<int, float>&);
 template void canonicalize_coo_matrix<int, double>(std::vector<int>&,
                                                    std::vector<int>&,
-                                                   std::vector<double>&);
+                                                   std::vector<double>&,
+                                                   coo_canonicalization_workspace_t<int, double>&);
 
 }  // namespace cuopt::mathematical_optimization::io

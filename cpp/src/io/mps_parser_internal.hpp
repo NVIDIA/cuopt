@@ -55,19 +55,6 @@ void check_symmetric_offdiagonal_pairs(const std::vector<i_t>& rows,
                                        const std::vector<f_t>& vals);
 
 /**
- * @brief Canonicalize a symmetric matrix in COO form to upper-triangular storage.
- *
- * - Merges duplicate (row, col) indices by summing coefficients.
- * - Merges each off-diagonal variable pair into one (min,max) entry with coefficient
- *   Q[min,max]+Q[max,min] (x^T Q x semantics).
- * - Sorts output by (row, col).
- */
-template <typename i_t, typename f_t>
-void canonicalize_coo_matrix(std::vector<i_t>& rows,
-                             std::vector<i_t>& cols,
-                             std::vector<f_t>& vals);
-
-/**
  * @brief Different possible types of 'ROWS'
  */
 enum RowType {

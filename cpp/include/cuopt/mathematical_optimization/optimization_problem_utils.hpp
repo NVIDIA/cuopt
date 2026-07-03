@@ -294,7 +294,7 @@ void populate_from_data_model_view(
   // Raw Q COO from data_model_view is canonicalized here before solver storage.
   if (data_model->has_quadratic_constraints()) {
     auto qcs = data_model->get_quadratic_constraints();
-    io::canonicalize_quadratic_constraints<i_t, f_t>(qcs);
+    io::canonicalize_quadratic_constraints(qcs);
     problem->set_quadratic_constraints(std::move(qcs));
   }
 }

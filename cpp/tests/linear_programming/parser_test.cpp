@@ -2728,10 +2728,11 @@ TEST(append_quadratic_constraint, merges_duplicate_entries)
 {
   using model_t = mps_data_model_t<int, double>;
   model_t model;
+  coo_canonicalization_workspace_t<int, double> workspace;
   const std::vector<double> vals = {2.0, 3.0};
   const std::vector<int> rows    = {0, 0};
   const std::vector<int> cols    = {1, 1};
-  model.append_quadratic_constraint(0, "QC0", 'L', {}, {}, 0.0, vals, rows, cols);
+  model.append_quadratic_constraint(0, "QC0", 'L', {}, {}, 0.0, vals, rows, cols, workspace);
 
   ASSERT_TRUE(model.has_quadratic_constraints());
   const auto& qc = model.get_quadratic_constraints().back();
@@ -2745,10 +2746,11 @@ TEST(append_quadratic_constraint, collapses_symmetric_mps_halves)
 {
   using model_t = mps_data_model_t<int, double>;
   model_t model;
+  coo_canonicalization_workspace_t<int, double> workspace;
   const std::vector<double> vals = {2.0, 2.0};
   const std::vector<int> rows    = {0, 1};
   const std::vector<int> cols    = {1, 0};
-  model.append_quadratic_constraint(0, "QC0", 'L', {}, {}, 0.0, vals, rows, cols);
+  model.append_quadratic_constraint(0, "QC0", 'L', {}, {}, 0.0, vals, rows, cols, workspace);
 
   ASSERT_TRUE(model.has_quadratic_constraints());
   const auto& qc = model.get_quadratic_constraints().back();
@@ -2762,10 +2764,11 @@ TEST(append_quadratic_constraint, sums_both_orientations_for_off_diagonal_pair)
 {
   using model_t = mps_data_model_t<int, double>;
   model_t model;
+  coo_canonicalization_workspace_t<int, double> workspace;
   const std::vector<double> vals = {2.0, 3.0};
   const std::vector<int> rows    = {0, 1};
   const std::vector<int> cols    = {1, 0};
-  model.append_quadratic_constraint(0, "QC0", 'L', {}, {}, 0.0, vals, rows, cols);
+  model.append_quadratic_constraint(0, "QC0", 'L', {}, {}, 0.0, vals, rows, cols, workspace);
 
   ASSERT_TRUE(model.has_quadratic_constraints());
   const auto& qc = model.get_quadratic_constraints().back();
@@ -2779,6 +2782,7 @@ TEST(qps_parser, qcmatrix_append_api)
 {
   using model_t = mps_data_model_t<int, double>;
   model_t model;
+  coo_canonicalization_workspace_t<int, double> workspace;
 
   // Validate default-constructed struct shape.
   model_t::quadratic_constraint_t default_qcm;
@@ -2804,7 +2808,8 @@ TEST(qps_parser, qcmatrix_append_api)
                                     5.0,
                                     mps_qc0_values,
                                     mps_qc0_row_indices,
-                                    mps_qc0_col_indices);
+                                    mps_qc0_col_indices,
+                                    workspace);
 
   // API-style canonical COO [[4, 2], [2, 6]] -> stored unchanged after merge/sort
   const std::vector<double> api_qc1_values    = {4.0, 2.0, 6.0};
@@ -2820,7 +2825,8 @@ TEST(qps_parser, qcmatrix_append_api)
                                     10.0,
                                     api_qc1_values,
                                     api_qc1_row_indices,
-                                    api_qc1_col_indices);
+                                    api_qc1_col_indices,
+                                    workspace);
 
   ASSERT_TRUE(model.has_quadratic_constraints());
   const auto& qcs = model.get_quadratic_constraints();
