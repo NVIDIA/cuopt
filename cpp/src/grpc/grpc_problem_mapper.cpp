@@ -11,6 +11,7 @@
 #include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
 #include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
+#include <mps_parser_internal.hpp>
 #include "grpc_settings_mapper.hpp"
 
 #include <algorithm>

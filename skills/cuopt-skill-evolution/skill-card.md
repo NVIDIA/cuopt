@@ -9,14 +9,14 @@ NVIDIA <br>
 ### License/Terms of Use: <br>
 Apache 2.0 <br>
 ## Use Case: <br>
-Developers and engineers working with NVIDIA cuOpt optimization skills use this to detect generalizable learnings from problem-solving interactions and propose skill updates that improve future agent behavior. <br>
+Developers and AI agents using cuOpt skills to capture generalizable patterns, gotchas, and fixes discovered during problem-solving interactions and propose them as skill updates. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
 
 ## Requirements / Dependencies: <br>
 **Requires API Key or External Credential:** [Not Specified] <br>
-**Credential Type(s):** [None identified] <br>  
+**Credential Type(s):** [None identified] <br>
 
 Do not include secrets in prompts/logs/output; use least-privilege credentials; rotate keys as appropriate. <br>
 
@@ -25,15 +25,16 @@ Risk: Review before execution as proposals could introduce incorrect or misleadi
 Mitigation: Review and scan skill before deployment. <br>
 
 ## Reference(s): <br>
-- [SKILL.md](SKILL.md) <br>
-- [BENCHMARK.md](BENCHMARK.md) <br>
+- [SKILL.md](skills/cuopt-skill-evolution/SKILL.md) <br>
+- [cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html) <br>
+- [cuopt-examples](https://github.com/NVIDIA/cuopt-examples) <br>
 
 
 ## Skill Output: <br>
 **Output Type(s):** [Analysis, Code] <br>
-**Output Format:** [Markdown with inline code blocks] <br>
+**Output Format:** [Markdown with inline diff blocks] <br>
 **Output Parameters:** [1D] <br>
-**Other Properties Related to Output:** [Proposals require user approval before application] <br>
+**Other Properties Related to Output:** [Proposals require explicit user approval before application] <br>
 
 ## Evaluation Agents Used: <br>
 - `claude-code` <br>
@@ -42,7 +43,7 @@ Mitigation: Review and scan skill before deployment. <br>
 
 
 ## Evaluation Tasks: <br>
-Evaluated against 1 evaluation task in the astra-sandbox environment using the NVSkills-Eval external profile with a 50% pass threshold. <br>
+Evaluated against 1 evaluation task in the NVSkills-Eval `external` profile on `astra-sandbox` environment. <br>
 
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
@@ -68,9 +69,9 @@ Underlying evaluation signals used in this run: <br>
 |---|---:|---:|---:|
 | Security | 1 | 100% (+0%) | 100% (+0%) |
 | Correctness | 1 | 25% (+0%) | 0% (+0%) |
-| Discoverability | 1 | 50% (+0%) | 0% (+0%) |
-| Effectiveness | 1 | 14% (+0%) | 14% (+0%) |
-| Efficiency | 1 | 60% (-0%) | 28% (-0%) |
+| Discoverability | 1 | 38% (-12%) | 0% (+0%) |
+| Effectiveness | 1 | 10% (+0%) | 14% (+0%) |
+| Efficiency | 1 | 42% (-18%) | 28% (-0%) |
 
 ## Skill Version(s): <br>
 26.08.00 (source: frontmatter) <br>

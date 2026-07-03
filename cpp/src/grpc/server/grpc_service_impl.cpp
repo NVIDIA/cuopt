@@ -823,31 +823,33 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
         in.clear();
       }
 
-      // Job finished while we were caught up at EOF. The worker may still flush
-      // the last log line after marking the job complete, so read once more
-      // before closing the stream.
-      std::string msg;
-      JobStatus s = check_job_status(job_id, msg);
-      if (s == JobStatus::COMPLETED || s == JobStatus::FAILED || s == JobStatus::CANCELLED) {
-        // Resume offset for the final read (same tellg logic as the main loop).
+      // Job finished while we were caught up at EOF. Drain all remaining lines
+      // before closing: the worker may have flushed several lines (e.g. the
+      // final solver summary) between our last getline and the job-complete
+      // marker, and a single extra read would silently drop everything after
+      // the first of those lines.
+      std::string term_msg;
+      JobStatus term_status = check_job_status(job_id, term_msg);
+      if (term_status == JobStatus::COMPLETED || term_status == JobStatus::FAILED ||
+          term_status == JobStatus::CANCELLED) {
         std::streampos read_start = in.tellg();
         if (read_start >= 0) { current_offset = static_cast<int64_t>(read_start); }
 
-        // One last getline: picks up a trailing line written after our previous
-        // EOF poll. If nothing remains, skip straight to the sentinel below.
-        if (std::getline(in, line)) {
-          std::streampos read_end = in.tellg();
-          // byte_offset on each message is where the client should resume; mirror
-          // the main-loop fallback when tellg() is unavailable after the last line.
+        bool drain_ok = true;
+        while (std::getline(in, line)) {
+          std::streampos read_end  = in.tellg();
           int64_t next_byte_offset = current_offset + static_cast<int64_t>(line.size());
           if (read_end >= 0) { next_byte_offset = static_cast<int64_t>(read_end); }
-          (void)write_log_message(line, next_byte_offset, false);
+          if (!write_log_message(line, next_byte_offset, false)) {
+            drain_ok = false;
+            break;
+          }
+          current_offset = next_byte_offset;
         }
 
         // Empty line + job_complete=true tells the client the log stream is done.
-        // Use current_offset (not next_byte_offset): if we sent a final line above,
-        // the client already got its resume point; this sentinel only marks EOF.
-        (void)write_log_message("", current_offset);
+        // Skip sentinel if the Write() failed mid-drain — stream is already broken.
+        if (drain_ok) { (void)write_log_message("", current_offset); }
         return Status::OK;
       }
 

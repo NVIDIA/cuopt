@@ -70,6 +70,23 @@ cuopt_assert(lower_bound >= -bound_tol, "...");
 cuopt_assert(upper_bound <= 1 + bound_tol, "...");
 ```
 
+### Container indexing — no gratuitous `static_cast<size_t>`
+
+Index with the bare signed type (`i_t`, `int`, loop counters); don't wrap
+subscripts in `static_cast<size_t>(...)`. The build uses `-Werror` but not
+`-Wsign-conversion`/`-Wconversion`, and there's no `.clang-tidy`, so `v[i]` emits
+no warning — the cast is pure noise and inconsistent with the rest of `cpp/src`.
+
+```cpp
+perm[static_cast<size_t>(cursor[r])] = static_cast<i_t>(k);  // ❌ noise
+perm[cursor[r]] = k;                                         // ✅
+```
+
+Cast only when it changes the value or guards real overflow — e.g. sizing from a
+signed subtraction (`std::vector<i_t> v(static_cast<size_t>(hi - lo) + 2, 0)`), or
+the narrowing `size_t`→`i_t` in `static_cast<i_t>(x.size())` (established style;
+keep it)
+
 ### CUDA Error Checking
 
 ```cpp
