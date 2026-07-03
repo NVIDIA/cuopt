@@ -142,16 +142,17 @@ void mps_data_model_t<i_t, f_t>::set_quadratic_objective_matrix(std::span<const 
 }
 
 template <typename i_t, typename f_t>
-void mps_data_model_t<i_t, f_t>::append_quadratic_constraint(i_t constraint_row_index,
-                                                             const std::string& constraint_row_name,
-                                                             char constraint_row_type,
-                                                             std::span<const f_t> linear_values,
-                                                             std::span<const i_t> linear_indices,
-                                                             f_t rhs_value,
-                                                             std::span<const f_t> vals,
-                                                             std::span<const i_t> rows,
-                                                             std::span<const i_t> cols,
-                                                             coo_canonicalization_workspace_t<i_t, f_t>& workspace)
+void mps_data_model_t<i_t, f_t>::append_quadratic_constraint(
+  i_t constraint_row_index,
+  const std::string& constraint_row_name,
+  char constraint_row_type,
+  std::span<const f_t> linear_values,
+  std::span<const i_t> linear_indices,
+  f_t rhs_value,
+  std::span<const f_t> vals,
+  std::span<const i_t> rows,
+  std::span<const i_t> cols,
+  coo_canonicalization_workspace_t<i_t, f_t>& workspace)
 {
   mps_parser_expects(constraint_row_index >= 0,
                      error_type_t::ValidationError,

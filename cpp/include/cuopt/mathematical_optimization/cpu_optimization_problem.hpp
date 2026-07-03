@@ -7,8 +7,8 @@
 
 #pragma once
 
-#include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 #include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 
 #include <raft/core/handle.hpp>
 #include <rmm/device_uvector.hpp>

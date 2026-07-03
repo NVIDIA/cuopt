@@ -326,8 +326,8 @@ void canonicalize_coo_matrix(std::vector<i_t>& rows,
     cursor.assign(offsets.begin(), offsets.end() - 1);
     permutation.resize(n);
     for (size_t k = 0; k < n; ++k) {
-      const i_t row       = std::min(rows[k], cols[k]);
-      const i_t dense_row = workspace.row_perm_[row];
+      const i_t row                  = std::min(rows[k], cols[k]);
+      const i_t dense_row            = workspace.row_perm_[row];
       permutation[cursor[dense_row]] = k;
       cursor[dense_row]++;
     }
