@@ -39,6 +39,10 @@ The convex optimization solvers for Linear Programming (LP), Quadratic Programmi
        - ✓
        -
        -
+     * - Pyomo
+       - ✓
+       -
+       -
 
 .. note::
    QCQP/SOCP support is currently in **beta**, and is only supported in CVXPY among modeling languages. We hope to add support for QCQP/SOCP in other modeling languages soon.

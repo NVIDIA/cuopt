@@ -98,7 +98,7 @@ Always place the learning in the **single skill where it has the widest effect**
 
 Choose the target using this priority:
 1. **Common / concept skill** (e.g. `cuopt-numerical-optimization-formulation`, `cuopt-user-rules`) — if the learning applies regardless of language or interface, put it here. All downstream API skills already read the common skill.
-2. **API skill** (e.g. `cuopt-numerical-optimization-api-python`, `cuopt-routing-api-python`) — if the learning is specific to one API or language.
+2. **API skill** (e.g. `cuopt-numerical-optimization-api`, `cuopt-routing-api-python`) — if the learning is specific to one API or language. For interface-specific learnings within `cuopt-numerical-optimization-api`, place in the relevant `references/python_api.md`, `references/c_api.md`, or `references/cli_api.md`.
 3. **New skill** — only if the learning doesn't fit any existing skill.
 
 If a gotcha affects both Python and C users but is about the solver behavior (not the API), it belongs in the common formulation skill, not in both `api-python` and `api-c`.
