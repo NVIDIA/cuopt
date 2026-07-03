@@ -260,12 +260,7 @@ void distributed_pock_chambolle_scaling(multi_gpu_engine_t<i_t, f_t>& engine,
   broadcast_constraint_scaling_to_halo(engine);
 
   engine.for_each_shard([alpha](auto& shard) {
-    shard.sub_pdlp->get_initial_scaling_strategy().pock_chambolle_compute_local_iteration_vectors(
-      alpha);
-  });
-
-  engine.for_each_shard([](auto& shard) {
-    shard.sub_pdlp->get_initial_scaling_strategy().pock_chambolle_apply_cumulative_update();
+    shard.sub_pdlp->get_initial_scaling_strategy().pock_chambolle_scaling(alpha);
   });
 
   // Final refresh for downstream consumers.

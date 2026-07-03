@@ -125,6 +125,7 @@ class pdlp_initial_scaling_strategy_t {
   void ruiz_iter_apply_cumulative_update();
   void pock_chambolle_compute_local_iteration_vectors(f_t alpha);
   void pock_chambolle_apply_cumulative_update();
+  void pock_chambolle_scaling(f_t alpha);
   rmm::device_uvector<f_t>& get_iteration_variable_scaling() { return iteration_variable_scaling_; }
 
   // Restore the clean pre-scaling state for the distributed path.
@@ -138,7 +139,6 @@ class pdlp_initial_scaling_strategy_t {
 
  private:
   void ruiz_inf_scaling(i_t number_of_ruiz_iterations);
-  void pock_chambolle_scaling(f_t alpha);
   void reset_integer_variables();
 
   raft::handle_t const* handle_ptr_{nullptr};
