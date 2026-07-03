@@ -28,3 +28,15 @@ JuMP Support
 
 JuMP can be used with near zero code changes: simply switch to cuOpt as a solver to solve linear and mixed-integer programming problems.
 Please refer to the `JuMP documentation <https://github.com/jump-dev/cuOpt.jl>`_ for more information.
+
+--------------------------
+Pyomo Support
+--------------------------
+
+Pyomo models can be used with near zero code changes via cuOpt's direct solver interface: simply select cuOpt as the solver to solve linear and mixed-integer programming problems. Please refer to the `Pyomo documentation <https://www.pyomo.org/>`_ for more information.
+
+--------------------------
+CVXPY Support
+--------------------------
+
+CVXPY can be used with near zero code changes: simply select cuOpt as the solver to solve linear and quadratic programs, as well as QCQP/SOCP problems (beta). Please refer to the `CVXPY documentation <https://www.cvxpy.org/>`_ for more information.

@@ -2691,6 +2691,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       if (settings_.deterministic) {
         queue_external_solution_deterministic(user_assignment, work_units);
       } else {
+        if (settings_.solution_callback != nullptr) {
+          settings_.solution_callback(user_assignment, obj);
+        }
         set_solution_from_heuristics(user_assignment);
       }
     };

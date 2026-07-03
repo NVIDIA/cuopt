@@ -130,7 +130,7 @@ void populate_from_mps_data_model(optimization_problem_interface_t<i_t, f_t>* pr
                                             q_offsets.data(),
                                             n_vars + 1);
   }
-  // Handle quadratic constraints if present
+  // Quadratic constraints from mps_data_model are already canonical (append_quadratic_constraint).
   if (data_model.has_quadratic_constraints()) {
     problem->set_quadratic_constraints(data_model.get_quadratic_constraints());
   }
@@ -291,8 +291,11 @@ void populate_from_data_model_view(
     problem->set_row_names(data_model->get_row_names());
   }
 
+  // Raw Q COO from data_model_view is canonicalized here before solver storage.
   if (data_model->has_quadratic_constraints()) {
-    problem->set_quadratic_constraints(data_model->get_quadratic_constraints());
+    auto qcs = data_model->get_quadratic_constraints();
+    io::canonicalize_quadratic_constraints<i_t, f_t>(qcs);
+    problem->set_quadratic_constraints(std::move(qcs));
   }
 }
 

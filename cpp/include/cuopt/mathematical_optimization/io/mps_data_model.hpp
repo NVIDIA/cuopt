@@ -239,7 +239,9 @@ class mps_data_model_t {
    * - row identity and type (from ROWS),
    * - sparse linear coefficients (from COLUMNS),
    * - RHS value (from RHS),
-   * - quadratic matrix Q in COO (SoA: row, col, value) from QCMATRIX — one triplet per nonzero.
+   * - quadratic matrix Q in upper-triangular COO format.
+   *   Off-diagonal cross terms store the full coefficient on x_i*x_j
+   *   (e.g. -2*d for rotated SOC), not as symmetric halves.
    */
   struct quadratic_constraint_t {
     /** ROWS declaration index (among all constraint rows), not an index into the linear CSR. */
@@ -251,7 +253,7 @@ class mps_data_model_t {
     std::vector<f_t> linear_values{};
     std::vector<i_t> linear_indices{};
     f_t rhs_value{f_t(0)};
-    /** Q nonzeros: parallel arrays, same length (COO / SoA). Sorted by (row, col) in append. */
+
     std::vector<i_t> rows{};
     std::vector<i_t> cols{};
     std::vector<f_t> vals{};
@@ -262,7 +264,8 @@ class mps_data_model_t {
    * @note All span inputs are host memory; the model copies this data.
    * @param linear_values, linear_indices Same nnz; can be empty for a purely quadratic row (rare).
    * @param vals, rows, cols COO triplets for Q; same length; may all be empty if Q is empty.
-   *        Stored sorted by (row, col).
+   *        Canonicalized on ingest to one triplet per variable pair (full x^T Q x coefficient),
+   *        stored in upper-triangular (min row, max col) form.
    * @param constraint_row_type MPS ROWS type: 'L' (<=) or 'G' (>=). Stored as given; 'G' rows are
    *        converted to '<=' form when building the SOCP for the barrier solver. Equality ('E') is
    *        not supported.
@@ -384,5 +387,18 @@ class mps_data_model_t {
   std::vector<quadratic_constraint_t> quadratic_constraints_;
 
 };  // class mps_data_model_t
+
+/**
+ * @brief Canonicalize each quadratic constraint's Q matrix.
+ *
+ * Merge duplicate COO entries and off-diagonal variable pairs, then store Q in
+ * upper-triangular form with one coefficient per variable pair (the full x^T Q x
+ * contribution for that pair).
+ *
+ * @param constraints Quadratic constraints whose rows, cols, and vals are updated.
+ */
+template <typename i_t, typename f_t>
+void canonicalize_quadratic_constraints(
+  std::vector<typename mps_data_model_t<i_t, f_t>::quadratic_constraint_t>& constraints);
 
 }  // namespace cuopt::mathematical_optimization::io
