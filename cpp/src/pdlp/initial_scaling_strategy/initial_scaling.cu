@@ -236,17 +236,21 @@ __global__ void inf_norm_col_kernel(
   }
 }
 
+// One iteration of Ruiz inf-norm scaling.
+// Distributed PDLP calls this per outer iteration between halo broadcasts;
 template <typename i_t, typename f_t>
-void pdlp_initial_scaling_strategy_t<i_t, f_t>::ruiz_iter_compute_local_iteration_vectors()
+void pdlp_initial_scaling_strategy_t<i_t, f_t>::ruiz_iter_local()
 {
-  // find inf norm over rows and columns of the scaled matrix in given iteration.
-  // Rows are reduced from the row-major matrix and columns from the transpose
-  // A_T (both kernels atomicMax into zero-initialized iteration vectors).
   RAFT_CUDA_TRY(cudaMemsetAsync(
     iteration_constraint_matrix_scaling_.data(), 0, sizeof(f_t) * dual_size_h_, stream_view_));
   RAFT_CUDA_TRY(cudaMemsetAsync(
     iteration_variable_scaling_.data(), 0, sizeof(f_t) * primal_size_h_, stream_view_));
 
+  // Inf-norm over rows (owned rows, from row-major A) and columns (owned
+  // columns, from A_T). Split into two kernels so the distributed path can
+  // touch only owned entries. 
+  // Reading cols data from A_t allows for better cache locality on the AtomicAdd
+  // than it would by reading cols data from A as it is csr-represented => scattered cols
   i_t number_of_blocks = op_problem_scaled_.n_constraints / block_size;
   if (op_problem_scaled_.n_constraints % block_size) number_of_blocks++;
   i_t number_of_threads = std::min(op_problem_scaled_.n_variables, (i_t)block_size);
@@ -264,11 +268,9 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::ruiz_iter_compute_local_iteratio
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 
   if (running_mip_) { reset_integer_variables(); }
-}
 
-template <typename i_t, typename f_t>
-void pdlp_initial_scaling_strategy_t<i_t, f_t>::ruiz_iter_apply_cumulative_update()
-{
+  // Fold this iteration's inf-norms into the cumulative scalings:
+  //   cumulative /= sqrt(iteration).
   raft::linalg::binaryOp(cummulative_constraint_matrix_scaling_.data(),
                          cummulative_constraint_matrix_scaling_.data(),
                          iteration_constraint_matrix_scaling_.data(),
@@ -282,12 +284,6 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::ruiz_iter_apply_cumulative_updat
                          primal_size_h_,
                          a_divides_sqrt_b_bounded<f_t>(),
                          stream_view_);
-
-  // Reset the iteration_scaling vectors to all 0
-  RAFT_CUDA_TRY(cudaMemsetAsync(
-    iteration_constraint_matrix_scaling_.data(), 0.0, sizeof(f_t) * dual_size_h_, stream_view_));
-  RAFT_CUDA_TRY(cudaMemsetAsync(
-    iteration_variable_scaling_.data(), 0.0, sizeof(f_t) * primal_size_h_, stream_view_));
 }
 
 template <typename i_t, typename f_t>
@@ -326,8 +322,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::ruiz_inf_scaling(i_t number_of_r
   std::cout << "Doing ruiz_inf_scaling" << std::endl;
 #endif
   for (int i = 0; i < number_of_ruiz_iterations; i++) {
-    ruiz_iter_compute_local_iteration_vectors();
-    ruiz_iter_apply_cumulative_update();
+    ruiz_iter_local();
   }
 }
 

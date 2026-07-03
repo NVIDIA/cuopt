@@ -121,8 +121,10 @@ class pdlp_initial_scaling_strategy_t {
 
   // ----- Distributed-PDLP hooks -----
 
-  void ruiz_iter_compute_local_iteration_vectors();
-  void ruiz_iter_apply_cumulative_update();
+  // One Ruiz iteration (compute iteration vectors + fold into
+  // cumulative). Exposed for distributed PDLP so the outer loop with halo
+  // broadcasts lives at the distributed level
+  void ruiz_iter_local();
   // Shard-local end-to-end Pock-Chambolle pass. Exposed for distributed PDLP:
   void pock_chambolle_scaling(f_t alpha);
   rmm::device_uvector<f_t>& get_iteration_variable_scaling() { return iteration_variable_scaling_; }

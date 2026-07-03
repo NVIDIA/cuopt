@@ -222,16 +222,13 @@ void distributed_ruiz_inf_scaling(multi_gpu_engine_t<i_t, f_t>& engine,
     broadcast_variable_scaling_to_halo(engine);
     broadcast_constraint_scaling_to_halo(engine);
 
-    // Per-shard local kernels: row inf-norm (owned rows, complete) + column
-    // inf-norm from A_T (owned columns, complete; halo columns -> 0).
+    // Shard-local Ruiz iteration
+    // rows: inf norm only over OWNED (full) rows from A
+    // cols: inf norm only over OWNED (full) cols from A_T
+    // Then fold into cumulative on owned entries (halo entries get refreshed by
+    // the next iteration's halo update)
     engine.for_each_shard([](auto& shard) {
-      shard.sub_pdlp->get_initial_scaling_strategy().ruiz_iter_compute_local_iteration_vectors();
-    });
-
-    // Fold into cumulative on owned entries (halo entries get refreshed by
-    // the next iteration's broadcast).
-    engine.for_each_shard([](auto& shard) {
-      shard.sub_pdlp->get_initial_scaling_strategy().ruiz_iter_apply_cumulative_update();
+      shard.sub_pdlp->get_initial_scaling_strategy().ruiz_iter_local();
     });
   }
 
