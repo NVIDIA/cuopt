@@ -145,7 +145,7 @@ TEST(gf2_presolve, uses_compact_constraint_indices)
   problem.set_constraint_upper_bounds(constraint_ub.data(), constraint_ub.size());
 
   auto presolver = std::make_unique<mip::third_party_presolve_t<int, double>>();
-  auto result    = presolver->apply(
+  auto result    = presolver->apply_presolve_from_op_problem(
     problem, problem_category_t::MIP, presolver_t::Papilo, false, 1e-6, 1e-12, 20, 1);
 
   EXPECT_EQ(result.status, mip::third_party_presolve_status_t::REDUCED);
