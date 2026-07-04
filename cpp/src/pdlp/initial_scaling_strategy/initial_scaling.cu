@@ -248,7 +248,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::ruiz_iter_local()
 
   // Inf-norm over rows (owned rows, from row-major A) and columns (owned
   // columns, from A_T). Split into two kernels so the distributed path can
-  // touch only owned entries. 
+  // touch only owned entries.
   // Reading cols data from A_t allows for better cache locality on the AtomicAdd
   // than it would by reading cols data from A as it is csr-represented => scattered cols
   i_t number_of_blocks = op_problem_scaled_.n_constraints / block_size;

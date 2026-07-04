@@ -227,9 +227,8 @@ void distributed_ruiz_inf_scaling(multi_gpu_engine_t<i_t, f_t>& engine,
     // cols: inf norm only over OWNED (full) cols from A_T
     // Then fold into cumulative on owned entries (halo entries get refreshed by
     // the next iteration's halo update)
-    engine.for_each_shard([](auto& shard) {
-      shard.sub_pdlp->get_initial_scaling_strategy().ruiz_iter_local();
-    });
+    engine.for_each_shard(
+      [](auto& shard) { shard.sub_pdlp->get_initial_scaling_strategy().ruiz_iter_local(); });
   }
 
   // Final refresh so downstream consumers (the scaled problem, the next
