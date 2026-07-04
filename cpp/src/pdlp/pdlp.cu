@@ -560,49 +560,16 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   multi_gpu_engine.emplace(std::move(sub_pdlp_rank_data), mps, sub_pdlp_settings);
 
   // ----- 8 Distributed Scaling -----
-  for (auto& shard : multi_gpu_engine->shards) {
-    raft::device_setter guard(shard->device_id);
-    shard->sub_pdlp->get_initial_scaling_strategy().reset_scaling_state_for_distributed();
-  }
-  for (auto& shard : multi_gpu_engine->shards) {
-    raft::device_setter guard(shard->device_id);
-    shard->stream.synchronize();
-  }
+  // Full distributed scaling pipeline (reset state + Ruiz + Pock-Chambolle +
+  // per-shard scale_problem with the local bound/obj step suppressed + global
+  // bound/objective rescaling).
+  distributed_scaling(*multi_gpu_engine, settings_.hyper_params, n_vars, inside_mip_);
 
-  // Distributed scaling. Each pass keeps the halo copies of both cumulative
-  // scalings refreshed internally (owner -> halo broadcast)
-  if (settings_.hyper_params.do_ruiz_scaling) {
-    distributed_ruiz_inf_scaling(
-      *multi_gpu_engine, settings_.hyper_params.default_l_inf_ruiz_iterations, n_vars);
-  }
-  if (settings_.hyper_params.do_pock_chambolle_scaling) {
-    distributed_pock_chambolle_scaling(
-      *multi_gpu_engine,
-      static_cast<f_t>(settings_.hyper_params.default_alpha_pock_chambolle_rescaling),
-      n_vars);
-  }
-
-  for (auto& shard : multi_gpu_engine->shards) {
-    raft::device_setter guard(shard->device_id);
-    auto& scaling = shard->sub_pdlp->get_initial_scaling_strategy();
-    // Skip the per-shard local bound/objective rescaling; the global factor is
-    // applied below. Keeps the unscale path active (flag stays true).
-    scaling.set_skip_distributed_local_rescaling(true);
-    scaling.scale_problem();
-
-    shard->sub_pdlp->pdhg_solver_.get_cusparse_view().create_spmv_op_plans(
+  multi_gpu_engine->for_each_shard([&](auto& shard) {
+    shard.sub_pdlp->pdhg_solver_.get_cusparse_view().create_spmv_op_plans(
       /*is_reflected=*/settings_.hyper_params.use_reflected_primal_dual);
-  }
-  for (auto& shard : multi_gpu_engine->shards) {
-    raft::device_setter guard(shard->device_id);
-    shard->stream.synchronize();
-  }
-
-  // Global bound/objective rescaling: allreduce the owned partial squared-norms
-  if (settings_.hyper_params.bound_objective_rescaling && !inside_mip_) {
-    distributed_bound_objective_rescaling(
-      *multi_gpu_engine, static_cast<f_t>(settings_.hyper_params.initial_primal_weight_c_scaling));
-  }
+  });
+  multi_gpu_engine->for_each_shard([](auto& shard) { shard.stream.synchronize(); });
 
   // ----- 8b. Seed initial step-size / primal-weight (distributed, scales to N shards) -----
   constexpr f_t kStepSizeScale = f_t{0.998};

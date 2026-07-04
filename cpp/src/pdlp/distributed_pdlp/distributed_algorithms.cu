@@ -234,6 +234,52 @@ void distributed_pock_chambolle_scaling(multi_gpu_engine_t<i_t, f_t>& engine,
   engine.for_each_shard([](auto& shard) { shard.stream.synchronize(); });
 }
 
+// -------- Distributed scaling orchestration ------------------------------
+// Mirrors what scale_problem() does in single-GPU by composing the
+// individual distributed passes. See the header for the full pipeline.
+template <typename i_t, typename f_t>
+void distributed_scaling(multi_gpu_engine_t<i_t, f_t>& engine,
+                         pdlp_hyper_params_t const& hyper_params,
+                         i_t n_global_vars,
+                         bool inside_mip)
+{
+  raft::common::nvtx::range scope("distributed_scaling");
+
+  // 1) Reset per-shard scaling state (cumulative row/col scalings back to 1),
+  //    then sync so subsequent scaling passes start from a clean slate.
+  engine.for_each_shard([](auto& shard) {
+    shard.sub_pdlp->get_initial_scaling_strategy().reset_scaling_state_for_distributed();
+  });
+  engine.for_each_shard([](auto& shard) { shard.stream.synchronize(); });
+
+  // 2) Matrix scaling passes populate the cumulative row/col scalings on
+  //    every shard. Each pass keeps the halo copies refreshed internally.
+  if (hyper_params.do_ruiz_scaling) {
+    distributed_ruiz_inf_scaling(
+      engine, hyper_params.default_l_inf_ruiz_iterations, n_global_vars);
+  }
+  if (hyper_params.do_pock_chambolle_scaling) {
+    distributed_pock_chambolle_scaling(
+      engine,
+      static_cast<f_t>(hyper_params.default_alpha_pock_chambolle_rescaling),
+      n_global_vars);
+  }
+
+  // 3) Per-shard apply of the accumulated scaling to A, c, variable and
+  //    constraint bounds. This is scale_problem() minus its local
+  //    bound/objective rescaling; the equivalent global step happens in (4).
+  engine.for_each_shard([](auto& shard) {
+    shard.sub_pdlp->get_initial_scaling_strategy().apply_cummulative_scaling_to_problem();
+  });
+  engine.for_each_shard([](auto& shard) { shard.stream.synchronize(); });
+
+  // 4) Global bound/objective rescaling (all shards get the identical scalar).
+  if (hyper_params.bound_objective_rescaling) {
+    distributed_bound_objective_rescaling(
+      engine, static_cast<f_t>(hyper_params.initial_primal_weight_c_scaling));
+  }
+}
+
 // -------- Distributed sigma_max(A) via power iteration --------------------
 // The function has to re-implement the multi_gpu_engine_t preimitives as the scratch buffers
 // are not associated with shards.
@@ -582,6 +628,10 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
     multi_gpu_engine_t<int, F_TYPE> & engine, int num_iter, int n_global_vars);                   \
   template void distributed_pock_chambolle_scaling<int, F_TYPE>(                                  \
     multi_gpu_engine_t<int, F_TYPE> & engine, F_TYPE alpha, int n_global_vars);                   \
+  template void distributed_scaling<int, F_TYPE>(multi_gpu_engine_t<int, F_TYPE> & engine,        \
+                                                 pdlp_hyper_params_t const& hyper_params,         \
+                                                 int n_global_vars,                               \
+                                                 bool inside_mip);                                \
   template F_TYPE distributed_max_singular_value<int, F_TYPE>(                                    \
     multi_gpu_engine_t<int, F_TYPE> & engine,                                                     \
     int n_global_cstrs,                                                                           \

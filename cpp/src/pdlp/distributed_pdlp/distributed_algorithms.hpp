@@ -4,6 +4,8 @@
  */
 #pragma once
 
+#include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
+
 #include <rmm/device_uvector.hpp>
 
 // Algorithm-level distributed PDLP
@@ -48,6 +50,21 @@ template <typename i_t, typename f_t>
 void distributed_pock_chambolle_scaling(multi_gpu_engine_t<i_t, f_t>& engine,
                                         f_t alpha,
                                         i_t n_global_vars);
+
+// Full distributed scaling entry point. Mirrors what scale_problem() does in
+// single-GPU by orchestrating:
+//   - reset per-shard scaling state
+//   - Ruiz inf-scaling -> populates cumulative row/col scalings
+//   - Pock-Chambolle scaling -> same
+//   - per-shard apply_cummulative_scaling_to_problem() to apply the cumulative
+//     scalings to A, c, variable and constraint bounds (this is scale_problem()
+//     minus its shard-local bound/objective rescaling)
+//   - global bound/objective rescaling via distributed_bound_objective_rescaling
+template <typename i_t, typename f_t>
+void distributed_scaling(multi_gpu_engine_t<i_t, f_t>& engine,
+                         pdlp_hyper_params_t const& hyper_params,
+                         i_t n_global_vars,
+                         bool inside_mip);
 
 // Distributed sigma_max(A) via power iteration (used to seed the initial
 // step size). Returns the largest singular value of the scaled constraint

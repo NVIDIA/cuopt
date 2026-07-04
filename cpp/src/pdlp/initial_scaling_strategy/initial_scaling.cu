@@ -626,9 +626,9 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::resize_context(i_t new_size)
 }
 
 template <typename i_t, typename f_t>
-void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_problem()
+void pdlp_initial_scaling_strategy_t<i_t, f_t>::apply_cummulative_scaling_to_problem()
 {
-  raft::common::nvtx::range fun_scope("scale_problem");
+  raft::common::nvtx::range fun_scope("apply_cummulative_scaling_to_problem");
 
   // scale A
   i_t number_of_blocks = op_problem_scaled_.n_constraints / block_size;
@@ -698,19 +698,6 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_problem()
     cuda::std::multiplies<f_t>{},
     stream_view_);
 
-  if (hyper_params_.bound_objective_rescaling && !running_mip_ &&
-      !skip_distributed_local_rescaling_) {
-    // Coefficients are computed on the already scaled values
-    bound_objective_rescaling();
-
-#ifdef CUPDLP_DEBUG_MODE
-    print("bound_rescaling", bound_rescaling_);
-    print("objective_rescaling", objective_rescaling_);
-#endif
-
-    apply_bound_objective_rescaling_to_problem();
-  }
-
 #ifdef CUPDLP_DEBUG_MODE
   print("constraint_lower_bound", op_problem_scaled_.constraint_lower_bounds);
   print("constraint_upper_bound", op_problem_scaled_.constraint_upper_bounds);
@@ -733,6 +720,30 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_problem()
   op_problem_scaled_.is_scaled_ = true;
   if (!running_mip_) {
     scale_solutions(pdhg_solver_ptr_->get_primal_solution(), pdhg_solver_ptr_->get_dual_solution());
+  }
+}
+
+template <typename i_t, typename f_t>
+void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_problem()
+{
+  raft::common::nvtx::range fun_scope("scale_problem");
+
+  apply_cummulative_scaling_to_problem();
+
+  // Local bound/objective rescaling. Distributed PDLP intentionally does NOT
+  // reach this code path - it calls apply_cummulative_scaling_to_problem()
+  // directly and then applies the GLOBAL (allreduced) bound/objective factors
+  // via distributed_bound_objective_rescaling() instead.
+  if (hyper_params_.bound_objective_rescaling && !running_mip_) {
+    // Coefficients are computed on the already scaled values
+    bound_objective_rescaling();
+
+#ifdef CUPDLP_DEBUG_MODE
+    print("bound_rescaling", bound_rescaling_);
+    print("objective_rescaling", objective_rescaling_);
+#endif
+
+    apply_bound_objective_rescaling_to_problem();
   }
 }
 

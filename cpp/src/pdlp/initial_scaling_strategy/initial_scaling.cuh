@@ -112,17 +112,20 @@ class pdlp_initial_scaling_strategy_t {
   // three multiplies.
   void apply_bound_objective_rescaling_to_problem();
 
-  // Distributed PDLP: skip the LOCAL bound/objective rescaling inside
-  // scale_problem()
-  void set_skip_distributed_local_rescaling(bool value)
-  {
-    skip_distributed_local_rescaling_ = value;
-  }
-
   // Public for distributed PDLP
   void compute_scaling_vectors(i_t number_of_ruiz_iterations, f_t alpha);
 
   // ----- Distributed-PDLP hooks -----
+
+  // Apply the cumulative row/column scalings that Ruiz/Pock-Chambolle
+  // accumulated to A, A_T, c, variable bounds and constraint bounds, mark
+  // the problem as scaled and scale the seed primal/dual solutions.
+  // scale_problem() = apply_cummulative_scaling_to_problem() + local
+  // bound/objective rescaling. Distributed PDLP calls this directly and
+  // then invokes distributed_bound_objective_rescaling() to apply the
+  // GLOBAL (allreduced) bound/objective factors instead of the shard-local
+  // ones.
+  void apply_cummulative_scaling_to_problem();
 
   // One Ruiz iteration (compute iteration vectors + fold into
   // cumulative). Exposed for distributed PDLP so the outer loop with halo
@@ -170,8 +173,5 @@ class pdlp_initial_scaling_strategy_t {
   rmm::device_uvector<i_t>& A_T_indices_;
   const pdlp::pdlp_hyper_params_t& hyper_params_;
   bool running_mip_;
-  // Distributed PDLP: when true, scale_problem() skips its local
-  // bound/objective rescaling (the global factor is applied separately).
-  bool skip_distributed_local_rescaling_{false};
 };
 }  // namespace cuopt::mathematical_optimization::pdlp
