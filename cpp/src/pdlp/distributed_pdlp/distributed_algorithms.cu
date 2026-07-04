@@ -7,10 +7,16 @@
 #include <pdlp/distributed_pdlp/distributed_algorithms.hpp>
 #include <pdlp/distributed_pdlp/multi_gpu_engine.hpp>
 #include <pdlp/pdlp.cuh>
+#include <pdlp/utils.cuh>
 
 #include <raft/core/nvtx.hpp>
 
+#include <rmm/exec_policy.hpp>
+
 #include <thrust/fill.h>
+#include <thrust/functional.h>
+#include <thrust/iterator/zip_iterator.h>
+#include <thrust/transform_reduce.h>
 
 #include <cmath>
 #include <random>
@@ -117,92 +123,53 @@ void gather_potential_next_solutions_to_master(multi_gpu_engine_t<i_t, f_t>& eng
 }
 
 // -------- Distributed bound / objective rescaling -------------------------
+// + apply_bound_objective_rescaling_to_problem, unfused because we need a
+// raw squared-sum on device to hand to NCCL AllReduce and the base version comptues tranform->reduce->transform in one cub call for efficiency
 template <typename i_t, typename f_t>
 void distributed_bound_objective_rescaling(multi_gpu_engine_t<i_t, f_t>& engine,
                                            f_t c_scaling_weight)
 {
-  const int nb = static_cast<int>(engine.shards.size());
+  raft::common::nvtx::range scope("distributed_bound_objective_rescaling");
 
-  // Per-shard packed partial squared norms: [0] = bound (rhs) sq, [1] = obj sq.
-  std::vector<rmm::device_uvector<f_t>> sq;
-  sq.reserve(nb);
-
-  // 1) per-shard partial squared norms over owned entries only
-  for (int r = 0; r < nb; ++r) {
-    auto& s = *engine.shards[r];
-    raft::device_setter guard(s.device_id);
-    sq.emplace_back(2, s.stream.view());
-
+  // 1) + 2) Local transform-reduce on each shard, accumulate the global
+  //         squared L2 norms on host as we go.
+  f_t global_bound_sq = f_t(0);
+  f_t global_obj_sq   = f_t(0);
+  engine.for_each_shard([&](auto& s) {
     const auto& scaled     = s.sub_pdlp->get_initial_scaling_strategy().get_scaled_op_problem();
-    const int n_owned_cstr = static_cast<int>(s.rank_data.owned_cstr_size);
-    const int n_owned_var  = static_cast<int>(s.rank_data.owned_var_size);
+    const i_t n_owned_cstr = static_cast<i_t>(s.rank_data.owned_cstr_size);
+    const i_t n_owned_var  = static_cast<i_t>(s.rank_data.owned_var_size);
+    auto policy            = rmm::exec_policy(s.stream.view());
 
-    // Squared-norm contribution of each constraint's [lower, upper] bound pair
-    // (mirrors rhs_sum_of_squares_t).
-    const f_t* upper = scaled.constraint_upper_bounds.data();
-    auto bound_op    = [upper] __device__(f_t lower, i_t i) {
-      const f_t u = upper[i];
-      f_t sum     = f_t(0);
-      if (isfinite(lower) && (lower != u)) sum += lower * lower;
-      if (isfinite(u)) sum += u * u;
-      return sum;
-    };
-    raft::linalg::reduce<true, true, f_t, f_t, i_t>(sq[r].data() + 0,
-                                                    scaled.constraint_lower_bounds.data(),
-                                                    n_owned_cstr,
-                                                    1,
-                                                    f_t(0),
-                                                    s.stream.view(),
-                                                    false,
-                                                    bound_op,
-                                                    raft::Sum<f_t>());
+    auto bounds_begin = thrust::make_zip_iterator(scaled.constraint_lower_bounds.data(),
+                                                  scaled.constraint_upper_bounds.data());
+    global_bound_sq += thrust::transform_reduce(policy,
+                                                bounds_begin,
+                                                bounds_begin + n_owned_cstr,
+                                                rhs_sum_of_squares_t<f_t>{},
+                                                f_t(0),
+                                                thrust::plus<f_t>{});
+    global_obj_sq += thrust::transform_reduce(policy,
+                                              scaled.objective_coefficients.data(),
+                                              scaled.objective_coefficients.data() + n_owned_var,
+                                              weighted_square_op<f_t>{c_scaling_weight},
+                                              f_t(0),
+                                              thrust::plus<f_t>{});
+  });
 
-    // Weighted sum of squares of the objective coefficients.
-    auto obj_op = [c_scaling_weight] __device__(f_t v, i_t) { return v * v * c_scaling_weight; };
-    raft::linalg::reduce<true, true, f_t, f_t, i_t>(sq[r].data() + 1,
-                                                    scaled.objective_coefficients.data(),
-                                                    n_owned_var,
-                                                    1,
-                                                    f_t(0),
-                                                    s.stream.view(),
-                                                    false,
-                                                    obj_op,
-                                                    raft::Sum<f_t>());
-  }
+  // 3) Host-side derivation of the (identical on every shard) scaling scalars.
+  const f_t bound_rescaling = rescaling_from_squared_norm_op<f_t>{}(global_bound_sq);
+  const f_t obj_rescaling   = rescaling_from_squared_norm_op<f_t>{}(global_obj_sq);
 
-  // 2) NCCL allreduce SUM (both scalars at once) -> every shard holds the
-  //    global squared norms.
-  CUOPT_NCCL_TRY(ncclGroupStart());
-  for (int r = 0; r < nb; ++r) {
-    auto& s = *engine.shards[r];
-    raft::device_setter guard(s.device_id);
-    CUOPT_NCCL_TRY(ncclAllReduce(sq[r].data(),
-                                 sq[r].data(),
-                                 2,
-                                 nccl_data_type<f_t>(),
-                                 ncclSum,
-                                 s.comm.get(),
-                                 s.stream.view().value()));
-  }
-  CUOPT_NCCL_TRY(ncclGroupEnd());
+  // 4) Publish + apply on every shard via the shared helpers.
+  engine.for_each_shard([&](auto& s) {
+    auto& scaling = s.sub_pdlp->get_initial_scaling_strategy();
+    scaling.set_h_bound_rescaling(bound_rescaling);
+    scaling.set_h_objective_rescaling(obj_rescaling);
+    scaling.apply_bound_objective_rescaling_to_problem();
+  });
 
-  // 3) derive the identical scalars and apply on every shard.
-  for (int r = 0; r < nb; ++r) {
-    auto& s = *engine.shards[r];
-    raft::device_setter guard(s.device_id);
-    f_t h_sq[2] = {f_t(0), f_t(0)};
-    raft::copy(h_sq, sq[r].data(), 2, s.stream.view());
-    s.stream.synchronize();
-    const f_t bound_rescaling     = f_t(1) / (std::sqrt(h_sq[0]) + f_t(1));
-    const f_t objective_rescaling = f_t(1) / (std::sqrt(h_sq[1]) + f_t(1));
-    s.sub_pdlp->get_initial_scaling_strategy().apply_distributed_bound_objective_rescaling(
-      bound_rescaling, objective_rescaling);
-  }
-  for (int r = 0; r < nb; ++r) {
-    auto& s = *engine.shards[r];
-    raft::device_setter guard(s.device_id);
-    s.stream.synchronize();
-  }
+  engine.for_each_shard([](auto& shard) { shard.stream.synchronize(); });
 }
 
 // -------- Distributed Ruiz inf-scaling ------------------------------------

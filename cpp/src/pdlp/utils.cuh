@@ -264,6 +264,21 @@ struct rhs_sum_of_squares_t {
   }
 };
 
+// Per-element weighted square (used to compute the L2 norm of the weighted
+// objective coefficients).
+template <typename f_t>
+struct weighted_square_op {
+  f_t weight;
+  HDI f_t operator()(f_t v) const { return v * v * weight; }
+};
+
+// Convert a squared L2 norm to its bound/objective rescaling scalar,
+// 1 / (sqrt(sum) + 1). Uses raft::sqrt which is __host__ __device__.
+template <typename f_t>
+struct rescaling_from_squared_norm_op {
+  HDI f_t operator()(f_t sum) const { return f_t(1.0) / (raft::sqrt(sum) + f_t(1.0)); }
+};
+
 template <typename i_t, typename f_t>
 void inline combine_constraint_bounds(const mip::problem_t<i_t, f_t>& op_problem,
                                       rmm::device_uvector<f_t>& combined_bounds)

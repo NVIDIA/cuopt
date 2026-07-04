@@ -105,9 +105,12 @@ class pdlp_initial_scaling_strategy_t {
 
   void bound_objective_rescaling();
 
-  // Distributed PDLP: apply an externally-computed GLOBAL bound / objective
-  // rescaling to the already-scaled problem.
-  void apply_distributed_bound_objective_rescaling(f_t bound_rescaling, f_t objective_rescaling);
+  // Apply the already-populated bound_rescaling_ / objective_rescaling_
+  // device vectors to op_problem_scaled_ (constraint bounds, variable bounds,
+  // objective). Extracted from scale_problem() into a shared helper so
+  // distributed PDLP can apply its globally-reduced scalars via the same
+  // three multiplies.
+  void apply_bound_objective_rescaling_to_problem();
 
   // Distributed PDLP: skip the LOCAL bound/objective rescaling inside
   // scale_problem()

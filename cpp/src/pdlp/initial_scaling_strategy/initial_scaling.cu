@@ -32,17 +32,6 @@
 namespace cuopt::mathematical_optimization::pdlp {
 
 template <typename f_t>
-struct weighted_square_op {
-  f_t weight;
-  HDI f_t operator()(f_t v) { return v * v * weight; }
-};
-
-template <typename f_t>
-struct rescaling_from_squared_norm_op {
-  HDI f_t operator()(f_t sum) { return f_t(1.0) / (raft::sqrt(sum) + f_t(1.0)); }
-};
-
-template <typename f_t>
 struct inverse_rescaling_op {
   HDI f_t operator()(f_t v)
   {
@@ -185,6 +174,57 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::bound_objective_rescaling()
     objective_input, objective_output, n_batches, n_variables);
 
   h_objective_rescaling_ = cuopt::host_copy(objective_rescaling_, stream_view_);
+}
+
+// Apply the already-published bound_rescaling_ / objective_rescaling_ device
+// vectors to the scaled problem's constraint bounds, variable bounds, and
+// objective. Extracted from scale_problem() so distributed_bound_objective_rescaling
+// can share the exact same three multiplies (both call sites go through this
+// helper — no duplicated multiply loops).
+template <typename i_t, typename f_t>
+void pdlp_initial_scaling_strategy_t<i_t, f_t>::apply_bound_objective_rescaling_to_problem()
+{
+  using f_t2 = typename type_2<f_t>::type;
+
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(op_problem_scaled_.constraint_lower_bounds.data(),
+                          op_problem_scaled_.constraint_upper_bounds.data(),
+                          batch_wrapped_container(bound_rescaling_, dual_size_h_)),
+    thrust::make_zip_iterator(op_problem_scaled_.constraint_lower_bounds.data(),
+                              op_problem_scaled_.constraint_upper_bounds.data()),
+    op_problem_scaled_.constraint_upper_bounds.size(),
+    [] __device__(f_t constraint_lower_bound,
+                  f_t constraint_upper_bound,
+                  f_t bound_rescaling) -> thrust::tuple<f_t, f_t> {
+      return {constraint_lower_bound * bound_rescaling, constraint_upper_bound * bound_rescaling};
+    },
+    stream_view_.value());
+
+  // In batch mode we don't scale the variable bounds (here) because they are shared across
+  // climbers. While the variable bounds are the same across climbers, there can be different
+  // bound rescaling factors for each climber. One solution would be to have per climber variable
+  // bounds but its costly from a memory perspective and from a memory bandwidth perspective.
+  // Since the variable bounds are the same across climbers but only the scaling factor changes,
+  // we pass the scaling factor to PDHG later. In PDHG we act the (almost fully) scaled variable
+  // bounds and add this missing scaling factor.
+  if (original_batch_size_ == 1) {
+    cub::DeviceTransform::Transform(
+      op_problem_scaled_.variable_bounds.data(),
+      op_problem_scaled_.variable_bounds.data(),
+      op_problem_scaled_.variable_bounds.size(),
+      [bound_rescaling = bound_rescaling_.data()] __device__(f_t2 variable_bounds) -> f_t2 {
+        return {variable_bounds.x * *bound_rescaling, variable_bounds.y * *bound_rescaling};
+      },
+      stream_view_);
+  }
+
+  cub::DeviceTransform::Transform(
+    cuda::std::make_tuple(op_problem_scaled_.objective_coefficients.data(),
+                          batch_wrapped_container(objective_rescaling_, primal_size_h_)),
+    op_problem_scaled_.objective_coefficients.data(),
+    op_problem_scaled_.objective_coefficients.size(),
+    cuda::std::multiplies<f_t>{},
+    stream_view_.value());
 }
 
 // Row inf-norm of the scaled matrix, over the row-major matrix: each row is
@@ -668,45 +708,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::scale_problem()
     print("objective_rescaling", objective_rescaling_);
 #endif
 
-    cub::DeviceTransform::Transform(
-      cuda::std::make_tuple(op_problem_scaled_.constraint_lower_bounds.data(),
-                            op_problem_scaled_.constraint_upper_bounds.data(),
-                            batch_wrapped_container(bound_rescaling_, dual_size_h_)),
-      thrust::make_zip_iterator(op_problem_scaled_.constraint_lower_bounds.data(),
-                                op_problem_scaled_.constraint_upper_bounds.data()),
-      op_problem_scaled_.constraint_upper_bounds.size(),
-      [] __device__(f_t constraint_lower_bound,
-                    f_t constraint_upper_bound,
-                    f_t bound_rescaling) -> thrust::tuple<f_t, f_t> {
-        return {constraint_lower_bound * bound_rescaling, constraint_upper_bound * bound_rescaling};
-      },
-      stream_view_.value());
-
-    // In batch mode we don't scale the variable bounds (here) because they are shared across
-    // climbers. While the variable bounds are the same across climbers, there can be different
-    // bound rescaling factors for each climber. One solution would be to have per climber variable
-    // bounds but its costly from a memory perspective and from a memory bandwidth perspective.
-    // Since the variable bounds are the same across climbers but only the scaling factor changes,
-    // we pass the scaling factor to PDHG later. In PDHG we act the (almost fully) scaled variable
-    // bounds and add this missing scaling factor.
-    if (original_batch_size_ == 1) {
-      cub::DeviceTransform::Transform(
-        op_problem_scaled_.variable_bounds.data(),
-        op_problem_scaled_.variable_bounds.data(),
-        op_problem_scaled_.variable_bounds.size(),
-        [bound_rescaling = bound_rescaling_.data()] __device__(f_t2 variable_bounds) -> f_t2 {
-          return {variable_bounds.x * *bound_rescaling, variable_bounds.y * *bound_rescaling};
-        },
-        stream_view_);
-    }
-
-    cub::DeviceTransform::Transform(
-      cuda::std::make_tuple(op_problem_scaled_.objective_coefficients.data(),
-                            batch_wrapped_container(objective_rescaling_, primal_size_h_)),
-      op_problem_scaled_.objective_coefficients.data(),
-      op_problem_scaled_.objective_coefficients.size(),
-      cuda::std::multiplies<f_t>{},
-      stream_view_.value());
+    apply_bound_objective_rescaling_to_problem();
   }
 
 #ifdef CUPDLP_DEBUG_MODE
@@ -970,50 +972,6 @@ template <typename i_t, typename f_t>
 const mip::problem_t<i_t, f_t>& pdlp_initial_scaling_strategy_t<i_t, f_t>::get_scaled_op_problem()
 {
   return op_problem_scaled_;
-}
-
-template <typename i_t, typename f_t>
-void pdlp_initial_scaling_strategy_t<i_t, f_t>::apply_distributed_bound_objective_rescaling(
-  f_t bound_rescaling, f_t objective_rescaling)
-{
-  using f_t2 = typename type_2<f_t>::type;
-
-  // constraint bounds *= bound_rescaling  (matches scale_problem() bound block)
-  cub::DeviceTransform::Transform(
-    cuda::std::make_tuple(op_problem_scaled_.constraint_lower_bounds.data(),
-                          op_problem_scaled_.constraint_upper_bounds.data()),
-    thrust::make_zip_iterator(op_problem_scaled_.constraint_lower_bounds.data(),
-                              op_problem_scaled_.constraint_upper_bounds.data()),
-    op_problem_scaled_.constraint_upper_bounds.size(),
-    [bound_rescaling] __device__(f_t lower, f_t upper) -> thrust::tuple<f_t, f_t> {
-      return {lower * bound_rescaling, upper * bound_rescaling};
-    },
-    stream_view_.value());
-
-  // variable bounds *= bound_rescaling (batch-1 path only; distributed is batch 1)
-  cub::DeviceTransform::Transform(
-    op_problem_scaled_.variable_bounds.data(),
-    op_problem_scaled_.variable_bounds.data(),
-    op_problem_scaled_.variable_bounds.size(),
-    [bound_rescaling] __device__(f_t2 variable_bounds) -> f_t2 {
-      return {variable_bounds.x * bound_rescaling, variable_bounds.y * bound_rescaling};
-    },
-    stream_view_);
-
-  // objective *= objective_rescaling
-  cub::DeviceTransform::Transform(
-    op_problem_scaled_.objective_coefficients.data(),
-    op_problem_scaled_.objective_coefficients.data(),
-    op_problem_scaled_.objective_coefficients.size(),
-    [objective_rescaling] __device__(f_t c) -> f_t { return c * objective_rescaling; },
-    stream_view_);
-
-  // Store the factors (sets both host copies and the device rescaling vectors)
-  // so unscale_solutions() / scale_solutions() apply them consistently. The flag
-  // hyper_params_.bound_objective_rescaling stays true on shards so those paths
-  // are active; only scale_problem()'s local recompute is skipped.
-  set_h_bound_rescaling(bound_rescaling);
-  set_h_objective_rescaling(objective_rescaling);
 }
 
 template <typename i_t, typename f_t>
