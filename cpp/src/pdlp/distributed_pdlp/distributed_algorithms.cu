@@ -255,14 +255,11 @@ void distributed_scaling(multi_gpu_engine_t<i_t, f_t>& engine,
   // 2) Matrix scaling passes populate the cumulative row/col scalings on
   //    every shard. Each pass keeps the halo copies refreshed internally.
   if (hyper_params.do_ruiz_scaling) {
-    distributed_ruiz_inf_scaling(
-      engine, hyper_params.default_l_inf_ruiz_iterations, n_global_vars);
+    distributed_ruiz_inf_scaling(engine, hyper_params.default_l_inf_ruiz_iterations, n_global_vars);
   }
   if (hyper_params.do_pock_chambolle_scaling) {
     distributed_pock_chambolle_scaling(
-      engine,
-      static_cast<f_t>(hyper_params.default_alpha_pock_chambolle_rescaling),
-      n_global_vars);
+      engine, static_cast<f_t>(hyper_params.default_alpha_pock_chambolle_rescaling), n_global_vars);
   }
 
   // 3) Per-shard apply of the accumulated scaling to A, c, variable and
