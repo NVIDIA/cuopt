@@ -124,7 +124,8 @@ void gather_potential_next_solutions_to_master(multi_gpu_engine_t<i_t, f_t>& eng
 
 // -------- Distributed bound / objective rescaling -------------------------
 // + apply_bound_objective_rescaling_to_problem, unfused because we need a
-// raw squared-sum on device to hand to NCCL AllReduce and the base version comptues tranform->reduce->transform in one cub call for efficiency
+// raw squared-sum on device to hand to NCCL AllReduce and the base version comptues
+// tranform->reduce->transform in one cub call for efficiency
 template <typename i_t, typename f_t>
 void distributed_bound_objective_rescaling(multi_gpu_engine_t<i_t, f_t>& engine,
                                            f_t c_scaling_weight)
