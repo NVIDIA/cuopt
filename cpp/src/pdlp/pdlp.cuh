@@ -224,6 +224,11 @@ class pdlp_solver_t {
   // Single-GPU PDLP reports false.
   bool is_distributed_master() const { return multi_gpu_engine.has_value(); }
 
+  // Marked true by the owning pdlp_shard_t right after this pdlp_solver_t is
+  // constructed as a per-shard sub-solver.
+  void set_distributed_sub_pdlp(bool value = true) { is_distributed_sub_pdlp_ = value; }
+  bool is_distributed_sub_pdlp() const { return is_distributed_sub_pdlp_; }
+
  private:
   void compute_fixed_error(std::vector<int>& has_restarted);
 
@@ -282,6 +287,8 @@ class pdlp_solver_t {
   primal_quality_adapter_t best_primal_quality_so_far_;
   // Flag to indicate if solver is being called from MIP. No logging is done in this case.
   bool inside_mip_{false};
+  // See set_distributed_sub_pdlp() / is_distributed_sub_pdlp() above.
+  bool is_distributed_sub_pdlp_{false};
 };
 
 }  // namespace cuopt::mathematical_optimization::pdlp

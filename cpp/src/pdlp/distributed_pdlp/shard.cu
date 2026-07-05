@@ -130,6 +130,9 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
   // ---- 5. Build sub_pdlp (single-GPU mode). ----
   sub_pdlp = std::make_unique<pdlp_solver_t<i_t, f_t>>(
     *sub_problem, settings, /*is_legacy_batch_mode=*/false);
+  // The shard IS by construction a distributed sub-solver; mark it so any
+  // pdlp/pdhg/termination/restart codepath can query is_distributed_sub_pdlp()
+  sub_pdlp->set_distributed_sub_pdlp();
 
   // Inject this shard's unscaled buffers into op_problem_scaled (distributed
   // scaling runs later and will scale them).

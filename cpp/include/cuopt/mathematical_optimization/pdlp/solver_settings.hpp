@@ -322,8 +322,6 @@ class pdlp_solver_settings_t {
   //   "dummy"    - round-robin, no graph (trivial)
   //   "kaminpar" - multi-threaded KaMinPar
   std::string distributed_pdlp_partitioner{"auto"};
-  // Set to true inside the shards
-  bool is_distributed_sub_pdlp{false};
   method_t method{method_t::Concurrent};
   bool inside_mip{false};
   // For concurrent termination

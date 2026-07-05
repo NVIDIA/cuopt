@@ -552,7 +552,6 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   sub_pdlp_settings.distributed_pdlp_num_gpus                           = 1;
   sub_pdlp_settings.multi_gpu_partition_file                            = "";
   sub_pdlp_settings.multi_gpu_export_partition_file                     = "";
-  sub_pdlp_settings.is_distributed_sub_pdlp                             = true;
   sub_pdlp_settings.hyper_params.default_l_inf_ruiz_iterations          = 0;
   sub_pdlp_settings.hyper_params.default_alpha_pock_chambolle_rescaling = 0.0;
 
