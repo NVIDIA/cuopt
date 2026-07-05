@@ -6,6 +6,7 @@
 #pragma once
 
 #include <memory>
+#include <span>
 #include <vector>
 
 namespace cuopt::mathematical_optimization::pdlp {
@@ -13,9 +14,9 @@ namespace cuopt::mathematical_optimization::pdlp {
 // Non-owning view of a host CSR matrix (A or A_t).
 template <typename i_t, typename f_t>
 struct csr_host_view_t {
-  std::vector<i_t> const* row_offsets{nullptr};
-  std::vector<i_t> const* col_indices{nullptr};
-  std::vector<f_t> const* values{nullptr};  // optional; unused by topology-only partitioners
+  std::span<const i_t> row_offsets{};
+  std::span<const i_t> col_indices{};
+  std::span<const f_t> values{};  // optional; unused by topology-only partitioners
   i_t num_rows{0};
   i_t num_cols{0};
 };

@@ -484,14 +484,14 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
     }
     const bool needs_graph = (kind == partitioner_kind_t::KaMinPar);
     if (needs_graph) {
-      // partitioner_input_t holds non-const std::vector<i_t>* pointers; we
-      // already have the data in our local mutable buffers above.
-      partition_input.A.row_offsets   = &h_A_row_offsets;
-      partition_input.A.col_indices   = &h_A_col_indices;
+      // csr_host_view_t members are std::span<const i_t> — an owning
+      // std::vector<i_t> converts implicitly.
+      partition_input.A.row_offsets   = h_A_row_offsets;
+      partition_input.A.col_indices   = h_A_col_indices;
       partition_input.A.num_rows      = n_cstr;
       partition_input.A.num_cols      = n_vars;
-      partition_input.A_t.row_offsets = &h_A_t_row_offsets;
-      partition_input.A_t.col_indices = &h_A_t_col_indices;
+      partition_input.A_t.row_offsets = h_A_t_row_offsets;
+      partition_input.A_t.col_indices = h_A_t_col_indices;
       partition_input.A_t.num_rows    = n_vars;
       partition_input.A_t.num_cols    = n_cstr;
       // 0 => KaMinPar auto-detects and uses all hardware threads.

@@ -71,17 +71,17 @@ std::vector<i_t> kaminpar_partitioner_t<i_t, f_t>::partition(
     CUOPT_LOG_INFO("KaMinPar: nb_parts == 1, returning trivial single-block partition");
     return std::vector<i_t>(static_cast<std::size_t>(input.nb_cstr + input.nb_vars), i_t{0});
   }
-  cuopt_expects(input.A.row_offsets != nullptr && input.A.col_indices != nullptr,
+  cuopt_expects(!input.A.row_offsets.empty() && !input.A.col_indices.empty(),
                 error_type_t::ValidationError,
                 "kaminpar_partitioner: A.row_offsets and A.col_indices are required");
-  cuopt_expects(input.A_t.row_offsets != nullptr && input.A_t.col_indices != nullptr,
+  cuopt_expects(!input.A_t.row_offsets.empty() && !input.A_t.col_indices.empty(),
                 error_type_t::ValidationError,
                 "kaminpar_partitioner: A_t.row_offsets and A_t.col_indices are required");
 
-  auto const& A_offsets   = *input.A.row_offsets;
-  auto const& A_cols      = *input.A.col_indices;
-  auto const& A_t_offsets = *input.A_t.row_offsets;
-  auto const& A_t_cols    = *input.A_t.col_indices;
+  auto A_offsets   = input.A.row_offsets;
+  auto A_cols      = input.A.col_indices;
+  auto A_t_offsets = input.A_t.row_offsets;
+  auto A_t_cols    = input.A_t.col_indices;
 
   cuopt_expects(static_cast<i_t>(A_offsets.size()) == input.nb_cstr + 1,
                 error_type_t::ValidationError,
