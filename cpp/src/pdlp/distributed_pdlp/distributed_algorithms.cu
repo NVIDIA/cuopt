@@ -24,24 +24,6 @@
 
 namespace cuopt::mathematical_optimization::pdlp {
 
-// -------- Broadcast owned constraint (row) scaling into halo --------------
-template <typename i_t, typename f_t>
-void broadcast_constraint_scaling_to_halo(multi_gpu_engine_t<i_t, f_t>& engine)
-{
-  engine.halo_exchange_cstr_shard([](pdlp_shard_t<i_t, f_t>& s) -> rmm::device_uvector<f_t>& {
-    return s.sub_pdlp->get_initial_scaling_strategy().get_cummulative_constraint_matrix_scaling();
-  });
-}
-
-// -------- Broadcast owned variable (column) scaling into halo -------------
-template <typename i_t, typename f_t>
-void broadcast_variable_scaling_to_halo(multi_gpu_engine_t<i_t, f_t>& engine)
-{
-  engine.halo_exchange_var_shard([](pdlp_shard_t<i_t, f_t>& s) -> rmm::device_uvector<f_t>& {
-    return s.sub_pdlp->get_initial_scaling_strategy().get_cummulative_variable_scaling();
-  });
-}
-
 // -------- Solution gather (shards -> master) ------------------------------
 template <typename i_t, typename f_t>
 void gather_potential_next_solutions_to_master(multi_gpu_engine_t<i_t, f_t>& engine,
@@ -187,8 +169,12 @@ void distributed_ruiz_inf_scaling(multi_gpu_engine_t<i_t, f_t>& engine,
   for (int it = 0; it < num_iter; ++it) {
     // Refresh halo copies of both cumulative scalings (owner -> halo) so the
     // per-shard kernels read correct opposite-axis factors on their halo.
-    broadcast_variable_scaling_to_halo(engine);
-    broadcast_constraint_scaling_to_halo(engine);
+    engine.halo_exchange_var_shard([](auto& s) -> auto& {
+      return s.sub_pdlp->get_initial_scaling_strategy().get_cummulative_variable_scaling();
+    });
+    engine.halo_exchange_cstr_shard([](auto& s) -> auto& {
+      return s.sub_pdlp->get_initial_scaling_strategy().get_cummulative_constraint_matrix_scaling();
+    });
 
     // Shard-local Ruiz iteration
     // rows: inf norm only over OWNED (full) rows from A
@@ -201,8 +187,12 @@ void distributed_ruiz_inf_scaling(multi_gpu_engine_t<i_t, f_t>& engine,
 
   // Final refresh so downstream consumers (the scaled problem, the next
   // distributed_max_singular_value, etc.) see correct halo factors.
-  broadcast_variable_scaling_to_halo(engine);
-  broadcast_constraint_scaling_to_halo(engine);
+  engine.halo_exchange_var_shard([](auto& s) -> auto& {
+    return s.sub_pdlp->get_initial_scaling_strategy().get_cummulative_variable_scaling();
+  });
+  engine.halo_exchange_cstr_shard([](auto& s) -> auto& {
+    return s.sub_pdlp->get_initial_scaling_strategy().get_cummulative_constraint_matrix_scaling();
+  });
 
   engine.for_each_shard([](auto& shard) { shard.stream.synchronize(); });
 }
@@ -220,16 +210,24 @@ void distributed_pock_chambolle_scaling(multi_gpu_engine_t<i_t, f_t>& engine,
   raft::common::nvtx::range scope("distributed_pock_chambolle_scaling");
 
   // Refresh halo copies of both cumulative scalings
-  broadcast_variable_scaling_to_halo(engine);
-  broadcast_constraint_scaling_to_halo(engine);
+  engine.halo_exchange_var_shard([](auto& s) -> auto& {
+    return s.sub_pdlp->get_initial_scaling_strategy().get_cummulative_variable_scaling();
+  });
+  engine.halo_exchange_cstr_shard([](auto& s) -> auto& {
+    return s.sub_pdlp->get_initial_scaling_strategy().get_cummulative_constraint_matrix_scaling();
+  });
 
   engine.for_each_shard([alpha](auto& shard) {
     shard.sub_pdlp->get_initial_scaling_strategy().pock_chambolle_scaling(alpha);
   });
 
   // Final refresh for downstream consumers.
-  broadcast_variable_scaling_to_halo(engine);
-  broadcast_constraint_scaling_to_halo(engine);
+  engine.halo_exchange_var_shard([](auto& s) -> auto& {
+    return s.sub_pdlp->get_initial_scaling_strategy().get_cummulative_variable_scaling();
+  });
+  engine.halo_exchange_cstr_shard([](auto& s) -> auto& {
+    return s.sub_pdlp->get_initial_scaling_strategy().get_cummulative_constraint_matrix_scaling();
+  });
 
   engine.for_each_shard([](auto& shard) { shard.stream.synchronize(); });
 }
@@ -483,10 +481,6 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
 
 // ----- Explicit instantiations (mirror multi_gpu_engine_t<int, {double,float}>) -----
 #define INSTANTIATE(F_TYPE)                                                                       \
-  template void broadcast_constraint_scaling_to_halo<int, F_TYPE>(                                \
-    multi_gpu_engine_t<int, F_TYPE> & engine);                                                    \
-  template void broadcast_variable_scaling_to_halo<int, F_TYPE>(multi_gpu_engine_t<int, F_TYPE> & \
-                                                                engine);                          \
   template void distributed_bound_objective_rescaling<int, F_TYPE>(                               \
     multi_gpu_engine_t<int, F_TYPE> & engine, F_TYPE c_scaling_weight);                           \
   template void distributed_ruiz_inf_scaling<int, F_TYPE>(                                        \

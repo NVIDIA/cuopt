@@ -17,18 +17,6 @@ struct multi_gpu_engine_t;
 template <typename i_t, typename f_t>
 class pdhg_solver_t;
 
-// Broadcast the owned constraint (row) cumulative scaling into every peer's
-// halo copy. The factor is computed only on owned rows; this pushes each
-// owner's values out so halo rows carry correct factors for the next pass.
-template <typename i_t, typename f_t>
-void broadcast_constraint_scaling_to_halo(multi_gpu_engine_t<i_t, f_t>& engine);
-
-// Broadcast the owned variable (column) cumulative scaling into every peer's
-// halo copy, so the next scaling iteration's row / column inf-norm kernels read
-// correct factors on their halo columns.
-template <typename i_t, typename f_t>
-void broadcast_variable_scaling_to_halo(multi_gpu_engine_t<i_t, f_t>& engine);
-
 // Global bound/objective rescaling: allreduce the owned partial squared norms
 // of the constraint bounds and (weighted) objective, then apply the identical
 // scalar on every shard.
