@@ -96,6 +96,19 @@ enum pdlp_precision_t : int {
   MixedPrecision   = CUOPT_PDLP_MIXED_PRECISION
 };
 
+/**
+ * @brief Which graph partitioner distributed PDLP uses.
+ *
+ * Auto: pick automatically (Dummy on 1 GPU, KaMinPar otherwise).
+ * KaMinPar: multi-threaded KaMinPar graph partitioner.
+ * Dummy: round-robin, no graph (trivial).
+ */
+enum distributed_pdlp_partitioner_t : int {
+  Auto     = CUOPT_DISTRIBUTED_PDLP_PARTITIONER_AUTO,
+  KaMinPar = CUOPT_DISTRIBUTED_PDLP_PARTITIONER_KAMINPAR,
+  Dummy    = CUOPT_DISTRIBUTED_PDLP_PARTITIONER_DUMMY,
+};
+
 template <typename i_t, typename f_t>
 class pdlp_solver_settings_t {
  public:
@@ -317,11 +330,10 @@ class pdlp_solver_settings_t {
   // path (one part-id per line) right after partitioning. The file can be fed
   // back via multi_gpu_partition_file.
   std::string multi_gpu_export_partition_file{""};
-  // Which graph partitioner distributed PDLP uses. One of:
-  //   "auto"     - 1 GPU => Dummy; otherwise KaMinPar
-  //   "dummy"    - round-robin, no graph (trivial)
-  //   "kaminpar" - multi-threaded KaMinPar
-  std::string distributed_pdlp_partitioner{"auto"};
+  // Which graph partitioner distributed PDLP uses. See
+  // distributed_pdlp_partitioner_t for the meaning of each value.
+  distributed_pdlp_partitioner_t distributed_pdlp_partitioner{
+    distributed_pdlp_partitioner_t::Auto};
   method_t method{method_t::Concurrent};
   bool inside_mip{false};
   // For concurrent termination

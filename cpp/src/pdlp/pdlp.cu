@@ -468,26 +468,23 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
     partition_input.nb_vars  = n_vars;
     partition_input.nb_parts = distributed_pdlp_num_gpus;
 
-    // Resolve which partitioner to use.
-    std::string partitioner_choice = settings.distributed_pdlp_partitioner;
-    std::transform(partitioner_choice.begin(),
-                   partitioner_choice.end(),
-                   partitioner_choice.begin(),
-                   [](unsigned char c) { return std::tolower(c); });
+    // Resolve which partitioner to use. The public enum is validated at the
+    // parameter-set layer (int_parameters min/max), so we only need to map
+    // the three known values to the backend selector.
     partitioner_kind_t kind;
-    if (partitioner_choice.empty() || partitioner_choice == "auto") {
-      kind =
-        (distributed_pdlp_num_gpus == 1) ? partitioner_kind_t::Dummy : partitioner_kind_t::KaMinPar;
-    } else if (partitioner_choice == "dummy") {
-      kind = partitioner_kind_t::Dummy;
-    } else if (partitioner_choice == "kaminpar") {
-      kind = partitioner_kind_t::KaMinPar;
-    } else {
-      cuopt_expects(false,
-                    error_type_t::ValidationError,
-                    "Unknown distributed_pdlp_partitioner '%s' (expected auto|dummy|kaminpar)",
-                    settings.distributed_pdlp_partitioner.c_str());
-      kind = partitioner_kind_t::Dummy;  // unreachable; silences -Wmaybe-uninitialized
+    switch (settings.distributed_pdlp_partitioner) {
+      case distributed_pdlp_partitioner_t::Auto:
+        kind = (distributed_pdlp_num_gpus == 1) ? partitioner_kind_t::Dummy
+                                                : partitioner_kind_t::KaMinPar;
+        break;
+      case distributed_pdlp_partitioner_t::KaMinPar: kind = partitioner_kind_t::KaMinPar; break;
+      case distributed_pdlp_partitioner_t::Dummy: kind = partitioner_kind_t::Dummy; break;
+      default:
+        cuopt_expects(false,
+                      error_type_t::ValidationError,
+                      "Unknown distributed_pdlp_partitioner value %d",
+                      static_cast<int>(settings.distributed_pdlp_partitioner));
+        kind = partitioner_kind_t::Dummy;  // unreachable; silences -Wmaybe-uninitialized
     }
     const bool needs_graph = (kind == partitioner_kind_t::KaMinPar);
     if (needs_graph) {
