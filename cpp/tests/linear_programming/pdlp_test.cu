@@ -98,64 +98,6 @@ TEST(pdlp_class, run_double)
     afiro_primal_objective, solution.get_additional_termination_information().primal_objective));
 }
 
-// Distributed-PDLP partition round-trip: partition the afiro constraint/variable
-// bipartite graph with KaMinPar, write it out, read it back, and confirm the parsed
-// vector is identical to what the partitioner produced.
-TEST(pdlp_class, distributed_partition_kaminpar_export_import_roundtrip)
-{
-  using namespace cuopt::mathematical_optimization::pdlp;
-  namespace ds = cuopt::mathematical_optimization;
-
-  auto path = make_path_absolute("linear_programming/afiro_original.mps");
-  cuopt::mathematical_optimization::io::mps_data_model_t<int, double> mps =
-    cuopt::mathematical_optimization::io::read_mps<int, double>(path, true);
-
-  const int n_vars = static_cast<int>(mps.get_objective_coefficients().size());
-  const int n_cstr = static_cast<int>(mps.get_constraint_lower_bounds().size());
-  const int nnz    = static_cast<int>(mps.get_constraint_matrix_values().size());
-
-  std::vector<int> h_A_row_offsets = mps.get_constraint_matrix_offsets();
-  std::vector<int> h_A_col_indices = mps.get_constraint_matrix_indices();
-  std::vector<double> h_A_values   = mps.get_constraint_matrix_values();
-
-  // Transpose A -> A^T (CSR of A^T == CSC of A), mirroring solve_lp_distributed_from_mps.
-  ds::csr_matrix_t<int, double> A_csr(n_cstr, n_vars, nnz);
-  A_csr.row_start = h_A_row_offsets;
-  A_csr.j         = h_A_col_indices;
-  A_csr.x         = h_A_values;
-  ds::csc_matrix_t<int, double> AT_as_csc(n_vars, n_cstr, nnz);
-  A_csr.to_compressed_col(AT_as_csc);
-  std::vector<int> h_A_t_row_offsets = AT_as_csc.col_start;
-  std::vector<int> h_A_t_col_indices = AT_as_csc.i;
-
-  partitioner_input_t<int, double> input;
-  input.nb_cstr         = n_cstr;
-  input.nb_vars         = n_vars;
-  input.nb_parts        = 2;
-  input.A.row_offsets   = &h_A_row_offsets;
-  input.A.col_indices   = &h_A_col_indices;
-  input.A.num_rows      = n_cstr;
-  input.A.num_cols      = n_vars;
-  input.A_t.row_offsets = &h_A_t_row_offsets;
-  input.A_t.col_indices = &h_A_t_col_indices;
-  input.A_t.num_rows    = n_vars;
-  input.A_t.num_cols    = n_cstr;
-
-  auto partitioner       = make_partitioner<int, double>(partitioner_kind_t::KaMinPar);
-  std::vector<int> parts = partitioner->partition(input);
-  ASSERT_EQ(parts.size(), static_cast<std::size_t>(n_cstr + n_vars));
-
-  std::string dir = ::testing::TempDir();
-  if (!dir.empty() && dir.back() != '/') { dir.push_back('/'); }
-  const std::string out_path = dir + "afiro_kaminpar_roundtrip.parts";
-
-  partition_loader_t<int, double>::export_distributed_pdlp_partition_file(out_path, parts);
-  std::vector<int> reloaded =
-    partition_loader_t<int, double>::parse_distributed_pdlp_partition_file(out_path);
-
-  EXPECT_EQ(parts, reloaded);
-}
-
 namespace {
 
 // Solve `mps_rel_path` with the single-GPU PDLP ("base") and with distributed PDLP

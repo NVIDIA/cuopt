@@ -325,7 +325,6 @@ class pdlp_solver_settings_t {
   // Number of GPUs to use specifically for distributed PDLP (use_distributed_pdlp=true).
   // -1 means auto-detect
   int distributed_pdlp_num_gpus{-1};
-  std::string multi_gpu_partition_file{""};
   // Which graph partitioner distributed PDLP uses. See
   // distributed_pdlp_partitioner_t for the meaning of each value.
   distributed_pdlp_partitioner_t distributed_pdlp_partitioner{

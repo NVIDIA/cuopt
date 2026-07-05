@@ -458,11 +458,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
 
   // ----- 3. Partition -----
   std::vector<i_t> parts;
-  if (!settings.multi_gpu_partition_file.empty()) {
-    parts = partition_loader_t<i_t, f_t>::parse_distributed_pdlp_partition_file(
-      settings.multi_gpu_partition_file);
-    validate_partition(parts, n_cstr, n_vars, distributed_pdlp_num_gpus, "partition file");
-  } else {
+  {
     partitioner_input_t<i_t, f_t> partition_input;
     partition_input.nb_cstr  = n_cstr;
     partition_input.nb_vars  = n_vars;
@@ -539,7 +535,6 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   pdlp_solver_settings_t<i_t, f_t> sub_pdlp_settings                    = settings;
   sub_pdlp_settings.num_gpus                                            = 1;
   sub_pdlp_settings.distributed_pdlp_num_gpus                           = 1;
-  sub_pdlp_settings.multi_gpu_partition_file                            = "";
   sub_pdlp_settings.hyper_params.default_l_inf_ruiz_iterations          = 0;
   sub_pdlp_settings.hyper_params.default_alpha_pock_chambolle_rescaling = 0.0;
 

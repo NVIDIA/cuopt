@@ -208,7 +208,6 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_USER_PROBLEM_FILE, &pdlp_settings.user_problem_file, ""},
     {CUOPT_PRESOLVE_FILE, &mip_settings.presolve_file, ""},
     {CUOPT_PRESOLVE_FILE, &pdlp_settings.presolve_file, ""},
-    {CUOPT_MULTI_GPU_PARTITION_FILE, &pdlp_settings.multi_gpu_partition_file, ""},
   };
   // clang-format on
 }

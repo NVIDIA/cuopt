@@ -7,55 +7,10 @@
 
 #include <cuopt/error.hpp>
 
-#include <fstream>
 #include <unordered_set>
 #include <utility>
 
 namespace cuopt::mathematical_optimization::pdlp {
-
-template <typename i_t, typename f_t>
-std::vector<i_t> partition_loader_t<i_t, f_t>::parse_distributed_pdlp_partition_file(
-  std::string const& file)
-{
-  std::ifstream part_file(file);
-  cuopt_expects(part_file.is_open(),
-                error_type_t::ValidationError,
-                "Failed to open partition file: %s",
-                file.c_str());
-
-  // One integer per line
-  std::vector<i_t> parts;
-  i_t part = 0;
-  while (part_file >> part) {
-    parts.push_back(part);
-  }
-
-  // We must have hit EOF cleanly; any other state means a malformed token.
-  cuopt_expects(part_file.eof(),
-                error_type_t::ValidationError,
-                "Malformed partition file (expected one integer per line): %s",
-                file.c_str());
-
-  return parts;
-}
-
-template <typename i_t, typename f_t>
-void partition_loader_t<i_t, f_t>::export_distributed_pdlp_partition_file(
-  std::string const& file, std::vector<i_t> const& parts)
-{
-  std::ofstream part_file(file);
-  cuopt_expects(part_file.is_open(),
-                error_type_t::ValidationError,
-                "Failed to open partition file for export: %s",
-                file.c_str());
-  for (auto const& part : parts) {
-    part_file << part << "\n";
-  }
-  cuopt_expects(part_file.good(),
-                error_type_t::RuntimeError,
-                "Failed while writing partition file: %s",
-                file.c_str());
-}
 
 template <typename i_t, typename f_t>
 std::vector<rank_data_t<i_t, f_t>> partition_loader_t<i_t, f_t>::create_rank_data_from_parts(
