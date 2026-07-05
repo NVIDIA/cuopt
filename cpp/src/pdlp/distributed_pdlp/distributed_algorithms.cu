@@ -278,8 +278,10 @@ void distributed_scaling(multi_gpu_engine_t<i_t, f_t>& engine,
 }
 
 // -------- Distributed sigma_max(A) via power iteration --------------------
-// The function has to re-implement the multi_gpu_engine_t preimitives as the scratch buffers
-// are not associated with shards.
+// Owns per-shard scratch (q / z / atq / scalar reductions) and drives the
+// iteration; every cross-shard operation goes through multi_gpu_engine_t's
+// *_bufs helpers (halo_exchange_{cstr,var}_bufs, distributed_l2_norm_bufs,
+// distributed_dot_bufs), so this function contains no NCCL calls directly.
 template <typename i_t, typename f_t>
 f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
                                    i_t n_global_cstrs,
@@ -363,177 +365,42 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
     s.stream.synchronize();
   }
 
-  // Local halo-exchange helpers that work directly on per-shard external
-  // buffers (the engine's halo_exchange_var/cstr expect accessors that
-  // resolve through pdhg_solver_t, which doesn't see our scratch).
-  auto halo_exchange_cstr_bufs = [&](std::vector<rmm::device_uvector<f_t>>& bufs) {
-    for (int r = 0; r < nb; ++r) {
-      auto& s = *engine.shards[r];
-      raft::device_setter guard(s.device_id);
-      auto& y = bufs[r];
-      for (int peer = 0; peer < nb; ++peer) {
-        if (peer == r) continue;
-        if (s.cstr_send_indices_d[peer].size() == 0) continue;
-        thrust::gather(rmm::exec_policy_nosync(s.stream.view()),
-                       s.cstr_send_indices_d[peer].begin(),
-                       s.cstr_send_indices_d[peer].end(),
-                       y.begin(),
-                       s.cstr_send_buf_d[peer].begin());
-      }
-    }
-    CUOPT_NCCL_TRY(ncclGroupStart());
-    for (int r = 0; r < nb; ++r) {
-      auto& s = *engine.shards[r];
-      raft::device_setter guard(s.device_id);
-      for (int peer = 0; peer < nb; ++peer) {
-        if (peer == r) continue;
-        CUOPT_NCCL_TRY(ncclSend(s.cstr_send_buf_d[peer].data(),
-                                s.cstr_send_buf_d[peer].size(),
-                                nccl_data_type<f_t>(),
-                                peer,
-                                s.comm.get(),
-                                s.stream.view().value()));
-      }
-    }
-    for (int r = 0; r < nb; ++r) {
-      auto& s  = *engine.shards[r];
-      auto& rd = s.rank_data;
-      raft::device_setter guard(s.device_id);
-      auto& y = bufs[r];
-      for (int peer = 0; peer < nb; ++peer) {
-        if (peer == r) continue;
-        f_t* recv_ptr = y.data() + rd.owned_cstr_size + rd.cstr_recv_offsets[peer];
-        CUOPT_NCCL_TRY(ncclRecv(recv_ptr,
-                                static_cast<size_t>(rd.cstr_recv_counts[peer]),
-                                nccl_data_type<f_t>(),
-                                peer,
-                                s.comm.get(),
-                                s.stream.view().value()));
-      }
-    }
-    CUOPT_NCCL_TRY(ncclGroupEnd());
-  };
-  auto halo_exchange_var_bufs = [&](std::vector<rmm::device_uvector<f_t>>& bufs) {
-    for (int r = 0; r < nb; ++r) {
-      auto& s = *engine.shards[r];
-      raft::device_setter guard(s.device_id);
-      auto& x = bufs[r];
-      for (int peer = 0; peer < nb; ++peer) {
-        if (peer == r) continue;
-        if (s.var_send_indices_d[peer].size() == 0) continue;
-        thrust::gather(rmm::exec_policy_nosync(s.stream.view()),
-                       s.var_send_indices_d[peer].begin(),
-                       s.var_send_indices_d[peer].end(),
-                       x.begin(),
-                       s.var_send_buf_d[peer].begin());
-      }
-    }
-    CUOPT_NCCL_TRY(ncclGroupStart());
-    for (int r = 0; r < nb; ++r) {
-      auto& s = *engine.shards[r];
-      raft::device_setter guard(s.device_id);
-      for (int peer = 0; peer < nb; ++peer) {
-        if (peer == r) continue;
-        CUOPT_NCCL_TRY(ncclSend(s.var_send_buf_d[peer].data(),
-                                s.var_send_buf_d[peer].size(),
-                                nccl_data_type<f_t>(),
-                                peer,
-                                s.comm.get(),
-                                s.stream.view().value()));
-      }
-    }
-    for (int r = 0; r < nb; ++r) {
-      auto& s  = *engine.shards[r];
-      auto& rd = s.rank_data;
-      raft::device_setter guard(s.device_id);
-      auto& x = bufs[r];
-      for (int peer = 0; peer < nb; ++peer) {
-        if (peer == r) continue;
-        f_t* recv_ptr = x.data() + rd.owned_var_size + rd.var_recv_offsets[peer];
-        CUOPT_NCCL_TRY(ncclRecv(recv_ptr,
-                                static_cast<size_t>(rd.var_recv_counts[peer]),
-                                nccl_data_type<f_t>(),
-                                peer,
-                                s.comm.get(),
-                                s.stream.view().value()));
-      }
-    }
-    CUOPT_NCCL_TRY(ncclGroupEnd());
-  };
-
-  // Per-shard partial reductions over the OWNED cstr slice + NCCL allreduce.
-  // For norm: out := sqrt(Σ_r ||bufs[r][0:owned_cstr]||²).
-  // For dot : out := Σ_r <a[r][0:owned_cstr], b[r][0:owned_cstr]>.
-  auto distributed_norm_owned_cstr = [&](std::vector<rmm::device_uvector<f_t>>& bufs,
-                                         std::vector<rmm::device_uvector<f_t>>& out) {
-    for (int r = 0; r < nb; ++r) {
-      auto& s = *engine.shards[r];
-      raft::device_setter guard(s.device_id);
-      const i_t n_owned = s.rank_data.owned_cstr_size;
-      RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(s.handle.get_cublas_handle(),
-                                                      static_cast<int>(n_owned),
-                                                      bufs[r].data(),
-                                                      1,
-                                                      bufs[r].data(),
-                                                      1,
-                                                      out[r].data(),
-                                                      s.stream.view().value()));
-    }
-    CUOPT_NCCL_TRY(ncclGroupStart());
-    for (int r = 0; r < nb; ++r) {
-      auto& s = *engine.shards[r];
-      raft::device_setter guard(s.device_id);
-      CUOPT_NCCL_TRY(ncclAllReduce(out[r].data(),
-                                   out[r].data(),
-                                   1,
-                                   nccl_data_type<f_t>(),
-                                   ncclSum,
-                                   s.comm.get(),
-                                   s.stream.view().value()));
-    }
-    CUOPT_NCCL_TRY(ncclGroupEnd());
-    for (int r = 0; r < nb; ++r) {
-      auto& s = *engine.shards[r];
-      raft::device_setter guard(s.device_id);
-      cub::DeviceTransform::Transform(
-        out[r].data(), out[r].data(), 1, sqrt_inplace_op_t<f_t>{}, s.stream.view().value());
-    }
-  };
-  auto distributed_dot_owned_cstr = [&](std::vector<rmm::device_uvector<f_t>>& a,
-                                        std::vector<rmm::device_uvector<f_t>>& b,
-                                        std::vector<rmm::device_uvector<f_t>>& out) {
-    for (int r = 0; r < nb; ++r) {
-      auto& s = *engine.shards[r];
-      raft::device_setter guard(s.device_id);
-      const i_t n_owned = s.rank_data.owned_cstr_size;
-      RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(s.handle.get_cublas_handle(),
-                                                      static_cast<int>(n_owned),
-                                                      a[r].data(),
-                                                      1,
-                                                      b[r].data(),
-                                                      1,
-                                                      out[r].data(),
-                                                      s.stream.view().value()));
-    }
-    CUOPT_NCCL_TRY(ncclGroupStart());
-    for (int r = 0; r < nb; ++r) {
-      auto& s = *engine.shards[r];
-      raft::device_setter guard(s.device_id);
-      CUOPT_NCCL_TRY(ncclAllReduce(out[r].data(),
-                                   out[r].data(),
-                                   1,
-                                   nccl_data_type<f_t>(),
-                                   ncclSum,
-                                   s.comm.get(),
-                                   s.stream.view().value()));
-    }
-    CUOPT_NCCL_TRY(ncclGroupEnd());
-  };
+  // Build the per-shard views used by the engine's *_bufs helpers.
+  // Built ONCE: rmm::device_uvector::data() is stable for the object's
+  // lifetime (no reallocation happens inside the loop).
+  //   *_full   : span over owned + halo tail (halo_exchange_{cstr,var}_bufs)
+  //   *_owned  : span over just the owned prefix (distributed_{l2_norm,dot}_bufs)
+  //   *_scalar : device_scalar_view over a per-shard scalar output slot
+  std::vector<raft::device_span<f_t>> q_full, atq_full;
+  std::vector<raft::device_span<f_t>> q_owned, z_owned;
+  std::vector<raft::device_scalar_view<f_t>> norm_q_scalar, sigma_sq_scalar, residual_scalar;
+  q_full.reserve(nb);
+  atq_full.reserve(nb);
+  q_owned.reserve(nb);
+  z_owned.reserve(nb);
+  norm_q_scalar.reserve(nb);
+  sigma_sq_scalar.reserve(nb);
+  residual_scalar.reserve(nb);
+  for (int r = 0; r < nb; ++r) {
+    auto& s                 = *engine.shards[r];
+    const std::size_t owned = static_cast<std::size_t>(s.rank_data.owned_cstr_size);
+    q_full.emplace_back(q[r].data(), q[r].size());
+    atq_full.emplace_back(atq[r].data(), atq[r].size());
+    q_owned.emplace_back(q[r].data(), owned);
+    z_owned.emplace_back(z[r].data(), owned);
+    norm_q_scalar.emplace_back(raft::make_device_scalar_view<f_t>(norm_q[r].data()));
+    sigma_sq_scalar.emplace_back(raft::make_device_scalar_view<f_t>(sigma_sq[r].data()));
+    residual_scalar.emplace_back(raft::make_device_scalar_view<f_t>(residual_norm[r].data()));
+  }
 
   // ===== Power iteration =====
-  // Mirrors single-GPU compute_initial_step_size
+  // Mirrors single-GPU compute_initial_step_size. All cross-shard math and
+  // NCCL comms are delegated to multi_gpu_engine_t's *_bufs helpers; the
+  // only inline work is (a) the two elementwise transforms whose functor
+  // captures each shard's own scalar (norm_q[r], sigma_sq[r]) and (b) the
+  // per-shard SpMVs that call pdhg_solver_'s A_into / A_T_into.
   for (int it = 0; it < max_iterations; ++it) {
-    // q := z on the owned slice (the carried iterate), then normalize.
+    // q := z on the owned slice (the carried iterate).
     for (int r = 0; r < nb; ++r) {
       auto& s = *engine.shards[r];
       raft::device_setter guard(s.device_id);
@@ -542,9 +409,11 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
     }
 
     // ||q||₂ over the global OWNED cstr slice (one allreduce-sum + sqrt).
-    distributed_norm_owned_cstr(q, norm_q);
+    engine.distributed_l2_norm_bufs(q_owned, norm_q_scalar);
 
     // q /= ||q||₂ on owned slice (halo gets refreshed by next exchange).
+    // Kept inline: the divisor differs per shard (each shard reads its own
+    // norm_q[r]) so a single shared functor won't do.
     for (int r = 0; r < nb; ++r) {
       auto& s = *engine.shards[r];
       raft::device_setter guard(s.device_id);
@@ -557,18 +426,16 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
         s.stream.view().value());
     }
 
-    // atq = A^T q : halo-exchange q, then per-shard SpMV. spmv_At_into
-    // rebinds the dual_solution dnvec to q[r].data() and restores the
-    // canonical binding after the call
-    halo_exchange_cstr_bufs(q);
+    // atq = A^T q : refresh halo of q, then per-shard SpMV.
+    engine.halo_exchange_cstr_bufs(q_full);
     for (int r = 0; r < nb; ++r) {
       auto& s = *engine.shards[r];
       raft::device_setter guard(s.device_id);
       s.sub_pdlp->pdhg_solver_.spmv_At_into(q[r], atq_dn[r]);
     }
 
-    // z = A atq : halo-exchange atq, then per-shard SpMV.
-    halo_exchange_var_bufs(atq);
+    // z = A atq : refresh halo of atq, then per-shard SpMV.
+    engine.halo_exchange_var_bufs(atq_full);
     for (int r = 0; r < nb; ++r) {
       auto& s = *engine.shards[r];
       raft::device_setter guard(s.device_id);
@@ -577,9 +444,10 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
 
     // σ² = q · z over the global OWNED cstr slice (= q^T A A^T q = σ_max²
     // when q is the dominant left-singular vector).
-    distributed_dot_owned_cstr(q, z, sigma_sq);
+    engine.distributed_dot_bufs(q_owned, z_owned, sigma_sq_scalar);
 
     // q := -σ² q + z (owned slice) — residual of the eigen-equation.
+    // Kept inline for the same per-shard-scalar reason as normalize above.
     for (int r = 0; r < nb; ++r) {
       auto& s = *engine.shards[r];
       raft::device_setter guard(s.device_id);
@@ -593,7 +461,7 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
     }
 
     // Convergence check via global residual norm.
-    distributed_norm_owned_cstr(q, residual_norm);
+    engine.distributed_l2_norm_bufs(q_owned, residual_scalar);
     auto& s0 = *engine.shards[0];
     raft::device_setter guard0(s0.device_id);
     f_t h_res{};
