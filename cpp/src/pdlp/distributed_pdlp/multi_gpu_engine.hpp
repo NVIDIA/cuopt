@@ -30,6 +30,7 @@
 #include <thrust/gather.h>
 #include <thrust/scatter.h>
 #include <cub/device/device_transform.cuh>
+#include <cuda/std/cmath>
 #include <cuda/std/tuple>
 
 #include <nccl.h>
@@ -65,7 +66,7 @@ constexpr ncclDataType_t nccl_data_type()
 // invoked with closure accessors).
 template <typename f_t>
 struct sqrt_inplace_op_t {
-  __host__ __device__ f_t operator()(f_t x) const { return raft::sqrt(x); }
+  __host__ __device__ f_t operator()(f_t x) const { return cuda::std::sqrt(x); }
 };
 
 template <typename i_t, typename f_t>
