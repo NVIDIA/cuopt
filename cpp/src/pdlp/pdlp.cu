@@ -515,14 +515,6 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
     parts            = partitioner->partition(partition_input);
   }
 
-  // Optionally dump the partition right after computing it (one part-id per line).
-  if (!settings.multi_gpu_export_partition_file.empty()) {
-    partition_loader_t<i_t, f_t>::export_distributed_pdlp_partition_file(
-      settings.multi_gpu_export_partition_file, parts);
-    std::cout << "Exported " << parts.size() << " part-ids to "
-              << settings.multi_gpu_export_partition_file << std::endl;
-  }
-
   // ----- 4. Build per-rank data -----
   CUOPT_LOG_INFO("distributed_pdlp: building rank_data for %d parts ...",
                  settings.distributed_pdlp_num_gpus);
@@ -548,7 +540,6 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   sub_pdlp_settings.num_gpus                                            = 1;
   sub_pdlp_settings.distributed_pdlp_num_gpus                           = 1;
   sub_pdlp_settings.multi_gpu_partition_file                            = "";
-  sub_pdlp_settings.multi_gpu_export_partition_file                     = "";
   sub_pdlp_settings.hyper_params.default_l_inf_ruiz_iterations          = 0;
   sub_pdlp_settings.hyper_params.default_alpha_pock_chambolle_rescaling = 0.0;
 

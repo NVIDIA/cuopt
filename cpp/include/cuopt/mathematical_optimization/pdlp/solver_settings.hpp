@@ -326,10 +326,6 @@ class pdlp_solver_settings_t {
   // -1 means auto-detect
   int distributed_pdlp_num_gpus{-1};
   std::string multi_gpu_partition_file{""};
-  // If non-empty, the partition computed for distributed PDLP is written to this
-  // path (one part-id per line) right after partitioning. The file can be fed
-  // back via multi_gpu_partition_file.
-  std::string multi_gpu_export_partition_file{""};
   // Which graph partitioner distributed PDLP uses. See
   // distributed_pdlp_partitioner_t for the meaning of each value.
   distributed_pdlp_partitioner_t distributed_pdlp_partitioner{
