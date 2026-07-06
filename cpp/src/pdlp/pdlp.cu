@@ -162,7 +162,8 @@ static size_t batch_size_handler(const pdlp_solver_settings_t<i_t, f_t>& setting
 template <typename i_t, typename f_t>
 pdlp_solver_t<i_t, f_t>::pdlp_solver_t(mip::problem_t<i_t, f_t>& op_problem,
                                        pdlp_solver_settings_t<i_t, f_t> const& settings,
-                                       bool is_legacy_batch_mode)
+                                       bool is_legacy_batch_mode,
+                                       bool is_distributed_sub_pdlp)
   : original_batch_size_(batch_size_handler(settings)),
     climber_strategies_(original_batch_size_),
     batch_mode_(climber_strategies_.size() > 1),
@@ -267,7 +268,8 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(mip::problem_t<i_t, f_t>& op_problem,
     reusable_device_scalar_value_0_{f_t(0.0), stream_view_},
     batch_solution_to_return_{pdlp_termination_status_t::TimeLimit, stream_view_},
     best_primal_solution_so_far{pdlp_termination_status_t::TimeLimit, stream_view_},
-    inside_mip_{false}
+    inside_mip_{false},
+    is_distributed_sub_pdlp_{is_distributed_sub_pdlp}
 {
   cuopt_expects(!(settings_.first_primal_feasible && settings_.all_primal_feasible),
                 error_type_t::ValidationError,
@@ -356,7 +358,11 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(mip::problem_t<i_t, f_t>& op_problem,
   best_primal_quality_so_far_.primal_objective = (op_problem_scaled_.maximize)
                                                    ? -std::numeric_limits<f_t>::infinity()
                                                    : std::numeric_limits<f_t>::infinity();
-  op_problem.check_problem_representation(true, false);
+  // On a distributed sub-solver, op_problem.coefficients (owned rows) and
+  // op_problem.reverse_coefficients (owned cols) are two independent slices
+  // of the global matrix, not transposes of each other; skip that check.
+  op_problem.check_problem_representation(/*check_transposed=*/!is_distributed_sub_pdlp_,
+                                          /*empty=*/false);
 
   if (batch_mode_) {
     batch_solution_to_return_.get_additional_termination_informations().resize(

@@ -59,10 +59,13 @@ class pdlp_solver_t {
    *
    * @param[in] op_problem An mip::problem_t<i_t, f_t> object with a
    * representation of a linear program
+   * @param[in] is_distributed_sub_pdlp true when constructed as a shard of a
+   * distributed solve.
    */
   pdlp_solver_t(mip::problem_t<i_t, f_t>& op_problem,
                 pdlp_solver_settings_t<i_t, f_t> const& settings,
-                bool is_batch_mode = false);
+                bool is_batch_mode           = false,
+                bool is_distributed_sub_pdlp = false);
 
   // Distributed Solver Constructor
   pdlp_solver_t(mip::problem_t<i_t, f_t>& placeholder_problem,
@@ -230,9 +233,8 @@ class pdlp_solver_t {
   // Single-GPU PDLP reports false.
   bool is_distributed_master() const { return multi_gpu_engine.has_value(); }
 
-  // Marked true by the owning pdlp_shard_t right after this pdlp_solver_t is
-  // constructed as a per-shard sub-solver.
-  void set_distributed_sub_pdlp(bool value = true) { is_distributed_sub_pdlp_ = value; }
+  // True when this pdlp_solver_t was constructed as a per-shard sub-solver
+  // of a distributed solve (set once at construction via the ctor arg).
   bool is_distributed_sub_pdlp() const { return is_distributed_sub_pdlp_; }
 
  private:
@@ -293,7 +295,7 @@ class pdlp_solver_t {
   primal_quality_adapter_t best_primal_quality_so_far_;
   // Flag to indicate if solver is being called from MIP. No logging is done in this case.
   bool inside_mip_{false};
-  // See set_distributed_sub_pdlp() / is_distributed_sub_pdlp() above.
+  // See is_distributed_sub_pdlp() above. Initialized from ctor arg.
   bool is_distributed_sub_pdlp_{false};
 };
 

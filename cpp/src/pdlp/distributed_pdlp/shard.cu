@@ -128,11 +128,11 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
   handle.sync_stream(stream_view);
 
   // ---- 5. Build sub_pdlp (single-GPU mode). ----
+  // is_distributed_sub_pdlp=true tells the ctor to skip the CSR/CSC transpose
+  // validity check as A and A_T here are two independent local slices, not transposes
+  // A has all the owned rows and A_T has all the owned columns.
   sub_pdlp = std::make_unique<pdlp_solver_t<i_t, f_t>>(
-    *sub_problem, settings, /*is_legacy_batch_mode=*/false);
-  // The shard IS by construction a distributed sub-solver; mark it so any
-  // pdlp/pdhg/termination/restart codepath can query is_distributed_sub_pdlp()
-  sub_pdlp->set_distributed_sub_pdlp();
+    *sub_problem, settings, /*is_legacy_batch_mode=*/false, /*is_distributed_sub_pdlp=*/true);
 
   // Inject this shard's unscaled buffers into op_problem_scaled (distributed
   // scaling runs later and will scale them).
