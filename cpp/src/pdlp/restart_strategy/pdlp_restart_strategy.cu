@@ -896,60 +896,25 @@ void pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart(
   // Computing the distributed deltas
   if (auto* engine = pdhg_solver.get_mgpu_engine()) {
     engine->for_each_shard([&](auto& shard) {
-      auto& sub      = *shard.sub_pdlp;
-      auto& sub_rest = sub.get_restart_strategy();
-      sub_rest.distance_squared_moved_from_last_restart_period(
-        sub.pdhg_solver_.get_potential_next_primal_solution(),
-        sub_rest.last_restart_duality_gap_.primal_solution_,
-        sub.pdhg_solver_.get_primal_tmp_resource(),
-        shard.rank_data.owned_var_size,
-        1,
-        sub_rest.last_restart_duality_gap_.primal_distance_traveled_);
-      sub_rest.distance_squared_moved_from_last_restart_period(
-        sub.pdhg_solver_.get_potential_next_dual_solution(),
-        sub_rest.last_restart_duality_gap_.dual_solution_,
-        sub.pdhg_solver_.get_dual_tmp_resource(),
-        shard.rank_data.owned_cstr_size,
-        1,
-        sub_rest.last_restart_duality_gap_.dual_distance_traveled_);
+      auto& sub = *shard.sub_pdlp;
+      sub.get_restart_strategy().primal_dual_distance_squared_moved_from_last_restart_period(
+        sub.pdhg_solver_, shard.rank_data.owned_var_size, shard.rank_data.owned_cstr_size);
     });
 
-    engine->allreduce_sum_inplace([](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
-      return sp.get_restart_strategy().last_restart_duality_gap_.primal_distance_traveled_.data();
-    });
-    engine->allreduce_sum_inplace([](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
-      return sp.get_restart_strategy().last_restart_duality_gap_.dual_distance_traveled_.data();
-    });
-
-    // Event-sync master's stream on every shard stream so the D2D copies
-    // below see the allreduce writes without a CPU-blocking sync.
-    engine->sync_await_shards(stream_view_);
-    auto& s0 = *engine->shards[0];
-    raft::copy(last_restart_duality_gap_.primal_distance_traveled_.data(),
-               s0.sub_pdlp->get_restart_strategy()
-                 .last_restart_duality_gap_.primal_distance_traveled_.data(),
-               1,
-               stream_view_);
-    raft::copy(
-      last_restart_duality_gap_.dual_distance_traveled_.data(),
-      s0.sub_pdlp->get_restart_strategy().last_restart_duality_gap_.dual_distance_traveled_.data(),
-      1,
+    // Reduce across all shards
+    engine->allreduce_sum_inplace_to_master(
+      [](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
+        return sp.get_restart_strategy().last_restart_duality_gap_.primal_distance_traveled_.data();
+      },
+      stream_view_);
+    engine->allreduce_sum_inplace_to_master(
+      [](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
+        return sp.get_restart_strategy().last_restart_duality_gap_.dual_distance_traveled_.data();
+      },
       stream_view_);
   } else {
-    distance_squared_moved_from_last_restart_period(
-      pdhg_solver.get_potential_next_primal_solution(),
-      last_restart_duality_gap_.primal_solution_,
-      pdhg_solver.get_primal_tmp_resource(),
-      primal_size_h_,
-      1,
-      last_restart_duality_gap_.primal_distance_traveled_);
-    distance_squared_moved_from_last_restart_period(
-      pdhg_solver.get_potential_next_dual_solution(),
-      last_restart_duality_gap_.dual_solution_,
-      pdhg_solver.get_dual_tmp_resource(),
-      dual_size_h_,
-      1,
-      last_restart_duality_gap_.dual_distance_traveled_);
+    primal_dual_distance_squared_moved_from_last_restart_period(
+      pdhg_solver, primal_size_h_, dual_size_h_);
   }
 
   auto view = make_cupdlpx_restart_view(last_restart_duality_gap_.primal_distance_traveled_,
@@ -1362,6 +1327,30 @@ void pdlp_restart_strategy_t<i_t, f_t>::distance_squared_moved_from_last_restart
       size_of_solutions_h,
       stream_view_);
   }
+}
+
+template <typename i_t, typename f_t>
+void pdlp_restart_strategy_t<i_t, f_t>::
+  primal_dual_distance_squared_moved_from_last_restart_period(
+    pdhg_solver_t<i_t, f_t>& pdhg_solver, i_t primal_size, i_t dual_size)
+{
+  cuopt_assert(!batch_mode_,
+               "primal_dual_distance_squared_moved_from_last_restart_period hard-codes stride=1 "
+               "and is not batch-mode safe; batch call sites should use the underlying functions directly");
+  distance_squared_moved_from_last_restart_period(
+    pdhg_solver.get_potential_next_primal_solution(),
+    last_restart_duality_gap_.primal_solution_,
+    pdhg_solver.get_primal_tmp_resource(),
+    primal_size,
+    1,
+    last_restart_duality_gap_.primal_distance_traveled_);
+  distance_squared_moved_from_last_restart_period(
+    pdhg_solver.get_potential_next_dual_solution(),
+    last_restart_duality_gap_.dual_solution_,
+    pdhg_solver.get_dual_tmp_resource(),
+    dual_size,
+    1,
+    last_restart_duality_gap_.dual_distance_traveled_);
 }
 
 template <typename i_t, typename f_t>

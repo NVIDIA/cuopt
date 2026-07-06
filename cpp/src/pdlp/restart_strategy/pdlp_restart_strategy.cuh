@@ -234,6 +234,14 @@ class pdlp_restart_strategy_t {
                                                        i_t stride,
                                                        rmm::device_uvector<f_t>& distance_moved);
 
+  // Convenience wrapper: applies distance_squared_moved_from_last_restart_period
+  // to both primal and dual potential_next solutions of pdhg_solver, writing
+  // into last_restart_duality_gap_.primal_distance_traveled_ and
+  // last_restart_duality_gap_.dual_distance_traveled_.
+  // Used for distributed PDLP mirroring clarity
+  void primal_dual_distance_squared_moved_from_last_restart_period(
+    pdhg_solver_t<i_t, f_t>& pdhg_solver, i_t primal_size, i_t dual_size);
+
   void compute_primal_gradient(localized_duality_gap_container_t<i_t, f_t>& duality_gap,
                                cusparse_view_t<i_t, f_t>& cusparse_view);
 

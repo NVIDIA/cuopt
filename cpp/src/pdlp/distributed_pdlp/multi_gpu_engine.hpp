@@ -380,6 +380,42 @@ struct multi_gpu_engine_t {
     allreduce_sum_inplace_bufs(scalars);
   }
 
+  // Core: same as allreduce_sum_inplace_bufs, plus after the collective the
+  // value is D2D-copied from shard 0 into master_dst
+  void allreduce_sum_inplace_to_master_buf(
+    std::vector<raft::device_scalar_view<f_t>> const& shard_scalars,
+    raft::device_scalar_view<f_t> master_dst,
+    rmm::cuda_stream_view master_stream)
+  {
+    allreduce_sum_inplace_bufs(shard_scalars);
+    if (shards.empty()) return;
+    sync_await_shards(master_stream);
+    auto& s0 = *shards[0];
+    raft::device_setter guard(s0.device_id);
+    raft::copy(master_dst.data_handle(), shard_scalars[0].data_handle(), 1, master_stream);
+  }
+
+  // Wrapper: applies the ptr_access lambda to each shard's sub_pdlp to build
+  // the per-shard scalar views and to master_pdlp_ to obtain the master
+  // destination, then delegates to allreduce_sum_inplace_to_master_buf.
+  template <typename PtrAccess>
+  void allreduce_sum_inplace_to_master(PtrAccess&& ptr_access,
+                                       rmm::cuda_stream_view master_stream)
+  {
+    cuopt_assert(master_pdlp_ != nullptr,
+                 "allreduce_sum_inplace_to_master requires set_master(...) to have been called");
+    std::vector<raft::device_scalar_view<f_t>> shard_scalars;
+    shard_scalars.reserve(shards.size());
+    for (auto& s : shards) {
+      raft::device_setter guard(s->device_id);
+      shard_scalars.emplace_back(raft::make_device_scalar_view<f_t>(ptr_access(*s->sub_pdlp)));
+    }
+    allreduce_sum_inplace_to_master_buf(
+      shard_scalars,
+      raft::make_device_scalar_view<f_t>(ptr_access(*master_pdlp_)),
+      master_stream);
+  }
+
   // -------- Distributed dot / L2 norm -------------------------------------
   // Computes the dot product of two vectors for each shard. Returns the global result in
   // out_scalars.
@@ -465,6 +501,10 @@ struct multi_gpu_engine_t {
   // Shards stored by unique_ptr because pdlp_shard_t is immovable
   // (owns device-affine resources: handle, NCCL comm, RMM buffers).
   std::vector<std::unique_ptr<pdlp_shard_t<i_t, f_t>>> shards;
+
+  // Non-owning back-pointer to the master pdlp_solver_t.
+  pdlp_solver_t<i_t, f_t>* master_pdlp_ = nullptr;
+  void set_master(pdlp_solver_t<i_t, f_t>* m) { master_pdlp_ = m; }
 
   // ===== Cross-stream synchronization events =====
   // two different events

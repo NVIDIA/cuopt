@@ -541,6 +541,10 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   // ----- 6. Construct the engine: NCCL comms + per-shard pdlp_solver_t -----
   multi_gpu_engine.emplace(std::move(sub_pdlp_rank_data), mps, sub_pdlp_settings);
 
+  // Non-owning back-pointer so engine helpers (e.g. allreduce_sum_inplace_to_master)
+  // can apply a single pdlp_solver_t-shaped accessor lambda to master too.
+  multi_gpu_engine->set_master(this);
+
   // Wire the engine into master's pdhg_solver_; shards keep mgpu_engine_ == nullptr.
   pdhg_solver_.set_multi_gpu_engine(&*multi_gpu_engine);
 
@@ -2309,32 +2313,15 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
         (void*)sub_pdlp.pdhg_solver_.get_potential_next_dual_solution().data()));
     }
 
-    multi_gpu_engine->allreduce_sum_inplace(
-      [](auto& sp) -> f_t* { return sp.step_size_strategy_.get_interaction().data(); });
-    multi_gpu_engine->allreduce_sum_inplace([](auto& sp) -> f_t* {
-      return sp.step_size_strategy_.get_norm_squared_delta_primal().data();
-    });
-    multi_gpu_engine->allreduce_sum_inplace(
-      [](auto& sp) -> f_t* { return sp.step_size_strategy_.get_norm_squared_delta_dual().data(); });
-
-    auto& s0 = *multi_gpu_engine->shards[0];
-    {
-      raft::device_setter guard(s0.device_id);
-      RAFT_CUDA_TRY(cudaStreamSynchronize(s0.stream.view().value()));
-    }
-    auto& src_sp = s0.sub_pdlp->step_size_strategy_;
-    raft::copy(step_size_strategy_.get_interaction().data(),
-               src_sp.get_interaction().data(),
-               1,
-               stream_view_);
-    raft::copy(step_size_strategy_.get_norm_squared_delta_primal().data(),
-               src_sp.get_norm_squared_delta_primal().data(),
-               1,
-               stream_view_);
-    raft::copy(step_size_strategy_.get_norm_squared_delta_dual().data(),
-               src_sp.get_norm_squared_delta_dual().data(),
-               1,
-               stream_view_);
+    multi_gpu_engine->allreduce_sum_inplace_to_master(
+      [](auto& sp) -> f_t* { return sp.step_size_strategy_.get_interaction().data(); },
+      stream_view_);
+    multi_gpu_engine->allreduce_sum_inplace_to_master(
+      [](auto& sp) -> f_t* { return sp.step_size_strategy_.get_norm_squared_delta_primal().data(); },
+      stream_view_);
+    multi_gpu_engine->allreduce_sum_inplace_to_master(
+      [](auto& sp) -> f_t* { return sp.step_size_strategy_.get_norm_squared_delta_dual().data(); },
+      stream_view_);
   } else {
     // Sync to make sure all previous cuSparse operations are finished before setting the
     // potential_next_dual_solution
