@@ -521,13 +521,13 @@ void distributed_compute_initial_primal_weight(multi_gpu_engine_t<i_t, f_t>& eng
                                                pdlp_hyper_params_t const& hyper_params)
 {
   raft::common::nvtx::range scope("distributed_compute_initial_primal_weight");
-  cuopt_expects(!hyper_params.initial_primal_weight_combined_bounds &&
-                  hyper_params.bound_objective_rescaling,
-                error_type_t::ValidationError,
-                "distributed_compute_initial_primal_weight: only the Stable3-shaped "
-                "short-circuit is supported (initial_primal_weight_combined_bounds=false "
-                "and bound_objective_rescaling=true). This should have been rejected "
-                "earlier in solve_lp_distributed_from_mps.");
+  cuopt_expects(
+    !hyper_params.initial_primal_weight_combined_bounds && hyper_params.bound_objective_rescaling,
+    error_type_t::ValidationError,
+    "distributed_compute_initial_primal_weight: only the Stable3-shaped "
+    "short-circuit is supported (initial_primal_weight_combined_bounds=false "
+    "and bound_objective_rescaling=true). This should have been rejected "
+    "earlier in solve_lp_distributed_from_mps.");
   const f_t h_primal_weight = f_t(1);
 
   auto* handle_ptr = master.get_handle_ptr();
@@ -545,37 +545,37 @@ void distributed_compute_initial_primal_weight(multi_gpu_engine_t<i_t, f_t>& eng
 }
 
 // ----- Explicit instantiations (mirror multi_gpu_engine_t<int, {double,float}>) -----
-#define INSTANTIATE(F_TYPE)                                                                       \
-  template void distributed_bound_objective_rescaling<int, F_TYPE>(                               \
-    multi_gpu_engine_t<int, F_TYPE> & engine, F_TYPE c_scaling_weight);                           \
-  template void distributed_ruiz_inf_scaling<int, F_TYPE>(                                        \
-    multi_gpu_engine_t<int, F_TYPE> & engine, int num_iter, int n_global_vars);                   \
-  template void distributed_pock_chambolle_scaling<int, F_TYPE>(                                  \
-    multi_gpu_engine_t<int, F_TYPE> & engine, F_TYPE alpha, int n_global_vars);                   \
-  template void distributed_scaling<int, F_TYPE>(multi_gpu_engine_t<int, F_TYPE> & engine,        \
-                                                 pdlp_hyper_params_t const& hyper_params,         \
-                                                 int n_global_vars,                               \
-                                                 bool inside_mip);                                \
-  template F_TYPE distributed_max_singular_value<int, F_TYPE>(                                    \
-    multi_gpu_engine_t<int, F_TYPE> & engine,                                                     \
-    int n_global_cstrs,                                                                           \
-    int max_iterations,                                                                           \
-    F_TYPE tolerance);                                                                            \
-  template void distributed_compute_initial_step_size<int, F_TYPE>(                               \
-    multi_gpu_engine_t<int, F_TYPE> & engine,                                                     \
-    pdlp_solver_t<int, F_TYPE> & master,                                                          \
-    pdlp_hyper_params_t const& hyper_params,                                                      \
-    int n_global_cstrs,                                                                           \
-    F_TYPE scaling_factor,                                                                        \
-    int max_iterations,                                                                           \
-    F_TYPE tolerance);                                                                            \
-  template void distributed_compute_initial_primal_weight<int, F_TYPE>(                           \
-    multi_gpu_engine_t<int, F_TYPE> & engine,                                                     \
-    pdlp_solver_t<int, F_TYPE> & master,                                                          \
-    pdlp_hyper_params_t const& hyper_params);                                                     \
-  template void gather_potential_next_solutions_to_master<int, F_TYPE>(                           \
-    multi_gpu_engine_t<int, F_TYPE> & engine,                                                     \
-    pdhg_solver_t<int, F_TYPE> & master_pdhg,                                                     \
+#define INSTANTIATE(F_TYPE)                                                                \
+  template void distributed_bound_objective_rescaling<int, F_TYPE>(                        \
+    multi_gpu_engine_t<int, F_TYPE> & engine, F_TYPE c_scaling_weight);                    \
+  template void distributed_ruiz_inf_scaling<int, F_TYPE>(                                 \
+    multi_gpu_engine_t<int, F_TYPE> & engine, int num_iter, int n_global_vars);            \
+  template void distributed_pock_chambolle_scaling<int, F_TYPE>(                           \
+    multi_gpu_engine_t<int, F_TYPE> & engine, F_TYPE alpha, int n_global_vars);            \
+  template void distributed_scaling<int, F_TYPE>(multi_gpu_engine_t<int, F_TYPE> & engine, \
+                                                 pdlp_hyper_params_t const& hyper_params,  \
+                                                 int n_global_vars,                        \
+                                                 bool inside_mip);                         \
+  template F_TYPE distributed_max_singular_value<int, F_TYPE>(                             \
+    multi_gpu_engine_t<int, F_TYPE> & engine,                                              \
+    int n_global_cstrs,                                                                    \
+    int max_iterations,                                                                    \
+    F_TYPE tolerance);                                                                     \
+  template void distributed_compute_initial_step_size<int, F_TYPE>(                        \
+    multi_gpu_engine_t<int, F_TYPE> & engine,                                              \
+    pdlp_solver_t<int, F_TYPE> & master,                                                   \
+    pdlp_hyper_params_t const& hyper_params,                                               \
+    int n_global_cstrs,                                                                    \
+    F_TYPE scaling_factor,                                                                 \
+    int max_iterations,                                                                    \
+    F_TYPE tolerance);                                                                     \
+  template void distributed_compute_initial_primal_weight<int, F_TYPE>(                    \
+    multi_gpu_engine_t<int, F_TYPE> & engine,                                              \
+    pdlp_solver_t<int, F_TYPE> & master,                                                   \
+    pdlp_hyper_params_t const& hyper_params);                                              \
+  template void gather_potential_next_solutions_to_master<int, F_TYPE>(                    \
+    multi_gpu_engine_t<int, F_TYPE> & engine,                                              \
+    pdhg_solver_t<int, F_TYPE> & master_pdhg,                                              \
     rmm::device_uvector<F_TYPE> & master_reduced_cost);
 
 INSTANTIATE(double)

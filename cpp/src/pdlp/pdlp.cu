@@ -3306,8 +3306,7 @@ void pdlp_solver_t<i_t, f_t>::scale_problem()
   raft::common::nvtx::range fun_scope("pdlp_solver_t::scale_problem");
   if (is_distributed_master()) {
     distributed_scaling(*multi_gpu_engine, settings_.hyper_params, primal_size_h_, inside_mip_);
-  }
-  else {
+  } else {
     initial_scaling_strategy_.scale_problem();
   }
 }
@@ -3545,12 +3544,11 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_primal_weight()
   raft::common::nvtx::range fun_scope("compute_initial_primal_weight");
 
   if (is_distributed_master()) {
-    // Distributed dispatch:  
+    // Distributed dispatch:
     // - short-circuit -> 1
     // - primal/dual step sizes from master's current step_size_, seeding
-    // master + all shards, syncs) 
-    distributed_compute_initial_primal_weight(
-      *multi_gpu_engine, *this, settings_.hyper_params);
+    // master + all shards, syncs)
+    distributed_compute_initial_primal_weight(*multi_gpu_engine, *this, settings_.hyper_params);
     return;
   }
 

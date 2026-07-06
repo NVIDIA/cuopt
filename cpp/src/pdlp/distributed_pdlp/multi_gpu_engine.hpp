@@ -105,8 +105,7 @@ struct multi_gpu_engine_t {
                                   Op op)
   {
     const int nb = static_cast<int>(shards.size());
-    cuopt_expects(static_cast<int>(in_tuples.size()) == nb &&
-                    static_cast<int>(outs.size()) == nb &&
+    cuopt_expects(static_cast<int>(in_tuples.size()) == nb && static_cast<int>(outs.size()) == nb &&
                     static_cast<int>(sizes.size()) == nb,
                   error_type_t::RuntimeError,
                   "distributed_transform_bufs: in_tuples / outs / sizes must "
@@ -120,16 +119,15 @@ struct multi_gpu_engine_t {
 
   // Wrapper: accessor form. Resolves each shard's cub input_tuple / output /
   // size via the provided accessors, then delegates to
-  // distributed_transform_bufs. 
+  // distributed_transform_bufs.
   template <typename... InAccess, typename OutAccess, typename SizeAccess, typename Op>
   void distributed_transform(std::tuple<InAccess...> in_accessors,
                              OutAccess out,
                              SizeAccess sz,
                              Op op)
   {
-    cuopt_expects(!shards.empty(),
-                  error_type_t::RuntimeError,
-                  "distributed_transform: engine has no shards");
+    cuopt_expects(
+      !shards.empty(), error_type_t::RuntimeError, "distributed_transform: engine has no shards");
 
     // Deduce per-shard tuple / output types from the accessors themselves so
     // the runtime vector element types match cub's expectations exactly.
@@ -353,7 +351,7 @@ struct multi_gpu_engine_t {
 
     CUOPT_NCCL_TRY(ncclGroupStart());
     for (int r = 0; r < nb; ++r) {
-      auto& s     = *shards[r];
+      auto& s = *shards[r];
       raft::device_setter guard(s.device_id);
       f_t* p = scalars[r].data_handle();
       CUOPT_NCCL_TRY(ncclAllReduce(p,
@@ -383,14 +381,14 @@ struct multi_gpu_engine_t {
   }
 
   // -------- Distributed dot / L2 norm -------------------------------------
-  // Computes the dot product of two vectors for each shard. Returns the global result in out_scalars.
+  // Computes the dot product of two vectors for each shard. Returns the global result in
+  // out_scalars.
   void distributed_dot_bufs(std::vector<raft::device_span<f_t>> const& a_bufs,
                             std::vector<raft::device_span<f_t>> const& b_bufs,
                             std::vector<raft::device_scalar_view<f_t>> const& out_scalars)
   {
     const int nb = static_cast<int>(shards.size());
-    cuopt_expects(static_cast<int>(a_bufs.size()) == nb &&
-                    static_cast<int>(b_bufs.size()) == nb &&
+    cuopt_expects(static_cast<int>(a_bufs.size()) == nb && static_cast<int>(b_bufs.size()) == nb &&
                     static_cast<int>(out_scalars.size()) == nb,
                   error_type_t::RuntimeError,
                   "distributed_dot_bufs: a_bufs / b_bufs / out_scalars must "

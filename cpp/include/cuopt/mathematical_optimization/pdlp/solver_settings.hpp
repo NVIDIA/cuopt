@@ -327,8 +327,7 @@ class pdlp_solver_settings_t {
   int distributed_pdlp_num_gpus{-1};
   // Which graph partitioner distributed PDLP uses. See
   // distributed_pdlp_partitioner_t for the meaning of each value.
-  distributed_pdlp_partitioner_t distributed_pdlp_partitioner{
-    distributed_pdlp_partitioner_t::Auto};
+  distributed_pdlp_partitioner_t distributed_pdlp_partitioner{distributed_pdlp_partitioner_t::Auto};
   method_t method{method_t::Concurrent};
   bool inside_mip{false};
   // For concurrent termination
