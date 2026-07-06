@@ -191,6 +191,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_CUDSS_DETERMINISTIC, &pdlp_settings.cudss_deterministic, false},
     {CUOPT_DUAL_POSTSOLVE, &pdlp_settings.dual_postsolve, true},
     {CUOPT_BARRIER_ITERATIVE_REFINEMENT, &pdlp_settings.barrier_iterative_refinement, true},
+    {CUOPT_BARRIER_CSR_IR_MATVEC, &pdlp_settings.barrier_csr_ir_matvec, false},
     {CUOPT_MIP_PROBING, &mip_settings.probing, true},
     // Diving heuristic hyper-parameters (hidden from default --help: name contains "hyper_")
     {CUOPT_MIP_HYPER_DIVING_SHOW_TYPE, &mip_settings.diving_params.show_type, false, "log diving heuristic type when it finds a new incumbent"},

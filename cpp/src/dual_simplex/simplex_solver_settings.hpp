@@ -68,6 +68,7 @@ struct simplex_solver_settings_t {
       barrier(false),
       eliminate_dense_columns(true),
       barrier_iterative_refinement(true),
+      barrier_csr_ir_matvec(false),
       barrier_step_scale(0.9),
       barrier_soc_threshold(5),
       num_gpus(1),
@@ -157,6 +158,7 @@ struct simplex_solver_settings_t {
   bool deterministic;  // true to use B&B deterministic mode, false to use non-deterministic mode
   bool eliminate_dense_columns;       // true to eliminate dense columns from A*D*A^T
   bool barrier_iterative_refinement;  // true to use iterative refinement for barrier method
+  bool barrier_csr_ir_matvec;         // true to use CSR SpMV for augmented IR matvec
   f_t barrier_step_scale;             // step scale for barrier method
   i_t barrier_soc_threshold;          // SOC dimension above which rank-2 sparse scaling is used
   int num_gpus;   // Number of GPUs to use (maximum of 2 gpus are supported at the moment)

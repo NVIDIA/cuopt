@@ -1169,6 +1169,129 @@ void update_sparse_expansion_in_augmented(rmm::device_uvector<f_t>& augmented_x,
   }
 }
 
+// Remove factorization-only regularization from the assembled augmented CSR values so
+// iterative refinement can use a single SpMV against the true KKT operator.
+template <std::integral i_t, std::floating_point f_t>
+__global__ void strip_linear_primal_diag_kernel(raft::device_span<f_t> augmented_x,
+                                                raft::device_span<const i_t> diag_indices,
+                                                raft::device_span<const f_t> q_diag,
+                                                raft::device_span<const i_t> is_direct_free_linear,
+                                                f_t dual_perturb,
+                                                i_t linear_n)
+{
+  const i_t j = static_cast<i_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (j >= linear_n) { return; }
+
+  const i_t idx = diag_indices[j];
+  if (is_direct_free_linear[j]) {
+    const f_t q_val  = q_diag.size() > 0 ? q_diag[j] : f_t(0);
+    augmented_x[idx] = -q_val;
+  } else {
+    augmented_x[idx] += dual_perturb;
+  }
+}
+
+template <std::integral i_t, std::floating_point f_t>
+__global__ void strip_dual_diag_kernel(raft::device_span<f_t> augmented_x,
+                                       raft::device_span<const i_t> diag_indices,
+                                       f_t primal_perturb,
+                                       i_t n,
+                                       i_t m)
+{
+  const i_t l = static_cast<i_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (l >= m) { return; }
+
+  const i_t row = n + l;
+  augmented_x[diag_indices[row]] -= primal_perturb;
+}
+
+template <std::integral i_t, std::floating_point f_t>
+__global__ void strip_indexed_offset_kernel(raft::device_span<f_t> augmented_x,
+                                            raft::device_span<const i_t> csr_indices,
+                                            f_t offset)
+{
+  const size_t e = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (e >= csr_indices.size()) { return; }
+
+  augmented_x[csr_indices[e]] += offset;
+}
+
+template <std::integral i_t, std::floating_point f_t>
+__global__ void strip_expansion_diag_kernel(raft::device_span<f_t> augmented_x,
+                                            raft::device_span<const i_t> expansion_D,
+                                            f_t dual_perturb)
+{
+  const i_t i = static_cast<i_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (i >= static_cast<i_t>(expansion_D.size())) { return; }
+
+  const f_t sign = (i % 2 == 0) ? f_t(-1) : f_t(1);
+  augmented_x[expansion_D[i]] -= sign * dual_perturb;
+}
+
+template <std::integral i_t, std::floating_point f_t>
+void strip_augmented_perturbation_values(
+  rmm::device_uvector<f_t>& augmented_x,
+  const rmm::device_uvector<i_t>& augmented_diagonal_indices,
+  const rmm::device_uvector<f_t>& q_diag,
+  const rmm::device_uvector<i_t>& is_direct_free_linear,
+  const rmm::device_uvector<i_t>& sparse_hessian_diag,
+  const rmm::device_uvector<i_t>& sparse_expansion_D,
+  const rmm::device_uvector<i_t>& dense_cone_diag_csr_indices,
+  i_t linear_n,
+  i_t n,
+  i_t m,
+  f_t dual_perturb,
+  f_t primal_perturb,
+  rmm::cuda_stream_view stream)
+{
+  if (linear_n > 0) {
+    const size_t grid = raft::ceildiv<size_t>(linear_n, soc_block_size);
+    strip_linear_primal_diag_kernel<i_t, f_t>
+      <<<grid, soc_block_size, 0, stream.value()>>>(cuopt::make_span(augmented_x),
+                                                    cuopt::make_span(augmented_diagonal_indices),
+                                                    cuopt::make_span(q_diag),
+                                                    cuopt::make_span(is_direct_free_linear),
+                                                    dual_perturb,
+                                                    linear_n);
+    RAFT_CUDA_TRY(cudaPeekAtLastError());
+  }
+
+  if (m > 0) {
+    const size_t grid = raft::ceildiv<size_t>(m, soc_block_size);
+    strip_dual_diag_kernel<i_t, f_t>
+      <<<grid, soc_block_size, 0, stream.value()>>>(cuopt::make_span(augmented_x),
+                                                    cuopt::make_span(augmented_diagonal_indices),
+                                                    primal_perturb,
+                                                    n,
+                                                    m);
+    RAFT_CUDA_TRY(cudaPeekAtLastError());
+  }
+
+  if (sparse_hessian_diag.size() > 0) {
+    const size_t count = sparse_hessian_diag.size();
+    const size_t grid  = raft::ceildiv<size_t>(count, soc_block_size);
+    strip_indexed_offset_kernel<i_t, f_t><<<grid, soc_block_size, 0, stream.value()>>>(
+      cuopt::make_span(augmented_x), cuopt::make_span(sparse_hessian_diag), dual_perturb);
+    RAFT_CUDA_TRY(cudaPeekAtLastError());
+  }
+
+  if (sparse_expansion_D.size() > 0) {
+    const size_t count = sparse_expansion_D.size();
+    const size_t grid  = raft::ceildiv<size_t>(count, soc_block_size);
+    strip_expansion_diag_kernel<i_t, f_t><<<grid, soc_block_size, 0, stream.value()>>>(
+      cuopt::make_span(augmented_x), cuopt::make_span(sparse_expansion_D), dual_perturb);
+    RAFT_CUDA_TRY(cudaPeekAtLastError());
+  }
+
+  if (dense_cone_diag_csr_indices.size() > 0) {
+    const size_t count = dense_cone_diag_csr_indices.size();
+    const size_t grid  = raft::ceildiv<size_t>(count, soc_block_size);
+    strip_indexed_offset_kernel<i_t, f_t><<<grid, soc_block_size, 0, stream.value()>>>(
+      cuopt::make_span(augmented_x), cuopt::make_span(dense_cone_diag_csr_indices), dual_perturb);
+    RAFT_CUDA_TRY(cudaPeekAtLastError());
+  }
+}
+
 /**
  * Accumulate the sparse-SOC expanded KKT block into a matrix-free product.
  *

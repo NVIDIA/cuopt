@@ -509,6 +509,7 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   barrier_settings.crossover                       = settings.crossover;
   barrier_settings.eliminate_dense_columns         = settings.eliminate_dense_columns;
   barrier_settings.barrier_iterative_refinement    = settings.barrier_iterative_refinement;
+  barrier_settings.barrier_csr_ir_matvec           = settings.barrier_csr_ir_matvec;
   barrier_settings.barrier_soc_threshold           = settings.barrier_soc_threshold;
   barrier_settings.barrier_step_scale              = settings.barrier_step_scale;
   barrier_settings.cudss_deterministic             = settings.cudss_deterministic;
@@ -693,6 +694,7 @@ static optimization_problem_solution_t<i_t, double> run_pdlp_solver_in_fp32(
   fs.all_primal_feasible          = settings.all_primal_feasible;
   fs.eliminate_dense_columns      = settings.eliminate_dense_columns;
   fs.barrier_iterative_refinement = settings.barrier_iterative_refinement;
+  fs.barrier_csr_ir_matvec        = settings.barrier_csr_ir_matvec;
   fs.barrier_step_scale           = settings.barrier_step_scale;
   fs.pdlp_precision               = pdlp_precision_t::DefaultPrecision;
   fs.method                       = method_t::PDLP;

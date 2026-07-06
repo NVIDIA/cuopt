@@ -6,6 +6,8 @@
 /* clang-format on */
 #pragma once
 
+#include <barrier/device_sparse_matrix.cuh>
+
 #include <dual_simplex/sparse_matrix.hpp>
 
 #include <pdlp/cusparse_view.hpp>
@@ -72,5 +74,32 @@ class cusparse_view_t {
   rmm::device_scalar<f_t> d_one_;
   rmm::device_scalar<f_t> d_minus_one_;
   rmm::device_scalar<f_t> d_zero_;
+};
+
+// cuSparse CSR SpMV view for the augmented KKT matrix stored in device_csr_matrix_t.
+// The sparsity pattern is fixed; numerical values are read from matrix.x in place.
+template <typename i_t, typename f_t>
+class augmented_cusparse_view_t {
+ public:
+  augmented_cusparse_view_t(raft::handle_t const* handle_ptr,
+                            device_csr_matrix_t<i_t, f_t>& matrix);
+  ~augmented_cusparse_view_t();
+
+  pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> create_vector(rmm::device_uvector<f_t> const& vec);
+
+  void spmv(f_t alpha, rmm::device_uvector<f_t> const& x, f_t beta, rmm::device_uvector<f_t>& y);
+  void spmv(f_t alpha,
+            pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> const& x,
+            f_t beta,
+            pdlp::cusparse_dn_vec_descr_wrapper_t<f_t> const& y);
+
+ private:
+  raft::handle_t const* handle_ptr_{nullptr};
+  cusparseSpMatDescr_t A_{nullptr};
+  rmm::device_buffer spmv_buffer_;
+  rmm::device_scalar<f_t> d_one_;
+  rmm::device_scalar<f_t> d_minus_one_;
+  rmm::device_scalar<f_t> d_zero_;
+  i_t num_rows_{0};
 };
 }  // namespace cuopt::mathematical_optimization::barrier

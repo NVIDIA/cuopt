@@ -48,6 +48,7 @@
 #define CUOPT_ORDERING                             "ordering"
 #define CUOPT_BARRIER_DUAL_INITIAL_POINT           "barrier_dual_initial_point"
 #define CUOPT_BARRIER_ITERATIVE_REFINEMENT         "barrier_iterative_refinement"
+#define CUOPT_BARRIER_CSR_IR_MATVEC                "barrier_csr_ir_matvec"
 #define CUOPT_BARRIER_SOC_THRESHOLD                "barrier_soc_threshold"
 #define CUOPT_BARRIER_STEP_SCALE                   "barrier_step_scale"
 #define CUOPT_ELIMINATE_DENSE_COLUMNS              "eliminate_dense_columns"

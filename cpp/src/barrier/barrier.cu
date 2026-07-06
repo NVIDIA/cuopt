@@ -290,6 +290,7 @@ class iteration_data_t {
       d_sparse_exp_u_row_(0, lp.handle_ptr->get_stream()),
       d_sparse_expansion_D_(0, lp.handle_ptr->get_stream()),
       d_sparse_Hs_diag_(0, lp.handle_ptr->get_stream()),
+      d_dense_cone_diag_csr_indices_(0, lp.handle_ptr->get_stream()),
       use_augmented(false),
       has_factorization(false),
       n_direct_free_linear(0),
@@ -312,6 +313,12 @@ class iteration_data_t {
       d_r1_prime_(lp.num_cols, lp.handle_ptr->get_stream()),
       d_augmented_rhs_(0, lp.handle_ptr->get_stream()),
       d_augmented_soln_(0, lp.handle_ptr->get_stream()),
+      d_aug_x1_(0, lp.handle_ptr->get_stream()),
+      d_aug_x2_(0, lp.handle_ptr->get_stream()),
+      d_aug_y1_(0, lp.handle_ptr->get_stream()),
+      d_aug_y2_(0, lp.handle_ptr->get_stream()),
+      d_aug_y_exp_(0, lp.handle_ptr->get_stream()),
+      d_aug_y_exp_orig_(0, lp.handle_ptr->get_stream()),
       d_c_(lp.num_cols, lp.handle_ptr->get_stream()),
       d_b_(lp.num_rows, lp.handle_ptr->get_stream()),
       d_upper_(0, lp.handle_ptr->get_stream()),
@@ -538,6 +545,17 @@ class iteration_data_t {
         const i_t augmented_size = augmented_system_size(lp.num_cols, lp.num_rows);
         d_augmented_rhs_.resize(augmented_size, stream_view_);
         d_augmented_soln_.resize(augmented_size, stream_view_);
+        d_aug_x1_.resize(lp.num_cols, stream_view_);
+        d_aug_x2_.resize(lp.num_rows, stream_view_);
+        d_aug_y1_.resize(lp.num_cols, stream_view_);
+        d_aug_y2_.resize(lp.num_rows, stream_view_);
+        d_aug_y_exp_.resize(augmented_expansion_count(), stream_view_);
+        d_aug_y_exp_orig_.resize(augmented_expansion_count(), stream_view_);
+        if (settings.barrier_csr_ir_matvec) {
+          settings.log.printf("IR matvec                     : csr\n");
+        } else {
+          settings.log.printf("IR matvec                     : matrix-free\n");
+        }
       } else {
         settings.log.printf("Linear system               : ADAT\n");
       }
@@ -647,6 +665,10 @@ class iteration_data_t {
         }
         if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
         symbolic_status = chol->analyze(device_augmented);
+        if (use_csr_ir_matvec()) {
+          augmented_cusparse_view_ =
+            std::make_unique<augmented_cusparse_view_t<i_t, f_t>>(handle_ptr, device_augmented);
+        }
       } else {
         {
           raft::common::nvtx::range form_scope("Barrier: LP Data: form ADAT");
@@ -689,6 +711,8 @@ class iteration_data_t {
   {
     return has_sparse_cones() ? cones().expansion_var_count() : i_t(0);
   }
+
+  bool use_csr_ir_matvec() const { return settings_.barrier_csr_ir_matvec && use_augmented; }
 
   i_t augmented_system_size(i_t n, i_t m) const { return n + m + augmented_expansion_count(); }
 
@@ -793,6 +817,7 @@ class iteration_data_t {
       std::vector<i_t> augmented_diagonal_indices(factorization_size, -1);
       std::vector<i_t> cone_csr_indices_host(dense_soc_kkt_nnz, -1);
       std::vector<f_t> cone_Q_values_host(dense_soc_kkt_nnz, f_t(0));
+      std::vector<i_t> dense_cone_diag_indices_host;
       std::vector<i_t> sparse_hessian_diag_host(n_sparse_entries, -1);
       std::vector<f_t> sparse_hessian_Q_host(n_sparse_entries, f_t(0));
       std::vector<i_t> sparse_exp_v_col_host(n_sparse_entries, -1);
@@ -896,7 +921,10 @@ class iteration_data_t {
 
                 cone_csr_indices_host[block_base + c] = q;
                 cone_Q_values_host[block_base + c]    = q_contrib;
-                if (col == i) { augmented_diagonal_indices[i] = q; }
+                if (col == i) {
+                  augmented_diagonal_indices[i] = q;
+                  dense_cone_diag_indices_host.push_back(q);
+                }
                 augmented_CSR.j[q]   = col;
                 augmented_CSR.x[q++] = initial_val - q_contrib;
               }
@@ -1049,6 +1077,15 @@ class iteration_data_t {
             raft::copy(d_dense_cone_ids_.data(),
                        dense_cone_ids_host.data(),
                        dense_cone_ids_host.size(),
+                       handle_ptr->get_stream());
+          }
+
+          d_dense_cone_diag_csr_indices_.resize(dense_cone_diag_indices_host.size(),
+                                                handle_ptr->get_stream());
+          if (!dense_cone_diag_indices_host.empty()) {
+            raft::copy(d_dense_cone_diag_csr_indices_.data(),
+                       dense_cone_diag_indices_host.data(),
+                       dense_cone_diag_indices_host.size(),
                        handle_ptr->get_stream());
           }
 
@@ -2071,6 +2108,41 @@ class iteration_data_t {
     __host__ __device__ T operator()(T x, T y) const { return alpha * x + beta * y; }
   };
 
+  void strip_augmented_perturbation()
+  {
+    raft::common::nvtx::range fun_scope("Barrier: strip augmented perturbation");
+    const i_t n        = A.n;
+    const i_t m        = A.m;
+    const i_t linear_n = has_cones() ? cone_start() : n;
+    strip_augmented_perturbation_values(device_augmented.x,
+                                        d_augmented_diagonal_indices_,
+                                        d_Q_diag_,
+                                        d_is_direct_free_linear_,
+                                        d_sparse_hessian_diag_,
+                                        d_sparse_expansion_D_,
+                                        d_dense_cone_diag_csr_indices_,
+                                        linear_n,
+                                        n,
+                                        m,
+                                        dual_perturb,
+                                        primal_perturb,
+                                        stream_view_);
+  }
+
+  void augmented_csr_multiply(f_t alpha,
+                              const rmm::device_uvector<f_t>& x,
+                              f_t beta,
+                              rmm::device_uvector<f_t>& y)
+  {
+    raft::common::nvtx::range fun_scope("Barrier: augmented_csr_multiply");
+    cuopt_assert(use_csr_ir_matvec(), "augmented_csr_multiply requires CSR IR matvec path");
+    cuopt_assert(augmented_cusparse_view_ != nullptr, "augmented cusparse view not initialized");
+    const i_t sys_size = augmented_system_size(A.n, A.m);
+    cuopt_assert(static_cast<i_t>(x.size()) >= sys_size, "augmented_csr_multiply: x too small");
+    cuopt_assert(static_cast<i_t>(y.size()) >= sys_size, "augmented_csr_multiply: y too small");
+    augmented_cusparse_view_->spmv(alpha, x, beta, y);
+  }
+
   // y <- alpha * Augmented * x + beta * y
   void augmented_multiply(f_t alpha,
                           const rmm::device_uvector<f_t>& x,
@@ -2085,47 +2157,39 @@ class iteration_data_t {
     cuopt_assert(static_cast<i_t>(x.size()) >= sys_size, "augmented_multiply: x too small");
     cuopt_assert(static_cast<i_t>(y.size()) >= sys_size, "augmented_multiply: y too small");
 
-    rmm::device_uvector<f_t> d_x1(n, handle_ptr->get_stream());
-    rmm::device_uvector<f_t> d_x2(m, handle_ptr->get_stream());
-    rmm::device_uvector<f_t> d_y1(n, handle_ptr->get_stream());
-    rmm::device_uvector<f_t> d_y2(m, handle_ptr->get_stream());
-    rmm::device_uvector<f_t> d_y_exp(p, handle_ptr->get_stream());
-    rmm::device_uvector<f_t> d_y_exp_orig(p, handle_ptr->get_stream());
-
-    raft::copy(d_x1.data(), x.data(), n, handle_ptr->get_stream());
-    raft::copy(d_x2.data(), x.data() + n, m, handle_ptr->get_stream());
-    raft::copy(d_y1.data(), y.data(), n, handle_ptr->get_stream());
-    raft::copy(d_y2.data(), y.data() + n, m, handle_ptr->get_stream());
+    raft::copy(d_aug_x1_.data(), x.data(), n, handle_ptr->get_stream());
+    raft::copy(d_aug_x2_.data(), x.data() + n, m, handle_ptr->get_stream());
+    raft::copy(d_aug_y1_.data(), y.data(), n, handle_ptr->get_stream());
+    raft::copy(d_aug_y2_.data(), y.data() + n, m, handle_ptr->get_stream());
     if (p > 0) {
-      raft::copy(d_y_exp_orig.data(), y.data() + n + m, p, handle_ptr->get_stream());
-      thrust::fill_n(rmm::exec_policy(stream_view_), d_y_exp.begin(), p, f_t(0));
+      raft::copy(d_aug_y_exp_orig_.data(), y.data() + n + m, p, handle_ptr->get_stream());
+      thrust::fill_n(rmm::exec_policy(stream_view_), d_aug_y_exp_.begin(), p, f_t(0));
     }
 
     // y1 <- alpha ( -(Q + D + H) * x_1 + A^T x_2) + beta * y1
 
-    rmm::device_uvector<f_t> d_r1(n, handle_ptr->get_stream());
-    thrust::fill_n(rmm::exec_policy(stream_view_), d_r1.begin(), n, f_t(0));
+    thrust::fill_n(rmm::exec_policy(stream_view_), d_r1_.begin(), n, f_t(0));
 
     // r1 <- D * x_1 on linear indices; barrier D is zero on direct free variables
     const i_t linear_n = has_soc ? cone_start() : n;
-    pairwise_multiply_skip_direct_free_linear(d_x1.data(),
+    pairwise_multiply_skip_direct_free_linear(d_aug_x1_.data(),
                                               d_diag_.data(),
                                               d_is_direct_free_linear_.data(),
-                                              d_r1.data(),
+                                              d_r1_.data(),
                                               linear_n,
                                               stream_view_);
     RAFT_CHECK_CUDA(stream_view_);
 
     // r1 <- D * x_1 + H x_1 on cone rows
     // (dense cones: explicit dense H block; sparse cones: rank-2 expansion, which adds
-    //  Hs_diag .* x_cone to r1 here and writes the expansion rows into d_y_exp)
+    //  Hs_diag .* x_cone to r1 here and writes the expansion rows into d_aug_y_exp_)
     if (has_soc) {
       const i_t m_c = cone_entry_count();
       if (cones().has_sparse_cones()) {
         launch_sparse_augmented_matvec(
           raft::device_span<const f_t>(x.data(), x.size()),
-          raft::device_span<f_t>(d_r1.data(), d_r1.size()),
-          raft::device_span<f_t>(d_y_exp.data(), d_y_exp.size()),
+          raft::device_span<f_t>(d_r1_.data(), d_r1_.size()),
+          raft::device_span<f_t>(d_aug_y_exp_.data(), d_aug_y_exp_.size()),
           cones(),
           raft::device_span<const f_t>(d_sparse_Hs_diag_.data(), d_sparse_Hs_diag_.size()),
           cone_start(),
@@ -2135,10 +2199,11 @@ class iteration_data_t {
         RAFT_CHECK_CUDA(stream_view_);
       }
       if (cones().n_dense_cones() > 0) {
-        launch_dense_hessian_matvec(raft::device_span<const f_t>(d_x1.data() + cone_start(), m_c),
-                                    cones(),
-                                    raft::device_span<f_t>(d_r1.data() + cone_start(), m_c),
-                                    stream_view_);
+        launch_dense_hessian_matvec(
+          raft::device_span<const f_t>(d_aug_x1_.data() + cone_start(), m_c),
+          cones(),
+          raft::device_span<f_t>(d_r1_.data() + cone_start(), m_c),
+          stream_view_);
         RAFT_CHECK_CUDA(stream_view_);
       }
     }
@@ -2146,26 +2211,32 @@ class iteration_data_t {
     // r1 <- Q x1 + D x1 + H x1  (cone: same H as above)
     if (Q.n > 0) {
       // matrix_vector_multiply(Q, 1.0, x1, 1.0, r1);
-      cusparse_Q_view_.spmv(1.0, d_x1, 1.0, d_r1);
+      cusparse_Q_view_.spmv(1.0, d_aug_x1_, 1.0, d_r1_);
     }
 
     // y1 <- - alpha * r1 + beta * y1
     // flip the sign of r1 = (Q x1 + D x1 + H x1)
-    axpy(-alpha, d_r1.data(), beta, d_y1.data(), d_y1.data(), n, stream_view_);
+    axpy(-alpha, d_r1_.data(), beta, d_aug_y1_.data(), d_aug_y1_.data(), n, stream_view_);
 
     // matrix_transpose_vector_multiply(A, alpha, x2, 1.0, y1);
-    cusparse_view_.transpose_spmv(alpha, d_x2, 1.0, d_y1);
+    cusparse_view_.transpose_spmv(alpha, d_aug_x2_, 1.0, d_aug_y1_);
     // y2 <- alpha ( A*x) + beta * y2
     // matrix_vector_multiply(A, alpha, x1, beta, y2);
-    cusparse_view_.spmv(alpha, d_x1, beta, d_y2);
+    cusparse_view_.spmv(alpha, d_aug_x1_, beta, d_aug_y2_);
 
     if (p > 0) {
-      axpy(alpha, d_y_exp.data(), beta, d_y_exp_orig.data(), d_y_exp.data(), p, stream_view_);
+      axpy(alpha,
+           d_aug_y_exp_.data(),
+           beta,
+           d_aug_y_exp_orig_.data(),
+           d_aug_y_exp_.data(),
+           p,
+           stream_view_);
     }
 
-    raft::copy(y.data(), d_y1.data(), n, stream_view_);
-    raft::copy(y.data() + n, d_y2.data(), m, stream_view_);
-    if (p > 0) { raft::copy(y.data() + n + m, d_y_exp.data(), p, stream_view_); }
+    raft::copy(y.data(), d_aug_y1_.data(), n, stream_view_);
+    raft::copy(y.data() + n, d_aug_y2_.data(), m, stream_view_);
+    if (p > 0) { raft::copy(y.data() + n + m, d_aug_y_exp_.data(), p, stream_view_); }
     handle_ptr->sync_stream();
   }
 
@@ -2257,6 +2328,7 @@ class iteration_data_t {
   rmm::device_uvector<i_t> d_sparse_exp_u_row_;
   rmm::device_uvector<i_t> d_sparse_expansion_D_;
   rmm::device_uvector<f_t> d_sparse_Hs_diag_;
+  rmm::device_uvector<i_t> d_dense_cone_diag_csr_indices_;
   bool indefinite_Q;
   cusparse_view_t<i_t, f_t> cusparse_Q_view_;
 
@@ -2274,6 +2346,7 @@ class iteration_data_t {
   f_t primal_perturb{1e-8};
 
   std::unique_ptr<sparse_cholesky_base_t<i_t, f_t>> chol;
+  std::unique_ptr<augmented_cusparse_view_t<i_t, f_t>> augmented_cusparse_view_;
 
   bool has_factorization;
   bool has_solve_info;
@@ -2313,6 +2386,12 @@ class iteration_data_t {
   rmm::device_uvector<f_t> d_r1_prime_;
   rmm::device_uvector<f_t> d_augmented_rhs_;
   rmm::device_uvector<f_t> d_augmented_soln_;
+  rmm::device_uvector<f_t> d_aug_x1_;
+  rmm::device_uvector<f_t> d_aug_x2_;
+  rmm::device_uvector<f_t> d_aug_y1_;
+  rmm::device_uvector<f_t> d_aug_y2_;
+  rmm::device_uvector<f_t> d_aug_y_exp_;
+  rmm::device_uvector<f_t> d_aug_y_exp_orig_;
   rmm::device_uvector<f_t> d_c_;
   rmm::device_uvector<f_t> d_b_;
   rmm::device_uvector<f_t> d_upper_;
@@ -2516,6 +2595,10 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
 #ifdef CHOLESKY_DEBUG_CHECK
     cholesky_debug_check(data, lp, use_augmented);
 #endif
+    if (data.use_csr_ir_matvec()) {
+      // Strip augmented perturbation for CSR IR matvec path
+      data.strip_augmented_perturbation();
+    }
   } else {
     status = data.chol->factorize(data.device_ADAT);
   }
@@ -2556,7 +2639,11 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
                       f_t beta,
                       rmm::device_uvector<f_t>& y) const
       {
-        data_.augmented_multiply(alpha, x, beta, y);
+        if (data_.use_csr_ir_matvec()) {
+          data_.augmented_csr_multiply(alpha, x, beta, y);
+        } else {
+          data_.augmented_multiply(alpha, x, beta, y);
+        }
       }
       void solve(rmm::device_uvector<f_t>& b, rmm::device_uvector<f_t>& x) const
       {
@@ -3082,6 +3169,10 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
         return CONCURRENT_HALT_RETURN;
       }
       status = data.chol->factorize(data.device_augmented);
+      if (data.use_csr_ir_matvec()) {
+        // Strip augmented perturbation for CSR IR matvec path
+        data.strip_augmented_perturbation();
+      }
 
 #ifdef CHOLESKY_DEBUG_CHECK
       cholesky_debug_check(data, lp, use_augmented);
@@ -3190,7 +3281,11 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
                       f_t beta,
                       rmm::device_uvector<f_t>& y)
       {
-        data_.augmented_multiply(alpha, x, beta, y);
+        if (data_.use_csr_ir_matvec()) {
+          data_.augmented_csr_multiply(alpha, x, beta, y);
+        } else {
+          data_.augmented_multiply(alpha, x, beta, y);
+        }
       }
 
       void solve(rmm::device_uvector<f_t>& b, rmm::device_uvector<f_t>& x) const
