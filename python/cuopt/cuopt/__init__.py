@@ -13,7 +13,7 @@ from cuopt._version import __git_commit__, __version__, __version_major_minor__
 
 # Lazy imports for linear_programming, routing, and distance_engine modules
 # This allows cuopt to be imported on CPU-only hosts when remote solve is configured
-_submodules = ["linear_programming", "routing", "distance_engine"]
+_submodules = ["linear_programming", "routing", "distance_engine", "grpc"]
 
 
 def __getattr__(name):

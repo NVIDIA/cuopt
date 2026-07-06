@@ -7,7 +7,7 @@ This benchmark summarizes 3-Tier Evaluation from NVSkills-Eval results for the s
 ## Evaluation Summary
 
 - Skill: `cuopt-skill-evolution`
-- Evaluation date: 2026-06-29
+- Evaluation date: 2026-07-02
 - NVSkills-Eval profile: `external`
 - Environment: `astra-sandbox`
 - Dataset: 1 evaluation tasks
@@ -56,9 +56,9 @@ Task composition is derived from the evaluation dataset when possible. Entries w
 |---|---:|---:|---:|
 | Security | 1 | 100% (+0%) | 100% (+0%) |
 | Correctness | 1 | 25% (+0%) | 0% (+0%) |
-| Discoverability | 1 | 50% (+0%) | 0% (+0%) |
-| Effectiveness | 1 | 14% (+0%) | 14% (+0%) |
-| Efficiency | 1 | 60% (-0%) | 28% (-0%) |
+| Discoverability | 1 | 38% (-12%) | 0% (+0%) |
+| Effectiveness | 1 | 10% (+0%) | 14% (+0%) |
+| Efficiency | 1 | 42% (-18%) | 28% (-0%) |
 
 Score values show skill-assisted performance. Values in parentheses show uplift versus the no-skill baseline when baseline data is available.
 

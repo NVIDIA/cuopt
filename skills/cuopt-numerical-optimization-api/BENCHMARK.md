@@ -1,16 +1,16 @@
 # Evaluation Report
 
-Evaluation of the `cuopt-numerical-optimization-api-c` skill before publication through NVSkills-Eval.
+Evaluation of the `cuopt-numerical-optimization-api` skill before publication through NVSkills-Eval.
 
 This benchmark summarizes 3-Tier Evaluation from NVSkills-Eval results for the skill. The goal is to document whether the skill is safe, discoverable, effective, and useful for agents before it is published for broader workflow use.
 
 ## Evaluation Summary
 
-- Skill: `cuopt-numerical-optimization-api-c`
-- Evaluation date: 2026-06-26
+- Skill: `cuopt-numerical-optimization-api`
+- Evaluation date: 2026-07-02
 - NVSkills-Eval profile: `external`
 - Environment: `astra-sandbox`
-- Dataset: 4 evaluation tasks
+- Dataset: 9 evaluation tasks
 - Attempts per task: 1
 - Pass threshold: 50%
 - Overall verdict: PASS
@@ -42,9 +42,9 @@ Underlying evaluation signals used in this run:
 
 ## Test Tasks
 
-The benchmark dataset contained 4 evaluation tasks:
+The benchmark dataset contained 9 evaluation tasks:
 
-- Positive tasks: 4 tasks where the skill was expected to activate.
+- Positive tasks: 9 tasks where the skill was expected to activate.
 - Negative tasks: 0 tasks where no skill was expected.
 - Unlabeled tasks: 0 tasks where positive/negative intent could not be inferred.
 
@@ -54,22 +54,23 @@ Task composition is derived from the evaluation dataset when possible. Entries w
 
 | Dimension | Num | `claude-code` | `codex` |
 |---|---:|---:|---:|
-| Security | 4 | 100% (+0%) | 100% (+0%) |
-| Correctness | 4 | 88% (+31%) | 82% (+23%) |
-| Discoverability | 4 | 70% (+52%) | 63% (+45%) |
-| Effectiveness | 4 | 94% (+35%) | 94% (+33%) |
-| Efficiency | 4 | 69% (+44%) | 69% (+42%) |
+| Security | 8 | 100% (+0%) | 100% (+0%) |
+| Correctness | 8 | 76% (+33%) | 70% (+12%) |
+| Discoverability | 8 | 67% (+58%) | 51% (+31%) |
+| Effectiveness | 8 | 73% (+20%) | 69% (+7%) |
+| Efficiency | 8 | 71% (+46%) | 55% (+28%) |
 
 Score values show skill-assisted performance. Values in parentheses show uplift versus the no-skill baseline when baseline data is available.
 
 ## Tier 1: Static Validation Summary
 
-Tier 1 validation passed with observations. NVSkills-Eval ran 1 checks and found 2 total findings.
+Tier 1 validation passed with observations. NVSkills-Eval ran 1 checks and found 3 total findings.
 
 Top findings:
 
-- MEDIUM SCHEMA/body_recommended_section: Missing recommended section: '## Instructions' (`skills/cuopt-numerical-optimization-api-c/SKILL.md`)
-- LOW SCHEMA/author_format: Author must be of the form 'Name <email@host>' (`skills/cuopt-numerical-optimization-api-c/SKILL.md`)
+- MEDIUM SCHEMA/body_recommended_section: Missing recommended section: '## Instructions' (`skills/cuopt-numerical-optimization-api/SKILL.md`)
+- MEDIUM SCHEMA/body_recommended_section: Missing recommended section: '## Examples' (`skills/cuopt-numerical-optimization-api/SKILL.md`)
+- LOW SCHEMA/author_format: Author must be of the form 'Name <email@host>' (`skills/cuopt-numerical-optimization-api/SKILL.md`)
 
 ## Tier 2: Deduplication Summary
 

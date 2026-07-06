@@ -14,6 +14,7 @@
 
 #include <cuopt/mathematical_optimization/io/writer.hpp>
 #include <mip_heuristics/mip_constants.hpp>
+#include <mps_parser_internal.hpp>
 #include <utilities/logger.hpp>
 
 #include <algorithm>
@@ -171,6 +172,7 @@ void cpu_optimization_problem_t<i_t, f_t>::add_quadratic_constraint(
   qc.vals.assign(coeff.begin(), coeff.end());
   qc.linear_values.assign(linear_values.begin(), linear_values.end());
   qc.linear_indices.assign(linear_indices.begin(), linear_indices.end());
+  io::canonicalize_coo_matrix(qc.rows, qc.cols, qc.vals);
   quadratic_constraints_.push_back(std::move(qc));
 }
 
