@@ -110,7 +110,6 @@ def _run_incumbent_solver_callback(file_name, include_set_callback):
         )
 
 
-@pytest.mark.xdist_group(name="incumbent_callbacks")
 @pytest.mark.parametrize(
     "file_name",
     [
@@ -122,7 +121,6 @@ def test_incumbent_get_callback(file_name):
     _run_incumbent_solver_callback(file_name, include_set_callback=False)
 
 
-@pytest.mark.xdist_group(name="incumbent_callbacks")
 @pytest.mark.parametrize(
     "file_name",
     [

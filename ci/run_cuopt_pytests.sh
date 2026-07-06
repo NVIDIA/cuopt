@@ -11,6 +11,8 @@ SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 
 # shellcheck source=ci/utils/crash_helpers.sh
 source "${SCRIPT_DIR}/utils/crash_helpers.sh"
+# shellcheck source=ci/utils/gpu_monitor.sh
+source "${SCRIPT_DIR}/utils/gpu_monitor.sh"
 
 # Support invoking run_cuopt_pytests.sh outside the script directory
 cd "${SCRIPT_DIR}/../python/cuopt/cuopt/"
@@ -36,7 +38,11 @@ rc=0
 if [ "${IS_NIGHTLY}" = "nightly" ]; then
     pytest -s --cache-clear --reruns 2 --reruns-delay 5 -p cuopt_rerun_xml "$@" tests || rc=$?
 else
+    # Parallel path (-n 2) is where GPU OOM has been observed; sample GPU
+    # memory across the run so the ramp to OOM is visible in the job log.
+    gpu_mon_start
     pytest -s --cache-clear -n 2 "$@" tests || rc=$?
+    gpu_mon_stop
 fi
 
 # If not a crash, exit normally
