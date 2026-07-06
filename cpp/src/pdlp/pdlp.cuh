@@ -104,6 +104,10 @@ class pdlp_solver_t {
 
   void compute_initial_step_size();
   void compute_initial_primal_weight();
+  // Thin dispatch wrappers used by run_solver so single-GPU and distributed
+  // callers hit the same call sites.
+  void scale_problem();
+  void create_spmv_op_plans();
 
   // Needed by multi-GPU to mutate them
   mip::problem_t<i_t, f_t>& get_op_problem_scaled() { return op_problem_scaled_; }
@@ -123,6 +127,8 @@ class pdlp_solver_t {
   // downstream shard-side restart machinery stays in sync with master.
   rmm::device_uvector<f_t>& get_primal_weight() { return primal_weight_; }
   rmm::device_uvector<f_t>& get_best_primal_weight() { return best_primal_weight_; }
+  rmm::device_uvector<f_t>& get_step_size() { return step_size_; }
+  raft::handle_t const* get_handle_ptr() const { return handle_ptr_; }
 
  private:
   void print_termination_criteria(const timer_t& timer, bool is_average = false);

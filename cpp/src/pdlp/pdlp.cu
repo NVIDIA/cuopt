@@ -541,53 +541,6 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   // ----- 6. Construct the engine: NCCL comms + per-shard pdlp_solver_t -----
   multi_gpu_engine.emplace(std::move(sub_pdlp_rank_data), mps, sub_pdlp_settings);
 
-  // ----- 8 Distributed Scaling -----
-  // Full distributed scaling pipeline (reset state + Ruiz + Pock-Chambolle +
-  // per-shard scale_problem with the local bound/obj step suppressed + global
-  // bound/objective rescaling).
-  distributed_scaling(*multi_gpu_engine, settings_.hyper_params, n_vars, inside_mip_);
-
-  multi_gpu_engine->for_each_shard([&](auto& shard) {
-    shard.sub_pdlp->pdhg_solver_.get_cusparse_view().create_spmv_op_plans(
-      /*is_reflected=*/settings_.hyper_params.use_reflected_primal_dual);
-  });
-  multi_gpu_engine->for_each_shard([](auto& shard) { shard.stream.synchronize(); });
-
-  // ----- 8b. Seed initial step-size / primal-weight (distributed, scales to N shards) -----
-  constexpr f_t kStepSizeScale = f_t{0.998};
-  const f_t sigma_max          = distributed_max_singular_value(*multi_gpu_engine, n_cstr);
-  const f_t h_primal_weight =
-    distributed_compute_initial_primal_weight(*multi_gpu_engine, settings_.hyper_params);
-  const f_t h_step_size = (sigma_max > f_t{0}) ? kStepSizeScale / sigma_max : f_t{1};
-  // PDLP parameterization:
-  //   primal_step_size = step_size / primal_weight
-  //   dual_step_size   = step_size * primal_weight
-  const f_t h_primal_step_size = h_step_size / h_primal_weight;
-  const f_t h_dual_step_size   = h_step_size * h_primal_weight;
-
-  // Put the values on master
-  raft::copy(step_size_.data(), &h_step_size, 1, stream_view_);
-  raft::copy(primal_weight_.data(), &h_primal_weight, 1, stream_view_);
-  raft::copy(best_primal_weight_.data(), &h_primal_weight, 1, stream_view_);
-  raft::copy(primal_step_size_.data(), &h_primal_step_size, 1, stream_view_);
-  raft::copy(dual_step_size_.data(), &h_dual_step_size, 1, stream_view_);
-  handle_ptr_->sync_stream(stream_view_);
-
-  // put the values on each shard
-  for (auto& shard : multi_gpu_engine->shards) {
-    raft::device_setter guard(shard->device_id);
-    auto& sub = *shard->sub_pdlp;
-    raft::copy(sub.step_size_.data(), &h_step_size, 1, shard->stream);
-    raft::copy(sub.primal_weight_.data(), &h_primal_weight, 1, shard->stream);
-    raft::copy(sub.best_primal_weight_.data(), &h_primal_weight, 1, shard->stream);
-    raft::copy(sub.get_primal_step_size().data(), &h_primal_step_size, 1, shard->stream);
-    raft::copy(sub.get_dual_step_size().data(), &h_dual_step_size, 1, shard->stream);
-  }
-  for (auto& shard : multi_gpu_engine->shards) {
-    raft::device_setter guard(shard->device_id);
-    shard->stream.synchronize();
-  }
-
   // Wire the engine into master's pdhg_solver_; shards keep mgpu_engine_ == nullptr.
   pdhg_solver_.set_multi_gpu_engine(&*multi_gpu_engine);
 
@@ -2674,24 +2627,23 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
 
   bool warm_start_was_given = settings_.get_pdlp_warm_start_data().is_populated();
 
-  // In distributed mode, skip all setup, it is already done
+  // The four setup calls (compute_initial_step_size, compute_initial_primal_weight,
+  // scale_problem, create_spmv_op_plans) run unconditionally here.  Each of them
+  // branches on is_distributed_master() at entry.
+  if (settings_.hyper_params.compute_initial_step_size_before_scaling &&
+      !settings_.get_initial_step_size().has_value())
+    compute_initial_step_size();
+  if (settings_.hyper_params.compute_initial_primal_weight_before_scaling &&
+      !settings_.get_initial_primal_weight().has_value())
+    compute_initial_primal_weight();
+
+  scale_problem();
+  create_spmv_op_plans();
+
+  // Post-scaling cleanup is single-GPU only: distributed shards' cusparse
+  // views are set up per-shard and don't share the master's problem_ptr /
+  // op_problem_scaled_.
   if (!settings_.use_distributed_pdlp) {
-    // TODO handle that properly
-    if (settings_.hyper_params.compute_initial_step_size_before_scaling &&
-        !settings_.get_initial_step_size().has_value())
-      compute_initial_step_size();
-    if (settings_.hyper_params.compute_initial_primal_weight_before_scaling &&
-        !settings_.get_initial_primal_weight().has_value())
-      compute_initial_primal_weight();
-
-    initial_scaling_strategy_.scale_problem();
-    if constexpr (std::is_same_v<f_t, double>) {
-      if (!batch_mode_ && !pdhg_solver_.get_cusparse_view().mixed_precision_enabled_) {
-        pdhg_solver_.get_cusparse_view().create_spmv_op_plans(
-          settings_.hyper_params.use_reflected_primal_dual);
-      }
-    }
-
     // Update FP32 matrix copies for mixed precision SpMV after scaling
     pdhg_solver_.get_cusparse_view().update_mixed_precision_matrices();
 
@@ -2703,14 +2655,34 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
     op_problem_scaled_.offsets.resize(0, stream_view_);
     op_problem_scaled_.reverse_constraints.resize(0, stream_view_);
     op_problem_scaled_.reverse_offsets.resize(0, stream_view_);
+  }
 
-    if (!settings_.hyper_params.compute_initial_step_size_before_scaling &&
-        !settings_.get_initial_step_size().has_value())
-      compute_initial_step_size();
-    if (!settings_.hyper_params.compute_initial_primal_weight_before_scaling &&
-        !settings_.get_initial_primal_weight().has_value())
-      compute_initial_primal_weight();
+  if (!settings_.hyper_params.compute_initial_step_size_before_scaling &&
+      !settings_.get_initial_step_size().has_value())
+    compute_initial_step_size();
+  if (!settings_.hyper_params.compute_initial_primal_weight_before_scaling &&
+      !settings_.get_initial_primal_weight().has_value())
+    compute_initial_primal_weight();
 
+  // Distributed counterpart of the single-GPU
+  // step_size_strategy_.get_primal_and_dual_stepsizes()
+  if (settings_.use_distributed_pdlp) {
+    step_size_strategy_.get_primal_and_dual_stepsizes(primal_step_size_, dual_step_size_);
+    multi_gpu_engine->for_each_shard([&](auto& shard) {
+      auto& sub = *shard.sub_pdlp;
+      sub.step_size_strategy_.get_primal_and_dual_stepsizes(sub.primal_step_size_,
+                                                            sub.dual_step_size_);
+    });
+    multi_gpu_engine->sync_await_shards(stream_view_);
+    handle_ptr_->sync_stream(stream_view_);
+  }
+
+  // Everything below (seed-from-settings, initial_k, get_primal_and_dual_stepsizes,
+  // initial primal/dual, projection, transpose, verbose prints, log header)
+  // still runs single-GPU only.  Distributed rejects
+  // has_initial_{primal,dual}_solution() and warm-start data up front, and
+  // its per-shard primal/dual step sizes were derived above
+  if (!settings_.use_distributed_pdlp) {
 #ifdef PDLP_DEBUG_MODE
     std::cout << "Initial Scaling done" << std::endl;
 #endif
@@ -3329,9 +3301,64 @@ void pdlp_solver_t<i_t, f_t>::take_step([[maybe_unused]] i_t total_pdlp_iteratio
 }
 
 template <typename i_t, typename f_t>
+void pdlp_solver_t<i_t, f_t>::scale_problem()
+{
+  raft::common::nvtx::range fun_scope("pdlp_solver_t::scale_problem");
+  if (is_distributed_master()) {
+    distributed_scaling(*multi_gpu_engine, settings_.hyper_params, primal_size_h_, inside_mip_);
+  }
+  else {
+    initial_scaling_strategy_.scale_problem();
+  }
+}
+
+template <typename i_t, typename f_t>
+void pdlp_solver_t<i_t, f_t>::create_spmv_op_plans()
+{
+  raft::common::nvtx::range fun_scope("pdlp_solver_t::create_spmv_op_plans");
+  if (is_distributed_master()) {
+    // Distributed path: fan out the same per-shard cusparse_view call the
+    // single-GPU path would make.
+    multi_gpu_engine->for_each_shard([&](auto& shard) {
+      shard.sub_pdlp->pdhg_solver_.get_cusparse_view().create_spmv_op_plans(
+        settings_.hyper_params.use_reflected_primal_dual);
+    });
+    multi_gpu_engine->sync_await_shards(stream_view_);
+    handle_ptr_->sync_stream(stream_view_);
+    return;
+  }
+  if constexpr (std::is_same_v<f_t, double>) {
+    if (!batch_mode_ && !pdhg_solver_.get_cusparse_view().mixed_precision_enabled_) {
+      pdhg_solver_.get_cusparse_view().create_spmv_op_plans(
+        settings_.hyper_params.use_reflected_primal_dual);
+    }
+  }
+}
+
+template <typename i_t, typename f_t>
 void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
 {
   raft::common::nvtx::range fun_scope("compute_initial_step_size");
+
+  // Shared knobs for the power-iteration path (both single-GPU and
+  // distributed)
+  constexpr f_t scaling_factor = f_t{0.998};
+  constexpr int max_iterations = 5000;
+  constexpr f_t tolerance      = f_t{1e-4};
+
+  if (is_distributed_master()) {
+    // Distributed dispatch: everything (sigma_max, deriving primal/dual
+    // step sizes from master's current primal_weight_, seeding master +
+    // all shards, syncs) lives inside distributed_compute_initial_step_size.
+    distributed_compute_initial_step_size(*multi_gpu_engine,
+                                          *this,
+                                          settings_.hyper_params,
+                                          dual_size_h_,
+                                          scaling_factor,
+                                          max_iterations,
+                                          tolerance);
+    return;
+  }
 
   if (!settings_.hyper_params.initial_step_size_max_singular_value) {
     // set stepsize relative to maximum absolute value of A
@@ -3365,9 +3392,6 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
     // Sync since we are using local variable
     RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
   } else {
-    constexpr i_t max_iterations = 5000;
-    constexpr f_t tolerance      = 1e-4;
-
     i_t m = op_problem_scaled_.n_constraints;
     i_t n = op_problem_scaled_.n_variables;
 
@@ -3470,8 +3494,7 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
     printf("iter_count %d\n", sing_iters);
 #endif
 
-    constexpr f_t scaling_factor = 0.998;
-    const f_t step_size          = scaling_factor / std::sqrt(sigma_max_sq.value(stream_view_));
+    const f_t step_size = scaling_factor / std::sqrt(sigma_max_sq.value(stream_view_));
     thrust::uninitialized_fill(
       handle_ptr_->get_thrust_policy(), step_size_.begin(), step_size_.end(), step_size);
 
@@ -3520,6 +3543,16 @@ template <typename i_t, typename f_t>
 void pdlp_solver_t<i_t, f_t>::compute_initial_primal_weight()
 {
   raft::common::nvtx::range fun_scope("compute_initial_primal_weight");
+
+  if (is_distributed_master()) {
+    // Distributed dispatch:  
+    // - short-circuit -> 1
+    // - primal/dual step sizes from master's current step_size_, seeding
+    // master + all shards, syncs) 
+    distributed_compute_initial_primal_weight(
+      *multi_gpu_engine, *this, settings_.hyper_params);
+    return;
+  }
 
   // Here we use the combined bounds of the op_problem_scaled which may or may not be scaled yet
   // based on pdlp config

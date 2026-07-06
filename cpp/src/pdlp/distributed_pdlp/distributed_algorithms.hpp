@@ -17,6 +17,9 @@ struct multi_gpu_engine_t;
 template <typename i_t, typename f_t>
 class pdhg_solver_t;
 
+template <typename i_t, typename f_t>
+class pdlp_solver_t;
+
 // Global bound/objective rescaling: allreduce the owned partial squared norms
 // of the constraint bounds and (weighted) objective, then apply the identical
 // scalar on every shard.
@@ -63,16 +66,24 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
                                    int max_iterations = 5000,
                                    f_t tolerance      = 1e-4);
 
-// Distributed counterpart of pdlp_solver_t::compute_initial_primal_weight
-// (pdlp.cu). Returns the global initial primal weight.
-//
-// Today distributed only supports the Stable3-shaped hyper-param profile
-// (validated at entry in solve_lp_distributed_from_mps), in which single-GPU
-// short-circuits primal_weight to 1.0 without touching any norm. This
-// function mirrors that short-circuit exactly.
+// Distributed counterpart of pdlp_solver_t::compute_initial_step_size.
 template <typename i_t, typename f_t>
-f_t distributed_compute_initial_primal_weight(multi_gpu_engine_t<i_t, f_t>& engine,
-                                              pdlp_hyper_params_t const& hyper_params);
+void distributed_compute_initial_step_size(multi_gpu_engine_t<i_t, f_t>& engine,
+                                           pdlp_solver_t<i_t, f_t>& master,
+                                           pdlp_hyper_params_t const& hyper_params,
+                                           i_t n_global_cstrs,
+                                           f_t scaling_factor,
+                                           int max_iterations,
+                                           f_t tolerance);
+
+// Distributed counterpart of pdlp_solver_t::compute_initial_primal_weight.
+// Writes primal_weight = best_primal_weight = 1 onto master + every shard,
+// mirroring the Stable3-shaped short-circuit
+// (!initial_primal_weight_combined_bounds && bound_objective_rescaling).
+template <typename i_t, typename f_t>
+void distributed_compute_initial_primal_weight(multi_gpu_engine_t<i_t, f_t>& engine,
+                                               pdlp_solver_t<i_t, f_t>& master,
+                                               pdlp_hyper_params_t const& hyper_params);
 
 // Gather the global potential_next primal/dual solutions and the reduced cost
 // onto the master from the owned slices distributed across shards.
