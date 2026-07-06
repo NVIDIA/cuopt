@@ -2373,6 +2373,26 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
                 error_type_t::ValidationError,
                 "Distributed PDLP does not support initial primal/dual solutions or warm-start "
                 "data.");
+  // Distributed PDLP today only supports the Stable3-shaped hyper-param profile:
+  //   - initial_step_size_max_singular_value = true  (matches the sigma_max seeding
+  //     driven by distributed_max_singular_value in the setup),
+  //   - initial_primal_weight_combined_bounds = false and bound_objective_rescaling = true
+  //     (this is the profile where single-GPU compute_initial_primal_weight
+  //      short-circuits to primal_weight = 1, which distributed_compute_initial_primal_weight
+  //      mirrors verbatim).
+  // Any other profile would leave distributed setup silently divergent from
+  // single-GPU (either the step size or the primal weight would be seeded from
+  // a different formula than what single-GPU would compute).
+  // Fail early
+  cuopt_expects(
+    settings_resolved.hyper_params.initial_step_size_max_singular_value &&
+      !settings_resolved.hyper_params.initial_primal_weight_combined_bounds &&
+      settings_resolved.hyper_params.bound_objective_rescaling,
+    error_type_t::ValidationError,
+    "Distributed PDLP currently only supports the Stable3-shaped hyper-param profile "
+    "(initial_step_size_max_singular_value=true, initial_primal_weight_combined_bounds=false, "
+    "bound_objective_rescaling=true). Set pdlp_solver_mode = Stable3 (the default) or adjust "
+    "the hyper-params to match.");
 
   init_logger_t log(settings_resolved.log_file, settings_resolved.log_to_console);
   print_version_info();

@@ -468,6 +468,32 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
   return std::sqrt(std::max(sigma_sq_h, f_t(0)));
 }
 
+// -------- Distributed initial primal weight ------------------------------
+// Distributed PDLP is currently restricted to the Stable3-shaped hyper-param
+// profile (validated up front in solve_lp_distributed_from_mps, and defended
+// again here). In that regime, single-GPU compute_initial_primal_weight
+// short-circuits to primal_weight = 1 without touching the norms (see
+// pdlp.cu:
+//   !initial_primal_weight_combined_bounds && bound_objective_rescaling
+//   -> uninitialized_fill(primal_weight_ / best_primal_weight_, 1); return
+// ). Match that exactly, at zero communication cost.
+template <typename i_t, typename f_t>
+f_t distributed_compute_initial_primal_weight(multi_gpu_engine_t<i_t, f_t>& engine,
+                                              pdlp_hyper_params_t const& hyper_params)
+{
+  raft::common::nvtx::range scope("distributed_compute_initial_primal_weight");
+  (void)engine;  // Kept in the signature so the shape stays compatible with
+                 // the eventual full implementation.
+  cuopt_expects(!hyper_params.initial_primal_weight_combined_bounds &&
+                  hyper_params.bound_objective_rescaling,
+                error_type_t::ValidationError,
+                "distributed_compute_initial_primal_weight: only the Stable3-shaped "
+                "short-circuit is supported (initial_primal_weight_combined_bounds=false "
+                "and bound_objective_rescaling=true). This should have been rejected "
+                "earlier in solve_lp_distributed_from_mps.");
+  return f_t(1);
+}
+
 // ----- Explicit instantiations (mirror multi_gpu_engine_t<int, {double,float}>) -----
 #define INSTANTIATE(F_TYPE)                                                                       \
   template void distributed_bound_objective_rescaling<int, F_TYPE>(                               \
@@ -485,6 +511,8 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
     int n_global_cstrs,                                                                           \
     int max_iterations,                                                                           \
     F_TYPE tolerance);                                                                            \
+  template F_TYPE distributed_compute_initial_primal_weight<int, F_TYPE>(                         \
+    multi_gpu_engine_t<int, F_TYPE> & engine, pdlp_hyper_params_t const& hyper_params);           \
   template void gather_potential_next_solutions_to_master<int, F_TYPE>(                           \
     multi_gpu_engine_t<int, F_TYPE> & engine,                                                     \
     pdhg_solver_t<int, F_TYPE> & master_pdhg,                                                     \

@@ -556,13 +556,14 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   // ----- 8b. Seed initial step-size / primal-weight (distributed, scales to N shards) -----
   constexpr f_t kStepSizeScale = f_t{0.998};
   const f_t sigma_max          = distributed_max_singular_value(*multi_gpu_engine, n_cstr);
-  const f_t h_primal_weight    = f_t{1};
-  const f_t h_step_size        = (sigma_max > f_t{0}) ? kStepSizeScale / sigma_max : f_t{1};
-  // With primal_weight = 1 the adaptive step-size strategy collapses to
-  // primal_step_size = step_size / primal_weight = step_size
-  // dual_step_size   = step_size * primal_weight = step_size.
-  const f_t h_primal_step_size = h_step_size;
-  const f_t h_dual_step_size   = h_step_size;
+  const f_t h_primal_weight =
+    distributed_compute_initial_primal_weight(*multi_gpu_engine, settings_.hyper_params);
+  const f_t h_step_size = (sigma_max > f_t{0}) ? kStepSizeScale / sigma_max : f_t{1};
+  // PDLP parameterization:
+  //   primal_step_size = step_size / primal_weight
+  //   dual_step_size   = step_size * primal_weight
+  const f_t h_primal_step_size = h_step_size / h_primal_weight;
+  const f_t h_dual_step_size   = h_step_size * h_primal_weight;
 
   // Put the values on master
   raft::copy(step_size_.data(), &h_step_size, 1, stream_view_);
