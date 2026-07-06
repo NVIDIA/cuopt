@@ -9,6 +9,7 @@
 #include "diversity_manager.cuh"
 
 #include <mip_heuristics/mip_constants.hpp>
+#include <mip_heuristics/presolve/third_party_presolve.hpp>
 
 #include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
 #include <mip_heuristics/presolve/probing_cache.cuh>
@@ -182,9 +183,33 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
   std::vector<solution_t<i_t, f_t>>& initial_sol_vector)
 {
   raft::common::nvtx::range fun_scope("add_user_given_solutions");
-  for (const auto& init_sol : context.settings.initial_solutions) {
+  const bool has_papilo   = problem_ptr->has_papilo_presolve_data();
+  const i_t papilo_orig_n = problem_ptr->get_papilo_original_num_variables();
+  for (size_t sol_idx = 0; sol_idx < context.settings.initial_solutions.size(); ++sol_idx) {
+    const auto& init_sol = context.settings.initial_solutions[sol_idx];
     solution_t<i_t, f_t> sol(*problem_ptr);
     rmm::device_uvector<f_t> init_sol_assignment(*init_sol, sol.handle_ptr->get_stream());
+
+    if (has_papilo) {
+      if ((i_t)init_sol_assignment.size() != papilo_orig_n) {
+        CUOPT_LOG_ERROR(
+          "Error cannot add the provided initial solution! Initial solution %zu has %zu vars, "
+          "expected %d; skipping",
+          sol_idx,
+          init_sol_assignment.size(),
+          papilo_orig_n);
+        continue;
+      }
+      std::vector<f_t> h_original = host_copy(init_sol_assignment, sol.handle_ptr->get_stream());
+      std::vector<f_t> h_crushed;
+      problem_ptr->presolve_data.papilo_presolve_ptr->crush_primal_solution(h_original, h_crushed);
+      init_sol_assignment = cuopt::device_copy(h_crushed, sol.handle_ptr->get_stream());
+      CUOPT_LOG_DEBUG("Crushed initial solution %d through Papilo (%d -> %d vars)",
+                      sol_idx,
+                      papilo_orig_n,
+                      h_crushed.size());
+    }
+
     if (problem_ptr->pre_process_assignment(init_sol_assignment)) {
       relaxed_lp_settings_t lp_settings;
       lp_settings.time_limit            = std::min(60., timer.remaining_time() / 2);
@@ -202,10 +227,10 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
                  sol.handle_ptr->get_stream());
       bool is_feasible = sol.compute_feasibility();
       cuopt_func_call(sol.test_variable_bounds(true));
-      CUOPT_LOG_INFO("Adding initial solution success! feas %d objective %f excess %f",
-                     is_feasible,
-                     sol.get_user_objective(),
-                     sol.get_total_excess());
+      CUOPT_LOG_DEBUG("Adding initial solution success! feas %d objective %f excess %f",
+                      is_feasible,
+                      sol.get_user_objective(),
+                      sol.get_total_excess());
       population.run_solution_callbacks(sol);
       initial_sol_vector.emplace_back(std::move(sol));
     } else {
@@ -424,6 +449,9 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     CUOPT_LOG_INFO("GPU heuristics disabled via CUOPT_DISABLE_GPU_HEURISTICS=1");
     population.initialize_population();
     population.allocate_solutions();
+    add_user_given_solutions(initial_sol_vector);
+    population.add_solutions_from_vec(std::move(initial_sol_vector));
+    if (check_b_b_preemption()) { return population.best_feasible(); }
 
     while (!check_b_b_preemption()) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -454,8 +482,9 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     "The problem must not be ii");
   population.initialize_population();
   population.allocate_solutions();
-  if (check_b_b_preemption()) { return population.best_feasible(); }
   add_user_given_solutions(initial_sol_vector);
+  population.add_solutions_from_vec(std::move(initial_sol_vector));
+  if (check_b_b_preemption()) { return population.best_feasible(); }
   // Run CPUFJ early to find quick initial solutions
   ls_cpufj_raii_guard_t ls_cpufj_raii_guard(ls);  // RAII to stop cpufj threads on solve stop
   ls.start_cpufj_scratch_threads(population);
@@ -611,8 +640,6 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     population.add_solution(std::move(lp_rounded_sol));
     ls.start_cpufj_lptopt_scratch_threads(population);
   }
-
-  population.add_solutions_from_vec(std::move(initial_sol_vector));
 
   if (check_b_b_preemption()) { return population.best_feasible(); }
 

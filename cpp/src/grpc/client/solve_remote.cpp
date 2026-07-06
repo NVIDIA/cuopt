@@ -5,6 +5,7 @@
  */
 /* clang-format on */
 
+#include <cuopt/grpc/grpc_client_env.hpp>
 #include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
 #include <cuopt/mathematical_optimization/cpu_optimization_problem_solution.hpp>
 #include <cuopt/mathematical_optimization/cpu_pdlp_warm_start_data.hpp>
@@ -45,17 +46,6 @@ static std::string get_grpc_server_address()
   return std::string(host) + ":" + std::string(port);
 }
 
-static int64_t parse_env_int64(const char* name, int64_t default_value)
-{
-  const char* val = std::getenv(name);
-  if (val == nullptr) return default_value;
-  try {
-    return std::stoll(val);
-  } catch (...) {
-    return default_value;
-  }
-}
-
 // Derive client-side polling timeout from the solver's time_limit.
 // Returns 0 (no limit) when the solver has no finite time_limit.
 template <typename f_t>
@@ -65,58 +55,6 @@ static int solver_timeout_seconds(f_t time_limit)
   double secs = static_cast<double>(time_limit) + kTimeoutBufferSeconds;
   if (secs > static_cast<double>(std::numeric_limits<int>::max())) { return 0; }
   return static_cast<int>(std::ceil(secs));
-}
-
-static std::string read_pem_file(const char* path)
-{
-  std::ifstream in(path, std::ios::binary);
-  if (!in.is_open()) { throw std::runtime_error(std::string("Cannot open TLS file: ") + path); }
-  std::ostringstream ss;
-  ss << in.rdbuf();
-  return ss.str();
-}
-
-static const char* get_env(const char* name)
-{
-  const char* v = std::getenv(name);
-  return (v && v[0] != '\0') ? v : nullptr;
-}
-
-// Apply env-var overrides for transfer, debug, and TLS configuration.
-static void apply_env_overrides(grpc_client_config_t& config)
-{
-  constexpr int64_t kMinChunkSize   = 4096;
-  constexpr int64_t kMaxChunkSize   = 2LL * 1024 * 1024 * 1024;  // 2 GiB
-  constexpr int64_t kMinMessageSize = 4096;
-  constexpr int64_t kMaxMessageSize = 2LL * 1024 * 1024 * 1024;
-
-  auto chunk = parse_env_int64("CUOPT_CHUNK_SIZE", config.chunk_size_bytes);
-  if (chunk >= kMinChunkSize && chunk <= kMaxChunkSize) { config.chunk_size_bytes = chunk; }
-
-  auto msg = parse_env_int64("CUOPT_MAX_MESSAGE_BYTES", config.max_message_bytes);
-  if (msg >= kMinMessageSize && msg <= kMaxMessageSize) { config.max_message_bytes = msg; }
-
-  config.enable_debug_log = (parse_env_int64("CUOPT_GRPC_DEBUG", 0) != 0);
-
-  // TLS configuration from environment variables
-  if (parse_env_int64("CUOPT_TLS_ENABLED", 0) != 0) {
-    config.enable_tls = true;
-
-    const char* root_cert = get_env("CUOPT_TLS_ROOT_CERT");
-    if (root_cert) { config.tls_root_certs = read_pem_file(root_cert); }
-
-    const char* client_cert = get_env("CUOPT_TLS_CLIENT_CERT");
-    const char* client_key  = get_env("CUOPT_TLS_CLIENT_KEY");
-    if (client_cert && client_key) {
-      config.tls_client_cert = read_pem_file(client_cert);
-      config.tls_client_key  = read_pem_file(client_key);
-    }
-  }
-
-  CUOPT_LOG_DEBUG("gRPC client config: chunk_size=%lld max_message=%lld tls=%s",
-                  static_cast<long long>(config.chunk_size_bytes),
-                  static_cast<long long>(config.max_message_bytes),
-                  config.enable_tls ? "on" : "off");
 }
 
 // ============================================================================
@@ -136,7 +74,7 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp_remote(
   grpc_client_config_t config;
   config.server_address  = get_grpc_server_address();
   config.timeout_seconds = solver_timeout_seconds(settings.time_limit);
-  apply_env_overrides(config);
+  apply_grpc_client_env_overrides(config);
 
   // Stream the server's solver log to the client.  The server already
   // filters by the requested log level, so we just pass lines through to
@@ -191,7 +129,7 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip_remote(
   grpc_client_config_t config;
   config.server_address  = get_grpc_server_address();
   config.timeout_seconds = solver_timeout_seconds(settings.time_limit);
-  apply_env_overrides(config);
+  apply_grpc_client_env_overrides(config);
 
   // Stream server log — same passthrough logic as the LP callback above.
   std::unique_ptr<std::ofstream> log_file_stream;

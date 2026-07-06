@@ -92,8 +92,7 @@ void convert_quadratic_constraints_to_second_order_cones(
   //        -s*x_head^2 + sum_i s*x_tail_i^2 <= 0   (any common s > 0; divide by s to normalize)
   //   2) rotated SOC rows:
   //        -2*d*x_head0*x_head1 + sum_i s*x_tail_i^2 <= 0   (d>0, s>0; canonical d=s)
-  //      symmetric Q off-diagonals (-d,-d) give x^T Q x cross term -2*d*x0*x1, i.e. a*x0*x1
-  //      in the inequality 2*d*x0*x1 >= s*||tail||^2 with a = 2*d. Lift uses sqrt(d/s) on heads.
+  //      stored as one Q cross term (head0, head1, -2*d). Lift uses sqrt(d/s) on heads.
   //   3) quadratic rows with linear part:
   //        sum_i s*x_tail_i^2 + a^T x <= 0
   //      represented as diagonal +s QCMATRIX entries plus linear terms in COLUMNS.
@@ -108,7 +107,8 @@ void convert_quadratic_constraints_to_second_order_cones(
     i_t head1{};
     std::vector<i_t> tails{};
     bool head1_is_constant_half{false};
-    /// For two-head rotated SOC: sqrt(d/s) where Q_off = -d and tail diagonals +s (canonical 1).
+    /// For two-head rotated SOC: sqrt(d/s) where Q cross = -2*d and tail diagonals +s (canonical
+    /// 1).
     f_t head_lift_sqrt_ratio{1};
   };
   // This is the index of the auxiliary variable for the linear part of the quadratic constraint.
@@ -188,7 +188,7 @@ void convert_quadratic_constraints_to_second_order_cones(
 
     // Verify Q as either:
     // - standard SOC: one diagonal -s (head), tail diagonals +s for a common s > 0,
-    // - rotated SOC: symmetric (-s,-s) off-diagonal pair on the two heads, tails +s,
+    // - rotated SOC: one off-diagonal cross term (-2*d) on the two heads, tails +s,
     // - affine SOC: tail diagonals +s and linear terms (no Q off-diagonals).
     // Feasibility is unchanged after dividing the quadratic row by s; affine rows also scale
     // linear coefficients when forming the auxiliary t = -(1/s) a^T x.
@@ -274,11 +274,21 @@ void convert_quadratic_constraints_to_second_order_cones(
         }
       }
     }
-    const bool use_general_path = has_duplicate_rows || has_near_zero_diag || has_nonzero_rhs ||
-                                  has_nonuniform_diag || offdiag_entries.size() > 2 ||
-                                  (offdiag_entries.size() == 1) || (neg_diag_rows.size() > 1) ||
-                                  (!neg_diag_rows.empty() && has_linear_part) ||
-                                  (!neg_diag_rows.empty() && !offdiag_entries.empty());
+    const bool rotated_soc_cross_eligible = [&]() {
+      if (offdiag_entries.size() != 1 || has_linear_part || !neg_diag_rows.empty()) {
+        return false;
+      }
+      const i_t a = std::get<0>(offdiag_entries[0]);
+      const i_t b = std::get<1>(offdiag_entries[0]);
+      const f_t v = std::get<2>(offdiag_entries[0]);
+      // Match cross_d = -v/2 > tol validated on the rotated SOC fast path below.
+      return a != b && (-v / f_t(2)) > tol;
+    }();
+    const bool use_general_path =
+      has_duplicate_rows || has_near_zero_diag || has_nonzero_rhs || has_nonuniform_diag ||
+      offdiag_entries.size() > 1 || (offdiag_entries.size() == 1 && !rotated_soc_cross_eligible) ||
+      (neg_diag_rows.size() > 1) || (!neg_diag_rows.empty() && has_linear_part) ||
+      (!neg_diag_rows.empty() && !offdiag_entries.empty());
 
     f_t uniform_s        = 0;
     bool have_uniform_s  = false;
@@ -456,52 +466,28 @@ void convert_quadratic_constraints_to_second_order_cones(
                       "Quadratic constraint '%s' rotated SOC Q: could not infer uniform scale s",
                       qc.constraint_row_name.c_str());
         cuopt_expects(
-          offdiag_entries.size() == 2,
+          offdiag_entries.size() == 1,
           error_type_t::ValidationError,
-          "Quadratic constraint '%s' rotated SOC Q must contain exactly one symmetric off-diagonal "
-          "pair (-d,-d); found %zu off-diagonal entries",
+          "Quadratic constraint '%s' rotated SOC Q must contain exactly one cross term with "
+          "coefficient -2*d on the head variable pair; found %zu off-diagonal entries",
           qc.constraint_row_name.c_str(),
           offdiag_entries.size());
 
         const i_t a  = std::get<0>(offdiag_entries[0]);
         const i_t b  = std::get<1>(offdiag_entries[0]);
         const f_t v0 = std::get<2>(offdiag_entries[0]);
-        cuopt_expects(
-          v0 < -tol,
-          error_type_t::ValidationError,
-          "Quadratic constraint '%s' rotated SOC Q off-diagonal must be negative; got %.17g",
-          qc.constraint_row_name.c_str(),
-          static_cast<double>(v0));
+
         cuopt_expects(a != b,
                       error_type_t::ValidationError,
-                      "Quadratic constraint '%s' rotated SOC Q off-diagonal pair must use distinct "
+                      "Quadratic constraint '%s' rotated SOC Q cross term must use distinct head "
                       "variables",
                       qc.constraint_row_name.c_str());
-        cuopt_expects(std::get<0>(offdiag_entries[1]) == b && std::get<1>(offdiag_entries[1]) == a,
-                      error_type_t::ValidationError,
-                      "Quadratic constraint '%s' rotated SOC Q must have symmetric entries (a,b) "
-                      "and (b,a) with the same value",
-                      qc.constraint_row_name.c_str());
-        const f_t v1 = std::get<2>(offdiag_entries[1]);
-        cuopt_expects(
-          v1 < -tol,
-          error_type_t::ValidationError,
-          "Quadratic constraint '%s' rotated SOC Q off-diagonal must be negative; got %.17g",
-          qc.constraint_row_name.c_str(),
-          static_cast<double>(v1));
-        cuopt_expects(
-          approx_eq_scaled(v0, v1),
-          error_type_t::ValidationError,
-          "Quadratic constraint '%s' rotated SOC Q symmetric off-diagonals must match; got %.17g "
-          "and %.17g",
-          qc.constraint_row_name.c_str(),
-          static_cast<double>(v0),
-          static_cast<double>(v1));
-        const f_t cross_d = -v0;
+        const f_t cross_d = -v0 / f_t(2);
         cuopt_expects(
           cross_d > tol,
           error_type_t::ValidationError,
-          "Quadratic constraint '%s' rotated SOC Q cross coefficient d = -Q_off must be positive",
+          "Quadratic constraint '%s' rotated SOC Q cross coefficient d = -Q_cross/2 must be "
+          "positive",
           qc.constraint_row_name.c_str());
         const f_t head_lift_sqrt_ratio = std::sqrt(cross_d / uniform_s);
         cuopt_expects(std::isfinite(static_cast<double>(head_lift_sqrt_ratio)),
@@ -511,14 +497,14 @@ void convert_quadratic_constraints_to_second_order_cones(
                       qc.constraint_row_name.c_str(),
                       static_cast<double>(cross_d),
                       static_cast<double>(uniform_s));
-        cuopt_expects(static_cast<i_t>(tail_vars.size()) == q_nnz - 2,
+        cuopt_expects(static_cast<i_t>(tail_vars.size()) == q_nnz - 1,
                       error_type_t::ValidationError,
                       "Quadratic constraint '%s' rotated SOC Q: expected %d diagonal +s entries "
                       "(tails), found %zu",
                       qc.constraint_row_name.c_str(),
-                      static_cast<int>(q_nnz - 2),
+                      static_cast<int>(q_nnz - 1),
                       tail_vars.size());
-        cuopt_expects(q_nnz >= 3,
+        cuopt_expects(q_nnz >= 2,
                       error_type_t::ValidationError,
                       "Quadratic constraint '%s' rotated SOC Q must have at least 1 tail entry",
                       qc.constraint_row_name.c_str());

@@ -34,6 +34,22 @@
 
 namespace cuopt::mathematical_optimization::test {
 
+class scoped_env_restore_t {
+ public:
+  scoped_env_restore_t(const char* env_name, const char* new_value) : name_(env_name)
+  {
+    if (const char* prev = std::getenv(env_name)) { prev_value_ = prev; }
+    ::setenv(env_name, new_value, 1);
+  }
+  ~scoped_env_restore_t() { ::setenv(name_, prev_value_.c_str(), 1); }
+  scoped_env_restore_t(const scoped_env_restore_t&)            = delete;
+  scoped_env_restore_t& operator=(const scoped_env_restore_t&) = delete;
+
+ private:
+  const char* name_;
+  std::string prev_value_;
+};
+
 class test_set_solution_callback_t : public cuopt::internals::set_solution_callback_t {
  public:
   test_set_solution_callback_t(std::vector<std::pair<std::vector<double>, double>>& solutions_,
@@ -161,7 +177,7 @@ TEST(mip_solve, incumbent_get_set_callback_test)
 // population stays empty. The fallback in solver.cu must use the OG-space incumbent.
 TEST(mip_solve, early_heuristic_incumbent_fallback)
 {
-  setenv("CUOPT_DISABLE_GPU_HEURISTICS", "1", 1);
+  scoped_env_restore_t disable_gpu_heuristics_env("CUOPT_DISABLE_GPU_HEURISTICS", "1");
 
   const raft::handle_t handle_{};
   auto path = make_path_absolute("mip/pk1.mps");
@@ -182,8 +198,6 @@ TEST(mip_solve, early_heuristic_incumbent_fallback)
 
   auto solution = solve_mip(op_problem, settings);
 
-  unsetenv("CUOPT_DISABLE_GPU_HEURISTICS");
-
   EXPECT_GE(get_cb.n_calls, 1) << "Early heuristics should have emitted at least one incumbent";
   auto status = solution.get_termination_status();
   EXPECT_TRUE(status == mip_termination_status_t::FeasibleFound ||
@@ -193,6 +207,62 @@ TEST(mip_solve, early_heuristic_incumbent_fallback)
   EXPECT_TRUE(std::isfinite(solution.get_objective_value()));
 
   if (!callback_solutions.empty()) { check_solutions(get_cb, mps_problem, settings); }
+}
+
+// Verify that a user-provided MIP start in original space is correctly crushed
+// through PaPILO presolve and accepted into the heuristic population.
+TEST(mip_solve, initial_solution_survives_papilo_crush)
+{
+  scoped_env_restore_t disable_gpu_heuristics_env("CUOPT_DISABLE_GPU_HEURISTICS", "1");
+
+  const raft::handle_t handle_{};
+  auto path = make_path_absolute("mip/pk1.mps");
+  cuopt::mathematical_optimization::io::mps_data_model_t<int, double> mps_problem =
+    cuopt::mathematical_optimization::io::read_mps<int, double>(path, false);
+  handle_.sync_stream();
+  auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps_problem);
+  auto stream     = op_problem.get_handle_ptr()->get_stream();
+
+  // Step 1: solve to get a reference feasible solution. Pkl is easily solved to optimality
+  auto settings1       = mip_solver_settings_t<int, double>{};
+  settings1.time_limit = 5.;
+  settings1.presolver  = presolver_t::Papilo;
+  auto result1         = solve_mip(op_problem, settings1);
+  auto status1         = result1.get_termination_status();
+  ASSERT_TRUE(status1 == mip_termination_status_t::FeasibleFound ||
+              status1 == mip_termination_status_t::Optimal)
+    << "Reference solve must find a feasible solution";
+  auto reference_obj      = result1.get_objective_value();
+  auto reference_solution = cuopt::host_copy(result1.get_solution(), stream);
+  ASSERT_EQ((int)reference_solution.size(), op_problem.get_n_variables());
+
+  // Step 2: feed the reference solution as a MIP start with presolve ON
+  // and GPU heuristics disabled. B&B runs with node_limit=0 so it exits
+  // immediately. The only way we get a good objective is if the MIP start
+  // was crushed through PaPILO and accepted by add_user_given_solutions.
+  // Early FJ is not strong enough to find the 11 optimal in the given time frame.
+  auto settings2       = mip_solver_settings_t<int, double>{};
+  settings2.time_limit = 5.;
+  settings2.presolver  = presolver_t::Papilo;
+  settings2.node_limit = 0;
+  settings2.add_initial_solution(reference_solution.data(), reference_solution.size(), stream);
+
+  int user_data = 0;
+  std::vector<std::pair<std::vector<double>, double>> callback_solutions;
+  test_get_solution_callback_t get_cb(callback_solutions, op_problem.get_n_variables(), &user_data);
+  settings2.set_mip_callback(&get_cb, &user_data);
+
+  auto result2 = solve_mip(op_problem, settings2);
+
+  auto status2 = result2.get_termination_status();
+  EXPECT_TRUE(status2 == mip_termination_status_t::FeasibleFound ||
+              status2 == mip_termination_status_t::Optimal)
+    << "Crushed MIP start should yield a feasible result, got "
+    << mip_solution_t<int, double>::get_termination_status_string(status2);
+  EXPECT_TRUE(std::isfinite(result2.get_objective_value()));
+  EXPECT_NEAR(result2.get_objective_value(), reference_obj, 1e-4);
+
+  if (!callback_solutions.empty()) { check_solutions(get_cb, mps_problem, settings2); }
 }
 
 }  // namespace cuopt::mathematical_optimization::test
