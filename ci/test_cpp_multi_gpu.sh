@@ -14,10 +14,12 @@
 #   only exercises the cross-GPU communication paths (e.g. distributed PDLP).
 #
 # Convention:
-#   Multi-GPU gtest binaries are named with a "_MG_TEST" suffix so they can be
-#   selected here without running the full single-GPU suite. Until such binaries
-#   exist in the libcuopt test package, this script exits 0 with a notice so it
-#   can be wired into CI ahead of the tests landing.
+#   Multi-GPU gtest binaries are named with a "_MG_TEST" suffix so this script
+#   can select them. They must GTEST_SKIP when fewer than two GPUs are visible,
+#   so the single-GPU suite (ci/run_ctests.sh) runs them harmlessly. Until such
+#   binaries exist in the libcuopt test package, this script exits 0 with a
+#   notice so it can be wired into CI ahead of the tests landing.
+#   (CI selection moves to a `multigpu` CTest label once tests run via ctest.)
 
 set -euo pipefail
 
@@ -91,7 +93,7 @@ shopt -u nullglob
 
 if [ "${#mg_tests[@]}" -eq 0 ]; then
   rapids-logger "No multi-GPU gtest binaries (*_MG_TEST) found in ${GTEST_DIR}; nothing to run."
-  echo "::notice::No multi-GPU tests present yet — skipping. This job lights up once *_MG_TEST binaries land (see cuD-PDLP)."
+  echo "::notice::No multi-GPU tests present yet — skipping. This job lights up once *_MG_TEST binaries land (distributed PDLP)."
   exit 0
 fi
 
