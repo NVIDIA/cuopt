@@ -2640,9 +2640,8 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
   scale_problem();
   create_spmv_op_plans();
 
-  // Post-scaling cleanup is single-GPU only: distributed shards' cusparse
-  // views are set up per-shard and don't share the master's problem_ptr /
-  // op_problem_scaled_.
+  // mixed precision and cusparse structure redirection are not supported in distributed
+  // as memory footprint is not currently a bottleneck in distributed
   if (!settings_.use_distributed_pdlp) {
     // Update FP32 matrix copies for mixed precision SpMV after scaling
     pdhg_solver_.get_cusparse_view().update_mixed_precision_matrices();
