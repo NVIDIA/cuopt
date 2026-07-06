@@ -302,14 +302,7 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
     }
   }
 
-  // Per-shard scratch lives on each shard's device. We use total (owned +
-  // halo) sizes for q/z/atq because they're SpMV inputs that need halo
-  // space. Norms / dot are scalars.
-  // We use size-1 rmm::device_uvector instead of rmm::device_scalar for the
-  // per-shard scratch scalars: nvcc + libcudacxx <cuda/basic_any> fail the
-  // copy_constructible concept check when device_scalar<T> appears in a
-  // std::vector (the check transitively touches rmm::cuda_stream, which is
-  // non-copyable). device_uvector<T> avoids that path.
+  // Per-shard scratch lives on each shard's device.]
   std::vector<rmm::device_uvector<f_t>> q;
   std::vector<rmm::device_uvector<f_t>> z;
   std::vector<rmm::device_uvector<f_t>> atq;
@@ -327,6 +320,7 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
   norm_q.reserve(nb);
   residual_norm.reserve(nb);
 
+  // Scatter z according to partition
   for (int r = 0; r < nb; ++r) {
     auto& s = *engine.shards[r];
     raft::device_setter guard(s.device_id);
@@ -363,12 +357,7 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
     s.stream.synchronize();
   }
 
-  // Build the per-shard views used by the engine's *_bufs helpers.
-  // Built ONCE: rmm::device_uvector::data() is stable for the object's
-  // lifetime (no reallocation happens inside the loop).
-  //   *_full   : span over owned + halo tail (halo_exchange_{cstr,var}_bufs)
-  //   *_owned  : span over just the owned prefix (distributed_{l2_norm,dot}_bufs)
-  //   *_scalar : device_scalar_view over a per-shard scalar output slot
+  // Build the per-shard views (spans) used by the engine's *_bufs helpers.
   std::vector<raft::device_span<f_t>> q_full, atq_full;
   std::vector<raft::device_span<f_t>> q_owned, z_owned;
   std::vector<raft::device_scalar_view<f_t>> norm_q_scalar, sigma_sq_scalar, residual_scalar;
