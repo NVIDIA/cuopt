@@ -893,7 +893,7 @@ void pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart(
       should_restart.begin(), should_restart.end(), [](int restarted) { return restarted == 1; }),
     "If any, all should be true");
 
-  // Computing the deltas
+  // Computing the distributed deltas
   if (auto* engine = pdhg_solver.get_mgpu_engine()) {
     engine->for_each_shard([&](auto& shard) {
       auto& sub      = *shard.sub_pdlp;
@@ -921,11 +921,10 @@ void pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart(
       return sp.get_restart_strategy().last_restart_duality_gap_.dual_distance_traveled_.data();
     });
 
+    // Event-sync master's stream on every shard stream so the D2D copies
+    // below see the allreduce writes without a CPU-blocking sync.
+    engine->sync_await_shards(stream_view_);
     auto& s0 = *engine->shards[0];
-    {
-      raft::device_setter guard(s0.device_id);
-      RAFT_CUDA_TRY(cudaStreamSynchronize(s0.stream.view().value()));
-    }
     raft::copy(last_restart_duality_gap_.primal_distance_traveled_.data(),
                s0.sub_pdlp->get_restart_strategy()
                  .last_restart_duality_gap_.primal_distance_traveled_.data(),
