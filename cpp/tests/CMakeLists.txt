@@ -105,6 +105,7 @@ if(BUILD_TESTS)
   add_subdirectory(socp)
   add_subdirectory(qp)
   add_subdirectory(utilities)
+  add_subdirectory(multi_gpu)
 
   enable_testing()
 endif()

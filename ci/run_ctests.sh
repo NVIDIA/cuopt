@@ -213,6 +213,11 @@ run_gtest_with_retry() {
 }
 
 for gt in "${GTEST_DIR}"/*_TEST; do
+    # Multi-GPU tests (*_MG_TEST) require >=2 GPUs and run in a dedicated job
+    # (ci/test_cpp_multi_gpu.sh). Skip them in the single-GPU suite.
+    case "${gt}" in
+        *_MG_TEST) echo "Skipping multi-GPU test $(basename "${gt}") in single-GPU suite"; continue ;;
+    esac
     run_gtest_with_retry "${gt}" "$@" || true
 done
 
