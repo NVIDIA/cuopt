@@ -1330,13 +1330,13 @@ void pdlp_restart_strategy_t<i_t, f_t>::distance_squared_moved_from_last_restart
 }
 
 template <typename i_t, typename f_t>
-void pdlp_restart_strategy_t<i_t, f_t>::
-  primal_dual_distance_squared_moved_from_last_restart_period(
-    pdhg_solver_t<i_t, f_t>& pdhg_solver, i_t primal_size, i_t dual_size)
+void pdlp_restart_strategy_t<i_t, f_t>::primal_dual_distance_squared_moved_from_last_restart_period(
+  pdhg_solver_t<i_t, f_t>& pdhg_solver, i_t primal_size, i_t dual_size)
 {
-  cuopt_assert(!batch_mode_,
-               "primal_dual_distance_squared_moved_from_last_restart_period hard-codes stride=1 "
-               "and is not batch-mode safe; batch call sites should use the underlying functions directly");
+  cuopt_assert(
+    !batch_mode_,
+    "primal_dual_distance_squared_moved_from_last_restart_period hard-codes stride=1 "
+    "and is not batch-mode safe; batch call sites should use the underlying functions directly");
   distance_squared_moved_from_last_restart_period(
     pdhg_solver.get_potential_next_primal_solution(),
     last_restart_duality_gap_.primal_solution_,

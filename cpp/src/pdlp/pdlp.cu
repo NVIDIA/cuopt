@@ -2317,7 +2317,9 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
       [](auto& sp) -> f_t* { return sp.step_size_strategy_.get_interaction().data(); },
       stream_view_);
     multi_gpu_engine->allreduce_sum_inplace_to_master(
-      [](auto& sp) -> f_t* { return sp.step_size_strategy_.get_norm_squared_delta_primal().data(); },
+      [](auto& sp) -> f_t* {
+        return sp.step_size_strategy_.get_norm_squared_delta_primal().data();
+      },
       stream_view_);
     multi_gpu_engine->allreduce_sum_inplace_to_master(
       [](auto& sp) -> f_t* { return sp.step_size_strategy_.get_norm_squared_delta_dual().data(); },

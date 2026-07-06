@@ -399,8 +399,7 @@ struct multi_gpu_engine_t {
   // the per-shard scalar views and to master_pdlp_ to obtain the master
   // destination, then delegates to allreduce_sum_inplace_to_master_buf.
   template <typename PtrAccess>
-  void allreduce_sum_inplace_to_master(PtrAccess&& ptr_access,
-                                       rmm::cuda_stream_view master_stream)
+  void allreduce_sum_inplace_to_master(PtrAccess&& ptr_access, rmm::cuda_stream_view master_stream)
   {
     cuopt_assert(master_pdlp_ != nullptr,
                  "allreduce_sum_inplace_to_master requires set_master(...) to have been called");
@@ -411,9 +410,7 @@ struct multi_gpu_engine_t {
       shard_scalars.emplace_back(raft::make_device_scalar_view<f_t>(ptr_access(*s->sub_pdlp)));
     }
     allreduce_sum_inplace_to_master_buf(
-      shard_scalars,
-      raft::make_device_scalar_view<f_t>(ptr_access(*master_pdlp_)),
-      master_stream);
+      shard_scalars, raft::make_device_scalar_view<f_t>(ptr_access(*master_pdlp_)), master_stream);
   }
 
   // -------- Distributed dot / L2 norm -------------------------------------
