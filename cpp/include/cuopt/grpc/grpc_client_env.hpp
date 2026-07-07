@@ -5,9 +5,11 @@
 
 #pragma once
 
+#include <cuopt/export.hpp>
 #include "grpc_client.hpp"
 
-namespace cuopt::mathematical_optimization {
+namespace cuopt {
+namespace CUOPT_EXPORT mathematical_optimization {
 
 /** How TLS is chosen when building a grpc_client_config_t. */
 enum class grpc_tls_mode_t {
@@ -49,4 +51,5 @@ grpc_client_config_t make_grpc_client_config(const std::string& host,
                                              grpc_tls_mode_t tls_mode,
                                              const grpc_explicit_tls_t* explicit_tls = nullptr);
 
-}  // namespace cuopt::mathematical_optimization
+}  // namespace CUOPT_EXPORT mathematical_optimization
+}  // namespace cuopt

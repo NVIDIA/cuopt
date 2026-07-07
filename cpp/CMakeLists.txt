@@ -563,6 +563,10 @@ target_include_directories(cuopt_objs
         "${CUDSS_INCLUDE}"
         $<$<BOOL:${CUOPT_PARSER_WITH_BZIP2}>:${BZIP2_INCLUDE_DIRS}>
         $<$<BOOL:${CUOPT_PARSER_WITH_ZLIB}>:${ZLIB_INCLUDE_DIRS}>
+        PUBLIC
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
+        "$<INSTALL_INTERFACE:include>"
 )
 
 # Link PSLP by file to avoid export dependency tracking
