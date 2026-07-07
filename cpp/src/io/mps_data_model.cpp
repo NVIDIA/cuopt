@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 #include <utilities/error.hpp>
 
 #include <mps_parser_internal.hpp>
@@ -591,7 +592,31 @@ bool mps_data_model_t<i_t, f_t>::has_quadratic_constraints() const noexcept
   return !quadratic_constraints_.empty();
 }
 
+template <typename qc_t>
+void canonicalize_quadratic_constraints(std::vector<qc_t>& constraints)
+{
+  using i_t = typename decltype(qc_t::rows)::value_type;
+  using f_t = typename decltype(qc_t::vals)::value_type;
+  coo_canonicalization_workspace_t<i_t, f_t> workspace;
+  for (auto& qc : constraints) {
+    canonicalize_coo_matrix(qc.rows, qc.cols, qc.vals, workspace);
+  }
+}
+
 // NOTE: Explicitly instantiate all types here in order to avoid linker error
+template void
+canonicalize_quadratic_constraints<mps_data_model_t<int, float>::quadratic_constraint_t>(
+  std::vector<mps_data_model_t<int, float>::quadratic_constraint_t>&);
+template void
+canonicalize_quadratic_constraints<mps_data_model_t<int, double>::quadratic_constraint_t>(
+  std::vector<mps_data_model_t<int, double>::quadratic_constraint_t>&);
+template void canonicalize_quadratic_constraints<
+  optimization_problem_interface_t<int, float>::quadratic_constraint_t>(
+  std::vector<optimization_problem_interface_t<int, float>::quadratic_constraint_t>&);
+template void canonicalize_quadratic_constraints<
+  optimization_problem_interface_t<int, double>::quadratic_constraint_t>(
+  std::vector<optimization_problem_interface_t<int, double>::quadratic_constraint_t>&);
+
 template void canonicalize_coo_matrix<int, float>(std::vector<int>&,
                                                   std::vector<int>&,
                                                   std::vector<float>&,

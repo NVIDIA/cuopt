@@ -46,6 +46,11 @@ class cpu_optimization_problem_t : public optimization_problem_interface_t<i_t, 
   using typename optimization_problem_interface_t<i_t, f_t>::quadratic_constraint_t;
 
   cpu_optimization_problem_t();
+  cpu_optimization_problem_t(const cpu_optimization_problem_t<i_t, f_t>& other);
+  cpu_optimization_problem_t(cpu_optimization_problem_t<i_t, f_t>&& other) noexcept;
+  cpu_optimization_problem_t& operator=(const cpu_optimization_problem_t<i_t, f_t>& other);
+  cpu_optimization_problem_t& operator=(cpu_optimization_problem_t<i_t, f_t>&& other) noexcept;
+  ~cpu_optimization_problem_t();
 
   // Setters
   void set_maximize(bool maximize) override;
@@ -213,6 +218,8 @@ class cpu_optimization_problem_t : public optimization_problem_interface_t<i_t, 
   std::vector<f_t> Q_values_;
 
   std::vector<quadratic_constraint_t> quadratic_constraints_{};
+  // Scratch storage reused across add_quadratic_constraint calls. Not thread-safe.
+  std::unique_ptr<io::coo_canonicalization_workspace_t<i_t, f_t>> qc_coo_workspace_;
 
   std::vector<f_t> variable_lower_bounds_;
   std::vector<f_t> variable_upper_bounds_;
@@ -225,9 +232,6 @@ class cpu_optimization_problem_t : public optimization_problem_interface_t<i_t, 
   std::string problem_name_;
   std::vector<std::string> var_names_{};
   std::vector<std::string> row_names_{};
-
-  /** Reused while adding quadratic constraints. */
-  io::coo_canonicalization_workspace_t<i_t, f_t> qc_coo_workspace_{};
 };
 
 }  // namespace cuopt::mathematical_optimization

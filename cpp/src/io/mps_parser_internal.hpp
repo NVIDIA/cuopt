@@ -12,11 +12,65 @@
 #include <stdarg.h>
 #include <limits>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
 namespace cuopt::mathematical_optimization::io {
+
+/**
+ * @brief Reusable workspace for COO canonicalization.
+ *
+ * Lookup vectors grow to fit the largest variable index seen so far. Each call resets only
+ * entries that were touched. A workspace must not be shared across concurrent calls.
+ */
+template <typename i_t, typename f_t>
+class coo_canonicalization_workspace_t {
+ public:
+  static_assert(std::is_integral_v<i_t> && std::is_signed_v<i_t>,
+                "coo_canonicalization_workspace_t: i_t must be signed integral");
+
+  [[nodiscard]] i_t max_index_capacity() const noexcept { return row_perm_.size(); }
+
+ private:
+  static constexpr i_t invalid_index = -1;
+
+  struct active_row_t {
+    i_t row;
+    i_t count;
+  };
+
+  struct entry_t {
+    i_t row;
+    i_t col;
+    f_t val;
+  };
+
+  std::vector<i_t> row_perm_;
+  std::vector<i_t> col_position_;
+  std::vector<active_row_t> active_rows_;
+  std::vector<i_t> offsets_;
+  std::vector<i_t> cursor_;
+  std::vector<i_t> permutation_;
+  std::vector<entry_t> entries_;
+
+  void ensure_index_capacity(i_t max_index)
+  {
+    const size_t needed = static_cast<size_t>(max_index) + 1;
+    if (row_perm_.size() < needed) {
+      row_perm_.resize(needed, invalid_index);
+      col_position_.resize(needed, invalid_index);
+    }
+  }
+
+  template <typename index_t, typename value_t>
+  friend void canonicalize_coo_matrix(
+    std::vector<index_t>& rows,
+    std::vector<index_t>& cols,
+    std::vector<value_t>& vals,
+    coo_canonicalization_workspace_t<index_t, value_t>& workspace);
+};
 
 /**
  * Sparse COO (coordinate) entries for a matrix: parallel row/col/val vectors.

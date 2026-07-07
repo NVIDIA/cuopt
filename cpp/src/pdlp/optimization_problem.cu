@@ -10,6 +10,8 @@
 #include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
 #include <cuopt/mathematical_optimization/solve_remote.hpp>
 
+#include <mps_parser_internal.hpp>
+
 #include <cuopt/error.hpp>
 #include <cuopt/mathematical_optimization/csr_matrix_utils.hpp>
 #include <cuopt/mathematical_optimization/io/writer.hpp>
@@ -46,6 +48,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <memory>
 #include <stdexcept>
 #include <unordered_map>
 
@@ -60,6 +63,7 @@ optimization_problem_t<i_t, f_t>::optimization_problem_t(raft::handle_t const* h
     A_offsets_(0, stream_view_),
     b_(0, stream_view_),
     c_(0, stream_view_),
+    qc_coo_workspace_(std::make_unique<io::coo_canonicalization_workspace_t<i_t, f_t>>()),
     variable_lower_bounds_(0, stream_view_),
     variable_upper_bounds_(0, stream_view_),
     constraint_lower_bounds_(0, stream_view_),
@@ -100,9 +104,21 @@ optimization_problem_t<i_t, f_t>::optimization_problem_t(
     problem_category_{other.get_problem_category()},
     var_names_{other.get_variable_names()},
     row_names_{other.get_row_names()},
-    quadratic_constraints_{other.get_quadratic_constraints()}
+    quadratic_constraints_{other.get_quadratic_constraints()},
+    qc_coo_workspace_(std::make_unique<io::coo_canonicalization_workspace_t<i_t, f_t>>())
 {
 }
+
+template <typename i_t, typename f_t>
+optimization_problem_t<i_t, f_t>::optimization_problem_t(
+  optimization_problem_t<i_t, f_t>&& other) noexcept = default;
+
+template <typename i_t, typename f_t>
+optimization_problem_t<i_t, f_t>& optimization_problem_t<i_t, f_t>::operator=(
+  optimization_problem_t<i_t, f_t>&& other) noexcept = default;
+
+template <typename i_t, typename f_t>
+optimization_problem_t<i_t, f_t>::~optimization_problem_t() = default;
 
 // ==============================================================================
 // Setters
@@ -242,7 +258,10 @@ void optimization_problem_t<i_t, f_t>::add_quadratic_constraint(char constraint_
   qc.vals.assign(coeff.begin(), coeff.end());
   qc.linear_values.assign(linear_values.begin(), linear_values.end());
   qc.linear_indices.assign(linear_indices.begin(), linear_indices.end());
-  io::canonicalize_coo_matrix(qc.rows, qc.cols, qc.vals, qc_coo_workspace_);
+  if (qc_coo_workspace_ == nullptr) {
+    qc_coo_workspace_ = std::make_unique<io::coo_canonicalization_workspace_t<i_t, f_t>>();
+  }
+  io::canonicalize_coo_matrix(qc.rows, qc.cols, qc.vals, *qc_coo_workspace_);
   quadratic_constraints_.push_back(std::move(qc));
 }
 

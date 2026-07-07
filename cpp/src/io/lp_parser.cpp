@@ -9,6 +9,7 @@
 
 #include <file_to_string.hpp>
 #include <lp_parser.hpp>
+#include <mps_parser_internal.hpp>
 #include <utilities/error.hpp>
 
 #include <algorithm>
