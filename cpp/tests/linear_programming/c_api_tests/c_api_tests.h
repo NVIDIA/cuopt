@@ -87,6 +87,11 @@ cuopt_int_t test_cpu_host_create_problem_api();
 /* GPU-backed problem created before remote env is set must reject remote solve */
 cuopt_int_t test_gpu_problem_remote_after_create(const char* filename);
 
+/* Generic problem attribute getters */
+cuopt_int_t test_problem_attributes(const char* filename);
+cuopt_int_t test_problem_attributes_mip(const char* filename);
+cuopt_int_t test_problem_attributes_qp(const char* filename);
+
 #ifdef __cplusplus
 }
 #endif

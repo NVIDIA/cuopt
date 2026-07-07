@@ -3166,3 +3166,330 @@ DONE:
 
   return status;
 }
+
+/* Key scalar facts filled by read_all_problem_attributes(), used by category-specific tests. */
+typedef struct {
+  cuopt_int_t n_variables;
+  cuopt_int_t n_constraints;
+  cuopt_int_t n_nonzeros;
+  cuopt_int_t n_integers;
+  cuopt_int_t category;
+  cuopt_int_t is_mip;
+  cuopt_int_t has_quadratic_objective;
+  cuopt_int_t has_quadratic_constraints;
+  cuopt_int_t num_integer_type_chars; /* count of 'I' in variable_types */
+} problem_facts_t;
+
+static int doubles_equal(const cuopt_float_t* a, const cuopt_float_t* b, cuopt_int_t n)
+{
+  cuopt_int_t i;
+  for (i = 0; i < n; ++i) {
+    if (a[i] != b[i]) { return 0; }
+  }
+  return 1;
+}
+
+/*
+ * Read back every attribute getter and cross-check it against the dedicated accessor / the other
+ * matrix layout. Fills *facts on success. Returns CUOPT_SUCCESS or the first failing status.
+ */
+static cuopt_int_t read_all_problem_attributes(const char* filename, problem_facts_t* facts)
+{
+#define ATTR_CHECK(call)                                     \
+  do {                                                       \
+    cuopt_int_t _s = (call);                                 \
+    if (_s != CUOPT_SUCCESS) {                               \
+      printf("FAILED (%d): %s\n", (int)_s, #call);           \
+      status = _s;                                           \
+      goto DONE;                                             \
+    }                                                        \
+  } while (0)
+
+  cuOptOptimizationProblem problem = NULL;
+  cuopt_int_t status               = CUOPT_SUCCESS;
+
+  cuopt_float_t* obj_g = NULL; /* _g = via generic attribute getter */
+  cuopt_float_t* obj_d = NULL; /* _d = via dedicated getter          */
+  cuopt_float_t* vlb_g = NULL;
+  cuopt_float_t* vlb_d = NULL;
+  cuopt_float_t* vub_g = NULL;
+  cuopt_float_t* vub_d = NULL;
+  cuopt_float_t* rhs_g = NULL;
+  cuopt_float_t* rhs_d = NULL;
+  cuopt_float_t* clb_g = NULL;
+  cuopt_float_t* cub_g = NULL;
+  char* sense_g        = NULL;
+  char* sense_d        = NULL;
+  char* types_g        = NULL;
+  char* types_d        = NULL;
+  const char** var_names = NULL;
+  const char** row_names = NULL;
+  cuopt_int_t* csr_off = NULL;
+  cuopt_int_t* csr_col = NULL;
+  cuopt_float_t* csr_val = NULL;
+  cuopt_int_t* csc_off = NULL;
+  cuopt_int_t* csc_row = NULL;
+  cuopt_float_t* csc_val = NULL;
+  cuopt_int_t* col_counts = NULL;
+
+  cuopt_int_t nv = 0, nc = 0, nnz = 0;
+  cuopt_int_t a_nv = 0, a_nc = 0, a_nnz = 0, a_sense = 0, d_sense = 0;
+  cuopt_float_t f_offset = 0.0, f_scale = 0.0, d_offset = 0.0;
+  cuopt_int_t i = 0, k = 0;
+
+  ATTR_CHECK(cuOptReadProblem(filename, &problem));
+
+  /* --- dimensions (used to size all arrays) --- */
+  ATTR_CHECK(cuOptGetNumVariables(problem, &nv));
+  ATTR_CHECK(cuOptGetNumConstraints(problem, &nc));
+  ATTR_CHECK(cuOptGetNumNonZeros(problem, &nnz));
+
+  /* --- scalar int attributes, cross-checked against dedicated getters where they exist --- */
+  ATTR_CHECK(cuOptGetProblemIntAttribute(problem, CUOPT_ATTR_NUM_VARIABLES, &a_nv));
+  ATTR_CHECK(cuOptGetProblemIntAttribute(problem, CUOPT_ATTR_NUM_CONSTRAINTS, &a_nc));
+  ATTR_CHECK(cuOptGetProblemIntAttribute(problem, CUOPT_ATTR_NUM_NONZEROS, &a_nnz));
+  if (a_nv != nv || a_nc != nc || a_nnz != nnz) {
+    printf("Scalar dimension attribute mismatch\n");
+    status = CUOPT_VALIDATION_ERROR;
+    goto DONE;
+  }
+  ATTR_CHECK(cuOptGetProblemIntAttribute(problem, CUOPT_ATTR_NUM_INTEGERS, &facts->n_integers));
+  ATTR_CHECK(cuOptGetProblemIntAttribute(problem, CUOPT_ATTR_PROBLEM_CATEGORY, &facts->category));
+  ATTR_CHECK(cuOptGetProblemIntAttribute(problem, CUOPT_ATTR_IS_MIP, &facts->is_mip));
+  ATTR_CHECK(cuOptGetProblemIntAttribute(problem, CUOPT_ATTR_HAS_QUADRATIC_OBJECTIVE,
+                                         &facts->has_quadratic_objective));
+  ATTR_CHECK(cuOptGetProblemIntAttribute(problem, CUOPT_ATTR_HAS_QUADRATIC_CONSTRAINTS,
+                                         &facts->has_quadratic_constraints));
+  ATTR_CHECK(cuOptGetProblemIntAttribute(problem, CUOPT_ATTR_OBJECTIVE_SENSE, &a_sense));
+  ATTR_CHECK(cuOptGetObjectiveSense(problem, &d_sense));
+  if (a_sense != d_sense) {
+    printf("Objective sense mismatch (generic %d vs dedicated %d)\n", (int)a_sense, (int)d_sense);
+    status = CUOPT_VALIDATION_ERROR;
+    goto DONE;
+  }
+
+  /* --- scalar float attributes --- */
+  ATTR_CHECK(cuOptGetProblemFloatAttribute(problem, CUOPT_ATTR_OBJECTIVE_OFFSET, &f_offset));
+  ATTR_CHECK(cuOptGetProblemFloatAttribute(problem, CUOPT_ATTR_OBJECTIVE_SCALING_FACTOR, &f_scale));
+  ATTR_CHECK(cuOptGetObjectiveOffset(problem, &d_offset));
+  if (f_offset != d_offset) {
+    printf("Objective offset mismatch (generic %g vs dedicated %g)\n", f_offset, d_offset);
+    status = CUOPT_VALIDATION_ERROR;
+    goto DONE;
+  }
+  (void)f_scale;
+
+  /* --- float arrays: generic getter must match dedicated getter byte-for-byte --- */
+  obj_g = (cuopt_float_t*)malloc((size_t)nv * sizeof(cuopt_float_t));
+  obj_d = (cuopt_float_t*)malloc((size_t)nv * sizeof(cuopt_float_t));
+  vlb_g = (cuopt_float_t*)malloc((size_t)nv * sizeof(cuopt_float_t));
+  vlb_d = (cuopt_float_t*)malloc((size_t)nv * sizeof(cuopt_float_t));
+  vub_g = (cuopt_float_t*)malloc((size_t)nv * sizeof(cuopt_float_t));
+  vub_d = (cuopt_float_t*)malloc((size_t)nv * sizeof(cuopt_float_t));
+  rhs_g = (cuopt_float_t*)malloc((size_t)nc * sizeof(cuopt_float_t));
+  rhs_d = (cuopt_float_t*)malloc((size_t)nc * sizeof(cuopt_float_t));
+  if (!obj_g || !obj_d || !vlb_g || !vlb_d || !vub_g || !vub_d || !rhs_g || !rhs_d) {
+    status = CUOPT_OUT_OF_MEMORY;
+    goto DONE;
+  }
+  ATTR_CHECK(cuOptGetProblemFloatArrayAttribute(problem, CUOPT_ARRAY_ATTR_OBJECTIVE_COEFFICIENTS,
+                                                obj_g, nv));
+  ATTR_CHECK(cuOptGetObjectiveCoefficients(problem, obj_d));
+  ATTR_CHECK(cuOptGetProblemFloatArrayAttribute(problem, CUOPT_ARRAY_ATTR_VARIABLE_LOWER_BOUNDS,
+                                                vlb_g, nv));
+  ATTR_CHECK(cuOptGetVariableLowerBounds(problem, vlb_d));
+  ATTR_CHECK(cuOptGetProblemFloatArrayAttribute(problem, CUOPT_ARRAY_ATTR_VARIABLE_UPPER_BOUNDS,
+                                                vub_g, nv));
+  ATTR_CHECK(cuOptGetVariableUpperBounds(problem, vub_d));
+  ATTR_CHECK(cuOptGetProblemFloatArrayAttribute(problem, CUOPT_ARRAY_ATTR_CONSTRAINT_RHS, rhs_g, nc));
+  ATTR_CHECK(cuOptGetConstraintRightHandSide(problem, rhs_d));
+  if (!doubles_equal(obj_g, obj_d, nv) || !doubles_equal(vlb_g, vlb_d, nv) ||
+      !doubles_equal(vub_g, vub_d, nv) || !doubles_equal(rhs_g, rhs_d, nc)) {
+    printf("Generic float array getter disagrees with dedicated getter\n");
+    status = CUOPT_VALIDATION_ERROR;
+    goto DONE;
+  }
+
+  /* --- constraint lower/upper bounds: optional (ranged models only). Exercise the code path;
+     accept SUCCESS (populated) or CUOPT_VALIDATION_ERROR (empty for a sense+rhs model). --- */
+  clb_g = (cuopt_float_t*)malloc((size_t)nc * sizeof(cuopt_float_t));
+  cub_g = (cuopt_float_t*)malloc((size_t)nc * sizeof(cuopt_float_t));
+  if (!clb_g || !cub_g) { status = CUOPT_OUT_OF_MEMORY; goto DONE; }
+  {
+    cuopt_int_t s_lb =
+      cuOptGetProblemFloatArrayAttribute(problem, CUOPT_ARRAY_ATTR_CONSTRAINT_LOWER_BOUNDS, clb_g, nc);
+    cuopt_int_t s_ub =
+      cuOptGetProblemFloatArrayAttribute(problem, CUOPT_ARRAY_ATTR_CONSTRAINT_UPPER_BOUNDS, cub_g, nc);
+    if ((s_lb != CUOPT_SUCCESS && s_lb != CUOPT_VALIDATION_ERROR) ||
+        (s_ub != CUOPT_SUCCESS && s_ub != CUOPT_VALIDATION_ERROR)) {
+      printf("Constraint bound getters returned unexpected status (%d, %d)\n", (int)s_lb, (int)s_ub);
+      status = (s_lb != CUOPT_SUCCESS && s_lb != CUOPT_VALIDATION_ERROR) ? s_lb : s_ub;
+      goto DONE;
+    }
+  }
+
+  /* --- char arrays: generic must match dedicated --- */
+  sense_g = (char*)malloc((size_t)nc * sizeof(char));
+  sense_d = (char*)malloc((size_t)nc * sizeof(char));
+  types_g = (char*)malloc((size_t)nv * sizeof(char));
+  types_d = (char*)malloc((size_t)nv * sizeof(char));
+  if (!sense_g || !sense_d || !types_g || !types_d) { status = CUOPT_OUT_OF_MEMORY; goto DONE; }
+  ATTR_CHECK(cuOptGetProblemCharArrayAttribute(problem, CUOPT_ARRAY_ATTR_CONSTRAINT_SENSE, sense_g,
+                                               nc));
+  ATTR_CHECK(cuOptGetConstraintSense(problem, sense_d));
+  ATTR_CHECK(cuOptGetProblemCharArrayAttribute(problem, CUOPT_ARRAY_ATTR_VARIABLE_TYPES, types_g,
+                                               nv));
+  ATTR_CHECK(cuOptGetVariableTypes(problem, types_d));
+  for (i = 0; i < nc; ++i) {
+    if (sense_g[i] != sense_d[i]) {
+      printf("Constraint sense mismatch at %d\n", (int)i);
+      status = CUOPT_VALIDATION_ERROR;
+      goto DONE;
+    }
+  }
+  facts->num_integer_type_chars = 0;
+  for (i = 0; i < nv; ++i) {
+    if (types_g[i] != types_d[i]) {
+      printf("Variable type mismatch at %d\n", (int)i);
+      status = CUOPT_VALIDATION_ERROR;
+      goto DONE;
+    }
+    if (types_g[i] == CUOPT_INTEGER) { facts->num_integer_type_chars++; }
+  }
+
+  /* --- string arrays: borrowed pointers into cuOpt storage --- */
+  var_names = (const char**)malloc((size_t)nv * sizeof(const char*));
+  row_names = (const char**)malloc((size_t)nc * sizeof(const char*));
+  if (!var_names || !row_names) { status = CUOPT_OUT_OF_MEMORY; goto DONE; }
+  ATTR_CHECK(cuOptGetProblemStringArrayAttribute(problem, CUOPT_STRING_ARRAY_VARIABLE_NAMES,
+                                                 var_names, nv));
+  ATTR_CHECK(cuOptGetProblemStringArrayAttribute(problem, CUOPT_STRING_ARRAY_ROW_NAMES, row_names,
+                                                 nc));
+  if (nv > 0 && var_names[0] == NULL) {
+    printf("Expected non-null variable name pointers\n");
+    status = CUOPT_VALIDATION_ERROR;
+    goto DONE;
+  }
+  if (nc > 0 && row_names[0] == NULL) {
+    printf("Expected non-null row name pointers\n");
+    status = CUOPT_VALIDATION_ERROR;
+    goto DONE;
+  }
+
+  /* --- constraint matrix: CSR (dedicated) and CSC (new), cross-checked --- */
+  csr_off = (cuopt_int_t*)malloc((size_t)(nc + 1) * sizeof(cuopt_int_t));
+  csr_col = (cuopt_int_t*)malloc((size_t)nnz * sizeof(cuopt_int_t));
+  csr_val = (cuopt_float_t*)malloc((size_t)nnz * sizeof(cuopt_float_t));
+  csc_off = (cuopt_int_t*)malloc((size_t)(nv + 1) * sizeof(cuopt_int_t));
+  csc_row = (cuopt_int_t*)malloc((size_t)nnz * sizeof(cuopt_int_t));
+  csc_val = (cuopt_float_t*)malloc((size_t)nnz * sizeof(cuopt_float_t));
+  col_counts = (cuopt_int_t*)calloc((size_t)(nv > 0 ? nv : 1), sizeof(cuopt_int_t));
+  if (!csr_off || !csr_col || !csr_val || !csc_off || !csc_row || !csc_val || !col_counts) {
+    status = CUOPT_OUT_OF_MEMORY;
+    goto DONE;
+  }
+  ATTR_CHECK(cuOptGetConstraintMatrix(problem, csr_off, csr_col, csr_val));
+  ATTR_CHECK(cuOptGetConstraintMatrixCSC(problem, csc_off, csc_row, csc_val));
+  if (csr_off[nc] != nnz || csc_off[nv] != nnz || csr_off[0] != 0 || csc_off[0] != 0) {
+    printf("CSR/CSC offsets inconsistent with nnz\n");
+    status = CUOPT_VALIDATION_ERROR;
+    goto DONE;
+  }
+  /* Independent transpose check: per-column nnz from CSR column indices must equal the gaps in
+     the CSC column offsets. */
+  for (k = 0; k < nnz; ++k) {
+    if (csr_col[k] < 0 || csr_col[k] >= nv) {
+      printf("CSR column index out of range\n");
+      status = CUOPT_VALIDATION_ERROR;
+      goto DONE;
+    }
+    col_counts[csr_col[k]]++;
+  }
+  for (i = 0; i < nv; ++i) {
+    if (csc_off[i + 1] - csc_off[i] != col_counts[i]) {
+      printf("CSC column %d count disagrees with CSR transpose\n", (int)i);
+      status = CUOPT_VALIDATION_ERROR;
+      goto DONE;
+    }
+  }
+
+  facts->n_variables   = nv;
+  facts->n_constraints = nc;
+  facts->n_nonzeros    = nnz;
+
+DONE:
+  cuOptDestroyProblem(&problem);
+  free(obj_g);
+  free(obj_d);
+  free(vlb_g);
+  free(vlb_d);
+  free(vub_g);
+  free(vub_d);
+  free(rhs_g);
+  free(rhs_d);
+  free(clb_g);
+  free(cub_g);
+  free(sense_g);
+  free(sense_d);
+  free(types_g);
+  free(types_d);
+  free(var_names);
+  free(row_names);
+  free(csr_off);
+  free(csr_col);
+  free(csr_val);
+  free(csc_off);
+  free(csc_row);
+  free(csc_val);
+  free(col_counts);
+  return status;
+#undef ATTR_CHECK
+}
+
+/* LP entry point: read back every getter and verify internal consistency. */
+cuopt_int_t test_problem_attributes(const char* filename)
+{
+  problem_facts_t facts = {0};
+  return read_all_problem_attributes(filename, &facts);
+}
+
+/* MIP/IP entry point: full read plus MIP-specific expectations. */
+cuopt_int_t test_problem_attributes_mip(const char* filename)
+{
+  problem_facts_t facts = {0};
+  cuopt_int_t status    = read_all_problem_attributes(filename, &facts);
+  if (status != CUOPT_SUCCESS) { return status; }
+
+  if (facts.is_mip != 1) {
+    printf("Expected is_mip=1 for MIP file\n");
+    return CUOPT_VALIDATION_ERROR;
+  }
+  /* category is MIP (1) or IP (2). */
+  if (facts.category != 1 && facts.category != 2) {
+    printf("Expected MIP/IP category, got %d\n", (int)facts.category);
+    return CUOPT_VALIDATION_ERROR;
+  }
+  if (facts.n_integers <= 0) {
+    printf("Expected num_integers > 0 for MIP file\n");
+    return CUOPT_VALIDATION_ERROR;
+  }
+  if (facts.num_integer_type_chars <= 0) {
+    printf("Expected at least one integer variable type\n");
+    return CUOPT_VALIDATION_ERROR;
+  }
+  return CUOPT_SUCCESS;
+}
+
+/* QP entry point: full read plus quadratic-objective expectation. */
+cuopt_int_t test_problem_attributes_qp(const char* filename)
+{
+  problem_facts_t facts = {0};
+  cuopt_int_t status    = read_all_problem_attributes(filename, &facts);
+  if (status != CUOPT_SUCCESS) { return status; }
+
+  if (facts.has_quadratic_objective != 1) {
+    printf("Expected has_quadratic_objective=1 for QP file\n");
+    return CUOPT_VALIDATION_ERROR;
+  }
+  return CUOPT_SUCCESS;
+}

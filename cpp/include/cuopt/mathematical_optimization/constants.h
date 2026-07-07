@@ -225,4 +225,41 @@
 #define CUOPT_BARRIER_ITERATIVE_REFINEMENT_OFF 0
 #define CUOPT_BARRIER_ITERATIVE_REFINEMENT_ON  1
 
+/* @brief Scalar problem attribute selectors (see cuOptGetProblem{Int,Float,String}Attribute).
+ * Passed as cuopt_int_t; the valid set depends on the accessor's value type. */
+#define CUOPT_ATTR_NUM_VARIABLES             0
+#define CUOPT_ATTR_NUM_CONSTRAINTS           1
+#define CUOPT_ATTR_NUM_NONZEROS              2
+#define CUOPT_ATTR_NUM_INTEGERS              3
+#define CUOPT_ATTR_OBJECTIVE_SENSE           4
+#define CUOPT_ATTR_OBJECTIVE_OFFSET          5
+#define CUOPT_ATTR_OBJECTIVE_SCALING_FACTOR  6
+#define CUOPT_ATTR_PROBLEM_CATEGORY          7
+#define CUOPT_ATTR_IS_MIP                    8
+#define CUOPT_ATTR_HAS_QUADRATIC_OBJECTIVE   9
+#define CUOPT_ATTR_HAS_QUADRATIC_CONSTRAINTS 10
+/* NOTE: HAS_QUADRATIC_OBJECTIVE / HAS_QUADRATIC_CONSTRAINTS report presence only. The quadratic
+ * objective matrix (Q) and quadratic constraint data are not currently retrievable through any
+ * getter */
+
+/* @brief Numeric/char array problem attribute selectors
+ * (see cuOptGetProblem{Float,Char}ArrayAttribute; sized by num_variables / num_constraints).
+ * The constraint matrix is retrieved via cuOptGetConstraintMatrix / cuOptGetConstraintMatrixCSC,
+ * not through these selectors. Passed as cuopt_int_t. Numbered in a separate range from the scalar
+ * selectors so a selector from the wrong family fails validation (there is no compile-time type).
+ */
+#define CUOPT_ARRAY_ATTR_OBJECTIVE_COEFFICIENTS  100
+#define CUOPT_ARRAY_ATTR_VARIABLE_LOWER_BOUNDS   101
+#define CUOPT_ARRAY_ATTR_VARIABLE_UPPER_BOUNDS   102
+#define CUOPT_ARRAY_ATTR_CONSTRAINT_LOWER_BOUNDS 103
+#define CUOPT_ARRAY_ATTR_CONSTRAINT_UPPER_BOUNDS 104
+#define CUOPT_ARRAY_ATTR_CONSTRAINT_RHS          105
+#define CUOPT_ARRAY_ATTR_CONSTRAINT_SENSE        106
+#define CUOPT_ARRAY_ATTR_VARIABLE_TYPES          107
+
+/* @brief String-array problem attribute selectors (see cuOptGetProblemStringArrayAttribute).
+ * Passed as cuopt_int_t; numbered in a separate range from the scalar and array selectors. */
+#define CUOPT_STRING_ARRAY_VARIABLE_NAMES 200
+#define CUOPT_STRING_ARRAY_ROW_NAMES      201
+
 #endif  // CUOPT_CONSTANTS_H

@@ -780,5 +780,26 @@ TEST(c_api, gpu_problem_rejects_remote_after_create)
   EXPECT_EQ(test_gpu_problem_remote_after_create(lp_file.c_str()), CUOPT_SUCCESS);
 }
 
+TEST(c_api, problem_attributes)
+{
+  const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
+  std::string filename = rapidsDatasetRootDir + "/linear_programming/afiro_original.mps";
+  EXPECT_EQ(test_problem_attributes(filename.c_str()), CUOPT_SUCCESS);
+}
+
+TEST(c_api, problem_attributes_mip)
+{
+  const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
+  std::string filename                    = rapidsDatasetRootDir + "/mip/50v-10.mps";
+  EXPECT_EQ(test_problem_attributes_mip(filename.c_str()), CUOPT_SUCCESS);
+}
+
+TEST(c_api, problem_attributes_qp)
+{
+  const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
+  std::string filename = rapidsDatasetRootDir + "/quadratic_programming/QP_Test_1.qps";
+  EXPECT_EQ(test_problem_attributes_qp(filename.c_str()), CUOPT_SUCCESS);
+}
+
 // Note: cuopt_cli subprocess tests are in Python (test_cpu_only_execution.py)
 // which provides better cross-platform subprocess handling
