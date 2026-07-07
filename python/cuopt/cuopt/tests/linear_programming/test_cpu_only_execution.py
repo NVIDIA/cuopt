@@ -27,10 +27,8 @@ import pytest
 from cuopt import linear_programming
 from cuopt.linear_programming.solver.solver_parameters import CUOPT_TIME_LIMIT
 
-# This module is also re-executed as a plain script by _run_in_subprocess
-# (python test_cpu_only_execution.py _impl_...), where conftest has not put
-# the tests fixtures/ dir on sys.path. Add it so the import works in both the
-# pytest and standalone-subprocess contexts.
+# Also re-executed as a standalone script (_run_in_subprocess), where conftest
+# hasn't added fixtures/ to sys.path; add it so this import works either way.
 sys.path.insert(
     0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "fixtures")
 )

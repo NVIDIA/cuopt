@@ -36,11 +36,8 @@ rc=0
 if [ "${IS_NIGHTLY}" = "nightly" ]; then
     pytest -s --cache-clear --reruns 2 --reruns-delay 5 -p cuopt_rerun_xml "$@" tests || rc=$?
 else
-    # --dist loadgroup keeps @pytest.mark.xdist_group tests on one worker, so
-    # all cuopt_grpc_server-backed classes share a single worker instead of
-    # duplicating a GPU server per worker (without loadgroup the markers are
-    # silently ignored). --max-worker-restart=0 disables respawning a crashed
-    # worker, so a crash fails those tests once rather than cascading.
+    # loadgroup keeps xdist_group (grpc server) tests on one worker;
+    # max-worker-restart=0 stops a crashed worker from respawning.
     pytest -s --cache-clear -n 4 --dist loadgroup --max-worker-restart=0 "$@" tests || rc=$?
 fi
 

@@ -117,10 +117,7 @@ def server_env():
 
 
 def _set_pdeathsig():
-    """Ask the kernel to SIGKILL this child if the spawning (pytest worker)
-    process dies. Ensures a crashed/killed worker can't orphan a GPU-holding
-    server. Linux-only; a no-op (best effort) elsewhere.
-    """
+    """SIGKILL this child if the spawning worker dies (Linux; best effort)."""
     try:
         import ctypes
 
@@ -133,16 +130,9 @@ def _set_pdeathsig():
 
 
 def spawn_server(cmd, env=None):
-    """Start ``cuopt_grpc_server`` in its own process group with parent-death
-    cleanup.
-
-    ``start_new_session=True`` makes the server a process-group leader, so its
-    ``--workers`` child shares the group and both can be reaped together (see
-    ``kill_server``). ``preexec_fn`` arms PR_SET_PDEATHSIG so an abnormally
-    exiting worker (e.g. GPU OOM abort) doesn't leave the server holding GPU
-    memory. Without this, servers leaked across tests/runs and stacked up until
-    the device OOMed.
-    """
+    """Start ``cuopt_grpc_server`` in its own process group, dying with the
+    spawning worker, so it and its ``--workers`` child can be reaped together
+    (see ``kill_server``) and don't leak GPU memory."""
     return subprocess.Popen(
         cmd,
         stdout=subprocess.DEVNULL,
@@ -154,9 +144,7 @@ def spawn_server(cmd, env=None):
 
 
 def kill_server(proc):
-    """Terminate the server *and its whole process group* (parent + ``--workers``
-    child). SIGTERM the group, wait, then SIGKILL any survivors.
-    """
+    """Terminate the server's whole process group (parent + ``--workers`` child)."""
     if proc is None:
         return
     try:
