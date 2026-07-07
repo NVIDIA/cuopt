@@ -162,7 +162,7 @@ int run_single_file(const std::string& file_path,
       "Distributed PDLP does not support mixed integer problems.");
     auto solution = cuopt::mathematical_optimization::solve_lp(
       handle_ptr.get(), mps_data_model, settings.get_pdlp_settings());
-    return solution;
+    return 0;
   }
 
   cuopt::mathematical_optimization::populate_from_mps_data_model(problem_interface.get(),
