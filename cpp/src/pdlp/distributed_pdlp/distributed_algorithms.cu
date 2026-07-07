@@ -243,12 +243,14 @@ void distributed_scaling(multi_gpu_engine_t<i_t, f_t>& engine,
 {
   raft::common::nvtx::range scope("distributed_scaling");
 
-  // 1) Reset per-shard scaling state (cumulative row/col scalings back to 1),
-  //    then sync so subsequent scaling passes start from a clean slate.
+  // 1) Grow per-shard iteration_* scratch back to full size (the shard ctor
+  //    released it after its no-op local pre-scaling pass)
   engine.for_each_shard([](auto& shard) {
-    shard.sub_pdlp->get_initial_scaling_strategy().reset_scaling_state_for_distributed();
+    auto& scaling = shard.sub_pdlp->get_initial_scaling_strategy();
+    auto& op      = shard.sub_pdlp->get_op_problem_scaled();
+    scaling.get_iteration_variable_scaling().resize(op.n_variables, shard.stream.view());
+    scaling.get_iteration_constraint_matrix_scaling().resize(op.n_constraints, shard.stream.view());
   });
-  engine.for_each_shard([](auto& shard) { shard.stream.synchronize(); });
 
   // 2) Matrix scaling passes populate the cumulative row/col scalings on
   //    every shard. Each pass keeps the halo copies refreshed internally.

@@ -131,10 +131,6 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::compute_scaling_vectors(
 {
   raft::common::nvtx::range fun_scope("compute_scaling_vectors");
 
-  // Skip scaling entirely for a shape-0 problem (distributed PDLP builds the
-  // master pdlp_solver_t from a shape-0 placeholder)
-  if (primal_size_h_ == 0 || dual_size_h_ == 0) return;
-
   if (hyper_params_.do_ruiz_scaling) { ruiz_inf_scaling(number_of_ruiz_iterations); }
   if (hyper_params_.do_pock_chambolle_scaling) { pock_chambolle_scaling(alpha); }
 }
@@ -324,34 +320,6 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::ruiz_iter_local()
                          primal_size_h_,
                          a_divides_sqrt_b_bounded<f_t>(),
                          stream_view_);
-}
-
-template <typename i_t, typename f_t>
-void pdlp_initial_scaling_strategy_t<i_t, f_t>::reset_scaling_state_for_distributed()
-{
-  if (primal_size_h_ == 0 || dual_size_h_ == 0) return;
-
-  // Re-allocate the iteration vectors the ctor shrank to 0 and zero them.
-  iteration_constraint_matrix_scaling_.resize(static_cast<size_t>(dual_size_h_), stream_view_);
-  iteration_variable_scaling_.resize(static_cast<size_t>(primal_size_h_), stream_view_);
-  RAFT_CUDA_TRY(cudaMemsetAsync(
-    iteration_constraint_matrix_scaling_.data(), 0, sizeof(f_t) * dual_size_h_, stream_view_));
-  RAFT_CUDA_TRY(cudaMemsetAsync(
-    iteration_variable_scaling_.data(), 0, sizeof(f_t) * primal_size_h_, stream_view_));
-
-  // Reset cumulative scaling + rescaling to identity (the ctor's stray
-  // Pock-Chambolle pass and shard.cu's set_cummulative_scaling left these in
-  // an arbitrary state; distributed scaling recomputes from a clean slate).
-  thrust::fill(handle_ptr_->get_thrust_policy(),
-               cummulative_constraint_matrix_scaling_.begin(),
-               cummulative_constraint_matrix_scaling_.end(),
-               f_t(1));
-  thrust::fill(handle_ptr_->get_thrust_policy(),
-               cummulative_variable_scaling_.begin(),
-               cummulative_variable_scaling_.end(),
-               f_t(1));
-  set_h_bound_rescaling(f_t(1));
-  set_h_objective_rescaling(f_t(1));
 }
 
 template <typename i_t, typename f_t>

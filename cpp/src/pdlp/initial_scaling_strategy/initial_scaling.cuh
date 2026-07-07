@@ -133,10 +133,14 @@ class pdlp_initial_scaling_strategy_t {
   void ruiz_iter_local();
   // Shard-local end-to-end Pock-Chambolle pass. Exposed for distributed PDLP:
   void pock_chambolle_scaling(f_t alpha);
+  // Iteration_* scratch buffers used by ruiz_iter_local /
+  // pock_chambolle_scaling. Exposed mutably so distributed PDLP can grow
+  // them back to full size after the ctor's release (see distributed_scaling).
   rmm::device_uvector<f_t>& get_iteration_variable_scaling() { return iteration_variable_scaling_; }
-
-  // Restore the clean pre-scaling state for the distributed path.
-  void reset_scaling_state_for_distributed();
+  rmm::device_uvector<f_t>& get_iteration_constraint_matrix_scaling()
+  {
+    return iteration_constraint_matrix_scaling_;
+  }
 
   /**
    * @brief Gets the device-side view (with raw pointers), for ease of access

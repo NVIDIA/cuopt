@@ -538,11 +538,15 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
                  std::chrono::duration<double>(rank_data_t1 - rank_data_t0).count());
 
   // ----- 5. Per-shard settings -----
-  pdlp_solver_settings_t<i_t, f_t> sub_pdlp_settings                    = settings;
-  sub_pdlp_settings.num_gpus                                            = 1;
-  sub_pdlp_settings.distributed_pdlp_num_gpus                           = 1;
-  sub_pdlp_settings.hyper_params.default_l_inf_ruiz_iterations          = 0;
-  sub_pdlp_settings.hyper_params.default_alpha_pock_chambolle_rescaling = 0.0;
+  pdlp_solver_settings_t<i_t, f_t> sub_pdlp_settings = settings;
+  sub_pdlp_settings.num_gpus                         = 1;
+  sub_pdlp_settings.distributed_pdlp_num_gpus        = 1;
+  // Disable automatic ruiz and pock-chambolle in intial_scaling ctor, as they need to be computed
+  // in distributed_scale_problem
+  // no need to disable bound_objective_rescaling as it does not get computed in initial_scaling_t
+  // ctor
+  sub_pdlp_settings.hyper_params.do_ruiz_scaling           = false;
+  sub_pdlp_settings.hyper_params.do_pock_chambolle_scaling = false;
 
   // ----- 6. Construct the engine: NCCL comms + per-shard pdlp_solver_t -----
   multi_gpu_engine.emplace(std::move(sub_pdlp_rank_data), mps, sub_pdlp_settings);
