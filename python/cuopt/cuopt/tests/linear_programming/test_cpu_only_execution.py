@@ -30,7 +30,8 @@ from cuopt.linear_programming.solver.solver_parameters import CUOPT_TIME_LIMIT
 # Also re-executed as a standalone script (_run_in_subprocess), where conftest
 # hasn't added fixtures/ to sys.path; add it so this import works either way.
 sys.path.insert(
-    0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "fixtures")
+    0,
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "fixtures"),
 )
 from grpc_server_fixtures import kill_server, spawn_server  # noqa: E402
 

@@ -132,7 +132,8 @@ def _set_pdeathsig():
 def spawn_server(cmd, env=None):
     """Start ``cuopt_grpc_server`` in its own process group, dying with the
     spawning worker, so it and its ``--workers`` child can be reaped together
-    (see ``kill_server``) and don't leak GPU memory."""
+    (see ``kill_server``) and don't leak GPU memory.
+    """
     return subprocess.Popen(
         cmd,
         stdout=subprocess.DEVNULL,
