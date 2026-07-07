@@ -7,12 +7,12 @@
 
 #include <dual_simplex/bound_flipping_ratio_test.hpp>
 
-#include <dual_simplex/tic_toc.hpp>
+#include <math_optimization/tic_toc.hpp>
 
 #include <algorithm>
 #include <cmath>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 template <typename i_t, typename f_t>
 i_t bound_flipping_ratio_test_t<i_t, f_t>::compute_breakpoints(std::vector<i_t>& indicies,
@@ -349,4 +349,4 @@ template class bound_flipping_ratio_test_t<int, double>;
 
 #endif
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

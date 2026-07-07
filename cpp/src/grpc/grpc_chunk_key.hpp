@@ -7,7 +7,7 @@
 
 #include <cstdint>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 // Composite key for chunks targeting arrays inside repeated nested messages
 // (e.g., a single QuadraticConstraint's linear_values).  Top-level arrays
@@ -37,4 +37,4 @@ struct container_array_key_t {
   }
 };
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

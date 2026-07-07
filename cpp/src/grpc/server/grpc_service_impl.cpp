@@ -164,7 +164,7 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     // container-relative field_id can coexist without colliding.
     ChunkedUploadState::FieldMeta* meta_ptr = nullptr;
     if (is_container) {
-      cuopt::linear_programming::container_array_key_t key{
+      cuopt::mathematical_optimization::container_array_key_t key{
         cfn_for_size, ac.container_index(), field_id};
       meta_ptr = &state.container_field_meta[key];
     } else {
@@ -359,12 +359,12 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     // back from the worker pipe by the result retrieval thread.
     if (it->second.problem_category == cuopt::remote::MIP) {
       cuopt::remote::MIPSolution mip_solution;
-      build_mip_solution_proto<int, double>(
+      cuopt::mathematical_optimization::build_mip_solution_proto<int, double>(
         it->second.result_header, it->second.result_arrays, &mip_solution);
       response->mutable_mip_solution()->Swap(&mip_solution);
     } else {
       cuopt::remote::LPSolution lp_solution;
-      build_lp_solution_proto<int, double>(
+      cuopt::mathematical_optimization::build_lp_solution_proto<int, double>(
         it->second.result_header, it->second.result_arrays, &lp_solution);
       response->mutable_lp_solution()->Swap(&lp_solution);
     }
@@ -747,46 +747,45 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     int64_t from_byte          = request->from_byte();
     const std::string log_path = get_log_file_path(job_id);
 
-    // Phase 1: Wait for the log file to appear on disk.
-    // The worker may not have created it yet, so poll with a short sleep.
-    // Every 2 s, verify the job still exists to avoid waiting forever on
-    // a deleted/unknown job.
-    int waited_ms = 0;
-    while (!context->IsCancelled()) {
-      struct stat st;
-      if (stat(log_path.c_str(), &st) == 0) { break; }
-      std::this_thread::sleep_for(std::chrono::milliseconds(50));
-      waited_ms += 50;
-      if (waited_ms >= 2000) {
-        std::string msg;
-        JobStatus s = check_job_status(job_id, msg);
-        if (s == JobStatus::NOT_FOUND) {
-          if (config.verbose) {
-            SERVER_LOG_DEBUG("[gRPC] StreamLogs job not found: %s", job_id.c_str());
-          }
-          return Status(grpc::StatusCode::NOT_FOUND, "Job not found: " + job_id);
-        }
-        if (s == JobStatus::COMPLETED || s == JobStatus::FAILED || s == JobStatus::CANCELLED) {
-          cuopt::remote::LogMessage done;
-          done.set_line("");
-          done.set_byte_offset(from_byte);
-          done.set_job_complete(true);
-          writer->Write(done);
-          return Status::OK;
-        }
-        waited_ms = 0;
+    auto write_log_message =
+      [&](const std::string& line, int64_t offset, bool job_complete = true) -> bool {
+      cuopt::remote::LogMessage m;
+      m.set_line(line);
+      m.set_byte_offset(offset);
+      m.set_job_complete(job_complete);
+      return writer->Write(m);
+    };
+
+    std::string msg;
+    JobStatus s = check_job_status(job_id, msg);
+    if (s == JobStatus::NOT_FOUND) {
+      if (config.verbose) {
+        SERVER_LOG_DEBUG("[gRPC] StreamLogs job not found: %s", job_id.c_str());
       }
+      return Status(grpc::StatusCode::NOT_FOUND, "Job not found: " + job_id);
     }
 
-    // Phase 2: Open the file and seek to the caller's resume point.
+    struct stat st;
+    const bool has_log_file = (stat(log_path.c_str(), &st) == 0);
+
+    // Per-job log files are created at submit time in the main process. If the
+    // file is missing but the job exists (e.g. cancelled and unlinked, or
+    // create failed), stream no log lines and close when the job finishes.
+    if (!has_log_file) {
+      while (!context->IsCancelled()) {
+        s = check_job_status(job_id, msg);
+        if (s != JobStatus::QUEUED && s != JobStatus::PROCESSING) {
+          (void)write_log_message("", from_byte);
+          return Status::OK;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      }
+      return Status::OK;
+    }
+
     std::ifstream in(log_path, std::ios::in | std::ios::binary);
     if (!in.is_open()) {
-      cuopt::remote::LogMessage m;
-      m.set_line("Failed to open log file");
-      m.set_byte_offset(from_byte);
-      m.set_job_complete(true);
-      writer->Write(m);
-      return Status::OK;
+      return Status(grpc::StatusCode::INTERNAL, "Failed to open log file: " + log_path);
     }
 
     if (from_byte > 0) { in.seekg(from_byte, std::ios::beg); }
@@ -794,9 +793,9 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     int64_t current_offset = from_byte;
     std::string line;
 
-    // Phase 3: Tail loop — read available lines, stream each one, then
-    // poll for more.  Each LogMessage carries the byte offset of the *next*
-    // unread byte so the client can resume from that point.
+    // Tail loop — read available lines, stream each one, then poll for more.
+    // Each LogMessage carries the byte offset of the *next* unread byte so
+    // the client can resume from that point.
     while (!context->IsCancelled()) {
       std::streampos before = in.tellg();
       if (before >= 0) { current_offset = static_cast<int64_t>(before); }
@@ -812,11 +811,7 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
           next_offset = current_offset + static_cast<int64_t>(line.size());
         }
 
-        cuopt::remote::LogMessage m;
-        m.set_line(line);
-        m.set_byte_offset(next_offset);
-        m.set_job_complete(false);
-        if (!writer->Write(m)) { break; }
+        if (!write_log_message(line, next_offset, false)) { break; }
         continue;
       }
 
@@ -828,30 +823,33 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
         in.clear();
       }
 
-      // Check whether the job has finished.  If so, drain any final
-      // bytes the solver may have flushed after our last read, then
-      // send the job_complete sentinel and close the stream.
-      std::string msg;
-      JobStatus s = check_job_status(job_id, msg);
-      if (s == JobStatus::COMPLETED || s == JobStatus::FAILED || s == JobStatus::CANCELLED) {
-        std::streampos before2 = in.tellg();
-        if (before2 >= 0) { current_offset = static_cast<int64_t>(before2); }
-        if (std::getline(in, line)) {
-          std::streampos after2 = in.tellg();
-          int64_t next_offset2  = current_offset + static_cast<int64_t>(line.size());
-          if (after2 >= 0) { next_offset2 = static_cast<int64_t>(after2); }
-          cuopt::remote::LogMessage m;
-          m.set_line(line);
-          m.set_byte_offset(next_offset2);
-          m.set_job_complete(false);
-          writer->Write(m);
+      // Job finished while we were caught up at EOF. Drain all remaining lines
+      // before closing: the worker may have flushed several lines (e.g. the
+      // final solver summary) between our last getline and the job-complete
+      // marker, and a single extra read would silently drop everything after
+      // the first of those lines.
+      std::string term_msg;
+      JobStatus term_status = check_job_status(job_id, term_msg);
+      if (term_status == JobStatus::COMPLETED || term_status == JobStatus::FAILED ||
+          term_status == JobStatus::CANCELLED) {
+        std::streampos read_start = in.tellg();
+        if (read_start >= 0) { current_offset = static_cast<int64_t>(read_start); }
+
+        bool drain_ok = true;
+        while (std::getline(in, line)) {
+          std::streampos read_end  = in.tellg();
+          int64_t next_byte_offset = current_offset + static_cast<int64_t>(line.size());
+          if (read_end >= 0) { next_byte_offset = static_cast<int64_t>(read_end); }
+          if (!write_log_message(line, next_byte_offset, false)) {
+            drain_ok = false;
+            break;
+          }
+          current_offset = next_byte_offset;
         }
 
-        cuopt::remote::LogMessage done;
-        done.set_line("");
-        done.set_byte_offset(current_offset);
-        done.set_job_complete(true);
-        writer->Write(done);
+        // Empty line + job_complete=true tells the client the log stream is done.
+        // Skip sentinel if the Write() failed mid-drain — stream is already broken.
+        if (drain_ok) { (void)write_log_message("", current_offset); }
         return Status::OK;
       }
 
@@ -886,7 +884,7 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     if (max_count > 0 && count > max_count) { count = max_count; }
 
     for (int64_t i = 0; i < count; ++i) {
-      const auto& inc = incumbents[static_cast<size_t>(from_index + i)];
+      const auto& inc = incumbents[from_index + i];
       auto* out       = response->add_incumbents();
       out->set_index(from_index + i);
       out->set_objective(inc.objective);

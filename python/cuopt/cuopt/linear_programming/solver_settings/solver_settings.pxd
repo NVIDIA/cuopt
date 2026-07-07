@@ -12,25 +12,25 @@ from libcpp cimport bool
 from libcpp.string cimport string
 from libcpp.vector cimport vector
 
-cdef extern from "cuopt/linear_programming/utilities/internals.hpp" namespace "cuopt::internals": # noqa
+cdef extern from "cuopt/mathematical_optimization/utilities/internals.hpp" namespace "cuopt::internals": # noqa
     cdef cppclass base_solution_callback_t
 
-cdef extern from "cuopt/linear_programming/pdlp/solver_settings.hpp" namespace "cuopt::linear_programming": # noqa
-    ctypedef enum pdlp_solver_mode_t "cuopt::linear_programming::pdlp_solver_mode_t": # noqa
-        Stable1 "cuopt::linear_programming::pdlp_solver_mode_t::Stable1" # noqa
-        Stable2 "cuopt::linear_programming::pdlp_solver_mode_t::Stable2" # noqa
-        Methodical1 "cuopt::linear_programming::pdlp_solver_mode_t::Methodical1" # noqa
-        Fast1 "cuopt::linear_programming::pdlp_solver_mode_t::Fast1" # noqa
-        Stable3 "cuopt::linear_programming::pdlp_solver_mode_t::Stable3" # noqa
+cdef extern from "cuopt/mathematical_optimization/pdlp/solver_settings.hpp" namespace "cuopt::mathematical_optimization": # noqa
+    ctypedef enum pdlp_solver_mode_t "cuopt::mathematical_optimization::pdlp_solver_mode_t": # noqa
+        Stable1 "cuopt::mathematical_optimization::pdlp_solver_mode_t::Stable1" # noqa
+        Stable2 "cuopt::mathematical_optimization::pdlp_solver_mode_t::Stable2" # noqa
+        Methodical1 "cuopt::mathematical_optimization::pdlp_solver_mode_t::Methodical1" # noqa
+        Fast1 "cuopt::mathematical_optimization::pdlp_solver_mode_t::Fast1" # noqa
+        Stable3 "cuopt::mathematical_optimization::pdlp_solver_mode_t::Stable3" # noqa
 
-    ctypedef enum method_t "cuopt::linear_programming::method_t": # noqa
-        Concurrent "cuopt::linear_programming::method_t::Concurrent" # noqa
-        PDLP "cuopt::linear_programming::method_t::PDLP" # noqa
-        DualSimplex "cuopt::linear_programming::method_t::DualSimplex" # noqa
-        Barrier "cuopt::linear_programming::method_t::Barrier" # noqa
-        Unset "cuopt::linear_programming::method_t::Unset" # noqa
+    ctypedef enum method_t "cuopt::mathematical_optimization::method_t": # noqa
+        Concurrent "cuopt::mathematical_optimization::method_t::Concurrent" # noqa
+        PDLP "cuopt::mathematical_optimization::method_t::PDLP" # noqa
+        DualSimplex "cuopt::mathematical_optimization::method_t::DualSimplex" # noqa
+        Barrier "cuopt::mathematical_optimization::method_t::Barrier" # noqa
+        Unset "cuopt::mathematical_optimization::method_t::Unset" # noqa
 
-cdef extern from "cuopt/linear_programming/solver_settings.hpp" namespace "cuopt::linear_programming": # noqa
+cdef extern from "cuopt/mathematical_optimization/solver_settings.hpp" namespace "cuopt::mathematical_optimization": # noqa
 
     cdef cppclass solver_settings_t[i_t, f_t]:
         solver_settings_t() except +

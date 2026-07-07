@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 set -euo pipefail
@@ -67,5 +67,5 @@ try
 catch
 end
 println("Running Pkg.test() for cuOpt.jl");
-Pkg.test(; coverage=true)
+Pkg.test(; coverage=false)
 '

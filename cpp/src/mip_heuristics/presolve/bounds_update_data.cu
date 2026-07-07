@@ -10,7 +10,7 @@
 #include <utilities/copy_helpers.hpp>
 #include "bounds_update_data.cuh"
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 bounds_update_data_t<i_t, f_t>::bounds_update_data_t(problem_t<i_t, f_t>& problem)
@@ -21,7 +21,8 @@ bounds_update_data_t<i_t, f_t>::bounds_update_data_t(problem_t<i_t, f_t>& proble
     ub(problem.n_variables, problem.handle_ptr->get_stream()),
     changed_constraints(problem.n_constraints, problem.handle_ptr->get_stream()),
     next_changed_constraints(problem.n_constraints, problem.handle_ptr->get_stream()),
-    changed_variables(problem.n_variables, problem.handle_ptr->get_stream())
+    changed_variables(problem.n_variables, problem.handle_ptr->get_stream()),
+    candidate_bound_scale(f_t(0))
 {
 }
 
@@ -49,6 +50,7 @@ typename bounds_update_data_t<i_t, f_t>::view_t bounds_update_data_t<i_t, f_t>::
   v.changed_constraints      = make_span(changed_constraints);
   v.next_changed_constraints = make_span(next_changed_constraints);
   v.changed_variables        = make_span(changed_variables);
+  v.candidate_bound_scale    = candidate_bound_scale;
   return v;
 }
 
@@ -86,4 +88,4 @@ template class bounds_update_data_t<int, float>;
 template class bounds_update_data_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

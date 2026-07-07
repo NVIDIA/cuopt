@@ -707,8 +707,8 @@ bool guided_ejection_search_t<i_t, f_t, REQUEST>::run_lexicographic_search(
   }
 
   // Init global min before call to lexicographic
-  const auto max = std::numeric_limits<typename decltype(global_min_p_)::value_type>::max();
-  const i_t zero = 0;
+  const uint32_t max = std::numeric_limits<uint32_t>::max();
+  const i_t zero     = 0;
   global_min_p_.set_value_async(max, stream);
   solution_ptr->d_lock.set_value_async(zero, stream);
   global_random_counter_.set_value_async(zero, stream);

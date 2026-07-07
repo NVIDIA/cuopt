@@ -8,13 +8,13 @@
 #pragma once
 
 #include <cuopt/error.hpp>
-#include <cuopt/linear_programming/optimization_problem_interface.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 
 #include <dual_simplex/right_looking_lu.hpp>
 #include <dual_simplex/solution.hpp>
-#include <dual_simplex/sparse_matrix.hpp>
-#include <dual_simplex/tic_toc.hpp>
 #include <dual_simplex/user_problem.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
+#include <math_optimization/tic_toc.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -26,7 +26,7 @@
 #include <utility>
 #include <vector>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::barrier {
 
 /** Convert MPS >= ('G') quadratic row to <= ('L') form on a working copy for SOC conversion. */
 template <typename qc_t, typename f_t>
@@ -56,8 +56,8 @@ void convert_quadratic_constraints_to_second_order_cones(
   i_t n,
   const std::vector<typename optimization_problem_interface_t<i_t, f_t>::quadratic_constraint_t>&
     qcs,
-  dual_simplex::csr_matrix_t<i_t, f_t>& csr_A,
-  dual_simplex::user_problem_t<i_t, f_t>& user_problem)
+  csr_matrix_t<i_t, f_t>& csr_A,
+  simplex::user_problem_t<i_t, f_t>& user_problem)
 {
   cuopt_expects(!qcs.empty(),
                 error_type_t::ValidationError,
@@ -92,8 +92,7 @@ void convert_quadratic_constraints_to_second_order_cones(
   //        -s*x_head^2 + sum_i s*x_tail_i^2 <= 0   (any common s > 0; divide by s to normalize)
   //   2) rotated SOC rows:
   //        -2*d*x_head0*x_head1 + sum_i s*x_tail_i^2 <= 0   (d>0, s>0; canonical d=s)
-  //      symmetric Q off-diagonals (-d,-d) give x^T Q x cross term -2*d*x0*x1, i.e. a*x0*x1
-  //      in the inequality 2*d*x0*x1 >= s*||tail||^2 with a = 2*d. Lift uses sqrt(d/s) on heads.
+  //      stored as one Q cross term (head0, head1, -2*d). Lift uses sqrt(d/s) on heads.
   //   3) quadratic rows with linear part:
   //        sum_i s*x_tail_i^2 + a^T x <= 0
   //      represented as diagonal +s QCMATRIX entries plus linear terms in COLUMNS.
@@ -108,7 +107,8 @@ void convert_quadratic_constraints_to_second_order_cones(
     i_t head1{};
     std::vector<i_t> tails{};
     bool head1_is_constant_half{false};
-    /// For two-head rotated SOC: sqrt(d/s) where Q_off = -d and tail diagonals +s (canonical 1).
+    /// For two-head rotated SOC: sqrt(d/s) where Q cross = -2*d and tail diagonals +s (canonical
+    /// 1).
     f_t head_lift_sqrt_ratio{1};
   };
   // This is the index of the auxiliary variable for the linear part of the quadratic constraint.
@@ -188,7 +188,7 @@ void convert_quadratic_constraints_to_second_order_cones(
 
     // Verify Q as either:
     // - standard SOC: one diagonal -s (head), tail diagonals +s for a common s > 0,
-    // - rotated SOC: symmetric (-s,-s) off-diagonal pair on the two heads, tails +s,
+    // - rotated SOC: one off-diagonal cross term (-2*d) on the two heads, tails +s,
     // - affine SOC: tail diagonals +s and linear terms (no Q off-diagonals).
     // Feasibility is unchanged after dividing the quadratic row by s; affine rows also scale
     // linear coefficients when forming the auxiliary t = -(1/s) a^T x.
@@ -274,11 +274,21 @@ void convert_quadratic_constraints_to_second_order_cones(
         }
       }
     }
-    const bool use_general_path = has_duplicate_rows || has_near_zero_diag || has_nonzero_rhs ||
-                                  has_nonuniform_diag || offdiag_entries.size() > 2 ||
-                                  (offdiag_entries.size() == 1) || (neg_diag_rows.size() > 1) ||
-                                  (!neg_diag_rows.empty() && has_linear_part) ||
-                                  (!neg_diag_rows.empty() && !offdiag_entries.empty());
+    const bool rotated_soc_cross_eligible = [&]() {
+      if (offdiag_entries.size() != 1 || has_linear_part || !neg_diag_rows.empty()) {
+        return false;
+      }
+      const i_t a = std::get<0>(offdiag_entries[0]);
+      const i_t b = std::get<1>(offdiag_entries[0]);
+      const f_t v = std::get<2>(offdiag_entries[0]);
+      // Match cross_d = -v/2 > tol validated on the rotated SOC fast path below.
+      return a != b && (-v / f_t(2)) > tol;
+    }();
+    const bool use_general_path =
+      has_duplicate_rows || has_near_zero_diag || has_nonzero_rhs || has_nonuniform_diag ||
+      offdiag_entries.size() > 1 || (offdiag_entries.size() == 1 && !rotated_soc_cross_eligible) ||
+      (neg_diag_rows.size() > 1) || (!neg_diag_rows.empty() && has_linear_part) ||
+      (!neg_diag_rows.empty() && !offdiag_entries.empty());
 
     f_t uniform_s        = 0;
     bool have_uniform_s  = false;
@@ -456,52 +466,28 @@ void convert_quadratic_constraints_to_second_order_cones(
                       "Quadratic constraint '%s' rotated SOC Q: could not infer uniform scale s",
                       qc.constraint_row_name.c_str());
         cuopt_expects(
-          offdiag_entries.size() == 2,
+          offdiag_entries.size() == 1,
           error_type_t::ValidationError,
-          "Quadratic constraint '%s' rotated SOC Q must contain exactly one symmetric off-diagonal "
-          "pair (-d,-d); found %zu off-diagonal entries",
+          "Quadratic constraint '%s' rotated SOC Q must contain exactly one cross term with "
+          "coefficient -2*d on the head variable pair; found %zu off-diagonal entries",
           qc.constraint_row_name.c_str(),
           offdiag_entries.size());
 
         const i_t a  = std::get<0>(offdiag_entries[0]);
         const i_t b  = std::get<1>(offdiag_entries[0]);
         const f_t v0 = std::get<2>(offdiag_entries[0]);
-        cuopt_expects(
-          v0 < -tol,
-          error_type_t::ValidationError,
-          "Quadratic constraint '%s' rotated SOC Q off-diagonal must be negative; got %.17g",
-          qc.constraint_row_name.c_str(),
-          static_cast<double>(v0));
+
         cuopt_expects(a != b,
                       error_type_t::ValidationError,
-                      "Quadratic constraint '%s' rotated SOC Q off-diagonal pair must use distinct "
+                      "Quadratic constraint '%s' rotated SOC Q cross term must use distinct head "
                       "variables",
                       qc.constraint_row_name.c_str());
-        cuopt_expects(std::get<0>(offdiag_entries[1]) == b && std::get<1>(offdiag_entries[1]) == a,
-                      error_type_t::ValidationError,
-                      "Quadratic constraint '%s' rotated SOC Q must have symmetric entries (a,b) "
-                      "and (b,a) with the same value",
-                      qc.constraint_row_name.c_str());
-        const f_t v1 = std::get<2>(offdiag_entries[1]);
-        cuopt_expects(
-          v1 < -tol,
-          error_type_t::ValidationError,
-          "Quadratic constraint '%s' rotated SOC Q off-diagonal must be negative; got %.17g",
-          qc.constraint_row_name.c_str(),
-          static_cast<double>(v1));
-        cuopt_expects(
-          approx_eq_scaled(v0, v1),
-          error_type_t::ValidationError,
-          "Quadratic constraint '%s' rotated SOC Q symmetric off-diagonals must match; got %.17g "
-          "and %.17g",
-          qc.constraint_row_name.c_str(),
-          static_cast<double>(v0),
-          static_cast<double>(v1));
-        const f_t cross_d = -v0;
+        const f_t cross_d = -v0 / f_t(2);
         cuopt_expects(
           cross_d > tol,
           error_type_t::ValidationError,
-          "Quadratic constraint '%s' rotated SOC Q cross coefficient d = -Q_off must be positive",
+          "Quadratic constraint '%s' rotated SOC Q cross coefficient d = -Q_cross/2 must be "
+          "positive",
           qc.constraint_row_name.c_str());
         const f_t head_lift_sqrt_ratio = std::sqrt(cross_d / uniform_s);
         cuopt_expects(std::isfinite(static_cast<double>(head_lift_sqrt_ratio)),
@@ -511,14 +497,14 @@ void convert_quadratic_constraints_to_second_order_cones(
                       qc.constraint_row_name.c_str(),
                       static_cast<double>(cross_d),
                       static_cast<double>(uniform_s));
-        cuopt_expects(static_cast<i_t>(tail_vars.size()) == q_nnz - 2,
+        cuopt_expects(static_cast<i_t>(tail_vars.size()) == q_nnz - 1,
                       error_type_t::ValidationError,
                       "Quadratic constraint '%s' rotated SOC Q: expected %d diagonal +s entries "
                       "(tails), found %zu",
                       qc.constraint_row_name.c_str(),
-                      static_cast<int>(q_nnz - 2),
+                      static_cast<int>(q_nnz - 1),
                       tail_vars.size());
-        cuopt_expects(q_nnz >= 3,
+        cuopt_expects(q_nnz >= 2,
                       error_type_t::ValidationError,
                       "Quadratic constraint '%s' rotated SOC Q must have at least 1 tail entry",
                       qc.constraint_row_name.c_str());
@@ -624,7 +610,7 @@ void convert_quadratic_constraints_to_second_order_cones(
         }
       }
 
-      dual_simplex::csc_matrix_t<i_t, f_t> H_csc(n_local, n_local, h_nnz);
+      csc_matrix_t<i_t, f_t> H_csc(n_local, n_local, h_nnz);
       {
         i_t p = 0;
         for (i_t j = 0; j < n_local; j++) {
@@ -642,14 +628,14 @@ void convert_quadratic_constraints_to_second_order_cones(
       }
 
       // Step 2: Factorize H = P * L * D * L^T * P^T
-      dual_simplex::simplex_solver_settings_t<i_t, f_t> ldlt_settings;
+      simplex::simplex_solver_settings_t<i_t, f_t> ldlt_settings;
       std::vector<i_t> ldlt_perm;
-      dual_simplex::csc_matrix_t<i_t, f_t> L_factor(n, n, 1);
+      csc_matrix_t<i_t, f_t> L_factor(n, n, 1);
       std::vector<f_t> D_factor;
       f_t ldlt_work  = 0;
-      f_t ldlt_start = dual_simplex::tic();
+      f_t ldlt_start = tic();
 
-      i_t rank = dual_simplex::right_looking_ldlt(
+      i_t rank = simplex::right_looking_ldlt(
         H_csc, ldlt_settings, f_t(1e-12), ldlt_start, ldlt_perm, L_factor, D_factor, ldlt_work);
 
       // ldlt_settings uses default time_limit=inf and concurrent_halt=nullptr,
@@ -659,9 +645,15 @@ void convert_quadratic_constraints_to_second_order_cones(
                     "Quadratic constraint '%s' is non-convex (Q matrix is indefinite)",
                     qc.constraint_row_name.c_str());
 
-      // Since q_nnz >= 1 is enforced above, Q is nonzero and rank must be >= 1.
-      // (A nonzero Q entry produces a nonzero H diagonal or off-diagonal, guaranteeing rank > 0.)
-      assert(rank >= 1);
+      // q_nnz >= 1 implies H is nonzero, but diagonal LDLT may still return rank 0 (e.g. cross-only
+      // indefinite H with zero diagonals). Reject before building a degenerate r=0 SOC lift.
+      cuopt_expects(rank >= 1,
+                    error_type_t::ValidationError,
+                    "Quadratic constraint '%s' is non-convex or could not be converted to a "
+                    "second-order cone (LDLT rank %d; Q may be indefinite or have zero diagonal "
+                    "with cross terms)",
+                    qc.constraint_row_name.c_str(),
+                    static_cast<int>(rank));
 
       // Step 4: Build standard SOC of dimension rank + 2.
       // New variables: y_0,...,y_{r-1}, s_0 (head), s_{r+1} (tail)
@@ -684,8 +676,7 @@ void convert_quadratic_constraints_to_second_order_cones(
       user_problem.objective.resize(var_base + n_new_vars, 0);
       user_problem.lower.resize(var_base + n_new_vars, neg_inf);
       user_problem.upper.resize(var_base + n_new_vars, pos_inf);
-      user_problem.var_types.resize(var_base + n_new_vars,
-                                    dual_simplex::variable_type_t::CONTINUOUS);
+      user_problem.var_types.resize(var_base + n_new_vars, simplex::variable_type_t::CONTINUOUS);
       if (!user_problem.col_names.empty()) {
         user_problem.col_names.resize(var_base + n_new_vars);
         for (i_t k = 0; k < r; k++) {
@@ -707,7 +698,7 @@ void convert_quadratic_constraints_to_second_order_cones(
       user_problem.row_sense.resize(m_before + n_new_rows);
       if (!user_problem.row_names.empty()) { user_problem.row_names.resize(m_before + n_new_rows); }
 
-      dual_simplex::sparse_vector_t<i_t, f_t> eq_row;
+      sparse_vector_t<i_t, f_t> eq_row;
       eq_row.n = csr_A.n;
 
       // y-linking rows: y_k - sqrt(D[k]) * [row k of L^T P] * x = 0
@@ -820,7 +811,7 @@ void convert_quadratic_constraints_to_second_order_cones(
     user_problem.lower.resize(n_aug, -inf);
     user_problem.upper.resize(n_aug, inf);
     user_problem.var_types.resize(
-      n_aug, cuopt::linear_programming::dual_simplex::variable_type_t::CONTINUOUS);
+      n_aug, cuopt::mathematical_optimization::simplex::variable_type_t::CONTINUOUS);
     if (!user_problem.col_names.empty()) { user_problem.col_names.resize(n_aug); }
 
     for (size_t qc_i = 0; qc_i < qcs.size(); ++qc_i) {
@@ -838,7 +829,7 @@ void convert_quadratic_constraints_to_second_order_cones(
     if (!user_problem.row_names.empty()) { user_problem.row_names.resize(m_aug); }
 
     csr_A.n = std::max(csr_A.n, n_aug);
-    dual_simplex::sparse_vector_t<i_t, f_t> eq_row;
+    sparse_vector_t<i_t, f_t> eq_row;
     eq_row.n = csr_A.n;
 
     for (size_t qc_i = 0; qc_i < qcs.size(); ++qc_i) {
@@ -891,18 +882,18 @@ void convert_quadratic_constraints_to_second_order_cones(
 
     for (const rotated_soc_t& rc : rotated_cones) {
       cuopt_expects(user_problem.var_types[rc.head0] ==
-                      cuopt::linear_programming::dual_simplex::variable_type_t::CONTINUOUS,
+                      cuopt::mathematical_optimization::simplex::variable_type_t::CONTINUOUS,
                     error_type_t::ValidationError,
                     "Rotated SOC head variables must be continuous");
       if (!rc.head1_is_constant_half) {
         cuopt_expects(user_problem.var_types[rc.head1] ==
-                        cuopt::linear_programming::dual_simplex::variable_type_t::CONTINUOUS,
+                        cuopt::mathematical_optimization::simplex::variable_type_t::CONTINUOUS,
                       error_type_t::ValidationError,
                       "Rotated SOC head variables must be continuous");
       }
       for (const i_t t : rc.tails) {
         cuopt_expects(user_problem.var_types[t] ==
-                        cuopt::linear_programming::dual_simplex::variable_type_t::CONTINUOUS,
+                        cuopt::mathematical_optimization::simplex::variable_type_t::CONTINUOUS,
                       error_type_t::ValidationError,
                       "Rotated SOC tail variables must be continuous");
       }
@@ -924,7 +915,7 @@ void convert_quadratic_constraints_to_second_order_cones(
     user_problem.lower.resize(n_prob, -inf);
     user_problem.upper.resize(n_prob, inf);
     user_problem.var_types.resize(
-      n_prob, cuopt::linear_programming::dual_simplex::variable_type_t::CONTINUOUS);
+      n_prob, cuopt::mathematical_optimization::simplex::variable_type_t::CONTINUOUS);
     if (!user_problem.col_names.empty()) {
       user_problem.col_names.resize(n_prob);
       for (i_t j = n_old; j < n_prob; ++j) {
@@ -946,7 +937,7 @@ void convert_quadratic_constraints_to_second_order_cones(
 
     csr_A.n = n_prob;
 
-    dual_simplex::sparse_vector_t<i_t, f_t> eq_row;
+    sparse_vector_t<i_t, f_t> eq_row;
     size_t ri      = 0;
     i_t slack_base = n_old;
     i_t row_idx    = m_old;
@@ -1065,7 +1056,7 @@ void convert_quadratic_constraints_to_second_order_cones(
       user_problem.lower.resize(n_new, -std::numeric_limits<f_t>::infinity());
       user_problem.upper.resize(n_new, std::numeric_limits<f_t>::infinity());
       user_problem.var_types.resize(
-        n_new, cuopt::linear_programming::dual_simplex::variable_type_t::CONTINUOUS);
+        n_new, cuopt::mathematical_optimization::simplex::variable_type_t::CONTINUOUS);
       if (!user_problem.col_names.empty()) { user_problem.col_names.resize(n_new); }
 
       for (const auto& [alias, original] : cone_alias_pairs) {
@@ -1085,7 +1076,7 @@ void convert_quadratic_constraints_to_second_order_cones(
       if (!user_problem.row_names.empty()) { user_problem.row_names.resize(m_new); }
 
       csr_A.n = n_new;
-      dual_simplex::sparse_vector_t<i_t, f_t> eq_row;
+      sparse_vector_t<i_t, f_t> eq_row;
       eq_row.n    = n_new;
       i_t row_idx = m_old;
       for (const auto& [alias, original] : cone_alias_pairs) {
@@ -1152,7 +1143,7 @@ void convert_quadratic_constraints_to_second_order_cones(
       user_problem.lower.resize(n_new, neg_inf);
       user_problem.upper.resize(n_new, pos_inf);
       user_problem.var_types.resize(
-        n_new, cuopt::linear_programming::dual_simplex::variable_type_t::CONTINUOUS);
+        n_new, cuopt::mathematical_optimization::simplex::variable_type_t::CONTINUOUS);
       if (!user_problem.col_names.empty()) { user_problem.col_names.resize(n_new); }
 
       for (const auto& [alias, original] : bound_split_pairs) {
@@ -1168,7 +1159,7 @@ void convert_quadratic_constraints_to_second_order_cones(
       if (!user_problem.row_names.empty()) { user_problem.row_names.resize(m_new); }
 
       csr_A.n = n_new;
-      dual_simplex::sparse_vector_t<i_t, f_t> eq_row;
+      sparse_vector_t<i_t, f_t> eq_row;
       eq_row.n    = n_new;
       i_t row_idx = m_old;
       for (const auto& [alias, original] : bound_split_pairs) {
@@ -1332,8 +1323,7 @@ void convert_quadratic_constraints_to_second_order_cones(
  */
 template <typename i_t, typename f_t>
 void project_barrier_solution_to_model_variables(
-  const dual_simplex::user_problem_t<i_t, f_t>& user_problem,
-  dual_simplex::lp_solution_t<i_t, f_t>& solution)
+  const simplex::user_problem_t<i_t, f_t>& user_problem, simplex::lp_solution_t<i_t, f_t>& solution)
 {
   const i_t n_original = user_problem.original_num_cols;
   if (n_original <= 0) { return; }
@@ -1352,4 +1342,4 @@ void project_barrier_solution_to_model_variables(
   solution.z = std::move(model_z);
 }
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::barrier

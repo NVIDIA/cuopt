@@ -8,8 +8,8 @@
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 #include "mip_utils.cuh"
 
-#include <cuopt/linear_programming/io/parser.hpp>
-#include <cuopt/linear_programming/solve.hpp>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
 #include <mip_heuristics/mip_scaling_strategy.cuh>
 #include <pdlp/utilities/problem_checking.cuh>
 #include <utilities/common_utils.hpp>
@@ -20,7 +20,7 @@
 
 #include <gtest/gtest.h>
 
-namespace cuopt::linear_programming::test {
+namespace cuopt::mathematical_optimization::test {
 
 io::mps_data_model_t<int, double> create_std_lp_problem()
 {
@@ -82,17 +82,17 @@ Subject To
 End
 )LP");
 
-  cuopt::linear_programming::pdlp_solver_settings_t<int, double> settings{};
+  cuopt::mathematical_optimization::pdlp_solver_settings_t<int, double> settings{};
   settings.set_optimality_tolerance(1e-2);
-  settings.method     = cuopt::linear_programming::method_t::PDLP;
+  settings.method     = cuopt::mathematical_optimization::method_t::PDLP;
   settings.time_limit = 5;
 
   // Solve
-  auto result = cuopt::linear_programming::solve_lp(&handle, problem, settings);
+  auto result = cuopt::mathematical_optimization::solve_lp(&handle, problem, settings);
 
   // Check results
   EXPECT_EQ(result.get_termination_status(),
-            cuopt::linear_programming::pdlp_termination_status_t::Optimal);
+            cuopt::mathematical_optimization::pdlp_termination_status_t::Optimal);
   ASSERT_EQ(result.get_primal_solution().size(), 1);
 
   // Copy solution to host to access values
@@ -108,15 +108,15 @@ TEST(LPTest, TestSampleLP)
   raft::handle_t handle;
   auto problem = create_std_lp_problem();
 
-  cuopt::linear_programming::pdlp_solver_settings_t<int, double> settings{};
+  cuopt::mathematical_optimization::pdlp_solver_settings_t<int, double> settings{};
   settings.set_optimality_tolerance(1e-4);
   settings.time_limit = 5;
-  settings.presolver  = cuopt::linear_programming::presolver_t::None;
+  settings.presolver  = cuopt::mathematical_optimization::presolver_t::None;
 
-  auto result = cuopt::linear_programming::solve_lp(&handle, problem, settings);
+  auto result = cuopt::mathematical_optimization::solve_lp(&handle, problem, settings);
 
   EXPECT_EQ(result.get_termination_status(),
-            cuopt::linear_programming::pdlp_termination_status_t::Optimal);
+            cuopt::mathematical_optimization::pdlp_termination_status_t::Optimal);
 }
 
 TEST(ErrorTest, TestError)
@@ -124,9 +124,9 @@ TEST(ErrorTest, TestError)
   raft::handle_t handle;
   auto problem = create_std_milp_problem(false);
 
-  cuopt::linear_programming::mip_solver_settings_t<int, double> settings{};
+  cuopt::mathematical_optimization::mip_solver_settings_t<int, double> settings{};
   settings.time_limit = 5;
-  settings.presolver  = cuopt::linear_programming::presolver_t::None;
+  settings.presolver  = cuopt::mathematical_optimization::presolver_t::None;
 
   // Set constraint bounds
   std::vector<double> lower_bounds = {1.0};
@@ -134,15 +134,15 @@ TEST(ErrorTest, TestError)
   problem.set_constraint_lower_bounds(lower_bounds);
   problem.set_constraint_upper_bounds(upper_bounds);
 
-  auto result = cuopt::linear_programming::solve_mip(&handle, problem, settings);
+  auto result = cuopt::mathematical_optimization::solve_mip(&handle, problem, settings);
 
   EXPECT_EQ(result.get_termination_status(),
-            cuopt::linear_programming::mip_termination_status_t::NoTermination);
+            cuopt::mathematical_optimization::mip_termination_status_t::NoTermination);
 }
 
 class MILPTestParams
   : public testing::TestWithParam<
-      std::tuple<bool, int, bool, cuopt::linear_programming::mip_termination_status_t>> {};
+      std::tuple<bool, int, bool, cuopt::mathematical_optimization::mip_termination_status_t>> {};
 
 TEST_P(MILPTestParams, TestSampleMILP)
 {
@@ -154,13 +154,13 @@ TEST_P(MILPTestParams, TestSampleMILP)
   raft::handle_t handle;
   auto problem = create_std_milp_problem(maximize);
 
-  cuopt::linear_programming::mip_solver_settings_t<int, double> settings{};
+  cuopt::mathematical_optimization::mip_solver_settings_t<int, double> settings{};
   settings.time_limit      = 5;
   settings.mip_scaling     = scaling;
   settings.heuristics_only = heuristics_only;
-  settings.presolver       = cuopt::linear_programming::presolver_t::None;
+  settings.presolver       = cuopt::mathematical_optimization::presolver_t::None;
 
-  auto result = cuopt::linear_programming::solve_mip(&handle, problem, settings);
+  auto result = cuopt::mathematical_optimization::solve_mip(&handle, problem, settings);
 
   EXPECT_EQ(result.get_termination_status(), expected_termination_status);
 }
@@ -175,37 +175,38 @@ TEST_P(MILPTestParams, TestSingleVarMILP)
   raft::handle_t handle;
   auto problem = create_single_var_milp_problem(maximize);
 
-  cuopt::linear_programming::mip_solver_settings_t<int, double> settings{};
+  cuopt::mathematical_optimization::mip_solver_settings_t<int, double> settings{};
   settings.time_limit      = 5;
   settings.mip_scaling     = scaling;
   settings.heuristics_only = heuristics_only;
-  settings.presolver       = cuopt::linear_programming::presolver_t::None;
+  settings.presolver       = cuopt::mathematical_optimization::presolver_t::None;
 
-  auto result = cuopt::linear_programming::solve_mip(&handle, problem, settings);
+  auto result = cuopt::mathematical_optimization::solve_mip(&handle, problem, settings);
 
   EXPECT_EQ(result.get_termination_status(),
-            cuopt::linear_programming::mip_termination_status_t::Optimal);
+            cuopt::mathematical_optimization::mip_termination_status_t::Optimal);
 }
 
 INSTANTIATE_TEST_SUITE_P(
   MILPTests,
   MILPTestParams,
-  testing::Values(std::make_tuple(true,
-                                  CUOPT_MIP_SCALING_ON,
-                                  true,
-                                  cuopt::linear_programming::mip_termination_status_t::Optimal),
-                  std::make_tuple(false,
-                                  CUOPT_MIP_SCALING_ON,
-                                  false,
-                                  cuopt::linear_programming::mip_termination_status_t::Optimal),
-                  std::make_tuple(true,
-                                  CUOPT_MIP_SCALING_OFF,
-                                  true,
-                                  cuopt::linear_programming::mip_termination_status_t::Optimal),
-                  std::make_tuple(false,
-                                  CUOPT_MIP_SCALING_OFF,
-                                  false,
-                                  cuopt::linear_programming::mip_termination_status_t::Optimal)));
+  testing::Values(
+    std::make_tuple(true,
+                    CUOPT_MIP_SCALING_ON,
+                    true,
+                    cuopt::mathematical_optimization::mip_termination_status_t::Optimal),
+    std::make_tuple(false,
+                    CUOPT_MIP_SCALING_ON,
+                    false,
+                    cuopt::mathematical_optimization::mip_termination_status_t::Optimal),
+    std::make_tuple(true,
+                    CUOPT_MIP_SCALING_OFF,
+                    true,
+                    cuopt::mathematical_optimization::mip_termination_status_t::Optimal),
+    std::make_tuple(false,
+                    CUOPT_MIP_SCALING_OFF,
+                    false,
+                    cuopt::mathematical_optimization::mip_termination_status_t::Optimal)));
 
 // ---------------------------------------------------------------------------
 // Scaling integrality preservation test
@@ -267,7 +268,7 @@ TEST(ScalingIntegrity, IntegerCoefficientsPreservedAfterScaling)
     }
   }
 
-  detail::mip_scaling_strategy_t<int, double> scaling(op_problem);
+  mip::mip_scaling_strategy_t<int, double> scaling(op_problem);
   scaling.scale_problem();
 
   auto post_values =
@@ -318,7 +319,7 @@ TEST(ScalingIntegrity, NoObjectiveScalingPreservesIntegerCoefficients)
     }
   }
 
-  detail::mip_scaling_strategy_t<int, double> scaling(op_problem);
+  mip::mip_scaling_strategy_t<int, double> scaling(op_problem);
   scaling.scale_problem(/*scale_objective=*/false);
 
   auto post_values =
@@ -337,4 +338,4 @@ TEST(ScalingIntegrity, NoObjectiveScalingPreservesIntegerCoefficients)
                            << " integer coefficients lost integrality after scaling (no-obj mode)";
 }
 
-}  // namespace cuopt::linear_programming::test
+}  // namespace cuopt::mathematical_optimization::test

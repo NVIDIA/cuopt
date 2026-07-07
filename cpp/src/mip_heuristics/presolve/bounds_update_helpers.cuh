@@ -10,7 +10,7 @@
 #include <mip_heuristics/utils.cuh>
 #include "bounds_update_data.cuh"
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 // Activity calculation
 
@@ -38,6 +38,14 @@ inline __device__ f_t update_ub(f_t curr_ub, f_t coeff, f_t delta_min_act, f_t d
 {
   auto comp_bnd = (coeff < 0.) ? delta_max_act / coeff : delta_min_act / coeff;
   return min(curr_ub, comp_bnd);
+}
+
+template <typename f_t>
+inline __device__ bool accept_candidate_bound_update(f_t bound,
+                                                     f_t abs_tol,
+                                                     f_t candidate_bound_scale)
+{
+  return abs(bound) * candidate_bound_scale <= abs_tol;
 }
 
 template <typename i_t, typename f_t, i_t BDIM>
@@ -185,10 +193,19 @@ inline __device__ thrust::pair<f_t, f_t> update_bounds_per_cnst(
   }
   min_a -= (coeff < 0) ? coeff * thrust::get<1>(old_bnd) : coeff * thrust::get<0>(old_bnd);
   max_a -= (coeff > 0) ? coeff * thrust::get<1>(old_bnd) : coeff * thrust::get<0>(old_bnd);
-  auto delta_min_act  = cnst_ub - min_a;
-  auto delta_max_act  = cnst_lb - max_a;
-  thrust::get<0>(bnd) = update_lb(thrust::get<0>(bnd), coeff, delta_min_act, delta_max_act);
-  thrust::get<1>(bnd) = update_ub(thrust::get<1>(bnd), coeff, delta_min_act, delta_max_act);
+  auto delta_min_act = cnst_ub - min_a;
+  auto delta_max_act = cnst_lb - max_a;
+  auto new_lb        = update_lb(thrust::get<0>(bnd), coeff, delta_min_act, delta_max_act);
+  auto new_ub        = update_ub(thrust::get<1>(bnd), coeff, delta_min_act, delta_max_act);
+
+  if (accept_candidate_bound_update(
+        new_lb, pb.tolerances.absolute_tolerance, upd.candidate_bound_scale)) {
+    thrust::get<0>(bnd) = new_lb;
+  }
+  if (accept_candidate_bound_update(
+        new_ub, pb.tolerances.absolute_tolerance, upd.candidate_bound_scale)) {
+    thrust::get<1>(bnd) = new_ub;
+  }
   return bnd;
 }
 
@@ -381,4 +398,4 @@ __global__ void update_bounds_kernel(typename problem_t<i_t, f_t>::view_t pb,
   }
 }
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

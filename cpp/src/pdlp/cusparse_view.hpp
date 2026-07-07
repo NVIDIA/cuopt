@@ -6,7 +6,7 @@
 /* clang-format on */
 #pragma once
 
-#include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
 #include <pdlp/pdlp_climber_strategy.hpp>
 #include <pdlp/saddle_point.hpp>
 
@@ -20,9 +20,12 @@
 
 #include <cusparse_v2.h>
 
-#define CUDA_VER_13_2_UP (CUDART_VERSION >= 13020)
+// cuSPARSE 12.7 ships with CUDA Toolkit 13.2
+#define CUOPT_CUSPARSE_VER_12_7_UP (CUSPARSE_VERSION >= 12700)
+// cuSPARSE 12.8 ships with CUDA Toolkit 13.3
+#define CUOPT_CUSPARSE_VER_12_8_UP (CUSPARSE_VERSION >= 12800)
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 
 template <typename i_t, typename f_t>
 class cusparse_sp_mat_descr_wrapper_t {
@@ -81,7 +84,7 @@ class cusparse_dn_mat_descr_wrapper_t {
   bool need_destruction_;
 };
 
-#if CUDA_VER_13_2_UP
+#if CUOPT_CUSPARSE_VER_12_7_UP
 // RAII wrapper around cusparse SpMVOp objects. All the buffers are owned by the cusparse_view_t.
 class cusparse_spmvop_descr_wrapper_t {
  public:
@@ -149,24 +152,24 @@ class cusparse_spmvop_plan_wrapper_t {
   cusparseSpMVOpPlan_t plan_;
   bool need_destruction_;
 };
-#endif
+#endif  // CUOPT_CUSPARSE_VER_12_7_UP
 
 template <typename i_t, typename f_t>
 class cusparse_view_t {
  public:
   cusparse_view_t(raft::handle_t const* handle_ptr,
-                  const problem_t<i_t, f_t>& op_problem,
+                  const mip::problem_t<i_t, f_t>& op_problem,
                   saddle_point_state_t<i_t, f_t>& current_saddle_point_state,
                   rmm::device_uvector<f_t>& _tmp_primal,
                   rmm::device_uvector<f_t>& _tmp_dual,
                   rmm::device_uvector<f_t>& _potential_next_dual_solution,
                   rmm::device_uvector<f_t>& _reflected_primal_solution,
                   const std::vector<pdlp_climber_strategy_t>& climber_strategies,
-                  const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params,
+                  const pdlp::pdlp_hyper_params_t& hyper_params,
                   bool enable_mixed_precision_spmv);
 
   cusparse_view_t(raft::handle_t const* handle_ptr,
-                  const problem_t<i_t, f_t>& op_problem,
+                  const mip::problem_t<i_t, f_t>& op_problem,
                   rmm::device_uvector<f_t>& _primal_solution,
                   rmm::device_uvector<f_t>& _dual_solution,
                   rmm::device_uvector<f_t>& _tmp_primal,
@@ -177,10 +180,10 @@ class cusparse_view_t {
                   const rmm::device_uvector<i_t>& _A_T_offsets,
                   const rmm::device_uvector<i_t>& _A_T_indices,
                   const std::vector<pdlp_climber_strategy_t>& climber_strategies,
-                  const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params);
+                  const pdlp::pdlp_hyper_params_t& hyper_params);
 
   cusparse_view_t(raft::handle_t const* handle_ptr,
-                  const problem_t<i_t, f_t>& op_problem,
+                  const mip::problem_t<i_t, f_t>& op_problem,
                   const cusparse_view_t<i_t, f_t>& existing_cusparse_view,
                   f_t* _primal_solution,
                   f_t* _dual_solution,
@@ -248,13 +251,13 @@ class cusparse_view_t {
   rmm::device_uvector<uint8_t> buffer_non_transpose_spmvop{0, handle_ptr_->get_stream()};
   rmm::device_uvector<uint8_t> buffer_transpose_spmvop{0, handle_ptr_->get_stream()};
 
-#if CUDA_VER_13_2_UP
+#if CUOPT_CUSPARSE_VER_12_7_UP
   // SpMVOp descriptors and plans for A and A_T (descr before plan so dtor destroys plan first)
   cusparse_spmvop_descr_wrapper_t spmv_op_descr_A_;
   cusparse_spmvop_plan_wrapper_t spmv_op_plan_A_;
   cusparse_spmvop_descr_wrapper_t spmv_op_descr_A_t_;
   cusparse_spmvop_plan_wrapper_t spmv_op_plan_A_t_;
-#endif
+#endif  // CUOPT_CUSPARSE_VER_12_7_UP
   // reuse buffers for cusparse spmm
   rmm::device_uvector<uint8_t> buffer_transpose_batch;
   rmm::device_uvector<uint8_t> buffer_non_transpose_batch;
@@ -294,7 +297,7 @@ class cusparse_view_t {
 
   // Redirects the cuSPARSE CSR structure pointers from op_problem_scaled_ to the original problem
   // so the duplicated row/column buffers can be freed.
-  void redirect_cusparse_csr_structure_pointers(const problem_t<i_t, f_t>& original_problem);
+  void redirect_cusparse_csr_structure_pointers(const mip::problem_t<i_t, f_t>& original_problem);
   // Creates SpMVOp plans. Must be called after scale_problem() so plans use the scaled matrix.
   void create_spmv_op_plans(bool is_reflected);
 };
@@ -353,10 +356,10 @@ void my_cusparsespmm_preprocess(cusparseHandle_t handle,
 
 bool is_cusparse_runtime_mixed_precision_supported();
 
-// False if cuda version < 13.2 or runtime cuSPARSE does not export SpMVOp symbols. True otherwise.
+// False if the cuSPARSE headers/runtime do not support SpMVOp symbols. True otherwise.
 bool is_cusparse_runtime_spmvop_supported();
 
-#if CUDA_VER_13_2_UP
+#if CUOPT_CUSPARSE_VER_12_7_UP
 // Dispatches to the runtime cusparseSpMVOp via dlsym so callers (e.g., pdhg.cu) never
 // reference the symbol statically. Caller must have verified
 // is_cusparse_runtime_spmvop_supported().
@@ -368,6 +371,6 @@ void cusparse_spmvop_run(cusparseHandle_t handle,
                          cusparseDnVecDescr_t vecY,
                          cusparseDnVecDescr_t vecZ,
                          cudaStream_t stream);
-#endif
+#endif  // CUOPT_CUSPARSE_VER_12_7_UP
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

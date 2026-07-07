@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
 
 #include <raft/core/handle.hpp>
 
@@ -17,7 +17,7 @@
 
 #include <pdlp/swap_and_resize_helper.cuh>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 /**
  * @brief Structure to hold the current solution to the saddle point problem
  *
@@ -67,7 +67,7 @@ class saddle_point_state_t {
                        i_t primal_size,
                        i_t dual_size,
                        size_t batch_size,
-                       const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params);
+                       const pdlp::pdlp_hyper_params_t& hyper_params);
 
   /**
    * @brief Copies the values of the solutions in another saddle_point_state_t
@@ -115,4 +115,4 @@ class saddle_point_state_t {
   rmm::device_uvector<f_t> next_AtY_;
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

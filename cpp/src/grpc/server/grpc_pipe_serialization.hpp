@@ -229,12 +229,13 @@ inline PipeWriteStatus write_chunked_request_to_pipe(
 {
   // -------- Phase 1: bin chunks per field and validate (no pipe I/O) --------
   std::map<int32_t, detail::FieldChunks> top_fields;
-  std::map<cuopt::linear_programming::container_array_key_t, detail::FieldChunks> container_fields;
+  std::map<cuopt::mathematical_optimization::container_array_key_t, detail::FieldChunks>
+    container_fields;
   for (const auto& ac : chunks) {
     int64_t elem_size       = 0;
     detail::FieldChunks* fi = nullptr;
     if (ac.has_container_field_num()) {
-      cuopt::linear_programming::container_array_key_t key{
+      cuopt::mathematical_optimization::container_array_key_t key{
         ac.container_field_num(), ac.container_index(), ac.field_id()};
       fi        = &container_fields[key];
       elem_size = array_field_element_size(key.container_field_num, key.field_id);
@@ -340,7 +341,7 @@ inline bool read_chunked_request_from_pipe(
   int fd,
   cuopt::remote::ChunkedProblemHeader& header_out,
   std::map<int32_t, std::vector<uint8_t>>& arrays_out,
-  std::map<cuopt::linear_programming::container_array_key_t, std::vector<uint8_t>>&
+  std::map<cuopt::mathematical_optimization::container_array_key_t, std::vector<uint8_t>>&
     container_arrays_out)
 {
   // dest.resize(total_bytes) can throw std::bad_alloc if the wire claims an
@@ -386,8 +387,8 @@ inline bool read_chunked_request_from_pipe(
       if (!read_from_pipe(fd, &field_id, sizeof(field_id))) return false;
       if (!read_from_pipe(fd, &total_bytes, sizeof(total_bytes))) return false;
       if (total_bytes > kMaxPipeArrayBytes) return false;
-      auto& dest =
-        container_arrays_out[cuopt::linear_programming::container_array_key_t{cfn, ci, field_id}];
+      auto& dest = container_arrays_out[cuopt::mathematical_optimization::container_array_key_t{
+        cfn, ci, field_id}];
       dest.resize(static_cast<size_t>(total_bytes));
       if (total_bytes > 0 && !read_from_pipe(fd, dest.data(), static_cast<size_t>(total_bytes)))
         return false;

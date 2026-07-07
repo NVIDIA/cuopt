@@ -9,9 +9,9 @@
 
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/solution.hpp>
-#include <dual_simplex/sparse_matrix.hpp>
-#include <dual_simplex/types.hpp>
 #include <dual_simplex/user_problem.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
+#include <math_optimization/types.hpp>
 
 #include <fstream>
 #include <iomanip>
@@ -20,7 +20,7 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 template <typename i_t, typename f_t>
 struct lp_problem_t {
@@ -52,6 +52,11 @@ struct lp_problem_t {
   objective_step_t<f_t> objective_step;
   i_t cone_var_start{0};
   std::vector<i_t> second_order_cone_dims;
+
+  // Maximum and minimum value of the coefficients in the objective function. This is used
+  // for determine the "objective dynamism" in Farkas diving.
+  f_t max_abs_obj_coeff = 0;
+  f_t min_abs_obj_coeff = 0;
 
   void write_mps(const std::string& path) const
   {
@@ -268,4 +273,4 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
                       std::vector<f_t>& uncrushed_y,
                       std::vector<f_t>& uncrushed_z);
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

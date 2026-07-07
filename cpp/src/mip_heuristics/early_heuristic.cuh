@@ -10,7 +10,7 @@
 #include <mip_heuristics/problem/problem.cuh>
 #include <mip_heuristics/solution/solution.cuh>
 
-#include <cuopt/linear_programming/mip/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
 
 #include <utilities/logger.hpp>
 
@@ -21,7 +21,7 @@
 #include <limits>
 #include <vector>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename f_t>
 using early_incumbent_callback_t = std::function<void(
@@ -113,4 +113,4 @@ class early_heuristic_t {
   std::chrono::steady_clock::time_point start_time_;
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

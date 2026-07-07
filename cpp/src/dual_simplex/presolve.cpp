@@ -11,13 +11,13 @@
 #include <dual_simplex/folding.hpp>
 #include <dual_simplex/right_looking_lu.hpp>
 #include <dual_simplex/solve.hpp>
-#include <dual_simplex/tic_toc.hpp>
+#include <math_optimization/tic_toc.hpp>
 
 #include <algorithm>
 #include <cmath>
 #include <iostream>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 template <typename i_t, typename f_t>
 /** Number of leading linear columns; SOCP cone variables occupy [linear_cols, num_cols). */
@@ -1202,15 +1202,15 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
     if (problem.Q.n > 0 && !presolve_info.negated_variables.empty()) {
       std::vector<bool> is_negated(static_cast<size_t>(problem.num_cols), false);
       for (i_t const j : presolve_info.negated_variables) {
-        is_negated[static_cast<size_t>(j)] = true;
+        is_negated[j] = true;
       }
       for (i_t row = 0; row < problem.Q.m; ++row) {
         const i_t q_start         = problem.Q.row_start[row];
         const i_t q_end           = problem.Q.row_start[row + 1];
-        const bool is_negated_row = is_negated[static_cast<size_t>(row)];
+        const bool is_negated_row = is_negated[row];
         for (i_t p = q_start; p < q_end; ++p) {
           const i_t col = problem.Q.j[p];
-          if (is_negated_row != is_negated[static_cast<size_t>(col)]) { problem.Q.x[p] *= -1.0; }
+          if (is_negated_row != is_negated[col]) { problem.Q.x[p] *= -1.0; }
         }
       }
     }
@@ -1942,4 +1942,4 @@ template void uncrush_solution<int, double>(const presolve_info_t<int, double>& 
 
 #endif
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex
