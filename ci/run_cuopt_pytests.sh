@@ -11,8 +11,6 @@ SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 
 # shellcheck source=ci/utils/crash_helpers.sh
 source "${SCRIPT_DIR}/utils/crash_helpers.sh"
-# shellcheck source=ci/utils/gpu_monitor.sh
-source "${SCRIPT_DIR}/utils/gpu_monitor.sh"
 
 # Support invoking run_cuopt_pytests.sh outside the script directory
 cd "${SCRIPT_DIR}/../python/cuopt/cuopt/"
@@ -38,11 +36,12 @@ rc=0
 if [ "${IS_NIGHTLY}" = "nightly" ]; then
     pytest -s --cache-clear --reruns 2 --reruns-delay 5 -p cuopt_rerun_xml "$@" tests || rc=$?
 else
-    # Parallel path (-n 2) is where GPU OOM has been observed; sample GPU
-    # memory across the run so the ramp to OOM is visible in the job log.
-    gpu_mon_start
-    pytest -s --cache-clear -n 2 "$@" tests || rc=$?
-    gpu_mon_stop
+    # --dist loadgroup keeps @pytest.mark.xdist_group tests on one worker, so
+    # all cuopt_grpc_server-backed classes share a single worker instead of
+    # duplicating a GPU server per worker (without loadgroup the markers are
+    # silently ignored). --max-worker-restart=0 disables respawning a crashed
+    # worker, so a crash fails those tests once rather than cascading.
+    pytest -s --cache-clear -n 4 --dist loadgroup --max-worker-restart=0 "$@" tests || rc=$?
 fi
 
 # If not a crash, exit normally

@@ -17,7 +17,6 @@ import logging
 import os
 import re
 import shutil
-import signal
 import socket
 import subprocess
 import sys
@@ -27,6 +26,15 @@ from cuopt.linear_programming import Read
 import pytest
 from cuopt import linear_programming
 from cuopt.linear_programming.solver.solver_parameters import CUOPT_TIME_LIMIT
+
+# This module is also re-executed as a plain script by _run_in_subprocess
+# (python test_cpu_only_execution.py _impl_...), where conftest has not put
+# the tests fixtures/ dir on sys.path. Add it so the import works in both the
+# pytest and standalone-subprocess contexts.
+sys.path.insert(
+    0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "fixtures")
+)
+from grpc_server_fixtures import kill_server, spawn_server  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +87,7 @@ def _wait_for_port(port, timeout=15):
 
 
 def _cpu_only_env(port):
-    """Return an env dict that hides all GPUs and enables remote mode."""
+    """Return a *client* env dict that hides all GPUs and enables remote mode."""
     env = os.environ.copy()
     for key in [k for k in env if k.startswith("CUOPT_TLS_")]:
         env.pop(key)
@@ -435,10 +443,8 @@ def _start_grpc_server_fixture(port_offset):
         + port_offset
         + worker_id
     )
-    proc = subprocess.Popen(
+    proc = spawn_server(
         [server_bin, "--port", str(port), "--workers", "1"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
     )
     time.sleep(0.5)
     if proc.poll() is not None:
@@ -447,21 +453,15 @@ def _start_grpc_server_fixture(port_offset):
             "binary may be unable to load shared libraries in this environment"
         )
     if not _wait_for_port(port, timeout=15):
-        proc.kill()
-        proc.wait()
+        kill_server(proc)
         pytest.fail("cuopt_grpc_server failed to start within 15s")
 
     return proc, _cpu_only_env(port)
 
 
 def _stop_grpc_server(proc):
-    """Gracefully shut down a server process."""
-    proc.send_signal(signal.SIGTERM)
-    try:
-        proc.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        proc.wait()
+    """Gracefully shut down a server process and its worker child."""
+    kill_server(proc)
 
 
 # ---------------------------------------------------------------------------
@@ -469,6 +469,7 @@ def _stop_grpc_server(proc):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.xdist_group(name="grpc_server")
 class TestCPUOnlyExecution:
     """Tests that run with CUDA_VISIBLE_DEVICES='' to simulate CPU-only hosts.
 
@@ -515,6 +516,7 @@ class TestCPUOnlyExecution:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.xdist_group(name="grpc_server")
 class TestCuoptCliCPUOnly:
     """Test that cuopt_cli runs without CUDA in remote-execution mode.
 
@@ -711,6 +713,7 @@ class TestSolutionInterfacePolymorphism:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.xdist_group(name="grpc_server")
 class TestTLSExecution:
     """Test remote execution over a TLS-encrypted channel.
 
@@ -729,7 +732,7 @@ class TestTLSExecution:
             pytest.skip("cuopt_grpc_server not found")
 
         port = int(os.environ.get("CUOPT_TEST_PORT_BASE", "18000")) + 850
-        proc = subprocess.Popen(
+        proc = spawn_server(
             [
                 server_bin,
                 "--port",
@@ -742,12 +745,9 @@ class TestTLSExecution:
                 "--tls-key",
                 os.path.join(cert_dir, "server.key"),
             ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
         )
         if not _wait_for_port(port, timeout=15):
-            proc.kill()
-            proc.wait()
+            kill_server(proc)
             pytest.fail("TLS cuopt_grpc_server failed to start within 15s")
 
         env = _tls_env(port, cert_dir, mtls=False)
@@ -768,6 +768,7 @@ class TestTLSExecution:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.xdist_group(name="grpc_server")
 class TestMTLSExecution:
     """Test remote execution over an mTLS-encrypted channel.
 
@@ -787,7 +788,7 @@ class TestMTLSExecution:
             pytest.skip("cuopt_grpc_server not found")
 
         port = int(os.environ.get("CUOPT_TEST_PORT_BASE", "18000")) + 900
-        proc = subprocess.Popen(
+        proc = spawn_server(
             [
                 server_bin,
                 "--port",
@@ -803,22 +804,14 @@ class TestMTLSExecution:
                 os.path.join(cert_dir, "ca.crt"),
                 "--require-client-cert",
             ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
         )
         if not _wait_for_port(port, timeout=15):
-            proc.kill()
-            proc.wait()
+            kill_server(proc)
             pytest.fail("mTLS cuopt_grpc_server failed to start within 15s")
 
         yield {"port": port, "cert_dir": cert_dir}
 
-        proc.send_signal(signal.SIGTERM)
-        try:
-            proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait()
+        kill_server(proc)
 
     def test_lp_solve_mtls(self, mtls_server_info):
         """LP solve succeeds over an mTLS channel with valid client cert."""
