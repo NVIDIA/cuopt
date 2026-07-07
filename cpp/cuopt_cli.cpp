@@ -139,6 +139,33 @@ int run_single_file(const std::string& file_path,
       std::make_unique<cuopt::mathematical_optimization::cpu_optimization_problem_t<int, double>>();
   }
 
+  // Distributed PDLP is used for large problems that don't fit on a single GPU.
+  // We need to debranch before the problem_interface is created and tries to materialize the problem in device memory.
+  if (settings.get_pdlp_settings().use_distributed_pdlp) {
+    cuopt::cuopt_expects(
+      handle_ptr != nullptr,
+      cuopt::error_type_t::ValidationError,
+      "Distributed PDLP requires the GPU memory backend; no GPU handle is available for the "
+      "selected memory backend.");
+    cuopt::cuopt_expects(
+      !solve_relaxation,
+      cuopt::error_type_t::ValidationError,
+      "Solving the LP relaxation is not allowed for distributed PDLP.");
+    cuopt::cuopt_expects(
+      !initial_solution_file.empty(),
+      cuopt::error_type_t::ValidationError,
+      "Initial solution file is not allowed for distributed PDLP.");
+    const auto& var_type_chars = mps_data_model.get_variable_types();
+    cuopt::cuopt_expects(
+      std::none_of(
+        var_type_chars.begin(), var_type_chars.end(), [](char t) { return t == 'I' || t == 'B'; }),
+      cuopt::error_type_t::ValidationError,
+      "Distributed PDLP does not support mixed integer problems.");
+    auto solution =
+      cuopt::mathematical_optimization::solve_lp(handle_ptr.get(), mps_data_model, settings.get_pdlp_settings());
+    return solution;
+  }
+
   cuopt::mathematical_optimization::populate_from_mps_data_model(problem_interface.get(),
                                                                  mps_data_model);
 
@@ -178,20 +205,11 @@ int run_single_file(const std::string& file_path,
       auto solution =
         cuopt::mathematical_optimization::solve_mip(problem_interface.get(), mip_settings);
     } else {
+      // Distributed PDLP was handled by the early-exit branch above; this
+      // path is always single-GPU LP going through problem_interface.
       auto& lp_settings = settings.get_pdlp_settings();
-
-      if (lp_settings.use_distributed_pdlp) {
-        cuopt::cuopt_expects(
-          handle_ptr != nullptr,
-          cuopt::error_type_t::ValidationError,
-          "Distributed PDLP requires the GPU memory backend; no GPU handle is available for the "
-          "selected memory backend.");
-        auto solution =
-          cuopt::mathematical_optimization::solve_lp(handle_ptr.get(), mps_data_model, lp_settings);
-      } else {
-        auto solution =
-          cuopt::mathematical_optimization::solve_lp(problem_interface.get(), lp_settings);
-      }
+      auto solution =
+        cuopt::mathematical_optimization::solve_lp(problem_interface.get(), lp_settings);
     }
   } catch (const std::exception& e) {
     fprintf(stderr, "cuopt_cli error: %s\n", e.what());
