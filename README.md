@@ -152,21 +152,17 @@ The `latest` tag is the latest stable release. To pin a specific version use `<v
 
 #### UBI10 image (FIPS 140-3)
 
-Based on Red Hat Universal Base Image 10 (RHEL 10), which ships OpenSSL 3.5 validated under FIPS 140-3. Use this image in environments with strict FIPS or RHEL compliance requirements.
+Based on Red Hat Universal Base Image 10 (RHEL 10), which ships OpenSSL 3.5 validated under FIPS 140-3. Use this image in environments with strict FIPS or RHEL compliance requirements. UBI10 images are available for CUDA 13.x only.
 
 ```bash
-# For CUDA 12.x
-docker pull nvidia/cuopt:latest-cu12-ubi10
-
-# For CUDA 13.x
 docker pull nvidia/cuopt:latest-cu13-ubi10
 ```
 
-Fully-qualified tags follow the pattern `<version>-cuda<X.Y>-ubi10` (e.g. `26.6.0-cuda13.3-ubi10`). Nightly builds use the `<version>a-cu<N>-ubi10` tag scheme. See the [cuOpt Docker Hub page](https://hub.docker.com/r/nvidia/cuopt/tags) for the full list.
+Fully-qualified tags follow the pattern `<version>-cuda<X.Y>-ubi10` (e.g. `26.6.0-cuda13.3-ubi10`). Nightly builds use the `<version>a-cu13-ubi10` tag scheme. See the [cuOpt Docker Hub page](https://hub.docker.com/r/nvidia/cuopt/tags) for the full list.
 
 Both images include the same cuOpt packages (`libcuopt`, `cuopt`, `cuopt-server`, `cuopt-sh-client`) and expose the same server entrypoint. They are built and tested for x86-64 and ARM64.
 
-Nightly container images for both variants are built from the HEAD of the development branch. They are tagged as `<version>a-cu12` / `<version>a-cu13` (Ubuntu) and `<version>a-cu12-ubi10` / `<version>a-cu13-ubi10` (UBI10).
+Nightly container images for both variants are built from the HEAD of the development branch. They are tagged as `<version>a-cu12` / `<version>a-cu13` (Ubuntu) and `<version>a-cu13-ubi10` (UBI10).
 
 More information about the cuOpt container can be found [here](https://docs.nvidia.com/cuopt/user-guide/latest/cuopt-server/quick-start.html#container-from-docker-hub).
 

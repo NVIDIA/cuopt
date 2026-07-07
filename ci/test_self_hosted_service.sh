@@ -219,13 +219,16 @@ if [ "$doservertest" -eq 1 ]; then
     run_cli_test 'cuOpt unhandled exception, please include this message in any error report: Python int too large to convert to C long' cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT ../../datasets/cuopt_service_data/cuopt_unhandled_exception.json
 
     # Test for message on missing datafile
-    run_cli_test "Specified path '$CUOPT_DATA_DIR/nada' does not exist" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -f nada
+    run_cli_test "specified data file does not exist: nada" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -f nada
 
     # Test for message on absolute path, missing datafile
-    run_cli_test "Perhaps you did not intend" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -f /nada
+    run_cli_test "cuopt-data-file must be relative to CUOPT_DATA_DIR" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -f /nada
 
     # Test for message on absolute path, bad directory
-    run_cli_test "Absolute path '/nohay' does not exist" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -f /nohay/nada
+    run_cli_test "cuopt-data-file must be relative to CUOPT_DATA_DIR" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -f /nohay/nada
+
+    # Test that a relative path escaping CUOPT_DATA_DIR is rejected
+    run_cli_test "cuopt-data-file must stay inside CUOPT_DATA_DIR" cuopt_sh -s -c "$CLIENT_CERT" -p $CUOPT_SERVER_PORT -f ../nada
 
     # Set all current and deprecated solver_config values and make sure the service does not reject the dataset
     # This is a smoketest against parameter name misalignment

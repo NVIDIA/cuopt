@@ -408,6 +408,10 @@ class grpc_client_t {
   // Activated when config_.stream_logs is true and config_.log_callback is set.
   void start_log_streaming(const std::string& job_id);
   void stop_log_streaming();
+  // Graceful variant: waits up to kLogDrainTimeout for the server to send the
+  // job_complete sentinel before force-cancelling.  Use on the success path so
+  // final log lines (e.g. "Best objective …") are not dropped.
+  void drain_log_streaming();
 
   // Shared polling loop used by solve_lp and solve_mip.
   struct poll_result_t {
@@ -419,6 +423,7 @@ class grpc_client_t {
 
   std::unique_ptr<std::thread> log_thread_;
   std::atomic<bool> stop_logs_{false};
+  std::atomic<bool> log_stream_done_{false};
   mutable std::mutex log_context_mutex_;
   // Points to the grpc::ClientContext* of the in-flight StreamLogs RPC (if
   // any).  Typed as void* to avoid exposing grpc headers in the public API.

@@ -190,36 +190,45 @@ def get_output_name(resultdir, CUOPT_DATA_FILE, CUOPT_RESULT_FILE):
 
 
 # Validate if given data file and file path exists
-def validate_file_path(CUOPT_DATA_FILE):
+def validate_file_path(cuopt_data_file):
     ddir = settings.get_data_dir()
-    try:
-        file_path = os.path.join(ddir, CUOPT_DATA_FILE)
-        if not ddir:
-            logging.error("cuopt data directory not set!")
-            # If no datadir was set but the path is relative,
-            # this can't work
-            if not CUOPT_DATA_FILE.startswith("/"):
-                raise ValueError(
-                    f"cuopt server was started without data directory "
-                    f"defined but local path {CUOPT_DATA_FILE} "
-                    "was specified"
-                )
-        if not os.path.exists(file_path):
-            logging.error(f"File path '{file_path}' doesn't exist")
-            msg = f"Specified path '{file_path}' does not exist"
-            if CUOPT_DATA_FILE.startswith("/"):
-                dir = os.path.dirname(CUOPT_DATA_FILE)
-                if not os.path.isdir(dir):
-                    msg += f". Absolute path '{dir}' does not exist"
-                msg += ". Perhaps you did not intend to "
-                "specify an absolute path?"
-            raise ValueError(msg)
-    except Exception as e:
+    if not ddir:
+        logging.error("cuopt data directory not set!")
         raise HTTPException(
             status_code=400,
-            detail="unable to read "
-            "optimization data from file %s, %s" % (file_path, str(e)),
+            detail="cuopt data directory not set",
         )
+
+    if os.path.isabs(cuopt_data_file):
+        raise HTTPException(
+            status_code=400,
+            detail="cuopt-data-file must be relative to CUOPT_DATA_DIR",
+        )
+
+    root = os.path.realpath(ddir)
+    file_path = os.path.realpath(os.path.join(root, cuopt_data_file))
+    if os.path.commonpath([root, file_path]) != root:
+        raise HTTPException(
+            status_code=400,
+            detail="cuopt-data-file must stay inside CUOPT_DATA_DIR",
+        )
+
+    if not os.path.exists(file_path):
+        logging.error("cuopt-data-file does not exist")
+        raise HTTPException(
+            status_code=400,
+            detail=f"specified data file does not exist: {cuopt_data_file}",
+        )
+
+    if not os.path.isfile(file_path):
+        logging.error("cuopt-data-file is not a regular file")
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"specified data file is not a regular file: {cuopt_data_file}"
+            ),
+        )
+
     return file_path
 
 

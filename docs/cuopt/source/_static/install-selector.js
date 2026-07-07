@@ -47,10 +47,6 @@
         default: "docker pull nvidia/cuopt:latest-cu13",
         run: "docker run --gpus all -it --rm nvidia/cuopt:latest-cu13 /bin/bash",
       },
-      "cu12-ubi10": {
-        default: "docker pull nvidia/cuopt:latest-cu12-ubi10",
-        run: "docker run --gpus all -it --rm nvidia/cuopt:latest-cu12-ubi10 /bin/bash",
-      },
       "cu13-ubi10": {
         default: "docker pull nvidia/cuopt:latest-cu13-ubi10",
         run: "docker run --gpus all -it --rm nvidia/cuopt:latest-cu13-ubi10 /bin/bash",
@@ -64,10 +60,6 @@
       cu13: {
         default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cu13",
         run: "docker run --gpus all -it --rm nvidia/cuopt:" + V_NEXT + ".0a-cu13 /bin/bash",
-      },
-      "cu12-ubi10": {
-        default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cu12-ubi10",
-        run: "docker run --gpus all -it --rm nvidia/cuopt:" + V_NEXT + ".0a-cu12-ubi10 /bin/bash",
       },
       "cu13-ubi10": {
         default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cu13-ubi10",
@@ -230,10 +222,6 @@
             default: "docker pull nvidia/cuopt:latest-cu13",
             run: "docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:latest-cu13",
           },
-          "cu12-ubi10": {
-            default: "docker pull nvidia/cuopt:latest-cu12-ubi10",
-            run: "docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:latest-cu12-ubi10",
-          },
           "cu13-ubi10": {
             default: "docker pull nvidia/cuopt:latest-cu13-ubi10",
             run: "docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:latest-cu13-ubi10",
@@ -247,10 +235,6 @@
           cu13: {
             default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cu13",
             run: "docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:" + V_NEXT + ".0a-cu13",
-          },
-          "cu12-ubi10": {
-            default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cu12-ubi10",
-            run: "docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:" + V_NEXT + ".0a-cu12-ubi10",
           },
           "cu13-ubi10": {
             default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cu13-ubi10",
@@ -300,7 +284,7 @@
       var variant = getSelectedValue("cuopt-variant") || "ubuntu";
       var baseCuda = cuda || "cu12";
       var cudaKey = baseCuda + (variant === "ubi10" ? "-ubi10" : "");
-      var fallbackKey = "cu12" + (variant === "ubi10" ? "-ubi10" : "");
+      var fallbackKey = (variant === "ubi10") ? "cu13-ubi10" : "cu12";
       var c = data[release][cudaKey] || data[release][fallbackKey];
       var hubPull = c.default;
       var tag = "latest-cu12";
