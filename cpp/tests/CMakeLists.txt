@@ -22,11 +22,12 @@ if(BUILD_TESTS)
 
   target_link_libraries(cuopttestutils
       PUBLIC
-      cuopt
       OpenMP::OpenMP_CXX
       OpenMP::OpenMP_CUDA
       GTest::gmock
       GTest::gtest
+      PRIVATE
+      cuopt_static
   )
   if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
     target_link_options(cuopttestutils PRIVATE -Wl,--enable-new-dtags)
@@ -56,7 +57,7 @@ function(ConfigureTest CMAKE_TEST_NAME)
 
     target_link_libraries(${CMAKE_TEST_NAME}
        PRIVATE
-        cuopt
+        cuopt_static
         cuopttestutils
         OpenMP::OpenMP_CXX
         OpenMP::OpenMP_CUDA

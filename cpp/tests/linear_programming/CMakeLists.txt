@@ -65,7 +65,7 @@ if (NOT SKIP_C_PYTHON_ADAPTERS)
 
     target_link_libraries(C_API_TEST
         PRIVATE
-        cuopt
+        cuopt # link against the shared library to verify that the public C API is properly exported
         cuopttestutils
         c_api_tester
         GTest::gmock
