@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.nvidia.cuopt.linearprogramming.NativeIntegrationTest
+-------------------------------------------------------------------------------
+Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 4.125 s -- in com.nvidia.cuopt.linearprogramming.NativeIntegrationTest

@@ -1,0 +1,7 @@
+com/nvidia/cuopt/linearprogramming/NativeIntegrationTest.class
+com/nvidia/cuopt/linearprogramming/PythonParityTest$ProcessResult.class
+com/nvidia/cuopt/linearprogramming/PythonParityTest$JavaResult.class
+com/nvidia/cuopt/linearprogramming/ProblemModelingTest.class
+com/nvidia/cuopt/linearprogramming/PythonParityTest$CaseSpec.class
+com/nvidia/cuopt/linearprogramming/PythonParityTest.class
+com/nvidia/cuopt/linearprogramming/PythonParityTest$PythonResult.class

@@ -1,0 +1,1716 @@
+#
+# A fatal error has been detected by the Java Runtime Environment:
+#
+#  SIGBUS (0x7) at pc=0x00007f7c3f060c00, pid=1449708, tid=1449709
+#
+# JRE version: OpenJDK Runtime Environment (11.0.24+8) (build 11.0.24+8-post-Ubuntu-1ubuntu322.04)
+# Java VM: OpenJDK 64-Bit Server VM (11.0.24+8-post-Ubuntu-1ubuntu322.04, mixed mode, sharing, tiered, compressed oops, g1 gc, linux-amd64)
+# Problematic frame:
+# C  [libcuopt.so+0x59fc00]  cuopt::linear_programming::problem_and_stream_view_t::~problem_and_stream_view_t()+0x30
+#
+# Core dump will be written. Default location: Core dumps may be processed with "/wsl-capture-crash %t %E %p %s" (or dumping to /home/cbrissette/cuopt/java/cuopt/core.1449708)
+#
+# If you would like to submit a bug report, please visit:
+#   https://bugs.launchpad.net/ubuntu/+source/openjdk-lts
+# The crash happened outside the Java Virtual Machine in native code.
+# See problematic frame for where to report the bug.
+#
+
+---------------  S U M M A R Y ------------
+
+Command Line: /home/cbrissette/cuopt/java/cuopt/target/surefire/surefirebooter-20260707091921778_3.jar /home/cbrissette/cuopt/java/cuopt/target/surefire 2026-07-07T09-19-21_604-jvmRun1 surefire-20260707091921778_1tmp surefire_0-20260707091921778_2tmp
+
+Host: 13th Gen Intel(R) Core(TM) i7-13800H, 20 cores, 15G, Ubuntu 22.04.5 LTS
+Time: Tue Jul  7 09:19:24 2026 EDT elapsed time: 3.161848 seconds (0d 0h 0m 3s)
+
+---------------  T H R E A D  ---------------
+
+Current thread (0x00007f7cd0016000):  JavaThread "main" [_thread_in_native, id=1449709, stack(0x00007f7cd785d000,0x00007f7cd795d000)]
+
+Stack: [0x00007f7cd785d000,0x00007f7cd795d000],  sp=0x00007f7cd7958910,  free space=1006k
+Native frames: (J=compiled Java code, A=aot compiled Java code, j=interpreted, Vv=VM code, C=native code)
+C  [libcuopt.so+0x59fc00]  cuopt::linear_programming::problem_and_stream_view_t::~problem_and_stream_view_t()+0x30
+
+Java frames: (J=compiled Java code, j=interpreted, Vv=VM code)
+j  com.nvidia.cuopt.linearprogramming.NativeCuOpt.destroyProblem(J)V+0
+j  com.nvidia.cuopt.linearprogramming.DataModel$NativeHandle.run()V+13
+J 724 c1 jdk.internal.ref.CleanerImpl$PhantomCleanableRef.performCleanup()V java.base@11.0.24 (10 bytes) @ 0x00007f7cb90637f4 [0x00007f7cb90636c0+0x0000000000000134]
+J 723 c1 jdk.internal.ref.PhantomCleanable.clean()V java.base@11.0.24 (16 bytes) @ 0x00007f7cb9063d3c [0x00007f7cb9063b60+0x00000000000001dc]
+j  com.nvidia.cuopt.linearprogramming.DataModel.close()V+4
+j  com.nvidia.cuopt.linearprogramming.NativeIntegrationTest.mutableDataModelExposesPythonMetadataAndQuadraticFields()V+576
+v  ~StubRoutines::call_stub
+j  jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Ljava/lang/reflect/Method;Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;+0 java.base@11.0.24
+j  jdk.internal.reflect.NativeMethodAccessorImpl.invoke(Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;+100 java.base@11.0.24
+j  jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;+6 java.base@11.0.24
+j  java.lang.reflect.Method.invoke(Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;+59 java.base@11.0.24
+j  org.junit.platform.commons.util.ReflectionUtils.invokeMethod(Ljava/lang/reflect/Method;Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;+42
+j  org.junit.jupiter.engine.execution.MethodInvocation.proceed()Ljava/lang/Object;+16
+j  org.junit.jupiter.engine.execution.InvocationInterceptorChain$ValidatingInvocation.proceed()Ljava/lang/Object;+8
+j  org.junit.jupiter.engine.extension.TimeoutExtension.intercept(Lorg/junit/jupiter/api/extension/InvocationInterceptor$Invocation;Lorg/junit/jupiter/api/extension/ReflectiveInvocationContext;Lorg/junit/jupiter/api/extension/ExtensionContext;Lorg/junit/jupiter/engine/extension/TimeoutDuration;Lorg/junit/jupiter/engine/extension/TimeoutExtension$TimeoutProvider;)Ljava/lang/Object;+28
+j  org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestableMethod(Lorg/junit/jupiter/api/extension/InvocationInterceptor$Invocation;Lorg/junit/jupiter/api/extension/ReflectiveInvocationContext;Lorg/junit/jupiter/api/extension/ExtensionContext;Lorg/junit/jupiter/engine/extension/TimeoutExtension$TimeoutProvider;)Ljava/lang/Object;+31
+j  org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestMethod(Lorg/junit/jupiter/api/extension/InvocationInterceptor$Invocation;Lorg/junit/jupiter/api/extension/ReflectiveInvocationContext;Lorg/junit/jupiter/api/extension/ExtensionContext;)V+9
+j  org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor$$Lambda$189.apply(Lorg/junit/jupiter/api/extension/InvocationInterceptor;Lorg/junit/jupiter/api/extension/InvocationInterceptor$Invocation;Lorg/junit/jupiter/api/extension/ReflectiveInvocationContext;Lorg/junit/jupiter/api/extension/ExtensionContext;)V+5
+j  org.junit.jupiter.engine.execution.InterceptingExecutableInvoker$ReflectiveInterceptorCall.lambda$ofVoidMethod$0(Lorg/junit/jupiter/engine/execution/InterceptingExecutableInvoker$ReflectiveInterceptorCall$VoidMethodInterceptorCall;Lorg/junit/jupiter/api/extension/InvocationInterceptor;Lorg/junit/jupiter/api/extension/InvocationInterceptor$Invocation;Lorg/junit/jupiter/api/extension/ReflectiveInvocationContext;Lorg/junit/jupiter/api/extension/ExtensionContext;)Ljava/lang/Void;+6
+j  org.junit.jupiter.engine.execution.InterceptingExecutableInvoker$ReflectiveInterceptorCall$$Lambda$190.apply(Lorg/junit/jupiter/api/extension/InvocationInterceptor;Lorg/junit/jupiter/api/extension/InvocationInterceptor$Invocation;Lorg/junit/jupiter/api/extension/ReflectiveInvocationContext;Lorg/junit/jupiter/api/extension/ExtensionContext;)Ljava/lang/Object;+9
+j  org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.lambda$invoke$0(Lorg/junit/jupiter/engine/execution/InterceptingExecutableInvoker$ReflectiveInterceptorCall;Lorg/junit/jupiter/api/extension/ReflectiveInvocationContext;Lorg/junit/jupiter/api/extension/ExtensionContext;Lorg/junit/jupiter/api/extension/InvocationInterceptor;Lorg/junit/jupiter/api/extension/InvocationInterceptor$Invocation;)Ljava/lang/Object;+6
+j  org.junit.jupiter.engine.execution.InterceptingExecutableInvoker$$Lambda$378.apply(Lorg/junit/jupiter/api/extension/InvocationInterceptor;Lorg/junit/jupiter/api/extension/InvocationInterceptor$Invocation;)Ljava/lang/Object;+14
+j  org.junit.jupiter.engine.execution.InvocationInterceptorChain$InterceptedInvocation.proceed()Ljava/lang/Object;+12
+j  org.junit.jupiter.engine.execution.InvocationInterceptorChain.proceed(Lorg/junit/jupiter/api/extension/InvocationInterceptor$Invocation;)Ljava/lang/Object;+1
+j  org.junit.jupiter.engine.execution.InvocationInterceptorChain.chainAndInvoke(Lorg/junit/jupiter/api/extension/InvocationInterceptor$Invocation;Lorg/junit/jupiter/engine/execution/InvocationInterceptorChain$InterceptorCall;Ljava/util/List;)Ljava/lang/Object;+24
+j  org.junit.jupiter.engine.execution.InvocationInterceptorChain.invoke(Lorg/junit/jupiter/api/extension/InvocationInterceptor$Invocation;Lorg/junit/jupiter/engine/extension/ExtensionRegistry;Lorg/junit/jupiter/engine/execution/InvocationInterceptorChain$InterceptorCall;)Ljava/lang/Object;+31
+j  org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(Lorg/junit/jupiter/api/extension/InvocationInterceptor$Invocation;Lorg/junit/jupiter/api/extension/ReflectiveInvocationContext;Lorg/junit/jupiter/api/extension/ExtensionContext;Lorg/junit/jupiter/engine/extension/ExtensionRegistry;Lorg/junit/jupiter/engine/execution/InterceptingExecutableInvoker$ReflectiveInterceptorCall;)Ljava/lang/Object;+15
+j  org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(Ljava/lang/reflect/Method;Ljava/lang/Object;Lorg/junit/jupiter/api/extension/ExtensionContext;Lorg/junit/jupiter/engine/extension/ExtensionRegistry;Lorg/junit/jupiter/engine/execution/InterceptingExecutableInvoker$ReflectiveInterceptorCall;)Ljava/lang/Object;+55
+j  org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.lambda$invokeTestMethod$8(Lorg/junit/jupiter/api/extension/ExtensionContext;Lorg/junit/jupiter/engine/execution/JupiterEngineExecutionContext;)V+28
+j  org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor$$Lambda$399.execute()V+12
+j  org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(Lorg/junit/platform/engine/support/hierarchical/ThrowableCollector$Executable;)V+1
+j  org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.invokeTestMethod(Lorg/junit/jupiter/engine/execution/JupiterEngineExecutionContext;Lorg/junit/platform/engine/support/hierarchical/Node$DynamicTestExecutor;)V+21
+j  org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(Lorg/junit/jupiter/engine/execution/JupiterEngineExecutionContext;Lorg/junit/platform/engine/support/hierarchical/Node$DynamicTestExecutor;)Lorg/junit/jupiter/engine/execution/JupiterEngineExecutionContext;+44
+j  org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(Lorg/junit/platform/engine/support/hierarchical/EngineExecutionContext;Lorg/junit/platform/engine/support/hierarchical/Node$DynamicTestExecutor;)Lorg/junit/platform/engine/support/hierarchical/EngineExecutionContext;+6
+j  org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6()V+79
+j  org.junit.platform.engine.support.hierarchical.NodeTestTask$$Lambda$297.execute()V+4
+j  org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(Lorg/junit/platform/engine/support/hierarchical/ThrowableCollector$Executable;)V+1
+j  org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(Lorg/junit/platform/engine/support/hierarchical/EngineExecutionContext;)V+15
+j  org.junit.platform.engine.support.hierarchical.NodeTestTask$$Lambda$296.invoke(Lorg/junit/platform/engine/support/hierarchical/EngineExecutionContext;)V+5
+j  org.junit.platform.engine.support.hierarchical.Node.around(Lorg/junit/platform/engine/support/hierarchical/EngineExecutionContext;Lorg/junit/platform/engine/support/hierarchical/Node$Invocation;)V+2
+j  org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9()V+14
+j  org.junit.platform.engine.support.hierarchical.NodeTestTask$$Lambda$295.execute()V+4
+j  org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(Lorg/junit/platform/engine/support/hierarchical/ThrowableCollector$Executable;)V+1
+j  org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively()V+31
+j  org.junit.platform.engine.support.hierarchical.NodeTestTask.execute()V+55
+j  org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService$$Lambda$301.accept(Ljava/lang/Object;)V+4
+j  java.util.ArrayList.forEach(Ljava/util/function/Consumer;)V+46 java.base@11.0.24
+j  org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(Ljava/util/List;)V+6
+j  org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6()V+116
+j  org.junit.platform.engine.support.hierarchical.NodeTestTask$$Lambda$297.execute()V+4
+j  org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(Lorg/junit/platform/engine/support/hierarchical/ThrowableCollector$Executable;)V+1
+j  org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(Lorg/junit/platform/engine/support/hierarchical/EngineExecutionContext;)V+15
+j  org.junit.platform.engine.support.hierarchical.NodeTestTask$$Lambda$296.invoke(Lorg/junit/platform/engine/support/hierarchical/EngineExecutionContext;)V+5
+j  org.junit.platform.engine.support.hierarchical.Node.around(Lorg/junit/platform/engine/support/hierarchical/EngineExecutionContext;Lorg/junit/platform/engine/support/hierarchical/Node$Invocation;)V+2
+j  org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9()V+14
+j  org.junit.platform.engine.support.hierarchical.NodeTestTask$$Lambda$295.execute()V+4
+j  org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(Lorg/junit/platform/engine/support/hierarchical/ThrowableCollector$Executable;)V+1
+j  org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively()V+31
+j  org.junit.platform.engine.support.hierarchical.NodeTestTask.execute()V+55
+j  org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService$$Lambda$301.accept(Ljava/lang/Object;)V+4
+j  java.util.ArrayList.forEach(Ljava/util/function/Consumer;)V+46 java.base@11.0.24
+j  org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(Ljava/util/List;)V+6
+j  org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6()V+116
+j  org.junit.platform.engine.support.hierarchical.NodeTestTask$$Lambda$297.execute()V+4
+j  org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(Lorg/junit/platform/engine/support/hierarchical/ThrowableCollector$Executable;)V+1
+j  org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(Lorg/junit/platform/engine/support/hierarchical/EngineExecutionContext;)V+15
+j  org.junit.platform.engine.support.hierarchical.NodeTestTask$$Lambda$296.invoke(Lorg/junit/platform/engine/support/hierarchical/EngineExecutionContext;)V+5
+j  org.junit.platform.engine.support.hierarchical.Node.around(Lorg/junit/platform/engine/support/hierarchical/EngineExecutionContext;Lorg/junit/platform/engine/support/hierarchical/Node$Invocation;)V+2
+j  org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9()V+14
+j  org.junit.platform.engine.support.hierarchical.NodeTestTask$$Lambda$295.execute()V+4
+j  org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(Lorg/junit/platform/engine/support/hierarchical/ThrowableCollector$Executable;)V+1
+j  org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively()V+31
+j  org.junit.platform.engine.support.hierarchical.NodeTestTask.execute()V+55
+j  org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.submit(Lorg/junit/platform/engine/support/hierarchical/HierarchicalTestExecutorService$TestTask;)Ljava/util/concurrent/Future;+1
+j  org.junit.platform.engine.support.hierarchical.HierarchicalTestExecutor.execute()Ljava/util/concurrent/Future;+74
+j  org.junit.platform.engine.support.hierarchical.HierarchicalTestEngine.execute(Lorg/junit/platform/engine/ExecutionRequest;)V+31
+j  org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(Lorg/junit/platform/engine/TestDescriptor;Lorg/junit/platform/engine/EngineExecutionListener;Lorg/junit/platform/engine/ConfigurationParameters;Lorg/junit/platform/engine/TestEngine;)V+24
+j  org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(Lorg/junit/platform/launcher/core/LauncherDiscoveryResult;Lorg/junit/platform/engine/EngineExecutionListener;)V+115
+j  org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(Lorg/junit/platform/launcher/core/InternalTestPlan;Lorg/junit/platform/engine/EngineExecutionListener;Lorg/junit/platform/launcher/TestExecutionListener;)V+55
+j  org.junit.platform.launcher.core.EngineExecutionOrchestrator.lambda$execute$0(Lorg/junit/platform/launcher/core/InternalTestPlan;Lorg/junit/platform/launcher/TestExecutionListener;)V+6
+j  org.junit.platform.launcher.core.EngineExecutionOrchestrator$$Lambda$243.accept(Ljava/lang/Object;)V+12
+j  org.junit.platform.launcher.core.EngineExecutionOrchestrator.withInterceptedStreams(Lorg/junit/platform/engine/ConfigurationParameters;Lorg/junit/platform/launcher/core/ListenerRegistry;Ljava/util/function/Consumer;)V+51
+j  org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(Lorg/junit/platform/launcher/core/InternalTestPlan;[Lorg/junit/platform/launcher/TestExecutionListener;)V+23
+j  org.junit.platform.launcher.core.DefaultLauncher.execute(Lorg/junit/platform/launcher/core/InternalTestPlan;[Lorg/junit/platform/launcher/TestExecutionListener;)V+6
+j  org.junit.platform.launcher.core.DefaultLauncher.execute(Lorg/junit/platform/launcher/LauncherDiscoveryRequest;[Lorg/junit/platform/launcher/TestExecutionListener;)V+34
+j  org.junit.platform.launcher.core.DelegatingLauncher.execute(Lorg/junit/platform/launcher/LauncherDiscoveryRequest;[Lorg/junit/platform/launcher/TestExecutionListener;)V+6
+j  org.apache.maven.surefire.junitplatform.LazyLauncher.execute(Lorg/junit/platform/launcher/LauncherDiscoveryRequest;[Lorg/junit/platform/launcher/TestExecutionListener;)V+6
+j  org.apache.maven.surefire.junitplatform.JUnitPlatformProvider.execute(Lorg/apache/maven/surefire/api/util/TestsToRun;Lorg/apache/maven/surefire/junitplatform/RunListenerAdapter;)V+70
+j  org.apache.maven.surefire.junitplatform.JUnitPlatformProvider.invokeAllTests(Lorg/apache/maven/surefire/api/util/TestsToRun;Lorg/apache/maven/surefire/junitplatform/RunListenerAdapter;)V+3
+j  org.apache.maven.surefire.junitplatform.JUnitPlatformProvider.invoke(Ljava/lang/Object;)Lorg/apache/maven/surefire/api/suite/RunResult;+95
+j  org.apache.maven.surefire.booter.ForkedBooter.runSuitesInProcess()V+8
+j  org.apache.maven.surefire.booter.ForkedBooter.execute()V+1
+j  org.apache.maven.surefire.booter.ForkedBooter.run(Lorg/apache/maven/surefire/booter/ForkedBooter;[Ljava/lang/String;)V+27
+j  org.apache.maven.surefire.booter.ForkedBooter.main([Ljava/lang/String;)V+10
+v  ~StubRoutines::call_stub
+
+siginfo: si_signo: 7 (SIGBUS), si_code: 128 (SI_KERNEL), si_addr: 0x0000000000000000
+
+Register to memory mapping:
+
+RAX=0x0 is NULL
+RBX=0x00007f7cd1fe4c80 points into unknown readable memory: 0x00007f7b00000000 | 00 00 00 00 7b 7f 00 00
+RCX=0x0000000000000060 is an unknown value
+RDX=0x00007f7cd0000090 points into unknown readable memory: 0x00007f7cd3fe30c0 | c0 30 fe d3 7c 7f 00 00
+RSP=0x00007f7cd7958910 is pointing into the stack for thread: 0x00007f7cd0016000
+RBP=0x2f676e616c2f6176 is an unknown value
+RSI=0x0 is NULL
+RDI=0x0 is NULL
+R8 =0x00007f7cd1039da0 points into unknown readable memory: 0x0000000000000001 | 01 00 00 00 00 00 00 00
+R9 =0x0 is NULL
+R10=0x00007f7cd1068e98 points into unknown readable memory: 0x00007f7c0540bd70 | 70 bd 40 05 7c 7f 00 00
+R11=0xcc81f13a041e411a is an unknown value
+R12=0x00007f7cd90606d0: __pthread_key_create+0x0000000000000000 in /lib/x86_64-linux-gnu/libc.so.6 at 0x00007f7cd8fca000
+R13=0x0000000000000004 is an unknown value
+R14=0x00007f7cd7958a18 is pointing into the stack for thread: 0x00007f7cd0016000
+R15=0x00007f7cd0016000 is a thread
+
+
+Registers:
+RAX=0x0000000000000000, RBX=0x00007f7cd1fe4c80, RCX=0x0000000000000060, RDX=0x00007f7cd0000090
+RSP=0x00007f7cd7958910, RBP=0x2f676e616c2f6176, RSI=0x0000000000000000, RDI=0x0000000000000000
+R8 =0x00007f7cd1039da0, R9 =0x0000000000000000, R10=0x00007f7cd1068e98, R11=0xcc81f13a041e411a
+R12=0x00007f7cd90606d0, R13=0x0000000000000004, R14=0x00007f7cd7958a18, R15=0x00007f7cd0016000
+RIP=0x00007f7c3f060c00, EFLAGS=0x0000000000010202, CSGSFS=0x002b000000000033, ERR=0x0000000000000000
+  TRAPNO=0x000000000000000c
+
+Top of Stack: (sp=0x00007f7cd7958910)
+0x00007f7cd7958910:   00007f7cd0016000 00007f7cd7958958
+0x00007f7cd7958920:   00007f7cd1fe4c80 00007f7c3f060cce
+0x00007f7cd7958930:   00007f7ca5f50040 00007f7cd1fe4c80
+0x00007f7cd7958940:   00007f7cd2b1feb0 00007f7cac076ff8 
+
+Instructions: (pc=0x00007f7c3f060c00)
+0x00007f7c3f060b00:   00 eb d6 0f 1f 44 00 00 48 8b 07 ff 90 38 01 00
+0x00007f7c3f060b10:   00 eb c6 0f 1f 44 00 00 48 8b 07 ff 90 30 01 00
+0x00007f7c3f060b20:   00 eb b6 0f 1f 44 00 00 b8 01 00 00 00 5b c3 48
+0x00007f7c3f060b30:   89 c7 48 89 d0 e9 33 3a d0 ff 66 0f 1f 44 00 00
+0x00007f7c3f060b40:   48 85 d2 74 3b 48 85 ff 74 36 80 3f 00 75 31 48
+0x00007f7c3f060b50:   8b 7f 10 48 85 ff 74 28 53 48 89 d3 83 fe 0c 74
+0x00007f7c3f060b60:   4f 83 fe 10 74 3a 83 fe 0b 75 25 48 8b 07 ff 90
+0x00007f7c3f060b70:   40 01 00 00 89 03 31 c0 5b c3 66 0f 1f 44 00 00
+0x00007f7c3f060b80:   b8 01 00 00 00 c3 66 2e 0f 1f 84 00 00 00 00 00
+0x00007f7c3f060b90:   b8 01 00 00 00 5b c3 66 0f 1f 84 00 00 00 00 00
+0x00007f7c3f060ba0:   48 8b 07 ff 90 68 01 00 00 eb c9 0f 1f 44 00 00
+0x00007f7c3f060bb0:   48 8b 07 ff 90 48 01 00 00 eb b9 48 89 c7 48 89
+0x00007f7c3f060bc0:   d0 e9 c8 39 d0 ff 66 2e 0f 1f 84 00 00 00 00 00
+0x00007f7c3f060bd0:   55 53 48 89 fb 48 83 ec 08 48 8b 7f 08 48 85 ff
+0x00007f7c3f060be0:   74 06 48 8b 07 ff 50 08 48 8b 7b 10 48 85 ff 74
+0x00007f7c3f060bf0:   06 48 8b 07 ff 50 08 48 8b 6b 50 48 85 ed 74 47
+0x00007f7c3f060c00:   48 8b 45 00 48 8d 15 a5 da e1 ff 48 8b 40 08 48
+0x00007f7c3f060c10:   39 d0 0f 85 88 00 00 00 48 8b 05 99 70 c4 00 48
+0x00007f7c3f060c20:   8d 7d 48 48 83 c0 10 48 89 45 00 e8 d0 e0 e1 ff
+0x00007f7c3f060c30:   48 8d 7d 30 e8 e7 df e1 ff be 60 00 00 00 48 89
+0x00007f7c3f060c40:   ef ff 15 21 e1 c3 00 48 8b 7b 48 48 85 ff 74 0b
+0x00007f7c3f060c50:   be 08 00 00 00 ff 15 0d e1 c3 00 48 8b 7b 30 48
+0x00007f7c3f060c60:   85 ff 74 0d 48 8b 73 40 48 29 fe ff 15 f7 e0 c3
+0x00007f7c3f060c70:   00 48 8b 7b 18 48 85 ff 74 16 48 8b 73 28 48 83
+0x00007f7c3f060c80:   c4 08 5b 5d 48 29 fe ff 25 db e0 c3 00 0f 1f 00
+0x00007f7c3f060c90:   48 83 c4 08 5b 5d c3 66 0f 1f 84 00 00 00 00 00
+0x00007f7c3f060ca0:   48 89 ef ff d0 eb a0 66 0f 1f 84 00 00 00 00 00
+0x00007f7c3f060cb0:   48 85 ff 74 3b 55 53 48 89 fb 48 83 ec 08 48 8b
+0x00007f7c3f060cc0:   2f 48 85 ed 74 1d 48 89 ef e8 02 ff ff ff be 58
+0x00007f7c3f060cd0:   00 00 00 48 89 ef ff 15 8c e0 c3 00 48 c7 03 00
+0x00007f7c3f060ce0:   00 00 00 48 83 c4 08 5b 5d c3 66 0f 1f 44 00 00
+0x00007f7c3f060cf0:   c3 66 2e 0f 1f 84 00 00 00 00 00 0f 1f 44 00 00 
+
+
+Stack slot to memory mapping:
+stack at sp + 0 slots: 0x00007f7cd0016000 is a thread
+stack at sp + 1 slots: 0x00007f7cd7958958 is pointing into the stack for thread: 0x00007f7cd0016000
+stack at sp + 2 slots: 0x00007f7cd1fe4c80 points into unknown readable memory: 0x00007f7b00000000 | 00 00 00 00 7b 7f 00 00
+stack at sp + 3 slots: 0x00007f7c3f060cce: cuOptDestroyProblem+0x000000000000001e in /home/cbrissette/cuopt/.cuopt_env/lib/libcuopt.so at 0x00007f7c3eac1000
+stack at sp + 4 slots: 0x00007f7ca5f50040 is pointing into metadata
+stack at sp + 5 slots: 0x00007f7cd1fe4c80 points into unknown readable memory: 0x00007f7b00000000 | 00 00 00 00 7b 7f 00 00
+stack at sp + 6 slots: 0x00007f7cd2b1feb0 points into unknown readable memory: 0x00007f7b257ceebf | bf ee 7c 25 7b 7f 00 00
+stack at sp + 7 slots: 0x00007f7cac076ff8: Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_destroyProblem+0x0000000000000098 in /home/cbrissette/cuopt/java/cuopt/build/native/libcuopt_jni.so at 0x00007f7cac055000
+
+
+---------------  P R O C E S S  ---------------
+
+Threads class SMR info:
+_java_thread_list=0x00007f7cd368b2f0, length=16, elements={
+0x00007f7cd0016000, 0x00007f7cd0253800, 0x00007f7cd0255800, 0x00007f7cd025d800,
+0x00007f7cd025f800, 0x00007f7cd0262000, 0x00007f7cd0264000, 0x00007f7cd0266000,
+0x00007f7c8008c800, 0x00007f7cd0298800, 0x00007f7cd03ed000, 0x00007f7cd03fa000,
+0x00007f7cd06a4000, 0x00007f7cd10a5000, 0x00007f7cd1fe1000, 0x00007f7cd2201000
+}
+
+Java Threads: ( => current thread )
+=>0x00007f7cd0016000 JavaThread "main" [_thread_in_native, id=1449709, stack(0x00007f7cd785d000,0x00007f7cd795d000)]
+  0x00007f7cd0253800 JavaThread "Reference Handler" daemon [_thread_blocked, id=1449719, stack(0x00007f7cac28f000,0x00007f7cac38f000)]
+  0x00007f7cd0255800 JavaThread "Finalizer" daemon [_thread_blocked, id=1449720, stack(0x00007f7cac18f000,0x00007f7cac28f000)]
+  0x00007f7cd025d800 JavaThread "Signal Dispatcher" daemon [_thread_blocked, id=1449721, stack(0x00007f7cac08f000,0x00007f7cac18f000)]
+  0x00007f7cd025f800 JavaThread "Service Thread" daemon [_thread_blocked, id=1449722, stack(0x00007f7ca5700000,0x00007f7ca5800000)]
+  0x00007f7cd0262000 JavaThread "C2 CompilerThread0" daemon [_thread_blocked, id=1449723, stack(0x00007f7ca5600000,0x00007f7ca5700000)]
+  0x00007f7cd0264000 JavaThread "C1 CompilerThread0" daemon [_thread_blocked, id=1449724, stack(0x00007f7ca5500000,0x00007f7ca5600000)]
+  0x00007f7cd0266000 JavaThread "Sweeper thread" daemon [_thread_blocked, id=1449725, stack(0x00007f7ca5400000,0x00007f7ca5500000)]
+  0x00007f7c8008c800 JavaThread "C1 CompilerThread1" daemon [_thread_blocked, id=1449726, stack(0x00007f7ca5300000,0x00007f7ca5400000)]
+  0x00007f7cd0298800 JavaThread "Common-Cleaner" daemon [_thread_blocked, id=1449728, stack(0x00007f7ca50ff000,0x00007f7ca51ff000)]
+  0x00007f7cd03ed000 JavaThread "surefire-forkedjvm-stream-flusher" daemon [_thread_blocked, id=1449732, stack(0x00007f7ca4fff000,0x00007f7ca50ff000)]
+  0x00007f7cd03fa000 JavaThread "surefire-forkedjvm-command-thread" daemon [_thread_in_native, id=1449733, stack(0x00007f7ca4eff000,0x00007f7ca4fff000)]
+  0x00007f7cd06a4000 JavaThread "Cleaner-0" daemon [_thread_blocked, id=1449747, stack(0x00007f7ca46fa000,0x00007f7ca47fa000)]
+  0x00007f7cd10a5000 JavaThread "process reaper" daemon [_thread_blocked, id=1449842, stack(0x00007f7c0730b000,0x00007f7c0732d000)]
+  0x00007f7cd1fe1000 JavaThread "Cleaner-1" daemon [_thread_blocked, id=1449847, stack(0x00007f7ca4dff000,0x00007f7ca4eff000)]
+  0x00007f7cd2201000 JavaThread "Cleaner-2" daemon [_thread_blocked, id=1449852, stack(0x00007f7ca4cff000,0x00007f7ca4dff000)]
+
+Other Threads:
+  0x00007f7cd0250800 VMThread "VM Thread" [stack: 0x00007f7cac390000,0x00007f7cac490000] [id=1449718]
+  0x00007f7cd0296800 WatcherThread [stack: 0x00007f7ca5200000,0x00007f7ca5300000] [id=1449727]
+  0x00007f7cd0030000 GCTaskThread "GC Thread#0" [stack: 0x00007f7cd7523000,0x00007f7cd7623000] [id=1449710]
+  0x00007f7c98019000 GCTaskThread "GC Thread#1" [stack: 0x00007f7ca4bff000,0x00007f7ca4cff000] [id=1449739]
+  0x00007f7c9801a800 GCTaskThread "GC Thread#2" [stack: 0x00007f7ca4afe000,0x00007f7ca4bfe000] [id=1449740]
+  0x00007f7c9801c000 GCTaskThread "GC Thread#3" [stack: 0x00007f7ca49fd000,0x00007f7ca4afd000] [id=1449741]
+  0x00007f7c9801e000 GCTaskThread "GC Thread#4" [stack: 0x00007f7ca48fc000,0x00007f7ca49fc000] [id=1449742]
+  0x00007f7c9801f800 GCTaskThread "GC Thread#5" [stack: 0x00007f7ca47fb000,0x00007f7ca48fb000] [id=1449743]
+  0x00007f7cd008e000 ConcurrentGCThread "G1 Main Marker" [stack: 0x00007f7cd4bf8000,0x00007f7cd4cf8000] [id=1449711]
+  0x00007f7cd008f800 ConcurrentGCThread "G1 Conc#0" [stack: 0x00007f7cd4af7000,0x00007f7cd4bf7000] [id=1449712]
+  0x00007f7cd01ab000 ConcurrentGCThread "G1 Refine#0" [stack: 0x00007f7cb81ca000,0x00007f7cb82ca000] [id=1449715]
+  0x00007f7cd01ac800 ConcurrentGCThread "G1 Young RemSet Sampling" [stack: 0x00007f7cb80c9000,0x00007f7cb81c9000] [id=1449716]
+
+Threads with active compile tasks:
+
+VM state:not at safepoint (normal execution)
+
+VM Mutex/Monitor currently owned by a thread: None
+
+Heap address: 0x0000000709200000, size: 3950 MB, Compressed Oops mode: Zero based, Oop shift amount: 3
+Narrow klass base: 0x0000000800000000, Narrow klass shift: 3
+Compressed class space size: 1073741824 Address: 0x0000000840000000
+
+Heap:
+ garbage-first heap   total 256000K, used 4239K [0x0000000709200000, 0x0000000800000000)
+  region size 1024K, 5 young (5120K), 3 survivors (3072K)
+ Metaspace       used 7500K, capacity 9132K, committed 9216K, reserved 1056768K
+  class space    used 905K, capacity 1238K, committed 1280K, reserved 1048576K
+Heap Regions: E=young(eden), S=young(survivor), O=old, HS=humongous(starts), HC=humongous(continues), CS=collection set, F=free, A=archive, TAMS=top-at-mark-start (previous, next)
+|   0|0x0000000709200000, 0x0000000709200000, 0x0000000709300000|  0%| F|  |TAMS 0x0000000709200000, 0x0000000709200000| Untracked 
+|   1|0x0000000709300000, 0x0000000709300000, 0x0000000709400000|  0%| F|  |TAMS 0x0000000709300000, 0x0000000709300000| Untracked 
+|   2|0x0000000709400000, 0x0000000709400000, 0x0000000709500000|  0%| F|  |TAMS 0x0000000709400000, 0x0000000709400000| Untracked 
+|   3|0x0000000709500000, 0x0000000709500000, 0x0000000709600000|  0%| F|  |TAMS 0x0000000709500000, 0x0000000709500000| Untracked 
+|   4|0x0000000709600000, 0x0000000709600000, 0x0000000709700000|  0%| F|  |TAMS 0x0000000709600000, 0x0000000709600000| Untracked 
+|   5|0x0000000709700000, 0x0000000709700000, 0x0000000709800000|  0%| F|  |TAMS 0x0000000709700000, 0x0000000709700000| Untracked 
+|   6|0x0000000709800000, 0x0000000709800000, 0x0000000709900000|  0%| F|  |TAMS 0x0000000709800000, 0x0000000709800000| Untracked 
+|   7|0x0000000709900000, 0x0000000709900000, 0x0000000709a00000|  0%| F|  |TAMS 0x0000000709900000, 0x0000000709900000| Untracked 
+|   8|0x0000000709a00000, 0x0000000709a00000, 0x0000000709b00000|  0%| F|  |TAMS 0x0000000709a00000, 0x0000000709a00000| Untracked 
+|   9|0x0000000709b00000, 0x0000000709b00000, 0x0000000709c00000|  0%| F|  |TAMS 0x0000000709b00000, 0x0000000709b00000| Untracked 
+|  10|0x0000000709c00000, 0x0000000709c00000, 0x0000000709d00000|  0%| F|  |TAMS 0x0000000709c00000, 0x0000000709c00000| Untracked 
+|  11|0x0000000709d00000, 0x0000000709d00000, 0x0000000709e00000|  0%| F|  |TAMS 0x0000000709d00000, 0x0000000709d00000| Untracked 
+|  12|0x0000000709e00000, 0x0000000709e00000, 0x0000000709f00000|  0%| F|  |TAMS 0x0000000709e00000, 0x0000000709e00000| Untracked 
+|  13|0x0000000709f00000, 0x0000000709f00000, 0x000000070a000000|  0%| F|  |TAMS 0x0000000709f00000, 0x0000000709f00000| Untracked 
+|  14|0x000000070a000000, 0x000000070a000000, 0x000000070a100000|  0%| F|  |TAMS 0x000000070a000000, 0x000000070a000000| Untracked 
+|  15|0x000000070a100000, 0x000000070a100000, 0x000000070a200000|  0%| F|  |TAMS 0x000000070a100000, 0x000000070a100000| Untracked 
+|  16|0x000000070a200000, 0x000000070a200000, 0x000000070a300000|  0%| F|  |TAMS 0x000000070a200000, 0x000000070a200000| Untracked 
+|  17|0x000000070a300000, 0x000000070a300000, 0x000000070a400000|  0%| F|  |TAMS 0x000000070a300000, 0x000000070a300000| Untracked 
+|  18|0x000000070a400000, 0x000000070a400000, 0x000000070a500000|  0%| F|  |TAMS 0x000000070a400000, 0x000000070a400000| Untracked 
+|  19|0x000000070a500000, 0x000000070a500000, 0x000000070a600000|  0%| F|  |TAMS 0x000000070a500000, 0x000000070a500000| Untracked 
+|  20|0x000000070a600000, 0x000000070a600000, 0x000000070a700000|  0%| F|  |TAMS 0x000000070a600000, 0x000000070a600000| Untracked 
+|  21|0x000000070a700000, 0x000000070a700000, 0x000000070a800000|  0%| F|  |TAMS 0x000000070a700000, 0x000000070a700000| Untracked 
+|  22|0x000000070a800000, 0x000000070a800000, 0x000000070a900000|  0%| F|  |TAMS 0x000000070a800000, 0x000000070a800000| Untracked 
+|  23|0x000000070a900000, 0x000000070a900000, 0x000000070aa00000|  0%| F|  |TAMS 0x000000070a900000, 0x000000070a900000| Untracked 
+|  24|0x000000070aa00000, 0x000000070aa00000, 0x000000070ab00000|  0%| F|  |TAMS 0x000000070aa00000, 0x000000070aa00000| Untracked 
+|  25|0x000000070ab00000, 0x000000070ab00000, 0x000000070ac00000|  0%| F|  |TAMS 0x000000070ab00000, 0x000000070ab00000| Untracked 
+|  26|0x000000070ac00000, 0x000000070ac00000, 0x000000070ad00000|  0%| F|  |TAMS 0x000000070ac00000, 0x000000070ac00000| Untracked 
+|  27|0x000000070ad00000, 0x000000070ad00000, 0x000000070ae00000|  0%| F|  |TAMS 0x000000070ad00000, 0x000000070ad00000| Untracked 
+|  28|0x000000070ae00000, 0x000000070ae00000, 0x000000070af00000|  0%| F|  |TAMS 0x000000070ae00000, 0x000000070ae00000| Untracked 
+|  29|0x000000070af00000, 0x000000070af00000, 0x000000070b000000|  0%| F|  |TAMS 0x000000070af00000, 0x000000070af00000| Untracked 
+|  30|0x000000070b000000, 0x000000070b000000, 0x000000070b100000|  0%| F|  |TAMS 0x000000070b000000, 0x000000070b000000| Untracked 
+|  31|0x000000070b100000, 0x000000070b100000, 0x000000070b200000|  0%| F|  |TAMS 0x000000070b100000, 0x000000070b100000| Untracked 
+|  32|0x000000070b200000, 0x000000070b200000, 0x000000070b300000|  0%| F|  |TAMS 0x000000070b200000, 0x000000070b200000| Untracked 
+|  33|0x000000070b300000, 0x000000070b300000, 0x000000070b400000|  0%| F|  |TAMS 0x000000070b300000, 0x000000070b300000| Untracked 
+|  34|0x000000070b400000, 0x000000070b400000, 0x000000070b500000|  0%| F|  |TAMS 0x000000070b400000, 0x000000070b400000| Untracked 
+|  35|0x000000070b500000, 0x000000070b500000, 0x000000070b600000|  0%| F|  |TAMS 0x000000070b500000, 0x000000070b500000| Untracked 
+|  36|0x000000070b600000, 0x000000070b600000, 0x000000070b700000|  0%| F|  |TAMS 0x000000070b600000, 0x000000070b600000| Untracked 
+|  37|0x000000070b700000, 0x000000070b700000, 0x000000070b800000|  0%| F|  |TAMS 0x000000070b700000, 0x000000070b700000| Untracked 
+|  38|0x000000070b800000, 0x000000070b800000, 0x000000070b900000|  0%| F|  |TAMS 0x000000070b800000, 0x000000070b800000| Untracked 
+|  39|0x000000070b900000, 0x000000070b900000, 0x000000070ba00000|  0%| F|  |TAMS 0x000000070b900000, 0x000000070b900000| Untracked 
+|  40|0x000000070ba00000, 0x000000070ba00000, 0x000000070bb00000|  0%| F|  |TAMS 0x000000070ba00000, 0x000000070ba00000| Untracked 
+|  41|0x000000070bb00000, 0x000000070bb00000, 0x000000070bc00000|  0%| F|  |TAMS 0x000000070bb00000, 0x000000070bb00000| Untracked 
+|  42|0x000000070bc00000, 0x000000070bc00000, 0x000000070bd00000|  0%| F|  |TAMS 0x000000070bc00000, 0x000000070bc00000| Untracked 
+|  43|0x000000070bd00000, 0x000000070bd00000, 0x000000070be00000|  0%| F|  |TAMS 0x000000070bd00000, 0x000000070bd00000| Untracked 
+|  44|0x000000070be00000, 0x000000070be00000, 0x000000070bf00000|  0%| F|  |TAMS 0x000000070be00000, 0x000000070be00000| Untracked 
+|  45|0x000000070bf00000, 0x000000070bf00000, 0x000000070c000000|  0%| F|  |TAMS 0x000000070bf00000, 0x000000070bf00000| Untracked 
+|  46|0x000000070c000000, 0x000000070c000000, 0x000000070c100000|  0%| F|  |TAMS 0x000000070c000000, 0x000000070c000000| Untracked 
+|  47|0x000000070c100000, 0x000000070c100000, 0x000000070c200000|  0%| F|  |TAMS 0x000000070c100000, 0x000000070c100000| Untracked 
+|  48|0x000000070c200000, 0x000000070c200000, 0x000000070c300000|  0%| F|  |TAMS 0x000000070c200000, 0x000000070c200000| Untracked 
+|  49|0x000000070c300000, 0x000000070c300000, 0x000000070c400000|  0%| F|  |TAMS 0x000000070c300000, 0x000000070c300000| Untracked 
+|  50|0x000000070c400000, 0x000000070c400000, 0x000000070c500000|  0%| F|  |TAMS 0x000000070c400000, 0x000000070c400000| Untracked 
+|  51|0x000000070c500000, 0x000000070c500000, 0x000000070c600000|  0%| F|  |TAMS 0x000000070c500000, 0x000000070c500000| Untracked 
+|  52|0x000000070c600000, 0x000000070c600000, 0x000000070c700000|  0%| F|  |TAMS 0x000000070c600000, 0x000000070c600000| Untracked 
+|  53|0x000000070c700000, 0x000000070c700000, 0x000000070c800000|  0%| F|  |TAMS 0x000000070c700000, 0x000000070c700000| Untracked 
+|  54|0x000000070c800000, 0x000000070c800000, 0x000000070c900000|  0%| F|  |TAMS 0x000000070c800000, 0x000000070c800000| Untracked 
+|  55|0x000000070c900000, 0x000000070c900000, 0x000000070ca00000|  0%| F|  |TAMS 0x000000070c900000, 0x000000070c900000| Untracked 
+|  56|0x000000070ca00000, 0x000000070ca00000, 0x000000070cb00000|  0%| F|  |TAMS 0x000000070ca00000, 0x000000070ca00000| Untracked 
+|  57|0x000000070cb00000, 0x000000070cb00000, 0x000000070cc00000|  0%| F|  |TAMS 0x000000070cb00000, 0x000000070cb00000| Untracked 
+|  58|0x000000070cc00000, 0x000000070cc00000, 0x000000070cd00000|  0%| F|  |TAMS 0x000000070cc00000, 0x000000070cc00000| Untracked 
+|  59|0x000000070cd00000, 0x000000070cd00000, 0x000000070ce00000|  0%| F|  |TAMS 0x000000070cd00000, 0x000000070cd00000| Untracked 
+|  60|0x000000070ce00000, 0x000000070ce00000, 0x000000070cf00000|  0%| F|  |TAMS 0x000000070ce00000, 0x000000070ce00000| Untracked 
+|  61|0x000000070cf00000, 0x000000070cf00000, 0x000000070d000000|  0%| F|  |TAMS 0x000000070cf00000, 0x000000070cf00000| Untracked 
+|  62|0x000000070d000000, 0x000000070d000000, 0x000000070d100000|  0%| F|  |TAMS 0x000000070d000000, 0x000000070d000000| Untracked 
+|  63|0x000000070d100000, 0x000000070d100000, 0x000000070d200000|  0%| F|  |TAMS 0x000000070d100000, 0x000000070d100000| Untracked 
+|  64|0x000000070d200000, 0x000000070d200000, 0x000000070d300000|  0%| F|  |TAMS 0x000000070d200000, 0x000000070d200000| Untracked 
+|  65|0x000000070d300000, 0x000000070d300000, 0x000000070d400000|  0%| F|  |TAMS 0x000000070d300000, 0x000000070d300000| Untracked 
+|  66|0x000000070d400000, 0x000000070d400000, 0x000000070d500000|  0%| F|  |TAMS 0x000000070d400000, 0x000000070d400000| Untracked 
+|  67|0x000000070d500000, 0x000000070d500000, 0x000000070d600000|  0%| F|  |TAMS 0x000000070d500000, 0x000000070d500000| Untracked 
+|  68|0x000000070d600000, 0x000000070d600000, 0x000000070d700000|  0%| F|  |TAMS 0x000000070d600000, 0x000000070d600000| Untracked 
+|  69|0x000000070d700000, 0x000000070d700000, 0x000000070d800000|  0%| F|  |TAMS 0x000000070d700000, 0x000000070d700000| Untracked 
+|  70|0x000000070d800000, 0x000000070d800000, 0x000000070d900000|  0%| F|  |TAMS 0x000000070d800000, 0x000000070d800000| Untracked 
+|  71|0x000000070d900000, 0x000000070d900000, 0x000000070da00000|  0%| F|  |TAMS 0x000000070d900000, 0x000000070d900000| Untracked 
+|  72|0x000000070da00000, 0x000000070da00000, 0x000000070db00000|  0%| F|  |TAMS 0x000000070da00000, 0x000000070da00000| Untracked 
+|  73|0x000000070db00000, 0x000000070db00000, 0x000000070dc00000|  0%| F|  |TAMS 0x000000070db00000, 0x000000070db00000| Untracked 
+|  74|0x000000070dc00000, 0x000000070dc00000, 0x000000070dd00000|  0%| F|  |TAMS 0x000000070dc00000, 0x000000070dc00000| Untracked 
+|  75|0x000000070dd00000, 0x000000070dd00000, 0x000000070de00000|  0%| F|  |TAMS 0x000000070dd00000, 0x000000070dd00000| Untracked 
+|  76|0x000000070de00000, 0x000000070de00000, 0x000000070df00000|  0%| F|  |TAMS 0x000000070de00000, 0x000000070de00000| Untracked 
+|  77|0x000000070df00000, 0x000000070df00000, 0x000000070e000000|  0%| F|  |TAMS 0x000000070df00000, 0x000000070df00000| Untracked 
+|  78|0x000000070e000000, 0x000000070e000000, 0x000000070e100000|  0%| F|  |TAMS 0x000000070e000000, 0x000000070e000000| Untracked 
+|  79|0x000000070e100000, 0x000000070e100000, 0x000000070e200000|  0%| F|  |TAMS 0x000000070e100000, 0x000000070e100000| Untracked 
+|  80|0x000000070e200000, 0x000000070e200000, 0x000000070e300000|  0%| F|  |TAMS 0x000000070e200000, 0x000000070e200000| Untracked 
+|  81|0x000000070e300000, 0x000000070e300000, 0x000000070e400000|  0%| F|  |TAMS 0x000000070e300000, 0x000000070e300000| Untracked 
+|  82|0x000000070e400000, 0x000000070e400000, 0x000000070e500000|  0%| F|  |TAMS 0x000000070e400000, 0x000000070e400000| Untracked 
+|  83|0x000000070e500000, 0x000000070e500000, 0x000000070e600000|  0%| F|  |TAMS 0x000000070e500000, 0x000000070e500000| Untracked 
+|  84|0x000000070e600000, 0x000000070e600000, 0x000000070e700000|  0%| F|  |TAMS 0x000000070e600000, 0x000000070e600000| Untracked 
+|  85|0x000000070e700000, 0x000000070e700000, 0x000000070e800000|  0%| F|  |TAMS 0x000000070e700000, 0x000000070e700000| Untracked 
+|  86|0x000000070e800000, 0x000000070e800000, 0x000000070e900000|  0%| F|  |TAMS 0x000000070e800000, 0x000000070e800000| Untracked 
+|  87|0x000000070e900000, 0x000000070e900000, 0x000000070ea00000|  0%| F|  |TAMS 0x000000070e900000, 0x000000070e900000| Untracked 
+|  88|0x000000070ea00000, 0x000000070ea00000, 0x000000070eb00000|  0%| F|  |TAMS 0x000000070ea00000, 0x000000070ea00000| Untracked 
+|  89|0x000000070eb00000, 0x000000070eb00000, 0x000000070ec00000|  0%| F|  |TAMS 0x000000070eb00000, 0x000000070eb00000| Untracked 
+|  90|0x000000070ec00000, 0x000000070ec00000, 0x000000070ed00000|  0%| F|  |TAMS 0x000000070ec00000, 0x000000070ec00000| Untracked 
+|  91|0x000000070ed00000, 0x000000070ed00000, 0x000000070ee00000|  0%| F|  |TAMS 0x000000070ed00000, 0x000000070ed00000| Untracked 
+|  92|0x000000070ee00000, 0x000000070ee00000, 0x000000070ef00000|  0%| F|  |TAMS 0x000000070ee00000, 0x000000070ee00000| Untracked 
+|  93|0x000000070ef00000, 0x000000070ef00000, 0x000000070f000000|  0%| F|  |TAMS 0x000000070ef00000, 0x000000070ef00000| Untracked 
+|  94|0x000000070f000000, 0x000000070f000000, 0x000000070f100000|  0%| F|  |TAMS 0x000000070f000000, 0x000000070f000000| Untracked 
+|  95|0x000000070f100000, 0x000000070f100000, 0x000000070f200000|  0%| F|  |TAMS 0x000000070f100000, 0x000000070f100000| Untracked 
+|  96|0x000000070f200000, 0x000000070f200000, 0x000000070f300000|  0%| F|  |TAMS 0x000000070f200000, 0x000000070f200000| Untracked 
+|  97|0x000000070f300000, 0x000000070f300000, 0x000000070f400000|  0%| F|  |TAMS 0x000000070f300000, 0x000000070f300000| Untracked 
+|  98|0x000000070f400000, 0x000000070f400000, 0x000000070f500000|  0%| F|  |TAMS 0x000000070f400000, 0x000000070f400000| Untracked 
+|  99|0x000000070f500000, 0x000000070f500000, 0x000000070f600000|  0%| F|  |TAMS 0x000000070f500000, 0x000000070f500000| Untracked 
+| 100|0x000000070f600000, 0x000000070f600000, 0x000000070f700000|  0%| F|  |TAMS 0x000000070f600000, 0x000000070f600000| Untracked 
+| 101|0x000000070f700000, 0x000000070f700000, 0x000000070f800000|  0%| F|  |TAMS 0x000000070f700000, 0x000000070f700000| Untracked 
+| 102|0x000000070f800000, 0x000000070f800000, 0x000000070f900000|  0%| F|  |TAMS 0x000000070f800000, 0x000000070f800000| Untracked 
+| 103|0x000000070f900000, 0x000000070f900000, 0x000000070fa00000|  0%| F|  |TAMS 0x000000070f900000, 0x000000070f900000| Untracked 
+| 104|0x000000070fa00000, 0x000000070fa00000, 0x000000070fb00000|  0%| F|  |TAMS 0x000000070fa00000, 0x000000070fa00000| Untracked 
+| 105|0x000000070fb00000, 0x000000070fb00000, 0x000000070fc00000|  0%| F|  |TAMS 0x000000070fb00000, 0x000000070fb00000| Untracked 
+| 106|0x000000070fc00000, 0x000000070fc00000, 0x000000070fd00000|  0%| F|  |TAMS 0x000000070fc00000, 0x000000070fc00000| Untracked 
+| 107|0x000000070fd00000, 0x000000070fd00000, 0x000000070fe00000|  0%| F|  |TAMS 0x000000070fd00000, 0x000000070fd00000| Untracked 
+| 108|0x000000070fe00000, 0x000000070fe00000, 0x000000070ff00000|  0%| F|  |TAMS 0x000000070fe00000, 0x000000070fe00000| Untracked 
+| 109|0x000000070ff00000, 0x000000070ff00000, 0x0000000710000000|  0%| F|  |TAMS 0x000000070ff00000, 0x000000070ff00000| Untracked 
+| 110|0x0000000710000000, 0x0000000710000000, 0x0000000710100000|  0%| F|  |TAMS 0x0000000710000000, 0x0000000710000000| Untracked 
+| 111|0x0000000710100000, 0x0000000710100000, 0x0000000710200000|  0%| F|  |TAMS 0x0000000710100000, 0x0000000710100000| Untracked 
+| 112|0x0000000710200000, 0x0000000710200000, 0x0000000710300000|  0%| F|  |TAMS 0x0000000710200000, 0x0000000710200000| Untracked 
+| 113|0x0000000710300000, 0x0000000710300000, 0x0000000710400000|  0%| F|  |TAMS 0x0000000710300000, 0x0000000710300000| Untracked 
+| 114|0x0000000710400000, 0x0000000710400000, 0x0000000710500000|  0%| F|  |TAMS 0x0000000710400000, 0x0000000710400000| Untracked 
+| 115|0x0000000710500000, 0x0000000710500000, 0x0000000710600000|  0%| F|  |TAMS 0x0000000710500000, 0x0000000710500000| Untracked 
+| 116|0x0000000710600000, 0x0000000710600000, 0x0000000710700000|  0%| F|  |TAMS 0x0000000710600000, 0x0000000710600000| Untracked 
+| 117|0x0000000710700000, 0x0000000710700000, 0x0000000710800000|  0%| F|  |TAMS 0x0000000710700000, 0x0000000710700000| Untracked 
+| 118|0x0000000710800000, 0x0000000710800000, 0x0000000710900000|  0%| F|  |TAMS 0x0000000710800000, 0x0000000710800000| Untracked 
+| 119|0x0000000710900000, 0x0000000710900000, 0x0000000710a00000|  0%| F|  |TAMS 0x0000000710900000, 0x0000000710900000| Untracked 
+| 120|0x0000000710a00000, 0x0000000710a00000, 0x0000000710b00000|  0%| F|  |TAMS 0x0000000710a00000, 0x0000000710a00000| Untracked 
+| 121|0x0000000710b00000, 0x0000000710b00000, 0x0000000710c00000|  0%| F|  |TAMS 0x0000000710b00000, 0x0000000710b00000| Untracked 
+| 122|0x0000000710c00000, 0x0000000710c00000, 0x0000000710d00000|  0%| F|  |TAMS 0x0000000710c00000, 0x0000000710c00000| Untracked 
+| 123|0x0000000710d00000, 0x0000000710d00000, 0x0000000710e00000|  0%| F|  |TAMS 0x0000000710d00000, 0x0000000710d00000| Untracked 
+| 124|0x0000000710e00000, 0x0000000710e00000, 0x0000000710f00000|  0%| F|  |TAMS 0x0000000710e00000, 0x0000000710e00000| Untracked 
+| 125|0x0000000710f00000, 0x0000000710f00000, 0x0000000711000000|  0%| F|  |TAMS 0x0000000710f00000, 0x0000000710f00000| Untracked 
+| 126|0x0000000711000000, 0x0000000711000000, 0x0000000711100000|  0%| F|  |TAMS 0x0000000711000000, 0x0000000711000000| Untracked 
+| 127|0x0000000711100000, 0x0000000711100000, 0x0000000711200000|  0%| F|  |TAMS 0x0000000711100000, 0x0000000711100000| Untracked 
+| 128|0x0000000711200000, 0x0000000711200000, 0x0000000711300000|  0%| F|  |TAMS 0x0000000711200000, 0x0000000711200000| Untracked 
+| 129|0x0000000711300000, 0x0000000711300000, 0x0000000711400000|  0%| F|  |TAMS 0x0000000711300000, 0x0000000711300000| Untracked 
+| 130|0x0000000711400000, 0x0000000711400000, 0x0000000711500000|  0%| F|  |TAMS 0x0000000711400000, 0x0000000711400000| Untracked 
+| 131|0x0000000711500000, 0x0000000711500000, 0x0000000711600000|  0%| F|  |TAMS 0x0000000711500000, 0x0000000711500000| Untracked 
+| 132|0x0000000711600000, 0x0000000711600000, 0x0000000711700000|  0%| F|  |TAMS 0x0000000711600000, 0x0000000711600000| Untracked 
+| 133|0x0000000711700000, 0x0000000711700000, 0x0000000711800000|  0%| F|  |TAMS 0x0000000711700000, 0x0000000711700000| Untracked 
+| 134|0x0000000711800000, 0x0000000711800000, 0x0000000711900000|  0%| F|  |TAMS 0x0000000711800000, 0x0000000711800000| Untracked 
+| 135|0x0000000711900000, 0x0000000711900000, 0x0000000711a00000|  0%| F|  |TAMS 0x0000000711900000, 0x0000000711900000| Untracked 
+| 136|0x0000000711a00000, 0x0000000711a00000, 0x0000000711b00000|  0%| F|  |TAMS 0x0000000711a00000, 0x0000000711a00000| Untracked 
+| 137|0x0000000711b00000, 0x0000000711b00000, 0x0000000711c00000|  0%| F|  |TAMS 0x0000000711b00000, 0x0000000711b00000| Untracked 
+| 138|0x0000000711c00000, 0x0000000711c00000, 0x0000000711d00000|  0%| F|  |TAMS 0x0000000711c00000, 0x0000000711c00000| Untracked 
+| 139|0x0000000711d00000, 0x0000000711d00000, 0x0000000711e00000|  0%| F|  |TAMS 0x0000000711d00000, 0x0000000711d00000| Untracked 
+| 140|0x0000000711e00000, 0x0000000711e00000, 0x0000000711f00000|  0%| F|  |TAMS 0x0000000711e00000, 0x0000000711e00000| Untracked 
+| 141|0x0000000711f00000, 0x0000000711f00000, 0x0000000712000000|  0%| F|  |TAMS 0x0000000711f00000, 0x0000000711f00000| Untracked 
+| 142|0x0000000712000000, 0x0000000712000000, 0x0000000712100000|  0%| F|  |TAMS 0x0000000712000000, 0x0000000712000000| Untracked 
+| 143|0x0000000712100000, 0x0000000712100000, 0x0000000712200000|  0%| F|  |TAMS 0x0000000712100000, 0x0000000712100000| Untracked 
+| 144|0x0000000712200000, 0x0000000712200000, 0x0000000712300000|  0%| F|  |TAMS 0x0000000712200000, 0x0000000712200000| Untracked 
+| 145|0x0000000712300000, 0x0000000712300000, 0x0000000712400000|  0%| F|  |TAMS 0x0000000712300000, 0x0000000712300000| Untracked 
+| 146|0x0000000712400000, 0x0000000712400000, 0x0000000712500000|  0%| F|  |TAMS 0x0000000712400000, 0x0000000712400000| Untracked 
+| 147|0x0000000712500000, 0x0000000712500000, 0x0000000712600000|  0%| F|  |TAMS 0x0000000712500000, 0x0000000712500000| Untracked 
+| 148|0x0000000712600000, 0x0000000712600000, 0x0000000712700000|  0%| F|  |TAMS 0x0000000712600000, 0x0000000712600000| Untracked 
+| 149|0x0000000712700000, 0x0000000712700000, 0x0000000712800000|  0%| F|  |TAMS 0x0000000712700000, 0x0000000712700000| Untracked 
+| 150|0x0000000712800000, 0x0000000712800000, 0x0000000712900000|  0%| F|  |TAMS 0x0000000712800000, 0x0000000712800000| Untracked 
+| 151|0x0000000712900000, 0x0000000712900000, 0x0000000712a00000|  0%| F|  |TAMS 0x0000000712900000, 0x0000000712900000| Untracked 
+| 152|0x0000000712a00000, 0x0000000712a00000, 0x0000000712b00000|  0%| F|  |TAMS 0x0000000712a00000, 0x0000000712a00000| Untracked 
+| 153|0x0000000712b00000, 0x0000000712b00000, 0x0000000712c00000|  0%| F|  |TAMS 0x0000000712b00000, 0x0000000712b00000| Untracked 
+| 154|0x0000000712c00000, 0x0000000712c00000, 0x0000000712d00000|  0%| F|  |TAMS 0x0000000712c00000, 0x0000000712c00000| Untracked 
+| 155|0x0000000712d00000, 0x0000000712d00000, 0x0000000712e00000|  0%| F|  |TAMS 0x0000000712d00000, 0x0000000712d00000| Untracked 
+| 156|0x0000000712e00000, 0x0000000712e00000, 0x0000000712f00000|  0%| F|  |TAMS 0x0000000712e00000, 0x0000000712e00000| Untracked 
+| 157|0x0000000712f00000, 0x0000000712f00000, 0x0000000713000000|  0%| F|  |TAMS 0x0000000712f00000, 0x0000000712f00000| Untracked 
+| 158|0x0000000713000000, 0x0000000713000000, 0x0000000713100000|  0%| F|  |TAMS 0x0000000713000000, 0x0000000713000000| Untracked 
+| 159|0x0000000713100000, 0x0000000713100000, 0x0000000713200000|  0%| F|  |TAMS 0x0000000713100000, 0x0000000713100000| Untracked 
+| 160|0x0000000713200000, 0x0000000713200000, 0x0000000713300000|  0%| F|  |TAMS 0x0000000713200000, 0x0000000713200000| Untracked 
+| 161|0x0000000713300000, 0x0000000713300000, 0x0000000713400000|  0%| F|  |TAMS 0x0000000713300000, 0x0000000713300000| Untracked 
+| 162|0x0000000713400000, 0x0000000713400000, 0x0000000713500000|  0%| F|  |TAMS 0x0000000713400000, 0x0000000713400000| Untracked 
+| 163|0x0000000713500000, 0x0000000713500000, 0x0000000713600000|  0%| F|  |TAMS 0x0000000713500000, 0x0000000713500000| Untracked 
+| 164|0x0000000713600000, 0x0000000713600000, 0x0000000713700000|  0%| F|  |TAMS 0x0000000713600000, 0x0000000713600000| Untracked 
+| 165|0x0000000713700000, 0x0000000713700000, 0x0000000713800000|  0%| F|  |TAMS 0x0000000713700000, 0x0000000713700000| Untracked 
+| 166|0x0000000713800000, 0x0000000713800000, 0x0000000713900000|  0%| F|  |TAMS 0x0000000713800000, 0x0000000713800000| Untracked 
+| 167|0x0000000713900000, 0x0000000713900000, 0x0000000713a00000|  0%| F|  |TAMS 0x0000000713900000, 0x0000000713900000| Untracked 
+| 168|0x0000000713a00000, 0x0000000713a00000, 0x0000000713b00000|  0%| F|  |TAMS 0x0000000713a00000, 0x0000000713a00000| Untracked 
+| 169|0x0000000713b00000, 0x0000000713b00000, 0x0000000713c00000|  0%| F|  |TAMS 0x0000000713b00000, 0x0000000713b00000| Untracked 
+| 170|0x0000000713c00000, 0x0000000713c00000, 0x0000000713d00000|  0%| F|  |TAMS 0x0000000713c00000, 0x0000000713c00000| Untracked 
+| 171|0x0000000713d00000, 0x0000000713d00000, 0x0000000713e00000|  0%| F|  |TAMS 0x0000000713d00000, 0x0000000713d00000| Untracked 
+| 172|0x0000000713e00000, 0x0000000713e00000, 0x0000000713f00000|  0%| F|  |TAMS 0x0000000713e00000, 0x0000000713e00000| Untracked 
+| 173|0x0000000713f00000, 0x0000000713f00000, 0x0000000714000000|  0%| F|  |TAMS 0x0000000713f00000, 0x0000000713f00000| Untracked 
+| 174|0x0000000714000000, 0x0000000714000000, 0x0000000714100000|  0%| F|  |TAMS 0x0000000714000000, 0x0000000714000000| Untracked 
+| 175|0x0000000714100000, 0x0000000714100000, 0x0000000714200000|  0%| F|  |TAMS 0x0000000714100000, 0x0000000714100000| Untracked 
+| 176|0x0000000714200000, 0x0000000714200000, 0x0000000714300000|  0%| F|  |TAMS 0x0000000714200000, 0x0000000714200000| Untracked 
+| 177|0x0000000714300000, 0x0000000714300000, 0x0000000714400000|  0%| F|  |TAMS 0x0000000714300000, 0x0000000714300000| Untracked 
+| 178|0x0000000714400000, 0x0000000714400000, 0x0000000714500000|  0%| F|  |TAMS 0x0000000714400000, 0x0000000714400000| Untracked 
+| 179|0x0000000714500000, 0x0000000714500000, 0x0000000714600000|  0%| F|  |TAMS 0x0000000714500000, 0x0000000714500000| Untracked 
+| 180|0x0000000714600000, 0x0000000714600000, 0x0000000714700000|  0%| F|  |TAMS 0x0000000714600000, 0x0000000714600000| Untracked 
+| 181|0x0000000714700000, 0x0000000714700000, 0x0000000714800000|  0%| F|  |TAMS 0x0000000714700000, 0x0000000714700000| Untracked 
+| 182|0x0000000714800000, 0x0000000714800000, 0x0000000714900000|  0%| F|  |TAMS 0x0000000714800000, 0x0000000714800000| Untracked 
+| 183|0x0000000714900000, 0x0000000714900000, 0x0000000714a00000|  0%| F|  |TAMS 0x0000000714900000, 0x0000000714900000| Untracked 
+| 184|0x0000000714a00000, 0x0000000714a00000, 0x0000000714b00000|  0%| F|  |TAMS 0x0000000714a00000, 0x0000000714a00000| Untracked 
+| 185|0x0000000714b00000, 0x0000000714b00000, 0x0000000714c00000|  0%| F|  |TAMS 0x0000000714b00000, 0x0000000714b00000| Untracked 
+| 186|0x0000000714c00000, 0x0000000714c00000, 0x0000000714d00000|  0%| F|  |TAMS 0x0000000714c00000, 0x0000000714c00000| Untracked 
+| 187|0x0000000714d00000, 0x0000000714d00000, 0x0000000714e00000|  0%| F|  |TAMS 0x0000000714d00000, 0x0000000714d00000| Untracked 
+| 188|0x0000000714e00000, 0x0000000714e00000, 0x0000000714f00000|  0%| F|  |TAMS 0x0000000714e00000, 0x0000000714e00000| Untracked 
+| 189|0x0000000714f00000, 0x0000000714f00000, 0x0000000715000000|  0%| F|  |TAMS 0x0000000714f00000, 0x0000000714f00000| Untracked 
+| 190|0x0000000715000000, 0x0000000715000000, 0x0000000715100000|  0%| F|  |TAMS 0x0000000715000000, 0x0000000715000000| Untracked 
+| 191|0x0000000715100000, 0x0000000715100000, 0x0000000715200000|  0%| F|  |TAMS 0x0000000715100000, 0x0000000715100000| Untracked 
+| 192|0x0000000715200000, 0x0000000715200000, 0x0000000715300000|  0%| F|  |TAMS 0x0000000715200000, 0x0000000715200000| Untracked 
+| 193|0x0000000715300000, 0x0000000715300000, 0x0000000715400000|  0%| F|  |TAMS 0x0000000715300000, 0x0000000715300000| Untracked 
+| 194|0x0000000715400000, 0x0000000715400000, 0x0000000715500000|  0%| F|  |TAMS 0x0000000715400000, 0x0000000715400000| Untracked 
+| 195|0x0000000715500000, 0x0000000715500000, 0x0000000715600000|  0%| F|  |TAMS 0x0000000715500000, 0x0000000715500000| Untracked 
+| 196|0x0000000715600000, 0x0000000715600000, 0x0000000715700000|  0%| F|  |TAMS 0x0000000715600000, 0x0000000715600000| Untracked 
+| 197|0x0000000715700000, 0x0000000715700000, 0x0000000715800000|  0%| F|  |TAMS 0x0000000715700000, 0x0000000715700000| Untracked 
+| 198|0x0000000715800000, 0x0000000715800000, 0x0000000715900000|  0%| F|  |TAMS 0x0000000715800000, 0x0000000715800000| Untracked 
+| 199|0x0000000715900000, 0x0000000715900000, 0x0000000715a00000|  0%| F|  |TAMS 0x0000000715900000, 0x0000000715900000| Untracked 
+| 200|0x0000000715a00000, 0x0000000715a00000, 0x0000000715b00000|  0%| F|  |TAMS 0x0000000715a00000, 0x0000000715a00000| Untracked 
+| 201|0x0000000715b00000, 0x0000000715b00000, 0x0000000715c00000|  0%| F|  |TAMS 0x0000000715b00000, 0x0000000715b00000| Untracked 
+| 202|0x0000000715c00000, 0x0000000715c00000, 0x0000000715d00000|  0%| F|  |TAMS 0x0000000715c00000, 0x0000000715c00000| Untracked 
+| 203|0x0000000715d00000, 0x0000000715d00000, 0x0000000715e00000|  0%| F|  |TAMS 0x0000000715d00000, 0x0000000715d00000| Untracked 
+| 204|0x0000000715e00000, 0x0000000715e00000, 0x0000000715f00000|  0%| F|  |TAMS 0x0000000715e00000, 0x0000000715e00000| Untracked 
+| 205|0x0000000715f00000, 0x0000000715f00000, 0x0000000716000000|  0%| F|  |TAMS 0x0000000715f00000, 0x0000000715f00000| Untracked 
+| 206|0x0000000716000000, 0x0000000716000000, 0x0000000716100000|  0%| F|  |TAMS 0x0000000716000000, 0x0000000716000000| Untracked 
+| 207|0x0000000716100000, 0x0000000716100000, 0x0000000716200000|  0%| F|  |TAMS 0x0000000716100000, 0x0000000716100000| Untracked 
+| 208|0x0000000716200000, 0x0000000716200000, 0x0000000716300000|  0%| F|  |TAMS 0x0000000716200000, 0x0000000716200000| Untracked 
+| 209|0x0000000716300000, 0x0000000716300000, 0x0000000716400000|  0%| F|  |TAMS 0x0000000716300000, 0x0000000716300000| Untracked 
+| 210|0x0000000716400000, 0x0000000716400000, 0x0000000716500000|  0%| F|  |TAMS 0x0000000716400000, 0x0000000716400000| Untracked 
+| 211|0x0000000716500000, 0x0000000716500000, 0x0000000716600000|  0%| F|  |TAMS 0x0000000716500000, 0x0000000716500000| Untracked 
+| 212|0x0000000716600000, 0x0000000716600000, 0x0000000716700000|  0%| F|  |TAMS 0x0000000716600000, 0x0000000716600000| Untracked 
+| 213|0x0000000716700000, 0x0000000716700000, 0x0000000716800000|  0%| F|  |TAMS 0x0000000716700000, 0x0000000716700000| Untracked 
+| 214|0x0000000716800000, 0x0000000716800000, 0x0000000716900000|  0%| F|  |TAMS 0x0000000716800000, 0x0000000716800000| Untracked 
+| 215|0x0000000716900000, 0x0000000716900000, 0x0000000716a00000|  0%| F|  |TAMS 0x0000000716900000, 0x0000000716900000| Untracked 
+| 216|0x0000000716a00000, 0x0000000716a00000, 0x0000000716b00000|  0%| F|  |TAMS 0x0000000716a00000, 0x0000000716a00000| Untracked 
+| 217|0x0000000716b00000, 0x0000000716b00000, 0x0000000716c00000|  0%| F|  |TAMS 0x0000000716b00000, 0x0000000716b00000| Untracked 
+| 218|0x0000000716c00000, 0x0000000716c00000, 0x0000000716d00000|  0%| F|  |TAMS 0x0000000716c00000, 0x0000000716c00000| Untracked 
+| 219|0x0000000716d00000, 0x0000000716d00000, 0x0000000716e00000|  0%| F|  |TAMS 0x0000000716d00000, 0x0000000716d00000| Untracked 
+| 220|0x0000000716e00000, 0x0000000716e00000, 0x0000000716f00000|  0%| F|  |TAMS 0x0000000716e00000, 0x0000000716e00000| Untracked 
+| 221|0x0000000716f00000, 0x0000000716f6fd50, 0x0000000717000000| 43%| S|CS|TAMS 0x0000000716f00000, 0x0000000716f00000| Complete 
+| 222|0x0000000717000000, 0x0000000717100000, 0x0000000717100000|100%| S|CS|TAMS 0x0000000717000000, 0x0000000717000000| Complete 
+| 223|0x0000000717100000, 0x0000000717200000, 0x0000000717200000|100%| S|CS|TAMS 0x0000000717100000, 0x0000000717100000| Complete 
+| 224|0x0000000717200000, 0x0000000717200000, 0x0000000717300000|  0%| F|  |TAMS 0x0000000717200000, 0x0000000717200000| Untracked 
+| 225|0x0000000717300000, 0x0000000717300000, 0x0000000717400000|  0%| F|  |TAMS 0x0000000717300000, 0x0000000717300000| Untracked 
+| 226|0x0000000717400000, 0x0000000717400000, 0x0000000717500000|  0%| F|  |TAMS 0x0000000717400000, 0x0000000717400000| Untracked 
+| 227|0x0000000717500000, 0x0000000717500000, 0x0000000717600000|  0%| F|  |TAMS 0x0000000717500000, 0x0000000717500000| Untracked 
+| 228|0x0000000717600000, 0x0000000717600000, 0x0000000717700000|  0%| F|  |TAMS 0x0000000717600000, 0x0000000717600000| Untracked 
+| 229|0x0000000717700000, 0x0000000717700000, 0x0000000717800000|  0%| F|  |TAMS 0x0000000717700000, 0x0000000717700000| Untracked 
+| 230|0x0000000717800000, 0x0000000717800000, 0x0000000717900000|  0%| F|  |TAMS 0x0000000717800000, 0x0000000717800000| Untracked 
+| 231|0x0000000717900000, 0x0000000717900000, 0x0000000717a00000|  0%| F|  |TAMS 0x0000000717900000, 0x0000000717900000| Untracked 
+| 232|0x0000000717a00000, 0x0000000717a00000, 0x0000000717b00000|  0%| F|  |TAMS 0x0000000717a00000, 0x0000000717a00000| Untracked 
+| 233|0x0000000717b00000, 0x0000000717b00000, 0x0000000717c00000|  0%| F|  |TAMS 0x0000000717b00000, 0x0000000717b00000| Untracked 
+| 234|0x0000000717c00000, 0x0000000717c00000, 0x0000000717d00000|  0%| F|  |TAMS 0x0000000717c00000, 0x0000000717c00000| Untracked 
+| 235|0x0000000717d00000, 0x0000000717d00000, 0x0000000717e00000|  0%| F|  |TAMS 0x0000000717d00000, 0x0000000717d00000| Untracked 
+| 236|0x0000000717e00000, 0x0000000717e00000, 0x0000000717f00000|  0%| F|  |TAMS 0x0000000717e00000, 0x0000000717e00000| Untracked 
+| 237|0x0000000717f00000, 0x0000000717f00000, 0x0000000718000000|  0%| F|  |TAMS 0x0000000717f00000, 0x0000000717f00000| Untracked 
+| 238|0x0000000718000000, 0x0000000718000000, 0x0000000718100000|  0%| F|  |TAMS 0x0000000718000000, 0x0000000718000000| Untracked 
+| 239|0x0000000718100000, 0x0000000718100000, 0x0000000718200000|  0%| F|  |TAMS 0x0000000718100000, 0x0000000718100000| Untracked 
+| 240|0x0000000718200000, 0x0000000718200000, 0x0000000718300000|  0%| F|  |TAMS 0x0000000718200000, 0x0000000718200000| Untracked 
+| 241|0x0000000718300000, 0x0000000718300000, 0x0000000718400000|  0%| F|  |TAMS 0x0000000718300000, 0x0000000718300000| Untracked 
+| 242|0x0000000718400000, 0x0000000718400000, 0x0000000718500000|  0%| F|  |TAMS 0x0000000718400000, 0x0000000718400000| Untracked 
+| 243|0x0000000718500000, 0x0000000718500000, 0x0000000718600000|  0%| F|  |TAMS 0x0000000718500000, 0x0000000718500000| Untracked 
+| 244|0x0000000718600000, 0x0000000718600000, 0x0000000718700000|  0%| F|  |TAMS 0x0000000718600000, 0x0000000718600000| Untracked 
+| 245|0x0000000718700000, 0x0000000718700000, 0x0000000718800000|  0%| F|  |TAMS 0x0000000718700000, 0x0000000718700000| Untracked 
+| 246|0x0000000718800000, 0x0000000718900000, 0x0000000718900000|100%| E|  |TAMS 0x0000000718800000, 0x0000000718800000| Complete 
+| 247|0x0000000718900000, 0x0000000718a00000, 0x0000000718a00000|100%| E|CS|TAMS 0x0000000718900000, 0x0000000718900000| Complete 
+|2924|0x00000007bfe00000, 0x00000007bfe48000, 0x00000007bff00000| 28%|OA|  |TAMS 0x00000007bfe00000, 0x00000007bfe00000| Untracked 
+|2925|0x00000007bff00000, 0x00000007bff6c000, 0x00000007c0000000| 42%|CA|  |TAMS 0x00000007bff00000, 0x00000007bff00000| Untracked 
+
+Card table byte_map: [0x00007f7cd56a5000,0x00007f7cd5e5c000] _byte_map_base: 0x00007f7cd1e5c000
+
+Marking Bits (Prev, Next): (CMBitMap*) 0x00007f7cd007d798, (CMBitMap*) 0x00007f7cd007d7d0
+ Prev Bits: [0x00007f7cb0248000, 0x00007f7cb4000000)
+ Next Bits: [0x00007f7cac490000, 0x00007f7cb0248000)
+
+Polling page: 0x00007f7cd7817000
+
+Metaspace:
+
+Usage:
+  Non-class:      7.71 MB capacity,     6.44 MB ( 84%) used,     1.21 MB ( 16%) free+waste,    62.69 KB ( <1%) overhead. 
+      Class:      1.21 MB capacity,   905.91 KB ( 73%) used,   298.34 KB ( 24%) free+waste,    33.75 KB (  3%) overhead. 
+       Both:      8.92 MB capacity,     7.32 MB ( 82%) used,     1.50 MB ( 17%) free+waste,    96.44 KB (  1%) overhead. 
+
+Virtual space:
+  Non-class space:        8.00 MB reserved,       7.75 MB ( 97%) committed 
+      Class space:        1.00 GB reserved,       1.25 MB ( <1%) committed 
+             Both:        1.01 GB reserved,       9.00 MB ( <1%) committed 
+
+Chunk freelists:
+   Non-Class:  42.00 KB
+       Class:  0 bytes
+        Both:  42.00 KB
+
+MaxMetaspaceSize: unlimited
+CompressedClassSpaceSize: 1.00 GB
+Initial GC threshold: 20.80 MB
+Current GC threshold: 20.80 MB
+CDS: on
+
+CodeHeap 'non-profiled nmethods': size=119172Kb used=406Kb max_used=406Kb free=118765Kb
+ bounds [0x00007f7cc036e000, 0x00007f7cc05de000, 0x00007f7cc77cf000]
+CodeHeap 'profiled nmethods': size=119168Kb used=2947Kb max_used=2947Kb free=116221Kb
+ bounds [0x00007f7cb8f0e000, 0x00007f7cb91fe000, 0x00007f7cc036e000]
+CodeHeap 'non-nmethods': size=7420Kb used=1728Kb max_used=2308Kb free=5691Kb
+ bounds [0x00007f7cb87cf000, 0x00007f7cb8a3f000, 0x00007f7cb8f0e000]
+ total_blobs=1883 nmethods=1458 adapters=337
+ compilation: enabled
+              stopped_count=0, restarted_count=0
+ full_count=0
+
+Compilation events (20 events):
+Event: 2.814 Thread 0x00007f7cd0264000 nmethod 1447 0x00007f7cb91eb790 code [0x00007f7cb91eb940, 0x00007f7cb91ebab0]
+Event: 2.975 Thread 0x00007f7cd0262000 1448   !   4       jdk.internal.loader.URLClassPath$JarLoader::ensureOpen (36 bytes)
+Event: 2.976 Thread 0x00007f7cd0262000 nmethod 1448 0x00007f7cc03cf610 code [0x00007f7cc03cf7a0, 0x00007f7cc03cf838]
+Event: 2.976 Thread 0x00007f7cd0262000 1449       4       java.util.jar.JarFile::getEntry (22 bytes)
+Event: 2.995 Thread 0x00007f7cd0262000 nmethod 1449 0x00007f7cc03cf910 code [0x00007f7cc03cfbe0, 0x00007f7cc03d0e18]
+Event: 3.087 Thread 0x00007f7c8008c800 1451   !   3       java.nio.charset.CharsetEncoder::encode (285 bytes)
+Event: 3.087 Thread 0x00007f7cd0264000 1452       3       sun.nio.cs.UTF_8$Encoder::encodeLoop (28 bytes)
+Event: 3.087 Thread 0x00007f7cd0264000 nmethod 1452 0x00007f7cb91ebb10 code [0x00007f7cb91ebd00, 0x00007f7cb91ec110]
+Event: 3.087 Thread 0x00007f7cd0262000 1454       4       java.nio.StringCharBuffer::get (19 bytes)
+Event: 3.087 Thread 0x00007f7cd0264000 1453       3       java.util.regex.Pattern::next (33 bytes)
+Event: 3.088 Thread 0x00007f7c8008c800 nmethod 1451 0x00007f7cb91ec290 code [0x00007f7cb91ec5c0, 0x00007f7cb91ed930]
+Event: 3.088 Thread 0x00007f7c8008c800 1455       3       jdk.internal.misc.Unsafe::convEndian (16 bytes)
+Event: 3.088 Thread 0x00007f7cd0264000 nmethod 1453 0x00007f7cb91edf10 code [0x00007f7cb91ee0e0, 0x00007f7cb91ee360]
+Event: 3.088 Thread 0x00007f7c8008c800 nmethod 1455 0x00007f7cb91ee490 code [0x00007f7cb91ee640, 0x00007f7cb91ee7f0]
+Event: 3.088 Thread 0x00007f7cd0264000 1456       3       java.lang.Integer::reverseBytes (26 bytes)
+Event: 3.088 Thread 0x00007f7cd0264000 nmethod 1456 0x00007f7cb91ee890 code [0x00007f7cb91eea40, 0x00007f7cb91eeb50]
+Event: 3.089 Thread 0x00007f7cd0262000 nmethod 1454 0x00007f7cc03d1a10 code [0x00007f7cc03d1bc0, 0x00007f7cc03d1d08]
+Event: 3.150 Thread 0x00007f7cd0262000 1458       4       java.io.UnixFileSystem::normalize (75 bytes)
+Event: 3.152 Thread 0x00007f7cd0262000 nmethod 1458 0x00007f7cc03d1e90 code [0x00007f7cc03d2040, 0x00007f7cc03d2228]
+Event: 3.152 Thread 0x00007f7cd0262000 1457   !   4       jdk.internal.loader.URLClassPath$JarLoader::getResource (65 bytes)
+
+GC Heap History (2 events):
+Event: 0.711 GC heap before
+{Heap before GC invocations=0 (full 0):
+ garbage-first heap   total 256000K, used 24272K [0x0000000709200000, 0x0000000800000000)
+  region size 1024K, 24 young (24576K), 0 survivors (0K)
+ Metaspace       used 7128K, capacity 8964K, committed 9216K, reserved 1056768K
+  class space    used 862K, capacity 1222K, committed 1280K, reserved 1048576K
+}
+Event: 0.729 GC heap after
+{Heap after GC invocations=1 (full 0):
+ garbage-first heap   total 256000K, used 3215K [0x0000000709200000, 0x0000000800000000)
+  region size 1024K, 3 young (3072K), 3 survivors (3072K)
+ Metaspace       used 7128K, capacity 8964K, committed 9216K, reserved 1056768K
+  class space    used 862K, capacity 1222K, committed 1280K, reserved 1048576K
+}
+
+Deoptimization events (20 events):
+Event: 0.588 Thread 0x00007f7cd0016000 DEOPT PACKING pc=0x00007f7cb8f95d08 sp=0x00007f7cd795a4a0
+Event: 0.588 Thread 0x00007f7cd0016000 DEOPT UNPACKING pc=0x00007f7cb881964a sp=0x00007f7cd79599d8 mode 0
+Event: 0.643 Thread 0x00007f7cd0016000 Uncommon trap: trap_request=0xffffff4d fr.pc=0x00007f7cc03a8844 relative=0x0000000000000284
+Event: 0.643 Thread 0x00007f7cd0016000 Uncommon trap: reason=unstable_if action=reinterpret pc=0x00007f7cc03a8844 method=java.util.concurrent.ConcurrentHashMap.get(Ljava/lang/Object;)Ljava/lang/Object; @ 86 c2
+Event: 0.643 Thread 0x00007f7cd0016000 DEOPT PACKING pc=0x00007f7cc03a8844 sp=0x00007f7cd7959a50
+Event: 0.643 Thread 0x00007f7cd0016000 DEOPT UNPACKING pc=0x00007f7cb8818ea5 sp=0x00007f7cd79599e8 mode 2
+Event: 0.672 Thread 0x00007f7cd0016000 Uncommon trap: trap_request=0xffffff4d fr.pc=0x00007f7cc0382864 relative=0x0000000000000044
+Event: 0.672 Thread 0x00007f7cd0016000 Uncommon trap: reason=unstable_if action=reinterpret pc=0x00007f7cc0382864 method=java.lang.CharacterData.of(I)Ljava/lang/CharacterData; @ 4 c2
+Event: 0.672 Thread 0x00007f7cd0016000 DEOPT PACKING pc=0x00007f7cc0382864 sp=0x00007f7cd7957f60
+Event: 0.672 Thread 0x00007f7cd0016000 DEOPT UNPACKING pc=0x00007f7cb8818ea5 sp=0x00007f7cd7957f18 mode 2
+Event: 0.674 Thread 0x00007f7cd0016000 Uncommon trap: trap_request=0xffffff4d fr.pc=0x00007f7cc037a438 relative=0x0000000000000198
+Event: 0.674 Thread 0x00007f7cd0016000 Uncommon trap: reason=unstable_if action=reinterpret pc=0x00007f7cc037a438 method=java.lang.String.isLatin1()Z @ 10 c2
+Event: 0.674 Thread 0x00007f7cd0016000 DEOPT PACKING pc=0x00007f7cc037a438 sp=0x00007f7cd79587b0
+Event: 0.674 Thread 0x00007f7cd0016000 DEOPT UNPACKING pc=0x00007f7cb8818ea5 sp=0x00007f7cd79586f8 mode 2
+Event: 0.680 Thread 0x00007f7cd0016000 Uncommon trap: trap_request=0xffffff4d fr.pc=0x00007f7cc03a6b44 relative=0x00000000000004a4
+Event: 0.680 Thread 0x00007f7cd0016000 Uncommon trap: reason=unstable_if action=reinterpret pc=0x00007f7cc03a6b44 method=jdk.internal.org.objectweb.asm.Type.getArgumentsAndReturnSizes(Ljava/lang/String;)I @ 130 c2
+Event: 0.680 Thread 0x00007f7cd0016000 DEOPT PACKING pc=0x00007f7cc03a6b44 sp=0x00007f7cd7957810
+Event: 0.680 Thread 0x00007f7cd0016000 DEOPT UNPACKING pc=0x00007f7cb8818ea5 sp=0x00007f7cd79577c8 mode 2
+Event: 3.150 Thread 0x00007f7cd0016000 DEOPT PACKING pc=0x00007f7cb8fa6ea0 sp=0x00007f7cd7957b50
+Event: 3.150 Thread 0x00007f7cd0016000 DEOPT UNPACKING pc=0x00007f7cb881964a sp=0x00007f7cd7957088 mode 0
+
+Classes redefined (0 events):
+No events
+
+Internal exceptions (20 events):
+Event: 0.516 Thread 0x00007f7cd0016000 Exception <a 'java/lang/NoSuchMethodError'{0x0000000717aac4f8}: 'void java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial(java.lang.Object, java.lang.Object, java.lang.Object, java.lang.Object, java.lang.Object)'> (0x0000000717aac4f8) thrown at [./src/hotspot/share/interpreter/linkResolver.cpp, line 772]
+Event: 0.556 Thread 0x00007f7cd0016000 Exception <a 'java/lang/NoSuchMethodError'{0x00000007179f3468}: 'java.lang.Object java.lang.invoke.DirectMethodHandle$Holder.invokeInterface(java.lang.Object, java.lang.Object, java.lang.Object, java.lang.Object, java.lang.Object)'> (0x00000007179f3468) thrown at [./src/hotspot/share/interpreter/linkResolver.cpp, line 772]
+Event: 0.556 Thread 0x00007f7cd0016000 Exception <a 'java/lang/IncompatibleClassChangeError'{0x00000007179f6bc0}: Found class java.lang.Object, but interface was expected> (0x00000007179f6bc0) thrown at [./src/hotspot/share/interpreter/linkResolver.cpp, line 839]
+Event: 0.577 Thread 0x00007f7cd0016000 Exception <a 'java/lang/NoSuchMethodError'{0x0000000717895f28}: 'void java.lang.invoke.DirectMethodHandle$Holder.invokeInterface(java.lang.Object, java.lang.Object, java.lang.Object, java.lang.Object)'> (0x0000000717895f28) thrown at [./src/hotspot/share/interpreter/linkResolver.cpp, line 772]
+Event: 0.577 Thread 0x00007f7cd0016000 Exception <a 'java/lang/IncompatibleClassChangeError'{0x0000000717898ce8}: Found class java.lang.Object, but interface was expected> (0x0000000717898ce8) thrown at [./src/hotspot/share/interpreter/linkResolver.cpp, line 839]
+Event: 0.579 Thread 0x00007f7cd0016000 Exception <a 'java/lang/NoSuchMethodError'{0x00000007178bcd80}: 'void java.lang.invoke.DirectMethodHandle$Holder.invokeStatic(java.lang.Object, java.lang.Object, java.lang.Object, java.lang.Object)'> (0x00000007178bcd80) thrown at [./src/hotspot/share/interpreter/linkResolver.cpp, line 772]
+Event: 0.593 Thread 0x00007f7cd0016000 Exception <a 'java/lang/NoSuchMethodError'{0x000000071775b2a0}: 'int java.lang.invoke.DirectMethodHandle$Holder.invokeStatic(java.lang.Object, java.lang.Object, java.lang.Object, java.lang.Object, java.lang.Object)'> (0x000000071775b2a0) thrown at [./src/hotspot/share/interpreter/linkResolver.cpp, line 772]
+Event: 0.600 Thread 0x00007f7cd0016000 Exception <a 'java/lang/NoSuchMethodError'{0x00000007177af948}: 'void java.lang.invoke.DirectMethodHandle$Holder.invokeStaticInit(java.lang.Object)'> (0x00000007177af948) thrown at [./src/hotspot/share/interpreter/linkResolver.cpp, line 772]
+Event: 0.604 Thread 0x00007f7cd0016000 Exception <a 'java/lang/NoSuchMethodError'{0x00000007177cb850}: 'void java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial(java.lang.Object, java.lang.Object)'> (0x00000007177cb850) thrown at [./src/hotspot/share/interpreter/linkResolver.cpp, line 772]
+Event: 0.613 Thread 0x00007f7cd0016000 Exception <a 'java/lang/NoSuchMethodError'{0x0000000717687448}: 'void java.lang.invoke.DirectMethodHandle$Holder.invokeStaticInit(java.lang.Object, java.lang.Object, java.lang.Object, java.lang.Object)'> (0x0000000717687448) thrown at [./src/hotspot/share/interpreter/linkResolver.cpp, line 772]
+Event: 0.623 Thread 0x00007f7cd0016000 Exception <a 'java/lang/NoSuchMethodError'{0x00000007175196c8}: 'int java.lang.invoke.DirectMethodHandle$Holder.invokeStaticInit(java.lang.Object, java.lang.Object)'> (0x00000007175196c8) thrown at [./src/hotspot/share/interpreter/linkResolver.cpp, line 772]
+Event: 0.653 Thread 0x00007f7cd0016000 Exception <a 'java/lang/NoSuchMethodError'{0x000000071748a458}: 'void java.lang.invoke.DirectMethodHandle$Holder.invokeStatic(java.lang.Object, java.lang.Object, java.lang.Object, java.lang.Object, java.lang.Object)'> (0x000000071748a458) thrown at [./src/hotspot/share/interpreter/linkResolver.cpp, line 772]
+Event: 0.654 Thread 0x00007f7cd0016000 Exception <a 'java/lang/NoSuchMethodError'{0x00000007174988a0}: 'java.lang.Object java.lang.invoke.Invokers$Holder.linkToTargetMethod(java.lang.Object, java.lang.Object, java.lang.Object, java.lang.Object, java.lang.Object, java.lang.Object, java.lang.Object)'> (0x00000007174988a0) thrown at [./src/hotspot/share/interpreter/linkResolver.cpp, line 772]
+Event: 0.655 Thread 0x00007f7cd0016000 Exception <a 'java/lang/IncompatibleClassChangeError'{0x00000007174aa388}: Found class java.lang.Object, but interface was expected> (0x00000007174aa388) thrown at [./src/hotspot/share/interpreter/linkResolver.cpp, line 839]
+Event: 2.787 Thread 0x00007f7cd0016000 Exception <a 'com/nvidia/cuopt/linearprogramming/CuOptException'{0x0000000718916010}> (0x0000000718916010) thrown at [./src/hotspot/share/prims/jni.cpp, line 617]
+Event: 2.796 Thread 0x00007f7cd0016000 Exception <a 'java/lang/NoSuchMethodError'{0x00000007189386b0}: 'java.lang.Object java.lang.invoke.DirectMethodHandle$Holder.invokeStaticInit(java.lang.Object, java.lang.Object, long, java.lang.Object)'> (0x00000007189386b0) thrown at [./src/hotspot/share/interpreter/linkResolver.cpp, line 772]
+Event: 2.796 Thread 0x00007f7cd0016000 Exception <a 'java/lang/NoSuchMethodError'{0x0000000718944d20}: 'java.lang.Object java.lang.invoke.Invokers$Holder.linkToTargetMethod(java.lang.Object, long, java.lang.Object)'> (0x0000000718944d20) thrown at [./src/hotspot/share/interpreter/linkResolver.cpp, line 772]
+Event: 2.797 Thread 0x00007f7cd0016000 Exception <a 'java/lang/NoSuchMethodError'{0x000000071894bd78}: 'java.lang.Object java.lang.invoke.DirectMethodHandle$Holder.invokeStatic(java.lang.Object, java.lang.Object, java.lang.Object, int)'> (0x000000071894bd78) thrown at [./src/hotspot/share/interpreter/linkResolver.cpp, line 772]
+Event: 2.797 Thread 0x00007f7cd0016000 Exception <a 'java/lang/NoSuchMethodError'{0x000000071894ff40}: 'java.lang.Object java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial(java.lang.Object, java.lang.Object, java.lang.Object, java.lang.Object, int)'> (0x000000071894ff40) thrown at [./src/hotspot/share/interpreter/linkResolver.cpp, line 772]
+Event: 2.798 Thread 0x00007f7cd0016000 Exception <a 'java/lang/NoSuchMethodError'{0x0000000718953928}: 'java.lang.Object java.lang.invoke.Invokers$Holder.linkToTargetMethod(java.lang.Object, java.lang.Object, int, java.lang.Object)'> (0x0000000718953928) thrown at [./src/hotspot/share/interpreter/linkResolver.cpp, line 772]
+
+Events (20 events):
+Event: 3.078 loading class com/nvidia/cuopt/linearprogramming/Solution$NativeHandle
+Event: 3.078 loading class com/nvidia/cuopt/linearprogramming/Solution$NativeHandle done
+Event: 3.084 loading class com/nvidia/cuopt/linearprogramming/BatchSolveResult
+Event: 3.084 loading class com/nvidia/cuopt/linearprogramming/BatchSolveResult done
+Event: 3.084 loading class com/nvidia/cuopt/linearprogramming/Solution
+Event: 3.084 loading class com/nvidia/cuopt/linearprogramming/Solution done
+Event: 3.148 Executing VM operation: RevokeBias
+Event: 3.148 Executing VM operation: RevokeBias done
+Event: 3.148 Executing VM operation: RevokeBias
+Event: 3.148 Executing VM operation: RevokeBias done
+Event: 3.148 Executing VM operation: RevokeBias
+Event: 3.148 Executing VM operation: RevokeBias done
+Event: 3.150 loading class org/junit/jupiter/api/AssertionFailureBuilder
+Event: 3.150 loading class org/junit/jupiter/api/AssertionFailureBuilder done
+Event: 3.150 loading class java/util/ArrayDeque$DeqSpliterator
+Event: 3.150 loading class java/util/ArrayDeque$DeqSpliterator done
+Event: 3.151 loading class org/opentest4j/AssertionFailedError$1
+Event: 3.151 loading class org/opentest4j/AssertionFailedError$1 done
+Event: 3.151 loading class org/opentest4j/ValueWrapper
+Event: 3.151 loading class org/opentest4j/ValueWrapper done
+
+
+Dynamic libraries:
+200000000-200600000 rw-s 00000000 00:01 8252                             /dev/zero (deleted)
+200600000-203000000 ---p 00000000 00:00 0 
+203000000-203200000 rw-s 00000000 00:01 8260                             /dev/zero (deleted)
+203200000-203400000 rw-s 00000000 00:01 8293                             /dev/zero (deleted)
+203400000-203600000 ---p 00000000 00:00 0 
+203600000-203800000 rw-s 00000000 00:01 8295                             /dev/zero (deleted)
+203800000-203a00000 rw-s 00000000 00:01 8296                             /dev/zero (deleted)
+203a00000-203e00000 ---p 00000000 00:00 0 
+203e00000-204000000 rw-s 00000000 00:01 8298                             /dev/zero (deleted)
+204000000-204200000 rw-s 00000000 00:01 8299                             /dev/zero (deleted)
+204200000-700000000 ---p 00000000 00:00 0 
+709200000-718a00000 rw-p 00000000 00:00 0 
+718a00000-7bfe00000 ---p 00000000 00:00 0 
+7bfe00000-7bfe48000 rw-p 00b14000 08:20 293785                           /usr/lib/jvm/java-11-openjdk-amd64/lib/server/classes.jsa
+7bfe48000-7bff00000 rw-p 00000000 00:00 0 
+7bff00000-7bff6c000 rw-p 00aa8000 08:20 293785                           /usr/lib/jvm/java-11-openjdk-amd64/lib/server/classes.jsa
+7bff6c000-7c0000000 rw-p 00000000 00:00 0 
+7c0000000-800000000 ---p 00000000 00:00 0 
+800000000-800002000 rwxp 00001000 08:20 293785                           /usr/lib/jvm/java-11-openjdk-amd64/lib/server/classes.jsa
+800002000-8003ce000 rw-p 00003000 08:20 293785                           /usr/lib/jvm/java-11-openjdk-amd64/lib/server/classes.jsa
+8003ce000-800aa6000 r--p 003cf000 08:20 293785                           /usr/lib/jvm/java-11-openjdk-amd64/lib/server/classes.jsa
+800aa6000-800aa7000 rw-p 00aa7000 08:20 293785                           /usr/lib/jvm/java-11-openjdk-amd64/lib/server/classes.jsa
+840000000-840140000 rw-p 00000000 00:00 0 
+840140000-880000000 ---p 00000000 00:00 0 
+900000000-c00000000 ---p 00000000 00:00 0 
+55851a364000-55851a365000 r--p 00000000 08:20 294880                     /usr/lib/jvm/java-11-openjdk-amd64/bin/java
+55851a365000-55851a366000 r-xp 00001000 08:20 294880                     /usr/lib/jvm/java-11-openjdk-amd64/bin/java
+55851a366000-55851a367000 r--p 00002000 08:20 294880                     /usr/lib/jvm/java-11-openjdk-amd64/bin/java
+55851a367000-55851a368000 r--p 00002000 08:20 294880                     /usr/lib/jvm/java-11-openjdk-amd64/bin/java
+55851a368000-55851a369000 rw-p 00003000 08:20 294880                     /usr/lib/jvm/java-11-openjdk-amd64/bin/java
+55851bb38000-55851bb59000 rw-p 00000000 00:00 0                          [heap]
+7f7be0000000-7f7be0021000 rw-p 00000000 00:00 0 
+7f7be0021000-7f7be4000000 ---p 00000000 00:00 0 
+7f7be7803000-7f7be8000000 rw-p 00000000 00:00 0 
+7f7be8000000-7f7be8021000 rw-p 00000000 00:00 0 
+7f7be8021000-7f7bec000000 ---p 00000000 00:00 0 
+7f7bec543000-7f7bec544000 ---p 00000000 00:00 0 
+7f7bec544000-7f7bf0000000 rw-p 00000000 00:00 0 
+7f7bf0000000-7f7bf0021000 rw-p 00000000 00:00 0 
+7f7bf0021000-7f7bf4000000 ---p 00000000 00:00 0 
+7f7bf417b000-7f7bf5d6b000 rw-p 00000000 00:00 0 
+7f7bf5d6b000-7f7bf5f6b000 rw-s 00000000 00:01 8297                       /dev/zero (deleted)
+7f7bf5f6b000-7f7bf616b000 rw-s 00000000 00:01 8294                       /dev/zero (deleted)
+7f7bf616b000-7f7bf8b6b000 rw-s 00000000 00:01 8259                       /dev/zero (deleted)
+7f7bf8b6b000-7f7bf8d6b000 rw-s 00000000 00:01 8258                       /dev/zero (deleted)
+7f7bf8d6b000-7f7bf8d6c000 ---p 00000000 00:00 0 
+7f7bf8d6c000-7f7bf97ff000 rw-p 00000000 00:00 0 
+7f7bf97ff000-7f7bff800000 ---p 00000000 00:00 0 
+7f7bff800000-7f7c00000000 rw-p 00000000 00:00 0 
+7f7c00000000-7f7c00021000 rw-p 00000000 00:00 0 
+7f7c00021000-7f7c04000000 ---p 00000000 00:00 0 
+7f7c04006000-7f7c04400000 rw-p 00000000 00:00 0 
+7f7c04400000-7f7c0440d000 r-xp 00000000 00:21 1688849861009784           /usr/lib/wsl/drivers/nvdm.inf_amd64_86ce1e7b61a7cb15/libnvdxgdmal.so.1
+7f7c0440d000-7f7c0460d000 ---p 0000d000 00:21 1688849861009784           /usr/lib/wsl/drivers/nvdm.inf_amd64_86ce1e7b61a7cb15/libnvdxgdmal.so.1
+7f7c0460d000-7f7c0460f000 r--p 0000d000 00:21 1688849861009784           /usr/lib/wsl/drivers/nvdm.inf_amd64_86ce1e7b61a7cb15/libnvdxgdmal.so.1
+7f7c0460f000-7f7c04610000 rw-p 0000f000 00:21 1688849861009784           /usr/lib/wsl/drivers/nvdm.inf_amd64_86ce1e7b61a7cb15/libnvdxgdmal.so.1
+7f7c0466e000-7f7c047ff000 rw-p 00000000 00:00 0 
+7f7c047ff000-7f7c04800000 ---p 00000000 00:00 0 
+7f7c04800000-7f7c05000000 rw-p 00000000 00:00 0 
+7f7c05000000-7f7c0666e000 r-xp 00000000 00:21 1688849861009763           /usr/lib/wsl/drivers/nvdm.inf_amd64_86ce1e7b61a7cb15/libcuda.so.1.1
+7f7c0666e000-7f7c0686d000 ---p 0166e000 00:21 1688849861009763           /usr/lib/wsl/drivers/nvdm.inf_amd64_86ce1e7b61a7cb15/libcuda.so.1.1
+7f7c0686d000-7f7c06bad000 r--p 0166d000 00:21 1688849861009763           /usr/lib/wsl/drivers/nvdm.inf_amd64_86ce1e7b61a7cb15/libcuda.so.1.1
+7f7c06bad000-7f7c06bb4000 rw-p 019ad000 00:21 1688849861009763           /usr/lib/wsl/drivers/nvdm.inf_amd64_86ce1e7b61a7cb15/libcuda.so.1.1
+7f7c06bb4000-7f7c06c21000 rw-p 00000000 00:00 0 
+7f7c06cfe000-7f7c07000000 rw-p 00000000 00:00 0 
+7f7c07000000-7f7c07028000 r-xp 00000000 00:22 1688849861009770           /usr/lib/wsl/lib/libcuda.so.1
+7f7c07028000-7f7c07228000 ---p 00028000 00:22 1688849861009770           /usr/lib/wsl/lib/libcuda.so.1
+7f7c07228000-7f7c07229000 r--p 00028000 00:22 1688849861009770           /usr/lib/wsl/lib/libcuda.so.1
+7f7c07229000-7f7c0722b000 rw-p 00029000 00:22 1688849861009770           /usr/lib/wsl/lib/libcuda.so.1
+7f7c07279000-7f7c0727a000 rw-s a01e41000 00:01 8292                      /dev/zero (deleted)
+7f7c0727a000-7f7c0727b000 rw-s a01e40000 00:01 8291                      /dev/zero (deleted)
+7f7c0727b000-7f7c0727c000 rw-s a01e3f000 00:01 8290                      /dev/zero (deleted)
+7f7c0727c000-7f7c0727d000 rw-s a01e3e000 00:01 8289                      /dev/zero (deleted)
+7f7c0727d000-7f7c0727e000 rw-s a01e3d000 00:01 8288                      /dev/zero (deleted)
+7f7c0727e000-7f7c0727f000 rw-s a01e3c000 00:01 8287                      /dev/zero (deleted)
+7f7c0727f000-7f7c07280000 rw-s a01e3b000 00:01 8286                      /dev/zero (deleted)
+7f7c07280000-7f7c07281000 rw-s a01e3a000 00:01 8285                      /dev/zero (deleted)
+7f7c07281000-7f7c07282000 rw-s a01e39000 00:01 8284                      /dev/zero (deleted)
+7f7c07282000-7f7c07283000 rw-s a01e38000 00:01 8283                      /dev/zero (deleted)
+7f7c07283000-7f7c07284000 rw-s a01e37000 00:01 8282                      /dev/zero (deleted)
+7f7c07284000-7f7c07285000 rw-s a01e36000 00:01 8281                      /dev/zero (deleted)
+7f7c07285000-7f7c07286000 rw-s a01e35000 00:01 8280                      /dev/zero (deleted)
+7f7c07286000-7f7c07287000 rw-s a01e34000 00:01 8279                      /dev/zero (deleted)
+7f7c07287000-7f7c07288000 rw-s a01e33000 00:01 8278                      /dev/zero (deleted)
+7f7c07288000-7f7c07289000 rw-s a01e32000 00:01 8277                      /dev/zero (deleted)
+7f7c07289000-7f7c0728a000 rw-s a01e31000 00:01 8276                      /dev/zero (deleted)
+7f7c0728a000-7f7c0730b000 rw-p 00000000 00:00 0 
+7f7c0730b000-7f7c0730f000 ---p 00000000 00:00 0 
+7f7c0730f000-7f7c073ee000 rw-p 00000000 00:00 0 
+7f7c073ee000-7f7c074dd000 r--p 00000000 08:20 320733                     /home/cbrissette/cuopt/.cuopt_env/lib/libcrypto.so.3
+7f7c074dd000-7f7c07841000 r-xp 000ef000 08:20 320733                     /home/cbrissette/cuopt/.cuopt_env/lib/libcrypto.so.3
+7f7c07841000-7f7c07978000 r--p 00453000 08:20 320733                     /home/cbrissette/cuopt/.cuopt_env/lib/libcrypto.so.3
+7f7c07978000-7f7c079fa000 r--p 00589000 08:20 320733                     /home/cbrissette/cuopt/.cuopt_env/lib/libcrypto.so.3
+7f7c079fa000-7f7c079fd000 rw-p 0060b000 08:20 320733                     /home/cbrissette/cuopt/.cuopt_env/lib/libcrypto.so.3
+7f7c079fd000-7f7c07a00000 rw-p 00000000 00:00 0 
+7f7c07a00000-7f7c1ee7c000 r-xp 00000000 08:20 101468                     /home/cbrissette/cuopt/.cuopt_env/targets/x86_64-linux/lib/libcublasLt.so.13.4.0.1
+7f7c1ee7c000-7f7c1f07c000 ---p 1747c000 08:20 101468                     /home/cbrissette/cuopt/.cuopt_env/targets/x86_64-linux/lib/libcublasLt.so.13.4.0.1
+7f7c1f07c000-7f7c1f334000 r--p 1747c000 08:20 101468                     /home/cbrissette/cuopt/.cuopt_env/targets/x86_64-linux/lib/libcublasLt.so.13.4.0.1
+7f7c1f334000-7f7c1f9c8000 rw-p 17734000 08:20 101468                     /home/cbrissette/cuopt/.cuopt_env/targets/x86_64-linux/lib/libcublasLt.so.13.4.0.1
+7f7c1f9c8000-7f7c253e0000 rw-p 00000000 00:00 0 
+7f7c253e0000-7f7c255df000 ---p 1d9e0000 08:20 101468                     /home/cbrissette/cuopt/.cuopt_env/targets/x86_64-linux/lib/libcublasLt.so.13.4.0.1
+7f7c255df000-7f7c260d5000 r--p 17ddf000 08:20 101468                     /home/cbrissette/cuopt/.cuopt_env/targets/x86_64-linux/lib/libcublasLt.so.13.4.0.1
+7f7c260d5000-7f7c262d4000 ---p 1e6d5000 08:20 101468                     /home/cbrissette/cuopt/.cuopt_env/targets/x86_64-linux/lib/libcublasLt.so.13.4.0.1
+7f7c262d4000-7f7c2beb7000 rw-p 188d4000 08:20 101468                     /home/cbrissette/cuopt/.cuopt_env/targets/x86_64-linux/lib/libcublasLt.so.13.4.0.1
+7f7c2beb7000-7f7c2beb8000 rw-s a01e30000 00:01 8275                      /dev/zero (deleted)
+7f7c2beb8000-7f7c2beb9000 rw-s a01e2f000 00:01 8274                      /dev/zero (deleted)
+7f7c2beb9000-7f7c2bf1c000 r--p 00000000 00:23 9288674231615732           /usr/lib/wsl/lib/libdxcore.so
+7f7c2bf1c000-7f7c2bf99000 r-xp 00062000 00:23 9288674231615732           /usr/lib/wsl/lib/libdxcore.so
+7f7c2bf99000-7f7c2bfa1000 r--p 000de000 00:23 9288674231615732           /usr/lib/wsl/lib/libdxcore.so
+7f7c2bfa1000-7f7c2bfa2000 rw-p 000e5000 00:23 9288674231615732           /usr/lib/wsl/lib/libdxcore.so
+7f7c2bfa2000-7f7c2bff6000 rw-p 00000000 00:00 0 
+7f7c2bff6000-7f7c2bffc000 r--p 00000000 08:20 194064                     /home/cbrissette/cuopt/.cuopt_env/lib/libtbbmalloc.so.2.18
+7f7c2bffc000-7f7c2c013000 r-xp 00006000 08:20 194064                     /home/cbrissette/cuopt/.cuopt_env/lib/libtbbmalloc.so.2.18
+7f7c2c013000-7f7c2c018000 r--p 0001d000 08:20 194064                     /home/cbrissette/cuopt/.cuopt_env/lib/libtbbmalloc.so.2.18
+7f7c2c018000-7f7c2c019000 r--p 00021000 08:20 194064                     /home/cbrissette/cuopt/.cuopt_env/lib/libtbbmalloc.so.2.18
+7f7c2c019000-7f7c2c01b000 rw-p 00022000 08:20 194064                     /home/cbrissette/cuopt/.cuopt_env/lib/libtbbmalloc.so.2.18
+7f7c2c01b000-7f7c2c03c000 rw-p 00000000 00:00 0 
+7f7c2c03c000-7f7c2c03d000 r--p 00000000 08:20 177053                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_utf8_for_code_point.so.2601.0.0
+7f7c2c03d000-7f7c2c03e000 r-xp 00001000 08:20 177053                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_utf8_for_code_point.so.2601.0.0
+7f7c2c03e000-7f7c2c03f000 r--p 00002000 08:20 177053                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_utf8_for_code_point.so.2601.0.0
+7f7c2c03f000-7f7c2c040000 r--p 00002000 08:20 177053                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_utf8_for_code_point.so.2601.0.0
+7f7c2c040000-7f7c2c041000 rw-p 00003000 08:20 177053                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_utf8_for_code_point.so.2601.0.0
+7f7c2c041000-7f7c2c042000 r--p 00000000 08:20 176909                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_decode_rust_punycode.so.2601.0.0
+7f7c2c042000-7f7c2c043000 r-xp 00001000 08:20 176909                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_decode_rust_punycode.so.2601.0.0
+7f7c2c043000-7f7c2c044000 r--p 00002000 08:20 176909                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_decode_rust_punycode.so.2601.0.0
+7f7c2c044000-7f7c2c045000 r--p 00002000 08:20 176909                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_decode_rust_punycode.so.2601.0.0
+7f7c2c045000-7f7c2c046000 rw-p 00003000 08:20 176909                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_decode_rust_punycode.so.2601.0.0
+7f7c2c046000-7f7c2c047000 r--p 00000000 08:20 176160                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_demangle_rust.so.2601.0.0
+7f7c2c047000-7f7c2c04b000 r-xp 00001000 08:20 176160                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_demangle_rust.so.2601.0.0
+7f7c2c04b000-7f7c2c04c000 r--p 00005000 08:20 176160                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_demangle_rust.so.2601.0.0
+7f7c2c04c000-7f7c2c04d000 r--p 00005000 08:20 176160                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_demangle_rust.so.2601.0.0
+7f7c2c04d000-7f7c2c04e000 rw-p 00006000 08:20 176160                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_demangle_rust.so.2601.0.0
+7f7c2c04e000-7f7c2c050000 r--p 00000000 08:20 175645                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_crc_internal.so.2601.0.0
+7f7c2c050000-7f7c2c052000 r-xp 00002000 08:20 175645                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_crc_internal.so.2601.0.0
+7f7c2c052000-7f7c2c053000 r--p 00004000 08:20 175645                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_crc_internal.so.2601.0.0
+7f7c2c053000-7f7c2c054000 r--p 00004000 08:20 175645                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_crc_internal.so.2601.0.0
+7f7c2c054000-7f7c2c055000 rw-p 00005000 08:20 175645                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_crc_internal.so.2601.0.0
+7f7c2c055000-7f7c2c057000 r--p 00000000 08:20 176073                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_demangle_internal.so.2601.0.0
+7f7c2c057000-7f7c2c063000 r-xp 00002000 08:20 176073                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_demangle_internal.so.2601.0.0
+7f7c2c063000-7f7c2c065000 r--p 0000e000 08:20 176073                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_demangle_internal.so.2601.0.0
+7f7c2c065000-7f7c2c066000 r--p 00010000 08:20 176073                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_demangle_internal.so.2601.0.0
+7f7c2c066000-7f7c2c067000 rw-p 00011000 08:20 176073                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_demangle_internal.so.2601.0.0
+7f7c2c067000-7f7c2c068000 r--p 00000000 08:20 174727                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_program_name.so.2601.0.0
+7f7c2c068000-7f7c2c069000 r-xp 00001000 08:20 174727                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_program_name.so.2601.0.0
+7f7c2c069000-7f7c2c06a000 r--p 00002000 08:20 174727                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_program_name.so.2601.0.0
+7f7c2c06a000-7f7c2c06b000 r--p 00002000 08:20 174727                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_program_name.so.2601.0.0
+7f7c2c06b000-7f7c2c06c000 rw-p 00003000 08:20 174727                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_program_name.so.2601.0.0
+7f7c2c06c000-7f7c2c06e000 r--p 00000000 08:20 174492                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_debugging_internal.so.2601.0.0
+7f7c2c06e000-7f7c2c06f000 r-xp 00002000 08:20 174492                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_debugging_internal.so.2601.0.0
+7f7c2c06f000-7f7c2c070000 r--p 00003000 08:20 174492                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_debugging_internal.so.2601.0.0
+7f7c2c070000-7f7c2c071000 r--p 00003000 08:20 174492                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_debugging_internal.so.2601.0.0
+7f7c2c071000-7f7c2c072000 rw-p 00004000 08:20 174492                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_debugging_internal.so.2601.0.0
+7f7c2c072000-7f7c2c073000 r--p 00000000 08:20 172719                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_borrowed_fixup_buffer.so.2601.0.0
+7f7c2c073000-7f7c2c074000 r-xp 00001000 08:20 172719                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_borrowed_fixup_buffer.so.2601.0.0
+7f7c2c074000-7f7c2c075000 r--p 00002000 08:20 172719                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_borrowed_fixup_buffer.so.2601.0.0
+7f7c2c075000-7f7c2c076000 r--p 00002000 08:20 172719                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_borrowed_fixup_buffer.so.2601.0.0
+7f7c2c076000-7f7c2c077000 rw-p 00003000 08:20 172719                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_borrowed_fixup_buffer.so.2601.0.0
+7f7c2c077000-7f7c2c08f000 rw-p 00000000 00:00 0 
+7f7c2c08f000-7f7c2c2b9000 r--p 00000000 08:20 139302                     /home/cbrissette/cuopt/.cuopt_env/lib/libgrpc.so.52.0.0
+7f7c2c2b9000-7f7c2cb03000 r-xp 0022a000 08:20 139302                     /home/cbrissette/cuopt/.cuopt_env/lib/libgrpc.so.52.0.0
+7f7c2cb03000-7f7c2cdb4000 r--p 00a74000 08:20 139302                     /home/cbrissette/cuopt/.cuopt_env/lib/libgrpc.so.52.0.0
+7f7c2cdb4000-7f7c2cdee000 r--p 00d25000 08:20 139302                     /home/cbrissette/cuopt/.cuopt_env/lib/libgrpc.so.52.0.0
+7f7c2cdee000-7f7c2cdfb000 rw-p 00d5f000 08:20 139302                     /home/cbrissette/cuopt/.cuopt_env/lib/libgrpc.so.52.0.0
+7f7c2cdfb000-7f7c2ce00000 rw-p 00000000 00:00 0 
+7f7c2ce00000-7f7c30e5e000 r-xp 00000000 08:20 101383                     /home/cbrissette/cuopt/.cuopt_env/lib/libcudss.so.0.7.1
+7f7c30e5e000-7f7c3105e000 ---p 0405e000 08:20 101383                     /home/cbrissette/cuopt/.cuopt_env/lib/libcudss.so.0.7.1
+7f7c3105e000-7f7c31068000 r--p 0405e000 08:20 101383                     /home/cbrissette/cuopt/.cuopt_env/lib/libcudss.so.0.7.1
+7f7c31068000-7f7c3106e000 rw-p 04068000 08:20 101383                     /home/cbrissette/cuopt/.cuopt_env/lib/libcudss.so.0.7.1
+7f7c3106e000-7f7c3107e000 rw-p 00000000 00:00 0 
+7f7c3107e000-7f7c31080000 rw-p 042ac000 08:20 101383                     /home/cbrissette/cuopt/.cuopt_env/lib/libcudss.so.0.7.1
+7f7c31080000-7f7c31081000 rw-s a01e2e000 00:01 8273                      /dev/zero (deleted)
+7f7c31081000-7f7c31082000 rw-s a01e2d000 00:01 8272                      /dev/zero (deleted)
+7f7c31082000-7f7c31083000 rw-s a01e2c000 00:01 8271                      /dev/zero (deleted)
+7f7c31083000-7f7c31085000 r--p 00000000 08:20 177931                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_crc32c.so.2601.0.0
+7f7c31085000-7f7c31086000 r-xp 00002000 08:20 177931                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_crc32c.so.2601.0.0
+7f7c31086000-7f7c31087000 r--p 00003000 08:20 177931                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_crc32c.so.2601.0.0
+7f7c31087000-7f7c31088000 r--p 00003000 08:20 177931                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_crc32c.so.2601.0.0
+7f7c31088000-7f7c31089000 rw-p 00004000 08:20 177931                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_crc32c.so.2601.0.0
+7f7c31089000-7f7c3108a000 r--p 00000000 08:20 177959                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_sink.so.2601.0.0
+7f7c3108a000-7f7c3108b000 r-xp 00001000 08:20 177959                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_sink.so.2601.0.0
+7f7c3108b000-7f7c3108c000 r--p 00002000 08:20 177959                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_sink.so.2601.0.0
+7f7c3108c000-7f7c3108d000 r--p 00002000 08:20 177959                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_sink.so.2601.0.0
+7f7c3108d000-7f7c3108e000 rw-p 00003000 08:20 177959                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_sink.so.2601.0.0
+7f7c3108e000-7f7c31090000 r--p 00000000 08:20 175392                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_symbolize.so.2601.0.0
+7f7c31090000-7f7c31093000 r-xp 00002000 08:20 175392                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_symbolize.so.2601.0.0
+7f7c31093000-7f7c31094000 r--p 00005000 08:20 175392                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_symbolize.so.2601.0.0
+7f7c31094000-7f7c31095000 r--p 00006000 08:20 175392                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_symbolize.so.2601.0.0
+7f7c31095000-7f7c31096000 rw-p 00007000 08:20 175392                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_symbolize.so.2601.0.0
+7f7c31096000-7f7c31097000 r--p 00000000 08:20 176368                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_private_handle_accessor.so.2601.0.0
+7f7c31097000-7f7c31098000 r-xp 00001000 08:20 176368                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_private_handle_accessor.so.2601.0.0
+7f7c31098000-7f7c31099000 r--p 00002000 08:20 176368                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_private_handle_accessor.so.2601.0.0
+7f7c31099000-7f7c3109a000 r--p 00002000 08:20 176368                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_private_handle_accessor.so.2601.0.0
+7f7c3109a000-7f7c3109b000 rw-p 00003000 08:20 176368                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_private_handle_accessor.so.2601.0.0
+7f7c3109b000-7f7c3109d000 r--p 00000000 08:20 176315                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_config.so.2601.0.0
+7f7c3109d000-7f7c3109f000 r-xp 00002000 08:20 176315                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_config.so.2601.0.0
+7f7c3109f000-7f7c310a0000 r--p 00004000 08:20 176315                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_config.so.2601.0.0
+7f7c310a0000-7f7c310a1000 r--p 00004000 08:20 176315                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_config.so.2601.0.0
+7f7c310a1000-7f7c310a2000 rw-p 00005000 08:20 176315                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_config.so.2601.0.0
+7f7c310a2000-7f7c310a3000 r--p 00000000 08:20 174103                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_commandlineflag_internal.so.2601.0.0
+7f7c310a3000-7f7c310a4000 r-xp 00001000 08:20 174103                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_commandlineflag_internal.so.2601.0.0
+7f7c310a4000-7f7c310a5000 r--p 00002000 08:20 174103                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_commandlineflag_internal.so.2601.0.0
+7f7c310a5000-7f7c310a6000 r--p 00002000 08:20 174103                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_commandlineflag_internal.so.2601.0.0
+7f7c310a6000-7f7c310a7000 rw-p 00003000 08:20 174103                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_commandlineflag_internal.so.2601.0.0
+7f7c310a7000-7f7c310a8000 r--p 00000000 08:20 175648                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_commandlineflag.so.2601.0.0
+7f7c310a8000-7f7c310a9000 r-xp 00001000 08:20 175648                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_commandlineflag.so.2601.0.0
+7f7c310a9000-7f7c310aa000 r--p 00002000 08:20 175648                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_commandlineflag.so.2601.0.0
+7f7c310aa000-7f7c310ab000 r--p 00002000 08:20 175648                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_commandlineflag.so.2601.0.0
+7f7c310ab000-7f7c310ac000 rw-p 00003000 08:20 175648                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_commandlineflag.so.2601.0.0
+7f7c310ac000-7f7c310ad000 r--p 00000000 08:20 172450                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_internal_platform.so.2601.0.0
+7f7c310ad000-7f7c310ae000 r-xp 00001000 08:20 172450                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_internal_platform.so.2601.0.0
+7f7c310ae000-7f7c310b0000 r--p 00002000 08:20 172450                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_internal_platform.so.2601.0.0
+7f7c310b0000-7f7c310b1000 r--p 00003000 08:20 172450                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_internal_platform.so.2601.0.0
+7f7c310b1000-7f7c310b2000 rw-p 00004000 08:20 172450                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_internal_platform.so.2601.0.0
+7f7c310b2000-7f7c310b3000 r--p 00000000 08:20 178131                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_internal_randen_hwaes.so.2601.0.0
+7f7c310b3000-7f7c310b4000 r-xp 00001000 08:20 178131                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_internal_randen_hwaes.so.2601.0.0
+7f7c310b4000-7f7c310b5000 r--p 00002000 08:20 178131                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_internal_randen_hwaes.so.2601.0.0
+7f7c310b5000-7f7c310b6000 r--p 00002000 08:20 178131                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_internal_randen_hwaes.so.2601.0.0
+7f7c310b6000-7f7c310b7000 rw-p 00003000 08:20 178131                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_internal_randen_hwaes.so.2601.0.0
+7f7c310b7000-7f7c310b8000 r--p 00000000 08:20 176601                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_seed_gen_exception.so.2601.0.0
+7f7c310b8000-7f7c310b9000 r-xp 00001000 08:20 176601                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_seed_gen_exception.so.2601.0.0
+7f7c310b9000-7f7c310ba000 r--p 00002000 08:20 176601                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_seed_gen_exception.so.2601.0.0
+7f7c310ba000-7f7c310bb000 r--p 00002000 08:20 176601                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_seed_gen_exception.so.2601.0.0
+7f7c310bb000-7f7c310bc000 rw-p 00003000 08:20 176601                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_seed_gen_exception.so.2601.0.0
+7f7c310bc000-7f7c310bd000 r--p 00000000 08:20 178171                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_internal_seed_material.so.2601.0.0
+7f7c310bd000-7f7c310be000 r-xp 00001000 08:20 178171                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_internal_seed_material.so.2601.0.0
+7f7c310be000-7f7c310bf000 r--p 00002000 08:20 178171                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_internal_seed_material.so.2601.0.0
+7f7c310bf000-7f7c310c0000 r--p 00002000 08:20 178171                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_internal_seed_material.so.2601.0.0
+7f7c310c0000-7f7c310c1000 rw-p 00003000 08:20 178171                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_internal_seed_material.so.2601.0.0
+7f7c310c1000-7f7c310c2000 r--p 00000000 08:20 175910                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_city.so.2601.0.0
+7f7c310c2000-7f7c310c3000 r-xp 00001000 08:20 175910                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_city.so.2601.0.0
+7f7c310c3000-7f7c310c4000 r--p 00002000 08:20 175910                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_city.so.2601.0.0
+7f7c310c4000-7f7c310c5000 r--p 00002000 08:20 175910                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_city.so.2601.0.0
+7f7c310c5000-7f7c310c6000 rw-p 00003000 08:20 175910                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_city.so.2601.0.0
+7f7c310c6000-7f7c310c8000 r--p 00000000 08:20 174503                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_hashtablez_sampler.so.2601.0.0
+7f7c310c8000-7f7c310c9000 r-xp 00002000 08:20 174503                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_hashtablez_sampler.so.2601.0.0
+7f7c310c9000-7f7c310ca000 r--p 00003000 08:20 174503                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_hashtablez_sampler.so.2601.0.0
+7f7c310ca000-7f7c310cb000 r--p 00003000 08:20 174503                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_hashtablez_sampler.so.2601.0.0
+7f7c310cb000-7f7c310cc000 rw-p 00004000 08:20 174503                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_hashtablez_sampler.so.2601.0.0
+7f7c310cc000-7f7c310ce000 r--p 00000000 08:20 176334                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_int128.so.2601.0.0
+7f7c310ce000-7f7c310d0000 r-xp 00002000 08:20 176334                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_int128.so.2601.0.0
+7f7c310d0000-7f7c310d1000 r--p 00004000 08:20 176334                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_int128.so.2601.0.0
+7f7c310d1000-7f7c310d2000 r--p 00004000 08:20 176334                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_int128.so.2601.0.0
+7f7c310d2000-7f7c310d3000 rw-p 00005000 08:20 176334                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_int128.so.2601.0.0
+7f7c310d3000-7f7c310d4000 r--p 00000000 08:20 173674                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_fnmatch.so.2601.0.0
+7f7c310d4000-7f7c310d5000 r-xp 00001000 08:20 173674                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_fnmatch.so.2601.0.0
+7f7c310d5000-7f7c310d6000 r--p 00002000 08:20 173674                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_fnmatch.so.2601.0.0
+7f7c310d6000-7f7c310d7000 r--p 00002000 08:20 173674                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_fnmatch.so.2601.0.0
+7f7c310d7000-7f7c310d8000 rw-p 00003000 08:20 173674                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_fnmatch.so.2601.0.0
+7f7c310d8000-7f7c310da000 r--p 00000000 08:20 176024                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_malloc_internal.so.2601.0.0
+7f7c310da000-7f7c310dc000 r-xp 00002000 08:20 176024                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_malloc_internal.so.2601.0.0
+7f7c310dc000-7f7c310dd000 r--p 00004000 08:20 176024                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_malloc_internal.so.2601.0.0
+7f7c310dd000-7f7c310de000 r--p 00004000 08:20 176024                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_malloc_internal.so.2601.0.0
+7f7c310de000-7f7c310df000 rw-p 00005000 08:20 176024                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_malloc_internal.so.2601.0.0
+7f7c310df000-7f7c310e0000 r--p 00000000 08:20 178559                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_tracing_internal.so.2601.0.0
+7f7c310e0000-7f7c310e1000 r-xp 00001000 08:20 178559                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_tracing_internal.so.2601.0.0
+7f7c310e1000-7f7c310e2000 r--p 00002000 08:20 178559                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_tracing_internal.so.2601.0.0
+7f7c310e2000-7f7c310e3000 r--p 00002000 08:20 178559                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_tracing_internal.so.2601.0.0
+7f7c310e3000-7f7c310e4000 rw-p 00003000 08:20 178559                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_tracing_internal.so.2601.0.0
+7f7c310e4000-7f7c310e5000 r--p 00000000 08:20 173445                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_exponential_biased.so.2601.0.0
+7f7c310e5000-7f7c310e6000 r-xp 00001000 08:20 173445                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_exponential_biased.so.2601.0.0
+7f7c310e6000-7f7c310e7000 r--p 00002000 08:20 173445                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_exponential_biased.so.2601.0.0
+7f7c310e7000-7f7c310e8000 r--p 00002000 08:20 173445                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_exponential_biased.so.2601.0.0
+7f7c310e8000-7f7c310e9000 rw-p 00003000 08:20 173445                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_exponential_biased.so.2601.0.0
+7f7c310e9000-7f7c310ea000 r--p 00000000 08:20 173659                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_stacktrace.so.2601.0.0
+7f7c310ea000-7f7c310ec000 r-xp 00001000 08:20 173659                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_stacktrace.so.2601.0.0
+7f7c310ec000-7f7c310ed000 r--p 00003000 08:20 173659                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_stacktrace.so.2601.0.0
+7f7c310ed000-7f7c310ee000 r--p 00003000 08:20 173659                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_stacktrace.so.2601.0.0
+7f7c310ee000-7f7c310ef000 rw-p 00004000 08:20 173659                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_stacktrace.so.2601.0.0
+7f7c310ef000-7f7c310f1000 r--p 00000000 08:20 177928                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_cordz_handle.so.2601.0.0
+7f7c310f1000-7f7c310f2000 r-xp 00002000 08:20 177928                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_cordz_handle.so.2601.0.0
+7f7c310f2000-7f7c310f3000 r--p 00003000 08:20 177928                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_cordz_handle.so.2601.0.0
+7f7c310f3000-7f7c310f4000 r--p 00003000 08:20 177928                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_cordz_handle.so.2601.0.0
+7f7c310f4000-7f7c310f5000 rw-p 00004000 08:20 177928                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_cordz_handle.so.2601.0.0
+7f7c310f5000-7f7c310f7000 r--p 00000000 08:20 175778                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_crc_cord_state.so.2601.0.0
+7f7c310f7000-7f7c310fb000 r-xp 00002000 08:20 175778                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_crc_cord_state.so.2601.0.0
+7f7c310fb000-7f7c310fc000 r--p 00006000 08:20 175778                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_crc_cord_state.so.2601.0.0
+7f7c310fc000-7f7c310fd000 r--p 00006000 08:20 175778                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_crc_cord_state.so.2601.0.0
+7f7c310fd000-7f7c310fe000 rw-p 00007000 08:20 175778                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_crc_cord_state.so.2601.0.0
+7f7c310fe000-7f7c310ff000 r--p 00000000 08:20 177417                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_raw_logging_internal.so.2601.0.0
+7f7c310ff000-7f7c31100000 r-xp 00001000 08:20 177417                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_raw_logging_internal.so.2601.0.0
+7f7c31100000-7f7c31101000 r--p 00002000 08:20 177417                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_raw_logging_internal.so.2601.0.0
+7f7c31101000-7f7c31102000 r--p 00002000 08:20 177417                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_raw_logging_internal.so.2601.0.0
+7f7c31102000-7f7c31103000 rw-p 00003000 08:20 177417                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_raw_logging_internal.so.2601.0.0
+7f7c31103000-7f7c31127000 r--p 00000000 08:20 167892                     /home/cbrissette/cuopt/.cuopt_env/lib/libssl.so.3
+7f7c31127000-7f7c311c2000 r-xp 00024000 08:20 167892                     /home/cbrissette/cuopt/.cuopt_env/lib/libssl.so.3
+7f7c311c2000-7f7c311f2000 r--p 000bf000 08:20 167892                     /home/cbrissette/cuopt/.cuopt_env/lib/libssl.so.3
+7f7c311f2000-7f7c311fc000 r--p 000ef000 08:20 167892                     /home/cbrissette/cuopt/.cuopt_env/lib/libssl.so.3
+7f7c311fc000-7f7c31200000 rw-p 000f9000 08:20 167892                     /home/cbrissette/cuopt/.cuopt_env/lib/libssl.so.3
+7f7c31200000-7f7c3b16c000 r-xp 00000000 08:20 100411                     /home/cbrissette/cuopt/.cuopt_env/targets/x86_64-linux/lib/libcusparse.so.12.7.10.1
+7f7c3b16c000-7f7c3b36c000 ---p 09f6c000 08:20 100411                     /home/cbrissette/cuopt/.cuopt_env/targets/x86_64-linux/lib/libcusparse.so.12.7.10.1
+7f7c3b36c000-7f7c3b37b000 r--p 09f6c000 08:20 100411                     /home/cbrissette/cuopt/.cuopt_env/targets/x86_64-linux/lib/libcusparse.so.12.7.10.1
+7f7c3b37b000-7f7c3b399000 rw-p 09f7b000 08:20 100411                     /home/cbrissette/cuopt/.cuopt_env/targets/x86_64-linux/lib/libcusparse.so.12.7.10.1
+7f7c3b399000-7f7c3b3be000 rw-p 00000000 00:00 0 
+7f7c3b3be000-7f7c3b3bf000 rw-s a01e2b000 00:01 8270                      /dev/zero (deleted)
+7f7c3b3bf000-7f7c3b3c0000 rw-s a01e2a000 00:01 8269                      /dev/zero (deleted)
+7f7c3b3c0000-7f7c3b3c1000 rw-s a01e29000 00:01 8268                      /dev/zero (deleted)
+7f7c3b3c1000-7f7c3b3c2000 rw-s a01e28000 00:01 8267                      /dev/zero (deleted)
+7f7c3b3c2000-7f7c3b3c4000 r--p 00000000 08:20 173916                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_base.so.2601.0.0
+7f7c3b3c4000-7f7c3b3c5000 r-xp 00002000 08:20 173916                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_base.so.2601.0.0
+7f7c3b3c5000-7f7c3b3c6000 r--p 00003000 08:20 173916                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_base.so.2601.0.0
+7f7c3b3c6000-7f7c3b3c7000 r--p 00003000 08:20 173916                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_base.so.2601.0.0
+7f7c3b3c7000-7f7c3b3c8000 rw-p 00004000 08:20 173916                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_base.so.2601.0.0
+7f7c3b3c8000-7f7c3b3ca000 r--p 00000000 08:20 177853                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_strings_internal.so.2601.0.0
+7f7c3b3ca000-7f7c3b3cb000 r-xp 00002000 08:20 177853                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_strings_internal.so.2601.0.0
+7f7c3b3cb000-7f7c3b3cc000 r--p 00003000 08:20 177853                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_strings_internal.so.2601.0.0
+7f7c3b3cc000-7f7c3b3cd000 r--p 00003000 08:20 177853                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_strings_internal.so.2601.0.0
+7f7c3b3cd000-7f7c3b3ce000 rw-p 00004000 08:20 177853                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_strings_internal.so.2601.0.0
+7f7c3b3ce000-7f7c3b3cf000 r--p 00000000 08:20 174472                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_proto.so.2601.0.0
+7f7c3b3cf000-7f7c3b3d0000 r-xp 00001000 08:20 174472                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_proto.so.2601.0.0
+7f7c3b3d0000-7f7c3b3d1000 r--p 00002000 08:20 174472                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_proto.so.2601.0.0
+7f7c3b3d1000-7f7c3b3d2000 r--p 00002000 08:20 174472                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_proto.so.2601.0.0
+7f7c3b3d2000-7f7c3b3d3000 rw-p 00003000 08:20 174472                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_proto.so.2601.0.0
+7f7c3b3d3000-7f7c3b3d4000 r--p 00000000 08:20 177006                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_globals.so.2601.0.0
+7f7c3b3d4000-7f7c3b3d5000 r-xp 00001000 08:20 177006                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_globals.so.2601.0.0
+7f7c3b3d5000-7f7c3b3d6000 r--p 00002000 08:20 177006                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_globals.so.2601.0.0
+7f7c3b3d6000-7f7c3b3d7000 r--p 00002000 08:20 177006                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_globals.so.2601.0.0
+7f7c3b3d7000-7f7c3b3d8000 rw-p 00003000 08:20 177006                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_globals.so.2601.0.0
+7f7c3b3d8000-7f7c3b3da000 r--p 00000000 08:20 172473                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_log_sink_set.so.2601.0.0
+7f7c3b3da000-7f7c3b3db000 r-xp 00002000 08:20 172473                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_log_sink_set.so.2601.0.0
+7f7c3b3db000-7f7c3b3dc000 r--p 00003000 08:20 172473                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_log_sink_set.so.2601.0.0
+7f7c3b3dc000-7f7c3b3dd000 r--p 00003000 08:20 172473                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_log_sink_set.so.2601.0.0
+7f7c3b3dd000-7f7c3b3de000 rw-p 00004000 08:20 172473                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_log_sink_set.so.2601.0.0
+7f7c3b3de000-7f7c3b3df000 r--p 00000000 08:20 173223                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_strerror.so.2601.0.0
+7f7c3b3df000-7f7c3b3e0000 r-xp 00001000 08:20 173223                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_strerror.so.2601.0.0
+7f7c3b3e0000-7f7c3b3e1000 r--p 00002000 08:20 173223                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_strerror.so.2601.0.0
+7f7c3b3e1000-7f7c3b3e2000 r--p 00002000 08:20 173223                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_strerror.so.2601.0.0
+7f7c3b3e2000-7f7c3b3e3000 rw-p 00003000 08:20 173223                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_strerror.so.2601.0.0
+7f7c3b3e3000-7f7c3b3e4000 r--p 00000000 08:20 175668                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_structured_proto.so.2601.0.0
+7f7c3b3e4000-7f7c3b3e5000 r-xp 00001000 08:20 175668                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_structured_proto.so.2601.0.0
+7f7c3b3e5000-7f7c3b3e6000 r--p 00002000 08:20 175668                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_structured_proto.so.2601.0.0
+7f7c3b3e6000-7f7c3b3e7000 r--p 00002000 08:20 175668                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_structured_proto.so.2601.0.0
+7f7c3b3e7000-7f7c3b3e8000 rw-p 00003000 08:20 175668                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_structured_proto.so.2601.0.0
+7f7c3b3e8000-7f7c3b3ea000 r--p 00000000 08:20 173934                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_format.so.2601.0.0
+7f7c3b3ea000-7f7c3b3eb000 r-xp 00002000 08:20 173934                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_format.so.2601.0.0
+7f7c3b3eb000-7f7c3b3ec000 r--p 00003000 08:20 173934                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_format.so.2601.0.0
+7f7c3b3ec000-7f7c3b3ed000 r--p 00003000 08:20 173934                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_format.so.2601.0.0
+7f7c3b3ed000-7f7c3b3ee000 rw-p 00004000 08:20 173934                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_format.so.2601.0.0
+7f7c3b3ee000-7f7c3b3ef000 r--p 00000000 08:20 172814                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_examine_stack.so.2601.0.0
+7f7c3b3ef000-7f7c3b3f0000 r-xp 00001000 08:20 172814                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_examine_stack.so.2601.0.0
+7f7c3b3f0000-7f7c3b3f1000 r--p 00002000 08:20 172814                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_examine_stack.so.2601.0.0
+7f7c3b3f1000-7f7c3b3f2000 r--p 00002000 08:20 172814                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_examine_stack.so.2601.0.0
+7f7c3b3f2000-7f7c3b3f3000 rw-p 00003000 08:20 172814                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_examine_stack.so.2601.0.0
+7f7c3b3f3000-7f7c3b3f6000 r--p 00000000 08:20 172840                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_reflection.so.2601.0.0
+7f7c3b3f6000-7f7c3b3fc000 r-xp 00003000 08:20 172840                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_reflection.so.2601.0.0
+7f7c3b3fc000-7f7c3b3fe000 r--p 00009000 08:20 172840                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_reflection.so.2601.0.0
+7f7c3b3fe000-7f7c3b3ff000 r--p 0000a000 08:20 172840                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_reflection.so.2601.0.0
+7f7c3b3ff000-7f7c3b400000 rw-p 0000b000 08:20 172840                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_reflection.so.2601.0.0
+7f7c3b400000-7f7c3e79d000 r-xp 00000000 08:20 101544                     /home/cbrissette/cuopt/.cuopt_env/targets/x86_64-linux/lib/libcublas.so.13.4.0.1
+7f7c3e79d000-7f7c3e99d000 ---p 0339d000 08:20 101544                     /home/cbrissette/cuopt/.cuopt_env/targets/x86_64-linux/lib/libcublas.so.13.4.0.1
+7f7c3e99d000-7f7c3e9a9000 r--p 0339d000 08:20 101544                     /home/cbrissette/cuopt/.cuopt_env/targets/x86_64-linux/lib/libcublas.so.13.4.0.1
+7f7c3e9a9000-7f7c3e9b0000 rw-p 033a9000 08:20 101544                     /home/cbrissette/cuopt/.cuopt_env/targets/x86_64-linux/lib/libcublas.so.13.4.0.1
+7f7c3e9b0000-7f7c3e9d4000 rw-p 00000000 00:00 0 
+7f7c3e9d4000-7f7c3e9d5000 rw-s a01e27000 00:01 8266                      /dev/zero (deleted)
+7f7c3e9d5000-7f7c3e9d6000 rw-s a01e26000 00:01 8265                      /dev/zero (deleted)
+7f7c3e9d6000-7f7c3e9d7000 r--p 00000000 08:20 176086                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_leak_check.so.2601.0.0
+7f7c3e9d7000-7f7c3e9d8000 r-xp 00001000 08:20 176086                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_leak_check.so.2601.0.0
+7f7c3e9d8000-7f7c3e9d9000 r--p 00002000 08:20 176086                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_leak_check.so.2601.0.0
+7f7c3e9d9000-7f7c3e9da000 r--p 00002000 08:20 176086                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_leak_check.so.2601.0.0
+7f7c3e9da000-7f7c3e9db000 rw-p 00003000 08:20 176086                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_leak_check.so.2601.0.0
+7f7c3e9db000-7f7c3e9df000 r--p 00000000 08:20 173480                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_marshalling.so.2601.0.0
+7f7c3e9df000-7f7c3e9e4000 r-xp 00004000 08:20 173480                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_marshalling.so.2601.0.0
+7f7c3e9e4000-7f7c3e9e5000 r--p 00009000 08:20 173480                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_marshalling.so.2601.0.0
+7f7c3e9e5000-7f7c3e9e6000 r--p 0000a000 08:20 173480                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_marshalling.so.2601.0.0
+7f7c3e9e6000-7f7c3e9e7000 rw-p 0000b000 08:20 173480                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_marshalling.so.2601.0.0
+7f7c3e9e7000-7f7c3e9eb000 r--p 00000000 08:20 176110                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_internal.so.2601.0.0
+7f7c3e9eb000-7f7c3e9ee000 r-xp 00004000 08:20 176110                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_internal.so.2601.0.0
+7f7c3e9ee000-7f7c3e9f0000 r--p 00007000 08:20 176110                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_internal.so.2601.0.0
+7f7c3e9f0000-7f7c3e9f1000 r--p 00008000 08:20 176110                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_internal.so.2601.0.0
+7f7c3e9f1000-7f7c3e9f2000 rw-p 00009000 08:20 176110                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_flags_internal.so.2601.0.0
+7f7c3e9f2000-7f7c3e9f3000 r--p 00000000 08:20 176919                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_internal_randen_slow.so.2601.0.0
+7f7c3e9f3000-7f7c3e9f4000 r-xp 00001000 08:20 176919                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_internal_randen_slow.so.2601.0.0
+7f7c3e9f4000-7f7c3e9f6000 r--p 00002000 08:20 176919                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_internal_randen_slow.so.2601.0.0
+7f7c3e9f6000-7f7c3e9f7000 r--p 00003000 08:20 176919                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_internal_randen_slow.so.2601.0.0
+7f7c3e9f7000-7f7c3e9f8000 rw-p 00004000 08:20 176919                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_internal_randen_slow.so.2601.0.0
+7f7c3e9f8000-7f7c3e9f9000 r--p 00000000 08:20 172885                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_internal_randen_hwaes_impl.so.2601.0.0
+7f7c3e9f9000-7f7c3e9fa000 r-xp 00001000 08:20 172885                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_internal_randen_hwaes_impl.so.2601.0.0
+7f7c3e9fa000-7f7c3e9fb000 r--p 00002000 08:20 172885                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_internal_randen_hwaes_impl.so.2601.0.0
+7f7c3e9fb000-7f7c3e9fc000 r--p 00002000 08:20 172885                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_internal_randen_hwaes_impl.so.2601.0.0
+7f7c3e9fc000-7f7c3e9fd000 rw-p 00003000 08:20 172885                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_internal_randen_hwaes_impl.so.2601.0.0
+7f7c3e9fd000-7f7c3ea15000 r--p 00000000 08:20 192153                     /home/cbrissette/cuopt/.cuopt_env/lib/libre2.so.11
+7f7c3ea15000-7f7c3ea5b000 r-xp 00018000 08:20 192153                     /home/cbrissette/cuopt/.cuopt_env/lib/libre2.so.11
+7f7c3ea5b000-7f7c3ea74000 r--p 0005e000 08:20 192153                     /home/cbrissette/cuopt/.cuopt_env/lib/libre2.so.11
+7f7c3ea74000-7f7c3ea79000 r--p 00076000 08:20 192153                     /home/cbrissette/cuopt/.cuopt_env/lib/libre2.so.11
+7f7c3ea79000-7f7c3ea7a000 rw-p 0007b000 08:20 192153                     /home/cbrissette/cuopt/.cuopt_env/lib/libre2.so.11
+7f7c3ea7a000-7f7c3ea88000 r--p 00000000 08:20 84539                      /home/cbrissette/cuopt/.cuopt_env/lib/libcares.so.2.19.5
+7f7c3ea88000-7f7c3eab3000 r-xp 0000e000 08:20 84539                      /home/cbrissette/cuopt/.cuopt_env/lib/libcares.so.2.19.5
+7f7c3eab3000-7f7c3eabe000 r--p 00039000 08:20 84539                      /home/cbrissette/cuopt/.cuopt_env/lib/libcares.so.2.19.5
+7f7c3eabe000-7f7c3eac0000 r--p 00043000 08:20 84539                      /home/cbrissette/cuopt/.cuopt_env/lib/libcares.so.2.19.5
+7f7c3eac0000-7f7c3eac1000 rw-p 00045000 08:20 84539                      /home/cbrissette/cuopt/.cuopt_env/lib/libcares.so.2.19.5
+7f7c3eac1000-7f7c3ed51000 r--p 00000000 08:20 77543                      /home/cbrissette/cuopt/.cuopt_env/lib/libcuopt.so
+7f7c3ed51000-7f7c3f960000 r-xp 00290000 08:20 77543                      /home/cbrissette/cuopt/.cuopt_env/lib/libcuopt.so
+7f7c3f960000-7f7c3fc88000 r--p 00e9f000 08:20 77543                      /home/cbrissette/cuopt/.cuopt_env/lib/libcuopt.so
+7f7c3fc88000-7f7c3fca9000 r--p 011c7000 08:20 77543                      /home/cbrissette/cuopt/.cuopt_env/lib/libcuopt.so
+7f7c3fca9000-7f7c3fcb0000 rw-p 011e8000 08:20 77543                      /home/cbrissette/cuopt/.cuopt_env/lib/libcuopt.so
+7f7c3fcb0000-7f7c40e30000 rw-p 00000000 00:00 0 
+7f7c40e30000-7f7c40e31000 ---p 0236f000 08:20 77543                      /home/cbrissette/cuopt/.cuopt_env/lib/libcuopt.so
+7f7c40e31000-7f7c44000000 rw-p 011ef000 08:20 77543                      /home/cbrissette/cuopt/.cuopt_env/lib/libcuopt.so
+7f7c44000000-7f7c44021000 rw-p 00000000 00:00 0 
+7f7c44021000-7f7c48000000 ---p 00000000 00:00 0 
+7f7c48000000-7f7c48021000 rw-p 00000000 00:00 0 
+7f7c48021000-7f7c4c000000 ---p 00000000 00:00 0 
+7f7c4c000000-7f7c4c021000 rw-p 00000000 00:00 0 
+7f7c4c021000-7f7c50000000 ---p 00000000 00:00 0 
+7f7c50000000-7f7c50021000 rw-p 00000000 00:00 0 
+7f7c50021000-7f7c54000000 ---p 00000000 00:00 0 
+7f7c54000000-7f7c54021000 rw-p 00000000 00:00 0 
+7f7c54021000-7f7c58000000 ---p 00000000 00:00 0 
+7f7c58000000-7f7c58021000 rw-p 00000000 00:00 0 
+7f7c58021000-7f7c5c000000 ---p 00000000 00:00 0 
+7f7c5c000000-7f7c5c04c000 rw-p 00000000 00:00 0 
+7f7c5c04c000-7f7c60000000 ---p 00000000 00:00 0 
+7f7c60000000-7f7c601c4000 rw-p 00000000 00:00 0 
+7f7c601c4000-7f7c64000000 ---p 00000000 00:00 0 
+7f7c64000000-7f7c64021000 rw-p 00000000 00:00 0 
+7f7c64021000-7f7c68000000 ---p 00000000 00:00 0 
+7f7c68000000-7f7c68023000 rw-p 00000000 00:00 0 
+7f7c68023000-7f7c6c000000 ---p 00000000 00:00 0 
+7f7c6c000000-7f7c6c021000 rw-p 00000000 00:00 0 
+7f7c6c021000-7f7c70000000 ---p 00000000 00:00 0 
+7f7c70000000-7f7c70021000 rw-p 00000000 00:00 0 
+7f7c70021000-7f7c74000000 ---p 00000000 00:00 0 
+7f7c74000000-7f7c74021000 rw-p 00000000 00:00 0 
+7f7c74021000-7f7c78000000 ---p 00000000 00:00 0 
+7f7c78000000-7f7c780e8000 rw-p 00000000 00:00 0 
+7f7c780e8000-7f7c7c000000 ---p 00000000 00:00 0 
+7f7c7c000000-7f7c7c3a3000 rw-p 00000000 00:00 0 
+7f7c7c3a3000-7f7c80000000 ---p 00000000 00:00 0 
+7f7c80000000-7f7c802b8000 rw-p 00000000 00:00 0 
+7f7c802b8000-7f7c84000000 ---p 00000000 00:00 0 
+7f7c84000000-7f7c84021000 rw-p 00000000 00:00 0 
+7f7c84021000-7f7c88000000 ---p 00000000 00:00 0 
+7f7c88000000-7f7c88021000 rw-p 00000000 00:00 0 
+7f7c88021000-7f7c8c000000 ---p 00000000 00:00 0 
+7f7c8c000000-7f7c8c021000 rw-p 00000000 00:00 0 
+7f7c8c021000-7f7c90000000 ---p 00000000 00:00 0 
+7f7c90000000-7f7c90021000 rw-p 00000000 00:00 0 
+7f7c90021000-7f7c94000000 ---p 00000000 00:00 0 
+7f7c94000000-7f7c94021000 rw-p 00000000 00:00 0 
+7f7c94021000-7f7c98000000 ---p 00000000 00:00 0 
+7f7c98000000-7f7c98023000 rw-p 00000000 00:00 0 
+7f7c98023000-7f7c9c000000 ---p 00000000 00:00 0 
+7f7c9c000000-7f7c9c021000 rw-p 00000000 00:00 0 
+7f7c9c021000-7f7ca0000000 ---p 00000000 00:00 0 
+7f7ca0000000-7f7ca0021000 rw-p 00000000 00:00 0 
+7f7ca0021000-7f7ca4000000 ---p 00000000 00:00 0 
+7f7ca4000000-7f7ca4001000 rw-s a01e25000 00:01 8264                      /dev/zero (deleted)
+7f7ca4001000-7f7ca4002000 rw-s a01e24000 00:01 8263                      /dev/zero (deleted)
+7f7ca4002000-7f7ca4003000 r--p 00000000 08:20 173464                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_internal_randen.so.2601.0.0
+7f7ca4003000-7f7ca4004000 r-xp 00001000 08:20 173464                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_internal_randen.so.2601.0.0
+7f7ca4004000-7f7ca4005000 r--p 00002000 08:20 173464                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_internal_randen.so.2601.0.0
+7f7ca4005000-7f7ca4006000 r--p 00002000 08:20 173464                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_internal_randen.so.2601.0.0
+7f7ca4006000-7f7ca4007000 rw-p 00003000 08:20 173464                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_internal_randen.so.2601.0.0
+7f7ca4007000-7f7ca4009000 r--p 00000000 08:20 178082                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_kernel_timeout_internal.so.2601.0.0
+7f7ca4009000-7f7ca400a000 r-xp 00002000 08:20 178082                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_kernel_timeout_internal.so.2601.0.0
+7f7ca400a000-7f7ca400b000 r--p 00003000 08:20 178082                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_kernel_timeout_internal.so.2601.0.0
+7f7ca400b000-7f7ca400c000 r--p 00003000 08:20 178082                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_kernel_timeout_internal.so.2601.0.0
+7f7ca400c000-7f7ca400d000 rw-p 00004000 08:20 178082                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_kernel_timeout_internal.so.2601.0.0
+7f7ca400d000-7f7ca400f000 r--p 00000000 08:20 175359                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_internal_entropy_pool.so.2601.0.0
+7f7ca400f000-7f7ca4010000 r-xp 00002000 08:20 175359                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_internal_entropy_pool.so.2601.0.0
+7f7ca4010000-7f7ca4011000 r--p 00003000 08:20 175359                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_internal_entropy_pool.so.2601.0.0
+7f7ca4011000-7f7ca4012000 r--p 00003000 08:20 175359                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_internal_entropy_pool.so.2601.0.0
+7f7ca4012000-7f7ca4013000 rw-p 00004000 08:20 175359                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_random_internal_entropy_pool.so.2601.0.0
+7f7ca4013000-7f7ca4015000 r--p 00000000 08:20 178507                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_globals.so.2601.0.0
+7f7ca4015000-7f7ca4016000 r-xp 00002000 08:20 178507                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_globals.so.2601.0.0
+7f7ca4016000-7f7ca4017000 r--p 00003000 08:20 178507                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_globals.so.2601.0.0
+7f7ca4017000-7f7ca4018000 r--p 00003000 08:20 178507                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_globals.so.2601.0.0
+7f7ca4018000-7f7ca4019000 rw-p 00004000 08:20 178507                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_globals.so.2601.0.0
+7f7ca4019000-7f7ca401a000 r--p 00000000 08:20 139113                     /home/cbrissette/cuopt/.cuopt_env/lib/libaddress_sorting.so.52.0.0
+7f7ca401a000-7f7ca401b000 r-xp 00001000 08:20 139113                     /home/cbrissette/cuopt/.cuopt_env/lib/libaddress_sorting.so.52.0.0
+7f7ca401b000-7f7ca401c000 r--p 00002000 08:20 139113                     /home/cbrissette/cuopt/.cuopt_env/lib/libaddress_sorting.so.52.0.0
+7f7ca401c000-7f7ca401d000 r--p 00002000 08:20 139113                     /home/cbrissette/cuopt/.cuopt_env/lib/libaddress_sorting.so.52.0.0
+7f7ca401d000-7f7ca401e000 rw-p 00003000 08:20 139113                     /home/cbrissette/cuopt/.cuopt_env/lib/libaddress_sorting.so.52.0.0
+7f7ca401e000-7f7ca4021000 r--p 00000000 08:20 175772                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_throw_delegate.so.2601.0.0
+7f7ca4021000-7f7ca4022000 r-xp 00003000 08:20 175772                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_throw_delegate.so.2601.0.0
+7f7ca4022000-7f7ca4023000 r--p 00004000 08:20 175772                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_throw_delegate.so.2601.0.0
+7f7ca4023000-7f7ca4024000 r--p 00004000 08:20 175772                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_throw_delegate.so.2601.0.0
+7f7ca4024000-7f7ca4025000 rw-p 00005000 08:20 175772                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_throw_delegate.so.2601.0.0
+7f7ca4025000-7f7ca4026000 r--p 00000000 08:20 174707                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_spinlock_wait.so.2601.0.0
+7f7ca4026000-7f7ca4027000 r-xp 00001000 08:20 174707                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_spinlock_wait.so.2601.0.0
+7f7ca4027000-7f7ca4028000 r--p 00002000 08:20 174707                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_spinlock_wait.so.2601.0.0
+7f7ca4028000-7f7ca4029000 r--p 00002000 08:20 174707                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_spinlock_wait.so.2601.0.0
+7f7ca4029000-7f7ca402a000 rw-p 00003000 08:20 174707                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_spinlock_wait.so.2601.0.0
+7f7ca402a000-7f7ca402b000 r--p 00000000 08:20 172795                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_hash.so.2601.0.0
+7f7ca402b000-7f7ca402c000 r-xp 00001000 08:20 172795                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_hash.so.2601.0.0
+7f7ca402c000-7f7ca402d000 r--p 00002000 08:20 172795                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_hash.so.2601.0.0
+7f7ca402d000-7f7ca402e000 r--p 00002000 08:20 172795                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_hash.so.2601.0.0
+7f7ca402e000-7f7ca402f000 rw-p 00003000 08:20 172795                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_hash.so.2601.0.0
+7f7ca402f000-7f7ca4036000 r--p 00000000 08:20 172948                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_time_zone.so.2601.0.0
+7f7ca4036000-7f7ca404a000 r-xp 00007000 08:20 172948                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_time_zone.so.2601.0.0
+7f7ca404a000-7f7ca404d000 r--p 0001b000 08:20 172948                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_time_zone.so.2601.0.0
+7f7ca404d000-7f7ca404e000 r--p 0001e000 08:20 172948                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_time_zone.so.2601.0.0
+7f7ca404e000-7f7ca404f000 rw-p 0001f000 08:20 172948                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_time_zone.so.2601.0.0
+7f7ca404f000-7f7ca4055000 r--p 00000000 08:20 173780                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_time.so.2601.0.0
+7f7ca4055000-7f7ca4062000 r-xp 00006000 08:20 173780                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_time.so.2601.0.0
+7f7ca4062000-7f7ca4064000 r--p 00013000 08:20 173780                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_time.so.2601.0.0
+7f7ca4064000-7f7ca4065000 r--p 00015000 08:20 173780                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_time.so.2601.0.0
+7f7ca4065000-7f7ca4066000 rw-p 00016000 08:20 173780                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_time.so.2601.0.0
+7f7ca4066000-7f7ca4069000 r--p 00000000 08:20 174438                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_cord_internal.so.2601.0.0
+7f7ca4069000-7f7ca4077000 r-xp 00003000 08:20 174438                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_cord_internal.so.2601.0.0
+7f7ca4077000-7f7ca4079000 r--p 00011000 08:20 174438                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_cord_internal.so.2601.0.0
+7f7ca4079000-7f7ca407a000 r--p 00012000 08:20 174438                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_cord_internal.so.2601.0.0
+7f7ca407a000-7f7ca407b000 rw-p 00013000 08:20 174438                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_cord_internal.so.2601.0.0
+7f7ca407b000-7f7ca407d000 r--p 00000000 08:20 173725                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_raw_hash_set.so.2601.0.0
+7f7ca407d000-7f7ca4081000 r-xp 00002000 08:20 173725                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_raw_hash_set.so.2601.0.0
+7f7ca4081000-7f7ca4082000 r--p 00006000 08:20 173725                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_raw_hash_set.so.2601.0.0
+7f7ca4082000-7f7ca4083000 r--p 00007000 08:20 173725                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_raw_hash_set.so.2601.0.0
+7f7ca4083000-7f7ca4084000 rw-p 00008000 08:20 173725                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_raw_hash_set.so.2601.0.0
+7f7ca4084000-7f7ca4085000 r--p 00000000 08:20 174927                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_conditions.so.2601.0.0
+7f7ca4085000-7f7ca4086000 r-xp 00001000 08:20 174927                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_conditions.so.2601.0.0
+7f7ca4086000-7f7ca4087000 r--p 00002000 08:20 174927                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_conditions.so.2601.0.0
+7f7ca4087000-7f7ca4088000 r--p 00002000 08:20 174927                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_conditions.so.2601.0.0
+7f7ca4088000-7f7ca4089000 rw-p 00003000 08:20 174927                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_conditions.so.2601.0.0
+7f7ca4089000-7f7ca408a000 r--p 00000000 08:20 144730                     /home/cbrissette/cuopt/.cuopt_env/lib/libutf8_validity.so.33.5.0
+7f7ca408a000-7f7ca408b000 r-xp 00001000 08:20 144730                     /home/cbrissette/cuopt/.cuopt_env/lib/libutf8_validity.so.33.5.0
+7f7ca408b000-7f7ca408c000 r--p 00002000 08:20 144730                     /home/cbrissette/cuopt/.cuopt_env/lib/libutf8_validity.so.33.5.0
+7f7ca408c000-7f7ca408d000 r--p 00002000 08:20 144730                     /home/cbrissette/cuopt/.cuopt_env/lib/libutf8_validity.so.33.5.0
+7f7ca408d000-7f7ca408e000 rw-p 00003000 08:20 144730                     /home/cbrissette/cuopt/.cuopt_env/lib/libutf8_validity.so.33.5.0
+7f7ca408e000-7f7ca408f000 r--p 00000000 08:20 173312                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_die_if_null.so.2601.0.0
+7f7ca408f000-7f7ca4090000 r-xp 00001000 08:20 173312                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_die_if_null.so.2601.0.0
+7f7ca4090000-7f7ca4091000 r--p 00002000 08:20 173312                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_die_if_null.so.2601.0.0
+7f7ca4091000-7f7ca4092000 r--p 00002000 08:20 173312                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_die_if_null.so.2601.0.0
+7f7ca4092000-7f7ca4093000 rw-p 00003000 08:20 173312                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_die_if_null.so.2601.0.0
+7f7ca4093000-7f7ca4099000 r--p 00000000 08:20 178474                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_str_format_internal.so.2601.0.0
+7f7ca4099000-7f7ca40af000 r-xp 00006000 08:20 178474                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_str_format_internal.so.2601.0.0
+7f7ca40af000-7f7ca40b2000 r--p 0001c000 08:20 178474                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_str_format_internal.so.2601.0.0
+7f7ca40b2000-7f7ca40b3000 r--p 0001f000 08:20 178474                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_str_format_internal.so.2601.0.0
+7f7ca40b3000-7f7ca40b4000 rw-p 00020000 08:20 178474                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_str_format_internal.so.2601.0.0
+7f7ca40b4000-7f7ca40b8000 r--p 00000000 08:20 178182                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_status.so.2601.0.0
+7f7ca40b8000-7f7ca40bc000 r-xp 00004000 08:20 178182                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_status.so.2601.0.0
+7f7ca40bc000-7f7ca40be000 r--p 00008000 08:20 178182                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_status.so.2601.0.0
+7f7ca40be000-7f7ca40bf000 r--p 00009000 08:20 178182                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_status.so.2601.0.0
+7f7ca40bf000-7f7ca40c0000 rw-p 0000a000 08:20 178182                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_status.so.2601.0.0
+7f7ca40c0000-7f7ca40c2000 r--p 00000000 08:20 175942                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_statusor.so.2601.0.0
+7f7ca40c2000-7f7ca40c3000 r-xp 00002000 08:20 175942                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_statusor.so.2601.0.0
+7f7ca40c3000-7f7ca40c4000 r--p 00003000 08:20 175942                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_statusor.so.2601.0.0
+7f7ca40c4000-7f7ca40c5000 r--p 00003000 08:20 175942                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_statusor.so.2601.0.0
+7f7ca40c5000-7f7ca40c6000 rw-p 00004000 08:20 175942                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_statusor.so.2601.0.0
+7f7ca40c6000-7f7ca40c8000 r--p 00000000 08:20 174394                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_vlog_config_internal.so.2601.0.0
+7f7ca40c8000-7f7ca40cc000 r-xp 00002000 08:20 174394                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_vlog_config_internal.so.2601.0.0
+7f7ca40cc000-7f7ca40cd000 r--p 00006000 08:20 174394                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_vlog_config_internal.so.2601.0.0
+7f7ca40cd000-7f7ca40ce000 r--p 00006000 08:20 174394                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_vlog_config_internal.so.2601.0.0
+7f7ca40ce000-7f7ca40cf000 rw-p 00007000 08:20 174394                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_vlog_config_internal.so.2601.0.0
+7f7ca40cf000-7f7ca40d0000 r--p 00000000 08:20 144825                     /home/cbrissette/cuopt/.cuopt_env/lib/libutf8_range.so.33.5.0
+7f7ca40d0000-7f7ca40d1000 r-xp 00001000 08:20 144825                     /home/cbrissette/cuopt/.cuopt_env/lib/libutf8_range.so.33.5.0
+7f7ca40d1000-7f7ca40d2000 r--p 00002000 08:20 144825                     /home/cbrissette/cuopt/.cuopt_env/lib/libutf8_range.so.33.5.0
+7f7ca40d2000-7f7ca40d3000 r--p 00002000 08:20 144825                     /home/cbrissette/cuopt/.cuopt_env/lib/libutf8_range.so.33.5.0
+7f7ca40d3000-7f7ca40d4000 rw-p 00003000 08:20 144825                     /home/cbrissette/cuopt/.cuopt_env/lib/libutf8_range.so.33.5.0
+7f7ca40d4000-7f7ca40db000 r--p 00000000 08:20 173525                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_strings.so.2601.0.0
+7f7ca40db000-7f7ca40f2000 r-xp 00007000 08:20 173525                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_strings.so.2601.0.0
+7f7ca40f2000-7f7ca40fb000 r--p 0001e000 08:20 173525                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_strings.so.2601.0.0
+7f7ca40fb000-7f7ca40fc000 r--p 00026000 08:20 173525                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_strings.so.2601.0.0
+7f7ca40fc000-7f7ca40fd000 rw-p 00027000 08:20 173525                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_strings.so.2601.0.0
+7f7ca40fd000-7f7ca4103000 r--p 00000000 08:20 176237                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_synchronization.so.2601.0.0
+7f7ca4103000-7f7ca4108000 r-xp 00006000 08:20 176237                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_synchronization.so.2601.0.0
+7f7ca4108000-7f7ca410b000 r--p 0000b000 08:20 176237                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_synchronization.so.2601.0.0
+7f7ca410b000-7f7ca410c000 r--p 0000d000 08:20 176237                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_synchronization.so.2601.0.0
+7f7ca410c000-7f7ca410d000 rw-p 0000e000 08:20 176237                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_synchronization.so.2601.0.0
+7f7ca410d000-7f7ca410f000 rw-p 00000000 00:00 0 
+7f7ca410f000-7f7ca4110000 r--p 00000000 08:20 178365                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_cordz_functions.so.2601.0.0
+7f7ca4110000-7f7ca4111000 r-xp 00001000 08:20 178365                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_cordz_functions.so.2601.0.0
+7f7ca4111000-7f7ca4112000 r--p 00002000 08:20 178365                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_cordz_functions.so.2601.0.0
+7f7ca4112000-7f7ca4113000 r--p 00002000 08:20 178365                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_cordz_functions.so.2601.0.0
+7f7ca4113000-7f7ca4114000 rw-p 00003000 08:20 178365                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_cordz_functions.so.2601.0.0
+7f7ca4114000-7f7ca4116000 r--p 00000000 08:20 175257                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_cordz_info.so.2601.0.0
+7f7ca4116000-7f7ca4118000 r-xp 00002000 08:20 175257                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_cordz_info.so.2601.0.0
+7f7ca4118000-7f7ca4119000 r--p 00004000 08:20 175257                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_cordz_info.so.2601.0.0
+7f7ca4119000-7f7ca411a000 r--p 00004000 08:20 175257                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_cordz_info.so.2601.0.0
+7f7ca411a000-7f7ca411b000 rw-p 00005000 08:20 175257                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_cordz_info.so.2601.0.0
+7f7ca411b000-7f7ca4121000 r--p 00000000 08:20 177056                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_cord.so.2601.0.0
+7f7ca4121000-7f7ca413a000 r-xp 00006000 08:20 177056                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_cord.so.2601.0.0
+7f7ca413a000-7f7ca413d000 r--p 0001f000 08:20 177056                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_cord.so.2601.0.0
+7f7ca413d000-7f7ca413e000 r--p 00021000 08:20 177056                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_cord.so.2601.0.0
+7f7ca413e000-7f7ca413f000 rw-p 00022000 08:20 177056                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_cord.so.2601.0.0
+7f7ca413f000-7f7ca4145000 r--p 00000000 08:20 173104                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_message.so.2601.0.0
+7f7ca4145000-7f7ca4149000 r-xp 00006000 08:20 173104                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_message.so.2601.0.0
+7f7ca4149000-7f7ca414b000 r--p 0000a000 08:20 173104                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_message.so.2601.0.0
+7f7ca414b000-7f7ca414c000 r--p 0000b000 08:20 173104                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_message.so.2601.0.0
+7f7ca414c000-7f7ca414d000 rw-p 0000c000 08:20 173104                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_message.so.2601.0.0
+7f7ca414d000-7f7ca41e2000 r--p 00000000 08:20 144643                     /home/cbrissette/cuopt/.cuopt_env/lib/libprotobuf.so.33.5.0
+7f7ca41e2000-7f7ca4405000 r-xp 00095000 08:20 144643                     /home/cbrissette/cuopt/.cuopt_env/lib/libprotobuf.so.33.5.0
+7f7ca4405000-7f7ca4471000 r--p 002b8000 08:20 144643                     /home/cbrissette/cuopt/.cuopt_env/lib/libprotobuf.so.33.5.0
+7f7ca4471000-7f7ca447c000 r--p 00324000 08:20 144643                     /home/cbrissette/cuopt/.cuopt_env/lib/libprotobuf.so.33.5.0
+7f7ca447c000-7f7ca4483000 rw-p 0032f000 08:20 144643                     /home/cbrissette/cuopt/.cuopt_env/lib/libprotobuf.so.33.5.0
+7f7ca4483000-7f7ca4484000 rw-p 00000000 00:00 0 
+7f7ca4484000-7f7ca4491000 r--p 00000000 08:20 83455                      /home/cbrissette/cuopt/.cuopt_env/lib/libgomp.so.1.0.0
+7f7ca4491000-7f7ca44ca000 r-xp 0000d000 08:20 83455                      /home/cbrissette/cuopt/.cuopt_env/lib/libgomp.so.1.0.0
+7f7ca44ca000-7f7ca44d8000 r--p 00046000 08:20 83455                      /home/cbrissette/cuopt/.cuopt_env/lib/libgomp.so.1.0.0
+7f7ca44d8000-7f7ca44d9000 r--p 00054000 08:20 83455                      /home/cbrissette/cuopt/.cuopt_env/lib/libgomp.so.1.0.0
+7f7ca44d9000-7f7ca44da000 rw-p 00055000 08:20 83455                      /home/cbrissette/cuopt/.cuopt_env/lib/libgomp.so.1.0.0
+7f7ca44da000-7f7ca44f6000 r--p 00000000 08:20 182877                     /home/cbrissette/cuopt/.cuopt_env/lib/librmm.so
+7f7ca44f6000-7f7ca45b6000 r-xp 0001c000 08:20 182877                     /home/cbrissette/cuopt/.cuopt_env/lib/librmm.so
+7f7ca45b6000-7f7ca45e6000 r--p 000dc000 08:20 182877                     /home/cbrissette/cuopt/.cuopt_env/lib/librmm.so
+7f7ca45e6000-7f7ca45ed000 r--p 0010c000 08:20 182877                     /home/cbrissette/cuopt/.cuopt_env/lib/librmm.so
+7f7ca45ed000-7f7ca45ee000 rw-p 00113000 08:20 182877                     /home/cbrissette/cuopt/.cuopt_env/lib/librmm.so
+7f7ca45ee000-7f7ca45f0000 rw-p 00000000 00:00 0 
+7f7ca45f0000-7f7ca461d000 r--p 00000000 08:20 140888                     /home/cbrissette/cuopt/.cuopt_env/lib/libgrpc++.so.1.78.1
+7f7ca461d000-7f7ca4676000 r-xp 0002d000 08:20 140888                     /home/cbrissette/cuopt/.cuopt_env/lib/libgrpc++.so.1.78.1
+7f7ca4676000-7f7ca4692000 r--p 00086000 08:20 140888                     /home/cbrissette/cuopt/.cuopt_env/lib/libgrpc++.so.1.78.1
+7f7ca4692000-7f7ca4697000 r--p 000a2000 08:20 140888                     /home/cbrissette/cuopt/.cuopt_env/lib/libgrpc++.so.1.78.1
+7f7ca4697000-7f7ca4698000 rw-p 000a7000 08:20 140888                     /home/cbrissette/cuopt/.cuopt_env/lib/libgrpc++.so.1.78.1
+7f7ca4698000-7f7ca46a6000 r--p 00000000 08:20 194104                     /home/cbrissette/cuopt/.cuopt_env/lib/libtbb.so.12.18
+7f7ca46a6000-7f7ca46d3000 r-xp 0000e000 08:20 194104                     /home/cbrissette/cuopt/.cuopt_env/lib/libtbb.so.12.18
+7f7ca46d3000-7f7ca46df000 r--p 0003b000 08:20 194104                     /home/cbrissette/cuopt/.cuopt_env/lib/libtbb.so.12.18
+7f7ca46df000-7f7ca46e1000 r--p 00046000 08:20 194104                     /home/cbrissette/cuopt/.cuopt_env/lib/libtbb.so.12.18
+7f7ca46e1000-7f7ca46e4000 rw-p 00048000 08:20 194104                     /home/cbrissette/cuopt/.cuopt_env/lib/libtbb.so.12.18
+7f7ca46e4000-7f7ca46fa000 rw-p 00000000 00:00 0 
+7f7ca46fa000-7f7ca46fe000 ---p 00000000 00:00 0 
+7f7ca46fe000-7f7ca47fa000 rw-p 00000000 00:00 0 
+7f7ca47fa000-7f7ca47fb000 ---p 00000000 00:00 0 
+7f7ca47fb000-7f7ca48fb000 rw-p 00000000 00:00 0 
+7f7ca48fb000-7f7ca48fc000 ---p 00000000 00:00 0 
+7f7ca48fc000-7f7ca49fc000 rw-p 00000000 00:00 0 
+7f7ca49fc000-7f7ca49fd000 ---p 00000000 00:00 0 
+7f7ca49fd000-7f7ca4afd000 rw-p 00000000 00:00 0 
+7f7ca4afd000-7f7ca4afe000 ---p 00000000 00:00 0 
+7f7ca4afe000-7f7ca4bfe000 rw-p 00000000 00:00 0 
+7f7ca4bfe000-7f7ca4bff000 ---p 00000000 00:00 0 
+7f7ca4bff000-7f7ca4cff000 rw-p 00000000 00:00 0 
+7f7ca4cff000-7f7ca4d03000 ---p 00000000 00:00 0 
+7f7ca4d03000-7f7ca4dff000 rw-p 00000000 00:00 0 
+7f7ca4dff000-7f7ca4e03000 ---p 00000000 00:00 0 
+7f7ca4e03000-7f7ca4eff000 rw-p 00000000 00:00 0 
+7f7ca4eff000-7f7ca4f03000 ---p 00000000 00:00 0 
+7f7ca4f03000-7f7ca4fff000 rw-p 00000000 00:00 0 
+7f7ca4fff000-7f7ca5003000 ---p 00000000 00:00 0 
+7f7ca5003000-7f7ca50ff000 rw-p 00000000 00:00 0 
+7f7ca50ff000-7f7ca5103000 ---p 00000000 00:00 0 
+7f7ca5103000-7f7ca51ff000 rw-p 00000000 00:00 0 
+7f7ca51ff000-7f7ca5200000 ---p 00000000 00:00 0 
+7f7ca5200000-7f7ca5300000 rw-p 00000000 00:00 0 
+7f7ca5300000-7f7ca5304000 ---p 00000000 00:00 0 
+7f7ca5304000-7f7ca5400000 rw-p 00000000 00:00 0 
+7f7ca5400000-7f7ca5404000 ---p 00000000 00:00 0 
+7f7ca5404000-7f7ca5500000 rw-p 00000000 00:00 0 
+7f7ca5500000-7f7ca5504000 ---p 00000000 00:00 0 
+7f7ca5504000-7f7ca5600000 rw-p 00000000 00:00 0 
+7f7ca5600000-7f7ca5604000 ---p 00000000 00:00 0 
+7f7ca5604000-7f7ca5700000 rw-p 00000000 00:00 0 
+7f7ca5700000-7f7ca5704000 ---p 00000000 00:00 0 
+7f7ca5704000-7f7ca5fc0000 rw-p 00000000 00:00 0 
+7f7ca5fc0000-7f7ca6000000 ---p 00000000 00:00 0 
+7f7ca6000000-7f7ca8000000 rw-p 00000000 00:00 0 
+7f7ca8000000-7f7ca8021000 rw-p 00000000 00:00 0 
+7f7ca8021000-7f7cac000000 ---p 00000000 00:00 0 
+7f7cac000000-7f7cac003000 r--p 00000000 08:20 175246                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_check_op.so.2601.0.0
+7f7cac003000-7f7cac006000 r-xp 00003000 08:20 175246                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_check_op.so.2601.0.0
+7f7cac006000-7f7cac007000 r--p 00006000 08:20 175246                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_check_op.so.2601.0.0
+7f7cac007000-7f7cac008000 r--p 00006000 08:20 175246                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_check_op.so.2601.0.0
+7f7cac008000-7f7cac009000 rw-p 00007000 08:20 175246                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_check_op.so.2601.0.0
+7f7cac009000-7f7cac013000 r--p 00000000 08:20 198476                     /home/cbrissette/cuopt/.cuopt_env/lib/librapids_logger.so
+7f7cac013000-7f7cac044000 r-xp 0000a000 08:20 198476                     /home/cbrissette/cuopt/.cuopt_env/lib/librapids_logger.so
+7f7cac044000-7f7cac051000 r--p 0003b000 08:20 198476                     /home/cbrissette/cuopt/.cuopt_env/lib/librapids_logger.so
+7f7cac051000-7f7cac054000 r--p 00048000 08:20 198476                     /home/cbrissette/cuopt/.cuopt_env/lib/librapids_logger.so
+7f7cac054000-7f7cac055000 rw-p 0004b000 08:20 198476                     /home/cbrissette/cuopt/.cuopt_env/lib/librapids_logger.so
+7f7cac055000-7f7cac067000 r--p 00000000 08:20 78513                      /home/cbrissette/cuopt/java/cuopt/build/native/libcuopt_jni.so
+7f7cac067000-7f7cac083000 r-xp 00012000 08:20 78513                      /home/cbrissette/cuopt/java/cuopt/build/native/libcuopt_jni.so
+7f7cac083000-7f7cac08c000 r--p 0002e000 08:20 78513                      /home/cbrissette/cuopt/java/cuopt/build/native/libcuopt_jni.so
+7f7cac08c000-7f7cac08d000 r--p 00037000 08:20 78513                      /home/cbrissette/cuopt/java/cuopt/build/native/libcuopt_jni.so
+7f7cac08d000-7f7cac08e000 rw-p 00038000 08:20 78513                      /home/cbrissette/cuopt/java/cuopt/build/native/libcuopt_jni.so
+7f7cac08e000-7f7cac08f000 rw-p 00000000 00:00 0 
+7f7cac08f000-7f7cac093000 ---p 00000000 00:00 0 
+7f7cac093000-7f7cac18f000 rw-p 00000000 00:00 0 
+7f7cac18f000-7f7cac193000 ---p 00000000 00:00 0 
+7f7cac193000-7f7cac28f000 rw-p 00000000 00:00 0 
+7f7cac28f000-7f7cac293000 ---p 00000000 00:00 0 
+7f7cac293000-7f7cac38f000 rw-p 00000000 00:00 0 
+7f7cac38f000-7f7cac390000 ---p 00000000 00:00 0 
+7f7cac390000-7f7cac870000 rw-p 00000000 00:00 0 
+7f7cac870000-7f7caf240000 ---p 00000000 00:00 0 
+7f7caf240000-7f7caf248000 rw-p 00000000 00:00 0 
+7f7caf248000-7f7cb0248000 ---p 00000000 00:00 0 
+7f7cb0248000-7f7cb0628000 rw-p 00000000 00:00 0 
+7f7cb0628000-7f7cb2ff8000 ---p 00000000 00:00 0 
+7f7cb2ff8000-7f7cb3000000 rw-p 00000000 00:00 0 
+7f7cb3000000-7f7cb4000000 ---p 00000000 00:00 0 
+7f7cb4000000-7f7cb4021000 rw-p 00000000 00:00 0 
+7f7cb4021000-7f7cb8000000 ---p 00000000 00:00 0 
+7f7cb8000000-7f7cb8001000 r--p 00000000 08:20 172516                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_nullguard.so.2601.0.0
+7f7cb8001000-7f7cb8002000 r-xp 00001000 08:20 172516                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_nullguard.so.2601.0.0
+7f7cb8002000-7f7cb8003000 r--p 00002000 08:20 172516                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_nullguard.so.2601.0.0
+7f7cb8003000-7f7cb8004000 r--p 00002000 08:20 172516                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_nullguard.so.2601.0.0
+7f7cb8004000-7f7cb8005000 rw-p 00003000 08:20 172516                     /home/cbrissette/cuopt/.cuopt_env/lib/libabsl_log_internal_nullguard.so.2601.0.0
+7f7cb8005000-7f7cb8011000 r--p 00000000 08:20 140730                     /home/cbrissette/cuopt/.cuopt_env/lib/libgpr.so.52.0.0
+7f7cb8011000-7f7cb801e000 r-xp 0000c000 08:20 140730                     /home/cbrissette/cuopt/.cuopt_env/lib/libgpr.so.52.0.0
+7f7cb801e000-7f7cb8024000 r--p 00019000 08:20 140730                     /home/cbrissette/cuopt/.cuopt_env/lib/libgpr.so.52.0.0
+7f7cb8024000-7f7cb8025000 r--p 0001f000 08:20 140730                     /home/cbrissette/cuopt/.cuopt_env/lib/libgpr.so.52.0.0
+7f7cb8025000-7f7cb8026000 rw-p 00020000 08:20 140730                     /home/cbrissette/cuopt/.cuopt_env/lib/libgpr.so.52.0.0
+7f7cb8026000-7f7cb8027000 r--p 00000000 08:20 218634                     /usr/lib/x86_64-linux-gnu/libpthread.so.0
+7f7cb8027000-7f7cb8028000 r-xp 00001000 08:20 218634                     /usr/lib/x86_64-linux-gnu/libpthread.so.0
+7f7cb8028000-7f7cb8029000 r--p 00002000 08:20 218634                     /usr/lib/x86_64-linux-gnu/libpthread.so.0
+7f7cb8029000-7f7cb802a000 r--p 00002000 08:20 218634                     /usr/lib/x86_64-linux-gnu/libpthread.so.0
+7f7cb802a000-7f7cb802b000 rw-p 00003000 08:20 218634                     /usr/lib/x86_64-linux-gnu/libpthread.so.0
+7f7cb802b000-7f7cb802c000 rw-s a01e23000 00:01 8262                      /dev/zero (deleted)
+7f7cb802c000-7f7cb802d000 rw-s a01e22000 00:01 8261                      /dev/zero (deleted)
+7f7cb802d000-7f7cb802e000 rw-s a01e21000 00:01 8257                      /dev/zero (deleted)
+7f7cb802e000-7f7cb802f000 rw-s a01e20000 00:01 8256                      /dev/zero (deleted)
+7f7cb802f000-7f7cb8030000 rw-s a01e1f000 00:01 8255                      /dev/zero (deleted)
+7f7cb8030000-7f7cb8031000 rw-s a01e1e000 00:01 8254                      /dev/zero (deleted)
+7f7cb8031000-7f7cb8032000 rw-s a01e1d000 00:01 8253                      /dev/zero (deleted)
+7f7cb8032000-7f7cb8033000 r--p 00000000 00:00 0 
+7f7cb8033000-7f7cb8034000 rw-s a01e1c000 00:01 8251                      /dev/zero (deleted)
+7f7cb8034000-7f7cb8035000 rw-s a01e1b000 00:01 280                       /dev/zero (deleted)
+7f7cb8035000-7f7cb8037000 r--p 00000000 08:20 294962                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libmanagement_ext.so
+7f7cb8037000-7f7cb803a000 r-xp 00002000 08:20 294962                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libmanagement_ext.so
+7f7cb803a000-7f7cb803c000 r--p 00005000 08:20 294962                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libmanagement_ext.so
+7f7cb803c000-7f7cb803d000 r--p 00006000 08:20 294962                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libmanagement_ext.so
+7f7cb803d000-7f7cb803e000 rw-p 00007000 08:20 294962                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libmanagement_ext.so
+7f7cb803e000-7f7cb8041000 r--p 00000000 08:20 294960                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libmanagement.so
+7f7cb8041000-7f7cb8042000 r-xp 00003000 08:20 294960                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libmanagement.so
+7f7cb8042000-7f7cb8043000 r--p 00004000 08:20 294960                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libmanagement.so
+7f7cb8043000-7f7cb8044000 r--p 00004000 08:20 294960                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libmanagement.so
+7f7cb8044000-7f7cb8045000 rw-p 00005000 08:20 294960                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libmanagement.so
+7f7cb8045000-7f7cb8049000 r--p 00000000 08:20 294964                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libnet.so
+7f7cb8049000-7f7cb8057000 r-xp 00004000 08:20 294964                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libnet.so
+7f7cb8057000-7f7cb805b000 r--p 00012000 08:20 294964                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libnet.so
+7f7cb805b000-7f7cb805c000 r--p 00015000 08:20 294964                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libnet.so
+7f7cb805c000-7f7cb805d000 rw-p 00016000 08:20 294964                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libnet.so
+7f7cb805d000-7f7cb8064000 r--p 00000000 08:20 294965                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libnio.so
+7f7cb8064000-7f7cb806c000 r-xp 00007000 08:20 294965                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libnio.so
+7f7cb806c000-7f7cb806f000 r--p 0000f000 08:20 294965                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libnio.so
+7f7cb806f000-7f7cb8070000 r--p 00011000 08:20 294965                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libnio.so
+7f7cb8070000-7f7cb8071000 rw-p 00012000 08:20 294965                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libnio.so
+7f7cb8071000-7f7cb80c8000 r--p 00000000 08:20 217873                     /usr/lib/locale/C.utf8/LC_CTYPE
+7f7cb80c8000-7f7cb80c9000 ---p 00000000 00:00 0 
+7f7cb80c9000-7f7cb81c9000 rw-p 00000000 00:00 0 
+7f7cb81c9000-7f7cb81ca000 ---p 00000000 00:00 0 
+7f7cb81ca000-7f7cb87cf000 rw-p 00000000 00:00 0 
+7f7cb87cf000-7f7cb8a3f000 rwxp 00000000 00:00 0 
+7f7cb8a3f000-7f7cb8f0e000 ---p 00000000 00:00 0 
+7f7cb8f0e000-7f7cb91fe000 rwxp 00000000 00:00 0 
+7f7cb91fe000-7f7cc036e000 ---p 00000000 00:00 0 
+7f7cc036e000-7f7cc05de000 rwxp 00000000 00:00 0 
+7f7cc05de000-7f7cc77cf000 ---p 00000000 00:00 0 
+7f7cc77cf000-7f7cd0000000 r--s 00000000 08:20 294975                     /usr/lib/jvm/java-11-openjdk-amd64/lib/modules
+7f7cd0000000-7f7cd3fe4000 rw-p 00000000 00:00 0 
+7f7cd3fe4000-7f7cd4000000 ---p 00000000 00:00 0 
+7f7cd4000000-7f7cd4001000 r--p 00000000 08:20 217879                     /usr/lib/locale/C.utf8/LC_NUMERIC
+7f7cd4001000-7f7cd4002000 r--p 00000000 08:20 217882                     /usr/lib/locale/C.utf8/LC_TIME
+7f7cd4002000-7f7cd4003000 r--p 00000000 08:20 217872                     /usr/lib/locale/C.utf8/LC_COLLATE
+7f7cd4003000-7f7cd4004000 r--p 00000000 08:20 217877                     /usr/lib/locale/C.utf8/LC_MONETARY
+7f7cd4004000-7f7cd4005000 r--p 00000000 08:20 217876                     /usr/lib/locale/C.utf8/LC_MESSAGES/SYS_LC_MESSAGES
+7f7cd4005000-7f7cd4006000 r--p 00000000 08:20 217880                     /usr/lib/locale/C.utf8/LC_PAPER
+7f7cd4006000-7f7cd4007000 r--p 00000000 08:20 217878                     /usr/lib/locale/C.utf8/LC_NAME
+7f7cd4007000-7f7cd4008000 r--p 00000000 08:20 217871                     /usr/lib/locale/C.utf8/LC_ADDRESS
+7f7cd4008000-7f7cd4009000 r--p 00000000 08:20 217881                     /usr/lib/locale/C.utf8/LC_TELEPHONE
+7f7cd4009000-7f7cd4010000 r--s 00000000 08:20 218904                     /usr/lib/x86_64-linux-gnu/gconv/gconv-modules.cache
+7f7cd4010000-7f7cd4af6000 rw-p 00000000 00:00 0 
+7f7cd4af6000-7f7cd4af7000 ---p 00000000 00:00 0 
+7f7cd4af7000-7f7cd4bf7000 rw-p 00000000 00:00 0 
+7f7cd4bf7000-7f7cd4bf8000 ---p 00000000 00:00 0 
+7f7cd4bf8000-7f7cd4f6a000 rw-p 00000000 00:00 0 
+7f7cd4f6a000-7f7cd54a4000 ---p 00000000 00:00 0 
+7f7cd54a4000-7f7cd54a5000 rw-p 00000000 00:00 0 
+7f7cd54a5000-7f7cd56a5000 ---p 00000000 00:00 0 
+7f7cd56a5000-7f7cd5721000 rw-p 00000000 00:00 0 
+7f7cd5721000-7f7cd5c5b000 ---p 00000000 00:00 0 
+7f7cd5c5b000-7f7cd5c5c000 rw-p 00000000 00:00 0 
+7f7cd5c5c000-7f7cd5e5c000 ---p 00000000 00:00 0 
+7f7cd5e5c000-7f7cd5ed8000 rw-p 00000000 00:00 0 
+7f7cd5ed8000-7f7cd6412000 ---p 00000000 00:00 0 
+7f7cd6412000-7f7cd6413000 rw-p 00000000 00:00 0 
+7f7cd6413000-7f7cd6613000 ---p 00000000 00:00 0 
+7f7cd6613000-7f7cd7522000 rw-p 00000000 00:00 0 
+7f7cd7522000-7f7cd7523000 ---p 00000000 00:00 0 
+7f7cd7523000-7f7cd7628000 rw-p 00000000 00:00 0 
+7f7cd7628000-7f7cd770c000 ---p 00000000 00:00 0 
+7f7cd770c000-7f7cd7712000 rw-p 00000000 00:00 0 
+7f7cd7712000-7f7cd77f5000 ---p 00000000 00:00 0 
+7f7cd77f5000-7f7cd77fa000 rw-p 00000000 00:00 0 
+7f7cd77fa000-7f7cd7804000 ---p 00000000 00:00 0 
+7f7cd7804000-7f7cd7806000 r--p 00000000 08:20 294974                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libzip.so
+7f7cd7806000-7f7cd780b000 r-xp 00002000 08:20 294974                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libzip.so
+7f7cd780b000-7f7cd780d000 r--p 00007000 08:20 294974                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libzip.so
+7f7cd780d000-7f7cd780e000 r--p 00008000 08:20 294974                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libzip.so
+7f7cd780e000-7f7cd780f000 rw-p 00009000 08:20 294974                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libzip.so
+7f7cd780f000-7f7cd7817000 rw-s 00000000 08:20 78568                      /tmp/hsperfdata_cbrissette/1449708
+7f7cd7817000-7f7cd7818000 ---p 00000000 00:00 0 
+7f7cd7818000-7f7cd7819000 r--p 00000000 00:00 0 
+7f7cd7819000-7f7cd7827000 r--p 00000000 08:20 294953                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libjava.so
+7f7cd7827000-7f7cd783d000 r-xp 0000e000 08:20 294953                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libjava.so
+7f7cd783d000-7f7cd7844000 r--p 00024000 08:20 294953                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libjava.so
+7f7cd7844000-7f7cd7845000 r--p 0002a000 08:20 294953                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libjava.so
+7f7cd7845000-7f7cd7846000 rw-p 0002b000 08:20 294953                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libjava.so
+7f7cd7846000-7f7cd7847000 rw-p 00000000 00:00 0 
+7f7cd7847000-7f7cd784c000 r--p 00000000 08:20 294973                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libverify.so
+7f7cd784c000-7f7cd7853000 r-xp 00005000 08:20 294973                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libverify.so
+7f7cd7853000-7f7cd7855000 r--p 0000c000 08:20 294973                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libverify.so
+7f7cd7855000-7f7cd7857000 r--p 0000d000 08:20 294973                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libverify.so
+7f7cd7857000-7f7cd7858000 rw-p 0000f000 08:20 294973                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libverify.so
+7f7cd7858000-7f7cd7859000 r--p 00000000 08:20 218636                     /usr/lib/x86_64-linux-gnu/librt.so.1
+7f7cd7859000-7f7cd785a000 r-xp 00001000 08:20 218636                     /usr/lib/x86_64-linux-gnu/librt.so.1
+7f7cd785a000-7f7cd785b000 r--p 00002000 08:20 218636                     /usr/lib/x86_64-linux-gnu/librt.so.1
+7f7cd785b000-7f7cd785c000 r--p 00002000 08:20 218636                     /usr/lib/x86_64-linux-gnu/librt.so.1
+7f7cd785c000-7f7cd785d000 rw-p 00003000 08:20 218636                     /usr/lib/x86_64-linux-gnu/librt.so.1
+7f7cd785d000-7f7cd7861000 ---p 00000000 00:00 0 
+7f7cd7861000-7f7cd795d000 rw-p 00000000 00:00 0 
+7f7cd795d000-7f7cd795e000 r--p 00000000 08:20 218624                     /usr/lib/x86_64-linux-gnu/libdl.so.2
+7f7cd795e000-7f7cd795f000 r-xp 00001000 08:20 218624                     /usr/lib/x86_64-linux-gnu/libdl.so.2
+7f7cd795f000-7f7cd7960000 r--p 00002000 08:20 218624                     /usr/lib/x86_64-linux-gnu/libdl.so.2
+7f7cd7960000-7f7cd7961000 r--p 00002000 08:20 218624                     /usr/lib/x86_64-linux-gnu/libdl.so.2
+7f7cd7961000-7f7cd7962000 rw-p 00003000 08:20 218624                     /usr/lib/x86_64-linux-gnu/libdl.so.2
+7f7cd7962000-7f7cd7966000 r--p 00000000 08:20 84327                      /home/cbrissette/cuopt/.cuopt_env/lib/libgcc_s.so.1
+7f7cd7966000-7f7cd7989000 r-xp 00004000 08:20 84327                      /home/cbrissette/cuopt/.cuopt_env/lib/libgcc_s.so.1
+7f7cd7989000-7f7cd798d000 r--p 00027000 08:20 84327                      /home/cbrissette/cuopt/.cuopt_env/lib/libgcc_s.so.1
+7f7cd798d000-7f7cd798e000 r--p 0002a000 08:20 84327                      /home/cbrissette/cuopt/.cuopt_env/lib/libgcc_s.so.1
+7f7cd798e000-7f7cd798f000 rw-p 0002b000 08:20 84327                      /home/cbrissette/cuopt/.cuopt_env/lib/libgcc_s.so.1
+7f7cd798f000-7f7cd799d000 r--p 00000000 08:20 218625                     /usr/lib/x86_64-linux-gnu/libm.so.6
+7f7cd799d000-7f7cd7a19000 r-xp 0000e000 08:20 218625                     /usr/lib/x86_64-linux-gnu/libm.so.6
+7f7cd7a19000-7f7cd7a74000 r--p 0008a000 08:20 218625                     /usr/lib/x86_64-linux-gnu/libm.so.6
+7f7cd7a74000-7f7cd7a75000 r--p 000e4000 08:20 218625                     /usr/lib/x86_64-linux-gnu/libm.so.6
+7f7cd7a75000-7f7cd7a76000 rw-p 000e5000 08:20 218625                     /usr/lib/x86_64-linux-gnu/libm.so.6
+7f7cd7a76000-7f7cd7b20000 r--p 00000000 08:20 84948                      /home/cbrissette/cuopt/.cuopt_env/lib/libstdc++.so.6.0.34
+7f7cd7b20000-7f7cd7c51000 r-xp 000aa000 08:20 84948                      /home/cbrissette/cuopt/.cuopt_env/lib/libstdc++.so.6.0.34
+7f7cd7c51000-7f7cd7cdf000 r--p 001db000 08:20 84948                      /home/cbrissette/cuopt/.cuopt_env/lib/libstdc++.so.6.0.34
+7f7cd7cdf000-7f7cd7cee000 r--p 00268000 08:20 84948                      /home/cbrissette/cuopt/.cuopt_env/lib/libstdc++.so.6.0.34
+7f7cd7cee000-7f7cd7cf1000 rw-p 00277000 08:20 84948                      /home/cbrissette/cuopt/.cuopt_env/lib/libstdc++.so.6.0.34
+7f7cd7cf1000-7f7cd7cf5000 rw-p 00000000 00:00 0 
+7f7cd7cf5000-7f7cd7f78000 r--p 00000000 08:20 294978                     /usr/lib/jvm/java-11-openjdk-amd64/lib/server/libjvm.so
+7f7cd7f78000-7f7cd8c16000 r-xp 00283000 08:20 294978                     /usr/lib/jvm/java-11-openjdk-amd64/lib/server/libjvm.so
+7f7cd8c16000-7f7cd8e72000 r--p 00f21000 08:20 294978                     /usr/lib/jvm/java-11-openjdk-amd64/lib/server/libjvm.so
+7f7cd8e72000-7f7cd8f36000 r--p 0117c000 08:20 294978                     /usr/lib/jvm/java-11-openjdk-amd64/lib/server/libjvm.so
+7f7cd8f36000-7f7cd8f71000 rw-p 01240000 08:20 294978                     /usr/lib/jvm/java-11-openjdk-amd64/lib/server/libjvm.so
+7f7cd8f71000-7f7cd8fca000 rw-p 00000000 00:00 0 
+7f7cd8fca000-7f7cd8ff2000 r--p 00000000 08:20 218621                     /usr/lib/x86_64-linux-gnu/libc.so.6
+7f7cd8ff2000-7f7cd9187000 r-xp 00028000 08:20 218621                     /usr/lib/x86_64-linux-gnu/libc.so.6
+7f7cd9187000-7f7cd91df000 r--p 001bd000 08:20 218621                     /usr/lib/x86_64-linux-gnu/libc.so.6
+7f7cd91df000-7f7cd91e0000 ---p 00215000 08:20 218621                     /usr/lib/x86_64-linux-gnu/libc.so.6
+7f7cd91e0000-7f7cd91e4000 r--p 00215000 08:20 218621                     /usr/lib/x86_64-linux-gnu/libc.so.6
+7f7cd91e4000-7f7cd91e6000 rw-p 00219000 08:20 218621                     /usr/lib/x86_64-linux-gnu/libc.so.6
+7f7cd91e6000-7f7cd91f3000 rw-p 00000000 00:00 0 
+7f7cd91f3000-7f7cd91f4000 r--p 00000000 08:20 217875                     /usr/lib/locale/C.utf8/LC_MEASUREMENT
+7f7cd91f4000-7f7cd91f6000 r--p 00000000 08:20 294956                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libjimage.so
+7f7cd91f6000-7f7cd91f9000 r-xp 00002000 08:20 294956                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libjimage.so
+7f7cd91f9000-7f7cd91fa000 r--p 00005000 08:20 294956                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libjimage.so
+7f7cd91fa000-7f7cd91fb000 ---p 00006000 08:20 294956                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libjimage.so
+7f7cd91fb000-7f7cd91fc000 r--p 00006000 08:20 294956                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libjimage.so
+7f7cd91fc000-7f7cd91fd000 rw-p 00007000 08:20 294956                     /usr/lib/jvm/java-11-openjdk-amd64/lib/libjimage.so
+7f7cd91fd000-7f7cd9200000 r--p 00000000 08:20 294930                     /usr/lib/jvm/java-11-openjdk-amd64/lib/jli/libjli.so
+7f7cd9200000-7f7cd920a000 r-xp 00003000 08:20 294930                     /usr/lib/jvm/java-11-openjdk-amd64/lib/jli/libjli.so
+7f7cd920a000-7f7cd920d000 r--p 0000d000 08:20 294930                     /usr/lib/jvm/java-11-openjdk-amd64/lib/jli/libjli.so
+7f7cd920d000-7f7cd920e000 ---p 00010000 08:20 294930                     /usr/lib/jvm/java-11-openjdk-amd64/lib/jli/libjli.so
+7f7cd920e000-7f7cd920f000 r--p 00010000 08:20 294930                     /usr/lib/jvm/java-11-openjdk-amd64/lib/jli/libjli.so
+7f7cd920f000-7f7cd9210000 rw-p 00011000 08:20 294930                     /usr/lib/jvm/java-11-openjdk-amd64/lib/jli/libjli.so
+7f7cd9210000-7f7cd9213000 r--p 00000000 08:20 83514                      /home/cbrissette/cuopt/.cuopt_env/lib/libz.so.1.3.2
+7f7cd9213000-7f7cd9223000 r-xp 00003000 08:20 83514                      /home/cbrissette/cuopt/.cuopt_env/lib/libz.so.1.3.2
+7f7cd9223000-7f7cd9229000 r--p 00013000 08:20 83514                      /home/cbrissette/cuopt/.cuopt_env/lib/libz.so.1.3.2
+7f7cd9229000-7f7cd922a000 r--p 00019000 08:20 83514                      /home/cbrissette/cuopt/.cuopt_env/lib/libz.so.1.3.2
+7f7cd922a000-7f7cd922b000 rw-p 0001a000 08:20 83514                      /home/cbrissette/cuopt/.cuopt_env/lib/libz.so.1.3.2
+7f7cd922b000-7f7cd922d000 rw-p 00000000 00:00 0 
+7f7cd922d000-7f7cd922f000 r--p 00000000 08:20 218618                     /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+7f7cd922f000-7f7cd9259000 r-xp 00002000 08:20 218618                     /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+7f7cd9259000-7f7cd9264000 r--p 0002c000 08:20 218618                     /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+7f7cd9264000-7f7cd9265000 r--p 00000000 08:20 217874                     /usr/lib/locale/C.utf8/LC_IDENTIFICATION
+7f7cd9265000-7f7cd9267000 r--p 00037000 08:20 218618                     /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+7f7cd9267000-7f7cd9269000 rw-p 00039000 08:20 218618                     /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+7ffd3bb4a000-7ffd3bb6d000 rw-p 00000000 00:00 0                          [stack]
+7ffd3bbf3000-7ffd3bbf7000 r--p 00000000 00:00 0                          [vvar]
+7ffd3bbf7000-7ffd3bbf9000 r-xp 00000000 00:00 0                          [vdso]
+
+
+VM Arguments:
+java_command: /home/cbrissette/cuopt/java/cuopt/target/surefire/surefirebooter-20260707091921778_3.jar /home/cbrissette/cuopt/java/cuopt/target/surefire 2026-07-07T09-19-21_604-jvmRun1 surefire-20260707091921778_1tmp surefire_0-20260707091921778_2tmp
+java_class_path (initial): /home/cbrissette/cuopt/java/cuopt/target/surefire/surefirebooter-20260707091921778_3.jar
+Launcher Type: SUN_STANDARD
+
+[Global flags]
+     intx CICompilerCount                          = 12                                        {product} {ergonomic}
+     uint ConcGCThreads                            = 4                                         {product} {ergonomic}
+     uint G1ConcRefinementThreads                  = 15                                        {product} {ergonomic}
+   size_t G1HeapRegionSize                         = 1048576                                   {product} {ergonomic}
+    uintx GCDrainStackTargetSize                   = 64                                        {product} {ergonomic}
+   size_t InitialHeapSize                          = 260046848                                 {product} {ergonomic}
+   size_t MarkStackSize                            = 4194304                                   {product} {ergonomic}
+   size_t MaxHeapSize                              = 4141875200                                {product} {ergonomic}
+   size_t MaxNewSize                               = 2485125120                                {product} {ergonomic}
+   size_t MinHeapDeltaBytes                        = 1048576                                   {product} {ergonomic}
+    uintx NonNMethodCodeHeapSize                   = 7594288                                {pd product} {ergonomic}
+    uintx NonProfiledCodeHeapSize                  = 122031976                              {pd product} {ergonomic}
+    uintx ProfiledCodeHeapSize                     = 122031976                              {pd product} {ergonomic}
+    uintx ReservedCodeCacheSize                    = 251658240                              {pd product} {ergonomic}
+     bool SegmentedCodeCache                       = true                                      {product} {ergonomic}
+     bool UseCompressedClassPointers               = true                                 {lp64_product} {ergonomic}
+     bool UseCompressedOops                        = true                                 {lp64_product} {ergonomic}
+     bool UseG1GC                                  = true                                      {product} {ergonomic}
+
+Logging:
+Log output configuration:
+ #0: stdout all=warning uptime,level,tags
+ #1: stderr all=off uptime,level,tags
+
+Environment Variables:
+JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+PATH=/usr/lib/jvm/java-11-openjdk-amd64/bin:/home/cbrissette/cuopt/.cuopt_env/bin:/usr/lib/jvm/java-11-openjdk-amd64/bin:/path/to/jdk-11/bin:/home/cbrissette/cuopt/.cuopt_env/bin:/home/cbrissette/miniforge3/condabin:/usr/local/cuda-12/bin:/usr/lib:/lib:/home/cbrissette/.npm-packages/bin:/home/cbrissette/.local/node/bin:/home/cbrissette/.vscode-server/bin/034f571df509819cc10b0c8129f66ef77a542f0e/bin/remote-cli:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/usr/lib/wsl/lib:/mnt/c/Program Files/Microsoft VS Code:/mnt/c/Windows/system32:/mnt/c/Windows:/mnt/c/Windows/System32/Wbem:/mnt/c/Windows/System32/WindowsPowerShell/v1.0:/mnt/c/Windows/System32/OpenSSH:/mnt/c/Program Files/dotnet:/mnt/c/Program Files/Microsoft VS Code/bin:/mnt/c/Program Files (x86)/NVIDIA Corporation/PhysX/Common:/mnt/c/Program Files/NVIDIA Corporation/Nsight Compute 2025.1.0:/mnt/c/Program Files/Teleport:/mnt/c/PROGRA~1/cinc/bin:/mnt/c/Program Files/NVInfo/bin:/mnt/c/Program Files/ai-pim-utils:/mnt/c/WINDOWS/system32:/mnt/c/WINDOWS:/mnt/c/WINDOWS/System32/Wbem:/mnt/c/WINDOWS/System32/WindowsPowerShell/v1.0:/mnt/c/WINDOWS/System32/OpenSSH:/mnt/c/Program Files/Teleport Connect/resources/bin:/mnt/c/Users/cbrissette/.local/bin:/mnt/c/Users/cbrissette/AppData/Local/Microsoft/WindowsApps:/mnt/c/Users/cbrissette/AppData/Local/Programs/cursor/resources/app/bin:/mnt/c/Users/cbrissette/AppData/Local/Microsoft/WinGet/Packages/astral-sh.uv_Microsoft.Winget.Source_8wekyb3d8bbwe:/mnt/c/Users/cbrissette/AppData/Local/Microsoft/WindowsApps:/snap/bin:/home/cbrissette/ngc-cli:/home/cbrissette/.local/bin:/usr/local/go/bin
+LD_LIBRARY_PATH=/home/cbrissette/cuopt/.cuopt_env/lib:/home/cbrissette/cuopt/java/cuopt/build/native:/home/cbrissette/cuopt/.cuopt_env/lib:/home/cbrissette/cuopt/cpp/build
+SHELL=/bin/bash
+DISPLAY=:0
+HOSTTYPE=x86_64
+LANG=C.UTF-8
+TERM=xterm-256color
+
+Signal Handlers:
+SIGSEGV: [libjvm.so+0xeaead0], sa_mask[0]=11111111011111111101111111111110, sa_flags=SA_RESTART|SA_SIGINFO
+SIGBUS: [libjvm.so+0xeaead0], sa_mask[0]=11111111011111111101111111111110, sa_flags=SA_RESTART|SA_SIGINFO
+SIGFPE: [libjvm.so+0xeaead0], sa_mask[0]=11111111011111111101111111111110, sa_flags=SA_RESTART|SA_SIGINFO
+SIGPIPE: [libjvm.so+0xbf1430], sa_mask[0]=11111111011111111101111111111110, sa_flags=SA_RESTART|SA_SIGINFO
+SIGXFSZ: [libjvm.so+0xbf1430], sa_mask[0]=11111111011111111101111111111110, sa_flags=SA_RESTART|SA_SIGINFO
+SIGILL: [libjvm.so+0xeaead0], sa_mask[0]=11111111011111111101111111111110, sa_flags=SA_RESTART|SA_SIGINFO
+SIGUSR2: [libjvm.so+0xbf12d0], sa_mask[0]=00000000000000000000000000000000, sa_flags=SA_RESTART|SA_SIGINFO
+SIGHUP: [libjvm.so+0xbf1a90], sa_mask[0]=11111111011111111101111111111110, sa_flags=SA_RESTART|SA_SIGINFO
+SIGINT: [libjvm.so+0xbf1a90], sa_mask[0]=11111111011111111101111111111110, sa_flags=SA_RESTART|SA_SIGINFO
+SIGTERM: [libjvm.so+0xbf1a90], sa_mask[0]=11111111011111111101111111111110, sa_flags=SA_RESTART|SA_SIGINFO
+SIGQUIT: [libjvm.so+0xbf1a90], sa_mask[0]=11111111011111111101111111111110, sa_flags=SA_RESTART|SA_SIGINFO
+
+
+---------------  S Y S T E M  ---------------
+
+OS:DISTRIB_ID=Ubuntu
+DISTRIB_RELEASE=22.04
+DISTRIB_CODENAME=jammy
+DISTRIB_DESCRIPTION="Ubuntu 22.04.5 LTS"
+uname:Linux 5.15.153.1-microsoft-standard-WSL2 #1 SMP Fri Mar 29 23:14:13 UTC 2024 x86_64
+OS uptime: 2 days 16:24 hours
+libc:glibc 2.35 NPTL 2.35 
+rlimit (soft/hard): STACK 8192k/infinity , CORE 0k/infinity , NPROC 63166/63166 , NOFILE 1048576/1048576 , AS infinity/infinity , CPU infinity/infinity , DATA infinity/infinity , FSIZE infinity/infinity , MEMLOCK 65536k/65536k
+load average:2.00 5.66 4.74
+
+/proc/meminfo:
+MemTotal:       16177528 kB
+MemFree:         9117720 kB
+MemAvailable:   11883568 kB
+Buffers:           79512 kB
+Cached:          2676828 kB
+SwapCached:        57768 kB
+Active:          1612520 kB
+Inactive:        4539092 kB
+Active(anon):      14392 kB
+Inactive(anon):  3450132 kB
+Active(file):    1598128 kB
+Inactive(file):  1088960 kB
+Unevictable:           0 kB
+Mlocked:               0 kB
+SwapTotal:       4194304 kB
+SwapFree:        3716668 kB
+Dirty:              3724 kB
+Writeback:             0 kB
+AnonPages:       3266292 kB
+Mapped:           525420 kB
+Shmem:             69292 kB
+KReclaimable:     410860 kB
+Slab:             532904 kB
+SReclaimable:     410860 kB
+SUnreclaim:       122044 kB
+KernelStack:       14880 kB
+PageTables:        48672 kB
+NFS_Unstable:          0 kB
+Bounce:                0 kB
+WritebackTmp:          0 kB
+CommitLimit:    12283068 kB
+Committed_AS:    6753580 kB
+VmallocTotal:   34359738367 kB
+VmallocUsed:       37960 kB
+VmallocChunk:          0 kB
+Percpu:            13248 kB
+AnonHugePages:   1247232 kB
+ShmemHugePages:        0 kB
+ShmemPmdMapped:        0 kB
+FileHugePages:         0 kB
+FilePmdMapped:         0 kB
+HugePages_Total:       0
+HugePages_Free:        0
+HugePages_Rsvd:        0
+HugePages_Surp:        0
+Hugepagesize:       2048 kB
+Hugetlb:               0 kB
+DirectMap4k:      410624 kB
+DirectMap2M:    13017088 kB
+DirectMap1G:    11534336 kB
+
+/sys/kernel/mm/transparent_hugepage/enabled:
+[always] madvise never
+/sys/kernel/mm/transparent_hugepage/defrag (defrag/compaction efforts parameter):
+always defer defer+madvise [madvise] never
+
+Process Memory:
+Virtual Size: 42675260K (peak: 42732616K)
+Resident Set Size: 505140K (peak: 505140K) (anon: 312764K, file: 126788K, shmem: 65588K)
+Swapped out: 0K
+C-Heap outstanding allocations: 203013K, retained: 4906K
+glibc malloc tunables: (default)
+
+/proc/sys/kernel/threads-max (system-wide limit on the number of threads):
+126333
+/proc/sys/vm/max_map_count (maximum number of memory map areas a process may have):
+65530
+/proc/sys/kernel/pid_max (system-wide limit on number of process identifiers):
+4194304
+
+container (cgroup) information:
+container_type: cgroupv1
+cpu_cpuset_cpus: 0-19
+cpu_memory_nodes: 0
+active_processor_count: 20
+cpu_quota: no quota
+cpu_period: 100000
+cpu_shares: no shares
+memory_limit_in_bytes: unlimited
+memory_and_swap_limit_in_bytes: unlimited
+memory_soft_limit_in_bytes: unlimited
+memory_usage_in_bytes: 6023092 k
+memory_max_usage_in_bytes: 2211664 k
+kernel_memory_usage_in_bytes: 38436 k
+kernel_memory_max_usage_in_bytes: unlimited
+kernel_memory_limit_in_bytes: 70264 k
+maximum number of tasks: not supported
+current number of tasks: not supported
+
+Hyper-V virtualization detected
+Steal ticks since vm start: 0
+Steal ticks percentage since vm start:  0.000
+
+CPU:total 20 (initial active 20) (16 cores per cpu, 2 threads per core) family 6 model 186 stepping 2 microcode 0xffffffff, cmov, cx8, fxsr, mmx, sse, sse2, sse3, ssse3, sse4.1, sse4.2, popcnt, avx, avx2, aes, clmul, erms, 3dnowpref, lzcnt, ht, tsc, tscinvbit, bmi1, bmi2, adx, sha, fma
+CPU Model and flags from /proc/cpuinfo:
+model name	: 13th Gen Intel(R) Core(TM) i7-13800H
+flags		: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ss ht syscall nx pdpe1gb rdtscp lm constant_tsc rep_good nopl xtopology tsc_reliable nonstop_tsc cpuid pni pclmulqdq vmx ssse3 fma cx16 sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand hypervisor lahf_lm abm 3dnowprefetch ssbd ibrs ibpb stibp ibrs_enhanced tpr_shadow vnmi ept vpid ept_ad fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid rdseed adx smap clflushopt clwb sha_ni xsaveopt xsavec xgetbv1 xsaves avx_vnni umip waitpkg gfni vaes vpclmulqdq rdpid movdiri movdir64b fsrm md_clear serialize flush_l1d arch_capabilities
+Online cpus:
+0-19
+Offline cpus:
+
+BIOS frequency limitation:
+<Not Available>
+Frequency switch latency (ns):
+<Not Available>
+Available cpu frequencies:
+<Not Available>
+Current governor:
+<Not Available>
+Core performance/turbo boost:
+<Not Available>
+
+Memory: 4k page, physical 16177528k(9117720k free), swap 4194304k(3716668k free)
+
+vm_info: OpenJDK 64-Bit Server VM (11.0.24+8-post-Ubuntu-1ubuntu322.04) for linux-amd64 JRE (11.0.24+8-post-Ubuntu-1ubuntu322.04), built on Jul 21 2024 21:19:53 by "unknown" with gcc 11.4.0
+
+END.

@@ -1,0 +1,345 @@
+# Created at 2026-07-07T10:51:18.319
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Error parsing input file: {"MPS_PARSER_ERROR_TYPE": "ValidationError", "msg": "Error opening input file! Given path: missing-file-does-not-exist.mps"}'.
+
+# Created at 2026-07-07T10:51:18.320
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Setting parameter method to 1'.
+
+# Created at 2026-07-07T10:51:18.320
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'cuOpt version: 26.8.0, git hash: c58e6fe8, host arch: x86_64, device archs: 86-real'.
+
+# Created at 2026-07-07T10:51:18.320
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'CPU: 13th Gen Intel(R) Core(TM) i7-13800H, threads (physical/logical): 10/20, RAM: 10.68 GiB'.
+
+# Created at 2026-07-07T10:51:18.321
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'CUDA 13.2, device: NVIDIA RTX A1000 6GB Laptop GPU (ID 0), VRAM: 6.00 GiB'.
+
+# Created at 2026-07-07T10:51:18.341
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'CUDA device UUID: fb968757-0d05-4cc2-229b-dc9fe8668e48'.
+
+# Created at 2026-07-07T10:51:18.341
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Solving a problem with 1 constraints, 2 variables (0 integers), and 2 nonzeros'.
+
+# Created at 2026-07-07T10:51:18.341
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Problem scaling:'.
+
+# Created at 2026-07-07T10:51:18.341
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Objective coefficents range:          [1e+00, 1e+00]'.
+
+# Created at 2026-07-07T10:51:18.342
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Constraint matrix coefficients range: [1e+00, 1e+00]'.
+
+# Created at 2026-07-07T10:51:18.342
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Constraint rhs / bounds range:        [0e+00, 1e+00]'.
+
+# Created at 2026-07-07T10:51:18.436
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Variable bounds range:                [0e+00, 0e+00]'.
+
+# Created at 2026-07-07T10:51:18.437
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Using PSLP presolver'.
+
+# Created at 2026-07-07T10:51:18.437
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'PSLP Presolved problem: 0 constraints, 0 variables, 0 non-zeros'.
+
+# Created at 2026-07-07T10:51:18.437
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Presolve completely solved the problem'.
+
+# Created at 2026-07-07T10:51:18.437
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'PSLP presolve time: 0.10s'.
+
+# Created at 2026-07-07T10:51:18.438
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Status: Optimal  Objective: 1.000000'.
+
+# Created at 2026-07-07T10:51:18.439
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'cuOpt version: 26.8.0, git hash: c58e6fe8, host arch: x86_64, device archs: 86-real'.
+
+# Created at 2026-07-07T10:51:18.439
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'CPU: 13th Gen Intel(R) Core(TM) i7-13800H, threads (physical/logical): 10/20, RAM: 10.59 GiB'.
+
+# Created at 2026-07-07T10:51:18.439
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'CUDA 13.2, device: NVIDIA RTX A1000 6GB Laptop GPU (ID 0), VRAM: 6.00 GiB'.
+
+# Created at 2026-07-07T10:51:18.440
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'CUDA device UUID: fb968757-0d05-4cc2-229b-dc9fe8668e48'.
+
+# Created at 2026-07-07T10:51:18.440
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Solving a problem with 1 constraints, 2 variables (0 integers), and 2 nonzeros'.
+
+# Created at 2026-07-07T10:51:18.441
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Problem scaling:'.
+
+# Created at 2026-07-07T10:51:18.441
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Objective coefficents range:          [1e+00, 1e+00]'.
+
+# Created at 2026-07-07T10:51:18.441
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Constraint matrix coefficients range: [1e+00, 1e+00]'.
+
+# Created at 2026-07-07T10:51:18.441
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Constraint rhs / bounds range:        [0e+00, 1e+00]'.
+
+# Created at 2026-07-07T10:51:18.443
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Variable bounds range:                [0e+00, 0e+00]'.
+
+# Created at 2026-07-07T10:51:18.443
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Using PSLP presolver'.
+
+# Created at 2026-07-07T10:51:18.443
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'PSLP Presolved problem: 0 constraints, 0 variables, 0 non-zeros'.
+
+# Created at 2026-07-07T10:51:18.443
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Presolve completely solved the problem'.
+
+# Created at 2026-07-07T10:51:18.443
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'PSLP presolve time: 0.00s'.
+
+# Created at 2026-07-07T10:51:18.445
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Status: Optimal  Objective: 1.000000'.
+
+# Created at 2026-07-07T10:51:18.539
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Setting parameter iteration_limit to 50'.
+
+# Created at 2026-07-07T10:51:18.540
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'cuOpt version: 26.8.0, git hash: c58e6fe8, host arch: x86_64, device archs: 86-real'.
+
+# Created at 2026-07-07T10:51:18.540
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'CPU: 13th Gen Intel(R) Core(TM) i7-13800H, threads (physical/logical): 10/20, RAM: 10.59 GiB'.
+
+# Created at 2026-07-07T10:51:18.540
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'CUDA 13.2, device: NVIDIA RTX A1000 6GB Laptop GPU (ID 0), VRAM: 6.00 GiB'.
+
+# Created at 2026-07-07T10:51:18.541
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'CUDA device UUID: fb968757-0d05-4cc2-229b-dc9fe8668e48'.
+
+# Created at 2026-07-07T10:51:18.544
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Problem has a quadratic objective. Solving with barrier.'.
+
+# Created at 2026-07-07T10:51:18.544
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Presolved problem: 1 constraints 3 variables 3 nonzeros'.
+
+# Created at 2026-07-07T10:51:18.544
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Skipping Ruiz equilibration (row norm ratio 1.0 < 100)'.
+
+# Created at 2026-07-07T10:51:18.545
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Barrier solver started at 0.00 seconds'.
+
+# Created at 2026-07-07T10:51:18.545
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Barrier solver: 1 constraints, 3 variables, 3 nonzeros'.
+
+# Created at 2026-07-07T10:51:18.550
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Quadratic objective matrix  : 2 nonzeros'.
+
+# Created at 2026-07-07T10:51:18.550
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Density estimator time      : 0.00s'.
+
+# Created at 2026-07-07T10:51:18.571
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Linear system               : ADAT'.
+
+# Created at 2026-07-07T10:51:20.846
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'cuDSS Version               : 0.7.1'.
+
+# Created at 2026-07-07T10:51:20.884
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'cuDSS Threading layer       : libcudss_mtlayer_gomp.so.0'.
+
+# Created at 2026-07-07T10:51:20.884
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'ADAT time                   : 0.02s'.
+
+# Created at 2026-07-07T10:51:20.884
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'ADAT nonzeros               : 1.00e+00'.
+
+# Created at 2026-07-07T10:51:20.901
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'ADAT density                : 1.00'.
+
+# Created at 2026-07-07T10:51:20.927
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Reordering time             : 0.02s'.
+
+# Created at 2026-07-07T10:51:20.927
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Symbolic factorization time : 0.03s'.
+
+# Created at 2026-07-07T10:51:20.927
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Total symbolic time         : 0.04s'.
+
+# Created at 2026-07-07T10:51:20.981
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Symbolic nonzeros in factor : 5.00e-01'.
+
+# Created at 2026-07-07T10:51:20.982
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream '                  Objective                         Infeasibility        Time'.
+
+# Created at 2026-07-07T10:51:20.982
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Iter   Primal              Dual                Primal   Dual    Compl.   Elapsed'.
+
+# Created at 2026-07-07T10:51:21.005
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream '  0   +6.049112426036e+02 -5.832189349112e+02 5.35e+00 3.86e+01 1.80e-01 2.4'.
+
+# Created at 2026-07-07T10:51:21.010
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream '  1   +4.469460257991e+01 -3.485280616596e+01 5.35e-01 3.86e+00 4.58e-01 2.5'.
+
+# Created at 2026-07-07T10:51:21.015
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream '  2   +8.367439798893e+00 -3.492279228860e+00 5.35e-02 3.86e-01 4.30e-01 2.5'.
+
+# Created at 2026-07-07T10:51:21.019
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream '  3   +2.503548924546e+00 +6.142256097856e-01 5.35e-03 3.86e-02 2.19e-01 2.5'.
+
+# Created at 2026-07-07T10:51:21.023
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream '  4   +1.871082024496e+00 +1.567052140041e+00 9.06e-04 6.54e-03 4.55e-02 2.5'.
+
+# Created at 2026-07-07T10:51:21.027
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream '  5   +1.806936125983e+00 +1.772196769365e+00 9.76e-05 7.04e-04 5.81e-03 2.5'.
+
+# Created at 2026-07-07T10:51:21.032
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream '  6   +1.800675069041e+00 +1.797202839171e+00 9.78e-06 7.06e-05 5.78e-04 2.5'.
+
+# Created at 2026-07-07T10:51:21.036
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream '  7   +1.800067297846e+00 +1.799720448966e+00 9.78e-07 7.06e-06 5.76e-05 2.5'.
+
+# Created at 2026-07-07T10:51:21.040
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream '  8   +1.800006727679e+00 +1.799972046957e+00 9.78e-08 7.06e-07 5.76e-06 2.5'.
+
+# Created at 2026-07-07T10:51:21.045
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream '  9   +1.800000672747e+00 +1.799997204717e+00 9.78e-09 7.06e-08 5.76e-07 2.5'.
+
+# Created at 2026-07-07T10:51:21.050
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream ' 10   +1.800000067274e+00 +1.799999720472e+00 9.78e-10 7.06e-09 5.76e-08 2.5'.
+
+# Created at 2026-07-07T10:51:21.051
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream ' 11   +1.800000006727e+00 +1.799999972047e+00 9.78e-11 7.06e-10 5.76e-09 2.5'.
+
+# Created at 2026-07-07T10:51:21.051
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Optimal solution found in 11 iterations and 2.510s'.
+
+# Created at 2026-07-07T10:51:21.051
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Objective +1.80000001e+00'.
+
+# Created at 2026-07-07T10:51:21.051
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Primal infeasibility (abs/rel): 1.96e-10/9.78e-11'.
+
+# Created at 2026-07-07T10:51:21.051
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Dual infeasibility   (abs/rel): 1.41e-09/7.06e-10'.
+
+# Created at 2026-07-07T10:51:21.054
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Complementarity gap  (abs/rel): 1.61e-08/5.76e-09'.
+
+# Created at 2026-07-07T10:51:21.054
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Unscaled Primal infeasibility   (abs/rel): 1.96e-10/9.78e-11'.
+
+# Created at 2026-07-07T10:51:21.054
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Post-solve Primal infeasibility (abs/rel): 1.96e-10/9.78e-11'.
+
+# Created at 2026-07-07T10:51:21.058
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Barrier finished in 2.51 seconds'.
+
+# Created at 2026-07-07T10:51:21.118
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Setting parameter method to 1'.
+
+# Created at 2026-07-07T10:51:21.118
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'cuOpt version: 26.8.0, git hash: c58e6fe8, host arch: x86_64, device archs: 86-real'.
+
+# Created at 2026-07-07T10:51:21.118
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'CPU: 13th Gen Intel(R) Core(TM) i7-13800H, threads (physical/logical): 10/20, RAM: 10.45 GiB'.
+
+# Created at 2026-07-07T10:51:21.119
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'CUDA 13.2, device: NVIDIA RTX A1000 6GB Laptop GPU (ID 0), VRAM: 6.00 GiB'.
+
+# Created at 2026-07-07T10:51:21.120
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'CUDA device UUID: fb968757-0d05-4cc2-229b-dc9fe8668e48'.
+
+# Created at 2026-07-07T10:51:21.120
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Solving a problem with 1 constraints, 2 variables (0 integers), and 2 nonzeros'.
+
+# Created at 2026-07-07T10:51:21.120
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Problem scaling:'.
+
+# Created at 2026-07-07T10:51:21.120
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Objective coefficents range:          [1e+00, 1e+00]'.
+
+# Created at 2026-07-07T10:51:21.121
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Constraint matrix coefficients range: [1e+00, 1e+00]'.
+
+# Created at 2026-07-07T10:51:21.121
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Constraint rhs / bounds range:        [0e+00, 1e+00]'.
+
+# Created at 2026-07-07T10:51:21.122
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Variable bounds range:                [0e+00, 0e+00]'.
+
+# Created at 2026-07-07T10:51:21.122
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Using PSLP presolver'.
+
+# Created at 2026-07-07T10:51:21.122
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'PSLP Presolved problem: 0 constraints, 0 variables, 0 non-zeros'.
+
+# Created at 2026-07-07T10:51:21.123
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Presolve completely solved the problem'.
+
+# Created at 2026-07-07T10:51:21.123
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'PSLP presolve time: 0.00s'.
+
+# Created at 2026-07-07T10:51:21.133
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Status: Optimal  Objective: 1.000000'.
+
+# Created at 2026-07-07T10:51:21.192
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Setting parameter time_limit to 1.000000e+01'.
+
+# Created at 2026-07-07T10:51:21.193
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'cuOpt version: 26.8.0, git hash: c58e6fe8, host arch: x86_64, device archs: 86-real'.
+
+# Created at 2026-07-07T10:51:21.193
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'CPU: 13th Gen Intel(R) Core(TM) i7-13800H, threads (physical/logical): 10/20, RAM: 10.44 GiB'.
+
+# Created at 2026-07-07T10:51:21.194
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'CUDA 13.2, device: NVIDIA RTX A1000 6GB Laptop GPU (ID 0), VRAM: 6.00 GiB'.
+
+# Created at 2026-07-07T10:51:21.194
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'CUDA device UUID: fb968757-0d05-4cc2-229b-dc9fe8668e48'.
+
+# Created at 2026-07-07T10:51:21.196
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Solving a problem with 1 constraints, 1 variables (1 integers), and 1 nonzeros'.
+
+# Created at 2026-07-07T10:51:21.196
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Problem scaling:'.
+
+# Created at 2026-07-07T10:51:21.196
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Objective coefficents range:          [1e+00, 1e+00]'.
+
+# Created at 2026-07-07T10:51:21.196
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Constraint matrix coefficients range: [1e+00, 1e+00]'.
+
+# Created at 2026-07-07T10:51:21.196
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Constraint rhs / bounds range:        [0e+00, 1e+00]'.
+
+# Created at 2026-07-07T10:51:21.209
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Variable bounds range:                [0e+00, 1e+01]'.
+
+# Created at 2026-07-07T10:51:21.244
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'MIP row scaling completed'.
+
+# Created at 2026-07-07T10:51:21.262
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'New solution from early primal heuristics (CPUFJ). Objective +1.000000e+00. Time 0.03'.
+
+# Created at 2026-07-07T10:51:21.262
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Original problem: 1 constraints, 1 variables, 1 nonzeros'.
+
+# Created at 2026-07-07T10:51:21.266
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Calling Papilo presolver (git hash 741a2b9c)'.
+
+# Created at 2026-07-07T10:51:21.266
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Presolve status: reduced the problem'.
+
+# Created at 2026-07-07T10:51:21.266
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Presolve removed: 1 constraints, 1 variables, 1 nonzeros'.
+
+# Created at 2026-07-07T10:51:21.267
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Presolved problem: 0 constraints, 0 variables (0 integer), 0 nonzeros'.
+
+# Created at 2026-07-07T10:51:21.267
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Optimal solution found during presolve'.
+
+# Created at 2026-07-07T10:51:21.290
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Papilo presolve time: 0.07'.
+
+# Created at 2026-07-07T10:51:21.293
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Best feasible: 1.000000'.
+
+# Created at 2026-07-07T10:51:21.303
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'Solution objective: 1.000000 , relative_mip_gap 0.000000 solution_bound 1.000000 presolve_time 0.073746 total_solve_time 0.000000 max constraint violation 0.000000 max int violation 0.000000 max var bounds violation 0.000000 nodes 0 simplex_iterations 0'.
+
+# Created at 2026-07-07T10:51:39.577
+Corrupted channel by directly writing to native stream in forked JVM 1. Stream 'PSLP declares problem as infeasible.'.
+

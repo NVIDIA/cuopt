@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.nvidia.cuopt.linearprogramming.PythonParityTest
+-------------------------------------------------------------------------------
+Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 18.00 s -- in com.nvidia.cuopt.linearprogramming.PythonParityTest
