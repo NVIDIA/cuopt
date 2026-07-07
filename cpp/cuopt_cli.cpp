@@ -467,11 +467,10 @@ int main(int argc, char* argv[])
 
     memory_resources.reserve(provisioned_gpus);
     for (int i = 0; i < provisioned_gpus; ++i) {
-      RAFT_CUDA_TRY(cudaSetDevice(i));
+      raft::device_setter guard(i);
       memory_resources.emplace_back();
       rmm::mr::set_per_device_resource(rmm::cuda_device_id{i}, memory_resources.back());
     }
-    RAFT_CUDA_TRY(cudaSetDevice(0));
   }
 
   return run_single_file(file_name, initial_solution_file, solve_relaxation, settings);
