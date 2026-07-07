@@ -265,9 +265,9 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::ruiz_iter_local()
                          a_divides_sqrt_b_bounded<f_t>(),
                          stream_view_);
   RAFT_CUDA_TRY(cudaMemsetAsync(
-  iteration_constraint_matrix_scaling_.data(), 0, sizeof(f_t) * dual_size_h_, stream_view_));
+    iteration_constraint_matrix_scaling_.data(), 0, sizeof(f_t) * dual_size_h_, stream_view_));
   RAFT_CUDA_TRY(cudaMemsetAsync(
-  iteration_variable_scaling_.data(), 0, sizeof(f_t) * primal_size_h_, stream_view_));
+    iteration_variable_scaling_.data(), 0, sizeof(f_t) * primal_size_h_, stream_view_));
 }
 
 template <typename i_t, typename f_t>
