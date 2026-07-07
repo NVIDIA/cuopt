@@ -119,6 +119,7 @@ outputs:
       build:
         - cmake ${{ cmake_version }}
         - ${{ stdlib("c") }}
+        - binutils
       host:
         - libboost-devel
         - cuda-version =${{ cuda_version }}
