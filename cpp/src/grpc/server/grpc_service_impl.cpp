@@ -884,7 +884,7 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     if (max_count > 0 && count > max_count) { count = max_count; }
 
     for (int64_t i = 0; i < count; ++i) {
-      const auto& inc = incumbents[static_cast<size_t>(from_index + i)];
+      const auto& inc = incumbents[from_index + i];
       auto* out       = response->add_incumbents();
       out->set_index(from_index + i);
       out->set_objective(inc.objective);
