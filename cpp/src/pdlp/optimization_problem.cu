@@ -10,8 +10,6 @@
 #include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
 #include <cuopt/mathematical_optimization/solve_remote.hpp>
 
-#include <mps_parser_internal.hpp>
-
 #include <cuopt/error.hpp>
 #include <cuopt/mathematical_optimization/csr_matrix_utils.hpp>
 #include <cuopt/mathematical_optimization/io/writer.hpp>

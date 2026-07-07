@@ -227,7 +227,7 @@ class cpu_optimization_problem_t : public optimization_problem_interface_t<i_t, 
   std::vector<std::string> row_names_{};
 
   /** Reused while adding quadratic constraints. */
-  mutable io::coo_canonicalization_workspace_t<i_t, f_t> qc_coo_workspace_{};
+  io::coo_canonicalization_workspace_t<i_t, f_t> qc_coo_workspace_{};
 };
 
 }  // namespace cuopt::mathematical_optimization

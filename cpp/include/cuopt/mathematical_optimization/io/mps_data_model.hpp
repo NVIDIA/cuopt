@@ -50,9 +50,6 @@ class coo_canonicalization_workspace_t {
   std::vector<i_t> cursor_;
   std::vector<i_t> permutation_;
   std::vector<entry_t> entries_;
-  std::vector<i_t> output_rows_;
-  std::vector<i_t> output_cols_;
-  std::vector<f_t> output_vals_;
 
   void ensure_index_capacity(i_t max_index)
   {
