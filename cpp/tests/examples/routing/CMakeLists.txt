@@ -25,7 +25,7 @@ foreach(target
   )
   target_link_libraries(${target}
     PRIVATE
-      cuopt
+      cuopt # examples should work with the shared library
       cuopttestutils
       OpenMP::OpenMP_CXX
   )

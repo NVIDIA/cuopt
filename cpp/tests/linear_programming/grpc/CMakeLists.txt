@@ -24,7 +24,7 @@ target_include_directories(GRPC_CLIENT_TEST
 
 target_link_libraries(GRPC_CLIENT_TEST
     PRIVATE
-    cuopt
+    cuopt_static
     GTest::gmock
     GTest::gmock_main
     gRPC::grpc++
@@ -67,7 +67,7 @@ target_include_directories(GRPC_PIPE_SERIALIZATION_TEST
 
 target_link_libraries(GRPC_PIPE_SERIALIZATION_TEST
     PRIVATE
-    cuopt
+    cuopt_static
     GTest::gtest
     GTest::gtest_main
     protobuf::libprotobuf
@@ -106,7 +106,7 @@ target_include_directories(GRPC_INTEGRATION_TEST
 
 target_link_libraries(GRPC_INTEGRATION_TEST
     PRIVATE
-    cuopt
+    cuopt_static
     GTest::gmock
     GTest::gmock_main
     gRPC::grpc++

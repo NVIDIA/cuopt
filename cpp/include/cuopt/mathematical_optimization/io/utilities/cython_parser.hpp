@@ -7,12 +7,13 @@
 
 #pragma once
 
+#include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
 
 #include <memory>
 
 namespace cuopt {
-namespace cython {
+namespace CUOPT_EXPORT cython {
 
 std::unique_ptr<cuopt::mathematical_optimization::io::mps_data_model_t<int, double>> call_read(
   const std::string& file_path, bool fixed_mps_format);
@@ -20,5 +21,5 @@ std::unique_ptr<cuopt::mathematical_optimization::io::mps_data_model_t<int, doub
 std::unique_ptr<cuopt::mathematical_optimization::io::mps_data_model_t<int, double>> call_parse_mps(
   const std::string& mps_file_path, bool fixed_mps_format);
 
-}  // namespace cython
+}  // namespace CUOPT_EXPORT cython
 }  // namespace cuopt
