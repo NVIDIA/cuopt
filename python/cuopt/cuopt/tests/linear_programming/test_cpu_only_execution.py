@@ -728,7 +728,7 @@ class TestTLSExecution:
         if server_bin is None:
             pytest.skip("cuopt_grpc_server not found")
 
-        port = int(os.environ.get("CUOPT_TEST_PORT_BASE", "18000")) + 800
+        port = int(os.environ.get("CUOPT_TEST_PORT_BASE", "18000")) + 850
         proc = subprocess.Popen(
             [
                 server_bin,
