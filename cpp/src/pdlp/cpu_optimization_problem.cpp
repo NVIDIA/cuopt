@@ -78,32 +78,32 @@ cpu_optimization_problem_t<i_t, f_t>& cpu_optimization_problem_t<i_t, f_t>::oper
 {
   if (this == &other) { return *this; }
 
-  problem_category_          = other.problem_category_;
-  maximize_                  = other.maximize_;
-  n_vars_                    = other.n_vars_;
-  n_constraints_             = other.n_constraints_;
-  A_                         = other.A_;
-  A_indices_                 = other.A_indices_;
-  A_offsets_                 = other.A_offsets_;
-  b_                         = other.b_;
-  c_                         = other.c_;
-  objective_scaling_factor_  = other.objective_scaling_factor_;
-  objective_offset_          = other.objective_offset_;
-  Q_offsets_                 = other.Q_offsets_;
-  Q_indices_                 = other.Q_indices_;
-  Q_values_                  = other.Q_values_;
-  quadratic_constraints_     = other.quadratic_constraints_;
-  qc_coo_workspace_          = std::make_unique<io::coo_canonicalization_workspace_t<i_t, f_t>>();
-  variable_lower_bounds_     = other.variable_lower_bounds_;
-  variable_upper_bounds_     = other.variable_upper_bounds_;
-  constraint_lower_bounds_   = other.constraint_lower_bounds_;
-  constraint_upper_bounds_   = other.constraint_upper_bounds_;
-  row_types_                 = other.row_types_;
-  variable_types_            = other.variable_types_;
-  objective_name_            = other.objective_name_;
-  problem_name_              = other.problem_name_;
-  var_names_                 = other.var_names_;
-  row_names_                 = other.row_names_;
+  problem_category_         = other.problem_category_;
+  maximize_                 = other.maximize_;
+  n_vars_                   = other.n_vars_;
+  n_constraints_            = other.n_constraints_;
+  A_                        = other.A_;
+  A_indices_                = other.A_indices_;
+  A_offsets_                = other.A_offsets_;
+  b_                        = other.b_;
+  c_                        = other.c_;
+  objective_scaling_factor_ = other.objective_scaling_factor_;
+  objective_offset_         = other.objective_offset_;
+  Q_offsets_                = other.Q_offsets_;
+  Q_indices_                = other.Q_indices_;
+  Q_values_                 = other.Q_values_;
+  quadratic_constraints_    = other.quadratic_constraints_;
+  qc_coo_workspace_         = std::make_unique<io::coo_canonicalization_workspace_t<i_t, f_t>>();
+  variable_lower_bounds_    = other.variable_lower_bounds_;
+  variable_upper_bounds_    = other.variable_upper_bounds_;
+  constraint_lower_bounds_  = other.constraint_lower_bounds_;
+  constraint_upper_bounds_  = other.constraint_upper_bounds_;
+  row_types_                = other.row_types_;
+  variable_types_           = other.variable_types_;
+  objective_name_           = other.objective_name_;
+  problem_name_             = other.problem_name_;
+  var_names_                = other.var_names_;
+  row_names_                = other.row_names_;
   return *this;
 }
 
