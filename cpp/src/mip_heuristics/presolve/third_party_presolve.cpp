@@ -47,6 +47,8 @@
 #include <raft/core/nvtx.hpp>
 
 #include <limits>
+#include <string>
+#include <tuple>
 #include <unordered_map>
 
 namespace cuopt::mathematical_optimization::mip {
@@ -78,112 +80,116 @@ pslp_input_t<i_t, f_t> build_pslp_host_arrays_from_mps_data(
   return arrays;
 }
 
-// Host-only gather + papilo::Problem construction from an mps_data_model.
-// Used by the mps-facing entry point: apply_presolve_from_mps_data()
 template <typename i_t, typename f_t>
-papilo::Problem<f_t> build_papilo_problem_from_mps_data(const io::mps_data_model_t<i_t, f_t>& mps,
-                                                        problem_category_t category,
-                                                        bool maximize)
-{
-  raft::common::nvtx::range fun_scope("Build papilo problem from mps_data_model");
-  papilo::ProblemBuilder<f_t> builder;
+struct papilo_problem_input_t {
+  i_t num_cols{0};
+  i_t num_rows{0};
+  i_t nnz{0};
+  f_t objective_offset{0};
+  std::vector<f_t> coefficients;
+  std::vector<i_t> offsets;
+  std::vector<i_t> variables;
+  std::vector<f_t> obj_coeffs;
+  std::vector<f_t> var_lb;
+  std::vector<f_t> var_ub;
+  std::vector<f_t> constr_lb;
+  std::vector<f_t> constr_ub;
+  std::vector<f_t> constraint_bounds;
+  std::vector<char> row_types;
+  std::vector<var_t> var_types;
+  std::vector<std::string> variable_names;
 
-  const i_t num_cols = mps.get_n_variables();
-  const i_t num_rows = mps.get_n_constraints();
-  const i_t nnz      = mps.get_nnz();
+  void normalize(bool maximize)
+  {
+    if (maximize) {
+      for (auto& c : obj_coeffs)
+        c = -c;
+      objective_offset = -objective_offset;
+    }
 
-  builder.reserve(nnz, num_rows, num_cols);
-
-  // Local mutable copies (we sign-flip / fill empties).
-  auto h_coefficients = mps.get_constraint_matrix_values();
-  auto h_offsets      = mps.get_constraint_matrix_offsets();
-  auto h_variables    = mps.get_constraint_matrix_indices();
-  auto h_obj_coeffs   = mps.get_objective_coefficients();
-  auto h_var_lb       = mps.get_variable_lower_bounds();
-  auto h_var_ub       = mps.get_variable_upper_bounds();
-  auto h_constr_lb    = mps.get_constraint_lower_bounds();
-  auto h_constr_ub    = mps.get_constraint_upper_bounds();
-
-  const auto& h_bounds    = mps.get_constraint_bounds();
-  const auto& h_row_types = mps.get_row_types();
-  const auto& h_var_types = mps.get_variable_types();
-
-  if (maximize) {
-    for (auto& c : h_obj_coeffs)
-      c = -c;
-  }
-
-  if (h_constr_lb.empty() && h_constr_ub.empty()) {
-    for (size_t i = 0; i < h_row_types.size(); ++i) {
-      if (h_row_types[i] == 'L') {
-        h_constr_lb.push_back(-std::numeric_limits<f_t>::infinity());
-        h_constr_ub.push_back(h_bounds[i]);
-      } else if (h_row_types[i] == 'G') {
-        h_constr_lb.push_back(h_bounds[i]);
-        h_constr_ub.push_back(std::numeric_limits<f_t>::infinity());
-      } else if (h_row_types[i] == 'E') {
-        h_constr_lb.push_back(h_bounds[i]);
-        h_constr_ub.push_back(h_bounds[i]);
+    if (constr_lb.empty() && constr_ub.empty()) {
+      for (size_t i = 0; i < row_types.size(); ++i) {
+        if (row_types[i] == 'L') {
+          constr_lb.push_back(-std::numeric_limits<f_t>::infinity());
+          constr_ub.push_back(constraint_bounds[i]);
+        } else if (row_types[i] == 'G') {
+          constr_lb.push_back(constraint_bounds[i]);
+          constr_ub.push_back(std::numeric_limits<f_t>::infinity());
+        } else if (row_types[i] == 'E') {
+          constr_lb.push_back(constraint_bounds[i]);
+          constr_ub.push_back(constraint_bounds[i]);
+        }
       }
     }
   }
+};
 
-  builder.setNumCols(num_cols);
-  builder.setNumRows(num_rows);
+template <typename i_t, typename f_t>
+papilo::Problem<f_t> build_papilo_problem_from_host(papilo_problem_input_t<i_t, f_t>& input,
+                                                    problem_category_t category,
+                                                    bool maximize)
+{
+  papilo::ProblemBuilder<f_t> builder;
 
-  builder.setObjAll(h_obj_coeffs);
-  builder.setObjOffset(maximize ? -mps.get_objective_offset() : mps.get_objective_offset());
+  input.normalize(maximize);
 
-  if (!h_var_lb.empty() && !h_var_ub.empty()) {
-    builder.setColLbAll(h_var_lb);
-    builder.setColUbAll(h_var_ub);
-    if (mps.get_variable_names().size() == static_cast<size_t>(num_cols)) {
-      builder.setColNameAll(mps.get_variable_names());
+  builder.reserve(input.nnz, input.num_rows, input.num_cols);
+  builder.setNumCols(input.num_cols);
+  builder.setNumRows(input.num_rows);
+
+  builder.setObjAll(input.obj_coeffs);
+  builder.setObjOffset(input.objective_offset);
+
+  if (!input.var_lb.empty() && !input.var_ub.empty()) {
+    builder.setColLbAll(input.var_lb);
+    builder.setColUbAll(input.var_ub);
+    if (input.variable_names.size() == static_cast<size_t>(input.num_cols)) {
+      builder.setColNameAll(input.variable_names);
     }
   }
 
   if (category == problem_category_t::MIP) {
-    for (size_t i = 0; i < h_var_types.size(); ++i) {
-      builder.setColIntegral(i, char_to_var_type(h_var_types[i]) == var_t::INTEGER);
+    for (size_t i = 0; i < input.var_types.size(); ++i) {
+      builder.setColIntegral(i, input.var_types[i] == var_t::INTEGER);
     }
   }
 
-  if (!h_constr_lb.empty() && !h_constr_ub.empty()) {
-    builder.setRowLhsAll(h_constr_lb);
-    builder.setRowRhsAll(h_constr_ub);
+  if (!input.constr_lb.empty() && !input.constr_ub.empty()) {
+    builder.setRowLhsAll(input.constr_lb);
+    builder.setRowRhsAll(input.constr_ub);
   }
 
-  std::vector<papilo::RowFlags> h_row_flags(h_constr_lb.size());
+  std::vector<papilo::RowFlags> h_row_flags(input.constr_lb.size());
   std::vector<std::tuple<i_t, i_t, f_t>> h_entries;
-  for (size_t i = 0; i < h_constr_lb.size(); ++i) {
-    i_t row_start   = h_offsets[i];
-    i_t row_end     = h_offsets[i + 1];
+  for (size_t i = 0; i < input.constr_lb.size(); ++i) {
+    i_t row_start   = input.offsets[i];
+    i_t row_end     = input.offsets[i + 1];
     i_t num_entries = row_end - row_start;
     for (size_t j = 0; j < num_entries; ++j) {
       h_entries.push_back(
-        std::make_tuple(i, h_variables[row_start + j], h_coefficients[row_start + j]));
+        std::make_tuple(i, input.variables[row_start + j], input.coefficients[row_start + j]));
     }
 
-    if (h_constr_lb[i] == -std::numeric_limits<f_t>::infinity()) {
+    if (input.constr_lb[i] == -std::numeric_limits<f_t>::infinity()) {
       h_row_flags[i].set(papilo::RowFlag::kLhsInf);
     } else {
       h_row_flags[i].unset(papilo::RowFlag::kLhsInf);
     }
-    if (h_constr_ub[i] == std::numeric_limits<f_t>::infinity()) {
+    if (input.constr_ub[i] == std::numeric_limits<f_t>::infinity()) {
       h_row_flags[i].set(papilo::RowFlag::kRhsInf);
     } else {
       h_row_flags[i].unset(papilo::RowFlag::kRhsInf);
     }
 
-    if (h_constr_lb[i] == -std::numeric_limits<f_t>::infinity()) { h_constr_lb[i] = 0; }
-    if (h_constr_ub[i] == std::numeric_limits<f_t>::infinity()) { h_constr_ub[i] = 0; }
+    if (input.constr_lb[i] == -std::numeric_limits<f_t>::infinity()) { input.constr_lb[i] = 0; }
+    if (input.constr_ub[i] == std::numeric_limits<f_t>::infinity()) { input.constr_ub[i] = 0; }
   }
 
-  for (size_t i = 0; i < h_var_lb.size(); ++i) {
-    builder.setColLbInf(i, h_var_lb[i] == -std::numeric_limits<f_t>::infinity());
-    builder.setColUbInf(i, h_var_ub[i] == std::numeric_limits<f_t>::infinity());
-    if (h_var_lb[i] == -std::numeric_limits<f_t>::infinity()) { builder.setColLb(i, 0); }
-    if (h_var_ub[i] == std::numeric_limits<f_t>::infinity()) { builder.setColUb(i, 0); }
+  for (size_t i = 0; i < input.var_lb.size(); ++i) {
+    builder.setColLbInf(i, input.var_lb[i] == -std::numeric_limits<f_t>::infinity());
+    builder.setColUbInf(i, input.var_ub[i] == std::numeric_limits<f_t>::infinity());
+    if (input.var_lb[i] == -std::numeric_limits<f_t>::infinity()) { builder.setColLb(i, 0); }
+    if (input.var_ub[i] == std::numeric_limits<f_t>::infinity()) { builder.setColUb(i, 0); }
   }
 
   auto problem = builder.build();
@@ -193,8 +199,8 @@ papilo::Problem<f_t> build_papilo_problem_from_mps_data(const io::mps_data_model
     const double spare_ratio            = category == problem_category_t::MIP ? 4.0 : 2.0;
     const int min_inter_row_space       = category == problem_category_t::MIP ? 30 : 4;
     auto csr_storage                    = papilo::SparseStorage<f_t>(
-      h_entries, num_rows, num_cols, sorted_entries, spare_ratio, min_inter_row_space);
-    problem.setConstraintMatrix(csr_storage, h_constr_lb, h_constr_ub, h_row_flags);
+      h_entries, input.num_rows, input.num_cols, sorted_entries, spare_ratio, min_inter_row_space);
+    problem.setConstraintMatrix(csr_storage, input.constr_lb, input.constr_ub, h_row_flags);
 
     papilo::ConstraintMatrix<f_t>& matrix = problem.getConstraintMatrix();
     for (int i = 0; i < problem.getNRows(); ++i) {
@@ -206,6 +212,41 @@ papilo::Problem<f_t> build_papilo_problem_from_mps_data(const io::mps_data_model
   }
 
   return problem;
+}
+
+// Host-only gather + papilo::Problem construction from an mps_data_model.
+// Used by the mps-facing entry point: apply_presolve_from_mps_data()
+template <typename i_t, typename f_t>
+papilo::Problem<f_t> build_papilo_problem_from_mps_data(const io::mps_data_model_t<i_t, f_t>& mps,
+                                                        problem_category_t category,
+                                                        bool maximize)
+{
+  raft::common::nvtx::range fun_scope("Build papilo problem from mps_data_model");
+
+  papilo_problem_input_t<i_t, f_t> input;
+  input.num_cols          = mps.get_n_variables();
+  input.num_rows          = mps.get_n_constraints();
+  input.nnz               = mps.get_nnz();
+  input.objective_offset  = mps.get_objective_offset();
+  input.coefficients      = mps.get_constraint_matrix_values();
+  input.offsets           = mps.get_constraint_matrix_offsets();
+  input.variables         = mps.get_constraint_matrix_indices();
+  input.obj_coeffs        = mps.get_objective_coefficients();
+  input.var_lb            = mps.get_variable_lower_bounds();
+  input.var_ub            = mps.get_variable_upper_bounds();
+  input.constr_lb         = mps.get_constraint_lower_bounds();
+  input.constr_ub         = mps.get_constraint_upper_bounds();
+  input.constraint_bounds = mps.get_constraint_bounds();
+  input.row_types         = mps.get_row_types();
+  input.variable_names    = mps.get_variable_names();
+
+  const auto& variable_types = mps.get_variable_types();
+  input.var_types.reserve(variable_types.size());
+  for (auto variable_type : variable_types) {
+    input.var_types.push_back(char_to_var_type(variable_type));
+  }
+
+  return build_papilo_problem_from_host(input, category, maximize);
 }
 
 // Host-only result builder: write a (reduced) PSLP presolver state into a
@@ -399,24 +440,13 @@ pslp_input_t<i_t, f_t> build_pslp_host_arrays_from_op_problem(
   return arrays;
 }
 
-// D->H direct: gather op_problem's device buffers, then feed a
-// papilo::ProblemBuilder<f_t>. Mirrors build_papilo_problem_from_mps_data
-// exactly (same normalisation and flag handling), but consumes op_problem's
-// device-side arrays with a single stream sync — no mps_data_model roundtrip.
-// var_types come out of op_problem as `var_t` enums so we skip the char <->
-// enum conversion the mps path needs.
+// D->H direct: gather op_problem's device buffers, then feed the shared Papilo
+// host builder. This avoids an mps_data_model roundtrip.
 template <typename i_t, typename f_t>
 papilo::Problem<f_t> build_papilo_problem_from_op_problem(
   const optimization_problem_t<i_t, f_t>& op, problem_category_t category, bool maximize)
 {
   raft::common::nvtx::range fun_scope("Build papilo problem from op_problem (D->H)");
-  papilo::ProblemBuilder<f_t> builder;
-
-  const i_t num_cols = op.get_n_variables();
-  const i_t num_rows = op.get_n_constraints();
-  const i_t nnz      = op.get_nnz();
-
-  builder.reserve(nnz, num_rows, num_cols);
 
   const auto& d_coefficients = op.get_constraint_matrix_values();
   const auto& d_indices      = op.get_constraint_matrix_indices();
@@ -430,130 +460,40 @@ papilo::Problem<f_t> build_papilo_problem_from_op_problem(
   const auto& d_row_types    = op.get_row_types();
   const auto& d_var_types    = op.get_variable_types();
 
-  std::vector<f_t> h_coefficients(d_coefficients.size());
-  std::vector<i_t> h_variables(d_indices.size());
-  std::vector<i_t> h_offsets(d_offsets.size());
-  std::vector<f_t> h_obj_coeffs(d_obj_coeffs.size());
-  std::vector<f_t> h_var_lb(d_var_lb.size());
-  std::vector<f_t> h_var_ub(d_var_ub.size());
-  std::vector<f_t> h_constr_lb(d_constr_lb.size());
-  std::vector<f_t> h_constr_ub(d_constr_ub.size());
-  std::vector<f_t> h_bounds(d_bounds.size());
-  std::vector<char> h_row_types(d_row_types.size());
-  std::vector<var_t> h_var_types(d_var_types.size());
+  papilo_problem_input_t<i_t, f_t> input;
+  input.num_cols         = op.get_n_variables();
+  input.num_rows         = op.get_n_constraints();
+  input.nnz              = op.get_nnz();
+  input.objective_offset = op.get_objective_offset();
+  input.variable_names   = op.get_variable_names();
+
+  input.coefficients.resize(d_coefficients.size());
+  input.variables.resize(d_indices.size());
+  input.offsets.resize(d_offsets.size());
+  input.obj_coeffs.resize(d_obj_coeffs.size());
+  input.var_lb.resize(d_var_lb.size());
+  input.var_ub.resize(d_var_ub.size());
+  input.constr_lb.resize(d_constr_lb.size());
+  input.constr_ub.resize(d_constr_ub.size());
+  input.constraint_bounds.resize(d_bounds.size());
+  input.row_types.resize(d_row_types.size());
+  input.var_types.resize(d_var_types.size());
 
   auto stream = op.get_handle_ptr()->get_stream();
-  raft::copy(h_coefficients.data(), d_coefficients.data(), d_coefficients.size(), stream);
-  raft::copy(h_variables.data(), d_indices.data(), d_indices.size(), stream);
-  raft::copy(h_offsets.data(), d_offsets.data(), d_offsets.size(), stream);
-  raft::copy(h_obj_coeffs.data(), d_obj_coeffs.data(), d_obj_coeffs.size(), stream);
-  raft::copy(h_var_lb.data(), d_var_lb.data(), d_var_lb.size(), stream);
-  raft::copy(h_var_ub.data(), d_var_ub.data(), d_var_ub.size(), stream);
-  raft::copy(h_constr_lb.data(), d_constr_lb.data(), d_constr_lb.size(), stream);
-  raft::copy(h_constr_ub.data(), d_constr_ub.data(), d_constr_ub.size(), stream);
-  raft::copy(h_bounds.data(), d_bounds.data(), d_bounds.size(), stream);
-  raft::copy(h_row_types.data(), d_row_types.data(), d_row_types.size(), stream);
-  raft::copy(h_var_types.data(), d_var_types.data(), d_var_types.size(), stream);
+  raft::copy(input.coefficients.data(), d_coefficients.data(), d_coefficients.size(), stream);
+  raft::copy(input.variables.data(), d_indices.data(), d_indices.size(), stream);
+  raft::copy(input.offsets.data(), d_offsets.data(), d_offsets.size(), stream);
+  raft::copy(input.obj_coeffs.data(), d_obj_coeffs.data(), d_obj_coeffs.size(), stream);
+  raft::copy(input.var_lb.data(), d_var_lb.data(), d_var_lb.size(), stream);
+  raft::copy(input.var_ub.data(), d_var_ub.data(), d_var_ub.size(), stream);
+  raft::copy(input.constr_lb.data(), d_constr_lb.data(), d_constr_lb.size(), stream);
+  raft::copy(input.constr_ub.data(), d_constr_ub.data(), d_constr_ub.size(), stream);
+  raft::copy(input.constraint_bounds.data(), d_bounds.data(), d_bounds.size(), stream);
+  raft::copy(input.row_types.data(), d_row_types.data(), d_row_types.size(), stream);
+  raft::copy(input.var_types.data(), d_var_types.data(), d_var_types.size(), stream);
   stream.synchronize();
 
-  if (maximize) {
-    for (auto& c : h_obj_coeffs)
-      c = -c;
-  }
-
-  if (h_constr_lb.empty() && h_constr_ub.empty()) {
-    for (size_t i = 0; i < h_row_types.size(); ++i) {
-      if (h_row_types[i] == 'L') {
-        h_constr_lb.push_back(-std::numeric_limits<f_t>::infinity());
-        h_constr_ub.push_back(h_bounds[i]);
-      } else if (h_row_types[i] == 'G') {
-        h_constr_lb.push_back(h_bounds[i]);
-        h_constr_ub.push_back(std::numeric_limits<f_t>::infinity());
-      } else if (h_row_types[i] == 'E') {
-        h_constr_lb.push_back(h_bounds[i]);
-        h_constr_ub.push_back(h_bounds[i]);
-      }
-    }
-  }
-
-  builder.setNumCols(num_cols);
-  builder.setNumRows(num_rows);
-
-  builder.setObjAll(h_obj_coeffs);
-  builder.setObjOffset(maximize ? -op.get_objective_offset() : op.get_objective_offset());
-
-  if (!h_var_lb.empty() && !h_var_ub.empty()) {
-    builder.setColLbAll(h_var_lb);
-    builder.setColUbAll(h_var_ub);
-    if (op.get_variable_names().size() == static_cast<size_t>(num_cols)) {
-      builder.setColNameAll(op.get_variable_names());
-    }
-  }
-
-  if (category == problem_category_t::MIP) {
-    for (size_t i = 0; i < h_var_types.size(); ++i) {
-      builder.setColIntegral(i, h_var_types[i] == var_t::INTEGER);
-    }
-  }
-
-  if (!h_constr_lb.empty() && !h_constr_ub.empty()) {
-    builder.setRowLhsAll(h_constr_lb);
-    builder.setRowRhsAll(h_constr_ub);
-  }
-
-  std::vector<papilo::RowFlags> h_row_flags(h_constr_lb.size());
-  std::vector<std::tuple<i_t, i_t, f_t>> h_entries;
-  for (size_t i = 0; i < h_constr_lb.size(); ++i) {
-    i_t row_start   = h_offsets[i];
-    i_t row_end     = h_offsets[i + 1];
-    i_t num_entries = row_end - row_start;
-    for (size_t j = 0; j < num_entries; ++j) {
-      h_entries.push_back(
-        std::make_tuple(i, h_variables[row_start + j], h_coefficients[row_start + j]));
-    }
-
-    if (h_constr_lb[i] == -std::numeric_limits<f_t>::infinity()) {
-      h_row_flags[i].set(papilo::RowFlag::kLhsInf);
-    } else {
-      h_row_flags[i].unset(papilo::RowFlag::kLhsInf);
-    }
-    if (h_constr_ub[i] == std::numeric_limits<f_t>::infinity()) {
-      h_row_flags[i].set(papilo::RowFlag::kRhsInf);
-    } else {
-      h_row_flags[i].unset(papilo::RowFlag::kRhsInf);
-    }
-
-    if (h_constr_lb[i] == -std::numeric_limits<f_t>::infinity()) { h_constr_lb[i] = 0; }
-    if (h_constr_ub[i] == std::numeric_limits<f_t>::infinity()) { h_constr_ub[i] = 0; }
-  }
-
-  for (size_t i = 0; i < h_var_lb.size(); ++i) {
-    builder.setColLbInf(i, h_var_lb[i] == -std::numeric_limits<f_t>::infinity());
-    builder.setColUbInf(i, h_var_ub[i] == std::numeric_limits<f_t>::infinity());
-    if (h_var_lb[i] == -std::numeric_limits<f_t>::infinity()) { builder.setColLb(i, 0); }
-    if (h_var_ub[i] == std::numeric_limits<f_t>::infinity()) { builder.setColUb(i, 0); }
-  }
-
-  auto problem = builder.build();
-
-  if (h_entries.size()) {
-    auto constexpr const sorted_entries = true;
-    const double spare_ratio            = category == problem_category_t::MIP ? 4.0 : 2.0;
-    const int min_inter_row_space       = category == problem_category_t::MIP ? 30 : 4;
-    auto csr_storage                    = papilo::SparseStorage<f_t>(
-      h_entries, num_rows, num_cols, sorted_entries, spare_ratio, min_inter_row_space);
-    problem.setConstraintMatrix(csr_storage, h_constr_lb, h_constr_ub, h_row_flags);
-
-    papilo::ConstraintMatrix<f_t>& matrix = problem.getConstraintMatrix();
-    for (int i = 0; i < problem.getNRows(); ++i) {
-      papilo::RowFlags rowFlag = matrix.getRowFlags()[i];
-      if (!rowFlag.test(papilo::RowFlag::kRhsInf) && !rowFlag.test(papilo::RowFlag::kLhsInf) &&
-          matrix.getLeftHandSides()[i] == matrix.getRightHandSides()[i])
-        matrix.getRowFlags()[i].set(papilo::RowFlag::kEquation);
-    }
-  }
-
-  return problem;
+  return build_papilo_problem_from_host(input, category, maximize);
 }
 
 // H->D direct: read PSLP's reduced host arrays and build a device
