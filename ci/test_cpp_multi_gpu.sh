@@ -101,6 +101,8 @@ if [ "${#mg_tests[@]}" -eq 0 ]; then
   exit 0
 fi
 
+export NCCL_P2P_DISABLE=1
+
 EXITCODE=0
 for gt in "${mg_tests[@]}"; do
   test_name=$(basename "${gt}")
