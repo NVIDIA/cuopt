@@ -16,6 +16,8 @@
 #include <cuopt/mathematical_optimization/cuopt_c.h>
 #include <pdlp/cuopt_c_internal.hpp>
 
+#include <cuda_runtime.h>
+
 #include <utilities/common_utils.hpp>
 #include <utilities/error.hpp>
 
@@ -561,6 +563,71 @@ bool tcp_connect_check(int port, int timeout_ms)
 
 }  // namespace
 
+class CpuHostProblemApiTest : public ::testing::Test {
+ protected:
+  static void SetUpTestSuite()
+  {
+    const char* cv     = getenv("CUDA_VISIBLE_DEVICES");
+    const char* rh     = getenv("CUOPT_REMOTE_HOST");
+    const char* rp     = getenv("CUOPT_REMOTE_PORT");
+    orig_cuda_visible_ = cv ? cv : "";
+    orig_remote_host_  = rh ? rh : "";
+    orig_remote_port_  = rp ? rp : "";
+    cuda_was_set_      = (cv != nullptr);
+    host_was_set_      = (rh != nullptr);
+    port_was_set_      = (rp != nullptr);
+
+    setenv("CUDA_VISIBLE_DEVICES", "", 1);
+    unsetenv("CUOPT_REMOTE_HOST");
+    unsetenv("CUOPT_REMOTE_PORT");
+  }
+
+  static void TearDownTestSuite()
+  {
+    if (cuda_was_set_) {
+      setenv("CUDA_VISIBLE_DEVICES", orig_cuda_visible_.c_str(), 1);
+    } else {
+      unsetenv("CUDA_VISIBLE_DEVICES");
+    }
+    if (host_was_set_) {
+      setenv("CUOPT_REMOTE_HOST", orig_remote_host_.c_str(), 1);
+    } else {
+      unsetenv("CUOPT_REMOTE_HOST");
+    }
+    if (port_was_set_) {
+      setenv("CUOPT_REMOTE_PORT", orig_remote_port_.c_str(), 1);
+    } else {
+      unsetenv("CUOPT_REMOTE_PORT");
+    }
+  }
+
+  static std::string orig_cuda_visible_;
+  static std::string orig_remote_host_;
+  static std::string orig_remote_port_;
+  static bool cuda_was_set_;
+  static bool host_was_set_;
+  static bool port_was_set_;
+};
+
+std::string CpuHostProblemApiTest::orig_cuda_visible_;
+std::string CpuHostProblemApiTest::orig_remote_host_;
+std::string CpuHostProblemApiTest::orig_remote_port_;
+bool CpuHostProblemApiTest::cuda_was_set_ = false;
+bool CpuHostProblemApiTest::host_was_set_ = false;
+bool CpuHostProblemApiTest::port_was_set_ = false;
+
+TEST_F(CpuHostProblemApiTest, read_problem_api)
+{
+  const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
+  std::string lp_file = rapidsDatasetRootDir + "/linear_programming/afiro_original.mps";
+  EXPECT_EQ(test_cpu_host_read_problem_api(lp_file.c_str()), CUOPT_SUCCESS);
+}
+
+TEST_F(CpuHostProblemApiTest, create_problem_api)
+{
+  EXPECT_EQ(test_cpu_host_create_problem_api(), CUOPT_SUCCESS);
+}
+
 class CpuOnlyWithServerTest : public ::testing::Test {
  protected:
   static void SetUpTestSuite()
@@ -699,6 +766,18 @@ TEST_F(CpuOnlyWithServerTest, mip_solve)
   const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
   std::string mip_file                    = rapidsDatasetRootDir + "/mip/bb_optimality.mps";
   EXPECT_EQ(test_cpu_only_mip_execution(mip_file.c_str()), CUOPT_SUCCESS);
+}
+
+TEST(c_api, gpu_problem_rejects_remote_after_create)
+{
+  int device_count = 0;
+  if (cudaGetDeviceCount(&device_count) != cudaSuccess || device_count <= 0) {
+    GTEST_SKIP() << "Requires a visible CUDA device to create a GPU-backed problem";
+  }
+
+  const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
+  std::string lp_file = rapidsDatasetRootDir + "/linear_programming/afiro_original.mps";
+  EXPECT_EQ(test_gpu_problem_remote_after_create(lp_file.c_str()), CUOPT_SUCCESS);
 }
 
 // Note: cuopt_cli subprocess tests are in Python (test_cpu_only_execution.py)
