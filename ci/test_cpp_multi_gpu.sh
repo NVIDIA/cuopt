@@ -64,6 +64,10 @@ rapids-print-env
 rapids-logger "Check GPU usage"
 nvidia-smi
 
+# Dump the GPU topology matrix
+rapids-logger "Check GPU topology"
+nvidia-smi topo -m
+
 # Multi-GPU tests are meaningless on a single device — fail loudly rather than
 # passing a run that never exercised NCCL.
 GPU_COUNT=$(nvidia-smi -L | wc -l)
