@@ -98,7 +98,7 @@ static void expect_distributed_matches_base(raft::handle_t const& handle,
   }
 }
 
-TEST(pdlp_class, distributed_parity_afiro_MG_TEST)
+TEST(pdlp_class, distributed_parity_afiro)
 {
   if (raft::device_setter::get_device_count() < 2) {
     GTEST_SKIP() << "Requires >=2 GPUs, found " << raft::device_setter::get_device_count();
@@ -107,7 +107,7 @@ TEST(pdlp_class, distributed_parity_afiro_MG_TEST)
   expect_distributed_matches_base(handle, "linear_programming/afiro_original.mps", true);
 }
 
-TEST(pdlp_class, distributed_parity_neos3_MG_TEST)
+TEST(pdlp_class, distributed_parity_neos3)
 {
   if (raft::device_setter::get_device_count() < 2) {
     GTEST_SKIP() << "Requires >=2 GPUs, found " << raft::device_setter::get_device_count();
@@ -116,7 +116,7 @@ TEST(pdlp_class, distributed_parity_neos3_MG_TEST)
   expect_distributed_matches_base(handle, "linear_programming/neos3/neos3.mps");
 }
 
-TEST(pdlp_class, distributed_parity_a2864_MG_TEST)
+TEST(pdlp_class, distributed_parity_a2864)
 {
   if (raft::device_setter::get_device_count() < 2) {
     GTEST_SKIP() << "Requires >=2 GPUs, found " << raft::device_setter::get_device_count();
