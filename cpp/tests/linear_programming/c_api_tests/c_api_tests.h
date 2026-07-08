@@ -74,6 +74,10 @@ cuopt_int_t test_pdlp_precision_mixed(const char* filename,
 cuopt_int_t test_cpu_only_execution(const char* filename);
 cuopt_int_t test_cpu_only_mip_execution(const char* filename);
 
+/* CPU-host read/create C API (require CUDA_VISIBLE_DEVICES="", no remote, no solve) */
+cuopt_int_t test_cpu_host_read_problem_api(const char* filename);
+cuopt_int_t test_cpu_host_create_problem_api();
+
 /* GPU-backed problem created before remote env is set must reject remote solve */
 cuopt_int_t test_gpu_problem_remote_after_create(const char* filename);
 

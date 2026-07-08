@@ -10,11 +10,8 @@
 
 #include <cuda_runtime.h>
 
-#include <algorithm>
 #include <atomic>
-#include <cctype>
 #include <cstdlib>
-#include <string>
 
 namespace cuopt::mathematical_optimization {
 
@@ -30,28 +27,10 @@ execution_mode_t get_execution_mode()
   return is_remote_execution_enabled() ? execution_mode_t::REMOTE : execution_mode_t::LOCAL;
 }
 
-bool use_cpu_memory_for_local()
-{
-  const char* use_cpu_mem = std::getenv("CUOPT_USE_CPU_MEM_FOR_LOCAL");
-  if (use_cpu_mem != nullptr) {
-    std::string value(use_cpu_mem);
-    // Convert to lowercase for case-insensitive comparison
-    std::transform(value.begin(), value.end(), value.begin(), ::tolower);
-    return (value == "true" || value == "1");
-  }
-  return false;
-}
-
-bool cpu_memory_backend_solve_allowed()
-{
-  return is_remote_execution_enabled() || use_cpu_memory_for_local();
-}
-
 memory_backend_t get_memory_backend_type()
 {
-  // Remote execution and the undocumented local test mode force CPU memory
-  // regardless of hardware, so decide without probing CUDA.
-  if (is_remote_execution_enabled() || use_cpu_memory_for_local()) { return memory_backend_t::CPU; }
+  // Remote execution forces CPU memory regardless of hardware.
+  if (is_remote_execution_enabled()) { return memory_backend_t::CPU; }
 
   int cuda_count        = 0;
   const cudaError_t err = cudaGetDeviceCount(&cuda_count);
