@@ -9,7 +9,7 @@
 #include <vector>
 
 namespace cuopt::mathematical_optimization::pdlp {
-// Pure data class representing most of the distributed data needed for operatiosn
+// Pure data class representing most of the distributed data needed for mGPU operatiosn
 template <typename i_t, typename f_t>
 struct rank_data_t {
   rank_data_t(std::size_t nb_parts)
@@ -27,11 +27,11 @@ struct rank_data_t {
   i_t owned_cstr_size{0};
   i_t total_cstr_size{0};
 
-  // === Ownership ===
+  // === Variable and Constraint indices owned by this shard, in global problem indices ===
   std::vector<i_t> owned_var_indices;
   std::vector<i_t> owned_cstr_indices;
 
-  // === Send plan: per peer, indices to gather + send ===
+  // === Send plan: each element is a vector of indices to send to associated peer ===
   std::vector<std::vector<i_t>> var_send_per_peer;
   std::vector<std::vector<i_t>> cstr_send_per_peer;
 
@@ -42,8 +42,10 @@ struct rank_data_t {
   std::vector<i_t> cstr_recv_offsets;
 
   // === Mappings ===
+  // global_to_local_* : full global problem indices to local shard problem indices
   std::unordered_map<i_t, i_t> global_to_local_var;
   std::unordered_map<i_t, i_t> global_to_local_cstr;
+  // local_to_global_* : local shard problem indices to full global problem indices
   std::vector<i_t> local_to_global_var;
   std::vector<i_t> local_to_global_cstr;
 
