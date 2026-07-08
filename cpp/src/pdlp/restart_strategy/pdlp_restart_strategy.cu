@@ -913,8 +913,20 @@ void pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart(
       },
       stream_view_);
   } else {
-    primal_dual_distance_squared_moved_from_last_restart_period(
-      pdhg_solver, primal_size_h_, dual_size_h_);
+    distance_squared_moved_from_last_restart_period(
+      pdhg_solver.get_potential_next_primal_solution(),
+      last_restart_duality_gap_.primal_solution_,
+      pdhg_solver.get_primal_tmp_resource(),
+      primal_size_h_,
+      1,
+      last_restart_duality_gap_.primal_distance_traveled_);
+    distance_squared_moved_from_last_restart_period(
+      pdhg_solver.get_potential_next_dual_solution(),
+      last_restart_duality_gap_.dual_solution_,
+      pdhg_solver.get_dual_tmp_resource(),
+      dual_size_h_,
+      1,
+      last_restart_duality_gap_.dual_distance_traveled_);
   }
 
   auto view = make_cupdlpx_restart_view(last_restart_duality_gap_.primal_distance_traveled_,
