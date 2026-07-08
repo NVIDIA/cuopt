@@ -181,19 +181,19 @@ void expect_distributed_matches_base(raft::handle_t const& handle,
 
 }  // namespace
 
-TEST(pdlp_class, distributed_parity_afiro_MG)
+TEST(pdlp_class, distributed_parity_afiro_MG_TEST)
 {
   const raft::handle_t handle{};
   expect_distributed_matches_base(handle, "linear_programming/afiro_original.mps", true);
 }
 
-TEST(pdlp_class, distributed_parity_neos3_MG)
+TEST(pdlp_class, distributed_parity_neos3_MG_TEST)
 {
   const raft::handle_t handle{};
   expect_distributed_matches_base(handle, "linear_programming/neos3/neos3.mps");
 }
 
-TEST(pdlp_class, distributed_parity_a2864_MG)
+TEST(pdlp_class, distributed_parity_a2864_MG_TEST)
 {
   const raft::handle_t handle{};
   expect_distributed_matches_base(handle, "linear_programming/a2864/a2864.mps");
