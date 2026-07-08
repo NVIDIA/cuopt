@@ -541,11 +541,11 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   pdlp_solver_settings_t<i_t, f_t> sub_pdlp_settings = settings;
   sub_pdlp_settings.num_gpus                         = 1;
   sub_pdlp_settings.distributed_pdlp_num_gpus        = 1;
-  // Disable automatic ruiz and pock-chambolle in intial_scaling ctor, as they need to be computed
-  // in distributed_scale_problem
+  // Disable automatic ruiz and pock-chambolle in the initial_scaling ctor: the
+  // distributed pipeline computes them via distributed_scaling using the
+  // GLOBAL problem.
   sub_pdlp_settings.hyper_params.do_ruiz_scaling           = false;
   sub_pdlp_settings.hyper_params.do_pock_chambolle_scaling = false;
-  sub_pdlp_settings.hyper_params.bound_objective_rescaling = false;
 
   // ----- 6. Construct the engine: NCCL comms + per-shard pdlp_solver_t -----
   multi_gpu_engine.emplace(std::move(sub_pdlp_rank_data), mps, sub_pdlp_settings);

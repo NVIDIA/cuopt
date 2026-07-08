@@ -131,6 +131,10 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::compute_scaling_vectors(
 {
   raft::common::nvtx::range fun_scope("compute_scaling_vectors");
 
+  // Skip scaling entirely for a shape-0 problem (distributed PDLP builds the
+  // master pdlp_solver_t from a shape-0 placeholder)
+  if (primal_size_h_ == 0 || dual_size_h_ == 0) return;
+
   if (hyper_params_.do_ruiz_scaling) { ruiz_inf_scaling(number_of_ruiz_iterations); }
   if (hyper_params_.do_pock_chambolle_scaling) { pock_chambolle_scaling(alpha); }
 }
@@ -226,6 +230,11 @@ __global__ void inf_norm_col_kernel(
 template <typename i_t, typename f_t>
 void pdlp_initial_scaling_strategy_t<i_t, f_t>::ruiz_iter_local()
 {
+  RAFT_CUDA_TRY(cudaMemsetAsync(
+    iteration_constraint_matrix_scaling_.data(), 0, sizeof(f_t) * dual_size_h_, stream_view_));
+  RAFT_CUDA_TRY(cudaMemsetAsync(
+    iteration_variable_scaling_.data(), 0, sizeof(f_t) * primal_size_h_, stream_view_));
+
   // Inf-norm over rows (owned rows, from row-major A) and columns (owned
   // columns, from A_T). Split into two kernels so the distributed path can
   // touch only owned entries.
@@ -264,10 +273,6 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::ruiz_iter_local()
                          primal_size_h_,
                          a_divides_sqrt_b_bounded<f_t>(),
                          stream_view_);
-  RAFT_CUDA_TRY(cudaMemsetAsync(
-    iteration_constraint_matrix_scaling_.data(), 0, sizeof(f_t) * dual_size_h_, stream_view_));
-  RAFT_CUDA_TRY(cudaMemsetAsync(
-    iteration_variable_scaling_.data(), 0, sizeof(f_t) * primal_size_h_, stream_view_));
 }
 
 template <typename i_t, typename f_t>
