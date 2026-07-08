@@ -36,7 +36,7 @@
 namespace papilo {
 template <typename T>
 class PostsolveStorage;
-}  // namespace papilo
+}
 
 namespace cuopt::mathematical_optimization::mip {
 
@@ -83,9 +83,14 @@ struct pslp_input_t {
   std::vector<f_t> var_ub;
   std::vector<f_t> constr_lb;
   std::vector<f_t> constr_ub;
+  std::vector<f_t> constraint_bounds;
+  std::vector<char> row_types;
   i_t n_rows{0};
   i_t n_cols{0};
   i_t nnz{0};
+
+  // Flip to minimise sense and materialise implicit bounds before PSLP runs.
+  void normalize_for_pslp(bool maximize);
 };
 
 template <typename i_t, typename f_t>
@@ -133,7 +138,7 @@ class third_party_presolve_t {
             rmm::cuda_stream_view stream_view);
 
   // Host-only postsolve. Resizes the vectors to original-problem dimensions.
-  // The device-side `undo` above is a thin shim around this method.
+  // The device-side `undo` above is a thin wrapper around this method.
   void undo_host(std::vector<f_t>& primal_solution,
                  std::vector<f_t>& dual_solution,
                  std::vector<f_t>& reduced_costs,
@@ -190,8 +195,6 @@ class third_party_presolve_t {
   Settings* pslp_stgs_{nullptr};
   Presolver* pslp_presolver_{nullptr};
 
-  // Necessary due to a nvcc bug due to papilo's constexpr functions.
-  // Keep heavier papilo includes in the .cpp; PostsolveStorage stays opaque here.
   std::unique_ptr<papilo::PostsolveStorage<f_t>, papilo_postsolve_deleter<f_t>>
     papilo_post_solve_storage_;
 
