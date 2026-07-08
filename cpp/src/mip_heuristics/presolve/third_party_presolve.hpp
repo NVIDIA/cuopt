@@ -97,8 +97,7 @@ class third_party_presolve_t {
   third_party_presolve_t& operator=(third_party_presolve_t&&)      = delete;
 
   // Device entry: takes an optimization_problem_t and returns a device-side
-  // reduced optimization_problem_t. Internally a thin shim over
-  // apply_presolve_from_mps_data
+  // reduced optimization_problem_t. 
   third_party_presolve_device_result_t<i_t, f_t> apply_presolve_from_op_problem(
     optimization_problem_t<i_t, f_t> const& op_problem,
     problem_category_t category,
