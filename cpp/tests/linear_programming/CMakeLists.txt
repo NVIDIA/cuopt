@@ -15,6 +15,14 @@ ConfigureTest(PDLP_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/pdlp_test.cu
     LABELS numopt)
 
+# Multi-GPU distributed PDLP tests. Binary name ends in _MG_TEST so that
+# ci/test_cpp_multi_gpu.sh picks it up via its *_MG_TEST glob. Each test
+# calls GTEST_SKIP when fewer than 2 GPUs are visible so the binary is
+# harmless on single-GPU runners.
+ConfigureTest(PDLP_MG_TEST
+    ${CMAKE_CURRENT_SOURCE_DIR}/pdlp_distributed_test.cu
+    LABELS numopt)
+
 # ##################################################################################################
 # - MPS / LP parser tests --------------------------------------------------------------------------
 ConfigureTest(MPS_PARSER_TEST
