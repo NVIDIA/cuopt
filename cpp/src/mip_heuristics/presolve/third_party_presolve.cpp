@@ -64,12 +64,12 @@ pslp_input_t<i_t, f_t> build_pslp_host_arrays_from_mps_data(
   arrays.n_rows = mps.get_n_constraints();
   arrays.nnz    = mps.get_nnz();
 
-  arrays.coefficients = mps.get_constraint_matrix_values();
-  arrays.indices      = mps.get_constraint_matrix_indices();
-  arrays.offsets      = mps.get_constraint_matrix_offsets();
-  arrays.obj_coeffs   = mps.get_objective_coefficients();
-  arrays.var_lb       = mps.get_variable_lower_bounds();
-  arrays.var_ub       = mps.get_variable_upper_bounds();
+  arrays.coefficients      = mps.get_constraint_matrix_values();
+  arrays.indices           = mps.get_constraint_matrix_indices();
+  arrays.offsets           = mps.get_constraint_matrix_offsets();
+  arrays.obj_coeffs        = mps.get_objective_coefficients();
+  arrays.var_lb            = mps.get_variable_lower_bounds();
+  arrays.var_ub            = mps.get_variable_upper_bounds();
   arrays.constr_lb         = mps.get_constraint_lower_bounds();
   arrays.constr_ub         = mps.get_constraint_upper_bounds();
   arrays.constraint_bounds = mps.get_constraint_bounds();
@@ -882,12 +882,8 @@ void pslp_input_t<i_t, f_t>::normalize_for_pslp(bool maximize)
     }
   }
 
-  if (var_lb.empty()) {
-    var_lb.assign(n_cols, -std::numeric_limits<f_t>::infinity());
-  }
-  if (var_ub.empty()) {
-    var_ub.assign(n_cols, std::numeric_limits<f_t>::infinity());
-  }
+  if (var_lb.empty()) { var_lb.assign(n_cols, -std::numeric_limits<f_t>::infinity()); }
+  if (var_ub.empty()) { var_ub.assign(n_cols, std::numeric_limits<f_t>::infinity()); }
 }
 
 template <typename i_t, typename f_t>
