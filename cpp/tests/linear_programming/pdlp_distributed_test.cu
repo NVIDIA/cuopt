@@ -18,8 +18,8 @@
 
 #include <utilities/copy_helpers.hpp>
 
-#include <raft/core/handle.hpp>
 #include <raft/core/device_setter.hpp>
+#include <raft/core/handle.hpp>
 
 #include <gtest/gtest.h>
 
@@ -50,10 +50,10 @@ static void expect_distributed_matches_base(raft::handle_t const& handle,
   auto base_op = mps_data_model_to_optimization_problem<int, double>(&handle, problem);
   auto base    = solve_lp(base_op, base_settings);
 
-  pdlp_solver_settings_t<int, double> dist_settings         = base_settings;
-  dist_settings.use_distributed_pdlp                        = true;
-  dist_settings.distributed_pdlp_num_gpus                   = -1;
-  auto dist                                                  = solve_lp(&handle, problem, dist_settings);
+  pdlp_solver_settings_t<int, double> dist_settings = base_settings;
+  dist_settings.use_distributed_pdlp                = true;
+  dist_settings.distributed_pdlp_num_gpus           = -1;
+  auto dist                                         = solve_lp(&handle, problem, dist_settings);
 
   ASSERT_EQ(static_cast<int>(base.get_termination_status()), CUOPT_TERMINATION_STATUS_OPTIMAL)
     << mps_rel_path << ": base did not reach optimal";

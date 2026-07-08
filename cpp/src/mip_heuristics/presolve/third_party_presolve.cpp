@@ -709,8 +709,7 @@ optimization_problem_t<i_t, f_t> build_op_problem_from_papilo(
       obj.coefficients[i] = -obj.coefficients[i];
     }
   }
-  op.set_objective_coefficients(obj.coefficients.data(),
-                                static_cast<i_t>(obj.coefficients.size()));
+  op.set_objective_coefficients(obj.coefficients.data(), static_cast<i_t>(obj.coefficients.size()));
 
   auto& constraint_matrix = papilo_problem.getConstraintMatrix();
   auto row_lower          = constraint_matrix.getLeftHandSides();
