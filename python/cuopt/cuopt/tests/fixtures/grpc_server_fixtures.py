@@ -382,6 +382,125 @@ def stop_grpc_server(proc):
     kill_server(proc)
 
 
+def client_tls_env(port, cert_dir, mtls=False):
+    """Return an env dict for remote execution over TLS (or mTLS)."""
+    env = client_remote_env(port)
+    env["CUOPT_TLS_ENABLED"] = "1"
+    env["CUOPT_TLS_ROOT_CERT"] = os.path.join(cert_dir, "ca.crt")
+    if mtls:
+        env["CUOPT_TLS_CLIENT_CERT"] = os.path.join(cert_dir, "client.crt")
+        env["CUOPT_TLS_CLIENT_KEY"] = os.path.join(cert_dir, "client.key")
+    return env
+
+
+def resolve_test_port(port_offset):
+    """Return BASE + port_offset, plus xdist worker id when running under xdist."""
+    worker = os.environ.get("PYTEST_XDIST_WORKER", "gw0")
+    worker_id = int(worker[2:]) if worker.startswith("gw") else 0
+    return (
+        int(os.environ.get("CUOPT_TEST_PORT_BASE", "18000"))
+        + port_offset
+        + worker_id
+    )
+
+
+def start_subprocess_grpc_server(port_offset):
+    """Start plaintext cuopt_grpc_server for subprocess remote-execution tests."""
+    server_bin = find_grpc_server()
+    if server_bin is None:
+        pytest.skip("cuopt_grpc_server not found")
+
+    port = resolve_test_port(port_offset)
+    proc = spawn_server(
+        [server_bin, "--port", str(port), "--workers", "1"],
+    )
+    time.sleep(0.5)
+    if proc.poll() is not None:
+        pytest.skip(
+            f"cuopt_grpc_server exited immediately (rc={proc.returncode}), "
+            "binary may be unable to load shared libraries in this environment"
+        )
+    if not wait_for_port(port, timeout=15):
+        kill_server(proc)
+        pytest.fail("cuopt_grpc_server failed to start within 15s")
+
+    return proc, client_remote_env(port)
+
+
+@pytest.fixture(scope="class")
+def tls_server_info(tmp_path_factory):
+    """TLS server plus cert directory for in-process ``Client(tls=...)`` tests."""
+    cert_dir = str(tmp_path_factory.mktemp("grpc_tls_certs"))
+    if not generate_test_certs(cert_dir):
+        pytest.skip("openssl not available or cert generation failed")
+
+    proc, port = start_tls_grpc_server(GRPC_PORT_OFFSET_TLS, cert_dir)
+    try:
+        yield {"port": port, "cert_dir": cert_dir}
+    finally:
+        stop_grpc_server(proc)
+
+
+@pytest.fixture(scope="class")
+def mtls_server_info(tmp_path_factory):
+    """Mutual-TLS server (client cert required) plus cert directory."""
+    cert_dir = str(tmp_path_factory.mktemp("grpc_mtls_certs"))
+    if not generate_test_certs(cert_dir):
+        pytest.skip("openssl not available or cert generation failed")
+
+    proc, port = start_tls_grpc_server(
+        GRPC_PORT_OFFSET_MTLS, cert_dir, require_client_cert=True
+    )
+    try:
+        yield {"port": port, "cert_dir": cert_dir}
+    finally:
+        stop_grpc_server(proc)
+
+
+@pytest.fixture(scope="class")
+def tls_env_with_server(tmp_path_factory):
+    """TLS server env dict for subprocess ``Problem.solve()`` remote tests."""
+    cert_dir = str(tmp_path_factory.mktemp("tls_certs"))
+    if not generate_test_certs(cert_dir):
+        pytest.skip("openssl not available or cert generation failed")
+
+    proc, port = start_tls_grpc_server(GRPC_PORT_OFFSET_TLS, cert_dir)
+    try:
+        yield client_tls_env(port, cert_dir, mtls=False)
+    finally:
+        stop_grpc_server(proc)
+
+
+@pytest.fixture(scope="class")
+def mtls_env_with_server(mtls_server_info):
+    """Mutual-TLS client env dict for subprocess remote-execution tests."""
+    yield client_tls_env(
+        mtls_server_info["port"],
+        mtls_server_info["cert_dir"],
+        mtls=True,
+    )
+
+
+@pytest.fixture(scope="class")
+def cpu_only_env_with_server():
+    """Plaintext server env for CPU-only subprocess tests."""
+    proc, env = start_subprocess_grpc_server(GRPC_PORT_OFFSET_CPU_ONLY)
+    try:
+        yield env
+    finally:
+        stop_grpc_server(proc)
+
+
+@pytest.fixture(scope="class")
+def cli_remote_env_with_server():
+    """Plaintext server env for cuopt_cli subprocess remote tests."""
+    proc, env = start_subprocess_grpc_server(GRPC_PORT_OFFSET_CLI)
+    try:
+        yield env
+    finally:
+        stop_grpc_server(proc)
+
+
 @pytest.fixture(scope="class")
 def grpc_server(request):
     """Class-scoped server; see module docstring for configuration."""

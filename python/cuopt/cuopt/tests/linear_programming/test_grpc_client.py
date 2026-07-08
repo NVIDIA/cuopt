@@ -18,14 +18,7 @@ from cuopt.linear_programming.internals import GetSolutionCallback
 from cuopt.linear_programming.problem import INTEGER, MAXIMIZE, Problem
 from cuopt.linear_programming.solver.solver_parameters import CUOPT_TIME_LIMIT
 
-from grpc_server_fixtures import (
-    GRPC_PORT_OFFSET_CLIENT,
-    GRPC_PORT_OFFSET_MTLS,
-    GRPC_PORT_OFFSET_TLS,
-    generate_test_certs,
-    start_tls_grpc_server,
-    stop_grpc_server,
-)
+from grpc_server_fixtures import GRPC_PORT_OFFSET_CLIENT
 
 RAPIDS_DATASET_ROOT_DIR = os.getenv("RAPIDS_DATASET_ROOT_DIR")
 if RAPIDS_DATASET_ROOT_DIR is None:
@@ -93,6 +86,10 @@ class TestTlsConfig:
         cfg = TlsConfig(pem)
         assert cfg.root_certs == pem
         assert cfg.client_cert is None
+
+    def test_accepts_none_root_certs(self):
+        cfg = TlsConfig(root_certs=None)
+        assert cfg.root_certs is None
 
 
 @pytest.mark.xdist_group(name="grpc_server")
@@ -291,32 +288,6 @@ class TestGrpcClient:
 @pytest.mark.xdist_group(name="grpc_server")
 @pytest.mark.filterwarnings("ignore::DeprecationWarning")
 class TestGrpcClientTls:
-    @pytest.fixture(scope="class")
-    def tls_server_info(self, tmp_path_factory):
-        cert_dir = str(tmp_path_factory.mktemp("grpc_tls_certs"))
-        if not generate_test_certs(cert_dir):
-            pytest.skip("openssl not available or cert generation failed")
-
-        proc, port = start_tls_grpc_server(GRPC_PORT_OFFSET_TLS, cert_dir)
-        try:
-            yield {"port": port, "cert_dir": cert_dir}
-        finally:
-            stop_grpc_server(proc)
-
-    @pytest.fixture(scope="class")
-    def mtls_server_info(self, tmp_path_factory):
-        cert_dir = str(tmp_path_factory.mktemp("grpc_mtls_certs"))
-        if not generate_test_certs(cert_dir):
-            pytest.skip("openssl not available or cert generation failed")
-
-        proc, port = start_tls_grpc_server(
-            GRPC_PORT_OFFSET_MTLS, cert_dir, require_client_cert=True
-        )
-        try:
-            yield {"port": port, "cert_dir": cert_dir}
-        finally:
-            stop_grpc_server(proc)
-
     def test_submit_with_explicit_tls_config(self, tls_server_info):
         cert_dir = tls_server_info["cert_dir"]
         client = Client(
@@ -329,6 +300,16 @@ class TestGrpcClientTls:
     def test_tls_server_rejects_plain_client(self, tls_server_info):
         with pytest.raises(GrpcError):
             Client("localhost", tls_server_info["port"], tls=False)
+
+    def test_system_trust_rejects_self_signed_without_custom_ca(
+        self, tls_server_info
+    ):
+        with pytest.raises(GrpcError):
+            Client(
+                "localhost",
+                tls_server_info["port"],
+                tls=TlsConfig(root_certs=None),
+            )
 
     def test_submit_with_explicit_mtls_config(self, mtls_server_info):
         cert_dir = mtls_server_info["cert_dir"]

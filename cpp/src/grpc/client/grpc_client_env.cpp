@@ -94,9 +94,6 @@ void validate_host_port(const std::string& host, int port)
 
 void apply_explicit_tls(grpc_client_config_t& config, const grpc_explicit_tls_t& tls)
 {
-  if (tls.root_certs.empty()) {
-    throw std::invalid_argument("TLS root_certs must not be empty when tls is configured");
-  }
   const bool has_client_cert = !tls.client_cert.empty();
   const bool has_client_key  = !tls.client_key.empty();
   if (has_client_cert != has_client_key) {

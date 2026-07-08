@@ -41,7 +41,8 @@ grpc_client_config_t make_grpc_client_config(const std::string& host, int port);
 /**
  * @brief Build grpc_client_config_t with explicit TLS mode.
  *
- * For EXPLICIT mode, @p explicit_tls must be non-null and root_certs non-empty.
+ * For EXPLICIT mode, @p explicit_tls must be non-null. Empty root_certs uses the
+ * system/default CA trust store (same as omitting CUOPT_TLS_ROOT_CERT).
  */
 grpc_client_config_t make_grpc_client_config(const std::string& host,
                                              int port,

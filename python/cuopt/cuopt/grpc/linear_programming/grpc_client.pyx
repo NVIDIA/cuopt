@@ -107,19 +107,20 @@ class TlsConfig:
     """
     TLS / mTLS settings for :class:`Client`.
 
-    Each argument may be PEM text or a path to a PEM file. For mTLS, pass both
-    ``client_cert`` and ``client_key``.
+    Each PEM argument may be PEM text or a path to a PEM file. For mTLS, pass
+    both ``client_cert`` and ``client_key``. When ``root_certs`` is omitted,
+    the client uses the system/default CA trust store.
     """
 
     __slots__ = ("root_certs", "client_cert", "client_key")
 
-    def __init__(self, root_certs, client_cert=None, client_key=None):
+    def __init__(self, root_certs=None, client_cert=None, client_key=None):
         if (client_cert is None) != (client_key is None):
             raise ValueError(
                 "client_cert and client_key must both be set for mTLS, "
                 "or neither for server TLS only"
             )
-        self.root_certs = _load_pem(root_certs)
+        self.root_certs = _load_pem(root_certs) if root_certs is not None else None
         self.client_cert = _load_pem(client_cert) if client_cert is not None else None
         self.client_key = _load_pem(client_key) if client_key is not None else None
 
@@ -135,7 +136,8 @@ cdef grpc_python_client_connect_options_t _connect_options_from_tls(tls):
         options.tls_mode = grpc_python_tls_mode_t.DISABLED
     elif isinstance(tls, TlsConfig):
         options.tls_mode = grpc_python_tls_mode_t.EXPLICIT
-        options.tls_root_certs = tls.root_certs.encode("utf-8")
+        if tls.root_certs is not None:
+            options.tls_root_certs = tls.root_certs.encode("utf-8")
         if tls.client_cert is not None:
             options.tls_client_cert = tls.client_cert.encode("utf-8")
             options.tls_client_key = tls.client_key.encode("utf-8")
@@ -207,7 +209,8 @@ cdef class Client:
 
         * ``None`` (default) — read ``CUOPT_TLS_*`` from the environment.
         * ``False`` — plain TCP; ignore ``CUOPT_TLS_*``.
-        * :class:`TlsConfig` — use explicit PEM material for this client.
+        * :class:`TlsConfig` — explicit TLS/mTLS; omit ``root_certs`` to use the
+          system/default CA trust store.
         """
         if tls is not None and tls is not False and not isinstance(tls, TlsConfig):
             raise TypeError("tls must be None, False, or TlsConfig")

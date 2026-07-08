@@ -85,9 +85,6 @@ using grpc_log_line_callback_t = int (*)(const char* line,
                                          int job_complete,
                                          void* user_data);
 
-/**
- * @brief Owning wrapper around grpc_client_t for Cython.
- */
 /** TLS selection for the Python gRPC client (mirrors grpc_tls_mode_t). */
 enum class grpc_python_tls_mode_t : int {
   ENV      = 0,
@@ -102,6 +99,9 @@ struct grpc_python_client_connect_options_t {
   std::string tls_client_key;
 };
 
+/**
+ * @brief Owning wrapper around grpc_client_t for Cython.
+ */
 class grpc_python_client_t {
  public:
   grpc_python_client_t(const std::string& host, int port);
