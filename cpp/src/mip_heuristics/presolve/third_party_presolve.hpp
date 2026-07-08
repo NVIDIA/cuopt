@@ -11,24 +11,32 @@
 #include <optional>
 #include <vector>
 
+#include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem.hpp>
 
 #include <PSLP/PSLP_API.h>
 
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wc++11-narrowing"
+#pragma clang diagnostic ignored "-Wimplicit-const-int-float-conversion"
+#else
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstringop-overflow"
+#pragma GCC diagnostic ignored "-Wnarrowing"
+#endif
+#include <papilo/core/Presolve.hpp>
+#include <papilo/core/ProblemBuilder.hpp>
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#else
+#pragma GCC diagnostic pop
+#endif
+
 namespace papilo {
 template <typename T>
 class PostsolveStorage;
-
-// Forward declaration for Papilo Problem class
-template <typename T>
-class Problem;
 }  // namespace papilo
-
-// Forward declaration for mps_data_model_t
-namespace cuopt::mathematical_optimization::io {
-template <typename i_t, typename f_t>
-class mps_data_model_t;
-}
 
 namespace cuopt::mathematical_optimization::mip {
 
@@ -186,9 +194,8 @@ class third_party_presolve_t {
   Settings* pslp_stgs_{nullptr};
   Presolver* pslp_presolver_{nullptr};
 
-  // Necessary due to a nvcc bug due to papilo's constexpr functions
-  // Keep the papilo includes in the .cpp to avoid bringing them
-  // into any .cu context
+  // Necessary due to a nvcc bug due to papilo's constexpr functions.
+  // Keep heavier papilo includes in the .cpp; PostsolveStorage stays opaque here.
   std::unique_ptr<papilo::PostsolveStorage<f_t>, papilo_postsolve_deleter<f_t>>
     papilo_post_solve_storage_;
 

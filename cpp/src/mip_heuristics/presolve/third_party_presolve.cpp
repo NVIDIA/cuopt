@@ -19,22 +19,6 @@
 #include <PSLP/PSLP_status.h>
 #include <cuopt/error.hpp>
 
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wc++11-narrowing"
-#pragma clang diagnostic ignored "-Wimplicit-const-int-float-conversion"
-#else
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wstringop-overflow"
-#pragma GCC diagnostic ignored "-Wnarrowing"
-#endif
-#include <papilo/core/Presolve.hpp>
-#include <papilo/core/ProblemBuilder.hpp>
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#else
-#pragma GCC diagnostic pop
-#endif
 #include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
 #include <cuopt/mathematical_optimization/solve.hpp>
