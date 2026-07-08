@@ -449,7 +449,7 @@ jobs:
       packages: read
       pull-requests: read
     secrets: inherit # zizmor: ignore[secrets-inherit]
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@newest-ctk
     with:
       # build for every combination of arch and CUDA version, but only for the latest Python
       matrix_filter: ${{ needs.compute-matrix-filters.outputs.libcuopt_filter }}
@@ -467,7 +467,7 @@ jobs:
       packages: read
       pull-requests: read
     secrets: inherit # zizmor: ignore[secrets-inherit]
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@newest-ctk
     with:
       build_type: pull-request
       script: ci/build_wheel_cuopt.sh
@@ -503,7 +503,7 @@ jobs:
       packages: read
       pull-requests: read
     secrets: inherit # zizmor: ignore[secrets-inherit]
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@newest-ctk
     with:
       build_type: pull-request
       script: ci/build_wheel_cuopt_server.sh
@@ -522,7 +522,7 @@ jobs:
       packages: read
       pull-requests: read
     secrets: inherit # zizmor: ignore[secrets-inherit]
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@newest-ctk
     with:
       build_type: pull-request
       script: ci/build_wheel_cuopt_sh_client.sh
