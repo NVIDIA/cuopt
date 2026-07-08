@@ -11,7 +11,7 @@
 #include <cuopt/mathematical_optimization/solver_settings.hpp>
 
 #include <pdlp/cusparse_view.hpp>
-#include <pdlp/distributed_pdlp/partition_loader.hpp>
+#include <pdlp/distributed_pdlp/distributed_utils.hpp>
 #include <pdlp/distributed_pdlp/partitioner.hpp>
 #include <pdlp/pdlp.cuh>
 #include <pdlp/swap_and_resize_helper.cuh>
@@ -522,17 +522,17 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
                  settings.distributed_pdlp_num_gpus);
   auto rank_data_t0 = std::chrono::high_resolution_clock::now();
   std::vector<rank_data_t<i_t, f_t>> sub_pdlp_rank_data =
-    partition_loader_t<i_t, f_t>::create_rank_data_from_parts(parts,
-                                                              h_A_row_offsets,
-                                                              h_A_col_indices,
-                                                              h_A_values,
-                                                              h_A_t_row_offsets,
-                                                              h_A_t_col_indices,
-                                                              h_A_t_values,
-                                                              settings.distributed_pdlp_num_gpus,
-                                                              n_cstr,
-                                                              n_vars,
-                                                              nnz);
+    create_rank_data_from_parts<i_t, f_t>(parts,
+                                          h_A_row_offsets,
+                                          h_A_col_indices,
+                                          h_A_values,
+                                          h_A_t_row_offsets,
+                                          h_A_t_col_indices,
+                                          h_A_t_values,
+                                          settings.distributed_pdlp_num_gpus,
+                                          n_cstr,
+                                          n_vars,
+                                          nnz);
   auto rank_data_t1 = std::chrono::high_resolution_clock::now();
   CUOPT_LOG_INFO("distributed_pdlp: rank_data build done in %.3f s",
                  std::chrono::duration<double>(rank_data_t1 - rank_data_t0).count());

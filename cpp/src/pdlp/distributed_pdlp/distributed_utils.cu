@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <pdlp/distributed_pdlp/partition_loader.hpp>
+#include <pdlp/distributed_pdlp/distributed_utils.hpp>
 
 #include <cuopt/error.hpp>
 
@@ -13,7 +13,7 @@
 namespace cuopt::mathematical_optimization::pdlp {
 
 template <typename i_t, typename f_t>
-std::vector<rank_data_t<i_t, f_t>> partition_loader_t<i_t, f_t>::create_rank_data_from_parts(
+std::vector<rank_data_t<i_t, f_t>> create_rank_data_from_parts(
   const std::vector<i_t>& parts,
   const std::vector<i_t>& A_row_offsets,
   const std::vector<i_t>& A_col_indices,
@@ -247,6 +247,17 @@ std::vector<rank_data_t<i_t, f_t>> partition_loader_t<i_t, f_t>::create_rank_dat
   return rank_data;
 }
 
-template struct partition_loader_t<int, double>;
+template std::vector<rank_data_t<int, double>> create_rank_data_from_parts<int, double>(
+  const std::vector<int>& parts,
+  const std::vector<int>& A_row_offsets,
+  const std::vector<int>& A_col_indices,
+  const std::vector<double>& A_values,
+  const std::vector<int>& A_t_row_offsets,
+  const std::vector<int>& A_t_col_indices,
+  const std::vector<double>& A_t_values,
+  int nb_parts,
+  int nb_cstr,
+  int nb_vars,
+  int nnz);
 
 }  // namespace cuopt::mathematical_optimization::pdlp

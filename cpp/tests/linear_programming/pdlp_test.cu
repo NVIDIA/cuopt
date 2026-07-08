@@ -8,7 +8,7 @@
 #include <branch_and_bound/shared_strong_branching_context.hpp>
 #include <mps_parser_internal.hpp>
 #include <pdlp/cusparse_view.hpp>
-#include <pdlp/distributed_pdlp/partition_loader.hpp>
+#include <pdlp/distributed_pdlp/distributed_utils.hpp>
 #include <pdlp/distributed_pdlp/partitioner.hpp>
 #include <pdlp/initial_scaling_strategy/initial_scaling.cuh>
 #include <pdlp/pdlp.cuh>
