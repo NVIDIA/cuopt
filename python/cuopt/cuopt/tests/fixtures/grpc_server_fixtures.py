@@ -116,6 +116,54 @@ def server_env():
     return env
 
 
+def _set_pdeathsig():
+    """SIGKILL this child if the spawning worker dies (Linux; best effort)."""
+    try:
+        import ctypes
+
+        PR_SET_PDEATHSIG = 1
+        ctypes.CDLL("libc.so.6", use_errno=True).prctl(
+            PR_SET_PDEATHSIG, signal.SIGKILL
+        )
+    except Exception:
+        pass
+
+
+def spawn_server(cmd, env=None):
+    """Start ``cuopt_grpc_server`` in its own process group, dying with the
+    spawning worker, so it and its ``--workers`` child can be reaped together
+    (see ``kill_server``) and don't leak GPU memory.
+    """
+    return subprocess.Popen(
+        cmd,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        env=env,
+        start_new_session=True,
+        preexec_fn=_set_pdeathsig,
+    )
+
+
+def kill_server(proc):
+    """Terminate the server's whole process group (parent + ``--workers`` child)."""
+    if proc is None:
+        return
+    try:
+        pgid = os.getpgid(proc.pid)
+    except (ProcessLookupError, OSError):
+        return
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(pgid, sig)
+        except (ProcessLookupError, OSError):
+            return
+        try:
+            proc.wait(timeout=5)
+            return
+        except subprocess.TimeoutExpired:
+            continue
+
+
 # Backward-compatible alias used by tests that yield client env dicts.
 cpu_only_env = client_remote_env
 
@@ -128,7 +176,7 @@ def start_grpc_server(port_offset):
 
     port = int(os.environ.get("CUOPT_TEST_PORT_BASE", "18000")) + port_offset
     client_env = client_remote_env(port)
-    proc = subprocess.Popen(
+    proc = spawn_server(
         [
             server_bin,
             "--port",
@@ -137,8 +185,6 @@ def start_grpc_server(port_offset):
             "1",
             "--log-to-console",
         ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
         env=server_env(),
     )
     time.sleep(0.5)
@@ -148,8 +194,7 @@ def start_grpc_server(port_offset):
             "binary may be unable to load shared libraries in this environment"
         )
     if not wait_for_grpc_client(port, timeout=30):
-        proc.kill()
-        proc.wait()
+        kill_server(proc)
         pytest.fail(
             "cuopt_grpc_server TCP port opened but gRPC client could not connect "
             "within 30s"
@@ -159,17 +204,8 @@ def start_grpc_server(port_offset):
 
 
 def stop_grpc_server(proc):
-    """Gracefully shut down a server process."""
-    if proc.poll() is not None:
-        proc.wait()
-        return
-
-    proc.send_signal(signal.SIGTERM)
-    try:
-        proc.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        proc.wait()
+    """Gracefully shut down a server process and its worker child."""
+    kill_server(proc)
 
 
 @pytest.fixture(scope="class")

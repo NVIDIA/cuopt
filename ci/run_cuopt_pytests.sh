@@ -36,7 +36,9 @@ rc=0
 if [ "${IS_NIGHTLY}" = "nightly" ]; then
     pytest -s --cache-clear --reruns 2 --reruns-delay 5 -p cuopt_rerun_xml "$@" tests || rc=$?
 else
-    pytest -s --cache-clear -n 1 "$@" tests || rc=$?
+    # loadgroup keeps xdist_group (grpc server) tests on one worker;
+    # max-worker-restart=0 stops a crashed worker from respawning.
+    pytest -s --cache-clear -n 4 --dist loadgroup --max-worker-restart=0 "$@" tests || rc=$?
 fi
 
 # If not a crash, exit normally

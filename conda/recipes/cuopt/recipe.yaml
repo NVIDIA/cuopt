@@ -79,9 +79,6 @@ requirements:
     - rapids-build-backend >=0.4.0,<0.5.0
     - rmm =${{ minor_version }}
     - scikit-build-core>=0.11.0
-    - if: cuda_major == "12"
-      then: cuda-python >=12.9.2,<13.0
-      else: cuda-python >=13.0.1,<14.0
   run:
     - ${{ pin_compatible("cuda-version", upper_bound="x", lower_bound="x") }}
     - cudf =${{ minor_version }}
@@ -100,9 +97,6 @@ requirements:
     - cuda-nvcc-impl
     # TODO: Add nvjitlink here
     # xref: https://github.com/rapidsai/cudf/issues/12822
-    - if: cuda_major == "12"
-      then: cuda-python >=12.9.2,<13.0
-      else: cuda-python >=13.0.1,<14.0
   ignore_run_exports:
     by_name:
       - cuda-version
