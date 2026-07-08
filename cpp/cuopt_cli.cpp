@@ -151,7 +151,7 @@ int run_single_file(const std::string& file_path,
     cuopt::cuopt_expects(!solve_relaxation,
                          cuopt::error_type_t::ValidationError,
                          "Solving the LP relaxation is not allowed for distributed PDLP.");
-    cuopt::cuopt_expects(!initial_solution_file.empty(),
+    cuopt::cuopt_expects(initial_solution_file.empty(),
                          cuopt::error_type_t::ValidationError,
                          "Initial solution file is not allowed for distributed PDLP.");
     const auto& var_type_chars = mps_data_model.get_variable_types();
