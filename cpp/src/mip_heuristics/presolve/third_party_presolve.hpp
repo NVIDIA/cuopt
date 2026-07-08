@@ -54,27 +54,23 @@ enum class third_party_presolve_status_t {
   UNCHANGED,
 };
 
-template <typename i_t, typename f_t>
-struct third_party_presolve_device_result_t {
+template <typename i_t, typename f_t, typename ProblemT>
+struct third_party_presolve_result_t {
   third_party_presolve_status_t status;
-  optimization_problem_t<i_t, f_t> reduced_problem;
+  ProblemT reduced_problem;
   std::vector<i_t> implied_integer_indices;
   std::vector<i_t> reduced_to_original_map;
   std::vector<i_t> original_to_reduced_map;
   // clique info, etc...
 };
 
-// Host counterpart of third_party_presolve_device_result_t: the reduced
-// problem is an mps_data_model_t (host) instead of an optimization_problem_t
-// (device). Produced by apply_presolve_from_mps_data.
 template <typename i_t, typename f_t>
-struct third_party_presolve_host_result_t {
-  third_party_presolve_status_t status;
-  io::mps_data_model_t<i_t, f_t> reduced_problem;
-  std::vector<i_t> implied_integer_indices;
-  std::vector<i_t> reduced_to_original_map;
-  std::vector<i_t> original_to_reduced_map;
-};
+using third_party_presolve_device_result_t =
+  third_party_presolve_result_t<i_t, f_t, optimization_problem_t<i_t, f_t>>;
+
+template <typename i_t, typename f_t>
+using third_party_presolve_host_result_t =
+  third_party_presolve_result_t<i_t, f_t, io::mps_data_model_t<i_t, f_t>>;
 
 // Host-side PSLP input: every buffer PSLP's C API needs, plus dimensions.
 template <typename i_t, typename f_t>
