@@ -80,7 +80,7 @@ def _run_incumbent_solver_callback(file_name, include_set_callback):
     data_model_obj = Read(file_path)
 
     settings = solver_settings.SolverSettings()
-    settings.set_parameter(CUOPT_TIME_LIMIT, 10)
+    settings.set_parameter(CUOPT_TIME_LIMIT, 30)
     settings.set_mip_callback(get_callback, user_data)
     if include_set_callback:
         settings.set_mip_callback(set_callback, user_data)
