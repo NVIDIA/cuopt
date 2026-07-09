@@ -20,7 +20,6 @@ Port offsets are added to ``CUOPT_TEST_PORT_BASE`` (default 18000) so parallel
 test classes do not collide.
 """
 
-import logging
 import os
 import shutil
 import signal
@@ -29,8 +28,6 @@ import subprocess
 import time
 
 import pytest
-
-logger = logging.getLogger(__name__)
 
 # Port offsets (added to CUOPT_TEST_PORT_BASE). Keep unique per test class.
 GRPC_PORT_OFFSET_CPU_ONLY = 600
@@ -171,130 +168,56 @@ def kill_server(proc):
 cpu_only_env = client_remote_env
 
 
-def generate_test_certs(cert_dir):
-    """Generate a CA, server cert, and client cert for TLS/mTLS tests."""
-    if not shutil.which("openssl"):
-        return False
+# Committed TLS test certificates (CA + server + client), shared with the
+# self-hosted client tests and CI. Reused instead of generating certs at test
+# time so the tests do not depend on the ``openssl`` binary being installed.
+_REQUIRED_CERT_FILES = (
+    "ca.crt",
+    "server.crt",
+    "server.key",
+    "client.crt",
+    "client.key",
+)
 
-    def _run(cmd):
-        result = subprocess.run(cmd, capture_output=True, timeout=30)
-        if result.returncode != 0:
-            logger.warning(
-                "cert command failed: %s (rc=%d)\nstdout: %s\nstderr: %s",
-                cmd,
-                result.returncode,
-                result.stdout.decode(errors="replace"),
-                result.stderr.decode(errors="replace"),
+
+def locate_test_certs():
+    """Return the directory of committed TLS test certs, or None if unavailable.
+
+    Honors ``CERT_FOLDER`` / ``CUOPT_SSL_CERTFILE`` (as used by CI and the C++
+    integration tests) before falling back to the in-repo cert directory. A
+    candidate is only accepted if it contains the full CA/server/client set.
+    """
+    candidates = []
+    cert_folder = os.environ.get("CERT_FOLDER")
+    if cert_folder:
+        candidates.append(cert_folder)
+    ssl_certfile = os.environ.get("CUOPT_SSL_CERTFILE")
+    if ssl_certfile:
+        candidates.append(os.path.dirname(ssl_certfile))
+    candidates.append(
+        os.path.normpath(
+            os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "..",
+                "..",
+                "..",
+                "..",
+                "cuopt_self_hosted",
+                "cuopt_sh_client",
+                "tests",
+                "utils",
+                "certs",
             )
-            return False
-        return True
+        )
+    )
 
-    ca_key = os.path.join(cert_dir, "ca.key")
-    ca_crt = os.path.join(cert_dir, "ca.crt")
-    if not _run(
-        [
-            "openssl",
-            "req",
-            "-x509",
-            "-newkey",
-            "rsa:2048",
-            "-keyout",
-            ca_key,
-            "-out",
-            ca_crt,
-            "-days",
-            "1",
-            "-nodes",
-            "-subj",
-            "/CN=TestCA",
-        ]
-    ):
-        return False
-
-    server_key = os.path.join(cert_dir, "server.key")
-    server_csr = os.path.join(cert_dir, "server.csr")
-    server_crt = os.path.join(cert_dir, "server.crt")
-    server_ext = os.path.join(cert_dir, "server.ext")
-    if not _run(
-        [
-            "openssl",
-            "req",
-            "-newkey",
-            "rsa:2048",
-            "-keyout",
-            server_key,
-            "-out",
-            server_csr,
-            "-nodes",
-            "-subj",
-            "/CN=localhost",
-        ]
-    ):
-        return False
-    with open(server_ext, "w", encoding="utf-8") as f:
-        f.write("subjectAltName=DNS:localhost,IP:127.0.0.1\n")
-    if not _run(
-        [
-            "openssl",
-            "x509",
-            "-req",
-            "-in",
-            server_csr,
-            "-CA",
-            ca_crt,
-            "-CAkey",
-            ca_key,
-            "-CAcreateserial",
-            "-out",
-            server_crt,
-            "-days",
-            "1",
-            "-extfile",
-            server_ext,
-        ]
-    ):
-        return False
-
-    client_key = os.path.join(cert_dir, "client.key")
-    client_csr = os.path.join(cert_dir, "client.csr")
-    client_crt = os.path.join(cert_dir, "client.crt")
-    if not _run(
-        [
-            "openssl",
-            "req",
-            "-newkey",
-            "rsa:2048",
-            "-keyout",
-            client_key,
-            "-out",
-            client_csr,
-            "-nodes",
-            "-subj",
-            "/CN=TestClient",
-        ]
-    ):
-        return False
-    if not _run(
-        [
-            "openssl",
-            "x509",
-            "-req",
-            "-in",
-            client_csr,
-            "-CA",
-            ca_crt,
-            "-CAkey",
-            ca_key,
-            "-CAcreateserial",
-            "-out",
-            client_crt,
-            "-days",
-            "1",
-        ]
-    ):
-        return False
-
-    return True
+    for cert_dir in candidates:
+        if all(
+            os.path.isfile(os.path.join(cert_dir, name))
+            for name in _REQUIRED_CERT_FILES
+        ):
+            return cert_dir
+    return None
 
 
 def start_tls_grpc_server(port_offset, cert_dir, require_client_cert=False):
@@ -428,11 +351,11 @@ def start_subprocess_grpc_server(port_offset):
 
 
 @pytest.fixture(scope="class")
-def tls_server_info(tmp_path_factory):
+def tls_server_info():
     """TLS server plus cert directory for in-process ``Client(tls=...)`` tests."""
-    cert_dir = str(tmp_path_factory.mktemp("grpc_tls_certs"))
-    if not generate_test_certs(cert_dir):
-        pytest.skip("openssl not available or cert generation failed")
+    cert_dir = locate_test_certs()
+    if cert_dir is None:
+        pytest.skip("TLS test certificates not found")
 
     proc, port = start_tls_grpc_server(GRPC_PORT_OFFSET_TLS, cert_dir)
     try:
@@ -442,11 +365,11 @@ def tls_server_info(tmp_path_factory):
 
 
 @pytest.fixture(scope="class")
-def mtls_server_info(tmp_path_factory):
+def mtls_server_info():
     """Mutual-TLS server (client cert required) plus cert directory."""
-    cert_dir = str(tmp_path_factory.mktemp("grpc_mtls_certs"))
-    if not generate_test_certs(cert_dir):
-        pytest.skip("openssl not available or cert generation failed")
+    cert_dir = locate_test_certs()
+    if cert_dir is None:
+        pytest.skip("TLS test certificates not found")
 
     proc, port = start_tls_grpc_server(
         GRPC_PORT_OFFSET_MTLS, cert_dir, require_client_cert=True
@@ -458,11 +381,11 @@ def mtls_server_info(tmp_path_factory):
 
 
 @pytest.fixture(scope="class")
-def tls_env_with_server(tmp_path_factory):
+def tls_env_with_server():
     """TLS server env dict for subprocess ``Problem.solve()`` remote tests."""
-    cert_dir = str(tmp_path_factory.mktemp("tls_certs"))
-    if not generate_test_certs(cert_dir):
-        pytest.skip("openssl not available or cert generation failed")
+    cert_dir = locate_test_certs()
+    if cert_dir is None:
+        pytest.skip("TLS test certificates not found")
 
     proc, port = start_tls_grpc_server(GRPC_PORT_OFFSET_TLS, cert_dir)
     try:
