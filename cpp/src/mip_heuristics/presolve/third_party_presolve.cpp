@@ -423,9 +423,8 @@ third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_pslp(
 
     return convert_pslp_presolve_status_to_third_party_presolve_status(pslp_status);
   } else {
-    cuopt_expects(false,
-                  error_type_t::ValidationError,
-                  "PSLP presolver only supports double precision");
+    cuopt_expects(
+      false, error_type_t::ValidationError, "PSLP presolver only supports double precision");
     return third_party_presolve_status_t::UNCHANGED;  // unreachable
   }
 }
@@ -756,47 +755,45 @@ third_party_presolve_t<i_t, f_t>::apply_presolve_from_mps_data(
     reduced_mps.set_problem_name(mps.get_problem_name());
     reduced_mps.set_objective_scaling_factor(mps.get_objective_scaling_factor());
     return third_party_presolve_host_result_t<i_t, f_t>{status, std::move(reduced_mps), {}, {}, {}};
-  }
-else
-{
-  // Papilo branch:  build papilo::Problem (host, reads mps directly) ->
-  //                 apply_papilo -> reduced mps.
-  auto papilo_problem = build_papilo_problem<i_t, f_t>(mps, maximize_, category);
-  auto status         = apply_papilo(papilo_problem,
-                             category,
-                             dual_postsolve,
-                             absolute_tolerance,
-                             relative_tolerance,
-                             time_limit,
-                             num_cpu_threads);
+  } else {
+    // Papilo branch:  build papilo::Problem (host, reads mps directly) ->
+    //                 apply_papilo -> reduced mps.
+    auto papilo_problem = build_papilo_problem<i_t, f_t>(mps, maximize_, category);
+    auto status         = apply_papilo(papilo_problem,
+                               category,
+                               dual_postsolve,
+                               absolute_tolerance,
+                               relative_tolerance,
+                               time_limit,
+                               num_cpu_threads);
 
-  if (status == third_party_presolve_status_t::INFEASIBLE ||
-      status == third_party_presolve_status_t::UNBOUNDED ||
-      status == third_party_presolve_status_t::UNBNDORINFEAS) {
-    return third_party_presolve_host_result_t<i_t, f_t>{
-      status, io::mps_data_model_t<i_t, f_t>{}, {}, {}, {}};
-  }
+    if (status == third_party_presolve_status_t::INFEASIBLE ||
+        status == third_party_presolve_status_t::UNBOUNDED ||
+        status == third_party_presolve_status_t::UNBNDORINFEAS) {
+      return third_party_presolve_host_result_t<i_t, f_t>{
+        status, io::mps_data_model_t<i_t, f_t>{}, {}, {}, {}};
+    }
 
-  auto reduced_mps = build_reduced_mps_from_papilo<i_t, f_t>(papilo_problem, maximize_);
-  reduced_mps.set_problem_name(mps.get_problem_name());
-  reduced_mps.set_objective_scaling_factor(mps.get_objective_scaling_factor());
+    auto reduced_mps = build_reduced_mps_from_papilo<i_t, f_t>(papilo_problem, maximize_);
+    reduced_mps.set_problem_name(mps.get_problem_name());
+    reduced_mps.set_objective_scaling_factor(mps.get_objective_scaling_factor());
 
-  std::vector<i_t> implied_integer_indices;
-  {
-    auto col_flags = papilo_problem.getColFlags();
-    for (size_t i = 0; i < col_flags.size(); ++i) {
-      if (col_flags[i].test(papilo::ColFlag::kImplInt)) {
-        implied_integer_indices.push_back(static_cast<i_t>(i));
+    std::vector<i_t> implied_integer_indices;
+    {
+      auto col_flags = papilo_problem.getColFlags();
+      for (size_t i = 0; i < col_flags.size(); ++i) {
+        if (col_flags[i].test(papilo::ColFlag::kImplInt)) {
+          implied_integer_indices.push_back(static_cast<i_t>(i));
+        }
       }
     }
-  }
 
-  return third_party_presolve_host_result_t<i_t, f_t>{status,
-                                                      std::move(reduced_mps),
-                                                      std::move(implied_integer_indices),
-                                                      reduced_to_original_map_,
-                                                      original_to_reduced_map_};
-}
+    return third_party_presolve_host_result_t<i_t, f_t>{status,
+                                                        std::move(reduced_mps),
+                                                        std::move(implied_integer_indices),
+                                                        reduced_to_original_map_,
+                                                        original_to_reduced_map_};
+  }
 }
 
 template <typename i_t, typename f_t>
