@@ -1,0 +1,199 @@
+/* SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Install selector – NVIDIA green button and improved look and feel */
+:root {
+  --cuopt-nvidia-green: #76b900;
+  --cuopt-nvidia-green-hover: #6aa000;
+  --cuopt-nvidia-green-active: #5c8f00;
+  --cuopt-border: #d0d0d0;
+  --cuopt-bg-subtle: #f5f5f5;
+  --cuopt-text: #333;
+  --cuopt-radius: 6px;
+}
+
+.cuopt-install-selector-wrap {
+  background: var(--cuopt-bg-subtle);
+  border: 1px solid var(--cuopt-border);
+  border-radius: var(--cuopt-radius);
+  padding: 1.25rem 1.5rem;
+  margin: 1.25em 0;
+  max-width: 42em;
+}
+
+.cuopt-install-selector-wrap.cuopt-install-error {
+  border-color: #c00;
+  background-color: #fff5f5;
+}
+
+.cuopt-install-selector-wrap.cuopt-install-error code {
+  font-size: 0.9em;
+  padding: 0.1em 0.3em;
+  background: #fff;
+  border-radius: 3px;
+}
+
+.cuopt-install-selector-table {
+  margin: 0 !important;
+  border: none !important;
+  width: 100%;
+  table-layout: fixed;
+}
+
+.cuopt-install-selector-table tr {
+  border: none;
+}
+
+.cuopt-install-selector-table td {
+  border: none;
+  padding: 0.4em 0.6em 0.4em 0;
+  vertical-align: middle;
+}
+
+.cuopt-install-selector-table td:first-child {
+  width: 6em;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--cuopt-text);
+  vertical-align: middle;
+  padding-right: 1rem;
+}
+
+.cuopt-opt-label {
+  font-weight: 600;
+  color: var(--cuopt-text);
+}
+
+.cuopt-opt-group {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0;
+  align-items: stretch;
+  min-width: 0;
+  width: 100%;
+}
+
+.cuopt-opt-group .cuopt-opt {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.cuopt-opt {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5em 0.5em;
+  font-size: 0.9em;
+  color: var(--cuopt-text);
+  background-color: #fff;
+  border: 1px solid var(--cuopt-border);
+  border-radius: 0;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+  box-sizing: border-box;
+  text-align: center;
+}
+
+.cuopt-opt:first-child {
+  border-radius: 4px 0 0 4px;
+}
+
+.cuopt-opt:not(:first-child) {
+  margin-left: -1px;
+}
+
+.cuopt-opt:last-child {
+  border-radius: 0 4px 4px 0;
+}
+
+.cuopt-opt:hover {
+  border-color: #999;
+  background-color: #fafafa;
+  z-index: 1;
+}
+
+/* Hide radio visually; keep for accessibility and click behavior */
+.cuopt-opt input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  -webkit-clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.cuopt-opt:has(input:focus) {
+  outline: 2px solid var(--cuopt-nvidia-green);
+  outline-offset: 2px;
+  z-index: 2;
+}
+
+.cuopt-opt:has(input:checked) {
+  border-color: var(--cuopt-nvidia-green);
+  background-color: rgba(118, 185, 0, 0.08);
+  z-index: 1;
+}
+
+.cuopt-install-output {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--cuopt-border);
+}
+
+.cuopt-install-copy-wrap {
+  text-align: center;
+  margin-top: 0.75em;
+}
+
+#cuopt-copy-btn.cuopt-install-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  padding: 0.5em 1em;
+  font-size: 0.9em;
+  font-weight: 600;
+  color: #fff !important;
+  background-color: var(--cuopt-nvidia-green);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+#cuopt-copy-btn.cuopt-install-copy-btn:hover {
+  background-color: var(--cuopt-nvidia-green-hover);
+}
+
+#cuopt-copy-btn.cuopt-install-copy-btn:active {
+  background-color: var(--cuopt-nvidia-green-active);
+}
+
+#cuopt-copy-btn.cuopt-install-copy-btn:focus {
+  outline: 2px solid var(--cuopt-nvidia-green);
+  outline-offset: 2px;
+}
+
+#cuopt-cmd-out.cuopt-install-cmd-out {
+  width: 100%;
+  min-height: 6.5em;
+  padding: 0.75em 1em;
+  font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  line-height: 1.45;
+  color: var(--cuopt-text);
+  background-color: #fff;
+  border: 1px solid var(--cuopt-border);
+  border-radius: 4px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+#cuopt-cmd-out.cuopt-install-cmd-out:focus {
+  outline: 2px solid var(--cuopt-nvidia-green);
+  outline-offset: 0;
+  border-color: var(--cuopt-nvidia-green);
+}

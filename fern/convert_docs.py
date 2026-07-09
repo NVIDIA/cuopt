@@ -76,12 +76,21 @@ def _preprocess_rst(content: str, rst_path: Path) -> str:
         content,
     )
 
-    # 2. install-selector → plain note
+    # 2. install-selector → raw HTML div (JS widget is loaded as a custom script)
+    def _install_selector_div(m):
+        options = m.group(0)
+        iface_m = re.search(r":default-iface:\s*(\w+)", options)
+        default_iface = iface_m.group(1) if iface_m else ""
+        attr = f' data-default-iface="{default_iface}"' if default_iface else ""
+        return (
+            ".. raw:: html\n\n"
+            f'   <div id="cuopt-install-selector"{attr}></div>\n'
+        )
+
     content = re.sub(
-        r"\.\. install-selector::.*?(?=\n\S|\Z)",
-        ".. note::\n\n   Visit the `Installation Guide <install>`_ to choose your interface and install method.\n",
+        r"\.\. install-selector::[^\n]*(?:\n[ \t]+[^\n]*)*",
+        _install_selector_div,
         content,
-        flags=re.DOTALL,
     )
 
     # 3. swagger-plugin → plain note
@@ -431,7 +440,15 @@ logo:
 
 colors:
   accentPrimary:
-    dark: "#76B900"   # NVIDIA green
+    dark: "#76B900"
+    light: "#4a7600"
+
+css:
+  - docs/scripts/install-selector.css
+
+js:
+  - path: docs/scripts/cuopt-install-version.js
+  - path: docs/scripts/install-selector.js
 
 tabs:
   docs:
@@ -543,7 +560,7 @@ def main():
 
 
 def _generate_openapi_spec():
-    """Generate cuopt_spec.yaml from the FastAPI app without a GPU."""
+    """Generate cuopt_spec.yaml from the FastAPI app without a GPU, and write the version script."""
     try:
         import sys as _sys
         _sys.path.insert(0, str(REPO_ROOT / "python/cuopt_server"))
@@ -564,8 +581,23 @@ def _generate_openapi_spec():
         with open(out, "w") as f:
             yaml.dump(spec, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
         print(f"Generated {out.relative_to(REPO_ROOT)} ({len(spec['paths'])} paths)")
+
+        # Write the version injection script for the install selector widget
+        ver = app.version  # e.g. "26.08"
+        parts = ver.split(".")
+        major, minor = int(parts[0]), int(parts[1]) if len(parts) > 1 else 0
+        pip_ver = f"{major}.{minor}"
+        conda_ver = f"{major:02d}.{minor:02d}"
+        version_js = (
+            FERN / "docs/scripts/cuopt-install-version.js"
+        )
+        version_js.parent.mkdir(parents=True, exist_ok=True)
+        version_js.write_text(
+            f'window.CUOPT_INSTALL_VERSION = {{"conda": "{conda_ver}", "pip": "{pip_ver}"}};\n'
+        )
+        print(f"Generated {version_js.relative_to(REPO_ROOT)} (conda={conda_ver}, pip={pip_ver})")
     except Exception as e:
-        print(f"  [WARN] Could not generate OpenAPI spec: {e}")
+        print(f"  [WARN] Could not generate OpenAPI spec or version script: {e}")
         print("         Run manually: python fern/convert_docs.py (with cuopt_server installed)")
 
 

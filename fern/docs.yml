@@ -8,7 +8,15 @@ logo:
 
 colors:
   accentPrimary:
-    dark: "#76B900"   # NVIDIA green
+    dark: "#76B900"
+    light: "#4a7600"
+
+css:
+  - docs/scripts/install-selector.css
+
+js:
+  - path: docs/scripts/cuopt-install-version.js
+  - path: docs/scripts/install-selector.js
 
 tabs:
   docs:
