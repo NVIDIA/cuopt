@@ -5,7 +5,6 @@
 package com.nvidia.cuopt.mathematicalprogramming;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -69,72 +68,12 @@ final class NativeIntegrationTest {
   }
 
   @Test
-  void emptyDataModelCanBeClosed() {
-    assumeNativeLibrary();
-    assumeCudaDriverAvailable();
-    try (DataModel ignored = new DataModel()) {
-      // Lifecycle regression test for JNI-owned empty problems.
-    }
-  }
-
-  @Test
-  void mutableDataModelExposesMetadataAndQuadraticFields() {
-    assumeNativeLibrary();
-    assumeCudaDriverAvailable();
-    try (DataModel model = new DataModel()) {
-      model.setCSRConstraintMatrix(
-              new double[] {1.0, 2.0}, new int[] {0, 1}, new int[] {0, 2})
-          .setObjectiveCoefficients(new double[] {3.0, 4.0})
-          .setObjectiveScalingFactor(2.0)
-          .setObjectiveOffset(5.0)
-          .setVariableLowerBounds(new double[] {0.0, 0.0})
-          .setVariableUpperBounds(new double[] {10.0, 10.0})
-          .setVariableTypes(new byte[] {'C', 'C'})
-          .setConstraintBounds(new double[] {7.0})
-          .setRowTypes(new byte[] {'L'})
-          .setVariableNames(new String[] {"x", "y"})
-          .setRowNames(new String[] {"c"})
-          .setObjectiveName("obj")
-          .setProblemName("model")
-          .setQuadraticObjectiveMatrix(
-              new double[] {1.0, 2.0}, new int[] {0, 1}, new int[] {0, 1, 2});
-      model
-          .setInitialPrimalSolution(new double[] {1.0, 2.0})
-          .setInitialDualSolution(new double[] {3.0});
-
-      assertEquals(2.0, model.getObjectiveScalingFactor());
-      assertEquals("model", model.getProblemName());
-      assertEquals("obj", model.getObjectiveName());
-      assertArrayEquals(new String[] {"x", "y"}, model.getVariableNames());
-      assertArrayEquals(new String[] {"c"}, model.getRowNames());
-      assertArrayEquals(new byte[] {'L'}, model.getASCIIRowTypes());
-      assertArrayEquals(new double[0], model.getConstraintLowerBounds());
-      assertArrayEquals(new double[0], model.getConstraintUpperBounds());
-      assertArrayEquals(new double[] {1.0, 2.0}, model.getQuadraticObjectiveValues());
-      assertArrayEquals(new int[] {0, 1}, model.getQuadraticObjectiveIndices());
-      assertArrayEquals(new int[] {0, 1, 2}, model.getQuadraticObjectiveOffsets());
-      assertEquals(ProblemCategory.LP, model.getProblemCategory());
-      assertArrayEquals(new double[] {1.0, 2.0}, model.getInitialPrimalSolution());
-      assertArrayEquals(new double[] {3.0}, model.getInitialDualSolution());
-      assertTrue(model.toDict().containsKey("objective_data"));
-
-      model.addQuadraticConstraint(
-          "qc", new double[] {1.0}, new int[] {0}, 4.0,
-          new double[] {2.0}, new int[] {0}, new int[] {0}, ConstraintSense.LE);
-      assertEquals(1, model.getQuadraticConstraints().size());
-      assertEquals("qc", model.getQuadraticConstraints().get(0).getRowName());
-      model.clearQuadraticConstraints();
-      assertTrue(model.getQuadraticConstraints().isEmpty());
-    }
-  }
-
-  @Test
   void solvesSmallLPAndReportsStats() {
     assumeNativeLibrary();
     assumeCudaDriverAvailable();
-    try (DataModel model = tinyLP();
+    try (Problem problem = tinyLP();
         SolverSettings settings = new SolverSettings().setMethod(SolverMethod.PDLP);
-        Solution solution = model.solve(settings)) {
+        Solution solution = problem.solve(settings)) {
       assertFalse(solution.isMIP());
       assertEquals(TerminationStatus.OPTIMAL, solution.getTerminationStatus());
       assertEquals(1.0, solution.getPrimalObjective(), 1e-3);
@@ -169,14 +108,14 @@ final class NativeIntegrationTest {
   void solvesSmallQP() {
     assumeNativeLibrary();
     assumeCudaDriverAvailable();
-    try (DataModel model = tinyLP()) {
-      Problem shell = new Problem();
-      Variable x0 = shell.addVariable();
-      Variable x1 = shell.addVariable();
-      model.setQuadraticObjective(
-          QuadraticExpression.of(x0, x0, 1.0).plus(x1, x1, 4.0));
+    try (Problem problem = tinyLP()) {
+      Variable x0 = problem.getVariable(0);
+      Variable x1 = problem.getVariable(1);
+      problem.setObjective(
+          QuadraticExpression.of(x0, x0, 1.0).plus(x1, x1, 4.0),
+          ObjectiveSense.MINIMIZE);
       try (SolverSettings settings = new SolverSettings().setSetting(CuOptConstants.CUOPT_ITERATION_LIMIT, 50);
-          Solution solution = model.solve(settings)) {
+          Solution solution = problem.solve(settings)) {
         assertFalse(solution.isMIP());
         assertDoesNotThrow(solution::getPrimalSolution);
       }
@@ -187,7 +126,7 @@ final class NativeIntegrationTest {
   void rejectsMissingFileThroughCuOptException() {
     assumeNativeLibrary();
     CuOptException exception =
-        assertThrows(CuOptException.class, () -> DataModel.read("missing-file-does-not-exist.mps"));
+        assertThrows(CuOptException.class, () -> Problem.read("missing-file-does-not-exist.mps"));
     assertEquals(CuOptConstants.CUOPT_MPS_FILE_ERROR, exception.getStatusCode());
   }
 
@@ -197,39 +136,28 @@ final class NativeIntegrationTest {
     assumeCudaDriverAvailable();
     Path file = Files.createTempFile("cuopt-java-roundtrip-", ".mps");
     try {
-      try (DataModel source = tinyLP()) {
+      try (Problem source = tinyLP()) {
         source.writeMPS(file.toString());
       }
-      try (DataModel read = DataModel.read(file.toString());
-          DataModel parsed = DataModel.parseMPS(file.toString());
-          Problem problem = Problem.read(file.toString(), false)) {
+      try (Problem read = Problem.read(file.toString(), false);
+          Problem parsed = Problem.readMPS(file.toString(), false)) {
         assertEquals(2, read.getNumVariables());
         assertEquals(1, read.getNumConstraints());
         assertEquals(read.getNumVariables(), parsed.getNumVariables());
         assertEquals(read.getNumConstraints(), parsed.getNumConstraints());
-        assertEquals(read.getNumVariables(), problem.getNumVariables());
-        assertEquals(read.getNumConstraints(), problem.getNumConstraints());
       }
     } finally {
       Files.deleteIfExists(file);
     }
   }
 
-  private static DataModel tinyLP() {
-    CSRMatrix matrix =
-        new CSRMatrix(new double[] {1.0, 1.0}, new int[] {0, 1}, new int[] {0, 2});
-    return DataModel.createProblem(
-        1,
-        2,
-        ObjectiveSense.MINIMIZE,
-        0.0,
-        new double[] {1.0, 1.0},
-        matrix,
-        new byte[] {'G'},
-        new double[] {1.0},
-        new double[] {0.0, 0.0},
-        new double[] {Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY},
-        new byte[] {'C', 'C'});
+  private static Problem tinyLP() {
+    Problem problem = new Problem("tiny");
+    Variable x0 = problem.addVariable(0.0, Double.POSITIVE_INFINITY, 1.0, VariableType.CONTINUOUS, "x0");
+    Variable x1 = problem.addVariable(0.0, Double.POSITIVE_INFINITY, 1.0, VariableType.CONTINUOUS, "x1");
+    problem.addConstraint(LinearExpression.of(x0).plus(x1).ge(1.0), "c0");
+    problem.setObjective(LinearExpression.of(x0).plus(x1), ObjectiveSense.MINIMIZE);
+    return problem;
   }
 
   private static void assumeCudaDriverAvailable() {

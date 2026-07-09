@@ -63,7 +63,7 @@ To run one test class, pass its Maven property to the helper:
 
 .. code-block:: bash
 
-   bash scripts/test.sh -Dtest=DataModelIntegrationTest
+   bash scripts/test.sh -Dtest=ProblemIntegrationTest
 
 Application code can use the same property:
 

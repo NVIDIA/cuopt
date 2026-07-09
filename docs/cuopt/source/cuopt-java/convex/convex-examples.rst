@@ -42,41 +42,6 @@ The high-level API uses fluent expressions and explicit comparison methods.
 the solve. The solution object remains available for detailed native results
 and statistics.
 
-Deprecated low-level CSR linear program
-----------------------------------------
-
-``DataModel`` is deprecated in favor of ``Problem``. It remains temporarily
-available when the input is already in CSR form:
-
-.. code-block:: java
-
-   CSRMatrix matrix = new CSRMatrix(
-       new double[] {1.0, 1.0}, // values
-       new int[] {0, 1},        // column indices
-       new int[] {0, 2});       // row offsets
-
-   try (DataModel model = DataModel.createProblem(
-          1, 2,
-          ObjectiveSense.MINIMIZE,
-          0.0,
-          new double[] {1.0, 1.0},
-          matrix,
-          new byte[] {'G'},
-          new double[] {10.0},
-          new double[] {0.0, 0.0},
-          new double[] {Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY},
-          new byte[] {'C', 'C'});
-        SolverSettings settings = new SolverSettings().setMethod(SolverMethod.PDLP);
-        Solution solution = model.solve(settings)) {
-     System.out.println(solution.getPrimalObjective());
-     System.out.println(model.getConstraintMatrix().getRowOffsets().length);
-   }
-
-For ranged rows, use ``createRangedProblem`` with
-``constraintLowerBounds`` and ``constraintUpperBounds`` instead of row sense
-and RHS arrays. The mutable setters provide the same representation after an
-empty ``new DataModel()``.
-
 Simple quadratic programming
 -----------------------------
 

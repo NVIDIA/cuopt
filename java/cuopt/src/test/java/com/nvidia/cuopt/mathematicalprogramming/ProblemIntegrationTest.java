@@ -19,11 +19,11 @@ import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
 
-final class DataModelIntegrationTest {
+final class ProblemIntegrationTest {
   private static final double SOLVE_TOLERANCE = 1.0e-3;
 
   @TestFactory
-  Stream<DynamicTest> dataModelsRoundTripAndSolve() {
+  Stream<DynamicTest> problemsBuildAndSolve() {
     return cases().stream()
         .map(testCase -> DynamicTest.dynamicTest(testCase.name, () -> verify(testCase)));
   }
@@ -32,75 +32,65 @@ final class DataModelIntegrationTest {
     assumeNativeLibrary();
     assumeCudaDriverAvailable();
 
-    try (DataModel model = testCase.createDataModel()) {
-      assertModelRoundTrip(testCase, model);
+    try (Problem problem = testCase.createProblem()) {
+      assertProblemConstruction(testCase, problem);
       if (testCase.hasQuadraticObjective()) {
         // QP callability is covered by NativeIntegrationTest. This case owns the independent
-        // Java-to-JNI marshalling contract for quadratic objectives and constraints.
+        // Problem construction contract for quadratic objectives and constraints.
         return;
       }
       try (SolverSettings settings = createSettings(testCase);
-          Solution solution = model.solve(settings)) {
+          Solution solution = problem.solve(settings)) {
         assertSolution(testCase, solution);
       }
     }
   }
 
-  private static void assertModelRoundTrip(CaseSpec testCase, DataModel model) {
-    assertEquals(testCase.numVariables, model.getNumVariables());
-    assertEquals(testCase.numConstraints, model.getNumConstraints());
-    assertEquals(testCase.values.length, model.getNumNonZeros());
-    assertEquals(testCase.objectiveSense, model.getObjectiveSense());
-    assertEquals(testCase.objectiveOffset, model.getObjectiveOffset(), 0.0);
-    assertEquals(testCase.objectiveScalingFactor, model.getObjectiveScalingFactor(), 0.0);
-    assertDoubleArrayEquals(testCase.objectiveCoefficients, model.getObjectiveCoefficients(), 0.0);
+  private static void assertProblemConstruction(CaseSpec testCase, Problem problem) {
+    assertEquals(testCase.numVariables, problem.getNumVariables());
+    assertEquals(testCase.problemConstraintCount(), problem.getNumConstraints());
+    assertEquals(testCase.linearProblemConstraintCount(), problem.getCSR().getRowOffsets().length - 1);
+    assertEquals(testCase.objectiveSense, problem.getObjectiveSense());
+    assertEquals(testCase.objectiveOffset, problem.getObjectiveConstant(), 0.0);
+    assertEquals(testCase.problemName, problem.getName());
 
-    CSRMatrix matrix = model.getConstraintMatrix();
-    assertArrayEquals(testCase.rowOffsets, matrix.getRowOffsets());
-    assertArrayEquals(testCase.columnIndices, matrix.getColumnIndices());
-    assertDoubleArrayEquals(testCase.values, matrix.getValues(), 0.0);
-    assertDoubleArrayEquals(testCase.variableLowerBounds, model.getVariableLowerBounds(), 0.0);
-    assertDoubleArrayEquals(testCase.variableUpperBounds, model.getVariableUpperBounds(), 0.0);
-    assertArrayEquals(testCase.variableTypes, model.getVariableTypes());
-    assertArrayEquals(testCase.variableNames, model.getVariableNames());
-    assertArrayEquals(testCase.rowNames, model.getRowNames());
-    assertEquals(testCase.objectiveName, model.getObjectiveName());
-    assertEquals(testCase.problemName, model.getProblemName());
+    for (int i = 0; i < testCase.numVariables; i++) {
+      Variable variable = problem.getVariable(i);
+      assertEquals(testCase.variableLowerBounds[i], variable.getLowerBound(), 0.0);
+      assertEquals(testCase.variableUpperBounds[i], variable.getUpperBound(), 0.0);
+      assertEquals(VariableType.fromNative(testCase.variableTypes[i]), variable.getVariableType());
+      assertEquals(testCase.objectiveCoefficients[i], variable.getObjectiveCoefficient(), 0.0);
+      assertEquals(testCase.variableName(i), variable.getVariableName());
+    }
 
-    if (testCase.isRanged()) {
-      assertDoubleArrayEquals(
-          testCase.constraintLowerBounds, model.getConstraintLowerBounds(), 0.0);
-      assertDoubleArrayEquals(
-          testCase.constraintUpperBounds, model.getConstraintUpperBounds(), 0.0);
-    } else {
-      assertArrayEquals(testCase.constraintSense, model.getConstraintSense());
-      assertDoubleArrayEquals(testCase.rhs, model.getConstraintRHS(), 0.0);
+    if (!testCase.isRanged()) {
+      CSRMatrix matrix = problem.getCSR();
+      assertArrayEquals(testCase.rowOffsets, matrix.getRowOffsets());
+      assertArrayEquals(testCase.columnIndices, matrix.getColumnIndices());
+      assertDoubleArrayEquals(testCase.values, matrix.getValues(), 0.0);
+      for (int row = 0; row < testCase.numConstraints; row++) {
+        Constraint constraint = problem.getConstraint(row);
+        assertEquals(ConstraintSense.fromNative(testCase.constraintSense[row]), constraint.getSense());
+        assertEquals(testCase.rhs[row], constraint.getRHS(), 0.0);
+        assertEquals(testCase.rowName(row), constraint.getConstraintName());
+      }
     }
 
     if (testCase.hasQuadraticObjective()) {
-      assertArrayEquals(
-          testCase.quadraticObjectiveRowOffsets, model.getQuadraticObjectiveOffsets());
-      assertArrayEquals(
-          testCase.quadraticObjectiveColumnIndices, model.getQuadraticObjectiveIndices());
-      assertDoubleArrayEquals(
-          testCase.quadraticObjectiveValues, model.getQuadraticObjectiveValues(), 0.0);
+      assertTrue(problem.getObjective().isQuadratic());
+      CSRMatrix matrix = problem.getQCSR();
+      assertArrayEquals(testCase.quadraticObjectiveRowOffsets, matrix.getRowOffsets());
+      assertArrayEquals(testCase.quadraticObjectiveColumnIndices, matrix.getColumnIndices());
+      assertDoubleArrayEquals(testCase.quadraticObjectiveValues, matrix.getValues(), 0.0);
     }
 
-    List<QuadraticConstraint> constraints = model.getQuadraticConstraints();
-    assertEquals(testCase.hasQuadraticConstraint() ? 1 : 0, constraints.size());
+    List<Constraint> quadraticConstraints = problem.getQuadraticConstraints();
+    assertEquals(testCase.hasQuadraticConstraint() ? 1 : 0, quadraticConstraints.size());
     if (testCase.hasQuadraticConstraint()) {
-      QuadraticConstraint constraint = constraints.get(0);
-      assertEquals(testCase.quadraticConstraintName, constraint.getRowName());
-      assertEquals(
-          ConstraintSense.fromNative(testCase.quadraticConstraintSense), constraint.getSense());
+      Constraint constraint = quadraticConstraints.get(0);
+      assertEquals(testCase.quadraticConstraintName, constraint.getConstraintName());
+      assertEquals(ConstraintSense.fromNative(testCase.quadraticConstraintSense), constraint.getSense());
       assertEquals(testCase.quadraticConstraintRHS, constraint.getRHS(), 0.0);
-      assertArrayEquals(testCase.quadraticConstraintLinearIndices, constraint.getLinearIndices());
-      assertDoubleArrayEquals(
-          testCase.quadraticConstraintLinearValues, constraint.getLinearValues(), 0.0);
-      assertArrayEquals(testCase.quadraticConstraintRows, constraint.getRows());
-      assertArrayEquals(testCase.quadraticConstraintColumns, constraint.getColumns());
-      assertDoubleArrayEquals(
-          testCase.quadraticConstraintValues, constraint.getValues(), 0.0);
     }
   }
 
@@ -373,10 +363,8 @@ final class DataModelIntegrationTest {
             .withQuadraticObjective(
                 new int[] {0, 1, 2}, new int[] {0, 1}, new double[] {1.0, 4.0})
             .withMetadata(
-                2.0,
                 new String[] {"x0", "long_variable_1"},
                 new String[] {"constraint_0"},
-                "qp_objective",
                 "qp_model")
             .withQuadraticConstraint(
                 "qc0",
@@ -428,10 +416,8 @@ final class DataModelIntegrationTest {
     private final boolean expectSolutionValues;
     private final double expectedObjective;
     private final double solutionTolerance = SOLVE_TOLERANCE;
-    private double objectiveScalingFactor = 1.0;
     private String[] variableNames = new String[0];
     private String[] rowNames = new String[0];
-    private String objectiveName = "";
     private String problemName = "";
     private String quadraticConstraintName;
     private byte quadraticConstraintSense;
@@ -491,58 +477,111 @@ final class DataModelIntegrationTest {
       this.expectedObjective = expectedObjective;
     }
 
-    private DataModel createDataModel() {
-      CSRMatrix matrix = new CSRMatrix(values, columnIndices, rowOffsets);
-      DataModel model =
-          isRanged()
-              ? DataModel.createRangedProblem(
-                  numConstraints,
-                  numVariables,
-                  objectiveSense,
-                  objectiveOffset,
-                  objectiveCoefficients,
-                  matrix,
-                  constraintLowerBounds,
-                  constraintUpperBounds,
-                  variableLowerBounds,
-                  variableUpperBounds,
-                  variableTypes)
-              : DataModel.createProblem(
-                  numConstraints,
-                  numVariables,
-                  objectiveSense,
-                  objectiveOffset,
-                  objectiveCoefficients,
-                  matrix,
-                  constraintSense,
-                  rhs,
-                  variableLowerBounds,
-                  variableUpperBounds,
-                  variableTypes);
+    private Problem createProblem() {
+      Problem problem = new Problem(problemName);
+      for (int i = 0; i < numVariables; i++) {
+        problem.addVariable(
+            variableLowerBounds[i],
+            variableUpperBounds[i],
+            objectiveCoefficients[i],
+            VariableType.fromNative(variableTypes[i]),
+            variableName(i));
+      }
+
       if (hasQuadraticObjective()) {
-        model.setQuadraticObjectiveMatrix(
-            quadraticObjectiveValues,
-            quadraticObjectiveColumnIndices,
-            quadraticObjectiveRowOffsets);
+        problem.setObjective(buildQuadraticObjective(problem), objectiveSense);
+      } else {
+        problem.setObjective(buildLinearObjective(problem), objectiveSense);
       }
-      model
-          .setObjectiveScalingFactor(objectiveScalingFactor)
-          .setVariableNames(variableNames)
-          .setRowNames(rowNames)
-          .setObjectiveName(objectiveName)
-          .setProblemName(problemName);
+
+      for (int row = 0; row < numConstraints; row++) {
+        LinearExpression expression = buildRowExpression(problem, row);
+        if (isRanged()) {
+          if (!Double.isInfinite(constraintLowerBounds[row])) {
+            problem.addConstraint(expression.ge(constraintLowerBounds[row]), rangedRowName(row, "lower"));
+          }
+          if (!Double.isInfinite(constraintUpperBounds[row])) {
+            problem.addConstraint(expression.le(constraintUpperBounds[row]), rangedRowName(row, "upper"));
+          }
+        } else {
+          problem.addConstraint(
+              toConstraint(expression, ConstraintSense.fromNative(constraintSense[row]), rhs[row]),
+              rowName(row));
+        }
+      }
+
       if (hasQuadraticConstraint()) {
-        model.addQuadraticConstraint(
-            quadraticConstraintName,
-            quadraticConstraintLinearValues,
-            quadraticConstraintLinearIndices,
-            quadraticConstraintRHS,
-            quadraticConstraintValues,
-            quadraticConstraintRows,
-            quadraticConstraintColumns,
-            ConstraintSense.fromNative(quadraticConstraintSense));
+        QuadraticExpression expression = new QuadraticExpression();
+        for (int i = 0; i < quadraticConstraintLinearValues.length; i++) {
+          expression =
+              expression.plus(
+                  problem.getVariable(quadraticConstraintLinearIndices[i]),
+                  quadraticConstraintLinearValues[i]);
+        }
+        for (int i = 0; i < quadraticConstraintValues.length; i++) {
+          expression =
+              expression.plus(
+                  problem.getVariable(quadraticConstraintRows[i]),
+                  problem.getVariable(quadraticConstraintColumns[i]),
+                  quadraticConstraintValues[i]);
+        }
+        Constraint constraint =
+            ConstraintSense.fromNative(quadraticConstraintSense) == ConstraintSense.LE
+                ? expression.le(quadraticConstraintRHS)
+                : expression.ge(quadraticConstraintRHS);
+        problem.addConstraint(constraint, quadraticConstraintName);
       }
-      return model;
+      return problem;
+    }
+
+    private LinearExpression buildLinearObjective(Problem problem) {
+      LinearExpression objective = LinearExpression.ofConstant(objectiveOffset);
+      for (int i = 0; i < objectiveCoefficients.length; i++) {
+        if (objectiveCoefficients[i] != 0.0) {
+          objective = objective.plus(problem.getVariable(i), objectiveCoefficients[i]);
+        }
+      }
+      return objective;
+    }
+
+    private QuadraticExpression buildQuadraticObjective(Problem problem) {
+      QuadraticExpression objective = new QuadraticExpression().constant(objectiveOffset);
+      for (int i = 0; i < objectiveCoefficients.length; i++) {
+        if (objectiveCoefficients[i] != 0.0) {
+          objective = objective.plus(problem.getVariable(i), objectiveCoefficients[i]);
+        }
+      }
+      for (int row = 0; row + 1 < quadraticObjectiveRowOffsets.length; row++) {
+        for (int p = quadraticObjectiveRowOffsets[row]; p < quadraticObjectiveRowOffsets[row + 1]; p++) {
+          objective =
+              objective.plus(
+                  problem.getVariable(row),
+                  problem.getVariable(quadraticObjectiveColumnIndices[p]),
+                  quadraticObjectiveValues[p]);
+        }
+      }
+      return objective;
+    }
+
+    private LinearExpression buildRowExpression(Problem problem, int row) {
+      LinearExpression expression = new LinearExpression();
+      for (int p = rowOffsets[row]; p < rowOffsets[row + 1]; p++) {
+        expression = expression.plus(problem.getVariable(columnIndices[p]), values[p]);
+      }
+      return expression;
+    }
+
+    private Constraint toConstraint(LinearExpression expression, ConstraintSense sense, double rhs) {
+      switch (sense) {
+        case LE:
+          return expression.le(rhs);
+        case GE:
+          return expression.ge(rhs);
+        case EQ:
+          return expression.eq(rhs);
+        default:
+          throw new IllegalStateException("Unsupported sense " + sense);
+      }
     }
 
     private boolean isRanged() {
@@ -570,6 +609,27 @@ final class DataModelIntegrationTest {
       return hasIntegerVariables() ? ProblemCategory.MIP : ProblemCategory.LP;
     }
 
+    private int linearProblemConstraintCount() {
+      return isRanged() ? numConstraints * 2 : numConstraints;
+    }
+
+    private int problemConstraintCount() {
+      return linearProblemConstraintCount() + (hasQuadraticConstraint() ? 1 : 0);
+    }
+
+    private String variableName(int index) {
+      return variableNames.length > index ? variableNames[index] : "";
+    }
+
+    private String rowName(int index) {
+      return rowNames.length > index ? rowNames[index] : "";
+    }
+
+    private String rangedRowName(int index, String boundName) {
+      String base = rowName(index);
+      return base.isEmpty() ? "" : base + "_" + boundName;
+    }
+
     private CaseSpec withQuadraticObjective(
         int[] rowOffsets, int[] columnIndices, double[] values) {
       this.quadraticObjectiveRowOffsets = Arrays.copyOf(rowOffsets, rowOffsets.length);
@@ -579,15 +639,9 @@ final class DataModelIntegrationTest {
     }
 
     private CaseSpec withMetadata(
-        double scalingFactor,
-        String[] variableNames,
-        String[] rowNames,
-        String objectiveName,
-        String problemName) {
-      this.objectiveScalingFactor = scalingFactor;
+        String[] variableNames, String[] rowNames, String problemName) {
       this.variableNames = Arrays.copyOf(variableNames, variableNames.length);
       this.rowNames = Arrays.copyOf(rowNames, rowNames.length);
-      this.objectiveName = objectiveName;
       this.problemName = problemName;
       return this;
     }

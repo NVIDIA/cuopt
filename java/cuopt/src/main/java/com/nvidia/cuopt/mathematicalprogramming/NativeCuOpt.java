@@ -20,7 +20,6 @@ final class NativeCuOpt {
 
   static native int getFloatSize();
   static native String[] getSolverSettingNames();
-  static native long createEmptyProblem();
   static native long parseMPSProblem(String path, boolean fixedMPSFormat);
   static native long readProblemWithFormat(String path, boolean fixedMPSFormat);
 
@@ -52,22 +51,6 @@ final class NativeCuOpt {
       double[] upperBounds,
       byte[] variableTypes);
 
-  static native long createRangedProblem(
-      int numConstraints,
-      int numVariables,
-      int objectiveSense,
-      double objectiveOffset,
-      double[] objectiveCoefficients,
-      int[] rowOffsets,
-      int[] columnIndices,
-      double[] values,
-      double[] constraintLowerBounds,
-      double[] constraintUpperBounds,
-      double[] variableLowerBounds,
-      double[] variableUpperBounds,
-      byte[] variableTypes);
-
-  static native long readProblem(String path);
   static native void writeProblem(long handle, String path);
   static native void destroyProblem(long handle);
   static native void setQuadraticObjective(long handle, int[] rows, int[] columns, double[] values);
@@ -95,37 +78,17 @@ final class NativeCuOpt {
   static native double[] getVariableLowerBounds(long handle);
   static native double[] getVariableUpperBounds(long handle);
   static native byte[] getVariableTypes(long handle);
-  static native void setMaximize(long handle, boolean maximize);
-  static native void setConstraintMatrix(long handle, double[] values, int[] indices, int[] offsets);
-  static native void setConstraintBounds(long handle, double[] values);
-  static native void setObjectiveCoefficients(long handle, double[] values);
-  static native void setObjectiveScalingFactor(long handle, double value);
-  static native double getObjectiveScalingFactor(long handle);
-  static native void setObjectiveOffset(long handle, double value);
-  static native void setQuadraticObjectiveMatrix(long handle, double[] values, int[] indices, int[] offsets);
-  static native void setVariableLowerBounds(long handle, double[] values);
-  static native void setVariableUpperBounds(long handle, double[] values);
-  static native void setConstraintLowerBounds(long handle, double[] values);
-  static native void setConstraintUpperBounds(long handle, double[] values);
-  static native void setRowTypes(long handle, byte[] values);
-  static native void setVariableTypes(long handle, byte[] values);
   static native void setVariableNames(long handle, String[] values);
   static native void setRowNames(long handle, String[] values);
-  static native void setObjectiveName(long handle, String value);
   static native void setProblemName(long handle, String value);
-  static native void setInitialPrimalSolutionOnProblem(long handle, double[] values);
-  static native void setInitialDualSolutionOnProblem(long handle, double[] values);
   static native double[] getQuadraticObjectiveValues(long handle);
   static native int[] getQuadraticObjectiveIndices(long handle);
   static native int[] getQuadraticObjectiveOffsets(long handle);
   static native String[] getVariableNames(long handle);
   static native String[] getRowNames(long handle);
-  static native String getObjectiveName(long handle);
   static native String getProblemName(long handle);
   static native int getProblemCategory(long handle);
   static native Object[] getQuadraticConstraints(long handle);
-  static native void clearQuadraticConstraints(long handle);
-  static native boolean isMIP(long handle);
   static native long solve(long problemHandle, long settingsHandle);
 
   static native void destroySolution(long handle);

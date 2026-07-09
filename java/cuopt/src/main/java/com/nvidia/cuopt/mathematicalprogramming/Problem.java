@@ -162,13 +162,7 @@ public final class Problem implements AutoCloseable {
     return buildLinearConstraintMatrix().matrix;
   }
 
-  /**
-   * Materialize this problem as the deprecated low-level data representation.
-   *
-   * @deprecated Use {@link Problem} directly.
-   */
-  @Deprecated(since = "26.08")
-  public DataModel toDataModel() {
+  private NativeProblem toNativeProblem() {
     MatrixBuild matrixBuild = buildLinearConstraintMatrix();
     double[] objectiveCoefficients = objectiveCoefficients();
     double[] lowerBounds = new double[variables.size()];
@@ -181,8 +175,8 @@ public final class Problem implements AutoCloseable {
       variableTypes[index] = variable.getVariableType().nativeValue();
     }
 
-    DataModel dataModel =
-        DataModel.createProblem(
+    NativeProblem nativeProblem =
+        NativeProblem.createProblem(
             matrixBuild.linearConstraints.size(),
             variables.size(),
             objectiveSense,
@@ -196,23 +190,23 @@ public final class Problem implements AutoCloseable {
             variableTypes);
 
     if (quadraticObjective != null && !quadraticObjective.getQuadraticTerms().isEmpty()) {
-      dataModel.setQuadraticObjective(quadraticObjective);
+      nativeProblem.setQuadraticObjective(quadraticObjective);
     }
     for (Constraint constraint : constraints) {
       if (constraint.isQuadratic()) {
-        dataModel.addQuadraticConstraint(constraint);
+        nativeProblem.addQuadraticConstraint(constraint);
       }
     }
     String[] variableNames = new String[variables.size()];
     for (Variable variable : variables) {
       variableNames[variable.getIndex()] = variable.getVariableName();
     }
-    String[] rowNames = new String[constraints.size()];
-    for (int i = 0; i < constraints.size(); i++) {
-      rowNames[i] = constraints.get(i).getConstraintName();
+    String[] rowNames = new String[matrixBuild.linearConstraints.size()];
+    for (int i = 0; i < matrixBuild.linearConstraints.size(); i++) {
+      rowNames[i] = matrixBuild.linearConstraints.get(i).getConstraintName();
     }
-    dataModel.setVariableNames(variableNames).setRowNames(rowNames).setProblemName(name);
-    return dataModel;
+    nativeProblem.setVariableNames(variableNames).setRowNames(rowNames).setProblemName(name);
+    return nativeProblem;
   }
 
   public Solution solve() {
@@ -223,8 +217,8 @@ public final class Problem implements AutoCloseable {
     SolverSettings actualSettings = settings == null ? new SolverSettings() : settings;
     boolean closeSettings = settings == null;
     addMIPStarts(actualSettings);
-    try (DataModel dataModel = toDataModel()) {
-      Solution solution = dataModel.solve(actualSettings);
+    try (NativeProblem nativeProblem = toNativeProblem()) {
+      Solution solution = nativeProblem.solve(actualSettings);
       populateSolution(solution);
       return solution;
     } finally {
@@ -235,8 +229,8 @@ public final class Problem implements AutoCloseable {
   }
 
   public void writeMPS(String path) {
-    try (DataModel dataModel = toDataModel()) {
-      dataModel.writeMPS(path);
+    try (NativeProblem nativeProblem = toNativeProblem()) {
+      nativeProblem.writeMPS(path);
     }
   }
 
@@ -245,19 +239,19 @@ public final class Problem implements AutoCloseable {
   }
 
   public static Problem read(String path, boolean fixedMPSFormat) {
-    try (DataModel dataModel = DataModel.read(path, fixedMPSFormat)) {
-      return fromDataModel(dataModel);
+    try (NativeProblem nativeProblem = NativeProblem.read(path, fixedMPSFormat)) {
+      return fromNativeProblem(nativeProblem);
     }
   }
 
-  private static Problem fromDataModel(DataModel dataModel) {
-    Problem problem = new Problem(dataModel.getProblemName());
-    double[] lowerBounds = dataModel.getVariableLowerBounds();
-    double[] upperBounds = dataModel.getVariableUpperBounds();
-    byte[] variableTypes = dataModel.getVariableTypes();
-    double[] objectiveCoefficients = dataModel.getObjectiveCoefficients();
-    String[] variableNames = dataModel.getVariableNames();
-    for (int i = 0; i < dataModel.getNumVariables(); i++) {
+  private static Problem fromNativeProblem(NativeProblem nativeProblem) {
+    Problem problem = new Problem(nativeProblem.getProblemName());
+    double[] lowerBounds = nativeProblem.getVariableLowerBounds();
+    double[] upperBounds = nativeProblem.getVariableUpperBounds();
+    byte[] variableTypes = nativeProblem.getVariableTypes();
+    double[] objectiveCoefficients = nativeProblem.getObjectiveCoefficients();
+    String[] variableNames = nativeProblem.getVariableNames();
+    for (int i = 0; i < nativeProblem.getNumVariables(); i++) {
       problem.addVariable(
           lowerBounds[i],
           upperBounds[i],
@@ -266,79 +260,79 @@ public final class Problem implements AutoCloseable {
           variableNames.length > i && !variableNames[i].isEmpty() ? variableNames[i] : "x" + i);
     }
 
-      CSRMatrix matrix = dataModel.getConstraintMatrix();
-      int[] rowOffsets = matrix.getRowOffsets();
-      int[] columnIndices = matrix.getColumnIndices();
-      double[] values = matrix.getValues();
-      byte[] senses = dataModel.getConstraintSense();
-      double[] rhs = dataModel.getConstraintRHS();
-      double[] constraintLowerBounds = dataModel.getConstraintLowerBounds();
-      double[] constraintUpperBounds = dataModel.getConstraintUpperBounds();
-      String[] rowNames = dataModel.getRowNames();
-      for (int row = 0; row < dataModel.getNumConstraints(); row++) {
-        LinearExpression expression = new LinearExpression();
-        for (int p = rowOffsets[row]; p < rowOffsets[row + 1]; p++) {
-          expression = expression.plus(problem.getVariable(columnIndices[p]), values[p]);
-        }
-        ConstraintSense sense = ConstraintSense.fromNative(senses[row]);
-        if (constraintLowerBounds.length > row && constraintUpperBounds.length > row) {
-          if (Double.compare(constraintLowerBounds[row], constraintUpperBounds[row]) == 0) {
-            sense = ConstraintSense.EQ;
-          } else if (Double.compare(constraintLowerBounds[row], rhs[row]) == 0) {
-            sense = ConstraintSense.GE;
-          } else if (Double.compare(constraintUpperBounds[row], rhs[row]) == 0) {
-            sense = ConstraintSense.LE;
-          }
-        }
-        Constraint constraint;
-        switch (sense) {
-          case LE:
-            constraint = expression.le(rhs[row]);
-            break;
-          case GE:
-            constraint = expression.ge(rhs[row]);
-            break;
-          case EQ:
-            constraint = expression.eq(rhs[row]);
-            break;
-          default:
-            throw new IllegalStateException("Unsupported sense " + sense);
-        }
-        problem.addConstraint(
-            constraint,
-            rowNames.length > row && !rowNames[row].isEmpty() ? rowNames[row] : "c" + row);
+    CSRMatrix matrix = nativeProblem.getConstraintMatrix();
+    int[] rowOffsets = matrix.getRowOffsets();
+    int[] columnIndices = matrix.getColumnIndices();
+    double[] values = matrix.getValues();
+    byte[] senses = nativeProblem.getConstraintSense();
+    double[] rhs = nativeProblem.getConstraintRHS();
+    double[] constraintLowerBounds = nativeProblem.getConstraintLowerBounds();
+    double[] constraintUpperBounds = nativeProblem.getConstraintUpperBounds();
+    String[] rowNames = nativeProblem.getRowNames();
+    for (int row = 0; row < nativeProblem.getNumConstraints(); row++) {
+      LinearExpression expression = new LinearExpression();
+      for (int p = rowOffsets[row]; p < rowOffsets[row + 1]; p++) {
+        expression = expression.plus(problem.getVariable(columnIndices[p]), values[p]);
       }
-
-      int[] qOffsets = dataModel.getQuadraticObjectiveOffsets();
-      int[] qIndices = dataModel.getQuadraticObjectiveIndices();
-      double[] qValues = dataModel.getQuadraticObjectiveValues();
-      if (qValues.length == 0) {
-        LinearExpression objective = LinearExpression.ofConstant(dataModel.getObjectiveOffset());
-        for (int i = 0; i < objectiveCoefficients.length; i++) {
-          if (objectiveCoefficients[i] != 0.0) {
-            objective = objective.plus(problem.getVariable(i), objectiveCoefficients[i]);
-          }
+      ConstraintSense sense = ConstraintSense.fromNative(senses[row]);
+      if (constraintLowerBounds.length > row && constraintUpperBounds.length > row) {
+        if (Double.compare(constraintLowerBounds[row], constraintUpperBounds[row]) == 0) {
+          sense = ConstraintSense.EQ;
+        } else if (Double.compare(constraintLowerBounds[row], rhs[row]) == 0) {
+          sense = ConstraintSense.GE;
+        } else if (Double.compare(constraintUpperBounds[row], rhs[row]) == 0) {
+          sense = ConstraintSense.LE;
         }
-        problem.setObjective(objective, dataModel.getObjectiveSense());
-      } else {
-        QuadraticExpression objective =
-            new QuadraticExpression().constant(dataModel.getObjectiveOffset());
-        for (int i = 0; i < objectiveCoefficients.length; i++) {
-          if (objectiveCoefficients[i] != 0.0) {
-            objective = objective.plus(problem.getVariable(i), objectiveCoefficients[i]);
-          }
-        }
-        for (int row = 0; row + 1 < qOffsets.length; row++) {
-          for (int p = qOffsets[row]; p < qOffsets[row + 1]; p++) {
-            objective =
-                objective.plus(
-                    problem.getVariable(row), problem.getVariable(qIndices[p]), qValues[p]);
-          }
-        }
-        problem.setObjective(objective, dataModel.getObjectiveSense());
       }
+      Constraint constraint;
+      switch (sense) {
+        case LE:
+          constraint = expression.le(rhs[row]);
+          break;
+        case GE:
+          constraint = expression.ge(rhs[row]);
+          break;
+        case EQ:
+          constraint = expression.eq(rhs[row]);
+          break;
+        default:
+          throw new IllegalStateException("Unsupported sense " + sense);
+      }
+      problem.addConstraint(
+          constraint,
+          rowNames.length > row && !rowNames[row].isEmpty() ? rowNames[row] : "c" + row);
+    }
 
-    for (QuadraticConstraint quadraticConstraint : dataModel.getQuadraticConstraints()) {
+    int[] qOffsets = nativeProblem.getQuadraticObjectiveOffsets();
+    int[] qIndices = nativeProblem.getQuadraticObjectiveIndices();
+    double[] qValues = nativeProblem.getQuadraticObjectiveValues();
+    if (qValues.length == 0) {
+      LinearExpression objective = LinearExpression.ofConstant(nativeProblem.getObjectiveOffset());
+      for (int i = 0; i < objectiveCoefficients.length; i++) {
+        if (objectiveCoefficients[i] != 0.0) {
+          objective = objective.plus(problem.getVariable(i), objectiveCoefficients[i]);
+        }
+      }
+      problem.setObjective(objective, nativeProblem.getObjectiveSense());
+    } else {
+      QuadraticExpression objective =
+          new QuadraticExpression().constant(nativeProblem.getObjectiveOffset());
+      for (int i = 0; i < objectiveCoefficients.length; i++) {
+        if (objectiveCoefficients[i] != 0.0) {
+          objective = objective.plus(problem.getVariable(i), objectiveCoefficients[i]);
+        }
+      }
+      for (int row = 0; row + 1 < qOffsets.length; row++) {
+        for (int p = qOffsets[row]; p < qOffsets[row + 1]; p++) {
+          objective =
+              objective.plus(
+                  problem.getVariable(row), problem.getVariable(qIndices[p]), qValues[p]);
+        }
+      }
+      problem.setObjective(objective, nativeProblem.getObjectiveSense());
+    }
+
+    for (QuadraticConstraint quadraticConstraint : nativeProblem.getQuadraticConstraints()) {
       QuadraticExpression expression = new QuadraticExpression();
       double[] linearValues = quadraticConstraint.getLinearValues();
       int[] linearIndices = quadraticConstraint.getLinearIndices();
@@ -367,14 +361,14 @@ public final class Problem implements AutoCloseable {
   }
 
   public static Problem readMPS(String path, boolean fixedMPSFormat) {
-    try (DataModel dataModel = DataModel.parseMPS(path, fixedMPSFormat)) {
-      return fromDataModel(dataModel);
+    try (NativeProblem nativeProblem = NativeProblem.parseMPS(path, fixedMPSFormat)) {
+      return fromNativeProblem(nativeProblem);
     }
   }
 
   @Override
   public void close() {
-    // Problem owns no native handle; DataModel and Solution carry native lifetimes.
+    // Problem is a Java-side model; native handles are scoped to solve/read/write calls.
   }
 
   public void update() {

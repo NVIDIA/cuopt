@@ -46,52 +46,9 @@ High-level problem
 returns the common ``ObjectiveExpression`` type; ``isQuadratic`` distinguishes
 the concrete linear and quadratic forms without an ``Object`` downcast.
 
-Deprecated low-level problem representation
--------------------------------------------
-
-.. deprecated:: 26.08
-   Use ``Problem``. ``DataModel`` remains temporarily available for code that
-   requires direct access to native CSR and quadratic data.
-
-Create the deprecated representation with one of the following factories:
-
-.. code-block:: java
-
-   DataModel.createProblem(
-       numConstraints, numVariables, objectiveSense, objectiveOffset,
-       objectiveCoefficients, constraintMatrix, constraintSense, rhs,
-       variableLowerBounds, variableUpperBounds, variableTypes);
-
-   DataModel.createRangedProblem(
-       numConstraints, numVariables, objectiveSense, objectiveOffset,
-       objectiveCoefficients, constraintMatrix, constraintLowerBounds,
-       constraintUpperBounds, variableLowerBounds, variableUpperBounds,
-       variableTypes);
-
 ``CSRMatrix`` takes ``values``, ``columnIndices``, and ``rowOffsets`` in the
-same order as the lower-level cuOpt CSR setter. The arrays are available
-through ``getValues``, ``getColumnIndices``, and ``getRowOffsets``.
-
-The mutable ``DataModel`` setters cover:
-
-* objective sense, coefficients, offset, and scaling factor;
-* linear constraint CSR arrays, row types, RHS, and ranged bounds;
-* variable bounds, types, names, and row names;
-* objective and problem names;
-* initial primal and dual solutions; and
-* quadratic objective matrices and quadratic constraints.
-
-The corresponding getters include ``getConstraintMatrix``,
-``getConstraintMatrixValues``, ``getConstraintMatrixIndices``,
-``getConstraintMatrixOffsets``, ``getConstraintRHS``,
-``getConstraintLowerBounds``, ``getConstraintUpperBounds``,
-``getQuadraticObjectiveValues``, ``getQuadraticObjectiveIndices``,
-``getQuadraticObjectiveOffsets``, ``getQuadraticConstraints``,
-``getVariableNames``, ``getRowNames``, ``getObjectiveName``,
-``getProblemName``, ``getProblemCategory``, and ``toDict``.
-
-Use ``clearQuadraticConstraints`` to remove all quadratic constraints from the
-mutable representation. ``DataModel`` implements ``AutoCloseable``.
+same order used by cuOpt CSR arrays. The arrays are available through
+``getValues``, ``getColumnIndices``, and ``getRowOffsets``.
 
 Variables, expressions, and constraints
 ----------------------------------------
@@ -179,9 +136,8 @@ MPS and errors
 --------------
 
 ``Problem.read`` and ``Problem.readMPS`` support MPS/QPS parsing, including a
-fixed-format boolean overload. The deprecated ``DataModel`` equivalents are
-``DataModel.read`` and ``DataModel.parseMPS``. ``writeMPS`` writes a problem
-for round trips or use by another cuOpt interface.
+fixed-format boolean overload. ``writeMPS`` writes a problem for round trips
+or use by another cuOpt interface.
 
 Native failures are reported as ``CuOptException`` with a cuOpt status code
 available through ``getStatusCode``. Accessing an LP-only field on a MIP

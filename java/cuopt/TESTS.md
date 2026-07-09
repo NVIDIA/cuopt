@@ -9,8 +9,8 @@ The Java module has three test classes under
 `src/test/java/com/nvidia/cuopt/mathematicalprogramming`:
 
 - `ProblemModelingTest`: five pure Java modeling tests.
-- `NativeIntegrationTest`: nine JNI/native cuOpt smoke and lifecycle tests.
-- `DataModelIntegrationTest`: ten standalone Java problem and solve tests.
+- `NativeIntegrationTest`: seven JNI/native cuOpt smoke tests.
+- `ProblemIntegrationTest`: ten standalone Java problem and solve tests.
 
 The suite has no dependency on the cuOpt Python interface.
 
@@ -28,7 +28,7 @@ bash scripts/test.sh
 To run one test class:
 
 ```bash
-bash scripts/test.sh -Dtest=DataModelIntegrationTest
+bash scripts/test.sh -Dtest=ProblemIntegrationTest
 ```
 
 When invoking Maven directly, build the JNI library first and provide the
@@ -49,18 +49,18 @@ category mapping, expression construction, CSR generation, duplicate-term
 merging, problem updates, relaxation, and quadratic inspection without loading
 the native library.
 
-`NativeIntegrationTest` covers settings, setting-file round trips, mutable
-data-model fields, LP/MILP/QP solves, solution statistics, native lifecycle,
-error propagation, and MPS read/write paths.
+`NativeIntegrationTest` covers settings, setting-file round trips, LP/MILP/QP
+solves, solution statistics, error propagation, and MPS read/write paths.
 
-`DataModelIntegrationTest` constructs ten LP, MILP, and QP cases entirely in
-Java. Each dynamic test verifies that problem data round-trips through JNI. The
-LP/MILP cases also check solve status, variable bounds, integrality, constraint
-feasibility, objective values, and type-specific solution behavior. The QP
-case verifies quadratic-objective and quadratic-constraint marshalling; QP
-solve callability is covered by `NativeIntegrationTest`. The cases cover
-minimization and maximization, equality and ranged constraints, mixed bounds,
-mixed integer/continuous variables, metadata, and infeasibility.
+`ProblemIntegrationTest` constructs ten LP, MILP, and QP cases entirely in
+Java. Each dynamic test verifies the public `Problem` model built from the
+case data. The LP/MILP cases also check solve status, variable bounds,
+integrality, constraint feasibility, objective values, and type-specific
+solution behavior. The QP case verifies quadratic-objective and
+quadratic-constraint construction; QP solve callability is covered by
+`NativeIntegrationTest`. The cases cover minimization and maximization,
+equality and ranged constraints, mixed bounds, mixed integer/continuous
+variables, metadata, and infeasibility.
 
 ## Prerequisite behavior
 
