@@ -9,7 +9,6 @@
 
 #include <memory>
 #include <optional>
-#include <string>
 #include <vector>
 
 #include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
