@@ -563,7 +563,7 @@ cdef class DataModel:
         )
 
     def set_order_prizes(self, prizes):
-        self.order_prizes = prizes.astype(np.dtype(np.float32))
+        self.order_prizes = type_cast(prizes, np.float32, "order_prizes")
 
         cdef uintptr_t c_prizes = (
             self.order_prizes.__cuda_array_interface__['data'][0]
