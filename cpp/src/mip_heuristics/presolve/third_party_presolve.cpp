@@ -57,7 +57,6 @@ namespace cuopt::mathematical_optimization::mip {
 
 // Backend-agnostic normalisation of the mutable presolve fields:
 //   * sign-flip `obj_coeffs` / `objective_offset` when maximise,
-//   * fill `var_lb` / `var_ub` with ±inf when the mps left them empty,
 //   * materialise ranged `constr_lb` / `constr_ub` from `row_types` +
 //     `constraint_bounds` when the ranged pair is absent from the mps.
 //
@@ -78,10 +77,6 @@ void normalize_for_presolve(io::mps_data_model_t<i_t, f_t> const& mps,
     }
     objective_offset = -objective_offset;
   }
-
-  const i_t n_cols = mps.get_n_variables();
-  if (var_lb.empty()) { var_lb.assign(n_cols, -std::numeric_limits<f_t>::infinity()); }
-  if (var_ub.empty()) { var_ub.assign(n_cols, std::numeric_limits<f_t>::infinity()); }
 
   if (constr_lb.empty() && constr_ub.empty()) {
     const auto& row_types         = mps.get_row_types();
@@ -382,7 +377,8 @@ third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_pslp(
     f_t objective_offset = mps.get_objective_offset();
     normalize_for_presolve<i_t, f_t>(
       mps, maximize_, obj_coeffs, objective_offset, var_lb, var_ub, constr_lb, constr_ub);
-
+    if (var_lb.empty()) { var_lb.assign(n_cols, -std::numeric_limits<f_t>::infinity()); }
+    if (var_ub.empty()) { var_ub.assign(n_cols, std::numeric_limits<f_t>::infinity()); }
     const auto& coefficients = mps.get_constraint_matrix_values();
     const auto& indices      = mps.get_constraint_matrix_indices();
     const auto& offsets      = mps.get_constraint_matrix_offsets();
