@@ -128,6 +128,13 @@ def prepare_matrix(mat, name):
             name + " must be a numpy array, pandas DataFrame, or cudf "
             "DataFrame; got " + type(mat).__name__
         )
+    # Warn on a non-float source dtype, matching type_cast's behavior for the
+    # vector setters (the matrix target dtype is always float32).
+    if not np.issubdtype(arr.dtype, np.floating):
+        warnings.warn(
+            "Casting " + name + " from " + str(arr.dtype) + " to "
+            + str(np.dtype(np.float32))
+        )
     arr = arr.astype(np.float32, copy=False)
     # No-op when arr is already C-contiguous (e.g. numpy input); reorders only
     # the column-major cudf case.
