@@ -37,6 +37,7 @@
 #endif
 
 #include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/presolve/gf2_presolve.hpp>
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
@@ -47,149 +48,144 @@
 #include <raft/core/nvtx.hpp>
 
 #include <limits>
+#include <span>
 #include <string>
 #include <tuple>
 #include <unordered_map>
 
 namespace cuopt::mathematical_optimization::mip {
 
-// Host-only gather for PSLP from an mps_data_model.
-// Used by the mps-facing entry point: apply_presolve_from_mps_data()
+// Backend-agnostic normalisation of the mutable presolve fields:
+//   * sign-flip `obj_coeffs` / `objective_offset` when maximise,
+//   * fill `var_lb` / `var_ub` with ±inf when the mps left them empty,
+//   * materialise ranged `constr_lb` / `constr_ub` from `row_types` +
+//     `constraint_bounds` when the ranged pair is absent from the mps.
+//
+// Precondition: the caller has already copy-initialised each vector from with mps data
 template <typename i_t, typename f_t>
-pslp_input_t<i_t, f_t> build_pslp_host_arrays_from_mps_data(
-  const io::mps_data_model_t<i_t, f_t>& mps)
+void normalize_for_presolve(io::mps_data_model_t<i_t, f_t> const& mps,
+                            bool maximize,
+                            std::vector<f_t>& obj_coeffs,
+                            f_t& objective_offset,
+                            std::vector<f_t>& var_lb,
+                            std::vector<f_t>& var_ub,
+                            std::vector<f_t>& constr_lb,
+                            std::vector<f_t>& constr_ub)
 {
-  raft::common::nvtx::range fun_scope("Build PSLP host arrays from mps_data_model");
-
-  pslp_input_t<i_t, f_t> arrays;
-  arrays.n_cols = mps.get_n_variables();
-  arrays.n_rows = mps.get_n_constraints();
-  arrays.nnz    = mps.get_nnz();
-
-  arrays.coefficients      = mps.get_constraint_matrix_values();
-  arrays.indices           = mps.get_constraint_matrix_indices();
-  arrays.offsets           = mps.get_constraint_matrix_offsets();
-  arrays.obj_coeffs        = mps.get_objective_coefficients();
-  arrays.var_lb            = mps.get_variable_lower_bounds();
-  arrays.var_ub            = mps.get_variable_upper_bounds();
-  arrays.constr_lb         = mps.get_constraint_lower_bounds();
-  arrays.constr_ub         = mps.get_constraint_upper_bounds();
-  arrays.constraint_bounds = mps.get_constraint_bounds();
-  arrays.row_types         = mps.get_row_types();
-
-  return arrays;
-}
-
-template <typename i_t, typename f_t>
-struct papilo_problem_input_t {
-  i_t num_cols{0};
-  i_t num_rows{0};
-  i_t nnz{0};
-  f_t objective_offset{0};
-  std::vector<f_t> coefficients;
-  std::vector<i_t> offsets;
-  std::vector<i_t> variables;
-  std::vector<f_t> obj_coeffs;
-  std::vector<f_t> var_lb;
-  std::vector<f_t> var_ub;
-  std::vector<f_t> constr_lb;
-  std::vector<f_t> constr_ub;
-  std::vector<f_t> constraint_bounds;
-  std::vector<char> row_types;
-  std::vector<var_t> var_types;
-  std::vector<std::string> variable_names;
-
-  void normalize(bool maximize)
-  {
-    if (maximize) {
-      for (auto& c : obj_coeffs)
-        c = -c;
-      objective_offset = -objective_offset;
+  if (maximize) {
+    for (auto& c : obj_coeffs) {
+      c = -c;
     }
+    objective_offset = -objective_offset;
+  }
 
-    if (constr_lb.empty() && constr_ub.empty()) {
-      for (size_t i = 0; i < row_types.size(); ++i) {
-        if (row_types[i] == 'L') {
-          constr_lb.push_back(-std::numeric_limits<f_t>::infinity());
-          constr_ub.push_back(constraint_bounds[i]);
-        } else if (row_types[i] == 'G') {
-          constr_lb.push_back(constraint_bounds[i]);
-          constr_ub.push_back(std::numeric_limits<f_t>::infinity());
-        } else if (row_types[i] == 'E') {
-          constr_lb.push_back(constraint_bounds[i]);
-          constr_ub.push_back(constraint_bounds[i]);
-        }
+  const i_t n_cols = mps.get_n_variables();
+  if (var_lb.empty()) { var_lb.assign(n_cols, -std::numeric_limits<f_t>::infinity()); }
+  if (var_ub.empty()) { var_ub.assign(n_cols, std::numeric_limits<f_t>::infinity()); }
+
+  if (constr_lb.empty() && constr_ub.empty()) {
+    const auto& row_types         = mps.get_row_types();
+    const auto& constraint_bounds = mps.get_constraint_bounds();
+    for (size_t i = 0; i < row_types.size(); ++i) {
+      if (row_types[i] == 'L') {
+        constr_lb.push_back(-std::numeric_limits<f_t>::infinity());
+        constr_ub.push_back(constraint_bounds[i]);
+      } else if (row_types[i] == 'G') {
+        constr_lb.push_back(constraint_bounds[i]);
+        constr_ub.push_back(std::numeric_limits<f_t>::infinity());
+      } else if (row_types[i] == 'E') {
+        constr_lb.push_back(constraint_bounds[i]);
+        constr_ub.push_back(constraint_bounds[i]);
       }
     }
   }
-};
+}
 
+// Build a papilo::Problem
 template <typename i_t, typename f_t>
-papilo::Problem<f_t> build_papilo_problem_from_host(papilo_problem_input_t<i_t, f_t>& input,
-                                                    problem_category_t category,
-                                                    bool maximize)
+papilo::Problem<f_t> build_papilo_problem(io::mps_data_model_t<i_t, f_t> const& mps,
+                                          bool maximize,
+                                          problem_category_t category)
 {
+  raft::common::nvtx::range fun_scope("Build papilo::Problem from mps_data_model");
+
+  const i_t n_cols = mps.get_n_variables();
+  const i_t n_rows = mps.get_n_constraints();
+  const i_t nnz    = mps.get_nnz();
+
+  std::vector<f_t> obj_coeffs(mps.get_objective_coefficients());
+  std::vector<f_t> var_lb(mps.get_variable_lower_bounds());
+  std::vector<f_t> var_ub(mps.get_variable_upper_bounds());
+  std::vector<f_t> constr_lb(mps.get_constraint_lower_bounds());
+  std::vector<f_t> constr_ub(mps.get_constraint_upper_bounds());
+  f_t objective_offset = mps.get_objective_offset();
+  normalize_for_presolve<i_t, f_t>(
+    mps, maximize, obj_coeffs, objective_offset, var_lb, var_ub, constr_lb, constr_ub);
+
+  const auto& coefficients   = mps.get_constraint_matrix_values();
+  const auto& indices        = mps.get_constraint_matrix_indices();
+  const auto& offsets        = mps.get_constraint_matrix_offsets();
+  const auto& variable_names = mps.get_variable_names();
+  const auto& mps_var_types  = mps.get_variable_types();
+
   papilo::ProblemBuilder<f_t> builder;
+  builder.reserve(nnz, n_rows, n_cols);
+  builder.setNumCols(n_cols);
+  builder.setNumRows(n_rows);
+  builder.setObjAll(obj_coeffs);
+  builder.setObjOffset(objective_offset);
 
-  input.normalize(maximize);
-
-  builder.reserve(input.nnz, input.num_rows, input.num_cols);
-  builder.setNumCols(input.num_cols);
-  builder.setNumRows(input.num_rows);
-
-  builder.setObjAll(input.obj_coeffs);
-  builder.setObjOffset(input.objective_offset);
-
-  if (!input.var_lb.empty() && !input.var_ub.empty()) {
-    builder.setColLbAll(input.var_lb);
-    builder.setColUbAll(input.var_ub);
-    if (input.variable_names.size() == static_cast<size_t>(input.num_cols)) {
-      builder.setColNameAll(input.variable_names);
+  if (!var_lb.empty() && !var_ub.empty()) {
+    builder.setColLbAll(var_lb);
+    builder.setColUbAll(var_ub);
+    if (variable_names.size() == static_cast<size_t>(n_cols)) {
+      builder.setColNameAll(variable_names);
     }
   }
 
   if (category == problem_category_t::MIP) {
-    for (size_t i = 0; i < input.var_types.size(); ++i) {
-      builder.setColIntegral(i, input.var_types[i] == var_t::INTEGER);
+    for (size_t i = 0; i < mps_var_types.size(); ++i) {
+      builder.setColIntegral(i, char_to_var_type(mps_var_types[i]) == var_t::INTEGER);
     }
   }
 
-  if (!input.constr_lb.empty() && !input.constr_ub.empty()) {
-    builder.setRowLhsAll(input.constr_lb);
-    builder.setRowRhsAll(input.constr_ub);
+  if (!constr_lb.empty() && !constr_ub.empty()) {
+    builder.setRowLhsAll(constr_lb);
+    builder.setRowRhsAll(constr_ub);
   }
 
-  std::vector<papilo::RowFlags> h_row_flags(input.constr_lb.size());
+  std::vector<papilo::RowFlags> h_row_flags(constr_lb.size());
   std::vector<std::tuple<i_t, i_t, f_t>> h_entries;
-  for (size_t i = 0; i < input.constr_lb.size(); ++i) {
-    i_t row_start   = input.offsets[i];
-    i_t row_end     = input.offsets[i + 1];
-    i_t num_entries = row_end - row_start;
+  for (size_t i = 0; i < constr_lb.size(); ++i) {
+    const i_t row_start   = offsets[i];
+    const i_t row_end     = offsets[i + 1];
+    const i_t num_entries = row_end - row_start;
     for (size_t j = 0; j < num_entries; ++j) {
-      h_entries.push_back(
-        std::make_tuple(i, input.variables[row_start + j], input.coefficients[row_start + j]));
+      h_entries.push_back(std::make_tuple(i, indices[row_start + j], coefficients[row_start + j]));
     }
 
-    if (input.constr_lb[i] == -std::numeric_limits<f_t>::infinity()) {
+    if (constr_lb[i] == -std::numeric_limits<f_t>::infinity()) {
       h_row_flags[i].set(papilo::RowFlag::kLhsInf);
     } else {
       h_row_flags[i].unset(papilo::RowFlag::kLhsInf);
     }
-    if (input.constr_ub[i] == std::numeric_limits<f_t>::infinity()) {
+    if (constr_ub[i] == std::numeric_limits<f_t>::infinity()) {
       h_row_flags[i].set(papilo::RowFlag::kRhsInf);
     } else {
       h_row_flags[i].unset(papilo::RowFlag::kRhsInf);
     }
 
-    if (input.constr_lb[i] == -std::numeric_limits<f_t>::infinity()) { input.constr_lb[i] = 0; }
-    if (input.constr_ub[i] == std::numeric_limits<f_t>::infinity()) { input.constr_ub[i] = 0; }
+    // Papilo stores finite dummies in place of ±inf; the flags above are the
+    // source of truth for infinity. Zero out the dummies before setConstraintMatrix.
+    if (constr_lb[i] == -std::numeric_limits<f_t>::infinity()) { constr_lb[i] = 0; }
+    if (constr_ub[i] == std::numeric_limits<f_t>::infinity()) { constr_ub[i] = 0; }
   }
 
-  for (size_t i = 0; i < input.var_lb.size(); ++i) {
-    builder.setColLbInf(i, input.var_lb[i] == -std::numeric_limits<f_t>::infinity());
-    builder.setColUbInf(i, input.var_ub[i] == std::numeric_limits<f_t>::infinity());
-    if (input.var_lb[i] == -std::numeric_limits<f_t>::infinity()) { builder.setColLb(i, 0); }
-    if (input.var_ub[i] == std::numeric_limits<f_t>::infinity()) { builder.setColUb(i, 0); }
+  for (size_t i = 0; i < var_lb.size(); ++i) {
+    builder.setColLbInf(i, var_lb[i] == -std::numeric_limits<f_t>::infinity());
+    builder.setColUbInf(i, var_ub[i] == std::numeric_limits<f_t>::infinity());
+    if (var_lb[i] == -std::numeric_limits<f_t>::infinity()) { builder.setColLb(i, 0); }
+    if (var_ub[i] == std::numeric_limits<f_t>::infinity()) { builder.setColUb(i, 0); }
   }
 
   auto problem = builder.build();
@@ -199,8 +195,8 @@ papilo::Problem<f_t> build_papilo_problem_from_host(papilo_problem_input_t<i_t, 
     const double spare_ratio            = category == problem_category_t::MIP ? 4.0 : 2.0;
     const int min_inter_row_space       = category == problem_category_t::MIP ? 30 : 4;
     auto csr_storage                    = papilo::SparseStorage<f_t>(
-      h_entries, input.num_rows, input.num_cols, sorted_entries, spare_ratio, min_inter_row_space);
-    problem.setConstraintMatrix(csr_storage, input.constr_lb, input.constr_ub, h_row_flags);
+      h_entries, n_rows, n_cols, sorted_entries, spare_ratio, min_inter_row_space);
+    problem.setConstraintMatrix(csr_storage, constr_lb, constr_ub, h_row_flags);
 
     papilo::ConstraintMatrix<f_t>& matrix = problem.getConstraintMatrix();
     for (int i = 0; i < problem.getNRows(); ++i) {
@@ -214,132 +210,160 @@ papilo::Problem<f_t> build_papilo_problem_from_host(papilo_problem_input_t<i_t, 
   return problem;
 }
 
-// Host-only gather + papilo::Problem construction from an mps_data_model.
-// Used by the mps-facing entry point: apply_presolve_from_mps_data()
 template <typename i_t, typename f_t>
-papilo::Problem<f_t> build_papilo_problem_from_mps_data(const io::mps_data_model_t<i_t, f_t>& mps,
-                                                        problem_category_t category,
-                                                        bool maximize)
+third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_pslp(
+  io::mps_data_model_t<i_t, f_t> const& mps, double time_limit)
 {
-  raft::common::nvtx::range fun_scope("Build papilo problem from mps_data_model");
+  raft::common::nvtx::range fun_scope("Apply PSLP presolver on host");
 
-  papilo_problem_input_t<i_t, f_t> input;
-  input.num_cols          = mps.get_n_variables();
-  input.num_rows          = mps.get_n_constraints();
-  input.nnz               = mps.get_nnz();
-  input.objective_offset  = mps.get_objective_offset();
-  input.coefficients      = mps.get_constraint_matrix_values();
-  input.offsets           = mps.get_constraint_matrix_offsets();
-  input.variables         = mps.get_constraint_matrix_indices();
-  input.obj_coeffs        = mps.get_objective_coefficients();
-  input.var_lb            = mps.get_variable_lower_bounds();
-  input.var_ub            = mps.get_variable_upper_bounds();
-  input.constr_lb         = mps.get_constraint_lower_bounds();
-  input.constr_ub         = mps.get_constraint_upper_bounds();
-  input.constraint_bounds = mps.get_constraint_bounds();
-  input.row_types         = mps.get_row_types();
-  input.variable_names    = mps.get_variable_names();
+  cuopt_expects(std::is_same_v<f_t, double>,
+                error_type_t::ValidationError,
+                "PSLP presolver only supports double precision");
 
-  const auto& variable_types = mps.get_variable_types();
-  input.var_types.reserve(variable_types.size());
-  for (auto variable_type : variable_types) {
-    input.var_types.push_back(char_to_var_type(variable_type));
-  }
+  const i_t n_cols = mps.get_n_variables();
+  const i_t n_rows = mps.get_n_constraints();
+  const i_t nnz    = mps.get_nnz();
 
-  return build_papilo_problem_from_host(input, category, maximize);
+  // Local owned copies of the fields that need mutation (sign flip on
+  // maximise / ±inf fill for empty bounds / row_types materialisation);
+  // matrix arrays are read straight from mps below (const&).
+  std::vector<f_t> obj_coeffs(mps.get_objective_coefficients());
+  std::vector<f_t> var_lb(mps.get_variable_lower_bounds());
+  std::vector<f_t> var_ub(mps.get_variable_upper_bounds());
+  std::vector<f_t> constr_lb(mps.get_constraint_lower_bounds());
+  std::vector<f_t> constr_ub(mps.get_constraint_upper_bounds());
+  f_t objective_offset = mps.get_objective_offset();
+  normalize_for_presolve<i_t, f_t>(
+    mps, maximize_, obj_coeffs, objective_offset, var_lb, var_ub, constr_lb, constr_ub);
+
+  const auto& coefficients = mps.get_constraint_matrix_values();
+  const auto& indices      = mps.get_constraint_matrix_indices();
+  const auto& offsets      = mps.get_constraint_matrix_offsets();
+
+  Settings* settings = default_settings();
+  settings->verbose  = false;
+  settings->max_time = time_limit;
+
+  auto start_time      = std::chrono::high_resolution_clock::now();
+  Presolver* presolver = new_presolver(coefficients.data(),
+                                       indices.data(),
+                                       offsets.data(),
+                                       n_rows,
+                                       n_cols,
+                                       nnz,
+                                       constr_lb.data(),
+                                       constr_ub.data(),
+                                       var_lb.data(),
+                                       var_ub.data(),
+                                       obj_coeffs.data(),
+                                       settings);
+  assert(presolver != nullptr && "Presolver initialization failed");
+  const PresolveStatus pslp_status = run_presolver(presolver);
+  auto end_time                    = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+  CUOPT_LOG_DEBUG("PSLP presolver time: %d milliseconds", duration.count());
+  CUOPT_LOG_INFO("PSLP Presolved problem: %d constraints, %d variables, %d non-zeros",
+                 presolver->stats->n_rows_reduced,
+                 presolver->stats->n_cols_reduced,
+                 presolver->stats->nnz_reduced);
+
+  // Free previously allocated presolver and settings (if any) and stash the
+  // new ones so undo_pslp_host / build_reduced_mps_from_pslp can find them later.
+  if (pslp_presolver_ != nullptr) { free_presolver(pslp_presolver_); }
+  if (pslp_stgs_ != nullptr) { free_settings(pslp_stgs_); }
+  pslp_presolver_ = presolver;
+  pslp_stgs_      = settings;
+
+  return convert_pslp_presolve_status_to_third_party_presolve_status(pslp_status);
 }
 
-// Host-only result builder: write a (reduced) PSLP presolver state into a
-// fresh mps_data_model_t.
+// Reduced mps_data_model builders (one per backend). No intermediate view —
+// each backend reads its own internal state and writes straight into a fresh
+// mps_data_model_t. mps setters copy from the given spans/vectors into their
+// internal owned storage, so the locals here can safely die on return.
+
 template <typename i_t, typename f_t>
-io::mps_data_model_t<i_t, f_t> build_mps_data_from_pslp(Presolver* pslp_presolver,
-                                                        bool maximize,
-                                                        f_t original_obj_offset)
+io::mps_data_model_t<i_t, f_t> build_reduced_mps_from_pslp(Presolver* pslp_presolver,
+                                                           bool maximize,
+                                                           f_t original_obj_offset)
 {
   raft::common::nvtx::range fun_scope("Build mps_data_model from PSLP");
   io::mps_data_model_t<i_t, f_t> mps;
 
-  if constexpr (std::is_same_v<f_t, double>) {
-    cuopt_expects(pslp_presolver != nullptr && pslp_presolver->reduced_prob != nullptr,
-                  error_type_t::RuntimeError,
-                  "PSLP presolver is not initialized");
-    auto reduced_prob = pslp_presolver->reduced_prob;
-    const i_t n_rows  = reduced_prob->m;
-    const i_t n_cols  = reduced_prob->n;
-    const i_t nnz     = reduced_prob->nnz;
-    f_t obj_offset    = reduced_prob->obj_offset;
-
-    obj_offset = maximize ? -obj_offset : obj_offset;
-    // PSLP does not allow setting an objective offset, so we fold the
-    // original input's offset into the reduced one.
-    obj_offset += original_obj_offset;
-    mps.set_objective_offset(obj_offset);
+    auto* reduced    = pslp_presolver->reduced_prob;
+    const i_t n_rows = static_cast<i_t>(reduced->m);
+    const i_t n_cols = static_cast<i_t>(reduced->n);
+    const i_t nnz    = static_cast<i_t>(reduced->nnz);
+    // PSLP folds the sign flip into obj_offset for maximise problems, and does
+    // not track the original mps's objective offset — put both back.
+    const f_t obj_offset =
+      (maximize ? -reduced->obj_offset : reduced->obj_offset) + original_obj_offset;
     mps.set_maximize(maximize);
+    mps.set_objective_offset(obj_offset);
 
     if (n_cols == 0 && n_rows == 0) {
-      std::vector<i_t> empty_offsets = {0};
+      std::vector<i_t> empty_offsets{0};
       mps.set_csr_constraint_matrix(
         {}, {}, std::span<const i_t>(empty_offsets.data(), empty_offsets.size()));
       return mps;
     }
 
     mps.set_csr_constraint_matrix(
-      std::span<const f_t>(reduced_prob->Ax, static_cast<size_t>(nnz)),
-      std::span<const i_t>(reduced_prob->Ai, static_cast<size_t>(nnz)),
-      std::span<const i_t>(reduced_prob->Ap, static_cast<size_t>(n_rows + 1)));
+      std::span<const f_t>(reduced->Ax, static_cast<size_t>(nnz)),
+      std::span<const i_t>(reduced->Ai, static_cast<size_t>(nnz)),
+      std::span<const i_t>(reduced->Ap, static_cast<size_t>(n_rows + 1)));
 
-    std::vector<f_t> h_obj_coeffs(reduced_prob->c, reduced_prob->c + n_cols);
     if (maximize) {
-      for (auto& c : h_obj_coeffs)
+      std::vector<f_t> h_obj_coeffs(reduced->c, reduced->c + n_cols);
+      for (auto& c : h_obj_coeffs) {
         c = -c;
+      }
+      mps.set_objective_coefficients(
+        std::span<const f_t>(h_obj_coeffs.data(), h_obj_coeffs.size()));
+    } else {
+      mps.set_objective_coefficients(std::span<const f_t>(reduced->c, static_cast<size_t>(n_cols)));
     }
-    mps.set_objective_coefficients(std::span<const f_t>(h_obj_coeffs.data(), h_obj_coeffs.size()));
     mps.set_constraint_lower_bounds(
-      std::span<const f_t>(reduced_prob->lhs, static_cast<size_t>(n_rows)));
+      std::span<const f_t>(reduced->lhs, static_cast<size_t>(n_rows)));
     mps.set_constraint_upper_bounds(
-      std::span<const f_t>(reduced_prob->rhs, static_cast<size_t>(n_rows)));
-    mps.set_variable_lower_bounds(
-      std::span<const f_t>(reduced_prob->lbs, static_cast<size_t>(n_cols)));
-    mps.set_variable_upper_bounds(
-      std::span<const f_t>(reduced_prob->ubs, static_cast<size_t>(n_cols)));
-  } else {
-    cuopt_expects(false, error_type_t::ValidationError, "PSLP only supports double precision");
-  }
+      std::span<const f_t>(reduced->rhs, static_cast<size_t>(n_rows)));
+    mps.set_variable_lower_bounds(std::span<const f_t>(reduced->lbs, static_cast<size_t>(n_cols)));
+    mps.set_variable_upper_bounds(std::span<const f_t>(reduced->ubs, static_cast<size_t>(n_cols)));
+
   return mps;
 }
 
-// Host-only result builder: write the (reduced) papilo::Problem into a fresh
-// mps_data_model_t.
 template <typename i_t, typename f_t>
-io::mps_data_model_t<i_t, f_t> build_mps_data_from_papilo(
+io::mps_data_model_t<i_t, f_t> build_reduced_mps_from_papilo(
   papilo::Problem<f_t> const& papilo_problem, bool maximize)
 {
-  raft::common::nvtx::range fun_scope("Build mps_data_model from papilo");
+  raft::common::nvtx::range fun_scope("Reduced mps <- Papilo");
   io::mps_data_model_t<i_t, f_t> mps;
 
   auto obj = papilo_problem.getObjective();
-  mps.set_objective_offset(maximize ? -obj.offset : obj.offset);
   mps.set_maximize(maximize);
+  mps.set_objective_offset(maximize ? -obj.offset : obj.offset);
 
   if (papilo_problem.getNRows() == 0 && papilo_problem.getNCols() == 0) {
-    std::vector<i_t> h_offsets{0};
-    mps.set_csr_constraint_matrix({}, {}, std::span<const i_t>(h_offsets.data(), h_offsets.size()));
+    std::vector<i_t> empty_offsets{0};
+    mps.set_csr_constraint_matrix(
+      {}, {}, std::span<const i_t>(empty_offsets.data(), empty_offsets.size()));
     return mps;
   }
+
   if (maximize) {
-    for (size_t i = 0; i < obj.coefficients.size(); ++i) {
-      obj.coefficients[i] = -obj.coefficients[i];
+    for (auto& c : obj.coefficients) {
+      c = -c;
     }
   }
   mps.set_objective_coefficients(
     std::span<const f_t>(obj.coefficients.data(), obj.coefficients.size()));
 
   auto& constraint_matrix = papilo_problem.getConstraintMatrix();
-  auto row_lower          = constraint_matrix.getLeftHandSides();
-  auto row_upper          = constraint_matrix.getRightHandSides();
-  auto col_lower          = papilo_problem.getLowerBounds();
-  auto col_upper          = papilo_problem.getUpperBounds();
 
+  // Row bounds: copy out (papilo returns by value) then substitute ±inf per flag.
+  auto row_lower = constraint_matrix.getLeftHandSides();
+  auto row_upper = constraint_matrix.getRightHandSides();
   auto row_flags = constraint_matrix.getRowFlags();
   for (size_t i = 0; i < row_flags.size(); i++) {
     if (row_flags[i].test(papilo::RowFlag::kLhsInf)) {
@@ -349,28 +373,29 @@ io::mps_data_model_t<i_t, f_t> build_mps_data_from_papilo(
       row_upper[i] = std::numeric_limits<f_t>::infinity();
     }
   }
-
   mps.set_constraint_lower_bounds(std::span<const f_t>(row_lower.data(), row_lower.size()));
   mps.set_constraint_upper_bounds(std::span<const f_t>(row_upper.data(), row_upper.size()));
 
+  // CSR offsets have to be synthesised from papilo's RangeInfo (non-contiguous
+  // in general); values and column indices are contiguous, so span in-place.
   auto [index_range, nrows] = constraint_matrix.getRangeInfo();
   std::vector<i_t> offsets(nrows + 1);
-  size_t start = index_range[0].start;
+  const size_t start = index_range[0].start;
   for (i_t i = 0; i < nrows; i++) {
-    offsets[i] = index_range[i].start - start;
+    offsets[i] = static_cast<i_t>(index_range[i].start - start);
   }
-  offsets[nrows] = index_range[nrows - 1].end - start;
-
-  i_t nnz = constraint_matrix.getNnz();
+  offsets[nrows] = static_cast<i_t>(index_range[nrows - 1].end - start);
+  const i_t nnz  = static_cast<i_t>(constraint_matrix.getNnz());
   assert(offsets[nrows] == nnz);
-
   const int* cols   = constraint_matrix.getConstraintMatrix().getColumns();
   const f_t* coeffs = constraint_matrix.getConstraintMatrix().getValues();
-
   mps.set_csr_constraint_matrix(std::span<const f_t>(&coeffs[start], static_cast<size_t>(nnz)),
                                 std::span<const i_t>(&cols[start], static_cast<size_t>(nnz)),
                                 std::span<const i_t>(offsets.data(), offsets.size()));
 
+  // Col bounds + var_types: same copy-then-fixup pattern.
+  auto col_lower = papilo_problem.getLowerBounds();
+  auto col_upper = papilo_problem.getUpperBounds();
   auto col_flags = papilo_problem.getColFlags();
   std::vector<char> var_types(col_flags.size());
   for (size_t i = 0; i < col_flags.size(); i++) {
@@ -382,273 +407,11 @@ io::mps_data_model_t<i_t, f_t> build_mps_data_from_papilo(
       col_upper[i] = std::numeric_limits<f_t>::infinity();
     }
   }
-
   mps.set_variable_lower_bounds(std::span<const f_t>(col_lower.data(), col_lower.size()));
   mps.set_variable_upper_bounds(std::span<const f_t>(col_upper.data(), col_upper.size()));
   mps.set_variable_types(var_types);
 
   return mps;
-}
-
-// D->H direct: gather op_problem's device buffers into a pslp_input_t
-template <typename i_t, typename f_t>
-pslp_input_t<i_t, f_t> build_pslp_host_arrays_from_op_problem(
-  const optimization_problem_t<i_t, f_t>& op)
-{
-  raft::common::nvtx::range fun_scope("Build PSLP host arrays from op_problem (D->H)");
-
-  pslp_input_t<i_t, f_t> arrays;
-  arrays.n_cols = op.get_n_variables();
-  arrays.n_rows = op.get_n_constraints();
-  arrays.nnz    = op.get_nnz();
-
-  const auto& d_coefficients = op.get_constraint_matrix_values();
-  const auto& d_indices      = op.get_constraint_matrix_indices();
-  const auto& d_offsets      = op.get_constraint_matrix_offsets();
-  const auto& d_obj_coeffs   = op.get_objective_coefficients();
-  const auto& d_var_lb       = op.get_variable_lower_bounds();
-  const auto& d_var_ub       = op.get_variable_upper_bounds();
-  const auto& d_constr_lb    = op.get_constraint_lower_bounds();
-  const auto& d_constr_ub    = op.get_constraint_upper_bounds();
-  const auto& d_bounds       = op.get_constraint_bounds();
-  const auto& d_row_types    = op.get_row_types();
-
-  arrays.coefficients.resize(d_coefficients.size());
-  arrays.indices.resize(d_indices.size());
-  arrays.offsets.resize(d_offsets.size());
-  arrays.obj_coeffs.resize(d_obj_coeffs.size());
-  arrays.var_lb.resize(d_var_lb.size());
-  arrays.var_ub.resize(d_var_ub.size());
-  arrays.constr_lb.resize(d_constr_lb.size());
-  arrays.constr_ub.resize(d_constr_ub.size());
-  arrays.constraint_bounds.resize(d_bounds.size());
-  arrays.row_types.resize(d_row_types.size());
-
-  auto stream = op.get_handle_ptr()->get_stream();
-  raft::copy(arrays.coefficients.data(), d_coefficients.data(), d_coefficients.size(), stream);
-  raft::copy(arrays.indices.data(), d_indices.data(), d_indices.size(), stream);
-  raft::copy(arrays.offsets.data(), d_offsets.data(), d_offsets.size(), stream);
-  raft::copy(arrays.obj_coeffs.data(), d_obj_coeffs.data(), d_obj_coeffs.size(), stream);
-  raft::copy(arrays.var_lb.data(), d_var_lb.data(), d_var_lb.size(), stream);
-  raft::copy(arrays.var_ub.data(), d_var_ub.data(), d_var_ub.size(), stream);
-  raft::copy(arrays.constr_lb.data(), d_constr_lb.data(), d_constr_lb.size(), stream);
-  raft::copy(arrays.constr_ub.data(), d_constr_ub.data(), d_constr_ub.size(), stream);
-  raft::copy(arrays.constraint_bounds.data(), d_bounds.data(), d_bounds.size(), stream);
-  raft::copy(arrays.row_types.data(), d_row_types.data(), d_row_types.size(), stream);
-  stream.synchronize();
-
-  return arrays;
-}
-
-// D->H direct: gather op_problem's device buffers, then feed the shared Papilo
-// host builder. This avoids an mps_data_model roundtrip.
-template <typename i_t, typename f_t>
-papilo::Problem<f_t> build_papilo_problem_from_op_problem(
-  const optimization_problem_t<i_t, f_t>& op, problem_category_t category, bool maximize)
-{
-  raft::common::nvtx::range fun_scope("Build papilo problem from op_problem (D->H)");
-
-  const auto& d_coefficients = op.get_constraint_matrix_values();
-  const auto& d_indices      = op.get_constraint_matrix_indices();
-  const auto& d_offsets      = op.get_constraint_matrix_offsets();
-  const auto& d_obj_coeffs   = op.get_objective_coefficients();
-  const auto& d_var_lb       = op.get_variable_lower_bounds();
-  const auto& d_var_ub       = op.get_variable_upper_bounds();
-  const auto& d_constr_lb    = op.get_constraint_lower_bounds();
-  const auto& d_constr_ub    = op.get_constraint_upper_bounds();
-  const auto& d_bounds       = op.get_constraint_bounds();
-  const auto& d_row_types    = op.get_row_types();
-  const auto& d_var_types    = op.get_variable_types();
-
-  papilo_problem_input_t<i_t, f_t> input;
-  input.num_cols         = op.get_n_variables();
-  input.num_rows         = op.get_n_constraints();
-  input.nnz              = op.get_nnz();
-  input.objective_offset = op.get_objective_offset();
-  input.variable_names   = op.get_variable_names();
-
-  input.coefficients.resize(d_coefficients.size());
-  input.variables.resize(d_indices.size());
-  input.offsets.resize(d_offsets.size());
-  input.obj_coeffs.resize(d_obj_coeffs.size());
-  input.var_lb.resize(d_var_lb.size());
-  input.var_ub.resize(d_var_ub.size());
-  input.constr_lb.resize(d_constr_lb.size());
-  input.constr_ub.resize(d_constr_ub.size());
-  input.constraint_bounds.resize(d_bounds.size());
-  input.row_types.resize(d_row_types.size());
-  input.var_types.resize(d_var_types.size());
-
-  auto stream = op.get_handle_ptr()->get_stream();
-  raft::copy(input.coefficients.data(), d_coefficients.data(), d_coefficients.size(), stream);
-  raft::copy(input.variables.data(), d_indices.data(), d_indices.size(), stream);
-  raft::copy(input.offsets.data(), d_offsets.data(), d_offsets.size(), stream);
-  raft::copy(input.obj_coeffs.data(), d_obj_coeffs.data(), d_obj_coeffs.size(), stream);
-  raft::copy(input.var_lb.data(), d_var_lb.data(), d_var_lb.size(), stream);
-  raft::copy(input.var_ub.data(), d_var_ub.data(), d_var_ub.size(), stream);
-  raft::copy(input.constr_lb.data(), d_constr_lb.data(), d_constr_lb.size(), stream);
-  raft::copy(input.constr_ub.data(), d_constr_ub.data(), d_constr_ub.size(), stream);
-  raft::copy(input.constraint_bounds.data(), d_bounds.data(), d_bounds.size(), stream);
-  raft::copy(input.row_types.data(), d_row_types.data(), d_row_types.size(), stream);
-  raft::copy(input.var_types.data(), d_var_types.data(), d_var_types.size(), stream);
-  stream.synchronize();
-
-  return build_papilo_problem_from_host(input, category, maximize);
-}
-
-// H->D direct: read PSLP's reduced host arrays and build a device
-// optimization_problem_t on `handle`. Mirrors build_mps_data_from_pslp but
-// skips the mps_data_model intermediate — arrays flow straight from PSLP into
-// op_problem setters (which each perform an async raft::copy on handle's
-// stream). We sync once at the end so the local sign-flipped obj_coeffs
-// temp is safe to release.
-template <typename i_t, typename f_t>
-optimization_problem_t<i_t, f_t> build_op_problem_from_pslp(raft::handle_t const* handle,
-                                                            Presolver* pslp_presolver,
-                                                            bool maximize,
-                                                            f_t original_obj_offset)
-{
-  raft::common::nvtx::range fun_scope("Build op_problem from PSLP (H->D)");
-  optimization_problem_t<i_t, f_t> op(handle);
-
-  if constexpr (std::is_same_v<f_t, double>) {
-    cuopt_expects(pslp_presolver != nullptr && pslp_presolver->reduced_prob != nullptr,
-                  error_type_t::RuntimeError,
-                  "PSLP presolver is not initialized");
-    auto reduced_prob = pslp_presolver->reduced_prob;
-    const i_t n_rows  = reduced_prob->m;
-    const i_t n_cols  = reduced_prob->n;
-    const i_t nnz     = reduced_prob->nnz;
-    f_t obj_offset    = reduced_prob->obj_offset;
-
-    obj_offset = maximize ? -obj_offset : obj_offset;
-    // PSLP does not allow setting an objective offset, so we fold the
-    // original input's offset into the reduced one.
-    obj_offset += original_obj_offset;
-    op.set_maximize(maximize);
-    op.set_objective_offset(obj_offset);
-
-    if (n_cols == 0 && n_rows == 0) {
-      std::vector<i_t> empty_offsets{0};
-      op.set_csr_constraint_matrix(nullptr, 0, nullptr, 0, empty_offsets.data(), 1);
-      handle->sync_stream();
-      return op;
-    }
-
-    op.set_csr_constraint_matrix(
-      reduced_prob->Ax, nnz, reduced_prob->Ai, nnz, reduced_prob->Ap, n_rows + 1);
-
-    std::vector<f_t> h_obj_coeffs(reduced_prob->c, reduced_prob->c + n_cols);
-    if (maximize) {
-      for (auto& c : h_obj_coeffs)
-        c = -c;
-    }
-    op.set_objective_coefficients(h_obj_coeffs.data(), n_cols);
-
-    op.set_constraint_lower_bounds(reduced_prob->lhs, n_rows);
-    op.set_constraint_upper_bounds(reduced_prob->rhs, n_rows);
-    op.set_variable_lower_bounds(reduced_prob->lbs, n_cols);
-    op.set_variable_upper_bounds(reduced_prob->ubs, n_cols);
-
-    // set_* enqueued async raft::copy on the handle's stream; sync so the
-    // sign-flipped h_obj_coeffs temp lives long enough.
-    handle->sync_stream();
-  } else {
-    cuopt_expects(false, error_type_t::ValidationError, "PSLP only supports double precision");
-  }
-  return op;
-}
-
-// H->D direct: read the reduced papilo::Problem and build a device
-// optimization_problem_t on `handle`. Mirrors build_mps_data_from_papilo but
-// skips the mps_data_model intermediate. var_types are produced as `var_t`
-// enums (no char <-> enum round-trip). Single stream sync at the end so
-// temporaries (var_types, bound arrays with inf substitution, sign-flipped
-// obj_coeffs) live past the async H->D copies.
-template <typename i_t, typename f_t>
-optimization_problem_t<i_t, f_t> build_op_problem_from_papilo(
-  raft::handle_t const* handle, papilo::Problem<f_t> const& papilo_problem, bool maximize)
-{
-  raft::common::nvtx::range fun_scope("Build op_problem from papilo (H->D)");
-  optimization_problem_t<i_t, f_t> op(handle);
-
-  auto obj = papilo_problem.getObjective();
-  op.set_maximize(maximize);
-  op.set_objective_offset(maximize ? -obj.offset : obj.offset);
-
-  if (papilo_problem.getNRows() == 0 && papilo_problem.getNCols() == 0) {
-    std::vector<i_t> h_offsets{0};
-    op.set_csr_constraint_matrix(nullptr, 0, nullptr, 0, h_offsets.data(), 1);
-    handle->sync_stream();
-    return op;
-  }
-
-  if (maximize) {
-    for (size_t i = 0; i < obj.coefficients.size(); ++i) {
-      obj.coefficients[i] = -obj.coefficients[i];
-    }
-  }
-  op.set_objective_coefficients(obj.coefficients.data(), static_cast<i_t>(obj.coefficients.size()));
-
-  auto& constraint_matrix = papilo_problem.getConstraintMatrix();
-  auto row_lower          = constraint_matrix.getLeftHandSides();
-  auto row_upper          = constraint_matrix.getRightHandSides();
-  auto col_lower          = papilo_problem.getLowerBounds();
-  auto col_upper          = papilo_problem.getUpperBounds();
-
-  auto row_flags = constraint_matrix.getRowFlags();
-  for (size_t i = 0; i < row_flags.size(); i++) {
-    if (row_flags[i].test(papilo::RowFlag::kLhsInf)) {
-      row_lower[i] = -std::numeric_limits<f_t>::infinity();
-    }
-    if (row_flags[i].test(papilo::RowFlag::kRhsInf)) {
-      row_upper[i] = std::numeric_limits<f_t>::infinity();
-    }
-  }
-
-  op.set_constraint_lower_bounds(row_lower.data(), static_cast<i_t>(row_lower.size()));
-  op.set_constraint_upper_bounds(row_upper.data(), static_cast<i_t>(row_upper.size()));
-
-  auto [index_range, nrows] = constraint_matrix.getRangeInfo();
-  std::vector<i_t> offsets(nrows + 1);
-  size_t start = index_range[0].start;
-  for (i_t i = 0; i < nrows; i++) {
-    offsets[i] = index_range[i].start - start;
-  }
-  offsets[nrows] = index_range[nrows - 1].end - start;
-
-  i_t nnz = constraint_matrix.getNnz();
-  assert(offsets[nrows] == nnz);
-
-  const int* cols   = constraint_matrix.getConstraintMatrix().getColumns();
-  const f_t* coeffs = constraint_matrix.getConstraintMatrix().getValues();
-
-  op.set_csr_constraint_matrix(
-    &coeffs[start], nnz, &cols[start], nnz, offsets.data(), static_cast<i_t>(offsets.size()));
-
-  auto col_flags = papilo_problem.getColFlags();
-  std::vector<var_t> var_types(col_flags.size());
-  for (size_t i = 0; i < col_flags.size(); i++) {
-    var_types[i] =
-      col_flags[i].test(papilo::ColFlag::kIntegral) ? var_t::INTEGER : var_t::CONTINUOUS;
-    if (col_flags[i].test(papilo::ColFlag::kLbInf)) {
-      col_lower[i] = -std::numeric_limits<f_t>::infinity();
-    }
-    if (col_flags[i].test(papilo::ColFlag::kUbInf)) {
-      col_upper[i] = std::numeric_limits<f_t>::infinity();
-    }
-  }
-
-  op.set_variable_lower_bounds(col_lower.data(), static_cast<i_t>(col_lower.size()));
-  op.set_variable_upper_bounds(col_upper.data(), static_cast<i_t>(col_upper.size()));
-  op.set_variable_types(var_types.data(), static_cast<i_t>(var_types.size()));
-
-  // Every set_* above enqueued async raft::copy on handle's stream. Sync so
-  // the temporary vectors (var_types, adjusted lb/ub, offsets, sign-flipped
-  // obj coefficients) outlive the copies.
-  handle->sync_stream();
-
-  return op;
 }
 
 void check_presolve_status(const papilo::PresolveStatus& status)
@@ -799,86 +562,6 @@ void set_presolve_parameters(papilo::Presolve<f_t>& presolver,
 }
 
 template <typename i_t, typename f_t>
-void pslp_input_t<i_t, f_t>::normalize_for_pslp(bool maximize)
-{
-  if (maximize) {
-    for (auto& c : obj_coeffs) {
-      c = -c;
-    }
-  }
-
-  if (constr_lb.empty() && constr_ub.empty()) {
-    for (size_t i = 0; i < row_types.size(); ++i) {
-      if (row_types[i] == 'L') {
-        constr_lb.push_back(-std::numeric_limits<f_t>::infinity());
-        constr_ub.push_back(constraint_bounds[i]);
-      } else if (row_types[i] == 'G') {
-        constr_lb.push_back(constraint_bounds[i]);
-        constr_ub.push_back(std::numeric_limits<f_t>::infinity());
-      } else if (row_types[i] == 'E') {
-        constr_lb.push_back(constraint_bounds[i]);
-        constr_ub.push_back(constraint_bounds[i]);
-      }
-    }
-  }
-
-  if (var_lb.empty()) { var_lb.assign(n_cols, -std::numeric_limits<f_t>::infinity()); }
-  if (var_ub.empty()) { var_ub.assign(n_cols, std::numeric_limits<f_t>::infinity()); }
-}
-
-template <typename i_t, typename f_t>
-third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_pslp(
-  pslp_input_t<i_t, f_t>& arrays, double time_limit)
-{
-  if constexpr (std::is_same_v<f_t, double>) {
-    raft::common::nvtx::range fun_scope("Apply PSLP presolver on host");
-
-    arrays.normalize_for_pslp(maximize_);
-
-    Settings* settings = default_settings();
-    settings->verbose  = false;
-    settings->max_time = time_limit;
-
-    auto start_time      = std::chrono::high_resolution_clock::now();
-    Presolver* presolver = new_presolver(arrays.coefficients.data(),
-                                         arrays.indices.data(),
-                                         arrays.offsets.data(),
-                                         arrays.n_rows,
-                                         arrays.n_cols,
-                                         arrays.nnz,
-                                         arrays.constr_lb.data(),
-                                         arrays.constr_ub.data(),
-                                         arrays.var_lb.data(),
-                                         arrays.var_ub.data(),
-                                         arrays.obj_coeffs.data(),
-                                         settings);
-    assert(presolver != nullptr && "Presolver initialization failed");
-    const PresolveStatus pslp_status = run_presolver(presolver);
-    auto end_time                    = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-    CUOPT_LOG_DEBUG("PSLP presolver time: %d milliseconds", duration.count());
-    CUOPT_LOG_INFO("PSLP Presolved problem: %d constraints, %d variables, %d non-zeros",
-                   presolver->stats->n_rows_reduced,
-                   presolver->stats->n_cols_reduced,
-                   presolver->stats->nnz_reduced);
-
-    // Free previously allocated presolver and settings (if any) and stash the
-    // new ones so undo_pslp_host / build_{mps_data,op_problem}_from_pslp can
-    // find them later.
-    if (pslp_presolver_ != nullptr) { free_presolver(pslp_presolver_); }
-    if (pslp_stgs_ != nullptr) { free_settings(pslp_stgs_); }
-    pslp_presolver_ = presolver;
-    pslp_stgs_      = settings;
-
-    return convert_pslp_presolve_status_to_third_party_presolve_status(pslp_status);
-  } else {
-    cuopt_expects(
-      false, error_type_t::ValidationError, "PSLP presolver only supports double precision");
-    return third_party_presolve_status_t::UNCHANGED;  // unreachable
-  }
-}
-
-template <typename i_t, typename f_t>
 third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_papilo(
   papilo::Problem<f_t>& papilo_problem,
   problem_category_t category,
@@ -957,7 +640,8 @@ third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_papilo(
   return status;
 }
 
-// Direct op_problem -> presolver_input -> apply -> op_problem path
+// Wrapper around apply_presolve_from_mps_data
+// Generates an mps_data, presolve it and turn it back into a reduced op_problem
 template <typename i_t, typename f_t>
 third_party_presolve_device_result_t<i_t, f_t>
 third_party_presolve_t<i_t, f_t>::apply_presolve_from_op_problem(
@@ -971,15 +655,7 @@ third_party_presolve_t<i_t, f_t>::apply_presolve_from_op_problem(
   i_t num_cpu_threads)
 {
   auto* handle = op_problem.get_handle_ptr();
-  presolver_   = presolver;
-  maximize_    = op_problem.get_sense();
 
-  cuopt_expects(!(category == problem_category_t::MIP &&
-                  presolver == cuopt::mathematical_optimization::presolver_t::PSLP),
-                error_type_t::RuntimeError,
-                "PSLP presolver is not supported for MIP problems");
-
-  // Neither PSLP nor Papilo handle quadratic objective / constraints.
   cuopt_expects(!op_problem.has_quadratic_objective(),
                 error_type_t::ValidationError,
                 "Presolve does not support optimization_problem with a quadratic objective");
@@ -987,75 +663,43 @@ third_party_presolve_t<i_t, f_t>::apply_presolve_from_op_problem(
                 error_type_t::ValidationError,
                 "Presolve does not support optimization_problem with quadratic constraints");
 
-  // PSLP branch:  D->H gather  ->  apply_pslp (host)  ->  H->D build
-  if (presolver == cuopt::mathematical_optimization::presolver_t::PSLP) {
-    if constexpr (std::is_same_v<f_t, double>) {
-      const f_t original_obj_offset = op_problem.get_objective_offset();
-      auto arrays                   = build_pslp_host_arrays_from_op_problem(op_problem);
-      auto status                   = apply_pslp(arrays, time_limit);
+  auto mps = ::cuopt::mathematical_optimization::op_problem_to_mps_data_model<i_t, f_t>(op_problem);
 
-      if (status == third_party_presolve_status_t::INFEASIBLE ||
-          status == third_party_presolve_status_t::UNBNDORINFEAS) {
-        return third_party_presolve_device_result_t<i_t, f_t>{
-          status, optimization_problem_t<i_t, f_t>(handle), {}, {}, {}};
-      }
+  auto host_res = apply_presolve_from_mps_data(mps,
+                                               category,
+                                               presolver,
+                                               dual_postsolve,
+                                               absolute_tolerance,
+                                               relative_tolerance,
+                                               time_limit,
+                                               num_cpu_threads);
 
-      auto reduced_opt = build_op_problem_from_pslp<i_t, f_t>(
-        handle, pslp_presolver_, maximize_, original_obj_offset);
-      reduced_opt.set_problem_name(op_problem.get_problem_name());
-      reduced_opt.set_objective_scaling_factor(op_problem.get_objective_scaling_factor());
-      reduced_opt.set_problem_category(category);
-      return third_party_presolve_device_result_t<i_t, f_t>{
-        status, std::move(reduced_opt), {}, {}, {}};
-    } else {
-      cuopt_expects(
-        false, error_type_t::ValidationError, "PSLP presolver only supports double precision");
-      return third_party_presolve_device_result_t<i_t, f_t>{
-        third_party_presolve_status_t::UNCHANGED,
-        optimization_problem_t<i_t, f_t>(handle),
-        {},
-        {},
-        {}};  // unreachable
-    }
-  } else {
-    // Papilo branch:  D->H gather  ->  apply_papilo (host)  ->  H->D build
-    auto papilo_problem = build_papilo_problem_from_op_problem(op_problem, category, maximize_);
-    auto status         = apply_papilo(papilo_problem,
-                               category,
-                               dual_postsolve,
-                               absolute_tolerance,
-                               relative_tolerance,
-                               time_limit,
-                               num_cpu_threads);
-
-    if (status == third_party_presolve_status_t::INFEASIBLE ||
-        status == third_party_presolve_status_t::UNBOUNDED ||
-        status == third_party_presolve_status_t::UNBNDORINFEAS) {
-      return third_party_presolve_device_result_t<i_t, f_t>{
-        status, optimization_problem_t<i_t, f_t>(handle), {}, {}, {}};
-    }
-
-    auto reduced_opt = build_op_problem_from_papilo<i_t, f_t>(handle, papilo_problem, maximize_);
-    reduced_opt.set_problem_name(op_problem.get_problem_name());
-    reduced_opt.set_objective_scaling_factor(op_problem.get_objective_scaling_factor());
-    reduced_opt.set_problem_category(category);
-
-    std::vector<i_t> implied_integer_indices;
-    {
-      auto col_flags = papilo_problem.getColFlags();
-      for (size_t i = 0; i < col_flags.size(); ++i) {
-        if (col_flags[i].test(papilo::ColFlag::kImplInt)) {
-          implied_integer_indices.push_back(static_cast<i_t>(i));
-        }
-      }
-    }
-
-    return third_party_presolve_device_result_t<i_t, f_t>{status,
-                                                          std::move(reduced_opt),
-                                                          std::move(implied_integer_indices),
-                                                          reduced_to_original_map_,
-                                                          original_to_reduced_map_};
+  // On terminal statuses the mps entry returns an empty reduced problem;
+  // mirror that shape on the device side without going through H->D.
+  if (host_res.status == third_party_presolve_status_t::INFEASIBLE ||
+      host_res.status == third_party_presolve_status_t::UNBOUNDED ||
+      host_res.status == third_party_presolve_status_t::UNBNDORINFEAS) {
+    return third_party_presolve_device_result_t<i_t, f_t>{
+      host_res.status,
+      optimization_problem_t<i_t, f_t>(handle),
+      std::move(host_res.implied_integer_indices),
+      std::move(host_res.reduced_to_original_map),
+      std::move(host_res.original_to_reduced_map)};
   }
+
+  auto reduced_opt =
+    ::cuopt::mathematical_optimization::mps_data_model_to_optimization_problem<i_t, f_t>(
+      handle, host_res.reduced_problem);
+  // mps_data_model doesn't carry problem_category; plumb it here so the
+  // reduced op_problem matches the input's category
+  reduced_opt.set_problem_category(category);
+
+  return third_party_presolve_device_result_t<i_t, f_t>{
+    host_res.status,
+    std::move(reduced_opt),
+    std::move(host_res.implied_integer_indices),
+    std::move(host_res.reduced_to_original_map),
+    std::move(host_res.original_to_reduced_map)};
 }
 
 template <typename i_t, typename f_t>
@@ -1086,72 +730,63 @@ third_party_presolve_t<i_t, f_t>::apply_presolve_from_mps_data(
                 error_type_t::ValidationError,
                 "Presolve does not support mps_data_models with quadratic constraints");
 
-  // PSLP branch:  host gather  ->  apply_pslp (host)  ->  host build
+  // PSLP branch:  apply_pslp (host, reads mps directly) -> reduced mps.
   if (presolver == cuopt::mathematical_optimization::presolver_t::PSLP) {
-    if constexpr (std::is_same_v<f_t, double>) {
-      const f_t original_obj_offset = mps.get_objective_offset();
-      auto arrays                   = build_pslp_host_arrays_from_mps_data(mps);
-      auto status                   = apply_pslp(arrays, time_limit);
-
-      if (status == third_party_presolve_status_t::INFEASIBLE ||
-          status == third_party_presolve_status_t::UNBNDORINFEAS) {
-        return third_party_presolve_host_result_t<i_t, f_t>{
-          status, io::mps_data_model_t<i_t, f_t>{}, {}, {}, {}};
-      }
-
-      auto reduced_mps =
-        build_mps_data_from_pslp<i_t, f_t>(pslp_presolver_, maximize_, original_obj_offset);
-      reduced_mps.set_problem_name(mps.get_problem_name());
-      reduced_mps.set_objective_scaling_factor(mps.get_objective_scaling_factor());
-      return third_party_presolve_host_result_t<i_t, f_t>{
-        status, std::move(reduced_mps), {}, {}, {}};
-    } else {
-      cuopt_expects(
-        false, error_type_t::ValidationError, "PSLP presolver only supports double precision");
-      return third_party_presolve_host_result_t<i_t, f_t>{third_party_presolve_status_t::UNCHANGED,
-                                                          io::mps_data_model_t<i_t, f_t>{},
-                                                          {},
-                                                          {},
-                                                          {}};  // unreachable
-    }
-  } else {
-    // Papilo branch:  host gather  ->  apply_papilo (host)  ->  host build
-    auto papilo_problem = build_papilo_problem_from_mps_data(mps, category, maximize_);
-    auto status         = apply_papilo(papilo_problem,
-                               category,
-                               dual_postsolve,
-                               absolute_tolerance,
-                               relative_tolerance,
-                               time_limit,
-                               num_cpu_threads);
+    const f_t original_obj_offset = mps.get_objective_offset();
+    auto status                   = apply_pslp(mps, time_limit);
 
     if (status == third_party_presolve_status_t::INFEASIBLE ||
-        status == third_party_presolve_status_t::UNBOUNDED ||
         status == third_party_presolve_status_t::UNBNDORINFEAS) {
       return third_party_presolve_host_result_t<i_t, f_t>{
         status, io::mps_data_model_t<i_t, f_t>{}, {}, {}, {}};
     }
 
-    auto reduced_mps = build_mps_data_from_papilo<i_t, f_t>(papilo_problem, maximize_);
+    auto reduced_mps =
+      build_reduced_mps_from_pslp<i_t, f_t>(pslp_presolver_, maximize_, original_obj_offset);
     reduced_mps.set_problem_name(mps.get_problem_name());
     reduced_mps.set_objective_scaling_factor(mps.get_objective_scaling_factor());
+    return third_party_presolve_host_result_t<i_t, f_t>{status, std::move(reduced_mps), {}, {}, {}};
+  }
+else
+{
+  // Papilo branch:  build papilo::Problem (host, reads mps directly) ->
+  //                 apply_papilo -> reduced mps.
+  auto papilo_problem = build_papilo_problem<i_t, f_t>(mps, maximize_, category);
+  auto status         = apply_papilo(papilo_problem,
+                             category,
+                             dual_postsolve,
+                             absolute_tolerance,
+                             relative_tolerance,
+                             time_limit,
+                             num_cpu_threads);
 
-    std::vector<i_t> implied_integer_indices;
-    {
-      auto col_flags = papilo_problem.getColFlags();
-      for (size_t i = 0; i < col_flags.size(); ++i) {
-        if (col_flags[i].test(papilo::ColFlag::kImplInt)) {
-          implied_integer_indices.push_back(static_cast<i_t>(i));
-        }
+  if (status == third_party_presolve_status_t::INFEASIBLE ||
+      status == third_party_presolve_status_t::UNBOUNDED ||
+      status == third_party_presolve_status_t::UNBNDORINFEAS) {
+    return third_party_presolve_host_result_t<i_t, f_t>{
+      status, io::mps_data_model_t<i_t, f_t>{}, {}, {}, {}};
+  }
+
+  auto reduced_mps = build_reduced_mps_from_papilo<i_t, f_t>(papilo_problem, maximize_);
+  reduced_mps.set_problem_name(mps.get_problem_name());
+  reduced_mps.set_objective_scaling_factor(mps.get_objective_scaling_factor());
+
+  std::vector<i_t> implied_integer_indices;
+  {
+    auto col_flags = papilo_problem.getColFlags();
+    for (size_t i = 0; i < col_flags.size(); ++i) {
+      if (col_flags[i].test(papilo::ColFlag::kImplInt)) {
+        implied_integer_indices.push_back(static_cast<i_t>(i));
       }
     }
-
-    return third_party_presolve_host_result_t<i_t, f_t>{status,
-                                                        std::move(reduced_mps),
-                                                        std::move(implied_integer_indices),
-                                                        reduced_to_original_map_,
-                                                        original_to_reduced_map_};
   }
+
+  return third_party_presolve_host_result_t<i_t, f_t>{status,
+                                                      std::move(reduced_mps),
+                                                      std::move(implied_integer_indices),
+                                                      reduced_to_original_map_,
+                                                      original_to_reduced_map_};
+}
 }
 
 template <typename i_t, typename f_t>

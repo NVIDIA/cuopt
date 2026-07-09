@@ -9,6 +9,7 @@
 
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
@@ -58,27 +59,6 @@ template <typename i_t, typename f_t>
 using third_party_presolve_host_result_t =
   third_party_presolve_result_t<i_t, f_t, io::mps_data_model_t<i_t, f_t>>;
 
-// Host-side PSLP input: every buffer PSLP's C API needs, plus dimensions.
-template <typename i_t, typename f_t>
-struct pslp_input_t {
-  std::vector<f_t> coefficients;
-  std::vector<i_t> indices;
-  std::vector<i_t> offsets;
-  std::vector<f_t> obj_coeffs;
-  std::vector<f_t> var_lb;
-  std::vector<f_t> var_ub;
-  std::vector<f_t> constr_lb;
-  std::vector<f_t> constr_ub;
-  std::vector<f_t> constraint_bounds;
-  std::vector<char> row_types;
-  i_t n_rows{0};
-  i_t n_cols{0};
-  i_t nnz{0};
-
-  // Flip to minimise sense and materialise implicit bounds before PSLP runs.
-  void normalize_for_pslp(bool maximize);
-};
-
 template <typename i_t, typename f_t>
 class third_party_presolve_t {
  public:
@@ -92,7 +72,7 @@ class third_party_presolve_t {
   third_party_presolve_t& operator=(third_party_presolve_t&&)      = delete;
 
   // Device entry: takes an optimization_problem_t and returns a device-side
-  // reduced optimization_problem_t.
+  // reduced optimization_problem_t. This is a wrapper around apply_presolve_from_mps_data.
   third_party_presolve_device_result_t<i_t, f_t> apply_presolve_from_op_problem(
     optimization_problem_t<i_t, f_t> const& op_problem,
     problem_category_t category,
@@ -153,7 +133,8 @@ class third_party_presolve_t {
   ~third_party_presolve_t();
 
  private:
-  third_party_presolve_status_t apply_pslp(pslp_input_t<i_t, f_t>& arrays, double time_limit);
+  third_party_presolve_status_t apply_pslp(io::mps_data_model_t<i_t, f_t> const& mps,
+                                           double time_limit);
 
   third_party_presolve_status_t apply_papilo(papilo::Problem<f_t>& papilo_problem,
                                              problem_category_t category,
@@ -181,6 +162,9 @@ class third_party_presolve_t {
   Settings* pslp_stgs_{nullptr};
   Presolver* pslp_presolver_{nullptr};
 
+  // Necessary due to a nvcc bug due to papilo's constexpr functions
+  // Keep the papilo includes in the .cpp to avoid bringing them
+  // into any .cu context
   std::unique_ptr<papilo::PostsolveStorage<f_t>, papilo_postsolve_deleter<f_t>>
     papilo_post_solve_storage_;
 
