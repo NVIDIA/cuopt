@@ -10,7 +10,7 @@ Simple MILP
 
 .. code-block:: java
 
-   import com.nvidia.cuopt.linearprogramming.*;
+   import com.nvidia.cuopt.mathematicalprogramming.*;
 
    try (Problem problem = new Problem("simple-milp")) {
      Variable x = problem.addVariable(
@@ -25,15 +25,15 @@ Simple MILP
          ObjectiveSense.MAXIMIZE);
 
      try (SolverSettings settings = new SolverSettings()
-              .setParameter(CuOptConstants.CUOPT_TIME_LIMIT, 10.0);
+              .setSetting(CuOptConstants.CUOPT_TIME_LIMIT, 10.0);
           Solution solution = problem.solve(settings)) {
        System.out.println("Status: " + solution.getTerminationStatus());
        System.out.println("x = " + x.getValue());
        System.out.println("y = " + y.getValue());
        System.out.println("Objective = " + solution.getPrimalObjective());
-       System.out.println("MIP gap = " + solution.getMipGap());
+       System.out.println("MIP gap = " + solution.getMIPGap());
        System.out.println("Bound = " + solution.getSolutionBound());
-       System.out.println("Nodes = " + solution.getMipStats().getNumNodes());
+       System.out.println("Nodes = " + solution.getMIPStats().getNumNodes());
      }
    }
 
@@ -66,16 +66,17 @@ Set starts on variables when using the high-level ``Problem`` API:
 
 .. code-block:: java
 
-   x.setMipStart(3.0);
-   y.setMipStart(2.0);
+   x.setMIPStart(3.0);
+   y.setMIPStart(2.0);
 
    try (SolverSettings settings = new SolverSettings();
         Solution solution = problem.solve(settings)) {
      System.out.println(solution.getPrimalObjective());
    }
 
-For a lower-level model, pass a full variable-index-ordered array through
-``SolverSettings.addMipStart``.
+For the deprecated lower-level representation, pass a full
+variable-index-ordered array through
+``SolverSettings.addMIPStart``.
 
 Incumbent callback
 ------------------
@@ -85,7 +86,7 @@ Register an incumbent callback before solving:
 .. code-block:: java
 
    try (SolverSettings settings = new SolverSettings()) {
-     settings.setMipCallback(
+     settings.setMIPCallback(
          (incumbent, objective, bound, userData) -> {
            System.out.println(
                "incumbent objective=" + objective + ", bound=" + bound);

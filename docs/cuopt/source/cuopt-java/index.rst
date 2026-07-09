@@ -1,21 +1,23 @@
 ====================================
-Java API (Beta)
+Java API
 ====================================
 
 NVIDIA cuOpt provides experimental Java bindings for linear programming (LP),
-mixed-integer linear programming (MILP), quadratic programming (QP), and
-quadratic constraints through JNI.
+mixed-integer linear programming (MILP), quadratic programming (QP),
+quadratically constrained quadratic programming (QCQP), and second-order cone
+programming (SOCP) through JNI.
 
-The Java bindings are a separately compiled beta module for the LP/MILP/QP
-surface. They are not part of the repository-level cuOpt build and do not
-provide routing or distance-engine bindings. See :doc:`quick-start` before
-using the API.
+The Java bindings are a separately compiled beta module for this mathematical
+programming surface. Repository CI and release workflows build and test it
+against the matching ``libcuopt`` artifact, but it is not part of the top-level
+cuOpt build and does not provide routing or distance-engine bindings. See
+:doc:`quick-start` before using the API.
 
 .. note::
 
-   This Java module is currently intended for the customer beta described by
-   your cuOpt distribution. Build it from ``java/cuopt`` against an existing
-   cuOpt installation; do not expect ``build.sh`` to compile it.
+   Build the module locally from ``java/cuopt`` against an existing cuOpt
+   installation. CI artifacts are experimental; publication to a supported
+   Maven repository has not been defined.
 
 .. toctree::
    :maxdepth: 3
@@ -27,7 +29,7 @@ using the API.
 
 .. toctree::
    :maxdepth: 3
-   :caption: Convex Optimization (LP/QP)
+   :caption: Convex Optimization (LP/QP/QCQP/SOCP)
    :name: LP/QP Java API
    :titlesonly:
 

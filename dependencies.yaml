@@ -45,6 +45,14 @@ files:
       - test_cpp
       - test_cpp_cuopt
       - depends_on_libcuopt
+  java:
+    output: none
+    includes:
+      - build_common
+      - cuda
+      - cuda_version
+      - depends_on_libcuopt
+      - java
   test_python:
     output: none
     includes:
@@ -275,6 +283,12 @@ dependencies:
           - libprotobuf
           - libabseil
           - re2
+  java:
+    common:
+      - output_types: conda
+        packages:
+          - maven
+          - openjdk=11.*
   test_cpp:
     common:
       - output_types: [conda]

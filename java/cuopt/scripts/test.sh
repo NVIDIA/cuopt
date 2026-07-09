@@ -33,7 +33,6 @@ fi
 export LD_LIBRARY_PATH="${library_path}${existing_ld_library_path:+:${existing_ld_library_path}}"
 
 cd "${MODULE_DIR}"
-mvn test \
+mvn verify \
   -Dcuopt.native.dir="${NATIVE_BUILD_DIR}" \
-  -Dcuopt.python="${CUOPT_PYTHON:-${CUOPT_PREFIX}/bin/python}" \
   "$@"

@@ -13,7 +13,7 @@ The high-level API uses fluent expressions and explicit comparison methods.
 
 .. code-block:: java
 
-   import com.nvidia.cuopt.linearprogramming.*;
+   import com.nvidia.cuopt.mathematicalprogramming.*;
 
    try (Problem problem = new Problem("simple-lp")) {
      Variable x = problem.addVariable(
@@ -38,21 +38,22 @@ The high-level API uses fluent expressions and explicit comparison methods.
      }
    }
 
-``Problem.solve`` copies the model to a native ``DataModel`` and populates
-the ``Variable`` and ``Constraint`` objects after the solve. The solution
-object remains available for detailed native results and statistics.
+``Problem.solve`` populates the ``Variable`` and ``Constraint`` objects after
+the solve. The solution object remains available for detailed native results
+and statistics.
 
-Low-level CSR linear program
------------------------------
+Deprecated low-level CSR linear program
+----------------------------------------
 
-Use ``DataModel`` when the input is already in CSR form:
+``DataModel`` is deprecated in favor of ``Problem``. It remains temporarily
+available when the input is already in CSR form:
 
 .. code-block:: java
 
-   CsrMatrix matrix = new CsrMatrix(
-       new int[] {0, 2},       // row offsets
-       new int[] {0, 1},       // column indices
-       new double[] {1.0, 1.0});
+   CSRMatrix matrix = new CSRMatrix(
+       new double[] {1.0, 1.0}, // values
+       new int[] {0, 1},        // column indices
+       new int[] {0, 2});       // row offsets
 
    try (DataModel model = DataModel.createProblem(
           1, 2,
@@ -60,11 +61,11 @@ Use ``DataModel`` when the input is already in CSR form:
           0.0,
           new double[] {1.0, 1.0},
           matrix,
-          new byte[] {(byte) 'G'},
+          new byte[] {'G'},
           new double[] {10.0},
           new double[] {0.0, 0.0},
           new double[] {Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY},
-          new byte[] {(byte) 'C', (byte) 'C'});
+          new byte[] {'C', 'C'});
         SolverSettings settings = new SolverSettings().setMethod(SolverMethod.PDLP);
         Solution solution = model.solve(settings)) {
      System.out.println(solution.getPrimalObjective());
@@ -101,21 +102,18 @@ Quadratic objectives combine quadratic, linear, and constant terms:
        System.out.println("x = " + x.getValue());
        System.out.println("y = " + y.getValue());
        System.out.println("Objective = " + solution.getPrimalObjective());
-       System.out.println("LP stats gap = " + solution.getLpStats().getGap());
+       System.out.println("LP stats gap = " + solution.getLPStats().getGap());
      }
    }
 
-The lower-level equivalent is ``DataModel.setQuadraticObjective`` with a
-``QuadraticExpression`` or ``setQuadraticObjectiveMatrix`` with quadratic CSR
-arrays. For QP solutions, ``getPrimalSolution``, ``getDualSolution``,
-``getReducedCost``, ``getDualObjective``, and ``getLpStats`` are available when
+For QP solutions, ``getPrimalSolution``, ``getDualSolution``,
+``getReducedCost``, ``getDualObjective``, and ``getLPStats`` are available when
 the solver returns the corresponding values.
 
 Quadratic constraints
 ---------------------
 
-Quadratic constraints can be added to a high-level ``Problem`` or directly to
-a ``DataModel``:
+Quadratic constraints can be added directly to a ``Problem``:
 
 .. code-block:: java
 
@@ -135,48 +133,38 @@ a ``DataModel``:
      }
    }
 
-Only ``LE`` and ``GE`` quadratic constraints are supported. Calling
-``QuadraticExpression.eq`` or adding an equality quadratic constraint raises
-``IllegalArgumentException``.
+Only ``LE`` and ``GE`` quadratic constraints are supported;
+``QuadraticExpression`` does not expose an ``eq`` method.
 
 Reading and writing MPS/QPS
 ---------------------------
 
-``DataModel`` and ``Problem`` expose both extension-dispatch and direct MPS
-entry points:
+``Problem`` exposes both extension-dispatch and direct MPS entry points:
 
 .. code-block:: java
 
-   try (DataModel model = DataModel.read("model.mps")) {
-     System.out.println("Variables: " + model.getNumVariables());
-     System.out.println("QP terms: " + model.getQuadraticObjectiveValues().length);
-     model.writeMPS("roundtrip.mps");
+   try (Problem problem = Problem.read("problem.mps")) {
+     System.out.println("Variables: " + problem.getNumVariables());
+     problem.writeMPS("roundtrip.mps");
    }
 
-   try (DataModel fixed = DataModel.parseMps("fixed-format.mps", true)) {
+   try (Problem fixed = Problem.readMPS("fixed-format.mps", true)) {
      // Use fixed-format parsing explicitly.
    }
 
-``Problem.read`` and ``Problem.readMPS`` build the high-level Java model from
-the parsed data. Parsing failures are reported as ``CuOptException`` with the
-cuOpt status code available from ``getStatusCode``.
+Parsing failures are reported as ``CuOptException`` with the cuOpt status code
+available from ``getStatusCode``.
 
-Inspecting solutions and PDLP warm starts
-------------------------------------------
+Inspecting solutions
+--------------------
 
-LP solutions expose residuals and solver metadata through ``LPStats``. When
-PDLP warm-start data is available, retrieve a defensive-copy representation:
+LP solutions expose residuals and solver metadata through ``LPStats``:
 
 .. code-block:: java
 
    try (SolverSettings settings = new SolverSettings().setMethod(SolverMethod.PDLP);
         Solution solution = problem.solve(settings)) {
-     if (solution.hasPdlpWarmStartData()) {
-       PDLPWarmStartData warmStart = solution.getPdlpWarmStartData();
-       System.out.println(warmStart.getCurrentPrimalSolution().length);
-       System.out.println(warmStart.getTotalPdlpIterations());
-     }
+     LPStats stats = solution.getLPStats();
+     System.out.println(stats.getNumIterations());
+     System.out.println(stats.getPrimalResidual());
    }
-
-The same ``PDLPWarmStartData`` can be supplied to
-``SolverSettings.setPdlpWarmStartData`` for a subsequent compatible LP solve.

@@ -1,9 +1,10 @@
 Java Quick Start
 ================
 
-The Java bindings live in ``java/cuopt`` and are built explicitly as a
-standalone beta module. They are not part of the repository-level cuOpt build
-and do not modify the main C/C++ or Python bindings.
+The experimental Java bindings live in ``java/cuopt`` and are built explicitly
+from source. Repository CI and release workflows also build and test the module
+against the matching ``libcuopt`` artifact. It is not part of the top-level
+cuOpt build, and a supported Maven distribution has not yet been defined.
 
 Requirements
 ------------
@@ -13,7 +14,7 @@ The Java module requires:
 * Java 11 or newer, with ``JAVA_HOME`` pointing to a JDK;
 * a C++20 compiler;
 * an existing cuOpt installation containing ``libcuopt.so``; and
-* a CUDA-enabled runtime for solving models.
+* a CUDA-enabled runtime for solving problems.
 
 The module uses Maven for Java compilation and a Java-local CMake project for
 the JNI library. The standalone native build links to
@@ -62,7 +63,7 @@ To run one test class, pass its Maven property to the helper:
 
 .. code-block:: bash
 
-   bash scripts/test.sh -Dtest=PythonParityTest
+   bash scripts/test.sh -Dtest=DataModelIntegrationTest
 
 Application code can use the same property:
 
@@ -85,7 +86,7 @@ instead of operator overloading.
 
 .. code-block:: java
 
-   import com.nvidia.cuopt.linearprogramming.*;
+   import com.nvidia.cuopt.mathematicalprogramming.*;
 
    Problem problem = new Problem("simple");
    Variable x = problem.addVariable(0, Double.POSITIVE_INFINITY, 0,
@@ -100,7 +101,7 @@ instead of operator overloading.
         Solution solution = problem.solve(settings)) {
      System.out.println(solution.getTerminationStatus());
      System.out.println(solution.getPrimalObjective());
-     System.out.println(solution.getLpStats().getSolvedBy());
+     System.out.println(solution.getLPStats().getSolvedBy());
    }
 
 MILP Example
@@ -113,38 +114,27 @@ MILP Example
    problem.addConstraint(LinearExpression.of(x).ge(1.0));
 
    try (SolverSettings settings = new SolverSettings()
-            .setParameter(CuOptConstants.CUOPT_TIME_LIMIT, 10.0);
+            .setSetting(CuOptConstants.CUOPT_TIME_LIMIT, 10.0);
         Solution solution = problem.solve(settings)) {
-     System.out.println(solution.getMipGap());
-     System.out.println(solution.getMipStats().getNumNodes());
+     System.out.println(solution.getMIPGap());
+     System.out.println(solution.getMIPStats().getNumNodes());
    }
 
 QP Example
 ----------
 
-``DataModel`` exposes the lower-level CSR API and quadratic hooks from the C API.
-
 .. code-block:: java
 
-   CsrMatrix matrix = new CsrMatrix(
-       new int[] {0, 2},
-       new int[] {0, 1},
-       new double[] {1.0, 1.0});
-
-   try (DataModel model = DataModel.createProblem(
-          1, 2, ObjectiveSense.MINIMIZE, 0.0,
-          new double[] {-8.0, -16.0},
-          matrix,
-          new byte[] {(byte) 'G'},
-          new double[] {5.0},
-          new double[] {0.0, 0.0},
-          new double[] {10.0, 10.0},
-          new byte[] {(byte) 'C', (byte) 'C'})) {
-     Problem shell = new Problem();
-     Variable x0 = shell.addVariable();
-     Variable x1 = shell.addVariable();
-     model.setQuadraticObjective(
-         QuadraticExpression.of(x0, x0, 1.0).plus(x1, x1, 4.0));
+   try (Problem problem = new Problem("quadratic")) {
+     Variable x = problem.addVariable(0.0, 10.0, 0.0, VariableType.CONTINUOUS, "x");
+     Variable y = problem.addVariable(0.0, 10.0, 0.0, VariableType.CONTINUOUS, "y");
+     problem.addConstraint(LinearExpression.of(x).plus(y).ge(5.0));
+     problem.setObjective(
+         QuadraticExpression.of(x, x, 1.0).plus(y, y, 4.0),
+         ObjectiveSense.MINIMIZE);
+     try (Solution solution = problem.solve()) {
+       System.out.println(solution.getPrimalObjective());
+     }
    }
 
 MPS I/O
@@ -152,19 +142,18 @@ MPS I/O
 
 .. code-block:: java
 
-   try (DataModel model = DataModel.read("model.mps")) {
-     model.writeMPS("roundtrip.mps");
+   try (Problem problem = Problem.read("problem.mps")) {
+     problem.writeMPS("roundtrip.mps");
    }
 
 Lifecycle
 ---------
 
-``DataModel``, ``SolverSettings``, and ``Solution`` own native handles and
-implement ``AutoCloseable``. Prefer try-with-resources. They also register a
-``Cleaner`` fallback, but deterministic close keeps native memory pressure
-predictable.
+``SolverSettings`` and ``Solution`` own native handles and implement
+``AutoCloseable``. Prefer try-with-resources. They also register a ``Cleaner``
+fallback, but deterministic close keeps native memory pressure predictable.
 
 The Java module is not a drop-in translation of Python syntax. Java uses
 fluent expression methods such as ``plus``, ``minus``, ``le``, ``ge``, and
 ``eq`` instead of Python operator overloads. The following pages document the
-implemented LP/MILP/QP surface and its Java names.
+implemented LP/MILP/QP/QCQP/SOCP surface and its Java names.

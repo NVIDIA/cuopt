@@ -173,7 +173,7 @@ std::string get_string(JNIEnv* env, jstring value)
 
 void throw_cuopt_exception(JNIEnv* env, cuopt_int_t status, const std::string& message)
 {
-  jclass cls = env->FindClass("com/nvidia/cuopt/linearprogramming/CuOptException");
+  jclass cls = env->FindClass("com/nvidia/cuopt/mathematicalprogramming/CuOptException");
   if (cls == nullptr) { return; }
   jmethodID ctor = env->GetMethodID(cls, "<init>", "(ILjava/lang/String;)V");
   if (ctor == nullptr) { return; }
@@ -302,7 +302,7 @@ void mip_set_solution_callback(cuopt_float_t* solution,
 
   jclass cls = env->GetObjectClass(context->callback);
   jmethodID method = env->GetMethodID(
-    cls, "getSolution", "(DLjava/lang/Object;)Lcom/nvidia/cuopt/linearprogramming/MipCallbackSolution;");
+    cls, "getSolution", "(DLjava/lang/Object;)Lcom/nvidia/cuopt/mathematicalprogramming/MIPCallbackSolution;");
   if (method != nullptr) {
     jobject callback_solution =
       env->CallObjectMethod(context->callback, method, static_cast<jdouble>(*solution_bound), context->user_data);
@@ -335,13 +335,13 @@ extern "C" jint JNI_OnLoad(JavaVM* vm, void*)
 }
 
 extern "C" JNIEXPORT jint JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getFloatSize(JNIEnv*, jclass)
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getFloatSize(JNIEnv*, jclass)
 {
   return cuOptGetFloatSize();
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getSolverParameterNames(JNIEnv* env, jclass)
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getSolverSettingNames(JNIEnv* env, jclass)
 {
   cuopt_int_t count = 0;
   if (!check_status(env, cuOptGetNumSolverParameters(&count), "cuOptGetNumSolverParameters")) {
@@ -361,7 +361,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getSolverParameterNames(JNIE
 }
 
 extern "C" JNIEXPORT jlong JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_createEmptyProblem(JNIEnv* env, jclass)
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_createEmptyProblem(JNIEnv* env, jclass)
 {
   try {
     auto problem = std::make_unique<cuopt::linear_programming::problem_and_stream_view_t>(
@@ -377,7 +377,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_createEmptyProblem(JNIEnv* e
 }
 
 extern "C" JNIEXPORT jlong JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_parseMpsProblem(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_parseMPSProblem(JNIEnv* env,
                                                                      jclass,
                                                                      jstring path,
                                                                      jboolean fixed_mps_format)
@@ -399,13 +399,13 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_parseMpsProblem(JNIEnv* env,
       std::string(e.what()).find("Error opening input file") != std::string::npos
         ? CUOPT_MPS_FILE_ERROR
         : CUOPT_MPS_PARSE_ERROR;
-    throw_cuopt_exception(env, status, std::string("parseMpsProblem failed: ") + e.what());
+    throw_cuopt_exception(env, status, std::string("parseMPSProblem failed: ") + e.what());
     return 0;
   }
 }
 
 extern "C" JNIEXPORT jlong JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_readProblemWithFormat(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_readProblemWithFormat(JNIEnv* env,
                                                                           jclass,
                                                                           jstring path,
                                                                           jboolean fixed_mps_format)
@@ -433,7 +433,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_readProblemWithFormat(JNIEnv
 }
 
 extern "C" JNIEXPORT jlong JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_createSolverSettings(JNIEnv* env, jclass)
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_createSolverSettings(JNIEnv* env, jclass)
 {
   cuOptSolverSettings settings = nullptr;
   if (!check_status(env, cuOptCreateSolverSettings(&settings), "cuOptCreateSolverSettings")) {
@@ -443,19 +443,18 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_createSolverSettings(JNIEnv*
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_destroySolverSettings(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_destroySolverSettings(JNIEnv* env,
                                                                           jclass,
                                                                           jlong handle)
 {
   if (handle == 0) { return; }
   cleanup_callback_contexts(env, handle);
-  cuopt_java_release_settings_state(to_settings(handle));
   cuOptSolverSettings settings = to_settings(handle);
   cuOptDestroySolverSettings(&settings);
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setParameter(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_setSetting(JNIEnv* env,
                                                                  jclass,
                                                                  jlong handle,
                                                                  jstring name,
@@ -469,7 +468,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setParameter(JNIEnv* env,
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setIntegerParameter(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_setIntegerSetting(JNIEnv* env,
                                                                         jclass,
                                                                         jlong handle,
                                                                         jstring name,
@@ -482,7 +481,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setIntegerParameter(JNIEnv* 
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setFloatParameter(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_setFloatSetting(JNIEnv* env,
                                                                       jclass,
                                                                       jlong handle,
                                                                       jstring name,
@@ -496,7 +495,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setFloatParameter(JNIEnv* en
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getParameter(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getSetting(JNIEnv* env,
                                                                  jclass,
                                                                  jlong handle,
                                                                  jstring name)
@@ -512,7 +511,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getParameter(JNIEnv* env,
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_loadParametersFromFile(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_loadSettingsFromFile(JNIEnv* env,
                                                                           jclass,
                                                                           jlong handle,
                                                                           jstring path)
@@ -524,7 +523,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_loadParametersFromFile(JNIEn
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_dumpParametersToFile(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_dumpSettingsToFile(JNIEnv* env,
                                                                           jclass,
                                                                           jlong handle,
                                                                           jstring path,
@@ -544,33 +543,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_dumpParametersToFile(JNIEnv*
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setInitialPrimalSolution(JNIEnv* env,
-                                                                             jclass,
-                                                                             jlong handle,
-                                                                             jdoubleArray values)
-{
-  const auto data = get_double_array(env, values);
-  check_status(env,
-               cuOptSetInitialPrimalSolution(
-                 to_settings(handle), data.data(), static_cast<cuopt_int_t>(data.size())),
-               "cuOptSetInitialPrimalSolution");
-}
-
-extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setInitialDualSolution(JNIEnv* env,
-                                                                           jclass,
-                                                                           jlong handle,
-                                                                           jdoubleArray values)
-{
-  const auto data = get_double_array(env, values);
-  check_status(env,
-               cuOptSetInitialDualSolution(
-                 to_settings(handle), data.data(), static_cast<cuopt_int_t>(data.size())),
-               "cuOptSetInitialDualSolution");
-}
-
-extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_addMipStart(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_addMIPStart(JNIEnv* env,
                                                                 jclass,
                                                                 jlong handle,
                                                                 jdoubleArray values)
@@ -582,7 +555,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_addMipStart(JNIEnv* env,
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_registerMipGetSolutionCallback(
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_registerMIPGetSolutionCallback(
   JNIEnv* env, jclass, jlong handle, jobject callback, jobject user_data, jint num_variables)
 {
   auto* context      = new java_callback_context_t;
@@ -601,7 +574,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_registerMipGetSolutionCallba
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_registerMipSetSolutionCallback(
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_registerMIPSetSolutionCallback(
   JNIEnv* env, jclass, jlong handle, jobject callback, jobject user_data, jint num_variables)
 {
   auto* context      = new java_callback_context_t;
@@ -619,66 +592,8 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_registerMipSetSolutionCallba
   remember_callback_context(handle, context);
 }
 
-extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setPdlpWarmStartData(
-  JNIEnv* env,
-  jclass,
-  jlong handle,
-  jdoubleArray current_primal_solution,
-  jdoubleArray current_dual_solution,
-  jdoubleArray initial_primal_average,
-  jdoubleArray initial_dual_average,
-  jdoubleArray current_aty,
-  jdoubleArray sum_primal_solutions,
-  jdoubleArray sum_dual_solutions,
-  jdoubleArray last_restart_duality_gap_primal_solution,
-  jdoubleArray last_restart_duality_gap_dual_solution,
-  jdouble initial_primal_weight,
-  jdouble initial_step_size,
-  jint total_pdlp_iterations,
-  jint total_pdhg_iterations,
-  jdouble last_candidate_kkt_score,
-  jdouble last_restart_kkt_score,
-  jdouble sum_solution_weight,
-  jint iterations_since_last_restart)
-{
-  const auto current_primal = get_double_array(env, current_primal_solution);
-  const auto current_dual = get_double_array(env, current_dual_solution);
-  const auto initial_primal = get_double_array(env, initial_primal_average);
-  const auto initial_dual = get_double_array(env, initial_dual_average);
-  const auto aty = get_double_array(env, current_aty);
-  const auto sum_primal = get_double_array(env, sum_primal_solutions);
-  const auto sum_dual = get_double_array(env, sum_dual_solutions);
-  const auto last_primal = get_double_array(env, last_restart_duality_gap_primal_solution);
-  const auto last_dual = get_double_array(env, last_restart_duality_gap_dual_solution);
-
-  check_status(
-    env,
-    cuOptSetPDLPWarmStartData(to_settings(handle),
-                              current_primal.data(),
-                              current_dual.data(),
-                              initial_primal.data(),
-                              initial_dual.data(),
-                              aty.data(),
-                              sum_primal.data(),
-                              sum_dual.data(),
-                              last_primal.data(),
-                              last_dual.data(),
-                              static_cast<cuopt_int_t>(current_primal.size()),
-                              static_cast<cuopt_int_t>(current_dual.size()),
-                              static_cast<cuopt_float_t>(initial_primal_weight),
-                              static_cast<cuopt_float_t>(initial_step_size),
-                              total_pdlp_iterations,
-                              total_pdhg_iterations,
-                              static_cast<cuopt_float_t>(last_candidate_kkt_score),
-                              static_cast<cuopt_float_t>(last_restart_kkt_score),
-                              static_cast<cuopt_float_t>(sum_solution_weight),
-                              iterations_since_last_restart),
-    "cuOptSetPDLPWarmStartData");
-}
-
 extern "C" JNIEXPORT jlong JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_createProblem(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_createProblem(JNIEnv* env,
                                                                   jclass,
                                                                   jint num_constraints,
                                                                   jint num_variables,
@@ -726,7 +641,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_createProblem(JNIEnv* env,
 }
 
 extern "C" JNIEXPORT jlong JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_createRangedProblem(
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_createRangedProblem(
   JNIEnv* env,
   jclass,
   jint num_constraints,
@@ -775,7 +690,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_createRangedProblem(
 }
 
 extern "C" JNIEXPORT jlong JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_readProblem(JNIEnv* env, jclass, jstring path)
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_readProblem(JNIEnv* env, jclass, jstring path)
 {
   const auto filename = get_string(env, path);
   cuOptOptimizationProblem problem = nullptr;
@@ -786,7 +701,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_readProblem(JNIEnv* env, jcl
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_writeProblem(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_writeProblem(JNIEnv* env,
                                                                  jclass,
                                                                  jlong handle,
                                                                  jstring path)
@@ -797,7 +712,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_writeProblem(JNIEnv* env,
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_destroyProblem(JNIEnv*, jclass, jlong handle)
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_destroyProblem(JNIEnv*, jclass, jlong handle)
 {
   if (handle == 0) { return; }
   {
@@ -813,7 +728,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_destroyProblem(JNIEnv*, jcla
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setQuadraticObjective(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_setQuadraticObjective(JNIEnv* env,
                                                                           jclass,
                                                                           jlong handle,
                                                                           jintArray rows,
@@ -833,7 +748,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setQuadraticObjective(JNIEnv
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_addQuadraticConstraint(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_addQuadraticConstraint(JNIEnv* env,
                                                                            jclass,
                                                                            jlong handle,
                                                                            jintArray rows,
@@ -864,7 +779,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_addQuadraticConstraint(JNIEn
 }
 
 extern "C" JNIEXPORT jint JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getNumVariables(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getNumVariables(JNIEnv* env,
                                                                     jclass,
                                                                     jlong handle)
 {
@@ -874,7 +789,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getNumVariables(JNIEnv* env,
 }
 
 extern "C" JNIEXPORT jint JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getNumConstraints(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getNumConstraints(JNIEnv* env,
                                                                       jclass,
                                                                       jlong handle)
 {
@@ -884,7 +799,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getNumConstraints(JNIEnv* en
 }
 
 extern "C" JNIEXPORT jint JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getNumNonZeros(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getNumNonZeros(JNIEnv* env,
                                                                    jclass,
                                                                    jlong handle)
 {
@@ -894,7 +809,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getNumNonZeros(JNIEnv* env,
 }
 
 extern "C" JNIEXPORT jint JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getObjectiveSense(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getObjectiveSense(JNIEnv* env,
                                                                       jclass,
                                                                       jlong handle)
 {
@@ -904,7 +819,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getObjectiveSense(JNIEnv* en
 }
 
 extern "C" JNIEXPORT jdouble JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getObjectiveOffset(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getObjectiveOffset(JNIEnv* env,
                                                                        jclass,
                                                                        jlong handle)
 {
@@ -914,11 +829,11 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getObjectiveOffset(JNIEnv* e
 }
 
 extern "C" JNIEXPORT jdoubleArray JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getObjectiveCoefficients(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getObjectiveCoefficients(JNIEnv* env,
                                                                              jclass,
                                                                              jlong handle)
 {
-  const int n = Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getNumVariables(env, nullptr, handle);
+  const int n = Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getNumVariables(env, nullptr, handle);
   std::vector<cuopt_float_t> values(static_cast<size_t>(n));
   if (!check_status(env,
                     cuOptGetObjectiveCoefficients(to_problem(handle), values.data()),
@@ -929,12 +844,12 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getObjectiveCoefficients(JNI
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getConstraintMatrix(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getConstraintMatrix(JNIEnv* env,
                                                                         jclass,
                                                                         jlong handle)
 {
-  const int rows_size = Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getNumConstraints(env, nullptr, handle) + 1;
-  const int nnz = Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getNumNonZeros(env, nullptr, handle);
+  const int rows_size = Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getNumConstraints(env, nullptr, handle) + 1;
+  const int nnz = Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getNumNonZeros(env, nullptr, handle);
   std::vector<cuopt_int_t> rows(static_cast<size_t>(rows_size));
   std::vector<cuopt_int_t> cols(static_cast<size_t>(nnz));
   std::vector<cuopt_float_t> values(static_cast<size_t>(nnz));
@@ -952,7 +867,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getConstraintMatrix(JNIEnv* 
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setMaximize(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_setMaximize(JNIEnv* env,
                                                                 jclass,
                                                                 jlong handle,
                                                                 jboolean maximize)
@@ -963,7 +878,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setMaximize(JNIEnv* env,
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setConstraintMatrix(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_setConstraintMatrix(JNIEnv* env,
                                                                         jclass,
                                                                         jlong handle,
                                                                         jdoubleArray values,
@@ -980,7 +895,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setConstraintMatrix(JNIEnv* 
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setConstraintBounds(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_setConstraintBounds(JNIEnv* env,
                                                                         jclass,
                                                                         jlong handle,
                                                                         jdoubleArray values)
@@ -992,7 +907,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setConstraintBounds(JNIEnv* 
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setObjectiveCoefficients(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_setObjectiveCoefficients(JNIEnv* env,
                                                                             jclass,
                                                                             jlong handle,
                                                                             jdoubleArray values)
@@ -1004,7 +919,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setObjectiveCoefficients(JNI
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setObjectiveScalingFactor(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_setObjectiveScalingFactor(JNIEnv* env,
                                                                               jclass,
                                                                               jlong handle,
                                                                               jdouble value)
@@ -1015,7 +930,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setObjectiveScalingFactor(JN
 }
 
 extern "C" JNIEXPORT jdouble JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getObjectiveScalingFactor(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getObjectiveScalingFactor(JNIEnv* env,
                                                                               jclass,
                                                                               jlong handle)
 {
@@ -1029,7 +944,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getObjectiveScalingFactor(JN
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setObjectiveOffset(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_setObjectiveOffset(JNIEnv* env,
                                                                        jclass,
                                                                        jlong handle,
                                                                        jdouble value)
@@ -1040,7 +955,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setObjectiveOffset(JNIEnv* e
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setQuadraticObjectiveMatrix(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_setQuadraticObjectiveMatrix(JNIEnv* env,
                                                                                 jclass,
                                                                                 jlong handle,
                                                                                 jdoubleArray values,
@@ -1057,7 +972,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setQuadraticObjectiveMatrix(
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setVariableLowerBounds(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_setVariableLowerBounds(JNIEnv* env,
                                                                           jclass,
                                                                           jlong handle,
                                                                           jdoubleArray values)
@@ -1069,7 +984,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setVariableLowerBounds(JNIEn
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setVariableUpperBounds(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_setVariableUpperBounds(JNIEnv* env,
                                                                           jclass,
                                                                           jlong handle,
                                                                           jdoubleArray values)
@@ -1081,7 +996,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setVariableUpperBounds(JNIEn
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setConstraintLowerBounds(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_setConstraintLowerBounds(JNIEnv* env,
                                                                              jclass,
                                                                              jlong handle,
                                                                              jdoubleArray values)
@@ -1093,7 +1008,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setConstraintLowerBounds(JNI
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setConstraintUpperBounds(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_setConstraintUpperBounds(JNIEnv* env,
                                                                              jclass,
                                                                              jlong handle,
                                                                              jdoubleArray values)
@@ -1105,7 +1020,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setConstraintUpperBounds(JNI
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setRowTypes(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_setRowTypes(JNIEnv* env,
                                                                 jclass,
                                                                 jlong handle,
                                                                 jbyteArray values)
@@ -1117,7 +1032,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setRowTypes(JNIEnv* env,
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setVariableTypes(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_setVariableTypes(JNIEnv* env,
                                                                      jclass,
                                                                      jlong handle,
                                                                      jbyteArray values)
@@ -1134,7 +1049,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setVariableTypes(JNIEnv* env
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setVariableNames(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_setVariableNames(JNIEnv* env,
                                                                      jclass,
                                                                      jlong handle,
                                                                      jobjectArray values)
@@ -1146,7 +1061,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setVariableNames(JNIEnv* env
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setRowNames(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_setRowNames(JNIEnv* env,
                                                                 jclass,
                                                                 jlong handle,
                                                                 jobjectArray values)
@@ -1158,7 +1073,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setRowNames(JNIEnv* env,
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setObjectiveName(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_setObjectiveName(JNIEnv* env,
                                                                      jclass,
                                                                      jlong handle,
                                                                      jstring value)
@@ -1170,7 +1085,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setObjectiveName(JNIEnv* env
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setProblemName(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_setProblemName(JNIEnv* env,
                                                                    jclass,
                                                                    jlong handle,
                                                                    jstring value)
@@ -1182,7 +1097,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setProblemName(JNIEnv* env,
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setInitialPrimalSolutionOnProblem(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_setInitialPrimalSolutionOnProblem(JNIEnv* env,
                                                                                       jclass,
                                                                                       jlong handle,
                                                                                       jdoubleArray values)
@@ -1195,7 +1110,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setInitialPrimalSolutionOnPr
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setInitialDualSolutionOnProblem(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_setInitialDualSolutionOnProblem(JNIEnv* env,
                                                                                     jclass,
                                                                                     jlong handle,
                                                                                     jdoubleArray values)
@@ -1208,7 +1123,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_setInitialDualSolutionOnProb
 }
 
 extern "C" JNIEXPORT jdoubleArray JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getQuadraticObjectiveValues(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getQuadraticObjectiveValues(JNIEnv* env,
                                                                                 jclass,
                                                                                 jlong handle)
 {
@@ -1216,7 +1131,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getQuadraticObjectiveValues(
 }
 
 extern "C" JNIEXPORT jintArray JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getQuadraticObjectiveIndices(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getQuadraticObjectiveIndices(JNIEnv* env,
                                                                                  jclass,
                                                                                  jlong handle)
 {
@@ -1224,7 +1139,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getQuadraticObjectiveIndices
 }
 
 extern "C" JNIEXPORT jintArray JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getQuadraticObjectiveOffsets(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getQuadraticObjectiveOffsets(JNIEnv* env,
                                                                                  jclass,
                                                                                  jlong handle)
 {
@@ -1232,7 +1147,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getQuadraticObjectiveOffsets
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getVariableNames(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getVariableNames(JNIEnv* env,
                                                                      jclass,
                                                                      jlong handle)
 {
@@ -1240,7 +1155,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getVariableNames(JNIEnv* env
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getRowNames(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getRowNames(JNIEnv* env,
                                                                 jclass,
                                                                 jlong handle)
 {
@@ -1248,7 +1163,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getRowNames(JNIEnv* env,
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getObjectiveName(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getObjectiveName(JNIEnv* env,
                                                                      jclass,
                                                                      jlong handle)
 {
@@ -1256,7 +1171,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getObjectiveName(JNIEnv* env
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getProblemName(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getProblemName(JNIEnv* env,
                                                                    jclass,
                                                                    jlong handle)
 {
@@ -1264,7 +1179,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getProblemName(JNIEnv* env,
 }
 
 extern "C" JNIEXPORT jint JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getProblemCategory(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getProblemCategory(JNIEnv* env,
                                                                        jclass,
                                                                        jlong handle)
 {
@@ -1278,7 +1193,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getProblemCategory(JNIEnv* e
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getQuadraticConstraints(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getQuadraticConstraints(JNIEnv* env,
                                                                             jclass,
                                                                             jlong handle)
 {
@@ -1304,7 +1219,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getQuadraticConstraints(JNIE
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_clearQuadraticConstraints(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_clearQuadraticConstraints(JNIEnv* env,
                                                                               jclass,
                                                                               jlong handle)
 {
@@ -1317,7 +1232,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_clearQuadraticConstraints(JN
 
 #define DEFINE_DOUBLE_PROBLEM_GETTER(JAVA_NAME, C_NAME, COUNT_EXPR)                         \
   extern "C" JNIEXPORT jdoubleArray JNICALL                                                \
-    Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_##JAVA_NAME(                        \
+    Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_##JAVA_NAME(                        \
       JNIEnv* env, jclass, jlong handle)                                                     \
   {                                                                                          \
     const int count = (COUNT_EXPR);                                                          \
@@ -1328,7 +1243,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_clearQuadraticConstraints(JN
 
 #define DEFINE_BYTE_PROBLEM_GETTER(JAVA_NAME, C_NAME, COUNT_EXPR)                          \
   extern "C" JNIEXPORT jbyteArray JNICALL                                                  \
-    Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_##JAVA_NAME(                       \
+    Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_##JAVA_NAME(                       \
       JNIEnv* env, jclass, jlong handle)                                                    \
   {                                                                                         \
     const int count = (COUNT_EXPR);                                                         \
@@ -1337,12 +1252,12 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_clearQuadraticConstraints(JN
     return to_byte_array(env, values);                                                      \
   }
 
-DEFINE_DOUBLE_PROBLEM_GETTER(getConstraintRhs,
+DEFINE_DOUBLE_PROBLEM_GETTER(getConstraintRHS,
                              cuOptGetConstraintRightHandSide,
-                             Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getNumConstraints(env, nullptr, handle))
+                             Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getNumConstraints(env, nullptr, handle))
 
 extern "C" JNIEXPORT jdoubleArray JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getConstraintLowerBounds(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getConstraintLowerBounds(JNIEnv* env,
                                                                               jclass,
                                                                               jlong handle)
 {
@@ -1356,7 +1271,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getConstraintLowerBounds(JNI
 }
 
 extern "C" JNIEXPORT jdoubleArray JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getConstraintUpperBounds(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getConstraintUpperBounds(JNIEnv* env,
                                                                               jclass,
                                                                               jlong handle)
 {
@@ -1370,7 +1285,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getConstraintUpperBounds(JNI
 }
 
 extern "C" JNIEXPORT jdoubleArray JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getVariableLowerBounds(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getVariableLowerBounds(JNIEnv* env,
                                                                             jclass,
                                                                             jlong handle)
 {
@@ -1384,7 +1299,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getVariableLowerBounds(JNIEn
 }
 
 extern "C" JNIEXPORT jdoubleArray JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getVariableUpperBounds(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getVariableUpperBounds(JNIEnv* env,
                                                                             jclass,
                                                                             jlong handle)
 {
@@ -1399,16 +1314,16 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getVariableUpperBounds(JNIEn
 
 DEFINE_BYTE_PROBLEM_GETTER(getConstraintSense,
                            cuOptGetConstraintSense,
-                           Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getNumConstraints(env, nullptr, handle))
+                           Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getNumConstraints(env, nullptr, handle))
 DEFINE_BYTE_PROBLEM_GETTER(getVariableTypes,
                            cuOptGetVariableTypes,
-                           Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getNumVariables(env, nullptr, handle))
+                           Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getNumVariables(env, nullptr, handle))
 
 #undef DEFINE_DOUBLE_PROBLEM_GETTER
 #undef DEFINE_BYTE_PROBLEM_GETTER
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_isMip(JNIEnv* env, jclass, jlong handle)
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_isMIP(JNIEnv* env, jclass, jlong handle)
 {
   cuopt_int_t value = 0;
   check_status(env, cuOptIsMIP(to_problem(handle), &value), "cuOptIsMIP");
@@ -1416,7 +1331,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_isMip(JNIEnv* env, jclass, j
 }
 
 extern "C" JNIEXPORT jlong JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_solve(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_solve(JNIEnv* env,
                                                           jclass,
                                                           jlong problem_handle,
                                                           jlong settings_handle)
@@ -1470,7 +1385,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_solve(JNIEnv* env,
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_destroySolution(JNIEnv*, jclass, jlong handle)
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_destroySolution(JNIEnv*, jclass, jlong handle)
 {
   if (handle == 0) { return; }
   cuOptSolution solution = to_solution(handle);
@@ -1478,7 +1393,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_destroySolution(JNIEnv*, jcl
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_solutionIsMip(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_solutionIsMIP(JNIEnv* env,
                                                                   jclass,
                                                                   jlong handle)
 {
@@ -1488,7 +1403,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_solutionIsMip(JNIEnv* env,
 }
 
 extern "C" JNIEXPORT jint JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getTerminationStatus(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getTerminationStatus(JNIEnv* env,
                                                                          jclass,
                                                                          jlong handle)
 {
@@ -1498,7 +1413,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getTerminationStatus(JNIEnv*
 }
 
 extern "C" JNIEXPORT jint JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getErrorStatus(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getErrorStatus(JNIEnv* env,
                                                                    jclass,
                                                                    jlong handle)
 {
@@ -1508,7 +1423,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getErrorStatus(JNIEnv* env,
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getErrorString(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getErrorString(JNIEnv* env,
                                                                    jclass,
                                                                    jlong handle)
 {
@@ -1520,7 +1435,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getErrorString(JNIEnv* env,
 }
 
 extern "C" JNIEXPORT jdoubleArray JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getPrimalSolution(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getPrimalSolution(JNIEnv* env,
                                                                       jclass,
                                                                       jlong handle,
                                                                       jint size)
@@ -1533,7 +1448,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getPrimalSolution(JNIEnv* en
 }
 
 extern "C" JNIEXPORT jint JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getDualSolutionSize(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getDualSolutionSize(JNIEnv* env,
                                                                         jclass,
                                                                         jlong handle)
 {
@@ -1543,7 +1458,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getDualSolutionSize(JNIEnv* 
 }
 
 extern "C" JNIEXPORT jdoubleArray JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getDualSolution(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getDualSolution(JNIEnv* env,
                                                                     jclass,
                                                                     jlong handle,
                                                                     jint)
@@ -1560,7 +1475,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getDualSolution(JNIEnv* env,
 }
 
 extern "C" JNIEXPORT jdoubleArray JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getReducedCosts(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getReducedCosts(JNIEnv* env,
                                                                     jclass,
                                                                     jlong handle,
                                                                     jint)
@@ -1577,7 +1492,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getReducedCosts(JNIEnv* env,
 }
 
 extern "C" JNIEXPORT jdouble JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getObjectiveValue(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getObjectiveValue(JNIEnv* env,
                                                                       jclass,
                                                                       jlong handle)
 {
@@ -1587,7 +1502,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getObjectiveValue(JNIEnv* en
 }
 
 extern "C" JNIEXPORT jdouble JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getDualObjectiveValue(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getDualObjectiveValue(JNIEnv* env,
                                                                           jclass,
                                                                           jlong handle)
 {
@@ -1603,7 +1518,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getDualObjectiveValue(JNIEnv
 }
 
 extern "C" JNIEXPORT jdouble JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getSolveTime(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getSolveTime(JNIEnv* env,
                                                                  jclass,
                                                                  jlong handle)
 {
@@ -1613,7 +1528,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getSolveTime(JNIEnv* env,
 }
 
 extern "C" JNIEXPORT jdouble JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getMipGap(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getMIPGap(JNIEnv* env,
                                                               jclass,
                                                               jlong handle)
 {
@@ -1623,7 +1538,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getMipGap(JNIEnv* env,
 }
 
 extern "C" JNIEXPORT jdouble JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getSolutionBound(JNIEnv* env,
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getSolutionBound(JNIEnv* env,
                                                                      jclass,
                                                                      jlong handle)
 {
@@ -1633,7 +1548,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getSolutionBound(JNIEnv* env
 }
 
 extern "C" JNIEXPORT jdoubleArray JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getLpStats(JNIEnv* env, jclass, jlong handle)
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getLPStats(JNIEnv* env, jclass, jlong handle)
 {
   cuopt_float_t primal = 0;
   cuopt_float_t dual = 0;
@@ -1649,7 +1564,7 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getLpStats(JNIEnv* env, jcla
 }
 
 extern "C" JNIEXPORT jdoubleArray JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getMipStats(JNIEnv* env, jclass, jlong handle)
+Java_com_nvidia_cuopt_mathematicalprogramming_NativeCuOpt_getMIPStats(JNIEnv* env, jclass, jlong handle)
 {
   cuopt_float_t presolve = 0;
   cuopt_float_t max_constraint = 0;
@@ -1664,62 +1579,4 @@ Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getMipStats(JNIEnv* env, jcl
     return nullptr;
   }
   return to_double_array(env, {presolve, max_constraint, max_int, max_bound, static_cast<cuopt_float_t>(nodes), static_cast<cuopt_float_t>(simplex)});
-}
-
-extern "C" JNIEXPORT jboolean JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_hasPdlpWarmStartData(JNIEnv* env,
-                                                                         jclass,
-                                                                         jlong handle)
-{
-  cuopt_int_t value = 0;
-  check_status(env, cuOptHasPDLPWarmStartData(to_solution(handle), &value), "cuOptHasPDLPWarmStartData");
-  return static_cast<jboolean>(value != 0);
-}
-
-extern "C" JNIEXPORT jdoubleArray JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getPdlpWarmStartVector(JNIEnv* env,
-                                                                           jclass,
-                                                                           jlong handle,
-                                                                           jint field_id)
-{
-  cuopt_int_t size = 0;
-  if (!check_status(env,
-                    cuOptGetPDLPWarmStartVectorSize(to_solution(handle), field_id, &size),
-                    "cuOptGetPDLPWarmStartVectorSize")) {
-    return nullptr;
-  }
-  std::vector<cuopt_float_t> values(static_cast<size_t>(size));
-  if (size > 0 &&
-      !check_status(env,
-                    cuOptGetPDLPWarmStartVector(to_solution(handle), field_id, values.data()),
-                    "cuOptGetPDLPWarmStartVector")) {
-    return nullptr;
-  }
-  return to_double_array(env, values);
-}
-
-extern "C" JNIEXPORT jdouble JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getPdlpWarmStartScalar(JNIEnv* env,
-                                                                           jclass,
-                                                                           jlong handle,
-                                                                           jint field_id)
-{
-  cuopt_float_t value = 0;
-  check_status(env,
-               cuOptGetPDLPWarmStartScalar(to_solution(handle), field_id, &value),
-               "cuOptGetPDLPWarmStartScalar");
-  return value;
-}
-
-extern "C" JNIEXPORT jint JNICALL
-Java_com_nvidia_cuopt_linearprogramming_NativeCuOpt_getPdlpWarmStartInteger(JNIEnv* env,
-                                                                            jclass,
-                                                                            jlong handle,
-                                                                            jint field_id)
-{
-  cuopt_int_t value = 0;
-  check_status(env,
-               cuOptGetPDLPWarmStartInteger(to_solution(handle), field_id, &value),
-               "cuOptGetPDLPWarmStartInteger");
-  return value;
 }

@@ -124,6 +124,11 @@ for DEP in "${DEPENDENCIES[@]}"; do
   done
 done
 
+# Update the Java API version. Keep the RAPIDS YY.MM.PP format used by VERSION.
+for FILE in java/*/pom.xml; do
+  sed_runner "/<!--CUOPT_JAVA#VERSION_UPDATE_MARKER_START-->.*<!--CUOPT_JAVA#VERSION_UPDATE_MARKER_END-->/s//<!--CUOPT_JAVA#VERSION_UPDATE_MARKER_START--><version>${NEXT_FULL_TAG}<\/version><!--CUOPT_JAVA#VERSION_UPDATE_MARKER_END-->/g" "${FILE}"
+done
+
 # Update README.md version badge
 sed_runner 's/badge\/version-[0-9]\+\.[0-9]\+\.[0-9]\+-blue/badge\/version-'${NEXT_FULL_TAG}'-blue/g' README.md
 

@@ -9,8 +9,8 @@ Mixed Integer Programming (MIP)
    performance characteristics; inspect termination status, MIP gap, and
    solution bound in production workflows.
 
-The Java MIP API uses the same ``Problem``, ``DataModel``,
-``SolverSettings``, and ``Solution`` classes as the LP/QP API. MIP models are
+The Java MIP API uses the same ``Problem``, ``SolverSettings``, and
+``Solution`` classes as the LP/QP API. MIP problems are
 identified by one or more variables with ``INTEGER`` or ``SEMI_CONTINUOUS``
 type.
 

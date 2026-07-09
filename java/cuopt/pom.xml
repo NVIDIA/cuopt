@@ -8,9 +8,10 @@ SPDX-License-Identifier: Apache-2.0
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>com.nvidia</groupId>
+  <groupId>com.nvidia.cuopt</groupId>
   <artifactId>cuopt</artifactId>
-  <version>26.8.0-SNAPSHOT</version>
+  <!-- NOTE: This version is updated by ci/release/update-version.sh. -->
+  <!--CUOPT_JAVA#VERSION_UPDATE_MARKER_START--><version>26.08.00</version><!--CUOPT_JAVA#VERSION_UPDATE_MARKER_END-->
   <name>cuOpt Java Bindings</name>
   <description>Java JNI bindings for cuOpt numerical optimization.</description>
 
@@ -31,6 +32,11 @@ SPDX-License-Identifier: Apache-2.0
 
   <build>
     <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.4.2</version>
+      </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>

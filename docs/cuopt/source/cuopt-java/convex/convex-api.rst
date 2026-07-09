@@ -2,15 +2,15 @@
 Convex Optimization API Reference
 ===================================
 
-The Java LP/QP bindings are in the package
-``com.nvidia.cuopt.linearprogramming``. The public API is documented below by
+The Java LP/MIP/QP bindings are in the package
+``com.nvidia.cuopt.mathematicalprogramming``. The public API is documented below by
 role. Method names are Java names and therefore use fluent methods instead of
 Python operator overloads.
 
-High-level model
-----------------
+High-level problem
+------------------
 
-``Problem`` is the recommended entry point for models built in Java.
+``Problem`` is the recommended entry point for problems built in Java.
 
 .. list-table:: ``Problem``
    :header-rows: 1
@@ -19,7 +19,7 @@ High-level model
    * - API
      - Description
    * - ``new Problem()`` / ``new Problem(String name)``
-     - Create an empty model, optionally with a problem name.
+     - Create an empty problem, optionally with a name.
    * - ``addVariable(...)``
      - Add a variable with lower/upper bounds, objective coefficient, variable type, and name.
    * - ``addConstraint(Constraint, String name)``
@@ -29,30 +29,31 @@ High-level model
    * - ``setObjective(QuadraticExpression, ObjectiveSense)``
      - Set a quadratic objective with optional linear and constant terms.
    * - ``solve()`` / ``solve(SolverSettings)``
-     - Convert the model to a native ``DataModel`` and return a ``Solution``.
-   * - ``toDataModel()``
-     - Materialize the high-level model as the lower-level native data model.
+     - Solve the problem and return a ``Solution``.
    * - ``getCSR()`` / ``getQCSR()``
      - Inspect the linear or quadratic objective matrix in CSR form.
    * - ``writeMPS(String)`` / ``read(String)`` / ``readMPS(String)``
-     - Write or load MPS/QPS-backed models. The fixed-format overloads accept a boolean flag.
+     - Write or load MPS/QPS-backed problems. The fixed-format overloads accept a boolean flag.
    * - ``update()`` / ``updateConstraint(...)`` / ``updateObjective(...)``
-     - Update model state and reset solved values where appropriate.
+     - Update problem state and reset solved values where appropriate.
    * - ``relax()``
      - Return a copy with variables converted to continuous type.
 
-The model also exposes ``getVariables``, ``getVariable``, ``getConstraints``,
+``Problem`` also exposes ``getVariables``, ``getVariable``, ``getConstraints``,
 ``getConstraint``, ``getNumVariables``, ``getNumConstraints``,
-``getNumNonZeros``, ``isMip``, ``isSolved``, ``getStatus``,
-``getObjectiveValue``, and ``getSolveTime``.
+``getNumNonZeros``, ``isMIP``, ``isSolved``, ``getStatus``,
+``getObjective``, ``getObjectiveValue``, and ``getSolveTime``. ``getObjective``
+returns the common ``ObjectiveExpression`` type; ``isQuadratic`` distinguishes
+the concrete linear and quadratic forms without an ``Object`` downcast.
 
-Low-level data model
---------------------
+Deprecated low-level problem representation
+-------------------------------------------
 
-``DataModel`` is useful when the problem is already available as arrays or
-when direct access to native CSR and quadratic data is required.
+.. deprecated:: 26.08
+   Use ``Problem``. ``DataModel`` remains temporarily available for code that
+   requires direct access to native CSR and quadratic data.
 
-Create a model with one of the following factories:
+Create the deprecated representation with one of the following factories:
 
 .. code-block:: java
 
@@ -67,9 +68,9 @@ Create a model with one of the following factories:
        constraintUpperBounds, variableLowerBounds, variableUpperBounds,
        variableTypes);
 
-``CsrMatrix`` stores ``rowOffsets``, ``columnIndices``, and ``values``. The
-arrays are available through ``getRowOffsets``, ``getColumnIndices``, and
-``getValues``.
+``CSRMatrix`` takes ``values``, ``columnIndices``, and ``rowOffsets`` in the
+same order as the lower-level cuOpt CSR setter. The arrays are available
+through ``getValues``, ``getColumnIndices``, and ``getRowOffsets``.
 
 The mutable ``DataModel`` setters cover:
 
@@ -82,20 +83,20 @@ The mutable ``DataModel`` setters cover:
 
 The corresponding getters include ``getConstraintMatrix``,
 ``getConstraintMatrixValues``, ``getConstraintMatrixIndices``,
-``getConstraintMatrixOffsets``, ``getConstraintRhs``,
+``getConstraintMatrixOffsets``, ``getConstraintRHS``,
 ``getConstraintLowerBounds``, ``getConstraintUpperBounds``,
 ``getQuadraticObjectiveValues``, ``getQuadraticObjectiveIndices``,
 ``getQuadraticObjectiveOffsets``, ``getQuadraticConstraints``,
 ``getVariableNames``, ``getRowNames``, ``getObjectiveName``,
 ``getProblemName``, ``getProblemCategory``, and ``toDict``.
 
-Use ``clearQuadraticConstraints`` to remove all quadratic constraints from a
-mutable data model. ``DataModel`` implements ``AutoCloseable``.
+Use ``clearQuadraticConstraints`` to remove all quadratic constraints from the
+mutable representation. ``DataModel`` implements ``AutoCloseable``.
 
 Variables, expressions, and constraints
 ----------------------------------------
 
-``Variable`` stores the model index, bounds, objective coefficient, type,
+``Variable`` stores the problem index, bounds, objective coefficient, type,
 name, solved value, reduced cost, and optional MIP start. Its mutable methods
 return the variable so calls can be chained:
 
@@ -113,16 +114,22 @@ return the variable so calls can be chained:
 ``QuadraticExpression`` supports quadratic terms through
 ``QuadraticExpression.of(first, second, coefficient)`` and the same fluent
 arithmetic pattern. It can also contain linear and constant terms. Its
-``le`` and ``ge`` methods return quadratic constraints; ``eq`` throws because
-equality quadratic constraints are not supported.
+``le`` and ``ge`` methods return quadratic constraints. It does not expose an
+``eq`` method because equality quadratic constraints are not supported.
 
-The enums used in model construction are:
+Both expression classes implement ``ObjectiveExpression``, which exposes the
+linear portion, constant, current value, and ``isQuadratic``.
+
+The enums used in problem construction are:
 
 * ``ObjectiveSense.MINIMIZE`` and ``ObjectiveSense.MAXIMIZE``;
 * ``ConstraintSense.LE``, ``ConstraintSense.GE``, and ``ConstraintSense.EQ``;
 * ``VariableType.CONTINUOUS``, ``VariableType.INTEGER``, and
   ``VariableType.SEMI_CONTINUOUS``; and
 * ``ProblemCategory`` for the native problem classification.
+
+``ProblemCategory.IP`` is deprecated. Java normalizes the legacy native IP
+category to ``ProblemCategory.MIP``.
 
 ``Constraint`` provides ``getSense``, ``getRHS``, ``getCoefficient``,
 ``getLinearExpression``, ``getQuadraticExpression``, ``isQuadratic``,
@@ -132,22 +139,21 @@ Solver settings
 ---------------
 
 ``SolverSettings`` owns native solver configuration and implements
-``AutoCloseable``. Parameters can be set with the overloaded
-``setParameter`` methods for ``String``, ``int``, ``double``, and ``boolean``
-values. Use ``getParameter`` or ``getParameterAsString`` for the native string
-representation, and ``getTypedParameter`` when a Java ``Boolean``,
-``Integer``, ``Double``, or ``String`` value is preferred.
+``AutoCloseable``. Settings can be set with the overloaded
+``setSetting`` methods for ``String``, ``int``, ``double``, and ``boolean``
+values. Use ``getSetting`` or ``getSettingAsString`` for the native string
+representation. The ``getSetting(name, type)`` overload provides a typed
+``Boolean``, ``Integer``, ``Double``, or ``String`` result, for example
+``getSetting(CuOptConstants.CUOPT_TIME_LIMIT, Double.class)``.
 
 The settings API also includes:
 
-* ``getSolverParameterNames`` and the static setting accessors;
-* ``setMethod`` and ``setPdlpSolverMode``;
+* ``getSolverSettingNames`` and the static setting accessors;
+* ``setMethod`` and ``setPDLPSolverMode``;
 * ``setOptimalityTolerance``;
-* primal and dual initial solutions;
-* ``dumpParametersToFile`` and ``loadParametersFromFile``;
+* ``dumpSettingsToFile`` and ``loadSettingsFromFile``;
 * ``toDict``;
-* ``setPdlpWarmStartData``; and
-* MIP callback registration through ``setMipCallback``.
+* MIP callback registration through ``setMIPCallback``.
 
 ``SolverMethod`` includes ``PDLP``, ``DUAL_SIMPLEX``, ``BARRIER``,
 ``CONCURRENT``, and ``UNSET``. ``PDLPSolverMode`` exposes the supported PDLP
@@ -165,22 +171,17 @@ Solutions and statistics
 * ``getSolveTime`` and ``getProblemCategory``; and
 * ``getVars`` when variable names are available.
 
-LP solutions additionally expose ``getLpStats`` and PDLP warm-start data.
-``LPStats`` contains primal residual, dual residual, gap, iteration count, and
-the ``SolverMethod`` used. MIP-only solution fields are documented in
-:doc:`../mip/mip-api`.
+LP solutions additionally expose ``getLPStats``. ``LPStats`` contains primal
+residual, dual residual, gap, iteration count, and the ``SolverMethod`` used.
+MIP-only solution fields are documented in :doc:`../mip/mip-api`.
 
-MPS, batching, and errors
--------------------------
+MPS and errors
+--------------
 
-``DataModel.read``, ``DataModel.parseMps``, ``Problem.read``, and
-``Problem.readMPS`` support MPS/QPS parsing, including a fixed-format boolean
-overload. ``writeMPS`` writes a model for round trips or use by another cuOpt
-interface.
-
-``BatchSolve.solve(List<DataModel>, SolverSettings)`` is a sequential Java
-compatibility entry point. It returns ``BatchSolveResult``, containing the
-solutions and elapsed solve time.
+``Problem.read`` and ``Problem.readMPS`` support MPS/QPS parsing, including a
+fixed-format boolean overload. The deprecated ``DataModel`` equivalents are
+``DataModel.read`` and ``DataModel.parseMPS``. ``writeMPS`` writes a problem
+for round trips or use by another cuOpt interface.
 
 Native failures are reported as ``CuOptException`` with a cuOpt status code
 available through ``getStatusCode``. Accessing an LP-only field on a MIP
