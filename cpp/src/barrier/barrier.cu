@@ -756,6 +756,7 @@ class iteration_data_t {
     std::vector<std::size_t> cone_offsets_host;
     std::vector<std::size_t> dense_cone_block_offsets_host;
     std::vector<i_t> dense_cone_ids_host;
+    std::vector<i_t> dense_cone_idx_by_cone;
     std::vector<i_t> cone_sparse_idx;
     std::vector<i_t> sparse_cone_ids_host;
     std::vector<std::size_t> sparse_entry_offsets;
@@ -788,14 +789,18 @@ class iteration_data_t {
         }
 
         dense_cone_ids_host.reserve(n_cones);
+        dense_cone_idx_by_cone.assign(n_cones, i_t(-1));
         dense_cone_block_offsets_host = {0};
         dense_cone_block_offsets_host.reserve(n_cones + 1);
+        i_t dense_idx = 0;
         for (i_t k = 0; k < n_cones; ++k) {
           if (cone_sparse_idx[k] < 0) {
+            dense_cone_idx_by_cone[k] = dense_idx;
             dense_cone_ids_host.push_back(k);
             const auto q_k = cone_offsets_host[k + 1] - cone_offsets_host[k];
             dense_cone_block_offsets_host.push_back(dense_cone_block_offsets_host.back() +
                                                     q_k * q_k);
+            ++dense_idx;
           }
         }
         dense_soc_kkt_nnz = static_cast<i_t>(dense_cone_block_offsets_host.back());
@@ -896,10 +901,8 @@ class iteration_data_t {
               }
             } else {
               // Row of dense SOC.
-              i_t dense_idx = 0;
-              for (i_t t = 0; t < k; ++t) {
-                if (cone_sparse_idx[t] < 0) { ++dense_idx; }
-              }
+              const i_t dense_idx = dense_cone_idx_by_cone[k];
+              cuopt_assert(dense_idx >= 0, "dense cone index unset");
               i_t block_base =
                 static_cast<i_t>(dense_cone_block_offsets_host[dense_idx]) + local_r * q_k;
 
