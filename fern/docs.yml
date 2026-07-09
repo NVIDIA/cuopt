@@ -11,6 +11,23 @@ colors:
     dark: "#76B900"
     light: "#4a7600"
 
+libraries:
+  cuopt-c-api:
+    input:
+      path: ../cpp
+    output:
+      path: ./static/cpp-docs
+    lang: cpp
+    config:
+      doxyfile: ./Doxyfile.fern
+
+  cuopt-python-api:
+    input:
+      path: ../python/cuopt/cuopt
+    output:
+      path: ./static/python-docs
+    lang: python
+
 css:
   - docs/scripts/install-selector.css
 
@@ -226,3 +243,5 @@ navigation:
         path: docs/pages/open-api.mdx
       - page: C API Reference
         path: docs/pages/cuopt-c-api-reference.mdx
+      - folder: ./static/python-docs
+        title: Python Distance Engine

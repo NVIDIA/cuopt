@@ -152,6 +152,35 @@ def _preprocess_rst(content: str, rst_path: Path) -> str:
     # 11. :abbr: → just the term
     content = re.sub(r":abbr:`([^`(]+)\s*\([^)]+\)`", r"\1", content)
 
+    # 12. .. dropdown:: Title → <Accordion title="Title">...</Accordion>
+    #     Must run before pandoc so content inside is properly converted.
+    def _dropdown_to_accordion(m):
+        title = m.group(1).strip().replace('"', '&quot;')
+        body_raw = m.group(2)
+        # Drop :class: / :open: option lines at the start of body
+        body_lines = body_raw.splitlines()
+        non_option_lines = []
+        in_options = True
+        for line in body_lines:
+            if in_options and re.match(r"[ \t]+:[a-z\-]+:", line):
+                continue
+            in_options = False
+            non_option_lines.append(line)
+        body = "\n".join(non_option_lines)
+        # Dedent by 3 spaces (standard RST directive body indent)
+        body = re.sub(r"^   ", "", body, flags=re.MULTILINE)
+        return (
+            f".. raw:: html\n\n   <Accordion title=\"{title}\">\n\n"
+            + body.strip()
+            + "\n\n.. raw:: html\n\n   </Accordion>\n\n"
+        )
+
+    content = re.sub(
+        r"\.\. dropdown::[ \t]+([^\n]+)\n((?:(?:[ \t][^\n]*)?\n)*)",
+        _dropdown_to_accordion,
+        content,
+    )
+
     return content
 
 
@@ -207,7 +236,34 @@ def _postprocess_mdx(md: str, title: str) -> str:
         md,
     )
 
-    # 3. Fix image paths → point into /docs/images/ (flat)
+    # 3. Convert any remaining <div class="dropdown"> blocks to <Accordion>
+    #    These come from .. dropdown:: directives not caught by the preprocessor.
+    def _div_dropdown_to_accordion(m):
+        inner = m.group(1).strip()
+        # First non-empty paragraph is the title
+        parts = re.split(r"\n\n+", inner, maxsplit=1)
+        title = parts[0].strip().replace('"', '&quot;')
+        body = parts[1].strip() if len(parts) > 1 else ""
+        return f'<Accordion title="{title}">\n\n{body}\n\n</Accordion>'
+
+    md = re.sub(
+        r'<div class="dropdown">\s*(.*?)\s*</div>',
+        _div_dropdown_to_accordion,
+        md,
+        flags=re.DOTALL,
+    )
+
+    # 3c. MDX can't parse JSX components inside list items when the body/closing
+    #     tag is at column 0. Un-indent the opening tag so the whole block sits
+    #     between list items instead.
+    md = re.sub(
+        r"^ {4}<(Note|Warning|Tip|Accordion)",
+        r"<\1",
+        md,
+        flags=re.MULTILINE,
+    )
+
+    # 3b. Fix image paths → point into /docs/images/ (flat)
     # Matches: images/foo.png, ../images/foo.png, ../../foo/images/foo.png
     md = re.sub(r"!\[([^\]]*)\]\((?:[^)]*\/)?images\/([^)]+)\)", r"![\1](/docs/images/\2)", md)
 
@@ -443,6 +499,23 @@ colors:
     dark: "#76B900"
     light: "#4a7600"
 
+libraries:
+  cuopt-c-api:
+    input:
+      path: ../cpp
+    output:
+      path: ./static/cpp-docs
+    lang: cpp
+    config:
+      doxyfile: ./Doxyfile.fern
+
+  cuopt-python-api:
+    input:
+      path: ../python/cuopt/cuopt
+    output:
+      path: ./static/python-docs
+    lang: python
+
 css:
   - docs/scripts/install-selector.css
 
@@ -470,6 +543,10 @@ def _nav_to_yaml(items: list, indent: int = 0) -> str:
         elif "page" in item:
             lines.append(f"{pad}- page: {_yaml_str(item['page'])}")
             lines.append(f"{pad}  path: {item['path']}")
+        elif "folder" in item:
+            lines.append(f"{pad}- folder: {item['folder']}")
+            if "title" in item:
+                lines.append(f"{pad}  title: {_yaml_str(item['title'])}")
         elif "api" in item:
             lines.append(f"{pad}- api: {_yaml_str(item['api'])}")
             if "spec" in item:
@@ -518,19 +595,21 @@ def main():
     index_rst = SRC / "index.rst"
     nav_items = _build_nav_tree(index_rst, SRC)
 
-    # 4. Add an API reference section (OpenAPI - not C++ yet)
+    # 4. Add an API reference section
+    python_lib_entry = {}
+    if (FERN / "static/python-docs").exists() and any((FERN / "static/python-docs").rglob("*.mdx")):
+        python_lib_entry = {"folder": "./static/python-docs", "title": "Python Distance Engine"}
+
+    api_contents = [
+        {"page": "REST API (Server)", "path": "docs/pages/open-api.mdx"},
+        {"page": "C API Reference", "path": "docs/pages/cuopt-c-api-reference.mdx"},
+    ]
+    if python_lib_entry:
+        api_contents.append(python_lib_entry)
+
     api_section = {
         "section": "API Reference",
-        "contents": [
-            {
-                "page": "REST API (Server)",
-                "path": "docs/pages/open-api.mdx",
-            },
-            {
-                "page": "C API Reference",
-                "path": "docs/pages/cuopt-c-api-reference.mdx",
-            },
-        ],
+        "contents": api_contents,
     }
     # 5. Write docs.yml — combine main nav + API reference
     all_nav = nav_items + [api_section]
