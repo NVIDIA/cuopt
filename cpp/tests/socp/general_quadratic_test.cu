@@ -12,6 +12,8 @@
 #include <cuopt/error.hpp>
 #include <cuopt/mathematical_optimization/io/parser.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
 #include <dual_simplex/solve.hpp>
 #include <dual_simplex/user_problem.hpp>
 #include <linear_algebra/sparse_matrix.hpp>
@@ -905,6 +907,42 @@ TEST(general_quadratic, rotated_soc_heads_free_rejected)
   EXPECT_THROW(
     (convert_quadratic_constraints_to_second_order_cones<i_t, f_t>(n, qcs, csr_A, user_problem)),
     cuopt::logic_error);
+}
+
+// Test QCQP with rotated SOC constraint and quadratic objective using high-level API.
+// This is the recommended way to solve QCQP problems.
+// minimize (1/2)*x^2 - x   (quadratic objective)
+// subject to x^2 - 2*t*u <= 0  (rotated SOC)
+//            t = 1, u = 0.5
+// Optimal: x = 1, objective = -0.5
+TEST(general_quadratic, qcqp_rotated_soc)
+{
+  raft::handle_t handle{};
+
+  auto problem = io::read_lp_from_string<i_t, f_t>(R"LP(
+Minimize
+  - x + [ x ^2 ] / 2
+Subject To
+  t_eq: t = 1
+  u_eq: u = 0.5
+  rsoc: [ x ^2 - 2 t * u ] <= 0
+Bounds
+  x free
+  t >= 0
+  u >= 0
+End
+)LP");
+
+  ASSERT_TRUE(problem.has_quadratic_objective());
+  ASSERT_TRUE(problem.has_quadratic_constraints());
+  ASSERT_EQ(problem.get_quadratic_constraints().size(), 1u);
+
+  pdlp_solver_settings_t<i_t, f_t> settings;
+  auto solution = solve_lp(&handle, problem, settings);
+
+  EXPECT_EQ(solution.get_termination_status(), pdlp_termination_status_t::Optimal);
+  // Optimal: x=1, objective = (1/2)*1 - 1 = -0.5
+  EXPECT_NEAR(solution.get_objective_value(), -0.5, 1e-4);
 }
 
 }  // namespace cuopt::mathematical_optimization::barrier::test

@@ -272,17 +272,17 @@ void canonicalize_coo_matrix(std::vector<i_t>& rows, std::vector<i_t>& cols, std
   // Bucket entry indices by canonical row via a stable counting sort.
   std::vector<i_t> offsets(static_cast<size_t>(max_row - min_idx) + 2, 0);
   for (size_t k = 0; k < n; ++k) {
-    offsets[static_cast<size_t>(std::min(rows[k], cols[k]) - min_idx) + 1]++;
+    offsets[std::min(rows[k], cols[k]) - min_idx + 1]++;
   }
   for (i_t r = 0; r <= max_row - min_idx; ++r) {
-    offsets[static_cast<size_t>(r) + 1] += offsets[static_cast<size_t>(r)];
+    offsets[r + 1] += offsets[r];
   }
   std::vector<i_t> perm(n);
   std::vector<i_t> cursor(offsets.begin(), offsets.end() - 1);
   for (size_t k = 0; k < n; ++k) {
-    const i_t r                          = std::min(rows[k], cols[k]) - min_idx;
-    perm[static_cast<size_t>(cursor[r])] = static_cast<i_t>(k);
-    cursor[static_cast<size_t>(r)]++;
+    const i_t r     = std::min(rows[k], cols[k]) - min_idx;
+    perm[cursor[r]] = static_cast<i_t>(k);
+    cursor[r]++;
   }
 
   // Merge duplicate (row, col) entries within each canonical row using a marker array
@@ -298,17 +298,16 @@ void canonicalize_coo_matrix(std::vector<i_t>& rows, std::vector<i_t>& cols, std
   std::vector<i_t> marker(static_cast<size_t>(max_col - min_idx) + 1, 0);
   for (i_t r = 0; r <= max_row - min_idx; ++r) {
     const i_t row_start = static_cast<i_t>(entries.size());
-    for (i_t p = offsets[static_cast<size_t>(r)]; p < offsets[static_cast<size_t>(r) + 1]; ++p) {
-      const i_t k   = perm[static_cast<size_t>(p)];
-      const i_t row = std::min(rows[static_cast<size_t>(k)], cols[static_cast<size_t>(k)]);
-      const i_t col = std::max(rows[static_cast<size_t>(k)], cols[static_cast<size_t>(k)]);
+    for (i_t p = offsets[r]; p < offsets[r + 1]; ++p) {
+      const i_t k   = perm[p];
+      const i_t row = std::min(rows[k], cols[k]);
+      const i_t col = std::max(rows[k], cols[k]);
       const i_t c   = col - min_idx;
-      if (marker[static_cast<size_t>(c)] <= row_start) {
-        entries.push_back(entry_t{row, col, vals[static_cast<size_t>(k)]});
-        marker[static_cast<size_t>(c)] = static_cast<i_t>(entries.size());
+      if (marker[c] <= row_start) {
+        entries.push_back(entry_t{row, col, vals[k]});
+        marker[c] = static_cast<i_t>(entries.size());
       } else {
-        entries[static_cast<size_t>(marker[static_cast<size_t>(c)] - 1)].val +=
-          vals[static_cast<size_t>(k)];
+        entries[marker[c] - 1].val += vals[k];
       }
     }
     std::sort(entries.begin() + row_start,

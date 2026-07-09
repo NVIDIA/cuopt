@@ -63,6 +63,7 @@ def _infeasible_lp_problem():
     return problem
 
 
+@pytest.mark.xdist_group(name="grpc_server")
 @pytest.mark.filterwarnings("ignore::DeprecationWarning")
 class TestGrpcClient:
     grpc_port_offset = GRPC_PORT_OFFSET_CLIENT

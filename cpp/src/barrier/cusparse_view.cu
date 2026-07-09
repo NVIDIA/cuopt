@@ -114,13 +114,14 @@ void my_cusparsespmv_preprocess(cusparseHandle_t handle,
 }
 #endif
 
-static cusparseSpMVAlg_t get_spmv_alg(int num_rows)
+static cusparseSpMVAlg_t get_spmv_alg([[maybe_unused]] int num_rows)
 {
-  // The older version of ALG2 has a bug with single row matrices
-  if (num_rows == 1 &&
-      (CUSPARSE_VER_MAJOR * 1000 + CUSPARSE_VER_MINOR * 100 + CUSPARSE_VER_PATCH < 12603)) {
-    return CUSPARSE_SPMV_CSR_ALG1;
-  }
+  // ALG2 has a bug in cuSPARSE < 13.0 where beta=1 accumulate mode ignores existing y values.
+  // ALG1 uses a deterministic row-split algorithm, while ALG2 uses a merge-based
+  // algorithm that may be faster but can use atomics. ALG1 is safe for reproducibility.
+  constexpr int cusparse_version =
+    CUSPARSE_VER_MAJOR * 1000 + CUSPARSE_VER_MINOR * 100 + CUSPARSE_VER_PATCH;
+  if (cusparse_version < 13000) { return CUSPARSE_SPMV_CSR_ALG1; }
   return CUSPARSE_SPMV_CSR_ALG2;
 }
 
