@@ -10,7 +10,6 @@
 
 #include <cuda_runtime.h>
 
-#include <atomic>
 #include <cstdlib>
 
 namespace cuopt::mathematical_optimization {
@@ -43,16 +42,13 @@ memory_backend_t get_memory_backend_type()
   // intentionally hidden GPU. This query is invoked at both problem creation and
   // solve time; the decision is fixed for the life of the process, so log only once
   // to avoid duplicate lines.
-  static std::atomic<bool> already_logged{false};
-  if (!already_logged.exchange(true)) {
-    CUOPT_LOG_INFO(
-      "cuOpt selected CPU memory backend: no usable CUDA device "
-      "(cudaGetDeviceCount err=%d (%s) count=%d, CUDA_VISIBLE_DEVICES=%s)",
-      static_cast<int>(err),
-      cudaGetErrorString(err),
-      cuda_count,
-      std::getenv("CUDA_VISIBLE_DEVICES") ? std::getenv("CUDA_VISIBLE_DEVICES") : "(unset)");
-  }
+  CUOPT_LOG_ONCE(INFO,
+    "cuOpt selected CPU memory backend: no usable CUDA device "
+    "(cudaGetDeviceCount err=%d (%s) count=%d, CUDA_VISIBLE_DEVICES=%s)",
+    static_cast<int>(err),
+    cudaGetErrorString(err),
+    cuda_count,
+    std::getenv("CUDA_VISIBLE_DEVICES") ? std::getenv("CUDA_VISIBLE_DEVICES") : "(unset)");
   return memory_backend_t::CPU;
 }
 
