@@ -6,11 +6,15 @@ on:
       - docs-fern-migration
     paths:
       - "docs/cuopt/source/**"
+      - "python/cuopt/cuopt/**"
+      - "python/cuopt_server/**"
       - "fern/**"
       - ".github/workflows/fern-docs.yml"
   pull_request:
     paths:
       - "docs/cuopt/source/**"
+      - "python/cuopt/cuopt/**"
+      - "python/cuopt_server/**"
       - "fern/**"
   workflow_dispatch:
 
@@ -31,10 +35,15 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y pandoc
 
+      - name: Install Python dependencies (for OpenAPI spec generation)
+        run: |
+          pip install fastapi pydantic pyyaml
+          pip install -e python/cuopt_server --no-deps
+
       - name: Install fern CLI
         run: npm install -g fern-api@$(jq -r .version fern/fern.config.json)
 
-      - name: Re-generate MDX from RST sources
+      - name: Generate MDX, OpenAPI spec, and Python API reference
         run: python fern/convert_docs.py
 
       - name: fern check
@@ -60,10 +69,15 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y pandoc
 
+      - name: Install Python dependencies (for OpenAPI spec generation)
+        run: |
+          pip install fastapi pydantic pyyaml
+          pip install -e python/cuopt_server --no-deps
+
       - name: Install fern CLI
         run: npm install -g fern-api@$(jq -r .version fern/fern.config.json)
 
-      - name: Re-generate MDX from RST sources
+      - name: Generate MDX, OpenAPI spec, and Python API reference
         run: python fern/convert_docs.py
 
       - name: Publish docs

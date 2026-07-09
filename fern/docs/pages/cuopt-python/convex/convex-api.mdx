@@ -1,5 +1,708 @@
 ---
-title: "Convex Optimization API Reference"
+title: "Convex Optimization Python API Reference"
 ---
 
-# Convex Optimization API Reference
+# Convex Optimization Python API Reference
+
+
+## Problem & Variables
+
+### CType
+
+The sense of a constraint is either LE, GE or EQ.
+Constraint Sense Types can be directly used as a constant.
+LE is CType.LE
+GE is CType.GE
+EQ is CType.EQ
+
+### sense
+
+The sense of a model is either MINIMIZE or MAXIMIZE.
+Model objective sense can be directly used as a constant.
+MINIMIZE is sense.MINIMIZE
+MAXIMIZE is sense.MAXIMIZE
+
+### Variable
+
+cuOpt variable object initialized with details of the variable
+such as lower bound, upper bound, type and name.
+Variables are always associated with a problem and can be
+created using :py:meth:`Problem.addVariable`.
+
+
+**Parameters**
+
+lb : float
+    Lower bound of the variable. Defaults to  0.
+ub : float
+    Upper bound of the variable. Defaults to infinity.
+vtype : enum
+    CONTINUOUS or INTEGER. Defaults to CONTINUOUS.
+obj : float
+    Coefficient of the Variable in the objective.
+name : str
+    Name of the variable. Optional.
+
+
+**Attributes**
+
+VariableName : str
+    Name of the Variable.
+VariableType : CONTINUOUS, INTEGER, or SEMI_CONTINUOUS
+    Variable type.
+LB : float
+    Lower Bound of the Variable.
+UB : float
+    Upper Bound of the Variable.
+Obj : float
+    Coefficient of the variable in the Objective function.
+Value : float
+    Value of the variable after solving.
+ReducedCost : float
+    Reduced Cost after solving an LP problem.
+MIPStart : float
+    Initial value (warm-start hint) for the variable. Defaults to NaN
+    (unset). Only used for a MIP problem.
+
+#### `__init__(lb = 0.0, ub = float('inf'), obj = 0.0, vtype = CONTINUOUS, vname = '')`
+
+#### `getIndex()`
+
+Get the index position of the variable in the problem.
+
+#### `getValue()`
+
+Returns the Value of the variable computed in current solution.
+Defaults to 0
+
+#### `getObjectiveCoefficient()`
+
+Returns the objective coefficient of the variable.
+
+#### `setObjectiveCoefficient(val)`
+
+Sets the objective cofficient of the variable.
+
+#### `setLowerBound(val)`
+
+Sets the lower bound of the variable.
+
+#### `getLowerBound()`
+
+Returns the lower bound of the variable.
+
+#### `setUpperBound(val)`
+
+Sets the upper bound of the variable.
+
+#### `getUpperBound()`
+
+Returns the upper bound of the variable.
+
+#### `setVariableType(val)`
+
+Sets the variable type of the variable.
+Variable types can be CONTINUOUS, INTEGER, or SEMI_CONTINUOUS.
+
+#### `getVariableType()`
+
+Returns the type of the variable.
+
+#### `setVariableName(val)`
+
+Sets the name of the variable.
+
+#### `getVariableName()`
+
+Returns the name of the variable.
+
+#### `setMIPStart(val)`
+
+Sets the MIP start (initial primal solution hint) value for the
+variable. Use ``float("nan")`` to unset.
+
+#### `getMIPStart()`
+
+Returns the MIP start (initial primal solution hint) value of the
+variable. Defaults to NaN when unset.
+
+### QuadraticExpression
+
+QuadraticExpressions contain quadratic terms, linear terms, and a constant.
+Use them for quadratic objectives (``Problem.setObjective``) or quadratic
+constraints via ``<=`` or ``>=`` comparisons passed to
+:py:meth:`Problem.addConstraint` (equality is not supported).
+QuadraticExpressions can be added and subtracted with other
+QuadraticExpressions, LinearExpressions, and Variables, and can also
+be multiplied and divided by scalars.
+
+
+**Parameters**
+
+qmatrix : List[List[float]] or 2D numpy array.
+    Matrix containing quadratic coefficient matrix terms.
+    Should be a square matrix with shape as (num_vars, num_vars).
+qvars : List[Variable]
+    List of variables denoting the rows and cols in qmatrix. It is
+    a mandatory field when providing qmatrix.
+    qvars should be in the order of variables added to the problem
+    and can be obtained using problem.getVariables(). The length
+    of qvars should be equal to length of row/col in qmatrix.
+qvars1 : List[Variable]
+    List of first variables for quadratic terms.
+    This should be used if adding quadratic terms in triplet (i, j, x)
+    format where i is the row variable, j is the column variable and
+    x is the corresponding coefficient. qvars1 contains all i variables
+    representing the row.
+qvars2 : List[Variable]
+    List of second variables for quadratic terms.
+    This should be used if adding quadratic terms in triplet (i, j, x)
+    format where i is the row variable, j is the column variable and
+    x is the corresponding coefficient. qvars2 contains all j variables
+    representing the column.
+qcoefficients : List[float]
+    List of coefficients for the quadratic terms.
+    This should be used if adding quadratic terms in triplet (i, j, x)
+    format where i is the row variable, j is the column variable and
+    x is the corresponding coefficient. qcoefficients contains all x
+    values representing coefficients for (i,j)
+vars : List[Variable]
+    List of Variables for linear terms.
+coefficients : List[float]
+    List of coefficients for linear terms.
+constant : float
+    Constant of the quadratic expression.
+
+
+**Examples**
+
+>>> x = problem.addVariable()
+>>> y = problem.addVariable()
+>>> # Create objective x^2 + 2*x*y + 3*x + 4 using matrix
+>>> quad_matrix = QuadraticExpression(
+...     qmatrix=[[1.0, 2.0], [0.0, 0.0]],
+...     qvars=[x, y]
+... )
+>>> quad_obj_using_matrix = quad_matrix + 3*x + 4
+>>> # Create objective x^2 + 2*x*y + 3*x + 4 using expression
+>>> quad_obj_using_expr = x*x + 2*x*y + 3*x + 4
+
+#### `__init__(qmatrix = None, qvars = [], qvars1 = [], qvars2 = [], qcoefficients = [], vars = [], coefficients = [], constant = 0.0)`
+
+#### `getVariables()`
+
+Returns all the quadractic variables in the expression as list
+of tuples containing Variable 1 and Variable 2 for each term.
+
+#### `getVariable1(i)`
+
+Gets first Variable at ith index in the quadratic term.
+
+#### `getVariable2(i)`
+
+Gets second Variable at ith index in the quadratic term.
+
+#### `getCoefficients()`
+
+Returns all the coefficients of the quadratic term.
+
+#### `getCoefficient(i)`
+
+Gets the coefficient of the quadratic term at ith index.
+
+#### `getLinearExpression()`
+
+Returns the Linear Expression associated with the
+Quadratic Expression.
+
+#### `getValue()`
+
+Returns the value of the expression computed with the
+current solution.
+
+### LinearExpression
+
+LinearExpressions contain a set of variables, the coefficients
+for the variables, and a constant.
+LinearExpressions can be used to create constraints and the
+objective in the Problem.
+LinearExpressions can be added and subtracted with other
+LinearExpressions and Variables and can also be multiplied and
+divided by scalars.
+LinearExpressions can be compared with scalars, Variables, and
+other LinearExpressions to create Constraints.
+
+
+**Parameters**
+
+vars : List
+    List of Variables in the linear expression.
+coefficients : List
+    List of coefficients corresponding to the variables.
+constant : float
+    Constant of the linear expression.
+
+#### `__init__(vars, coefficients, constant)`
+
+#### `getVariables()`
+
+Returns all the variables in the linear expression.
+
+#### `getVariable(i)`
+
+Gets Variable at ith index in the linear expression.
+
+#### `getCoefficients()`
+
+Returns all the coefficients in the linear expression.
+
+#### `getCoefficient(i)`
+
+Gets the coefficient of the variable at ith index of the
+linear expression.
+
+#### `getConstant()`
+
+Returns the constant in the linear expression.
+
+#### `zipVarCoefficients()`
+
+#### `getValue()`
+
+Returns the value of the expression computed with the
+current solution.
+
+### Constraint
+
+cuOpt constraint object containing a linear or quadratic (QCMATRIX)
+expression, the sense of the constraint, and the right-hand side.
+Constraints are associated with a problem and can be created using
+:py:meth:`Problem.addConstraint`.
+
+
+**Parameters**
+
+expr : LinearExpression or QuadraticExpression
+    Expression corresponding to the constraint.
+sense : enum
+    Sense of the constraint. Either LE for <=,
+    GE for >= or EQ for == .
+rhs : float
+    Constraint right-hand side value.
+name : str, Optional
+    Name of the constraint. Optional.
+
+
+**Attributes**
+
+ConstraintName : str
+    Name of the constraint.
+Sense : LE, GE or EQ
+    Row sense. LE for <=, GE for >= or EQ for == .
+RHS : float
+    Constraint right-hand side value (linear rows).
+is_quadratic : bool
+    True when the row is exported as a QCMATRIX quadratic constraint.
+Slack : float
+    Computed LHS - RHS with current solution.
+DualValue : float
+    Constraint dual value in the current solution.
+
+#### `__init__(expr, sense, rhs, name = '')`
+
+#### `getConstraintName()`
+
+Returns the name of the constraint.
+
+#### `getSense()`
+
+Returns the sense of the constraint.
+Constraint sense can be LE(<=), GE(>=) or EQ(==).
+
+#### `getRHS()`
+
+Returns the right-hand side value of the constraint.
+
+#### `getCoefficient(var)`
+
+Returns the coefficient of a variable in the constraint.
+
+#### `compute_slack()`
+
+### Problem
+
+A Problem defines a Linear Program or Mixed Integer Program
+Variable can be be created by calling addVariable()
+Constraints can be added by calling addConstraint()
+The objective can be set by calling setObjective()
+The problem data is formed when calling solve().
+
+
+**Parameters**
+
+model_name : str, optional
+    Name of the model. Default is an empty string.
+
+
+**Attributes**
+
+Name : str
+    Name of the model.
+ObjSense : sense
+    Objective sense (MINIMIZE or MAXIMIZE).
+ObjConstant : float
+    Constant term in the objective.
+Status : int
+    Status of the problem after solving.
+SolveTime : float
+    Time taken to solve the problem.
+SolutionStats : object
+    Solution statistics for LP or MIP problem.
+ObjValue : float
+    Objective value of the problem.
+IsMIP : bool
+    Indicates if the problem is a Mixed Integer Program.
+NumVariables : int
+    Number of Variables in the problem.
+NumConstraints : int
+    Number of constraints in the problem.
+NumNZs : int
+    Number of non-zeros in the problem.
+
+
+**Examples**
+
+>>> problem = problem.Problem("MIP_model")
+>>> x = problem.addVariable(lb=-2.0, ub=8.0, vtype=INTEGER)
+>>> y = problem.addVariable(name="Var2")
+>>> problem.addConstraint(2*x - 3*y <= 10, name="Constr1")
+>>> expr = 3*x + y
+>>> problem.addConstraint(expr + x == 20, name="Constr2")
+>>> problem.setObjective(x + y, sense=MAXIMIZE)
+>>> problem.solve()
+
+#### `__init__(model_name = '')`
+
+#### `update()`
+
+Update the problem. This is mandatory if attributes of
+existing Variables, Constraints or Objective has been
+modified.
+
+#### `reset_solved_values()`
+
+#### `addVariable(lb = 0.0, ub = float('inf'), obj = 0.0, vtype = CONTINUOUS, name = '')`
+
+Adds a variable to the problem defined by lower bound,
+upper bound, type and name.
+
+
+**Parameters**
+
+lb : float
+    Lower bound of the variable. Defaults to  0.
+ub : float
+    Upper bound of the variable. Defaults to infinity.
+vtype : enum :py:class:`VType`
+    vtype.CONTINUOUS, vtype.INTEGER, or vtype.SEMI_CONTINUOUS.
+    Defaults to CONTINUOUS.
+name : string
+    Name of the variable. Optional.
+
+
+**Returns**
+
+variable : :py:class:`Variable`
+    Variable object added to the problem.
+
+
+**Examples**
+
+>>> problem = problem.Problem("MIP_model")
+>>> x = problem.addVariable(lb=-2.0, ub=8.0, vtype=INTEGER,
+        name="Var1")
+
+#### `addConstraint(constr, name = '')`
+
+Adds a constraint to the problem defined by constraint object
+and name. A constraint is generated using LinearExpression or
+QuadraticExpression comparisons (``<=``, ``>=``, or ``==``).
+
+
+**Parameters**
+
+constr : :py:class:`Constraint`
+    Constructed using expression comparisons (see Examples).
+name : string
+    Name of the constraint. Optional.
+
+
+**Examples**
+
+>>> problem = problem.Problem("MIP_model")
+>>> x = problem.addVariable(lb=-2.0, ub=8.0, vtype=INTEGER)
+>>> y = problem.addVariable(name="Var2")
+>>> problem.addConstraint(2*x - 3*y <= 10, name="Constr1")
+>>> expr = 3*x + y
+>>> problem.addConstraint(expr + x == 20, name="Constr2")
+>>> problem.addConstraint(-x*x + y*y <= 0, name="soc")
+
+#### `updateConstraint(constr, coeffs = [], rhs = None)`
+
+Updates a previously added constraint. Values that can be updated are
+constraint coefficients and RHS.
+
+
+**Parameters**
+
+constr : :py:class:`Constraint`
+    Constraint to be updated.
+coeffs : List[Tuple[:py:class:`Variable`, coefficient]]
+    List of Tuples containing variable and corresponding coefficient.
+    Optional.
+rhs : int|float
+    New RHS value for the constraint.
+
+
+**Examples**
+
+>>> problem = problem.Problem("MIP_model")
+>>> x = problem.addVariable(lb=0.0, vtype=INTEGER)
+>>> y = problem.addVariable(lb=0.0, vtype=INTEGER)
+>>> c1 = problem.addConstraint(2 * x + y <= 7, name="c1")
+>>> c2 = problem.addConstraint(x + y <= 5, name="c2")
+>>> problem.updateConstraint(c1, coeffs=[(x, 1)], rhs=10)
+
+#### `setObjective(expr, sense = MINIMIZE)`
+
+Set the Objective of the problem with an expression that needs to
+be MINIMIZED or MAXIMIZED.
+
+
+**Parameters**
+
+expr : :py:class:`LinearExpression` or :py:class:`Variable` or Constant
+    Objective expression that needs maximization or minimization.
+sense : enum :py:class:`sense`
+    Sets whether the problem is a maximization or a minimization
+    problem. Values passed can either be MINIMIZE or MAXIMIZE.
+    Defaults to MINIMIZE.
+
+
+**Examples**
+
+>>> problem = problem.Problem("MIP_model")
+>>> x = problem.addVariable(lb=-2.0, ub=8.0, vtype=INTEGER)
+>>> y = problem.addVariable(name="Var2")
+>>> problem.addConstraint(2*x - 3*y <= 10, name="Constr1")
+>>> expr = 3*x + y
+>>> problem.addConstraint(expr + x == 20, name="Constr2")
+>>> problem.setObjective(x + y, sense=MAXIMIZE)
+
+#### `updateObjective(coeffs = [], constant = None, sense = None)`
+
+Updates the objective of the problem. Values that can be updated are
+objective coefficients, constant and sense.
+
+
+**Parameters**
+
+coeffs : List[Tuple[:py:class:`Variable`, coefficient]]
+    List of Tuples containing variable and corresponding coefficient.
+    Optional.
+constant : int|float
+    New Objective constant for the problem. Optional.
+sense : enum :py:class:`sense`
+    Sets the objective sense to either maximize or minimize. Optional.
+
+
+**Examples**
+
+>>> problem = problem.Problem("MIP_model")
+>>> x = problem.addVariable(lb=0.0, vtype=INTEGER)
+>>> y = problem.addVariable(lb=0.0, vtype=INTEGER)
+>>> problem.setObjective(4*x + y + 4, MAXIMIZE)
+>>> problem.updateObjective(coeffs=[(x1, 1.0), (x2, 3.0)], constant=5,
+        sense=MINIMIZE)
+
+#### `getIncumbentValues(solution, vars)`
+
+This is a utility function that can be used for extracting incumbent values
+of the given variables during a Solve using the incumbent callback.
+Please check docs for more details and examples of incumbent callbacks.
+
+
+**Parameters**
+
+solution : List[float]
+    Array-like structure containing incumbent values.
+vars : List[:py:class:`Variable`]
+    List of variables to extract corresponding incumbent values.
+
+#### `get_incumbent_values(solution, vars)`
+
+#### `getWarmstartData()`
+
+Note: Applicable to only LP.
+Allows to retrieve the warm start data from the PDLP solver
+once the problem is solved.
+This data can be used to warmstart the next PDLP solve by setting it
+in :py:meth:`cuopt.linear_programming.solver_settings.SolverSettings.set_pdlp_warm_start_data`  # noqa
+
+
+**Examples**
+
+>>> problem = problem.Problem.readMPS("LP.mps")
+>>> problem.solve()
+>>> warmstart_data = problem.getWarmstartData()
+>>> settings.set_pdlp_warm_start_data(warmstart_data)
+>>> updated_problem = problem.Problem.readMPS("updated_LP.mps")
+>>> updated_problem.solve(settings)
+
+#### `get_pdlp_warm_start_data()`
+
+#### `getObjective()`
+
+Get the Objective expression of the problem.
+
+#### `getVariables()`
+
+Get a list of all the variables in the problem.
+
+#### `getVariable(identifier)`
+
+Get a Variable by its index or name.
+
+#### `getConstraints()`
+
+Get a list of all the Constraints in a problem.
+
+#### `getConstraint(identifier)`
+
+Get a Constraint by its index or name.
+
+#### `read(cls, file_path, fixed_mps_format = False)`
+
+Initialize a problem from an MPS, QPS, or LP file.
+
+Dispatches on the file extension via the C++ ``read`` entry
+point (case-insensitive): ``.mps`` / ``.qps`` (and ``.gz`` / ``.bz2``
+variants) use the MPS/QPS reader; ``.lp`` (and compressed variants)
+use the LP reader.
+
+
+**Parameters**
+
+file_path : str
+    Path to an MPS, QPS, or LP file.
+fixed_mps_format : bool
+    If the MPS/QPS reader should parse as fixed MPS format. Ignored
+    for LP inputs. False by default.
+
+
+**Returns**
+
+Problem
+    A problem populated from the file.
+
+
+**Examples**
+
+>>> problem = problem.Problem.read("model.mps")
+>>> lp_problem = problem.Problem.read("model.lp")
+
+#### `readMPS(cls, mps_file)`
+
+Initialize a problem from an `MPS <https://en.wikipedia.org/wiki/MPS_(format)>`__ file.  # noqa
+
+Always invokes the MPS/QPS reader directly (via the
+``call_parse_mps`` Cython bridge), bypassing extension-based
+dispatch. Compressed ``.mps.gz`` / ``.mps.bz2`` / ``.qps.gz`` /
+``.qps.bz2`` inputs are still supported via the reader's path-
+based decompression.
+
+.. deprecated::
+    Use :meth:`read` instead.
+
+
+**Examples**
+
+>>> problem = problem.Problem.readMPS("model.mps")
+
+#### `writeMPS(mps_file)`
+
+Write the problem into an `MPS <https://en.wikipedia.org/wiki/MPS_(format)>`__ file.  # noqa
+
+**Examples**
+
+>>> problem.writeMPS("model.mps")
+
+#### `NumVariables()`
+
+#### `NumConstraints()`
+
+#### `getQuadraticConstraints()`
+
+Returns all quadratic (QCMATRIX) constraints in the problem.
+
+#### `NumNZs()`
+
+#### `IsMIP()`
+
+#### `Obj()`
+
+#### `ObjValue()`
+
+#### `getCSR()`
+
+Computes and returns the CSR representation of the
+constraint matrix.
+
+#### `getQCSR()`
+
+Computes and returns the CSR matrix representation of the
+quadratic objective.
+
+#### `getQcsr()`
+
+#### `relax()`
+
+Relax a MIP problem into an LP problem and return the relaxed model.
+The relaxed model has all variable types set to CONTINUOUS.
+
+
+**Examples**
+
+>>> mip_problem = problem.Problem.readMPS("MIP.mps")
+>>> lp_problem = problem.relax()
+
+#### `populate_solution(solution)`
+
+#### `solve(settings = solver_settings.SolverSettings())`
+
+Optimizes the LP or MIP problem with the added variables,
+constraints and objective.
+
+
+**Examples**
+
+>>> problem = problem.Problem("MIP_model")
+>>> x = problem.addVariable(lb=-2.0, ub=8.0, vtype=INTEGER)
+>>> y = problem.addVariable(name="Var2")
+>>> problem.addConstraint(2*x - 3*y <= 10, name="Constr1")
+>>> expr = 3*x + y
+>>> problem.addConstraint(expr + x == 20, name="Constr2")
+>>> problem.setObjective(x + y, sense=MAXIMIZE)
+>>> problem.solve()
+
+
+## Solver Settings
+
+LP/MIP solver settings package; implementation is in the ``solver_settings`` extension.
+
+Public ``solver_params`` is an immutable tuple so callers cannot mutate the extension
+module's internal parameter-name list used for validation.
+
+
+## I/O
+

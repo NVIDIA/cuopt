@@ -533,7 +533,54 @@ def main():
         encoding="utf-8",
     )
 
-    print("\nDone. Run: cd fern && fern check")
+    # 7. Generate OpenAPI spec from FastAPI app (no GPU required)
+    _generate_openapi_spec()
+
+    # 8. Extract Python API docstrings via AST
+    _extract_python_api()
+
+    print("\nDone. Run: fern check")
+
+
+def _generate_openapi_spec():
+    """Generate cuopt_spec.yaml from the FastAPI app without a GPU."""
+    try:
+        import sys as _sys
+        _sys.path.insert(0, str(REPO_ROOT / "python/cuopt_server"))
+        from cuopt_server.webserver import app
+        from fastapi.openapi.utils import get_openapi
+        import yaml
+
+        spec = get_openapi(
+            title=app.title,
+            version=app.version,
+            openapi_version=app.openapi_version,
+            description=app.description,
+            summary=getattr(app, "summary", None),
+            routes=app.routes,
+        )
+        out = FERN / "openapi/cuopt_spec.yaml"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        with open(out, "w") as f:
+            yaml.dump(spec, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+        print(f"Generated {out.relative_to(REPO_ROOT)} ({len(spec['paths'])} paths)")
+    except Exception as e:
+        print(f"  [WARN] Could not generate OpenAPI spec: {e}")
+        print("         Run manually: python fern/convert_docs.py (with cuopt_server installed)")
+
+
+def _extract_python_api():
+    """Delegate to extract_python_api.py for Python API MDX generation."""
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "extract_python_api", FERN / "extract_python_api.py"
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        mod.generate_pages()
+    except Exception as e:
+        print(f"  [WARN] Python API extraction failed: {e}")
 
 
 if __name__ == "__main__":

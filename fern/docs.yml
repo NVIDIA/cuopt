@@ -8,8 +8,7 @@ logo:
 
 colors:
   accentPrimary:
-    dark: "#76B900"
-    light: "#4a7600"
+    dark: "#76B900"   # NVIDIA green
 
 tabs:
   docs:
