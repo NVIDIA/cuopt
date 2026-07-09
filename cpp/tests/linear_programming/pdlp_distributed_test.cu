@@ -107,22 +107,22 @@ TEST(pdlp_class, distributed_parity_afiro)
   expect_distributed_matches_base(handle, "linear_programming/afiro_original.mps", true);
 }
 
-TEST(pdlp_class, distributed_parity_neos3)
+TEST(pdlp_class, distributed_parity_graph40_40)
 {
   if (raft::device_setter::get_device_count() < 2) {
     GTEST_SKIP() << "Requires >=2 GPUs, found " << raft::device_setter::get_device_count();
   }
   const raft::handle_t handle{};
-  expect_distributed_matches_base(handle, "linear_programming/neos3/neos3.mps");
+  expect_distributed_matches_base(handle, "linear_programming/graph40-40/graph40-40.mps");
 }
 
-TEST(pdlp_class, distributed_parity_a2864)
+TEST(pdlp_class, distributed_parity_ex10)
 {
   if (raft::device_setter::get_device_count() < 2) {
     GTEST_SKIP() << "Requires >=2 GPUs, found " << raft::device_setter::get_device_count();
   }
   const raft::handle_t handle{};
-  expect_distributed_matches_base(handle, "linear_programming/a2864/a2864.mps");
+  expect_distributed_matches_base(handle, "linear_programming/ex10/ex10.mps");
 }
 
 }  // namespace cuopt::mathematical_optimization::test

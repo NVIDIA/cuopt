@@ -30,7 +30,7 @@ set -euo pipefail
 # container image (its tag bakes the value into the environment), so no CUDA
 # version needs to be pinned by the workflow. If it is unset we skip the
 # bootstrap and fall back to any gtests already present in the container/build
-# tree — keeping the job non-breaking until the multi-GPU tests land.
+    # tree - keeping the job non-breaking until the multi-GPU tests land.
 if [ -n "${RAPIDS_CUDA_VERSION:-}" ]; then
   rapids-logger "Using CUDA ${RAPIDS_CUDA_VERSION} (inferred from container image)"
   rapids-logger "Configuring conda strict channel priority"
@@ -68,7 +68,7 @@ nvidia-smi
 rapids-logger "Check GPU topology"
 nvidia-smi topo -m
 
-# Multi-GPU tests are meaningless on a single device — fail loudly rather than
+# Multi-GPU tests are meaningless on a single device - fail loudly rather than
 # passing a run that never exercised NCCL.
 GPU_COUNT=$(nvidia-smi -L | wc -l)
 rapids-logger "Detected ${GPU_COUNT} GPU(s)"
@@ -78,11 +78,13 @@ if [ "${GPU_COUNT}" -lt 2 ]; then
   exit 1
 fi
 
-# Distributed PDLP parity tests read MPS instances (e.g. neos3, a2864) that are
-# git-ignored and fetched from S3 — mirror ci/test_cpp.sh so the datasets exist
-# and the tests resolve paths via RAPIDS_DATASET_ROOT_DIR.
+# Distributed PDLP parity tests use a small set of git-ignored MPS instances.
+# Download only those direct-MPS fixtures here: downloading the full PDLP suite
+# falls back to netlib conversion when S3 credentials are not available, and that
+# path needs gcc (not present in this test environment).
 rapids-logger "Download datasets"
-./datasets/linear_programming/download_pdlp_test_dataset.sh
+python benchmarks/linear_programming/utils/get_datasets.py -datasets graph40-40
+python benchmarks/linear_programming/utils/get_datasets.py -datasets ex10
 
 RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
 export RAPIDS_DATASET_ROOT_DIR
@@ -106,7 +108,7 @@ shopt -u nullglob
 
 if [ "${#mg_tests[@]}" -eq 0 ]; then
   rapids-logger "No multi-GPU gtest binaries (*_MG_TEST) found in ${GTEST_DIR}; nothing to run."
-  echo "::notice::No multi-GPU tests present yet — skipping. This job lights up once *_MG_TEST binaries land (distributed PDLP)."
+  echo "::notice::No multi-GPU tests present yet - skipping. This job lights up once *_MG_TEST binaries land (distributed PDLP)."
   exit 0
 fi
 
