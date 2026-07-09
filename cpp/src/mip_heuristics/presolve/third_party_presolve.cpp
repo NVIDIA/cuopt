@@ -187,9 +187,9 @@ papilo::Problem<f_t> build_papilo_problem(io::mps_data_model_t<i_t, f_t> const& 
   if (h_entries.size()) {
     auto constexpr const sorted_entries = true;
     // MIP reductions like clique merging and substituition require more fillin
-    const double spare_ratio            = category == problem_category_t::MIP ? 4.0 : 2.0;
-    const int min_inter_row_space       = category == problem_category_t::MIP ? 30 : 4;
-    auto csr_storage                    = papilo::SparseStorage<f_t>(
+    const double spare_ratio      = category == problem_category_t::MIP ? 4.0 : 2.0;
+    const int min_inter_row_space = category == problem_category_t::MIP ? 30 : 4;
+    auto csr_storage              = papilo::SparseStorage<f_t>(
       h_entries, n_rows, n_cols, sorted_entries, spare_ratio, min_inter_row_space);
     problem.setConstraintMatrix(csr_storage, constr_lb, constr_ub, h_row_flags);
 
@@ -785,14 +785,13 @@ third_party_presolve_t<i_t, f_t>::apply_presolve_from_mps_data(
 }
 
 template <typename i_t, typename f_t>
-void third_party_presolve_t<i_t, f_t>::undo_from_device(
-  rmm::device_uvector<f_t>& primal_solution,
-  rmm::device_uvector<f_t>& dual_solution,
-  rmm::device_uvector<f_t>& reduced_costs,
-  problem_category_t category,
-  bool status_to_skip,
-  bool dual_postsolve,
-  rmm::cuda_stream_view stream_view)
+void third_party_presolve_t<i_t, f_t>::undo_from_device(rmm::device_uvector<f_t>& primal_solution,
+                                                        rmm::device_uvector<f_t>& dual_solution,
+                                                        rmm::device_uvector<f_t>& reduced_costs,
+                                                        problem_category_t category,
+                                                        bool status_to_skip,
+                                                        bool dual_postsolve,
+                                                        rmm::cuda_stream_view stream_view)
 {
   std::vector<f_t> h_primal(primal_solution.size());
   std::vector<f_t> h_dual(dual_solution.size());
@@ -874,8 +873,7 @@ void third_party_presolve_t<i_t, f_t>::undo(std::vector<f_t>& primal_solution,
   if (presolver_ == cuopt::mathematical_optimization::presolver_t::PSLP) {
     undo_pslp(primal_solution, dual_solution, reduced_costs);
     return;
-  }
-  else { // Papilo branch
+  } else {  // Papilo branch
     if (status_to_skip) { return; }
     undo_papilo(primal_solution, dual_solution, reduced_costs, dual_postsolve);
   }
