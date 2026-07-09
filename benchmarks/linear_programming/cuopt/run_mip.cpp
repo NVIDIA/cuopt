@@ -351,14 +351,6 @@ void return_gpu_to_the_queue(std::unordered_map<pid_t, int>& pid_gpu_map,
 
 int main(int argc, char* argv[])
 {
-  // TEMP: manual smoke test of the rate-limited logging macros (CUOPT_LOG_ONCE /
-  // CUOPT_LOG_FIRST_N / CUOPT_LOG_EVERY_N). Remove before merging.
-  for (int i = 0; i < 10; ++i) {
-    CUOPT_LOG_ONCE(INFO, "LOG_ONCE: should appear exactly once (iteration %d)", i);
-    CUOPT_LOG_FIRST_N(INFO, 3, "LOG_FIRST_N(3): should appear on i=0,1,2 (iteration %d)", i);
-    CUOPT_LOG_EVERY_N(INFO, 4, "LOG_EVERY_N(4): should appear on i=0,4,8 (iteration %d)", i);
-  }
-
   argparse::ArgumentParser program("solve_MIP");
 
   // Define all arguments with appropriate defaults and help messages
