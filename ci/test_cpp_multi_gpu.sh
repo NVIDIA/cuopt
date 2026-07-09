@@ -115,13 +115,9 @@ fi
 # NCCL diagnostics for CI logs when distributed PDLP halo exchange fails.
 export NCCL_DEBUG=INFO
 # PHB topology on the 2-GPU runner: disable direct GPU peer access (see topo above).
+# NCCL then uses the SHM transport, which needs a larger /dev/shm than the 64 MB
+# container default — the workflow launches the container with --shm-size for this.
 export NCCL_P2P_DISABLE=1
-# With P2P disabled NCCL falls back to the SHM transport, which allocates multi-MB
-# buffers in /dev/shm. CI containers default to a 64 MB /dev/shm, so those
-# allocations fail with "No space left on device". Disable SHM too and let NCCL
-# use the socket transport for the intra-node exchange (functionally exercises the
-# distributed PDLP communication path without depending on container --shm-size).
-export NCCL_SHM_DISABLE=1
 
 EXITCODE=0
 for gt in "${mg_tests[@]}"; do
