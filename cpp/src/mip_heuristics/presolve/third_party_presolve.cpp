@@ -443,6 +443,7 @@ io::mps_data_model_t<i_t, f_t> build_reduced_mps_from_pslp(Presolver* pslp_preso
   raft::common::nvtx::range fun_scope("Build mps_data_model from PSLP");
   io::mps_data_model_t<i_t, f_t> mps;
 
+  if constexpr (std::is_same_v<f_t, double>) {
     auto* reduced    = pslp_presolver->reduced_prob;
     const i_t n_rows = static_cast<i_t>(reduced->m);
     const i_t n_cols = static_cast<i_t>(reduced->n);
@@ -482,6 +483,9 @@ io::mps_data_model_t<i_t, f_t> build_reduced_mps_from_pslp(Presolver* pslp_preso
       std::span<const f_t>(reduced->rhs, static_cast<size_t>(n_rows)));
     mps.set_variable_lower_bounds(std::span<const f_t>(reduced->lbs, static_cast<size_t>(n_cols)));
     mps.set_variable_upper_bounds(std::span<const f_t>(reduced->ubs, static_cast<size_t>(n_cols)));
+  } else {
+    cuopt_expects(false, error_type_t::ValidationError, "PSLP only supports double precision");
+  }
 
   return mps;
 }
