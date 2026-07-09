@@ -78,6 +78,15 @@ if [ "${GPU_COUNT}" -lt 2 ]; then
   exit 1
 fi
 
+# Distributed PDLP parity tests read MPS instances (e.g. neos3, a2864) that are
+# git-ignored and fetched from S3 — mirror ci/test_cpp.sh so the datasets exist
+# and the tests resolve paths via RAPIDS_DATASET_ROOT_DIR.
+rapids-logger "Download datasets"
+./datasets/linear_programming/download_pdlp_test_dataset.sh
+
+RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
+export RAPIDS_DATASET_ROOT_DIR
+
 # Locate the installed gtest binaries (same search order as ci/run_ctests.sh).
 installed_test_location="${INSTALL_PREFIX:-${CONDA_PREFIX:-/usr}}/bin/gtests/libcuopt/"
 devcontainers_test_location="$(dirname "$(realpath "${BASH_SOURCE[0]}")")/../cpp/build/latest/gtests/libcuopt/"
@@ -105,6 +114,12 @@ fi
 export NCCL_DEBUG=INFO
 # PHB topology on the 2-GPU runner: disable direct GPU peer access (see topo above).
 export NCCL_P2P_DISABLE=1
+# With P2P disabled NCCL falls back to the SHM transport, which allocates multi-MB
+# buffers in /dev/shm. CI containers default to a 64 MB /dev/shm, so those
+# allocations fail with "No space left on device". Disable SHM too and let NCCL
+# use the socket transport for the intra-node exchange (functionally exercises the
+# distributed PDLP communication path without depending on container --shm-size).
+export NCCL_SHM_DISABLE=1
 
 EXITCODE=0
 for gt in "${mg_tests[@]}"; do
