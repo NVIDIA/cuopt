@@ -154,6 +154,7 @@ files:
       - test_python_common
       - test_python_cuopt
       - depends_on_rapids_logger
+      - test_cufile
   py_build_cuopt_server:
     output: pyproject
     pyproject_dir: python/cuopt_server
@@ -736,6 +737,10 @@ dependencies:
 
 
   cuda_wheels:
+    common:
+      - output_types: [requirements, pyproject]
+        packages:
+          - cuda-pathfinder
     specific:
       # cuOpt needs 'nvJitLink>={whatever-cuopt-was-built-against}' at runtime, and mixing
       # old-CTK with new-nvJitLink is supported, so maintain 1 entry here per CUDA major.minor
@@ -754,14 +759,14 @@ dependencies:
               cuda: "12.*"
               use_cuda_wheels: "true"
             packages:
-              - cuda-toolkit[cublas,cudart,curand,cusolver,cusparse,nvtx]==12.*
+              - cuda-toolkit[cublas,cudart,cufile,curand,cusolver,cusparse,nvtx]==12.*
               - nvidia-cudss-cu12>=0.7,<0.8
               - nvidia-nvjitlink-cu12>=12.9,<13
           - matrix:
               cuda: "13.*"
               use_cuda_wheels: "true"
             packages:
-              - &ctk_cu13 cuda-toolkit[cublas,cudart,curand,cusolver,cusparse,nvtx]==13.*
+              - &ctk_cu13 cuda-toolkit[cublas,cudart,cufile,curand,cusolver,cusparse,nvtx]==13.*
               - &cudss_cu13 nvidia-cudss-cu13>=0.7,<0.8
               - &nvjitlink_cu13 nvidia-nvjitlink>=13.0,<14
           # if no matching matrix selectors passed, list the CUDA 13 requirement
@@ -848,3 +853,17 @@ dependencies:
           - matrix:
             packages:
               - python>=3.11,<3.15
+  test_cufile:
+    specific:
+      # The `cufile` extra was added to the `cuda-toolkit` metapackage in 12.6.3
+      # Adding an explicit test dependency on the cufile package here for
+      # testing on versions before 12.6.3
+      - output_types: pyproject
+        matrices:
+          - matrix:
+              cuda: "12.*"
+              use_cuda_wheels: "true"
+            packages:
+              - nvidia-cufile-cu12
+          - matrix:
+            packages:

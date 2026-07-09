@@ -30,7 +30,8 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-    "cuda-toolkit[cublas,cudart,curand,cusolver,cusparse,nvtx]==13.*",
+    "cuda-pathfinder",
+    "cuda-toolkit[cublas,cudart,cufile,curand,cusolver,cusparse,nvtx]==13.*",
     "librmm==26.8.*,>=0.0.0a0",
     "nvidia-cudss-cu13>=0.7,<0.8",
     "nvidia-nvjitlink>=13.0,<14",

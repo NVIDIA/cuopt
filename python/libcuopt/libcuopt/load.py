@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 
@@ -41,10 +41,16 @@ def load_library():
         import libraft
         import librmm
         import rapids_logger
+        from cuda.pathfinder import load_nvidia_dynamic_lib
 
         rapids_logger.load_library()
         librmm.load_library()
         libraft.load_library()
+        # We manually load librt.so.1 here to workaround a bad dynamic link
+        # in nvidia_cufile-1.15.1.6-py3-none-manylinux_2_27_aarch64.whl
+        # https://nvbugspro.nvidia.com/bug/6425783
+        ctypes.CDLL("librt.so.1", mode=ctypes.RTLD_GLOBAL)
+        load_nvidia_dynamic_lib("cufile")
     except ModuleNotFoundError:
         pass
 
