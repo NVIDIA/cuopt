@@ -38,15 +38,15 @@
 #include <utility>
 #include <vector>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 
 template <typename i_t, typename f_t>
 pdhg_solver_t<i_t, f_t>::pdhg_solver_t(
   raft::handle_t const* handle_ptr,
-  problem_t<i_t, f_t>& op_problem_scaled,
+  mip::problem_t<i_t, f_t>& op_problem_scaled,
   bool is_legacy_batch_mode,  // Batch mode with streams
   const std::vector<pdlp_climber_strategy_t>& climber_strategies,
-  const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params,
+  const pdlp::pdlp_hyper_params_t& hyper_params,
   const std::vector<std::tuple<i_t, i_t, f_t, f_t>>& new_bounds,
   bool enable_mixed_precision_spmv)
   : batch_mode_(climber_strategies.size() > 1),
@@ -1502,4 +1502,4 @@ template class pdhg_solver_t<int, float>;
 template class pdhg_solver_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

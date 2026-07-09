@@ -14,7 +14,7 @@
 #include <cmath>
 #include <limits>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 template <typename i_t, typename f_t>
 i_t basis_update_t<i_t, f_t>::b_solve(const std::vector<f_t>& rhs, std::vector<f_t>& solution) const
@@ -238,7 +238,7 @@ i_t basis_update_t<i_t, f_t>::l_solve(std::vector<f_t>& rhs) const
   // First solve
   // L0*x0 = b
   f_t work_estimate = 0;
-  dual_simplex::lower_triangular_solve(L0_, rhs, work_estimate);
+  simplex::lower_triangular_solve(L0_, rhs, work_estimate);
 #ifdef CHECK_LOWER_SOLVE
   {
     matrix_vector_multiply(L0_, 1.0, rhs, -1.0, residual);
@@ -373,7 +373,7 @@ i_t basis_update_t<i_t, f_t>::l_transpose_solve(std::vector<f_t>& rhs) const
   // L0'*y = c
   // TODO: handle a sparse rhs
   f_t work_estimate = 0;
-  dual_simplex::lower_triangular_transpose_solve(L0_, rhs, work_estimate);
+  simplex::lower_triangular_transpose_solve(L0_, rhs, work_estimate);
   return 0;
 }
 
@@ -563,7 +563,7 @@ i_t basis_update_t<i_t, f_t>::u_solve(std::vector<f_t>& x) const
 #endif
 
   f_t work_estimate = 0;
-  dual_simplex::upper_triangular_solve(U_, bprime, work_estimate);
+  simplex::upper_triangular_solve(U_, bprime, work_estimate);
 
 #ifdef CHECK_UPPER_SOLVE
   matrix_vector_multiply(U_, 1.0, bprime, -1.0, residual);
@@ -611,7 +611,7 @@ i_t basis_update_t<i_t, f_t>::u_transpose_solve(std::vector<f_t>& x) const
   std::vector<f_t> bprime(m);
   inverse_permute_vector(col_permutation_, x, bprime);
   f_t work_estimate = 0;
-  dual_simplex::upper_triangular_transpose_solve(U_, bprime, work_estimate);
+  simplex::upper_triangular_transpose_solve(U_, bprime, work_estimate);
   permute_vector(col_permutation_, bprime, x);
   return 0;
 }
@@ -881,7 +881,7 @@ i_t basis_update_t<i_t, f_t>::update(std::vector<f_t>& utilde, i_t leaving_index
   std::vector<f_t> w(m);
   w[t]              = delta;
   f_t work_estimate = 0;
-  dual_simplex::upper_triangular_transpose_solve(U_, w, work_estimate);
+  simplex::upper_triangular_transpose_solve(U_, w, work_estimate);
 #ifdef PARANOID
   {
     // Compute the residual of the solve
@@ -1683,7 +1683,7 @@ template <typename i_t, typename f_t>
 i_t basis_update_mpf_t<i_t, f_t>::u_transpose_solve(std::vector<f_t>& rhs) const
 {
   total_dense_U_transpose_++;
-  dual_simplex::upper_triangular_transpose_solve(U0_, rhs, work_estimate_);
+  simplex::upper_triangular_transpose_solve(U0_, rhs, work_estimate_);
   return 0;
 }
 
@@ -1693,7 +1693,7 @@ i_t basis_update_mpf_t<i_t, f_t>::u_transpose_solve(sparse_vector_t<i_t, f_t>& r
   total_sparse_U_transpose_++;
   // U0'*x = y
   // Solve U0'*x0 = y
-  i_t top = dual_simplex::sparse_triangle_solve<i_t, f_t, true>(
+  i_t top = simplex::sparse_triangle_solve<i_t, f_t, true>(
     rhs, std::nullopt, xi_workspace_, U0_transpose_, x_workspace_.data(), work_estimate_);
   solve_to_sparse_vector(top, rhs);
   return 0;
@@ -1727,7 +1727,7 @@ i_t basis_update_mpf_t<i_t, f_t>::l_transpose_solve(std::vector<f_t>& rhs) const
   work_estimate_ += 2 * num_updates_;
 
   // Solve for x such that L0^T * x = b'
-  dual_simplex::lower_triangular_transpose_solve(L0_, rhs, work_estimate_);
+  simplex::lower_triangular_transpose_solve(L0_, rhs, work_estimate_);
 
   return 0;
 }
@@ -1800,7 +1800,7 @@ i_t basis_update_mpf_t<i_t, f_t>::l_transpose_solve(sparse_vector_t<i_t, f_t>& r
   sparse_vector_t<i_t, f_t> b(m, nz);
   work_estimate_ += nz;
   gather_into_sparse_vector(nz, b);
-  i_t top = dual_simplex::sparse_triangle_solve<i_t, f_t, false>(
+  i_t top = simplex::sparse_triangle_solve<i_t, f_t, false>(
     b, std::nullopt, xi_workspace_, L0_transpose_, x_workspace_.data(), work_estimate_);
   solve_to_sparse_vector(top, rhs);
 
@@ -1991,7 +1991,7 @@ i_t basis_update_mpf_t<i_t, f_t>::u_solve(std::vector<f_t>& rhs) const
   total_dense_U_++;
   const i_t m = L0_.m;
   // U*x = y
-  dual_simplex::upper_triangular_solve(U0_, rhs, work_estimate_);
+  simplex::upper_triangular_solve(U0_, rhs, work_estimate_);
   return 0;
 }
 
@@ -2003,7 +2003,7 @@ i_t basis_update_mpf_t<i_t, f_t>::u_solve(sparse_vector_t<i_t, f_t>& rhs) const
   // U*x = y
 
   // Solve U0*x = y
-  i_t top = dual_simplex::sparse_triangle_solve<i_t, f_t, false>(
+  i_t top = simplex::sparse_triangle_solve<i_t, f_t, false>(
     rhs, std::nullopt, xi_workspace_, U0_, x_workspace_.data(), work_estimate_);
   solve_to_sparse_vector(top, rhs);
 
@@ -2025,7 +2025,7 @@ i_t basis_update_mpf_t<i_t, f_t>::l_solve(std::vector<f_t>& rhs) const
 #ifdef CHECK_L_SOLVE
   std::vector<f_t> rhs_check = rhs;
 #endif
-  dual_simplex::lower_triangular_solve(L0_, rhs, work_estimate_);
+  simplex::lower_triangular_solve(L0_, rhs, work_estimate_);
 
 #ifdef CHECK_L0_SOLVE
   matrix_vector_multiply(L0_, 1.0, rhs, -1.0, residual);
@@ -2074,7 +2074,7 @@ i_t basis_update_mpf_t<i_t, f_t>::l_solve(sparse_vector_t<i_t, f_t>& rhs) const
   // L0 * T0 * T1 * ... * T_{num_updates_ - 1} * x = y
 
   // First solve L0*x0 = y
-  i_t top = dual_simplex::sparse_triangle_solve<i_t, f_t, true>(
+  i_t top = simplex::sparse_triangle_solve<i_t, f_t, true>(
     rhs, std::nullopt, xi_workspace_, L0_, x_workspace_.data(), work_estimate_);
   solve_to_workspace(top);  // Uses xi_workspace_ and x_workspace_ to fill rhs
   i_t nz = m - top;
@@ -2455,4 +2455,4 @@ template class basis_update_t<int, double>;
 template class basis_update_mpf_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

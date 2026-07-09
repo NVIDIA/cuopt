@@ -10,23 +10,23 @@
 #include <barrier/conjugate_gradient.hpp>
 #include <barrier/cusparse_info.hpp>
 #include <barrier/cusparse_view.hpp>
-#include <barrier/dense_matrix.hpp>
-#include <barrier/dense_vector.hpp>
 #include <barrier/device_sparse_matrix.cuh>
 #include <barrier/iterative_refinement.hpp>
 #include <barrier/pinned_host_allocator.hpp>
 #include <barrier/second_order_cone_kernels.cuh>
 #include <barrier/sparse_cholesky.cuh>
 #include <barrier/sparse_matrix_kernels.cuh>
+#include <linear_algebra/dense_matrix.hpp>
+#include <linear_algebra/dense_vector.hpp>
 
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/solve.hpp>
 
-#include <dual_simplex/sparse_matrix.hpp>
-#include <dual_simplex/tic_toc.hpp>
-#include <dual_simplex/types.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
+#include <math_optimization/tic_toc.hpp>
+#include <math_optimization/types.hpp>
 
-#include <dual_simplex/vector_math.cuh>
+#include <linear_algebra/vector_math.cuh>
 
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
@@ -50,7 +50,13 @@
 #include <thrust/iterator/zip_iterator.h>
 #include <thrust/reduce.h>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::barrier {
+
+using simplex::compute_user_objective;
+using simplex::lp_problem_t;
+using simplex::lp_solution_t;
+using simplex::lp_status_t;
+using simplex::simplex_solver_settings_t;
 
 template <typename i_t, typename f_t>
 bool validate_barrier_cone_layout(const lp_problem_t<i_t, f_t>& problem,
@@ -1723,13 +1729,13 @@ class iteration_data_t {
   // v = alpha * A * Dinv * A^T * y + beta * v
   void gpu_adat_multiply(f_t alpha,
                          const rmm::device_uvector<f_t>& y,
-                         detail::cusparse_dn_vec_descr_view cusparse_y,
+                         pdlp::cusparse_dn_vec_descr_view cusparse_y,
 
                          f_t beta,
                          rmm::device_uvector<f_t>& v,
-                         detail::cusparse_dn_vec_descr_view cusparse_v,
+                         pdlp::cusparse_dn_vec_descr_view cusparse_v,
                          rmm::device_uvector<f_t>& u,
-                         detail::cusparse_dn_vec_descr_view cusparse_u,
+                         pdlp::cusparse_dn_vec_descr_view cusparse_u,
                          cusparse_view_t<i_t, f_t>& cusparse_view,
                          const rmm::device_uvector<f_t>& d_inv_diag) const
   {
@@ -1968,20 +1974,20 @@ class iteration_data_t {
 
   cusparse_info_t<i_t, f_t> cusparse_info;
   cusparse_view_t<i_t, f_t> cusparse_view_;
-  detail::cusparse_dn_vec_uptr cusparse_tmp4_;
-  detail::cusparse_dn_vec_uptr cusparse_h_;
-  detail::cusparse_dn_vec_uptr cusparse_dx_residual_;
-  detail::cusparse_dn_vec_uptr cusparse_dy_;
-  detail::cusparse_dn_vec_uptr cusparse_dx_residual_5_;
-  detail::cusparse_dn_vec_uptr cusparse_dx_residual_6_;
-  detail::cusparse_dn_vec_uptr cusparse_dx_;
-  detail::cusparse_dn_vec_uptr cusparse_dx_residual_3_;
-  detail::cusparse_dn_vec_uptr cusparse_dx_residual_4_;
-  detail::cusparse_dn_vec_uptr cusparse_r1_;
-  detail::cusparse_dn_vec_uptr cusparse_dual_residual_;
-  detail::cusparse_dn_vec_uptr cusparse_y_residual_;
+  pdlp::cusparse_dn_vec_uptr cusparse_tmp4_;
+  pdlp::cusparse_dn_vec_uptr cusparse_h_;
+  pdlp::cusparse_dn_vec_uptr cusparse_dx_residual_;
+  pdlp::cusparse_dn_vec_uptr cusparse_dy_;
+  pdlp::cusparse_dn_vec_uptr cusparse_dx_residual_5_;
+  pdlp::cusparse_dn_vec_uptr cusparse_dx_residual_6_;
+  pdlp::cusparse_dn_vec_uptr cusparse_dx_;
+  pdlp::cusparse_dn_vec_uptr cusparse_dx_residual_3_;
+  pdlp::cusparse_dn_vec_uptr cusparse_dx_residual_4_;
+  pdlp::cusparse_dn_vec_uptr cusparse_r1_;
+  pdlp::cusparse_dn_vec_uptr cusparse_dual_residual_;
+  pdlp::cusparse_dn_vec_uptr cusparse_y_residual_;
   // GPU ADAT multiply
-  detail::cusparse_dn_vec_uptr cusparse_u_;
+  pdlp::cusparse_dn_vec_uptr cusparse_u_;
 
   // Device vectors
 
@@ -2116,7 +2122,7 @@ void cholesky_debug_check(const iteration_data_t<i_t, f_t>& data,
 
 template <typename i_t, typename f_t>
 barrier_solver_t<i_t, f_t>::barrier_solver_t(const lp_problem_t<i_t, f_t>& lp,
-                                             const presolve_info_t<i_t, f_t>& presolve,
+                                             const simplex::presolve_info_t<i_t, f_t>& presolve,
                                              const simplex_solver_settings_t<i_t, f_t>& settings)
   : lp(lp), settings(settings), presolve_info(presolve), stream_view_(lp.handle_ptr->get_stream())
 {
@@ -4453,4 +4459,4 @@ template class sparse_cholesky_cudss_t<int, double>;
 template class iteration_data_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::barrier

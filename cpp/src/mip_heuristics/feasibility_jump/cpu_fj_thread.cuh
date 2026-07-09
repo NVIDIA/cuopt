@@ -17,7 +17,7 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 struct fj_cpu_climber_t;
@@ -37,10 +37,10 @@ struct fj_cpu_task_t {
 // seed_generator::get_seed() racing with concurrent callers breaks reproducibility.
 template <typename i_t, typename f_t>
 std::unique_ptr<fj_cpu_task_t<i_t, f_t>> make_fj_cpu_task_from_host_lp(
-  const dual_simplex::lp_problem_t<i_t, f_t>& problem,
-  const std::vector<dual_simplex::variable_type_t>& variable_types,
+  const simplex::lp_problem_t<i_t, f_t>& problem,
+  const std::vector<simplex::variable_type_t>& variable_types,
   const std::vector<f_t>& seed_assignment,
-  const dual_simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+  const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
   std::function<void(f_t, const std::vector<f_t>&, double)> improvement_callback,
   std::string log_prefix,
   int64_t seed = -1);
@@ -53,4 +53,4 @@ void run_fj_cpu_task(fj_cpu_task_t<i_t, f_t>& task,
 template <typename i_t, typename f_t>
 void stop_fj_cpu_task(fj_cpu_task_t<i_t, f_t>& task);
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

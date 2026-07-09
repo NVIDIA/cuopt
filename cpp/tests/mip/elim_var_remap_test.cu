@@ -8,7 +8,7 @@
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 #include "mip_utils.cuh"
 
-#include <cuopt/linear_programming/io/parser.hpp>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
 #include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/relaxed_lp/relaxed_lp.cuh>
 #include <pdlp/pdlp.cuh>
@@ -32,7 +32,7 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::linear_programming::test {
+namespace cuopt::mathematical_optimization::test {
 
 void init_handler(const raft::handle_t* handle_ptr)
 {
@@ -60,15 +60,15 @@ void test_elim_var_remap(std::string test_instance)
   const raft::handle_t handle_{};
   std::cout << "Running: " << test_instance << std::endl;
   auto path = make_path_absolute(test_instance);
-  cuopt::linear_programming::io::mps_data_model_t<int, double> mps_problem =
-    cuopt::linear_programming::io::read_mps<int, double>(path, false);
+  cuopt::mathematical_optimization::io::mps_data_model_t<int, double> mps_problem =
+    cuopt::mathematical_optimization::io::read_mps<int, double>(path, false);
   handle_.sync_stream();
   auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps_problem);
   problem_checking_t<int, double>::check_problem_representation(op_problem);
 
   init_handler(op_problem.get_handle_ptr());
   // run the problem constructor of MIP, so that we do bounds standardization
-  detail::problem_t<int, double> problem(op_problem);
+  mip::problem_t<int, double> problem(op_problem);
   problem.preprocess_problem();
   trivial_presolve(problem);
 
@@ -95,12 +95,12 @@ void test_elim_var_remap(std::string test_instance)
                  0);
   }
 
-  detail::problem_t<int, double> sub_problem(problem);
+  mip::problem_t<int, double> sub_problem(problem);
   trivial_presolve(sub_problem);
 
   // check if number of variables is updated correctly due to trivial presolve
   EXPECT_EQ(sub_problem.n_variables, problem.n_variables - fixed_vars.size());
-  detail::solution_t<int, double> sol(sub_problem);
+  mip::solution_t<int, double> sol(sub_problem);
 
   // Copy all unfixed variable assignments
   auto iter = thrust::remove_copy_if(handle_.get_thrust_policy(),
@@ -128,28 +128,28 @@ void test_elim_var_solution(std::string test_instance)
   const raft::handle_t handle_{};
   std::cout << "Running: " << test_instance << std::endl;
   auto path = make_path_absolute(test_instance);
-  cuopt::linear_programming::io::mps_data_model_t<int, double> mps_problem =
-    cuopt::linear_programming::io::read_mps<int, double>(path, false);
+  cuopt::mathematical_optimization::io::mps_data_model_t<int, double> mps_problem =
+    cuopt::mathematical_optimization::io::read_mps<int, double>(path, false);
   handle_.sync_stream();
   auto op_problem = mps_data_model_to_optimization_problem(&handle_, mps_problem);
   problem_checking_t<int, double>::check_problem_representation(op_problem);
   init_handler(op_problem.get_handle_ptr());
   // run the problem constructor of MIP, so that we do bounds standardization
-  detail::problem_t<int, double> standardized_problem(op_problem);
-  detail::problem_t<int, double> original_problem(op_problem);
+  mip::problem_t<int, double> standardized_problem(op_problem);
+  mip::problem_t<int, double> original_problem(op_problem);
   standardized_problem.preprocess_problem();
   trivial_presolve(standardized_problem);
-  detail::problem_t<int, double> sub_problem(standardized_problem);
+  mip::problem_t<int, double> sub_problem(standardized_problem);
 
   mip_solver_settings_t<int, double> default_settings{};
 
-  detail::solution_t<int, double> solution_1(standardized_problem);
-  detail::relaxed_lp_settings_t lp_settings;
+  mip::solution_t<int, double> solution_1(standardized_problem);
+  mip::relaxed_lp_settings_t lp_settings;
   lp_settings.time_limit              = 120.;
   lp_settings.tolerance               = default_settings.tolerances.absolute_tolerance;
   lp_settings.per_constraint_residual = false;
   // run the problem through pdlp
-  auto result_1 = detail::get_relaxed_lp_solution(standardized_problem, solution_1, lp_settings);
+  auto result_1 = mip::get_relaxed_lp_solution(standardized_problem, solution_1, lp_settings);
   solution_1.compute_feasibility();
   // the solution might not be feasible per row as we are getting the result of pdlp
   bool sol_1_feasible = (int)result_1.get_termination_status() == CUOPT_TERMINATION_STATUS_OPTIMAL;
@@ -173,13 +173,13 @@ void test_elim_var_solution(std::string test_instance)
 
   trivial_presolve(sub_problem);
 
-  detail::solution_t<int, double> solution_2(sub_problem);
-  detail::relaxed_lp_settings_t lp_settings_2;
+  mip::solution_t<int, double> solution_2(sub_problem);
+  mip::relaxed_lp_settings_t lp_settings_2;
   lp_settings_2.time_limit              = 120.;
   lp_settings_2.tolerance               = default_settings.tolerances.absolute_tolerance;
   lp_settings_2.per_constraint_residual = false;
   // run the problem through pdlp
-  auto result_2 = detail::get_relaxed_lp_solution(sub_problem, solution_2, lp_settings_2);
+  auto result_2 = mip::get_relaxed_lp_solution(sub_problem, solution_2, lp_settings_2);
   solution_2.compute_feasibility();
   bool sol_2_feasible = (int)result_2.get_termination_status() == CUOPT_TERMINATION_STATUS_OPTIMAL;
   EXPECT_EQ((int)result_2.get_termination_status(), CUOPT_TERMINATION_STATUS_OPTIMAL);
@@ -212,4 +212,4 @@ TEST(mip_solve, elim_var_remap_solution_test)
   }
 }
 
-}  // namespace cuopt::linear_programming::test
+}  // namespace cuopt::mathematical_optimization::test

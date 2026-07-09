@@ -7,44 +7,50 @@ This skill is ready for commercial/non-commercial use. <br>
 NVIDIA <br>
 
 ### License/Terms of Use: <br>
-Apache-2.0 <br>
+Apache 2.0 <br>
 ## Use Case: <br>
-Developers and engineers who modify, build, test, debug, and contribute to the NVIDIA cuOpt solver codebase, including C++/CUDA engine internals, Python bindings, server endpoints, CI pipelines, and documentation. <br>
+Developers and engineers who modify, build, test, and contribute to the NVIDIA cuOpt GPU-accelerated optimization engine codebase. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
+
+## Requirements / Dependencies: <br>
+**Requires API Key or External Credential:** [Not Specified] <br>
+**Credential Type(s):** [None identified] <br>
+
+Do not include secrets in prompts/logs/output; use least-privilege credentials; rotate keys as appropriate. <br>
 
 ## Known Risks and Mitigations: <br>
 Risk: Review before execution as proposals could introduce incorrect or misleading guidance into skills. <br>
 Mitigation: Review and scan skill before deployment. <br>
 
 ## Reference(s): <br>
+- [first_time_setup.md](references/first_time_setup.md) <br>
+- [build_and_test.md](references/build_and_test.md) <br>
+- [contributing.md](references/contributing.md) <br>
+- [conventions.md](references/conventions.md) <br>
+- [python_bindings.md](references/python_bindings.md) <br>
+- [troubleshooting.md](references/troubleshooting.md) <br>
+- [vrp_skills.md](references/vrp_skills.md) <br>
+- [numerical_debugging.md](resources/numerical_debugging.md) <br>
 - [cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html) <br>
-- [cuOpt GitHub Repository](https://github.com/NVIDIA/cuopt) <br>
-- [Build and Test Reference](references/build_and_test.md) <br>
-- [Contributing Guide](references/contributing.md) <br>
-- [Coding Conventions](references/conventions.md) <br>
-- [First-Time Setup](references/first_time_setup.md) <br>
-- [Python Bindings Architecture](references/python_bindings.md) <br>
-- [Troubleshooting](references/troubleshooting.md) <br>
-- [VRP Dimension Internals](references/vrp_skills.md) <br>
-- [Numerical Debugging Methodology](resources/numerical_debugging.md) <br>
+- [cuopt-examples](https://github.com/NVIDIA/cuopt-examples) <br>
 
 
 ## Skill Output: <br>
-**Output Type(s):** [Code, Shell commands, Configuration instructions] <br>
+**Output Type(s):** [Shell commands, Code, Configuration instructions] <br>
 **Output Format:** [Markdown with inline code blocks] <br>
 **Output Parameters:** [1D] <br>
 **Other Properties Related to Output:** [None] <br>
 
 ## Evaluation Agents Used: <br>
-- claude-code <br>
-- codex <br>
+- `claude-code` <br>
+- `codex` <br>
 
 
 
 ## Evaluation Tasks: <br>
-Evaluated against 3 internal evaluation tasks in astra-sandbox environment using NVSkills-Eval external profile. <br>
+Evaluated against 3 evaluation tasks in the NVSkills-Eval external profile (astra-sandbox environment, 1 attempt per task, 50% pass threshold). <br>
 
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
@@ -69,10 +75,10 @@ Underlying evaluation signals used in this run: <br>
 | Dimension | Num | `claude-code` | `codex` |
 |---|---:|---:|---:|
 | Security | 3 | 100% (+0%) | 100% (+0%) |
-| Correctness | 3 | 82% (+25%) | 93% (+34%) |
-| Discoverability | 3 | 67% (+50%) | 88% (+52%) |
-| Effectiveness | 3 | 91% (+27%) | 86% (+27%) |
-| Efficiency | 3 | 71% (+46%) | 84% (+40%) |
+| Correctness | 3 | 75% (+20%) | 90% (+43%) |
+| Discoverability | 3 | 42% (+25%) | 79% (+52%) |
+| Effectiveness | 3 | 95% (+26%) | 78% (+35%) |
+| Efficiency | 3 | 48% (+22%) | 77% (+35%) |
 
 ## Skill Version(s): <br>
 26.08.00 (source: frontmatter) <br>

@@ -47,6 +47,46 @@ CUOPT_EXPECTS(condition, "Error message");
 CUOPT_FAIL("Unreachable code reached");
 ```
 
+### Assert-only variables
+
+A variable used only inside `cuopt_assert` (or any assertion that compiles out in
+release builds) triggers an unused-variable warning when asserts are disabled.
+Mark it `[[maybe_unused]]` at the declaration — do **not** suppress the warning
+with `static_cast<void>(var);` (or `(void)var;`) statements after the asserts.
+
+```cpp
+// ❌ WRONG — trailing void-casts to silence the warning
+const f_t lower_bound = lower_bounds[var_idx];
+const f_t upper_bound = upper_bounds[var_idx];
+cuopt_assert(lower_bound >= -bound_tol, "...");
+cuopt_assert(upper_bound <= 1 + bound_tol, "...");
+static_cast<void>(lower_bound);
+static_cast<void>(upper_bound);
+
+// ✅ CORRECT — annotate at the declaration
+[[maybe_unused]] const f_t lower_bound = lower_bounds[var_idx];
+[[maybe_unused]] const f_t upper_bound = upper_bounds[var_idx];
+cuopt_assert(lower_bound >= -bound_tol, "...");
+cuopt_assert(upper_bound <= 1 + bound_tol, "...");
+```
+
+### Container indexing — no gratuitous `static_cast<size_t>`
+
+Index with the bare signed type (`i_t`, `int`, loop counters); don't wrap
+subscripts in `static_cast<size_t>(...)`. The build uses `-Werror` but not
+`-Wsign-conversion`/`-Wconversion`, and there's no `.clang-tidy`, so `v[i]` emits
+no warning — the cast is pure noise and inconsistent with the rest of `cpp/src`.
+
+```cpp
+perm[static_cast<size_t>(cursor[r])] = static_cast<i_t>(k);  // ❌ noise
+perm[cursor[r]] = k;                                         // ✅
+```
+
+Cast only when it changes the value or guards real overflow — e.g. sizing from a
+signed subtraction (`std::vector<i_t> v(static_cast<size_t>(hi - lo) + 2, 0)`), or
+the narrowing `size_t`→`i_t` in `static_cast<i_t>(x.size())` (established style;
+keep it)
+
 ### CUDA Error Checking
 
 ```cpp

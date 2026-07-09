@@ -6,21 +6,21 @@
 /* clang-format on */
 #pragma once
 
-#include <barrier/dense_vector.hpp>
+#include <linear_algebra/dense_vector.hpp>
 
 #include <dual_simplex/simplex_solver_settings.hpp>
-#include <dual_simplex/types.hpp>
-#include <dual_simplex/vector_math.hpp>
+#include <linear_algebra/vector_math.hpp>
+#include <math_optimization/types.hpp>
 
 #include <cmath>
 #include <cstdio>
 #include <vector>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::barrier {
 
 template <typename i_t, typename f_t, typename T>
 i_t preconditioned_conjugate_gradient(const T& op,
-                                      const simplex_solver_settings_t<i_t, f_t>& settings,
+                                      const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
                                       const dense_vector_t<i_t, f_t>& b,
                                       f_t tolerance,
                                       dense_vector_t<i_t, f_t>& xinout)
@@ -120,4 +120,4 @@ i_t preconditioned_conjugate_gradient(const T& op,
   return iter;
 }
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::barrier

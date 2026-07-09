@@ -21,7 +21,7 @@
 #include <memory>
 #include <type_traits>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::barrier {
 
 struct cusparse_spgemm_deleter_t {
   void operator()(cusparseSpGEMMDescr_t descr) const noexcept
@@ -49,9 +49,9 @@ struct cusparse_info_t {
     beta.set_value_async(v, handle->get_stream());
   }
 
-  detail::cusparse_sp_mat_uptr matA_descr;
-  detail::cusparse_sp_mat_uptr matDAT_descr;
-  detail::cusparse_sp_mat_uptr matADAT_descr;
+  pdlp::cusparse_sp_mat_uptr matA_descr;
+  pdlp::cusparse_sp_mat_uptr matDAT_descr;
+  pdlp::cusparse_sp_mat_uptr matADAT_descr;
   cusparse_spgemm_uptr spgemm_descr;
   rmm::device_scalar<f_t> alpha;
   rmm::device_scalar<f_t> beta;
@@ -67,4 +67,4 @@ struct cusparse_info_t {
   size_t buffer_size_5_size;
 };
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::barrier

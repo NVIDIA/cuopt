@@ -7,12 +7,12 @@
 
 #pragma once
 
-#include <dual_simplex/types.hpp>
+#include <math_optimization/types.hpp>
 
 #include <utilities/omp_helpers.hpp>
 #include <vector>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 template <typename i_t, typename f_t>
 class lp_solution_t {
@@ -78,4 +78,4 @@ class mip_solution_t {
   omp_atomic_t<bool> has_incumbent;
 };
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

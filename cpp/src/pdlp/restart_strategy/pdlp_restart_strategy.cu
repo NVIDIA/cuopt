@@ -7,7 +7,7 @@
 
 #include <cuopt/error.hpp>
 
-#include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
 #include <pdlp/pdlp_constants.hpp>
 #include <pdlp/restart_strategy/pdlp_restart_strategy.cuh>
 #include <pdlp/swap_and_resize_helper.cuh>
@@ -50,12 +50,12 @@
 
 namespace cg = cooperative_groups;
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 
 template <typename i_t, typename f_t, int BLOCK_SIZE>
 __global__ void solve_bound_constrained_trust_region_kernel(
   typename pdlp_restart_strategy_t<i_t, f_t>::view_t restart_strategy_view,
-  typename problem_t<i_t, f_t>::view_t op_problem_view,
+  typename mip::problem_t<i_t, f_t>::view_t op_problem_view,
   i_t* testing_range_low,
   i_t* testing_range_high,
   f_t* test_radius_squared,
@@ -66,13 +66,13 @@ __global__ void solve_bound_constrained_trust_region_kernel(
 template <typename i_t, typename f_t>
 pdlp_restart_strategy_t<i_t, f_t>::pdlp_restart_strategy_t(
   raft::handle_t const* handle_ptr,
-  problem_t<i_t, f_t>& op_problem,
+  mip::problem_t<i_t, f_t>& op_problem,
   const cusparse_view_t<i_t, f_t>& cusparse_view,
   const i_t primal_size,
   const i_t dual_size,
   bool is_legacy_batch_mode,
   const std::vector<pdlp_climber_strategy_t>& climber_strategies,
-  const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params)
+  const pdlp::pdlp_hyper_params_t& hyper_params)
   : handle_ptr_(handle_ptr),
     stream_view_(handle_ptr_->get_stream()),
     batch_mode_(climber_strategies.size() > 1),
@@ -1585,7 +1585,7 @@ compute_median(const typename pdlp_restart_strategy_t<i_t, f_t>::view_t& restart
 template <typename i_t, typename f_t>
 DI void clamp_test_points(
   const typename pdlp_restart_strategy_t<i_t, f_t>::view_t& restart_strategy_view,
-  const typename problem_t<i_t, f_t>::view_t& op_problem_view,
+  const typename mip::problem_t<i_t, f_t>::view_t& op_problem_view,
   f_t test_threshold,
   i_t range_low,
   i_t range_high)
@@ -1756,7 +1756,7 @@ DI void update_range_low(
 template <typename i_t, typename f_t, int BLOCK_SIZE>
 __global__ void solve_bound_constrained_trust_region_kernel(
   typename pdlp_restart_strategy_t<i_t, f_t>::view_t restart_strategy_view,
-  typename problem_t<i_t, f_t>::view_t op_problem_view,
+  typename mip::problem_t<i_t, f_t>::view_t op_problem_view,
   i_t* testing_range_low,
   i_t* testing_range_high,
   f_t* test_radius_squared,
@@ -2222,7 +2222,7 @@ void pdlp_restart_strategy_t<i_t, f_t>::compute_primal_gradient(
 template <typename i_t, typename f_t>
 __global__ void compute_subgradient_kernel(
   const typename pdlp_restart_strategy_t<i_t, f_t>::view_t restart_strategy_view,
-  const typename problem_t<i_t, f_t>::view_t op_problem_view,
+  const typename mip::problem_t<i_t, f_t>::view_t op_problem_view,
   const typename localized_duality_gap_container_t<i_t, f_t>::view_t duality_gap_view,
   f_t* subgradient)
 {
@@ -2500,7 +2500,7 @@ bool pdlp_restart_strategy_t<i_t, f_t>::get_last_restart_was_average() const
                                                                                                 \
   template __global__ void solve_bound_constrained_trust_region_kernel<int, F_TYPE, 128>(       \
     typename pdlp_restart_strategy_t<int, F_TYPE>::view_t restart_strategy_view,                \
-    typename problem_t<int, F_TYPE>::view_t op_problem_view,                                    \
+    typename mip::problem_t<int, F_TYPE>::view_t op_problem_view,                               \
     int* testing_range_low,                                                                     \
     int* testing_range_high,                                                                    \
     F_TYPE* test_radius_squared,                                                                \
@@ -2527,7 +2527,7 @@ bool pdlp_restart_strategy_t<i_t, f_t>::get_last_restart_was_average() const
                                                                                                 \
   template __global__ void compute_subgradient_kernel<int, F_TYPE>(                             \
     const typename pdlp_restart_strategy_t<int, F_TYPE>::view_t restart_strategy_view,          \
-    const typename problem_t<int, F_TYPE>::view_t op_problem_view,                              \
+    const typename mip::problem_t<int, F_TYPE>::view_t op_problem_view,                         \
     const typename localized_duality_gap_container_t<int, F_TYPE>::view_t duality_gap_view,     \
     F_TYPE* primal_product);
 
@@ -2539,4 +2539,4 @@ INSTANTIATE(float)
 INSTANTIATE(double)
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

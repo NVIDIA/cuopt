@@ -11,7 +11,7 @@
 
 #include <memory>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 class fj_t;
@@ -38,4 +38,4 @@ class early_gpufj_t : public early_heuristic_t<i_t, f_t, early_gpufj_t<i_t, f_t>
   std::unique_ptr<fj_t<i_t, f_t>> fj_ptr_;
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

@@ -7,7 +7,7 @@
 
 #include <dual_simplex/folding.hpp>
 
-#include <dual_simplex/tic_toc.hpp>
+#include <math_optimization/tic_toc.hpp>
 
 #include <map>
 #include <numeric>
@@ -15,7 +15,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 template <typename i_t>
 struct color_t {
@@ -1748,4 +1748,4 @@ template void folding<int, double>(lp_problem_t<int, double>& problem,
                                    presolve_info_t<int, double>& presolve_info);
 #endif
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

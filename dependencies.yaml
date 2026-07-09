@@ -309,6 +309,17 @@ dependencies:
           - pytest<9.0
           - pytest-cov
           - pytest-rerunfailures
+          - pytest-xdist
+    specific:
+      - output_types: [conda, requirements, pyproject]
+        matrices:
+          - matrix:
+              dependencies: "oldest"
+            packages:
+              - numba-cuda==0.22.*
+              - numpy==2.0.*
+          - matrix:
+            packages:
   test_python_cuopt:
     common:
       - output_types: [conda]
@@ -326,17 +337,6 @@ dependencies:
           - &pandas pandas>=2.0
           - *pyyaml
           - scipy>=1.14.1
-    specific:
-      - output_types: [conda, requirements, pyproject]
-        matrices:
-          - matrix:
-              cuda: "12.*"
-            packages:
-              - cuda-python>=12.9.2,<13.0
-          # fallback to CUDA 13 versions if 'cuda' is '13.*' or not provided
-          - matrix:
-            packages:
-              - cuda-python>=13.0.1,<14.0
 
   test_python_cuopt_server:
     common:
@@ -348,10 +348,10 @@ dependencies:
           - &requests requests
       - output_types: [requirements, pyproject]
         packages:
-          - &msgpack msgpack==1.1.2
+          - &msgpack msgpack==1.2.1
       - output_types: conda
         packages:
-          - &msgpack_python msgpack-python==1.1.2
+          - &msgpack_python msgpack-python==1.2.1
 
   run_cuopt_server:
     common:
@@ -515,8 +515,28 @@ dependencies:
     #       other packages with -cu{nn}x suffixes in this file.
     #       All RAPIDS wheel builds (including in devcontainers) expect cupy to be suffixed.
     specific:
-      - output_types: [requirements, pyproject]
+      - output_types: requirements
         matrices:
+          - matrix:
+              cuda: "12.*"
+            packages:
+              - &cupy_cu12 cupy-cuda12x>=14.0.1,!=14.1.0
+          # fallback to CUDA 13 versions if 'cuda' is '13.*' or not provided
+          - matrix:
+            packages:
+              - &cupy_cu13 cupy-cuda13x>=14.0.1,!=14.1.0
+      - output_types: pyproject
+        matrices:
+          - matrix:
+              cuda: "12.*"
+              use_cuda_wheels: "false"
+            packages:
+              - *cupy_cu12
+          - matrix:
+              cuda: "13.*"
+              use_cuda_wheels: "false"
+            packages:
+              - *cupy_cu13
           - matrix:
               cuda: "12.*"
             packages:

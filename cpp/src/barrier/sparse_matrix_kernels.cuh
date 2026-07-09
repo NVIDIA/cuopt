@@ -10,7 +10,7 @@
 #include <barrier/cusparse_info.hpp>
 #include <barrier/device_sparse_matrix.cuh>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::barrier {
 
 template <typename i_t, typename f_t>
 void initialize_cusparse_data(raft::handle_t const* handle,
@@ -25,10 +25,10 @@ void initialize_cusparse_data(raft::handle_t const* handle,
 
   // Create matrix descriptors
   cusparse_data.matA_descr =
-    detail::make_csr<i_t, f_t>(A.m, A.n, A_nnz, A.row_start.data(), A.j.data(), A.x.data());
-  cusparse_data.matDAT_descr = detail::make_csr<i_t, f_t>(
+    pdlp::make_csr<i_t, f_t>(A.m, A.n, A_nnz, A.row_start.data(), A.j.data(), A.x.data());
+  cusparse_data.matDAT_descr = pdlp::make_csr<i_t, f_t>(
     DAT.n, DAT.m, DAT_nnz, DAT.col_start.data(), DAT.i.data(), DAT.x.data());
-  cusparse_data.matADAT_descr = detail::make_csr<i_t, f_t>(
+  cusparse_data.matADAT_descr = pdlp::make_csr<i_t, f_t>(
     ADAT.m, ADAT.n, 0, ADAT.row_start.data(), ADAT.j.data(), ADAT.x.data());
 
   {
@@ -157,4 +157,4 @@ void multiply_kernels(raft::handle_t const* handle,
   handle->sync_stream();
 }
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::barrier

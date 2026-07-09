@@ -7,7 +7,7 @@ This benchmark summarizes 3-Tier Evaluation from NVSkills-Eval results for the s
 ## Evaluation Summary
 
 - Skill: `cuopt-developer`
-- Evaluation date: 2026-06-22
+- Evaluation date: 2026-07-02
 - NVSkills-Eval profile: `external`
 - Environment: `astra-sandbox`
 - Dataset: 3 evaluation tasks
@@ -55,10 +55,10 @@ Task composition is derived from the evaluation dataset when possible. Entries w
 | Dimension | Num | `claude-code` | `codex` |
 |---|---:|---:|---:|
 | Security | 3 | 100% (+0%) | 100% (+0%) |
-| Correctness | 3 | 82% (+25%) | 93% (+34%) |
-| Discoverability | 3 | 67% (+50%) | 88% (+52%) |
-| Effectiveness | 3 | 91% (+27%) | 86% (+27%) |
-| Efficiency | 3 | 71% (+46%) | 84% (+40%) |
+| Correctness | 3 | 75% (+20%) | 90% (+43%) |
+| Discoverability | 3 | 42% (+25%) | 79% (+52%) |
+| Effectiveness | 3 | 95% (+26%) | 78% (+35%) |
+| Efficiency | 3 | 48% (+22%) | 77% (+35%) |
 
 Score values show skill-assisted performance. Values in parentheses show uplift versus the no-skill baseline when baseline data is available.
 

@@ -16,7 +16,6 @@ dependencies:
 - cpp-argparse
 - cuda-nvcc
 - cuda-nvtx-dev
-- cuda-python>=13.0.1,<14.0
 - cuda-sanitizer-api
 - cuda-version=13.3
 - cudf==26.8.*,>=0.0.0a0
@@ -41,7 +40,7 @@ dependencies:
 - librmm==26.8.*,>=0.0.0a0
 - make
 - msgpack-numpy==0.4.8
-- msgpack-python==1.1.2
+- msgpack-python==1.2.1
 - myst-parser
 - ninja
 - notebook
@@ -59,6 +58,7 @@ dependencies:
 - pyrsistent
 - pytest-cov
 - pytest-rerunfailures
+- pytest-xdist
 - pytest<9.0
 - python>=3.11,<3.15
 - pyyaml>=6.0.0
