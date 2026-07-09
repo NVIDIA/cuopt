@@ -101,6 +101,9 @@ if [ "${#mg_tests[@]}" -eq 0 ]; then
   exit 0
 fi
 
+# NCCL diagnostics for CI logs when distributed PDLP halo exchange fails.
+export NCCL_DEBUG=INFO
+# PHB topology on the 2-GPU runner: disable direct GPU peer access (see topo above).
 export NCCL_P2P_DISABLE=1
 
 EXITCODE=0
