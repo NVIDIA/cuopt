@@ -1,0 +1,19 @@
+---
+title: "MIP API Reference"
+---
+
+# MIP API Reference
+
+MIP uses the same Python API classes as convex optimization — see [Convex Api](../convex/convex-api) for the full class reference. The following are particularly relevant for MIP problems.
+
+## Variable Types
+
+Use `~cuopt.linear_programming.problem.VType` to declare integer and semi-continuous variables:
+
+## MIP Start
+
+`~cuopt.linear_programming.problem.Problem` supports providing initial feasible solutions (MIP starts) to help the solver find good solutions faster. Use `Problem.addMIPStart` to add one or more primal solution hints before calling `solve()`.
+
+## MIP Solution Callbacks
+
+`~cuopt.linear_programming.solver_settings.SolverSettings` supports callbacks to monitor incumbent solutions found during the MIP solve. Use `SolverSettings.set_mip_solution_callback` to register a callback that receives each new incumbent solution.

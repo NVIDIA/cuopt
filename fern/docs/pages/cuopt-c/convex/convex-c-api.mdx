@@ -1,0 +1,661 @@
+---
+title: "cuOpt Convex Optimization C API Reference"
+---
+
+# cuOpt Convex Optimization C API Reference
+
+This section contains the cuOpt convex optimization C API reference. For MIP-specific functions and callbacks, see [Mip C Api](../mip/mip-c-api).
+
+## Integer and Floating-Point Types
+
+cuOpt may be built with 32 or 64 bit integer and floating-point types. The C API uses a <span class="title-ref">typedef</span> for floating point and integer types to abstract the size of these types.
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+You may use the following functions to determine the number of bytes used to represent these types in your build
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+## Version Information
+
+You may use the following function to get the version of the cuOpt library
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+## Status Codes
+
+Every function in the C API returns a status code that indicates success or failure. The following status codes are defined
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+## Optimization Problem
+
+An optimization problem is represented via a <span class="title-ref">cuOptOptimizationProblem</span>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+Optimization problems can be created, loaded, or written via the following functions:
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+`cuOptCreateQuadraticProblem` and `cuOptCreateQuadraticRangedProblem` are deprecated. Prefer `cuOptCreateProblem` or `cuOptCreateRangedProblem` followed by `cuOptSetQuadraticObjective`.
+</Note>
+
+For problems with quadratic objectives, first create a problem, and then use
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+For problems with quadratic constraints, first create a problem, and then use
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+Support for quadratic constraints is currently in **beta**. `cuOptAddQuadraticConstraint` supports three types of quadratic constraints: - **Convex quadratic constraints** of the form `x^T Q x + d^T x <= alpha` where `H=(Q+Q^T)/2` is a symmetric positive semidefinite matrix. <span class="title-ref">Q</span> need not be symmetric. - **Second-order cone constraints** of the form `sum_{i=1}^n x_i^2 <= x_0`, `x_0 >= 0` - **Rotated second-order cone constraints** of the form `sum_{i=2}^n x_i^2 - 2 * x_0 * x_1 <= 0`, `x_0 >= 0`, `x_1 >= 0` (supply `Q[x_0, x_1] = -2` in COO, or `-x_0*x_1` for the `<= x_0*x_1` cone form; see [Convex Features](convex-features))
+
+Only `CUOPT_LESS_THAN` and `CUOPT_GREATER_THAN` sense is supported; equality constraints are not supported.
+</Note>
+
+A optimization problem must be destroyed with the following function
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+Certain constants are needed to define an optimization problem. These constants are described below.
+
+## Objective Sense Constants
+
+These constants are used to define the objective sense in the :c`cuOptCreateProblem` and :c`cuOptCreateRangedProblem` functions.
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+## Constraint Sense Constants
+
+These constants are used to define the constraint sense in the :c`cuOptCreateProblem` and :c`cuOptCreateRangedProblem` functions.
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+## Variable Type Constants
+
+These constants are used to define the the variable type in the :c`cuOptCreateProblem` and :c`cuOptCreateRangedProblem` functions.
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+## Infinity Constant
+
+This constant may be used to represent infinity in the :c`cuOptCreateProblem` and :c`cuOptCreateRangedProblem` functions.
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+## File Format Constants
+
+These constants are used to specify the output file format in :c`cuOptWriteProblem`.
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+## Querying an Optimization Problem
+
+The following functions may be used to get information about an <span class="title-ref">cuOptimizationProblem</span>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+## Solver Settings
+
+Settings are used to configure the LP/MIP solvers. All settings are stored in a <span class="title-ref">cuOptSolverSettings</span> object.
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+A <span class="title-ref">cuOptSolverSettings</span> object is created with <span class="title-ref">cuOptCreateSolverSettings</span>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+When you are done with a solve you should destroy a <span class="title-ref">cuOptSolverSettings</span> object with
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+## Setting Parameters
+
+The following functions are used to set and get parameters. You can find more details on the available parameters in the [Convex Optimization Settings](../../convex-settings) section.
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+## Parameter Constants
+
+These constants are used as parameter names in the :c`cuOptSetParameter`, :c`cuOptGetParameter`, and similar functions. For more details on the available parameters, see the [Convex Optimization Settings](../../convex-settings) and [MIP Settings](../../mip-settings) sections.
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+## PDLP Solver Mode Constants
+
+These constants are used to configure <span class="title-ref">CUOPT\_PDLP\_SOLVER\_MODE</span> via :c`cuOptSetIntegerParameter`.
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+## PDLP Precision Constants
+
+These constants are used to configure <span class="title-ref">CUOPT\_PDLP\_PRECISION</span> via :c`cuOptSetIntegerParameter`.
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+## Method Constants
+
+These constants are used to configure <span class="title-ref">CUOPT\_METHOD</span> via :c`cuOptSetIntegerParameter`.
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+## Barrier Iterative Refinement Constants
+
+These constants are used to configure <span class="title-ref">CUOPT\_BARRIER\_ITERATIVE\_REFINEMENT</span> via :c`cuOptSetIntegerParameter`.
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+## Warm Start
+
+For LP problems solved with PDLP, primal and dual warm start vectors may be provided:
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+For MIP warm start (MIP starts), see [Mip C Api](../mip/mip-c-api).
+</Note>
+
+## Solving an LP or MIP
+
+LP and MIP solves are performed by calling the <span class="title-ref">cuOptSolve</span> function
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+## Solution
+
+The output of a solve is a <span class="title-ref">cuOptSolution</span> object.
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+The following functions may be used to access information from a <span class="title-ref">cuOptSolution</span>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+When you are finished with a <span class="title-ref">cuOptSolution</span> object you should destory it with
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+## Termination Status Constants
+
+These constants define the termination status received from the :c`cuOptGetTerminationStatus` function.
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>
+
+<Note>
+C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.
+</Note>

@@ -1,0 +1,221 @@
+instances:
+  - url: nvidia-cuopt.docs.buildwithfern.com
+
+title: NVIDIA cuOpt
+logo:
+  dark: docs/images/cuopt_feature_diag.jpg
+  href: https://docs.nvidia.com/cuopt/
+
+colors:
+  accentPrimary:
+    dark: "#76B900"
+    light: "#4a7600"
+
+tabs:
+  docs:
+    display-name: Documentation
+    icon: book
+
+navigation:
+  - section: NVIDIA cuOpt
+    contents:
+      - page: Introduction
+        path: docs/pages/introduction.mdx
+      - page: Installation
+        path: docs/pages/install.mdx
+      - page: Release Notes
+        path: docs/pages/release-notes.mdx
+      - page: System Requirements
+        path: docs/pages/system-requirements.mdx
+  - section: Features
+    contents:
+      - page: Routing Features
+        path: docs/pages/routing-features.mdx
+      - page: Convex Optimization Features
+        path: docs/pages/convex-features.mdx
+      - page: MILP Features
+        path: docs/pages/milp-features.mdx
+  - section: C API
+    contents:
+      - page: C API
+        path: docs/pages/cuopt-c/index.mdx
+      - section: C API Overview
+        contents:
+          - page: Quickstart Guide
+            path: docs/pages/cuopt-c/quick-start.mdx
+      - section: Convex Optimization (LP/QP/QCQP/SOCP)
+        contents:
+          - page: Convex Optimization (LP/QP/QCQP/SOCP)
+            path: docs/pages/cuopt-c/convex/index.mdx
+          - section: LP/QP/QCQP/SOCP C API
+            contents:
+              - page: cuOpt Convex Optimization C API Reference
+                path: docs/pages/cuopt-c/convex/convex-c-api.mdx
+              - page: Convex Optimization Settings
+                path: docs/pages/convex-settings.mdx
+              - page: Convex Optimization C API Examples
+                path: docs/pages/cuopt-c/convex/convex-examples.mdx
+      - section: Mixed Integer Programming (MIP)
+        contents:
+          - page: MIP (Mixed Integer Programming)
+            path: docs/pages/cuopt-c/mip/index.mdx
+          - section: MIP C API
+            contents:
+              - page: cuOpt MIP C API Reference
+                path: docs/pages/cuopt-c/mip/mip-c-api.mdx
+              - page: MIP Settings
+                path: docs/pages/mip-settings.mdx
+              - page: MILP C API Examples
+                path: docs/pages/cuopt-c/mip/mip-examples.mdx
+  - section: Python API
+    contents:
+      - page: Python API
+        path: docs/pages/cuopt-python/index.mdx
+      - section: Python API Overview
+        contents:
+          - page: Quickstart Guide
+            path: docs/pages/cuopt-python/quick-start.mdx
+      - section: Routing Optimization
+        contents:
+          - page: Routing Optimization
+            path: docs/pages/cuopt-python/routing/index.mdx
+          - section: Routing
+            contents:
+              - page: cuOpt Routing Python API Reference
+                path: docs/pages/cuopt-python/routing/routing-api.mdx
+              - page: Routing Examples
+                path: docs/pages/cuopt-python/routing/routing-examples.mdx
+      - section: Convex Optimization (LP/QP/QCQP/SOCP)
+        contents:
+          - page: Convex Optimization (LP/QP/QCQP/SOCP)
+            path: docs/pages/cuopt-python/convex/index.mdx
+          - section: LP/QP/QCQP/SOCP Python API
+            contents:
+              - page: Convex Optimization API Reference
+                path: docs/pages/cuopt-python/convex/convex-api.mdx
+              - page: Convex Optimization Examples
+                path: docs/pages/cuopt-python/convex/convex-examples.mdx
+      - section: Mixed Integer Programming (MIP)
+        contents:
+          - page: MIP (Mixed Integer Programming)
+            path: docs/pages/cuopt-python/mip/index.mdx
+          - section: MIP Python API
+            contents:
+              - page: MIP API Reference
+                path: docs/pages/cuopt-python/mip/mip-api.mdx
+              - page: MIP Examples
+                path: docs/pages/cuopt-python/mip/mip-examples.mdx
+  - section: gRPC Remote Execution
+    contents:
+      - page: gRPC Remote Execution
+        path: docs/pages/cuopt-grpc/index.mdx
+      - section: In this section
+        contents:
+          - page: Quick Start
+            path: docs/pages/cuopt-grpc/quick-start.mdx
+          - page: Advanced Configuration
+            path: docs/pages/cuopt-grpc/advanced.mdx
+          - page: Examples
+            path: docs/pages/cuopt-grpc/examples.mdx
+          - page: gRPC API (Reference)
+            path: docs/pages/cuopt-grpc/api.mdx
+          - page: Grpc Server Architecture
+            path: docs/pages/cuopt-grpc/grpc-server-architecture.mdx
+  - section: Server
+    contents:
+      - page: Server
+        path: docs/pages/cuopt-server/index.mdx
+      - section: Quickstart
+        contents:
+          - page: Quickstart Guide
+            path: docs/pages/cuopt-server/quick-start.mdx
+      - section: Server API
+        contents:
+          - page: Server API
+            path: docs/pages/cuopt-server/server-api/index.mdx
+          - section: Server API Overview
+            contents:
+              - page: cuOpt Server CLI
+                path: docs/pages/cuopt-server/server-api/server-cli.mdx
+              - page: "cuOpt Open-API Reference - Swagger"
+                path: docs/pages/open-api.mdx
+              - page: Convex Optimization Settings
+                path: docs/pages/convex-settings.mdx
+              - page: MIP Settings
+                path: docs/pages/mip-settings.mdx
+      - section: Client API
+        contents:
+          - page: Client API Overview
+            path: docs/pages/cuopt-server/client-api/index.mdx
+          - section: Client API Overview
+            contents:
+              - page: "Self-Hosted Service Client API Reference"
+                path: docs/pages/cuopt-server/client-api/sh-cli-api.mdx
+              - page: "Build Your Own Self-Hosted Thin Client"
+                path: docs/pages/cuopt-server/client-api/sh-cli-build.mdx
+      - section: Examples
+        contents:
+          - page: Examples
+            path: docs/pages/cuopt-server/examples/index.mdx
+          - section: Examples Overview
+            contents:
+              - page: LP Python Examples
+                path: docs/pages/cuopt-server/examples/lp-examples.mdx
+              - page: MILP Python Examples
+                path: docs/pages/cuopt-server/examples/milp-examples.mdx
+              - page: Routing Python Examples
+                path: docs/pages/cuopt-server/examples/routing-examples.mdx
+      - section: CSP Guides
+        contents:
+          - page: CSP Guides
+            path: docs/pages/cuopt-server/csp-guides/index.mdx
+          - section: CSP Guides Overview
+            contents:
+              - page: Azure Quickstart Guide
+                path: docs/pages/cuopt-server/csp-guides/csp-azure.mdx
+              - page: AWS Quickstart Guide
+                path: docs/pages/cuopt-server/csp-guides/csp-aws.mdx
+      - section: NIM Operator
+        contents:
+          - page: NIM Operator Deployment
+            path: docs/pages/cuopt-server/nim-operator/index.mdx
+          - page: Prerequisites
+            path: docs/pages/cuopt-server/nim-operator/prerequisites.mdx
+          - page: Deployment Guide
+            path: docs/pages/cuopt-server/nim-operator/deployment.mdx
+          - page: Configuration Guide
+            path: docs/pages/cuopt-server/nim-operator/configuration.mdx
+  - section: Command Line Interface
+    contents:
+      - page: Command Line Interface
+        path: docs/pages/cuopt-cli/index.mdx
+      - section: Command Line Interface Overview
+        contents:
+          - page: Quickstart Guide
+            path: docs/pages/cuopt-cli/quick-start.mdx
+      - section: Usage
+        contents:
+          - page: Examples
+            path: docs/pages/cuopt-cli/cli-examples.mdx
+  - section: "Third-Party Modeling Languages"
+    contents:
+      - page: "Third-Party Modeling Languages"
+        path: docs/pages/thirdparty_modeling_languages/index.mdx
+  - section: Resources
+    contents:
+      - page: FAQ
+        path: docs/pages/faq.mdx
+      - page: Transition Guide for Change in Features
+        path: docs/pages/transition.mdx
+      - page: Resources
+        path: docs/pages/resources.mdx
+  - section: Licenses
+    contents:
+      - page: cuOpt License
+        path: docs/pages/license.mdx
+  - section: API Reference
+    contents:
+      - page: REST API (Server)
+        path: docs/pages/open-api.mdx
+      - page: C API Reference
+        path: docs/pages/cuopt-c-api-reference.mdx

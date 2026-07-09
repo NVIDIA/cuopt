@@ -1,0 +1,314 @@
+---
+title: "Routing Examples"
+---
+
+# Routing Examples
+
+This section contains examples for the cuOpt routing Python API.
+
+## Intra-factory Transport
+
+A capacitated pickup-and-delivery problem with time windows (PDPTW) for a fleet of autonomous mobile robots (AMRs) moving parts between processing stations on a factory floor. The example uses `cuopt.distance_engine.WaypointMatrix` to derive a cost matrix from a weighted waypoint graph, sets up pickup/delivery orders with demand and time windows, solves with `cuopt.routing.Solve`, and expands the target-location route back to a waypoint-level route per robot.
+
+![Waypoint graph](/docs/images/waypoint_graph.png)
+
+**Problem details:**
+
+  - 4 target locations: 1 start location for AMRs and 3 processing stations
+  - 6 transport orders (pickup/delivery pairs) with individual time windows
+  - 2 AMRs, each with a carrying capacity of 2 parts
+  - Factory hours: 0 to 100 time units
+
+[intra\_factory\_example.py](examples/intra_factory_example.py)
+
+``` python
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Intra-factory transport example.
+#
+# Scenario: a small factory floor where a fleet of autonomous mobile robots
+# (AMRs) pick up parts at processing stations and deliver them to other
+# stations (or off the floor). cuOpt plans the routes for each robot such
+# that every order is served within its pickup/delivery time windows and
+# no robot exceeds its carrying capacity.
+#
+# This is a Capacitated Pickup-and-Delivery Problem with Time Windows
+# (PDPTW) solved on a weighted waypoint graph.
+
+import cudf
+import numpy as np
+
+from cuopt import distance_engine, routing
+
+# --- Factory layout --------------------------------------------------------
+# Waypoints in the factory, referenced by integer id:
+#     0 = AMR depot (robots start/return here)
+#     4 = Station A
+#     5 = Station B
+#     6 = Station C
+# Other waypoints (1, 2, 3, 7, 8, 9) are intermediate nodes that robots
+# travel through but never stop at.
+DEPOT = 0
+STATION_A = 4
+STATION_B = 5
+STATION_C = 6
+TARGET_LOCATIONS = np.array([DEPOT, STATION_A, STATION_B, STATION_C])
+
+# Factory operating hours (in time units).
+FACTORY_OPEN = 0
+FACTORY_CLOSE = 100
+
+# Weighted waypoint graph of the factory floor in Compressed Sparse Row
+# (CSR) form: for node i, GRAPH_OFFSETS[i]:GRAPH_OFFSETS[i+1] indexes into
+# GRAPH_EDGES (destination nodes) and GRAPH_WEIGHTS (edge costs). See the
+# `cuopt.distance_engine.WaypointMatrix` API reference in the cuOpt User
+# Guide for input requirements.
+GRAPH_OFFSETS = np.array([0, 1, 3, 7, 9, 11, 13, 15, 17, 20, 22])
+GRAPH_EDGES = np.array(
+    [2, 2, 4, 0, 1, 3, 5, 2, 6, 1, 7, 2, 8, 3, 9, 4, 8, 5, 7, 9, 6, 8]
+)
+GRAPH_WEIGHTS = np.array(
+    [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 2, 1, 2, 1, 1, 2, 1, 2, 2, 1, 2]
+)
+
+def build_cost_matrix():
+    """Compute an all-pairs cost matrix over the target locations."""
+    graph = distance_engine.WaypointMatrix(
+        GRAPH_OFFSETS, GRAPH_EDGES, GRAPH_WEIGHTS
+    )
+    cost_matrix = graph.compute_cost_matrix(TARGET_LOCATIONS)
+    # waypoint id -> cost-matrix index (e.g. Station A [waypoint 4] -> index 1)
+    wp_to_idx = {int(wp): i for i, wp in enumerate(TARGET_LOCATIONS)}
+    return graph, cost_matrix, wp_to_idx
+
+def build_orders():
+    """Six transport orders. Each row is one pickup/delivery pair."""
+    return cudf.DataFrame(
+        {
+            "pickup_location": [
+                STATION_A,
+                STATION_B,
+                STATION_C,
+                STATION_C,
+                STATION_B,
+                STATION_A,
+            ],
+            "delivery_location": [
+                STATION_B,
+                STATION_C,
+                DEPOT,
+                STATION_B,
+                STATION_A,
+                DEPOT,
+            ],
+            "demand": [1, 1, 1, 1, 1, 1],
+            "earliest_pickup": [0, 0, 0, 0, 0, 0],
+            "latest_pickup": [10, 20, 30, 10, 20, 30],
+            "earliest_delivery": [0, 0, 0, 0, 0, 0],
+            "latest_delivery": [45, 45, 45, 45, 45, 45],
+            "pickup_service_time": [2, 2, 2, 2, 2, 2],
+            "delivery_service_time": [2, 2, 2, 2, 2, 2],
+        }
+    )
+
+def build_fleet():
+    """Two AMRs, each able to carry two parts at once."""
+    return cudf.DataFrame({"robot_id": [0, 1], "capacity": [2, 2]}).set_index(
+        "robot_id"
+    )
+
+def build_data_model(cost_matrix, orders, fleet, wp_to_idx):
+    """Assemble the cuOpt routing DataModel from the problem inputs."""
+    n_locations = len(cost_matrix)
+    n_vehicles = len(fleet)
+    # Each order contributes two stops: one pickup and one delivery.
+    n_orders = len(orders) * 2
+
+    data_model = routing.DataModel(n_locations, n_vehicles, n_orders)
+    data_model.add_cost_matrix(cost_matrix)
+
+    # Capacity: pickups add load, deliveries remove it.
+    demand = cudf.concat(
+        [orders["demand"], -orders["demand"]], ignore_index=True
+    )
+    data_model.add_capacity_dimension("parts", demand, fleet["capacity"])
+
+    # Order locations are expressed as cost-matrix indices, not waypoint ids.
+    pickup_idx = orders["pickup_location"].map(wp_to_idx)
+    delivery_idx = orders["delivery_location"].map(wp_to_idx)
+    data_model.set_order_locations(
+        cudf.concat([pickup_idx, delivery_idx], ignore_index=True)
+    )
+
+    # Pickup at row i must be served before its delivery at row i + n.
+    n = len(orders)
+    data_model.set_pickup_delivery_pairs(
+        cudf.Series(range(n)), cudf.Series(range(n, 2 * n))
+    )
+
+    # Time windows.
+    data_model.set_order_time_windows(
+        cudf.concat(
+            [orders["earliest_pickup"], orders["earliest_delivery"]],
+            ignore_index=True,
+        ),
+        cudf.concat(
+            [orders["latest_pickup"], orders["latest_delivery"]],
+            ignore_index=True,
+        ),
+    )
+    data_model.set_order_service_times(
+        cudf.concat(
+            [orders["pickup_service_time"], orders["delivery_service_time"]],
+            ignore_index=True,
+        )
+    )
+    data_model.set_vehicle_time_windows(
+        cudf.Series([FACTORY_OPEN] * n_vehicles),
+        cudf.Series([FACTORY_CLOSE] * n_vehicles),
+    )
+    return data_model
+
+def print_schedule(solution, graph, wp_to_idx):
+    """Print a per-robot, human-readable schedule of stops and waypoint paths."""
+    idx_to_wp = {i: wp for wp, i in wp_to_idx.items()}
+    route = solution.get_route()
+
+    print(f"\nTotal route cost: {solution.get_total_objective():g}")
+    print(f"Robots used:      {solution.get_vehicle_count()}\n")
+
+    for robot_id in sorted(route["truck_id"].unique().to_arrow().to_pylist()):
+        stops_gpu = route[route["truck_id"] == robot_id]
+        stops = stops_gpu.to_pandas()
+
+        print(f"Robot {robot_id}:")
+        for _, s in stops.iterrows():
+            print(
+                f"  t={s['arrival_stamp']:>5g}  "
+                f"waypoint {idx_to_wp[s['location']]:<2}  {s['type']}"
+            )
+
+        # compute_waypoint_sequence mutates its input, so hand it a fresh copy.
+        wp_path = graph.compute_waypoint_sequence(
+            TARGET_LOCATIONS, stops_gpu.copy()
+        )
+        path_str = " -> ".join(
+            str(w) for w in wp_path["waypoint_sequence"].to_arrow().to_pylist()
+        )
+        print(f"  path: {path_str}\n")
+
+def main():
+    graph, cost_matrix, wp_to_idx = build_cost_matrix()
+    orders = build_orders()
+    fleet = build_fleet()
+
+    print("Target locations (waypoint -> cost-matrix index):", wp_to_idx)
+    print("\nCost matrix between target locations:")
+    print(cost_matrix)
+    print(f"\n{len(orders)} transport orders, {len(fleet)} AMRs.")
+
+    data_model = build_data_model(cost_matrix, orders, fleet, wp_to_idx)
+
+    settings = routing.SolverSettings()
+    settings.set_time_limit(5)
+
+    solution = routing.Solve(data_model, settings)
+    if solution.get_status() != 0:
+        print(
+            f"cuOpt failed to find a solution (status={solution.get_status()})"
+        )
+        return
+
+    print_schedule(solution, graph, wp_to_idx)
+
+if __name__ == "__main__":
+    main()
+```
+
+## TSP Batch Mode
+
+The routing Python API supports **batch mode** for solving many TSP (or routing) instances in a single call. Instead of calling `cuopt.routing.Solve` repeatedly, you build a list of `cuopt.routing.DataModel` objects and call `cuopt.routing.BatchSolve`. The solver runs the problems in parallel to improve throughput.
+
+**When to use batch mode:**
+
+  - You have **many similar routing problems** (e.g., dozens or hundreds of small TSPs).
+  - You want to **maximize throughput** by utilizing the GPU across multiple problems at once.
+  - Problem sizes and structure are compatible with the same `cuopt.routing.SolverSettings` (e.g., same time limit).
+
+**Returns:** A list of `cuopt.routing.Assignment` objects, one per input data model, in the same order as `data_model_list`. Use `cuopt.routing.Assignment.get_status` and other assignment methods to inspect each solution.
+
+The following example builds several TSPs of different sizes, solves them in one batch, and prints a short summary per solution.
+
+[tsp\_batch\_example.py](examples/tsp_batch_example.py)
+
+``` python
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# TSP batch solve example: solve multiple TSP instances in one call for higher throughput.
+# Use this when you have many similar routing problems (e.g., many small TSPs) to solve.
+
+import cudf
+import numpy as np
+
+from cuopt import routing
+
+def create_tsp_cost_matrix(n_locations):
+    """Create a simple symmetric cost matrix for a TSP of size n_locations."""
+    cost_matrix = np.zeros((n_locations, n_locations), dtype=np.float32)
+    for i in range(n_locations):
+        for j in range(n_locations):
+            cost_matrix[i, j] = abs(i - j)
+    return cudf.DataFrame(cost_matrix)
+
+def main():
+    # Define multiple TSP sizes to solve in one batch
+    tsp_sizes = [5, 8, 10, 6, 7, 9]
+
+    # Build one DataModel per TSP
+    data_models = []
+    for n_locations in tsp_sizes:
+        cost_matrix = create_tsp_cost_matrix(n_locations)
+        dm = routing.DataModel(n_locations, 1)  # n_locations, 1 vehicle (TSP)
+        dm.add_cost_matrix(cost_matrix)
+        data_models.append(dm)
+
+    # Shared solver settings for the batch
+    settings = routing.SolverSettings()
+    settings.set_time_limit(5.0)
+
+    # Solve all TSPs in batch (parallel execution)
+    solutions = routing.BatchSolve(data_models, settings)
+
+    # Inspect results
+    print(f"Solved {len(solutions)} TSPs in batch.")
+    for i, (size, solution) in enumerate(zip(tsp_sizes, solutions)):
+        status = solution.get_status()
+        status_str = (
+            "SUCCESS" if status == routing.SolutionStatus.SUCCESS else status
+        )
+        vehicle_count = solution.get_vehicle_count()
+        print(
+            f"  TSP {i} (size {size}): status={status_str}, vehicles={vehicle_count}"
+        )
+
+if __name__ == "__main__":
+    main()
+```
+
+Sample output:
+
+``` text
+Solved 6 TSPs in batch.
+  TSP 0 (size 5): status=SUCCESS, vehicles=1
+  TSP 1 (size 8): status=SUCCESS, vehicles=1
+  TSP 2 (size 10): status=SUCCESS, vehicles=1
+  ...
+```
+
+**Notes:**
+
+  - All problems in the batch use the **same** `cuopt.routing.SolverSettings` (e.g., time limit, solver options).
+  - Callbacks are not supported in batch mode.
+  - For best practices when batching many instances, see the *Add best practices for batch solving* note in the release documentation.

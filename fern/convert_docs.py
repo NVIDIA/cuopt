@@ -1,0 +1,540 @@
+#!/usr/bin/env python3
+"""
+Convert cuOpt Sphinx/RST docs to Fern MDX format.
+
+Usage:
+    python fern/convert_docs.py
+
+Outputs:
+    fern/docs/pages/**/*.mdx  - converted pages
+    fern/docs/images/         - copied images
+    fern/docs.yml             - navigation + Fern config
+"""
+
+import os
+import re
+import subprocess
+import shutil
+import textwrap
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).parent.parent
+SRC = REPO_ROOT / "docs/cuopt/source"
+FERN = REPO_ROOT / "fern"
+PAGES = FERN / "docs/pages"
+IMAGES = FERN / "docs/images"
+
+
+# ---------------------------------------------------------------------------
+# RST pre-processor (runs before pandoc)
+# ---------------------------------------------------------------------------
+
+def _resolve_literalinclude(match, rst_path: Path) -> str:
+    """Replace .. literalinclude:: with an RST code-block from the actual file."""
+    filepath = match.group(1).strip()
+    options_block = match.group(2) or ""
+
+    lang = "text"
+    start_after = None
+    end_before = None
+    for line in options_block.splitlines():
+        m = re.match(r"\s+:language:\s+(.+)", line)
+        if m:
+            lang = m.group(1).strip()
+        m = re.match(r"\s+:start-after:\s+(.+)", line)
+        if m:
+            start_after = m.group(1).strip()
+        m = re.match(r"\s+:end-before:\s+(.+)", line)
+        if m:
+            end_before = m.group(1).strip()
+
+    target = (rst_path.parent / filepath).resolve()
+    if not target.exists():
+        return f".. code-block:: {lang}\n\n   # File not found: {filepath}\n"
+
+    code = target.read_text()
+    if start_after:
+        idx = code.find(start_after)
+        if idx != -1:
+            code = code[idx + len(start_after):]
+    if end_before:
+        idx = code.find(end_before)
+        if idx != -1:
+            code = code[:idx]
+
+    indented = textwrap.indent(code.strip(), "   ")
+    return f".. code-block:: {lang}\n\n{indented}\n"
+
+
+def _preprocess_rst(content: str, rst_path: Path) -> str:
+    """Replace Sphinx directives that pandoc cannot handle."""
+
+    # 1. literalinclude → code-block
+    content = re.sub(
+        r"\.\. literalinclude::\s*(\S+)((?:\n[ \t]+:[a-z\-]+:.*)*)",
+        lambda m: _resolve_literalinclude(m, rst_path),
+        content,
+    )
+
+    # 2. install-selector → plain note
+    content = re.sub(
+        r"\.\. install-selector::.*?(?=\n\S|\Z)",
+        ".. note::\n\n   Visit the `Installation Guide <install>`_ to choose your interface and install method.\n",
+        content,
+        flags=re.DOTALL,
+    )
+
+    # 3. swagger-plugin → plain note
+    content = re.sub(
+        r"\.\. swagger-plugin::.*",
+        ".. note::\n\n   See the `REST API Reference <open-api>`_ for the full OpenAPI specification.\n",
+        content,
+    )
+
+    # 4. autodoc / autosummary directives → remove (Python API handled separately)
+    content = re.sub(
+        r"\.\. auto(?:module|class|function|method|attribute|summary)::[^\n]*\n(?:[ \t]+[^\n]*\n)*",
+        "",
+        content,
+    )
+
+    # 5. breathe (C API doxygen) directives → placeholder
+    content = re.sub(
+        r"\.\. doxygen(?:file|struct|class|function|namespace|group|enum|typedef|variable|define|union|page)::[^\n]*\n(?:[ \t]+[^\n]*\n)*",
+        ".. note::\n\n   C API reference is generated from Doxygen and will be linked here once Fern C++ library support ships.\n",
+        content,
+    )
+
+    # 6. toctree → remove (navigation built into docs.yml)
+    content = re.sub(
+        r"\.\. toctree::[^\n]*\n(?:[ \t]+[^\n]*\n)*",
+        "",
+        content,
+    )
+
+    # 7. download role → plain link text
+    content = re.sub(r":download:`([^`<]+)\s*<([^>]+)>`", r"`\1 <\2>`_", content)
+
+    # 8. :doc: role → page slug link
+    def doc_link(m):
+        label = m.group(1).strip() if m.group(1) else None
+        path = m.group(2).strip() if m.group(2) else m.group(1).strip()
+        # strip leading / and .rst
+        slug = re.sub(r"\.rst$", "", path.lstrip("/"))
+        display = label if label else slug.split("/")[-1].replace("-", " ").title()
+        return f"`{display} <{slug}>`_"
+
+    content = re.sub(r":doc:`([^`<]+)\s*<([^>]+)>`", doc_link, content)
+    def doc_link_simple(m):
+        path = m.group(1).strip()
+        slug = re.sub(r"\.rst$", "", path.lstrip("/"))
+        display = slug.split("/")[-1].replace("-", " ").title()
+        return f"`{display} <{slug}>`_"
+
+    content = re.sub(r":doc:`([^`]+)`", doc_link_simple, content)
+
+    # 9. :ref: role → anchor link
+    content = re.sub(r":ref:`([^`<]+)\s*<([^>]+)>`", r"`\1 <#\2>`_", content)
+    content = re.sub(r":ref:`([^`]+)`", r"`\1 <#\1>`_", content)
+
+    # 10. :func: / :class: / :meth: / :attr: / :obj: → inline code
+    content = re.sub(r":(?:func|class|meth|attr|obj|data|mod|exc|const):`([^`]+)`", r"``\1``", content)
+
+    # 11. :abbr: → just the term
+    content = re.sub(r":abbr:`([^`(]+)\s*\([^)]+\)`", r"\1", content)
+
+    return content
+
+
+# ---------------------------------------------------------------------------
+# MDX post-processor (runs after pandoc)
+# ---------------------------------------------------------------------------
+
+def _postprocess_mdx(md: str, title: str) -> str:
+    """Clean up pandoc output and add Fern MDX components."""
+
+    # 1. Frontmatter
+    md = f"---\ntitle: \"{title}\"\n---\n\n" + md
+
+    # 2. pandoc admonition formats → Fern components
+    #    pandoc 3.x: > [!NOTE] blockquote style
+    def admonition_block(m):
+        kind = m.group(1).upper()
+        body = re.sub(r"^> ?", "", m.group(2), flags=re.MULTILINE).strip()
+        tag = {"NOTE": "Note", "WARNING": "Warning", "IMPORTANT": "Note", "TIP": "Tip"}.get(kind, "Note")
+        return f"<{tag}>\n{body}\n</{tag}>"
+
+    md = re.sub(
+        r"> \[!(NOTE|WARNING|IMPORTANT|TIP)\]\n((?:>.*\n?)*)",
+        admonition_block,
+        md,
+        flags=re.IGNORECASE,
+    )
+
+    # pandoc 2.9 / RST-native: <div class="note"> style
+    def admonition_div(m):
+        kind = m.group(1).strip().lower()
+        body = m.group(2).strip()
+        tag = {"note": "Note", "warning": "Warning", "important": "Note", "tip": "Tip"}.get(kind, "Note")
+        return f"<{tag}>\n{body}\n</{tag}>"
+
+    md = re.sub(
+        r'<div class="(note|warning|important|tip)">\s*<div class="title">\s*\w+\s*</div>\s*(.*?)\s*</div>',
+        admonition_div,
+        md,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+
+    # Remaining blockquote "> **Note**" style (some pandoc versions)
+    def admonition_simple(m):
+        kind = m.group(1)
+        rest = re.sub(r"^> ?", "", m.group(2), flags=re.MULTILINE).strip()
+        tag = {"Note": "Note", "Warning": "Warning", "Important": "Note"}.get(kind, "Note")
+        return f"<{tag}>\n{rest}\n</{tag}>"
+
+    md = re.sub(
+        r"> \*\*(Note|Warning|Important)\*\*\n((?:>.*\n?)*)",
+        admonition_simple,
+        md,
+    )
+
+    # 3. Fix image paths → point into /docs/images/ (flat)
+    # Matches: images/foo.png, ../images/foo.png, ../../foo/images/foo.png
+    md = re.sub(r"!\[([^\]]*)\]\((?:[^)]*\/)?images\/([^)]+)\)", r"![\1](/docs/images/\2)", md)
+
+    # 4. Clean up RST label anchors that pandoc leaves as raw HTML
+    md = re.sub(r"\[]{#[^}]+}", "", md)
+    md = re.sub(r'\[\\]{#[^}]+}', "", md)
+
+    # 5. Remove empty HTML comment artifacts
+    md = re.sub(r"<!--.*?-->", "", md, flags=re.DOTALL)
+
+    # 6. Collapse excessive blank lines
+    md = re.sub(r"\n{3,}", "\n\n", md)
+
+    return md.strip() + "\n"
+
+
+# ---------------------------------------------------------------------------
+# Title extractor from RST
+# ---------------------------------------------------------------------------
+
+def _extract_title(rst_content: str, fallback: str) -> str:
+    """Return the first RST section title."""
+    lines = rst_content.splitlines()
+    underline_chars = set("=-~^#*+")
+    for i, line in enumerate(lines):
+        if (
+            i + 1 < len(lines)
+            and len(line.strip()) > 0
+            and not line.startswith(".")
+            and len(set(lines[i + 1].strip())) == 1
+            and lines[i + 1].strip()[0] in underline_chars
+            and len(lines[i + 1].strip()) >= len(line.strip())
+        ):
+            return line.strip()
+        # overline + title + underline pattern
+        if (
+            i >= 1
+            and len(set(line.strip())) == 1
+            and line.strip()[0] in underline_chars
+            and i + 1 < len(lines)
+            and len(set(lines[i + 1].strip())) == 1
+            and lines[i + 1].strip()[0] in underline_chars
+        ):
+            return lines[i - 1].strip() if i >= 1 and lines[i - 1].strip() else fallback
+    return fallback
+
+
+# ---------------------------------------------------------------------------
+# Single file converter
+# ---------------------------------------------------------------------------
+
+def convert_rst(rst_path: Path, dest_mdx: Path):
+    """Convert one RST file to MDX and write to dest_mdx."""
+    content = rst_path.read_text(encoding="utf-8")
+    fallback = dest_mdx.stem.replace("-", " ").title()
+    title = _extract_title(content, fallback)
+
+    preprocessed = _preprocess_rst(content, rst_path)
+
+    result = subprocess.run(
+        ["pandoc", "--from=rst", "--to=gfm", "--wrap=none"],
+        input=preprocessed,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        print(f"  [WARN] pandoc error on {rst_path.name}: {result.stderr.strip()}")
+
+    md = result.stdout
+    mdx = _postprocess_mdx(md, title)
+
+    dest_mdx.parent.mkdir(parents=True, exist_ok=True)
+    dest_mdx.write_text(mdx, encoding="utf-8")
+
+
+def convert_md(md_path: Path, dest_mdx: Path):
+    """Copy an existing .md file and rename to .mdx, adding frontmatter."""
+    content = md_path.read_text(encoding="utf-8")
+    m = re.match(r"#\s+(.+)", content)
+    title = m.group(1).strip() if m else dest_mdx.stem.replace("-", " ").title()
+    content = _postprocess_mdx(content, title)
+    dest_mdx.parent.mkdir(parents=True, exist_ok=True)
+    dest_mdx.write_text(content, encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# Toctree parser → navigation tree
+# ---------------------------------------------------------------------------
+
+def _parse_toctree(rst_content: str, base_path: Path) -> list:
+    """
+    Parse all toctree directives in an RST file.
+    Returns list of dicts: {"caption": str|None, "entries": [str, ...]}
+    Each entry is a relative path (without .rst) relative to source root.
+    """
+    groups = []
+    # Capture everything from .. toctree:: until a line starting with a
+    # non-space/non-empty character (next top-level element).
+    pattern = re.compile(
+        r"\.\. toctree::([^\n]*)\n((?:(?:[ \t][^\n]*)?\n)*)",
+        re.MULTILINE,
+    )
+    for m in pattern.finditer(rst_content):
+        options_raw = m.group(2)
+        caption = None
+        entries = []
+        for line in options_raw.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            cm = re.match(r":caption:\s*(.+)", line)
+            if cm:
+                caption = cm.group(1).strip()
+                continue
+            if line.startswith(":"):
+                continue
+            entries.append(line)
+        if entries:
+            groups.append({"caption": caption, "entries": entries})
+    return groups
+
+
+def _resolve_entry(entry: str, rst_dir: Path, src: Path) -> Path | None:
+    """Resolve a toctree entry to an absolute normalized path (rst or md).
+
+    We normalize (collapse ../) but do NOT follow symlinks — this lets
+    relative_to(src) work for files like release-notes.md that are symlinks
+    pointing outside the source tree.
+    """
+    for suffix in ("", ".rst", ".md", "/index.rst", "/index.md"):
+        raw = rst_dir / (entry + suffix)
+        # normpath collapses ../../ without following symlinks
+        candidate = Path(os.path.normpath(raw))
+        if candidate.exists() and candidate.suffix in (".rst", ".md"):
+            return candidate
+    return None
+
+
+def _build_nav_tree(rst_path: Path, src: Path, visited: set | None = None) -> list:
+    """
+    Recursively build a navigation tree from toctree directives.
+    Returns a list of navigation items for docs.yml.
+    """
+    if visited is None:
+        visited = set()
+    if rst_path in visited:
+        return []
+    visited.add(rst_path)
+
+    content = rst_path.read_text(encoding="utf-8")
+    groups = _parse_toctree(content, rst_path.parent)
+
+    nav = []
+    for group in groups:
+        items = []
+        for entry_raw in group["entries"]:
+            entry_raw = entry_raw.strip()
+            # strip display label: "Display Text <path>"
+            dm = re.match(r".+<([^>]+)>", entry_raw)
+            entry = dm.group(1).strip() if dm else entry_raw
+
+            child_rst = _resolve_entry(entry, rst_path.parent, src)
+            if child_rst is None:
+                print(f"  [WARN] toctree entry not found: {entry} (from {rst_path.name})")
+                continue
+
+            rel = child_rst.relative_to(src)
+            page_path = f"docs/pages/{rel.with_suffix('.mdx').as_posix()}"
+            child_content = child_rst.read_text(encoding="utf-8")
+            child_groups = _parse_toctree(child_content, child_rst.parent)
+            child_title = _extract_title(child_content, child_rst.stem.replace("-", " ").title())
+
+            if child_groups:
+                # Section index: recurse, then use the child's sections directly
+                sub_items = _build_nav_tree(child_rst, src, visited)
+                # Include the index page itself only if it has meaningful prose
+                body = re.sub(r"\.\. toctree::.*?(?=\n\S|\Z)", "", child_content, flags=re.DOTALL).strip()
+                contents = []
+                if len(body) > 100:
+                    contents.append({"page": child_title, "path": page_path})
+                contents.extend(sub_items)
+                items.append({"section": child_title, "contents": contents})
+            else:
+                items.append({"page": child_title, "path": page_path})
+
+        if group["caption"]:
+            # Flatten: if caption has one section index child with same-ish name,
+            # hoist its contents up to avoid double-wrapping.
+            if len(items) == 1 and "section" in items[0]:
+                inner = items[0]
+                nav.append({"section": group["caption"], "contents": inner["contents"]})
+            else:
+                nav.append({"section": group["caption"], "contents": items})
+        else:
+            nav.extend(items)
+
+    return nav
+
+
+# ---------------------------------------------------------------------------
+# Collect all RST files that need converting
+# ---------------------------------------------------------------------------
+
+def _collect_rst_files(src: Path) -> list[Path]:
+    files = []
+    for rst in sorted(src.rglob("*.rst")):
+        # skip hidden/ (excluded in Sphinx conf.py too)
+        if "hidden" in rst.parts:
+            continue
+        files.append(rst)
+    for md in sorted(src.rglob("*.md")):
+        if "hidden" in md.parts:
+            continue
+        files.append(md)
+    return files
+
+
+# ---------------------------------------------------------------------------
+# docs.yml builder
+# ---------------------------------------------------------------------------
+
+DOCS_YML_HEADER = """\
+instances:
+  - url: nvidia-cuopt.docs.buildwithfern.com
+
+title: NVIDIA cuOpt
+logo:
+  dark: docs/images/cuopt_feature_diag.jpg
+  href: https://docs.nvidia.com/cuopt/
+
+colors:
+  accentPrimary:
+    dark: "#76B900"   # NVIDIA green
+
+tabs:
+  docs:
+    display-name: Documentation
+    icon: book
+
+navigation:
+"""
+
+def _nav_to_yaml(items: list, indent: int = 0) -> str:
+    """Render a nav item list to YAML lines."""
+    pad = "  " * indent
+    lines = []
+    for item in items:
+        if "section" in item:
+            lines.append(f"{pad}- section: {_yaml_str(item['section'])}")
+            lines.append(f"{pad}  contents:")
+            lines.append(_nav_to_yaml(item["contents"], indent + 2))
+        elif "page" in item:
+            lines.append(f"{pad}- page: {_yaml_str(item['page'])}")
+            lines.append(f"{pad}  path: {item['path']}")
+        elif "api" in item:
+            lines.append(f"{pad}- api: {_yaml_str(item['api'])}")
+            if "spec" in item:
+                lines.append(f"{pad}  spec: {item['spec']}")
+    return "\n".join(lines)
+
+
+def _yaml_str(s: str) -> str:
+    if any(c in s for c in ':{}[]|>&*!,#?-"\'\n'):
+        return '"' + s.replace('"', '\\"') + '"'
+    return s
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def main():
+    PAGES.mkdir(parents=True, exist_ok=True)
+    IMAGES.mkdir(parents=True, exist_ok=True)
+
+    # 1. Copy images
+    src_images = SRC / "images"
+    if src_images.exists():
+        for img in src_images.iterdir():
+            shutil.copy2(img, IMAGES / img.name)
+    # Also copy sub-directory images (routing, grpc, etc.)
+    for img in SRC.rglob("images/*"):
+        if img.is_file() and "hidden" not in img.parts:
+            shutil.copy2(img, IMAGES / img.name)
+    print(f"Copied images to {IMAGES}")
+
+    # 2. Convert RST/MD files
+    files = _collect_rst_files(SRC)
+    print(f"Converting {len(files)} files...")
+    for f in files:
+        rel = f.relative_to(SRC)
+        dest = PAGES / rel.with_suffix(".mdx")
+        if f.suffix == ".rst":
+            convert_rst(f, dest)
+        else:
+            convert_md(f, dest)
+        print(f"  {rel} → fern/docs/pages/{rel.with_suffix('.mdx')}")
+
+    # 3. Build navigation from toctree
+    index_rst = SRC / "index.rst"
+    nav_items = _build_nav_tree(index_rst, SRC)
+
+    # 4. Add an API reference section (OpenAPI - not C++ yet)
+    api_section = {
+        "section": "API Reference",
+        "contents": [
+            {
+                "page": "REST API (Server)",
+                "path": "docs/pages/open-api.mdx",
+            },
+            {
+                "page": "C API Reference",
+                "path": "docs/pages/cuopt-c-api-reference.mdx",
+            },
+        ],
+    }
+    # 5. Write docs.yml — combine main nav + API reference
+    all_nav = nav_items + [api_section]
+    nav_yaml = _nav_to_yaml(all_nav, indent=1)
+    docs_yml = DOCS_YML_HEADER + nav_yaml + "\n"
+    (FERN / "docs.yml").write_text(docs_yml, encoding="utf-8")
+    print(f"Wrote fern/docs.yml")
+
+    # 6. Write C API reference stub
+    c_api_stub = (PAGES / "cuopt-c-api-reference.mdx")
+    c_api_stub.write_text(
+        '---\ntitle: "C API Reference"\n---\n\n'
+        "<Note>\nC API reference is generated from Doxygen XML. "
+        "Full integration is pending Fern C++ library support (coming soon).\n\n"
+        "In the meantime, see the [C API Quick Start](cuopt-c/quick-start) and "
+        "the [Doxygen source](https://github.com/NVIDIA/cuopt/tree/main/cpp/doxygen).\n</Note>\n",
+        encoding="utf-8",
+    )
+
+    print("\nDone. Run: cd fern && fern check")
+
+
+if __name__ == "__main__":
+    main()
