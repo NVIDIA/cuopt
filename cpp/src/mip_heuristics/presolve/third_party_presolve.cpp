@@ -210,210 +210,9 @@ papilo::Problem<f_t> build_papilo_problem(io::mps_data_model_t<i_t, f_t> const& 
   return problem;
 }
 
-template <typename i_t, typename f_t>
-third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_pslp(
-  io::mps_data_model_t<i_t, f_t> const& mps, double time_limit)
-{
-  raft::common::nvtx::range fun_scope("Apply PSLP presolver on host");
-
-  cuopt_expects(std::is_same_v<f_t, double>,
-                error_type_t::ValidationError,
-                "PSLP presolver only supports double precision");
-
-  const i_t n_cols = mps.get_n_variables();
-  const i_t n_rows = mps.get_n_constraints();
-  const i_t nnz    = mps.get_nnz();
-
-  // Local owned copies of the fields that need mutation (sign flip on
-  // maximise / ±inf fill for empty bounds / row_types materialisation);
-  // matrix arrays are read straight from mps below (const&).
-  std::vector<f_t> obj_coeffs(mps.get_objective_coefficients());
-  std::vector<f_t> var_lb(mps.get_variable_lower_bounds());
-  std::vector<f_t> var_ub(mps.get_variable_upper_bounds());
-  std::vector<f_t> constr_lb(mps.get_constraint_lower_bounds());
-  std::vector<f_t> constr_ub(mps.get_constraint_upper_bounds());
-  f_t objective_offset = mps.get_objective_offset();
-  normalize_for_presolve<i_t, f_t>(
-    mps, maximize_, obj_coeffs, objective_offset, var_lb, var_ub, constr_lb, constr_ub);
-
-  const auto& coefficients = mps.get_constraint_matrix_values();
-  const auto& indices      = mps.get_constraint_matrix_indices();
-  const auto& offsets      = mps.get_constraint_matrix_offsets();
-
-  Settings* settings = default_settings();
-  settings->verbose  = false;
-  settings->max_time = time_limit;
-
-  auto start_time      = std::chrono::high_resolution_clock::now();
-  Presolver* presolver = new_presolver(coefficients.data(),
-                                       indices.data(),
-                                       offsets.data(),
-                                       n_rows,
-                                       n_cols,
-                                       nnz,
-                                       constr_lb.data(),
-                                       constr_ub.data(),
-                                       var_lb.data(),
-                                       var_ub.data(),
-                                       obj_coeffs.data(),
-                                       settings);
-  assert(presolver != nullptr && "Presolver initialization failed");
-  const PresolveStatus pslp_status = run_presolver(presolver);
-  auto end_time                    = std::chrono::high_resolution_clock::now();
-  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-  CUOPT_LOG_DEBUG("PSLP presolver time: %d milliseconds", duration.count());
-  CUOPT_LOG_INFO("PSLP Presolved problem: %d constraints, %d variables, %d non-zeros",
-                 presolver->stats->n_rows_reduced,
-                 presolver->stats->n_cols_reduced,
-                 presolver->stats->nnz_reduced);
-
-  // Free previously allocated presolver and settings (if any) and stash the
-  // new ones so undo_pslp_host / build_reduced_mps_from_pslp can find them later.
-  if (pslp_presolver_ != nullptr) { free_presolver(pslp_presolver_); }
-  if (pslp_stgs_ != nullptr) { free_settings(pslp_stgs_); }
-  pslp_presolver_ = presolver;
-  pslp_stgs_      = settings;
-
-  return convert_pslp_presolve_status_to_third_party_presolve_status(pslp_status);
-}
-
-// Reduced mps_data_model builders (one per backend). No intermediate view —
-// each backend reads its own internal state and writes straight into a fresh
-// mps_data_model_t. mps setters copy from the given spans/vectors into their
-// internal owned storage, so the locals here can safely die on return.
-
-template <typename i_t, typename f_t>
-io::mps_data_model_t<i_t, f_t> build_reduced_mps_from_pslp(Presolver* pslp_presolver,
-                                                           bool maximize,
-                                                           f_t original_obj_offset)
-{
-  raft::common::nvtx::range fun_scope("Build mps_data_model from PSLP");
-  io::mps_data_model_t<i_t, f_t> mps;
-
-    auto* reduced    = pslp_presolver->reduced_prob;
-    const i_t n_rows = static_cast<i_t>(reduced->m);
-    const i_t n_cols = static_cast<i_t>(reduced->n);
-    const i_t nnz    = static_cast<i_t>(reduced->nnz);
-    // PSLP folds the sign flip into obj_offset for maximise problems, and does
-    // not track the original mps's objective offset — put both back.
-    const f_t obj_offset =
-      (maximize ? -reduced->obj_offset : reduced->obj_offset) + original_obj_offset;
-    mps.set_maximize(maximize);
-    mps.set_objective_offset(obj_offset);
-
-    if (n_cols == 0 && n_rows == 0) {
-      std::vector<i_t> empty_offsets{0};
-      mps.set_csr_constraint_matrix(
-        {}, {}, std::span<const i_t>(empty_offsets.data(), empty_offsets.size()));
-      return mps;
-    }
-
-    mps.set_csr_constraint_matrix(
-      std::span<const f_t>(reduced->Ax, static_cast<size_t>(nnz)),
-      std::span<const i_t>(reduced->Ai, static_cast<size_t>(nnz)),
-      std::span<const i_t>(reduced->Ap, static_cast<size_t>(n_rows + 1)));
-
-    if (maximize) {
-      std::vector<f_t> h_obj_coeffs(reduced->c, reduced->c + n_cols);
-      for (auto& c : h_obj_coeffs) {
-        c = -c;
-      }
-      mps.set_objective_coefficients(
-        std::span<const f_t>(h_obj_coeffs.data(), h_obj_coeffs.size()));
-    } else {
-      mps.set_objective_coefficients(std::span<const f_t>(reduced->c, static_cast<size_t>(n_cols)));
-    }
-    mps.set_constraint_lower_bounds(
-      std::span<const f_t>(reduced->lhs, static_cast<size_t>(n_rows)));
-    mps.set_constraint_upper_bounds(
-      std::span<const f_t>(reduced->rhs, static_cast<size_t>(n_rows)));
-    mps.set_variable_lower_bounds(std::span<const f_t>(reduced->lbs, static_cast<size_t>(n_cols)));
-    mps.set_variable_upper_bounds(std::span<const f_t>(reduced->ubs, static_cast<size_t>(n_cols)));
-
-  return mps;
-}
-
-template <typename i_t, typename f_t>
-io::mps_data_model_t<i_t, f_t> build_reduced_mps_from_papilo(
-  papilo::Problem<f_t> const& papilo_problem, bool maximize)
-{
-  raft::common::nvtx::range fun_scope("Reduced mps <- Papilo");
-  io::mps_data_model_t<i_t, f_t> mps;
-
-  auto obj = papilo_problem.getObjective();
-  mps.set_maximize(maximize);
-  mps.set_objective_offset(maximize ? -obj.offset : obj.offset);
-
-  if (papilo_problem.getNRows() == 0 && papilo_problem.getNCols() == 0) {
-    std::vector<i_t> empty_offsets{0};
-    mps.set_csr_constraint_matrix(
-      {}, {}, std::span<const i_t>(empty_offsets.data(), empty_offsets.size()));
-    return mps;
-  }
-
-  if (maximize) {
-    for (auto& c : obj.coefficients) {
-      c = -c;
-    }
-  }
-  mps.set_objective_coefficients(
-    std::span<const f_t>(obj.coefficients.data(), obj.coefficients.size()));
-
-  auto& constraint_matrix = papilo_problem.getConstraintMatrix();
-
-  // Row bounds: copy out (papilo returns by value) then substitute ±inf per flag.
-  auto row_lower = constraint_matrix.getLeftHandSides();
-  auto row_upper = constraint_matrix.getRightHandSides();
-  auto row_flags = constraint_matrix.getRowFlags();
-  for (size_t i = 0; i < row_flags.size(); i++) {
-    if (row_flags[i].test(papilo::RowFlag::kLhsInf)) {
-      row_lower[i] = -std::numeric_limits<f_t>::infinity();
-    }
-    if (row_flags[i].test(papilo::RowFlag::kRhsInf)) {
-      row_upper[i] = std::numeric_limits<f_t>::infinity();
-    }
-  }
-  mps.set_constraint_lower_bounds(std::span<const f_t>(row_lower.data(), row_lower.size()));
-  mps.set_constraint_upper_bounds(std::span<const f_t>(row_upper.data(), row_upper.size()));
-
-  // CSR offsets have to be synthesised from papilo's RangeInfo (non-contiguous
-  // in general); values and column indices are contiguous, so span in-place.
-  auto [index_range, nrows] = constraint_matrix.getRangeInfo();
-  std::vector<i_t> offsets(nrows + 1);
-  const size_t start = index_range[0].start;
-  for (i_t i = 0; i < nrows; i++) {
-    offsets[i] = static_cast<i_t>(index_range[i].start - start);
-  }
-  offsets[nrows] = static_cast<i_t>(index_range[nrows - 1].end - start);
-  const i_t nnz  = static_cast<i_t>(constraint_matrix.getNnz());
-  assert(offsets[nrows] == nnz);
-  const int* cols   = constraint_matrix.getConstraintMatrix().getColumns();
-  const f_t* coeffs = constraint_matrix.getConstraintMatrix().getValues();
-  mps.set_csr_constraint_matrix(std::span<const f_t>(&coeffs[start], static_cast<size_t>(nnz)),
-                                std::span<const i_t>(&cols[start], static_cast<size_t>(nnz)),
-                                std::span<const i_t>(offsets.data(), offsets.size()));
-
-  // Col bounds + var_types: same copy-then-fixup pattern.
-  auto col_lower = papilo_problem.getLowerBounds();
-  auto col_upper = papilo_problem.getUpperBounds();
-  auto col_flags = papilo_problem.getColFlags();
-  std::vector<char> var_types(col_flags.size());
-  for (size_t i = 0; i < col_flags.size(); i++) {
-    var_types[i] = col_flags[i].test(papilo::ColFlag::kIntegral) ? 'I' : 'C';
-    if (col_flags[i].test(papilo::ColFlag::kLbInf)) {
-      col_lower[i] = -std::numeric_limits<f_t>::infinity();
-    }
-    if (col_flags[i].test(papilo::ColFlag::kUbInf)) {
-      col_upper[i] = std::numeric_limits<f_t>::infinity();
-    }
-  }
-  mps.set_variable_lower_bounds(std::span<const f_t>(col_lower.data(), col_lower.size()));
-  mps.set_variable_upper_bounds(std::span<const f_t>(col_upper.data(), col_upper.size()));
-  mps.set_variable_types(var_types);
-
-  return mps;
-}
-
+// Backend glue helpers (status logging / status enum conversion / papilo
+// presolver configuration). Placed here so apply_pslp / apply_papilo can
+// call them
 void check_presolve_status(const papilo::PresolveStatus& status)
 {
   switch (status) {
@@ -559,6 +358,213 @@ void set_presolve_parameters(papilo::Presolve<f_t>& presolver,
     params.setParameter("cliquemerging.enabled", true);
     params.setParameter("cliquemerging.maxcalls", 50);
   }
+}
+
+template <typename i_t, typename f_t>
+third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_pslp(
+  io::mps_data_model_t<i_t, f_t> const& mps, double time_limit)
+{
+  raft::common::nvtx::range fun_scope("Apply PSLP presolver on host");
+
+  if constexpr (std::is_same_v<f_t, double>) {
+    const i_t n_cols = mps.get_n_variables();
+    const i_t n_rows = mps.get_n_constraints();
+    const i_t nnz    = mps.get_nnz();
+
+    // Local owned copies of the fields that need mutation (sign flip on
+    // maximise / ±inf fill for empty bounds / row_types materialisation);
+    // matrix arrays are read straight from mps below (const&).
+    std::vector<f_t> obj_coeffs(mps.get_objective_coefficients());
+    std::vector<f_t> var_lb(mps.get_variable_lower_bounds());
+    std::vector<f_t> var_ub(mps.get_variable_upper_bounds());
+    std::vector<f_t> constr_lb(mps.get_constraint_lower_bounds());
+    std::vector<f_t> constr_ub(mps.get_constraint_upper_bounds());
+    f_t objective_offset = mps.get_objective_offset();
+    normalize_for_presolve<i_t, f_t>(
+      mps, maximize_, obj_coeffs, objective_offset, var_lb, var_ub, constr_lb, constr_ub);
+
+    const auto& coefficients = mps.get_constraint_matrix_values();
+    const auto& indices      = mps.get_constraint_matrix_indices();
+    const auto& offsets      = mps.get_constraint_matrix_offsets();
+
+    Settings* settings = default_settings();
+    settings->verbose  = false;
+    settings->max_time = time_limit;
+
+    auto start_time      = std::chrono::high_resolution_clock::now();
+    Presolver* presolver = new_presolver(coefficients.data(),
+                                         indices.data(),
+                                         offsets.data(),
+                                         n_rows,
+                                         n_cols,
+                                         nnz,
+                                         constr_lb.data(),
+                                         constr_ub.data(),
+                                         var_lb.data(),
+                                         var_ub.data(),
+                                         obj_coeffs.data(),
+                                         settings);
+    assert(presolver != nullptr && "Presolver initialization failed");
+    const PresolveStatus pslp_status = run_presolver(presolver);
+    auto end_time                    = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    CUOPT_LOG_DEBUG("PSLP presolver time: %d milliseconds", duration.count());
+    CUOPT_LOG_INFO("PSLP Presolved problem: %d constraints, %d variables, %d non-zeros",
+                   presolver->stats->n_rows_reduced,
+                   presolver->stats->n_cols_reduced,
+                   presolver->stats->nnz_reduced);
+
+    // Free previously allocated presolver and settings (if any) and stash the
+    // new ones so undo_pslp_host / build_reduced_mps_from_pslp can find them later.
+    if (pslp_presolver_ != nullptr) { free_presolver(pslp_presolver_); }
+    if (pslp_stgs_ != nullptr) { free_settings(pslp_stgs_); }
+    pslp_presolver_ = presolver;
+    pslp_stgs_      = settings;
+
+    return convert_pslp_presolve_status_to_third_party_presolve_status(pslp_status);
+  } else {
+    cuopt_expects(false,
+                  error_type_t::ValidationError,
+                  "PSLP presolver only supports double precision");
+    return third_party_presolve_status_t::UNCHANGED;  // unreachable
+  }
+}
+
+// Reduced mps_data_model builders (one per backend). No intermediate view —
+// each backend reads its own internal state and writes straight into a fresh
+// mps_data_model_t. mps setters copy from the given spans/vectors into their
+// internal owned storage, so the locals here can safely die on return.
+
+template <typename i_t, typename f_t>
+io::mps_data_model_t<i_t, f_t> build_reduced_mps_from_pslp(Presolver* pslp_presolver,
+                                                           bool maximize,
+                                                           f_t original_obj_offset)
+{
+  raft::common::nvtx::range fun_scope("Build mps_data_model from PSLP");
+  io::mps_data_model_t<i_t, f_t> mps;
+
+    auto* reduced    = pslp_presolver->reduced_prob;
+    const i_t n_rows = static_cast<i_t>(reduced->m);
+    const i_t n_cols = static_cast<i_t>(reduced->n);
+    const i_t nnz    = static_cast<i_t>(reduced->nnz);
+    // PSLP folds the sign flip into obj_offset for maximise problems, and does
+    // not track the original mps's objective offset — put both back.
+    const f_t obj_offset =
+      (maximize ? -reduced->obj_offset : reduced->obj_offset) + original_obj_offset;
+    mps.set_maximize(maximize);
+    mps.set_objective_offset(obj_offset);
+
+    if (n_cols == 0 && n_rows == 0) {
+      std::vector<i_t> empty_offsets{0};
+      mps.set_csr_constraint_matrix(
+        {}, {}, std::span<const i_t>(empty_offsets.data(), empty_offsets.size()));
+      return mps;
+    }
+
+    mps.set_csr_constraint_matrix(
+      std::span<const f_t>(reduced->Ax, static_cast<size_t>(nnz)),
+      std::span<const i_t>(reduced->Ai, static_cast<size_t>(nnz)),
+      std::span<const i_t>(reduced->Ap, static_cast<size_t>(n_rows + 1)));
+
+    if (maximize) {
+      std::vector<f_t> h_obj_coeffs(reduced->c, reduced->c + n_cols);
+      for (auto& c : h_obj_coeffs) {
+        c = -c;
+      }
+      mps.set_objective_coefficients(
+        std::span<const f_t>(h_obj_coeffs.data(), h_obj_coeffs.size()));
+    } else {
+      mps.set_objective_coefficients(std::span<const f_t>(reduced->c, static_cast<size_t>(n_cols)));
+    }
+    mps.set_constraint_lower_bounds(
+      std::span<const f_t>(reduced->lhs, static_cast<size_t>(n_rows)));
+    mps.set_constraint_upper_bounds(
+      std::span<const f_t>(reduced->rhs, static_cast<size_t>(n_rows)));
+    mps.set_variable_lower_bounds(std::span<const f_t>(reduced->lbs, static_cast<size_t>(n_cols)));
+    mps.set_variable_upper_bounds(std::span<const f_t>(reduced->ubs, static_cast<size_t>(n_cols)));
+
+  return mps;
+}
+
+template <typename i_t, typename f_t>
+io::mps_data_model_t<i_t, f_t> build_reduced_mps_from_papilo(
+  papilo::Problem<f_t> const& papilo_problem, bool maximize)
+{
+  raft::common::nvtx::range fun_scope("Reduced mps <- Papilo");
+  io::mps_data_model_t<i_t, f_t> mps;
+
+  auto obj = papilo_problem.getObjective();
+  mps.set_maximize(maximize);
+  mps.set_objective_offset(maximize ? -obj.offset : obj.offset);
+
+  if (papilo_problem.getNRows() == 0 && papilo_problem.getNCols() == 0) {
+    std::vector<i_t> empty_offsets{0};
+    mps.set_csr_constraint_matrix(
+      {}, {}, std::span<const i_t>(empty_offsets.data(), empty_offsets.size()));
+    return mps;
+  }
+
+  if (maximize) {
+    for (auto& c : obj.coefficients) {
+      c = -c;
+    }
+  }
+  mps.set_objective_coefficients(
+    std::span<const f_t>(obj.coefficients.data(), obj.coefficients.size()));
+
+  auto& constraint_matrix = papilo_problem.getConstraintMatrix();
+
+  // Row bounds: copy out (papilo returns by value) then substitute ±inf per flag.
+  auto row_lower = constraint_matrix.getLeftHandSides();
+  auto row_upper = constraint_matrix.getRightHandSides();
+  auto row_flags = constraint_matrix.getRowFlags();
+  for (size_t i = 0; i < row_flags.size(); i++) {
+    if (row_flags[i].test(papilo::RowFlag::kLhsInf)) {
+      row_lower[i] = -std::numeric_limits<f_t>::infinity();
+    }
+    if (row_flags[i].test(papilo::RowFlag::kRhsInf)) {
+      row_upper[i] = std::numeric_limits<f_t>::infinity();
+    }
+  }
+  mps.set_constraint_lower_bounds(std::span<const f_t>(row_lower.data(), row_lower.size()));
+  mps.set_constraint_upper_bounds(std::span<const f_t>(row_upper.data(), row_upper.size()));
+
+  // CSR offsets have to be synthesised from papilo's RangeInfo (non-contiguous
+  // in general); values and column indices are contiguous, so span in-place.
+  auto [index_range, nrows] = constraint_matrix.getRangeInfo();
+  std::vector<i_t> offsets(nrows + 1);
+  const size_t start = index_range[0].start;
+  for (i_t i = 0; i < nrows; i++) {
+    offsets[i] = static_cast<i_t>(index_range[i].start - start);
+  }
+  offsets[nrows] = static_cast<i_t>(index_range[nrows - 1].end - start);
+  const i_t nnz  = static_cast<i_t>(constraint_matrix.getNnz());
+  assert(offsets[nrows] == nnz);
+  const int* cols   = constraint_matrix.getConstraintMatrix().getColumns();
+  const f_t* coeffs = constraint_matrix.getConstraintMatrix().getValues();
+  mps.set_csr_constraint_matrix(std::span<const f_t>(&coeffs[start], static_cast<size_t>(nnz)),
+                                std::span<const i_t>(&cols[start], static_cast<size_t>(nnz)),
+                                std::span<const i_t>(offsets.data(), offsets.size()));
+
+  // Col bounds + var_types: same copy-then-fixup pattern.
+  auto col_lower = papilo_problem.getLowerBounds();
+  auto col_upper = papilo_problem.getUpperBounds();
+  auto col_flags = papilo_problem.getColFlags();
+  std::vector<char> var_types(col_flags.size());
+  for (size_t i = 0; i < col_flags.size(); i++) {
+    var_types[i] = col_flags[i].test(papilo::ColFlag::kIntegral) ? 'I' : 'C';
+    if (col_flags[i].test(papilo::ColFlag::kLbInf)) {
+      col_lower[i] = -std::numeric_limits<f_t>::infinity();
+    }
+    if (col_flags[i].test(papilo::ColFlag::kUbInf)) {
+      col_upper[i] = std::numeric_limits<f_t>::infinity();
+    }
+  }
+  mps.set_variable_lower_bounds(std::span<const f_t>(col_lower.data(), col_lower.size()));
+  mps.set_variable_upper_bounds(std::span<const f_t>(col_upper.data(), col_upper.size()));
+  mps.set_variable_types(var_types);
+
+  return mps;
 }
 
 template <typename i_t, typename f_t>
