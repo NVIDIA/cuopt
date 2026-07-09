@@ -186,6 +186,7 @@ papilo::Problem<f_t> build_papilo_problem(io::mps_data_model_t<i_t, f_t> const& 
 
   if (h_entries.size()) {
     auto constexpr const sorted_entries = true;
+    // MIP reductions like clique merging and substituition require more fillin
     const double spare_ratio            = category == problem_category_t::MIP ? 4.0 : 2.0;
     const int min_inter_row_space       = category == problem_category_t::MIP ? 30 : 4;
     auto csr_storage                    = papilo::SparseStorage<f_t>(
@@ -204,11 +205,7 @@ papilo::Problem<f_t> build_papilo_problem(io::mps_data_model_t<i_t, f_t> const& 
   return problem;
 }
 
-// Reduced mps_data_model builders (one per backend). No intermediate view —
-// each backend reads its own internal state and writes straight into a fresh
-// mps_data_model_t. mps setters copy from the given spans/vectors into their
-// internal owned storage, so the locals here can safely die on return.
-
+// Presolved mps_data_model builder from PSLP
 template <typename i_t, typename f_t>
 io::mps_data_model_t<i_t, f_t> build_reduced_mps_from_pslp(Presolver* pslp_presolver,
                                                            bool maximize,
@@ -345,9 +342,6 @@ io::mps_data_model_t<i_t, f_t> build_reduced_mps_from_papilo(
   return mps;
 }
 
-// Backend glue helpers (status logging / status enum conversion / papilo
-// presolver configuration). Placed here so apply_pslp / apply_papilo can
-// call them
 void check_presolve_status(const papilo::PresolveStatus& status)
 {
   switch (status) {
@@ -551,7 +545,7 @@ third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_pslp(
                    presolver->stats->nnz_reduced);
 
     // Free previously allocated presolver and settings (if any) and stash the
-    // new ones so undo_pslp_host / build_reduced_mps_from_pslp can find them later.
+    // new ones so undo_pslp / build_reduced_mps_from_pslp can find them later.
     if (pslp_presolver_ != nullptr) { free_presolver(pslp_presolver_); }
     if (pslp_stgs_ != nullptr) { free_settings(pslp_stgs_); }
     pslp_presolver_ = presolver;
@@ -628,6 +622,7 @@ third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_papilo(
                  n_integer,
                  papilo_problem.getConstraintMatrix().getNnz());
 
+  // Check if presolve found the optimal solution (problem fully reduced)
   if (papilo_problem.getNRows() == 0 && papilo_problem.getNCols() == 0) {
     status = third_party_presolve_status_t::OPTIMAL;
   }
@@ -734,7 +729,7 @@ third_party_presolve_t<i_t, f_t>::apply_presolve_from_mps_data(
                 error_type_t::ValidationError,
                 "Presolve does not support mps_data_models with quadratic constraints");
 
-  // PSLP branch:  apply_pslp (host, reads mps directly) -> reduced mps.
+  // PSLP branch:  apply_pslp -> reduced mps.
   if (presolver == cuopt::mathematical_optimization::presolver_t::PSLP) {
     const f_t original_obj_offset = mps.get_objective_offset();
     auto status                   = apply_pslp(mps, time_limit);
@@ -751,7 +746,7 @@ third_party_presolve_t<i_t, f_t>::apply_presolve_from_mps_data(
     reduced_mps.set_objective_scaling_factor(mps.get_objective_scaling_factor());
     return third_party_presolve_host_result_t<i_t, f_t>{status, std::move(reduced_mps), {}, {}, {}};
   } else {
-    // Papilo branch:  build papilo::Problem (host, reads mps directly) ->
+    // Papilo branch:  build papilo::Problem ->
     //                 apply_papilo -> reduced mps.
     auto papilo_problem = build_papilo_problem<i_t, f_t>(mps, maximize_, category);
     auto status         = apply_papilo(papilo_problem,
@@ -773,13 +768,11 @@ third_party_presolve_t<i_t, f_t>::apply_presolve_from_mps_data(
     reduced_mps.set_problem_name(mps.get_problem_name());
     reduced_mps.set_objective_scaling_factor(mps.get_objective_scaling_factor());
 
+    auto col_flags = papilo_problem.getColFlags();
     std::vector<i_t> implied_integer_indices;
-    {
-      auto col_flags = papilo_problem.getColFlags();
-      for (size_t i = 0; i < col_flags.size(); ++i) {
-        if (col_flags[i].test(papilo::ColFlag::kImplInt)) {
-          implied_integer_indices.push_back(static_cast<i_t>(i));
-        }
+    for (size_t i = 0; i < col_flags.size(); ++i) {
+      if (col_flags[i].test(papilo::ColFlag::kImplInt)) {
+        implied_integer_indices.push_back(static_cast<i_t>(i));
       }
     }
 
@@ -792,22 +785,15 @@ third_party_presolve_t<i_t, f_t>::apply_presolve_from_mps_data(
 }
 
 template <typename i_t, typename f_t>
-void third_party_presolve_t<i_t, f_t>::undo(rmm::device_uvector<f_t>& primal_solution,
-                                            rmm::device_uvector<f_t>& dual_solution,
-                                            rmm::device_uvector<f_t>& reduced_costs,
-                                            problem_category_t category,
-                                            bool status_to_skip,
-                                            bool dual_postsolve,
-                                            rmm::cuda_stream_view stream_view)
+void third_party_presolve_t<i_t, f_t>::undo_from_device(
+  rmm::device_uvector<f_t>& primal_solution,
+  rmm::device_uvector<f_t>& dual_solution,
+  rmm::device_uvector<f_t>& reduced_costs,
+  problem_category_t category,
+  bool status_to_skip,
+  bool dual_postsolve,
+  rmm::cuda_stream_view stream_view)
 {
-  // PSLP path always runs (it owns the lifted solution in-place); the Papilo
-  // path (used for Papilo/Default/None) is allowed to short-circuit via
-  // status_to_skip without touching the data. Mirror that here so we don't pay
-  // for unnecessary D->H->D copies.
-  if (status_to_skip && presolver_ != cuopt::mathematical_optimization::presolver_t::PSLP) {
-    return;
-  }
-
   std::vector<f_t> h_primal(primal_solution.size());
   std::vector<f_t> h_dual(dual_solution.size());
   std::vector<f_t> h_rc(reduced_costs.size());
@@ -816,7 +802,7 @@ void third_party_presolve_t<i_t, f_t>::undo(rmm::device_uvector<f_t>& primal_sol
   raft::copy(h_rc.data(), reduced_costs.data(), reduced_costs.size(), stream_view);
   stream_view.synchronize();
 
-  undo_host(h_primal, h_dual, h_rc, category, status_to_skip, dual_postsolve);
+  undo(h_primal, h_dual, h_rc, category, status_to_skip, dual_postsolve);
 
   primal_solution.resize(h_primal.size(), stream_view);
   dual_solution.resize(h_dual.size(), stream_view);
@@ -828,9 +814,9 @@ void third_party_presolve_t<i_t, f_t>::undo(rmm::device_uvector<f_t>& primal_sol
 }
 
 template <typename i_t, typename f_t>
-void third_party_presolve_t<i_t, f_t>::undo_pslp_host(std::vector<f_t>& primal_solution,
-                                                      std::vector<f_t>& dual_solution,
-                                                      std::vector<f_t>& reduced_costs)
+void third_party_presolve_t<i_t, f_t>::undo_pslp(std::vector<f_t>& primal_solution,
+                                                 std::vector<f_t>& dual_solution,
+                                                 std::vector<f_t>& reduced_costs)
 {
   if constexpr (std::is_same_v<f_t, double>) {
     // PSLP postsolve reads from the passed-in host buffers and writes the
@@ -851,10 +837,10 @@ void third_party_presolve_t<i_t, f_t>::undo_pslp_host(std::vector<f_t>& primal_s
 }
 
 template <typename i_t, typename f_t>
-void third_party_presolve_t<i_t, f_t>::undo_papilo_host(std::vector<f_t>& primal_solution,
-                                                        std::vector<f_t>& dual_solution,
-                                                        std::vector<f_t>& reduced_costs,
-                                                        bool dual_postsolve)
+void third_party_presolve_t<i_t, f_t>::undo_papilo(std::vector<f_t>& primal_solution,
+                                                   std::vector<f_t>& dual_solution,
+                                                   std::vector<f_t>& reduced_costs,
+                                                   bool dual_postsolve)
 {
   papilo::Solution<f_t> reduced_sol(primal_solution);
   if (dual_postsolve) {
@@ -878,23 +864,21 @@ void third_party_presolve_t<i_t, f_t>::undo_papilo_host(std::vector<f_t>& primal
 }
 
 template <typename i_t, typename f_t>
-void third_party_presolve_t<i_t, f_t>::undo_host(std::vector<f_t>& primal_solution,
-                                                 std::vector<f_t>& dual_solution,
-                                                 std::vector<f_t>& reduced_costs,
-                                                 problem_category_t /*category*/,
-                                                 bool status_to_skip,
-                                                 bool dual_postsolve)
+void third_party_presolve_t<i_t, f_t>::undo(std::vector<f_t>& primal_solution,
+                                            std::vector<f_t>& dual_solution,
+                                            std::vector<f_t>& reduced_costs,
+                                            problem_category_t /*category*/,
+                                            bool status_to_skip,
+                                            bool dual_postsolve)
 {
-  // Matches apply()'s dispatch: PSLP is the only branch that's special-cased;
-  // every other value of `presolver_` (Papilo / Default / None) runs the
-  // Papilo postsolve, which is a no-op short-circuit on status_to_skip.
   if (presolver_ == cuopt::mathematical_optimization::presolver_t::PSLP) {
-    undo_pslp_host(primal_solution, dual_solution, reduced_costs);
+    undo_pslp(primal_solution, dual_solution, reduced_costs);
     return;
   }
-
-  if (status_to_skip) { return; }
-  undo_papilo_host(primal_solution, dual_solution, reduced_costs, dual_postsolve);
+  else { // Papilo branch
+    if (status_to_skip) { return; }
+    undo_papilo(primal_solution, dual_solution, reduced_costs, dual_postsolve);
+  }
 }
 
 template <typename i_t, typename f_t>

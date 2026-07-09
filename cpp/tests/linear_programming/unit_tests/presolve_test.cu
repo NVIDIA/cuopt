@@ -569,7 +569,8 @@ TEST_P(dual_crush_round_trip, kkt_check)
     rc_sol = cuopt::device_copy(reduced_solution.get_reduced_cost(), stream);
   }
 
-  presolver.undo(primal_sol, dual_sol, rc_sol, problem_category_t::LP, false, true, stream);
+  presolver.undo_from_device(
+    primal_sol, dual_sol, rc_sol, problem_category_t::LP, false, true, stream);
 
   auto x_orig  = host_copy(primal_sol, stream);
   auto y_orig  = host_copy(dual_sol, stream);
@@ -817,7 +818,8 @@ TEST_P(crush_warmstart, round_trip)
   }
   auto rc_sol = cuopt::device_copy(z_red, stream);
 
-  presolver.undo(primal_sol, dual_sol, rc_sol, problem_category_t::LP, false, true, stream);
+  presolver.undo_from_device(
+    primal_sol, dual_sol, rc_sol, problem_category_t::LP, false, true, stream);
 
   auto x_orig = host_copy(primal_sol, stream);
   auto y_orig = host_copy(dual_sol, stream);

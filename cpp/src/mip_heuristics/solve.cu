@@ -672,13 +672,13 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
         cuopt::device_copy(sol.get_solution(), op_problem.get_handle_ptr()->get_stream());
       rmm::device_uvector<f_t> dual_solution(0, op_problem.get_handle_ptr()->get_stream());
       rmm::device_uvector<f_t> reduced_costs(0, op_problem.get_handle_ptr()->get_stream());
-      presolver->undo(primal_solution,
-                      dual_solution,
-                      reduced_costs,
-                      cuopt::mathematical_optimization::problem_category_t::MIP,
-                      status_to_skip,
-                      dual_postsolve,
-                      op_problem.get_handle_ptr()->get_stream());
+      presolver->undo_from_device(primal_solution,
+                                  dual_solution,
+                                  reduced_costs,
+                                  cuopt::mathematical_optimization::problem_category_t::MIP,
+                                  status_to_skip,
+                                  dual_postsolve,
+                                  op_problem.get_handle_ptr()->get_stream());
       if (!status_to_skip) {
         thrust::fill(rmm::exec_policy(op_problem.get_handle_ptr()->get_stream()),
                      dual_solution.data(),

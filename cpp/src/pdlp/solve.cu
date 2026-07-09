@@ -1998,13 +1998,13 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
         rmm::device_uvector<f_t> empty_reduced_costs(0, op_problem.get_handle_ptr()->get_stream());
 
         // Run postsolve to get the full solution
-        presolver->undo(empty_primal,
-                        empty_dual,
-                        empty_reduced_costs,
-                        cuopt::mathematical_optimization::problem_category_t::LP,
-                        false,  // status_to_skip
-                        settings.dual_postsolve,
-                        op_problem.get_handle_ptr()->get_stream());
+        presolver->undo_from_device(empty_primal,
+                                    empty_dual,
+                                    empty_reduced_costs,
+                                    cuopt::mathematical_optimization::problem_category_t::LP,
+                                    false,  // status_to_skip
+                                    settings.dual_postsolve,
+                                    op_problem.get_handle_ptr()->get_stream());
 
         // Create termination info with the objective from presolve
         typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t
@@ -2069,13 +2069,13 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
         cuopt::device_copy(solution.get_reduced_cost(), op_problem.get_handle_ptr()->get_stream());
       bool status_to_skip = false;
 
-      presolver->undo(primal_solution,
-                      dual_solution,
-                      reduced_costs,
-                      cuopt::mathematical_optimization::problem_category_t::LP,
-                      status_to_skip,
-                      settings.dual_postsolve,
-                      op_problem.get_handle_ptr()->get_stream());
+      presolver->undo_from_device(primal_solution,
+                                  dual_solution,
+                                  reduced_costs,
+                                  cuopt::mathematical_optimization::problem_category_t::LP,
+                                  status_to_skip,
+                                  settings.dual_postsolve,
+                                  op_problem.get_handle_ptr()->get_stream());
 
       std::vector<
         typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t>
@@ -2459,12 +2459,12 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
                      presolve_time);
 
       std::vector<f_t> h_primal, h_dual, h_rc;
-      presolver_ptr->undo_host(h_primal,
-                               h_dual,
-                               h_rc,
-                               cuopt::mathematical_optimization::problem_category_t::LP,
-                               /*status_to_skip=*/false,
-                               settings_resolved.dual_postsolve);
+      presolver_ptr->undo(h_primal,
+                          h_dual,
+                          h_rc,
+                          cuopt::mathematical_optimization::problem_category_t::LP,
+                          /*status_to_skip=*/false,
+                          settings_resolved.dual_postsolve);
 
       auto primal_uv = cuopt::device_copy(h_primal, handle_ptr->get_stream());
       auto dual_uv   = cuopt::device_copy(h_dual, handle_ptr->get_stream());
@@ -2545,12 +2545,12 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
     auto h_rc     = cuopt::host_copy(sol.get_reduced_cost(), handle_ptr->get_stream());
     handle_ptr->sync_stream();
 
-    presolver_ptr->undo_host(h_primal,
-                             h_dual,
-                             h_rc,
-                             cuopt::mathematical_optimization::problem_category_t::LP,
-                             /*status_to_skip=*/false,
-                             settings_resolved.dual_postsolve);
+    presolver_ptr->undo(h_primal,
+                        h_dual,
+                        h_rc,
+                        cuopt::mathematical_optimization::problem_category_t::LP,
+                        /*status_to_skip=*/false,
+                        settings_resolved.dual_postsolve);
 
     auto primal_uv = cuopt::device_copy(h_primal, handle_ptr->get_stream());
     auto dual_uv   = cuopt::device_copy(h_dual, handle_ptr->get_stream());
