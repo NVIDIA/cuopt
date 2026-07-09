@@ -468,6 +468,8 @@ if (NOT SKIP_GRPC_BUILD)
             src/grpc/grpc_settings_mapper.cpp
             src/grpc/grpc_service_mapper.cpp
             src/grpc/client/grpc_client.cpp
+            src/grpc/client/grpc_client_env.cpp
+            src/grpc/client/cython_grpc_client.cpp
             src/grpc/client/solve_remote.cpp
     )
     list(APPEND CUOPT_SRC_FILES ${GRPC_INFRA_FILES})

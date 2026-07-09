@@ -871,11 +871,6 @@ void convert_quadratic_constraints_to_second_order_cones(
 
   // Convert rotated SOC cones to standard SOC cones.
   if (!rotated_cones.empty()) {
-    cuopt_expects(user_problem.Q_values.empty(),
-                  error_type_t::ValidationError,
-                  "Rotated SOC conversion is currently not supported when the objective has "
-                  "quadratic terms");
-
     const f_t inf        = std::numeric_limits<f_t>::infinity();
     const f_t inv_sqrt_2 = f_t(1) / std::sqrt(f_t(2));
     const f_t half       = f_t(0.5);

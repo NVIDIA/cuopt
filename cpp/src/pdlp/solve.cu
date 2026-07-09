@@ -2288,6 +2288,10 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
   // Local execution - dispatch to appropriate overload based on problem type
   auto* cpu_prob = dynamic_cast<cpu_optimization_problem_t<i_t, f_t>*>(problem_interface);
   if (cpu_prob != nullptr) {
+    cuopt_expects(is_remote_execution_enabled(),
+                  error_type_t::ValidationError,
+                  "A CPU-memory problem requires remote execution. Set CUOPT_REMOTE_HOST and "
+                  "CUOPT_REMOTE_PORT to solve on a remote GPU server.");
     return solve_lp(*cpu_prob, settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
   }
 
