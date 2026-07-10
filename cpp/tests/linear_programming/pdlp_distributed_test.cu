@@ -107,6 +107,19 @@ TEST(pdlp_class, distributed_parity_afiro)
   expect_distributed_matches_base(handle, "linear_programming/afiro_original.mps", true);
 }
 
+// Maximization LP (OBJSENSE MAX in the MPS): exercises the sign-flipping paths
+// through normalization / presolve / solution translation on the distributed side.
+// The problem is tiny (3 vars, 1 constraint) so shard partitions are lopsided
+// (one shard ends up with 0 owned constraints) — good coverage of that edge.
+TEST(pdlp_class, distributed_parity_good_max)
+{
+  if (raft::device_setter::get_device_count() < 2) {
+    GTEST_SKIP() << "Requires >=2 GPUs, found " << raft::device_setter::get_device_count();
+  }
+  const raft::handle_t handle{};
+  expect_distributed_matches_base(handle, "linear_programming/good-max.mps");
+}
+
 TEST(pdlp_class, distributed_parity_graph40_40)
 {
   if (raft::device_setter::get_device_count() < 2) {
