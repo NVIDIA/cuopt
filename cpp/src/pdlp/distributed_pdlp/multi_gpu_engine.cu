@@ -73,6 +73,19 @@ multi_gpu_engine_t<i_t, f_t>::multi_gpu_engine_t(
     graph_shard_ready_events_.emplace_back(std::make_unique<cuopt::event_handler_t>());
     sync_shard_ready_events_.emplace_back(std::make_unique<cuopt::event_handler_t>());
   }
+
+  // Cache per-shard partition metadata for gather_owned_*_to_master_bufs.
+  owned_var_sizes_.reserve(nb_parts);
+  owned_cstr_sizes_.reserve(nb_parts);
+  local_to_global_vars_.reserve(nb_parts);
+  local_to_global_cstrs_.reserve(nb_parts);
+  for (int r = 0; r < nb_parts; ++r) {
+    auto const& rd = shards[r]->rank_data;
+    owned_var_sizes_.push_back(static_cast<std::size_t>(rd.owned_var_size));
+    owned_cstr_sizes_.push_back(static_cast<std::size_t>(rd.owned_cstr_size));
+    local_to_global_vars_.push_back(rd.local_to_global_var);
+    local_to_global_cstrs_.push_back(rd.local_to_global_cstr);
+  }
 }
 
 // -------- High-level: A @ x and A_T @ y -----------------------------------

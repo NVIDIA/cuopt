@@ -26,86 +26,24 @@
 namespace cuopt::mathematical_optimization::pdlp {
 
 // -------- Solution gather (shards -> master) ------------------------------
+// Gather the potential next primal/dual solutions and the reduced cost from shards to master.
 template <typename i_t, typename f_t>
-void multi_gpu_engine_t<i_t, f_t>::gather_potential_next_solutions_to_master(
-  rmm::device_uvector<f_t>& master_reduced_cost)
+void multi_gpu_engine_t<i_t, f_t>::gather_potential_next_solutions_to_master()
 {
   cuopt_assert(master_pdlp_ != nullptr,
                "gather_potential_next_solutions_to_master requires set_master(...)");
-  auto& master_pdhg = master_pdlp_->pdhg_solver_;
 
-  const std::size_t total_vars  = master_pdhg.get_potential_next_primal_solution().size();
-  const std::size_t total_cstrs = master_pdhg.get_potential_next_dual_solution().size();
+  gather_owned_var_to_master([](pdlp_solver_t<i_t, f_t>& p) -> rmm::device_uvector<f_t>& {
+    return p.pdhg_solver_.get_potential_next_primal_solution();
+  });
 
-  std::vector<f_t> h_primal(total_vars);
-  std::vector<f_t> h_dual(total_cstrs);
-  std::vector<f_t> h_reduced_cost(total_vars);
+  gather_owned_cstr_to_master([](pdlp_solver_t<i_t, f_t>& p) -> rmm::device_uvector<f_t>& {
+    return p.pdhg_solver_.get_potential_next_dual_solution();
+  });
 
-  for (auto& s_uptr : shards) {
-    auto& s = *s_uptr;
-    raft::device_setter guard(s.device_id);
-    const i_t nv = s.rank_data.owned_var_size;
-    const i_t nc = s.rank_data.owned_cstr_size;
-
-    std::vector<f_t> tmp_primal(nv);
-    std::vector<f_t> tmp_dual(nc);
-    std::vector<f_t> tmp_reduced_cost(nv);
-
-    auto& sub_reduced_cost = s.sub_pdlp->get_current_termination_strategy()
-                               .get_convergence_information()
-                               .get_reduced_cost();
-
-    if (nv > 0) {
-      raft::copy(tmp_primal.data(),
-                 s.sub_pdlp->pdhg_solver_.get_potential_next_primal_solution().data(),
-                 static_cast<std::size_t>(nv),
-                 s.stream.view());
-      raft::copy(tmp_reduced_cost.data(),
-                 sub_reduced_cost.data(),
-                 static_cast<std::size_t>(nv),
-                 s.stream.view());
-    }
-    if (nc > 0) {
-      raft::copy(tmp_dual.data(),
-                 s.sub_pdlp->pdhg_solver_.get_potential_next_dual_solution().data(),
-                 static_cast<std::size_t>(nc),
-                 s.stream.view());
-    }
-    RAFT_CUDA_TRY(cudaStreamSynchronize(s.stream.view().value()));
-
-    if (nv > 0) {
-      thrust::scatter(thrust::host,
-                      tmp_primal.begin(),
-                      tmp_primal.end(),
-                      s.rank_data.local_to_global_var.begin(),
-                      h_primal.begin());
-      thrust::scatter(thrust::host,
-                      tmp_reduced_cost.begin(),
-                      tmp_reduced_cost.end(),
-                      s.rank_data.local_to_global_var.begin(),
-                      h_reduced_cost.begin());
-    }
-    if (nc > 0) {
-      thrust::scatter(thrust::host,
-                      tmp_dual.begin(),
-                      tmp_dual.end(),
-                      s.rank_data.local_to_global_cstr.begin(),
-                      h_dual.begin());
-    }
-  }
-
-  // Host -> master device. `stream` lives on the master device
-  // (created at engine construction when master device was current).
-  raft::copy(master_pdhg.get_potential_next_primal_solution().data(),
-             h_primal.data(),
-             total_vars,
-             stream.view());
-  raft::copy(master_pdhg.get_potential_next_dual_solution().data(),
-             h_dual.data(),
-             total_cstrs,
-             stream.view());
-  raft::copy(master_reduced_cost.data(), h_reduced_cost.data(), total_vars, stream.view());
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream.view().value()));
+  gather_owned_var_to_master([](pdlp_solver_t<i_t, f_t>& p) -> rmm::device_uvector<f_t>& {
+    return p.get_current_termination_strategy().get_convergence_information().get_reduced_cost();
+  });
 }
 
 // -------- Distributed bound / objective rescaling -------------------------
@@ -553,8 +491,7 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_compute_initial_primal_weight(
 // explicit-instantiate the out-of-line members defined in this TU.
 #define INSTANTIATE(F_TYPE)                                                      \
   template void                                                                  \
-    multi_gpu_engine_t<int, F_TYPE>::gather_potential_next_solutions_to_master(  \
-      rmm::device_uvector<F_TYPE>&);                                             \
+    multi_gpu_engine_t<int, F_TYPE>::gather_potential_next_solutions_to_master();\
   template void                                                                  \
     multi_gpu_engine_t<int, F_TYPE>::distributed_bound_objective_rescaling(      \
       F_TYPE);                                                                   \

@@ -37,7 +37,6 @@
 
 #include <cmath>
 #include <memory>
-#include <random>
 #include <tuple>
 #include <type_traits>
 #include <vector>
@@ -337,6 +336,103 @@ struct multi_gpu_engine_t {
     halo_exchange_cstr_bufs(bufs);
   }
 
+  // -------- Gather owned slices to master ---------------------------------
+  // Scatters data from each shard's owned slice to the master's buffer.
+  // var and cstr version share the same implementation.
+  void gather_owned_var_to_master_bufs(
+    std::vector<raft::device_span<f_t const>> const& shard_owned,
+    raft::device_span<f_t> master_buf)
+  {
+    gather_owned_to_master_bufs_impl(
+      shard_owned, master_buf, owned_var_sizes_, local_to_global_vars_);
+  }
+
+  void gather_owned_cstr_to_master_bufs(
+    std::vector<raft::device_span<f_t const>> const& shard_owned,
+    raft::device_span<f_t> master_buf)
+  {
+    gather_owned_to_master_bufs_impl(
+      shard_owned, master_buf, owned_cstr_sizes_, local_to_global_cstrs_);
+  }
+
+  // Wrappers around gather_owned_{var/cstr}_to_master_bufs using an accessor
+  //   buf_access : pdlp_solver_t<i_t,f_t>& -> rmm::device_uvector<f_t>&
+  template <typename BufAccess>
+  void gather_owned_var_to_master(BufAccess&& buf_access)
+  {
+    cuopt_assert(master_pdlp_ != nullptr,
+                 "gather_owned_var_to_master requires set_master(...)");
+    std::vector<raft::device_span<f_t const>> shard_bufs;
+    shard_bufs.reserve(shards.size());
+    for_each_shard([&](pdlp_shard_t<i_t, f_t>& s) {
+      auto& x = buf_access(*s.sub_pdlp);
+      shard_bufs.emplace_back(x.data(), static_cast<std::size_t>(s.rank_data.owned_var_size));
+    });
+    auto& m = buf_access(*master_pdlp_);
+    gather_owned_var_to_master_bufs(shard_bufs, raft::device_span<f_t>{m.data(), m.size()});
+  }
+
+  template <typename BufAccess>
+  void gather_owned_cstr_to_master(BufAccess&& buf_access)
+  {
+    cuopt_assert(master_pdlp_ != nullptr,
+                 "gather_owned_cstr_to_master requires set_master(...)");
+    std::vector<raft::device_span<f_t const>> shard_bufs;
+    shard_bufs.reserve(shards.size());
+    for_each_shard([&](pdlp_shard_t<i_t, f_t>& s) {
+      auto& x = buf_access(*s.sub_pdlp);
+      shard_bufs.emplace_back(x.data(), static_cast<std::size_t>(s.rank_data.owned_cstr_size));
+    });
+    auto& m = buf_access(*master_pdlp_);
+    gather_owned_cstr_to_master_bufs(shard_bufs, raft::device_span<f_t>{m.data(), m.size()});
+  }
+
+  // Actual implementation. {var/cstr}-agnostic core shared by the two
+  // gather_owned_{var/cstr}_to_master_bufs entry points above.
+  // owned_sizes[r] and local_to_globals[r] are the axis-specific
+  // rank_data.owned_{var/cstr}_size and rank_data.local_to_global_{var/cstr} for shard r.
+  void gather_owned_to_master_bufs_impl(
+    std::vector<raft::device_span<f_t const>> const& shard_owned,
+    raft::device_span<f_t> master_buf,
+    std::vector<std::size_t> const& owned_sizes,
+    std::vector<std::vector<i_t>> const& local_to_globals)
+  {
+    cuopt_assert(master_pdlp_ != nullptr,
+                 "gather_owned_to_master_bufs_impl requires set_master(...)");
+    const int nb = static_cast<int>(shards.size());
+    cuopt_expects(static_cast<int>(shard_owned.size()) == nb &&
+                    static_cast<int>(owned_sizes.size()) == nb &&
+                    static_cast<int>(local_to_globals.size()) == nb,
+                  error_type_t::RuntimeError,
+                  "gather_owned_to_master_bufs_impl: shard_owned / owned_sizes / "
+                  "local_to_globals must all have size == shards.size()");
+
+    // Assemble on host in global-index order.
+    std::vector<f_t> h_master(master_buf.size());
+    for (int r = 0; r < nb; ++r) {
+      auto& s = *shards[r];
+      raft::device_setter guard(s.device_id);
+      const std::size_t n_owned = owned_sizes[r];
+      cuopt_expects(shard_owned[r].size() == n_owned,
+                    error_type_t::RuntimeError,
+                    "gather_owned_to_master_bufs_impl: shard_owned[r].size() must equal owned size");
+      if (n_owned == 0) continue;
+      std::vector<f_t> tmp(n_owned);
+      raft::copy(tmp.data(), shard_owned[r].data(), n_owned, s.stream.view());
+      // Sync so tmp is populated before the host scatter (and stays valid).
+      s.stream.synchronize();
+      thrust::scatter(thrust::host,
+                      tmp.begin(),
+                      tmp.end(),
+                      local_to_globals[r].begin(),
+                      h_master.begin());
+    }
+
+    // Single H->D onto master's device (`stream` lives on the master device).
+    raft::copy(master_buf.data(), h_master.data(), master_buf.size(), stream.view());
+    stream.synchronize();
+  }
+
   // -------- NCCL allreduce (sum, in place) --------------------------------
   // Core: per-shard in-place sum-allreduce on a single f_t scalar viewed by
   // scalars[r], wrapped in one NCCL group so it executes as a single
@@ -544,8 +640,8 @@ struct multi_gpu_engine_t {
 
   // Gather the global potential_next primal/dual solutions and the reduced cost
   // onto the master from the owned slices distributed across shards.
-  // Requires set_master(...) to have been called; writes onto master_pdlp_->pdhg_solver_.
-  void gather_potential_next_solutions_to_master(rmm::device_uvector<f_t>& master_reduced_cost);
+  // Requires set_master(...) to have been called; writes onto master_pdlp_.
+  void gather_potential_next_solutions_to_master();
 
   // Engine-level stream for fork/join orchestration (master side).
   rmm::cuda_stream stream;
@@ -553,6 +649,16 @@ struct multi_gpu_engine_t {
   // Shards stored by unique_ptr because pdlp_shard_t is immovable
   // (owns device-affine resources: handle, NCCL comm, RMM buffers).
   std::vector<std::unique_ptr<pdlp_shard_t<i_t, f_t>>> shards;
+
+  // Cached per-shard partition metadata, populated once at construction from
+  // rank_data. Consumed by the gather_owned_{var/cstr}_to_master_bufs helpers so they
+  // don't rebuild these vectors on every call.
+  //   owned_{var,cstr}_sizes_[r]     == shards[r]->rank_data.owned_{var,cstr}_size
+  //   local_to_global_{vars,cstrs}_[r] == shards[r]->rank_data.local_to_global_{var,cstr}
+  std::vector<std::size_t> owned_var_sizes_;
+  std::vector<std::size_t> owned_cstr_sizes_;
+  std::vector<std::vector<i_t>> local_to_global_vars_;
+  std::vector<std::vector<i_t>> local_to_global_cstrs_;
 
   // Non-owning back-pointer to the master pdlp_solver_t.
   pdlp_solver_t<i_t, f_t>* master_pdlp_ = nullptr;
