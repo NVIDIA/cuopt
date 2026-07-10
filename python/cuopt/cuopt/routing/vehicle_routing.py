@@ -7,6 +7,7 @@ import cudf
 
 from cuopt import routing
 from cuopt.routing import vehicle_routing_wrapper
+from cuopt.routing._recording import _RecordingDataModel
 from cuopt.utilities import catch_cuopt_exception
 
 from .validation import (
@@ -19,7 +20,7 @@ from .validation import (
 )
 
 
-class DataModel(vehicle_routing_wrapper.DataModel):
+class DataModel(_RecordingDataModel):
     """
 
     DataModel(n_locations, n_fleet, n_orders: int = -1)
@@ -1546,7 +1547,9 @@ def Solve(data_model, solver_settings=None):
     if solver_settings is None:
         solver_settings = SolverSettings()
 
-    solution = vehicle_routing_wrapper.Solve(data_model, solver_settings)
+    solution = vehicle_routing_wrapper.Solve(
+        data_model._build(), solver_settings
+    )
     if solver_settings.get_config_file_name() is not None:
         routing.utils.save_data_model_to_yaml(
             data_model,
@@ -1603,4 +1606,5 @@ def BatchSolve(data_model_list, solver_settings=None):
     if solver_settings is None:
         solver_settings = SolverSettings()
 
-    return vehicle_routing_wrapper.BatchSolve(data_model_list, solver_settings)
+    built_list = [dm._build() for dm in data_model_list]
+    return vehicle_routing_wrapper.BatchSolve(built_list, solver_settings)
