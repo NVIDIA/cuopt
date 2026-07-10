@@ -165,7 +165,7 @@ Perform a health-check locally on the host running cuOpt:
 > 
 > 
 > ``` bash
-> curl -s -o /dev/null -w '%{http_code}\\n' localhost:5000/cuopt/health
+> curl -s -o /dev/null -w '%(http_code)\\n' localhost:5000/cuopt/health
 > ```
 > 
 > If this command returns 200, cuOpt is running and listening on the specified port.
@@ -184,7 +184,7 @@ If you are trying to reach cuOpt from a remote host, run the health check from t
 > 
 > 
 > ``` bash
-> curl -s -o /dev/null -w '%{http_code}\\n' &lt;ip&gt;:5000/cuopt/health
+> curl -s -o /dev/null -w '%(http_code)\\n' &lt;ip&gt;:5000/cuopt/health
 > 200
 > ```
 > 
@@ -258,18 +258,18 @@ A waypoint graph is a weighted, directed graph where the weights symbolize cost.
 > > 
 > > ``` python
 > > graph = {
-> >         0:{
+> >         0:(
 > >             "edges":[2],
-> >             "weights":[2]},
-> >         1:{
+> >             "weights":[2]),
+> >         1:(
 > >             "edges":[2],
-> >             "weights":[2]},
+> >             "weights":[2]),
 > >         2:{
 > >             "edges":[0, 1, 3],
 > >             "weights":[2, 2, 2]},
-> >         3:{
+> >         3:(
 > >             "edges":[2],
-> >             "weights":[2]}
+> >             "weights":[2])
 > >     }
 > > 
 > > def convert_to_csr(graph):
@@ -292,9 +292,9 @@ A waypoint graph is a weighted, directed graph where the weights symbolize cost.
 > >     return offsets, edges, weights
 > > 
 > > offsets, edges, weights = convert_to_csr(graph)
-> > print(f"offsets = {offsets}")
-> > print(f"edges   = {edges}")
-> > print(f"weights = {weights}")
+> > print(f"offsets = (offsets)")
+> > print(f"edges   = (edges)")
+> > print(f"weights = (weights)")
 > > ```
 
 </Accordion>

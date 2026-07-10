@@ -75,33 +75,33 @@ cuopt_int_t test_simple_milp()
   // From the constraints:
   // 3.0*x1 + 4.0*x2 <= 5.4
   // 2.7*x1 + 10.1*x2 <= 4.9
-  cuopt_int_t row_offsets[]    = {0, 2, 4};
-  cuopt_int_t column_indices[] = {0, 1, 0, 1};
-  cuopt_float_t values[]       = {3.0, 4.0, 2.7, 10.1};
+  cuopt_int_t row_offsets[]    = (0, 2, 4);
+  cuopt_int_t column_indices[] = (0, 1, 0, 1);
+  cuopt_float_t values[]       = (3.0, 4.0, 2.7, 10.1);
 
   // Objective coefficients
   // From the objective function: minimize -0.2*x1 + 0.1*x2
   // -0.2 is the coefficient of x1
   // 0.1 is the coefficient of x2
-  cuopt_float_t objective_coefficients[] = {-0.2, 0.1};
+  cuopt_float_t objective_coefficients[] = (-0.2, 0.1);
 
   // Constraint bounds
   // From the constraints:
   // 3.0*x1 + 4.0*x2 <= 5.4
   // 2.7*x1 + 10.1*x2 <= 4.9
-  cuopt_float_t constraint_upper_bounds[] = {5.4, 4.9};
-  cuopt_float_t constraint_lower_bounds[] = {-CUOPT_INFINITY, -CUOPT_INFINITY};
+  cuopt_float_t constraint_upper_bounds[] = (5.4, 4.9);
+  cuopt_float_t constraint_lower_bounds[] = (-CUOPT_INFINITY, -CUOPT_INFINITY);
 
   // Variable bounds
   // From the constraints:
   // x1, x2 >= 0
-  cuopt_float_t var_lower_bounds[] = {0.0, 0.0};
-  cuopt_float_t var_upper_bounds[] = {CUOPT_INFINITY, CUOPT_INFINITY};
+  cuopt_float_t var_lower_bounds[] = (0.0, 0.0);
+  cuopt_float_t var_upper_bounds[] = (CUOPT_INFINITY, CUOPT_INFINITY);
 
   // Variable types
   // x1 is integer
   // x2 is continuous
-  char variable_types[] = {CUOPT_INTEGER, CUOPT_CONTINUOUS};
+  char variable_types[] = (CUOPT_INTEGER, CUOPT_CONTINUOUS);
 
   cuopt_int_t status;
   cuopt_float_t time;
@@ -125,10 +125,10 @@ cuopt_int_t test_simple_milp()
                                     var_upper_bounds,
                                     variable_types,
                                     &problem);
-  if (status != CUOPT_SUCCESS) {
+  if (status != CUOPT_SUCCESS) (
     printf("Error creating problem: %d\n", status);
     goto DONE;
-  }
+  )
 
   // Create solver settings
   status = cuOptCreateSolverSettings(&settings);
@@ -146,10 +146,10 @@ cuopt_int_t test_simple_milp()
 
   // Solve the problem
   status = cuOptSolve(problem, settings, &solution);
-  if (status != CUOPT_SUCCESS) {
+  if (status != CUOPT_SUCCESS) (
     printf("Error solving problem: %d\n", status);
     goto DONE;
-  }
+  )
 
   // Get solution information
   status = cuOptGetSolveTime(solution, &time);
@@ -181,10 +181,10 @@ cuopt_int_t test_simple_milp()
 
   // Get and print solution variables
   cuopt_float_t* solution_values = (cuopt_float_t*)malloc(num_variables * sizeof(cuopt_float_t));
-  if (solution_values == NULL) {
+  if (solution_values == NULL) (
     printf("Error allocating solution values\n");
     goto DONE;
-  }
+  )
   status = cuOptGetPrimalSolution(solution, solution_values);
   if (status != CUOPT_SUCCESS) {
     printf("Error getting solution values: %d\n", status);
@@ -193,9 +193,9 @@ cuopt_int_t test_simple_milp()
   }
 
   printf("\nSolution: \n");
-  for (cuopt_int_t i = 0; i < num_variables; i++) {
+  for (cuopt_int_t i = 0; i < num_variables; i++) (
     printf("x%d = %f\n", i + 1, solution_values[i]);
-  }
+  )
   free(solution_values);
 
 DONE:
@@ -211,10 +211,10 @@ int main()
   // Run the test
   cuopt_int_t status = test_simple_milp();
 
-  if (status == CUOPT_SUCCESS) {
+  if (status == CUOPT_SUCCESS) (
     printf("\nTest completed successfully!\n");
     return 0;
-  } else {
+  ) else {
     printf("\nTest failed with status: %d\n", status);
     return 1;
   }
@@ -366,10 +366,10 @@ cuopt_int_t solve_mps_file(const char* filename)
 
   // Solve the problem
   status = cuOptSolve(problem, settings, &solution);
-  if (status != CUOPT_SUCCESS) {
+  if (status != CUOPT_SUCCESS) (
     printf("Error solving problem: %d\n", status);
     goto DONE;
-  }
+  )
 
   // Get solution information
   status = cuOptGetSolveTime(solution, &time);
@@ -424,15 +424,15 @@ cuopt_int_t solve_mps_file(const char* filename)
     }
 
     printf("\nSolution: \n");
-    for (cuopt_int_t i = 0; i < num_variables; i++) {
+    for (cuopt_int_t i = 0; i < num_variables; i++) (
       printf("x%d = %f\n", i + 1, solution_values[i]);
-    }
+    )
   }
 
 DONE:
-  if (solution_values != NULL) {
+  if (solution_values != NULL) (
     free(solution_values);
-  }
+  )
   cuOptDestroyProblem(&problem);
   cuOptDestroySolverSettings(&settings);
   cuOptDestroySolution(&solution);
@@ -442,18 +442,18 @@ DONE:
 
 int main(int argc, char* argv[])
 {
-  if (argc != 2) {
+  if (argc != 2) (
     printf("Usage: %s &lt;mps_file_path&gt;\n", argv[0]);
     return 1;
-  }
+  )
 
   // Run the solver
   cuopt_int_t status = solve_mps_file(argv[1]);
 
-  if (status == CUOPT_SUCCESS) {
+  if (status == CUOPT_SUCCESS) (
     printf("\nSolver completed successfully!\n");
     return 0;
-  } else {
+  ) else {
     printf("\nSolver failed with status: %d\n", status);
     return 1;
   }

@@ -181,6 +181,12 @@ def _preprocess_rst(content: str, rst_path: Path) -> str:
         content,
     )
 
+    # 13. Curly braces in RST math notation: {<=, =, >=} → (<=, =, >=)
+    #     MDX (and Fern's acorn-based processing) treats { as a JSX expression
+    #     start, even inside fenced code blocks. Parentheses are equivalent
+    #     notation for "one of these operators" in linear programming docs.
+    content = re.sub(r'\{([^}]{1,80})\}', r'(\1)', content)
+
     return content
 
 
@@ -301,24 +307,18 @@ def _postprocess_mdx(md: str, title: str) -> str:
     md = re.sub(r'<(https?://[^>]+)>', r'[\1](\1)', md)
     md = re.sub(r'<([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})>', r'[\1](mailto:\1)', md)
 
-    # 3f. MDX parses `<` as a JSX tag start even inside plain text.
-    #     - `<=` → `&lt;=`  (comparison operator; `<` is not a valid tag start before `=`)
-    #     - `\<=` → `&lt;=` (pandoc sometimes emits backslash-escaped form)
-    #     Only outside inline code (backtick spans) and fenced code blocks.
-    #     Curly-brace-wrapped notation like {<=, =, >=} also needs escaping.
+    # 3f. MDX parses `<` as a JSX tag start even in plain text.
+    #     Escape `<=` (and pandoc's `\<=`) to `&lt;=` outside code spans.
+    #     Curly braces were already converted to parentheses in the RST
+    #     pre-processor (step 13), so no further `{...}` handling needed here.
     def _escape_lt_outside_code(text):
-        # Split on inline code spans (`...`) and fenced code blocks (``` ... ```)
-        # Process only the non-code segments
         segments = re.split(r'(`[^`\n]+`|```[\s\S]*?```)', text)
         result = []
         for i, seg in enumerate(segments):
             if i % 2 == 1:  # code span or block — leave unchanged
                 result.append(seg)
             else:
-                # Escape standalone <= (and backslash-escaped \<=) to &lt;=
                 seg = re.sub(r'\\?<=', '&lt;=', seg)
-                # Escape curly-brace math notation: {<=, ...} → \{&lt;=, ...\}
-                seg = re.sub(r'\{([^}]{0,60})\}', lambda m: '\\{' + m.group(1) + '\\}', seg)
                 result.append(seg)
         return ''.join(result)
     md = _escape_lt_outside_code(md)

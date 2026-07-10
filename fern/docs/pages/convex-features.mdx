@@ -46,9 +46,9 @@ There are two ways to specify constraints to the LP solver:
     
     Constraints can be specified in the form:
     
-    A\*x \{&lt;=, =, \>=\} b
+    A\*x (&lt;=, =, \>=) b
     
-    where A is the constraint matrix in CSR format, x is the variable vector, and b is the right-hand side vector. The relationship \{&lt;=, =, \>=\} is specified via the `row_type` parameter.
+    where A is the constraint matrix in CSR format, x is the variable vector, and b is the right-hand side vector. The relationship (&lt;=, =, \>=) is specified via the `row_type` parameter.
 
 2.  Using constraint bounds:
     
@@ -64,7 +64,7 @@ cuOpt supports problems with quadratic objectives of the form:
 
 ``` text
 minimize        x^T*Q*x + c^T*x
-subject to      A*x {<=, =, >=} b,
+subject to      A*x (<=, =, >=) b,
                 lb <= x <= ub,
 ```
 
@@ -85,15 +85,15 @@ Support for quadratic constraints is currently in **beta**.
 cuOpt supports quadratic constraints of the form
 
 ``` text
-x^T Q x + d^T x {<=, >=} alpha
+x^T Q x + d^T x (<=, >=) alpha
 ```
 
 and translates them internally into **second-order cone** constraints. Problems with quadratic constraints have the form:
 
 ``` text
 minimize        c^T*x + x^T Q x
-subject to      A*x {<=, =, >=} b,
-                x^T Q_i x + d_i^T x {<=, >=} alpha_i,  i = 1, ..., p,
+subject to      A*x (<=, =, >=) b,
+                x^T Q_i x + d_i^T x (<=, >=) alpha_i,  i = 1, ..., p,
                 lb <= x <= ub.
 ```
 
@@ -240,7 +240,7 @@ The `CUOPT_LOG_FILE` parameter can be set to write detailed solver logs for LP/Q
 
 In the cuOpt service API, the `log_file` value in `solver_configs` is ignored.
 
-If however you set the `solver_logs` flag on the `/cuopt/request` REST API call, users can fetch the log file content from the webserver at `/cuopt/logs/{id}`. Using the logging callback feature through the cuOpt client is shown in [Examples](#generic-example-with-normal-and-batch-mode) on the self-hosted page.
+If however you set the `solver_logs` flag on the `/cuopt/request` REST API call, users can fetch the log file content from the webserver at `/cuopt/logs/(id)`. Using the logging callback feature through the cuOpt client is shown in [Examples](#generic-example-with-normal-and-batch-mode) on the self-hosted page.
 
 ## Infeasibility Detection
 

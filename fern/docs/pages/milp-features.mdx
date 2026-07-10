@@ -38,9 +38,9 @@ There are two ways to specify constraints in cuOpt MILP:
     
     Constraints can be specified in the form:
     
-    A\*x \{&lt;=, =, \>=\} b
+    A\*x (&lt;=, =, \>=) b
     
-    where A is the constraint matrix in CSR format, x is the variable vector, and b is the right-hand side vector. The relationship \{&lt;=, =, \>=\} is specified through the `row_type` parameter.
+    where A is the constraint matrix in CSR format, x is the variable vector, and b is the right-hand side vector. The relationship (&lt;=, =, \>=) is specified through the `row_type` parameter.
 
 2.  Using constraint bounds:
     
@@ -64,7 +64,7 @@ The CUOPT\_LOG\_FILE parameter can be set to write detailed solver logs for MILP
 
 In the cuOpt service API, the `log_file` value in `solver_configs` is ignored.
 
-If however you set the `solver_logs` flag on the `/cuopt/request` REST API call, users can fetch the log file content from the webserver at `/cuopt/logs/{id}`. Using the logging callback feature through the cuOpt client is shown in [Logging Callback Example](#incumbent-and-logging-callback) on the self-hosted page.
+If however you set the `solver_logs` flag on the `/cuopt/request` REST API call, users can fetch the log file content from the webserver at `/cuopt/logs/(id)`. Using the logging callback feature through the cuOpt client is shown in [Logging Callback Example](#incumbent-and-logging-callback) on the self-hosted page.
 
 ## Time Limit
 

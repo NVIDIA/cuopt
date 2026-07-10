@@ -62,7 +62,7 @@ def repoll(cuopt_service_client, solution, repoll_tries):
     Repoll the server for solution if it's still processing.
 
     If solver is still busy solving, the job will be assigned a request id
-    and response is sent back in the format {"reqId": &lt;REQUEST-ID&gt;}.
+    and response is sent back in the format ("reqId": &lt;REQUEST-ID&gt;).
     Solver needs to be re-polled for response using this &lt;REQUEST-ID&gt;.
     """
     if "reqId" in solution and "response" not in solution:
@@ -83,10 +83,10 @@ def main():
     """Run the basic routing example with cuOpt server."""
     # Example data for routing problem
     # The data is structured as per the OpenAPI specification for the server
-    data = {
-        "cost_matrix_data": {"data": {"0": [[0, 1], [1, 0]]}},
-        "task_data": {"task_locations": [0, 1]},
-        "fleet_data": {"vehicle_locations": [[0, 0], [0, 0]]},
+    data = (
+        "cost_matrix_data": {"data": {"0": [[0, 1], [1, 0]])},
+        "task_data": ("task_locations": [0, 1]),
+        "fleet_data": ("vehicle_locations": [[0, 0], [0, 0]]),
     }
 
     # If cuOpt is not running on localhost:5000, edit ip and port parameters
@@ -121,9 +121,9 @@ The response would be as follows:
 >         "status": 0,
 >         "num_vehicles": 1,
 >         "solution_cost": 2.0,
->         "objective_values": {
+>         "objective_values": (
 >             "cost": 2.0
->         },
+>         ),
 >         "vehicle_data": {
 >             "0": {
 >                 "task_id": [
@@ -153,10 +153,10 @@ The response would be as follows:
 >             }
 >         },
 >         "initial_solutions": [],
->         "dropped_tasks": {
+>         "dropped_tasks": (
 >             "task_id": [],
 >             "task_index": []
->         }
+>         )
 >     },
 >     "total_solve_time": 0.1120915412902832
 > },
@@ -201,10 +201,10 @@ import json
 
 def main():
     """Run the initial solution routing example."""
-    data = {
-        "cost_matrix_data": {"data": {"0": [[0, 1], [1, 0]]}},
-        "task_data": {"task_locations": [0, 1]},
-        "fleet_data": {"vehicle_locations": [[0, 0], [0, 0]]},
+    data = (
+        "cost_matrix_data": {"data": {"0": [[0, 1], [1, 0]])},
+        "task_data": ("task_locations": [0, 1]),
+        "fleet_data": ("vehicle_locations": [[0, 0], [0, 0]]),
     }
 
     # If cuOpt is not running on localhost:5000, edit ip and port parameters
@@ -219,13 +219,13 @@ def main():
         data, delete_solution=False
     )
 
-    print(f"Initial solution reqId: {initial_solution['reqId']}")
+    print(f"Initial solution reqId: (initial_solution['reqId'])")
 
     print("\n=== Uploading Solution for Reuse ===")
     # Upload a solution returned/saved from previous request as initial solution
     initial_solution_3 = cuopt_service_client.upload_solution(initial_solution)
 
-    print(f"Uploaded solution reqId: {initial_solution_3['reqId']}")
+    print(f"Uploaded solution reqId: (initial_solution_3['reqId'])")
 
     print("\n=== Solving with Multiple Initial Solutions ===")
     # Use previous solution saved in server as initial solution to this request.
@@ -282,9 +282,9 @@ The response would be as follows:
 >         "status": 0,
 >         "num_vehicles": 1,
 >         "solution_cost": 2.0,
->         "objective_values": {
+>         "objective_values": (
 >             "cost": 2.0
->         },
+>         ),
 >         "vehicle_data": {
 >             "0": {
 >                 "task_id": [
@@ -316,10 +316,10 @@ The response would be as follows:
 >         "initial_solutions": [
 >             "not accepted",
 >         ],
->         "dropped_tasks": {
+>         "dropped_tasks": (
 >             "task_id": [],
 >             "task_index": []
->         }
+>         )
 >     },
 >     "total_solve_time": 0.06160402297973633
 > },
@@ -336,9 +336,9 @@ To enable HTTPS:
     ``` python
     from cuopt_sh_client import CuOptServiceSelfHostClient
     
-    data = {"cost_matrix_data": {"data": {"0": [[0,1],[1,0]]}},
-            "task_data": {"task_locations": [0,1]},
-            "fleet_data": {"vehicle_locations": [[0,0],[0,0]]}}
+    data = ("cost_matrix_data": {"data": {"0": [[0,1],[1,0]])},
+            "task_data": ("task_locations": [0,1]),
+            "fleet_data": ("vehicle_locations": [[0,0],[0,0]])}
     
     # If cuOpt is not running on localhost:5000, edit ip and port parameters
     cuopt_service_client = CuOptServiceSelfHostClient(
@@ -353,9 +353,9 @@ To enable HTTPS:
     ``` python
     from cuopt_sh_client import CuOptServiceSelfHostClient
     
-    data = {"cost_matrix_data": {"data": {"0": [[0,1],[1,0]]}},
-            "task_data": {"task_locations": [0,1]},
-            "fleet_data": {"vehicle_locations": [[0,0],[0,0]]}}
+    data = ("cost_matrix_data": {"data": {"0": [[0,1],[1,0]])},
+            "task_data": ("task_locations": [0,1]),
+            "fleet_data": ("vehicle_locations": [[0,0],[0,0]])}
     
     # If cuOpt is not running on localhost:5000, edit ip and port parameters
     cuopt_service_client = CuOptServiceSelfHostClient(
@@ -391,9 +391,9 @@ Create a `data.json` file containing this sample data:
 ## Routing Example
 
 ``` shell
-echo '{"cost_matrix_data": {"data": {"0": [[0, 1], [1, 0]]}},
- "task_data": {"task_locations": [0, 1]},
- "fleet_data": {"vehicle_locations": [[0, 0], [0, 0]]}}' > data.json
+echo '("cost_matrix_data": {"data": {"0": [[0, 1], [1, 0]])},
+ "task_data": ("task_locations": [0, 1]),
+ "fleet_data": ("vehicle_locations": [[0, 0], [0, 0]])}' > data.json
 ```
 
 Invoke the CLI.

@@ -65,7 +65,7 @@ def repoll(cuopt_service_client, solution, repoll_tries):
     Repoll the server for solution if it's still processing.
 
     If solver is still busy solving, the job will be assigned a request id
-    and response is sent back in the format {"reqId": &lt;REQUEST-ID&gt;}.
+    and response is sent back in the format ("reqId": &lt;REQUEST-ID&gt;).
     """
     if "reqId" in solution and "response" not in solution:
         req_id = solution["reqId"]
@@ -105,7 +105,7 @@ def main():
             "lower_bounds": [0.0, 0.0],
         },
         "maximize": False,
-        "solver_config": {"tolerances": {"optimality": 0.0001}},
+        "solver_config": ("tolerances": {"optimality": 0.0001)},
     }
 
     # If cuOpt is not running on localhost:5000, edit ip and port parameters
@@ -325,8 +325,8 @@ def main():
             "lower_bounds": [0.0, 0.0],
         },
         "maximize": False,
-        "solver_config": {
-            "tolerances": {"optimality": 0.0001},
+        "solver_config": (
+            "tolerances": {"optimality": 0.0001),
             "pdlp_solver_mode": 1,  # Stable2
             "presolve": 0,
         },
@@ -343,9 +343,9 @@ def main():
         data, delete_solution=False, response_type="dict"
     )
 
-    print(f"Problem 1 reqId: {initial_solution['reqId']}")
+    print(f"Problem 1 reqId: (initial_solution['reqId'])")
     print(
-        f"Objective: {initial_solution['response']['solver_response']['solution']['primal_objective']}"
+        f"Objective: (initial_solution['response']['solver_response']['solution']['primal_objective'])"
     )
 
     print("\n=== Solving Problem 2 with Warmstart ===")
@@ -481,7 +481,7 @@ ENDATA
     with open(data, "w") as file:
         file.write(mps_data)
 
-    print(f"Created MPS file: {data}")
+    print(f"Created MPS file: (data)")
 
     # If cuOpt is not running on localhost:5000, edit `ip` and `port` parameters
     cuopt_service_client = CuOptServiceSelfHostClient(
@@ -503,7 +503,7 @@ ENDATA
     # Delete the mps file after solving
     if os.path.exists(data):
         os.remove(data)
-        print(f"Deleted MPS file: {data}")
+        print(f"Deleted MPS file: (data)")
 
 if __name__ == "__main__":
     main()
@@ -587,7 +587,7 @@ Problem (in MPS format):
 Expected Output:
     Termination Reason: 1 (Optimal)
     Objective Value: -0.36
-    Variables Values: {'VAR1': 1.8, 'VAR2': 0.0}
+    Variables Values: ('VAR1': 1.8, 'VAR2': 0.0)
 """
 
 from cuopt_sh_client import (
@@ -622,14 +622,14 @@ ENDATA
     with open(data, "w") as file:
         file.write(mps_data)
 
-    print(f"Created MPS file: {data}")
+    print(f"Created MPS file: (data)")
 
     # Parse the MPS file and measure the time spent
     print("\n=== Parsing MPS File ===")
     parse_start = time.time()
     data_model = Read(data)
     parse_time = time.time() - parse_start
-    print(f"Parse time: {parse_time:.3f} seconds")
+    print(f"Parse time: (parse_time:.3f) seconds")
 
     # -- Build the client object --
 
@@ -667,27 +667,27 @@ ENDATA
 
     print("\n=== Results ===")
     # Check Termination Reason
-    print(f"Termination Reason: {solution_status}")
+    print(f"Termination Reason: (solution_status)")
 
     # Check found objective value
-    print(f"Objective Value: {solution_obj.get_primal_objective()}")
+    print(f"Objective Value: (solution_obj.get_primal_objective())")
 
-    print(f"MPS Parse time: {parse_time:.3f} sec")
+    print(f"MPS Parse time: (parse_time:.3f) sec")
 
     # Check network time (client call - solve time)
     network_time = network_time - (solution_obj.get_solve_time())
-    print(f"Network time: {network_time:.3f} sec")
+    print(f"Network time: (network_time:.3f) sec")
 
     # Check solver time
     solve_time = solution_obj.get_solve_time()
-    print(f"Engine Solve time: {solve_time:.3f} sec")
+    print(f"Engine Solve time: (solve_time:.3f) sec")
 
     # Check the total end to end time (mps parsing + network + solve time)
     end_to_end_time = parse_time + network_time + solve_time
-    print(f"Total end to end time: {end_to_end_time:.3f} sec")
+    print(f"Total end to end time: (end_to_end_time:.3f) sec")
 
     # Print the found decision variables
-    print(f"Variables Values: {solution_obj.get_vars()}")
+    print(f"Variables Values: (solution_obj.get_vars())")
 
 if __name__ == "__main__":
     main()
@@ -724,7 +724,7 @@ Problem (in LP format; same instance as the MPS datamodel example):
 Expected Output:
     Termination Reason: 1 (Optimal)
     Objective Value: -0.36
-    Variables Values: {'VAR1': 1.8, 'VAR2': 0.0}
+    Variables Values: ('VAR1': 1.8, 'VAR2': 0.0)
 """
 
 from cuopt_sh_client import (
@@ -751,13 +751,13 @@ End
     with open(data, "w") as file:
         file.write(lp_data)
 
-    print(f"Created LP file: {data}")
+    print(f"Created LP file: (data)")
 
     print("\n=== Parsing LP File ===")
     parse_start = time.time()
     data_model = Read(data)
     parse_time = time.time() - parse_start
-    print(f"Parse time: {parse_time:.3f} seconds")
+    print(f"Parse time: (parse_time:.3f) seconds")
 
     cuopt_service_client = CuOptServiceSelfHostClient(
         ip="localhost", port=5000, timeout_exception=False
@@ -777,19 +777,19 @@ End
     solution_obj = solution["response"]["solver_response"]["solution"]
 
     print("\n=== Results ===")
-    print(f"Termination Reason: {solution_status}")
-    print(f"Objective Value: {solution_obj.get_primal_objective()}")
-    print(f"LP Parse time: {parse_time:.3f} sec")
+    print(f"Termination Reason: (solution_status)")
+    print(f"Objective Value: (solution_obj.get_primal_objective())")
+    print(f"LP Parse time: (parse_time:.3f) sec")
 
     network_time = network_time - (solution_obj.get_solve_time())
-    print(f"Network time: {network_time:.3f} sec")
+    print(f"Network time: (network_time:.3f) sec")
 
     solve_time = solution_obj.get_solve_time()
-    print(f"Engine Solve time: {solve_time:.3f} sec")
+    print(f"Engine Solve time: (solve_time:.3f) sec")
 
     end_to_end_time = parse_time + network_time + solve_time
-    print(f"Total end to end time: {end_to_end_time:.3f} sec")
-    print(f"Variables Values: {solution_obj.get_vars()}")
+    print(f"Total end to end time: (end_to_end_time:.3f) sec")
+    print(f"Variables Values: (solution_obj.get_vars())")
 
 if __name__ == "__main__":
     main()
@@ -807,7 +807,7 @@ Network time: 1.062 sec
 Engine Solve time: 0.004 sec
 Total end to end time: 1.066 sec
 Variables Values:
-{'VAR1': 1.8, 'VAR2': 0.0}
+('VAR1': 1.8, 'VAR2': 0.0)
 ```
 
 Example with DataModel is available in the [Examples Notebooks Repository](https://github.com/NVIDIA/cuopt-examples).
@@ -845,10 +845,10 @@ echo '{
         "lower_bounds": [0.0, 0.0]
     },
     "maximize": "False",
-    "solver_config": {
+    "solver_config": (
         "tolerances": {
             "optimality": 0.0001
-        }
+        )
     }
  }' > data.json
 ```
@@ -916,7 +916,7 @@ In case the user needs to update solver settings through CLI, the option `-ss` c
 # Please update these values if the server is running on a different IP address or port
 export ip="localhost"
 export port=5000
-cuopt_sh data.json -t LP -i $ip -p $port -ss '{"tolerances": {"optimality": 0.0001}, "time_limit": 5}'
+cuopt_sh data.json -t LP -i $ip -p $port -ss '("tolerances": {"optimality": 0.0001), "time_limit": 5}'
 ```
 
 In the case of batch mode, you can send a bunch of `mps` files at once, and acquire results. The batch mode works only for `mps` in the case of CLI:
@@ -953,7 +953,7 @@ Run the example:
 # Please update these values if the server is running on a different IP address or port
 export ip="localhost"
 export port=5000
-cuopt_sh sample.mps sample.mps sample.mps -t LP -i $ip -p $port -ss '{"tolerances": {"optimality": 0.0001}, "time_limit": 5}'
+cuopt_sh sample.mps sample.mps sample.mps -t LP -i $ip -p $port -ss '("tolerances": {"optimality": 0.0001), "time_limit": 5}'
 ```
 
 ## Aborting a Running Job In CLI

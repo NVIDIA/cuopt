@@ -70,12 +70,12 @@ def main():
 
     # Check solution status
     if problem.Status.name == "Optimal":
-        print(f"Optimal solution found in {problem.SolveTime:.2f} seconds")
-        print(f"x = {x.getValue()}")
-        print(f"y = {y.getValue()}")
-        print(f"Objective value = {problem.ObjValue}")
+        print(f"Optimal solution found in (problem.SolveTime:.2f) seconds")
+        print(f"x = (x.getValue())")
+        print(f"y = (y.getValue())")
+        print(f"Objective value = (problem.ObjValue)")
     else:
-        print(f"Problem status: {problem.Status.name}")
+        print(f"Problem status: (problem.Status.name)")
 
 if __name__ == "__main__":
     main()
@@ -141,10 +141,10 @@ def main():
     prob.solve()
 
     # Print results
-    print(f"Optimal solution found in {prob.SolveTime:.2f} seconds")
-    print(f"x = {x.Value}")
-    print(f"y = {y.Value}")
-    print(f"Objective value = {prob.ObjValue}")
+    print(f"Optimal solution found in (prob.SolveTime:.2f) seconds")
+    print(f"x = (x.Value)")
+    print(f"y = (y.Value)")
+    print(f"Objective value = (prob.ObjValue)")
 
 if __name__ == "__main__":
     main()
@@ -213,11 +213,11 @@ def main():
     # cuOpt automatically selects the barrier method for quadratic constraints.
     prob.solve()
 
-    print(f"Status: {prob.Status}")
-    print(f"x1 = {x1.Value}")
-    print(f"x2 = {x2.Value}")
-    print(f"x3 = {x3.Value}")
-    print(f"Objective value = {prob.ObjValue}")
+    print(f"Status: (prob.Status)")
+    print(f"x1 = (x1.Value)")
+    print(f"x2 = (x2.Value)")
+    print(f"x3 = (x3.Value)")
+    print(f"Objective value = (prob.ObjValue)")
 
 if __name__ == "__main__":
     main()
@@ -289,12 +289,12 @@ def main():
     # cuOpt automatically selects the barrier method for quadratic constraints.
     prob.solve()
 
-    print(f"Status: {prob.Status}")
-    print(f"x1 = {x1.Value}")
-    print(f"x2 = {x2.Value}")
-    print(f"x3 = {x3.Value}")
-    print(f"x4 = {x4.Value}")
-    print(f"Objective value = {prob.ObjValue}")
+    print(f"Status: (prob.Status)")
+    print(f"x1 = (x1.Value)")
+    print(f"x2 = (x2.Value)")
+    print(f"x3 = (x3.Value)")
+    print(f"x4 = (x4.Value)")
+    print(f"Objective value = (prob.ObjValue)")
 
 if __name__ == "__main__":
     main()
@@ -361,10 +361,10 @@ def main():
     # cuOpt automatically selects the barrier method for problems with quadratic constraints.
     prob.solve()
 
-    print(f"Status: {prob.Status}")
-    print(f"x = {x.Value}")
-    print(f"y = {y.Value}")
-    print(f"Objective value = {prob.ObjValue}")
+    print(f"Status: (prob.Status)")
+    print(f"x = (x.Value)")
+    print(f"y = (y.Value)")
+    print(f"Objective value = (prob.ObjValue)")
 
 if __name__ == "__main__":
     main()
@@ -413,11 +413,11 @@ def main():
     problem = Problem.read(mps_path)
     problem.solve()
 
-    print(f"Status: {problem.Status}")
-    print(f"Number of variables: {problem.NumVariables}")
-    print(f"Objective value = {problem.ObjValue}")
+    print(f"Status: (problem.Status)")
+    print(f"Number of variables: (problem.NumVariables)")
+    print(f"Objective value = (problem.ObjValue)")
     for var in problem.getVariables():
-        print(f"{var.VariableName} = {var.Value}")
+        print(f"(var.VariableName) = (var.Value)")
 
 if __name__ == "__main__":
     main()
@@ -526,14 +526,14 @@ def main():
     # Display results
     if problem.Status.name == "Optimal":
         print("=== Production Planning Solution ===")
-        print(f"Status: {problem.Status.name}")
-        print(f"Solve time: {problem.SolveTime:.2f} seconds")
-        print(f"Product A production: {x1.getValue()} units")
-        print(f"Product B production: {x2.getValue()} units")
-        print(f"Total profit: ${problem.ObjValue:.2f}")
+        print(f"Status: (problem.Status.name)")
+        print(f"Solve time: (problem.SolveTime:.2f) seconds")
+        print(f"Product A production: (x1.getValue()) units")
+        print(f"Product B production: (x2.getValue()) units")
+        print(f"Total profit: $(problem.ObjValue:.2f)")
 
     else:
-        print(f"Problem not solved optimally. Status: {problem.Status.name}")
+        print(f"Problem not solved optimally. Status: (problem.Status.name)")
 
 if __name__ == "__main__":
     main()
@@ -622,12 +622,12 @@ def main():
 
     if problem.Status.name == "Optimal":
         print("=== Expression Example Results ===")
-        print(f"x = {x.getValue()}")
-        print(f"y = {y.getValue()}")
-        print(f"z = {z.getValue()}")
-        print(f"Objective value = {problem.ObjValue}")
+        print(f"x = (x.getValue())")
+        print(f"y = (y.getValue())")
+        print(f"z = (z.getValue())")
+        print(f"Objective value = (problem.ObjValue)")
     else:
-        print(f"Problem status: {problem.Status.name}")
+        print(f"Problem status: (problem.Status.name)")
 
 if __name__ == "__main__":
     main()
@@ -700,11 +700,11 @@ def main():
     prob.solve()
 
     # Print results
-    print(f"Optimal solution found in {prob.SolveTime:.2f} seconds")
-    print(f"p1 = {p1.Value}")
-    print(f"p2 = {p2.Value}")
-    print(f"p3 = {p3.Value}")
-    print(f"Minimized cost = {prob.ObjValue}")
+    print(f"Optimal solution found in (prob.SolveTime:.2f) seconds")
+    print(f"p1 = (p1.Value)")
+    print(f"p2 = (p2.Value)")
+    print(f"p3 = (p3.Value)")
+    print(f"Minimized cost = (prob.ObjValue)")
 
 if __name__ == "__main__":
     main()
@@ -775,18 +775,18 @@ def main():
 
     # Check solution status
     if problem.Status.name == "Optimal":
-        print(f"Optimal solution found in {problem.SolveTime:.2f} seconds")
+        print(f"Optimal solution found in (problem.SolveTime:.2f) seconds")
         # Get Primal
         print("Objective:", problem.ObjValue)
         for v in problem.getVariables():
             print(
-                f"{v.VariableName} = {v.Value}, ReducedCost = {v.ReducedCost}"
+                f"(v.VariableName) = (v.Value), ReducedCost = (v.ReducedCost)"
             )
         # Get Duals
         for c in problem.getConstraints():
-            print(f"{c.ConstraintName} DualValue = {c.DualValue}")
+            print(f"(c.ConstraintName) DualValue = (c.DualValue)")
     else:
-        print(f"Problem status: {problem.Status.name}")
+        print(f"Problem status: (problem.Status.name)")
 
 if __name__ == "__main__":
     main()
@@ -893,15 +893,15 @@ def main():
     # Solve the problem
     problem.solve(settings)
 
-    print(f"Problem 1 solved in {problem.SolveTime:.4f} seconds")
-    print(f"x = {x.getValue()}, y = {y.getValue()}")
-    print(f"Objective value = {problem.ObjValue}")
+    print(f"Problem 1 solved in (problem.SolveTime:.4f) seconds")
+    print(f"x = (x.getValue()), y = (y.getValue())")
+    print(f"Objective value = (problem.ObjValue)")
 
     # Get the warmstart data
     warmstart_data = problem.getWarmstartData()
     print(
         f"\nWarmstart data extracted (primal solution size: "
-        f"{len(warmstart_data.current_primal_solution)})"
+        f"(len(warmstart_data.current_primal_solution)))"
     )
 
     print("\n=== Solving Problem 2 with Warmstart ===")
@@ -928,12 +928,12 @@ def main():
 
     # Check solution status
     if new_problem.Status.name == "Optimal":
-        print(f"Optimal solution found in {new_problem.SolveTime:.2f} seconds")
-        print(f"x = {x.getValue()}")
-        print(f"y = {y.getValue()}")
-        print(f"Objective value = {new_problem.ObjValue}")
+        print(f"Optimal solution found in (new_problem.SolveTime:.2f) seconds")
+        print(f"x = (x.getValue())")
+        print(f"y = (y.getValue())")
+        print(f"Objective value = (new_problem.ObjValue)")
     else:
-        print(f"Problem status: {new_problem.Status.name}")
+        print(f"Problem status: (new_problem.Status.name)")
 
 if __name__ == "__main__":
     main()

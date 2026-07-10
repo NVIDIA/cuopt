@@ -81,8 +81,8 @@ python3 -m cuopt_server.cuopt_service --ip $SERVER_IP --port $SERVER_PORT > cuop
 SERVER_PID=$!
 
 # Check if cuOpt server is ready
-for i in {1..5}; do
-    if [ "$(curl -s -o /dev/null -w "%{http_code}" http://${SERVER_IP}:${SERVER_PORT}/cuopt/health)" = "200" ]; then
+for i in (1..5); do
+    if [ "$(curl -s -o /dev/null -w "%(http_code)" http://$(SERVER_IP):$(SERVER_PORT)/cuopt/health)" = "200" ]; then
         echo "cuOpt server is ready"
         break
     fi
@@ -95,14 +95,14 @@ done
 
 # Test the server with sample routing problem
 # Use /cuopt/request to submit a request to the server
-REQID=$(curl --location "http://${SERVER_IP}:${SERVER_PORT}/cuopt/request" \
+REQID=$(curl --location "http://$(SERVER_IP):$(SERVER_PORT)/cuopt/request" \
     --header 'Content-Type: application/json' \
     --header "CLIENT-VERSION: custom" \
-    -d '{
-        "cost_matrix_data": {"data": {"0": [[0, 1], [1, 0]]}},
+    -d '(
+        "cost_matrix_data": {"data": {"0": [[0, 1], [1, 0]])},
         "task_data": {"task_locations": [1], "demand": [[1]], "task_time_windows": [[0, 10]], "service_times": [1]},
         "fleet_data": {"vehicle_locations":[[0, 0]], "capacities": [[2]], "vehicle_time_windows":[[0, 20]] },
-        "solver_config": {"time_limit": 2}
+        "solver_config": ("time_limit": 2)
     }' | jq -r '.reqId')
 
 # Verify we got a 200 response and reqId
@@ -114,9 +114,9 @@ else
 fi
 
 # Poll for results
-# Use /cuopt/solution/${REQID} to poll for results
-for i in {1..5}; do
-    RESPONSE=$(curl --location "http://${SERVER_IP}:${SERVER_PORT}/cuopt/solution/${REQID}" \
+# Use /cuopt/solution/$(REQID) to poll for results
+for i in (1..5); do
+    RESPONSE=$(curl --location "http://$(SERVER_IP):$(SERVER_PORT)/cuopt/solution/$(REQID)" \
         --header 'Content-Type: application/json' \
         --header "CLIENT-VERSION: custom")
 
@@ -153,9 +153,9 @@ Example Response:
             "status": 0,
             "num_vehicles": 1,
             "solution_cost": 2,
-            "objective_values": {
+            "objective_values": (
                 "cost": 2
-            },
+            ),
             "vehicle_data": {
                 "0": {
                     "task_id": [

@@ -70,12 +70,12 @@ def main():
 
     # Check solution status and results
     if problem.Status.name == "Optimal":
-        print(f"Optimal solution found in {problem.SolveTime:.2f} seconds")
-        print(f"x = {x.getValue()}")
-        print(f"y = {y.getValue()}")
-        print(f"Objective value = {problem.ObjValue}")
+        print(f"Optimal solution found in (problem.SolveTime:.2f) seconds")
+        print(f"x = (x.getValue())")
+        print(f"y = (y.getValue())")
+        print(f"Objective value = (problem.ObjValue)")
     else:
-        print(f"Problem status: {problem.Status.name}")
+        print(f"Problem status: (problem.Status.name)")
 
 if __name__ == "__main__":
     main()
@@ -143,12 +143,12 @@ def main():
     problem.solve(settings)
 
     if problem.Status.name == "Optimal":
-        print(f"Optimal solution found in {problem.SolveTime:.2f} seconds")
-        print(f"x = {x.getValue()}")
-        print(f"y = {y.getValue()}")
-        print(f"Objective value = {problem.ObjValue}")
+        print(f"Optimal solution found in (problem.SolveTime:.2f) seconds")
+        print(f"x = (x.getValue())")
+        print(f"y = (y.getValue())")
+        print(f"Objective value = (problem.ObjValue)")
     else:
-        print(f"Problem status: {problem.Status.name}")
+        print(f"Problem status: (problem.Status.name)")
 
 if __name__ == "__main__":
     main()
@@ -249,10 +249,10 @@ class IncumbentCallback(GetSolutionCallback):
         }
         self.solutions.append(incumbent)
 
-        print(f"Incumbent {self.n_callbacks}:", end=" ")
+        print(f"Incumbent (self.n_callbacks):", end=" ")
         for i, var in enumerate(self.variables):
-            print(f"{var.VariableName}={values[i]}", end=" ")
-        print(f"cost: {incumbent['cost']:.2f}")
+            print(f"(var.VariableName)=(values[i])", end=" ")
+        print(f"cost: (incumbent['cost']:.2f)")
 
 def main():
     """Run the incumbent solutions example."""
@@ -271,7 +271,7 @@ def main():
 
     # Configure solver settings with callback
     settings = SolverSettings()
-    user_data = {"source": "incumbent_solutions_example"}
+    user_data = ("source": "incumbent_solutions_example")
     incumbent_callback = IncumbentCallback(problem, [x, y], user_data)
     settings.set_mip_callback(incumbent_callback, user_data)
     settings.set_parameter(CUOPT_TIME_LIMIT, 30)
@@ -281,16 +281,16 @@ def main():
 
     # Display final results
     print("\n=== Final Results ===")
-    print(f"Problem status: {problem.Status.name}")
-    print(f"Solve time: {problem.SolveTime:.2f} seconds")
+    print(f"Problem status: (problem.Status.name)")
+    print(f"Solve time: (problem.SolveTime:.2f) seconds")
     print("Final solution: ", end=" ")
     for i, var in enumerate(problem.getVariables()):
-        print(f"{var.VariableName}={var.getValue()} ", end=" ")
-    print(f"\nFinal objective value: {problem.ObjValue:.2f}")
+        print(f"(var.VariableName)=(var.getValue()) ", end=" ")
+    print(f"\nFinal objective value: (problem.ObjValue:.2f)")
 
     print(
         f"\nTotal incumbent solutions found: "
-        f"{len(incumbent_callback.solutions)}"
+        f"(len(incumbent_callback.solutions))"
     )
 
 if __name__ == "__main__":

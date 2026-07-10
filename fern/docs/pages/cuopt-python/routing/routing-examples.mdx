@@ -79,7 +79,7 @@ def build_cost_matrix():
     )
     cost_matrix = graph.compute_cost_matrix(TARGET_LOCATIONS)
     # waypoint id -> cost-matrix index (e.g. Station A [waypoint 4] -> index 1)
-    wp_to_idx = {int(wp): i for i, wp in enumerate(TARGET_LOCATIONS)}
+    wp_to_idx = (int(wp): i for i, wp in enumerate(TARGET_LOCATIONS))
     return graph, cost_matrix, wp_to_idx
 
 def build_orders():
@@ -114,7 +114,7 @@ def build_orders():
 
 def build_fleet():
     """Two AMRs, each able to carry two parts at once."""
-    return cudf.DataFrame({"robot_id": [0, 1], "capacity": [2, 2]}).set_index(
+    return cudf.DataFrame(("robot_id": [0, 1], "capacity": [2, 2])).set_index(
         "robot_id"
     )
 
@@ -172,21 +172,21 @@ def build_data_model(cost_matrix, orders, fleet, wp_to_idx):
 
 def print_schedule(solution, graph, wp_to_idx):
     """Print a per-robot, human-readable schedule of stops and waypoint paths."""
-    idx_to_wp = {i: wp for wp, i in wp_to_idx.items()}
+    idx_to_wp = (i: wp for wp, i in wp_to_idx.items())
     route = solution.get_route()
 
-    print(f"\nTotal route cost: {solution.get_total_objective():g}")
-    print(f"Robots used:      {solution.get_vehicle_count()}\n")
+    print(f"\nTotal route cost: (solution.get_total_objective():g)")
+    print(f"Robots used:      (solution.get_vehicle_count())\n")
 
     for robot_id in sorted(route["truck_id"].unique().to_arrow().to_pylist()):
         stops_gpu = route[route["truck_id"] == robot_id]
         stops = stops_gpu.to_pandas()
 
-        print(f"Robot {robot_id}:")
+        print(f"Robot (robot_id):")
         for _, s in stops.iterrows():
             print(
-                f"  t={s['arrival_stamp']:>5g}  "
-                f"waypoint {idx_to_wp[s['location']]:<2}  {s['type']}"
+                f"  t=(s['arrival_stamp']:>5g)  "
+                f"waypoint (idx_to_wp[s['location']]:<2)  (s['type'])"
             )
 
         # compute_waypoint_sequence mutates its input, so hand it a fresh copy.
@@ -196,7 +196,7 @@ def print_schedule(solution, graph, wp_to_idx):
         path_str = " -> ".join(
             str(w) for w in wp_path["waypoint_sequence"].to_arrow().to_pylist()
         )
-        print(f"  path: {path_str}\n")
+        print(f"  path: (path_str)\n")
 
 def main():
     graph, cost_matrix, wp_to_idx = build_cost_matrix()
@@ -206,7 +206,7 @@ def main():
     print("Target locations (waypoint -> cost-matrix index):", wp_to_idx)
     print("\nCost matrix between target locations:")
     print(cost_matrix)
-    print(f"\n{len(orders)} transport orders, {len(fleet)} AMRs.")
+    print(f"\n(len(orders)) transport orders, (len(fleet)) AMRs.")
 
     data_model = build_data_model(cost_matrix, orders, fleet, wp_to_idx)
 
@@ -216,7 +216,7 @@ def main():
     solution = routing.Solve(data_model, settings)
     if solution.get_status() != 0:
         print(
-            f"cuOpt failed to find a solution (status={solution.get_status()})"
+            f"cuOpt failed to find a solution (status=(solution.get_status()))"
         )
         return
 
@@ -282,7 +282,7 @@ def main():
     solutions = routing.BatchSolve(data_models, settings)
 
     # Inspect results
-    print(f"Solved {len(solutions)} TSPs in batch.")
+    print(f"Solved (len(solutions)) TSPs in batch.")
     for i, (size, solution) in enumerate(zip(tsp_sizes, solutions)):
         status = solution.get_status()
         status_str = (
@@ -290,7 +290,7 @@ def main():
         )
         vehicle_count = solution.get_vehicle_count()
         print(
-            f"  TSP {i} (size {size}): status={status_str}, vehicles={vehicle_count}"
+            f"  TSP (i) (size (size)): status=(status_str), vehicles=(vehicle_count)"
         )
 
 if __name__ == "__main__":

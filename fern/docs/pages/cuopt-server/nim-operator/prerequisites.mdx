@@ -82,7 +82,7 @@ kubectl rollout status deployment/local-path-provisioner -n local-path-storage -
 ### Set Default Storage Class
 
 ``` bash
-kubectl patch storageclass local-path -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+kubectl patch storageclass local-path -p '("metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true")}}'
 ```
 
 ### Verify Storage Class
