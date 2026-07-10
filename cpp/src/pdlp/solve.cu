@@ -2341,7 +2341,7 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
     const timer_t& timer,                                                                        \
     bool is_batch_mode);                                                                         \
                                                                                                  \
-  template optimization_problem_solution_t<int, F_TYPE> batch_pdlp_solve(                        \
+  template CUOPT_EXPORT optimization_problem_solution_t<int, F_TYPE> batch_pdlp_solve(           \
     raft::handle_t const* handle_ptr,                                                            \
     const cuopt::mathematical_optimization::io::mps_data_model_t<int, F_TYPE>& mps_data_model,   \
     const std::vector<int>& fractional,                                                          \
@@ -2357,7 +2357,8 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
                                              bool per_climber_constraint_bounds,                 \
                                              bool collect_solutions);                            \
                                                                                                  \
-  template optimization_problem_t<int, F_TYPE> mps_data_model_to_optimization_problem(           \
+  template CUOPT_EXPORT optimization_problem_t<int, F_TYPE>                                      \
+  mps_data_model_to_optimization_problem(                                                        \
     raft::handle_t const* handle_ptr,                                                            \
     const cuopt::mathematical_optimization::io::mps_data_model_t<int, F_TYPE>& data_model);      \
   template void set_pdlp_solver_mode(pdlp_solver_settings_t<int, F_TYPE>& settings);
