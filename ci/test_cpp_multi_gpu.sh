@@ -30,7 +30,8 @@ set -euo pipefail
 # container image (its tag bakes the value into the environment), so no CUDA
 # version needs to be pinned by the workflow. If it is unset we skip the
 # bootstrap and fall back to any gtests already present in the container/build
-# tree — keeping the job non-breaking until the multi-GPU tests land.if [ -n "${RAPIDS_CUDA_VERSION:-}" ]; then
+# tree — keeping the job non-breaking until the multi-GPU tests land.
+if [ -n "${RAPIDS_CUDA_VERSION:-}" ]; then
   rapids-logger "Using CUDA ${RAPIDS_CUDA_VERSION} (inferred from container image)"
   rapids-logger "Configuring conda strict channel priority"
   conda config --set channel_priority strict
