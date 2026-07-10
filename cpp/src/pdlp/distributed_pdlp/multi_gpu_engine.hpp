@@ -649,7 +649,7 @@ struct multi_gpu_engine_t {
 
   // Distributed sigma_max(A)^2 via power iteration (used to seed the initial
   // step size). Returns the square of the largest singular value of the scaled
-  // constraint matrix. 
+  // constraint matrix.
   f_t distributed_max_singular_value_squared(i_t n_global_cstrs,
                                              int max_iterations = 5000,
                                              f_t tolerance      = 1e-4);
