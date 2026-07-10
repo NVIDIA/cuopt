@@ -92,16 +92,18 @@ multi_gpu_engine_t<i_t, f_t>::multi_gpu_engine_t(
 template <typename i_t, typename f_t>
 void multi_gpu_engine_t<i_t, f_t>::distributed_compute_A_x()
 {
-  halo_exchange_var(
-    [](auto& pdhg) -> rmm::device_uvector<f_t>& { return pdhg.get_reflected_primal(); });
+  halo_exchange_var([](pdlp_solver_t<i_t, f_t>& p) -> rmm::device_uvector<f_t>& {
+    return p.pdhg_solver_.get_reflected_primal();
+  });
   for_each_shard([](auto& shard) { shard.sub_pdlp->pdhg_solver_.spmvop_A_x(); });
 }
 
 template <typename i_t, typename f_t>
 void multi_gpu_engine_t<i_t, f_t>::distributed_compute_At_y()
 {
-  halo_exchange_cstr(
-    [](auto& pdhg) -> rmm::device_uvector<f_t>& { return pdhg.get_dual_solution(); });
+  halo_exchange_cstr([](pdlp_solver_t<i_t, f_t>& p) -> rmm::device_uvector<f_t>& {
+    return p.pdhg_solver_.get_dual_solution();
+  });
   for_each_shard([](auto& shard) { shard.sub_pdlp->pdhg_solver_.spmvop_At_y(); });
 }
 

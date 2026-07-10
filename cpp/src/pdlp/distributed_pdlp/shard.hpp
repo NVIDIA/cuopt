@@ -77,6 +77,33 @@ struct pdlp_shard_t {
   std::vector<rmm::device_uvector<f_t>> var_send_buf_d;
   std::vector<rmm::device_uvector<i_t>> cstr_send_indices_d;
   std::vector<rmm::device_uvector<f_t>> cstr_send_buf_d;
+
+  // Non-owning bundle of per-axis halo-exchange metadata, indexed by peer.
+  // Consumed by multi_gpu_engine_t::halo_exchange_bufs_impl (one axis vector
+  // per axis is cached in the engine at construction).
+  struct halo_axis_t {
+    std::vector<rmm::device_uvector<i_t>>& send_indices;  // [peer]
+    std::vector<rmm::device_uvector<f_t>>& send_buf;      // [peer]
+    i_t owned_size;
+    std::vector<i_t> const& recv_offsets;                 // [peer]
+    std::vector<i_t> const& recv_counts;                  // [peer]
+  };
+  halo_axis_t var_halo_axis()
+  {
+    return {var_send_indices_d,
+            var_send_buf_d,
+            rank_data.owned_var_size,
+            rank_data.var_recv_offsets,
+            rank_data.var_recv_counts};
+  }
+  halo_axis_t cstr_halo_axis()
+  {
+    return {cstr_send_indices_d,
+            cstr_send_buf_d,
+            rank_data.owned_cstr_size,
+            rank_data.cstr_recv_offsets,
+            rank_data.cstr_recv_counts};
+  }
 };
 
 }  // namespace cuopt::mathematical_optimization::pdlp

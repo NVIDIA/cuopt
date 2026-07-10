@@ -108,11 +108,11 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_ruiz_inf_scaling(int num_iter, i_
   for (int it = 0; it < num_iter; ++it) {
     // Refresh halo copies of both cumulative scalings (owner -> halo) so the
     // per-shard kernels read correct opposite-axis factors on their halo.
-    halo_exchange_var_shard([](auto& s) -> auto& {
-      return s.sub_pdlp->get_initial_scaling_strategy().get_cummulative_variable_scaling();
+    halo_exchange_var([](pdlp_solver_t<i_t, f_t>& p) -> auto& {
+      return p.get_initial_scaling_strategy().get_cummulative_variable_scaling();
     });
-    halo_exchange_cstr_shard([](auto& s) -> auto& {
-      return s.sub_pdlp->get_initial_scaling_strategy().get_cummulative_constraint_matrix_scaling();
+    halo_exchange_cstr([](pdlp_solver_t<i_t, f_t>& p) -> auto& {
+      return p.get_initial_scaling_strategy().get_cummulative_constraint_matrix_scaling();
     });
 
     // Shard-local Ruiz iteration
@@ -126,11 +126,11 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_ruiz_inf_scaling(int num_iter, i_
 
   // Final refresh so downstream consumers (the scaled problem, the next
   // distributed_max_singular_value, etc.) see correct halo factors.
-  halo_exchange_var_shard([](auto& s) -> auto& {
-    return s.sub_pdlp->get_initial_scaling_strategy().get_cummulative_variable_scaling();
+  halo_exchange_var([](pdlp_solver_t<i_t, f_t>& p) -> auto& {
+    return p.get_initial_scaling_strategy().get_cummulative_variable_scaling();
   });
-  halo_exchange_cstr_shard([](auto& s) -> auto& {
-    return s.sub_pdlp->get_initial_scaling_strategy().get_cummulative_constraint_matrix_scaling();
+  halo_exchange_cstr([](pdlp_solver_t<i_t, f_t>& p) -> auto& {
+    return p.get_initial_scaling_strategy().get_cummulative_constraint_matrix_scaling();
   });
 
   for_each_shard([](auto& shard) { shard.stream.synchronize(); });
@@ -148,11 +148,11 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_pock_chambolle_scaling(f_t alpha,
   raft::common::nvtx::range scope("distributed_pock_chambolle_scaling");
 
   // Refresh halo copies of both cumulative scalings
-  halo_exchange_var_shard([](auto& s) -> auto& {
-    return s.sub_pdlp->get_initial_scaling_strategy().get_cummulative_variable_scaling();
+  halo_exchange_var([](pdlp_solver_t<i_t, f_t>& p) -> auto& {
+    return p.get_initial_scaling_strategy().get_cummulative_variable_scaling();
   });
-  halo_exchange_cstr_shard([](auto& s) -> auto& {
-    return s.sub_pdlp->get_initial_scaling_strategy().get_cummulative_constraint_matrix_scaling();
+  halo_exchange_cstr([](pdlp_solver_t<i_t, f_t>& p) -> auto& {
+    return p.get_initial_scaling_strategy().get_cummulative_constraint_matrix_scaling();
   });
 
   for_each_shard([alpha](auto& shard) {
@@ -160,11 +160,11 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_pock_chambolle_scaling(f_t alpha,
   });
 
   // Final refresh for downstream consumers.
-  halo_exchange_var_shard([](auto& s) -> auto& {
-    return s.sub_pdlp->get_initial_scaling_strategy().get_cummulative_variable_scaling();
+  halo_exchange_var([](pdlp_solver_t<i_t, f_t>& p) -> auto& {
+    return p.get_initial_scaling_strategy().get_cummulative_variable_scaling();
   });
-  halo_exchange_cstr_shard([](auto& s) -> auto& {
-    return s.sub_pdlp->get_initial_scaling_strategy().get_cummulative_constraint_matrix_scaling();
+  halo_exchange_cstr([](pdlp_solver_t<i_t, f_t>& p) -> auto& {
+    return p.get_initial_scaling_strategy().get_cummulative_constraint_matrix_scaling();
   });
 
   for_each_shard([](auto& shard) { shard.stream.synchronize(); });

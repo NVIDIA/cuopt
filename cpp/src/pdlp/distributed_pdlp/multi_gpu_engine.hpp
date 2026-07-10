@@ -162,30 +162,34 @@ struct multi_gpu_engine_t {
     distributed_transform(std::make_tuple(in), out, sz, op);
   }
 
-  // -------- Halo exchange (variables / x) ---------------------------------
-  // Step 1: thrust::gather per-peer outgoing values into staging buffers.
-  // Step 2: a single NCCL group with matched ncclSend / ncclRecv across all
-  // (rank, peer) pairs, receiving into each shard's halo region.
-  void halo_exchange_var_bufs(std::vector<raft::device_span<f_t>> const& bufs)
+  // -------- Halo exchange (owner -> halo) ---------------------------------
+  // {var/cstr}-agnostic core:
+  //   Step 1: thrust::gather per-peer outgoing values into staging buffers.
+  //   Step 2: one NCCL group with matched ncclSend / ncclRecv across all
+  //           (rank, peer) pairs, receiving into each shard's halo tail.
+  void halo_exchange_bufs_impl(
+    std::vector<raft::device_span<f_t>> const& bufs,
+    std::vector<typename pdlp_shard_t<i_t, f_t>::halo_axis_t> const& axes)
   {
     const int nb = static_cast<int>(shards.size());
-    cuopt_expects(static_cast<int>(bufs.size()) == nb,
+    cuopt_expects(static_cast<int>(bufs.size()) == nb && static_cast<int>(axes.size()) == nb,
                   error_type_t::RuntimeError,
-                  "halo_exchange_var_bufs: bufs.size() must equal shards.size()");
+                  "halo_exchange_bufs_impl: bufs / axes must have size == shards.size()");
 
     // Step 1: gather owned values that each peer needs into per-peer staging.
     for (int r = 0; r < nb; ++r) {
       auto& s = *shards[r];
       raft::device_setter guard(s.device_id);
-      auto x = bufs[r];
+      auto const& ax = axes[r];
+      auto x         = bufs[r];
       for (int peer = 0; peer < nb; ++peer) {
         if (peer == r) continue;
-        if (s.var_send_indices_d[peer].size() == 0) continue;
+        if (ax.send_indices[peer].size() == 0) continue;
         thrust::gather(rmm::exec_policy_nosync(s.stream.view()),
-                       s.var_send_indices_d[peer].begin(),
-                       s.var_send_indices_d[peer].end(),
+                       ax.send_indices[peer].begin(),
+                       ax.send_indices[peer].end(),
                        x.data(),
-                       s.var_send_buf_d[peer].begin());
+                       ax.send_buf[peer].begin());
       }
     }
 
@@ -194,10 +198,11 @@ struct multi_gpu_engine_t {
     for (int r = 0; r < nb; ++r) {
       auto& s = *shards[r];
       raft::device_setter guard(s.device_id);
+      auto const& ax = axes[r];
       for (int peer = 0; peer < nb; ++peer) {
         if (peer == r) continue;
-        CUOPT_NCCL_TRY(ncclSend(s.var_send_buf_d[peer].data(),
-                                s.var_send_buf_d[peer].size(),
+        CUOPT_NCCL_TRY(ncclSend(ax.send_buf[peer].data(),
+                                ax.send_buf[peer].size(),
                                 nccl_data_type<f_t>(),
                                 peer,
                                 s.comm.get(),
@@ -205,15 +210,15 @@ struct multi_gpu_engine_t {
       }
     }
     for (int r = 0; r < nb; ++r) {
-      auto& s  = *shards[r];
-      auto& rd = s.rank_data;
+      auto& s = *shards[r];
       raft::device_setter guard(s.device_id);
-      auto x = bufs[r];
+      auto const& ax = axes[r];
+      auto x         = bufs[r];
       for (int peer = 0; peer < nb; ++peer) {
         if (peer == r) continue;
-        f_t* recv_ptr = x.data() + rd.owned_var_size + rd.var_recv_offsets[peer];
+        f_t* recv_ptr = x.data() + ax.owned_size + ax.recv_offsets[peer];
         CUOPT_NCCL_TRY(ncclRecv(recv_ptr,
-                                static_cast<size_t>(rd.var_recv_counts[peer]),
+                                static_cast<size_t>(ax.recv_counts[peer]),
                                 nccl_data_type<f_t>(),
                                 peer,
                                 s.comm.get(),
@@ -223,116 +228,51 @@ struct multi_gpu_engine_t {
     CUOPT_NCCL_TRY(ncclGroupEnd());
   }
 
-  // Wrapper: pdhg_solver_t accessor.
-  // buf_access : pdhg_solver_t<i_t,f_t>& -> rmm::device_uvector<f_t>&
+  // -------- Halo exchange (variables / x) ---------------------------------
+  void halo_exchange_var_bufs(std::vector<raft::device_span<f_t>> const& bufs)
+  {
+    std::vector<typename pdlp_shard_t<i_t, f_t>::halo_axis_t> axes;
+    axes.reserve(shards.size());
+    for (auto& s : shards) axes.push_back(s->var_halo_axis());
+    halo_exchange_bufs_impl(bufs, axes);
+  }
+
+  // Wrapper: pdlp_solver_t accessor. Resolves one uvector per shard into a
+  // vector of spans, then delegates to halo_exchange_var_bufs.
+  //   buf_access : pdlp_solver_t<i_t,f_t>& -> rmm::device_uvector<f_t>&
   template <typename BufAccess>
   void halo_exchange_var(BufAccess&& buf_access)
   {
-    halo_exchange_var_shard([&](pdlp_shard_t<i_t, f_t>& s) -> rmm::device_uvector<f_t>& {
-      return buf_access(s.sub_pdlp->pdhg_solver_);
-    });
-  }
-
-  // Wrapper: pdlp_shard_t accessor. Resolves one uvector per shard into a
-  // vector of spans, then delegates to halo_exchange_var_bufs.
-  // buf_access : pdlp_shard_t<i_t,f_t>& -> rmm::device_uvector<f_t>&
-  template <typename ShardBufAccess>
-  void halo_exchange_var_shard(ShardBufAccess&& buf_access)
-  {
     std::vector<raft::device_span<f_t>> bufs;
     bufs.reserve(shards.size());
-    for (auto& s : shards) {
-      raft::device_setter guard(s->device_id);
-      auto& x = buf_access(*s);
+    for_each_shard([&](pdlp_shard_t<i_t, f_t>& s) {
+      auto& x = buf_access(*s.sub_pdlp);
       bufs.emplace_back(x.data(), x.size());
-    }
+    });
     halo_exchange_var_bufs(bufs);
   }
 
   // -------- Halo exchange (constraints / y) -------------------------------
-  // Cstr-halo counterpart of halo_exchange_var_bufs. Same structure: contains
-  // all the gather + NCCL send/recv logic; accessor overloads below are thin
-  // wrappers that resolve one buffer per shard and delegate.
-  // Requirements: bufs.size() == shards.size(); bufs[r] is shard r's owned +
-  // halo tail (contiguous) with total_cstr_size elements.
   void halo_exchange_cstr_bufs(std::vector<raft::device_span<f_t>> const& bufs)
   {
-    const int nb = static_cast<int>(shards.size());
-    cuopt_expects(static_cast<int>(bufs.size()) == nb,
-                  error_type_t::RuntimeError,
-                  "halo_exchange_cstr_bufs: bufs.size() must equal shards.size()");
-
-    for (int r = 0; r < nb; ++r) {
-      auto& s = *shards[r];
-      raft::device_setter guard(s.device_id);
-      auto y = bufs[r];
-      for (int peer = 0; peer < nb; ++peer) {
-        if (peer == r) continue;
-        if (s.cstr_send_indices_d[peer].size() == 0) continue;
-        thrust::gather(rmm::exec_policy_nosync(s.stream.view()),
-                       s.cstr_send_indices_d[peer].begin(),
-                       s.cstr_send_indices_d[peer].end(),
-                       y.data(),
-                       s.cstr_send_buf_d[peer].begin());
-      }
-    }
-
-    CUOPT_NCCL_TRY(ncclGroupStart());
-    for (int r = 0; r < nb; ++r) {
-      auto& s = *shards[r];
-      raft::device_setter guard(s.device_id);
-      for (int peer = 0; peer < nb; ++peer) {
-        if (peer == r) continue;
-        CUOPT_NCCL_TRY(ncclSend(s.cstr_send_buf_d[peer].data(),
-                                s.cstr_send_buf_d[peer].size(),
-                                nccl_data_type<f_t>(),
-                                peer,
-                                s.comm.get(),
-                                s.stream.view().value()));
-      }
-    }
-    for (int r = 0; r < nb; ++r) {
-      auto& s  = *shards[r];
-      auto& rd = s.rank_data;
-      raft::device_setter guard(s.device_id);
-      auto y = bufs[r];
-      for (int peer = 0; peer < nb; ++peer) {
-        if (peer == r) continue;
-        f_t* recv_ptr = y.data() + rd.owned_cstr_size + rd.cstr_recv_offsets[peer];
-        CUOPT_NCCL_TRY(ncclRecv(recv_ptr,
-                                static_cast<size_t>(rd.cstr_recv_counts[peer]),
-                                nccl_data_type<f_t>(),
-                                peer,
-                                s.comm.get(),
-                                s.stream.view().value()));
-      }
-    }
-    CUOPT_NCCL_TRY(ncclGroupEnd());
+    std::vector<typename pdlp_shard_t<i_t, f_t>::halo_axis_t> axes;
+    axes.reserve(shards.size());
+    for (auto& s : shards) axes.push_back(s->cstr_halo_axis());
+    halo_exchange_bufs_impl(bufs, axes);
   }
 
-  // Wrapper: pdhg_solver_t accessor.
-  // buf_access : pdhg_solver_t<i_t,f_t>& -> rmm::device_uvector<f_t>&
+  // Wrapper: pdlp_solver_t accessor. Resolves one uvector per shard into a
+  // vector of spans, then delegates to halo_exchange_cstr_bufs.
+  //   buf_access : pdlp_solver_t<i_t,f_t>& -> rmm::device_uvector<f_t>&
   template <typename BufAccess>
   void halo_exchange_cstr(BufAccess&& buf_access)
   {
-    halo_exchange_cstr_shard([&](pdlp_shard_t<i_t, f_t>& s) -> rmm::device_uvector<f_t>& {
-      return buf_access(s.sub_pdlp->pdhg_solver_);
-    });
-  }
-
-  // Wrapper: pdlp_shard_t accessor. Resolves one uvector per shard into a
-  // vector of spans, then delegates to halo_exchange_cstr_bufs.
-  // buf_access : pdlp_shard_t<i_t,f_t>& -> rmm::device_uvector<f_t>&
-  template <typename ShardBufAccess>
-  void halo_exchange_cstr_shard(ShardBufAccess&& buf_access)
-  {
     std::vector<raft::device_span<f_t>> bufs;
     bufs.reserve(shards.size());
-    for (auto& s : shards) {
-      raft::device_setter guard(s->device_id);
-      auto& y = buf_access(*s);
+    for_each_shard([&](pdlp_shard_t<i_t, f_t>& s) {
+      auto& y = buf_access(*s.sub_pdlp);
       bufs.emplace_back(y.data(), y.size());
-    }
+    });
     halo_exchange_cstr_bufs(bufs);
   }
 
@@ -650,10 +590,10 @@ struct multi_gpu_engine_t {
   // (owns device-affine resources: handle, NCCL comm, RMM buffers).
   std::vector<std::unique_ptr<pdlp_shard_t<i_t, f_t>>> shards;
 
-  // Cached per-shard partition metadata, populated once at construction from
-  // rank_data. Consumed by the gather_owned_{var/cstr}_to_master_bufs helpers so they
-  // don't rebuild these vectors on every call.
-  //   owned_{var,cstr}_sizes_[r]     == shards[r]->rank_data.owned_{var,cstr}_size
+  // Cached per-shard partition metadata, populated once at construction.
+  // Consumed by gather_owned_*_to_master_bufs; caching avoids copying the
+  // sizeable local_to_global_* host vectors on every termination check.
+  //   owned_{var,cstr}_sizes_[r]       == shards[r]->rank_data.owned_{var,cstr}_size
   //   local_to_global_{vars,cstrs}_[r] == shards[r]->rank_data.local_to_global_{var,cstr}
   std::vector<std::size_t> owned_var_sizes_;
   std::vector<std::size_t> owned_cstr_sizes_;
