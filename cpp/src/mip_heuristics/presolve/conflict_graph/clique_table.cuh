@@ -209,7 +209,8 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
                           typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances,
                           std::shared_ptr<clique_table_t<i_t, f_t>>* clique_table_out,
                           cuopt::timer_t& timer,
-                          omp_atomic_t<bool>* signal_extend = nullptr);
+                          omp_atomic_t<bool>* signal_extend                            = nullptr,
+                          const std::vector<std::pair<i_t, i_t>>* extra_conflict_edges = nullptr);
 
 template <typename i_t, typename f_t>
 void build_clique_table(const dual_simplex::user_problem_t<i_t, f_t>& problem,
