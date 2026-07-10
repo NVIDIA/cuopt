@@ -3305,7 +3305,7 @@ void pdlp_solver_t<i_t, f_t>::scale_problem()
   raft::common::nvtx::range fun_scope("pdlp_solver_t::scale_problem");
   if (is_distributed_master()) {
     multi_gpu_engine->distributed_scaling(settings_.hyper_params, primal_size_h_, inside_mip_);
-    
+
     // Free per-shard scratch: no further scaling passes happen after this point.
     multi_gpu_engine->for_each_shard([](auto& shard) {
       auto& scaling = shard.sub_pdlp->get_initial_scaling_strategy();
@@ -3314,7 +3314,7 @@ void pdlp_solver_t<i_t, f_t>::scale_problem()
     });
   } else {
     initial_scaling_strategy_.scale_problem();
-    
+
     // Free scratch: no further scaling passes happen after this point.
     initial_scaling_strategy_.get_iteration_variable_scaling().resize(0, stream_view_);
     initial_scaling_strategy_.get_iteration_constraint_matrix_scaling().resize(0, stream_view_);

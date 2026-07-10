@@ -94,7 +94,8 @@ struct multi_gpu_engine_t {
       } else if constexpr (std::is_invocable_v<Fn&, pdlp_shard_t<i_t, f_t>&>) {
         fn(s);
       } else {
-        cuopt_expects(false, error_type_t::RuntimeError, "for_each_shard: invalid function signature");
+        cuopt_expects(
+          false, error_type_t::RuntimeError, "for_each_shard: invalid function signature");
       }
     }
   }
@@ -264,7 +265,8 @@ struct multi_gpu_engine_t {
   {
     std::vector<raft::device_span<f_t>> spans;
     spans.reserve(bufs.size());
-    for (auto& b : bufs) spans.emplace_back(b.data(), b.size());
+    for (auto& b : bufs)
+      spans.emplace_back(b.data(), b.size());
     halo_exchange_var_bufs(spans);
   }
 
@@ -298,7 +300,8 @@ struct multi_gpu_engine_t {
   {
     std::vector<raft::device_span<f_t>> spans;
     spans.reserve(bufs.size());
-    for (auto& b : bufs) spans.emplace_back(b.data(), b.size());
+    for (auto& b : bufs)
+      spans.emplace_back(b.data(), b.size());
     halo_exchange_cstr_bufs(spans);
   }
 
@@ -596,9 +599,8 @@ struct multi_gpu_engine_t {
                            std::vector<cusparse_dn_vec_descr_wrapper_t<f_t>>& out_descs)
   {
     halo_exchange_cstr_bufs(in_bufs);
-    for_each_shard([&](auto& s, int r) {
-      s.sub_pdlp->pdhg_solver_.spmv_At_into(in_descs[r], out_descs[r]);
-    });
+    for_each_shard(
+      [&](auto& s, int r) { s.sub_pdlp->pdhg_solver_.spmv_At_into(in_descs[r], out_descs[r]); });
   }
 
   // Distributed A @ in on caller-owned scratch. Refreshes the halo of `in_bufs`
@@ -610,9 +612,8 @@ struct multi_gpu_engine_t {
                           std::vector<cusparse_dn_vec_descr_wrapper_t<f_t>>& out_descs)
   {
     halo_exchange_var_bufs(in_bufs);
-    for_each_shard([&](auto& s, int r) {
-      s.sub_pdlp->pdhg_solver_.spmv_A_into(in_descs[r], out_descs[r]);
-    });
+    for_each_shard(
+      [&](auto& s, int r) { s.sub_pdlp->pdhg_solver_.spmv_A_into(in_descs[r], out_descs[r]); });
   }
 
   // -------- High-level algorithms (defined in distributed_algorithms.cu) ---

@@ -123,8 +123,10 @@ TEST(pdlp_class, distributed_parity_good_max)
   const raft::handle_t handle{};
   // Disable presolve: PSLP solves this 3-var/1-constraint problem entirely, bypassing
   // the distributed solver path this test is meant to exercise.
-  expect_distributed_matches_base(
-    handle, "linear_programming/good-max.mps", /*fixed_mps_format=*/false, /*disable_presolve=*/true);
+  expect_distributed_matches_base(handle,
+                                  "linear_programming/good-max.mps",
+                                  /*fixed_mps_format=*/false,
+                                  /*disable_presolve=*/true);
 }
 
 TEST(pdlp_class, distributed_parity_graph40_40)

@@ -61,9 +61,9 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_bound_objective_rescaling(f_t c_s
   f_t global_bound_sq = f_t(0);
   f_t global_obj_sq   = f_t(0);
   for_each_shard([&](auto& s) {
-    const auto& scaled     = s.sub_pdlp->get_initial_scaling_strategy().get_scaled_op_problem();
-    auto policy            = rmm::exec_policy(s.stream.view());
-    auto bounds_begin = thrust::make_zip_iterator(scaled.constraint_lower_bounds.data(),
+    const auto& scaled = s.sub_pdlp->get_initial_scaling_strategy().get_scaled_op_problem();
+    auto policy        = rmm::exec_policy(s.stream.view());
+    auto bounds_begin  = thrust::make_zip_iterator(scaled.constraint_lower_bounds.data(),
                                                   scaled.constraint_upper_bounds.data());
     global_bound_sq += thrust::transform_reduce(policy,
                                                 bounds_begin,
@@ -71,12 +71,13 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_bound_objective_rescaling(f_t c_s
                                                 rhs_sum_of_squares_t<f_t>{},
                                                 f_t(0),
                                                 thrust::plus<f_t>{});
-    global_obj_sq += thrust::transform_reduce(policy,
-                                              scaled.objective_coefficients.data(),
-                                              scaled.objective_coefficients.data() + s.rank_data.owned_var_size,
-                                              weighted_square_op<f_t>{c_scaling_weight},
-                                              f_t(0),
-                                              thrust::plus<f_t>{});
+    global_obj_sq +=
+      thrust::transform_reduce(policy,
+                               scaled.objective_coefficients.data(),
+                               scaled.objective_coefficients.data() + s.rank_data.owned_var_size,
+                               weighted_square_op<f_t>{c_scaling_weight},
+                               f_t(0),
+                               thrust::plus<f_t>{});
   });
 
   // 3) Host-side derivation of the (identical on every shard) scaling scalars.
@@ -206,7 +207,7 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value(i_t n_global_cs
   // ┌──────────────────────────────────────────────────────────────┐
   // │                            Setup                             │
   // └──────────────────────────────────────────────────────────────┘
-  
+
   const int nb = static_cast<int>(shards.size());
   // Generate the GLOBAL z[] sequence in cstr-index order.
   // Scatter it to the shards according to the partition.
@@ -227,9 +228,12 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value(i_t n_global_cs
 
   // Per-shard owned-slice spans consumed by the engine's *_bufs helpers.
   std::vector<raft::device_span<f_t>> q_owned, z_owned;
-  for (auto* v : {&q, &z, &atq}) v->reserve(nb);
-  for (auto* v : {&sigma_sq, &norm_q, &residual_norm}) v->reserve(nb);
-  for (auto* v : {&q_owned, &z_owned}) v->reserve(nb);
+  for (auto* v : {&q, &z, &atq})
+    v->reserve(nb);
+  for (auto* v : {&sigma_sq, &norm_q, &residual_norm})
+    v->reserve(nb);
+  for (auto* v : {&q_owned, &z_owned})
+    v->reserve(nb);
 
   // Allocate per-shard scratch, scatter z according to partition, and build
   // the *_bufs views for the power iteration below.
@@ -261,9 +265,9 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value(i_t n_global_cs
     raft::copy(
       z.back().data(), h_owned_z.data(), static_cast<std::size_t>(n_owned), s.stream.view());
     thrust::fill(rmm::exec_policy_nosync(s.stream.view()),
-                  z.back().data() + n_owned,
-                  z.back().data() + cstr_total,
-                  f_t(0));
+                 z.back().data() + n_owned,
+                 z.back().data() + cstr_total,
+                 f_t(0));
 
     // Sync to ensure h_owned_z stays valid through the H2D copy (it goes
     // out of scope at end of this iteration of the per-shard loop).
@@ -360,7 +364,8 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_compute_initial_step_size(
                 "of A fallback is single-GPU only. This should have been rejected "
                 "earlier in solve_lp_distributed_from_mps.");
 
-  const f_t sigma_max_sq = distributed_max_singular_value(n_global_cstrs, max_iterations, tolerance);
+  const f_t sigma_max_sq =
+    distributed_max_singular_value(n_global_cstrs, max_iterations, tolerance);
 
   auto& master     = *master_pdlp_;
   auto* handle_ptr = master.get_handle_ptr();

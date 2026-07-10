@@ -45,7 +45,8 @@ inline std::vector<f_t> make_singular_value_probe(std::size_t size)
   std::vector<f_t> out(size);
   std::mt19937 gen(1);
   std::normal_distribution<f_t> dist(f_t(0.0), f_t(1.0));
-  for (std::size_t i = 0; i < size; ++i) out[i] = dist(gen);
+  for (std::size_t i = 0; i < size; ++i)
+    out[i] = dist(gen);
   return out;
 }
 
