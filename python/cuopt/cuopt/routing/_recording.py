@@ -11,9 +11,12 @@ The recorded setters/getters mirror the Cython wrapper's method surface and are
 installed automatically *from the wrapper* (see ``_install_methods``): every
 ``set_*``/``add_*`` becomes a recorder and every ``get_*`` a delegator. So there
 is a single source of truth -- adding a method to the wrapper/DataModel needs no
-change here. Only methods that need special behavior are written out explicitly
-below (the matrix setters track vehicle-type, the size scalars answer without a
-build); those explicit definitions are left untouched by the auto-install.
+change here. Only the size scalars are written out explicitly below (they answer
+without a build); that explicit definition is left untouched by the auto-install.
+
+A public setter that needs to query prior state before build (e.g. a duplicate
+guard) reads it from the recorded calls via ``_recorded`` -- there is no shadow
+state to maintain per setter.
 """
 
 # ``get_*`` methods on the wrapper that are helpers, not problem-data getters.
@@ -30,19 +33,6 @@ class _RecordingDataModel:
         self._init_args = (num_locations, fleet_size, n_orders)
         self._calls = []
         self._built = None
-        # Track added matrix vehicle-types so the public layer's duplicate
-        # check (``if vehicle_type in self.costs``) works before build.
-        self.costs = {}
-        self.transit_times = {}
-
-    # -- explicit matrix setters: also track the vehicle-type key --
-    def add_cost_matrix(self, costs, vehicle_type=0):
-        self.costs[vehicle_type] = None
-        self._record("add_cost_matrix", (costs, vehicle_type), {})
-
-    def add_transit_time_matrix(self, times, vehicle_type=0):
-        self.transit_times[vehicle_type] = None
-        self._record("add_transit_time_matrix", (times, vehicle_type), {})
 
     # -- size scalars: answered without building (queried during validation) --
     def get_num_locations(self):
@@ -59,6 +49,14 @@ class _RecordingDataModel:
     def _record(self, name, args, kwargs):
         self._calls.append((name, args, kwargs))
         self._built = None
+
+    def _recorded(self, name):
+        """Positional args of each prior recorded call to ``name``.
+
+        Lets a public setter answer set-time "already set?" questions from the
+        recorded calls, so no per-setter shadow state is needed.
+        """
+        return [args for call, args, _ in self._calls if call == name]
 
     def _build(self):
         """Materialize the device (Cython) data model by replaying calls."""

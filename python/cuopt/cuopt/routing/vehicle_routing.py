@@ -135,7 +135,7 @@ class DataModel(_RecordingDataModel):
         >>> data_model.add_cost_matrix(cost_mat_car, 2)
         """
 
-        if vehicle_type in self.costs:
+        if vehicle_type in {a[1] for a in self._recorded("add_cost_matrix")}:
             raise ValueError("Vehicle type matrix has already been added")
 
         if not skip_validation:
@@ -217,7 +217,9 @@ class DataModel(_RecordingDataModel):
         >>> time_mat = cudf.DataFrame(time_mat)
         >>> data_model.add_transit_time_matrix(time_mat, 0)
         """
-        if vehicle_type in self.transit_times:
+        if vehicle_type in {
+            a[1] for a in self._recorded("add_transit_time_matrix")
+        }:
             raise ValueError("Vehicle type matrix has already been added")
 
         validate_matrix(mat, "transit time matrix", self.get_num_locations())
