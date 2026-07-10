@@ -51,6 +51,7 @@ enum VariableType {
 enum ProblemCategory {
   LP = 0;
   MIP = 1;
+  VRP = 2;
 }
 
 enum ResultFieldId {
@@ -343,4 +344,7 @@ message ChunkedResultHeader {
   double ws_last_restart_kkt_score = 3005;
   double ws_sum_solution_weight = 3006;
   int32 ws_iterations_since_last_restart = 3007;
+  // VRP (manual extension; not yet driven by field_registry.yaml)
+  bool is_vrp = 4000;
+  bytes routing_solution = 4001;  // serialized RoutingSolution proto
 }

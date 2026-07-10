@@ -13,7 +13,7 @@ import public "cuopt_remote_data.proto";
 // Protocol version and metadata
 message RequestHeader {
   uint32 version = 1;           // Protocol version (currently 1)
-  ProblemCategory problem_category = 2; // LP or MIP
+  ProblemCategory problem_category = 2; // LP, MIP, or VRP
 }
 
 // LP solve request
@@ -58,6 +58,10 @@ message StatusResponse {
 }
 
 // Response for get result
+// Note: RoutingSolution lives in cuopt_routing.proto. To avoid a circular
+// import (cuopt_routing.proto imports this file for RequestHeader), the VRP
+// solution is carried as a serialized RoutingSolution blob here. Callers
+// parse it with RoutingSolution::ParseFromString.
 message ResultResponse {
   ResponseStatus status = 1;
   string error_message = 2;
@@ -65,6 +69,7 @@ message ResultResponse {
   oneof solution {
     LPSolution lp_solution = 10;
     MIPSolution mip_solution = 11;
+    bytes routing_solution = 12;  // serialized cuopt.remote.RoutingSolution
   }
 }
 

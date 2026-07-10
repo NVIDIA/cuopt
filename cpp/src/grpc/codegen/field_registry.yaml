@@ -168,6 +168,7 @@ enums:
     values:
     - LP
     - MIP
+    - VRP
 
   # ResultFieldId is auto-derived from solution/warm-start array_id fields.
   # Aliases here preserve backward compatibility with upstream's abbreviated
