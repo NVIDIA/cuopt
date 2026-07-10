@@ -51,6 +51,25 @@ bool is_float_attribute(cuopt_int_t attribute)
          attribute == CUOPT_ATTR_OBJECTIVE_SCALING_FACTOR;
 }
 
+bool is_float_array_attribute(cuopt_int_t attribute)
+{
+  switch (attribute) {
+    case CUOPT_ARRAY_ATTR_OBJECTIVE_COEFFICIENTS:
+    case CUOPT_ARRAY_ATTR_VARIABLE_LOWER_BOUNDS:
+    case CUOPT_ARRAY_ATTR_VARIABLE_UPPER_BOUNDS:
+    case CUOPT_ARRAY_ATTR_CONSTRAINT_LOWER_BOUNDS:
+    case CUOPT_ARRAY_ATTR_CONSTRAINT_UPPER_BOUNDS:
+    case CUOPT_ARRAY_ATTR_CONSTRAINT_RHS: return true;
+    default: return false;
+  }
+}
+
+bool is_char_array_attribute(cuopt_int_t attribute)
+{
+  return attribute == CUOPT_ARRAY_ATTR_CONSTRAINT_SENSE ||
+         attribute == CUOPT_ARRAY_ATTR_VARIABLE_TYPES;
+}
+
 cuopt_int_t get_array_size(optimization_problem_interface_t<cuopt_int_t, cuopt_float_t>* problem,
                            cuopt_int_t attribute)
 {
@@ -129,6 +148,7 @@ cuopt_int_t cuOptGetProblemFloatArrayAttribute(cuOptOptimizationProblem problem,
 {
   if (problem == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   if (out == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  if (!is_float_array_attribute(attribute)) { return CUOPT_INVALID_ARGUMENT; }
 
   auto* iface                = get_iface(problem);
   const cuopt_int_t expected = get_array_size(iface, attribute);
@@ -167,6 +187,7 @@ cuopt_int_t cuOptGetProblemCharArrayAttribute(cuOptOptimizationProblem problem,
 {
   if (problem == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   if (out == nullptr) { return CUOPT_INVALID_ARGUMENT; }
+  if (!is_char_array_attribute(attribute)) { return CUOPT_INVALID_ARGUMENT; }
 
   auto* iface                = get_iface(problem);
   const cuopt_int_t expected = get_array_size(iface, attribute);

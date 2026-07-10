@@ -91,6 +91,9 @@ cuopt_int_t test_gpu_problem_remote_after_create(const char* filename);
 cuopt_int_t test_problem_attributes(const char* filename);
 cuopt_int_t test_problem_attributes_mip(const char* filename);
 cuopt_int_t test_problem_attributes_qp(const char* filename);
+/* Build a known problem with cuOptCreateProblem and verify getters against the constructed values,
+ * covering attributes that have no dedicated getter to cross-check against. */
+cuopt_int_t test_problem_attributes_created(void);
 
 #ifdef __cplusplus
 }

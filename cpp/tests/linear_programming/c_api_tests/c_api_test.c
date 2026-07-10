@@ -3189,6 +3189,24 @@ static int doubles_equal(const cuopt_float_t* a, const cuopt_float_t* b, cuopt_i
   return 1;
 }
 
+/* One sparse matrix entry, used to compare CSR and CSC as an unordered (row,col,value) multiset. */
+typedef struct {
+  cuopt_int_t row;
+  cuopt_int_t col;
+  cuopt_float_t val;
+} coo_triple_t;
+
+/* Total order by (row, col, value) so two equivalent matrices sort to identical sequences. */
+static int compare_coo(const void* a, const void* b)
+{
+  const coo_triple_t* ta = (const coo_triple_t*)a;
+  const coo_triple_t* tb = (const coo_triple_t*)b;
+  if (ta->row != tb->row) { return ta->row < tb->row ? -1 : 1; }
+  if (ta->col != tb->col) { return ta->col < tb->col ? -1 : 1; }
+  if (ta->val != tb->val) { return ta->val < tb->val ? -1 : 1; }
+  return 0;
+}
+
 /*
  * Read back every attribute getter and cross-check it against the dedicated accessor / the other
  * matrix layout. Fills *facts on success. Returns CUOPT_SUCCESS or the first failing status.
@@ -3231,6 +3249,8 @@ static cuopt_int_t read_all_problem_attributes(const char* filename, problem_fac
   cuopt_int_t* csc_row = NULL;
   cuopt_float_t* csc_val = NULL;
   cuopt_int_t* col_counts = NULL;
+  coo_triple_t* csr_triples = NULL;
+  coo_triple_t* csc_triples = NULL;
 
   cuopt_int_t nv = 0, nc = 0, nnz = 0;
   cuopt_int_t a_nv = 0, a_nc = 0, a_nnz = 0, a_sense = 0, d_sense = 0;
@@ -3413,6 +3433,37 @@ static cuopt_int_t read_all_problem_attributes(const char* filename, problem_fac
     }
   }
 
+  /* Full equivalence: CSR and CSC must encode the same (row, col, value) multiset. Expand each
+     layout to COO triples, sort both, and compare entry-by-entry (values included). This catches
+     mispaired values / wrong row indices that the per-column count check alone would miss. */
+  csr_triples = (coo_triple_t*)malloc((size_t)nnz * sizeof(coo_triple_t));
+  csc_triples = (coo_triple_t*)malloc((size_t)nnz * sizeof(coo_triple_t));
+  if (!csr_triples || !csc_triples) { status = CUOPT_OUT_OF_MEMORY; goto DONE; }
+  for (i = 0; i < nc; ++i) {
+    for (k = csr_off[i]; k < csr_off[i + 1]; ++k) {
+      csr_triples[k].row = i;
+      csr_triples[k].col = csr_col[k];
+      csr_triples[k].val = csr_val[k];
+    }
+  }
+  for (i = 0; i < nv; ++i) {
+    for (k = csc_off[i]; k < csc_off[i + 1]; ++k) {
+      csc_triples[k].row = csc_row[k];
+      csc_triples[k].col = i;
+      csc_triples[k].val = csc_val[k];
+    }
+  }
+  qsort(csr_triples, (size_t)nnz, sizeof(coo_triple_t), compare_coo);
+  qsort(csc_triples, (size_t)nnz, sizeof(coo_triple_t), compare_coo);
+  for (k = 0; k < nnz; ++k) {
+    if (csr_triples[k].row != csc_triples[k].row || csr_triples[k].col != csc_triples[k].col ||
+        csr_triples[k].val != csc_triples[k].val) {
+      printf("CSC entry %d disagrees with CSR (row/col/value)\n", (int)k);
+      status = CUOPT_VALIDATION_ERROR;
+      goto DONE;
+    }
+  }
+
   facts->n_variables   = nv;
   facts->n_constraints = nc;
   facts->n_nonzeros    = nnz;
@@ -3442,6 +3493,8 @@ DONE:
   free(csc_row);
   free(csc_val);
   free(col_counts);
+  free(csr_triples);
+  free(csc_triples);
   return status;
 #undef ATTR_CHECK
 }
@@ -3492,4 +3545,212 @@ cuopt_int_t test_problem_attributes_qp(const char* filename)
     return CUOPT_VALIDATION_ERROR;
   }
   return CUOPT_SUCCESS;
+}
+
+/*
+ * Build a small MIP by hand with cuOptCreateProblem, then read it back through the new getters and
+ * compare against the exact values we constructed. This is the only path that value-checks the
+ * attributes with no dedicated getter to cross-check (num_integers, problem_category, is_mip,
+ * has_quadratic_*, objective_scaling_factor) and the CSC matrix values. Needs no dataset file and
+ * works on either backend.
+ */
+cuopt_int_t test_problem_attributes_created(void)
+{
+#define C_CHECK(call)                                     \
+  do {                                                    \
+    cuopt_int_t _s = (call);                              \
+    if (_s != CUOPT_SUCCESS) {                            \
+      printf("FAILED (%d): %s\n", (int)_s, #call);        \
+      status = _s;                                        \
+      goto DONE;                                          \
+    }                                                     \
+  } while (0)
+
+  cuOptOptimizationProblem problem = NULL;
+  cuopt_int_t status               = CUOPT_SUCCESS;
+
+  /* Known construction: 2 constraints x 3 variables, mixed integer.
+   *   A = [ 1 0 2 ]   sense=L rhs=10
+   *       [ 0 3 4 ]   sense=G rhs=20
+   *   obj = 5 + [1,2,3].x   var types = [I,C,I] */
+  const cuopt_int_t num_constraints            = 2;
+  const cuopt_int_t num_variables              = 3;
+  const cuopt_int_t nnz                        = 4;
+  const cuopt_float_t objective_offset         = 5.0;
+  const cuopt_float_t objective_coefficients[3] = {1.0, 2.0, 3.0};
+  const cuopt_int_t row_offsets[3]             = {0, 2, 4};
+  const cuopt_int_t col_indices[4]             = {0, 2, 1, 2};
+  const cuopt_float_t matrix_values[4]         = {1.0, 2.0, 3.0, 4.0};
+  const char constraint_sense[2]               = {CUOPT_LESS_THAN, CUOPT_GREATER_THAN};
+  const cuopt_float_t rhs[2]                    = {10.0, 20.0};
+  const cuopt_float_t lower_bounds[3]          = {0.0, 0.0, 0.0};
+  const cuopt_float_t upper_bounds[3]          = {100.0, 100.0, 100.0};
+  const char variable_types[3]                 = {CUOPT_INTEGER, CUOPT_CONTINUOUS, CUOPT_INTEGER};
+
+  cuopt_float_t fbuf[3];
+  char cbuf[3];
+  cuopt_int_t ival    = 0;
+  cuopt_float_t fval  = 0.0;
+  cuopt_int_t csc_off[4];
+  cuopt_int_t csc_row[4];
+  cuopt_float_t csc_val[4];
+  coo_triple_t exp_tr[4];
+  coo_triple_t got_tr[4];
+  cuopt_int_t i = 0, k = 0;
+  const char* names_probe[3];
+
+  C_CHECK(cuOptCreateProblem(num_constraints,
+                             num_variables,
+                             CUOPT_MINIMIZE,
+                             objective_offset,
+                             objective_coefficients,
+                             row_offsets,
+                             col_indices,
+                             matrix_values,
+                             constraint_sense,
+                             rhs,
+                             lower_bounds,
+                             upper_bounds,
+                             variable_types,
+                             &problem));
+
+  /* --- scalar attributes with NO dedicated getter: verify against the known construction --- */
+  C_CHECK(cuOptGetProblemIntAttribute(problem, CUOPT_ATTR_NUM_INTEGERS, &ival));
+  if (ival != 2) {
+    printf("num_integers: expected 2, got %d\n", (int)ival);
+    status = CUOPT_VALIDATION_ERROR;
+    goto DONE;
+  }
+  C_CHECK(cuOptGetProblemIntAttribute(problem, CUOPT_ATTR_PROBLEM_CATEGORY, &ival));
+  if (ival != 1 /* MIP */) {
+    printf("problem_category: expected MIP(1), got %d\n", (int)ival);
+    status = CUOPT_VALIDATION_ERROR;
+    goto DONE;
+  }
+  C_CHECK(cuOptGetProblemIntAttribute(problem, CUOPT_ATTR_IS_MIP, &ival));
+  if (ival != 1) {
+    printf("is_mip: expected 1, got %d\n", (int)ival);
+    status = CUOPT_VALIDATION_ERROR;
+    goto DONE;
+  }
+  C_CHECK(cuOptGetProblemIntAttribute(problem, CUOPT_ATTR_HAS_QUADRATIC_OBJECTIVE, &ival));
+  if (ival != 0) {
+    printf("has_quadratic_objective: expected 0, got %d\n", (int)ival);
+    status = CUOPT_VALIDATION_ERROR;
+    goto DONE;
+  }
+  C_CHECK(cuOptGetProblemIntAttribute(problem, CUOPT_ATTR_HAS_QUADRATIC_CONSTRAINTS, &ival));
+  if (ival != 0) {
+    printf("has_quadratic_constraints: expected 0, got %d\n", (int)ival);
+    status = CUOPT_VALIDATION_ERROR;
+    goto DONE;
+  }
+  C_CHECK(cuOptGetProblemFloatAttribute(problem, CUOPT_ATTR_OBJECTIVE_SCALING_FACTOR, &fval));
+  if (fval != 1.0) { /* create does not set it; default is 1 */
+    printf("objective_scaling_factor: expected 1, got %g\n", fval);
+    status = CUOPT_VALIDATION_ERROR;
+    goto DONE;
+  }
+  C_CHECK(cuOptGetProblemFloatAttribute(problem, CUOPT_ATTR_OBJECTIVE_OFFSET, &fval));
+  if (fval != objective_offset) {
+    printf("objective_offset: expected %g, got %g\n", objective_offset, fval);
+    status = CUOPT_VALIDATION_ERROR;
+    goto DONE;
+  }
+
+  /* --- array getters: compare against the exact values we constructed with --- */
+  C_CHECK(cuOptGetProblemFloatArrayAttribute(problem, CUOPT_ARRAY_ATTR_OBJECTIVE_COEFFICIENTS, fbuf,
+                                             num_variables));
+  if (!doubles_equal(fbuf, objective_coefficients, num_variables)) {
+    printf("objective_coefficients mismatch after create\n");
+    status = CUOPT_VALIDATION_ERROR;
+    goto DONE;
+  }
+  C_CHECK(cuOptGetProblemFloatArrayAttribute(problem, CUOPT_ARRAY_ATTR_VARIABLE_LOWER_BOUNDS, fbuf,
+                                             num_variables));
+  if (!doubles_equal(fbuf, lower_bounds, num_variables)) {
+    printf("variable lower bounds mismatch after create\n");
+    status = CUOPT_VALIDATION_ERROR;
+    goto DONE;
+  }
+  C_CHECK(cuOptGetProblemFloatArrayAttribute(problem, CUOPT_ARRAY_ATTR_VARIABLE_UPPER_BOUNDS, fbuf,
+                                             num_variables));
+  if (!doubles_equal(fbuf, upper_bounds, num_variables)) {
+    printf("variable upper bounds mismatch after create\n");
+    status = CUOPT_VALIDATION_ERROR;
+    goto DONE;
+  }
+  C_CHECK(
+    cuOptGetProblemFloatArrayAttribute(problem, CUOPT_ARRAY_ATTR_CONSTRAINT_RHS, fbuf, num_constraints));
+  if (!doubles_equal(fbuf, rhs, num_constraints)) {
+    printf("rhs mismatch after create\n");
+    status = CUOPT_VALIDATION_ERROR;
+    goto DONE;
+  }
+  C_CHECK(cuOptGetProblemCharArrayAttribute(problem, CUOPT_ARRAY_ATTR_CONSTRAINT_SENSE, cbuf,
+                                            num_constraints));
+  for (i = 0; i < num_constraints; ++i) {
+    if (cbuf[i] != constraint_sense[i]) {
+      printf("constraint sense mismatch at %d after create\n", (int)i);
+      status = CUOPT_VALIDATION_ERROR;
+      goto DONE;
+    }
+  }
+  C_CHECK(cuOptGetProblemCharArrayAttribute(problem, CUOPT_ARRAY_ATTR_VARIABLE_TYPES, cbuf,
+                                            num_variables));
+  for (i = 0; i < num_variables; ++i) {
+    if (cbuf[i] != variable_types[i]) {
+      printf("variable type mismatch at %d after create\n", (int)i);
+      status = CUOPT_VALIDATION_ERROR;
+      goto DONE;
+    }
+  }
+
+  /* --- CSC values: must equal the transpose of the known CSR input (row,col,value multiset) --- */
+  C_CHECK(cuOptGetConstraintMatrixCSC(problem, csc_off, csc_row, csc_val));
+  if (csc_off[0] != 0 || csc_off[num_variables] != nnz) {
+    printf("CSC offsets inconsistent with nnz after create\n");
+    status = CUOPT_VALIDATION_ERROR;
+    goto DONE;
+  }
+  for (i = 0; i < num_constraints; ++i) {
+    for (k = row_offsets[i]; k < row_offsets[i + 1]; ++k) {
+      exp_tr[k].row = i;
+      exp_tr[k].col = col_indices[k];
+      exp_tr[k].val = matrix_values[k];
+    }
+  }
+  for (i = 0; i < num_variables; ++i) {
+    for (k = csc_off[i]; k < csc_off[i + 1]; ++k) {
+      got_tr[k].row = csc_row[k];
+      got_tr[k].col = i;
+      got_tr[k].val = csc_val[k];
+    }
+  }
+  qsort(exp_tr, (size_t)nnz, sizeof(coo_triple_t), compare_coo);
+  qsort(got_tr, (size_t)nnz, sizeof(coo_triple_t), compare_coo);
+  for (k = 0; k < nnz; ++k) {
+    if (exp_tr[k].row != got_tr[k].row || exp_tr[k].col != got_tr[k].col ||
+        exp_tr[k].val != got_tr[k].val) {
+      printf("CSC entry %d does not match constructed CSR transpose\n", (int)k);
+      status = CUOPT_VALIDATION_ERROR;
+      goto DONE;
+    }
+  }
+
+  /* cuOptCreateProblem does not set variable/row names, so the string-array getter has nothing to
+     return; asking for num_variables names must be rejected (count != stored 0). Name *values* can
+     only be verified from a parsed file (covered by the file-based tests). */
+  if (cuOptGetProblemStringArrayAttribute(
+        problem, CUOPT_STRING_ARRAY_VARIABLE_NAMES, names_probe, num_variables) !=
+      CUOPT_INVALID_ARGUMENT) {
+    printf("Expected INVALID_ARGUMENT reading names from an unnamed created problem\n");
+    status = CUOPT_VALIDATION_ERROR;
+    goto DONE;
+  }
+
+DONE:
+  cuOptDestroyProblem(&problem);
+  return status;
+#undef C_CHECK
 }

@@ -225,7 +225,7 @@
 #define CUOPT_BARRIER_ITERATIVE_REFINEMENT_OFF 0
 #define CUOPT_BARRIER_ITERATIVE_REFINEMENT_ON  1
 
-/* @brief Scalar problem attribute selectors (see cuOptGetProblem{Int,Float,String}Attribute).
+/* @brief Scalar problem attribute selectors
  * Passed as cuopt_int_t; the valid set depends on the accessor's value type. */
 #define CUOPT_ATTR_NUM_VARIABLES             0
 #define CUOPT_ATTR_NUM_CONSTRAINTS           1
