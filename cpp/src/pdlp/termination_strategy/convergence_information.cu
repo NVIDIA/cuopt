@@ -480,8 +480,8 @@ void convergence_information_t<i_t, f_t>::distributed_compute_primal_residual_an
   cuopt_assert(!batch_mode_, "multi-GPU PDLP is not supported in batch mode");
 
   // Prepare halo values in potential_next_primal_solution.
-  engine.halo_exchange_var([](pdhg_solver_t<i_t, f_t>& pdhg) -> rmm::device_uvector<f_t>& {
-    return pdhg.get_potential_next_primal_solution();
+  engine.halo_exchange_var([](pdlp_solver_t<i_t, f_t>& p) -> rmm::device_uvector<f_t>& {
+    return p.pdhg_solver_.get_potential_next_primal_solution();
   });
 
   // Per-shard primal residual + partial (owned) primal objective.
@@ -536,8 +536,8 @@ void convergence_information_t<i_t, f_t>::distributed_compute_dual_residual_and_
   // 1) Halo-exchange potential_next_dual_solution on every shard so the
   //    A_T_shard @ y SpMV inside compute_dual_residual reads correct values
   //    in the cstr halo region
-  engine.halo_exchange_cstr([](pdhg_solver_t<i_t, f_t>& pdhg) -> rmm::device_uvector<f_t>& {
-    return pdhg.get_potential_next_dual_solution();
+  engine.halo_exchange_cstr([](pdlp_solver_t<i_t, f_t>& p) -> rmm::device_uvector<f_t>& {
+    return p.pdhg_solver_.get_potential_next_dual_solution();
   });
 
   // Same primal_iterate fix as the primal block above: use the shard's
