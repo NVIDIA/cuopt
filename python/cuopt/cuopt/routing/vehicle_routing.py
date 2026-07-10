@@ -44,6 +44,12 @@ class DataModel(vehicle_routing_wrapper.DataModel):
         order location is considered as start and end location of all the
         vehicles.
 
+      - Array parameters documented below as ``cudf.Series`` or
+        ``cudf.DataFrame`` also accept an equivalent ``numpy.ndarray`` or
+        ``pandas.Series``/``pandas.DataFrame``. cuDF inputs stay on the GPU;
+        host (numpy/pandas) inputs are copied to the device for the local
+        solve. Python lists and tuples are not supported.
+
     Examples
     --------
     >>> from cuopt import routing
@@ -81,9 +87,9 @@ class DataModel(vehicle_routing_wrapper.DataModel):
 
         Parameters
         ----------
-        cost_mat : cudf.DataFrame dtype - float32
-            cudf.DataFrame representing floating point square matrix with
-            num_location rows and columns.
+        cost_mat : cudf.DataFrame, pandas.DataFrame or numpy.ndarray, dtype - float32
+            Floating point square matrix with num_location rows and columns.
+            See the DataModel note on accepted array types.
         vehicle_type : uint8
             Identifier of the vehicle.
         skip_validation : bool
