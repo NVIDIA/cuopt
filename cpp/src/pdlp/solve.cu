@@ -2373,6 +2373,14 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
                 error_type_t::ValidationError,
                 "Distributed PDLP does not support initial primal/dual solutions or warm-start "
                 "data.");
+  // save_best_primal_so_far snapshots the current-or-average iterate mid-solve via
+  // record_best_primal_so_far. That path reads shard-local buffers
+  // (pdhg_solver_.get_primal_solution() / unscaled_primal_avg_solution_) that are never
+  // coherently assembled on the master in distributed mode, so the resulting snapshot would
+  // be silently wrong. Fail loudly instead.
+  cuopt_expects(!settings_resolved.save_best_primal_so_far,
+                error_type_t::ValidationError,
+                "Distributed PDLP does not support save_best_primal_so_far.");
   // Distributed PDLP today only supports the Stable3-shaped hyper-param profile:
   //   - initial_step_size_max_singular_value = true  (matches the sigma_max seeding
   //     driven by distributed_max_singular_value in the setup),
