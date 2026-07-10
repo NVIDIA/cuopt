@@ -41,15 +41,12 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
          "Right device must be set before building the shard");
 
   // ---- 0. Problem-level scalars, taken straight from the global mps. ----
-  // For a maximize problem we negate the objective (and offset / scaling
-  // factor), matching problem_helpers.cuh::convert_to_maximization_problem.
-  const bool maximize          = mps.get_sense();
-  f_t objective_offset         = mps.get_objective_offset();
-  f_t objective_scaling_factor = mps.get_objective_scaling_factor();
-  if (maximize) {
-    objective_offset         = -objective_offset;
-    objective_scaling_factor = -objective_scaling_factor;
-  }
+  // Objective coefficients / offset / scaling factor are passed through
+  // unchanged; the max -> min conversion (negating all three) happens once,
+  // in mip::problem_t's constructor via convert_to_maximization_problem
+  const bool maximize                = mps.get_sense();
+  const f_t objective_offset         = mps.get_objective_offset();
+  const f_t objective_scaling_factor = mps.get_objective_scaling_factor();
 
   // Global (unpartitioned) host arrays, indexed by global var / cstr id.
   const std::vector<f_t>& g_obj        = mps.get_objective_coefficients();
@@ -69,7 +66,7 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
 
   for (i_t i = 0; i < rank_data.owned_var_size; ++i) {
     const auto g   = rank_data.local_to_global_var[i];
-    h_obj[i]       = maximize ? -g_obj[g] : g_obj[g];
+    h_obj[i]       = g_obj[g];
     h_var_lower[i] = g_var_lower[g];
     h_var_upper[i] = g_var_upper[g];
   }
@@ -153,7 +150,12 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
              rank_data.h_A_t_values.data(),
              rank_data.h_A_t_values.size(),
              stream_view);
-  raft::copy(scaled.objective_coefficients.data(), h_obj.data(), h_obj.size(), stream_view);
+  // Use sub_problem's coefficients (already negated for max by
+  // convert_to_maximization_problem) so scaled matches the solver-facing form.
+  raft::copy(scaled.objective_coefficients.data(),
+             sub_problem->objective_coefficients.data(),
+             sub_problem->objective_coefficients.size(),
+             stream_view);
   raft::copy(
     scaled.constraint_lower_bounds.data(), h_cstr_lower.data(), h_cstr_lower.size(), stream_view);
   raft::copy(
