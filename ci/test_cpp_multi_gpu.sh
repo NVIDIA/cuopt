@@ -112,8 +112,6 @@ if [ "${#mg_tests[@]}" -eq 0 ]; then
   exit 0
 fi
 
-# NCCL diagnostics for CI logs when distributed PDLP halo exchange fails.
-export NCCL_DEBUG=INFO
 # PHB topology on the 2-GPU runner: disable direct GPU peer access (see topo above).
 # NCCL then uses the SHM transport, which needs a larger /dev/shm than the 64 MB
 # container default — the workflow launches the container with --shm-size for this.
