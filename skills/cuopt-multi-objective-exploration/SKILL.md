@@ -135,7 +135,7 @@ If all boxes are small and even, the sweep is likely adequate — say so and sto
 
 ### Fill the largest gaps first
 
-For each flagged box, solve one ε-constraint subproblem targeted inside it: optimize one objective with the other(s) bounded at the box midpoint. A new point that survives Step 4's dominance filter means the gap was real (an ε solve can return a weakly optimal point) — bisect: two more targets inside the two sub-boxes it creates. An endpoint coming back clears just the probed side of the bound. To certify the whole box, move the bound to just inside the far endpoint (one solve on integer data): if the optimal value there matches the endpoint's, the gap is a true discontinuity. Stop on a solve budget, or when the remaining boxes fall below the flag bar.
+For each flagged box, solve one ε-constraint subproblem targeted inside it: optimize one objective with the other bounded at the box midpoint (bi-objective; with more objectives, sort by each objective in turn and place one target per flagged box instead of recursing). Only certified `Optimal` results settle or steer anything here — a time-limited incumbent is kept as a point (tagged, below) but proves nothing about the gap. A new certified point that survives Step 4's dominance filter means the gap was real (an ε solve can return a weakly optimal point) — bisect: two more targets inside the two sub-boxes it creates. A certified endpoint coming back clears just the probed side of the bound; certifying the whole box as a true discontinuity also needs a known objective step size — all-integer objective coefficients over integer variables give one — to place the bound just inside the far endpoint and match its certified optimum. Without that step size, report the box as a candidate gap, not a proven discontinuity. Stop on a solve budget, or when the remaining boxes fall below the flag bar.
 
 ### Warm-start each solve (cheap insurance)
 
@@ -150,9 +150,9 @@ If a subproblem hits its time limit with a feasible incumbent (`FeasibleFound`),
 Every presented point carries one of two tags:
 
 - **exact** — `Optimal` at your gap setting, i.e. optimal to that gap (Step 4);
-- **approximate** — time-limited incumbent or heuristics-only result.
+- **approximate** — time-limited incumbent (quote its reported gap) or heuristics-only result (no bound exists; say so).
 
-State the counts with the frontier ("14 points, 11 exact, 3 approximate near the low-cost end"). Never present a mixed frontier as uniformly optimal.
+State the counts with the frontier ("14 points, 11 exact, 3 approximate near the low-cost end, worst gap 2.4%"). Never present a mixed frontier as uniformly optimal.
 
 ## Step 6 — interpret the frontier
 
