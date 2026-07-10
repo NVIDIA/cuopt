@@ -49,6 +49,24 @@ inline std::vector<f_t> make_singular_value_probe(std::size_t size)
   return out;
 }
 
+// Elementwise: v := v / *scalar. Named struct (rather than an extended HD
+// lambda) so it can be used as a cub::DeviceTransform op inside templates whose
+// template arguments are themselves local lambda types (which nvcc rejects).
+template <typename f_t>
+struct divide_by_device_scalar_t {
+  f_t const* scalar;
+  __host__ __device__ f_t operator()(f_t v) const { return v / *scalar; }
+};
+
+// Elementwise: q := -*scalar * q + z. Used in the power-iteration residual
+// update (single-GPU compute_initial_step_size and distributed
+// distributed_max_singular_value). Same named-struct rationale as above.
+template <typename f_t>
+struct residual_fma_neg_scalar_t {
+  f_t const* scalar;
+  __host__ __device__ f_t operator()(f_t q, f_t z) const { return -(*scalar) * q + z; }
+};
+
 template <typename f_t, int BLOCK_SIZE>
 DI f_t deterministic_block_reduce(raft::device_span<f_t> shared, f_t val)
 {

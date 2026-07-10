@@ -3433,12 +3433,11 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
       cuopt_assert(norm_q.value(stream_view_) != f_t(0), "norm q can't be 0");
 
       // d_q *= 1 / norm_q
-      cub::DeviceTransform::Transform(
-        d_q.data(),
-        d_q.data(),
-        d_q.size(),
-        [norm_q = norm_q.data()] __device__(f_t d_q) { return d_q / *norm_q; },
-        stream_view_.value());
+      cub::DeviceTransform::Transform(d_q.data(),
+                                      d_q.data(),
+                                      d_q.size(),
+                                      divide_by_device_scalar_t<f_t>{norm_q.data()},
+                                      stream_view_.value());
 
       // A_t_q = A_t @ d_q
       RAFT_CUSPARSE_TRY(
@@ -3475,14 +3474,12 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
                                                       sigma_max_sq.data(),
                                                       stream_view_.value()));
 
-      cub::DeviceTransform::Transform(
-        cuda::std::make_tuple(d_q.data(), d_z.data()),
-        d_q.data(),
-        d_q.size(),
-        [sigma_max_sq = sigma_max_sq.data()] __device__(f_t d_q, f_t d_z) {
-          return d_q * -(*sigma_max_sq) + d_z;
-        },
-        stream_view_.value());
+      // d_q := -sigma_max_sq * d_q + d_z
+      cub::DeviceTransform::Transform(cuda::std::make_tuple(d_q.data(), d_z.data()),
+                                      d_q.data(),
+                                      d_q.size(),
+                                      residual_fma_neg_scalar_t<f_t>{sigma_max_sq.data()},
+                                      stream_view_.value());
 
       my_l2_norm<i_t, f_t>(d_q, residual_norm, handle_ptr_);
 

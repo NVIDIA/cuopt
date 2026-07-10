@@ -588,6 +588,33 @@ struct multi_gpu_engine_t {
   void distributed_compute_A_x();
   void distributed_compute_At_y();
 
+  // Distributed A^T @ in on caller-owned scratch. Refreshes the halo of `in_bufs`
+  // (cstr axis, since the input is cstr-shaped), then dispatches each shard's
+  // local spmv_At_into that reads from in_descs[r] and writes into out_descs[r].
+  void distributed_spmv_At(std::vector<rmm::device_uvector<f_t>>& in_bufs,
+                           std::vector<cusparse_dn_vec_descr_wrapper_t<f_t>>& in_descs,
+                           std::vector<cusparse_dn_vec_descr_wrapper_t<f_t>>& out_descs)
+  {
+    halo_exchange_cstr_bufs(in_bufs);
+    for_each_shard([&](auto& s, int r) {
+      s.sub_pdlp->pdhg_solver_.spmv_At_into(in_descs[r], out_descs[r]);
+    });
+  }
+
+  // Distributed A @ in on caller-owned scratch. Refreshes the halo of `in_bufs`
+  // (var axis, since the input is var-shaped), then dispatches each shard's
+  // local spmv_A_into. Caller owns / sizes the descriptor vectors as above
+  // (in_descs to var_total, out_descs to cstr_total).
+  void distributed_spmv_A(std::vector<rmm::device_uvector<f_t>>& in_bufs,
+                          std::vector<cusparse_dn_vec_descr_wrapper_t<f_t>>& in_descs,
+                          std::vector<cusparse_dn_vec_descr_wrapper_t<f_t>>& out_descs)
+  {
+    halo_exchange_var_bufs(in_bufs);
+    for_each_shard([&](auto& s, int r) {
+      s.sub_pdlp->pdhg_solver_.spmv_A_into(in_descs[r], out_descs[r]);
+    });
+  }
+
   // -------- High-level algorithms (defined in distributed_algorithms.cu) ---
   // Refreshes the halo copies of the cumulative variable + constraint scalings on
   // every shard. Used by the matrix-scaling passes (Ruiz, Pock-Chambolle)

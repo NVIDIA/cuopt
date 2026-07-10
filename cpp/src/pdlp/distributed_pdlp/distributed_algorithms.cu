@@ -203,12 +203,13 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value(i_t n_global_cs
 {
   raft::common::nvtx::range scope("distributed_max_singular_value");
 
+  // ┌──────────────────────────────────────────────────────────────┐
+  // │                            Setup                             │
+  // └──────────────────────────────────────────────────────────────┘
+  
   const int nb = static_cast<int>(shards.size());
-
-  // Generate the GLOBAL z[] sequence in cstr-index order from a fresh
-  // Global z[] in cstr-index order — each shard keeps only
-  // z[global_idx_for_owned_local_i]. Shared with the single-GPU
-  // compute_initial_step_size path so both produce bit-identical seeds.
+  // Generate the GLOBAL z[] sequence in cstr-index order.
+  // Scatter it to the shards according to the partition.
   std::vector<f_t> h_global_z =
     make_singular_value_probe<f_t>(static_cast<std::size_t>(n_global_cstrs));
 
@@ -220,12 +221,11 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value(i_t n_global_cs
   std::vector<rmm::device_scalar<f_t>> norm_q;
   std::vector<rmm::device_scalar<f_t>> residual_norm;
 
+  std::vector<cusparse_dn_vec_descr_wrapper_t<f_t>> q_dn(nb);
   std::vector<cusparse_dn_vec_descr_wrapper_t<f_t>> z_dn(nb);
   std::vector<cusparse_dn_vec_descr_wrapper_t<f_t>> atq_dn(nb);
 
   // Per-shard owned-slice spans consumed by the engine's *_bufs helpers.
-  // (Scalar outputs are passed as rmm::device_scalar directly via the
-  // scalar-owner overloads on distributed_{l2_norm,dot}_bufs.)
   std::vector<raft::device_span<f_t>> q_owned, z_owned;
   for (auto* v : {&q, &z, &atq}) v->reserve(nb);
   for (auto* v : {&sigma_sq, &norm_q, &residual_norm}) v->reserve(nb);
@@ -244,6 +244,7 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value(i_t n_global_cs
     sigma_sq.emplace_back(s.stream.view());
     norm_q.emplace_back(s.stream.view());
     residual_norm.emplace_back(s.stream.view());
+    q_dn[r].create(static_cast<int64_t>(cstr_total), q.back().data());
     z_dn[r].create(static_cast<int64_t>(cstr_total), z.back().data());
     atq_dn[r].create(static_cast<int64_t>(var_total), atq.back().data());
 
@@ -257,27 +258,24 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value(i_t n_global_cs
                    s.rank_data.local_to_global_cstr.begin() + n_owned,
                    h_global_z.begin(),
                    h_owned_z.begin());
-    if (n_owned > 0) {
-      raft::copy(
-        z.back().data(), h_owned_z.data(), static_cast<std::size_t>(n_owned), s.stream.view());
-    }
-    if (cstr_total > n_owned) {
-      thrust::fill(rmm::exec_policy_nosync(s.stream.view()),
-                   z.back().data() + n_owned,
-                   z.back().data() + cstr_total,
-                   f_t(0));
-    }
+    raft::copy(
+      z.back().data(), h_owned_z.data(), static_cast<std::size_t>(n_owned), s.stream.view());
+    thrust::fill(rmm::exec_policy_nosync(s.stream.view()),
+                  z.back().data() + n_owned,
+                  z.back().data() + cstr_total,
+                  f_t(0));
+
     // Sync to ensure h_owned_z stays valid through the H2D copy (it goes
     // out of scope at end of this iteration of the per-shard loop).
     s.stream.synchronize();
   });
 
-  // ===== Power iteration =====
-  // Mirrors single-GPU compute_initial_step_size. All cross-shard math and
-  // NCCL comms are delegated to multi_gpu_engine_t's *_bufs helpers; the
-  // only inline work is (a) the two elementwise transforms whose functor
-  // captures each shard's own scalar (norm_q[r], sigma_sq[r]) and (b) the
-  // per-shard SpMVs that call pdhg_solver_'s A_into / A_T_into.
+  // ┌──────────────────────────────────────────────────────────────┐
+  // │                        Power iteration                       │
+  // └──────────────────────────────────────────────────────────────┘
+
+  // Mirrors single-GPU compute_initial_step_size.
+  // copy -> l2 norm -> transform -> SpMV -> SpMV -> dot -> transform -> norm -> convergence check
   for (int it = 0; it < max_iterations; ++it) {
     // q := z on the owned slice (the carried iterate).
     for_each_shard([&](auto& s, int r) {
@@ -289,51 +287,35 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value(i_t n_global_cs
     distributed_l2_norm_bufs(q_owned, norm_q);
 
     // q /= ||q||₂ on owned slice (halo gets refreshed by next exchange).
-    // Kept as per-shard cub launch: the divisor is a per-shard scalar
-    // captured in the device lambda, so a single shared functor won't do.
+    // Kept as per-shard cub launch: the divisor is a per-shard scalar.
     for_each_shard([&](auto& s, int r) {
       const i_t n_owned = s.rank_data.owned_cstr_size;
-      cub::DeviceTransform::Transform(
-        q[r].data(),
-        q[r].data(),
-        n_owned,
-        [n = norm_q[r].data()] __device__(f_t v) { return v / *n; },
-        s.stream.view().value());
+      cub::DeviceTransform::Transform(q[r].data(),
+                                      q[r].data(),
+                                      n_owned,
+                                      divide_by_device_scalar_t<f_t>{norm_q[r].data()},
+                                      s.stream.view().value());
     });
 
-    // atq = A^T q : refresh halo of q, then per-shard SpMV.
-    halo_exchange_cstr_bufs(q);
-    for (int r = 0; r < nb; ++r) {
-      auto& s = *shards[r];
-      raft::device_setter guard(s.device_id);
-      s.sub_pdlp->pdhg_solver_.spmv_At_into(q[r], atq_dn[r]);
-    }
+    // atq = A^T q  (fused halo-refresh of q + per-shard local SpMV).
+    distributed_spmv_At(q, q_dn, atq_dn);
 
-    // z = A atq : refresh halo of atq, then per-shard SpMV.
-    halo_exchange_var_bufs(atq);
-    for (int r = 0; r < nb; ++r) {
-      auto& s = *shards[r];
-      raft::device_setter guard(s.device_id);
-      s.sub_pdlp->pdhg_solver_.spmv_A_into(atq[r], z_dn[r]);
-    }
+    // z = A atq  (fused halo-refresh of atq + per-shard local SpMV).
+    distributed_spmv_A(atq, atq_dn, z_dn);
 
     // σ² = q · z over the global OWNED cstr slice (= q^T A A^T q = σ_max²
     // when q is the dominant left-singular vector).
     distributed_dot_bufs(q_owned, z_owned, sigma_sq);
 
     // q := -σ² q + z (owned slice) — residual of the eigen-equation.
-    // Kept inline for the same per-shard-scalar reason as normalize above.
-    for (int r = 0; r < nb; ++r) {
-      auto& s = *shards[r];
-      raft::device_setter guard(s.device_id);
+    for_each_shard([&](auto& s, int r) {
       const i_t n_owned = s.rank_data.owned_cstr_size;
-      cub::DeviceTransform::Transform(
-        cuda::std::make_tuple(q[r].data(), z[r].data()),
-        q[r].data(),
-        n_owned,
-        [s2 = sigma_sq[r].data()] __device__(f_t qv, f_t zv) { return -(*s2) * qv + zv; },
-        s.stream.view().value());
-    }
+      cub::DeviceTransform::Transform(cuda::std::make_tuple(q[r].data(), z[r].data()),
+                                      q[r].data(),
+                                      n_owned,
+                                      residual_fma_neg_scalar_t<f_t>{sigma_sq[r].data()},
+                                      s.stream.view().value());
+    });
 
     // Convergence check via global residual norm.
     distributed_l2_norm_bufs(q_owned, residual_norm);
@@ -352,8 +334,7 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value(i_t n_global_cs
   raft::copy(&sigma_sq_h, sigma_sq[0].data(), 1, s0.stream.view());
   s0.stream.synchronize();
 
-  // z_dn / atq_dn descriptors are released by their RAII wrappers on return.
-  return std::sqrt(std::max(sigma_sq_h, f_t(0)));
+  return sigma_sq_h;
 }
 
 // -------- Distributed initial step size ---------------------------------
@@ -379,13 +360,13 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_compute_initial_step_size(
                 "of A fallback is single-GPU only. This should have been rejected "
                 "earlier in solve_lp_distributed_from_mps.");
 
-  const f_t sigma_max = distributed_max_singular_value(n_global_cstrs, max_iterations, tolerance);
+  const f_t sigma_max_sq = distributed_max_singular_value(n_global_cstrs, max_iterations, tolerance);
 
   auto& master     = *master_pdlp_;
   auto* handle_ptr = master.get_handle_ptr();
   auto stream_view = handle_ptr->get_stream();
 
-  const f_t h_step_size = (sigma_max > f_t{0}) ? scaling_factor / sigma_max : f_t{1};
+  const f_t h_step_size = scaling_factor / std::sqrt(sigma_max_sq.value(stream_view_));
 
   raft::copy(master.get_step_size().data(), &h_step_size, 1, stream_view);
   for_each_shard([&](auto& shard) {
@@ -397,8 +378,7 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_compute_initial_step_size(
 
 // -------- Distributed initial primal weight ------------------------------
 // Distributed PDLP is currently restricted to the Stable3-shaped hyper-param
-// profile (validated up front in solve_lp_distributed_from_mps, and defended
-// again here). In that regime, single-GPU compute_initial_primal_weight
+// profile. Single-GPU compute_initial_primal_weight
 // short-circuits to primal_weight = 1 without touching the norms (see
 // pdlp.cu:
 //   !initial_primal_weight_combined_bounds && bound_objective_rescaling

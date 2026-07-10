@@ -618,22 +618,18 @@ void pdhg_solver_t<i_t, f_t>::compute_A_x()
   }
 }
 
-// out_desc = A^T @ in_buf, on this shard's local matrix. in_buf is an arbitrary
-// caller-owned (constraint/dual-shaped) buffer; we wrap it in a throwaway dense
-// descriptor instead of hijacking a canonical solution descriptor, so no shared
-// cusparse_view_ state is mutated. Used by the distributed max-singular-value
-// power iteration to SpMV scratch buffers.
+// out_desc = A^T @ in_desc, on this shard's local matrix. Both descriptors are
+// caller-owned and can point at arbitrary scratch buffers. Used by
+// multi_gpu_engine_t::distributed_spmv_At.
 template <typename i_t, typename f_t>
-void pdhg_solver_t<i_t, f_t>::spmv_At_into(rmm::device_uvector<f_t>& in_buf,
+void pdhg_solver_t<i_t, f_t>::spmv_At_into(cusparseDnVecDescr_t in_desc,
                                            cusparseDnVecDescr_t out_desc)
 {
-  cusparse_dn_vec_descr_wrapper_t<f_t> in_vec;
-  in_vec.create(in_buf.size(), in_buf.data());
   RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
                                                        CUSPARSE_OPERATION_NON_TRANSPOSE,
                                                        reusable_device_scalar_value_1_.data(),
                                                        cusparse_view_.A_T,
-                                                       in_vec,
+                                                       in_desc,
                                                        reusable_device_scalar_value_0_.data(),
                                                        out_desc,
                                                        CUSPARSE_SPMV_CSR_ALG2,
@@ -641,20 +637,17 @@ void pdhg_solver_t<i_t, f_t>::spmv_At_into(rmm::device_uvector<f_t>& in_buf,
                                                        stream_view_));
 }
 
-// out_desc = A @ in_buf, the spmv_A_into counterpart of spmv_At_into: wraps the
-// arbitrary (variable/primal-shaped) in_buf in a throwaway descriptor.
+// out_desc = A @ in_desc, the counterpart of spmv_At_into on this shard's local A.
 template <typename i_t, typename f_t>
-void pdhg_solver_t<i_t, f_t>::spmv_A_into(rmm::device_uvector<f_t>& in_buf,
+void pdhg_solver_t<i_t, f_t>::spmv_A_into(cusparseDnVecDescr_t in_desc,
                                           cusparseDnVecDescr_t out_desc)
 {
-  cusparse_dn_vec_descr_wrapper_t<f_t> in_vec;
-  in_vec.create(in_buf.size(), in_buf.data());
   RAFT_CUSPARSE_TRY(
     raft::sparse::detail::cusparsespmv(handle_ptr_->get_cusparse_handle(),
                                        CUSPARSE_OPERATION_NON_TRANSPOSE,
                                        reusable_device_scalar_value_1_.data(),
                                        cusparse_view_.A,
-                                       in_vec,
+                                       in_desc,
                                        reusable_device_scalar_value_0_.data(),
                                        out_desc,
                                        CUSPARSE_SPMV_CSR_ALG2,
