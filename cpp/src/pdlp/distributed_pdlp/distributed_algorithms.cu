@@ -3,8 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+// Out-of-line definitions of multi_gpu_engine_t's high-level algorithm methods
+// used by the pdlp solver.
 #include <pdlp/cusparse_view.hpp>
-#include <pdlp/distributed_pdlp/distributed_algorithms.hpp>
 #include <pdlp/distributed_pdlp/multi_gpu_engine.hpp>
 #include <pdlp/pdlp.cuh>
 #include <pdlp/utils.cuh>
@@ -26,10 +27,13 @@ namespace cuopt::mathematical_optimization::pdlp {
 
 // -------- Solution gather (shards -> master) ------------------------------
 template <typename i_t, typename f_t>
-void gather_potential_next_solutions_to_master(multi_gpu_engine_t<i_t, f_t>& engine,
-                                               pdhg_solver_t<i_t, f_t>& master_pdhg,
-                                               rmm::device_uvector<f_t>& master_reduced_cost)
+void multi_gpu_engine_t<i_t, f_t>::gather_potential_next_solutions_to_master(
+  rmm::device_uvector<f_t>& master_reduced_cost)
 {
+  cuopt_assert(master_pdlp_ != nullptr,
+               "gather_potential_next_solutions_to_master requires set_master(...)");
+  auto& master_pdhg = master_pdlp_->pdhg_solver_;
+
   const std::size_t total_vars  = master_pdhg.get_potential_next_primal_solution().size();
   const std::size_t total_cstrs = master_pdhg.get_potential_next_dual_solution().size();
 
@@ -37,7 +41,7 @@ void gather_potential_next_solutions_to_master(multi_gpu_engine_t<i_t, f_t>& eng
   std::vector<f_t> h_dual(total_cstrs);
   std::vector<f_t> h_reduced_cost(total_vars);
 
-  for (auto& s_uptr : engine.shards) {
+  for (auto& s_uptr : shards) {
     auto& s = *s_uptr;
     raft::device_setter guard(s.device_id);
     const i_t nv = s.rank_data.owned_var_size;
@@ -90,18 +94,18 @@ void gather_potential_next_solutions_to_master(multi_gpu_engine_t<i_t, f_t>& eng
     }
   }
 
-  // Host -> master device. engine.stream lives on the master device
+  // Host -> master device. `stream` lives on the master device
   // (created at engine construction when master device was current).
   raft::copy(master_pdhg.get_potential_next_primal_solution().data(),
              h_primal.data(),
              total_vars,
-             engine.stream.view());
+             stream.view());
   raft::copy(master_pdhg.get_potential_next_dual_solution().data(),
              h_dual.data(),
              total_cstrs,
-             engine.stream.view());
-  raft::copy(master_reduced_cost.data(), h_reduced_cost.data(), total_vars, engine.stream.view());
-  RAFT_CUDA_TRY(cudaStreamSynchronize(engine.stream.view().value()));
+             stream.view());
+  raft::copy(master_reduced_cost.data(), h_reduced_cost.data(), total_vars, stream.view());
+  RAFT_CUDA_TRY(cudaStreamSynchronize(stream.view().value()));
 }
 
 // -------- Distributed bound / objective rescaling -------------------------
@@ -109,8 +113,7 @@ void gather_potential_next_solutions_to_master(multi_gpu_engine_t<i_t, f_t>& eng
 // raw squared-sum on device to hand to NCCL AllReduce and the base version comptues
 // tranform->reduce->transform in one cub call for efficiency
 template <typename i_t, typename f_t>
-void distributed_bound_objective_rescaling(multi_gpu_engine_t<i_t, f_t>& engine,
-                                           f_t c_scaling_weight)
+void multi_gpu_engine_t<i_t, f_t>::distributed_bound_objective_rescaling(f_t c_scaling_weight)
 {
   raft::common::nvtx::range scope("distributed_bound_objective_rescaling");
 
@@ -118,7 +121,7 @@ void distributed_bound_objective_rescaling(multi_gpu_engine_t<i_t, f_t>& engine,
   //         squared L2 norms on host as we go.
   f_t global_bound_sq = f_t(0);
   f_t global_obj_sq   = f_t(0);
-  engine.for_each_shard([&](auto& s) {
+  for_each_shard([&](auto& s) {
     const auto& scaled     = s.sub_pdlp->get_initial_scaling_strategy().get_scaled_op_problem();
     const i_t n_owned_cstr = static_cast<i_t>(s.rank_data.owned_cstr_size);
     const i_t n_owned_var  = static_cast<i_t>(s.rank_data.owned_var_size);
@@ -145,23 +148,21 @@ void distributed_bound_objective_rescaling(multi_gpu_engine_t<i_t, f_t>& engine,
   const f_t obj_rescaling   = rescaling_from_squared_norm_op<f_t>{}(global_obj_sq);
 
   // 4) Publish + apply on every shard via the shared helpers.
-  engine.for_each_shard([&](auto& s) {
+  for_each_shard([&](auto& s) {
     auto& scaling = s.sub_pdlp->get_initial_scaling_strategy();
     scaling.set_h_bound_rescaling(bound_rescaling);
     scaling.set_h_objective_rescaling(obj_rescaling);
     scaling.apply_bound_objective_rescaling_to_problem();
   });
 
-  engine.for_each_shard([](auto& shard) { shard.stream.synchronize(); });
+  for_each_shard([](auto& shard) { shard.stream.synchronize(); });
 }
 
 // -------- Distributed Ruiz inf-scaling ------------------------------------
 // Each shard owns its rows AND its columns and stores both complete (h_A =
 // owned rows, h_A_t = owned columns)
 template <typename i_t, typename f_t>
-void distributed_ruiz_inf_scaling(multi_gpu_engine_t<i_t, f_t>& engine,
-                                  int num_iter,
-                                  i_t n_global_vars)
+void multi_gpu_engine_t<i_t, f_t>::distributed_ruiz_inf_scaling(int num_iter, i_t n_global_vars)
 {
   if (num_iter <= 0 || n_global_vars <= 0) return;
   raft::common::nvtx::range scope("distributed_ruiz_inf_scaling");
@@ -169,10 +170,10 @@ void distributed_ruiz_inf_scaling(multi_gpu_engine_t<i_t, f_t>& engine,
   for (int it = 0; it < num_iter; ++it) {
     // Refresh halo copies of both cumulative scalings (owner -> halo) so the
     // per-shard kernels read correct opposite-axis factors on their halo.
-    engine.halo_exchange_var_shard([](auto& s) -> auto& {
+    halo_exchange_var_shard([](auto& s) -> auto& {
       return s.sub_pdlp->get_initial_scaling_strategy().get_cummulative_variable_scaling();
     });
-    engine.halo_exchange_cstr_shard([](auto& s) -> auto& {
+    halo_exchange_cstr_shard([](auto& s) -> auto& {
       return s.sub_pdlp->get_initial_scaling_strategy().get_cummulative_constraint_matrix_scaling();
     });
 
@@ -181,20 +182,20 @@ void distributed_ruiz_inf_scaling(multi_gpu_engine_t<i_t, f_t>& engine,
     // cols: inf norm only over OWNED (full) cols from A_T
     // Then fold into cumulative on owned entries (halo entries get refreshed by
     // the next iteration's halo update)
-    engine.for_each_shard(
+    for_each_shard(
       [](auto& shard) { shard.sub_pdlp->get_initial_scaling_strategy().ruiz_iter_local(); });
   }
 
   // Final refresh so downstream consumers (the scaled problem, the next
   // distributed_max_singular_value, etc.) see correct halo factors.
-  engine.halo_exchange_var_shard([](auto& s) -> auto& {
+  halo_exchange_var_shard([](auto& s) -> auto& {
     return s.sub_pdlp->get_initial_scaling_strategy().get_cummulative_variable_scaling();
   });
-  engine.halo_exchange_cstr_shard([](auto& s) -> auto& {
+  halo_exchange_cstr_shard([](auto& s) -> auto& {
     return s.sub_pdlp->get_initial_scaling_strategy().get_cummulative_constraint_matrix_scaling();
   });
 
-  engine.for_each_shard([](auto& shard) { shard.stream.synchronize(); });
+  for_each_shard([](auto& shard) { shard.stream.synchronize(); });
 }
 
 // -------- Distributed Pock-Chambolle scaling ------------------------------
@@ -202,50 +203,48 @@ void distributed_ruiz_inf_scaling(multi_gpu_engine_t<i_t, f_t>& engine,
 // pock_chambolle_scaling. Row sum-of-powers come from the row-major matrix
 // (owned rows) and column sum-of-powers from A_T (owned columns).
 template <typename i_t, typename f_t>
-void distributed_pock_chambolle_scaling(multi_gpu_engine_t<i_t, f_t>& engine,
-                                        f_t alpha,
-                                        i_t n_global_vars)
+void multi_gpu_engine_t<i_t, f_t>::distributed_pock_chambolle_scaling(f_t alpha,
+                                                                      i_t n_global_vars)
 {
   if (n_global_vars <= 0) return;
   raft::common::nvtx::range scope("distributed_pock_chambolle_scaling");
 
   // Refresh halo copies of both cumulative scalings
-  engine.halo_exchange_var_shard([](auto& s) -> auto& {
+  halo_exchange_var_shard([](auto& s) -> auto& {
     return s.sub_pdlp->get_initial_scaling_strategy().get_cummulative_variable_scaling();
   });
-  engine.halo_exchange_cstr_shard([](auto& s) -> auto& {
+  halo_exchange_cstr_shard([](auto& s) -> auto& {
     return s.sub_pdlp->get_initial_scaling_strategy().get_cummulative_constraint_matrix_scaling();
   });
 
-  engine.for_each_shard([alpha](auto& shard) {
+  for_each_shard([alpha](auto& shard) {
     shard.sub_pdlp->get_initial_scaling_strategy().pock_chambolle_scaling(alpha);
   });
 
   // Final refresh for downstream consumers.
-  engine.halo_exchange_var_shard([](auto& s) -> auto& {
+  halo_exchange_var_shard([](auto& s) -> auto& {
     return s.sub_pdlp->get_initial_scaling_strategy().get_cummulative_variable_scaling();
   });
-  engine.halo_exchange_cstr_shard([](auto& s) -> auto& {
+  halo_exchange_cstr_shard([](auto& s) -> auto& {
     return s.sub_pdlp->get_initial_scaling_strategy().get_cummulative_constraint_matrix_scaling();
   });
 
-  engine.for_each_shard([](auto& shard) { shard.stream.synchronize(); });
+  for_each_shard([](auto& shard) { shard.stream.synchronize(); });
 }
 
 // -------- Distributed scaling orchestration ------------------------------
 // Mirrors what scale_problem() does in single-GPU by composing the
 // individual distributed passes. See the header for the full pipeline.
 template <typename i_t, typename f_t>
-void distributed_scaling(multi_gpu_engine_t<i_t, f_t>& engine,
-                         pdlp_hyper_params_t const& hyper_params,
-                         i_t n_global_vars,
-                         bool inside_mip)
+void multi_gpu_engine_t<i_t, f_t>::distributed_scaling(pdlp_hyper_params_t const& hyper_params,
+                                                       i_t n_global_vars,
+                                                       bool inside_mip)
 {
   raft::common::nvtx::range scope("distributed_scaling");
 
   // 1) Grow per-shard iteration_* scratch back to full size (the shard ctor
   //    released it after its no-op local pre-scaling pass)
-  engine.for_each_shard([](auto& shard) {
+  for_each_shard([](auto& shard) {
     auto& scaling = shard.sub_pdlp->get_initial_scaling_strategy();
     auto& op      = shard.sub_pdlp->get_op_problem_scaled();
     scaling.get_iteration_variable_scaling().resize(op.n_variables, shard.stream.view());
@@ -255,25 +254,25 @@ void distributed_scaling(multi_gpu_engine_t<i_t, f_t>& engine,
   // 2) Matrix scaling passes populate the cumulative row/col scalings on
   //    every shard. Each pass keeps the halo copies refreshed internally.
   if (hyper_params.do_ruiz_scaling) {
-    distributed_ruiz_inf_scaling(engine, hyper_params.default_l_inf_ruiz_iterations, n_global_vars);
+    distributed_ruiz_inf_scaling(hyper_params.default_l_inf_ruiz_iterations, n_global_vars);
   }
   if (hyper_params.do_pock_chambolle_scaling) {
     distributed_pock_chambolle_scaling(
-      engine, static_cast<f_t>(hyper_params.default_alpha_pock_chambolle_rescaling), n_global_vars);
+      static_cast<f_t>(hyper_params.default_alpha_pock_chambolle_rescaling), n_global_vars);
   }
 
   // 3) Per-shard apply of the accumulated scaling to A, c, variable and
   //    constraint bounds. This is scale_problem() minus its local
   //    bound/objective rescaling; the equivalent global step happens in (4).
-  engine.for_each_shard([](auto& shard) {
+  for_each_shard([](auto& shard) {
     shard.sub_pdlp->get_initial_scaling_strategy().apply_cummulative_scaling_to_problem();
   });
-  engine.for_each_shard([](auto& shard) { shard.stream.synchronize(); });
+  for_each_shard([](auto& shard) { shard.stream.synchronize(); });
 
   // 4) Global bound/objective rescaling (all shards get the identical scalar).
   if (hyper_params.bound_objective_rescaling) {
     distributed_bound_objective_rescaling(
-      engine, static_cast<f_t>(hyper_params.initial_primal_weight_c_scaling));
+      static_cast<f_t>(hyper_params.initial_primal_weight_c_scaling));
   }
 }
 
@@ -283,14 +282,13 @@ void distributed_scaling(multi_gpu_engine_t<i_t, f_t>& engine,
 // *_bufs helpers (halo_exchange_{cstr,var}_bufs, distributed_l2_norm_bufs,
 // distributed_dot_bufs), so this function contains no NCCL calls directly.
 template <typename i_t, typename f_t>
-f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
-                                   i_t n_global_cstrs,
-                                   int max_iterations,
-                                   f_t tolerance)
+f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value(i_t n_global_cstrs,
+                                                                 int max_iterations,
+                                                                 f_t tolerance)
 {
   raft::common::nvtx::range scope("distributed_max_singular_value");
 
-  const int nb = static_cast<int>(engine.shards.size());
+  const int nb = static_cast<int>(shards.size());
 
   // Generate the GLOBAL z[] sequence in cstr-index order from a fresh
   // mt19937(1), once per call. It's m doubles regardless of N (cheap).
@@ -324,7 +322,7 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
 
   // Scatter z according to partition
   for (int r = 0; r < nb; ++r) {
-    auto& s = *engine.shards[r];
+    auto& s = *shards[r];
     raft::device_setter guard(s.device_id);
     const i_t cstr_total = s.rank_data.total_cstr_size;
     const i_t var_total  = s.rank_data.total_var_size;
@@ -371,7 +369,7 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
   sigma_sq_scalar.reserve(nb);
   residual_scalar.reserve(nb);
   for (int r = 0; r < nb; ++r) {
-    auto& s                 = *engine.shards[r];
+    auto& s                 = *shards[r];
     const std::size_t owned = static_cast<std::size_t>(s.rank_data.owned_cstr_size);
     q_full.emplace_back(q[r].data(), q[r].size());
     atq_full.emplace_back(atq[r].data(), atq[r].size());
@@ -391,20 +389,20 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
   for (int it = 0; it < max_iterations; ++it) {
     // q := z on the owned slice (the carried iterate).
     for (int r = 0; r < nb; ++r) {
-      auto& s = *engine.shards[r];
+      auto& s = *shards[r];
       raft::device_setter guard(s.device_id);
       const i_t n_owned = s.rank_data.owned_cstr_size;
       raft::copy(q[r].data(), z[r].data(), n_owned, s.stream.view());
     }
 
     // ||q||₂ over the global OWNED cstr slice (one allreduce-sum + sqrt).
-    engine.distributed_l2_norm_bufs(q_owned, norm_q_scalar);
+    distributed_l2_norm_bufs(q_owned, norm_q_scalar);
 
     // q /= ||q||₂ on owned slice (halo gets refreshed by next exchange).
     // Kept inline: the divisor differs per shard (each shard reads its own
     // norm_q[r]) so a single shared functor won't do.
     for (int r = 0; r < nb; ++r) {
-      auto& s = *engine.shards[r];
+      auto& s = *shards[r];
       raft::device_setter guard(s.device_id);
       const i_t n_owned = s.rank_data.owned_cstr_size;
       cub::DeviceTransform::Transform(
@@ -416,29 +414,29 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
     }
 
     // atq = A^T q : refresh halo of q, then per-shard SpMV.
-    engine.halo_exchange_cstr_bufs(q_full);
+    halo_exchange_cstr_bufs(q_full);
     for (int r = 0; r < nb; ++r) {
-      auto& s = *engine.shards[r];
+      auto& s = *shards[r];
       raft::device_setter guard(s.device_id);
       s.sub_pdlp->pdhg_solver_.spmv_At_into(q[r], atq_dn[r]);
     }
 
     // z = A atq : refresh halo of atq, then per-shard SpMV.
-    engine.halo_exchange_var_bufs(atq_full);
+    halo_exchange_var_bufs(atq_full);
     for (int r = 0; r < nb; ++r) {
-      auto& s = *engine.shards[r];
+      auto& s = *shards[r];
       raft::device_setter guard(s.device_id);
       s.sub_pdlp->pdhg_solver_.spmv_A_into(atq[r], z_dn[r]);
     }
 
     // σ² = q · z over the global OWNED cstr slice (= q^T A A^T q = σ_max²
     // when q is the dominant left-singular vector).
-    engine.distributed_dot_bufs(q_owned, z_owned, sigma_sq_scalar);
+    distributed_dot_bufs(q_owned, z_owned, sigma_sq_scalar);
 
     // q := -σ² q + z (owned slice) — residual of the eigen-equation.
     // Kept inline for the same per-shard-scalar reason as normalize above.
     for (int r = 0; r < nb; ++r) {
-      auto& s = *engine.shards[r];
+      auto& s = *shards[r];
       raft::device_setter guard(s.device_id);
       const i_t n_owned = s.rank_data.owned_cstr_size;
       cub::DeviceTransform::Transform(
@@ -450,8 +448,8 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
     }
 
     // Convergence check via global residual norm.
-    engine.distributed_l2_norm_bufs(q_owned, residual_scalar);
-    auto& s0 = *engine.shards[0];
+    distributed_l2_norm_bufs(q_owned, residual_scalar);
+    auto& s0 = *shards[0];
     raft::device_setter guard0(s0.device_id);
     f_t h_res{};
     raft::copy(&h_res, residual_norm[0].data(), 1, s0.stream.view());
@@ -460,7 +458,7 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
   }
 
   // σ_max² is the same on every shard after the last allreduce.
-  auto& s0 = *engine.shards[0];
+  auto& s0 = *shards[0];
   raft::device_setter guard0(s0.device_id);
   f_t sigma_sq_h{};
   raft::copy(&sigma_sq_h, sigma_sq[0].data(), 1, s0.stream.view());
@@ -476,15 +474,16 @@ f_t distributed_max_singular_value(multi_gpu_engine_t<i_t, f_t>& engine,
 // This function mirrors single-GPU's compute_initial_step_size exactly
 // and broadcasts the result to every shard
 template <typename i_t, typename f_t>
-void distributed_compute_initial_step_size(multi_gpu_engine_t<i_t, f_t>& engine,
-                                           pdlp_solver_t<i_t, f_t>& master,
-                                           pdlp_hyper_params_t const& hyper_params,
-                                           i_t n_global_cstrs,
-                                           f_t scaling_factor,
-                                           int max_iterations,
-                                           f_t tolerance)
+void multi_gpu_engine_t<i_t, f_t>::distributed_compute_initial_step_size(
+  pdlp_hyper_params_t const& hyper_params,
+  i_t n_global_cstrs,
+  f_t scaling_factor,
+  int max_iterations,
+  f_t tolerance)
 {
   raft::common::nvtx::range scope("distributed_compute_initial_step_size");
+  cuopt_assert(master_pdlp_ != nullptr,
+               "distributed_compute_initial_step_size requires set_master(...)");
   cuopt_expects(hyper_params.initial_step_size_max_singular_value,
                 error_type_t::ValidationError,
                 "distributed_compute_initial_step_size requires "
@@ -493,18 +492,19 @@ void distributed_compute_initial_step_size(multi_gpu_engine_t<i_t, f_t>& engine,
                 "earlier in solve_lp_distributed_from_mps.");
 
   const f_t sigma_max =
-    distributed_max_singular_value(engine, n_global_cstrs, max_iterations, tolerance);
+    distributed_max_singular_value(n_global_cstrs, max_iterations, tolerance);
 
+  auto& master     = *master_pdlp_;
   auto* handle_ptr = master.get_handle_ptr();
   auto stream_view = handle_ptr->get_stream();
 
   const f_t h_step_size = (sigma_max > f_t{0}) ? scaling_factor / sigma_max : f_t{1};
 
   raft::copy(master.get_step_size().data(), &h_step_size, 1, stream_view);
-  engine.for_each_shard([&](auto& shard) {
+  for_each_shard([&](auto& shard) {
     raft::copy(shard.sub_pdlp->get_step_size().data(), &h_step_size, 1, shard.stream);
   });
-  engine.sync_await_shards(stream_view);
+  sync_await_shards(stream_view);
   handle_ptr->sync_stream(stream_view);
 }
 
@@ -518,11 +518,12 @@ void distributed_compute_initial_step_size(multi_gpu_engine_t<i_t, f_t>& engine,
 //   -> uninitialized_fill(primal_weight_ / best_primal_weight_, 1); return
 // This function also fills the shards and masters primal_weight / step_size buffers
 template <typename i_t, typename f_t>
-void distributed_compute_initial_primal_weight(multi_gpu_engine_t<i_t, f_t>& engine,
-                                               pdlp_solver_t<i_t, f_t>& master,
-                                               pdlp_hyper_params_t const& hyper_params)
+void multi_gpu_engine_t<i_t, f_t>::distributed_compute_initial_primal_weight(
+  pdlp_hyper_params_t const& hyper_params)
 {
   raft::common::nvtx::range scope("distributed_compute_initial_primal_weight");
+  cuopt_assert(master_pdlp_ != nullptr,
+               "distributed_compute_initial_primal_weight requires set_master(...)");
   cuopt_expects(
     !hyper_params.initial_primal_weight_combined_bounds && hyper_params.bound_objective_rescaling,
     error_type_t::ValidationError,
@@ -532,53 +533,47 @@ void distributed_compute_initial_primal_weight(multi_gpu_engine_t<i_t, f_t>& eng
     "earlier in solve_lp_distributed_from_mps.");
   const f_t h_primal_weight = f_t(1);
 
+  auto& master     = *master_pdlp_;
   auto* handle_ptr = master.get_handle_ptr();
   auto stream_view = handle_ptr->get_stream();
 
   raft::copy(master.get_primal_weight().data(), &h_primal_weight, 1, stream_view);
   raft::copy(master.get_best_primal_weight().data(), &h_primal_weight, 1, stream_view);
-  engine.for_each_shard([&](auto& shard) {
+  for_each_shard([&](auto& shard) {
     auto& sub = *shard.sub_pdlp;
     raft::copy(sub.get_primal_weight().data(), &h_primal_weight, 1, shard.stream);
     raft::copy(sub.get_best_primal_weight().data(), &h_primal_weight, 1, shard.stream);
   });
-  engine.sync_await_shards(stream_view);
+  sync_await_shards(stream_view);
   handle_ptr->sync_stream(stream_view);
 }
 
-// ----- Explicit instantiations (mirror multi_gpu_engine_t<int, {double,float}>) -----
-#define INSTANTIATE(F_TYPE)                                                                \
-  template void distributed_bound_objective_rescaling<int, F_TYPE>(                        \
-    multi_gpu_engine_t<int, F_TYPE> & engine, F_TYPE c_scaling_weight);                    \
-  template void distributed_ruiz_inf_scaling<int, F_TYPE>(                                 \
-    multi_gpu_engine_t<int, F_TYPE> & engine, int num_iter, int n_global_vars);            \
-  template void distributed_pock_chambolle_scaling<int, F_TYPE>(                           \
-    multi_gpu_engine_t<int, F_TYPE> & engine, F_TYPE alpha, int n_global_vars);            \
-  template void distributed_scaling<int, F_TYPE>(multi_gpu_engine_t<int, F_TYPE> & engine, \
-                                                 pdlp_hyper_params_t const& hyper_params,  \
-                                                 int n_global_vars,                        \
-                                                 bool inside_mip);                         \
-  template F_TYPE distributed_max_singular_value<int, F_TYPE>(                             \
-    multi_gpu_engine_t<int, F_TYPE> & engine,                                              \
-    int n_global_cstrs,                                                                    \
-    int max_iterations,                                                                    \
-    F_TYPE tolerance);                                                                     \
-  template void distributed_compute_initial_step_size<int, F_TYPE>(                        \
-    multi_gpu_engine_t<int, F_TYPE> & engine,                                              \
-    pdlp_solver_t<int, F_TYPE> & master,                                                   \
-    pdlp_hyper_params_t const& hyper_params,                                               \
-    int n_global_cstrs,                                                                    \
-    F_TYPE scaling_factor,                                                                 \
-    int max_iterations,                                                                    \
-    F_TYPE tolerance);                                                                     \
-  template void distributed_compute_initial_primal_weight<int, F_TYPE>(                    \
-    multi_gpu_engine_t<int, F_TYPE> & engine,                                              \
-    pdlp_solver_t<int, F_TYPE> & master,                                                   \
-    pdlp_hyper_params_t const& hyper_params);                                              \
-  template void gather_potential_next_solutions_to_master<int, F_TYPE>(                    \
-    multi_gpu_engine_t<int, F_TYPE> & engine,                                              \
-    pdhg_solver_t<int, F_TYPE> & master_pdhg,                                              \
-    rmm::device_uvector<F_TYPE> & master_reduced_cost);
+// ----- Explicit instantiations (member-by-member) --------------------------
+// The class template is instantiated in multi_gpu_engine.cu; here we only
+// explicit-instantiate the out-of-line members defined in this TU.
+#define INSTANTIATE(F_TYPE)                                                      \
+  template void                                                                  \
+    multi_gpu_engine_t<int, F_TYPE>::gather_potential_next_solutions_to_master(  \
+      rmm::device_uvector<F_TYPE>&);                                             \
+  template void                                                                  \
+    multi_gpu_engine_t<int, F_TYPE>::distributed_bound_objective_rescaling(      \
+      F_TYPE);                                                                   \
+  template void                                                                  \
+    multi_gpu_engine_t<int, F_TYPE>::distributed_ruiz_inf_scaling(int, int);     \
+  template void                                                                  \
+    multi_gpu_engine_t<int, F_TYPE>::distributed_pock_chambolle_scaling(         \
+      F_TYPE, int);                                                              \
+  template void multi_gpu_engine_t<int, F_TYPE>::distributed_scaling(            \
+    pdlp_hyper_params_t const&, int, bool);                                      \
+  template F_TYPE                                                                \
+    multi_gpu_engine_t<int, F_TYPE>::distributed_max_singular_value(             \
+      int, int, F_TYPE);                                                         \
+  template void                                                                  \
+    multi_gpu_engine_t<int, F_TYPE>::distributed_compute_initial_step_size(      \
+      pdlp_hyper_params_t const&, int, F_TYPE, int, F_TYPE);                     \
+  template void                                                                  \
+    multi_gpu_engine_t<int, F_TYPE>::distributed_compute_initial_primal_weight(  \
+      pdlp_hyper_params_t const&);
 
 INSTANTIATE(double)
 INSTANTIATE(float)

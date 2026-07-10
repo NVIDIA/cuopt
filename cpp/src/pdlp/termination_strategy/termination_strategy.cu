@@ -5,7 +5,6 @@
  */
 /* clang-format on */
 
-#include <pdlp/distributed_pdlp/distributed_algorithms.hpp>
 #include <pdlp/distributed_pdlp/multi_gpu_engine.hpp>
 
 #include <pdlp/pdlp.cuh>
@@ -574,8 +573,8 @@ pdlp_termination_strategy_t<i_t, f_t>::fill_return_problem_solution(
         (&primal_iterate == &current_pdhg_solver.get_potential_next_primal_solution()) ||
         (&primal_iterate == &current_pdhg_solver.get_primal_solution());
       if (is_current_live_iterate) {
-        gather_potential_next_solutions_to_master(
-          *engine, current_pdhg_solver, convergence_information_.get_reduced_cost());
+        engine->gather_potential_next_solutions_to_master(
+          convergence_information_.get_reduced_cost());
       }
     }
   }

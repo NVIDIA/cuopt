@@ -492,6 +492,61 @@ struct multi_gpu_engine_t {
   void distributed_compute_A_x();
   void distributed_compute_At_y();
 
+  // -------- High-level algorithms (defined in distributed_algorithms.cu) ---
+  // Global bound/objective rescaling: allreduce the owned partial squared norms
+  // of the constraint bounds and (weighted) objective, then apply the identical
+  // scalar on every shard.
+  void distributed_bound_objective_rescaling(f_t c_scaling_weight);
+
+  // Distributed Ruiz inf-scaling (num_iter passes). Each shard computes both its
+  // owned-row and owned-column inf-norms locally; a per-iteration halo broadcast
+  // of both cumulative scalings is the only cross-shard communication.
+  void distributed_ruiz_inf_scaling(int num_iter, i_t n_global_vars);
+
+  // Distributed Pock-Chambolle scaling (one pass), mirroring the single-GPU
+  // pock_chambolle_scaling.
+  void distributed_pock_chambolle_scaling(f_t alpha, i_t n_global_vars);
+
+  // Full distributed scaling entry point. Mirrors what scale_problem() does in
+  // single-GPU by orchestrating:
+  //   - reset per-shard scaling state
+  //   - Ruiz inf-scaling -> populates cumulative row/col scalings
+  //   - Pock-Chambolle scaling -> same
+  //   - per-shard apply_cummulative_scaling_to_problem() to apply the cumulative
+  //     scalings to A, c, variable and constraint bounds (this is scale_problem()
+  //     minus its shard-local bound/objective rescaling)
+  //   - global bound/objective rescaling via distributed_bound_objective_rescaling
+  void distributed_scaling(pdlp_hyper_params_t const& hyper_params,
+                           i_t n_global_vars,
+                           bool inside_mip);
+
+  // Distributed sigma_max(A) via power iteration (used to seed the initial
+  // step size). Returns the largest singular value of the scaled constraint
+  // matrix; identical on every shard.
+  f_t distributed_max_singular_value(i_t n_global_cstrs,
+                                     int max_iterations = 5000,
+                                     f_t tolerance      = 1e-4);
+
+  // Distributed counterpart of pdlp_solver_t::compute_initial_step_size.
+  // Requires set_master(...) to have been called; writes onto *master_pdlp_.
+  void distributed_compute_initial_step_size(pdlp_hyper_params_t const& hyper_params,
+                                             i_t n_global_cstrs,
+                                             f_t scaling_factor,
+                                             int max_iterations,
+                                             f_t tolerance);
+
+  // Distributed counterpart of pdlp_solver_t::compute_initial_primal_weight.
+  // Writes primal_weight = best_primal_weight = 1 onto master + every shard,
+  // mirroring the Stable3-shaped short-circuit
+  // (!initial_primal_weight_combined_bounds && bound_objective_rescaling).
+  // Requires set_master(...) to have been called.
+  void distributed_compute_initial_primal_weight(pdlp_hyper_params_t const& hyper_params);
+
+  // Gather the global potential_next primal/dual solutions and the reduced cost
+  // onto the master from the owned slices distributed across shards.
+  // Requires set_master(...) to have been called; writes onto master_pdlp_->pdhg_solver_.
+  void gather_potential_next_solutions_to_master(rmm::device_uvector<f_t>& master_reduced_cost);
+
   // Engine-level stream for fork/join orchestration (master side).
   rmm::cuda_stream stream;
 

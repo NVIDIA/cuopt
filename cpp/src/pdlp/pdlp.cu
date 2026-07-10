@@ -20,7 +20,6 @@
 #include <linear_algebra/sparse_matrix.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include "cuopt/mathematical_optimization/pdlp/solver_solution.hpp"
-#include "distributed_pdlp/distributed_algorithms.hpp"
 #include "distributed_pdlp/multi_gpu_engine.hpp"
 
 #include <utilities/copy_helpers.hpp>
@@ -3302,7 +3301,7 @@ void pdlp_solver_t<i_t, f_t>::scale_problem()
 {
   raft::common::nvtx::range fun_scope("pdlp_solver_t::scale_problem");
   if (is_distributed_master()) {
-    distributed_scaling(*multi_gpu_engine, settings_.hyper_params, primal_size_h_, inside_mip_);
+    multi_gpu_engine->distributed_scaling(settings_.hyper_params, primal_size_h_, inside_mip_);
   } else {
     initial_scaling_strategy_.scale_problem();
   }
@@ -3346,13 +3345,8 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
     // Distributed dispatch: everything (sigma_max, deriving primal/dual
     // step sizes from master's current primal_weight_, seeding master +
     // all shards, syncs) lives inside distributed_compute_initial_step_size.
-    distributed_compute_initial_step_size(*multi_gpu_engine,
-                                          *this,
-                                          settings_.hyper_params,
-                                          dual_size_h_,
-                                          scaling_factor,
-                                          max_iterations,
-                                          tolerance);
+    multi_gpu_engine->distributed_compute_initial_step_size(
+      settings_.hyper_params, dual_size_h_, scaling_factor, max_iterations, tolerance);
     return;
   }
 
@@ -3545,7 +3539,7 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_primal_weight()
     // - short-circuit -> 1
     // - primal/dual step sizes from master's current step_size_, seeding
     // master + all shards, syncs)
-    distributed_compute_initial_primal_weight(*multi_gpu_engine, *this, settings_.hyper_params);
+    multi_gpu_engine->distributed_compute_initial_primal_weight(settings_.hyper_params);
     return;
   }
 
