@@ -131,13 +131,19 @@ def _analyze_job_log(job_id, repo, token):
     return failed[:_MAX_TESTS]
 
 
-def _build_body(failed, passed, skipped, job_analysis):
+def _build_body(failed, passed, skipped, cancelled, job_analysis):
     lines = [_MARKER, "## CI Test Summary", ""]
     if not failed:
-        lines.append(f"✅ All {len(passed)} test job(s) passed.")
+        if cancelled:
+            lines.append(
+                f"✅ {len(passed)} passed · {len(cancelled)} cancelled / not completed"
+            )
+        else:
+            lines.append(f"✅ All {len(passed)} test job(s) passed.")
     else:
         lines.append(
             f"**{len(failed)} failed** · {len(passed)} passed · {len(skipped)} skipped"
+            + (f" · {len(cancelled)} cancelled" if cancelled else "")
         )
         for job in failed:
             tests = job_analysis[job["id"]]
@@ -178,12 +184,15 @@ def main():
     passed = [j for j in test_jobs if j["conclusion"] == "success"]
     skipped = [j for j in test_jobs if j["conclusion"] == "skipped"]
     failed = [j for j in test_jobs if j["conclusion"] in ("failure", "timed_out")]
+    cancelled = [
+        j for j in test_jobs if j not in passed and j not in skipped and j not in failed
+    ]
 
     job_analysis = {
         job["id"]: _analyze_job_log(job["id"], repo, token) for job in failed
     }
 
-    body = _build_body(failed, passed, skipped, job_analysis)
+    body = _build_body(failed, passed, skipped, cancelled, job_analysis)
 
     comments = list(
         _paginate(f"/repos/{repo}/issues/{pr_number}/comments", token)
