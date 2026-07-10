@@ -30,11 +30,16 @@ patterns=(
     'thrust::'
     'raft::'
     'rmm::'
-    'cuopt::linear_programming::detail'
+    'cuopt::mathematical_optimization::detail'
     'cuopt::routing::detail'
     'grpc::'
     'google::protobuf'
     'tbb::'
+    'absl::'
+    'dejavu::'
+    'papilo::'
+    'boost::'
+    'pslp_'
 )
 
 failed=0
