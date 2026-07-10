@@ -177,7 +177,7 @@ def main():
 
     passed = [j for j in test_jobs if j["conclusion"] == "success"]
     skipped = [j for j in test_jobs if j["conclusion"] == "skipped"]
-    failed = [j for j in test_jobs if j not in passed and j not in skipped]
+    failed = [j for j in test_jobs if j["conclusion"] in ("failure", "timed_out")]
 
     job_analysis = {
         job["id"]: _analyze_job_log(job["id"], repo, token) for job in failed
