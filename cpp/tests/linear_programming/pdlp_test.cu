@@ -8,15 +8,11 @@
 #include <branch_and_bound/shared_strong_branching_context.hpp>
 #include <mps_parser_internal.hpp>
 #include <pdlp/cusparse_view.hpp>
-#include <pdlp/distributed_pdlp/distributed_utils.hpp>
-#include <pdlp/distributed_pdlp/partitioner.hpp>
 #include <pdlp/initial_scaling_strategy/initial_scaling.cuh>
 #include <pdlp/pdlp.cuh>
 #include <pdlp/pdlp_constants.hpp>
 #include <pdlp/solve.cuh>
 #include <pdlp/utils.cuh>
-
-#include <linear_algebra/sparse_matrix.hpp>
 
 #include "utilities/pdlp_test_utilities.cuh"
 
@@ -50,13 +46,11 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <limits>
 #include <sstream>
-#include <string>
 #include <thread>
 #include <tuple>
 #include <utility>
