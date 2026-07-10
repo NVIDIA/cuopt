@@ -263,6 +263,66 @@ def _postprocess_mdx(md: str, title: str) -> str:
         flags=re.MULTILINE,
     )
 
+    # 3d. Inside fenced code blocks (including blockquote-prefixed ones), escape
+    #     patterns that MDX's JSX parser would misread as JSX tags:
+    #     - `</foo`  → `< /foo`  (shell redirects; space is valid in shell)
+    #     - `<word>` → `&lt;word&gt;` (placeholder names like <ip>, <image>)
+    #     Both must be escaped even inside `> ``` ` blockquote code fences.
+    KNOWN_HTML = {'a','abbr','b','br','code','div','em','h1','h2','h3','h4','h5','h6',
+                  'hr','i','img','li','ol','p','pre','span','strong','table','td','th',
+                  'tr','ul','sup','sub','s','del','ins','blockquote','details','summary'}
+    MDX_COMPONENTS = {'Note','Warning','Tip','Accordion','AccordionGroup','CodeBlock',
+                      'Card','CardGroup','Tabs','Tab','Frame','Steps','Step',
+                      'Callout','Info','Check','Cross','Info'}
+
+    def _escape_code_block(m):
+        block = m.group(0)
+        # Escape </word → < /word (shell redirect)
+        block = re.sub(r'</(?=[a-z/])', r'< /', block)
+        # Escape <word> placeholder tags (not known HTML, not MDX components)
+        def _escape_placeholder(pm):
+            tag = pm.group(1)
+            if tag.lower() in KNOWN_HTML or tag in MDX_COMPONENTS:
+                return pm.group(0)
+            return f'&lt;{tag}&gt;'
+        block = re.sub(r'<([a-zA-Z][a-zA-Z0-9_-]*)>', _escape_placeholder, block)
+        return block
+
+    md = re.sub(
+        r'(?m)^([ \t]*(?:>[ \t]*)*)```[^\n]*\n.*?^\1```',
+        _escape_code_block,
+        md,
+        flags=re.DOTALL,
+    )
+
+    # 3e. Angle-bracket autolinks are valid Markdown but MDX parses them as JSX:
+    #     - URL autolinks: <https://...> → [url](url)
+    #     - Email autolinks: <user@domain> → [user@domain](mailto:user@domain)
+    md = re.sub(r'<(https?://[^>]+)>', r'[\1](\1)', md)
+    md = re.sub(r'<([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})>', r'[\1](mailto:\1)', md)
+
+    # 3f. MDX parses `<` as a JSX tag start even inside plain text.
+    #     - `<=` → `&lt;=`  (comparison operator; `<` is not a valid tag start before `=`)
+    #     - `\<=` → `&lt;=` (pandoc sometimes emits backslash-escaped form)
+    #     Only outside inline code (backtick spans) and fenced code blocks.
+    #     Curly-brace-wrapped notation like {<=, =, >=} also needs escaping.
+    def _escape_lt_outside_code(text):
+        # Split on inline code spans (`...`) and fenced code blocks (``` ... ```)
+        # Process only the non-code segments
+        segments = re.split(r'(`[^`\n]+`|```[\s\S]*?```)', text)
+        result = []
+        for i, seg in enumerate(segments):
+            if i % 2 == 1:  # code span or block — leave unchanged
+                result.append(seg)
+            else:
+                # Escape standalone <= (and backslash-escaped \<=) to &lt;=
+                seg = re.sub(r'\\?<=', '&lt;=', seg)
+                # Escape curly-brace math notation: {<=, ...} → \{&lt;=, ...\}
+                seg = re.sub(r'\{([^}]{0,60})\}', lambda m: '\\{' + m.group(1) + '\\}', seg)
+                result.append(seg)
+        return ''.join(result)
+    md = _escape_lt_outside_code(md)
+
     # 3b. Fix image paths → point into /docs/images/ (flat)
     # Matches: images/foo.png, ../images/foo.png, ../../foo/images/foo.png
     md = re.sub(r"!\[([^\]]*)\]\((?:[^)]*\/)?images\/([^)]+)\)", r"![\1](/docs/images/\2)", md)

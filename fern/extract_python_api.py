@@ -187,7 +187,10 @@ def write_api_page(title: str, dest: Path, sections: list):
                 lines.append(_render_function(fn, level=3))
         for extra in (extras or []):
             lines.append(extra)
-    dest.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    content = "\n".join(lines) + "\n"
+    # MDX parses `<` as a JSX tag start; escape `<=` comparison operators.
+    content = re.sub(r'\\?<=', '&lt;=', content)
+    dest.write_text(content, encoding="utf-8")
     print(f"  Written: {dest.relative_to(REPO_ROOT)}")
 
 

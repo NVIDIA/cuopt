@@ -60,7 +60,7 @@ def repoll(cuopt_service_client, solution, repoll_tries):
     Repoll the server for solution if it's still processing.
 
     If solver is still busy solving, the job will be assigned a request id
-    and response is sent back in the format {"reqId": <REQUEST-ID>}.
+    and response is sent back in the format {"reqId": &lt;REQUEST-ID&gt;}.
     """
     if "reqId" in solution and "response" not in solution:
         req_id = solution["reqId"]
@@ -350,7 +350,7 @@ Requirements:
     - cuopt_sh_client package installed
 
 Usage:
-    Replace <UUID_THAT_WE_GOT> with the actual UUID returned by the solver
+    Replace &lt;UUID_THAT_WE_GOT&gt; with the actual UUID returned by the solver
     when you submitted a job.
 """
 
@@ -360,7 +360,7 @@ def main():
     """Run the abort job example."""
     # This is a UUID that is returned by the solver while the solver is trying
     # to find solution so users can come back and check the status or query for results.
-    job_uuid = "<UUID_THAT_WE_GOT>"
+    job_uuid = "&lt;UUID_THAT_WE_GOT&gt;"
 
     print(f"Attempting to abort job: {job_uuid}")
 
@@ -386,7 +386,7 @@ if __name__ == "__main__":
     print("This is a template example.")
     print("To use this:")
     print("1. Submit a MILP job and get its UUID")
-    print("2. Replace '<UUID_THAT_WE_GOT>' in this file with that UUID")
+    print("2. Replace '&lt;UUID_THAT_WE_GOT&gt;' in this file with that UUID")
     print("3. Run this script to abort the job")
 
     # Uncomment the line below and add your actual UUID to run
@@ -460,5 +460,5 @@ This aborts a job with UUID if it's in running state.
 # Please update ip and port if the server is running on a different IP address or port
 export ip="localhost"
 export port=5000
-cuopt_sh -d -r -q <UUID> -i $ip -p $port
+cuopt_sh -d -r -q &lt;UUID&gt; -i $ip -p $port
 ```

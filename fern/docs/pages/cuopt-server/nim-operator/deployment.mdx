@@ -109,7 +109,7 @@ check_prerequisites() {
     # Check NGC_API_KEY
     if [[ -z "${NGC_API_KEY}" ]]; then
         print_error "NGC_API_KEY environment variable is not set"
-        echo "Please set it with: export NGC_API_KEY=<your-ngc-api-key>"
+        echo "Please set it with: export NGC_API_KEY=&lt;your-ngc-api-key&gt;"
         exit 1
     fi
 
@@ -310,7 +310,7 @@ wait_for_deployment
 1.  Set your NGC API Key:
     
     ``` bash
-    export NGC_API_KEY=<your-ngc-api-key>
+    export NGC_API_KEY=&lt;your-ngc-api-key&gt;
     ```
 
 2.  Run the deployment script:
@@ -497,7 +497,7 @@ Expected output:
 
 ``` text
 NAME            TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)    AGE
-cuopt-service   ClusterIP   10.101.219.185   <none>        8000/TCP   5m
+cuopt-service   ClusterIP   10.101.219.185   &lt;none&gt;        8000/TCP   5m
 ```
 
 ### Check Logs

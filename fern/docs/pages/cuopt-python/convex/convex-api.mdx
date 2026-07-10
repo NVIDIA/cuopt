@@ -130,7 +130,7 @@ variable. Defaults to NaN when unset.
 
 QuadraticExpressions contain quadratic terms, linear terms, and a constant.
 Use them for quadratic objectives (``Problem.setObjective``) or quadratic
-constraints via ``<=`` or ``>=`` comparisons passed to
+constraints via ``&lt;=`` or ``>=`` comparisons passed to
 :py:meth:`Problem.addConstraint` (equality is not supported).
 QuadraticExpressions can be added and subtracted with other
 QuadraticExpressions, LinearExpressions, and Variables, and can also
@@ -285,7 +285,7 @@ Constraints are associated with a problem and can be created using
 expr : LinearExpression or QuadraticExpression
     Expression corresponding to the constraint.
 sense : enum
-    Sense of the constraint. Either LE for <=,
+    Sense of the constraint. Either LE for &lt;=,
     GE for >= or EQ for == .
 rhs : float
     Constraint right-hand side value.
@@ -298,7 +298,7 @@ name : str, Optional
 ConstraintName : str
     Name of the constraint.
 Sense : LE, GE or EQ
-    Row sense. LE for <=, GE for >= or EQ for == .
+    Row sense. LE for &lt;=, GE for >= or EQ for == .
 RHS : float
     Constraint right-hand side value (linear rows).
 is_quadratic : bool
@@ -317,7 +317,7 @@ Returns the name of the constraint.
 #### `getSense()`
 
 Returns the sense of the constraint.
-Constraint sense can be LE(<=), GE(>=) or EQ(==).
+Constraint sense can be LE(&lt;=), GE(>=) or EQ(==).
 
 #### `getRHS()`
 
@@ -375,7 +375,7 @@ NumNZs : int
 >>> problem = problem.Problem("MIP_model")
 >>> x = problem.addVariable(lb=-2.0, ub=8.0, vtype=INTEGER)
 >>> y = problem.addVariable(name="Var2")
->>> problem.addConstraint(2*x - 3*y <= 10, name="Constr1")
+>>> problem.addConstraint(2*x - 3*y &lt;= 10, name="Constr1")
 >>> expr = 3*x + y
 >>> problem.addConstraint(expr + x == 20, name="Constr2")
 >>> problem.setObjective(x + y, sense=MAXIMIZE)
@@ -426,7 +426,7 @@ variable : :py:class:`Variable`
 
 Adds a constraint to the problem defined by constraint object
 and name. A constraint is generated using LinearExpression or
-QuadraticExpression comparisons (``<=``, ``>=``, or ``==``).
+QuadraticExpression comparisons (``&lt;=``, ``>=``, or ``==``).
 
 
 **Parameters**
@@ -442,10 +442,10 @@ name : string
 >>> problem = problem.Problem("MIP_model")
 >>> x = problem.addVariable(lb=-2.0, ub=8.0, vtype=INTEGER)
 >>> y = problem.addVariable(name="Var2")
->>> problem.addConstraint(2*x - 3*y <= 10, name="Constr1")
+>>> problem.addConstraint(2*x - 3*y &lt;= 10, name="Constr1")
 >>> expr = 3*x + y
 >>> problem.addConstraint(expr + x == 20, name="Constr2")
->>> problem.addConstraint(-x*x + y*y <= 0, name="soc")
+>>> problem.addConstraint(-x*x + y*y &lt;= 0, name="soc")
 
 #### `updateConstraint(constr, coeffs = [], rhs = None)`
 
@@ -469,8 +469,8 @@ rhs : int|float
 >>> problem = problem.Problem("MIP_model")
 >>> x = problem.addVariable(lb=0.0, vtype=INTEGER)
 >>> y = problem.addVariable(lb=0.0, vtype=INTEGER)
->>> c1 = problem.addConstraint(2 * x + y <= 7, name="c1")
->>> c2 = problem.addConstraint(x + y <= 5, name="c2")
+>>> c1 = problem.addConstraint(2 * x + y &lt;= 7, name="c1")
+>>> c2 = problem.addConstraint(x + y &lt;= 5, name="c2")
 >>> problem.updateConstraint(c1, coeffs=[(x, 1)], rhs=10)
 
 #### `setObjective(expr, sense = MINIMIZE)`
@@ -494,7 +494,7 @@ sense : enum :py:class:`sense`
 >>> problem = problem.Problem("MIP_model")
 >>> x = problem.addVariable(lb=-2.0, ub=8.0, vtype=INTEGER)
 >>> y = problem.addVariable(name="Var2")
->>> problem.addConstraint(2*x - 3*y <= 10, name="Constr1")
+>>> problem.addConstraint(2*x - 3*y &lt;= 10, name="Constr1")
 >>> expr = 3*x + y
 >>> problem.addConstraint(expr + x == 20, name="Constr2")
 >>> problem.setObjective(x + y, sense=MAXIMIZE)
@@ -689,7 +689,7 @@ constraints and objective.
 >>> problem = problem.Problem("MIP_model")
 >>> x = problem.addVariable(lb=-2.0, ub=8.0, vtype=INTEGER)
 >>> y = problem.addVariable(name="Var2")
->>> problem.addConstraint(2*x - 3*y <= 10, name="Constr1")
+>>> problem.addConstraint(2*x - 3*y &lt;= 10, name="Constr1")
 >>> expr = 3*x + y
 >>> problem.addConstraint(expr + x == 20, name="Constr2")
 >>> problem.setObjective(x + y, sense=MAXIMIZE)

@@ -128,11 +128,11 @@ The default value is `1e-5`.
 
 `CUOPT_MIP_ABSOLUTE_GAP` controls the absolute tolerance used to terminate the MIP solve. The solve terminates when:
 
-    Best Objective - Dual Bound  <= absolute tolerance
+    Best Objective - Dual Bound  &lt;= absolute tolerance
 
 when minimizing or
 
-> Dual Bound - Best Objective \<= absolute tolerance
+> Dual Bound - Best Objective &lt;= absolute tolerance
 
 when maximizing.
 
@@ -144,7 +144,7 @@ The default value is `1e-10`.
 
 `CUOPT_MIP_RELATIVE_GAP` controls the relative tolerance used to terminate the MIP solve. The solve terminates when:
 
-    abs(Best Objective - Dual Bound) / abs(Best Objective) <= relative tolerance
+    abs(Best Objective - Dual Bound) / abs(Best Objective) &lt;= relative tolerance
 
 If the Best Objective and the Dual Bound are both zero the gap is zero. If the best objective value is zero, the gap is infinity.
 

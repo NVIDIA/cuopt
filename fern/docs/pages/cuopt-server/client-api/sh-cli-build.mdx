@@ -83,7 +83,7 @@ curl --location "http://$ip:$port/cuopt/request/{request-id}"
 
 In case the solver has completed the job, the response will be "completed".
 
-Please refer to the [Solver status in spec using "GET /cuopt/request/{request-id}"](../../open-api) for more details on responses.
+Please refer to the [Solver status in spec using "GET /cuopt/request/\{request-id\}"](../../open-api) for more details on responses.
 
 ## cuOpt Result Retrieval
 
@@ -93,7 +93,7 @@ Once you have received successful response from solver with status "completed", 
 curl --location "http://$ip:$port/cuopt/solution/{request-id}"
 ```
 
-This would fetch the result in JSON format. Please refer to the [Response structure in spec using "GET /cuopt/solution/{request-id}"](../../open-api) for more details on responses.
+This would fetch the result in JSON format. Please refer to the [Response structure in spec using "GET /cuopt/solution/\{request-id\}"](../../open-api) for more details on responses.
 
 <Note>
 It is user's responsibility to delete the request and solution files from the data and result directories respectively after retrieving the result. Please refer to the API spec for more details on deletion.

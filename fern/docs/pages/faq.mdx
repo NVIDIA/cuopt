@@ -10,8 +10,8 @@ title: "FAQ"
 
   - There are two options:
     
-      - NVIDIA Docker Hub (<https://hub.docker.com/r/nvidia/cuopt>)
-      - NVIDIA NGC registry (<https://catalog.ngc.nvidia.com/orgs/nvidia/cuopt/containers/cuopt/tags>) with an NVAIE license or NVIDIA Developer Program membership.
+      - NVIDIA Docker Hub ([https://hub.docker.com/r/nvidia/cuopt](https://hub.docker.com/r/nvidia/cuopt))
+      - NVIDIA NGC registry ([https://catalog.ngc.nvidia.com/orgs/nvidia/cuopt/containers/cuopt/tags](https://catalog.ngc.nvidia.com/orgs/nvidia/cuopt/containers/cuopt/tags)) with an NVAIE license or NVIDIA Developer Program membership.
 
 </Accordion>
 
@@ -45,7 +45,7 @@ With an NVAIE license or NVIDIA Developer Program membership, you can access the
 > ``` bash
 > docker login nvcr.io
 > Username: $oauthtoken
-> Password: <my-api-key>
+> Password: &lt;my-api-key&gt;
 > ```
 > 
 > 5.  Pull the cuOpt container image.
@@ -53,7 +53,7 @@ With an NVAIE license or NVIDIA Developer Program membership, you can access the
 > 
 > 
 > ``` bash
-> docker pull <COPIED_IMAGE_TAG>
+> docker pull &lt;COPIED_IMAGE_TAG&gt;
 > ```
 
 </Accordion>
@@ -91,7 +91,7 @@ Yes, please refer to [system requirements](system-requirements) for GPU specific
 > > 
 > > 
 > > ``` bash
-> > docker run -d --rm --gpus all -p 5001:5000 <CUOPT_IMAGE>
+> > docker run -d --rm --gpus all -p 5001:5000 &lt;CUOPT_IMAGE&gt;
 > > ```
 
 </Accordion>
@@ -184,7 +184,7 @@ If you are trying to reach cuOpt from a remote host, run the health check from t
 > 
 > 
 > ``` bash
-> curl -s -o /dev/null -w '%{http_code}\\n' <ip>:5000/cuopt/health
+> curl -s -o /dev/null -w '%{http_code}\\n' &lt;ip&gt;:5000/cuopt/health
 > 200
 > ```
 > 
@@ -204,7 +204,7 @@ If you are trying to reach cuOpt from a remote host, run the health check from t
 > 
 > ``` bash
 > export MY_SERVER_ADDRESS=”api.nvcf.nvidia.com:443”
-> openssl s_client -showcerts -connect $MY_SERVER_ADDRESS </dev/null 2>/dev/null | sed -n -e '/BEGIN\ CERTIFICATE/,/END CERTIFICATE/ p' > test.pem
+> openssl s_client -showcerts -connect $MY_SERVER_ADDRESS < /dev/null 2>/dev/null | sed -n -e '/BEGIN\ CERTIFICATE/,/END CERTIFICATE/ p' > test.pem
 > 
 > while openssl x509 -noout -text; do :; done < test.pem.txt
 > ```
@@ -550,7 +550,7 @@ You can share only selected GPUs in a container by using the `--gpus` flag. For 
 > 
 > 
 > ``` bash
-> docker run --gpus '"device=0,1"' <image>
+> docker run --gpus '"device=0,1"' &lt;image&gt;
 > ```
 
 </Accordion>
@@ -571,7 +571,7 @@ You can run cuOpt container with options set as environment variables by using t
 > -e CUOPT_MAX_RESULT=0 \
 > -e CUOPT_SERVER_PORT=8081 \
 > -p 8081:8081 \
-> <image> \
+> &lt;image&gt; \
 > /bin/bash -c "python -m cuopt_server.cuopt_server"
 > ```
 

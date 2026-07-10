@@ -46,15 +46,15 @@ There are two ways to specify constraints to the LP solver:
     
     Constraints can be specified in the form:
     
-    A\*x {\<=, =, \>=} b
+    A\*x \{&lt;=, =, \>=\} b
     
-    where A is the constraint matrix in CSR format, x is the variable vector, and b is the right-hand side vector. The relationship {\<=, =, \>=} is specified via the `row_type` parameter.
+    where A is the constraint matrix in CSR format, x is the variable vector, and b is the right-hand side vector. The relationship \{&lt;=, =, \>=\} is specified via the `row_type` parameter.
 
 2.  Using constraint bounds:
     
     Alternatively, constraints can be specified as two-sided inequalities:
     
-    lb \<= A\*x \<= ub
+    lb &lt;= A\*x &lt;= ub
     
     where lb and ub are vectors of lower and upper bounds respectively. This form allows specifying both bounds on a single constraint.
 
@@ -135,7 +135,7 @@ x_1^2 + ... + x_n^2 - x_0^2 <= 0,  x_0 >= 0.
 
 These constraints are of the form:
 
-> x\_2^2 + x\_3^2 + ... + x\_n^2 \<= 2 \* x\_0 \* x\_1, x\_0 \>= 0, x\_1 \>= 0.
+> x\_2^2 + x\_3^2 + ... + x\_n^2 &lt;= 2 \* x\_0 \* x\_1, x\_0 \>= 0, x\_1 \>= 0.
 
 Rotated second-order cone constraints must be specified as a quadratic constraint with a bounds on the x\_0 and x\_1 variables:
 

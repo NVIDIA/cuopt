@@ -65,7 +65,7 @@ def repoll(cuopt_service_client, solution, repoll_tries):
     Repoll the server for solution if it's still processing.
 
     If solver is still busy solving, the job will be assigned a request id
-    and response is sent back in the format {"reqId": <REQUEST-ID>}.
+    and response is sent back in the format {"reqId": &lt;REQUEST-ID&gt;}.
     """
     if "reqId" in solution and "response" not in solution:
         req_id = solution["reqId"]
