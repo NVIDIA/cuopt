@@ -48,7 +48,7 @@ void multi_gpu_engine_t<i_t, f_t>::gather_potential_next_solutions_to_master()
 
 // -------- Distributed bound / objective rescaling -------------------------
 // compute and apply_bound_objective_rescaling_to_problem, unfused because we need a
-// raw squared-sum on device to hand to NCCL AllReduce and the base version comptues
+// raw squared-sum on device to reduce and the base version comptues
 // tranform->reduce->transform in one cub call for efficiency
 template <typename i_t, typename f_t>
 void multi_gpu_engine_t<i_t, f_t>::distributed_bound_objective_rescaling(f_t c_scaling_weight)
@@ -61,21 +61,18 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_bound_objective_rescaling(f_t c_s
   f_t global_obj_sq   = f_t(0);
   for_each_shard([&](auto& s) {
     const auto& scaled     = s.sub_pdlp->get_initial_scaling_strategy().get_scaled_op_problem();
-    const i_t n_owned_cstr = static_cast<i_t>(s.rank_data.owned_cstr_size);
-    const i_t n_owned_var  = static_cast<i_t>(s.rank_data.owned_var_size);
     auto policy            = rmm::exec_policy(s.stream.view());
-
     auto bounds_begin = thrust::make_zip_iterator(scaled.constraint_lower_bounds.data(),
                                                   scaled.constraint_upper_bounds.data());
     global_bound_sq += thrust::transform_reduce(policy,
                                                 bounds_begin,
-                                                bounds_begin + n_owned_cstr,
+                                                bounds_begin + s.rank_data.owned_cstr_size,
                                                 rhs_sum_of_squares_t<f_t>{},
                                                 f_t(0),
                                                 thrust::plus<f_t>{});
     global_obj_sq += thrust::transform_reduce(policy,
                                               scaled.objective_coefficients.data(),
-                                              scaled.objective_coefficients.data() + n_owned_var,
+                                              scaled.objective_coefficients.data() + s.rank_data.owned_var_size,
                                               weighted_square_op<f_t>{c_scaling_weight},
                                               f_t(0),
                                               thrust::plus<f_t>{});
@@ -93,7 +90,21 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_bound_objective_rescaling(f_t c_s
     scaling.apply_bound_objective_rescaling_to_problem();
   });
 
-  for_each_shard([](auto& shard) { shard.stream.synchronize(); });
+  synchronize_shards();
+}
+
+// -------- Refresh halo of cumulative scalings -----------------------------
+// Refreshes the halo copies of the cumulative variable + constraint scalings on
+// every shard. Called before and after each matrix-scaling pass in ruiz and pock-chambolle
+template <typename i_t, typename f_t>
+void multi_gpu_engine_t<i_t, f_t>::refresh_halo_cummulative_scalings()
+{
+  halo_exchange_var([](pdlp_solver_t<i_t, f_t>& p) -> auto& {
+    return p.get_initial_scaling_strategy().get_cummulative_variable_scaling();
+  });
+  halo_exchange_cstr([](pdlp_solver_t<i_t, f_t>& p) -> auto& {
+    return p.get_initial_scaling_strategy().get_cummulative_constraint_matrix_scaling();
+  });
 }
 
 // -------- Distributed Ruiz inf-scaling ------------------------------------
@@ -106,14 +117,7 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_ruiz_inf_scaling(int num_iter, i_
   raft::common::nvtx::range scope("distributed_ruiz_inf_scaling");
 
   for (int it = 0; it < num_iter; ++it) {
-    // Refresh halo copies of both cumulative scalings (owner -> halo) so the
-    // per-shard kernels read correct opposite-axis factors on their halo.
-    halo_exchange_var([](pdlp_solver_t<i_t, f_t>& p) -> auto& {
-      return p.get_initial_scaling_strategy().get_cummulative_variable_scaling();
-    });
-    halo_exchange_cstr([](pdlp_solver_t<i_t, f_t>& p) -> auto& {
-      return p.get_initial_scaling_strategy().get_cummulative_constraint_matrix_scaling();
-    });
+    refresh_halo_cummulative_scalings();
 
     // Shard-local Ruiz iteration
     // rows: inf norm only over OWNED (full) rows from A
@@ -124,16 +128,10 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_ruiz_inf_scaling(int num_iter, i_
       [](auto& shard) { shard.sub_pdlp->get_initial_scaling_strategy().ruiz_iter_local(); });
   }
 
-  // Final refresh so downstream consumers (the scaled problem, the next
-  // distributed_max_singular_value, etc.) see correct halo factors.
-  halo_exchange_var([](pdlp_solver_t<i_t, f_t>& p) -> auto& {
-    return p.get_initial_scaling_strategy().get_cummulative_variable_scaling();
-  });
-  halo_exchange_cstr([](pdlp_solver_t<i_t, f_t>& p) -> auto& {
-    return p.get_initial_scaling_strategy().get_cummulative_constraint_matrix_scaling();
-  });
+  // Final refresh after last iteration
+  refresh_halo_cummulative_scalings();
 
-  for_each_shard([](auto& shard) { shard.stream.synchronize(); });
+  synchronize_shards();
 }
 
 // -------- Distributed Pock-Chambolle scaling ------------------------------
@@ -146,32 +144,20 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_pock_chambolle_scaling(f_t alpha,
   if (n_global_vars <= 0) return;
   raft::common::nvtx::range scope("distributed_pock_chambolle_scaling");
 
-  // Refresh halo copies of both cumulative scalings
-  halo_exchange_var([](pdlp_solver_t<i_t, f_t>& p) -> auto& {
-    return p.get_initial_scaling_strategy().get_cummulative_variable_scaling();
-  });
-  halo_exchange_cstr([](pdlp_solver_t<i_t, f_t>& p) -> auto& {
-    return p.get_initial_scaling_strategy().get_cummulative_constraint_matrix_scaling();
-  });
+  refresh_halo_cummulative_scalings();
 
   for_each_shard([alpha](auto& shard) {
     shard.sub_pdlp->get_initial_scaling_strategy().pock_chambolle_scaling(alpha);
   });
 
   // Final refresh for downstream consumers.
-  halo_exchange_var([](pdlp_solver_t<i_t, f_t>& p) -> auto& {
-    return p.get_initial_scaling_strategy().get_cummulative_variable_scaling();
-  });
-  halo_exchange_cstr([](pdlp_solver_t<i_t, f_t>& p) -> auto& {
-    return p.get_initial_scaling_strategy().get_cummulative_constraint_matrix_scaling();
-  });
+  refresh_halo_cummulative_scalings();
 
-  for_each_shard([](auto& shard) { shard.stream.synchronize(); });
+  synchronize_shards();
 }
 
 // -------- Distributed scaling orchestration ------------------------------
-// Mirrors what scale_problem() does in single-GPU by composing the
-// individual distributed passes. See the header for the full pipeline.
+// Mirrors single GPU scaling
 template <typename i_t, typename f_t>
 void multi_gpu_engine_t<i_t, f_t>::distributed_scaling(pdlp_hyper_params_t const& hyper_params,
                                                        i_t n_global_vars,
@@ -179,16 +165,7 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_scaling(pdlp_hyper_params_t const
 {
   raft::common::nvtx::range scope("distributed_scaling");
 
-  // 1) Grow per-shard iteration_* scratch back to full size (the shard ctor
-  //    released it after its no-op local pre-scaling pass)
-  for_each_shard([](auto& shard) {
-    auto& scaling = shard.sub_pdlp->get_initial_scaling_strategy();
-    auto& op      = shard.sub_pdlp->get_op_problem_scaled();
-    scaling.get_iteration_variable_scaling().resize(op.n_variables, shard.stream.view());
-    scaling.get_iteration_constraint_matrix_scaling().resize(op.n_constraints, shard.stream.view());
-  });
-
-  // 2) Matrix scaling passes populate the cumulative row/col scalings on
+  // 1) Matrix scaling passes populate the cumulative row/col scalings on
   //    every shard. Each pass keeps the halo copies refreshed internally.
   if (hyper_params.do_ruiz_scaling) {
     distributed_ruiz_inf_scaling(hyper_params.default_l_inf_ruiz_iterations, n_global_vars);
@@ -198,15 +175,15 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_scaling(pdlp_hyper_params_t const
       static_cast<f_t>(hyper_params.default_alpha_pock_chambolle_rescaling), n_global_vars);
   }
 
-  // 3) Per-shard apply of the accumulated scaling to A, c, variable and
+  // 2) Per-shard apply of the accumulated scaling to A, c, variable and
   //    constraint bounds. This is scale_problem() minus its local
-  //    bound/objective rescaling; the equivalent global step happens in (4).
+  //    bound/objective rescaling; the equivalent global step happens in (3).
   for_each_shard([](auto& shard) {
     shard.sub_pdlp->get_initial_scaling_strategy().apply_cummulative_scaling_to_problem();
   });
-  for_each_shard([](auto& shard) { shard.stream.synchronize(); });
+  synchronize_shards();
 
-  // 4) Global bound/objective rescaling (all shards get the identical scalar).
+  // 3) Global bound/objective rescaling (all shards get the identical scalar).
   if (hyper_params.bound_objective_rescaling) {
     distributed_bound_objective_rescaling(
       static_cast<f_t>(hyper_params.initial_primal_weight_c_scaling));
@@ -489,6 +466,7 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_compute_initial_primal_weight(
 // explicit-instantiate the out-of-line members defined in this TU.
 #define INSTANTIATE(F_TYPE)                                                                       \
   template void multi_gpu_engine_t<int, F_TYPE>::gather_potential_next_solutions_to_master();     \
+  template void multi_gpu_engine_t<int, F_TYPE>::refresh_halo_cummulative_scalings();             \
   template void multi_gpu_engine_t<int, F_TYPE>::distributed_bound_objective_rescaling(F_TYPE);   \
   template void multi_gpu_engine_t<int, F_TYPE>::distributed_ruiz_inf_scaling(int, int);          \
   template void multi_gpu_engine_t<int, F_TYPE>::distributed_pock_chambolle_scaling(F_TYPE, int); \

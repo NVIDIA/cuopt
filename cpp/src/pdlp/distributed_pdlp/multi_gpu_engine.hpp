@@ -88,6 +88,12 @@ struct multi_gpu_engine_t {
     }
   }
 
+  // Host-blocking barrier: waits until every shard stream has drained.
+  void synchronize_shards()
+  {
+    for_each_shard([](auto& s) { s.stream.synchronize(); });
+  }
+
   // Core: launches cub::DeviceTransform on every shard using per-shard
   // pre-resolved inputs / outputs / sizes.
   //   - in_tuples[r] is the tuple passed as cub input for shard r (any
@@ -525,6 +531,10 @@ struct multi_gpu_engine_t {
   void distributed_compute_At_y();
 
   // -------- High-level algorithms (defined in distributed_algorithms.cu) ---
+  // Refreshes the halo copies of the cumulative variable + constraint scalings on
+  // every shard. Used by the matrix-scaling passes (Ruiz, Pock-Chambolle)
+  void refresh_halo_cummulative_scalings();
+
   // Global bound/objective rescaling: allreduce the owned partial squared norms
   // of the constraint bounds and (weighted) objective, then apply the identical
   // scalar on every shard.
@@ -541,7 +551,6 @@ struct multi_gpu_engine_t {
 
   // Full distributed scaling entry point. Mirrors what scale_problem() does in
   // single-GPU by orchestrating:
-  //   - reset per-shard scaling state
   //   - Ruiz inf-scaling -> populates cumulative row/col scalings
   //   - Pock-Chambolle scaling -> same
   //   - per-shard apply_cummulative_scaling_to_problem() to apply the cumulative

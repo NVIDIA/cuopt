@@ -120,9 +120,6 @@ pdlp_initial_scaling_strategy_t<i_t, f_t>::pdlp_initial_scaling_strategy_t(
                f_t(1));
 
   compute_scaling_vectors(number_of_ruiz_iterations, alpha);
-
-  iteration_constraint_matrix_scaling_.resize(0, stream_view_);
-  iteration_variable_scaling_.resize(0, stream_view_);
 }
 
 template <typename i_t, typename f_t>
@@ -176,8 +173,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::bound_objective_rescaling()
   h_objective_rescaling_ = cuopt::host_copy(objective_rescaling_, stream_view_);
 }
 
-// Row inf-norm of the scaled matrix, over the row-major matrix: each row is
-// reduced from its own nonzeros. (Owns the complete row in distributed PDLP.)
+// Row inf-norm of the scaled matrix, over the row-major matrix
 template <typename i_t, typename f_t>
 __global__ void inf_norm_row_kernel(
   const typename mip::problem_t<i_t, f_t>::view_t op_problem,
@@ -200,7 +196,7 @@ __global__ void inf_norm_row_kernel(
   }
 }
 
-// Column inf-norm of the scaled matrix
+// Column inf-norm of the scaled matrix, over the column major matrix
 template <typename i_t, typename f_t>
 __global__ void inf_norm_col_kernel(
   const typename mip::problem_t<i_t, f_t>::view_t op_problem,

@@ -3301,11 +3301,23 @@ void pdlp_solver_t<i_t, f_t>::take_step([[maybe_unused]] i_t total_pdlp_iteratio
 template <typename i_t, typename f_t>
 void pdlp_solver_t<i_t, f_t>::scale_problem()
 {
+  // Scale problem then free scratch buffers
   raft::common::nvtx::range fun_scope("pdlp_solver_t::scale_problem");
   if (is_distributed_master()) {
     multi_gpu_engine->distributed_scaling(settings_.hyper_params, primal_size_h_, inside_mip_);
+    
+    // Free per-shard scratch: no further scaling passes happen after this point.
+    multi_gpu_engine->for_each_shard([](auto& shard) {
+      auto& scaling = shard.sub_pdlp->get_initial_scaling_strategy();
+      scaling.get_iteration_variable_scaling().resize(0, shard.stream.view());
+      scaling.get_iteration_constraint_matrix_scaling().resize(0, shard.stream.view());
+    });
   } else {
     initial_scaling_strategy_.scale_problem();
+    
+    // Free scratch: no further scaling passes happen after this point.
+    initial_scaling_strategy_.get_iteration_variable_scaling().resize(0, stream_view_);
+    initial_scaling_strategy_.get_iteration_constraint_matrix_scaling().resize(0, stream_view_);
   }
 }
 
