@@ -18,6 +18,8 @@
 
 #include <utilities/copy_helpers.hpp>
 
+#include <raft/core/nvtx.hpp>
+
 #include <limits>
 #include <tuple>
 #include <utility>
@@ -204,6 +206,7 @@ template <typename i_t, typename f_t>
 static simplex::user_problem_t<i_t, f_t> cuopt_optimization_problem_to_user_problem(
   raft::handle_t const* handle_ptr, optimization_problem_t<i_t, f_t>& model)
 {
+  raft::common::nvtx::range fun_scope("QCQP: cuopt_optimization_problem_to_user_problem");
   simplex::user_problem_t<i_t, f_t> user_problem(handle_ptr);
 
   i_t const m  = model.get_n_constraints();

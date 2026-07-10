@@ -667,7 +667,7 @@ class iteration_data_t {
         symbolic_status = chol->analyze(device_augmented);
         if (use_csr_ir_matvec()) {
           augmented_cusparse_view_ =
-            std::make_unique<augmented_cusparse_view_t<i_t, f_t>>(handle_ptr, device_augmented);
+            std::make_unique<cusparse_view_t<i_t, f_t>>(handle_ptr, device_augmented);
         }
       } else {
         {
@@ -2152,6 +2152,7 @@ class iteration_data_t {
                           f_t beta,
                           rmm::device_uvector<f_t>& y)
   {
+    raft::common::nvtx::range fun_scope("Barrier: augmented_multiply");
     const i_t m        = A.m;
     const i_t n        = A.n;
     const bool has_soc = has_cones();
@@ -2175,18 +2176,22 @@ class iteration_data_t {
 
     // r1 <- D * x_1 on linear indices; barrier D is zero on direct free variables
     const i_t linear_n = has_soc ? cone_start() : n;
-    pairwise_multiply_skip_direct_free_linear(d_aug_x1_.data(),
-                                              d_diag_.data(),
-                                              d_is_direct_free_linear_.data(),
-                                              d_r1_.data(),
-                                              linear_n,
-                                              stream_view_);
-    RAFT_CHECK_CUDA(stream_view_);
+    {
+      raft::common::nvtx::range scope("Barrier: augmented_multiply: D * x1 (linear)");
+      pairwise_multiply_skip_direct_free_linear(d_aug_x1_.data(),
+                                                d_diag_.data(),
+                                                d_is_direct_free_linear_.data(),
+                                                d_r1_.data(),
+                                                linear_n,
+                                                stream_view_);
+      RAFT_CHECK_CUDA(stream_view_);
+    }
 
     // r1 <- D * x_1 + H x_1 on cone rows
     // (dense cones: explicit dense H block; sparse cones: rank-2 expansion, which adds
     //  Hs_diag .* x_cone to r1 here and writes the expansion rows into d_aug_y_exp_)
     if (has_soc) {
+      raft::common::nvtx::range scope("Barrier: augmented_multiply: cone Hessian (H * x1)");
       const i_t m_c = cone_entry_count();
       if (cones().has_sparse_cones()) {
         launch_sparse_augmented_matvec(
@@ -2213,28 +2218,32 @@ class iteration_data_t {
 
     // r1 <- Q x1 + D x1 + H x1  (cone: same H as above)
     if (Q.n > 0) {
+      raft::common::nvtx::range scope("Barrier: augmented_multiply: Q * x1");
       // matrix_vector_multiply(Q, 1.0, x1, 1.0, r1);
       cusparse_Q_view_.spmv(1.0, d_aug_x1_, 1.0, d_r1_);
     }
 
-    // y1 <- - alpha * r1 + beta * y1
-    // flip the sign of r1 = (Q x1 + D x1 + H x1)
-    axpy(-alpha, d_r1_.data(), beta, d_aug_y1_.data(), d_aug_y1_.data(), n, stream_view_);
+    {
+      raft::common::nvtx::range scope("Barrier: augmented_multiply: A products (A^T x2, A x1)");
+      // y1 <- - alpha * r1 + beta * y1
+      // flip the sign of r1 = (Q x1 + D x1 + H x1)
+      axpy(-alpha, d_r1_.data(), beta, d_aug_y1_.data(), d_aug_y1_.data(), n, stream_view_);
 
-    // matrix_transpose_vector_multiply(A, alpha, x2, 1.0, y1);
-    cusparse_view_.transpose_spmv(alpha, d_aug_x2_, 1.0, d_aug_y1_);
-    // y2 <- alpha ( A*x) + beta * y2
-    // matrix_vector_multiply(A, alpha, x1, beta, y2);
-    cusparse_view_.spmv(alpha, d_aug_x1_, beta, d_aug_y2_);
+      // matrix_transpose_vector_multiply(A, alpha, x2, 1.0, y1);
+      cusparse_view_.transpose_spmv(alpha, d_aug_x2_, 1.0, d_aug_y1_);
+      // y2 <- alpha ( A*x) + beta * y2
+      // matrix_vector_multiply(A, alpha, x1, beta, y2);
+      cusparse_view_.spmv(alpha, d_aug_x1_, beta, d_aug_y2_);
 
-    if (p > 0) {
-      axpy(alpha,
-           d_aug_y_exp_.data(),
-           beta,
-           d_aug_y_exp_orig_.data(),
-           d_aug_y_exp_.data(),
-           p,
-           stream_view_);
+      if (p > 0) {
+        axpy(alpha,
+             d_aug_y_exp_.data(),
+             beta,
+             d_aug_y_exp_orig_.data(),
+             d_aug_y_exp_.data(),
+             p,
+             stream_view_);
+      }
     }
 
     raft::copy(y.data(), d_aug_y1_.data(), n, stream_view_);
@@ -2349,7 +2358,7 @@ class iteration_data_t {
   f_t primal_perturb{1e-8};
 
   std::unique_ptr<sparse_cholesky_base_t<i_t, f_t>> chol;
-  std::unique_ptr<augmented_cusparse_view_t<i_t, f_t>> augmented_cusparse_view_;
+  std::unique_ptr<cusparse_view_t<i_t, f_t>> augmented_cusparse_view_;
 
   bool has_factorization;
   bool has_solve_info;
@@ -3051,6 +3060,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
   //  \delta za = -S^T (S \delta xa + \lambda) = - S^T S \delta xa -S^T \lambda=  - S^T S \delta xa
   //  - z
   if (has_soc && !data.cone_combined_step_) {
+    raft::common::nvtx::range fun_scope("Barrier: NT scaling");
     auto& cones = data.cones();
     cones.x     = raft::device_span<f_t>(data.d_x_.data() + cone_var_start, m_c);
     cones.z     = raft::device_span<f_t>(data.d_z_.data() + cone_var_start, m_c);
@@ -3157,22 +3167,27 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
 
   // Form A*D*A' or the augmented system and factorize it
   if (!data.has_factorization) {
-    raft::common::nvtx::range fun_scope("Barrier: ADAT");
-
     i_t status;
     if (use_augmented) {
       RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
       data.dual_perturb   = dual_perturb;
       data.primal_perturb = primal_perturb;
-      data.form_augmented();
+      {
+        raft::common::nvtx::range fun_scope("Barrier: form_augmented");
+        data.form_augmented();
+      }
       // Check halt after form_augmented (synchronous) and before factorize (~1s).
       // If halt was set while form_augmented ran, we catch it here and skip the
       // expensive factorization entirely.
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
         return CONCURRENT_HALT_RETURN;
       }
-      status = data.chol->factorize(data.device_augmented);
+      {
+        raft::common::nvtx::range fun_scope("Barrier: factorize");
+        status = data.chol->factorize(data.device_augmented);
+      }
       if (data.use_csr_ir_matvec()) {
+        raft::common::nvtx::range fun_scope("Barrier: strip_augmented_perturbation");
         // Strip augmented perturbation for CSR IR matvec path
         data.strip_augmented_perturbation();
       }
@@ -3181,16 +3196,21 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       cholesky_debug_check(data, lp, use_augmented);
 #endif
     } else {
-      // compute ADAT = A Dinv * A^T
-      data.form_adat();
+      {
+        raft::common::nvtx::range fun_scope("Barrier: form_adat");
+        // compute ADAT = A Dinv * A^T
+        data.form_adat();
+      }
       // Check halt after form_adat (synchronous) and before factorize (~1s).
       // If halt was set while form_adat ran, we catch it here and skip the
       // expensive Cholesky factorization entirely.
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
         return CONCURRENT_HALT_RETURN;
       }
-      // factorize
-      status = data.chol->factorize(data.device_ADAT);
+      {
+        raft::common::nvtx::range fun_scope("Barrier: factorize");
+        status = data.chol->factorize(data.device_ADAT);
+      }
     }
     data.has_factorization = true;
     data.num_factorizations++;
@@ -3297,6 +3317,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
       }
     } op(data);
     if (settings.barrier_iterative_refinement) {
+      raft::common::nvtx::range fun_scope("Barrier: iterative_refinement");
       const f_t ir_tol    = data.has_sparse_cones() ? f_t(1e-12) : f_t(1e-8);
       const f_t solve_err = iterative_refinement<i_t, f_t, op_t>(
         op, data.d_augmented_rhs_, data.d_augmented_soln_, ir_tol);
@@ -3330,7 +3351,10 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
     raft::copy(data.d_dx_.data(), data.d_augmented_soln_.data(), lp.num_cols, stream_view_);
     raft::copy(
       data.d_dy_.data(), data.d_augmented_soln_.data() + lp.num_cols, lp.num_rows, stream_view_);
-    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+    {
+      raft::common::nvtx::range fun_scope("Barrier: augmented solve sync");
+      RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
+    }
 
     // TMP should only be init once
     data.cusparse_dy_ = data.cusparse_view_.create_vector(data.d_dy_);
@@ -4611,23 +4635,30 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
       compute_affine_rhs(data);
       f_t max_affine_residual = 0.0;
 
-      i_t status =
-        gpu_compute_search_direction(data, dual_perturb, primal_perturb, max_affine_residual);
+      i_t status;
+      {
+        raft::common::nvtx::range fun_scope("Barrier: search_direction (affine)");
+        status =
+          gpu_compute_search_direction(data, dual_perturb, primal_perturb, max_affine_residual);
+      }
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
         settings.log.printf("Barrier solver halted\n");
         return lp_status_t::CONCURRENT_LIMIT;
       }
       // D2D: save affine directions on device (same stream — no sync needed)
-      data.d_dx_aff_.resize(data.d_dx_.size(), stream_view_);
-      raft::copy(data.d_dx_aff_.data(), data.d_dx_.data(), data.d_dx_.size(), stream_view_);
-      data.d_dz_aff_.resize(data.d_dz_.size(), stream_view_);
-      raft::copy(data.d_dz_aff_.data(), data.d_dz_.data(), data.d_dz_.size(), stream_view_);
-      data.d_dw_aff_.resize(data.d_dw_.size(), stream_view_);
-      raft::copy(data.d_dw_aff_.data(), data.d_dw_.data(), data.d_dw_.size(), stream_view_);
-      data.d_dv_aff_.resize(data.d_dv_.size(), stream_view_);
-      raft::copy(data.d_dv_aff_.data(), data.d_dv_.data(), data.d_dv_.size(), stream_view_);
-      data.d_dy_aff_.resize(data.d_dy_.size(), stream_view_);
-      raft::copy(data.d_dy_aff_.data(), data.d_dy_.data(), data.d_dy_.size(), stream_view_);
+      {
+        raft::common::nvtx::range fun_scope("Barrier: save_affine_directions");
+        data.d_dx_aff_.resize(data.d_dx_.size(), stream_view_);
+        raft::copy(data.d_dx_aff_.data(), data.d_dx_.data(), data.d_dx_.size(), stream_view_);
+        data.d_dz_aff_.resize(data.d_dz_.size(), stream_view_);
+        raft::copy(data.d_dz_aff_.data(), data.d_dz_.data(), data.d_dz_.size(), stream_view_);
+        data.d_dw_aff_.resize(data.d_dw_.size(), stream_view_);
+        raft::copy(data.d_dw_aff_.data(), data.d_dw_.data(), data.d_dw_.size(), stream_view_);
+        data.d_dv_aff_.resize(data.d_dv_.size(), stream_view_);
+        raft::copy(data.d_dv_aff_.data(), data.d_dv_.data(), data.d_dv_.size(), stream_view_);
+        data.d_dy_aff_.resize(data.d_dy_.size(), stream_view_);
+        raft::copy(data.d_dy_aff_.data(), data.d_dy_.data(), data.d_dy_.size(), stream_view_);
+      }
 
       if (status < 0) {
         return check_for_suboptimal_solution(data,
@@ -4660,8 +4691,11 @@ lp_status_t barrier_solver_t<i_t, f_t>::solve(f_t start_time, lp_solution_t<i_t,
       // affine call above, so the perturbation is fixed for this solve
       f_t max_corrector_residual = 0.0;
 
-      status =
-        gpu_compute_search_direction(data, dual_perturb, primal_perturb, max_corrector_residual);
+      {
+        raft::common::nvtx::range fun_scope("Barrier: search_direction (corrector)");
+        status =
+          gpu_compute_search_direction(data, dual_perturb, primal_perturb, max_corrector_residual);
+      }
       if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) {
         settings.log.printf("Barrier solver halted\n");
         return lp_status_t::CONCURRENT_LIMIT;
