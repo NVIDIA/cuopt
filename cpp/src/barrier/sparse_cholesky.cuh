@@ -352,11 +352,7 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
 
   ~sparse_cholesky_cudss_t() override
   {
-    // Destroy cuDSS descriptors before freeing the device buffers they reference.
-    // cudssDataDestroy/cudssDestroy may internally enqueue work on the stream via
-    // the custom memory handler (cudss_device_dealloc -> cudaFreeAsync); freeing
-    // the user-provided backing buffers first would create a use-after-free if
-    // cuDSS triggers a stream sync during teardown.
+    // Destroy cuDSS objects before freeing the device buffers they reference.
     if (A_created) {
       CUDSS_CALL_AND_CHECK_EXIT(cudssMatrixDestroy(A), status, "cudssMatrixDestroy for A");
     }
