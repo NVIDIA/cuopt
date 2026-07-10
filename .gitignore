@@ -38,6 +38,7 @@ python/**/*.cpp
 # datasets
 datasets/**
 !datasets/ref
+!datasets/ref/fsmvrptwsc_small.txt
 !datasets/get_test_data.sh
 !datasets/distance_engine
 !datasets/sat/get_test_data.sh

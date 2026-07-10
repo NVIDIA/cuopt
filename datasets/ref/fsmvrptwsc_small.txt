@@ -1,0 +1,6 @@
+fsmvrptwsc/FSMVRPTWSC-main/Instances/Small.txt,R1a10,332,0.20
+fsmvrptwsc/FSMVRPTWSC-main/Instances/Small.txt,R1b10,104,0.20
+fsmvrptwsc/FSMVRPTWSC-main/Instances/Small.txt,R1c10,74,0.20
+fsmvrptwsc/FSMVRPTWSC-main/Instances/Real.txt,Dia1,24666.7,0.20
+fsmvrptwsc/FSMVRPTWSC-main/Instances/Real.txt,Dia2,27607.1,0.20
+fsmvrptwsc/FSMVRPTWSC-main/Instances/Real.txt,Dia3,25562.7,0.20

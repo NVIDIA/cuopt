@@ -5,6 +5,9 @@
 set -e
 set -o pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "${SCRIPT_DIR}"
+
 ################################################################################
 # S3 Dataset Download Support
 ################################################################################
@@ -144,8 +147,14 @@ https://www.sintef.no/globalassets/project/top/vrptw/solomon/solomon-100.zip
 solomon
 "
 
+FSMVRPTWSC_DATASET_DATA="
+# 0.1s
+https://github.com/jmanguino/FSMVRPTWSC/archive/refs/heads/main.zip
+fsmvrptwsc
+"
+
 # Add back ${TSP_DATASET_DATA} when issue #609 is fixed
-ALL_DATASET_DATA="${CVRP_DATASET_DATA} ${ACVRP_DATASET_DATA} ${CVRPTW_DATASET_DATA} ${SOLOMON_DATASET_DATA} ${PDPTW_DATASET_DATA}"
+ALL_DATASET_DATA="${CVRP_DATASET_DATA} ${ACVRP_DATASET_DATA} ${CVRPTW_DATASET_DATA} ${SOLOMON_DATASET_DATA} ${PDPTW_DATASET_DATA} ${FSMVRPTWSC_DATASET_DATA}"
 
 ################################################################################
 # Do not change the script below this line if only adding/updating a dataset
@@ -157,7 +166,7 @@ function hasArg {
 }
 
 if hasArg -h || hasArg --help; then
-    echo "$0 [--tsplib]"
+    echo "$0 [--cvrp] [--acvrp] [--cvrptw] [--solomon] [--fsmvrptwsc] [--pdptw]"
     exit 0
 fi
 
@@ -173,6 +182,8 @@ elif hasArg "--cvrptw"; then
   DATASET_DATA="${CVRPTW_DATASET_DATA} ${SOLOMON_DATASET_DATA}"
 elif hasArg "--solomon"; then
   DATASET_DATA="${SOLOMON_DATASET_DATA}"
+elif hasArg "--fsmvrptwsc"; then
+  DATASET_DATA="${FSMVRPTWSC_DATASET_DATA}"
 elif hasArg "--pdptw"; then
   DATASET_DATA="${PDPTW_DATASET_DATA}"
 else
