@@ -56,8 +56,13 @@ using simplex::variable_type_t;
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::op_problem_cstr_body(const optimization_problem_t<i_t, f_t>& problem_)
 {
-  // Mark the problem as empty if the op_problem has an empty matrix.
-  if (problem_.get_constraint_matrix_values().is_empty()) {
+  // Mark the problem as empty only when there are no constraints AND no nnz.
+  // A distributed-PDLP shard may legitimately carry rows with zero local
+  // coefficients (e.g. a shard that owns 0 constraints but has halo rows for
+  // constraints owned by peers). Such a shard has n_constraints > 0 with an
+  // empty CSR values array, and must not be marked empty.
+  if (problem_.get_constraint_matrix_values().is_empty() &&
+      problem_.get_n_constraints() == 0) {
     cuopt_assert(problem_.get_constraint_matrix_indices().is_empty(),
                  "Problem is empty but constraint matrix indices are not empty.");
     cuopt_assert(problem_.get_constraint_matrix_offsets().size() == 1,
@@ -566,7 +571,7 @@ void problem_t<i_t, f_t>::check_problem_representation(bool check_transposed,
   }
   // Presolve reductions might trivially solve the problem to optimality/infeasibility.
   // In this case, it is exptected that the problem fields are empty.
-  if (!empty) {
+  if (!empty && nnz > 0) {
     // Check for empty fields
     cuopt_assert(!coefficients.is_empty(), "A_values must be set before calling the solver.");
     cuopt_assert(!variables.is_empty(), "A_indices must be set before calling the solver.");
