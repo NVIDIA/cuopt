@@ -171,10 +171,6 @@ void add_knapsack_side(const dual_simplex::user_problem_t<i_t, f_t>& problem,
     knapsack_constraint.is_set_partitioning = false;
   }
 
-  // Drop infeasible relaxations: if even the minimum-activity binary assignment
-  // exceeds the RHS, the (valid) relaxed constraint is infeasible and would
-  // normalize to a negative RHS, producing spurious cliques. Detecting model
-  // infeasibility is presolve's job, not the clique builder's.
   if (knapsack_constraint.entries.size() >= 2 &&
       knapsack_constraint.rhs >= min_binary_activity) {
     knapsack_constraints.push_back(std::move(knapsack_constraint));
