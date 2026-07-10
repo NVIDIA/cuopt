@@ -154,6 +154,7 @@ files:
       - test_python_common
       - test_python_cuopt
       - depends_on_rapids_logger
+      - test_cufile
   py_build_cuopt_server:
     output: pyproject
     pyproject_dir: python/cuopt_server
@@ -848,3 +849,17 @@ dependencies:
           - matrix:
             packages:
               - python>=3.11,<3.15
+  test_cufile:
+    specific:
+      # The `cufile` extra was added to the `cuda-toolkit` metapackage in 12.6.3
+      # Adding an explicit test dependency on the cufile package here for
+      # testing on versions before 12.6.3
+      - output_types: pyproject
+        matrices:
+          - matrix:
+              cuda: "12.[012345]"
+              use_cuda_wheels: "true"
+            packages:
+              - nvidia-cufile-cu12
+          - matrix:
+            packages:
