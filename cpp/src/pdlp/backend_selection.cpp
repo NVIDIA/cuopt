@@ -42,7 +42,8 @@ memory_backend_t get_memory_backend_type()
   // intentionally hidden GPU. This query is invoked at both problem creation and
   // solve time; the decision is fixed for the life of the process, so log only once
   // to avoid duplicate lines.
-  CUOPT_LOG_ONCE(INFO,
+  CUOPT_LOG_ONCE(
+    INFO,
     "cuOpt selected CPU memory backend: no usable CUDA device "
     "(cudaGetDeviceCount err=%d (%s) count=%d, CUDA_VISIBLE_DEVICES=%s)",
     static_cast<int>(err),
