@@ -4384,12 +4384,6 @@ i_t tableau_equality_t<i_t, f_t>::generate_base_equality(
     return -1;
   }
 
-  const f_t f_val = b_bar_[i] - std::floor(b_bar_[i]);
-  if (f_val < 0.01 || f_val > 0.99) {
-    // Skip cuts with rhs has small fractional part
-    return -1;
-  }
-
 #ifdef PRINT_BASE_INEQUALITY
   // Print out the base inequality
   for (i_t k = 0; k < a_bar.i.size(); k++) {
