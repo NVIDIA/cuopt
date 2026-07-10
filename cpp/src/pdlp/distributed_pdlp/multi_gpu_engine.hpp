@@ -24,6 +24,7 @@
 
 #include <rmm/cuda_stream.hpp>
 #include <rmm/device_buffer.hpp>
+#include <rmm/device_uvector.hpp>
 #include <rmm/exec_policy.hpp>
 
 #include <thrust/execution_policy.h>
@@ -79,12 +80,22 @@ struct multi_gpu_engine_t {
   multi_gpu_engine_t(const multi_gpu_engine_t&)            = delete;
   multi_gpu_engine_t& operator=(const multi_gpu_engine_t&) = delete;
 
+  // Invokes `fn` on every shard with the shard's device pre-set. `fn` may be
+  //   (pdlp_shard_t<i_t,f_t>&)        or
+  //   (pdlp_shard_t<i_t,f_t>&, int r) — the second overload also gets the shard's rank.
   template <typename Fn>
   void for_each_shard(Fn&& fn)
   {
-    for (auto& s : shards) {
-      raft::device_setter guard(s->device_id);
-      fn(*s);
+    for (int r = 0; r < static_cast<int>(shards.size()); ++r) {
+      auto& s = *shards[r];
+      raft::device_setter guard(s.device_id);
+      if constexpr (std::is_invocable_v<Fn&, pdlp_shard_t<i_t, f_t>&, int>) {
+        fn(s, r);
+      } else if constexpr (std::is_invocable_v<Fn&, pdlp_shard_t<i_t, f_t>&>) {
+        fn(s);
+      } else {
+        cuopt_expects(false, error_type_t::RuntimeError, "for_each_shard: invalid function signature");
+      }
     }
   }
 
@@ -244,6 +255,19 @@ struct multi_gpu_engine_t {
     halo_exchange_bufs_impl(bufs, axes);
   }
 
+  // Overload: accept the owning device_uvector directly (rmm doesn't provide
+  // an implicit conversion to raft::device_span, and std::vector<A> doesn't
+  // convert to std::vector<B>, so we adapt element-wise here). Non-const &
+  // because halo_exchange_bufs_impl writes the halo tail via ncclRecv, which
+  // requires a mutable pointer.
+  void halo_exchange_var_bufs(std::vector<rmm::device_uvector<f_t>>& bufs)
+  {
+    std::vector<raft::device_span<f_t>> spans;
+    spans.reserve(bufs.size());
+    for (auto& b : bufs) spans.emplace_back(b.data(), b.size());
+    halo_exchange_var_bufs(spans);
+  }
+
   // Wrapper: pdlp_solver_t accessor. Resolves one uvector per shard into a
   // vector of spans, then delegates to halo_exchange_var_bufs.
   //   buf_access : pdlp_solver_t<i_t,f_t>& -> rmm::device_uvector<f_t>&
@@ -267,6 +291,15 @@ struct multi_gpu_engine_t {
     for (auto& s : shards)
       axes.push_back(s->cstr_halo_axis());
     halo_exchange_bufs_impl(bufs, axes);
+  }
+
+  // Overload: same rationale as halo_exchange_var_bufs above.
+  void halo_exchange_cstr_bufs(std::vector<rmm::device_uvector<f_t>>& bufs)
+  {
+    std::vector<raft::device_span<f_t>> spans;
+    spans.reserve(bufs.size());
+    for (auto& b : bufs) spans.emplace_back(b.data(), b.size());
+    halo_exchange_cstr_bufs(spans);
   }
 
   // Wrapper: pdlp_solver_t accessor. Resolves one uvector per shard into a
@@ -484,6 +517,20 @@ struct multi_gpu_engine_t {
     allreduce_sum_inplace_bufs(out_scalars);
   }
 
+  // Overload: accept owning device_scalar outputs directly. Wraps each into a
+  // scalar_view and delegates to the span-based core. Convenience for the typical
+  // case where per-shard outputs are rmm::device_scalar<f_t>.
+  void distributed_dot_bufs(std::vector<raft::device_span<f_t>> const& a_bufs,
+                            std::vector<raft::device_span<f_t>> const& b_bufs,
+                            std::vector<rmm::device_scalar<f_t>>& out_scalars)
+  {
+    std::vector<raft::device_scalar_view<f_t>> views;
+    views.reserve(out_scalars.size());
+    for (auto& s : out_scalars)
+      views.emplace_back(raft::make_device_scalar_view<f_t>(s.data()));
+    distributed_dot_bufs(a_bufs, b_bufs, views);
+  }
+
   // Core L2 norm: writes sqrt(sum_r ||in_bufs[r]||_2^2) into every
   // *out_scalars[r].data_handle(). Delegates to distributed_dot_bufs(in, in,
   // out) then does a per-shard in-place sqrt on the resulting scalar.
@@ -500,6 +547,17 @@ struct multi_gpu_engine_t {
                                       sqrt_inplace_op_t<f_t>{},
                                       s.stream.view().value());
     }
+  }
+
+  // Overload: same rationale as distributed_dot_bufs above.
+  void distributed_l2_norm_bufs(std::vector<raft::device_span<f_t>> const& in_bufs,
+                                std::vector<rmm::device_scalar<f_t>>& out_scalars)
+  {
+    std::vector<raft::device_scalar_view<f_t>> views;
+    views.reserve(out_scalars.size());
+    for (auto& s : out_scalars)
+      views.emplace_back(raft::make_device_scalar_view<f_t>(s.data()));
+    distributed_l2_norm_bufs(in_bufs, views);
   }
 
   // Wrapper: accessor form. Resolves per-shard input / output / owned-length

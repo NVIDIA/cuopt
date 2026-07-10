@@ -3399,16 +3399,10 @@ void pdlp_solver_t<i_t, f_t>::compute_initial_step_size()
     i_t m = op_problem_scaled_.n_constraints;
     i_t n = op_problem_scaled_.n_variables;
 
-    std::vector<f_t> z(m);
+    std::vector<f_t> z = make_singular_value_probe<f_t>(static_cast<std::size_t>(m));
     rmm::device_uvector<f_t> d_z(m, stream_view_);
     rmm::device_uvector<f_t> d_q(m, stream_view_);
     rmm::device_uvector<f_t> d_atq(n, stream_view_);
-
-    std::mt19937 gen(1);
-    std::normal_distribution<f_t> dist(f_t(0.0), f_t(1.0));
-
-    for (int i = 0; i < m; ++i)
-      z[i] = dist(gen);
 
     device_copy(d_z, z, stream_view_);
 

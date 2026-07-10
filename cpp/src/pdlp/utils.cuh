@@ -12,6 +12,9 @@
 #include <pdlp/restart_strategy/pdlp_restart_strategy.cuh>
 #include <utilities/macros.cuh>
 
+#include <random>
+#include <vector>
+
 #include <raft/core/device_span.hpp>
 #include <raft/linalg/binary_op.cuh>
 #include <raft/linalg/detail/cublas_wrappers.hpp>
@@ -31,6 +34,20 @@
 #include <thrust/tuple.h>
 
 namespace cuopt::mathematical_optimization::pdlp {
+
+// Host-side probe vector z ~ Normal(0, 1) that seeds the power iteration
+// for sigma_max(A) in compute_initial_step_size (single-GPU) and
+// distributed_max_singular_value. Fixed seed (1) so single-GPU and distributed
+// runs on the same problem produce bit-identical initial iterates.
+template <typename f_t>
+inline std::vector<f_t> make_singular_value_probe(std::size_t size)
+{
+  std::vector<f_t> out(size);
+  std::mt19937 gen(1);
+  std::normal_distribution<f_t> dist(f_t(0.0), f_t(1.0));
+  for (std::size_t i = 0; i < size; ++i) out[i] = dist(gen);
+  return out;
+}
 
 template <typename f_t, int BLOCK_SIZE>
 DI f_t deterministic_block_reduce(raft::device_span<f_t> shared, f_t val)

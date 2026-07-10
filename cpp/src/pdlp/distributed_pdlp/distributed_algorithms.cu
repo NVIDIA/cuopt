@@ -12,15 +12,16 @@
 
 #include <raft/core/nvtx.hpp>
 
+#include <rmm/device_scalar.hpp>
 #include <rmm/exec_policy.hpp>
 
 #include <thrust/fill.h>
 #include <thrust/functional.h>
+#include <thrust/gather.h>
 #include <thrust/iterator/zip_iterator.h>
 #include <thrust/transform_reduce.h>
 
 #include <cmath>
-#include <random>
 #include <vector>
 
 namespace cuopt::mathematical_optimization::pdlp {
@@ -205,94 +206,71 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value(i_t n_global_cs
   const int nb = static_cast<int>(shards.size());
 
   // Generate the GLOBAL z[] sequence in cstr-index order from a fresh
-  // mt19937(1), once per call. It's m doubles regardless of N (cheap).
-  // Each shard then keeps only z[global_idx_for_owned_local_i].
-  std::vector<f_t> h_global_z(static_cast<std::size_t>(n_global_cstrs));
-  {
-    std::mt19937 gen(1);
-    std::normal_distribution<f_t> dist(f_t(0.0), f_t(1.0));
-    for (i_t i = 0; i < n_global_cstrs; ++i) {
-      h_global_z[i] = dist(gen);
-    }
-  }
+  // Global z[] in cstr-index order — each shard keeps only
+  // z[global_idx_for_owned_local_i]. Shared with the single-GPU
+  // compute_initial_step_size path so both produce bit-identical seeds.
+  std::vector<f_t> h_global_z =
+    make_singular_value_probe<f_t>(static_cast<std::size_t>(n_global_cstrs));
 
-  // Per-shard scratch lives on each shard's device.]
+  // Per-shard scratch lives on each shard's device.
   std::vector<rmm::device_uvector<f_t>> q;
   std::vector<rmm::device_uvector<f_t>> z;
   std::vector<rmm::device_uvector<f_t>> atq;
-  std::vector<rmm::device_uvector<f_t>> sigma_sq;
-  std::vector<rmm::device_uvector<f_t>> norm_q;
-  std::vector<rmm::device_uvector<f_t>> residual_norm;
-  // RAII descriptors: created below per shard, destroyed automatically when
-  // the vectors go out of scope (no manual cusparseDestroyDnVec needed).
+  std::vector<rmm::device_scalar<f_t>> sigma_sq;
+  std::vector<rmm::device_scalar<f_t>> norm_q;
+  std::vector<rmm::device_scalar<f_t>> residual_norm;
+
   std::vector<cusparse_dn_vec_descr_wrapper_t<f_t>> z_dn(nb);
   std::vector<cusparse_dn_vec_descr_wrapper_t<f_t>> atq_dn(nb);
-  q.reserve(nb);
-  z.reserve(nb);
-  atq.reserve(nb);
-  sigma_sq.reserve(nb);
-  norm_q.reserve(nb);
-  residual_norm.reserve(nb);
 
-  // Scatter z according to partition
-  for (int r = 0; r < nb; ++r) {
-    auto& s = *shards[r];
-    raft::device_setter guard(s.device_id);
+  // Per-shard owned-slice spans consumed by the engine's *_bufs helpers.
+  // (Scalar outputs are passed as rmm::device_scalar directly via the
+  // scalar-owner overloads on distributed_{l2_norm,dot}_bufs.)
+  std::vector<raft::device_span<f_t>> q_owned, z_owned;
+  for (auto* v : {&q, &z, &atq}) v->reserve(nb);
+  for (auto* v : {&sigma_sq, &norm_q, &residual_norm}) v->reserve(nb);
+  for (auto* v : {&q_owned, &z_owned}) v->reserve(nb);
+
+  // Allocate per-shard scratch, scatter z according to partition, and build
+  // the *_bufs views for the power iteration below.
+  for_each_shard([&](auto& s, int r) {
     const i_t cstr_total = s.rank_data.total_cstr_size;
     const i_t var_total  = s.rank_data.total_var_size;
+    const i_t n_owned    = s.rank_data.owned_cstr_size;
+
     q.emplace_back(static_cast<std::size_t>(cstr_total), s.stream.view());
     z.emplace_back(static_cast<std::size_t>(cstr_total), s.stream.view());
     atq.emplace_back(static_cast<std::size_t>(var_total), s.stream.view());
-    sigma_sq.emplace_back(std::size_t{1}, s.stream.view());
-    norm_q.emplace_back(std::size_t{1}, s.stream.view());
-    residual_norm.emplace_back(std::size_t{1}, s.stream.view());
+    sigma_sq.emplace_back(s.stream.view());
+    norm_q.emplace_back(s.stream.view());
+    residual_norm.emplace_back(s.stream.view());
     z_dn[r].create(static_cast<int64_t>(cstr_total), z.back().data());
     atq_dn[r].create(static_cast<int64_t>(var_total), atq.back().data());
 
-    std::vector<f_t> h_owned_z(static_cast<std::size_t>(s.rank_data.owned_cstr_size));
-    for (i_t i = 0; i < s.rank_data.owned_cstr_size; ++i) {
-      const i_t g  = s.rank_data.local_to_global_cstr[i];
-      h_owned_z[i] = h_global_z[g];
+    q_owned.emplace_back(q.back().data(), static_cast<std::size_t>(n_owned));
+    z_owned.emplace_back(z.back().data(), static_cast<std::size_t>(n_owned));
+
+    // Scatter z according to partition
+    std::vector<f_t> h_owned_z(static_cast<std::size_t>(n_owned));
+    thrust::gather(thrust::host,
+                   s.rank_data.local_to_global_cstr.begin(),
+                   s.rank_data.local_to_global_cstr.begin() + n_owned,
+                   h_global_z.begin(),
+                   h_owned_z.begin());
+    if (n_owned > 0) {
+      raft::copy(
+        z.back().data(), h_owned_z.data(), static_cast<std::size_t>(n_owned), s.stream.view());
     }
-    if (s.rank_data.owned_cstr_size > 0) {
-      raft::copy(z.back().data(),
-                 h_owned_z.data(),
-                 static_cast<std::size_t>(s.rank_data.owned_cstr_size),
-                 s.stream.view());
-    }
-    if (cstr_total > s.rank_data.owned_cstr_size) {
+    if (cstr_total > n_owned) {
       thrust::fill(rmm::exec_policy_nosync(s.stream.view()),
-                   z.back().data() + s.rank_data.owned_cstr_size,
+                   z.back().data() + n_owned,
                    z.back().data() + cstr_total,
                    f_t(0));
     }
     // Sync to ensure h_owned_z stays valid through the H2D copy (it goes
     // out of scope at end of this iteration of the per-shard loop).
     s.stream.synchronize();
-  }
-
-  // Build the per-shard views (spans) used by the engine's *_bufs helpers.
-  std::vector<raft::device_span<f_t>> q_full, atq_full;
-  std::vector<raft::device_span<f_t>> q_owned, z_owned;
-  std::vector<raft::device_scalar_view<f_t>> norm_q_scalar, sigma_sq_scalar, residual_scalar;
-  q_full.reserve(nb);
-  atq_full.reserve(nb);
-  q_owned.reserve(nb);
-  z_owned.reserve(nb);
-  norm_q_scalar.reserve(nb);
-  sigma_sq_scalar.reserve(nb);
-  residual_scalar.reserve(nb);
-  for (int r = 0; r < nb; ++r) {
-    auto& s                 = *shards[r];
-    const std::size_t owned = static_cast<std::size_t>(s.rank_data.owned_cstr_size);
-    q_full.emplace_back(q[r].data(), q[r].size());
-    atq_full.emplace_back(atq[r].data(), atq[r].size());
-    q_owned.emplace_back(q[r].data(), owned);
-    z_owned.emplace_back(z[r].data(), owned);
-    norm_q_scalar.emplace_back(raft::make_device_scalar_view<f_t>(norm_q[r].data()));
-    sigma_sq_scalar.emplace_back(raft::make_device_scalar_view<f_t>(sigma_sq[r].data()));
-    residual_scalar.emplace_back(raft::make_device_scalar_view<f_t>(residual_norm[r].data()));
-  }
+  });
 
   // ===== Power iteration =====
   // Mirrors single-GPU compute_initial_step_size. All cross-shard math and
@@ -302,22 +280,18 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value(i_t n_global_cs
   // per-shard SpMVs that call pdhg_solver_'s A_into / A_T_into.
   for (int it = 0; it < max_iterations; ++it) {
     // q := z on the owned slice (the carried iterate).
-    for (int r = 0; r < nb; ++r) {
-      auto& s = *shards[r];
-      raft::device_setter guard(s.device_id);
+    for_each_shard([&](auto& s, int r) {
       const i_t n_owned = s.rank_data.owned_cstr_size;
       raft::copy(q[r].data(), z[r].data(), n_owned, s.stream.view());
-    }
+    });
 
     // ||q||₂ over the global OWNED cstr slice (one allreduce-sum + sqrt).
-    distributed_l2_norm_bufs(q_owned, norm_q_scalar);
+    distributed_l2_norm_bufs(q_owned, norm_q);
 
     // q /= ||q||₂ on owned slice (halo gets refreshed by next exchange).
-    // Kept inline: the divisor differs per shard (each shard reads its own
-    // norm_q[r]) so a single shared functor won't do.
-    for (int r = 0; r < nb; ++r) {
-      auto& s = *shards[r];
-      raft::device_setter guard(s.device_id);
+    // Kept as per-shard cub launch: the divisor is a per-shard scalar
+    // captured in the device lambda, so a single shared functor won't do.
+    for_each_shard([&](auto& s, int r) {
       const i_t n_owned = s.rank_data.owned_cstr_size;
       cub::DeviceTransform::Transform(
         q[r].data(),
@@ -325,10 +299,10 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value(i_t n_global_cs
         n_owned,
         [n = norm_q[r].data()] __device__(f_t v) { return v / *n; },
         s.stream.view().value());
-    }
+    });
 
     // atq = A^T q : refresh halo of q, then per-shard SpMV.
-    halo_exchange_cstr_bufs(q_full);
+    halo_exchange_cstr_bufs(q);
     for (int r = 0; r < nb; ++r) {
       auto& s = *shards[r];
       raft::device_setter guard(s.device_id);
@@ -336,7 +310,7 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value(i_t n_global_cs
     }
 
     // z = A atq : refresh halo of atq, then per-shard SpMV.
-    halo_exchange_var_bufs(atq_full);
+    halo_exchange_var_bufs(atq);
     for (int r = 0; r < nb; ++r) {
       auto& s = *shards[r];
       raft::device_setter guard(s.device_id);
@@ -345,7 +319,7 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value(i_t n_global_cs
 
     // σ² = q · z over the global OWNED cstr slice (= q^T A A^T q = σ_max²
     // when q is the dominant left-singular vector).
-    distributed_dot_bufs(q_owned, z_owned, sigma_sq_scalar);
+    distributed_dot_bufs(q_owned, z_owned, sigma_sq);
 
     // q := -σ² q + z (owned slice) — residual of the eigen-equation.
     // Kept inline for the same per-shard-scalar reason as normalize above.
@@ -362,7 +336,7 @@ f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value(i_t n_global_cs
     }
 
     // Convergence check via global residual norm.
-    distributed_l2_norm_bufs(q_owned, residual_scalar);
+    distributed_l2_norm_bufs(q_owned, residual_norm);
     auto& s0 = *shards[0];
     raft::device_setter guard0(s0.device_id);
     f_t h_res{};
