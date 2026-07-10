@@ -32,9 +32,12 @@ namespace cuopt::mathematical_optimization::test {
 // (num_gpus = -1 => auto-detect), then assert the distributed run matches the base run on
 // everything meaningful: termination status, step count (within 15%), primal/dual objective,
 // and the full primal/dual solution vectors. All value comparisons use a loose relative tolerance.
+// Pass disable_presolve=true for tiny instances that PSLP would solve entirely, which would
+// otherwise bypass the distributed solver path we want to exercise.
 static void expect_distributed_matches_base(raft::handle_t const& handle,
                                             std::string const& mps_rel_path,
-                                            bool fixed_mps_format = false)
+                                            bool fixed_mps_format = false,
+                                            bool disable_presolve = false)
 {
   constexpr double loose_rel = 1e-3;
   auto near_rel              = [](double a, double b, double rel) {
@@ -46,6 +49,7 @@ static void expect_distributed_matches_base(raft::handle_t const& handle,
 
   pdlp_solver_settings_t<int, double> base_settings{};
   base_settings.method = method_t::PDLP;
+  if (disable_presolve) { base_settings.presolver = presolver_t::None; }
 
   auto base_op = mps_data_model_to_optimization_problem<int, double>(&handle, problem);
   auto base    = solve_lp(base_op, base_settings);
@@ -117,7 +121,10 @@ TEST(pdlp_class, distributed_parity_good_max)
     GTEST_SKIP() << "Requires >=2 GPUs, found " << raft::device_setter::get_device_count();
   }
   const raft::handle_t handle{};
-  expect_distributed_matches_base(handle, "linear_programming/good-max.mps");
+  // Disable presolve: PSLP solves this 3-var/1-constraint problem entirely, bypassing
+  // the distributed solver path this test is meant to exercise.
+  expect_distributed_matches_base(
+    handle, "linear_programming/good-max.mps", /*fixed_mps_format=*/false, /*disable_presolve=*/true);
 }
 
 TEST(pdlp_class, distributed_parity_graph40_40)
