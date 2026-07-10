@@ -192,17 +192,17 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_scaling(pdlp_hyper_params_t const
   }
 }
 
-// -------- Distributed sigma_max(A) via power iteration --------------------
+// -------- Distributed sigma_max(A)^2 via power iteration ------------------
 // Owns per-shard scratch (q / z / atq / scalar reductions) and drives the
 // iteration; every cross-shard operation goes through multi_gpu_engine_t's
 // *_bufs helpers (halo_exchange_{cstr,var}_bufs, distributed_l2_norm_bufs,
 // distributed_dot_bufs), so this function contains no NCCL calls directly.
 template <typename i_t, typename f_t>
-f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value(i_t n_global_cstrs,
-                                                                 int max_iterations,
-                                                                 f_t tolerance)
+f_t multi_gpu_engine_t<i_t, f_t>::distributed_max_singular_value_squared(i_t n_global_cstrs,
+                                                                         int max_iterations,
+                                                                         f_t tolerance)
 {
-  raft::common::nvtx::range scope("distributed_max_singular_value");
+  raft::common::nvtx::range scope("distributed_max_singular_value_squared");
 
   // ┌──────────────────────────────────────────────────────────────┐
   // │                            Setup                             │
@@ -365,13 +365,13 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_compute_initial_step_size(
                 "earlier in solve_lp_distributed_from_mps.");
 
   const f_t sigma_max_sq =
-    distributed_max_singular_value(n_global_cstrs, max_iterations, tolerance);
+    distributed_max_singular_value_squared(n_global_cstrs, max_iterations, tolerance);
 
   auto& master     = *master_pdlp_;
   auto* handle_ptr = master.get_handle_ptr();
   auto stream_view = handle_ptr->get_stream();
 
-  const f_t h_step_size = scaling_factor / std::sqrt(sigma_max_sq.value(stream_view_));
+  const f_t h_step_size = scaling_factor / std::sqrt(sigma_max_sq);
 
   raft::copy(master.get_step_size().data(), &h_step_size, 1, stream_view);
   for_each_shard([&](auto& shard) {
@@ -431,7 +431,7 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_compute_initial_primal_weight(
   template void multi_gpu_engine_t<int, F_TYPE>::distributed_pock_chambolle_scaling(F_TYPE, int); \
   template void multi_gpu_engine_t<int, F_TYPE>::distributed_scaling(                             \
     pdlp_hyper_params_t const&, int, bool);                                                       \
-  template F_TYPE multi_gpu_engine_t<int, F_TYPE>::distributed_max_singular_value(                \
+  template F_TYPE multi_gpu_engine_t<int, F_TYPE>::distributed_max_singular_value_squared(        \
     int, int, F_TYPE);                                                                            \
   template void multi_gpu_engine_t<int, F_TYPE>::distributed_compute_initial_step_size(           \
     pdlp_hyper_params_t const&, int, F_TYPE, int, F_TYPE);                                        \

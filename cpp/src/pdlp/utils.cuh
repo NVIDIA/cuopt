@@ -37,8 +37,8 @@ namespace cuopt::mathematical_optimization::pdlp {
 
 // Host-side probe vector z ~ Normal(0, 1) that seeds the power iteration
 // for sigma_max(A) in compute_initial_step_size (single-GPU) and
-// distributed_max_singular_value. Fixed seed (1) so single-GPU and distributed
-// runs on the same problem produce bit-identical initial iterates.
+// distributed_max_singular_value_squared. Fixed seed (1) so single-GPU and
+// distributed runs on the same problem produce bit-identical initial iterates.
 template <typename f_t>
 inline std::vector<f_t> make_singular_value_probe(std::size_t size)
 {
@@ -61,7 +61,7 @@ struct divide_by_device_scalar_t {
 
 // Elementwise: q := -*scalar * q + z. Used in the power-iteration residual
 // update (single-GPU compute_initial_step_size and distributed
-// distributed_max_singular_value). Same named-struct rationale as above.
+// distributed_max_singular_value_squared). Same named-struct rationale as above.
 template <typename f_t>
 struct residual_fma_neg_scalar_t {
   f_t const* scalar;

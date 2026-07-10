@@ -2383,7 +2383,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
                 "Distributed PDLP does not support save_best_primal_so_far.");
   // Distributed PDLP today only supports the Stable3-shaped hyper-param profile:
   //   - initial_step_size_max_singular_value = true  (matches the sigma_max seeding
-  //     driven by distributed_max_singular_value in the setup),
+  //     driven by distributed_max_singular_value_squared in the setup),
   //   - initial_primal_weight_combined_bounds = false and bound_objective_rescaling = true
   //     (this is the profile where single-GPU compute_initial_primal_weight
   //      short-circuits to primal_weight = 1, which distributed_compute_initial_primal_weight
