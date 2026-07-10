@@ -141,8 +141,7 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_ruiz_inf_scaling(int num_iter, i_
 // pock_chambolle_scaling. Row sum-of-powers come from the row-major matrix
 // (owned rows) and column sum-of-powers from A_T (owned columns).
 template <typename i_t, typename f_t>
-void multi_gpu_engine_t<i_t, f_t>::distributed_pock_chambolle_scaling(f_t alpha,
-                                                                      i_t n_global_vars)
+void multi_gpu_engine_t<i_t, f_t>::distributed_pock_chambolle_scaling(f_t alpha, i_t n_global_vars)
 {
   if (n_global_vars <= 0) return;
   raft::common::nvtx::range scope("distributed_pock_chambolle_scaling");
@@ -429,8 +428,7 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_compute_initial_step_size(
                 "of A fallback is single-GPU only. This should have been rejected "
                 "earlier in solve_lp_distributed_from_mps.");
 
-  const f_t sigma_max =
-    distributed_max_singular_value(n_global_cstrs, max_iterations, tolerance);
+  const f_t sigma_max = distributed_max_singular_value(n_global_cstrs, max_iterations, tolerance);
 
   auto& master     = *master_pdlp_;
   auto* handle_ptr = master.get_handle_ptr();
@@ -489,28 +487,19 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_compute_initial_primal_weight(
 // ----- Explicit instantiations (member-by-member) --------------------------
 // The class template is instantiated in multi_gpu_engine.cu; here we only
 // explicit-instantiate the out-of-line members defined in this TU.
-#define INSTANTIATE(F_TYPE)                                                      \
-  template void                                                                  \
-    multi_gpu_engine_t<int, F_TYPE>::gather_potential_next_solutions_to_master();\
-  template void                                                                  \
-    multi_gpu_engine_t<int, F_TYPE>::distributed_bound_objective_rescaling(      \
-      F_TYPE);                                                                   \
-  template void                                                                  \
-    multi_gpu_engine_t<int, F_TYPE>::distributed_ruiz_inf_scaling(int, int);     \
-  template void                                                                  \
-    multi_gpu_engine_t<int, F_TYPE>::distributed_pock_chambolle_scaling(         \
-      F_TYPE, int);                                                              \
-  template void multi_gpu_engine_t<int, F_TYPE>::distributed_scaling(            \
-    pdlp_hyper_params_t const&, int, bool);                                      \
-  template F_TYPE                                                                \
-    multi_gpu_engine_t<int, F_TYPE>::distributed_max_singular_value(             \
-      int, int, F_TYPE);                                                         \
-  template void                                                                  \
-    multi_gpu_engine_t<int, F_TYPE>::distributed_compute_initial_step_size(      \
-      pdlp_hyper_params_t const&, int, F_TYPE, int, F_TYPE);                     \
-  template void                                                                  \
-    multi_gpu_engine_t<int, F_TYPE>::distributed_compute_initial_primal_weight(  \
-      pdlp_hyper_params_t const&);
+#define INSTANTIATE(F_TYPE)                                                                       \
+  template void multi_gpu_engine_t<int, F_TYPE>::gather_potential_next_solutions_to_master();     \
+  template void multi_gpu_engine_t<int, F_TYPE>::distributed_bound_objective_rescaling(F_TYPE);   \
+  template void multi_gpu_engine_t<int, F_TYPE>::distributed_ruiz_inf_scaling(int, int);          \
+  template void multi_gpu_engine_t<int, F_TYPE>::distributed_pock_chambolle_scaling(F_TYPE, int); \
+  template void multi_gpu_engine_t<int, F_TYPE>::distributed_scaling(                             \
+    pdlp_hyper_params_t const&, int, bool);                                                       \
+  template F_TYPE multi_gpu_engine_t<int, F_TYPE>::distributed_max_singular_value(                \
+    int, int, F_TYPE);                                                                            \
+  template void multi_gpu_engine_t<int, F_TYPE>::distributed_compute_initial_step_size(           \
+    pdlp_hyper_params_t const&, int, F_TYPE, int, F_TYPE);                                        \
+  template void multi_gpu_engine_t<int, F_TYPE>::distributed_compute_initial_primal_weight(       \
+    pdlp_hyper_params_t const&);
 
 INSTANTIATE(double)
 INSTANTIATE(float)

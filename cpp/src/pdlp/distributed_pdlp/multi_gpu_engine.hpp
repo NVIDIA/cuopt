@@ -233,7 +233,8 @@ struct multi_gpu_engine_t {
   {
     std::vector<typename pdlp_shard_t<i_t, f_t>::halo_axis_t> axes;
     axes.reserve(shards.size());
-    for (auto& s : shards) axes.push_back(s->var_halo_axis());
+    for (auto& s : shards)
+      axes.push_back(s->var_halo_axis());
     halo_exchange_bufs_impl(bufs, axes);
   }
 
@@ -257,7 +258,8 @@ struct multi_gpu_engine_t {
   {
     std::vector<typename pdlp_shard_t<i_t, f_t>::halo_axis_t> axes;
     axes.reserve(shards.size());
-    for (auto& s : shards) axes.push_back(s->cstr_halo_axis());
+    for (auto& s : shards)
+      axes.push_back(s->cstr_halo_axis());
     halo_exchange_bufs_impl(bufs, axes);
   }
 
@@ -279,17 +281,15 @@ struct multi_gpu_engine_t {
   // -------- Gather owned slices to master ---------------------------------
   // Scatters data from each shard's owned slice to the master's buffer.
   // var and cstr version share the same implementation.
-  void gather_owned_var_to_master_bufs(
-    std::vector<raft::device_span<f_t const>> const& shard_owned,
-    raft::device_span<f_t> master_buf)
+  void gather_owned_var_to_master_bufs(std::vector<raft::device_span<f_t const>> const& shard_owned,
+                                       raft::device_span<f_t> master_buf)
   {
     gather_owned_to_master_bufs_impl(
       shard_owned, master_buf, owned_var_sizes_, local_to_global_vars_);
   }
 
   void gather_owned_cstr_to_master_bufs(
-    std::vector<raft::device_span<f_t const>> const& shard_owned,
-    raft::device_span<f_t> master_buf)
+    std::vector<raft::device_span<f_t const>> const& shard_owned, raft::device_span<f_t> master_buf)
   {
     gather_owned_to_master_bufs_impl(
       shard_owned, master_buf, owned_cstr_sizes_, local_to_global_cstrs_);
@@ -300,8 +300,7 @@ struct multi_gpu_engine_t {
   template <typename BufAccess>
   void gather_owned_var_to_master(BufAccess&& buf_access)
   {
-    cuopt_assert(master_pdlp_ != nullptr,
-                 "gather_owned_var_to_master requires set_master(...)");
+    cuopt_assert(master_pdlp_ != nullptr, "gather_owned_var_to_master requires set_master(...)");
     std::vector<raft::device_span<f_t const>> shard_bufs;
     shard_bufs.reserve(shards.size());
     for_each_shard([&](pdlp_shard_t<i_t, f_t>& s) {
@@ -315,8 +314,7 @@ struct multi_gpu_engine_t {
   template <typename BufAccess>
   void gather_owned_cstr_to_master(BufAccess&& buf_access)
   {
-    cuopt_assert(master_pdlp_ != nullptr,
-                 "gather_owned_cstr_to_master requires set_master(...)");
+    cuopt_assert(master_pdlp_ != nullptr, "gather_owned_cstr_to_master requires set_master(...)");
     std::vector<raft::device_span<f_t const>> shard_bufs;
     shard_bufs.reserve(shards.size());
     for_each_shard([&](pdlp_shard_t<i_t, f_t>& s) {
@@ -353,19 +351,17 @@ struct multi_gpu_engine_t {
       auto& s = *shards[r];
       raft::device_setter guard(s.device_id);
       const std::size_t n_owned = owned_sizes[r];
-      cuopt_expects(shard_owned[r].size() == n_owned,
-                    error_type_t::RuntimeError,
-                    "gather_owned_to_master_bufs_impl: shard_owned[r].size() must equal owned size");
+      cuopt_expects(
+        shard_owned[r].size() == n_owned,
+        error_type_t::RuntimeError,
+        "gather_owned_to_master_bufs_impl: shard_owned[r].size() must equal owned size");
       if (n_owned == 0) continue;
       std::vector<f_t> tmp(n_owned);
       raft::copy(tmp.data(), shard_owned[r].data(), n_owned, s.stream.view());
       // Sync so tmp is populated before the host scatter (and stays valid).
       s.stream.synchronize();
-      thrust::scatter(thrust::host,
-                      tmp.begin(),
-                      tmp.end(),
-                      local_to_globals[r].begin(),
-                      h_master.begin());
+      thrust::scatter(
+        thrust::host, tmp.begin(), tmp.end(), local_to_globals[r].begin(), h_master.begin());
     }
 
     // Single H->D onto master's device (`stream` lives on the master device).

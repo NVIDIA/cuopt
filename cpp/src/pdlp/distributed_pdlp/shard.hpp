@@ -85,8 +85,8 @@ struct pdlp_shard_t {
     std::vector<rmm::device_uvector<i_t>>& send_indices;  // [peer]
     std::vector<rmm::device_uvector<f_t>>& send_buf;      // [peer]
     i_t owned_size;
-    std::vector<i_t> const& recv_offsets;                 // [peer]
-    std::vector<i_t> const& recv_counts;                  // [peer]
+    std::vector<i_t> const& recv_offsets;  // [peer]
+    std::vector<i_t> const& recv_counts;   // [peer]
   };
   halo_axis_t var_halo_axis()
   {

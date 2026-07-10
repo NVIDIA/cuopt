@@ -2297,9 +2297,10 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
   if (is_distributed_master()) {
     // SpMV is the first operation in compute_interaction_and_movement so we can do halo before and
     // call it naturally we then reduce the local dot products
-    multi_gpu_engine->halo_exchange_cstr([](pdlp_solver_t<i_t, f_t>& p) -> rmm::device_uvector<f_t>& {
-      return p.pdhg_solver_.get_reflected_dual();
-    });
+    multi_gpu_engine->halo_exchange_cstr(
+      [](pdlp_solver_t<i_t, f_t>& p) -> rmm::device_uvector<f_t>& {
+        return p.pdhg_solver_.get_reflected_dual();
+      });
 
     for (auto& shard : multi_gpu_engine->shards) {
       raft::device_setter guard(shard->device_id);
