@@ -21,16 +21,18 @@
 
 #include <algorithm>
 #include <cmath>
-#include <dual_simplex/sparse_matrix.hpp>
-#include <dual_simplex/sparse_vector.hpp>
 #include <limits>
+#include <linear_algebra/sparse_matrix.hpp>
+#include <linear_algebra/sparse_vector.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/utils.cuh>
 #include <utilities/logger.hpp>
 #include <utilities/macros.cuh>
 #include <utilities/timer.hpp>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
+
+using simplex::user_problem_t;
 
 // do constraints with only binary variables.
 template <typename i_t, typename f_t>
@@ -99,7 +101,7 @@ void sort_csr_by_constraint_coefficients(
 
 template <typename i_t, typename f_t>
 void make_coeff_positive_knapsack_constraint(
-  const dual_simplex::user_problem_t<i_t, f_t>& problem,
+  const user_problem_t<i_t, f_t>& problem,
   std::vector<knapsack_constraint_t<i_t, f_t>>& knapsack_constraints,
   typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances)
 {
@@ -132,8 +134,8 @@ void make_coeff_positive_knapsack_constraint(
 // convert all the knapsack constraints
 // if a binary variable has a negative coefficient, put its negation in the constraint
 template <typename i_t, typename f_t>
-void add_knapsack_side(const dual_simplex::user_problem_t<i_t, f_t>& problem,
-                       const dual_simplex::csr_matrix_t<i_t, f_t>& A,
+void add_knapsack_side(const user_problem_t<i_t, f_t>& problem,
+                       const csr_matrix_t<i_t, f_t>& A,
                        std::pair<i_t, i_t> constraint_range,
                        f_t sign,
                        f_t side_rhs,
@@ -154,7 +156,7 @@ void add_knapsack_side(const dual_simplex::user_problem_t<i_t, f_t>& problem,
   for (i_t p = constraint_range.first; p < constraint_range.second; p++) {
     const i_t col        = A.j[p];
     const f_t coeff      = sign * A.x[p];
-    const bool is_binary = problem.var_types[col] != dual_simplex::variable_type_t::CONTINUOUS &&
+    const bool is_binary = problem.var_types[col] != simplex::variable_type_t::CONTINUOUS &&
                            problem.lower[col] == 0.0 && problem.upper[col] == 1.0;
     if (is_binary) {
       knapsack_constraint.entries.push_back({col, coeff});
@@ -171,16 +173,15 @@ void add_knapsack_side(const dual_simplex::user_problem_t<i_t, f_t>& problem,
     knapsack_constraint.is_set_partitioning = false;
   }
 
-  if (knapsack_constraint.entries.size() >= 2 &&
-      knapsack_constraint.rhs >= min_binary_activity) {
+  if (knapsack_constraint.entries.size() >= 2 && knapsack_constraint.rhs >= min_binary_activity) {
     knapsack_constraints.push_back(std::move(knapsack_constraint));
   }
 }
 
 template <typename i_t, typename f_t>
-void fill_knapsack_constraints(const dual_simplex::user_problem_t<i_t, f_t>& problem,
+void fill_knapsack_constraints(const user_problem_t<i_t, f_t>& problem,
                                std::vector<knapsack_constraint_t<i_t, f_t>>& knapsack_constraints,
-                               dual_simplex::csr_matrix_t<i_t, f_t>& A)
+                               csr_matrix_t<i_t, f_t>& A)
 {
   // we might add additional constraints for the equality constraints
   i_t added_constraints = 0;
@@ -607,7 +608,7 @@ void clique_table_t<i_t, f_t>::set_small_clique_adj_for_test(
 }
 
 template <typename i_t, typename f_t>
-void build_clique_table(const dual_simplex::user_problem_t<i_t, f_t>& problem,
+void build_clique_table(const user_problem_t<i_t, f_t>& problem,
                         clique_table_t<i_t, f_t>& clique_table,
                         typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances,
                         bool remove_small_cliques_flag,
@@ -619,7 +620,7 @@ void build_clique_table(const dual_simplex::user_problem_t<i_t, f_t>& problem,
   cuopt_assert(problem.var_types.size() == static_cast<size_t>(problem.num_cols),
                "Problem variable types size mismatch");
   std::vector<knapsack_constraint_t<i_t, f_t>> knapsack_constraints;
-  dual_simplex::csr_matrix_t<i_t, f_t> A(problem.num_rows, problem.num_cols, 0);
+  csr_matrix_t<i_t, f_t> A(problem.num_rows, problem.num_cols, 0);
   problem.A.to_compressed_row(A);
   fill_knapsack_constraints(problem, knapsack_constraints, A);
   make_coeff_positive_knapsack_constraint(problem, knapsack_constraints, tolerances);
@@ -676,9 +677,9 @@ void print_clique_table(const clique_table_t<i_t, f_t>& clique_table)
 }
 
 template <typename i_t, typename f_t>
-void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
+void find_initial_cliques(user_problem_t<i_t, f_t>& problem,
                           typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances,
-                          std::shared_ptr<clique_table_t<i_t, f_t>>* clique_table_out,
+                          std::shared_ptr<clique_table_t<i_t, f_t>>& clique_table_out,
                           cuopt::timer_t& timer,
                           omp_atomic_t<bool>* signal_extend,
                           const std::vector<std::pair<i_t, i_t>>* extra_conflict_edges)
@@ -695,7 +696,7 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
   double t_remove = 0.;
 #endif
   std::vector<knapsack_constraint_t<i_t, f_t>> knapsack_constraints;
-  dual_simplex::csr_matrix_t<i_t, f_t> A(problem.num_rows, problem.num_cols, 0);
+  csr_matrix_t<i_t, f_t> A(problem.num_rows, problem.num_cols, 0);
   problem.A.to_compressed_row(A);
   fill_knapsack_constraints(problem, knapsack_constraints, A);
 #ifdef DEBUG_CLIQUE_TABLE
@@ -710,36 +711,28 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
   t_sort = stage_timer.elapsed_time();
 #endif
   clique_config_t clique_config;
-  std::shared_ptr<clique_table_t<i_t, f_t>> clique_table_shared;
-  clique_table_t<i_t, f_t> clique_table_local(2 * problem.num_cols,
-                                              clique_config.min_clique_size,
-                                              clique_config.max_clique_size_for_extension);
-  clique_table_t<i_t, f_t>* clique_table_ptr = &clique_table_local;
-  if (clique_table_out != nullptr) {
-    clique_table_shared =
-      std::make_shared<clique_table_t<i_t, f_t>>(2 * problem.num_cols,
-                                                 clique_config.min_clique_size,
-                                                 clique_config.max_clique_size_for_extension);
-    clique_table_ptr = clique_table_shared.get();
-  }
-  clique_table_ptr->tolerances             = tolerances;
+  auto clique_table =
+    std::make_shared<clique_table_t<i_t, f_t>>(2 * problem.num_cols,
+                                               clique_config.min_clique_size,
+                                               clique_config.max_clique_size_for_extension);
+  clique_table->tolerances                 = tolerances;
   double time_limit_for_additional_cliques = timer.remaining_time() / 2;
   cuopt::timer_t additional_cliques_timer(time_limit_for_additional_cliques);
   double find_work_estimate = 0.0;
   // Always build base cliques in full; signal_extend only gates the extension phase.
   for (const auto& knapsack_constraint : knapsack_constraints) {
     if (timer.check_time_limit()) { break; }
-    find_cliques_from_constraint(knapsack_constraint, *clique_table_ptr, additional_cliques_timer);
+    find_cliques_from_constraint(knapsack_constraint, *clique_table, additional_cliques_timer);
     find_work_estimate += knapsack_constraint.entries.size();
   }
 #ifdef DEBUG_CLIQUE_TABLE
   t_find = stage_timer.elapsed_time();
 #endif
   CUOPT_LOG_DEBUG("Number of cliques: %d, additional cliques: %d, find_work=%.0f",
-                  clique_table_ptr->first.size(),
-                  clique_table_ptr->addtl_cliques.size(),
+                  clique_table->first.size(),
+                  clique_table->addtl_cliques.size(),
                   find_work_estimate);
-  remove_small_cliques(*clique_table_ptr, timer);
+  remove_small_cliques(*clique_table, timer);
 #ifdef DEBUG_CLIQUE_TABLE
   t_small = stage_timer.elapsed_time();
 #endif
@@ -748,12 +741,12 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
   // enriches the graph beyond the constraint-derived conflicts so the clique
   // separator can find violated cliques spanning multiple constraints.
   if (extra_conflict_edges != nullptr && !extra_conflict_edges->empty()) {
-    const i_t n_vertices = 2 * clique_table_ptr->n_variables;
+    const i_t n_vertices = 2 * clique_table->n_variables;
     std::vector<std::pair<i_t, i_t>> merged_edges;
-    merged_edges.reserve(clique_table_ptr->small_clique_adj.indices.size() +
+    merged_edges.reserve(clique_table->small_clique_adj.indices.size() +
                          2 * extra_conflict_edges->size());
     for (i_t v = 0; v < n_vertices; ++v) {
-      for (i_t u : clique_table_ptr->small_clique_adj.slice(v)) {
+      for (i_t u : clique_table->small_clique_adj.slice(v)) {
         merged_edges.emplace_back(v, u);
       }
     }
@@ -762,23 +755,26 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
       merged_edges.emplace_back(a, b);
       merged_edges.emplace_back(b, a);
     }
-    clique_table_ptr->small_clique_adj.finalize_from_unsorted_pairs(n_vertices, merged_edges);
-    std::fill(clique_table_ptr->var_degrees.begin(), clique_table_ptr->var_degrees.end(), -1);
+    clique_table->small_clique_adj.finalize_from_unsorted_pairs(n_vertices, merged_edges);
+    std::fill(clique_table->var_degrees.begin(), clique_table->var_degrees.end(), -1);
   }
-  fill_var_clique_maps(*clique_table_ptr);
+  fill_var_clique_maps(*clique_table);
 #ifdef DEBUG_CLIQUE_TABLE
   t_maps = stage_timer.elapsed_time();
 #endif
-  if (clique_table_out != nullptr) { *clique_table_out = std::move(clique_table_shared); }
+  // Publish the base table so cut generation can start using it; the extension
+  // phase below keeps mutating *clique_table, so the consumer must signal this
+  // task to stop and join it (taskwait) before reading the table.
+  clique_table_out       = clique_table;
   double extend_work     = 0.0;
   i_t n_extended_cliques = extend_cliques(knapsack_constraints,
-                                          *clique_table_ptr,
+                                          *clique_table,
                                           timer,
                                           &extend_work,
                                           clique_config.min_extend_work,
                                           clique_config.max_extend_work,
                                           signal_extend);
-  if (n_extended_cliques > 0) { fill_var_clique_maps(*clique_table_ptr); }
+  if (n_extended_cliques > 0) { fill_var_clique_maps(*clique_table); }
 #ifdef DEBUG_CLIQUE_TABLE
   t_extend = stage_timer.elapsed_time();
   CUOPT_LOG_DEBUG(
@@ -799,14 +795,14 @@ void find_initial_cliques(dual_simplex::user_problem_t<i_t, f_t>& problem,
 
 #define INSTANTIATE(F_TYPE)                                                                    \
   template void find_initial_cliques<int, F_TYPE>(                                             \
-    dual_simplex::user_problem_t<int, F_TYPE> & problem,                                       \
+    user_problem_t<int, F_TYPE> & problem,                                                     \
     typename mip_solver_settings_t<int, F_TYPE>::tolerances_t tolerances,                      \
-    std::shared_ptr<clique_table_t<int, F_TYPE>> * clique_table_out,                           \
+    std::shared_ptr<clique_table_t<int, F_TYPE>> & clique_table_out,                           \
     cuopt::timer_t & timer,                                                                    \
     omp_atomic_t<bool> * signal_extend,                                                        \
     const std::vector<std::pair<int, int>>* extra_conflict_edges);                             \
   template void build_clique_table<int, F_TYPE>(                                               \
-    const dual_simplex::user_problem_t<int, F_TYPE>& problem,                                  \
+    const user_problem_t<int, F_TYPE>& problem,                                                \
     clique_table_t<int, F_TYPE>& clique_table,                                                 \
     typename mip_solver_settings_t<int, F_TYPE>::tolerances_t tolerances,                      \
     bool remove_small_cliques_flag,                                                            \
@@ -823,4 +819,4 @@ INSTANTIATE(double)
 #endif
 #undef INSTANTIATE
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

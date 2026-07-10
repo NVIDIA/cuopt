@@ -17,7 +17,7 @@ Container from NVIDIA NGC
 
 Step 1: Get a subscription for `NVIDIA AI Enterprise (NVAIE) <https://www.nvidia.com/en-us/data-center/products/ai-enterprise/>`_ to get the cuOpt container to host in your cloud.
 
-Step 2: Once given access, users can find `cuOpt container <https://catalog.ngc.nvidia.com/orgs/nvidia/teams/cuopt/containers/cuopt>`_ in the NGC catalog.
+Step 2: Once given access, users can find `cuOpt container <https://catalog.ngc.nvidia.com/orgs/nvidia/cuopt/containers/cuopt>`_ in the NGC catalog.
 
 Step 3: Access NGC registry:
 

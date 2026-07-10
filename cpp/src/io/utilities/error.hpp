@@ -11,7 +11,7 @@
 #include <stdarg.h>
 #include <stdexcept>
 
-namespace cuopt::linear_programming::io {
+namespace cuopt::mathematical_optimization::io {
 
 /**
  * @brief Indicates different type of exceptions which mps parser might throw
@@ -116,4 +116,4 @@ inline void mps_parser_expects_fatal(bool cond, error_type_t error_type, const c
     }                                                                                         \
   } while (0)
 
-}  // namespace cuopt::linear_programming::io
+}  // namespace cuopt::mathematical_optimization::io

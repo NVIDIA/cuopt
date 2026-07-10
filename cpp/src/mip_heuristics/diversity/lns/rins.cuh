@@ -24,7 +24,7 @@
 
 #include <vector>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 // forward declare
 template <typename i_t, typename f_t>
@@ -84,4 +84,4 @@ class rins_t {
   omp_atomic_t<bool> launch_new_task{true};
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

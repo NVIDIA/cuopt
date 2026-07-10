@@ -20,7 +20,7 @@
 
 #include "grpc_client.hpp"
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 /**
  * @brief Inject a mock stub into a grpc_client_t instance for testing
@@ -62,4 +62,4 @@ inline void grpc_test_inject_mock_stub_typed(grpc_client_t& client, std::shared_
   grpc_test_inject_mock_stub(client, std::static_pointer_cast<void>(stub));
 }
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

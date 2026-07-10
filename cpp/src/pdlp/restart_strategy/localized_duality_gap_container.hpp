@@ -6,7 +6,7 @@
 /* clang-format on */
 #pragma once
 
-#include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
 #include <pdlp/pdlp_climber_strategy.hpp>
 #include <pdlp/swap_and_resize_helper.cuh>
 
@@ -17,7 +17,7 @@
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 template <typename i_t, typename f_t>
 struct localized_duality_gap_container_t {
  public:
@@ -25,7 +25,7 @@ struct localized_duality_gap_container_t {
                                     i_t primal_size,
                                     i_t dual_size,
                                     const std::vector<pdlp_climber_strategy_t>& climber_strategies,
-                                    const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params);
+                                    const pdlp::pdlp_hyper_params_t& hyper_params);
 
   struct view_t {
     /** size of primal problem */
@@ -48,7 +48,7 @@ struct localized_duality_gap_container_t {
     f_t* primal_solution_tr;
     f_t* dual_solution_tr;
 
-    pdlp_hyper_params::pdlp_hyper_params_t hyper_params;
+    pdlp::pdlp_hyper_params_t hyper_params;
   };
 
   void swap_context(const thrust::universal_host_pinned_vector<swap_pair_t<i_t>>& swap_pairs);
@@ -77,4 +77,4 @@ struct localized_duality_gap_container_t {
   rmm::device_uvector<f_t> primal_solution_tr_;
   rmm::device_uvector<f_t> dual_solution_tr_;
 };
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

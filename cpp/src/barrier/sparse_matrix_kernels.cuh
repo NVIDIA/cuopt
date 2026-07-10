@@ -10,7 +10,7 @@
 #include <barrier/cusparse_info.hpp>
 #include <barrier/device_sparse_matrix.cuh>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::barrier {
 
 template <typename i_t, typename f_t>
 void initialize_cusparse_data(raft::handle_t const* handle,
@@ -163,4 +163,4 @@ void multiply_kernels(raft::handle_t const* handle,
   handle->sync_stream();
 }
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::barrier

@@ -31,7 +31,7 @@
 #include "grpc_pipe_serialization.hpp"
 
 using namespace cuopt::remote;
-using cuopt::linear_programming::container_array_key_t;
+using cuopt::mathematical_optimization::container_array_key_t;
 
 // ---------------------------------------------------------------------------
 // RAII wrapper for a pipe(2) pair.

@@ -20,7 +20,7 @@ namespace cuopt::remote {
 class ChunkedProblemHeader;
 }
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 // Forward declarations
 template <typename i_t, typename f_t>
@@ -136,4 +136,4 @@ std::vector<cuopt::remote::SendArrayChunkRequest> build_array_chunk_requests(
   const std::string& upload_id,
   int64_t chunk_size_bytes);
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

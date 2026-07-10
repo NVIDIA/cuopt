@@ -8,16 +8,16 @@
 #include <cuopt_remote.pb.h>
 #include <cuopt_remote_service.pb.h>
 
-#include <cuopt/linear_programming/cpu_optimization_problem_solution.hpp>
-#include <cuopt/linear_programming/mip/solver_solution.hpp>
-#include <cuopt/linear_programming/pdlp/solver_solution.hpp>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem_solution.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_solution.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>
 
 #include <cstddef>
 #include <cstdint>
 #include <map>
 #include <vector>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 /**
  * @brief Map cpu_lp_solution_t to protobuf LPSolution message.
@@ -140,4 +140,4 @@ void build_mip_solution_proto(const cuopt::remote::ChunkedResultHeader& header,
                               const std::map<int32_t, std::vector<uint8_t>>& arrays,
                               cuopt::remote::MIPSolution* proto);
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

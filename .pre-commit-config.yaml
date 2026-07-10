@@ -1,14 +1,21 @@
 # SPDX-FileCopyrightText: Copyright (c) 2019-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+exclude: |
+  (?x)^(
+    skills/.*/skill\.oms\.sig|
+    skills/.*/skill-card\.md|
+    skills/.*/BENCHMARK\.md
+  )$
+
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: 'v6.0.0'
     hooks:
       - id: end-of-file-fixer
-        exclude: ^(datasets|helmchart)/.*\.(mps|json|yaml|yml|txt)$|^skills/.*/skill\.oms\.sig$
+        exclude: ^(datasets|helmchart)/.*\.(mps|json|yaml|yml|txt)$
       - id: trailing-whitespace
-        exclude: ^datasets/.*\.(mps|json|yaml|yml|txt)$|^skills/.*/skill\.oms\.sig$
+        exclude: ^datasets/.*\.(mps|json|yaml|yml|txt)$
       - id: check-builtin-literals
       - id: check-executables-have-shebangs
       - id: check-json

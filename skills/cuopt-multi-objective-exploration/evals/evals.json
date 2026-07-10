@@ -53,5 +53,20 @@
       "Does NOT trace a frontier or sweep the budget as if it were a tradeoff dial",
       "Returns one recommended supplier set (one solve), citing the binding budget and demand coverage"
     ]
+  },
+  {
+    "id": "multiobj-explore-eval-005-latent-objective",
+    "question": "A planner runs a multi-period production model to MAXIMIZE priority-weighted finished-goods inventory at the end of a 10-period horizon. The model also carries full cost data — per-item unit and holding costs, per-resource hourly production cost — but the current objective ignores it, and leadership has set no budget. The planner asks: 'Push supply as high as it will go — what's the plan?' Using cuOpt, how would you respond?",
+    "expected_skill": "cuopt-multi-objective-exploration",
+    "expected_script": null,
+    "ground_truth": "The agent recognizes that cost is a SECOND objective sitting latent in the problem — the data is present and no budget pins it down — and does NOT simply return the single maximum-supply plan, nor silently fold cost into a weighted-sum blend (maximize supply minus lambda*cost) with a self-chosen lambda. It surfaces the supply-vs-cost tradeoff and traces the Pareto frontier with cuOpt by epsilon-constraint (cap total cost, maximize supply, sweep the cap from tight to slack). Because the model is a MILP (no usable duals), it estimates the supply-per-dollar exchange rate by differencing adjacent frontier points, reports supply in interpretable units rather than the raw priority-weighted total, flags the knee where supply per dollar collapses, names two or three candidate operating points, and defers the budget decision to leadership. It distinguishes this from a hard-budget case: cost is unconstrained here, so the right move is to expose the tradeoff, not to pick one plan. It defers per-solve mechanics to the api-* skills and formulation to cuopt-numerical-optimization-formulation.",
+    "expected_behavior": [
+      "Recognizes a LATENT second objective (cost) present in the data but unstated; does NOT optimize the single stated objective (supply) in isolation",
+      "Does NOT silently collapse to a weighted-sum blend (maximize supply minus lambda*cost) with a self-chosen weight",
+      "Surfaces the supply-vs-cost tradeoff and traces the Pareto frontier via epsilon-constraint (sweep a total-cost cap, maximize supply)",
+      "Since the model is MILP (no duals), estimates the supply-per-dollar exchange rate by differencing adjacent frontier points",
+      "Reports supply in interpretable units, flags the knee, names candidate operating points, and defers the budget call to leadership",
+      "Distinguishes this from a hard-budget case (cf. the decoy): cost is unconstrained here, so it exposes the tradeoff rather than returning a single plan"
+    ]
   }
 ]

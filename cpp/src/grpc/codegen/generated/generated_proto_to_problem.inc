@@ -96,6 +96,7 @@
       if (_entry.cols.size() != _entry.vals.size()) {
         throw std::invalid_argument("set_quadratic_constraints: cols/vals size mismatch");
       }
+      io::canonicalize_coo_matrix(_entry.rows, _entry.cols, _entry.vals);
       _entries.push_back(std::move(_entry));
     }
     cpu_problem.set_quadratic_constraints(std::move(_entries));

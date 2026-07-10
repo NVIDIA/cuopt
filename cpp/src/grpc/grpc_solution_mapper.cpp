@@ -5,19 +5,19 @@
 
 #include "grpc_solution_mapper.hpp"
 
-#include <cuopt/linear_programming/constants.h>
+#include <cuopt/mathematical_optimization/constants.h>
 #include <cuopt_remote.pb.h>
 #include <cuopt_remote_service.pb.h>
-#include <cuopt/linear_programming/cpu_optimization_problem_solution.hpp>
-#include <cuopt/linear_programming/mip/solver_solution.hpp>
-#include <cuopt/linear_programming/pdlp/solver_solution.hpp>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem_solution.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_solution.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>
 
 #include <cstring>
 #include <map>
 #include <stdexcept>
 #include <string>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 namespace {
 #include "generated_enum_converters_solution.inc"
@@ -258,4 +258,4 @@ template void build_mip_solution_proto<int32_t, double>(
   cuopt::remote::MIPSolution* proto);
 #endif
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

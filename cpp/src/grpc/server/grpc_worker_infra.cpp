@@ -8,6 +8,68 @@
 #include "grpc_pipe_serialization.hpp"
 #include "grpc_server_types.hpp"
 
+#include <cctype>
+#include <cstdio>
+
+namespace {
+
+// GPU discovery for startup logging only. Avoids CUDA calls in the parent before fork().
+int count_cuda_visible_devices()
+{
+  const char* visible = std::getenv("CUDA_VISIBLE_DEVICES");
+  if (visible == nullptr || visible[0] == '\0') { return 0; }
+
+  int count     = 0;
+  bool in_token = false;
+  for (const char* p = visible; *p != '\0'; ++p) {
+    if (*p == ',') {
+      in_token = false;
+    } else if (!std::isspace(static_cast<unsigned char>(*p))) {
+      if (!in_token) {
+        ++count;
+        in_token = true;
+      }
+    }
+  }
+  return count;
+}
+
+int discover_gpu_count_via_nvidia_smi()
+{
+  FILE* fp = popen("nvidia-smi -L 2>/dev/null", "r");
+  if (fp == nullptr) { return 0; }
+
+  int count = 0;
+  char line[512];
+  while (fgets(line, sizeof(line), fp) != nullptr) {
+    int gpu_id = -1;
+    if (std::sscanf(line, "GPU %d:", &gpu_id) == 1) { ++count; }
+  }
+  pclose(fp);
+  return count;
+}
+
+}  // namespace
+
+void log_worker_gpu_layout()
+{
+  visible_gpu_count = count_cuda_visible_devices();
+  if (visible_gpu_count <= 0) { visible_gpu_count = discover_gpu_count_via_nvidia_smi(); }
+
+  if (visible_gpu_count <= 0) {
+    SERVER_LOG_WARN(
+      "[Server] Could not determine GPU count; workers will select devices at startup");
+    return;
+  }
+
+  SERVER_LOG_INFO("[Server] %d GPU(s) available for worker assignment", visible_gpu_count);
+  if (config.num_workers > visible_gpu_count) {
+    SERVER_LOG_WARN("[Server] %d workers on %d GPU(s); multiple workers will share a GPU",
+                    config.num_workers,
+                    visible_gpu_count);
+  }
+}
+
 void cleanup_shared_memory()
 {
   if (job_queue) {

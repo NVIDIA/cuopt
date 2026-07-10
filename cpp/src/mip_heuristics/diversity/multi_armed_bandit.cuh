@@ -13,7 +13,7 @@
 #include <random>
 #include <vector>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 constexpr double recombiner_alpha = 0.05;
 constexpr double ls_alpha         = 0.03;
@@ -90,4 +90,4 @@ struct mab_t {
   int last_chosen_option = -1;
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

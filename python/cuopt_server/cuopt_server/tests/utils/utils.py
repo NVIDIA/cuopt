@@ -17,6 +17,12 @@ if RAPIDS_DATASET_ROOT_DIR is None:
     RAPIDS_DATASET_ROOT_DIR = os.path.join(RAPIDS_DATASET_ROOT_DIR, "datasets")
 
 
+def _worker_port(base=5555):
+    _worker = os.environ.get("PYTEST_XDIST_WORKER", "gw0")
+    worker_id = int(_worker[2:]) if _worker.startswith("gw") else 0
+    return base + worker_id
+
+
 def generate_json_data(**args):
     return {arg[0]: arg[1] for arg in args.items() if arg[1] is not None}
 
@@ -345,7 +351,7 @@ def cuoptproc(request):
             "-i",
             "0.0.0.0",
             "-p",
-            "5555",
+            str(_worker_port()),
             "-l",
             "debug",
         ]
@@ -359,7 +365,7 @@ def cuoptproc(request):
 
 
 class RequestClient:
-    def __init__(self, port=5555):
+    def __init__(self, port=_worker_port()):
         self.ip = "127.0.0.1"
         self.port = port
         self.url = f"http://{self.ip}:{self.port}"

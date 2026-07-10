@@ -9,13 +9,18 @@
 
 #include <utilities/macros.cuh>
 
+#include <cuda/memory_resource>
+
 #include <thrust/host_vector.h>
 #include <thrust/tuple.h>
+#include <algorithm>
 #include <mutex>
 #include <raft/core/device_span.hpp>
 #include <raft/util/cuda_utils.cuh>
 #include <raft/util/cudart_utils.hpp>
 #include <rmm/device_uvector.hpp>
+#include <rmm/mr/limiting_resource_adaptor.hpp>
+#include <rmm/mr/per_device_resource.hpp>
 #include <shared_mutex>
 #include <unordered_map>
 
@@ -242,7 +247,11 @@ inline size_t get_device_memory_size()
 {
   size_t free_mem, total_mem;
   RAFT_CUDA_TRY(cudaMemGetInfo(&free_mem, &total_mem));
-  // TODO (bdice): Restore limiting adaptor check after updating CCCL to support resource_cast
+
+  auto res              = rmm::mr::get_current_device_resource_ref();
+  auto limiting_adaptor = cuda::mr::resource_cast<rmm::mr::limiting_resource_adaptor>(&res);
+  if (limiting_adaptor) { return std::min(total_mem, limiting_adaptor->get_allocation_limit()); }
+
   return total_mem;
 }
 

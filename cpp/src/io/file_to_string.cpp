@@ -27,9 +27,9 @@
 #endif  // MPS_PARSER_WITH_BZIP2 || MPS_PARSER_WITH_ZLIB
 
 namespace {
-using cuopt::linear_programming::io::error_type_t;
-using cuopt::linear_programming::io::mps_parser_expects;
-using cuopt::linear_programming::io::mps_parser_expects_fatal;
+using cuopt::mathematical_optimization::io::error_type_t;
+using cuopt::mathematical_optimization::io::mps_parser_expects;
+using cuopt::mathematical_optimization::io::mps_parser_expects_fatal;
 
 struct FcloseDeleter {
   void operator()(FILE* fp)
@@ -207,7 +207,7 @@ std::vector<char> zlib_file_to_string(const std::string& file)
 }  // end namespace
 #endif  // MPS_PARSER_WITH_ZLIB
 
-namespace cuopt::linear_programming::io::detail {
+namespace cuopt::mathematical_optimization::io {
 
 std::vector<char> file_to_string(const std::string& file)
 {
@@ -252,4 +252,4 @@ std::vector<char> file_to_string(const std::string& file)
   return buf;
 }
 
-}  // namespace cuopt::linear_programming::io::detail
+}  // namespace cuopt::mathematical_optimization::io

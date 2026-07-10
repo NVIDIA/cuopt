@@ -12,6 +12,7 @@ __pycache__
 *.dylib
 .cache
 .vscode
+.cursor/
 *.swp
 *.pytest_cache
 *.manifest
@@ -71,6 +72,11 @@ docs/cuopt/build
 cpp/include/cuopt/semantic_version.hpp
 !datasets/quadratic_programming
 !datasets/quadratic_programming/**
+!datasets/solomon/
+!datasets/solomon/In/
+!datasets/solomon/In/r107.txt
+!datasets/mip/
+!datasets/mip/swath1.mps
 
 # conda env (recommended name)
 .cuopt_env

@@ -5,13 +5,13 @@
  */
 /* clang-format on */
 
-#include <cuopt/linear_programming/backend_selection.hpp>
-#include <cuopt/linear_programming/cpu_optimization_problem.hpp>
-#include <cuopt/linear_programming/io/parser.hpp>
-#include <cuopt/linear_programming/mip/solver_settings.hpp>
-#include <cuopt/linear_programming/optimization_problem.hpp>
-#include <cuopt/linear_programming/optimization_problem_utils.hpp>
-#include <cuopt/linear_programming/solve.hpp>
+#include <cuopt/mathematical_optimization/backend_selection.hpp>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
 #include <utilities/logger.hpp>
 #include <utilities/timer.hpp>
 
@@ -77,7 +77,7 @@ inline auto make_async() { return std::make_shared<rmm::mr::cuda_async_memory_re
  * @return cuopt::init_logger_t
  */
 inline cuopt::init_logger_t dummy_logger(
-  const cuopt::linear_programming::solver_settings_t<int, double>& settings)
+  const cuopt::mathematical_optimization::solver_settings_t<int, double>& settings)
 {
   return cuopt::init_logger_t(settings.template get_parameter<std::string>(CUOPT_LOG_FILE),
                               settings.template get_parameter<bool>(CUOPT_LOG_TO_CONSOLE));
@@ -95,20 +95,20 @@ inline cuopt::init_logger_t dummy_logger(
 int run_single_file(const std::string& file_path,
                     const std::string& initial_solution_file,
                     bool solve_relaxation,
-                    cuopt::linear_programming::solver_settings_t<int, double>& settings)
+                    cuopt::mathematical_optimization::solver_settings_t<int, double>& settings)
 {
   cuopt::init_logger_t log(settings.get_parameter<std::string>(CUOPT_LOG_FILE),
                            settings.get_parameter<bool>(CUOPT_LOG_TO_CONSOLE));
 
   std::string base_filename = file_path.substr(file_path.find_last_of("/\\") + 1);
 
-  cuopt::linear_programming::io::mps_data_model_t<int, double> mps_data_model;
+  cuopt::mathematical_optimization::io::mps_data_model_t<int, double> mps_data_model;
   bool parsing_failed = false;
   auto timer          = cuopt::timer_t(settings.get_parameter<double>(CUOPT_TIME_LIMIT));
   {
     CUOPT_LOG_INFO("Reading file %s", base_filename.c_str());
     try {
-      mps_data_model = cuopt::linear_programming::io::read<int, double>(file_path);
+      mps_data_model = cuopt::mathematical_optimization::io::read<int, double>(file_path);
     } catch (const std::logic_error& e) {
       CUOPT_LOG_ERROR("Parser exception: %s", e.what());
       parsing_failed = true;
@@ -123,34 +123,35 @@ int run_single_file(const std::string& file_path,
 
   // Determine memory backend and create problem using interface
   // Create handle only for GPU memory backend (avoid CUDA init on CPU-only hosts)
-  auto memory_backend = cuopt::linear_programming::get_memory_backend_type();
+  auto memory_backend = cuopt::mathematical_optimization::get_memory_backend_type();
   std::unique_ptr<raft::handle_t> handle_ptr;
-  std::unique_ptr<cuopt::linear_programming::optimization_problem_interface_t<int, double>>
+  std::unique_ptr<cuopt::mathematical_optimization::optimization_problem_interface_t<int, double>>
     problem_interface;
 
-  if (memory_backend == cuopt::linear_programming::memory_backend_t::GPU) {
+  if (memory_backend == cuopt::mathematical_optimization::memory_backend_t::GPU) {
     handle_ptr = std::make_unique<raft::handle_t>();
     problem_interface =
-      std::make_unique<cuopt::linear_programming::optimization_problem_t<int, double>>(
+      std::make_unique<cuopt::mathematical_optimization::optimization_problem_t<int, double>>(
         handle_ptr.get());
   } else {
     problem_interface =
-      std::make_unique<cuopt::linear_programming::cpu_optimization_problem_t<int, double>>();
+      std::make_unique<cuopt::mathematical_optimization::cpu_optimization_problem_t<int, double>>();
   }
 
-  cuopt::linear_programming::populate_from_mps_data_model(problem_interface.get(), mps_data_model);
+  cuopt::mathematical_optimization::populate_from_mps_data_model(problem_interface.get(),
+                                                                 mps_data_model);
 
   const bool is_mip = (problem_interface->get_problem_category() ==
-                         cuopt::linear_programming::problem_category_t::MIP ||
+                         cuopt::mathematical_optimization::problem_category_t::MIP ||
                        problem_interface->get_problem_category() ==
-                         cuopt::linear_programming::problem_category_t::IP) &&
+                         cuopt::mathematical_optimization::problem_category_t::IP) &&
                       !solve_relaxation;
 
   try {
     auto initial_solution =
       initial_solution_file.empty()
         ? std::vector<double>()
-        : cuopt::linear_programming::solution_reader_t::get_variable_values_from_sol_file(
+        : cuopt::mathematical_optimization::solution_reader_t::get_variable_values_from_sol_file(
             initial_solution_file, mps_data_model.get_variable_names());
 
     if (is_mip) {
@@ -173,10 +174,12 @@ int run_single_file(const std::string& file_path,
   try {
     if (is_mip) {
       auto& mip_settings = settings.get_mip_settings();
-      auto solution = cuopt::linear_programming::solve_mip(problem_interface.get(), mip_settings);
+      auto solution =
+        cuopt::mathematical_optimization::solve_mip(problem_interface.get(), mip_settings);
     } else {
       auto& lp_settings = settings.get_pdlp_settings();
-      auto solution     = cuopt::linear_programming::solve_lp(problem_interface.get(), lp_settings);
+      auto solution =
+        cuopt::mathematical_optimization::solve_lp(problem_interface.get(), lp_settings);
     }
   } catch (const std::exception& e) {
     fprintf(stderr, "cuopt_cli error: %s\n", e.what());
@@ -259,12 +262,12 @@ int main(int argc, char* argv[])
   for (int i = 1; i < argc; ++i) {
     std::string arg = argv[i];
     if (arg == "--dump-hyper-params") {
-      cuopt::linear_programming::solver_settings_t<int, double> settings;
+      cuopt::mathematical_optimization::solver_settings_t<int, double> settings;
       settings.dump_parameters_to_file("/dev/stdout", true);
       return 0;
     }
     if (arg == "--dump-params") {
-      cuopt::linear_programming::solver_settings_t<int, double> settings;
+      cuopt::mathematical_optimization::solver_settings_t<int, double> settings;
       settings.dump_parameters_to_file("/dev/stdout", false);
       return 0;
     }
@@ -327,7 +330,7 @@ int main(int argc, char* argv[])
 
   {
     // Add all solver settings as arguments
-    cuopt::linear_programming::solver_settings_t<int, double> dummy_settings;
+    cuopt::mathematical_optimization::solver_settings_t<int, double> dummy_settings;
 
     auto int_params    = dummy_settings.get_int_parameters();
     auto double_params = dummy_settings.get_float_parameters();
@@ -404,7 +407,7 @@ int main(int argc, char* argv[])
   const auto solve_relaxation      = program.get<bool>("--relaxation");
   const auto params_file           = program.get<std::string>("--params-file");
 
-  cuopt::linear_programming::solver_settings_t<int, double> settings;
+  cuopt::mathematical_optimization::solver_settings_t<int, double> settings;
   try {
     if (!params_file.empty()) { settings.load_parameters_from_file(params_file); }
     for (auto& [key, val] : settings_strings) {
@@ -417,10 +420,10 @@ int main(int argc, char* argv[])
   }
 
   // Only initialize CUDA resources if using GPU memory backend (not remote execution)
-  auto memory_backend = cuopt::linear_programming::get_memory_backend_type();
+  auto memory_backend = cuopt::mathematical_optimization::get_memory_backend_type();
   std::vector<rmm::mr::cuda_async_memory_resource> memory_resources;
 
-  if (memory_backend == cuopt::linear_programming::memory_backend_t::GPU) {
+  if (memory_backend == cuopt::mathematical_optimization::memory_backend_t::GPU) {
     const int num_gpus = settings.get_parameter<int>(CUOPT_NUM_GPUS);
 
     memory_resources.reserve(std::min(raft::device_setter::get_device_count(), num_gpus));

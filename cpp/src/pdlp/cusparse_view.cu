@@ -27,7 +27,7 @@ struct double_to_float_functor {
   __host__ __device__ float operator()(double val) const { return static_cast<float>(val); }
 };
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 
 // cusparse_sp_mat_descr_wrapper_t implementation
 template <typename i_t, typename f_t>
@@ -512,14 +512,14 @@ void cusparse_spmvop_run(cusparseHandle_t handle,
 template <typename i_t, typename f_t>
 cusparse_view_t<i_t, f_t>::cusparse_view_t(
   raft::handle_t const* handle_ptr,
-  const problem_t<i_t, f_t>& op_problem_scaled,
+  const mip::problem_t<i_t, f_t>& op_problem_scaled,
   saddle_point_state_t<i_t, f_t>& current_saddle_point_state,
   rmm::device_uvector<f_t>& _tmp_primal,
   rmm::device_uvector<f_t>& _tmp_dual,
   rmm::device_uvector<f_t>& _potential_next_dual_solution,
   rmm::device_uvector<f_t>& _reflected_primal_solution,
   const std::vector<pdlp_climber_strategy_t>& climber_strategies,
-  const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params,
+  const pdlp::pdlp_hyper_params_t& hyper_params,
   bool enable_mixed_precision_spmv)
   : batch_mode_(climber_strategies.size() > 1),
     handle_ptr_(handle_ptr),
@@ -927,7 +927,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
 template <typename i_t, typename f_t>
 cusparse_view_t<i_t, f_t>::cusparse_view_t(
   raft::handle_t const* handle_ptr,
-  const problem_t<i_t, f_t>& op_problem,
+  const mip::problem_t<i_t, f_t>& op_problem,
   rmm::device_uvector<f_t>& _primal_solution,
   rmm::device_uvector<f_t>& _dual_solution,
   rmm::device_uvector<f_t>& _tmp_primal,
@@ -938,7 +938,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   const rmm::device_uvector<i_t>& _A_T_offsets,
   const rmm::device_uvector<i_t>& _A_T_indices,
   const std::vector<pdlp_climber_strategy_t>& climber_strategies,
-  const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params)
+  const pdlp::pdlp_hyper_params_t& hyper_params)
   : batch_mode_(climber_strategies.size() > 1),
     handle_ptr_(handle_ptr),
     A{},
@@ -1150,7 +1150,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
 template <typename i_t, typename f_t>
 cusparse_view_t<i_t, f_t>::cusparse_view_t(
   raft::handle_t const* handle_ptr,
-  const problem_t<i_t, f_t>& op_problem,  // Just used for the sizes
+  const mip::problem_t<i_t, f_t>& op_problem,  // Just used for the sizes
   const cusparse_view_t<i_t, f_t>& existing_cusparse_view,
   f_t* _primal_solution,  // Solutions of each duality gap container
   f_t* _dual_solution,
@@ -1331,7 +1331,7 @@ void cusparse_view_t<i_t, f_t>::update_mixed_precision_matrices()
 // so the duplicated row/column buffers can be freed.
 template <typename i_t, typename f_t>
 void cusparse_view_t<i_t, f_t>::redirect_cusparse_csr_structure_pointers(
-  const problem_t<i_t, f_t>& original_problem)
+  const mip::problem_t<i_t, f_t>& original_problem)
 {
   RAFT_CUSPARSE_TRY(cusparseCsrSetPointers(A,
                                            const_cast<i_t*>(original_problem.offsets.data()),
@@ -1542,4 +1542,4 @@ template void my_cusparsespmm_preprocess<double>(cusparseHandle_t,
 #endif
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

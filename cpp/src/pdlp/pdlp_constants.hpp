@@ -9,7 +9,7 @@
 
 #include <cuda/cmath>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 inline constexpr int block_size = 128;
 
 [[maybe_unused]] static std::pair<size_t, size_t> inline kernel_config_from_batch_size(
@@ -69,4 +69,4 @@ template <>
 inline constexpr double safe_guard_for_extreme_values_in_primal_weight_computation<double> =
   1.0e-10;
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

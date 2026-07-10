@@ -18,8 +18,8 @@
 #include "recombiners/recombiner_stats.hpp"
 #include "recombiners/sub_mip.cuh"
 
-#include <cuopt/linear_programming/mip/solver_settings.hpp>
-#include <cuopt/linear_programming/mip/solver_stats.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_stats.hpp>
 
 #include <mip_heuristics/diversity/lns/rins.cuh>
 #include <mip_heuristics/local_search/local_search.cuh>
@@ -29,7 +29,7 @@
 
 #include <cstdint>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 class diversity_manager_t {
@@ -73,7 +73,7 @@ class diversity_manager_t {
                             const std::vector<f_t>& dual_solution,
                             f_t objective);
   mip_solver_context_t<i_t, f_t>& context;
-  dual_simplex::branch_and_bound_t<i_t, f_t>* branch_and_bound_ptr;
+  mip::branch_and_bound_t<i_t, f_t>* branch_and_bound_ptr;
   problem_t<i_t, f_t>* problem_ptr;
   diversity_config_t diversity_config;
   population_t<i_t, f_t> population;
@@ -110,4 +110,4 @@ class diversity_manager_t {
   bool run_only_sub_mip_recombiner{false};
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

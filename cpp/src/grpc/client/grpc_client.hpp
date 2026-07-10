@@ -5,10 +5,10 @@
 
 #pragma once
 
-#include <cuopt/linear_programming/cpu_optimization_problem_solution.hpp>
-#include <cuopt/linear_programming/mip/solver_settings.hpp>
-#include <cuopt/linear_programming/optimization_problem_interface.hpp>
-#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem_solution.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 
 #include "../cuopt_default_grpc_port.h"
 
@@ -35,7 +35,7 @@ class ResultResponse;
 class SubmitJobRequest;
 }  // namespace cuopt::remote
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 // Forward declarations for test helper functions (implemented in grpc_client.cpp)
 void grpc_test_inject_mock_stub(class grpc_client_t& client, std::shared_ptr<void> stub);
@@ -408,6 +408,10 @@ class grpc_client_t {
   // Activated when config_.stream_logs is true and config_.log_callback is set.
   void start_log_streaming(const std::string& job_id);
   void stop_log_streaming();
+  // Graceful variant: waits up to kLogDrainTimeout for the server to send the
+  // job_complete sentinel before force-cancelling.  Use on the success path so
+  // final log lines (e.g. "Best objective …") are not dropped.
+  void drain_log_streaming();
 
   // Shared polling loop used by solve_lp and solve_mip.
   struct poll_result_t {
@@ -419,6 +423,7 @@ class grpc_client_t {
 
   std::unique_ptr<std::thread> log_thread_;
   std::atomic<bool> stop_logs_{false};
+  std::atomic<bool> log_stream_done_{false};
   mutable std::mutex log_context_mutex_;
   // Points to the grpc::ClientContext* of the in-flight StreamLogs RPC (if
   // any).  Typed as void* to avoid exposing grpc headers in the public API.
@@ -478,4 +483,4 @@ class grpc_client_t {
                              std::string& job_id_out);
 };
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

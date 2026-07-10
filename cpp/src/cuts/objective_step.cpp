@@ -14,7 +14,9 @@
 #include <cstdint>
 #include <vector>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::mip {
+
+using simplex::objective_step_t;
 
 namespace {
 
@@ -408,4 +410,4 @@ template objective_step_t<float> compute_objective_step_info<int, float>(const s
                                                                          const std::vector<float>&,
                                                                          const std::vector<float>&);
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::mip

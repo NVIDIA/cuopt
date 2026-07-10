@@ -7,10 +7,10 @@
 
 #pragma once
 
-#include <cuopt/linear_programming/mip/diving_hyper_params.hpp>
+#include <cuopt/mathematical_optimization/mip/diving_hyper_params.hpp>
 
 #include <dual_simplex/logger.hpp>
-#include <dual_simplex/types.hpp>
+#include <math_optimization/types.hpp>
 
 #include <omp.h>
 #include <algorithm>
@@ -20,11 +20,11 @@
 #include <limits>
 #include <vector>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 struct benchmark_info_t;
 }
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 template <typename i_t, typename f_t>
 struct simplex_solver_settings_t {
@@ -88,6 +88,7 @@ struct simplex_solver_settings_t {
       flow_cover_cuts(-1),
       implied_bound_cuts(-1),
       clique_cuts(-1),
+      zero_half_cuts(-1),
       strong_chvatal_gomory_cuts(-1),
       symmetry(-1),
       reduced_cost_strengthening(-1),
@@ -179,6 +180,7 @@ struct simplex_solver_settings_t {
   i_t flow_cover_cuts;             // -1 automatic, 0 to disable, >0 to enable flow cover cuts
   i_t implied_bound_cuts;          // -1 automatic, 0 to disable, >0 to enable implied bound cuts
   i_t clique_cuts;                 // -1 automatic, 0 to disable, >0 to enable clique cuts
+  i_t zero_half_cuts;              // -1 automatic, 0 to disable, >0 to enable zero-half cuts
   i_t strong_chvatal_gomory_cuts;  // -1 automatic, 0 to disable, >0 to enable strong Chvatal Gomory
                                    // cuts
   i_t symmetry;  // -1 automatic, 0 to disable, >0 to enable different symmetry methods
@@ -225,7 +227,7 @@ struct simplex_solver_settings_t {
   std::atomic<int>* concurrent_halt;  // if nullptr ignored, if !nullptr, 0 if solver should
                                       // continue, 1 if solver should halt
   // Optional non-owning pointer to run-level benchmark stats.
-  cuopt::linear_programming::benchmark_info_t* benchmark_info_ptr = nullptr;
+  cuopt::mathematical_optimization::benchmark_info_t* benchmark_info_ptr = nullptr;
 };
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

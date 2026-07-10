@@ -6,10 +6,10 @@
 #include <utilities/common_utils.hpp>
 #include <utilities/copy_helpers.hpp>
 
-#include <cuopt/linear_programming/io/parser.hpp>
-#include <cuopt/linear_programming/optimization_problem.hpp>
-#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
-#include <cuopt/linear_programming/solve.hpp>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
 #include <utilities/error.hpp>
 
 #include <raft/core/handle.hpp>
@@ -21,7 +21,7 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 // End-to-end smoke tests that parse an LP file and solve via PDLP.
 // Validates objective value and primal solution against hand-computed
@@ -118,4 +118,4 @@ End
                           {4.0, 2.0});
 }
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

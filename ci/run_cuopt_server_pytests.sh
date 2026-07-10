@@ -35,7 +35,7 @@ rc=0
 if [ "${IS_NIGHTLY}" = "nightly" ]; then
     pytest -s --cache-clear --reruns 2 --reruns-delay 5 -p cuopt_rerun_xml "$@" tests || rc=$?
 else
-    pytest -s --cache-clear "$@" tests || rc=$?
+    pytest -s --cache-clear -n 2 "$@" tests || rc=$?
 fi
 
 if [ "${rc}" -le 128 ]; then
