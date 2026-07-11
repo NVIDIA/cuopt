@@ -2321,16 +2321,12 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
     });
 
     multi_gpu_engine->allreduce_sum_inplace_to_master(
-      [](auto& sp) -> f_t* { return sp.step_size_strategy_.get_interaction().data(); },
-      stream_view_);
+      [](auto& sp) -> f_t* { return sp.step_size_strategy_.get_interaction().data(); });
+    multi_gpu_engine->allreduce_sum_inplace_to_master([](auto& sp) -> f_t* {
+      return sp.step_size_strategy_.get_norm_squared_delta_primal().data();
+    });
     multi_gpu_engine->allreduce_sum_inplace_to_master(
-      [](auto& sp) -> f_t* {
-        return sp.step_size_strategy_.get_norm_squared_delta_primal().data();
-      },
-      stream_view_);
-    multi_gpu_engine->allreduce_sum_inplace_to_master(
-      [](auto& sp) -> f_t* { return sp.step_size_strategy_.get_norm_squared_delta_dual().data(); },
-      stream_view_);
+      [](auto& sp) -> f_t* { return sp.step_size_strategy_.get_norm_squared_delta_dual().data(); });
   } else {
     // Sync to make sure all previous cuSparse operations are finished before setting the
     // potential_next_dual_solution

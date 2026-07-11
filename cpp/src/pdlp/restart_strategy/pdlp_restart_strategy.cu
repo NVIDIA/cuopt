@@ -902,16 +902,12 @@ void pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart(
     });
 
     // Reduce across all shards
-    engine->allreduce_sum_inplace_to_master(
-      [](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
-        return sp.get_restart_strategy().last_restart_duality_gap_.primal_distance_traveled_.data();
-      },
-      stream_view_);
-    engine->allreduce_sum_inplace_to_master(
-      [](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
-        return sp.get_restart_strategy().last_restart_duality_gap_.dual_distance_traveled_.data();
-      },
-      stream_view_);
+    engine->allreduce_sum_inplace_to_master([](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
+      return sp.get_restart_strategy().last_restart_duality_gap_.primal_distance_traveled_.data();
+    });
+    engine->allreduce_sum_inplace_to_master([](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
+      return sp.get_restart_strategy().last_restart_duality_gap_.dual_distance_traveled_.data();
+    });
   } else {
     distance_squared_moved_from_last_restart_period(
       pdhg_solver.get_potential_next_primal_solution(),

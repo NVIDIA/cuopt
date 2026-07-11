@@ -243,22 +243,6 @@ void multi_gpu_engine_t<i_t, f_t>::halo_exchange_cstr_bufs(
 
 // -------- Gather owned slices to master -------------------------------------
 template <typename i_t, typename f_t>
-void multi_gpu_engine_t<i_t, f_t>::gather_owned_var_to_master_bufs(
-  std::vector<raft::device_span<f_t const>> const& shard_owned, raft::device_span<f_t> master_buf)
-{
-  gather_owned_to_master_bufs_impl(
-    shard_owned, master_buf, owned_var_sizes_, local_to_global_vars_);
-}
-
-template <typename i_t, typename f_t>
-void multi_gpu_engine_t<i_t, f_t>::gather_owned_cstr_to_master_bufs(
-  std::vector<raft::device_span<f_t const>> const& shard_owned, raft::device_span<f_t> master_buf)
-{
-  gather_owned_to_master_bufs_impl(
-    shard_owned, master_buf, owned_cstr_sizes_, local_to_global_cstrs_);
-}
-
-template <typename i_t, typename f_t>
 void multi_gpu_engine_t<i_t, f_t>::gather_owned_to_master_bufs_impl(
   std::vector<raft::device_span<f_t const>> const& shard_owned,
   raft::device_span<f_t> master_buf,
@@ -296,6 +280,22 @@ void multi_gpu_engine_t<i_t, f_t>::gather_owned_to_master_bufs_impl(
   stream.synchronize();
 }
 
+template <typename i_t, typename f_t>
+void multi_gpu_engine_t<i_t, f_t>::gather_owned_var_to_master_bufs(
+  std::vector<raft::device_span<f_t const>> const& shard_owned, raft::device_span<f_t> master_buf)
+{
+  gather_owned_to_master_bufs_impl(
+    shard_owned, master_buf, owned_var_sizes_, local_to_global_vars_);
+}
+
+template <typename i_t, typename f_t>
+void multi_gpu_engine_t<i_t, f_t>::gather_owned_cstr_to_master_bufs(
+  std::vector<raft::device_span<f_t const>> const& shard_owned, raft::device_span<f_t> master_buf)
+{
+  gather_owned_to_master_bufs_impl(
+    shard_owned, master_buf, owned_cstr_sizes_, local_to_global_cstrs_);
+}
+
 // -------- NCCL allreduce (sum, in place) ------------------------------------
 template <typename i_t, typename f_t>
 void multi_gpu_engine_t<i_t, f_t>::allreduce_sum_inplace_bufs(
@@ -324,11 +324,13 @@ void multi_gpu_engine_t<i_t, f_t>::allreduce_sum_inplace_bufs(
 template <typename i_t, typename f_t>
 void multi_gpu_engine_t<i_t, f_t>::allreduce_sum_inplace_to_master_buf(
   std::vector<raft::device_scalar_view<f_t>> const& shard_scalars,
-  raft::device_scalar_view<f_t> master_dst,
-  rmm::cuda_stream_view master_stream)
+  raft::device_scalar_view<f_t> master_dst)
 {
+  cuopt_assert(master_pdlp_ != nullptr,
+               "allreduce_sum_inplace_to_master_buf requires set_master(...)");
   allreduce_sum_inplace_bufs(shard_scalars);
   if (shards.empty()) return;
+  auto master_stream = master_pdlp_->get_handle_ptr()->get_stream();
   sync_await_shards(master_stream);
   auto& s0 = *shards[0];
   raft::device_setter guard(s0.device_id);

@@ -136,7 +136,7 @@ struct multi_gpu_engine_t {
       !shards.empty(), error_type_t::RuntimeError, "distributed_transform: engine has no shards");
 
     // Deduce per-shard tuple / output types from the accessors themselves so
-    // the runtime vector element types match cub's expectations exactly.
+    // the runtime vector doesn't complain
     auto& sample_sub = *shards[0]->sub_pdlp;
     using in_tuple_t = decltype(std::apply(
       [&sample_sub](auto&... acc) { return cuda::std::make_tuple(acc(sample_sub)...); },
@@ -149,9 +149,10 @@ struct multi_gpu_engine_t {
     in_tuples.reserve(shards.size());
     outs.reserve(shards.size());
     sizes.reserve(shards.size());
+
     for_each_shard([&](auto& s) {
       auto& sub = *s.sub_pdlp;
-      // Turns a tuple of accessors into a tuple of values.
+      // apply() = Turns a tuple of accessors into a tuple of values.
       in_tuples.emplace_back(std::apply(
         [&sub](auto&... acc) { return cuda::std::make_tuple(acc(sub)...); }, in_accessors));
       outs.emplace_back(out(sub));
@@ -181,10 +182,7 @@ struct multi_gpu_engine_t {
   void halo_exchange_var_bufs(std::vector<raft::device_span<f_t>> const& bufs);
 
   // Overload: accept the owning device_uvector directly (rmm doesn't provide
-  // an implicit conversion to raft::device_span, and std::vector<A> doesn't
-  // convert to std::vector<B>, so we adapt element-wise here). Non-const &
-  // because halo_exchange_bufs_impl writes the halo tail via ncclRecv, which
-  // requires a mutable pointer.
+  // an implicit conversion to raft::device_span)
   void halo_exchange_var_bufs(std::vector<rmm::device_uvector<f_t>>& bufs);
 
   // Wrapper: pdlp_solver_t accessor. Resolves one uvector per shard into a
@@ -224,16 +222,22 @@ struct multi_gpu_engine_t {
   }
 
   // -------- Gather owned slices to master ---------------------------------
-  // Scatters data from each shard's owned slice to the master's buffer.
-  // var and cstr version share the same implementation.
+  // {var/cstr}-agnostic core: scatters each shard's owned slice into
+  // master_buf using local_to_globals[r] as the destination index list.
+  // owned_sizes[r] and local_to_globals[r] are the axis-specific
+  // rank_data.owned_{var/cstr}_size and rank_data.local_to_global_{var/cstr} for shard r.
+  void gather_owned_to_master_bufs_impl(
+    std::vector<raft::device_span<f_t const>> const& shard_owned,
+    raft::device_span<f_t> master_buf,
+    std::vector<std::size_t> const& owned_sizes,
+    std::vector<std::vector<i_t>> const& local_to_globals);
+
+  // -------- Gather (variables / x) ----------------------------------------
   void gather_owned_var_to_master_bufs(std::vector<raft::device_span<f_t const>> const& shard_owned,
                                        raft::device_span<f_t> master_buf);
 
-  void gather_owned_cstr_to_master_bufs(
-    std::vector<raft::device_span<f_t const>> const& shard_owned,
-    raft::device_span<f_t> master_buf);
-
-  // Wrappers around gather_owned_{var/cstr}_to_master_bufs using an accessor
+  // Wrapper: pdlp_solver_t accessor. Slices each shard's owned prefix and
+  // then delegates to gather_owned_var_to_master_bufs.
   //   buf_access : pdlp_solver_t<i_t,f_t>& -> rmm::device_uvector<f_t>&
   template <typename BufAccess>
   void gather_owned_var_to_master(BufAccess&& buf_access)
@@ -249,6 +253,12 @@ struct multi_gpu_engine_t {
     gather_owned_var_to_master_bufs(shard_bufs, raft::device_span<f_t>{m.data(), m.size()});
   }
 
+  // -------- Gather (constraints / y) --------------------------------------
+  void gather_owned_cstr_to_master_bufs(
+    std::vector<raft::device_span<f_t const>> const& shard_owned,
+    raft::device_span<f_t> master_buf);
+
+  // Wrapper: same rationale as gather_owned_var_to_master.
   template <typename BufAccess>
   void gather_owned_cstr_to_master(BufAccess&& buf_access)
   {
@@ -262,16 +272,6 @@ struct multi_gpu_engine_t {
     auto& m = buf_access(*master_pdlp_);
     gather_owned_cstr_to_master_bufs(shard_bufs, raft::device_span<f_t>{m.data(), m.size()});
   }
-
-  // Actual implementation. {var/cstr}-agnostic core shared by the two
-  // gather_owned_{var/cstr}_to_master_bufs entry points above.
-  // owned_sizes[r] and local_to_globals[r] are the axis-specific
-  // rank_data.owned_{var/cstr}_size and rank_data.local_to_global_{var/cstr} for shard r.
-  void gather_owned_to_master_bufs_impl(
-    std::vector<raft::device_span<f_t const>> const& shard_owned,
-    raft::device_span<f_t> master_buf,
-    std::vector<std::size_t> const& owned_sizes,
-    std::vector<std::vector<i_t>> const& local_to_globals);
 
   // -------- NCCL allreduce (sum, in place) --------------------------------
   // Core: per-shard in-place sum-allreduce on a single f_t scalar viewed by
@@ -294,17 +294,16 @@ struct multi_gpu_engine_t {
   }
 
   // Core: same as allreduce_sum_inplace_bufs, plus after the collective the
-  // value is D2D-copied from shard 0 into master_dst
+  // value is D2D-copied from shard 0 into master_dst. On master's stream.
   void allreduce_sum_inplace_to_master_buf(
     std::vector<raft::device_scalar_view<f_t>> const& shard_scalars,
-    raft::device_scalar_view<f_t> master_dst,
-    rmm::cuda_stream_view master_stream);
+    raft::device_scalar_view<f_t> master_dst);
 
   // Wrapper: applies the ptr_access lambda to each shard's sub_pdlp to build
   // the per-shard scalar views and to master_pdlp_ to obtain the master
   // destination, then delegates to allreduce_sum_inplace_to_master_buf.
   template <typename PtrAccess>
-  void allreduce_sum_inplace_to_master(PtrAccess&& ptr_access, rmm::cuda_stream_view master_stream)
+  void allreduce_sum_inplace_to_master(PtrAccess&& ptr_access)
   {
     cuopt_assert(master_pdlp_ != nullptr,
                  "allreduce_sum_inplace_to_master requires set_master(...) to have been called");
@@ -314,7 +313,7 @@ struct multi_gpu_engine_t {
       shard_scalars.emplace_back(raft::make_device_scalar_view<f_t>(ptr_access(*s.sub_pdlp)));
     });
     allreduce_sum_inplace_to_master_buf(
-      shard_scalars, raft::make_device_scalar_view<f_t>(ptr_access(*master_pdlp_)), master_stream);
+      shard_scalars, raft::make_device_scalar_view<f_t>(ptr_access(*master_pdlp_)));
   }
 
   // -------- Distributed dot / L2 norm -------------------------------------
@@ -337,7 +336,7 @@ struct multi_gpu_engine_t {
   void distributed_l2_norm_bufs(std::vector<raft::device_span<f_t>> const& in_bufs,
                                 std::vector<raft::device_scalar_view<f_t>> const& out_scalars);
 
-  // Overload: same rationale as distributed_dot_bufs above.
+  // Overload: same rationale as distributed_dot_bufs above. Allows to use rmm::device_scalar<f_t> directly.
   void distributed_l2_norm_bufs(std::vector<raft::device_span<f_t>> const& in_bufs,
                                 std::vector<rmm::device_scalar<f_t>>& out_scalars);
 
@@ -394,8 +393,7 @@ struct multi_gpu_engine_t {
   void distributed_bound_objective_rescaling(f_t c_scaling_weight);
 
   // Distributed Ruiz inf-scaling (num_iter passes). Each shard computes both its
-  // owned-row and owned-column inf-norms locally; a per-iteration halo broadcast
-  // of both cumulative scalings is the only cross-shard communication.
+  // owned-row and owned-column inf-norms locally then broadcasts the cumulative scalings to all shards.
   void distributed_ruiz_inf_scaling(int num_iter, i_t n_global_vars);
 
   // Distributed Pock-Chambolle scaling (one pass), mirroring the single-GPU
@@ -406,9 +404,7 @@ struct multi_gpu_engine_t {
   // single-GPU by orchestrating:
   //   - Ruiz inf-scaling -> populates cumulative row/col scalings
   //   - Pock-Chambolle scaling -> same
-  //   - per-shard apply_cummulative_scaling_to_problem() to apply the cumulative
-  //     scalings to A, c, variable and constraint bounds (this is scale_problem()
-  //     minus its shard-local bound/objective rescaling)
+  //   - per-shard apply_cummulative_scaling_to_problem()
   //   - global bound/objective rescaling via distributed_bound_objective_rescaling
   void distributed_scaling(pdlp_hyper_params_t const& hyper_params,
                            i_t n_global_vars,
@@ -422,7 +418,6 @@ struct multi_gpu_engine_t {
                                              f_t tolerance      = 1e-4);
 
   // Distributed counterpart of pdlp_solver_t::compute_initial_step_size.
-  // Requires set_master(...) to have been called; writes onto *master_pdlp_.
   void distributed_compute_initial_step_size(pdlp_hyper_params_t const& hyper_params,
                                              i_t n_global_cstrs,
                                              f_t scaling_factor,
@@ -433,12 +428,10 @@ struct multi_gpu_engine_t {
   // Writes primal_weight = best_primal_weight = 1 onto master + every shard,
   // mirroring the Stable3-shaped short-circuit
   // (!initial_primal_weight_combined_bounds && bound_objective_rescaling).
-  // Requires set_master(...) to have been called.
   void distributed_compute_initial_primal_weight(pdlp_hyper_params_t const& hyper_params);
 
   // Gather the global potential_next primal/dual solutions and the reduced cost
   // onto the master from the owned slices distributed across shards.
-  // Requires set_master(...) to have been called; writes onto master_pdlp_.
   void gather_potential_next_solutions_to_master();
 
   // Engine-level stream for fork/join orchestration (master side).
@@ -464,8 +457,8 @@ struct multi_gpu_engine_t {
 
   // ===== Cross-stream synchronization events =====
   // two different events
-  // capture_*_event_ are used inside graph capture
-  // ext_*_event_ are used when sync is needed outside of graph
+  // graph_*_event_ are used inside graph capture
+  // sync_*_event_ are used when sync is needed outside of graph
   std::unique_ptr<cuopt::event_handler_t> graph_master_ready_event_;
   std::vector<std::unique_ptr<cuopt::event_handler_t>> graph_shard_ready_events_;
   std::unique_ptr<cuopt::event_handler_t> sync_master_ready_event_;
