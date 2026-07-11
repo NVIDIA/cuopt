@@ -131,9 +131,11 @@ void multi_gpu_engine_t<i_t, f_t>::sync_await_shards(rmm::cuda_stream_view maste
 }
 
 // -------- Halo exchange ------------
-// typename pdlp_shard_t<i_t, f_t>::halo_axis_t is the unified view of the halo exchange metadata for both variables and constraints.
-// It contains the send and receive buffers for each peer, the owned size, and the receive offsets and counts for each peer.
-// There is one for variables and one for constraints, on each shard. This allows to avoid duplicating the logic for variables and constraints.
+// typename pdlp_shard_t<i_t, f_t>::halo_axis_t is the unified view of the halo exchange metadata
+// for both variables and constraints. It contains the send and receive buffers for each peer, the
+// owned size, and the receive offsets and counts for each peer. There is one for variables and one
+// for constraints, on each shard. This allows to avoid duplicating the logic for variables and
+// constraints.
 template <typename i_t, typename f_t>
 void multi_gpu_engine_t<i_t, f_t>::halo_exchange_bufs_impl(
   std::vector<raft::device_span<f_t>> const& bufs,
@@ -244,11 +246,11 @@ void multi_gpu_engine_t<i_t, f_t>::gather_owned_to_master_bufs_impl(
   cuopt_assert(master_pdlp_ != nullptr,
                "gather_owned_to_master_bufs_impl requires set_master(...)");
   const int nb = static_cast<int>(shards.size());
-  cuopt_expects(static_cast<int>(shard_owned.size()) == nb &&
-                  static_cast<int>(local_to_globals.size()) == nb,
-                error_type_t::RuntimeError,
-                "gather_owned_to_master_bufs_impl: shard_owned / local_to_globals "
-                "must have size == shards.size()");
+  cuopt_expects(
+    static_cast<int>(shard_owned.size()) == nb && static_cast<int>(local_to_globals.size()) == nb,
+    error_type_t::RuntimeError,
+    "gather_owned_to_master_bufs_impl: shard_owned / local_to_globals "
+    "must have size == shards.size()");
 
   // Assemble on host in global-index order.
   std::vector<f_t> h_master(master_buf.size());

@@ -79,14 +79,15 @@ struct multi_gpu_engine_t {
     for (int r = 0; r < static_cast<int>(shards.size()); ++r) {
       auto& s = *shards[r];
       raft::device_setter guard(s.device_id);
-      // If the function is invocable with a pdlp_shard_t<i_t, f_t>& and an int, call it with the shard and the rank.
+      // If the function is invocable with a pdlp_shard_t<i_t, f_t>& and an int, call it with the
+      // shard and the rank.
       if constexpr (std::is_invocable_v<Fn&, pdlp_shard_t<i_t, f_t>&, int>) {
         fn(s, r);
-      // If the function is invocable only with a pdlp_shard_t<i_t, f_t>&, call it with the shard.
+        // If the function is invocable only with a pdlp_shard_t<i_t, f_t>&, call it with the shard.
       } else if constexpr (std::is_invocable_v<Fn&, pdlp_shard_t<i_t, f_t>&>) {
         fn(s);
       } else {
-      // Otherwise, the function has an invalid signature.
+        // Otherwise, the function has an invalid signature.
         cuopt_expects(
           false, error_type_t::RuntimeError, "for_each_shard: invalid function signature");
       }
@@ -335,7 +336,8 @@ struct multi_gpu_engine_t {
   void distributed_l2_norm_bufs(std::vector<raft::device_span<f_t>> const& in_bufs,
                                 std::vector<raft::device_scalar_view<f_t>> const& out_scalars);
 
-  // Overload: same rationale as distributed_dot_bufs above. Allows to use rmm::device_scalar<f_t> directly.
+  // Overload: same rationale as distributed_dot_bufs above. Allows to use rmm::device_scalar<f_t>
+  // directly.
   void distributed_l2_norm_bufs(std::vector<raft::device_span<f_t>> const& in_bufs,
                                 std::vector<rmm::device_scalar<f_t>>& out_scalars);
 
@@ -392,7 +394,8 @@ struct multi_gpu_engine_t {
   void distributed_bound_objective_rescaling(f_t c_scaling_weight);
 
   // Distributed Ruiz inf-scaling (num_iter passes). Each shard computes both its
-  // owned-row and owned-column inf-norms locally then broadcasts the cumulative scalings to all shards.
+  // owned-row and owned-column inf-norms locally then broadcasts the cumulative scalings to all
+  // shards.
   void distributed_ruiz_inf_scaling(int num_iter, i_t n_global_vars);
 
   // Distributed Pock-Chambolle scaling (one pass), mirroring the single-GPU

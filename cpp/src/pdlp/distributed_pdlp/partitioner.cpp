@@ -117,10 +117,10 @@ std::vector<i_t> kaminpar_partitioner_t<i_t, f_t>::partition(
     xadj[i] = static_cast<kaminpar::shm::EdgeID>(A_offsets[i]);
   }
   for (i_t i = 0; i <= nb_vars; ++i) {
-    xadj[nb_cstr + i] =
-      static_cast<kaminpar::shm::EdgeID>(A_t_offsets[i]) + static_cast<kaminpar::shm::EdgeID>(nb_cstr);
+    xadj[nb_cstr + i] = static_cast<kaminpar::shm::EdgeID>(A_t_offsets[i]) +
+                        static_cast<kaminpar::shm::EdgeID>(nb_cstr);
   }
-  // cstr node/row has value in index J <=> link current cstr node with var node J 
+  // cstr node/row has value in index J <=> link current cstr node with var node J
   for (i_t k = 0; k < nnz; ++k) {
     adjncy[k] =
       static_cast<kaminpar::shm::NodeID>(A_cols[k]) + static_cast<kaminpar::shm::NodeID>(nb_cstr);
