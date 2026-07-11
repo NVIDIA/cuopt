@@ -12,7 +12,6 @@
 
 #include <nccl.h>
 
-#include <chrono>
 #include <numeric>
 
 #include <utilities/logger.hpp>
@@ -50,7 +49,6 @@ multi_gpu_engine_t<i_t, f_t>::multi_gpu_engine_t(
 
   // 3. Construct one shard per rank, pinned to its device. Ownership of each
   //    communicator moves into its shard.
-  auto shard_build_t0 = std::chrono::high_resolution_clock::now();
   for (int r = 0; r < nb_parts; ++r) {
     raft::device_setter guard(devices[r]);  // shard ctor needs device set
     shards.emplace_back(std::make_unique<pdlp_shard_t<i_t, f_t>>(
