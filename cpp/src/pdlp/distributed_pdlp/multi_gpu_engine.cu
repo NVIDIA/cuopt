@@ -155,6 +155,309 @@ void multi_gpu_engine_t<i_t, f_t>::sync_await_shards(rmm::cuda_stream_view maste
   }
 }
 
+// -------- Halo exchange -----------------------------------------------------
+template <typename i_t, typename f_t>
+void multi_gpu_engine_t<i_t, f_t>::halo_exchange_bufs_impl(
+  std::vector<raft::device_span<f_t>> const& bufs,
+  std::vector<typename pdlp_shard_t<i_t, f_t>::halo_axis_t> const& axes)
+{
+  const int nb = static_cast<int>(shards.size());
+  cuopt_expects(static_cast<int>(bufs.size()) == nb && static_cast<int>(axes.size()) == nb,
+                error_type_t::RuntimeError,
+                "halo_exchange_bufs_impl: bufs / axes must have size == shards.size()");
+
+  // Step 1: gather owned values that each peer needs into per-peer staging.
+  for (int r = 0; r < nb; ++r) {
+    auto& s = *shards[r];
+    raft::device_setter guard(s.device_id);
+    auto const& ax = axes[r];
+    auto x         = bufs[r];
+    for (int peer = 0; peer < nb; ++peer) {
+      if (peer == r) continue;
+      if (ax.send_indices[peer].size() == 0) continue;
+      thrust::gather(rmm::exec_policy_nosync(s.stream.view()),
+                     ax.send_indices[peer].begin(),
+                     ax.send_indices[peer].end(),
+                     x.data(),
+                     ax.send_buf[peer].begin());
+    }
+  }
+
+  // Step 2: matched send / recv across the whole topology in one NCCL group.
+  CUOPT_NCCL_TRY(ncclGroupStart());
+  for (int r = 0; r < nb; ++r) {
+    auto& s = *shards[r];
+    raft::device_setter guard(s.device_id);
+    auto const& ax = axes[r];
+    for (int peer = 0; peer < nb; ++peer) {
+      if (peer == r) continue;
+      CUOPT_NCCL_TRY(ncclSend(ax.send_buf[peer].data(),
+                              ax.send_buf[peer].size(),
+                              nccl_data_type<f_t>(),
+                              peer,
+                              s.comm.get(),
+                              s.stream.view().value()));
+    }
+  }
+  for (int r = 0; r < nb; ++r) {
+    auto& s = *shards[r];
+    raft::device_setter guard(s.device_id);
+    auto const& ax = axes[r];
+    auto x         = bufs[r];
+    for (int peer = 0; peer < nb; ++peer) {
+      if (peer == r) continue;
+      f_t* recv_ptr = x.data() + ax.owned_size + ax.recv_offsets[peer];
+      CUOPT_NCCL_TRY(ncclRecv(recv_ptr,
+                              static_cast<size_t>(ax.recv_counts[peer]),
+                              nccl_data_type<f_t>(),
+                              peer,
+                              s.comm.get(),
+                              s.stream.view().value()));
+    }
+  }
+  CUOPT_NCCL_TRY(ncclGroupEnd());
+}
+
+template <typename i_t, typename f_t>
+void multi_gpu_engine_t<i_t, f_t>::halo_exchange_var_bufs(
+  std::vector<raft::device_span<f_t>> const& bufs)
+{
+  std::vector<typename pdlp_shard_t<i_t, f_t>::halo_axis_t> axes;
+  axes.reserve(shards.size());
+  for (auto& s : shards)
+    axes.push_back(s->var_halo_axis());
+  halo_exchange_bufs_impl(bufs, axes);
+}
+
+template <typename i_t, typename f_t>
+void multi_gpu_engine_t<i_t, f_t>::halo_exchange_var_bufs(
+  std::vector<rmm::device_uvector<f_t>>& bufs)
+{
+  std::vector<raft::device_span<f_t>> spans;
+  spans.reserve(bufs.size());
+  for (auto& b : bufs)
+    spans.emplace_back(b.data(), b.size());
+  halo_exchange_var_bufs(spans);
+}
+
+template <typename i_t, typename f_t>
+void multi_gpu_engine_t<i_t, f_t>::halo_exchange_cstr_bufs(
+  std::vector<raft::device_span<f_t>> const& bufs)
+{
+  std::vector<typename pdlp_shard_t<i_t, f_t>::halo_axis_t> axes;
+  axes.reserve(shards.size());
+  for (auto& s : shards)
+    axes.push_back(s->cstr_halo_axis());
+  halo_exchange_bufs_impl(bufs, axes);
+}
+
+template <typename i_t, typename f_t>
+void multi_gpu_engine_t<i_t, f_t>::halo_exchange_cstr_bufs(
+  std::vector<rmm::device_uvector<f_t>>& bufs)
+{
+  std::vector<raft::device_span<f_t>> spans;
+  spans.reserve(bufs.size());
+  for (auto& b : bufs)
+    spans.emplace_back(b.data(), b.size());
+  halo_exchange_cstr_bufs(spans);
+}
+
+// -------- Gather owned slices to master -------------------------------------
+template <typename i_t, typename f_t>
+void multi_gpu_engine_t<i_t, f_t>::gather_owned_var_to_master_bufs(
+  std::vector<raft::device_span<f_t const>> const& shard_owned, raft::device_span<f_t> master_buf)
+{
+  gather_owned_to_master_bufs_impl(
+    shard_owned, master_buf, owned_var_sizes_, local_to_global_vars_);
+}
+
+template <typename i_t, typename f_t>
+void multi_gpu_engine_t<i_t, f_t>::gather_owned_cstr_to_master_bufs(
+  std::vector<raft::device_span<f_t const>> const& shard_owned, raft::device_span<f_t> master_buf)
+{
+  gather_owned_to_master_bufs_impl(
+    shard_owned, master_buf, owned_cstr_sizes_, local_to_global_cstrs_);
+}
+
+template <typename i_t, typename f_t>
+void multi_gpu_engine_t<i_t, f_t>::gather_owned_to_master_bufs_impl(
+  std::vector<raft::device_span<f_t const>> const& shard_owned,
+  raft::device_span<f_t> master_buf,
+  std::vector<std::size_t> const& owned_sizes,
+  std::vector<std::vector<i_t>> const& local_to_globals)
+{
+  cuopt_assert(master_pdlp_ != nullptr,
+               "gather_owned_to_master_bufs_impl requires set_master(...)");
+  const int nb = static_cast<int>(shards.size());
+  cuopt_expects(static_cast<int>(shard_owned.size()) == nb &&
+                  static_cast<int>(owned_sizes.size()) == nb &&
+                  static_cast<int>(local_to_globals.size()) == nb,
+                error_type_t::RuntimeError,
+                "gather_owned_to_master_bufs_impl: shard_owned / owned_sizes / "
+                "local_to_globals must all have size == shards.size()");
+
+  // Assemble on host in global-index order.
+  std::vector<f_t> h_master(master_buf.size());
+  for (int r = 0; r < nb; ++r) {
+    auto& s = *shards[r];
+    raft::device_setter guard(s.device_id);
+    const std::size_t n_owned = owned_sizes[r];
+    cuopt_expects(shard_owned[r].size() == n_owned,
+                  error_type_t::RuntimeError,
+                  "gather_owned_to_master_bufs_impl: shard_owned[r].size() must equal owned size");
+    if (n_owned == 0) continue;
+    std::vector<f_t> tmp(n_owned);
+    raft::copy(tmp.data(), shard_owned[r].data(), n_owned, s.stream.view());
+    // Sync so tmp is populated before the host scatter (and stays valid).
+    s.stream.synchronize();
+    thrust::scatter(
+      thrust::host, tmp.begin(), tmp.end(), local_to_globals[r].begin(), h_master.begin());
+  }
+
+  // Single H->D onto master's device (`stream` lives on the master device).
+  raft::copy(master_buf.data(), h_master.data(), master_buf.size(), stream.view());
+  stream.synchronize();
+}
+
+// -------- NCCL allreduce (sum, in place) ------------------------------------
+template <typename i_t, typename f_t>
+void multi_gpu_engine_t<i_t, f_t>::allreduce_sum_inplace_bufs(
+  std::vector<raft::device_scalar_view<f_t>> const& scalars)
+{
+  const int nb = static_cast<int>(shards.size());
+  cuopt_expects(static_cast<int>(scalars.size()) == nb,
+                error_type_t::RuntimeError,
+                "allreduce_sum_inplace_bufs: scalars.size() must equal shards.size()");
+  if (nb == 0) return;
+
+  CUOPT_NCCL_TRY(ncclGroupStart());
+  for (int r = 0; r < nb; ++r) {
+    auto& s = *shards[r];
+    raft::device_setter guard(s.device_id);
+    f_t* p = scalars[r].data_handle();
+    CUOPT_NCCL_TRY(ncclAllReduce(p,
+                                 p,
+                                 /*count=*/1,
+                                 nccl_data_type<f_t>(),
+                                 ncclSum,
+                                 s.comm.get(),
+                                 s.stream.view().value()));
+  }
+  CUOPT_NCCL_TRY(ncclGroupEnd());
+}
+
+template <typename i_t, typename f_t>
+void multi_gpu_engine_t<i_t, f_t>::allreduce_sum_inplace_to_master_buf(
+  std::vector<raft::device_scalar_view<f_t>> const& shard_scalars,
+  raft::device_scalar_view<f_t> master_dst,
+  rmm::cuda_stream_view master_stream)
+{
+  allreduce_sum_inplace_bufs(shard_scalars);
+  if (shards.empty()) return;
+  sync_await_shards(master_stream);
+  auto& s0 = *shards[0];
+  raft::device_setter guard(s0.device_id);
+  raft::copy(master_dst.data_handle(), shard_scalars[0].data_handle(), 1, master_stream);
+}
+
+// -------- Distributed dot / L2 norm -----------------------------------------
+template <typename i_t, typename f_t>
+void multi_gpu_engine_t<i_t, f_t>::distributed_dot_bufs(
+  std::vector<raft::device_span<f_t>> const& a_bufs,
+  std::vector<raft::device_span<f_t>> const& b_bufs,
+  std::vector<raft::device_scalar_view<f_t>> const& out_scalars)
+{
+  const int nb = static_cast<int>(shards.size());
+  cuopt_expects(static_cast<int>(a_bufs.size()) == nb && static_cast<int>(b_bufs.size()) == nb &&
+                  static_cast<int>(out_scalars.size()) == nb,
+                error_type_t::RuntimeError,
+                "distributed_dot_bufs: a_bufs / b_bufs / out_scalars must "
+                "all have size == shards.size()");
+
+  for (int r = 0; r < nb; ++r) {
+    auto& s = *shards[r];
+    raft::device_setter guard(s.device_id);
+    cuopt_expects(a_bufs[r].size() == b_bufs[r].size(),
+                  error_type_t::RuntimeError,
+                  "distributed_dot_bufs: a_bufs[r] and b_bufs[r] must have equal size");
+    RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(s.handle.get_cublas_handle(),
+                                                    static_cast<int>(a_bufs[r].size()),
+                                                    a_bufs[r].data(),
+                                                    1,
+                                                    b_bufs[r].data(),
+                                                    1,
+                                                    out_scalars[r].data_handle(),
+                                                    s.stream.view().value()));
+  }
+
+  allreduce_sum_inplace_bufs(out_scalars);
+}
+
+template <typename i_t, typename f_t>
+void multi_gpu_engine_t<i_t, f_t>::distributed_dot_bufs(
+  std::vector<raft::device_span<f_t>> const& a_bufs,
+  std::vector<raft::device_span<f_t>> const& b_bufs,
+  std::vector<rmm::device_scalar<f_t>>& out_scalars)
+{
+  std::vector<raft::device_scalar_view<f_t>> views;
+  views.reserve(out_scalars.size());
+  for (auto& s : out_scalars)
+    views.emplace_back(raft::make_device_scalar_view<f_t>(s.data()));
+  distributed_dot_bufs(a_bufs, b_bufs, views);
+}
+
+template <typename i_t, typename f_t>
+void multi_gpu_engine_t<i_t, f_t>::distributed_l2_norm_bufs(
+  std::vector<raft::device_span<f_t>> const& in_bufs,
+  std::vector<raft::device_scalar_view<f_t>> const& out_scalars)
+{
+  distributed_dot_bufs(in_bufs, in_bufs, out_scalars);
+  for (std::size_t r = 0; r < shards.size(); ++r) {
+    auto& s = *shards[r];
+    raft::device_setter guard(s.device_id);
+    cub::DeviceTransform::Transform(out_scalars[r].data_handle(),
+                                    out_scalars[r].data_handle(),
+                                    1,
+                                    sqrt_inplace_op_t<f_t>{},
+                                    s.stream.view().value());
+  }
+}
+
+template <typename i_t, typename f_t>
+void multi_gpu_engine_t<i_t, f_t>::distributed_l2_norm_bufs(
+  std::vector<raft::device_span<f_t>> const& in_bufs,
+  std::vector<rmm::device_scalar<f_t>>& out_scalars)
+{
+  std::vector<raft::device_scalar_view<f_t>> views;
+  views.reserve(out_scalars.size());
+  for (auto& s : out_scalars)
+    views.emplace_back(raft::make_device_scalar_view<f_t>(s.data()));
+  distributed_l2_norm_bufs(in_bufs, views);
+}
+
+// -------- Fused halo-exchange + SpMV ----------------------------------------
+template <typename i_t, typename f_t>
+void multi_gpu_engine_t<i_t, f_t>::distributed_spmv_At(
+  std::vector<rmm::device_uvector<f_t>>& in_bufs,
+  std::vector<cusparse_dn_vec_descr_wrapper_t<f_t>>& in_descs,
+  std::vector<cusparse_dn_vec_descr_wrapper_t<f_t>>& out_descs)
+{
+  halo_exchange_cstr_bufs(in_bufs);
+  for_each_shard(
+    [&](auto& s, int r) { s.sub_pdlp->pdhg_solver_.spmv_At_into(in_descs[r], out_descs[r]); });
+}
+
+template <typename i_t, typename f_t>
+void multi_gpu_engine_t<i_t, f_t>::distributed_spmv_A(
+  std::vector<rmm::device_uvector<f_t>>& in_bufs,
+  std::vector<cusparse_dn_vec_descr_wrapper_t<f_t>>& in_descs,
+  std::vector<cusparse_dn_vec_descr_wrapper_t<f_t>>& out_descs)
+{
+  halo_exchange_var_bufs(in_bufs);
+  for_each_shard(
+    [&](auto& s, int r) { s.sub_pdlp->pdhg_solver_.spmv_A_into(in_descs[r], out_descs[r]); });
+}
+
 template struct multi_gpu_engine_t<int, double>;
 template struct multi_gpu_engine_t<int, float>;
 

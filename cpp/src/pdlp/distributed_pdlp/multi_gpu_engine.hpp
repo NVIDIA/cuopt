@@ -187,88 +187,17 @@ struct multi_gpu_engine_t {
   //           (rank, peer) pairs, receiving into each shard's halo tail.
   void halo_exchange_bufs_impl(
     std::vector<raft::device_span<f_t>> const& bufs,
-    std::vector<typename pdlp_shard_t<i_t, f_t>::halo_axis_t> const& axes)
-  {
-    const int nb = static_cast<int>(shards.size());
-    cuopt_expects(static_cast<int>(bufs.size()) == nb && static_cast<int>(axes.size()) == nb,
-                  error_type_t::RuntimeError,
-                  "halo_exchange_bufs_impl: bufs / axes must have size == shards.size()");
-
-    // Step 1: gather owned values that each peer needs into per-peer staging.
-    for (int r = 0; r < nb; ++r) {
-      auto& s = *shards[r];
-      raft::device_setter guard(s.device_id);
-      auto const& ax = axes[r];
-      auto x         = bufs[r];
-      for (int peer = 0; peer < nb; ++peer) {
-        if (peer == r) continue;
-        if (ax.send_indices[peer].size() == 0) continue;
-        thrust::gather(rmm::exec_policy_nosync(s.stream.view()),
-                       ax.send_indices[peer].begin(),
-                       ax.send_indices[peer].end(),
-                       x.data(),
-                       ax.send_buf[peer].begin());
-      }
-    }
-
-    // Step 2: matched send / recv across the whole topology in one NCCL group.
-    CUOPT_NCCL_TRY(ncclGroupStart());
-    for (int r = 0; r < nb; ++r) {
-      auto& s = *shards[r];
-      raft::device_setter guard(s.device_id);
-      auto const& ax = axes[r];
-      for (int peer = 0; peer < nb; ++peer) {
-        if (peer == r) continue;
-        CUOPT_NCCL_TRY(ncclSend(ax.send_buf[peer].data(),
-                                ax.send_buf[peer].size(),
-                                nccl_data_type<f_t>(),
-                                peer,
-                                s.comm.get(),
-                                s.stream.view().value()));
-      }
-    }
-    for (int r = 0; r < nb; ++r) {
-      auto& s = *shards[r];
-      raft::device_setter guard(s.device_id);
-      auto const& ax = axes[r];
-      auto x         = bufs[r];
-      for (int peer = 0; peer < nb; ++peer) {
-        if (peer == r) continue;
-        f_t* recv_ptr = x.data() + ax.owned_size + ax.recv_offsets[peer];
-        CUOPT_NCCL_TRY(ncclRecv(recv_ptr,
-                                static_cast<size_t>(ax.recv_counts[peer]),
-                                nccl_data_type<f_t>(),
-                                peer,
-                                s.comm.get(),
-                                s.stream.view().value()));
-      }
-    }
-    CUOPT_NCCL_TRY(ncclGroupEnd());
-  }
+    std::vector<typename pdlp_shard_t<i_t, f_t>::halo_axis_t> const& axes);
 
   // -------- Halo exchange (variables / x) ---------------------------------
-  void halo_exchange_var_bufs(std::vector<raft::device_span<f_t>> const& bufs)
-  {
-    std::vector<typename pdlp_shard_t<i_t, f_t>::halo_axis_t> axes;
-    axes.reserve(shards.size());
-    for (auto& s : shards)
-      axes.push_back(s->var_halo_axis());
-    halo_exchange_bufs_impl(bufs, axes);
-  }
+  void halo_exchange_var_bufs(std::vector<raft::device_span<f_t>> const& bufs);
 
   // Overload: accept the owning device_uvector directly (rmm doesn't provide
   // an implicit conversion to raft::device_span, and std::vector<A> doesn't
   // convert to std::vector<B>, so we adapt element-wise here). Non-const &
   // because halo_exchange_bufs_impl writes the halo tail via ncclRecv, which
   // requires a mutable pointer.
-  void halo_exchange_var_bufs(std::vector<rmm::device_uvector<f_t>>& bufs)
-  {
-    std::vector<raft::device_span<f_t>> spans;
-    spans.reserve(bufs.size());
-    for (auto& b : bufs)
-      spans.emplace_back(b.data(), b.size());
-    halo_exchange_var_bufs(spans);
-  }
+  void halo_exchange_var_bufs(std::vector<rmm::device_uvector<f_t>>& bufs);
 
   // Wrapper: pdlp_solver_t accessor. Resolves one uvector per shard into a
   // vector of spans, then delegates to halo_exchange_var_bufs.
@@ -286,24 +215,10 @@ struct multi_gpu_engine_t {
   }
 
   // -------- Halo exchange (constraints / y) -------------------------------
-  void halo_exchange_cstr_bufs(std::vector<raft::device_span<f_t>> const& bufs)
-  {
-    std::vector<typename pdlp_shard_t<i_t, f_t>::halo_axis_t> axes;
-    axes.reserve(shards.size());
-    for (auto& s : shards)
-      axes.push_back(s->cstr_halo_axis());
-    halo_exchange_bufs_impl(bufs, axes);
-  }
+  void halo_exchange_cstr_bufs(std::vector<raft::device_span<f_t>> const& bufs);
 
   // Overload: same rationale as halo_exchange_var_bufs above.
-  void halo_exchange_cstr_bufs(std::vector<rmm::device_uvector<f_t>>& bufs)
-  {
-    std::vector<raft::device_span<f_t>> spans;
-    spans.reserve(bufs.size());
-    for (auto& b : bufs)
-      spans.emplace_back(b.data(), b.size());
-    halo_exchange_cstr_bufs(spans);
-  }
+  void halo_exchange_cstr_bufs(std::vector<rmm::device_uvector<f_t>>& bufs);
 
   // Wrapper: pdlp_solver_t accessor. Resolves one uvector per shard into a
   // vector of spans, then delegates to halo_exchange_cstr_bufs.
@@ -324,18 +239,11 @@ struct multi_gpu_engine_t {
   // Scatters data from each shard's owned slice to the master's buffer.
   // var and cstr version share the same implementation.
   void gather_owned_var_to_master_bufs(std::vector<raft::device_span<f_t const>> const& shard_owned,
-                                       raft::device_span<f_t> master_buf)
-  {
-    gather_owned_to_master_bufs_impl(
-      shard_owned, master_buf, owned_var_sizes_, local_to_global_vars_);
-  }
+                                       raft::device_span<f_t> master_buf);
 
   void gather_owned_cstr_to_master_bufs(
-    std::vector<raft::device_span<f_t const>> const& shard_owned, raft::device_span<f_t> master_buf)
-  {
-    gather_owned_to_master_bufs_impl(
-      shard_owned, master_buf, owned_cstr_sizes_, local_to_global_cstrs_);
-  }
+    std::vector<raft::device_span<f_t const>> const& shard_owned,
+    raft::device_span<f_t> master_buf);
 
   // Wrappers around gather_owned_{var/cstr}_to_master_bufs using an accessor
   //   buf_access : pdlp_solver_t<i_t,f_t>& -> rmm::device_uvector<f_t>&
@@ -375,69 +283,13 @@ struct multi_gpu_engine_t {
     std::vector<raft::device_span<f_t const>> const& shard_owned,
     raft::device_span<f_t> master_buf,
     std::vector<std::size_t> const& owned_sizes,
-    std::vector<std::vector<i_t>> const& local_to_globals)
-  {
-    cuopt_assert(master_pdlp_ != nullptr,
-                 "gather_owned_to_master_bufs_impl requires set_master(...)");
-    const int nb = static_cast<int>(shards.size());
-    cuopt_expects(static_cast<int>(shard_owned.size()) == nb &&
-                    static_cast<int>(owned_sizes.size()) == nb &&
-                    static_cast<int>(local_to_globals.size()) == nb,
-                  error_type_t::RuntimeError,
-                  "gather_owned_to_master_bufs_impl: shard_owned / owned_sizes / "
-                  "local_to_globals must all have size == shards.size()");
-
-    // Assemble on host in global-index order.
-    std::vector<f_t> h_master(master_buf.size());
-    for (int r = 0; r < nb; ++r) {
-      auto& s = *shards[r];
-      raft::device_setter guard(s.device_id);
-      const std::size_t n_owned = owned_sizes[r];
-      cuopt_expects(
-        shard_owned[r].size() == n_owned,
-        error_type_t::RuntimeError,
-        "gather_owned_to_master_bufs_impl: shard_owned[r].size() must equal owned size");
-      if (n_owned == 0) continue;
-      std::vector<f_t> tmp(n_owned);
-      raft::copy(tmp.data(), shard_owned[r].data(), n_owned, s.stream.view());
-      // Sync so tmp is populated before the host scatter (and stays valid).
-      s.stream.synchronize();
-      thrust::scatter(
-        thrust::host, tmp.begin(), tmp.end(), local_to_globals[r].begin(), h_master.begin());
-    }
-
-    // Single H->D onto master's device (`stream` lives on the master device).
-    raft::copy(master_buf.data(), h_master.data(), master_buf.size(), stream.view());
-    stream.synchronize();
-  }
+    std::vector<std::vector<i_t>> const& local_to_globals);
 
   // -------- NCCL allreduce (sum, in place) --------------------------------
   // Core: per-shard in-place sum-allreduce on a single f_t scalar viewed by
   // scalars[r], wrapped in one NCCL group so it executes as a single
   // collective. After this returns, every shard's scalar holds the global sum.
-  void allreduce_sum_inplace_bufs(std::vector<raft::device_scalar_view<f_t>> const& scalars)
-  {
-    const int nb = static_cast<int>(shards.size());
-    cuopt_expects(static_cast<int>(scalars.size()) == nb,
-                  error_type_t::RuntimeError,
-                  "allreduce_sum_inplace_bufs: scalars.size() must equal shards.size()");
-    if (nb == 0) return;
-
-    CUOPT_NCCL_TRY(ncclGroupStart());
-    for (int r = 0; r < nb; ++r) {
-      auto& s = *shards[r];
-      raft::device_setter guard(s.device_id);
-      f_t* p = scalars[r].data_handle();
-      CUOPT_NCCL_TRY(ncclAllReduce(p,
-                                   p,
-                                   /*count=*/1,
-                                   nccl_data_type<f_t>(),
-                                   ncclSum,
-                                   s.comm.get(),
-                                   s.stream.view().value()));
-    }
-    CUOPT_NCCL_TRY(ncclGroupEnd());
-  }
+  void allreduce_sum_inplace_bufs(std::vector<raft::device_scalar_view<f_t>> const& scalars);
 
   // Wrapper: pdlp_solver_t accessor for a single per-shard scalar.
   // ptr_access : pdlp_solver_t<i_t,f_t>& -> f_t*   (pointer to the scalar
@@ -459,15 +311,7 @@ struct multi_gpu_engine_t {
   void allreduce_sum_inplace_to_master_buf(
     std::vector<raft::device_scalar_view<f_t>> const& shard_scalars,
     raft::device_scalar_view<f_t> master_dst,
-    rmm::cuda_stream_view master_stream)
-  {
-    allreduce_sum_inplace_bufs(shard_scalars);
-    if (shards.empty()) return;
-    sync_await_shards(master_stream);
-    auto& s0 = *shards[0];
-    raft::device_setter guard(s0.device_id);
-    raft::copy(master_dst.data_handle(), shard_scalars[0].data_handle(), 1, master_stream);
-  }
+    rmm::cuda_stream_view master_stream);
 
   // Wrapper: applies the ptr_access lambda to each shard's sub_pdlp to build
   // the per-shard scalar views and to master_pdlp_ to obtain the master
@@ -492,76 +336,24 @@ struct multi_gpu_engine_t {
   // out_scalars.
   void distributed_dot_bufs(std::vector<raft::device_span<f_t>> const& a_bufs,
                             std::vector<raft::device_span<f_t>> const& b_bufs,
-                            std::vector<raft::device_scalar_view<f_t>> const& out_scalars)
-  {
-    const int nb = static_cast<int>(shards.size());
-    cuopt_expects(static_cast<int>(a_bufs.size()) == nb && static_cast<int>(b_bufs.size()) == nb &&
-                    static_cast<int>(out_scalars.size()) == nb,
-                  error_type_t::RuntimeError,
-                  "distributed_dot_bufs: a_bufs / b_bufs / out_scalars must "
-                  "all have size == shards.size()");
-
-    for (int r = 0; r < nb; ++r) {
-      auto& s = *shards[r];
-      raft::device_setter guard(s.device_id);
-      cuopt_expects(a_bufs[r].size() == b_bufs[r].size(),
-                    error_type_t::RuntimeError,
-                    "distributed_dot_bufs: a_bufs[r] and b_bufs[r] must have equal size");
-      RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(s.handle.get_cublas_handle(),
-                                                      static_cast<int>(a_bufs[r].size()),
-                                                      a_bufs[r].data(),
-                                                      1,
-                                                      b_bufs[r].data(),
-                                                      1,
-                                                      out_scalars[r].data_handle(),
-                                                      s.stream.view().value()));
-    }
-
-    allreduce_sum_inplace_bufs(out_scalars);
-  }
+                            std::vector<raft::device_scalar_view<f_t>> const& out_scalars);
 
   // Overload: accept owning device_scalar outputs directly. Wraps each into a
   // scalar_view and delegates to the span-based core. Convenience for the typical
   // case where per-shard outputs are rmm::device_scalar<f_t>.
   void distributed_dot_bufs(std::vector<raft::device_span<f_t>> const& a_bufs,
                             std::vector<raft::device_span<f_t>> const& b_bufs,
-                            std::vector<rmm::device_scalar<f_t>>& out_scalars)
-  {
-    std::vector<raft::device_scalar_view<f_t>> views;
-    views.reserve(out_scalars.size());
-    for (auto& s : out_scalars)
-      views.emplace_back(raft::make_device_scalar_view<f_t>(s.data()));
-    distributed_dot_bufs(a_bufs, b_bufs, views);
-  }
+                            std::vector<rmm::device_scalar<f_t>>& out_scalars);
 
   // Core L2 norm: writes sqrt(sum_r ||in_bufs[r]||_2^2) into every
   // *out_scalars[r].data_handle(). Delegates to distributed_dot_bufs(in, in,
   // out) then does a per-shard in-place sqrt on the resulting scalar.
   void distributed_l2_norm_bufs(std::vector<raft::device_span<f_t>> const& in_bufs,
-                                std::vector<raft::device_scalar_view<f_t>> const& out_scalars)
-  {
-    distributed_dot_bufs(in_bufs, in_bufs, out_scalars);
-    for (std::size_t r = 0; r < shards.size(); ++r) {
-      auto& s = *shards[r];
-      raft::device_setter guard(s.device_id);
-      cub::DeviceTransform::Transform(out_scalars[r].data_handle(),
-                                      out_scalars[r].data_handle(),
-                                      1,
-                                      sqrt_inplace_op_t<f_t>{},
-                                      s.stream.view().value());
-    }
-  }
+                                std::vector<raft::device_scalar_view<f_t>> const& out_scalars);
 
   // Overload: same rationale as distributed_dot_bufs above.
   void distributed_l2_norm_bufs(std::vector<raft::device_span<f_t>> const& in_bufs,
-                                std::vector<rmm::device_scalar<f_t>>& out_scalars)
-  {
-    std::vector<raft::device_scalar_view<f_t>> views;
-    views.reserve(out_scalars.size());
-    for (auto& s : out_scalars)
-      views.emplace_back(raft::make_device_scalar_view<f_t>(s.data()));
-    distributed_l2_norm_bufs(in_bufs, views);
-  }
+                                std::vector<rmm::device_scalar<f_t>>& out_scalars);
 
   // Wrapper: accessor form. Resolves per-shard input / output / owned-length
   // then delegates to distributed_l2_norm_bufs.
@@ -596,12 +388,7 @@ struct multi_gpu_engine_t {
   // local spmv_At_into that reads from in_descs[r] and writes into out_descs[r].
   void distributed_spmv_At(std::vector<rmm::device_uvector<f_t>>& in_bufs,
                            std::vector<cusparse_dn_vec_descr_wrapper_t<f_t>>& in_descs,
-                           std::vector<cusparse_dn_vec_descr_wrapper_t<f_t>>& out_descs)
-  {
-    halo_exchange_cstr_bufs(in_bufs);
-    for_each_shard(
-      [&](auto& s, int r) { s.sub_pdlp->pdhg_solver_.spmv_At_into(in_descs[r], out_descs[r]); });
-  }
+                           std::vector<cusparse_dn_vec_descr_wrapper_t<f_t>>& out_descs);
 
   // Distributed A @ in on caller-owned scratch. Refreshes the halo of `in_bufs`
   // (var axis, since the input is var-shaped), then dispatches each shard's
@@ -609,12 +396,7 @@ struct multi_gpu_engine_t {
   // (in_descs to var_total, out_descs to cstr_total).
   void distributed_spmv_A(std::vector<rmm::device_uvector<f_t>>& in_bufs,
                           std::vector<cusparse_dn_vec_descr_wrapper_t<f_t>>& in_descs,
-                          std::vector<cusparse_dn_vec_descr_wrapper_t<f_t>>& out_descs)
-  {
-    halo_exchange_var_bufs(in_bufs);
-    for_each_shard(
-      [&](auto& s, int r) { s.sub_pdlp->pdhg_solver_.spmv_A_into(in_descs[r], out_descs[r]); });
-  }
+                          std::vector<cusparse_dn_vec_descr_wrapper_t<f_t>>& out_descs);
 
   // -------- High-level algorithms (defined in distributed_algorithms.cu) ---
   // Refreshes the halo copies of the cumulative variable + constraint scalings on
