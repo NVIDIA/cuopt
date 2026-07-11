@@ -406,7 +406,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
                 error_type_t::ValidationError,
                 "Distributed PDLP requires never_restart_to_average = true");
   const int distributed_pdlp_num_gpus = settings.distributed_pdlp_num_gpus;
-  CUOPT_LOG_INFO("Solving with distributed PDLP on %d GPU (mps direct path)",
+  CUOPT_LOG_INFO("Solving with distributed PDLP on %d GPU.",
                  distributed_pdlp_num_gpus);
 
   if constexpr (!std::is_same_v<f_t, double>) {

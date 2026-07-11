@@ -5,8 +5,6 @@
 
 // Plain C++ translation unit (not .cu): this file contains no device code, and
 // KaMinPar's public header (<kaminpar.h>) is C++20 host code that pulls in TBB.
-// Keeping the whole partitioner implementation out of nvcc avoids
-// device-compiler friction.
 
 #include <pdlp/distributed_pdlp/partitioner.hpp>
 
@@ -98,7 +96,8 @@ std::vector<i_t> kaminpar_partitioner_t<i_t, f_t>::partition(
   const i_t nnz     = static_cast<i_t>(A_cols.size());
   const i_t nvtx    = nb_cstr + nb_vars;
 
-  // Resolve thread count: <= 0 => all hardware threads (1 as a last resort).
+  // > 0: use the specified number of threads,
+  // <= 0: use all hardware threads (1 as a last resort).
   int nthreads = input.nb_threads > 0 ? static_cast<int>(input.nb_threads) : 0;
   if (nthreads <= 0) {
     nthreads = static_cast<int>(std::thread::hardware_concurrency());
@@ -112,17 +111,21 @@ std::vector<i_t> kaminpar_partitioner_t<i_t, f_t>::partition(
   // CSR already represents an adjency list of cstr -> variables.
   // Adding the transpose to represent the var -> cstr edges.
   // Casting the types to KaMinPar friendly types
+  // Put A in top right corner of adjency matrix
+  // Put A_t in bottom left corner of adjency matrix
   for (i_t i = 0; i <= nb_cstr; ++i) {
     xadj[i] = static_cast<kaminpar::shm::EdgeID>(A_offsets[i]);
   }
   for (i_t i = 0; i <= nb_vars; ++i) {
     xadj[nb_cstr + i] =
-      static_cast<kaminpar::shm::EdgeID>(A_t_offsets[i]) + static_cast<kaminpar::shm::EdgeID>(nnz);
+      static_cast<kaminpar::shm::EdgeID>(A_t_offsets[i]) + static_cast<kaminpar::shm::EdgeID>(nb_cstr);
   }
+  // cstr node/row has value in index J <=> link current cstr node with var node J 
   for (i_t k = 0; k < nnz; ++k) {
     adjncy[k] =
       static_cast<kaminpar::shm::NodeID>(A_cols[k]) + static_cast<kaminpar::shm::NodeID>(nb_cstr);
   }
+  // same as right above but reversed
   for (i_t k = 0; k < nnz; ++k) {
     adjncy[nnz + k] = static_cast<kaminpar::shm::NodeID>(A_t_cols[k]);
   }
