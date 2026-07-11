@@ -50,16 +50,12 @@ multi_gpu_engine_t<i_t, f_t>::multi_gpu_engine_t(
 
   // 3. Construct one shard per rank, pinned to its device. Ownership of each
   //    communicator moves into its shard.
-  CUOPT_LOG_INFO("distributed_pdlp: building %d shard solver(s) ...", nb_parts);
   auto shard_build_t0 = std::chrono::high_resolution_clock::now();
   for (int r = 0; r < nb_parts; ++r) {
     raft::device_setter guard(devices[r]);  // shard ctor needs device set
     shards.emplace_back(std::make_unique<pdlp_shard_t<i_t, f_t>>(
       devices[r], std::move(rank_data[r]), std::move(comms[r]), mps, sub_solver_settings));
   }
-  auto shard_build_t1 = std::chrono::high_resolution_clock::now();
-  CUOPT_LOG_INFO("distributed_pdlp: shard build done in %.3f s",
-                 std::chrono::duration<double>(shard_build_t1 - shard_build_t0).count());
 
   // Two different events
   // capture_*_event_ are used inside graph capture
@@ -74,14 +70,10 @@ multi_gpu_engine_t<i_t, f_t>::multi_gpu_engine_t(
   });
 
   // Cache per-shard partition metadata for gather_owned_*_to_master_bufs.
-  owned_var_sizes_.reserve(nb_parts);
-  owned_cstr_sizes_.reserve(nb_parts);
   local_to_global_vars_.reserve(nb_parts);
   local_to_global_cstrs_.reserve(nb_parts);
   for (int r = 0; r < nb_parts; ++r) {
     auto const& rd = shards[r]->rank_data;
-    owned_var_sizes_.push_back(static_cast<std::size_t>(rd.owned_var_size));
-    owned_cstr_sizes_.push_back(static_cast<std::size_t>(rd.owned_cstr_size));
     local_to_global_vars_.push_back(rd.local_to_global_var);
     local_to_global_cstrs_.push_back(rd.local_to_global_cstr);
   }
@@ -140,7 +132,10 @@ void multi_gpu_engine_t<i_t, f_t>::sync_await_shards(rmm::cuda_stream_view maste
   }
 }
 
-// -------- Halo exchange -----------------------------------------------------
+// -------- Halo exchange ------------
+// typename pdlp_shard_t<i_t, f_t>::halo_axis_t is the unified view of the halo exchange metadata for both variables and constraints.
+// It contains the send and receive buffers for each peer, the owned size, and the receive offsets and counts for each peer.
+// There is one for variables and one for constraints, on each shard. This allows to avoid duplicating the logic for variables and constraints.
 template <typename i_t, typename f_t>
 void multi_gpu_engine_t<i_t, f_t>::halo_exchange_bufs_impl(
   std::vector<raft::device_span<f_t>> const& bufs,
@@ -246,26 +241,21 @@ template <typename i_t, typename f_t>
 void multi_gpu_engine_t<i_t, f_t>::gather_owned_to_master_bufs_impl(
   std::vector<raft::device_span<f_t const>> const& shard_owned,
   raft::device_span<f_t> master_buf,
-  std::vector<std::size_t> const& owned_sizes,
   std::vector<std::vector<i_t>> const& local_to_globals)
 {
   cuopt_assert(master_pdlp_ != nullptr,
                "gather_owned_to_master_bufs_impl requires set_master(...)");
   const int nb = static_cast<int>(shards.size());
   cuopt_expects(static_cast<int>(shard_owned.size()) == nb &&
-                  static_cast<int>(owned_sizes.size()) == nb &&
                   static_cast<int>(local_to_globals.size()) == nb,
                 error_type_t::RuntimeError,
-                "gather_owned_to_master_bufs_impl: shard_owned / owned_sizes / "
-                "local_to_globals must all have size == shards.size()");
+                "gather_owned_to_master_bufs_impl: shard_owned / local_to_globals "
+                "must have size == shards.size()");
 
   // Assemble on host in global-index order.
   std::vector<f_t> h_master(master_buf.size());
   for_each_shard([&](auto& s, int r) {
-    const std::size_t n_owned = owned_sizes[r];
-    cuopt_expects(shard_owned[r].size() == n_owned,
-                  error_type_t::RuntimeError,
-                  "gather_owned_to_master_bufs_impl: shard_owned[r].size() must equal owned size");
+    const std::size_t n_owned = shard_owned[r].size();
     if (n_owned == 0) return;
     std::vector<f_t> tmp(n_owned);
     raft::copy(tmp.data(), shard_owned[r].data(), n_owned, s.stream.view());
@@ -284,16 +274,14 @@ template <typename i_t, typename f_t>
 void multi_gpu_engine_t<i_t, f_t>::gather_owned_var_to_master_bufs(
   std::vector<raft::device_span<f_t const>> const& shard_owned, raft::device_span<f_t> master_buf)
 {
-  gather_owned_to_master_bufs_impl(
-    shard_owned, master_buf, owned_var_sizes_, local_to_global_vars_);
+  gather_owned_to_master_bufs_impl(shard_owned, master_buf, local_to_global_vars_);
 }
 
 template <typename i_t, typename f_t>
 void multi_gpu_engine_t<i_t, f_t>::gather_owned_cstr_to_master_bufs(
   std::vector<raft::device_span<f_t const>> const& shard_owned, raft::device_span<f_t> master_buf)
 {
-  gather_owned_to_master_bufs_impl(
-    shard_owned, master_buf, owned_cstr_sizes_, local_to_global_cstrs_);
+  gather_owned_to_master_bufs_impl(shard_owned, master_buf, local_to_global_cstrs_);
 }
 
 // -------- NCCL allreduce (sum, in place) ------------------------------------

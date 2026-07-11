@@ -2509,10 +2509,6 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
     CUOPT_LOG_INFO("%s presolve time: %.2fs",
                    settings_resolved.presolver == presolver_t::PSLP ? "PSLP" : "Papilo",
                    presolve_time);
-    CUOPT_LOG_INFO("Distributed-solving reduced problem: %d constraints, %d variables, %d nonzeros",
-                   host_res->reduced_problem.get_n_constraints(),
-                   host_res->reduced_problem.get_n_variables(),
-                   host_res->reduced_problem.get_nnz());
   }
 
   // mps_for_solver is what the distributed solver actually sees.

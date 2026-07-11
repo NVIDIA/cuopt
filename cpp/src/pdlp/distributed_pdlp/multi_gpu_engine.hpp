@@ -224,12 +224,11 @@ struct multi_gpu_engine_t {
   // -------- Gather owned slices to master ---------------------------------
   // {var/cstr}-agnostic core: scatters each shard's owned slice into
   // master_buf using local_to_globals[r] as the destination index list.
-  // owned_sizes[r] and local_to_globals[r] are the axis-specific
-  // rank_data.owned_{var/cstr}_size and rank_data.local_to_global_{var/cstr} for shard r.
+  //  local_to_globals[r] is
+  // the axis-specific rank_data.local_to_global_{var/cstr} for shard r.
   void gather_owned_to_master_bufs_impl(
     std::vector<raft::device_span<f_t const>> const& shard_owned,
     raft::device_span<f_t> master_buf,
-    std::vector<std::size_t> const& owned_sizes,
     std::vector<std::vector<i_t>> const& local_to_globals);
 
   // -------- Gather (variables / x) ----------------------------------------
@@ -444,10 +443,7 @@ struct multi_gpu_engine_t {
   // Cached per-shard partition metadata, populated once at construction.
   // Consumed by gather_owned_*_to_master_bufs; caching avoids copying the
   // sizeable local_to_global_* host vectors on every termination check.
-  //   owned_{var,cstr}_sizes_[r]       == shards[r]->rank_data.owned_{var,cstr}_size
   //   local_to_global_{vars,cstrs}_[r] == shards[r]->rank_data.local_to_global_{var,cstr}
-  std::vector<std::size_t> owned_var_sizes_;
-  std::vector<std::size_t> owned_cstr_sizes_;
   std::vector<std::vector<i_t>> local_to_global_vars_;
   std::vector<std::vector<i_t>> local_to_global_cstrs_;
 
