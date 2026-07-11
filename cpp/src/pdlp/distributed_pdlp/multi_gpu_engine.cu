@@ -415,11 +415,12 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_l2_norm_bufs(
   for (std::size_t r = 0; r < shards.size(); ++r) {
     auto& s = *shards[r];
     raft::device_setter guard(s.device_id);
-    cub::DeviceTransform::Transform(out_scalars[r].data_handle(),
-                                    out_scalars[r].data_handle(),
-                                    1,
-                                    sqrt_inplace_op_t<f_t>{},
-                                    s.stream.view().value());
+    cub::DeviceTransform::Transform(
+      out_scalars[r].data_handle(),
+      out_scalars[r].data_handle(),
+      1,
+      [] __device__(f_t x) { return cuda::std::sqrt(x); },
+      s.stream.view().value());
   }
 }
 

@@ -59,16 +59,6 @@ constexpr ncclDataType_t nccl_data_type()
   }
 }
 
-// Element-wise sqrt functor. Defined at namespace scope (not as a local
-// extended HD lambda) because nvcc disallows extended __host__ __device__
-// lambdas appearing inside templates whose template arguments are
-// themselves local lambda types (which happens when distributed_l2_norm is
-// invoked with closure accessors).
-template <typename f_t>
-struct sqrt_inplace_op_t {
-  __host__ __device__ f_t operator()(f_t x) const { return cuda::std::sqrt(x); }
-};
-
 template <typename i_t, typename f_t>
 struct multi_gpu_engine_t {
   // Constructs shards from rank_data. The global (unpartitioned) problem is
