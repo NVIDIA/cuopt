@@ -79,11 +79,14 @@ struct multi_gpu_engine_t {
     for (int r = 0; r < static_cast<int>(shards.size()); ++r) {
       auto& s = *shards[r];
       raft::device_setter guard(s.device_id);
+      // If the function is invocable with a pdlp_shard_t<i_t, f_t>& and an int, call it with the shard and the rank.
       if constexpr (std::is_invocable_v<Fn&, pdlp_shard_t<i_t, f_t>&, int>) {
         fn(s, r);
+      // If the function is invocable only with a pdlp_shard_t<i_t, f_t>&, call it with the shard.
       } else if constexpr (std::is_invocable_v<Fn&, pdlp_shard_t<i_t, f_t>&>) {
         fn(s);
       } else {
+      // Otherwise, the function has an invalid signature.
         cuopt_expects(
           false, error_type_t::RuntimeError, "for_each_shard: invalid function signature");
       }
@@ -102,9 +105,7 @@ struct multi_gpu_engine_t {
   //     iterator-shaped types cub accepts: raw pointers, thrust iterators, ...)
   //   - outs[r]      is the output iterator for shard r
   //   - sizes[r]     is the element count for shard r
-  // All three must have size == shards.size(). The heterogeneous per-shard
-  // input types are captured by the caller into whatever container / element
-  // type is convenient (e.g. std::vector<cuda::std::tuple<f_t*, f_t*>>).
+  // All three must have size == shards.size().
   template <typename PerShardInTuple, typename OutIter, typename Op>
   void distributed_transform_bufs(std::vector<PerShardInTuple> const& in_tuples,
                                   std::vector<OutIter> const& outs,
@@ -117,11 +118,9 @@ struct multi_gpu_engine_t {
                   error_type_t::RuntimeError,
                   "distributed_transform_bufs: in_tuples / outs / sizes must "
                   "all have size == shards.size()");
-    for (int r = 0; r < nb; ++r) {
-      auto& s = *shards[r];
-      raft::device_setter guard(s.device_id);
+    for_each_shard([&](auto& s, int r) {
       cub::DeviceTransform::Transform(in_tuples[r], outs[r], sizes[r], op, s.stream.view());
-    }
+    });
   }
 
   // Wrapper: accessor form. Resolves each shard's cub input_tuple / output /
@@ -150,15 +149,14 @@ struct multi_gpu_engine_t {
     in_tuples.reserve(shards.size());
     outs.reserve(shards.size());
     sizes.reserve(shards.size());
-    for (auto& s : shards) {
-      raft::device_setter guard(s->device_id);
-      auto& sub = *s->sub_pdlp;
+    for_each_shard([&](auto& s) {
+      auto& sub = *s.sub_pdlp;
       // Turns a tuple of accessors into a tuple of values.
       in_tuples.emplace_back(std::apply(
         [&sub](auto&... acc) { return cuda::std::make_tuple(acc(sub)...); }, in_accessors));
       outs.emplace_back(out(sub));
       sizes.emplace_back(sz(sub));
-    }
+    });
     distributed_transform_bufs(in_tuples, outs, sizes, op);
   }
 
@@ -289,10 +287,9 @@ struct multi_gpu_engine_t {
   {
     std::vector<raft::device_scalar_view<f_t>> scalars;
     scalars.reserve(shards.size());
-    for (auto& s : shards) {
-      raft::device_setter guard(s->device_id);
-      scalars.emplace_back(raft::make_device_scalar_view<f_t>(ptr_access(*s->sub_pdlp)));
-    }
+    for_each_shard([&](auto& s) {
+      scalars.emplace_back(raft::make_device_scalar_view<f_t>(ptr_access(*s.sub_pdlp)));
+    });
     allreduce_sum_inplace_bufs(scalars);
   }
 
@@ -313,10 +310,9 @@ struct multi_gpu_engine_t {
                  "allreduce_sum_inplace_to_master requires set_master(...) to have been called");
     std::vector<raft::device_scalar_view<f_t>> shard_scalars;
     shard_scalars.reserve(shards.size());
-    for (auto& s : shards) {
-      raft::device_setter guard(s->device_id);
-      shard_scalars.emplace_back(raft::make_device_scalar_view<f_t>(ptr_access(*s->sub_pdlp)));
-    }
+    for_each_shard([&](auto& s) {
+      shard_scalars.emplace_back(raft::make_device_scalar_view<f_t>(ptr_access(*s.sub_pdlp)));
+    });
     allreduce_sum_inplace_to_master_buf(
       shard_scalars, raft::make_device_scalar_view<f_t>(ptr_access(*master_pdlp_)), master_stream);
   }
@@ -357,14 +353,13 @@ struct multi_gpu_engine_t {
     std::vector<raft::device_scalar_view<f_t>> out_scalars;
     in_bufs.reserve(shards.size());
     out_scalars.reserve(shards.size());
-    for (auto& s : shards) {
-      raft::device_setter guard(s->device_id);
-      auto& sub   = *s->sub_pdlp;
+    for_each_shard([&](auto& s) {
+      auto& sub   = *s.sub_pdlp;
       auto& buf   = buf_access(sub);
-      const i_t n = size_access(*s);
+      const i_t n = size_access(s);
       in_bufs.emplace_back(buf.data(), static_cast<std::size_t>(n));
       out_scalars.emplace_back(raft::make_device_scalar_view<f_t>(out_access(sub)));
-    }
+    });
     distributed_l2_norm_bufs(in_bufs, out_scalars);
   }
 

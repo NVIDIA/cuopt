@@ -565,13 +565,12 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   dual_size_h_   = n_cstr;
 
   // Distributed conergence_information::init_l2_norms
-  for (auto& shard : multi_gpu_engine->shards) {
-    raft::device_setter guard(shard->device_id);
-    shard->sub_pdlp->get_current_termination_strategy()
+  multi_gpu_engine->for_each_shard([](auto& shard) {
+    shard.sub_pdlp->get_current_termination_strategy()
       .get_convergence_information()
-      .compute_owned_reference_norm_partials(shard->rank_data.owned_var_size,
-                                             shard->rank_data.owned_cstr_size);
-  }
+      .compute_owned_reference_norm_partials(shard.rank_data.owned_var_size,
+                                             shard.rank_data.owned_cstr_size);
+  });
   multi_gpu_engine->allreduce_sum_inplace([](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
     return sp.get_current_termination_strategy()
       .get_convergence_information()
@@ -582,13 +581,12 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
       .get_convergence_information()
       .l2_norm_primal_linear_objective_data();
   });
-  for (auto& shard : multi_gpu_engine->shards) {
-    raft::device_setter guard(shard->device_id);
-    shard->sub_pdlp->get_current_termination_strategy()
+  multi_gpu_engine->for_each_shard([](auto& shard) {
+    shard.sub_pdlp->get_current_termination_strategy()
       .get_convergence_information()
       .sqrt_reference_norms_inplace();
-    shard->stream.synchronize();
-  }
+    shard.stream.synchronize();
+  });
   // Broadcast the values to the master
   {
     auto& s0      = *multi_gpu_engine->shards[0];
@@ -2302,9 +2300,8 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
         return p.pdhg_solver_.get_reflected_dual();
       });
 
-    for (auto& shard : multi_gpu_engine->shards) {
-      raft::device_setter guard(shard->device_id);
-      auto& sub_pdlp = *shard->sub_pdlp;
+    multi_gpu_engine->for_each_shard([](auto& shard) {
+      auto& sub_pdlp = *shard.sub_pdlp;
       auto& sub_cv   = sub_pdlp.pdhg_solver_.get_cusparse_view();
 
       RAFT_CUSPARSE_TRY(
@@ -2315,13 +2312,13 @@ void pdlp_solver_t<i_t, f_t>::compute_fixed_error(std::vector<int>& has_restarte
         sub_pdlp.pdhg_solver_.get_primal_tmp_resource(),
         sub_cv,
         sub_pdlp.pdhg_solver_.get_saddle_point_state(),
-        shard->rank_data.owned_var_size,
-        shard->rank_data.owned_cstr_size);
+        shard.rank_data.owned_var_size,
+        shard.rank_data.owned_cstr_size);
 
       RAFT_CUSPARSE_TRY(cusparseDnVecSetValues(
         sub_cv.potential_next_dual_solution,
         (void*)sub_pdlp.pdhg_solver_.get_potential_next_dual_solution().data()));
-    }
+    });
 
     multi_gpu_engine->allreduce_sum_inplace_to_master(
       [](auto& sp) -> f_t* { return sp.step_size_strategy_.get_interaction().data(); },
