@@ -79,8 +79,7 @@ struct pdlp_shard_t {
   std::vector<rmm::device_uvector<f_t>> cstr_send_buf_d;
 
   // Non-owning bundle of per-axis halo-exchange metadata, indexed by peer.
-  // Consumed by multi_gpu_engine_t::halo_exchange_bufs_impl (one axis vector
-  // per axis is cached in the engine at construction).
+  // Consumed by multi_gpu_engine_t::halo_exchange_bufs_impl
   struct halo_axis_t {
     std::vector<rmm::device_uvector<i_t>>& send_indices;  // [peer]
     std::vector<rmm::device_uvector<f_t>>& send_buf;      // [peer]

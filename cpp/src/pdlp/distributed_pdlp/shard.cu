@@ -57,7 +57,7 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
 
   // ---- 1. Gather per-shard host slices using rank_data's index maps. ----
   // All vectors are sized to TOTAL (owned + halo). Owned slots get real
-  // values; halo slots keep defaults because they should not be accessed.
+  // values; halo slots keep defaults because they should not be accessed before getting filled.
   std::vector<f_t> h_obj(rank_data.total_var_size, f_t{0});
   std::vector<f_t> h_var_lower(rank_data.total_var_size, -std::numeric_limits<f_t>::infinity());
   std::vector<f_t> h_var_upper(rank_data.total_var_size, std::numeric_limits<f_t>::infinity());
@@ -76,7 +76,7 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
     h_cstr_upper[i] = g_cstr_upper[g];
   }
 
-  // ---- 2. Populate opt_problem (constructed in init list) on this shard's device (UNSCALED). ----
+  // ---- 2. Populate opt_problem (constructed in init list) on this shard's device. ----
   opt_problem.set_csr_constraint_matrix(rank_data.h_A_values.data(),
                                         static_cast<i_t>(rank_data.h_A_values.size()),
                                         rank_data.h_A_col_indices.data(),
@@ -84,12 +84,12 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
                                         rank_data.h_A_row_offsets.data(),
                                         static_cast<i_t>(rank_data.h_A_row_offsets.size()));
 
-  // Primal axis: TOTAL (owned + halo). Halo slots have neutral defaults.
+  // Primal axis: TOTAL (owned + halo)
   opt_problem.set_objective_coefficients(h_obj.data(), rank_data.total_var_size);
   opt_problem.set_variable_lower_bounds(h_var_lower.data(), rank_data.total_var_size);
   opt_problem.set_variable_upper_bounds(h_var_upper.data(), rank_data.total_var_size);
 
-  // Dual axis: TOTAL (owned + halo). Halo slots have ±inf so trivially satisfied.
+  // Dual axis: TOTAL (owned + halo)
   opt_problem.set_constraint_lower_bounds(h_cstr_lower.data(), rank_data.total_cstr_size);
   opt_problem.set_constraint_upper_bounds(h_cstr_upper.data(), rank_data.total_cstr_size);
 
@@ -135,26 +135,24 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
   sub_pdlp = std::make_unique<pdlp_solver_t<i_t, f_t>>(
     *sub_problem, settings, /*is_legacy_batch_mode=*/false, /*is_distributed_sub_pdlp=*/true);
 
-  sub_pdlp->pdhg_solver_.get_cusparse_view().create_spmv_op_plans(
-    /* is_reflected */ true);
   // ---- 6. Build per-peer halo-exchange plans ----
   // For each peer p, we precompute:
   //   send_indices_d[p] : local indices to gather (uploaded from host send plan)
   //   send_buf_d[p]     : f_t staging buffer sized to match
-  // Self-peer slot is present but empty (size 0). Used in engine halo exchange.
-  auto build_send_plan = [&](auto const& send_per_peer, auto& indices_d, auto& buf_d) {
+  // Self-peer slot is present but empty (size 0).
+  auto build_send_plan = [&](std::vector<std::vector<i_t>> const& send_per_peer,
+                             std::vector<rmm::device_uvector<i_t>>& indices_d,
+                             std::vector<rmm::device_uvector<f_t>>& buf_d) {
     const std::size_t n_peers = send_per_peer.size();
     indices_d.reserve(n_peers);
     buf_d.reserve(n_peers);
     for (auto const& send_to_peer : send_per_peer) {
-      rmm::device_uvector<i_t> idx(send_to_peer.size(), stream_view);
-      rmm::device_uvector<f_t> buf(send_to_peer.size(), stream_view);
+      indices_d.emplace_back(send_to_peer.size(), stream_view);
+      buf_d.emplace_back(send_to_peer.size(), stream_view);
       if (!send_to_peer.empty()) {
-        raft::copy(idx.data(), send_to_peer.data(), send_to_peer.size(), stream_view);
+        raft::copy(
+          indices_d.back().data(), send_to_peer.data(), send_to_peer.size(), stream_view);
       }
-      indices_d.emplace_back(std::move(idx));
-      buf_d.emplace_back(std::move(buf));
-      handle.sync_stream(stream_view);
     }
   };
   build_send_plan(rank_data.var_send_per_peer, var_send_indices_d, var_send_buf_d);
