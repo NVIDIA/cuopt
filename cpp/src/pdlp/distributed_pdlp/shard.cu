@@ -33,7 +33,7 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
     handle(stream.view()),
     comm(std::move(comm)),
     rank_data(std::move(rd)),
-    opt_problem(std::nullopt),
+    opt_problem(&handle),
     sub_problem(std::nullopt),
     sub_pdlp(nullptr)
 {
@@ -76,31 +76,30 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
     h_cstr_upper[i] = g_cstr_upper[g];
   }
 
-  // ---- 2. Build optimization_problem_t on this shard's device (UNSCALED). ----
-  opt_problem.emplace(&handle);
-  opt_problem->set_csr_constraint_matrix(rank_data.h_A_values.data(),
-                                         static_cast<i_t>(rank_data.h_A_values.size()),
-                                         rank_data.h_A_col_indices.data(),
-                                         static_cast<i_t>(rank_data.h_A_col_indices.size()),
-                                         rank_data.h_A_row_offsets.data(),
-                                         static_cast<i_t>(rank_data.h_A_row_offsets.size()));
+  // ---- 2. Populate opt_problem (constructed in init list) on this shard's device (UNSCALED). ----
+  opt_problem.set_csr_constraint_matrix(rank_data.h_A_values.data(),
+                                        static_cast<i_t>(rank_data.h_A_values.size()),
+                                        rank_data.h_A_col_indices.data(),
+                                        static_cast<i_t>(rank_data.h_A_col_indices.size()),
+                                        rank_data.h_A_row_offsets.data(),
+                                        static_cast<i_t>(rank_data.h_A_row_offsets.size()));
 
   // Primal axis: TOTAL (owned + halo). Halo slots have neutral defaults.
-  opt_problem->set_objective_coefficients(h_obj.data(), rank_data.total_var_size);
-  opt_problem->set_variable_lower_bounds(h_var_lower.data(), rank_data.total_var_size);
-  opt_problem->set_variable_upper_bounds(h_var_upper.data(), rank_data.total_var_size);
+  opt_problem.set_objective_coefficients(h_obj.data(), rank_data.total_var_size);
+  opt_problem.set_variable_lower_bounds(h_var_lower.data(), rank_data.total_var_size);
+  opt_problem.set_variable_upper_bounds(h_var_upper.data(), rank_data.total_var_size);
 
   // Dual axis: TOTAL (owned + halo). Halo slots have ±inf so trivially satisfied.
-  opt_problem->set_constraint_lower_bounds(h_cstr_lower.data(), rank_data.total_cstr_size);
-  opt_problem->set_constraint_upper_bounds(h_cstr_upper.data(), rank_data.total_cstr_size);
+  opt_problem.set_constraint_lower_bounds(h_cstr_lower.data(), rank_data.total_cstr_size);
+  opt_problem.set_constraint_upper_bounds(h_cstr_upper.data(), rank_data.total_cstr_size);
 
-  opt_problem->set_maximize(maximize);
-  opt_problem->set_objective_offset(objective_offset);
-  opt_problem->set_objective_scaling_factor(objective_scaling_factor);
-  opt_problem->set_problem_category(problem_category_t::LP);
+  opt_problem.set_maximize(maximize);
+  opt_problem.set_objective_offset(objective_offset);
+  opt_problem.set_objective_scaling_factor(objective_scaling_factor);
+  opt_problem.set_problem_category(problem_category_t::LP);
 
   // ---- 3. Build problem_t from opt_problem (UNSCALED). ----
-  sub_problem.emplace(*opt_problem);
+  sub_problem.emplace(opt_problem);
 
   // ---- 4. Override reverse_* with the real local A_T from rank_data. ----
   // problem_t's ctor computes the transpose of the LOCAL A, which is wrong

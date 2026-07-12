@@ -6,6 +6,7 @@
 
 #include <pdlp/distributed_pdlp/nccl_helpers.hpp>
 #include <pdlp/distributed_pdlp/rank_data.hpp>
+#include <utilities/macros.cuh>
 
 #include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem.hpp>
@@ -37,6 +38,7 @@ struct nccl_comm_deleter_t {
   void operator()(ncclComm* comm) const noexcept
   {
     if (comm == nullptr) return;
+    cuopt_assert(device_id >= 0, "nccl_comm_deleter_t: device_id not set");
     raft::device_setter guard(device_id);
     CUOPT_NCCL_TRY_NO_THROW(ncclCommDestroy(comm));
   }
@@ -59,12 +61,12 @@ struct pdlp_shard_t {
   pdlp_shard_t(const pdlp_shard_t&)            = delete;
   pdlp_shard_t& operator=(const pdlp_shard_t&) = delete;
 
-  int device_id;
+  int device_id{-1};
   rmm::cuda_stream stream;
   raft::handle_t handle;
   nccl_comm_unique_ptr_t comm;
   rank_data_t<i_t, f_t> rank_data;
-  std::optional<optimization_problem_t<i_t, f_t>> opt_problem;
+  optimization_problem_t<i_t, f_t> opt_problem;
   std::optional<mip::problem_t<i_t, f_t>> sub_problem;
   std::unique_ptr<pdlp_solver_t<i_t, f_t>> sub_pdlp;
 
