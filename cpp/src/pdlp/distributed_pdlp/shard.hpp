@@ -4,6 +4,7 @@
  */
 #pragma once
 
+#include <pdlp/distributed_pdlp/nccl_helpers.hpp>
 #include <pdlp/distributed_pdlp/rank_data.hpp>
 
 #include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
@@ -37,7 +38,7 @@ struct nccl_comm_deleter_t {
   {
     if (comm == nullptr) return;
     raft::device_setter guard(device_id);
-    ncclCommDestroy(comm);
+    CUOPT_NCCL_TRY_NO_THROW(ncclCommDestroy(comm));
   }
 };
 using nccl_comm_unique_ptr_t = std::unique_ptr<ncclComm, nccl_comm_deleter_t>;
@@ -57,9 +58,6 @@ struct pdlp_shard_t {
 
   pdlp_shard_t(const pdlp_shard_t&)            = delete;
   pdlp_shard_t& operator=(const pdlp_shard_t&) = delete;
-  // Move ops are implicitly deleted
-  // Intentional: shard owns device-affine resources and must never move.
-  // Store as std::unique_ptr in any container.
 
   int device_id;
   rmm::cuda_stream stream;

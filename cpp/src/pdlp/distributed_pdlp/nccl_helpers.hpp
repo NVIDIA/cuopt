@@ -5,6 +5,7 @@
 #pragma once
 
 #include <cuopt/error.hpp>
+#include <utilities/logger.hpp>
 
 #include <nccl.h>
 
@@ -21,6 +22,20 @@ namespace cuopt::mathematical_optimization::pdlp {
                            __FILE__,                                  \
                            __LINE__,                                  \
                            ::ncclGetErrorString(_cuopt_nccl_status)); \
+  } while (0)
+
+// Non-throwing variant: logs at ERROR level on failure and swallows the error.
+// Intended for noexcept contexts (destructors, unique_ptr deleters, teardown)
+// where throwing would call std::terminate. Mirrors RAFT_CUDA_TRY_NO_THROW.
+#define CUOPT_NCCL_TRY_NO_THROW(call)                                        \
+  do {                                                                       \
+    ::ncclResult_t const _cuopt_nccl_status = (call);                        \
+    if (_cuopt_nccl_status != ncclSuccess) {                                 \
+      CUOPT_LOG_ERROR("NCCL error at %s:%d: %s",                             \
+                      __FILE__,                                              \
+                      __LINE__,                                              \
+                      ::ncclGetErrorString(_cuopt_nccl_status));             \
+    }                                                                        \
   } while (0)
 
 }  // namespace cuopt::mathematical_optimization::pdlp
