@@ -60,7 +60,7 @@ class pdlp_initial_scaling_strategy_t {
                                   pdhg_solver_t<i_t, f_t>* pdhg_solver_ptr,
                                   const pdlp::pdlp_hyper_params_t& hyper_params,
                                   i_t original_batch_size,
-                                  bool running_mip           = false,
+                                  bool running_mip          = false,
                                   bool skip_initial_scaling = false);
 
   void scale_problem();
