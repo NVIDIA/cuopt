@@ -251,11 +251,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::ruiz_iter_local()
   if (op_problem_scaled_.n_variables % block_size) number_of_blocks_col++;
   i_t number_of_threads_col = std::min(op_problem_scaled_.n_constraints, (i_t)block_size);
   inf_norm_col_kernel<i_t, f_t><<<number_of_blocks_col, number_of_threads_col, 0, stream_view_>>>(
-    op_problem_scaled_.view(),
-    this->view(),
-    A_T_.data(),
-    A_T_offsets_.data(),
-    A_T_indices_.data());
+    op_problem_scaled_.view(), this->view(), A_T_.data(), A_T_offsets_.data(), A_T_indices_.data());
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 
   if (running_mip_) { reset_integer_variables(); }
