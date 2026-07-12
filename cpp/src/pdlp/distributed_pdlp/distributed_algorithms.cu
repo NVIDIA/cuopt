@@ -369,8 +369,7 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_compute_initial_step_size(
 
   const f_t h_step_size = scaling_factor / std::sqrt(sigma_max_sq);
 
-  set_scalar_on_master_and_shards(h_step_size,
-                                  [](auto& sp) { return sp.get_step_size().data(); });
+  set_scalar_on_master_and_shards(h_step_size, [](auto& sp) { return sp.get_step_size().data(); });
 }
 
 // -------- Distributed initial primal weight ------------------------------
