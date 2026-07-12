@@ -46,6 +46,10 @@ class pdlp_initial_scaling_strategy_t {
     raft::device_span<f_t> cummulative_variable_scaling;
   };  // struct view_t
 
+  // skip_initial_scaling: when true, the ctor performs identity-initialization
+  // of the scaling vectors but does NOT run local Ruiz / Pock-Chambolle. Used
+  // by distributed PDLP shards, where cross-shard-coherent scaling is applied
+  // later by multi_gpu_engine_t::distributed_scaling.
   pdlp_initial_scaling_strategy_t(raft::handle_t const* handle_ptr,
                                   mip::problem_t<i_t, f_t>& op_problem_scaled,
                                   i_t number_of_ruiz_iterations,
@@ -56,7 +60,8 @@ class pdlp_initial_scaling_strategy_t {
                                   pdhg_solver_t<i_t, f_t>* pdhg_solver_ptr,
                                   const pdlp::pdlp_hyper_params_t& hyper_params,
                                   i_t original_batch_size,
-                                  bool running_mip = false);
+                                  bool running_mip           = false,
+                                  bool skip_initial_scaling = false);
 
   void scale_problem();
 

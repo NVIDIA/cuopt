@@ -124,54 +124,16 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
   handle.sync_stream(stream_view);
 
   // ---- 5. Build sub_pdlp (single-GPU mode). ----
-  // is_distributed_sub_pdlp=true tells the ctor to skip the CSR/CSC transpose
-  // validity check as A and A_T here are two independent local slices, not transposes
-  // A has all the owned rows and A_T has all the owned columns.
+  // is_distributed_sub_pdlp=true has two effects in pdlp_solver_t's ctor:
+  //   * skip the CSR/CSC transpose validity check -- A and A_T here are two
+  //     independent local slices, not transposes (A has all owned rows and
+  //     A_T has all owned columns).
+  //   * skip local Ruiz / Pock-Chambolle inside initial_scaling_strategy_'s
+  //     ctor -- distributed scaling (multi_gpu_engine_t::distributed_scaling)
+  //     runs a cross-shard-coherent scaling later. Local per-shard scaling
+  //     would be incoherent across shards.
   sub_pdlp = std::make_unique<pdlp_solver_t<i_t, f_t>>(
     *sub_problem, settings, /*is_legacy_batch_mode=*/false, /*is_distributed_sub_pdlp=*/true);
-
-  // Inject this shard's unscaled buffers into op_problem_scaled (distributed
-  // scaling runs later and will scale them).
-  auto& scaled = sub_pdlp->get_op_problem_scaled();
-  raft::copy(scaled.offsets.data(),
-             rank_data.h_A_row_offsets.data(),
-             rank_data.h_A_row_offsets.size(),
-             stream_view);
-  raft::copy(scaled.variables.data(),
-             rank_data.h_A_col_indices.data(),
-             rank_data.h_A_col_indices.size(),
-             stream_view);
-  raft::copy(scaled.coefficients.data(),
-             rank_data.h_A_values.data(),
-             rank_data.h_A_values.size(),
-             stream_view);
-  raft::copy(scaled.reverse_coefficients.data(),
-             rank_data.h_A_t_values.data(),
-             rank_data.h_A_t_values.size(),
-             stream_view);
-  // Use sub_problem's coefficients (already negated for max by
-  // convert_to_maximization_problem) so scaled matches the solver-facing form.
-  raft::copy(scaled.objective_coefficients.data(),
-             sub_problem->objective_coefficients.data(),
-             sub_problem->objective_coefficients.size(),
-             stream_view);
-  raft::copy(
-    scaled.constraint_lower_bounds.data(), h_cstr_lower.data(), h_cstr_lower.size(), stream_view);
-  raft::copy(
-    scaled.constraint_upper_bounds.data(), h_cstr_upper.data(), h_cstr_upper.size(), stream_view);
-
-  using f_t2 = typename type_2<f_t>::type;
-  std::vector<f_t2> h_var_bounds_packed(rank_data.total_var_size);
-  for (i_t i = 0; i < rank_data.total_var_size; ++i) {
-    h_var_bounds_packed[i].x = h_var_lower[i];
-    h_var_bounds_packed[i].y = h_var_upper[i];
-  }
-  raft::copy(scaled.variable_bounds.data(),
-             h_var_bounds_packed.data(),
-             h_var_bounds_packed.size(),
-             stream_view);
-
-  combine_constraint_bounds<i_t, f_t>(scaled, scaled.combined_bounds);
 
   sub_pdlp->pdhg_solver_.get_cusparse_view().create_spmv_op_plans(
     /* is_reflected */ true);
