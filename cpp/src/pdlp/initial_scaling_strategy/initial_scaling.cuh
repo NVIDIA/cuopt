@@ -122,10 +122,7 @@ class pdlp_initial_scaling_strategy_t {
   // accumulated to A, A_T, c, variable bounds and constraint bounds, mark
   // the problem as scaled and scale the seed primal/dual solutions.
   // scale_problem() = apply_cummulative_scaling_to_problem() + local
-  // bound/objective rescaling. Distributed PDLP calls this directly and
-  // then invokes distributed_bound_objective_rescaling() to apply the
-  // GLOBAL (allreduced) bound/objective factors instead of the shard-local
-  // ones.
+  // bound/objective rescaling
   void apply_cummulative_scaling_to_problem();
 
   // One Ruiz iteration (compute iteration vectors + fold into
