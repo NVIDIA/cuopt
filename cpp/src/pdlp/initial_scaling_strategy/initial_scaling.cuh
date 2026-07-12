@@ -101,10 +101,6 @@ class pdlp_initial_scaling_strategy_t {
   void swap_context(const thrust::universal_host_pinned_vector<swap_pair_t<i_t>>& swap_pairs);
   void resize_context(i_t new_size);
 
-  // Inject scaling state computed by another pdlp_initial_scaling_strategy_t
-  // Needed by distributed PDLP
-  void set_cummulative_scaling(const std::vector<f_t>& h_cummulative_constraint_matrix_scaling,
-                               const std::vector<f_t>& h_cummulative_variable_scaling);
   void set_h_bound_rescaling(f_t value);
   void set_h_objective_rescaling(f_t value);
 

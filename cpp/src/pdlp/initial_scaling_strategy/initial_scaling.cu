@@ -230,13 +230,13 @@ __global__ void inf_norm_col_kernel(
 template <typename i_t, typename f_t>
 void pdlp_initial_scaling_strategy_t<i_t, f_t>::ruiz_iter_local()
 {
+  // Reset the iteration_scaling vectors to all 0
   RAFT_CUDA_TRY(cudaMemsetAsync(
     iteration_constraint_matrix_scaling_.data(), 0, sizeof(f_t) * dual_size_h_, stream_view_));
   RAFT_CUDA_TRY(cudaMemsetAsync(
     iteration_variable_scaling_.data(), 0, sizeof(f_t) * primal_size_h_, stream_view_));
 
-  // Inf-norm over rows (owned rows, from row-major A) and columns (owned
-  // columns, from A_T). Split into two kernels so the distributed path can
+  // Inf-norm over rows and columns. Split into two kernels so the distributed path can
   // touch only owned entries.
   // Reading cols data from A_t allows for better cache locality on the AtomicAdd
   // than it would by reading cols data from A as it is csr-represented => scattered cols
@@ -247,13 +247,15 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::ruiz_iter_local()
     op_problem_scaled_.view(), this->view());
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 
-  inf_norm_col_kernel<i_t, f_t>
-    <<<op_problem_scaled_.n_variables, (i_t)block_size, 0, stream_view_>>>(
-      op_problem_scaled_.view(),
-      this->view(),
-      A_T_.data(),
-      A_T_offsets_.data(),
-      A_T_indices_.data());
+  i_t number_of_blocks_col = op_problem_scaled_.n_variables / block_size;
+  if (op_problem_scaled_.n_variables % block_size) number_of_blocks_col++;
+  i_t number_of_threads_col = std::min(op_problem_scaled_.n_constraints, (i_t)block_size);
+  inf_norm_col_kernel<i_t, f_t><<<number_of_blocks_col, number_of_threads_col, 0, stream_view_>>>(
+    op_problem_scaled_.view(),
+    this->view(),
+    A_T_.data(),
+    A_T_offsets_.data(),
+    A_T_indices_.data());
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 
   if (running_mip_) { reset_integer_variables(); }
@@ -967,28 +969,6 @@ const rmm::device_uvector<f_t>&
 pdlp_initial_scaling_strategy_t<i_t, f_t>::get_variable_scaling_vector() const
 {
   return cummulative_variable_scaling_;
-}
-
-template <typename i_t, typename f_t>
-void pdlp_initial_scaling_strategy_t<i_t, f_t>::set_cummulative_scaling(
-  const std::vector<f_t>& h_cummulative_constraint_matrix_scaling,
-  const std::vector<f_t>& h_cummulative_variable_scaling)
-{
-  cuopt_expects(static_cast<i_t>(h_cummulative_constraint_matrix_scaling.size()) == dual_size_h_,
-                error_type_t::ValidationError,
-                "set_cummulative_scaling: host constraint scaling vector size mismatch");
-  cuopt_expects(static_cast<i_t>(h_cummulative_variable_scaling.size()) == primal_size_h_,
-                error_type_t::ValidationError,
-                "set_cummulative_scaling: host variable scaling vector size mismatch");
-
-  raft::copy(cummulative_constraint_matrix_scaling_.data(),
-             h_cummulative_constraint_matrix_scaling.data(),
-             h_cummulative_constraint_matrix_scaling.size(),
-             stream_view_);
-  raft::copy(cummulative_variable_scaling_.data(),
-             h_cummulative_variable_scaling.data(),
-             h_cummulative_variable_scaling.size(),
-             stream_view_);
 }
 
 template <typename i_t, typename f_t>
