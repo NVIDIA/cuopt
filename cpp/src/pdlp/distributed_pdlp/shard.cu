@@ -192,6 +192,7 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
       }
       indices_d.emplace_back(std::move(idx));
       buf_d.emplace_back(std::move(buf));
+      handle.sync_stream(stream_view);
     }
   };
   build_send_plan(rank_data.var_send_per_peer, var_send_indices_d, var_send_buf_d);
