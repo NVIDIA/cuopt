@@ -970,36 +970,23 @@ void pdlp_restart_strategy_t<i_t, f_t>::cupdlpx_restart(
       hyper_params_.restart_k_i,
       hyper_params_.restart_k_d,
       hyper_params_.restart_i_smooth);
-    primal_weight.set_element_async(0, primal_weight_value, stream_view_);
-    primal_step_size.set_element_async(0, primal_step_size_value, stream_view_);
-    dual_step_size.set_element_async(0, dual_step_size_value, stream_view_);
-    best_primal_weight.set_element_async(0, best_primal_weight_value, stream_view_);
+    if (auto* engine = pdhg_solver.get_mgpu_engine()) {
+      engine->set_scalar_on_master_and_shards(
+        primal_weight_value, [](auto& sp) { return sp.get_primal_weight().data(); });
+      engine->set_scalar_on_master_and_shards(
+        primal_step_size_value, [](auto& sp) { return sp.get_primal_step_size().data(); });
+      engine->set_scalar_on_master_and_shards(
+        dual_step_size_value, [](auto& sp) { return sp.get_dual_step_size().data(); });
+      engine->set_scalar_on_master_and_shards(
+        best_primal_weight_value, [](auto& sp) { return sp.get_best_primal_weight().data(); });
+    } else {
+      primal_weight.set_element_async(0, primal_weight_value, stream_view_);
+      primal_step_size.set_element_async(0, primal_step_size_value, stream_view_);
+      dual_step_size.set_element_async(0, dual_step_size_value, stream_view_);
+      best_primal_weight.set_element_async(0, best_primal_weight_value, stream_view_);
+    }
   }
 
-  // mGPU: Broadcast all primal-weight / step-size scalars updated by the cuPDLPx
-  // restart on the master to every shard so the restart-state on
-  // each shard stays in sync with master.
-  if (auto* engine = pdhg_solver.get_mgpu_engine()) {
-    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
-
-    f_t h_primal_step_size{}, h_dual_step_size{};
-    f_t h_primal_weight{}, h_best_primal_weight{};
-
-    raft::copy(&h_primal_step_size, primal_step_size.data(), 1, stream_view_);
-    raft::copy(&h_dual_step_size, dual_step_size.data(), 1, stream_view_);
-    raft::copy(&h_primal_weight, primal_weight.data(), 1, stream_view_);
-    raft::copy(&h_best_primal_weight, best_primal_weight.data(), 1, stream_view_);
-    RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
-
-    engine->for_each_shard([&](auto& shard) {
-      auto& sub = *shard.sub_pdlp;
-      raft::copy(sub.get_primal_step_size().data(), &h_primal_step_size, 1, shard.stream.view());
-      raft::copy(sub.get_dual_step_size().data(), &h_dual_step_size, 1, shard.stream.view());
-      raft::copy(sub.get_primal_weight().data(), &h_primal_weight, 1, shard.stream.view());
-      raft::copy(
-        sub.get_best_primal_weight().data(), &h_best_primal_weight, 1, shard.stream.view());
-    });
-  }
   // TODO later batch mode: remove if you have per climber restart
 
   if (auto* engine = pdhg_solver.get_mgpu_engine()) {

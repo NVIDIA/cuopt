@@ -367,18 +367,10 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_compute_initial_step_size(
   const f_t sigma_max_sq =
     distributed_max_singular_value_squared(n_global_cstrs, max_iterations, tolerance);
 
-  auto& master     = *master_pdlp_;
-  auto* handle_ptr = master.get_handle_ptr();
-  auto stream_view = handle_ptr->get_stream();
-
   const f_t h_step_size = scaling_factor / std::sqrt(sigma_max_sq);
 
-  raft::copy(master.get_step_size().data(), &h_step_size, 1, stream_view);
-  for_each_shard([&](auto& shard) {
-    raft::copy(shard.sub_pdlp->get_step_size().data(), &h_step_size, 1, shard.stream);
-  });
-  sync_await_shards(stream_view);
-  handle_ptr->sync_stream(stream_view);
+  set_scalar_on_master_and_shards(h_step_size,
+                                  [](auto& sp) { return sp.get_step_size().data(); });
 }
 
 // -------- Distributed initial primal weight ------------------------------
@@ -405,19 +397,10 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_compute_initial_primal_weight(
     "earlier in solve_lp_distributed_from_mps.");
   const f_t h_primal_weight = f_t(1);
 
-  auto& master     = *master_pdlp_;
-  auto* handle_ptr = master.get_handle_ptr();
-  auto stream_view = handle_ptr->get_stream();
-
-  raft::copy(master.get_primal_weight().data(), &h_primal_weight, 1, stream_view);
-  raft::copy(master.get_best_primal_weight().data(), &h_primal_weight, 1, stream_view);
-  for_each_shard([&](auto& shard) {
-    auto& sub = *shard.sub_pdlp;
-    raft::copy(sub.get_primal_weight().data(), &h_primal_weight, 1, shard.stream);
-    raft::copy(sub.get_best_primal_weight().data(), &h_primal_weight, 1, shard.stream);
-  });
-  sync_await_shards(stream_view);
-  handle_ptr->sync_stream(stream_view);
+  set_scalar_on_master_and_shards(h_primal_weight,
+                                  [](auto& sp) { return sp.get_primal_weight().data(); });
+  set_scalar_on_master_and_shards(h_primal_weight,
+                                  [](auto& sp) { return sp.get_best_primal_weight().data(); });
 }
 
 // ----- Explicit instantiations (member-by-member) --------------------------

@@ -37,6 +37,7 @@
 #include <nccl.h>
 
 #include <cmath>
+#include <cstddef>
 #include <memory>
 #include <tuple>
 #include <type_traits>
@@ -314,6 +315,22 @@ struct multi_gpu_engine_t {
     });
     allreduce_sum_inplace_to_master_buf(
       shard_scalars, raft::make_device_scalar_view<f_t>(ptr_access(*master_pdlp_)));
+  }
+
+  // -------- Set a host scalar on master AND every shard -------------------
+  // Writes a host-side value to master and every shard through `ptr_access`.
+  template <typename PtrAccess>
+  void set_scalar_on_master_and_shards(f_t value, PtrAccess&& ptr_access)
+  {
+    cuopt_assert(master_pdlp_ != nullptr,
+                 "set_scalar_on_master_and_shards requires set_master(...) to have been called");
+    auto master_stream = master_pdlp_->get_handle_ptr()->get_stream();
+    raft::copy(ptr_access(*master_pdlp_), &value, 1, master_stream);
+    for_each_shard([&](auto& shard) {
+      raft::copy(ptr_access(*shard.sub_pdlp), &value, 1, shard.stream.view());
+    });
+    master_pdlp_->get_handle_ptr()->sync_stream(master_stream);
+    synchronize_shards();
   }
 
   // -------- Distributed dot / L2 norm -------------------------------------
