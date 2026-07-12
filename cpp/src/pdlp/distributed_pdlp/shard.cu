@@ -150,8 +150,7 @@ pdlp_shard_t<i_t, f_t>::pdlp_shard_t(int device_id,
       indices_d.emplace_back(send_to_peer.size(), stream_view);
       buf_d.emplace_back(send_to_peer.size(), stream_view);
       if (!send_to_peer.empty()) {
-        raft::copy(
-          indices_d.back().data(), send_to_peer.data(), send_to_peer.size(), stream_view);
+        raft::copy(indices_d.back().data(), send_to_peer.data(), send_to_peer.size(), stream_view);
       }
     }
   };
