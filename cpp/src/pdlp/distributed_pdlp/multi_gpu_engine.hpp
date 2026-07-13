@@ -380,6 +380,41 @@ struct multi_gpu_engine_t {
     distributed_l2_norm_bufs(in_bufs, out_scalars);
   }
 
+  // Core: same as distributed_l2_norm_bufs, plus after the collective the
+  // value is D2D-copied from shard 0 into master_dst. On master's stream.
+  // Mirrors the allreduce_sum_inplace_to_master_buf pattern.
+  void distributed_l2_norm_to_master_buf(std::vector<raft::device_span<f_t>> const& in_bufs,
+                                         std::vector<raft::device_scalar_view<f_t>> const& shard_out,
+                                         raft::device_scalar_view<f_t> master_dst);
+
+  // Wrapper: applies out_access to master_pdlp_ to obtain the master
+  // destination, then delegates to distributed_l2_norm_to_master_buf.
+  // out_access is the one accessor for shards and master
+  //   BufAccess  : pdlp_solver_t<i_t,f_t>& -> rmm::device_uvector<f_t>&
+  //   OutAccess  : pdlp_solver_t<i_t,f_t>& -> f_t*   (single scalar)
+  //   SizeAccess : pdlp_shard_t<i_t,f_t>&  -> i_t    (owned slice length)
+  template <typename BufAccess, typename OutAccess, typename SizeAccess>
+  void distributed_l2_norm_to_master(BufAccess&& buf_access,
+                                     OutAccess&& out_access,
+                                     SizeAccess&& size_access)
+  {
+    cuopt_assert(master_pdlp_ != nullptr,
+                 "distributed_l2_norm_to_master requires set_master(...) to have been called");
+    std::vector<raft::device_span<f_t>> in_bufs;
+    std::vector<raft::device_scalar_view<f_t>> shard_out;
+    in_bufs.reserve(shards.size());
+    shard_out.reserve(shards.size());
+    for_each_shard([&](auto& s) {
+      auto& sub   = *s.sub_pdlp;
+      auto& buf   = buf_access(sub);
+      const i_t n = size_access(s);
+      in_bufs.emplace_back(buf.data(), static_cast<std::size_t>(n));
+      shard_out.emplace_back(raft::make_device_scalar_view<f_t>(out_access(sub)));
+    });
+    distributed_l2_norm_to_master_buf(
+      in_bufs, shard_out, raft::make_device_scalar_view<f_t>(out_access(*master_pdlp_)));
+  }
+
   // -------- High-level: A @ x and A_T @ y ---------------------------------
   // Distributed counterpart to pdhg_solver_t::compute_A_x() / compute_At_y().
   void distributed_compute_A_x();

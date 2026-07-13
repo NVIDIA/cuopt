@@ -69,10 +69,15 @@ class convergence_information_t {
   const rmm::device_uvector<f_t>& get_l2_norm_primal_linear_objective() const;
   const rmm::device_uvector<f_t>& get_l2_norm_primal_right_hand_side() const;
 
-  void compute_owned_reference_norm_partials(i_t owned_var_size, i_t owned_cstr_size);
-  void sqrt_reference_norms_inplace();
-  f_t* l2_norm_primal_right_hand_side_data() { return l2_norm_primal_right_hand_side_.data(); }
-  f_t* l2_norm_primal_linear_objective_data() { return l2_norm_primal_linear_objective_.data(); }
+  // Multi-GPU counterpart of init_l2_norms().
+  //   - per-shard thrust::transform_reduce on the OWNED prefix, folded into
+  //     host scalars (blocking on each shard's stream);
+  //   - host-side sqrt;
+  //   - broadcast to master + every shard via set_scalar_on_master_and_shards.
+  // Objective term uses weighted_square_op with weight=1; RHS term uses
+  // rhs_sum_of_squares_t (skips infinite bounds and degenerate ranges,
+  // matching the single-GPU compute_sum_bounds semantics).
+  void distributed_init_l2_norms(multi_gpu_engine_t<i_t, f_t>& engine);
 
   struct view_t {
     i_t primal_size;
@@ -131,30 +136,32 @@ class convergence_information_t {
                                rmm::device_uvector<f_t>& tmp_dual,
                                [[maybe_unused]] const rmm::device_uvector<f_t>& dual_iterate);
 
-  // Multi-GPU shard helper: writes a partial dot(c[0:n_owned], x[0:n_owned])
-  // into primal_objective_ (no scaling, no offset). Master is responsible for
-  // allreduce SUM across shards and then applying scaling + offset once on the
-  // reduced value
-  void compute_primal_objective_owned_partial(rmm::device_uvector<f_t>& primal_solution,
-                                              i_t n_owned);
-
-  // Multi-GPU shard helper: writes a partial dual objective into
-  // dual_objective_ (no scaling, no offset). Computes
-  //   dual_dot_           = dot(dual_slack[0:n_owned_var], primal_solution[0:n_owned_var])
-  //   sum_primal_slack_   = Σ primal_slack_[0:n_owned_cstr]
-  //   dual_objective_     = dual_dot_ + sum_primal_slack_
-  // primal_slack_ is assumed already populated by a prior per-shard
-  // compute_primal_residual call. Use only in the use_reflected_primal_dual
-  // path (the multi-GPU mode).
-  void compute_dual_objective_owned_partial(rmm::device_uvector<f_t>& primal_solution,
-                                            rmm::device_uvector<f_t>& dual_slack,
-                                            i_t n_owned_var,
-                                            i_t n_owned_cstr);
-
   void swap_context(const thrust::universal_host_pinned_vector<swap_pair_t<i_t>>& swap_pairs);
   void resize_context(i_t new_size);
 
  private:
+  // Non-batch primal-objective dot on the shard's owned var prefix; writes an
+  // unscaled/unoffset partial into primal_objective_[0]. Master's caller
+  // allreduces then applies scaling+offset once (offset is problem-global, so
+  // per-shard application would over-count it Nshards times). Also reused by
+  // compute_primal_objective as the non-batch full-vector path (n_owned ==
+  // primal_size_h_).
+  void compute_primal_objective_owned_partial(const rmm::device_uvector<f_t>& primal_solution,
+                                              i_t n_owned);
+
+  // Non-batch dual-objective partial on the shard's owned prefix. Reads
+  // primal_slack_ populated by a prior per-shard compute_primal_residual on
+  // the same shard. Writes dual_dot_ + Σ primal_slack_[0:n_owned_cstr] into
+  // dual_objective_[0], unscaled/unoffset. Only defined in the
+  // use_reflected_primal_dual path (the only path used in multi-GPU mode).
+  // Also reused by compute_dual_objective as the non-batch reflected
+  // full-vector path (n_owned_var == primal_size_h_, n_owned_cstr ==
+  // dual_size_h_).
+  void compute_dual_objective_owned_partial(const rmm::device_uvector<f_t>& primal_solution,
+                                            const rmm::device_uvector<f_t>& dual_slack,
+                                            i_t n_owned_var,
+                                            i_t n_owned_cstr);
+
   void compute_primal_objective(rmm::device_uvector<f_t>& primal_solution);
 
   // Applies per-climber objective scaling + offset to primal_objective_.
@@ -179,18 +186,17 @@ class convergence_information_t {
   void compute_reduced_costs_dual_objective_contribution();
 
   // ----- Distributed-PDLP sub-steps of compute_convergence_information -----
-  // Each is the multi-GPU equivalent of the single-GPU block it replaces
+  // Each is the multi-GPU equivalent of the single-GPU block it replaces:
+  //  - shards produce per-owned-prefix partials
+  //  - engine.allreduce_sum_inplace_to_master fuses the cross-shard sum with
+  //    the shard0->master mirror in one call
+  //  - master (*this) applies scaling/offset once
+  // The L2-norm steps of compute_convergence_information are single-line
+  // engine.distributed_l2_norm_to_master(...) calls and stay inline (no
+  // wrapper — there's no per-shard prep to encapsulate).
   void distributed_compute_primal_residual_and_objective(
     multi_gpu_engine_t<i_t, f_t>& engine, const pdlp_solver_settings_t<i_t, f_t>& settings);
-  void distributed_compute_primal_residual_l2_norm(multi_gpu_engine_t<i_t, f_t>& engine);
   void distributed_compute_dual_residual_and_objective(multi_gpu_engine_t<i_t, f_t>& engine);
-  void distributed_compute_dual_residual_l2_norm(multi_gpu_engine_t<i_t, f_t>& engine);
-
-  // Mirror one per-shard convergence scalar from shard 0 to master (after a
-  // cross-shard reduction has made every shard agree). `pick(conv)` selects the
-  // f_t* field; it is applied to both master (*this) and shard 0's instance.
-  template <typename Pick>
-  void copy_scalar_from_shard0(multi_gpu_engine_t<i_t, f_t>& engine, Pick&& pick);
 
   // Ctor helpers — each handles both batch and non-batch internally.
   void init_objective_offsets();

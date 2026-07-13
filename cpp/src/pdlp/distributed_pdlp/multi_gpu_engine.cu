@@ -397,6 +397,22 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_l2_norm_bufs(
   distributed_l2_norm_bufs(in_bufs, views);
 }
 
+template <typename i_t, typename f_t>
+void multi_gpu_engine_t<i_t, f_t>::distributed_l2_norm_to_master_buf(
+  std::vector<raft::device_span<f_t>> const& in_bufs,
+  std::vector<raft::device_scalar_view<f_t>> const& shard_out,
+  raft::device_scalar_view<f_t> master_dst)
+{
+  cuopt_assert(master_pdlp_ != nullptr,
+               "distributed_l2_norm_to_master_buf requires set_master(...)");
+  distributed_l2_norm_bufs(in_bufs, shard_out);
+  auto master_stream = master_pdlp_->get_handle_ptr()->get_stream();
+  sync_await_shards(master_stream);
+  auto& s0 = *shards[0];
+  raft::device_setter guard(s0.device_id);
+  raft::copy(master_dst.data_handle(), shard_out[0].data_handle(), 1, master_stream);
+}
+
 // -------- Fused halo-exchange + SpMV ----------------------------------------
 template <typename i_t, typename f_t>
 void multi_gpu_engine_t<i_t, f_t>::distributed_spmv_At(

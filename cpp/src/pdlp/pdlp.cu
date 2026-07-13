@@ -559,47 +559,15 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   primal_size_h_ = n_vars;
   dual_size_h_   = n_cstr;
 
-  // Distributed conergence_information::init_l2_norms
-  multi_gpu_engine->for_each_shard([](auto& shard) {
-    shard.sub_pdlp->get_current_termination_strategy()
-      .get_convergence_information()
-      .compute_owned_reference_norm_partials(shard.rank_data.owned_var_size,
-                                             shard.rank_data.owned_cstr_size);
-  });
-  multi_gpu_engine->allreduce_sum_inplace([](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
-    return sp.get_current_termination_strategy()
-      .get_convergence_information()
-      .l2_norm_primal_right_hand_side_data();
-  });
-  multi_gpu_engine->allreduce_sum_inplace([](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
-    return sp.get_current_termination_strategy()
-      .get_convergence_information()
-      .l2_norm_primal_linear_objective_data();
-  });
-  multi_gpu_engine->for_each_shard([](auto& shard) {
-    shard.sub_pdlp->get_current_termination_strategy()
-      .get_convergence_information()
-      .sqrt_reference_norms_inplace();
-    shard.stream.synchronize();
-  });
-  // Broadcast the values to the master
-  {
-    auto& s0      = *multi_gpu_engine->shards[0];
-    auto& s0_conv = s0.sub_pdlp->get_current_termination_strategy().get_convergence_information();
-    raft::device_setter guard(s0.device_id);
-    for (auto* ts : {&current_termination_strategy_, &average_termination_strategy_}) {
-      auto& ci = ts->get_convergence_information();
-      raft::copy(ci.l2_norm_primal_right_hand_side_data(),
-                 s0_conv.l2_norm_primal_right_hand_side_data(),
-                 1,
-                 stream_view_);
-      raft::copy(ci.l2_norm_primal_linear_objective_data(),
-                 s0_conv.l2_norm_primal_linear_objective_data(),
-                 1,
-                 stream_view_);
-    }
-  }
-  handle_ptr_->sync_stream(stream_view_);
+  // Distributed counterpart of convergence_information::init_l2_norms:
+  // per-shard partial (owned prefix) sum-of-squares -> allreduce + mirror to
+  // master (*this) -> sqrt on shards + master. Encapsulated inside
+  // convergence_information_t to keep the orchestration next to the primitives
+  // it drives. average_termination_strategy_ is not used in distributed
+  // (never_restart_to_average = true is asserted above), so we only init
+  // current_termination_strategy_.
+  current_termination_strategy_.get_convergence_information().distributed_init_l2_norms(
+    *multi_gpu_engine);
 }
 
 template <typename i_t, typename f_t>

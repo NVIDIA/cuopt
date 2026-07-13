@@ -13,8 +13,6 @@
 #include <pdlp/termination_strategy/convergence_information.hpp>
 #include <pdlp/utils.cuh>
 
-#include <raft/core/device_setter.hpp>
-
 #include <mip_heuristics/mip_constants.hpp>
 
 #include <cuopt/error.hpp>
@@ -28,14 +26,20 @@
 #include <raft/linalg/ternary_op.cuh>
 #include <raft/util/cuda_utils.cuh>
 
+#include <rmm/exec_policy.hpp>
+
 #include <thrust/device_ptr.h>
+#include <thrust/functional.h>
 #include <thrust/iterator/constant_iterator.h>
 #include <thrust/iterator/counting_iterator.h>
 #include <thrust/iterator/transform_iterator.h>
 #include <thrust/iterator/transform_output_iterator.h>
 #include <thrust/iterator/zip_iterator.h>
+#include <thrust/transform_reduce.h>
 
 #include <cub/cub.cuh>
+
+#include <cmath>
 
 namespace cuopt::mathematical_optimization::pdlp {
 template <typename i_t, typename f_t>
@@ -213,74 +217,57 @@ void convergence_information_t<i_t, f_t>::init_l2_norms()
 }
 
 template <typename i_t, typename f_t>
-void convergence_information_t<i_t, f_t>::compute_owned_reference_norm_partials(i_t owned_var_size,
-                                                                                i_t owned_cstr_size)
+void convergence_information_t<i_t, f_t>::distributed_init_l2_norms(
+  multi_gpu_engine_t<i_t, f_t>& engine)
 {
-  cuopt_assert(!batch_mode_, "owned reference-norm partials only used in non-batch mGPU mode");
-  cuopt_assert(owned_var_size <= primal_size_h_, "owned_var_size must be <= primal_size_h_");
-  cuopt_assert(owned_cstr_size <= dual_size_h_, "owned_cstr_size must be <= dual_size_h_");
+  cuopt_assert(!batch_mode_, "distributed PDLP is not supported in batch mode");
 
-  // Σ objective[0:owned_var]²
-  RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(handle_ptr_->get_cublas_handle(),
-                                                  static_cast<int>(owned_var_size),
-                                                  problem_ptr->objective_coefficients.data(),
-                                                  1,
-                                                  problem_ptr->objective_coefficients.data(),
-                                                  1,
-                                                  l2_norm_primal_linear_objective_.data(),
-                                                  stream_view_));
+  cuopt_expects(!hyper_params_.initial_primal_weight_combined_bounds,
+                error_type_t::ValidationError,
+                "distributed_init_l2_norms: only the Stable3-shaped path is "
+                "supported (initial_primal_weight_combined_bounds=false).");
+  raft::common::nvtx::range scope("distributed_init_l2_norms");
 
-  // rhs_sum_of_squares(lower[0:owned_cstr], upper[0:owned_cstr])  (no sqrt)
-  {
-    rmm::device_buffer d_temp_storage;
-    size_t bytes   = 0;
-    auto zip_begin = thrust::make_zip_iterator(problem_ptr->constraint_lower_bounds.data(),
-                                               problem_ptr->constraint_upper_bounds.data());
-    cub::DeviceReduce::TransformReduce(nullptr,
-                                       bytes,
-                                       zip_begin,
-                                       l2_norm_primal_right_hand_side_.data(),
-                                       static_cast<int>(owned_cstr_size),
-                                       cuda::std::plus<>{},
-                                       rhs_sum_of_squares_t<f_t>{},
-                                       f_t(0),
-                                       stream_view_);
-    d_temp_storage.resize(bytes, stream_view_);
-    cub::DeviceReduce::TransformReduce(d_temp_storage.data(),
-                                       bytes,
-                                       zip_begin,
-                                       l2_norm_primal_right_hand_side_.data(),
-                                       static_cast<int>(owned_cstr_size),
-                                       cuda::std::plus<>{},
-                                       rhs_sum_of_squares_t<f_t>{},
-                                       f_t(0),
-                                       stream_view_);
-  }
-  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
-}
+  f_t global_rhs_sq = f_t(0);
+  f_t global_obj_sq = f_t(0);
 
-template <typename i_t, typename f_t>
-void convergence_information_t<i_t, f_t>::sqrt_reference_norms_inplace()
-{
-  cub::DeviceTransform::Transform(l2_norm_primal_linear_objective_.data(),
-                                  l2_norm_primal_linear_objective_.data(),
-                                  1,
-                                  sqrt_func_t<f_t>{},
-                                  stream_view_);
-  cub::DeviceTransform::Transform(l2_norm_primal_right_hand_side_.data(),
-                                  l2_norm_primal_right_hand_side_.data(),
-                                  1,
-                                  sqrt_func_t<f_t>{},
-                                  stream_view_);
-  // Broadcast slot [0] to all climbers (no-op outside batch mode).
-  thrust::fill(handle_ptr_->get_thrust_policy(),
-               l2_norm_primal_linear_objective_.begin(),
-               l2_norm_primal_linear_objective_.end(),
-               l2_norm_primal_linear_objective_.element(0, stream_view_));
-  thrust::fill(handle_ptr_->get_thrust_policy(),
-               l2_norm_primal_right_hand_side_.begin(),
-               l2_norm_primal_right_hand_side_.end(),
-               l2_norm_primal_right_hand_side_.element(0, stream_view_));
+  // Mirrors init_l2_norms with hyper_params_.initial_primal_weight_combined_bounds = false.
+  engine.for_each_shard([&](pdlp_shard_t<i_t, f_t>& s) {
+    const auto& problem =
+      *s.sub_pdlp->get_current_termination_strategy().get_convergence_information().problem_ptr;
+    auto policy    = rmm::exec_policy(s.stream.view());
+    auto rhs_begin = thrust::make_zip_iterator(problem.constraint_lower_bounds.data(),
+                                               problem.constraint_upper_bounds.data());
+
+    // RHS L2 norm
+    global_rhs_sq += thrust::transform_reduce(policy,
+                                              rhs_begin,
+                                              rhs_begin + s.rank_data.owned_cstr_size,
+                                              rhs_sum_of_squares_t<f_t>{},
+                                              f_t(0),
+                                              thrust::plus<f_t>{});
+    // Objective L2 norm
+    global_obj_sq += thrust::transform_reduce(
+      policy,
+      problem.objective_coefficients.data(),
+      problem.objective_coefficients.data() + s.rank_data.owned_var_size,
+      weighted_square_op<f_t>{f_t(1)},
+      f_t(0),
+      thrust::plus<f_t>{});
+  });
+
+  engine.set_scalar_on_master_and_shards(
+    std::sqrt(global_rhs_sq), [](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
+      return sp.get_current_termination_strategy()
+        .get_convergence_information()
+        .l2_norm_primal_right_hand_side_.data();
+    });
+  engine.set_scalar_on_master_and_shards(
+    std::sqrt(global_obj_sq), [](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
+      return sp.get_current_termination_strategy()
+        .get_convergence_information()
+        .l2_norm_primal_linear_objective_.data();
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -458,19 +445,6 @@ __global__ void compute_remaining_stats_kernel(
 }
 
 template <typename i_t, typename f_t>
-template <typename Pick>
-void convergence_information_t<i_t, f_t>::copy_scalar_from_shard0(
-  multi_gpu_engine_t<i_t, f_t>& engine, Pick&& pick)
-{
-  // Sync shards with master stream to avoid race conditions before reading.
-  engine.sync_await_shards(stream_view_);
-  auto& s0 = *engine.shards[0];
-  raft::device_setter guard(s0.device_id);
-  auto& s0_conv = s0.sub_pdlp->get_current_termination_strategy().get_convergence_information();
-  raft::copy(pick(*this), pick(s0_conv), 1, stream_view_);
-}
-
-template <typename i_t, typename f_t>
 void convergence_information_t<i_t, f_t>::distributed_compute_primal_residual_and_objective(
   multi_gpu_engine_t<i_t, f_t>& engine, const pdlp_solver_settings_t<i_t, f_t>& settings)
 {
@@ -485,7 +459,7 @@ void convergence_information_t<i_t, f_t>::distributed_compute_primal_residual_an
   });
 
   // Per-shard primal residual + partial (owned) primal objective.
-  engine.for_each_shard([](auto& shard) {
+  engine.for_each_shard([](pdlp_shard_t<i_t, f_t>& shard) {
     auto& sub_pdlp = *shard.sub_pdlp;
     auto& sub_conv = sub_pdlp.get_current_termination_strategy().get_convergence_information();
     sub_conv.compute_primal_residual(sub_conv.op_problem_cusparse_view_,
@@ -495,55 +469,29 @@ void convergence_information_t<i_t, f_t>::distributed_compute_primal_residual_an
       sub_pdlp.pdhg_solver_.get_potential_next_primal_solution(), shard.rank_data.owned_var_size);
   });
 
-  // Reduce partial primal objectives across shards, mirror the result from
-  // shard 0 to master, then apply scaling/offset once on the reduced value
-  // (applying it per-shard would over-count the offset Nshards times).
-  engine.allreduce_sum_inplace([](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
-    return sp.get_current_termination_strategy()
-      .get_convergence_information()
-      .get_primal_objective()
-      .data();
-  });
-  copy_scalar_from_shard0(engine, [](convergence_information_t<i_t, f_t>& c) -> f_t* {
-    return c.primal_objective_.data();
+  // Fused allreduce (shards' partial sums) + D2D mirror to master, then apply
+  // scaling+offset once on the reduced value.
+  engine.allreduce_sum_inplace_to_master([](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
+    return sp.get_current_termination_strategy().get_convergence_information().primal_objective_.data();
   });
   apply_primal_objective_scaling_and_offset();
-}
-
-template <typename i_t, typename f_t>
-void convergence_information_t<i_t, f_t>::distributed_compute_primal_residual_l2_norm(
-  multi_gpu_engine_t<i_t, f_t>& engine)
-{
-  engine.distributed_l2_norm(
-    [](pdlp_solver_t<i_t, f_t>& sp) -> rmm::device_uvector<f_t>& {
-      return sp.get_current_termination_strategy().get_convergence_information().primal_residual_;
-    },
-    [](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
-      return sp.get_current_termination_strategy()
-        .get_convergence_information()
-        .l2_primal_residual_.data();
-    },
-    [](pdlp_shard_t<i_t, f_t>& shard) -> i_t { return shard.rank_data.owned_cstr_size; });
-  copy_scalar_from_shard0(engine, [](convergence_information_t<i_t, f_t>& c) -> f_t* {
-    return c.l2_primal_residual_.data();
-  });
 }
 
 template <typename i_t, typename f_t>
 void convergence_information_t<i_t, f_t>::distributed_compute_dual_residual_and_objective(
   multi_gpu_engine_t<i_t, f_t>& engine)
 {
-  // 1) Halo-exchange potential_next_dual_solution on every shard so the
-  //    A_T_shard @ y SpMV inside compute_dual_residual reads correct values
-  //    in the cstr halo region
+  // Halo-exchange potential_next_dual_solution on every shard so the
+  // A_T_shard @ y SpMV inside compute_dual_residual reads correct values in
+  // the cstr halo region.
   engine.halo_exchange_cstr([](pdlp_solver_t<i_t, f_t>& p) -> rmm::device_uvector<f_t>& {
     return p.pdhg_solver_.get_potential_next_dual_solution();
   });
 
-  // Same primal_iterate fix as the primal block above: use the shard's
-  // (fresh, unscaled) potential_next_primal_solution, matching single-GPU
-  // cuPDLPx.
-  engine.for_each_shard([](auto& shard) {
+  // Per-shard dual residual + partial (owned) dual objective. Uses the
+  // shard's (fresh, unscaled) potential_next_primal_solution, matching
+  // single-GPU cuPDLPx.
+  engine.for_each_shard([](pdlp_shard_t<i_t, f_t>& shard) {
     auto& sub_pdlp = *shard.sub_pdlp;
     auto& sub_conv = sub_pdlp.get_current_termination_strategy().get_convergence_information();
     sub_conv.compute_dual_residual(sub_conv.op_problem_cusparse_view_,
@@ -557,39 +505,11 @@ void convergence_information_t<i_t, f_t>::distributed_compute_dual_residual_and_
       shard.rank_data.owned_cstr_size);
   });
 
-  // 4) Allreduce dual_objective_ across shards (sum, in place), mirror to
-  //    master, then apply offset/scaling once
-  engine.allreduce_sum_inplace([](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
-    return sp.get_current_termination_strategy()
-      .get_convergence_information()
-      .get_dual_objective()
-      .data();
-  });
-  copy_scalar_from_shard0(engine, [](convergence_information_t<i_t, f_t>& c) -> f_t* {
-    return c.dual_objective_.data();
+  // Fused allreduce + D2D mirror to master, then apply scaling+offset once.
+  engine.allreduce_sum_inplace_to_master([](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
+    return sp.get_current_termination_strategy().get_convergence_information().dual_objective_.data();
   });
   apply_dual_objective_scaling_and_offset();
-}
-
-template <typename i_t, typename f_t>
-void convergence_information_t<i_t, f_t>::distributed_compute_dual_residual_l2_norm(
-  multi_gpu_engine_t<i_t, f_t>& engine)
-{
-  // Same pattern as the primal L2 above, but the dual residual is var-shaped
-  // so we clip to owned_var_size.
-  engine.distributed_l2_norm(
-    [](pdlp_solver_t<i_t, f_t>& sp) -> rmm::device_uvector<f_t>& {
-      return sp.get_current_termination_strategy().get_convergence_information().dual_residual_;
-    },
-    [](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
-      return sp.get_current_termination_strategy()
-        .get_convergence_information()
-        .l2_dual_residual_.data();
-    },
-    [](pdlp_shard_t<i_t, f_t>& shard) -> i_t { return shard.rank_data.owned_var_size; });
-  copy_scalar_from_shard0(engine, [](convergence_information_t<i_t, f_t>& c) -> f_t* {
-    return c.l2_dual_residual_.data();
-  });
 }
 
 template <typename i_t, typename f_t>
@@ -648,7 +568,17 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
 
   // L2 Norm
   if (current_pdhg_solver.is_distributed_master()) {
-    distributed_compute_primal_residual_l2_norm(*current_pdhg_solver.get_mgpu_engine());
+    // Fused per-shard L2 reduction + D2D mirror to master.
+    current_pdhg_solver.get_mgpu_engine()->distributed_l2_norm_to_master(
+      [](pdlp_solver_t<i_t, f_t>& sp) -> rmm::device_uvector<f_t>& {
+        return sp.get_current_termination_strategy().get_convergence_information().primal_residual_;
+      },
+      [](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
+        return sp.get_current_termination_strategy()
+          .get_convergence_information()
+          .l2_primal_residual_.data();
+      },
+      [](pdlp_shard_t<i_t, f_t>& shard) -> i_t { return shard.rank_data.owned_cstr_size; });
   } else if (!batch_mode_) {
     my_l2_norm<i_t, f_t>(primal_residual_, l2_primal_residual_, handle_ptr_);
   } else {
@@ -707,7 +637,17 @@ void convergence_information_t<i_t, f_t>::compute_convergence_information(
 #endif
 
   if (current_pdhg_solver.is_distributed_master()) {
-    distributed_compute_dual_residual_l2_norm(*current_pdhg_solver.get_mgpu_engine());
+    // Same pattern as the primal L2 above.
+    current_pdhg_solver.get_mgpu_engine()->distributed_l2_norm_to_master(
+      [](pdlp_solver_t<i_t, f_t>& sp) -> rmm::device_uvector<f_t>& {
+        return sp.get_current_termination_strategy().get_convergence_information().dual_residual_;
+      },
+      [](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
+        return sp.get_current_termination_strategy()
+          .get_convergence_information()
+          .l2_dual_residual_.data();
+      },
+      [](pdlp_shard_t<i_t, f_t>& shard) -> i_t { return shard.rank_data.owned_var_size; });
   } else if (!batch_mode_) {
     my_l2_norm<i_t, f_t>(dual_residual_, l2_dual_residual_, handle_ptr_);
   } else {
@@ -851,7 +791,7 @@ __global__ void apply_objective_scaling_and_offset(raft::device_span<f_t> object
 
 template <typename i_t, typename f_t>
 void convergence_information_t<i_t, f_t>::compute_primal_objective_owned_partial(
-  rmm::device_uvector<f_t>& primal_solution, i_t n_owned)
+  const rmm::device_uvector<f_t>& primal_solution, i_t n_owned)
 {
   raft::common::nvtx::range fun_scope("compute_primal_objective_owned_partial");
   cuopt_assert(!batch_mode_, "owned-partial primal objective is only used in non-batch mGPU mode");
@@ -874,14 +814,7 @@ void convergence_information_t<i_t, f_t>::compute_primal_objective(
   raft::common::nvtx::range fun_scope("compute_primal_objective");
 
   if (!batch_mode_) {
-    RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(handle_ptr_->get_cublas_handle(),
-                                                    (int)primal_size_h_,
-                                                    primal_solution.data(),
-                                                    primal_stride,
-                                                    problem_ptr->objective_coefficients.data(),
-                                                    primal_stride,
-                                                    primal_objective_.data(),
-                                                    stream_view_));
+    compute_primal_objective_owned_partial(primal_solution, primal_size_h_);
   } else {
     segmented_sum_handler_.segmented_sum_helper(
       thrust::make_transform_iterator(
@@ -998,8 +931,8 @@ void convergence_information_t<i_t, f_t>::compute_dual_residual(
 
 template <typename i_t, typename f_t>
 void convergence_information_t<i_t, f_t>::compute_dual_objective_owned_partial(
-  rmm::device_uvector<f_t>& primal_solution,
-  rmm::device_uvector<f_t>& dual_slack,
+  const rmm::device_uvector<f_t>& primal_solution,
+  const rmm::device_uvector<f_t>& dual_slack,
   i_t n_owned_var,
   i_t n_owned_cstr)
 {
@@ -1082,23 +1015,12 @@ void convergence_information_t<i_t, f_t>::compute_dual_objective(
                              1,
                              stream_view_);
   } else {
-    // Could be the same but changed for backward compatiblity
+    // Reflected path.
     if (!batch_mode_) {
-      RAFT_CUBLAS_TRY(raft::linalg::detail::cublasdot(handle_ptr_->get_cublas_handle(),
-                                                      primal_size_h_,
-                                                      dual_slack.data(),
-                                                      primal_stride,
-                                                      primal_solution.data(),
-                                                      primal_stride,
-                                                      dual_dot_.data(),
-                                                      stream_view_));
-
-      cub::DeviceReduce::Sum(rmm_tmp_buffer_.data(),
-                             size_of_buffer_,
-                             primal_slack_.data(),
-                             sum_primal_slack_.data(),
-                             dual_size_h_,
-                             stream_view_);
+      // Full-vector case is a special case of the owned-prefix reduction used
+      // in mGPU (n_owned_var = primal_size_h_, n_owned_cstr = dual_size_h_).
+      compute_dual_objective_owned_partial(
+        primal_solution, dual_slack, primal_size_h_, dual_size_h_);
     } else {
       segmented_sum_handler_.segmented_sum_helper(
         thrust::make_transform_iterator(
@@ -1110,14 +1032,14 @@ void convergence_information_t<i_t, f_t>::compute_dual_objective(
 
       segmented_sum_handler_.segmented_sum_helper(
         primal_slack_.data(), sum_primal_slack_.data(), climber_strategies_.size(), dual_size_h_);
-    }
 
-    cub::DeviceTransform::Transform(
-      cuda::std::make_tuple(dual_dot_.data(), sum_primal_slack_.data()),
-      dual_objective_.data(),
-      dual_objective_.size(),
-      cuda::std::plus<>{},
-      stream_view_);
+      cub::DeviceTransform::Transform(
+        cuda::std::make_tuple(dual_dot_.data(), sum_primal_slack_.data()),
+        dual_objective_.data(),
+        dual_objective_.size(),
+        cuda::std::plus<>{},
+        stream_view_);
+    }
   }
 
   // Apply per-climber objective scaling and offset.
