@@ -3,33 +3,36 @@
 # SPDX-License-Identifier: Apache-2.0
 # cmake-format: on
 
-ConfigureTest(ROUTING_TEST ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_routing_test.cu
+# All routing tests include routing_test.cuh which pulls in cuopt::routing::detail
+# types (solution_t, problem_t, fleet_order_constraints_t, md_utils, etc.).
+# They must link against cuopt_static to access those hidden symbols.
+ConfigureInternalTest(ROUTING_TEST ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_routing_test.cu
     LABELS routing)
-ConfigureTest(ROUTING_GES_TEST ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_ges_test.cu
+ConfigureInternalTest(ROUTING_GES_TEST ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_ges_test.cu
     LABELS routing)
 
-ConfigureTest(VEHICLE_ORDER_TEST ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_vehicle_order_match.cu
+ConfigureInternalTest(VEHICLE_ORDER_TEST ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_vehicle_order_match.cu
     LABELS routing)
-ConfigureTest(VEHICLE_TYPES_TEST ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_vehicle_types_test.cu
+ConfigureInternalTest(VEHICLE_TYPES_TEST ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_vehicle_types_test.cu
     LABELS routing)
-ConfigureTest(OBJECTIVE_FUNCTION_TEST ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_objective_function_test.cu
+ConfigureInternalTest(OBJECTIVE_FUNCTION_TEST ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_objective_function_test.cu
     LABELS routing)
 
 # ##################################################################################################
 # - L1 advanced retail tests --------------------------------------------------------------------------
-ConfigureTest(RETAIL_L1TEST ${CMAKE_CURRENT_SOURCE_DIR}/level1/l1_retail_test.cu
+ConfigureInternalTest(RETAIL_L1TEST ${CMAKE_CURRENT_SOURCE_DIR}/level1/l1_retail_test.cu
     LABELS routing)
 
 # ##################################################################################################
 # - L1  tests for quick regression check --------------------------------------------------------------------------
-ConfigureTest(ROUTING_L1TEST ${CMAKE_CURRENT_SOURCE_DIR}/level1/l1_routing_test.cu
+ConfigureInternalTest(ROUTING_L1TEST ${CMAKE_CURRENT_SOURCE_DIR}/level1/l1_routing_test.cu
     LABELS routing)
 
 # Disabled: both tests are slow and known to be broken.
 set_tests_properties(RETAIL_L1TEST ROUTING_L1TEST PROPERTIES DISABLED TRUE)
 
 # # - ${CMAKE_CURRENT_SOURCE_DIR} unit tests ----------------------------------------------------------------------------
-ConfigureTest(ROUTING_UNIT_TEST
+ConfigureInternalTest(ROUTING_UNIT_TEST
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/vehicle_types.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/breaks.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/heterogenous_breaks.cu
