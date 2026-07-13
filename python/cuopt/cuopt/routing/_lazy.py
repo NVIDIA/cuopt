@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Store-then-build recording layer for the routing DataModel.
+"""Store-then-build (lazy build) layer for the routing DataModel.
 
 The public DataModel records each mutating setter call instead of pushing to the
 GPU immediately, and materializes the Cython/device data model only when a solve
@@ -27,7 +27,7 @@ _SKIP_GETTERS = frozenset({"get_type_from_str", "get_type_from_int"})
 _methods_installed = False
 
 
-class _RecordingDataModel:
+class _LazyDataModel:
     """Records DataModel setter calls and builds the device model lazily."""
 
     def __init__(self, num_locations, fleet_size, n_orders=-1):
@@ -90,10 +90,10 @@ def _make_getter(name):
 
 
 def _install_methods():
-    """Mirror the wrapper's setter/getter surface onto _RecordingDataModel.
+    """Mirror the wrapper's setter/getter surface onto _LazyDataModel.
 
     Derived from the wrapper so there is nothing to keep in sync. Methods
-    already defined on _RecordingDataModel (the explicit overrides above) are
+    already defined on _LazyDataModel (the explicit overrides above) are
     skipped. Done once, lazily, on first construction so importing this module
     does not require importing the wrapper.
     """
@@ -103,12 +103,12 @@ def _install_methods():
     from . import vehicle_routing_wrapper as _wrapper
 
     for name in dir(_wrapper.DataModel):
-        if name.startswith("_") or name in _RecordingDataModel.__dict__:
+        if name.startswith("_") or name in _LazyDataModel.__dict__:
             continue
         if name.startswith(("set_", "add_")):
-            setattr(_RecordingDataModel, name, _make_setter(name))
+            setattr(_LazyDataModel, name, _make_setter(name))
         elif name.startswith("get_") and name not in _SKIP_GETTERS:
-            setattr(_RecordingDataModel, name, _make_getter(name))
+            setattr(_LazyDataModel, name, _make_getter(name))
     _methods_installed = True
 
 

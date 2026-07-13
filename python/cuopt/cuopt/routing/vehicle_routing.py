@@ -7,7 +7,7 @@ import cudf
 
 from cuopt import routing
 from cuopt.routing import vehicle_routing_wrapper
-from cuopt.routing._recording import _RecordingDataModel
+from cuopt.routing._lazy import _LazyDataModel
 from cuopt.utilities import catch_cuopt_exception
 
 from .validation import (
@@ -20,7 +20,7 @@ from .validation import (
 )
 
 
-class DataModel(_RecordingDataModel):
+class DataModel(_LazyDataModel):
     """
 
     DataModel(n_locations, n_fleet, n_orders: int = -1)
