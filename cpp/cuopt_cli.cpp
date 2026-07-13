@@ -456,15 +456,26 @@ int main(int argc, char* argv[])
     // Get the right number of GPUs
     // Distributed PDLP uses its own knob: distributed_pdlp_num_gpus
     // Everything else uses num_gpus which is capped at 2
-    const bool use_distributed_pdlp = settings.get_parameter<bool>(CUOPT_USE_DISTRIBUTED_PDLP);
-    int requested_gpus              = use_distributed_pdlp
-                                        ? settings.get_parameter<int>(CUOPT_DISTRIBUTED_PDLP_NUM_GPUS)
-                                        : settings.get_parameter<int>(CUOPT_NUM_GPUS);
-    if (use_distributed_pdlp && requested_gpus == -1) {
-      requested_gpus = raft::device_setter::get_device_count();
+    int provisioned_gpus = 0;
+    int device_count = raft::device_setter::get_device_count();
+    if (settings.get_parameter<bool>(CUOPT_USE_DISTRIBUTED_PDLP)) {
+      int requested_gpus = settings.get_parameter<int>(CUOPT_DISTRIBUTED_PDLP_NUM_GPUS);
+      if (requested_gpus > device_count) {
+        auto log = dummy_logger(settings);
+        CUOPT_LOG_ERROR(
+          "distributed_pdlp_num_gpus=%d exceeds the number of visible CUDA devices (%d).",
+          requested_gpus,
+          device_count);
+        return -1;
+      }
+      if (requested_gpus == -1) {
+        requested_gpus = device_count;
+      }
+      provisioned_gpus = requested_gpus;
+    } else {
+      provisioned_gpus = std::min(device_count, settings.get_parameter<int>(CUOPT_NUM_GPUS));
     }
-    const int provisioned_gpus = std::min(raft::device_setter::get_device_count(), requested_gpus);
-
+    
     memory_resources.reserve(provisioned_gpus);
     for (int i = 0; i < provisioned_gpus; ++i) {
       raft::device_setter guard(i);
