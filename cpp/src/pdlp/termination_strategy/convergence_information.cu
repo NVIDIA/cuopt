@@ -247,27 +247,27 @@ void convergence_information_t<i_t, f_t>::distributed_init_l2_norms(
                                               f_t(0),
                                               thrust::plus<f_t>{});
     // Objective L2 norm
-    global_obj_sq += thrust::transform_reduce(
-      policy,
-      problem.objective_coefficients.data(),
-      problem.objective_coefficients.data() + s.rank_data.owned_var_size,
-      weighted_square_op<f_t>{f_t(1)},
-      f_t(0),
-      thrust::plus<f_t>{});
+    global_obj_sq +=
+      thrust::transform_reduce(policy,
+                               problem.objective_coefficients.data(),
+                               problem.objective_coefficients.data() + s.rank_data.owned_var_size,
+                               weighted_square_op<f_t>{f_t(1)},
+                               f_t(0),
+                               thrust::plus<f_t>{});
   });
 
-  engine.set_scalar_on_master_and_shards(
-    std::sqrt(global_rhs_sq), [](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
-      return sp.get_current_termination_strategy()
-        .get_convergence_information()
-        .l2_norm_primal_right_hand_side_.data();
-    });
-  engine.set_scalar_on_master_and_shards(
-    std::sqrt(global_obj_sq), [](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
-      return sp.get_current_termination_strategy()
-        .get_convergence_information()
-        .l2_norm_primal_linear_objective_.data();
-    });
+  engine.set_scalar_on_master_and_shards(std::sqrt(global_rhs_sq),
+                                         [](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
+                                           return sp.get_current_termination_strategy()
+                                             .get_convergence_information()
+                                             .l2_norm_primal_right_hand_side_.data();
+                                         });
+  engine.set_scalar_on_master_and_shards(std::sqrt(global_obj_sq),
+                                         [](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
+                                           return sp.get_current_termination_strategy()
+                                             .get_convergence_information()
+                                             .l2_norm_primal_linear_objective_.data();
+                                         });
 }
 
 // ---------------------------------------------------------------------------
@@ -472,7 +472,9 @@ void convergence_information_t<i_t, f_t>::distributed_compute_primal_residual_an
   // Fused allreduce (shards' partial sums) + D2D mirror to master, then apply
   // scaling+offset once on the reduced value.
   engine.allreduce_sum_inplace_to_master([](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
-    return sp.get_current_termination_strategy().get_convergence_information().primal_objective_.data();
+    return sp.get_current_termination_strategy()
+      .get_convergence_information()
+      .primal_objective_.data();
   });
   apply_primal_objective_scaling_and_offset();
 }
@@ -507,7 +509,9 @@ void convergence_information_t<i_t, f_t>::distributed_compute_dual_residual_and_
 
   // Fused allreduce + D2D mirror to master, then apply scaling+offset once.
   engine.allreduce_sum_inplace_to_master([](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
-    return sp.get_current_termination_strategy().get_convergence_information().dual_objective_.data();
+    return sp.get_current_termination_strategy()
+      .get_convergence_information()
+      .dual_objective_.data();
   });
   apply_dual_objective_scaling_and_offset();
 }

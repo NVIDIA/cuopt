@@ -383,9 +383,10 @@ struct multi_gpu_engine_t {
   // Core: same as distributed_l2_norm_bufs, plus after the collective the
   // value is D2D-copied from shard 0 into master_dst. On master's stream.
   // Mirrors the allreduce_sum_inplace_to_master_buf pattern.
-  void distributed_l2_norm_to_master_buf(std::vector<raft::device_span<f_t>> const& in_bufs,
-                                         std::vector<raft::device_scalar_view<f_t>> const& shard_out,
-                                         raft::device_scalar_view<f_t> master_dst);
+  void distributed_l2_norm_to_master_buf(
+    std::vector<raft::device_span<f_t>> const& in_bufs,
+    std::vector<raft::device_scalar_view<f_t>> const& shard_out,
+    raft::device_scalar_view<f_t> master_dst);
 
   // Wrapper: applies out_access to master_pdlp_ to obtain the master
   // destination, then delegates to distributed_l2_norm_to_master_buf.
