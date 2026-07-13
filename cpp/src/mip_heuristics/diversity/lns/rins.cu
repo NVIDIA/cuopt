@@ -23,7 +23,7 @@
 #include <mip_heuristics/presolve/trivial_presolve.cuh>
 
 #include <branch_and_bound/branch_and_bound.hpp>
-#include <dual_simplex/tic_toc.hpp>
+#include <math_optimization/tic_toc.hpp>
 #include <utilities/scope_guard.hpp>
 
 namespace cuopt::mathematical_optimization::mip {
@@ -254,6 +254,7 @@ void rins_t<i_t, f_t>::run_rins()
   branch_and_bound_settings.reliability_branching                    = 0;
   branch_and_bound_settings.max_cut_passes                           = 0;
   branch_and_bound_settings.clique_cuts                              = 0;
+  branch_and_bound_settings.zero_half_cuts                           = 0;
   branch_and_bound_settings.sub_mip                                  = 1;
   branch_and_bound_settings.strong_branching_simplex_iteration_limit = 200;
   branch_and_bound_settings.log.log                                  = false;
@@ -264,7 +265,7 @@ void rins_t<i_t, f_t>::run_rins()
   };
   mip::probing_implied_bound_t<i_t, f_t> empty_probing(branch_and_bound_problem.num_cols);
   mip::branch_and_bound_t<i_t, f_t> branch_and_bound(
-    branch_and_bound_problem, branch_and_bound_settings, simplex::tic(), empty_probing);
+    branch_and_bound_problem, branch_and_bound_settings, tic(), empty_probing);
   branch_and_bound.set_initial_guess(cuopt::host_copy(fixed_assignment, rins_handle.get_stream()));
   branch_and_bound_status = branch_and_bound.solve(branch_and_bound_solution);
 

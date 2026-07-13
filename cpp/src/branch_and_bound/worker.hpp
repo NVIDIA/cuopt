@@ -91,7 +91,7 @@ class branch_and_bound_worker_t {
 
   branch_and_bound_worker_t(i_t worker_id,
                             const simplex::lp_problem_t<i_t, f_t>& original_lp,
-                            const simplex::csr_matrix_t<i_t, f_t>& Arow,
+                            const csr_matrix_t<i_t, f_t>& Arow,
                             const std::vector<simplex::variable_type_t>& var_type,
                             const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
                             uint64_t rng_offset = 0)
@@ -143,7 +143,7 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
   using Base = branch_and_bound_worker_t<i_t, f_t>;
   bfs_worker_t(i_t worker_id,
                const simplex::lp_problem_t<i_t, f_t>& original_lp,
-               const simplex::csr_matrix_t<i_t, f_t>& Arow,
+               const csr_matrix_t<i_t, f_t>& Arow,
                const std::vector<simplex::variable_type_t>& var_type,
                const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
                uint64_t rng_offset = 0)

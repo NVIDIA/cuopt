@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include <dual_simplex/sparse_matrix.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
 
 #include <numeric>
 #include <queue>

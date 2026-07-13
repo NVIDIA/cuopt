@@ -1,0 +1,67 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Reusable workflow that runs cuOpt's multi-GPU (NCCL) C++ gtests on a 2-GPU
+# runner. It mirrors the single-GPU cpp-test flow (ci/test_cpp.sh): install the
+# libcuopt conda test package, then run the gtests — but only those that require
+# multiple GPUs. Called by both pr.yaml and test.yaml so the runner label,
+# container image and test script are defined in exactly one place.
+#
+# NCCL communication can only be validated with multiple GPUs (a single device
+# cannot host multiple ranks of one communicator). The 2-GPU runner group
+# (nv-gpu-amd64-rtxpro6000-2gpu) is enabled for NVIDIA/cuopt in the RAPIDS
+# runner configuration.
+
+name: multi-gpu cpp tests
+
+on:
+  workflow_call:
+    inputs:
+      build_type:
+        required: true
+        type: string
+      branch:
+        type: string
+      date:
+        type: string
+      sha:
+        type: string
+      node_type:
+        description: "custom-job node_type suffix; must be a >=2-GPU runner."
+        type: string
+        default: "gpu-rtxpro6000-latest-2"
+      arch:
+        type: string
+        default: "amd64"
+      container_image:
+        type: string
+        default: "rapidsai/ci-conda:26.08-latest"
+      script:
+        type: string
+        default: "ci/test_cpp_multi_gpu.sh"
+      continue-on-error:
+        description: "Treat failures as non-blocking (useful while the MG suite is maturing)."
+        type: boolean
+        default: false
+
+permissions: {}
+
+jobs:
+  multi-gpu-cpp-tests:
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
+    with:
+      build_type: ${{ inputs.build_type }}
+      branch: ${{ inputs.branch }}
+      date: ${{ inputs.date }}
+      sha: ${{ inputs.sha }}
+      node_type: ${{ inputs.node_type }}
+      arch: ${{ inputs.arch }}
+      container_image: ${{ inputs.container_image }}
+      script: ${{ inputs.script }}
+      continue-on-error: ${{ inputs.continue-on-error }}

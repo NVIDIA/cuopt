@@ -26,8 +26,8 @@
 #include <dual_simplex/phase2.hpp>
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/random.hpp>
-#include <dual_simplex/tic_toc.hpp>
 #include <dual_simplex/user_problem.hpp>
+#include <math_optimization/tic_toc.hpp>
 
 #include <raft/core/nvtx.hpp>
 #include <utilities/circular_deque.hpp>
@@ -52,26 +52,20 @@ using simplex::compute_objective;
 using simplex::compute_user_objective;
 using simplex::crossover_status_t;
 using simplex::crush_primal_solution;
-using simplex::csr_matrix_t;
 using simplex::decompress_vstatus;
 using simplex::dual_phase2_with_advanced_basis;
 using simplex::dual_status_t;
-using simplex::inf;
 using simplex::logger_t;
 using simplex::lp_problem_t;
 using simplex::lp_solution_t;
 using simplex::lp_status_t;
-using simplex::matrix_vector_multiply;
 using simplex::mip_solution_t;
 using simplex::simplex_solver_settings_t;
 using simplex::solve_linear_program_with_advanced_basis;
-using simplex::tic;
-using simplex::toc;
 using simplex::uncrush_primal_solution;
 using simplex::user_problem_t;
 using simplex::variable_status_t;
 using simplex::variable_type_t;
-using simplex::vector_norm_inf;
 
 namespace {
 
@@ -2493,7 +2487,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   omp_atomic_t<bool>* clique_signal = &signal_extend_cliques_;
 
-  if (settings_.clique_cuts != 0 && clique_table_ == nullptr &&
+  if ((settings_.clique_cuts != 0 || settings_.zero_half_cuts != 0) && clique_table_ == nullptr &&
       omp_get_num_threads() >= CUOPT_MIP_CLIQUE_CUTS_REQUIRED_THREAD_COUNT) {
     signal_extend_cliques_.store(false, std::memory_order_release);
     typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances_for_clique{};
@@ -2510,7 +2504,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       user_problem_t<i_t, f_t> problem_copy = original_problem_;
       timer_t timer(std::numeric_limits<double>::infinity());
       mip::find_initial_cliques(
-        problem_copy, tolerances_for_clique, &clique_table_, timer, clique_signal);
+        problem_copy, tolerances_for_clique, clique_table_, timer, clique_signal);
     }
   }
 
@@ -2697,6 +2691,9 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       if (settings_.deterministic) {
         queue_external_solution_deterministic(user_assignment, work_units);
       } else {
+        if (settings_.solution_callback != nullptr) {
+          settings_.solution_callback(user_assignment, obj);
+        }
         set_solution_from_heuristics(user_assignment);
       }
     };

@@ -6,10 +6,10 @@
 /* clang-format on */
 
 #include <barrier/cusparse_view.hpp>
-#include <barrier/dense_vector.hpp>
 #include <barrier/pinned_host_allocator.hpp>
+#include <linear_algebra/dense_vector.hpp>
 
-#include <dual_simplex/sparse_matrix.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
 
 #include <utilities/copy_helpers.hpp>
 #include <utilities/macros.cuh>
@@ -114,13 +114,14 @@ void my_cusparsespmv_preprocess(cusparseHandle_t handle,
 }
 #endif
 
-static cusparseSpMVAlg_t get_spmv_alg(int num_rows)
+static cusparseSpMVAlg_t get_spmv_alg([[maybe_unused]] int num_rows)
 {
-  // The older version of ALG2 has a bug with single row matrices
-  if (num_rows == 1 &&
-      (CUSPARSE_VER_MAJOR * 1000 + CUSPARSE_VER_MINOR * 100 + CUSPARSE_VER_PATCH < 12603)) {
-    return CUSPARSE_SPMV_CSR_ALG1;
-  }
+  // ALG2 has a bug in cuSPARSE < 13.0 where beta=1 accumulate mode ignores existing y values.
+  // ALG1 uses a deterministic row-split algorithm, while ALG2 uses a merge-based
+  // algorithm that may be faster but can use atomics. ALG1 is safe for reproducibility.
+  constexpr int cusparse_version =
+    CUSPARSE_VER_MAJOR * 1000 + CUSPARSE_VER_MINOR * 100 + CUSPARSE_VER_PATCH;
+  if (cusparse_version < 13000) { return CUSPARSE_SPMV_CSR_ALG1; }
   return CUSPARSE_SPMV_CSR_ALG2;
 }
 
@@ -160,7 +161,7 @@ void cusparse_view_t<i_t, f_t>::init_spmv_buffer_and_preprocess(cusparseSpMatDes
 
 template <typename i_t, typename f_t>
 cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
-                                           const simplex::csc_matrix_t<i_t, f_t>& A)
+                                           const csc_matrix_t<i_t, f_t>& A)
   : handle_ptr_(handle_ptr),
     A_offsets_(0, handle_ptr->get_stream()),
     A_indices_(0, handle_ptr->get_stream()),
@@ -181,7 +182,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
   // TMP matrix data should already be on the GPU
   constexpr bool debug = false;
   if (debug) { printf("A hash: %zu\n", A.hash()); }
-  simplex::csr_matrix_t<i_t, f_t> A_csr(A.m, A.n, 1);
+  csr_matrix_t<i_t, f_t> A_csr(A.m, A.n, 1);
   A.to_compressed_row(A_csr);
   rows_                           = A_csr.m;
   i_t cols                        = A_csr.n;

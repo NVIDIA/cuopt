@@ -10,9 +10,9 @@
  * then the quadratic constraint is added with cuOptAddQuadraticConstraint.
  *
  * Q may be any matrix whose symmetric part (Q + Q^T)/2 is positive semidefinite.
- * Note that Q need not be supplied symmetrically: here the cross term 2*x*y is
- * given as the single off-diagonal entry Q[0,1] = 2; cuOpt symmetrizes Q
- * internally automatically.
+ * Q need not be supplied symmetrically: here the cross term 2*x*y is given as
+ * one canonical COO entry Q[0,1] = 2 (full coefficient on x*y, canonicalized
+ * on ingest).
  *
  * Problem:
  *   minimize    x + y
@@ -77,10 +77,7 @@ cuopt_int_t test_general_quadratic()
   cuopt_float_t var_upper_bounds[] = {CUOPT_INFINITY, CUOPT_INFINITY};
   char variable_types[]            = {CUOPT_CONTINUOUS, CUOPT_CONTINUOUS};
 
-  // General convex quadratic constraint 2*x^2 + 2*x*y + 2*y^2 <= 6, given as the
-  // quadratic matrix Q in coordinate (triplet) form. The cross term 2*x*y is
-  // supplied as the single entry Q[0,1] = 2 (Q need not be symmetric; cuOpt
-  // symmetrizes it internally).
+  // General convex quadratic constraint 2*x^2 + 2*x*y + 2*y^2 <= 6 in canonical COO form.
   cuopt_int_t q_row_index[]  = {0, 1, 0};
   cuopt_int_t q_col_index[]  = {0, 1, 1};
   cuopt_float_t q_coeff[]    = {2.0, 2.0, 2.0};

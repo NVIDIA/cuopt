@@ -10,7 +10,7 @@
 #include <branch_and_bound/constants.hpp>
 
 #include <dual_simplex/initial_basis.hpp>
-#include <dual_simplex/types.hpp>
+#include <math_optimization/types.hpp>
 
 #include <utilities/hashing.hpp>
 #include <utilities/omp_helpers.hpp>

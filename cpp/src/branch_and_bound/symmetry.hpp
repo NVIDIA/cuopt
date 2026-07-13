@@ -10,9 +10,9 @@
 #include <branch_and_bound/mip_node.hpp>
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
-#include <dual_simplex/tic_toc.hpp>
-#include <dual_simplex/types.hpp>
 #include <dual_simplex/user_problem.hpp>
+#include <math_optimization/tic_toc.hpp>
+#include <math_optimization/types.hpp>
 
 #include "dejavu.h"
 
@@ -688,7 +688,7 @@ std::unique_ptr<mip_symmetry_t<i_t, f_t>> detect_symmetry(
 
   has_symmetry = false;
 
-  f_t start_time = simplex::tic();
+  f_t start_time = tic();
   simplex::lp_problem_t<i_t, f_t> problem(user_problem.handle_ptr, 1, 1, 1);
   std::vector<i_t> new_slacks;
   simplex::dualize_info_t<i_t, f_t> dualize_info;
@@ -837,7 +837,7 @@ std::unique_ptr<mip_symmetry_t<i_t, f_t>> detect_symmetry(
   // Let r_i be the vertex associated with the row i
   // Let V_i,c be the set of variables in row i with the same color c
   // We create a new vertex w_i,c and edges (v_j, w_i,c) and (w_i,c, r_i) for all v_j in V_i,c
-  simplex::csr_matrix_t<i_t, f_t> A_row(problem.num_rows, problem.num_cols, 0);
+  csr_matrix_t<i_t, f_t> A_row(problem.num_rows, problem.num_cols, 0);
   problem.A.to_compressed_row(A_row);
 
   std::vector<f_t> nonzeros = A_row.x;
@@ -939,8 +939,8 @@ std::unique_ptr<mip_symmetry_t<i_t, f_t>> detect_symmetry(
 
 #endif
 
-  settings.log.printf("Graph construction time %f\n", simplex::toc(start_time));
-  f_t dejavu_start_time = simplex::tic();
+  settings.log.printf("Graph construction time %f\n", toc(start_time));
+  f_t dejavu_start_time = tic();
 
   // The graph should now be described by:
   // vertices, edge_in, edge_out, vertex_colors
@@ -1062,7 +1062,7 @@ std::unique_ptr<mip_symmetry_t<i_t, f_t>> detect_symmetry(
                       grp_size_str.str().c_str(),
                       num_dejavu_generators,
                       projected_count);
-  settings.log.printf("Dejavu time %f\n", simplex::toc(dejavu_start_time));
+  settings.log.printf("Dejavu time %f\n", toc(dejavu_start_time));
 
   result->num_generators = result->generators.num_generators();
   if (projected_count > static_cast<int>(result->num_generators)) {
@@ -1116,7 +1116,7 @@ std::unique_ptr<mip_symmetry_t<i_t, f_t>> detect_symmetry(
                    (total_vars_in_orbits >= 10);
   }
 
-  settings.log.printf("Total symmetry detection time %f\n", simplex::toc(start_time));
+  settings.log.printf("Total symmetry detection time %f\n", toc(start_time));
 
   if (!has_symmetry) {
     settings.log.printf(

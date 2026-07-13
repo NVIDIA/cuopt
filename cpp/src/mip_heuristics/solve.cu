@@ -8,6 +8,7 @@
 #include <cuopt/error.hpp>
 #include <cuopt/mathematical_optimization/solve_remote.hpp>
 
+#include <linear_algebra/sort_csr.cuh>
 #include <mip_heuristics/feasibility_jump/early_cpufj.cuh>
 #include <mip_heuristics/feasibility_jump/early_gpufj.cuh>
 #include <mip_heuristics/mip_constants.hpp>
@@ -16,7 +17,6 @@
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
 #include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/solver.cuh>
-#include <mip_heuristics/utilities/sort_csr.cuh>
 #include <mip_heuristics/utils.cuh>
 
 #include <pdlp/pdlp.cuh>
@@ -453,7 +453,6 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
       op_problem, settings.get_tolerances(), settings.determinism_mode == CUOPT_MODE_DETERMINISTIC);
 
     auto run_presolve              = settings.presolver != presolver_t::None;
-    run_presolve                   = run_presolve && settings.initial_solutions.size() == 0;
     bool has_set_solution_callback = false;
     for (auto callback : settings.get_mip_callbacks()) {
       if (callback != nullptr &&
@@ -473,11 +472,23 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
     // Only run if presolve is enabled (gives FJ time to find solutions)
     // and we're not in deterministic mode
 
+    struct early_incumbent_entry_t {
+      f_t user_obj;
+      std::vector<f_t> assignment;
+    };
+    std::vector<early_incumbent_entry_t> early_incumbent_pool;
+
     // Track best incumbent found during presolve (shared across CPU and GPU FJ).
     // early_best_objective is in the original problem's solver-space (always minimization),
     // used for fast comparison in the callback.
     // early_best_user_obj is the corresponding user-space objective,
     // passed to run_mip for correct cross-space conversion.
+    // We attempt to crush early-heuristics solutions into the presolved space.
+    // This may fail if some dual reductions cut off parts of the polytope that the
+    // solutions lie in. We thus may hit scenarios where an excellent incumbent is found
+    // but is dropped due to these dual reductions, and we lose a good solution.
+    // This is why we still keep the solution around in original-space
+    // and later extract it at the end of the solve.
     std::atomic<f_t> early_best_objective{std::numeric_limits<f_t>::infinity()};
     f_t early_best_user_obj{std::numeric_limits<f_t>::infinity()};
     std::vector<f_t> early_best_user_assignment;
@@ -495,6 +506,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
         [&early_best_objective,
          &early_best_user_obj,
          &early_best_user_assignment,
+         &early_incumbent_pool,
          &early_callback_mutex,
          early_fj_start,
          mip_callbacks = settings.get_mip_callbacks(),
@@ -513,6 +525,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
           early_best_objective.store(solver_obj);
           early_best_user_obj        = user_obj;
           early_best_user_assignment = assignment;
+          early_incumbent_pool.push_back({user_obj, assignment});
           double elapsed =
             std::chrono::duration<double>(std::chrono::steady_clock::now() - early_fj_start)
               .count();
@@ -545,7 +558,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
 
     auto constexpr const dual_postsolve = false;
     if (run_presolve) {
-      mip::sort_csr(op_problem);
+      sort_csr(op_problem);
       // allocate not more than 10% of the time limit to presolve.
       // Note that this is not the presolve time, but the time limit for presolve.
       const auto& hp = settings.heuristic_params;
@@ -616,6 +629,18 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
           early_cpufj->get_best_objective());
       }
       early_cpufj.reset();
+    }
+
+    // Add early-heuristic incumbents (original-space) to initial_solutions.
+    // PaPILO crushing + validation happens downstream in add_user_given_solutions().
+    if (!early_incumbent_pool.empty()) {
+      auto stream = op_problem.get_handle_ptr()->get_stream();
+      for (const auto& inc : early_incumbent_pool) {
+        auto d = std::make_shared<rmm::device_uvector<f_t>>(device_copy(inc.assignment, stream));
+        settings.initial_solutions.emplace_back(std::move(d));
+      }
+      CUOPT_LOG_DEBUG("Added %zu early-heuristic incumbents to initial solutions",
+                      early_incumbent_pool.size());
     }
 
     if (settings.user_problem_file != "") {
@@ -895,7 +920,13 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip(
 
     // Local execution - dispatch to appropriate overload based on problem type
     auto* cpu_prob = dynamic_cast<cpu_optimization_problem_t<i_t, f_t>*>(problem_interface);
-    if (cpu_prob != nullptr) { return solve_mip(*cpu_prob, settings); }
+    if (cpu_prob != nullptr) {
+      cuopt_expects(is_remote_execution_enabled(),
+                    error_type_t::ValidationError,
+                    "A CPU-memory problem requires remote execution. Set CUOPT_REMOTE_HOST and "
+                    "CUOPT_REMOTE_PORT to solve on a remote GPU server.");
+      return solve_mip(*cpu_prob, settings);
+    }
 
     // GPU problem: call GPU solver directly
     auto* gpu_prob = dynamic_cast<optimization_problem_t<i_t, f_t>*>(problem_interface);

@@ -9,7 +9,7 @@
 
 #include <dual_simplex/basis_solves.hpp>
 #include <dual_simplex/initial_basis.hpp>
-#include <dual_simplex/sparse_matrix.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
 
 #include <cassert>
 #include <cstdio>

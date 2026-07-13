@@ -78,6 +78,19 @@ class third_party_presolve_t {
 
   void uncrush_primal_solution(const std::vector<f_t>& reduced_primal,
                                std::vector<f_t>& full_primal) const;
+
+  void crush_primal_solution(const std::vector<f_t>& original_primal,
+                             std::vector<f_t>& reduced_primal) const;
+
+  void crush_primal_dual_solution(const std::vector<f_t>& x_original,
+                                  const std::vector<f_t>& y_original,
+                                  std::vector<f_t>& x_reduced,
+                                  std::vector<f_t>& y_reduced,
+                                  const std::vector<f_t>& z_original,
+                                  std::vector<f_t>& z_reduced,
+                                  const std::vector<f_t>& A_values,
+                                  const std::vector<i_t>& A_indices,
+                                  const std::vector<i_t>& A_offsets) const;
   const std::vector<i_t>& get_reduced_to_original_map() const { return reduced_to_original_map_; }
   const std::vector<i_t>& get_original_to_reduced_map() const { return original_to_reduced_map_; }
 

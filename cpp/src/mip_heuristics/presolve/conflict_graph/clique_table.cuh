@@ -204,10 +204,16 @@ struct clique_table_t {
   typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances;
 };
 
+// Builds the conflict-graph clique table for `problem`. The base cliques are
+// published to `clique_table_out` before the (optional, signal-gated) extension
+// phase begins, so cut generation can pick up the table while extension keeps
+// running concurrently. Consumers MUST set `*signal_extend` and join the
+// producing task before reading the table (see prepare_fractional_sub_conflict_graph), since
+// the extension phase keeps mutating the same object after it is published.
 template <typename i_t, typename f_t>
 void find_initial_cliques(simplex::user_problem_t<i_t, f_t>& problem,
                           typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances,
-                          std::shared_ptr<clique_table_t<i_t, f_t>>* clique_table_out,
+                          std::shared_ptr<clique_table_t<i_t, f_t>>& clique_table_out,
                           cuopt::timer_t& timer,
                           omp_atomic_t<bool>* signal_extend = nullptr);
 

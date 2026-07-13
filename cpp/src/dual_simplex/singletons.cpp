@@ -7,7 +7,7 @@
 
 #include <dual_simplex/singletons.hpp>
 #include <dual_simplex/triangle_solve.hpp>
-#include <dual_simplex/types.hpp>
+#include <math_optimization/types.hpp>
 
 #include <cstdio>
 

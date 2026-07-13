@@ -127,6 +127,7 @@ class mip_solver_settings_t {
   i_t knapsack_cuts             = -1;
   i_t flow_cover_cuts           = -1;
   i_t clique_cuts               = -1;
+  i_t zero_half_cuts            = -1;
   i_t implied_bound_cuts        = -1;
   i_t strong_chvatal_gomory_cuts = -1;
   i_t reduced_cost_strengthening = -1;

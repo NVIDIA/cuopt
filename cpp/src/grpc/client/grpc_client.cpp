@@ -281,12 +281,14 @@ void grpc_client_t::start_log_streaming(const std::string& job_id)
   }
 
   stop_logs_.store(false);
+  log_stream_done_.store(false);
   log_thread_ = std::make_unique<std::thread>([this, job_id]() {
     stream_logs(job_id, 0, [this](const std::string& line, bool /*job_complete*/) {
       if (stop_logs_.load()) return false;
       if (config_.log_callback) { config_.log_callback(line); }
       return true;
     });
+    log_stream_done_.store(true);
   });
 }
 
@@ -306,6 +308,28 @@ void grpc_client_t::stop_log_streaming()
   std::unique_ptr<std::thread> t;
   std::swap(t, log_thread_);
   if (t && t->joinable()) { t->join(); }
+}
+
+void grpc_client_t::drain_log_streaming()
+{
+  // No-op when streaming was never started (config_.stream_logs or
+  // config_.log_callback disabled): log_stream_done_ stays false but
+  // log_thread_ is null, so stop_log_streaming() is also a no-op.
+  // Avoid the polling loop entirely to prevent a 5-second delay on the
+  // common non-streaming solve path.
+  if (!log_thread_) return;
+
+  // On the success path the server drains all pending log lines and then sends
+  // a job_complete sentinel; the streaming thread exits naturally when that
+  // sentinel arrives.  Poll for natural completion (up to kDrainTimeout) so
+  // callers receive the final log lines (e.g. "Best objective …") before we
+  // force-cancel.  Fall back to stop_log_streaming() if the deadline passes.
+  static constexpr auto kDrainTimeout = std::chrono::seconds(5);
+  auto deadline                       = std::chrono::steady_clock::now() + kDrainTimeout;
+  while (!log_stream_done_.load() && std::chrono::steady_clock::now() < deadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  stop_log_streaming();
 }
 
 // =============================================================================
@@ -848,7 +872,13 @@ remote_lp_result_t<i_t, f_t> grpc_client_t::solve_lp(
 
   start_log_streaming(sub.job_id);
   auto poll = poll_for_completion(sub.job_id);
-  stop_log_streaming();
+  // On success, wait for the server to send the job_complete sentinel so all
+  // final log lines are received before the stream is torn down.
+  if (poll.completed) {
+    drain_log_streaming();
+  } else {
+    stop_log_streaming();
+  }
 
   if (!poll.completed) { return {.error_message = poll.error_message}; }
 
@@ -875,7 +905,11 @@ remote_mip_result_t<i_t, f_t> grpc_client_t::solve_mip(
 
   start_log_streaming(sub.job_id);
   auto poll = poll_for_completion(sub.job_id);
-  stop_log_streaming();
+  if (poll.completed) {
+    drain_log_streaming();
+  } else {
+    stop_log_streaming();
+  }
 
   if (!poll.completed) { return {.error_message = poll.error_message}; }
 

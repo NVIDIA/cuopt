@@ -129,6 +129,22 @@ cdef object _vector_to_numpy(const vector[double]& vec):
     return np.asarray(<double[:size]> data_ptr, dtype=np.float64).copy()
 
 
+def _vars_dict(variable_names, primal_solution):
+    if len(primal_solution) == 0:
+        # No primal vector (infeasible/unbounded/etc.): match prior
+        # behavior (implemented as dict(zip(names, primal)) before
+        # refactor for gRPC, which yielded {}).
+        return {}
+    if variable_names is None or len(variable_names) == 0:
+        return {f"x{i}": v for i, v in enumerate(primal_solution)}
+    if len(variable_names) != len(primal_solution):
+        raise ValueError(
+            f"variable_names length ({len(variable_names)}) does not match "
+            f"solution size ({len(primal_solution)})"
+        )
+    return dict(zip(variable_names, primal_solution))
+
+
 def type_cast(cudf_obj, np_type, name):
     if isinstance(cudf_obj, cudf.Series):
         cudf_type = cudf_obj.dtype
@@ -234,6 +250,14 @@ cdef set_solver_setting(
 cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
                      DataModel data_model_obj,
                      is_batch=False):
+    return create_solution_with_names(
+        move(sol_ret_ptr), data_model_obj.get_variable_names(), is_batch
+    )
+
+
+cdef create_solution_with_names(unique_ptr[solver_ret_t] sol_ret_ptr,
+                                object variable_names,
+                                bint is_batch=False):
 
     from cuopt.linear_programming.solution.solution import Solution
 
@@ -256,7 +280,7 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
 
         return Solution(
             ProblemCategory(sol_ret.problem_type),
-            dict(zip(data_model_obj.get_variable_names(), solution)),
+            _vars_dict(variable_names, solution),
             mip_ptr.total_solve_time_,
             primal_solution=solution,
             termination_status=MILPTerminationStatus(mip_ptr.termination_status_),
@@ -361,7 +385,7 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
         if not is_batch:
             return Solution(
                 ProblemCategory(sol_ret.problem_type),
-                dict(zip(data_model_obj.get_variable_names(), primal_solution)),
+                _vars_dict(variable_names, primal_solution),
                 lp_ptr.solve_time_,
                 primal_solution,
                 dual_solution,
@@ -397,7 +421,7 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
         else:
             return Solution(
                 problem_category=ProblemCategory(sol_ret.problem_type),
-                vars=dict(zip(data_model_obj.get_variable_names(), primal_solution)),
+                vars=_vars_dict(variable_names, primal_solution),
                 solve_time=lp_ptr.solve_time_,
                 primal_solution=primal_solution,
                 dual_solution=dual_solution,
@@ -413,6 +437,17 @@ cdef create_solution(unique_ptr[solver_ret_t] sol_ret_ptr,
                 nb_iterations=lp_ptr.nb_iterations_,
                 solved_by=lp_ptr.solved_by_,
             )
+
+
+cdef object build_solution_from_unique_ptr(
+        unique_ptr[solver_ret_t] sol_ret_ptr,
+        object variable_names):
+    return create_solution_with_names(move(sol_ret_ptr), variable_names, False)
+
+
+def prepare_solver_settings(SolverSettings settings, data_model=None, mip=False):
+    """Populate C++ solver settings from Python state for the next solve/submit."""
+    set_solver_setting(settings, data_model, mip)
 
 
 def Solve(py_data_model_obj, SolverSettings settings, mip=False):

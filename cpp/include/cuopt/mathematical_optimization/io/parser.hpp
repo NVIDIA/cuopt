@@ -75,8 +75,8 @@ mps_data_model_t<i_t, f_t> read_mps_from_string(std::string_view mps_contents,
  * between objective and constraints:
  *   - Objective bracket: MUST be followed by `/ 2` (the LP file states
  *     coefficients in the `0.5 x^T Q x` convention).
- *   - Constraint bracket: MUST NOT be followed by `/ 2`; coefficients are
- *     taken at face value (`x^T Q x`).
+ *   - Constraint bracket: MUST NOT be followed by `/ 2`; Q coefficients are
+ *     stored as upper triangular form.
  *
  * SOS constraints, PWL objectives, general constraints, and user cuts cause
  * a ValidationError when encountered.

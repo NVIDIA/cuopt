@@ -2258,10 +2258,8 @@ namespace {
 
 using QC = optimization_problem_interface_t<int32_t, double>::quadratic_constraint_t;
 
-// Q is stored COO-style on quadratic_constraint_t: three parallel arrays
-// (rows, cols, vals) of the same length, one entry per non-zero in the
-// Q matrix block for this row.  Older CSR storage was replaced by the
-// SOCP barrier work upstream; the wire format renames track the struct.
+// Q is canonical COO: parallel (rows, cols, vals), one entry per variable pair
+// with row <= col (upper-triangular).
 QC make_qc(int32_t row_index,
            std::string name,
            char row_type,
@@ -2429,11 +2427,16 @@ TEST(MapperRoundtrip, QuadraticConstraintsChunkedPath)
     lv0[i] = 0.5 * i + 1.0;
     li0[i] = i;
   }
-  for (int i = 0; i < n0_q; ++i) {
-    qr0[i] = i % n0_linear;
-    qc0[i] = (i + 7) % n0_linear;
-    qv0[i] = -0.25 * i + 7.0;
+  // Upper-triangular unique pairs (row <= col); enough exist for n0_q entries.
+  int q_idx = 0;
+  for (int r = 0; r < n0_linear && q_idx < n0_q; ++r) {
+    for (int c = r; c < n0_linear && q_idx < n0_q; ++c, ++q_idx) {
+      qr0[q_idx] = r;
+      qc0[q_idx] = c;
+      qv0[q_idx] = -0.25 * q_idx + 7.125;
+    }
   }
+  ASSERT_EQ(q_idx, n0_q);
 
   std::vector<double> lv1(n1_linear);
   std::vector<int32_t> li1(n1_linear);

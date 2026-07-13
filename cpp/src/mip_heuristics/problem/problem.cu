@@ -19,7 +19,7 @@
 
 #include <cuts/objective_step.hpp>
 #include <cuts/rational.hpp>
-#include <dual_simplex/tic_toc.hpp>
+#include <math_optimization/tic_toc.hpp>
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
 #include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/utils.cuh>
@@ -50,7 +50,6 @@
 
 namespace cuopt::mathematical_optimization::mip {
 
-using simplex::csr_matrix_t;
 using simplex::user_problem_t;
 using simplex::variable_type_t;
 
@@ -1419,7 +1418,7 @@ void problem_t<i_t, f_t>::recompute_objective_integrality()
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::compute_objective_step()
 {
-  f_t start_time = simplex::tic();
+  f_t start_time = tic();
   // Copy info from device to host
   auto h_obj_coefs = cuopt::host_copy(objective_coefficients, handle_ptr->get_stream());
   auto h_var_types = cuopt::host_copy(variable_types, handle_ptr->get_stream());

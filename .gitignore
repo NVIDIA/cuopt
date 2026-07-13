@@ -12,6 +12,7 @@ __pycache__
 *.dylib
 .cache
 .vscode
+.cursor/
 *.swp
 *.pytest_cache
 *.manifest

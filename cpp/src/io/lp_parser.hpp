@@ -55,9 +55,9 @@ class lp_parser_t {
   std::vector<f_t> variable_upper_bounds{};
   std::vector<f_t> variable_lower_bounds{};
   bool maximize{false};
-  // Quadratic objective entries (row, col, value) in upper-triangular
-  // QUADOBJ convention; finalize_problem() mirrors to the full symmetric
-  // matrix and applies the *0.5 factor required by cuOpt's x^T Q x form.
+  // Quadratic objective entries (row, col, value) in upper-triangular form;
+  // coefficients are /2-scaled in parse_quadratic_bracket for the LP "/ 2"
+  // convention. finalize_problem() emits them as CSR.
   coo_entries_t<i_t, f_t> quadobj_entries{};
 
   // Per-row data for constraints whose LHS contains a quadratic bracket.
@@ -73,9 +73,9 @@ class lp_parser_t {
     std::vector<i_t> linear_indices{};
     std::vector<f_t> linear_values{};
     f_t rhs_value{};
-    // Upper-triangular (i <= j) raw triples directly from the LP source
-    // (face value, no /2). The post-pass mirrors and halves off-diagonals
-    // to build the symmetric Q in CSR.
+    // Upper-triangular (i <= j) Q triples as written in the LP source; each
+    // contributes c * x_i * x_j to x^T Q x. Canonicalized in
+    // append_quadratic_constraint().
     coo_entries_t<i_t, f_t> quad_triples{};
   };
   std::vector<quadratic_constraint_block_t> quadratic_constraint_blocks{};

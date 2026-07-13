@@ -417,10 +417,14 @@ class data_model_view_t {
   bool is_Q_symmetrized() const noexcept;
 
   /**
-   * @brief Quadratic constraints (MPS QCMATRIX); owned copy for writers when not using spans.
+   * @brief Set quadratic constraints (linear part + Q in COO) on the view.
+   *
+   * Stores an owned copy retrievable via get_quadratic_constraints().
    */
   void set_quadratic_constraints(
     std::vector<typename mps_data_model_t<i_t, f_t>::quadratic_constraint_t> constraints);
+  /** @copydoc set_quadratic_constraints(std::vector<typename mps_data_model_t<i_t,
+   * f_t>::quadratic_constraint_t>) */
   template <typename qc_t>
   void set_quadratic_constraints(const std::vector<qc_t>& constraints)
   {

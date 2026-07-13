@@ -1442,7 +1442,7 @@ static std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_from_host_lp(
   const i_t n_variables   = problem.num_cols;
   const i_t n_constraints = problem.num_rows;
 
-  simplex::csr_matrix_t<i_t, f_t> csr_A(problem.num_rows, problem.num_cols, problem.A.nnz());
+  csr_matrix_t<i_t, f_t> csr_A(problem.num_rows, problem.num_cols, problem.A.nnz());
   problem.A.to_compressed_row(csr_A);
   std::vector<f_t> coefficients            = csr_A.x;
   std::vector<i_t> variables               = csr_A.j;
@@ -1469,7 +1469,7 @@ static std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_from_host_lp(
   }
 
   const i_t nnz = static_cast<i_t>(variables.size());
-  simplex::csc_matrix_t<i_t, f_t> reverse_csc(n_constraints, n_variables, nnz);
+  csc_matrix_t<i_t, f_t> reverse_csc(n_constraints, n_variables, nnz);
   csr_A.to_compressed_col(reverse_csc);
   std::vector<f_t> reverse_coefficients = std::move(reverse_csc.x);
   std::vector<i_t> reverse_constraints  = std::move(reverse_csc.i);

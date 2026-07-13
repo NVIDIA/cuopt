@@ -6,14 +6,14 @@
 /* clang-format on */
 #pragma once
 
-#include <barrier/dense_vector.hpp>
+#include <linear_algebra/dense_vector.hpp>
 
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/solution.hpp>
 #include <dual_simplex/solve.hpp>
-#include <dual_simplex/sparse_matrix.hpp>
-#include <dual_simplex/tic_toc.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
+#include <math_optimization/tic_toc.hpp>
 
 #include <rmm/device_uvector.hpp>
 namespace cuopt::mathematical_optimization::barrier {
@@ -36,7 +36,7 @@ class barrier_solver_t {
 
  private:
   void my_pop_range(bool debug) const;
-  void create_Q(const simplex::lp_problem_t<i_t, f_t>& lp, simplex::csc_matrix_t<i_t, f_t>& Q);
+  void create_Q(const simplex::lp_problem_t<i_t, f_t>& lp, csc_matrix_t<i_t, f_t>& Q);
   int initial_point(iteration_data_t<i_t, f_t>& data);
   void compute_residual_norms(const dense_vector_t<i_t, f_t>& w,
                               const dense_vector_t<i_t, f_t>& x,

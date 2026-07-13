@@ -22,7 +22,7 @@
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/solution.hpp>
 #include <dual_simplex/solve.hpp>
-#include <dual_simplex/types.hpp>
+#include <math_optimization/types.hpp>
 
 #include <utilities/macros.cuh>
 #include <utilities/omp_helpers.hpp>
@@ -173,7 +173,7 @@ class branch_and_bound_t {
   std::vector<f_t> guess_;
 
   // LP relaxation
-  simplex::csr_matrix_t<i_t, f_t> Arow_;
+  csr_matrix_t<i_t, f_t> Arow_;
   simplex::lp_problem_t<i_t, f_t> original_lp_;
   std::vector<i_t> new_slacks_;
   std::vector<simplex::variable_type_t> var_types_;
@@ -375,7 +375,7 @@ class branch_and_bound_t {
   // ============================================================================
 
   // Main deterministic coordinator loop
-  void run_deterministic_coordinator(const simplex::csr_matrix_t<i_t, f_t>& Arow);
+  void run_deterministic_coordinator(const csr_matrix_t<i_t, f_t>& Arow);
 
   // Gather all events generated, sort by WU timestamp, apply
   void deterministic_sort_replay_events(const bb_event_batch_t<i_t, f_t>& events);

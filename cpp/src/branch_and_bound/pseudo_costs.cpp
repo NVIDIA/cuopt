@@ -13,7 +13,7 @@
 #include <dual_simplex/phase2.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/solve.hpp>
-#include <dual_simplex/tic_toc.hpp>
+#include <math_optimization/tic_toc.hpp>
 
 #include <mip_heuristics/mip_constants.hpp>
 
@@ -30,19 +30,13 @@ namespace cuopt::mathematical_optimization::mip {
 using simplex::basis_update_mpf_t;
 using simplex::compute_initial_nonbasic_end;
 using simplex::compute_objective;
-using simplex::csc_matrix_t;
-using simplex::csr_matrix_t;
 using simplex::dual_status_t;
 using simplex::logger_t;
 using simplex::lp_problem_t;
 using simplex::lp_solution_t;
 using simplex::simplex_solver_settings_t;
-using simplex::sparse_vector_t;
-using simplex::tic;
-using simplex::toc;
 using simplex::variable_status_t;
 using simplex::variable_type_t;
-using simplex::vector_norm_inf;
 
 namespace {
 
@@ -65,7 +59,7 @@ f_t compute_step_length(const simplex_solver_settings_t<i_t, f_t>& settings,
                         const std::vector<f_t>& delta_z,
                         const std::vector<i_t>& delta_z_indices)
 {
-  f_t step_length = simplex::inf;
+  f_t step_length = inf;
   f_t pivot_tol   = settings.pivot_tol;
   const i_t nz    = delta_z_indices.size();
   for (i_t h = 0; h < nz; h++) {
@@ -153,7 +147,7 @@ objective_change_estimate_t<f_t> single_pivot_objective_change_estimate(
     for (i_t j = 0; j < lp.num_cols; j++) {
       dual_residual[j] -= lp.objective[j];
     }
-    simplex::matrix_transpose_vector_multiply(lp.A, 1.0, lp_solution.y, 1.0, dual_residual);
+    matrix_transpose_vector_multiply(lp.A, 1.0, lp_solution.y, 1.0, dual_residual);
     f_t dual_residual_norm = vector_norm_inf<i_t, f_t>(dual_residual);
     settings.log.printf("Dual residual norm: %e\n", dual_residual_norm);
   }

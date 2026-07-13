@@ -83,10 +83,9 @@ Second-Order Cone Programming with Rotated Second-Order Cones Example
 
 :download:`rotated_socp_example.py <examples/rotated_socp_example.py>`
 
-This example solves a **rotated** second-order cone ``x1^2 + x2^2 <= x3 * x4, x3 >= 0, x4 >= 0``. For rotated cones, cuOpt expects a
-symmetric quadratic matrix ``Q``, so the cross term is supplied as the two equal
-halves ``-0.5*x3*x4`` and ``-0.5*x4*x3``. It minimizes ``x3 + x4`` subject to
-``x1 + x2 >= 2``.
+This example solves a **rotated** second-order cone ``x1^2 + x2^2 <= x3 * x4, x3 >= 0, x4 >= 0``.
+The cross term is written as ``-x3*x4``. See :doc:`/convex-features` for other RSOC forms.
+It minimizes ``x3 + x4`` subject to ``x1 + x2 >= 2``.
 
 .. literalinclude:: examples/rotated_socp_example.py
    :language: python

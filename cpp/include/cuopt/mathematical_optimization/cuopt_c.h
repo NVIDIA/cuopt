@@ -934,8 +934,8 @@ void cuOptDestroySolution(cuOptSolution* solution_ptr);
  *
  * @param[in] solution - The solution object.
  *
- * @param[out] termination_reason_ptr - A pointer to a cuopt_int_t that on output will contain the
- *  termination reason.
+ * @param[out] termination_status_ptr - A pointer to a cuopt_int_t that on output will contain the
+ *  termination status.
  *
  * @return A status code indicating success or failure.
  */

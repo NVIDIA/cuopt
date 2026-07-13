@@ -6,11 +6,11 @@
 /* clang-format on */
 #pragma once
 
-#include <barrier/dense_vector.hpp>
+#include <linear_algebra/dense_vector.hpp>
 
 #include <dual_simplex/simplex_solver_settings.hpp>
-#include <dual_simplex/types.hpp>
-#include <dual_simplex/vector_math.hpp>
+#include <linear_algebra/vector_math.hpp>
+#include <math_optimization/types.hpp>
 
 #include <cmath>
 #include <cstdio>
@@ -42,12 +42,12 @@ i_t preconditioned_conjugate_gradient(const T& op,
 
   dense_vector_t<i_t, f_t> Ap(b.size());
   i_t iter                  = 0;
-  f_t norm_residual         = simplex::vector_norm2<i_t, f_t>(residual);
+  f_t norm_residual         = vector_norm2<i_t, f_t>(residual);
   f_t initial_norm_residual = norm_residual;
   if (show_pcg_info) {
     settings.log.printf("PCG initial residual 2-norm %e inf-norm %e\n",
                         norm_residual,
-                        simplex::vector_norm_inf<i_t, f_t>(residual));
+                        vector_norm_inf<i_t, f_t>(residual));
   }
 
   f_t rTy = residual.inner_product(y);
@@ -62,7 +62,7 @@ i_t preconditioned_conjugate_gradient(const T& op,
     // Update residual = residual + alpha * Ap
     residual.axpy(alpha, Ap, 1.0);
 
-    f_t new_residual = simplex::vector_norm2<i_t, f_t>(residual);
+    f_t new_residual = vector_norm2<i_t, f_t>(residual);
     if (new_residual > 1.1 * norm_residual || new_residual > 1.1 * initial_norm_residual) {
       if (show_pcg_info) {
         settings.log.printf(
@@ -78,7 +78,7 @@ i_t preconditioned_conjugate_gradient(const T& op,
     // residual = A*x - b
     residual = b;
     op.a_multiply(1.0, x, -1.0, residual);
-    norm_residual = simplex::vector_norm2<i_t, f_t>(residual);
+    norm_residual = vector_norm2<i_t, f_t>(residual);
 
     // Solve M y = r for y
     op.m_solve(residual, y);
@@ -98,13 +98,13 @@ i_t preconditioned_conjugate_gradient(const T& op,
       settings.log.printf("PCG iter %3d 2-norm_residual %.2e inf-norm_residual %.2e\n",
                           iter,
                           norm_residual,
-                          simplex::vector_norm_inf<i_t, f_t>(residual));
+                          vector_norm_inf<i_t, f_t>(residual));
     }
   }
 
   residual = b;
   op.a_multiply(1.0, x, -1.0, residual);
-  norm_residual = simplex::vector_norm2<i_t, f_t>(residual);
+  norm_residual = vector_norm2<i_t, f_t>(residual);
   if (norm_residual < initial_norm_residual) {
     if (show_pcg_info) {
       settings.log.printf("PCG improved residual 2-norm %.2e/%.2e in %d iterations\n",

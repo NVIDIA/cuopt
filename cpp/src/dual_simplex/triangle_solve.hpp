@@ -7,9 +7,9 @@
 
 #pragma once
 
-#include <dual_simplex/sparse_matrix.hpp>
-#include <dual_simplex/sparse_vector.hpp>
-#include <dual_simplex/types.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
+#include <linear_algebra/sparse_vector.hpp>
+#include <math_optimization/types.hpp>
 
 #include <optional>
 

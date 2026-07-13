@@ -8,7 +8,7 @@
 
 #include <barrier/device_sparse_matrix.cuh>
 
-#include <dual_simplex/sparse_matrix.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
 
 #include <pdlp/cusparse_view.hpp>
 
@@ -28,7 +28,7 @@ class cusparse_view_t {
  public:
   // Copy CSC -> owned CSR + CSC-transpose, with preprocess. Supports forward and transpose SpMV.
   // TMP matrix data should already be on the GPU and in CSR not CSC
-  cusparse_view_t(raft::handle_t const* handle_ptr, const simplex::csc_matrix_t<i_t, f_t>& A);
+  cusparse_view_t(raft::handle_t const* handle_ptr, const csc_matrix_t<i_t, f_t>& A);
 
   // Wire cuSparse SpMV over existing device CSR buffers (no copy). Forward SpMV only.
   cusparse_view_t(raft::handle_t const* handle_ptr, device_csr_matrix_t<i_t, f_t>& matrix);

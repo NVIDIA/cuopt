@@ -5,18 +5,12 @@
 /*
  * Rotated SOCP C API Example
  *
- * Demonstrates a rotated second-order cone with the cuOpt C API. A linear
- * problem is created with cuOptCreateProblem, then a rotated cone is added with
- * cuOptAddQuadraticConstraint.
- *
- * The quadratic matrix Q must be supplied symmetrically: the cross term of a
- * rotated cone is given as the two equal off-diagonal entries
- * Q[x3, x4] = Q[x4, x3] = -0.5, so that x^T Q x contributes -x3*x4.
+ * Demonstrates a rotated second-order cone with the cuOpt C API.
  *
  * Problem:
  *   minimize    x3 + x4
  *   subject to  x1 + x2 >= 2
- *               x1^2 + x2^2 - x3*x4 <= 0
+ *               x1^2 + x2^2 <= x3*x4
  *               x3 >= 0, x4 >= 0,  x1, x2 free
  *
  * Optimal: x1 = x2 = 1, x3 = x4 = sqrt(2) ~= 1.414214, objective = 2*sqrt(2) ~= 2.828427.
@@ -79,12 +73,10 @@ cuopt_int_t test_rotated_socp()
   char variable_types[] = {
     CUOPT_CONTINUOUS, CUOPT_CONTINUOUS, CUOPT_CONTINUOUS, CUOPT_CONTINUOUS};
 
-  // Rotated cone x1^2 + x2^2 - x3*x4 <= 0, supplied as a symmetric quadratic
-  // matrix Q in coordinate (triplet) form. The cross term is split into the two
-  // equal off-diagonal entries Q[x3, x4] = Q[x4, x3] = -0.5. rhs must be 0.
-  cuopt_int_t q_row_index[]  = {0, 1, 2, 3};
-  cuopt_int_t q_col_index[]  = {0, 1, 3, 2};
-  cuopt_float_t q_coeff[]    = {1.0, 1.0, -0.5, -0.5};
+  // Rotated cone x1^2 + x2^2 <= x3*x4.
+  cuopt_int_t q_row_index[]  = {0, 1, 2};
+  cuopt_int_t q_col_index[]  = {0, 1, 3};
+  cuopt_float_t q_coeff[]    = {1.0, 1.0, -1.0};
 
   cuopt_int_t status;
   cuopt_float_t time;
@@ -116,7 +108,7 @@ cuopt_int_t test_rotated_socp()
 
   // Add the rotated second-order cone constraint (no linear term, rhs = 0)
   status = cuOptAddQuadraticConstraint(problem,
-                                       4,  // number of quadratic entries
+                                       3,  // number of quadratic entries
                                        q_row_index,
                                        q_col_index,
                                        q_coeff,

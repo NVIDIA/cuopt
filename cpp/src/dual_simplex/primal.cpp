@@ -12,7 +12,7 @@
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/phase1.hpp>
 #include <dual_simplex/solve.hpp>
-#include <dual_simplex/tic_toc.hpp>
+#include <math_optimization/tic_toc.hpp>
 
 namespace cuopt::mathematical_optimization::simplex {
 

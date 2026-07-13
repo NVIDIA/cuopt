@@ -400,6 +400,30 @@ TEST_F(SolutionInterfaceTest, mps_data_model_to_optimization_problem)
   }
 }
 
+TEST_F(SolutionInterfaceTest, mps_data_model_to_optimization_problem_quadratic_constraints)
+{
+  auto mps_data = cuopt::mathematical_optimization::io::read_lp_from_string<int, double>(R"LP(
+Minimize
+  obj: x + y
+Subject To
+  q0: [ 4 x * y ] <= 0.5
+Bounds
+  -1 <= x <= 1
+  -1 <= y <= 1
+End
+)LP");
+  ASSERT_TRUE(mps_data.has_quadratic_constraints());
+  ASSERT_EQ(mps_data.get_quadratic_constraints().size(), 1u);
+
+  raft::handle_t handle;
+  auto problem = mps_data_model_to_optimization_problem(&handle, mps_data);
+
+  ASSERT_TRUE(problem.has_quadratic_constraints());
+  ASSERT_EQ(problem.get_quadratic_constraints().size(), 1u);
+  EXPECT_EQ(problem.get_quadratic_constraints()[0].constraint_row_name, "q0");
+  EXPECT_NEAR(problem.get_quadratic_constraints()[0].rhs_value, 0.5, 1e-9);
+}
+
 // =============================================================================
 // Solution conversion tests (hand-constructed, known values)
 // =============================================================================

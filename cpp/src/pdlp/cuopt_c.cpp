@@ -124,8 +124,8 @@ void coo_to_csr(cuopt_int_t num_entries,
   std::vector<cuopt_int_t> perm(static_cast<size_t>(num_entries));
   std::vector<cuopt_int_t> row_cursor(offsets.begin(), offsets.begin() + num_rows);
   for (cuopt_int_t k = 0; k < num_entries; ++k) {
-    const cuopt_int_t row                        = row_index[k];
-    perm[static_cast<size_t>(row_cursor[row]++)] = k;
+    const cuopt_int_t row   = row_index[k];
+    perm[row_cursor[row]++] = k;
   }
 
   // Per row: merge duplicate columns in one pass. col_mark[col] stores the index into
@@ -143,7 +143,7 @@ void coo_to_csr(cuopt_int_t num_entries,
     if (start >= end) { continue; }
 
     for (cuopt_int_t p = start; p < end; ++p) {
-      const cuopt_int_t k   = perm[static_cast<size_t>(p)];
+      const cuopt_int_t k   = perm[p];
       const cuopt_int_t col = col_index[k];
       const size_t col_u    = static_cast<size_t>(col);
       if (col_mark[col_u] < row_out_start) {
@@ -152,7 +152,7 @@ void coo_to_csr(cuopt_int_t num_entries,
         values.push_back(coeff[k]);
         ++out_nnz;
       } else {
-        values[static_cast<size_t>(col_mark[col_u])] += coeff[k];
+        values[col_mark[col_u]] += coeff[k];
       }
     }
   }
