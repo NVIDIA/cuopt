@@ -90,6 +90,7 @@ class pdhg_solver_t {
   // cusparse path on the local matrix.
   void compute_At_y();
   void compute_A_x();
+  
   void spmvop_At_y();
   void spmvop_A_x();
 
