@@ -113,7 +113,6 @@ class pdlp_solver_t {
   void create_spmv_op_plans();
 
   // Needed by multi-GPU to mutate them
-  mip::problem_t<i_t, f_t>& get_op_problem_scaled() { return op_problem_scaled_; }
   pdlp_initial_scaling_strategy_t<i_t, f_t>& get_initial_scaling_strategy()
   {
     return initial_scaling_strategy_;
@@ -233,10 +232,6 @@ class pdlp_solver_t {
   // Single-GPU PDLP reports false.
   bool is_distributed_master() const { return multi_gpu_engine.has_value(); }
 
-  // True when this pdlp_solver_t was constructed as a per-shard sub-solver
-  // of a distributed solve (set once at construction via the ctor arg).
-  bool is_distributed_sub_pdlp() const { return is_distributed_sub_pdlp_; }
-
  private:
   void compute_fixed_error(std::vector<int>& has_restarted);
 
@@ -295,8 +290,6 @@ class pdlp_solver_t {
   primal_quality_adapter_t best_primal_quality_so_far_;
   // Flag to indicate if solver is being called from MIP. No logging is done in this case.
   bool inside_mip_{false};
-  // See is_distributed_sub_pdlp() above. Initialized from ctor arg.
-  bool is_distributed_sub_pdlp_{false};
 };
 
 }  // namespace cuopt::mathematical_optimization::pdlp
