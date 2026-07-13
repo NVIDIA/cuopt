@@ -2524,6 +2524,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
     placeholder_op.set_csr_constraint_matrix(
       nullptr, 0, nullptr, 0, empty_offsets.data(), static_cast<i_t>(empty_offsets.size()));
   }
+  // Set feilds here that need to be plumbed down to the solver.
   placeholder_op.set_objective_offset(mps_for_solver.get_objective_offset());
   placeholder_op.set_objective_scaling_factor(mps_for_solver.get_objective_scaling_factor());
   placeholder_op.set_maximize(mps_for_solver.get_sense());
@@ -2564,6 +2565,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
     auto term_vec   = sol.get_additional_termination_informations();
     auto status_vec = sol.get_terminations_status();
 
+    // Return the solution to the caller. Lifetime safe because downstream ctor std::moves the solution.
     sol = optimization_problem_solution_t<i_t, f_t>(primal_uv,
                                                     dual_uv,
                                                     rc_uv,
