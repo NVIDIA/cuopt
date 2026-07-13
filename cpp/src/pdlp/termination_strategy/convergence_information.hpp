@@ -175,7 +175,8 @@ class convergence_information_t {
   void compute_reduced_costs_dual_objective_contribution();
 
   // ----- Distributed-PDLP sub-steps of compute_convergence_information -----
-  // Halo exchange, per-shard primal/residual + partial (owned) primal/dual objective, allreduce and apply scaling+offset.
+  // Halo exchange, per-shard primal/residual + partial (owned) primal/dual objective, allreduce and
+  // apply scaling+offset.
   void distributed_compute_primal_residual_and_objective(
     multi_gpu_engine_t<i_t, f_t>& engine, const pdlp_solver_settings_t<i_t, f_t>& settings);
   void distributed_compute_dual_residual_and_objective(multi_gpu_engine_t<i_t, f_t>& engine);
