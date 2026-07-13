@@ -464,58 +464,53 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
 
   // ----- 3. Partition -----
   std::vector<i_t> parts;
-  {
-    partitioner_input_t<i_t, f_t> partition_input;
-    partition_input.nb_cstr  = n_cstr;
-    partition_input.nb_vars  = n_vars;
-    partition_input.nb_parts = distributed_pdlp_num_gpus;
+  partitioner_input_t<i_t, f_t> partition_input;
+  partition_input.nb_cstr  = n_cstr;
+  partition_input.nb_vars  = n_vars;
+  partition_input.nb_parts = distributed_pdlp_num_gpus;
 
-    // Resolve which partitioner to use. The public enum is validated at the
-    // parameter-set layer (int_parameters min/max), so we only need to map
-    // the three known values to the backend selector.
-    partitioner_kind_t kind;
-    switch (settings.distributed_pdlp_partitioner) {
-      case distributed_pdlp_partitioner_t::Auto:
-        kind = (distributed_pdlp_num_gpus == 1) ? partitioner_kind_t::Dummy
-                                                : partitioner_kind_t::KaMinPar;
-        break;
-      case distributed_pdlp_partitioner_t::KaMinPar: kind = partitioner_kind_t::KaMinPar; break;
-      case distributed_pdlp_partitioner_t::Dummy: kind = partitioner_kind_t::Dummy; break;
-      default:
-        cuopt_expects(false,
-                      error_type_t::ValidationError,
-                      "Unknown distributed_pdlp_partitioner value %d",
-                      static_cast<int>(settings.distributed_pdlp_partitioner));
-        kind = partitioner_kind_t::Dummy;  // unreachable; silences -Wmaybe-uninitialized
-    }
-    const bool needs_graph = (kind == partitioner_kind_t::KaMinPar);
-    if (needs_graph) {
-      // csr_host_view_t members are std::span<const i_t> — an owning
-      // std::vector<i_t> converts implicitly.
-      partition_input.A.row_offsets   = h_A_row_offsets;
-      partition_input.A.col_indices   = h_A_col_indices;
-      partition_input.A.num_rows      = n_cstr;
-      partition_input.A.num_cols      = n_vars;
-      partition_input.A_t.row_offsets = h_A_t_row_offsets;
-      partition_input.A_t.col_indices = h_A_t_col_indices;
-      partition_input.A_t.num_rows    = n_vars;
-      partition_input.A_t.num_cols    = n_cstr;
-      // 0 => KaMinPar auto-detects and uses all hardware threads.
-      partition_input.nb_threads = 0;
-    }
-    const char* kind_name = (kind == partitioner_kind_t::Dummy)      ? "dummy"
-                            : (kind == partitioner_kind_t::KaMinPar) ? "kaminpar"
-                                                                     : "unknown";
-    CUOPT_LOG_INFO(
-      "Partitioning %d constraints + %d variables into %d part(s) using the %s "
-      "partitioner",
-      n_cstr,
-      n_vars,
-      distributed_pdlp_num_gpus,
-      kind_name);
-    auto partitioner = make_partitioner<i_t, f_t>(kind);
-    parts            = partitioner->partition(partition_input);
+  // Resolve which partitioner to use. The public enum is validated at the
+  // parameter-set layer (int_parameters min/max), so we only need to map
+  // the three known values to the backend selector.
+  partitioner_kind_t kind;
+  switch (settings.distributed_pdlp_partitioner) {
+    case distributed_pdlp_partitioner_t::Auto:
+      kind =
+        (distributed_pdlp_num_gpus == 1) ? partitioner_kind_t::Dummy : partitioner_kind_t::KaMinPar;
+      break;
+    case distributed_pdlp_partitioner_t::KaMinPar: kind = partitioner_kind_t::KaMinPar; break;
+    case distributed_pdlp_partitioner_t::Dummy: kind = partitioner_kind_t::Dummy; break;
+    default:
+      cuopt_expects(false,
+                    error_type_t::ValidationError,
+                    "Unknown distributed_pdlp_partitioner value %d",
+                    static_cast<int>(settings.distributed_pdlp_partitioner));
+      kind = partitioner_kind_t::Dummy;  // unreachable; silences -Wmaybe-uninitialized
   }
+  // csr_host_view_t members are std::span<const i_t>, an owning
+  // std::vector<i_t> converts implicitly.
+  partition_input.A.row_offsets   = h_A_row_offsets;
+  partition_input.A.col_indices   = h_A_col_indices;
+  partition_input.A.num_rows      = n_cstr;
+  partition_input.A.num_cols      = n_vars;
+  partition_input.A_t.row_offsets = h_A_t_row_offsets;
+  partition_input.A_t.col_indices = h_A_t_col_indices;
+  partition_input.A_t.num_rows    = n_vars;
+  partition_input.A_t.num_cols    = n_cstr;
+  // 0 => KaMinPar auto-detects and uses all hardware threads.
+  partition_input.nb_threads = 0;
+  const char* kind_name = (kind == partitioner_kind_t::Dummy)      ? "dummy"
+                          : (kind == partitioner_kind_t::KaMinPar) ? "kaminpar"
+                                                                   : "unknown";
+  CUOPT_LOG_INFO(
+    "Partitioning %d constraints + %d variables into %d part(s) using the %s "
+    "partitioner",
+    n_cstr,
+    n_vars,
+    distributed_pdlp_num_gpus,
+    kind_name);
+  auto partitioner = make_partitioner<i_t, f_t>(kind);
+  parts            = partitioner->partition(partition_input);
 
   // ----- 4. Build per-rank data -----
   std::vector<rank_data_t<i_t, f_t>> sub_pdlp_rank_data =
@@ -563,9 +558,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   // per-shard partial (owned prefix) sum-of-squares -> allreduce + mirror to
   // master (*this) -> sqrt on shards + master. Encapsulated inside
   // convergence_information_t to keep the orchestration next to the primitives
-  // it drives. average_termination_strategy_ is not used in distributed
-  // (never_restart_to_average = true is asserted above), so we only init
-  // current_termination_strategy_.
+  // it drives.
   current_termination_strategy_.get_convergence_information().distributed_init_l2_norms(
     *multi_gpu_engine);
 }
@@ -2618,8 +2611,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
       !settings_.get_initial_primal_weight().has_value())
     compute_initial_primal_weight();
 
-  // Distributed counterpart of the single-GPU
-  // step_size_strategy_.get_primal_and_dual_stepsizes()
+  // Distributed counterpart of the single-GPU, happens later in the single-GPU path.
   if (settings_.use_distributed_pdlp) {
     step_size_strategy_.get_primal_and_dual_stepsizes(primal_step_size_, dual_step_size_);
     multi_gpu_engine->for_each_shard([&](auto& shard) {
