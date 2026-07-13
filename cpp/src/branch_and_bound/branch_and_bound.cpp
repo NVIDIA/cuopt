@@ -2445,49 +2445,6 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
 }
 
 template <typename i_t, typename f_t>
-void branch_and_bound_t<i_t, f_t>::build_probing_clique_conflict_edges()
-{
-  // Literal encoding: x_k = 1 -> vertex k, x_k = 0 -> vertex k + num_cols.
-  // An edge means the two literals cannot both hold.
-  clique_extra_conflict_edges_.clear();
-  const i_t num_cols = original_problem_.num_cols;
-  auto is_binary     = [&](i_t v) {
-    cuopt_assert(v >= 0 && v < num_cols, "Probing implied-bound variable index out of range");
-    return original_problem_.var_types[v] == variable_type_t::INTEGER &&
-           original_problem_.lower[v] == 0.0 && original_problem_.upper[v] == 1.0;
-  };
-  const auto& pib = probing_implied_bound_;
-  cuopt_assert(static_cast<i_t>(pib.zero_offsets.size()) == num_cols + 1,
-               "Probing implied-bound zero-offset column count mismatch");
-  cuopt_assert(static_cast<i_t>(pib.one_offsets.size()) == num_cols + 1,
-               "Probing implied-bound one-offset column count mismatch");
-  for (i_t j = 0; j < num_cols; ++j) {
-    if (!is_binary(j)) { continue; }
-    // x_j = 1 implications
-    for (i_t p = pib.one_offsets[j]; p < pib.one_offsets[j + 1]; ++p) {
-      const i_t i = pib.one_variables[p];
-      if (i == j || !is_binary(i)) { continue; }
-      if (pib.one_upper_bound[p] < 1.0 - settings_.integer_tol) {
-        clique_extra_conflict_edges_.emplace_back(j, i);  // x_j=1 => x_i=0
-      } else if (pib.one_lower_bound[p] > settings_.integer_tol) {
-        clique_extra_conflict_edges_.emplace_back(j, i + num_cols);  // x_j=1 => x_i=1
-      }
-    }
-    // x_j = 0 implications
-    for (i_t p = pib.zero_offsets[j]; p < pib.zero_offsets[j + 1]; ++p) {
-      const i_t i = pib.zero_variables[p];
-      if (i == j || !is_binary(i)) { continue; }
-      if (pib.zero_upper_bound[p] < 1.0 - settings_.integer_tol) {
-        clique_extra_conflict_edges_.emplace_back(j + num_cols, i);  // x_j=0 => x_i=0
-      } else if (pib.zero_lower_bound[p] > settings_.integer_tol) {
-        clique_extra_conflict_edges_.emplace_back(j + num_cols,
-                                                  i + num_cols);  // x_j=0 => x_i=1
-      }
-    }
-  }
-}
-
-template <typename i_t, typename f_t>
 mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solution)
 {
   raft::common::nvtx::range scope("BB::solve");
@@ -2532,7 +2489,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   if ((settings_.clique_cuts != 0 || settings_.zero_half_cuts != 0) && clique_table_ == nullptr &&
       omp_get_num_threads() >= CUOPT_MIP_CLIQUE_CUTS_REQUIRED_THREAD_COUNT) {
-    build_probing_clique_conflict_edges();
     signal_extend_cliques_.store(false, std::memory_order_release);
     typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances_for_clique{};
     tolerances_for_clique.presolve_absolute_tolerance = settings_.primal_tol;
@@ -2547,12 +2503,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     {
       user_problem_t<i_t, f_t> problem_copy = original_problem_;
       timer_t timer(std::numeric_limits<double>::infinity());
-      mip::find_initial_cliques(problem_copy,
-                                tolerances_for_clique,
-                                clique_table_,
-                                timer,
-                                clique_signal,
-                                &clique_extra_conflict_edges_);
+      mip::find_initial_cliques(
+        problem_copy, tolerances_for_clique, clique_table_, timer, clique_signal);
     }
   }
 

@@ -160,16 +160,10 @@ class branch_and_bound_t {
   producer_sync_t& get_producer_sync() { return producer_sync_; }
 
  private:
-  void build_probing_clique_conflict_edges();
-
   const simplex::user_problem_t<i_t, f_t>& original_problem_;
   const simplex::simplex_solver_settings_t<i_t, f_t> settings_;
   const probing_implied_bound_t<i_t, f_t>& probing_implied_bound_;
   std::shared_ptr<mip::clique_table_t<i_t, f_t>> clique_table_;
-  // Conflict-graph edges derived from probing implications (literal indices in
-  // [0, 2*num_cols)); merged into the clique table so the separator can find
-  // cliques spanning multiple constraints. Must outlive the clique build task.
-  std::vector<std::pair<i_t, i_t>> clique_extra_conflict_edges_;
   omp_atomic_t<bool> signal_extend_cliques_{false};
   mip_symmetry_t<i_t, f_t>* symmetry_;
 

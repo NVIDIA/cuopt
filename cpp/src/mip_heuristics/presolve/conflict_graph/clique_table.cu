@@ -681,8 +681,7 @@ void find_initial_cliques(user_problem_t<i_t, f_t>& problem,
                           typename mip_solver_settings_t<i_t, f_t>::tolerances_t tolerances,
                           std::shared_ptr<clique_table_t<i_t, f_t>>& clique_table_out,
                           cuopt::timer_t& timer,
-                          omp_atomic_t<bool>* signal_extend,
-                          const std::vector<std::pair<i_t, i_t>>* extra_conflict_edges)
+                          omp_atomic_t<bool>* signal_extend)
 {
   cuopt::timer_t stage_timer(std::numeric_limits<double>::infinity());
 #ifdef DEBUG_CLIQUE_TABLE
@@ -736,28 +735,6 @@ void find_initial_cliques(user_problem_t<i_t, f_t>& problem,
 #ifdef DEBUG_CLIQUE_TABLE
   t_small = stage_timer.elapsed_time();
 #endif
-  // Merge externally supplied conflict edges (e.g. from probing implications)
-  // into the pairwise conflict adjacency before the table is published. This
-  // enriches the graph beyond the constraint-derived conflicts so the clique
-  // separator can find violated cliques spanning multiple constraints.
-  if (extra_conflict_edges != nullptr && !extra_conflict_edges->empty()) {
-    const i_t n_vertices = 2 * clique_table->n_variables;
-    std::vector<std::pair<i_t, i_t>> merged_edges;
-    merged_edges.reserve(clique_table->small_clique_adj.indices.size() +
-                         2 * extra_conflict_edges->size());
-    for (i_t v = 0; v < n_vertices; ++v) {
-      for (i_t u : clique_table->small_clique_adj.slice(v)) {
-        merged_edges.emplace_back(v, u);
-      }
-    }
-    for (const auto& [a, b] : *extra_conflict_edges) {
-      if (a == b || a < 0 || b < 0 || a >= n_vertices || b >= n_vertices) { continue; }
-      merged_edges.emplace_back(a, b);
-      merged_edges.emplace_back(b, a);
-    }
-    clique_table->small_clique_adj.finalize_from_unsorted_pairs(n_vertices, merged_edges);
-    std::fill(clique_table->var_degrees.begin(), clique_table->var_degrees.end(), -1);
-  }
   fill_var_clique_maps(*clique_table);
 #ifdef DEBUG_CLIQUE_TABLE
   t_maps = stage_timer.elapsed_time();
@@ -799,8 +776,7 @@ void find_initial_cliques(user_problem_t<i_t, f_t>& problem,
     typename mip_solver_settings_t<int, F_TYPE>::tolerances_t tolerances,                      \
     std::shared_ptr<clique_table_t<int, F_TYPE>> & clique_table_out,                           \
     cuopt::timer_t & timer,                                                                    \
-    omp_atomic_t<bool> * signal_extend,                                                        \
-    const std::vector<std::pair<int, int>>* extra_conflict_edges);                             \
+    omp_atomic_t<bool> * signal_extend);                                                       \
   template void build_clique_table<int, F_TYPE>(                                               \
     const user_problem_t<int, F_TYPE>& problem,                                                \
     clique_table_t<int, F_TYPE>& clique_table,                                                 \
