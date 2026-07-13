@@ -3905,9 +3905,6 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
   f_t work_estimate  = 0.0;
   i_t num_cuts       = 0;
   while (num_cuts < max_cuts && !score_queue.empty()) {
-    // Coarse deadline check: MIR aggregation dominates cut generation on large
-    // models, so honor the global time limit here rather than only at the LP
-    // re-solve that follows cut generation.
     if (toc(start_time) >= settings.time_limit) { break; }
     // Get the row with the highest score from the queue
     auto [max_score, i] = score_queue.top();
