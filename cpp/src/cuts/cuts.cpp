@@ -19,6 +19,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <limits>
+#include <mutex>
 #include <stdexcept>
 #include <tuple>
 #include <unordered_set>
@@ -1164,10 +1165,60 @@ void cut_pool_t<i_t, f_t>::add_cut(cut_type_t cut_type, const inequality_t<i_t, 
     return;
   }
 
+  // Serialize appends: the global pool is shared by concurrent per-node cut passes.
+  std::lock_guard<omp_mutex_t> lock(mutex_);
+
   cut_storage_.append_row(cut_squeezed.vector);
   rhs_storage_.push_back(cut_squeezed.rhs);
   cut_type_.push_back(cut_type);
   cut_age_.push_back(0);
+}
+
+template <typename i_t, typename f_t>
+i_t cut_pool_t<i_t, f_t>::verify_solution(const std::vector<f_t>& x, f_t tolerance) const
+{
+  i_t num_violated   = 0;
+  f_t max_violation  = 0.0;
+  const i_t num_cuts = cut_storage_.m;
+  for (i_t row = 0; row < num_cuts; row++) {
+    const i_t row_start = cut_storage_.row_start[row];
+    const i_t row_end   = cut_storage_.row_start[row + 1];
+    f_t cut_x           = 0.0;
+    for (i_t p = row_start; p < row_end; p++) {
+      const i_t j         = cut_storage_.j[p];
+      const f_t cut_coeff = cut_storage_.x[p];
+      cut_x += cut_coeff * x[j];
+    }
+    // Cut is cut'*x >= rhs, so violation is rhs - cut'*x (positive means the solution violates it).
+    const f_t violation = rhs_storage_[row] - cut_x;
+    if (violation > tolerance) {
+      num_violated++;
+      max_violation = std::max(max_violation, violation);
+      settings_.log.printf(
+        "Cut pool verification: cut %d (type %d) violated by optimal solution: cut'x=%.10e < "
+        "rhs=%.10e (violation %.3e > tol %.1e)\n",
+        row,
+        static_cast<int>(cut_type_[row]),
+        cut_x,
+        rhs_storage_[row],
+        violation,
+        tolerance);
+    }
+  }
+  if (num_violated > 0) {
+    settings_.log.printf(
+      "Cut pool verification FAILED: %d of %d cuts violated by the optimal solution (max violation "
+      "%.3e). Some generated cut is not globally valid.\n",
+      num_violated,
+      num_cuts,
+      max_violation);
+  } else {
+    settings_.log.printf(
+      "Cut pool verification passed: optimal solution satisfies all %d cuts within tol %.1e\n",
+      num_cuts,
+      tolerance);
+  }
+  return num_violated;
 }
 
 template <typename i_t, typename f_t>
@@ -3430,6 +3481,37 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
   }
   return true;
 }
+
+template <typename i_t, typename f_t>
+bool cut_generation_t<i_t, f_t>::generate_node_cuts(
+  const lp_problem_t<i_t, f_t>& lp,
+  const simplex_solver_settings_t<i_t, f_t>& settings,
+  csr_matrix_t<i_t, f_t>& Arow,
+  const std::vector<i_t>& new_slacks,
+  const std::vector<simplex::variable_type_t>& var_types,
+  simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
+  const std::vector<f_t>& xstar,
+  const std::vector<i_t>& basic_list,
+  const std::vector<i_t>& nonbasic_list,
+  f_t start_time)
+{
+
+  f_t cut_start_time = tic();
+  const i_t pool_size_before = cut_pool_.pool_size();
+  generate_gomory_cuts(lp, settings, Arow, new_slacks, var_types, basis_update, xstar, basic_list, nonbasic_list);
+  const i_t pool_size_after = cut_pool_.pool_size();
+  f_t cut_generation_time = toc(cut_start_time);
+  if (pool_size_after > pool_size_before) {
+    settings.log.printf("Node Gomory cut generation: pool %d -> %d (+%d cuts) in %.2f seconds\n",
+                        pool_size_before,
+                        pool_size_after,
+                        pool_size_after - pool_size_before,
+                        cut_generation_time);
+  }
+  return true;
+}
+
+
 
 template <typename i_t, typename f_t>
 void cut_generation_t<i_t, f_t>::generate_knapsack_cuts(

@@ -12,6 +12,7 @@
 #include <dual_simplex/user_problem.hpp>
 #include <linear_algebra/sparse_vector.hpp>
 #include <math_optimization/types.hpp>
+#include <utilities/omp_helpers.hpp>
 
 #include <algorithm>
 #include <array>
@@ -317,6 +318,12 @@ class cut_pool_t {
 
   i_t pool_size() const { return cut_storage_.m; }
 
+  // Verify that x satisfies every cut in the pool (each stored as cut'*x >= rhs) within the given
+  // absolute tolerance. Returns the number of violated cuts (0 means all satisfied) and logs each
+  // violation. Used as a consistency check that globally-valid cuts never cut off the optimal
+  // solution. x must be indexed in the same (original) variable space as the stored cuts.
+  i_t verify_solution(const std::vector<f_t>& x, f_t tolerance) const;
+
   void print_cutpool_types() { print_cut_types("In cut pool", cut_type_, settings_); }
 
   void check_for_duplicate_cuts();
@@ -341,6 +348,10 @@ class cut_pool_t {
   std::vector<f_t> cut_scores_;
   std::vector<i_t> best_cuts_;
   const f_t min_cut_distance_{1e-4};
+
+  // The global cut pool is shared by concurrent per-node cut passes (one per B&B worker), so
+  // add_cut must serialize its append to cut_storage_/rhs_storage_/etc.
+  omp_mutex_t mutex_;
 };
 
 template <typename i_t, typename f_t>
@@ -658,6 +669,17 @@ class cut_generation_t {
                      const std::vector<i_t>& nonbasic_list,
                      variable_bounds_t<i_t, f_t>& variable_bounds,
                      f_t start_time);
+
+  bool generate_node_cuts(const simplex::lp_problem_t<i_t, f_t>& lp,
+                          const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+                          csr_matrix_t<i_t, f_t>& Arow,
+                          const std::vector<i_t>& new_slacks,
+                          const std::vector<simplex::variable_type_t>& var_types,
+                          simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
+                          const std::vector<f_t>& xstar,
+                          const std::vector<i_t>& basic_list,
+                          const std::vector<i_t>& nonbasic_list,
+                          f_t start_time);
 
  private:
   // Generate all mixed integer gomory cuts

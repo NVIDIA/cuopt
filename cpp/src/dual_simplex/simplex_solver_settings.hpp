@@ -82,6 +82,7 @@ struct simplex_solver_settings_t {
       first_iteration_log(2),
       num_threads(omp_get_max_threads() - 1),
       max_cut_passes(0),
+      node_cuts(1),
       mir_cuts(-1),
       mixed_integer_gomory_cuts(-1),
       knapsack_cuts(-1),
@@ -173,6 +174,8 @@ struct simplex_solver_settings_t {
   i_t num_threads;                 // number of threads to use
   i_t random_seed;                 // random seed
   i_t max_cut_passes;              // number of cut passes to make
+  i_t node_cuts;                   // 0 to disable, >0 to enable Gomory cut generation at B&B nodes
+                                   // (pure 0-1 problems only)
   i_t mir_cuts;                    // -1 automatic, 0 to disable, >0 to enable MIR cuts
   i_t mixed_integer_gomory_cuts;   // -1 automatic, 0 to disable, >0 to enable mixed integer Gomory
                                    // cuts

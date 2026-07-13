@@ -38,6 +38,7 @@
 #include <functional>
 #include <future>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace cuopt::mathematical_optimization::mip {
@@ -177,6 +178,16 @@ class branch_and_bound_t {
   simplex::lp_problem_t<i_t, f_t> original_lp_;
   std::vector<i_t> new_slacks_;
   std::vector<simplex::variable_type_t> var_types_;
+
+  // Shared global cut pool: both the root cut passes and the per-node cut passes append to it.
+  // Constructed in solve() once the root LP dimensions are known. The pool self-locks on add_cut.
+  std::optional<cut_pool_t<i_t, f_t>> global_cut_pool_;
+  // Shared cut generator bound to global_cut_pool_, reused by the root loop and every worker's
+  // node cut generation. The Gomory path uses only local scratch (no mutable generator state),
+  // so a single instance can serve all workers concurrently.
+  std::optional<cut_generation_t<i_t, f_t>> cut_generation_;
+  // True when every integer variable is binary ([0,1]); node cut generation is gated on this.
+  bool is_pure_binary_{false};
 
   // Variable locks (see definition 3.3 from T. Achterberg, “Constraint Integer Programming,”
   // PhD, Technischen Universität Berlin, Berlin, 2007. doi: 10.14279/depositonce-1634).

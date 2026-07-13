@@ -259,6 +259,18 @@ branch_and_bound_t<i_t, f_t>::branch_and_bound_t(
     original_problem_, settings_, original_lp_, new_slacks_, dualize_info);
   full_variable_types(original_problem_, original_lp_, var_types_);
 
+  // Node cut generation is currently only globally valid for pure 0-1 models: a fixed binary always
+  // sits at a global bound, so cuts complemented against global bounds stay globally valid. Detect
+  // whether every integer variable is binary so we can gate node cuts (see solve_node_lp) on it.
+  is_pure_binary_ = true;
+  for (i_t j = 0; j < original_lp_.num_cols; ++j) {
+    if (var_types_[j] == variable_type_t::INTEGER &&
+        (original_lp_.lower[j] != 0.0 || original_lp_.upper[j] != 1.0)) {
+      is_pure_binary_ = false;
+      break;
+    }
+  }
+
   // Check slack
 #ifdef CHECK_SLACKS
   assert(new_slacks_.size() == original_lp_.num_rows);
@@ -771,6 +783,11 @@ void branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t, f_t>& 
       write_solution_for_cut_verification(original_lp_, incumbent_.x);
     }
 #endif
+    // Sanity check: every cut in the pool must be globally valid, so the optimal solution must
+    // satisfy all of them. incumbent_.x is in the same (original_lp_) variable space the cuts index.
+    if (global_cut_pool_.has_value() && has_solver_space_incumbent()) {
+      global_cut_pool_->verify_solution(incumbent_.x, 1e-6);
+    }
     if (gap > 0 && gap <= settings_.absolute_mip_gap_tol) {
       settings_.log.printf("Optimal solution found within absolute MIP gap tolerance (%.1e)\n",
                            settings_.absolute_mip_gap_tol);
@@ -1545,6 +1562,50 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
 
       stats.total_lp_solve_time += toc(lp_start_time);
       stats.total_lp_iters += node_iter;
+
+      if (lp_status == dual_status_t::OPTIMAL) {
+        // Generate Gomory cuts at this node and append them to the shared global cut pool.
+        // Correctness: the tableau row a Gomory cut is built from is an Ax=b identity (bounds
+        // independent), and by temporarily installing the global bounds on the leaf problem the MIR
+        // complementation uses global (not branched/strengthened) bounds, so every emitted cut is
+        // globally valid by construction. Restricted to pure 0-1 models (a fixed binary always sits
+        // at a global bound). Generation filters cuts by violation at the node point, and the shared
+        // pool self-locks on add_cut.
+        if (settings_.node_cuts > 0 && is_pure_binary_ && cut_generation_.has_value()) {
+          // RAII swap so the leaf bounds are restored even if generation throws. leaf_problem and
+          // start_lower/start_upper are worker-owned same-size vectors, so the swap is O(1) and
+          // thread-local; nothing reads start_lower/start_upper during the synchronous call.
+          struct bound_swap_guard_t {
+            simplex::lp_problem_t<i_t, f_t>& lp;
+            std::vector<f_t>& global_lower;
+            std::vector<f_t>& global_upper;
+            bound_swap_guard_t(simplex::lp_problem_t<i_t, f_t>& lp_,
+                               std::vector<f_t>& gl_,
+                               std::vector<f_t>& gu_)
+              : lp(lp_), global_lower(gl_), global_upper(gu_)
+            {
+              std::swap(lp.lower, global_lower);
+              std::swap(lp.upper, global_upper);
+            }
+            ~bound_swap_guard_t()
+            {
+              std::swap(lp.lower, global_lower);
+              std::swap(lp.upper, global_upper);
+            }
+          } bound_swap_guard(worker->leaf_problem, worker->start_lower, worker->start_upper);
+
+          cut_generation_->generate_node_cuts(worker->leaf_problem,
+                                              settings_,
+                                              Arow_,
+                                              new_slacks_,
+                                              var_types_,
+                                              worker->basis_factors,
+                                              worker->leaf_solution.x,
+                                              worker->basic_list,
+                                              worker->nonbasic_list,
+                                              stats.start_time);
+        }
+      }
     }
   }
 
@@ -2647,17 +2708,24 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   if (num_fractional != 0 && settings_.max_cut_passes > 0) { print_table_header(); }
 
-  cut_pool_t<i_t, f_t> cut_pool(original_lp_.num_cols, settings_);
-  cut_generation_t<i_t, f_t> cut_generation(cut_pool,
-                                            original_lp_,
-                                            settings_,
-                                            Arow_,
-                                            new_slacks_,
-                                            var_types_,
-                                            original_problem_,
-                                            probing_implied_bound_,
-                                            clique_table_,
-                                            clique_signal);
+  // Single shared global cut pool + generator. Both the root cut passes (below) and the per-node
+  // cut passes (solve_node_lp) append to global_cut_pool_ through this generator's member cut_pool_,
+  // so the optimal-solution verification in set_final_solution sees every generated cut. Sized with
+  // the original variable count so add_cut's index guard matches node cuts, which reduce to the
+  // original variable space.
+  global_cut_pool_.emplace(original_lp_.num_cols, settings_);
+  cut_generation_.emplace(*global_cut_pool_,
+                          original_lp_,
+                          settings_,
+                          Arow_,
+                          new_slacks_,
+                          var_types_,
+                          original_problem_,
+                          probing_implied_bound_,
+                          clique_table_,
+                          clique_signal);
+  cut_pool_t<i_t, f_t>& cut_pool             = *global_cut_pool_;
+  cut_generation_t<i_t, f_t>& cut_generation = *cut_generation_;
 
   std::vector<f_t> saved_solution;
 #ifdef CHECK_CUTS_AGAINST_SAVED_SOLUTION
