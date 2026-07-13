@@ -2212,6 +2212,11 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
     }
     return {cut_pass_action_t::RETURN, mip_status_t::INFEASIBLE};
   }
+  if (toc(exploration_stats_.start_time) >= settings_.time_limit) {
+    solver_status_ = mip_status_t::TIME_LIMIT;
+    set_final_solution(solution, root_objective_);
+    return {cut_pass_action_t::RETURN, solver_status_};
+  }
   f_t cut_generation_time = toc(cut_start_time);
   if (cut_generation_time > 1.0) {
     settings_.log.debug("Cut generation time %.2f seconds\n", cut_generation_time);
@@ -2322,6 +2327,12 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
     original_lp_.write_mps("bound_strengthening_infeasible.mps");
 #endif
     return {cut_pass_action_t::RETURN, mip_status_t::INFEASIBLE};
+  }
+
+  if (toc(exploration_stats_.start_time) >= settings_.time_limit) {
+    solver_status_ = mip_status_t::TIME_LIMIT;
+    set_final_solution(solution, root_objective_);
+    return {cut_pass_action_t::RETURN, solver_status_};
   }
 
   i_t iter                    = 0;
@@ -2707,6 +2718,16 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
   f_t cut_generation_start_time = tic();
   i_t cut_pool_size             = 0;
   for (i_t cut_pass = 0; cut_pass < settings_.max_cut_passes; cut_pass++) {
+    if (toc(exploration_stats_.start_time) >= settings_.time_limit) {
+      solver_status_ = mip_status_t::TIME_LIMIT;
+      set_final_solution(solution, root_objective_);
+      if (settings_.benchmark_info_ptr != nullptr) {
+        settings_.benchmark_info_ptr->cut_generation_time_sec = toc(cut_generation_start_time);
+      }
+      signal_extend_cliques_.store(true, std::memory_order_release);
+#pragma omp taskwait depend(in : *clique_signal)
+      return mip_status_t::TIME_LIMIT;
+    }
     if (num_fractional == 0) {
       // LP relaxation is already integer-feasible — solved at the root
       // by the cuts added so far (possibly zero). Publish the with-cuts
