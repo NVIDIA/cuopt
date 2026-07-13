@@ -1,42 +1,139 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Store-then-build (lazy build) layer for the routing DataModel.
+"""Store-then-build (lazy) layer for the routing DataModel.
 
-The public DataModel records each mutating setter call instead of pushing to the
-GPU immediately, and materializes the Cython/device data model only when a solve
-runs (or a getter is queried) by replaying the recorded calls onto the wrapper.
+The public DataModel records its setter calls on the host and builds the device
+(Cython) model only transiently -- at solve, or when a getter is queried -- by
+replaying the recorded calls. Design points:
 
-The recorded setters/getters mirror the Cython wrapper's method surface and are
-installed automatically *from the wrapper* (see ``_install_methods``): every
-``set_*``/``add_*`` becomes a recorder and every ``get_*`` a delegator. So there
-is a single source of truth -- adding a method to the wrapper/DataModel needs no
-change here. Only the size scalars are written out explicitly below (they answer
-without a build); that explicit definition is left untouched by the auto-install.
-
-A public setter that needs to query prior state before build (e.g. a duplicate
-guard) reads it from the recorded calls via ``_recorded`` -- there is no shadow
-state to maintain per setter.
+  * **Host-resident IR.** Host inputs (numpy/pandas) are copied to a numpy array
+    the DataModel owns at record time, so the recorded calls form a serializable,
+    host-resident intermediate representation (what remote/gRPC serialization
+    needs) and the user's original array can be released. **Device inputs
+    (cuDF/cupy) are kept on the device** to preserve the zero-copy GPU path;
+    they are exported to host only when explicitly serialized.
+  * **Transient build.** The device model is never cached: each solve/getter
+    builds it fresh and discards it, so the instance does not hold both a host
+    IR and a device copy.
+  * **Zero-CUDA construction.** The setter/getter surface is declared explicitly
+    below rather than introspected from the compiled wrapper, so constructing and
+    serializing a problem imports no CUDA/cuDF -- the wrapper is imported lazily
+    only when a device build actually happens. ``test_lazy`` fails if this
+    declared surface drifts from the wrapper.
 """
 
+import threading
+
+import numpy as np
+
+# Mutating setters: recorded and replayed onto the device model at build time.
+_SETTERS = (
+    "add_break_dimension",
+    "add_capacity_dimension",
+    "add_cost_matrix",
+    "add_initial_solutions",
+    "add_order_precedence",
+    "add_order_vehicle_match",
+    "add_transit_time_matrix",
+    "add_vehicle_break",
+    "add_vehicle_order_match",
+    "set_break_locations",
+    "set_drop_return_trips",
+    "set_min_vehicles",
+    "set_objective_function",
+    "set_order_locations",
+    "set_order_prizes",
+    "set_order_service_times",
+    "set_order_time_windows",
+    "set_pickup_delivery_pairs",
+    "set_skip_first_trips",
+    "set_vehicle_fixed_costs",
+    "set_vehicle_locations",
+    "set_vehicle_max_costs",
+    "set_vehicle_max_times",
+    "set_vehicle_time_windows",
+    "set_vehicle_types",
+)
+
+# Non-scalar getters. Currently resolved via a transient build (see
+# _make_getter); host-mirror resolution from the IR is migrated incrementally.
+_GETTERS = (
+    "get_break_dimensions",
+    "get_break_locations",
+    "get_capacity_dimensions",
+    "get_cost_matrix",
+    "get_drop_return_trips",
+    "get_initial_solutions",
+    "get_min_vehicles",
+    "get_non_uniform_breaks",
+    "get_objective_function",
+    "get_order_locations",
+    "get_order_prizes",
+    "get_order_service_times",
+    "get_order_time_windows",
+    "get_order_vehicle_match",
+    "get_pickup_delivery_pairs",
+    "get_skip_first_trips",
+    "get_transit_time_matrices",
+    "get_transit_time_matrix",
+    "get_vehicle_fixed_costs",
+    "get_vehicle_locations",
+    "get_vehicle_max_costs",
+    "get_vehicle_max_times",
+    "get_vehicle_order_match",
+    "get_vehicle_time_windows",
+    "get_vehicle_types",
+)
+
 # ``get_*`` methods on the wrapper that are helpers, not problem-data getters,
-# so they must not be auto-installed as build-triggering delegators. Extend this
-# set if a new non-data ``get_*`` helper is added to the wrapper.
+# so they are neither installed nor required by the coverage test.
 _SKIP_GETTERS = frozenset({"get_type_from_str", "get_type_from_int"})
 
+_install_lock = threading.Lock()
 _methods_installed = False
+_BUILT_CLS = None
+
+
+def _namespace_of(x):
+    """Container kind of ``x`` without importing cudf/pandas: one of
+    {"numpy", "pandas", "cudf", "cupy"} or None (scalar / str / other).
+    """
+    if isinstance(x, np.ndarray):
+        return "numpy"
+    return {"pandas": "pandas", "cudf": "cudf", "cupy": "cupy"}.get(
+        type(x).__module__.split(".", 1)[0]
+    )
+
+
+def _normalize(x):
+    """Record-time normalization (mixed IR).
+
+    Host numeric arrays are copied to a numpy array the DataModel owns (so the
+    user's array can be released and the IR is serializable). Device (cuDF/cupy)
+    inputs are kept as-is to preserve the zero-copy GPU path. Scalars, strings,
+    and non-numeric arrays pass through unchanged.
+    """
+    ns = _namespace_of(x)
+    if ns in ("cudf", "cupy"):
+        return x
+    if ns == "numpy":
+        return np.array(x, copy=True) if x.dtype.kind in "biuf" else x
+    if ns == "pandas":
+        arr = x.to_numpy()
+        return np.array(arr, copy=True) if arr.dtype.kind in "biuf" else x
+    return x
 
 
 class _LazyDataModel:
-    """Records DataModel setter calls and builds the device model lazily."""
+    """Records DataModel setter calls; builds the device model transiently."""
 
     def __init__(self, num_locations, fleet_size, n_orders=-1):
         _install_methods()
         self._init_args = (num_locations, fleet_size, n_orders)
         self._calls = []
-        self._built = None
 
-    # -- size scalars: answered without building (queried during validation) --
+    # -- size scalars: answered without a build (queried during validation) --
     def get_num_locations(self):
         return self._init_args[0]
 
@@ -45,32 +142,29 @@ class _LazyDataModel:
 
     def get_num_orders(self):
         # Mirrors the wrapper default: n_orders == -1 means "same as
-        # num_locations". Answered here rather than via a build because setters
-        # query it during validation.
+        # num_locations".
         n_orders = self._init_args[2]
         return self._init_args[0] if n_orders == -1 else n_orders
 
-    # -- record / build --
+    # -- record --
     def _record(self, name, args, kwargs):
+        args = tuple(_normalize(a) for a in args)
+        kwargs = {k: _normalize(v) for k, v in kwargs.items()}
         self._calls.append((name, args, kwargs))
-        self._built = None
 
     def _recorded(self, name):
-        """Positional args of each prior recorded call to ``name``.
-
-        Lets a public setter answer set-time "already set?" questions from the
-        recorded calls, so no per-setter shadow state is needed.
+        """Positional args of each prior recorded call to ``name`` (for
+        set-time "already set?" checks; reads the IR, no shadow state).
         """
         return [args for call, args, _ in self._calls if call == name]
 
+    # -- transient build (never cached; see module docstring) --
     def _build(self):
-        """Materialize the device (Cython) data model by replaying calls."""
-        if self._built is None:
-            model = _built_cls()(*self._init_args)
-            for name, args, kwargs in self._calls:
-                getattr(model, name)(*args, **kwargs)
-            self._built = model
-        return self._built
+        """Build a fresh device (Cython) data model by replaying the calls."""
+        model = _built_cls()(*self._init_args)
+        for name, args, kwargs in self._calls:
+            getattr(model, name)(*args, **kwargs)
+        return model
 
 
 def _make_setter(name):
@@ -90,44 +184,41 @@ def _make_getter(name):
 
 
 def _install_methods():
-    """Mirror the wrapper's setter/getter surface onto _LazyDataModel.
+    """Install recorders/getters from the declared surface (not the wrapper).
 
-    Derived from the wrapper so there is nothing to keep in sync. Methods
-    already defined on _LazyDataModel (the explicit overrides above) are
-    skipped. Done once, lazily, on first construction so importing this module
-    does not require importing the wrapper.
+    Done once, lazily, so importing this module needs no CUDA. Thread-safe on
+    first concurrent construction.
     """
     global _methods_installed
     if _methods_installed:
         return
-    from . import vehicle_routing_wrapper as _wrapper
-
-    for name in dir(_wrapper.DataModel):
-        if name.startswith("_") or name in _LazyDataModel.__dict__:
-            continue
-        if name.startswith(("set_", "add_")):
-            setattr(_LazyDataModel, name, _make_setter(name))
-        elif name.startswith("get_") and name not in _SKIP_GETTERS:
-            setattr(_LazyDataModel, name, _make_getter(name))
-    _methods_installed = True
-
-
-_BUILT_CLS = None
+    with _install_lock:
+        if _methods_installed:
+            return
+        for name in _SETTERS:
+            if name not in _LazyDataModel.__dict__:
+                setattr(_LazyDataModel, name, _make_setter(name))
+        for name in _GETTERS:
+            if name not in _LazyDataModel.__dict__:
+                setattr(_LazyDataModel, name, _make_getter(name))
+        _methods_installed = True
 
 
 def _built_cls():
     """Return a Python subclass of the Cython wrapper DataModel.
 
-    The wrapper is a ``cdef class`` with no ``__dict__``; its ``__init__``
-    stores Python attributes (``self.costs`` etc.), so it must be subclassed by
-    a Python class to be instantiable. Imported lazily.
+    The wrapper is a ``cdef class`` with no ``__dict__``; its ``__init__`` stores
+    Python attributes, so it must be subclassed by a Python class to be
+    instantiable. Imported lazily (this is the only CUDA/cuDF entry point).
     """
     global _BUILT_CLS
     if _BUILT_CLS is None:
-        from . import vehicle_routing_wrapper as _wrapper
+        with _install_lock:
+            if _BUILT_CLS is None:
+                from . import vehicle_routing_wrapper as _wrapper
 
-        class _BuiltDataModel(_wrapper.DataModel):
-            pass
+                class _BuiltDataModel(_wrapper.DataModel):
+                    pass
 
-        _BUILT_CLS = _BuiltDataModel
+                _BUILT_CLS = _BuiltDataModel
     return _BUILT_CLS
