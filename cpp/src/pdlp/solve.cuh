@@ -63,9 +63,9 @@ cuopt::mathematical_optimization::optimization_problem_solution_t<i_t, f_t> solv
  *                    local copy of settings before solving and enforces
  *                    `settings.pdlp_solver_mode == Stable3`
  *
- * @pre `settings.use_distributed_pdlp == true`, `method == PDLP`, `settings.pdlp_solver_mode == Stable3`,
- *      `pdlp_precision == DefaultPrecision`, not inside MIP, and no initial
- *      primal/dual or warm-start data.
+ * @pre `settings.use_distributed_pdlp == true`, `method == PDLP`, `settings.pdlp_solver_mode ==
+ * Stable3`, `pdlp_precision == DefaultPrecision`, not inside MIP, and no initial primal/dual or
+ * warm-start data.
  */
 template <typename i_t, typename f_t>
 cuopt::mathematical_optimization::optimization_problem_solution_t<i_t, f_t>

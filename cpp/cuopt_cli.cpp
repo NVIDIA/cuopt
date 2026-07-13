@@ -457,7 +457,7 @@ int main(int argc, char* argv[])
     // Distributed PDLP uses its own knob: distributed_pdlp_num_gpus
     // Everything else uses num_gpus which is capped at 2
     int provisioned_gpus = 0;
-    int device_count = raft::device_setter::get_device_count();
+    int device_count     = raft::device_setter::get_device_count();
     if (settings.get_parameter<bool>(CUOPT_USE_DISTRIBUTED_PDLP)) {
       int requested_gpus = settings.get_parameter<int>(CUOPT_DISTRIBUTED_PDLP_NUM_GPUS);
       if (requested_gpus > device_count) {
@@ -468,14 +468,12 @@ int main(int argc, char* argv[])
           device_count);
         return -1;
       }
-      if (requested_gpus == -1) {
-        requested_gpus = device_count;
-      }
+      if (requested_gpus == -1) { requested_gpus = device_count; }
       provisioned_gpus = requested_gpus;
     } else {
       provisioned_gpus = std::min(device_count, settings.get_parameter<int>(CUOPT_NUM_GPUS));
     }
-    
+
     memory_resources.reserve(provisioned_gpus);
     for (int i = 0; i < provisioned_gpus; ++i) {
       raft::device_setter guard(i);

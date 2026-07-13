@@ -40,7 +40,7 @@ static void expect_distributed_matches_base(raft::handle_t const& handle,
                                             bool disable_presolve = false)
 {
   constexpr double loose_rel = 1e-3;
-  auto approx_equal = [](double a, double b, double rel) {
+  auto approx_equal          = [](double a, double b, double rel) {
     const double scale = std::max(std::fabs(a), std::fabs(b));
     return std::fabs(a - b) <= rel * (1.0 + scale);
   };

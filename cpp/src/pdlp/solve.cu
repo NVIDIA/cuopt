@@ -2575,7 +2575,8 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
     auto term_vec   = sol.get_additional_termination_informations();
     auto status_vec = sol.get_terminations_status();
 
-    // Return the solution to the caller. Lifetime safe because downstream ctor std::moves the solution.
+    // Return the solution to the caller. Lifetime safe because downstream ctor std::moves the
+    // solution.
     sol = optimization_problem_solution_t<i_t, f_t>(primal_uv,
                                                     dual_uv,
                                                     rc_uv,

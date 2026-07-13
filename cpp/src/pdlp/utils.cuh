@@ -52,7 +52,7 @@ inline std::vector<f_t> make_singular_value_probe(std::size_t size)
   return out;
 }
 
-// Elementwise: v := v / *scalar. 
+// Elementwise: v := v / *scalar.
 template <typename f_t>
 struct divide_by_device_scalar_t {
   f_t const* scalar;
