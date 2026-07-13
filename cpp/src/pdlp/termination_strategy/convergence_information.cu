@@ -793,6 +793,7 @@ __global__ void apply_objective_scaling_and_offset(raft::device_span<f_t> object
   objective[idx] = objective_scaling_factor * (objective[idx] + objective_offsets[idx]);
 }
 
+// Compute the primal objective using cublasdot. Takes a size as input so distributed and single use the same kernel.
 template <typename i_t, typename f_t>
 void convergence_information_t<i_t, f_t>::compute_primal_objective_owned_partial(
   const rmm::device_uvector<f_t>& primal_solution, i_t n_owned)
@@ -1147,19 +1148,7 @@ const rmm::device_uvector<f_t>& convergence_information_t<i_t, f_t>::get_primal_
 }
 
 template <typename i_t, typename f_t>
-rmm::device_uvector<f_t>& convergence_information_t<i_t, f_t>::get_primal_objective()
-{
-  return primal_objective_;
-}
-
-template <typename i_t, typename f_t>
 const rmm::device_uvector<f_t>& convergence_information_t<i_t, f_t>::get_dual_objective() const
-{
-  return dual_objective_;
-}
-
-template <typename i_t, typename f_t>
-rmm::device_uvector<f_t>& convergence_information_t<i_t, f_t>::get_dual_objective()
 {
   return dual_objective_;
 }
