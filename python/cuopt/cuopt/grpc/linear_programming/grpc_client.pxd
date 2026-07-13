@@ -13,6 +13,17 @@ from cuopt.linear_programming.solver_settings.solver_settings cimport (
 )
 
 cdef extern from "cuopt/grpc/cython_grpc_client.hpp" namespace "cuopt::cython":
+    ctypedef enum grpc_python_tls_mode_t "cuopt::cython::grpc_python_tls_mode_t":
+        ENV "cuopt::cython::grpc_python_tls_mode_t::ENV"
+        DISABLED "cuopt::cython::grpc_python_tls_mode_t::DISABLED"
+        EXPLICIT "cuopt::cython::grpc_python_tls_mode_t::EXPLICIT"
+
+    cdef cppclass grpc_python_client_connect_options_t:
+        grpc_python_tls_mode_t tls_mode
+        string tls_root_certs
+        string tls_client_cert
+        string tls_client_key
+
     ctypedef enum grpc_job_status_t "cuopt::cython::grpc_job_status_t":
         QUEUED "cuopt::cython::grpc_job_status_t::QUEUED"
         PROCESSING "cuopt::cython::grpc_job_status_t::PROCESSING"
@@ -63,6 +74,11 @@ cdef extern from "cuopt/grpc/cython_grpc_client.hpp" namespace "cuopt::cython":
 
     cdef cppclass grpc_python_client_t:
         grpc_python_client_t(const string& host, int port) except +
+        grpc_python_client_t(
+            const string& host,
+            int port,
+            const grpc_python_client_connect_options_t& options,
+        ) except +
         bint connect(string& error_out)
         grpc_submit_result_t submit(
             data_model_view_t[int, double]* data_model,
