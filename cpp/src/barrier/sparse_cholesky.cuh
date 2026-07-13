@@ -352,16 +352,10 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
 
   ~sparse_cholesky_cudss_t() override
   {
-    cudaFreeAsync(csr_values_d, stream);
-    cudaFreeAsync(csr_columns_d, stream);
-    cudaFreeAsync(csr_offset_d, stream);
-
-    cudaFreeAsync(x_values_d, stream);
-    cudaFreeAsync(b_values_d, stream);
+    // Destroy cuDSS objects before freeing the device buffers they reference.
     if (A_created) {
       CUDSS_CALL_AND_CHECK_EXIT(cudssMatrixDestroy(A), status, "cudssMatrixDestroy for A");
     }
-
     CUDSS_CALL_AND_CHECK_EXIT(
       cudssMatrixDestroy(cudss_x), status, "cudssMatrixDestroy for cudss_x");
     CUDSS_CALL_AND_CHECK_EXIT(
@@ -369,6 +363,14 @@ class sparse_cholesky_cudss_t : public sparse_cholesky_base_t<i_t, f_t> {
     CUDSS_CALL_AND_CHECK_EXIT(cudssDataDestroy(handle, solverData), status, "cudssDataDestroy");
     CUDSS_CALL_AND_CHECK_EXIT(cudssConfigDestroy(solverConfig), status, "cudssConfigDestroy");
     CUDSS_CALL_AND_CHECK_EXIT(cudssDestroy(handle), status, "cudssDestroy");
+
+    // Free the device buffers now that cuDSS no longer references them.
+    cudaFreeAsync(csr_values_d, stream);
+    cudaFreeAsync(csr_columns_d, stream);
+    cudaFreeAsync(csr_offset_d, stream);
+    cudaFreeAsync(x_values_d, stream);
+    cudaFreeAsync(b_values_d, stream);
+
     CUDA_CALL_AND_CHECK_EXIT(cudaStreamSynchronize(stream), "cudaStreamSynchronize");
 #if CUDART_VERSION >= 13000
     if (settings_.concurrent_halt != nullptr && settings_.num_gpus == 1) {
