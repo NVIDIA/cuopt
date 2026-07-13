@@ -135,6 +135,7 @@ class DataModel(_RecordingDataModel):
         >>> data_model.add_cost_matrix(cost_mat_car, 2)
         """
 
+        # a[1] is vehicle_type: the recorded call is (cost_mat, vehicle_type).
         if vehicle_type in {a[1] for a in self._recorded("add_cost_matrix")}:
             raise ValueError("Vehicle type matrix has already been added")
 
@@ -217,6 +218,7 @@ class DataModel(_RecordingDataModel):
         >>> time_mat = cudf.DataFrame(time_mat)
         >>> data_model.add_transit_time_matrix(time_mat, 0)
         """
+        # a[1] is vehicle_type (see add_cost_matrix).
         if vehicle_type in {
             a[1] for a in self._recorded("add_transit_time_matrix")
         }:

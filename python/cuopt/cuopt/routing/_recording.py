@@ -19,7 +19,9 @@ guard) reads it from the recorded calls via ``_recorded`` -- there is no shadow
 state to maintain per setter.
 """
 
-# ``get_*`` methods on the wrapper that are helpers, not problem-data getters.
+# ``get_*`` methods on the wrapper that are helpers, not problem-data getters,
+# so they must not be auto-installed as build-triggering delegators. Extend this
+# set if a new non-data ``get_*`` helper is added to the wrapper.
 _SKIP_GETTERS = frozenset({"get_type_from_str", "get_type_from_int"})
 
 _methods_installed = False
@@ -42,6 +44,9 @@ class _RecordingDataModel:
         return self._init_args[1]
 
     def get_num_orders(self):
+        # Mirrors the wrapper default: n_orders == -1 means "same as
+        # num_locations". Answered here rather than via a build because setters
+        # query it during validation.
         n_orders = self._init_args[2]
         return self._init_args[0] if n_orders == -1 else n_orders
 
