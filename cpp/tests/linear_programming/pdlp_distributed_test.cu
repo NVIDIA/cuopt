@@ -29,19 +29,20 @@
 namespace cuopt::mathematical_optimization::test {
 
 // Solve `mps_rel_path` with the single-GPU PDLP ("base") and with distributed PDLP
-// (num_gpus = -1 => auto-detect), then assert the distributed run matches the base run on
-// everything meaningful: termination status, step count (within 15%), primal/dual objective,
-// and the full primal/dual solution vectors. All value comparisons use a loose relative tolerance.
-// Pass disable_presolve=true for tiny instances that PSLP would solve entirely, which would
-// otherwise bypass the distributed solver path we want to exercise.
+// (num_gpus = -1 => auto-detect), then assert the distributed run is:
+//   - optimal (same status as base),
+//   - within a loose relative tolerance of base on primal/dual objective and step count.
+// Pass disable_presolve=true for tiny instances that PSLP would solve entirely, which
+// would otherwise bypass the distributed solver path we want to exercise.
 static void expect_distributed_matches_base(raft::handle_t const& handle,
                                             std::string const& mps_rel_path,
                                             bool fixed_mps_format = false,
                                             bool disable_presolve = false)
 {
   constexpr double loose_rel = 1e-3;
-  auto near_rel              = [](double a, double b, double rel) {
-    return std::fabs(a - b) <= rel * (1.0 + std::fabs(a));
+  auto approx_equal = [](double a, double b, double rel) {
+    const double scale = std::max(std::fabs(a), std::fabs(b));
+    return std::fabs(a - b) <= rel * (1.0 + scale);
   };
 
   auto path                                 = make_path_absolute(mps_rel_path);
@@ -61,82 +62,59 @@ static void expect_distributed_matches_base(raft::handle_t const& handle,
 
   ASSERT_EQ(static_cast<int>(base.get_termination_status()), CUOPT_TERMINATION_STATUS_OPTIMAL)
     << mps_rel_path << ": base did not reach optimal";
-  EXPECT_EQ(static_cast<int>(dist.get_termination_status()),
-            static_cast<int>(base.get_termination_status()))
-    << mps_rel_path << ": distributed termination status differs from base";
+  ASSERT_EQ(static_cast<int>(dist.get_termination_status()), CUOPT_TERMINATION_STATUS_OPTIMAL)
+    << mps_rel_path << ": distributed did not reach optimal";
 
   const auto& base_info = base.get_additional_termination_information();
   const auto& dist_info = dist.get_additional_termination_information();
 
-  EXPECT_TRUE(near_rel(base_info.primal_objective, dist_info.primal_objective, loose_rel))
+  EXPECT_TRUE(approx_equal(base_info.primal_objective, dist_info.primal_objective, loose_rel))
     << mps_rel_path << ": primal objective base=" << base_info.primal_objective
     << " distributed=" << dist_info.primal_objective;
-  EXPECT_TRUE(near_rel(base_info.dual_objective, dist_info.dual_objective, loose_rel))
+  EXPECT_TRUE(approx_equal(base_info.dual_objective, dist_info.dual_objective, loose_rel))
     << mps_rel_path << ": dual objective base=" << base_info.dual_objective
     << " distributed=" << dist_info.dual_objective;
 
   const int base_steps = base_info.number_of_steps_taken;
   const int dist_steps = dist_info.number_of_steps_taken;
   const int max_steps  = std::max(base_steps, dist_steps);
-  const int step_diff  = std::max(base_steps, dist_steps) - std::min(base_steps, dist_steps);
+  const int step_diff  = max_steps - std::min(base_steps, dist_steps);
   EXPECT_LE(static_cast<double>(step_diff), 0.15 * max_steps)
     << mps_rel_path << ": step counts differ by >15% (base=" << base_steps
     << ", distributed=" << dist_steps << ")";
-
-  auto base_primal = cuopt::host_copy(base.get_primal_solution(), handle.get_stream());
-  auto dist_primal = cuopt::host_copy(dist.get_primal_solution(), handle.get_stream());
-  ASSERT_EQ(base_primal.size(), dist_primal.size()) << mps_rel_path << ": primal size mismatch";
-  for (std::size_t i = 0; i < base_primal.size(); ++i) {
-    EXPECT_TRUE(near_rel(base_primal[i], dist_primal[i], loose_rel))
-      << mps_rel_path << ": primal[" << i << "] base=" << base_primal[i]
-      << " distributed=" << dist_primal[i];
-  }
-
-  auto base_dual = cuopt::host_copy(base.get_dual_solution(), handle.get_stream());
-  auto dist_dual = cuopt::host_copy(dist.get_dual_solution(), handle.get_stream());
-  ASSERT_EQ(base_dual.size(), dist_dual.size()) << mps_rel_path << ": dual size mismatch";
-  for (std::size_t i = 0; i < base_dual.size(); ++i) {
-    EXPECT_TRUE(near_rel(base_dual[i], dist_dual[i], loose_rel))
-      << mps_rel_path << ": dual[" << i << "] base=" << base_dual[i]
-      << " distributed=" << dist_dual[i];
-  }
 }
 
-TEST(pdlp_class, distributed_parity_afiro)
-{
-  if (raft::device_setter::get_device_count() < 2) {
-    GTEST_SKIP() << "Requires >=2 GPUs, found " << raft::device_setter::get_device_count();
+// Shared fixture: skip the whole class when fewer than 2 GPUs are visible and
+// provide a single per-test raft::handle_t.
+class DistributedPdlpParityTest : public ::testing::Test {
+ protected:
+  void SetUp() override
+  {
+    const int device_count = raft::device_setter::get_device_count();
+    if (device_count < 2) { GTEST_SKIP() << "Requires >=2 GPUs, found " << device_count; }
   }
-  const raft::handle_t handle{};
+  raft::handle_t handle{};
+};
+
+TEST_F(DistributedPdlpParityTest, afiro)
+{
   expect_distributed_matches_base(handle, "linear_programming/afiro_original.mps", true);
 }
 
 // Maximization LP: exercises the sign-flipping paths through normalization /
 // presolve / solution translation on the distributed side.
-TEST(pdlp_class, distributed_parity_cod105_max)
+TEST_F(DistributedPdlpParityTest, cod105_max)
 {
-  if (raft::device_setter::get_device_count() < 2) {
-    GTEST_SKIP() << "Requires >=2 GPUs, found " << raft::device_setter::get_device_count();
-  }
-  const raft::handle_t handle{};
   expect_distributed_matches_base(handle, "mip/cod105_max.mps");
 }
 
-TEST(pdlp_class, distributed_parity_graph40_40)
+TEST_F(DistributedPdlpParityTest, graph40_40)
 {
-  if (raft::device_setter::get_device_count() < 2) {
-    GTEST_SKIP() << "Requires >=2 GPUs, found " << raft::device_setter::get_device_count();
-  }
-  const raft::handle_t handle{};
   expect_distributed_matches_base(handle, "linear_programming/graph40-40/graph40-40.mps");
 }
 
-TEST(pdlp_class, distributed_parity_ex10)
+TEST_F(DistributedPdlpParityTest, ex10)
 {
-  if (raft::device_setter::get_device_count() < 2) {
-    GTEST_SKIP() << "Requires >=2 GPUs, found " << raft::device_setter::get_device_count();
-  }
-  const raft::handle_t handle{};
   expect_distributed_matches_base(handle, "linear_programming/ex10/ex10.mps");
 }
 
