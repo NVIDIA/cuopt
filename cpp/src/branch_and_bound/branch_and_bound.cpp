@@ -2726,7 +2726,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       }
       signal_extend_cliques_.store(true, std::memory_order_release);
 #pragma omp taskwait depend(in : *clique_signal)
-      return mip_status_t::TIME_LIMIT;
+      return solver_status_;
     }
     if (num_fractional == 0) {
       // LP relaxation is already integer-feasible — solved at the root
