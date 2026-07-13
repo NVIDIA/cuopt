@@ -2324,7 +2324,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
 {
   if (settings.use_distributed_pdlp) {
     return solve_lp_distributed_from_mps(
-      handle_ptr, mps_data_model, settings, problem_checking, use_pdlp_solver_mode);
+      handle_ptr, mps_data_model, settings, use_pdlp_solver_mode);
   }
   auto op_problem = mps_data_model_to_optimization_problem(handle_ptr, mps_data_model);
   return solve_lp(op_problem, settings, problem_checking, use_pdlp_solver_mode, false);
@@ -2335,7 +2335,6 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
   raft::handle_t const* handle_ptr,
   const cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t>& mps_data_model,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
-  bool problem_checking,
   bool use_pdlp_solver_mode)
 {
   cuopt_expects(handle_ptr != nullptr,
@@ -2349,7 +2348,18 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
   cuopt_expects(settings_resolved.method == method_t::PDLP,
                 error_type_t::ValidationError,
                 "Distributed MPS solve currently supports only method_t::PDLP");
-  if (use_pdlp_solver_mode) { set_pdlp_solver_mode(settings_resolved); }
+  // Gate both the mode-check and the preset overwrite behind use_pdlp_solver_mode
+  // so a caller supplying hand-tuned hyper_params (use_pdlp_solver_mode=false)
+  // isn't silently overwritten. The downstream hyper-param assertion below still
+  // catches profiles the distributed setup can't run either way.
+  if (use_pdlp_solver_mode) {
+    cuopt_expects(settings_resolved.pdlp_solver_mode == pdlp_solver_mode_t::Stable3,
+                  error_type_t::ValidationError,
+                  "Distributed PDLP currently only supports pdlp_solver_mode_t::Stable3 "
+                  "(the default). Other modes produce hyper-param profiles that the "
+                  "distributed setup does not implement.");
+    set_pdlp_solver_mode(settings_resolved);
+  }
 
   if (settings_resolved.distributed_pdlp_num_gpus == -1) {
     settings_resolved.distributed_pdlp_num_gpus = raft::device_setter::get_device_count();
@@ -2747,7 +2757,6 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
     raft::handle_t const* handle_ptr,                                                            \
     const cuopt::mathematical_optimization::io::mps_data_model_t<int, F_TYPE>& mps_data_model,   \
     pdlp_solver_settings_t<int, F_TYPE> const& settings,                                         \
-    bool problem_checking,                                                                       \
     bool use_pdlp_solver_mode);                                                                  \
                                                                                                  \
   template void set_pdlp_solver_mode(pdlp_solver_settings_t<int, F_TYPE>& settings);

@@ -59,12 +59,11 @@ cuopt::mathematical_optimization::optimization_problem_solution_t<i_t, f_t> solv
  * @param settings    User-supplied PDLP solver settings; the
  *                    `distributed_pdlp_num_gpus == -1` sentinel is resolved
  *                    here against the visible-device count.
- * @param problem_checking      Currently unused on this path (accepted for
- *                    signature parity with the device-side entry points).
- * @param use_pdlp_solver_mode  When true, applies set_pdlp_solver_mode() to the
- *                    resolved settings before solving.
+ * @param use_pdlp_solver_mode  When true, applies `set_pdlp_solver_mode()` to a
+ *                    local copy of settings before solving and enforces
+ *                    `settings.pdlp_solver_mode == Stable3`
  *
- * @pre `settings.use_distributed_pdlp == true`, `method == PDLP`,
+ * @pre `settings.use_distributed_pdlp == true`, `method == PDLP`, `settings.pdlp_solver_mode == Stable3`,
  *      `pdlp_precision == DefaultPrecision`, not inside MIP, and no initial
  *      primal/dual or warm-start data.
  */
@@ -74,7 +73,6 @@ solve_lp_distributed_from_mps(
   raft::handle_t const* handle_ptr,
   const cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t>& mps_data_model,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
-  bool problem_checking,
   bool use_pdlp_solver_mode);
 
 /**
