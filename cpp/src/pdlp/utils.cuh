@@ -25,6 +25,8 @@
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
 
+#include <cuda/std/cmath>
+
 #include <thrust/execution_policy.h>
 #include <thrust/functional.h>
 #include <thrust/iterator/transform_iterator.h>
@@ -50,9 +52,7 @@ inline std::vector<f_t> make_singular_value_probe(std::size_t size)
   return out;
 }
 
-// Elementwise: v := v / *scalar. Named struct (rather than an extended HD
-// lambda) so it can be used as a cub::DeviceTransform op inside templates whose
-// template arguments are themselves local lambda types (which nvcc rejects).
+// Elementwise: v := v / *scalar. 
 template <typename f_t>
 struct divide_by_device_scalar_t {
   f_t const* scalar;
@@ -61,7 +61,7 @@ struct divide_by_device_scalar_t {
 
 // Elementwise: q := -*scalar * q + z. Used in the power-iteration residual
 // update (single-GPU compute_initial_step_size and distributed
-// distributed_max_singular_value_squared). Same named-struct rationale as above.
+// distributed_max_singular_value_squared).
 template <typename f_t>
 struct residual_fma_neg_scalar_t {
   f_t const* scalar;
@@ -309,10 +309,10 @@ struct weighted_square_op {
 };
 
 // Convert a squared L2 norm to its bound/objective rescaling scalar,
-// 1 / (sqrt(sum) + 1). Uses raft::sqrt which is __host__ __device__.
+// 1 / (sqrt(sum) + 1).
 template <typename f_t>
 struct rescaling_from_squared_norm_op {
-  HDI f_t operator()(f_t sum) const { return f_t(1.0) / (raft::sqrt(sum) + f_t(1.0)); }
+  HDI f_t operator()(f_t sum) const { return f_t(1.0) / (cuda::std::sqrt(sum) + f_t(1.0)); }
 };
 
 template <typename i_t, typename f_t>
