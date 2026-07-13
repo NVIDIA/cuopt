@@ -135,9 +135,11 @@ def _build_body(failed, passed, skipped, cancelled, job_analysis):
     lines = [_MARKER, "## CI Test Summary", ""]
     if not failed:
         if cancelled:
-            lines.append(
-                f"✅ {len(passed)} passed · {len(cancelled)} cancelled / not completed"
-            )
+            parts = [f"✅ {len(passed)} passed"]
+            if skipped:
+                parts.append(f"{len(skipped)} skipped")
+            parts.append(f"{len(cancelled)} cancelled / not completed")
+            lines.append(" · ".join(parts))
         else:
             lines.append(f"✅ All {len(passed)} test job(s) passed.")
     else:
@@ -183,9 +185,13 @@ def main():
 
     passed = [j for j in test_jobs if j["conclusion"] == "success"]
     skipped = [j for j in test_jobs if j["conclusion"] == "skipped"]
-    failed = [j for j in test_jobs if j["conclusion"] in ("failure", "timed_out")]
+    failed = [
+        j for j in test_jobs if j["conclusion"] in ("failure", "timed_out")
+    ]
     cancelled = [
-        j for j in test_jobs if j not in passed and j not in skipped and j not in failed
+        j
+        for j in test_jobs
+        if j not in passed and j not in skipped and j not in failed
     ]
 
     job_analysis = {
