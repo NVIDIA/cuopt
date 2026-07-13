@@ -57,7 +57,7 @@ function(ConfigureTest CMAKE_TEST_NAME)
 
     target_link_libraries(${CMAKE_TEST_NAME}
        PRIVATE
-        cuopt_static
+        cuopt
         cuopttestutils
         OpenMP::OpenMP_CXX
         OpenMP::OpenMP_CUDA
@@ -85,6 +85,52 @@ function(ConfigureTest CMAKE_TEST_NAME)
     )
 endfunction()
 
+# ConfigureInternalTest(NAME source1.cu ... [LABELS ...])
+#
+# Like ConfigureTest but links cuopt_static instead of the shared library.
+# Use only for tests that access symbols in cuopt::*::detail namespaces or
+# include headers from cpp/src/ that are not part of the public API.
+function(ConfigureInternalTest CMAKE_TEST_NAME)
+    cmake_parse_arguments(CT "" "" "LABELS" ${ARGN})
+    add_executable(${CMAKE_TEST_NAME} ${CT_UNPARSED_ARGUMENTS})
+    target_include_directories(${CMAKE_TEST_NAME}
+        PRIVATE
+        "${CUOPT_TEST_DIR}/../src"
+        "${CUOPT_TEST_DIR}/../src/io"
+        "${CUOPT_TEST_DIR}"
+        "${papilo_SOURCE_DIR}/src"
+        "${papilo_BINARY_DIR}"
+        "${pslp_SOURCE_DIR}/include"
+        "${dejavu_SOURCE_DIR}"
+    )
+
+    target_link_libraries(${CMAKE_TEST_NAME}
+       PRIVATE
+        cuopt_static
+        cuopttestutils
+        GTest::gmock
+        GTest::gmock_main
+        GTest::gtest
+        GTest::gtest_main
+        ${CUOPT_PRIVATE_CUDA_LIBS}
+    )
+    if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
+      target_link_options(${CMAKE_TEST_NAME} PRIVATE -Wl,--enable-new-dtags)
+    endif()
+
+    add_test(NAME ${CMAKE_TEST_NAME} COMMAND ${CMAKE_TEST_NAME})
+
+    if(CT_LABELS)
+        set_tests_properties(${CMAKE_TEST_NAME} PROPERTIES LABELS "${CT_LABELS}")
+    endif()
+
+    install(
+        TARGETS ${CMAKE_TEST_NAME}
+        COMPONENT testing
+        DESTINATION bin/gtests/libcuopt
+        EXCLUDE_FROM_ALL
+    )
+endfunction()
 
 # ####################################################################
 # - set rapids dataset path ----------------------------------------------------------------------
