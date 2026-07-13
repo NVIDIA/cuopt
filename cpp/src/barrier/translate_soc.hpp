@@ -95,7 +95,7 @@ void convert_quadratic_constraints_to_second_order_cones(
   //   2) rotated SOC — one off-diagonal cross -2*d on two heads plus tail diagonals +s
   //        (d > 0, s > 0; stored as Q cross (head0, head1, -2*d); lift uses sqrt(d/s))
   //
-  // General path (LDLT lift on H = Q + Q^T, must be PSD):
+  // General path (LDLT check on H = Q + Q^T, must be PSD):
   //   - any QC with a nonzero linear part (COLUMNS): x^T Q x + a^T x <= alpha
   //   - any other convex QC that fails the fast-path shape checks (nonzero rhs, non-uniform
   //     diagonals, off-diagonal structure, etc.)
@@ -152,7 +152,7 @@ void convert_quadratic_constraints_to_second_order_cones(
                   qc.constraint_row_name.c_str(),
                   static_cast<int>(q_nnz));
 
-    // Detect nonzero linear part; any such QC uses the general LDLT lift.
+    // Detect nonzero linear part; any such QC uses the general LDLT check.
     bool has_linear_part = false;
     if (!qc.linear_values.empty()) {
       size_t nonzero_terms = 0;
@@ -246,7 +246,7 @@ void convert_quadratic_constraints_to_second_order_cones(
     }
 
     // Route to a fast SOC path when Q matches a known pattern (rhs = 0, no linear part);
-    // otherwise use the general LDLT lift. Eligibility must be exact: valid SOCs have an
+    // otherwise use the general LDLT check. Eligibility must be exact: valid SOCs have an
     // indefinite raw Hessian H = Q + Q^T and would be rejected by the general PSD check.
     const bool has_nonzero_rhs = !(qc.rhs_value < tol && qc.rhs_value > -tol);
     bool has_nonuniform_diag   = false;
