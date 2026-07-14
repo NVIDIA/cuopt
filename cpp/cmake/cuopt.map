@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# GNU ld version script for libcuopt.so.
+#
+# CUOPT_1.0       — stable public API (CUOPT_EXPORT symbols)
+# CUOPT_PRIVATE_1.0 — internal symbols exported for testing only (CUOPT_INTERNAL_EXPORT)
+#                     Not part of the stable ABI; may change without notice.
+
+CUOPT_1.0 {
+    global:
+        extern "C++" {
+            cuopt::mathematical_optimization::*;
+            cuopt::routing::*;
+        };
+        # C API
+        cuOpt*;
+};
+
+CUOPT_PRIVATE_1.0 {
+    global:
+        extern "C++" {
+            *routing*generator*dataset_t*;
+            *routing*generator*generate_dataset*;
+        };
+} CUOPT_1.0;
+
+{
+    local: *;
+};

@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <cuopt/export.hpp>
 #include <cuopt/routing/cython/generator.hpp>
 #include <routing/fleet_info.hpp>
 #include <routing/order_info.hpp>
@@ -36,7 +37,7 @@ using vehicle_time_window_t = std::tuple<rmm::device_uvector<i_t>, rmm::device_u
  * @tparam f_t Floating point type. Needs to be float (32bit) at the moment.
  */
 template <typename i_t, typename f_t>
-class dataset_t {
+class CUOPT_INTERNAL_EXPORT dataset_t {
  public:
   dataset_t(rmm::device_uvector<f_t>& x_pos,
             rmm::device_uvector<f_t>& y_pos,
@@ -130,8 +131,8 @@ rmm::device_uvector<uint8_t> generate_vehicle_types(raft::handle_t& handle,
  * @return dataset_t holding matrices, orders and vehicle info.
  */
 template <typename i_t, typename f_t>
-dataset_t<i_t, f_t> generate_dataset(raft::handle_t& handle,
-                                     dataset_params_t<i_t, f_t> const& params);
+CUOPT_INTERNAL_EXPORT dataset_t<i_t, f_t> generate_dataset(
+  raft::handle_t& handle, dataset_params_t<i_t, f_t> const& params);
 }  // namespace generator
 }  // namespace routing
 }  // namespace cuopt
