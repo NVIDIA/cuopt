@@ -38,6 +38,7 @@ paths:
                       !!!
 
                       ERROR : Server is BROKEN'
+                    error_result: false
   /v2/health/ready:
     get:
       summary: Health
@@ -72,6 +73,7 @@ paths:
                       !!!
 
                       ERROR : Server is BROKEN'
+                    error_result: false
   /cuopt/health:
     get:
       summary: Health
@@ -106,6 +108,7 @@ paths:
                       !!!
 
                       ERROR : Server is BROKEN'
+                    error_result: false
   /:
     get:
       summary: Health
@@ -140,6 +143,7 @@ paths:
                       !!!
 
                       ERROR : Server is BROKEN'
+                    error_result: false
   /cuopt/log/{id}:
     get:
       summary: Query solver logs by id self-hosted
@@ -307,17 +311,20 @@ paths:
                 Sentinel response (no future solutions).:
                   value:
                   - solution: []
-                    cost: value will be 'null' but openapi docs will not display it
+                    cost: null
+                    bound: null
                 Solution response:
                   value:
                   - solution:
                     - 1.0
                     - 2.0
                     cost: 3.0
+                    bound: null
                   - solution:
                     - 4.0
                     - 5.0
                     cost: 6.0
+                    bound: null
         '415':
           description: Unsupported mime_type specified
           content:
@@ -1012,7 +1019,7 @@ paths:
                   type: array
                 reqId:
                   description: Id of request
-                  example: 8adcf84a-3294-407e-8266-143817f4ce00
+                  example: 7928da7d-4fe0-4241-8e51-6ece412f67cc
                   title: Reqid
                   type: string
               required:
@@ -3848,8 +3855,7 @@ components:
           type: string
           title: Reqid
           description: Id to poll for result
-          example: 074b8649-19b8-4264-ae9f-461ef1c67e05
-      additionalProperties: false
+          example: 8950c05c-1bbe-4b9f-ad87-d1c126554e13
       type: object
       required:
       - reqId
@@ -4195,7 +4201,7 @@ components:
           type: string
           title: Reqid
           description: Id of request
-          example: 8adcf84a-3294-407e-8266-143817f4ce00
+          example: 7928da7d-4fe0-4241-8e51-6ece412f67cc
       additionalProperties: false
       type: object
       required:

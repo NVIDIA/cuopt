@@ -453,9 +453,25 @@
     }
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", render);
-  } else {
-    render();
+  function tryRender() {
+    if (document.getElementById("cuopt-install-selector")) {
+      render();
+      return true;
+    }
+    return false;
+  }
+
+  if (!tryRender()) {
+    // Element not in DOM yet (SPA / Next.js renders after scripts run).
+    // Use MutationObserver to detect when React inserts the div.
+    var _obs = new MutationObserver(function (_, obs) {
+      if (tryRender()) {
+        obs.disconnect();
+      }
+    });
+    var target = document.body || document.documentElement;
+    _obs.observe(target, { childList: true, subtree: true });
+    // Stop observing after 10 s to avoid leaking
+    setTimeout(function () { _obs.disconnect(); }, 10000);
   }
 })();

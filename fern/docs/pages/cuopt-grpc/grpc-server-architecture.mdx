@@ -14,7 +14,7 @@ Implementation details (IPC layout, C++ source map, chunked transfer internals) 
 
 ## Job lifecycle (summary)
 
-**Submit** → the server assigns a job id and queues work. **Process** → a worker pulls the problem, solves on the GPU, and streams the result back. **Retrieve** → the client uses status and result RPCs (including chunked download when needed). See [gRPC API (reference)](api.rst) for RPC names.
+**Submit** → the server assigns a job id and queues work. **Process** → a worker pulls the problem, solves on the GPU, and streams the result back. **Retrieve** → the client uses status and result RPCs (including chunked download when needed). See [gRPC API (reference)](api) for RPC names.
 
 ## Job states
 
@@ -35,6 +35,6 @@ Implementation details (IPC layout, C++ source map, chunked transfer internals) 
 
 ## Further reading
 
-- [Advanced configuration](advanced.rst) — `cuopt_grpc_server` **command-line flags**, TLS, Docker (`CUOPT_SERVER_TYPE`, `CUOPT_GRPC_ARGS`), and **client** environment variables (authoritative for operators).
-- [gRPC API (reference)](api.rst) — `CuOptRemoteService` RPC overview.
+- [Advanced configuration](advanced) — `cuopt_grpc_server` **command-line flags**, TLS, Docker (`CUOPT_SERVER_TYPE`, `CUOPT_GRPC_ARGS`), and **client** environment variables (authoritative for operators).
+- [gRPC API (reference)](api) — `CuOptRemoteService` RPC overview.
 - **Contributor reference** — `cpp/docs/grpc-server-architecture.md` in the repository (IPC, source files, streaming, threading).

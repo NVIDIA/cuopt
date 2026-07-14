@@ -7,7 +7,9 @@ title: "cuOpt Routing Python API Reference"
 
 ## Core Classes
 
-### DataModel
+<hr />
+
+### class `DataModel`
 
 DataModel(n_locations, n_fleet, n_orders: int = -1)
 
@@ -16,12 +18,9 @@ Initialize a Data Model.
 
 **Parameters**
 
-n_locations : Integer
-    number of locations to visit, including vehicle/technician location.
-n_fleet : Integer
-    number of vehicles/technician in the fleet.
-n_orders : Integer
-    number of orders.
+- **`n_locations : Integer`** — number of locations to visit, including vehicle/technician location.
+- **`n_fleet : Integer`** — number of vehicles/technician in the fleet.
+- **`n_orders : Integer`** — number of orders.
 
 Note:
   - A cost matrix must be set before passing
@@ -33,16 +32,28 @@ Note:
     vehicles.
 
 
+
 **Examples**
 
+```python
 >>> from cuopt import routing
 >>> locations = [0, 1, 2, 3, 4, 5, 6]
 >>> vehicles  = [0, 1, 2, 3]
 >>> data_model = routing.DataModel(len(locations), len(vehicles))
+```
 
-#### `__init__(n_locations, n_fleet, n_orders: int = -1)`
 
-#### `add_cost_matrix(cost_mat, vehicle_type = 0)`
+#### def `__init__`
+
+```python
+__init__(n_locations, n_fleet, n_orders: int = -1)
+```
+
+#### def `add_cost_matrix`
+
+```python
+add_cost_matrix(cost_mat, vehicle_type = 0)
+```
 
 Add a matrix for all locations (vehicle/technician locations included)
 at once.
@@ -65,19 +76,14 @@ Note:
 
 **Parameters**
 
-cost_mat : cudf.DataFrame dtype - float32
-    cudf.DataFrame representing floating point square matrix with
-    num_location rows and columns.
-vehicle_type : uint8
-    Identifier of the vehicle.
-skip_validation : bool
-    If True, skips Python validation for matrix shape, NULL values,
-    and non-negative values. The caller is responsible for providing
-    a valid square matrix matching the number of locations.
+- **`cost_mat : cudf.DataFrame dtype - float32`** — cudf.DataFrame representing floating point square matrix with num_location rows and columns.
+- **`vehicle_type : uint8`** — Identifier of the vehicle.
+- **`skip_validation : bool`** — If True, skips Python validation for matrix shape, NULL values, and non-negative values. The caller is responsible for providing a valid square matrix matching the number of locations.
 
 
 **Examples**
 
+```python
 >>> from cuopt import routing
 >>> import cudf
 >>> locations = [0, 1, 2, 3]
@@ -111,8 +117,14 @@ skip_validation : bool
 2  1  2  0  3
 3  1  3  9  0
 >>> data_model.add_cost_matrix(cost_mat_car, 2)
+```
 
-#### `add_transit_time_matrix(mat, vehicle_type = 0)`
+
+#### def `add_transit_time_matrix`
+
+```python
+add_transit_time_matrix(mat, vehicle_type = 0)
+```
 
 Add transit time matrix for all locations
 (vehicle/technician locations included) at once.
@@ -150,15 +162,13 @@ Note:
 
 **Parameters**
 
-mat : cudf.DataFrame dtype - float32
-    cudf.DataFrame representing floating point square matrix with
-    num_location rows and columns.
-vehicle_type : uint8
-    Identifier of the vehicle.
+- **`mat : cudf.DataFrame dtype - float32`** — cudf.DataFrame representing floating point square matrix with num_location rows and columns.
+- **`vehicle_type : uint8`** — Identifier of the vehicle.
 
 
 **Examples**
 
+```python
 >>> from cuopt import routing
 >>> import cudf
 >>> locations = [0, 1, 2, 3]
@@ -186,8 +196,14 @@ vehicle_type : uint8
 ... ]
 >>> time_mat = cudf.DataFrame(time_mat)
 >>> data_model.add_transit_time_matrix(time_mat, 0)
+```
 
-#### `set_break_locations(break_locations)`
+
+#### def `set_break_locations`
+
+```python
+set_break_locations(break_locations)
+```
 
 The vehicle is allowed to stop at specific locations during a break.
 It can be at a customer node or another location representing for
@@ -202,14 +218,12 @@ be used as a break location
 
 **Parameters**
 
-break_locations: cudf.Series dtype-int32
-    representing the designated locations that can be used for breaks.
-    The break locations should be numbered
-    in between 0 and nlocations - 1.
+- **`break_locations: cudf.Series dtype-int32`** — representing the designated locations that can be used for breaks. The break locations should be numbered in between 0 and nlocations - 1.
 
 
 **Examples**
 
+```python
 >>> from cuopt import routing
 >>> import cudf
 >>> locations = [0, 1, 2, 3]
@@ -230,8 +244,14 @@ break_locations: cudf.Series dtype-int32
 >>> data_model = routing.DataModel(len(locations), len(vehicles))
 >>> data_model.add_cost_matrix(cost_mat)
 >>> data_model.set_break_locations(cudf.Series([1, 3]))
+```
 
-#### `add_break_dimension(break_earliest, break_latest, break_duration)`
+
+#### def `add_break_dimension`
+
+```python
+add_break_dimension(break_earliest, break_latest, break_duration)
+```
 
 Add break time windows to model the Vehicle Routing Problem with Time
 Windows (VRPTW).
@@ -248,17 +268,14 @@ Note: This function cannot be used in conjunction with add_vehicle_break
 
 **Parameters**
 
-break_earliest: cudf.Series dtype - int32
-    Earliest time a vehicle can be at a break location.
-break_latest: cudf.Series dtype - int32
-    Latest time a vehicle can be at a break location.
-break_duration: cudf.Series dtype - int32
-    Time spent at the break location, internally equivalent
-    to service time.
+- **`break_earliest: cudf.Series dtype - int32`** — Earliest time a vehicle can be at a break location.
+- **`break_latest: cudf.Series dtype - int32`** — Latest time a vehicle can be at a break location.
+- **`break_duration: cudf.Series dtype - int32`** — Time spent at the break location, internally equivalent to service time.
 
 
 **Examples**
 
+```python
 >>> from cuopt import routing
 >>> import cudf
 >>> locations = [0, 1, 2, 3]
@@ -302,8 +319,14 @@ break_duration: cudf.Series dtype - int32
 ...   cudf.Series(snack_break_earliest),
 ...   cudf.Series(snack_break_latest),
 ...   cudf.Series(snack_break_service)
+```
 
-#### `add_vehicle_break(vehicle_id, earliest, latest, duration, locations = None)`
+
+#### def `add_vehicle_break`
+
+```python
+add_vehicle_break(vehicle_id, earliest, latest, duration, locations = None)
+```
 
 Specify a break for a given vehicle. Use this api to specify
 non-homogenous breaks. For example, different number of breaks can be
@@ -317,29 +340,30 @@ add_break_dimension
 
 **Parameters**
 
-vehicle_id: integer
-    Vehicle Id for which the break is being specified
-earliest:  integer
-    Earliest time the vehicle can start the break
-latest:    integer
-    Latest time the vehicle can start the break
-duration:  integer
-    Time spent at the break location
-locations: cudf.Series dtype - int32
-    List of locations where this break can be taken. By default
-    any location can be used
+- **`vehicle_id: integer`** — Vehicle Id for which the break is being specified
+- **`earliest:  integer`** — Earliest time the vehicle can start the break
+- **`latest:    integer`** — Latest time the vehicle can start the break
+- **`duration:  integer`** — Time spent at the break location
+- **`locations: cudf.Series dtype - int32`** — List of locations where this break can be taken. By default any location can be used
 
 
 **Examples**
 
+```python
 >>> from cuopt import routing
 >>> vehicle_num = 2
 >>> d = routing.DataModel(nodes, vehicle_num)
 >>> d.add_vehicle_break(0, 10, 20, 5, cudf.Series([3, 6, 8]))
 >>> d.add_vehicle_break(0, 60, 70, 5, cudf.Series([1, 4, 7]))
 >>> d.add_vehicle_break(1, 30, 40, 5)
+```
 
-#### `set_objective_function(objectives, objective_weights)`
+
+#### def `set_objective_function`
+
+```python
+set_objective_function(objectives, objective_weights)
+```
 
 The objective function can be defined as a linear combination of
 the different objectives. Solver optimizes for vehicle
@@ -349,24 +373,32 @@ count first and then the total objective. The default value of
 
 **Parameters**
 
-objectives : cudf.Series dtype - cuopt.routing.Objective
-    Series of Objective criteria
-objective_weights : cudf.Series dtype - float32
-    Series to the weighs associated with the objectives.
-    Series will be cast to float32.
+- **`objectives : cudf.Series dtype - cuopt.routing.Objective`** — Series of Objective criteria
+- **`objective_weights : cudf.Series dtype - float32`** — Series to the weighs associated with the objectives. Series will be cast to float32.
 
 
 **Examples**
 
+```python
 >>> from cuopt import routing
 >>> d = routing.DataModel(nodes, vehicle_num)
 >>> d.set_objective_function(
 >>> cudf.Series([routing.Objective.PRIZE, routing.Objective.COST]),
 >>>             cudf.Series([2**32, 1]))
+```
 
-#### `add_initial_solutions(vehicle_ids, routes, types, sol_offsets)`
 
-#### `set_order_locations(order_locations)`
+#### def `add_initial_solutions`
+
+```python
+add_initial_solutions(vehicle_ids, routes, types, sol_offsets)
+```
+
+#### def `set_order_locations`
+
+```python
+set_order_locations(order_locations)
+```
 
 Set a location for each order.
 
@@ -381,13 +413,12 @@ the distance matrix is represented as size 4x4 instead of 10x10.
 
 **Parameters**
 
-order_locations : cudf.Series dtype - int32
-    cudf.Series representing location id of each order
-    given as positive integers
+- **`order_locations : cudf.Series dtype - int32`** — cudf.Series representing location id of each order given as positive integers
 
 
 **Examples**
 
+```python
 >>> from cuopt import routing
 >>> import cudf
 >>> locations = [0, 1, 2, 3]
@@ -399,8 +430,14 @@ order_locations : cudf.Series dtype - int32
 ...   len(orders)
 ... )
 >>> data_model.set_order_locations(cudf.Series(orders))
+```
 
-#### `set_vehicle_types(vehicle_types)`
+
+#### def `set_vehicle_types`
+
+```python
+set_vehicle_types(vehicle_types)
+```
 
 Set vehicle types in the fleet.
 
@@ -412,13 +449,12 @@ type id for all vehicles in the data model.
 
 **Parameters**
 
-vehicle_types : cudf.Series dtype - uint8
-    cudf.Series representing types of vehicles in
-    the fleet given as positive integers.
+- **`vehicle_types : cudf.Series dtype - uint8`** — cudf.Series representing types of vehicles in the fleet given as positive integers.
 
 
 **Examples**
 
+```python
 >>> from cuopt import routing
 >>> import cudf
 >>> locations = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
@@ -429,8 +465,14 @@ vehicle_types : cudf.Series dtype - uint8
 ...   len(vehicles),
 ... )
 >>> data_model.set_vehicle_types(cudf.Series(vehicle_types))
+```
 
-#### `set_pickup_delivery_pairs(pickup_indices, delivery_indices)`
+
+#### def `set_pickup_delivery_pairs`
+
+```python
+set_pickup_delivery_pairs(pickup_indices, delivery_indices)
+```
 
 Set pick-up delivery pairs given by indices to the orders.
 
@@ -442,14 +484,13 @@ set_order_locations.
 
 **Parameters**
 
-pickup_indices : cudf.Series dtype - int32
-    int cudf.Series representing the indices of pickup orders.
-delivery_indices : cudf.Series dtype - int32
-    int cudf.Series representing the indices of delivery orders.
+- **`pickup_indices : cudf.Series dtype - int32`** — int cudf.Series representing the indices of pickup orders.
+- **`delivery_indices : cudf.Series dtype - int32`** — int cudf.Series representing the indices of delivery orders.
 
 
 **Examples**
 
+```python
 >>> from cuopt import routing
 >>> import cudf
 >>> locations = [0, 1, 2, 3, 4]
@@ -466,8 +507,14 @@ delivery_indices : cudf.Series dtype - int32
 ...   cudf.Series(pickup_indices),
 ...   cudf.Series(delivery_indices)
 ... )
+```
 
-#### `set_vehicle_time_windows(earliest_time, latest_time)`
+
+#### def `set_vehicle_time_windows`
+
+```python
+set_vehicle_time_windows(earliest_time, latest_time)
+```
 
 Set vehicle time windows in the fleet.
 
@@ -490,14 +537,13 @@ else primary matrix is used.
 
 **Parameters**
 
-earliest_time : cudf.Series dtype - int32
-    cudf.Series representing earliest available times of vehicles
-latest_time : cudf.Series dtype - int32
-    cudf.Series representing latest time vehicle must be free.
+- **`earliest_time : cudf.Series dtype - int32`** — cudf.Series representing earliest available times of vehicles
+- **`latest_time : cudf.Series dtype - int32`** — cudf.Series representing latest time vehicle must be free.
 
 
 **Examples**
 
+```python
 >>> from cuopt import routing
 >>> import cudf
 >>> locations = [0, 1, 2, 3]
@@ -531,8 +577,14 @@ latest_time : cudf.Series dtype - int32
 ...   cudf.Series(veh_earliest),
 ...   cudf.Series(veh_latest),
 ... )
+```
 
-#### `set_vehicle_locations(start_locations, return_locations)`
+
+#### def `set_vehicle_locations`
+
+```python
+set_vehicle_locations(start_locations, return_locations)
+```
 
 Set start and return locations for vehicles in the fleet.
 
@@ -547,14 +599,13 @@ zero indexed location.
 
 **Parameters**
 
-start_locations  : cudf.Series dtype - int32
-    cudf.Series representing starting locations of vehicles
-return_locations : cudf.Series dtype - int32
-    cudf.Series representing return locations of vehicles
+- **`start_locations  : cudf.Series dtype - int32`** — cudf.Series representing starting locations of vehicles
+- **`return_locations : cudf.Series dtype - int32`** — cudf.Series representing return locations of vehicles
 
 
 **Examples**
 
+```python
 >>> from cuopt import routing
 >>> from cuopt import routing
 >>> import cudf
@@ -567,8 +618,14 @@ return_locations : cudf.Series dtype - int32
 ...   cudf.Series(vehicle_start_location),
 ...   cudf.Series(vehicle_end_location)
 ... )
+```
 
-#### `set_order_time_windows(earliest, latest)`
+
+#### def `set_order_time_windows`
+
+```python
+set_order_time_windows(earliest, latest)
+```
 
 Add order time windows to model the Vehicle Routing Problem
 with Time Windows (VRPTW)
@@ -592,18 +649,13 @@ Note:
 
 **Parameters**
 
-earliest : cudf.Series dtype - int32
-    cudf.Series containing the earliest visit time for each location
-    including the depot. Order is implicit and should be consistent
-    with the data model.
-latest : cudf.Series dtype - int32
-    cudf.Series containing the latest visit time for each location
-    including the depot. Order is implicit and should be consistent
-    with the data model.
+- **`earliest : cudf.Series dtype - int32`** — cudf.Series containing the earliest visit time for each location including the depot. Order is implicit and should be consistent with the data model.
+- **`latest : cudf.Series dtype - int32`** — cudf.Series containing the latest visit time for each location including the depot. Order is implicit and should be consistent with the data model.
 
 
 **Examples**
 
+```python
 >>> from cuopt import routing
 >>> import cudf
 >>> locations = [0, 1, 2, 3]
@@ -637,31 +689,40 @@ latest : cudf.Series dtype - int32
 ...   cudf.Series(earliest),
 ...   cudf.Series(latest)
 ... )
+```
 
-#### `set_order_prizes(prizes)`
+
+#### def `set_order_prizes`
+
+```python
+set_order_prizes(prizes)
+```
 
 Set prizes for orders
 
 
 **Parameters**
 
-prizes : cudf.Series dtype - float32
-    cudf.Series containing prizes for each order including
-    the depot (if depot is included in the order list). Order is
-    implicit and should be consistent with the data model.
-    Size of this series must be equal to num_orders in data model.
+- **`prizes : cudf.Series dtype - float32`** — cudf.Series containing prizes for each order including the depot (if depot is included in the order list). Order is implicit and should be consistent with the data model. Size of this series must be equal to num_orders in data model.
 
 
 **Examples**
 
+```python
 >>> from cuopt import routing
 >>> import cudf
 >>> locations = [0, 1, 2, 3]
 >>> vehicles  = [0, 1]
 >>> prizes = [20, 10, 0, 30]
 >>> data_model.set_order_prizes(cudf.Series(prizes))
+```
 
-#### `set_drop_return_trips(set_drop_return_trips)`
+
+#### def `set_drop_return_trips`
+
+```python
+set_drop_return_trips(set_drop_return_trips)
+```
 
 Control if individual vehicles in the fleet return to the
 end location after the last stop.
@@ -672,12 +733,12 @@ all the tasks assigned.
 
 **Parameters**
 
-set_drop_return_trips : cudf.Series dtype - bool
-    Set True to the drop return trip to end location for each vehicle.
+- **`set_drop_return_trips : cudf.Series dtype - bool`** — Set True to the drop return trip to end location for each vehicle.
 
 
 **Examples**
 
+```python
 >>> from cuopt import routing
 >>> import cudf
 >>> locations   = [0, 1, 2, 3]
@@ -685,8 +746,14 @@ set_drop_return_trips : cudf.Series dtype - bool
 >>> drop_return = [True, False] # Drop the return for the first vehicle
 >>> data_model = routing.DataModel(len(locations), len(vehicles))
 >>> data_model.set_drop_return_trips(cudf.Series(drop_return))
+```
 
-#### `set_skip_first_trips(set_skip_first_trips)`
+
+#### def `set_skip_first_trips`
+
+```python
+set_skip_first_trips(set_skip_first_trips)
+```
 
 Skips/neglects cost of travel to first task location,
 implicitly skipping the travel to location.
@@ -694,12 +761,12 @@ implicitly skipping the travel to location.
 
 **Parameters**
 
-set_skip_first_trips : cudf.Series dtype - bool
-    Set True to skip the trip cost to first task location.
+- **`set_skip_first_trips : cudf.Series dtype - bool`** — Set True to skip the trip cost to first task location.
 
 
 **Examples**
 
+```python
 >>> from cuopt import routing
 >>> import cudf
 >>> locations       = [0, 1, 2, 3]
@@ -707,31 +774,28 @@ set_skip_first_trips : cudf.Series dtype - bool
 >>> skip_first_trip = [False, True]
 >>> data_model = routing.DataModel(len(locations), len(vehicles))
 >>> data_model.set_skip_first_trips(cudf.Series(skip_first_trip))
+```
 
-#### `add_vehicle_order_match(vehicle_id, orders)`
+
+#### def `add_vehicle_order_match`
+
+```python
+add_vehicle_order_match(vehicle_id, orders)
+```
 
 Control if a vehicle can only serve a subset of orders
 
 
 **Parameters**
 
-vehicle_id  : Integer
-    vehicle id of the vehicle that has restriction on orders
-orders      : cudf.Series dtype - int32
-    cudf.Series contains the orders that can be fulfilled by
-    vehicle with vehicle_id
-
-Note: A user can set this multiple times. However, if it is
-      set more than once for same vehicle, the order list will
-      be overridden with the most recent function call.
-
-      The orders in the give list allowed to be served by other
-      vehicles. To make any order served only by a particular
-      vehicle, use add_order_vehicle_match function
+- **`vehicle_id  : Integer`** — vehicle id of the vehicle that has restriction on orders
+- **`orders      : cudf.Series dtype - int32`** — cudf.Series contains the orders that can be fulfilled by vehicle with vehicle_id
+- **`Note: A user can set this multiple times. However, if it is`** — set more than once for same vehicle, the order list will be overridden with the most recent function call. The orders in the give list allowed to be served by other vehicles. To make any order served only by a particular vehicle, use add_order_vehicle_match function
 
 
 **Examples**
 
+```python
 >>> n_locations = 4
 >>> n_vehicles = 3
 >>> d = routing.DataModel(n_locations, n_vehicles)
@@ -745,31 +809,28 @@ Note: A user can set this multiple times. However, if it is
 >>> d.add_vehicle_order_match(1, cudf.Series([2]))
 >>> d.add_vehicle_order_match(2, cudf.Series([3]))
 >>> cuopt_solution = routing.Solve(d)
+```
 
-#### `add_order_vehicle_match(order_id, vehicles)`
+
+#### def `add_order_vehicle_match`
+
+```python
+add_order_vehicle_match(order_id, vehicles)
+```
 
 Control if an order should only be served by a subset of vehicles
 
 
 **Parameters**
 
-order_id  : Integer
-    order id of the order that has restriction on vehicles
-vehicles  : cudf.Series dtype - int32
-    cudf.Series contains the vehicles that can fulfill the
-    order with order_id
-
-Note: A user can set this multiple times. However, if it is
-      set more than once for same order, the vehicle list will
-      be overridden with the most recent function call
-
-      The vehicles in the give list can serve other orders as well.
-      To make a vehicle serve only a subset of orders use
-      add_vehicle_order_match function
+- **`order_id  : Integer`** — order id of the order that has restriction on vehicles
+- **`vehicles  : cudf.Series dtype - int32`** — cudf.Series contains the vehicles that can fulfill the order with order_id
+- **`Note: A user can set this multiple times. However, if it is`** — set more than once for same order, the vehicle list will be overridden with the most recent function call The vehicles in the give list can serve other orders as well. To make a vehicle serve only a subset of orders use add_vehicle_order_match function
 
 
 **Examples**
 
+```python
 >>> n_locations = 4
 >>> n_vehicles = 3
 >>> d = routing.DataModel(n_locations, n_vehicles)
@@ -784,8 +845,14 @@ Note: A user can set this multiple times. However, if it is
 >>> d.add_order_vehicle_match(2, cudf.Series([1]))
 >>> d.add_order_vehicle_match(3, cudf.Series([2]))
 >>> cuopt_solution = routing.Solve(d)
+```
 
-#### `set_order_service_times(service_times, vehicle_id = -1)`
+
+#### def `set_order_service_times`
+
+```python
+set_order_service_times(service_times, vehicle_id = -1)
+```
 
 In fully heterogeneous fleet mode, vehicle can take different
 amount of times to complete a task based on their profile
@@ -802,18 +869,14 @@ size to be specified.
 
 **Parameters**
 
-service_times : cudf.Series dtype - int32
-    service times of size number of orders
-vehicle_id  : int32
-    Vehicle id
-
-Note: A user can set this multiple times. However, if it is
-      set more than once for same vehicle, the service times list will
-      be overridden with the most recent function call
+- **`service_times : cudf.Series dtype - int32`** — service times of size number of orders
+- **`vehicle_id  : int32`** — Vehicle id
+- **`Note: A user can set this multiple times. However, if it is`** — set more than once for same vehicle, the service times list will be overridden with the most recent function call
 
 
 **Examples**
 
+```python
 >>> n_locations = 4
 >>> n_vehicles = 3
 >>> d = routing.DataModel(n_locations, n_vehicles)
@@ -826,8 +889,14 @@ Note: A user can set this multiple times. However, if it is
 >>> # override vehicle 1
 >>> d.set_order_service_times(cudf.Series([0, 2, 4, 5]), 1)
 >>> cuopt_solution = routing.Solve(d)
+```
 
-#### `add_capacity_dimension(name, demand, capacity)`
+
+#### def `add_capacity_dimension`
+
+```python
+add_capacity_dimension(name, demand, capacity)
+```
 
 Add capacity dimensions to model the Capacitated Vehicle Routing
 Problem (CVRP)
@@ -846,20 +915,14 @@ Note:
 
 **Parameters**
 
-name : str
-    user-specified name for the dimension
-demand : cudf.Series dtype - int32
-    cudf.Series containing integer demand value for each locations,
-    including the depot. Order is implicit and should be consistent
-    with the data model.
-capacity : cudf.Series dtype - int32
-    cudf.Series containing integer capacity value for each vehicle
-    in the fleet.
-    Size of this series must be equal to fleet_size in data model
+- **`name : str`** — user-specified name for the dimension
+- **`demand : cudf.Series dtype - int32`** — cudf.Series containing integer demand value for each locations, including the depot. Order is implicit and should be consistent with the data model.
+- **`capacity : cudf.Series dtype - int32`** — cudf.Series containing integer capacity value for each vehicle in the fleet. Size of this series must be equal to fleet_size in data model
 
 
 **Examples**
 
+```python
 >>> from cuopt import routing
 >>> import cudf
 >>> locations      = [0,  1,  2,  3]
@@ -891,28 +954,40 @@ capacity : cudf.Series dtype - int32
 ...   cudf.Series(skill_y),
 ...   cudf.Series(veh_skill_y)
 ... )
+```
 
-#### `set_vehicle_max_costs(vehicle_max_costs)`
+
+#### def `set_vehicle_max_costs`
+
+```python
+set_vehicle_max_costs(vehicle_max_costs)
+```
 
 Limits per vehicle primary matrix cost accumulated along a route.
 
 
 **Parameters**
 
-vehicle_max_costs : cudf.Series dtype - float32
-    Upper bound per vehicle for max distance cumulated on a route
+- **`vehicle_max_costs : cudf.Series dtype - float32`** — Upper bound per vehicle for max distance cumulated on a route
 
 
 **Examples**
 
+```python
 >>> from cuopt import routing
 >>> locations = [0,  1,  2,  3]
 >>> vehicles  = [0, 1]
 >>> vehicle_max_costs = [150, 200]
 >>> data_model = routing.DataModel(len(locations), len(vehicles))
 >>> data_model.set_vehicle_max_costs(cudf.Series(vehicle_max_costs))
+```
 
-#### `set_vehicle_max_times(vehicle_max_times)`
+
+#### def `set_vehicle_max_times`
+
+```python
+set_vehicle_max_times(vehicle_max_times)
+```
 
 Limits per vehicle the time accumulated along a route. This limit
 accounts for both travel, service and wait time.
@@ -920,20 +995,26 @@ accounts for both travel, service and wait time.
 
 **Parameters**
 
-vehicle_max_times : cudf.Series dtype - float32
-    Upper bound per vehicle for max duration cumulated on a route
+- **`vehicle_max_times : cudf.Series dtype - float32`** — Upper bound per vehicle for max duration cumulated on a route
 
 
 **Examples**
 
+```python
 >>> from cuopt import routing
 >>> locations = [0,  1,  2,  3]
 >>> vehicles  = [0, 1]
 >>> vehicle_max_times = [150, 200]
 >>> data_model = routing.DataModel(len(locations), len(vehicles))
 >>> data_model.set_vehicle_max_times(cudf.Series(vehicle_max_times))
+```
 
-#### `set_vehicle_fixed_costs(vehicle_fixed_costs)`
+
+#### def `set_vehicle_fixed_costs`
+
+```python
+set_vehicle_fixed_costs(vehicle_fixed_costs)
+```
 
 Limits per vehicle primary matrix cost accumulated along a route.
 Lets the solver find the optimal fleet according to vehicle costs.
@@ -944,12 +1025,12 @@ compared to one vehicle with a huge cost.
 
 **Parameters**
 
-vehicle_fixed_costs : cudf.Series dtype - float32
-    Cost of each vehicle
+- **`vehicle_fixed_costs : cudf.Series dtype - float32`** — Cost of each vehicle
 
 
 **Examples**
 
+```python
 >>> from cuopt import routing
 >>> locations = [0,  1,  2,  3]
 >>> vehicles  = [0, 1]
@@ -958,8 +1039,14 @@ vehicle_fixed_costs : cudf.Series dtype - float32
 >>> data_model.set_vehicle_fixed_costs(
 >>>     cudf.Series(vehicle_fixed_costs)
 >>> )
+```
 
-#### `set_min_vehicles(min_vehicles)`
+
+#### def `set_min_vehicles`
+
+```python
+set_min_vehicles(min_vehicles)
+```
 
 Request a minimum number of vehicles to be used for routing.
 Note: The resulting solution may not be optimal.
@@ -967,148 +1054,272 @@ Note: The resulting solution may not be optimal.
 
 **Parameters**
 
-min_vehicles : Integer
-    The minimum number of vehicle to use.
+- **`min_vehicles : Integer`** — The minimum number of vehicle to use.
 
 
 **Examples**
 
+```python
 >>> from cuopt import routing
 >>> locations = [0,  1,  2,  3]
 >>> vehicles  = [0, 1]
 >>> data_model = routing.DataModel(len(locations), len(vehicles))
 >>> # Set minimum vehicles that needs to be used to find the solution
 >>> data_model.set_min_vehicles(2)
+```
 
-#### `get_num_locations()`
+
+#### def `get_num_locations`
+
+```python
+get_num_locations()
+```
 
 Returns the number of locations
 (vehicle start/end locations + task locations).
 
-#### `get_fleet_size()`
+#### def `get_fleet_size`
+
+```python
+get_fleet_size()
+```
 
 Returns the number of vehicles in the fleet.
 
-#### `get_num_orders()`
+#### def `get_num_orders`
+
+```python
+get_num_orders()
+```
 
 Return number of orders.
 
-#### `get_cost_matrix(vehicle_type = 0)`
+#### def `get_cost_matrix`
+
+```python
+get_cost_matrix(vehicle_type = 0)
+```
 
 Returns cost matrix as 2D DeviceNDArray in row major format.
 
-#### `get_transit_time_matrix(vehicle_type = 0)`
+#### def `get_transit_time_matrix`
+
+```python
+get_transit_time_matrix(vehicle_type = 0)
+```
 
 Returns transit time matrix as 2D DeviceNDArray in row major format.
 
-#### `get_transit_time_matrices()`
+#### def `get_transit_time_matrices`
+
+```python
+get_transit_time_matrices()
+```
 
 Returns all transit time matrices as 2D DeviceNDArray
 in row major format as dictionary with vehicle types as keys.
 
-#### `get_initial_solutions()`
+#### def `get_initial_solutions`
 
-#### `get_order_locations()`
+```python
+get_initial_solutions()
+```
+
+#### def `get_order_locations`
+
+```python
+get_order_locations()
+```
 
 Returns order locations as cudf.Series with int type.
 
-#### `get_vehicle_types()`
+#### def `get_vehicle_types`
+
+```python
+get_vehicle_types()
+```
 
 Returns types of vehicles in the fleet
 as cudf.Series with uint8 type
 
-#### `get_pickup_delivery_pairs()`
+#### def `get_pickup_delivery_pairs`
+
+```python
+get_pickup_delivery_pairs()
+```
 
 Returns pick up and delivery order indices as
 cudf.Series with int type.
 
-#### `get_vehicle_time_windows()`
+#### def `get_vehicle_time_windows`
+
+```python
+get_vehicle_time_windows()
+```
 
 Returns earliest and latest time windows as cudf.Series with int type.
 
-#### `get_vehicle_locations()`
+#### def `get_vehicle_locations`
+
+```python
+get_vehicle_locations()
+```
 
 Returns start and return locations as cudf.Series with int type.
 
-#### `get_drop_return_trips()`
+#### def `get_drop_return_trips`
+
+```python
+get_drop_return_trips()
+```
 
 Returns drop return trips as cudf.Series with bool type.
 
-#### `get_skip_first_trips()`
+#### def `get_skip_first_trips`
+
+```python
+get_skip_first_trips()
+```
 
 Returns skip first trips as cudf.Series with bool type.
 
-#### `get_capacity_dimensions()`
+#### def `get_capacity_dimensions`
+
+```python
+get_capacity_dimensions()
+```
 
 Returns a dictionary containing demands and capacity under demand name.
 
-#### `get_order_time_windows()`
+#### def `get_order_time_windows`
+
+```python
+get_order_time_windows()
+```
 
 Returns earliest and latest time
 as cudf.Series with int type.
 
-#### `get_order_prizes()`
+#### def `get_order_prizes`
+
+```python
+get_order_prizes()
+```
 
 Returns order prizes as cudf.Series with float32 type
 
-#### `get_break_locations()`
+#### def `get_break_locations`
+
+```python
+get_break_locations()
+```
 
 Returns break locations as cudf.Series with int type.
 
-#### `get_break_dimensions()`
+#### def `get_break_dimensions`
+
+```python
+get_break_dimensions()
+```
 
 Returns a dictionary containing break earliest, latest, duration
 under demand name.
 
-#### `get_non_uniform_breaks()`
+#### def `get_non_uniform_breaks`
+
+```python
+get_non_uniform_breaks()
+```
 
 Returns a dictionary containing breaks
 
-#### `get_objective_function()`
+#### def `get_objective_function`
+
+```python
+get_objective_function()
+```
 
 Returns objectives as cudf.Series with int type and
 weights as cudf.Series with float type.
 
-#### `get_vehicle_max_costs()`
+#### def `get_vehicle_max_costs`
+
+```python
+get_vehicle_max_costs()
+```
 
 Returns max costs per vehicles
 
-#### `get_vehicle_max_times()`
+#### def `get_vehicle_max_times`
+
+```python
+get_vehicle_max_times()
+```
 
 Returns max times per vehicles
 
-#### `get_vehicle_fixed_costs()`
+#### def `get_vehicle_fixed_costs`
+
+```python
+get_vehicle_fixed_costs()
+```
 
 Returns fixed costs per vehicles
 
-#### `get_vehicle_order_match()`
+#### def `get_vehicle_order_match`
+
+```python
+get_vehicle_order_match()
+```
 
 Returns a dictionary containing the orders that can be fulfilled
 for specified vehicles
 
-#### `get_order_vehicle_match()`
+#### def `get_order_vehicle_match`
+
+```python
+get_order_vehicle_match()
+```
 
 Returns a dictionary containing the vehicles that can fulfill
 specified orders
 
-#### `get_order_service_times(vehicle_id = -1)`
+#### def `get_order_service_times`
+
+```python
+get_order_service_times(vehicle_id = -1)
+```
 
 Returns a dictionary containing the vehicles and their associated
 service times
 
-#### `get_min_vehicles()`
+#### def `get_min_vehicles`
+
+```python
+get_min_vehicles()
+```
 
 Returns minimum vehicles set.
 
-### SolverSettings
+<hr />
+
+### class `SolverSettings`
 
 SolverSettings()
 
 Initialize a SolverSettings.
 
-#### `__init__()`
+#### def `__init__`
 
-#### `set_time_limit(seconds)`
+```python
+__init__()
+```
+
+#### def `set_time_limit`
+
+```python
+set_time_limit(seconds)
+```
 
 Set a fixed solving time in seconds, the timer starts when `Solve`
 is called.
@@ -1122,12 +1333,12 @@ If increased accuracy is desired, this needs to set to higher numbers.
 
 **Parameters**
 
-seconds : Float
-    The number of seconds
+- **`seconds : Float`** — The number of seconds
 
 
 **Examples**
 
+```python
 >>> from cuopt import routing
 >>> locations = [0,  1,  2,  3]
 >>> vehicles  = [0, 1]
@@ -1135,40 +1346,55 @@ seconds : Float
 ...........
 >>> settings = routing.SolverSettings()
 >>> settings.set_time_limit(0.1)
+```
 
-#### `set_verbose_mode(verbose)`
+
+#### def `set_verbose_mode`
+
+```python
+set_verbose_mode(verbose)
+```
 
 Displaying internal information during the solver execution.
 
 
 **Parameters**
 
-verbose : bool
-    Set True to display information. Execution time may be impacted.
+- **`verbose : bool`** — Set True to display information. Execution time may be impacted.
 
-#### `set_error_logging_mode(logging)`
+
+#### def `set_error_logging_mode`
+
+```python
+set_error_logging_mode(logging)
+```
 
 Displaying constraint error information during the solver execution.
 
 
 **Parameters**
 
-logging : bool
-    Set True to display information. Execution time may be impacted.
+- **`logging : bool`** — Set True to display information. Execution time may be impacted.
 
-#### `dump_best_results(file_path, interval)`
+
+#### def `dump_best_results`
+
+```python
+dump_best_results(file_path, interval)
+```
 
 Dump best results in a given file as csv, reports in given intervals.
 
 
 **Parameters**
 
-file_path : Absolute path of file to be written
-interval : Report intervals in seconds
+- **`file_path : Absolute path of file to be written`**
+- **`interval : Report intervals in seconds`**
 
 
 **Examples**
 
+```python
 >>> from cuopt import routing
 >>> locations = [0,  1,  2,  3]
 >>> vehicles  = [0, 1]
@@ -1176,77 +1402,105 @@ interval : Report intervals in seconds
 ...........
 >>> settings = routing.SolverSettings()
 >>> settings.dump_best_results("results.csv", 20)
+```
 
-#### `dump_config_file(file_name)`
+
+#### def `dump_config_file`
+
+```python
+dump_config_file(file_name)
+```
 
 Dump configuration information in a given file as yaml
 
 
 **Parameters**
 
-file_name : Absolute path of file to be written
+- **`file_name : Absolute path of file to be written`**
 
-#### `get_time_limit()`
+
+#### def `get_time_limit`
+
+```python
+get_time_limit()
+```
 
 Returns solving time set.
 
-#### `get_best_results_file_path()`
+#### def `get_best_results_file_path`
+
+```python
+get_best_results_file_path()
+```
 
 Returns file path where result will be stored,
 if not set, it will return None.
 
-#### `get_config_file_name()`
+#### def `get_config_file_name`
+
+```python
+get_config_file_name()
+```
 
 Returns the full abs path of the file including the filename
 where the configuration data will be dumped
 if not set, it will return None
 
-#### `get_best_results_interval()`
+#### def `get_best_results_interval`
+
+```python
+get_best_results_interval()
+```
 
 Returns interval set, if not set, it will return None
 
-### `Solve(data_model, solver_settings = None)`
+<hr />
+
+### def `Solve`
+
+```python
+Solve(data_model, solver_settings = None)
+```
 
 Solves the routing problem.
 
 
 **Parameters**
 
-data_model: DataModel
-    data model containing orders, vehicles and constraints.
-solver_settings: SolverSettings
-    settings to configure solver configurations.
-    By default, it uses default solver settings to solve.
+- **`data_model: DataModel`** — data model containing orders, vehicles and constraints.
+- **`solver_settings: SolverSettings`** — settings to configure solver configurations. By default, it uses default solver settings to solve.
 
 
 **Returns**
 
-assignment : Assignment
-    Assignment object containing the solver output.
+- **`assignment : Assignment`** — Assignment object containing the solver output.
 
-### `BatchSolve(data_model_list, solver_settings = None)`
+
+<hr />
+
+### def `BatchSolve`
+
+```python
+BatchSolve(data_model_list, solver_settings = None)
+```
 
 Solves multiple routing problems in batch mode using parallel execution.
 
 
 **Parameters**
 
-data_model_list: list of DataModel
-    List of data model objects representing routing problems to solve.
-solver_settings: SolverSettings
-    Settings to configure solver configurations.
-    By default, it uses default solver settings to solve.
+- **`data_model_list: list of DataModel`** — List of data model objects representing routing problems to solve.
+- **`solver_settings: SolverSettings`** — Settings to configure solver configurations. By default, it uses default solver settings to solve.
 
 
 **Returns**
 
-tuple
-    A tuple containing:
-    - list of Assignment: Solutions for each routing problem
+- **`tuple`** — A tuple containing: - list of Assignment: Solutions for each routing problem
 
 
 **Examples**
 
+```python
 >>> from cuopt import routing
 >>> import cudf
 >>> # Create multiple data models
@@ -1259,50 +1513,71 @@ tuple
 >>> settings = routing.SolverSettings()
 >>> settings.set_time_limit(1.0)
 >>> solutions, solve_time = routing.BatchSolve(data_models, settings)
+```
+
 
 
 ## Assignment & Results
 
-### SolutionStatus
+<hr />
 
-### Assignment
+### class `SolutionStatus`
+
+<hr />
+
+### class `Assignment`
 
 A container of vehicle routing solver output
 
 
 **Parameters**
 
-vehicle_count : Integer
-    Number of vehicles in the solution
-total_objective_value : Float64
-    Objective value calculated as per objective functions and weights
-objective_values : dict[Objective, Float64]
-route_df: cudf.DataFrame
-    Contains route, vehicle_id, arrival_stamp.
-accepted: cudf.Series
-status: Integer
-    Solver status 0 - SUCCESS, 1 - FAIL, 2 - TIMEOUT and 3 - EMPTY.
-message: String
-    Any error message if there is failure
-undeliverable_orders: cudf.Series
-    Orders which can not be served
+- **`vehicle_count : Integer`** — Number of vehicles in the solution
+- **`total_objective_value : Float64`** — Objective value calculated as per objective functions and weights
+- **`objective_values : dict[Objective, Float64]`**
+- **`route_df: cudf.DataFrame`** — Contains route, vehicle_id, arrival_stamp.
+- **`accepted: cudf.Series`**
+- **`status: Integer`** — Solver status 0 - SUCCESS, 1 - FAIL, 2 - TIMEOUT and 3 - EMPTY.
+- **`message: String`** — Any error message if there is failure
+- **`undeliverable_orders: cudf.Series`** — Orders which can not be served
 
-#### `__init__(vehicle_count, total_objective_value, objective_values, route_df, accepted, status, message, error_status, error_message, undeliverable_orders)`
 
-#### `get_vehicle_count()`
+#### def `__init__`
+
+```python
+__init__(vehicle_count, total_objective_value, objective_values, route_df, accepted, status, message, error_status, error_message, undeliverable_orders)
+```
+
+#### def `get_vehicle_count`
+
+```python
+get_vehicle_count()
+```
 
 Returns the number of vehicle needed for this routing assignment.
 
-#### `get_total_objective()`
+#### def `get_total_objective`
+
+```python
+get_total_objective()
+```
 
 Returns the objective value calculated based on the user
 provided objective function and the routes found by the solver.
 
-#### `get_objective_values()`
+#### def `get_objective_values`
+
+```python
+get_objective_values()
+```
 
 Returns the individual objective_values as dictionary
 
-#### `get_route()`
+#### def `get_route`
+
+```python
+get_route()
+```
 
 Returns the route, truck ids for each stop and the arrival stamp
 as cudf.DataFrame.
@@ -1310,6 +1585,7 @@ as cudf.DataFrame.
 
 **Examples**
 
+```python
 >>> import cuopt
 >>> import cudf
 >>> locations = [0, 1, 2, 3]
@@ -1343,30 +1619,60 @@ as cudf.DataFrame.
 4      0            0.0         0         0
 5      1            1.0         0         1
 6      0            3.0         0         0
+```
 
-#### `get_status()`
+
+#### def `get_status`
+
+```python
+get_status()
+```
 
 Returns the final solver status as per SolutionStatus.
 
-#### `get_message()`
+#### def `get_message`
+
+```python
+get_message()
+```
 
 Returns the final solver message as per SolutionStatus.
 
-#### `get_error_status()`
+#### def `get_error_status`
+
+```python
+get_error_status()
+```
 
 Returns the error status as per ErrorStatus.
 
-#### `get_error_message()`
+#### def `get_error_message`
+
+```python
+get_error_message()
+```
 
 Returns the error message as per ErrorMessage.
 
-#### `get_infeasible_orders()`
+#### def `get_infeasible_orders`
+
+```python
+get_infeasible_orders()
+```
 
 Returns the infeasible order numbers as cudf.Series.
 
-#### `get_accepted_solutions()`
+#### def `get_accepted_solutions`
 
-#### `display_routes()`
+```python
+get_accepted_solutions()
+```
+
+#### def `display_routes`
+
+```python
+display_routes()
+```
 
 Display the solution in human readable format.
 Intended for relatively small inputs.
@@ -1374,6 +1680,7 @@ Intended for relatively small inputs.
 
 **Examples**
 
+```python
 >>> import cuopt
 >>> import cudf
 >>> locations = [0, 1, 2, 3]
@@ -1403,6 +1710,8 @@ Vehicle-0 starts at: 0.0, completes at: 3.0, travel time: 3.0,  Route :
 Vehicle-1 starts at: 0.0, completes at: 5.0, travel time: 5.0,  Route :
 0->3->2->0
 This results in a travel time of 8.0 to deliver all routes
+```
+
 
 
 ## Module Functions (Solve, BatchSolve)

@@ -123,25 +123,106 @@ def _format_sig(node) -> str:
 # MDX renderers
 # ---------------------------------------------------------------------------
 
+_EXAMPLE_SECTIONS = {"Examples", "Example"}
+_LIST_SECTIONS = {"Parameters", "Returns", "Raises", "Attributes", "Other Parameters", "Yields"}
+
+
 def _doc_to_mdx(doc: str) -> str:
     """Minimal docstring → MDX: preserve code blocks, wrap numpy-style sections."""
     if not doc:
         return ""
-    # Detect numpy-style sections (Parameters, Returns, etc.)
     lines = doc.splitlines()
     out = []
     i = 0
     while i < len(lines):
         line = lines[i]
-        # Section header: "Parameters\n----------"
+        # Numpy-style section header: "Name\n---------"
         if (
             i + 1 < len(lines)
             and lines[i + 1].strip()
             and all(c == "-" for c in lines[i + 1].strip())
         ):
-            out.append(f"\n**{line.strip()}**\n")
+            section = line.strip()
+            out.append(f"\n**{section}**\n")
             i += 2
+
+            # Collect the raw body lines until we hit the next section or EOF
+            body_lines = []
+            while i < len(lines):
+                pline = lines[i]
+                if (
+                    i + 1 < len(lines)
+                    and pline.strip()
+                    and not pline[0].isspace()
+                    and lines[i + 1].strip()
+                    and all(c == "-" for c in lines[i + 1].strip())
+                ):
+                    break
+                body_lines.append(pline)
+                i += 1
+
+            if section in _EXAMPLE_SECTIONS:
+                # Wrap example code in a fenced code block
+                code = "\n".join(body_lines).strip()
+                if code:
+                    out.append("```python")
+                    out.append(code)
+                    out.append("```")
+                out.append("")
+            elif section in _LIST_SECTIONS:
+                # Render numpy-style entries as a markdown list.
+                # Each unindented line that looks like a param ("name : type")
+                # starts a new entry; its indented follow-on lines are the desc.
+                # Stop list collection when an unindented line looks like prose
+                # (e.g., "Note:") — pass remaining lines through as-is.
+                entries = []
+                current_name = None
+                current_desc = []
+                remaining = []
+                in_list = True
+                for pline in body_lines:
+                    if not in_list:
+                        remaining.append(pline)
+                        continue
+                    if not pline.strip():
+                        # blank line — keep going
+                        continue
+                    if pline[0].isspace():
+                        current_desc.append(pline.strip())
+                    else:
+                        stripped = pline.strip()
+                        # Param entries have " : " or are bare identifiers.
+                        # Prose lines (like "Note:", "Warning:") end with ":"
+                        # and don't have " : " (type separator).
+                        if stripped.endswith(":") and " : " not in stripped:
+                            if current_name is not None:
+                                entries.append((current_name, current_desc))
+                                current_name = None
+                            in_list = False
+                            remaining.append(pline)
+                        else:
+                            if current_name is not None:
+                                entries.append((current_name, current_desc))
+                            current_name = stripped
+                            current_desc = []
+                if current_name is not None:
+                    entries.append((current_name, current_desc))
+                for name, desc in entries:
+                    desc_text = " ".join(desc).strip()
+                    if desc_text:
+                        out.append(f"- **`{name}`** — {desc_text}")
+                    else:
+                        out.append(f"- **`{name}`**")
+                if remaining:
+                    out.append("")
+                    out.extend(remaining)
+                out.append("")
+            else:
+                # Other sections (Notes, See Also, etc.) — pass through as-is
+                out.extend(body_lines)
+                out.append("")
             continue
+
         out.append(line)
         i += 1
     return "\n".join(out)
@@ -149,12 +230,16 @@ def _doc_to_mdx(doc: str) -> str:
 
 def _render_class(cls: dict, level: int = 2) -> str:
     h = "#" * level
-    lines = [f"{h} {cls['name']}\n"]
+    h2 = "#" * (level + 1)
+    lines = ["<hr />\n", f"{h} class `{cls['name']}`\n"]
     if cls["doc"]:
         lines.append(_doc_to_mdx(cls["doc"]))
         lines.append("")
     for method in cls["methods"]:
-        lines.append(f"{'#' * (level + 1)} `{method['signature']}`\n")
+        name = method["name"]
+        sig = method["signature"]
+        lines.append(f"{h2} def `{name}`\n")
+        lines.append(f"```python\n{sig}\n```\n")
         if method["doc"]:
             lines.append(_doc_to_mdx(method["doc"]))
             lines.append("")
@@ -163,7 +248,8 @@ def _render_class(cls: dict, level: int = 2) -> str:
 
 def _render_function(fn: dict, level: int = 2) -> str:
     h = "#" * level
-    lines = [f"{h} `{fn['signature']}`\n"]
+    lines = ["<hr />\n", f"{h} def `{fn['name']}`\n"]
+    lines.append(f"```python\n{fn['signature']}\n```\n")
     if fn["doc"]:
         lines.append(_doc_to_mdx(fn["doc"]))
         lines.append("")

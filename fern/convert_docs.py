@@ -93,10 +93,17 @@ def _preprocess_rst(content: str, rst_path: Path) -> str:
         content,
     )
 
-    # 3. swagger-plugin → plain note
+    # 3. swagger-plugin → pointer to the native Fern API explorer in the nav
+    #    Consume the full directive block (directive line + indented option lines)
+    #    so pandoc doesn't pick up the :id: option as stray list content.
     content = re.sub(
-        r"\.\. swagger-plugin::.*",
-        ".. note::\n\n   See the `REST API Reference <open-api>`_ for the full OpenAPI specification.\n",
+        r"\.\. swagger-plugin::[^\n]*(?:\n[ \t]+[^\n]*)*",
+        (
+            "The interactive REST API explorer is available in the "
+            "**REST API Reference** section of the left navigation. "
+            "It covers all cuOpt server endpoints for LP, MIP, and "
+            "routing optimization problems.\n"
+        ),
         content,
     )
 
@@ -115,8 +122,10 @@ def _preprocess_rst(content: str, rst_path: Path) -> str:
     )
 
     # 6. toctree → remove (navigation built into docs.yml)
+    # Match the directive line plus all following blank or indented lines
+    # (RST toctrees have a blank line before the entry list)
     content = re.sub(
-        r"\.\. toctree::[^\n]*\n(?:[ \t]+[^\n]*\n)*",
+        r"\.\. toctree::[^\n]*\n(?:(?:[ \t]*)[^\n]*\n)*",
         "",
         content,
     )
@@ -241,6 +250,17 @@ def _postprocess_mdx(md: str, title: str) -> str:
         admonition_simple,
         md,
     )
+
+    # 3b-pre. Strip blockquote lines that are purely RST toctree remnants
+    #   (e.g. "> routing-api.rst routing-examples.rst" from unconverted toctrees)
+    md = re.sub(
+        r"^>[ \t]+(?:[\w./\-]+\.rst[ \t]*)+\n",
+        "",
+        md,
+        flags=re.MULTILINE,
+    )
+    # Also strip inline .rst links left in prose like "(api.rst)" → remove .rst extension
+    md = re.sub(r"\(([^)]+)\.rst\)", r"(\1)", md)
 
     # 3. Convert any remaining <div class="dropdown"> blocks to <Accordion>
     #    These come from .. dropdown:: directives not caught by the preprocessor.
@@ -503,7 +523,9 @@ def _build_nav_tree(rst_path: Path, src: Path, visited: set | None = None) -> li
                 body = re.sub(r"\.\. toctree::.*?(?=\n\S|\Z)", "", child_content, flags=re.DOTALL).strip()
                 contents = []
                 if len(body) > 100:
-                    contents.append({"page": child_title, "path": page_path})
+                    # Use "Overview" so the section header and the page inside it
+                    # don't display the same name twice in the left nav.
+                    contents.append({"page": "Overview", "path": page_path})
                 contents.extend(sub_items)
                 items.append({"section": child_title, "contents": contents})
             else:
@@ -551,7 +573,8 @@ instances:
 
 title: NVIDIA cuOpt
 logo:
-  dark: docs/images/cuopt_feature_diag.jpg
+  dark: docs/images/nvidia-cuopt-logo-dark.svg
+  light: docs/images/nvidia-cuopt-logo-light.svg
   href: https://docs.nvidia.com/cuopt/
 
 colors:
@@ -590,6 +613,19 @@ tabs:
 
 navigation:
 """
+
+def _inject_nav(items: list, path: list, entry: dict) -> bool:
+    """Walk the nav tree along `path` (section names) and append `entry` to the
+    matching section's contents.  Returns True if the target was found."""
+    if not path:
+        items.append(entry)
+        return True
+    target = path[0]
+    for item in items:
+        if item.get("section") == target:
+            return _inject_nav(item.setdefault("contents", []), path[1:], entry)
+    return False
+
 
 def _nav_to_yaml(items: list, indent: int = 0) -> str:
     """Render a nav item list to YAML lines."""
@@ -655,45 +691,34 @@ def main():
     index_rst = SRC / "index.rst"
     nav_items = _build_nav_tree(index_rst, SRC)
 
-    # 4. Add an API reference section
+    # 4. Inject optional extras into the auto-generated nav tree.
+
+    # 4a. If Fern generated Python library docs for distance_engine/waypoint_matrix,
+    #     place them under Python API → Routing Optimization (not a standalone section).
     python_lib_entry = {}
     if (FERN / "static/python-docs").exists() and any((FERN / "static/python-docs").rglob("*.mdx")):
         python_lib_entry = {"folder": "./static/python-docs", "title": "Python Distance Engine"}
 
-    api_contents = [
-        {"page": "REST API (Server)", "path": "docs/pages/open-api.mdx"},
-        {"page": "C API Reference", "path": "docs/pages/cuopt-c-api-reference.mdx"},
-    ]
     if python_lib_entry:
-        api_contents.append(python_lib_entry)
+        _inject_nav(nav_items, ["Python API", "Routing Optimization"], python_lib_entry)
 
-    api_section = {
-        "section": "API Reference",
-        "contents": api_contents,
-    }
-    # 5. Write docs.yml — combine main nav + API reference
-    all_nav = nav_items + [api_section]
+    # 4b. REST API reference: inject the Fern OpenAPI explorer under
+    #     Server → Server API → Server API Overview alongside the other API docs.
+    _inject_nav(nav_items, ["Server", "Server API", "Server API Overview"], {"api": "REST API Reference"})
+    all_nav = nav_items
     nav_yaml = _nav_to_yaml(all_nav, indent=1)
     docs_yml = DOCS_YML_HEADER + nav_yaml + "\n"
     (FERN / "docs.yml").write_text(docs_yml, encoding="utf-8")
     print(f"Wrote fern/docs.yml")
-
-    # 6. Write C API reference stub
-    c_api_stub = (PAGES / "cuopt-c-api-reference.mdx")
-    c_api_stub.write_text(
-        '---\ntitle: "C API Reference"\n---\n\n'
-        "<Note>\nC API reference is generated from Doxygen XML. "
-        "Full integration is pending Fern C++ library support (coming soon).\n\n"
-        "In the meantime, see the [C API Quick Start](cuopt-c/quick-start) and "
-        "the [Doxygen source](https://github.com/NVIDIA/cuopt/tree/main/cpp/doxygen).\n</Note>\n",
-        encoding="utf-8",
-    )
 
     # 7. Generate OpenAPI spec from FastAPI app (no GPU required)
     _generate_openapi_spec()
 
     # 8. Extract Python API docstrings via AST
     _extract_python_api()
+
+    # 9. Extract C API docs from headers and regenerate C API MDX pages
+    _extract_c_api()
 
     print("\nDone. Run: fern check")
 
@@ -715,6 +740,50 @@ def _generate_openapi_spec():
             summary=getattr(app, "summary", None),
             routes=app.routes,
         )
+        # IdModel has additionalProperties:false, but the GET /cuopt/solution/{id}
+        # 200 response uses anyOf[IdModel, SolutionModelWithId, ...] with examples that
+        # include a 'response' key.  Fern's dev server (stricter than fern check) treats
+        # this as a fatal error.  Relax IdModel for docs purposes — the schema is trivial
+        # (only reqId) so this doesn't change what users see.
+        schemas = spec.get("components", {}).get("schemas", {})
+        # Relax IdModel: its additionalProperties:false causes Fern dev-server to reject
+        # anyOf examples that include a 'response' key (valid for SolutionModelWithId).
+        if "IdModel" in schemas:
+            schemas["IdModel"].pop("additionalProperties", None)
+
+        # Fix health-endpoint 500 examples: DetailModel requires error_result (bool)
+        # but the generated examples only include 'error'.
+        for path_item in spec.get("paths", {}).values():
+            for op in path_item.values():
+                if not isinstance(op, dict):
+                    continue
+                for resp in op.get("responses", {}).values():
+                    for media in resp.get("content", {}).values():
+                        for ex in media.get("examples", {}).values():
+                            val = ex.get("value", {})
+                            if isinstance(val, dict) and "error" in val and "error_result" not in val:
+                                val["error_result"] = False
+
+        # Fix incumbents examples: cost/bound must be number|null, not a string;
+        # bound is required but missing from the generated examples.
+        incumbents_path = "/cuopt/solution/{id}/incumbents"
+        inc_op = spec.get("paths", {}).get(incumbents_path, {}).get("get", {})
+        inc_examples = (
+            inc_op.get("responses", {})
+            .get("200", {})
+            .get("content", {})
+            .get("application/json", {})
+            .get("examples", {})
+        )
+        for ex in inc_examples.values():
+            items = ex.get("value") or []
+            for item in items:
+                if isinstance(item, dict):
+                    if not isinstance(item.get("cost"), (int, float)):
+                        item["cost"] = None
+                    if "bound" not in item:
+                        item["bound"] = None
+
         out = FERN / "openapi/cuopt_spec.yaml"
         out.parent.mkdir(parents=True, exist_ok=True)
         with open(out, "w") as f:
@@ -752,6 +821,20 @@ def _extract_python_api():
         mod.generate_pages()
     except Exception as e:
         print(f"  [WARN] Python API extraction failed: {e}")
+
+
+def _extract_c_api():
+    """Delegate to extract_c_api.py for C API MDX generation."""
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "extract_c_api", FERN / "extract_c_api.py"
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        mod.generate_pages()
+    except Exception as e:
+        print(f"  [WARN] C API extraction failed: {e}")
 
 
 if __name__ == "__main__":

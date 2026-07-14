@@ -3,7 +3,8 @@ instances:
 
 title: NVIDIA cuOpt
 logo:
-  dark: docs/images/cuopt_feature_diag.jpg
+  dark: docs/images/nvidia-cuopt-logo-dark.svg
+  light: docs/images/nvidia-cuopt-logo-light.svg
   href: https://docs.nvidia.com/cuopt/
 
 colors:
@@ -61,7 +62,7 @@ navigation:
         path: docs/pages/milp-features.mdx
   - section: C API
     contents:
-      - page: C API
+      - page: Overview
         path: docs/pages/cuopt-c/index.mdx
       - section: C API Overview
         contents:
@@ -69,7 +70,7 @@ navigation:
             path: docs/pages/cuopt-c/quick-start.mdx
       - section: Convex Optimization (LP/QP/QCQP/SOCP)
         contents:
-          - page: Convex Optimization (LP/QP/QCQP/SOCP)
+          - page: Overview
             path: docs/pages/cuopt-c/convex/index.mdx
           - section: LP/QP/QCQP/SOCP C API
             contents:
@@ -81,7 +82,7 @@ navigation:
                 path: docs/pages/cuopt-c/convex/convex-examples.mdx
       - section: Mixed Integer Programming (MIP)
         contents:
-          - page: MIP (Mixed Integer Programming)
+          - page: Overview
             path: docs/pages/cuopt-c/mip/index.mdx
           - section: MIP C API
             contents:
@@ -93,7 +94,7 @@ navigation:
                 path: docs/pages/cuopt-c/mip/mip-examples.mdx
   - section: Python API
     contents:
-      - page: Python API
+      - page: Overview
         path: docs/pages/cuopt-python/index.mdx
       - section: Python API Overview
         contents:
@@ -101,7 +102,7 @@ navigation:
             path: docs/pages/cuopt-python/quick-start.mdx
       - section: Routing Optimization
         contents:
-          - page: Routing Optimization
+          - page: Overview
             path: docs/pages/cuopt-python/routing/index.mdx
           - section: Routing
             contents:
@@ -109,9 +110,11 @@ navigation:
                 path: docs/pages/cuopt-python/routing/routing-api.mdx
               - page: Routing Examples
                 path: docs/pages/cuopt-python/routing/routing-examples.mdx
+          - folder: ./static/python-docs
+            title: Python Distance Engine
       - section: Convex Optimization (LP/QP/QCQP/SOCP)
         contents:
-          - page: Convex Optimization (LP/QP/QCQP/SOCP)
+          - page: Overview
             path: docs/pages/cuopt-python/convex/index.mdx
           - section: LP/QP/QCQP/SOCP Python API
             contents:
@@ -121,7 +124,7 @@ navigation:
                 path: docs/pages/cuopt-python/convex/convex-examples.mdx
       - section: Mixed Integer Programming (MIP)
         contents:
-          - page: MIP (Mixed Integer Programming)
+          - page: Overview
             path: docs/pages/cuopt-python/mip/index.mdx
           - section: MIP Python API
             contents:
@@ -131,7 +134,7 @@ navigation:
                 path: docs/pages/cuopt-python/mip/mip-examples.mdx
   - section: gRPC Remote Execution
     contents:
-      - page: gRPC Remote Execution
+      - page: Overview
         path: docs/pages/cuopt-grpc/index.mdx
       - section: In this section
         contents:
@@ -147,7 +150,7 @@ navigation:
             path: docs/pages/cuopt-grpc/grpc-server-architecture.mdx
   - section: Server
     contents:
-      - page: Server
+      - page: Overview
         path: docs/pages/cuopt-server/index.mdx
       - section: Quickstart
         contents:
@@ -155,7 +158,7 @@ navigation:
             path: docs/pages/cuopt-server/quick-start.mdx
       - section: Server API
         contents:
-          - page: Server API
+          - page: Overview
             path: docs/pages/cuopt-server/server-api/index.mdx
           - section: Server API Overview
             contents:
@@ -167,9 +170,10 @@ navigation:
                 path: docs/pages/convex-settings.mdx
               - page: MIP Settings
                 path: docs/pages/mip-settings.mdx
+              - api: REST API Reference
       - section: Client API
         contents:
-          - page: Client API Overview
+          - page: Overview
             path: docs/pages/cuopt-server/client-api/index.mdx
           - section: Client API Overview
             contents:
@@ -179,7 +183,7 @@ navigation:
                 path: docs/pages/cuopt-server/client-api/sh-cli-build.mdx
       - section: Examples
         contents:
-          - page: Examples
+          - page: Overview
             path: docs/pages/cuopt-server/examples/index.mdx
           - section: Examples Overview
             contents:
@@ -191,7 +195,7 @@ navigation:
                 path: docs/pages/cuopt-server/examples/routing-examples.mdx
       - section: CSP Guides
         contents:
-          - page: CSP Guides
+          - page: Overview
             path: docs/pages/cuopt-server/csp-guides/index.mdx
           - section: CSP Guides Overview
             contents:
@@ -201,7 +205,7 @@ navigation:
                 path: docs/pages/cuopt-server/csp-guides/csp-aws.mdx
       - section: NIM Operator
         contents:
-          - page: NIM Operator Deployment
+          - page: Overview
             path: docs/pages/cuopt-server/nim-operator/index.mdx
           - page: Prerequisites
             path: docs/pages/cuopt-server/nim-operator/prerequisites.mdx
@@ -211,7 +215,7 @@ navigation:
             path: docs/pages/cuopt-server/nim-operator/configuration.mdx
   - section: Command Line Interface
     contents:
-      - page: Command Line Interface
+      - page: Overview
         path: docs/pages/cuopt-cli/index.mdx
       - section: Command Line Interface Overview
         contents:
@@ -237,11 +241,3 @@ navigation:
     contents:
       - page: cuOpt License
         path: docs/pages/license.mdx
-  - section: API Reference
-    contents:
-      - page: REST API (Server)
-        path: docs/pages/open-api.mdx
-      - page: C API Reference
-        path: docs/pages/cuopt-c-api-reference.mdx
-      - folder: ./static/python-docs
-        title: Python Distance Engine
