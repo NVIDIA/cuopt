@@ -233,6 +233,7 @@ cdef class DataModel:
             n_orders
         ))
         self.costs = {}
+        self.distance_matrices = {}
         self.transit_times = {}
 
         self.demand_name = []
@@ -285,6 +286,16 @@ cdef class DataModel:
         cdef uintptr_t c_costs = self.costs[vehicle_type].data.ptr
         self.c_data_model_view.get().add_cost_matrix(
             <const float *> c_costs, <uint8_t> vehicle_type
+        )
+
+    def add_distance_matrix(self, distances, vehicle_type):
+        distances = type_cast(distances, np.float32, "distance_matrix")
+
+        distances = cp.array(distances.to_cupy(), order='C', dtype=np.float32)
+        self.distance_matrices[vehicle_type] = distances
+        cdef uintptr_t c_distances = self.distance_matrices[vehicle_type].data.ptr
+        self.c_data_model_view.get().add_distance_matrix(
+            <const float *> c_distances, <uint8_t> vehicle_type
         )
 
     def add_transit_time_matrix(self, times, vehicle_type):

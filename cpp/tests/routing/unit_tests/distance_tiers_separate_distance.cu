@@ -202,7 +202,34 @@ TEST(distance_tiers_separate_distance, compute_distance_cost_accumulates_fixed_c
   vehicle_info_t vehicle_info{};
   vehicle_info.distance_tiers = raft::span<distance_tier_t const, false>(tiers.data(), tiers.size());
 
-  ASSERT_NEAR(vehicle_info.compute_distance_cost(12.f, 3.f), 18.f, 1e-5);
+  const auto tie_breaker = vehicle_info_t::fixed_tier_tie_breaker_cost_per_unit();
+  ASSERT_NEAR(vehicle_info.compute_distance_cost(12.f, 3.f),
+              18.f + 10.f * tie_breaker,
+              1e-5);
+}
+
+TEST(distance_tiers_separate_distance, compute_distance_cost_breaks_ties_for_flat_fixed_tier)
+{
+  using vehicle_info_t  = cuopt::routing::detail::VehicleInfo<float, false>;
+  using distance_tier_t = cuopt::routing::detail::distance_tier_t<float>;
+
+  std::vector<distance_tier_t> tiers = {{100.f, 50.f, 0.f}};
+  vehicle_info_t vehicle_info{};
+  vehicle_info.distance_tiers =
+    raft::span<distance_tier_t const, false>(tiers.data(), tiers.size());
+
+  const auto tie_breaker = vehicle_info_t::fixed_tier_tie_breaker_cost_per_unit();
+  const double short_route_cost = vehicle_info.compute_distance_cost(10.f, 0.f);
+  const double long_route_cost  = vehicle_info.compute_distance_cost(20.f, 0.f);
+  const int old_tier            = vehicle_info.find_distance_tier(10.f);
+
+  ASSERT_NEAR(short_route_cost, 50.f + 10.f * tie_breaker, 1e-5);
+  ASSERT_NEAR(long_route_cost, 50.f + 20.f * tie_breaker, 1e-5);
+  ASSERT_LT(short_route_cost, long_route_cost);
+  ASSERT_NEAR(vehicle_info.compute_distance_cost_from_delta(
+                10.f, 0.f, short_route_cost, 20.f, 0.f, old_tier),
+              long_route_cost,
+              1e-5);
 }
 
 TEST(distance_tiers_separate_distance, solver_applies_heterogeneous_tier_offsets_per_vehicle)
@@ -259,7 +286,9 @@ TEST(distance_tiers_separate_distance, solver_applies_heterogeneous_tier_offsets
 
   ASSERT_EQ(routing_solution.get_status(), cuopt::routing::solution_status_t::SUCCESS);
   ASSERT_EQ(routing_solution.get_vehicle_count(), 2);
-  ASSERT_NEAR(routing_solution.get_total_objective(), 15.0f, 1e-5);
+  const auto tie_breaker =
+    cuopt::routing::detail::VehicleInfo<float, false>::fixed_tier_tie_breaker_cost_per_unit();
+  ASSERT_NEAR(routing_solution.get_total_objective(), 15.0f + 4.0f * tie_breaker, 1e-5);
 
   auto node_types_host = cuopt::host_copy(routing_solution.get_node_types(), stream);
   auto truck_id_host   = cuopt::host_copy(routing_solution.get_truck_id(), stream);

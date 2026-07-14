@@ -45,6 +45,10 @@ cdef extern from "cuopt/routing/solve.hpp" namespace "cuopt::routing":
             const f_t* matrix,
             uint8_t vehicle_type
         ) except +
+        void add_distance_matrix(
+            const f_t* matrix,
+            uint8_t vehicle_type
+        ) except +
         void add_transit_time_matrix(
             const f_t* secondary_matrix,
             uint8_t vehicle_type

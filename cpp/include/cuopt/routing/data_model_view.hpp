@@ -438,6 +438,8 @@ class data_model_view_t {
    * @brief Set distance-based tiered pricing for vehicles.
    * Each vehicle can have multiple tiers with different cost structures based on total route
    * distance.
+   * Tiers with fixed_cost > 0 and costs_per_unit == 0 receive a minimal internal unit cost to
+   * prefer shorter routes when the fixed tier cost is otherwise identical.
    *
    * @param[in] thresholds Device memory pointer to distance thresholds for all tiers (flattened
    * array)

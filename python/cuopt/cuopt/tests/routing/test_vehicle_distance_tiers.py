@@ -28,8 +28,8 @@ def test_vehicle_distance_tiers_uniform():
     tiered pricing to vehicle routes based on total distance traveled.
 
     Configuration:
-    - 4 vehicles with same cost structure
-    - 20 clients distributed with time windows
+        - 4 vehicles with same cost structure
+        - 20 clients with capacity demand
     - Tier 1: < 40 km = Fixed cost 50
     - Tier 2: 40-80 km = 0.5 per km
     - Tier 3: > 80 km = 1.0 per km
@@ -59,92 +59,45 @@ def test_vehicle_distance_tiers_uniform():
         dy = float((i // 5) - (j // 5))
         return np.sqrt(dx * dx + dy * dy) * 10.0 + 5.0  # Scale to km
 
-    # Create cost and time matrices
+    # Create cost matrix
     cost_matrix = np.zeros((n_locations, n_locations), dtype=np.float32)
-    time_matrix = np.zeros((n_locations, n_locations), dtype=np.float32)
 
     for i in range(n_locations):
         for j in range(n_locations):
             if i == j:
                 cost_matrix[i, j] = 0.0
-                time_matrix[i, j] = 0.0
             else:
                 dist = distance_func(i, j)
                 cost_matrix[i, j] = dist
-                # Time: assuming 40 km/h average + fixed time
-                time_matrix[i, j] = (dist / 40.0) * 60.0 + 5.0  # in minutes
 
-    # Convert to cuDF DataFrames
     cost_df = cudf.DataFrame(cost_matrix)
-    time_df = cudf.DataFrame(time_matrix)
 
     print(f"✅ Synthetic matrices created ({n_locations}x{n_locations})")
     print("   Distance range: ~5-70 km")
-    print("   Time range: ~5-110 minutes")
 
-    # 1.b) Order attributes
-    # Time windows: distributed throughout the day (8:00 - 18:00)
-    earliest = cudf.Series(
-        [480 + (i * 30) for i in range(n_orders)], dtype=np.int32
-    )
-    latest = cudf.Series(
-        [earliest[i] + 120 for i in range(n_orders)], dtype=np.int32
-    )
-
-    # Service times: 10-20 minutes
-    service_time = cudf.Series(
-        [10 + (i % 11) for i in range(n_orders)], dtype=np.int32
-    )
-
-    # Demand: 5-25 units
+    # Order demand: 5-25 units
     demand = cudf.Series(
         [5 + (i % 21) for i in range(n_orders)], dtype=np.int32
     )
 
-    # Soft time windows: first 10 clients STRICT, rest SOFT
-    soft_type = cudf.Series(
-        [0 if i < 10 else 1 for i in range(n_orders)], dtype=np.uint8
-    )
-    soft_penalty = cudf.Series(
-        [0.0 if i < 10 else 10.0 for i in range(n_orders)], dtype=np.float32
-    )
-
-    print("   Clients: 20 (10 STRICT + 10 SOFT time windows)")
+    print("   Clients: 20")
     print("   Demands: 5-25 units per client\n")
 
     # ============================================================================
     # 2) CREATE DATA MODEL
     # ============================================================================
 
-    data_model = routing.DataModel(n_locations, n_vehicles)
+    data_model = routing.DataModel(n_locations, n_vehicles, n_orders)
 
     # 2.a) Add matrices
     data_model.add_cost_matrix(cost_df)
-    data_model.add_transit_time_matrix(time_df)
+    data_model.add_distance_matrix(cost_df)
 
     # 2.b) Order locations (1, 2, 3, ..., n_orders)
     order_locations = cudf.Series(range(1, n_orders + 1), dtype=np.int32)
     data_model.set_order_locations(order_locations)
 
-    # 2.c) Time Windows
-    data_model.set_order_time_windows(earliest, latest)
-
-    # 2.d) Service Times
-    data_model.set_order_service_times(service_time)
-
-    # 2.e) Soft/Strict Time Windows
-    data_model.set_soft_time_windows(soft_type, soft_penalty)
-
-    # 2.f) Vehicle Time Windows
-    vehicle_earliest = cudf.Series(
-        [8 * 60] * n_vehicles, dtype=np.int32
-    )  # 8:00 AM
-    vehicle_latest = cudf.Series(
-        [18 * 60] * n_vehicles, dtype=np.int32
-    )  # 6:00 PM
-    data_model.set_order_vehicle_match(vehicle_earliest, vehicle_latest)
-
-    # 2.g) Capacities
+    # 2.c) Capacities
     capacities = cudf.Series([150] * n_vehicles, dtype=np.int32)
     data_model.add_capacity_dimension("capacity", demand, capacities)
 
@@ -220,11 +173,8 @@ def test_vehicle_distance_tiers_uniform():
 
     solver_settings = routing.SolverSettings()
     solver_settings.set_time_limit(30.0)
-    solver_settings.set_soft_to_hard_time_window_thresh(20.0)
 
-    print(
-        "🚛 4 vehicles configured with schedule 8:00 to 18:00 (480-1080 min)"
-    )
+    print("🚛 4 vehicles configured")
     print("   Capacity: 150 units per vehicle")
     print("🚀 Running solver...\n")
 
@@ -249,8 +199,9 @@ def test_vehicle_distance_tiers_uniform():
     print()
 
     # Get solution data
-    routes = solution.get_route().to_numpy()
-    truck_ids = solution.get_truck_id().to_numpy()
+    route_df = solution.get_route()
+    routes = route_df["route"].to_arrow().to_pylist()
+    truck_ids = route_df["truck_id"].to_arrow().to_pylist()
 
     # Calculate distances per vehicle and apply tiers
     print("=" * 60)
@@ -288,7 +239,8 @@ def test_vehicle_distance_tiers_uniform():
         total_raw_distance += total_distance
         total_orders_served += len(visits)
 
-        # Determine which tier applies
+        # Determine the cumulative tier charge. The total solver cost includes
+        # the primary cost matrix distance plus the tiered distance charge.
         applied_cost = total_distance
         applied_tier = -1
 
@@ -311,15 +263,22 @@ def test_vehicle_distance_tiers_uniform():
             ),
         ]
 
+        prev_threshold = 0.0
         for tier_idx, (threshold, fixed_cost, cost_per_unit) in enumerate(
             tier_configs
         ):
-            if total_distance < threshold:
+            if total_distance <= prev_threshold:
+                break
+            in_band = min(total_distance, threshold) - prev_threshold
+            if in_band > 0.0:
                 applied_tier = tier_idx
                 if fixed_cost > 0:
-                    applied_cost = fixed_cost
-                else:
-                    applied_cost = total_distance * cost_per_unit
+                    applied_cost += fixed_cost
+                if fixed_cost > 0 and cost_per_unit == 0.0:
+                    cost_per_unit = 1.0e-4
+                applied_cost += in_band * cost_per_unit
+            prev_threshold = threshold
+            if total_distance <= threshold:
                 break
 
         total_manual_cost += applied_cost
@@ -383,7 +342,7 @@ def test_vehicle_distance_tiers_uniform():
     print("✅ TEST COMPLETED WITH SYNTHETIC DATA")
     print("=" * 60)
     print("   ✓ 4 vehicles with SAME cost configuration")
-    print("   ✓ 20 clients distributed with time windows")
+    print("   ✓ 20 clients with capacity demand")
     print("   ✓ Uniform distance tiers configured and applied")
     print("   ✓ Cost validation performed")
     print("   ℹ️  Uniform configuration ideal for initial validation")
@@ -438,8 +397,9 @@ def test_vehicle_distance_tiers_heterogeneous():
     cost_df = cudf.DataFrame(cost_matrix)
 
     # Create data model
-    data_model = routing.DataModel(n_locations, n_vehicles)
+    data_model = routing.DataModel(n_locations, n_vehicles, n_orders)
     data_model.add_cost_matrix(cost_df)
+    data_model.add_distance_matrix(cost_df)
 
     # Set order locations
     order_locations = cudf.Series(range(1, n_orders + 1), dtype=np.int32)

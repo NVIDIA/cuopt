@@ -150,6 +150,41 @@ class DataModel(_DeferredDataModel):
         super().add_cost_matrix(cost_mat, vehicle_type)
 
     @catch_cuopt_exception
+    def add_distance_matrix(
+        self, distance_mat, vehicle_type=0, *, skip_validation=False
+    ):
+        """
+        Add a matrix for route travel distance.
+
+        This matrix is required when using distance-based features such as
+        vehicle distance tiers or vehicle maximum distances. It is separate
+        from the primary cost matrix so users can optimize on one metric while
+        applying distance-based constraints or tiered pricing on another.
+
+        Parameters
+        ----------
+        distance_mat : cudf.DataFrame dtype - float32
+            cudf.DataFrame representing floating point square matrix with
+            num_location rows and columns.
+        vehicle_type : uint8
+            Identifier of the vehicle type.
+        skip_validation : bool
+            If True, skips Python validation for matrix shape, NULL values,
+            and non-negative values. The caller is responsible for providing
+            a valid square matrix matching the number of locations.
+        """
+
+        if vehicle_type in self.distance_matrices:
+            raise ValueError("Vehicle type distance matrix has already been added")
+
+        if not skip_validation:
+            validate_matrix(
+                distance_mat, "distance matrix", self.get_num_locations()
+            )
+
+        super().add_distance_matrix(distance_mat, vehicle_type)
+
+    @catch_cuopt_exception
     def add_transit_time_matrix(self, mat, vehicle_type=0):
         """
         Add transit time matrix for all locations
@@ -1250,11 +1285,15 @@ class DataModel(_DeferredDataModel):
         """
         Set distance-based tiered pricing for vehicles.
 
-        Each vehicle can have multiple distance tiers with different cost structures.
+        Call add_distance_matrix before setting tiers. Each vehicle can have
+        multiple distance tiers with different cost structures.
         For each tier, you can specify either a fixed cost or a cost per unit distance.
         The cost calculation logic:
         - If distance < threshold: use the tier's cost structure
-        - If fixed_cost > 0: apply the fixed cost
+        - If fixed_cost > 0: apply the fixed cost plus cost_per_unit
+          when provided
+        - If fixed_cost > 0 and cost_per_unit is 0, cuOpt applies a
+          minimal internal unit cost to prefer shorter routes in ties
         - Otherwise: apply (distance * cost_per_unit)
 
         Parameters
@@ -1267,7 +1306,8 @@ class DataModel(_DeferredDataModel):
             value (e.g., 1e9) for the last tier of each vehicle.
         fixed_costs : cudf.Series dtype - float32
             Fixed cost for each tier. Use 0.0 if the tier uses cost_per_unit instead.
-            If fixed_cost > 0, it will be used regardless of distance.
+            If fixed_cost > 0 and cost_per_unit is 0, a minimal internal unit
+            cost is added to break ties between routes in the same tier.
         costs_per_unit : cudf.Series dtype - float32
             Cost per distance unit for each tier. Use 0.0 if the tier uses
             fixed_cost instead.
@@ -1287,13 +1327,15 @@ class DataModel(_DeferredDataModel):
         >>> fixed_costs = cudf.Series([50.0, 0.0, 0.0, 75.0, 0.0], dtype=np.float32)
         >>> costs_per_unit = cudf.Series([0.0, 0.1, 0.5, 0.0, 0.3], dtype=np.float32)
         >>>
-        >>> data_model = routing.DataModel(n_locations=10, fleet_size=2)
+        >>> data_model = routing.DataModel(n_locations=10, n_fleet=2)
+        >>> data_model.add_distance_matrix(distance_mat)
         >>> data_model.set_vehicle_distance_tiers(
         ...     vehicle_ids, thresholds, fixed_costs, costs_per_unit
         ... )
 
         Notes
         -----
+        - add_distance_matrix must be called before solving with distance tiers
         - All input series must have the same length
         - Tiers for each vehicle must be sorted by threshold in ascending order
         - At least one tier must be defined for vehicles that use this feature

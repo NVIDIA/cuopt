@@ -3,8 +3,13 @@
 
 import copy
 
+import numpy as np
+
 from cuopt_server.tests.utils.utils import cuoptproc  # noqa
 from cuopt_server.tests.utils.utils import RequestClient
+from cuopt_server.utils.routing.solver import (
+    _distance_tier_threshold_for_solver,
+)
 from cuopt_server.utils.routing.validation_distance_matrix import (
     validate_distance_matrix,
 )
@@ -47,6 +52,11 @@ def test_valid_set_distance_matrix(cuoptproc):  # noqa
     response_set = validate_only(valid_data)
 
     assert response_set.status_code == 200
+
+
+def test_null_distance_tier_threshold_converts_to_open_ended_value():
+    assert _distance_tier_threshold_for_solver(None) == np.finfo(np.float32).max
+    assert _distance_tier_threshold_for_solver(100.0) == 100.0
 
 
 def test_invalid_empty_set_distance_matrix(cuoptproc):  # noqa

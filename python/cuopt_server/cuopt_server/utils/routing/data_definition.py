@@ -290,7 +290,9 @@ class DistanceTier(StrictModel):
     fixed_cost: float = Field(
         default=0.0,
         description=(
-            "dtype: float32, fixed_cost >= 0. Fixed cost for the tier."
+            "dtype: float32, fixed_cost >= 0. Fixed cost for the tier. "
+            "If cost_per_unit is 0, cuOpt adds a minimal internal unit "
+            "cost to break ties between routes in the same fixed tier."
         ),
     )
     cost_per_unit: float = Field(
@@ -606,6 +608,8 @@ class FleetData(StrictModel):
             "where null means the final open-ended tier, "
             "'fixed_cost' (use 0 if not applicable), and "
             "'cost_per_unit' (cost per distance unit, use 0 if not applicable)."
+            " Fixed tiers with cost_per_unit 0 get a minimal internal unit "
+            "cost to prefer shorter routes when fixed costs tie."
             " \n\n "
             "Example for 2 vehicles:"
             " \n\n "

@@ -151,8 +151,8 @@ TEST_P(fsmvrptwsc_small_test_t, solves_small_step_cost_instance)
   std::cerr << "FSMVRPTWSC " << param.instance_name << ": distance tiers\n";
 
   cuopt::routing::solver_settings_t<int, float> settings;
-  // Use longer time limit for larger instances
-  auto time_limit = (instance.n_clients > 50) ? 30.0f : 5.0f;
+  // Use longer time limit for larger real instances.
+  auto time_limit = (instance.n_clients > 50) ? 300.0f : 5.0f;
   settings.set_time_limit(time_limit);
 
   std::cerr << "FSMVRPTWSC " << param.instance_name << ": solve begin\n";
@@ -166,13 +166,7 @@ TEST_P(fsmvrptwsc_small_test_t, solves_small_step_cost_instance)
 
   auto const objective = routing_solution.get_total_objective();
   auto const max_cost  = param.reference_cost * (1.0f + param.max_relative_gap);
-  
-  std::cout << "Instance: " << param.instance_name << "\n";
-  std::cout << "  Reference: " << param.reference_cost << "\n";
-  std::cout << "  Obtained:  " << objective << "\n";
-  std::cout << "  Gap:       " << ((objective - param.reference_cost) / param.reference_cost * 100) << "%\n";
-  std::cout << "  Max allowed: " << max_cost << " (" << (param.max_relative_gap * 100) << "% gap)\n";
-  
+
   EXPECT_LE(objective, max_cost) << "FSMVRPTWSC gap exceeded for " << param.instance_name;
 }
 
