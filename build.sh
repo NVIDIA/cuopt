@@ -14,7 +14,7 @@ ARGS=$*
 REPODIR=$(cd "$(dirname "$0")"; pwd)
 LIBCUOPT_BUILD_DIR=${LIBCUOPT_BUILD_DIR:=${REPODIR}/cpp/build}
 
-VALIDARGS="clean codegen libcuopt cuopt_grpc_server cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -fsanitize -tsan -msan -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-grpc-build --skip-fatbin-write --host-lineinfo [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] -n --allgpuarch --ci-only-arch --show_depr_warn -h --help"
+VALIDARGS="clean codegen libcuopt cuopt_grpc_server cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -fsanitize -tsan -msan -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-grpc-build --skip-fatbin-write --host-lineinfo [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] -n --allgpuarch --ci-only-arch --show_depr_warn --publish-docs -h --help"
 HELP="$0 [<target> ...] [<flag> ...]
  where <target> is:
    clean            - remove all existing build artifacts and configuration (start over)
@@ -24,7 +24,9 @@ HELP="$0 [<target> ...] [<flag> ...]
    cuopt            - build the cuopt Python package
    cuopt_server     - build the cuopt_server Python package
    cuopt_sh_client  - build cuopt self host client
-   docs             - build the docs
+   docs             - build the Fern docs (generate MDX + validate); starts local
+                      preview server at http://localhost:3000 when done
+                      Pass --publish-docs to publish to Fern cloud instead
    deb              - build deb package (requires libcuopt to be built first)
  and <flag> is:
    -v               - verbose build mode
@@ -473,7 +475,20 @@ if hasArg docs; then
     echo "Running fern check..."
     fern check
 
-    echo ""
-    echo "Docs built successfully."
-    echo "To preview locally: cd fern && fern docs dev"
+    if hasArg --publish-docs; then
+        # Publish to Fern cloud hosting — requires FERN_TOKEN env var
+        if [[ -z "${FERN_TOKEN}" ]]; then
+            echo "ERROR: FERN_TOKEN environment variable is not set."
+            echo "       Set it to your Fern token before running with --publish-docs."
+            exit 1
+        fi
+        echo "Publishing to Fern cloud..."
+        fern generate --docs
+        echo "Docs published to https://nvidia-cuopt.docs.buildwithfern.com"
+    else
+        # Start local preview server (Ctrl+C to stop)
+        echo ""
+        echo "Starting local preview at http://localhost:3000 (Ctrl+C to stop)..."
+        fern docs dev
+    fi
 fi
