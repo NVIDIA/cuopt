@@ -669,10 +669,7 @@ target_compile_definitions(cuopt PUBLIC
         CUSPARSE_ENABLE_EXPERIMENTAL_API
 )
 
-target_link_options(cuopt PRIVATE
-    "LINKER:--exclude-libs=ALL"
-    "LINKER:--version-script=${CMAKE_CURRENT_SOURCE_DIR}/cmake/cuopt.map"
-)
+target_link_options(cuopt PRIVATE "LINKER:--exclude-libs=ALL")
 
 target_link_libraries(cuopt
         PUBLIC
