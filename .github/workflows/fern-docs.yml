@@ -41,7 +41,7 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          pip install fastapi pydantic pyyaml
+          pip install -r fern/requirements-docs.txt
           pip install -e python/cuopt_server --no-deps
 
       - name: Install Fern CLI
@@ -75,7 +75,7 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          pip install fastapi pydantic pyyaml
+          pip install -r fern/requirements-docs.txt
           pip install -e python/cuopt_server --no-deps
 
       - name: Install Fern CLI

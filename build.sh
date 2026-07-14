@@ -443,9 +443,9 @@ if hasArg docs; then
         echo "       Install: sudo apt-get install pandoc  (or brew install pandoc on macOS)"
         exit 1
     fi
-    if ! command -v node &>/dev/null; then
-        echo "ERROR: Node.js is required for the Fern CLI."
-        echo "       Install from: https://nodejs.org/"
+    if ! command -v node &>/dev/null || ! command -v npm &>/dev/null; then
+        echo "ERROR: Node.js (with npm) is required for the Fern CLI."
+        echo "       Install from: https://nodejs.org/  (or: conda install nodejs)"
         exit 1
     fi
     if ! command -v jq &>/dev/null; then
@@ -462,7 +462,7 @@ if hasArg docs; then
     fi
 
     # Install Python dependencies needed by convert_docs.py
-    pip install --quiet fastapi pydantic pyyaml
+    pip install --quiet -r "${REPODIR}/fern/requirements-docs.txt"
     pip install --quiet -e "${REPODIR}/python/cuopt_server" --no-deps
 
     # Generate MDX pages, OpenAPI spec, and Python/C API reference

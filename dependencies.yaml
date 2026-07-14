@@ -786,26 +786,12 @@ dependencies:
     common:
       - output_types: [conda]
         packages:
-          - *doxygen
-          - &ipython ipython
-          - *jsonref
-          - make
-          - *msgpack_python
-          - *msgpack_numpy
-          - myst-parser
-          - numpydoc
-          - pyrsistent
-          - breathe
-          - sphinx
-          - sphinx-copybutton
-          - sphinx-markdown-tables
-          - sphinx_rtd_theme
-          - sphinxcontrib-openapi
-          - sphinxcontrib-websupport
-          - sphinx-design
-          - pip:
-            - swagger-plugin-for-sphinx
-            - nvidia-sphinx-theme
+          - jq
+          - nodejs        # provides npm; used to install fern-api CLI
+          - pandoc
+          - *pyyaml
+          - fastapi
+          - pydantic
 
   notebooks:
     common:
