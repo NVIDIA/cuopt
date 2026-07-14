@@ -267,25 +267,24 @@ class ServerProcess {
   {
     auto start = std::chrono::steady_clock::now();
 
+    std::shared_ptr<grpc::ChannelCredentials> creds;
+    if (!tls_root_certs_.empty()) {
+      grpc::SslCredentialsOptions ssl_opts;
+      ssl_opts.pem_root_certs  = tls_root_certs_;
+      ssl_opts.pem_cert_chain  = tls_client_cert_;
+      ssl_opts.pem_private_key = tls_client_key_;
+      creds                    = grpc::SslCredentials(ssl_opts);
+    } else {
+      creds = grpc::InsecureChannelCredentials();
+    }
+    auto channel = grpc::CreateChannel("localhost:" + std::to_string(port_), std::move(creds));
+
     while (true) {
       auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - start);
 
       if (elapsed.count() >= timeout_ms) { return false; }
 
-      std::shared_ptr<grpc::ChannelCredentials> creds;
-      if (!tls_root_certs_.empty()) {
-        grpc::SslCredentialsOptions ssl_opts;
-        ssl_opts.pem_root_certs  = tls_root_certs_;
-        ssl_opts.pem_cert_chain  = tls_client_cert_;
-        ssl_opts.pem_private_key = tls_client_key_;
-        creds                    = grpc::SslCredentials(ssl_opts);
-      } else {
-        creds = grpc::InsecureChannelCredentials();
-      }
-
-      auto channel =
-        grpc::CreateChannel("localhost:" + std::to_string(port_), std::move(creds));
       auto deadline = std::chrono::system_clock::now() + std::chrono::milliseconds(200);
       if (channel->WaitForConnected(deadline)) { return true; }
 
@@ -374,6 +373,15 @@ bool ensure_test_certs()
 
   g_tls_certs_ready = true;
   return true;
+}
+
+std::string read_file_contents(const std::string& path)
+{
+  std::ifstream file(path);
+  if (!file) return "";
+  std::stringstream buffer;
+  buffer << file.rdbuf();
+  return buffer.str();
 }
 
 // =============================================================================
@@ -620,8 +628,7 @@ TEST_F(DefaultServerTests, SolveLPReturnsWarmStartData)
   auto solution = solve_lp_remote(problem, settings);
   ASSERT_NE(solution, nullptr);
 
-  EXPECT_TRUE(solution->has_warm_start_data())
-    << "LP solution should contain PDLP warm start data";
+  EXPECT_TRUE(solution->has_warm_start_data()) << "LP solution should contain PDLP warm start data";
 
   const auto& ws = solution->get_cpu_pdlp_warm_start_data();
 
@@ -704,6 +711,7 @@ TEST_F(ChunkedUploadTests, ChunkedUploadMIP)
 
   auto solution = solve_mip_remote(problem, settings);
   ASSERT_NE(solution, nullptr);
+  EXPECT_EQ(solution->get_termination_status(), mip_termination_status_t::Optimal);
 }
 
 TEST_F(ChunkedUploadTests, ConcurrentSolves)
@@ -771,11 +779,11 @@ TEST_F(ChunkedUploadTests, QuadraticConstraintsEndToEndSocp)
 
   EXPECT_EQ(solution->get_termination_status(), pdlp_termination_status_t::Optimal);
 
-  constexpr double kTol   = 1e-3;
-  const double sqrt2      = std::sqrt(2.0);
-  const double opt_obj    = -(1.0 + sqrt2);
-  const double opt_x_y    = 1.0 / sqrt2;
-  const double opt_z      = 1.0;
+  constexpr double kTol = 1e-3;
+  const double sqrt2    = std::sqrt(2.0);
+  const double opt_obj  = -(1.0 + sqrt2);
+  const double opt_x_y  = 1.0 / sqrt2;
+  const double opt_z    = 1.0;
   EXPECT_NEAR(solution->get_objective_value(), opt_obj, kTol);
 
   const auto primal = solution->get_primal_solution_host();
@@ -817,13 +825,17 @@ TEST_F(ErrorRecoveryTests, SolveMIPAfterServerRestart)
   settings.time_limit = 10.0;
 
   auto solution1 = solve_mip_remote(problem, settings);
-  EXPECT_NE(solution1, nullptr) << "First solve failed";
+  ASSERT_NE(solution1, nullptr) << "First solve failed";
+  EXPECT_EQ(solution1->get_termination_status(), mip_termination_status_t::Optimal)
+    << "First solve did not reach optimal";
 
   ASSERT_TRUE(server_.stop());
   ASSERT_TRUE(start_server({"--max-message-mb", "256"}));
 
   auto solution2 = solve_mip_remote(problem, settings);
-  EXPECT_NE(solution2, nullptr) << "Second solve after restart failed";
+  ASSERT_NE(solution2, nullptr) << "Second solve after restart failed";
+  EXPECT_EQ(solution2->get_termination_status(), mip_termination_status_t::Optimal)
+    << "Second solve after restart did not reach optimal";
 }
 
 // =============================================================================
@@ -882,15 +894,6 @@ class TlsServerTests : public GrpcIntegrationTestBase {
   }
 
   void TearDown() override { clear_remote_env(); }
-
-  static std::string read_file_contents(const std::string& path)
-  {
-    std::ifstream file(path);
-    if (!file) return "";
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    return buffer.str();
-  }
 
   static std::unique_ptr<ServerProcess> s_server_;
   static int s_port_;
@@ -975,15 +978,6 @@ class MtlsServerTests : public GrpcIntegrationTestBase {
   }
 
   void TearDown() override { clear_remote_env(); }
-
-  static std::string read_file_contents(const std::string& path)
-  {
-    std::ifstream file(path);
-    if (!file) return "";
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    return buffer.str();
-  }
 
   static std::unique_ptr<ServerProcess> s_server_;
   static int s_port_;
