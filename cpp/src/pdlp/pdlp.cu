@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #include <cuopt/error.hpp>
+#include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
 #include <cuopt/mathematical_optimization/pdlp/pdlp_warm_start_data.hpp>
 #include <cuopt/mathematical_optimization/solver_settings.hpp>
@@ -3202,7 +3203,7 @@ pdlp_solver_t<i_t, f_t>::get_current_termination_strategy()
 }
 
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
-template class pdlp_solver_t<int, float>;
+template class CUOPT_INTERNAL_EXPORT pdlp_solver_t<int, float>;
 
 template __global__ void compute_weights_initial_primal_weight_from_squared_norms<float>(
   const float* b_vec_norm,
@@ -3214,7 +3215,7 @@ template __global__ void compute_weights_initial_primal_weight_from_squared_norm
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
-template class pdlp_solver_t<int, double>;
+template class CUOPT_INTERNAL_EXPORT pdlp_solver_t<int, double>;
 
 template __global__ void compute_weights_initial_primal_weight_from_squared_norms<double>(
   const double* b_vec_norm,
