@@ -2155,41 +2155,49 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   const bool use_augmented          = data.use_augmented;
   const bool has_direct_free_linear = data.n_direct_free_linear > 0;
 
-  // SOCP: data-dependent initial point following SeDuMi (Sturm, 1999).
-  //   mu = sqrt((1 + ||b||_inf) * (1 + ||c||_inf))
-  //   primal and dual: x = mu * e_K,  z = mu * e_K
+  const i_t init_strategy = data.has_cones() ? 2 : settings.barrier_dual_initial_point;
+
+  // Option 2: Sturm/SeDuMi-style mu-based primal+dual initial point.
+  //   mu = sqrt((1 + ||b||_inf) * (1 + ||c||_inf)); x = z = mu * e_K.
   // where e_K is the identity of the symmetric cone:
   //   LP block: e = 1,  SOC block: e = (sqrt(2), 0, ..., 0)
-  if (data.has_cones()) {
-    const i_t cs     = data.cone_start();
-    const f_t norm_b = vector_norm_inf<i_t, f_t>(lp.rhs);
-    const f_t norm_c = vector_norm_inf<i_t, f_t>(lp.objective);
-    const f_t mu     = std::sqrt((1.0 + norm_b) * (1.0 + norm_c));
-    const f_t sqrt2  = std::sqrt(2.0);
-    const f_t x_soc  = mu * sqrt2;
-    const f_t z_soc  = mu * sqrt2;
-    // Linear orthant
-    for (i_t j = 0; j < cs; ++j) {
+  // Full primal+dual point; no factorization/solve (main loop factorizes later).
+  if (init_strategy == 2) {
+    const f_t norm_b     = vector_norm_inf<i_t, f_t>(lp.rhs);
+    const f_t norm_c     = vector_norm_inf<i_t, f_t>(lp.objective);
+    const f_t mu         = std::sqrt((1.0 + norm_b) * (1.0 + norm_c));
+    const f_t sqrt2      = std::sqrt(2.0);
+    const i_t linear_end = data.linear_xz_size(lp.num_cols);
+
+    // Linear orthant: x = z = mu * e, with e = 1
+    for (i_t j = 0; j < linear_end; ++j) {
       data.x[j] = mu;
       data.z[j] = mu;
     }
     if (has_direct_free_linear) {
       for (i_t j : presolve_info.direct_free_variables) {
-        if (j < cs) { data.z[j] = 0.0; }
+        if (j < linear_end) { data.z[j] = 0.0; }
       }
     }
-    // SOC blocks
-    i_t off = 0;
-    for (size_t k = 0; k < lp.second_order_cone_dims.size(); k++) {
-      i_t q_k          = lp.second_order_cone_dims[k];
-      data.x[cs + off] = x_soc;
-      data.z[cs + off] = z_soc;
-      for (i_t j = 1; j < q_k; ++j) {
-        data.x[cs + off + j] = 0.0;
-        data.z[cs + off + j] = 0.0;
+
+    // SOC blocks: x = z = mu * e, with e = (sqrt(2), 0, ..., 0)
+    if (data.has_cones()) {
+      const i_t cs    = data.cone_start();
+      const f_t x_soc = mu * sqrt2;
+      const f_t z_soc = mu * sqrt2;
+      i_t off         = 0;
+      for (size_t k = 0; k < lp.second_order_cone_dims.size(); k++) {
+        i_t q_k          = lp.second_order_cone_dims[k];
+        data.x[cs + off] = x_soc;
+        data.z[cs + off] = z_soc;
+        for (i_t j = 1; j < q_k; ++j) {
+          data.x[cs + off + j] = 0.0;
+          data.z[cs + off + j] = 0.0;
+        }
+        off += q_k;
       }
-      off += q_k;
     }
+
     data.y.set_scalar(0.0);
     if (data.n_upper_bounds > 0) {
       data.w.set_scalar(mu);
