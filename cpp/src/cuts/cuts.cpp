@@ -3486,9 +3486,18 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
 {
   // Generate Gomory and CG Cuts
   if (settings.mixed_integer_gomory_cuts != 0 || settings.strong_chvatal_gomory_cuts != 0) {
+    if (toc(start_time) >= settings.time_limit) { return true; }
     f_t cut_start_time = tic();
-    generate_gomory_cuts(
-      lp, settings, Arow, new_slacks, var_types, basis_update, xstar, basic_list, nonbasic_list);
+    generate_gomory_cuts(lp,
+                         settings,
+                         Arow,
+                         new_slacks,
+                         var_types,
+                         basis_update,
+                         xstar,
+                         basic_list,
+                         nonbasic_list,
+                         start_time);
     f_t cut_generation_time = toc(cut_start_time);
     if (cut_generation_time > 1.0) {
       settings.log.debug("Gomory and CG cut generation time %.2f seconds\n", cut_generation_time);
@@ -3497,6 +3506,7 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
 
   // Generate Knapsack cuts
   if (settings.knapsack_cuts != 0) {
+    if (toc(start_time) >= settings.time_limit) { return true; }
     f_t cut_start_time = tic();
     generate_knapsack_cuts(lp, settings, Arow, new_slacks, var_types, xstar, start_time);
     f_t cut_generation_time = toc(cut_start_time);
@@ -3507,6 +3517,7 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
 
   // Generate Flow Cover cuts
   if (settings.flow_cover_cuts != 0) {
+    if (toc(start_time) >= settings.time_limit) { return true; }
     f_t cut_start_time = tic();
     generate_flow_cover_cuts(lp, settings, Arow, var_types, xstar, variable_bounds, start_time);
     f_t cut_generation_time = toc(cut_start_time);
@@ -3517,8 +3528,10 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
 
   // Generate MIR and CG cuts
   if (settings.mir_cuts != 0 || settings.strong_chvatal_gomory_cuts != 0) {
+    if (toc(start_time) >= settings.time_limit) { return true; }
     f_t cut_start_time = tic();
-    generate_mir_cuts(lp, settings, Arow, new_slacks, var_types, xstar, ystar, variable_bounds);
+    generate_mir_cuts(
+      lp, settings, Arow, new_slacks, var_types, xstar, ystar, variable_bounds, start_time);
     f_t cut_generation_time = toc(cut_start_time);
     if (cut_generation_time > 1.0) {
       settings.log.debug("MIR and CG cut generation time %.2f seconds\n", cut_generation_time);
@@ -3527,6 +3540,7 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
 
   // Generate implied bound cuts
   if (settings.implied_bound_cuts != 0) {
+    if (toc(start_time) >= settings.time_limit) { return true; }
     f_t cut_start_time = tic();
     generate_implied_bound_cuts(lp, settings, var_types, xstar, start_time);
     f_t cut_generation_time = toc(cut_start_time);
@@ -3541,10 +3555,12 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
   // each recomputing them. Done here, after the cut routines that don't
   // need the clique table, to give the background clique-table thread as
   // much time as possible to finish before we join it.
+  if (toc(start_time) >= settings.time_limit) { return true; }
   prepare_fractional_sub_conflict_graph(settings, xstar, start_time);
 
   // Generate Clique cuts (last to give background clique table generation maximum time)
   if (settings.clique_cuts != 0) {
+    if (toc(start_time) >= settings.time_limit) { return true; }
     f_t cut_start_time = tic();
     bool feasible      = generate_clique_cuts(lp, settings, var_types, xstar, zstar, start_time);
     if (!feasible) {
@@ -3559,6 +3575,7 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
 
   // Generate Zero-half (odd-cycle / odd-wheel) cuts; reuses the clique table built above
   if (settings.zero_half_cuts != 0) {
+    if (toc(start_time) >= settings.time_limit) { return true; }
     ZERO_HALF_DEBUG("generate_cuts: about to call generate_zero_half_cuts");
     f_t cut_start_time = tic();
     bool feasible      = generate_zero_half_cuts(lp, settings, var_types, xstar, zstar, start_time);
@@ -4005,7 +4022,8 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
   const std::vector<variable_type_t>& var_types,
   const std::vector<f_t>& xstar,
   const std::vector<f_t>& ystar,
-  variable_bounds_t<i_t, f_t>& variable_bounds)
+  variable_bounds_t<i_t, f_t>& variable_bounds,
+  f_t start_time)
 {
   f_t mir_start_time     = tic();
   constexpr bool verbose = false;
@@ -4035,6 +4053,7 @@ void cut_generation_t<i_t, f_t>::generate_mir_cuts(
   f_t work_estimate  = 0.0;
   i_t num_cuts       = 0;
   while (num_cuts < max_cuts && !score_queue.empty()) {
+    if (toc(start_time) >= settings.time_limit) { break; }
     // Get the row with the highest score from the queue
     auto [max_score, i] = score_queue.top();
     score_queue.pop();
@@ -4279,7 +4298,8 @@ void cut_generation_t<i_t, f_t>::generate_gomory_cuts(
   basis_update_mpf_t<i_t, f_t>& basis_update,
   const std::vector<f_t>& xstar,
   const std::vector<i_t>& basic_list,
-  const std::vector<i_t>& nonbasic_list)
+  const std::vector<i_t>& nonbasic_list,
+  f_t start_time)
 {
   tableau_equality_t<i_t, f_t> tableau(lp, basis_update, nonbasic_list);
   mixed_integer_gomory_cut_t<i_t, f_t> gomory_cut;
@@ -4292,6 +4312,7 @@ void cut_generation_t<i_t, f_t>::generate_gomory_cuts(
   complemented_mir.bound_substitution(lp, variable_bounds, var_types, xstar, transformed_xstar);
 
   for (i_t i = 0; i < lp.num_rows; i++) {
+    if (toc(start_time) >= settings.time_limit) { break; }
     inequality_t<i_t, f_t> inequality(lp.num_cols);
     const i_t j = basic_list[i];
     if (var_types[j] != variable_type_t::INTEGER) { continue; }

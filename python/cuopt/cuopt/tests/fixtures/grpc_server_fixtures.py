@@ -168,6 +168,103 @@ def kill_server(proc):
 cpu_only_env = client_remote_env
 
 
+# Committed TLS test certificates (CA + server + client), shared with the
+# self-hosted client tests and CI. Reused instead of generating certs at test
+# time so the tests do not depend on the ``openssl`` binary being installed.
+_REQUIRED_CERT_FILES = (
+    "ca.crt",
+    "server.crt",
+    "server.key",
+    "client.crt",
+    "client.key",
+)
+
+
+def locate_test_certs():
+    """Return the directory of committed TLS test certs, or None if unavailable.
+
+    Honors ``CERT_FOLDER`` / ``CUOPT_SSL_CERTFILE`` (as used by CI and the C++
+    integration tests) before falling back to the in-repo cert directory. A
+    candidate is only accepted if it contains the full CA/server/client set.
+    """
+    candidates = []
+    cert_folder = os.environ.get("CERT_FOLDER")
+    if cert_folder:
+        candidates.append(cert_folder)
+    ssl_certfile = os.environ.get("CUOPT_SSL_CERTFILE")
+    if ssl_certfile:
+        candidates.append(os.path.dirname(ssl_certfile))
+    candidates.append(
+        os.path.normpath(
+            os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "..",
+                "..",
+                "..",
+                "..",
+                "cuopt_self_hosted",
+                "cuopt_sh_client",
+                "tests",
+                "utils",
+                "certs",
+            )
+        )
+    )
+
+    for cert_dir in candidates:
+        if all(
+            os.path.isfile(os.path.join(cert_dir, name))
+            for name in _REQUIRED_CERT_FILES
+        ):
+            return cert_dir
+    return None
+
+
+def start_tls_grpc_server(port_offset, cert_dir, require_client_cert=False):
+    """Start a TLS-enabled cuopt_grpc_server and return (proc, port)."""
+    server_bin = find_grpc_server()
+    if server_bin is None:
+        pytest.skip("cuopt_grpc_server not found")
+
+    port = int(os.environ.get("CUOPT_TEST_PORT_BASE", "18000")) + port_offset
+    args = [
+        server_bin,
+        "--port",
+        str(port),
+        "--workers",
+        "1",
+        "--tls",
+        "--tls-cert",
+        os.path.join(cert_dir, "server.crt"),
+        "--tls-key",
+        os.path.join(cert_dir, "server.key"),
+    ]
+    if require_client_cert:
+        args.extend(
+            [
+                "--tls-root",
+                os.path.join(cert_dir, "ca.crt"),
+                "--require-client-cert",
+            ]
+        )
+
+    proc = spawn_server(
+        args,
+        env=server_env(),
+    )
+    time.sleep(0.5)
+    if proc.poll() is not None:
+        pytest.skip(
+            f"cuopt_grpc_server exited immediately (rc={proc.returncode}), "
+            "binary may be unable to load shared libraries in this environment"
+        )
+    if not wait_for_port(port, timeout=15):
+        kill_server(proc)
+        pytest.fail("TLS cuopt_grpc_server failed to start within 15s")
+
+    return proc, port
+
+
 def start_grpc_server(port_offset):
     """Locate the server, start it on BASE + port_offset, return (proc, client_env)."""
     server_bin = find_grpc_server()
@@ -206,6 +303,125 @@ def start_grpc_server(port_offset):
 def stop_grpc_server(proc):
     """Gracefully shut down a server process and its worker child."""
     kill_server(proc)
+
+
+def client_tls_env(port, cert_dir, mtls=False):
+    """Return an env dict for remote execution over TLS (or mTLS)."""
+    env = client_remote_env(port)
+    env["CUOPT_TLS_ENABLED"] = "1"
+    env["CUOPT_TLS_ROOT_CERT"] = os.path.join(cert_dir, "ca.crt")
+    if mtls:
+        env["CUOPT_TLS_CLIENT_CERT"] = os.path.join(cert_dir, "client.crt")
+        env["CUOPT_TLS_CLIENT_KEY"] = os.path.join(cert_dir, "client.key")
+    return env
+
+
+def resolve_test_port(port_offset):
+    """Return BASE + port_offset, plus xdist worker id when running under xdist."""
+    worker = os.environ.get("PYTEST_XDIST_WORKER", "gw0")
+    worker_id = int(worker[2:]) if worker.startswith("gw") else 0
+    return (
+        int(os.environ.get("CUOPT_TEST_PORT_BASE", "18000"))
+        + port_offset
+        + worker_id
+    )
+
+
+def start_subprocess_grpc_server(port_offset):
+    """Start plaintext cuopt_grpc_server for subprocess remote-execution tests."""
+    server_bin = find_grpc_server()
+    if server_bin is None:
+        pytest.skip("cuopt_grpc_server not found")
+
+    port = resolve_test_port(port_offset)
+    proc = spawn_server(
+        [server_bin, "--port", str(port), "--workers", "1"],
+    )
+    time.sleep(0.5)
+    if proc.poll() is not None:
+        pytest.skip(
+            f"cuopt_grpc_server exited immediately (rc={proc.returncode}), "
+            "binary may be unable to load shared libraries in this environment"
+        )
+    if not wait_for_port(port, timeout=15):
+        kill_server(proc)
+        pytest.fail("cuopt_grpc_server failed to start within 15s")
+
+    return proc, client_remote_env(port)
+
+
+@pytest.fixture(scope="class")
+def tls_server_info():
+    """TLS server plus cert directory for in-process ``Client(tls=...)`` tests."""
+    cert_dir = locate_test_certs()
+    if cert_dir is None:
+        pytest.skip("TLS test certificates not found")
+
+    proc, port = start_tls_grpc_server(GRPC_PORT_OFFSET_TLS, cert_dir)
+    try:
+        yield {"port": port, "cert_dir": cert_dir}
+    finally:
+        stop_grpc_server(proc)
+
+
+@pytest.fixture(scope="class")
+def mtls_server_info():
+    """Mutual-TLS server (client cert required) plus cert directory."""
+    cert_dir = locate_test_certs()
+    if cert_dir is None:
+        pytest.skip("TLS test certificates not found")
+
+    proc, port = start_tls_grpc_server(
+        GRPC_PORT_OFFSET_MTLS, cert_dir, require_client_cert=True
+    )
+    try:
+        yield {"port": port, "cert_dir": cert_dir}
+    finally:
+        stop_grpc_server(proc)
+
+
+@pytest.fixture(scope="class")
+def tls_env_with_server():
+    """TLS server env dict for subprocess ``Problem.solve()`` remote tests."""
+    cert_dir = locate_test_certs()
+    if cert_dir is None:
+        pytest.skip("TLS test certificates not found")
+
+    proc, port = start_tls_grpc_server(GRPC_PORT_OFFSET_TLS, cert_dir)
+    try:
+        yield client_tls_env(port, cert_dir, mtls=False)
+    finally:
+        stop_grpc_server(proc)
+
+
+@pytest.fixture(scope="class")
+def mtls_env_with_server(mtls_server_info):
+    """Mutual-TLS client env dict for subprocess remote-execution tests."""
+    yield client_tls_env(
+        mtls_server_info["port"],
+        mtls_server_info["cert_dir"],
+        mtls=True,
+    )
+
+
+@pytest.fixture(scope="class")
+def cpu_only_env_with_server():
+    """Plaintext server env for CPU-only subprocess tests."""
+    proc, env = start_subprocess_grpc_server(GRPC_PORT_OFFSET_CPU_ONLY)
+    try:
+        yield env
+    finally:
+        stop_grpc_server(proc)
+
+
+@pytest.fixture(scope="class")
+def cli_remote_env_with_server():
+    """Plaintext server env for cuopt_cli subprocess remote tests."""
+    proc, env = start_subprocess_grpc_server(GRPC_PORT_OFFSET_CLI)
+    try:
+        yield env
+    finally:
+        stop_grpc_server(proc)
 
 
 @pytest.fixture(scope="class")
