@@ -99,7 +99,6 @@ target_include_directories(GRPC_INTEGRATION_TEST
     PRIVATE
     "${CUOPT_SOURCE_DIR}/include"
     "${CUOPT_SOURCE_DIR}/src/grpc"
-    "${CUOPT_SOURCE_DIR}/src/grpc/client"
     "${CUOPT_TEST_DIR}"
     "${CMAKE_BINARY_DIR}"  # For generated protobuf headers
 )
