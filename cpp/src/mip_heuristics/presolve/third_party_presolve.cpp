@@ -44,6 +44,7 @@
 
 #include <raft/core/nvtx.hpp>
 
+#include <algorithm>
 #include <unordered_map>
 
 namespace cuopt::mathematical_optimization::mip {
@@ -923,7 +924,7 @@ void third_party_presolve_t<i_t, f_t>::crush_primal_solution(
   cuopt_assert(reduced_primal.size() == lb.size() && reduced_primal.size() == ub.size(),
                "reduced problem must match crush output dimension");
   for (size_t j = 0; j < reduced_primal.size(); ++j) {
-    reduced_primal[j] = std::min(std::max(reduced_primal[j], lb[j]), ub[j]);
+    reduced_primal[j] = std::clamp(reduced_primal[j], lb[j], ub[j]);
   }
 }
 
