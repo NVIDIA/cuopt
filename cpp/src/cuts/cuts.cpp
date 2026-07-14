@@ -3179,6 +3179,27 @@ void cut_generation_t<i_t, f_t>::generate_implied_bound_cuts(
   }
 }
 
+namespace {
+
+// Total probing-edge budget from the byte cap and the remaining work headroom
+// (max_work_estimate - work_estimate).
+template <typename i_t, typename f_t>
+size_t max_probing_edge_budget(size_t num_vertices, f_t work_headroom)
+{
+  constexpr size_t max_probing_conflict_bytes = size_t{8} << 30;
+  const size_t probing_degree_bytes           = num_vertices * sizeof(size_t);
+  const size_t probing_edge_bytes =
+    sizeof(std::pair<i_t, i_t>) + sizeof(std::pair<f_t, i_t>) + 2 * sizeof(i_t);
+  const size_t max_edges_by_memory =
+    probing_degree_bytes < max_probing_conflict_bytes
+      ? (max_probing_conflict_bytes - probing_degree_bytes) / probing_edge_bytes
+      : 0;
+  const size_t max_edges_by_work = (size_t)std::max<f_t>(0.0, work_headroom / 4.0);
+  return std::min(max_edges_by_memory, max_edges_by_work);
+}
+
+}  // namespace
+
 template <typename i_t, typename f_t>
 void cut_generation_t<i_t, f_t>::prepare_fractional_sub_conflict_graph(
   const simplex_solver_settings_t<i_t, f_t>& settings,
@@ -3306,28 +3327,14 @@ void cut_generation_t<i_t, f_t>::prepare_fractional_sub_conflict_graph(
   size_t probing_entries_scanned = 0;
   size_t probing_edges_kept      = 0;
   if (has_probing_conflicts) {
-    struct probing_candidate_t {
-      f_t score;
-      i_t target;
-    };
-    struct probing_candidate_better_t {
-      bool operator()(const probing_candidate_t& a, const probing_candidate_t& b) const
-      {
-        return a.score > b.score || (a.score == b.score && a.target < b.target);
-      }
+    using candidate_t = std::pair<f_t, i_t>;
+    // Min-heap on score: front() is the worst kept candidate, so a better one replaces it.
+    auto better_candidate = [](const candidate_t& a, const candidate_t& b) {
+      return a.first > b.first || (a.first == b.first && a.second < b.second);
     };
 
-    constexpr size_t max_probing_conflict_bytes = size_t{8} << 30;
-    const size_t probing_degree_bytes           = sub_cg_.vertices.size() * sizeof(size_t);
-    const size_t probing_edge_bytes =
-      sizeof(std::pair<i_t, i_t>) + sizeof(probing_candidate_t) + 2 * sizeof(i_t);
-    const size_t max_edges_by_memory =
-      probing_degree_bytes < max_probing_conflict_bytes
-        ? (max_probing_conflict_bytes - probing_degree_bytes) / probing_edge_bytes
-        : 0;
-    const size_t max_edges_by_work =
-      (size_t)std::max<f_t>(0.0, (max_work_estimate - work_estimate) / 4.0);
-    const size_t max_probing_edges = std::min(max_edges_by_memory, max_edges_by_work);
+    const size_t max_probing_edges =
+      max_probing_edge_budget<i_t, f_t>(sub_cg_.vertices.size(), max_work_estimate - work_estimate);
     const size_t max_edges_per_literal =
       max_probing_edges / std::max<size_t>(1, sub_cg_.vertices.size());
 
@@ -3342,7 +3349,6 @@ void cut_generation_t<i_t, f_t>::prepare_fractional_sub_conflict_graph(
 
     std::vector<std::pair<i_t, i_t>> probing_edges;
     probing_edges.reserve(std::min(max_probing_edges, raw_edge_bound));
-    probing_candidate_better_t better_candidate;
 
     for (i_t j = 0; j < num_vars; ++j) {
       if (!sub_cg_.in_subgraph[j]) { continue; }
@@ -3361,9 +3367,8 @@ void cut_generation_t<i_t, f_t>::prepare_fractional_sub_conflict_graph(
         const i_t end          = offsets[j + 1];
         cuopt_assert(source_local >= 0, "Probing conflict source must be fractional");
 
-        std::vector<probing_candidate_t> candidates;
+        std::vector<candidate_t> candidates;
         candidates.reserve(std::min(max_edges_per_literal, (size_t)(end - begin)));
-        bool heap_built = false;
         for (i_t p = begin; p < end; ++p) {
           probing_entries_scanned++;
           const i_t target_var = variables[p];
@@ -3380,17 +3385,16 @@ void cut_generation_t<i_t, f_t>::prepare_fractional_sub_conflict_graph(
           }
           if (!sub_cg_.in_subgraph[target]) { continue; }
           const i_t target_local = sub_cg_.vertex_to_local[target];
-          probing_candidate_t candidate{
-            sub_cg_.weights[source_local] + sub_cg_.weights[target_local], target_local};
+          candidate_t candidate{sub_cg_.weights[source_local] + sub_cg_.weights[target_local],
+                                target_local};
           if (candidates.size() < max_edges_per_literal) {
             candidates.push_back(candidate);
+            if (candidates.size() == max_edges_per_literal) {
+              std::make_heap(candidates.begin(), candidates.end(), better_candidate);
+            }
             continue;
           }
           if (max_edges_per_literal == 0) { continue; }
-          if (!heap_built) {
-            std::make_heap(candidates.begin(), candidates.end(), better_candidate);
-            heap_built = true;
-          }
           if (better_candidate(candidate, candidates.front())) {
             std::pop_heap(candidates.begin(), candidates.end(), better_candidate);
             candidates.back() = candidate;
@@ -3398,8 +3402,8 @@ void cut_generation_t<i_t, f_t>::prepare_fractional_sub_conflict_graph(
           }
         }
         for (const auto& candidate : candidates) {
-          probing_edges.emplace_back(std::min(source_local, candidate.target),
-                                     std::max(source_local, candidate.target));
+          probing_edges.emplace_back(std::min(source_local, candidate.second),
+                                     std::max(source_local, candidate.second));
         }
       }
       if (toc(start_time) >= settings.time_limit) {
