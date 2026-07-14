@@ -2,16 +2,11 @@
 title: "FAQ"
 ---
 
-# FAQ
-
 ## General FAQ
 
 <Accordion title="Where can I find cuOpt container images?">
 
-  - There are two options:
-    
-      - NVIDIA Docker Hub ([https://hub.docker.com/r/nvidia/cuopt](https://hub.docker.com/r/nvidia/cuopt))
-      - NVIDIA NGC registry ([https://catalog.ngc.nvidia.com/orgs/nvidia/cuopt/containers/cuopt/tags](https://catalog.ngc.nvidia.com/orgs/nvidia/cuopt/containers/cuopt/tags)) with an NVAIE license or NVIDIA Developer Program membership.
+There are two options: - NVIDIA Docker Hub ([https://hub.docker.com/r/nvidia/cuopt](https://hub.docker.com/r/nvidia/cuopt)) - NVIDIA NGC registry ([https://catalog.ngc.nvidia.com/orgs/nvidia/cuopt/containers/cuopt/tags](https://catalog.ngc.nvidia.com/orgs/nvidia/cuopt/containers/cuopt/tags)) with an NVAIE license or NVIDIA Developer Program membership.
 
 </Accordion>
 
@@ -31,30 +26,16 @@ With an NVAIE license or NVIDIA Developer Program membership, you can access the
 
 1.  Log into NGC using the invite and choose the appropriate NGC org.
 
-> 2.  Generate an NGC API key from settings. If you have not generated an API Key, you can generate it by going to the Setup option in your profile and choose [Get API Key](https://docs.nvidia.com/ngc/latest/ngc-private-registry-user-guide.html#generating-a-personal-api-key). Store this or generate a new one next time.
-> 
-> 3.    - Go to the container section for cuOpt and copy the pull tag for the latest image.
->         
->           - Within the Select a tag dropdown, locate the container image release that you want to run.
->           - Click the Copy Image Path button to copy the container image path.
-> 
-> 4.  Log into the nvcr.io container registry in your cluster setup, using the NGC API key as shown below.
-> 
-> 
-> 
-> ``` bash
-> docker login nvcr.io
-> Username: $oauthtoken
-> Password: &lt;my-api-key&gt;
-> ```
-> 
-> 5.  Pull the cuOpt container image.
-> 
-> 
-> 
-> ``` bash
-> docker pull &lt;COPIED_IMAGE_TAG&gt;
-> ```
+2.  Generate an NGC API key from settings. If you have not generated an API Key, you can generate it by going to the Setup option in your profile and choose [Get API Key](https://docs.nvidia.com/ngc/latest/ngc-private-registry-user-guide.html#generating-a-personal-api-key). Store this or generate a new one next time.
+
+3.    - Go to the container section for cuOpt and copy the pull tag for the latest image.
+        
+          - Within the Select a tag dropdown, locate the container image release that you want to run.
+          - Click the Copy Image Path button to copy the container image path.
+
+4.  Log into the nvcr.io container registry in your cluster setup, using the NGC API key as shown below.
+
+5.  Pull the cuOpt container image.
 
 </Accordion>
 
@@ -66,33 +47,28 @@ Yes, please refer to [system requirements](system-requirements) for GPU specific
 
 <Accordion title="Does cuOpt use multiple GPUs/multi-GPUs/multi GPUs?">
 
-  - \#. Yes, in cuOpt self-hosted server, a solver process per GPU can be configured to run multiple solvers. Requests are accepted in a round-robin queue. More details are available in [server api](cuopt-server/server-api/server-cli).
-    
-    1.  There is no support for leveraging multiple GPUs to solve a single problem or oversubscribing a single GPU for multiple solvers.
+1.  Yes, in cuOpt self-hosted server, a solver process per GPU can be configured to run multiple solvers. Requests are accepted in a round-robin queue. More details are available in [server api](cuopt-server/server-api/server-cli).
+2.  There is no support for leveraging multiple GPUs to solve a single problem or oversubscribing a single GPU for multiple solvers.
 
 </Accordion>
 
 <Accordion title="The cuOpt Service is not starting: Issue with port?">
 
 1.  Check the logs for the container (see cuOpt service monitoring below).
-    
-    > Is port 5000 already in use?
-    > 
-    > If port 5000 is unavailable, the logs will contain an error like this
-    > 
-    > ``` bash
-    > ERROR: [Errno 98] error while attempting to bind on address ('0.0.0.0', 5000): address already in use”
-    > ```
 
-> 2.  Try to locate the process that is using port 5000 and stop it if possible. A tool like `netstat` run as the root user can help identify ports mapped to processes, and `docker ps -a` will show running containers.
-> 3.  Alternatively, use port mapping to launch cuOpt on a different port such as 5001 (note the omission of `--network=host` flag):
-> 4.  If running locally, you can also use `ps -aux | grep cuopt_server` to find the process and kill it.
+> Is port 5000 already in use?
 > 
-> > 
-> > 
-> > ``` bash
-> > docker run -d --rm --gpus all -p 5001:5000 &lt;CUOPT_IMAGE&gt;
-> > ```
+> If port 5000 is unavailable, the logs will contain an error like this
+> 
+> 
+
+2.  Try to locate the process that is using port 5000 and stop it if possible. A tool like `netstat` run as the root user can help identify ports mapped to processes, and `docker ps -a` will show running containers.
+3.  Alternatively, use port mapping to launch cuOpt on a different port such as 5001 (note the omission of `--network=host` flag):
+4.  If running locally, you can also use `ps -aux | grep cuopt_server` to find the process and kill it.
+
+> 
+> 
+> 
 
 </Accordion>
 
@@ -111,12 +87,7 @@ Most modern Linux distributions provide OpenSSL 3 out of the box: Ubuntu 22.04+,
 
   - **RHEL / Rocky / Alma / CentOS 8**: install the `openssl3` runtime package from EPEL:
     
-    ``` bash
-    dnf install -y epel-release
-    dnf install -y openssl3
-    # Verify
-    ldconfig -p | grep -E 'libssl\.so\.3|libcrypto\.so\.3'
-    ```
+    
 
   - **Ubuntu 20.04**: install OpenSSL 3 from a PPA or backport, or use the cuOpt container image (Ubuntu 22.04 base) instead.
 
@@ -134,10 +105,6 @@ This error indicates that the cuOpt shared library is not found. Please check th
   - Use `find / -name libcuopt.so` to search for the library path from root directory. You might need to run this command as root user.
   - If the library is found, please add it to the `LD_LIBRARY_PATH` environment variable as shown below:
 
-``` bash
-export LD_LIBRARY_PATH=/path/to/cuopt/lib:$LD_LIBRARY_PATH
-```
-
   - If the library is not found, it means it is not yet installed. Please check the cuOpt installation guide for more details.
 
 </Accordion>
@@ -151,8 +118,7 @@ export LD_LIBRARY_PATH=/path/to/cuopt/lib:$LD_LIBRARY_PATH
 <Accordion title="cuOpt is not running: Issue with GPU memory availability?">
 
 1.  If there are errors pertaining to `rmm` or errors that the service couldn't acquire GPU memory, there is a possibility that GPU memory is being consumed by another process.
-
-> 1.  This can be observed using the command `nvidia-smi`.
+2.  This can be observed using the command `nvidia-smi`.
 
 </Accordion>
 
@@ -164,9 +130,7 @@ Perform a health-check locally on the host running cuOpt:
 
 > 
 > 
-> ``` bash
-> curl -s -o /dev/null -w '%(http_code)\\n' localhost:5000/cuopt/health
-> ```
+> 
 > 
 > If this command returns 200, cuOpt is running and listening on the specified port.
 > 
@@ -183,10 +147,7 @@ If you are trying to reach cuOpt from a remote host, run the health check from t
 
 > 
 > 
-> ``` bash
-> curl -s -o /dev/null -w '%(http_code)\\n' &lt;ip&gt;:5000/cuopt/health
-> 200
-> ```
+> 
 > 
 > If this command does not return 200, but a health check locally on the cuOpt host does return 200, the problem is a network configuration or firewall issue. The host is not reachable, or the cuOpt port is not open to incoming traffic.
 
@@ -195,19 +156,11 @@ If you are trying to reach cuOpt from a remote host, run the health check from t
 <Accordion title="Certificate Validation Errors from Python client?">
 
 1.  This might happen mostly with cuOpt running in a cloud instance.
+2.  It could be that you are behind a proxy that is generating a certificate chain and you need additional certificate authorities installed on your machine.
 
-> 1.  It could be that you are behind a proxy that is generating a certificate chain and you need additional certificate authorities installed on your machine.
-> 
-> You can examine the certificate chain returned on a connection with the following commands or something similar. If it looks like there are certificates in the chain that are issued by your own organization, contact your local IT admin, and ask them for the proper certificates to install on your machine.
-> 
-> In this example, we will check the certificate chain being returned from a connection to NVCF at NVIDIA, but you can substitute a different address if you are trying to connect to an instance of cuOpt deployed in the cloud:
-> 
-> ``` bash
-> export MY_SERVER_ADDRESS=”api.nvcf.nvidia.com:443”
-> openssl s_client -showcerts -connect $MY_SERVER_ADDRESS < /dev/null 2>/dev/null | sed -n -e '/BEGIN\ CERTIFICATE/,/END CERTIFICATE/ p' > test.pem
-> 
-> while openssl x509 -noout -text; do :; done < test.pem.txt
-> ```
+You can examine the certificate chain returned on a connection with the following commands or something similar. If it looks like there are certificates in the chain that are issued by your own organization, contact your local IT admin, and ask them for the proper certificates to install on your machine.
+
+In this example, we will check the certificate chain being returned from a connection to NVCF at NVIDIA, but you can substitute a different address if you are trying to connect to an instance of cuOpt deployed in the cloud:
 
 </Accordion>
 
@@ -237,73 +190,20 @@ Cancellation is honored **before** the solver starts. If the solve has already b
 
 A waypoint graph is a weighted, directed graph where the weights symbolize cost. Unlike the cost matrix, this graph often represents more than just target locations, including intermediate decision points along a route (locations merely passed through). This method is commonly used for custom environments and indoor spaces, such as warehouses and factories, where the cost between target locations is dynamic or not easily quantifiable. A basic waypoint graph with four nodes is illustrated below:
 
-> ![image](/docs/images/faq-01.png)
+![image](/docs/images/faq-01.png)
+
+Graphs intended for input into cuOpt are shown in **Compressed Sparse Row (CSR)** format for efficiency. The translation from a more conventional (and human-readable) graph format, such as a weighted edge list, to CSR can be accomplished quickly, as depicted below:
+
 > 
-> ``` json
-> {
-> "cost_waypoint_graph_data":{
->     "waypoint_graph": {
->     "0": {
->         "offsets": [0, 1, 2, 5, 6],
->         "edges": [2, 2, 0, 1, 3, 2],
->         "weights": [2, 2, 2, 2, 2, 2]
->         }
->     }
-> }
-> ```
 > 
-> Graphs intended for input into cuOpt are shown in **Compressed Sparse Row (CSR)** format for efficiency. The translation from a more conventional (and human-readable) graph format, such as a weighted edge list, to CSR can be accomplished quickly, as depicted below:
 > 
-> > 
-> > 
-> > ``` python
-> > graph = {
-> >         0:(
-> >             "edges":[2],
-> >             "weights":[2]),
-> >         1:(
-> >             "edges":[2],
-> >             "weights":[2]),
-> >         2:{
-> >             "edges":[0, 1, 3],
-> >             "weights":[2, 2, 2]},
-> >         3:(
-> >             "edges":[2],
-> >             "weights":[2])
-> >     }
-> > 
-> > def convert_to_csr(graph):
-> >     num_nodes = len(graph)
-> > 
-> >     offsets = []
-> >     edges = []
-> >     weights = []
-> > 
-> >     cur_offset = 0
-> >     for node in range(num_nodes):
-> >         offsets.append(cur_offset)
-> >         cur_offset += len(graph[node]["edges"])
-> > 
-> >         edges = edges + graph[node]["edges"]
-> >         weights = weights + graph[node]["weights"]
-> > 
-> >     offsets.append(cur_offset)
-> > 
-> >     return offsets, edges, weights
-> > 
-> > offsets, edges, weights = convert_to_csr(graph)
-> > print(f"offsets = (offsets)")
-> > print(f"edges   = (edges)")
-> > print(f"weights = (weights)")
-> > ```
 
 </Accordion>
 
 <Accordion title="What is a mixed fleet?">
 
-  - \#. In some cases, not all vehicles within a fleet are identical. Some might travel faster, while others might incur unaffordable costs when traveling through certain areas. For example, we could have a fleet consisting of planes and trucks.
-    
-    1.  `vehicle_types` can be used along with data such as cost/time matrix for each of the vehicles. Given the example above, planes would have one cost/time matrix, while trucks would have a different cost/time matrix.
+1.  In some cases, not all vehicles within a fleet are identical. Some might travel faster, while others might incur unaffordable costs when traveling through certain areas. For example, we could have a fleet consisting of planes and trucks.
+2.  `vehicle_types` can be used along with data such as cost/time matrix for each of the vehicles. Given the example above, planes would have one cost/time matrix, while trucks would have a different cost/time matrix.
 
 </Accordion>
 
@@ -327,18 +227,16 @@ For the standard CVRPTW (Capacitated Vehicle Routing Problem with Time Windows) 
 
 <Accordion title="Not getting the same solution in every run: Determinism?">
 
-  - \#. cuOpt routing solver is not deterministic, so the results might vary across multiple runs. Increasing the time limit set for the solver will increase the likelihood of getting identical results across multiple runs.
-    
-    1.  Also, there might be several different solutions with the same cost.
+1.  cuOpt routing solver is not deterministic, so the results might vary across multiple runs. Increasing the time limit set for the solver will increase the likelihood of getting identical results across multiple runs.
+2.  Also, there might be several different solutions with the same cost.
 
 </Accordion>
 
 <Accordion title="How do we account for dynamic changing constraints?">
 
-  - \#. cuOpt is stateless and cannot handle dynamic constraints directly, but this can be resolved with modeling.
-    
-    1.  Dynamic reoptimization is used when there is a change in the conditions of the operation such as a vehicle getting broken, a driver calling in sick, a road block, traffic, or a high-priority order coming in.
-    2.  The problem is prepped in such a way that the packages that are already en route are assigned to only those vehicles, and new and old deliveries will be added to this problem. Please refer to example notebooks in [cuOpt Resources](resources) to understand more about how to tackle this problem.
+1.  cuOpt is stateless and cannot handle dynamic constraints directly, but this can be resolved with modeling.
+2.  Dynamic reoptimization is used when there is a change in the conditions of the operation such as a vehicle getting broken, a driver calling in sick, a road block, traffic, or a high-priority order coming in.
+3.  The problem is prepped in such a way that the packages that are already en route are assigned to only those vehicles, and new and old deliveries will be added to this problem. Please refer to example notebooks in [cuOpt Resources](resources) to understand more about how to tackle this problem.
 
 </Accordion>
 
@@ -368,9 +266,8 @@ This is because travel time is not part of the objective, so we could have two s
 
 <Accordion title="There is no path between two locations, how do I input this information to the solver?">
 
-  - \#. Set high values compared to other actual values, not max of float type.
-    
-    1.  This will ensure this path would not be traversed since it will incur a huge cost.
+1.  Set high values compared to other actual values, not max of float type.
+2.  This will ensure this path would not be traversed since it will incur a huge cost.
 
 </Accordion>
 
@@ -378,14 +275,14 @@ This is because travel time is not part of the objective, so we could have two s
 
 The documentation says `task_locations` should be integers. But in the real world, latitude and longitude coordinates are floating point values. To explain this, read the following section.
 
-> cuOpt expects that a user provides either:
-> 
->   - A cost matrix and corresponding location indices.
->   - A waypoint graph and locations corresponding to waypoints as integers.
-> 
-> So in either case, task locations are actually integer indices into another structure.
-> 
-> If you have (lat, long) values, then you can generate a cost matrix using a map API. cuOpt does not directly connect to a third-party map engine, but that can be done outside of cuOpt and the resulting cost matrix passed in.
+cuOpt expects that a user provides either:
+
+  - A cost matrix and corresponding location indices.
+  - A waypoint graph and locations corresponding to waypoints as integers.
+
+So in either case, task locations are actually integer indices into another structure.
+
+If you have (lat, long) values, then you can generate a cost matrix using a map API. cuOpt does not directly connect to a third-party map engine, but that can be done outside of cuOpt and the resulting cost matrix passed in.
 
 </Accordion>
 
@@ -403,9 +300,8 @@ This can be observed as a pickup and delivery problem.
 
 <Accordion title="I know that the problem has a feasible solution, but cuOpt returns an infeasible solution. How do I avoid this?">
 
-  - \#. The time limit could be too short.
-    
-    1.  An infeasible solution always provides information about what constraints caused it and which constraint can be relaxed, which might give more hints.
+1.  The time limit could be too short.
+2.  An infeasible solution always provides information about what constraints caused it and which constraint can be relaxed, which might give more hints.
 
 </Accordion>
 
@@ -419,28 +315,28 @@ Set all prize values = 1 with a very high prize objective (like 10^6), and then 
 
 1.  The routing solver capabilities are based on few factors:
 
->   - The available GPU memory
-> 
->   -   - The size of the problem
->         
->           - Number of locations
->           - Number of vehicles
->           - Number of tasks
-> 
->   -   - The complexity of the problem
->         
->           - Number of demand and capacity constraints
->           - Number of time windows
->           - Number of vehicle types
->           - Number of breaks
-> 
->   - The time limit
-> 
-> Depending on these factors, the problems that can be solved can vary, for example:
-> 
->   - On a H100 SXM with 80GB memory, the maximum number of locations that routing solver can handle is 10,000.
-> 
-> At the same time, depending on complexity, the solver might be able to handle more or less than 10,000 locations.
+  - The available GPU memory
+
+  -   - The size of the problem
+        
+          - Number of locations
+          - Number of vehicles
+          - Number of tasks
+
+  -   - The complexity of the problem
+        
+          - Number of demand and capacity constraints
+          - Number of time windows
+          - Number of vehicle types
+          - Number of breaks
+
+  - The time limit
+
+Depending on these factors, the problems that can be solved can vary, for example:
+
+  - On a H100 SXM with 80GB memory, the maximum number of locations that routing solver can handle is 10,000.
+
+At the same time, depending on complexity, the solver might be able to handle more or less than 10,000 locations.
 
 </Accordion>
 
@@ -448,10 +344,9 @@ Set all prize values = 1 with a very high prize objective (like 10^6), and then 
 
 <Accordion title="How small and how many problems can I give when using the batch mode?">
 
-  - LP batch mode is deprecated; see [Batch Mode](#batch-mode) in  
-    [Convex Features](convex-features).
-    
-    The batch mode allows solving many LPs in parallel to try to fully utilize the GPU when LP problems are too small. Using H100 SXM, the problem should be of at least 1K elements, and giving more than 100 LPs will usually not increase performance.
+LP batch mode is deprecated; see [Batch Mode](#batch-mode) in [Convex Features](convex-features).
+
+The batch mode allows solving many LPs in parallel to try to fully utilize the GPU when LP problems are too small. Using H100 SXM, the problem should be of at least 1K elements, and giving more than 100 LPs will usually not increase performance.
 
 </Accordion>
 
@@ -465,8 +360,8 @@ Yes, but we usually see great results on very large and sparse problems.
 
 If run on a H100 SXM 80GB (hardware used when using NVIDIA Cloud Functions), you can run the following sizes:
 
->   - 4.5M rows/constraints; 4.5M columns/variables; and 900M non-zeros in the constraint matrix
->   - 36M rows/constraints; 36M columns/variables; and 720M non-zeros in the constraint matrix
+  - 4.5M rows/constraints; 4.5M columns/variables; and 900M non-zeros in the constraint matrix
+  - 36M rows/constraints; 36M columns/variables; and 720M non-zeros in the constraint matrix
 
 </Accordion>
 
@@ -474,11 +369,11 @@ If run on a H100 SXM 80GB (hardware used when using NVIDIA Cloud Functions), you
 
 There are several ways to tune the solver to get the best possible performance:
 
->   - Hardware: If using self-hosted, you should use a recent server-grade GPU. We recommend H100 SXM (not the PCIE version).
->   - Tolerance: The set tolerance usually has a massive impact on performance. Try the lowest possible value using `set_optimality_tolerance` until you have reached your lowest possible acceptable accuracy.
->   - PDLP Solver mode: PDLP solver mode will change the way PDLP internally optimizes the problem. The mode choice can drastically impact how fast a specific problem will be solved. You should test the different modes to see which one fits your problem best.
->   - Batch mode: Deprecated for LP; prefer sequential `cuopt.linear_programming.Solve` calls (see [Batch Mode](#batch-mode)). While available, batch mode can solve multiple LPs in parallel.
->   - Presolve: Presolve can reduce problem size and improve solve time.
+  - Hardware: If using self-hosted, you should use a recent server-grade GPU. We recommend H100 SXM (not the PCIE version).
+  - Tolerance: The set tolerance usually has a massive impact on performance. Try the lowest possible value using `set_optimality_tolerance` until you have reached your lowest possible acceptable accuracy.
+  - PDLP Solver mode: PDLP solver mode will change the way PDLP internally optimizes the problem. The mode choice can drastically impact how fast a specific problem will be solved. You should test the different modes to see which one fits your problem best.
+  - Batch mode: Deprecated for LP; prefer sequential `cuopt.linear_programming.Solve` calls (see [Batch Mode](#batch-mode)). While available, batch mode can solve multiple LPs in parallel.
+  - Presolve: Presolve can reduce problem size and improve solve time.
 
 </Accordion>
 
@@ -498,12 +393,12 @@ The choice entirely depends on the level of accuracy you need for your problem. 
 
 1.  There is no inherit limit imposed on the number of variables, number of constraints, or number of non-zeros you can have in a MILP or LP, except the restrictions due to the number of bits in an integer and the amount of memory in the CPU and GPU.
 
-> Depending on these factors, the problems that can be solved can vary, for example:
-> 
->   -   - On a H100 SXM with 80GB memory, here are few examples of the problems that can be solved:
->         
->           - 10M rows/constraints, 10M columns/variables, and 2B non-zeros in the constraint matrix.
->           - 74.5M rows/constraints, 74.5M columns/variables, and 1.49B non-zeros in the constraint matrix.
+Depending on these factors, the problems that can be solved can vary, for example:
+
+  -   - On a H100 SXM with 80GB memory, here are few examples of the problems that can be solved:
+        
+          - 10M rows/constraints, 10M columns/variables, and 2B non-zeros in the constraint matrix.
+          - 74.5M rows/constraints, 74.5M columns/variables, and 1.49B non-zeros in the constraint matrix.
 
 </Accordion>
 
@@ -515,8 +410,7 @@ cuOpt supports presolve reductions using PSLP or Papilo for linear programming (
 
 <Accordion title="How do I use warm start with PDLP?">
 
-  - To use warm start functionality with PDLP, you must explicitly disable presolve by setting `CUOPT_PRESOLVE=0` in solver\_config.  
-    This is required because presolve transforms the problem, and the warm start solution from the original problem cannot be applied to the presolved problem.
+To use warm start functionality with PDLP, you must explicitly disable presolve by setting `CUOPT_PRESOLVE=0` in solver\_config. This is required because presolve transforms the problem, and the warm start solution from the original problem cannot be applied to the presolved problem.
 
 </Accordion>
 
@@ -524,8 +418,7 @@ cuOpt supports presolve reductions using PSLP or Papilo for linear programming (
 
 <Accordion title="How do I run the MIP solver with cuOpt?">
 
-  - You can run the cuOpt MIP solver through the Python, C, CLI, or server APIs  
-    by providing a model with integer or binary variables. The cuOpt MIP solver is in **beta** and under active development. The solver currently excels at finding high-quality feasible solutions quickly with GPU-accelerated primal heuristics. Proving feasible solutions optimal remains under active development.
+You can run the cuOpt MIP solver through the Python, C, CLI, or server APIs by providing a model with integer or binary variables. The cuOpt MIP solver is in **beta** and under active development. The solver currently excels at finding high-quality feasible solutions quickly with GPU-accelerated primal heuristics. Proving feasible solutions optimal remains under active development.
 
 </Accordion>
 
@@ -533,11 +426,11 @@ cuOpt supports presolve reductions using PSLP or Papilo for linear programming (
 
 1.  There is no inherit limit imposed on the number of variables, number of constraints, or number of non-zeros you can have in a MILP or LP, except the restrictions due to the number of bits in integer and the amount of memory in the CPU and GPU.
 
-> Depending on these factors, the problems that can be solved can vary, for example:
-> 
->   -   - On a H100 SXM with 80GB memory, this is the biggest dataset that was tested:
->         
->           - 27 million non-zeros coefficients on a problem from MIPLIB2017.
+Depending on these factors, the problems that can be solved can vary, for example:
+
+  -   - On a H100 SXM with 80GB memory, this is the biggest dataset that was tested:
+        
+          - 27 million non-zeros coefficients on a problem from MIPLIB2017.
 
 </Accordion>
 
@@ -547,32 +440,10 @@ cuOpt supports presolve reductions using PSLP or Papilo for linear programming (
 
 You can share only selected GPUs in a container by using the `--gpus` flag. For example, to share only the first GPU, you can use the following command:
 
-> 
-> 
-> ``` bash
-> docker run --gpus '"device=0,1"' &lt;image&gt;
-> ```
-
 </Accordion>
 
 <Accordion title="How do I run cuOpt container with options set as environment variables?">
 
 You can run cuOpt container with options set as environment variables by using the `--env` flag. For example, to set the time limit to 1000 seconds, you can use the following command:
-
-> 
-> 
-> ``` bash
-> mkdir data
-> mkdir result
-> docker run -v `pwd`/data:/cuopt_data \
-> -v `pwd`/results:/cuopt_results \
-> -e "CUOPT_DATA_DIR=/cuopt_data" \
-> -e "CUOPT_RESULT_DIR=/cuopt_result" \
-> -e CUOPT_MAX_RESULT=0 \
-> -e CUOPT_SERVER_PORT=8081 \
-> -p 8081:8081 \
-> &lt;image&gt; \
-> /bin/bash -c "python -m cuopt_server.cuopt_server"
-> ```
 
 </Accordion>

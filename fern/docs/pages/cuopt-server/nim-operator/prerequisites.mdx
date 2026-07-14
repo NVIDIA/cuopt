@@ -2,8 +2,6 @@
 title: "Prerequisites"
 ---
 
-# Prerequisites
-
 This document covers all prerequisites needed before deploying CuOpt with the NIM Operator.
 
 ## Kubernetes Cluster Setup
@@ -18,21 +16,11 @@ Standard Kubernetes installation using kubeadm. Follow the [official Kubernetes 
 
 Use NVIDIA Cloud Native Stack Ansible playbooks for automated setup including GPU Operator:
 
-``` bash
-git clone https://github.com/NVIDIA/cloud-native-stack.git
-cd cloud-native-stack/playbooks
-# Follow the playbook instructions
-```
-
 This method automatically deploys necessary operators including the GPU Operator.
 
 ### Option 3: Minikube (Development/Testing)
 
 For local development and testing:
-
-``` bash
-minikube start --driver=docker --gpus all
-```
 
 ## GPU Operator Installation
 
@@ -40,26 +28,11 @@ If not using Cloud Native Stack, install the GPU Operator manually.
 
 ### Add NVIDIA Helm Repository
 
-``` bash
-helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
-helm repo update
-```
-
 ### Install GPU Operator
-
-``` bash
-helm install --wait --generate-name \
-   -n gpu-operator --create-namespace \
-   nvidia/gpu-operator
-```
 
 This typically takes 3-5 minutes to install the driver and set up the cloud native stack for GPU usage.
 
 ### Verify GPU Operator
-
-``` bash
-kubectl get pods -n gpu-operator
-```
 
 All pods should be in `Running` state.
 
@@ -69,27 +42,11 @@ CuOpt requires persistent storage. Deploy a storage provisioner if your cluster 
 
 ### Local Path Provisioner (Development/Single Node)
 
-``` bash
-kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.31/deploy/local-path-storage.yaml
-```
-
 Wait for the provisioner to be ready:
-
-``` bash
-kubectl rollout status deployment/local-path-provisioner -n local-path-storage --timeout=120s
-```
 
 ### Set Default Storage Class
 
-``` bash
-kubectl patch storageclass local-path -p '("metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true")}}'
-```
-
 ### Verify Storage Class
-
-``` bash
-kubectl get storageclass
-```
 
 You should see `local-path` marked as `(default)`.
 
@@ -104,24 +61,9 @@ For production deployments, consider:
 
 ### Create Namespace
 
-``` bash
-kubectl create namespace nim-operator
-```
-
 ### Install NIM Operator
 
-``` bash
-helm upgrade --install nim-operator nvidia/k8s-nim-operator \
-    -n nim-operator \
-    --version=3.0.2
-```
-
 ### Verify Installation
-
-``` bash
-kubectl get pods -n nim-operator
-kubectl get crd | grep nvidia
-```
 
 You should see the `nimservices.apps.nvidia.com` CRD registered.
 
@@ -138,16 +80,7 @@ You need an NGC API key to pull NVIDIA container images.
 
 ### Set Environment Variable
 
-``` bash
-export NGC_API_KEY=&lt;your-api-key&gt;
-```
-
 For persistent configuration, add to your shell profile:
-
-``` bash
-echo 'export NGC_API_KEY=&lt;your-api-key&gt;' >> ~/.bashrc
-source ~/.bashrc
-```
 
 ## Verification Checklist
 

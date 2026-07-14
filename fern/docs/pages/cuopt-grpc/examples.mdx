@@ -2,16 +2,9 @@
 title: "Examples"
 ---
 
-# Examples
-
 gRPC remote execution uses the same **Python**, **C API**, and **cuopt\_cli** entry points as a local solve. After you start `cuopt_grpc_server` on the GPU host ([Quick Start](quick-start)), set the client environment and run **any** of the examples below **unchanged** — no code edits are required.
 
 On the **client** host, before running the example commands or scripts:
-
-``` bash
-export CUOPT_REMOTE_HOST=&lt;gpu-hostname-or-ip&gt;
-export CUOPT_REMOTE_PORT=5001
-```
 
 Add TLS or tuning variables from [Advanced](advanced) if your deployment uses them.
 

@@ -2,8 +2,6 @@
 title: "Deployment Guide"
 ---
 
-# Deployment Guide
-
 This guide covers deploying CuOpt using the NIM Operator.
 
 ## Automated Deployment
@@ -14,330 +12,19 @@ The easiest way to deploy CuOpt is using the provided deployment script.
 
 [deploy.sh](guide/deploy.sh)
 
-``` bash
-#!/bin/bash
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
-
-#
-# CuOpt NIM Operator Deployment Script
-#
-# This script automates the deployment of NVIDIA cuOpt using the NIM Operator.
-#
-# Usage:
-#   ./deploy.sh                           # Deploy with defaults
-#   ./deploy.sh --namespace my-ns         # Custom namespace
-#   ./deploy.sh --uninstall               # Remove deployment
-#   ./deploy.sh --help                    # Show help
-#
-
-set -e
-
-# Default values
-NAMESPACE="nim-service"
-CUOPT_IMAGE_TAG="26.6.0-cu12"
-SCRIPT_DIR="$(cd "$(dirname "$(BASH_SOURCE[0])")" && pwd)"
-UNINSTALL=false
-SKIP_PREREQUISITES=false
-WAIT_TIMEOUT=300
-
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
-
-print_info() (
-    echo -e "${GREEN)[INFO]$(NC) $1"
-}
-
-print_warn() (
-    echo -e "${YELLOW)[WARN]$(NC) $1"
-}
-
-print_error() (
-    echo -e "${RED)[ERROR]$(NC) $1"
-}
-
-usage() {
-    cat << EOF
-CuOpt NIM Operator Deployment Script
-
-Usage: $(basename "$0") [OPTIONS]
-
-Options:
-    -n, --namespace NAME      Kubernetes namespace (default: nim-service)
-    -t, --tag TAG             CuOpt image tag (default: $(CUOPT_IMAGE_TAG))
-    -u, --uninstall           Uninstall CuOpt deployment
-    -s, --skip-prerequisites  Skip prerequisite checks
-    -w, --wait SECONDS        Timeout for waiting on resources (default: 300)
-    -h, --help                Show this help message
-
-Environment Variables:
-    NGC_API_KEY               Required. Your NVIDIA NGC API key
-
-Examples:
-    # Deploy with defaults
-    export NGC_API_KEY=your-key
-    ./deploy.sh
-
-    # Deploy to custom namespace
-    ./deploy.sh --namespace my-cuopt
-
-    # Uninstall
-    ./deploy.sh --uninstall
-
-EOF
-    exit 0
-}
-
-check_prerequisites() {
-    print_info "Checking prerequisites..."
-
-    # Check kubectl
-    if ! command -v kubectl &> /dev/null; then
-        print_error "kubectl is not installed"
-        exit 1
-    fi
-
-    # Check cluster connectivity
-    if ! kubectl cluster-info &> /dev/null; then
-        print_error "Cannot connect to Kubernetes cluster"
-        exit 1
-    fi
-
-    # Check NGC_API_KEY
-    if [[ -z "$(NGC_API_KEY)" ]]; then
-        print_error "NGC_API_KEY environment variable is not set"
-        echo "Please set it with: export NGC_API_KEY=&lt;your-ngc-api-key&gt;"
-        exit 1
-    fi
-
-    # Check NIM Operator
-    if ! kubectl get crd nimservices.apps.nvidia.com &> /dev/null; then
-        print_error "NIM Operator is not installed"
-        echo "Please install it with:"
-        echo "  helm upgrade --install nim-operator nvidia/k8s-nim-operator -n nim-operator --version=3.0.2"
-        exit 1
-    fi
-
-    # Check GPU Operator
-    if ! kubectl get pods -n gpu-operator 2>/dev/null | grep -q "Running"; then
-        print_warn "GPU Operator may not be running. Deployment might fail."
-    fi
-
-    print_info "All prerequisites met"
-}
-
-create_namespace() (
-    print_info "Creating namespace ${NAMESPACE)..."
-
-    if kubectl get namespace "$(NAMESPACE)" &> /dev/null; then
-        print_info "Namespace $(NAMESPACE) already exists"
-    else
-        kubectl create namespace "$(NAMESPACE)"
-    fi
-}
-
-create_secrets() {
-    print_info "Creating secrets..."
-
-    # Create image pull secret
-    if kubectl get secret ngc-secret -n "$(NAMESPACE)" &> /dev/null; then
-        print_info "Secret ngc-secret already exists, updating..."
-        kubectl delete secret ngc-secret -n "$(NAMESPACE)"
-    fi
-
-    kubectl create secret docker-registry ngc-secret \
-        -n "$(NAMESPACE)" \
-        --docker-server=nvcr.io \
-        --docker-username='$oauthtoken' \
-        --docker-password="$(NGC_API_KEY)"
-
-    # Create NGC API key secret
-    if kubectl get secret ngc-api-secret -n "$(NAMESPACE)" &> /dev/null; then
-        print_info "Secret ngc-api-secret already exists, updating..."
-        kubectl delete secret ngc-api-secret -n "$(NAMESPACE)"
-    fi
-
-    kubectl create secret generic ngc-api-secret \
-        -n "$(NAMESPACE)" \
-        --from-literal=NGC_API_KEY="$(NGC_API_KEY)"
-
-    print_info "Secrets created successfully"
-}
-
-deploy_cuopt() {
-    print_info "Deploying CuOpt NIMService..."
-
-    # Update namespace in manifest if different from default
-    if [[ "$(NAMESPACE)" != "nim-service" ]]; then
-        print_info "Using custom namespace: $(NAMESPACE)"
-        sed "s/namespace: nim-service/namespace: $(NAMESPACE)/" \
-            "$(SCRIPT_DIR)/cuopt-nimservice.yaml" | kubectl apply -f -
-    else
-        kubectl apply -f "$(SCRIPT_DIR)/cuopt-nimservice.yaml"
-    fi
-
-    print_info "CuOpt NIMService created"
-}
-
-wait_for_deployment() (
-    print_info "Waiting for CuOpt to be ready (timeout: ${WAIT_TIMEOUT)s)..."
-
-    local start_time
-    start_time=$(date +%s)
-    local ready=false
-
-    while [[ $(($(date +%s) - start_time)) -lt $(WAIT_TIMEOUT) ]]; do
-        local status
-        status=$(kubectl get nimservice cuopt-service -n "$(NAMESPACE)" -o jsonpath='(.status.state)' 2>/dev/null || echo "Unknown")
-
-        if [[ "$(status)" == "Ready" ]]; then
-            ready=true
-            break
-        fi
-
-        echo -ne "\r  Status: $(status)... "
-        sleep 5
-    done
-
-    echo ""
-
-    if [[ "$(ready)" == "true" ]]; then
-        print_info "CuOpt is ready!"
-
-        # Get service details
-        local cluster_ip
-        cluster_ip=$(kubectl get svc cuopt-service -n "$(NAMESPACE)" -o jsonpath='(.spec.clusterIP)' 2>/dev/null)
-        local port
-        port=$(kubectl get svc cuopt-service -n "$(NAMESPACE)" -o jsonpath='(.spec.ports[0].port)' 2>/dev/null)
-
-        echo ""
-        echo "============================================"
-        echo "  CuOpt Deployment Successful!"
-        echo "============================================"
-        echo ""
-        echo "  Service: cuopt-service.$(NAMESPACE).svc.cluster.local"
-        echo "  ClusterIP: $(cluster_ip)"
-        echo "  Port: $(port)"
-        echo ""
-        echo "  To test locally:"
-        echo "    kubectl port-forward svc/cuopt-service -n $(NAMESPACE) 8000:8000"
-        echo ""
-        echo "  Then access: http://localhost:8000"
-        echo "============================================"
-    else
-        print_warn "Deployment timed out. CuOpt may still be starting."
-        print_info "Check status with: kubectl get nimservice cuopt-service -n $(NAMESPACE)"
-        print_info "Check logs with: kubectl logs -f deployment/cuopt-service -n $(NAMESPACE)"
-    fi
-}
-
-uninstall() (
-    print_info "Uninstalling CuOpt from namespace ${NAMESPACE)..."
-
-    # Delete NIMService
-    if kubectl get nimservice cuopt-service -n "$(NAMESPACE)" &> /dev/null; then
-        kubectl delete nimservice cuopt-service -n "$(NAMESPACE)"
-        print_info "NIMService deleted"
-    fi
-
-    # Delete secrets
-    kubectl delete secret ngc-secret ngc-api-secret -n "$(NAMESPACE)" --ignore-not-found
-    print_info "Secrets deleted"
-
-    # Optionally delete namespace
-    read -p "Delete namespace $(NAMESPACE)? [y/N] " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        kubectl delete namespace "$(NAMESPACE)"
-        print_info "Namespace deleted"
-    fi
-
-    print_info "Uninstall complete"
-}
-
-# Parse command line arguments
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        -n|--namespace)
-            NAMESPACE="$2"
-            shift 2
-            ;;
-        -t|--tag)
-            CUOPT_IMAGE_TAG="$2"
-            shift 2
-            ;;
-        -u|--uninstall)
-            UNINSTALL=true
-            shift
-            ;;
-        -s|--skip-prerequisites)
-            SKIP_PREREQUISITES=true
-            shift
-            ;;
-        -w|--wait)
-            WAIT_TIMEOUT="$2"
-            shift 2
-            ;;
-        -h|--help)
-            usage
-            ;;
-        *)
-            print_error "Unknown option: $1"
-            usage
-            ;;
-    esac
-done
-
-# Main execution
-if [[ "$(UNINSTALL)" == "true" ]]; then
-    uninstall
-    exit 0
-fi
-
-if [[ "$(SKIP_PREREQUISITES)" != "true" ]]; then
-    check_prerequisites
-fi
-
-create_namespace
-create_secrets
-deploy_cuopt
-wait_for_deployment
-```
-
 1.  Set your NGC API Key:
     
-    ``` bash
-    export NGC_API_KEY=&lt;your-ngc-api-key&gt;
-    ```
+    
 
 2.  Run the deployment script:
     
-    ``` bash
-    ./deploy.sh
-    ```
+    
 
 3.  With custom options:
     
-    ``` bash
-    ./deploy.sh --namespace my-cuopt --wait 600
-    ```
+    
 
 ### Script Options
-
-``` text
-Usage: deploy.sh [OPTIONS]
-
-Options:
-    -n, --namespace NAME      Kubernetes namespace (default: nim-service)
-    -t, --tag TAG             CuOpt image tag
-    -u, --uninstall           Uninstall CuOpt deployment
-    -s, --skip-prerequisites  Skip prerequisite checks
-    -w, --wait SECONDS        Timeout for waiting on resources (default: 300)
-    -h, --help                Show help message
-```
 
 ## Manual Deployment
 
@@ -347,224 +34,56 @@ If you prefer to deploy manually, follow these steps.
 
 [namespace.yaml](guide/namespace.yaml)
 
-``` yaml
-# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
-
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: nim-service
-  labels:
-    app.kubernetes.io/name: cuopt
-    app.kubernetes.io/component: nim-service
-```
-
 Apply the namespace:
-
-``` bash
-kubectl apply -f namespace.yaml
-```
 
 ### Step 2: Create Secrets
 
 Create the image pull secret:
 
-``` bash
-kubectl create secret -n nim-service docker-registry ngc-secret \
-    --docker-server=nvcr.io \
-    --docker-username='$oauthtoken' \
-    --docker-password=$(NGC_API_KEY)
-```
-
 Create the NGC API key secret:
-
-``` bash
-kubectl create secret -n nim-service generic ngc-api-secret \
-    --from-literal=NGC_API_KEY=$(NGC_API_KEY)
-```
 
 ### Step 3: Deploy CuOpt NIMService
 
 [cuopt-nimservice.yaml](guide/cuopt-nimservice.yaml)
 
-``` yaml
-# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
-
-apiVersion: apps.nvidia.com/v1alpha1
-kind: NIMService
-metadata:
-  name: cuopt-service
-  namespace: nim-service
-spec:
-  image:
-    repository: nvcr.io/nvidia/cuopt/cuopt
-    tag: "26.6.0-cu12"
-    pullPolicy: IfNotPresent
-    pullSecrets:
-      - ngc-secret
-  authSecret: ngc-api-secret
-  env:
-    - name: CUOPT_DATA_DIR
-      value: /model-store
-    - name: CUOPT_SERVER_LOG_LEVEL
-      value: info
-    - name: CUOPT_SERVER_PORT
-      value: "8000"
-  storage:
-    pvc:
-      create: true
-      size: 10Gi
-      storageClass: ""
-      volumeAccessMode: "ReadWriteOnce"
-  resources:
-    limits:
-      nvidia.com/gpu: 1
-  expose:
-    service:
-      type: ClusterIP
-      port: 8000
-    ingress:
-      enabled: false
-  metrics:
-    enabled: true
-    serviceMonitor:
-      additionalLabels:
-        release: kube-prometheus-stack
-  scale:
-    enabled: false
-  startupProbe:
-    enabled: false
-  livenessProbe:
-    enabled: true
-    probe:
-      failureThreshold: 3
-      httpGet:
-        path: /v2/health/live
-        port: api
-      initialDelaySeconds: 15
-      periodSeconds: 10
-      successThreshold: 1
-      timeoutSeconds: 1
-  readinessProbe:
-    enabled: true
-    probe:
-      failureThreshold: 30
-      httpGet:
-        path: /v2/health/ready
-        port: api
-      initialDelaySeconds: 30
-      periodSeconds: 10
-      successThreshold: 1
-      timeoutSeconds: 1
-```
-
 Apply the NIMService:
-
-``` bash
-kubectl apply -f cuopt-nimservice.yaml
-```
 
 ## Verifying the Deployment
 
 ### Check NIMService Status
 
-``` bash
-kubectl get nimservice -n nim-service
-```
-
 Expected output:
-
-``` text
-NAME            STATE   AGE
-cuopt-service   Ready   5m
-```
 
 ### Check Pods
 
-``` bash
-kubectl get pods -n nim-service
-```
-
 ### Check Service
-
-``` bash
-kubectl get service -n nim-service
-```
 
 Expected output:
 
-``` text
-NAME            TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)    AGE
-cuopt-service   ClusterIP   10.101.219.185   &lt;none&gt;        8000/TCP   5m
-```
-
 ### Check Logs
 
-``` bash
-kubectl logs -f deployment/cuopt-service -n nim-service
-```
-
 You should see output indicating the server is running:
-
-``` text
-2025-11-19 20:52:50.655 INFO cuopt server version 25.10.01
-2025-11-19 20:52:50.767 INFO Application startup complete.
-2025-11-19 20:52:50.767 INFO Uvicorn running on http://0.0.0.0:5000
-```
 
 ## Testing the Deployment
 
 ### Port Forward for Local Testing
 
-``` bash
-kubectl port-forward svc/cuopt-service -n nim-service 8000:8000
-```
-
 Then access the service at `http://localhost:8000`.
 
 ### Test with cuopt\_sh CLI
 
-``` bash
-# Get the service ClusterIP
-CUOPT_IP=$(kubectl get svc cuopt-service -n nim-service -o jsonpath='(.spec.clusterIP)')
-
-# Run a test
-cuopt_sh -i $CUOPT_IP -t LP /path/to/your/problem.mps
-```
-
 Example output:
-
-``` text
-2025-11-19 21:29:22.391 cuopt_sh_client.cuopt_self_host_client INFO Optimal
-('response': {'solver_response': {'status': 'Optimal', ...)}}
-```
 
 ### Health Endpoints
 
   - Liveness: `GET /v2/health/live`
   - Readiness: `GET /v2/health/ready`
 
-``` bash
-curl http://localhost:8000/v2/health/ready
-```
-
 ## Cleanup
 
 ### Using the Script
 
-``` bash
-./deploy.sh --uninstall
-```
-
 ### Manual Cleanup
-
-``` bash
-kubectl delete -f cuopt-nimservice.yaml
-kubectl delete secret ngc-secret ngc-api-secret -n nim-service
-kubectl delete namespace nim-service
-```
 
 ## Troubleshooting
 
@@ -572,31 +91,15 @@ kubectl delete namespace nim-service
 
 Check pod events:
 
-``` bash
-kubectl describe pod -l app=cuopt-service -n nim-service
-```
-
 Check GPU operator status:
-
-``` bash
-kubectl get pods -n gpu-operator
-```
 
 ### Image Pull Errors
 
 Verify your NGC credentials:
 
-``` bash
-kubectl get secret ngc-secret -n nim-service -o yaml
-```
-
 ### Health Check Failures
 
 Check the readiness and liveness probe logs:
-
-``` bash
-kubectl logs -f deployment/cuopt-service -n nim-service | grep -i health
-```
 
 ## Next Steps
 

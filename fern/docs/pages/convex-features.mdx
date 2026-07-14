@@ -2,8 +2,6 @@
 title: "Convex Optimization Features"
 ---
 
-# Convex Optimization Features
-
 ## Availability
 
 The convex optimization solvers for Linear Programming (LP), Quadratic Programming (QP), Quadratically Constrained Quadratic Programming (QCQP), and Second-Order Cone Programming (SOCP) can be accessed in the following ways:
@@ -46,9 +44,9 @@ There are two ways to specify constraints to the LP solver:
     
     Constraints can be specified in the form:
     
-    A\*x (&lt;=, =, \>=) b
+    A\*x \{&lt;=, =, \>=\} b
     
-    where A is the constraint matrix in CSR format, x is the variable vector, and b is the right-hand side vector. The relationship (&lt;=, =, \>=) is specified via the `row_type` parameter.
+    where A is the constraint matrix in CSR format, x is the variable vector, and b is the right-hand side vector. The relationship \{&lt;=, =, \>=\} is specified via the `row_type` parameter.
 
 2.  Using constraint bounds:
     
@@ -61,12 +59,6 @@ There are two ways to specify constraints to the LP solver:
 ## Quadratic Objectives
 
 cuOpt supports problems with quadratic objectives of the form:
-
-``` text
-minimize        x^T*Q*x + c^T*x
-subject to      A*x (<=, =, >=) b,
-                lb <= x <= ub,
-```
 
 where H = (Q + Q^T)/2 is a symmetric positive semidefinite matrix. Note that the Q matrix need not be symmetric, and is specified without the 1/2 factor that may be used by other solvers.
 
@@ -84,18 +76,7 @@ Support for quadratic constraints is currently in **beta**.
 
 cuOpt supports quadratic constraints of the form
 
-``` text
-x^T Q x + d^T x (<=, >=) alpha
-```
-
 and translates them internally into **second-order cone** constraints. Problems with quadratic constraints have the form:
-
-``` text
-minimize        c^T*x + x^T Q x
-subject to      A*x (<=, =, >=) b,
-                x^T Q_i x + d_i^T x (<=, >=) alpha_i,  i = 1, ..., p,
-                lb <= x <= ub.
-```
 
 Quadratic constraints are supplied via `addConstraint` in Python, via :c`cuOptAddQuadraticConstraint` in C, and via `QCMATRIX` sections in MPS.
 
@@ -105,15 +86,7 @@ cuOpt accepts several different types of quadratic constraints:
 
 These are constraints of the form
 
-``` text
-x^T Q x + d^T x <= alpha
-```
-
 where `H = (Q + Q^T)/2` is a symmetric positive semidefinite matrix, and
-
-``` text
-x^T Q x + d^T x >= alpha
-```
 
 where `H = (Q + Q^T)/2` is a symmetric negative semidefinite matrix. Note when specifying a convex quadratic constraint, the Q matrix need not be symmetric.
 
@@ -121,15 +94,7 @@ where `H = (Q + Q^T)/2` is a symmetric negative semidefinite matrix. Note when s
 
 These constrains are of the form:
 
-``` text
-|| (x_1, ..., x_n) ||_2 <= x_0.
-```
-
 Second-order cone constraints must be specified as a quadratic constraint with a bound on the x\_0 variable:
-
-``` text
-x_1^2 + ... + x_n^2 - x_0^2 <= 0,  x_0 >= 0.
-```
 
 **Rotated second-order cone constraints**:
 
@@ -139,15 +104,7 @@ These constraints are of the form:
 
 Rotated second-order cone constraints must be specified as a quadratic constraint with a bounds on the x\_0 and x\_1 variables:
 
-``` text
-x_2^2 + x_3^2 + ... + x_n^2 - 2 * x_0 * x_1 <= 0,  x_0 >= 0,  x_1 >= 0.
-```
-
 In the Python and C APIs, supply one cross coefficient per variable pair (e.g. `-2 * x_0 * x_1` in the quadratic expression). cuOpt canonicalizes input to one stored COO entry per pair.
-
-``` text
-Q[x_0, x_1] = -2 * d    (stored canonical coefficient for the cross term)
-```
 
 For example, a single API term `-2 * x_0 * x_1` is stored as `-2` and defines the cone `||tail||^2 <= 2 * x_0 * x_1`.
 
@@ -159,28 +116,7 @@ When any quadratic constraint is present, cuOpt automatically selects the barrie
 
 **Python example — second-order cone** `||(x_1, x_2)||_2 <= x_0`:
 
-``` python
-x0 = problem.addVariable(name="x0", lb=0)   # cone head, must be >= 0
-x1 = problem.addVariable(name="x1")
-x2 = problem.addVariable(name="x2")
-
-problem.addConstraint(x1*x1 + x2*x2 - x0*x0 <= 0, name="soc")
-```
-
 **Python example — rotated cone** `x_2^2 + x_3^2 <= 2 * x_0 * x_1`:
-
-``` python
-x0 = problem.addVariable(name="x3", lb=0)   # cone head, must be >= 0
-x1 = problem.addVariable(name="x4", lb=0)   # cone head, must be >= 0
-x2 = problem.addVariable(name="x1")
-x3 = problem.addVariable(name="x2")
-
-problem.addConstraint(x1 + x2 >= 2)
-# x2^2 + x3^2 <= 2*x0*x1
-problem.addConstraint(
-    x2*x2 + x3*x3 - 2*x0*x1 <= 0, name="rotated_soc"
-)
-```
 
 **C API:** Use :c`cuOptAddQuadraticConstraint` to add convex quadratic constraints or second-order and rotated second-order cone constraints expressed as quadratic inequalities.
 
@@ -240,7 +176,7 @@ The `CUOPT_LOG_FILE` parameter can be set to write detailed solver logs for LP/Q
 
 In the cuOpt service API, the `log_file` value in `solver_configs` is ignored.
 
-If however you set the `solver_logs` flag on the `/cuopt/request` REST API call, users can fetch the log file content from the webserver at `/cuopt/logs/(id)`. Using the logging callback feature through the cuOpt client is shown in [Examples](#generic-example-with-normal-and-batch-mode) on the self-hosted page.
+If however you set the `solver_logs` flag on the `/cuopt/request` REST API call, users can fetch the log file content from the webserver at `/cuopt/logs/{id}`. Using the logging callback feature through the cuOpt client is shown in [Examples](#generic-example-with-normal-and-batch-mode) on the self-hosted page.
 
 ## Infeasibility Detection
 

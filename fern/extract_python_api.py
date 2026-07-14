@@ -10,6 +10,7 @@ handled by Sphinx autodoc (.. autoclass:: / .. autofunction::).
 """
 
 import ast
+import inspect
 import re
 import textwrap
 from pathlib import Path
@@ -31,7 +32,7 @@ def _get_docstring(node) -> str:
         and isinstance(node.body[0].value, ast.Constant)
         and isinstance(node.body[0].value.value, str)
     ):
-        return textwrap.dedent(node.body[0].value.value).strip()
+        return inspect.cleandoc(node.body[0].value.value)
     return ""
 
 
@@ -260,7 +261,7 @@ def write_api_page(title: str, dest: Path, sections: list):
     """
     sections: list of (heading, parsed_module_dict | None, [extra_mdx_lines])
     """
-    lines = [f'---\ntitle: "{title}"\n---\n\n# {title}\n']
+    lines = [f'---\ntitle: "{title}"\n---\n']
     for heading, parsed, extras in sections:
         if heading:
             lines.append(f"\n## {heading}\n")
@@ -288,7 +289,7 @@ def generate_pages():
     # 1. Convex Optimization (LP/QP) Python API
     lp_problem = _parse_module(PYTHON_SRC / "linear_programming/problem.py")
     lp_settings = _parse_module(PYTHON_SRC / "linear_programming/solver_settings/__init__.py")
-    lp_io_path = PYTHON_SRC / "linear_programming/io/__init__.py"
+    lp_io_path = PYTHON_SRC / "linear_programming/io/parser.py"
     lp_io = _parse_module(lp_io_path) if lp_io_path.exists() else None
 
     # Filter to exposed classes matching the autodoc RST
@@ -370,7 +371,6 @@ def generate_pages():
     else:
         (PAGES / "cuopt-server/client-api/sh-cli-api.mdx").write_text(
             '---\ntitle: "Self-Hosted Service Client API Reference"\n---\n\n'
-            "# Self-Hosted Service Client API Reference\n\n"
             "<Note>Install `cuopt-sh-client` to access the thin client API. See [Build Your Own Client](sh-cli-build).</Note>\n",
             encoding="utf-8",
         )

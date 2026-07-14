@@ -433,12 +433,47 @@ if buildAll || hasArg cuopt_sh_client; then
     python "${PYTHON_ARGS_FOR_INSTALL[@]}" .
 fi
 
-# Build the docs (opt-in; pass 'docs' explicitly to build)
+# Build the Fern docs (opt-in; pass 'docs' explicitly to build)
 if hasArg docs; then
-    cd "${REPODIR}"/cpp/doxygen
-    doxygen Doxyfile
+    cd "${REPODIR}"
 
-    cd "${REPODIR}"/docs/cuopt
-    make clean
-    make html linkcheck
+    # Check for required tools
+    if ! command -v pandoc &>/dev/null; then
+        echo "ERROR: pandoc is required to build the docs."
+        echo "       Install: sudo apt-get install pandoc  (or brew install pandoc on macOS)"
+        exit 1
+    fi
+    if ! command -v node &>/dev/null; then
+        echo "ERROR: Node.js is required for the Fern CLI."
+        echo "       Install from: https://nodejs.org/"
+        exit 1
+    fi
+    if ! command -v jq &>/dev/null; then
+        echo "ERROR: jq is required to read the Fern version pin."
+        echo "       Install: sudo apt-get install jq"
+        exit 1
+    fi
+
+    # Install Fern CLI at the version pinned in fern/fern.config.json
+    FERN_VERSION=$(jq -r .version "${REPODIR}/fern/fern.config.json")
+    if ! fern --version 2>/dev/null | grep -q "${FERN_VERSION}"; then
+        echo "Installing fern-api@${FERN_VERSION}..."
+        npm install -g "fern-api@${FERN_VERSION}"
+    fi
+
+    # Install Python dependencies needed by convert_docs.py
+    pip install --quiet fastapi pydantic pyyaml
+    pip install --quiet -e "${REPODIR}/python/cuopt_server" --no-deps
+
+    # Generate MDX pages, OpenAPI spec, and Python/C API reference
+    echo "Generating Fern docs..."
+    python "${REPODIR}/fern/convert_docs.py"
+
+    # Validate (fern check must run from the repo root so it finds fern/fern.config.json)
+    echo "Running fern check..."
+    fern check
+
+    echo ""
+    echo "Docs built successfully."
+    echo "To preview locally: cd fern && fern docs dev"
 fi

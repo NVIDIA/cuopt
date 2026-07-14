@@ -4,246 +4,163 @@
  *
  * cuOpt install selector - generates install commands from user choices.
  * Stable version comes from window.CUOPT_INSTALL_VERSION (injected at build from cuopt.__version__).
- * Next = stable + 2 on minor with year rollover (YY.MM format). Update COMMANDS structure when commands change.
+ * Next = stable + 2 on minor with year rollover (YY.MM format). Update buildCommands() when commands change.
  */
 (function () {
   "use strict";
 
-  var ver = typeof window !== "undefined" && window.CUOPT_INSTALL_VERSION;
-  if (!ver || !ver.conda || !ver.pip) {
-    var root = document.getElementById("cuopt-install-selector");
-    if (root) {
-      root.innerHTML =
-        '<div class="cuopt-install-selector-wrap cuopt-install-error">' +
-        '<p><strong>Install selector error:</strong> Version was not injected. ' +
-        'Build the documentation (e.g. <code>make html</code>) so that <code>cuopt-install-version.js</code> is generated from the package version.</p>' +
-        "</div>";
-    }
-    return;
+  /* Version constants — resolved lazily so this script works even if cuopt-install-version.js
+     loads after us (both are injected async by Next.js's Script component). */
+  var V_CONDA = null, V = null, V_CONDA_NEXT = null, V_NEXT = null;
+
+  function resolveVersion() {
+    if (V_CONDA) return true;
+    var ver = typeof window !== "undefined" && window.CUOPT_INSTALL_VERSION;
+    if (!ver || !ver.conda || !ver.pip) return false;
+    V_CONDA = ver.conda;
+    V = ver.pip;
+    var parts = V_CONDA.split(".");
+    var major = parseInt(parts[0], 10);
+    var minor = parseInt(parts[1], 10) || 0;
+    var nextMinor = minor + 2;
+    var nextMajor = major;
+    if (nextMinor > 12) { nextMajor = major + 1; nextMinor = nextMinor - 12; }
+    V_CONDA_NEXT = nextMajor + "." + (nextMinor < 10 ? "0" : "") + nextMinor;
+    V_NEXT = nextMajor + "." + nextMinor;
+    return true;
   }
 
-  var V_CONDA = ver.conda;
-  var V = ver.pip;
-  var parts = V_CONDA.split(".");
-  var major = parseInt(parts[0], 10);
-  var minor = parseInt(parts[1], 10) || 0;
-  var nextMinor = minor + 2;
-  var nextMajor = major;
-  if (nextMinor > 12) {
-    nextMajor = major + 1;
-    nextMinor = nextMinor - 12;
+  function buildCommands() {
+    var containerLib = {
+      stable: {
+        cu12: {
+          default: "docker pull nvidia/cuopt:latest-cu12",
+          run: "docker run --gpus all -it --rm nvidia/cuopt:latest-cu12 /bin/bash",
+        },
+        cu13: {
+          default: "docker pull nvidia/cuopt:latest-cu13",
+          run: "docker run --gpus all -it --rm nvidia/cuopt:latest-cu13 /bin/bash",
+        },
+        "cu13-ubi10": {
+          default: "docker pull nvidia/cuopt:latest-cu13-ubi10",
+          run: "docker run --gpus all -it --rm nvidia/cuopt:latest-cu13-ubi10 /bin/bash",
+        },
+      },
+      nightly: {
+        cu12: {
+          default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cu12",
+          run: "docker run --gpus all -it --rm nvidia/cuopt:" + V_NEXT + ".0a-cu12 /bin/bash",
+        },
+        cu13: {
+          default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cu13",
+          run: "docker run --gpus all -it --rm nvidia/cuopt:" + V_NEXT + ".0a-cu13 /bin/bash",
+        },
+        "cu13-ubi10": {
+          default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cu13-ubi10",
+          run: "docker run --gpus all -it --rm nvidia/cuopt:" + V_NEXT + ".0a-cu13-ubi10 /bin/bash",
+        },
+      },
+    };
+
+    return {
+      python: {
+        pip: {
+          stable: {
+            cu12: "pip install --extra-index-url=https://pypi.nvidia.com 'cuopt-cu12==" + V + ".*'",
+            cu13: "pip install --extra-index-url=https://pypi.nvidia.com 'cuopt-cu13==" + V + ".*'",
+          },
+          nightly: {
+            cu12: "pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ 'cuopt-cu12==" + V_NEXT + ".*'",
+            cu13: "pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ 'cuopt-cu13==" + V_NEXT + ".*'",
+          },
+        },
+        conda: {
+          stable: {
+            cu12: "conda install -c rapidsai -c conda-forge -c nvidia cuopt=" + V_CONDA + ".* cuda-version=12.9",
+            cu13: "conda install -c rapidsai -c conda-forge -c nvidia cuopt=" + V_CONDA + ".* cuda-version=13.0",
+          },
+          nightly: {
+            cu12: "conda install -c rapidsai-nightly -c conda-forge -c nvidia cuopt=" + V_CONDA_NEXT + ".* cuda-version=12.9",
+            cu13: "conda install -c rapidsai-nightly -c conda-forge -c nvidia cuopt=" + V_CONDA_NEXT + ".* cuda-version=13.0",
+          },
+        },
+        container: containerLib,
+      },
+      c: {
+        pip: {
+          stable: {
+            cu12: "pip install --extra-index-url=https://pypi.nvidia.com 'libcuopt-cu12==" + V + ".*'",
+            cu13: "pip install --extra-index-url=https://pypi.nvidia.com 'libcuopt-cu13==" + V + ".*'",
+          },
+          nightly: {
+            cu12: "pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ 'libcuopt-cu12==" + V_NEXT + ".*'",
+            cu13: "pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ 'libcuopt-cu13==" + V_NEXT + ".*'",
+          },
+        },
+        conda: {
+          stable: {
+            cu12: "conda install -c rapidsai -c conda-forge -c nvidia libcuopt=" + V_CONDA + ".* cuda-version=12.9",
+            cu13: "conda install -c rapidsai -c conda-forge -c nvidia libcuopt=" + V_CONDA + ".* cuda-version=13.0",
+          },
+          nightly: {
+            cu12: "conda install -c rapidsai-nightly -c conda-forge -c nvidia libcuopt=" + V_CONDA_NEXT + ".* cuda-version=12.9",
+            cu13: "conda install -c rapidsai-nightly -c conda-forge -c nvidia libcuopt=" + V_CONDA_NEXT + ".* cuda-version=13.0",
+          },
+        },
+        container: containerLib,
+      },
+      server: {
+        pip: {
+          stable: {
+            cu12: "pip install --extra-index-url=https://pypi.nvidia.com 'nvidia-cuda-runtime-cu12==12.9.*' 'cuopt-server-cu12==" + V + ".*' 'cuopt-sh-client==" + V_CONDA + ".*'",
+            cu13: "pip install --extra-index-url=https://pypi.nvidia.com 'nvidia-cuda-runtime==13.0.*' 'cuopt-server-cu13==" + V + ".*' 'cuopt-sh-client==" + V_CONDA + ".*'",
+          },
+          nightly: {
+            cu12: "pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ 'cuopt-server-cu12==" + V_NEXT + ".*' 'cuopt-sh-client==" + V_CONDA_NEXT + ".*'",
+            cu13: "pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ 'cuopt-server-cu13==" + V_NEXT + ".*' 'cuopt-sh-client==" + V_CONDA_NEXT + ".*'",
+          },
+        },
+        conda: {
+          stable: {
+            default: "conda install -c rapidsai -c conda-forge -c nvidia cuopt-server=" + V_CONDA + ".* cuopt-sh-client=" + V_CONDA + ".*",
+          },
+          nightly: {
+            default: "conda install -c rapidsai-nightly -c conda-forge -c nvidia cuopt-server=" + V_CONDA_NEXT + ".* cuopt-sh-client=" + V_CONDA_NEXT + ".*",
+          },
+        },
+        container: {
+          stable: {
+            cu12: {
+              default: "docker pull nvidia/cuopt:latest-cu12",
+              run: "docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:latest-cu12",
+            },
+            cu13: {
+              default: "docker pull nvidia/cuopt:latest-cu13",
+              run: "docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:latest-cu13",
+            },
+            "cu13-ubi10": {
+              default: "docker pull nvidia/cuopt:latest-cu13-ubi10",
+              run: "docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:latest-cu13-ubi10",
+            },
+          },
+          nightly: {
+            cu12: {
+              default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cu12",
+              run: "docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:" + V_NEXT + ".0a-cu12",
+            },
+            cu13: {
+              default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cu13",
+              run: "docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:" + V_NEXT + ".0a-cu13",
+            },
+            "cu13-ubi10": {
+              default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cu13-ubi10",
+              run: "docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:" + V_NEXT + ".0a-cu13-ubi10",
+            },
+          },
+        },
+      },
+    };
   }
-  var V_CONDA_NEXT = nextMajor + "." + (nextMinor < 10 ? "0" : "") + nextMinor;
-  var V_NEXT = nextMajor + "." + nextMinor;
-
-  /* Shared Docker image lines: same tags are typically published to Docker Hub and NGC */
-  var CONTAINER_CUOPT_LIB = {
-    stable: {
-      cu12: {
-        default: "docker pull nvidia/cuopt:latest-cu12",
-        run: "docker run --gpus all -it --rm nvidia/cuopt:latest-cu12 /bin/bash",
-      },
-      cu13: {
-        default: "docker pull nvidia/cuopt:latest-cu13",
-        run: "docker run --gpus all -it --rm nvidia/cuopt:latest-cu13 /bin/bash",
-      },
-      "cu13-ubi10": {
-        default: "docker pull nvidia/cuopt:latest-cu13-ubi10",
-        run: "docker run --gpus all -it --rm nvidia/cuopt:latest-cu13-ubi10 /bin/bash",
-      },
-    },
-    nightly: {
-      cu12: {
-        default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cu12",
-        run: "docker run --gpus all -it --rm nvidia/cuopt:" + V_NEXT + ".0a-cu12 /bin/bash",
-      },
-      cu13: {
-        default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cu13",
-        run: "docker run --gpus all -it --rm nvidia/cuopt:" + V_NEXT + ".0a-cu13 /bin/bash",
-      },
-      "cu13-ubi10": {
-        default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cu13-ubi10",
-        run: "docker run --gpus all -it --rm nvidia/cuopt:" + V_NEXT + ".0a-cu13-ubi10 /bin/bash",
-      },
-    },
-  };
-
-  var COMMANDS = {
-    python: {
-      pip: {
-        stable: {
-          cu12:
-            "pip install --extra-index-url=https://pypi.nvidia.com 'cuopt-cu12==" +
-            V +
-            ".*'",
-          cu13:
-            "pip install --extra-index-url=https://pypi.nvidia.com 'cuopt-cu13==" +
-            V +
-            ".*'",
-        },
-        nightly: {
-          cu12:
-            "pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ 'cuopt-cu12==" +
-            V_NEXT +
-            ".*'",
-          cu13:
-            "pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ 'cuopt-cu13==" +
-            V_NEXT +
-            ".*'",
-        },
-      },
-      conda: {
-        stable: {
-          cu12:
-            "conda install -c rapidsai -c conda-forge -c nvidia cuopt=" +
-            V_CONDA +
-            ".* cuda-version=12.9",
-          cu13:
-            "conda install -c rapidsai -c conda-forge -c nvidia cuopt=" +
-            V_CONDA +
-            ".* cuda-version=13.0",
-        },
-        nightly: {
-          cu12:
-            "conda install -c rapidsai-nightly -c conda-forge -c nvidia cuopt=" +
-            V_CONDA_NEXT +
-            ".* cuda-version=12.9",
-          cu13:
-            "conda install -c rapidsai-nightly -c conda-forge -c nvidia cuopt=" +
-            V_CONDA_NEXT +
-            ".* cuda-version=13.0",
-        },
-      },
-      container: CONTAINER_CUOPT_LIB,
-    },
-    c: {
-      pip: {
-        stable: {
-          cu12:
-            "pip install --extra-index-url=https://pypi.nvidia.com 'libcuopt-cu12==" +
-            V +
-            ".*'",
-          cu13:
-            "pip install --extra-index-url=https://pypi.nvidia.com 'libcuopt-cu13==" +
-            V +
-            ".*'",
-        },
-        nightly: {
-          cu12:
-            "pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ 'libcuopt-cu12==" +
-            V_NEXT +
-            ".*'",
-          cu13:
-            "pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ 'libcuopt-cu13==" +
-            V_NEXT +
-            ".*'",
-        },
-      },
-      conda: {
-        stable: {
-          cu12:
-            "conda install -c rapidsai -c conda-forge -c nvidia libcuopt=" +
-            V_CONDA +
-            ".* cuda-version=12.9",
-          cu13:
-            "conda install -c rapidsai -c conda-forge -c nvidia libcuopt=" +
-            V_CONDA +
-            ".* cuda-version=13.0",
-        },
-        nightly: {
-          cu12:
-            "conda install -c rapidsai-nightly -c conda-forge -c nvidia libcuopt=" +
-            V_CONDA_NEXT +
-            ".* cuda-version=12.9",
-          cu13:
-            "conda install -c rapidsai-nightly -c conda-forge -c nvidia libcuopt=" +
-            V_CONDA_NEXT +
-            ".* cuda-version=13.0",
-        },
-      },
-      container: CONTAINER_CUOPT_LIB,
-    },
-    server: {
-      pip: {
-        stable: {
-          cu12:
-            "pip install --extra-index-url=https://pypi.nvidia.com 'nvidia-cuda-runtime-cu12==12.9.*' 'cuopt-server-cu12==" +
-            V +
-            ".*' 'cuopt-sh-client==" +
-            V_CONDA +
-            ".*'",
-          cu13:
-            "pip install --extra-index-url=https://pypi.nvidia.com 'nvidia-cuda-runtime==13.0.*' 'cuopt-server-cu13==" +
-            V +
-            ".*' 'cuopt-sh-client==" +
-            V_CONDA +
-            ".*'",
-        },
-        nightly: {
-          cu12:
-            "pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ 'cuopt-server-cu12==" +
-            V_NEXT +
-            ".*' 'cuopt-sh-client==" +
-            V_CONDA_NEXT +
-            ".*'",
-          cu13:
-            "pip install --pre --extra-index-url=https://pypi.nvidia.com --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ 'cuopt-server-cu13==" +
-            V_NEXT +
-            ".*' 'cuopt-sh-client==" +
-            V_CONDA_NEXT +
-            ".*'",
-        },
-      },
-      conda: {
-        stable: {
-          default:
-            "conda install -c rapidsai -c conda-forge -c nvidia cuopt-server=" +
-            V_CONDA +
-            ".* cuopt-sh-client=" +
-            V_CONDA +
-            ".*",
-        },
-        nightly: {
-          default:
-            "conda install -c rapidsai-nightly -c conda-forge -c nvidia cuopt-server=" +
-            V_CONDA_NEXT +
-            ".* cuopt-sh-client=" +
-            V_CONDA_NEXT +
-            ".*",
-        },
-      },
-      container: {
-        stable: {
-          cu12: {
-            default: "docker pull nvidia/cuopt:latest-cu12",
-            run: "docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:latest-cu12",
-          },
-          cu13: {
-            default: "docker pull nvidia/cuopt:latest-cu13",
-            run: "docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:latest-cu13",
-          },
-          "cu13-ubi10": {
-            default: "docker pull nvidia/cuopt:latest-cu13-ubi10",
-            run: "docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:latest-cu13-ubi10",
-          },
-        },
-        nightly: {
-          cu12: {
-            default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cu12",
-            run: "docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:" + V_NEXT + ".0a-cu12",
-          },
-          cu13: {
-            default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cu13",
-            run: "docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:" + V_NEXT + ".0a-cu13",
-          },
-          "cu13-ubi10": {
-            default: "docker pull nvidia/cuopt:" + V_NEXT + ".0a-cu13-ubi10",
-            run: "docker run --gpus all -it --rm -p 8000:8000 -e CUOPT_SERVER_PORT=8000 nvidia/cuopt:" + V_NEXT + ".0a-cu13-ubi10",
-          },
-        },
-      },
-    },
-  };
 
   var SUPPORTED_METHODS = {
     python: ["pip", "conda", "container"],
@@ -257,13 +174,13 @@
     return el ? el.value : "";
   }
 
-  function hasCudaVariants(iface, method) {
+  function hasCudaVariants(COMMANDS, iface, method) {
     var d = COMMANDS[iface] && COMMANDS[iface][method];
     if (!d || !d.stable) return false;
     return !!(d.stable.cu12 && d.stable.cu13);
   }
 
-  function getCommand() {
+  function getCommand(COMMANDS) {
     var iface = getSelectedValue("cuopt-iface");
     var method = getSelectedValue("cuopt-method");
     var release = getSelectedValue("cuopt-release");
@@ -297,10 +214,8 @@
           "# Nightly cuOpt container images are not published to NVIDIA NGC; use Docker Hub for nightly builds.\n" +
           "# (Select \"Docker Hub\" above for the same commands without this note.)\n\n" +
           "# Docker Hub (docker.io) — no registry login required for public pulls\n" +
-          hubPull +
-          "\n\n" +
-          "# Run the container:\n" +
-          runLine;
+          hubPull + "\n\n" +
+          "# Run the container:\n" + runLine;
       } else if (registry === "ngc") {
         runLine = runLine.replace(/nvidia\/cuopt:/g, "nvcr.io/nvidia/cuopt/cuopt:");
         cmd =
@@ -308,18 +223,13 @@
           "docker login nvcr.io\n" +
           "# Username: $oauthtoken\n" +
           "# Password: <NGC API key>\n\n" +
-          "docker pull nvcr.io/nvidia/cuopt/cuopt:" +
-          tag +
-          "\n\n" +
-          "# Run the container:\n" +
-          runLine;
+          "docker pull nvcr.io/nvidia/cuopt/cuopt:" + tag + "\n\n" +
+          "# Run the container:\n" + runLine;
       } else {
         cmd =
           "# Docker Hub (docker.io) — no registry login required for public pulls\n" +
-          hubPull +
-          "\n\n" +
-          "# Run the container:\n" +
-          runLine;
+          hubPull + "\n\n" +
+          "# Run the container:\n" + runLine;
       }
     } else {
       var key = data[release].cu12 && data[release].cu13 ? cuda : "default";
@@ -328,16 +238,16 @@
     return cmd;
   }
 
-  function updateOutput() {
+  function updateOutput(COMMANDS) {
     var out = document.getElementById("cuopt-cmd-out");
     var copyBtn = document.getElementById("cuopt-copy-btn");
-    var cmd = getCommand();
+    var cmd = getCommand(COMMANDS);
     out.value = cmd;
     out.style.display = cmd ? "block" : "none";
     copyBtn.style.display = cmd ? "inline-flex" : "none";
   }
 
-  function updateVisibility() {
+  function updateVisibility(COMMANDS) {
     var method = getSelectedValue("cuopt-method");
     var iface = getSelectedValue("cuopt-iface");
     var allowed = SUPPORTED_METHODS[iface] || [];
@@ -362,18 +272,14 @@
     var showCuda =
       releaseVisible &&
       (method === "pip" || method === "conda" || method === "container") &&
-      hasCudaVariants(ifaceForVariants, method);
+      hasCudaVariants(COMMANDS, ifaceForVariants, method);
     cudaRow.style.display = showCuda ? "table-row" : "none";
     releaseRow.style.display = releaseVisible ? "table-row" : "none";
     var variantRow = document.getElementById("cuopt-variant-row");
-    if (variantRow) {
-      variantRow.style.display = method === "container" ? "table-row" : "none";
-    }
+    if (variantRow) variantRow.style.display = method === "container" ? "table-row" : "none";
     var registryRow = document.getElementById("cuopt-registry-row");
-    if (registryRow) {
-      registryRow.style.display = method === "container" ? "table-row" : "none";
-    }
-    updateOutput();
+    if (registryRow) registryRow.style.display = method === "container" ? "table-row" : "none";
+    updateOutput(COMMANDS);
   }
 
   function copyToClipboard() {
@@ -386,15 +292,16 @@
       var btn = document.getElementById("cuopt-copy-btn");
       var orig = btn.textContent;
       btn.textContent = "Copied!";
-      setTimeout(function () {
-        btn.textContent = orig;
-      }, 1500);
+      setTimeout(function () { btn.textContent = orig; }, 1500);
     } catch (e) {}
   }
 
   function render() {
+    if (!resolveVersion()) return false;
     var root = document.getElementById("cuopt-install-selector");
-    if (!root) return;
+    if (!root) return false;
+
+    var COMMANDS = buildCommands();
 
     root.innerHTML =
       '<div class="cuopt-install-selector-wrap">' +
@@ -436,42 +343,56 @@
       function (name) {
         var inputs = document.querySelectorAll('input[name="' + name + '"]');
         inputs.forEach(function (input) {
-          input.addEventListener("change", updateVisibility);
+          input.addEventListener("change", function () { updateVisibility(COMMANDS); });
         });
       }
     );
     document.getElementById("cuopt-copy-btn").addEventListener("click", copyToClipboard);
-    updateVisibility();
+    updateVisibility(COMMANDS);
 
     var defaultIface = root.getAttribute("data-default-iface");
     if (defaultIface && ["python", "c", "server", "cli"].indexOf(defaultIface) !== -1) {
       var radio = document.querySelector('input[name="cuopt-iface"][value="' + defaultIface + '"]');
-      if (radio) {
-        radio.checked = true;
-        updateVisibility();
-      }
+      if (radio) { radio.checked = true; updateVisibility(COMMANDS); }
+    }
+    return true;
+  }
+
+  function isRendered() {
+    var root = document.getElementById("cuopt-install-selector");
+    return root ? !!root.querySelector(".cuopt-install-selector-wrap") : false;
+  }
+
+  /* Polling loop — runs every 150 ms for up to ~10 s after each navigation.
+     Handles: version script loading after us, React wiping content mid-reconcile,
+     RSC streaming pages where the div appears after pushState fires. */
+  var _pollTimer = null;
+  var _pollGen = 0;
+
+  function poll(gen, remaining) {
+    if (gen !== _pollGen) return;
+    if (!isRendered()) render();
+    if (isRendered() && remaining > 20) {
+      /* Widget is up; keep a cheap watch for a bit in case React wipes it again. */
+      remaining = 20;
+    }
+    if (remaining > 0) {
+      _pollTimer = setTimeout(function () { poll(gen, remaining - 1); }, 150);
     }
   }
 
-  function tryRender() {
-    if (document.getElementById("cuopt-install-selector")) {
-      render();
-      return true;
-    }
-    return false;
+  function startPoll() {
+    _pollGen++;
+    if (_pollTimer) { clearTimeout(_pollTimer); _pollTimer = null; }
+    poll(_pollGen, 66); /* ~10 s */
   }
 
-  if (!tryRender()) {
-    // Element not in DOM yet (SPA / Next.js renders after scripts run).
-    // Use MutationObserver to detect when React inserts the div.
-    var _obs = new MutationObserver(function (_, obs) {
-      if (tryRender()) {
-        obs.disconnect();
-      }
-    });
-    var target = document.body || document.documentElement;
-    _obs.observe(target, { childList: true, subtree: true });
-    // Stop observing after 10 s to avoid leaking
-    setTimeout(function () { _obs.disconnect(); }, 10000);
-  }
+  /* Hook Next.js SPA navigation (pushState / replaceState / back-forward). */
+  var _origPush = history.pushState.bind(history);
+  history.pushState = function () { _origPush.apply(history, arguments); startPoll(); };
+  var _origReplace = history.replaceState.bind(history);
+  history.replaceState = function () { _origReplace.apply(history, arguments); startPoll(); };
+  window.addEventListener("popstate", startPoll);
+
+  startPoll();
 })();

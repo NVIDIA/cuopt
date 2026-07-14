@@ -2,8 +2,6 @@
 title: "Quickstart Guide"
 ---
 
-# Quickstart Guide
-
 NVIDIA cuOpt provides a Python API for routing optimization and LP/QP/MILP that enables users to solve complex optimization problems efficiently.
 
 ## Installation
@@ -22,61 +20,4 @@ After installation, you can verify that NVIDIA cuOpt is working correctly by run
 
 Copy and paste this script directly into your terminal ([smoke\_test\_example.sh](routing/examples/smoke_test_example.sh)):
 
-``` bash
-and paste this entire script to run the example.
-
-python -c '
-import cudf
-from cuopt import routing
-
-# Create cost matrix (symmetric distance matrix for 4 locations)
-cost_matrix = cudf.DataFrame(
-    [[0, 2, 2, 2],
-     [2, 0, 2, 2],
-     [2, 2, 0, 2],
-     [2, 2, 2, 0]],
-    dtype="float32"
-)
-
-# Task locations (indices into the cost matrix)
-# Tasks at locations 1, 2, and 3
-task_locations = cudf.Series([1, 2, 3])
-
-# Number of vehicles
-n_vehicles = 2
-
-# Create data model
-dm = routing.DataModel(
-    cost_matrix.shape[0], n_vehicles, len(task_locations)
-)
-dm.add_cost_matrix(cost_matrix)
-dm.add_transit_time_matrix(cost_matrix.copy(deep=True))
-
-# Configure solver settings
-ss = routing.SolverSettings()
-
-# Solve the routing problem
-sol = routing.Solve(dm, ss)
-
-# Display results
-print(sol.get_route())
-print("\n\n****************** Display Routes *************************")
-sol.display_routes()
-'
-```
-
 Example Response:
-
-``` text
-route  arrival_stamp  truck_id  location      type
-   0            0.0         0         0     Depot
-   2            2.0         0         2  Delivery
-   1            4.0         0         1  Delivery
-   0            6.0         0         0     Depot
-
-****************** Display Routes *************************
-Vehicle-0 starts at: 0.0, completes at: 6.0, travel time: 6.0,  Route :
-0(Dpt)->2(D)->1(D)->0(Dpt)
-
-This results in a travel time of 6.0 to deliver all routes
-```

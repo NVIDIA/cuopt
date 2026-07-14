@@ -176,8 +176,8 @@ def _preprocess_rst(content: str, rst_path: Path) -> str:
             in_options = False
             non_option_lines.append(line)
         body = "\n".join(non_option_lines)
-        # Dedent by 3 spaces (standard RST directive body indent)
-        body = re.sub(r"^   ", "", body, flags=re.MULTILINE)
+        # Dedent to column 0 so pandoc sees unindented RST content.
+        body = textwrap.dedent(body)
         return (
             f".. raw:: html\n\n   <Accordion title=\"{title}\">\n\n"
             + body.strip()
@@ -190,12 +190,6 @@ def _preprocess_rst(content: str, rst_path: Path) -> str:
         content,
     )
 
-    # 13. Curly braces in RST math notation: {<=, =, >=} → (<=, =, >=)
-    #     MDX (and Fern's acorn-based processing) treats { as a JSX expression
-    #     start, even inside fenced code blocks. Parentheses are equivalent
-    #     notation for "one of these operators" in linear programming docs.
-    content = re.sub(r'\{([^}]{1,80})\}', r'(\1)', content)
-
     return content
 
 
@@ -206,7 +200,10 @@ def _preprocess_rst(content: str, rst_path: Path) -> str:
 def _postprocess_mdx(md: str, title: str) -> str:
     """Clean up pandoc output and add Fern MDX components."""
 
-    # 1. Frontmatter
+    # 1. Strip the pandoc-generated H1 that will duplicate the frontmatter title,
+    #    then prepend frontmatter.  Must strip BEFORE prepending so that `^` anchors
+    #    at the real start of the pandoc output (not after the `---` block).
+    md = re.sub(r'^# [^\n]+\n+', '', md, count=1)
     md = f"---\ntitle: \"{title}\"\n---\n\n" + md
 
     # 2. pandoc admonition formats → Fern components
@@ -342,6 +339,29 @@ def _postprocess_mdx(md: str, title: str) -> str:
                 result.append(seg)
         return ''.join(result)
     md = _escape_lt_outside_code(md)
+
+    # 3g. Escape bare { and } in prose so MDX doesn't parse them as JSX expressions.
+    #     Only applies outside fenced code blocks and inline code spans.
+    def _escape_braces_outside_code(text):
+        # Split on fenced code blocks first, then inline code spans within prose
+        fence_parts = re.split(r'(?ms)(^[ \t]*(?:>[ \t]*)*)```[^\n]*\n.*?^\1```', text)
+        out = []
+        for i, part in enumerate(fence_parts):
+            if i % 2 == 1:  # fenced code block — leave unchanged
+                out.append(part)
+                continue
+            # Within prose, split on inline code spans
+            segs = re.split(r'(`[^`\n]+`)', part)
+            escaped = []
+            for j, seg in enumerate(segs):
+                if j % 2 == 1:  # inline code span
+                    escaped.append(seg)
+                else:
+                    seg = seg.replace('{', r'\{').replace('}', r'\}')
+                    escaped.append(seg)
+            out.append(''.join(escaped))
+        return ''.join(out)
+    md = _escape_braces_outside_code(md)
 
     # 3b. Fix image paths → point into /docs/images/ (flat)
     # Matches: images/foo.png, ../images/foo.png, ../../foo/images/foo.png
@@ -611,7 +631,21 @@ tabs:
     display-name: Documentation
     icon: book
 
-navigation:
+versions:
+  - display-name: "26.08 (Latest)"
+    path: docs-v26-08.yml
+  - display-name: "26.06"
+    path: docs-v26-06.yml
+  - display-name: "26.04"
+    path: docs-v26-04.yml
+  - display-name: "26.02"
+    path: docs-v26-02.yml
+  - display-name: "25.12"
+    path: docs-v25-12.yml
+  - display-name: "25.08"
+    path: docs-v25-08.yml
+  - display-name: "25.05"
+    path: docs-v25-05.yml
 """
 
 def _inject_nav(items: list, path: list, entry: dict) -> bool:
@@ -624,6 +658,56 @@ def _inject_nav(items: list, path: list, entry: dict) -> bool:
     for item in items:
         if item.get("section") == target:
             return _inject_nav(item.setdefault("contents", []), path[1:], entry)
+    return False
+
+
+def _inject_nav_after(items: list, section_path: list, after_page: str, entry: dict) -> bool:
+    """Walk to section_path, then insert `entry` immediately after the page
+    whose display name is `after_page`.  Falls back to appending if not found."""
+    if not section_path:
+        # We're at the target level — find after_page and insert after it.
+        for i, item in enumerate(items):
+            if item.get("page") == after_page or item.get("api") == after_page:
+                items.insert(i + 1, entry)
+                return True
+        # after_page not found — just append
+        items.append(entry)
+        return True
+    target = section_path[0]
+    for item in items:
+        if item.get("section") == target:
+            return _inject_nav_after(
+                item.setdefault("contents", []), section_path[1:], after_page, entry
+            )
+    return False
+
+
+def _rename_page(items: list, section_path: list, old_name: str, new_name: str) -> bool:
+    """Walk to section_path, then rename the first page whose display name
+    matches `old_name` to `new_name`."""
+    if not section_path:
+        for item in items:
+            if item.get("page") == old_name:
+                item["page"] = new_name
+                return True
+        return False
+    target = section_path[0]
+    for item in items:
+        if item.get("section") == target:
+            return _rename_page(item.get("contents", []), section_path[1:], old_name, new_name)
+    return False
+
+
+def _remove_page(items: list, path_value: str) -> bool:
+    """Remove the first nav entry whose `path` field equals `path_value`
+    from anywhere in the tree (depth-first)."""
+    for i, item in enumerate(items):
+        if item.get("path") == path_value:
+            del items[i]
+            return True
+        if "contents" in item:
+            if _remove_page(item["contents"], path_value):
+                return True
     return False
 
 
@@ -691,24 +775,57 @@ def main():
     index_rst = SRC / "index.rst"
     nav_items = _build_nav_tree(index_rst, SRC)
 
-    # 4. Inject optional extras into the auto-generated nav tree.
+    # 4. Inject optional extras and apply curated nav fixes.
 
-    # 4a. If Fern generated Python library docs for distance_engine/waypoint_matrix,
-    #     place them under Python API → Routing Optimization (not a standalone section).
+    # 4a. Python distance engine library docs.
     python_lib_entry = {}
     if (FERN / "static/python-docs").exists() and any((FERN / "static/python-docs").rglob("*.mdx")):
         python_lib_entry = {"folder": "./static/python-docs", "title": "Python Distance Engine"}
-
     if python_lib_entry:
         _inject_nav(nav_items, ["Python API", "Routing Optimization"], python_lib_entry)
 
-    # 4b. REST API reference: inject the Fern OpenAPI explorer under
-    #     Server → Server API → Server API Overview alongside the other API docs.
-    _inject_nav(nav_items, ["Server", "Server API", "Server API Overview"], {"api": "REST API Reference"})
+    # 4b. REST API explorer: insert directly after "cuOpt Server CLI" in Server API Overview.
+    _inject_nav_after(
+        nav_items,
+        section_path=["Server", "Server API", "Server API Overview"],
+        after_page="cuOpt Server CLI",
+        entry={"api": "REST API Reference"},
+    )
+
+    # 4c. Settings pages under Python API (same shared MDX as C API / Server).
+    _inject_nav_after(
+        nav_items,
+        section_path=["Python API", "Convex Optimization (LP/QP/QCQP/SOCP)", "LP/QP/QCQP/SOCP Python API"],
+        after_page="Convex Optimization API Reference",
+        entry={"page": "Convex Optimization Settings", "path": "docs/pages/convex-settings.mdx"},
+    )
+    _inject_nav_after(
+        nav_items,
+        section_path=["Python API", "Mixed Integer Programming (MIP)", "MIP Python API"],
+        after_page="MIP API Reference",
+        entry={"page": "MIP Settings", "path": "docs/pages/mip-settings.mdx"},
+    )
+
+    # 4d. Rename "Resources" page inside the "Resources" section to avoid the
+    #     sidebar showing the same name twice (section label + page label).
+    _rename_page(nav_items, ["Resources"], "Resources", "External Resources")
+
+    # 4e. Same fix for "Third-Party Modeling Languages" section.
+    _rename_page(nav_items, ["Third-Party Modeling Languages"], "Third-Party Modeling Languages", "Overview")
+
+    # 4f. Remove the stub Swagger page (REST API Reference replaces it).
+    _remove_page(nav_items, "docs/pages/open-api.mdx")
+
     all_nav = nav_items
+    # Write current-version navigation to its own file (Fern requires navigation
+    # and versions to be in separate files when versioning is enabled).
     nav_yaml = _nav_to_yaml(all_nav, indent=1)
-    docs_yml = DOCS_YML_HEADER + nav_yaml + "\n"
-    (FERN / "docs.yml").write_text(docs_yml, encoding="utf-8")
+    current_nav_yml = "navigation:\n" + nav_yaml + "\n"
+    (FERN / "docs-v26-08.yml").write_text(current_nav_yml, encoding="utf-8")
+    print(f"Wrote fern/docs-v26-08.yml")
+
+    # Write the global docs.yml (settings + versions list, no navigation).
+    (FERN / "docs.yml").write_text(DOCS_YML_HEADER, encoding="utf-8")
     print(f"Wrote fern/docs.yml")
 
     # 7. Generate OpenAPI spec from FastAPI app (no GPU required)

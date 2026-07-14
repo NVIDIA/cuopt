@@ -2,8 +2,6 @@
 title: "Advanced Configuration"
 ---
 
-# Advanced Configuration
-
 This page lists **configuration parameters** first, then **usage** walkthroughs (TLS, Docker, private CA). Complete [Quick Start](quick-start) first (install, plain TCP server, and minimal example).
 
 For RPC summaries and server behavior, see [Api](api) and [Grpc Server Architecture](grpc-server-architecture). Example entry points with `CUOPT_REMOTE_*`: [Examples](examples). Contributor-only internals: `cpp/docs/grpc-server-architecture.md` in the repository.
@@ -13,27 +11,6 @@ For RPC summaries and server behavior, see [Api](api) and [Grpc Server Architect
 ### `cuopt_grpc_server` (host or explicit container command)
 
 Run `cuopt_grpc_server --help` for the full list. Typical flags (also passable inside `CUOPT_GRPC_ARGS` when using the container entrypoint):
-
-``` text
-cuopt_grpc_server [options]
-
-  -p, --port PORT              gRPC listen port (default: 5001)
-  -w, --workers NUM            Number of worker processes (default: 1)
-      --max-message-mb N       Max gRPC message size in MiB (default: 256; clamped to [4 KiB, ~2 GiB])
-      --max-message-bytes N    Max gRPC message size in bytes (exact; min 4096)
-      --chunk-timeout N        Per-chunk timeout in seconds for streaming (0=disabled, default: 60)
-      --log-to-console         Echo solver logs to server console
-  -v, --verbose                Increase verbosity (default: on)
-  -q, --quiet                  Reduce verbosity (verbose is the default)
-      --server-log PATH        Path to server operational log file (in addition to console)
-
-TLS Options:
-      --tls                    Enable TLS encryption
-      --tls-cert PATH          Server certificate (PEM)
-      --tls-key PATH           Server private key (PEM)
-      --tls-root PATH          Root CA certificate (for client verification)
-      --require-client-cert    Require client certificate (mTLS)
-```
 
 ### NVIDIA cuOpt Container (gRPC via Entrypoint)
 
@@ -70,23 +47,7 @@ Remote mode is active when **both** `CUOPT_REMOTE_HOST` and `CUOPT_REMOTE_PORT` 
 
 Basic (no TLS), plain TCP, is in [Quick Start](quick-start). Encrypted server:
 
-``` bash
-cuopt_grpc_server --port 5001 \
-  --tls \
-  --tls-cert server.crt \
-  --tls-key server.key
-```
-
 mTLS (mutual TLS):
-
-``` bash
-cuopt_grpc_server --port 5001 \
-  --tls \
-  --tls-cert server.crt \
-  --tls-key server.key \
-  --tls-root ca.crt \
-  --require-client-cert
-```
 
 ### How mTLS Works
 
@@ -102,62 +63,17 @@ To limit which clients can connect, run your own CA and issue client certs only 
 
 **1. Create a private CA (one-time):**
 
-``` bash
-openssl genrsa -out ca.key 4096
-openssl req -new -x509 -key ca.key -sha256 -days 3650 \
-  -subj "/CN=cuopt-internal-ca" -out ca.crt
-```
-
 **2. Issue a client certificate:**
-
-``` bash
-openssl genrsa -out client.key 2048
-openssl req -new -key client.key \
-  -subj "/CN=team-member-alice" -out client.csr
-openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key \
-  -CAcreateserial -days 365 -sha256 -out client.crt
-```
 
 Repeat for each authorized client. Keep `ca.key` private; distribute `ca.crt` to the server and per-client `client.crt` + `client.key` pairs.
 
 **3. Issue a server certificate (same CA):**
 
-``` bash
-openssl genrsa -out server.key 2048
-openssl req -new -key server.key \
-  -subj "/CN=server.example.com" -out server.csr
-
-cat > server.ext <<EOF
-subjectAltName=DNS:server.example.com,DNS:localhost,IP:127.0.0.1
-EOF
-
-openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key \
-  -CAcreateserial -days 365 -sha256 -extfile server.ext -out server.crt
-```
-
 `server.crt` must be signed by the CA you give to clients, and **subjectAltName** must match the hostname or IP clients use. gRPC hostname verification expects SAN; **CN alone is not sufficient**.
 
 **4. Start the server:**
 
-``` bash
-cuopt_grpc_server --port 5001 \
-  --tls \
-  --tls-cert server.crt \
-  --tls-key server.key \
-  --tls-root ca.crt \
-  --require-client-cert
-```
-
 **5. Configure an authorized client:**
-
-``` bash
-export CUOPT_REMOTE_HOST=server.example.com
-export CUOPT_REMOTE_PORT=5001
-export CUOPT_TLS_ENABLED=1
-export CUOPT_TLS_ROOT_CERT=ca.crt
-export CUOPT_TLS_CLIENT_CERT=client.crt
-export CUOPT_TLS_CLIENT_KEY=client.key
-```
 
 **Revocation:** built-in gRPC TLS does **not** implement CRL or OCSP. To revoke a client, rotate the CA, stop issuing from a compromised CA, or terminate TLS at a reverse proxy (e.g., Envoy) that supports revocation.
 
@@ -175,52 +91,17 @@ Examples use `--gpus all`. That requires NVIDIA GPUs on the host and Docker with
 
 Typical run:
 
-``` bash
-docker run --gpus all -p 5001:5001 \
-  -e CUOPT_SERVER_TYPE=grpc \
-  nvcr.io/nvidia/cuopt/cuopt:latest-cu12
-```
-
 TLS example with a cert volume:
 
-``` bash
-docker run --gpus all -p 5001:5001 \
-  -e CUOPT_SERVER_TYPE=grpc \
-  -e CUOPT_GRPC_ARGS="--tls --tls-cert /certs/server.crt --tls-key /certs/server.key --log-to-console" \
-  -v ./certs:/certs:ro \
-  nvcr.io/nvidia/cuopt/cuopt:latest-cu12
-```
-
 Bypass the entrypoint:
-
-``` bash
-docker run --gpus all -p 5001:5001 \
-  nvcr.io/nvidia/cuopt/cuopt:latest-cu12 \
-  cuopt_grpc_server --port 5001 --workers 2
-```
 
 ### Client Environment (Examples)
 
 **Required** for remote (see *Bundled remote client* table for all variables):
 
-``` bash
-export CUOPT_REMOTE_HOST=&lt;server-hostname&gt;
-export CUOPT_REMOTE_PORT=5001
-```
-
 **TLS** (optional):
 
-``` bash
-export CUOPT_TLS_ENABLED=1
-export CUOPT_TLS_ROOT_CERT=ca.crt
-```
-
 For mTLS, also:
-
-``` bash
-export CUOPT_TLS_CLIENT_CERT=client.crt
-export CUOPT_TLS_CLIENT_KEY=client.key
-```
 
 ## Limitations and Scope
 

@@ -553,8 +553,6 @@ def _generate_mdx_from_rst(rst_path: Path, symbols: dict, title: str) -> str:
         f'title: "{title}"',
         f'---',
         f'',
-        f'# {title}',
-        f'',
     ]
 
     # Track groups of defines to render as a list
