@@ -221,7 +221,7 @@ struct cone_data_t {
               raft::device_span<f_t> x_in,
               raft::device_span<f_t> z_in,
               rmm::cuda_stream_view stream,
-              i_t soc_threshold_in = 5)
+              i_t soc_threshold_in = 100)
     : n_cones(cone_dimensions_host.size()),
       n_cone_entries(
         std::reduce(cone_dimensions_host.begin(), cone_dimensions_host.end(), size_t{0})),

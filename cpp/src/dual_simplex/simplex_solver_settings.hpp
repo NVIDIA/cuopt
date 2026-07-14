@@ -70,7 +70,7 @@ struct simplex_solver_settings_t {
       barrier_iterative_refinement(true),
       barrier_csr_ir_matvec(false),
       barrier_step_scale(0.9),
-      barrier_soc_threshold(5),
+      barrier_soc_threshold(100),
       num_gpus(1),
       folding(-1),
       augmented(0),

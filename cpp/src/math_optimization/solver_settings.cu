@@ -132,7 +132,6 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_DUALIZE, &pdlp_settings.dualize, -1, 1, -1},
     {CUOPT_ORDERING, &pdlp_settings.ordering, -1, 1, -1},
     {CUOPT_BARRIER_DUAL_INITIAL_POINT, &pdlp_settings.barrier_dual_initial_point, -1, 1, -1},
-    {CUOPT_BARRIER_SOC_THRESHOLD, &pdlp_settings.barrier_soc_threshold, 0, 1000000, 5, "SOC dimension above which rank-2 sparse KKT expansion is used"},
     {CUOPT_MIP_CUT_PASSES, &mip_settings.max_cut_passes, -1, std::numeric_limits<i_t>::max(), 10},
     {CUOPT_MIP_MIXED_INTEGER_ROUNDING_CUTS, &mip_settings.mir_cuts, -1, 1, -1},
     {CUOPT_MIP_MIXED_INTEGER_GOMORY_CUTS, &mip_settings.mixed_integer_gomory_cuts, -1, 1, -1},
@@ -192,7 +191,6 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_CUDSS_DETERMINISTIC, &pdlp_settings.cudss_deterministic, false},
     {CUOPT_DUAL_POSTSOLVE, &pdlp_settings.dual_postsolve, true},
     {CUOPT_BARRIER_ITERATIVE_REFINEMENT, &pdlp_settings.barrier_iterative_refinement, true},
-    {CUOPT_BARRIER_CSR_IR_MATVEC, &pdlp_settings.barrier_csr_ir_matvec, false},
     {CUOPT_MIP_PROBING, &mip_settings.probing, true},
     // Diving heuristic hyper-parameters (hidden from default --help: name contains "hyper_")
     {CUOPT_MIP_HYPER_DIVING_SHOW_TYPE, &mip_settings.diving_params.show_type, false, "log diving heuristic type when it finds a new incumbent"},
