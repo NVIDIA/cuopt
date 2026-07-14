@@ -47,6 +47,7 @@
 
 #include <raft/core/nvtx.hpp>
 
+#include <algorithm>
 #include <limits>
 #include <span>
 #include <tuple>
@@ -748,6 +749,12 @@ third_party_presolve_t<i_t, f_t>::apply_presolve_from_mps_data(
   } else {
     // Papilo branch:  build papilo::Problem ->
     //                 apply_papilo -> reduced mps.
+    // Stash the pre-presolve objective for post-solve diagnostics (e.g. the
+    // debug crushed-vs-original objective check in diversity_manager).
+    original_objective_coefficients_   = mps.get_objective_coefficients();
+    original_objective_offset_         = mps.get_objective_offset();
+    original_objective_scaling_factor_ = mps.get_objective_scaling_factor();
+
     auto papilo_problem = build_papilo_problem<i_t, f_t>(mps, maximize_, category);
     auto status         = apply_papilo(papilo_problem,
                                category,
@@ -905,7 +912,9 @@ void third_party_presolve_t<i_t, f_t>::uncrush_primal_solution(
 
 template <typename i_t, typename f_t>
 void third_party_presolve_t<i_t, f_t>::crush_primal_solution(
-  const std::vector<f_t>& original_primal, std::vector<f_t>& reduced_primal) const
+  const optimization_problem_t<i_t, f_t>& reduced_problem,
+  const std::vector<f_t>& original_primal,
+  std::vector<f_t>& reduced_primal) const
 {
   cuopt_expects(presolver_ == cuopt::mathematical_optimization::presolver_t::Papilo,
                 error_type_t::RuntimeError,
@@ -923,6 +932,21 @@ void third_party_presolve_t<i_t, f_t>::crush_primal_solution(
                              empty_vals,
                              empty_indices,
                              empty_offsets);
+
+  // Dual bound strengthening (e.g. DualFix kVarBoundChange which aren't emitted in primal mode)
+  // can tighten a bound past a value
+  // that was feasible in the original polytope. A simple clamp is often enough to crush a solution
+  // inside the tightened polytope without breaking feasibility (dualfix seems to emit purely dual
+  // based bounds reductions so primality is safe when clamping)
+  cuopt_assert(reduced_problem.get_n_variables() == (i_t)reduced_to_original_map_.size(),
+               "reduced_problem does not match this presolver's reduction");
+  const std::vector<f_t> lb = reduced_problem.get_variable_lower_bounds_host();
+  const std::vector<f_t> ub = reduced_problem.get_variable_upper_bounds_host();
+  cuopt_assert(reduced_primal.size() == lb.size() && reduced_primal.size() == ub.size(),
+               "reduced problem must match crush output dimension");
+  for (size_t j = 0; j < reduced_primal.size(); ++j) {
+    reduced_primal[j] = std::clamp(reduced_primal[j], lb[j], ub[j]);
+  }
 }
 
 /**
