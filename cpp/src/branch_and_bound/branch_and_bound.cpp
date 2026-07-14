@@ -1571,7 +1571,13 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
         // globally valid by construction. Restricted to pure 0-1 models (a fixed binary always sits
         // at a global bound). Generation filters cuts by violation at the node point, and the shared
         // pool self-locks on add_cut.
-        if (settings_.node_cuts > 0 && is_pure_binary_ && cut_generation_.has_value()) {
+        //
+        // Only best-first workers generate node cuts: their start_lower/start_upper hold the true
+        // global bounds (set once to original_lp_.lower/upper), so the swap below installs the global
+        // bounds. Diving workers strengthen start_lower/start_upper in place (presolve_start_bounds),
+        // so for them the swap would install node-local bounds and produce only locally-valid cuts.
+        if (settings_.node_cuts > 0 && is_pure_binary_ && cut_generation_.has_value() &&
+            worker->search_strategy == search_strategy_t::BEST_FIRST) {
           // RAII swap so the leaf bounds are restored even if generation throws. leaf_problem and
           // start_lower/start_upper are worker-owned same-size vectors, so the swap is O(1) and
           // thread-local; nothing reads start_lower/start_upper during the synchronous call.
