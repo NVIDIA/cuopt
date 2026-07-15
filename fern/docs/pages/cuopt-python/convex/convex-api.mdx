@@ -3,7 +3,14 @@ title: "Convex Optimization Python API Reference"
 ---
 
 
-## Problem & Variables
+## Problem
+
+<hr />
+
+### class `VType`
+
+The type of a variable is continuous, integer, or semi-continuous. Variable Types can be directly used as a constant. CONTINUOUS is  VType.CONTINUOUS INTEGER is VType.INTEGER SEMI_CONTINUOUS is VType.SEMI_CONTINUOUS
+
 
 <hr />
 
@@ -844,15 +851,7 @@ Optimizes the LP or MIP problem with the added variables, constraints and object
 
 
 
-## Solver Settings
-
-LP/MIP solver settings package; implementation is in the ``solver_settings`` extension.
-
-Public ``solver_params`` is an immutable tuple so callers cannot mutate the extension module's internal parameter-name list used for validation.
-
-
-
-## I/O
+## Parser
 
 <hr />
 

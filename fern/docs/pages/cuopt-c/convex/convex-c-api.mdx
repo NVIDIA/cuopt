@@ -2,7 +2,7 @@
 title: "cuOpt Convex Optimization C API Reference"
 ---
 
-This section contains the cuOpt convex optimization C API reference. For MIP-specific functions and callbacks, see [Mip C Api](mip-c-api).
+This section contains the cuOpt convex optimization C API reference. For MIP-specific functions and callbacks, see [MIP C API](mip-c-api).
 
 ## Integer and Floating-Point Types
 
@@ -16,7 +16,7 @@ cuOpt may be built with 32 or 64 bit integer and floating-point types. The C API
 
 **`typedef`** **`cuopt_float_t`** — The type of the floating point number used by the solver. Use `cuOptGetFloatSize` to get the size of the floating point type. (`typedef double`)
 
-You may use the following functions to determine the number of bytes used to represent these types in your build
+You may use the following functions to determine the number of bytes used to represent these types in your build.
 
 <hr />
 
@@ -36,7 +36,7 @@ Get the size of the float type.
 
 ## Version Information
 
-You may use the following function to get the version of the cuOpt library
+You may use the following function to get the version of the cuOpt library.
 
 <hr />
 
@@ -54,7 +54,7 @@ Get the version of the library.
 
 ## Status Codes
 
-Every function in the C API returns a status code that indicates success or failure. The following status codes are defined
+Every function in the C API returns a status code that indicates success or failure. The following status codes are defined.
 
 - `CUOPT_SUCCESS` (`0`)
 - `CUOPT_INVALID_ARGUMENT` (`1`)
@@ -66,13 +66,13 @@ Every function in the C API returns a status code that indicates success or fail
 
 ## Optimization Problem
 
-An optimization problem is represented via a `cuOptOptimizationProblem`
+An optimization problem is represented via a `cuOptOptimizationProblem`.
 
 <hr />
 
 **`typedef`** **`cuOptOptimizationProblem`** — A `cuOptOptimizationProblem` object contains a representation of an LP, MIP, QP, or QCQP. It is created by `cuOptCreateProblem`, `cuOptCreateRangedProblem`, or the quadratic create functions. Quadratic objectives and quadratic objectives and constraints may be set via `cuOptSetQuadraticObjective` and added via `cuOptAddQuadraticConstraint`. It is passed to `cuOptSolve` and destroyed with `cuOptDestroyProblem`. (`typedef void *`)
 
-Optimization problems can be created, loaded, or written via the following functions:
+Optimization problems can be created, loaded, or written via the following functions.
 
 <hr />
 
@@ -151,13 +151,73 @@ Create an optimization problem of the form *.
 
 **Returns** A status code indicating success or failure.
 
+<hr />
+
+#### `cuOptCreateQuadraticProblem(cuopt_int_t num_constraints, cuopt_int_t num_variables, cuopt_int_t objective_sense, cuopt_float_t objective_offset, const cuopt_float_t * objective_coefficients, const cuopt_int_t * quadratic_objective_matrix_row_offsets, const cuopt_int_t * quadratic_objective_matrix_column_indices, const cuopt_float_t * quadratic_objective_matrix_coefficent_values, const cuopt_int_t * constraint_matrix_row_offsets, const cuopt_int_t * constraint_matrix_column_indices, const cuopt_float_t * constraint_matrix_coefficent_values, const char * constraint_sense, const cuopt_float_t * rhs, const cuopt_float_t * lower_bounds, const cuopt_float_t * upper_bounds, cuOptOptimizationProblem * problem_ptr) -> cuopt_int_t`
+
+Create an optimization problem of the form.
+
 <Note>
-`cuOptCreateQuadraticProblem` and `cuOptCreateQuadraticRangedProblem` are deprecated.
-Prefer `cuOptCreateProblem` or `cuOptCreateRangedProblem` followed by
-`cuOptSetQuadraticObjective`.
+Deprecated: Use `cuOptCreateProblem` to set up the linear problem, then `cuOptSetQuadraticObjective` to specify the quadratic objective terms.
 </Note>
 
-For problems with quadratic objectives, first create a problem, and then use
+**Parameters**
+
+- **`num_constraints`** (`cuopt_int_t`) `[in]` — The number of constraints
+- **`num_variables`** (`cuopt_int_t`) `[in]` — The number of variables
+- **`objective_sense`** (`cuopt_int_t`) `[in]` — The objective sense (CUOPT_MINIMIZE for minimization or CUOPT_MAXIMIZE for maximization)
+- **`objective_offset`** (`cuopt_float_t`) `[in]` — An offset to add to the linear objective
+- **`objective_coefficients`** (`const cuopt_float_t *`) `[in]` — A pointer to an array of type cuopt_float_t of size num_variables containing the coefficients of the linear objective
+- **`quadratic_objective_matrix_row_offsets`** (`const cuopt_int_t *`) `[in]` — A pointer to an array of type cuopt_int_t of size num_variables + 1. quadratic_objective_matrix_row_offsets[i] is the index of the first non-zero element of the i-th row of the quadratic objective matrix in quadratic_objective_matrix_column_indices and quadratic_objective_matrix_coefficent_values. This is part of the compressed sparse row representation of the quadratic objective matrix.
+- **`quadratic_objective_matrix_column_indices`** (`const cuopt_int_t *`) `[in]` — A pointer to an array of type cuopt_int_t of size quadratic_objective_matrix_row_offsets[num_variables] containing the column indices of the non-zero elements of the quadratic objective matrix. This is part of the compressed sparse row representation of the quadratic objective matrix.
+- **`quadratic_objective_matrix_coefficent_values`** (`const cuopt_float_t *`) `[in]` — A pointer to an array of type cuopt_float_t of size quadratic_objective_matrix_row_offsets[num_variables] containing the values of the non-zero elements of the quadratic objective matrix.
+- **`constraint_matrix_row_offsets`** (`const cuopt_int_t *`) `[in]` — A pointer to an array of type cuopt_int_t of size num_constraints + 1. constraint_matrix_row_offsets[i] is the index of the first non-zero element of the i-th constraint in constraint_matrix_column_indices and constraint_matrix_coefficent_values. This is part of the compressed sparse row representation of the constraint matrix
+- **`constraint_matrix_column_indices`** (`const cuopt_int_t *`) `[in]` — A pointer to an array of type cuopt_int_t of size constraint_matrix_row_offsets[num_constraints] containing the column indices of the non-zero elements of the constraint matrix. This is part of the compressed sparse row representation of the constraint matrix
+- **`constraint_matrix_coefficent_values`** (`const cuopt_float_t *`) `[in]` — A pointer to an array of type cuopt_float_t of size constraint_matrix_row_offsets[num_constraints] containing the values of the non-zero elements of the constraint matrix. This is part of the compressed sparse row representation of the constraint matrix
+- **`constraint_sense`** (`const char *`) `[in]` — A pointer to an array of type char of size num_constraints containing the sense of the constraints (CUOPT_LESS_THAN, CUOPT_GREATER_THAN, or CUOPT_EQUAL)
+- **`rhs`** (`const cuopt_float_t *`) `[in]` — A pointer to an array of type cuopt_float_t of size num_constraints containing the right-hand side of the constraints
+- **`lower_bounds`** (`const cuopt_float_t *`) `[in]` — A pointer to an array of type cuopt_float_t of size num_variables containing the lower bounds of the variables
+- **`upper_bounds`** (`const cuopt_float_t *`) `[in]` — A pointer to an array of type cuopt_float_t of size num_variables containing the upper bounds of the variables
+- **`problem_ptr`** (`cuOptOptimizationProblem *`) `[out]` — Pointer to store the created optimization problem
+
+**Returns** CUOPT_SUCCESS if successful, CUOPT_ERROR otherwise
+
+<hr />
+
+#### `cuOptCreateQuadraticRangedProblem(cuopt_int_t num_constraints, cuopt_int_t num_variables, cuopt_int_t objective_sense, cuopt_float_t objective_offset, const cuopt_float_t * objective_coefficients, const cuopt_int_t * quadratic_objective_matrix_row_offsets, const cuopt_int_t * quadratic_objective_matrix_column_indices, const cuopt_float_t * quadratic_objective_matrix_coefficent_values, const cuopt_int_t * constraint_matrix_row_offsets, const cuopt_int_t * constraint_matrix_column_indices, const cuopt_float_t * constraint_matrix_coefficients, const cuopt_float_t * constraint_lower_bounds, const cuopt_float_t * constraint_upper_bounds, const cuopt_float_t * variable_lower_bounds, const cuopt_float_t * variable_upper_bounds, cuOptOptimizationProblem * problem_ptr) -> cuopt_int_t`
+
+Create an optimization problem of the form *.
+
+<Note>
+Deprecated: Use `cuOptCreateRangedProblem` to set up the linear problem, then `cuOptSetQuadraticObjective` to specify the quadratic objective terms. For QCQP models, use `cuOptAddQuadraticConstraint` for each quadratic constraint.
+</Note>
+
+**Parameters**
+
+- **`num_constraints`** (`cuopt_int_t`) `[in]` — The number of constraints.
+- **`num_variables`** (`cuopt_int_t`) `[in]` — The number of variables.
+- **`objective_sense`** (`cuopt_int_t`) `[in]` — The objective sense (CUOPT_MINIMIZE for minimization or CUOPT_MAXIMIZE for maximization)
+- **`objective_offset`** (`cuopt_float_t`) `[in]` — An offset to add to the linear objective.
+- **`objective_coefficients`** (`const cuopt_float_t *`) `[in]` — A pointer to an array of type cuopt_float_t of size num_variables containing the coefficients of the linear objective.
+- **`quadratic_objective_matrix_row_offsets`** (`const cuopt_int_t *`) `[in]` — A pointer to an array of type cuopt_int_t of size num_variables + 1. quadratic_objective_matrix_row_offsets[i] is the index of the first non-zero element of the i-th row of the quadratic objective matrix in quadratic_objective_matrix_column_indices and quadratic_objective_matrix_coefficent_values. This is part of the compressed sparse row representation of the quadratic objective matrix.
+- **`quadratic_objective_matrix_column_indices`** (`const cuopt_int_t *`) `[in]` — A pointer to an array of type cuopt_int_t of size quadratic_objective_matrix_row_offsets[num_variables] containing the column indices of the non-zero elements of the quadratic objective matrix. This is part of the compressed sparse row representation of the quadratic objective matrix.
+- **`quadratic_objective_matrix_coefficent_values`** (`const cuopt_float_t *`) `[in]` — A pointer to an array of type cuopt_float_t of size quadratic_objective_matrix_row_offsets[num_variables] containing the values of the non-zero elements of the quadratic objective matrix.
+- **`constraint_matrix_row_offsets`** (`const cuopt_int_t *`) `[in]` — A pointer to an array of type cuopt_int_t of size num_constraints + 1. constraint_matrix_row_offsets[i] is the index of the first non-zero element of the i-th constraint in constraint_matrix_column_indices and constraint_matrix_coefficients.
+- **`constraint_matrix_column_indices`** (`const cuopt_int_t *`) `[in]` — A pointer to an array of type cuopt_int_t of size constraint_matrix_row_offsets[num_constraints] containing the column indices of the non-zero elements of the constraint matrix.
+- **`constraint_matrix_coefficients`** (`const cuopt_float_t *`) `[in]` — A pointer to an array of type cuopt_float_t of size constraint_matrix_row_offsets[num_constraints] containing the values of the non-zero elements of the constraint matrix.
+- **`constraint_lower_bounds`** (`const cuopt_float_t *`) `[in]` — A pointer to an array of type cuopt_float_t of size num_constraints containing the lower bounds of the constraints.
+- **`constraint_upper_bounds`** (`const cuopt_float_t *`) `[in]` — A pointer to an array of type cuopt_float_t of size num_constraints containing the upper bounds of the constraints.
+- **`variable_lower_bounds`** (`const cuopt_float_t *`) `[in]` — A pointer to an array of type cuopt_float_t of size num_variables containing the lower bounds of the variables.
+- **`variable_upper_bounds`** (`const cuopt_float_t *`) `[in]` — A pointer to an array of type cuopt_float_t of size num_variables containing the upper bounds of the variables.
+- **`problem_ptr`** (`cuOptOptimizationProblem *`) `[out]` — A pointer to a cuOptOptimizationProblem. On output the problem will be created and initialized with the provided data.
+
+**Returns** A status code indicating success or failure.
+
+<Note>
+`cuOptCreateQuadraticProblem` and `cuOptCreateQuadraticRangedProblem` are deprecated. Prefer `cuOptCreateProblem` or `cuOptCreateRangedProblem` followed by `cuOptSetQuadraticObjective`.
+</Note>
+
+For problems with quadratic objectives, first create a problem, and then use:
 
 <hr />
 
@@ -175,7 +235,7 @@ Set the quadratic objective term x^T Q x on an existing problem.
 
 **Returns** A status code indicating success or failure.
 
-For problems with quadratic constraints, first create a problem, and then use
+For problems with quadratic constraints, first create a problem, and then use:
 
 <hr />
 
@@ -199,16 +259,10 @@ Add a quadratic constraint x^T Q x + d^T x (&lt;=, >=) rhs to an existing proble
 **Returns** A status code indicating success or failure.
 
 <Note>
-Support for quadratic constraints is currently in **beta**. `cuOptAddQuadraticConstraint`
-supports three types of quadratic constraints:
-- **Convex quadratic constraints** of the form `x^T Q x + d^T x &lt;= alpha` where `H=(Q+Q^T)/2` is a symmetric positive semidefinite matrix. `Q` need not be symmetric.
-- **Second-order cone constraints** of the form `sum_(i=1)^n x_i^2 &lt;= x_0`, `x_0 >= 0`
-- **Rotated second-order cone constraints** of the form `sum_(i=2)^n x_i^2 - 2 * x_0 * x_1 &lt;= 0`, `x_0 >= 0`, `x_1 >= 0` (supply `Q[x_0, x_1] = -2` in COO, or `-x_0*x_1` for the `&lt;= x_0*x_1` cone form; see :doc:`/convex-features`)
-
-Only `CUOPT_LESS_THAN` and `CUOPT_GREATER_THAN` sense is supported; equality constraints are not supported.
+Support for quadratic constraints is currently in **beta**. `cuOptAddQuadraticConstraint` supports three types of quadratic constraints: convex quadratic constraints of the form `x^T Q x + d^T x &lt;= alpha` where `H=(Q+Q^T)/2` is a symmetric positive semidefinite matrix; second-order cone constraints of the form `sum_(i=1)^n x_i^2 &lt;= x_0`, `x_0 >= 0`; and rotated second-order cone constraints. Only `CUOPT_LESS_THAN` and `CUOPT_GREATER_THAN` sense is supported.
 </Note>
 
-A optimization problem must be destroyed with the following function
+An optimization problem must be destroyed with the following function.
 
 <hr />
 
@@ -220,7 +274,7 @@ Destroy an optimization problem.
 
 - **`problem_ptr`** (`cuOptOptimizationProblem *`) `[inout]` — A pointer to a cuOptOptimizationProblem. On output the problem will be destroyed, and the pointer will be set to NULL.
 
-Certain constants are needed to define an optimization problem. These constants are described below.
+Certain constants are needed to define an optimization problem.
 
 ## Objective Sense Constants
 
@@ -239,7 +293,7 @@ These constants are used to define the constraint sense in the `cuOptCreateProbl
 
 ## Variable Type Constants
 
-These constants are used to define the the variable type in the `cuOptCreateProblem` and `cuOptCreateRangedProblem` functions.
+These constants are used to define the variable type in the `cuOptCreateProblem` and `cuOptCreateRangedProblem` functions.
 
 - `CUOPT_CONTINUOUS` (`'C'`)
 - `CUOPT_INTEGER` (`'I'`)
@@ -259,7 +313,7 @@ These constants are used to specify the output file format in `cuOptWriteProblem
 
 ## Querying an Optimization Problem
 
-The following functions may be used to get information about an `cuOptimizationProblem`
+The following functions may be used to get information about a `cuOptOptimizationProblem`.
 
 <hr />
 
@@ -466,7 +520,7 @@ Settings are used to configure the LP/MIP solvers. All settings are stored in a 
 
 **`typedef`** **`cuOptSolverSettings`** — A `cuOptSolverSettings` object contains parameter settings and other information for an LP or MIP solve. It is created by `cuOptCreateSolverSettings`. It is passed to `cuOptSolve`. It should be destroyed using `cuOptDestroySolverSettings`. (`typedef void *`)
 
-A `cuOptSolverSettings` object is created with `cuOptCreateSolverSettings`
+A `cuOptSolverSettings` object is created with `cuOptCreateSolverSettings`.
 
 <hr />
 
@@ -480,7 +534,7 @@ Create a solver settings object.
 
 **Returns** A status code indicating success or failure.
 
-When you are done with a solve you should destroy a `cuOptSolverSettings` object with
+When you are done with a solve you should destroy a `cuOptSolverSettings` object with:
 
 <hr />
 
@@ -494,7 +548,7 @@ Destroy a solver settings object.
 
 ## Setting Parameters
 
-The following functions are used to set and get parameters. You can find more details on the available parameters in the [Convex Optimization Settings](../convex-settings) section.
+The following functions are used to set and get parameters. You can find more details on the available parameters in the [Convex Optimization Settings](../../convex-settings) section.
 
 <hr />
 
@@ -581,7 +635,7 @@ Get a float parameter of a solver settings object.
 
 ## Parameter Constants
 
-These constants are used as parameter names in the `cuOptSetParameter`, `cuOptGetParameter`, and similar functions. For more details on the available parameters, see the [Convex Optimization Settings](../convex-settings) and [MIP Settings](../mip-settings) sections.
+These constants are used as parameter names in `cuOptSetParameter`, `cuOptGetParameter`, and similar functions. For more details, see the [Convex Optimization Settings](../../convex-settings) and [MIP Settings](../../mip-settings) sections.
 
 - `CUOPT_ABSOLUTE_DUAL_TOLERANCE` (`"absolute_dual_tolerance"`)
 - `CUOPT_RELATIVE_DUAL_TOLERANCE` (`"relative_dual_tolerance"`)
@@ -656,9 +710,18 @@ These constants are used to configure `CUOPT_BARRIER_ITERATIVE_REFINEMENT` via `
 - `CUOPT_BARRIER_ITERATIVE_REFINEMENT_OFF` (`0`)
 - `CUOPT_BARRIER_ITERATIVE_REFINEMENT_ON` (`1`)
 
+## Presolve Constants
+
+These constants are used to configure `CUOPT_PRESOLVE` via `cuOptSetIntegerParameter`.
+
+- `CUOPT_PRESOLVE_DEFAULT` (`-1`)
+- `CUOPT_PRESOLVE_OFF` (`0`)
+- `CUOPT_PRESOLVE_PAPILO` (`1`)
+- `CUOPT_PRESOLVE_PSLP` (`2`)
+
 ## Warm Start
 
-For LP problems solved with PDLP, primal and dual warm start vectors may be provided:
+For LP problems solved with PDLP, primal and dual warm start vectors may be provided.
 
 <hr />
 
@@ -697,12 +760,12 @@ This function is only supported for PDLP. All pointer arguments (dual_solution) 
 **Returns** A status code indicating success or failure.
 
 <Note>
-For MIP warm start (MIP starts), see :doc:`../mip/mip-c-api`.
+For MIP warm start (MIP starts), see [MIP C API](mip-c-api).
 </Note>
 
-## Solving an LP or MIP
+## Solving
 
-LP and MIP solves are performed by calling the `cuOptSolve` function
+LP and MIP solves are performed by calling the `cuOptSolve` function.
 
 <hr />
 
@@ -726,7 +789,7 @@ The output of a solve is a `cuOptSolution` object.
 
 **`typedef`** **`cuOptSolution`** — A `cuOptSolution` object contains the solution to an LP or MIP. It is created by `cuOptSolve`. It should be destroyed using `cuOptDestroySolution`. (`typedef void *`)
 
-The following functions may be used to access information from a `cuOptSolution`
+The following functions may be used to access information from a `cuOptSolution`.
 
 <hr />
 
@@ -844,7 +907,7 @@ Get the reduced costs of an optimization problem.
 
 **Returns** A status code indicating success or failure.
 
-When you are finished with a `cuOptSolution` object you should destory it with
+When you are finished with a `cuOptSolution` object you should destroy it with:
 
 <hr />
 
@@ -858,7 +921,7 @@ Destroy a solution object.
 
 ## Termination Status Constants
 
-These constants define the termination status received from the `cuOptGetTerminationStatus` function.
+These constants define the termination status received from `cuOptGetTerminationStatus`.
 
 - `CUOPT_TERMINATION_STATUS_NO_TERMINATION` (`0`)
 - `CUOPT_TERMINATION_STATUS_OPTIMAL` (`1`)

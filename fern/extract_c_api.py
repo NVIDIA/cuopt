@@ -3,6 +3,11 @@
 Parse cuopt_c.h and constants.h via Doxygen XML and regenerate MDX pages for
 the C API reference.
 
+Page structure and section organization come from fern/c_api_config.yaml.
+Any symbol found in Doxygen XML that is NOT listed in the config is automatically
+appended to an "Uncategorized" section so new symbols always appear without
+requiring a config update.
+
 Usage:
     python fern/extract_c_api.py
 
@@ -16,40 +21,42 @@ import subprocess
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+try:
+    import yaml
+    _YAML_AVAILABLE = True
+except ImportError:
+    _YAML_AVAILABLE = False
+
 REPO_ROOT = Path(__file__).parent.parent
 HEADER = REPO_ROOT / "cpp/include/cuopt/mathematical_optimization/cuopt_c.h"
 CONSTANTS = REPO_ROOT / "cpp/include/cuopt/mathematical_optimization/constants.h"
-RST_CONVEX = REPO_ROOT / "docs/cuopt/source/cuopt-c/convex/convex-c-api.rst"
-RST_MIP = REPO_ROOT / "docs/cuopt/source/cuopt-c/mip/mip-c-api.rst"
 PAGES = REPO_ROOT / "fern/docs/pages"
-OUT_CONVEX = PAGES / "cuopt-c/convex/convex-c-api.mdx"
-OUT_MIP = PAGES / "cuopt-c/mip/mip-c-api.mdx"
-
-
-# ---------------------------------------------------------------------------
-# Doxygen XML parser — replaces the old regex-based header parser
-# ---------------------------------------------------------------------------
+CONFIG_FILE = REPO_ROOT / "fern/c_api_config.yaml"
 
 _DOXYFILE = REPO_ROOT / "fern/Doxyfile"
 _XML_DIR = REPO_ROOT / "fern/.doxygen-xml/xml"
 
+# Symbols to always suppress (internal guards, macros not for users)
+_INTERNAL_SYMBOLS = {
+    "CUOPT_C_API_H",
+    "CUOPT_CONSTANTS_H",
+}
+_INTERNAL_PREFIXES = ("CUOPT_INSTANTIATE_",)
+
+
+# ---------------------------------------------------------------------------
+# Doxygen XML parser
+# ---------------------------------------------------------------------------
 
 def _xml_text(elem) -> str:
-    """Recursively extract plain text from a Doxygen XML element."""
     if elem is None:
         return ""
     parts = []
     if elem.text:
         parts.append(elem.text)
     for child in elem:
-        # <computeroutput> → backtick; everything else → plain text
         if child.tag == "computeroutput":
-            inner = _xml_text(child)
-            parts.append(f"`{inner}`")
-        elif child.tag == "ref":
-            parts.append(_xml_text(child))
-        elif child.tag == "para":
-            parts.append(_xml_text(child))
+            parts.append(f"`{_xml_text(child)}`")
         else:
             parts.append(_xml_text(child))
         if child.tail:
@@ -58,17 +65,12 @@ def _xml_text(elem) -> str:
 
 
 def _parse_memberdef(member) -> dict | None:
-    """
-    Parse a <memberdef> element from Doxygen XML into the same dict format
-    that the old regex parser produced, keyed by symbol kind.
-    """
     kind = member.get("kind", "")
     name_el = member.find("name")
     if name_el is None:
         return None
     name = name_el.text or ""
 
-    # Brief description
     brief_el = member.find("briefdescription")
     brief = ""
     if brief_el is not None:
@@ -76,7 +78,6 @@ def _parse_memberdef(member) -> dict | None:
         if para is not None:
             brief = _xml_text(para)
 
-    # Detailed description (params, return, notes, deprecated)
     detail_el = member.find("detaileddescription")
     param_docs = []
     return_doc = ""
@@ -85,7 +86,6 @@ def _parse_memberdef(member) -> dict | None:
 
     if detail_el is not None:
         for para in detail_el.iter("para"):
-            # Parameters
             for plist in para.findall("parameterlist"):
                 if plist.get("kind") == "param":
                     for item in plist.findall("parameteritem"):
@@ -100,11 +100,9 @@ def _parse_memberdef(member) -> dict | None:
                         if pdesc_el is not None:
                             inner = pdesc_el.find("para")
                             pdesc = _xml_text(inner) if inner is not None else _xml_text(pdesc_el)
-                        # Strip leading "- " that Doxygen authors sometimes add
                         pdesc = re.sub(r"^-\s+", "", pdesc.strip())
                         param_docs.append({"name": pname, "dir": direction, "desc": pdesc})
 
-            # Return value
             for ss in para.findall("simplesect"):
                 if ss.get("kind") == "return":
                     inner = ss.find("para")
@@ -128,7 +126,6 @@ def _parse_memberdef(member) -> dict | None:
         args_el = member.find("argsstring")
         underlying = _xml_text(type_el) if type_el is not None else ""
         args = args_el.text or "" if args_el is not None else ""
-        # Function pointer typedef: argsstring contains the parameter list
         if args.strip().startswith(")(") or args.strip().startswith("*)("):
             return {
                 "kind": "typedef_fn",
@@ -138,7 +135,6 @@ def _parse_memberdef(member) -> dict | None:
                 "return_doc": return_doc,
                 "note": note,
             }
-        # Simple typedef: underlying type  (strip backtick wrapping added by _xml_text)
         underlying = underlying.replace("`", "").strip()
         return {"kind": "typedef", "underlying": underlying, "brief": brief, "name": name}
 
@@ -146,7 +142,6 @@ def _parse_memberdef(member) -> dict | None:
         type_el = member.find("type")
         ret = _xml_text(type_el) if type_el is not None else ""
         ret = ret.replace("`", "").strip()
-        # Collect declaration params
         decl_params = []
         for param in member.findall("param"):
             ptype_el = param.find("type")
@@ -171,53 +166,33 @@ def _parse_memberdef(member) -> dict | None:
 
 
 def parse_headers() -> dict:
-    """
-    Run Doxygen on the two C headers, parse the XML output, and return a dict
-    keyed by symbol name in the same format the old regex parser produced:
-
-        {
-          "CUOPT_SUCCESS":               {"kind": "define",    "value": "0",  "brief": "..."},
-          "cuopt_float_t":               {"kind": "typedef",   "underlying":  "double", "brief": "..."},
-          "cuOptOptimizationProblem":    {"kind": "typedef",   "underlying":  "void *", "brief": "..."},
-          "cuOptMIPGetSolutionCallback": {"kind": "typedef_fn","brief": "...", "params": [...], ...},
-          "cuOptSolve":                  {"kind": "function",  "ret": "cuopt_int_t", ...},
-        }
-    """
-    # Run doxygen to produce XML
-    doxyfile = _DOXYFILE
-    if not doxyfile.exists():
-        raise FileNotFoundError(f"Doxyfile not found: {doxyfile}")
+    """Run Doxygen and return all parsed symbols keyed by name."""
+    if not _DOXYFILE.exists():
+        raise FileNotFoundError(f"Doxyfile not found: {_DOXYFILE}")
 
     result = subprocess.run(
-        ["doxygen", str(doxyfile)],
+        ["doxygen", str(_DOXYFILE)],
         cwd=str(REPO_ROOT),
         capture_output=True,
         text=True,
     )
     if result.returncode != 0:
-        raise RuntimeError(
-            f"doxygen failed (exit {result.returncode}):\n{result.stderr}"
-        )
+        raise RuntimeError(f"doxygen failed (exit {result.returncode}):\n{result.stderr}")
 
-    xml_dir = _XML_DIR
-    if not xml_dir.exists():
-        raise FileNotFoundError(f"Doxygen XML output dir not found: {xml_dir}")
+    if not _XML_DIR.exists():
+        raise FileNotFoundError(f"Doxygen XML output dir not found: {_XML_DIR}")
 
     symbols: dict = {}
-
-    # Parse each per-file XML (constants_8h.xml and cuopt__c_8h.xml)
-    for xml_file in sorted(xml_dir.glob("*.xml")):
+    for xml_file in sorted(_XML_DIR.glob("*.xml")):
         if xml_file.name in ("index.xml", "combine.xslt"):
             continue
-        if not (xml_file.name.startswith("constants_") or
-                xml_file.name.startswith("cuopt__c_")):
+        if not (xml_file.name.startswith("constants_") or xml_file.name.startswith("cuopt__c_")):
             continue
         try:
             tree = ET.parse(xml_file)
         except ET.ParseError as e:
             print(f"  [WARN] XML parse error in {xml_file.name}: {e}")
             continue
-
         root = tree.getroot()
         for compound in root.findall(".//compounddef"):
             for section in compound.findall("sectiondef"):
@@ -226,50 +201,38 @@ def parse_headers() -> dict:
                     if info is None:
                         continue
                     name = info.pop("name")
-                    # Skip internal guards
-                    if name.startswith("CUOPT_INSTANTIATE_") or name in (
-                        "CUOPT_C_API_H", "CUOPT_CONSTANTS_H"
-                    ):
+                    if name in _INTERNAL_SYMBOLS:
+                        continue
+                    if any(name.startswith(p) for p in _INTERNAL_PREFIXES):
                         continue
                     symbols[name] = info
 
-    # Doxygen skips typedefs inside #if preprocessor blocks (like cuopt_int_t
-    # and cuopt_float_t).  Supplement with a targeted regex pass on the header.
     _supplement_if_guarded_typedefs(symbols)
-
     return symbols
 
 
 def _supplement_if_guarded_typedefs(symbols: dict):
-    """
-    Regex fallback for typedefs inside #if blocks that Doxygen skips.
-    Reads the header, finds active (enabled) #if branches, and adds any
-    missing typedef entries to `symbols`.
-    """
+    """Regex fallback for typedefs inside #if blocks that Doxygen skips."""
     text = HEADER.read_text(encoding="utf-8")
     lines = text.splitlines()
     n = len(lines)
 
-    # First pass: collect the instantiate macro values from constants.h
     consts_text = CONSTANTS.read_text(encoding="utf-8")
     macro_values: dict[str, int] = {}
     for m in re.finditer(r'^#define\s+(CUOPT_INSTANTIATE_\w+)\s+(\d+)', consts_text, re.M):
         macro_values[m.group(1)] = int(m.group(2))
 
-    # State machine: walk lines, track active #if CUOPT_INSTANTIATE_* blocks
     in_active_block = False
     pending_comment: list[str] = []
     i = 0
     while i < n:
         line = lines[i]
-
         m_if = re.match(r'^#if\s+(CUOPT_INSTANTIATE_\w+)', line)
         m_endif = re.match(r'^#endif', line)
 
         if m_if:
             macro = m_if.group(1)
-            val = macro_values.get(macro, 0)
-            in_active_block = bool(val)
+            in_active_block = bool(macro_values.get(macro, 0))
             pending_comment = []
             i += 1
             continue
@@ -281,7 +244,6 @@ def _supplement_if_guarded_typedefs(symbols: dict):
             continue
 
         if in_active_block:
-            # Accumulate Doxygen comment
             if line.strip().startswith("/**") or line.strip().startswith("*"):
                 pending_comment.append(line)
             elif re.match(r'^typedef\s+(.*?)\s+(\w+)\s*;', line):
@@ -289,11 +251,9 @@ def _supplement_if_guarded_typedefs(symbols: dict):
                 underlying = m_td.group(1).strip()
                 name = m_td.group(2)
                 if name not in symbols:
-                    # Extract brief from pending comment
                     brief = ""
                     if pending_comment:
                         raw = "\n".join(pending_comment)
-                        # Strip comment markers
                         cleaned = re.sub(r'/\*+', '', raw)
                         cleaned = re.sub(r'\*/', '', cleaned)
                         cleaned = re.sub(r'^\s*\*\s?', '', cleaned, flags=re.M)
@@ -305,9 +265,7 @@ def _supplement_if_guarded_typedefs(symbols: dict):
                     symbols[name] = {"kind": "typedef", "underlying": underlying, "brief": brief}
                 pending_comment = []
             else:
-                if not line.strip():
-                    pass  # blank line — don't reset comment
-                elif not line.strip().startswith("//"):
+                if line.strip() and not line.strip().startswith("//"):
                     pending_comment = []
 
         i += 1
@@ -318,20 +276,14 @@ def _supplement_if_guarded_typedefs(symbols: dict):
 # ---------------------------------------------------------------------------
 
 def _escape_mdx(text: str) -> str:
-    """Escape characters that MDX/JSX can't handle in prose."""
-    # <= → &lt;=
     text = re.sub(r'<=', '&lt;=', text)
-    # Curly braces
     text = text.replace("{", "(").replace("}", ")")
     return text
 
 
 def _clean_desc(text: str) -> str:
-    """Post-process a doxygen description string for MDX output."""
     text = text.strip()
-    # Strip leading "- " that doxygen authors sometimes add after the param name
     text = re.sub(r'^-\s+', '', text)
-    # Convert double-backtick ``foo`` to single-backtick `foo`
     text = re.sub(r'``([^`]+)``', r'`\1`', text)
     return text
 
@@ -339,7 +291,6 @@ def _clean_desc(text: str) -> str:
 def _render_typedef(name: str, info: dict) -> str:
     brief = _escape_mdx(_clean_desc(info.get("brief", "") or ""))
     underlying = info.get("underlying", "")
-    # Horizontal rule + "typedef" label for visual scanning.
     if underlying:
         return f"<hr />\n\n**`typedef`** **`{name}`** — {brief} (`typedef {underlying}`)\n"
     return f"<hr />\n\n**`typedef`** **`{name}`** — {brief}\n"
@@ -370,7 +321,6 @@ def _render_typedef_fn(name: str, info: dict) -> str:
 def _render_define(name: str, info: dict) -> str:
     value = info.get("value", "")
     brief = _escape_mdx(_clean_desc(info.get("brief", "") or ""))
-    # String values already include quotes; numeric are bare
     if brief:
         return f"- `{name}` (`{value}`) — {brief}"
     return f"- `{name}` (`{value}`)"
@@ -378,21 +328,12 @@ def _render_define(name: str, info: dict) -> str:
 
 def _render_function(name: str, info: dict) -> str:
     lines = []
-
-    # Build compact one-line signature
     ret = info.get("ret", "")
     decl_params = info.get("decl_params", [])
-    if decl_params:
-        param_str = ", ".join(
-            f"{p['type']} {p['name']}".strip() for p in decl_params
-        )
-    else:
-        param_str = "void"
-
+    param_str = ", ".join(f"{p['type']} {p['name']}".strip() for p in decl_params) or "void"
     sig = f"{name}({param_str})"
     if ret and ret != "void":
         sig = f"{sig} -> {ret}"
-
     lines.append(f"<hr />\n\n#### `{sig}`\n")
 
     brief = _escape_mdx(_clean_desc(info.get("brief", "") or ""))
@@ -415,12 +356,7 @@ def _render_function(name: str, info: dict) -> str:
             direction = p.get("dir", "")
             desc = _escape_mdx(_clean_desc(p.get("desc", "") or ""))
             dir_str = f" `[{direction}]`" if direction else ""
-            # Find matching type from decl
-            ptype = ""
-            for dp in decl_params:
-                if dp["name"] == pname:
-                    ptype = dp["type"]
-                    break
+            ptype = next((dp["type"] for dp in decl_params if dp["name"] == pname), "")
             if ptype:
                 lines.append(f"- **`{pname}`** (`{ptype}`){dir_str} — {desc}")
             else:
@@ -434,226 +370,129 @@ def _render_function(name: str, info: dict) -> str:
     return "\n".join(lines)
 
 
-# ---------------------------------------------------------------------------
-# RST structure parser → ordered symbol list
-# ---------------------------------------------------------------------------
-
-def _parse_rst_directives(rst_path: Path) -> list[tuple[str, str]]:
-    """
-    Return ordered list of (directive_type, symbol_name) from an RST file.
-    directive_type is one of: "function", "typedef", "define"
-    """
-    text = rst_path.read_text(encoding="utf-8")
-    result = []
-    for m in re.finditer(
-        r"\.\.\s+doxygen(function|typedef|define)::\s*(\w+)", text
-    ):
-        kind_map = {"function": "function", "typedef": "typedef", "define": "define"}
-        result.append((kind_map[m.group(1)], m.group(2)))
-    return result
-
-
-# ---------------------------------------------------------------------------
-# MDX page generator: re-generate from RST structure + parsed headers
-# ---------------------------------------------------------------------------
-
-def _render_symbol(kind: str, name: str, symbols: dict) -> str:
-    """Render a single symbol to MDX text."""
+def _render_symbol(name: str, symbols: dict) -> str:
     info = symbols.get(name)
     if not info:
         return f"*`{name}` — documentation not found in headers.*\n"
-
-    actual_kind = info.get("kind", "")
+    kind = info.get("kind", "")
     if kind == "function":
-        if actual_kind == "function":
-            return _render_function(name, info)
-        if actual_kind in ("typedef_fn",):
-            return _render_typedef_fn(name, info)
+        return _render_function(name, info)
+    if kind == "typedef_fn":
+        return _render_typedef_fn(name, info)
     if kind == "typedef":
-        if actual_kind == "typedef":
-            return _render_typedef(name, info)
-        if actual_kind == "typedef_fn":
-            return _render_typedef_fn(name, info)
+        return _render_typedef(name, info)
     if kind == "define":
-        if actual_kind == "define":
-            return _render_define(name, info)
-
-    # Fallback
+        return _render_define(name, info)
     return f"*`{name}` — (see header)*\n"
 
 
-def _generate_mdx_from_rst(rst_path: Path, symbols: dict, title: str) -> str:
-    """
-    Re-build an MDX page by walking the RST line by line.
-    Prose text is preserved; doxygen directives are replaced with rendered MDX.
-    """
-    rst = rst_path.read_text(encoding="utf-8")
-    rst_lines = rst.splitlines()
+# ---------------------------------------------------------------------------
+# YAML-driven page generator
+# ---------------------------------------------------------------------------
 
-    out_lines: list[str] = [
-        f'---',
-        f'title: "{title}"',
-        f'---',
-        f'',
+def _collect_config_symbols(page_cfg: dict) -> set:
+    """Return the set of all symbol names mentioned anywhere in a page config."""
+    seen = set()
+    for section in page_cfg.get("sections", []):
+        for item in section.get("items", []):
+            if "symbol" in item:
+                seen.add(item["symbol"])
+            for s in item.get("symbols", []):
+                seen.add(s)
+    return seen
+
+
+def _render_page(page_cfg: dict, symbols: dict, all_config_symbols: set) -> str:
+    """Render one MDX page from config + Doxygen symbols."""
+    out = [
+        "---",
+        f'title: "{page_cfg["title"]}"',
+        "---",
+        "",
     ]
 
-    # Track groups of defines to render as a list
+    intro = page_cfg.get("intro", "").strip()
+    if intro:
+        out.append(intro)
+        out.append("")
+
+    # Track which defines have been rendered (for list flushing)
     pending_defines: list[str] = []
 
     def flush_defines():
         if pending_defines:
             for dname in pending_defines:
-                info = symbols.get(dname)
-                if info and info.get("kind") == "define":
-                    out_lines.append(_render_define(dname, info))
-                else:
-                    out_lines.append(f"- `{dname}` — (not found)")
-            out_lines.append("")
+                out.append(_render_define(dname, symbols[dname]) if dname in symbols
+                           else f"- `{dname}` — (not found)")
+            out.append("")
             pending_defines.clear()
 
-    # RST section underline chars
-    underline_chars = set("=-~^#*+")
-
-    i = 0
-    n = len(rst_lines)
-    skip_title = True  # skip the document title (first heading)
-
-    while i < n:
-        line = rst_lines[i]
-
-        # ---- Section headings ----
-        if (
-            i + 1 < n
-            and line.strip()
-            and not line.startswith(".")
-            and len(set(rst_lines[i + 1].strip())) == 1
-            and rst_lines[i + 1].strip()[0] in underline_chars
-            and len(rst_lines[i + 1].strip()) >= len(line.strip())
-        ):
-            if skip_title:
-                skip_title = False
-                i += 2
-                # skip blank line after heading
-                while i < n and not rst_lines[i].strip():
-                    i += 1
-                continue
-            flush_defines()
-            heading = line.strip()
-            # RST heading level → MD level (we use ## for top sections)
-            char = rst_lines[i + 1].strip()[0]
-            level_map = {"-": "##", "~": "###", "^": "####"}
-            hashes = level_map.get(char, "##")
-            out_lines.append(f"{hashes} {heading}")
-            out_lines.append("")
-            i += 2
-            continue
-
-        # ---- RST label anchors like .. _foo: ----
-        if re.match(r'\.\. _[\w\-]+:', line):
-            i += 1
-            continue
-
-        # ---- doxygen directives ----
-        m = re.match(r'\.\.\s+doxygen(function|typedef|define)::\s*(\w+)', line)
-        if m:
-            kind = m.group(1)
-            sym = m.group(2)
-            # Skip option lines (indented)
-            j = i + 1
-            while j < n and rst_lines[j].startswith("   "):
-                j += 1
-            i = j
-
-            if kind == "define":
+    def render_item_symbols(sym_list):
+        # Batch defines as bullet list; functions/typedefs get their own block
+        for sym in sym_list:
+            info = symbols.get(sym)
+            if info and info.get("kind") == "define":
                 pending_defines.append(sym)
             else:
                 flush_defines()
-                rendered = _render_symbol(kind, sym, symbols)
-                out_lines.append(rendered)
-            continue
+                out.append(_render_symbol(sym, symbols))
 
-        # ---- .. note:: ----
-        if line.strip().startswith(".. note::"):
-            flush_defines()
-            # Collect note body
-            note_lines = []
-            j = i + 1
-            # blank line then indented content
-            while j < n and (not rst_lines[j].strip() or rst_lines[j].startswith("   ")):
-                note_lines.append(rst_lines[j].lstrip("   ").rstrip())
-                j += 1
-            note_body = "\n".join(note_lines).strip()
-            note_body = _escape_mdx(note_body)
-            # Convert RST inline code ``foo`` → `foo`
-            note_body = re.sub(r'``([^`]+)``', r'`\1`', note_body)
-            # Convert ``**bold**``
-            out_lines.append(f"<Note>")
-            out_lines.append(note_body)
-            out_lines.append(f"</Note>")
-            out_lines.append("")
-            i = j
-            continue
-
-        # ---- RST comment lines (.. comment) not doxygen ----
-        if re.match(r'\.\.\s+[A-Za-z]', line) and not re.match(r'\.\.\s+doxygen', line):
-            # Skip directive and its indented body
-            j = i + 1
-            while j < n and (rst_lines[j].startswith("   ") or not rst_lines[j].strip()):
-                j += 1
-            i = j
-            continue
-
-        # ---- Blank lines ----
-        if not line.strip():
-            if pending_defines:
-                # don't flush on single blank line between defines
-                # but do if there's prose ahead
-                if i + 1 < n and not re.match(r'\.\.\s+doxygen(define)::', rst_lines[i + 1]):
-                    flush_defines()
-            else:
-                out_lines.append("")
-            i += 1
-            continue
-
-        # ---- Plain prose ----
+    for section in page_cfg.get("sections", []):
         flush_defines()
-        prose = line.rstrip()
-        # Convert RST inline markup
-        # ``code`` → `code`
-        prose = re.sub(r'``([^`]+)``', r'`\1`', prose)
-        # `text <ref>`_ → [text](ref)  — RST hyperlinks
-        prose = re.sub(r'`([^`<]+)\s*<([^>]+)>`_', r'[\1](\2)', prose)
-        # :ref:`label <anchor>` → just the label (within-page anchor)
-        prose = re.sub(r':ref:`([^`<]+)\s*<([^>]+)>`', r'\1', prose)
-        prose = re.sub(r':ref:`([^`]+)`', r'\1', prose)
-        # :c:func:`name` → `name`
-        prose = re.sub(r':c:func:`([^`]+)`', r'`\1`', prose)
-        # :doc:`label <path>` → [label](../path)
-        def _doc_link(m2):
-            label = m2.group(1).strip()
-            path = m2.group(2).strip()
-            # Use just the basename for the URL
-            slug = path.split("/")[-1]
-            return f"[{label}](../{slug})"
-        prose = re.sub(r':doc:`([^`<]+)\s*<([^>]+)>`', _doc_link, prose)
-        def _doc_simple(m2):
-            p = m2.group(1).strip().lstrip("/")
-            slug = p.split("/")[-1]
-            label = slug.replace("-", " ").replace("_", " ").title()
-            return f"[{label}]({slug})"
-        prose = re.sub(r':doc:`([^`]+)`', _doc_simple, prose)
-        # `text` → `text` (already fine)
-        prose = _escape_mdx(prose)
-        # Fix list items (RST uses - or *)
-        if re.match(r'^[-*]\s', prose):
-            pass  # already list markdown
-        out_lines.append(prose)
-        i += 1
+        out.append(f"## {section['title']}")
+        out.append("")
+        sec_intro = section.get("intro", "").strip()
+        if sec_intro:
+            out.append(sec_intro)
+            out.append("")
 
-    flush_defines()
+        for item in section.get("items", []):
+            if "intro" in item:
+                flush_defines()
+                out.append(item["intro"].strip())
+                out.append("")
+            elif "note" in item:
+                flush_defines()
+                note_text = _escape_mdx(item["note"].strip())
+                out.append(f"<Note>\n{note_text}\n</Note>")
+                out.append("")
+            elif "symbol" in item:
+                render_item_symbols([item["symbol"]])
+            elif "symbols" in item:
+                render_item_symbols(item["symbols"])
 
-    # Collapse triple+ blank lines
-    result = "\n".join(out_lines)
+        flush_defines()
+
+    # Auto-append uncategorized symbols only to the designated catchall page
+    page_output = page_cfg["output"]
+    uncategorized = []
+    if page_cfg.get("include_uncategorized"):
+        uncategorized = [
+            name for name, info in symbols.items()
+            if name not in all_config_symbols and name not in _INTERNAL_SYMBOLS
+            and not any(name.startswith(p) for p in _INTERNAL_PREFIXES)
+        ]
+    if uncategorized:
+        print(f"  [INFO] {len(uncategorized)} uncategorized symbol(s) appended to {page_output}: "
+              f"{', '.join(sorted(uncategorized)[:5])}{'...' if len(uncategorized) > 5 else ''}")
+        out.append("## Uncategorized")
+        out.append("")
+        out.append("<Note>")
+        out.append("The following symbols were found in the headers but are not yet")
+        out.append("organized into a section. Update `fern/c_api_config.yaml` to place them.")
+        out.append("</Note>")
+        out.append("")
+        pending_defines.clear()
+        for name in sorted(uncategorized):
+            info = symbols.get(name, {})
+            if info.get("kind") == "define":
+                pending_defines.append(name)
+            else:
+                flush_defines()
+                out.append(_render_symbol(name, symbols))
+        flush_defines()
+
+    result = "\n".join(out)
     result = re.sub(r'\n{3,}', '\n\n', result)
     return result.strip() + "\n"
 
@@ -663,25 +502,27 @@ def _generate_mdx_from_rst(rst_path: Path, symbols: dict, title: str) -> str:
 # ---------------------------------------------------------------------------
 
 def generate_pages():
-    print("Extracting C API docs from headers...")
+    if not _YAML_AVAILABLE:
+        raise ImportError("PyYAML is required: pip install pyyaml")
+
+    print("Extracting C API docs from headers (Doxygen XML)...")
     symbols = parse_headers()
     print(f"  Parsed {len(symbols)} symbols")
 
-    # Convex API page
-    mdx_convex = _generate_mdx_from_rst(
-        RST_CONVEX, symbols, "cuOpt Convex Optimization C API Reference"
-    )
-    OUT_CONVEX.parent.mkdir(parents=True, exist_ok=True)
-    OUT_CONVEX.write_text(mdx_convex, encoding="utf-8")
-    print(f"  Wrote {OUT_CONVEX.relative_to(REPO_ROOT)}")
+    config = yaml.safe_load(CONFIG_FILE.read_text(encoding="utf-8"))
 
-    # MIP API page
-    mdx_mip = _generate_mdx_from_rst(
-        RST_MIP, symbols, "cuOpt MIP C API Reference"
-    )
-    OUT_MIP.parent.mkdir(parents=True, exist_ok=True)
-    OUT_MIP.write_text(mdx_mip, encoding="utf-8")
-    print(f"  Wrote {OUT_MIP.relative_to(REPO_ROOT)}")
+    # Build the full set of config-listed symbols across ALL pages so the
+    # uncategorized check doesn't double-report across convex and MIP pages
+    all_config_symbols: set = set()
+    for page_cfg in config["pages"]:
+        all_config_symbols |= _collect_config_symbols(page_cfg)
+
+    for page_cfg in config["pages"]:
+        dest = PAGES / page_cfg["output"]
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        mdx = _render_page(page_cfg, symbols, all_config_symbols)
+        dest.write_text(mdx, encoding="utf-8")
+        print(f"  Wrote {dest.relative_to(REPO_ROOT)}")
 
 
 # Alias expected by generate_api_docs.py

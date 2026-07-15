@@ -1,0 +1,424 @@
+pages:
+  - output: cuopt-c/convex/convex-c-api.mdx
+    title: "cuOpt Convex Optimization C API Reference"
+    # Symbols in Doxygen XML not covered by any page's config are appended here.
+    include_uncategorized: true
+    intro: >
+      This section contains the cuOpt convex optimization C API reference.
+      For MIP-specific functions and callbacks, see [MIP C API](mip-c-api).
+    sections:
+      - title: "Integer and Floating-Point Types"
+        intro: >
+          cuOpt may be built with 32 or 64 bit integer and floating-point types.
+          The C API uses a `typedef` for floating point and integer types to abstract the size of these types.
+        items:
+          - symbols: [cuopt_int_t, cuopt_float_t]
+          - intro: >
+              You may use the following functions to determine the number of bytes
+              used to represent these types in your build.
+          - symbols: [cuOptGetIntSize, cuOptGetFloatSize]
+
+      - title: "Version Information"
+        intro: >
+          You may use the following function to get the version of the cuOpt library.
+        items:
+          - symbols: [cuOptGetVersion]
+
+      - title: "Status Codes"
+        intro: >
+          Every function in the C API returns a status code that indicates success or failure.
+          The following status codes are defined.
+        items:
+          - symbols:
+              - CUOPT_SUCCESS
+              - CUOPT_INVALID_ARGUMENT
+              - CUOPT_MPS_FILE_ERROR
+              - CUOPT_MPS_PARSE_ERROR
+              - CUOPT_VALIDATION_ERROR
+              - CUOPT_OUT_OF_MEMORY
+              - CUOPT_RUNTIME_ERROR
+
+      - title: "Optimization Problem"
+        intro: >
+          An optimization problem is represented via a `cuOptOptimizationProblem`.
+        items:
+          - symbols: [cuOptOptimizationProblem]
+          - intro: >
+              Optimization problems can be created, loaded, or written via the following functions.
+          - symbols: [cuOptReadProblem, cuOptWriteProblem, cuOptCreateProblem, cuOptCreateRangedProblem,
+                      cuOptCreateQuadraticProblem, cuOptCreateQuadraticRangedProblem]
+          - note: >
+              `cuOptCreateQuadraticProblem` and `cuOptCreateQuadraticRangedProblem` are deprecated.
+              Prefer `cuOptCreateProblem` or `cuOptCreateRangedProblem` followed by
+              `cuOptSetQuadraticObjective`.
+          - intro: "For problems with quadratic objectives, first create a problem, and then use:"
+          - symbols: [cuOptSetQuadraticObjective]
+          - intro: "For problems with quadratic constraints, first create a problem, and then use:"
+          - symbols: [cuOptAddQuadraticConstraint]
+          - note: >
+              Support for quadratic constraints is currently in **beta**.
+              `cuOptAddQuadraticConstraint` supports three types of quadratic constraints:
+              convex quadratic constraints of the form `x^T Q x + d^T x <= alpha` where `H=(Q+Q^T)/2`
+              is a symmetric positive semidefinite matrix; second-order cone constraints of the form
+              `sum_{i=1}^n x_i^2 <= x_0`, `x_0 >= 0`; and rotated second-order cone constraints.
+              Only `CUOPT_LESS_THAN` and `CUOPT_GREATER_THAN` sense is supported.
+          - intro: "An optimization problem must be destroyed with the following function."
+          - symbols: [cuOptDestroyProblem]
+          - intro: "Certain constants are needed to define an optimization problem."
+
+      - title: "Objective Sense Constants"
+        intro: >
+          These constants are used to define the objective sense in the
+          `cuOptCreateProblem` and `cuOptCreateRangedProblem` functions.
+        items:
+          - symbols: [CUOPT_MINIMIZE, CUOPT_MAXIMIZE]
+
+      - title: "Constraint Sense Constants"
+        intro: >
+          These constants are used to define the constraint sense in the
+          `cuOptCreateProblem` and `cuOptCreateRangedProblem` functions.
+        items:
+          - symbols: [CUOPT_LESS_THAN, CUOPT_GREATER_THAN, CUOPT_EQUAL]
+
+      - title: "Variable Type Constants"
+        intro: >
+          These constants are used to define the variable type in the
+          `cuOptCreateProblem` and `cuOptCreateRangedProblem` functions.
+        items:
+          - symbols: [CUOPT_CONTINUOUS, CUOPT_INTEGER, CUOPT_SEMI_CONTINUOUS]
+
+      - title: "Infinity Constant"
+        intro: >
+          This constant may be used to represent infinity in the
+          `cuOptCreateProblem` and `cuOptCreateRangedProblem` functions.
+        items:
+          - symbols: [CUOPT_INFINITY]
+
+      - title: "File Format Constants"
+        intro: >
+          These constants are used to specify the output file format in `cuOptWriteProblem`.
+        items:
+          - symbols: [CUOPT_FILE_FORMAT_MPS]
+
+      - title: "Querying an Optimization Problem"
+        intro: >
+          The following functions may be used to get information about a `cuOptOptimizationProblem`.
+        items:
+          - symbols:
+              - cuOptGetNumConstraints
+              - cuOptGetNumVariables
+              - cuOptGetObjectiveSense
+              - cuOptGetObjectiveOffset
+              - cuOptGetObjectiveCoefficients
+              - cuOptGetNumNonZeros
+              - cuOptGetConstraintMatrix
+              - cuOptGetConstraintSense
+              - cuOptGetConstraintRightHandSide
+              - cuOptGetConstraintLowerBounds
+              - cuOptGetConstraintUpperBounds
+              - cuOptGetVariableLowerBounds
+              - cuOptGetVariableUpperBounds
+              - cuOptGetVariableTypes
+              - cuOptIsMIP
+
+      - title: "Solver Settings"
+        intro: >
+          Settings are used to configure the LP/MIP solvers.
+          All settings are stored in a `cuOptSolverSettings` object.
+        items:
+          - symbols: [cuOptSolverSettings]
+          - intro: "A `cuOptSolverSettings` object is created with `cuOptCreateSolverSettings`."
+          - symbols: [cuOptCreateSolverSettings]
+          - intro: "When you are done with a solve you should destroy a `cuOptSolverSettings` object with:"
+          - symbols: [cuOptDestroySolverSettings]
+
+      - title: "Setting Parameters"
+        intro: >
+          The following functions are used to set and get parameters.
+          You can find more details on the available parameters in the
+          [Convex Optimization Settings](../../convex-settings) section.
+        items:
+          - symbols:
+              - cuOptSetParameter
+              - cuOptGetParameter
+              - cuOptSetIntegerParameter
+              - cuOptGetIntegerParameter
+              - cuOptSetFloatParameter
+              - cuOptGetFloatParameter
+
+      - title: "Parameter Constants"
+        intro: >
+          These constants are used as parameter names in `cuOptSetParameter`, `cuOptGetParameter`,
+          and similar functions. For more details, see the
+          [Convex Optimization Settings](../../convex-settings) and
+          [MIP Settings](../../mip-settings) sections.
+        items:
+          - symbols:
+              - CUOPT_ABSOLUTE_DUAL_TOLERANCE
+              - CUOPT_RELATIVE_DUAL_TOLERANCE
+              - CUOPT_ABSOLUTE_PRIMAL_TOLERANCE
+              - CUOPT_RELATIVE_PRIMAL_TOLERANCE
+              - CUOPT_ABSOLUTE_GAP_TOLERANCE
+              - CUOPT_RELATIVE_GAP_TOLERANCE
+              - CUOPT_INFEASIBILITY_DETECTION
+              - CUOPT_STRICT_INFEASIBILITY
+              - CUOPT_PRIMAL_INFEASIBLE_TOLERANCE
+              - CUOPT_DUAL_INFEASIBLE_TOLERANCE
+              - CUOPT_ITERATION_LIMIT
+              - CUOPT_TIME_LIMIT
+              - CUOPT_PDLP_SOLVER_MODE
+              - CUOPT_METHOD
+              - CUOPT_PER_CONSTRAINT_RESIDUAL
+              - CUOPT_SAVE_BEST_PRIMAL_SO_FAR
+              - CUOPT_FIRST_PRIMAL_FEASIBLE
+              - CUOPT_LOG_FILE
+              - CUOPT_PRESOLVE
+              - CUOPT_LOG_TO_CONSOLE
+              - CUOPT_CROSSOVER
+              - CUOPT_FOLDING
+              - CUOPT_AUGMENTED
+              - CUOPT_DUALIZE
+              - CUOPT_ORDERING
+              - CUOPT_ELIMINATE_DENSE_COLUMNS
+              - CUOPT_CUDSS_DETERMINISTIC
+              - CUOPT_BARRIER_DUAL_INITIAL_POINT
+              - CUOPT_BARRIER_ITERATIVE_REFINEMENT
+              - CUOPT_BARRIER_STEP_SCALE
+              - CUOPT_DUAL_POSTSOLVE
+              - CUOPT_SOLUTION_FILE
+              - CUOPT_NUM_CPU_THREADS
+              - CUOPT_NUM_GPUS
+              - CUOPT_USER_PROBLEM_FILE
+              - CUOPT_PDLP_PRECISION
+
+      - title: "PDLP Solver Mode Constants"
+        intro: >
+          These constants are used to configure `CUOPT_PDLP_SOLVER_MODE`
+          via `cuOptSetIntegerParameter`.
+        items:
+          - symbols:
+              - CUOPT_PDLP_SOLVER_MODE_STABLE1
+              - CUOPT_PDLP_SOLVER_MODE_STABLE2
+              - CUOPT_PDLP_SOLVER_MODE_STABLE3
+              - CUOPT_PDLP_SOLVER_MODE_METHODICAL1
+              - CUOPT_PDLP_SOLVER_MODE_FAST1
+
+      - title: "PDLP Precision Constants"
+        intro: >
+          These constants are used to configure `CUOPT_PDLP_PRECISION`
+          via `cuOptSetIntegerParameter`.
+        items:
+          - symbols:
+              - CUOPT_PDLP_DEFAULT_PRECISION
+              - CUOPT_PDLP_SINGLE_PRECISION
+              - CUOPT_PDLP_DOUBLE_PRECISION
+              - CUOPT_PDLP_MIXED_PRECISION
+
+      - title: "Method Constants"
+        intro: >
+          These constants are used to configure `CUOPT_METHOD`
+          via `cuOptSetIntegerParameter`.
+        items:
+          - symbols:
+              - CUOPT_METHOD_CONCURRENT
+              - CUOPT_METHOD_PDLP
+              - CUOPT_METHOD_DUAL_SIMPLEX
+              - CUOPT_METHOD_BARRIER
+              - CUOPT_METHOD_UNSET
+
+      - title: "Barrier Iterative Refinement Constants"
+        intro: >
+          These constants are used to configure `CUOPT_BARRIER_ITERATIVE_REFINEMENT`
+          via `cuOptSetIntegerParameter`.
+        items:
+          - symbols:
+              - CUOPT_BARRIER_ITERATIVE_REFINEMENT_OFF
+              - CUOPT_BARRIER_ITERATIVE_REFINEMENT_ON
+
+      - title: "Presolve Constants"
+        intro: >
+          These constants are used to configure `CUOPT_PRESOLVE`
+          via `cuOptSetIntegerParameter`.
+        items:
+          - symbols:
+              - CUOPT_PRESOLVE_DEFAULT
+              - CUOPT_PRESOLVE_OFF
+              - CUOPT_PRESOLVE_PAPILO
+              - CUOPT_PRESOLVE_PSLP
+
+      - title: "Warm Start"
+        intro: >
+          For LP problems solved with PDLP, primal and dual warm start vectors may be provided.
+        items:
+          - symbols: [cuOptSetInitialPrimalSolution, cuOptSetInitialDualSolution]
+          - note: "For MIP warm start (MIP starts), see [MIP C API](mip-c-api)."
+
+      - title: "Solving"
+        intro: "LP and MIP solves are performed by calling the `cuOptSolve` function."
+        items:
+          - symbols: [cuOptSolve]
+
+      - title: "Solution"
+        intro: "The output of a solve is a `cuOptSolution` object."
+        items:
+          - symbols: [cuOptSolution]
+          - intro: "The following functions may be used to access information from a `cuOptSolution`."
+          - symbols:
+              - cuOptGetTerminationStatus
+              - cuOptGetErrorStatus
+              - cuOptGetErrorString
+              - cuOptGetPrimalSolution
+              - cuOptGetObjectiveValue
+              - cuOptGetSolveTime
+              - cuOptGetMIPGap
+              - cuOptGetSolutionBound
+              - cuOptGetDualSolution
+              - cuOptGetDualObjectiveValue
+              - cuOptGetReducedCosts
+          - intro: "When you are finished with a `cuOptSolution` object you should destroy it with:"
+          - symbols: [cuOptDestroySolution]
+
+      - title: "Termination Status Constants"
+        intro: >
+          These constants define the termination status received from `cuOptGetTerminationStatus`.
+        items:
+          - symbols:
+              - CUOPT_TERMINATION_STATUS_NO_TERMINATION
+              - CUOPT_TERMINATION_STATUS_OPTIMAL
+              - CUOPT_TERMINATION_STATUS_INFEASIBLE
+              - CUOPT_TERMINATION_STATUS_UNBOUNDED
+              - CUOPT_TERMINATION_STATUS_ITERATION_LIMIT
+              - CUOPT_TERMINATION_STATUS_TIME_LIMIT
+              - CUOPT_TERMINATION_STATUS_NUMERICAL_ERROR
+              - CUOPT_TERMINATION_STATUS_PRIMAL_FEASIBLE
+              - CUOPT_TERMINATION_STATUS_FEASIBLE_FOUND
+              - CUOPT_TERMINATION_STATUS_CONCURRENT_LIMIT
+              - CUOPT_TERMINATION_STATUS_WORK_LIMIT
+              - CUOPT_TERMINATION_STATUS_UNBOUNDED_OR_INFEASIBLE
+
+  - output: cuopt-c/mip/mip-c-api.mdx
+    title: "cuOpt MIP C API Reference"
+    intro: >
+      This section contains the cuOpt MIP C API reference. Functions for problem creation,
+      solver settings, solving, and inspecting solutions are shared with convex optimization
+      and documented in [Convex C API](../convex/convex-c-api).
+    sections:
+      - title: "Warm Start and MIP Start"
+        intro: >
+          For LP problems solved with PDLP, see [Convex C API](../convex/convex-c-api)
+          for primal and dual warm start.
+          For MIP problems, one or more primal solution hints (MIP starts) may be provided.
+        items:
+          - symbols: [cuOptAddMIPStart]
+
+      - title: "MIP Solution Callbacks"
+        intro: >
+          The following callback types and functions allow monitoring and injecting
+          solutions during a MIP solve.
+        items:
+          - symbols:
+              - cuOptMIPGetSolutionCallback
+              - cuOptMIPSetSolutionCallback
+              - cuOptSetMIPGetSolutionCallback
+              - cuOptSetMIPSetSolutionCallback
+
+      - title: "MIP Parameter Constants"
+        intro: >
+          These constants configure MIP-specific solver behavior. Use them with
+          `cuOptSetParameter`, `cuOptSetIntegerParameter`, or `cuOptSetFloatParameter`.
+          For shared parameters (time limit, logging, presolve, etc.), see
+          [Parameter Constants](../convex/convex-c-api#parameter-constants) in the convex API reference.
+        items:
+          - symbols:
+              - CUOPT_NODE_LIMIT
+              - CUOPT_WORK_LIMIT
+              - CUOPT_RANDOM_SEED
+              - CUOPT_PRESOLVE_FILE
+              - CUOPT_MIP_ABSOLUTE_TOLERANCE
+              - CUOPT_MIP_RELATIVE_TOLERANCE
+              - CUOPT_MIP_INTEGRALITY_TOLERANCE
+              - CUOPT_MIP_ABSOLUTE_GAP
+              - CUOPT_MIP_RELATIVE_GAP
+              - CUOPT_MIP_SCALING
+              - CUOPT_MIP_HEURISTICS_ONLY
+              - CUOPT_MIP_PRESOLVE
+              - CUOPT_MIP_DETERMINISM_MODE
+              - CUOPT_MIP_SYMMETRY
+              - CUOPT_MIP_PROBING
+              - CUOPT_MIP_RELIABILITY_BRANCHING
+              - CUOPT_MIP_CUT_PASSES
+              - CUOPT_MIP_MIXED_INTEGER_ROUNDING_CUTS
+              - CUOPT_MIP_MIXED_INTEGER_GOMORY_CUTS
+              - CUOPT_MIP_KNAPSACK_CUTS
+              - CUOPT_MIP_FLOW_COVER_CUTS
+              - CUOPT_MIP_IMPLIED_BOUND_CUTS
+              - CUOPT_MIP_CLIQUE_CUTS
+              - CUOPT_MIP_ZERO_HALF_CUTS
+              - CUOPT_MIP_STRONG_CHVATAL_GOMORY_CUTS
+              - CUOPT_MIP_REDUCED_COST_STRENGTHENING
+              - CUOPT_MIP_OBJECTIVE_STEP
+              - CUOPT_MIP_CUT_CHANGE_THRESHOLD
+              - CUOPT_MIP_CUT_MIN_ORTHOGONALITY
+              - CUOPT_MIP_BATCH_PDLP_STRONG_BRANCHING
+              - CUOPT_MIP_BATCH_PDLP_RELIABILITY_BRANCHING
+              - CUOPT_MIP_STRONG_BRANCHING_SIMPLEX_ITERATION_LIMIT
+              - CUOPT_MIP_SEMICONTINUOUS_BIG_M
+
+      - title: "MIP Scaling Constants"
+        intro: >
+          These constants are used to configure `CUOPT_MIP_SCALING`
+          via `cuOptSetIntegerParameter`.
+        items:
+          - symbols:
+              - CUOPT_MIP_SCALING_OFF
+              - CUOPT_MIP_SCALING_ON
+              - CUOPT_MIP_SCALING_NO_OBJECTIVE
+
+      - title: "MIP Determinism Mode Constants"
+        intro: >
+          These constants are used to configure `CUOPT_MIP_DETERMINISM_MODE`
+          via `cuOptSetIntegerParameter`.
+        items:
+          - symbols: [CUOPT_MODE_OPPORTUNISTIC, CUOPT_MODE_DETERMINISTIC]
+
+      - title: "MIP Hyper Diving Parameters"
+        intro: >
+          These constants configure the hyper diving heuristic. Use them with
+          `cuOptSetParameter`, `cuOptSetIntegerParameter`, or `cuOptSetFloatParameter`.
+        items:
+          - symbols:
+              - CUOPT_MIP_HYPER_DIVING_BACKTRACK_LIMIT
+              - CUOPT_MIP_HYPER_DIVING_COEFFICIENT
+              - CUOPT_MIP_HYPER_DIVING_FARKAS
+              - CUOPT_MIP_HYPER_DIVING_GUIDED
+              - CUOPT_MIP_HYPER_DIVING_ITERATION_LIMIT_FACTOR
+              - CUOPT_MIP_HYPER_DIVING_LINE_SEARCH
+              - CUOPT_MIP_HYPER_DIVING_MIN_NODE_DEPTH
+              - CUOPT_MIP_HYPER_DIVING_NODE_LIMIT
+              - CUOPT_MIP_HYPER_DIVING_PSEUDOCOST
+              - CUOPT_MIP_HYPER_DIVING_SHOW_TYPE
+              - CUOPT_MIP_HYPER_DIVING_VECTOR_LENGTH
+
+      - title: "MIP Hyper Heuristic Parameters"
+        intro: >
+          These constants configure the hyper heuristic solver. Use them with
+          `cuOptSetParameter`, `cuOptSetIntegerParameter`, or `cuOptSetFloatParameter`.
+        items:
+          - symbols:
+              - CUOPT_MIP_HYPER_HEURISTIC_CYCLE_DETECTION_LENGTH
+              - CUOPT_MIP_HYPER_HEURISTIC_ENABLED_RECOMBINERS
+              - CUOPT_MIP_HYPER_HEURISTIC_INITIAL_INFEASIBILITY_WEIGHT
+              - CUOPT_MIP_HYPER_HEURISTIC_MAX_ITERS_WITHOUT_IMPROVEMENT
+              - CUOPT_MIP_HYPER_HEURISTIC_NUM_CPUFJ_THREADS
+              - CUOPT_MIP_HYPER_HEURISTIC_N_OF_MINIMUMS_FOR_EXIT
+              - CUOPT_MIP_HYPER_HEURISTIC_POPULATION_SIZE
+              - CUOPT_MIP_HYPER_HEURISTIC_PRESOLVE_MAX_TIME
+              - CUOPT_MIP_HYPER_HEURISTIC_PRESOLVE_TIME_RATIO
+              - CUOPT_MIP_HYPER_HEURISTIC_RELATED_VARS_TIME_LIMIT
+              - CUOPT_MIP_HYPER_HEURISTIC_RELAXED_LP_TIME_LIMIT
+              - CUOPT_MIP_HYPER_HEURISTIC_RINS_FIX_RATE
+              - CUOPT_MIP_HYPER_HEURISTIC_RINS_MAX_TIME_LIMIT
+              - CUOPT_MIP_HYPER_HEURISTIC_RINS_TIME_LIMIT
+              - CUOPT_MIP_HYPER_HEURISTIC_ROOT_LP_MAX_TIME
+              - CUOPT_MIP_HYPER_HEURISTIC_ROOT_LP_TIME_RATIO
+              - CUOPT_MIP_HYPER_HEURISTIC_STAGNATION_TRIGGER

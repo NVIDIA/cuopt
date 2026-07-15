@@ -3,7 +3,571 @@ title: "cuOpt Routing Python API Reference"
 ---
 
 
-## Core Classes
+## Assignment
+
+<hr />
+
+### class `SolutionStatus`
+
+<hr />
+
+### class `Assignment`
+
+A container of vehicle routing solver output
+
+**Parameters**
+
+- **`vehicle_count`** (`Integer`) — Number of vehicles in the solution
+- **`total_objective_value`** (`Float64`) — Objective value calculated as per objective functions and weights
+- **`objective_values`** (`dict[Objective, Float64]`)
+- **`route_df: cudf.DataFrame`** — Contains route, vehicle_id, arrival_stamp.
+- **`accepted: cudf.Series`**
+- **`status: Integer`** — Solver status 0 - SUCCESS, 1 - FAIL, 2 - TIMEOUT and 3 - EMPTY.
+- **`message: String`** — Any error message if there is failure
+- **`undeliverable_orders: cudf.Series`** — Orders which can not be served
+
+
+#### def `__init__`
+
+```python
+__init__(vehicle_count, total_objective_value, objective_values, route_df, accepted, status, message, error_status, error_message, undeliverable_orders)
+```
+
+#### def `get_vehicle_count`
+
+```python
+get_vehicle_count()
+```
+
+Returns the number of vehicle needed for this routing assignment.
+
+
+#### def `get_total_objective`
+
+```python
+get_total_objective()
+```
+
+Returns the objective value calculated based on the user provided objective function and the routes found by the solver.
+
+
+#### def `get_objective_values`
+
+```python
+get_objective_values()
+```
+
+Returns the individual objective_values as dictionary
+
+
+#### def `get_route`
+
+```python
+get_route()
+```
+
+Returns the route, truck ids for each stop and the arrival stamp as cudf.DataFrame.
+
+**Examples**
+
+```python
+>>> import cuopt
+>>> import cudf
+>>> locations = [0, 1, 2, 3]
+>>> vehicles  = [0, 1]
+>>> cost_mat  = [
+...   [0, 1, 5, 2],
+...   [2, 0, 7, 4],
+...   [1, 5, 0, 9],
+...   [5, 6, 2, 0]
+... ]
+>>> cost_mat = cudf.DataFrame(cost_mat)
+>>> cost_mat
+   0  1  2  3
+0  0  1  5  2
+1  2  0  7  4
+2  1  5  0  9
+3  5  6  2  0
+>>> data_model = routing.DataModel(len(locations), len(vehicles))
+>>> data_model.set_matrix(cost_mat)
+>>> solver = cuopt.Solver(data_model)
+>>> solver.set_min_vehicles(len(vehicles))
+>>> solver.set_min_vehicles(len(vehicles))
+>>> solution = solver.solve()
+>>> solution.get_route()
+>>> solution.get_route()
+   route  arrival_stamp  truck_id  location
+0      0            0.0         1         0
+1      3            2.0         1         3
+2      2            4.0         1         2
+3      0            5.0         1         0
+4      0            0.0         0         0
+5      1            1.0         0         1
+6      0            3.0         0         0
+```
+
+
+#### def `get_status`
+
+```python
+get_status()
+```
+
+Returns the final solver status as per SolutionStatus.
+
+
+#### def `get_message`
+
+```python
+get_message()
+```
+
+Returns the final solver message as per SolutionStatus.
+
+
+#### def `get_error_status`
+
+```python
+get_error_status()
+```
+
+Returns the error status as per ErrorStatus.
+
+
+#### def `get_error_message`
+
+```python
+get_error_message()
+```
+
+Returns the error message as per ErrorMessage.
+
+
+#### def `get_infeasible_orders`
+
+```python
+get_infeasible_orders()
+```
+
+Returns the infeasible order numbers as cudf.Series.
+
+
+#### def `get_accepted_solutions`
+
+```python
+get_accepted_solutions()
+```
+
+#### def `display_routes`
+
+```python
+display_routes()
+```
+
+Display the solution in human readable format. Intended for relatively small inputs.
+
+**Examples**
+
+```python
+>>> import cuopt
+>>> import cudf
+>>> locations = [0, 1, 2, 3]
+>>> vehicles  = [0, 1]
+>>> cost_mat  = [
+...   [0, 1, 5, 2],
+...   [2, 0, 7, 4],
+...   [1, 5, 0, 9],
+...   [5, 6, 2, 0]
+... ]
+>>> cost_mat = cudf.DataFrame(cost_mat)
+>>> cost_mat
+   0  1  2  3
+0  0  1  5  2
+1  2  0  7  4
+2  1  5  0  9
+3  5  6  2  0
+>>> data_model = routing.DataModel(len(locations), len(vehicles))
+>>> data_model.set_matrix(cost_mat)
+>>> solver = cuopt.Solver(data_model)
+>>> solver.set_min_vehicles(len(vehicles))
+>>> solver.set_min_vehicles(len(vehicles))
+>>> solution = solver.solve()
+>>> solution.display_routes()
+Vehicle-0 starts at: 0.0, completes at: 3.0, travel time: 3.0,  Route :
+0->1->0
+Vehicle-1 starts at: 0.0, completes at: 5.0, travel time: 5.0,  Route :
+0->3->2->0
+This results in a travel time of 8.0 to deliver all routes
+```
+
+
+
+## Re Routing
+
+<hr />
+
+### def `construct_rerouting_model`
+
+```python
+construct_rerouting_model(original_model, optimized_route, reroute_from_time, new_order_data, new_distances, print_debug_info = False)
+```
+
+Creates a new data model for re-routing/re-optimization
+
+**Parameters**
+
+- **`original_model:  routing.DataModel object`** — the model that used earlier for generating optimized route
+- **`optimized_route: cudf.DataFrame representing the optimized route`** — generated with original_model
+- **`reroute_from_time: Float`** — time from which the re-routing should start from
+- **`new_order_data: cudf.DataFrame object`** — new batch of orders
+- **`new_distances: updated distance/cost matrix`**
+- **`print_debug_info: option to display debug messages`**
+
+**Examples**
+
+```python
+>>> original_route = cuopt.Solver(original_model).solve()
+>>> rescheduling_from = 60
+>>> new_order_data = {}
+>>> new_order_data['order_locations'] = [10, 12, 19, 23]
+>>> new_order_data['pickup_indices'] = [0, 1]
+>>> new_order_data['delivery_indices'] = [2, 3]
+>>> new_order_data['earliest_time'] = [65, 75, 90, 85]
+>>> new_order_data['latest_time'] = [75, 80, 95, 95]
+>>> new_order_data['service_time] = [1, 2, 1, 1]
+>>> new_order_data['demand'] = [5, 5, -5, -5]
+>>> rescheduled_model = construct_rerouting_model(
+>>>    original_model, original_route, rescheduling_from,
+>>>    new_order_data, distances)
+>>> rescheduled_route = cuopt.Solver(rescheduled_model).solve()
+```
+
+
+<hr />
+
+### def `generate_capacity_constraints_for_vehicle_order_match`
+
+```python
+generate_capacity_constraints_for_vehicle_order_match(pickup_order_to_vehicle, pickup_indices, delivery_indices, vehicle_num, order_num)
+```
+
+
+## Utils
+
+<hr />
+
+### def `generate_dataset`
+
+```python
+generate_dataset(locations = 100, asymmetric = True, min_demand = cudf.Series(), max_demand = cudf.Series(), min_capacities = cudf.Series(), max_capacities = cudf.Series(), min_service_time = 0, max_service_time = 0, tw_tightness = 0.0, drop_return_trips = 0.0, shifts = 1, n_vehicle_types = 1, n_matrix_types = 1, distribution = utils_wrapper.DatasetDistribution.CLUSTERED, center_box = None, seed = 0)
+```
+
+Constructs a dataset from the given parameters. locations:
+
+**Parameters**
+
+- **`locations: int32`** — Number of locations to visit, including the depot.
+- **`asymmetric`** (`bool`) — Specifies if the matrices (both cost and time) should be asymmetric.
+- **`min_demand`** (`cudf.Series`) — Series will be cast to int32. Minimum demand value along each dimension.
+- **`max_demand`** (`cudf.Series`) — Series will be cast to int32. Maximum demand value along each dimension.
+- **`min_capacities`** (`cudf.Series`) — Series will be cast to int32. Minimum capacity value along each dimension.
+- **`max_capacities`** (`cudf.Series`) — Series will be cast to int32. Maximum capacity value along each dimension.
+- **`min_service_time`** (`int32`) — Lower bound for generated service time.
+- **`max_service_time`** (`int32`) — Upper bound for generated service time.
+- **`tw_tightness`** (`float32`) — Can make a problem more or less difficult to solve. Feasibility is ensured because we made sure the latest time of a node is larger than its depot-node distance.
+- **`drop_return_trips`** (`float32`) — Percentage of vehicles in the fleet that shouldn't return to the depot.
+- **`shifts`** (`int32`) — The number of shifts in the dataset. This will create vehicle time windows that split the fleet into multiple shifts.
+- **`n_vehicle_types`** (`int32`) — Multiple vehicle types can be generated each with a corresponding cost matrix or time matrix.
+- **`n_matrix_types`** (`int32`) — There can be one cost and time matrix per vehicle type. The cupy array generated is of size dim4(n_vehicle_types, n_matrix_types, nloc, nloc). In the case the n_matrix_types is 1, the cost matrix is used for time.
+- **`distribution`** (`DatasetDistribution`) — The distribution of datapoints similar to what is done for the homberger cvrptw dataset. https://www.sintef.no/projectweb/top/vrptw/homberger-benchmark/ Clustered datasets are usually faster to generate and solve.
+- **`center_box`** (`tuple`) — The bounding box which constrains all the centroids.
+- **`seed`** (`int32`) — Random seed for the raft generator.
+
+**Returns**
+
+- **`pos_list`** (`cudf.DataFrame`) — x and y coordinates.
+- **`matrices`** (`cupy.ndarray`) — Vehicle cost and time matrices as dim4(n_vehicle_types, n_matrix_types, nloc, nloc).
+- **`orders`** (`cudf.DataFrame`) — Time windows and multi dimension demand for each location.
+- **`vehicles`** (`cudf.DataFrame`) — Time windows and multi dimension capacity for each vehicle.
+
+
+<hr />
+
+### def `update_routes_and_vehicles`
+
+```python
+update_routes_and_vehicles(output_df, route, order_pdf, order_data, vehicle_constraints)
+```
+
+Helper function to update the final routes and vehicle time windows when running cuopt in batches. Routes are updated in output_df and vehicle time windows are updated in vehicle_constraints.
+
+
+<hr />
+
+### def `add_vehicle_constraints`
+
+```python
+add_vehicle_constraints(num_vehicles, vehicle_capacity, break_earliest = None, break_latest = None, vehicle_speed = 1)
+```
+
+Helper function to add vehicle constraints when running cuopt in batches. Vehicle constraints that can be added include number of vehicles, vehicle capacity, speed of vehicles and earliest and latest vehicle break times.
+
+
+<hr />
+
+### def `create_pickup_delivery_data`
+
+```python
+create_pickup_delivery_data(matrix_pdf, raw_order_pdf, depot, vehicle_constraints)
+```
+
+Creates and returns travel matrix, order information and vehicle information for pickup and deliveries.
+
+
+<hr />
+
+### def `create_data_model`
+
+```python
+create_data_model(filename, num_vehicles = None, run_nodes = None)
+```
+
+Construct a data model with reduced number of vehicles and/or nodes from a standard Homberger and Li&Lim dataset
+
+This function is used mainly to create smaller tests for testing API functionalities
+
+**Parameters**
+
+- **`filename`** (` filename corresponding to the test in benchmark format`)
+- **`num_vehicles: number of vehicles to be used in a modified test.`** — If it is defaulted the number of vehicles is not modified
+- **`run_nodes:  number of nodes to consider in a modified test.`** — If it is defaulted the number of nodes/tasks is not modified
+
+
+<hr />
+
+### def `create_data_model_from_yaml`
+
+```python
+create_data_model_from_yaml(file_path)
+```
+
+<hr />
+
+### def `write_yaml_dict_if_not_empty`
+
+```python
+write_yaml_dict_if_not_empty(yamldict, keyname, data)
+```
+
+<hr />
+
+### def `save_data_model_to_yaml`
+
+```python
+save_data_model_to_yaml(data_model, solver_settings, solution, fname)
+```
+
+Writes Solver.DataModel object in yaml format in a given file name
+
+**Parameters**
+
+- **`solver_settings`** (`Solver object that contains the data model information`)
+- **`solution: Solution object that contains routing information`**
+- **`fname     `** (`file name with yaml extension used for the output`)
+
+
+<hr />
+
+### def `read_ref_tsp`
+
+```python
+read_ref_tsp(file, test_type)
+```
+
+<hr />
+
+### def `read_ref`
+
+```python
+read_ref(file, test_type, nodes)
+```
+
+<hr />
+
+### def `create_from_file_tsp`
+
+```python
+create_from_file_tsp(file_path)
+```
+
+<hr />
+
+### def `create_from_file`
+
+```python
+create_from_file(file_path, is_pdp = False)
+```
+
+<hr />
+
+### def `create_from_yaml_file`
+
+```python
+create_from_yaml_file(file_path)
+```
+
+<hr />
+
+### def `euclidean_distance`
+
+```python
+euclidean_distance(coord)
+```
+
+<hr />
+
+### def `build_matrix`
+
+```python
+build_matrix(df)
+```
+
+<hr />
+
+### def `fill_demand`
+
+```python
+fill_demand(df, data_model, vehicle_capacity, n_vehicles, use_order_loc = False)
+```
+
+<hr />
+
+### def `get_time_limit`
+
+```python
+get_time_limit(nodes)
+```
+
+<hr />
+
+### def `set_limits`
+
+```python
+set_limits(solver_settings, nodes)
+```
+
+<hr />
+
+### def `set_limits_for_quality`
+
+```python
+set_limits_for_quality(solver_settings, nodes)
+```
+
+<hr />
+
+### def `fill_tw`
+
+```python
+fill_tw(data_model, df, use_order_loc = False)
+```
+
+<hr />
+
+### def `fill_pdp_index`
+
+```python
+fill_pdp_index(data_model, df, use_order_loc = False)
+```
+
+<hr />
+
+### def `create_from_solomon_inp_file`
+
+```python
+create_from_solomon_inp_file(file_path)
+```
+
+<hr />
+
+### def `convert_solomon_inp_file_to_yaml`
+
+```python
+convert_solomon_inp_file_to_yaml(file_nm)
+```
+
+<hr />
+
+### def `create_model_dictionary_from_file`
+
+```python
+create_model_dictionary_from_file(filename, is_pdp = False)
+```
+
+Creates a dictionary (json compatible) of the model by reading a standard Homberber or Li&Lim test. This dictionary is eventually used in testing the SDK or service
+
+
+
+## Validation
+
+<hr />
+
+### def `validate_matrix`
+
+```python
+validate_matrix(mat, mat_name, num_locations)
+```
+
+<hr />
+
+### def `validate_positive_df`
+
+```python
+validate_positive_df(df, df_name)
+```
+
+<hr />
+
+### def `validate_positive`
+
+```python
+validate_positive(var, var_name)
+```
+
+<hr />
+
+### def `validate_non_negative`
+
+```python
+validate_non_negative(var, var_name)
+```
+
+<hr />
+
+### def `validate_size`
+
+```python
+validate_size(var_1, var_1_str, var_2, var_2_str)
+```
+
+<hr />
+
+### def `validate_time_windows`
+
+```python
+validate_time_windows(earliest, latest, size, size_str)
+```
+
+<hr />
+
+### def `validate_range`
+
+```python
+validate_range(var, var_name, min, max)
+```
+
+
+## Vehicle Routing
 
 <hr />
 
@@ -1315,206 +1879,4 @@ Solves multiple routing problems in batch mode using parallel execution.
 >>> solutions, solve_time = routing.BatchSolve(data_models, settings)
 ```
 
-
-
-## Assignment & Results
-
-<hr />
-
-### class `SolutionStatus`
-
-<hr />
-
-### class `Assignment`
-
-A container of vehicle routing solver output
-
-**Parameters**
-
-- **`vehicle_count`** (`Integer`) — Number of vehicles in the solution
-- **`total_objective_value`** (`Float64`) — Objective value calculated as per objective functions and weights
-- **`objective_values`** (`dict[Objective, Float64]`)
-- **`route_df: cudf.DataFrame`** — Contains route, vehicle_id, arrival_stamp.
-- **`accepted: cudf.Series`**
-- **`status: Integer`** — Solver status 0 - SUCCESS, 1 - FAIL, 2 - TIMEOUT and 3 - EMPTY.
-- **`message: String`** — Any error message if there is failure
-- **`undeliverable_orders: cudf.Series`** — Orders which can not be served
-
-
-#### def `__init__`
-
-```python
-__init__(vehicle_count, total_objective_value, objective_values, route_df, accepted, status, message, error_status, error_message, undeliverable_orders)
-```
-
-#### def `get_vehicle_count`
-
-```python
-get_vehicle_count()
-```
-
-Returns the number of vehicle needed for this routing assignment.
-
-
-#### def `get_total_objective`
-
-```python
-get_total_objective()
-```
-
-Returns the objective value calculated based on the user provided objective function and the routes found by the solver.
-
-
-#### def `get_objective_values`
-
-```python
-get_objective_values()
-```
-
-Returns the individual objective_values as dictionary
-
-
-#### def `get_route`
-
-```python
-get_route()
-```
-
-Returns the route, truck ids for each stop and the arrival stamp as cudf.DataFrame.
-
-**Examples**
-
-```python
->>> import cuopt
->>> import cudf
->>> locations = [0, 1, 2, 3]
->>> vehicles  = [0, 1]
->>> cost_mat  = [
-...   [0, 1, 5, 2],
-...   [2, 0, 7, 4],
-...   [1, 5, 0, 9],
-...   [5, 6, 2, 0]
-... ]
->>> cost_mat = cudf.DataFrame(cost_mat)
->>> cost_mat
-   0  1  2  3
-0  0  1  5  2
-1  2  0  7  4
-2  1  5  0  9
-3  5  6  2  0
->>> data_model = routing.DataModel(len(locations), len(vehicles))
->>> data_model.set_matrix(cost_mat)
->>> solver = cuopt.Solver(data_model)
->>> solver.set_min_vehicles(len(vehicles))
->>> solver.set_min_vehicles(len(vehicles))
->>> solution = solver.solve()
->>> solution.get_route()
->>> solution.get_route()
-   route  arrival_stamp  truck_id  location
-0      0            0.0         1         0
-1      3            2.0         1         3
-2      2            4.0         1         2
-3      0            5.0         1         0
-4      0            0.0         0         0
-5      1            1.0         0         1
-6      0            3.0         0         0
-```
-
-
-#### def `get_status`
-
-```python
-get_status()
-```
-
-Returns the final solver status as per SolutionStatus.
-
-
-#### def `get_message`
-
-```python
-get_message()
-```
-
-Returns the final solver message as per SolutionStatus.
-
-
-#### def `get_error_status`
-
-```python
-get_error_status()
-```
-
-Returns the error status as per ErrorStatus.
-
-
-#### def `get_error_message`
-
-```python
-get_error_message()
-```
-
-Returns the error message as per ErrorMessage.
-
-
-#### def `get_infeasible_orders`
-
-```python
-get_infeasible_orders()
-```
-
-Returns the infeasible order numbers as cudf.Series.
-
-
-#### def `get_accepted_solutions`
-
-```python
-get_accepted_solutions()
-```
-
-#### def `display_routes`
-
-```python
-display_routes()
-```
-
-Display the solution in human readable format. Intended for relatively small inputs.
-
-**Examples**
-
-```python
->>> import cuopt
->>> import cudf
->>> locations = [0, 1, 2, 3]
->>> vehicles  = [0, 1]
->>> cost_mat  = [
-...   [0, 1, 5, 2],
-...   [2, 0, 7, 4],
-...   [1, 5, 0, 9],
-...   [5, 6, 2, 0]
-... ]
->>> cost_mat = cudf.DataFrame(cost_mat)
->>> cost_mat
-   0  1  2  3
-0  0  1  5  2
-1  2  0  7  4
-2  1  5  0  9
-3  5  6  2  0
->>> data_model = routing.DataModel(len(locations), len(vehicles))
->>> data_model.set_matrix(cost_mat)
->>> solver = cuopt.Solver(data_model)
->>> solver.set_min_vehicles(len(vehicles))
->>> solver.set_min_vehicles(len(vehicles))
->>> solution = solver.solve()
->>> solution.display_routes()
-Vehicle-0 starts at: 0.0, completes at: 3.0, travel time: 3.0,  Route :
-0->1->0
-Vehicle-1 starts at: 0.0, completes at: 5.0, travel time: 5.0,  Route :
-0->3->2->0
-This results in a travel time of 8.0 to deliver all routes
-```
-
-
-
-## Module Functions (Solve, BatchSolve)
 

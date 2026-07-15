@@ -25,6 +25,37 @@ REPO_ROOT = Path(__file__).parent.parent
 PYTHON_SRC = REPO_ROOT / "python/cuopt/cuopt"
 PAGES = REPO_ROOT / "fern/docs/pages"
 
+# ---------------------------------------------------------------------------
+# Page configuration — maps output MDX path to source directories.
+# Each directory is scanned non-recursively (*.py files only, no subdirs).
+# Adding a new .py file to a listed directory makes it appear automatically.
+# To exclude a specific file, add its stem to the page's "exclude" set.
+# ---------------------------------------------------------------------------
+PAGE_SOURCES = [
+    {
+        "output": "cuopt-python/convex/convex-api.mdx",
+        "title": "Convex Optimization Python API Reference",
+        "dirs": [
+            "linear_programming",
+            "linear_programming/solver_settings",
+            "linear_programming/io",
+        ],
+        "exclude": set(),
+    },
+    {
+        "output": "cuopt-python/mip/mip-api.mdx",
+        "title": "MIP Python API Reference",
+        "dirs": ["linear_programming/mip"],
+        "exclude": set(),
+    },
+    {
+        "output": "cuopt-python/routing/routing-api.mdx",
+        "title": "cuOpt Routing Python API Reference",
+        "dirs": ["routing"],
+        "exclude": set(),
+    },
+]
+
 
 # ---------------------------------------------------------------------------
 # AST helpers
@@ -412,98 +443,51 @@ def write_api_page(title: str, dest: Path, sections: list):
 
 
 # ---------------------------------------------------------------------------
-# Page definitions — mirrors the autodoc directives in the RST source
+# Page generator — driven by PAGE_SOURCES config above
 # ---------------------------------------------------------------------------
 
+def _scan_dir(src_dir: Path, exclude: set) -> list[tuple[str, dict]]:
+    """
+    Return (section_heading, parsed_module) for every public .py file in
+    src_dir (non-recursive). Skips __pycache__, _private.py, and excluded stems.
+    __init__.py is included when it contains public symbols.
+    """
+    if not src_dir.exists():
+        return []
+    results = []
+    for py_file in sorted(src_dir.glob("*.py")):
+        # Skip private modules (single leading underscore, e.g. _internal.py)
+        # but include __init__.py which may expose module-level API.
+        if py_file.name.startswith("_") and not py_file.name.startswith("__"):
+            continue
+        if py_file.stem in exclude:
+            continue
+        parsed = _parse_module(py_file)
+        if not (parsed["classes"] or parsed["functions"]):
+            continue
+        if py_file.name == "__init__.py":
+            # Use parent directory name as heading for init modules
+            heading = src_dir.name.replace("_", " ").title()
+        else:
+            heading = py_file.stem.replace("_", " ").title()
+        results.append((heading, parsed))
+    return results
+
+
 def generate_pages():
-    # 1. Convex Optimization (LP/QP) Python API
-    lp_problem = _parse_module(PYTHON_SRC / "linear_programming/problem.py")
-    lp_settings = _parse_module(PYTHON_SRC / "linear_programming/solver_settings/__init__.py")
-    lp_io_path = PYTHON_SRC / "linear_programming/io/parser.py"
-    lp_io = _parse_module(lp_io_path) if lp_io_path.exists() else None
+    for page in PAGE_SOURCES:
+        sections = []
+        for dir_rel in page["dirs"]:
+            src_dir = PYTHON_SRC / dir_rel
+            for heading, parsed in _scan_dir(src_dir, page.get("exclude", set())):
+                sections.append((heading, parsed, []))
 
-    # Filter to exposed classes matching the autodoc RST
-    exposed_lp_classes = {
-        "Problem", "Variable", "LinearExpression", "QuadraticExpression",
-        "Constraint", "CType", "sense",
-    }
-    lp_problem["classes"] = [
-        c for c in lp_problem["classes"] if c["name"] in exposed_lp_classes
-    ]
-    exposed_settings = {"SolverSettings"}
-    lp_settings["classes"] = [
-        c for c in lp_settings["classes"] if c["name"] in exposed_settings
-    ]
+        if not sections:
+            sections = [("", None, ["<Note>No public API symbols found in the configured source directories.</Note>"])]
 
-    write_api_page(
-        title="Convex Optimization Python API Reference",
-        dest=PAGES / "cuopt-python/convex/convex-api.mdx",
-        sections=[
-            ("Problem & Variables", lp_problem, []),
-            ("Solver Settings", lp_settings, []),
-            ("I/O", lp_io, []) if lp_io else ("", None, []),
-        ],
-    )
-
-    # 2. MIP Python API
-    mip_path = PYTHON_SRC / "linear_programming/mip"
-    if mip_path.exists():
-        mip_files = list(mip_path.glob("*.py"))
-        mip_sections = []
-        for f in sorted(mip_files):
-            if f.name.startswith("_"):
-                continue
-            parsed = _parse_module(f)
-            if parsed["classes"] or parsed["functions"]:
-                mip_sections.append((f.stem.replace("_", " ").title(), parsed, []))
-        if not mip_sections:
-            mip_sections = [("", None, ["<Note>MIP Python API shares classes with the LP API. See [Convex Optimization API](convex-api).</Note>"])]
-    else:
-        mip_sections = [("", None, ["<Note>MIP Python API shares classes with the LP API. See [Convex Optimization API](convex-api).</Note>"])]
-
-    write_api_page(
-        title="MIP Python API Reference",
-        dest=PAGES / "cuopt-python/mip/mip-api.mdx",
-        sections=mip_sections,
-    )
-
-    # 3. Routing Python API
-    routing_init = _parse_module(PYTHON_SRC / "routing/__init__.py")
-    routing_main = _parse_module(PYTHON_SRC / "routing/vehicle_routing.py")
-    routing_assignment = _parse_module(PYTHON_SRC / "routing/assignment.py")
-
-    # Expose only documented public API
-    exposed_routing = {"DataModel", "SolverSettings", "Assignment", "SolutionStatus"}
-    routing_main["classes"] = [
-        c for c in routing_main["classes"] if c["name"] in exposed_routing
-    ]
-
-    write_api_page(
-        title="cuOpt Routing Python API Reference",
-        dest=PAGES / "cuopt-python/routing/routing-api.mdx",
-        sections=[
-            ("Core Classes", routing_main, []),
-            ("Assignment & Results", routing_assignment, []),
-            ("Module Functions (Solve, BatchSolve)", routing_init, []),
-        ],
-    )
-
-    # 4. Server thin client API (sh-cli-api)
-    sc_path = PYTHON_SRC.parent.parent.parent / "python/cuopt_self_hosted"
-    sc_client = sc_path / "cuopt_self_hosted/cuopt_sh_client" if sc_path.exists() else None
-    if sc_client and sc_client.exists():
-        sc_init = _parse_module(sc_client / "__init__.py")
-        write_api_page(
-            title="Self-Hosted Service Client API Reference",
-            dest=PAGES / "cuopt-server/client-api/sh-cli-api.mdx",
-            sections=[("Client API", sc_init, [])],
-        )
-    else:
-        (PAGES / "cuopt-server/client-api/sh-cli-api.mdx").write_text(
-            '---\ntitle: "Self-Hosted Service Client API Reference"\n---\n\n'
-            "<Note>Install `cuopt-sh-client` to access the thin client API. See [Build Your Own Client](sh-cli-build).</Note>\n",
-            encoding="utf-8",
-        )
+        dest = PAGES / page["output"]
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        write_api_page(title=page["title"], dest=dest, sections=sections)
 
 
 if __name__ == "__main__":
