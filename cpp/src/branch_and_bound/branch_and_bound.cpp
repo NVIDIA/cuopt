@@ -2503,7 +2503,6 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* rins_worker,
   rins_worker->leaf_problem.lower = original_lp_.lower;
   rins_worker->leaf_problem.upper = original_lp_.upper;
   rins_worker->leaf_solution.x    = node_solution;
-  rins_worker->skip_set_bounds    = true;
 
   std::vector<f_t>& lower           = rins_worker->leaf_problem.lower;
   std::vector<f_t>& upper           = rins_worker->leaf_problem.upper;
@@ -2640,7 +2639,8 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* rins_worker,
     // We continue to do this until enough variables were fixed or no variable is left to fix.
     simplex_solver_settings_t<i_t, f_t> lp_settings = get_node_lp_settings();
 
-    bool feasible                = rins_worker->set_lp_variable_bounds(&node, settings_);
+    bool feasible =
+      rins_worker->node_presolver.bounds_strengthening(settings_, bounds_changed, lower, upper);
     dual_status_t lp_status      = dual_status_t::DUAL_UNBOUNDED;
     rins_worker->leaf_edge_norms = edge_norms_;
 
@@ -2706,11 +2706,10 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* rins_worker,
     // levels up to try to find a feasible solution quickly from the neighbourhood.
     if (fixrate < settings_.submip_settings.min_fixrate_cap ||
         (settings_.inside_submip && submip_stats_.total_success != 0)) {
-      rins_worker->skip_set_bounds = false;
-      rins_worker->start_node      = std::move(node);
-      rins_worker->start_lower     = lower;
-      rins_worker->start_upper     = upper;
-      bool is_feasible             = rins_worker->presolve_start_bounds(settings_);
+      rins_worker->start_node  = std::move(node);
+      rins_worker->start_lower = lower;
+      rins_worker->start_upper = upper;
+      bool is_feasible         = rins_worker->presolve_start_bounds(settings_);
       if (is_feasible) {
         fj_cpu_worker_t<i_t, f_t> submip_fj_cpu_worker;
 

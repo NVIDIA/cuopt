@@ -75,7 +75,6 @@ class branch_and_bound_worker_t {
   std::unique_ptr<lexical_reduction_t<i_t, f_t>> lexical_reduction;
   mip_symmetry_t<i_t, f_t>* symmetry_ptr = nullptr;
 
-  bool skip_set_bounds  = false;
   bool recompute_basis  = true;
   bool recompute_bounds = true;
 
@@ -117,21 +116,18 @@ class branch_and_bound_worker_t {
   bool set_lp_variable_bounds(mip_node_t<i_t, f_t>* node_ptr,
                               const simplex::simplex_solver_settings_t<i_t, f_t>& settings)
   {
-    // In RINS/RENS, the bounds are already set in the parent method.
-    if (!skip_set_bounds) {
-      // Reset the bound_changed markers
-      std::fill(bounds_changed.begin(), bounds_changed.end(), false);
+    // Reset the bound_changed markers
+    std::fill(bounds_changed.begin(), bounds_changed.end(), false);
 
-      // Set the correct bounds for the leaf problem
-      if (recompute_bounds) {
-        leaf_problem.lower = start_lower;
-        leaf_problem.upper = start_upper;
-        node_ptr->get_variable_bounds(leaf_problem.lower, leaf_problem.upper, bounds_changed);
+    // Set the correct bounds for the leaf problem
+    if (recompute_bounds) {
+      leaf_problem.lower = start_lower;
+      leaf_problem.upper = start_upper;
+      node_ptr->get_variable_bounds(leaf_problem.lower, leaf_problem.upper, bounds_changed);
 
-      } else {
-        node_ptr->update_branched_variable_bounds(
-          leaf_problem.lower, leaf_problem.upper, bounds_changed);
-      }
+    } else {
+      node_ptr->update_branched_variable_bounds(
+        leaf_problem.lower, leaf_problem.upper, bounds_changed);
     }
 
     return node_presolver.bounds_strengthening(
