@@ -949,7 +949,7 @@ branch_variable_t<i_t> branch_and_bound_t<i_t, f_t>::variable_selection(
   std::vector<f_t>& solution = worker->leaf_solution.x;
 
   switch (worker->search_strategy) {
-    case BEST_FIRST:
+    case search_strategy_t::BEST_FIRST:
 
       if (settings_.reliability_branching != 0) {
         branch_var = pc_.reliable_variable_selection(node_ptr,
@@ -969,27 +969,27 @@ branch_variable_t<i_t> branch_and_bound_t<i_t, f_t>::variable_selection(
 
       return {branch_var, round_dir};
 
-    case COEFFICIENT_DIVING:
+    case search_strategy_t::COEFFICIENT_DIVING:
       return coefficient_diving(
         original_lp_, fractional, solution, var_up_locks_, var_down_locks_, log);
 
-    case LINE_SEARCH_DIVING:
+    case search_strategy_t::LINE_SEARCH_DIVING:
       return line_search_diving(fractional, solution, root_relax_soln_.x, log);
 
-    case PSEUDOCOST_DIVING:
+    case search_strategy_t::PSEUDOCOST_DIVING:
       return pseudocost_diving(pc_, fractional, solution, root_relax_soln_.x, log);
 
-    case GUIDED_DIVING:
+    case search_strategy_t::GUIDED_DIVING:
       assert(incumbent_.has_incumbent);
       mutex_upper_.lock();
       current_incumbent = incumbent_.x;
       mutex_upper_.unlock();
       return guided_diving(pc_, fractional, solution, current_incumbent, log);
 
-    case FARKAS_DIVING:
+    case search_strategy_t::FARKAS_DIVING:
       return farkas_diving(worker->leaf_problem, fractional, solution, settings_.zero_tol, log);
 
-    case VECTOR_LENGTH_DIVING:
+    case search_strategy_t::VECTOR_LENGTH_DIVING:
       return vector_length_diving(worker->leaf_problem, fractional, solution, log);
 
     case search_strategy_t::SUBMIP:  // This is used for solving the DFS of the sub-MIP.
@@ -1250,10 +1250,10 @@ struct deterministic_diving_policy_t
                                             log);
       }
 
-      case VECTOR_LENGTH_DIVING:
+      case search_strategy_t::VECTOR_LENGTH_DIVING:
         return vector_length_diving(this->worker.leaf_problem, fractional, x, log);
 
-      case FARKAS_DIVING:
+      case search_strategy_t::FARKAS_DIVING:
         return farkas_diving(
           this->worker.leaf_problem, fractional, x, this->bnb.settings_.zero_tol, log);
 
@@ -1574,7 +1574,8 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   bool feasible           = worker->set_lp_variable_bounds(node_ptr, settings_);
   dual_status_t lp_status = dual_status_t::DUAL_UNBOUNDED;
   worker->leaf_edge_norms = edge_norms_;
-  if (worker->recompute_bounds && worker->orbital_fixing && worker->search_strategy == BEST_FIRST) {
+  if (worker->recompute_bounds && worker->orbital_fixing &&
+      worker->search_strategy == search_strategy_t::BEST_FIRST) {
     worker->orbital_fixing->reset(symmetry_, node_ptr);
   }
 

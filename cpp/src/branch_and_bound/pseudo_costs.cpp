@@ -1423,6 +1423,10 @@ template <typename i_t, typename f_t>
 void pseudo_costs_t<i_t, f_t>::update_pseudo_costs(mip_node_t<i_t, f_t>* node_ptr,
                                                    f_t leaf_objective)
 {
+  // The root node carries no branching decision (branch_var < 0), so there is no variable to
+  // attribute the objective change to.
+  if (node_ptr->branch_var < 0) return;
+
   const f_t change_in_obj = std::max(leaf_objective - node_ptr->lower_bound, 0.0);
   const f_t frac          = node_ptr->branch_dir == branch_direction_t::DOWN
                               ? node_ptr->fractional_val - std::floor(node_ptr->fractional_val)
