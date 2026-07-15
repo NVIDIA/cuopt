@@ -1471,10 +1471,38 @@ bool branch_and_bound_t<i_t, f_t>::apply_symmetry_reductions(
 }
 
 template <typename i_t, typename f_t>
+simplex_solver_settings_t<i_t, f_t> branch_and_bound_t<i_t, f_t>::get_node_lp_settings()
+{
+  simplex_solver_settings_t lp_settings = settings_;
+  lp_settings.concurrent_halt           = &node_concurrent_halt_;
+  lp_settings.set_log(false);
+  f_t cutoff = upper_bound_.load();
+  if (original_lp_.objective_step.has_step()) {
+    f_t step = original_lp_.objective_step.step_size;
+    f_t bias = original_lp_.objective_step.bias;
+    // Any improving feasible solution must have objective <= cutoff - step.
+    f_t k               = std::floor((cutoff - bias) / step + settings_.integer_tol);
+    lp_settings.cut_off = (k - 1) * step + bias + settings_.dual_tol;
+  } else if (original_lp_.objective_is_integral) {
+    // If the objective is integral, any feasible solution should produce an upper bound that is
+    // (approximately) integral. We add a small tolerance and floor this value to get an integer,
+    // we then subtract 1, to stop simplex on problems that cannot improve the primal objective.
+    lp_settings.cut_off = std::floor(cutoff + settings_.integer_tol) - 1 + settings_.dual_tol;
+  } else {
+    lp_settings.cut_off = cutoff + settings_.dual_tol;
+  }
+  lp_settings.inside_mip    = 2;
+  lp_settings.time_limit    = settings_.time_limit - toc(exploration_stats_.start_time);
+  lp_settings.scale_columns = false;
+  return lp_settings;
+}
+
+template <typename i_t, typename f_t>
 dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   mip_node_t<i_t, f_t>* node_ptr,
   branch_and_bound_worker_t<i_t, f_t>* worker,
   branch_and_bound_stats_t<i_t, f_t>& stats,
+  const simplex_solver_settings_t<i_t, f_t>& lp_settings,
   logger_t& log)
 {
   raft::common::nvtx::range scope("BB::solve_node");
@@ -1515,36 +1543,6 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
 
   decompress_vstatus(node_ptr->packed_vstatus, worker->leaf_problem.num_cols, worker->leaf_vstatus);
   assert(worker->leaf_vstatus.size() == worker->leaf_problem.num_cols);
-
-  simplex_solver_settings_t lp_settings = settings_;
-  lp_settings.concurrent_halt           = &node_concurrent_halt_;
-  lp_settings.set_log(false);
-  f_t cutoff = upper_bound_.load();
-  if (original_lp_.objective_step.has_step()) {
-    f_t step = original_lp_.objective_step.step_size;
-    f_t bias = original_lp_.objective_step.bias;
-    // Any improving feasible solution must have objective <= cutoff - step.
-    f_t k               = std::floor((cutoff - bias) / step + settings_.integer_tol);
-    lp_settings.cut_off = (k - 1) * step + bias + settings_.dual_tol;
-  } else if (original_lp_.objective_is_integral) {
-    // If the objective is integral, any feasible solution should produce an upper bound that is
-    // (approximately) integral. We add a small tolerance and floor this value to get an integer,
-    // we then subtract 1, to stop simplex on problems that cannot improve the primal objective.
-    lp_settings.cut_off = std::floor(cutoff + settings_.integer_tol) - 1 + settings_.dual_tol;
-  } else {
-    lp_settings.cut_off = cutoff + settings_.dual_tol;
-  }
-  lp_settings.inside_mip    = 2;
-  lp_settings.time_limit    = settings_.time_limit - toc(exploration_stats_.start_time);
-  lp_settings.scale_columns = false;
-
-  if (worker->worker_type != BEST_FIRST && worker->worker_type != SUBMIP) {
-    int64_t bnb_lp_iters        = exploration_stats_.total_simplex_iters;
-    f_t factor                  = settings_.diving_settings.iteration_limit_factor;
-    int64_t max_iter            = factor * bnb_lp_iters;
-    lp_settings.iteration_limit = max_iter - stats.total_simplex_iters;
-    if (lp_settings.iteration_limit <= 0) { return dual_status_t::ITERATION_LIMIT; }
-  }
 
 #ifdef LOG_NODE_SIMPLEX
   lp_settings.set_log(true);
@@ -1724,7 +1722,9 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
       break;
     }
 
-    dual_status_t lp_status = solve_node_lp(node_ptr, worker, exploration_stats_, settings_.log);
+    simplex_solver_settings_t<i_t, f_t> lp_settings = get_node_lp_settings();
+    dual_status_t lp_status =
+      solve_node_lp(node_ptr, worker, exploration_stats_, lp_settings, settings_.log);
     ++exploration_stats_.nodes_since_last_log;
     ++exploration_stats_.nodes_explored;
     --exploration_stats_.nodes_unexplored;
@@ -2020,7 +2020,14 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker, 
     }
     if (dive_stats.nodes_explored >= diving_node_limit) { break; }
 
-    dual_status_t lp_status = solve_node_lp(node_ptr, worker, dive_stats, log);
+    simplex_solver_settings_t<i_t, f_t> lp_settings = get_node_lp_settings();
+    int64_t bnb_lp_iters                            = exploration_stats_.total_simplex_iters;
+    f_t factor                  = settings_.diving_settings.iteration_limit_factor;
+    int64_t max_iter            = factor * bnb_lp_iters;
+    lp_settings.iteration_limit = max_iter - dive_stats.total_simplex_iters;
+    if (lp_settings.iteration_limit <= 0) { break; }
+
+    dual_status_t lp_status = solve_node_lp(node_ptr, worker, dive_stats, lp_settings, log);
     ++dive_stats.nodes_explored;
 
     if (lp_status == dual_status_t::TIME_LIMIT) {
@@ -2631,7 +2638,46 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* rins_worker,
     // After fixing the variables, re-solve the LP relaxation. We use the optimal solution
     // in the next iteration to find additional variable fixings.
     // We continue to do this until enough variables were fixed or no variable is left to fix.
-    dual_status_t lp_status = solve_node_lp(&node, rins_worker, rins_stats, log);
+    simplex_solver_settings_t<i_t, f_t> lp_settings = get_node_lp_settings();
+
+    bool feasible                = rins_worker->set_lp_variable_bounds(&node, settings_);
+    dual_status_t lp_status      = dual_status_t::DUAL_UNBOUNDED;
+    rins_worker->leaf_edge_norms = edge_norms_;
+
+    if (feasible) {
+      i_t node_iter     = 0;
+      f_t lp_start_time = tic();
+
+      lp_status = dual_phase2_with_advanced_basis(2,
+                                                  0,
+                                                  rins_worker->recompute_basis,
+                                                  lp_start_time,
+                                                  rins_worker->leaf_problem,
+                                                  lp_settings,
+                                                  rins_worker->leaf_vstatus,
+                                                  rins_worker->basis_factors,
+                                                  rins_worker->basic_list,
+                                                  rins_worker->nonbasic_list,
+                                                  rins_worker->leaf_solution,
+                                                  node_iter,
+                                                  rins_worker->leaf_edge_norms);
+
+      if (lp_status == dual_status_t::NUMERICAL) {
+        lp_status_t second_status =
+          solve_linear_program_with_advanced_basis(rins_worker->leaf_problem,
+                                                   lp_start_time,
+                                                   lp_settings,
+                                                   rins_worker->leaf_solution,
+                                                   rins_worker->basis_factors,
+                                                   rins_worker->basic_list,
+                                                   rins_worker->nonbasic_list,
+                                                   rins_worker->leaf_vstatus,
+                                                   rins_worker->leaf_edge_norms);
+
+        lp_status = convert_lp_status_to_dual_status(second_status);
+      }
+    }
+
     if (lp_status != dual_status_t::OPTIMAL) { break; }
 
     fractional.clear();
@@ -2648,6 +2694,8 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* rins_worker,
       add_feasible_solution(leaf_obj, current_sol, -1, SUBMIP);
       break;
     }
+
+    rins_worker->recompute_basis = false;
   }
 
   f_t fixrate = (f_t)num_var_fixed / num_integers;

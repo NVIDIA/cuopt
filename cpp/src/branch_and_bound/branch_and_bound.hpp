@@ -378,11 +378,16 @@ class branch_and_bound_t {
   // Creates and solves the RINS sub-MIP
   void rins(diving_worker_t<i_t, f_t>* rins_worker, const std::vector<f_t>& node_solution);
 
+  // Get the simplex settings for solving the LP of a single node
+  simplex::simplex_solver_settings_t<i_t, f_t> get_node_lp_settings();
+
   // Solve the LP relaxation of a leaf node
-  simplex::dual_status_t solve_node_lp(mip_node_t<i_t, f_t>* node_ptr,
-                                       branch_and_bound_worker_t<i_t, f_t>* worker,
-                                       branch_and_bound_stats_t<i_t, f_t>& stats,
-                                       simplex::logger_t& log);
+  simplex::dual_status_t solve_node_lp(
+    mip_node_t<i_t, f_t>* node_ptr,
+    branch_and_bound_worker_t<i_t, f_t>* worker,
+    branch_and_bound_stats_t<i_t, f_t>& stats,
+    const simplex::simplex_solver_settings_t<i_t, f_t>& lp_settings,
+    simplex::logger_t& log);
 
   // Apply symmetry-based bound reductions (orbital fixing and, when
   // settings_.symmetry == 2, lexical reduction) to the current node.

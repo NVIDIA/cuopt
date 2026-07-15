@@ -118,20 +118,20 @@ class branch_and_bound_worker_t {
                               const simplex::simplex_solver_settings_t<i_t, f_t>& settings)
   {
     // In RINS/RENS, the bounds are already set in the parent method.
-    if (skip_set_bounds) return true;
+    if (!skip_set_bounds) {
+      // Reset the bound_changed markers
+      std::fill(bounds_changed.begin(), bounds_changed.end(), false);
 
-    // Reset the bound_changed markers
-    std::fill(bounds_changed.begin(), bounds_changed.end(), false);
+      // Set the correct bounds for the leaf problem
+      if (recompute_bounds) {
+        leaf_problem.lower = start_lower;
+        leaf_problem.upper = start_upper;
+        node_ptr->get_variable_bounds(leaf_problem.lower, leaf_problem.upper, bounds_changed);
 
-    // Set the correct bounds for the leaf problem
-    if (recompute_bounds) {
-      leaf_problem.lower = start_lower;
-      leaf_problem.upper = start_upper;
-      node_ptr->get_variable_bounds(leaf_problem.lower, leaf_problem.upper, bounds_changed);
-
-    } else {
-      node_ptr->update_branched_variable_bounds(
-        leaf_problem.lower, leaf_problem.upper, bounds_changed);
+      } else {
+        node_ptr->update_branched_variable_bounds(
+          leaf_problem.lower, leaf_problem.upper, bounds_changed);
+      }
     }
 
     return node_presolver.bounds_strengthening(
