@@ -22,6 +22,10 @@ on:
       - "fern/**"
   workflow_dispatch:
 
+# Shared setup extracted as a reusable step sequence via defaults.
+# Both jobs repeat the setup because GitHub Actions has no native
+# "setup once, share artifacts" without a separate job + upload/download cycle.
+
 jobs:
   convert-and-check:
     name: Convert RST → MDX and fern check
@@ -55,6 +59,28 @@ jobs:
         env:
           FERN_TOKEN: ${{ secrets.FERN_TOKEN }}
 
+      # Upload the generated MDX + docs.yml as an artifact so reviewers can
+      # inspect exactly what will be published without running the build locally.
+      - name: Upload generated docs as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fern-docs-${{ github.run_id }}
+          path: |
+            fern/docs.yml
+            fern/docs-v*.yml
+            fern/docs/pages/
+            fern/openapi/
+          retention-days: 14
+
+      # On pull requests, publish a temporary preview URL (does not affect the
+      # live site) so reviewers can browse the rendered docs in a browser.
+      # Requires FERN_TOKEN secret; skipped silently if the secret is absent.
+      - name: Publish Fern preview (PR only)
+        if: github.event_name == 'pull_request' && secrets.FERN_TOKEN != ''
+        run: fern generate --docs --preview
+        env:
+          FERN_TOKEN: ${{ secrets.FERN_TOKEN }}
+
   publish:
     name: Publish to Fern
     runs-on: ubuntu-latest
@@ -84,7 +110,7 @@ jobs:
       - name: Generate MDX, OpenAPI spec, and API reference pages
         run: python fern/convert_docs.py
 
-      - name: Publish docs
+      - name: Publish docs to Fern cloud
         run: fern generate --docs
         env:
           FERN_TOKEN: ${{ secrets.FERN_TOKEN }}
