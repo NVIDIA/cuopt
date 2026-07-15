@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Store-then-build (lazy) layer for the routing DataModel.
+"""Store-then-build (deferred build) layer for the routing DataModel.
 
 The public DataModel records its setter calls on the host and builds the device
 (Cython) model only transiently -- at solve, or when a getter is queried -- by
@@ -19,7 +19,7 @@ replaying the recorded calls. Design points:
   * **Zero-CUDA construction.** The setter/getter surface is declared explicitly
     below rather than introspected from the compiled wrapper, so constructing and
     serializing a problem imports no CUDA/cuDF -- the wrapper is imported lazily
-    only when a device build actually happens. ``test_lazy`` fails if this
+    only when a device build actually happens. ``test_deferred`` fails if this
     declared surface drifts from the wrapper.
 
 Adding a new setter/getter to the DataModel:
@@ -30,7 +30,7 @@ Adding a new setter/getter to the DataModel:
      docstring -- forwarding to ``super()``.
   3. Add its name to ``_SETTERS`` (a mutator) or ``_GETTERS`` (a query) below.
 
-``test_lazy`` cross-checks these names against the wrapper's surface, so a
+``test_deferred`` cross-checks these names against the wrapper's surface, so a
 missing entry fails CI rather than silently dropping the call's data.
 """
 
@@ -136,7 +136,7 @@ def _normalize(x):
     return x
 
 
-class _LazyDataModel:
+class _DeferredDataModel:
     """Records DataModel setter calls; builds the device model transiently."""
 
     def __init__(self, num_locations, fleet_size, n_orders=-1):
@@ -207,11 +207,11 @@ def _install_methods():
         if _methods_installed:
             return
         for name in _SETTERS:
-            if name not in _LazyDataModel.__dict__:
-                setattr(_LazyDataModel, name, _make_setter(name))
+            if name not in _DeferredDataModel.__dict__:
+                setattr(_DeferredDataModel, name, _make_setter(name))
         for name in _GETTERS:
-            if name not in _LazyDataModel.__dict__:
-                setattr(_LazyDataModel, name, _make_getter(name))
+            if name not in _DeferredDataModel.__dict__:
+                setattr(_DeferredDataModel, name, _make_getter(name))
         _methods_installed = True
 
 

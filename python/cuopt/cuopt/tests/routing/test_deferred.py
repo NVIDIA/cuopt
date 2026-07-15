@@ -5,10 +5,10 @@ import pytest
 
 from cuopt import routing
 from cuopt.routing import vehicle_routing_wrapper
-from cuopt.routing._lazy import _SKIP_GETTERS
+from cuopt.routing._deferred import _SKIP_GETTERS
 
 
-def test_lazy_covers_wrapper_surface():
+def test_deferred_covers_wrapper_surface():
     """Every public wrapper DataModel method must be handled by the recording
     layer (installed as a recorder/getter or an explicit override). This fails
     loudly if a new wrapper method -- e.g. a mutator not named set_*/add_* --
@@ -24,7 +24,7 @@ def test_lazy_covers_wrapper_surface():
         and name not in handled
     ]
     assert not missing, (
-        f"lazy build layer does not handle wrapper methods {missing}; "
+        f"deferred-build layer does not handle wrapper methods {missing}; "
         "add a recorder/getter or list them in _SKIP_GETTERS"
     )
 
