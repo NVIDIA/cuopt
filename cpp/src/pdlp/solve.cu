@@ -1869,6 +1869,68 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
   }
 }
 
+// Map a "presolve concluded a terminal status" outcome to the corresponding
+// LP-solution object. Returns nullopt when presolve did not conclude
+// (i.e. produced a reduced problem to be solved). Used by both the single-GPU
+// (op_problem-driven) and distributed (mps-driven) presolve paths.
+template <typename i_t, typename f_t>
+static std::optional<optimization_problem_solution_t<i_t, f_t>>
+terminal_solution_from_presolve_status(mip::third_party_presolve_status_t status,
+                                       rmm::cuda_stream_view stream)
+{
+  switch (status) {
+    case mip::third_party_presolve_status_t::INFEASIBLE:
+      return optimization_problem_solution_t<i_t, f_t>(pdlp_termination_status_t::PrimalInfeasible,
+                                                       stream);
+    case mip::third_party_presolve_status_t::UNBNDORINFEAS:
+      return optimization_problem_solution_t<i_t, f_t>(
+        pdlp_termination_status_t::UnboundedOrInfeasible, stream);
+    case mip::third_party_presolve_status_t::UNBOUNDED:
+      return optimization_problem_solution_t<i_t, f_t>(pdlp_termination_status_t::DualInfeasible,
+                                                       stream);
+    default: return std::nullopt;
+  }
+}
+
+// Wrap the "presolve completely solved the problem" outcome (reduced problem
+// has zero vars and zero constraints) into an optimization_problem_solution_t.
+template <typename i_t, typename f_t>
+static optimization_problem_solution_t<i_t, f_t> build_presolve_optimal_solution(
+  rmm::device_uvector<f_t>& primal_uv,
+  rmm::device_uvector<f_t>& dual_uv,
+  rmm::device_uvector<f_t>& rc_uv,
+  f_t objective_offset,
+  double presolve_time,
+  std::string const& objective_name,
+  std::vector<std::string> const& variable_names,
+  std::vector<std::string> const& row_names)
+{
+  typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t
+    term_info;
+  term_info.primal_objective      = objective_offset;
+  term_info.dual_objective        = objective_offset;
+  term_info.number_of_steps_taken = 0;
+  term_info.solve_time            = presolve_time;
+  term_info.l2_primal_residual    = 0.0;
+  term_info.l2_dual_residual      = 0.0;
+  term_info.gap                   = 0.0;
+
+  std::vector<
+    typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t>
+    term_vec{term_info};
+  std::vector<pdlp_termination_status_t> status_vec{pdlp_termination_status_t::Optimal};
+
+  CUOPT_LOG_INFO("Status: Optimal  Objective: %f", term_info.primal_objective);
+  return optimization_problem_solution_t<i_t, f_t>(primal_uv,
+                                                   dual_uv,
+                                                   rc_uv,
+                                                   objective_name,
+                                                   variable_names,
+                                                   row_names,
+                                                   std::move(term_vec),
+                                                   std::move(status_vec));
+}
+
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t> solve_lp(
   optimization_problem_t<i_t, f_t>& op_problem,
@@ -1968,18 +2030,9 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
         settings.tolerances.absolute_primal_tolerance,
         settings.tolerances.relative_primal_tolerance,
         presolve_time_limit);
-      if (result->status == mip::third_party_presolve_status_t::INFEASIBLE) {
-        return optimization_problem_solution_t<i_t, f_t>(
-          pdlp_termination_status_t::PrimalInfeasible, op_problem.get_handle_ptr()->get_stream());
-      }
-      if (result->status == mip::third_party_presolve_status_t::UNBNDORINFEAS) {
-        return optimization_problem_solution_t<i_t, f_t>(
-          pdlp_termination_status_t::UnboundedOrInfeasible,
-          op_problem.get_handle_ptr()->get_stream());
-      }
-      if (result->status == mip::third_party_presolve_status_t::UNBOUNDED) {
-        return optimization_problem_solution_t<i_t, f_t>(pdlp_termination_status_t::DualInfeasible,
-                                                         op_problem.get_handle_ptr()->get_stream());
+      if (auto terminal = terminal_solution_from_presolve_status<i_t, f_t>(
+            result->status, op_problem.get_handle_ptr()->get_stream())) {
+        return std::move(*terminal);
       }
 
       // Handle case where presolve completely solved the problem (reduced to 0 rows/cols)
@@ -1992,12 +2045,10 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
                        settings.presolver == presolver_t::PSLP ? "PSLP" : "Papilo",
                        presolve_time);
 
-        // Create empty solution vectors for the reduced problem
+        // Postsolve stays fully on device on the single-GPU path.
         rmm::device_uvector<f_t> empty_primal(0, op_problem.get_handle_ptr()->get_stream());
         rmm::device_uvector<f_t> empty_dual(0, op_problem.get_handle_ptr()->get_stream());
         rmm::device_uvector<f_t> empty_reduced_costs(0, op_problem.get_handle_ptr()->get_stream());
-
-        // Run postsolve to get the full solution
         presolver->undo_from_device(empty_primal,
                                     empty_dual,
                                     empty_reduced_costs,
@@ -2006,31 +2057,15 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
                                     settings.dual_postsolve,
                                     op_problem.get_handle_ptr()->get_stream());
 
-        // Create termination info with the objective from presolve
-        typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t
-          term_info;
-        term_info.primal_objective      = result->reduced_problem.get_objective_offset();
-        term_info.dual_objective        = result->reduced_problem.get_objective_offset();
-        term_info.number_of_steps_taken = 0;
-        term_info.solve_time            = presolve_time;
-        term_info.l2_primal_residual    = 0.0;
-        term_info.l2_dual_residual      = 0.0;
-        term_info.gap                   = 0.0;
-
-        std::vector<
-          typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t>
-          term_vec{term_info};
-        std::vector<pdlp_termination_status_t> status_vec{pdlp_termination_status_t::Optimal};
-
-        CUOPT_LOG_INFO("Status: Optimal  Objective: %f", term_info.primal_objective);
-        return optimization_problem_solution_t<i_t, f_t>(empty_primal,
-                                                         empty_dual,
-                                                         empty_reduced_costs,
-                                                         op_problem.get_objective_name(),
-                                                         op_problem.get_variable_names(),
-                                                         op_problem.get_row_names(),
-                                                         std::move(term_vec),
-                                                         std::move(status_vec));
+        return build_presolve_optimal_solution<i_t, f_t>(
+          empty_primal,
+          empty_dual,
+          empty_reduced_costs,
+          result->reduced_problem.get_objective_offset(),
+          presolve_time,
+          op_problem.get_objective_name(),
+          op_problem.get_variable_names(),
+          op_problem.get_row_names());
       }
 
       problem       = mip::problem_t<i_t, f_t>(result->reduced_problem);
@@ -2355,8 +2390,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
                 "Distributed MPS solve currently supports only method_t::PDLP");
   // Gate both the mode-check and the preset overwrite behind use_pdlp_solver_mode
   // so a caller supplying hand-tuned hyper_params (use_pdlp_solver_mode=false)
-  // isn't silently overwritten. The downstream hyper-param assertion below still
-  // catches profiles the distributed setup can't run either way.
+  // isn't silently overwritten. 
   if (use_pdlp_solver_mode) {
     cuopt_expects(settings_resolved.pdlp_solver_mode == pdlp_solver_mode_t::Stable3,
                   error_type_t::ValidationError,
@@ -2388,11 +2422,6 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
                 error_type_t::ValidationError,
                 "Distributed PDLP does not support initial primal/dual solutions or warm-start "
                 "data.");
-  // save_best_primal_so_far snapshots the current-or-average iterate mid-solve via
-  // record_best_primal_so_far. That path reads shard-local buffers
-  // (pdhg_solver_.get_primal_solution() / unscaled_primal_avg_solution_) that are never
-  // coherently assembled on the master in distributed mode, so the resulting snapshot would
-  // be silently wrong. Fail loudly instead.
   cuopt_expects(!settings_resolved.save_best_primal_so_far,
                 error_type_t::ValidationError,
                 "Distributed PDLP does not support save_best_primal_so_far.");
@@ -2403,10 +2432,6 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
   //     (this is the profile where single-GPU compute_initial_primal_weight
   //      short-circuits to primal_weight = 1, which distributed_compute_initial_primal_weight
   //      mirrors verbatim).
-  // Any other profile would leave distributed setup silently divergent from
-  // single-GPU (either the step size or the primal weight would be seeded from
-  // a different formula than what single-GPU would compute).
-  // Fail early
   cuopt_expects(
     settings_resolved.hyper_params.initial_step_size_max_singular_value &&
       !settings_resolved.hyper_params.initial_primal_weight_combined_bounds &&
@@ -2459,20 +2484,12 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
       settings_resolved.tolerances.relative_primal_tolerance,
       presolve_time_limit);
 
-    if (host_res->status == mip::third_party_presolve_status_t::INFEASIBLE) {
-      return optimization_problem_solution_t<i_t, f_t>(pdlp_termination_status_t::PrimalInfeasible,
-                                                       handle_ptr->get_stream());
-    }
-    if (host_res->status == mip::third_party_presolve_status_t::UNBNDORINFEAS) {
-      return optimization_problem_solution_t<i_t, f_t>(
-        pdlp_termination_status_t::UnboundedOrInfeasible, handle_ptr->get_stream());
-    }
-    if (host_res->status == mip::third_party_presolve_status_t::UNBOUNDED) {
-      return optimization_problem_solution_t<i_t, f_t>(pdlp_termination_status_t::DualInfeasible,
-                                                       handle_ptr->get_stream());
+    if (auto terminal = terminal_solution_from_presolve_status<i_t, f_t>(
+          host_res->status, handle_ptr->get_stream())) {
+      return std::move(*terminal);
     }
 
-    // Presolve completely solved the problem. Mirroring single-GPU solve
+    // Presolve completely solved the problem.
     if (host_res->reduced_problem.get_n_variables() == 0 &&
         host_res->reduced_problem.get_n_constraints() == 0) {
       CUOPT_LOG_INFO("Presolve completely solved the problem");
@@ -2481,6 +2498,8 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
                      settings_resolved.presolver == presolver_t::PSLP ? "PSLP" : "Papilo",
                      presolve_time);
 
+      // Postsolve is host-side here (no reduced GPU problem was ever built);
+      // bounce the resulting vectors to device to satisfy the solution API.
       std::vector<f_t> h_primal, h_dual, h_rc;
       presolver_ptr->undo(h_primal,
                           h_dual,
@@ -2488,36 +2507,20 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
                           cuopt::mathematical_optimization::problem_category_t::LP,
                           /*status_to_skip=*/false,
                           settings_resolved.dual_postsolve);
-
       auto primal_uv = cuopt::device_copy(h_primal, handle_ptr->get_stream());
       auto dual_uv   = cuopt::device_copy(h_dual, handle_ptr->get_stream());
       auto rc_uv     = cuopt::device_copy(h_rc, handle_ptr->get_stream());
       handle_ptr->sync_stream();
 
-      typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t
-        term_info;
-      term_info.primal_objective      = host_res->reduced_problem.get_objective_offset();
-      term_info.dual_objective        = host_res->reduced_problem.get_objective_offset();
-      term_info.number_of_steps_taken = 0;
-      term_info.solve_time            = presolve_time;
-      term_info.l2_primal_residual    = 0.0;
-      term_info.l2_dual_residual      = 0.0;
-      term_info.gap                   = 0.0;
-
-      std::vector<
-        typename optimization_problem_solution_t<i_t, f_t>::additional_termination_information_t>
-        term_vec{term_info};
-      std::vector<pdlp_termination_status_t> status_vec{pdlp_termination_status_t::Optimal};
-
-      CUOPT_LOG_INFO("Status: Optimal  Objective: %f", term_info.primal_objective);
-      return optimization_problem_solution_t<i_t, f_t>(primal_uv,
-                                                       dual_uv,
-                                                       rc_uv,
-                                                       mps_data_model.get_objective_name(),
-                                                       mps_data_model.get_variable_names(),
-                                                       mps_data_model.get_row_names(),
-                                                       std::move(term_vec),
-                                                       std::move(status_vec));
+      return build_presolve_optimal_solution<i_t, f_t>(
+        primal_uv,
+        dual_uv,
+        rc_uv,
+        host_res->reduced_problem.get_objective_offset(),
+        presolve_time,
+        mps_data_model.get_objective_name(),
+        mps_data_model.get_variable_names(),
+        mps_data_model.get_row_names());
     }
 
     presolve_time = lp_timer.elapsed_time();
