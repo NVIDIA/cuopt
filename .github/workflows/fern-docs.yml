@@ -3,7 +3,7 @@ name: Fern Docs
 on:
   push:
     branches:
-      - docs-fern-migration
+      - main
     paths:
       - "fern/**"
       - ".github/workflows/fern-docs.yml"
@@ -120,7 +120,7 @@ jobs:
     name: Publish to Fern
     runs-on: ubuntu-latest
     needs: check
-    if: github.event_name == 'push' && github.ref == 'refs/heads/docs-fern-migration'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
 
