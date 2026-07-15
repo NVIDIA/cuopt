@@ -1212,7 +1212,7 @@ template <typename i_t, typename f_t>
 void third_party_presolve_t<i_t, f_t>::uncrush_primal_solution(
   const std::vector<f_t>& reduced_primal, std::vector<f_t>& full_primal) const
 {
-  if (presolver_ == cuopt::mathematical_optimization::presolver_t::PSLP) {
+  if (presolver_ == PSLP) {
     cuopt_expects(false,
                   error_type_t::RuntimeError,
                   "This code path should be never called, as this is meant for callbacks and they "
@@ -1277,7 +1277,7 @@ void third_party_presolve_t<i_t, f_t>::crush_primal_solution(
   const std::vector<f_t>& original_primal,
   std::vector<f_t>& reduced_primal) const
 {
-  cuopt_expects(presolver_ == cuopt::mathematical_optimization::presolver_t::Papilo,
+  cuopt_expects(presolver_ == Papilo,
                 error_type_t::RuntimeError,
                 "Primal crushing is only supported for PaPILO presolve");
   cuopt_assert(papilo_post_solve_storage_ != nullptr, "No postsolve storage available");
@@ -1299,7 +1299,7 @@ void third_party_presolve_t<i_t, f_t>::crush_primal_solution(
   // that was feasible in the original polytope. A simple clamp is often enough to crush a solution
   // inside the tightened polytope without breaking feasibility (dualfix seems to emit purely dual
   // based bounds reductions so primality is safe when clamping)
-  cuopt_assert(reduced_problem.get_n_variables() == (i_t)reduced_to_original_map_.size(),
+  cuopt_assert(reduced_problem.num_cols == (i_t)reduced_to_original_map_.size(),
                "reduced_problem does not match this presolver's reduction");
   cuopt_assert(reduced_primal.size() == reduced_problem.lower.size() &&
                  reduced_primal.size() == reduced_problem.upper.size(),
