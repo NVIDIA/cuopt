@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import pytest
+
 from cuopt import routing
 from cuopt.routing import vehicle_routing_wrapper
 from cuopt.routing._lazy import _SKIP_GETTERS
@@ -25,3 +27,15 @@ def test_lazy_covers_wrapper_surface():
         f"lazy build layer does not handle wrapper methods {missing}; "
         "add a recorder/getter or list them in _SKIP_GETTERS"
     )
+
+
+def test_unknown_method_is_not_recorded():
+    """A call to a method that is not part of the DataModel surface raises
+    AttributeError rather than being silently recorded. The recording layer
+    installs only the declared setters/getters (no ``__getattr__`` catch-all),
+    so a typo'd or unknown call fails loudly and never enters the IR.
+    """
+    dm = routing.DataModel(3, 1)
+    with pytest.raises(AttributeError):
+        dm.random_func_call(1, 2, 3)
+    assert dm._calls == []

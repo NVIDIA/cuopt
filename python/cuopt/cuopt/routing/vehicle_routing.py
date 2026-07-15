@@ -51,6 +51,12 @@ class DataModel(_LazyDataModel):
         host (numpy/pandas) inputs are copied to the device for the local
         solve. Python lists and tuples are not supported.
 
+      - Inputs are recorded and the device model is built lazily, so
+        solver-side (C++) validation and dtype-cast warnings surface when the
+        model is built -- at ``Solve`` -- rather than at the individual setter
+        call. Structural checks (matrix shape, array sizes, value ranges) are
+        still validated eagerly at the setter.
+
     Examples
     --------
     >>> from cuopt import routing
