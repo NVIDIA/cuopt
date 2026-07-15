@@ -1,11 +1,14 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Store-then-build (deferred build) layer for the routing DataModel.
+"""Deferred-build layer for the routing DataModel: record setter calls, build on demand.
 
-The public DataModel records its setter calls on the host and builds the device
-(Cython) model only transiently -- at solve, or when a getter is queried -- by
-replaying the recorded calls. Design points:
+The public DataModel **records** each setter call on the host instead of applying
+it to the GPU immediately. The class does not build anything itself -- it stores
+the problem and defers construction of the device (Cython) model until it is
+actually needed (at solve, or when a getter is queried), at which point it builds
+transiently by replaying the recorded calls onto the wrapper. "Deferred" refers
+to that deferred build; the mechanism is call recording. Design points:
 
   * **Host-resident IR.** Host inputs (numpy/pandas) are copied to a numpy array
     the DataModel owns at record time, so the recorded calls form a serializable,
