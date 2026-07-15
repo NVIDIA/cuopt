@@ -2390,7 +2390,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
                 "Distributed MPS solve currently supports only method_t::PDLP");
   // Gate both the mode-check and the preset overwrite behind use_pdlp_solver_mode
   // so a caller supplying hand-tuned hyper_params (use_pdlp_solver_mode=false)
-  // isn't silently overwritten. 
+  // isn't silently overwritten.
   if (use_pdlp_solver_mode) {
     cuopt_expects(settings_resolved.pdlp_solver_mode == pdlp_solver_mode_t::Stable3,
                   error_type_t::ValidationError,
