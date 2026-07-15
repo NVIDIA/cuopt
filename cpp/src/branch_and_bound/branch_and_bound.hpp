@@ -24,8 +24,6 @@
 #include <dual_simplex/solve.hpp>
 #include <math_optimization/types.hpp>
 
-#include <mip_heuristics/feasibility_jump/fj_cpu_worker.cuh>
-
 #include <utilities/macros.cuh>
 #include <utilities/omp_helpers.hpp>
 #include <utilities/producer_sync.hpp>

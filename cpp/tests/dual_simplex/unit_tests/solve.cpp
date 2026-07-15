@@ -14,6 +14,7 @@
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/solve.hpp>
 #include <dual_simplex/user_problem.hpp>
+#include <math_optimization/tic_toc.hpp>
 
 #include <cuopt/mathematical_optimization/io/parser.hpp>
 #include <utilities/logger.hpp>
@@ -330,4 +331,5 @@ TEST(dual_simplex, dual_variable_greater_than)
   EXPECT_NEAR(solution.z[0], 2.0, 1e-6);
   EXPECT_NEAR(solution.z[1], 0.0, 1e-6);
 }
+
 }  // namespace cuopt::mathematical_optimization::simplex::test

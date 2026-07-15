@@ -17,6 +17,7 @@
 #include <mip_heuristics/feasibility_jump/fj_cpu_worker.cuh>
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
+#include <mip_heuristics/presolve/third_party_presolve.hpp>
 
 #include <dual_simplex/basis_solves.hpp>
 #include <dual_simplex/bounds_strengthening.hpp>
@@ -41,7 +42,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <limits>
-#include <mip_heuristics/presolve/third_party_presolve.hpp>
 #include <string>
 #include <vector>
 
@@ -949,7 +949,7 @@ branch_variable_t<i_t> branch_and_bound_t<i_t, f_t>::variable_selection(
   std::vector<f_t>& solution = worker->leaf_solution.x;
 
   switch (worker->search_strategy) {
-    case search_strategy_t::BEST_FIRST:
+    case BEST_FIRST:
 
       if (settings_.reliability_branching != 0) {
         branch_var = pc_.reliable_variable_selection(node_ptr,
@@ -969,27 +969,27 @@ branch_variable_t<i_t> branch_and_bound_t<i_t, f_t>::variable_selection(
 
       return {branch_var, round_dir};
 
-    case search_strategy_t::COEFFICIENT_DIVING:
+    case COEFFICIENT_DIVING:
       return coefficient_diving(
         original_lp_, fractional, solution, var_up_locks_, var_down_locks_, log);
 
-    case search_strategy_t::LINE_SEARCH_DIVING:
+    case LINE_SEARCH_DIVING:
       return line_search_diving(fractional, solution, root_relax_soln_.x, log);
 
-    case search_strategy_t::PSEUDOCOST_DIVING:
+    case PSEUDOCOST_DIVING:
       return pseudocost_diving(pc_, fractional, solution, root_relax_soln_.x, log);
 
-    case search_strategy_t::GUIDED_DIVING:
+    case GUIDED_DIVING:
       assert(incumbent_.has_incumbent);
       mutex_upper_.lock();
       current_incumbent = incumbent_.x;
       mutex_upper_.unlock();
       return guided_diving(pc_, fractional, solution, current_incumbent, log);
 
-    case search_strategy_t::FARKAS_DIVING:
+    case FARKAS_DIVING:
       return farkas_diving(worker->leaf_problem, fractional, solution, settings_.zero_tol, log);
 
-    case search_strategy_t::VECTOR_LENGTH_DIVING:
+    case VECTOR_LENGTH_DIVING:
       return vector_length_diving(worker->leaf_problem, fractional, solution, log);
 
     case search_strategy_t::SUBMIP:  // This is used for solving the DFS of the sub-MIP.
@@ -1250,10 +1250,10 @@ struct deterministic_diving_policy_t
                                             log);
       }
 
-      case search_strategy_t::VECTOR_LENGTH_DIVING:
+      case VECTOR_LENGTH_DIVING:
         return vector_length_diving(this->worker.leaf_problem, fractional, x, log);
 
-      case search_strategy_t::FARKAS_DIVING:
+      case FARKAS_DIVING:
         return farkas_diving(
           this->worker.leaf_problem, fractional, x, this->bnb.settings_.zero_tol, log);
 
@@ -1289,6 +1289,12 @@ struct deterministic_diving_policy_t
   }
 };
 
+// If the objective is integral or must move in steps than
+// the lower bound will be different from the leaf objective.
+// We use the leaf objective for RINS (on_optimal_callback)
+// and if we are integer feasible (handle_integer_solution).
+// We use the lower bound to decide if we should fathom the
+// node or branch.
 template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::snap_to_lattice(mip_node_t<i_t, f_t>* node_ptr, f_t leaf_obj)
 {
@@ -1568,8 +1574,7 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   bool feasible           = worker->set_lp_variable_bounds(node_ptr, settings_);
   dual_status_t lp_status = dual_status_t::DUAL_UNBOUNDED;
   worker->leaf_edge_norms = edge_norms_;
-  if (worker->recompute_bounds && worker->orbital_fixing &&
-      worker->search_strategy == search_strategy_t::BEST_FIRST) {
+  if (worker->recompute_bounds && worker->orbital_fixing && worker->search_strategy == BEST_FIRST) {
     worker->orbital_fixing->reset(symmetry_, node_ptr);
   }
 

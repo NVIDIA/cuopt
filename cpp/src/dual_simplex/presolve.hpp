@@ -70,7 +70,7 @@ struct lp_problem_t {
       return;
     }
     auto is_integer_col = [&](i_t j) {
-      return j < static_cast<i_t>(var_types.size()) && var_types[j] != variable_type_t::CONTINUOUS;
+      return j < var_types.size() && var_types[j] != variable_type_t::CONTINUOUS;
     };
     mps_file << std::setprecision(std::numeric_limits<f_t>::max_digits10);
     mps_file << "NAME " << "cuopt_lp_problem_t" << "\n";

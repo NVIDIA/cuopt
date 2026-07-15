@@ -22,7 +22,7 @@ enum class heuristics_origin_t {
 // [2] J. Witzig and A. Gleixner, “Conflict-Driven Heuristics for Mixed Integer Programming,”
 // Feb. 07, 2019, _arXiv_: arXiv:1902.02615. doi:
 // [10.48550/arXiv.1902.02615](https://doi.org/10.48550/arXiv.1902.02615).
-enum class search_strategy_t : int {
+enum search_strategy_t : int {
   BEST_FIRST           = 0,  // Best-First + Plunging.
   PSEUDOCOST_DIVING    = 1,  // Pseudocost diving (9.2.5)
   LINE_SEARCH_DIVING   = 2,  // Line search diving (9.2.4)
