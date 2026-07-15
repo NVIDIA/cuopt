@@ -21,6 +21,17 @@ replaying the recorded calls. Design points:
     serializing a problem imports no CUDA/cuDF -- the wrapper is imported lazily
     only when a device build actually happens. ``test_lazy`` fails if this
     declared surface drifts from the wrapper.
+
+Adding a new setter/getter to the DataModel:
+
+  1. Implement it on the C++ ``data_model_view_t`` and the Cython wrapper
+     (``vehicle_routing_wrapper.pyx``).
+  2. Add the public method in ``vehicle_routing.py`` -- validation and
+     docstring -- forwarding to ``super()``.
+  3. Add its name to ``_SETTERS`` (a mutator) or ``_GETTERS`` (a query) below.
+
+``test_lazy`` cross-checks these names against the wrapper's surface, so a
+missing entry fails CI rather than silently dropping the call's data.
 """
 
 import threading
