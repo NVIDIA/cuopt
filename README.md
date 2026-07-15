@@ -42,6 +42,14 @@ Documentation sources live in `docs/cuopt/source/` (RST) and `fern/` (Fern platf
 
 The Fern CLI (`fern-api`) is installed automatically by `build.sh` at the version pinned in `fern/fern.config.json`.
 
+### Log in for local preview (first time only)
+
+The docs use `global-theme: nvidia`, which requires a Fern account authorized for the NVIDIA organization. Run this once:
+
+```bash
+fern login --email <your-nvidia-email>
+```
+
 ### Build and preview locally
 
 ```bash
@@ -59,15 +67,20 @@ To publish manually (requires `FERN_TOKEN`):
 FERN_TOKEN=<your-token> ./build.sh docs --publish-docs
 ```
 
-The live site is at **https://nvidia-cuopt.docs.buildwithfern.com**.
+**Getting `FERN_TOKEN`**: Ping `@aschilling`, `@dkoperda`, `@llane`, `@mmckiernan`, or `@nmckimpson` in the NVIDIA internal `#cdd-fern` Slack channel. Add the token as a `FERN_TOKEN` GitHub Actions secret in the repository settings.
+
+The live site is at **https://nvidia-cuopt.docs.buildwithfern.com**. Before going to production, a custom domain (`docs.nvidia.com/cuopt`) must be configured by the Fern team with Akamai fronting — contact `#cdd-fern` when ready.
 
 ### How CI works
 
 | Trigger | What happens |
 |---|---|
-| Any push / PR touching `docs/`, `fern/`, or `python/cuopt/` | RST → MDX conversion + `fern check` + URL link check |
-| Pull request | Fern preview URL published (temporary, doesn't affect live site) |
+| Any push / PR touching `docs/`, `fern/`, or `python/cuopt/` | RST → MDX conversion + `fern check` + internal link check + external URL check |
+| Pull request (stage 1, no secrets) | Converts RST → MDX, uploads `fern/` as artifact |
+| Pull request (stage 2, secrets safe) | Publishes Fern preview, posts URL as PR comment |
 | Push to `docs-fern-migration` | Publishes to the live site via `fern generate --docs` |
+
+PR preview uses a two-stage workflow so that `FERN_TOKEN` is never exposed to fork PRs. Stage 2 runs in the base-branch context via `workflow_run`, where repository secrets are accessible.
 
 CI workflow: [`.github/workflows/fern-docs.yml`](.github/workflows/fern-docs.yml)
 

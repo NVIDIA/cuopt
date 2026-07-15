@@ -592,6 +592,13 @@ instances:
   - url: nvidia-cuopt.docs.buildwithfern.com
 
 title: NVIDIA cuOpt
+
+global-theme: nvidia
+
+navbar-links:
+  - type: github
+    value: https://github.com/NVIDIA/cuopt
+
 logo:
   dark: docs/images/nvidia-cuopt-logo-dark.svg
   light: docs/images/nvidia-cuopt-logo-light.svg
@@ -600,7 +607,7 @@ logo:
 colors:
   accentPrimary:
     dark: "#76B900"
-    light: "#4a7600"
+    light: "#76B900"
 
 libraries:
   cuopt-c-api:

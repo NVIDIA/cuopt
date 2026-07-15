@@ -21,12 +21,17 @@ on:
       - "python/cuopt_server/**"
       - "fern/**"
   workflow_dispatch:
-
-# Shared setup extracted as a reusable step sequence via defaults.
-# Both jobs repeat the setup because GitHub Actions has no native
-# "setup once, share artifacts" without a separate job + upload/download cycle.
+  # Stage 2: triggered after a PR build of this same workflow completes.
+  # Runs in base-branch context so FERN_TOKEN secret is accessible.
+  workflow_run:
+    workflows: ["Fern Docs"]
+    types: [completed]
 
 jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # Stage 1 (runs without secrets): convert RST→MDX, validate, upload artifact.
+  # Safe for fork PRs — no secrets are accessed here.
+  # ──────────────────────────────────────────────────────────────────────────
   convert-and-check:
     name: Convert RST → MDX and fern check
     runs-on: ubuntu-latest
@@ -59,8 +64,19 @@ jobs:
         env:
           FERN_TOKEN: ${{ secrets.FERN_TOKEN }}
 
-      # Upload the generated MDX + docs.yml as an artifact so reviewers can
-      # inspect exactly what will be published without running the build locally.
+      - name: Check internal links
+        run: fern docs broken-links
+        continue-on-error: true
+        env:
+          FERN_TOKEN: ${{ secrets.FERN_TOKEN }}
+
+      # Upload fern/ directory + PR metadata as artifact.
+      # Stage 2 (preview-comment) downloads this artifact and uses FERN_TOKEN
+      # from secrets to publish the preview — secrets are never exposed to fork PRs.
+      - name: Save PR metadata
+        if: github.event_name == 'pull_request'
+        run: echo "${{ github.event.pull_request.number }}" > fern/pr-number.txt
+
       - name: Upload generated docs as artifact
         uses: actions/upload-artifact@v4
         with:
@@ -70,23 +86,17 @@ jobs:
             fern/docs-v*.yml
             fern/docs/pages/
             fern/openapi/
+            fern/fern.config.json
+            fern/pr-number.txt
           retention-days: 14
 
-      # On pull requests, publish a temporary preview URL (does not affect the
-      # live site) so reviewers can browse the rendered docs in a browser.
-      # Requires FERN_TOKEN secret; skipped silently if the secret is absent.
-      - name: Publish Fern preview (PR only)
-        if: github.event_name == 'pull_request' && secrets.FERN_TOKEN != ''
-        run: fern generate --docs --preview
-        env:
-          FERN_TOKEN: ${{ secrets.FERN_TOKEN }}
-
+  # ──────────────────────────────────────────────────────────────────────────
+  # Check external URLs with lychee (non-blocking).
+  # ──────────────────────────────────────────────────────────────────────────
   link-check:
-    name: Check URLs in generated MDX
+    name: Check external URLs
     runs-on: ubuntu-latest
     needs: convert-and-check
-    # Non-blocking: broken external links shouldn't prevent publishing.
-    # Check the job summary for any failures.
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
@@ -106,18 +116,12 @@ jobs:
           pip install -r fern/requirements-docs.txt
           pip install -e python/cuopt_server --no-deps
 
-      - name: Install Fern CLI
-        run: npm install -g fern-api@$(jq -r .version fern/fern.config.json)
-
       - name: Generate MDX pages
         run: python fern/convert_docs.py
 
       - name: Check URLs with lychee
         uses: lycheeverse/lychee-action@v2
         with:
-          # --exclude-path: skip version redirect pages (they contain no real links)
-          # --exclude-file: patterns to ignore (rate-limited hosts, auth-required, etc.)
-          # --accept 429: treat rate-limit responses as passing (not a dead link)
           args: >-
             --exclude-path fern/docs/pages/versions
             --exclude-file fern/.lycheeignore
@@ -136,6 +140,74 @@ jobs:
           path: lychee-report.md
           retention-days: 14
 
+  # ──────────────────────────────────────────────────────────────────────────
+  # Stage 2 (PR preview): runs with secrets in base-branch context.
+  # Triggered by workflow_run so fork PRs cannot access the FERN_TOKEN secret.
+  # ──────────────────────────────────────────────────────────────────────────
+  preview-comment:
+    name: Publish PR preview
+    runs-on: ubuntu-latest
+    # Only runs when triggered by a PR build of convert-and-check.
+    # workflow_run always executes in the context of the base branch (trusted).
+    if: >
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      secrets.FERN_TOKEN != ''
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Download docs artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: fern-docs-${{ github.event.workflow_run.id }}
+          path: fern/
+
+      - name: Install Fern CLI
+        run: npm install -g fern-api@$(jq -r .version fern/fern.config.json)
+
+      - name: Read PR number
+        id: pr
+        run: echo "number=$(cat fern/pr-number.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Publish preview to Fern cloud
+        id: preview
+        run: |
+          OUTPUT=$(fern generate --docs --preview 2>&1)
+          echo "$OUTPUT"
+          URL=$(echo "$OUTPUT" | grep -oP 'https://[^ ]+\.docs\.buildwithfern\.com[^ ]*' | head -1)
+          echo "url=${URL}" >> "$GITHUB_OUTPUT"
+        env:
+          FERN_TOKEN: ${{ secrets.FERN_TOKEN }}
+
+      - name: Post preview URL as PR comment
+        if: steps.preview.outputs.url != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = ${{ steps.pr.outputs.number }};
+            const url = "${{ steps.preview.outputs.url }}";
+            const body = `## 📚 Docs preview\n\n${url}\n\n*Preview published from run [#${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})*`;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: pr
+            });
+            const existing = comments.find(c => c.body.startsWith('## 📚 Docs preview'));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                comment_id: existing.id, body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: pr, body
+              });
+            }
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Publish to the live site on push to docs-fern-migration.
+  # Requires FERN_TOKEN secret.
+  # ──────────────────────────────────────────────────────────────────────────
   publish:
     name: Publish to Fern
     runs-on: ubuntu-latest
