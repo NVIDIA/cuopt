@@ -416,9 +416,7 @@ jobs:
     with:
       build_type: pull-request
       script: ci/test_python.sh
-    secrets:
-      script-env-secret-4-key: CODECOV_TOKEN
-      script-env-secret-4-value: ${{ secrets.CODECOV_TOKEN }}
+    secrets: inherit # zizmor: ignore[secrets-inherit]
   docs-build:
     needs: [conda-python-build, changed-files]
     permissions:
