@@ -20,15 +20,19 @@ namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 void get_diving_heuristic_list(const mip_diving_hyper_params_t<i_t, f_t>& settings,
-                               std::vector<worker_type_t>& heuristic_list)
+                               std::vector<search_strategy_t>& heuristic_list)
 {
   heuristic_list.clear();
-  if (settings.pseudocost_diving != 0) heuristic_list.push_back(PSEUDOCOST_DIVING);
-  if (settings.line_search_diving != 0) heuristic_list.push_back(LINE_SEARCH_DIVING);
-  if (settings.guided_diving != 0) heuristic_list.push_back(GUIDED_DIVING);
-  if (settings.coefficient_diving != 0) heuristic_list.push_back(COEFFICIENT_DIVING);
-  if (settings.farkas_diving != 0) heuristic_list.push_back(FARKAS_DIVING);
-  if (settings.vector_length_diving != 0) heuristic_list.push_back(VECTOR_LENGTH_DIVING);
+  if (settings.pseudocost_diving != 0)
+    heuristic_list.push_back(search_strategy_t::PSEUDOCOST_DIVING);
+  if (settings.line_search_diving != 0)
+    heuristic_list.push_back(search_strategy_t::LINE_SEARCH_DIVING);
+  if (settings.guided_diving != 0) heuristic_list.push_back(search_strategy_t::GUIDED_DIVING);
+  if (settings.coefficient_diving != 0)
+    heuristic_list.push_back(search_strategy_t::COEFFICIENT_DIVING);
+  if (settings.farkas_diving != 0) heuristic_list.push_back(search_strategy_t::FARKAS_DIVING);
+  if (settings.vector_length_diving != 0)
+    heuristic_list.push_back(search_strategy_t::VECTOR_LENGTH_DIVING);
 }
 
 template <typename i_t, typename f_t>

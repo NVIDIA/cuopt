@@ -130,7 +130,7 @@ class branch_and_bound_t {
   }
 
   // Set a solution based on the user problem during the course of the solve
-  bool set_solution_from_heuristics(const std::vector<f_t>& solution, worker_type_t heuristic_type);
+  bool set_solution_from_heuristics(const std::vector<f_t>& solution, heuristics_origin_t origin);
 
   // Apply a solution found by a CPU FJ worker.
   void set_solution_from_cpu_fj(f_t obj, const std::vector<f_t>& assignment, double work_units);
@@ -290,7 +290,7 @@ class branch_and_bound_t {
   std::function<void(f_t)> user_bound_callback_;
 
   void print_table_header();
-  void report_heuristic(f_t obj, worker_type_t type);
+  void report_heuristic(f_t obj, heuristics_origin_t origin);
   void report(char symbol,
               f_t obj,
               f_t lower_bound,
@@ -336,7 +336,7 @@ class branch_and_bound_t {
   void add_feasible_solution(f_t leaf_objective,
                              const std::vector<f_t>& leaf_solution,
                              i_t leaf_depth,
-                             worker_type_t thread_type);
+                             search_strategy_t thread_type);
 
   // Repairs low-quality solutions from the heuristics, if it is applicable.
   void repair_heuristic_solutions();

@@ -275,7 +275,7 @@ class deterministic_diving_worker_t
   using base_t = deterministic_worker_base_t<i_t, f_t, deterministic_diving_worker_t<i_t, f_t>>;
 
  public:
-  worker_type_t diving_type{worker_type_t::PSEUDOCOST_DIVING};
+  search_strategy_t diving_type{search_strategy_t::PSEUDOCOST_DIVING};
 
   // Diving-specific node management
   std::deque<dive_queue_entry_t<i_t, f_t>> dive_queue;
@@ -295,7 +295,7 @@ class deterministic_diving_worker_t
 
   explicit deterministic_diving_worker_t(
     int id,
-    worker_type_t type,
+    search_strategy_t type,
     const simplex::lp_problem_t<i_t, f_t>& original_lp,
     const csr_matrix_t<i_t, f_t>& Arow,
     const std::vector<simplex::variable_type_t>& var_types,
@@ -438,7 +438,7 @@ class deterministic_diving_worker_pool_t
 
  public:
   deterministic_diving_worker_pool_t(int num_workers,
-                                     const std::vector<worker_type_t>& diving_types,
+                                     const std::vector<search_strategy_t>& diving_types,
                                      const simplex::lp_problem_t<i_t, f_t>& original_lp,
                                      const csr_matrix_t<i_t, f_t>& Arow,
                                      const std::vector<simplex::variable_type_t>& var_types,
@@ -447,7 +447,7 @@ class deterministic_diving_worker_pool_t
   {
     this->workers_.reserve(num_workers);
     for (int i = 0; i < num_workers; ++i) {
-      worker_type_t type = diving_types[i % diving_types.size()];
+      search_strategy_t type = diving_types[i % diving_types.size()];
       this->workers_.emplace_back(i, type, original_lp, Arow, var_types, settings, root_solution);
     }
   }

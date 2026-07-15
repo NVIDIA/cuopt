@@ -192,21 +192,30 @@ dual_status_t convert_lp_status_to_dual_status(lp_status_t status)
   }
 }
 
+inline char feasible_solution_symbol(heuristics_origin_t origin)
+{
+  switch (origin) {
+    case heuristics_origin_t::SUBMIP: return 'S';
+    case heuristics_origin_t::HEURISTICS: return 'H';
+  }
+  return 'U';
+}
+
 // When `log_diving_type` is true, each diving strategy gets its own letter;
 // otherwise every dive collapses to 'D'.
-inline char feasible_solution_symbol(worker_type_t type, bool log_diving_type)
+inline char feasible_solution_symbol(search_strategy_t strategy, bool show_diving)
 {
-  if (type == HEURISTICS) return 'H';
-  if (type == BEST_FIRST) return 'B';
-  if (type == SUBMIP) return 'S';
-  if (!log_diving_type) { return 'D'; }
-  switch (type) {
-    case COEFFICIENT_DIVING: return 'C';
-    case LINE_SEARCH_DIVING: return 'L';
-    case PSEUDOCOST_DIVING: return 'P';
-    case GUIDED_DIVING: return 'G';
-    case FARKAS_DIVING: return 'F';
-    case VECTOR_LENGTH_DIVING: return 'V';
+  if (strategy == search_strategy_t::BEST_FIRST) return 'B';
+  if (!show_diving) return 'D';
+
+  switch (strategy) {
+    case search_strategy_t::BEST_FIRST: return 'B';
+    case search_strategy_t::COEFFICIENT_DIVING: return 'C';
+    case search_strategy_t::LINE_SEARCH_DIVING: return 'L';
+    case search_strategy_t::PSEUDOCOST_DIVING: return 'P';
+    case search_strategy_t::GUIDED_DIVING: return 'G';
+    case search_strategy_t::FARKAS_DIVING: return 'F';
+    case search_strategy_t::VECTOR_LENGTH_DIVING: return 'V';
     default: return 'U';
   }
 }
@@ -361,7 +370,7 @@ void branch_and_bound_t<i_t, f_t>::print_table_header()
 }
 
 template <typename i_t, typename f_t>
-void branch_and_bound_t<i_t, f_t>::report_heuristic(f_t obj, worker_type_t type)
+void branch_and_bound_t<i_t, f_t>::report_heuristic(f_t obj, heuristics_origin_t origin)
 {
   if (is_running_) {
     f_t lower_bound           = get_lower_bound();
@@ -372,7 +381,7 @@ void branch_and_bound_t<i_t, f_t>::report_heuristic(f_t obj, worker_type_t type)
 
     std::string log_line =
       std::format("{} {:>12} {:>12} {:^+19.6e} {:^+15.6e} {:>8} {:>7} {:^11} {:^11}",
-                  feasible_solution_symbol(type, false),
+                  feasible_solution_symbol(origin),
                   "",  // nodes explored
                   "",  // nodes unexplored
                   user_obj,
@@ -504,7 +513,7 @@ void branch_and_bound_t<i_t, f_t>::update_user_bound(f_t lower_bound)
 
 template <typename i_t, typename f_t>
 bool branch_and_bound_t<i_t, f_t>::set_solution_from_heuristics(const std::vector<f_t>& solution,
-                                                                worker_type_t heuristic_type)
+                                                                heuristics_origin_t origin)
 {
   mutex_original_lp_.lock();
   if (solution.size() != original_problem_.num_cols) {
@@ -522,7 +531,7 @@ bool branch_and_bound_t<i_t, f_t>::set_solution_from_heuristics(const std::vecto
   bool success        = false;
 
   settings_.log.debug_format("{} found solution with obj={:.4g}",
-                             feasible_solution_symbol(heuristic_type, false),
+                             feasible_solution_symbol(origin),
                              compute_user_objective(original_lp_, obj));
 
   if (!incumbent_.has_incumbent || obj < incumbent_.objective) {
@@ -545,7 +554,7 @@ bool branch_and_bound_t<i_t, f_t>::set_solution_from_heuristics(const std::vecto
       upper_bound_            = std::min(current_upper_bound, obj);
       incumbent_.set_incumbent_solution(obj, crushed_solution);
       if (current_upper_bound > upper_bound_.load()) {
-        report_heuristic(obj, heuristic_type);
+        report_heuristic(obj, origin);
         success = true;
       }
 
@@ -636,7 +645,7 @@ void branch_and_bound_t<i_t, f_t>::set_solution_from_cpu_fj(f_t obj,
     if (settings_.solution_callback != nullptr) {
       settings_.solution_callback(user_assignment, obj);
     }
-    set_solution_from_heuristics(user_assignment, HEURISTICS);
+    set_solution_from_heuristics(user_assignment, heuristics_origin_t::HEURISTICS);
   }
 }
 
@@ -733,7 +742,7 @@ void branch_and_bound_t<i_t, f_t>::repair_heuristic_solutions()
         if (!incumbent_.has_incumbent || repaired_obj < incumbent_.objective) {
           upper_bound_ = std::min(upper_bound_.load(), repaired_obj);
           incumbent_.set_incumbent_solution(repaired_obj, repaired_solution);
-          report_heuristic(repaired_obj, HEURISTICS);
+          report_heuristic(repaired_obj, heuristics_origin_t::HEURISTICS);
 
           if (settings_.solution_callback != nullptr) {
             std::vector<f_t> original_x;
@@ -880,24 +889,20 @@ template <typename i_t, typename f_t>
 void branch_and_bound_t<i_t, f_t>::add_feasible_solution(f_t leaf_objective,
                                                          const std::vector<f_t>& leaf_solution,
                                                          i_t leaf_depth,
-                                                         worker_type_t thread_type)
+                                                         search_strategy_t thread_type)
 {
   bool send_solution = false;
-
-  const bool log_diving_type = settings_.diving_settings.show_type;
   settings_.log.debug("%c found a feasible solution with obj=%.10e.\n",
-                      feasible_solution_symbol(thread_type, log_diving_type),
+                      feasible_solution_symbol(thread_type, settings_.diving_settings.show_type),
                       compute_user_objective(original_lp_, leaf_objective));
 
   mutex_upper_.lock();
   if (!incumbent_.has_incumbent || leaf_objective < incumbent_.objective) {
     incumbent_.set_incumbent_solution(leaf_objective, leaf_solution);
     upper_bound_ = std::min(upper_bound_.load(), leaf_objective);
-    report(feasible_solution_symbol(thread_type, log_diving_type),
-           leaf_objective,
-           get_lower_bound(),
-           leaf_depth,
-           0);
+
+    char symbol = feasible_solution_symbol(thread_type, settings_.diving_settings.show_type);
+    report(symbol, leaf_objective, get_lower_bound(), leaf_depth, 0);
     send_solution = true;
   }
 
@@ -943,8 +948,8 @@ branch_variable_t<i_t> branch_and_bound_t<i_t, f_t>::variable_selection(
   std::vector<f_t> current_incumbent;
   std::vector<f_t>& solution = worker->leaf_solution.x;
 
-  switch (worker->worker_type) {
-    case BEST_FIRST:
+  switch (worker->search_strategy) {
+    case search_strategy_t::BEST_FIRST:
 
       if (settings_.reliability_branching != 0) {
         branch_var = pc_.reliable_variable_selection(node_ptr,
@@ -964,42 +969,36 @@ branch_variable_t<i_t> branch_and_bound_t<i_t, f_t>::variable_selection(
 
       return {branch_var, round_dir};
 
-    case COEFFICIENT_DIVING:
+    case search_strategy_t::COEFFICIENT_DIVING:
       return coefficient_diving(
         original_lp_, fractional, solution, var_up_locks_, var_down_locks_, log);
 
-    case LINE_SEARCH_DIVING:
+    case search_strategy_t::LINE_SEARCH_DIVING:
       return line_search_diving(fractional, solution, root_relax_soln_.x, log);
 
-    case PSEUDOCOST_DIVING:
+    case search_strategy_t::PSEUDOCOST_DIVING:
       return pseudocost_diving(pc_, fractional, solution, root_relax_soln_.x, log);
 
-    case GUIDED_DIVING:
+    case search_strategy_t::GUIDED_DIVING:
       assert(incumbent_.has_incumbent);
       mutex_upper_.lock();
       current_incumbent = incumbent_.x;
       mutex_upper_.unlock();
       return guided_diving(pc_, fractional, solution, current_incumbent, log);
 
-    case FARKAS_DIVING:
+    case search_strategy_t::FARKAS_DIVING:
       return farkas_diving(worker->leaf_problem, fractional, solution, settings_.zero_tol, log);
 
-    case VECTOR_LENGTH_DIVING:
+    case search_strategy_t::VECTOR_LENGTH_DIVING:
       return vector_length_diving(worker->leaf_problem, fractional, solution, log);
 
-    case SUBMIP:  // This is used for solving the DFS of the sub-MIP.
+    case search_strategy_t::SUBMIP:  // This is used for solving the DFS of the sub-MIP.
       branch_var = pc_.variable_selection(fractional, solution);
       round_dir  = martin_criteria(solution[branch_var], root_relax_soln_.x[branch_var]);
       return {branch_var, round_dir};
-
-      // These should never be called for selecting which variable to branch
-    case HEURISTICS:
-    case NUM_WORKER_TYPES:
-      log.debug("Unknown variable selection method: %d\n", worker->worker_type);
-      return {-1, branch_direction_t::NONE};
   }
 
-  log.debug("Unknown variable selection method: %d\n", worker->worker_type);
+  log.debug("Unknown variable selection method: %d\n", worker->search_strategy);
   return {-1, branch_direction_t::NONE};
 }
 
@@ -1055,7 +1054,7 @@ struct nondeterministic_policy_t : tree_update_policy_t<i_t, f_t> {
                                f_t obj,
                                const std::vector<f_t>& x) override
   {
-    bnb.add_feasible_solution(obj, x, node->depth, worker->worker_type);
+    bnb.add_feasible_solution(obj, x, node->depth, worker->search_strategy);
   }
 
   branch_variable_t<i_t> select_branch_variable(mip_node_t<i_t, f_t>* node,
@@ -1069,14 +1068,14 @@ struct nondeterministic_policy_t : tree_update_policy_t<i_t, f_t> {
                                  const std::vector<i_t>& fractional,
                                  const std::vector<f_t>& x) override
   {
-    if (worker->worker_type == worker_type_t::BEST_FIRST) {
+    if (worker->search_strategy == search_strategy_t::BEST_FIRST) {
       node->objective_estimate = bnb.pc_.obj_estimate(fractional, x, node->lower_bound);
     }
   }
 
   void on_numerical_issue(mip_node_t<i_t, f_t>* node) override
   {
-    if (worker->worker_type == worker_type_t::BEST_FIRST) {
+    if (worker->search_strategy == search_strategy_t::BEST_FIRST) {
       fetch_min(bnb.lower_bound_numerical_, node->lower_bound);
       log.printf("LP returned numerical issue on node %d. Best bound set to %+10.6e.\n",
                  node->node_id,
@@ -1226,14 +1225,14 @@ struct deterministic_diving_policy_t
     log.log = false;
 
     switch (this->worker.diving_type) {
-      case worker_type_t::PSEUDOCOST_DIVING:
+      case search_strategy_t::PSEUDOCOST_DIVING:
         return pseudocost_diving(
           this->worker.pc_snapshot, fractional, x, *this->worker.root_solution, log);
 
-      case worker_type_t::LINE_SEARCH_DIVING:
+      case search_strategy_t::LINE_SEARCH_DIVING:
         return line_search_diving<i_t, f_t>(fractional, x, *this->worker.root_solution, log);
 
-      case worker_type_t::GUIDED_DIVING:
+      case search_strategy_t::GUIDED_DIVING:
         if (this->worker.incumbent_snapshot.empty()) {
           return pseudocost_diving(
             this->worker.pc_snapshot, fractional, x, *this->worker.root_solution, log);
@@ -1242,7 +1241,7 @@ struct deterministic_diving_policy_t
             this->worker.pc_snapshot, fractional, x, this->worker.incumbent_snapshot, log);
         }
 
-      case worker_type_t::COEFFICIENT_DIVING: {
+      case search_strategy_t::COEFFICIENT_DIVING: {
         return coefficient_diving<i_t, f_t>(this->worker.leaf_problem,
                                             fractional,
                                             x,
@@ -1251,10 +1250,10 @@ struct deterministic_diving_policy_t
                                             log);
       }
 
-      case VECTOR_LENGTH_DIVING:
+      case search_strategy_t::VECTOR_LENGTH_DIVING:
         return vector_length_diving(this->worker.leaf_problem, fractional, x, log);
 
-      case FARKAS_DIVING:
+      case search_strategy_t::FARKAS_DIVING:
         return farkas_diving(
           this->worker.leaf_problem, fractional, x, this->bnb.settings_.zero_tol, log);
 
@@ -1569,7 +1568,8 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   bool feasible           = worker->set_lp_variable_bounds(node_ptr, settings_);
   dual_status_t lp_status = dual_status_t::DUAL_UNBOUNDED;
   worker->leaf_edge_norms = edge_norms_;
-  if (worker->recompute_bounds && worker->orbital_fixing && worker->worker_type == BEST_FIRST) {
+  if (worker->recompute_bounds && worker->orbital_fixing &&
+      worker->search_strategy == search_strategy_t::BEST_FIRST) {
     worker->orbital_fixing->reset(symmetry_, node_ptr);
   }
 
@@ -2068,7 +2068,9 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker, 
 
   // This is called from the RINS method which already handle the return to the
   // pool part. Besides, they do not share the same pool.
-  if (worker->worker_type != SUBMIP) { diving_worker_pool_.return_worker_to_pool(worker); }
+  if (worker->search_strategy != search_strategy_t::SUBMIP) {
+    diving_worker_pool_.return_worker_to_pool(worker);
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -2108,9 +2110,9 @@ bool branch_and_bound_t<i_t, f_t>::launch_diving_worker(bfs_worker_t<i_t, f_t>* 
     return false;
   }
 
-  auto strategy              = bfs_worker->next_diving_heuristic();
-  diving_worker->worker_type = strategy;
-  diving_worker->bfs_worker  = bfs_worker;
+  auto strategy                  = bfs_worker->next_diving_heuristic();
+  diving_worker->search_strategy = strategy;
+  diving_worker->bfs_worker      = bfs_worker;
   diving_worker->set_active();
   ++bfs_worker->active_diving_workers;
 
@@ -2134,7 +2136,7 @@ bool branch_and_bound_t<i_t, f_t>::launch_rins_worker(const std::vector<f_t>& so
   if (!worker) return false;
 
   worker->set_active();
-  worker->worker_type = SUBMIP;
+  worker->search_strategy = search_strategy_t::SUBMIP;
 
 #pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) affinity(worker) \
   firstprivate(worker, sol) if (!settings_.inside_submip)
@@ -2265,7 +2267,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
     mutex_original_lp_.lock();
     uncrush_primal_solution(original_problem_, original_lp_, leaf_sol, full_sol);
     mutex_original_lp_.unlock();
-    bool success = set_solution_from_heuristics(full_sol, SUBMIP);
+    bool success = set_solution_from_heuristics(full_sol, heuristics_origin_t::SUBMIP);
     if (success) submip_stats_.save_success(fixrate);
     return;
   }
@@ -2286,7 +2288,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
     uncrush_primal_solution(original_problem_, original_lp_, leaf_sol, full_sol);
     mutex_original_lp_.unlock();
     settings_.log.debug_format("SubMIP found a feasible solution with obj={:.4g}", obj);
-    bool success = set_solution_from_heuristics(full_sol, SUBMIP);
+    bool success = set_solution_from_heuristics(full_sol, heuristics_origin_t::SUBMIP);
     if (success) submip_stats_.save_success(fixrate);
   };
 
@@ -2378,7 +2380,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
     mutex_original_lp_.lock();
     uncrush_primal_solution(original_problem_, original_lp_, leaf_sol, full_sol);
     mutex_original_lp_.unlock();
-    bool success = set_solution_from_heuristics(full_sol, SUBMIP);
+    bool success = set_solution_from_heuristics(full_sol, heuristics_origin_t::SUBMIP);
     if (success) submip_stats_.save_success(fixrate);
   }
 
@@ -2711,7 +2713,7 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* rins_worker,
 
     if (num_frac == 0) {
       // We found a feasible solution when fixing the variables in RINS.
-      add_feasible_solution(leaf_obj, current_sol, -1, SUBMIP);
+      add_feasible_solution(leaf_obj, current_sol, -1, search_strategy_t::SUBMIP);
       break;
     }
 
@@ -3922,7 +3924,7 @@ void branch_and_bound_t<i_t, f_t>::run_deterministic_coordinator(const csr_matri
 
   if (num_diving_workers > 0) {
     // Extract diving types from search_strategies (skip BEST_FIRST at index 0)
-    std::vector<worker_type_t> diving_types;
+    std::vector<search_strategy_t> diving_types;
     get_diving_heuristic_list(settings_.diving_settings, diving_types);
 
     if (settings_.diving_settings.coefficient_diving != 0) {
@@ -4035,10 +4037,10 @@ void branch_and_bound_t<i_t, f_t>::run_deterministic_coordinator(const csr_matri
     for (const auto& worker : *deterministic_diving_workers_) {
       const char* type_str = "???";
       switch (worker.diving_type) {
-        case worker_type_t::PSEUDOCOST_DIVING: type_str = "PC"; break;
-        case worker_type_t::LINE_SEARCH_DIVING: type_str = "LS"; break;
-        case worker_type_t::GUIDED_DIVING: type_str = "GD"; break;
-        case worker_type_t::COEFFICIENT_DIVING: type_str = "CD"; break;
+        case search_strategy_t::PSEUDOCOST_DIVING: type_str = "PC"; break;
+        case search_strategy_t::LINE_SEARCH_DIVING: type_str = "LS"; break;
+        case search_strategy_t::GUIDED_DIVING: type_str = "GD"; break;
+        case search_strategy_t::COEFFICIENT_DIVING: type_str = "CD"; break;
         default: break;
       }
       settings_.log.printf("  %6d | %6s | %7d | %6d | %6d | %7.3fs | %5.2fs\n",
@@ -4394,7 +4396,7 @@ void branch_and_bound_t<i_t, f_t>::deterministic_process_worker_solutions(
       i_t nodes_explored   = exploration_stats_.nodes_explored.load();
       i_t nodes_unexplored = exploration_stats_.nodes_unexplored.load();
 
-      worker_type_t worker_type = get_worker_type(pool, sol->worker_id);
+      search_strategy_t worker_type = get_worker_type(pool, sol->worker_id);
       report(feasible_solution_symbol(worker_type, settings_.diving_settings.show_type),
              sol->objective,
              deterministic_lower,
@@ -4574,7 +4576,7 @@ void branch_and_bound_t<i_t, f_t>::deterministic_sort_replay_events(
       }
 
       if (new_upper < std::numeric_limits<f_t>::infinity()) {
-        report_heuristic(new_upper, HEURISTICS);
+        report_heuristic(new_upper, heuristics_origin_t::HEURISTICS);
 
         if (settings_.solution_callback != nullptr) {
           std::vector<f_t> original_x;
@@ -4588,7 +4590,7 @@ void branch_and_bound_t<i_t, f_t>::deterministic_sort_replay_events(
   // Merge integer solutions from BFS workers and update global incumbent
   deterministic_process_worker_solutions(*deterministic_workers_,
                                          [](const deterministic_bfs_worker_pool_t<i_t, f_t>&, int) {
-                                           return worker_type_t::BEST_FIRST;
+                                           return search_strategy_t::BEST_FIRST;
                                          });
 
   // Merge and apply pseudo-cost updates from BFS workers
