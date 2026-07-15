@@ -97,7 +97,7 @@ Sweep each `ε_k` across the range from the payoff table. Each `(ε2, ε3, …)`
 
 Spot it in existing code: a hand-coded loop over a target or budget value (a return target, a cost cap) is already the ε-constraint method — name it as such, filter dominated points, and read the swept constraint's dual (LP/QP only).
 
-**Read that dual as the local exchange rate.** Where the frontier is smooth, the dual on a swept ε-constraint is its slope — how much the kept objective `f1` moves per unit of the bound — at no cost beyond the solve already run; at a kink it gives only a one-sided rate. A **zero** dual means the bound is slack: the sweep has run past the frontier's edge. This reading needs LP/QP and a *linear* ε-constraint (MILP optima and problems with quadratic constraints return no duals) — where duals are unavailable, difference adjacent frontier points instead.
+**Read that dual as the local exchange rate.** Where the frontier is smooth, the dual on a swept ε-constraint is its slope — how much the kept objective `f1` moves per unit of the bound — at no cost beyond the solve already run; at a kink it gives only a one-sided rate. A **zero** dual usually means the bound is slack — the sweep has run past the frontier's edge (one-way: a slack bound always shows a zero dual, but under degeneracy a binding bound can too). This reading needs LP/QP and a *linear* ε-constraint (MILP optima and problems with quadratic constraints return no duals) — where duals are unavailable, difference adjacent frontier points instead.
 
 **Picking a method:** weighted-sum for a quick convex sketch or when you know the frontier is convex (e.g. a pure-LP/QP tradeoff); ε-constraint when the problem is MILP, when the frontier may be non-convex, or when the user needs a faithful and complete curve.
 
@@ -143,7 +143,7 @@ Consecutive fill solves differ by one bound, so seed each with its neighbor as a
 
 ### Degrade gracefully, never silently
 
-If a subproblem hits its time limit with a feasible incumbent (`FeasibleFound`), keep the point — it is feasible, and the solve's reported gap bounds its suboptimality — but record it as approximate. The time-capped solve is the primary fallback: it already runs cuOpt's GPU heuristics alongside branch-and-bound. Heuristics-only mode (`mip_heuristics_only`) drops the proof work and returns feasible points with no gap bound — use it when feasible points are all you need, and tag everything it returns approximate.
+If a subproblem hits its time limit with a feasible incumbent (`FeasibleFound`), keep the point — it is feasible, and the solve's reported gap bounds its suboptimality — but record it as approximate. The time-capped solve is the primary fallback: it returns both an incumbent and a bound. Heuristics-only mode (`mip_heuristics_only`) drops the proof work and returns feasible points with no gap bound — use it when feasible points are all you need, and tag everything it returns approximate.
 
 ### Report with provenance
 
