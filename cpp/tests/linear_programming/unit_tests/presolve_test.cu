@@ -1144,7 +1144,7 @@ TEST_P(simplex_problem, round_trip)
 
   // Inverse: recover a range-form user_problem, dropping the slack columns.
   simplex::user_problem_t<int, double> recovered(&handle);
-  convert_simplex_problem(simplex_problem, full_var_types, settings, new_slacks, recovered);
+  convert_simplex_to_user_problem(simplex_problem, full_var_types, settings, new_slacks, recovered);
 
   // (1) Directly-predictable recovered fields. Sizes, objective, variable bounds,
   // and var_types survive untouched: the forward pass only appends slack columns

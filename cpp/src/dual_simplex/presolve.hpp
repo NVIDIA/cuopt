@@ -236,11 +236,11 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
 // simplex problem (structural + slack columns) and is filtered to the
 // structural columns.
 template <typename i_t, typename f_t>
-void convert_simplex_problem(const lp_problem_t<i_t, f_t>& simplex_problem,
-                             const std::vector<variable_type_t>& var_types,
-                             const simplex_solver_settings_t<i_t, f_t>& settings,
-                             const std::vector<i_t>& new_slacks,
-                             user_problem_t<i_t, f_t>& user_problem);
+void convert_simplex_to_user_problem(const lp_problem_t<i_t, f_t>& simplex_problem,
+                                     const std::vector<variable_type_t>& var_types,
+                                     const simplex_solver_settings_t<i_t, f_t>& settings,
+                                     const std::vector<i_t>& new_slacks,
+                                     user_problem_t<i_t, f_t>& user_problem);
 
 template <typename i_t, typename f_t>
 void convert_user_problem_with_guess(const user_problem_t<i_t, f_t>& user_problem,

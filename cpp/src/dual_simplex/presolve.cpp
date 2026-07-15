@@ -686,11 +686,11 @@ i_t add_artifical_variables(lp_problem_t<i_t, f_t>& problem,
 //   subject to l_row <= A x <= u_row
 //              l <= x <= u
 template <typename i_t, typename f_t>
-void convert_simplex_problem(const lp_problem_t<i_t, f_t>& simplex_problem,
-                             const std::vector<variable_type_t>& var_types,
-                             const simplex_solver_settings_t<i_t, f_t>& settings,
-                             const std::vector<i_t>& new_slacks,
-                             user_problem_t<i_t, f_t>& user_problem)
+void convert_simplex_to_user_problem(const lp_problem_t<i_t, f_t>& simplex_problem,
+                                     const std::vector<variable_type_t>& var_types,
+                                     const simplex_solver_settings_t<i_t, f_t>& settings,
+                                     const std::vector<i_t>& new_slacks,
+                                     user_problem_t<i_t, f_t>& user_problem)
 {
   constexpr bool verbose = false;
   if (verbose) {
@@ -802,10 +802,6 @@ void convert_simplex_problem(const lp_problem_t<i_t, f_t>& simplex_problem,
   user_problem.obj_constant          = simplex_problem.obj_constant;
   user_problem.objective_is_integral = simplex_problem.objective_is_integral;
   user_problem.objective_step        = simplex_problem.objective_step;
-
-  // LP/MIP only: no quadratic objective and no second-order cones.
-  user_problem.cone_var_start = 0;
-  user_problem.second_order_cone_dims.clear();
 }
 
 template <typename i_t, typename f_t>
@@ -2024,7 +2020,7 @@ template void convert_user_problem<int, double>(
   std::vector<int>& new_slacks,
   dualize_info_t<int, double>& dualize_info);
 
-template void convert_simplex_problem<int, double>(
+template void convert_simplex_to_user_problem<int, double>(
   const lp_problem_t<int, double>& simplex_problem,
   const std::vector<variable_type_t>& var_types,
   const simplex_solver_settings_t<int, double>& settings,

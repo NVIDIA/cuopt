@@ -50,7 +50,7 @@ class branch_and_bound_worker_t {
   using int_type   = i_t;
 
   i_t worker_id;
-  omp_atomic_t<worker_type_t> search_strategy;
+  omp_atomic_t<worker_type_t> worker_type;
   omp_atomic_t<bool> is_active;
   omp_atomic_t<f_t> lower_bound;
 
@@ -97,7 +97,7 @@ class branch_and_bound_worker_t {
                             const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
                             uint64_t rng_offset = 0)
     : worker_id(worker_id),
-      search_strategy(BEST_FIRST),
+      worker_type(BEST_FIRST),
       is_active(false),
       lower_bound(-std::numeric_limits<f_t>::infinity()),
       leaf_problem(original_lp),
@@ -155,7 +155,7 @@ class bfs_worker_t : public branch_and_bound_worker_t<i_t, f_t> {
   {
     this->start_lower     = original_lp.lower;
     this->start_upper     = original_lp.upper;
-    this->search_strategy = BEST_FIRST;
+    this->worker_type     = BEST_FIRST;
     max_diving_workers    = 0;
     active_diving_workers = 0;
     next_heuristic        = worker_id;

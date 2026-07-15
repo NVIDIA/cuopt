@@ -7,8 +7,6 @@
 
 #pragma once
 
-#include <string>
-
 namespace cuopt::mathematical_optimization::mip {
 
 // Indicate the search and variable selection algorithms used by each thread
@@ -29,41 +27,9 @@ enum worker_type_t : int {
   VECTOR_LENGTH_DIVING = 6,  // Vector Length Diving (9.2.6)
   SUBMIP               = 7,  // RINS/RENS (akin to a guided diving, see HiGHS)
   HEURISTICS           = 8,  // Other heuristics
-  NUM_WORKER_TYPES
+  NUM_WORKER_TYPES     = 9
 };
 
 enum class branch_direction_t { NONE = -1, DOWN = 0, UP = 1 };
-
-enum class branch_and_bound_mode_t { PARALLEL = 0, DETERMINISTIC = 1 };
-
-enum class mip_status_t {
-  OPTIMAL         = 0,  // The optimal integer solution was found
-  UNBOUNDED       = 1,  // The problem is unbounded
-  INFEASIBLE      = 2,  // The problem is infeasible
-  TIME_LIMIT      = 3,  // The solver reached a time limit
-  NODE_LIMIT      = 4,  // The maximum number of nodes was reached
-  ITERATION_LIMIT = 5,  // The maximum number of simplex iterations was reached
-  NUMERICAL       = 6,  // The solver encountered a numerical error
-  UNSET           = 7,  // The status is not set
-  WORK_LIMIT      = 8,  // The solver reached a deterministic work limit
-  HALT            = 9   // Halt the solver
-};
-
-inline std::string mip_status_to_string(mip_status_t status)
-{
-  switch (status) {
-    case mip_status_t::OPTIMAL: return "OPTIMAL";
-    case mip_status_t::UNBOUNDED: return "UNBOUNDED";
-    case mip_status_t::INFEASIBLE: return "INFEASIBLE";
-    case mip_status_t::TIME_LIMIT: return "TIME_LIMIT";
-    case mip_status_t::NODE_LIMIT: return "NODE_LIMIT";
-    case mip_status_t::ITERATION_LIMIT: return "ITERATION_LIMIT";
-    case mip_status_t::NUMERICAL: return "NUMERICAL";
-    case mip_status_t::UNSET: return "UNSET";
-    case mip_status_t::WORK_LIMIT: return "WORK_LIMIT";
-    case mip_status_t::HALT: return "SUBMIP_HALT";
-  }
-  return "UNKNOWN";
-}
 
 }  // namespace cuopt::mathematical_optimization::mip

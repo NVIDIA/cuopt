@@ -160,7 +160,7 @@ class pseudo_costs_t {
     pseudo_cost_mutex_up.resize(num_variables);
     pseudo_cost_mutex_down.resize(num_variables);
 
-    if (!warm_start) {
+    if (!has_initial_pseudocost) {
       std::fill(pseudo_cost_sum_down.begin(), pseudo_cost_sum_down.end(), 0);
       std::fill(pseudo_cost_sum_up.begin(), pseudo_cost_sum_up.end(), 0);
       std::fill(pseudo_cost_num_down.begin(), pseudo_cost_num_down.end(), 0);
@@ -173,9 +173,10 @@ class pseudo_costs_t {
     pseudo_cost_num_up.resize(num_variables, 0);
   }
 
-  void warm_start_from(const pseudo_costs_t& parent, const std::vector<i_t>& reduced_to_original)
+  void set_initial_pseudocost(const pseudo_costs_t& parent,
+                              const std::vector<i_t>& reduced_to_original)
   {
-    warm_start = true;
+    has_initial_pseudocost = true;
 
     for (i_t k = 0; k < reduced_to_original.size(); ++k) {
       const i_t orig = reduced_to_original[k];
@@ -263,7 +264,7 @@ class pseudo_costs_t {
   std::vector<omp_mutex_t> pseudo_cost_mutex_down;
 
   omp_atomic_t<int64_t> strong_branching_lp_iter = 0;
-  bool warm_start                                = false;
+  bool has_initial_pseudocost                    = false;
 };
 
 template <typename i_t, typename f_t>

@@ -52,9 +52,6 @@ struct submip_settings_t {
   // Maximum recursion level
   int max_level = 10;
 
-  // Presolve sub-MIP with Papilo before solving it
-  bool presolve = true;
-
   // Limit the number of simplex iterations spent in the submip. Set as a factor of the total
   // number of simplex iteration from the parent B&B.
   double iteration_limit_ratio = 0.8;
@@ -71,7 +68,7 @@ struct simplex_solver_settings_t {
       node_limit(std::numeric_limits<i_t>::max()),
       time_limit(std::numeric_limits<f_t>::infinity()),
       work_limit(std::numeric_limits<f_t>::infinity()),
-      bnb_iteration_limit(std::numeric_limits<int64_t>::max()),
+      branch_and_bound_simplex_iteration_limit(std::numeric_limits<int64_t>::max()),
       absolute_mip_gap_tol(0.0),
       relative_mip_gap_tol(1e-3),
       integer_tol(1e-5),
@@ -157,14 +154,15 @@ struct simplex_solver_settings_t {
   i_t node_limit;
   f_t time_limit;
   f_t work_limit;
-  int64_t bnb_iteration_limit;  // Limit of the total number of simplex iterations in B&B
-  f_t absolute_mip_gap_tol;     // Tolerance on mip gap to declare optimal
-  f_t relative_mip_gap_tol;     // Tolerance on mip gap to declare optimal
-  f_t integer_tol;              // Tolerance on integralitiy violation
-  f_t primal_tol;               // Absolute primal infeasibility tolerance
-  f_t dual_tol;                 // Absolute dual infeasibility tolerance
-  f_t pivot_tol;                // Simplex pivot tolerance
-  f_t tight_tol;                // A tight tolerance used to check for infeasibility
+  int64_t branch_and_bound_simplex_iteration_limit;  // Limit of the total number of simplex
+                                                     // iterations in B&B
+  f_t absolute_mip_gap_tol;                          // Tolerance on mip gap to declare optimal
+  f_t relative_mip_gap_tol;                          // Tolerance on mip gap to declare optimal
+  f_t integer_tol;                                   // Tolerance on integralitiy violation
+  f_t primal_tol;                                    // Absolute primal infeasibility tolerance
+  f_t dual_tol;                                      // Absolute dual infeasibility tolerance
+  f_t pivot_tol;                                     // Simplex pivot tolerance
+  f_t tight_tol;  // A tight tolerance used to check for infeasibility
   f_t fixed_tol;  // If l <= x <= u with u - l < fixed_tol a variable is consider fixed
   f_t zero_tol;   // Values below this tolerance are considered numerically zero
   f_t barrier_relative_feasibility_tol;  // Relative feasibility tolerance for barrier method
