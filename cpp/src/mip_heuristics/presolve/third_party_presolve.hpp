@@ -87,7 +87,8 @@ class third_party_presolve_t {
   void uncrush_primal_solution(const std::vector<f_t>& reduced_primal,
                                std::vector<f_t>& full_primal) const;
 
-  void crush_primal_solution(const std::vector<f_t>& original_primal,
+  void crush_primal_solution(const optimization_problem_t<i_t, f_t>& reduced_problem,
+                             const std::vector<f_t>& original_primal,
                              std::vector<f_t>& reduced_primal) const;
 
   void crush_primal_dual_solution(const std::vector<f_t>& x_original,
@@ -101,6 +102,13 @@ class third_party_presolve_t {
                                   const std::vector<i_t>& A_offsets) const;
   const std::vector<i_t>& get_reduced_to_original_map() const { return reduced_to_original_map_; }
   const std::vector<i_t>& get_original_to_reduced_map() const { return original_to_reduced_map_; }
+
+  const std::vector<f_t>& get_original_objective_coefficients() const
+  {
+    return original_objective_coefficients_;
+  }
+  f_t get_original_objective_offset() const { return original_objective_offset_; }
+  f_t get_original_objective_scaling_factor() const { return original_objective_scaling_factor_; }
 
   ~third_party_presolve_t();
 
@@ -127,6 +135,10 @@ class third_party_presolve_t {
 
   std::vector<i_t> reduced_to_original_map_{};
   std::vector<i_t> original_to_reduced_map_{};
+
+  std::vector<f_t> original_objective_coefficients_{};
+  f_t original_objective_offset_{0};
+  f_t original_objective_scaling_factor_{1};
 };
 
 // Just for testing the conversion: user_problem -> Papilo problem -> user_problem.

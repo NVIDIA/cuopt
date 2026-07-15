@@ -21,6 +21,7 @@
 #include <utilities/scope_guard.hpp>
 
 #include <memory>
+#include <numeric>
 
 constexpr bool fj_only_run = false;
 
@@ -201,12 +202,40 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
       }
       std::vector<f_t> h_original = host_copy(init_sol_assignment, sol.handle_ptr->get_stream());
       std::vector<f_t> h_crushed;
-      problem_ptr->presolve_data.papilo_presolve_ptr->crush_primal_solution(h_original, h_crushed);
+      const auto* presolver_ptr = problem_ptr->presolve_data.papilo_presolve_ptr;
+      presolver_ptr->crush_primal_solution(
+        *problem_ptr->original_problem_ptr, h_original, h_crushed);
       init_sol_assignment = cuopt::device_copy(h_crushed, sol.handle_ptr->get_stream());
-      CUOPT_LOG_DEBUG("Crushed initial solution %d through Papilo (%d -> %d vars)",
-                      sol_idx,
-                      papilo_orig_n,
-                      h_crushed.size());
+
+#if CUOPT_LOG_ACTIVE_LEVEL <= CUOPT_LOG_LEVEL_DEBUG
+      const auto& reduced_problem       = *problem_ptr->original_problem_ptr;
+      const std::vector<f_t> h_red_obj  = reduced_problem.get_objective_coefficients_host();
+      const std::vector<f_t>& h_ori_obj = presolver_ptr->get_original_objective_coefficients();
+      cuopt_assert(h_ori_obj.size() == h_original.size(),
+                   "original objective size must match input solution dimension");
+      cuopt_assert(h_red_obj.size() == h_crushed.size(),
+                   "reduced objective size must match crushed solution dimension");
+      // Map each solution to user space with its own problem's scale, so the comparison holds even
+      // if the original and reduced objective scales ever diverge.
+      const double input_obj =
+        (double)presolver_ptr->get_original_objective_scaling_factor() *
+        std::inner_product(h_ori_obj.begin(),
+                           h_ori_obj.end(),
+                           h_original.begin(),
+                           (double)presolver_ptr->get_original_objective_offset());
+      const double crushed_obj = (double)reduced_problem.get_objective_scaling_factor() *
+                                 std::inner_product(h_red_obj.begin(),
+                                                    h_red_obj.end(),
+                                                    h_crushed.begin(),
+                                                    (double)reduced_problem.get_objective_offset());
+      CUOPT_LOG_DEBUG(
+        "Crushed initial solution %d through Papilo (%d -> %d vars), objective %g -> %g",
+        sol_idx,
+        papilo_orig_n,
+        h_crushed.size(),
+        input_obj,
+        crushed_obj);
+#endif
     }
 
     if (problem_ptr->pre_process_assignment(init_sol_assignment)) {
