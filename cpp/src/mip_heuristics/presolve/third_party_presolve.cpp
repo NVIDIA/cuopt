@@ -1271,6 +1271,45 @@ void third_party_presolve_t<i_t, f_t>::crush_primal_solution(
   }
 }
 
+template <typename i_t, typename f_t>
+void third_party_presolve_t<i_t, f_t>::crush_primal_solution(
+  const simplex::user_problem_t<i_t, f_t>& reduced_problem,
+  const std::vector<f_t>& original_primal,
+  std::vector<f_t>& reduced_primal) const
+{
+  cuopt_expects(presolver_ == cuopt::mathematical_optimization::presolver_t::Papilo,
+                error_type_t::RuntimeError,
+                "Primal crushing is only supported for PaPILO presolve");
+  cuopt_assert(papilo_post_solve_storage_ != nullptr, "No postsolve storage available");
+  std::vector<f_t> unused_y, unused_z;
+  std::vector<f_t> empty_vals;
+  std::vector<i_t> empty_indices, empty_offsets;
+  crush_primal_dual_solution(original_primal,
+                             {},
+                             reduced_primal,
+                             unused_y,
+                             {},
+                             unused_z,
+                             empty_vals,
+                             empty_indices,
+                             empty_offsets);
+
+  // Dual bound strengthening (e.g. DualFix kVarBoundChange which aren't emitted in primal mode)
+  // can tighten a bound past a value
+  // that was feasible in the original polytope. A simple clamp is often enough to crush a solution
+  // inside the tightened polytope without breaking feasibility (dualfix seems to emit purely dual
+  // based bounds reductions so primality is safe when clamping)
+  cuopt_assert(reduced_problem.get_n_variables() == (i_t)reduced_to_original_map_.size(),
+               "reduced_problem does not match this presolver's reduction");
+  cuopt_assert(reduced_primal.size() == reduced_problem.lower.size() &&
+                 reduced_primal.size() == reduced_problem.upper.size(),
+               "reduced problem must match crush output dimension");
+  for (size_t j = 0; j < reduced_primal.size(); ++j) {
+    reduced_primal[j] =
+      std::clamp(reduced_primal[j], reduced_problem.lower[j], reduced_problem.upper[j]);
+  }
+}
+
 /**
  * Crush an original-space primal+dual solution into the presolved (reduced) space.
  *

@@ -91,6 +91,10 @@ class third_party_presolve_t {
                              const std::vector<f_t>& original_primal,
                              std::vector<f_t>& reduced_primal) const;
 
+  void crush_primal_solution(const simplex::user_problem_t<i_t, f_t>& reduced_problem,
+                             const std::vector<f_t>& original_primal,
+                             std::vector<f_t>& reduced_primal) const;
+
   void crush_primal_dual_solution(const std::vector<f_t>& x_original,
                                   const std::vector<f_t>& y_original,
                                   std::vector<f_t>& x_reduced,

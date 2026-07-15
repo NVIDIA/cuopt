@@ -2183,7 +2183,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   submip_settings.inside_submip                            = 1;
   submip_settings.strong_branching_simplex_iteration_limit = 50;
   submip_settings.submip_settings.level                    = submip_level;
-  submip_settings.log.log                                  = false;
+  submip_settings.log.log                                  = true;
 
 #ifdef DEBUG_SUBMIP
   submip_settings.log.log_prefix = std::format("{}{}", settings_.log.log_prefix, worker->worker_id);
@@ -2305,7 +2305,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   // may fix integer variables that does not match the current incumbent to reach the target
   // fix rate.
   std::vector<f_t> presolved_incumbent;
-  presolver.crush_primal_solution(current_incumbent, presolved_incumbent);
+  presolver.crush_primal_solution(submip_problem, current_incumbent, presolved_incumbent);
   submip_bnb.set_initial_guess(presolved_incumbent);
   submip_bnb.set_initial_upper_bound(upper_bound_.load());
 
