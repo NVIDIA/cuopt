@@ -15,6 +15,12 @@ import re
 import textwrap
 from pathlib import Path
 
+try:
+    from numpydoc.docscrape import NumpyDocString
+    _NUMPYDOC_AVAILABLE = True
+except ImportError:
+    _NUMPYDOC_AVAILABLE = False
+
 REPO_ROOT = Path(__file__).parent.parent
 PYTHON_SRC = REPO_ROOT / "python/cuopt/cuopt"
 PAGES = REPO_ROOT / "fern/docs/pages"
@@ -229,12 +235,136 @@ def _doc_to_mdx(doc: str) -> str:
     return "\n".join(out)
 
 
+def _doc_to_mdx_numpydoc(doc: str) -> str:
+    """
+    Parse a docstring with numpydoc and render it as MDX markdown.
+    Falls back to _doc_to_mdx() if numpydoc is not available or parsing
+    produces no useful content.
+    """
+    if not doc:
+        return ""
+    if not _NUMPYDOC_AVAILABLE:
+        return _doc_to_mdx(doc)
+
+    try:
+        parsed = NumpyDocString(doc)
+    except Exception:
+        return _doc_to_mdx(doc)
+
+    # Check if numpydoc extracted anything useful
+    summary = parsed["Summary"]
+    has_content = (
+        summary
+        or parsed["Extended Summary"]
+        or parsed["Parameters"]
+        or parsed["Returns"]
+        or parsed["Raises"]
+        or parsed["Examples"]
+        or parsed["Notes"]
+    )
+    if not has_content:
+        return _doc_to_mdx(doc)
+
+    out = []
+
+    # Summary
+    if summary:
+        out.append(" ".join(summary))
+        out.append("")
+
+    # Extended Summary
+    ext = parsed["Extended Summary"]
+    if ext:
+        out.append(" ".join(ext))
+        out.append("")
+
+    # Parameters
+    params = parsed["Parameters"]
+    if params:
+        out.append("**Parameters**")
+        out.append("")
+        for p in params:
+            name = p.name or ""
+            ptype = p.type or ""
+            desc = " ".join(p.desc).strip()
+            if ptype:
+                header = f"- **`{name}`** (`{ptype}`)"
+            else:
+                header = f"- **`{name}`**"
+            if desc:
+                out.append(f"{header} — {desc}")
+            else:
+                out.append(header)
+        out.append("")
+
+    # Returns
+    returns = parsed["Returns"]
+    if returns:
+        out.append("**Returns**")
+        out.append("")
+        for r in returns:
+            name = r.name or ""
+            rtype = r.type or ""
+            desc = " ".join(r.desc).strip()
+            if name and rtype:
+                header = f"- **`{name}`** (`{rtype}`)"
+            elif name:
+                header = f"- **`{name}`**"
+            elif rtype:
+                header = f"- (`{rtype}`)"
+            else:
+                header = "-"
+            if desc:
+                out.append(f"{header} — {desc}")
+            else:
+                out.append(header)
+        out.append("")
+
+    # Raises
+    raises = parsed["Raises"]
+    if raises:
+        out.append("**Raises**")
+        out.append("")
+        for r in raises:
+            name = r.name or ""
+            desc = " ".join(r.desc).strip()
+            if desc:
+                out.append(f"- **`{name}`** — {desc}")
+            else:
+                out.append(f"- **`{name}`**")
+        out.append("")
+
+    # Notes
+    notes = parsed["Notes"]
+    if notes:
+        out.append("**Notes**")
+        out.append("")
+        out.extend(notes)
+        out.append("")
+
+    # Examples
+    examples = parsed["Examples"]
+    if examples:
+        out.append("**Examples**")
+        out.append("")
+        # numpydoc returns example lines as-is; wrap in a fenced code block
+        # if they look like code, otherwise pass through
+        code_lines = [ln for ln in examples if ln.strip()]
+        if code_lines:
+            out.append("```python")
+            out.extend(examples)
+            out.append("```")
+        out.append("")
+
+    return "\n".join(out)
+
+
 def _render_class(cls: dict, level: int = 2) -> str:
     h = "#" * level
     h2 = "#" * (level + 1)
     lines = ["<hr />\n", f"{h} class `{cls['name']}`\n"]
     if cls["doc"]:
-        lines.append(_doc_to_mdx(cls["doc"]))
+        lines.append(_doc_to_mdx_numpydoc(cls["doc"]))
         lines.append("")
     for method in cls["methods"]:
         name = method["name"]
@@ -242,7 +372,7 @@ def _render_class(cls: dict, level: int = 2) -> str:
         lines.append(f"{h2} def `{name}`\n")
         lines.append(f"```python\n{sig}\n```\n")
         if method["doc"]:
-            lines.append(_doc_to_mdx(method["doc"]))
+            lines.append(_doc_to_mdx_numpydoc(method["doc"]))
             lines.append("")
     return "\n".join(lines)
 
@@ -252,7 +382,7 @@ def _render_function(fn: dict, level: int = 2) -> str:
     lines = ["<hr />\n", f"{h} def `{fn['name']}`\n"]
     lines.append(f"```python\n{fn['signature']}\n```\n")
     if fn["doc"]:
-        lines.append(_doc_to_mdx(fn["doc"]))
+        lines.append(_doc_to_mdx_numpydoc(fn["doc"]))
         lines.append("")
     return "\n".join(lines)
 
@@ -267,7 +397,7 @@ def write_api_page(title: str, dest: Path, sections: list):
             lines.append(f"\n## {heading}\n")
         if parsed:
             if parsed.get("module_doc"):
-                lines.append(_doc_to_mdx(parsed["module_doc"]) + "\n")
+                lines.append(_doc_to_mdx_numpydoc(parsed["module_doc"]) + "\n")
             for cls in parsed.get("classes", []):
                 lines.append(_render_class(cls, level=3))
             for fn in parsed.get("functions", []):

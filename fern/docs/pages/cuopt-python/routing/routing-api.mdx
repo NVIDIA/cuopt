@@ -9,27 +9,14 @@ title: "cuOpt Routing Python API Reference"
 
 ### class `DataModel`
 
-DataModel(n_locations, n_fleet, n_orders: int = -1)
-
 Initialize a Data Model.
-
 
 **Parameters**
 
-- **`n_locations : Integer`** — number of locations to visit, including vehicle/technician location.
-- **`n_fleet : Integer`** — number of vehicles/technician in the fleet.
-- **`n_orders : Integer`** — number of orders.
-
-Note:
-  - A cost matrix must be set before passing
-    this object to the solver.
-
-  - If vehicle locations is not set, then by default 0th index in
-    cost/transit time matrix, time windows, capacity dimension,
-    order location is considered as start and end location of all the
-    vehicles.
-
-
+- **`n_locations`** (`Integer`) — number of locations to visit, including vehicle/technician location.
+- **`n_fleet`** (`Integer`) — number of vehicles/technician in the fleet.
+- **`n_orders`** (`Integer`) — number of orders.
+- **`Note:`** — - A cost matrix must be set before passing   this object to the solver.  - If vehicle locations is not set, then by default 0th index in   cost/transit time matrix, time windows, capacity dimension,   order location is considered as start and end location of all the   vehicles.
 
 **Examples**
 
@@ -53,31 +40,15 @@ __init__(n_locations, n_fleet, n_orders: int = -1)
 add_cost_matrix(cost_mat, vehicle_type = 0)
 ```
 
-Add a matrix for all locations (vehicle/technician locations included)
-at once.
+Add a matrix for all locations (vehicle/technician locations included) at once.
 
-A cost matrix is a square matrix containing the cost of travel which
-can be distance, time or any other metric, taken pairwise, between all
-locations. Diagonal elements should be 0.
-
-This cost matrix will be used to find the routes through all the
-locations.
-The user can call add_cost_matrix multiple times. Setting the
-vehicle type will enable heterogeneous fleet. It can model traveling
-distances for different vehicles (bicycles, bikes, trucks).
-
-Note:
-  - If vehicle locations is not set, then by default 0th index
-    and column are considered start and end location for
-    all vehicles.
-
+A cost matrix is a square matrix containing the cost of travel which can be distance, time or any other metric, taken pairwise, between all locations. Diagonal elements should be 0.  This cost matrix will be used to find the routes through all the locations. The user can call add_cost_matrix multiple times. Setting the vehicle type will enable heterogeneous fleet. It can model traveling distances for different vehicles (bicycles, bikes, trucks).  Note:   - If vehicle locations is not set, then by default 0th index     and column are considered start and end location for     all vehicles.
 
 **Parameters**
 
-- **`cost_mat : cudf.DataFrame dtype - float32`** — cudf.DataFrame representing floating point square matrix with num_location rows and columns.
-- **`vehicle_type : uint8`** — Identifier of the vehicle.
-- **`skip_validation : bool`** — If True, skips Python validation for matrix shape, NULL values, and non-negative values. The caller is responsible for providing a valid square matrix matching the number of locations.
-
+- **`cost_mat`** (`cudf.DataFrame dtype - float32`) — cudf.DataFrame representing floating point square matrix with num_location rows and columns.
+- **`vehicle_type`** (`uint8`) — Identifier of the vehicle.
+- **`skip_validation`** (`bool`) — If True, skips Python validation for matrix shape, NULL values, and non-negative values. The caller is responsible for providing a valid square matrix matching the number of locations.
 
 **Examples**
 
@@ -124,45 +95,14 @@ Note:
 add_transit_time_matrix(mat, vehicle_type = 0)
 ```
 
-Add transit time matrix for all locations
-(vehicle/technician locations included) at once.
+Add transit time matrix for all locations (vehicle/technician locations included) at once.
 
-This matrix is used to check constraints satisfiability rather
-than participating in cost optimization.
-
-For instance, this matrix can be used to model the time to
-travel between locations with time windows referring to it while the
-solver could optimize for cost/distance. A transit time matrix is
-defined as a square matrix containing the cost, taken pairwise,
-between all locations.
-Users should pre-compute time between each pair of locations
-with their own technique before calling this function. Entries in
-this matrix could represent time, miles, meters or any metric that
-can be stored as a real number and satisfies the property above.
-
-The user can call add_transit_time_matrix multiple times. Setting the
-vehicle type will enable heterogeneous fleet. It can model traveling
-speeds for different vehicles (bicycles, bikes, trucks).
-
-Time windows specified in set_order_time_windows will validate the time
-to travel with secondary matrix if it is available, else primary matrix
-is used to validate the constraint.
-
-Note:
-  - The values provided are considered as units and it is user's
-    responsibility to ensure all time related entries are normalized
-    to one common unit (hours/minutes/seconds/any).
-
-  - If vehicle locations is not set, then by default 0th index
-    and column are considered start and end location for
-    all vehicles.
-
+This matrix is used to check constraints satisfiability rather than participating in cost optimization.  For instance, this matrix can be used to model the time to travel between locations with time windows referring to it while the solver could optimize for cost/distance. A transit time matrix is defined as a square matrix containing the cost, taken pairwise, between all locations. Users should pre-compute time between each pair of locations with their own technique before calling this function. Entries in this matrix could represent time, miles, meters or any metric that can be stored as a real number and satisfies the property above.  The user can call add_transit_time_matrix multiple times. Setting the vehicle type will enable heterogeneous fleet. It can model traveling speeds for different vehicles (bicycles, bikes, trucks).  Time windows specified in set_order_time_windows will validate the time to travel with secondary matrix if it is available, else primary matrix is used to validate the constraint.  Note:   - The values provided are considered as units and it is user's     responsibility to ensure all time related entries are normalized     to one common unit (hours/minutes/seconds/any).    - If vehicle locations is not set, then by default 0th index     and column are considered start and end location for     all vehicles.
 
 **Parameters**
 
-- **`mat : cudf.DataFrame dtype - float32`** — cudf.DataFrame representing floating point square matrix with num_location rows and columns.
-- **`vehicle_type : uint8`** — Identifier of the vehicle.
-
+- **`mat`** (`cudf.DataFrame dtype - float32`) — cudf.DataFrame representing floating point square matrix with num_location rows and columns.
+- **`vehicle_type`** (`uint8`) — Identifier of the vehicle.
 
 **Examples**
 
@@ -203,21 +143,13 @@ Note:
 set_break_locations(break_locations)
 ```
 
-The vehicle is allowed to stop at specific locations during a break.
-It can be at a customer node or another location representing for
-instance a gas station.
-The solver will pick the best stop out of all break nodes.
-The same break node can appear on several routes and satisfy
-multiple break constraints.
+The vehicle is allowed to stop at specific locations during a break. It can be at a customer node or another location representing for instance a gas station. The solver will pick the best stop out of all break nodes. The same break node can appear on several routes and satisfy multiple break constraints.
 
-Note: If the break locations are not set, every location can
-be used as a break location
-
+Note: If the break locations are not set, every location can be used as a break location
 
 **Parameters**
 
 - **`break_locations: cudf.Series dtype-int32`** — representing the designated locations that can be used for breaks. The break locations should be numbered in between 0 and nlocations - 1.
-
 
 **Examples**
 
@@ -251,25 +183,15 @@ be used as a break location
 add_break_dimension(break_earliest, break_latest, break_duration)
 ```
 
-Add break time windows to model the Vehicle Routing Problem with Time
-Windows (VRPTW).
-The vehicles have break time windows within which
-the breaks must be taken. And multiple breaks can be added
-using the same api as another dimension, check the example.
+Add break time windows to model the Vehicle Routing Problem with Time Windows (VRPTW). The vehicles have break time windows within which the breaks must be taken. And multiple breaks can be added using the same api as another dimension, check the example.
 
-Note: The values provided are considered as units and it is user's
-responsibility to ensure all time related entries are normalized to
-one common unit (hours/minutes/seconds/any).
-
-Note: This function cannot be used in conjunction with add_vehicle_break
-
+Note: The values provided are considered as units and it is user's responsibility to ensure all time related entries are normalized to one common unit (hours/minutes/seconds/any).  Note: This function cannot be used in conjunction with add_vehicle_break
 
 **Parameters**
 
 - **`break_earliest: cudf.Series dtype - int32`** — Earliest time a vehicle can be at a break location.
 - **`break_latest: cudf.Series dtype - int32`** — Latest time a vehicle can be at a break location.
 - **`break_duration: cudf.Series dtype - int32`** — Time spent at the break location, internally equivalent to service time.
-
 
 **Examples**
 
@@ -326,15 +248,9 @@ Note: This function cannot be used in conjunction with add_vehicle_break
 add_vehicle_break(vehicle_id, earliest, latest, duration, locations = None)
 ```
 
-Specify a break for a given vehicle. Use this api to specify
-non-homogenous breaks. For example, different number of breaks can be
-specified for each vehicle by calling this function different number of
-times for each vehicle. Furthermore, this function provides more
-flexibility in specifying locations for each break.
+Specify a break for a given vehicle. Use this api to specify non-homogenous breaks. For example, different number of breaks can be specified for each vehicle by calling this function different number of times for each vehicle. Furthermore, this function provides more flexibility in specifying locations for each break.
 
-Note: This function cannot be used in conjunction with
-add_break_dimension
-
+Note: This function cannot be used in conjunction with add_break_dimension
 
 **Parameters**
 
@@ -343,7 +259,6 @@ add_break_dimension
 - **`latest:    integer`** — Latest time the vehicle can start the break
 - **`duration:  integer`** — Time spent at the break location
 - **`locations: cudf.Series dtype - int32`** — List of locations where this break can be taken. By default any location can be used
-
 
 **Examples**
 
@@ -363,17 +278,12 @@ add_break_dimension
 set_objective_function(objectives, objective_weights)
 ```
 
-The objective function can be defined as a linear combination of
-the different objectives. Solver optimizes for vehicle
-count first and then the total objective. The default value of
-1 is used for COST objective weight and 0 for other objective weights
-
+The objective function can be defined as a linear combination of the different objectives. Solver optimizes for vehicle count first and then the total objective. The default value of 1 is used for COST objective weight and 0 for other objective weights
 
 **Parameters**
 
-- **`objectives : cudf.Series dtype - cuopt.routing.Objective`** — Series of Objective criteria
-- **`objective_weights : cudf.Series dtype - float32`** — Series to the weighs associated with the objectives. Series will be cast to float32.
-
+- **`objectives`** (`cudf.Series dtype - cuopt.routing.Objective`) — Series of Objective criteria
+- **`objective_weights`** (`cudf.Series dtype - float32`) — Series to the weighs associated with the objectives. Series will be cast to float32.
 
 **Examples**
 
@@ -400,19 +310,11 @@ set_order_locations(order_locations)
 
 Set a location for each order.
 
-This allows the cases with multiple orders per locations run
-efficiently.
-Consider an example with 4 locations and 10 orders serving to these 4
-locations the order_locations series can look like:
-[0, 2, 3, 1, 3, 1, 2, 1, 3, 2]. In this case, the ith entry in
-the series represents the location id of the ith order. Using this,
-the distance matrix is represented as size 4x4 instead of 10x10.
-
+This allows the cases with multiple orders per locations run efficiently. Consider an example with 4 locations and 10 orders serving to these 4 locations the order_locations series can look like: [0, 2, 3, 1, 3, 1, 2, 1, 3, 2]. In this case, the ith entry in the series represents the location id of the ith order. Using this, the distance matrix is represented as size 4x4 instead of 10x10.
 
 **Parameters**
 
-- **`order_locations : cudf.Series dtype - int32`** — cudf.Series representing location id of each order given as positive integers
-
+- **`order_locations`** (`cudf.Series dtype - int32`) — cudf.Series representing location id of each order given as positive integers
 
 **Examples**
 
@@ -439,16 +341,11 @@ set_vehicle_types(vehicle_types)
 
 Set vehicle types in the fleet.
 
-When multiple matrices are given as input the solver
-is enabling heterogeneous cost matrix and time matrix
-optimization. We thus need the corresponding vehicle
-type id for all vehicles in the data model.
-
+When multiple matrices are given as input the solver is enabling heterogeneous cost matrix and time matrix optimization. We thus need the corresponding vehicle type id for all vehicles in the data model.
 
 **Parameters**
 
-- **`vehicle_types : cudf.Series dtype - uint8`** — cudf.Series representing types of vehicles in the fleet given as positive integers.
-
+- **`vehicle_types`** (`cudf.Series dtype - uint8`) — cudf.Series representing types of vehicles in the fleet given as positive integers.
 
 **Examples**
 
@@ -474,17 +371,12 @@ set_pickup_delivery_pairs(pickup_indices, delivery_indices)
 
 Set pick-up delivery pairs given by indices to the orders.
 
-Currently mixed pickup and delivery is not supported, meaning that all
-the orders should be a included in the pick-up delivery pair indices.
-These indices are indices to order locations set using
-set_order_locations.
-
+Currently mixed pickup and delivery is not supported, meaning that all the orders should be a included in the pick-up delivery pair indices. These indices are indices to order locations set using set_order_locations.
 
 **Parameters**
 
-- **`pickup_indices : cudf.Series dtype - int32`** — int cudf.Series representing the indices of pickup orders.
-- **`delivery_indices : cudf.Series dtype - int32`** — int cudf.Series representing the indices of delivery orders.
-
+- **`pickup_indices`** (`cudf.Series dtype - int32`) — int cudf.Series representing the indices of pickup orders.
+- **`delivery_indices`** (`cudf.Series dtype - int32`) — int cudf.Series representing the indices of delivery orders.
 
 **Examples**
 
@@ -516,28 +408,12 @@ set_vehicle_time_windows(earliest_time, latest_time)
 
 Set vehicle time windows in the fleet.
 
-The earliest time is the time vehicle can leave the starting location.
-The latest time is the time vehicle must be free.
-In case of drop_return_trip, latest time specifies the service end
-time with the last customer.
-The size of this array must be equal to fleet_size.
-
-Note: The values provided are considered as units and it is user's
-responsibility to ensure all time related entries are normalized to
-one common unit (hours/minutes/seconds/any).
-
-This would help users to solve for routes which consider
-vehicle availability time window for each vehicle.
-If secondary matrix has been set using add_transit_time_matrix,
-then that will be used for time validation,
-else primary matrix is used.
-
+The earliest time is the time vehicle can leave the starting location. The latest time is the time vehicle must be free. In case of drop_return_trip, latest time specifies the service end time with the last customer. The size of this array must be equal to fleet_size.  Note: The values provided are considered as units and it is user's responsibility to ensure all time related entries are normalized to one common unit (hours/minutes/seconds/any).  This would help users to solve for routes which consider vehicle availability time window for each vehicle. If secondary matrix has been set using add_transit_time_matrix, then that will be used for time validation, else primary matrix is used.
 
 **Parameters**
 
-- **`earliest_time : cudf.Series dtype - int32`** — cudf.Series representing earliest available times of vehicles
-- **`latest_time : cudf.Series dtype - int32`** — cudf.Series representing latest time vehicle must be free.
-
+- **`earliest_time`** (`cudf.Series dtype - int32`) — cudf.Series representing earliest available times of vehicles
+- **`latest_time`** (`cudf.Series dtype - int32`) — cudf.Series representing latest time vehicle must be free.
 
 **Examples**
 
@@ -586,20 +462,12 @@ set_vehicle_locations(start_locations, return_locations)
 
 Set start and return locations for vehicles in the fleet.
 
-The start location is a point of start for that vehicle, and
-return location is designated return location for that vehicle.
-These can be depot, home or any other locations.
-The size of these arrays must be equal to fleet_size. When these
-arrays are not set, all the vehicles in the fleet are assumed
-to be starting from and returning to depot location, which is
-zero indexed location.
-
+The start location is a point of start for that vehicle, and return location is designated return location for that vehicle. These can be depot, home or any other locations. The size of these arrays must be equal to fleet_size. When these arrays are not set, all the vehicles in the fleet are assumed to be starting from and returning to depot location, which is zero indexed location.
 
 **Parameters**
 
-- **`start_locations  : cudf.Series dtype - int32`** — cudf.Series representing starting locations of vehicles
-- **`return_locations : cudf.Series dtype - int32`** — cudf.Series representing return locations of vehicles
-
+- **`start_locations `** (`cudf.Series dtype - int32`) — cudf.Series representing starting locations of vehicles
+- **`return_locations`** (`cudf.Series dtype - int32`) — cudf.Series representing return locations of vehicles
 
 **Examples**
 
@@ -625,31 +493,14 @@ zero indexed location.
 set_order_time_windows(earliest, latest)
 ```
 
-Add order time windows to model the Vehicle Routing Problem
-with Time Windows (VRPTW)
+Add order time windows to model the Vehicle Routing Problem with Time Windows (VRPTW)
 
-The locations have time windows within which the visits must be made.
-If transit time matrix has been set using add_transit_time_matrix,
-then that will be used to validate time windows,
-else primary matrix is used.
-
-Note:
-  - The values provided are considered as units and it is user's
-    responsibility to ensure all time related entries are normalized to
-    one common unit (hours/minutes/seconds/any).
-
-  - If vehicle locations is not set, then by default 0th index
-    in all columns are considered start and end location for
-    all vehicles. So may be you need to provide big time window
-    for completion of all jobs/depot time window with may be with
-    service time to be 0.
-
+The locations have time windows within which the visits must be made. If transit time matrix has been set using add_transit_time_matrix, then that will be used to validate time windows, else primary matrix is used.  Note:   - The values provided are considered as units and it is user's     responsibility to ensure all time related entries are normalized to     one common unit (hours/minutes/seconds/any).    - If vehicle locations is not set, then by default 0th index     in all columns are considered start and end location for     all vehicles. So may be you need to provide big time window     for completion of all jobs/depot time window with may be with     service time to be 0.
 
 **Parameters**
 
-- **`earliest : cudf.Series dtype - int32`** — cudf.Series containing the earliest visit time for each location including the depot. Order is implicit and should be consistent with the data model.
-- **`latest : cudf.Series dtype - int32`** — cudf.Series containing the latest visit time for each location including the depot. Order is implicit and should be consistent with the data model.
-
+- **`earliest`** (`cudf.Series dtype - int32`) — cudf.Series containing the earliest visit time for each location including the depot. Order is implicit and should be consistent with the data model.
+- **`latest`** (`cudf.Series dtype - int32`) — cudf.Series containing the latest visit time for each location including the depot. Order is implicit and should be consistent with the data model.
 
 **Examples**
 
@@ -698,11 +549,9 @@ set_order_prizes(prizes)
 
 Set prizes for orders
 
-
 **Parameters**
 
-- **`prizes : cudf.Series dtype - float32`** — cudf.Series containing prizes for each order including the depot (if depot is included in the order list). Order is implicit and should be consistent with the data model. Size of this series must be equal to num_orders in data model.
-
+- **`prizes`** (`cudf.Series dtype - float32`) — cudf.Series containing prizes for each order including the depot (if depot is included in the order list). Order is implicit and should be consistent with the data model. Size of this series must be equal to num_orders in data model.
 
 **Examples**
 
@@ -722,17 +571,13 @@ Set prizes for orders
 set_drop_return_trips(set_drop_return_trips)
 ```
 
-Control if individual vehicles in the fleet return to the
-end location after the last stop.
+Control if individual vehicles in the fleet return to the end location after the last stop.
 
-End location is where vehicles will return after completing
-all the tasks assigned.
-
+End location is where vehicles will return after completing all the tasks assigned.
 
 **Parameters**
 
-- **`set_drop_return_trips : cudf.Series dtype - bool`** — Set True to the drop return trip to end location for each vehicle.
-
+- **`set_drop_return_trips`** (`cudf.Series dtype - bool`) — Set True to the drop return trip to end location for each vehicle.
 
 **Examples**
 
@@ -753,14 +598,11 @@ all the tasks assigned.
 set_skip_first_trips(set_skip_first_trips)
 ```
 
-Skips/neglects cost of travel to first task location,
-implicitly skipping the travel to location.
-
+Skips/neglects cost of travel to first task location, implicitly skipping the travel to location.
 
 **Parameters**
 
-- **`set_skip_first_trips : cudf.Series dtype - bool`** — Set True to skip the trip cost to first task location.
-
+- **`set_skip_first_trips`** (`cudf.Series dtype - bool`) — Set True to skip the trip cost to first task location.
 
 **Examples**
 
@@ -783,13 +625,11 @@ add_vehicle_order_match(vehicle_id, orders)
 
 Control if a vehicle can only serve a subset of orders
 
-
 **Parameters**
 
-- **`vehicle_id  : Integer`** — vehicle id of the vehicle that has restriction on orders
-- **`orders      : cudf.Series dtype - int32`** — cudf.Series contains the orders that can be fulfilled by vehicle with vehicle_id
-- **`Note: A user can set this multiple times. However, if it is`** — set more than once for same vehicle, the order list will be overridden with the most recent function call. The orders in the give list allowed to be served by other vehicles. To make any order served only by a particular vehicle, use add_order_vehicle_match function
-
+- **`vehicle_id `** (`Integer`) — vehicle id of the vehicle that has restriction on orders
+- **`orders     `** (`cudf.Series dtype - int32`) — cudf.Series contains the orders that can be fulfilled by vehicle with vehicle_id
+- **`Note: A user can set this multiple times. However, if it is`** — set more than once for same vehicle, the order list will be overridden with the most recent function call.  The orders in the give list allowed to be served by other vehicles. To make any order served only by a particular vehicle, use add_order_vehicle_match function
 
 **Examples**
 
@@ -818,13 +658,11 @@ add_order_vehicle_match(order_id, vehicles)
 
 Control if an order should only be served by a subset of vehicles
 
-
 **Parameters**
 
-- **`order_id  : Integer`** — order id of the order that has restriction on vehicles
-- **`vehicles  : cudf.Series dtype - int32`** — cudf.Series contains the vehicles that can fulfill the order with order_id
-- **`Note: A user can set this multiple times. However, if it is`** — set more than once for same order, the vehicle list will be overridden with the most recent function call The vehicles in the give list can serve other orders as well. To make a vehicle serve only a subset of orders use add_vehicle_order_match function
-
+- **`order_id `** (`Integer`) — order id of the order that has restriction on vehicles
+- **`vehicles `** (`cudf.Series dtype - int32`) — cudf.Series contains the vehicles that can fulfill the order with order_id
+- **`Note: A user can set this multiple times. However, if it is`** — set more than once for same order, the vehicle list will be overridden with the most recent function call  The vehicles in the give list can serve other orders as well. To make a vehicle serve only a subset of orders use add_vehicle_order_match function
 
 **Examples**
 
@@ -852,25 +690,15 @@ Control if an order should only be served by a subset of vehicles
 set_order_service_times(service_times, vehicle_id = -1)
 ```
 
-In fully heterogeneous fleet mode, vehicle can take different
-amount of times to complete a task based on their profile
-and the order being served. Here we enable that
-ability to the user by setting for each vehicle id
-the corresponding service times. They can be the same for
-all orders per vehicle/vehicle type or unique.
+In fully heterogeneous fleet mode, vehicle can take different amount of times to complete a task based on their profile and the order being served. Here we enable that ability to the user by setting for each vehicle id the corresponding service times. They can be the same for all orders per vehicle/vehicle type or unique.
 
-The service times are defaulted for all vehicles unless
-vehicle id is specified. If no default service times are
-given then the solver expects all vehicle ids up to fleet
-size to be specified.
-
+The service times are defaulted for all vehicles unless vehicle id is specified. If no default service times are given then the solver expects all vehicle ids up to fleet size to be specified.
 
 **Parameters**
 
-- **`service_times : cudf.Series dtype - int32`** — service times of size number of orders
-- **`vehicle_id  : int32`** — Vehicle id
+- **`service_times`** (`cudf.Series dtype - int32`) — service times of size number of orders
+- **`vehicle_id `** (`int32`) — Vehicle id
 - **`Note: A user can set this multiple times. However, if it is`** — set more than once for same vehicle, the service times list will be overridden with the most recent function call
-
 
 **Examples**
 
@@ -896,27 +724,15 @@ size to be specified.
 add_capacity_dimension(name, demand, capacity)
 ```
 
-Add capacity dimensions to model the Capacitated Vehicle Routing
-Problem (CVRP)
+Add capacity dimensions to model the Capacitated Vehicle Routing Problem (CVRP)
 
-The vehicles have a limited carrying capacity of the
-goods that must be delivered. This function can be called more than
-once to model multiple capacity dimensions (weight, volume, number
-of orders, skills). After solving the problem, the demands on each
-route will not exceed the vehicle capacities.
-
-Note:
-  - If vehicle locations is not set, then by default 0th index
-    in demand column is considered start and end location of
-    all the vehicles. May be it is better to keep demand to be 0.
-
+The vehicles have a limited carrying capacity of the goods that must be delivered. This function can be called more than once to model multiple capacity dimensions (weight, volume, number of orders, skills). After solving the problem, the demands on each route will not exceed the vehicle capacities.  Note:   - If vehicle locations is not set, then by default 0th index     in demand column is considered start and end location of     all the vehicles. May be it is better to keep demand to be 0.
 
 **Parameters**
 
-- **`name : str`** — user-specified name for the dimension
-- **`demand : cudf.Series dtype - int32`** — cudf.Series containing integer demand value for each locations, including the depot. Order is implicit and should be consistent with the data model.
-- **`capacity : cudf.Series dtype - int32`** — cudf.Series containing integer capacity value for each vehicle in the fleet. Size of this series must be equal to fleet_size in data model
-
+- **`name`** (`str`) — user-specified name for the dimension
+- **`demand`** (`cudf.Series dtype - int32`) — cudf.Series containing integer demand value for each locations, including the depot. Order is implicit and should be consistent with the data model.
+- **`capacity`** (`cudf.Series dtype - int32`) — cudf.Series containing integer capacity value for each vehicle in the fleet. Size of this series must be equal to fleet_size in data model
 
 **Examples**
 
@@ -963,11 +779,9 @@ set_vehicle_max_costs(vehicle_max_costs)
 
 Limits per vehicle primary matrix cost accumulated along a route.
 
-
 **Parameters**
 
-- **`vehicle_max_costs : cudf.Series dtype - float32`** — Upper bound per vehicle for max distance cumulated on a route
-
+- **`vehicle_max_costs`** (`cudf.Series dtype - float32`) — Upper bound per vehicle for max distance cumulated on a route
 
 **Examples**
 
@@ -987,14 +801,11 @@ Limits per vehicle primary matrix cost accumulated along a route.
 set_vehicle_max_times(vehicle_max_times)
 ```
 
-Limits per vehicle the time accumulated along a route. This limit
-accounts for both travel, service and wait time.
-
+Limits per vehicle the time accumulated along a route. This limit accounts for both travel, service and wait time.
 
 **Parameters**
 
-- **`vehicle_max_times : cudf.Series dtype - float32`** — Upper bound per vehicle for max duration cumulated on a route
-
+- **`vehicle_max_times`** (`cudf.Series dtype - float32`) — Upper bound per vehicle for max duration cumulated on a route
 
 **Examples**
 
@@ -1014,17 +825,11 @@ accounts for both travel, service and wait time.
 set_vehicle_fixed_costs(vehicle_fixed_costs)
 ```
 
-Limits per vehicle primary matrix cost accumulated along a route.
-Lets the solver find the optimal fleet according to vehicle costs.
-In a heterogeneous setting, not all vehicles will have the same cost.
-Sometimes it may be optimal to use two vehicles with lower cost
-compared to one vehicle with a huge cost.
-
+Limits per vehicle primary matrix cost accumulated along a route. Lets the solver find the optimal fleet according to vehicle costs. In a heterogeneous setting, not all vehicles will have the same cost. Sometimes it may be optimal to use two vehicles with lower cost compared to one vehicle with a huge cost.
 
 **Parameters**
 
-- **`vehicle_fixed_costs : cudf.Series dtype - float32`** — Cost of each vehicle
-
+- **`vehicle_fixed_costs`** (`cudf.Series dtype - float32`) — Cost of each vehicle
 
 **Examples**
 
@@ -1046,14 +851,11 @@ compared to one vehicle with a huge cost.
 set_min_vehicles(min_vehicles)
 ```
 
-Request a minimum number of vehicles to be used for routing.
-Note: The resulting solution may not be optimal.
-
+Request a minimum number of vehicles to be used for routing. Note: The resulting solution may not be optimal.
 
 **Parameters**
 
-- **`min_vehicles : Integer`** — The minimum number of vehicle to use.
-
+- **`min_vehicles`** (`Integer`) — The minimum number of vehicle to use.
 
 **Examples**
 
@@ -1073,8 +875,8 @@ Note: The resulting solution may not be optimal.
 get_num_locations()
 ```
 
-Returns the number of locations
-(vehicle start/end locations + task locations).
+Returns the number of locations (vehicle start/end locations + task locations).
+
 
 #### def `get_fleet_size`
 
@@ -1084,6 +886,7 @@ get_fleet_size()
 
 Returns the number of vehicles in the fleet.
 
+
 #### def `get_num_orders`
 
 ```python
@@ -1091,6 +894,7 @@ get_num_orders()
 ```
 
 Return number of orders.
+
 
 #### def `get_cost_matrix`
 
@@ -1100,6 +904,7 @@ get_cost_matrix(vehicle_type = 0)
 
 Returns cost matrix as 2D DeviceNDArray in row major format.
 
+
 #### def `get_transit_time_matrix`
 
 ```python
@@ -1108,14 +913,15 @@ get_transit_time_matrix(vehicle_type = 0)
 
 Returns transit time matrix as 2D DeviceNDArray in row major format.
 
+
 #### def `get_transit_time_matrices`
 
 ```python
 get_transit_time_matrices()
 ```
 
-Returns all transit time matrices as 2D DeviceNDArray
-in row major format as dictionary with vehicle types as keys.
+Returns all transit time matrices as 2D DeviceNDArray in row major format as dictionary with vehicle types as keys.
+
 
 #### def `get_initial_solutions`
 
@@ -1131,14 +937,15 @@ get_order_locations()
 
 Returns order locations as cudf.Series with int type.
 
+
 #### def `get_vehicle_types`
 
 ```python
 get_vehicle_types()
 ```
 
-Returns types of vehicles in the fleet
-as cudf.Series with uint8 type
+Returns types of vehicles in the fleet as cudf.Series with uint8 type
+
 
 #### def `get_pickup_delivery_pairs`
 
@@ -1146,8 +953,8 @@ as cudf.Series with uint8 type
 get_pickup_delivery_pairs()
 ```
 
-Returns pick up and delivery order indices as
-cudf.Series with int type.
+Returns pick up and delivery order indices as cudf.Series with int type.
+
 
 #### def `get_vehicle_time_windows`
 
@@ -1157,6 +964,7 @@ get_vehicle_time_windows()
 
 Returns earliest and latest time windows as cudf.Series with int type.
 
+
 #### def `get_vehicle_locations`
 
 ```python
@@ -1164,6 +972,7 @@ get_vehicle_locations()
 ```
 
 Returns start and return locations as cudf.Series with int type.
+
 
 #### def `get_drop_return_trips`
 
@@ -1173,6 +982,7 @@ get_drop_return_trips()
 
 Returns drop return trips as cudf.Series with bool type.
 
+
 #### def `get_skip_first_trips`
 
 ```python
@@ -1180,6 +990,7 @@ get_skip_first_trips()
 ```
 
 Returns skip first trips as cudf.Series with bool type.
+
 
 #### def `get_capacity_dimensions`
 
@@ -1189,14 +1000,15 @@ get_capacity_dimensions()
 
 Returns a dictionary containing demands and capacity under demand name.
 
+
 #### def `get_order_time_windows`
 
 ```python
 get_order_time_windows()
 ```
 
-Returns earliest and latest time
-as cudf.Series with int type.
+Returns earliest and latest time as cudf.Series with int type.
+
 
 #### def `get_order_prizes`
 
@@ -1206,6 +1018,7 @@ get_order_prizes()
 
 Returns order prizes as cudf.Series with float32 type
 
+
 #### def `get_break_locations`
 
 ```python
@@ -1214,14 +1027,15 @@ get_break_locations()
 
 Returns break locations as cudf.Series with int type.
 
+
 #### def `get_break_dimensions`
 
 ```python
 get_break_dimensions()
 ```
 
-Returns a dictionary containing break earliest, latest, duration
-under demand name.
+Returns a dictionary containing break earliest, latest, duration under demand name.
+
 
 #### def `get_non_uniform_breaks`
 
@@ -1231,14 +1045,15 @@ get_non_uniform_breaks()
 
 Returns a dictionary containing breaks
 
+
 #### def `get_objective_function`
 
 ```python
 get_objective_function()
 ```
 
-Returns objectives as cudf.Series with int type and
-weights as cudf.Series with float type.
+Returns objectives as cudf.Series with int type and weights as cudf.Series with float type.
+
 
 #### def `get_vehicle_max_costs`
 
@@ -1248,6 +1063,7 @@ get_vehicle_max_costs()
 
 Returns max costs per vehicles
 
+
 #### def `get_vehicle_max_times`
 
 ```python
@@ -1255,6 +1071,7 @@ get_vehicle_max_times()
 ```
 
 Returns max times per vehicles
+
 
 #### def `get_vehicle_fixed_costs`
 
@@ -1264,14 +1081,15 @@ get_vehicle_fixed_costs()
 
 Returns fixed costs per vehicles
 
+
 #### def `get_vehicle_order_match`
 
 ```python
 get_vehicle_order_match()
 ```
 
-Returns a dictionary containing the orders that can be fulfilled
-for specified vehicles
+Returns a dictionary containing the orders that can be fulfilled for specified vehicles
+
 
 #### def `get_order_vehicle_match`
 
@@ -1279,8 +1097,8 @@ for specified vehicles
 get_order_vehicle_match()
 ```
 
-Returns a dictionary containing the vehicles that can fulfill
-specified orders
+Returns a dictionary containing the vehicles that can fulfill specified orders
+
 
 #### def `get_order_service_times`
 
@@ -1288,8 +1106,8 @@ specified orders
 get_order_service_times(vehicle_id = -1)
 ```
 
-Returns a dictionary containing the vehicles and their associated
-service times
+Returns a dictionary containing the vehicles and their associated service times
+
 
 #### def `get_min_vehicles`
 
@@ -1299,13 +1117,13 @@ get_min_vehicles()
 
 Returns minimum vehicles set.
 
+
 <hr />
 
 ### class `SolverSettings`
 
-SolverSettings()
-
 Initialize a SolverSettings.
+
 
 #### def `__init__`
 
@@ -1319,20 +1137,13 @@ __init__()
 set_time_limit(seconds)
 ```
 
-Set a fixed solving time in seconds, the timer starts when `Solve`
-is called.
+Set a fixed solving time in seconds, the timer starts when `Solve` is called.
 
-Accuracy may be impacted. Problem under 100 locations may be solved
-with reasonable accuracy under a second. Larger problems may need a few
-minutes. A generous upper bond is to set the number of seconds to
-num_locations. By default it is set to num_locations/5.
-If increased accuracy is desired, this needs to set to higher numbers.
-
+Accuracy may be impacted. Problem under 100 locations may be solved with reasonable accuracy under a second. Larger problems may need a few minutes. A generous upper bond is to set the number of seconds to num_locations. By default it is set to num_locations/5. If increased accuracy is desired, this needs to set to higher numbers.
 
 **Parameters**
 
-- **`seconds : Float`** — The number of seconds
-
+- **`seconds`** (`Float`) — The number of seconds
 
 **Examples**
 
@@ -1355,10 +1166,9 @@ set_verbose_mode(verbose)
 
 Displaying internal information during the solver execution.
 
-
 **Parameters**
 
-- **`verbose : bool`** — Set True to display information. Execution time may be impacted.
+- **`verbose`** (`bool`) — Set True to display information. Execution time may be impacted.
 
 
 #### def `set_error_logging_mode`
@@ -1369,10 +1179,9 @@ set_error_logging_mode(logging)
 
 Displaying constraint error information during the solver execution.
 
-
 **Parameters**
 
-- **`logging : bool`** — Set True to display information. Execution time may be impacted.
+- **`logging`** (`bool`) — Set True to display information. Execution time may be impacted.
 
 
 #### def `dump_best_results`
@@ -1383,12 +1192,10 @@ dump_best_results(file_path, interval)
 
 Dump best results in a given file as csv, reports in given intervals.
 
-
 **Parameters**
 
-- **`file_path : Absolute path of file to be written`**
-- **`interval : Report intervals in seconds`**
-
+- **`file_path`** (`Absolute path of file to be written`)
+- **`interval`** (`Report intervals in seconds`)
 
 **Examples**
 
@@ -1411,10 +1218,9 @@ dump_config_file(file_name)
 
 Dump configuration information in a given file as yaml
 
-
 **Parameters**
 
-- **`file_name : Absolute path of file to be written`**
+- **`file_name`** (`Absolute path of file to be written`)
 
 
 #### def `get_time_limit`
@@ -1425,14 +1231,15 @@ get_time_limit()
 
 Returns solving time set.
 
+
 #### def `get_best_results_file_path`
 
 ```python
 get_best_results_file_path()
 ```
 
-Returns file path where result will be stored,
-if not set, it will return None.
+Returns file path where result will be stored, if not set, it will return None.
+
 
 #### def `get_config_file_name`
 
@@ -1440,9 +1247,8 @@ if not set, it will return None.
 get_config_file_name()
 ```
 
-Returns the full abs path of the file including the filename
-where the configuration data will be dumped
-if not set, it will return None
+Returns the full abs path of the file including the filename where the configuration data will be dumped if not set, it will return None
+
 
 #### def `get_best_results_interval`
 
@@ -1451,6 +1257,7 @@ get_best_results_interval()
 ```
 
 Returns interval set, if not set, it will return None
+
 
 <hr />
 
@@ -1462,16 +1269,14 @@ Solve(data_model, solver_settings = None)
 
 Solves the routing problem.
 
-
 **Parameters**
 
 - **`data_model: DataModel`** — data model containing orders, vehicles and constraints.
 - **`solver_settings: SolverSettings`** — settings to configure solver configurations. By default, it uses default solver settings to solve.
 
-
 **Returns**
 
-- **`assignment : Assignment`** — Assignment object containing the solver output.
+- **`assignment`** (`Assignment`) — Assignment object containing the solver output.
 
 
 <hr />
@@ -1484,17 +1289,14 @@ BatchSolve(data_model_list, solver_settings = None)
 
 Solves multiple routing problems in batch mode using parallel execution.
 
-
 **Parameters**
 
 - **`data_model_list: list of DataModel`** — List of data model objects representing routing problems to solve.
 - **`solver_settings: SolverSettings`** — Settings to configure solver configurations. By default, it uses default solver settings to solve.
 
-
 **Returns**
 
-- **`tuple`** — A tuple containing: - list of Assignment: Solutions for each routing problem
-
+- (`tuple`) — A tuple containing: - list of Assignment: Solutions for each routing problem
 
 **Examples**
 
@@ -1527,12 +1329,11 @@ Solves multiple routing problems in batch mode using parallel execution.
 
 A container of vehicle routing solver output
 
-
 **Parameters**
 
-- **`vehicle_count : Integer`** — Number of vehicles in the solution
-- **`total_objective_value : Float64`** — Objective value calculated as per objective functions and weights
-- **`objective_values : dict[Objective, Float64]`**
+- **`vehicle_count`** (`Integer`) — Number of vehicles in the solution
+- **`total_objective_value`** (`Float64`) — Objective value calculated as per objective functions and weights
+- **`objective_values`** (`dict[Objective, Float64]`)
 - **`route_df: cudf.DataFrame`** — Contains route, vehicle_id, arrival_stamp.
 - **`accepted: cudf.Series`**
 - **`status: Integer`** — Solver status 0 - SUCCESS, 1 - FAIL, 2 - TIMEOUT and 3 - EMPTY.
@@ -1554,14 +1355,15 @@ get_vehicle_count()
 
 Returns the number of vehicle needed for this routing assignment.
 
+
 #### def `get_total_objective`
 
 ```python
 get_total_objective()
 ```
 
-Returns the objective value calculated based on the user
-provided objective function and the routes found by the solver.
+Returns the objective value calculated based on the user provided objective function and the routes found by the solver.
+
 
 #### def `get_objective_values`
 
@@ -1571,15 +1373,14 @@ get_objective_values()
 
 Returns the individual objective_values as dictionary
 
+
 #### def `get_route`
 
 ```python
 get_route()
 ```
 
-Returns the route, truck ids for each stop and the arrival stamp
-as cudf.DataFrame.
-
+Returns the route, truck ids for each stop and the arrival stamp as cudf.DataFrame.
 
 **Examples**
 
@@ -1628,6 +1429,7 @@ get_status()
 
 Returns the final solver status as per SolutionStatus.
 
+
 #### def `get_message`
 
 ```python
@@ -1635,6 +1437,7 @@ get_message()
 ```
 
 Returns the final solver message as per SolutionStatus.
+
 
 #### def `get_error_status`
 
@@ -1644,6 +1447,7 @@ get_error_status()
 
 Returns the error status as per ErrorStatus.
 
+
 #### def `get_error_message`
 
 ```python
@@ -1652,6 +1456,7 @@ get_error_message()
 
 Returns the error message as per ErrorMessage.
 
+
 #### def `get_infeasible_orders`
 
 ```python
@@ -1659,6 +1464,7 @@ get_infeasible_orders()
 ```
 
 Returns the infeasible order numbers as cudf.Series.
+
 
 #### def `get_accepted_solutions`
 
@@ -1672,9 +1478,7 @@ get_accepted_solutions()
 display_routes()
 ```
 
-Display the solution in human readable format.
-Intended for relatively small inputs.
-
+Display the solution in human readable format. Intended for relatively small inputs.
 
 **Examples**
 

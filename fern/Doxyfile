@@ -1,0 +1,41 @@
+# Doxyfile for fern/extract_c_api.py
+# Processes the two cuOpt C API headers and outputs XML only.
+# Run from the repo root: doxygen fern/Doxyfile
+# XML is written to fern/.doxygen-xml/ (git-ignored).
+
+DOXYFILE_ENCODING      = UTF-8
+PROJECT_NAME           = "cuOpt C API"
+PROJECT_BRIEF          = "NVIDIA cuOpt C API reference"
+OUTPUT_DIRECTORY       = fern/.doxygen-xml
+CREATE_SUBDIRS         = NO
+OUTPUT_LANGUAGE        = English
+FULL_PATH_NAMES        = NO
+MARKDOWN_SUPPORT       = YES
+EXTENSION_MAPPING      = h=C
+OPTIMIZE_OUTPUT_FOR_C  = YES
+
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = NO
+
+INPUT                  = cpp/include/cuopt/mathematical_optimization/cuopt_c.h \
+                         cpp/include/cuopt/mathematical_optimization/constants.h
+
+INPUT_ENCODING         = UTF-8
+FILE_PATTERNS          = *.h
+RECURSIVE              = NO
+
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = NO
+SKIP_FUNCTION_MACROS   = YES
+
+GENERATE_HTML          = NO
+GENERATE_LATEX         = NO
+GENERATE_XML           = YES
+XML_OUTPUT             = xml
+XML_PROGRAMLISTING     = NO
+
+QUIET                  = YES
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = NO

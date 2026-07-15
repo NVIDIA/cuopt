@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Parse cuopt_c.h and constants.h and regenerate MDX pages for the C API
-reference, replacing the Doxygen-stub <Note> placeholders.
+Parse cuopt_c.h and constants.h via Doxygen XML and regenerate MDX pages for
+the C API reference.
 
 Usage:
     python fern/extract_c_api.py
@@ -12,7 +12,8 @@ Regenerates:
 """
 
 import re
-import textwrap
+import subprocess
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.parent
@@ -26,349 +27,290 @@ OUT_MIP = PAGES / "cuopt-c/mip/mip-c-api.mdx"
 
 
 # ---------------------------------------------------------------------------
-# Header parser
+# Doxygen XML parser — replaces the old regex-based header parser
 # ---------------------------------------------------------------------------
 
-def _strip_comment_markers(text: str) -> str:
-    """Strip /** ... */ and /* ... */ markers and leading * from lines."""
-    # Remove opening /** or /*
-    text = re.sub(r"^/\*+\s*", "", text.strip())
-    # Remove closing */
-    text = re.sub(r"\s*\*/$", "", text.strip())
-    # Strip leading " * " from each line
-    lines = []
-    for line in text.splitlines():
-        line = re.sub(r"^\s*\*\s?", "", line)
-        lines.append(line)
-    return "\n".join(lines).strip()
+_DOXYFILE = REPO_ROOT / "fern/Doxyfile"
+_XML_DIR = REPO_ROOT / "fern/.doxygen-xml/xml"
 
 
-def _clean_brief(text: str) -> str:
-    """Remove @brief tag and return the cleaned text."""
-    text = re.sub(r"@brief\s*", "", text).strip()
-    # Collapse interior whitespace runs (doxygen wrapping)
-    return text
-
-
-def _parse_doxygen_block(raw_comment: str) -> dict:
-    """
-    Parse a doxygen /** ... */ block into:
-        {
-          "brief": str,
-          "params": [{"name": str, "dir": str, "desc": str}],
-          "return": str,
-          "note": str,
-          "deprecated": str,
-        }
-    """
-    text = _strip_comment_markers(raw_comment)
-
-    result = {"brief": "", "params": [], "return": "", "note": "", "deprecated": ""}
-
-    # Split on @ tags at the start of a line (may be multiline)
-    # We'll process line by line
-    lines = text.splitlines()
-
-    current_tag = "brief"
-    current_content: list[str] = []
-
-    def _flush(tag, content):
-        val = " ".join(content).strip()
-        if not val:
-            return
-        if tag == "brief":
-            result["brief"] += (" " if result["brief"] else "") + val
-        elif tag in ("param[in]", "param[out]", "param[in,out]", "param[in, out]",
-                     "param[out, in]"):
-            # Already stored as structured entry — handled below
-            pass
-        elif tag == "return":
-            result["return"] += (" " if result["return"] else "") + val
-        elif tag == "note":
-            result["note"] += (" " if result["note"] else "") + val
-        elif tag in ("deprecated", "note_deprecated"):
-            result["deprecated"] += (" " if result["deprecated"] else "") + val
-
-    param_buf: dict | None = None
-
-    def _flush_param():
-        nonlocal param_buf
-        if param_buf:
-            param_buf["desc"] = " ".join(param_buf["_lines"]).strip()
-            del param_buf["_lines"]
-            result["params"].append(param_buf)
-            param_buf = None
-
-    for line in lines:
-        # Match @param[dir] name desc
-        m = re.match(r"@param(\[[^\]]*\])?\s+(\S+)\s*(.*)", line)
-        if m:
-            _flush(current_tag, current_content)
-            _flush_param()
-            current_content = []
-            direction = (m.group(1) or "").strip("[]").strip()
-            param_buf = {"name": m.group(2), "dir": direction, "_lines": [m.group(3).strip()]}
-            current_tag = "__param__"
-            continue
-
-        # Match @return, @brief, @note, @verbatim, @deprecated
-        m2 = re.match(r"@(return|brief|note|verbatim|deprecated|attention)(.*)", line)
-        if m2:
-            if current_tag == "__param__":
-                _flush_param()
-            else:
-                _flush(current_tag, current_content)
-            current_content = []
-            tag_name = m2.group(1)
-            rest = m2.group(2).strip()
-            if tag_name in ("verbatim", "attention"):
-                tag_name = "note"
-            current_tag = tag_name
-            if rest:
-                current_content.append(rest)
-            continue
-
-        # endverbatim / endcode
-        if re.match(r"@end(verbatim|code)", line):
-            continue
-
-        # Continuation
-        if current_tag == "__param__" and param_buf is not None:
-            param_buf["_lines"].append(line.strip())
+def _xml_text(elem) -> str:
+    """Recursively extract plain text from a Doxygen XML element."""
+    if elem is None:
+        return ""
+    parts = []
+    if elem.text:
+        parts.append(elem.text)
+    for child in elem:
+        # <computeroutput> → backtick; everything else → plain text
+        if child.tag == "computeroutput":
+            inner = _xml_text(child)
+            parts.append(f"`{inner}`")
+        elif child.tag == "ref":
+            parts.append(_xml_text(child))
+        elif child.tag == "para":
+            parts.append(_xml_text(child))
         else:
-            current_content.append(line.strip())
+            parts.append(_xml_text(child))
+        if child.tail:
+            parts.append(child.tail)
+    return "".join(parts).strip()
 
-    # Flush last
-    if current_tag == "__param__":
-        _flush_param()
-    else:
-        _flush(current_tag, current_content)
 
-    return result
+def _parse_memberdef(member) -> dict | None:
+    """
+    Parse a <memberdef> element from Doxygen XML into the same dict format
+    that the old regex parser produced, keyed by symbol kind.
+    """
+    kind = member.get("kind", "")
+    name_el = member.find("name")
+    if name_el is None:
+        return None
+    name = name_el.text or ""
+
+    # Brief description
+    brief_el = member.find("briefdescription")
+    brief = ""
+    if brief_el is not None:
+        para = brief_el.find("para")
+        if para is not None:
+            brief = _xml_text(para)
+
+    # Detailed description (params, return, notes, deprecated)
+    detail_el = member.find("detaileddescription")
+    param_docs = []
+    return_doc = ""
+    note = ""
+    deprecated = ""
+
+    if detail_el is not None:
+        for para in detail_el.iter("para"):
+            # Parameters
+            for plist in para.findall("parameterlist"):
+                if plist.get("kind") == "param":
+                    for item in plist.findall("parameteritem"):
+                        pname_list = item.find("parameternamelist")
+                        pdesc_el = item.find("parameterdescription")
+                        if pname_list is None:
+                            continue
+                        pname_el = pname_list.find("parametername")
+                        pname = pname_el.text or "" if pname_el is not None else ""
+                        direction = pname_el.get("direction", "") if pname_el is not None else ""
+                        pdesc = ""
+                        if pdesc_el is not None:
+                            inner = pdesc_el.find("para")
+                            pdesc = _xml_text(inner) if inner is not None else _xml_text(pdesc_el)
+                        # Strip leading "- " that Doxygen authors sometimes add
+                        pdesc = re.sub(r"^-\s+", "", pdesc.strip())
+                        param_docs.append({"name": pname, "dir": direction, "desc": pdesc})
+
+            # Return value
+            for ss in para.findall("simplesect"):
+                if ss.get("kind") == "return":
+                    inner = ss.find("para")
+                    return_doc = _xml_text(inner) if inner is not None else _xml_text(ss)
+                elif ss.get("kind") in ("note", "attention"):
+                    inner = ss.find("para")
+                    note_text = _xml_text(inner) if inner is not None else _xml_text(ss)
+                    note = (note + " " + note_text).strip() if note else note_text
+                elif ss.get("kind") == "warning":
+                    inner = ss.find("para")
+                    dep_text = _xml_text(inner) if inner is not None else _xml_text(ss)
+                    deprecated = (deprecated + " " + dep_text).strip() if deprecated else dep_text
+
+    if kind == "define":
+        init_el = member.find("initializer")
+        value = (init_el.text or "").strip() if init_el is not None else ""
+        return {"kind": "define", "value": value, "brief": brief, "name": name}
+
+    elif kind == "typedef":
+        type_el = member.find("type")
+        args_el = member.find("argsstring")
+        underlying = _xml_text(type_el) if type_el is not None else ""
+        args = args_el.text or "" if args_el is not None else ""
+        # Function pointer typedef: argsstring contains the parameter list
+        if args.strip().startswith(")(") or args.strip().startswith("*)("):
+            return {
+                "kind": "typedef_fn",
+                "name": name,
+                "brief": brief,
+                "param_docs": param_docs,
+                "return_doc": return_doc,
+                "note": note,
+            }
+        # Simple typedef: underlying type  (strip backtick wrapping added by _xml_text)
+        underlying = underlying.replace("`", "").strip()
+        return {"kind": "typedef", "underlying": underlying, "brief": brief, "name": name}
+
+    elif kind == "function":
+        type_el = member.find("type")
+        ret = _xml_text(type_el) if type_el is not None else ""
+        ret = ret.replace("`", "").strip()
+        # Collect declaration params
+        decl_params = []
+        for param in member.findall("param"):
+            ptype_el = param.find("type")
+            pname_el = param.find("declname")
+            ptype = _xml_text(ptype_el) if ptype_el is not None else ""
+            ptype = ptype.replace("`", "").strip()
+            pname = pname_el.text or "" if pname_el is not None else ""
+            decl_params.append({"type": ptype, "name": pname})
+        return {
+            "kind": "function",
+            "name": name,
+            "ret": ret,
+            "decl_params": decl_params,
+            "brief": brief,
+            "param_docs": param_docs,
+            "return_doc": return_doc,
+            "note": note,
+            "deprecated": deprecated,
+        }
+
+    return None
 
 
 def parse_headers() -> dict:
     """
-    Parse both header files and return a dict keyed by symbol name:
+    Run Doxygen on the two C headers, parse the XML output, and return a dict
+    keyed by symbol name in the same format the old regex parser produced:
+
         {
-          "CUOPT_SUCCESS":          {"kind": "define", "value": "0", "brief": "..."},
-          "cuopt_float_t":          {"kind": "typedef", "underlying": "double", "brief": "..."},
-          "cuOptOptimizationProblem": {"kind": "typedef", "underlying": "void*", "brief": "..."},
-          "cuOptMIPGetSolutionCallback": {"kind": "typedef_fn", "brief": "...", "params": [...], "return": "..."},
-          "cuOptSolve":             {"kind": "function", "ret": "cuopt_int_t",
-                                     "params": [{"name":..., "type":...}],
-                                     "brief": "...", "param_docs": [...], "return_doc": "..."},
+          "CUOPT_SUCCESS":               {"kind": "define",    "value": "0",  "brief": "..."},
+          "cuopt_float_t":               {"kind": "typedef",   "underlying":  "double", "brief": "..."},
+          "cuOptOptimizationProblem":    {"kind": "typedef",   "underlying":  "void *", "brief": "..."},
+          "cuOptMIPGetSolutionCallback": {"kind": "typedef_fn","brief": "...", "params": [...], ...},
+          "cuOptSolve":                  {"kind": "function",  "ret": "cuopt_int_t", ...},
         }
     """
+    # Run doxygen to produce XML
+    doxyfile = _DOXYFILE
+    if not doxyfile.exists():
+        raise FileNotFoundError(f"Doxyfile not found: {doxyfile}")
+
+    result = subprocess.run(
+        ["doxygen", str(doxyfile)],
+        cwd=str(REPO_ROOT),
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"doxygen failed (exit {result.returncode}):\n{result.stderr}"
+        )
+
+    xml_dir = _XML_DIR
+    if not xml_dir.exists():
+        raise FileNotFoundError(f"Doxygen XML output dir not found: {xml_dir}")
+
     symbols: dict = {}
 
-    for hpath in [CONSTANTS, HEADER]:
-        text = hpath.read_text(encoding="utf-8")
-        _parse_file(text, symbols)
+    # Parse each per-file XML (constants_8h.xml and cuopt__c_8h.xml)
+    for xml_file in sorted(xml_dir.glob("*.xml")):
+        if xml_file.name in ("index.xml", "combine.xslt"):
+            continue
+        if not (xml_file.name.startswith("constants_") or
+                xml_file.name.startswith("cuopt__c_")):
+            continue
+        try:
+            tree = ET.parse(xml_file)
+        except ET.ParseError as e:
+            print(f"  [WARN] XML parse error in {xml_file.name}: {e}")
+            continue
+
+        root = tree.getroot()
+        for compound in root.findall(".//compounddef"):
+            for section in compound.findall("sectiondef"):
+                for member in section.findall("memberdef"):
+                    info = _parse_memberdef(member)
+                    if info is None:
+                        continue
+                    name = info.pop("name")
+                    # Skip internal guards
+                    if name.startswith("CUOPT_INSTANTIATE_") or name in (
+                        "CUOPT_C_API_H", "CUOPT_CONSTANTS_H"
+                    ):
+                        continue
+                    symbols[name] = info
+
+    # Doxygen skips typedefs inside #if preprocessor blocks (like cuopt_int_t
+    # and cuopt_float_t).  Supplement with a targeted regex pass on the header.
+    _supplement_if_guarded_typedefs(symbols)
 
     return symbols
 
 
-def _parse_file(text: str, symbols: dict):
-    """Mutate symbols dict by parsing text."""
-
-    # We scan token by token: look for a comment block immediately preceding
-    # a #define, typedef, or function declaration.
-
-    # Normalize line endings
+def _supplement_if_guarded_typedefs(symbols: dict):
+    """
+    Regex fallback for typedefs inside #if blocks that Doxygen skips.
+    Reads the header, finds active (enabled) #if branches, and adds any
+    missing typedef entries to `symbols`.
+    """
+    text = HEADER.read_text(encoding="utf-8")
     lines = text.splitlines()
-    i = 0
     n = len(lines)
 
+    # First pass: collect the instantiate macro values from constants.h
+    consts_text = CONSTANTS.read_text(encoding="utf-8")
+    macro_values: dict[str, int] = {}
+    for m in re.finditer(r'^#define\s+(CUOPT_INSTANTIATE_\w+)\s+(\d+)', consts_text, re.M):
+        macro_values[m.group(1)] = int(m.group(2))
+
+    # State machine: walk lines, track active #if CUOPT_INSTANTIATE_* blocks
+    in_active_block = False
+    pending_comment: list[str] = []
+    i = 0
     while i < n:
         line = lines[i]
 
-        # ----------------------------------------------------------------
-        # #define constants
-        # ----------------------------------------------------------------
-        m = re.match(r'^#define\s+(\w+)\s+(.*)', line)
-        if m:
-            name = m.group(1)
-            value = m.group(2).strip()
-            # Skip internal/instantiation guards
-            if name.startswith("CUOPT_INSTANTIATE_") or name in (
-                "CUOPT_C_API_H", "CUOPT_CONSTANTS_H"
-            ):
-                i += 1
-                continue
-            # Handle line continuation
-            while value.endswith("\\") and i + 1 < n:
-                i += 1
-                value = value.rstrip("\\").strip() + " " + lines[i].strip()
-            value = value.strip()
+        m_if = re.match(r'^#if\s+(CUOPT_INSTANTIATE_\w+)', line)
+        m_endif = re.match(r'^#endif', line)
 
-            # Look back for a per-symbol comment.
-            # Only use /** ... */ (double-star) comments for defines;
-            # single /* ... */ comments are group/section labels, not per-symbol docs.
-            comment = _lookback_comment(lines, i - 1 if i > 0 else 0)
-            brief = ""
-            if comment and comment.strip().startswith("/**"):
-                block = _parse_doxygen_block(comment)
-                brief = block["brief"]
-            # For string defines the value includes quotes
-            symbols[name] = {"kind": "define", "value": value, "brief": brief}
+        if m_if:
+            macro = m_if.group(1)
+            val = macro_values.get(macro, 0)
+            in_active_block = bool(val)
+            pending_comment = []
             i += 1
             continue
 
-        # ----------------------------------------------------------------
-        # typedef void* Name;  (simple opaque handle)
-        # ----------------------------------------------------------------
-        m = re.match(r'^typedef\s+(.*?)\s+(\w+)\s*;', line)
-        if m:
-            underlying = m.group(1).strip()
-            name = m.group(2)
-            comment = _lookback_comment(lines, i - 1)
-            brief = ""
-            if comment:
-                block = _parse_doxygen_block(comment)
-                brief = block["brief"]
-            symbols[name] = {"kind": "typedef", "underlying": underlying, "brief": brief}
+        if m_endif:
+            in_active_block = False
+            pending_comment = []
             i += 1
             continue
 
-        # typedef void (*Name)(...) — function pointer typedef (may span lines)
-        m = re.match(r'^typedef\s+\w[\w\s\*]*\s+\(\s*\*\s*(\w+)\s*\)', line)
-        if m:
-            name = m.group(1)
-            # Collect the whole declaration until ;
-            decl_lines = [line]
-            j = i
-            while ";" not in line and j + 1 < n:
-                j += 1
-                line = lines[j]
-                decl_lines.append(line)
-            decl = " ".join(decl_lines)
-            comment = _lookback_comment(lines, i - 1)
-            brief = ""
-            param_docs = []
-            ret_doc = ""
-            note = ""
-            if comment:
-                block = _parse_doxygen_block(comment)
-                brief = block["brief"]
-                param_docs = block["params"]
-                ret_doc = block["return"]
-                note = block["note"]
-            symbols[name] = {
-                "kind": "typedef_fn",
-                "brief": brief,
-                "param_docs": param_docs,
-                "return_doc": ret_doc,
-                "note": note,
-            }
-            i = j + 1
-            continue
-
-        # ----------------------------------------------------------------
-        # Function declarations (may span multiple lines, end with ;)
-        # ----------------------------------------------------------------
-        # Start: return_type cuOptFunctionName( ...
-        m = re.match(r'^([\w\s\*]+?)\s+(cuOpt\w+)\s*\(', line)
-        if m:
-            ret_type = m.group(1).strip()
-            func_name = m.group(2)
-            # Collect until closing );
-            decl_lines = [line]
-            j = i
-            while ");" not in lines[j] and j + 1 < n:
-                j += 1
-                decl_lines.append(lines[j])
-            full_decl = " ".join(l.strip() for l in decl_lines)
-
-            # Parse parameters from declaration
-            param_match = re.search(r'\((.*)\)', full_decl, re.DOTALL)
-            raw_params = param_match.group(1).strip() if param_match else ""
-            decl_params = _parse_decl_params(raw_params)
-
-            comment = _lookback_comment(lines, i - 1)
-            brief = ""
-            param_docs = []
-            ret_doc = ""
-            note = ""
-            deprecated = ""
-            if comment:
-                block = _parse_doxygen_block(comment)
-                brief = block["brief"]
-                param_docs = block["params"]
-                ret_doc = block["return"]
-                note = block["note"]
-                deprecated = block["deprecated"]
-
-            symbols[func_name] = {
-                "kind": "function",
-                "ret": ret_type,
-                "decl_params": decl_params,
-                "brief": brief,
-                "param_docs": param_docs,
-                "return_doc": ret_doc,
-                "note": note,
-                "deprecated": deprecated,
-            }
-            i = j + 1
-            continue
+        if in_active_block:
+            # Accumulate Doxygen comment
+            if line.strip().startswith("/**") or line.strip().startswith("*"):
+                pending_comment.append(line)
+            elif re.match(r'^typedef\s+(.*?)\s+(\w+)\s*;', line):
+                m_td = re.match(r'^typedef\s+(.*?)\s+(\w+)\s*;', line)
+                underlying = m_td.group(1).strip()
+                name = m_td.group(2)
+                if name not in symbols:
+                    # Extract brief from pending comment
+                    brief = ""
+                    if pending_comment:
+                        raw = "\n".join(pending_comment)
+                        # Strip comment markers
+                        cleaned = re.sub(r'/\*+', '', raw)
+                        cleaned = re.sub(r'\*/', '', cleaned)
+                        cleaned = re.sub(r'^\s*\*\s?', '', cleaned, flags=re.M)
+                        brief_m = re.search(r'@brief\s+(.*)', cleaned, re.S)
+                        if brief_m:
+                            brief = re.sub(r'\s+', ' ', brief_m.group(1)).strip()
+                        else:
+                            brief = re.sub(r'\s+', ' ', cleaned).strip()
+                    symbols[name] = {"kind": "typedef", "underlying": underlying, "brief": brief}
+                pending_comment = []
+            else:
+                if not line.strip():
+                    pass  # blank line — don't reset comment
+                elif not line.strip().startswith("//"):
+                    pending_comment = []
 
         i += 1
-
-
-def _lookback_comment(lines: list[str], start: int) -> str | None:
-    """
-    Search backwards from `start` for a /** or /* comment block.
-    Returns the raw comment string or None.
-    """
-    i = start
-    # Skip blank lines
-    while i >= 0 and lines[i].strip() == "":
-        i -= 1
-    if i < 0:
-        return None
-    # Check for end of block comment */
-    if lines[i].strip().endswith("*/"):
-        end = i
-        # Walk back to find /*
-        while i >= 0 and not re.search(r'/\*', lines[i]):
-            i -= 1
-        if i < 0:
-            return None
-        return "\n".join(lines[i:end + 1])
-    # Check for single-line /** @brief ... */
-    m = re.match(r'\s*/\*\*.*\*/', lines[i])
-    if m:
-        return lines[i].strip()
-    return None
-
-
-def _parse_decl_params(raw: str) -> list[dict]:
-    """
-    Parse 'type1 name1, const type2* name2, ...' into
-    [{"type": "type1", "name": "name1"}, ...]
-    """
-    if not raw or raw.strip() in ("void", ""):
-        return []
-    params = []
-    # Split by commas not inside <>
-    parts = re.split(r',\s*', raw)
-    for part in parts:
-        part = part.strip()
-        if not part:
-            continue
-        # Last word is the name (possibly with *)
-        tokens = part.rsplit(None, 1)
-        if len(tokens) == 2:
-            ptype = tokens[0].strip()
-            pname = tokens[1].lstrip("*").strip()
-            # absorb pointer into type
-            if "*" in tokens[1]:
-                ptype = ptype + "*"
-                pname = tokens[1].replace("*", "").strip()
-            params.append({"type": ptype, "name": pname})
-        else:
-            params.append({"type": part, "name": ""})
-    return params
 
 
 # ---------------------------------------------------------------------------
@@ -740,6 +682,10 @@ def generate_pages():
     OUT_MIP.parent.mkdir(parents=True, exist_ok=True)
     OUT_MIP.write_text(mdx_mip, encoding="utf-8")
     print(f"  Wrote {OUT_MIP.relative_to(REPO_ROOT)}")
+
+
+# Alias expected by generate_api_docs.py
+main = generate_pages
 
 
 if __name__ == "__main__":

@@ -12,9 +12,9 @@ For MIP problems, one or more primal solution hints (MIP starts) may be provided
 
 <hr />
 
-#### `cuOptAddMIPStart(cuOptSolverSettings settings, const cuopt_float_t* solution, cuopt_int_t num_variables) -> cuopt_int_t`
+#### `cuOptAddMIPStart(cuOptSolverSettings settings, const cuopt_float_t * solution, cuopt_int_t num_variables) -> cuopt_int_t`
 
-Add an initial solution (MIP start) for MIP solving.  This function can be called multiple times to add multiple MIP starts. The solver will use these as starting points for the MIP search.
+Add an initial solution (MIP start) for MIP solving.
 
 <Note>
 Currently unsupported with presolve on. All pointer arguments (solution) refer to host memory.
@@ -23,7 +23,7 @@ Currently unsupported with presolve on. All pointer arguments (solution) refer t
 **Parameters**
 
 - **`settings`** (`cuOptSolverSettings`) `[in]` — The solver settings object.
-- **`solution`** (`const cuopt_float_t*`) `[in]` — A pointer to an array of type cuopt_float_t of size num_variables containing the solution values.
+- **`solution`** (`const cuopt_float_t *`) `[in]` — A pointer to an array of type cuopt_float_t of size num_variables containing the solution values.
 - **`num_variables`** (`cuopt_int_t`) `[in]` — The number of variables (size of the solution array).
 
 **Returns** A status code indicating success or failure.
@@ -64,7 +64,7 @@ All pointer arguments (solution, objective_value, solution_bound, user_data) ref
 
 <hr />
 
-#### `cuOptSetMIPGetSolutionCallback(cuOptSolverSettings settings, cuOptMIPGetSolutionCallback callback, void* user_data) -> cuopt_int_t`
+#### `cuOptSetMIPGetSolutionCallback(cuOptSolverSettings settings, cuOptMIPGetSolutionCallback callback, void * user_data) -> cuopt_int_t`
 
 Register a callback to receive incumbent MIP solutions.
 
@@ -76,13 +76,13 @@ The callback arguments refer to host memory and are only valid during the callba
 
 - **`settings`** (`cuOptSolverSettings`) `[in]` — The solver settings object.
 - **`callback`** (`cuOptMIPGetSolutionCallback`) `[in]` — Callback function to receive incumbent solutions.
-- **`user_data`** (`void*`) `[in]` — User-defined pointer passed through to the callback. It will be forwarded to `cuOptMIPGetSolutionCallback` when invoked.
+- **`user_data`** (`void *`) `[in]` — User-defined pointer passed through to the callback. It will be forwarded to `cuOptMIPGetSolutionCallback` when invoked.
 
 **Returns** A status code indicating success or failure.
 
 <hr />
 
-#### `cuOptSetMIPSetSolutionCallback(cuOptSolverSettings settings, cuOptMIPSetSolutionCallback callback, void* user_data) -> cuopt_int_t`
+#### `cuOptSetMIPSetSolutionCallback(cuOptSolverSettings settings, cuOptMIPSetSolutionCallback callback, void * user_data) -> cuopt_int_t`
 
 Register a callback to inject MIP solutions.
 
@@ -94,7 +94,7 @@ Registering a set-solution callback disables presolve. The callback arguments re
 
 - **`settings`** (`cuOptSolverSettings`) `[in]` — The solver settings object.
 - **`callback`** (`cuOptMIPSetSolutionCallback`) `[in]` — Callback function to inject solutions.
-- **`user_data`** (`void*`) `[in]` — User-defined pointer passed through to the callback. It will be forwarded to `cuOptMIPSetSolutionCallback` when invoked.
+- **`user_data`** (`void *`) `[in]` — User-defined pointer passed through to the callback. It will be forwarded to `cuOptMIPSetSolutionCallback` when invoked.
 
 **Returns** A status code indicating success or failure.
 
