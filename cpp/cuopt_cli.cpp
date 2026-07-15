@@ -461,7 +461,6 @@ int main(int argc, char* argv[])
     if (settings.get_parameter<bool>(CUOPT_USE_DISTRIBUTED_PDLP)) {
       int requested_gpus = settings.get_parameter<int>(CUOPT_DISTRIBUTED_PDLP_NUM_GPUS);
       if (requested_gpus > device_count) {
-        auto log = dummy_logger(settings);
         CUOPT_LOG_ERROR(
           "distributed_pdlp_num_gpus=%d exceeds the number of visible CUDA devices (%d).",
           requested_gpus,
