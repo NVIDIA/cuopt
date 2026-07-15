@@ -26,6 +26,51 @@ For the latest version, ensure you are on the `main` branch.
 
 [cuOpt Documentation](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html)
 
+## Contributing to the Documentation
+
+Documentation sources live in `docs/cuopt/source/` (RST) and `fern/` (Fern platform config). A conversion pipeline (`fern/convert_docs.py`) generates MDX pages from the RST sources and publishes them via [Fern](https://buildwithfern.com).
+
+### Prerequisites
+
+| Tool | Install |
+|---|---|
+| Python 3.11+ | system / conda |
+| pandoc | `sudo apt-get install pandoc` or `brew install pandoc` |
+| Node.js + npm | `conda install nodejs` or [nodejs.org](https://nodejs.org/) |
+| jq | `sudo apt-get install jq` or `conda install jq` |
+| Python deps | `pip install -r fern/requirements-docs.txt` |
+
+The Fern CLI (`fern-api`) is installed automatically by `build.sh` at the version pinned in `fern/fern.config.json`.
+
+### Build and preview locally
+
+```bash
+./build.sh docs
+```
+
+This runs the RST → MDX conversion, validates with `fern check`, then starts a live preview server at **http://localhost:3000** (Ctrl+C to stop).
+
+### Publish to the live site
+
+Publishing is handled automatically by CI on every push to `docs-fern-migration`.
+To publish manually (requires `FERN_TOKEN`):
+
+```bash
+FERN_TOKEN=<your-token> ./build.sh docs --publish-docs
+```
+
+The live site is at **https://nvidia-cuopt.docs.buildwithfern.com**.
+
+### How CI works
+
+| Trigger | What happens |
+|---|---|
+| Any push / PR touching `docs/`, `fern/`, or `python/cuopt/` | RST → MDX conversion + `fern check` + URL link check |
+| Pull request | Fern preview URL published (temporary, doesn't affect live site) |
+| Push to `docs-fern-migration` | Publishes to the live site via `fern generate --docs` |
+
+CI workflow: [`.github/workflows/fern-docs.yml`](.github/workflows/fern-docs.yml)
+
 ## Supported APIs
 
 cuOpt supports the following APIs:
