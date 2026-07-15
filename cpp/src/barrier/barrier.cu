@@ -94,6 +94,39 @@ bool validate_barrier_cone_layout(const lp_problem_t<i_t, f_t>& problem,
   return true;
 }
 
+// Push entries into interior of nonnegative orthant and SOC.
+template <typename i_t, typename f_t>
+static void ensure_initial_point_interior(dense_vector_t<i_t, f_t>& values,
+                                          f_t epsilon_adjust,
+                                          const std::vector<i_t>& linear_mask,
+                                          i_t linear_end,
+                                          const std::vector<i_t>& cone_dims)
+{
+  f_t min_linear = inf;
+  for (i_t j = 0; j < linear_end; ++j) {
+    if (linear_mask[j]) { min_linear = std::min(min_linear, values[j]); }
+  }
+  if (min_linear <= epsilon_adjust) {
+    const f_t delta = -min_linear + epsilon_adjust;
+    for (i_t j = 0; j < linear_end; ++j) {
+      if (linear_mask[j]) { values[j] += delta; }
+    }
+  }
+
+  i_t off = 0;
+  for (i_t q_k : cone_dims) {
+    const i_t base = linear_end + off;
+    f_t tail_sq    = 0.0;
+    for (i_t j = 1; j < q_k; ++j) {
+      const f_t t = values[base + j];
+      tail_sq += t * t;
+    }
+    const f_t tail_norm = std::sqrt(tail_sq);
+    if (values[base] <= tail_norm + epsilon_adjust) { values[base] = tail_norm + epsilon_adjust; }
+    off += q_k;
+  }
+}
+
 template <typename f_t>
 [[maybe_unused]] static void pairwise_multiply(
   f_t* a, f_t* b, f_t* out, int size, rmm::cuda_stream_view stream)
@@ -239,7 +272,6 @@ class iteration_data_t {
       complementarity_residual_norm_save(inf),
       diag(lp.num_cols),
       inv_diag(lp.num_cols),
-      inv_sqrt_diag(lp.num_cols),
       AD(lp.num_cols, lp.num_rows, 0),
       AT(lp.num_rows, lp.num_cols, 0),
       ADAT(lp.num_rows, lp.num_rows, 0),
@@ -540,12 +572,9 @@ class iteration_data_t {
       }
 
       inv_diag.set_scalar(1.0);
-      if (use_augmented) { diag.multiply_scalar(-1.0); }
       if (n_upper_bounds > 0 || (has_Q && !use_augmented)) { diag.inverse(inv_diag); }
       // TMP diag and inv_diag should directly created and filled on the GPU
       raft::copy(d_inv_diag.data(), inv_diag.data(), inv_diag.size(), stream_view_);
-      inv_sqrt_diag.set_scalar(1.0);
-      if (n_upper_bounds > 0 || (has_Q && !use_augmented)) { inv_diag.sqrt(inv_sqrt_diag); }
     }
 
     if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
@@ -1912,7 +1941,6 @@ class iteration_data_t {
 
   dense_vector_t<i_t, f_t> diag;
   pinned_dense_vector_t<i_t, f_t> inv_diag;
-  dense_vector_t<i_t, f_t> inv_sqrt_diag;
 
   rmm::device_uvector<f_t> d_original_A_values;
 
@@ -2237,15 +2265,18 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   dense_vector_t<i_t, f_t> DinvFu(lp.num_cols);  // DinvFu = Dinv * Fu
   data.inv_diag.pairwise_product(Fu, DinvFu);
   dense_vector_t<i_t, f_t> q(lp.num_rows);
+  const i_t aug_base = lp.num_cols + lp.num_rows;
+  const i_t aug_size = use_augmented ? std::max<i_t>(aug_base, data.device_augmented.n) : aug_base;
   if (use_augmented) {
-    dense_vector_t<i_t, f_t> rhs(lp.num_cols + lp.num_rows);
+    dense_vector_t<i_t, f_t> rhs(aug_size);
+    rhs.set_scalar(0.0);
     for (i_t k = 0; k < lp.num_cols; k++) {
       rhs[k] = -Fu[k];
     }
     for (i_t k = 0; k < lp.num_rows; k++) {
       rhs[lp.num_cols + k] = rhs_x[k];
     }
-    dense_vector_t<i_t, f_t> soln(lp.num_cols + lp.num_rows);
+    dense_vector_t<i_t, f_t> soln(aug_size);
     i_t solve_status = data.chol->solve(rhs, soln);
     struct op_t {
       op_t(iteration_data_t<i_t, f_t>& data) : data_(data) {}
@@ -2263,7 +2294,11 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
       }
     } op(data);
 
-    if (settings.barrier_iterative_refinement) {
+    // Initial-point IR is LP/QP-only. Cone problems and direct-free linear vars are excluded.
+    if (settings.barrier_iterative_refinement && !data.has_cones() &&
+        data.n_direct_free_linear == 0) {
+      raft::copy(
+        data.d_diag_.data(), data.diag.data(), data.diag.size(), data.handle_ptr->get_stream());
       iterative_refinement<i_t, f_t, op_t>(op, rhs, soln);
     }
 
@@ -2317,27 +2352,19 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     }
   }
 
-  // Verify A*x = b
-  dense_vector_t<i_t, f_t> init_primal_residual(lp.num_rows);
-  init_primal_residual = lp.rhs;
-  data.cusparse_view_.spmv(1.0, data.x, -1.0, init_primal_residual);
-  data.handle_ptr->get_stream().synchronize();
-#ifdef PRINT_INFO
-  settings.log.printf("||b - A * x||: %.16e\n", vector_norm2<i_t, f_t>(init_primal_residual));
-#endif
-
-  if (data.n_upper_bounds > 0) {
-    dense_vector_t<i_t, f_t> init_bound_residual(data.n_upper_bounds);
-    for (i_t k = 0; k < data.n_upper_bounds; k++) {
-      i_t j                  = data.upper_bounds[k];
-      init_bound_residual[k] = lp.upper[j] - data.w[k] - data.x[j];
-    }
-#ifdef PRINT_INFO
-    settings.log.printf("|| u - w - x||: %e\n", vector_norm2<i_t, f_t>(init_bound_residual));
-#endif
-  }
-
   float64_t epsilon_adjust = 10.0;
+  // Push entries into interior of nonnegative orthant and SOC.
+  const bool has_soc   = data.has_cones();
+  const i_t linear_end = has_soc ? data.cone_start() : lp.num_cols;
+  auto ensure_interior = [&](dense_vector_t<i_t, f_t>& values,
+                             const std::vector<i_t>& linear_mask) {
+    if (has_soc) {
+      ensure_initial_point_interior(
+        values, epsilon_adjust, linear_mask, linear_end, lp.second_order_cone_dims);
+    } else {
+      values.ensure_positive(epsilon_adjust, linear_mask);
+    }
+  };
 
   if (settings.barrier_dual_initial_point == -1 || settings.barrier_dual_initial_point == 0) {
     // Use the dual starting point suggested by the paper
@@ -2388,12 +2415,12 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
       }
     }
   } else if (use_augmented) {
-    dense_vector_t<i_t, f_t> dual_rhs(lp.num_cols + lp.num_rows);
+    dense_vector_t<i_t, f_t> dual_rhs(aug_size);
     dual_rhs.set_scalar(0.0);
     for (i_t k = 0; k < lp.num_cols; k++) {
       dual_rhs[k] = data.c[k];
     }
-    dense_vector_t<i_t, f_t> py(lp.num_cols + lp.num_rows);
+    dense_vector_t<i_t, f_t> py(aug_size);
     data.chol->solve(dual_rhs, py);
     for (i_t k = 0; k < lp.num_cols; k++) {
       data.z[k] = py[k];
@@ -2407,7 +2434,6 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     data.v.multiply_scalar(-1.0);
 
     data.v.ensure_positive(epsilon_adjust);
-    data.z.ensure_positive(epsilon_adjust, nonnegative_z);
   } else {
     // First compute rhs = A*Dinv*c
     dense_vector_t<i_t, f_t> rhs(lp.num_rows);
@@ -2431,7 +2457,47 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     data.gather_upper_bounds(data.z, data.v);
     data.v.multiply_scalar(-1.0);
     data.v.ensure_positive(epsilon_adjust);
-    data.z.ensure_positive(epsilon_adjust, nonnegative_z);
+  }
+
+  // Make sure (w, x, v, z) > 0. Skip free variables being handled directly.
+  data.w.ensure_positive(epsilon_adjust);
+  std::vector<i_t> nonnegative_variables(data.x.size(), 1);
+  if (has_direct_free_linear) {
+    for (i_t j : presolve_info.direct_free_variables) {
+      nonnegative_variables[j] = 0;
+    }
+  }
+  ensure_interior(data.z, nonnegative_z);
+  ensure_interior(data.x, nonnegative_variables);
+  // Direct free variables: reduced cost z = 0 (no complementarity condition).
+  if (has_direct_free_linear) {
+    for (i_t j : presolve_info.direct_free_variables) {
+      data.z[j] = 0.0;
+    }
+  }
+#ifdef PRINT_INFO
+  settings.log.printf("min v %e min z %e\n", data.v.minimum(), data.z.minimum());
+#endif
+
+  // Residual checks below reflect the final initial point, after positivity shifts.
+  // Verify A*x = b
+  dense_vector_t<i_t, f_t> init_primal_residual(lp.num_rows);
+  init_primal_residual = lp.rhs;
+  data.cusparse_view_.spmv(1.0, data.x, -1.0, init_primal_residual);
+  data.handle_ptr->get_stream().synchronize();
+#ifdef PRINT_INFO
+  settings.log.printf("||b - A * x||: %.16e\n", vector_norm2<i_t, f_t>(init_primal_residual));
+#endif
+
+  if (data.n_upper_bounds > 0) {
+    dense_vector_t<i_t, f_t> init_bound_residual(data.n_upper_bounds);
+    for (i_t k = 0; k < data.n_upper_bounds; k++) {
+      i_t j                  = data.upper_bounds[k];
+      init_bound_residual[k] = lp.upper[j] - data.w[k] - data.x[j];
+    }
+#ifdef PRINT_INFO
+    settings.log.printf("|| u - w - x||: %e\n", vector_norm2<i_t, f_t>(init_bound_residual));
+#endif
   }
 
   // Verify A'*y + z - E*v  - Q*x = c
@@ -2448,24 +2514,6 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
 #ifdef PRINT_INFO
   settings.log.printf("||A^T y + z - E*v - Q*x - c ||: %e\n",
                       vector_norm2<i_t, f_t>(init_dual_residual));
-#endif
-  // Make sure (w, x, v, z) > 0. Skip free variables being handled directly.
-  data.w.ensure_positive(epsilon_adjust);
-  std::vector<i_t> nonnegative_variables(data.x.size(), 1);
-  if (has_direct_free_linear) {
-    for (i_t j : presolve_info.direct_free_variables) {
-      nonnegative_variables[j] = 0;
-    }
-  }
-  data.x.ensure_positive(epsilon_adjust, nonnegative_variables);
-  // Direct free variables: reduced cost z = 0 (no complementarity condition).
-  if (has_direct_free_linear) {
-    for (i_t j : presolve_info.direct_free_variables) {
-      data.z[j] = 0.0;
-    }
-  }
-#ifdef PRINT_INFO
-  settings.log.printf("min v %e min z %e\n", data.v.minimum(), data.z.minimum());
 #endif
 
   return 0;
