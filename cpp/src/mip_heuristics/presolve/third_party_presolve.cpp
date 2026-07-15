@@ -673,6 +673,9 @@ void build_user_problem(papilo::Problem<f_t> const& papilo_problem,
   auto const& lhs       = constraint_matrix.getLeftHandSides();
   auto const& rhs_v     = constraint_matrix.getRightHandSides();
   auto const& row_flags = constraint_matrix.getRowFlags();
+
+  problem.row_sense.clear();
+  problem.rhs.clear();
   problem.row_sense.reserve(reduced_rows);
   problem.rhs.reserve(reduced_rows);
   problem.range_rows.clear();
@@ -699,10 +702,12 @@ void build_user_problem(papilo::Problem<f_t> const& papilo_problem,
       problem.rhs.push_back(lhs[r]);
       problem.range_rows.push_back(r);
       problem.range_value.push_back(rhs_v[r] - lhs[r]);
-    }  // Free rows are removed
+    } else {
+      assert(false && "Papilo should remove all the free rows");
+    }
   }
 
-  problem.num_range_rows = static_cast<i_t>(problem.range_rows.size());
+  problem.num_range_rows = problem.range_rows.size();
 
   // Constraint matrix: read papilo's column-major (CSC) transpose straight into A, packing out
   // the spare gaps SparseStorage leaves between columns.

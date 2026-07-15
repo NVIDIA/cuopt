@@ -2213,9 +2213,12 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
     exploration_stats_.total_simplex_iters.load(),
     submip_settings.relative_mip_gap_tol);
 
+  // The `worker->leaf_problem` is directly converted to an `user_problem_t`, meaning that
+  // there is only equality rows (the range row vector is empty) and it contains
+  // structural + slacks + cuts constraints/variables.
   user_problem_t<i_t, f_t> submip_problem(original_problem_.handle_ptr);
   simplex::convert_simplex_to_user_problem(
-    worker->leaf_problem, var_types_, settings_, new_slacks_, submip_problem);
+    worker->leaf_problem, var_types_, settings_, submip_problem);
 
   third_party_presolve_t<i_t, f_t> presolver;
   f_t presolve_time_limit = std::min(0.1 * submip_settings.time_limit, 60.0);
@@ -2233,7 +2236,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
 
   // Also handle optimal
   if (submip_problem.num_rows == 0 || submip_problem.num_cols == 0) {
-    submip_settings.log.print_format(
+    submip_settings.log.debug_format(
       "Sub-MIP presolved to a trivial {} x {} problem; solving by bound pushing",
       submip_problem.num_rows,
       submip_problem.num_cols);
@@ -2252,8 +2255,16 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
       }
     }
 
-    std::vector<f_t> full_sol(original_problem_.num_cols);
-    presolver.uncrush_primal_solution(reduced_sol, full_sol);
+    // We need to do this dance of uncrush methods since we are working on the presolved space on
+    // the augmented space (structural + slack + cuts), while the `set_solution_from_heuristics`
+    // expects a solution on the user space. So we go from presolved space -> augmented space ->
+    // user space.
+    std::vector<f_t> leaf_sol;
+    presolver.uncrush_primal_solution(reduced_sol, leaf_sol);
+    std::vector<f_t> full_sol;
+    mutex_original_lp_.lock();
+    uncrush_primal_solution(original_problem_, original_lp_, leaf_sol, full_sol);
+    mutex_original_lp_.unlock();
     bool success = set_solution_from_heuristics(full_sol, SUBMIP);
     if (success) submip_stats_.save_success(fixrate);
     return;
@@ -2264,8 +2275,16 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   submip_settings.set_simplex_solution_callback   = nullptr;
   submip_settings.solution_callback = [this, fixrate, &presolver](std::vector<f_t>& solution,
                                                                   f_t obj) {
-    std::vector<f_t> full_sol(original_problem_.num_cols);
-    presolver.uncrush_primal_solution(solution, full_sol);
+    // We need to do this dance of uncrush methods since we are working on the presolved space on
+    // the augmented space (structural + slack + cuts), while the `set_solution_from_heuristics`
+    // expects a solution on the user space. So we go from presolved space -> augmented space ->
+    // user space.
+    std::vector<f_t> leaf_sol;
+    presolver.uncrush_primal_solution(solution, leaf_sol);
+    std::vector<f_t> full_sol;
+    mutex_original_lp_.lock();
+    uncrush_primal_solution(original_problem_, original_lp_, leaf_sol, full_sol);
+    mutex_original_lp_.unlock();
     settings_.log.debug_format("SubMIP found a feasible solution with obj={:.4g}", obj);
     bool success = set_solution_from_heuristics(full_sol, SUBMIP);
     if (success) submip_stats_.save_success(fixrate);
@@ -2280,18 +2299,11 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   branch_and_bound_t submip_bnb(submip_problem, submip_settings, tic(), empty_probing);
   mip_solution_t<i_t, f_t> submip_solution(submip_problem.num_cols);
 
-  // Map the current incumbent to the user space, removing the variables related to the slacks/cuts
-  // added.
-  std::vector<f_t> uncrushed_incumbent;
-  mutex_original_lp_.lock();
-  uncrush_primal_solution(original_problem_, original_lp_, current_incumbent, uncrushed_incumbent);
-  mutex_original_lp_.unlock();
-
   // Crush the incumbent to presolve space. It may not be valid for the sub-MIP since we
   // may fix integer variables that does not match the current incumbent to reach the target
   // fix rate.
   std::vector<f_t> presolved_incumbent;
-  presolver.crush_primal_solution(uncrushed_incumbent, presolved_incumbent);
+  presolver.crush_primal_solution(current_incumbent, presolved_incumbent);
   submip_bnb.set_initial_guess(presolved_incumbent);
   submip_bnb.set_initial_upper_bound(upper_bound_.load());
 
@@ -2356,8 +2368,16 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   }
 
   if (submip_solution.has_incumbent) {
-    std::vector<f_t> full_sol(original_problem_.num_cols);
-    presolver.uncrush_primal_solution(submip_solution.x, full_sol);
+    // We need to do this dance of uncrush methods since we are working on the presolved space on
+    // the augmented space (structural + slack + cuts), while the `set_solution_from_heuristics`
+    // expects a solution on the user space. So we go from presolved space -> augmented space ->
+    // user space.
+    std::vector<f_t> leaf_sol;
+    presolver.uncrush_primal_solution(submip_solution.x, leaf_sol);
+    std::vector<f_t> full_sol;
+    mutex_original_lp_.lock();
+    uncrush_primal_solution(original_problem_, original_lp_, leaf_sol, full_sol);
+    mutex_original_lp_.unlock();
     bool success = set_solution_from_heuristics(full_sol, SUBMIP);
     if (success) submip_stats_.save_success(fixrate);
   }
@@ -3535,6 +3555,18 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     settings_.benchmark_info_ptr->cut_generation_time_sec = cut_generation_time;
   }
   if (cut_info.has_cuts()) {
+    // If the incumbent is set before or during the cut passes, it may not have the correct
+    // dimensions as cuts add additional constraints/variables to `original_lp_`.
+    mutex_upper_.lock();
+    if (incumbent_.has_incumbent && incumbent_.x.size() != original_lp_.num_cols) {
+      std::vector<f_t> uncrushed_incumbent;
+      uncrush_primal_solution(original_problem_, original_lp_, incumbent_.x, uncrushed_incumbent);
+      crush_primal_solution(
+        original_problem_, original_lp_, uncrushed_incumbent, new_slacks_, incumbent_.x);
+    }
+
+    mutex_upper_.unlock();
+
     settings_.log.printf("Cut generation time: %.2f seconds\n", cut_generation_time);
     settings_.log.printf("Cut pool size  : %d\n", cut_pool_size);
     settings_.log.printf("Size with cuts : %d constraints, %d variables, %d nonzeros\n",

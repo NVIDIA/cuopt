@@ -676,20 +676,10 @@ i_t add_artifical_variables(lp_problem_t<i_t, f_t>& problem,
   return 0;
 }
 
-// Inverse of convert_user_problem (LP/MIP only -- no quadratic or SOC handling):
-// take a problem in simplex standard form
-//   minimize   c^T x
-//   subject to A x = b
-//              l <= x <= u
-// and express it as a user_problem in range (row-bounded) form
-//   minimize   c^T x
-//   subject to l_row <= A x <= u_row
-//              l <= x <= u
 template <typename i_t, typename f_t>
 void convert_simplex_to_user_problem(const lp_problem_t<i_t, f_t>& simplex_problem,
                                      const std::vector<variable_type_t>& var_types,
                                      const simplex_solver_settings_t<i_t, f_t>& settings,
-                                     const std::vector<i_t>& new_slacks,
                                      user_problem_t<i_t, f_t>& user_problem)
 {
   constexpr bool verbose = false;
@@ -700,108 +690,34 @@ void convert_simplex_to_user_problem(const lp_problem_t<i_t, f_t>& simplex_probl
                         simplex_problem.A.col_start[simplex_problem.num_cols]);
   }
 
-  const i_t m                             = simplex_problem.num_rows;
-  const i_t n                             = simplex_problem.num_cols;
-  const csc_matrix_t<i_t, f_t>& simplex_A = simplex_problem.A;
-  assert((var_types.empty() || var_types.size() == n) &&
-         "var_types must span the full simplex problem (structural + slack columns)");
+  const i_t m = simplex_problem.num_rows;
+  const i_t n = simplex_problem.num_cols;
 
-  const i_t num_slacks = new_slacks.size();
-  const i_t new_n      = n - num_slacks;
-  const i_t new_nnz    = simplex_A.col_start[n] - num_slacks;
+  user_problem.handle_ptr = simplex_problem.handle_ptr;
+  user_problem.num_cols   = n;
+  user_problem.num_rows   = m;
+  user_problem.objective  = simplex_problem.objective;
 
-  // Reset the destination so we can populate user_problem in place.
-  user_problem.num_rows = m;
-  user_problem.num_cols = new_n;
+  user_problem.A = simplex_problem.A;
+
+  user_problem.rhs   = simplex_problem.rhs;
+  user_problem.lower = simplex_problem.lower;
+  user_problem.upper = simplex_problem.upper;
+  user_problem.row_sense.assign(m, 'E');
   user_problem.range_rows.clear();
   user_problem.range_value.clear();
-  user_problem.objective.clear();
-  user_problem.lower.clear();
-  user_problem.upper.clear();
-  user_problem.var_types.clear();
-  user_problem.objective.reserve(new_n);
-  user_problem.lower.reserve(new_n);
-  user_problem.upper.reserve(new_n);
-  if (!var_types.empty()) { user_problem.var_types.reserve(new_n); }
+  user_problem.num_range_rows = 0;
 
-  // Rows with no associated slack stay equalities at their rhs; the slack loop
-  // below overrides the rows that had one.
-  user_problem.row_sense.assign(m, 'E');
-  user_problem.rhs = simplex_problem.rhs;
-
-  // Recover each row's constraint from its slack. The forward equality
-  // a_i^T x_struct + c * s = b_i (with l_s <= s <= u_s) gives
-  // a_i^T x_struct in [min(b - c l_s, b - c u_s), max(b - c l_s, b - c u_s)],
-  // which maps back to row_sense / rhs / range. Flag the slack columns so they
-  // can be dropped from the matrix below.
-  std::vector<bool> is_slack(n, false);
-  for (i_t s : new_slacks) {
-    assert(s >= 0 && s < n && "slack index out of range");
-    is_slack[s] = true;
-
-    const i_t col_start = simplex_A.col_start[s];
-    const i_t col_end   = simplex_A.col_start[s + 1];
-    assert(col_end - col_start == 1 && "slack/artificial column must have a single nonzero");
-    const i_t row = simplex_A.i[col_start];
-    const f_t c   = simplex_A.x[col_start];
-    const f_t b   = simplex_problem.rhs[row];
-    const f_t t1  = b - c * simplex_problem.lower[s];
-    const f_t t2  = b - c * simplex_problem.upper[s];
-    const f_t lo  = std::min(t1, t2);
-    const f_t hi  = std::max(t1, t2);
-    if (lo == hi) {
-      user_problem.row_sense[row] = 'E';
-      user_problem.rhs[row]       = lo;
-    } else if (lo == -inf) {
-      user_problem.row_sense[row] = 'L';
-      user_problem.rhs[row]       = hi;
-    } else if (hi == inf) {
-      user_problem.row_sense[row] = 'G';
-      user_problem.rhs[row]       = lo;
-    } else {
-      user_problem.row_sense[row] = 'E';
-      user_problem.rhs[row]       = lo;
-      user_problem.range_rows.push_back(row);
-      user_problem.range_value.push_back(hi - lo);
-    }
-  }
-  user_problem.num_range_rows = user_problem.range_rows.size();
-
-  // Rebuild the constraint matrix and column data in place, dropping the
-  // slack/artificial columns (each contributes exactly one nonzero). var_types
-  // is filtered to the kept (structural) columns in the same pass.
-  csc_matrix_t<i_t, f_t>& user_A = user_problem.A;
-  user_A.m                       = m;
-  user_A.n                       = new_n;
-  user_A.nz_max                  = new_nnz;
-  user_A.col_start.assign(new_n + 1, 0);
-  user_A.i.assign(new_nnz, 0);
-  user_A.x.assign(new_nnz, 0);
-
-  i_t nz    = 0;
-  i_t new_j = 0;
-  for (i_t j = 0; j < n; ++j) {
-    if (is_slack[j]) { continue; }
-    user_A.col_start[new_j] = nz;
-    for (i_t p = simplex_A.col_start[j]; p < simplex_A.col_start[j + 1]; ++p) {
-      user_A.i[nz] = simplex_A.i[p];
-      user_A.x[nz] = simplex_A.x[p];
-      ++nz;
-    }
-    user_problem.objective.push_back(simplex_problem.objective[j]);
-    user_problem.lower.push_back(simplex_problem.lower[j]);
-    user_problem.upper.push_back(simplex_problem.upper[j]);
-    if (!var_types.empty()) { user_problem.var_types.push_back(var_types[j]); }
-    ++new_j;
-  }
-  user_A.col_start[new_n] = nz;
-  assert(new_j == new_n);
-  assert(nz == new_nnz);
+  user_problem.var_types = var_types;
 
   user_problem.obj_scale             = simplex_problem.obj_scale;
   user_problem.obj_constant          = simplex_problem.obj_constant;
   user_problem.objective_is_integral = simplex_problem.objective_is_integral;
   user_problem.objective_step        = simplex_problem.objective_step;
+
+  user_problem.Q_indices.clear();
+  user_problem.Q_offsets.clear();
+  user_problem.Q_values.clear();
 }
 
 template <typename i_t, typename f_t>
@@ -2024,7 +1940,6 @@ template void convert_simplex_to_user_problem<int, double>(
   const lp_problem_t<int, double>& simplex_problem,
   const std::vector<variable_type_t>& var_types,
   const simplex_solver_settings_t<int, double>& settings,
-  const std::vector<int>& new_slacks,
   user_problem_t<int, double>& user_problem);
 
 template void convert_user_lp_with_guess<int, double>(
