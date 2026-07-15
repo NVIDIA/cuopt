@@ -28,17 +28,14 @@ For the latest version, ensure you are on the `main` branch.
 
 ## Contributing to the Documentation
 
-Documentation sources live in `docs/cuopt/source/` (RST) and `fern/` (Fern platform config). A conversion pipeline (`fern/convert_docs.py`) generates MDX pages from the RST sources and publishes them via [Fern](https://buildwithfern.com).
+Documentation sources live in `fern/` — MDX pages edited directly and published via [Fern](https://buildwithfern.com).
 
 ### Prerequisites
 
 | Tool | Install |
 |---|---|
-| Python 3.11+ | system / conda |
-| pandoc | `sudo apt-get install pandoc` or `brew install pandoc` |
 | Node.js + npm | `conda install nodejs` or [nodejs.org](https://nodejs.org/) |
 | jq | `sudo apt-get install jq` or `conda install jq` |
-| Python deps | `pip install -r fern/requirements-docs.txt` |
 
 The Fern CLI (`fern-api`) is installed automatically by `build.sh` at the version pinned in `fern/fern.config.json`.
 

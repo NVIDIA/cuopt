@@ -439,12 +439,6 @@ fi
 if hasArg docs; then
     cd "${REPODIR}"
 
-    # Check for required tools
-    if ! command -v pandoc &>/dev/null; then
-        echo "ERROR: pandoc is required to build the docs."
-        echo "       Install: sudo apt-get install pandoc  (or brew install pandoc on macOS)"
-        exit 1
-    fi
     if ! command -v node &>/dev/null || ! command -v npm &>/dev/null; then
         echo "ERROR: Node.js (with npm) is required for the Fern CLI."
         echo "       Install from: https://nodejs.org/  (or: conda install nodejs)"
@@ -463,20 +457,10 @@ if hasArg docs; then
         npm install -g "fern-api@${FERN_VERSION}"
     fi
 
-    # Install Python dependencies needed by convert_docs.py
-    pip install --quiet -r "${REPODIR}/fern/requirements-docs.txt"
-    pip install --quiet -e "${REPODIR}/python/cuopt_server" --no-deps
-
-    # Generate MDX pages, OpenAPI spec, and Python/C API reference
-    echo "Generating Fern docs..."
-    python "${REPODIR}/fern/convert_docs.py"
-
-    # Validate (fern check must run from the repo root so it finds fern/fern.config.json)
     echo "Running fern check..."
     fern check
 
     if hasArg --publish-docs; then
-        # Publish to Fern cloud hosting — requires FERN_TOKEN env var
         if [[ -z "${FERN_TOKEN}" ]]; then
             echo "ERROR: FERN_TOKEN environment variable is not set."
             echo "       Set it to your Fern token before running with --publish-docs."
@@ -486,7 +470,6 @@ if hasArg docs; then
         fern generate --docs
         echo "Docs published to https://nvidia-cuopt.docs.buildwithfern.com"
     else
-        # Start local preview server (Ctrl+C to stop)
         echo ""
         echo "Starting local preview at http://localhost:3000 (Ctrl+C to stop)..."
         fern docs dev

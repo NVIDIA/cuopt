@@ -788,10 +788,6 @@ dependencies:
         packages:
           - jq
           - nodejs        # provides npm; used to install fern-api CLI
-          - pandoc
-          - *pyyaml
-          - fastapi
-          - pydantic
 
   notebooks:
     common:

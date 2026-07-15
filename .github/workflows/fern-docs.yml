@@ -5,59 +5,27 @@ on:
     branches:
       - docs-fern-migration
     paths:
-      - "docs/cuopt/source/**"
-      - "cpp/**/*.h"
-      - "cpp/**/*.hpp"
-      - "python/cuopt/cuopt/**"
-      - "python/cuopt_server/**"
       - "fern/**"
       - ".github/workflows/fern-docs.yml"
   pull_request:
     paths:
-      - "docs/cuopt/source/**"
-      - "cpp/**/*.h"
-      - "cpp/**/*.hpp"
-      - "python/cuopt/cuopt/**"
-      - "python/cuopt_server/**"
       - "fern/**"
   workflow_dispatch:
-  # Stage 2: triggered after a PR build of this same workflow completes.
+  # Stage 2: triggered after a PR build completes.
   # Runs in base-branch context so FERN_TOKEN secret is accessible.
   workflow_run:
     workflows: ["Fern Docs"]
     types: [completed]
 
 jobs:
-  # ──────────────────────────────────────────────────────────────────────────
-  # Stage 1 (runs without secrets): convert RST→MDX, validate, upload artifact.
-  # Safe for fork PRs — no secrets are accessed here.
-  # ──────────────────────────────────────────────────────────────────────────
-  convert-and-check:
-    name: Convert RST → MDX and fern check
+  check:
+    name: fern check + broken-links
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install pandoc
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y pandoc
-
-      - name: Install Python dependencies
-        run: |
-          pip install -r fern/requirements-docs.txt
-          pip install -e python/cuopt_server --no-deps
-
       - name: Install Fern CLI
         run: npm install -g fern-api@$(jq -r .version fern/fern.config.json)
-
-      - name: Generate MDX, OpenAPI spec, and API reference pages
-        run: python fern/convert_docs.py
 
       - name: fern check
         run: fern check
@@ -70,90 +38,34 @@ jobs:
         env:
           FERN_TOKEN: ${{ secrets.FERN_TOKEN }}
 
-      # Upload fern/ directory + PR metadata as artifact.
-      # Stage 2 (preview-comment) downloads this artifact and uses FERN_TOKEN
-      # from secrets to publish the preview — secrets are never exposed to fork PRs.
       - name: Save PR metadata
         if: github.event_name == 'pull_request'
-        run: echo "${{ github.event.pull_request.number }}" > fern/pr-number.txt
+        run: |
+          mkdir -p /tmp/pr-meta
+          echo "${{ github.event.pull_request.number }}" > /tmp/pr-meta/pr-number.txt
 
-      - name: Upload generated docs as artifact
+      - name: Upload fern dir + PR metadata
+        if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: fern-docs-${{ github.run_id }}
           path: |
-            fern/docs.yml
-            fern/docs-v*.yml
-            fern/docs/pages/
-            fern/openapi/
-            fern/fern.config.json
-            fern/pr-number.txt
-          retention-days: 14
-
-  # ──────────────────────────────────────────────────────────────────────────
-  # Check external URLs with lychee (non-blocking).
-  # ──────────────────────────────────────────────────────────────────────────
-  link-check:
-    name: Check external URLs
-    runs-on: ubuntu-latest
-    needs: convert-and-check
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install pandoc
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y pandoc
-
-      - name: Install Python dependencies
-        run: |
-          pip install -r fern/requirements-docs.txt
-          pip install -e python/cuopt_server --no-deps
-
-      - name: Generate MDX pages
-        run: python fern/convert_docs.py
-
-      - name: Check URLs with lychee
-        uses: lycheeverse/lychee-action@v2
-        with:
-          args: >-
-            --exclude-path fern/docs/pages/versions
-            --exclude-file fern/.lycheeignore
-            --timeout 20
-            --max-retries 3
-            --accept 429
-            'fern/docs/pages/**/*.mdx'
-          fail: true
-          output: lychee-report.md
-
-      - name: Upload link-check report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: lychee-link-report-${{ github.run_id }}
-          path: lychee-report.md
+            fern/
+            /tmp/pr-meta/
           retention-days: 14
 
   # ──────────────────────────────────────────────────────────────────────────
   # Stage 2 (PR preview): runs with secrets in base-branch context.
-  # Triggered by workflow_run so fork PRs cannot access the FERN_TOKEN secret.
+  # Fork PRs cannot access FERN_TOKEN in pull_request context; workflow_run
+  # always executes on the base branch where secrets are available.
   # ──────────────────────────────────────────────────────────────────────────
   preview-comment:
     name: Publish PR preview
     runs-on: ubuntu-latest
-    # Only runs when triggered by a PR build of convert-and-check.
-    # workflow_run always executes in the context of the base branch (trusted).
     if: >
       github.event_name == 'workflow_run' &&
       github.event.workflow_run.event == 'pull_request' &&
-      github.event.workflow_run.conclusion == 'success' &&
-      secrets.FERN_TOKEN != ''
+      github.event.workflow_run.conclusion == 'success'
     permissions:
       pull-requests: write
     steps:
@@ -161,14 +73,14 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: fern-docs-${{ github.event.workflow_run.id }}
-          path: fern/
+          path: .
 
       - name: Install Fern CLI
         run: npm install -g fern-api@$(jq -r .version fern/fern.config.json)
 
       - name: Read PR number
         id: pr
-        run: echo "number=$(cat fern/pr-number.txt)" >> "$GITHUB_OUTPUT"
+        run: echo "number=$(cat pr-meta/pr-number.txt)" >> "$GITHUB_OUTPUT"
 
       - name: Publish preview to Fern cloud
         id: preview
@@ -204,38 +116,16 @@ jobs:
               });
             }
 
-  # ──────────────────────────────────────────────────────────────────────────
-  # Publish to the live site on push to docs-fern-migration.
-  # Requires FERN_TOKEN secret.
-  # ──────────────────────────────────────────────────────────────────────────
   publish:
     name: Publish to Fern
     runs-on: ubuntu-latest
-    needs: convert-and-check
+    needs: check
     if: github.event_name == 'push' && github.ref == 'refs/heads/docs-fern-migration'
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install pandoc
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y pandoc
-
-      - name: Install Python dependencies
-        run: |
-          pip install -r fern/requirements-docs.txt
-          pip install -e python/cuopt_server --no-deps
-
       - name: Install Fern CLI
         run: npm install -g fern-api@$(jq -r .version fern/fern.config.json)
-
-      - name: Generate MDX, OpenAPI spec, and API reference pages
-        run: python fern/convert_docs.py
 
       - name: Publish docs to Fern cloud
         run: fern generate --docs
