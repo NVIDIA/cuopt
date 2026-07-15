@@ -2343,7 +2343,12 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
   cuopt_expects(settings.use_distributed_pdlp,
                 error_type_t::ValidationError,
                 "solve_lp_distributed_from_mps: settings.use_distributed_pdlp must be true");
-
+  const auto& var_type_chars = mps_data_model.get_variable_types();
+  cuopt_expects(
+    std::none_of(
+      var_type_chars.begin(), var_type_chars.end(), [](char t) { return t == 'I' || t == 'B'; }),
+    error_type_t::ValidationError,
+    "Distributed PDLP does not support mixed integer problems.");
   pdlp_solver_settings_t<i_t, f_t> settings_resolved = settings;
   cuopt_expects(settings_resolved.method == method_t::PDLP,
                 error_type_t::ValidationError,

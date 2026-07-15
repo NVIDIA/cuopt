@@ -143,23 +143,16 @@ int run_single_file(const std::string& file_path,
   // We need to debranch before the problem_interface is created and tries to materialize the
   // problem in device memory.
   if (settings.get_pdlp_settings().use_distributed_pdlp) {
-    cuopt::cuopt_expects(
-      handle_ptr != nullptr,
-      cuopt::error_type_t::ValidationError,
-      "Distributed PDLP requires the GPU memory backend; no GPU handle is available for the "
-      "selected memory backend.");
-    cuopt::cuopt_expects(!solve_relaxation,
-                         cuopt::error_type_t::ValidationError,
-                         "Solving the LP relaxation is not allowed for distributed PDLP.");
-    cuopt::cuopt_expects(initial_solution_file.empty(),
-                         cuopt::error_type_t::ValidationError,
-                         "Initial solution file is not allowed for distributed PDLP.");
-    const auto& var_type_chars = mps_data_model.get_variable_types();
-    cuopt::cuopt_expects(
-      std::none_of(
-        var_type_chars.begin(), var_type_chars.end(), [](char t) { return t == 'I' || t == 'B'; }),
-      cuopt::error_type_t::ValidationError,
-      "Distributed PDLP does not support mixed integer problems.");
+    if (handle_ptr == nullptr) {
+      CUOPT_LOG_ERROR(
+        "Distributed PDLP requires the GPU memory backend; no GPU handle is available for the "
+        "selected memory backend.");
+      return -1;
+    }
+    if (!initial_solution_file.empty()) {
+      CUOPT_LOG_ERROR("Initial solution file is not supported for distributed PDLP.");
+      return -1;
+    }
     auto solution = cuopt::mathematical_optimization::solve_lp(
       handle_ptr.get(), mps_data_model, settings.get_pdlp_settings());
     return 0;
