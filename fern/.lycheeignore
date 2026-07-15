@@ -1,0 +1,22 @@
+# URLs excluded from lychee link checking
+
+# Local dev server references in docs prose
+http://localhost
+https://localhost
+
+# YouTube frequently returns 429 in CI
+https://www.youtube.com
+https://youtu.be
+
+# LinkedIn blocks automated requests
+https://www.linkedin.com
+
+# Requires auth / rate-limits CI aggressively
+https://catalog.ngc.nvidia.com
+https://ngc.nvidia.com
+
+# Azure Maps sample — returns 401 without key
+https://samples.azuremaps.com
+
+# Raw GitHub content (sometimes 429 in CI bursts)
+https://raw.githubusercontent.com

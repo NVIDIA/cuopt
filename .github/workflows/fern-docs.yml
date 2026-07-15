@@ -81,6 +81,61 @@ jobs:
         env:
           FERN_TOKEN: ${{ secrets.FERN_TOKEN }}
 
+  link-check:
+    name: Check URLs in generated MDX
+    runs-on: ubuntu-latest
+    needs: convert-and-check
+    # Non-blocking: broken external links shouldn't prevent publishing.
+    # Check the job summary for any failures.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install pandoc
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y pandoc
+
+      - name: Install Python dependencies
+        run: |
+          pip install -r fern/requirements-docs.txt
+          pip install -e python/cuopt_server --no-deps
+
+      - name: Install Fern CLI
+        run: npm install -g fern-api@$(jq -r .version fern/fern.config.json)
+
+      - name: Generate MDX pages
+        run: python fern/convert_docs.py
+
+      - name: Check URLs with lychee
+        uses: lycheeverse/lychee-action@v2
+        with:
+          # --exclude-path: skip version redirect pages (they contain no real links)
+          # --exclude-file: patterns to ignore (rate-limited hosts, auth-required, etc.)
+          # --accept 429: treat rate-limit responses as passing (not a dead link)
+          args: >-
+            --exclude-path fern/docs/pages/versions
+            --exclude-file fern/.lycheeignore
+            --timeout 20
+            --max-retries 3
+            --accept 429
+            'fern/docs/pages/**/*.mdx'
+          fail: true
+          output: lychee-report.md
+
+      - name: Upload link-check report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lychee-link-report-${{ github.run_id }}
+          path: lychee-report.md
+          retention-days: 14
+
   publish:
     name: Publish to Fern
     runs-on: ubuntu-latest
