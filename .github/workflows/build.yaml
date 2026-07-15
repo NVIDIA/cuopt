@@ -221,13 +221,11 @@ jobs:
     uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
-      node_type: "gpu-l4-latest-1"
+      node_type: "cpu-amd64-latest-4"
       sha: ${{ inputs.sha }}
       branch: ${{ inputs.branch }}
       date: ${{ inputs.date }}
       arch: "amd64"
-      file_to_upload: "docs/cuopt/build/html/"
-      artifact-name: "cuopt_docs"
       container_image: "rapidsai/ci-conda:26.08-latest"
       script: "ci/build_docs.sh"
   wheel-build-cuopt-sh-client:
