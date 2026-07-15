@@ -673,8 +673,8 @@ void build_user_problem(papilo::Problem<f_t> const& papilo_problem,
   auto const& lhs       = constraint_matrix.getLeftHandSides();
   auto const& rhs_v     = constraint_matrix.getRightHandSides();
   auto const& row_flags = constraint_matrix.getRowFlags();
-  problem.row_sense.assign(reduced_rows, 'E');
-  problem.rhs.assign(reduced_rows, f_t{0});
+  problem.row_sense.reserve(reduced_rows);
+  problem.rhs.reserve(reduced_rows);
   problem.range_rows.clear();
   problem.range_value.clear();
   for (i_t r = 0; r < reduced_rows; ++r) {
@@ -682,29 +682,26 @@ void build_user_problem(papilo::Problem<f_t> const& papilo_problem,
     const bool rhs_inf = row_flags[r].test(papilo::RowFlag::kRhsInf);
     const bool eq      = row_flags[r].test(papilo::RowFlag::kEquation);
     if (eq || (!lhs_inf && !rhs_inf && lhs[r] == rhs_v[r])) {
-      problem.row_sense[r] = 'E';
-      problem.rhs[r]       = rhs_v[r];
+      problem.row_sense.push_back('E');
+      problem.rhs.push_back(rhs_v[r]);
     } else if (lhs_inf && !rhs_inf) {
-      problem.row_sense[r] = 'L';
-      problem.rhs[r]       = rhs_v[r];
+      problem.row_sense.push_back('L');
+      problem.rhs.push_back(rhs_v[r]);
     } else if (!lhs_inf && rhs_inf) {
-      problem.row_sense[r] = 'G';
-      problem.rhs[r]       = lhs[r];
+      problem.row_sense.push_back('G');
+      problem.rhs.push_back(lhs[r]);
     } else if (!lhs_inf && !rhs_inf) {
       // lhs <= a^T x <= rhs : a range row. Match the convention used by get_host_user_problem and
       // convert_simplex_problem (row_sense 'E' anchored at the lower bound, width in range_value).
       // Storing it as 'L' left range rows out of convert_user_problem's equality_rows, which broke
       // add_artifical_variables' `range_rows subset of equality_rows` invariant (j != num_cols).
-      problem.row_sense[r] = 'E';
-      problem.rhs[r]       = lhs[r];
+      problem.row_sense.push_back('E');
+      problem.rhs.push_back(lhs[r]);
       problem.range_rows.push_back(r);
       problem.range_value.push_back(rhs_v[r] - lhs[r]);
-    } else {
-      // Free row (both sides infinite).
-      problem.row_sense[r] = 'L';
-      problem.rhs[r]       = std::numeric_limits<f_t>::infinity();
-    }
+    }  // Free rows are removed
   }
+
   problem.num_range_rows = static_cast<i_t>(problem.range_rows.size());
 
   // Constraint matrix: read papilo's column-major (CSC) transpose straight into A, packing out
@@ -794,7 +791,7 @@ void check_postsolve_status(const papilo::PostsolveStatus& status)
   switch (status) {
     case papilo::PostsolveStatus::kOk: CUOPT_LOG_DEBUG("Post-solve status: succeeded"); break;
     case papilo::PostsolveStatus::kFailed:
-      CUOPT_LOG_DEBUG(
+      CUOPT_LOG_INFO(
         "Post-solve status: Post solved solution violates constraints. This is most likely due to "
         "different tolerances.");
       break;
