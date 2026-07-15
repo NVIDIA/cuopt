@@ -354,7 +354,8 @@ void my_cusparsespmm_preprocess(cusparseHandle_t handle,
 
 bool is_cusparse_runtime_mixed_precision_supported();
 
-// False if cuSparse version < 12.8 or runtime cuSPARSE does not export SpMVOp symbols. True otherwise.
+// False if cuSparse version < 12.8 or runtime cuSPARSE does not export SpMVOp symbols. True
+// otherwise.
 bool is_cusparse_runtime_spmvop_supported();
 
 #if CUOPT_CUSPARSE_VER_12_8_UP
