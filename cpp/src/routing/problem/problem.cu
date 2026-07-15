@@ -11,6 +11,7 @@
 
 #include <utilities/vector_helpers.cuh>
 
+#include <cuopt/export.hpp>
 #include <utilities/seed_generator.cuh>
 namespace cuopt {
 namespace routing {
@@ -772,7 +773,7 @@ bool problem_t<i_t, f_t>::is_cvrp() const
   return is_cvrp_;
 }
 
-template class problem_t<int, float>;
+template class CUOPT_INTERNAL_EXPORT problem_t<int, float>;
 
 }  // namespace detail
 }  // namespace routing

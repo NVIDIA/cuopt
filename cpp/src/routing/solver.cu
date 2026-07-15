@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -13,6 +13,7 @@
 #include "routing/utilities/env_utils.hpp"
 
 #include <cuopt/error.hpp>
+#include <cuopt/export.hpp>
 #include <routing/structures.hpp>
 #include <routing/utilities/check_input.hpp>
 #include <utilities/copy_helpers.hpp>
@@ -90,7 +91,7 @@ assignment_t<i_t> solver_t<i_t, f_t>::run_ges_solver(i_t target_vehicles)
   return a;
 }
 
-template class solver_t<int, float>;
+template class CUOPT_INTERNAL_EXPORT solver_t<int, float>;
 
 }  // namespace routing
 }  // namespace cuopt

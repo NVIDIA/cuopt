@@ -25,6 +25,7 @@
 
 #include <linear_algebra/dense_matrix.hpp>
 
+#include <cuopt/export.hpp>
 #include <numeric>
 #include <queue>
 
@@ -6437,13 +6438,13 @@ void verify_cuts_against_saved_solution(const csr_matrix_t<i_t, f_t>& cuts,
 }
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
-template class cut_pool_t<int, double>;
+template class CUOPT_INTERNAL_EXPORT cut_pool_t<int, double>;
 template class cut_generation_t<int, double>;
 template class knapsack_generation_t<int, double>;
-template class flow_cover_generation_t<int, double>;
+template class CUOPT_INTERNAL_EXPORT flow_cover_generation_t<int, double>;
 template class tableau_equality_t<int, double>;
 template class complemented_mixed_integer_rounding_cut_t<int, double>;
-template class variable_bounds_t<int, double>;
+template class CUOPT_INTERNAL_EXPORT variable_bounds_t<int, double>;
 
 template int add_cuts(const simplex_solver_settings_t<int, double>& settings,
                       const csr_matrix_t<int, double>& cuts,

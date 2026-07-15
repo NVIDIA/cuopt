@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cuopt/export.hpp>
 #include <iostream>
 
 namespace cuopt::mathematical_optimization::simplex {
@@ -1885,60 +1886,66 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 
-template void convert_user_problem<int, double>(
+template CUOPT_INTERNAL_EXPORT void convert_user_problem<int, double>(
   const user_problem_t<int, double>& user_problem,
   const simplex_solver_settings_t<int, double>& settings,
   lp_problem_t<int, double>& problem,
   std::vector<int>& new_slacks,
   dualize_info_t<int, double>& dualize_info);
 
-template void convert_user_lp_with_guess<int, double>(
+template CUOPT_INTERNAL_EXPORT void convert_user_lp_with_guess<int, double>(
   const user_problem_t<int, double>& user_problem,
   const lp_solution_t<int, double>& initial_solution,
   const std::vector<double>& initial_slack,
   lp_problem_t<int, double>& lp,
   lp_solution_t<int, double>& converted_solution);
 
-template int presolve<int, double>(const lp_problem_t<int, double>& original,
-                                   const simplex_solver_settings_t<int, double>& settings,
-                                   lp_problem_t<int, double>& presolved,
-                                   presolve_info_t<int, double>& presolve_info);
+template CUOPT_INTERNAL_EXPORT int presolve<int, double>(
+  const lp_problem_t<int, double>& original,
+  const simplex_solver_settings_t<int, double>& settings,
+  lp_problem_t<int, double>& presolved,
+  presolve_info_t<int, double>& presolve_info);
 
-template void crush_primal_solution<int, double>(const user_problem_t<int, double>& user_problem,
-                                                 const lp_problem_t<int, double>& problem,
-                                                 const std::vector<double>& user_solution,
-                                                 const std::vector<int>& new_slacks,
-                                                 std::vector<double>& solution);
+template CUOPT_INTERNAL_EXPORT void crush_primal_solution<int, double>(
+  const user_problem_t<int, double>& user_problem,
+  const lp_problem_t<int, double>& problem,
+  const std::vector<double>& user_solution,
+  const std::vector<int>& new_slacks,
+  std::vector<double>& solution);
 
-template double crush_dual_solution<int, double>(const user_problem_t<int, double>& user_problem,
-                                                 const lp_problem_t<int, double>& problem,
-                                                 const std::vector<int>& new_slacks,
-                                                 const std::vector<double>& user_y,
-                                                 const std::vector<double>& user_z,
-                                                 std::vector<double>& y,
-                                                 std::vector<double>& z);
+template CUOPT_INTERNAL_EXPORT double crush_dual_solution<int, double>(
+  const user_problem_t<int, double>& user_problem,
+  const lp_problem_t<int, double>& problem,
+  const std::vector<int>& new_slacks,
+  const std::vector<double>& user_y,
+  const std::vector<double>& user_z,
+  std::vector<double>& y,
+  std::vector<double>& z);
 
-template void uncrush_primal_solution<int, double>(const user_problem_t<int, double>& user_problem,
-                                                   const lp_problem_t<int, double>& problem,
-                                                   const std::vector<double>& solution,
-                                                   std::vector<double>& user_solution);
+template CUOPT_INTERNAL_EXPORT void uncrush_primal_solution<int, double>(
+  const user_problem_t<int, double>& user_problem,
+  const lp_problem_t<int, double>& problem,
+  const std::vector<double>& solution,
+  std::vector<double>& user_solution);
 
-template void uncrush_dual_solution<int, double>(const user_problem_t<int, double>& user_problem,
-                                                 const lp_problem_t<int, double>& problem,
-                                                 const std::vector<double>& y,
-                                                 const std::vector<double>& z,
-                                                 std::vector<double>& user_y,
-                                                 std::vector<double>& user_z);
+template CUOPT_INTERNAL_EXPORT void uncrush_dual_solution<int, double>(
+  const user_problem_t<int, double>& user_problem,
+  const lp_problem_t<int, double>& problem,
+  const std::vector<double>& y,
+  const std::vector<double>& z,
+  std::vector<double>& user_y,
+  std::vector<double>& user_z);
 
-template void uncrush_solution<int, double>(const presolve_info_t<int, double>& presolve_info,
-                                            const simplex_solver_settings_t<int, double>& settings,
-                                            const lp_problem_t<int, double>& original_problem,
-                                            const std::vector<double>& crushed_x,
-                                            const std::vector<double>& crushed_y,
-                                            const std::vector<double>& crushed_z,
-                                            std::vector<double>& uncrushed_x,
-                                            std::vector<double>& uncrushed_y,
-                                            std::vector<double>& uncrushed_z);
+template CUOPT_INTERNAL_EXPORT void uncrush_solution<int, double>(
+  const presolve_info_t<int, double>& presolve_info,
+  const simplex_solver_settings_t<int, double>& settings,
+  const lp_problem_t<int, double>& original_problem,
+  const std::vector<double>& crushed_x,
+  const std::vector<double>& crushed_y,
+  const std::vector<double>& crushed_z,
+  std::vector<double>& uncrushed_x,
+  std::vector<double>& uncrushed_y,
+  std::vector<double>& uncrushed_z);
 
 #endif
 

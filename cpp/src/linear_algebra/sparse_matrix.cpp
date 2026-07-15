@@ -24,6 +24,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstdio>
+#include <cuopt/export.hpp>
 
 namespace cuopt::mathematical_optimization {
 
@@ -941,14 +942,14 @@ f_t sparse_dot(const std::vector<i_t>& xind,
 
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 // Minimal float instantiation for LP usage
-template class csc_matrix_t<int, float>;
-template class csr_matrix_t<int, float>;
+template class CUOPT_INTERNAL_EXPORT csc_matrix_t<int, float>;
+template class CUOPT_INTERNAL_EXPORT csr_matrix_t<int, float>;
 #endif
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
-template class csc_matrix_t<int, double>;
+template class CUOPT_INTERNAL_EXPORT csc_matrix_t<int, double>;
 
-template class csr_matrix_t<int, double>;
+template class CUOPT_INTERNAL_EXPORT csr_matrix_t<int, double>;
 
 template void cumulative_sum<int>(std::vector<int>& inout, std::vector<int>& output);
 
@@ -988,15 +989,15 @@ template int add<int, double>(const csc_matrix_t<int, double>& A,
                               double beta,
                               csc_matrix_t<int, double>& C);
 
-template double sparse_dot<int, double>(const std::vector<int>& xind,
-                                        const std::vector<double>& xval,
-                                        const csc_matrix_t<int, double>& Y,
-                                        int y_col);
+template CUOPT_INTERNAL_EXPORT double sparse_dot<int, double>(const std::vector<int>& xind,
+                                                              const std::vector<double>& xval,
+                                                              const csc_matrix_t<int, double>& Y,
+                                                              int y_col);
 
 // NOTE: matrix_vector_multiply is now templated on VectorX and VectorY.
 // Since it's defined inline in the header, no explicit instantiation is needed here.
 
-template int
+template CUOPT_INTERNAL_EXPORT int
 matrix_transpose_vector_multiply<int, double, std::allocator<double>, std::allocator<double>>(
   const csc_matrix_t<int, double>& A,
   double alpha,

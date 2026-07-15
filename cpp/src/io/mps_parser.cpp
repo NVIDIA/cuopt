@@ -14,6 +14,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstring>
+#include <cuopt/export.hpp>
 #include <fstream>
 #include <limits>
 #include <memory>
@@ -1709,7 +1710,7 @@ void mps_parser_t<i_t, f_t>::read_bound_and_value(std::string_view line,
 // NOTE: Explicitly instantiate all types here in order to avoid linker error
 template class mps_parser_t<int, float>;
 
-template class mps_parser_t<int, double>;
+template class CUOPT_INTERNAL_EXPORT mps_parser_t<int, double>;
 
 template void canonicalize_coo_matrix<int, float>(std::vector<int>&,
                                                   std::vector<int>&,

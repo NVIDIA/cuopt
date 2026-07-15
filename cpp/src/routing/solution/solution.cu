@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #include <thrust/count.h>
+#include <cuopt/export.hpp>
 #include <utilities/copy_helpers.hpp>
 #include "solution.cuh"
 #include "solution_kernels.cuh"
@@ -746,8 +747,8 @@ std::vector<i_t> solution_t<i_t, f_t, REQUEST>::get_unserviced_nodes() const
   return unserviced_nodes;
 }
 
-template class solution_t<int, float, request_t::PDP>;
-template class solution_t<int, float, request_t::VRP>;
+template class CUOPT_INTERNAL_EXPORT solution_t<int, float, request_t::PDP>;
+template class CUOPT_INTERNAL_EXPORT solution_t<int, float, request_t::VRP>;
 
 }  // namespace detail
 }  // namespace routing

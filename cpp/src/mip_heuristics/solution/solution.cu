@@ -22,6 +22,7 @@
 #include <thrust/extrema.h>
 #include <thrust/transform_reduce.h>
 #include <cuda/functional>
+#include <cuopt/export.hpp>
 #include <raft/linalg/binary_op.cuh>
 
 namespace cuopt::mathematical_optimization::mip {
@@ -649,7 +650,7 @@ template class solution_t<int, float>;
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
-template class solution_t<int, double>;
+template class CUOPT_INTERNAL_EXPORT solution_t<int, double>;
 #endif
 
 }  // namespace cuopt::mathematical_optimization::mip

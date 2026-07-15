@@ -13,7 +13,7 @@ ConfigureTest(ROUTING_GES_TEST ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_ges_test.cu
 ConfigureTest(VEHICLE_ORDER_TEST ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_vehicle_order_match.cu
     LABELS routing)
 ConfigureTest(VEHICLE_TYPES_TEST ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_vehicle_types_test.cu
-    LABELS routing)
+    LABELS routing STATIC_LIB)
 ConfigureTest(OBJECTIVE_FUNCTION_TEST ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_objective_function_test.cu
     LABELS routing)
 

@@ -24,6 +24,7 @@
 #include "load_balanced_bounds_presolve.cuh"
 #include "load_balanced_bounds_presolve_helpers.cuh"
 
+#include <cuopt/export.hpp>
 #include <limits>
 
 namespace cuopt::mathematical_optimization::mip {
@@ -694,7 +695,7 @@ template class load_balanced_bounds_presolve_t<int, float>;
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
-template class load_balanced_bounds_presolve_t<int, double>;
+template class CUOPT_INTERNAL_EXPORT load_balanced_bounds_presolve_t<int, double>;
 #endif
 
 }  // namespace cuopt::mathematical_optimization::mip

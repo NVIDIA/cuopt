@@ -9,6 +9,7 @@
 #include <linear_algebra/sparse_matrix.hpp>
 
 #include <cmath>
+#include <cuopt/export.hpp>
 
 namespace cuopt::mathematical_optimization::simplex {
 
@@ -269,20 +270,22 @@ void unscale_solution(const std::vector<f_t>& column_scaling,
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 
-template int scaling<int, double>(const lp_problem_t<int, double>& unscaled,
-                                  const simplex_solver_settings_t<int, double>& settings,
-                                  lp_problem_t<int, double>& scaled,
-                                  std::vector<double>& column_scaling,
-                                  std::vector<double>& row_scaling);
+template CUOPT_INTERNAL_EXPORT int scaling<int, double>(
+  const lp_problem_t<int, double>& unscaled,
+  const simplex_solver_settings_t<int, double>& settings,
+  lp_problem_t<int, double>& scaled,
+  std::vector<double>& column_scaling,
+  std::vector<double>& row_scaling);
 
-template void unscale_solution<int, double>(const std::vector<double>& column_scaling,
-                                            const std::vector<double>& row_scaling,
-                                            const std::vector<double>& scaled_x,
-                                            const std::vector<double>& scaled_y,
-                                            const std::vector<double>& scaled_z,
-                                            std::vector<double>& unscaled_x,
-                                            std::vector<double>& unscaled_y,
-                                            std::vector<double>& unscaled_z);
+template CUOPT_INTERNAL_EXPORT void unscale_solution<int, double>(
+  const std::vector<double>& column_scaling,
+  const std::vector<double>& row_scaling,
+  const std::vector<double>& scaled_x,
+  const std::vector<double>& scaled_y,
+  const std::vector<double>& scaled_z,
+  std::vector<double>& unscaled_x,
+  std::vector<double>& unscaled_y,
+  std::vector<double>& unscaled_z);
 
 #endif
 

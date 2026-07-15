@@ -16,6 +16,7 @@
 #include <utilities/device_utils.cuh>
 
 #include <cub/cub.cuh>
+#include <cuopt/export.hpp>
 #include "bounds_presolve_helpers.cuh"
 #include "bounds_update_helpers.cuh"
 #include "multi_probe.cuh"
@@ -493,7 +494,7 @@ template class multi_probe_t<int, float>;
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
-template class multi_probe_t<int, double>;
+template class CUOPT_INTERNAL_EXPORT multi_probe_t<int, double>;
 #endif
 
 }  // namespace cuopt::mathematical_optimization::mip

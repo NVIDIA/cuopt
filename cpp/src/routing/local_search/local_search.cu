@@ -19,6 +19,7 @@
 #include <thrust/fill.h>
 
 #include <chrono>
+#include <cuopt/export.hpp>
 #include <unordered_set>
 
 namespace cuopt {
@@ -383,8 +384,8 @@ void local_search_t<i_t, f_t, REQUEST>::perturb_solution(solution_t<i_t, f_t, RE
   }
 }
 
-template class local_search_t<int, float, request_t::PDP>;
-template class local_search_t<int, float, request_t::VRP>;
+template class CUOPT_INTERNAL_EXPORT local_search_t<int, float, request_t::PDP>;
+template class CUOPT_INTERNAL_EXPORT local_search_t<int, float, request_t::VRP>;
 
 }  // namespace detail
 }  // namespace routing

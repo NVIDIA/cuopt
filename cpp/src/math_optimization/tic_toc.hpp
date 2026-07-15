@@ -7,10 +7,11 @@
 
 #pragma once
 
+#include <cuopt/export.hpp>
 #include <math_optimization/types.hpp>
 
 namespace cuopt::mathematical_optimization {
-double tic();
-double toc(double start);
+CUOPT_INTERNAL_EXPORT double tic();
+CUOPT_INTERNAL_EXPORT double toc(double start);
 
 }  // namespace cuopt::mathematical_optimization

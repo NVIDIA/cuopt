@@ -30,6 +30,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cuopt/export.hpp>
 #include <queue>
 #include <string>
 
@@ -783,62 +784,66 @@ i_t solve_mip_with_guess(const user_problem_t<i_t, f_t>& problem,
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
 
-template bool is_mip<int, double>(const user_problem_t<int, double>& problem);
+template CUOPT_INTERNAL_EXPORT bool is_mip<int, double>(const user_problem_t<int, double>& problem);
 
-template double compute_objective<int, double>(const lp_problem_t<int, double>& problem,
-                                               const std::vector<double>& x);
+template CUOPT_INTERNAL_EXPORT double compute_objective<int, double>(
+  const lp_problem_t<int, double>& problem, const std::vector<double>& x);
 
-template double compute_user_objective<int, double>(const lp_problem_t<int, double>& lp,
-                                                    const std::vector<double>& x);
+template CUOPT_INTERNAL_EXPORT double compute_user_objective<int, double>(
+  const lp_problem_t<int, double>& lp, const std::vector<double>& x);
 
-template double compute_user_objective(const lp_problem_t<int, double>& lp, double obj);
+template CUOPT_INTERNAL_EXPORT double compute_user_objective(const lp_problem_t<int, double>& lp,
+                                                             double obj);
 
-template lp_status_t solve_linear_program_advanced(
-  const lp_problem_t<int, double>& original_lp,
-  const double start_time,
-  const simplex_solver_settings_t<int, double>& settings,
-  lp_solution_t<int, double>& original_solution,
-  std::vector<variable_status_t>& vstatus,
-  std::vector<double>& edge_norms,
-  work_limit_context_t* work_unit_context);
+template CUOPT_INTERNAL_EXPORT lp_status_t
+solve_linear_program_advanced(const lp_problem_t<int, double>& original_lp,
+                              const double start_time,
+                              const simplex_solver_settings_t<int, double>& settings,
+                              lp_solution_t<int, double>& original_solution,
+                              std::vector<variable_status_t>& vstatus,
+                              std::vector<double>& edge_norms,
+                              work_limit_context_t* work_unit_context);
 
-template lp_status_t solve_linear_program_with_advanced_basis(
-  const lp_problem_t<int, double>& original_lp,
-  const double start_time,
-  const simplex_solver_settings_t<int, double>& settings,
-  lp_solution_t<int, double>& original_solution,
-  basis_update_mpf_t<int, double>& ft,
-  std::vector<int>& basic_list,
-  std::vector<int>& nonbasic_list,
-  std::vector<variable_status_t>& vstatus,
-  std::vector<double>& edge_norms,
-  work_limit_context_t* work_unit_context);
+template CUOPT_INTERNAL_EXPORT lp_status_t
+solve_linear_program_with_advanced_basis(const lp_problem_t<int, double>& original_lp,
+                                         const double start_time,
+                                         const simplex_solver_settings_t<int, double>& settings,
+                                         lp_solution_t<int, double>& original_solution,
+                                         basis_update_mpf_t<int, double>& ft,
+                                         std::vector<int>& basic_list,
+                                         std::vector<int>& nonbasic_list,
+                                         std::vector<variable_status_t>& vstatus,
+                                         std::vector<double>& edge_norms,
+                                         work_limit_context_t* work_unit_context);
 
-template lp_status_t solve_linear_program_with_barrier(
+template CUOPT_INTERNAL_EXPORT lp_status_t
+solve_linear_program_with_barrier(const user_problem_t<int, double>& user_problem,
+                                  const simplex_solver_settings_t<int, double>& settings,
+                                  lp_solution_t<int, double>& solution);
+
+template CUOPT_INTERNAL_EXPORT lp_status_t
+solve_linear_program_with_barrier(const user_problem_t<int, double>& user_problem,
+                                  const simplex_solver_settings_t<int, double>& settings,
+                                  double start_time,
+                                  lp_solution_t<int, double>& solution);
+
+template CUOPT_INTERNAL_EXPORT lp_status_t
+solve_linear_program(const user_problem_t<int, double>& user_problem,
+                     const simplex_solver_settings_t<int, double>& settings,
+                     lp_solution_t<int, double>& solution);
+
+template CUOPT_INTERNAL_EXPORT lp_status_t
+solve_linear_program(const user_problem_t<int, double>& user_problem,
+                     const simplex_solver_settings_t<int, double>& settings,
+                     double start_time,
+                     lp_solution_t<int, double>& solution);
+
+template CUOPT_INTERNAL_EXPORT int solve<int, double>(
   const user_problem_t<int, double>& user_problem,
   const simplex_solver_settings_t<int, double>& settings,
-  lp_solution_t<int, double>& solution);
+  std::vector<double>& primal_solution);
 
-template lp_status_t solve_linear_program_with_barrier(
-  const user_problem_t<int, double>& user_problem,
-  const simplex_solver_settings_t<int, double>& settings,
-  double start_time,
-  lp_solution_t<int, double>& solution);
-
-template lp_status_t solve_linear_program(const user_problem_t<int, double>& user_problem,
-                                          const simplex_solver_settings_t<int, double>& settings,
-                                          lp_solution_t<int, double>& solution);
-
-template lp_status_t solve_linear_program(const user_problem_t<int, double>& user_problem,
-                                          const simplex_solver_settings_t<int, double>& settings,
-                                          double start_time,
-                                          lp_solution_t<int, double>& solution);
-
-template int solve<int, double>(const user_problem_t<int, double>& user_problem,
-                                const simplex_solver_settings_t<int, double>& settings,
-                                std::vector<double>& primal_solution);
-
-template int solve_mip_with_guess<int, double>(
+template CUOPT_INTERNAL_EXPORT int solve_mip_with_guess<int, double>(
   const user_problem_t<int, double>& problem,
   const simplex_solver_settings_t<int, double>& settings,
   const std::vector<double>& guess,

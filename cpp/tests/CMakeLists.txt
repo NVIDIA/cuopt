@@ -40,7 +40,7 @@ set(CUOPT_TEST_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 #
 # LABELS sets CTest labels for selective local test execution via `ctest -L <label>`.
 function(ConfigureTest CMAKE_TEST_NAME)
-    cmake_parse_arguments(CT "" "" "LABELS" ${ARGN})
+    cmake_parse_arguments(CT "STATIC_LIB" "" "LABELS" ${ARGN})
     add_executable(${CMAKE_TEST_NAME} ${CT_UNPARSED_ARGUMENTS})
     target_include_directories(${CMAKE_TEST_NAME}
         PRIVATE
@@ -53,9 +53,15 @@ function(ConfigureTest CMAKE_TEST_NAME)
         "${dejavu_SOURCE_DIR}"
     )
 
+    if(CT_STATIC_LIB)
+        set(_cuopt_link_target cuopt_static)
+    else()
+        set(_cuopt_link_target cuopt)
+    endif()
+
     target_link_libraries(${CMAKE_TEST_NAME}
        PRIVATE
-        cuopt
+        ${_cuopt_link_target}
         cuopttestutils
         GTest::gmock
         GTest::gmock_main

@@ -5,6 +5,7 @@
  */
 /* clang-format on */
 
+#include <cuopt/export.hpp>
 #include "ges_solver.cuh"
 #include "routing_helpers.cuh"
 
@@ -74,8 +75,8 @@ assignment_t<i_t> ges_solver_t<i_t, f_t, REQUEST>::compute_ges_solution(
   }
 }
 
-template class ges_solver_t<int, float, request_t::PDP>;
-template class ges_solver_t<int, float, request_t::VRP>;
+template class CUOPT_INTERNAL_EXPORT ges_solver_t<int, float, request_t::PDP>;
+template class CUOPT_INTERNAL_EXPORT ges_solver_t<int, float, request_t::VRP>;
 
 }  // namespace routing
 }  // namespace cuopt

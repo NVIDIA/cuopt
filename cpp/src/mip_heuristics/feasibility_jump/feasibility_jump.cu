@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #include <cuopt/error.hpp>
+#include <cuopt/export.hpp>
 
 #include "feasibility_jump.cuh"
 #include "feasibility_jump_kernels.cuh"
@@ -1153,7 +1154,7 @@ template class fj_t<int, float>;
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
-template class fj_t<int, double>;
+template class CUOPT_INTERNAL_EXPORT fj_t<int, double>;
 #endif
 
 }  // namespace cuopt::mathematical_optimization::mip

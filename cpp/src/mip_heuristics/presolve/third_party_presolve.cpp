@@ -18,6 +18,7 @@
 #include <PSLP/PSLP_stats.h>
 #include <PSLP/PSLP_status.h>
 #include <cuopt/error.hpp>
+#include <cuopt/export.hpp>
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -1149,7 +1150,7 @@ template class third_party_presolve_t<int, float>;
 
 #if MIP_INSTANTIATE_DOUBLE
 template struct papilo_postsolve_deleter<double>;
-template class third_party_presolve_t<int, double>;
+template class CUOPT_INTERNAL_EXPORT third_party_presolve_t<int, double>;
 #endif
 
 }  // namespace cuopt::mathematical_optimization::mip

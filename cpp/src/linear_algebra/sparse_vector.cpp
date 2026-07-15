@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cstdio>
+#include <cuopt/export.hpp>
 
 namespace cuopt::mathematical_optimization {
 
@@ -282,7 +283,7 @@ void sparse_vector_t<i_t, f_t>::squeeze(sparse_vector_t<i_t, f_t>& y) const
 }
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
-template class sparse_vector_t<int, double>;
+template class CUOPT_INTERNAL_EXPORT sparse_vector_t<int, double>;
 #endif
 
 }  // namespace cuopt::mathematical_optimization

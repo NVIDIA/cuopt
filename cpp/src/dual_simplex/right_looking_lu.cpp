@@ -13,6 +13,7 @@
 
 #include <cassert>
 #include <cmath>
+#include <cuopt/export.hpp>
 
 using cuopt::ins_vector;
 
@@ -1808,14 +1809,15 @@ template int right_looking_lu_row_permutation_only<int, double>(
   std::vector<int>& q,
   std::vector<int>& pinv);
 
-template int right_looking_ldlt<int, double>(const csc_matrix_t<int, double>& A,
-                                             const simplex_solver_settings_t<int, double>& settings,
-                                             double pivot_tol,
-                                             double start_time,
-                                             std::vector<int>& perm,
-                                             csc_matrix_t<int, double>& L,
-                                             std::vector<double>& D,
-                                             double& work_estimate);
+template CUOPT_INTERNAL_EXPORT int right_looking_ldlt<int, double>(
+  const csc_matrix_t<int, double>& A,
+  const simplex_solver_settings_t<int, double>& settings,
+  double pivot_tol,
+  double start_time,
+  std::vector<int>& perm,
+  csc_matrix_t<int, double>& L,
+  std::vector<double>& D,
+  double& work_estimate);
 #endif
 
 }  // namespace cuopt::mathematical_optimization::simplex

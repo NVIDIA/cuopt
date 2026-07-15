@@ -17,6 +17,7 @@
 #include <mip_heuristics/mip_constants.hpp>
 #include <pdlp/utils.cuh>
 
+#include <cuopt/export.hpp>
 #include <cuts/objective_step.hpp>
 #include <cuts/rational.hpp>
 #include <math_optimization/tic_toc.hpp>
@@ -2490,11 +2491,11 @@ void problem_t<i_t, f_t>::update_variable_bounds(const std::vector<i_t>& var_ind
 }
 
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
-template class problem_t<int, float>;
+template class CUOPT_INTERNAL_EXPORT problem_t<int, float>;
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
-template class problem_t<int, double>;
+template class CUOPT_INTERNAL_EXPORT problem_t<int, double>;
 #endif
 
 }  // namespace cuopt::mathematical_optimization::mip

@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #include <cuopt/error.hpp>
+#include <cuopt/export.hpp>
 #include <utilities/macros.cuh>
 
 #include <mip_heuristics/mip_constants.hpp>
@@ -1416,7 +1417,7 @@ void mixed_precision_spmv_preprocess(cusparseHandle_t handle,
 }
 #endif
 
-bool is_cusparse_runtime_mixed_precision_supported()
+CUOPT_INTERNAL_EXPORT bool is_cusparse_runtime_mixed_precision_supported()
 {
   int major = 0, minor = 0;
   auto status = cusparseGetProperty(libraryPropertyType_t::MAJOR_VERSION, &major);
