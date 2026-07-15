@@ -51,7 +51,7 @@ PAGE_SOURCES = [
     {
         "output": "cuopt-python/routing/routing-api.mdx",
         "title": "cuOpt Routing Python API Reference",
-        "dirs": ["routing"],
+        "dirs": ["routing", "distance_engine"],
         "exclude": set(),
     },
 ]

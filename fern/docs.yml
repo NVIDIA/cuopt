@@ -19,23 +19,6 @@ colors:
     dark: "#76B900"
     light: "#76B900"
 
-libraries:
-  cuopt-c-api:
-    input:
-      path: ../cpp
-    output:
-      path: ./static/cpp-docs
-    lang: cpp
-    config:
-      doxyfile: ./Doxyfile.fern
-
-  cuopt-python-api:
-    input:
-      path: ../python/cuopt/cuopt
-    output:
-      path: ./static/python-docs
-    lang: python
-
 css:
   - docs/scripts/install-selector.css
 

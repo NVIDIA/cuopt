@@ -67,8 +67,6 @@ navigation:
                 path: docs/pages/cuopt-python/routing/routing-api.mdx
               - page: Routing Examples
                 path: docs/pages/cuopt-python/routing/routing-examples.mdx
-          - folder: ./static/python-docs
-            title: Python Distance Engine
       - section: Convex Optimization (LP/QP/QCQP/SOCP)
         contents:
           - page: Overview
