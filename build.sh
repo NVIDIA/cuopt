@@ -457,6 +457,21 @@ if hasArg docs; then
         npm install -g "fern-api@${FERN_VERSION}"
     fi
 
+    # Regenerate dynamic API reference pages (OpenAPI spec, Python API, C API)
+    if command -v python3 &>/dev/null || command -v python &>/dev/null; then
+        PY=${PYTHON:-python3}
+        pip install --quiet -r "${REPODIR}/fern/requirements-docs.txt"
+        if pip install --quiet -e "${REPODIR}/python/cuopt_server" --no-deps 2>/dev/null; then
+            ${PY} "${REPODIR}/fern/generate_api_docs.py"
+        else
+            echo "  [WARN] cuopt_server not installable; skipping OpenAPI spec regeneration."
+            echo "         Python API and C API docs will still be regenerated."
+            ${PY} "${REPODIR}/fern/generate_api_docs.py"
+        fi
+    else
+        echo "  [WARN] Python not found; skipping API doc generation."
+    fi
+
     echo "Running fern check..."
     fern check
 

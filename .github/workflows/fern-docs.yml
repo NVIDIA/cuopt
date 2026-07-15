@@ -6,10 +6,18 @@ on:
       - main
     paths:
       - "fern/**"
+      - "cpp/**/*.h"
+      - "cpp/**/*.hpp"
+      - "python/cuopt/cuopt/**"
+      - "python/cuopt_server/**"
       - ".github/workflows/fern-docs.yml"
   pull_request:
     paths:
       - "fern/**"
+      - "cpp/**/*.h"
+      - "cpp/**/*.hpp"
+      - "python/cuopt/cuopt/**"
+      - "python/cuopt_server/**"
   workflow_dispatch:
   # Stage 2: triggered after a PR build completes.
   # Runs in base-branch context so FERN_TOKEN secret is accessible.
@@ -23,6 +31,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: |
+          pip install -r fern/requirements-docs.txt
+          pip install -e python/cuopt_server --no-deps
+
+      - name: Regenerate dynamic API docs
+        run: python fern/generate_api_docs.py
 
       - name: Install Fern CLI
         run: npm install -g fern-api@$(jq -r .version fern/fern.config.json)
