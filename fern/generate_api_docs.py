@@ -6,8 +6,9 @@ Regenerates on every `./build.sh docs` run:
   - fern/docs/scripts/cuopt-install-version.js  (version string for install widget)
   - fern/docs/pages/cuopt-python/      (Python API MDX via AST)
   - fern/docs/pages/cuopt-c/           (C API MDX from headers)
+  - *-examples.mdx pages               (example .py/.c files embedded as code blocks)
 
-Hand-edited MDX pages under fern/docs/pages/ are NOT touched.
+Hand-edited prose in MDX pages is preserved; only code-embed markers are refreshed.
 """
 
 import importlib.util
@@ -105,6 +106,9 @@ def main():
 
     print("Extracting C API from headers...")
     _run_module(FERN / "extract_c_api.py", "main")
+
+    print("Embedding examples into MDX pages...")
+    _run_module(FERN / "embed_examples.py", "embed_all")
 
     print("\nDone. Run: fern check")
 

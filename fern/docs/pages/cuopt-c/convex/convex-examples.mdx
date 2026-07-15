@@ -2,113 +2,1598 @@
 title: "Convex Optimization C API Examples"
 ---
 
+More details on the API can be found in [C API](convex-c-api).
+
+**Build prerequisites:** Set `CUOPT_INCLUDE` and `CUOPT_LIB` to your cuOpt include and library paths, then use the provided `Makefile` in the examples directory:
+
+```bash
+make INCLUDE_PATH=$CUOPT_INCLUDE LIBCUOPT_LIBRARY_PATH=$CUOPT_LIB all
+```
+
+If you built cuOpt locally, `CUOPT_INCLUDE=cpp/include` and `CUOPT_LIB=cpp/build`.
+
 ## LP Example With Data
 
-This example demonstrates how to use the LP solver in C. More details on the API can be found in [C API](convex-c-api).
+Builds and solves a small LP directly with the C API using `cuOptCreateProblem`.
 
-The example code is available at `examples/cuopt-c/lp/simple_lp_example.c` ([download](examples/simple_lp_example.c)):
+<!-- embed: examples/simple_lp_example.c -->
+```c
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+/*
+ * Simple LP C API Example
+ *
+ * This example demonstrates how to use the cuOpt C API for linear programming.
+ *
+ * Problem:
+ *   Minimize: -0.2*x1 + 0.1*x2
+ *   Subject to:
+ *     3.0*x1 + 4.0*x2 <= 5.4
+ *     2.7*x1 + 10.1*x2 <= 4.9
+ *     x1, x2 >= 0
+ *
+ * Expected Output:
+ *   Termination status: Optimal (1)
+ *   Solve time: 0.000013 seconds
+ *   Objective value: -0.360000
+ *   x1 = 1.800000
+ *   x2 = 0.000000
+ *
+ * Build:
+ *   gcc -I $INCLUDE_PATH -L $LIBCUOPT_LIBRARY_PATH -o simple_lp_example simple_lp_example.c -lcuopt
+ *
+ * Run:
+ *   ./simple_lp_example
+ */
 
-It is necessary to have the path for include and library dirs ready, if you know the paths, please add them to the path variables directly. Otherwise, run the following commands to find the path and assign it to the path variables. The following commands are for Linux and might fail in cases where the cuopt library is not installed or there are multiple cuopt libraries in the system.
+// Include the cuOpt linear programming solver header
+#include <cuopt/mathematical_optimization/cuopt_c.h>
+#include <stdio.h>
+#include <stdlib.h>
 
-If you have built it locally, libcuopt.so will be in the build directory `cpp/build` and include directoy would be `cpp/include`.
+// Convert termination status to string
+const char* termination_status_to_string(cuopt_int_t termination_status)
+{
+  switch (termination_status) {
+    case CUOPT_TERMINATION_STATUS_OPTIMAL:
+      return "Optimal";
+    case CUOPT_TERMINATION_STATUS_INFEASIBLE:
+      return "Infeasible";
+    case CUOPT_TERMINATION_STATUS_UNBOUNDED:
+      return "Unbounded";
+    case CUOPT_TERMINATION_STATUS_ITERATION_LIMIT:
+      return "Iteration limit";
+    case CUOPT_TERMINATION_STATUS_TIME_LIMIT:
+      return "Time limit";
+    case CUOPT_TERMINATION_STATUS_NUMERICAL_ERROR:
+      return "Numerical error";
+    case CUOPT_TERMINATION_STATUS_PRIMAL_FEASIBLE:
+      return "Primal feasible";
+    case CUOPT_TERMINATION_STATUS_FEASIBLE_FOUND:
+      return "Feasible found";
+    default:
+      return "Unknown";
+  }
+}
 
-Build and run the example
+// Test simple LP problem
+cuopt_int_t test_simple_lp()
+{
+  cuOptOptimizationProblem problem = NULL;
+  cuOptSolverSettings settings     = NULL;
+  cuOptSolution solution           = NULL;
 
-You should see the following output:
+  /* Solve the following LP:
+     minimize -0.2*x1 + 0.1*x2
+     subject to:
+     3.0*x1 + 4.0*x2 <= 5.4
+     2.7*x1 + 10.1*x2 <= 4.9
+     x1, x2 >= 0
+  */
+
+  cuopt_int_t num_variables   = 2;
+  cuopt_int_t num_constraints = 2;
+  cuopt_int_t nnz             = 4;
+
+  // CSR format constraint matrix
+  // https://docs.nvidia.com/nvpl/latest/sparse/storage_format/sparse_matrix.html#compressed-sparse-row-csr
+  // From the constraints:
+  // 3.0*x1 + 4.0*x2 <= 5.4
+  // 2.7*x1 + 10.1*x2 <= 4.9
+  cuopt_int_t row_offsets[]    = {0, 2, 4};
+  cuopt_int_t column_indices[] = {0, 1, 0, 1};
+  cuopt_float_t values[]       = {3.0, 4.0, 2.7, 10.1};
+
+  // Objective coefficients
+  // From the objective function: minimize -0.2*x1 + 0.1*x2
+  // -0.2 is the coefficient of x1
+  // 0.1 is the coefficient of x2
+  cuopt_float_t objective_coefficients[] = {-0.2, 0.1};
+
+  // Constraint bounds
+  // From the constraints:
+  // 3.0*x1 + 4.0*x2 <= 5.4
+  // 2.7*x1 + 10.1*x2 <= 4.9
+  cuopt_float_t constraint_upper_bounds[] = {5.4, 4.9};
+  cuopt_float_t constraint_lower_bounds[] = {-CUOPT_INFINITY, -CUOPT_INFINITY};
+
+  // Variable bounds
+  // From the constraints:
+  // x1, x2 >= 0
+  cuopt_float_t var_lower_bounds[] = {0.0, 0.0};
+  cuopt_float_t var_upper_bounds[] = {CUOPT_INFINITY, CUOPT_INFINITY};
+
+  // Variable types (continuous)
+  // From the constraints:
+  // x1, x2 >= 0
+  char variable_types[] = {CUOPT_CONTINUOUS, CUOPT_CONTINUOUS};
+
+  cuopt_int_t status;
+  cuopt_float_t time;
+  cuopt_int_t termination_status;
+  cuopt_float_t objective_value;
+
+  printf("Creating and solving simple LP problem...\n");
+
+  // Create the problem
+  status = cuOptCreateRangedProblem(num_constraints,
+                                    num_variables,
+                                    CUOPT_MINIMIZE,
+                                    0.0,  // objective offset
+                                    objective_coefficients,
+                                    row_offsets,
+                                    column_indices,
+                                    values,
+                                    constraint_lower_bounds,
+                                    constraint_upper_bounds,
+                                    var_lower_bounds,
+                                    var_upper_bounds,
+                                    variable_types,
+                                    &problem);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating problem: %d\n", status);
+    goto DONE;
+  }
+
+  // Create solver settings
+  status = cuOptCreateSolverSettings(&settings);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating solver settings: %d\n", status);
+    goto DONE;
+  }
+
+  // Set solver parameters
+  status = cuOptSetFloatParameter(settings, CUOPT_ABSOLUTE_PRIMAL_TOLERANCE, 0.0001);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error setting optimality tolerance: %d\n", status);
+    goto DONE;
+  }
+
+  // Solve the problem
+  status = cuOptSolve(problem, settings, &solution);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error solving problem: %d\n", status);
+    goto DONE;
+  }
+
+  // Get solution information
+  status = cuOptGetSolveTime(solution, &time);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting solve time: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetTerminationStatus(solution, &termination_status);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting termination status: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetObjectiveValue(solution, &objective_value);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting objective value: %d\n", status);
+    goto DONE;
+  }
+
+  // Print results
+  printf("\nResults:\n");
+  printf("--------\n");
+  printf("Termination status: %s (%d)\n",
+         termination_status_to_string(termination_status),
+         termination_status);
+  printf("Solve time: %f seconds\n", time);
+  printf("Objective value: %f\n", objective_value);
+
+  // Get and print solution variables
+  cuopt_float_t* solution_values = (cuopt_float_t*)malloc(num_variables * sizeof(cuopt_float_t));
+  if (solution_values == NULL) {
+    printf("Error allocating solution values\n");
+    goto DONE;
+  }
+  status = cuOptGetPrimalSolution(solution, solution_values);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting solution values: %d\n", status);
+    free(solution_values);
+    goto DONE;
+  }
+
+  printf("\nPrimal Solution: Solution variables \n");
+  for (cuopt_int_t i = 0; i < num_variables; i++) {
+    printf("x%d = %f\n", i + 1, solution_values[i]);
+  }
+  free(solution_values);
+
+DONE:
+  cuOptDestroyProblem(&problem);
+  cuOptDestroySolverSettings(&settings);
+  cuOptDestroySolution(&solution);
+
+  return status;
+}
+
+int main()
+{
+  // Run the test
+  cuopt_int_t status = test_simple_lp();
+
+  if (status == CUOPT_SUCCESS) {
+    printf("\nTest completed successfully!\n");
+    return 0;
+  } else {
+    printf("\nTest failed with status: %d\n", status);
+    return 1;
+  }
+}
+```
+<!-- /embed -->
 
 ## LP Example With MPS File
 
-This example demonstrates how to use the cuOpt linear programming solver in C to solve an MPS file.
+Reads an LP or MPS file with `cuOptReadProblem` and solves it. The format is dispatched from the file extension (`.mps` / `.qps` → MPS parser; `.lp` → LP parser).
 
-The same `cuOptReadProblem` call also accepts **LP** format files. The format is dispatched from the filename extension (case-insensitive): `.lp` / `.lp.gz` / `.lp.bz2` → LP parser; `.mps` / `.qps` and their `.gz` / `.bz2` variants → MPS parser. Unknown extensions are rejected. See [lp-file-example-c](#lp-file-example-c) for an LP counterpart.
+<!-- embed: examples/mps_file_example.c -->
+```c
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+/*
+ * MPS File C API Example (LP / QP / QCQP / SOCP)
+ *
+ * This example reads any problem from an MPS file and solves it with the cuOpt C
+ * API. The same program handles problems with
+ *  - linear objectives (LP),
+ *  - quadratic objectives (QP via a QUADOBJ section), and
+ *  - quadratic constraints (QCQP/SOCP via QCMATRIX sections).
+ *
+ *
+ * Example LP problem (from sample.mps):
+ *   Minimize: -0.2*VAR1 + 0.1*VAR2
+ *   Subject to:
+ *     3*VAR1 + 4*VAR2 <= 5.4
+ *     2.7*VAR1 + 10.1*VAR2 <= 4.9
+ *     VAR1, VAR2 >= 0
+ *
+ * Expected Output (sample.mps):
+ *   Number of variables: 2
+ *   Termination status: Optimal (1)
+ *   Solve time: 0.000014 seconds
+ *   Objective value: -0.360000
+ *   x1 = 1.800000
+ *   x2 = 0.000000
+ *
+ * See qp_sample.mps (quadratic objective) and socp_sample.mps (standard and
+ * rotated second-order cone constraints) for QP and SOCP inputs to this same
+ * program.
+ *
+ * Build:
+ *   gcc -I $INCLUDE_PATH -L $LIBCUOPT_LIBRARY_PATH -o mps_file_example mps_file_example.c -lcuopt
+ *
+ * Run:
+ *   ./mps_file_example sample.mps
+ */
 
-The example code is available at `examples/cuopt-c/lp/mps_file_example.c` ([download](examples/mps_file_example.c)):
+#include <cuopt/mathematical_optimization/cuopt_c.h>
+#include <stdio.h>
+#include <stdlib.h>
 
-It is necessary to have the path for include and library dirs ready, if you know the paths, please add them to the path variables directly. Otherwise, run the following commands to find the path and assign it to the path variables. The following commands are for Linux and might fail in cases where the cuopt library is not installed or there are multiple cuopt libraries in the system.
+const char* termination_status_to_string(cuopt_int_t termination_status)
+{
+  switch (termination_status) {
+    case CUOPT_TERMINATION_STATUS_OPTIMAL:
+      return "Optimal";
+    case CUOPT_TERMINATION_STATUS_INFEASIBLE:
+      return "Infeasible";
+    case CUOPT_TERMINATION_STATUS_UNBOUNDED:
+      return "Unbounded";
+    case CUOPT_TERMINATION_STATUS_ITERATION_LIMIT:
+      return "Iteration limit";
+    case CUOPT_TERMINATION_STATUS_TIME_LIMIT:
+      return "Time limit";
+    case CUOPT_TERMINATION_STATUS_NUMERICAL_ERROR:
+      return "Numerical error";
+    case CUOPT_TERMINATION_STATUS_PRIMAL_FEASIBLE:
+      return "Primal feasible";
+    case CUOPT_TERMINATION_STATUS_FEASIBLE_FOUND:
+      return "Feasible found";
+    default:
+      return "Unknown";
+  }
+}
 
-If you have built it locally, libcuopt.so will be in the build directory `cpp/build` and include directoy would be `cpp/include`.
+cuopt_int_t solve_mps_file(const char* filename)
+{
+  cuOptOptimizationProblem problem = NULL;
+  cuOptSolverSettings settings     = NULL;
+  cuOptSolution solution           = NULL;
+  cuopt_int_t status;
+  cuopt_float_t time;
+  cuopt_int_t termination_status;
+  cuopt_float_t objective_value;
+  cuopt_int_t num_variables;
+  cuopt_float_t* solution_values = NULL;
 
-A sample MPS file ([download sample.mps](https://raw.githubusercontent.com/BUGSENG/PPL/devel/demos/ppl_lpsol/examples/sample.mps)):
+  printf("Reading and solving MPS file: %s\n", filename);
 
-Build and run the example
+  // Create the problem from MPS file
+  status = cuOptReadProblem(filename, &problem);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating problem from MPS file: %d\n", status);
+    goto DONE;
+  }
 
-You should see the following output:
+  // Get problem size
+  status = cuOptGetNumVariables(problem, &num_variables);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting number of variables: %d\n", status);
+    goto DONE;
+  }
+
+  // Create solver settings
+  status = cuOptCreateSolverSettings(&settings);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating solver settings: %d\n", status);
+    goto DONE;
+  }
+
+  // Set solver parameters
+  status = cuOptSetFloatParameter(settings, CUOPT_ABSOLUTE_PRIMAL_TOLERANCE, 0.0001);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error setting optimality tolerance: %d\n", status);
+    goto DONE;
+  }
+
+  // Solve the problem
+  status = cuOptSolve(problem, settings, &solution);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error solving problem: %d\n", status);
+    goto DONE;
+  }
+
+  // Get solution information
+  status = cuOptGetSolveTime(solution, &time);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting solve time: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetTerminationStatus(solution, &termination_status);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting termination status: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetObjectiveValue(solution, &objective_value);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting objective value: %d\n", status);
+    goto DONE;
+  }
+
+  // Print results
+  printf("\nResults:\n");
+  printf("--------\n");
+  printf("Number of variables: %d\n", num_variables);
+  printf("Termination status: %s (%d)\n",
+         termination_status_to_string(termination_status),
+         termination_status);
+  printf("Solve time: %f seconds\n", time);
+  printf("Objective value: %f\n", objective_value);
+
+  // Get and print solution variables
+  solution_values = (cuopt_float_t*)malloc(num_variables * sizeof(cuopt_float_t));
+  status          = cuOptGetPrimalSolution(solution, solution_values);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting solution values: %d\n", status);
+    goto DONE;
+  }
+
+  printf("\nPrimal Solution: First 10 solution variables (or fewer if less exist):\n");
+  for (cuopt_int_t i = 0; i < (num_variables < 10 ? num_variables : 10); i++) {
+    printf("x%d = %f\n", i + 1, solution_values[i]);
+  }
+  if (num_variables > 10) {
+    printf("... (showing only first 10 of %d variables)\n", num_variables);
+  }
+
+DONE:
+  free(solution_values);
+  cuOptDestroyProblem(&problem);
+  cuOptDestroySolverSettings(&settings);
+  cuOptDestroySolution(&solution);
+
+  return status;
+}
+
+int main(int argc, char* argv[])
+{
+  if (argc != 2) {
+    printf("Usage: %s <mps_file_path>\n", argv[0]);
+    return 1;
+  }
+
+  // Run the solver
+  cuopt_int_t status = solve_mps_file(argv[1]);
+
+  if (status == CUOPT_SUCCESS) {
+    printf("\nSolver completed successfully!\n");
+    return 0;
+  } else {
+    printf("\nSolver failed with status: %d\n", status);
+    return 1;
+  }
+}
+```
+<!-- /embed -->
+
+Sample MPS file used by this example:
+
+<!-- embed: examples/sample.mps -->
+```text
+NAME   good-1
+ROWS
+ N  COST
+ L  ROW1
+ L  ROW2
+COLUMNS
+   VAR1      COST      -0.2
+   VAR1      ROW1      3              ROW2      2.7
+   VAR2      COST      0.1
+   VAR2      ROW1      4              ROW2      10.1
+RHS
+   RHS1      ROW1      5.4            ROW2      4.9
+ENDATA
+```
+<!-- /embed -->
 
 ## LP Example With LP File
 
-`cuOptReadProblem` also accepts LP format files. The same function is used — it dispatches on the file extension (case-insensitive): `.lp` / `.lp.gz` / `.lp.bz2` → LP parser; `.mps` / `.qps` and their `.gz` / `.bz2` variants → MPS parser; unknown extensions are rejected. See the `read_lp` declaration in `cuopt/mathematical_optimization/io/parser.hpp` for the supported subset of the LP format.
+Same `cuOptReadProblem` call with an LP-format file.
 
-The example code is available at `examples/cuopt-c/lp/lp_file_example.c` ([download](examples/lp_file_example.c)):
+<!-- embed: examples/lp_file_example.c -->
+```c
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+/*
+ * LP File C API Example
+ *
+ * This example demonstrates how to solve an LP problem from an LP format
+ * file using the cuOpt C API. The same ``cuOptReadProblem`` call handles
+ * both MPS and LP inputs — the format is dispatched automatically by the
+ * file extension (case-insensitive): ``.lp`` / ``.lp.gz`` / ``.lp.bz2``
+ * go to the LP parser; ``.mps`` / ``.qps`` and their ``.gz`` / ``.bz2``
+ * variants go to the MPS parser.
+ *
+ * Problem (from LP file):
+ *   Minimize: -0.2*VAR1 + 0.1*VAR2
+ *   Subject to:
+ *     3*VAR1 + 4*VAR2 <= 5.4
+ *     2.7*VAR1 + 10.1*VAR2 <= 4.9
+ *     VAR1, VAR2 >= 0
+ *
+ * Expected Output:
+ *   Number of variables: 2
+ *   Termination status: Optimal (1)
+ *   Objective value: -0.360000
+ *   x1 = 1.800000
+ *   x2 = 0.000000
+ *
+ * Build:
+ *   gcc -I $INCLUDE_PATH -L $LIBCUOPT_LIBRARY_PATH -o lp_file_example lp_file_example.c -lcuopt
+ *
+ * Run:
+ *   ./lp_file_example sample.lp
+ */
 
-A sample LP file ([download sample.lp](examples/sample.lp)), equivalent to the MPS sample above:
+#include <cuopt/mathematical_optimization/cuopt_c.h>
+#include <stdio.h>
+#include <stdlib.h>
 
-Build and run the example
+const char* termination_status_to_string(cuopt_int_t termination_status)
+{
+  switch (termination_status) {
+    case CUOPT_TERMINATION_STATUS_OPTIMAL:
+      return "Optimal";
+    case CUOPT_TERMINATION_STATUS_INFEASIBLE:
+      return "Infeasible";
+    case CUOPT_TERMINATION_STATUS_UNBOUNDED:
+      return "Unbounded";
+    case CUOPT_TERMINATION_STATUS_ITERATION_LIMIT:
+      return "Iteration limit";
+    case CUOPT_TERMINATION_STATUS_TIME_LIMIT:
+      return "Time limit";
+    case CUOPT_TERMINATION_STATUS_NUMERICAL_ERROR:
+      return "Numerical error";
+    case CUOPT_TERMINATION_STATUS_PRIMAL_FEASIBLE:
+      return "Primal feasible";
+    case CUOPT_TERMINATION_STATUS_FEASIBLE_FOUND:
+      return "Feasible found";
+    default:
+      return "Unknown";
+  }
+}
 
-The output matches the MPS example above (same problem, same objective = -0.36).
+cuopt_int_t solve_lp_file(const char* filename)
+{
+  cuOptOptimizationProblem problem = NULL;
+  cuOptSolverSettings settings     = NULL;
+  cuOptSolution solution           = NULL;
+  cuopt_int_t status;
+  cuopt_float_t time;
+  cuopt_int_t termination_status;
+  cuopt_float_t objective_value;
+  cuopt_int_t num_variables;
+  cuopt_float_t* solution_values = NULL;
+
+  printf("Reading and solving input file: %s\n", filename);
+
+  // Create the problem from the input file. cuOptReadProblem dispatches on
+  // the file extension (case-insensitive): ``.lp`` / ``.lp.gz`` / ``.lp.bz2``
+  // go to the LP parser; ``.mps`` / ``.qps`` and their ``.gz`` / ``.bz2``
+  // variants go to the MPS parser.
+  status = cuOptReadProblem(filename, &problem);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating problem from input file: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetNumVariables(problem, &num_variables);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting number of variables: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptCreateSolverSettings(&settings);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating solver settings: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptSetFloatParameter(settings, CUOPT_ABSOLUTE_PRIMAL_TOLERANCE, 0.0001);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error setting optimality tolerance: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptSolve(problem, settings, &solution);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error solving problem: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetSolveTime(solution, &time);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting solve time: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetTerminationStatus(solution, &termination_status);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting termination status: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetObjectiveValue(solution, &objective_value);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting objective value: %d\n", status);
+    goto DONE;
+  }
+
+  printf("\nResults:\n");
+  printf("--------\n");
+  printf("Number of variables: %d\n", num_variables);
+  printf("Termination status: %s (%d)\n",
+         termination_status_to_string(termination_status),
+         termination_status);
+  printf("Solve time: %f seconds\n", time);
+  printf("Objective value: %f\n", objective_value);
+
+  solution_values = (cuopt_float_t*)malloc(num_variables * sizeof(cuopt_float_t));
+  status          = cuOptGetPrimalSolution(solution, solution_values);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting solution values: %d\n", status);
+    goto DONE;
+  }
+
+  printf("\nPrimal Solution: First 10 solution variables (or fewer if less exist):\n");
+  for (cuopt_int_t i = 0; i < (num_variables < 10 ? num_variables : 10); i++) {
+    printf("x%d = %f\n", i + 1, solution_values[i]);
+  }
+  if (num_variables > 10) {
+    printf("... (showing only first 10 of %d variables)\n", num_variables);
+  }
+
+DONE:
+  free(solution_values);
+  cuOptDestroyProblem(&problem);
+  cuOptDestroySolverSettings(&settings);
+  cuOptDestroySolution(&solution);
+
+  return status;
+}
+
+int main(int argc, char* argv[])
+{
+  if (argc != 2) {
+    printf("Usage: %s <lp_or_mps_file_path>\n", argv[0]);
+    return 1;
+  }
+
+  cuopt_int_t status = solve_lp_file(argv[1]);
+
+  if (status == CUOPT_SUCCESS) {
+    printf("\nSolver completed successfully!\n");
+    return 0;
+  } else {
+    printf("\nSolver failed with status: %d\n", status);
+    return 1;
+  }
+}
+```
+<!-- /embed -->
+
+Sample LP file (equivalent to the MPS sample above):
+
+<!-- embed: examples/sample.lp -->
+```text
+\ Problem name: good-1
+\ Equivalent to sample.mps in this directory.
+
+Minimize
+ COST: - 0.2 VAR1 + 0.1 VAR2
+Subject To
+ ROW1: 3 VAR1 + 4 VAR2 <= 5.4
+ ROW2: 2.7 VAR1 + 10.1 VAR2 <= 4.9
+End
+```
+<!-- /embed -->
 
 ## Simple Quadratic Programming Example
 
-This example demonstrates how to use the cuOpt C API for quadratic programming.
+Builds and solves a small QP with `cuOptCreateProblem` and `cuOptSetQuadraticObjective`.
 
-The example code is available at `examples/cuopt-c/lp/simple_qp_example.c` ([download](examples/simple_qp_example.c)):
+<!-- embed: examples/simple_qp_example.c -->
+```c
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights
+ * reserved. SPDX-License-Identifier: Apache-2.0
+ */
+/*
+ * Simple QP C API Example
+ *
+ * This example demonstrates how to use the cuOpt C API for quadratic programming.
+ *
+ * Problem:
+ *   Minimize: x^2 + y^2
+ *   Subject to:
+ *     x + y >= 1
+ *     x, y >= 0
+ *
+ *
+ * Build:
+ *   gcc -I $INCLUDE_PATH -L $LIBCUOPT_LIBRARY_PATH -o simple_qp_example simple_qp_example.c -lcuopt
+ *
+ * Run:
+ *   ./simple_qp_example
+ */
 
-Build and run the example
+// Include the cuOpt linear programming solver header
+#include <cuopt/mathematical_optimization/cuopt_c.h>
+#include <stdio.h>
+#include <stdlib.h>
 
-You should see the following output:
+// Convert termination status to string
+const char* termination_status_to_string(cuopt_int_t termination_status)
+{
+  switch (termination_status) {
+    case CUOPT_TERMINATION_STATUS_OPTIMAL:
+      return "Optimal";
+    case CUOPT_TERMINATION_STATUS_INFEASIBLE:
+      return "Infeasible";
+    case CUOPT_TERMINATION_STATUS_UNBOUNDED:
+      return "Unbounded";
+    case CUOPT_TERMINATION_STATUS_ITERATION_LIMIT:
+      return "Iteration limit";
+    case CUOPT_TERMINATION_STATUS_TIME_LIMIT:
+      return "Time limit";
+    case CUOPT_TERMINATION_STATUS_NUMERICAL_ERROR:
+      return "Numerical error";
+    case CUOPT_TERMINATION_STATUS_PRIMAL_FEASIBLE:
+      return "Primal feasible";
+    case CUOPT_TERMINATION_STATUS_FEASIBLE_FOUND:
+      return "Feasible found";
+    case CUOPT_TERMINATION_STATUS_UNBOUNDED_OR_INFEASIBLE:
+      return "Unbounded or infeasible";
+    default:
+      return "Unknown";
+  }
+}
+
+// Test simple QP problem
+cuopt_int_t test_simple_qp()
+{
+  cuOptOptimizationProblem problem = NULL;
+  cuOptSolverSettings settings     = NULL;
+  cuOptSolution solution           = NULL;
+
+  /* Solve the following QP:
+     minimize x^2 + y^2
+     subject to:
+     x + y >= 1
+     x, y >= 0
+  */
+
+  cuopt_int_t num_variables   = 2;
+  cuopt_int_t num_constraints = 1;
+  cuopt_int_t nnz             = 2;
+
+  // CSR format constraint matrix
+  // https://docs.nvidia.com/nvpl/latest/sparse/storage_format/sparse_matrix.html#compressed-sparse-row-csr
+  cuopt_int_t row_offsets[]    = {0, 2};
+  cuopt_int_t column_indices[] = {0, 1};
+  cuopt_float_t values[]       = {1.0, 1.0};
+
+  // Objective coefficients
+  // From the objective function: minimize x^2 + y^2
+  // 0 is the coefficient of the linear term on x
+  // 0 is the coefficient of the linear term on y
+  cuopt_float_t linear_objective_coefficients[] = {0.0, 0.0};
+
+  // Quadratic objective matrix
+  // From the objective function: minimize x^2 + y^2
+  // 1 is the coefficient of the quadratic term on x^2
+  // 1 is the coefficient of the quadratic term on y^2
+  cuopt_float_t quadratic_objective_matrix_values[]       = {1.0, 1.0};
+  cuopt_int_t quadratic_objective_matrix_row_offsets[]    = {0, 1, 2};
+  cuopt_int_t quadratic_objective_matrix_column_indices[] = {0, 1};
+
+  // Constraint bounds
+  // From the constraints:
+  // x + y >= 1
+  cuopt_float_t constraint_rhs[] = {1.0};
+  char constraint_sense[]        = {CUOPT_GREATER_THAN};
+
+  // Variable bounds
+  // From the constraints:
+  // x1, x2 >= 0
+  cuopt_float_t var_lower_bounds[] = {0.0, 0.0};
+  cuopt_float_t var_upper_bounds[] = {CUOPT_INFINITY, CUOPT_INFINITY};
+
+  // Variable types (continuous)
+  // From the constraints:
+  // x1, x2 >= 0
+  char variable_types[] = {CUOPT_CONTINUOUS, CUOPT_CONTINUOUS};
+
+  cuopt_int_t status;
+  cuopt_float_t time;
+  cuopt_int_t termination_status;
+  cuopt_float_t objective_value;
+
+  printf("Creating and solving simple QP problem...\n");
+
+  // Create the problem
+  status = cuOptCreateQuadraticProblem(num_constraints,
+                                       num_variables,
+                                       CUOPT_MINIMIZE,
+                                       0.0,  // objective offset
+                                       linear_objective_coefficients,
+                                       quadratic_objective_matrix_row_offsets,
+                                       quadratic_objective_matrix_column_indices,
+                                       quadratic_objective_matrix_values,
+                                       row_offsets,
+                                       column_indices,
+                                       values,
+                                       constraint_sense,
+                                       constraint_rhs,
+                                       var_lower_bounds,
+                                       var_upper_bounds,
+                                       &problem);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating problem: %d\n", status);
+    goto DONE;
+  }
+
+  // Create solver settings
+  status = cuOptCreateSolverSettings(&settings);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating solver settings: %d\n", status);
+    goto DONE;
+  }
+
+  // Solve the problem
+  status = cuOptSolve(problem, settings, &solution);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error solving problem: %d\n", status);
+    goto DONE;
+  }
+
+  // Get solution information
+  status = cuOptGetSolveTime(solution, &time);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting solve time: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetTerminationStatus(solution, &termination_status);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting termination status: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetObjectiveValue(solution, &objective_value);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting objective value: %d\n", status);
+    goto DONE;
+  }
+
+  // Print results
+  printf("\nResults:\n");
+  printf("--------\n");
+  printf("Termination status: %s (%d)\n",
+         termination_status_to_string(termination_status),
+         termination_status);
+  printf("Solve time: %f seconds\n", time);
+  printf("Objective value: %f\n", objective_value);
+
+  // Get and print solution variables
+  cuopt_float_t* solution_values = (cuopt_float_t*)malloc(num_variables * sizeof(cuopt_float_t));
+  if (solution_values == NULL) {
+    printf("Error allocating solution values\n");
+    goto DONE;
+  }
+  status = cuOptGetPrimalSolution(solution, solution_values);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting solution values: %d\n", status);
+    free(solution_values);
+    goto DONE;
+  }
+
+  printf("\nPrimal Solution: Solution variables \n");
+  for (cuopt_int_t i = 0; i < num_variables; i++) {
+    printf("x%d = %f\n", i + 1, solution_values[i]);
+  }
+  free(solution_values);
+
+DONE:
+  cuOptDestroyProblem(&problem);
+  cuOptDestroySolverSettings(&settings);
+  cuOptDestroySolution(&solution);
+
+  return status;
+}
+
+int main()
+{
+  // Run the test
+  cuopt_int_t status = test_simple_qp();
+
+  if (status == CUOPT_SUCCESS) {
+    printf("\nTest completed successfully!\n");
+    return 0;
+  } else {
+    printf("\nTest failed with status: %d\n", status);
+    return 1;
+  }
+}
+```
+<!-- /embed -->
 
 ## Simple Second-Order Cone Programming Example
 
-This example builds an SOCP directly with the C API: a linear problem is created with :c`cuOptCreateProblem`, then a second-order cone constraint is added with :c`cuOptAddQuadraticConstraint`. It minimizes `x3` subject to `x1 + x2 >= 2` and the cone `||(x1, x2)||_2 <= x3`, written as the quadratic inequality `x1^2 + x2^2 - x3^2 <= 0`. cuOpt detects the second-order cone structure and solves with the barrier method.
+Creates a problem with `cuOptCreateProblem`, then adds a second-order cone constraint with `cuOptAddQuadraticConstraint`. Minimizes `x3` subject to `x1 + x2 >= 2` and `||(x1, x2)||_2 <= x3`. The optimum is `x1 = x2 = 1`, `x3 = sqrt(2)`.
 
-The example code is available at `examples/cuopt-c/lp/simple_socp_example.c` ([download](examples/simple_socp_example.c)):
+<!-- embed: examples/simple_socp_example.c -->
+```c
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights
+ * reserved. SPDX-License-Identifier: Apache-2.0
+ */
+/*
+ * Simple SOCP C API Example
+ *
+ * Demonstrates building a second-order cone program (SOCP) with the cuOpt C API:
+ * a linear problem is created with cuOptCreateProblem, then a quadratic
+ * constraint is added with cuOptAddQuadraticConstraint. cuOpt detects the
+ * second-order cone structure of the quadratic constraint and solves with the
+ * barrier method.
+ *
+ * Problem:
+ *   minimize    x3
+ *   subject to  x1 + x2 >= 2
+ *               x1^2 + x2^2 - x3^2 <= 0      (i.e. ||(x1, x2)||_2 <= x3)
+ *               x3 >= 0,  x1, x2 free
+ *
+ * Optimal: x1 = x2 = 1, x3 = sqrt(2) ~= 1.414214, objective ~= 1.414214.
+ *
+ * Build:
+ *   gcc -I $INCLUDE_PATH -L $LIBCUOPT_LIBRARY_PATH -o simple_socp_example simple_socp_example.c -lcuopt
+ *
+ * Run:
+ *   ./simple_socp_example
+ */
 
-Build and run the example
+#include <cuopt/mathematical_optimization/cuopt_c.h>
+#include <stdio.h>
+#include <stdlib.h>
 
-The optimum is `x1 = x2 = 1` and `x3 = sqrt(2)`:
+// Convert termination status to string
+const char* termination_status_to_string(cuopt_int_t termination_status)
+{
+  switch (termination_status) {
+    case CUOPT_TERMINATION_STATUS_OPTIMAL:
+      return "Optimal";
+    case CUOPT_TERMINATION_STATUS_INFEASIBLE:
+      return "Infeasible";
+    case CUOPT_TERMINATION_STATUS_UNBOUNDED:
+      return "Unbounded";
+    case CUOPT_TERMINATION_STATUS_ITERATION_LIMIT:
+      return "Iteration limit";
+    case CUOPT_TERMINATION_STATUS_TIME_LIMIT:
+      return "Time limit";
+    case CUOPT_TERMINATION_STATUS_NUMERICAL_ERROR:
+      return "Numerical error";
+    default:
+      return "Unknown";
+  }
+}
 
-Note that dual variables are not currently returned for problems with quadratic constraints.
+cuopt_int_t test_simple_socp()
+{
+  cuOptOptimizationProblem problem = NULL;
+  cuOptSolverSettings settings     = NULL;
+  cuOptSolution solution           = NULL;
+
+  cuopt_int_t num_variables   = 3;  // x1, x2, x3
+  cuopt_int_t num_constraints = 1;  // linear: x1 + x2 >= 2 (the cone is added separately)
+
+  // Linear objective: minimize x3
+  cuopt_float_t objective_coefficients[] = {0.0, 0.0, 1.0};
+
+  // Linear constraint matrix in CSR: row 0 is x1 + x2
+  cuopt_int_t row_offsets[]    = {0, 2};
+  cuopt_int_t column_indices[] = {0, 1};
+  cuopt_float_t values[]       = {1.0, 1.0};
+  char constraint_sense[]      = {CUOPT_GREATER_THAN};
+  cuopt_float_t rhs[]          = {2.0};
+
+  // Variable bounds: x1, x2 free; x3 (the cone head) >= 0
+  cuopt_float_t var_lower_bounds[] = {-CUOPT_INFINITY, -CUOPT_INFINITY, 0.0};
+  cuopt_float_t var_upper_bounds[] = {CUOPT_INFINITY, CUOPT_INFINITY, CUOPT_INFINITY};
+  char variable_types[]            = {CUOPT_CONTINUOUS, CUOPT_CONTINUOUS, CUOPT_CONTINUOUS};
+
+  // Second-order cone constraint x1^2 + x2^2 - x3^2 <= 0, supplied as the
+  // quadratic matrix Q in coordinate (triplet) form. There is no linear part
+  // and the right-hand side must be 0.
+  cuopt_int_t q_row_index[]  = {0, 1, 2};
+  cuopt_int_t q_col_index[]  = {0, 1, 2};
+  cuopt_float_t q_coeff[]    = {1.0, 1.0, -1.0};
+
+  cuopt_int_t status;
+  cuopt_float_t time;
+  cuopt_int_t termination_status;
+  cuopt_float_t objective_value;
+  cuopt_float_t* solution_values = NULL;
+
+  printf("Creating and solving simple SOCP problem...\n");
+
+  // Create the linear part of the problem
+  status = cuOptCreateProblem(num_constraints,
+                              num_variables,
+                              CUOPT_MINIMIZE,
+                              0.0,  // objective offset
+                              objective_coefficients,
+                              row_offsets,
+                              column_indices,
+                              values,
+                              constraint_sense,
+                              rhs,
+                              var_lower_bounds,
+                              var_upper_bounds,
+                              variable_types,
+                              &problem);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating problem: %d\n", status);
+    goto DONE;
+  }
+
+  // Add the second-order cone constraint (no linear term, rhs = 0)
+  status = cuOptAddQuadraticConstraint(problem,
+                                       3,  // number of quadratic entries
+                                       q_row_index,
+                                       q_col_index,
+                                       q_coeff,
+                                       0,     // number of linear entries
+                                       NULL,  // linear indices
+                                       NULL,  // linear coefficients
+                                       CUOPT_LESS_THAN,
+                                       0.0);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error adding quadratic constraint: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptCreateSolverSettings(&settings);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating solver settings: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptSolve(problem, settings, &solution);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error solving problem: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetSolveTime(solution, &time);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting solve time: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetTerminationStatus(solution, &termination_status);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting termination status: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetObjectiveValue(solution, &objective_value);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting objective value: %d\n", status);
+    goto DONE;
+  }
+
+  printf("\nResults:\n");
+  printf("--------\n");
+  printf("Termination status: %s (%d)\n",
+         termination_status_to_string(termination_status),
+         termination_status);
+  printf("Solve time: %f seconds\n", time);
+  printf("Objective value: %f\n", objective_value);
+
+  solution_values = (cuopt_float_t*)malloc(num_variables * sizeof(cuopt_float_t));
+  if (solution_values == NULL) {
+    printf("Error allocating solution values\n");
+    goto DONE;
+  }
+  status = cuOptGetPrimalSolution(solution, solution_values);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting solution values: %d\n", status);
+    free(solution_values);
+    goto DONE;
+  }
+
+  printf("\nPrimal Solution: Solution variables \n");
+  for (cuopt_int_t i = 0; i < num_variables; i++) {
+    printf("x%d = %f\n", i + 1, solution_values[i]);
+  }
+  free(solution_values);
+
+DONE:
+  cuOptDestroyProblem(&problem);
+  cuOptDestroySolverSettings(&settings);
+  cuOptDestroySolution(&solution);
+
+  return status;
+}
+
+int main()
+{
+  cuopt_int_t status = test_simple_socp();
+
+  if (status == CUOPT_SUCCESS) {
+    printf("\nTest completed successfully!\n");
+    return 0;
+  } else {
+    printf("\nTest failed with status: %d\n", status);
+    return 1;
+  }
+}
+```
+<!-- /embed -->
 
 ## Rotated Second-Order Cone Example
 
-This example adds a **rotated** cone with :c`cuOptAddQuadraticConstraint`. The cone `x1^2 + x2^2 <= x3*x4` is expressed as `x1^2 + x2^2 - x3*x4 <= 0`. See [Convex Features](convex-features) for other RSOC forms. It minimizes `x3 + x4` subject to `x1 + x2 >= 2` and the rotated cone.
+Adds a rotated cone `x1^2 + x2^2 <= x3 * x4` (written as `x1^2 + x2^2 - x3*x4 <= 0`). See [Convex Features](convex-features) for all supported RSOC forms. The optimum is `x1 = x2 = 1`, `x3 = x4 = sqrt(2)`.
 
-The example code is available at `examples/cuopt-c/lp/rotated_socp_example.c` ([download](examples/rotated_socp_example.c)):
+<!-- embed: examples/rotated_socp_example.c -->
+```c
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights
+ * reserved. SPDX-License-Identifier: Apache-2.0
+ */
+/*
+ * Rotated SOCP C API Example
+ *
+ * Demonstrates a rotated second-order cone with the cuOpt C API.
+ *
+ * Problem:
+ *   minimize    x3 + x4
+ *   subject to  x1 + x2 >= 2
+ *               x1^2 + x2^2 <= x3*x4
+ *               x3 >= 0, x4 >= 0,  x1, x2 free
+ *
+ * Optimal: x1 = x2 = 1, x3 = x4 = sqrt(2) ~= 1.414214, objective = 2*sqrt(2) ~= 2.828427.
+ *
+ * Build:
+ *   gcc -I $INCLUDE_PATH -L $LIBCUOPT_LIBRARY_PATH -o rotated_socp_example rotated_socp_example.c -lcuopt
+ *
+ * Run:
+ *   ./rotated_socp_example
+ */
 
-Build and run the example
+#include <cuopt/mathematical_optimization/cuopt_c.h>
+#include <stdio.h>
+#include <stdlib.h>
 
-The optimum is `x1 = x2 = 1` and `x3 = x4 = sqrt(2)`:
+// Convert termination status to string
+const char* termination_status_to_string(cuopt_int_t termination_status)
+{
+  switch (termination_status) {
+    case CUOPT_TERMINATION_STATUS_OPTIMAL:
+      return "Optimal";
+    case CUOPT_TERMINATION_STATUS_INFEASIBLE:
+      return "Infeasible";
+    case CUOPT_TERMINATION_STATUS_UNBOUNDED:
+      return "Unbounded";
+    case CUOPT_TERMINATION_STATUS_ITERATION_LIMIT:
+      return "Iteration limit";
+    case CUOPT_TERMINATION_STATUS_TIME_LIMIT:
+      return "Time limit";
+    case CUOPT_TERMINATION_STATUS_NUMERICAL_ERROR:
+      return "Numerical error";
+    default:
+      return "Unknown";
+  }
+}
 
-Note that dual variables are not currently returned for problems with quadratic constraints.
+cuopt_int_t test_rotated_socp()
+{
+  cuOptOptimizationProblem problem = NULL;
+  cuOptSolverSettings settings     = NULL;
+  cuOptSolution solution           = NULL;
+
+  cuopt_int_t num_variables   = 4;  // x1, x2, x3, x4
+  cuopt_int_t num_constraints = 1;  // linear: x1 + x2 >= 2 (the cone is added separately)
+
+  // Linear objective: minimize x3 + x4
+  cuopt_float_t objective_coefficients[] = {0.0, 0.0, 1.0, 1.0};
+
+  // Linear constraint matrix in CSR: row 0 is x1 + x2
+  cuopt_int_t row_offsets[]    = {0, 2};
+  cuopt_int_t column_indices[] = {0, 1};
+  cuopt_float_t values[]       = {1.0, 1.0};
+  char constraint_sense[]      = {CUOPT_GREATER_THAN};
+  cuopt_float_t rhs[]          = {2.0};
+
+  // Variable bounds: x1, x2 free; x3, x4 (the cone heads) >= 0
+  cuopt_float_t var_lower_bounds[] = {-CUOPT_INFINITY, -CUOPT_INFINITY, 0.0, 0.0};
+  cuopt_float_t var_upper_bounds[] = {
+    CUOPT_INFINITY, CUOPT_INFINITY, CUOPT_INFINITY, CUOPT_INFINITY};
+  char variable_types[] = {
+    CUOPT_CONTINUOUS, CUOPT_CONTINUOUS, CUOPT_CONTINUOUS, CUOPT_CONTINUOUS};
+
+  // Rotated cone x1^2 + x2^2 <= x3*x4.
+  cuopt_int_t q_row_index[]  = {0, 1, 2};
+  cuopt_int_t q_col_index[]  = {0, 1, 3};
+  cuopt_float_t q_coeff[]    = {1.0, 1.0, -1.0};
+
+  cuopt_int_t status;
+  cuopt_float_t time;
+  cuopt_int_t termination_status;
+  cuopt_float_t objective_value;
+  cuopt_float_t* solution_values = NULL;
+
+  printf("Creating and solving rotated SOCP problem...\n");
+
+  // Create the linear part of the problem
+  status = cuOptCreateProblem(num_constraints,
+                              num_variables,
+                              CUOPT_MINIMIZE,
+                              0.0,  // objective offset
+                              objective_coefficients,
+                              row_offsets,
+                              column_indices,
+                              values,
+                              constraint_sense,
+                              rhs,
+                              var_lower_bounds,
+                              var_upper_bounds,
+                              variable_types,
+                              &problem);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating problem: %d\n", status);
+    goto DONE;
+  }
+
+  // Add the rotated second-order cone constraint (no linear term, rhs = 0)
+  status = cuOptAddQuadraticConstraint(problem,
+                                       3,  // number of quadratic entries
+                                       q_row_index,
+                                       q_col_index,
+                                       q_coeff,
+                                       0,     // number of linear entries
+                                       NULL,  // linear indices
+                                       NULL,  // linear coefficients
+                                       CUOPT_LESS_THAN,
+                                       0.0);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error adding quadratic constraint: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptCreateSolverSettings(&settings);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating solver settings: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptSolve(problem, settings, &solution);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error solving problem: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetSolveTime(solution, &time);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting solve time: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetTerminationStatus(solution, &termination_status);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting termination status: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetObjectiveValue(solution, &objective_value);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting objective value: %d\n", status);
+    goto DONE;
+  }
+
+  printf("\nResults:\n");
+  printf("--------\n");
+  printf("Termination status: %s (%d)\n",
+         termination_status_to_string(termination_status),
+         termination_status);
+  printf("Solve time: %f seconds\n", time);
+  printf("Objective value: %f\n", objective_value);
+
+  solution_values = (cuopt_float_t*)malloc(num_variables * sizeof(cuopt_float_t));
+  if (solution_values == NULL) {
+    printf("Error allocating solution values\n");
+    goto DONE;
+  }
+  status = cuOptGetPrimalSolution(solution, solution_values);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting solution values: %d\n", status);
+    free(solution_values);
+    goto DONE;
+  }
+
+  printf("\nPrimal Solution: Solution variables \n");
+  for (cuopt_int_t i = 0; i < num_variables; i++) {
+    printf("x%d = %f\n", i + 1, solution_values[i]);
+  }
+  free(solution_values);
+
+DONE:
+  cuOptDestroyProblem(&problem);
+  cuOptDestroySolverSettings(&settings);
+  cuOptDestroySolution(&solution);
+
+  return status;
+}
+
+int main()
+{
+  cuopt_int_t status = test_rotated_socp();
+
+  if (status == CUOPT_SUCCESS) {
+    printf("\nTest completed successfully!\n");
+    return 0;
+  } else {
+    printf("\nTest failed with status: %d\n", status);
+    return 1;
+  }
+}
+```
+<!-- /embed -->
 
 ## General Convex Quadratic Constraint Example
 
-This example adds a general convex quadratic constraint with :c`cuOptAddQuadraticConstraint`. Here we add the convex quadratic constraint `2*x^2 + 2*x*y + 2*y^2 <= 6`. Note that the quadratic matrix Q that encodes this constraint need not be symmetric. Here the term `2*x*y` is supplied as a single entry `Q[0,1] = 2`.
+Adds the convex constraint `2*x^2 + 2*x*y + 2*y^2 <= 6` with a non-symmetric Q matrix (the cross-term `2*x*y` is supplied as a single entry). The optimum is `x = y = -1`.
 
-The example code is available at `examples/cuopt-c/lp/general_quadratic_example.c` ([download](examples/general_quadratic_example.c)):
+<!-- embed: examples/general_quadratic_example.c -->
+```c
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights
+ * reserved. SPDX-License-Identifier: Apache-2.0
+ */
+/*
+ * General Convex Quadratic Constraint C API Example
+ *
+ * Demonstrates a general convex quadratic constraint x^T Q x + d^T x <= alpha
+ * with the cuOpt C API. A linear problem is created with cuOptCreateProblem,
+ * then the quadratic constraint is added with cuOptAddQuadraticConstraint.
+ *
+ * Q may be any matrix whose symmetric part (Q + Q^T)/2 is positive semidefinite.
+ * Q need not be supplied symmetrically: here the cross term 2*x*y is given as
+ * one canonical COO entry Q[0,1] = 2 (full coefficient on x*y, canonicalized
+ * on ingest).
+ *
+ * Problem:
+ *   minimize    x + y
+ *   subject to  x + y >= -5
+ *               2*x^2 + 2*x*y + 2*y^2 <= 6      (general convex quadratic)
+ *
+ * Optimal: x = y = -1, objective = -2.
+ *
+ * Build:
+ *   gcc -I $INCLUDE_PATH -L $LIBCUOPT_LIBRARY_PATH -o general_quadratic_example general_quadratic_example.c -lcuopt
+ *
+ * Run:
+ *   ./general_quadratic_example
+ */
 
-Build and run the example
+#include <cuopt/mathematical_optimization/cuopt_c.h>
+#include <stdio.h>
+#include <stdlib.h>
 
-The optimum is `x = y = -1`:
+// Convert termination status to string
+const char* termination_status_to_string(cuopt_int_t termination_status)
+{
+  switch (termination_status) {
+    case CUOPT_TERMINATION_STATUS_OPTIMAL:
+      return "Optimal";
+    case CUOPT_TERMINATION_STATUS_INFEASIBLE:
+      return "Infeasible";
+    case CUOPT_TERMINATION_STATUS_UNBOUNDED:
+      return "Unbounded";
+    case CUOPT_TERMINATION_STATUS_ITERATION_LIMIT:
+      return "Iteration limit";
+    case CUOPT_TERMINATION_STATUS_TIME_LIMIT:
+      return "Time limit";
+    case CUOPT_TERMINATION_STATUS_NUMERICAL_ERROR:
+      return "Numerical error";
+    default:
+      return "Unknown";
+  }
+}
+
+cuopt_int_t test_general_quadratic()
+{
+  cuOptOptimizationProblem problem = NULL;
+  cuOptSolverSettings settings     = NULL;
+  cuOptSolution solution           = NULL;
+
+  cuopt_int_t num_variables   = 2;  // x, y
+  cuopt_int_t num_constraints = 1;  // linear: x + y >= -5 (the quadratic is added separately)
+
+  // Linear objective: minimize x + y
+  cuopt_float_t objective_coefficients[] = {1.0, 1.0};
+
+  // Linear constraint matrix in CSR: row 0 is x + y
+  cuopt_int_t row_offsets[]    = {0, 2};
+  cuopt_int_t column_indices[] = {0, 1};
+  cuopt_float_t values[]       = {1.0, 1.0};
+  char constraint_sense[]      = {CUOPT_GREATER_THAN};
+  cuopt_float_t rhs[]          = {-5.0};
+
+  // Variables are free
+  cuopt_float_t var_lower_bounds[] = {-CUOPT_INFINITY, -CUOPT_INFINITY};
+  cuopt_float_t var_upper_bounds[] = {CUOPT_INFINITY, CUOPT_INFINITY};
+  char variable_types[]            = {CUOPT_CONTINUOUS, CUOPT_CONTINUOUS};
+
+  // General convex quadratic constraint 2*x^2 + 2*x*y + 2*y^2 <= 6 in canonical COO form.
+  cuopt_int_t q_row_index[]  = {0, 1, 0};
+  cuopt_int_t q_col_index[]  = {0, 1, 1};
+  cuopt_float_t q_coeff[]    = {2.0, 2.0, 2.0};
+
+  cuopt_int_t status;
+  cuopt_float_t time;
+  cuopt_int_t termination_status;
+  cuopt_float_t objective_value;
+  cuopt_float_t* solution_values = NULL;
+
+  printf("Creating and solving general convex quadratic problem...\n");
+
+  // Create the linear part of the problem
+  status = cuOptCreateProblem(num_constraints,
+                              num_variables,
+                              CUOPT_MINIMIZE,
+                              0.0,  // objective offset
+                              objective_coefficients,
+                              row_offsets,
+                              column_indices,
+                              values,
+                              constraint_sense,
+                              rhs,
+                              var_lower_bounds,
+                              var_upper_bounds,
+                              variable_types,
+                              &problem);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating problem: %d\n", status);
+    goto DONE;
+  }
+
+  // Add the general convex quadratic constraint (no linear term, rhs = 6)
+  status = cuOptAddQuadraticConstraint(problem,
+                                       3,  // number of quadratic entries
+                                       q_row_index,
+                                       q_col_index,
+                                       q_coeff,
+                                       0,     // number of linear entries
+                                       NULL,  // linear indices
+                                       NULL,  // linear coefficients
+                                       CUOPT_LESS_THAN,
+                                       6.0);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error adding quadratic constraint: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptCreateSolverSettings(&settings);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating solver settings: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptSolve(problem, settings, &solution);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error solving problem: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetSolveTime(solution, &time);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting solve time: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetTerminationStatus(solution, &termination_status);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting termination status: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetObjectiveValue(solution, &objective_value);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting objective value: %d\n", status);
+    goto DONE;
+  }
+
+  printf("\nResults:\n");
+  printf("--------\n");
+  printf("Termination status: %s (%d)\n",
+         termination_status_to_string(termination_status),
+         termination_status);
+  printf("Solve time: %f seconds\n", time);
+  printf("Objective value: %f\n", objective_value);
+
+  solution_values = (cuopt_float_t*)malloc(num_variables * sizeof(cuopt_float_t));
+  if (solution_values == NULL) {
+    printf("Error allocating solution values\n");
+    goto DONE;
+  }
+  status = cuOptGetPrimalSolution(solution, solution_values);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting solution values: %d\n", status);
+    free(solution_values);
+    goto DONE;
+  }
+
+  printf("\nPrimal Solution: Solution variables \n");
+  for (cuopt_int_t i = 0; i < num_variables; i++) {
+    printf("x%d = %f\n", i + 1, solution_values[i]);
+  }
+  free(solution_values);
+
+DONE:
+  cuOptDestroyProblem(&problem);
+  cuOptDestroySolverSettings(&settings);
+  cuOptDestroySolution(&solution);
+
+  return status;
+}
+
+int main()
+{
+  cuopt_int_t status = test_general_quadratic();
+
+  if (status == CUOPT_SUCCESS) {
+    printf("\nTest completed successfully!\n");
+    return 0;
+  } else {
+    printf("\nTest failed with status: %d\n", status);
+    return 1;
+  }
+}
+```
+<!-- /embed -->
 
 ## QP Example With MPS File
 
-The same `mps_file_example.c` program also solves quadratic-objective (QP) problems. A quadratic objective is supplied through a `QUADOBJ` section, which holds the (upper-triangular) entries of the objective matrix `Q` using the MPS `1/2 * x^T Q x` convention.
+The same `mps_file_example.c` binary also solves QP problems. A quadratic objective is provided via a `QUADOBJ` section in the MPS file.
 
-A sample QP file ([download qp\_sample.mps](examples/qp_sample.mps)), which minimizes `x^2 + y^2` subject to `x + y >= 1`:
+Sample QP file (minimizes `x^2 + y^2` subject to `x + y >= 1`; optimum `x = y = 0.5`, objective `0.5`):
 
-Run it with the same binary:
-
-cuOpt detects the quadratic objective and solves with the barrier method. The optimum is `x = y = 0.5` with objective `0.5`:
+<!-- embed: examples/qp_sample.mps -->
+```text
+NAME          QPSAMPLE
+ROWS
+ N  OBJ
+ G  C1
+COLUMNS
+    X         C1               1.0
+    Y         C1               1.0
+RHS
+    RHS       C1               1.0
+QUADOBJ
+    X         X                2.0
+    Y         Y                2.0
+ENDATA
+```
+<!-- /embed -->
 
 ## SOCP Example With MPS File
 
-Second-order cone (SOCP) constraints are expressed through `QCMATRIX` sections — one per quadratic constraint — each holding the **full, symmetric** entries of that constraint's quadratic matrix with a zero right-hand side. Both standard and rotated cones are supported; see the SOCP section of [LP/QP/QCQP/SOCP Features](convex-features) for the cone forms.
+SOCP constraints are expressed through `QCMATRIX` sections. Both standard and rotated cones are supported; see [LP/QP/QCQP/SOCP Features](convex-features) for the supported cone forms.
 
-A sample SOCP file ([download socp\_sample.mps](examples/socp_sample.mps)) minimizes `s + p + q` subject to `a + b >= 2` and two cones:
+Sample SOCP file (minimizes `s + p + q` subject to two cones; optimum `s = p = q = sqrt(2)`):
 
-  - standard cone `||(a, b)||_2 <= s` (row `QCSTD`, written `a^2 + b^2 - s^2 <= 0, s >= 0`)
-  - rotated cone `a^2 + b^2 <= p * q, p >= 0, q >= 0` (row `QCROT`)
-
-The rotated cone uses symmetric cross-term halves `P Q -0.5` and `Q P -0.5` in the QCMATRIX section. Run it with the same binary:
-
-cuOpt detects the quadratic constraints, converts them to second-order cones, and solves with the barrier method. The optimum is `a = b = 1` and `s = p = q = sqrt(2) ≈ 1.414214` with objective `3*sqrt(2) ≈ 4.242641`. In the output below, `x1..x5` are `a, b, s, p, q` in column order:
+<!-- embed: examples/socp_sample.mps -->
+```text
+NAME          SOCPSAMPLE
+ROWS
+ N  OBJ
+ G  C1
+ L  QCSTD
+ L  QCROT
+COLUMNS
+    A         C1               1.0
+    B         C1               1.0
+    S         OBJ              1.0
+    P         OBJ              1.0
+    Q         OBJ              1.0
+RHS
+    RHS       C1               2.0
+BOUNDS
+ FR BND       A
+ FR BND       B
+QCMATRIX   QCSTD
+    A         A                1.0
+    B         B                1.0
+    S         S               -1.0
+QCMATRIX   QCROT
+    A         A                1.0
+    B         B                1.0
+    P         Q               -0.5
+    Q         P               -0.5
+ENDATA
+```
+<!-- /embed -->
