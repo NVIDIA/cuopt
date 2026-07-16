@@ -32,6 +32,12 @@ Read this for cuOpt code style: naming, file extensions, include order, error ha
 4. Dependencies
 5. STL
 
+## C++ Implementation Style
+
+- Prefer direct loops or named helpers for performance-critical traversal logic. Reserve lambdas for
+  short predicates and callbacks; large local lambdas obscure control flow and can lead to repeated
+  scans.
+
 ## Python Style
 
 - Follow PEP 8
