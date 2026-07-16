@@ -17,8 +17,11 @@
 
 #include <rmm/device_uvector.hpp>
 
+#include <utilities/logger.hpp>
+#include <utilities/scope_guard.hpp>
+#include <utilities/timer.hpp>
+
 #include <algorithm>
-#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -559,7 +562,7 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
   const raft::handle_t& handle,
   bve_reducer_t<i_t, f_t>& R,
   const std::vector<std::vector<i_t>>& impl_adj,
-  double tbudget_s)
+  timer_t& timer)
 {
   auto has_adj = [&](i_t v) {
     return static_cast<size_t>(v) < impl_adj.size() && !impl_adj[v].empty();
@@ -575,10 +578,8 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
   });
 
   std::vector<char> attempted(R.n_vars, 0);  // a seed is attempted once (whether or not it commits)
-  auto t0 = std::chrono::steady_clock::now();
   for (;;) {
-    if (std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() > tbudget_s)
-      break;
+    if (timer.check_time_limit()) break;
 
     // This round's live seeds, in the deterministic growth order.
     std::vector<i_t> round_seeds;
@@ -623,11 +624,14 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
       interiors[k].assign(A.begin(), A.end());
     }
 
+    if (timer.check_time_limit()) break;
+
     // Serial: stage each grown interior and greedily accept mutually SCOPE-DISJOINT candidates, in
     // round_seeds order. Nothing mutates the model until commit, so this stays serial.
     std::vector<bve_candidate_t<i_t, f_t>> cands;
     std::unordered_set<i_t> claimed;  // interior+boundary columns of already-accepted candidates
     for (size_t k = 0; k < round_seeds.size(); ++k) {
+      if (timer.check_time_limit()) break;
       const i_t seed = round_seeds[k];
       bve_candidate_t<i_t, f_t> cand;
       if (!R.stage(interiors[k], cand)) {
@@ -657,11 +661,14 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
       cands.push_back(std::move(cand));
     }
 
-    if (cands.empty()) break;
+    if (cands.empty() || timer.check_time_limit()) break;
     bve_project_batch_gpu<i_t, f_t>(handle, cands, R.tol);  // one kernel launch per shape-bin
+    if (timer.check_time_limit()) break;
     int committed = 0;
-    for (auto& cand : cands)
+    for (auto& cand : cands) {
+      if (timer.check_time_limit()) break;
       if (R.commit_projected(cand)) ++committed;
+    }
     if (committed == 0) break;
   }
   return R.finalize();
@@ -701,12 +708,17 @@ std::vector<std::vector<i_t>> bve_build_impl_adj(const probing_cache_t<i_t, f_t>
 template <typename i_t, typename f_t>
 bool block_bve_presolve(problem_t<i_t, f_t>& problem,
                         const std::vector<std::vector<i_t>>& impl_adj,
+                        timer_t& timer,
                         f_t tol,
                         int Bcap,
                         int enumcap,
-                        int margin,
-                        double tbudget_s)
+                        int margin)
 {
+  // Local wall clock for the DEBUG total; `timer` is the caller's deadline (e.g. global_timer).
+  timer_t wall(std::numeric_limits<double>::infinity());
+  auto timer_raii_guard = cuopt::scope_guard(
+    [&]() { CUOPT_LOG_DEBUG("Block-BVE presolve time: %.2f", wall.elapsed_time()); });
+
   const raft::handle_t* handle = problem.handle_ptr;
   auto stream                  = handle->get_stream();
   const i_t n_vars             = problem.n_variables;
@@ -725,6 +737,8 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
   // variable_mapping maps current-space column -> post-Papilo index (the frame postsolve uses)
   auto h_vmap = cuopt::host_copy(problem.presolve_data.variable_mapping, stream);
   handle->sync_stream();
+
+  if (timer.check_time_limit()) return false;
 
   // ---- 2. detector inputs (i_t CSR, f_t bounds/coeffs) ----
   std::vector<i_t> offsets(h_off.begin(), h_off.end());
@@ -762,7 +776,7 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
                                   enumcap,
                                   margin);
   bve_plan_t<i_t, f_t> plan =
-    bve_detect_closure_batched<i_t, f_t>(*handle, reducer, impl_adj, tbudget_s);
+    bve_detect_closure_batched<i_t, f_t>(*handle, reducer, impl_adj, timer);
   if (plan.n_blocks == 0) return false;
 
   // ---- 4. build the reduced forward CSR: keep original rows not removed, append clause rows ----
@@ -824,14 +838,19 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
   return true;
 }
 
-#define INSTANTIATE(F_TYPE)                                                     \
-  template struct bve_reducer_t<int, F_TYPE>;                                   \
-  template void bve_project_batch_gpu<int, F_TYPE>(                             \
-    const raft::handle_t&, std::vector<bve_candidate_t<int, F_TYPE>>&, F_TYPE); \
-  template std::vector<std::vector<int>> bve_build_impl_adj<int, F_TYPE>(       \
-    const probing_cache_t<int, F_TYPE>&, const std::vector<int>&, int);         \
-  template bool block_bve_presolve<int, F_TYPE>(                                \
-    problem_t<int, F_TYPE>&, const std::vector<std::vector<int>>&, F_TYPE, int, int, int, double)
+#define INSTANTIATE(F_TYPE)                                                           \
+  template struct bve_reducer_t<int, F_TYPE>;                                         \
+  template void bve_project_batch_gpu<int, F_TYPE>(                                   \
+    const raft::handle_t&, std::vector<bve_candidate_t<int, F_TYPE>>&, F_TYPE);       \
+  template std::vector<std::vector<int>> bve_build_impl_adj<int, F_TYPE>(             \
+    const probing_cache_t<int, F_TYPE>&, const std::vector<int>&, int);               \
+  template bool block_bve_presolve<int, F_TYPE>(problem_t<int, F_TYPE>&,              \
+                                                const std::vector<std::vector<int>>&, \
+                                                timer_t&,                             \
+                                                F_TYPE,                               \
+                                                int,                                  \
+                                                int,                                  \
+                                                int)
 
 INSTANTIATE(double);
 #ifdef MIP_INSTANTIATE_FLOAT

@@ -350,7 +350,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
     auto impl_adj = bve_build_impl_adj(ls.constraint_prop.bounds_update.probing_cache,
                                        problem_ptr->reverse_original_ids,
                                        problem_ptr->n_variables);
-    block_bve_presolve(*problem_ptr, impl_adj);
+    block_bve_presolve(*problem_ptr, impl_adj, global_timer);
   }
   // Optional debug export of the GPU-presolved model (env CUOPT_EXPORT_GPU_PRESOLVED_PROBLEM=1).
   // Runs after cuOpt's presolve (trivial_presolve + block-BVE); writes <instance>_gpupresolved.mps

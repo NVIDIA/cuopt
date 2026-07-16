@@ -20,6 +20,8 @@
 
 #include <rmm/device_uvector.hpp>
 
+#include <utilities/timer.hpp>
+
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -550,7 +552,8 @@ TEST(block_bve_presolve, end_to_end_reduction_and_reconstruction)
   auto impl_adj =
     row_share_adjacency(problem.n_variables, offsets, variables, is_integer, col_lower, col_upper);
 
-  const bool applied = mip::block_bve_presolve(problem, impl_adj);
+  cuopt::timer_t bve_timer(10.0);
+  const bool applied = mip::block_bve_presolve(problem, impl_adj, bve_timer);
   EXPECT_TRUE(applied);
   EXPECT_EQ(problem.n_variables, n_before - 1);  // exactly `a` eliminated
 
@@ -703,7 +706,8 @@ TEST(block_bve_equivalence, preserves_optimum_and_reconstruction_on_corpus)
     problem.presolve_data.initialize_var_mapping(problem, problem.handle_ptr);
 
     auto impl_adj = proxy_impl_adj(problem);
-    mip::block_bve_presolve(problem, impl_adj);
+    cuopt::timer_t bve_timer(10.0);
+    mip::block_bve_presolve(problem, impl_adj, bve_timer);
 
     auto bf = brute_force_binary(problem);
     if (!c.feasible) {
