@@ -19,9 +19,17 @@
 
 #include <pdlp/solve.cuh>
 
+#include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
+#include <cuopt/mathematical_optimization/io/mps_writer.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
+#include <utilities/copy_helpers.hpp>
 #include <utilities/scope_guard.hpp>
 
+#include <cstdlib>
 #include <memory>
+#include <span>
+#include <string>
+#include <vector>
 
 constexpr bool fj_only_run = false;
 
@@ -38,6 +46,57 @@ size_t sub_mip_recombiner_config_t::max_n_of_vars_from_other =
 
 template <typename i_t, typename f_t>
 std::vector<recombiner_enum_t> recombiner_t<i_t, f_t>::enabled_recombiners;
+
+// Convert the CURRENT (solver-space, post-presolve) problem_t into an owning io::mps_data_model_t,
+// so the model can be serialized without problem_t depending on the MPS writer. Free-function
+// adapter, mirroring simplex_problem_to_mps_data_model. Minimization sense (solver space); the
+// writer generates default variable/row names.
+template <typename i_t, typename f_t>
+static cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> problem_to_mps_data_model(
+  const problem_t<i_t, f_t>& problem)
+{
+  auto stream = problem.handle_ptr->get_stream();
+  auto h_off  = cuopt::host_copy(problem.offsets, stream);
+  auto h_ind  = cuopt::host_copy(problem.variables, stream);
+  auto h_val  = cuopt::host_copy(problem.coefficients, stream);
+  auto h_clb  = cuopt::host_copy(problem.constraint_lower_bounds, stream);
+  auto h_cub  = cuopt::host_copy(problem.constraint_upper_bounds, stream);
+  auto h_obj  = cuopt::host_copy(problem.objective_coefficients, stream);
+  auto h_vb   = cuopt::host_copy(problem.variable_bounds, stream);
+  auto h_vt   = cuopt::host_copy(problem.variable_types, stream);
+  problem.handle_ptr->sync_stream();
+
+  const i_t n_vars = problem.n_variables;
+  std::vector<f_t> var_lower(n_vars), var_upper(n_vars);
+  for (i_t v = 0; v < n_vars; ++v) {
+    var_lower[v] = get_lower(h_vb[v]);
+    var_upper[v] = get_upper(h_vb[v]);
+  }
+  std::vector<char> var_types(n_vars);
+  for (i_t v = 0; v < n_vars; ++v)
+    var_types[v] = var_type_to_char(h_vt[v]);
+
+  cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> model;
+  model.set_maximize(false);  // problem_t is always in minimization solver space
+  if (!h_off.empty()) {
+    model.set_csr_constraint_matrix(std::span<const f_t>{h_val.data(), h_val.size()},
+                                    std::span<const i_t>{h_ind.data(), h_ind.size()},
+                                    std::span<const i_t>{h_off.data(), h_off.size()});
+  }
+  if (problem.n_constraints != 0) {
+    model.set_constraint_lower_bounds(std::span<const f_t>{h_clb.data(), h_clb.size()});
+    model.set_constraint_upper_bounds(std::span<const f_t>{h_cub.data(), h_cub.size()});
+  }
+  if (n_vars != 0) {
+    model.set_objective_coefficients(std::span<const f_t>{h_obj.data(), h_obj.size()});
+    model.set_variable_lower_bounds(std::span<const f_t>{var_lower.data(), var_lower.size()});
+    model.set_variable_upper_bounds(std::span<const f_t>{var_upper.data(), var_upper.size()});
+    model.set_variable_types(var_types);
+  }
+  model.set_objective_scaling_factor(f_t(1.0));  // solver-space objective is written as-is
+  model.set_objective_offset(problem.objective_offset);
+  return model;
+}
 
 template <typename i_t, typename f_t>
 diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t>& context_)
@@ -292,6 +351,22 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
                                        problem_ptr->reverse_original_ids,
                                        problem_ptr->n_variables);
     block_bve_presolve(*problem_ptr, impl_adj);
+  }
+  // Optional debug export of the GPU-presolved model (env CUOPT_EXPORT_GPU_PRESOLVED_PROBLEM=1).
+  // Runs after cuOpt's presolve (trivial_presolve + block-BVE); writes <instance>_gpupresolved.mps
+  // to CWD.
+  if (const char* export_flag = std::getenv("CUOPT_EXPORT_GPU_PRESOLVED_PROBLEM");
+      export_flag != nullptr && std::atoi(export_flag) != 0) {
+    const std::string instance_name =
+      (problem_ptr->original_problem_ptr != nullptr &&
+       !problem_ptr->original_problem_ptr->get_problem_name().empty())
+        ? problem_ptr->original_problem_ptr->get_problem_name()
+        : std::string("cuopt");
+    const std::string mps_path = instance_name + "_gpupresolved.mps";
+    CUOPT_LOG_INFO("Exporting GPU-presolved problem to %s", mps_path.c_str());
+    auto model = problem_to_mps_data_model(*problem_ptr);
+    cuopt::mathematical_optimization::io::mps_writer_t<i_t, f_t> writer(model);
+    writer.write(mps_path);
   }
   if (!problem_ptr->empty && !check_bounds_sanity(*problem_ptr)) { return false; }
   // if (!presolve_timer.check_time_limit() && !context.settings.heuristics_only &&
