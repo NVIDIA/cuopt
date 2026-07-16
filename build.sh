@@ -437,53 +437,7 @@ fi
 
 # Build the Fern docs (opt-in; pass 'docs' explicitly to build)
 if hasArg docs; then
-    cd "${REPODIR}"
-
-    if ! command -v node &>/dev/null || ! command -v npm &>/dev/null; then
-        echo "ERROR: Node.js (with npm) is required for the Fern CLI."
-        echo "       Install from: https://nodejs.org/  (or: conda install nodejs)"
-        exit 1
-    fi
-    if ! command -v jq &>/dev/null; then
-        echo "ERROR: jq is required to read the Fern version pin."
-        echo "       Install: sudo apt-get install jq"
-        exit 1
-    fi
-
-    # Install Fern CLI at the version pinned in fern/fern.config.json
-    FERN_VERSION=$(jq -r .version "${REPODIR}/fern/fern.config.json")
-    if ! fern --version 2>/dev/null | grep -q "${FERN_VERSION}"; then
-        echo "Installing fern-api@${FERN_VERSION}..."
-        npm install -g "fern-api@${FERN_VERSION}"
-    fi
-
-    # Regenerate dynamic API reference pages (OpenAPI spec, Python API, C API).
-    # In CI these packages come from conda; locally install them if missing.
-    PY=${PYTHON:-python3}
-    if command -v "${PY}" &>/dev/null; then
-        if ! "${PY}" -c "import fastapi, pydantic, yaml" 2>/dev/null; then
-            pip install --quiet -r "${REPODIR}/fern/requirements-docs.txt"
-        fi
-        "${PY}" "${REPODIR}/fern/generate_api_docs.py"
-    else
-        echo "  [WARN] Python not found; skipping API doc generation."
-    fi
-
-    echo "Running fern check..."
-    fern check
-
-    if hasArg --publish-docs; then
-        if [[ -z "${FERN_TOKEN}" ]]; then
-            echo "ERROR: FERN_TOKEN environment variable is not set."
-            echo "       Set it to your Fern token before running with --publish-docs."
-            exit 1
-        fi
-        echo "Publishing to Fern cloud..."
-        fern generate --docs
-        echo "Docs published to https://nvidia-cuopt.docs.buildwithfern.com"
-    else
-        echo ""
-        echo "Starting local preview at http://localhost:3000 (Ctrl+C to stop)..."
-        fern docs dev
-    fi
+    PUBLISH_FLAG=""
+    hasArg --publish-docs && PUBLISH_FLAG="--publish-docs"
+    bash "${REPODIR}/fern/build_docs.sh" ${PUBLISH_FLAG}
 fi

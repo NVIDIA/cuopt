@@ -1,0 +1,62 @@
+#!/bin/bash
+
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Build Fern docs locally: generate MDX, validate, then preview or publish.
+# Usage:
+#   fern/build_docs.sh [--publish-docs]
+#
+# Prerequisites: node, npm, jq, and a conda environment with Python + numpydoc.
+# Run from the repo root.
+
+set -e
+
+REPODIR=$(cd "$(dirname "$0")/.."; pwd)
+PUBLISH=0
+for arg in "$@"; do
+    [[ "$arg" == "--publish-docs" ]] && PUBLISH=1
+done
+
+if ! command -v node &>/dev/null || ! command -v npm &>/dev/null; then
+    echo "ERROR: Node.js (with npm) is required for the Fern CLI."
+    echo "       Install from: https://nodejs.org/  (or: conda install nodejs)"
+    exit 1
+fi
+if ! command -v jq &>/dev/null; then
+    echo "ERROR: jq is required to read the Fern version pin."
+    echo "       Install: sudo apt-get install jq"
+    exit 1
+fi
+
+# Install Fern CLI at the version pinned in fern/fern.config.json
+FERN_VERSION=$(jq -r .version "${REPODIR}/fern/fern.config.json")
+if ! fern --version 2>/dev/null | grep -q "${FERN_VERSION}"; then
+    echo "Installing fern-api@${FERN_VERSION}..."
+    npm install -g "fern-api@${FERN_VERSION}"
+fi
+
+# Regenerate dynamic API reference pages
+PY=${PYTHON:-python3}
+if command -v "${PY}" &>/dev/null; then
+    "${PY}" "${REPODIR}/fern/generate_api_docs.py"
+else
+    echo "  [WARN] Python not found; skipping API doc generation."
+fi
+
+echo "Running fern check..."
+fern check
+
+if [[ "${PUBLISH}" -eq 1 ]]; then
+    if [[ -z "${FERN_TOKEN}" ]]; then
+        echo "ERROR: FERN_TOKEN environment variable is not set."
+        exit 1
+    fi
+    echo "Publishing to Fern cloud..."
+    fern generate --docs
+    echo "Docs published to https://nvidia-cuopt.docs.buildwithfern.com"
+else
+    echo ""
+    echo "Starting local preview at http://localhost:3000 (Ctrl+C to stop)..."
+    fern docs dev
+fi
