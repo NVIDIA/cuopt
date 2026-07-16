@@ -2243,6 +2243,52 @@ void problem_t<i_t, f_t>::set_constraints_from_host_user_problem(
 }
 
 template <typename i_t, typename f_t>
+void problem_t<i_t, f_t>::set_constraint_matrix_from_host(const std::vector<i_t>& offsets_in,
+                                                          const std::vector<i_t>& variables_in,
+                                                          const std::vector<f_t>& coefficients_in,
+                                                          const std::vector<f_t>& row_lower,
+                                                          const std::vector<f_t>& row_upper)
+{
+  raft::common::nvtx::range fun_scope("set_constraint_matrix_from_host");
+  n_constraints = static_cast<i_t>(row_lower.size());
+  cuopt_assert(row_upper.size() == static_cast<size_t>(n_constraints), "row bound size mismatch");
+  cuopt_assert(offsets_in.size() == static_cast<size_t>(n_constraints) + 1,
+               "offsets size mismatch");
+  cuopt_assert(variables_in.size() == coefficients_in.size(), "csr index/value size mismatch");
+  nnz   = static_cast<i_t>(variables_in.size());
+  empty = (nnz == 0 && n_constraints == 0 && n_variables == 0);
+
+  auto stream = handle_ptr->get_stream();
+  cuopt::device_copy(coefficients, coefficients_in, stream);
+  cuopt::device_copy(variables, variables_in, stream);
+  cuopt::device_copy(offsets, offsets_in, stream);
+  cuopt::device_copy(constraint_lower_bounds, row_lower, stream);
+  cuopt::device_copy(constraint_upper_bounds, row_upper, stream);
+
+  // the previous row set is gone: drop stale row names and any fixed-problem cache
+  if (row_names.size() != static_cast<size_t>(n_constraints)) row_names.clear();
+  integer_fixed_problem = nullptr;
+
+  // n_constraints-sized auxiliary buffers (same bookkeeping as
+  // set_constraints_from_host_user_problem)
+  fixing_helpers.reduction_in_rhs.resize(n_constraints, stream);
+  auto prev_dual_size = lp_state.prev_dual.size();
+  lp_state.prev_dual.resize(n_constraints, stream);
+  if (n_constraints > static_cast<i_t>(prev_dual_size)) {
+    thrust::fill(handle_ptr->get_thrust_policy(),
+                 lp_state.prev_dual.begin() + prev_dual_size,
+                 lp_state.prev_dual.end(),
+                 f_t{0});
+  }
+  handle_ptr->sync_stream();
+  RAFT_CHECK_CUDA(stream);
+
+  compute_transpose_of_problem();
+  combined_bounds.resize(n_constraints, stream);
+  pdlp::combine_constraint_bounds<i_t, f_t>(*this, combined_bounds);
+}
+
+template <typename i_t, typename f_t>
 bool problem_t<i_t, f_t>::pre_process_assignment(rmm::device_uvector<f_t>& assignment)
 {
   return presolve_data.pre_process_assignment(*this, assignment);
