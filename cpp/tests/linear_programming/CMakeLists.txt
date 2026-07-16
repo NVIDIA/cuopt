@@ -8,26 +8,6 @@ ConfigureTest(LP_UNIT_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/solution_interface_test.cu
     LABELS numopt)
 
-ConfigureTest(LP_INTERNAL_TEST
-    ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/optimization_problem_test.cu
-    ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/presolve_test.cu
-    LABELS numopt
-    STATIC_LIB)
-
-# ##################################################################################################
-# - Linear programming PDLP tests ----------------------------------------------------------------------
-ConfigureTest(PDLP_TEST
-    ${CMAKE_CURRENT_SOURCE_DIR}/pdlp_test.cu
-    LABELS numopt
-    STATIC_LIB)
-
-# ##################################################################################################
-# - MPS / LP parser tests --------------------------------------------------------------------------
-ConfigureTest(MPS_PARSER_TEST
-    ${CMAKE_CURRENT_SOURCE_DIR}/parser_test.cpp
-    LABELS numopt
-    STATIC_LIB)
-
 ConfigureTest(MPS_FAST_PARSER_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/experimental_mps_fast/fast_fp64_parser_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/experimental_mps_fast/fast_parser_edge_test.cpp
@@ -37,6 +17,7 @@ target_include_directories(MPS_FAST_PARSER_TEST
     "${CUOPT_TEST_DIR}/../src/io/experimental_mps_fast"
 )
 target_link_libraries(MPS_FAST_PARSER_TEST PRIVATE simde::simde)
+
 
 # ##################################################################################################
 # - C API Tests----------------------------------------------------------------------

@@ -109,6 +109,7 @@ if(BUILD_TESTS)
   add_subdirectory(linear_programming)
   add_subdirectory(dual_simplex)
   add_subdirectory(socp)
+  add_subdirectory(internal)
   add_subdirectory(qp)
   add_subdirectory(utilities)
 
