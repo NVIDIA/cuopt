@@ -129,6 +129,32 @@ Fixed Cost per Vehicle
 -----------------------
 Vehicles can have different fixed costs associated with them. This helps in scenarios where a single vehicle with a higher cost can be avoided if it can be done with two or more vehicles with lesser costs. This would be dependent on the objective function.
 
+Vehicle Distance Tiers
+-----------------------
+Vehicle distance tiers define vehicle-specific piecewise pricing based on the
+total distance traveled by each route. They are useful when transportation costs
+change after distance thresholds, such as minimum trip charges, progressive
+mileage rates, or different pricing models across vehicle types.
+
+Distance tiers use the route distance rather than the generic optimization cost.
+When the optimization cost matrix represents a metric other than physical
+distance, provide a separate distance matrix for tier evaluation. In the Python
+API, call ``add_distance_matrix`` before ``set_vehicle_distance_tiers``. In the
+server API, provide ``distance_matrix_data`` together with
+``fleet_data.vehicle_distance_tiers``.
+
+Each vehicle can have one or more tiers. A tier contains a ``threshold``, a
+``fixed_cost``, and a ``cost_per_unit``. Tier thresholds are evaluated in
+ascending order, and costs are accumulated by distance band. For each band
+reached by the route, cuOpt adds the tier fixed cost when it is positive and
+adds the in-band distance multiplied by the tier ``cost_per_unit``. A final
+open-ended tier should be provided to cover long routes; in the server API, use
+``threshold: null`` for this final tier.
+
+Flat fixed-price tiers with ``fixed_cost > 0`` and ``cost_per_unit == 0``
+receive a tiny effective unit cost so shorter routes are preferred when fixed
+tier costs would otherwise tie.
+
 Mapping Orders to Vehicles, and Vehicles to Orders
 ---------------------------------------------------
 By default, cuOpt will assign orders to vehicles based on the optimal routes. However, in some cases, it makes sense to assign specific orders to specific vehicles, or, conversely, specific vehicles to specific orders.

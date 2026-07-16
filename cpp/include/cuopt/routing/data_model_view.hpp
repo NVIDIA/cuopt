@@ -437,7 +437,7 @@ class data_model_view_t {
   /**
    * @brief Set distance-based tiered pricing for vehicles.
    * Each vehicle can have multiple tiers with different cost structures based on total route
-   * distance.
+   * distance. Tier costs are accumulated by distance band in ascending threshold order.
    * Tiers with fixed_cost > 0 and costs_per_unit == 0 receive a minimal internal unit cost to
    * prefer shorter routes when the fixed tier cost is otherwise identical.
    *

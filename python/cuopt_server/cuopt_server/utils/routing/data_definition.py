@@ -602,7 +602,8 @@ class FleetData(StrictModel):
             "dtype: List of lists of distance tier objects."
             " \n\n "
             "Distance-based tiered pricing for each vehicle. "
-            "Each vehicle can have multiple tiers with different cost structures."
+            "Each vehicle can have multiple tiers with different cost structures. "
+            "Tier costs are accumulated by distance band in ascending threshold order."
             " \n\n "
             "For each tier, specify 'threshold' (distance limit), "
             "where null means the final open-ended tier, "
@@ -912,7 +913,9 @@ class OptimizedRoutingData(StrictModel):
             }
         ],
         description=(
-            "Sqaure matrix with distance to travel from A to B and B to A. \n"
+            "Square matrix with distance to travel from A to B and B to A. \n"
+            "This matrix is used for distance-based features such as "
+            "vehicle_distance_tiers and vehicle_max_distances. "
             "If there are different types of vehicles which have different \n"
             "distance matrices, they can be provided with key value pair \n"
             "where key is vehicle-type and value is distance matrix. Value of \n"

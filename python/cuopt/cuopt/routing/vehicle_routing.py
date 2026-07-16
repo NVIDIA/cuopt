@@ -1286,15 +1286,13 @@ class DataModel(_DeferredDataModel):
         Set distance-based tiered pricing for vehicles.
 
         Call add_distance_matrix before setting tiers. Each vehicle can have
-        multiple distance tiers with different cost structures.
-        For each tier, you can specify either a fixed cost or a cost per unit distance.
-        The cost calculation logic:
-        - If distance < threshold: use the tier's cost structure
-        - If fixed_cost > 0: apply the fixed cost plus cost_per_unit
-          when provided
-        - If fixed_cost > 0 and cost_per_unit is 0, cuOpt applies a
-          minimal internal unit cost to prefer shorter routes in ties
-        - Otherwise: apply (distance * cost_per_unit)
+        multiple distance tiers with different cost structures. Tier costs are
+        accumulated by distance band in ascending threshold order.
+
+        For each band reached by the route, cuOpt adds fixed_cost when it is
+        positive and adds the in-band distance multiplied by cost_per_unit. If
+        fixed_cost > 0 and cost_per_unit is 0, cuOpt applies a minimal
+        internal unit cost to prefer shorter routes in ties.
 
         Parameters
         ----------
@@ -1319,8 +1317,8 @@ class DataModel(_DeferredDataModel):
         >>> import numpy as np
         >>>
         >>> # Define tiers for 2 vehicles
-        >>> # Vehicle 0: <100km = 50 fixed, 100-200km = 0.1/km, >200km = 0.5/km
-        >>> # Vehicle 1: <150km = 75 fixed, >150km = 0.3/km
+        >>> # Vehicle 0: fixed first band, then 0.1/km and 0.5/km bands
+        >>> # Vehicle 1: fixed first band, then 0.3/km band
         >>>
         >>> vehicle_ids = cudf.Series([0, 0, 0, 1, 1], dtype=np.int32)
         >>> thresholds = cudf.Series([100.0, 200.0, 1e9, 150.0, 1e9], dtype=np.float32)
