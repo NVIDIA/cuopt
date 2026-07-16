@@ -32,16 +32,18 @@ struct fj_cpu_worker_t {
   std::unique_ptr<fj_cpu_climber_t<i_t, f_t>, fj_cpu_deleter_t> fj_cpu;
   std::function<void(f_t, const std::vector<f_t>&, double)> improvement_callback;
 
+  ~fj_cpu_worker_t() { stop(); }
+
   // `seed` selects the FJ RNG seed: pass a non-negative value for a deterministic seed,
   // or -1 to draw from the global cuopt::seed_generator (the historical behavior).
   // In deterministic mode the caller MUST pass an explicit seed, otherwise the underlying
   // seed_generator::get_seed() racing with concurrent callers breaks reproducibility.
-  void create_worker_from(const simplex::lp_problem_t<i_t, f_t>& problem,
-                          const std::vector<simplex::variable_type_t>& variable_types,
-                          const std::vector<f_t>& seed_assignment,
-                          const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
-                          std::string log_prefix,
-                          int64_t seed = -1);
+  void create_worker(const simplex::lp_problem_t<i_t, f_t>& problem,
+                     const std::vector<simplex::variable_type_t>& variable_types,
+                     const std::vector<f_t>& seed_assignment,
+                     const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+                     std::string log_prefix,
+                     int64_t seed = -1);
 
   // Run the worker asynchronously (i.e., launch an openmp task and then continue the
   // execution). Call `stop()` for stopping the worker

@@ -71,10 +71,11 @@ class third_party_presolve_t {
 
   // Apply the presolve on an simplex::user_problem in-place. Used in sub MIP and (in the future)
   // restarts.
-  third_party_presolve_status_t apply(simplex::user_problem_t<i_t, f_t>& problem,
-                                      const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
-                                      f_t time_limit,
-                                      i_t num_threads);
+  third_party_presolve_status_t apply_to_subproblem(
+    simplex::user_problem_t<i_t, f_t>& problem,
+    const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+    f_t time_limit,
+    i_t num_threads);
 
   void undo(rmm::device_uvector<f_t>& primal_solution,
             rmm::device_uvector<f_t>& dual_solution,

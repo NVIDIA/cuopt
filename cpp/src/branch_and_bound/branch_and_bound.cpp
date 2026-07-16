@@ -33,7 +33,6 @@
 #include <raft/core/nvtx.hpp>
 #include <utilities/circular_deque.hpp>
 #include <utilities/hashing.hpp>
-#include <utilities/scope_guard.hpp>
 
 #include <omp.h>
 
@@ -647,6 +646,28 @@ void branch_and_bound_t<i_t, f_t>::set_solution_from_cpu_fj(f_t obj,
     }
     set_solution_from_heuristics(user_assignment, heuristics_origin_t::HEURISTICS);
   }
+}
+
+// We need to do this dance of uncrush methods since we are working on the presolved space of
+// the augmented system (structural + slack + cuts), while the `set_solution_from_heuristics`
+// expects a solution on the user space. So we go from presolved space -> augmented space ->
+// user space.
+template <typename i_t, typename f_t>
+void branch_and_bound_t<i_t, f_t>::set_solution_from_submip(
+  const std::vector<f_t>& solution,
+  const third_party_presolve_t<i_t, f_t>& presolver,
+  f_t fixrate,
+  f_t obj)
+{
+  std::vector<f_t> leaf_sol;
+  presolver.uncrush_primal_solution(solution, leaf_sol);
+  std::vector<f_t> user_sol;
+  mutex_original_lp_.lock();
+  uncrush_primal_solution(original_problem_, original_lp_, leaf_sol, user_sol);
+  mutex_original_lp_.unlock();
+  settings_.log.debug_format("SubMIP found a feasible solution with obj={:.4g}", obj);
+  bool success = set_solution_from_heuristics(user_sol, heuristics_origin_t::SUBMIP);
+  if (success) submip_stats_.save_success(fixrate);
 }
 
 template <typename i_t, typename f_t>
@@ -2224,30 +2245,12 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   // there is only equality rows (the range row vector is empty) and it contains
   // structural + slacks + cuts constraints/variables.
   user_problem_t<i_t, f_t> submip_problem(original_problem_.handle_ptr);
-  simplex::convert_simplex_to_user_problem(
-    worker->leaf_problem, var_types_, settings_, submip_problem);
+  simplex::convert_lp_to_user_problem(worker->leaf_problem, var_types_, settings_, submip_problem);
 
   third_party_presolve_t<i_t, f_t> presolver;
   f_t presolve_time_limit = std::min(0.1 * submip_settings.time_limit, 60.0);
   third_party_presolve_status_t presolver_status =
-    presolver.apply(submip_problem, submip_settings, presolve_time_limit, 1);
-
-  // We need to do this dance of uncrush methods since we are working on the presolved space of
-  // the augmented system (structural + slack + cuts), while the `set_solution_from_heuristics`
-  // expects a solution on the user space. So we go from presolved space -> augmented space ->
-  // user space.
-  auto set_solution_from_submip = [this, &presolver, fixrate](const std::vector<f_t>& solution,
-                                                              f_t obj) {
-    std::vector<f_t> leaf_sol;
-    presolver.uncrush_primal_solution(solution, leaf_sol);
-    std::vector<f_t> user_sol;
-    mutex_original_lp_.lock();
-    uncrush_primal_solution(original_problem_, original_lp_, leaf_sol, user_sol);
-    mutex_original_lp_.unlock();
-    settings_.log.debug_format("SubMIP found a feasible solution with obj={:.4g}", obj);
-    bool success = set_solution_from_heuristics(user_sol, heuristics_origin_t::SUBMIP);
-    if (success) submip_stats_.save_success(fixrate);
-  };
+    presolver.apply_to_subproblem(submip_problem, submip_settings, presolve_time_limit, 1);
 
   double presolve_time = toc(start_time);
 
@@ -2282,14 +2285,17 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
       obj += reduced_sol[j] * c;
     }
 
-    set_solution_from_submip(reduced_sol, obj);
+    set_solution_from_submip(reduced_sol, presolver, fixrate, obj);
     return;
   }
 
   submip_settings.heuristic_preemption_callback   = nullptr;
   submip_settings.dual_simplex_objective_callback = nullptr;
   submip_settings.set_simplex_solution_callback   = nullptr;
-  submip_settings.solution_callback               = set_solution_from_submip;
+  submip_settings.solution_callback = [this, &presolver, fixrate](const std::vector<f_t>& solution,
+                                                                  f_t obj) {
+    this->set_solution_from_submip(solution, presolver, fixrate, obj);
+  };
 
   submip_settings.log.debug_format("Sub-MIP: {} constraints, {} variables, {} nonzeros\n",
                                    submip_problem.num_rows,
@@ -2307,7 +2313,6 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   presolver.crush_primal_solution(submip_problem, current_incumbent, presolved_incumbent);
   submip_bnb.set_initial_guess(presolved_incumbent);
   submip_bnb.set_initial_upper_bound(upper_bound_.load());
-
   submip_bnb.set_initial_pseudocost(pc_, presolver.get_reduced_to_original_map());
 
   if (submip_halt_callback_) {
@@ -2325,7 +2330,6 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   }
 
   fj_cpu_worker_t<i_t, f_t> submip_fj_cpu_worker;
-  scope_guard cpufj_guard([&]() { submip_fj_cpu_worker.stop(); });
 
   if (settings_.submip_settings.enable_cpufj) {
     // Launch a CPU FJ worker on the presolved sub-MIP with a fixed budget (in terms of work units)
@@ -2347,12 +2351,12 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
 
     f_t time_limit = submip_settings.time_limit;
     f_t work_limit = 1.0;
-    submip_fj_cpu_worker.create_worker_from(submip_bnb.original_lp_,
-                                            submip_bnb.var_types_,
-                                            initial_guess,
-                                            submip_bnb.settings_,
-                                            std::format("{} [CPU FJ]", log_prefix),
-                                            worker->rng.next_i64());
+    submip_fj_cpu_worker.create_worker(submip_bnb.original_lp_,
+                                       submip_bnb.var_types_,
+                                       initial_guess,
+                                       submip_bnb.settings_,
+                                       std::format("{} [CPU FJ]", log_prefix),
+                                       worker->rng.next_i64());
     submip_fj_cpu_worker.run_async(time_limit, work_limit);
   }
 
@@ -2374,7 +2378,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   }
 
   if (submip_solution.has_incumbent) {
-    set_solution_from_submip(submip_solution.x, submip_solution.objective);
+    set_solution_from_submip(submip_solution.x, presolver, fixrate, submip_solution.objective);
   }
 
   // Accumulate simplex iterations to determine when to stop exploring the sub-MIP
@@ -2705,12 +2709,12 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* rins_worker,
           f_t time_limit =
             std::max<f_t>(settings_.time_limit - toc(exploration_stats_.start_time), 0);
           f_t work_limit = 1.0;
-          submip_fj_cpu_worker.create_worker_from(rins_worker->leaf_problem,
-                                                  var_types_,
-                                                  rins_worker->leaf_solution.x,
-                                                  settings_,
-                                                  std::format("{} [CPU FJ]", log_prefix),
-                                                  rins_worker->rng.next_i64());
+          submip_fj_cpu_worker.create_worker(rins_worker->leaf_problem,
+                                             var_types_,
+                                             rins_worker->leaf_solution.x,
+                                             settings_,
+                                             std::format("{} [CPU FJ]", log_prefix),
+                                             rins_worker->rng.next_i64());
           submip_fj_cpu_worker.run_sync(time_limit, work_limit);
         }
 
@@ -3424,7 +3428,6 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   constexpr bool enable_root_cut_cpufj = true;
   fj_cpu_worker_t<i_t, f_t> root_fj_cpu_worker;
-  scope_guard cpufj_guard([&]() { root_fj_cpu_worker.stop(); });
   root_fj_cpu_worker.improvement_callback =
     [this](f_t obj, const std::vector<f_t>& assignment, double work_units) {
       set_solution_from_cpu_fj(obj, assignment, work_units);
@@ -3496,7 +3499,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     if (enable_root_cut_cpufj && !settings_.deterministic && settings_.num_threads >= 2 &&
         cut_pass + 1 < settings_.max_cut_passes) {
       f_t root_cut_cpufj_build_start_time = tic();
-      root_fj_cpu_worker.create_worker_from(
+      root_fj_cpu_worker.create_worker(
         original_lp_, var_types_, root_relax_soln_.x, settings_, "[RootCut CPUFJ] ");
       settings_.log.debug("Root cut CPUFJ problem build time after pass %d: %.6f seconds\n",
                           cut_pass,
@@ -3547,12 +3550,12 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     // climber's behavior depends only on settings_.random_seed.
     int64_t root_cut_cpufj_seed =
       settings_.deterministic ? static_cast<int64_t>(settings_.random_seed) : -1;
-    root_fj_cpu_worker.create_worker_from(original_lp_,
-                                          var_types_,
-                                          root_relax_soln_.x,
-                                          settings_,
-                                          "[RootCut CPUFJ] ",
-                                          root_cut_cpufj_seed);
+    root_fj_cpu_worker.create_worker(original_lp_,
+                                     var_types_,
+                                     root_relax_soln_.x,
+                                     settings_,
+                                     "[RootCut CPUFJ] ",
+                                     root_cut_cpufj_seed);
     settings_.log.debug("Root cut CPUFJ final problem build time: %.6f seconds\n",
                         toc(root_cut_cpufj_build_start_time));
     f_t remaining_time = f_t(settings_.time_limit - toc(exploration_stats_.start_time));

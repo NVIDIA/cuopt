@@ -22,6 +22,22 @@
 
 namespace cuopt::mathematical_optimization::simplex {
 
+// Two-sided activity bounds [lower, upper] of a constraint row.
+template <typename f_t>
+struct row_bounds_t {
+  f_t lower;
+  f_t upper;
+};
+
+// Compute the two-sided bounds [lower, upper] of a range row from its `row_sense`,
+// right-side vector `b`, and signed range value `r:
+//   'L'         -> [b - |r|, b]
+//   'G'         -> [b, b + |r|]
+//   'E', r > 0  -> [b, b + |r|]
+//   'E', r <= 0 -> [b - |r|, b]
+template <typename f_t>
+row_bounds_t<f_t> get_range_bounds_from_sense(char row_sense, f_t rhs, f_t range_value);
+
 template <typename i_t, typename f_t>
 struct lp_problem_t {
   lp_problem_t(raft::handle_t const* handle_ptr_, i_t m, i_t n, i_t nz)
@@ -236,10 +252,10 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
 // simplex problem (structural + slack columns) and is filtered to the
 // structural columns.
 template <typename i_t, typename f_t>
-void convert_simplex_to_user_problem(const lp_problem_t<i_t, f_t>& simplex_problem,
-                                     const std::vector<variable_type_t>& var_types,
-                                     const simplex_solver_settings_t<i_t, f_t>& settings,
-                                     user_problem_t<i_t, f_t>& user_problem);
+void convert_lp_to_user_problem(const lp_problem_t<i_t, f_t>& lp,
+                                const std::vector<variable_type_t>& var_types,
+                                const simplex_solver_settings_t<i_t, f_t>& settings,
+                                user_problem_t<i_t, f_t>& user_problem);
 
 template <typename i_t, typename f_t>
 void convert_user_problem_with_guess(const user_problem_t<i_t, f_t>& user_problem,

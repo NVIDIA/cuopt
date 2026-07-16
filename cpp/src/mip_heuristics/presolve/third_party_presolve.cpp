@@ -35,6 +35,7 @@
 #else
 #pragma GCC diagnostic pop
 #endif
+#include <dual_simplex/presolve.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/presolve/gf2_presolve.hpp>
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
@@ -234,8 +235,8 @@ papilo::Problem<f_t> build_papilo_problem(const simplex::user_problem_t<i_t, f_t
 
   // Range rows carry an extra width and are listed separately; mark them so the row-bound
   // derivation below matches convert_user_problem in dual_simplex/presolve.cpp. papilo
-  // represents ranged rows natively as two-sided lhs <= a^T x <= rhs, so (unlike the simplex
-  // path) we do not add slack columns.
+  // represents ranged rows natively as two-sided lhs <= a^T x <= rhs, so we do not add slack
+  // columns.
   std::vector<f_t> range_of_row(num_rows, 0);
   std::vector<bool> is_range_row(num_rows, false);
   for (i_t k = 0; k < problem.num_range_rows; ++k) {
@@ -250,17 +251,9 @@ papilo::Problem<f_t> build_papilo_problem(const simplex::user_problem_t<i_t, f_t
   for (i_t i = 0; i < num_rows; ++i) {
     const f_t b = rhs[i];
     if (is_range_row[i]) {
-      const f_t r = std::abs(range_of_row[i]);
-      if (row_sense[i] == 'L') {
-        h_constr_lb[i] = b - r;
-        h_constr_ub[i] = b;
-      } else if (row_sense[i] == 'G') {
-        h_constr_lb[i] = b;
-        h_constr_ub[i] = b + r;
-      } else {  // 'E' with a range becomes a two-sided row
-        h_constr_lb[i] = range_of_row[i] > 0 ? b : b - r;
-        h_constr_ub[i] = range_of_row[i] > 0 ? b + r : b;
-      }
+      auto [lower, upper] = simplex::get_range_bounds_from_sense(row_sense[i], b, range_of_row[i]);
+      h_constr_lb[i]      = lower;
+      h_constr_ub[i]      = upper;
     } else if (row_sense[i] == 'L') {
       h_constr_lb[i] = -std::numeric_limits<f_t>::infinity();
       h_constr_ub[i] = b;
@@ -1038,7 +1031,7 @@ third_party_presolve_result_t<i_t, f_t> third_party_presolve_t<i_t, f_t>::apply(
 }
 
 template <typename i_t, typename f_t>
-third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply(
+third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_to_subproblem(
   simplex::user_problem_t<i_t, f_t>& problem,
   const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
   f_t time_limit,

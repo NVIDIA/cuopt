@@ -22,6 +22,7 @@
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/solution.hpp>
 #include <dual_simplex/solve.hpp>
+
 #include <math_optimization/types.hpp>
 
 #include <utilities/macros.cuh>
@@ -31,6 +32,8 @@
 #include <utilities/work_unit_scheduler.hpp>
 
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
+
+#include <mip_heuristics/presolve/third_party_presolve.hpp>
 
 #include <omp.h>
 
@@ -364,6 +367,10 @@ class branch_and_bound_t {
 
   // Launch a new RINS worker
   bool launch_rins_worker(const std::vector<f_t>& sol);
+  void set_solution_from_submip(const std::vector<f_t>& solution,
+                                const third_party_presolve_t<i_t, f_t>& presolver,
+                                f_t fixrate,
+                                f_t obj);
 
   // Solve the RINS sub-MIP
   void solve_submip(diving_worker_t<i_t, f_t>* worker,
