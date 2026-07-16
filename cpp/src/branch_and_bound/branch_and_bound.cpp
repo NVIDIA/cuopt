@@ -2133,7 +2133,7 @@ bool branch_and_bound_t<i_t, f_t>::launch_diving_worker(bfs_worker_t<i_t, f_t>* 
 template <typename i_t, typename f_t>
 bool branch_and_bound_t<i_t, f_t>::launch_rins_worker(const std::vector<f_t>& sol)
 {
-  if (settings_.submip_settings.enable_rins == 0) return false;
+  if (settings_.submip_settings.rins == 0) return false;
   if (!incumbent_.has_incumbent) return false;
   if (rins_worker_pool_.num_idle() == 0) return false;
 
@@ -2208,8 +2208,8 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   submip_settings.relative_mip_gap_tol =
     std::min(settings_.submip_settings.target_mip_gap, rel_gap);
 
-  submip_settings.submip_settings.enable_rins = settings_.submip_settings.enable_rins != 0 &&
-                                                submip_level <= settings_.submip_settings.max_level;
+  submip_settings.submip_settings.rins =
+    settings_.submip_settings.rins != 0 && submip_level <= settings_.submip_settings.max_level;
 
   submip_settings.log.debug_format(
     "Sub-MIP solve settings: time_limit={:.2f}, node_limit={}, iter_limit={} (current_iter={}), "
@@ -2378,9 +2378,9 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   }
 }
 
-template <typename f_t>
+template <typename i_t, typename f_t>
 inline f_t submip_get_max_fixrate(const submip_stats_t& stats,
-                                  const simplex::submip_settings_t& submip_settings,
+                                  const mip_submip_hyper_params_t<i_t, f_t>& submip_settings,
                                   pcgenerator_t& rng)
 {
   // Adaptive fix rate based on previous successes and failures.
@@ -2533,7 +2533,7 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* rins_worker,
   i_t num_integers = integer_list.size();
 
   f_t max_fixrate =
-    submip_get_max_fixrate<f_t>(submip_stats_, settings_.submip_settings, rins_worker->rng);
+    submip_get_max_fixrate(submip_stats_, settings_.submip_settings, rins_worker->rng);
   f_t min_fixrate   = std::min(settings_.submip_settings.min_fixrate, max_fixrate);
   i_t max_var_fixed = max_fixrate * num_integers;
   i_t min_var_fixed = min_fixrate * num_integers;

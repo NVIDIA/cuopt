@@ -8,6 +8,7 @@
 #pragma once
 
 #include <cuopt/mathematical_optimization/mip/diving_hyper_params.hpp>
+#include <cuopt/mathematical_optimization/mip/submip_hyper_params.hpp>
 
 #include <dual_simplex/logger.hpp>
 #include <math_optimization/types.hpp>
@@ -25,40 +26,6 @@ struct benchmark_info_t;
 }
 
 namespace cuopt::mathematical_optimization::simplex {
-
-struct submip_settings_t {
-  // Enable or disable (recursive) RINS
-  int enable_rins = -1;
-
-  // Base for calculating the target fix rate for the RINS neighbourhood. Actual target value is
-  // determined automatically according to the success and infeasible rate.
-  double base_target_fixrate = 0.6;
-
-  // Minimum fix rate for accepting the RINS neighbourhood.
-  double min_fixrate = 0.25;
-
-  // Hard cap for the minimum fix rate for solving a sub-MIP.
-  double min_fixrate_cap = 0.1;
-
-  // MIP gap for the sub-MIP (unless the MIP gap from the B&B is lower)
-  double target_mip_gap = 0.01;
-
-  // The base node limit for the sub-MIP
-  int node_limit_base = 200;
-
-  // The current level in the recursion
-  int level = 0;
-
-  // Maximum recursion level
-  int max_level = 10;
-
-  // Limit the number of simplex iterations spent in the submip. Set as a factor of the total
-  // number of simplex iteration from the parent B&B.
-  double iteration_limit_ratio = 0.8;
-
-  // Run CPU FJ over the sub-MIP
-  bool enable_cpufj = true;
-};
 
 template <typename i_t, typename f_t>
 struct simplex_solver_settings_t {
@@ -255,7 +222,8 @@ struct simplex_solver_settings_t {
   i_t inside_mip;  // 0 if outside MIP, 1 if inside MIP at root node, 2 if inside MIP at leaf node
   i_t inside_submip;  // 0 if in regular MIP solve, 1 if in sub-MIP solve
 
-  submip_settings_t submip_settings;
+  // Settings for the recursive sub-MIP
+  mip_submip_hyper_params_t<i_t, f_t> submip_settings;
 
   std::function<void(std::vector<f_t>&, f_t)> solution_callback;
   std::function<void()> heuristic_preemption_callback;
