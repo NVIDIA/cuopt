@@ -52,7 +52,7 @@ enum class mip_status_t {
   NUMERICAL       = 6,  // The solver encountered a numerical error
   UNSET           = 7,  // The status is not set
   WORK_LIMIT      = 8,  // The solver reached a deterministic work limit
-  HALT            = 9   // Halt the solver
+  SUBMIP_HALT     = 9   // Halt the solver
 };
 
 inline std::string mip_status_to_string(mip_status_t status)
@@ -67,7 +67,7 @@ inline std::string mip_status_to_string(mip_status_t status)
     case mip_status_t::NUMERICAL: return "NUMERICAL";
     case mip_status_t::UNSET: return "UNSET";
     case mip_status_t::WORK_LIMIT: return "WORK_LIMIT";
-    case mip_status_t::HALT: return "SUBMIP_HALT";
+    case mip_status_t::SUBMIP_HALT: return "SUBMIP_HALT";
   }
   return "UNKNOWN";
 }
@@ -100,9 +100,9 @@ class branch_and_bound_t {
   // Set an initial guess based on the user_problem. This should be called before solve.
   void set_initial_guess(const std::vector<f_t>& user_guess) { guess_ = user_guess; }
 
-  void set_halt_callback(std::function<bool(f_t, f_t)> callback)
+  void set_submip_halt_callback(std::function<bool(f_t, f_t)> callback)
   {
-    halt_callback_ = std::move(callback);
+    submip_halt_callback_ = std::move(callback);
   }
 
   // Set the root solution found by PDLP
@@ -228,7 +228,7 @@ class branch_and_bound_t {
   // in user space. The main use of this callback is to stop the sub-MIP solve when
   // the status of the main solve has changed (optimal, time/node/work limit, etc.) or
   // the sub-MIP become suboptimal (lower bound is greater than the current incumbent)
-  std::function<bool(f_t, f_t)> halt_callback_;
+  std::function<bool(f_t, f_t)> submip_halt_callback_;
 
   // Solver-space incumbent tracked directly by B&B.
   simplex::mip_solution_t<i_t, f_t> incumbent_;
@@ -380,12 +380,11 @@ class branch_and_bound_t {
   simplex::simplex_solver_settings_t<i_t, f_t> get_node_lp_settings();
 
   // Solve the LP relaxation of a leaf node
-  simplex::dual_status_t solve_node_lp(
-    mip_node_t<i_t, f_t>* node_ptr,
-    branch_and_bound_worker_t<i_t, f_t>* worker,
-    branch_and_bound_stats_t<i_t, f_t>& stats,
-    const simplex::simplex_solver_settings_t<i_t, f_t>& lp_settings,
-    simplex::logger_t& log);
+  simplex::dual_status_t solve_node_lp(mip_node_t<i_t, f_t>* node_ptr,
+                                       branch_and_bound_worker_t<i_t, f_t>* worker,
+                                       branch_and_bound_stats_t<i_t, f_t>& stats,
+                                       simplex::logger_t& log,
+                                       i_t iter_limit = std::numeric_limits<i_t>::max());
 
   // Apply symmetry-based bound reductions (orbital fixing and, when
   // settings_.symmetry == 2, lexical reduction) to the current node.

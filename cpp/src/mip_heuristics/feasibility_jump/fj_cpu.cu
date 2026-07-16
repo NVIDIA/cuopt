@@ -1798,7 +1798,7 @@ void fj_cpu_worker_t<i_t, f_t>::fj_cpu_deleter_t::operator()(fj_cpu_climber_t<i_
 }
 
 template <typename i_t, typename f_t>
-void fj_cpu_worker_t<i_t, f_t>::create_climber_from_simplex_lp(
+void fj_cpu_worker_t<i_t, f_t>::create_worker_from(
   const lp_problem_t<i_t, f_t>& problem,
   const std::vector<simplex::variable_type_t>& variable_types,
   const std::vector<f_t>& seed_assignment,
