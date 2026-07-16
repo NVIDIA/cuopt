@@ -150,6 +150,24 @@ void presolve_data_t<i_t, f_t>::post_process_assignment(
                     h_assignment[sub.substituted_var]);
   }
 
+  // Apply nonlinear block reconstructions from the block-BVE presolve pass
+  for (auto it = block_reconstructions.rbegin(); it != block_reconstructions.rend(); ++it) {
+    const auto& blk = *it;
+    cuopt_assert(blk.witness.size() == (size_t{1} << blk.boundary.size()),
+                 "block witness size mismatch");
+    uint32_t pattern = 0;
+    for (size_t j = 0; j < blk.boundary.size(); ++j) {
+      cuopt_assert(blk.boundary[j] < (i_t)h_assignment.size(), "block boundary out of bounds");
+      const int bit = (h_assignment[blk.boundary[j]] > static_cast<f_t>(0.5)) ? 1 : 0;
+      pattern |= (static_cast<uint32_t>(bit) << j);
+    }
+    const uint32_t w = blk.witness[pattern];
+    for (size_t k = 0; k < blk.interior.size(); ++k) {
+      cuopt_assert(blk.interior[k] < (i_t)h_assignment.size(), "block interior out of bounds");
+      h_assignment[blk.interior[k]] = static_cast<f_t>((w >> k) & 1u);
+    }
+  }
+
   // this separate resizing is needed because of the callback
   raft::copy(current_assignment.data(), h_assignment.data(), h_assignment.size(), stream);
   if (resize_to_original_problem) {

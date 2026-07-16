@@ -11,6 +11,7 @@
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
 
+#include <mip_heuristics/presolve/block_bve.cuh>
 #include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
 #include <mip_heuristics/presolve/probing_cache.cuh>
 #include <mip_heuristics/presolve/trivial_presolve.cuh>
@@ -282,6 +283,16 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
   const bool remap_cache_ids           = true;
   problem_ptr->related_vars_time_limit = context.settings.heuristic_params.related_vars_time_limit;
   if (!global_timer.check_time_limit()) { trivial_presolve(*problem_ptr, remap_cache_ids); }
+  // Block bounded-variable-elimination over the probing-cache implication closure. Operates on the
+  // compacted problem; a strict no-op when disabled, when the probing cache is empty, or when no
+  // certified reduction exists. The pass records nonlinear reconstruction records replayed by
+  // presolve_data::post_process_assignment.
+  if (context.settings.block_bve && !problem_ptr->empty && !global_timer.check_time_limit()) {
+    auto impl_adj = bve_build_impl_adj(ls.constraint_prop.bounds_update.probing_cache,
+                                       problem_ptr->reverse_original_ids,
+                                       problem_ptr->n_variables);
+    block_bve_presolve(*problem_ptr, impl_adj);
+  }
   if (!problem_ptr->empty && !check_bounds_sanity(*problem_ptr)) { return false; }
   // if (!presolve_timer.check_time_limit() && !context.settings.heuristics_only &&
   //     !problem_ptr->empty) {

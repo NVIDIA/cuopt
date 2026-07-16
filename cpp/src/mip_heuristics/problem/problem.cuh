@@ -142,6 +142,18 @@ class problem_t {
     cuopt::mathematical_optimization::simplex::user_problem_t<i_t, f_t>& user_problem) const;
   void set_constraints_from_host_user_problem(
     const cuopt::mathematical_optimization::simplex::user_problem_t<i_t, f_t>& user_problem);
+  // Replace the constraint matrix + row bounds in place from host CSR (row-major offsets/variables/
+  // coefficients and per-row lower/upper bounds), rebuilding all constraint-derived device state
+  // (transpose, combined bounds, and the n_constraints-sized auxiliary buffers). The
+  // variable/column set is UNCHANGED, so variable-derived tables are not touched — call
+  // recompute_auxilliary_data afterwards if the rewrite changed the constraint graph. Used by
+  // presolve passes that rewrite rows in place (e.g. block-BVE). offsets has n_rows+1 entries;
+  // row_lower/row_upper have n_rows entries.
+  void set_constraint_matrix_from_host(const std::vector<i_t>& offsets,
+                                       const std::vector<i_t>& variables,
+                                       const std::vector<f_t>& coefficients,
+                                       const std::vector<f_t>& row_lower,
+                                       const std::vector<f_t>& row_upper);
 
   uint32_t get_fingerprint() const;
 
