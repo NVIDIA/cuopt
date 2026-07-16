@@ -512,56 +512,41 @@ if (NOT SKIP_GRPC_BUILD)
             APPEND PROPERTY COMPILE_OPTIONS "-DNDEBUG")
 endif (NOT SKIP_GRPC_BUILD)
 
-add_library(cuopt SHARED
+add_library(cuopt_objs OBJECT
         ${CUOPT_SRC_FILES}
 )
 
-set_target_properties(cuopt
-        PROPERTIES BUILD_RPATH "\$ORIGIN"
-        INSTALL_RPATH "\$ORIGIN"
-        INTERFACE_POSITION_INDEPENDENT_CODE ON
+set_target_properties(cuopt_objs
+        PROPERTIES POSITION_INDEPENDENT_CODE ON
         CXX_SCAN_FOR_MODULES OFF
 )
 
-target_compile_definitions(cuopt
-        PUBLIC "CUOPT_LOG_ACTIVE_LEVEL=RAPIDS_LOGGER_LOG_LEVEL_${LIBCUOPT_LOGGING_LEVEL}"
-        PUBLIC CUSPARSE_ENABLE_EXPERIMENTAL_API
+target_compile_definitions(cuopt_objs
+  PUBLIC "CUOPT_LOG_ACTIVE_LEVEL=RAPIDS_LOGGER_LOG_LEVEL_${LIBCUOPT_LOGGING_LEVEL}"
+  PUBLIC CUSPARSE_ENABLE_EXPERIMENTAL_API
 )
 
-target_compile_options(cuopt
+target_compile_options(cuopt_objs
         PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
         "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
 )
 
-if (WRITE_FATBIN)
-    file(WRITE "${CUOPT_BINARY_DIR}/fatbin.ld"
-            [=[
-  SECTIONS
-  {
-    .nvFatBinSegment : { *(.nvFatBinSegment) }
-    .nv_fatbin : { *(.nv_fatbin) }
-  }
-  ]=])
-    target_link_options(cuopt PRIVATE "${CUOPT_BINARY_DIR}/fatbin.ld")
-endif ()
-
-add_library(cuopt::cuopt ALIAS cuopt)
 # ##################################################################################################
 # - include paths ---------------------------------------------------------------------------------
 message(STATUS "target include directories CUDSS_INCLUDES = ${CUDSS_INCLUDE}")
 
 # Adding Papilo as a system include messes up clang's include resolution if papilo is already installed as a conda package
-target_include_directories(cuopt PRIVATE
+target_include_directories(cuopt_objs PRIVATE
         "${papilo_SOURCE_DIR}/src"
         "${papilo_BINARY_DIR}"
 )
 
-target_include_directories(cuopt SYSTEM PRIVATE
-        "${pslp_SOURCE_DIR}/include"
-        "${dejavu_SOURCE_DIR}"
+target_include_directories(cuopt_objs SYSTEM PRIVATE
+  "${pslp_SOURCE_DIR}/include"
+  "${dejavu_SOURCE_DIR}"
 )
 
-target_include_directories(cuopt
+target_include_directories(cuopt_objs
         PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty"
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
@@ -581,8 +566,8 @@ target_include_directories(cuopt
 )
 
 # Link PSLP by file to avoid export dependency tracking
-target_link_libraries(cuopt PRIVATE $<TARGET_FILE:PSLP>)
-add_dependencies(cuopt PSLP)
+target_link_libraries(cuopt_objs PRIVATE $<TARGET_FILE:PSLP>)
+add_dependencies(cuopt_objs PSLP)
 
 # ##################################################################################################
 # - link libraries --------------------------------------------------------------------------------
@@ -597,7 +582,7 @@ list(PREPEND CUOPT_PRIVATE_CUDA_LIBS CUDA::cublasLt)
 
 # Pass CUDSS_MT_LIB_FILE_NAME as a compile definition
 get_filename_component(CUDSS_MT_LIB_FILE_NAME "${CUDSS_MT_LIB_FILE}" NAME)
-target_compile_definitions(cuopt PRIVATE CUDSS_MT_LIB_FILE_NAME="${CUDSS_MT_LIB_FILE_NAME}")
+target_compile_definitions(cuopt_objs PRIVATE CUDSS_MT_LIB_FILE_NAME="${CUDSS_MT_LIB_FILE_NAME}")
 
 execute_process(
         COMMAND git rev-parse --short HEAD
@@ -616,13 +601,81 @@ configure_file(
 )
 
 # Add the generated include directory
-target_include_directories(cuopt PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/include)
+target_include_directories(cuopt_objs PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/include)
 
 list(JOIN CMAKE_CUDA_ARCHITECTURES "," JOINED_CUDA_ARCHITECTURES)
-target_compile_definitions(cuopt PUBLIC
+target_compile_definitions(cuopt_objs PUBLIC
         CUOPT_CUDA_ARCHITECTURES="${JOINED_CUDA_ARCHITECTURES}"
         CUOPT_CPU_ARCHITECTURE="${CMAKE_SYSTEM_PROCESSOR}")
 
+target_link_libraries(cuopt_objs
+        PUBLIC
+        CUDA::cublas
+        CUDA::cusparse
+        rmm::rmm
+        rapids_logger::rapids_logger
+        CCCL::CCCL
+        raft::raft
+        ${CUDSS_LIB_FILE}
+        PRIVATE
+        ${CUOPT_PRIVATE_CUDA_LIBS}
+        $<$<BOOL:${CUOPT_ENABLE_GRPC}>:protobuf::libprotobuf>
+        $<$<BOOL:${CUOPT_ENABLE_GRPC}>:gRPC::grpc++>
+)
+
+# ##################################################################################################
+# - generate tests --------------------------------------------------------------------------------
+if (BUILD_TESTS)
+    include(CTest)
+    add_library(cuopt_static STATIC $<TARGET_OBJECTS:cuopt_objs>)
+    target_link_libraries(cuopt_static
+            PUBLIC
+            CUDA::cublas
+            CUDA::cusparse
+            rmm::rmm
+            rapids_logger::rapids_logger
+            CCCL::CCCL
+            raft::raft
+            ${CUDSS_LIB_FILE}
+            PRIVATE
+            ${CUOPT_PRIVATE_CUDA_LIBS}
+            $<$<BOOL:${CUOPT_ENABLE_GRPC}>:protobuf::libprotobuf>
+            $<$<BOOL:${CUOPT_ENABLE_GRPC}>:gRPC::grpc++>
+    )
+    target_include_directories(cuopt_static
+            PUBLIC
+            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+            "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
+            "$<INSTALL_INTERFACE:include>"
+    )
+    target_compile_definitions(cuopt_static PUBLIC
+            CUOPT_CUDA_ARCHITECTURES="${JOINED_CUDA_ARCHITECTURES}"
+            CUOPT_CPU_ARCHITECTURE="${CMAKE_SYSTEM_PROCESSOR}"
+            "CUOPT_LOG_ACTIVE_LEVEL=RAPIDS_LOGGER_LOG_LEVEL_${LIBCUOPT_LOGGING_LEVEL}"
+            CUSPARSE_ENABLE_EXPERIMENTAL_API
+    )
+    target_link_libraries(cuopt_static PRIVATE $<TARGET_FILE:PSLP>)
+    add_dependencies(cuopt_static PSLP)
+    add_subdirectory(tests)
+endif (BUILD_TESTS)
+
+add_library(cuopt SHARED $<TARGET_OBJECTS:cuopt_objs>)
+add_library(cuopt::cuopt ALIAS cuopt)
+set_target_properties(cuopt
+        PROPERTIES BUILD_RPATH "\$ORIGIN"
+        INSTALL_RPATH "\$ORIGIN"
+        INTERFACE_POSITION_INDEPENDENT_CODE ON
+        CXX_SCAN_FOR_MODULES OFF
+        LINKER_LANGUAGE CUDA
+)
+# cuopt needs PUBLIC interface for consumers
+target_include_directories(cuopt
+        PUBLIC
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
+        INTERFACE
+        "$<INSTALL_INTERFACE:include>"
+)
 target_link_libraries(cuopt
         PUBLIC
         CUDA::cublas
@@ -641,12 +694,17 @@ target_link_libraries(cuopt
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:gRPC::grpc++>
 )
 
-# ##################################################################################################
-# - generate tests --------------------------------------------------------------------------------
-if (BUILD_TESTS)
-    include(CTest)
-    add_subdirectory(tests)
-endif (BUILD_TESTS)
+if (WRITE_FATBIN)
+    file(WRITE "${CUOPT_BINARY_DIR}/fatbin.ld"
+            [=[
+  SECTIONS
+  {
+    .nvFatBinSegment : { *(.nvFatBinSegment) }
+    .nv_fatbin : { *(.nv_fatbin) }
+  }
+  ]=])
+    target_link_options(cuopt PRIVATE "${CUOPT_BINARY_DIR}/fatbin.ld")
+endif ()
 
 # ##################################################################################################
 # - install targets -------------------------------------------------------------------------------

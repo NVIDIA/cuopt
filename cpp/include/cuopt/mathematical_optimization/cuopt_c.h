@@ -1055,6 +1055,14 @@ cuopt_int_t cuOptGetDualObjectiveValue(cuOptSolution solution,
  */
 cuopt_int_t cuOptGetReducedCosts(cuOptSolution solution, cuopt_float_t* reduced_cost_ptr);
 
+/**
+ * @brief Query whether the runtime cuSPARSE version supports mixed-precision SpMV
+ *        (FP32 matrix × FP64 vector). Requires cuSPARSE >= 12.5 at runtime.
+ *
+ * @return 1 if supported, 0 otherwise.
+ */
+cuopt_int_t cuOptIsCusparseRuntimeMixedPrecisionSupported();
+
 #ifdef __cplusplus
 }
 #endif

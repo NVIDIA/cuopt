@@ -21,10 +21,6 @@
 #include <utilities/common_utils.hpp>
 #include <utilities/error.hpp>
 
-namespace cuopt::mathematical_optimization::pdlp {
-bool is_cusparse_runtime_mixed_precision_supported();
-}
-
 #include <gtest/gtest.h>
 
 TEST(c_api, int_size) { EXPECT_EQ(test_int_size(), sizeof(int32_t)); }
@@ -441,12 +437,11 @@ TEST(c_api, pdlp_precision_single)
 
 TEST(c_api, pdlp_precision_mixed)
 {
-  using namespace cuopt::mathematical_optimization::pdlp;
   const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
   std::string filename           = rapidsDatasetRootDir + "/linear_programming/afiro_original.mps";
   cuopt_int_t termination_status = -1;
   cuopt_float_t objective;
-  if (!cuopt::mathematical_optimization::pdlp::is_cusparse_runtime_mixed_precision_supported()) {
+  if (!cuOptIsCusparseRuntimeMixedPrecisionSupported()) {
     auto status = test_pdlp_precision_mixed(filename.c_str(), &termination_status, &objective);
     bool solve_returned_error = (status != CUOPT_SUCCESS);
     bool solve_returned_non_optimal =

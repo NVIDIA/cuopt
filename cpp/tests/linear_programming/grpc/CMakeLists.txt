@@ -9,6 +9,12 @@
 
 add_executable(GRPC_CLIENT_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/grpc_client_test.cpp
+    "${CUOPT_SOURCE_DIR}/src/grpc/grpc_problem_mapper.cpp"
+    "${CUOPT_SOURCE_DIR}/src/grpc/grpc_service_mapper.cpp"
+    "${CUOPT_SOURCE_DIR}/src/grpc/grpc_settings_mapper.cpp"
+    "${CUOPT_SOURCE_DIR}/src/grpc/grpc_solution_mapper.cpp"
+    "${CUOPT_SOURCE_DIR}/src/grpc/client/grpc_client.cpp"
+    "${CUOPT_SOURCE_DIR}/src/grpc/client/grpc_client_env.cpp"
 )
 
 target_include_directories(GRPC_CLIENT_TEST
@@ -16,6 +22,7 @@ target_include_directories(GRPC_CLIENT_TEST
     "${CUOPT_SOURCE_DIR}/include"
     "${CUOPT_SOURCE_DIR}/src/grpc"
     "${CUOPT_SOURCE_DIR}/src/grpc/client"
+    "${CUOPT_SOURCE_DIR}/src/grpc/server"
     "${CUOPT_SOURCE_DIR}/src/grpc/codegen/generated"
     "${CUOPT_TEST_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}"  # For grpc_client_test_helper.hpp
@@ -93,6 +100,9 @@ install(
 
 add_executable(GRPC_INTEGRATION_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/grpc_integration_test.cpp
+    "${CUOPT_SOURCE_DIR}/src/grpc/grpc_service_mapper.cpp"
+    "${CUOPT_SOURCE_DIR}/src/grpc/client/grpc_client.cpp"
+    "${CUOPT_SOURCE_DIR}/src/grpc/client/grpc_client_env.cpp"
 )
 
 target_include_directories(GRPC_INTEGRATION_TEST

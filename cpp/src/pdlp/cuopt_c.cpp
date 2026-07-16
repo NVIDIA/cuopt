@@ -15,6 +15,7 @@
 #include <cuopt/mathematical_optimization/solver_settings.hpp>
 #include <cuopt/utilities/timestamp_utils.hpp>
 #include <pdlp/cuopt_c_internal.hpp>
+#include <pdlp/cusparse_view.hpp>
 #include <utilities/logger.hpp>
 
 #include <cuopt/mathematical_optimization/io/parser.hpp>
@@ -1295,4 +1296,11 @@ cuopt_int_t cuOptGetReducedCosts(cuOptSolution solution, cuopt_float_t* reduced_
   } catch (const std::logic_error&) {
     return CUOPT_INVALID_ARGUMENT;
   }
+}
+
+cuopt_int_t cuOptIsCusparseRuntimeMixedPrecisionSupported()
+{
+  return cuopt::mathematical_optimization::pdlp::is_cusparse_runtime_mixed_precision_supported()
+           ? 1
+           : 0;
 }

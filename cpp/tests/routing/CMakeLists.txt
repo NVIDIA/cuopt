@@ -5,8 +5,14 @@
 
 ConfigureTest(ROUTING_TEST ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_routing_test.cu
     LABELS routing)
-ConfigureTest(ROUTING_GES_TEST ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_ges_test.cu
-    LABELS routing)
+
+ConfigureTest(ROUTING_INTERNAL_TEST
+    ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_ges_test.cu
+    ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_scross_test.cu
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/local_search_cand_test.cu
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/top_k.cu
+    LABELS routing
+    STATIC_LIB)
 
 ConfigureTest(VEHICLE_ORDER_TEST ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_vehicle_order_match.cu
     LABELS routing)
@@ -15,17 +21,10 @@ ConfigureTest(VEHICLE_TYPES_TEST ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_vehicle_t
 ConfigureTest(OBJECTIVE_FUNCTION_TEST ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_objective_function_test.cu
     LABELS routing)
 
-# ##################################################################################################
-# - L1 advanced retail tests --------------------------------------------------------------------------
 ConfigureTest(RETAIL_L1TEST ${CMAKE_CURRENT_SOURCE_DIR}/level1/l1_retail_test.cu
     LABELS routing)
-
-# ##################################################################################################
-# - L1  tests for quick regression check --------------------------------------------------------------------------
 ConfigureTest(ROUTING_L1TEST ${CMAKE_CURRENT_SOURCE_DIR}/level1/l1_routing_test.cu
     LABELS routing)
-
-# Disabled: both tests are slow and known to be broken.
 set_tests_properties(RETAIL_L1TEST ROUTING_L1TEST PROPERTIES DISABLED TRUE)
 
 # # - ${CMAKE_CURRENT_SOURCE_DIR} unit tests ----------------------------------------------------------------------------
@@ -41,7 +40,6 @@ ConfigureTest(ROUTING_UNIT_TEST
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/heterogenous_fleet.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/prize_collection.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/objective_function.cu
-      ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/top_k.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/batch_tsp.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/set_shmem_of_kernel.cu
     LABELS routing)
