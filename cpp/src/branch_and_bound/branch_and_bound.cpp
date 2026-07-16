@@ -2328,6 +2328,11 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   scope_guard cpufj_guard([&]() { submip_fj_cpu_worker.stop(); });
 
   if (settings_.submip_settings.enable_cpufj) {
+    // Launch a CPU FJ worker on the presolved sub-MIP with a fixed budget (in terms of work units)
+    // to run in parallel with the cut-and-branch algorithm with the goal of finding a quick
+    // feasible solution for the sub-MIP problem. The CPU FJ uses the current incumbent (crushed
+    // into the presolved space) as initial guess. The worker is automatically stop when we go out
+    // of the scope.
     std::vector<f_t> initial_guess;
     crush_primal_solution(submip_problem,
                           submip_bnb.original_lp_,
