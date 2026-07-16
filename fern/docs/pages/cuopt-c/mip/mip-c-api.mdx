@@ -2,187 +2,253 @@
 title: "cuOpt MIP C API Reference"
 ---
 
-This section contains the cuOpt MIP C API reference. Functions for problem creation, solver settings, solving, and inspecting solutions are shared with convex optimization and documented in [Convex C API](../convex/convex-c-api).
+This section contains the cuOpt MIP C API reference. Functions for problem creation,
+solver settings, solving, and inspecting solutions are shared with convex optimization
+and documented in [Convex C API](../convex/convex-c-api).
 
 ## Warm Start and MIP Start
 
-For LP problems solved with PDLP, see [Convex C API](../convex/convex-c-api) for primal and dual warm start. For MIP problems, one or more primal solution hints (MIP starts) may be provided.
+For LP problems solved with PDLP, see [Convex C API](../convex/convex-c-api) for primal and dual warm start.
+For MIP problems, one or more primal solution hints (MIP starts) may be provided.
 
-<hr />
-
-#### `cuOptAddMIPStart(cuOptSolverSettings settings, const cuopt_float_t * solution, cuopt_int_t num_variables) -> cuopt_int_t`
-
-Add an initial solution (MIP start) for MIP solving.
-
-<Note>
-Currently unsupported with presolve on. All pointer arguments (solution) refer to host memory.
-</Note>
-
-**Parameters**
-
-- **`settings`** (`cuOptSolverSettings`) `[in]` — The solver settings object.
-- **`solution`** (`const cuopt_float_t *`) `[in]` — A pointer to an array of type cuopt_float_t of size num_variables containing the solution values.
-- **`num_variables`** (`cuopt_int_t`) `[in]` — The number of variables (size of the solution array).
-
-**Returns** A status code indicating success or failure.
+<!-- symbol: cuOptAddMIPStart -->
+<!-- /symbol -->
 
 ## MIP Solution Callbacks
 
 The following callback types and functions allow monitoring and injecting solutions during a MIP solve.
 
-<hr />
+<!-- symbol: cuOptMIPGetSolutionCallback -->
+<!-- /symbol -->
 
-**`typedef`** **`cuOptMIPGetSolutionCallback`** — Type of callback for receiving incumbent MIP solutions with user context.
+<!-- symbol: cuOptMIPSetSolutionCallback -->
+<!-- /symbol -->
 
-<Note>
-All pointer arguments (solution, objective_value, solution_bound, user_data) refer to host memory and are only valid during the callback invocation. Do not pass device/GPU pointers. Copy any data you need to keep after the callback returns.
-</Note>
+<!-- symbol: cuOptSetMIPGetSolutionCallback -->
+<!-- /symbol -->
 
-**Parameters**
-
-- **`solution`** `[in]` — Pointer to incumbent solution values. The allocated array for solution pointer must be at least the number of variables in the original problem.
-- **`objective_value`** `[in]` — Pointer to incumbent objective value.
-- **`solution_bound`** `[in]` — Pointer to current solution (dual/user) bound.
-- **`user_data`** `[in]` — Pointer to user data.
-
-<hr />
-
-**`typedef`** **`cuOptMIPSetSolutionCallback`** — Type of callback for injecting MIP solutions with user context.
-
-<Note>
-All pointer arguments (solution, objective_value, solution_bound, user_data) refer to host memory and are only valid during the callback invocation. Do not pass device/GPU pointers. Copy any data you need to keep after the callback returns.
-</Note>
-
-**Parameters**
-
-- **`solution`** `[out]` — Pointer to solution values to set. The allocated array for solution pointer must be at least the number of variables in the original problem.
-- **`objective_value`** `[out]` — Pointer to objective value to set.
-- **`solution_bound`** `[in]` — Pointer to current solution (dual/user) bound.
-- **`user_data`** `[in]` — Pointer to user data.
-
-<hr />
-
-#### `cuOptSetMIPGetSolutionCallback(cuOptSolverSettings settings, cuOptMIPGetSolutionCallback callback, void * user_data) -> cuopt_int_t`
-
-Register a callback to receive incumbent MIP solutions.
-
-<Note>
-The callback arguments refer to host memory and are only valid during the callback invocation. Do not pass device/GPU pointers. Copy any data you need to keep after the callback returns.
-</Note>
-
-**Parameters**
-
-- **`settings`** (`cuOptSolverSettings`) `[in]` — The solver settings object.
-- **`callback`** (`cuOptMIPGetSolutionCallback`) `[in]` — Callback function to receive incumbent solutions.
-- **`user_data`** (`void *`) `[in]` — User-defined pointer passed through to the callback. It will be forwarded to `cuOptMIPGetSolutionCallback` when invoked.
-
-**Returns** A status code indicating success or failure.
-
-<hr />
-
-#### `cuOptSetMIPSetSolutionCallback(cuOptSolverSettings settings, cuOptMIPSetSolutionCallback callback, void * user_data) -> cuopt_int_t`
-
-Register a callback to inject MIP solutions.
-
-<Note>
-Registering a set-solution callback disables presolve. The callback arguments refer to host memory and are only valid during the callback invocation. Do not pass device/GPU pointers. Copy any data you need to keep after the callback returns.
-</Note>
-
-**Parameters**
-
-- **`settings`** (`cuOptSolverSettings`) `[in]` — The solver settings object.
-- **`callback`** (`cuOptMIPSetSolutionCallback`) `[in]` — Callback function to inject solutions.
-- **`user_data`** (`void *`) `[in]` — User-defined pointer passed through to the callback. It will be forwarded to `cuOptMIPSetSolutionCallback` when invoked.
-
-**Returns** A status code indicating success or failure.
+<!-- symbol: cuOptSetMIPSetSolutionCallback -->
+<!-- /symbol -->
 
 ## MIP Parameter Constants
 
-These constants configure MIP-specific solver behavior. Use them with `cuOptSetParameter`, `cuOptSetIntegerParameter`, or `cuOptSetFloatParameter`. For shared parameters (time limit, logging, presolve, etc.), see [Parameter Constants](../convex/convex-c-api#parameter-constants) in the convex API reference.
+These constants configure MIP-specific solver behavior. Use them with
+`cuOptSetParameter`, `cuOptSetIntegerParameter`, or `cuOptSetFloatParameter`.
+For shared parameters (time limit, logging, presolve, etc.), see
+[Parameter Constants](../convex/convex-c-api#parameter-constants) in the convex API reference.
 
-- `CUOPT_NODE_LIMIT` (`"node_limit"`)
-- `CUOPT_WORK_LIMIT` (`"work_limit"`)
-- `CUOPT_RANDOM_SEED` (`"random_seed"`)
-- `CUOPT_PRESOLVE_FILE` (`"presolve_file"`)
-- `CUOPT_MIP_ABSOLUTE_TOLERANCE` (`"mip_absolute_tolerance"`)
-- `CUOPT_MIP_RELATIVE_TOLERANCE` (`"mip_relative_tolerance"`)
-- `CUOPT_MIP_INTEGRALITY_TOLERANCE` (`"mip_integrality_tolerance"`)
-- `CUOPT_MIP_ABSOLUTE_GAP` (`"mip_absolute_gap"`)
-- `CUOPT_MIP_RELATIVE_GAP` (`"mip_relative_gap"`)
-- `CUOPT_MIP_SCALING` (`"mip_scaling"`)
-- `CUOPT_MIP_HEURISTICS_ONLY` (`"mip_heuristics_only"`)
-- `CUOPT_MIP_PRESOLVE` (`"mip_presolve"`)
-- `CUOPT_MIP_DETERMINISM_MODE` (`"mip_determinism_mode"`)
-- `CUOPT_MIP_SYMMETRY` (`"mip_symmetry"`)
-- `CUOPT_MIP_PROBING` (`"mip_probing"`)
-- `CUOPT_MIP_RELIABILITY_BRANCHING` (`"mip_reliability_branching"`)
-- `CUOPT_MIP_CUT_PASSES` (`"mip_cut_passes"`)
-- `CUOPT_MIP_MIXED_INTEGER_ROUNDING_CUTS` (`"mip_mixed_integer_rounding_cuts"`)
-- `CUOPT_MIP_MIXED_INTEGER_GOMORY_CUTS` (`"mip_mixed_integer_gomory_cuts"`)
-- `CUOPT_MIP_KNAPSACK_CUTS` (`"mip_knapsack_cuts"`)
-- `CUOPT_MIP_FLOW_COVER_CUTS` (`"mip_flow_cover_cuts"`)
-- `CUOPT_MIP_IMPLIED_BOUND_CUTS` (`"mip_implied_bound_cuts"`)
-- `CUOPT_MIP_CLIQUE_CUTS` (`"mip_clique_cuts"`)
-- `CUOPT_MIP_ZERO_HALF_CUTS` (`"mip_zero_half_cuts"`)
-- `CUOPT_MIP_STRONG_CHVATAL_GOMORY_CUTS` (`"mip_strong_chvatal_gomory_cuts"`)
-- `CUOPT_MIP_REDUCED_COST_STRENGTHENING` (`"mip_reduced_cost_strengthening"`)
-- `CUOPT_MIP_OBJECTIVE_STEP` (`"mip_objective_step"`)
-- `CUOPT_MIP_CUT_CHANGE_THRESHOLD` (`"mip_cut_change_threshold"`)
-- `CUOPT_MIP_CUT_MIN_ORTHOGONALITY` (`"mip_cut_min_orthogonality"`)
-- `CUOPT_MIP_BATCH_PDLP_STRONG_BRANCHING` (`"mip_batch_pdlp_strong_branching"`)
-- `CUOPT_MIP_BATCH_PDLP_RELIABILITY_BRANCHING` (`"mip_batch_pdlp_reliability_branching"`)
-- `CUOPT_MIP_STRONG_BRANCHING_SIMPLEX_ITERATION_LIMIT` (`"mip_strong_branching_simplex_iteration_limit"`)
-- `CUOPT_MIP_SEMICONTINUOUS_BIG_M` (`"mip_semi_continuous_big_m"`)
+<!-- symbol: CUOPT_NODE_LIMIT -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_WORK_LIMIT -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_RANDOM_SEED -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_PRESOLVE_FILE -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_ABSOLUTE_TOLERANCE -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_RELATIVE_TOLERANCE -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_INTEGRALITY_TOLERANCE -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_ABSOLUTE_GAP -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_RELATIVE_GAP -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_SCALING -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_HEURISTICS_ONLY -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_PRESOLVE -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_DETERMINISM_MODE -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_SYMMETRY -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_PROBING -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_RELIABILITY_BRANCHING -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_CUT_PASSES -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_MIXED_INTEGER_ROUNDING_CUTS -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_MIXED_INTEGER_GOMORY_CUTS -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_KNAPSACK_CUTS -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_FLOW_COVER_CUTS -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_IMPLIED_BOUND_CUTS -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_CLIQUE_CUTS -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_ZERO_HALF_CUTS -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_STRONG_CHVATAL_GOMORY_CUTS -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_REDUCED_COST_STRENGTHENING -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_OBJECTIVE_STEP -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_CUT_CHANGE_THRESHOLD -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_CUT_MIN_ORTHOGONALITY -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_BATCH_PDLP_STRONG_BRANCHING -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_BATCH_PDLP_RELIABILITY_BRANCHING -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_STRONG_BRANCHING_SIMPLEX_ITERATION_LIMIT -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_SEMICONTINUOUS_BIG_M -->
+<!-- /symbol -->
 
 ## MIP Scaling Constants
 
 These constants are used to configure `CUOPT_MIP_SCALING` via `cuOptSetIntegerParameter`.
 
-- `CUOPT_MIP_SCALING_OFF` (`0`)
-- `CUOPT_MIP_SCALING_ON` (`1`)
-- `CUOPT_MIP_SCALING_NO_OBJECTIVE` (`2`)
+<!-- symbol: CUOPT_MIP_SCALING_OFF -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_SCALING_ON -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_SCALING_NO_OBJECTIVE -->
+<!-- /symbol -->
 
 ## MIP Determinism Mode Constants
 
 These constants are used to configure `CUOPT_MIP_DETERMINISM_MODE` via `cuOptSetIntegerParameter`.
 
-- `CUOPT_MODE_OPPORTUNISTIC` (`0`)
-- `CUOPT_MODE_DETERMINISTIC` (`1`)
+<!-- symbol: CUOPT_MODE_OPPORTUNISTIC -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MODE_DETERMINISTIC -->
+<!-- /symbol -->
 
 ## MIP Hyper Diving Parameters
 
-These constants configure the hyper diving heuristic. Use them with `cuOptSetParameter`, `cuOptSetIntegerParameter`, or `cuOptSetFloatParameter`.
+These constants configure the hyper diving heuristic. Use them with
+`cuOptSetParameter`, `cuOptSetIntegerParameter`, or `cuOptSetFloatParameter`.
 
-- `CUOPT_MIP_HYPER_DIVING_BACKTRACK_LIMIT` (`"mip_hyper_diving_backtrack_limit"`)
-- `CUOPT_MIP_HYPER_DIVING_COEFFICIENT` (`"mip_hyper_diving_coefficient"`)
-- `CUOPT_MIP_HYPER_DIVING_FARKAS` (`"mip_hyper_diving_farkas"`)
-- `CUOPT_MIP_HYPER_DIVING_GUIDED` (`"mip_hyper_diving_guided"`)
-- `CUOPT_MIP_HYPER_DIVING_ITERATION_LIMIT_FACTOR` (`"mip_hyper_diving_iteration_limit_factor"`)
-- `CUOPT_MIP_HYPER_DIVING_LINE_SEARCH` (`"mip_hyper_diving_line_search"`)
-- `CUOPT_MIP_HYPER_DIVING_MIN_NODE_DEPTH` (`"mip_hyper_diving_min_node_depth"`)
-- `CUOPT_MIP_HYPER_DIVING_NODE_LIMIT` (`"mip_hyper_diving_node_limit"`)
-- `CUOPT_MIP_HYPER_DIVING_PSEUDOCOST` (`"mip_hyper_diving_pseudocost"`)
-- `CUOPT_MIP_HYPER_DIVING_SHOW_TYPE` (`"mip_hyper_diving_show_type"`)
-- `CUOPT_MIP_HYPER_DIVING_VECTOR_LENGTH` (`"mip_hyper_diving_vector_length"`)
+<!-- symbol: CUOPT_MIP_HYPER_DIVING_BACKTRACK_LIMIT -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_HYPER_DIVING_COEFFICIENT -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_HYPER_DIVING_FARKAS -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_HYPER_DIVING_GUIDED -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_HYPER_DIVING_ITERATION_LIMIT_FACTOR -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_HYPER_DIVING_LINE_SEARCH -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_HYPER_DIVING_MIN_NODE_DEPTH -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_HYPER_DIVING_NODE_LIMIT -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_HYPER_DIVING_PSEUDOCOST -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_HYPER_DIVING_SHOW_TYPE -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_HYPER_DIVING_VECTOR_LENGTH -->
+<!-- /symbol -->
 
 ## MIP Hyper Heuristic Parameters
 
-These constants configure the hyper heuristic solver. Use them with `cuOptSetParameter`, `cuOptSetIntegerParameter`, or `cuOptSetFloatParameter`.
+These constants configure the hyper heuristic solver. Use them with
+`cuOptSetParameter`, `cuOptSetIntegerParameter`, or `cuOptSetFloatParameter`.
 
-- `CUOPT_MIP_HYPER_HEURISTIC_CYCLE_DETECTION_LENGTH` (`"mip_hyper_heuristic_cycle_detection_length"`)
-- `CUOPT_MIP_HYPER_HEURISTIC_ENABLED_RECOMBINERS` (`"mip_hyper_heuristic_enabled_recombiners"`)
-- `CUOPT_MIP_HYPER_HEURISTIC_INITIAL_INFEASIBILITY_WEIGHT` (`"mip_hyper_heuristic_initial_infeasibility_weight"`)
-- `CUOPT_MIP_HYPER_HEURISTIC_MAX_ITERS_WITHOUT_IMPROVEMENT` (`"mip_hyper_heuristic_max_iterations_without_improvement"`)
-- `CUOPT_MIP_HYPER_HEURISTIC_NUM_CPUFJ_THREADS` (`"mip_hyper_heuristic_num_cpufj_threads"`)
-- `CUOPT_MIP_HYPER_HEURISTIC_N_OF_MINIMUMS_FOR_EXIT` (`"mip_hyper_heuristic_n_of_minimums_for_exit"`)
-- `CUOPT_MIP_HYPER_HEURISTIC_POPULATION_SIZE` (`"mip_hyper_heuristic_population_size"`)
-- `CUOPT_MIP_HYPER_HEURISTIC_PRESOLVE_MAX_TIME` (`"mip_hyper_heuristic_presolve_max_time"`)
-- `CUOPT_MIP_HYPER_HEURISTIC_PRESOLVE_TIME_RATIO` (`"mip_hyper_heuristic_presolve_time_ratio"`)
-- `CUOPT_MIP_HYPER_HEURISTIC_RELATED_VARS_TIME_LIMIT` (`"mip_hyper_heuristic_related_vars_time_limit"`)
-- `CUOPT_MIP_HYPER_HEURISTIC_RELAXED_LP_TIME_LIMIT` (`"mip_hyper_heuristic_relaxed_lp_time_limit"`)
-- `CUOPT_MIP_HYPER_HEURISTIC_RINS_FIX_RATE` (`"mip_hyper_heuristic_rins_fix_rate"`)
-- `CUOPT_MIP_HYPER_HEURISTIC_RINS_MAX_TIME_LIMIT` (`"mip_hyper_heuristic_rins_max_time_limit"`)
-- `CUOPT_MIP_HYPER_HEURISTIC_RINS_TIME_LIMIT` (`"mip_hyper_heuristic_rins_time_limit"`)
-- `CUOPT_MIP_HYPER_HEURISTIC_ROOT_LP_MAX_TIME` (`"mip_hyper_heuristic_root_lp_max_time"`)
-- `CUOPT_MIP_HYPER_HEURISTIC_ROOT_LP_TIME_RATIO` (`"mip_hyper_heuristic_root_lp_time_ratio"`)
-- `CUOPT_MIP_HYPER_HEURISTIC_STAGNATION_TRIGGER` (`"mip_hyper_heuristic_stagnation_trigger"`)
+<!-- symbol: CUOPT_MIP_HYPER_HEURISTIC_CYCLE_DETECTION_LENGTH -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_HYPER_HEURISTIC_ENABLED_RECOMBINERS -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_HYPER_HEURISTIC_INITIAL_INFEASIBILITY_WEIGHT -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_HYPER_HEURISTIC_MAX_ITERS_WITHOUT_IMPROVEMENT -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_HYPER_HEURISTIC_NUM_CPUFJ_THREADS -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_HYPER_HEURISTIC_N_OF_MINIMUMS_FOR_EXIT -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_HYPER_HEURISTIC_POPULATION_SIZE -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_HYPER_HEURISTIC_PRESOLVE_MAX_TIME -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_HYPER_HEURISTIC_PRESOLVE_TIME_RATIO -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_HYPER_HEURISTIC_RELATED_VARS_TIME_LIMIT -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_HYPER_HEURISTIC_RELAXED_LP_TIME_LIMIT -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_HYPER_HEURISTIC_RINS_FIX_RATE -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_HYPER_HEURISTIC_RINS_MAX_TIME_LIMIT -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_HYPER_HEURISTIC_RINS_TIME_LIMIT -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_HYPER_HEURISTIC_ROOT_LP_MAX_TIME -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_HYPER_HEURISTIC_ROOT_LP_TIME_RATIO -->
+<!-- /symbol -->
+
+<!-- symbol: CUOPT_MIP_HYPER_HEURISTIC_STAGNATION_TRIGGER -->
+<!-- /symbol -->

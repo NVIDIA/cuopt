@@ -1,12 +1,28 @@
 #!/usr/bin/env python3
 """
-Parse cuopt_c.h and constants.h via Doxygen XML and regenerate MDX pages for
-the C API reference.
+Parse cuopt_c.h and constants.h via Doxygen XML and refresh the C API MDX
+skeleton pages.
 
-Page structure and section organization come from fern/c_api_config.yaml.
-Any symbol found in Doxygen XML that is NOT listed in the config is automatically
-appended to an "Uncategorized" section so new symbols always appear without
-requiring a config update.
+How it works
+------------
+Each MDX skeleton page (checked into git) contains placeholder markers:
+
+    <!-- symbol: cuOptCreateProblem -->
+    <!-- /symbol -->
+
+On each run this script:
+  1. Runs Doxygen to extract symbols from the C headers.
+  2. For each skeleton file, finds every <!-- symbol: NAME --> marker and
+     replaces the content between it and <!-- /symbol --> with freshly
+     rendered Doxygen documentation.
+  3. Errors if any symbol found in Doxygen XML has no marker in any skeleton.
+     This forces developers to consciously place new symbols when they add them
+     to the headers.
+
+To add a new symbol to the docs:
+  1. Add a <!-- symbol: NEW_SYMBOL --><!-- /symbol --> marker in the right
+     location in the appropriate skeleton MDX file.
+  2. Re-run the script (or build docs) — the content fills in automatically.
 
 Usage:
     python fern/extract_c_api.py
@@ -18,20 +34,20 @@ Regenerates:
 
 import re
 import subprocess
+import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
-
-try:
-    import yaml
-    _YAML_AVAILABLE = True
-except ImportError:
-    _YAML_AVAILABLE = False
 
 REPO_ROOT = Path(__file__).parent.parent
 HEADER = REPO_ROOT / "cpp/include/cuopt/mathematical_optimization/cuopt_c.h"
 CONSTANTS = REPO_ROOT / "cpp/include/cuopt/mathematical_optimization/constants.h"
 PAGES = REPO_ROOT / "fern/docs/pages"
-CONFIG_FILE = REPO_ROOT / "fern/c_api_config.yaml"
+
+# MDX skeleton files — checked into git; script refreshes symbol blocks in-place.
+SKELETON_PAGES = [
+    PAGES / "cuopt-c/convex/convex-c-api.mdx",
+    PAGES / "cuopt-c/mip/mip-c-api.mdx",
+]
 
 _DOXYFILE = REPO_ROOT / "fern/Doxyfile"
 _XML_DIR = REPO_ROOT / "fern/.doxygen-xml/xml"
@@ -42,6 +58,10 @@ _INTERNAL_SYMBOLS = {
     "CUOPT_CONSTANTS_H",
 }
 _INTERNAL_PREFIXES = ("CUOPT_INSTANTIATE_",)
+
+# Marker regexes
+_OPEN_RE = re.compile(r'^<!--\s*symbol:\s*(\S+)\s*-->$')
+_CLOSE = "<!-- /symbol -->"
 
 
 # ---------------------------------------------------------------------------
@@ -292,17 +312,17 @@ def _render_typedef(name: str, info: dict) -> str:
     brief = _escape_mdx(_clean_desc(info.get("brief", "") or ""))
     underlying = info.get("underlying", "")
     if underlying:
-        return f"<hr />\n\n**`typedef`** **`{name}`** — {brief} (`typedef {underlying}`)\n"
-    return f"<hr />\n\n**`typedef`** **`{name}`** — {brief}\n"
+        return f"**`typedef`** **`{name}`** — {brief} (`typedef {underlying}`)"
+    return f"**`typedef`** **`{name}`** — {brief}"
 
 
 def _render_typedef_fn(name: str, info: dict) -> str:
     lines = []
     brief = _escape_mdx(_clean_desc(info.get("brief", "") or ""))
-    lines.append(f"<hr />\n\n**`typedef`** **`{name}`** — {brief}\n")
+    lines.append(f"**`typedef`** **`{name}`** — {brief}")
     note = info.get("note", "")
     if note:
-        lines.append(f"\n<Note>\n{_escape_mdx(_clean_desc(note))}\n</Note>\n")
+        lines.append(f"\n<Note>\n{_escape_mdx(_clean_desc(note))}\n</Note>")
     param_docs = info.get("param_docs", [])
     if param_docs:
         lines.append("\n**Parameters**\n")
@@ -311,10 +331,9 @@ def _render_typedef_fn(name: str, info: dict) -> str:
             direction = p.get("dir", "")
             dir_str = f" `[{direction}]`" if direction else ""
             lines.append(f"- **`{p['name']}`**{dir_str} — {desc}")
-        lines.append("")
     ret = info.get("return_doc", "")
     if ret:
-        lines.append(f"\n**Returns** {_escape_mdx(_clean_desc(ret))}\n")
+        lines.append(f"\n**Returns** {_escape_mdx(_clean_desc(ret))}")
     return "\n".join(lines)
 
 
@@ -334,7 +353,7 @@ def _render_function(name: str, info: dict) -> str:
     sig = f"{name}({param_str})"
     if ret and ret != "void":
         sig = f"{sig} -> {ret}"
-    lines.append(f"<hr />\n\n#### `{sig}`\n")
+    lines.append(f"#### `{sig}`\n")
 
     brief = _escape_mdx(_clean_desc(info.get("brief", "") or ""))
     if brief:
@@ -373,7 +392,7 @@ def _render_function(name: str, info: dict) -> str:
 def _render_symbol(name: str, symbols: dict) -> str:
     info = symbols.get(name)
     if not info:
-        return f"*`{name}` — documentation not found in headers.*\n"
+        return f"*`{name}` — documentation not found in headers.*"
     kind = info.get("kind", "")
     if kind == "function":
         return _render_function(name, info)
@@ -383,118 +402,58 @@ def _render_symbol(name: str, symbols: dict) -> str:
         return _render_typedef(name, info)
     if kind == "define":
         return _render_define(name, info)
-    return f"*`{name}` — (see header)*\n"
+    return f"*`{name}` — (see header)*"
 
 
 # ---------------------------------------------------------------------------
-# YAML-driven page generator
+# Skeleton refresher
 # ---------------------------------------------------------------------------
 
-def _collect_config_symbols(page_cfg: dict) -> set:
-    """Return the set of all symbol names mentioned anywhere in a page config."""
-    seen = set()
-    for section in page_cfg.get("sections", []):
-        for item in section.get("items", []):
-            if "symbol" in item:
-                seen.add(item["symbol"])
-            for s in item.get("symbols", []):
-                seen.add(s)
-    return seen
+def _collect_markers(mdx_path: Path) -> set:
+    """Return the set of symbol names with markers in this skeleton file."""
+    found = set()
+    for line in mdx_path.read_text(encoding="utf-8").splitlines():
+        m = _OPEN_RE.match(line.strip())
+        if m:
+            found.add(m.group(1))
+    return found
 
 
-def _render_page(page_cfg: dict, symbols: dict, all_config_symbols: set) -> str:
-    """Render one MDX page from config + Doxygen symbols."""
-    out = [
-        "---",
-        f'title: "{page_cfg["title"]}"',
-        "---",
-        "",
-    ]
+def _refresh_skeleton(mdx_path: Path, symbols: dict) -> bool:
+    """
+    Replace content between <!-- symbol: NAME --> and <!-- /symbol --> markers
+    with freshly rendered Doxygen output. Returns True if the file changed.
+    """
+    original = mdx_path.read_text(encoding="utf-8")
+    lines = original.splitlines(keepends=True)
+    out = []
+    i = 0
+    while i < len(lines):
+        line = lines[i].rstrip("\n")
+        m = _OPEN_RE.match(line.strip())
+        if m:
+            name = m.group(1)
+            out.append(lines[i])  # keep the opening marker
+            i += 1
+            # skip existing content up to closing marker
+            while i < len(lines) and lines[i].rstrip("\n").strip() != _CLOSE:
+                i += 1
+            # render fresh content
+            rendered = _render_symbol(name, symbols).rstrip()
+            if rendered:
+                out.append(rendered + "\n")
+            # emit closing marker
+            out.append(_CLOSE + "\n")
+            i += 1  # skip the closing marker line we consumed
+            continue
+        out.append(lines[i])
+        i += 1
 
-    intro = page_cfg.get("intro", "").strip()
-    if intro:
-        out.append(intro)
-        out.append("")
-
-    # Track which defines have been rendered (for list flushing)
-    pending_defines: list[str] = []
-
-    def flush_defines():
-        if pending_defines:
-            for dname in pending_defines:
-                out.append(_render_define(dname, symbols[dname]) if dname in symbols
-                           else f"- `{dname}` — (not found)")
-            out.append("")
-            pending_defines.clear()
-
-    def render_item_symbols(sym_list):
-        # Batch defines as bullet list; functions/typedefs get their own block
-        for sym in sym_list:
-            info = symbols.get(sym)
-            if info and info.get("kind") == "define":
-                pending_defines.append(sym)
-            else:
-                flush_defines()
-                out.append(_render_symbol(sym, symbols))
-
-    for section in page_cfg.get("sections", []):
-        flush_defines()
-        out.append(f"## {section['title']}")
-        out.append("")
-        sec_intro = section.get("intro", "").strip()
-        if sec_intro:
-            out.append(sec_intro)
-            out.append("")
-
-        for item in section.get("items", []):
-            if "intro" in item:
-                flush_defines()
-                out.append(item["intro"].strip())
-                out.append("")
-            elif "note" in item:
-                flush_defines()
-                note_text = _escape_mdx(item["note"].strip())
-                out.append(f"<Note>\n{note_text}\n</Note>")
-                out.append("")
-            elif "symbol" in item:
-                render_item_symbols([item["symbol"]])
-            elif "symbols" in item:
-                render_item_symbols(item["symbols"])
-
-        flush_defines()
-
-    # Auto-append uncategorized symbols only to the designated catchall page
-    page_output = page_cfg["output"]
-    uncategorized = []
-    if page_cfg.get("include_uncategorized"):
-        uncategorized = [
-            name for name, info in symbols.items()
-            if name not in all_config_symbols and name not in _INTERNAL_SYMBOLS
-            and not any(name.startswith(p) for p in _INTERNAL_PREFIXES)
-        ]
-    if uncategorized:
-        print(f"  [INFO] {len(uncategorized)} uncategorized symbol(s) appended to {page_output}: "
-              f"{', '.join(sorted(uncategorized)[:5])}{'...' if len(uncategorized) > 5 else ''}")
-        out.append("## Uncategorized")
-        out.append("")
-        out.append("<Note>")
-        out.append("The following symbols were found in the headers but are not yet")
-        out.append("organized into a section. Update `fern/c_api_config.yaml` to place them.")
-        out.append("</Note>")
-        out.append("")
-        pending_defines.clear()
-        for name in sorted(uncategorized):
-            info = symbols.get(name, {})
-            if info.get("kind") == "define":
-                pending_defines.append(name)
-            else:
-                flush_defines()
-                out.append(_render_symbol(name, symbols))
-        flush_defines()
-
-    result = "\n".join(out)
-    result = re.sub(r'\n{3,}', '\n\n', result)
-    return result.strip() + "\n"
+    result = "".join(out)
+    if result != original:
+        mdx_path.write_text(result, encoding="utf-8")
+        return True
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -502,27 +461,40 @@ def _render_page(page_cfg: dict, symbols: dict, all_config_symbols: set) -> str:
 # ---------------------------------------------------------------------------
 
 def generate_pages():
-    if not _YAML_AVAILABLE:
-        raise ImportError("PyYAML is required: pip install pyyaml")
-
     print("Extracting C API docs from headers (Doxygen XML)...")
     symbols = parse_headers()
     print(f"  Parsed {len(symbols)} symbols")
 
-    config = yaml.safe_load(CONFIG_FILE.read_text(encoding="utf-8"))
+    # Collect every symbol name referenced in any skeleton
+    all_placed: set = set()
+    for skeleton in SKELETON_PAGES:
+        if skeleton.exists():
+            all_placed |= _collect_markers(skeleton)
 
-    # Build the full set of config-listed symbols across ALL pages so the
-    # uncategorized check doesn't double-report across convex and MIP pages
-    all_config_symbols: set = set()
-    for page_cfg in config["pages"]:
-        all_config_symbols |= _collect_config_symbols(page_cfg)
+    # Error on any Doxygen symbol that has no marker in any skeleton
+    missing = sorted(
+        name for name in symbols
+        if name not in all_placed
+        and name not in _INTERNAL_SYMBOLS
+        and not any(name.startswith(p) for p in _INTERNAL_PREFIXES)
+    )
+    if missing:
+        print(
+            f"\nERROR: {len(missing)} symbol(s) found in headers but not placed in any MDX skeleton.\n"
+            "Add a <!-- symbol: NAME --><!-- /symbol --> marker to the appropriate skeleton file:\n"
+            + "\n".join(f"  - {n}" for n in missing),
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
-    for page_cfg in config["pages"]:
-        dest = PAGES / page_cfg["output"]
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        mdx = _render_page(page_cfg, symbols, all_config_symbols)
-        dest.write_text(mdx, encoding="utf-8")
-        print(f"  Wrote {dest.relative_to(REPO_ROOT)}")
+    # Refresh each skeleton
+    for skeleton in SKELETON_PAGES:
+        if not skeleton.exists():
+            print(f"  [SKIP] {skeleton.relative_to(REPO_ROOT)} (not found)")
+            continue
+        changed = _refresh_skeleton(skeleton, symbols)
+        status = "updated" if changed else "unchanged"
+        print(f"  {status}: {skeleton.relative_to(REPO_ROOT)}")
 
 
 # Alias expected by generate_api_docs.py
