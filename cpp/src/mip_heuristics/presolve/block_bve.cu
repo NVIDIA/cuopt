@@ -432,13 +432,15 @@ __global__ void bve_enumerate_kernel(
 }
 
 // ---- GPU batch projection: one enumeration-kernel launch per shape-bin ----
+// Returns raw work for the enumerations (sum over bins of assignments · nnz).
 template <typename i_t, typename f_t>
-void bve_project_batch_gpu(const raft::handle_t& handle,
-                           std::vector<bve_candidate_t<i_t, f_t>>& cands,
-                           f_t tol)
+double bve_project_batch_gpu(const raft::handle_t& handle,
+                             std::vector<bve_candidate_t<i_t, f_t>>& cands,
+                             f_t tol)
 {
-  if (cands.empty()) return;
-  auto stream = handle.get_stream();
+  if (cands.empty()) return 0.0;
+  auto stream       = handle.get_stream();
+  double work_units = 0.0;
 
   // Bin candidates by identical shape so every CTA in a launch runs the same loop structure. The
   // key is (na, nb, n_rows, nnz, row_off[...], row_var[...]) — everything the kernel reads as
@@ -518,6 +520,9 @@ void bve_project_batch_gpu(const raft::handle_t& handle,
                                                                      d_witness.data());
     RAFT_CUDA_TRY(cudaGetLastError());
 
+    // Closed-form work: one assignment evaluates nnz coefficient multiplies.
+    work_units += total * nnz;
+
     // ---- readback: witness sentinel -> feas; smallest feasible interior -> witness ----
     std::vector<uint32_t> h_witness(static_cast<size_t>(num) * patterns);
     raft::copy(h_witness.data(), d_witness.data(), h_witness.size(), stream);
@@ -532,6 +537,7 @@ void bve_project_batch_gpu(const raft::handle_t& handle,
       }
     }
   }
+  return work_units;
 }
 
 // ---- production detector: round-based, scope-disjoint, one GPU projection launch per round ----
@@ -562,7 +568,8 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
   const raft::handle_t& handle,
   bve_reducer_t<i_t, f_t>& R,
   const std::vector<std::vector<i_t>>& impl_adj,
-  timer_t& timer)
+  timer_t& timer,
+  double& work_units)
 {
   auto has_adj = [&](i_t v) {
     return static_cast<size_t>(v) < impl_adj.size() && !impl_adj[v].empty();
@@ -594,17 +601,21 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
     // acceptance below runs in round_seeds order, so the committed plan is identical to the serial
     // version: this is a pure speedup, not a behaviour change.
     std::vector<std::vector<i_t>> interiors(round_seeds.size());
+    std::vector<int64_t> growth_ops(round_seeds.size(), 0);
 #pragma omp parallel for schedule(dynamic)
     for (int k = 0; k < static_cast<int>(round_seeds.size()); ++k) {
       std::unordered_set<i_t> A = {round_seeds[k]};
+      int64_t ops               = 0;
       for (;;) {
         std::vector<i_t> Av(A.begin(), A.end());
         const int cur = R.boundary_size(Av);
+        ops += Av.size();
         std::unordered_set<i_t> cands_w;
         for (i_t a : A)
           if (has_adj(a))
             for (i_t w : impl_adj[a])
               if (!A.count(w) && eligible(w)) cands_w.insert(w);
+        ops += cands_w.size();
         i_t best    = static_cast<i_t>(-1);
         int best_nb = cur;
         for (i_t w : cands_w) {
@@ -612,6 +623,7 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
             w);  // test interior ∪ {w}, then pop to reuse the buffer (no per-candidate copy)
           const int na = static_cast<int>(Av.size());
           const int nb = R.boundary_size(Av);
+          ops += Av.size();
           Av.pop_back();
           if (nb < best_nb && na + nb <= R.enumcap && na <= BVE_MAX_INTERIOR) {
             best_nb = nb;
@@ -622,7 +634,12 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
         A.insert(best);
       }
       interiors[k].assign(A.begin(), A.end());
+      growth_ops[k] = ops;
     }
+    int64_t max_growth_ops = 0;
+    for (int64_t ops : growth_ops)
+      max_growth_ops = std::max(max_growth_ops, ops);
+    work_units += max_growth_ops;
 
     if (timer.check_time_limit()) break;
 
@@ -639,6 +656,7 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
           1;  // failed the caps against this model; treat as one touch, like sequential
         continue;
       }
+      work_units += cand.blk.row_off[cand.blk.n_rows];
       bool overlap = false;
       for (i_t c : cand.interior)
         if (claimed.count(c)) {
@@ -662,11 +680,13 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
     }
 
     if (cands.empty() || timer.check_time_limit()) break;
-    bve_project_batch_gpu<i_t, f_t>(handle, cands, R.tol);  // one kernel launch per shape-bin
+    work_units += bve_project_batch_gpu<i_t, f_t>(handle, cands, R.tol);
     if (timer.check_time_limit()) break;
     int committed = 0;
     for (auto& cand : cands) {
       if (timer.check_time_limit()) break;
+      // Prime-implicate generation + sanity check scale with the feasibility table size.
+      work_units += (1 << cand.blk.nb);
       if (R.commit_projected(cand)) ++committed;
     }
     if (committed == 0) break;
@@ -709,15 +729,19 @@ template <typename i_t, typename f_t>
 bool block_bve_presolve(problem_t<i_t, f_t>& problem,
                         const std::vector<std::vector<i_t>>& impl_adj,
                         timer_t& timer,
+                        double& work_units,
                         f_t tol,
                         int Bcap,
                         int enumcap,
                         int margin)
 {
+  work_units = 0.0;
   // Local wall clock for the DEBUG total; `timer` is the caller's deadline (e.g. global_timer).
   timer_t wall(std::numeric_limits<double>::infinity());
-  auto timer_raii_guard = cuopt::scope_guard(
-    [&]() { CUOPT_LOG_DEBUG("Block-BVE presolve time: %.2f", wall.elapsed_time()); });
+  auto timer_raii_guard = cuopt::scope_guard([&]() {
+    CUOPT_LOG_DEBUG(
+      "Block-BVE presolve time: %.2f work units: %.6g", wall.elapsed_time(), work_units);
+  });
 
   const raft::handle_t* handle = problem.handle_ptr;
   auto stream                  = handle->get_stream();
@@ -776,7 +800,7 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
                                   enumcap,
                                   margin);
   bve_plan_t<i_t, f_t> plan =
-    bve_detect_closure_batched<i_t, f_t>(*handle, reducer, impl_adj, timer);
+    bve_detect_closure_batched<i_t, f_t>(*handle, reducer, impl_adj, timer, work_units);
   if (plan.n_blocks == 0) return false;
 
   // ---- 4. build the reduced forward CSR: keep original rows not removed, append clause rows ----
@@ -840,13 +864,14 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
 
 #define INSTANTIATE(F_TYPE)                                                           \
   template struct bve_reducer_t<int, F_TYPE>;                                         \
-  template void bve_project_batch_gpu<int, F_TYPE>(                                   \
+  template double bve_project_batch_gpu<int, F_TYPE>(                                 \
     const raft::handle_t&, std::vector<bve_candidate_t<int, F_TYPE>>&, F_TYPE);       \
   template std::vector<std::vector<int>> bve_build_impl_adj<int, F_TYPE>(             \
     const probing_cache_t<int, F_TYPE>&, const std::vector<int>&, int);               \
   template bool block_bve_presolve<int, F_TYPE>(problem_t<int, F_TYPE>&,              \
                                                 const std::vector<std::vector<int>>&, \
                                                 timer_t&,                             \
+                                                double&,                              \
                                                 F_TYPE,                               \
                                                 int,                                  \
                                                 int,                                  \

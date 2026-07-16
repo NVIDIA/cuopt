@@ -553,7 +553,8 @@ TEST(block_bve_presolve, end_to_end_reduction_and_reconstruction)
     row_share_adjacency(problem.n_variables, offsets, variables, is_integer, col_lower, col_upper);
 
   cuopt::timer_t bve_timer(10.0);
-  const bool applied = mip::block_bve_presolve(problem, impl_adj, bve_timer);
+  double bve_work_units = 0.0;
+  const bool applied    = mip::block_bve_presolve(problem, impl_adj, bve_timer, bve_work_units);
   EXPECT_TRUE(applied);
   EXPECT_EQ(problem.n_variables, n_before - 1);  // exactly `a` eliminated
 
@@ -707,7 +708,8 @@ TEST(block_bve_equivalence, preserves_optimum_and_reconstruction_on_corpus)
 
     auto impl_adj = proxy_impl_adj(problem);
     cuopt::timer_t bve_timer(10.0);
-    mip::block_bve_presolve(problem, impl_adj, bve_timer);
+    double bve_work_units = 0.0;
+    mip::block_bve_presolve(problem, impl_adj, bve_timer, bve_work_units);
 
     auto bf = brute_force_binary(problem);
     if (!c.feasible) {
