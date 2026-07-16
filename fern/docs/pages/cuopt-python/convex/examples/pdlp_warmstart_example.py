@@ -14,9 +14,8 @@ Warmstart data allows restarting PDLP with a previous solution context.
 This should be used when you solve a new problem which is similar to the
 previous one.
 
-Note:
-    Warmstart data is only available for Linear Programming (LP) problems,
-    not for Mixed Integer Linear Programming (MILP) problems.
+**Note:** Warmstart data is only available for Linear Programming (LP) problems,
+not for Mixed Integer Linear Programming (MILP) problems.
 
 Problem 1:
     Maximize: 2*x + y

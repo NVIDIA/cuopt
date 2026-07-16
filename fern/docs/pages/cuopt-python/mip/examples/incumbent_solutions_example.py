@@ -16,9 +16,8 @@ Incumbent solutions are intermediate feasible solutions found during the MIP
 solving process. They represent the best integer-feasible solution discovered
 so far.
 
-Note:
-    Incumbent solutions are only available for Mixed Integer Programming (MIP)
-    problems, not for pure Linear Programming (LP) problems.
+**Note:** Incumbent solutions are only available for Mixed Integer Programming
+(MIP) problems, not for pure Linear Programming (LP) problems.
 
 Problem:
     Maximize: 5*x + 3*y

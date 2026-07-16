@@ -32,6 +32,7 @@ tabs:
     icon: book
 
 versions:
+  # rapids-pre-commit-hooks: disable-next-line
   - display-name: "26.08 (Latest)"
     path: docs-v26-08.yml
   - display-name: "26.06"

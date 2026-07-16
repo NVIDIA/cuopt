@@ -106,7 +106,8 @@ repos:
             ^[.]cursor-plugin/plugin[.]json$|
             ^[.]claude-plugin/marketplace[.]json$|
             ^gemini-extension[.]json$|
-            ^fern/openapi/cuopt_spec[.]yaml$
+            ^fern/openapi/cuopt_spec[.]yaml$|
+            ^fern/docs/scripts/cuopt-install-version[.]js$
   - repo: https://github.com/zizmorcore/zizmor-pre-commit
     rev: v1.24.1
     hooks:

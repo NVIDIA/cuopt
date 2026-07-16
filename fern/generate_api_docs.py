@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """
 Generate dynamic API reference content for the Fern docs.
 
@@ -47,7 +50,11 @@ def _generate_openapi_spec():
                     for media in resp.get("content", {}).values():
                         for ex in media.get("examples", {}).values():
                             val = ex.get("value", {})
-                            if isinstance(val, dict) and "error" in val and "error_result" not in val:
+                            if (
+                                isinstance(val, dict)
+                                and "error" in val
+                                and "error_result" not in val
+                            ):
                                 val["error_result"] = False
 
         incumbents_path = "/cuopt/solution/{id}/incumbents"
@@ -70,8 +77,16 @@ def _generate_openapi_spec():
         out = FERN / "openapi/cuopt_spec.yaml"
         out.parent.mkdir(parents=True, exist_ok=True)
         with open(out, "w") as f:
-            yaml.dump(spec, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
-        print(f"Generated {out.relative_to(REPO_ROOT)} ({len(spec['paths'])} paths)")
+            yaml.dump(
+                spec,
+                f,
+                default_flow_style=False,
+                allow_unicode=True,
+                sort_keys=False,
+            )
+        print(
+            f"Generated {out.relative_to(REPO_ROOT)} ({len(spec['paths'])} paths)"
+        )
 
         ver = app.version
         parts = ver.split(".")
@@ -83,11 +98,15 @@ def _generate_openapi_spec():
         version_js.write_text(
             f'window.CUOPT_INSTALL_VERSION = {{"conda": "{conda_ver}", "pip": "{pip_ver}"}};\n'
         )
-        print(f"Generated {version_js.relative_to(REPO_ROOT)} (conda={conda_ver}, pip={pip_ver})")
+        print(
+            f"Generated {version_js.relative_to(REPO_ROOT)} (conda={conda_ver}, pip={pip_ver})"
+        )
 
     except Exception as e:
         print(f"  [WARN] Could not generate OpenAPI spec: {e}")
-        print("         Ensure cuopt_server is installed: pip install -e python/cuopt_server --no-deps")
+        print(
+            "         Ensure cuopt_server is installed: pip install -e python/cuopt_server --no-deps"
+        )
 
 
 def _run_module(path: Path, fn_name: str):
