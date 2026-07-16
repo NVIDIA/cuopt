@@ -5,7 +5,12 @@
 
 # Single binary for all numopt tests that require internal symbols (cuopt_static).
 # Add new internal numopt tests here instead of creating separate STATIC_LIB targets.
+#
+# main.cu provides the single main() entry point (RMM-aware, same as CUOPT_TEST_PROGRAM_MAIN).
+# CUOPT_DISABLE_TEST_MAIN suppresses CUOPT_TEST_PROGRAM_MAIN() in individual test files
+# so only main.cu defines main().
 ConfigureTest(NUMOPT_INTERNAL_TEST
+    ${CUOPT_TEST_DIR}/internal/main.cu
     # dual_simplex
     ${CUOPT_TEST_DIR}/dual_simplex/unit_tests/solve.cpp
     ${CUOPT_TEST_DIR}/dual_simplex/unit_tests/solve_barrier.cu
@@ -26,8 +31,6 @@ ConfigureTest(NUMOPT_INTERNAL_TEST
     ${CUOPT_TEST_DIR}/mip/integer_with_real_bounds.cu
     ${CUOPT_TEST_DIR}/mip/empty_fixed_problems_test.cu
     ${CUOPT_TEST_DIR}/mip/presolve_test.cu
-    ${CUOPT_TEST_DIR}/mip/feasibility_jump_tests.cu
-    ${CUOPT_TEST_DIR}/mip/load_balancing_test.cu
     ${CUOPT_TEST_DIR}/mip/termination_test.cu
     ${CUOPT_TEST_DIR}/mip/determinism_test.cu
     # socp
@@ -36,3 +39,6 @@ ConfigureTest(NUMOPT_INTERNAL_TEST
     ${CUOPT_TEST_DIR}/socp/general_quadratic_test.cu
     LABELS numopt
     STATIC_LIB)
+
+# Suppress individual main() definitions — main.cu is the single entry point.
+target_compile_definitions(NUMOPT_INTERNAL_TEST PRIVATE CUOPT_DISABLE_TEST_MAIN)

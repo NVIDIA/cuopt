@@ -20,6 +20,8 @@ add_executable(GRPC_CLIENT_TEST
 target_include_directories(GRPC_CLIENT_TEST
     PRIVATE
     "${CUOPT_SOURCE_DIR}/include"
+    "${CUOPT_SOURCE_DIR}/src"
+    "${CUOPT_SOURCE_DIR}/src/io"
     "${CUOPT_SOURCE_DIR}/src/grpc"
     "${CUOPT_SOURCE_DIR}/src/grpc/client"
     "${CUOPT_SOURCE_DIR}/src/grpc/server"
@@ -108,6 +110,7 @@ add_executable(GRPC_INTEGRATION_TEST
 target_include_directories(GRPC_INTEGRATION_TEST
     PRIVATE
     "${CUOPT_SOURCE_DIR}/include"
+    "${CUOPT_SOURCE_DIR}/src"
     "${CUOPT_SOURCE_DIR}/src/grpc"
     "${CUOPT_SOURCE_DIR}/src/grpc/client"
     "${CUOPT_TEST_DIR}"

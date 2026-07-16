@@ -637,10 +637,16 @@ if (BUILD_TESTS)
             CCCL::CCCL
             raft::raft
             ${CUDSS_LIB_FILE}
+            OpenMP::OpenMP_CXX
             PRIVATE
             ${CUOPT_PRIVATE_CUDA_LIBS}
             $<$<BOOL:${CUOPT_ENABLE_GRPC}>:protobuf::libprotobuf>
             $<$<BOOL:${CUOPT_ENABLE_GRPC}>:gRPC::grpc++>
+    )
+    # Internal test sources include OMP-dependent headers (omp_helpers.hpp, omp_atomic_t).
+    # Propagate -fopenmp for CUDA TUs since OpenMP::OpenMP_CXX only covers CXX.
+    target_compile_options(cuopt_static INTERFACE
+            "$<$<COMPILE_LANGUAGE:CUDA>:-fopenmp>"
     )
     target_include_directories(cuopt_static
             PUBLIC
@@ -692,6 +698,14 @@ target_link_libraries(cuopt
         OpenMP::OpenMP_CUDA
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:protobuf::libprotobuf>
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:gRPC::grpc++>
+)
+# Propagate compile definitions that consumers need when including cuopt headers.
+# These were on cuopt directly before the cuopt_objs refactor; $<TARGET_OBJECTS:...>
+# does not carry INTERFACE properties, so we restore them explicitly.
+target_compile_definitions(cuopt
+        PUBLIC
+        "CUOPT_LOG_ACTIVE_LEVEL=RAPIDS_LOGGER_LOG_LEVEL_${LIBCUOPT_LOGGING_LEVEL}"
+        CUSPARSE_ENABLE_EXPERIMENTAL_API
 )
 
 if (WRITE_FATBIN)

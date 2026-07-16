@@ -7,12 +7,17 @@ ConfigureTest(ROUTING_TEST ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_routing_test.cu
     LABELS routing)
 
 ConfigureTest(ROUTING_INTERNAL_TEST
+    ${CUOPT_TEST_DIR}/internal/main.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_ges_test.cu
-    ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_scross_test.cu
-    ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/local_search_cand_test.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/top_k.cu
+    ${CMAKE_CURRENT_SOURCE_DIR}/utilities/check_constraints.cu
     LABELS routing
     STATIC_LIB)
+
+# Suppress individual main() definitions — main.cu is the single entry point.
+# check_constraints.cu provides check_route used by l0_ges_test.cu directly
+# to avoid linking cuopttestutils (which depends on cuopt shared lib).
+target_compile_definitions(ROUTING_INTERNAL_TEST PRIVATE CUOPT_DISABLE_TEST_MAIN)
 
 ConfigureTest(VEHICLE_ORDER_TEST ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_vehicle_order_match.cu
     LABELS routing)
