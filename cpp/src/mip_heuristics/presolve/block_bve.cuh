@@ -21,6 +21,7 @@
 #include <mip_heuristics/problem/problem.cuh>
 
 #include <raft/core/handle.hpp>
+#include <utilities/timer.hpp>
 #endif
 
 // Post-Papilo GPU block-BVE presolve pass. This header DECLARES the public surface; all function
@@ -301,17 +302,18 @@ std::vector<std::vector<i_t>> bve_build_impl_adj(const probing_cache_t<i_t, f_t>
                                                  const std::vector<i_t>& reverse_original_ids,
                                                  i_t n_vars);
 
-// The pass. `impl_adj` is built by the caller from the probing cache (bve_build_impl_adj). Returns
-// true iff at least one sanity checked reduction was applied (and the model was rewritten + a
+// The pass. `impl_adj` is built by the caller from the probing cache (bve_build_impl_adj).
+// `timer` is the caller's deadline clock (typically the solve-wide global_timer). Returns true iff
+// at least one sanity checked reduction was applied (and the model was rewritten + a
 // trivial_presolve compaction run). tol/Bcap/enumcap/margin mirror the host reference.
 template <typename i_t, typename f_t>
 bool block_bve_presolve(problem_t<i_t, f_t>& problem,
                         const std::vector<std::vector<i_t>>& impl_adj,
-                        f_t tol          = static_cast<f_t>(1e-6),
-                        int Bcap         = BVE_MAX_BOUNDARY,
-                        int enumcap      = BVE_MAX_SCOPE,
-                        int margin       = 0,
-                        double tbudget_s = 60.0);
+                        timer_t& timer,
+                        f_t tol     = static_cast<f_t>(1e-6),
+                        int Bcap    = BVE_MAX_BOUNDARY,
+                        int enumcap = BVE_MAX_SCOPE,
+                        int margin  = 0);
 
 #endif  // __CUDACC__
 
