@@ -240,6 +240,16 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
     }
 
     if (problem_ptr->pre_process_assignment(init_sol_assignment)) {
+      // Seed the solution with the provided assignment BEFORE fixing integers and running the
+      // completion LP. Otherwise the fix uses the solution_t constructor's default assignment
+      // (the variable lower bounds), which is -inf for free variables; fixing such a variable
+      // makes fix_given_variables compute a NaN constraint bound (inf - inf) and trips the
+      // problem-representation validation. Seeding first also lets us keep the LP's repaired
+      // continuous values (previously overwritten by a post-LP copy).
+      raft::copy(sol.assignment.data(),
+                 init_sol_assignment.data(),
+                 init_sol_assignment.size(),
+                 sol.handle_ptr->get_stream());
       relaxed_lp_settings_t lp_settings;
       lp_settings.time_limit            = std::min(60., timer.remaining_time() / 2);
       lp_settings.tolerance             = problem_ptr->tolerances.absolute_tolerance;
@@ -250,10 +260,6 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
                              problem_ptr->integer_indices,
                              lp_settings,
                              static_cast<bound_presolve_t<i_t, f_t>*>(nullptr));
-      raft::copy(sol.assignment.data(),
-                 init_sol_assignment.data(),
-                 init_sol_assignment.size(),
-                 sol.handle_ptr->get_stream());
       bool is_feasible = sol.compute_feasibility();
       cuopt_func_call(sol.test_variable_bounds(true));
       CUOPT_LOG_DEBUG("Adding initial solution success! feas %d objective %f excess %f",
