@@ -163,9 +163,7 @@ struct simplex_solver_settings_t {
   i_t augmented;  // -1 automatic, 0 to solve with ADAT, 1 to solve with augmented system
   i_t dualize;    // -1 automatic, 0 to not dualize, 1 to dualize
   i_t ordering;   // -1 automatic, 0 to use nested dissection, 1 to use AMD
-  i_t barrier_dual_initial_point;  // -1 automatic, 0 to use Lustig, Marsten, and Shanno initial
-                                   // point, 1 to use initial point form dual least squares problem,
-                                   // 2 to use Sturm/SeDuMi mu-based primal+dual point
+  i_t barrier_dual_initial_point;  // barrier_dual_initial_point_t; see internals.hpp
   bool check_Q;                    // true to check if Q is positive semidefinite
   bool crossover;                  // true to do crossover, false to not
   i_t refactor_frequency;          // number of basis updates before refactorization
