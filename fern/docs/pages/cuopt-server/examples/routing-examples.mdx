@@ -12,9 +12,9 @@ The OpenAPI specification for the server is available in [open-api spec](../../o
 
 The response would be as follows:
 
-> 
-> 
-> 
+>
+>
+>
 
 ## Initial Solution
 
@@ -26,26 +26,26 @@ The initial solution in the response is `not accepted`, because the problem is t
 
 The response would be as follows:
 
-> 
-> 
-> 
+>
+>
+>
 
 The `data` argument to `get_optimized_routes` may be a dictionary of the format shown in [Get Routes Open-API spec](../../open-api). It may also be the path of a file containing such a dictionary as JSON or written using the Python *msgpack* module. A JSON file may optionally be compressed with zlib. More details on the responses can be found under the responses schema in ["get /cuopt/request" and "get /cuopt/solution" API spec](../../open-api).
 
 To enable HTTPS:
 
   - In the case of the server using public certificates, simply enable https.
-    
-    
+
+
 
   - In the case of a self-signed certificate, provide the complete path to the certificate.
-    
-    
-    
+
+
+
     You can generate a self-signed certificate easily as follows:
-    
-    
-    
+
+
+
     `server.crt` and `server.key` are meant for server, `ca.crt` is meant for client.
 
 More examples are available in the [Examples Notebooks Repository](https://github.com/NVIDIA/cuopt-examples).
@@ -81,7 +81,7 @@ Please use solver settings while using .mps files.
 ## To enable HTTPS
 
   - In the case of the server using public certificates, simply enable https.
-    
-    
+
+
 
   - In the case of a self-signed certificate, provide the complete path to the certificate.

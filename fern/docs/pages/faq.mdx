@@ -29,7 +29,7 @@ With an NVAIE license or NVIDIA Developer Program membership, you can access the
 2.  Generate an NGC API key from settings. If you have not generated an API Key, you can generate it by going to the Setup option in your profile and choose [Get API Key](https://docs.nvidia.com/ngc/latest/ngc-private-registry-user-guide.html#generating-a-personal-api-key). Store this or generate a new one next time.
 
 3.    - Go to the container section for cuOpt and copy the pull tag for the latest image.
-        
+
           - Within the Select a tag dropdown, locate the container image release that you want to run.
           - Click the Copy Image Path button to copy the container image path.
 
@@ -57,18 +57,18 @@ Yes, please refer to [system requirements](system-requirements) for GPU specific
 1.  Check the logs for the container (see cuOpt service monitoring below).
 
 > Is port 5000 already in use?
-> 
+>
 > If port 5000 is unavailable, the logs will contain an error like this
-> 
-> 
+>
+>
 
 2.  Try to locate the process that is using port 5000 and stop it if possible. A tool like `netstat` run as the root user can help identify ports mapped to processes, and `docker ps -a` will show running containers.
 3.  Alternatively, use port mapping to launch cuOpt on a different port such as 5001 (note the omission of `--network=host` flag):
 4.  If running locally, you can also use `ps -aux | grep cuopt_server` to find the process and kill it.
 
-> 
-> 
-> 
+>
+>
+>
 
 </Accordion>
 
@@ -86,8 +86,8 @@ The cuOpt wheel links against OpenSSL 3 and intentionally does not bundle `libss
 Most modern Linux distributions provide OpenSSL 3 out of the box: Ubuntu 22.04+, Debian 12+, RHEL/Rocky/Alma 9+, and Fedora 36+. For older distributions:
 
   - **RHEL / Rocky / Alma / CentOS 8**: install the `openssl3` runtime package from EPEL:
-    
-    
+
+
 
   - **Ubuntu 20.04**: install OpenSSL 3 from a PPA or backport, or use the cuOpt container image (Ubuntu 22.04 base) instead.
 
@@ -128,14 +128,14 @@ This error indicates that the cuOpt shared library is not found. Please check th
 
 Perform a health-check locally on the host running cuOpt:
 
-> 
-> 
-> 
-> 
+>
+>
+>
+>
 > If this command returns 200, cuOpt is running and listening on the specified port.
-> 
+>
 > If this command returns something other than 200, check the following:
-> 
+>
 >   - Check that a cuOpt container is running with `docker ps`.
 >   - Examine the cuOpt container log for errors.
 >   - Did you include the `--network=host` or a `-p` port-mapping flag to docker when you launched cuOpt? If you used port mapping, did you perform the health check using the correct port?
@@ -145,10 +145,10 @@ Perform a health-check locally on the host running cuOpt:
 
 If you are trying to reach cuOpt from a remote host, run the health check from the remote host and specify the IP address of the cuOpt host, for example:
 
-> 
-> 
-> 
-> 
+>
+>
+>
+>
 > If this command does not return 200, but a health check locally on the cuOpt host does return 200, the problem is a network configuration or firewall issue. The host is not reachable, or the cuOpt port is not open to incoming traffic.
 
 </Accordion>
@@ -194,9 +194,9 @@ A waypoint graph is a weighted, directed graph where the weights symbolize cost.
 
 Graphs intended for input into cuOpt are shown in **Compressed Sparse Row (CSR)** format for efficiency. The translation from a more conventional (and human-readable) graph format, such as a weighted edge list, to CSR can be accomplished quickly, as depicted below:
 
-> 
-> 
-> 
+>
+>
+>
 
 </Accordion>
 
@@ -318,13 +318,13 @@ Set all prize values = 1 with a very high prize objective (like 10^6), and then 
   - The available GPU memory
 
   -   - The size of the problem
-        
+
           - Number of locations
           - Number of vehicles
           - Number of tasks
 
   -   - The complexity of the problem
-        
+
           - Number of demand and capacity constraints
           - Number of time windows
           - Number of vehicle types
@@ -396,7 +396,7 @@ The choice entirely depends on the level of accuracy you need for your problem. 
 Depending on these factors, the problems that can be solved can vary, for example:
 
   -   - On a H100 SXM with 80GB memory, here are few examples of the problems that can be solved:
-        
+
           - 10M rows/constraints, 10M columns/variables, and 2B non-zeros in the constraint matrix.
           - 74.5M rows/constraints, 74.5M columns/variables, and 1.49B non-zeros in the constraint matrix.
 
@@ -429,7 +429,7 @@ You can run the cuOpt MIP solver through the Python, C, CLI, or server APIs by p
 Depending on these factors, the problems that can be solved can vary, for example:
 
   -   - On a H100 SXM with 80GB memory, this is the biggest dataset that was tested:
-        
+
           - 27 million non-zeros coefficients on a problem from MIPLIB2017.
 
 </Accordion>

@@ -10,7 +10,7 @@ The MILP solver can be accessed in the following ways:
 
   - **Third-Party Modeling Languages**: cuOpt's LP and MILP solver can be called directly from the following third-party modeling languages. This allows you to leverage GPU acceleration while maintaining your existing optimization workflow in these modeling languages.
       - Currently supported solvers:
-        
+
           - AMPL
           - GAMS
           - PuLP
@@ -33,19 +33,19 @@ The constraint matrix is specified in [Compressed Sparse Row (CSR) format](https
 There are two ways to specify constraints in cuOpt MILP:
 
 1.  Using row\_type and right-hand side:
-    
+
     Constraints can be specified in the form:
-    
+
     A\*x \{&lt;=, =, \>=\} b
-    
+
     where A is the constraint matrix in CSR format, x is the variable vector, and b is the right-hand side vector. The relationship \{&lt;=, =, \>=\} is specified through the `row_type` parameter.
 
 2.  Using constraint bounds:
-    
+
     Alternatively, constraints can be specified as two-sided inequalities:
-    
+
     lb &lt;= A\*x &lt;= ub
-    
+
     where lb and ub are vectors of lower and upper bounds respectively. This form allows specifying both bounds of a single constraint.
 
 Both forms are mathematically equivalent. The choice between them is a matter of convenience depending on your problem formulation.

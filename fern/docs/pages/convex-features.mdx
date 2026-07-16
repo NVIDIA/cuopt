@@ -7,9 +7,9 @@ title: "Convex Optimization Features"
 The convex optimization solvers for Linear Programming (LP), Quadratic Programming (QP), Quadratically Constrained Quadratic Programming (QCQP), and Second-Order Cone Programming (SOCP) can be accessed in the following ways:
 
   - **Third-Party Modeling Languages**: cuOpt's convex optimization solvers can be called directly from the following third-party modeling languages. This allows you to GPU-accelerate your existing optimization workflow in these modeling languages.
-    
+
     Supported modeling languages:
-    
+
     | Language | LP | QP | QCQP/SOCP |
     | -------- | -- | -- | --------- |
     | AMPL     | ✓  |    |           |
@@ -18,7 +18,7 @@ The convex optimization solvers for Linear Programming (LP), Quadratic Programmi
     | JuMP     | ✓  | ✓  |           |
     | PuLP     | ✓  |    |           |
     | Pyomo    | ✓  |    |           |
-    
+
 
 <Note>
 QCQP/SOCP support is currently in **beta**, and is only supported in CVXPY among modeling languages. We hope to add support for QCQP/SOCP in other modeling languages soon.
@@ -41,19 +41,19 @@ The constraint matrix is specified in [Compressed Sparse Row (CSR) format](https
 There are two ways to specify constraints to the LP solver:
 
 1.  Using row\_type and right-hand side:
-    
+
     Constraints can be specified in the form:
-    
+
     A\*x \{&lt;=, =, \>=\} b
-    
+
     where A is the constraint matrix in CSR format, x is the variable vector, and b is the right-hand side vector. The relationship \{&lt;=, =, \>=\} is specified via the `row_type` parameter.
 
 2.  Using constraint bounds:
-    
+
     Alternatively, constraints can be specified as two-sided inequalities:
-    
+
     lb &lt;= A\*x &lt;= ub
-    
+
     where lb and ub are vectors of lower and upper bounds respectively. This form allows specifying both bounds on a single constraint.
 
 ## Quadratic Objectives
