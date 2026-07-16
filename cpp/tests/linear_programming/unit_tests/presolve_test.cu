@@ -1062,5 +1062,3 @@ TEST(submip_presolve, ex9_fully_reduced)
 }
 
 }  // namespace cuopt::mathematical_optimization::test
-
-CUOPT_TEST_PROGRAM_MAIN()

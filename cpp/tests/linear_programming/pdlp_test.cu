@@ -4765,5 +4765,3 @@ TEST(pdlp_class, batch_with_optimal_size_query)
 }
 
 }  // namespace cuopt::mathematical_optimization::test
-
-CUOPT_TEST_PROGRAM_MAIN()

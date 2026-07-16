@@ -3,12 +3,8 @@
 /* SPDX-License-Identifier: Apache-2.0
 /* clang-format on */
 
-// Single main() entry point for combined internal test binaries.
-// Individual test files use CUOPT_TEST_PROGRAM_MAIN() which is suppressed
-// (via CUOPT_DISABLE_TEST_MAIN) when they are compiled into a combined binary.
 #include <utilities/base_fixture.hpp>
 
-// Intentionally NOT suppressed here — this file owns the main() for the binary.
 int main(int argc, char** argv)
 {
   ::testing::InitGoogleTest(&argc, argv);

@@ -112,11 +112,7 @@ inline auto parse_test_options(int argc, char** argv)
  * the command line to customize test behavior, like the allocation mode used
  * for creating the default memory resource.
  *
- * When CUOPT_DISABLE_TEST_MAIN is defined (e.g. when compiling multiple test
- * files into a single combined binary), this macro expands to nothing so that
- * only one translation unit provides main().
  */
-#ifndef CUOPT_DISABLE_TEST_MAIN
 #define CUOPT_TEST_PROGRAM_MAIN()                                        \
   int main(int argc, char** argv)                                        \
   {                                                                      \
@@ -127,6 +123,3 @@ inline auto parse_test_options(int argc, char** argv)
     rmm::mr::set_current_device_resource(resource);                      \
     return RUN_ALL_TESTS();                                              \
   }
-#else
-#define CUOPT_TEST_PROGRAM_MAIN()
-#endif
