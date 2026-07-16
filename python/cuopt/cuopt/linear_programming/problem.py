@@ -2046,6 +2046,17 @@ class Problem:
             self._to_data_model()
         self.model.writeMPS(mps_file)
 
+    def writeLP(self, lp_file):
+        """
+        Write the problem into an `LP <https://en.wikipedia.org/wiki/LP_file_format>`__ file.  # noqa
+        Examples
+        --------
+        >>> problem.writeLP("model.lp")
+        """
+        if self.model is None:
+            self._to_data_model()
+        self.model.writeLP(lp_file)
+
     @property
     def NumVariables(self):
         # Returns number of variables in the problem

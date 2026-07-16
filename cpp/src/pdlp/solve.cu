@@ -1819,7 +1819,8 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
     }
     if (settings.user_problem_file != "") {
       CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());
-      op_problem.write_to_mps(settings.user_problem_file);
+      op_problem.write_to_file(settings.user_problem_file,
+                               cuopt::mathematical_optimization::file_format_t::mps);
     }
     // Convert data structures to dual simplex format and back
     simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
@@ -2041,11 +2042,13 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
 
     if (settings.user_problem_file != "") {
       CUOPT_LOG_INFO("Writing user problem to file: %s", settings.user_problem_file.c_str());
-      op_problem.write_to_mps(settings.user_problem_file);
+      op_problem.write_to_file(settings.user_problem_file,
+                               cuopt::mathematical_optimization::file_format_t::mps);
     }
     if (run_presolve && settings.presolve_file != "") {
       CUOPT_LOG_INFO("Writing presolved problem to file: %s", settings.presolve_file.c_str());
-      result->reduced_problem.write_to_mps(settings.presolve_file);
+      result->reduced_problem.write_to_file(settings.presolve_file,
+                                            cuopt::mathematical_optimization::file_format_t::mps);
     }
 
     // Set the hyper-parameters based on the solver_settings

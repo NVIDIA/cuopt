@@ -7,7 +7,7 @@
 # cython: embedsignature = True
 # cython: language_level = 3
 
-from .data_model cimport data_model_view_t, mps_data_model_t, write_mps
+from .data_model cimport data_model_view_t, mps_data_model_t, write_lp, write_mps
 
 import warnings
 
@@ -522,3 +522,15 @@ cdef class DataModel:
         self.set_data_model_view()
         write_mps(self.c_data_model_view.get()[0],
                   user_problem_file.encode('utf-8'))
+
+    def writeLP(self, user_problem_file):
+        n_vars = self.get_variable_lower_bounds().shape[0]
+        if self.variable_types.shape[0] == 0 and n_vars > 0:
+            self.variable_types = np.array(["C"] * n_vars, dtype="S1")
+        else:
+            self.variable_types = type_cast(
+                self.variable_types, "S1", "variable_types"
+            )
+        self.set_data_model_view()
+        write_lp(self.c_data_model_view.get()[0],
+                 user_problem_file.encode('utf-8'))

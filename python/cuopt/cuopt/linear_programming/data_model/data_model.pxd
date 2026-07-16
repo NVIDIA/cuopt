@@ -79,3 +79,7 @@ cdef extern from "cuopt/mathematical_optimization/io/writer.hpp" namespace "cuop
     cdef void write_mps(
         const data_model_view_t[int, double] data_model,
         const string user_problem_file) except +
+
+    cdef void write_lp(
+        const data_model_view_t[int, double] data_model,
+        const string user_problem_file) except +

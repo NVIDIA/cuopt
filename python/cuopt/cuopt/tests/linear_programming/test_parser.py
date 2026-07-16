@@ -254,3 +254,51 @@ def test_read_unrecognized_extension():
             Read(path)
     finally:
         os.unlink(path)
+
+
+def _assert_models_equivalent(expected, actual):
+    assert actual.get_sense() == expected.get_sense()
+    assert (
+        actual.get_variable_names().tolist()
+        == expected.get_variable_names().tolist()
+    )
+    assert actual.get_objective_coefficients().tolist() == pytest.approx(
+        expected.get_objective_coefficients().tolist()
+    )
+    assert actual.get_variable_lower_bounds().tolist() == pytest.approx(
+        expected.get_variable_lower_bounds().tolist()
+    )
+    assert actual.get_variable_upper_bounds().tolist() == pytest.approx(
+        expected.get_variable_upper_bounds().tolist()
+    )
+    assert actual.get_constraint_matrix_values().tolist() == pytest.approx(
+        expected.get_constraint_matrix_values().tolist()
+    )
+    assert actual.get_constraint_lower_bounds().tolist() == pytest.approx(
+        expected.get_constraint_lower_bounds().tolist()
+    )
+    assert actual.get_constraint_upper_bounds().tolist() == pytest.approx(
+        expected.get_constraint_upper_bounds().tolist()
+    )
+
+
+def test_write_lp_round_trip():
+    # Parse a small LP, write it back out through the DataModel LP writer
+    # binding (writeLP -> write_lp), then re-read the produced file and check
+    # the model survives the round trip.
+    with tempfile.NamedTemporaryFile(
+        suffix=".lp", mode="w", delete=False
+    ) as f:
+        f.write(_MINIMAL_LP)
+        src_path = f.name
+    with tempfile.NamedTemporaryFile(suffix=".lp", delete=False) as f:
+        out_path = f.name
+    try:
+        src_model = Read(src_path)
+        src_model.writeLP(out_path)
+        rt_model = Read(out_path)
+    finally:
+        os.unlink(src_path)
+        os.unlink(out_path)
+
+    _assert_models_equivalent(src_model, rt_model)

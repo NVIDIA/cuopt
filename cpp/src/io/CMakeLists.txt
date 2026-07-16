@@ -7,6 +7,7 @@ set(PARSERS_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/data_model_view.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/file_to_string.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/lp_parser.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/lp_writer.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/mps_data_model.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/mps_parser.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/mps_writer.cpp

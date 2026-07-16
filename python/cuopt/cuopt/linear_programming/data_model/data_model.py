@@ -758,3 +758,7 @@ class DataModel(data_model_wrapper.DataModel):
     @catch_cuopt_exception
     def writeMPS(self, user_problem_file):
         return super().writeMPS(user_problem_file)
+
+    @catch_cuopt_exception
+    def writeLP(self, user_problem_file):
+        return super().writeLP(user_problem_file)

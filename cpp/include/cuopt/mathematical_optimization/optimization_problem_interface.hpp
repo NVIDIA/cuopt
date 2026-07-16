@@ -24,6 +24,9 @@ namespace cuopt::mathematical_optimization {
 enum class var_t { CONTINUOUS = 0, INTEGER, SEMI_CONTINUOUS };
 enum class problem_category_t : int8_t { LP = 0, MIP = 1, IP = 2 };
 
+/** @brief File format used when serializing an optimization problem. */
+enum class file_format_t { mps = 0, lp = 1 };
+
 template <typename i_t, typename f_t>
 class optimization_problem_t;
 template <typename i_t, typename f_t>
@@ -380,10 +383,11 @@ class optimization_problem_interface_t {
   // ============================================================================
 
   /**
-   * @brief Write the optimization problem to an MPS file.
-   * @param[in] mps_file_path Path to the output MPS file
+   * @brief Write the optimization problem to a file.
+   * @param[in] file_path Path to the output file
+   * @param[in] format    File format to write (MPS or LP)
    */
-  virtual void write_to_mps(const std::string& mps_file_path) = 0;
+  virtual void write_to_file(const std::string& file_path, file_format_t format) = 0;
 
   // ============================================================================
   // Comparison

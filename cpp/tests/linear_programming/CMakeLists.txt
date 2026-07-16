@@ -22,6 +22,12 @@ ConfigureTest(MPS_PARSER_TEST
     LABELS numopt)
 
 # ##################################################################################################
+# - LP writer tests --------------------------------------------------------------------------------
+ConfigureTest(LP_WRITER_TEST
+    ${CMAKE_CURRENT_SOURCE_DIR}/lp_writer_test.cpp
+    LABELS numopt)
+
+# ##################################################################################################
 # - C API Tests----------------------------------------------------------------------
 # The C API tests require a separate library to be linked against. So we don't use the ConfigureTest macro.
 

@@ -722,7 +722,8 @@ cpu_optimization_problem_t<i_t, f_t>::to_optimization_problem(raft::handle_t con
 // ==============================================================================
 
 template <typename i_t, typename f_t>
-void cpu_optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_file_path)
+void cpu_optimization_problem_t<i_t, f_t>::write_to_file(const std::string& file_path,
+                                                         file_format_t format)
 {
   // Data is already in host memory, so we can directly create a view and write
   cuopt::mathematical_optimization::io::data_model_view_t<i_t, f_t> data_model_view;
@@ -813,7 +814,11 @@ void cpu_optimization_problem_t<i_t, f_t>::write_to_mps(const std::string& mps_f
     data_model_view.set_quadratic_constraints(quadratic_constraints_);
   }
 
-  cuopt::mathematical_optimization::io::write_mps(data_model_view, mps_file_path);
+  if (format == file_format_t::lp) {
+    cuopt::mathematical_optimization::io::write_lp(data_model_view, file_path);
+  } else {
+    cuopt::mathematical_optimization::io::write_mps(data_model_view, file_path);
+  }
 }
 
 // ==============================================================================
