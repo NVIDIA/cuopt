@@ -3179,6 +3179,27 @@ void cut_generation_t<i_t, f_t>::generate_implied_bound_cuts(
   }
 }
 
+namespace {
+
+// Total probing-edge budget from the byte cap and the remaining work headroom
+// (max_work_estimate - work_estimate).
+template <typename i_t, typename f_t>
+size_t max_probing_edge_budget(size_t num_vertices, f_t work_headroom)
+{
+  constexpr size_t max_probing_conflict_bytes = size_t{8} << 30;
+  const size_t probing_degree_bytes           = num_vertices * sizeof(size_t);
+  const size_t probing_edge_bytes =
+    sizeof(std::pair<i_t, i_t>) + sizeof(std::pair<f_t, i_t>) + 2 * sizeof(i_t);
+  const size_t max_edges_by_memory =
+    probing_degree_bytes < max_probing_conflict_bytes
+      ? (max_probing_conflict_bytes - probing_degree_bytes) / probing_edge_bytes
+      : 0;
+  const size_t max_edges_by_work = (size_t)std::max<f_t>(0.0, work_headroom / 4.0);
+  return std::min(max_edges_by_memory, max_edges_by_work);
+}
+
+}  // namespace
+
 template <typename i_t, typename f_t>
 void cut_generation_t<i_t, f_t>::prepare_fractional_sub_conflict_graph(
   const simplex_solver_settings_t<i_t, f_t>& settings,
@@ -3203,9 +3224,9 @@ void cut_generation_t<i_t, f_t>::prepare_fractional_sub_conflict_graph(
   }
 
   if (clique_table_ == nullptr) { return; }
-  // small_clique_adj may carry pairwise CG edges from cliques demoted by
-  // remove_small_cliques; clique_table_t::empty() accounts for that.
-  if (clique_table_->empty()) { return; }
+  const bool has_probing_conflicts =
+    !probing_implied_bound_.zero_variables.empty() || !probing_implied_bound_.one_variables.empty();
+  if (clique_table_->empty() && !has_probing_conflicts) { return; }
 
   const i_t num_vars = user_problem_.num_cols;
   cuopt_assert(clique_table_->n_variables == num_vars,
@@ -3214,6 +3235,12 @@ void cut_generation_t<i_t, f_t>::prepare_fractional_sub_conflict_graph(
                "prepare_fractional_sub_conflict_graph xstar size mismatch");
   cuopt_assert(user_problem_.var_types.size() == static_cast<size_t>(num_vars),
                "prepare_fractional_sub_conflict_graph user problem var_types size mismatch");
+  if (has_probing_conflicts) {
+    cuopt_assert(probing_implied_bound_.zero_offsets.size() == (size_t)num_vars + 1,
+                 "Probing zero-offset column count mismatch");
+    cuopt_assert(probing_implied_bound_.one_offsets.size() == (size_t)num_vars + 1,
+                 "Probing one-offset column count mismatch");
+  }
 
   const f_t bound_tol         = settings.primal_tol;
   f_t work_estimate           = 0.0;
@@ -3289,17 +3316,6 @@ void cut_generation_t<i_t, f_t>::prepare_fractional_sub_conflict_graph(
       adj.push_back(local_neighbor);
     }
     kept_adj_entries += adj.size();
-#ifdef ASSERT_MODE
-    {
-      std::unordered_set<i_t> adj_global;
-      adj_global.reserve(adj.size());
-      for (const i_t neighbor : adj) {
-        const i_t v = sub_cg_.vertices[neighbor];
-        cuopt_assert(adj_global.insert(v).second,
-                     "Duplicate neighbor in fractional sub-CG adjacency list");
-      }
-    }
-#endif
   }
   work_estimate += static_cast<f_t>(sub_cg_.vertices.size()) + static_cast<f_t>(total_adj_entries) +
                    2.0 * static_cast<f_t>(kept_adj_entries);
@@ -3308,17 +3324,153 @@ void cut_generation_t<i_t, f_t>::prepare_fractional_sub_conflict_graph(
     return;
   }
 
+  size_t probing_entries_scanned = 0;
+  size_t probing_edges_kept      = 0;
+  if (has_probing_conflicts) {
+    using candidate_t = std::pair<f_t, i_t>;
+    // Min-heap on score: front() is the worst kept candidate, so a better one replaces it.
+    auto better_candidate = [](const candidate_t& a, const candidate_t& b) {
+      return a.first > b.first || (a.first == b.first && a.second < b.second);
+    };
+
+    const size_t max_probing_edges =
+      max_probing_edge_budget<i_t, f_t>(sub_cg_.vertices.size(), max_work_estimate - work_estimate);
+    const size_t max_edges_per_literal =
+      max_probing_edges / std::max<size_t>(1, sub_cg_.vertices.size());
+
+    size_t raw_edge_bound = 0;
+    for (i_t j = 0; j < num_vars; ++j) {
+      if (!sub_cg_.in_subgraph[j]) { continue; }
+      raw_edge_bound +=
+        probing_implied_bound_.zero_offsets[j + 1] - probing_implied_bound_.zero_offsets[j];
+      raw_edge_bound +=
+        probing_implied_bound_.one_offsets[j + 1] - probing_implied_bound_.one_offsets[j];
+    }
+
+    std::vector<std::pair<i_t, i_t>> probing_edges;
+    probing_edges.reserve(std::min(max_probing_edges, raw_edge_bound));
+
+    for (i_t j = 0; j < num_vars; ++j) {
+      if (!sub_cg_.in_subgraph[j]) { continue; }
+      for (bool one : {false, true}) {
+        const auto& offsets =
+          one ? probing_implied_bound_.one_offsets : probing_implied_bound_.zero_offsets;
+        const auto& variables =
+          one ? probing_implied_bound_.one_variables : probing_implied_bound_.zero_variables;
+        const auto& lower_bounds =
+          one ? probing_implied_bound_.one_lower_bound : probing_implied_bound_.zero_lower_bound;
+        const auto& upper_bounds =
+          one ? probing_implied_bound_.one_upper_bound : probing_implied_bound_.zero_upper_bound;
+        const i_t source       = one ? j : j + num_vars;
+        const i_t source_local = sub_cg_.vertex_to_local[source];
+        const i_t begin        = offsets[j];
+        const i_t end          = offsets[j + 1];
+        cuopt_assert(source_local >= 0, "Probing conflict source must be fractional");
+
+        std::vector<candidate_t> candidates;
+        candidates.reserve(std::min(max_edges_per_literal, (size_t)(end - begin)));
+        for (i_t p = begin; p < end; ++p) {
+          probing_entries_scanned++;
+          const i_t target_var = variables[p];
+          cuopt_assert(target_var >= 0 && target_var < num_vars,
+                       "Probing conflict target out of range");
+          if (target_var == j) { continue; }
+          i_t target = -1;
+          if (upper_bounds[p] < 1.0 - settings.integer_tol) {
+            target = target_var;
+          } else if (lower_bounds[p] > settings.integer_tol) {
+            target = target_var + num_vars;
+          } else {
+            continue;
+          }
+          if (!sub_cg_.in_subgraph[target]) { continue; }
+          const i_t target_local = sub_cg_.vertex_to_local[target];
+          candidate_t candidate{sub_cg_.weights[source_local] + sub_cg_.weights[target_local],
+                                target_local};
+          if (candidates.size() < max_edges_per_literal) {
+            candidates.push_back(candidate);
+            if (candidates.size() == max_edges_per_literal) {
+              std::make_heap(candidates.begin(), candidates.end(), better_candidate);
+            }
+            continue;
+          }
+          if (max_edges_per_literal == 0) { continue; }
+          if (better_candidate(candidate, candidates.front())) {
+            std::pop_heap(candidates.begin(), candidates.end(), better_candidate);
+            candidates.back() = candidate;
+            std::push_heap(candidates.begin(), candidates.end(), better_candidate);
+          }
+        }
+        for (const auto& candidate : candidates) {
+          probing_edges.emplace_back(std::min(source_local, candidate.second),
+                                     std::max(source_local, candidate.second));
+        }
+      }
+      if (toc(start_time) >= settings.time_limit) {
+        sub_cg_.clear();
+        return;
+      }
+    }
+    cuopt_assert(probing_edges.size() <= max_probing_edges,
+                 "Selected probing conflicts exceed memory budget");
+
+    std::sort(probing_edges.begin(), probing_edges.end());
+    probing_edges.erase(std::unique(probing_edges.begin(), probing_edges.end()),
+                        probing_edges.end());
+    probing_edges_kept = probing_edges.size();
+
+    std::vector<size_t> probing_degrees(sub_cg_.vertices.size(), 0);
+    for (const auto& [a, b] : probing_edges) {
+      probing_degrees[a]++;
+      probing_degrees[b]++;
+    }
+    for (size_t i = 0; i < sub_cg_.adj_local.size(); ++i) {
+      sub_cg_.adj_local[i].reserve(sub_cg_.adj_local[i].size() + probing_degrees[i]);
+    }
+    for (const auto& [a, b] : probing_edges) {
+      sub_cg_.adj_local[a].push_back(b);
+      sub_cg_.adj_local[b].push_back(a);
+    }
+  }
+
+  kept_adj_entries = 0;
+  for (auto& adj : sub_cg_.adj_local) {
+    std::sort(adj.begin(), adj.end());
+    adj.erase(std::unique(adj.begin(), adj.end()), adj.end());
+    kept_adj_entries += adj.size();
+  }
+  work_estimate = 4.0 * static_cast<f_t>(num_vars) +
+                  6.0 * static_cast<f_t>(sub_cg_.vertices.size()) +
+                  static_cast<f_t>(total_adj_entries) + 2.0 * static_cast<f_t>(kept_adj_entries);
+  if (work_estimate > max_work_estimate) {
+    sub_cg_.clear();
+    return;
+  }
+
+#ifdef ASSERT_MODE
+  for (const auto& adj : sub_cg_.adj_local) {
+    cuopt_assert(std::adjacent_find(adj.begin(), adj.end()) == adj.end(),
+                 "Duplicate neighbor in fractional conflict subgraph");
+  }
+#endif
+
   sub_cg_.ready = true;
   CLIQUE_CUTS_DEBUG(
-    "prepare_fractional_sub_conflict_graph ready vertices=%lld raw_adj=%lld kept_adj=%lld",
+    "prepare_fractional_sub_conflict_graph ready vertices=%lld raw_adj=%lld kept_adj=%lld "
+    "probing_scanned=%lld probing_kept=%lld",
     static_cast<long long>(sub_cg_.vertices.size()),
     static_cast<long long>(total_adj_entries),
-    static_cast<long long>(kept_adj_entries));
+    static_cast<long long>(kept_adj_entries),
+    static_cast<long long>(probing_entries_scanned),
+    static_cast<long long>(probing_edges_kept));
   ZERO_HALF_DEBUG(
-    "prepare_fractional_sub_conflict_graph ready vertices=%lld raw_adj=%lld kept_adj=%lld",
+    "prepare_fractional_sub_conflict_graph ready vertices=%lld raw_adj=%lld kept_adj=%lld "
+    "probing_scanned=%lld probing_kept=%lld",
     static_cast<long long>(sub_cg_.vertices.size()),
     static_cast<long long>(total_adj_entries),
-    static_cast<long long>(kept_adj_entries));
+    static_cast<long long>(kept_adj_entries),
+    static_cast<long long>(probing_entries_scanned),
+    static_cast<long long>(probing_edges_kept));
 }
 
 template <typename i_t, typename f_t>
