@@ -2511,8 +2511,8 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* rins_worker,
 
   branch_and_bound_stats_t<i_t, f_t> rins_stats;
 
+  // Note that this node does not have the vstatus (it was clear at the start of B&B exploration)
   mip_node_t<i_t, f_t> node       = search_tree_.root.detach_copy();
-  node.packed_vstatus             = compress_vstatus(root_vstatus_);
   rins_worker->leaf_vstatus       = root_vstatus_;
   rins_worker->leaf_problem.lower = original_lp_.lower;
   rins_worker->leaf_problem.upper = original_lp_.upper;
@@ -2685,10 +2685,14 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* rins_worker,
     // levels up to try to find a feasible solution quickly from the neighbourhood.
     if (fixrate < settings_.submip_settings.min_fixrate_cap ||
         (settings_.inside_submip && submip_stats_.total_success != 0)) {
-      rins_worker->start_node  = std::move(node);
+      // We need to re-populate the vstatus of the node since it was previously cleared.
+      rins_worker->start_node                = std::move(node);
+      rins_worker->start_node.packed_vstatus = simplex::compress_vstatus(rins_worker->leaf_vstatus);
+
       rins_worker->start_lower = lower;
       rins_worker->start_upper = upper;
-      bool is_feasible         = rins_worker->presolve_start_bounds(settings_);
+
+      bool is_feasible = rins_worker->presolve_start_bounds(settings_);
       if (is_feasible) {
         fj_cpu_worker_t<i_t, f_t> submip_fj_cpu_worker;
 
