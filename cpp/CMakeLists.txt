@@ -699,6 +699,8 @@ target_link_libraries(cuopt
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:protobuf::libprotobuf>
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:gRPC::grpc++>
 )
+target_link_libraries(cuopt PRIVATE $<TARGET_FILE:PSLP>)
+add_dependencies(cuopt PSLP)
 # Propagate compile definitions that consumers need when including cuopt headers.
 # These were on cuopt directly before the cuopt_objs refactor; $<TARGET_OBJECTS:...>
 # does not carry INTERFACE properties, so we restore them explicitly.
