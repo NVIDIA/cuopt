@@ -16,7 +16,7 @@ If you built cuOpt locally, `CUOPT_INCLUDE=cpp/include` and `CUOPT_LIB=cpp/build
 
 Builds and solves a small MILP directly with the C API using `cuOptCreateProblem` with integer variable types.
 
-<!-- embed: examples/simple_milp_example.c -->
+{/* embed: examples/simple_milp_example.c */}
 ```c
 /*
  * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
@@ -227,13 +227,13 @@ int main()
   }
 }
 ```
-<!-- /embed -->
+{/* /embed */}
 
 ## MILP Example With MPS File
 
 Reads a MILP from an MPS file with `cuOptReadProblem` and solves it.
 
-<!-- embed: examples/milp_mps_example.c -->
+{/* embed: examples/milp_mps_example.c */}
 ```c
 /*
  * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
@@ -410,11 +410,11 @@ int main(int argc, char* argv[])
   }
 }
 ```
-<!-- /embed -->
+{/* /embed */}
 
 Sample MILP MPS file:
 
-<!-- embed: examples/mip_sample.mps -->
+{/* embed: examples/mip_sample.mps */}
 ```text
 * Example 2.1 from N & W
 * Optimal solution -28
@@ -444,4 +444,4 @@ BOUNDS
  UP BOUND     X2               10
 ENDATA
 ```
-<!-- /embed -->
+{/* /embed */}

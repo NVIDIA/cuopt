@@ -10,7 +10,7 @@ The examples in this section are not exhaustive. They are provided to help you g
 
 ## Simple Linear Programming Example
 
-<!-- embed: examples/simple_lp_example.py -->
+{/* embed: examples/simple_lp_example.py */}
 ```python
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
@@ -79,13 +79,13 @@ def main():
 if __name__ == "__main__":
     main()
 ```
-<!-- /embed -->
+{/* /embed */}
 
 The response is as follows:
 
 ## Simple Quadratic Programming Example
 
-<!-- embed: examples/simple_qp_example.py -->
+{/* embed: examples/simple_qp_example.py */}
 ```python
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
@@ -143,13 +143,13 @@ def main():
 if __name__ == "__main__":
     main()
 ```
-<!-- /embed -->
+{/* /embed */}
 
 The response is as follows:
 
 ## Second-Order Cone Programming Example
 
-<!-- embed: examples/simple_socp_example.py -->
+{/* embed: examples/simple_socp_example.py */}
 ```python
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
@@ -209,7 +209,7 @@ def main():
 if __name__ == "__main__":
     main()
 ```
-<!-- /embed -->
+{/* /embed */}
 
 This example minimizes `x3` subject to `x1 + x2 >= 2` and the second-order cone `||(x1, x2)||_2 <= x3`, expressed as the inequalities `x1^2 + x2^2 - x3^2 <= 0, x_3 >= 0`. cuOpt detects the cone structure and solves with the barrier method.
 
@@ -217,7 +217,7 @@ The response is as follows:
 
 ## Second-Order Cone Programming with Rotated Second-Order Cones Example
 
-<!-- embed: examples/rotated_socp_example.py -->
+{/* embed: examples/rotated_socp_example.py */}
 ```python
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
@@ -280,7 +280,7 @@ def main():
 if __name__ == "__main__":
     main()
 ```
-<!-- /embed -->
+{/* /embed */}
 
 This example solves a **rotated** second-order cone `x1^2 + x2^2 <= x3 * x4, x3 >= 0, x4 >= 0`. The cross term is written as `-x3*x4`. See [Convex Features](convex-features) for other RSOC forms. It minimizes `x3 + x4` subject to `x1 + x2 >= 2`.
 
@@ -288,7 +288,7 @@ The response is as follows:
 
 ## General Convex Quadratic Constraint Example
 
-<!-- embed: examples/general_quadratic_example.py -->
+{/* embed: examples/general_quadratic_example.py */}
 ```python
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
@@ -343,7 +343,7 @@ def main():
 if __name__ == "__main__":
     main()
 ```
-<!-- /embed -->
+{/* /embed */}
 
 This example uses a general convex quadratic constraint `2*x^2 + 2*x*y + 2*y^2 <= 6` (an ellipsoid). It minimizes `x + y`.
 
@@ -361,7 +361,7 @@ The response is as follows:
 
 ## Advanced Example: Production Planning
 
-<!-- embed: examples/production_planning_example.py -->
+{/* embed: examples/production_planning_example.py */}
 ```python
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
@@ -447,13 +447,13 @@ def main():
 if __name__ == "__main__":
     main()
 ```
-<!-- /embed -->
+{/* /embed */}
 
 The response is as follows:
 
 ## Working with Expressions and Constraints
 
-<!-- embed: examples/expressions_constraints_example.py -->
+{/* embed: examples/expressions_constraints_example.py */}
 ```python
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
@@ -533,13 +533,13 @@ def main():
 if __name__ == "__main__":
     main()
 ```
-<!-- /embed -->
+{/* /embed */}
 
 The response is as follows:
 
 ## Working with Quadratic Objective Matrix
 
-<!-- embed: examples/qp_matrix_example.py -->
+{/* embed: examples/qp_matrix_example.py */}
 ```python
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
 # SPDX-License-Identifier: Apache-2.0
@@ -604,13 +604,13 @@ def main():
 if __name__ == "__main__":
     main()
 ```
-<!-- /embed -->
+{/* /embed */}
 
 The response is as follows:
 
 ## Inspecting the Problem Solution
 
-<!-- embed: examples/solution_example.py -->
+{/* embed: examples/solution_example.py */}
 ```python
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
@@ -680,7 +680,7 @@ def main():
 if __name__ == "__main__":
     main()
 ```
-<!-- /embed -->
+{/* /embed */}
 
 The response is as follows:
 
@@ -692,7 +692,7 @@ Warmstart data allows to restart PDLP with a previous solution context. This sho
 Warmstart data is only available for Linear Programming (LP) problems, not for Mixed Integer Linear Programming (MILP) problems.
 </Note>
 
-<!-- embed: examples/pdlp_warmstart_example.py -->
+{/* embed: examples/pdlp_warmstart_example.py */}
 ```python
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
@@ -819,6 +819,6 @@ def main():
 if __name__ == "__main__":
     main()
 ```
-<!-- /embed -->
+{/* /embed */}
 
 The response is as follows:

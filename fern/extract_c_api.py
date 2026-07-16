@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """
 Parse cuopt_c.h and constants.h via Doxygen XML and refresh the C API MDX
 skeleton pages.
@@ -40,7 +43,9 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.parent
 HEADER = REPO_ROOT / "cpp/include/cuopt/mathematical_optimization/cuopt_c.h"
-CONSTANTS = REPO_ROOT / "cpp/include/cuopt/mathematical_optimization/constants.h"
+CONSTANTS = (
+    REPO_ROOT / "cpp/include/cuopt/mathematical_optimization/constants.h"
+)
 PAGES = REPO_ROOT / "fern/docs/pages"
 
 # MDX skeleton files — checked into git; script refreshes symbol blocks in-place.
@@ -59,14 +64,18 @@ _INTERNAL_SYMBOLS = {
 }
 _INTERNAL_PREFIXES = ("CUOPT_INSTANTIATE_",)
 
-# Marker regexes
-_OPEN_RE = re.compile(r'^<!--\s*symbol:\s*(\S+)\s*-->$')
-_CLOSE = "<!-- /symbol -->"
+# Marker regexes — JSX comment form is canonical; legacy HTML comment form accepted for migration
+_OPEN_RE = re.compile(
+    r"^(?:\{/\*\s*symbol:\s*(\S+?)\s*\*/\}|<!--\s*symbol:\s*(\S+)\s*-->)$"
+)
+_CLOSE_NEW = "{/* /symbol */}"
+_CLOSE_LEGACY = "<!-- /symbol -->"
 
 
 # ---------------------------------------------------------------------------
 # Doxygen XML parser
 # ---------------------------------------------------------------------------
+
 
 def _xml_text(elem) -> str:
     if elem is None:
@@ -114,27 +123,57 @@ def _parse_memberdef(member) -> dict | None:
                         if pname_list is None:
                             continue
                         pname_el = pname_list.find("parametername")
-                        pname = pname_el.text or "" if pname_el is not None else ""
-                        direction = pname_el.get("direction", "") if pname_el is not None else ""
+                        pname = (
+                            pname_el.text or "" if pname_el is not None else ""
+                        )
+                        direction = (
+                            pname_el.get("direction", "")
+                            if pname_el is not None
+                            else ""
+                        )
                         pdesc = ""
                         if pdesc_el is not None:
                             inner = pdesc_el.find("para")
-                            pdesc = _xml_text(inner) if inner is not None else _xml_text(pdesc_el)
+                            pdesc = (
+                                _xml_text(inner)
+                                if inner is not None
+                                else _xml_text(pdesc_el)
+                            )
                         pdesc = re.sub(r"^-\s+", "", pdesc.strip())
-                        param_docs.append({"name": pname, "dir": direction, "desc": pdesc})
+                        param_docs.append(
+                            {"name": pname, "dir": direction, "desc": pdesc}
+                        )
 
             for ss in para.findall("simplesect"):
                 if ss.get("kind") == "return":
                     inner = ss.find("para")
-                    return_doc = _xml_text(inner) if inner is not None else _xml_text(ss)
+                    return_doc = (
+                        _xml_text(inner)
+                        if inner is not None
+                        else _xml_text(ss)
+                    )
                 elif ss.get("kind") in ("note", "attention"):
                     inner = ss.find("para")
-                    note_text = _xml_text(inner) if inner is not None else _xml_text(ss)
-                    note = (note + " " + note_text).strip() if note else note_text
+                    note_text = (
+                        _xml_text(inner)
+                        if inner is not None
+                        else _xml_text(ss)
+                    )
+                    note = (
+                        (note + " " + note_text).strip() if note else note_text
+                    )
                 elif ss.get("kind") == "warning":
                     inner = ss.find("para")
-                    dep_text = _xml_text(inner) if inner is not None else _xml_text(ss)
-                    deprecated = (deprecated + " " + dep_text).strip() if deprecated else dep_text
+                    dep_text = (
+                        _xml_text(inner)
+                        if inner is not None
+                        else _xml_text(ss)
+                    )
+                    deprecated = (
+                        (deprecated + " " + dep_text).strip()
+                        if deprecated
+                        else dep_text
+                    )
 
     if kind == "define":
         init_el = member.find("initializer")
@@ -156,7 +195,12 @@ def _parse_memberdef(member) -> dict | None:
                 "note": note,
             }
         underlying = underlying.replace("`", "").strip()
-        return {"kind": "typedef", "underlying": underlying, "brief": brief, "name": name}
+        return {
+            "kind": "typedef",
+            "underlying": underlying,
+            "brief": brief,
+            "name": name,
+        }
 
     elif kind == "function":
         type_el = member.find("type")
@@ -197,16 +241,23 @@ def parse_headers() -> dict:
         text=True,
     )
     if result.returncode != 0:
-        raise RuntimeError(f"doxygen failed (exit {result.returncode}):\n{result.stderr}")
+        raise RuntimeError(
+            f"doxygen failed (exit {result.returncode}):\n{result.stderr}"
+        )
 
     if not _XML_DIR.exists():
-        raise FileNotFoundError(f"Doxygen XML output dir not found: {_XML_DIR}")
+        raise FileNotFoundError(
+            f"Doxygen XML output dir not found: {_XML_DIR}"
+        )
 
     symbols: dict = {}
     for xml_file in sorted(_XML_DIR.glob("*.xml")):
         if xml_file.name in ("index.xml", "combine.xslt"):
             continue
-        if not (xml_file.name.startswith("constants_") or xml_file.name.startswith("cuopt__c_")):
+        if not (
+            xml_file.name.startswith("constants_")
+            or xml_file.name.startswith("cuopt__c_")
+        ):
             continue
         try:
             tree = ET.parse(xml_file)
@@ -239,7 +290,9 @@ def _supplement_if_guarded_typedefs(symbols: dict):
 
     consts_text = CONSTANTS.read_text(encoding="utf-8")
     macro_values: dict[str, int] = {}
-    for m in re.finditer(r'^#define\s+(CUOPT_INSTANTIATE_\w+)\s+(\d+)', consts_text, re.M):
+    for m in re.finditer(
+        r"^#define\s+(CUOPT_INSTANTIATE_\w+)\s+(\d+)", consts_text, re.M
+    ):
         macro_values[m.group(1)] = int(m.group(2))
 
     in_active_block = False
@@ -247,8 +300,8 @@ def _supplement_if_guarded_typedefs(symbols: dict):
     i = 0
     while i < n:
         line = lines[i]
-        m_if = re.match(r'^#if\s+(CUOPT_INSTANTIATE_\w+)', line)
-        m_endif = re.match(r'^#endif', line)
+        m_if = re.match(r"^#if\s+(CUOPT_INSTANTIATE_\w+)", line)
+        m_endif = re.match(r"^#endif", line)
 
         if m_if:
             macro = m_if.group(1)
@@ -266,23 +319,29 @@ def _supplement_if_guarded_typedefs(symbols: dict):
         if in_active_block:
             if line.strip().startswith("/**") or line.strip().startswith("*"):
                 pending_comment.append(line)
-            elif re.match(r'^typedef\s+(.*?)\s+(\w+)\s*;', line):
-                m_td = re.match(r'^typedef\s+(.*?)\s+(\w+)\s*;', line)
+            elif re.match(r"^typedef\s+(.*?)\s+(\w+)\s*;", line):
+                m_td = re.match(r"^typedef\s+(.*?)\s+(\w+)\s*;", line)
                 underlying = m_td.group(1).strip()
                 name = m_td.group(2)
                 if name not in symbols:
                     brief = ""
                     if pending_comment:
                         raw = "\n".join(pending_comment)
-                        cleaned = re.sub(r'/\*+', '', raw)
-                        cleaned = re.sub(r'\*/', '', cleaned)
-                        cleaned = re.sub(r'^\s*\*\s?', '', cleaned, flags=re.M)
-                        brief_m = re.search(r'@brief\s+(.*)', cleaned, re.S)
+                        cleaned = re.sub(r"/\*+", "", raw)
+                        cleaned = re.sub(r"\*/", "", cleaned)
+                        cleaned = re.sub(r"^\s*\*\s?", "", cleaned, flags=re.M)
+                        brief_m = re.search(r"@brief\s+(.*)", cleaned, re.S)
                         if brief_m:
-                            brief = re.sub(r'\s+', ' ', brief_m.group(1)).strip()
+                            brief = re.sub(
+                                r"\s+", " ", brief_m.group(1)
+                            ).strip()
                         else:
-                            brief = re.sub(r'\s+', ' ', cleaned).strip()
-                    symbols[name] = {"kind": "typedef", "underlying": underlying, "brief": brief}
+                            brief = re.sub(r"\s+", " ", cleaned).strip()
+                    symbols[name] = {
+                        "kind": "typedef",
+                        "underlying": underlying,
+                        "brief": brief,
+                    }
                 pending_comment = []
             else:
                 if line.strip() and not line.strip().startswith("//"):
@@ -295,16 +354,17 @@ def _supplement_if_guarded_typedefs(symbols: dict):
 # MDX renderers
 # ---------------------------------------------------------------------------
 
+
 def _escape_mdx(text: str) -> str:
-    text = re.sub(r'<=', '&lt;=', text)
+    text = re.sub(r"<=", "&lt;=", text)
     text = text.replace("{", "(").replace("}", ")")
     return text
 
 
 def _clean_desc(text: str) -> str:
     text = text.strip()
-    text = re.sub(r'^-\s+', '', text)
-    text = re.sub(r'``([^`]+)``', r'`\1`', text)
+    text = re.sub(r"^-\s+", "", text)
+    text = re.sub(r"``([^`]+)``", r"`\1`", text)
     return text
 
 
@@ -349,7 +409,10 @@ def _render_function(name: str, info: dict) -> str:
     lines = []
     ret = info.get("ret", "")
     decl_params = info.get("decl_params", [])
-    param_str = ", ".join(f"{p['type']} {p['name']}".strip() for p in decl_params) or "void"
+    param_str = (
+        ", ".join(f"{p['type']} {p['name']}".strip() for p in decl_params)
+        or "void"
+    )
     sig = f"{name}({param_str})"
     if ret and ret != "void":
         sig = f"{sig} -> {ret}"
@@ -361,7 +424,9 @@ def _render_function(name: str, info: dict) -> str:
 
     deprecated = info.get("deprecated", "")
     if deprecated:
-        lines.append(f"<Warning>\n{_escape_mdx(_clean_desc(deprecated))}\n</Warning>\n")
+        lines.append(
+            f"<Warning>\n{_escape_mdx(_clean_desc(deprecated))}\n</Warning>\n"
+        )
 
     note = info.get("note", "")
     if note:
@@ -375,7 +440,9 @@ def _render_function(name: str, info: dict) -> str:
             direction = p.get("dir", "")
             desc = _escape_mdx(_clean_desc(p.get("desc", "") or ""))
             dir_str = f" `[{direction}]`" if direction else ""
-            ptype = next((dp["type"] for dp in decl_params if dp["name"] == pname), "")
+            ptype = next(
+                (dp["type"] for dp in decl_params if dp["name"] == pname), ""
+            )
             if ptype:
                 lines.append(f"- **`{pname}`** (`{ptype}`){dir_str} — {desc}")
             else:
@@ -409,19 +476,20 @@ def _render_symbol(name: str, symbols: dict) -> str:
 # Skeleton refresher
 # ---------------------------------------------------------------------------
 
+
 def _collect_markers(mdx_path: Path) -> set:
     """Return the set of symbol names with markers in this skeleton file."""
     found = set()
     for line in mdx_path.read_text(encoding="utf-8").splitlines():
         m = _OPEN_RE.match(line.strip())
         if m:
-            found.add(m.group(1))
+            found.add(m.group(1) or m.group(2))
     return found
 
 
 def _refresh_skeleton(mdx_path: Path, symbols: dict) -> bool:
     """
-    Replace content between <!-- symbol: NAME --> and <!-- /symbol --> markers
+    Replace content between {/* symbol: NAME */} and {/* /symbol */} markers
     with freshly rendered Doxygen output. Returns True if the file changed.
     """
     original = mdx_path.read_text(encoding="utf-8")
@@ -432,18 +500,22 @@ def _refresh_skeleton(mdx_path: Path, symbols: dict) -> bool:
         line = lines[i].rstrip("\n")
         m = _OPEN_RE.match(line.strip())
         if m:
-            name = m.group(1)
-            out.append(lines[i])  # keep the opening marker
+            name = m.group(1) or m.group(2)
+            # Always emit opening marker in canonical JSX form
+            out.append(f"{{/* symbol: {name} */}}\n")
             i += 1
-            # skip existing content up to closing marker
-            while i < len(lines) and lines[i].rstrip("\n").strip() != _CLOSE:
+            # skip existing content up to closing marker (either form)
+            while i < len(lines) and lines[i].rstrip("\n").strip() not in (
+                _CLOSE_NEW,
+                _CLOSE_LEGACY,
+            ):
                 i += 1
             # render fresh content
             rendered = _render_symbol(name, symbols).rstrip()
             if rendered:
                 out.append(rendered + "\n")
-            # emit closing marker
-            out.append(_CLOSE + "\n")
+            # emit closing marker in canonical JSX form
+            out.append(_CLOSE_NEW + "\n")
             i += 1  # skip the closing marker line we consumed
             continue
         out.append(lines[i])
@@ -460,6 +532,7 @@ def _refresh_skeleton(mdx_path: Path, symbols: dict) -> bool:
 # Main entry point
 # ---------------------------------------------------------------------------
 
+
 def generate_pages():
     print("Extracting C API docs from headers (Doxygen XML)...")
     symbols = parse_headers()
@@ -473,7 +546,8 @@ def generate_pages():
 
     # Error on any Doxygen symbol that has no marker in any skeleton
     missing = sorted(
-        name for name in symbols
+        name
+        for name in symbols
         if name not in all_placed
         and name not in _INTERNAL_SYMBOLS
         and not any(name.startswith(p) for p in _INTERNAL_PREFIXES)
@@ -481,7 +555,7 @@ def generate_pages():
     if missing:
         print(
             f"\nERROR: {len(missing)} symbol(s) found in headers but not placed in any MDX skeleton.\n"
-            "Add a <!-- symbol: NAME --><!-- /symbol --> marker to the appropriate skeleton file:\n"
+            "Add a {/* symbol: NAME */}{/* /symbol */} marker to the appropriate skeleton file:\n"
             + "\n".join(f"  - {n}" for n in missing),
             file=sys.stderr,
         )

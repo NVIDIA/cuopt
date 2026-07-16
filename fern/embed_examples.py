@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """
 Embed example source files into *-examples.mdx pages as fenced code blocks.
 
@@ -43,21 +46,31 @@ EXAMPLE_PAGES = [
     PAGES / "cuopt-c/mip/mip-examples.mdx",
 ]
 
-_EXT_LANG = {".py": "python", ".c": "c", ".sh": "bash", ".mps": "text", ".lp": "text"}
+_EXT_LANG = {
+    ".py": "python",
+    ".c": "c",
+    ".sh": "bash",
+    ".mps": "text",
+    ".lp": "text",
+}
 
 # Matches a standalone link to an example file:
 #   [any\_text\_with\_escapes](examples/filename.ext)
-_LINK_RE = re.compile(r'^\[([^\]]+)\]\(examples/([^)]+)\)\s*$')
+_LINK_RE = re.compile(r"^\[([^\]]+)\]\(examples/([^)]+)\)\s*$")
 
-# Matches the opening embed marker:  <!-- embed: examples/filename.ext -->
-_OPEN_RE = re.compile(r'^<!--\s*embed:\s*examples/(\S+)\s*-->$')
-_CLOSE = "<!-- /embed -->"
+# Matches the opening embed marker:  {/* embed: examples/filename.ext */}
+# Also accepts legacy HTML comment form for migration: <!-- embed: examples/... -->
+_OPEN_RE = re.compile(
+    r"^(?:\{/\*\s*embed:\s*examples/(\S+?)\s*\*/\}|<!--\s*embed:\s*examples/(\S+)\s*-->)$"
+)
+_CLOSE_NEW = "{/* /embed */}"
+_CLOSE_LEGACY = "<!-- /embed -->"
 
 
 def _code_block(src_file: Path, rel: str) -> str:
     lang = _EXT_LANG.get(Path(rel).suffix, "text")
     code = src_file.read_text(encoding="utf-8").rstrip()
-    return f"<!-- embed: examples/{rel} -->\n```{lang}\n{code}\n```\n{_CLOSE}"
+    return f"{{/* embed: examples/{rel} */}}\n```{lang}\n{code}\n```\n{_CLOSE_NEW}"
 
 
 def _process(mdx_path: Path) -> bool:
@@ -66,7 +79,6 @@ def _process(mdx_path: Path) -> bool:
     original = mdx_path.read_text(encoding="utf-8")
     lines = original.splitlines(keepends=True)
     out = []
-    changed = False
     i = 0
     while i < len(lines):
         line = lines[i].rstrip("\n")
@@ -79,7 +91,6 @@ def _process(mdx_path: Path) -> bool:
             if src.exists():
                 block = _code_block(src, rel)
                 out.append(block + "\n")
-                changed = True
                 i += 1
                 continue
             # No source file found — leave as-is
@@ -90,23 +101,24 @@ def _process(mdx_path: Path) -> bool:
         # Case (b): existing embed marker → refresh content
         mo = _OPEN_RE.match(line)
         if mo:
-            rel = mo.group(1)
+            rel = mo.group(1) or mo.group(2)
             src = examples_dir / rel
-            # Skip everything up to and including <!-- /embed -->
+            # Skip everything up to and including the closing marker
             i += 1
-            while i < len(lines) and lines[i].rstrip("\n") != _CLOSE:
+            while i < len(lines) and lines[i].rstrip("\n") not in (
+                _CLOSE_NEW,
+                _CLOSE_LEGACY,
+            ):
                 i += 1
             i += 1  # skip the closing marker line
             if src.exists():
                 block = _code_block(src, rel)
                 out.append(block + "\n")
-                changed = True
             else:
                 # Source gone — emit a warning comment and leave a placeholder
-                out.append(f"<!-- embed: examples/{rel} -->\n")
+                out.append(f"{{/* embed: examples/{rel} */}}\n")
                 out.append(f"*Example `{rel}` not found.*\n")
-                out.append(f"{_CLOSE}\n")
-                changed = True
+                out.append(f"{_CLOSE_NEW}\n")
             continue
 
         out.append(lines[i])

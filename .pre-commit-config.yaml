@@ -105,7 +105,8 @@ repos:
             ^helmchart/cuopt-server/(Chart[.]yaml|values[.]yaml)$|
             ^[.]cursor-plugin/plugin[.]json$|
             ^[.]claude-plugin/marketplace[.]json$|
-            ^gemini-extension[.]json$
+            ^gemini-extension[.]json$|
+            ^fern/openapi/cuopt_spec[.]yaml$
   - repo: https://github.com/zizmorcore/zizmor-pre-commit
     rev: v1.24.1
     hooks:

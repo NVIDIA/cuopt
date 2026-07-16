@@ -17,12 +17,17 @@ import warnings
 
 
 class VType(str, Enum):
-    """
-    The type of a variable is continuous, integer, or semi-continuous.
-    Variable Types can be directly used as a constant.
-    CONTINUOUS is  VType.CONTINUOUS
-    INTEGER is VType.INTEGER
-    SEMI_CONTINUOUS is VType.SEMI_CONTINUOUS
+    """Type of an LP/MIP variable.
+
+    Attributes
+    ----------
+    CONTINUOUS : str
+        Continuous variable (default). Equivalent to the module-level constant ``CONTINUOUS``.
+    INTEGER : str
+        Integer variable. Equivalent to the module-level constant ``INTEGER``.
+    SEMI_CONTINUOUS : str
+        Semi-continuous variable: either zero or within a given range.
+        Equivalent to the module-level constant ``SEMI_CONTINUOUS``.
     """
 
     CONTINUOUS = "C"
@@ -36,12 +41,16 @@ SEMI_CONTINUOUS = VType.SEMI_CONTINUOUS
 
 
 class CType(str, Enum):
-    """
-    The sense of a constraint is either LE, GE or EQ.
-    Constraint Sense Types can be directly used as a constant.
-    LE is CType.LE
-    GE is CType.GE
-    EQ is CType.EQ
+    """Sense of a constraint.
+
+    Attributes
+    ----------
+    LE : str
+        Less-than-or-equal (≤). Equivalent to the module-level constant ``LE``.
+    GE : str
+        Greater-than-or-equal (≥). Equivalent to the module-level constant ``GE``.
+    EQ : str
+        Equality (=). Equivalent to the module-level constant ``EQ``.
     """
 
     LE = "L"
@@ -55,11 +64,16 @@ EQ = CType.EQ
 
 
 class sense(int, Enum):
-    """
-    The sense of a model is either MINIMIZE or MAXIMIZE.
-    Model objective sense can be directly used as a constant.
-    MINIMIZE is sense.MINIMIZE
-    MAXIMIZE is sense.MAXIMIZE
+    """Objective sense of a model.
+
+    Attributes
+    ----------
+    MINIMIZE : int
+        Minimize the objective function (default).
+        Equivalent to the module-level constant ``MINIMIZE``.
+    MAXIMIZE : int
+        Maximize the objective function.
+        Equivalent to the module-level constant ``MAXIMIZE``.
     """
 
     MAXIMIZE = -1

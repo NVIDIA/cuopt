@@ -3,568 +3,234 @@ title: "cuOpt Routing Python API Reference"
 ---
 
 
-## Assignment
+## Waypoint Matrix
 
 <hr />
 
-### class `SolutionStatus`
+### class `WaypointMatrix`
 
-<hr />
-
-### class `Assignment`
-
-A container of vehicle routing solver output
+Initialize a Waypoint Matrix.
 
 **Parameters**
 
-- **`vehicle_count`** (`Integer`) — Number of vehicles in the solution
-- **`total_objective_value`** (`Float64`) — Objective value calculated as per objective functions and weights
-- **`objective_values`** (`dict[Objective, Float64]`)
-- **`route_df: cudf.DataFrame`** — Contains route, vehicle_id, arrival_stamp.
-- **`accepted: cudf.Series`**
-- **`status: Integer`** — Solver status 0 - SUCCESS, 1 - FAIL, 2 - TIMEOUT and 3 - EMPTY.
-- **`message: String`** — Any error message if there is failure
-- **`undeliverable_orders: cudf.Series`** — Orders which can not be served
+- **`offsets`** (`numpy.ndarray`) — numpy.ndarray of size V + 1 (V: number of vertices). It contains the offsets for the vertices in this graph. Offsets must be in the range [0, E] (E: number of edges).
+- **`indices`** (`numpy.ndarray`) — numpy.ndarray of size E (E: number of edges). It contains the destination index for each edge. Destination indices must be in the range [0, V) (V: number of vertices).
+- **`weights`** (`numpy.ndarray`) — numpy.ndarray of size E (E: number of edges). It contains the weight value for each edge. The expected type is floating point number.
+
+**Examples**
+
+```python
+>>> import cuopt
+>>> import numpy as np
+>>> offsets= np.array([0,       3,    5,    7, 8, 9])
+>>> edges=   np.array([1, 2, 3, 0, 2, 0, 3, 4, 0])
+>>> weights= np.array([1, 2, 3, 4, 5, 6, 7, 8, 9])
+>>> w_matrix = routing.WaypointMatrix(offsets, edges, weights)
+```
 
 
 #### def `__init__`
 
 ```python
-__init__(vehicle_count, total_objective_value, objective_values, route_df, accepted, status, message, error_status, error_message, undeliverable_orders)
+__init__(offsets, indices, weights)
 ```
 
-#### def `get_vehicle_count`
+#### def `compute_cost_matrix`
 
 ```python
-get_vehicle_count()
+compute_cost_matrix(target_locations)
 ```
 
-Returns the number of vehicle needed for this routing assignment.
+Compute the cost matrix over the passed graph and target locations.
 
-
-#### def `get_total_objective`
-
-```python
-get_total_objective()
-```
-
-Returns the objective value calculated based on the user provided objective function and the routes found by the solver.
-
-
-#### def `get_objective_values`
-
-```python
-get_objective_values()
-```
-
-Returns the individual objective_values as dictionary
-
-
-#### def `get_route`
-
-```python
-get_route()
-```
-
-Returns the route, truck ids for each stop and the arrival stamp as cudf.DataFrame.
-
-**Examples**
-
-```python
->>> import cuopt
->>> import cudf
->>> locations = [0, 1, 2, 3]
->>> vehicles  = [0, 1]
->>> cost_mat  = [
-...   [0, 1, 5, 2],
-...   [2, 0, 7, 4],
-...   [1, 5, 0, 9],
-...   [5, 6, 2, 0]
-... ]
->>> cost_mat = cudf.DataFrame(cost_mat)
->>> cost_mat
-   0  1  2  3
-0  0  1  5  2
-1  2  0  7  4
-2  1  5  0  9
-3  5  6  2  0
->>> data_model = routing.DataModel(len(locations), len(vehicles))
->>> data_model.set_matrix(cost_mat)
->>> solver = cuopt.Solver(data_model)
->>> solver.set_min_vehicles(len(vehicles))
->>> solver.set_min_vehicles(len(vehicles))
->>> solution = solver.solve()
->>> solution.get_route()
->>> solution.get_route()
-   route  arrival_stamp  truck_id  location
-0      0            0.0         1         0
-1      3            2.0         1         3
-2      2            4.0         1         2
-3      0            5.0         1         0
-4      0            0.0         0         0
-5      1            1.0         0         1
-6      0            3.0         0         0
-```
-
-
-#### def `get_status`
-
-```python
-get_status()
-```
-
-Returns the final solver status as per SolutionStatus.
-
-
-#### def `get_message`
-
-```python
-get_message()
-```
-
-Returns the final solver message as per SolutionStatus.
-
-
-#### def `get_error_status`
-
-```python
-get_error_status()
-```
-
-Returns the error status as per ErrorStatus.
-
-
-#### def `get_error_message`
-
-```python
-get_error_message()
-```
-
-Returns the error message as per ErrorMessage.
-
-
-#### def `get_infeasible_orders`
-
-```python
-get_infeasible_orders()
-```
-
-Returns the infeasible order numbers as cudf.Series.
-
-
-#### def `get_accepted_solutions`
-
-```python
-get_accepted_solutions()
-```
-
-#### def `display_routes`
-
-```python
-display_routes()
-```
-
-Display the solution in human readable format. Intended for relatively small inputs.
-
-**Examples**
-
-```python
->>> import cuopt
->>> import cudf
->>> locations = [0, 1, 2, 3]
->>> vehicles  = [0, 1]
->>> cost_mat  = [
-...   [0, 1, 5, 2],
-...   [2, 0, 7, 4],
-...   [1, 5, 0, 9],
-...   [5, 6, 2, 0]
-... ]
->>> cost_mat = cudf.DataFrame(cost_mat)
->>> cost_mat
-   0  1  2  3
-0  0  1  5  2
-1  2  0  7  4
-2  1  5  0  9
-3  5  6  2  0
->>> data_model = routing.DataModel(len(locations), len(vehicles))
->>> data_model.set_matrix(cost_mat)
->>> solver = cuopt.Solver(data_model)
->>> solver.set_min_vehicles(len(vehicles))
->>> solver.set_min_vehicles(len(vehicles))
->>> solution = solver.solve()
->>> solution.display_routes()
-Vehicle-0 starts at: 0.0, completes at: 3.0, travel time: 3.0,  Route :
-0->1->0
-Vehicle-1 starts at: 0.0, completes at: 5.0, travel time: 5.0,  Route :
-0->3->2->0
-This results in a travel time of 8.0 to deliver all routes
-```
-
-
-
-## Re Routing
-
-<hr />
-
-### def `construct_rerouting_model`
-
-```python
-construct_rerouting_model(original_model, optimized_route, reroute_from_time, new_order_data, new_distances, print_debug_info = False)
-```
-
-Creates a new data model for re-routing/re-optimization
+This function can be used when the cost matrix is not acquirable due to an incomplete graph. The cost matrix is computed then returned. It can later be used for the Solver (see DataModel.set_matrix).
 
 **Parameters**
 
-- **`original_model:  routing.DataModel object`** — the model that used earlier for generating optimized route
-- **`optimized_route: cudf.DataFrame representing the optimized route`** — generated with original_model
-- **`reroute_from_time: Float`** — time from which the re-routing should start from
-- **`new_order_data: cudf.DataFrame object`** — new batch of orders
-- **`new_distances: updated distance/cost matrix`**
-- **`print_debug_info: option to display debug messages`**
-
-**Examples**
-
-```python
->>> original_route = cuopt.Solver(original_model).solve()
->>> rescheduling_from = 60
->>> new_order_data = {}
->>> new_order_data['order_locations'] = [10, 12, 19, 23]
->>> new_order_data['pickup_indices'] = [0, 1]
->>> new_order_data['delivery_indices'] = [2, 3]
->>> new_order_data['earliest_time'] = [65, 75, 90, 85]
->>> new_order_data['latest_time'] = [75, 80, 95, 95]
->>> new_order_data['service_time] = [1, 2, 1, 1]
->>> new_order_data['demand'] = [5, 5, -5, -5]
->>> rescheduled_model = construct_rerouting_model(
->>>    original_model, original_route, rescheduling_from,
->>>    new_order_data, distances)
->>> rescheduled_route = cuopt.Solver(rescheduled_model).solve()
-```
-
-
-<hr />
-
-### def `generate_capacity_constraints_for_vehicle_order_match`
-
-```python
-generate_capacity_constraints_for_vehicle_order_match(pickup_order_to_vehicle, pickup_indices, delivery_indices, vehicle_num, order_num)
-```
-
-
-## Utils
-
-<hr />
-
-### def `generate_dataset`
-
-```python
-generate_dataset(locations = 100, asymmetric = True, min_demand = cudf.Series(), max_demand = cudf.Series(), min_capacities = cudf.Series(), max_capacities = cudf.Series(), min_service_time = 0, max_service_time = 0, tw_tightness = 0.0, drop_return_trips = 0.0, shifts = 1, n_vehicle_types = 1, n_matrix_types = 1, distribution = utils_wrapper.DatasetDistribution.CLUSTERED, center_box = None, seed = 0)
-```
-
-Constructs a dataset from the given parameters. locations:
-
-**Parameters**
-
-- **`locations: int32`** — Number of locations to visit, including the depot.
-- **`asymmetric`** (`bool`) — Specifies if the matrices (both cost and time) should be asymmetric.
-- **`min_demand`** (`cudf.Series`) — Series will be cast to int32. Minimum demand value along each dimension.
-- **`max_demand`** (`cudf.Series`) — Series will be cast to int32. Maximum demand value along each dimension.
-- **`min_capacities`** (`cudf.Series`) — Series will be cast to int32. Minimum capacity value along each dimension.
-- **`max_capacities`** (`cudf.Series`) — Series will be cast to int32. Maximum capacity value along each dimension.
-- **`min_service_time`** (`int32`) — Lower bound for generated service time.
-- **`max_service_time`** (`int32`) — Upper bound for generated service time.
-- **`tw_tightness`** (`float32`) — Can make a problem more or less difficult to solve. Feasibility is ensured because we made sure the latest time of a node is larger than its depot-node distance.
-- **`drop_return_trips`** (`float32`) — Percentage of vehicles in the fleet that shouldn't return to the depot.
-- **`shifts`** (`int32`) — The number of shifts in the dataset. This will create vehicle time windows that split the fleet into multiple shifts.
-- **`n_vehicle_types`** (`int32`) — Multiple vehicle types can be generated each with a corresponding cost matrix or time matrix.
-- **`n_matrix_types`** (`int32`) — There can be one cost and time matrix per vehicle type. The cupy array generated is of size dim4(n_vehicle_types, n_matrix_types, nloc, nloc). In the case the n_matrix_types is 1, the cost matrix is used for time.
-- **`distribution`** (`DatasetDistribution`) — The distribution of datapoints similar to what is done for the homberger cvrptw dataset. https://www.sintef.no/projectweb/top/vrptw/homberger-benchmark/ Clustered datasets are usually faster to generate and solve.
-- **`center_box`** (`tuple`) — The bounding box which constrains all the centroids.
-- **`seed`** (`int32`) — Random seed for the raft generator.
+- **`target_locations`** (`numpy.ndarray`) — numpy.ndarray representing the target locations indices with respect to the graph. Target locations indices must be in the range [0, V-1] (V: number of vertices).
 
 **Returns**
 
-- **`pos_list`** (`cudf.DataFrame`) — x and y coordinates.
-- **`matrices`** (`cupy.ndarray`) — Vehicle cost and time matrices as dim4(n_vehicle_types, n_matrix_types, nloc, nloc).
-- **`orders`** (`cudf.DataFrame`) — Time windows and multi dimension demand for each location.
-- **`vehicles`** (`cudf.DataFrame`) — Time windows and multi dimension capacity for each vehicle.
+- **``** (`cudf.DataFrame`) — cudf.DataFrame representing the cost matrix
 
+**Raises**
 
-<hr />
+- **``** — Shape of target_locations needs to be of length 1.
+- **``** — Target_locations length must be positive.
 
-### def `update_routes_and_vehicles`
-
-```python
-update_routes_and_vehicles(output_df, route, order_pdf, order_data, vehicle_constraints)
-```
-
-Helper function to update the final routes and vehicle time windows when running cuopt in batches. Routes are updated in output_df and vehicle time windows are updated in vehicle_constraints.
-
-
-<hr />
-
-### def `add_vehicle_constraints`
+**Examples**
 
 ```python
-add_vehicle_constraints(num_vehicles, vehicle_capacity, break_earliest = None, break_latest = None, vehicle_speed = 1)
+>>> import cuopt
+>>> import numpy as np
+>>> offsets= np.array([0,       3,    5,    7, 8, 9])
+>>> edges=   np.array([1, 2, 3, 0, 2, 0, 3, 4, 0])
+>>> weights= np.array([1, 2, 3, 4, 5, 6, 7, 8, 9])
+>>> w_matrix = routing.WaypointMatrix(offsets, edges, weights)
+>>> target_locations = np.array([1, 3])
+>>> cost_matrix = w_matrix.compute_cost_matrix(target_locations)
+>>> cost_matrix
+      0    1
+0   0.0  7.0
+1  18.0  0.0
+>>> data_model = routing.DataModel(cost_matrix.shape[0], 2)
+>>> data_model.set_matrix(cost_matrix)
 ```
 
-Helper function to add vehicle constraints when running cuopt in batches. Vehicle constraints that can be added include number of vehicles, vehicle capacity, speed of vehicles and earliest and latest vehicle break times.
 
-
-<hr />
-
-### def `create_pickup_delivery_data`
+#### def `compute_waypoint_sequence`
 
 ```python
-create_pickup_delivery_data(matrix_pdf, raw_order_pdf, depot, vehicle_constraints)
+compute_waypoint_sequence(target_locations, route_df)
 ```
 
-Creates and returns travel matrix, order information and vehicle information for pickup and deliveries.
+Compute the waypoint sequence over the whole route.
 
-
-<hr />
-
-### def `create_data_model`
-
-```python
-create_data_model(filename, num_vehicles = None, run_nodes = None)
-```
-
-Construct a data model with reduced number of vehicles and/or nodes from a standard Homberger and Li&Lim dataset
-
-This function is used mainly to create smaller tests for testing API functionalities
+The waypoint sequence is an extend version of the route. Between each route target locations, all the intermediate waypoints are added. Waypoints and target locations ids are based on the graph.  A new field is added to route_df to browse through the returned waypoint sequence. The 'sequence_offset' field associates an offset to each element in the route.
 
 **Parameters**
 
-- **`filename`** (` filename corresponding to the test in benchmark format`)
-- **`num_vehicles: number of vehicles to be used in a modified test.`** — If it is defaulted the number of vehicles is not modified
-- **`run_nodes:  number of nodes to consider in a modified test.`** — If it is defaulted the number of nodes/tasks is not modified
+- **`target_locations`** (`numpy.ndarray`) — numpy.ndarray representing the target locations indices with respect to the graph. Target locations indices must be in the range [0, V] (V: number of vertices).
+- **`route_df: cudf.DataFrame`** — Contains route, vehicle_id, arrival_stamp, and locations. Contains an extra 'sequence_offset' field after this call.
 
+**Returns**
 
-<hr />
+- **``** (`cudf.DataFrame`) — waypoint_sequence cudf.Series representing the waypoint_sequence waypoint_type     cudf.Series representing type of waypoint Start    - Start location of the vehicle/tech/robot End      - End location of the vehicle/tech/robot w        - Location passing through to get to delivery location Delivery - Location where delivery needs to be made "-"      - Separates vehicle sequence from another
 
-### def `create_data_model_from_yaml`
+**Raises**
 
-```python
-create_data_model_from_yaml(file_path)
-```
+- **``** — Shape of target_locations needs to be of length 1
+- **``** — Target_locations length must be positive
+- **``** — Route length must be positive
 
-<hr />
+**Notes**
 
-### def `write_yaml_dict_if_not_empty`
+Calling this function before compute_cost_matrix is an error.
 
-```python
-write_yaml_dict_if_not_empty(yamldict, keyname, data)
-```
-
-<hr />
-
-### def `save_data_model_to_yaml`
+**Examples**
 
 ```python
-save_data_model_to_yaml(data_model, solver_settings, solution, fname)
+>>> import cuopt
+>>> import numpy as np
+>>> offsets= np.array([0,       3,    5,    7, 8, 9])
+>>> edges=   np.array([1, 2, 3, 0, 2, 0, 3, 4, 0])
+>>> weights= np.array([1, 2, 3, 4, 5, 6, 7, 8, 9])
+>>> w_matrix = routing.WaypointMatrix(offsets, edges, weights)
+>>> # Starting node is considered as depot
+>>> target_locations = np.array([0, 1, 3, 4])
+>>> cost_matrix = w_matrix.compute_cost_matrix(target_locations)
+>>> cost_matrix
+      0     1     2     3
+0   0.0   1.0   3.0  11.0
+1   4.0   0.0   7.0  15.0
+2  17.0  18.0   0.0   8.0
+3   9.0  10.0  12.0   0.0
+>>> data_model = routing.DataModel(cost_matrix.shape[0], 2)
+>>> data_model.set_matrix(cost_matrix)
+>>> solver = cuopt.Solver(data_model)
+>>> solver.set_min_vehicles(2)
+>>> solution = solver.solve()
+>>> route = solution.get_route()
+>>> # Location in this routes is actually ids positional indices of
+>>> # target location
+>>> route
+   route  arrival_stamp  truck_id  location
+0      0            0.0         1         0
+1      2            3.0         1         2
+2      3           11.0         1         3
+3      0           20.0         1         0
+4      0            0.0         0         0
+5      1            1.0         0         1
+6      0            5.0         0         0
+>>> # Call to this will also update location in route
+>>> # with actual target ids along with sequence offset
+>>> w_matrix.compute_waypoint_sequence(target_locations, route)
+    waypoint_sequence waypoint_type
+0                   0         Start
+1                   3          Task
+2                   3             w
+3                   4          Task
+4                   4             w
+5                   0           End
+6                   0             -
+7                   0         Start
+8                   1          Task
+9                   1             w
+10                  0           End
+>>> # Difference in location and sequence offset in route can be seen
+>>> route
+   route  arrival_stamp  truck_id  location  sequence_offset
+0      0            0.0         1         0                0
+1      2            3.0         1         3                2
+2      3           11.0         1         4                4
+3      0           20.0         1         0                6
+4      0            0.0         0         0                7
+5      1            1.0         0         1                9
+6      0            5.0         0         0               11
 ```
 
-Writes Solver.DataModel object in yaml format in a given file name
+
+#### def `compute_shortest_path_costs`
+
+```python
+compute_shortest_path_costs(target_locations, weights)
+```
+
+Compute a custom matrix over the passed weights and target locations.
+
+This is applied on shortest paths found during previous compute_cost_matrix call.  This function allows setting a custom cost between waypoints (for example, time) and then getting the total cost it takes to go from one target location to all the others. The shortest paths are **not** recomputed. The path found from compute_cost_matrix between target locations stays the same but the new weight set is used to compute the output matrix.
 
 **Parameters**
 
-- **`solver_settings`** (`Solver object that contains the data model information`)
-- **`solution: Solution object that contains routing information`**
-- **`fname     `** (`file name with yaml extension used for the output`)
+- **`target_locations`** (`numpy.ndarray`) — numpy.ndarray representing the target locations indices with respect to the graph. Target locations indices must be in the range [0, V) (V: number of vertices).
+- **`weights`** (`numpy.ndarray`) — numpy.ndarray of size E (E: number of edges). It contains the weight value for each edge. The expected type is floating point number.
 
+**Returns**
 
-<hr />
+- **``** (`cudf.DataFrame`) — cudf.DataFrame representing the custom cost matrix
 
-### def `read_ref_tsp`
+**Raises**
 
-```python
-read_ref_tsp(file, test_type)
-```
+- **``** — Shape of target_locations needs to be of length 1
+- **``** — Target_locations length must be positive
+- **``** — Shape of weights needs to be of length 1
+- **``** — Weights length must be positive
+- **``** — Weights length must be positive
+- **``** — Given weights and previously set weights length mismatch
 
-<hr />
+**Notes**
 
-### def `read_ref`
+Giving an edge ordering for weights different from the one given
+during waypoint matrix instanciation will lead to incorrect results.
 
-```python
-read_ref(file, test_type, nodes)
-```
-
-<hr />
-
-### def `create_from_file_tsp`
+**Examples**
 
 ```python
-create_from_file_tsp(file_path)
+>>> import cuopt
+>>> import numpy as np
+>>> offsets=         np.array([ 0,          3,      5,      7, 8, 9])
+>>> edges=           np.array([ 1,  2,  3,  0,  2,  0,  3,  4, 0])
+>>> weights=         np.array([ 1,  2,  3,  4,  5,  6,  7,  8, 9])
+>>> time_to_travel = np.array([10, 20, 30, 40, 50, 60, 70, 80, 90])
+>>> w_matrix = routing.WaypointMatrix(offsets, edges, weights)
+>>> target_locations = np.array([1, 3])
+>>> cost_matrix = w_matrix.compute_cost_matrix(target_locations)
+>>> time_matrix = w_matrix.compute_shortest_path_costs(
+>>>    target_locations, time_to_travel
+>>> )
+>>> cost_matrix
+      0    1
+0   0.0  7.0
+1  18.0  0.0
+>>> time_matrix
+       0     1
+0    0.0  70.0
+1  180.0   0.0
+>>> data_model = routing.DataModel(cost_matrix.shape[0], 2)
+>>> data_model.set_matrix(cost_matrix)
+>>> data_model.add_transit_time_matrix(time_matrix)
 ```
 
-<hr />
-
-### def `create_from_file`
-
-```python
-create_from_file(file_path, is_pdp = False)
-```
-
-<hr />
-
-### def `create_from_yaml_file`
-
-```python
-create_from_yaml_file(file_path)
-```
-
-<hr />
-
-### def `euclidean_distance`
-
-```python
-euclidean_distance(coord)
-```
-
-<hr />
-
-### def `build_matrix`
-
-```python
-build_matrix(df)
-```
-
-<hr />
-
-### def `fill_demand`
-
-```python
-fill_demand(df, data_model, vehicle_capacity, n_vehicles, use_order_loc = False)
-```
-
-<hr />
-
-### def `get_time_limit`
-
-```python
-get_time_limit(nodes)
-```
-
-<hr />
-
-### def `set_limits`
-
-```python
-set_limits(solver_settings, nodes)
-```
-
-<hr />
-
-### def `set_limits_for_quality`
-
-```python
-set_limits_for_quality(solver_settings, nodes)
-```
-
-<hr />
-
-### def `fill_tw`
-
-```python
-fill_tw(data_model, df, use_order_loc = False)
-```
-
-<hr />
-
-### def `fill_pdp_index`
-
-```python
-fill_pdp_index(data_model, df, use_order_loc = False)
-```
-
-<hr />
-
-### def `create_from_solomon_inp_file`
-
-```python
-create_from_solomon_inp_file(file_path)
-```
-
-<hr />
-
-### def `convert_solomon_inp_file_to_yaml`
-
-```python
-convert_solomon_inp_file_to_yaml(file_nm)
-```
-
-<hr />
-
-### def `create_model_dictionary_from_file`
-
-```python
-create_model_dictionary_from_file(filename, is_pdp = False)
-```
-
-Creates a dictionary (json compatible) of the model by reading a standard Homberber or Li&Lim test. This dictionary is eventually used in testing the SDK or service
-
-
-
-## Validation
-
-<hr />
-
-### def `validate_matrix`
-
-```python
-validate_matrix(mat, mat_name, num_locations)
-```
-
-<hr />
-
-### def `validate_positive_df`
-
-```python
-validate_positive_df(df, df_name)
-```
-
-<hr />
-
-### def `validate_positive`
-
-```python
-validate_positive(var, var_name)
-```
-
-<hr />
-
-### def `validate_non_negative`
-
-```python
-validate_non_negative(var, var_name)
-```
-
-<hr />
-
-### def `validate_size`
-
-```python
-validate_size(var_1, var_1_str, var_2, var_2_str)
-```
-
-<hr />
-
-### def `validate_time_windows`
-
-```python
-validate_time_windows(earliest, latest, size, size_str)
-```
-
-<hr />
-
-### def `validate_range`
-
-```python
-validate_range(var, var_name, min, max)
-```
 
 
 ## Vehicle Routing
@@ -1860,7 +1526,7 @@ Solves multiple routing problems in batch mode using parallel execution.
 
 **Returns**
 
-- (`tuple`) — A tuple containing: - list of Assignment: Solutions for each routing problem
+- **``** (`tuple`) — A tuple containing: - list of Assignment: Solutions for each routing problem
 
 **Examples**
 
@@ -1881,232 +1547,319 @@ Solves multiple routing problems in batch mode using parallel execution.
 
 
 
-## Waypoint Matrix
+## Assignment
 
 <hr />
 
-### class `WaypointMatrix`
+### class `SolutionStatus`
 
-Initialize a Waypoint Matrix.
+Status of a routing solve.
+
+**Attributes**
+
+- **`SUCCESS`** (`int`) — A valid solution was found.
+- **`FAIL`** (`int`) — The solver failed to find a feasible solution.
+- **`TIMEOUT`** (`int`) — The solver reached the time limit before finding a solution.
+- **`EMPTY`** (`int`) — No orders were provided; the solution is trivially empty.
+
+
+**Members:** `SUCCESS`, `FAIL`, `TIMEOUT`, `EMPTY`
+
+<hr />
+
+### class `Assignment`
+
+A container of vehicle routing solver output
 
 **Parameters**
 
-- **`offsets`** (`numpy.ndarray`) — numpy.ndarray of size V + 1 (V: number of vertices). It contains the offsets for the vertices in this graph. Offsets must be in the range [0, E] (E: number of edges).
-- **`indices`** (`numpy.ndarray`) — numpy.ndarray of size E (E: number of edges). It contains the destination index for each edge. Destination indices must be in the range [0, V) (V: number of vertices).
-- **`weights`** (`numpy.ndarray`) — numpy.ndarray of size E (E: number of edges). It contains the weight value for each edge. The expected type is floating point number.
-
-**Examples**
-
-```python
->>> import cuopt
->>> import numpy as np
->>> offsets= np.array([0,       3,    5,    7, 8, 9])
->>> edges=   np.array([1, 2, 3, 0, 2, 0, 3, 4, 0])
->>> weights= np.array([1, 2, 3, 4, 5, 6, 7, 8, 9])
->>> w_matrix = routing.WaypointMatrix(offsets, edges, weights)
-```
+- **`vehicle_count`** (`Integer`) — Number of vehicles in the solution
+- **`total_objective_value`** (`Float64`) — Objective value calculated as per objective functions and weights
+- **`objective_values`** (`dict[Objective, Float64]`)
+- **`route_df: cudf.DataFrame`** — Contains route, vehicle_id, arrival_stamp.
+- **`accepted: cudf.Series`**
+- **`status: Integer`** — Solver status 0 - SUCCESS, 1 - FAIL, 2 - TIMEOUT and 3 - EMPTY.
+- **`message: String`** — Any error message if there is failure
+- **`undeliverable_orders: cudf.Series`** — Orders which can not be served
 
 
 #### def `__init__`
 
 ```python
-__init__(offsets, indices, weights)
+__init__(vehicle_count, total_objective_value, objective_values, route_df, accepted, status, message, error_status, error_message, undeliverable_orders)
 ```
 
-#### def `compute_cost_matrix`
+#### def `get_vehicle_count`
 
 ```python
-compute_cost_matrix(target_locations)
+get_vehicle_count()
 ```
 
-Compute the cost matrix over the passed graph and target locations.
+Returns the number of vehicle needed for this routing assignment.
 
-This function can be used when the cost matrix is not acquirable due to an incomplete graph. The cost matrix is computed then returned. It can later be used for the Solver (see DataModel.set_matrix).
 
-**Parameters**
+#### def `get_total_objective`
 
-- **`target_locations`** (`numpy.ndarray`) — numpy.ndarray representing the target locations indices with respect to the graph. Target locations indices must be in the range [0, V-1] (V: number of vertices).
+```python
+get_total_objective()
+```
 
-**Returns**
+Returns the objective value calculated based on the user provided objective function and the routes found by the solver.
 
-- (`cudf.DataFrame`) — cudf.DataFrame representing the cost matrix
 
-**Raises**
+#### def `get_objective_values`
 
-- **``** — Shape of target_locations needs to be of length 1.
-- **``** — Target_locations length must be positive.
+```python
+get_objective_values()
+```
+
+Returns the individual objective_values as dictionary
+
+
+#### def `get_route`
+
+```python
+get_route()
+```
+
+Returns the route, truck ids for each stop and the arrival stamp as cudf.DataFrame.
 
 **Examples**
 
 ```python
 >>> import cuopt
->>> import numpy as np
->>> offsets= np.array([0,       3,    5,    7, 8, 9])
->>> edges=   np.array([1, 2, 3, 0, 2, 0, 3, 4, 0])
->>> weights= np.array([1, 2, 3, 4, 5, 6, 7, 8, 9])
->>> w_matrix = routing.WaypointMatrix(offsets, edges, weights)
->>> target_locations = np.array([1, 3])
->>> cost_matrix = w_matrix.compute_cost_matrix(target_locations)
->>> cost_matrix
-      0    1
-0   0.0  7.0
-1  18.0  0.0
->>> data_model = routing.DataModel(cost_matrix.shape[0], 2)
->>> data_model.set_matrix(cost_matrix)
-```
-
-
-#### def `compute_waypoint_sequence`
-
-```python
-compute_waypoint_sequence(target_locations, route_df)
-```
-
-Compute the waypoint sequence over the whole route.
-
-The waypoint sequence is an extend version of the route. Between each route target locations, all the intermediate waypoints are added. Waypoints and target locations ids are based on the graph.  A new field is added to route_df to browse through the returned waypoint sequence. The 'sequence_offset' field associates an offset to each element in the route.
-
-**Parameters**
-
-- **`target_locations`** (`numpy.ndarray`) — numpy.ndarray representing the target locations indices with respect to the graph. Target locations indices must be in the range [0, V] (V: number of vertices).
-- **`route_df: cudf.DataFrame`** — Contains route, vehicle_id, arrival_stamp, and locations. Contains an extra 'sequence_offset' field after this call.
-
-**Returns**
-
-- (`cudf.DataFrame`) — waypoint_sequence cudf.Series representing the waypoint_sequence waypoint_type     cudf.Series representing type of waypoint Start    - Start location of the vehicle/tech/robot End      - End location of the vehicle/tech/robot w        - Location passing through to get to delivery location Delivery - Location where delivery needs to be made "-"      - Separates vehicle sequence from another
-
-**Raises**
-
-- **``** — Shape of target_locations needs to be of length 1
-- **``** — Target_locations length must be positive
-- **``** — Route length must be positive
-
-**Notes**
-
-Calling this function before compute_cost_matrix is an error.
-
-**Examples**
-
-```python
->>> import cuopt
->>> import numpy as np
->>> offsets= np.array([0,       3,    5,    7, 8, 9])
->>> edges=   np.array([1, 2, 3, 0, 2, 0, 3, 4, 0])
->>> weights= np.array([1, 2, 3, 4, 5, 6, 7, 8, 9])
->>> w_matrix = routing.WaypointMatrix(offsets, edges, weights)
->>> # Starting node is considered as depot
->>> target_locations = np.array([0, 1, 3, 4])
->>> cost_matrix = w_matrix.compute_cost_matrix(target_locations)
->>> cost_matrix
-      0     1     2     3
-0   0.0   1.0   3.0  11.0
-1   4.0   0.0   7.0  15.0
-2  17.0  18.0   0.0   8.0
-3   9.0  10.0  12.0   0.0
->>> data_model = routing.DataModel(cost_matrix.shape[0], 2)
->>> data_model.set_matrix(cost_matrix)
+>>> import cudf
+>>> locations = [0, 1, 2, 3]
+>>> vehicles  = [0, 1]
+>>> cost_mat  = [
+...   [0, 1, 5, 2],
+...   [2, 0, 7, 4],
+...   [1, 5, 0, 9],
+...   [5, 6, 2, 0]
+... ]
+>>> cost_mat = cudf.DataFrame(cost_mat)
+>>> cost_mat
+   0  1  2  3
+0  0  1  5  2
+1  2  0  7  4
+2  1  5  0  9
+3  5  6  2  0
+>>> data_model = routing.DataModel(len(locations), len(vehicles))
+>>> data_model.set_matrix(cost_mat)
 >>> solver = cuopt.Solver(data_model)
->>> solver.set_min_vehicles(2)
+>>> solver.set_min_vehicles(len(vehicles))
+>>> solver.set_min_vehicles(len(vehicles))
 >>> solution = solver.solve()
->>> route = solution.get_route()
->>> # Location in this routes is actually ids positional indices of
->>> # target location
->>> route
+>>> solution.get_route()
+>>> solution.get_route()
    route  arrival_stamp  truck_id  location
 0      0            0.0         1         0
-1      2            3.0         1         2
-2      3           11.0         1         3
-3      0           20.0         1         0
+1      3            2.0         1         3
+2      2            4.0         1         2
+3      0            5.0         1         0
 4      0            0.0         0         0
 5      1            1.0         0         1
-6      0            5.0         0         0
->>> # Call to this will also update location in route
->>> # with actual target ids along with sequence offset
->>> w_matrix.compute_waypoint_sequence(target_locations, route)
-    waypoint_sequence waypoint_type
-0                   0         Start
-1                   3          Task
-2                   3             w
-3                   4          Task
-4                   4             w
-5                   0           End
-6                   0             -
-7                   0         Start
-8                   1          Task
-9                   1             w
-10                  0           End
->>> # Difference in location and sequence offset in route can be seen
->>> route
-   route  arrival_stamp  truck_id  location  sequence_offset
-0      0            0.0         1         0                0
-1      2            3.0         1         3                2
-2      3           11.0         1         4                4
-3      0           20.0         1         0                6
-4      0            0.0         0         0                7
-5      1            1.0         0         1                9
-6      0            5.0         0         0               11
+6      0            3.0         0         0
 ```
 
 
-#### def `compute_shortest_path_costs`
+#### def `get_status`
 
 ```python
-compute_shortest_path_costs(target_locations, weights)
+get_status()
 ```
 
-Compute a custom matrix over the passed weights and target locations.
+Returns the final solver status as per SolutionStatus.
 
-This is applied on shortest paths found during previous compute_cost_matrix call.  This function allows setting a custom cost between waypoints (for example, time) and then getting the total cost it takes to go from one target location to all the others. The shortest paths are **not** recomputed. The path found from compute_cost_matrix between target locations stays the same but the new weight set is used to compute the output matrix.
 
-**Parameters**
+#### def `get_message`
 
-- **`target_locations`** (`numpy.ndarray`) — numpy.ndarray representing the target locations indices with respect to the graph. Target locations indices must be in the range [0, V) (V: number of vertices).
-- **`weights`** (`numpy.ndarray`) — numpy.ndarray of size E (E: number of edges). It contains the weight value for each edge. The expected type is floating point number.
+```python
+get_message()
+```
 
-**Returns**
+Returns the final solver message as per SolutionStatus.
 
-- (`cudf.DataFrame`) — cudf.DataFrame representing the custom cost matrix
 
-**Raises**
+#### def `get_error_status`
 
-- **``** — Shape of target_locations needs to be of length 1
-- **``** — Target_locations length must be positive
-- **``** — Shape of weights needs to be of length 1
-- **``** — Weights length must be positive
-- **``** — Weights length must be positive
-- **``** — Given weights and previously set weights length mismatch
+```python
+get_error_status()
+```
 
-**Notes**
+Returns the error status as per ErrorStatus.
 
-Giving an edge ordering for weights different from the one given
-during waypoint matrix instanciation will lead to incorrect results.
+
+#### def `get_error_message`
+
+```python
+get_error_message()
+```
+
+Returns the error message as per ErrorMessage.
+
+
+#### def `get_infeasible_orders`
+
+```python
+get_infeasible_orders()
+```
+
+Returns the infeasible order numbers as cudf.Series.
+
+
+#### def `get_accepted_solutions`
+
+```python
+get_accepted_solutions()
+```
+
+#### def `display_routes`
+
+```python
+display_routes()
+```
+
+Display the solution in human readable format. Intended for relatively small inputs.
 
 **Examples**
 
 ```python
 >>> import cuopt
->>> import numpy as np
->>> offsets=         np.array([ 0,          3,      5,      7, 8, 9])
->>> edges=           np.array([ 1,  2,  3,  0,  2,  0,  3,  4, 0])
->>> weights=         np.array([ 1,  2,  3,  4,  5,  6,  7,  8, 9])
->>> time_to_travel = np.array([10, 20, 30, 40, 50, 60, 70, 80, 90])
->>> w_matrix = routing.WaypointMatrix(offsets, edges, weights)
->>> target_locations = np.array([1, 3])
->>> cost_matrix = w_matrix.compute_cost_matrix(target_locations)
->>> time_matrix = w_matrix.compute_shortest_path_costs(
->>>    target_locations, time_to_travel
->>> )
->>> cost_matrix
-      0    1
-0   0.0  7.0
-1  18.0  0.0
->>> time_matrix
-       0     1
-0    0.0  70.0
-1  180.0   0.0
->>> data_model = routing.DataModel(cost_matrix.shape[0], 2)
->>> data_model.set_matrix(cost_matrix)
->>> data_model.add_transit_time_matrix(time_matrix)
+>>> import cudf
+>>> locations = [0, 1, 2, 3]
+>>> vehicles  = [0, 1]
+>>> cost_mat  = [
+...   [0, 1, 5, 2],
+...   [2, 0, 7, 4],
+...   [1, 5, 0, 9],
+...   [5, 6, 2, 0]
+... ]
+>>> cost_mat = cudf.DataFrame(cost_mat)
+>>> cost_mat
+   0  1  2  3
+0  0  1  5  2
+1  2  0  7  4
+2  1  5  0  9
+3  5  6  2  0
+>>> data_model = routing.DataModel(len(locations), len(vehicles))
+>>> data_model.set_matrix(cost_mat)
+>>> solver = cuopt.Solver(data_model)
+>>> solver.set_min_vehicles(len(vehicles))
+>>> solver.set_min_vehicles(len(vehicles))
+>>> solution = solver.solve()
+>>> solution.display_routes()
+Vehicle-0 starts at: 0.0, completes at: 3.0, travel time: 3.0,  Route :
+0->1->0
+Vehicle-1 starts at: 0.0, completes at: 5.0, travel time: 5.0,  Route :
+0->3->2->0
+This results in a travel time of 8.0 to deliver all routes
 ```
 
 
+
+## Utils
+
+<hr />
+
+### def `generate_dataset`
+
+```python
+generate_dataset(locations = 100, asymmetric = True, min_demand = cudf.Series(), max_demand = cudf.Series(), min_capacities = cudf.Series(), max_capacities = cudf.Series(), min_service_time = 0, max_service_time = 0, tw_tightness = 0.0, drop_return_trips = 0.0, shifts = 1, n_vehicle_types = 1, n_matrix_types = 1, distribution = utils_wrapper.DatasetDistribution.CLUSTERED, center_box = None, seed = 0)
+```
+
+Constructs a dataset from the given parameters. locations:
+
+**Parameters**
+
+- **`locations: int32`** — Number of locations to visit, including the depot.
+- **`asymmetric`** (`bool`) — Specifies if the matrices (both cost and time) should be asymmetric.
+- **`min_demand`** (`cudf.Series`) — Series will be cast to int32. Minimum demand value along each dimension.
+- **`max_demand`** (`cudf.Series`) — Series will be cast to int32. Maximum demand value along each dimension.
+- **`min_capacities`** (`cudf.Series`) — Series will be cast to int32. Minimum capacity value along each dimension.
+- **`max_capacities`** (`cudf.Series`) — Series will be cast to int32. Maximum capacity value along each dimension.
+- **`min_service_time`** (`int32`) — Lower bound for generated service time.
+- **`max_service_time`** (`int32`) — Upper bound for generated service time.
+- **`tw_tightness`** (`float32`) — Can make a problem more or less difficult to solve. Feasibility is ensured because we made sure the latest time of a node is larger than its depot-node distance.
+- **`drop_return_trips`** (`float32`) — Percentage of vehicles in the fleet that shouldn't return to the depot.
+- **`shifts`** (`int32`) — The number of shifts in the dataset. This will create vehicle time windows that split the fleet into multiple shifts.
+- **`n_vehicle_types`** (`int32`) — Multiple vehicle types can be generated each with a corresponding cost matrix or time matrix.
+- **`n_matrix_types`** (`int32`) — There can be one cost and time matrix per vehicle type. The cupy array generated is of size dim4(n_vehicle_types, n_matrix_types, nloc, nloc). In the case the n_matrix_types is 1, the cost matrix is used for time.
+- **`distribution`** (`DatasetDistribution`) — The distribution of datapoints similar to what is done for the homberger cvrptw dataset. https://www.sintef.no/projectweb/top/vrptw/homberger-benchmark/ Clustered datasets are usually faster to generate and solve.
+- **`center_box`** (`tuple`) — The bounding box which constrains all the centroids.
+- **`seed`** (`int32`) — Random seed for the raft generator.
+
+**Returns**
+
+- **`pos_list`** (`cudf.DataFrame`) — x and y coordinates.
+- **`matrices`** (`cupy.ndarray`) — Vehicle cost and time matrices as dim4(n_vehicle_types, n_matrix_types, nloc, nloc).
+- **`orders`** (`cudf.DataFrame`) — Time windows and multi dimension demand for each location.
+- **`vehicles`** (`cudf.DataFrame`) — Time windows and multi dimension capacity for each vehicle.
+
+
+<hr />
+
+### def `update_routes_and_vehicles`
+
+```python
+update_routes_and_vehicles(output_df, route, order_pdf, order_data, vehicle_constraints)
+```
+
+Helper function to update the final routes and vehicle time windows when running cuopt in batches. Routes are updated in output_df and vehicle time windows are updated in vehicle_constraints.
+
+
+<hr />
+
+### def `add_vehicle_constraints`
+
+```python
+add_vehicle_constraints(num_vehicles, vehicle_capacity, break_earliest = None, break_latest = None, vehicle_speed = 1)
+```
+
+Helper function to add vehicle constraints when running cuopt in batches. Vehicle constraints that can be added include number of vehicles, vehicle capacity, speed of vehicles and earliest and latest vehicle break times.
+
+
+<hr />
+
+### def `create_pickup_delivery_data`
+
+```python
+create_pickup_delivery_data(matrix_pdf, raw_order_pdf, depot, vehicle_constraints)
+```
+
+Creates and returns travel matrix, order information and vehicle information for pickup and deliveries.
+
+
+<hr />
+
+### class `DatasetDistribution`
+
+**Members:** `CLUSTERED`, `RANDOM`, `RANDOM_CLUSTERED`
+
+<hr />
+
+### class `ErrorStatus`
+
+**Members:** `Success`, `ValidationError`, `OutOfMemoryError`, `RuntimeError`
+
+<hr />
+
+### class `Objective`
+
+Enums to configure objective of the solution
+
+COST                - Models with respect to total cost  TRAVEL_TIME         - Models with respect to travel time (This includes drive, service and wait time) # noqa  VARIANCE_ROUTE_SIZE - Models with respect to dissimilarity of route sizes      It computes the L2 variance (squared) in the number of orders served     by each route.  VARIANCE_ROUTE_SERVICE_TIME - Models with respect to disssimilarty of route                               service times      It computes L2 variance (squared) of the accumulated service times of     of each route  PRIZE               - Models with respect to prizes collected by the                       serviced orders VEHICLE_FIXED_COST                - Models cost per vehicle. Enabled when set_vehicle_fixed_costs is used.
+
+
+**Members:** `COST`, `TRAVEL_TIME`, `VARIANCE_ROUTE_SIZE`, `VARIANCE_ROUTE_SERVICE_TIME`, `PRIZE`, `VEHICLE_FIXED_COST`
+
+<hr />
+
+### class `NodeType`
+
+Types for nodes/route returned by the solver
+
+DEPOT    - Indicates whether a given node is depot PICKUP   - Indicates whether a given node corresponds to a pickup DELIVERY - Indicates whether a given node corresponds to a delivery BREAK    - Indicates whether a given node corresponds to a break
+
+
+**Members:** `DEPOT`, `PICKUP`, `DELIVERY`, `BREAK`

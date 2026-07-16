@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 from enum import Enum
@@ -7,6 +7,20 @@ from cuopt.utilities import catch_cuopt_exception
 
 
 class SolutionStatus(Enum):
+    """Status of a routing solve.
+
+    Attributes
+    ----------
+    SUCCESS : int
+        A valid solution was found.
+    FAIL : int
+        The solver failed to find a feasible solution.
+    TIMEOUT : int
+        The solver reached the time limit before finding a solution.
+    EMPTY : int
+        No orders were provided; the solution is trivially empty.
+    """
+
     SUCCESS = 0
     FAIL = 1
     TIMEOUT = 2

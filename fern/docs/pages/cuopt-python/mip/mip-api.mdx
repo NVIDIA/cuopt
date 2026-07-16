@@ -2,4 +2,1062 @@
 title: "MIP Python API Reference"
 ---
 
-<Note>No public API symbols found in the configured source directories.</Note>
+
+## Data Model
+
+<hr />
+
+### class `DataModel`
+
+Initialize a DataModel which represents a Linear Program.
+
+A linear programming optimization problem is defined as follows: Minimize :    dot(c, x)  Subject to :    matmul(A, x) (= or >= or)&lt;= b  Where :    x : Decision Variables    c : Objective Coefficients    A : Constraint Matrix    b : Constraint Bounds  With :    n = number of variables    m = number of constraints    x = n-dim vector    c = n-dim vector    A = mxn-dim sparse matrix    b = m-dim vector
+
+**Notes**
+
+By default, this assumes objective minimization.
+To solve a maximization problem, see set_maximization()
+
+Objective value can be scaled and offseted accordingly:
+objective_scaling_factor * (dot(c, x) + objective_offset)
+please refer to to the `set_objective_scaling_factor()`
+and `set_objective_offset()` method.
+
+**Examples**
+
+```python
+Minimize:
+
+    cost = 0.2 * VAR1 + 0.1 * VAR2
+
+Subject to
+
+    3   * VAR1 + 4    * VAR2 &lt;= 5.4
+
+    2.7 * VAR1 + 10.1 * VAR2 &lt;= 4.9
+
+    0 &lt;= VAR1 &lt;= 2
+
+    0 &lt;= VAR2 &lt;= inf
+
+>>> from cuopt import linear_programming
+>>>
+>>> import numpy as np
+>>>
+>>> data_model = linear_programming.DataModel()
+>>>
+>>> # Set the CSR matrix representation, for more information about CSR
+>>> # checkout:
+>>> # https://docs.nvidia.com/cuda/cusparse/index.html
+#compressed-sparse-row-csr
+>>>
+>>> # Define the different np.array for the CSR representation
+>>> # The 4 values of the constraint matrix (A)
+>>> A_values = np.array([3.0, 4.0, 2.7, 10.1], dtype=np.float64)
+>>>
+>>> # The CSR index vector
+>>> # Here we associate each value in the A_values to its variable index
+>>> # First value correspond to the first variable
+>>> # (3.0 -> variable[*0*], constraint[0])
+>>> # Second value correspond to the second variable
+>>> # (4.0 -> variable[*1*], constraint[0])
+>>> # Third value correspond to the first variable
+>>> # (2.7 -> variable[*0*], constraint[1])
+>>> # Fourth value correspond to the second variable
+>>> # (10.1 -> variable[*1*], constraint[1])
+>>> A_indices = np.array([0, 1, 0, 1], dtype=np.int32)
+>>>
+>>> # The CSR offset vector
+>>> # Here we specify the range of values for each constraint
+>>> # [0, 2) corresponds to the range of values for the first constraints,
+>>> # here [0:3.0, 1:4.0]
+>>> # [2, 4) corresponds to the range of values for the second constraint,
+>>> # here [1:2.7, 2:10.1]
+>>> A_offsets = np.array([0, 2, 4], dtype=np.int32)
+>>>
+>>> data_model.set_csr_constraint_matrix(A_values, A_indices, A_offsets)
+>>>
+>>> # Set the constraint bounds (b / right-hand side) array
+>>> b = np.array([5.4, 4.9], dtype=np.float64)
+>>> data_model.set_constraint_bounds(b)
+>>>
+>>> # Set the objective coefficient (c) array.
+>>> c = np.array([0.2, 0.1], dtype=np.float64)
+>>> data_model.set_objective_coefficients(c)
+>>>
+>>> # Set the constraints/rows equalities, either using the row_type format
+>>> # or by directly setting the bounds
+>>>
+>>> # Method 0: constraints/rows type
+>>> # Set both constraints/rows to less-than (&lt;=)
+>>> row_types = np.array(['L', 'L'])
+>>> data_model.set_row_types(row_types)
+>>>
+>>> # Method 1: directly set bounds
+>>> # Set lower bounds to -infinity and upper bounds to b
+>>> constraint_lower_bounds = np.array([-np.inf, -np.inf],
+>>>                                       dtype=np.float64)
+>>> constraint_upper_bounds = np.array(b, dtype=np.float64)
+>>> data_model.set_constraint_lower_bounds(constraint_lower_bounds)
+>>> data_model.set_constraint_upper_bounds(constraint_upper_bounds)
+>>>
+>>>
+>>> # Set variable lower and upper bounds
+>>> variable_lower_bounds = np.array([0.0, 0.0], dtype=np.float64)
+>>> variable_upper_bounds = np.array([2.0, np.inf], dtype=np.float64)
+>>> data_model.set_variable_lower_bounds(variable_lower_bounds)
+>>> data_model.set_variable_upper_bounds(variable_upper_bounds)
+```
+
+
+#### def `__init__`
+
+```python
+__init__()
+```
+
+#### def `set_maximize`
+
+```python
+set_maximize(maximize)
+```
+
+Set the sense of optimization to maximize.
+
+**Parameters**
+
+- **`maximize`** (`bool`) — True means to maximize the objective function, else minimize.
+
+**Notes**
+
+Setting before calling the solver is optional, default value if false
+(minimize).
+
+
+#### def `set_csr_constraint_matrix`
+
+```python
+set_csr_constraint_matrix(A_values, A_indices, A_offsets)
+```
+
+Set the constraint matrix (A) in CSR format. For more information about CSR checkout: https://docs.nvidia.com/cuda/cusparse/index.html#compressed-sparse-row-csr #noqa
+
+**Parameters**
+
+- **`A_values`** (`np.array dtype - float64`) — Values of the CSR representation of the constraint matrix as a device floating point array.
+- **`A_indices`** (`np.array dtype - int32`) — Indices of the CSR representation of the constraint matrix as a device integer array.
+- **`A_offsets`** (`np.array dtype - int32`) — Offsets of the CSR representation of the constraint matrix as a device integer array.
+
+**Notes**
+
+Setting before calling the solver is mandatory.
+
+
+#### def `set_constraint_bounds`
+
+```python
+set_constraint_bounds(b)
+```
+
+Set the constraint bounds (b / right-hand side) array.
+
+**Parameters**
+
+- **`b`** (`np.array dtype - float64`) — Device floating point array.
+
+**Notes**
+
+Setting before calling the solver is mandatory.
+
+
+#### def `set_objective_coefficients`
+
+```python
+set_objective_coefficients(c)
+```
+
+Set the objective coefficients (c) array.
+
+**Parameters**
+
+- **`c`** (`np.array dtype - float64`) — Device floating point array.
+
+**Notes**
+
+Setting before calling the solver is mandatory.
+
+
+#### def `set_objective_scaling_factor`
+
+```python
+set_objective_scaling_factor(objective_scaling_factor)
+```
+
+Set the scaling factor of the objective function (scaling_factor * objective_value).
+
+**Parameters**
+
+- **`objective_scaling_factor`** (`float64`) — The scaling factor to apply.
+
+**Notes**
+
+Setting before calling the solver is optional.
+
+
+#### def `set_objective_offset`
+
+```python
+set_objective_offset(objective_offset)
+```
+
+Set the offset of the objective function (objective_offset + objective_value).
+
+**Parameters**
+
+- **`objective_offset`** (`float64`) — The constant objective_offset to add.
+
+**Notes**
+
+Setting before calling the solver is optional.
+
+
+#### def `set_quadratic_objective_matrix`
+
+```python
+set_quadratic_objective_matrix(Q_values, Q_indices, Q_offsets)
+```
+
+Set the quadratic objective matrix (Q) in CSR format. For more information about CSR checkout: https://docs.nvidia.com/cuda/cusparse/index.html#compressed-sparse-row-csr #noqa
+
+**Parameters**
+
+- **`Q_values`** (`np.array dtype - float64`) — Values of the CSR representation of the quadratic objective matrix as a device floating point array.
+- **`Q_indices`** (`np.array dtype - int32`) — Indices of the CSR representation of the quadratic objective matrix as a device integer array.
+- **`Q_offsets`** (`np.array dtype - int32`) — Offsets of the CSR representation of the quadratic objective matrix as a device integer array. (size: n_variables + 1)
+
+**Notes**
+
+Setting before calling the solver is required for quadratic problems.
+The input Q matrix is internally symmetrized as Q + Q^T. For convex
+quadratic programming, Q + Q^T should be positive semi-definite.
+
+
+#### def `get_quadratic_constraints`
+
+```python
+get_quadratic_constraints()
+```
+
+Return quadratic constraints appended to this model.
+
+Each entry is a dict with keys including ``constraint_row_index``, ``constraint_row_name``, ``constraint_row_type``, COO arrays, and ``rhs_value``.
+
+
+#### def `clear_quadratic_constraints`
+
+```python
+clear_quadratic_constraints()
+```
+
+Remove all quadratic constraints from the model.
+
+
+#### def `add_quadratic_constraint`
+
+```python
+add_quadratic_constraint(constraint_row_name = '', linear_values = None, linear_indices = None, rhs_value = 0.0, vals = None, rows = None, cols = None, sense = 'L')
+```
+
+Add a quadratic constraint.
+
+Each constraint has a linear part (optional) and a quadratic part in COO format. Call multiple times to add several quadratic constraints.
+
+**Parameters**
+
+- **`constraint_row_name`** (`str, optional`) — Optional row name.
+- **`linear_values, linear_indices`** (`array-like, optional`) — Sparse linear coefficients on the same variable index space.
+- **`rhs_value`** (`float, optional`) — Right-hand side of the constraint.
+- **`vals, rows, cols`** (`array-like`) — COO triplets for the quadratic matrix Q in ``linear^T x + x^T Q x {sense} rhs_value``.
+- **`sense`** (`str, optional`) — Constraint sense: ``'L'`` (default, ``&lt;=``) or ``'G'`` (``>=``). ``'G'`` constraints are converted to ``'L'`` internally. Equality (``'E'``) is not supported.
+
+**Notes**
+
+When any quadratic constraint is present, cuOpt selects the barrier
+solver and converts quadratic constraints to second-order cones.
+
+
+#### def `set_variable_lower_bounds`
+
+```python
+set_variable_lower_bounds(variable_lower_bounds)
+```
+
+Set the variables (x) lower bounds.
+
+**Parameters**
+
+- **`variable_lower_bounds`** (`np.array dtype - float64`) — Device floating point array.
+
+**Notes**
+
+Setting before calling the solver is optional, default value for all is
+0.
+
+
+#### def `set_variable_upper_bounds`
+
+```python
+set_variable_upper_bounds(variable_upper_bounds)
+```
+
+Set the variables (x) upper bounds.
+
+**Parameters**
+
+- **`variable_upper_bounds`** (`np.array dtype - float64`) — Device floating point array.
+
+**Notes**
+
+Setting before calling the solver is optional, default value for all is
++infinity.
+
+
+#### def `set_constraint_lower_bounds`
+
+```python
+set_constraint_lower_bounds(constraint_lower_bounds)
+```
+
+Set the constraints lower bounds.
+
+**Parameters**
+
+- **`constraint_lower_bounds`** (`np.array dtype - float64`) — Device floating point array.
+
+**Notes**
+
+Setting before calling the solver is optional if you set the row type,
+else it's mandatory along with the upper bounds.
+
+
+#### def `set_constraint_upper_bounds`
+
+```python
+set_constraint_upper_bounds(constraint_upper_bounds)
+```
+
+Set the constraints upper bounds.
+
+**Parameters**
+
+- **`constraint_upper_bounds`** (`np.array dtype - float64`) — Device floating point array.
+
+**Notes**
+
+Setting before calling the solver is optional if you set the row type,
+else it's mandatory along with the lower bounds.
+
+
+#### def `set_variable_types`
+
+```python
+set_variable_types(variable_types)
+```
+
+Set the variable types.
+
+**Parameters**
+
+- **`variables_types`** (`np.array dtype - unicode string (<U1)`) — Host character array.
+
+
+#### def `set_row_types`
+
+```python
+set_row_types(row_types)
+```
+
+Set the type of each row (constraint). Possible values are: 'E' for equality ( = ): lower & upper constrains bound equal to b 'L' for less-than ( &lt;= ): lower constrains bound equal to -infinity, upper constrains bound equal to b 'G' for greater-than ( >= ): lower constrains bound equal to b, upper constrains bound equal to +infinity
+
+**Parameters**
+
+- **`row_types`** (`np.array dtype - unicode string (<U1)`) — Host character array.
+
+**Notes**
+
+Setting before calling the solver is optional if you set the constraint
+lower and upper bounds, else it's mandatory. If both are set,
+priority goes to set_constraint_lower/upper_bounds.
+
+**Examples**
+
+```python
+>>> row_types = np.array(['L', 'L'])
+>>> data_model.set_row_types(row_types)
+```
+
+
+#### def `set_variable_names`
+
+```python
+set_variable_names(variables_names)
+```
+
+Set the variables names.
+
+**Parameters**
+
+- **`variables_names`** (`np.array dtype - unicode string`) — Host string array.
+
+**Notes**
+
+Setting before calling the solver is optional. Value is only used for
+file generation of the solution.
+
+
+#### def `set_row_names`
+
+```python
+set_row_names(row_names)
+```
+
+Set the row names.
+
+**Parameters**
+
+- **`row_names`** (`np.array dtype - unicode string`) — Host string array.
+
+**Notes**
+
+Setting before calling the solver is optional. Value is only used for
+file generation of the solution.
+
+
+#### def `set_objective_name`
+
+```python
+set_objective_name(objective_name)
+```
+
+Set the objective name as string.
+
+
+#### def `set_problem_name`
+
+```python
+set_problem_name(problem_name)
+```
+
+Set the problem name as string.
+
+
+#### def `set_initial_primal_solution`
+
+```python
+set_initial_primal_solution(initial_primal_solution)
+```
+
+Set the initial primal solution.
+
+**Parameters**
+
+- **`initial_primal_solution`** (`np.array dtype - float64`) — Device floating point array.
+
+**Notes**
+
+Setting before calling the solver is optional.
+
+
+#### def `set_initial_dual_solution`
+
+```python
+set_initial_dual_solution(initial_dual_solution)
+```
+
+NOTE: Not supported for MILP.
+
+Set the initial dual solution.
+
+**Parameters**
+
+- **`initial_dual_solution`** (`np.array dtype - float64`) — Device floating point array.
+
+**Notes**
+
+Setting before calling the solver is optional.
+
+
+#### def `get_sense`
+
+```python
+get_sense()
+```
+
+Get the sense of optimization as a bool. True means maximize the objective function, false means minimize.
+
+
+#### def `get_constraint_matrix_values`
+
+```python
+get_constraint_matrix_values()
+```
+
+Get the values of the CSR representation of the constraint matrix as numpy.array with float64 type.
+
+
+#### def `get_constraint_matrix_indices`
+
+```python
+get_constraint_matrix_indices()
+```
+
+Get the indices of the CSR representation of the constraint matrix as numpy.array with int type.
+
+
+#### def `get_constraint_matrix_offsets`
+
+```python
+get_constraint_matrix_offsets()
+```
+
+Get the indices of the CSR representation of the constraint matrix as numpy.array with int type.
+
+
+#### def `get_constraint_bounds`
+
+```python
+get_constraint_bounds()
+```
+
+Get the constraint bounds (b / right-hand side) as numpy.array with float64 type.
+
+
+#### def `get_objective_coefficients`
+
+```python
+get_objective_coefficients()
+```
+
+Get the objective_coefficients (c) as numpy.array with float64 type.
+
+
+#### def `get_objective_scaling_factor`
+
+```python
+get_objective_scaling_factor()
+```
+
+Get the scaling factor of the objective function as a float64.
+
+
+#### def `get_objective_offset`
+
+```python
+get_objective_offset()
+```
+
+Get the offset of the objective function as a float64.
+
+
+#### def `get_quadratic_objective_values`
+
+```python
+get_quadratic_objective_values()
+```
+
+Get the values of the CSR representation of the quadratic objective matrix as a numpy.array with float64 type.
+
+
+#### def `get_quadratic_objective_indices`
+
+```python
+get_quadratic_objective_indices()
+```
+
+Get the indices of the CSR representation of the quadratic objective matrix as a numpy.array with int32 type.
+
+
+#### def `get_quadratic_objective_offsets`
+
+```python
+get_quadratic_objective_offsets()
+```
+
+Get the offsets of the CSR representation of the quadratic objective matrix as a numpy.array with int32 type.
+
+
+#### def `get_variable_lower_bounds`
+
+```python
+get_variable_lower_bounds()
+```
+
+Get the variables (x) lower bounds as numpy.array with float64 type.
+
+
+#### def `get_variable_upper_bounds`
+
+```python
+get_variable_upper_bounds()
+```
+
+Get the variables (x) upper bounds as numpy.array with float64 type.
+
+
+#### def `get_constraint_lower_bounds`
+
+```python
+get_constraint_lower_bounds()
+```
+
+Get the constraints lower bounds as numpy.array with float64 type.
+
+
+#### def `get_constraint_upper_bounds`
+
+```python
+get_constraint_upper_bounds()
+```
+
+Get the constraints upper bounds as numpy.array with float64 type.
+
+
+#### def `get_row_types`
+
+```python
+get_row_types()
+```
+
+Get the type of each row (constraint) as numpy.array with char8 type.
+
+
+#### def `get_ascii_row_types`
+
+```python
+get_ascii_row_types()
+```
+
+Get the type of each row (constraint) converted to a numpy.array with int8 type (ascii value).
+
+
+#### def `get_initial_primal_solution`
+
+```python
+get_initial_primal_solution()
+```
+
+Get the initial primal solution as numpy.array with float64 type.
+
+
+#### def `get_initial_dual_solution`
+
+```python
+get_initial_dual_solution()
+```
+
+NOTE: Not supported for MILP.
+
+Get the initial dual solution as numpy.array with float64 type.
+
+
+#### def `get_variable_types`
+
+```python
+get_variable_types()
+```
+
+Get the variable types as numpy.array with char type.
+
+
+#### def `get_variable_names`
+
+```python
+get_variable_names()
+```
+
+Get the variable names as numpy.array with string type.
+
+
+#### def `get_row_names`
+
+```python
+get_row_names()
+```
+
+Get the row names as numpy.array with string type.
+
+
+#### def `get_objective_name`
+
+```python
+get_objective_name()
+```
+
+Get the objective name as string.
+
+
+#### def `get_problem_name`
+
+```python
+get_problem_name()
+```
+
+Get the problem name as string.
+
+
+#### def `writeMPS`
+
+```python
+writeMPS(user_problem_file)
+```
+
+
+## Solution
+
+<hr />
+
+### class `PDLPWarmStartData`
+
+#### def `__init__`
+
+```python
+__init__(current_primal_solution, current_dual_solution, initial_primal_average, initial_dual_average, current_ATY, sum_primal_solutions, sum_dual_solutions, last_restart_duality_gap_primal_solution, last_restart_duality_gap_dual_solution, initial_primal_weight, initial_step_size, total_pdlp_iterations, total_pdhg_iterations, last_candidate_kkt_score, last_restart_kkt_score, sum_solution_weight, iterations_since_last_restart)
+```
+
+<hr />
+
+### class `Solution`
+
+A container of LP solver output
+
+**Parameters**
+
+- **`problem_category`** (`int`) — Whether it is a LP-0, MIP-1 or IP-2 solution
+- **`vars`** (`Dict[str, float64]`) — Dictionary mapping each variable (name) to its value.
+- **`primal_solution`** (`numpy.array`) — Primal solution of the LP problem
+- **`dual_solution`** (`numpy.array`) — Note: Applicable to only LP Dual solution of the LP problem
+- **`reduced_cost`** (`numpy.array`) — Note: Applicable to only LP The reduced cost. It contains the dual multipliers for the linear constraints.
+- **`termination_status: Integer`** — Termination status value.
+- **`primal_residual: Float64`** — L2 norm of the primal residual: measurement of the primal infeasibility
+- **`dual_residual: Float64`** — Note: Applicable to only LP L2 norm of the dual residual: measurement of the dual infeasibility
+- **`primal_objective: Float64`** — Value of the primal objective
+- **`dual_objective: Float64`** — Note: Applicable to only LP Value of the dual objective
+- **`gap: Float64`** — Difference between the primal and dual objective
+- **`nb_iterations: Int`** — Number of iterations the LP solver did before converging
+- **`mip_gap: float64`** — Note: Applicable to only MILP The relative difference between the best integer objective value found so far and the objective bound. A value of 0.01 means the solution is guaranteed to be within 1% of optimal.
+- **`solution_bound: float64`** — Note: Applicable to only MILP The best known bound on the optimal objective value. For minimization problems, this is a lower bound on the optimal value. For maximization problems, this is an upper bound.
+- **`max_constraint_violation: float64`** — Note: Applicable to only MILP The maximum amount by which any constraint is violated in the current solution. Should be close to zero for a feasible solution.
+- **`max_int_violation: float64`** — Note: Applicable to only MILP The maximum amount by which any integer variable deviates from being an integer. A value of 0 means all integer variables have integral values.
+- **`max_variable_bound_violation: float64`** — Note: Applicable to only MILP The maximum amount by which any variable violates its upper or lower bounds in the current solution. Should be zero for a feasible solution.
+- **`presolve_time: float64`** — Note: Applicable to only MILP Time used for pre-solve
+- **`solve_time: Float64`** — Solve time in seconds
+- **`solved_by: enum`** — Note: Applicable to only LP Whether the LP was solved by Dual Simplex, PDLP or Barrier. This is populated by the solver using the values from SolverMethod.
+
+
+#### def `__init__`
+
+```python
+__init__(problem_category, vars, solve_time = 0.0, primal_solution = None, dual_solution = None, reduced_cost = None, current_primal_solution = None, current_dual_solution = None, initial_primal_average = None, initial_dual_average = None, current_ATY = None, sum_primal_solutions = None, sum_dual_solutions = None, last_restart_duality_gap_primal_solution = None, last_restart_duality_gap_dual_solution = None, initial_primal_weight = 0.0, initial_step_size = 0.0, total_pdlp_iterations = 0, total_pdhg_iterations = 0, last_candidate_kkt_score = 0.0, last_restart_kkt_score = 0.0, sum_solution_weight = 0.0, iterations_since_last_restart = 0, termination_status = 0, error_status = 0, error_message = '', primal_residual = 0.0, dual_residual = 0.0, primal_objective = 0.0, dual_objective = 0.0, gap = 0.0, nb_iterations = 0, solved_by = SolverMethod.Unset, mip_gap = 0.0, solution_bound = 0.0, presolve_time = 0.0, max_constraint_violation = 0.0, max_int_violation = 0.0, max_variable_bound_violation = 0.0, num_nodes = 0, num_simplex_iterations = 0)
+```
+
+#### def `raise_if_milp_solution`
+
+```python
+raise_if_milp_solution(function_name)
+```
+
+#### def `raise_if_lp_solution`
+
+```python
+raise_if_lp_solution(function_name)
+```
+
+#### def `get_primal_solution`
+
+```python
+get_primal_solution()
+```
+
+Returns the primal solution as numpy.array with float64 type.
+
+
+#### def `get_dual_solution`
+
+```python
+get_dual_solution()
+```
+
+Note: Applicable to only LP Returns the dual solution as numpy.array with float64 type.
+
+
+#### def `get_primal_objective`
+
+```python
+get_primal_objective()
+```
+
+Returns the primal objective as a float64.
+
+
+#### def `get_dual_objective`
+
+```python
+get_dual_objective()
+```
+
+Note: Applicable to only LP Returns the dual objective as a float64.
+
+
+#### def `get_termination_status`
+
+```python
+get_termination_status()
+```
+
+Returns the termination status as per TerminationReason.
+
+
+#### def `get_termination_reason`
+
+```python
+get_termination_reason()
+```
+
+Returns the termination reason as per TerminationReason.
+
+
+#### def `get_error_status`
+
+```python
+get_error_status()
+```
+
+Returns the error status as per ErrorStatus.
+
+
+#### def `get_error_message`
+
+```python
+get_error_message()
+```
+
+Returns the error message as per ErrorMessage.
+
+
+#### def `get_solve_time`
+
+```python
+get_solve_time()
+```
+
+Returns the engine solve time in seconds as a float64.
+
+
+#### def `get_solved_by_pdlp`
+
+```python
+get_solved_by_pdlp()
+```
+
+#### def `get_solved_by`
+
+```python
+get_solved_by()
+```
+
+Returns whether the LP was solved by Dual Simplex, PDLP or Barrier. See SolverMethod for all possible values.
+
+
+#### def `get_vars`
+
+```python
+get_vars()
+```
+
+Returns the dictionnary mapping each variable (name) to its value.
+
+
+#### def `get_lp_stats`
+
+```python
+get_lp_stats()
+```
+
+Note: Applicable to only LP Returns the convergence statistics as a dictionary:
+
+"primal_residual": float64   Measurement of the primal infeasibility.   This quantity is being reduced until primal tolerance is met   (see SolverSettings primal_tolerance).  "dual_residual": float64,   Measurement of the dual infeasibility.   This quantity is being reduced until dual tolerance is met   (see SolverSettings dual_tolerance).  "gap": float64   Difference between the primal and dual objective.   This quantity is being reduced until gap tolerance is met   (see SolverSettings gap_tolerance).  - "nb_iterations": int     Number of iterations the LP solver did before converging.
+
+
+#### def `get_reduced_cost`
+
+```python
+get_reduced_cost()
+```
+
+Note: Applicable to only LP Returns the reduced cost as numpy.array with float64 type.
+
+
+#### def `get_pdlp_warm_start_data`
+
+```python
+get_pdlp_warm_start_data()
+```
+
+Note: Applicable to only LP
+
+Allows to retrieve the warm start data from the PDLP solver.  See `SolverSettings.set_pdlp_warm_start_data` for more details.
+
+
+#### def `get_milp_stats`
+
+```python
+get_milp_stats()
+```
+
+Note: Applicable to only MILP Returns the convergence statistics as a dictionary:
+
+mip_gap: float64     The relative difference between the best integer objective value     found so far and the objective bound. A value of 0.01 means the     solution is guaranteed to be within 1% of optimal.  presolve_time: float64     Time took for pre-solve  max_constraint_violation: float64     The maximum amount by which any constraint is violated     in the current solution.     Should be close to zero for a feasible solution     . max_int_violation: float64     The maximum amount by which any integer variable deviates     from being an integer. A value of 0 means all integer variables     have integral values.  max_variable_bound_violation: float64     The maximum amount by which any variable violates     its upper or lower bounds in the current solution.     Should be zero for a feasible solution.  solution_bound: float64     The best known bound on the optimal objective value.     For minimization problems, this is a lower bound on the optimal     value.     For maximization problems, this is an upper bound.  num_nodes: int     Number of nodes explored during the MIP solve  num_simplex_iterations: int     Number of simplex iterations performed during the MIP solve
+
+
+#### def `get_problem_category`
+
+```python
+get_problem_category()
+```
+
+Returns one of the problem category from ProblemCategory
+
+LP  - 0 MIP - 1 IP  - 2
+
+
+
+## Solver
+
+<hr />
+
+### def `Solve`
+
+```python
+Solve(data_model, solver_settings = None)
+```
+
+Solve the Linear Program passed as input and returns the solution.
+
+Data Model object can be construed through setters (see linear_programming.DataModel class) or through a MPS file (see cuopt.linear_programming.Read function)
+
+**Parameters**
+
+- **`data_model`** (`DataModel`) — Data model containing a representation of a linear program on standard form.
+- **`solver_settings: SolverSettings`** — Settings to configure solver configurations. By default, it uses default solver settings to solve.
+
+**Returns**
+
+- **``** (`solution: Solution`) — Solution object containing both primal and dual solutions, objectives and more statistics about the result.
+
+**Notes**
+
+Both primal and dual solutions are zero-initialized.
+For custom initialization, please refer to `set_initial_primal_solution()`
+and `set_initial_dual_solution()` methods.
+For more details on the Solution object, see linear_programming.Solution.
+
+**Examples**
+
+```python
+>>> from cuopt import linear_programming
+>>> from cuopt.linear_programming.solver_settings import PDLPSolverMode
+>>> from cuopt.linear_programming.solver.solver_parameters import *
+>>>
+>>> data_model = linear_programming.DataModel()
+>>>
+>>> # Set all required fields
+>>> data_model.data_model.set_csr_constraint_matrix(...)
+>>>
+>>> # Build a solver setting object
+>>> settings = linear_programming.SolverSettings()
+>>> # Lower the accuracy from 1e-4 to 1e-2 for a faster result
+>>> settings.set_optimality_tolerance(1e-2)
+>>> # Also change the solver mode to Fast1 which can be faster
+>>> settings.set_parameter(CUOPT_PDLP_SOLVER_MODE, PDLPSolverMode.Fast1)
+>>>
+>>> # Call solve
+>>> solution = linear_programming.Solve(data_model, settings)
+>>>
+>>> # Print solution
+>>> print(solution.get_primal_solution())
+>>> # Print the primal objective
+>>> print(solution.get_primal_objective())
+>>> # Print the value of one specific variable
+>>> print(solution.get_vars()["var_name"])
+```
+
+
+<hr />
+
+### def `BatchSolve`
+
+```python
+BatchSolve(data_model_list, solver_settings = None)
+```
+
+Solve the list of Linear Programs passed as input and returns the solutions and total solve time.
+
+.. deprecated::     LP BatchSolve is deprecated and will be removed in a future release.     It runs concurrent LPs in multiple C++ threads, which can be done     independently in user code. Use sequential :func:`Solve` calls instead,     e.g. ``[Solve(dm, solver_settings) for dm in data_model_list]``, or     implement your own parallelism (e.g. ``concurrent.futures``).  Data Model objects can be construed through setters (see linear_programming.DataModel class) or through a MPS file (see cuopt.linear_programming.Read function)
+
+**Parameters**
+
+- **`data_models`** (`list of DataModel`) — Data models containing a representation of a linear program on standard form.
+- **`solver_settings: SolverSettings`** — Settings to configure solver configurations. By default, it uses default solver settings to solve.
+
+**Returns**
+
+- **``** (`solution: list of Solution`) — List of Solution objects containing both primal and dual solutions, objectives and more statistics about the result.
+- **``** (`solve_time: double`) — The engine solve time for the whole batch in seconds as a float64.
+
+**Notes**
+
+Solving in batch is usually faster than solving one by one.
+The total time to solve the whole batch on the engine side is returned as
+summing up the solutions `get_solve_time` would be incorrect as they are
+solved together in parallel, overlapping multiple solve.
+Both primal and dual solutions are zero-initialized.
+For custom initialization, please refer to `set_initial_primal_solution()`
+and `set_initial_dual_solution()` methods.
+For more details on the Solution object, see linear_programming.Solution.
+
+**Examples**
+
+```python
+>>> from cuopt import linear_programming
+>>> from cuopt.linear_programming.solver_settings import PDLPSolverMode
+>>> from cuopt.linear_programming.solver.solver_parameters import *
+>>> from cuopt.linear_programming import Read
+>>>
+>>> data_models = []
+>>> for i in range(...):
+>>>     data_models.append(Read(...))
+>>>
+>>> # Build a solver setting object
+>>> settings = linear_programming.SolverSettings()
+>>> # Lower the accuracy from 1e-4 to 1e-2 for a faster result
+>>> settings.set_optimality_tolerance(1e-2)
+>>> # Also change the solver mode to PDLPSolverMode.Fast1
+>>> # which can be faster
+>>> settings.set_parameter(CUOPT_PDLP_SOLVER_MODE, PDLPSolverMode.Fast1)
+>>>
+>>> # Call solve
+>>> solutions, solve_time = linear_programming.BatchSolve(
+>>>                            data_models,
+>>>                            settings
+>>>                         )
+>>>
+>>> # Print total engine solve time
+>>> print("Total engine solve time: ", solve_time)
+>>> # Print solutions
+>>> for solution in solutions:
+>>>     print(solution.get_primal_solution())
+>>>     # Print the primal objective
+>>>     print(solution.get_primal_objective())
+>>>     # Print the value of one specific variable
+>>>     print(solution.get_vars()["var_name"])
+```

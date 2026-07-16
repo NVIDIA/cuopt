@@ -16,7 +16,7 @@ If you built cuOpt locally, `CUOPT_INCLUDE=cpp/include` and `CUOPT_LIB=cpp/build
 
 Builds and solves a small LP directly with the C API using `cuOptCreateProblem`.
 
-<!-- embed: examples/simple_lp_example.c -->
+{/* embed: examples/simple_lp_example.c */}
 ```c
 /*
  * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
@@ -247,13 +247,13 @@ int main()
   }
 }
 ```
-<!-- /embed -->
+{/* /embed */}
 
 ## LP Example With MPS File
 
 Reads an LP or MPS file with `cuOptReadProblem` and solves it. The format is dispatched from the file extension (`.mps` / `.qps` → MPS parser; `.lp` → LP parser).
 
-<!-- embed: examples/mps_file_example.c -->
+{/* embed: examples/mps_file_example.c */}
 ```c
 /*
  * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
@@ -445,11 +445,11 @@ int main(int argc, char* argv[])
   }
 }
 ```
-<!-- /embed -->
+{/* /embed */}
 
 Sample MPS file used by this example:
 
-<!-- embed: examples/sample.mps -->
+{/* embed: examples/sample.mps */}
 ```text
 NAME   good-1
 ROWS
@@ -465,13 +465,13 @@ RHS
    RHS1      ROW1      5.4            ROW2      4.9
 ENDATA
 ```
-<!-- /embed -->
+{/* /embed */}
 
 ## LP Example With LP File
 
 Same `cuOptReadProblem` call with an LP-format file.
 
-<!-- embed: examples/lp_file_example.c -->
+{/* embed: examples/lp_file_example.c */}
 ```c
 /*
  * SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
@@ -653,11 +653,11 @@ int main(int argc, char* argv[])
   }
 }
 ```
-<!-- /embed -->
+{/* /embed */}
 
 Sample LP file (equivalent to the MPS sample above):
 
-<!-- embed: examples/sample.lp -->
+{/* embed: examples/sample.lp */}
 ```text
 \ Problem name: good-1
 \ Equivalent to sample.mps in this directory.
@@ -669,13 +669,13 @@ Subject To
  ROW2: 2.7 VAR1 + 10.1 VAR2 <= 4.9
 End
 ```
-<!-- /embed -->
+{/* /embed */}
 
 ## Simple Quadratic Programming Example
 
 Builds and solves a small QP with `cuOptCreateProblem` and `cuOptSetQuadraticObjective`.
 
-<!-- embed: examples/simple_qp_example.c -->
+{/* embed: examples/simple_qp_example.c */}
 ```c
 /*
  * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights
@@ -899,13 +899,13 @@ int main()
   }
 }
 ```
-<!-- /embed -->
+{/* /embed */}
 
 ## Simple Second-Order Cone Programming Example
 
 Creates a problem with `cuOptCreateProblem`, then adds a second-order cone constraint with `cuOptAddQuadraticConstraint`. Minimizes `x3` subject to `x1 + x2 >= 2` and `||(x1, x2)||_2 <= x3`. The optimum is `x1 = x2 = 1`, `x3 = sqrt(2)`.
 
-<!-- embed: examples/simple_socp_example.c -->
+{/* embed: examples/simple_socp_example.c */}
 ```c
 /*
  * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights
@@ -1112,13 +1112,13 @@ int main()
   }
 }
 ```
-<!-- /embed -->
+{/* /embed */}
 
 ## Rotated Second-Order Cone Example
 
 Adds a rotated cone `x1^2 + x2^2 <= x3 * x4` (written as `x1^2 + x2^2 - x3*x4 <= 0`). See [Convex Features](convex-features) for all supported RSOC forms. The optimum is `x1 = x2 = 1`, `x3 = x4 = sqrt(2)`.
 
-<!-- embed: examples/rotated_socp_example.c -->
+{/* embed: examples/rotated_socp_example.c */}
 ```c
 /*
  * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights
@@ -1321,13 +1321,13 @@ int main()
   }
 }
 ```
-<!-- /embed -->
+{/* /embed */}
 
 ## General Convex Quadratic Constraint Example
 
 Adds the convex constraint `2*x^2 + 2*x*y + 2*y^2 <= 6` with a non-symmetric Q matrix (the cross-term `2*x*y` is supplied as a single entry). The optimum is `x = y = -1`.
 
-<!-- embed: examples/general_quadratic_example.c -->
+{/* embed: examples/general_quadratic_example.c */}
 ```c
 /*
  * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights
@@ -1534,7 +1534,7 @@ int main()
   }
 }
 ```
-<!-- /embed -->
+{/* /embed */}
 
 ## QP Example With MPS File
 
@@ -1542,7 +1542,7 @@ The same `mps_file_example.c` binary also solves QP problems. A quadratic object
 
 Sample QP file (minimizes `x^2 + y^2` subject to `x + y >= 1`; optimum `x = y = 0.5`, objective `0.5`):
 
-<!-- embed: examples/qp_sample.mps -->
+{/* embed: examples/qp_sample.mps */}
 ```text
 NAME          QPSAMPLE
 ROWS
@@ -1558,7 +1558,7 @@ QUADOBJ
     Y         Y                2.0
 ENDATA
 ```
-<!-- /embed -->
+{/* /embed */}
 
 ## SOCP Example With MPS File
 
@@ -1566,7 +1566,7 @@ SOCP constraints are expressed through `QCMATRIX` sections. Both standard and ro
 
 Sample SOCP file (minimizes `s + p + q` subject to two cones; optimum `s = p = q = sqrt(2)`):
 
-<!-- embed: examples/socp_sample.mps -->
+{/* embed: examples/socp_sample.mps */}
 ```text
 NAME          SOCPSAMPLE
 ROWS
@@ -1596,4 +1596,4 @@ QCMATRIX   QCROT
     Q         P               -0.5
 ENDATA
 ```
-<!-- /embed -->
+{/* /embed */}
