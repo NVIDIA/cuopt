@@ -286,11 +286,12 @@ struct bve_reducer_t {
 // GPU batch-projection backend: bin `cands` by identical shape (nb, na, n_rows, row layout), upload
 // the per-block coefficients/bounds, launch bve_enumerate_kernel once per shape-bin, and fill each
 // candidate's feas/witness from the returned witness table. Replaces the per-block host
-// bve_project.
+// bve_project. Returns a deterministic raw work estimate for the enumerations performed
+// (assignments · nnz).
 template <typename i_t, typename f_t>
-void bve_project_batch_gpu(const raft::handle_t& handle,
-                           std::vector<bve_candidate_t<i_t, f_t>>& cands,
-                           f_t tol);
+double bve_project_batch_gpu(const raft::handle_t& handle,
+                             std::vector<bve_candidate_t<i_t, f_t>>& cands,
+                             f_t tol);
 
 // Build the symmetric implication adjacency (in CURRENT problem-space) from the probing cache:
 // x ~ y iff probing x moves y's bound (y in probing_cache[x][0/1].var_to_cached_bound_map) or vice
@@ -303,13 +304,17 @@ std::vector<std::vector<i_t>> bve_build_impl_adj(const probing_cache_t<i_t, f_t>
                                                  i_t n_vars);
 
 // The pass. `impl_adj` is built by the caller from the probing cache (bve_build_impl_adj).
-// `timer` is the caller's deadline clock (typically the solve-wide global_timer). Returns true iff
-// at least one sanity checked reduction was applied (and the model was rewritten + a
-// trivial_presolve compaction run). tol/Bcap/enumcap/margin mirror the host reference.
+// `timer` is the caller's deadline clock (typically the solve-wide global_timer).
+// `work_units` is set to a deterministic raw estimate of work performed (operation counts;
+// not yet scaled into the shared deterministic work-unit clock). Wall-clock `timer` remains the
+// stop condition today.
+// Returns true iff at least one sanity checked reduction was applied (and the model was rewritten +
+// a trivial_presolve compaction run). tol/Bcap/enumcap/margin mirror the host reference.
 template <typename i_t, typename f_t>
 bool block_bve_presolve(problem_t<i_t, f_t>& problem,
                         const std::vector<std::vector<i_t>>& impl_adj,
                         timer_t& timer,
+                        double& work_units,
                         f_t tol     = static_cast<f_t>(1e-6),
                         int Bcap    = BVE_MAX_BOUNDARY,
                         int enumcap = BVE_MAX_SCOPE,
