@@ -94,6 +94,9 @@ public final class LinearExpression implements ObjectiveExpression {
   }
 
   public LinearExpression dividedBy(double scalar) {
+    if (scalar == 0.0) {
+      throw new IllegalArgumentException("Cannot divide a linear expression by zero");
+    }
     return times(1.0 / scalar);
   }
 

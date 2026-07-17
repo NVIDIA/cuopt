@@ -263,18 +263,21 @@ void mip_get_solution_callback(const cuopt_float_t* solution,
   if (env == nullptr) { return; }
 
   jclass cls = env->GetObjectClass(context->callback);
-  jmethodID method =
-    env->GetMethodID(cls, "onSolution", "([DDDLjava/lang/Object;)V");
-  if (method != nullptr) {
-    std::vector<cuopt_float_t> values(solution, solution + context->num_variables);
-    jdoubleArray solution_array = to_double_array(env, values);
-    env->CallVoidMethod(context->callback,
-                        method,
-                        solution_array,
-                        static_cast<jdouble>(*objective_value),
-                        static_cast<jdouble>(*solution_bound),
-                        context->user_data);
-    env->DeleteLocalRef(solution_array);
+  if (cls != nullptr) {
+    jmethodID method =
+      env->GetMethodID(cls, "onSolution", "([DDDLjava/lang/Object;)V");
+    if (method != nullptr) {
+      std::vector<cuopt_float_t> values(solution, solution + context->num_variables);
+      jdoubleArray solution_array = to_double_array(env, values);
+      env->CallVoidMethod(context->callback,
+                          method,
+                          solution_array,
+                          static_cast<jdouble>(*objective_value),
+                          static_cast<jdouble>(*solution_bound),
+                          context->user_data);
+      env->DeleteLocalRef(solution_array);
+    }
+    env->DeleteLocalRef(cls);
   }
 
   if (detach) { g_jvm->DetachCurrentThread(); }
@@ -293,26 +296,39 @@ void mip_set_solution_callback(cuopt_float_t* solution,
   if (env == nullptr) { return; }
 
   jclass cls = env->GetObjectClass(context->callback);
-  jmethodID method = env->GetMethodID(
-    cls, "getSolution", "(DLjava/lang/Object;)Lcom/nvidia/cuopt/mathematicalprogramming/MIPCallbackSolution;");
-  if (method != nullptr) {
-    jobject callback_solution =
-      env->CallObjectMethod(context->callback, method, static_cast<jdouble>(*solution_bound), context->user_data);
-    if (callback_solution != nullptr) {
-      jclass result_cls = env->GetObjectClass(callback_solution);
-      jfieldID solution_field = env->GetFieldID(result_cls, "solution", "[D");
-      jfieldID objective_field = env->GetFieldID(result_cls, "objectiveValue", "D");
-      if (solution_field != nullptr && objective_field != nullptr) {
-        auto solution_array =
-          static_cast<jdoubleArray>(env->GetObjectField(callback_solution, solution_field));
-        const auto values = get_double_array(env, solution_array);
-        if (values.size() == static_cast<size_t>(context->num_variables)) {
-          std::memcpy(solution, values.data(), values.size() * sizeof(cuopt_float_t));
-          *objective_value =
-            static_cast<cuopt_float_t>(env->GetDoubleField(callback_solution, objective_field));
+  if (cls != nullptr) {
+    jmethodID method = env->GetMethodID(
+      cls, "getSolution", "(DLjava/lang/Object;)Lcom/nvidia/cuopt/mathematicalprogramming/MIPCallbackSolution;");
+    if (method != nullptr) {
+      jobject callback_solution =
+        env->CallObjectMethod(context->callback, method, static_cast<jdouble>(*solution_bound), context->user_data);
+      if (callback_solution != nullptr) {
+        jclass result_cls = env->GetObjectClass(callback_solution);
+        if (result_cls != nullptr) {
+          jfieldID solution_field = env->GetFieldID(result_cls, "solution", "[D");
+          jfieldID objective_field = env->GetFieldID(result_cls, "objectiveValue", "D");
+          if (solution_field != nullptr && objective_field != nullptr) {
+            auto solution_array =
+              static_cast<jdoubleArray>(env->GetObjectField(callback_solution, solution_field));
+            const auto values = get_double_array(env, solution_array);
+            if (values.size() == static_cast<size_t>(context->num_variables)) {
+              std::memcpy(solution, values.data(), values.size() * sizeof(cuopt_float_t));
+              *objective_value =
+                static_cast<cuopt_float_t>(env->GetDoubleField(callback_solution, objective_field));
+            } else {
+              throw_illegal_state(env,
+                                  "MIP set-solution callback returned " +
+                                    std::to_string(values.size()) + " values for " +
+                                    std::to_string(context->num_variables) + " variables");
+            }
+            if (solution_array != nullptr) { env->DeleteLocalRef(solution_array); }
+          }
+          env->DeleteLocalRef(result_cls);
         }
+        env->DeleteLocalRef(callback_solution);
       }
     }
+    env->DeleteLocalRef(cls);
   }
 
   if (detach) { g_jvm->DetachCurrentThread(); }

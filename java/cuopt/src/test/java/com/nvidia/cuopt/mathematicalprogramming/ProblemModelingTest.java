@@ -7,6 +7,7 @@ package com.nvidia.cuopt.mathematicalprogramming;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Map;
@@ -72,22 +73,79 @@ final class ProblemModelingTest {
   }
 
   @Test
+  void csrMatrixRejectsMalformedInputs() {
+    assertThrows(IllegalArgumentException.class, () -> new CSRMatrix(null, new int[0], new int[] {0}));
+    assertThrows(IllegalArgumentException.class, () -> new CSRMatrix(new double[0], null, new int[] {0}));
+    assertThrows(IllegalArgumentException.class, () -> new CSRMatrix(new double[0], new int[0], null));
+    assertThrows(IllegalArgumentException.class, () -> new CSRMatrix(new double[0], new int[0], new int[0]));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new CSRMatrix(new double[0], new int[0], new int[] {1}));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new CSRMatrix(new double[] {1.0}, new int[] {0}, new int[] {0, 2}));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new CSRMatrix(new double[] {1.0}, new int[] {0}, new int[] {0, 1, 0}));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new CSRMatrix(new double[] {1.0}, new int[0], new int[] {0, 1}));
+  }
+
+  @Test
+  void expressionDivisionRejectsZero() {
+    Problem problem = new Problem();
+    Variable x = problem.addVariable();
+
+    assertThrows(IllegalArgumentException.class, () -> LinearExpression.of(x).dividedBy(0.0));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> QuadraticExpression.of(x, x, 1.0).dividedBy(-0.0));
+  }
+
+  @Test
+  void coefficientOnlyObjectiveUpdateInitializesObjectiveExpression() {
+    Problem problem = new Problem();
+    Variable x = problem.addVariable();
+    Variable y = problem.addVariable();
+
+    problem.updateObjective(Map.of(x, 2.0, y, 3.0), null, null);
+
+    assertEquals(0.0, problem.getObjectiveConstant());
+    assertEquals(2.0, problem.getObjective().getLinearExpression().getCoefficient(x));
+    assertEquals(3.0, problem.getObjective().getLinearExpression().getCoefficient(y));
+    assertEquals(2.0, x.getObjectiveCoefficient());
+    assertEquals(3.0, y.getObjectiveCoefficient());
+  }
+
+  @Test
   void updateRelaxAndQuadraticInspectionMatchProblemContracts() {
     Problem problem = new Problem("problem");
     Variable x = problem.addVariable(0.0, 5.0, 1.0, VariableType.INTEGER, "x");
     Variable y = problem.addVariable(0.0, 5.0, 2.0, VariableType.CONTINUOUS, "y");
     Constraint constraint =
         problem.addConstraint(LinearExpression.of(x, 2.0).plus(y).le(7.0), "c");
+    x.setValue(4.0);
+    constraint.setSlack(1.0);
+
+    Variable foreign = new Problem().addVariable();
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> problem.updateConstraint(constraint, Map.of(foreign, 1.0), null));
 
     problem.updateConstraint(constraint, Map.of(x, 1.0), 8.0);
     assertEquals(1.0, constraint.getCoefficient(x));
     assertEquals(8.0, constraint.getRHS());
+    assertTrue(Double.isNaN(x.getValue()));
+    assertTrue(Double.isNaN(constraint.getSlack()));
 
     problem.updateObjective(Map.of(x, 3.0, y, 4.0), 5.0, ObjectiveSense.MAXIMIZE);
     assertEquals(ObjectiveSense.MAXIMIZE, problem.getObjectiveSense());
     assertEquals(5.0, problem.getObjectiveConstant());
     assertEquals(3.0, x.getObjectiveCoefficient());
     assertEquals(4.0, y.getObjectiveCoefficient());
+    assertEquals(3.0, problem.getObjective().getLinearExpression().getCoefficient(x));
+    assertEquals(4.0, problem.getObjective().getLinearExpression().getCoefficient(y));
 
     QuadraticExpression quadratic = QuadraticExpression.of(x, x, 2.0).plus(y, y, 3.0);
     problem.setObjective(quadratic, ObjectiveSense.MINIMIZE);
@@ -113,5 +171,24 @@ final class ProblemModelingTest {
     assertEquals(VariableType.CONTINUOUS, relaxed.getVariable(0).getVariableType());
     assertEquals("x", relaxed.getVariable(0).getVariableName());
     assertEquals("y", relaxed.getVariable(1).getVariableName());
+  }
+
+  @Test
+  void structuralChangesClearSolvedValues() {
+    Problem problem = new Problem();
+    Variable x = problem.addVariable();
+    Constraint constraint = problem.addConstraint(LinearExpression.of(x).le(1.0));
+
+    x.setValue(1.0);
+    constraint.setSlack(0.0);
+    problem.addVariable();
+    assertTrue(Double.isNaN(x.getValue()));
+    assertTrue(Double.isNaN(constraint.getSlack()));
+
+    x.setValue(1.0);
+    constraint.setSlack(0.0);
+    problem.addConstraint(LinearExpression.of(x).ge(0.0));
+    assertTrue(Double.isNaN(x.getValue()));
+    assertTrue(Double.isNaN(constraint.getSlack()));
   }
 }

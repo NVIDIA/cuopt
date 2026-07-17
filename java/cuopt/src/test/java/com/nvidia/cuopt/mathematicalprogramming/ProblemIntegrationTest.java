@@ -10,12 +10,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Stream;
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
 
@@ -29,19 +26,19 @@ final class ProblemIntegrationTest {
   }
 
   private static void verify(CaseSpec testCase) {
-    assumeNativeLibrary();
-    assumeCudaDriverAvailable();
+    NativeTestSupport.assumeNativeLibrary();
+    NativeTestSupport.assumeCudaDriverAvailable();
 
     try (Problem problem = testCase.createProblem()) {
       assertProblemConstruction(testCase, problem);
-      if (testCase.hasQuadraticObjective()) {
+      if (!testCase.shouldSolve()) {
         // QP callability is covered by NativeIntegrationTest. This case owns the independent
         // Problem construction contract for quadratic objectives and constraints.
         return;
       }
       try (SolverSettings settings = createSettings(testCase);
           Solution solution = problem.solve(settings)) {
-        assertSolution(testCase, solution);
+        assertSolution(testCase, problem, solution);
       }
     }
   }
@@ -94,9 +91,11 @@ final class ProblemIntegrationTest {
     }
   }
 
-  private static void assertSolution(CaseSpec testCase, Solution solution) {
+  private static void assertSolution(CaseSpec testCase, Problem problem, Solution solution) {
     assertEquals(testCase.hasIntegerVariables(), solution.isMIP());
     assertEquals(testCase.expectedCategory(), solution.getProblemCategory());
+    assertTrue(problem.isSolved());
+    assertEquals(solution.getTerminationStatus(), problem.getStatus());
     assertTrue(
         Double.isNaN(solution.getSolveTime()) || solution.getSolveTime() >= 0.0,
         "solve time must be non-negative when available");
@@ -106,6 +105,12 @@ final class ProblemIntegrationTest {
           solution.getTerminationStatus() == TerminationStatus.INFEASIBLE
               || solution.getTerminationStatus() == TerminationStatus.UNBOUNDED_OR_INFEASIBLE,
           "expected an infeasible status, got " + solution.getTerminationStatus());
+      for (Variable variable : problem.getVariables()) {
+        assertTrue(Double.isNaN(variable.getReducedCost()));
+      }
+      for (Constraint constraint : problem.getConstraints()) {
+        assertTrue(Double.isNaN(constraint.getDualValue()));
+      }
       return;
     }
 
@@ -157,26 +162,6 @@ final class ProblemIntegrationTest {
       settings.setSetting(CuOptConstants.CUOPT_RELATIVE_GAP_TOLERANCE, 1.0e-7);
     }
     return settings;
-  }
-
-  private static void assumeNativeLibrary() {
-    String nativeDir = System.getProperty("cuopt.native.dir");
-    Assumptions.assumeTrue(nativeDir != null && !nativeDir.isBlank(), "cuopt.native.dir is unset");
-    Assumptions.assumeTrue(
-        Files.exists(Path.of(nativeDir, System.mapLibraryName("cuopt_jni"))),
-        "libcuopt_jni is not built");
-  }
-
-  private static void assumeCudaDriverAvailable() {
-    try {
-      Process process = new ProcessBuilder("nvidia-smi").redirectErrorStream(true).start();
-      Assumptions.assumeTrue(process.waitFor() == 0, "CUDA driver is unavailable");
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      Assumptions.assumeTrue(false, "CUDA driver check was interrupted");
-    } catch (Exception e) {
-      Assumptions.assumeTrue(false, "CUDA driver check failed: " + e.getMessage());
-    }
   }
 
   private static void assertDoubleArrayEquals(
@@ -374,7 +359,8 @@ final class ProblemIntegrationTest {
                 new int[] {0},
                 new double[] {1.0},
                 new int[] {0},
-                new int[] {0}),
+                new int[] {0})
+            .withoutSolve(),
         new CaseSpec(
             "lp_infeasible_status",
             2,
@@ -430,6 +416,7 @@ final class ProblemIntegrationTest {
     private int[] quadraticObjectiveRowOffsets;
     private int[] quadraticObjectiveColumnIndices;
     private double[] quadraticObjectiveValues;
+    private boolean solveCase = true;
 
     private CaseSpec(
         String name,
@@ -592,6 +579,10 @@ final class ProblemIntegrationTest {
       return quadraticObjectiveValues != null;
     }
 
+    private boolean shouldSolve() {
+      return solveCase;
+    }
+
     private boolean hasQuadraticConstraint() {
       return quadraticConstraintValues != null;
     }
@@ -663,6 +654,11 @@ final class ProblemIntegrationTest {
       this.quadraticConstraintValues = Arrays.copyOf(values, values.length);
       this.quadraticConstraintRows = Arrays.copyOf(rows, rows.length);
       this.quadraticConstraintColumns = Arrays.copyOf(columns, columns.length);
+      return this;
+    }
+
+    private CaseSpec withoutSolve() {
+      this.solveCase = false;
       return this;
     }
 

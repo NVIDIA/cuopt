@@ -66,7 +66,7 @@ jobs:
       contents: read
     uses: rapidsai/shared-workflows/.github/workflows/compute-matrix.yaml@main
     with:
-      build_type: pull-request
+      build_type: ${{ inputs.build_type || 'branch' }}
       matrix_name: conda-cpp-build
       matrix_filter: map(select(.ARCH == "amd64"))
   java-build:
@@ -87,7 +87,7 @@ jobs:
       branch: ${{ inputs.branch }}
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
-      node_type: "gpu-l4-latest-1"
+      node_type: "cpu4"
       arch: "amd64"
       container_image: "rapidsai/ci-conda:26.08-cuda${{ matrix.CUDA_VER }}-${{ matrix.LINUX_VER }}-py${{ matrix.PY_VER }}"
       script: "ci/build_java.sh"

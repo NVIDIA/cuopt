@@ -7,13 +7,15 @@ package com.nvidia.cuopt.mathematicalprogramming;
 import java.lang.ref.Cleaner;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 final class NativeProblem implements AutoCloseable {
   private static final Cleaner CLEANER = Cleaner.create();
   private final NativeHandle nativeHandle;
   private final Cleaner.Cleanable cleanable;
-  private final List<String> quadraticConstraintNames = new ArrayList<>();
+  private final Map<Integer, String> quadraticConstraintNames = new HashMap<>();
 
   private NativeProblem(long handle) {
     this.nativeHandle = new NativeHandle(handle);
@@ -188,6 +190,7 @@ final class NativeProblem implements AutoCloseable {
       linearCoefficients[i] = entry.getValue();
       i++;
     }
+    int rowIndex = getNumConstraints();
     NativeCuOpt.addQuadraticConstraint(
         handle(),
         quadraticRows(expression),
@@ -197,7 +200,7 @@ final class NativeProblem implements AutoCloseable {
         linearCoefficients,
         constraint.getSense().nativeValue(),
         constraint.getRHS());
-    quadraticConstraintNames.add(constraint.getConstraintName());
+    quadraticConstraintNames.put(rowIndex, constraint.getConstraintName());
     return this;
   }
 
@@ -208,8 +211,9 @@ final class NativeProblem implements AutoCloseable {
       Object[] entry = (Object[]) nativeConstraints[i];
       int rowIndex = ((int[]) entry[0])[0];
       String rowName = (String) entry[1];
-      if (i < quadraticConstraintNames.size() && !quadraticConstraintNames.get(i).isEmpty()) {
-        rowName = quadraticConstraintNames.get(i);
+      String addedName = quadraticConstraintNames.get(rowIndex);
+      if (addedName != null && !addedName.isEmpty()) {
+        rowName = addedName;
       }
       ConstraintSense sense = ConstraintSense.fromNative(((byte[]) entry[2])[0]);
       double rhs = ((double[]) entry[5])[0];

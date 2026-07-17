@@ -12,27 +12,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 
 final class NativeIntegrationTest {
-  private static void assumeNativeLibrary() {
-    String nativeDir = System.getProperty("cuopt.native.dir");
-    Assumptions.assumeTrue(nativeDir != null && !nativeDir.isBlank(), "cuopt.native.dir is unset");
-    Assumptions.assumeTrue(
-        Files.exists(Path.of(nativeDir, System.mapLibraryName("cuopt_jni"))),
-        "libcuopt_jni is not built");
-  }
-
   @Test
   void solverSettingNamesAreAvailable() {
-    assumeNativeLibrary();
+    NativeTestSupport.assumeNativeLibrary();
     assertTrue(SolverSettings.getSolverSettingNames().contains(CuOptConstants.CUOPT_TIME_LIMIT));
   }
 
   @Test
   void settingsExposeTypedValuesAndSettingsFileRoundTrip() throws Exception {
-    assumeNativeLibrary();
+    NativeTestSupport.assumeNativeLibrary();
     Path file = Files.createTempFile("cuopt-java-settings-", ".cfg");
     try (SolverSettings settings = new SolverSettings()) {
       settings.setSetting(CuOptConstants.CUOPT_LOG_TO_CONSOLE, false);
@@ -69,8 +60,8 @@ final class NativeIntegrationTest {
 
   @Test
   void solvesSmallLPAndReportsStats() {
-    assumeNativeLibrary();
-    assumeCudaDriverAvailable();
+    NativeTestSupport.assumeNativeLibrary();
+    NativeTestSupport.assumeCudaDriverAvailable();
     try (Problem problem = tinyLP();
         SolverSettings settings = new SolverSettings().setMethod(SolverMethod.PDLP);
         Solution solution = problem.solve(settings)) {
@@ -86,8 +77,8 @@ final class NativeIntegrationTest {
 
   @Test
   void solvesProblemApiMIPAndLifecycleCloseIsIdempotent() {
-    assumeNativeLibrary();
-    assumeCudaDriverAvailable();
+    NativeTestSupport.assumeNativeLibrary();
+    NativeTestSupport.assumeCudaDriverAvailable();
     Problem problem = new Problem("integer");
     Variable x = problem.addVariable(0, 10, 1.0, VariableType.INTEGER, "x");
     problem.addConstraint(LinearExpression.of(x).ge(1.0));
@@ -106,8 +97,8 @@ final class NativeIntegrationTest {
 
   @Test
   void solvesSmallQP() {
-    assumeNativeLibrary();
-    assumeCudaDriverAvailable();
+    NativeTestSupport.assumeNativeLibrary();
+    NativeTestSupport.assumeCudaDriverAvailable();
     try (Problem problem = tinyLP()) {
       Variable x0 = problem.getVariable(0);
       Variable x1 = problem.getVariable(1);
@@ -124,7 +115,7 @@ final class NativeIntegrationTest {
 
   @Test
   void rejectsMissingFileThroughCuOptException() {
-    assumeNativeLibrary();
+    NativeTestSupport.assumeNativeLibrary();
     CuOptException exception =
         assertThrows(CuOptException.class, () -> Problem.read("missing-file-does-not-exist.mps"));
     assertEquals(CuOptConstants.CUOPT_MPS_FILE_ERROR, exception.getStatusCode());
@@ -132,8 +123,8 @@ final class NativeIntegrationTest {
 
   @Test
   void writesAndReadsMPSThroughReadAndParseMPS() throws Exception {
-    assumeNativeLibrary();
-    assumeCudaDriverAvailable();
+    NativeTestSupport.assumeNativeLibrary();
+    NativeTestSupport.assumeCudaDriverAvailable();
     Path file = Files.createTempFile("cuopt-java-roundtrip-", ".mps");
     try {
       try (Problem source = tinyLP()) {
@@ -160,16 +151,4 @@ final class NativeIntegrationTest {
     return problem;
   }
 
-  private static void assumeCudaDriverAvailable() {
-    try {
-      Process process = new ProcessBuilder("nvidia-smi").start();
-      boolean exited = process.waitFor() == 0;
-      Assumptions.assumeTrue(exited, "CUDA driver is unavailable");
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      Assumptions.assumeTrue(false, "CUDA driver check was interrupted");
-    } catch (Exception e) {
-      Assumptions.assumeTrue(false, "CUDA driver check failed: " + e.getMessage());
-    }
-  }
 }

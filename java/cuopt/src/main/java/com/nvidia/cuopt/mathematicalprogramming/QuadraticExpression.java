@@ -106,6 +106,9 @@ public final class QuadraticExpression implements ObjectiveExpression {
   }
 
   public QuadraticExpression dividedBy(double scalar) {
+    if (scalar == 0.0) {
+      throw new IllegalArgumentException("Cannot divide a quadratic expression by zero");
+    }
     return times(1.0 / scalar);
   }
 

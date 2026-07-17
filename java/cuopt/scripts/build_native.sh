@@ -9,18 +9,8 @@ REPO_ROOT="$(cd "${MODULE_DIR}/../.." && pwd)"
 CUOPT_PREFIX="${CUOPT_PREFIX:-${CONDA_PREFIX:-${REPO_ROOT}/.cuopt_env}}"
 BUILD_DIR="${CUOPT_JAVA_NATIVE_BUILD_DIR:-${MODULE_DIR}/build/native}"
 
-if [[ -z "${JAVA_HOME:-}" ]]; then
-  JAVAC_PATH="$(command -v javac || true)"
-  if [[ -n "${JAVAC_PATH}" ]]; then
-    JAVA_HOME="$(dirname "$(dirname "$(readlink -f "${JAVAC_PATH}")")")"
-    export JAVA_HOME
-  fi
-fi
-
-if [[ ! -x "${JAVA_HOME:-}/bin/javac" ]]; then
-  echo "JAVA_HOME must point to a JDK containing bin/javac (Java 11 is required)." >&2
-  exit 1
-fi
+source "${MODULE_DIR}/scripts/java_home.sh"
+cuopt_java_setup_home javac
 
 CMAKE="${CMAKE:-}"
 if [[ -z "${CMAKE}" && -x "${CUOPT_PREFIX}/bin/cmake" ]]; then

@@ -50,7 +50,7 @@ public final class Problem implements AutoCloseable {
         new Variable(
             variables.size(), lowerBound, upperBound, objectiveCoefficient, variableType, name);
     variables.add(variable);
-    solved = false;
+    resetSolvedValues();
     return variable;
   }
 
@@ -62,7 +62,7 @@ public final class Problem implements AutoCloseable {
     constraint.setConstraintName(name);
     constraint.setIndex(constraints.size());
     constraints.add(constraint);
-    solved = false;
+    resetSolvedValues();
     return constraint;
   }
 
@@ -219,7 +219,12 @@ public final class Problem implements AutoCloseable {
     addMIPStarts(actualSettings);
     try (NativeProblem nativeProblem = toNativeProblem()) {
       Solution solution = nativeProblem.solve(actualSettings);
-      populateSolution(solution);
+      try {
+        populateSolution(solution);
+      } catch (RuntimeException | Error e) {
+        solution.close();
+        throw e;
+      }
       return solution;
     } finally {
       if (closeSettings) {
@@ -274,30 +279,14 @@ public final class Problem implements AutoCloseable {
       for (int p = rowOffsets[row]; p < rowOffsets[row + 1]; p++) {
         expression = expression.plus(problem.getVariable(columnIndices[p]), values[p]);
       }
-      ConstraintSense sense = ConstraintSense.fromNative(senses[row]);
-      if (constraintLowerBounds.length > row && constraintUpperBounds.length > row) {
-        if (Double.compare(constraintLowerBounds[row], constraintUpperBounds[row]) == 0) {
-          sense = ConstraintSense.EQ;
-        } else if (Double.compare(constraintLowerBounds[row], rhs[row]) == 0) {
-          sense = ConstraintSense.GE;
-        } else if (Double.compare(constraintUpperBounds[row], rhs[row]) == 0) {
-          sense = ConstraintSense.LE;
-        }
-      }
-      Constraint constraint;
-      switch (sense) {
-        case LE:
-          constraint = expression.le(rhs[row]);
-          break;
-        case GE:
-          constraint = expression.ge(rhs[row]);
-          break;
-        case EQ:
-          constraint = expression.eq(rhs[row]);
-          break;
-        default:
-          throw new IllegalStateException("Unsupported sense " + sense);
-      }
+      Constraint constraint =
+          constraintFromNativeBounds(
+              expression,
+              senses.length > row ? ConstraintSense.fromNative(senses[row]) : null,
+              rhs[row],
+              constraintLowerBounds,
+              constraintUpperBounds,
+              row);
       problem.addConstraint(
           constraint,
           rowNames.length > row && !rowNames[row].isEmpty() ? rowNames[row] : "c" + row);
@@ -397,6 +386,9 @@ public final class Problem implements AutoCloseable {
     }
     if (coefficients != null) {
       for (Map.Entry<Variable, Double> entry : coefficients.entrySet()) {
+        if (!variables.contains(entry.getKey())) {
+          throw new IllegalArgumentException("Constraint variable does not belong to this problem");
+        }
         expression = expression.plus(entry.getKey(), entry.getValue() - constraint.getCoefficient(entry.getKey()));
       }
     }
@@ -439,19 +431,21 @@ public final class Problem implements AutoCloseable {
           }
           quadraticObjective = updatedQuadratic;
         }
-      } else if (constant != null) {
-        linearObjective = LinearExpression.ofConstant(constant);
-        for (Variable variable : variables) {
-          if (variable.getObjectiveCoefficient() != 0.0) {
-            linearObjective = linearObjective.plus(variable, variable.getObjectiveCoefficient());
-          }
-        }
+      } else {
+        linearObjective = objectiveFromVariableCoefficients(constant == null ? 0.0 : constant);
         objectiveSet = true;
       }
     } else if (constant != null) {
-      linearObjective = linearObjective.constant(constant - linearObjective.getConstant());
-      if (quadraticObjective != null) {
-        quadraticObjective = quadraticObjective.plus(LinearExpression.ofConstant(constant - quadraticObjective.getLinearExpression().getConstant()));
+      if (objectiveSet) {
+        linearObjective = linearObjective.constant(constant - linearObjective.getConstant());
+        if (quadraticObjective != null) {
+          quadraticObjective =
+              quadraticObjective.plus(
+                  LinearExpression.ofConstant(
+                      constant - quadraticObjective.getLinearExpression().getConstant()));
+        }
+      } else {
+        linearObjective = objectiveFromVariableCoefficients(constant);
       }
       objectiveSet = true;
     }
@@ -592,29 +586,38 @@ public final class Problem implements AutoCloseable {
   }
 
   private void populateSolution(Solution solution) {
+    resetSolvedValues();
+    status = solution.getTerminationStatus();
+    solveTime = solution.getSolveTime();
+
     double[] primal = solution.getPrimalSolution();
-    for (int i = 0; i < variables.size(); i++) {
-      variables.get(i).setValue(primal[i]);
+    if (primal.length > 0) {
+      for (int i = 0; i < variables.size(); i++) {
+        variables.get(i).setValue(primal[i]);
+      }
     }
     if (!solution.isMIP()) {
       double[] reducedCosts = solution.getReducedCost();
-      for (int i = 0; i < variables.size(); i++) {
-        variables.get(i).setReducedCost(reducedCosts[i]);
+      if (reducedCosts.length > 0) {
+        for (int i = 0; i < variables.size(); i++) {
+          variables.get(i).setReducedCost(reducedCosts[i]);
+        }
       }
       double[] dual = solution.getDualSolution();
       int linearRow = 0;
       for (Constraint constraint : constraints) {
         if (!constraint.isQuadratic()) {
-          constraint.setDualValue(dual[linearRow++]);
+          if (dual.length > linearRow) {
+            constraint.setDualValue(dual[linearRow]);
+          }
+          linearRow++;
         }
       }
     }
     for (Constraint constraint : constraints) {
       constraint.setSlack(constraint.computeSlack());
     }
-    status = solution.getTerminationStatus();
     objectiveValue = solution.getPrimalObjective();
-    solveTime = solution.getSolveTime();
     solved = true;
   }
 
@@ -656,6 +659,64 @@ public final class Problem implements AutoCloseable {
         throw new IllegalArgumentException("Objective variable does not belong to this problem");
       }
       entry.getKey().setObjectiveCoefficient(entry.getValue());
+    }
+  }
+
+  private LinearExpression objectiveFromVariableCoefficients(double constant) {
+    LinearExpression expression = LinearExpression.ofConstant(constant);
+    for (Variable variable : variables) {
+      if (variable.getObjectiveCoefficient() != 0.0) {
+        expression = expression.plus(variable, variable.getObjectiveCoefficient());
+      }
+    }
+    return expression;
+  }
+
+  private static Constraint constraintFromNativeBounds(
+      LinearExpression expression,
+      ConstraintSense sense,
+      double rhs,
+      double[] constraintLowerBounds,
+      double[] constraintUpperBounds,
+      int row) {
+    if (constraintLowerBounds.length > row && constraintUpperBounds.length > row) {
+      double lowerBound = constraintLowerBounds[row];
+      double upperBound = constraintUpperBounds[row];
+      boolean hasLowerBound = !Double.isInfinite(lowerBound);
+      boolean hasUpperBound = !Double.isInfinite(upperBound);
+      if (hasLowerBound && hasUpperBound) {
+        if (Double.compare(lowerBound, upperBound) == 0) {
+          return expression.eq(lowerBound);
+        }
+        throw new IllegalArgumentException(
+            "Ranged constraints are not supported by Problem.read/readMPS: row "
+                + row
+                + " has lower bound "
+                + lowerBound
+                + " and upper bound "
+                + upperBound);
+      }
+      if (hasLowerBound) {
+        return expression.ge(lowerBound);
+      }
+      if (hasUpperBound) {
+        return expression.le(upperBound);
+      }
+    }
+
+    if (sense == null) {
+      throw new IllegalStateException(
+          "Native constraint row " + row + " does not provide bounds or a constraint sense");
+    }
+    switch (sense) {
+      case LE:
+        return expression.le(rhs);
+      case GE:
+        return expression.ge(rhs);
+      case EQ:
+        return expression.eq(rhs);
+      default:
+        throw new IllegalStateException("Unsupported sense " + sense);
     }
   }
 
