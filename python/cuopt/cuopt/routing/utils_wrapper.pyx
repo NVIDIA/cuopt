@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 
@@ -35,14 +35,26 @@ class DatasetDistribution(IntEnum):
     RANDOM_CLUSTERED = dataset_distribution_t.RANDOM_CLUSTERED
 
 
-def generate_dataset(locations=100, asymmetric=True, min_demand=cudf.Series(),
-                     max_demand=cudf.Series(), min_capacities=cudf.Series(),
-                     max_capacities=cudf.Series(), min_service_time=0,
+def generate_dataset(locations=100, asymmetric=True, min_demand=None,
+                     max_demand=None, min_capacities=None,
+                     max_capacities=None, min_service_time=0,
                      max_service_time=0, tw_tightness=0.0,
                      drop_return_trips=0.0, shifts=1,
                      n_vehicle_types=1, n_matrix_types=1,
                      distribution=DatasetDistribution.CLUSTERED,
                      center_box=None, seed=0):
+
+    # Default to empty device series here rather than in the signature:
+    # a cudf.Series() default is constructed at import time and needs a GPU,
+    # which would make importing this module fail on a GPU-less host.
+    if min_demand is None:
+        min_demand = cudf.Series()
+    if max_demand is None:
+        max_demand = cudf.Series()
+    if min_capacities is None:
+        min_capacities = cudf.Series()
+    if max_capacities is None:
+        max_capacities = cudf.Series()
 
     cdef unique_ptr[handle_t] handle_ptr
     handle_ptr.reset(new handle_t())

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import glob
@@ -17,10 +17,10 @@ from cuopt.routing import utils_wrapper
 def generate_dataset(
     locations=100,
     asymmetric=True,
-    min_demand=cudf.Series(),
-    max_demand=cudf.Series(),
-    min_capacities=cudf.Series(),
-    max_capacities=cudf.Series(),
+    min_demand=None,
+    max_demand=None,
+    min_capacities=None,
+    max_capacities=None,
     min_service_time=0,
     max_service_time=0,
     tw_tightness=0.0,
@@ -114,6 +114,18 @@ def generate_dataset(
         Time windows and multi dimension
         capacity for each vehicle.
     """
+    # Default to empty device series here rather than in the signature:
+    # a cudf.Series() default is constructed at import time and needs a GPU,
+    # which would make importing this module fail on a GPU-less host.
+    if min_demand is None:
+        min_demand = cudf.Series()
+    if max_demand is None:
+        max_demand = cudf.Series()
+    if min_capacities is None:
+        min_capacities = cudf.Series()
+    if max_capacities is None:
+        max_capacities = cudf.Series()
+
     if (
         min_demand.shape[0] != max_demand.shape[0]
         or max_demand.shape[0] != min_capacities.shape[0]
