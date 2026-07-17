@@ -221,7 +221,7 @@ jobs:
     uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
-      node_type: "cpu-amd64-latest-4"
+      node_type: "cpu4"
       sha: ${{ inputs.sha }}
       branch: ${{ inputs.branch }}
       date: ${{ inputs.date }}
