@@ -50,6 +50,9 @@ timeout 30m ./ci/run_cuopt_server_pytests.sh \
   --junitxml="${RAPIDS_TESTS_DIR}/junit-wheel-cuopt-server.xml" \
   --verbose --capture=no || FAILED_STEPS+=("pytest cuopt-server (wheel)")
 
+# Run documentation examples
+./ci/test_doc_examples.sh || FAILED_STEPS+=("doc examples")
+
 # Generate nightly test report
 source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/utils/nightly_report_helper.sh"
 generate_nightly_report "wheel-server" --with-python-version
