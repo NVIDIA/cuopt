@@ -22,11 +22,9 @@ fern/
 
 ## Local preview
 
-Activate the docs conda environment (provides `node`, `npm`, `jq`, `numpydoc`,
-`doxygen`, and all other dependencies — the Fern CLI is installed automatically):
+Activate your cuOpt conda environment, then run:
 
 ```bash
-conda activate docs
 ./build.sh docs
 ```
 
