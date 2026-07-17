@@ -210,7 +210,6 @@ jobs:
       package-type: python
       publish-wheel-search-key: cuopt_wheel_python_cuopt-server
   docs-build:
-    needs: [python-build]
     permissions:
       actions: read
       contents: read
