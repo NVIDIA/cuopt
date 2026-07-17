@@ -111,6 +111,27 @@ Keep `i_t` / `f_t` for problem-index and numeric template parameters; use
 RAFT_CUDA_TRY(cudaMemcpy(...));
 ```
 
+### Prefer modern CCCL utilities in device code
+
+When writing or editing CUDA kernels, prefer CCCL / libcu++ helpers over hand-rolled
+bit math, reductions, or integer tricks. They encode the PTX-friendly form and avoid
+boilerplate that compilers often fail to recover from runtime values.
+
+Examples (CUDA 13 / CCCL 3.x era — headers already used elsewhere in `cpp/src`):
+
+| Need | Prefer | Instead of |
+|------|--------|------------|
+| Extract a bitfield / decode packed indices | `cuda::bitfield_extract` (`<cuda/bit>`) | `%` / `/` by a runtime `1 << k` (nvcc usually will not strength-reduce those to mask/shift) |
+| Build a contiguous bit mask | `cuda::bitmask` | Hand-written `((1u << w) - 1u) << start` |
+| Test / round to power of two | `cuda::is_power_of_two`, `next_power_of_two`, `prev_power_of_two` (`<cuda/cmath>`), or `cuda::std::has_single_bit` / `bit_ceil` / `bit_floor` (`<cuda/std/bit>`) | Ad-hoc `(x & (x - 1)) == 0` / manual ceil loops |
+| Divide/mod by a value that is constant for a launch (or across many ops) but not a compile-time constant | `cuda::fast_mod_div` (`<cuda/cmath>`) — construct on the host (or once), pass into the kernel, use `/` `%` / `cuda::div` | Hot-path `idiv` / handwritten libdivide magic |
+| Warp/block algorithms | CUB / CCCL / RAFT primitives already used in-tree | Homegrown shared-memory reductions when an existing primitive fits |
+
+Docs: [CCCL bit extensions](https://nvidia.github.io/cccl/unstable/libcudacxx/extended_api/bit.html),
+[pow2 helpers](https://nvidia.github.io/cccl/unstable/libcudacxx/extended_api/math/pow2.html),
+[`cuda::fast_mod_div`](https://nvidia.github.io/cccl/unstable/libcudacxx/extended_api/math/fast_mod_div.html).
+Check signatures in the installed headers rather than guessing — APIs evolve with CCCL.
+
 ## Memory Management
 
 ```cpp

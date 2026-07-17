@@ -2236,13 +2236,13 @@ void problem_t<i_t, f_t>::set_constraints_from_host_user_problem(
 }
 
 template <typename i_t, typename f_t>
-void problem_t<i_t, f_t>::set_constraint_matrix_from_host(const std::vector<i_t>& offsets_in,
-                                                          const std::vector<i_t>& variables_in,
-                                                          const std::vector<f_t>& coefficients_in,
-                                                          const std::vector<f_t>& row_lower,
-                                                          const std::vector<f_t>& row_upper)
+void problem_t<i_t, f_t>::update_problem_matrix(const std::vector<i_t>& offsets_in,
+                                                const std::vector<i_t>& variables_in,
+                                                const std::vector<f_t>& coefficients_in,
+                                                const std::vector<f_t>& row_lower,
+                                                const std::vector<f_t>& row_upper)
 {
-  raft::common::nvtx::range fun_scope("set_constraint_matrix_from_host");
+  raft::common::nvtx::range fun_scope("update_problem_matrix");
   n_constraints = static_cast<i_t>(row_lower.size());
   cuopt_assert(row_upper.size() == static_cast<size_t>(n_constraints), "row bound size mismatch");
   cuopt_assert(offsets_in.size() == static_cast<size_t>(n_constraints) + 1,
@@ -2262,23 +2262,25 @@ void problem_t<i_t, f_t>::set_constraint_matrix_from_host(const std::vector<i_t>
   row_names.clear();
   integer_fixed_problem = nullptr;
 
-  // n_constraints-sized auxiliary buffers (same bookkeeping as
-  // set_constraints_from_host_user_problem)
+  // Full row rewrite (e.g. block-BVE): previous duals / RHS reductions are for a different
+  // constraint set and must not alias reordered or replaced rows.
   fixing_helpers.reduction_in_rhs.resize(n_constraints, stream);
-  auto prev_dual_size = lp_state.prev_dual.size();
+  thrust::fill(handle_ptr->get_thrust_policy(),
+               fixing_helpers.reduction_in_rhs.begin(),
+               fixing_helpers.reduction_in_rhs.end(),
+               f_t{0});
   lp_state.prev_dual.resize(n_constraints, stream);
-  if (n_constraints > static_cast<i_t>(prev_dual_size)) {
-    thrust::fill(handle_ptr->get_thrust_policy(),
-                 lp_state.prev_dual.begin() + prev_dual_size,
-                 lp_state.prev_dual.end(),
-                 f_t{0});
-  }
+  thrust::fill(
+    handle_ptr->get_thrust_policy(), lp_state.prev_dual.begin(), lp_state.prev_dual.end(), f_t{0});
   handle_ptr->sync_stream();
   RAFT_CHECK_CUDA(stream);
 
   compute_transpose_of_problem();
   combined_bounds.resize(n_constraints, stream);
   pdlp::combine_constraint_bounds<i_t, f_t>(*this, combined_bounds);
+  // Constraint graph changed; defer representation checks until callers finish column compaction
+  // (e.g. trivial_presolve after empty interiors).
+  recompute_auxilliary_data(false);
 }
 
 template <typename i_t, typename f_t>

@@ -31,7 +31,6 @@
 
 #include <omp.h>
 #include <algorithm>
-#include <chrono>
 #include <cmath>
 #include <limits>
 #include <memory>
@@ -42,20 +41,13 @@
 #include <vector>
 
 // ============================================================================================
-// TEST-ONLY reference/oracle for the block-BVE pass (NOT part of production — in the pass,
-// projection runs on the GPU). Gives the tests a trusted, independent yardstick, reopening
-// namespace ...::mip so the tests below can call e.g. mip::bve_project_and_check:
-//   * bve_project / bve_project_and_check — the host ENUMERATION projection, ported bit-for-bit
-//   from
+// TEST-ONLY host enumeration oracle for the block-BVE pass (NOT production — projection there
+// runs on the GPU). Reopens namespace ...::mip so tests can call e.g. mip::bve_project_and_check:
+//   * bve_project / bve_project_and_check — host ENUMERATION projection, ported bit-for-bit from
 //     the validated reference cpufj_sc22/bve_blocks.cpp (itself checked against `bveblk`). The
 //     differential oracle for the GPU kernel: for any block, the GPU's feas/witness must equal
-//     these. This is what pins projection correctness, which the inline sanity check
-//     (bve_sanity_check) does NOT — the sanity check trusts feas and only verifies the clauses
-//     reproduce it.
-//   * bve_detect_closure / bve_detect_minfill — the sequential host-projection detectors: coverage
-//   and
-//     parity references for the production bve_detect_closure_batched (minfill reproduces bveblk's
-//     block counts exactly). bve_host_try_commit is the host stage->project->commit they share.
+//     these. This pins projection correctness, which the inline sanity check (bve_sanity_check)
+//     does NOT — the sanity check trusts feas and only verifies the clauses reproduce it.
 // ============================================================================================
 namespace cuopt::mathematical_optimization::mip {
 
@@ -113,12 +105,12 @@ inline void bve_project(const bve_block_t<f_t>& blk, f_t tol, uint8_t* feas, uin
 // Full per-block core on the host: project -> prime-implicate CNF -> growth gate -> inline sanity
 // check. The production commit_projected does the same, but reads feas/witness from the GPU instead
 // of the host bve_project above.
-template <typename f_t>
+template <typename i_t, typename f_t>
 inline bve_status_t bve_project_and_check(const bve_block_t<f_t>& blk,
                                           f_t tol,
-                                          int margin,
+                                          i_t margin,
                                           bve_clause_t* clauses,
-                                          int* n_clauses,
+                                          i_t* n_clauses,
                                           uint32_t* witness)
 {
   *n_clauses = 0;
@@ -128,139 +120,12 @@ inline bve_status_t bve_project_and_check(const bve_block_t<f_t>& blk,
 
   uint8_t feas[BVE_MAX_PATTERNS];
   bve_project(blk, tol, feas, witness);
-  const int nc = bve_prime_implicates(feas, blk.nb, clauses, BVE_MAX_CLAUSES);
+  const i_t nc = bve_prime_implicates<i_t, f_t>(feas, blk.nb, clauses, BVE_MAX_CLAUSES);
   if (nc < 0) return bve_status_t::kSkipGrowth;  // clause explosion past cap
   if (nc > blk.n_rows + margin) return bve_status_t::kSkipGrowth;
-  if (!bve_sanity_check(feas, blk.nb, clauses, nc)) return bve_status_t::kSkipCheckFailed;
+  if (!bve_sanity_check<i_t, f_t>(feas, blk.nb, clauses, nc)) return bve_status_t::kSkipCheckFailed;
   *n_clauses = nc;
   return bve_status_t::kReduced;
-}
-
-// ---- host reference detectors ----
-
-// Host stage -> host bve_project -> commit_projected. The monolithic path the reference detectors
-// use (the production pass instead batches many stages into one GPU launch, then commit_projected
-// each).
-template <typename i_t, typename f_t>
-inline bool bve_host_try_commit(bve_reducer_t<i_t, f_t>& R, const std::vector<i_t>& interior_in)
-{
-  bve_candidate_t<i_t, f_t> cand;
-  if (!R.stage(interior_in, cand)) return false;
-  bve_project(cand.blk, R.tol, cand.feas, cand.witness);
-  return R.commit_projected(cand);
-}
-
-template <typename i_t, typename f_t>
-inline std::vector<i_t> bve_seed_order(const bve_reducer_t<i_t, f_t>& R)
-{
-  std::vector<i_t> order;
-  for (i_t c = 0; c < R.n_vars; ++c)
-    if (R.is_bin[c] && !R.col2rows[c].empty() && !R.obj_nz[c]) order.push_back(c);
-  std::sort(order.begin(), order.end(), [&](i_t a, i_t b) {
-    return R.col2rows[a].size() < R.col2rows[b].size();
-  });
-  return order;
-}
-
-// PRODUCTION-EQUIVALENT reference (sequential host projection): implication-closure block growth
-// over the probing-cache adjacency using min-fill's shrink criterion. Coverage/parity reference for
-// the production bve_detect_closure_batched.
-template <typename i_t, typename f_t>
-bve_plan_t<i_t, f_t> bve_detect_closure(bve_reducer_t<i_t, f_t>& R,
-                                        const std::vector<std::vector<i_t>>& impl_adj,
-                                        double tbudget_s = 180.0)
-{
-  auto has_adj = [&](i_t v) {
-    return static_cast<size_t>(v) < impl_adj.size() && !impl_adj[v].empty();
-  };
-  auto eligible = [&](i_t w) {
-    return R.is_bin[w] && !R.obj_nz[w] && !R.done[w] && !R.col2rows[w].empty();
-  };
-  std::vector<i_t> order;
-  for (i_t c = 0; c < R.n_vars; ++c)
-    if (R.is_bin[c] && !R.obj_nz[c] && !R.col2rows[c].empty() && has_adj(c)) order.push_back(c);
-  std::sort(order.begin(), order.end(), [&](i_t a, i_t b) {
-    return R.col2rows[a].size() < R.col2rows[b].size();
-  });
-
-  auto t0 = std::chrono::steady_clock::now();
-  for (i_t seed : order) {
-    if (std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() > tbudget_s)
-      break;
-    if (R.done[seed] || R.col2rows[seed].empty()) continue;
-
-    std::unordered_set<i_t> A = {seed};
-    // absorb the implication-connected candidate that most shrinks the boundary, until none does
-    for (;;) {
-      std::vector<i_t> Av(A.begin(), A.end());
-      const int cur = R.boundary_size(Av);
-      std::unordered_set<i_t> cands;
-      for (i_t a : A)
-        if (has_adj(a))
-          for (i_t w : impl_adj[a])
-            if (!A.count(w) && eligible(w)) cands.insert(w);
-      i_t best    = static_cast<i_t>(-1);
-      int best_nb = cur;
-      for (i_t w : cands) {
-        std::vector<i_t> cand = Av;
-        cand.push_back(w);
-        const int na = static_cast<int>(cand.size());
-        const int nb = R.boundary_size(cand);
-        if (nb < best_nb && na + nb <= R.enumcap && na <= BVE_MAX_INTERIOR) {
-          best_nb = nb;
-          best    = w;
-        }
-      }
-      if (best < 0) break;
-      A.insert(best);
-    }
-    std::vector<i_t> interior(A.begin(), A.end());
-    bve_host_try_commit(R, interior);
-  }
-  return R.finalize();
-}
-
-// ORACLE / COVERAGE REFERENCE: faithful port of bve_blocks.cpp min-fill growth. Reproduces bveblk's
-// block counts bit-for-bit; used to validate the projection core and as a coverage target.
-template <typename i_t, typename f_t>
-bve_plan_t<i_t, f_t> bve_detect_minfill(bve_reducer_t<i_t, f_t>& R, double tbudget_s = 180.0)
-{
-  std::vector<i_t> order = bve_seed_order(R);
-  auto t0                = std::chrono::steady_clock::now();
-  for (i_t seed : order) {
-    if (std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() > tbudget_s)
-      break;
-    if (R.done[seed] || R.col2rows[seed].empty()) continue;
-
-    std::unordered_set<i_t> A = {seed};
-    std::unordered_set<i_t> G(R.col2rows[seed].begin(), R.col2rows[seed].end());
-    while (static_cast<int>(A.size()) < 40) {
-      std::vector<i_t> bnd = R.boundary_of(G, A);
-      int bestsz           = static_cast<int>(bnd.size());
-      i_t bestv            = static_cast<i_t>(-1);
-      std::unordered_set<i_t> bestG;
-      for (i_t v : bnd) {
-        if (!R.is_bin[v] || R.obj_nz[v]) continue;
-        std::unordered_set<i_t> nG = G;
-        for (i_t r : R.col2rows[v])
-          nG.insert(r);
-        std::unordered_set<i_t> nA = A;
-        nA.insert(v);
-        int nsz = static_cast<int>(R.boundary_of(nG, nA).size());
-        if (nsz < bestsz) {
-          bestsz = nsz;
-          bestv  = v;
-          bestG  = std::move(nG);
-        }
-      }
-      if (bestv < 0) break;
-      A.insert(bestv);
-      G = std::move(bestG);
-    }
-    std::vector<i_t> interior(A.begin(), A.end());
-    bve_host_try_commit(R, interior);
-  }
-  return R.finalize();
 }
 
 }  // namespace cuopt::mathematical_optimization::mip
@@ -394,13 +259,13 @@ TEST(block_bve_core, sanity_check_rejects_corrupted_clauses)
   // feasible-pattern array for the block above (b=c=1 is the only infeasible pattern)
   const uint8_t feas[4]              = {1, 1, 1, 0};
   const mip::bve_clause_t correct[1] = {{3u, 3u}};  // b + c <= 1
-  EXPECT_TRUE(mip::bve_sanity_check(feas, 2, correct, 1));
+  EXPECT_TRUE((mip::bve_sanity_check<int, double>(feas, 2, correct, 1)));
 
   // dropping the clause entirely: the CNF would accept b=c=1, but feas forbids it -> rejected
-  EXPECT_FALSE(mip::bve_sanity_check(feas, 2, correct, 0));
+  EXPECT_FALSE((mip::bve_sanity_check<int, double>(feas, 2, correct, 0)));
   // a wrong clause (forbid b=1 only) makes a genuinely feasible pattern look infeasible -> rejected
   const mip::bve_clause_t wrong[1] = {{1u, 1u}};
-  EXPECT_FALSE(mip::bve_sanity_check(feas, 2, wrong, 1));
+  EXPECT_FALSE((mip::bve_sanity_check<int, double>(feas, 2, wrong, 1)));
 }
 
 // Build a random block LAYOUT (na/nb/n_rows + sparsity pattern), coefficients/bounds left unset.
@@ -489,107 +354,7 @@ TEST(block_bve_projection, gpu_batch_matches_host_oracle)
   }
 }
 
-// helper: extract host CSR + bounds + types + obj from a parsed model
-static void model_to_host(const io::mps_data_model_t<int, double>& m,
-                          std::vector<int>& offsets,
-                          std::vector<int>& variables,
-                          std::vector<double>& coefficients,
-                          std::vector<double>& row_lower,
-                          std::vector<double>& row_upper,
-                          std::vector<double>& col_lower,
-                          std::vector<double>& col_upper,
-                          std::vector<uint8_t>& is_integer,
-                          std::vector<double>& obj)
-{
-  offsets      = m.get_constraint_matrix_offsets();
-  variables    = m.get_constraint_matrix_indices();
-  coefficients = m.get_constraint_matrix_values();
-  row_lower    = m.get_constraint_lower_bounds();
-  row_upper    = m.get_constraint_upper_bounds();
-  col_lower    = m.get_variable_lower_bounds();
-  col_upper    = m.get_variable_upper_bounds();
-  obj          = m.get_objective_coefficients();
-  auto types   = m.get_variable_types();  // mps_data_model uses 'I'/'C' chars, not var_t
-  is_integer.resize(types.size());
-  for (size_t i = 0; i < types.size(); ++i)
-    is_integer[i] = (types[i] == 'I') ? 1 : 0;
-}
-
-// build a proxy implication adjacency: binary vars co-occurring in a row are connected
-static std::vector<std::vector<int>> row_share_adjacency(int n_vars,
-                                                         const std::vector<int>& offsets,
-                                                         const std::vector<int>& variables,
-                                                         const std::vector<uint8_t>& is_integer,
-                                                         const std::vector<double>& col_lower,
-                                                         const std::vector<double>& col_upper)
-{
-  std::vector<std::unordered_set<int>> adj(n_vars);
-  const int n_rows = static_cast<int>(offsets.size()) - 1;
-  for (int r = 0; r < n_rows; ++r) {
-    std::vector<int> bins;
-    for (int k = offsets[r]; k < offsets[r + 1]; ++k) {
-      int c = variables[k];
-      if (is_integer[c] && col_lower[c] == 0.0 && col_upper[c] == 1.0) bins.push_back(c);
-    }
-    for (size_t i = 0; i < bins.size(); ++i)
-      for (size_t j = i + 1; j < bins.size(); ++j) {
-        adj[bins[i]].insert(bins[j]);
-        adj[bins[j]].insert(bins[i]);
-      }
-  }
-  std::vector<std::vector<int>> out(n_vars);
-  for (int v = 0; v < n_vars; ++v)
-    out[v].assign(adj[v].begin(), adj[v].end());
-  return out;
-}
-
-// --- 3. closure detector eliminates the aux and emits the one no-good ---
-TEST(block_bve_detect, closure_eliminates_aux)
-{
-  auto model = io::read_lp_from_string<int, double>(kBlockLp);
-  std::vector<int> offsets, variables;
-  std::vector<double> coefficients, row_lower, row_upper, col_lower, col_upper, obj;
-  std::vector<uint8_t> is_integer;
-  model_to_host(model,
-                offsets,
-                variables,
-                coefficients,
-                row_lower,
-                row_upper,
-                col_lower,
-                col_upper,
-                is_integer,
-                obj);
-  const int n_vars = static_cast<int>(col_lower.size());
-  const int n_rows = static_cast<int>(offsets.size()) - 1;
-  auto impl_adj = row_share_adjacency(n_vars, offsets, variables, is_integer, col_lower, col_upper);
-
-  mip::bve_reducer_t<int, double> reducer(n_vars,
-                                          n_rows,
-                                          offsets,
-                                          variables,
-                                          coefficients,
-                                          row_lower,
-                                          row_upper,
-                                          col_lower,
-                                          col_upper,
-                                          is_integer,
-                                          obj,
-                                          1e-6,
-                                          mip::BVE_MAX_BOUNDARY,
-                                          mip::BVE_MAX_SCOPE,
-                                          0);
-  auto plan = mip::bve_detect_closure(reducer, impl_adj, 30.0);
-
-  EXPECT_EQ(plan.n_blocks, 1);
-  EXPECT_EQ(plan.n_elim_cols, 1);  // exactly `a`
-  EXPECT_EQ(plan.reductions.size(), 1u);
-  EXPECT_EQ(plan.reductions[0].interior.size(), 1u);
-  EXPECT_EQ(plan.reductions[0].boundary.size(), 2u);  // b and c
-  EXPECT_EQ(plan.added_rows.size(), 1u);              // the b + c <= 1 no-good
-}
-
-// --- 4. end-to-end: run the pass on a problem_t, then reconstruct through postsolve ---
+// --- 3. end-to-end: run the pass on a problem_t, then reconstruct through postsolve ---
 TEST(block_bve_presolve, end_to_end_reduction_and_reconstruction)
 {
   const raft::handle_t handle_{};
