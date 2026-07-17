@@ -667,7 +667,9 @@ void branch_and_bound_t<i_t, f_t>::set_solution_from_submip(
   mutex_original_lp_.unlock();
   settings_.log.debug_format("SubMIP found a feasible solution with obj={:.4g}", obj);
   bool success = set_solution_from_heuristics(user_sol, heuristics_origin_t::SUBMIP);
-  if (success) submip_stats_.save_success(fixrate);
+  if (success) rins_stats_.save_success(fixrate);
+
+  if (settings_.solution_callback != nullptr) { settings_.solution_callback(user_sol, obj); }
 }
 
 template <typename i_t, typename f_t>
@@ -2191,7 +2193,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
 
   if (!feasible) {
     // This should never happen since we are fixing bounds that are already in the incumbent.
-    submip_stats_.save_infeasible(fixrate);
+    rins_stats_.save_infeasible(fixrate);
     return;
   }
 
@@ -2257,7 +2259,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   if (presolver_status == third_party_presolve_status_t::INFEASIBLE ||
       presolver_status == third_party_presolve_status_t::UNBNDORINFEAS ||
       presolver_status == third_party_presolve_status_t::UNBOUNDED) {
-    submip_stats_.save_infeasible(fixrate);
+    rins_stats_.save_infeasible(fixrate);
     return;
   }
 
@@ -2373,7 +2375,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
 
   if (submip_status == mip_status_t::NUMERICAL) { return; }
   if (submip_status == mip_status_t::INFEASIBLE || submip_status == mip_status_t::UNBOUNDED) {
-    submip_stats_.save_infeasible(fixrate);
+    rins_stats_.save_infeasible(fixrate);
     return;
   }
 
@@ -2441,7 +2443,7 @@ void fix_variable(i_t j,
 
 template <typename i_t, typename f_t>
 void apply_rins_fixings(const simplex_solver_settings_t<i_t, f_t>& settings,
-                        const std::vector<f_t>& node_solution,
+                        const std::vector<f_t>& current_sol,
                         const std::vector<i_t>& fractional,
                         const std::vector<f_t>& current_incumbent,
                         i_t max_var_fixed,
@@ -2452,8 +2454,8 @@ void apply_rins_fixings(const simplex_solver_settings_t<i_t, f_t>& settings,
 {
   for (i_t j : fractional) {
     if (std::abs(lower[j] - upper[j]) <= settings.fixed_tol) { continue; }
-    if (std::abs(node_solution[j] - current_incumbent[j]) <= settings.integer_tol) {
-      f_t fixed_val = std::round(node_solution[j]);
+    if (std::abs(current_sol[j] - current_incumbent[j]) <= settings.integer_tol) {
+      f_t fixed_val = std::round(current_sol[j]);
       fix_variable(j, lower, upper, bounds_changed, fixed_val);
       ++num_var_fixed;
       if (num_var_fixed >= max_var_fixed) break;
@@ -2522,7 +2524,7 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* rins_worker,
   i_t submip_level       = settings_.submip_settings.level + 1;
   std::string log_prefix = std::format("[RINS {}] ", submip_level);
 
-  ++submip_stats_.total_calls;
+  ++rins_stats_.total_calls;
 
   bool has_submip          = false;
   const f_t abs_fathom_tol = settings_.absolute_mip_gap_tol / 10;
@@ -2556,7 +2558,7 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* rins_worker,
   i_t num_integers = integer_list.size();
 
   f_t max_fixrate =
-    submip_get_max_fixrate(submip_stats_, settings_.submip_settings, rins_worker->rng);
+    submip_get_max_fixrate(rins_stats_, settings_.submip_settings, rins_worker->rng);
   f_t min_fixrate   = std::min(settings_.submip_settings.min_fixrate, max_fixrate);
   i_t max_var_fixed = max_fixrate * num_integers;
   i_t min_var_fixed = min_fixrate * num_integers;
@@ -2567,7 +2569,7 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* rins_worker,
     // current incumbent, considering only the fractional values in the current node
     i_t prev_num_fixed = num_var_fixed;
     apply_rins_fixings(settings_,
-                       node_solution,
+                       current_sol,
                        fractional,
                        current_incumbent,
                        max_var_fixed,
@@ -2596,7 +2598,7 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* rins_worker,
       // RINS neighbourhood 2: Search the entire list of integer variables where the current
       // LP solution matches the current incumbent.
       apply_rins_fixings(settings_,
-                         node_solution,
+                         current_sol,
                          integer_list,
                          current_incumbent,
                          max_var_fixed,
@@ -2692,7 +2694,7 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* rins_worker,
     // found a solution that improved the incumbent, then do a DFS with a backtrack_limit of 5
     // levels up to try to find a feasible solution quickly from the neighbourhood.
     if (fixrate < settings_.submip_settings.min_fixrate_cap ||
-        (settings_.inside_submip && submip_stats_.total_success != 0)) {
+        (settings_.inside_submip && rins_stats_.total_success != 0)) {
       // We need to re-populate the vstatus of the node since it was previously cleared.
       rins_worker->start_node                = std::move(node);
       rins_worker->start_node.packed_vstatus = simplex::compress_vstatus(rins_worker->leaf_vstatus);
@@ -2740,9 +2742,9 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* rins_worker,
     "{}success={}, infeasible={}, calls={}, fixrate={:.4g} ({}), max_fixrate={:.4g} ({}), "
     "min_fixrate={:.4g} ({})\n",
     log_prefix,
-    submip_stats_.total_success.load(),
-    submip_stats_.total_infeasible.load(),
-    submip_stats_.total_calls.load(),
+    rins_stats_.total_success.load(),
+    rins_stats_.total_infeasible.load(),
+    rins_stats_.total_calls.load(),
     fixrate,
     num_var_fixed,
     max_fixrate,
@@ -3849,22 +3851,23 @@ Producer Sync:
   Producing solutions in the past would break determinism, therefore this unidirectional sync
 ensures no such thing can occur. Instrumentation Aggregator: Collects multiple instrument vectors
 into a single aggregation point for estimating work from memory operations. Worker Context: Object
-representing the "context" (e.g.: the worker) that should register the amount of work recorded
-There is a 1context:1worker mapping. The Work Unit Scheduler registers such contexts and ensure
-they remained synchronized together. Queued Integer Solutions: New integer solutions found within
-horizons are queued with a work unit timestamp, in order to be sorted and played in order during
-the sync callback. Creation Sequence: In nondeterministic mode, a single global atomic integer is
-used to generate sequential IDs for the nodes. Since this is a global atomic, it is inherently
+representing the "context" (e.g.: the worker) that should register the amount of work recorded There
+is a 1context:1worker mapping. The Work Unit Scheduler registers such contexts and ensure they
+remained synchronized together. Queued Integer Solutions: New integer solutions found within
+horizons are queued with a work unit timestamp, in order to be sorted and played in order during the
+sync callback. Creation Sequence: In nondeterministic mode, a single global atomic integer is used
+to generate sequential IDs for the nodes. Since this is a global atomic, it is inherently
 nondeterministic. To fix this, in deterministic mode, nodes are addressed by a tuple <worker_id,
 seq_id>
-  where "worker_id" is the ID of the worker that created this node, and "seq_id" is a sequential
-ID local to the worker.\ This sequential ID is similar in principle to the global atomic ID
-sequence of the nondeterminsitic mode but since it is local to each worker, it is updated serially
-and thus is deterministic. worker IDs are unique, and sequence IDs are unique to their workers,
-therefor <worker_id, seq_id> is a globally unique node identifier. Pseudocost Update: Each worker
-updates its local pseudocosts when branching. These updates are queued within horizons. During the
-horizon sync, these updates are all played in order, and the newly updated global pseudocosts are
-broadcast to the worker's pseudocost snapshots for the coming horizon.
+  where "worker_id" is the ID of the worker that created this node, and "seq_id" is a sequential ID
+local to the worker.\ This sequential ID is similar in principle to the global atomic ID sequence of
+the nondeterminsitic mode but since it is local to each worker, it is updated serially and thus is
+deterministic. worker IDs are unique, and sequence IDs are unique to their workers, therefor
+  <worker_id, seq_id> is a globally unique node identifier.
+Pseudocost Update:
+  Each worker updates its local pseudocosts when branching. These updates are queued within
+horizons. During the horizon sync, these updates are all played in order, and the newly updated
+global pseudocosts are broadcast to the worker's pseudocost snapshots for the coming horizon.
 
 */
 
@@ -3974,8 +3977,7 @@ void branch_and_bound_t<i_t, f_t>::run_deterministic_coordinator(const csr_matri
     "Sync%% | NoWork\n");
   settings_.log.printf(
     "  "
-    "-------+---------+----------+--------+---------+--------+----------+----------+-------+-----"
-    "--"
+    "-------+---------+----------+--------+---------+--------+----------+----------+-------+-------"
     "\n");
   for (const auto& worker : *deterministic_workers_) {
     double sync_time    = worker.work_context.total_sync_time;

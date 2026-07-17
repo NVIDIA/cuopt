@@ -246,11 +246,6 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
                           std::vector<i_t>& new_slacks,
                           dualize_info_t<i_t, f_t>& dualize_info);
 
-// Inverse of convert_user_problem (LP/MIP only): reconstruct a range-form
-// user_problem from a simplex standard-form lp_problem, dropping the
-// slack/artificial columns recorded in new_slacks. var_types spans the full
-// simplex problem (structural + slack columns) and is filtered to the
-// structural columns.
 template <typename i_t, typename f_t>
 void convert_lp_to_user_problem(const lp_problem_t<i_t, f_t>& lp,
                                 const std::vector<variable_type_t>& var_types,

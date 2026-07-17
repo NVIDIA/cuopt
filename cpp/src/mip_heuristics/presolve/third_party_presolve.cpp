@@ -688,10 +688,6 @@ void build_user_problem(papilo::Problem<f_t> const& papilo_problem,
       problem.row_sense.push_back('G');
       problem.rhs.push_back(lhs[r]);
     } else if (!lhs_inf && !rhs_inf) {
-      // lhs <= a^T x <= rhs : a range row. Match the convention used by get_host_user_problem and
-      // convert_simplex_problem (row_sense 'E' anchored at the lower bound, width in range_value).
-      // Storing it as 'L' left range rows out of convert_user_problem's equality_rows, which broke
-      // add_artifical_variables' `range_rows subset of equality_rows` invariant (j != num_cols).
       problem.row_sense.push_back('E');
       problem.rhs.push_back(lhs[r]);
       problem.range_rows.push_back(r);
@@ -1050,10 +1046,10 @@ third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_to_subprob
 
   papilo::Problem<f_t> papilo_problem = build_papilo_problem(problem);
 
-  settings.log.printf("Sub-MIP presolve input: %d constraints, %d variables, %d nonzeros",
-                      papilo_problem.getNRows(),
-                      papilo_problem.getNCols(),
-                      papilo_problem.getConstraintMatrix().getNnz());
+  settings.log.debug("Presolve input: %d constraints, %d variables, %d nonzeros",
+                     papilo_problem.getNRows(),
+                     papilo_problem.getNCols(),
+                     papilo_problem.getConstraintMatrix().getNnz());
 
   papilo::Presolve<f_t> papilo_presolver;
   set_presolve_methods(papilo_presolver, problem_category_t::MIP, dual_postsolve);
@@ -1084,10 +1080,10 @@ third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_to_subprob
   const i_t reduced_rows = papilo_problem.getNRows();
   const i_t reduced_cols = papilo_problem.getNCols();
   const i_t reduced_nnz  = papilo_problem.getConstraintMatrix().getNnz();
-  settings.log.printf("Sub-MIP presolve removed: %d constraints, %d variables, %d nonzeros",
-                      orig_rows - reduced_rows,
-                      orig_cols - reduced_cols,
-                      orig_nnz - reduced_nnz);
+  settings.log.debug("Presolve removed: %d constraints, %d variables, %d nonzeros",
+                     orig_rows - reduced_rows,
+                     orig_cols - reduced_cols,
+                     orig_nnz - reduced_nnz);
 
   // Presolve fully solved the problem.
   if (reduced_rows == 0 && reduced_cols == 0) { status = third_party_presolve_status_t::OPTIMAL; }

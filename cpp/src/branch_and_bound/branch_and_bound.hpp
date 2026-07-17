@@ -272,8 +272,9 @@ class branch_and_bound_t {
   // Worker pool dedicated to diving
   diving_worker_pool_t<i_t, f_t> diving_worker_pool_;
 
+  // Worker pool dedicated to recursive RINS
   diving_worker_pool_t<i_t, f_t> rins_worker_pool_;
-  submip_stats_t submip_stats_;
+  submip_stats_t rins_stats_;
 
   // Global status of the solver.
   omp_atomic_t<mip_status_t> solver_status_;

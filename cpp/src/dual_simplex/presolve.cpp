@@ -470,11 +470,12 @@ i_t convert_greater_to_less(const user_problem_t<i_t, f_t>& user_problem,
 template <typename f_t>
 row_bounds_t<f_t> get_range_bounds_from_sense(char row_sense, f_t rhs, f_t range_value)
 {
-  const f_t r = std::abs(range_value);
-  if (row_sense == 'L') { return {rhs - r, rhs}; }
-  if (row_sense == 'G') { return {rhs, rhs + r}; }
+  const f_t abs_r = std::abs(range_value);
+  if (row_sense == 'L') { return {rhs - abs_r, rhs}; }
+  if (row_sense == 'G') { return {rhs, rhs + abs_r}; }
   // 'E' with a range becomes a two-sided row
-  return range_value > 0 ? row_bounds_t<f_t>{rhs, rhs + r} : row_bounds_t<f_t>{rhs - r, rhs};
+  return range_value > 0 ? row_bounds_t<f_t>{rhs, rhs + abs_r}
+                         : row_bounds_t<f_t>{rhs - abs_r, rhs};
 }
 
 template <typename i_t, typename f_t>
