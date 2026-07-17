@@ -347,10 +347,11 @@ jobs:
       enable_check_generated_files: false
   conda-cpp-build:
     needs: [checks, compute-matrix-filters, changed-files]
-    # Consumed by conda-cpp-tests and conda-python-build.
+    # Consumed by conda-cpp-tests, conda-python-build, and (transitively) docs-build.
     if: >-
       fromJSON(needs.changed-files.outputs.changed_file_groups).test_cpp ||
-      fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_conda
+      fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_conda ||
+      fromJSON(needs.changed-files.outputs.changed_file_groups).build_docs
     permissions:
       actions: read
       contents: read
@@ -398,9 +399,10 @@ jobs:
       continue-on-error: true
   conda-python-build:
     needs: [conda-cpp-build, changed-files]
-    # Consumed by conda-python-tests.
+    # Consumed by conda-python-tests and docs-build.
     if: >-
-      fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_conda
+      fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_conda ||
+      fromJSON(needs.changed-files.outputs.changed_file_groups).build_docs
     permissions:
       actions: read
       contents: read
@@ -429,7 +431,7 @@ jobs:
       script-env-secret-1-key: CODECOV_TOKEN
       script-env-secret-1-value: ${{ secrets.CODECOV_TOKEN }}
   docs-build:
-    needs: [changed-files]
+    needs: [conda-python-build, changed-files]
     permissions:
       actions: read
       contents: read

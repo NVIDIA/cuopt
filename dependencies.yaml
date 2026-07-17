@@ -73,6 +73,9 @@ files:
   docs:
     output: none
     includes:
+      - cuda_version
+      - depends_on_libcuopt
+      - depends_on_cuopt
       - docs
       - py_version
   py_build_libcuopt:
