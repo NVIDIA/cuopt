@@ -113,6 +113,12 @@ repos:
       - id: zizmor
   - repo: local
     hooks:
+      - id: update-fern-install-version
+        name: Update Fern install version script
+        entry: python ci/utils/update_fern_install_version.py
+        language: system
+        pass_filenames: false
+        files: ^VERSION$
       - id: sync-skills-version
         name: Sync skills version from VERSION
         entry: ci/utils/sync_skills_version.sh

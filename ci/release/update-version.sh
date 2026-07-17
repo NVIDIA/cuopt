@@ -133,6 +133,10 @@ sed_runner 's/\(tag: "\)[0-9][0-9]\.[0-9]\+\.[0-9]\+\(-cuda12\.9-py3\.12"\)/\1'$
 sed_runner 's/\(appVersion: \)[0-9][0-9]\.[0-9]\+\.[0-9]\+/\1'${DOCKER_TAG}'/g' helmchart/cuopt-server/Chart.yaml
 sed_runner 's/\(version: \)[0-9][0-9]\.[0-9]\+\.[0-9]\+/\1'${DOCKER_TAG}'/g' helmchart/cuopt-server/Chart.yaml
 
+# Update Fern docs version switcher and install widget
+python ci/utils/update_fern_versions.py
+python ci/utils/update_fern_install_version.py
+
 # CI files - context-aware branch references and version updates
 for FILE in .github/workflows/*.yaml; do
   sed_runner "/shared-workflows/ s|@.*|@${RAPIDS_BRANCH_NAME}|g" "${FILE}"
