@@ -22,8 +22,12 @@ fern/
 
 ## Local preview
 
+Activate the docs conda environment (provides `node`, `npm`, `jq`, `numpydoc`,
+`doxygen`, and all other dependencies — the Fern CLI is installed automatically):
+
 ```bash
-bash fern/build_docs.sh
+conda activate docs
+./build.sh docs
 ```
 
 Opens at http://localhost:3000. Regenerates all API docs before starting.
