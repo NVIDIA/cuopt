@@ -209,6 +209,25 @@ jobs:
       package-name: cuopt_server
       package-type: python
       publish-wheel-search-key: cuopt_wheel_python_cuopt-server
+  docs-build:
+    needs: [python-build]
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      packages: read
+      pull-requests: read
+    secrets: inherit # zizmor: ignore[secrets-inherit]
+    uses: rapidsai/shared-workflows/.github/workflows/custom-job.yaml@main
+    with:
+      build_type: ${{ inputs.build_type || 'branch' }}
+      node_type: "cpu-amd64-latest-4"
+      sha: ${{ inputs.sha }}
+      branch: ${{ inputs.branch }}
+      date: ${{ inputs.date }}
+      arch: "amd64"
+      container_image: "rapidsai/ci-conda:26.08-latest"
+      script: "ci/build_docs.sh"
   wheel-build-cuopt-sh-client:
     permissions:
       actions: read
@@ -290,6 +309,7 @@ jobs:
     needs:
       - tests
       - build-images
+      - docs-build
     permissions:
       contents: read
     runs-on: linux-amd64-cpu4
