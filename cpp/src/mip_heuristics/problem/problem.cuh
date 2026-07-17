@@ -337,7 +337,7 @@ class problem_t {
   std::vector<std::string> row_names{};
   /** name of the objective (only a single objective is currently allowed) */
   std::string objective_name;
-  f_t objective_offset;
+  f_t objective_offset{0};
   bool is_scaled_{false};
   bool preprocess_called{false};
   bool objective_is_integral{false};

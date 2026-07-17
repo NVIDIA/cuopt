@@ -50,7 +50,8 @@ std::vector<recombiner_enum_t> recombiner_t<i_t, f_t>::enabled_recombiners;
 // Convert the CURRENT (solver-space, post-presolve) problem_t into an owning io::mps_data_model_t,
 // so the model can be serialized without problem_t depending on the MPS writer. Free-function
 // adapter, mirroring simplex_problem_to_mps_data_model. Minimization sense (solver space); the
-// writer generates default variable/row names.
+// writer generates default variable/row names. Problem NAME is taken from original_problem_ptr
+// when present, otherwise "cuopt".
 template <typename i_t, typename f_t>
 static cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> problem_to_mps_data_model(
   const problem_t<i_t, f_t>& problem)
@@ -94,7 +95,13 @@ static cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> problem_
     model.set_variable_types(var_types);
   }
   model.set_objective_scaling_factor(f_t(1.0));  // solver-space objective is written as-is
-  model.set_objective_offset(problem.objective_offset);
+  model.set_objective_offset(problem.presolve_data.objective_offset);
+  if (problem.original_problem_ptr != nullptr &&
+      !problem.original_problem_ptr->get_problem_name().empty()) {
+    model.set_problem_name(problem.original_problem_ptr->get_problem_name());
+  } else {
+    model.set_problem_name("cuopt");
+  }
   return model;
 }
 
