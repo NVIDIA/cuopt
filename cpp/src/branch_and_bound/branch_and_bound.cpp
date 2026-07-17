@@ -1506,7 +1506,7 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   branch_and_bound_worker_t<i_t, f_t>* worker,
   branch_and_bound_stats_t<i_t, f_t>& stats,
   logger_t& log,
-  i_t iter_limit)
+  int64_t iter_limit)
 {
   raft::common::nvtx::range scope("BB::solve_node");
 #ifdef DEBUG_BRANCHING
@@ -2212,6 +2212,7 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   submip_settings.strong_branching_simplex_iteration_limit = 50;
   submip_settings.submip_settings.level                    = submip_level;
   submip_settings.log.log                                  = false;
+  submip_settings.benchmark_info_ptr                       = nullptr;
 
 #ifdef DEBUG_SUBMIP
   submip_settings.log.log_prefix = std::format("{}{}", settings_.log.log_prefix, worker->worker_id);
@@ -2314,7 +2315,12 @@ void branch_and_bound_t<i_t, f_t>::solve_submip(diving_worker_t<i_t, f_t>* worke
   std::vector<f_t> presolved_incumbent;
   presolver.crush_primal_solution(submip_problem, current_incumbent, presolved_incumbent);
   submip_bnb.set_initial_guess(presolved_incumbent);
-  submip_bnb.set_initial_upper_bound(upper_bound_.load());
+
+  const f_t user_upper = compute_user_objective(original_lp_, upper_bound_.load());
+  const f_t submip_cutoff =
+    user_upper / submip_bnb.original_lp_.obj_scale - submip_bnb.original_lp_.obj_constant;
+  submip_bnb.set_initial_upper_bound(submip_cutoff);
+
   submip_bnb.set_initial_pseudocost(pc_, presolver.get_reduced_to_original_map());
 
   if (submip_halt_callback_) {
