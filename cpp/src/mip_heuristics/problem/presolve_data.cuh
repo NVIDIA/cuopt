@@ -28,6 +28,8 @@ class solution_t;
 template <typename i_t, typename f_t>
 class third_party_presolve_t;
 
+// Discovery-time probing substitution (current-space ids). Flattened and remapped before append to
+// reconstructions.
 template <typename i_t, typename f_t>
 struct substitution_t {
   f_t timestamp;
@@ -37,15 +39,20 @@ struct substitution_t {
   f_t coefficient;
 };
 
-// A nonlinear block reconstruction recorded by the block-BVE presolve pass. The `interior` columns
-// were eliminated by exact projection onto `boundary`, so their values are recovered at postsolve
-// by looking up the boundary bit-pattern in `witness`: bit j of the lookup pattern is boundary[j]'s
-// value, and bit k of witness[pattern] is interior[k]'s recovered value. Indices are in the space
-// BEFORE this pass's trivial_presolve (the same frame the affine variable_substitutions use). These
-// are replayed in REVERSE commit order, because a boundary column of one block may be the interior
-// of a later block.
-template <typename i_t>
-struct block_reconstruction_t {
+// GPU-presolve value reconstructions, append-only in commit order. Replayed in REVERSE order in
+// post_process_assignment so multi-round probe→BVE stacks undo as reverse chronology. All variable
+// indices are in the post-Papilo frame (variable_mapping values).
+enum class reconstruction_kind_t : uint8_t { AffineSub = 0, BlockBve = 1 };
+
+template <typename i_t, typename f_t>
+struct reconstruction_t {
+  reconstruction_kind_t kind{};
+  // AffineSub: x[substituted_var] = offset + coefficient * x[substituting_var]
+  i_t substituting_var{};
+  i_t substituted_var{};
+  f_t offset{};
+  f_t coefficient{};
+  // BlockBve: interiors recovered from witness[pattern(boundary)]
   std::vector<i_t> interior;
   std::vector<i_t> boundary;
   std::vector<uint32_t> witness;  // size 2^boundary.size()
@@ -79,8 +86,7 @@ class presolve_data_t {
       papilo_reduced_to_original_map(other.papilo_reduced_to_original_map),
       papilo_original_to_reduced_map(other.papilo_original_to_reduced_map),
       papilo_original_num_variables(other.papilo_original_num_variables),
-      variable_substitutions(other.variable_substitutions),
-      block_reconstructions(other.block_reconstructions)
+      reconstructions(other.reconstructions)
   {
   }
 
@@ -94,8 +100,7 @@ class presolve_data_t {
                                fixed_var_assignment.begin(),
                                fixed_var_assignment.end(),
                                0.);
-    variable_substitutions.clear();
-    block_reconstructions.clear();
+    reconstructions.clear();
   }
 
   void reset_additional_vars(const problem_t<i_t, f_t>& problem, const raft::handle_t* handle_ptr)
@@ -147,14 +152,9 @@ class presolve_data_t {
   std::vector<i_t> papilo_reduced_to_original_map{};
   std::vector<i_t> papilo_original_to_reduced_map{};
   i_t papilo_original_num_variables{0};
-  // Variable substitutions from probing: x_substituted = offset + coefficient * x_substituting
-  // Applied in post_process_assignment to recover substituted variable values
-  std::vector<substitution_t<i_t, f_t>> variable_substitutions;
-  // Nonlinear block reconstructions from the block-BVE presolve pass, in commit order. Replayed in
-  // REVERSE order in post_process_assignment, before the affine variable_substitutions (probing
-  // recorded substitutions first; BVE may eliminate a substitution source that must be restored
-  // before the affine rule runs).
-  std::vector<block_reconstruction_t<i_t>> block_reconstructions;
+  // Append-only GPU-presolve reconstruction log (AffineSub from probing, BlockBve from block-BVE).
+  // post_process_assignment replays in reverse append order.
+  std::vector<reconstruction_t<i_t, f_t>> reconstructions;
 };
 
 }  // namespace mathematical_optimization::mip

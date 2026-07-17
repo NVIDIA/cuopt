@@ -21,7 +21,9 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/timer.hpp>
 
+#include <algorithm>
 #include <chrono>
+#include <iterator>
 #include <unordered_set>
 #include <utilities/omp_helpers.hpp>
 
@@ -713,36 +715,53 @@ void apply_substitution_queue_to_problem(
   std::vector<f_t> offset_values;
   std::vector<f_t> coefficient_values;
 
-  // Get variable_mapping to convert current indices to original indices
+  // Get variable_mapping to convert current indices to post-Papilo frame
   auto h_variable_mapping =
     host_copy(problem.presolve_data.variable_mapping, problem.handle_ptr->get_stream());
   problem.handle_ptr->sync_stream();
 
+  // Collect AffineSub reconstructions, then append in deterministic order (by substituted_var).
+  std::vector<reconstruction_t<i_t, f_t>> batch_recs;
+  batch_recs.reserve(all_substitutions.size());
   for (const auto& [substituting_var, substitutions] : all_substitutions) {
     for (const auto& [substituted_var, substitution] : substitutions) {
       CUOPT_LOG_TRACE("Applying substitution: %d -> %d",
                       substitution.substituting_var,
                       substitution.substituted_var);
+      cuopt_assert(substitution.substituted_var >= 0 &&
+                     substitution.substituted_var < (i_t)h_variable_mapping.size(),
+                   "substituted_var out of variable_mapping range");
+      cuopt_assert(substitution.substituting_var >= 0 &&
+                     substitution.substituting_var < (i_t)h_variable_mapping.size(),
+                   "substituting_var out of variable_mapping range");
       var_indices.push_back(substitution.substituted_var);
       substituting_var_indices.push_back(substitution.substituting_var);
       offset_values.push_back(substitution.offset);
       coefficient_values.push_back(substitution.coefficient);
 
-      // Store substitution for post-processing (convert to original variable IDs)
-      substitution_t<i_t, f_t> sub;
-      sub.timestamp        = substitution.timestamp;
-      sub.substituted_var  = h_variable_mapping[substitution.substituted_var];
-      sub.substituting_var = h_variable_mapping[substitution.substituting_var];
-      sub.offset           = substitution.offset;
-      sub.coefficient      = substitution.coefficient;
-      problem.presolve_data.variable_substitutions.push_back(sub);
-      CUOPT_LOG_TRACE("Stored substitution for post-processing: x[%d] = %f + %f * x[%d]",
-                      sub.substituted_var,
-                      sub.offset,
-                      sub.coefficient,
-                      sub.substituting_var);
+      reconstruction_t<i_t, f_t> rec;
+      rec.kind             = reconstruction_kind_t::AffineSub;
+      rec.substituted_var  = h_variable_mapping[substitution.substituted_var];
+      rec.substituting_var = h_variable_mapping[substitution.substituting_var];
+      rec.offset           = substitution.offset;
+      rec.coefficient      = substitution.coefficient;
+      batch_recs.push_back(std::move(rec));
+      CUOPT_LOG_TRACE("Stored AffineSub for post-processing: x[%d] = %f + %f * x[%d]",
+                      batch_recs.back().substituted_var,
+                      batch_recs.back().offset,
+                      batch_recs.back().coefficient,
+                      batch_recs.back().substituting_var);
     }
   }
+  std::sort(batch_recs.begin(),
+            batch_recs.end(),
+            [](const reconstruction_t<i_t, f_t>& a, const reconstruction_t<i_t, f_t>& b) {
+              return a.substituted_var < b.substituted_var;
+            });
+  auto& recs = problem.presolve_data.reconstructions;
+  recs.insert(recs.end(),
+              std::make_move_iterator(batch_recs.begin()),
+              std::make_move_iterator(batch_recs.end()));
 
   if (!var_indices.empty()) {
     problem.substitute_variables(
@@ -862,6 +881,9 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
                            size_t step_size_hint)
 {
   raft::common::nvtx::range fun_scope("compute_probing_cache");
+  // Drop any prior cache: keys are original-frame ids for a previous column set. Re-probing after
+  // BVE/compaction must not mix stale implications into bve_build_impl_adj.
+  bound_presolve.probing_cache.probing_cache.clear();
   // Align original_ids / reverse_original_ids with variable_mapping before writing cache keys.
   // A prior trivial_presolve(..., remap_cache_ids=false) can compact columns without updating
   // those maps; readers (and bve_build_impl_adj) treat cache keys as original-frame ids.
