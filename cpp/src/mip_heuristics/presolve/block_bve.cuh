@@ -99,6 +99,9 @@ static constexpr int BVE_MAX_ROW_LEN  = 24;  // nnz within one block row (interi
 static constexpr int BVE_MAX_NNZ      = BVE_MAX_ROWS * BVE_MAX_ROW_LEN;
 static constexpr int BVE_MAX_CLAUSES  = 64;                     // <= |rows| for any committed block
 static constexpr int BVE_MAX_PATTERNS = 1 << BVE_MAX_BOUNDARY;  // 256
+// Cap peak device allocation in bve_project_batch_gpu: each shape-bin is processed in chunks so
+// that num * (nnz + 2*nrows + 2^nb) buffers stay within this budget.
+static constexpr size_t BVE_PROJECT_DEVICE_BUDGET = 64ull << 20;  // 64 MiB
 
 // One block handed to the projection core. All variable references are LOCAL to the block: local id
 // v in [0, na) is an interior (to-be-eliminated) variable; v in [na, na+nb) is boundary variable
@@ -284,7 +287,8 @@ struct bve_reducer_t {
 #ifdef __CUDACC__
 
 // GPU batch-projection backend: bin `cands` by identical shape (nb, na, n_rows, row layout), upload
-// the per-block coefficients/bounds, launch bve_enumerate_kernel once per shape-bin, and fill each
+// the per-block coefficients/bounds, launch bve_enumerate_kernel once per shape-bin chunk (chunk
+// size derived from BVE_PROJECT_DEVICE_BUDGET so peak allocation stays bounded), and fill each
 // candidate's feas/witness from the returned witness table. Replaces the per-block host
 // bve_project. Returns a deterministic raw work estimate for the enumerations performed
 // (assignments · nnz).

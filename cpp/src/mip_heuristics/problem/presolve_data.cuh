@@ -151,7 +151,9 @@ class presolve_data_t {
   // Applied in post_process_assignment to recover substituted variable values
   std::vector<substitution_t<i_t, f_t>> variable_substitutions;
   // Nonlinear block reconstructions from the block-BVE presolve pass, in commit order. Replayed in
-  // REVERSE order in post_process_assignment, after the affine variable_substitutions.
+  // REVERSE order in post_process_assignment, before the affine variable_substitutions (probing
+  // recorded substitutions first; BVE may eliminate a substitution source that must be restored
+  // before the affine rule runs).
   std::vector<block_reconstruction_t<i_t>> block_reconstructions;
 };
 

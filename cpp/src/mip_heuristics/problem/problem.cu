@@ -2266,7 +2266,7 @@ void problem_t<i_t, f_t>::set_constraint_matrix_from_host(const std::vector<i_t>
   cuopt::device_copy(constraint_upper_bounds, row_upper, stream);
 
   // the previous row set is gone: drop stale row names and any fixed-problem cache
-  if (row_names.size() != static_cast<size_t>(n_constraints)) row_names.clear();
+  row_names.clear();
   integer_fixed_problem = nullptr;
 
   // n_constraints-sized auxiliary buffers (same bookkeeping as

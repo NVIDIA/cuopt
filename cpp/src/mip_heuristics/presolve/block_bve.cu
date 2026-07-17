@@ -469,71 +469,85 @@ double bve_project_batch_gpu(const raft::handle_t& handle,
     const i_t nb                    = proto.nb;
     const i_t nrows                 = proto.n_rows;
     const i_t nnz                   = proto.row_off[nrows];
-    const i_t num                   = static_cast<i_t>(idxs.size());
-    const i_t patterns              = static_cast<i_t>(1) << nb;
+    const i_t patterns              = (i_t(1) << nb);
 
-    // ---- host staging: shared layout once, per-block coeffs/bounds concatenated ----
+    // Shared layout is O(nnz) and identical for every candidate in the bin.
     std::vector<i_t> h_row_start(proto.row_off, proto.row_off + nrows + 1);
     std::vector<i_t> h_local_var(proto.row_var, proto.row_var + nnz);
-    std::vector<f_t> h_coeffs(static_cast<size_t>(num) * nnz);
-    std::vector<f_t> h_lower(static_cast<size_t>(num) * nrows);
-    std::vector<f_t> h_upper(static_cast<size_t>(num) * nrows);
-    for (size_t g = 0; g < idxs.size(); ++g) {
-      const auto& blk = cands[idxs[g]].blk;
-      std::copy(blk.row_coef, blk.row_coef + nnz, h_coeffs.begin() + g * nnz);
-      std::copy(blk.row_lo, blk.row_lo + nrows, h_lower.begin() + g * nrows);
-      std::copy(blk.row_up, blk.row_up + nrows, h_upper.begin() + g * nrows);
-    }
-
-    // ---- device upload ----
     rmm::device_uvector<i_t> d_row_start(h_row_start.size(), stream);
     rmm::device_uvector<i_t> d_local_var(h_local_var.size(), stream);
-    rmm::device_uvector<f_t> d_coeffs(h_coeffs.size(), stream);
-    rmm::device_uvector<f_t> d_lower(h_lower.size(), stream);
-    rmm::device_uvector<f_t> d_upper(h_upper.size(), stream);
-    rmm::device_uvector<uint32_t> d_witness(static_cast<size_t>(num) * patterns, stream);
     raft::copy(d_row_start.data(), h_row_start.data(), h_row_start.size(), stream);
     raft::copy(d_local_var.data(), h_local_var.data(), h_local_var.size(), stream);
-    raft::copy(d_coeffs.data(), h_coeffs.data(), h_coeffs.size(), stream);
-    raft::copy(d_lower.data(), h_lower.data(), h_lower.size(), stream);
-    raft::copy(d_upper.data(), h_upper.data(), h_upper.size(), stream);
-    // sentinel 0xFFFFFFFF (every byte 0xFF) marks a boundary pattern with no feasible interior yet
-    RAFT_CUDA_TRY(
-      cudaMemsetAsync(d_witness.data(), 0xFF, d_witness.size() * sizeof(uint32_t), stream));
 
-    // ---- launch: one warp per row, one CTA per (block, m, am) assignment, grid-strided ----
-    const int num_warps   = std::min<i_t>(nrows, 32);
-    const int cta_dim     = num_warps * 32;
-    const size_t shmem    = static_cast<size_t>(nrows) * sizeof(uint8_t);
-    const long long total = static_cast<long long>(num) * patterns * (static_cast<i_t>(1) << na);
-    const int grid        = static_cast<int>(std::min<long long>(total, 65535));
-    bve_enumerate_kernel<i_t, f_t><<<grid, cta_dim, shmem, stream>>>(num,
-                                                                     nb,
-                                                                     na,
-                                                                     nrows,
-                                                                     tol,
-                                                                     d_coeffs.data(),
-                                                                     d_local_var.data(),
-                                                                     d_row_start.data(),
-                                                                     d_lower.data(),
-                                                                     d_upper.data(),
-                                                                     d_witness.data());
-    RAFT_CUDA_TRY(cudaGetLastError());
+    // Per-block device cost: coeffs + row bounds + witness table.
+    const size_t bytes_per_block = size_t(nnz) * sizeof(f_t) + 2 * size_t(nrows) * sizeof(f_t) +
+                                   size_t(patterns) * sizeof(uint32_t);
+    // Also clamp to i_t range: the kernel takes num_blocks as i_t.
+    const size_t chunk =
+      std::max<size_t>(1,
+                       std::min(size_t(std::numeric_limits<i_t>::max()),
+                                BVE_PROJECT_DEVICE_BUDGET / std::max<size_t>(1, bytes_per_block)));
 
-    // Closed-form work: one assignment evaluates nnz coefficient multiplies.
-    work_units += total * nnz;
+    const int num_warps = std::min<i_t>(nrows, 32);
+    const int cta_dim   = num_warps * 32;
+    const size_t shmem  = size_t(nrows) * sizeof(uint8_t);
 
-    // ---- readback: witness sentinel -> feas; smallest feasible interior -> witness ----
-    std::vector<uint32_t> h_witness(static_cast<size_t>(num) * patterns);
-    raft::copy(h_witness.data(), d_witness.data(), h_witness.size(), stream);
-    handle.sync_stream();
-    for (size_t g = 0; g < idxs.size(); ++g) {
-      auto& cand = cands[idxs[g]];
-      for (i_t m = 0; m < patterns; ++m) {
-        const uint32_t w    = h_witness[g * patterns + m];
-        const bool feasible = (w != 0xFFFFFFFFu);
-        cand.feas[m]        = feasible ? 1 : 0;
-        cand.witness[m]     = feasible ? w : 0u;
+    for (size_t offset = 0; offset < idxs.size(); offset += chunk) {
+      const size_t num_sz = std::min(chunk, idxs.size() - offset);
+      const i_t num       = i_t(num_sz);
+
+      std::vector<f_t> h_coeffs(num_sz * size_t(nnz));
+      std::vector<f_t> h_lower(num_sz * size_t(nrows));
+      std::vector<f_t> h_upper(num_sz * size_t(nrows));
+      for (size_t g = 0; g < num_sz; ++g) {
+        const auto& blk = cands[idxs[offset + g]].blk;
+        std::copy(blk.row_coef, blk.row_coef + nnz, h_coeffs.begin() + g * nnz);
+        std::copy(blk.row_lo, blk.row_lo + nrows, h_lower.begin() + g * nrows);
+        std::copy(blk.row_up, blk.row_up + nrows, h_upper.begin() + g * nrows);
+      }
+
+      rmm::device_uvector<f_t> d_coeffs(h_coeffs.size(), stream);
+      rmm::device_uvector<f_t> d_lower(h_lower.size(), stream);
+      rmm::device_uvector<f_t> d_upper(h_upper.size(), stream);
+      rmm::device_uvector<uint32_t> d_witness(num_sz * size_t(patterns), stream);
+      raft::copy(d_coeffs.data(), h_coeffs.data(), h_coeffs.size(), stream);
+      raft::copy(d_lower.data(), h_lower.data(), h_lower.size(), stream);
+      raft::copy(d_upper.data(), h_upper.data(), h_upper.size(), stream);
+      // sentinel 0xFFFFFFFF (every byte 0xFF) marks a boundary pattern with no feasible interior
+      // yet
+      RAFT_CUDA_TRY(
+        cudaMemsetAsync(d_witness.data(), 0xFF, d_witness.size() * sizeof(uint32_t), stream));
+
+      // one warp per row, one CTA per (block, m, am) assignment, grid-strided
+      const int64_t total = (int64_t)num * (int64_t)patterns * ((int64_t)1 << na);
+      const int grid      = (int)std::min<int64_t>(total, 65535);
+      bve_enumerate_kernel<i_t, f_t><<<grid, cta_dim, shmem, stream>>>(num,
+                                                                       nb,
+                                                                       na,
+                                                                       nrows,
+                                                                       tol,
+                                                                       d_coeffs.data(),
+                                                                       d_local_var.data(),
+                                                                       d_row_start.data(),
+                                                                       d_lower.data(),
+                                                                       d_upper.data(),
+                                                                       d_witness.data());
+      RAFT_CUDA_TRY(cudaGetLastError());
+
+      // Closed-form work: one assignment evaluates nnz coefficient multiplies.
+      work_units += total * nnz;
+
+      std::vector<uint32_t> h_witness(num_sz * size_t(patterns));
+      raft::copy(h_witness.data(), d_witness.data(), h_witness.size(), stream);
+      handle.sync_stream();
+      for (size_t g = 0; g < num_sz; ++g) {
+        auto& cand = cands[idxs[offset + g]];
+        for (i_t m = 0; m < patterns; ++m) {
+          const uint32_t w    = h_witness[g * patterns + m];
+          const bool feasible = (w != 0xFFFFFFFFu);
+          cand.feas[m]        = feasible ? 1 : 0;
+          cand.witness[m]     = feasible ? w : 0u;
+        }
       }
     }
   }
@@ -859,6 +873,11 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
   // ---- 7. compact the now-empty interior columns and update variable_mapping ----
   trivial_presolve(problem, /*remap_cache_ids=*/true);
   handle->sync_stream();
+  const i_t reduced_cols = n_vars - problem.n_variables;
+  const i_t reduced_rows = n_rows - problem.n_constraints;
+  if (reduced_cols > 0 || reduced_rows > 0) {
+    CUOPT_LOG_DEBUG("Block-BVE reduced %d columns, %d rows", reduced_cols, reduced_rows);
+  }
   return true;
 }
 

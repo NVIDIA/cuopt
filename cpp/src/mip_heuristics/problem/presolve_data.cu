@@ -135,22 +135,9 @@ void presolve_data_t<i_t, f_t>::post_process_assignment(
     }
   }
 
-  // Apply variable substitutions from probing: x_substituted = offset + coefficient *
-  // x_substituting
-  for (const auto& sub : variable_substitutions) {
-    cuopt_assert(sub.substituted_var < (i_t)h_assignment.size(), "substituted_var out of bounds");
-    cuopt_assert(sub.substituting_var < (i_t)h_assignment.size(), "substituting_var out of bounds");
-    h_assignment[sub.substituted_var] =
-      sub.offset + sub.coefficient * h_assignment[sub.substituting_var];
-    CUOPT_LOG_DEBUG("Post-process substitution: x[%d] = %f + %f * x[%d] = %f",
-                    sub.substituted_var,
-                    sub.offset,
-                    sub.coefficient,
-                    sub.substituting_var,
-                    h_assignment[sub.substituted_var]);
-  }
-
-  // Apply nonlinear block reconstructions from the block-BVE presolve pass
+  // Apply nonlinear block reconstructions from the block-BVE presolve pass (before affine
+  // substitutions: probing recorded those first, and BVE may have eliminated a substitution
+  // source that must be restored here first).
   for (auto it = block_reconstructions.rbegin(); it != block_reconstructions.rend(); ++it) {
     const auto& blk = *it;
     cuopt_assert(blk.witness.size() == (size_t{1} << blk.boundary.size()),
@@ -166,6 +153,21 @@ void presolve_data_t<i_t, f_t>::post_process_assignment(
       cuopt_assert(blk.interior[k] < (i_t)h_assignment.size(), "block interior out of bounds");
       h_assignment[blk.interior[k]] = static_cast<f_t>((w >> k) & 1u);
     }
+  }
+
+  // Apply variable substitutions from probing: x_substituted = offset + coefficient *
+  // x_substituting
+  for (const auto& sub : variable_substitutions) {
+    cuopt_assert(sub.substituted_var < (i_t)h_assignment.size(), "substituted_var out of bounds");
+    cuopt_assert(sub.substituting_var < (i_t)h_assignment.size(), "substituting_var out of bounds");
+    h_assignment[sub.substituted_var] =
+      sub.offset + sub.coefficient * h_assignment[sub.substituting_var];
+    CUOPT_LOG_DEBUG("Post-process substitution: x[%d] = %f + %f * x[%d] = %f",
+                    sub.substituted_var,
+                    sub.offset,
+                    sub.coefficient,
+                    sub.substituting_var,
+                    h_assignment[sub.substituted_var]);
   }
 
   // this separate resizing is needed because of the callback
