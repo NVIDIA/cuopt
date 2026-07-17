@@ -6,7 +6,20 @@ import numpy as np
 import cudf
 
 from cuopt import routing
-from cuopt.routing._serialize import to_host_problem
+from cuopt.routing._deferred import _SETTERS
+from cuopt.routing._serialize import _HANDLERS, to_host_problem
+
+
+def test_every_setter_is_exportable():
+    """Every recorded setter must be exportable -- either it has an explicit
+    handler or it maps 1:1 (``set_<field>``). Fails loudly if a new setter is
+    added without an export mapping, instead of silently dropping its data.
+    """
+    unmapped = [
+        n for n in _SETTERS if n not in _HANDLERS and not n.startswith("set_")
+    ]
+    assert not unmapped, f"setters with no export mapping: {unmapped}"
+
 
 COST = np.array(
     [
