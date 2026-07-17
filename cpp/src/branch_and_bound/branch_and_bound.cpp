@@ -1506,7 +1506,7 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
   branch_and_bound_worker_t<i_t, f_t>* worker,
   branch_and_bound_stats_t<i_t, f_t>& stats,
   logger_t& log,
-  int64_t iter_limit)
+  i_t iter_limit)
 {
   raft::common::nvtx::range scope("BB::solve_node");
 #ifdef DEBUG_BRANCHING
@@ -2048,7 +2048,8 @@ void branch_and_bound_t<i_t, f_t>::dive_with(diving_worker_t<i_t, f_t>* worker, 
 
     int64_t bnb_lp_iters = exploration_stats_.total_simplex_iters;
     f_t factor           = settings_.diving_settings.iteration_limit_factor;
-    int64_t max_iter     = factor * bnb_lp_iters - dive_stats.total_simplex_iters;
+    i_t max_iter         = std::min<int64_t>(factor * bnb_lp_iters - dive_stats.total_simplex_iters,
+                                     std::numeric_limits<i_t>::max());
     if (max_iter <= 0) { break; }
 
     decompress_vstatus(
