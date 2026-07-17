@@ -162,9 +162,14 @@ void inline insert_current_probing_to_cache(i_t var_idx,
                                             const std::vector<f_t>& modified_lb,
                                             const std::vector<f_t>& modified_ub,
                                             const std::vector<i_t>& h_integer_indices,
+                                            const std::vector<i_t>& original_ids,
                                             std::atomic<size_t>& n_implied_singletons)
 {
   f_t int_tol = bound_presolve.context.settings.tolerances.integrality_tolerance;
+
+  cuopt_assert(var_idx >= 0 && var_idx < (i_t)original_ids.size(),
+               "probe var out of original_ids range");
+  const i_t var_original = original_ids[var_idx];
 
   cache_entry_t<i_t, f_t> cache_item;
   cache_item.val_interval = probe_val;
@@ -180,18 +185,21 @@ void inline insert_current_probing_to_cache(i_t var_idx,
                    "Lower bound must be greater than or equal to original lower bound");
       cuopt_assert(modified_ub[impacted_var_idx] <= get_upper(original_var_bounds),
                    "Upper bound must be less than or equal to original upper bound");
+      cuopt_assert(impacted_var_idx >= 0 && impacted_var_idx < (i_t)original_ids.size(),
+                   "impacted var out of original_ids range");
       cached_bound_t<f_t> new_bound{modified_lb[impacted_var_idx], modified_ub[impacted_var_idx]};
-      cache_item.var_to_cached_bound_map.insert({impacted_var_idx, new_bound});
+      // Map keys are original-frame ids (same frame as reverse_original_ids / bve_build_impl_adj).
+      cache_item.var_to_cached_bound_map.insert({original_ids[impacted_var_idx], new_bound});
     }
   }
   {
     std::lock_guard<std::mutex> lock(bound_presolve.probing_cache.probing_cache_mutex);
-    if (!bound_presolve.probing_cache.probing_cache.count(var_idx) > 0) {
+    if (!bound_presolve.probing_cache.probing_cache.count(var_original) > 0) {
       std::array<cache_entry_t<i_t, f_t>, 2> entries_per_var;
       entries_per_var[0] = cache_item;
-      bound_presolve.probing_cache.probing_cache.insert({var_idx, entries_per_var});
+      bound_presolve.probing_cache.probing_cache.insert({var_original, entries_per_var});
     } else {
-      bound_presolve.probing_cache.probing_cache[var_idx][1] = cache_item;
+      bound_presolve.probing_cache.probing_cache[var_original][1] = cache_item;
     }
   }
 }
@@ -497,6 +505,7 @@ void compute_cache_for_var(i_t var_idx,
                                       h_improved_lower_bounds,
                                       h_improved_upper_bounds,
                                       h_integer_indices,
+                                      problem.original_ids,
                                       n_of_implied_singletons);
     }
   }
@@ -853,6 +862,22 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
                            size_t step_size_hint)
 {
   raft::common::nvtx::range fun_scope("compute_probing_cache");
+  // Align original_ids / reverse_original_ids with variable_mapping before writing cache keys.
+  // A prior trivial_presolve(..., remap_cache_ids=false) can compact columns without updating
+  // those maps; readers (and bve_build_impl_adj) treat cache keys as original-frame ids.
+  {
+    auto stream = problem.handle_ptr->get_stream();
+    auto h_vmap = host_copy(problem.presolve_data.variable_mapping, stream);
+    problem.handle_ptr->sync_stream();
+    problem.original_ids.assign(h_vmap.begin(), h_vmap.end());
+    std::fill(problem.reverse_original_ids.begin(), problem.reverse_original_ids.end(), -1);
+    for (size_t i = 0; i < problem.original_ids.size(); ++i) {
+      cuopt_assert(problem.original_ids[i] >= 0 &&
+                     problem.original_ids[i] < (i_t)problem.reverse_original_ids.size(),
+                   "Variable index out of bounds");
+      problem.reverse_original_ids[problem.original_ids[i]] = (i_t)i;
+    }
+  }
   // we dont want to compute the probing cache for all variables for time and computation resources
   auto priority_indices = compute_priority_indices_by_implied_integers(problem);
   CUOPT_LOG_DEBUG("Computing probing cache");

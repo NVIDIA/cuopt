@@ -70,9 +70,9 @@
 //      installs the reduced model, and records the reconstruction data replayed by
 //      presolve_data_t::post_process_assignment.
 //
-// The host enumeration projection and the reference detectors (bve_project / bve_project_and_check
-// / bve_detect_closure / bve_detect_minfill) are NOT part of this header — they are the trusted
-// differential oracle / coverage reference and live in tests/mip/block_bve_test.cu.
+// The host enumeration projection (bve_project / bve_project_and_check) is NOT part of this header
+// — it is the trusted differential oracle for the GPU kernel and lives in
+// tests/mip/block_bve_test.cu.
 //
 // fp64 + 1e-6 tol throughout; integrality is a value property, never a storage type; fractional
 // coefficients are handled natively (no scaling). All column/row ids are in the CURRENT problem_t
@@ -109,6 +109,8 @@ static constexpr size_t BVE_PROJECT_DEVICE_BUDGET = 64ull << 20;  // 64 MiB
 // A missing bound is encoded as +/- infinity (the kernel handles it directly in the row test).
 template <typename f_t>
 struct bve_block_t {
+  // Plain int (not i_t): this packed layout is not i_t-templated; all fields are bounded by
+  // BVE_MAX_*.
   int na;      // number of interior variables
   int nb;      // number of boundary variables (all must be binary; caller guarantees)
   int n_rows;  // |G|
@@ -151,7 +153,8 @@ enum class bve_status_t : int {
 // start from the full nb-literal clause and greedily drop literals while the reduced clause still
 // forbids only infeasible patterns (a prime implicate), then de-duplicate. Returns clause count, or
 // -1 if `cap` would be exceeded. Faithful port of bve_blocks.cpp ~170-213.
-int bve_prime_implicates(const uint8_t* feas, int nb, bve_clause_t* out, int cap);
+template <typename i_t, typename f_t>
+i_t bve_prime_implicates(const uint8_t* feas, i_t nb, bve_clause_t* out, i_t cap);
 
 // Inline SANITY CHECK (certifying-algorithm / result-checking style; NOT a machine-checkable
 // certificate). An INDEPENDENT boolean evaluator of the emitted clauses must reproduce `feas` on
@@ -162,7 +165,8 @@ int bve_prime_implicates(const uint8_t* feas, int nb, bve_clause_t* out, int cap
 // emit VeriPB pseudo-Boolean proof steps (redundance-based strengthening with the witness
 // substitution + checked deletion of the replaced rows; Hoen et al., CPAIOR 2024). Faithful port of
 // bve_blocks.cpp ~219-246.
-bool bve_sanity_check(const uint8_t* feas, int nb, const bve_clause_t* clauses, int n_clauses);
+template <typename i_t, typename f_t>
+bool bve_sanity_check(const uint8_t* feas, i_t nb, const bve_clause_t* clauses, i_t n_clauses);
 
 // ===========================================================================================
 //  2. Host detector (working model + plan types)
@@ -236,7 +240,7 @@ struct bve_reducer_t {
 
   i_t n_vars, n_rows_orig;
   f_t tol;
-  int Bcap, enumcap, margin;
+  i_t Bcap, enumcap, margin;
   std::vector<work_row_t> rows;
   std::vector<std::unordered_set<i_t>> col2rows;
   std::vector<uint8_t> is_bin, obj_nz, done;
@@ -254,21 +258,25 @@ struct bve_reducer_t {
                 const std::vector<uint8_t>& is_integer,
                 const std::vector<f_t>& obj,
                 f_t tol_,
-                int Bcap_,
-                int enumcap_,
-                int margin_);
+                i_t Bcap_,
+                i_t enumcap_,
+                i_t margin_);
 
   std::unordered_set<i_t> rows_of(const std::vector<i_t>& interior) const;
   std::vector<i_t> boundary_of(const std::unordered_set<i_t>& G,
                                const std::unordered_set<i_t>& A) const;
   // boundary size of a candidate interior (used by the growth heuristics)
-  int boundary_size(const std::vector<i_t>& interior) const;
+  i_t boundary_size(const std::vector<i_t>& interior) const;
 
   // Gather one candidate block from the working model WITHOUT projecting or mutating it (sorts
   // interior/boundary/rows so the local bit-ordering is deterministic, applies the caps, packs the
   // rows into out.blk with local ids). Returns false if any cap is violated; out.feas/out.witness
-  // are zeroed and must be filled by a projection backend before commit_projected.
-  bool stage(const std::vector<i_t>& interior_in, bve_candidate_t<i_t, f_t>& out);
+  // are zeroed and must be filled by a projection backend before commit_projected. If `ops_out` is
+  // non-null, adds a wall-proxy op count for the gather (row/term walks + pack) whether or not the
+  // caps pass.
+  bool stage(const std::vector<i_t>& interior_in,
+             bve_candidate_t<i_t, f_t>& out,
+             int64_t* ops_out = nullptr);
 
   // Derive the prime-implicate CNF from an already-projected candidate, apply the growth gate and
   // the inline sanity check (bve_sanity_check), and — only if the sanity check passes — mutate the
@@ -290,8 +298,8 @@ struct bve_reducer_t {
 // the per-block coefficients/bounds, launch bve_enumerate_kernel once per shape-bin chunk (chunk
 // size derived from BVE_PROJECT_DEVICE_BUDGET so peak allocation stays bounded), and fill each
 // candidate's feas/witness from the returned witness table. Replaces the per-block host
-// bve_project. Returns a deterministic raw work estimate for the enumerations performed
-// (assignments · nnz).
+// bve_project. Returns a deterministic unscaled work estimate (host staging touches +
+// assignments · nnz).
 template <typename i_t, typename f_t>
 double bve_project_batch_gpu(const raft::handle_t& handle,
                              std::vector<bve_candidate_t<i_t, f_t>>& cands,
@@ -309,19 +317,20 @@ std::vector<std::vector<i_t>> bve_build_impl_adj(const probing_cache_t<i_t, f_t>
 
 // The pass. `impl_adj` is built by the caller from the probing cache (bve_build_impl_adj).
 // `timer` is the caller's deadline clock for this pass (typically a stage timer bounded by
-// min(global remaining, presolve remaining)). `work_units` is set to a deterministic raw estimate
-// of work performed. Feasibility / binary-bound tolerance is taken from
-// `problem.tolerances.presolve_absolute_tolerance`. Returns true iff at least one sanity checked
-// reduction was applied (and the model was rewritten + a trivial_presolve compaction run).
-// Bcap/enumcap/margin mirror the host reference.
+// min(global remaining, presolve remaining)). `work_units` is set to a deterministic unscaled
+// estimate of work performed (host term/edge walks + commit Quine cost + GPU assignments·nnz;
+// parallel growth contributes the per-round critical-path max). Feasibility / binary-bound
+// tolerance is taken from `problem.tolerances.presolve_absolute_tolerance`. Returns true iff at
+// least one sanity checked reduction was applied (and the model was rewritten + a
+// trivial_presolve compaction run). Bcap/enumcap/margin mirror the host reference.
 template <typename i_t, typename f_t>
 bool block_bve_presolve(problem_t<i_t, f_t>& problem,
                         const std::vector<std::vector<i_t>>& impl_adj,
                         timer_t& timer,
                         double& work_units,
-                        int Bcap    = BVE_MAX_BOUNDARY,
-                        int enumcap = BVE_MAX_SCOPE,
-                        int margin  = 0);
+                        i_t Bcap    = BVE_MAX_BOUNDARY,
+                        i_t enumcap = BVE_MAX_SCOPE,
+                        i_t margin  = 0);
 
 #endif  // __CUDACC__
 
