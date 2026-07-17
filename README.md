@@ -28,58 +28,7 @@ For the latest version, ensure you are on the `main` branch.
 
 ## Contributing to the Documentation
 
-Documentation sources live in `fern/` — MDX pages edited directly and published via [Fern](https://buildwithfern.com).
-
-### Prerequisites
-
-| Tool | Install |
-|---|---|
-| Node.js + npm | `conda install nodejs` or [nodejs.org](https://nodejs.org/) |
-| jq | `sudo apt-get install jq` or `conda install jq` |
-
-The Fern CLI (`fern-api`) is installed automatically by `build.sh` at the version pinned in `fern/fern.config.json`.
-
-### Log in for local preview (first time only)
-
-The docs use `global-theme: nvidia`, which requires a Fern account authorized for the NVIDIA organization. Run this once:
-
-```bash
-fern login --email <your-nvidia-email>
-```
-
-### Build and preview locally
-
-```bash
-./build.sh docs
-```
-
-This runs the RST → MDX conversion, validates with `fern check`, then starts a live preview server at **http://localhost:3000** (Ctrl+C to stop).
-
-### Publish to the live site
-
-Publishing is handled automatically by CI on every push to `docs-fern-migration`.
-To publish manually (requires `FERN_TOKEN`):
-
-```bash
-FERN_TOKEN=<your-token> ./build.sh docs --publish-docs
-```
-
-**Getting `FERN_TOKEN`**: Ping `@aschilling`, `@dkoperda`, `@llane`, `@mmckiernan`, or `@nmckimpson` in the NVIDIA internal `#cdd-fern` Slack channel. Add the token as a `FERN_TOKEN` GitHub Actions secret in the repository settings.
-
-The live site is at **https://nvidia-cuopt.docs.buildwithfern.com**. Before going to production, a custom domain (`docs.nvidia.com/cuopt`) must be configured by the Fern team with Akamai fronting — contact `#cdd-fern` when ready.
-
-### How CI works
-
-| Trigger | What happens |
-|---|---|
-| Any push / PR touching `docs/`, `fern/`, or `python/cuopt/` | RST → MDX conversion + `fern check` + internal link check + external URL check |
-| Pull request (stage 1, no secrets) | Converts RST → MDX, uploads `fern/` as artifact |
-| Pull request (stage 2, secrets safe) | Publishes Fern preview, posts URL as PR comment |
-| Push to `docs-fern-migration` | Publishes to the live site via `fern generate --docs` |
-
-PR preview uses a two-stage workflow so that `FERN_TOKEN` is never exposed to fork PRs. Stage 2 runs in the base-branch context via `workflow_run`, where repository secrets are accessible.
-
-CI workflow: [`.github/workflows/fern-docs.yml`](.github/workflows/fern-docs.yml)
+See [`fern/README.md`](fern/README.md) for how to edit pages, add API symbols or examples, and run a local preview.
 
 ## Supported APIs
 
