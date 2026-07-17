@@ -13,6 +13,8 @@
 #include <raft/core/handle.hpp>
 #include <rmm/device_uvector.hpp>
 
+#include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <memory>
 #include <span>
@@ -26,6 +28,28 @@ enum class problem_category_t : int8_t { LP = 0, MIP = 1, IP = 2 };
 
 /** @brief File format used when serializing an optimization problem. */
 enum class file_format_t { mps = 0, lp = 1 };
+
+/**
+ * @brief Pick the output file format from a path's extension.
+ *
+ * Mirrors the extension dispatch used by io::read(): a `.lp`, `.lp.gz`, or
+ * `.lp.bz2` suffix (case-insensitive) selects the LP format; everything else
+ * (including `.mps`/`.qps` and unrecognized extensions) defaults to MPS.
+ *
+ * @param[in] path Output file path.
+ * @return The inferred file format.
+ */
+inline file_format_t file_format_from_path(const std::string& path)
+{
+  std::string lower(path);
+  std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+  if (lower.ends_with(".lp") || lower.ends_with(".lp.gz") || lower.ends_with(".lp.bz2")) {
+    return file_format_t::lp;
+  }
+  return file_format_t::mps;
+}
 
 template <typename i_t, typename f_t>
 class optimization_problem_t;
