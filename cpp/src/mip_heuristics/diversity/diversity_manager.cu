@@ -240,6 +240,10 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
     }
 
     if (problem_ptr->pre_process_assignment(init_sol_assignment)) {
+      raft::copy(sol.assignment.data(),
+                 init_sol_assignment.data(),
+                 init_sol_assignment.size(),
+                 sol.handle_ptr->get_stream());
       relaxed_lp_settings_t lp_settings;
       lp_settings.time_limit            = std::min(60., timer.remaining_time() / 2);
       lp_settings.tolerance             = problem_ptr->tolerances.absolute_tolerance;
@@ -250,11 +254,15 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
                              problem_ptr->integer_indices,
                              lp_settings,
                              static_cast<bound_presolve_t<i_t, f_t>*>(nullptr));
-      raft::copy(sol.assignment.data(),
-                 init_sol_assignment.data(),
-                 init_sol_assignment.size(),
-                 sol.handle_ptr->get_stream());
       bool is_feasible = sol.compute_feasibility();
+      if (!is_feasible) {
+        raft::copy(sol.assignment.data(),
+                   init_sol_assignment.data(),
+                   init_sol_assignment.size(),
+                   sol.handle_ptr->get_stream());
+        is_feasible = sol.compute_feasibility();
+      }
+
       cuopt_func_call(sol.test_variable_bounds(true));
       CUOPT_LOG_DEBUG("Adding initial solution success! feas %d objective %f excess %f",
                       is_feasible,
@@ -264,9 +272,8 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
       initial_sol_vector.emplace_back(std::move(sol));
     } else {
       CUOPT_LOG_ERROR(
-        "Error cannot add the provided initial solution! \
-    Assignment size %lu \
-    initial solution size %lu",
+        "Error cannot add the provided initial solution! Assignment size %lu initial solution size "
+        "%lu",
         sol.assignment.size(),
         init_sol_assignment.size());
     }
