@@ -33,20 +33,10 @@ conda activate docs
 
 rapids-print-env
 
-rapids-logger "Install Fern CLI"
-FERN_VERSION=$(jq -r .version fern/fern.config.json)
-npm install -g "fern-api@${FERN_VERSION}"
-
-rapids-logger "Generate dynamic API docs (OpenAPI spec, Python API, C API)"
-python fern/generate_api_docs.py
-
-rapids-logger "Validate docs (fern check)"
-fern check
-
 if [[ "${RAPIDS_BUILD_TYPE:-branch}" == "pull-request" ]]; then
-    rapids-logger "Publishing Fern preview for PR review"
-    fern generate --docs --preview
+    rapids-logger "Building and publishing Fern PR preview"
+    bash fern/build_docs.sh --preview
 else
-    rapids-logger "Publishing Fern docs to production"
-    fern generate --docs
+    rapids-logger "Building and publishing Fern docs to production"
+    bash fern/build_docs.sh --publish-docs
 fi

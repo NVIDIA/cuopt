@@ -3,9 +3,11 @@
 # SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# Build Fern docs locally: generate MDX, validate, then preview or publish.
+# Build Fern docs: generate MDX, validate, then preview or publish.
 # Usage:
-#   fern/build_docs.sh [--publish-docs]
+#   fern/build_docs.sh              # local preview (http://localhost:3000)
+#   fern/build_docs.sh --publish-docs   # publish to Fern cloud (production)
+#   fern/build_docs.sh --preview        # CI PR preview (fern generate --docs --preview)
 #
 # Prerequisites: node, npm, jq, and a conda environment with Python + numpydoc.
 # Run from the repo root.
@@ -14,8 +16,10 @@ set -e
 
 REPODIR=$(cd "$(dirname "$0")/.."; pwd)
 PUBLISH=0
+PREVIEW=0
 for arg in "$@"; do
     [[ "$arg" == "--publish-docs" ]] && PUBLISH=1
+    [[ "$arg" == "--preview" ]] && PREVIEW=1
 done
 
 if ! command -v node &>/dev/null || ! command -v npm &>/dev/null; then
@@ -48,13 +52,16 @@ echo "Running fern check..."
 fern check
 
 if [[ "${PUBLISH}" -eq 1 ]]; then
-    if [[ -z "${FERN_TOKEN}" ]]; then
+    if [[ -z "${FERN_TOKEN:-}" ]]; then
         echo "ERROR: FERN_TOKEN environment variable is not set."
         exit 1
     fi
     echo "Publishing to Fern cloud..."
     fern generate --docs
     echo "Docs published to https://nvidia-cuopt.docs.buildwithfern.com"
+elif [[ "${PREVIEW}" -eq 1 ]]; then
+    echo "Publishing Fern PR preview..."
+    fern generate --docs --preview
 else
     echo ""
     echo "Starting local preview at http://localhost:3000 (Ctrl+C to stop)..."
