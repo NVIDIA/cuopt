@@ -17,7 +17,14 @@ raises, and ``test_serialize`` checks every recorded setter is exportable, so a
 new unmapped setter fails loudly instead of being silently dropped.
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
 import numpy as np
+
+if TYPE_CHECKING:
+    from cuopt.routing.vehicle_routing import DataModel
 
 
 def _to_host(x):
@@ -177,10 +184,30 @@ _LIST_FIELDS = (
 )
 
 
-def to_host_problem(dm):
-    """Export ``dm``'s recorded problem as host arrays keyed by RoutingProblem
-    fields. Device (cuDF/cupy) inputs are copied to host here; host inputs are
-    already numpy in the IR.
+def to_host_problem(dm: DataModel) -> dict[str, Any]:
+    """Export a recorded routing problem to host arrays keyed by proto fields.
+
+    Parameters
+    ----------
+    dm : cuopt.routing.DataModel
+        A routing data model whose setter calls have been recorded (the
+        store-then-build IR). Device (cuDF/cupy) inputs are copied to host
+        here; host inputs are already numpy in the IR.
+
+    Returns
+    -------
+    dict
+        Host (numpy) arrays and scalars keyed by the gRPC ``RoutingProblem``
+        field names (e.g. ``cost_matrices``, ``order_locations``,
+        ``capacity_dimensions``). List-valued fields are always present
+        (possibly empty); other fields appear only when the corresponding
+        setter was called.
+
+    Raises
+    ------
+    KeyError
+        If a recorded ``add_*`` setter, or a multi-argument ``set_*`` setter,
+        has no export mapping. Add an explicit handler to ``_HANDLERS``.
     """
     n_loc, fleet, n_ord = dm._init_args
     p = {
@@ -197,6 +224,13 @@ def to_host_problem(dm):
             handler(p, args)
         elif name.startswith("set_"):
             # 1:1 single-array setter: set_<field>(array) -> field <field>.
+            # A multi-argument set_* needs an explicit handler; refuse to
+            # export it here rather than silently drop the extra arguments.
+            if len(args) != 1:
+                raise KeyError(
+                    f"no 1:1 export mapping for recorded setter {name!r}; add"
+                    " a handler to _serialize._HANDLERS"
+                )
             p[name[len("set_") :]] = _to_host(args[0])
         else:
             raise KeyError(
