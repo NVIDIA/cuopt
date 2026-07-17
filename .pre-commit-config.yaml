@@ -100,8 +100,7 @@ repos:
             (^|/)VERSION$|
             (^|/)RAPIDS_BRANCH$|
             [.](md|rst|avro|parquet|png|orc|gz|pkl|sas7bdat|msgpack|pickle|jpg|bz2|zlib)$|
-            ^docs/cuopt/source/cuopt-python/routing/routing-example[.]ipynb$|
-            ^docs/cuopt/source/versions1[.]json$|
+
             ^helmchart/cuopt-server/(Chart[.]yaml|values[.]yaml)$|
             ^[.]cursor-plugin/plugin[.]json$|
             ^[.]claude-plugin/marketplace[.]json$|
@@ -114,11 +113,6 @@ repos:
       - id: zizmor
   - repo: local
     hooks:
-      - id: update-versions
-        name: Update versions1.json
-        entry: python ci/utils/update_doc_versions.py
-        language: system
-        files: docs/cuopt/source/versions1.json
       - id: sync-skills-version
         name: Sync skills version from VERSION
         entry: ci/utils/sync_skills_version.sh

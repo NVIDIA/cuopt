@@ -59,7 +59,7 @@ reviews:
         - Consistency: version numbers, parameter types, and terminology match code
         - Missing docs: if the PR changes public APIs without updating docs, flag as HIGH
 
-        When code changes affect docs, suggest specific files (e.g. docs/cuopt/source/*.rst)
+        When code changes affect docs, suggest specific files (e.g. fern/docs/pages/**/*.mdx)
         and recommend documenting performance characteristics, GPU requirements, or tolerances.
 
     - path: "cpp/include/cuopt/**/*"
