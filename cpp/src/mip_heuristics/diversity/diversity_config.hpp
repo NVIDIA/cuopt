@@ -14,6 +14,9 @@ namespace cuopt::mathematical_optimization::mip {
 struct diversity_config_t {
   double time_ratio_of_probing_cache = 0.1;
   double max_time_on_probing         = 60.0;
+  // Max probe→trivial→BVE outer rounds. Extra rounds rebuild the probing cache on the
+  // BVE-reduced model so implication closure can eliminate further columns (bnatt*).
+  int max_block_bve_probe_rounds     = 3;
   int max_var_diff                   = 256;
   double default_time_limit          = 10.;
   int initial_island_size            = 3;

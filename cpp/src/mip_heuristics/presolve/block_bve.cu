@@ -1032,20 +1032,24 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
   work_units += double(new_var.size()) + double(new_clb.size());
   problem.update_problem_matrix(new_off, new_var, new_coef, new_clb, new_cub);
 
-  // ---- 6. record reconstructions, translating detection-space ids -> post-Papilo
-  // (variable_mapping value) frame, which is the frame post_process_assignment replays in. Commit
-  // order preserved. ----
-  auto& recs = problem.presolve_data.block_reconstructions;
+  // ---- 6. record reconstructions on the unified append-only log (detection-space ids ->
+  // post-Papilo variable_mapping frame). Commit order preserved; postsolve replays reverse. ----
+  auto& recs = problem.presolve_data.reconstructions;
   recs.reserve(recs.size() + plan.reductions.size());
   for (const auto& red : plan.reductions) {
     work_units += double(red.interior.size() + red.boundary.size() + red.witness.size());
-    block_reconstruction_t<i_t> rec;
+    reconstruction_t<i_t, f_t> rec;
+    rec.kind = reconstruction_kind_t::BlockBve;
     rec.interior.reserve(red.interior.size());
-    for (i_t c : red.interior)
+    for (i_t c : red.interior) {
+      cuopt_assert(c >= 0 && c < (i_t)h_vmap.size(), "interior col out of variable_mapping range");
       rec.interior.push_back(h_vmap[c]);
+    }
     rec.boundary.reserve(red.boundary.size());
-    for (i_t c : red.boundary)
+    for (i_t c : red.boundary) {
+      cuopt_assert(c >= 0 && c < (i_t)h_vmap.size(), "boundary col out of variable_mapping range");
       rec.boundary.push_back(h_vmap[c]);
+    }
     rec.witness = red.witness;
     recs.push_back(std::move(rec));
   }

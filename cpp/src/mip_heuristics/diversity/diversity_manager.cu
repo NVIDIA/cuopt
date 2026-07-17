@@ -336,31 +336,51 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
     CUOPT_LOG_INFO("Probing-cache step disabled via %s=false", CUOPT_MIP_PROBING);
     run_probing_cache = false;
   }
-  if (run_probing_cache) {
-    // Run probing cache before trivial presolve to discover variable implications
-    const f_t max_time_on_probing = diversity_config.max_time_on_probing;
-    f_t time_for_probing_cache    = std::min(max_time_on_probing, time_limit);
-    timer_t probing_timer{time_for_probing_cache};
-    // this function computes probing cache, finds singletons, substitutions and changes the problem
-    bool problem_is_infeasible =
-      compute_probing_cache(ls.constraint_prop.bounds_update, *problem_ptr, probing_timer);
-    if (problem_is_infeasible) { return false; }
-  }
   const bool remap_cache_ids           = true;
   problem_ptr->related_vars_time_limit = context.settings.heuristic_params.related_vars_time_limit;
-  if (!global_timer.check_time_limit()) { trivial_presolve(*problem_ptr, remap_cache_ids); }
-  // Block bounded-variable-elimination over the probing-cache implication closure. Operates on the
-  // compacted problem; a strict no-op when disabled, when the probing cache is empty, or when no
-  // certified reduction exists. The pass records nonlinear reconstruction records replayed by
-  // presolve_data::post_process_assignment.
-  if (context.settings.block_bve && !problem_ptr->empty && !global_timer.check_time_limit() &&
-      !presolve_timer.check_time_limit()) {
-    auto impl_adj         = bve_build_impl_adj(ls.constraint_prop.bounds_update.probing_cache,
+  // Outer probe → trivial → BVE rounds: after a reducing BVE the matrix (and useful implications)
+  // change; rebuild the probing cache and run BVE again until quiet or the round cap.
+  const i_t max_bve_rounds = (i_t)diversity_config.max_block_bve_probe_rounds;
+  for (i_t bve_round = 0;; ++bve_round) {
+    if (run_probing_cache) {
+      if (global_timer.check_time_limit() || presolve_timer.check_time_limit()) { break; }
+      if (bve_round > 0) { ls.constraint_prop.bounds_update.resize(*problem_ptr); }
+      const f_t max_time_on_probing = diversity_config.max_time_on_probing;
+      f_t time_for_probing_cache =
+        std::min(max_time_on_probing, std::min(time_limit, (f_t)presolve_timer.remaining_time()));
+      timer_t probing_timer{time_for_probing_cache};
+      bool problem_is_infeasible =
+        compute_probing_cache(ls.constraint_prop.bounds_update, *problem_ptr, probing_timer);
+      if (problem_is_infeasible) { return false; }
+    } else if (bve_round > 0) {
+      break;  // further BVE rounds need a fresh probing cache
+    }
+
+    if (!global_timer.check_time_limit()) { trivial_presolve(*problem_ptr, remap_cache_ids); }
+
+    if (!context.settings.block_bve || problem_ptr->empty || global_timer.check_time_limit() ||
+        presolve_timer.check_time_limit()) {
+      break;
+    }
+
+    const i_t n_vars_before = problem_ptr->n_variables;
+    const i_t n_rows_before = problem_ptr->n_constraints;
+    auto impl_adj           = bve_build_impl_adj(ls.constraint_prop.bounds_update.probing_cache,
                                        problem_ptr->reverse_original_ids,
                                        problem_ptr->n_variables);
-    double bve_work_units = 0.0;
+    double bve_work_units   = 0.0;
     timer_t bve_timer(global_timer.clamp_remaining_time(presolve_timer.remaining_time()));
-    block_bve_presolve(*problem_ptr, impl_adj, bve_timer, bve_work_units);
+    const bool reduced = block_bve_presolve(*problem_ptr, impl_adj, bve_timer, bve_work_units);
+    CUOPT_LOG_DEBUG("Block-BVE outer round %d/%d: reduced=%d vars %d->%d rows %d->%d",
+                    bve_round + 1,
+                    max_bve_rounds,
+                    (int)reduced,
+                    n_vars_before,
+                    problem_ptr->n_variables,
+                    n_rows_before,
+                    problem_ptr->n_constraints);
+    if (!reduced || !run_probing_cache || bve_round + 1 >= max_bve_rounds) { break; }
+    if (problem_ptr->n_variables >= n_vars_before) { break; }
   }
   // Optional debug export of the GPU-presolved model (env CUOPT_EXPORT_GPU_PRESOLVED_PROBLEM=1).
   // Runs after cuOpt's presolve (trivial_presolve + block-BVE); writes <instance>_gpupresolved.mps
