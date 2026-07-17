@@ -2464,13 +2464,16 @@ void apply_rins_fixings(const simplex_solver_settings_t<i_t, f_t>& settings,
 template <typename i_t, typename f_t>
 void extend_variable_fixings(const simplex_solver_settings_t<i_t, f_t>& settings,
                              const std::vector<f_t>& obj_coeffs,
-                             const std::vector<f_t>& lower,
-                             const std::vector<f_t>& upper,
                              const std::vector<i_t>& fractional,
                              const std::vector<f_t>& current_sol,
                              const std::vector<f_t>& root_solution,
-                             std::vector<std::tuple<f_t, i_t, f_t>>& candidates)
+                             i_t max_var_fixed,
+                             std::vector<f_t>& lower,
+                             std::vector<f_t>& upper,
+                             std::vector<bool>& bounds_changed,
+                             i_t& num_var_fixed)
 {
+  std::vector<std::tuple<f_t, i_t, f_t>> candidates;
   for (i_t j : fractional) {
     if (std::abs(lower[j] - upper[j]) <= settings.fixed_tol) { continue; }
 
@@ -2496,6 +2499,17 @@ void extend_variable_fixings(const simplex_solver_settings_t<i_t, f_t>& settings
   std::sort(candidates.begin(), candidates.end(), [](auto a, auto b) {
     return std::get<0>(a) < std::get<0>(b);
   });
+
+  f_t change = 0;
+  for (auto [dist, j, fixed_val] : candidates) {
+    fix_variable(j, lower, upper, bounds_changed, fixed_val);
+    ++num_var_fixed;
+    if (num_var_fixed >= max_var_fixed) break;
+
+    // Limit the amount of fixing to the current LP.
+    change += dist;
+    if (change >= 0.5) { break; }
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -2606,26 +2620,16 @@ void branch_and_bound_t<i_t, f_t>::rins(diving_worker_t<i_t, f_t>* rins_worker,
       // iteration. Iterate over the fractional variables again and fixing those that closest to
       // an integer solution first in order to reach the fixing threshold.
       if (prev_num_fixed == num_var_fixed) {
-        std::vector<std::tuple<f_t, i_t, f_t>> candidates;
         extend_variable_fixings(settings_,
                                 rins_worker->leaf_problem.objective,
-                                lower,
-                                upper,
                                 fractional,
                                 current_sol,
                                 root_relax_soln_.x,
-                                candidates);
-
-        f_t change = 0;
-        for (auto [dist, j, fixed_val] : candidates) {
-          fix_variable(j, lower, upper, bounds_changed, fixed_val);
-          ++num_var_fixed;
-          if (num_var_fixed >= max_var_fixed) break;
-
-          // Limit the amount of fixing to the current LP.
-          change += dist;
-          if (change >= 0.5) { break; }
-        }
+                                max_var_fixed,
+                                lower,
+                                upper,
+                                bounds_changed,
+                                num_var_fixed);
 
         if (num_var_fixed >= min_var_fixed) {
           settings_.log.debug_format("{}Fixed {} variables (max={}, min={})\n",
