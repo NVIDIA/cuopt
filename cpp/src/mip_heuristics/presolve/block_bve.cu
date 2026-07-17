@@ -147,7 +147,7 @@ bve_reducer_t<i_t, f_t>::bve_reducer_t(i_t n_vars_,
                  std::abs(col_upper[c] - static_cast<f_t>(1)) < tol)
                   ? 1
                   : 0;
-    obj_nz[c] = (std::abs(obj[c]) > static_cast<f_t>(1e-9)) ? 1 : 0;
+    obj_nz[c] = (obj[c] != f_t(0)) ? 1 : 0;
   }
   rows.reserve(static_cast<size_t>(n_rows_orig) * 2);
   for (i_t r = 0; r < n_rows_orig; ++r) {
@@ -730,13 +730,12 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
                         const std::vector<std::vector<i_t>>& impl_adj,
                         timer_t& timer,
                         double& work_units,
-                        f_t tol,
                         int Bcap,
                         int enumcap,
                         int margin)
 {
   work_units = 0.0;
-  // Local wall clock for the DEBUG total; `timer` is the caller's deadline (e.g. global_timer).
+  // Local wall clock for the DEBUG total; `timer` is the caller's stage deadline.
   timer_t wall(std::numeric_limits<double>::infinity());
   auto timer_raii_guard = cuopt::scope_guard([&]() {
     CUOPT_LOG_DEBUG(
@@ -747,6 +746,7 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
   auto stream                  = handle->get_stream();
   const i_t n_vars             = problem.n_variables;
   const i_t n_rows             = problem.n_constraints;
+  const f_t tol                = problem.tolerances.presolve_absolute_tolerance;
   if (problem.empty || n_vars == 0 || n_rows == 0) return false;
 
   // ---- 1. host copy of the current (post-Papilo, post-initial-trivial-presolve) model ----
@@ -872,7 +872,6 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
                                                 const std::vector<std::vector<int>>&, \
                                                 timer_t&,                             \
                                                 double&,                              \
-                                                F_TYPE,                               \
                                                 int,                                  \
                                                 int,                                  \
                                                 int)
