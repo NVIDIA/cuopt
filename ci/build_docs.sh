@@ -35,8 +35,8 @@ rapids-print-env
 
 if [[ "${RAPIDS_BUILD_TYPE:-branch}" == "pull-request" ]]; then
     rapids-logger "Building and publishing Fern PR preview"
-    bash fern/build_docs.sh --preview
+    ./build.sh docs --preview
 else
     rapids-logger "Building and publishing Fern docs to production"
-    bash fern/build_docs.sh --publish-docs
+    ./build.sh docs --publish-docs
 fi
