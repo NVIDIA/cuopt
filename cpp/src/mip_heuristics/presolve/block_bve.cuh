@@ -99,6 +99,12 @@ static constexpr int BVE_MAX_ROW_LEN  = 24;  // nnz within one block row (interi
 static constexpr int BVE_MAX_NNZ      = BVE_MAX_ROWS * BVE_MAX_ROW_LEN;
 static constexpr int BVE_MAX_CLAUSES  = 64;                     // <= |rows| for any committed block
 static constexpr int BVE_MAX_PATTERNS = 1 << BVE_MAX_BOUNDARY;  // 256
+// Cap |cands_w| in closure growth: each candidate triggers a full boundary_size probe. Hub
+// implication-neighborhoods (thousands of neighbors) dominate runtime while rarely producing
+// absorbs on some MIPs. Keep this above moderate neighborhood sizes seen on growth-heavy
+// instances (e.g. bnatt500 max_nbrs≈150) so useful absorbs are not hard-gated; crypto-scale
+// hubs (5k+) still exit on the singleton degree fast-path.
+static constexpr int BVE_MAX_GROWTH_NBRS = 256;
 // Cap peak device allocation in bve_project_batch_gpu: each shape-bin is processed in chunks so
 // that num * (nnz + 2*nrows + 2^nb) buffers stay within this budget.
 static constexpr size_t BVE_PROJECT_DEVICE_BUDGET = 64ull << 20;  // 64 MiB
