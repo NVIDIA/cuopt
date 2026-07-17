@@ -5,7 +5,6 @@ channels:
 - rapidsai
 - conda-forge
 dependencies:
-- breathe
 - bzip2
 - c-ares
 - c-compiler
@@ -26,6 +25,7 @@ dependencies:
 - fastapi
 - gcc_linux-64=14.*
 - ipython
+- jq
 - jsonref==1.1.0
 - libabseil
 - libboost-devel
@@ -38,11 +38,10 @@ dependencies:
 - libprotobuf
 - libraft-headers==26.8.*,>=0.0.0a0
 - librmm==26.8.*,>=0.0.0a0
-- make
 - msgpack-numpy==0.4.8
 - msgpack-python==1.2.1
-- myst-parser
 - ninja
+- nodejs
 - notebook
 - numba-cuda>=0.22.1
 - numba>=0.60.0,<0.65.0
@@ -54,8 +53,8 @@ dependencies:
 - pip
 - pre-commit
 - psutil>=6.0.0
+- pydantic
 - pylibraft==26.8.*,>=0.0.0a0
-- pyrsistent
 - pytest-cov
 - pytest-rerunfailures
 - pytest-xdist

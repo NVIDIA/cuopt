@@ -669,7 +669,8 @@ class cut_generation_t {
                             simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
                             const std::vector<f_t>& xstar,
                             const std::vector<i_t>& basic_list,
-                            const std::vector<i_t>& nonbasic_list);
+                            const std::vector<i_t>& nonbasic_list,
+                            f_t start_time);
 
   // Generate all mixed integer rounding cuts
   void generate_mir_cuts(const simplex::lp_problem_t<i_t, f_t>& lp,
@@ -679,7 +680,8 @@ class cut_generation_t {
                          const std::vector<simplex::variable_type_t>& var_types,
                          const std::vector<f_t>& xstar,
                          const std::vector<f_t>& ystar,
-                         variable_bounds_t<i_t, f_t>& variable_bounds);
+                         variable_bounds_t<i_t, f_t>& variable_bounds,
+                         f_t start_time);
 
   // Generate all knapsack cuts
   void generate_knapsack_cuts(const simplex::lp_problem_t<i_t, f_t>& lp,

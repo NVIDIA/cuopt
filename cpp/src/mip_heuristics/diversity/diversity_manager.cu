@@ -21,6 +21,7 @@
 #include <utilities/scope_guard.hpp>
 
 #include <memory>
+#include <numeric>
 
 constexpr bool fj_only_run = false;
 
@@ -202,15 +203,47 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
       }
       std::vector<f_t> h_original = host_copy(init_sol_assignment, sol.handle_ptr->get_stream());
       std::vector<f_t> h_crushed;
-      problem_ptr->presolve_data.papilo_presolve_ptr->crush_primal_solution(h_original, h_crushed);
+      const auto* presolver_ptr = problem_ptr->presolve_data.papilo_presolve_ptr;
+      presolver_ptr->crush_primal_solution(
+        *problem_ptr->original_problem_ptr, h_original, h_crushed);
       init_sol_assignment = cuopt::device_copy(h_crushed, sol.handle_ptr->get_stream());
-      CUOPT_LOG_DEBUG("Crushed initial solution %d through Papilo (%d -> %d vars)",
-                      sol_idx,
-                      papilo_orig_n,
-                      h_crushed.size());
+
+#if CUOPT_LOG_ACTIVE_LEVEL <= CUOPT_LOG_LEVEL_DEBUG
+      const auto& reduced_problem       = *problem_ptr->original_problem_ptr;
+      const std::vector<f_t> h_red_obj  = reduced_problem.get_objective_coefficients_host();
+      const std::vector<f_t>& h_ori_obj = presolver_ptr->get_original_objective_coefficients();
+      cuopt_assert(h_ori_obj.size() == h_original.size(),
+                   "original objective size must match input solution dimension");
+      cuopt_assert(h_red_obj.size() == h_crushed.size(),
+                   "reduced objective size must match crushed solution dimension");
+      // Map each solution to user space with its own problem's scale, so the comparison holds even
+      // if the original and reduced objective scales ever diverge.
+      const double input_obj =
+        (double)presolver_ptr->get_original_objective_scaling_factor() *
+        std::inner_product(h_ori_obj.begin(),
+                           h_ori_obj.end(),
+                           h_original.begin(),
+                           (double)presolver_ptr->get_original_objective_offset());
+      const double crushed_obj = (double)reduced_problem.get_objective_scaling_factor() *
+                                 std::inner_product(h_red_obj.begin(),
+                                                    h_red_obj.end(),
+                                                    h_crushed.begin(),
+                                                    (double)reduced_problem.get_objective_offset());
+      CUOPT_LOG_DEBUG(
+        "Crushed initial solution %d through Papilo (%d -> %d vars), objective %g -> %g",
+        sol_idx,
+        papilo_orig_n,
+        h_crushed.size(),
+        input_obj,
+        crushed_obj);
+#endif
     }
 
     if (problem_ptr->pre_process_assignment(init_sol_assignment)) {
+      raft::copy(sol.assignment.data(),
+                 init_sol_assignment.data(),
+                 init_sol_assignment.size(),
+                 sol.handle_ptr->get_stream());
       relaxed_lp_settings_t lp_settings;
       lp_settings.time_limit            = std::min(60., timer.remaining_time() / 2);
       lp_settings.tolerance             = problem_ptr->tolerances.absolute_tolerance;
@@ -221,11 +254,15 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
                              problem_ptr->integer_indices,
                              lp_settings,
                              static_cast<bound_presolve_t<i_t, f_t>*>(nullptr));
-      raft::copy(sol.assignment.data(),
-                 init_sol_assignment.data(),
-                 init_sol_assignment.size(),
-                 sol.handle_ptr->get_stream());
       bool is_feasible = sol.compute_feasibility();
+      if (!is_feasible) {
+        raft::copy(sol.assignment.data(),
+                   init_sol_assignment.data(),
+                   init_sol_assignment.size(),
+                   sol.handle_ptr->get_stream());
+        is_feasible = sol.compute_feasibility();
+      }
+
       cuopt_func_call(sol.test_variable_bounds(true));
       CUOPT_LOG_DEBUG("Adding initial solution success! feas %d objective %f excess %f",
                       is_feasible,
@@ -235,9 +272,8 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
       initial_sol_vector.emplace_back(std::move(sol));
     } else {
       CUOPT_LOG_ERROR(
-        "Error cannot add the provided initial solution! \
-    Assignment size %lu \
-    initial solution size %lu",
+        "Error cannot add the provided initial solution! Assignment size %lu initial solution size "
+        "%lu",
         sol.assignment.size(),
         init_sol_assignment.size());
     }
