@@ -449,11 +449,10 @@ TEST(c_api, pdlp_precision_mixed)
   EXPECT_EQ(termination_status, CUOPT_TERMINATION_STATUS_OPTIMAL);
   EXPECT_NEAR(objective, -464.7531, 1e-1);
 #else
-  auto status = test_pdlp_precision_mixed(filename.c_str(), &termination_status, &objective);
-  bool solve_returned_error = (status != CUOPT_SUCCESS);
-  bool solve_returned_non_optimal =
-    (status == CUOPT_SUCCESS && termination_status != CUOPT_TERMINATION_STATUS_OPTIMAL);
-  EXPECT_TRUE(solve_returned_error || solve_returned_non_optimal);
+  // cuopt_expects throws ValidationError when mixed precision is requested without support,
+  // so the C API always returns an error code — never CUOPT_SUCCESS.
+  EXPECT_NE(test_pdlp_precision_mixed(filename.c_str(), &termination_status, &objective),
+            CUOPT_SUCCESS);
 #endif
 }
 
