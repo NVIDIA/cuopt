@@ -442,12 +442,25 @@ TEST(c_api, pdlp_precision_mixed)
   std::string filename           = rapidsDatasetRootDir + "/linear_programming/afiro_original.mps";
   cuopt_int_t termination_status = -1;
   cuopt_float_t objective;
-  // Mixed-precision SpMV (FP32 matrix × FP64 vector) requires cuSPARSE >= 12.5.
+  // Mixed-precision SpMV (FP32 matrix × FP64 vector) requires cuSPARSE >= 12.5 at BOTH
+  // compile time (header) and runtime (loaded .so). The header version (#if) guards symbol
+  // availability; the runtime check below mirrors is_cusparse_runtime_mixed_precision_supported().
 #if CUSPARSE_VERSION >= 12500
-  EXPECT_EQ(test_pdlp_precision_mixed(filename.c_str(), &termination_status, &objective),
-            CUOPT_SUCCESS);
-  EXPECT_EQ(termination_status, CUOPT_TERMINATION_STATUS_OPTIMAL);
-  EXPECT_NEAR(objective, -464.7531, 1e-1);
+  int cusparseMajor = 0, cusparseMinor = 0;
+  cusparseGetProperty(MAJOR_VERSION, &cusparseMajor);
+  cusparseGetProperty(MINOR_VERSION, &cusparseMinor);
+  bool runtimeSupported = (cusparseMajor > 12) || (cusparseMajor == 12 && cusparseMinor >= 5);
+  if (runtimeSupported) {
+    EXPECT_EQ(test_pdlp_precision_mixed(filename.c_str(), &termination_status, &objective),
+              CUOPT_SUCCESS);
+    EXPECT_EQ(termination_status, CUOPT_TERMINATION_STATUS_OPTIMAL);
+    EXPECT_NEAR(objective, -464.7531, 1e-1);
+  } else {
+    // cuopt_expects throws ValidationError when mixed precision is requested without runtime
+    // support, so the C API always returns an error code — never CUOPT_SUCCESS.
+    EXPECT_NE(test_pdlp_precision_mixed(filename.c_str(), &termination_status, &objective),
+              CUOPT_SUCCESS);
+  }
 #else
   // cuopt_expects throws ValidationError when mixed precision is requested without support,
   // so the C API always returns an error code — never CUOPT_SUCCESS.
