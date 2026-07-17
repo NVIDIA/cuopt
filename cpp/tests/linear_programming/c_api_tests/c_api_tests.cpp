@@ -17,6 +17,7 @@
 #include <pdlp/cuopt_c_internal.hpp>
 
 #include <cuda_runtime.h>
+#include <cusparse.h>
 
 #include <utilities/common_utils.hpp>
 #include <utilities/error.hpp>
@@ -441,18 +442,19 @@ TEST(c_api, pdlp_precision_mixed)
   std::string filename           = rapidsDatasetRootDir + "/linear_programming/afiro_original.mps";
   cuopt_int_t termination_status = -1;
   cuopt_float_t objective;
-  if (!cuOptIsCusparseRuntimeMixedPrecisionSupported()) {
-    auto status = test_pdlp_precision_mixed(filename.c_str(), &termination_status, &objective);
-    bool solve_returned_error = (status != CUOPT_SUCCESS);
-    bool solve_returned_non_optimal =
-      (status == CUOPT_SUCCESS && termination_status != CUOPT_TERMINATION_STATUS_OPTIMAL);
-    EXPECT_TRUE(solve_returned_error || solve_returned_non_optimal);
-    return;
-  }
+  // Mixed-precision SpMV (FP32 matrix × FP64 vector) requires cuSPARSE >= 12.5.
+#if CUSPARSE_VERSION >= 12500
   EXPECT_EQ(test_pdlp_precision_mixed(filename.c_str(), &termination_status, &objective),
             CUOPT_SUCCESS);
   EXPECT_EQ(termination_status, CUOPT_TERMINATION_STATUS_OPTIMAL);
   EXPECT_NEAR(objective, -464.7531, 1e-1);
+#else
+  auto status = test_pdlp_precision_mixed(filename.c_str(), &termination_status, &objective);
+  bool solve_returned_error = (status != CUOPT_SUCCESS);
+  bool solve_returned_non_optimal =
+    (status == CUOPT_SUCCESS && termination_status != CUOPT_TERMINATION_STATUS_OPTIMAL);
+  EXPECT_TRUE(solve_returned_error || solve_returned_non_optimal);
+#endif
 }
 
 // =============================================================================

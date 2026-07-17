@@ -1296,14 +1296,3 @@ cuopt_int_t cuOptGetReducedCosts(cuOptSolution solution, cuopt_float_t* reduced_
     return CUOPT_INVALID_ARGUMENT;
   }
 }
-
-namespace cuopt::mathematical_optimization::pdlp {
-bool is_cusparse_runtime_mixed_precision_supported();
-}
-
-cuopt_int_t cuOptIsCusparseRuntimeMixedPrecisionSupported()
-{
-  return cuopt::mathematical_optimization::pdlp::is_cusparse_runtime_mixed_precision_supported()
-           ? 1
-           : 0;
-}
