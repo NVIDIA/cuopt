@@ -304,18 +304,17 @@ std::vector<std::vector<i_t>> bve_build_impl_adj(const probing_cache_t<i_t, f_t>
                                                  i_t n_vars);
 
 // The pass. `impl_adj` is built by the caller from the probing cache (bve_build_impl_adj).
-// `timer` is the caller's deadline clock (typically the solve-wide global_timer).
-// `work_units` is set to a deterministic raw estimate of work performed (operation counts;
-// not yet scaled into the shared deterministic work-unit clock). Wall-clock `timer` remains the
-// stop condition today.
-// Returns true iff at least one sanity checked reduction was applied (and the model was rewritten +
-// a trivial_presolve compaction run). tol/Bcap/enumcap/margin mirror the host reference.
+// `timer` is the caller's deadline clock for this pass (typically a stage timer bounded by
+// min(global remaining, presolve remaining)). `work_units` is set to a deterministic raw estimate
+// of work performed. Feasibility / binary-bound tolerance is taken from
+// `problem.tolerances.presolve_absolute_tolerance`. Returns true iff at least one sanity checked
+// reduction was applied (and the model was rewritten + a trivial_presolve compaction run).
+// Bcap/enumcap/margin mirror the host reference.
 template <typename i_t, typename f_t>
 bool block_bve_presolve(problem_t<i_t, f_t>& problem,
                         const std::vector<std::vector<i_t>>& impl_adj,
                         timer_t& timer,
                         double& work_units,
-                        f_t tol     = static_cast<f_t>(1e-6),
                         int Bcap    = BVE_MAX_BOUNDARY,
                         int enumcap = BVE_MAX_SCOPE,
                         int margin  = 0);

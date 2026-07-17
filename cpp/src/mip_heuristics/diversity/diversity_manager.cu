@@ -391,12 +391,14 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
   // compacted problem; a strict no-op when disabled, when the probing cache is empty, or when no
   // certified reduction exists. The pass records nonlinear reconstruction records replayed by
   // presolve_data::post_process_assignment.
-  if (context.settings.block_bve && !problem_ptr->empty && !global_timer.check_time_limit()) {
+  if (context.settings.block_bve && !problem_ptr->empty && !global_timer.check_time_limit() &&
+      !presolve_timer.check_time_limit()) {
     auto impl_adj         = bve_build_impl_adj(ls.constraint_prop.bounds_update.probing_cache,
                                        problem_ptr->reverse_original_ids,
                                        problem_ptr->n_variables);
     double bve_work_units = 0.0;
-    block_bve_presolve(*problem_ptr, impl_adj, global_timer, bve_work_units);
+    timer_t bve_timer(global_timer.clamp_remaining_time(presolve_timer.remaining_time()));
+    block_bve_presolve(*problem_ptr, impl_adj, bve_timer, bve_work_units);
   }
   // Optional debug export of the GPU-presolved model (env CUOPT_EXPORT_GPU_PRESOLVED_PROBLEM=1).
   // Runs after cuOpt's presolve (trivial_presolve + block-BVE); writes <instance>_gpupresolved.mps
