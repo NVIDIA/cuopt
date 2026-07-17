@@ -70,19 +70,10 @@ dependencies:
 - ruamel.yaml>=0.18
 - scikit-build-core>=0.11.0
 - scipy>=1.14.1
-- sphinx
-- sphinx-copybutton
-- sphinx-design
-- sphinx-markdown-tables
-- sphinx_rtd_theme
-- sphinxcontrib-openapi
-- sphinxcontrib-websupport
 - sysroot_linux-64==2.28
 - tbb-devel
 - uvicorn==0.34.*
 - zlib
 - pip:
-  - nvidia-sphinx-theme
-  - swagger-plugin-for-sphinx
   - veroviz
 name: all_cuda-133_arch-x86_64

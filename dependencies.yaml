@@ -70,17 +70,6 @@ files:
     includes:
       - develop
       - py_version
-  docs:
-    output: none
-    includes:
-        - cuda
-        - cuda_version
-        - depends_on_libcuopt
-        - depends_on_cuopt
-        - depends_on_cuopt_server
-        - depends_on_cuopt_sh_client
-        - docs
-        - py_version
   py_build_libcuopt:
     output: pyproject
     pyproject_dir: python/libcuopt
