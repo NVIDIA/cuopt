@@ -10,8 +10,15 @@
 
 #include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
 #include <cuopt/mathematical_optimization/io/parser.hpp>
+#include <linear_algebra/sort_csr.cuh>
+#include <mip_heuristics/diversity/diversity_manager.cuh>
 #include <mip_heuristics/presolve/block_bve.cuh>
+#include <mip_heuristics/presolve/bounds_presolve.cuh>
+#include <mip_heuristics/presolve/probing_cache.cuh>
+#include <mip_heuristics/presolve/third_party_presolve.hpp>
+#include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/problem/problem.cuh>
+#include <mip_heuristics/solver.cuh>
 #include <mip_heuristics/utils.cuh>
 
 #include <raft/core/handle.hpp>
@@ -22,10 +29,12 @@
 
 #include <utilities/timer.hpp>
 
+#include <omp.h>
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <limits>
+#include <memory>
 #include <random>
 #include <string>
 #include <unordered_set>
@@ -278,6 +287,59 @@ Binaries
 End
 )LP";
 
+// solve_mip opens an OMP team before MIP internals that use taskloops; probing_cache sizes its
+// pool from omp_get_num_threads()-1 (0 outside a parallel region → silent no-op).
+template <typename F>
+static void with_mip_omp_team(F&& f)
+{
+  const int num_threads             = std::max(2, omp_get_max_threads());
+  const int saved_max_active_levels = omp_get_max_active_levels();
+  if (saved_max_active_levels < 2) { omp_set_max_active_levels(2); }
+#pragma omp parallel num_threads(num_threads)
+  {
+#pragma omp masked
+    {
+      f();
+    }
+  }
+  if (saved_max_active_levels < 2) { omp_set_max_active_levels(saved_max_active_levels); }
+}
+
+// Production implication adjacency: bounds → probing cache → trivial compact → bve_build_impl_adj.
+// If `out_infeasible` is non-null, probing infeasibility is reported there (empty adj returned);
+// otherwise the caller is assumed to expect a feasible instance and we ASSERT that.
+static std::vector<std::vector<int>> probing_impl_adj(mip::problem_t<int, double>& problem,
+                                                      bool* out_infeasible = nullptr)
+{
+  mip_solver_settings_t<int, double> settings{};
+  cuopt::timer_t timer(30.0);
+  mip::mip_solver_t<int, double> solver(problem, settings, timer);
+  problem.tolerances = settings.get_tolerances();
+  mip::bound_presolve_t<int, double> bound_presolve(solver.context);
+
+  bool infeasible = false;
+  with_mip_omp_team([&]() {
+    auto term_crit = bound_presolve.solve(problem);
+    if (term_crit != mip::termination_criterion_t::NO_UPDATE) {
+      bound_presolve.set_updated_bounds(problem);
+    }
+    cuopt::timer_t probing_timer(30.0);
+    infeasible = mip::compute_probing_cache(bound_presolve, problem, probing_timer);
+    if (!infeasible) {
+      constexpr bool remap_cache_ids = true;
+      mip::trivial_presolve(problem, remap_cache_ids);
+    }
+  });
+  if (out_infeasible != nullptr) {
+    *out_infeasible = infeasible;
+  } else {
+    EXPECT_FALSE(infeasible);
+  }
+  if (infeasible) { return {}; }
+  return mip::bve_build_impl_adj(
+    bound_presolve.probing_cache, problem.reverse_original_ids, problem.n_variables);
+}
+
 // Build one block by hand for the projection-core tests. Local ids: a=0 (interior), b=1, c=2.
 static mip::bve_block_t<double> make_block()
 {
@@ -375,8 +437,11 @@ static void randomize_block_data(std::mt19937& rng, mip::bve_block_t<double>& bl
     blk.row_coef[k] = coefs[coef_pick(rng)];
   for (int r = 0; r < blk.n_rows; ++r) {
     const int terms = blk.row_off[r + 1] - blk.row_off[r];
-    const double lo = -static_cast<double>(terms);  // reachable given ±2 coeffs and 0/1 vars
-    const double up = static_cast<double>(2 * terms);
+    // Activity under 0/1 vars and coefs in {-2,-1,1,2} lies in [-2*terms, 2*terms]. Pick finite
+    // uppers in [0, 2*terms] so they can bind (not always equal to the loose max activity).
+    const double lo = -static_cast<double>(terms);
+    std::uniform_int_distribution<int> up_pick(0, 2 * terms);
+    const double up = static_cast<double>(up_pick(rng));
     const int kind  = bnd_pick(rng);
     blk.row_lo[r]   = (kind == 1) ? -INF : lo;
     blk.row_up[r]   = (kind == 0) ? INF : up;
@@ -535,22 +600,7 @@ TEST(block_bve_presolve, end_to_end_reduction_and_reconstruction)
   problem.presolve_data.initialize_var_mapping(problem, problem.handle_ptr);
   const int n_before = problem.n_variables;
 
-  // proxy implication adjacency from the current CSR (bypasses the probing cache in the test)
-  auto h_off = cuopt::host_copy(problem.offsets, handle_.get_stream());
-  auto h_var = cuopt::host_copy(problem.variables, handle_.get_stream());
-  auto h_vb  = cuopt::host_copy(problem.variable_bounds, handle_.get_stream());
-  auto h_vt  = cuopt::host_copy(problem.variable_types, handle_.get_stream());
-  handle_.sync_stream();
-  std::vector<int> offsets(h_off.begin(), h_off.end()), variables(h_var.begin(), h_var.end());
-  std::vector<uint8_t> is_integer(problem.n_variables);
-  std::vector<double> col_lower(problem.n_variables), col_upper(problem.n_variables);
-  for (int c = 0; c < problem.n_variables; ++c) {
-    col_lower[c]  = get_lower(h_vb[c]);
-    col_upper[c]  = get_upper(h_vb[c]);
-    is_integer[c] = (h_vt[c] == var_t::INTEGER) ? 1 : 0;
-  }
-  auto impl_adj =
-    row_share_adjacency(problem.n_variables, offsets, variables, is_integer, col_lower, col_upper);
+  auto impl_adj = probing_impl_adj(problem);
 
   cuopt::timer_t bve_timer(10.0);
   double bve_work_units = 0.0;
@@ -586,28 +636,6 @@ TEST(block_bve_presolve, end_to_end_reduction_and_reconstruction)
     EXPECT_GE(s, m_rl[r] - 1e-6);
     EXPECT_LE(s, m_ru[r] + 1e-6);
   }
-}
-
-// proxy implication adjacency from the CURRENT problem_t CSR (bypasses the probing cache, as in the
-// end-to-end test above)
-static std::vector<std::vector<int>> proxy_impl_adj(mip::problem_t<int, double>& problem)
-{
-  auto stream = problem.handle_ptr->get_stream();
-  auto h_off  = cuopt::host_copy(problem.offsets, stream);
-  auto h_var  = cuopt::host_copy(problem.variables, stream);
-  auto h_vb   = cuopt::host_copy(problem.variable_bounds, stream);
-  auto h_vt   = cuopt::host_copy(problem.variable_types, stream);
-  problem.handle_ptr->sync_stream();
-  std::vector<int> offsets(h_off.begin(), h_off.end()), variables(h_var.begin(), h_var.end());
-  std::vector<uint8_t> is_integer(problem.n_variables);
-  std::vector<double> col_lower(problem.n_variables), col_upper(problem.n_variables);
-  for (int c = 0; c < problem.n_variables; ++c) {
-    col_lower[c]  = get_lower(h_vb[c]);
-    col_upper[c]  = get_upper(h_vb[c]);
-    is_integer[c] = (h_vt[c] == var_t::INTEGER) ? 1 : 0;
-  }
-  return row_share_adjacency(
-    problem.n_variables, offsets, variables, is_integer, col_lower, col_upper);
 }
 
 // Brute-force the (small, binary) reduced problem_t: enumerate all 2^n assignments, return whether
@@ -672,20 +700,21 @@ struct bve_case_t {
   const char* file;
   bool feasible;
   double optimum;
+  bool expect_reduce;  // gadget should shrink via probing and/or block-BVE
 };
 static const bve_case_t kBveCases[] = {
-  {"mip/block_bve/or_used.mps", true, 1.0},
-  {"mip/block_bve/and_used.mps", true, -2.0},
-  {"mip/block_bve/neq_used.mps", true, -3.0},
-  {"mip/block_bve/chain_or.mps", true, 1.0},
-  {"mip/block_bve/two_gadgets.mps", true, 2.0},
-  {"mip/block_bve/heavy_reduce.mps", true, 2.0},
-  {"mip/block_bve/aux_with_obj.mps", true, 4.0},
-  {"mip/block_bve/mixed.mps", true, -1.0},
-  {"mip/block_bve/infeasible.mps", false, 0.0},
-  {"mip/block_bve/random_a.mps", true, -3.0},
-  {"mip/block_bve/random_b.mps", true, -5.0},
-  {"mip/block_bve/random_c.mps", true, -1.0},
+  {"mip/block_bve/or_used.mps", true, 1.0, true},
+  {"mip/block_bve/and_used.mps", true, -2.0, true},
+  {"mip/block_bve/neq_used.mps", true, -3.0, true},
+  {"mip/block_bve/chain_or.mps", true, 1.0, true},
+  {"mip/block_bve/two_gadgets.mps", true, 2.0, true},
+  {"mip/block_bve/heavy_reduce.mps", true, 2.0, true},
+  {"mip/block_bve/aux_with_obj.mps", true, 4.0, false},
+  {"mip/block_bve/mixed.mps", true, -1.0, false},
+  {"mip/block_bve/infeasible.mps", false, 0.0, false},
+  {"mip/block_bve/random_a.mps", true, -3.0, false},
+  {"mip/block_bve/random_b.mps", true, -5.0, false},
+  {"mip/block_bve/random_c.mps", true, -1.0, false},
 };
 
 // End-to-end equivalence: for each corpus instance, run the pass, brute-force the reduced model,
@@ -698,6 +727,7 @@ static const bve_case_t kBveCases[] = {
 TEST(block_bve_equivalence, preserves_optimum_and_reconstruction_on_corpus)
 {
   const raft::handle_t handle_{};
+  bool any_reduced = false;
   for (const auto& c : kBveCases) {
     SCOPED_TRACE(c.file);
     auto model      = io::read_mps<int, double>(make_path_absolute(c.file), /*fixed_format=*/false);
@@ -705,11 +735,27 @@ TEST(block_bve_equivalence, preserves_optimum_and_reconstruction_on_corpus)
     mip::problem_t<int, double> problem(op_problem);
     problem.preprocess_problem();
     problem.presolve_data.initialize_var_mapping(problem, problem.handle_ptr);
+    const int n_before = problem.n_variables;
 
-    auto impl_adj = proxy_impl_adj(problem);
+    bool probing_infeas = false;
+    auto impl_adj       = probing_impl_adj(problem, &probing_infeas);
+    if (probing_infeas) {
+      EXPECT_FALSE(c.feasible) << "probing proved infeasible on a feasible instance";
+      continue;
+    }
+
     cuopt::timer_t bve_timer(10.0);
     double bve_work_units = 0.0;
-    mip::block_bve_presolve(problem, impl_adj, bve_timer, bve_work_units);
+    const bool applied    = mip::block_bve_presolve(problem, impl_adj, bve_timer, bve_work_units);
+    // Probing/trivial may already have eliminated the aux; BVE then correctly no-ops.
+    if (applied || problem.n_variables < n_before) { any_reduced = true; }
+    if (applied) {
+      EXPECT_LT(problem.n_variables, n_before) << "applied but variable count unchanged";
+    }
+    if (c.expect_reduce) {
+      EXPECT_LT(problem.n_variables, n_before)
+        << "gadget fixture expected a reduction via probing and/or block-BVE";
+    }
 
     auto bf = brute_force_binary(problem);
     if (!c.feasible) {
@@ -748,6 +794,79 @@ TEST(block_bve_equivalence, preserves_optimum_and_reconstruction_on_corpus)
       recon_obj += m_obj[j] * full[j];
     EXPECT_NEAR(recon_obj, c.optimum, 1e-6);
   }
+  EXPECT_TRUE(any_reduced) << "corpus exercised no probing/block-BVE reduction path";
+}
+
+// Drive production MIP presolve (Papilo → cuOpt run_presolve) and optionally assert
+// upper bounds on the reduced size. Pass std::numeric_limits<int>::max() for a
+// dimension to skip that check.
+static void run_presolve_size_check(const char* relative_mps_path,
+                                    int max_vars = std::numeric_limits<int>::max(),
+                                    int max_rows = std::numeric_limits<int>::max())
+{
+  const raft::handle_t handle_{};
+  auto model      = io::read_mps<int, double>(make_path_absolute(relative_mps_path),
+                                         /*fixed_format=*/false);
+  auto op_problem = mps_data_model_to_optimization_problem(&handle_, model);
+  sort_csr(op_problem);
+
+  mip_solver_settings_t<int, double> settings{};
+  settings.presolver = presolver_t::Papilo;
+  settings.probing   = true;
+  settings.block_bve = true;
+
+  auto papilo = std::make_unique<mip::third_party_presolve_t<int, double>>();
+  auto result = papilo->apply(op_problem,
+                              problem_category_t::MIP,
+                              settings.presolver,
+                              /*dual_postsolve=*/false,
+                              settings.tolerances.absolute_tolerance,
+                              settings.tolerances.relative_tolerance,
+                              /*time_limit=*/60.0,
+                              /*num_cpu_threads=*/0);
+  ASSERT_NE(result.status, mip::third_party_presolve_status_t::INFEASIBLE)
+    << relative_mps_path << " infeasible after Papilo";
+  ASSERT_NE(result.status, mip::third_party_presolve_status_t::UNBNDORINFEAS)
+    << relative_mps_path << " unbounded-or-infeasible after Papilo";
+  ASSERT_NE(result.status, mip::third_party_presolve_status_t::UNBOUNDED)
+    << relative_mps_path << " unbounded after Papilo";
+
+  mip::problem_t<int, double> problem(result.reduced_problem);
+  problem.set_papilo_presolve_data(papilo.get(),
+                                   result.reduced_to_original_map,
+                                   result.original_to_reduced_map,
+                                   op_problem.get_n_variables());
+  problem.set_implied_integers(result.implied_integer_indices);
+  problem.preprocess_problem();
+  mip::trivial_presolve(problem);
+
+  cuopt::timer_t timer(120.0);
+  mip::mip_solver_t<int, double> solver(problem, settings, timer);
+  problem.tolerances = settings.get_tolerances();
+  mip::diversity_manager_t<int, double> dm(solver.context);
+
+  bool presolve_ok = false;
+  with_mip_omp_team([&]() { presolve_ok = dm.run_presolve(/*time_limit=*/60.0, timer); });
+
+  ASSERT_TRUE(presolve_ok) << relative_mps_path << " cuOpt run_presolve failed";
+  if (max_vars != std::numeric_limits<int>::max()) {
+    EXPECT_LT(problem.n_variables, max_vars)
+      << relative_mps_path << " reduced n_variables=" << problem.n_variables;
+  }
+  if (max_rows != std::numeric_limits<int>::max()) {
+    EXPECT_LT(problem.n_constraints, max_rows)
+      << relative_mps_path << " reduced n_constraints=" << problem.n_constraints;
+  }
+}
+
+TEST(block_bve_presolve, bnatt400_reduces_below_500_vars)
+{
+  run_presolve_size_check("mip/bnatt400.mps", /*max_vars=*/500);
+}
+
+TEST(block_bve_presolve, bnatt500_reduces_below_500_vars)
+{
+  run_presolve_size_check("mip/bnatt500.mps", /*max_vars=*/500);
 }
 
 }  // namespace cuopt::mathematical_optimization::test

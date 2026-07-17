@@ -87,6 +87,24 @@ signed subtraction (`std::vector<i_t> v(static_cast<size_t>(hi - lo) + 2, 0)`), 
 the narrowing `size_t`→`i_t` in `static_cast<i_t>(x.size())` (established style;
 keep it)
 
+### Integer widths — prefer fixed-width types
+
+Prefer `<cstdint>` fixed-width types (`int32_t`, `int64_t`, `uint32_t`, …) over
+plain `int` / `long` / `long long` when the value range or ABI width matters
+(counts that can exceed 32 bits, device grid math, work estimates, file offsets).
+
+Avoid multi-word functional casts such as `long long(x)` in `.cu`/`.cuh` — they
+confuse CUDA-aware tooling (`type name is not allowed`). Use a C-style cast to a
+fixed-width type instead: `(int64_t)x`.
+
+```cpp
+const long long total = long long(num) * long long(patterns);  // ❌
+const int64_t total = (int64_t)num * (int64_t)patterns;          // ✅
+```
+
+Keep `i_t` / `f_t` for problem-index and numeric template parameters; use
+`int64_t` (etc.) for host-side wide counters outside that abstraction.
+
 ### CUDA Error Checking
 
 ```cpp
@@ -119,3 +137,15 @@ Read existing code in `cpp/src/` for real examples of RMM allocation, stream-ord
    - Python pytest: `python/.../tests/`
 
 **Add at least one regression test for new behavior.**
+
+When a new MIP test loads a MIPLIB instance (e.g. via `make_path_absolute("mip/<name>.mps")`),
+that instance must appear in `datasets/mip/download_miplib_test_dataset.sh`'s `INSTANCES`
+list. CI and local setups only fetch that allowlist — an unlisted name fails at parse time
+with a missing-file error even though the test itself is correct. Add the basename there as part of the same change that introduces the test.
+
+Calling cuOpt MIP internals that use OpenMP taskloops (notably `diversity_manager::run_presolve`
+→ `compute_probing_cache`) from a plain gtest must open an OMP team first, the same way
+`solve_mip` does (`#pragma omp parallel num_threads(...)` + `#pragma omp masked`, with
+`omp_set_max_active_levels(2)` if needed). Probing sizes its pool as
+`omp_get_num_threads() - 1`; outside a parallel region that is 0 and probing becomes a silent
+no-op (Papilo size unchanged, test finishes in a few hundred ms).
