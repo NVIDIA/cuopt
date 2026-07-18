@@ -523,7 +523,7 @@ cdef class DataModel:
         write_mps(self.c_data_model_view.get()[0],
                   user_problem_file.encode('utf-8'))
 
-    def writeLP(self, user_problem_file):
+    def _write_lp(self, user_problem_file):
         n_vars = self.get_variable_lower_bounds().shape[0]
         if self.variable_types.shape[0] == 0 and n_vars > 0:
             self.variable_types = np.array(["C"] * n_vars, dtype="S1")

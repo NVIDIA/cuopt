@@ -6,11 +6,9 @@
 /* clang-format on */
 
 /**
- * Round-trip tests for the LP writer. Each test parses LP text into a
- * mps_data_model_t (using the trusted read_lp parser), writes it back out with
- * lp_writer_t, re-parses the emitted file, and checks that the two models are
- * structurally equivalent (compared by variable / row name, since LP-format
- * indices are assigned by first appearance).
+ * LP writer tests. Primary coverage is exact string output for a range of
+ * input problems (specified as LP text for convenience, then re-parsed and
+ * rewritten). A couple of round-trip checks are retained for quadratic cases.
  */
 
 #include <cuopt/mathematical_optimization/io/lp_writer.hpp>
@@ -19,21 +17,18 @@
 
 #include <gtest/gtest.h>
 
-#include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <limits>
-#include <map>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <system_error>
-#include <unordered_map>
 #include <vector>
 
 namespace cuopt::mathematical_optimization::io {
 
 namespace {
-
-constexpr double tol = 1e-9;
 
 struct temp_file_guard_t {
   explicit temp_file_guard_t(std::string p) : path(std::move(p)) {}
@@ -47,114 +42,34 @@ struct temp_file_guard_t {
   std::string path;
 };
 
-mps_data_model_t<int, double> read_lp_string(std::string_view content)
+std::string read_file(const std::string& path)
 {
-  return read_lp_from_string<int, double>(content);
+  std::ifstream in(path);
+  std::ostringstream ss;
+  ss << in.rdbuf();
+  return ss.str();
 }
 
-// Parse -> write -> parse; returns the re-parsed model.
-mps_data_model_t<int, double> round_trip(std::string_view lp_text, const std::string& tag)
+std::string write_lp_to_string(const mps_data_model_t<int, double>& model, const std::string& tag)
 {
-  mps_data_model_t<int, double> original = read_lp_string(lp_text);
-
   const std::string path = std::string(::testing::TempDir()) + "lp_writer_" + tag + ".lp";
   temp_file_guard_t guard(path);
-
-  lp_writer_t<int, double> writer(original);
+  lp_writer_t<int, double> writer(model);
   writer.write(path);
-
-  return read_lp<int, double>(path);
+  return read_file(path);
 }
 
-std::unordered_map<std::string, int> name_to_index(const std::vector<std::string>& names)
+std::string rewrite_lp_text(std::string_view lp_text, const std::string& tag)
 {
-  std::unordered_map<std::string, int> m;
-  for (size_t i = 0; i < names.size(); ++i)
-    m[names[i]] = static_cast<int>(i);
-  return m;
-}
-
-// Compares model `a` (reference) and model `b` (re-parsed) by name.
-void expect_equivalent(std::string_view lp_text, const std::string& tag)
-{
-  mps_data_model_t<int, double> a = read_lp_string(lp_text);
-  mps_data_model_t<int, double> b = round_trip(lp_text, tag);
-
-  EXPECT_EQ(a.get_sense(), b.get_sense());
-  EXPECT_NEAR(a.get_objective_offset(), b.get_objective_offset(), tol);
-
-  const auto& an = a.get_variable_names();
-  const auto& bn = b.get_variable_names();
-  ASSERT_EQ(an.size(), bn.size()) << "variable count differs for " << tag;
-  auto b_idx = name_to_index(bn);
-
-  const auto& ac = a.get_objective_coefficients();
-  const auto& bc = b.get_objective_coefficients();
-  const auto& alb = a.get_variable_lower_bounds();
-  const auto& blb = b.get_variable_lower_bounds();
-  const auto& aub = a.get_variable_upper_bounds();
-  const auto& bub = b.get_variable_upper_bounds();
-  const auto& at  = a.get_variable_types();
-  const auto& bt  = b.get_variable_types();
-
-  for (size_t i = 0; i < an.size(); ++i) {
-    ASSERT_TRUE(b_idx.count(an[i])) << "variable '" << an[i] << "' missing after round trip";
-    int j = b_idx[an[i]];
-    EXPECT_NEAR(ac[i], bc[j], tol) << "objective coeff for " << an[i];
-    EXPECT_NEAR(alb[i], blb[j], tol) << "lower bound for " << an[i];
-    EXPECT_NEAR(aub[i], bub[j], tol) << "upper bound for " << an[i];
-    EXPECT_EQ(at[i], bt[j]) << "type for " << an[i];
-  }
-
-  // Compare linear constraints by row name. Build (row name -> map<var name, coeff>) and
-  // (row name -> [lb, ub]) for each model.
-  auto build_rows = [](const mps_data_model_t<int, double>& m) {
-    const auto& rn      = m.get_row_names();
-    const auto& names   = m.get_variable_names();
-    const auto& offsets = m.get_constraint_matrix_offsets();
-    const auto& indices = m.get_constraint_matrix_indices();
-    const auto& values  = m.get_constraint_matrix_values();
-    const auto& clb     = m.get_constraint_lower_bounds();
-    const auto& cub     = m.get_constraint_upper_bounds();
-    std::map<std::string, std::map<std::string, double>> coeffs;
-    std::map<std::string, std::pair<double, double>> bounds;
-    for (size_t r = 0; r < rn.size(); ++r) {
-      auto& row = coeffs[rn[r]];
-      for (int p = offsets[r]; p < offsets[r + 1]; ++p)
-        row[names[indices[p]]] += values[p];
-      bounds[rn[r]] = {clb[r], cub[r]};
-    }
-    return std::make_pair(coeffs, bounds);
-  };
-
-  auto [a_coeffs, a_bounds] = build_rows(a);
-  auto [b_coeffs, b_bounds] = build_rows(b);
-  ASSERT_EQ(a_coeffs.size(), b_coeffs.size()) << "linear row count differs for " << tag;
-  for (const auto& [rname, arow] : a_coeffs) {
-    ASSERT_TRUE(b_coeffs.count(rname)) << "row '" << rname << "' missing after round trip";
-    const auto& brow = b_coeffs[rname];
-    EXPECT_EQ(arow.size(), brow.size()) << "nnz differs for row " << rname;
-    for (const auto& [vname, coeff] : arow) {
-      ASSERT_TRUE(brow.count(vname)) << "var " << vname << " missing in row " << rname;
-      EXPECT_NEAR(coeff, brow.at(vname), tol) << "coeff for " << vname << " in row " << rname;
-    }
-    auto compare_bound = [](double x, double y) {
-      if (std::isinf(x) || std::isinf(y)) return (std::isinf(x) && std::isinf(y) && (x > 0) == (y > 0));
-      return std::abs(x - y) < tol;
-    };
-    EXPECT_TRUE(compare_bound(a_bounds[rname].first, b_bounds[rname].first)) << "clb " << rname;
-    EXPECT_TRUE(compare_bound(a_bounds[rname].second, b_bounds[rname].second)) << "cub " << rname;
-  }
-
-  EXPECT_EQ(a.has_quadratic_objective(), b.has_quadratic_objective());
-  EXPECT_EQ(a.get_quadratic_constraints().size(), b.get_quadratic_constraints().size());
+  return write_lp_to_string(read_lp_from_string<int, double>(lp_text), tag);
 }
 
 }  // namespace
 
-TEST(lp_writer, simple_lp_round_trip)
+TEST(lp_writer, simple_lp_exact_output)
 {
-  expect_equivalent(R"LP(
+  // Named rows/vars, mixed constraint senses, non-default bounds.
+  const std::string out = rewrite_lp_text(R"LP(
 Minimize
  obj: 3 x + 2 y - z
 Subject To
@@ -167,24 +82,78 @@ Bounds
  -5 <= z <= 5
 End
 )LP",
-                    "simple_lp");
+                                          "simple_lp");
+
+  EXPECT_EQ(out,
+            "Minimize\n"
+            " obj: + 3 x + 2 y - 1 z\n"
+            "Subject To\n"
+            " c1: + 1 x + 1 y <= 10\n"
+            " c2: + 1 x - 1 z >= -4\n"
+            " c3: + 2 x + 1 y = 6\n"
+            "Bounds\n"
+            " x <= 8\n"
+            " y >= 1\n"
+            " -5 <= z <= 5\n"
+            "End\n");
 }
 
-TEST(lp_writer, maximize_and_offset_round_trip)
+TEST(lp_writer, maximize_and_offset_exact_output)
 {
-  expect_equivalent(R"LP(
+  const std::string out = rewrite_lp_text(R"LP(
 Maximize
  obj: 2 a + 3 b + 7
 Subject To
  r1: a + b <= 4
 End
 )LP",
-                    "max_offset");
+                                          "max_offset");
+
+  EXPECT_EQ(out,
+            "Maximize\n"
+            " obj: + 2 a + 3 b + 7\n"
+            "Subject To\n"
+            " r1: + 1 a + 1 b <= 4\n"
+            "End\n");
 }
 
-TEST(lp_writer, mip_generals_binaries_round_trip)
+TEST(lp_writer, unnamed_constraints_omit_names)
 {
-  expect_equivalent(R"LP(
+  // No row names in the model → writer must not invent or print names.
+  mps_data_model_t<int, double> model;
+  const std::vector<double> c{1.0, 1.0};
+  const std::vector<double> lb{0.0, 0.0};
+  const std::vector<double> ub{std::numeric_limits<double>::infinity(),
+                               std::numeric_limits<double>::infinity()};
+  const std::vector<std::string> var_names{"x", "y"};
+  const std::vector<double> A_values{1.0, 1.0};
+  const std::vector<int> A_indices{0, 1};
+  const std::vector<int> A_offsets{0, 2};
+  const std::vector<double> clb{-std::numeric_limits<double>::infinity()};
+  const std::vector<double> cub{5.0};
+  const std::vector<char> row_types{'L'};
+
+  model.set_objective_coefficients(c);
+  model.set_maximize(false);
+  model.set_variable_lower_bounds(lb);
+  model.set_variable_upper_bounds(ub);
+  model.set_variable_names(var_names);
+  model.set_csr_constraint_matrix(A_values, A_indices, A_offsets);
+  model.set_constraint_lower_bounds(clb);
+  model.set_constraint_upper_bounds(cub);
+  model.set_row_types(row_types);
+
+  EXPECT_EQ(write_lp_to_string(model, "unnamed"),
+            "Minimize\n"
+            " obj: + 1 x + 1 y\n"
+            "Subject To\n"
+            "  + 1 x + 1 y <= 5\n"
+            "End\n");
+}
+
+TEST(lp_writer, mip_generals_binaries_exact_output)
+{
+  const std::string out = rewrite_lp_text(R"LP(
 Minimize
  obj: x + y + 2 z
 Subject To
@@ -198,12 +167,26 @@ Binaries
  z
 End
 )LP",
-                    "mip");
+                                          "mip");
+
+  EXPECT_EQ(out,
+            "Minimize\n"
+            " obj: + 1 x + 1 y + 2 z\n"
+            "Subject To\n"
+            " c1: + 1 x + 1 y + 1 z <= 5\n"
+            "Bounds\n"
+            " y <= 10\n"
+            "Generals\n"
+            " y\n"
+            "Binaries\n"
+            " x\n"
+            " z\n"
+            "End\n");
 }
 
-TEST(lp_writer, free_and_fixed_bounds_round_trip)
+TEST(lp_writer, free_and_fixed_bounds_exact_output)
 {
-  expect_equivalent(R"LP(
+  const std::string out = rewrite_lp_text(R"LP(
 Minimize
  obj: p + q + r
 Subject To
@@ -214,33 +197,60 @@ Bounds
  r <= 9
 End
 )LP",
-                    "bounds");
+                                          "bounds");
+
+  EXPECT_EQ(out,
+            "Minimize\n"
+            " obj: + 1 p + 1 q + 1 r\n"
+            "Subject To\n"
+            " c1: + 1 p + 1 q + 1 r >= 1\n"
+            "Bounds\n"
+            " p free\n"
+            " q = 3\n"
+            " r <= 9\n"
+            "End\n");
 }
 
-TEST(lp_writer, quadratic_objective_round_trip)
+TEST(lp_writer, quadratic_objective_exact_output)
 {
-  // min 0.5*(2 x^2 + 4 x*y + 6 y^2) + x
-  expect_equivalent(R"LP(
+  // min 0.5*(2 x^2 + 4 x*y + 6 y^2) + x  →  written with H = Q+Q^T convention
+  const std::string out = rewrite_lp_text(R"LP(
 Minimize
  obj: x + [ 2 x ^ 2 + 4 x * y + 6 y ^ 2 ] / 2
 Subject To
  c1: x + y >= 1
 End
 )LP",
-                    "qp_obj");
+                                          "qp_obj");
+
+  EXPECT_EQ(out,
+            "Minimize\n"
+            " obj: + 1 x + [ + 2 x ^ 2 + 4 x * y + 6 y ^ 2 ] / 2\n"
+            "Subject To\n"
+            " c1: + 1 x + 1 y >= 1\n"
+            "End\n");
 }
 
 TEST(lp_writer, quadratic_constraint_round_trip)
 {
-  expect_equivalent(R"LP(
+  // Retain one round-trip for QCQP content (parser/writer quadratic path).
+  const auto original = read_lp_from_string<int, double>(R"LP(
 Minimize
  obj: x + y
 Subject To
  lin: x + y <= 10
  qc: x + [ x ^ 2 + y ^ 2 ] <= 4
 End
-)LP",
-                    "qcqp");
+)LP");
+  const auto rewritten =
+    read_lp_from_string<int, double>(write_lp_to_string(original, "qcqp_rt"));
+
+  EXPECT_EQ(original.get_sense(), rewritten.get_sense());
+  EXPECT_EQ(original.get_quadratic_constraints().size(),
+            rewritten.get_quadratic_constraints().size());
+  ASSERT_EQ(rewritten.get_quadratic_constraints().size(), 1u);
+  EXPECT_EQ(rewritten.get_quadratic_constraints()[0].constraint_row_name, "qc");
+  EXPECT_NEAR(rewritten.get_quadratic_constraints()[0].rhs_value, 4.0, 1e-9);
 }
 
 }  // namespace cuopt::mathematical_optimization::io

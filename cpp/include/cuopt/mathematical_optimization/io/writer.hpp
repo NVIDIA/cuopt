@@ -26,7 +26,7 @@ void write_mps(const data_model_view_t<i_t, f_t>& problem, const std::string& mp
 /**
  * @brief Writes the problem to an LP formatted file
  *
- * Emits the (algebraic, CPLEX/Gurobi style) LP format understood by read_lp().
+ * Emits the LP format understood by read_lp().
  * Supports LP, MIP, and QP/QCQP problems, plus semi-continuous variables.
  *
  * @param[in] problem The problem data model view to write

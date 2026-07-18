@@ -2038,24 +2038,46 @@ class Problem:
     def writeMPS(self, mps_file):
         """
         Write the problem into an `MPS <https://en.wikipedia.org/wiki/MPS_(format)>`__ file.  # noqa
+
+        .. deprecated::
+            Use :meth:`write` instead.
+
         Examples
         --------
         >>> problem.writeMPS("model.mps")
         """
+        warnings.warn(
+            "Problem.writeMPS is deprecated and will be removed in a future "
+            "release. Use Problem.write instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if self.model is None:
             self._to_data_model()
-        self.model.writeMPS(mps_file)
+        self.model._write_mps(mps_file)
 
-    def writeLP(self, lp_file):
+    def write(self, file_path):
         """
-        Write the problem into an `LP <https://en.wikipedia.org/wiki/LP_file_format>`__ file.  # noqa
+        Write the problem to an MPS, QPS, or LP file.
+
+        Dispatches on the file extension via the C++ ``file_format_from_path``
+        helper (case-insensitive): ``.mps`` / ``.qps`` (and ``.gz`` / ``.bz2``
+        variants) use the MPS writer; ``.lp`` (and compressed variants) use the
+        LP writer.
+
+        Parameters
+        ----------
+        file_path : str
+            Path to an MPS, QPS, or LP output file.
+
         Examples
         --------
-        >>> problem.writeLP("model.lp")
+        >>> problem.write("model.mps")
+        >>> problem.write("model.lp")
         """
         if self.model is None:
             self._to_data_model()
-        self.model.writeLP(lp_file)
+        self.model.write(file_path)
 
     @property
     def NumVariables(self):

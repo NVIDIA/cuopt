@@ -142,7 +142,6 @@ void lp_writer_t<i_t, f_t>::write(const std::string& lp_file_path)
 
   const f_t inf = std::numeric_limits<f_t>::infinity();
 
-  // --- Gather sizes -------------------------------------------------------
   const auto c_span         = problem_.get_objective_coefficients();
   const auto lb_span        = problem_.get_variable_lower_bounds();
   const auto ub_span        = problem_.get_variable_upper_bounds();
@@ -154,68 +153,92 @@ void lp_writer_t<i_t, f_t>::write(const std::string& lp_file_path)
   const auto& row_names_ref = problem_.get_row_names();
   const auto& quadratic_constraints = problem_.get_quadratic_constraints();
 
-  i_t n_variables = 0;
-  auto grow       = [&](size_t s) { n_variables = std::max(n_variables, static_cast<i_t>(s)); };
-  grow(c_span.size());
-  grow(lb_span.size());
-  grow(ub_span.size());
-  grow(types_span.size());
-  grow(var_names_ref.size());
-  for (i_t idx : A_indices_span) {
-    n_variables = std::max(n_variables, static_cast<i_t>(idx + 1));
-  }
-  {
-    const auto Q_off = problem_.get_quadratic_objective_offsets();
-    if (Q_off.size() > 1) { n_variables = std::max(n_variables, static_cast<i_t>(Q_off.size() - 1)); }
-    for (i_t idx : problem_.get_quadratic_objective_indices()) {
-      n_variables = std::max(n_variables, static_cast<i_t>(idx + 1));
-    }
-  }
-  for (const auto& qc : quadratic_constraints) {
-    for (i_t idx : qc.linear_indices)
-      n_variables = std::max(n_variables, static_cast<i_t>(idx + 1));
-    for (i_t idx : qc.rows)
-      n_variables = std::max(n_variables, static_cast<i_t>(idx + 1));
-    for (i_t idx : qc.cols)
-      n_variables = std::max(n_variables, static_cast<i_t>(idx + 1));
-  }
+  // Variable count is defined by the lower-bound vector (same as the MPS writer).
+  // Require other per-variable arrays to match when present.
+  const i_t n_variables = lb_span.size();
+  mps_parser_expects(ub_span.size() == static_cast<size_t>(n_variables),
+                     error_type_t::ValidationError,
+                     "LP writer: variable upper bounds size (%zu) must match lower bounds (%d)",
+                     ub_span.size(),
+                     n_variables);
+  mps_parser_expects(c_span.empty() || c_span.size() == static_cast<size_t>(n_variables),
+                     error_type_t::ValidationError,
+                     "LP writer: objective coefficients size (%zu) must match n_variables (%d)",
+                     c_span.size(),
+                     n_variables);
+  mps_parser_expects(types_span.empty() || types_span.size() == static_cast<size_t>(n_variables),
+                     error_type_t::ValidationError,
+                     "LP writer: variable types size (%zu) must match n_variables (%d)",
+                     types_span.size(),
+                     n_variables);
+  mps_parser_expects(var_names_ref.empty() ||
+                       var_names_ref.size() == static_cast<size_t>(n_variables),
+                     error_type_t::ValidationError,
+                     "LP writer: variable names size (%zu) must match n_variables (%d)",
+                     var_names_ref.size(),
+                     n_variables);
 
-  // --- Local, padded per-variable data ------------------------------------
-  std::vector<f_t> c(static_cast<size_t>(n_variables), f_t(0));
-  std::vector<f_t> var_lb(static_cast<size_t>(n_variables), default_lower<f_t>());
-  std::vector<f_t> var_ub(static_cast<size_t>(n_variables), default_upper<f_t>());
-  std::vector<char> var_types(static_cast<size_t>(n_variables), 'C');
-  for (size_t j = 0; j < std::min<size_t>(c_span.size(), c.size()); ++j)
-    c[j] = c_span[j];
-  for (size_t j = 0; j < std::min<size_t>(lb_span.size(), var_lb.size()); ++j)
-    var_lb[j] = lb_span[j];
-  for (size_t j = 0; j < std::min<size_t>(ub_span.size(), var_ub.size()); ++j)
-    var_ub[j] = ub_span[j];
-  for (size_t j = 0; j < std::min<size_t>(types_span.size(), var_types.size()); ++j)
-    var_types[j] = types_span[j];
+  std::vector<f_t> c(n_variables, f_t(0));
+  if (!c_span.empty()) { std::copy(c_span.begin(), c_span.end(), c.begin()); }
+
+  std::vector<f_t> var_lb(lb_span.begin(), lb_span.end());
+  std::vector<f_t> var_ub(ub_span.begin(), ub_span.end());
+
+  // Default unset variable types to continuous ('C'); API models often omit types.
+  std::vector<char> var_types(n_variables, 'C');
+  if (!types_span.empty()) { std::copy(types_span.begin(), types_span.end(), var_types.begin()); }
 
   auto var_name = [&](i_t j) -> std::string {
-    if (static_cast<size_t>(j) < var_names_ref.size() && !var_names_ref[j].empty())
+    if (static_cast<size_t>(j) < var_names_ref.size() && !var_names_ref[j].empty()) {
       return var_names_ref[j];
+    }
     return "C" + std::to_string(j);
   };
 
   // --- Linear constraint bounds -------------------------------------------
-  const auto b_span   = problem_.get_constraint_bounds();
-  const auto clb_span = problem_.get_constraint_lower_bounds();
-  const auto cub_span = problem_.get_constraint_upper_bounds();
+  const auto b_span     = problem_.get_constraint_bounds();
+  const auto clb_span   = problem_.get_constraint_lower_bounds();
+  const auto cub_span   = problem_.get_constraint_upper_bounds();
   const auto rtype_span = problem_.get_row_types();
 
   i_t n_constraints = 0;
   if (!b_span.empty())
-    n_constraints = static_cast<i_t>(b_span.size());
+    n_constraints = b_span.size();
   else if (!clb_span.empty())
-    n_constraints = static_cast<i_t>(clb_span.size());
+    n_constraints = clb_span.size();
   else
-    n_constraints = static_cast<i_t>(cub_span.size());
+    n_constraints = cub_span.size();
 
-  std::vector<f_t> clb(static_cast<size_t>(n_constraints));
-  std::vector<f_t> cub(static_cast<size_t>(n_constraints));
+  mps_parser_expects(clb_span.empty() || clb_span.size() == static_cast<size_t>(n_constraints),
+                     error_type_t::ValidationError,
+                     "LP writer: constraint lower bounds size (%zu) must match n_constraints (%d)",
+                     clb_span.size(),
+                     n_constraints);
+  mps_parser_expects(cub_span.empty() || cub_span.size() == static_cast<size_t>(n_constraints),
+                     error_type_t::ValidationError,
+                     "LP writer: constraint upper bounds size (%zu) must match n_constraints (%d)",
+                     cub_span.size(),
+                     n_constraints);
+  mps_parser_expects(b_span.empty() || b_span.size() == static_cast<size_t>(n_constraints),
+                     error_type_t::ValidationError,
+                     "LP writer: constraint bounds size (%zu) must match n_constraints (%d)",
+                     b_span.size(),
+                     n_constraints);
+  mps_parser_expects(row_names_ref.empty() ||
+                       row_names_ref.size() == static_cast<size_t>(n_constraints),
+                     error_type_t::ValidationError,
+                     "LP writer: row names size (%zu) must match n_constraints (%d)",
+                     row_names_ref.size(),
+                     n_constraints);
+  mps_parser_expects(A_offsets_span.empty() ||
+                       A_offsets_span.size() == static_cast<size_t>(n_constraints) + 1,
+                     error_type_t::ValidationError,
+                     "LP writer: CSR offsets size (%zu) must be n_constraints+1 (%d)",
+                     A_offsets_span.size(),
+                     n_constraints + 1);
+
+  std::vector<f_t> clb(n_constraints);
+  std::vector<f_t> cub(n_constraints);
   if (clb_span.empty() || cub_span.empty()) {
     // Derive from row types + single-sided b (mirrors mps_writer's fallback).
     for (size_t i = 0; i < static_cast<size_t>(n_constraints); ++i) {
@@ -233,16 +256,16 @@ void lp_writer_t<i_t, f_t>::write(const std::string& lp_file_path)
       }
     }
   } else {
-    for (size_t i = 0; i < static_cast<size_t>(n_constraints); ++i) {
-      clb[i] = clb_span[i];
-      cub[i] = cub_span[i];
-    }
+    std::copy(clb_span.begin(), clb_span.end(), clb.begin());
+    std::copy(cub_span.begin(), cub_span.end(), cub.begin());
   }
 
+  // Empty when the row has no name — LP does not require constraint names.
   auto row_name = [&](i_t k) -> std::string {
-    if (static_cast<size_t>(k) < row_names_ref.size() && !row_names_ref[k].empty())
+    if (static_cast<size_t>(k) < row_names_ref.size() && !row_names_ref[k].empty()) {
       return row_names_ref[k];
-    return "R" + std::to_string(k);
+    }
+    return {};
   };
 
   // --- Formatting helpers -------------------------------------------------
@@ -313,9 +336,7 @@ void lp_writer_t<i_t, f_t>::write(const std::string& lp_file_path)
 
       // Collect the upper-triangular entries first so we only open the bracket
       // when there is at least one nonzero quadratic term.
-      const i_t n_rows = static_cast<i_t>(H_offsets.size()) > 0
-                           ? static_cast<i_t>(H_offsets.size()) - 1
-                           : 0;
+      const i_t n_rows = H_offsets.empty() ? 0 : (H_offsets.size() - 1);
       std::vector<std::tuple<i_t, i_t, f_t>> upper;
       for (i_t i = 0; i < n_rows; ++i) {
         for (i_t p = H_offsets[i]; p < H_offsets[i + 1]; ++p) {
@@ -343,13 +364,17 @@ void lp_writer_t<i_t, f_t>::write(const std::string& lp_file_path)
   // --- Constraints --------------------------------------------------------
   lp_file << "Subject To\n";
 
-  // Emits "<name>: <linear terms> <rel> <rhs>" for one linear row. `indices`
-  // and `values` hold the row's nonzeros.
+  // Emits "<name>: <linear terms> <rel> <rhs>" when `name` is non-empty, or
+  // " <linear terms> <rel> <rhs>" when the row is unnamed.
   auto write_linear_row = [&](const std::string& name,
                               const std::vector<std::pair<i_t, f_t>>& row,
                               const char* rel,
                               f_t rhs) {
-    lp_file << " " << name << ":";
+    if (name.empty()) {
+      lp_file << " ";
+    } else {
+      lp_file << " " << name << ":";
+    }
     int terms_on_line = 0;
     for (const auto& [vid, val] : row) {
       if (val != f_t(0)) { emit_term(val, var_name(vid), terms_on_line); }
@@ -365,19 +390,22 @@ void lp_writer_t<i_t, f_t>::write(const std::string& lp_file_path)
       }
     }
 
-    const f_t lo = clb[k];
-    const f_t hi = cub[k];
+    const f_t lo           = clb[k];
+    const f_t hi           = cub[k];
+    const std::string name = row_name(k);
     if (lo == hi) {
-      write_linear_row(row_name(k), row, "=", lo);
+      write_linear_row(name, row, "=", lo);
     } else if (std::isinf(lo) && lo < 0 && !std::isinf(hi)) {
-      write_linear_row(row_name(k), row, "<=", hi);
+      write_linear_row(name, row, "<=", hi);
     } else if (std::isinf(hi) && hi > 0 && !std::isinf(lo)) {
-      write_linear_row(row_name(k), row, ">=", lo);
+      write_linear_row(name, row, ">=", lo);
     } else if (!std::isinf(lo) && !std::isinf(hi)) {
       // Range row: the LP format cannot express two finite bounds on a single
       // line, so split it into a '>=' row and a '<=' row.
-      write_linear_row(row_name(k) + "_lo", row, ">=", lo);
-      write_linear_row(row_name(k) + "_up", row, "<=", hi);
+      const std::string lo_name = name.empty() ? std::string{} : name + "_lo";
+      const std::string up_name = name.empty() ? std::string{} : name + "_up";
+      write_linear_row(lo_name, row, ">=", lo);
+      write_linear_row(up_name, row, "<=", hi);
     }
     // (-inf, +inf) is a non-constraining row and is intentionally omitted.
   }
@@ -388,13 +416,16 @@ void lp_writer_t<i_t, f_t>::write(const std::string& lp_file_path)
   // constraint-bracket convention expects.
   for (size_t q = 0; q < quadratic_constraints.size(); ++q) {
     typename mps_data_model_t<i_t, f_t>::quadratic_constraint_t qc = quadratic_constraints[q];
-    const std::string name =
-      qc.constraint_row_name.empty() ? "QC" + std::to_string(q) : qc.constraint_row_name;
-    const char* rel = qc.constraint_row_type == 'G'   ? ">="
-                      : qc.constraint_row_type == 'E' ? "="
-                                                      : "<=";
+    const std::string name = qc.constraint_row_name;
+    const char* rel        = qc.constraint_row_type == 'G'   ? ">="
+                             : qc.constraint_row_type == 'E' ? "="
+                                                             : "<=";
 
-    lp_file << " " << name << ":";
+    if (name.empty()) {
+      lp_file << " ";
+    } else {
+      lp_file << " " << name << ":";
+    }
     int terms_on_line = 0;
     for (size_t t = 0; t < qc.linear_indices.size(); ++t) {
       if (qc.linear_values[t] != f_t(0)) {
@@ -445,8 +476,8 @@ void lp_writer_t<i_t, f_t>::write(const std::string& lp_file_path)
 
     if (is_binary(j)) { continue; }  // bounds implied by the Binaries section
 
-    const f_t lo = var_lb[j];
-    const f_t hi = var_ub[j];
+    const f_t lo           = var_lb[j];
+    const f_t hi           = var_ub[j];
     const std::string name = var_name(j);
     std::ostringstream line;
 
@@ -455,7 +486,7 @@ void lp_writer_t<i_t, f_t>::write(const std::string& lp_file_path)
     } else if (lo == hi) {
       line << " " << name << " = " << fmt(lo);
     } else {
-      bool need_lower = (lo != default_lower<f_t>());
+      bool need_lower       = (lo != default_lower<f_t>());
       const bool need_upper = !(std::isinf(hi) && hi > 0);
       // A negative upper bound needs an explicit lower bound, otherwise the
       // default lower of 0 collides with it on re-read (read_lp rejects this).

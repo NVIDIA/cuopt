@@ -18,9 +18,9 @@ namespace cuopt::mathematical_optimization::io {
 /**
  * @brief Main writer class for LP files
  *
- * Writes an optimization problem to a file in the (algebraic, CPLEX/Gurobi
- * style) LP format understood by read_lp(). The emitted dialect is a superset
- * of what a typical solver expects and round-trips through read_lp():
+ * Writes an optimization problem to a file in the LP format understood by
+ * read_lp(). The emitted dialect is a superset of what a typical solver
+ * expects and round-trips through read_lp():
  *   - Minimize / Maximize objective (with optional quadratic '[ ... ] / 2' term)
  *   - Subject To constraints (linear, plus optional quadratic '[ ... ]' term)
  *   - Bounds
