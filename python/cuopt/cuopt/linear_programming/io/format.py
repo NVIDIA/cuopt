@@ -3,15 +3,8 @@
 
 """Extension-based file format dispatch for LP I/O."""
 
-_MPS_SUFFIXES = (
-    ".mps",
-    ".mps.gz",
-    ".mps.bz2",
-    ".qps",
-    ".qps.gz",
-    ".qps.bz2",
-)
-_LP_SUFFIXES = (".lp", ".lp.gz", ".lp.bz2")
+_MPS_SUFFIXES = (".mps", ".qps")
+_LP_SUFFIXES = (".lp",)
 _SUPPORTED_WRITE_SUFFIXES = _MPS_SUFFIXES + _LP_SUFFIXES
 
 
@@ -21,9 +14,11 @@ def file_format_from_path(file_path: str) -> str:
     Mirrors the extension dispatch used by :func:`Read` and the C++
     ``file_format_from_path`` helper:
 
-    - ``.lp``, ``.lp.gz``, ``.lp.bz2`` → ``"lp"``
-    - ``.mps``, ``.mps.gz``, ``.mps.bz2``, ``.qps``, ``.qps.gz``, ``.qps.bz2``
-      → ``"mps"``
+    - ``.lp`` → ``"lp"``
+    - ``.mps``, ``.qps`` → ``"mps"``
+
+    Compressed output is not supported; paths ending in ``.gz`` or ``.bz2``
+    are rejected.
 
     Parameters
     ----------
@@ -38,7 +33,8 @@ def file_format_from_path(file_path: str) -> str:
     Raises
     ------
     RuntimeError
-        If the file extension is not one of the supported suffixes.
+        If the file extension is not one of the supported suffixes, including
+        compressed output suffixes.
     """
     lower = file_path.lower()
     for suffix in _LP_SUFFIXES:
@@ -51,5 +47,6 @@ def file_format_from_path(file_path: str) -> str:
     raise RuntimeError(
         "write: unrecognized output file extension. "
         f"Supported (case-insensitive): {supported}. "
+        "Compressed output is not supported. "
         f"Given path: {file_path}"
     )

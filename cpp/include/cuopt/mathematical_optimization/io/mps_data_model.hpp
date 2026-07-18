@@ -329,7 +329,7 @@ class mps_data_model_t {
   bool has_quadratic_constraints() const noexcept;
 
   /** whether to maximize or minimize the objective function */
-  bool maximize_;
+  bool maximize_{false};
   /**
    * the constraint matrix itself in the CSR format
    * @{

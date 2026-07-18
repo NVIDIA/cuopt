@@ -370,14 +370,18 @@ def test_write_dispatches_on_extension():
     assert "ENDATA" in mps_content
 
 
-def test_write_unrecognized_extension():
+@pytest.mark.parametrize(
+    "suffix",
+    [".xyz", ".lp.gz", ".lp.bz2", ".mps.gz", ".mps.bz2", ".qps.gz", ".qps.bz2"],
+)
+def test_write_unsupported_extension(suffix):
     from cuopt.linear_programming.problem import MINIMIZE, Problem
 
     problem = Problem()
     x = problem.addVariable(lb=0.0, ub=10.0, obj=1.0, name="x")
     problem.setObjective(x, sense=MINIMIZE)
 
-    with tempfile.NamedTemporaryFile(suffix=".xyz", delete=False) as f:
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
         out_path = f.name
     try:
         with pytest.raises(

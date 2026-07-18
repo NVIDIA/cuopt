@@ -2035,12 +2035,26 @@ class Problem:
         problem.model = data_model
         return problem
 
-    def writeMPS(self, mps_file):
+    def writeMPS(self, mps_file: str) -> None:
         """
         Write the problem into an `MPS <https://en.wikipedia.org/wiki/MPS_(format)>`__ file.  # noqa
 
         .. deprecated::
             Use :meth:`write` instead.
+
+        Parameters
+        ----------
+        mps_file : str
+            Path to the MPS output file.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        Exception
+            Propagates validation or I/O failures from the underlying writer.
 
         Examples
         --------
@@ -2056,19 +2070,29 @@ class Problem:
             self._to_data_model()
         self.model._write_mps(mps_file)
 
-    def write(self, file_path):
+    def write(self, file_path: str) -> None:
         """
         Write the problem to an MPS, QPS, or LP file.
 
-        Dispatches on the file extension via the C++ ``file_format_from_path``
-        helper (case-insensitive): ``.mps`` / ``.qps`` (and ``.gz`` / ``.bz2``
-        variants) use the MPS writer; ``.lp`` (and compressed variants) use the
-        LP writer.
+        Dispatches on the file extension in Python (case-insensitive):
+        ``.mps`` / ``.qps`` use the MPS writer and ``.lp`` uses the LP writer.
+        Compressed output is not supported.
 
         Parameters
         ----------
         file_path : str
-            Path to an MPS, QPS, or LP output file.
+            Path to an uncompressed MPS, QPS, or LP output file.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        RuntimeError
+            If the file extension is not one of the supported suffixes.
+        Exception
+            Propagates validation or I/O failures from the underlying writer.
 
         Examples
         --------

@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <memory>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -32,9 +33,8 @@ enum class file_format_t { mps = 0, lp = 1 };
 /**
  * @brief Pick the output file format from a path's extension.
  *
- * Mirrors the extension dispatch used by io::read(): a `.lp`, `.lp.gz`, or
- * `.lp.bz2` suffix (case-insensitive) selects the LP format; everything else
- * (including `.mps`/`.qps` and unrecognized extensions) defaults to MPS.
+ * A `.lp` suffix selects LP; `.mps` and `.qps` select MPS/QPS. Compressed
+ * output is not supported, so `.gz` and `.bz2` suffixes are rejected.
  *
  * @param[in] path Output file path.
  * @return The inferred file format.
@@ -45,10 +45,12 @@ inline file_format_t file_format_from_path(const std::string& path)
   std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
     return static_cast<char>(std::tolower(c));
   });
-  if (lower.ends_with(".lp") || lower.ends_with(".lp.gz") || lower.ends_with(".lp.bz2")) {
-    return file_format_t::lp;
-  }
-  return file_format_t::mps;
+  if (lower.ends_with(".lp")) { return file_format_t::lp; }
+  if (lower.ends_with(".mps") || lower.ends_with(".qps")) { return file_format_t::mps; }
+  throw std::invalid_argument(
+    "write: unrecognized output file extension. Supported (case-insensitive): "
+    ".mps, .qps, .lp. Compressed output is not supported. Given path: " +
+    path);
 }
 
 template <typename i_t, typename f_t>

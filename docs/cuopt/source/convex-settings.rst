@@ -48,7 +48,7 @@ Solution File
 
 User Problem File
 ^^^^^^^^^^^^^^^^^
-``CUOPT_USER_PROBLEM_FILE`` controls the name of a file where cuOpt should write the user problem. The output format is chosen from the file extension: a ``.lp`` (or ``.lp.gz`` / ``.lp.bz2``) name is written in LP format, and any other extension is written in MPS format.
+``CUOPT_USER_PROBLEM_FILE`` controls the name of a file where cuOpt should write the user problem. The output format is chosen from the file extension: ``.lp`` is written in LP format, while ``.mps`` and ``.qps`` are written in MPS/QPS format. Compressed output is not supported.
 
 .. note:: The default value is ``""`` and no user problem file is written. This setting is ignored by the cuOpt service.
 
