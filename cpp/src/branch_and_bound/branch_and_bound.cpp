@@ -667,9 +667,10 @@ void branch_and_bound_t<i_t, f_t>::set_solution_from_submip(
   mutex_original_lp_.unlock();
   settings_.log.debug_format("SubMIP found a feasible solution with obj={:.4g}", obj);
   bool success = set_solution_from_heuristics(user_sol, heuristics_origin_t::SUBMIP);
-  if (success) rins_stats_.save_success(fixrate);
-
-  if (settings_.solution_callback != nullptr) { settings_.solution_callback(user_sol, obj); }
+  if (success) {
+    rins_stats_.save_success(fixrate);
+    if (settings_.solution_callback != nullptr) { settings_.solution_callback(user_sol, obj); }
+  }
 }
 
 template <typename i_t, typename f_t>
