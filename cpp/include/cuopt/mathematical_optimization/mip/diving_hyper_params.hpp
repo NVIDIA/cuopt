@@ -10,12 +10,7 @@
 namespace cuopt::mathematical_optimization {
 
 /**
- * @brief Tuning knobs for the dual-simplex diving heuristics used in MIP B&B.
- *
- * Used directly as simplex_solver_settings_t::diving_settings and copied into
- * branch_and_bound_settings.diving_settings before solve. These are registered
- * in the unified parameter framework via solver_settings_t and can be loaded
- * from a config file with load_parameters_from_file().
+ * @brief Tuning knobs for the diving heuristics for the MIP solver.
  */
 template <typename i_t, typename f_t>
 struct mip_diving_hyper_params_t {
