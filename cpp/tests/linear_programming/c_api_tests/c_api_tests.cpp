@@ -14,16 +14,9 @@
 #include <string>
 
 #include <cuopt/mathematical_optimization/cuopt_c.h>
-#include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
-#include <cuopt/mathematical_optimization/io/parser.hpp>
-#include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
 #include <pdlp/cuopt_c_internal.hpp>
 
 #include <cuda_runtime.h>
-
-#include <algorithm>
-#include <tuple>
-#include <vector>
 
 #include <utilities/common_utils.hpp>
 #include <utilities/error.hpp>
@@ -787,206 +780,29 @@ TEST(c_api, gpu_problem_rejects_remote_after_create)
   EXPECT_EQ(test_gpu_problem_remote_after_create(lp_file.c_str()), CUOPT_SUCCESS);
 }
 
-namespace {
-
-/*
- * Cross-validate the C API attribute getters against an independent source of truth: parse the same
- * file directly with the C++ MPS/QPS parser (mps_data_model_t) and compare. This value-checks the
- * getters that cuOptCreateProblem cannot exercise -- variable/row names, objective scaling factor,
- * and the quadratic-presence flags -- in addition to the numeric arrays and the CSC matrix.
- */
-void verify_attributes_against_parser(const std::string& path)
-{
-  namespace mo = cuopt::mathematical_optimization;
-
-  const mo::io::mps_data_model_t<int, double> model = mo::io::read<int, double>(path);
-
-  cuOptOptimizationProblem problem = nullptr;
-  ASSERT_EQ(cuOptReadProblem(path.c_str(), &problem), CUOPT_SUCCESS);
-
-  const int nv  = model.get_n_variables();
-  const int nc  = model.get_n_constraints();
-  const int nnz = static_cast<int>(model.get_constraint_matrix_values().size());
-
-  int v = 0;
-  EXPECT_EQ(cuOptGetProblemIntAttribute(problem, CUOPT_ATTR_NUM_VARIABLES, &v), CUOPT_SUCCESS);
-  EXPECT_EQ(v, nv);
-  EXPECT_EQ(cuOptGetProblemIntAttribute(problem, CUOPT_ATTR_NUM_CONSTRAINTS, &v), CUOPT_SUCCESS);
-  EXPECT_EQ(v, nc);
-  EXPECT_EQ(cuOptGetProblemIntAttribute(problem, CUOPT_ATTR_NUM_NONZEROS, &v), CUOPT_SUCCESS);
-  EXPECT_EQ(v, nnz);
-
-  /* num_integers / is_mip derived from the model's variable types (normalized). */
-  int expect_integers = 0;
-  int expect_discrete = 0;
-  for (char c : model.get_variable_types()) {
-    const mo::var_t t = mo::char_to_var_type(c);
-    if (t == mo::var_t::INTEGER) { ++expect_integers; }
-    if (t == mo::var_t::INTEGER || t == mo::var_t::SEMI_CONTINUOUS) { ++expect_discrete; }
-  }
-  EXPECT_EQ(cuOptGetProblemIntAttribute(problem, CUOPT_ATTR_NUM_INTEGERS, &v), CUOPT_SUCCESS);
-  EXPECT_EQ(v, expect_integers);
-  EXPECT_EQ(cuOptGetProblemIntAttribute(problem, CUOPT_ATTR_IS_MIP, &v), CUOPT_SUCCESS);
-  EXPECT_EQ(v, expect_discrete > 0 ? 1 : 0);
-
-  EXPECT_EQ(cuOptGetProblemIntAttribute(problem, CUOPT_ATTR_OBJECTIVE_SENSE, &v), CUOPT_SUCCESS);
-  EXPECT_EQ(v, model.get_sense() ? CUOPT_MAXIMIZE : CUOPT_MINIMIZE);
-
-  int qobj = 0, qcon = 0;
-  EXPECT_EQ(cuOptGetProblemIntAttribute(problem, CUOPT_ATTR_HAS_QUADRATIC_OBJECTIVE, &qobj),
-            CUOPT_SUCCESS);
-  EXPECT_EQ(qobj, model.has_quadratic_objective() ? 1 : 0);
-  EXPECT_EQ(cuOptGetProblemIntAttribute(problem, CUOPT_ATTR_HAS_QUADRATIC_CONSTRAINTS, &qcon),
-            CUOPT_SUCCESS);
-  EXPECT_EQ(qcon, model.has_quadratic_constraints() ? 1 : 0);
-
-  double d = 0.0;
-  EXPECT_EQ(cuOptGetProblemFloatAttribute(problem, CUOPT_ATTR_OBJECTIVE_OFFSET, &d), CUOPT_SUCCESS);
-  EXPECT_DOUBLE_EQ(d, model.get_objective_offset());
-  EXPECT_EQ(cuOptGetProblemFloatAttribute(problem, CUOPT_ATTR_OBJECTIVE_SCALING_FACTOR, &d),
-            CUOPT_SUCCESS);
-  EXPECT_DOUBLE_EQ(d, model.get_objective_scaling_factor());
-
-  /* Float arrays: compare element-wise against the parsed model. */
-  auto check_float_array = [&](cuopt_int_t attr, const std::vector<double>& expected, int count) {
-    if (expected.empty()) { return; }
-    ASSERT_EQ(static_cast<int>(expected.size()), count);
-    std::vector<double> got(static_cast<std::size_t>(count));
-    ASSERT_EQ(cuOptGetProblemFloatArrayAttribute(problem, attr, got.data(), count), CUOPT_SUCCESS);
-    for (int i = 0; i < count; ++i) {
-      EXPECT_DOUBLE_EQ(got[i], expected[i]);
-    }
-  };
-  check_float_array(
-    CUOPT_ARRAY_ATTR_OBJECTIVE_COEFFICIENTS, model.get_objective_coefficients(), nv);
-  check_float_array(CUOPT_ARRAY_ATTR_VARIABLE_LOWER_BOUNDS, model.get_variable_lower_bounds(), nv);
-  check_float_array(CUOPT_ARRAY_ATTR_VARIABLE_UPPER_BOUNDS, model.get_variable_upper_bounds(), nv);
-  check_float_array(CUOPT_ARRAY_ATTR_CONSTRAINT_RHS, model.get_constraint_bounds(), nc);
-
-  /* Char arrays: constraint sense passes through; variable types are normalized to 'C'/'I'/'S'. */
-  const std::vector<char>& mrt = model.get_row_types();
-  if (!mrt.empty()) {
-    ASSERT_EQ(static_cast<int>(mrt.size()), nc);
-    std::vector<char> got(static_cast<std::size_t>(nc));
-    ASSERT_EQ(
-      cuOptGetProblemCharArrayAttribute(problem, CUOPT_ARRAY_ATTR_CONSTRAINT_SENSE, got.data(), nc),
-      CUOPT_SUCCESS);
-    for (int i = 0; i < nc; ++i) {
-      EXPECT_EQ(got[i], mrt[i]);
-    }
-  }
-  const std::vector<char>& mvt = model.get_variable_types();
-  if (!mvt.empty()) {
-    ASSERT_EQ(static_cast<int>(mvt.size()), nv);
-    std::vector<char> got(static_cast<std::size_t>(nv));
-    ASSERT_EQ(
-      cuOptGetProblemCharArrayAttribute(problem, CUOPT_ARRAY_ATTR_VARIABLE_TYPES, got.data(), nv),
-      CUOPT_SUCCESS);
-    for (int i = 0; i < nv; ++i) {
-      EXPECT_EQ(got[i], mo::var_type_to_char(mo::char_to_var_type(mvt[i])));
-    }
-  }
-
-  /* String arrays: the key capability with no dedicated getter -- compare names exactly. */
-  const std::vector<std::string>& vnames = model.get_variable_names();
-  if (!vnames.empty()) {
-    ASSERT_EQ(static_cast<int>(vnames.size()), nv);
-    std::vector<const char*> got(static_cast<std::size_t>(nv));
-    ASSERT_EQ(cuOptGetProblemStringArrayAttribute(
-                problem, CUOPT_STRING_ARRAY_VARIABLE_NAMES, got.data(), nv),
-              CUOPT_SUCCESS);
-    for (int i = 0; i < nv; ++i) {
-      EXPECT_EQ(std::string(got[i]), vnames[i]);
-    }
-  }
-  const std::vector<std::string>& rnames = model.get_row_names();
-  if (!rnames.empty()) {
-    ASSERT_EQ(static_cast<int>(rnames.size()), nc);
-    std::vector<const char*> got(static_cast<std::size_t>(nc));
-    ASSERT_EQ(
-      cuOptGetProblemStringArrayAttribute(problem, CUOPT_STRING_ARRAY_ROW_NAMES, got.data(), nc),
-      CUOPT_SUCCESS);
-    for (int i = 0; i < nc; ++i) {
-      EXPECT_EQ(std::string(got[i]), rnames[i]);
-    }
-  }
-
-  /* CSC values: must be the transpose of the model's CSR (compare as (row,col,value) multisets). */
-  if (nnz > 0) {
-    const std::vector<int>& moff    = model.get_constraint_matrix_offsets();
-    const std::vector<int>& mind    = model.get_constraint_matrix_indices();
-    const std::vector<double>& mval = model.get_constraint_matrix_values();
-    std::vector<std::tuple<int, int, double>> expected;
-    expected.reserve(static_cast<std::size_t>(nnz));
-    for (int i = 0; i < nc; ++i) {
-      for (int k = moff[i]; k < moff[i + 1]; ++k) {
-        expected.emplace_back(i, mind[k], mval[k]);
-      }
-    }
-    std::vector<int> csc_off(static_cast<std::size_t>(nv + 1));
-    std::vector<int> csc_row(static_cast<std::size_t>(nnz));
-    std::vector<double> csc_val(static_cast<std::size_t>(nnz));
-    ASSERT_EQ(cuOptGetConstraintMatrixCSC(problem, csc_off.data(), csc_row.data(), csc_val.data()),
-              CUOPT_SUCCESS);
-    std::vector<std::tuple<int, int, double>> got;
-    got.reserve(static_cast<std::size_t>(nnz));
-    for (int c = 0; c < nv; ++c) {
-      for (int k = csc_off[c]; k < csc_off[c + 1]; ++k) {
-        got.emplace_back(csc_row[k], c, csc_val[k]);
-      }
-    }
-    std::sort(expected.begin(), expected.end());
-    std::sort(got.begin(), got.end());
-    EXPECT_EQ(expected, got);
-  }
-
-  cuOptDestroyProblem(&problem);
-}
-
-}  // namespace
-
-TEST(c_api, problem_attributes)
-{
-  const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
-  std::string filename = rapidsDatasetRootDir + "/linear_programming/afiro_original.mps";
-  EXPECT_EQ(test_problem_attributes(filename.c_str()), CUOPT_SUCCESS);
-}
-
-TEST(c_api, problem_attributes_vs_parser_lp)
-{
-  const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
-  verify_attributes_against_parser(rapidsDatasetRootDir + "/linear_programming/afiro_original.mps");
-}
-
-TEST(c_api, problem_attributes_vs_parser_mip)
-{
-  const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
-  verify_attributes_against_parser(rapidsDatasetRootDir + "/mip/50v-10.mps");
-}
-
-TEST(c_api, problem_attributes_vs_parser_qp)
-{
-  const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
-  verify_attributes_against_parser(rapidsDatasetRootDir + "/quadratic_programming/QP_Test_1.qps");
-}
-
-TEST(c_api, problem_attributes_mip)
-{
-  const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
-  std::string filename                    = rapidsDatasetRootDir + "/mip/50v-10.mps";
-  EXPECT_EQ(test_problem_attributes_mip(filename.c_str()), CUOPT_SUCCESS);
-}
-
-TEST(c_api, problem_attributes_qp)
-{
-  const std::string& rapidsDatasetRootDir = cuopt::test::get_rapids_dataset_root_dir();
-  std::string filename = rapidsDatasetRootDir + "/quadratic_programming/QP_Test_1.qps";
-  EXPECT_EQ(test_problem_attributes_qp(filename.c_str()), CUOPT_SUCCESS);
-}
-
+// Attribute getters are value-checked against ground truth built with the cuOptCreate / cuOptSet
+// interfaces (no parser, no dataset files). cuOptReadProblem is used only where an attribute cannot
+// be set through a create/set routine, which is limited to variable/row names.
 TEST(c_api, problem_attributes_created)
 {
   EXPECT_EQ(test_problem_attributes_created(), CUOPT_SUCCESS);
+}
+
+TEST(c_api, problem_attributes_ranged)
+{
+  EXPECT_EQ(test_problem_attributes_ranged(), CUOPT_SUCCESS);
+}
+
+TEST(c_api, problem_attributes_quadratic)
+{
+  EXPECT_EQ(test_problem_attributes_quadratic(), CUOPT_SUCCESS);
+}
+
+TEST(c_api, problem_attributes_names)
+{
+  const std::string mps_path =
+    std::filesystem::temp_directory_path().string() + "/cuopt_attr_names.mps";
+  EXPECT_EQ(test_problem_attributes_names(mps_path.c_str()), CUOPT_SUCCESS);
 }
 
 // Note: cuopt_cli subprocess tests are in Python (test_cpu_only_execution.py)
