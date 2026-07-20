@@ -455,30 +455,27 @@ jobs:
       pull-requests: write
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).build_docs
     runs-on: ubuntu-latest
+    env:
+      FERN_TOKEN: ${{ secrets.FERN_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Setup Fern CLI
-        uses: fern-api/setup-fern-cli@d07601425e9c9ede8745d71ca75c4c462d98755d # v1
-      - name: Generate preview URL
-        id: generate-docs
-        env:
-          FERN_TOKEN: ${{ secrets.FERN_TOKEN }}
-          HEAD_REF: ${{ github.head_ref }}
+      - name: Install Fern CLI and publish preview
         run: |
-          OUTPUT=$(fern generate --docs --preview --id "$HEAD_REF" 2>&1) || true
+          FERN_VERSION=$(jq -r .version fern/fern.config.json)
+          npm install -g "fern-api@${FERN_VERSION}"
+          OUTPUT=$(fern generate --docs --preview --id "$GITHUB_HEAD_REF" 2>&1) || true
           echo "$OUTPUT"
-          URL=$(echo "$OUTPUT" | grep -oP 'Published docs to \K.*(?= \()')
-          echo "preview_url=$URL" >> "$GITHUB_OUTPUT"
-      - name: Post PR comment
-        if: steps.generate-docs.outputs.preview_url != ''
-        uses: thollander/actions-comment-pull-request@fabd468d3a1a0b97feee5f6b9e499eab0dd903f6 # v2
-        with:
-          message: ":herb: **Preview your docs:** ${{ steps.generate-docs.outputs.preview_url }}"
-          comment_tag: preview-docs
-          mode: upsert
+          URL=$(echo "$OUTPUT" | grep -oP 'Published docs to \K[^ ]+')
+          if [[ -n "$URL" ]]; then
+            PR_NUMBER="${GITHUB_REF_NAME##pull-request/}"
+            BODY=":herb: **Preview your docs:** ${URL}"
+            gh pr comment "${PR_NUMBER}" --body "${BODY}" --edit-last 2>/dev/null || \
+            gh pr comment "${PR_NUMBER}" --body "${BODY}"
+          fi
   wheel-build-libcuopt:
     needs: [compute-matrix-filters, changed-files]
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
