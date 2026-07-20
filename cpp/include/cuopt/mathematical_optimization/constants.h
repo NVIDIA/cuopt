@@ -75,6 +75,7 @@
 #define CUOPT_MIP_ZERO_HALF_CUTS                   "mip_zero_half_cuts"
 #define CUOPT_MIP_STRONG_CHVATAL_GOMORY_CUTS       "mip_strong_chvatal_gomory_cuts"
 #define CUOPT_MIP_REDUCED_COST_STRENGTHENING       "mip_reduced_cost_strengthening"
+#define CUOPT_MIP_RINS                             "mip_rins"
 #define CUOPT_MIP_OBJECTIVE_STEP                   "mip_objective_step"
 #define CUOPT_MIP_CUT_CHANGE_THRESHOLD             "mip_cut_change_threshold"
 #define CUOPT_MIP_CUT_MIN_ORTHOGONALITY            "mip_cut_min_orthogonality"
@@ -127,8 +128,18 @@
 #define CUOPT_MIP_HYPER_DIVING_NODE_LIMIT             "mip_hyper_diving_node_limit"
 #define CUOPT_MIP_HYPER_DIVING_ITERATION_LIMIT_FACTOR "mip_hyper_diving_iteration_limit_factor"
 #define CUOPT_MIP_HYPER_DIVING_BACKTRACK_LIMIT        "mip_hyper_diving_backtrack_limit"
-/* @brief Show per-strategy diving symbol in logs (true) instead of a generic 'D' */
+/* @brief Show per-strategy diving symbol in logs instead of a generic 'D' */
 #define CUOPT_MIP_HYPER_DIVING_SHOW_TYPE "mip_hyper_diving_show_type"
+
+/* @brief Recursive sub-MIP (RINS) hyper-parameters */
+#define CUOPT_MIP_HYPER_SUBMIP_BASE_TARGET_FIXRATE   "mip_hyper_submip_base_target_fixrate"
+#define CUOPT_MIP_HYPER_SUBMIP_MIN_FIXRATE           "mip_hyper_submip_min_fixrate"
+#define CUOPT_MIP_HYPER_SUBMIP_MIN_FIXRATE_CAP       "mip_hyper_submip_min_fixrate_cap"
+#define CUOPT_MIP_HYPER_SUBMIP_TARGET_MIP_GAP        "mip_hyper_submip_target_mip_gap"
+#define CUOPT_MIP_HYPER_SUBMIP_NODE_LIMIT_BASE       "mip_hyper_submip_node_limit_base"
+#define CUOPT_MIP_HYPER_SUBMIP_MAX_LEVEL             "mip_hyper_submip_max_level"
+#define CUOPT_MIP_HYPER_SUBMIP_ITERATION_LIMIT_RATIO "mip_hyper_submip_iteration_limit_ratio"
+#define CUOPT_MIP_HYPER_SUBMIP_ENABLE_CPUFJ          "mip_hyper_submip_enable_cpufj"
 
 /* @brief MIP determinism mode constants */
 #define CUOPT_MODE_OPPORTUNISTIC 0
