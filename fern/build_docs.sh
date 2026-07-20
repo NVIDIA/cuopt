@@ -60,8 +60,12 @@ if [[ "${PUBLISH}" -eq 1 ]]; then
     fern generate --docs
     echo "Docs published to https://nvidia-cuopt.docs.buildwithfern.com"
 elif [[ "${PREVIEW}" -eq 1 ]]; then
-    echo "Publishing Fern PR preview..."
-    fern generate --docs --preview
+    if [[ -z "${FERN_TOKEN:-}" ]]; then
+        echo "FERN_TOKEN not set; skipping PR preview publish (fern check already passed above)."
+    else
+        echo "Publishing Fern PR preview..."
+        fern generate --docs --preview
+    fi
 else
     echo ""
     echo "Starting local preview at http://localhost:3000 (Ctrl+C to stop)..."
