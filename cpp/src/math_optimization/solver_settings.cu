@@ -117,6 +117,12 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_SEMICONTINUOUS_BIG_M, &mip_settings.semi_continuous_big_m, f_t(1.0), std::numeric_limits<f_t>::infinity(), f_t(1e10), "big-M value for semi-continuous variables with no finite upper bound"},
     // Diving heuristic hyper-parameters (hidden from default --help: name contains "hyper_")
     {CUOPT_MIP_HYPER_DIVING_ITERATION_LIMIT_FACTOR, &mip_settings.diving_params.iteration_limit_factor, f_t(0.0), f_t(1.0), f_t(0.05), "fraction of best-first iterations allowed per dive"},
+    // Recursive sub-MIP (RINS) hyper-parameters (hidden from default --help: name contains "hyper_")
+    {CUOPT_MIP_HYPER_SUBMIP_BASE_TARGET_FIXRATE, &mip_settings.submip_params.base_target_fixrate, f_t(0.0), f_t(1.0), f_t(0.6), "base target fix rate for the RINS neighbourhood"},
+    {CUOPT_MIP_HYPER_SUBMIP_MIN_FIXRATE, &mip_settings.submip_params.min_fixrate, f_t(0.0), f_t(1.0), f_t(0.25), "minimum fix rate for accepting the RINS neighbourhood"},
+    {CUOPT_MIP_HYPER_SUBMIP_MIN_FIXRATE_CAP, &mip_settings.submip_params.min_fixrate_cap, f_t(0.0), f_t(1.0), f_t(0.1), "hard cap on the minimum fix rate for solving a sub-MIP"},
+    {CUOPT_MIP_HYPER_SUBMIP_TARGET_MIP_GAP, &mip_settings.submip_params.target_mip_gap, f_t(0.0), f_t(1.0), f_t(0.01), "MIP gap target for the sub-MIP"},
+    {CUOPT_MIP_HYPER_SUBMIP_ITERATION_LIMIT_RATIO, &mip_settings.submip_params.iteration_limit_ratio, f_t(0.0), f_t(1.0), f_t(0.8), "sub-MIP simplex-iteration limit as a factor of parent B&B iterations"},
    };
 
   // Int parameters
@@ -142,6 +148,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_IMPLIED_BOUND_CUTS, &mip_settings.implied_bound_cuts, -1, 1, -1},
     {CUOPT_MIP_STRONG_CHVATAL_GOMORY_CUTS, &mip_settings.strong_chvatal_gomory_cuts, -1, 1, -1},
     {CUOPT_MIP_REDUCED_COST_STRENGTHENING, &mip_settings.reduced_cost_strengthening, -1, std::numeric_limits<i_t>::max(), -1},
+    {CUOPT_MIP_RINS, &mip_settings.submip_params.rins, -1, 1, -1},
     {CUOPT_MIP_OBJECTIVE_STEP, &mip_settings.objective_step, 0, 1, 1},
     {CUOPT_NUM_GPUS, &pdlp_settings.num_gpus, 1, 2, 1},
     {CUOPT_NUM_GPUS, &mip_settings.num_gpus, 1, 2, 1},
@@ -174,6 +181,9 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_HYPER_DIVING_MIN_NODE_DEPTH, &mip_settings.diving_params.min_node_depth, 0, std::numeric_limits<i_t>::max(), 10, "minimum depth at which to start diving"},
     {CUOPT_MIP_HYPER_DIVING_NODE_LIMIT, &mip_settings.diving_params.node_limit, 0, std::numeric_limits<i_t>::max(), 500, "maximum nodes explored per dive"},
     {CUOPT_MIP_HYPER_DIVING_BACKTRACK_LIMIT, &mip_settings.diving_params.backtrack_limit, 0, std::numeric_limits<int16_t>::max(), 5, "maximum backtracking allowed per dive"},
+    // Recursive sub-MIP (RINS) hyper-parameters (hidden from default --help: name contains "hyper_")
+    {CUOPT_MIP_HYPER_SUBMIP_NODE_LIMIT_BASE, &mip_settings.submip_params.node_limit_base, 0, std::numeric_limits<i_t>::max(), 200, "base node limit for the sub-MIP"},
+    {CUOPT_MIP_HYPER_SUBMIP_MAX_LEVEL, &mip_settings.submip_params.max_level, 0, std::numeric_limits<i_t>::max(), 10, "maximum sub-MIP recursion level"},
   };
 
     // Bool parameters
@@ -194,6 +204,8 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_PROBING, &mip_settings.probing, true},
     // Diving heuristic hyper-parameters (hidden from default --help: name contains "hyper_")
     {CUOPT_MIP_HYPER_DIVING_SHOW_TYPE, &mip_settings.diving_params.show_type, false, "log diving heuristic type when it finds a new incumbent"},
+    // Recursive sub-MIP (RINS) hyper-parameters (hidden from default --help: name contains "hyper_")
+    {CUOPT_MIP_HYPER_SUBMIP_ENABLE_CPUFJ, &mip_settings.submip_params.enable_cpufj, true, "run CPU FJ over the sub-MIP"},
   };
   // String parameters
   string_parameters = {

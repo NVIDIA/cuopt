@@ -1485,11 +1485,19 @@ bool flow_cover_is_zero_one_integer_variable(const flow_cover_context_t<i_t, f_t
          std::abs(context.lp.upper[j] - 1.0) <= bound_tol;
 }
 
+// Per-arc feasibility tolerances shared by the arc-acceptance gate and the assertion in
+// build_single_node_flow_relaxation, so the two sites cannot drift apart.
 template <typename i_t, typename f_t>
-f_t flow_cover_arc_tol(const flow_cover_context_t<i_t, f_t>& context,
-                       const single_node_flow_arc_t<i_t, f_t>& arc)
+f_t flow_cover_arc_lower_tol(const flow_cover_context_t<i_t, f_t>& context)
 {
-  return flow_cover_scaled_primal_tol(context, arc.u);
+  return std::max<f_t>(10 * context.settings.primal_tol, static_cast<f_t>(1e-5));
+}
+
+template <typename i_t, typename f_t>
+f_t flow_cover_arc_upper_tol(const flow_cover_context_t<i_t, f_t>& context, f_t u)
+{
+  return std::max<f_t>(100 * context.settings.primal_tol, static_cast<f_t>(1e-4)) *
+         std::max<f_t>(1.0, u);
 }
 
 template <typename i_t, typename f_t>
@@ -1878,11 +1886,8 @@ bool flow_cover_generation_t<i_t, f_t>::build_single_node_flow_relaxation(
       scratch.candidates.end(),
       [](const single_node_flow_candidate_t<i_t, f_t>& a,
          const single_node_flow_candidate_t<i_t, f_t>& b) { return a.distance < b.distance; });
-    const f_t arc_lower_tol =
-      std::max<f_t>(10 * context.settings.primal_tol, static_cast<f_t>(1e-5));
-    const f_t arc_upper_tol =
-      std::max<f_t>(100 * context.settings.primal_tol, static_cast<f_t>(1e-4)) *
-      std::max<f_t>(1.0, best->arc.u);
+    const f_t arc_lower_tol = flow_cover_arc_lower_tol(context);
+    const f_t arc_upper_tol = flow_cover_arc_upper_tol(context, best->arc.u);
     if (best->arc.y_value < -arc_lower_tol ||
         best->arc.y_value > best->arc.u * best->arc.x_value + arc_upper_tol) {
       return false;
@@ -1899,7 +1904,15 @@ bool flow_cover_generation_t<i_t, f_t>::build_single_node_flow_relaxation(
     const f_t coeff = scratch.binary_coefficients[j];
     if (std::abs(coeff) <= coefficient_tol) { continue; }
     const f_t u = std::abs(coeff);
-    scratch.arcs.push_back(flow_cover_build_arc(context, u, coeff < 0.0, j, 0.0, 0.0, -1, 0.0, u));
+    single_node_flow_arc_t<i_t, f_t> arc =
+      flow_cover_build_arc(context, u, coeff < 0.0, j, 0.0, 0.0, -1, 0.0, u);
+    // y_value is built from the raw LP value (u * xstar[j]) while x_value is clamped to [0, 1].
+    // When xstar[j] sits marginally below its bound (e.g. -5e-7, normal LP feasibility slop),
+    // y_value picks up a tiny negative (u * xstar) that trips the arc's lower gate even though the
+    // flow is really 0. Continuous-term arcs are already clamped this way above (see the
+    // `best->arc.y_value < 0.0` clamp); the binary arcs bypassed both the gate and the clamp.
+    if (arc.y_value < 0.0) { arc.y_value = 0.0; }
+    scratch.arcs.push_back(arc);
   }
 
   if (scratch.arcs.empty()) { return false; }
@@ -1909,16 +1922,25 @@ bool flow_cover_generation_t<i_t, f_t>::build_single_node_flow_relaxation(
     [&]() {
       f_t single_node_flow_activity = 0.0;
       f_t single_node_flow_scale    = std::max<f_t>(1.0, std::abs(single_node_flow_b));
+      // Each accepted arc may sit up to arc_{lower,upper}_tol outside its capacity — the same
+      // slack the acceptance gate above tolerates — and the y_value<0 -> 0 clamp can shift it by
+      // another arc_lower_tol. Those per-arc slacks accumulate into the aggregate activity, so the
+      // relaxation tolerance must sum them; primal_tol * scale alone (which only covers FP rounding
+      // in the summation) is far too tight and rejects LP points that are genuinely inside.
+      f_t single_node_flow_slack = 0.0;
       for (const auto& arc : scratch.arcs) {
-        const f_t arc_tol = flow_cover_arc_tol(context, arc);
-        if (arc.y_value < -arc_tol) { return false; }
-        if (arc.y_value > arc.u * arc.x_value + arc_tol) { return false; }
+        const f_t arc_lower_tol = flow_cover_arc_lower_tol(context);
+        const f_t arc_upper_tol = flow_cover_arc_upper_tol(context, arc.u);
+        if (arc.y_value < -arc_lower_tol) { return false; }
+        if (arc.y_value > arc.u * arc.x_value + arc_upper_tol) { return false; }
         const f_t signed_y = arc.in_n2 ? -arc.y_value : arc.y_value;
         single_node_flow_activity += signed_y;
         single_node_flow_scale += std::abs(signed_y);
+        single_node_flow_slack += arc_lower_tol + arc_upper_tol;
       }
-      return single_node_flow_activity <=
-             single_node_flow_b + context.settings.primal_tol * single_node_flow_scale;
+      return single_node_flow_activity <= single_node_flow_b +
+                                            context.settings.primal_tol * single_node_flow_scale +
+                                            single_node_flow_slack;
     }(),
     "Flow cover single-node-flow relaxation excludes LP solution");
 
@@ -4309,7 +4331,7 @@ void cut_generation_t<i_t, f_t>::generate_gomory_cuts(
   mixed_integer_gomory_cut_t<i_t, f_t> gomory_cut;
   complemented_mixed_integer_rounding_cut_t<i_t, f_t> complemented_mir(lp, settings, new_slacks);
   simplex_solver_settings_t<i_t, f_t> variable_settings = settings;
-  variable_settings.sub_mip                             = 1;
+  variable_settings.inside_submip                       = 1;
   variable_bounds_t<i_t, f_t> variable_bounds(lp, variable_settings, var_types, Arow, new_slacks);
   strong_cg_cut_t<i_t, f_t> cg(lp, var_types, xstar);
   std::vector<f_t> transformed_xstar;
@@ -4644,7 +4666,7 @@ variable_bounds_t<i_t, f_t>::variable_bounds_t(const lp_problem_t<i_t, f_t>& lp,
     num_pos_inf_(lp.num_rows, 0),
     num_neg_inf_(lp.num_rows, 0)
 {
-  if (settings.sub_mip) {
+  if (settings.inside_submip) {
     return;  // Don't compute the variable upper/lower bounds inside sub-MIP
   }
   f_t start_time = tic();

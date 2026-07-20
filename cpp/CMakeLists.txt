@@ -252,14 +252,14 @@ endif ()
 
 FetchContent_Declare(
         papilo
-        GIT_REPOSITORY "https://github.com/scipopt/papilo.git"
+        GIT_REPOSITORY "https://github.com/nguidotti/papilo.git"
         # We would want to get the main branch. However, the main branch
         # does not have some of the presolvers and settings that we need
         # Mainly, probing and clique merging.
         # This is the reason we are using the development branch
         # from Oct 12, 2025. Once these changes are merged into the main branch,
         #we can switch to the main branch.
-        GIT_TAG "741a2b9c8155b249d6df574d758b4d97d4417520"
+        GIT_TAG "0cfea20c5655249174dbd04f0fb7bd6b1f6e9a0c"
         GIT_PROGRESS TRUE
         EXCLUDE_FROM_ALL
         SYSTEM
@@ -293,13 +293,13 @@ set(BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS_SAVED})
 # dejavu - header-only graph automorphism library for MIP symmetry detection
 # https://github.com/markusa4/dejavu (header-only, skip its CMakeLists.txt)
 FetchContent_Declare(
-  dejavu
-  GIT_REPOSITORY "https://github.com/markusa4/dejavu.git"
-  GIT_TAG "v2.1"
-  GIT_PROGRESS TRUE
-  EXCLUDE_FROM_ALL
-  SYSTEM
-  SOURCE_SUBDIR _nonexistent
+        dejavu
+        GIT_REPOSITORY "https://github.com/markusa4/dejavu.git"
+        GIT_TAG "v2.1"
+        GIT_PROGRESS TRUE
+        EXCLUDE_FROM_ALL
+        SYSTEM
+        SOURCE_SUBDIR _nonexistent
 )
 FetchContent_MakeAvailable(dejavu)
 message(STATUS "dejavu (graph automorphism): ${dejavu_SOURCE_DIR}")
@@ -369,7 +369,7 @@ if (NOT SKIP_GRPC_BUILD)
 
     # Proto search paths: manual protos in src/grpc, generated data proto in src/grpc/codegen/generated
     set(PROTO_PATH_MANUAL "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc")
-    set(PROTO_PATH_GEN    "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc/codegen/generated")
+    set(PROTO_PATH_GEN "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc/codegen/generated")
 
     # Generate C++ code from cuopt_remote_data.proto (auto-generated data definitions)
     set(DATA_PROTO_FILE "${PROTO_PATH_GEN}/cuopt_remote_data.proto")
@@ -441,8 +441,8 @@ add_subdirectory(src)
 # nvcc 13.0.3 ICE (signal 11) compiling sliding_window.cu with 7 GPU architectures;
 # --split-compile breaks the codegen into per-arch sub-jobs to avoid the crash
 set_source_files_properties(
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/routing/local_search/sliding_window.cu
-    PROPERTIES COMPILE_OPTIONS "--split-compile=0")
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/routing/local_search/sliding_window.cu
+        PROPERTIES COMPILE_OPTIONS "--split-compile=0")
 
 if (HOST_LINEINFO)
     set_source_files_properties(${CUOPT_SRC_FILES} DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTIES COMPILE_OPTIONS "-g1")
@@ -495,8 +495,8 @@ set_target_properties(cuopt
 )
 
 target_compile_definitions(cuopt
-  PUBLIC "CUOPT_LOG_ACTIVE_LEVEL=RAPIDS_LOGGER_LOG_LEVEL_${LIBCUOPT_LOGGING_LEVEL}"
-  PUBLIC CUSPARSE_ENABLE_EXPERIMENTAL_API
+        PUBLIC "CUOPT_LOG_ACTIVE_LEVEL=RAPIDS_LOGGER_LOG_LEVEL_${LIBCUOPT_LOGGING_LEVEL}"
+        PUBLIC CUSPARSE_ENABLE_EXPERIMENTAL_API
 )
 
 target_compile_options(cuopt
@@ -528,8 +528,8 @@ target_include_directories(cuopt PRIVATE
 )
 
 target_include_directories(cuopt SYSTEM PRIVATE
-  "${pslp_SOURCE_DIR}/include"
-  "${dejavu_SOURCE_DIR}"
+        "${pslp_SOURCE_DIR}/include"
+        "${dejavu_SOURCE_DIR}"
 )
 
 target_include_directories(cuopt

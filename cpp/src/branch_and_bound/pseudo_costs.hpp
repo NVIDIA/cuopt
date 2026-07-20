@@ -21,6 +21,7 @@
 #include <cmath>
 #include <rmm/device_uvector.hpp>
 
+#include <algorithm>
 #include <cstdint>
 #include <limits>
 
@@ -156,12 +157,46 @@ class pseudo_costs_t {
 
   void resize(i_t num_variables)
   {
-    pseudo_cost_sum_down.assign(num_variables, 0);
-    pseudo_cost_sum_up.assign(num_variables, 0);
-    pseudo_cost_num_down.assign(num_variables, 0);
-    pseudo_cost_num_up.assign(num_variables, 0);
     pseudo_cost_mutex_up.resize(num_variables);
     pseudo_cost_mutex_down.resize(num_variables);
+
+    if (!has_initial_pseudocost) {
+      std::fill(pseudo_cost_sum_down.begin(), pseudo_cost_sum_down.end(), 0);
+      std::fill(pseudo_cost_sum_up.begin(), pseudo_cost_sum_up.end(), 0);
+      std::fill(pseudo_cost_num_down.begin(), pseudo_cost_num_down.end(), 0);
+      std::fill(pseudo_cost_num_up.begin(), pseudo_cost_num_up.end(), 0);
+    }
+
+    pseudo_cost_sum_down.resize(num_variables, 0);
+    pseudo_cost_sum_up.resize(num_variables, 0);
+    pseudo_cost_num_down.resize(num_variables, 0);
+    pseudo_cost_num_up.resize(num_variables, 0);
+  }
+
+  void set_initial_pseudocost(const pseudo_costs_t& parent,
+                              const std::vector<i_t>& reduced_to_original)
+  {
+    has_initial_pseudocost = true;
+
+    for (i_t k = 0; k < reduced_to_original.size(); ++k) {
+      const i_t orig = reduced_to_original[k];
+      assert(orig >= 0);
+      assert(orig < parent.pseudo_cost_num_up.size());
+
+      const i_t parent_num_up = parent.pseudo_cost_num_up[orig];
+      if (parent_num_up > 0) {
+        const f_t value       = parent.pseudo_cost_sum_up[orig] / parent_num_up;
+        pseudo_cost_num_up[k] = 1;
+        pseudo_cost_sum_up[k] = value;
+      }
+
+      const i_t parent_num_down = parent.pseudo_cost_num_down[orig];
+      if (parent_num_down > 0) {
+        const f_t value         = parent.pseudo_cost_sum_down[orig] / parent_num_down;
+        pseudo_cost_num_down[k] = 1;
+        pseudo_cost_sum_down[k] = value;
+      }
+    }
   }
 
   f_t get_pseudocost_down(i_t j, f_t avg) const
@@ -229,6 +264,7 @@ class pseudo_costs_t {
   std::vector<omp_mutex_t> pseudo_cost_mutex_down;
 
   omp_atomic_t<int64_t> strong_branching_lp_iter = 0;
+  bool has_initial_pseudocost                    = false;
 };
 
 template <typename i_t, typename f_t>
