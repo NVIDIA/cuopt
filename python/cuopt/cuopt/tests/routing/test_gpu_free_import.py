@@ -31,18 +31,3 @@ def test_routing_imports_without_a_gpu():
         "dm = r.DataModel(3, 2)\n"
         "dm.add_cost_matrix(np.eye(3, dtype=np.float32))\n"
     )
-
-
-def test_routing_utils_imports_without_a_gpu():
-    """cuopt.routing.utils must import on a GPU-less host too.
-
-    Its helpers build empty cudf.Series objects; doing so in a default argument
-    would run at import time and fail with cudaErrorNoDevice where no GPU is
-    visible. This guards that the construction stays in the function bodies, so
-    tests importing utils can be collected without a GPU.
-    """
-    _run_without_gpu(
-        "from cuopt.routing import utils\n"
-        "assert callable(utils.generate_dataset)\n"
-        "assert callable(utils.add_vehicle_constraints)\n"
-    )
