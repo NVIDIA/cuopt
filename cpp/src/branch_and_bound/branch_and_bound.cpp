@@ -1647,7 +1647,20 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
 
   while (stack.size() > 0 && (solver_status_ == mip_status_t::UNSET && is_running_) &&
          rel_gap > settings_.relative_mip_gap_tol && abs_gap > settings_.absolute_mip_gap_tol) {
-    if (worker->worker_id == 0) { repair_heuristic_solutions(); }
+    if (worker->worker_id == 0) {
+      // Only worker 0 evaluates the restart heuristic so the restart bookkeeping in
+      // exploration_stats_ isn't raced. Setting RESTART breaks every worker/diving loop (they all
+      // gate on solver_status_ == UNSET), draining the taskgroup so solve() can restart the tree.
+      if (should_restart(abs_gap)) {
+        mip_node_t<i_t, f_t>* node = stack.front();
+        report(' ', upper_bound_, lower_bound, node->depth, node->integer_infeasible);
+        solver_status_           = mip_status_t::RESTART;
+        node_concurrent_halt_    = 1;
+        restart_concurrent_halt_ = 1;
+        break;
+      }
+      repair_heuristic_solutions();
+    }
 
     if (worker->total_active_diving_workers < worker->total_max_diving_workers &&
         worker->node_queue.diving_queue_size() > 0) {
@@ -1715,6 +1728,9 @@ void branch_and_bound_t<i_t, f_t>::plunge_with(bfs_worker_t<i_t, f_t>* worker,
     dual_status_t lp_status = solve_node_lp(node_ptr, worker, exploration_stats_, settings_.log);
     ++exploration_stats_.nodes_since_last_log;
     ++exploration_stats_.nodes_explored;
+    // total_nodes_explored accumulates across restarts (nodes_explored is reset each restart) and
+    // feeds should_restart()'s tree-size baseline.
+    ++exploration_stats_.total_nodes_explored;
     --exploration_stats_.nodes_unexplored;
     --exploration_stats_.nodes_being_solved;
 
@@ -2246,7 +2262,9 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   f_t& last_objective,
   f_t root_relax_objective,
   i_t& cut_pool_size,
-  [[maybe_unused]] const std::vector<f_t>& saved_solution) -> cut_pass_result_t
+  [[maybe_unused]] const std::vector<f_t>& saved_solution,
+  bool generate_new,
+  i_t* num_cuts_added_out) -> cut_pass_result_t
 {
 #ifdef PRINT_FRACTIONAL_INFO
   settings_.log.printf("Found %d fractional variables on cut pass %d\n", num_fractional, cut_pass);
@@ -2259,29 +2277,34 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   }
 #endif
 
-  f_t cut_start_time    = tic();
-  bool problem_feasible = cut_generation.generate_cuts(original_lp_,
-                                                       settings_,
-                                                       Arow_,
-                                                       new_slacks_,
-                                                       var_types_,
-                                                       basis_update,
-                                                       root_relax_soln_.x,
-                                                       root_relax_soln_.y,
-                                                       root_relax_soln_.z,
-                                                       basic_list,
-                                                       nonbasic_list,
-                                                       variable_bounds,
-                                                       exploration_stats_.start_time);
-  if (!problem_feasible) {
-    if (settings_.heuristic_preemption_callback != nullptr) {
-      settings_.heuristic_preemption_callback();
+  // generate_new == false is the "separation-only" mode used on restart: we skip generating fresh
+  // cuts and instead re-separate the cuts already accumulated in the pool (root cuts + node-
+  // generated Gomory cuts) against the current root relaxation.
+  if (generate_new) {
+    f_t cut_start_time    = tic();
+    bool problem_feasible = cut_generation.generate_cuts(original_lp_,
+                                                         settings_,
+                                                         Arow_,
+                                                         new_slacks_,
+                                                         var_types_,
+                                                         basis_update,
+                                                         root_relax_soln_.x,
+                                                         root_relax_soln_.y,
+                                                         root_relax_soln_.z,
+                                                         basic_list,
+                                                         nonbasic_list,
+                                                         variable_bounds,
+                                                         exploration_stats_.start_time);
+    if (!problem_feasible) {
+      if (settings_.heuristic_preemption_callback != nullptr) {
+        settings_.heuristic_preemption_callback();
+      }
+      return {cut_pass_action_t::RETURN, mip_status_t::INFEASIBLE};
     }
-    return {cut_pass_action_t::RETURN, mip_status_t::INFEASIBLE};
-  }
-  f_t cut_generation_time = toc(cut_start_time);
-  if (cut_generation_time > 1.0) {
-    settings_.log.debug("Cut generation time %.2f seconds\n", cut_generation_time);
+    f_t cut_generation_time = toc(cut_start_time);
+    if (cut_generation_time > 1.0) {
+      settings_.log.debug("Cut generation time %.2f seconds\n", cut_generation_time);
+    }
   }
   // Score the cuts
   f_t score_start_time = tic();
@@ -2293,6 +2316,7 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   std::vector<f_t> cut_rhs;
   std::vector<cut_type_t> cut_types;
   i_t num_cuts = cut_pool.get_best_cuts(cuts_to_add, cut_rhs, cut_types);
+  if (num_cuts_added_out != nullptr) { *num_cuts_added_out += num_cuts; }
   if (num_cuts == 0) { return {cut_pass_action_t::BREAK, mip_status_t::UNSET}; }
   cut_info.record_cut_types(cut_types);
 #ifdef PRINT_CUT_POOL_TYPES
@@ -2509,6 +2533,62 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   }
   last_objective = root_objective_;
   return {cut_pass_action_t::CONTINUE, mip_status_t::UNSET};
+}
+
+// Decide whether the current best-first tree should be abandoned and rebuilt from a strengthened
+// root. The idea (following the restart heuristic in reference PR 1415): from the fraction of the
+// [0,1] tree weight closed so far (search_tree_.progress) and the nodes explored since the last
+// check, extrapolate the total tree size. If that estimate dwarfs the work already done and the gap
+// is barely moving, a restart (which re-separates the accumulated cut pool -- including node cuts --
+// into the root) is likely to pay off. A consecutive-estimate counter avoids restarting on a single
+// noisy sample, and the required count grows with tree size and restart_count_ so restarts get
+// progressively harder.
+template <typename i_t, typename f_t>
+bool branch_and_bound_t<i_t, f_t>::should_restart(f_t current_abs_gap)
+{
+  if (settings_.sub_mip || restart_count_ >= settings_.max_restarts) return false;
+
+  i_t num_nodes   = exploration_stats_.nodes_explored;
+  i_t total_nodes = exploration_stats_.total_nodes_explored;
+  if (num_nodes < settings_.restart_min_nodes) return false;
+
+  i_t nodes_since_last_check = num_nodes - exploration_stats_.restart_nodes_at_last_check;
+  if (nodes_since_last_check < settings_.restart_check_freq) return false;
+
+  f_t current_progress = search_tree_.progress;
+  f_t progress_since_last_check =
+    std::max(current_progress - exploration_stats_.restart_progress_at_last_check, f_t(1E-6));
+  i_t tree_size_estimate =
+    exploration_stats_.restart_nodes_at_last_check +
+    nodes_since_last_check * (1.0 - current_progress) / progress_since_last_check;
+
+  f_t gap_reduction = exploration_stats_.restart_gap_at_last_check / current_abs_gap;
+
+  settings_.log.debug(
+    "[Restart] Current: explored=%d, progress=%.4f, gap=%.4f. Since last: explored=%d, "
+    "progress=%.4f, gap_reduction=%.4f. Tree size estimate=%d",
+    num_nodes,
+    current_progress,
+    current_abs_gap,
+    nodes_since_last_check,
+    progress_since_last_check,
+    gap_reduction,
+    tree_size_estimate);
+
+  if (gap_reduction < 1.05 &&
+      tree_size_estimate >= settings_.restart_tree_size_factor * total_nodes) {
+    ++exploration_stats_.restart_large_tree_count;
+    i_t min_count =
+      settings_.restart_min_estimates + total_nodes * settings_.restart_threshold_grow_per_node;
+    return exploration_stats_.restart_large_tree_count >=
+           min_count * std::pow(settings_.restart_threshold_grow_per_restart, restart_count_);
+  }
+
+  exploration_stats_.restart_large_tree_count       = 0;
+  exploration_stats_.restart_gap_at_last_check      = current_abs_gap;
+  exploration_stats_.restart_progress_at_last_check = current_progress;
+  exploration_stats_.restart_nodes_at_last_check    = num_nodes;
+  return false;
 }
 
 template <typename i_t, typename f_t>
@@ -2937,10 +3017,16 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     return solver_status_;
   }
 
-  if (settings_.reduced_cost_strengthening >= 2 && upper_bound_.load() < last_upper_bound) {
-    std::vector<f_t> lower_bounds;
-    std::vector<f_t> upper_bounds;
-    i_t num_fixed = find_reduced_cost_fixings(upper_bound_.load(), lower_bounds, upper_bounds);
+  // Restart loop. The body below builds a B&B tree from the current (possibly re-separated) root
+  // and explores it. If a worker triggers a restart (solver_status_ == RESTART), the tree is torn
+  // down, the accumulated cut pool -- including node-generated Gomory cuts -- is re-separated into
+  // the root, and the loop rebuilds a fresh, strengthened tree. Strong branching / pseudocosts
+  // computed once above are kept warm across restarts.
+  do {
+    if (settings_.reduced_cost_strengthening >= 2 && upper_bound_.load() < last_upper_bound) {
+      std::vector<f_t> lower_bounds;
+      std::vector<f_t> upper_bounds;
+      i_t num_fixed = find_reduced_cost_fixings(upper_bound_.load(), lower_bounds, upper_bounds);
     if (num_fixed > 0) {
       std::vector<bool> bounds_changed(original_lp_.num_cols, true);
       std::vector<char> row_sense;
@@ -2981,11 +3067,142 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
     }
   }
 
-  // Choose variable to branch on
-  i_t branch_var = pc_.variable_selection(fractional, root_relax_soln_.x);
+    // Restart handling: only entered on restart iterations. The reduced-cost block above already
+    // tightened the root bounds using the best incumbent found in the previous tree; now tear down
+    // the tree, recycle the workers, re-solve the root LP, and re-separate the accumulated cut pool
+    // (root + node-generated cuts) into the root so the rebuilt tree starts from a stronger LP.
+    if (solver_status_ == mip_status_t::RESTART) {
+      ++restart_count_;
+      const f_t restart_elapsed          = toc(exploration_stats_.start_time);
+      const i_t tree_nodes               = exploration_stats_.nodes_explored;
+      const i_t node_cuts_in_pool        = cut_generation.node_cuts_added();
+      const f_t root_bound_before_reload = root_objective_;
 
-  search_tree_.root      = std::move(mip_node_t<i_t, f_t>(root_objective_, root_vstatus_));
-  search_tree_.num_nodes = 0;
+      // Revive the search for the rebuilt tree and clear the restart signals.
+      solver_status_           = mip_status_t::UNSET;
+      restart_concurrent_halt_ = 0;
+      node_concurrent_halt_    = 0;
+
+      // Tear down the exhausted tree. The worker pools are rebuilt in the taskgroup below (they
+      // must be re-created against the possibly re-dimensioned root LP, not merely reset).
+      search_tree_.clean();
+
+      // Re-solve the root LP from the current (strengthened) bounds and accumulated cuts.
+      lp_settings.concurrent_halt         = NULL;
+      lp_status_t restart_root_lp_status  = solve_linear_program_with_advanced_basis(
+        original_lp_,
+        exploration_stats_.start_time,
+        lp_settings,
+        root_relax_soln_,
+        basis_update,
+        basic_list,
+        nonbasic_list,
+        root_vstatus_,
+        edge_norms_);
+      if (restart_root_lp_status == lp_status_t::OPTIMAL) {
+        root_objective_ = compute_objective(original_lp_, root_relax_soln_.x);
+      }
+
+      const f_t root_bound_before_resep = root_objective_;
+      i_t cuts_reused                   = 0;
+
+      // Re-separation runs the same number of passes as the root cut loop (max_cut_passes). The
+      // first pass is reuse-only (generate_new = false): it re-scores the accumulated pool -- root
+      // cuts plus node-generated Gomory cuts -- against the fresh root relaxation and pulls in the
+      // violated ones without generating anything new. Subsequent passes behave like normal root
+      // cut passes and also generate new cuts. cuts_reused counts only the first (reuse-only) pass,
+      // so it isolates how many pool cuts were worth re-adding. do_cut_pass records selected cut
+      // types into the shared cut_info, so the breakdown printed below is cumulative.
+      f_t reseparate_objective = root_objective_;
+      for (i_t resep_pass = 0; resep_pass < settings_.max_cut_passes; ++resep_pass) {
+        fractional.clear();
+        num_fractional =
+          fractional_variables(settings_, root_relax_soln_.x, var_types_, fractional);
+        if (num_fractional == 0) { break; }
+        const bool generate_new = (resep_pass != 0);
+        cut_pass_result_t resep_result = do_cut_pass(resep_pass,
+                                                     solution,
+                                                     num_fractional,
+                                                     fractional,
+                                                     cut_generation,
+                                                     basis_update,
+                                                     basic_list,
+                                                     nonbasic_list,
+                                                     variable_bounds,
+                                                     cut_pool,
+                                                     cut_info,
+                                                     lp_settings,
+                                                     original_rows,
+                                                     last_upper_bound,
+                                                     reseparate_objective,
+                                                     root_relax_objective,
+                                                     cut_pool_size,
+                                                     saved_solution,
+                                                     generate_new,
+                                                     generate_new ? nullptr : &cuts_reused);
+        if (resep_result.action == cut_pass_action_t::RETURN) {
+          is_running_ = false;
+          signal_extend_cliques_.store(true, std::memory_order_release);
+#pragma omp taskwait depend(in : *clique_signal)
+          return resep_result.status;
+        }
+        if (resep_result.action == cut_pass_action_t::BREAK) { break; }
+      }
+
+      const f_t root_bound_after_resep = root_objective_;
+
+      // Refresh the fractional set and pseudocost sizing for the rebuilt (possibly wider) root LP.
+      fractional.clear();
+      num_fractional = fractional_variables(settings_, root_relax_soln_.x, var_types_, fractional);
+      pc_.resize(original_lp_.num_cols);
+      pc_.Arow = Arow_;
+
+      // Reset the restart bookkeeping so should_restart() re-baselines against the new tree.
+      exploration_stats_.restart_nodes_at_last_check    = 0;
+      exploration_stats_.restart_progress_at_last_check = 0;
+      exploration_stats_.restart_large_tree_count       = 0;
+      exploration_stats_.restart_gap_at_last_check =
+        compute_user_abs_gap(original_lp_, upper_bound_.load(), root_objective_);
+
+      const f_t restart_user_lower = compute_user_objective(original_lp_, root_bound_after_resep);
+      const f_t restart_user_upper = compute_user_objective(original_lp_, upper_bound_.load());
+      const f_t restart_rel_gap    = user_relative_gap(restart_user_upper, restart_user_lower);
+      settings_.log.printf(
+        "\n[Restart %d] t=%.1fs nodes(tree/total)=%d/%lld gap=%.4f%% root bound %.6e -> %.6e "
+        "(improve %.3e)\n"
+        "            cut pool=%d (node Gomory=%d), reused %d cuts this restart\n\n",
+        restart_count_,
+        restart_elapsed,
+        tree_nodes,
+        static_cast<long long>(exploration_stats_.total_nodes_explored.load()),
+        100.0 * restart_rel_gap,
+        compute_user_objective(original_lp_, root_bound_before_reload),
+        restart_user_lower,
+        root_bound_after_resep - root_bound_before_resep,
+        cut_pool.pool_size(),
+        node_cuts_in_pool,
+        cuts_reused);
+
+      // Cumulative breakdown, by type, of all cuts added to the LP so far (root cut passes plus
+      // every restart's re-separation), same format as print_cut_info after the root cut passes.
+      print_cut_info(settings_, cut_info);
+      settings_.log.printf("\n");
+
+      // Re-separation may have closed the problem outright at the root.
+      if (num_fractional == 0) {
+        set_solution_at_root(solution, cut_info);
+        is_running_ = false;
+        signal_extend_cliques_.store(true, std::memory_order_release);
+#pragma omp taskwait depend(in : *clique_signal)
+        return mip_status_t::OPTIMAL;
+      }
+    }
+
+    // Choose variable to branch on
+    i_t branch_var = pc_.variable_selection(fractional, root_relax_soln_.x);
+
+    search_tree_.root      = std::move(mip_node_t<i_t, f_t>(root_objective_, root_vstatus_));
+    search_tree_.num_nodes = 0;
   search_tree_.graphviz_node(settings_.log, &search_tree_.root, "lower bound", root_objective_);
   search_tree_.branch(&search_tree_.root,
                       branch_var,
@@ -3029,6 +3246,8 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       const i_t num_workers        = settings_.num_threads;
       const i_t num_bfs_workers    = std::max(settings_.num_threads / 2, 1);
       const i_t num_diving_workers = num_workers - num_bfs_workers;
+      // init() is re-entrant: on restart it rebuilds the workers against the current (possibly
+      // re-separated) root LP so their per-node buffers match the new dimensions.
       bfs_worker_pool_.init(num_bfs_workers, original_lp_, Arow_, var_types_, symmetry_, settings_);
 
       if (num_diving_workers > 0) {
@@ -3050,6 +3269,7 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
       best_first_search_with(initial_worker);
     }
   }  // Implicit barrier for all tasks created within the group (RINS, B&B workers)
+  } while (solver_status_ == mip_status_t::RESTART);
 
   is_running_ = false;
   settings_.log.printf("\n");

@@ -157,6 +157,15 @@ class node_queue_t {
     return best_first_heap_.empty() ? std::numeric_limits<f_t>::infinity() : lower_bound_.load();
   }
 
+  // Empty both heaps and reset the tracked lower bound. Used to recycle a worker's queue on restart.
+  void clear()
+  {
+    std::lock_guard lock(mutex_);
+    best_first_heap_.clear();
+    diving_heap_.clear();
+    lower_bound_ = std::numeric_limits<f_t>::infinity();
+  }
+
  private:
   struct heap_entry_t {
     mip_node_t<i_t, f_t>* node = nullptr;

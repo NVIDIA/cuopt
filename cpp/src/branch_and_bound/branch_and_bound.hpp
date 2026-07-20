@@ -60,6 +60,7 @@ enum class mip_status_t {
   NUMERICAL  = 5,  // The solver encountered a numerical error
   UNSET      = 6,  // The status is not set
   WORK_LIMIT = 7,  // The solver reached a deterministic work limit
+  RESTART    = 8,  // The solver triggered a restart of the B&B tree
 };
 
 template <typename i_t, typename f_t>
@@ -243,6 +244,10 @@ class branch_and_bound_t {
   bool enable_concurrent_lp_root_solve_{false};
   std::atomic<int> root_concurrent_halt_{0};
   std::atomic<int> node_concurrent_halt_{0};
+  // Set to 1 to signal all B&B workers to stop so the tree can be restarted. Owned here (unlike the
+  // reference PR which threads a pointer through the constructor) since the B&B taskgroup is the only
+  // consumer.
+  std::atomic<int> restart_concurrent_halt_{0};
   bool is_root_solution_set{false};
 
   // Pseudocosts
@@ -271,6 +276,9 @@ class branch_and_bound_t {
   // corresponding subtree.
   omp_atomic_t<f_t> lower_bound_numerical_;
   std::function<void(f_t)> user_bound_callback_;
+
+  // Number of restarts performed so far in the current solve().
+  i_t restart_count_{0};
 
   void print_table_header();
   void report_heuristic(f_t obj);
@@ -304,7 +312,9 @@ class branch_and_bound_t {
                                 f_t& last_objective,
                                 f_t root_relax_objective,
                                 i_t& cut_pool_size,
-                                const std::vector<f_t>& saved_solution);
+                                const std::vector<f_t>& saved_solution,
+                                bool generate_new       = true,
+                                i_t* num_cuts_added_out = nullptr);
 
   // Set the solution when found at the root node
   void set_solution_at_root(simplex::mip_solution_t<i_t, f_t>& solution,
@@ -323,6 +333,10 @@ class branch_and_bound_t {
 
   // Repairs low-quality solutions from the heuristics, if it is applicable.
   void repair_heuristic_solutions();
+
+  // Decide whether to restart the B&B tree based on how much larger the estimated full tree is
+  // compared to the part explored so far.
+  bool should_restart(f_t current_abs_gap);
 
   // Launch a new diving worker from a given best-first worker.
   bool launch_diving_worker(bfs_worker_t<i_t, f_t>* bfs_worker);

@@ -681,6 +681,9 @@ class cut_generation_t {
                           const std::vector<i_t>& nonbasic_list,
                           f_t start_time);
 
+  // Cumulative number of node-generated Gomory cuts appended to the pool (for restart logging).
+  i_t node_cuts_added() const { return node_cuts_added_; }
+
  private:
   // Generate all mixed integer gomory cuts
   void generate_gomory_cuts(const simplex::lp_problem_t<i_t, f_t>& lp,
@@ -750,6 +753,9 @@ class cut_generation_t {
     f_t start_time);
 
   cut_pool_t<i_t, f_t>& cut_pool_;
+  // Cumulative number of cuts appended to the pool by generate_node_cuts (node-generated Gomory
+  // cuts). Read for restart logging to gauge how many node cuts are available for re-separation.
+  omp_atomic_t<i_t> node_cuts_added_{0};
   knapsack_generation_t<i_t, f_t> knapsack_generation_;
   flow_cover_generation_t<i_t, f_t> flow_cover_generation_;
   const simplex::user_problem_t<i_t, f_t>& user_problem_;

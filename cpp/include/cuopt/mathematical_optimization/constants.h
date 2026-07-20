@@ -82,6 +82,8 @@
 #define CUOPT_MIP_BATCH_PDLP_RELIABILITY_BRANCHING "mip_batch_pdlp_reliability_branching"
 #define CUOPT_MIP_STRONG_BRANCHING_SIMPLEX_ITERATION_LIMIT \
   "mip_strong_branching_simplex_iteration_limit"
+#define CUOPT_MIP_NODE_CUTS    "mip_node_cuts"
+#define CUOPT_MIP_MAX_RESTARTS "mip_max_restarts"
 
 #define CUOPT_SOLUTION_FILE            "solution_file"
 #define CUOPT_NUM_CPU_THREADS          "num_cpu_threads"

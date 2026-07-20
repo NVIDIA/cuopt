@@ -27,13 +27,22 @@ struct branch_and_bound_stats_t {
   f_t start_time                         = 0.0;
   omp_atomic_t<f_t> total_lp_solve_time  = 0.0;
   omp_atomic_t<int64_t> nodes_explored   = 0;
-  omp_atomic_t<int64_t> nodes_unexplored = 0;
+  // Cumulative nodes explored across all restarts (nodes_explored is reset each restart).
+  omp_atomic_t<int64_t> total_nodes_explored = 0;
+  omp_atomic_t<int64_t> nodes_unexplored     = 0;
   // Tracks the number of nodes being solved by the workers at a given time
   omp_atomic_t<i_t> nodes_being_solved = 0;
 
   omp_atomic_t<int64_t> total_lp_iters   = 0;
   omp_atomic_t<i_t> nodes_since_last_log = 0;
   omp_atomic_t<f_t> last_log             = 0.0;
+
+  // Restart bookkeeping: snapshots at the last should_restart() check plus the consecutive
+  // large-tree-estimate counter that gates a restart.
+  i_t restart_nodes_at_last_check    = 0;
+  f_t restart_progress_at_last_check = 0;
+  f_t restart_gap_at_last_check      = 0;
+  i_t restart_large_tree_count       = 0;
 
   omp_atomic_t<int64_t> orbital_fixing_nodes              = 0;
   omp_atomic_t<int64_t> orbital_fixings_applied           = 0;

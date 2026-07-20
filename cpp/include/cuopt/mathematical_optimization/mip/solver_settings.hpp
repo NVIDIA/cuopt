@@ -122,6 +122,8 @@ class mip_solver_settings_t {
   i_t num_cpu_threads           = -1;  // -1 means use default number of threads in branch and bound
   i_t symmetry                  = -1;
   i_t max_cut_passes            = 10;  // number of cut passes to make
+  i_t node_cuts                 = 1;   // 0 = disable, 1 = enable cut generation at B&B nodes
+  i_t max_restarts              = 50;  // 0 = disable B&B restarts; max number of restarts otherwise
   i_t mir_cuts                  = -1;
   i_t mixed_integer_gomory_cuts = -1;
   i_t knapsack_cuts             = -1;

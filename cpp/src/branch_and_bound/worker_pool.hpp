@@ -26,9 +26,12 @@ class worker_pool_t {
             const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
             const uint64_t rng_offset = 0)
   {
-    assert(!is_initialized_);
     assert(num_workers > 0);
 
+    // Re-entrant: on restart the root LP dimensions may have changed (re-separated cuts), so the
+    // workers -- which copy/size their per-node buffers (leaf_problem, basis_factors, ...) from
+    // original_lp at construction -- must be rebuilt rather than merely reset.
+    workers_.clear();
     workers_.resize(num_workers);
     num_idle_workers_ = num_workers;
     idle_workers_.clear_resize(num_workers);

@@ -374,6 +374,17 @@ class search_tree_t {
   void update(mip_node_t<i_t, f_t>* node_ptr, node_status_t status)
   {
     std::lock_guard<omp_mutex_t> lock(mutex);
+    // Maintain the tree-weight progress metric used by the restart heuristic. A node closed as a
+    // leaf (fathomed/feasible/infeasible/numerical) contributes 2^-depth of the [0,1] tree weight;
+    // a node that branched becomes an inner node. This lets should_restart() estimate the full tree
+    // size from the fraction explored so far.
+    --num_open_nodes;
+    if (status == node_status_t::HAS_CHILDREN) {
+      ++num_inner_nodes;
+    } else {
+      ++num_final_nodes;
+      progress = progress.load() + std::ldexp(f_t(1), -node_ptr->depth);
+    }
     std::vector<mip_node_t<i_t, f_t>*> stack;
     node_ptr->set_status(status, stack);
     remove_fathomed_nodes(stack);
@@ -423,6 +434,20 @@ class search_tree_t {
     assert(parent_vstatus.size() == original_lp.num_cols);
     parent_node->add_children(std::move(down_child),
                               std::move(up_child));  // child pointers moved into the tree
+    num_open_nodes += 2;
+  }
+
+  // Free the whole tree and reset all counters so the search tree can be reused after a restart.
+  // Child destruction goes through mip_node_t's iterative teardown, so deep trees are safe.
+  void clean()
+  {
+    root.children[0].reset();
+    root.children[1].reset();
+    num_nodes       = 0;
+    num_open_nodes  = 0;
+    num_final_nodes = 0;
+    num_inner_nodes = 0;
+    progress        = 0;
   }
 
   void graphviz_node(simplex::logger_t& log,
@@ -455,6 +480,14 @@ class search_tree_t {
   mip_node_t<i_t, f_t> root;
   omp_mutex_t mutex;
   omp_atomic_t<i_t> num_nodes;
+
+  // Restart bookkeeping. num_open_nodes counts nodes still to explore; num_final_nodes and
+  // num_inner_nodes count closed leaves and branched nodes. progress is the fraction of the [0,1]
+  // tree weight that has been closed (sum of 2^-depth over closed leaves).
+  omp_atomic_t<i_t> num_open_nodes  = 0;
+  omp_atomic_t<i_t> num_final_nodes = 0;
+  omp_atomic_t<i_t> num_inner_nodes = 0;
+  omp_atomic_t<f_t> progress        = 0;
 
   static constexpr bool write_graphviz = false;
 };

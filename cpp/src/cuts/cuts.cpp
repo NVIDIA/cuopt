@@ -3495,18 +3495,15 @@ bool cut_generation_t<i_t, f_t>::generate_node_cuts(
   const std::vector<i_t>& nonbasic_list,
   f_t start_time)
 {
-
-  f_t cut_start_time = tic();
+  // Node cuts are Gomory-only for now. generate_gomory_cuts appends violated cuts to the shared
+  // global pool. We only accumulate the count here (reported once per restart); the per-node print
+  // is intentionally omitted to avoid flooding the log during B&B.
   const i_t pool_size_before = cut_pool_.pool_size();
-  generate_gomory_cuts(lp, settings, Arow, new_slacks, var_types, basis_update, xstar, basic_list, nonbasic_list);
+  generate_gomory_cuts(
+    lp, settings, Arow, new_slacks, var_types, basis_update, xstar, basic_list, nonbasic_list);
   const i_t pool_size_after = cut_pool_.pool_size();
-  f_t cut_generation_time = toc(cut_start_time);
   if (pool_size_after > pool_size_before) {
-    settings.log.printf("Node Gomory cut generation: pool %d -> %d (+%d cuts) in %.2f seconds\n",
-                        pool_size_before,
-                        pool_size_after,
-                        pool_size_after - pool_size_before,
-                        cut_generation_time);
+    node_cuts_added_ += pool_size_after - pool_size_before;
   }
   return true;
 }

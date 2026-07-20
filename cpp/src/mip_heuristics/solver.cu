@@ -360,6 +360,8 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     branch_and_bound_settings.integer_tol = context.settings.tolerances.integrality_tolerance;
     branch_and_bound_settings.reliability_branching = solver_settings_.reliability_branching;
     branch_and_bound_settings.max_cut_passes        = context.settings.max_cut_passes;
+    branch_and_bound_settings.node_cuts             = context.settings.node_cuts;
+    branch_and_bound_settings.max_restarts          = context.settings.max_restarts;
     branch_and_bound_settings.mir_cuts              = context.settings.mir_cuts;
     branch_and_bound_settings.deterministic =
       context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC;
