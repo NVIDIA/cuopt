@@ -25,8 +25,17 @@ def test_routing_imports_without_a_gpu():
         "import cuopt.routing as r\n"
         "assert 'cuopt.routing.utils' not in sys.modules\n"
         "assert 'cuopt.routing.utils_wrapper' not in sys.modules\n"
-        # the GPU helpers are intentionally not part of the public surface
-        "assert not hasattr(r, 'generate_dataset')\n"
+        # none of the GPU helpers are part of the public surface anymore;
+        # enumerate the full set so re-exposing any one of them fails the test
+        "moved = [\n"
+        "    'generate_dataset',\n"
+        "    'DatasetDistribution',\n"
+        "    'add_vehicle_constraints',\n"
+        "    'create_pickup_delivery_data',\n"
+        "    'update_routes_and_vehicles',\n"
+        "]\n"
+        "leaked = [n for n in moved if hasattr(r, n)]\n"
+        "assert not leaked, leaked\n"
         "import numpy as np\n"
         "dm = r.DataModel(3, 2)\n"
         "dm.add_cost_matrix(np.eye(3, dtype=np.float32))\n"
