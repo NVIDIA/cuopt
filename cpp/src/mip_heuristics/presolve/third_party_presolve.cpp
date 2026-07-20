@@ -1321,253 +1321,254 @@ void third_party_presolve_t<i_t, f_t>::crush_primal_solution(
     reduced_primal[j] =
       std::clamp(reduced_primal[j], reduced_problem.lower[j], reduced_problem.upper[j]);
   }
+}
 
-  /**
-   * Crush an original-space primal+dual solution into the presolved (reduced) space.
-   *
-   * This is the forward counterpart of Papilo's Postsolve::undo(). It replays
-   * each presolve reduction in forward order to transform variable/dual values,
-   * then projects onto the surviving columns/rows via origcol/origrow_mapping.
-   *
-   * Only two reductions actually transform survivor coordinates:
-   *   kParallelCol             — merges x[col1] into x[col2]; survivor rc is z[col2] if
-   *                              nonzero, else z[col1] / scale (inverse of PaPILO postsolve)
-   *   kRowBoundChangeForcedByRow — conditionally transfers y[deleted_row] → y[kept_row]
-   */
-  template <typename i_t, typename f_t>
-  void third_party_presolve_t<i_t, f_t>::crush_primal_dual_solution(
-    const std::vector<f_t>& x_original,
-    const std::vector<f_t>& y_original,
-    std::vector<f_t>& x_reduced,
-    std::vector<f_t>& y_reduced,
-    const std::vector<f_t>& z_original,
-    std::vector<f_t>& z_reduced,
-    const std::vector<f_t>& A_values,
-    const std::vector<i_t>& A_indices,
-    const std::vector<i_t>& A_offsets) const
-  {
-    cuopt_expects(presolver_ == cuopt::mathematical_optimization::presolver_t::Papilo,
-                  error_type_t::RuntimeError,
-                  "Crushing is only supported for PaPILO presolve");
-    cuopt_assert(papilo_post_solve_storage_ != nullptr, "No postsolve storage available");
+/**
+ * Crush an original-space primal+dual solution into the presolved (reduced) space.
+ *
+ * This is the forward counterpart of Papilo's Postsolve::undo(). It replays
+ * each presolve reduction in forward order to transform variable/dual values,
+ * then projects onto the surviving columns/rows via origcol/origrow_mapping.
+ *
+ * Only two reductions actually transform survivor coordinates:
+ *   kParallelCol             — merges x[col1] into x[col2]; survivor rc is z[col2] if
+ *                              nonzero, else z[col1] / scale (inverse of PaPILO postsolve)
+ *   kRowBoundChangeForcedByRow — conditionally transfers y[deleted_row] → y[kept_row]
+ */
+template <typename i_t, typename f_t>
+void third_party_presolve_t<i_t, f_t>::crush_primal_dual_solution(
+  const std::vector<f_t>& x_original,
+  const std::vector<f_t>& y_original,
+  std::vector<f_t>& x_reduced,
+  std::vector<f_t>& y_reduced,
+  const std::vector<f_t>& z_original,
+  std::vector<f_t>& z_reduced,
+  const std::vector<f_t>& A_values,
+  const std::vector<i_t>& A_indices,
+  const std::vector<i_t>& A_offsets) const
+{
+  cuopt_expects(presolver_ == cuopt::mathematical_optimization::presolver_t::Papilo,
+                error_type_t::RuntimeError,
+                "Crushing is only supported for PaPILO presolve");
+  cuopt_assert(papilo_post_solve_storage_ != nullptr, "No postsolve storage available");
 
-    const auto& storage = *papilo_post_solve_storage_;
-    const auto& types   = storage.types;
-    const auto& indices = storage.indices;
-    const auto& values  = storage.values;
-    const auto& start   = storage.start;
-    const auto& num     = storage.num;
+  const auto& storage = *papilo_post_solve_storage_;
+  const auto& types   = storage.types;
+  const auto& indices = storage.indices;
+  const auto& values  = storage.values;
+  const auto& start   = storage.start;
+  const auto& num     = storage.num;
 
-    cuopt_assert((int)x_original.size() == (int)storage.nColsOriginal, "");
+  cuopt_assert((int)x_original.size() == (int)storage.nColsOriginal, "");
 
-    const bool crush_dual = !y_original.empty();
-    if (crush_dual) { cuopt_assert((int)y_original.size() == (int)storage.nRowsOriginal, ""); }
+  const bool crush_dual = !y_original.empty();
+  if (crush_dual) { cuopt_assert((int)y_original.size() == (int)storage.nRowsOriginal, ""); }
 
-    const bool crush_rc = !z_original.empty() && crush_dual;
-    if (crush_rc) { cuopt_assert((int)z_original.size() == (int)storage.nColsOriginal, ""); }
+  const bool crush_rc = !z_original.empty() && crush_dual;
+  if (crush_rc) { cuopt_assert((int)z_original.size() == (int)storage.nColsOriginal, ""); }
 
-    std::vector<f_t> x(x_original.begin(), x_original.end());
-    std::vector<f_t> y(y_original.begin(), y_original.end());
-    std::vector<f_t> z(z_original.begin(), z_original.end());
+  std::vector<f_t> x(x_original.begin(), x_original.end());
+  std::vector<f_t> y(y_original.begin(), y_original.end());
+  std::vector<f_t> z(z_original.begin(), z_original.end());
 
-    // Track current coefficient values for entries modified by kCoefficientChange,
-    // so repeated changes to the same (row, col) are handled correctly.
-    std::unordered_map<i_t, f_t> coeff_current;
+  // Track current coefficient values for entries modified by kCoefficientChange,
+  // so repeated changes to the same (row, col) are handled correctly.
+  std::unordered_map<i_t, f_t> coeff_current;
 
-    const i_t n_cols_original = (i_t)storage.nColsOriginal;
+  const i_t n_cols_original = (i_t)storage.nColsOriginal;
 
-    auto coeff_key = [&](int row, int col) -> i_t { return (i_t)row * n_cols_original + (i_t)col; };
+  auto coeff_key = [&](int row, int col) -> i_t { return (i_t)row * n_cols_original + (i_t)col; };
 
-    auto get_coeff = [&](int row, int col) -> f_t {
-      auto it = coeff_current.find(coeff_key(row, col));
-      if (it != coeff_current.end()) return it->second;
-      for (i_t p = A_offsets[row]; p < A_offsets[row + 1]; ++p) {
-        if (A_indices[p] == col) return A_values[p];
+  auto get_coeff = [&](int row, int col) -> f_t {
+    auto it = coeff_current.find(coeff_key(row, col));
+    if (it != coeff_current.end()) return it->second;
+    for (i_t p = A_offsets[row]; p < A_offsets[row + 1]; ++p) {
+      if (A_indices[p] == col) return A_values[p];
+    }
+    return 0;
+  };
+
+  for (int i = 0; i < (int)types.size(); ++i) {
+    int first = start[i];
+
+    switch (types[i]) {
+      case ReductionType::kParallelCol: {
+        // Storage layout: [orig_col1, flags1, orig_col2, flags2, -1]
+        //                 [col1lb,    col1ub, col2lb,    col2ub, col2scale]
+        int col1         = indices[first];
+        int col2         = indices[first + 2];
+        const f_t& scale = values[first + 4];
+        x[col2] += scale * x[col1];
+        if (crush_rc) {
+          // Inverse of Postsolve::apply_parallel_col_to_original_solution reduced-cost split.
+          if (num.isZero(z[col2]) && !num.isZero(z[col1])) {
+            cuopt_assert(!num.isZero(scale), "parallel column scale must be nonzero");
+            z[col2] = z[col1] / scale;
+          }
+        }
+        break;
       }
-      return 0;
-    };
 
-    for (int i = 0; i < (int)types.size(); ++i) {
-      int first = start[i];
+      case ReductionType::kRowBoundChangeForcedByRow: {
+        if (!crush_dual) break;
+        cuopt_assert(i >= 1 && types[i - 1] == ReductionType::kReasonForRowBoundChangeForcedByRow,
+                     "kRowBoundChangeForcedByRow must be preceded by its reason record");
 
-      switch (types[i]) {
-        case ReductionType::kParallelCol: {
-          // Storage layout: [orig_col1, flags1, orig_col2, flags2, -1]
-          //                 [col1lb,    col1ub, col2lb,    col2ub, col2scale]
-          int col1         = indices[first];
-          int col2         = indices[first + 2];
-          const f_t& scale = values[first + 4];
-          x[col2] += scale * x[col1];
+        bool is_lhs = indices[first] == 1;
+        int row     = (int)values[first];
+
+        int reason_first = start[i - 1];
+        int deleted_row  = indices[reason_first + 1];
+        f_t factor       = values[reason_first];
+        cuopt_assert(factor != 0, "parallel row factor must be nonzero");
+
+        // Forward rule: if the deleted row carried dual signal that the
+        // reverse would have attributed to the kept row, transfer it back.
+        f_t candidate = y[deleted_row] / factor;
+        bool sign_ok  = is_lhs ? num.isGT(candidate, (f_t)0) : num.isLT(candidate, (f_t)0);
+
+        if (sign_ok) {
+          f_t y_old = y[row];
+          y[row]    = candidate;
+          // Maintain z = c - A^T y: propagate the y change into reduced costs
           if (crush_rc) {
-            // Inverse of Postsolve::apply_parallel_col_to_original_solution reduced-cost split.
-            if (num.isZero(z[col2]) && !num.isZero(z[col1])) {
-              cuopt_assert(!num.isZero(scale), "parallel column scale must be nonzero");
-              z[col2] = z[col1] / scale;
+            f_t delta_y = candidate - y_old;
+            for (i_t p = A_offsets[row]; p < A_offsets[row + 1]; ++p) {
+              f_t a = get_coeff(row, A_indices[p]);
+              z[A_indices[p]] -= delta_y * a;
             }
           }
-          break;
         }
+        break;
+      }
 
-        case ReductionType::kRowBoundChangeForcedByRow: {
-          if (!crush_dual) break;
-          cuopt_assert(i >= 1 && types[i - 1] == ReductionType::kReasonForRowBoundChangeForcedByRow,
-                       "kRowBoundChangeForcedByRow must be preceded by its reason record");
+      case ReductionType::kCoefficientChange: {
+        if (!crush_rc) break;
+        int row                            = indices[first];
+        int col                            = indices[first + 1];
+        f_t a_new                          = values[first];
+        f_t a_old                          = get_coeff(row, col);
+        coeff_current[coeff_key(row, col)] = a_new;
+        z[col] += (a_old - a_new) * y[row];
+        break;
+      }
 
-          bool is_lhs = indices[first] == 1;
-          int row     = (int)values[first];
+      case ReductionType::kSubstitutedColWithDual: {
+        // Singleton substitution: column j is expressed via equality row k as
+        //   x_j = (rhs_k - Σ_{l≠j} a_kl·x_l) / a_kj
+        // This changes the objective for every column l in row k:
+        //   c_red[l] = c_orig[l] - (c_j / a_kj) · a_kl
+        // Adjust z accordingly:  Δz[l] = -(a_kl / a_kj)·z[j] - a_kl·y[k]
+        if (!crush_rc) break;
+        int row_k      = indices[first];  // equality row (original space)
+        int row_length = (int)values[first];
+        // Row coefficients start at first+3
+        int row_coef_start = first + 3;
+        // Substituted column index is after the row coefficients
+        int col_j = indices[row_coef_start + row_length];
 
-          int reason_first = start[i - 1];
-          int deleted_row  = indices[reason_first + 1];
-          f_t factor       = values[reason_first];
-          cuopt_assert(factor != 0, "parallel row factor must be nonzero");
-
-          // Forward rule: if the deleted row carried dual signal that the
-          // reverse would have attributed to the kept row, transfer it back.
-          f_t candidate = y[deleted_row] / factor;
-          bool sign_ok  = is_lhs ? num.isGT(candidate, (f_t)0) : num.isLT(candidate, (f_t)0);
-
-          if (sign_ok) {
-            f_t y_old = y[row];
-            y[row]    = candidate;
-            // Maintain z = c - A^T y: propagate the y change into reduced costs
-            if (crush_rc) {
-              f_t delta_y = candidate - y_old;
-              for (i_t p = A_offsets[row]; p < A_offsets[row + 1]; ++p) {
-                f_t a = get_coeff(row, A_indices[p]);
-                z[A_indices[p]] -= delta_y * a;
-              }
-            }
+        // Find a_kj (coefficient of col j in row k)
+        f_t a_kj = 0;
+        for (int p = 0; p < row_length; ++p) {
+          if (indices[row_coef_start + p] == col_j) {
+            a_kj = values[row_coef_start + p];
+            break;
           }
-          break;
         }
+        if (a_kj == 0) break;  // shouldn't happen
 
-        case ReductionType::kCoefficientChange: {
-          if (!crush_rc) break;
-          int row                            = indices[first];
-          int col                            = indices[first + 1];
-          f_t a_new                          = values[first];
-          f_t a_old                          = get_coeff(row, col);
-          coeff_current[coeff_key(row, col)] = a_new;
-          z[col] += (a_old - a_new) * y[row];
-          break;
+        f_t z_j = z[col_j];
+        f_t y_k = y[row_k];
+
+        // Adjust z for each surviving column l in the equality row (l ≠ j)
+        for (int p = 0; p < row_length; ++p) {
+          int col_l = indices[row_coef_start + p];
+          if (col_l == col_j) continue;
+          f_t a_kl = values[row_coef_start + p];
+          z[col_l] -= (a_kl / a_kj) * z_j + a_kl * y_k;
         }
+        break;
+      }
 
-        case ReductionType::kSubstitutedColWithDual: {
-          // Singleton substitution: column j is expressed via equality row k as
-          //   x_j = (rhs_k - Σ_{l≠j} a_kl·x_l) / a_kj
-          // This changes the objective for every column l in row k:
-          //   c_red[l] = c_orig[l] - (c_j / a_kj) · a_kl
-          // Adjust z accordingly:  Δz[l] = -(a_kl / a_kj)·z[j] - a_kl·y[k]
-          if (!crush_rc) break;
-          int row_k      = indices[first];  // equality row (original space)
-          int row_length = (int)values[first];
-          // Row coefficients start at first+3
-          int row_coef_start = first + 3;
-          // Substituted column index is after the row coefficients
-          int col_j = indices[row_coef_start + row_length];
+      case ReductionType::kFixedCol:                            // Handled via projection
+      case ReductionType::kSubstitutedCol:                      // Col is dropped
+      case ReductionType::kFixedInfCol:                         // Col is dropped
+      case ReductionType::kVarBoundChange:                      // Noop
+      case ReductionType::kRedundantRow:                        // Noop
+      case ReductionType::kRowBoundChange:                      // Noop
+      case ReductionType::kReasonForRowBoundChangeForcedByRow:  // Metadata for above
+      case ReductionType::kSaveRow:                             // Metadata
+      case ReductionType::kReducedBoundsCost:                   // Noop
+      case ReductionType::kColumnDualValue:                     // Column reduced-cost only
+      case ReductionType::kRowDualValue:                        // Handled via projection
+        break;
+        // no default: case to let the compiler yell at us if a new reduction is later introduced
+    }
+  }
 
-          // Find a_kj (coefficient of col j in row k)
-          f_t a_kj = 0;
-          for (int p = 0; p < row_length; ++p) {
-            if (indices[row_coef_start + p] == col_j) {
-              a_kj = values[row_coef_start + p];
-              break;
-            }
-          }
-          if (a_kj == 0) break;  // shouldn't happen
+  const auto& col_map = storage.origcol_mapping;
+  const auto& row_map = storage.origrow_mapping;
 
-          f_t z_j = z[col_j];
-          f_t y_k = y[row_k];
-
-          // Adjust z for each surviving column l in the equality row (l ≠ j)
-          for (int p = 0; p < row_length; ++p) {
-            int col_l = indices[row_coef_start + p];
-            if (col_l == col_j) continue;
-            f_t a_kl = values[row_coef_start + p];
-            z[col_l] -= (a_kl / a_kj) * z_j + a_kl * y_k;
-          }
-          break;
-        }
-
-        case ReductionType::kFixedCol:                            // Handled via projection
-        case ReductionType::kSubstitutedCol:                      // Col is dropped
-        case ReductionType::kFixedInfCol:                         // Col is dropped
-        case ReductionType::kVarBoundChange:                      // Noop
-        case ReductionType::kRedundantRow:                        // Noop
-        case ReductionType::kRowBoundChange:                      // Noop
-        case ReductionType::kReasonForRowBoundChangeForcedByRow:  // Metadata for above
-        case ReductionType::kSaveRow:                             // Metadata
-        case ReductionType::kReducedBoundsCost:                   // Noop
-        case ReductionType::kColumnDualValue:                     // Column reduced-cost only
-        case ReductionType::kRowDualValue:                        // Handled via projection
-          break;
-          // no default: case to let the compiler yell at us if a new reduction is later introduced
+  // Cancel contributions from removed rows.  The original-space z was
+  // computed as z = c - A^T y over ALL rows.  The reduced-space stationarity
+  // only involves surviving rows, so we must add back the terms from removed
+  // rows: z[j] += y[i] * a_{i,j} for every removed row i with materially nonzero y[i].
+  if (crush_rc) {
+    std::vector<bool> row_survives((int)storage.nRowsOriginal, false);
+    for (size_t k = 0; k < row_map.size(); ++k) {
+      row_survives[row_map[k]] = true;
+    }
+    for (int i = 0; i < (int)storage.nRowsOriginal; ++i) {
+      if (row_survives[i] || num.isZero(y[i])) continue;
+      for (i_t p = A_offsets[i]; p < A_offsets[i + 1]; ++p) {
+        z[A_indices[p]] += y[i] * get_coeff(i, A_indices[p]);
       }
     }
+  }
 
-    const auto& col_map = storage.origcol_mapping;
-    const auto& row_map = storage.origrow_mapping;
+  x_reduced.resize(col_map.size());
+  for (size_t k = 0; k < col_map.size(); ++k) {
+    x_reduced[k] = x[col_map[k]];
+  }
 
-    // Cancel contributions from removed rows.  The original-space z was
-    // computed as z = c - A^T y over ALL rows.  The reduced-space stationarity
-    // only involves surviving rows, so we must add back the terms from removed
-    // rows: z[j] += y[i] * a_{i,j} for every removed row i with materially nonzero y[i].
-    if (crush_rc) {
-      std::vector<bool> row_survives((int)storage.nRowsOriginal, false);
-      for (size_t k = 0; k < row_map.size(); ++k) {
-        row_survives[row_map[k]] = true;
-      }
-      for (int i = 0; i < (int)storage.nRowsOriginal; ++i) {
-        if (row_survives[i] || num.isZero(y[i])) continue;
-        for (i_t p = A_offsets[i]; p < A_offsets[i + 1]; ++p) {
-          z[A_indices[p]] += y[i] * get_coeff(i, A_indices[p]);
-        }
-      }
+  if (crush_dual) {
+    y_reduced.resize(row_map.size());
+    for (size_t k = 0; k < row_map.size(); ++k) {
+      y_reduced[k] = y[row_map[k]];
     }
+  }
 
-    x_reduced.resize(col_map.size());
+  if (crush_rc) {
+    z_reduced.resize(col_map.size());
     for (size_t k = 0; k < col_map.size(); ++k) {
-      x_reduced[k] = x[col_map[k]];
-    }
-
-    if (crush_dual) {
-      y_reduced.resize(row_map.size());
-      for (size_t k = 0; k < row_map.size(); ++k) {
-        y_reduced[k] = y[row_map[k]];
-      }
-    }
-
-    if (crush_rc) {
-      z_reduced.resize(col_map.size());
-      for (size_t k = 0; k < col_map.size(); ++k) {
-        z_reduced[k] = z[col_map[k]];
-      }
+      z_reduced[k] = z[col_map[k]];
     }
   }
+}
 
-  template <typename i_t, typename f_t>
-  third_party_presolve_t<i_t, f_t>::~third_party_presolve_t()
-  {
-    if (pslp_presolver_ != nullptr) { free_presolver(pslp_presolver_); }
-    if (pslp_stgs_ != nullptr) { free_settings(pslp_stgs_); }
-  }
+template <typename i_t, typename f_t>
+third_party_presolve_t<i_t, f_t>::~third_party_presolve_t()
+{
+  if (pslp_presolver_ != nullptr) { free_presolver(pslp_presolver_); }
+  if (pslp_stgs_ != nullptr) { free_settings(pslp_stgs_); }
+}
 
-  template <typename f_t>
-  void papilo_postsolve_deleter<f_t>::operator()(papilo::PostsolveStorage<f_t>* ptr) const
-  {
-    delete ptr;
-  }
+template <typename f_t>
+void papilo_postsolve_deleter<f_t>::operator()(papilo::PostsolveStorage<f_t>* ptr) const
+{
+  delete ptr;
+}
 
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
-  template struct papilo_postsolve_deleter<float>;
-  template class third_party_presolve_t<int, float>;
-  template void papilo_round_trip(simplex::user_problem_t<int, float>&);
+template struct papilo_postsolve_deleter<float>;
+template class third_party_presolve_t<int, float>;
+template void papilo_round_trip(simplex::user_problem_t<int, float>&);
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
-  template struct papilo_postsolve_deleter<double>;
-  template class third_party_presolve_t<int, double>;
-  template void papilo_round_trip(simplex::user_problem_t<int, double>&);
+template struct papilo_postsolve_deleter<double>;
+template class third_party_presolve_t<int, double>;
+template void papilo_round_trip(simplex::user_problem_t<int, double>&);
 #endif
 
 }  // namespace cuopt::mathematical_optimization::mip
