@@ -37,8 +37,8 @@ struct fsmvrptwsc_params_t {
 
 bool is_absolute_path(std::string const& path)
 {
-  return !path.empty() && (path[0] == '/' || path[0] == '\\' ||
-                           (path.size() > 1 && path[1] == ':'));
+  return !path.empty() &&
+         (path[0] == '/' || path[0] == '\\' || (path.size() > 1 && path[1] == ':'));
 }
 
 std::string join_path(std::string const& base, std::string const& path)
@@ -59,7 +59,7 @@ std::string resolve_dataset_path(std::string const& dataset_file)
 {
   if (is_absolute_path(dataset_file)) { return dataset_file; }
 
-  auto dataset_root = cuopt::test::get_rapids_dataset_root_dir();
+  auto dataset_root     = cuopt::test::get_rapids_dataset_root_dir();
   auto const cuopt_home = cuopt::test::get_cuopt_home();
   if (!is_absolute_path(dataset_root) && !cuopt_home.empty()) {
     dataset_root = join_path(cuopt_home, dataset_root);
@@ -101,22 +101,22 @@ TEST_P(fsmvrptwsc_small_test_t, solves_small_step_cost_instance)
   auto zero_cost_matrix = std::vector<float>(instance.distance_matrix.size(), 0.0f);
 
   std::cerr << "FSMVRPTWSC " << param.instance_name << ": copy begin\n";
-  auto d_cost_matrix          = cuopt::device_copy(zero_cost_matrix, stream);
-  auto d_distance_matrix      = cuopt::device_copy(instance.distance_matrix, stream);
-  auto d_transit_time_matrix  = cuopt::device_copy(instance.transit_time_matrix, stream);
-  auto d_order_locations      = cuopt::device_copy(instance.order_locations, stream);
-  auto d_earliest             = cuopt::device_copy(instance.earliest, stream);
-  auto d_latest               = cuopt::device_copy(instance.latest, stream);
-  auto d_service_times        = cuopt::device_copy(instance.service_times, stream);
-  auto d_demands              = cuopt::device_copy(instance.demand, stream);
-  auto d_vehicle_earliest     = cuopt::device_copy(instance.vehicle_earliest, stream);
-  auto d_vehicle_latest       = cuopt::device_copy(instance.vehicle_latest, stream);
-  auto d_capacities           = cuopt::device_copy(instance.capacities, stream);
-  auto d_vehicle_types        = cuopt::device_copy(instance.vehicle_types, stream);
-  auto d_tier_thresholds      = cuopt::device_copy(instance.tier_thresholds, stream);
-  auto d_tier_fixed_costs     = cuopt::device_copy(instance.tier_fixed_costs, stream);
-  auto d_tier_costs_per_unit  = cuopt::device_copy(instance.tier_costs_per_unit, stream);
-  auto d_tier_offsets         = cuopt::device_copy(instance.tier_offsets, stream);
+  auto d_cost_matrix         = cuopt::device_copy(zero_cost_matrix, stream);
+  auto d_distance_matrix     = cuopt::device_copy(instance.distance_matrix, stream);
+  auto d_transit_time_matrix = cuopt::device_copy(instance.transit_time_matrix, stream);
+  auto d_order_locations     = cuopt::device_copy(instance.order_locations, stream);
+  auto d_earliest            = cuopt::device_copy(instance.earliest, stream);
+  auto d_latest              = cuopt::device_copy(instance.latest, stream);
+  auto d_service_times       = cuopt::device_copy(instance.service_times, stream);
+  auto d_demands             = cuopt::device_copy(instance.demand, stream);
+  auto d_vehicle_earliest    = cuopt::device_copy(instance.vehicle_earliest, stream);
+  auto d_vehicle_latest      = cuopt::device_copy(instance.vehicle_latest, stream);
+  auto d_capacities          = cuopt::device_copy(instance.capacities, stream);
+  auto d_vehicle_types       = cuopt::device_copy(instance.vehicle_types, stream);
+  auto d_tier_thresholds     = cuopt::device_copy(instance.tier_thresholds, stream);
+  auto d_tier_fixed_costs    = cuopt::device_copy(instance.tier_fixed_costs, stream);
+  auto d_tier_costs_per_unit = cuopt::device_copy(instance.tier_costs_per_unit, stream);
+  auto d_tier_offsets        = cuopt::device_copy(instance.tier_offsets, stream);
   handle.sync_stream();
   std::cerr << "FSMVRPTWSC " << param.instance_name << ": copy done\n";
 

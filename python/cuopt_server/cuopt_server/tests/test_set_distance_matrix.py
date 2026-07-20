@@ -19,9 +19,7 @@ client = RequestClient()
 # SET DISTANCE MATRIX TESTING
 
 valid_data = {
-    "cost_matrix_data": {
-        "data": {0: [[0, 1, 1], [1, 0, 1], [1, 1, 0]]}
-    },
+    "cost_matrix_data": {"data": {0: [[0, 1, 1], [1, 0, 1], [1, 1, 0]]}},
     "distance_matrix_data": {
         "data": {0: [[0, 10, 20], [10, 0, 15], [20, 15, 0]]}
     },
@@ -55,7 +53,9 @@ def test_valid_set_distance_matrix(cuoptproc):  # noqa
 
 
 def test_null_distance_tier_threshold_converts_to_open_ended_value():
-    assert _distance_tier_threshold_for_solver(None) == np.finfo(np.float32).max
+    assert (
+        _distance_tier_threshold_for_solver(None) == np.finfo(np.float32).max
+    )
     assert _distance_tier_threshold_for_solver(100.0) == 100.0
 
 

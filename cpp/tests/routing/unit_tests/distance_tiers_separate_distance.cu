@@ -203,9 +203,7 @@ TEST(distance_tiers_separate_distance, compute_distance_cost_accumulates_fixed_c
   vehicle_info.distance_tiers = raft::span<distance_tier_t const, false>(tiers.data(), tiers.size());
 
   const auto tie_breaker = vehicle_info_t::fixed_tier_tie_breaker_cost_per_unit();
-  ASSERT_NEAR(vehicle_info.compute_distance_cost(12.f, 3.f),
-              18.f + 10.f * tie_breaker,
-              1e-5);
+  ASSERT_NEAR(vehicle_info.compute_distance_cost(12.f, 3.f), 18.f + 10.f * tie_breaker, 1e-5);
 }
 
 TEST(distance_tiers_separate_distance, compute_distance_cost_breaks_ties_for_flat_fixed_tier)
@@ -218,7 +216,7 @@ TEST(distance_tiers_separate_distance, compute_distance_cost_breaks_ties_for_fla
   vehicle_info.distance_tiers =
     raft::span<distance_tier_t const, false>(tiers.data(), tiers.size());
 
-  const auto tie_breaker = vehicle_info_t::fixed_tier_tie_breaker_cost_per_unit();
+  const auto tie_breaker        = vehicle_info_t::fixed_tier_tie_breaker_cost_per_unit();
   const double short_route_cost = vehicle_info.compute_distance_cost(10.f, 0.f);
   const double long_route_cost  = vehicle_info.compute_distance_cost(20.f, 0.f);
   const int old_tier            = vehicle_info.find_distance_tier(10.f);
@@ -226,9 +224,40 @@ TEST(distance_tiers_separate_distance, compute_distance_cost_breaks_ties_for_fla
   ASSERT_NEAR(short_route_cost, 50.f + 10.f * tie_breaker, 1e-5);
   ASSERT_NEAR(long_route_cost, 50.f + 20.f * tie_breaker, 1e-5);
   ASSERT_LT(short_route_cost, long_route_cost);
+  ASSERT_NEAR(
+    vehicle_info.compute_distance_cost_from_delta(10.f, 0.f, short_route_cost, 20.f, 0.f, old_tier),
+    long_route_cost,
+    1e-5);
+}
+
+TEST(distance_tiers_separate_distance, compute_distance_cost_from_delta_matches_full_cost)
+{
+  using vehicle_info_t  = cuopt::routing::detail::VehicleInfo<float, false>;
+  using distance_tier_t = cuopt::routing::detail::distance_tier_t<float>;
+
+  std::vector<distance_tier_t> tiers = {{5.f, 4.f, 2.f}, {10.f, 7.f, 3.f}, {1.0e9f, 0.f, 5.f}};
+  vehicle_info_t vehicle_info{};
+  vehicle_info.distance_tiers =
+    raft::span<distance_tier_t const, false>(tiers.data(), tiers.size());
+
+  const double old_distance      = 6.f;
+  const double old_fallback_cost = 11.f;
+  const double old_cost = vehicle_info.compute_distance_cost(old_distance, old_fallback_cost);
+  const int old_tier    = vehicle_info.find_distance_tier(old_distance);
+
+  ASSERT_EQ(old_tier, 1);
+
   ASSERT_NEAR(vehicle_info.compute_distance_cost_from_delta(
-                10.f, 0.f, short_route_cost, 20.f, 0.f, old_tier),
-              long_route_cost,
+                old_distance, old_fallback_cost, old_cost, 8.f, 15.f, old_tier),
+              vehicle_info.compute_distance_cost(8.f, 15.f),
+              1e-5);
+  ASSERT_NEAR(vehicle_info.compute_distance_cost_from_delta(
+                old_distance, old_fallback_cost, old_cost, 12.f, 18.f, old_tier),
+              vehicle_info.compute_distance_cost(12.f, 18.f),
+              1e-5);
+  ASSERT_NEAR(vehicle_info.compute_distance_cost_from_delta(
+                old_distance, old_fallback_cost, old_cost, 5.f, 9.f, old_tier),
+              vehicle_info.compute_distance_cost(5.f, 9.f),
               1e-5);
 }
 

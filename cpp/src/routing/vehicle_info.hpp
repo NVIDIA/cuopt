@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -57,10 +57,7 @@ struct VehicleInfo {
     return has_distance_tiers() || has_max_distance_constraint();
   }
 
-  HDI static constexpr double fixed_tier_tie_breaker_cost_per_unit()
-  {
-    return 1.0e-4;
-  }
+  HDI static constexpr double fixed_tier_tie_breaker_cost_per_unit() { return 1.0e-4; }
 
   HDI static double effective_tier_cost_per_unit(distance_tier_t<f_t> const& tier)
   {
@@ -120,14 +117,12 @@ struct VehicleInfo {
     if (!has_distance_tiers()) { return new_fallback_cost_distance; }
 
     if (old_distance_tier >= 0 && old_distance_tier < static_cast<int>(distance_tiers.size())) {
-      const auto& tier         = distance_tiers[old_distance_tier];
-      const double upper       = tier.threshold;
+      const auto& tier   = distance_tiers[old_distance_tier];
+      const double upper = tier.threshold;
       const double prev_threshold =
         old_distance_tier == 0 ? 0.0 : distance_tiers[old_distance_tier - 1].threshold;
-      const bool old_in_tier =
-        old_travel_distance > prev_threshold && old_travel_distance <= upper;
-      const bool new_in_tier =
-        new_travel_distance > prev_threshold && new_travel_distance <= upper;
+      const bool old_in_tier = old_travel_distance > prev_threshold && old_travel_distance <= upper;
+      const bool new_in_tier = new_travel_distance > prev_threshold && new_travel_distance <= upper;
 
       if (old_in_tier && new_in_tier) {
         return old_distance_cost + (new_fallback_cost_distance - old_fallback_cost_distance) +
@@ -151,8 +146,8 @@ struct VehicleInfo {
            break_durations == rhs.break_durations && break_earliest == rhs.break_earliest &&
            break_latest == rhs.break_latest && earliest == rhs.earliest && latest == rhs.latest &&
            start == rhs.start && end == rhs.end && max_cost == rhs.max_cost &&
-           max_distance == rhs.max_distance &&
-           max_time == rhs.max_time && fixed_cost == rhs.fixed_cost && priority == rhs.priority;
+           max_distance == rhs.max_distance && max_time == rhs.max_time &&
+           fixed_cost == rhs.fixed_cost && priority == rhs.priority;
   }
 
   HDI int num_breaks() const { return break_durations.size(); }
@@ -207,9 +202,9 @@ struct VehicleInfo {
   int latest{};
   int start{};
   int end{};
-  f_t max_cost = std::numeric_limits<f_t>::max();
+  f_t max_cost     = std::numeric_limits<f_t>::max();
   f_t max_distance = std::numeric_limits<f_t>::max();
-  f_t max_time = std::numeric_limits<f_t>::max();
+  f_t max_time     = std::numeric_limits<f_t>::max();
   f_t fixed_cost{};
   int priority{};
 

@@ -78,7 +78,7 @@ inline fsmvrptwsc_instance_t read_one_instance(std::istream& in)
 {
   fsmvrptwsc_instance_t instance;
   in >> instance.name;
-  instance.name = normalize_token(instance.name);
+  instance.name              = normalize_token(instance.name);
   instance.n_clients         = read_value<int>(in);
   instance.n_vehicle_types   = read_value<int>(in);
   instance.n_distance_ranges = read_value<int>(in);
@@ -160,10 +160,12 @@ inline fsmvrptwsc_instance_t read_one_instance(std::istream& in)
 }
 
 inline fsmvrptwsc_instance_t load_small_instance(std::string const& path,
-                                                std::string const& instance_name)
+                                                 std::string const& instance_name)
 {
   std::ifstream input(path);
-  if (!input.is_open()) { throw std::runtime_error("FSMVRPTWSC Small.txt cannot be opened: " + path); }
+  if (!input.is_open()) {
+    throw std::runtime_error("FSMVRPTWSC Small.txt cannot be opened: " + path);
+  }
 
   auto const n_instances = read_value<int>(input);
   for (int i = 0; i < n_instances; ++i) {

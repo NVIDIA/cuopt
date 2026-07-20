@@ -175,7 +175,9 @@ class DataModel(_DeferredDataModel):
         """
 
         if vehicle_type in self.distance_matrices:
-            raise ValueError("Vehicle type distance matrix has already been added")
+            raise ValueError(
+                "Vehicle type distance matrix has already been added"
+            )
 
         if not skip_validation:
             validate_matrix(

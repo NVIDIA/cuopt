@@ -208,9 +208,7 @@ class OptimizationDataModel:
             .to_pylist()
             if self.fleet_data["vehicle_max_costs"] is not None
             else None,
-            "vehicle_max_distances": self.fleet_data[
-                "vehicle_max_distances"
-            ]
+            "vehicle_max_distances": self.fleet_data["vehicle_max_distances"]
             .to_arrow()
             .to_pylist()
             if self.fleet_data["vehicle_max_distances"] is not None

@@ -52,7 +52,10 @@ def _validate_distance_tiers(vehicle_distance_tiers):
                     )
 
             if not _is_finite(fixed_cost):
-                return (False, "Distance tier fixed_cost values must be finite")
+                return (
+                    False,
+                    "Distance tier fixed_cost values must be finite",
+                )
             if fixed_cost < 0:
                 return (
                     False,

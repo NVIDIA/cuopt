@@ -254,10 +254,10 @@ class fleet_info_t {
 
     v.max_distances =
       raft::device_span<const f_t>(v_max_distances_.data(), v_max_distances_.size());
-    v.max_costs = raft::device_span<const f_t>(v_max_costs_.data(), v_max_costs_.size());
-    v.max_times = raft::device_span<const f_t>(v_max_times_.data(), v_max_times_.size());
+    v.max_costs   = raft::device_span<const f_t>(v_max_costs_.data(), v_max_costs_.size());
+    v.max_times   = raft::device_span<const f_t>(v_max_times_.data(), v_max_times_.size());
     v.fixed_costs = raft::device_span<const f_t>(v_fixed_costs_.data(), v_fixed_costs_.size());
-    v.buckets = raft::device_span<const i_t>(v_buckets_.data(), v_buckets_.size());
+    v.buckets     = raft::device_span<const i_t>(v_buckets_.data(), v_buckets_.size());
     v.vehicle_availability =
       raft::device_span<const i_t>(v_vehicle_availability_.data(), v_vehicle_availability_.size());
     v.is_homogenous = is_homogenous_;
