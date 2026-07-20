@@ -143,6 +143,23 @@ End
 )LP");
 }
 
+io::mps_data_model_t<int, double> create_mixed_row_roundoff_non_conflict_problem()
+{
+  return cuopt::test::parse_inline_lp(R"LP(
+Minimize
+  obj: 0 x0 + 0 x1 + 0 y0 + 0 y1
+Subject To
+  c1: -0.08 x0 - 0.08 x1 + 0.1 y0 + 0.2 y1 <= 0.3
+Bounds
+  1 <= y0 <= 1
+  1 <= y1 <= 1
+Binaries
+  x0
+  x1
+End
+)LP");
+}
+
 // x0 + x1 <= 1 but x1 has upper bound 0.9999999, so this row should not be
 // treated as a binary conflict row.
 io::mps_data_model_t<int, double> create_near_binary_bound_conflict_problem()
@@ -1159,6 +1176,16 @@ TEST(cuts, clique_phase5_extracts_binary_subclique_from_mixed_row)
 
   EXPECT_TRUE(clique_table.check_adjacency(0, 1));
   EXPECT_FALSE(clique_table.check_adjacency(0, 2));
+}
+
+TEST(cuts, clique_phase5_mixed_row_roundoff_does_not_create_conflict)
+{
+  const raft::handle_t handle{};
+  auto problem       = create_mixed_row_roundoff_non_conflict_problem();
+  auto clique_table  = build_clique_table_for_model(handle, problem);
+  const int num_vars = problem.get_n_variables();
+
+  EXPECT_FALSE(clique_table.check_adjacency(num_vars, num_vars + 1));
 }
 
 TEST(cuts, clique_phase5_ignores_fractional_binary_bounds)

@@ -30,14 +30,15 @@ void find_cliques_from_constraint(const knapsack_constraint_t<i_t, f_t>& kc,
 {
   i_t size = kc.entries.size();
   cuopt_assert(size > 1, "Constraint has not enough variables");
-  if (kc.entries[size - 1].val + kc.entries[size - 2].val <= kc.rhs) { return; }
+  const f_t rhs_with_tolerance = kc.rhs + clique_table.tolerances.absolute_tolerance;
+  if (kc.entries[size - 1].val + kc.entries[size - 2].val <= rhs_with_tolerance) { return; }
 
   std::vector<i_t> clique;
   i_t k = size - 1;
   // find the first clique, which is the largest
   // FIXME: do binary search
   // require k >= 1 so kc.entries[k-1] is always valid
-  while (k >= 1 && kc.entries[k].val + kc.entries[k - 1].val > kc.rhs) {
+  while (k >= 1 && kc.entries[k].val + kc.entries[k - 1].val > rhs_with_tolerance) {
     k--;
   }
   for (i_t idx = k; idx < size; idx++) {
