@@ -151,7 +151,7 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     {CUOPT_MIP_STRONG_BRANCHING_SIMPLEX_ITERATION_LIMIT, &mip_settings.strong_branching_simplex_iteration_limit, -1,std::numeric_limits<i_t>::max(), -1},
     {CUOPT_PRESOLVE, reinterpret_cast<int*>(&pdlp_settings.presolver), CUOPT_PRESOLVE_DEFAULT, CUOPT_PRESOLVE_PSLP, CUOPT_PRESOLVE_DEFAULT},
     {CUOPT_PRESOLVE, reinterpret_cast<int*>(&mip_settings.presolver), CUOPT_PRESOLVE_DEFAULT, CUOPT_PRESOLVE_PSLP, CUOPT_PRESOLVE_DEFAULT},
-    {CUOPT_DISTRIBUTED_PDLP_PARTITIONER, reinterpret_cast<int*>(&pdlp_settings.distributed_pdlp_partitioner), CUOPT_DISTRIBUTED_PDLP_PARTITIONER_AUTO, CUOPT_DISTRIBUTED_PDLP_PARTITIONER_DUMMY, CUOPT_DISTRIBUTED_PDLP_PARTITIONER_AUTO},
+    {CUOPT_DISTRIBUTED_PDLP_PARTITIONER, reinterpret_cast<int*>(&pdlp_settings.distributed_pdlp_partitioner), CUOPT_DISTRIBUTED_PDLP_PARTITIONER_AUTO, CUOPT_DISTRIBUTED_PDLP_PARTITIONER_ROUND_ROBIN, CUOPT_DISTRIBUTED_PDLP_PARTITIONER_AUTO},
     {CUOPT_MIP_DETERMINISM_MODE, &mip_settings.determinism_mode, CUOPT_MODE_OPPORTUNISTIC, CUOPT_MODE_DETERMINISTIC, CUOPT_MODE_OPPORTUNISTIC},
     {CUOPT_RANDOM_SEED, &mip_settings.seed, -1, std::numeric_limits<i_t>::max(), -1},
     {CUOPT_MIP_RELIABILITY_BRANCHING, &mip_settings.reliability_branching, -1, std::numeric_limits<i_t>::max(), -1},

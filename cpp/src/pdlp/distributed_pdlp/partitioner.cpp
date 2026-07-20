@@ -24,15 +24,15 @@
 namespace cuopt::mathematical_optimization::pdlp {
 
 template <typename i_t, typename f_t>
-std::vector<i_t> dummy_partitioner_t<i_t, f_t>::partition(
+std::vector<i_t> round_robin_partitioner_t<i_t, f_t>::partition(
   partitioner_input_t<i_t, f_t> const& input) const
 {
   cuopt_expects(input.nb_parts > 0,
                 error_type_t::ValidationError,
-                "dummy_partitioner: nb_parts must be positive");
+                "round_robin_partitioner: nb_parts must be positive");
   cuopt_expects(input.nb_cstr >= 0 && input.nb_vars >= 0,
                 error_type_t::ValidationError,
-                "dummy_partitioner: invalid problem dimensions");
+                "round_robin_partitioner: invalid problem dimensions");
 
   const std::size_t nvtx =
     static_cast<std::size_t>(input.nb_cstr) + static_cast<std::size_t>(input.nb_vars);
@@ -44,7 +44,7 @@ std::vector<i_t> dummy_partitioner_t<i_t, f_t>::partition(
                      static_cast<int>(input.nb_cstr),
                      static_cast<int>(input.nb_vars),
                      static_cast<int>(input.nb_parts),
-                     "dummy_partitioner");
+                     "round_robin_partitioner");
   return parts;
 }
 
@@ -208,7 +208,8 @@ template <typename i_t, typename f_t>
 std::unique_ptr<partitioner_i<i_t, f_t>> make_partitioner(partitioner_kind_t kind)
 {
   switch (kind) {
-    case partitioner_kind_t::Dummy: return std::make_unique<dummy_partitioner_t<i_t, f_t>>();
+    case partitioner_kind_t::RoundRobin:
+      return std::make_unique<round_robin_partitioner_t<i_t, f_t>>();
     case partitioner_kind_t::KaMinPar: return std::make_unique<kaminpar_partitioner_t<i_t, f_t>>();
   }
   cuopt_expects(
@@ -216,7 +217,7 @@ std::unique_ptr<partitioner_i<i_t, f_t>> make_partitioner(partitioner_kind_t kin
   return nullptr;
 }
 
-template class dummy_partitioner_t<int, double>;
+template class round_robin_partitioner_t<int, double>;
 template class kaminpar_partitioner_t<int, double>;
 template std::unique_ptr<partitioner_i<int, double>> make_partitioner<int, double>(
   partitioner_kind_t);

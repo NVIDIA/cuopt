@@ -474,17 +474,17 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   partitioner_kind_t kind;
   switch (settings.distributed_pdlp_partitioner) {
     case distributed_pdlp_partitioner_t::Auto:
-      kind =
-        (distributed_pdlp_num_gpus == 1) ? partitioner_kind_t::Dummy : partitioner_kind_t::KaMinPar;
+      kind = (distributed_pdlp_num_gpus == 1) ? partitioner_kind_t::RoundRobin
+                                              : partitioner_kind_t::KaMinPar;
       break;
     case distributed_pdlp_partitioner_t::KaMinPar: kind = partitioner_kind_t::KaMinPar; break;
-    case distributed_pdlp_partitioner_t::Dummy: kind = partitioner_kind_t::Dummy; break;
+    case distributed_pdlp_partitioner_t::RoundRobin: kind = partitioner_kind_t::RoundRobin; break;
     default:
       cuopt_expects(false,
                     error_type_t::ValidationError,
                     "Unknown distributed_pdlp_partitioner value %d",
                     static_cast<int>(settings.distributed_pdlp_partitioner));
-      kind = partitioner_kind_t::Dummy;  // unreachable; silences -Wmaybe-uninitialized
+      kind = partitioner_kind_t::RoundRobin;  // unreachable; silences -Wmaybe-uninitialized
   }
   // csr_host_view_t members are std::span<const i_t>, an owning
   // std::vector<i_t> converts implicitly.
@@ -498,7 +498,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   partition_input.A_t.num_cols    = n_cstr;
   // 0 => KaMinPar auto-detects and uses all hardware threads.
   partition_input.nb_threads = 0;
-  const char* kind_name      = (kind == partitioner_kind_t::Dummy)      ? "dummy"
+  const char* kind_name      = (kind == partitioner_kind_t::RoundRobin) ? "round_robin"
                                : (kind == partitioner_kind_t::KaMinPar) ? "kaminpar"
                                                                         : "unknown";
   CUOPT_LOG_INFO(

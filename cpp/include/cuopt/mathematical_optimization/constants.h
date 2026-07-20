@@ -210,12 +210,12 @@
 #define CUOPT_PRESOLVE_PSLP    2
 
 /* @brief distributed_pdlp_partitioner values.
- * Auto: pick automatically (Dummy on 1 GPU, KaMinPar otherwise).
+ * Auto: pick automatically (RoundRobin on 1 GPU, KaMinPar otherwise).
  * KaMinPar: multi-threaded KaMinPar graph partitioner.
- * Dummy: round-robin, no graph. */
-#define CUOPT_DISTRIBUTED_PDLP_PARTITIONER_AUTO     0
-#define CUOPT_DISTRIBUTED_PDLP_PARTITIONER_KAMINPAR 1
-#define CUOPT_DISTRIBUTED_PDLP_PARTITIONER_DUMMY    2
+ * RoundRobin: round-robin assignment, no graph. */
+#define CUOPT_DISTRIBUTED_PDLP_PARTITIONER_AUTO        0
+#define CUOPT_DISTRIBUTED_PDLP_PARTITIONER_KAMINPAR    1
+#define CUOPT_DISTRIBUTED_PDLP_PARTITIONER_ROUND_ROBIN 2
 
 /* @brief MIP scaling mode constants */
 #define CUOPT_MIP_SCALING_OFF          0

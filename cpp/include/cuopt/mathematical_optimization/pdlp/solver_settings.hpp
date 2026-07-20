@@ -99,14 +99,14 @@ enum pdlp_precision_t : int {
 /**
  * @brief Which graph partitioner distributed PDLP uses.
  *
- * Auto: pick automatically (Dummy on 1 GPU, KaMinPar otherwise).
+ * Auto: pick automatically (RoundRobin on 1 GPU, KaMinPar otherwise).
  * KaMinPar: multi-threaded KaMinPar graph partitioner.
- * Dummy: round-robin, no graph (trivial).
+ * RoundRobin: round-robin assignment, no graph.
  */
 enum distributed_pdlp_partitioner_t : int {
-  Auto     = CUOPT_DISTRIBUTED_PDLP_PARTITIONER_AUTO,
-  KaMinPar = CUOPT_DISTRIBUTED_PDLP_PARTITIONER_KAMINPAR,
-  Dummy    = CUOPT_DISTRIBUTED_PDLP_PARTITIONER_DUMMY,
+  Auto       = CUOPT_DISTRIBUTED_PDLP_PARTITIONER_AUTO,
+  KaMinPar   = CUOPT_DISTRIBUTED_PDLP_PARTITIONER_KAMINPAR,
+  RoundRobin = CUOPT_DISTRIBUTED_PDLP_PARTITIONER_ROUND_ROBIN,
 };
 
 template <typename i_t, typename f_t>

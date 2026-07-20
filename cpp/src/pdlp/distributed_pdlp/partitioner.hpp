@@ -38,9 +38,9 @@ struct partitioner_input_t {
   csr_host_view_t<i_t, f_t> A_t{};
 };
 
-// Dummy: round-robin, no graph (single-shard / debugging).
+// RoundRobin: round-robin assignment, no graph (single-shard / debugging).
 // KaMinPar: multi-threaded KaMinPar (preferred for multi-shard partitioning).
-enum class partitioner_kind_t { Dummy, KaMinPar };
+enum class partitioner_kind_t { RoundRobin, KaMinPar };
 
 template <typename i_t, typename f_t>
 class partitioner_i {
@@ -50,7 +50,7 @@ class partitioner_i {
 };
 
 template <typename i_t, typename f_t>
-class dummy_partitioner_t : public partitioner_i<i_t, f_t> {
+class round_robin_partitioner_t : public partitioner_i<i_t, f_t> {
  public:
   std::vector<i_t> partition(partitioner_input_t<i_t, f_t> const& input) const override;
 };
