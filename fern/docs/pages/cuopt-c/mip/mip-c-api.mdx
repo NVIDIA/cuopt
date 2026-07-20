@@ -210,6 +210,10 @@ For shared parameters (time limit, logging, presolve, etc.), see
 - `CUOPT_MIP_REDUCED_COST_STRENGTHENING` (`"mip_reduced_cost_strengthening"`)
 {/* /symbol */}
 
+{/* symbol: CUOPT_MIP_RINS */}
+- `CUOPT_MIP_RINS` (`"mip_rins"`)
+{/* /symbol */}
+
 {/* symbol: CUOPT_MIP_OBJECTIVE_STEP */}
 - `CUOPT_MIP_OBJECTIVE_STEP` (`"mip_objective_step"`)
 {/* /symbol */}
@@ -386,4 +390,41 @@ These constants configure the hyper heuristic solver. Use them with
 
 {/* symbol: CUOPT_MIP_HYPER_HEURISTIC_STAGNATION_TRIGGER */}
 - `CUOPT_MIP_HYPER_HEURISTIC_STAGNATION_TRIGGER` (`"mip_hyper_heuristic_stagnation_trigger"`)
+{/* /symbol */}
+
+## MIP Sub-MIP Hyper Parameters
+
+These constants configure the recursive sub-MIP (RINS) heuristic. Use them with
+`cuOptSetParameter`, `cuOptSetIntegerParameter`, or `cuOptSetFloatParameter`.
+
+{/* symbol: CUOPT_MIP_HYPER_SUBMIP_BASE_TARGET_FIXRATE */}
+- `CUOPT_MIP_HYPER_SUBMIP_BASE_TARGET_FIXRATE` (`"mip_hyper_submip_base_target_fixrate"`)
+{/* /symbol */}
+
+{/* symbol: CUOPT_MIP_HYPER_SUBMIP_ENABLE_CPUFJ */}
+- `CUOPT_MIP_HYPER_SUBMIP_ENABLE_CPUFJ` (`"mip_hyper_submip_enable_cpufj"`)
+{/* /symbol */}
+
+{/* symbol: CUOPT_MIP_HYPER_SUBMIP_ITERATION_LIMIT_RATIO */}
+- `CUOPT_MIP_HYPER_SUBMIP_ITERATION_LIMIT_RATIO` (`"mip_hyper_submip_iteration_limit_ratio"`)
+{/* /symbol */}
+
+{/* symbol: CUOPT_MIP_HYPER_SUBMIP_MAX_LEVEL */}
+- `CUOPT_MIP_HYPER_SUBMIP_MAX_LEVEL` (`"mip_hyper_submip_max_level"`)
+{/* /symbol */}
+
+{/* symbol: CUOPT_MIP_HYPER_SUBMIP_MIN_FIXRATE */}
+- `CUOPT_MIP_HYPER_SUBMIP_MIN_FIXRATE` (`"mip_hyper_submip_min_fixrate"`)
+{/* /symbol */}
+
+{/* symbol: CUOPT_MIP_HYPER_SUBMIP_MIN_FIXRATE_CAP */}
+- `CUOPT_MIP_HYPER_SUBMIP_MIN_FIXRATE_CAP` (`"mip_hyper_submip_min_fixrate_cap"`)
+{/* /symbol */}
+
+{/* symbol: CUOPT_MIP_HYPER_SUBMIP_NODE_LIMIT_BASE */}
+- `CUOPT_MIP_HYPER_SUBMIP_NODE_LIMIT_BASE` (`"mip_hyper_submip_node_limit_base"`)
+{/* /symbol */}
+
+{/* symbol: CUOPT_MIP_HYPER_SUBMIP_TARGET_MIP_GAP */}
+- `CUOPT_MIP_HYPER_SUBMIP_TARGET_MIP_GAP` (`"mip_hyper_submip_target_mip_gap"`)
 {/* /symbol */}
