@@ -26,6 +26,7 @@
 #include <thrust/reduce.h>
 #include <thrust/scan.h>
 #include <thrust/transform.h>
+#include <thrust/transform_reduce.h>
 #include <thrust/tuple.h>
 #include <thrust/zip_function.h>
 
@@ -1495,7 +1496,7 @@ void scatter_dense_hessian_into_augmented(const cone_data_t<i_t, f_t>& cones,
 }
 
 /**
- * Compute the maximum primal and dual step lengths that keep SOC blocks
+ * Compute the combined (primal and dual) maximum step length that keeps SOC blocks
  * feasible:
  *
  *   x + alpha dx in Q,  z + alpha dz in Q,  alpha <= alpha_max.
@@ -1513,11 +1514,11 @@ void scatter_dense_hessian_into_augmented(const cone_data_t<i_t, f_t>& cones,
  * crossing, and the final reductions take the global minimum over cones.
  */
 template <std::integral i_t, std::floating_point f_t>
-std::pair<f_t, f_t> compute_cone_step_length(cone_data_t<i_t, f_t>& cones,
-                                             raft::device_span<const f_t> dx,
-                                             raft::device_span<const f_t> dz,
-                                             f_t alpha_max,
-                                             rmm::cuda_stream_view stream)
+f_t compute_cone_step_length(cone_data_t<i_t, f_t>& cones,
+                             raft::device_span<const f_t> dx,
+                             raft::device_span<const f_t> dz,
+                             f_t alpha_max,
+                             rmm::cuda_stream_view stream)
 {
   auto cone_offsets     = cuopt::make_span(cones.cone_offsets);
   auto element_cone_ids = cuopt::make_span(cones.element_cone_ids);
@@ -1565,18 +1566,15 @@ std::pair<f_t, f_t> compute_cone_step_length(cone_data_t<i_t, f_t>& cones,
   run_pass(cones.x, dx, alpha_primal);
   run_pass(cones.z, dz, alpha_dual);
 
-  const f_t primal = thrust::reduce(rmm::exec_policy(stream),
-                                    alpha_primal.begin(),
-                                    alpha_primal.end(),
-                                    alpha_max,
-                                    thrust::minimum<f_t>());
-  const f_t dual   = thrust::reduce(rmm::exec_policy(stream),
-                                  alpha_dual.begin(),
-                                  alpha_dual.end(),
-                                  alpha_max,
-                                  thrust::minimum<f_t>());
-
-  return {primal, dual};
+  return thrust::transform_reduce(
+    rmm::exec_policy(stream),
+    thrust::make_zip_iterator(alpha_primal.begin(), alpha_dual.begin()),
+    thrust::make_zip_iterator(alpha_primal.end(), alpha_dual.end()),
+    [] HD(const thrust::tuple<f_t, f_t>& t) -> f_t {
+      return cuda::std::min(thrust::get<0>(t), thrust::get<1>(t));
+    },
+    alpha_max,
+    thrust::minimum<f_t>());
 }
 
 /**

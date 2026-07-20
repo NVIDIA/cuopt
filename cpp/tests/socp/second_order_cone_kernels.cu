@@ -354,17 +354,15 @@ TEST(second_order_cone_kernels, cone_step_length_many_small_one_sparse_medium_co
   launch_nt_scaling(cones, stream);
   launch_update_scaling_sparse(cones, stream);
 
-  const auto [step_primal, step_dual] =
+  const auto step_combined =
     compute_cone_step_length(cones,
                              raft::device_span<const double>(dx.data(), dx.size()),
                              raft::device_span<const double>(dz.data(), dz.size()),
                              1.0,
                              stream);
 
-  EXPECT_GT(step_primal, 0.0);
-  EXPECT_GT(step_dual, 0.0);
-  EXPECT_LE(step_primal, 1.0);
-  EXPECT_LE(step_dual, 1.0);
+  EXPECT_GT(step_combined, 0.0);
+  EXPECT_LE(step_combined, 1.0);
 }
 
 TEST(second_order_cone_kernels, cone_step_length_keeps_iterate_in_cone)
@@ -439,7 +437,7 @@ TEST(second_order_cone_kernels, cone_step_length_keeps_iterate_in_cone)
   auto dz = cuopt::device_copy(dz_host, stream);
 
   cone_data_t<int, double> cones(cone_dimensions, cuopt::make_span(x), cuopt::make_span(z), stream);
-  const auto [step_primal, step_dual] =
+  const auto step_combined =
     compute_cone_step_length(cones,
                              raft::device_span<const double>(dx.data(), dx.size()),
                              raft::device_span<const double>(dz.data(), dz.size()),
@@ -448,14 +446,19 @@ TEST(second_order_cone_kernels, cone_step_length_keeps_iterate_in_cone)
 
   const auto primal_per_cone = cuopt::host_copy(cones.scratch.step_alpha_primal, stream);
   const auto dual_per_cone   = cuopt::host_copy(cones.scratch.step_alpha_dual, stream);
-  EXPECT_NEAR(
-    step_primal, *std::min_element(primal_per_cone.begin(), primal_per_cone.end()), 1e-12);
-  EXPECT_NEAR(step_dual, *std::min_element(dual_per_cone.begin(), dual_per_cone.end()), 1e-12);
+  EXPECT_NEAR(step_combined,
+              std::min(*std::min_element(primal_per_cone.begin(), primal_per_cone.end()),
+                       *std::min_element(dual_per_cone.begin(), dual_per_cone.end())),
+              1e-12);
+  // Only the combined min(primal, dual) per cone is consumed by callers now: use it for
+  // both the x/dx and z/dz feasibility checks below, which is still valid since it is
+  // <= each side's own feasibility boundary.
   for (std::size_t cone = 0; cone < cone_dimensions.size(); ++cone) {
+    const double combined_cone = std::min(primal_per_cone[cone], dual_per_cone[cone]);
     EXPECT_GT(primal_per_cone[cone], 0.0) << "primal cone " << cone;
     EXPECT_GT(dual_per_cone[cone], 0.0) << "dual cone " << cone;
-    expect_cone_feasible_after_step(x_host, dx_host, primal_per_cone[cone], cone, "primal");
-    expect_cone_feasible_after_step(z_host, dz_host, dual_per_cone[cone], cone, "dual");
+    expect_cone_feasible_after_step(x_host, dx_host, combined_cone, cone, "primal");
+    expect_cone_feasible_after_step(z_host, dz_host, combined_cone, cone, "dual");
   }
 }
 

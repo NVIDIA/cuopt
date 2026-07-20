@@ -88,6 +88,60 @@ struct transform_reduce_helper_t {
   }
 };
 
+template <typename f_t>
+struct f2_t {
+  f_t a;
+  f_t b;
+};
+
+template <typename f_t>
+struct f2_min_t {
+  HD f2_t<f_t> operator()(const f2_t<f_t>& lhs, const f2_t<f_t>& rhs) const
+  {
+    return f2_t<f_t>{cuda::std::min(lhs.a, rhs.a), cuda::std::min(lhs.b, rhs.b)};
+  }
+};
+
+template <typename f_t>
+struct transform_reduce_pair_helper_t {
+  rmm::device_buffer buffer_data;
+  rmm::device_scalar<f2_t<f_t>> out;
+  size_t buffer_size;
+
+  transform_reduce_pair_helper_t(rmm::cuda_stream_view stream_view)
+    : buffer_data(0, stream_view), out(stream_view)
+  {
+  }
+
+  // TransformOpT must map each input element to an f2_t<f_t>{a, b} pair; the two
+  // components are reduced independently (elementwise min) in a single kernel launch.
+  template <typename InputIteratorT, typename TransformOpT, typename i_t>
+  f2_t<f_t> transform_reduce(InputIteratorT input,
+                             TransformOpT transform_op,
+                             f2_t<f_t> init,
+                             i_t size,
+                             rmm::cuda_stream_view stream_view)
+  {
+    f2_min_t<f_t> reduce_op{};
+    cub::DeviceReduce::TransformReduce(
+      nullptr, buffer_size, input, out.data(), size, reduce_op, transform_op, init, stream_view);
+
+    buffer_data.resize(buffer_size, stream_view);
+
+    cub::DeviceReduce::TransformReduce(buffer_data.data(),
+                                       buffer_size,
+                                       input,
+                                       out.data(),
+                                       size,
+                                       reduce_op,
+                                       transform_op,
+                                       init,
+                                       stream_view);
+
+    return out.value(stream_view);
+  }
+};
+
 template <typename i_t, typename f_t>
 struct csc_view_t {
   raft::device_span<i_t> col_start;
