@@ -29,6 +29,7 @@ set_tests_properties(RETAIL_L1TEST ROUTING_L1TEST PROPERTIES DISABLED TRUE)
 
 # # - ${CMAKE_CURRENT_SOURCE_DIR} unit tests ----------------------------------------------------------------------------
 ConfigureTest(ROUTING_UNIT_TEST
+      ${CUOPT_TEST_DIR}/internal/main.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/vehicle_types.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/breaks.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/heterogenous_breaks.cu
