@@ -54,8 +54,8 @@ std::vector<rank_data_t<i_t, f_t>> create_rank_data_from_parts(
   }
   // Reserve exact capacities
   for (i_t rank = 0; rank < nb_parts; ++rank) {
-    rank_data[rank].owned_cstr_indices.reserve(static_cast<std::size_t>(owned_cstr_counts[rank]));
-    rank_data[rank].owned_var_indices.reserve(static_cast<std::size_t>(owned_var_counts[rank]));
+    rank_data[rank].owned_cstr_indices.reserve(owned_cstr_counts[rank]);
+    rank_data[rank].owned_var_indices.reserve(owned_var_counts[rank]);
   }
 
   // 1. Compute ownership
@@ -76,9 +76,9 @@ std::vector<rank_data_t<i_t, f_t>> create_rank_data_from_parts(
     std::vector<i_t> local_A_row_offsets;
     std::vector<i_t> local_A_col_indices;
     std::vector<f_t> local_A_values;
-    local_A_row_offsets.reserve(static_cast<std::size_t>(rd.owned_cstr_size) + 1);
-    local_A_col_indices.reserve(static_cast<std::size_t>(owned_A_nnz[rank]));
-    local_A_values.reserve(static_cast<std::size_t>(owned_A_nnz[rank]));
+    local_A_row_offsets.reserve(rd.owned_cstr_size + 1);
+    local_A_col_indices.reserve(owned_A_nnz[rank]);
+    local_A_values.reserve(owned_A_nnz[rank]);
 
     i_t local_A_nnz = 0;
     local_A_row_offsets.push_back(local_A_nnz);
@@ -129,9 +129,9 @@ std::vector<rank_data_t<i_t, f_t>> create_rank_data_from_parts(
     std::vector<i_t> local_A_t_row_offsets;
     std::vector<i_t> local_A_t_col_indices;
     std::vector<f_t> local_A_t_values;
-    local_A_t_row_offsets.reserve(static_cast<std::size_t>(rd.owned_var_size) + 1);
-    local_A_t_col_indices.reserve(static_cast<std::size_t>(owned_A_t_nnz[rank]));
-    local_A_t_values.reserve(static_cast<std::size_t>(owned_A_t_nnz[rank]));
+    local_A_t_row_offsets.reserve(rd.owned_var_size + 1);
+    local_A_t_col_indices.reserve(owned_A_t_nnz[rank]);
+    local_A_t_values.reserve(owned_A_t_nnz[rank]);
     i_t local_A_t_nnz = 0;
     local_A_t_row_offsets.push_back(local_A_t_nnz);
 
@@ -187,10 +187,10 @@ std::vector<rank_data_t<i_t, f_t>> create_rank_data_from_parts(
 #pragma omp parallel for
   for (i_t rank = 0; rank < nb_parts; rank++) {
     auto& rd = rank_data[rank];
-    rd.global_to_local_cstr.reserve(static_cast<std::size_t>(rd.total_cstr_size));
-    rd.global_to_local_var.reserve(static_cast<std::size_t>(rd.total_var_size));
-    rd.local_to_global_cstr.reserve(static_cast<std::size_t>(rd.total_cstr_size));
-    rd.local_to_global_var.reserve(static_cast<std::size_t>(rd.total_var_size));
+    rd.global_to_local_cstr.reserve(rd.total_cstr_size);
+    rd.global_to_local_var.reserve(rd.total_var_size);
+    rd.local_to_global_cstr.reserve(rd.total_cstr_size);
+    rd.local_to_global_var.reserve(rd.total_var_size);
 
     i_t curr_id = 0;
     for (auto owned_cstr : rd.owned_cstr_indices) {
