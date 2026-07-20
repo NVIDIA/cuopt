@@ -60,6 +60,29 @@ constexpr ncclDataType_t nccl_data_type()
   }
 }
 
+/**
+ * @brief Distributed PDLP terminology and ownership model.
+ *
+ * - Master: the top-level `pdlp_solver_t` that owns the global, developer-facing
+ *   solve.
+ * - Multi-GPU engine: the host-side coordinator for one distributed solve. It
+ *   owns all shards and centralizes collective operations.
+ * - Rank: Rank `r`, partition `r`, NCCL rank `r`, and `shards[r]` refer to the
+ *   same worker on CUDA device `r`. A peer is any other rank participating in
+ *   communication.
+ * - Shard: the complete device-local worker for one rank. It owns that device's
+ *   stream, RAFT handle, NCCL communicator, local optimization problem,
+ *   subordinate `pdlp_solver_t`, rank data, and device staging buffers used by
+ *   halo exchange.
+ * - Rank data: the host-side partition description for one shard. It records
+ *   owned variables/constraints, global/local index maps, local CSR matrices,
+ *   and per-peer send/receive plans. It is produced during partitioning and
+ *   moved into the corresponding shard.
+ * - Owned entries: variables or constraints assigned to a rank by the
+ *   partitioner. Each global entry has exactly one owner.
+ * - Halo entries: local copies of entries owned by peers but needed
+ *   by a shard's local SpMV.
+ */
 template <typename i_t, typename f_t>
 struct multi_gpu_engine_t {
   // Constructs shards from rank_data. The global (unpartitioned) problem is
