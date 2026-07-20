@@ -80,9 +80,15 @@ static void expect_distributed_matches_base(raft::handle_t const& handle,
     << ", distributed=" << dist_steps << ")";
 }
 
+struct distributed_pdlp_test_param_t {
+  std::string name;
+  std::string mps_path;
+  bool fixed_mps_format{false};
+};
+
 // Shared fixture: skip the whole class when fewer than 2 GPUs are visible and
 // provide a single per-test raft::handle_t.
-class DistributedPdlpParityTest : public ::testing::Test {
+class DistributedPdlpParityTest : public ::testing::TestWithParam<distributed_pdlp_test_param_t> {
  protected:
   void SetUp() override
   {
@@ -92,26 +98,22 @@ class DistributedPdlpParityTest : public ::testing::Test {
   raft::handle_t handle{};
 };
 
-TEST_F(DistributedPdlpParityTest, afiro)
+TEST_P(DistributedPdlpParityTest, matches_base)
 {
-  expect_distributed_matches_base(handle, "linear_programming/afiro_original.mps", true);
+  const auto& param = GetParam();
+  expect_distributed_matches_base(handle, param.mps_path, param.fixed_mps_format);
 }
 
-// Maximization LP: exercises the sign-flipping paths through normalization /
-// presolve / solution translation on the distributed side.
-TEST_F(DistributedPdlpParityTest, cod105_max)
-{
-  expect_distributed_matches_base(handle, "mip/cod105_max.mps");
-}
-
-TEST_F(DistributedPdlpParityTest, graph40_40)
-{
-  expect_distributed_matches_base(handle, "linear_programming/graph40-40/graph40-40.mps");
-}
-
-TEST_F(DistributedPdlpParityTest, ex10)
-{
-  expect_distributed_matches_base(handle, "linear_programming/ex10/ex10.mps");
-}
+INSTANTIATE_TEST_SUITE_P(
+  distributed_pdlp,
+  DistributedPdlpParityTest,
+  ::testing::Values(
+    distributed_pdlp_test_param_t{"afiro", "linear_programming/afiro_original.mps", true},
+    distributed_pdlp_test_param_t{"cod105_max_maximization_problem", "mip/cod105_max.mps"},
+    distributed_pdlp_test_param_t{"graph40_40", "linear_programming/graph40-40/graph40-40.mps"},
+    distributed_pdlp_test_param_t{"ex10", "linear_programming/ex10/ex10.mps"}),
+  [](const ::testing::TestParamInfo<distributed_pdlp_test_param_t>& info) {
+    return info.param.name;
+  });
 
 }  // namespace cuopt::mathematical_optimization::test
