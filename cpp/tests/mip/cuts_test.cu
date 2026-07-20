@@ -196,6 +196,22 @@ End
 )LP");
 }
 
+io::mps_data_model_t<int, double> create_addtl_clique_tolerance_boundary_problem()
+{
+  return cuopt::test::parse_inline_lp(R"LP(
+Minimize
+  obj: 0 x0 + 0 x1 + 0 x2 + 0 x3
+Subject To
+  c1: x0 + 2 x1 + 3.000001 x2 + 4 x3 <= 5
+Binaries
+  x0
+  x1
+  x2
+  x3
+End
+)LP");
+}
+
 mip::clique_table_t<int, double> build_clique_table_for_model_with_min_size(
   const raft::handle_t& handle, const io::mps_data_model_t<int, double>& model, int min_clique_size)
 {
@@ -1034,6 +1050,18 @@ TEST(cuts, clique_phase1_addtl_conflict_symmetry_and_reverse_lookup)
   auto adj_of_3 = clique_table.get_adj_set_of_var(3);
   EXPECT_TRUE(adj_of_1.count(3) > 0);
   EXPECT_TRUE(adj_of_3.count(1) > 0);
+}
+
+TEST(cuts, clique_phase1_addtl_conflict_rejects_tolerance_boundary)
+{
+  const raft::handle_t handle{};
+  auto problem      = create_addtl_clique_tolerance_boundary_problem();
+  auto clique_table = build_clique_table_for_model_with_min_size(handle, problem, 1);
+
+  ASSERT_FALSE(clique_table.addtl_cliques.empty());
+  EXPECT_TRUE(clique_table.check_adjacency(2, 3));
+  EXPECT_TRUE(clique_table.check_adjacency(1, 3));
+  EXPECT_FALSE(clique_table.check_adjacency(1, 2));
 }
 
 TEST(cuts, clique_phase1_remove_small_cliques_preserves_addtl_conflicts)

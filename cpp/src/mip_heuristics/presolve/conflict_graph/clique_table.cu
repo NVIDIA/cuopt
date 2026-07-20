@@ -52,16 +52,18 @@ void find_cliques_from_constraint(const knapsack_constraint_t<i_t, f_t>& kc,
     if (timer.check_time_limit()) { return; }
     f_t curr_val = kc.entries[k].val;
     i_t curr_col = kc.entries[k].col;
-    // do a binary search in the clique coefficients to find f, such that coeff_k + coeff_f > rhs
-    // this means that we get a subset of the original clique and extend it with a variable
+    // do a binary search in the clique coefficients to find f, such that
+    // coeff_k + coeff_f > rhs_with_tolerance
     f_t val_to_find = kc.rhs - curr_val + clique_table.tolerances.absolute_tolerance;
-    auto it         = std::lower_bound(
-      kc.entries.begin() + original_clique_start_idx, kc.entries.end(), val_to_find);
+    auto it         = std::upper_bound(kc.entries.begin() + original_clique_start_idx,
+                               kc.entries.end(),
+                               val_to_find,
+                               [](f_t value, const auto& entry) { return value < entry.val; });
     if (it != kc.entries.end()) {
       i_t position_on_knapsack_constraint = std::distance(kc.entries.begin(), it);
       i_t start_pos_on_clique = position_on_knapsack_constraint - original_clique_start_idx;
       cuopt_assert(start_pos_on_clique >= 1, "Start position on clique is negative");
-      cuopt_assert(it->val + curr_val > kc.rhs, "RHS mismatch");
+      cuopt_assert(it->val + curr_val > rhs_with_tolerance, "RHS mismatch");
 #if DEBUG_KNAPSACK_CONSTRAINTS
       CUOPT_LOG_DEBUG("Found additional clique: %d, %d, %d",
                       curr_col,
