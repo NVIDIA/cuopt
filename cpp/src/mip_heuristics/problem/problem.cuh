@@ -25,6 +25,7 @@
 
 #include <utilities/macros.cuh>
 
+#include <branch_and_bound/constants.hpp>
 #include <memory>
 #include <raft/core/nvtx.hpp>
 #include <raft/random/rng_device.cuh>
@@ -254,7 +255,7 @@ class problem_t {
   std::shared_ptr<problem_t<i_t, f_t>> integer_fixed_problem = nullptr;
   rmm::device_uvector<i_t> integer_fixed_variable_map;
 
-  std::function<void(const std::vector<f_t>&)> branch_and_bound_callback;
+  std::function<bool(const std::vector<f_t>&, heuristics_origin_t)> branch_and_bound_callback;
   std::function<void(const std::vector<f_t>&,
                      const std::vector<f_t>&,
                      const std::vector<f_t>&,
