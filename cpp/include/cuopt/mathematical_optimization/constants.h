@@ -238,15 +238,10 @@
 #define CUOPT_ATTR_IS_MIP                    8
 #define CUOPT_ATTR_HAS_QUADRATIC_OBJECTIVE   9
 #define CUOPT_ATTR_HAS_QUADRATIC_CONSTRAINTS 10
-/* NOTE: HAS_QUADRATIC_OBJECTIVE / HAS_QUADRATIC_CONSTRAINTS report presence only. The quadratic
- * objective matrix (Q) and quadratic constraint data are not currently retrievable through any
- * getter */
 
 /* @brief Numeric/char array problem attribute selectors
  * (see cuOptGetProblem{Float,Char}ArrayAttribute; sized by num_variables / num_constraints).
- * The constraint matrix is retrieved via cuOptGetConstraintMatrix / cuOptGetConstraintMatrixCSC,
- * not through these selectors. Passed as cuopt_int_t. Numbered in a separate range from the scalar
- * selectors so a selector from the wrong family fails validation (there is no compile-time type).
+ * Passed as cuopt_int_t. Numbered in a separate range from the scalar selectors for safety.
  */
 #define CUOPT_ARRAY_ATTR_OBJECTIVE_COEFFICIENTS  100
 #define CUOPT_ARRAY_ATTR_VARIABLE_LOWER_BOUNDS   101

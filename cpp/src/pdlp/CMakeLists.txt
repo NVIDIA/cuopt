@@ -35,7 +35,6 @@ set(LP_CORE_FILES
 set(LP_ADAPTER_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/utilities/cython_solve.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/cuopt_c.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/cuopt_c_attributes.cpp
 )
 
 # Choose which files to include based on build mode

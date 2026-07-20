@@ -564,8 +564,11 @@ cuopt_int_t cuOptGetObjectiveCoefficients(cuOptOptimizationProblem problem,
 cuopt_int_t cuOptGetNumNonZeros(cuOptOptimizationProblem problem, cuopt_int_t* num_non_zeros_ptr);
 
 /** @brief Get the linear constraint matrix of an optimization problem in compressed sparse row
- * format. This is the matrix of the linear constraints only; quadratic constraint terms (if any)
- * are not included.
+ * format. This is the matrix of the linear constraints only.
+ *
+ * @deprecated Use cuOptGetConstraintMatrixCSR (identical CSR output) or
+ * cuOptGetConstraintMatrixCSC. This function forwards to cuOptGetConstraintMatrixCSR and logs a
+ * deprecation warning at runtime.
  *
  * @param[in] problem - The optimization problem.
  *
@@ -588,15 +591,39 @@ cuopt_int_t cuOptGetConstraintMatrix(cuOptOptimizationProblem problem,
                                      cuopt_int_t* constraint_matrix_column_indices_ptr,
                                      cuopt_float_t* constraint_matrix_coefficients_ptr);
 
+/** @brief Get the linear constraint matrix in compressed sparse row (CSR) format.
+ *
+ * This is the canonical CSR getter; it pairs symmetrically with cuOptGetConstraintMatrixCSC. The
+ * deprecated cuOptGetConstraintMatrix forwards here.
+ *
+ * @param[in] problem - The optimization problem.
+ *
+ * @param[out] constraint_matrix_row_offsets_ptr - A pointer to an array of type cuopt_int_t of size
+ *  num_constraints + 1 that on output will contain the row offsets of the constraint matrix.
+ *
+ * @param[out] constraint_matrix_column_indices_ptr - A pointer to an array of type cuopt_int_t of
+ *  size equal to the number of nonzeros that on output will contain the column indices of the
+ *  non-zero entries of the constraint matrix.
+ *
+ * @param[out] constraint_matrix_coefficients_ptr - A pointer to an array of type cuopt_float_t of
+ *  size equal to the number of nonzeros that on output will contain the coefficients of the
+ *  non-zero entries of the constraint matrix.
+ *
+ * @return A status code indicating success or failure.
+ */
+cuopt_int_t cuOptGetConstraintMatrixCSR(cuOptOptimizationProblem problem,
+                                        cuopt_int_t* constraint_matrix_row_offsets_ptr,
+                                        cuopt_int_t* constraint_matrix_column_indices_ptr,
+                                        cuopt_float_t* constraint_matrix_coefficients_ptr);
+
 /** @brief Get the linear constraint matrix of an optimization problem in compressed sparse column
- * format. This is the matrix of the linear constraints only; quadratic constraint terms (if any)
- * are not included.
+ * format. This is the matrix of the linear constraints only.
  *
  * @param[in] problem - The optimization problem.
  *
  * @param[out] constraint_matrix_column_offsets_ptr - A pointer to an array of type cuopt_int_t of
- *  size num_variables + 1 (see cuOptGetNumVariables) that on output will contain the column offsets
- *  of the constraint matrix.
+ *  size num_variables + 1 (see cuOptGetProblemIntAttribute) that on output will contain the column
+ * offsets of the constraint matrix.
  *
  * @param[out] constraint_matrix_row_indices_ptr - A pointer to an array of type cuopt_int_t of size
  *  equal to the number of nonzeros (see cuOptGetNumNonZeros) that on output will contain the row
@@ -1093,7 +1120,7 @@ cuopt_int_t cuOptGetReducedCosts(cuOptSolution solution, cuopt_float_t* reduced_
  * These accessors use copy-out semantics: the caller allocates the output buffer and cuOpt copies
  * values into it. Array attributes are sized by the problem dimensions: variable-indexed arrays
  * have num_variables entries and constraint-indexed arrays have num_constraints entries (see
- * cuOptGetNumVariables / cuOptGetNumConstraints). The sole exception to copy-out is the
+ * cuOptGetProblemIntAttribute). The sole exception to copy-out is the
  * string-array getter, which fills a caller-provided array of pointers with borrowed pointers into
  * cuOpt-owned string storage; those pointers are valid until the problem is modified or destroyed
  * and must not be freed.
@@ -1101,9 +1128,8 @@ cuopt_int_t cuOptGetReducedCosts(cuOptSolution solution, cuopt_float_t* reduced_
  * The constraint matrix is retrieved via cuOptGetConstraintMatrix (CSR) /
  * cuOptGetConstraintMatrixCSC.
  *
- * TODO: quadratic data is not yet retrievable. CUOPT_ATTR_HAS_QUADRATIC_OBJECTIVE and
- * CUOPT_ATTR_HAS_QUADRATIC_CONSTRAINTS report presence only; there is no getter for the
- * quadratic objective matrix (Q) or the quadratic constraint rows.
+ * TODO: there is no getter for the quadratic objective matrix (Q)
+ * or the quadratic constraint rows.
  */
 
 /** @brief Get a scalar integer problem attribute (a CUOPT_ATTR_* with an integer value). */
@@ -1118,7 +1144,7 @@ cuopt_int_t cuOptGetProblemFloatAttribute(cuOptOptimizationProblem problem,
 
 /** @brief Copy a floating-point array attribute into out. count must equal num_variables for
  * variable-indexed attributes or num_constraints for constraint-indexed attributes (see
- * cuOptGetNumVariables / cuOptGetNumConstraints). */
+ * cuOptGetProblemIntAttribute). */
 cuopt_int_t cuOptGetProblemFloatArrayAttribute(cuOptOptimizationProblem problem,
                                                cuopt_int_t attribute,
                                                cuopt_float_t* out,
@@ -1126,7 +1152,7 @@ cuopt_int_t cuOptGetProblemFloatArrayAttribute(cuOptOptimizationProblem problem,
 
 /** @brief Copy a char array attribute (constraint sense or variable types) into out. count must
  * equal num_constraints (constraint sense) or num_variables (variable types) (see
- * cuOptGetNumConstraints / cuOptGetNumVariables). */
+ * cuOptGetProblemIntAttribute). */
 cuopt_int_t cuOptGetProblemCharArrayAttribute(cuOptOptimizationProblem problem,
                                               cuopt_int_t attribute,
                                               char* out,
