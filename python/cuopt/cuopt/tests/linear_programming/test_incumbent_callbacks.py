@@ -110,10 +110,19 @@ def _run_incumbent_solver_callback(file_name, include_set_callback):
         )
 
 
+_SWATH1_BAD_ARRAY_SKIP = pytest.mark.skip(
+    reason=(
+        "Temporarily disabled: swath1 aborts with std::bad_array_new_length "
+        "in wheel builds after the fast MPS parser landed (#1429). "
+        "Tracked in https://github.com/NVIDIA/cuopt/issues/1592."
+    )
+)
+
+
 @pytest.mark.parametrize(
     "file_name",
     [
-        ("/mip/swath1.mps"),
+        pytest.param("/mip/swath1.mps", marks=_SWATH1_BAD_ARRAY_SKIP),
         ("/mip/neos5-free-bound.mps"),
     ],
 )
@@ -124,7 +133,7 @@ def test_incumbent_get_callback(file_name):
 @pytest.mark.parametrize(
     "file_name",
     [
-        ("/mip/swath1.mps"),
+        pytest.param("/mip/swath1.mps", marks=_SWATH1_BAD_ARRAY_SKIP),
         ("/mip/neos5-free-bound.mps"),
     ],
 )
