@@ -2592,13 +2592,11 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
 
   sol.set_solve_time(lp_timer.elapsed_time());
   CUOPT_LOG_INFO("PDLP finished");
-  if (sol.get_termination_status() != pdlp_termination_status_t::ConcurrentLimit) {
-    CUOPT_LOG_INFO("Status: %s   Objective: %.8e  Iterations: %d  Time: %.3fs",
-                   sol.get_termination_status_string().c_str(),
-                   sol.get_objective_value(),
-                   sol.get_additional_termination_information().number_of_steps_taken,
-                   sol.get_solve_time());
-  }
+  CUOPT_LOG_INFO("Status: %s   Objective: %.8e  Iterations: %d  Time: %.3fs",
+                 sol.get_termination_status_string().c_str(),
+                 sol.get_objective_value(),
+                 sol.get_additional_termination_information().number_of_steps_taken,
+                 sol.get_solve_time());
 
   if (settings_resolved.sol_file != "") {
     CUOPT_LOG_INFO("Writing solution to file %s", settings_resolved.sol_file.c_str());
