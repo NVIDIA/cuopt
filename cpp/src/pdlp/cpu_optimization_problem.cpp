@@ -8,6 +8,7 @@
 #include <cuopt/error.hpp>
 #include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
 #include <cuopt/mathematical_optimization/csr_matrix_utils.hpp>
+#include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
 #include <cuopt/mathematical_optimization/solve_remote.hpp>
@@ -24,6 +25,26 @@
 #include <unordered_map>
 
 namespace cuopt::mathematical_optimization {
+
+namespace {
+
+// Classify a problem as LP / MIP / IP from its (enum) variable types. Single source of truth
+// shared by set_variable_types() and adopt_from_mps_data_model() so the detection rule lives in
+// one place. Empty types (no variables declared) classify as LP, matching the populate path where
+// set_variable_types() is skipped and the category keeps its LP default.
+problem_category_t problem_category_from_variable_types(const std::vector<var_t>& variable_types)
+{
+  if (variable_types.empty()) { return problem_category_t::LP; }
+  const std::size_t n_discrete = static_cast<std::size_t>(
+    std::count_if(variable_types.begin(), variable_types.end(), [](var_t v) {
+      return v == var_t::INTEGER || v == var_t::SEMI_CONTINUOUS;
+    }));
+  if (n_discrete == variable_types.size()) { return problem_category_t::IP; }
+  if (n_discrete > 0) { return problem_category_t::MIP; }
+  return problem_category_t::LP;
+}
+
+}  // namespace
 
 // ==============================================================================
 // Constructor
@@ -210,18 +231,7 @@ void cpu_optimization_problem_t<i_t, f_t>::set_variable_types(const var_t* varia
   variable_types_.resize(size);
   std::copy(variable_types, variable_types + size, variable_types_.begin());
 
-  // Auto-detect problem category based on variable types (matching original optimization_problem_t)
-  i_t n_discrete = std::count_if(variable_types_.begin(), variable_types_.end(), [](auto val) {
-    return val == var_t::INTEGER || val == var_t::SEMI_CONTINUOUS;
-  });
-  // By default it is LP
-  if (n_discrete == size) {
-    problem_category_ = problem_category_t::IP;
-  } else if (n_discrete > 0) {
-    problem_category_ = problem_category_t::MIP;
-  } else {
-    problem_category_ = problem_category_t::LP;
-  }
+  problem_category_ = problem_category_from_variable_types(variable_types_);
 }
 
 template <typename i_t, typename f_t>
@@ -1093,6 +1103,83 @@ void cpu_optimization_problem_t<i_t, f_t>::copy_variable_types_to_host(var_t* ou
                 error_type_t::ValidationError,
                 "size exceeds variable types vector size");
   std::copy(variable_types_.begin(), variable_types_.begin() + size, output);
+}
+
+// ==============================================================================
+// adopt_from_mps_data_model
+// ==============================================================================
+
+namespace {
+
+template <typename i_t, typename f_t>
+void move_quadratic_constraints_from_model(
+  cpu_optimization_problem_t<i_t, f_t>& problem,
+  std::vector<typename io::mps_data_model_t<i_t, f_t>::quadratic_constraint_t>& model_constraints)
+{
+  using model_qc_t = typename io::mps_data_model_t<i_t, f_t>::quadratic_constraint_t;
+  std::vector<typename cpu_optimization_problem_t<i_t, f_t>::quadratic_constraint_t> converted;
+  converted.reserve(model_constraints.size());
+  for (model_qc_t& qc : model_constraints) {
+    converted.push_back({qc.constraint_row_index,
+                         std::move(qc.constraint_row_name),
+                         qc.constraint_row_type,
+                         std::move(qc.linear_values),
+                         std::move(qc.linear_indices),
+                         qc.rhs_value,
+                         std::move(qc.rows),
+                         std::move(qc.cols),
+                         std::move(qc.vals)});
+  }
+  model_constraints.clear();
+  problem.set_quadratic_constraints(std::move(converted));
+}
+
+}  // namespace
+
+template <typename i_t, typename f_t>
+void cpu_optimization_problem_t<i_t, f_t>::adopt_from_mps_data_model(
+  io::mps_data_model_t<i_t, f_t>&& model)
+{
+  maximize_                 = model.maximize_;
+  n_vars_                   = model.n_vars_;
+  n_constraints_            = model.n_constraints_;
+  objective_scaling_factor_ = model.objective_scaling_factor_;
+  objective_offset_         = model.objective_offset_;
+
+  A_                       = std::move(model.A_);
+  A_indices_               = std::move(model.A_indices_);
+  A_offsets_               = std::move(model.A_offsets_);
+  b_                       = std::move(model.b_);
+  c_                       = std::move(model.c_);
+  constraint_lower_bounds_ = std::move(model.constraint_lower_bounds_);
+  constraint_upper_bounds_ = std::move(model.constraint_upper_bounds_);
+  row_types_               = std::move(model.row_types_);
+  variable_lower_bounds_   = std::move(model.variable_lower_bounds_);
+  variable_upper_bounds_   = std::move(model.variable_upper_bounds_);
+
+  objective_name_ = std::move(model.objective_name_);
+  problem_name_   = std::move(model.problem_name_);
+  var_names_      = std::move(model.var_names_);
+  row_names_      = std::move(model.row_names_);
+
+  Q_values_  = std::move(model.Q_objective_values_);
+  Q_indices_ = std::move(model.Q_objective_indices_);
+  Q_offsets_ = std::move(model.Q_objective_offsets_);
+
+  variable_types_.resize(model.var_types_.size());
+  for (size_t i = 0; i < model.var_types_.size(); ++i) {
+    variable_types_[i] = char_to_var_type(model.var_types_[i]);
+  }
+  problem_category_ = problem_category_from_variable_types(variable_types_);
+
+  if (model.has_quadratic_constraints()) {
+    move_quadratic_constraints_from_model(*this, model.quadratic_constraints_);
+  }
+
+  model.var_types_.clear();
+  model.n_vars_        = 0;
+  model.n_constraints_ = 0;
+  model.nnz_           = 0;
 }
 
 // ==============================================================================

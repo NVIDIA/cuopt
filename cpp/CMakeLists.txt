@@ -186,7 +186,6 @@ list(APPEND CUOPT_CUDA_FLAGS -Xfatbin=-compress-all)
 if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.9 AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0)
     list(APPEND CUOPT_CUDA_FLAGS -Xfatbin=--compress-level=3)
 endif ()
-list(APPEND CUOPT_CUDA_FLAGS -fopenmp)
 
 # Add jobserver flags for parallel compilation if PARALLEL_LEVEL is set
 if (PARALLEL_LEVEL AND NOT "${PARALLEL_LEVEL}" STREQUAL "")
@@ -198,13 +197,14 @@ if (PARALLEL_LEVEL AND NOT "${PARALLEL_LEVEL}" STREQUAL "")
     endif ()
 endif ()
 
-# The MIP solver requires OpenMP to work
-find_package(OpenMP REQUIRED)
+# The MIP solver requires OpenMP for both C++ and CUDA host code.
+find_package(OpenMP REQUIRED COMPONENTS CXX CUDA)
 message(VERBOSE "cuOpt: OpenMP found in ${OpenMP_CXX_INCLUDE_DIRS}")
 
-# MPS/QPS parser supports compressed inputs via bzip2 and zlib
+# MPS/QPS parser supports compressed inputs via bzip2, zlib and lz4
 option(CUOPT_PARSER_WITH_BZIP2 "Build MPS parser with bzip2 decompression" ON)
 option(CUOPT_PARSER_WITH_ZLIB "Build MPS parser with zlib decompression" ON)
+option(CUOPT_PARSER_WITH_LZ4 "Build experimental fast MPS parser with LZ4 decompression" ON)
 if (CUOPT_PARSER_WITH_BZIP2)
     find_package(BZip2 REQUIRED)
     add_compile_definitions(MPS_PARSER_WITH_BZIP2)
@@ -212,6 +212,10 @@ endif ()
 if (CUOPT_PARSER_WITH_ZLIB)
     find_package(ZLIB REQUIRED)
     add_compile_definitions(MPS_PARSER_WITH_ZLIB)
+endif ()
+if (CUOPT_PARSER_WITH_LZ4)
+    # No headers or link target needed; the experimental reader loads one liblz4 symbol at runtime.
+    add_compile_definitions(MPS_PARSER_WITH_LZ4)
 endif ()
 
 # Debug options
@@ -248,6 +252,20 @@ else ()
     find_package(CCCL REQUIRED)
     find_package(RMM REQUIRED)
     find_package(RAFT REQUIRED)
+endif ()
+
+rapids_cpm_find(simde 0.8.2
+        CPM_ARGS
+        GIT_REPOSITORY https://github.com/simd-everywhere/simde.git
+        GIT_TAG v0.8.2
+        GIT_SHALLOW TRUE
+        DOWNLOAD_ONLY TRUE
+)
+
+if (NOT TARGET simde::simde)
+    add_library(simde::simde INTERFACE IMPORTED GLOBAL)
+    set_target_properties(simde::simde
+            PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${simde_SOURCE_DIR}")
 endif ()
 
 FetchContent_Declare(
@@ -436,6 +454,7 @@ if (BUILD_TESTS)
 endif ()
 
 set(CUOPT_SRC_FILES)
+set(MPS_FAST_SRC_FILES)
 add_subdirectory(src)
 
 # nvcc 13.0.3 ICE (signal 11) compiling sliding_window.cu with 7 GPU architectures;
@@ -445,14 +464,24 @@ set_source_files_properties(
         PROPERTIES COMPILE_OPTIONS "--split-compile=0")
 
 if (HOST_LINEINFO)
-    set_source_files_properties(${CUOPT_SRC_FILES} DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTIES COMPILE_OPTIONS "-g1")
+    set_source_files_properties(${CUOPT_SRC_FILES} DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTIES COMPILE_OPTIONS "-g1")
 endif ()
+
+# Needed for the fast MPS parser, available on all x86-64-v3 compliant x86 CPUs (essentially since Haswell ~2013)
+if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$" AND
+        CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang|AppleClang)$")
+    set_property(SOURCE ${MPS_FAST_SRC_FILES} DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            APPEND PROPERTY COMPILE_OPTIONS "-mbmi2;-mavx2;-msse4.2")
+endif ()
+
+# TODO: figure out a set of flags for ARM that fits the range of CPUs we wish to support (neoverse?)
+# NEON should be universal on aarch64 and enough for our purposes (parsing) though
 
 # Apply -UNDEBUG only to solver source files (not gRPC infrastructure).
 # Must happen before gRPC files are appended to CUOPT_SRC_FILES.
 # Uses APPEND to preserve any existing per-file options (e.g. -g1 from HOST_LINEINFO).
 if (DEFINE_ASSERT)
-    set_property(SOURCE ${CUOPT_SRC_FILES} DIRECTORY ${CMAKE_SOURCE_DIR}
+    set_property(SOURCE ${CUOPT_SRC_FILES} DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             APPEND PROPERTY COMPILE_OPTIONS "-UNDEBUG")
 endif ()
 
@@ -479,7 +508,7 @@ if (NOT SKIP_GRPC_BUILD)
     # The conda-forge abseil shared library is built with NDEBUG and does not
     # export that symbol (abseil-cpp#1624).  Without this, Debug builds fail
     # at runtime with "undefined symbol: absl::…::Mutex::Dtor".
-    set_property(SOURCE ${GRPC_INFRA_FILES} DIRECTORY ${CMAKE_SOURCE_DIR}
+    set_property(SOURCE ${GRPC_INFRA_FILES} DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             APPEND PROPERTY COMPILE_OPTIONS "-DNDEBUG")
 endif (NOT SKIP_GRPC_BUILD)
 
@@ -605,10 +634,12 @@ target_link_libraries(cuopt
         ${CUDSS_LIB_FILE}
         PRIVATE
         ${CUOPT_PRIVATE_CUDA_LIBS}
+        simde::simde
+        OpenMP::OpenMP_CXX
+        OpenMP::OpenMP_CUDA
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:protobuf::libprotobuf>
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:gRPC::grpc++>
 )
-
 
 # ##################################################################################################
 # - generate tests --------------------------------------------------------------------------------

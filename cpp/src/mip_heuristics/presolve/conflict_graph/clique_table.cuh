@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdint>
 #include <span>
 #include <unordered_map>
 #include <unordered_set>
@@ -22,7 +23,12 @@
 namespace cuopt::mathematical_optimization::mip {
 
 struct clique_config_t {
-  int min_clique_size               = 512;
+  // Cliques with size <= min_clique_size are demoted by remove_small_cliques into
+  // explicit pairwise edges (O(size^2) each); larger cliques stay structured in
+  // `first`. Both representations encode the same conflict edges, so this only
+  // trades memory for adjacency-query speed. Keep the threshold small so mixed-row
+  // sub-cliques (which are frequently mid-sized) do not blow up the edge list.
+  int min_clique_size               = 64;
   int max_clique_size_for_extension = 128;
   // extend_cliques work budget; one unit ≈ one hash/scan op in extend_clique.
   // Soft floor before honoring cut-gen signal; hard ceiling.
@@ -59,20 +65,21 @@ struct addtl_clique_t {
 // pairs and call `finalize_from_unsorted_pairs`.
 template <typename i_t>
 struct csr_var_map_t {
-  std::vector<i_t> offsets;  // size: n_vertices + 1; offsets[v] is the start in `indices`
-  std::vector<i_t> indices;  // sorted within each [offsets[v], offsets[v+1]) slice
+  std::vector<int64_t> offsets;  // size: n_vertices + 1; offsets[v] is the start in `indices`
+  std::vector<i_t> indices;      // sorted within each [offsets[v], offsets[v+1]) slice
 
   void clear_and_resize(i_t n_vertices)
   {
-    offsets.assign(n_vertices + 1, 0);
+    offsets.assign(static_cast<size_t>(n_vertices) + 1, 0);
     indices.clear();
   }
   i_t n_keys() const { return offsets.empty() ? 0 : static_cast<i_t>(offsets.size() - 1); }
-  i_t slice_size(i_t v) const { return offsets[v + 1] - offsets[v]; }
+  int64_t slice_size(i_t v) const { return offsets[v + 1] - offsets[v]; }
   // Range-for friendly view of the sorted slice for vertex v.
   std::span<const i_t> slice(i_t v) const
   {
-    return {indices.data() + offsets[v], (size_t)(offsets[v + 1] - offsets[v])};
+    return {indices.data() + static_cast<size_t>(offsets[v]),
+            static_cast<size_t>(offsets[v + 1] - offsets[v])};
   }
   // O(1) summary used by cut/extension cost-budget heuristics.
   double avg_slice_size() const
@@ -90,36 +97,38 @@ struct csr_var_map_t {
   // and deduplicated. Caller must keep p.first in [0, n_vertices).
   void finalize_from_unsorted_pairs(i_t n_vertices, std::vector<std::pair<i_t, i_t>>& pairs)
   {
-    offsets.assign(n_vertices + 1, 0);
+    offsets.assign(static_cast<size_t>(n_vertices) + 1, 0);
     for (const auto& p : pairs) {
-      offsets[p.first + 1]++;
+      ++offsets[p.first + 1];
     }
     for (i_t v = 1; v <= n_vertices; ++v) {
       offsets[v] += offsets[v - 1];
     }
     indices.assign(static_cast<size_t>(offsets.back()), i_t{0});
-    std::vector<i_t> head(n_vertices, 0);
+    std::vector<int64_t> head(static_cast<size_t>(n_vertices), 0);
     for (const auto& p : pairs) {
-      indices[offsets[p.first] + head[p.first]++] = p.second;
+      const size_t pos =
+        static_cast<size_t>(offsets[p.first]) + static_cast<size_t>(head[p.first]++);
+      indices[pos] = p.second;
     }
     for (i_t v = 0; v < n_vertices; ++v) {
-      auto* b = indices.data() + offsets[v];
-      auto* e = indices.data() + offsets[v] + head[v];
+      auto* b = indices.data() + static_cast<size_t>(offsets[v]);
+      auto* e = indices.data() + static_cast<size_t>(offsets[v] + head[v]);
       std::sort(b, e);
       auto* new_end = std::unique(b, e);
-      head[v]       = static_cast<i_t>(new_end - b);
+      head[v]       = static_cast<int64_t>(new_end - b);
     }
     // Compact away dedupe holes.
-    std::vector<i_t> new_offsets(n_vertices + 1, 0);
+    std::vector<int64_t> new_offsets(static_cast<size_t>(n_vertices) + 1, 0);
     for (i_t v = 0; v < n_vertices; ++v) {
       new_offsets[v + 1] = new_offsets[v] + head[v];
     }
     if (new_offsets.back() != offsets.back()) {
       std::vector<i_t> new_indices(static_cast<size_t>(new_offsets.back()));
       for (i_t v = 0; v < n_vertices; ++v) {
-        std::copy(indices.data() + offsets[v],
-                  indices.data() + offsets[v] + head[v],
-                  new_indices.data() + new_offsets[v]);
+        std::copy(indices.data() + static_cast<size_t>(offsets[v]),
+                  indices.data() + static_cast<size_t>(offsets[v] + head[v]),
+                  new_indices.data() + static_cast<size_t>(new_offsets[v]));
       }
       offsets = std::move(new_offsets);
       indices = std::move(new_indices);
