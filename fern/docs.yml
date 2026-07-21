@@ -3,6 +3,8 @@ instances:
 
 title: NVIDIA cuOpt
 
+global-theme: nvidia
+
 navbar-links:
   - type: github
     value: https://github.com/NVIDIA/cuopt

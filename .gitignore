@@ -82,3 +82,6 @@ cpp/include/cuopt/semantic_version.hpp
 # conda env (recommended name)
 .cuopt_env
 cpp/build_split/
+
+# Fern theme export staging dir (uploaded to Fern cloud; not tracked in git)
+fern/theme/
