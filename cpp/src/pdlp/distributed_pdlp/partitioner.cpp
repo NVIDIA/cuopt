@@ -23,6 +23,11 @@
 
 namespace cuopt::mathematical_optimization::pdlp {
 
+// Max relative imbalance KaMinPar may leave between parts. Constant for now, but candidate to
+// promote into a distributed-PDLP hyperparameter when we start tuning partition quality vs. SpMV
+// balance.
+constexpr double kaminpar_max_block_weight_imbalance = 0.03;
+
 template <typename i_t, typename f_t>
 std::vector<i_t> round_robin_partitioner_t<i_t, f_t>::partition(
   partitioner_input_t<i_t, f_t> const& input) const
@@ -140,9 +145,7 @@ std::vector<i_t> kaminpar_partitioner_t<i_t, f_t>::partition(
   engine.copy_graph(std::span<const kaminpar::shm::EdgeID>(xadj),
                     std::span<const kaminpar::shm::NodeID>(adjncy));
   engine.set_k(static_cast<kaminpar::shm::BlockID>(input.nb_parts));
-
-  // Allow up to 3% number of nodes imbalance. Could be knobbed for maximum performance
-  engine.set_uniform_max_block_weights(0.03);
+  engine.set_uniform_max_block_weights(kaminpar_max_block_weight_imbalance);
 
   // The actual partition computation
   auto t0 = std::chrono::high_resolution_clock::now();
