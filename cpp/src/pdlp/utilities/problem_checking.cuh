@@ -10,7 +10,10 @@
 #include <cuopt/mathematical_optimization/optimization_problem.hpp>
 #include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 
-#include <rmm/device_uvector.hpp>
+namespace rmm {
+template <typename T>
+class device_uvector;
+}  // namespace rmm
 
 namespace cuopt::mathematical_optimization {
 
