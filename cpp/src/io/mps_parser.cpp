@@ -1717,5 +1717,11 @@ template void canonicalize_coo_matrix<int, float>(std::vector<int>&,
 template void canonicalize_coo_matrix<int, double>(std::vector<int>&,
                                                    std::vector<int>&,
                                                    std::vector<double>&);
+template void canonicalize_coo_matrix<int64_t, float>(std::vector<int64_t>&,
+                                                      std::vector<int64_t>&,
+                                                      std::vector<float>&);
+template void canonicalize_coo_matrix<int64_t, double>(std::vector<int64_t>&,
+                                                       std::vector<int64_t>&,
+                                                       std::vector<double>&);
 
 }  // namespace cuopt::mathematical_optimization::io
