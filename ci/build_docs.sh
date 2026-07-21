@@ -33,10 +33,10 @@ conda activate docs
 
 rapids-print-env
 
-if [[ "${RAPIDS_BUILD_TYPE:-branch}" == "pull-request" ]]; then
-    rapids-logger "Building and publishing Fern PR preview"
-    ./build.sh docs --preview
-else
-    rapids-logger "Building and publishing Fern docs to production"
+if rapids-is-release-build; then
+    rapids-logger "Publishing Fern docs to production (release build)"
     ./build.sh docs --publish-docs
+else
+    rapids-logger "Validating Fern docs (publish skipped — only runs on tagged release)"
+    ./build.sh docs --check
 fi

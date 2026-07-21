@@ -6,6 +6,7 @@
 # Build Fern docs: generate MDX, validate, then preview or publish.
 # Usage:
 #   fern/build_docs.sh              # local preview (http://localhost:3000)
+#   fern/build_docs.sh --check          # validate only (fern check), no server
 #   fern/build_docs.sh --publish-docs   # publish to Fern cloud (production)
 #   fern/build_docs.sh --preview        # CI PR preview (fern generate --docs --preview)
 #
@@ -17,9 +18,11 @@ set -e
 REPODIR=$(cd "$(dirname "$0")/.."; pwd)
 PUBLISH=0
 PREVIEW=0
+CHECK=0
 for arg in "$@"; do
     [[ "$arg" == "--publish-docs" ]] && PUBLISH=1
     [[ "$arg" == "--preview" ]] && PREVIEW=1
+    [[ "$arg" == "--check" ]] && CHECK=1
 done
 
 if ! command -v node &>/dev/null || ! command -v npm &>/dev/null; then
@@ -51,7 +54,9 @@ fi
 echo "Running fern check..."
 fern check
 
-if [[ "${PUBLISH}" -eq 1 ]]; then
+if [[ "${CHECK}" -eq 1 ]]; then
+    echo "Check-only mode; fern check already passed above."
+elif [[ "${PUBLISH}" -eq 1 ]]; then
     if [[ -z "${FERN_TOKEN:-}" ]]; then
         echo "ERROR: FERN_TOKEN environment variable is not set."
         exit 1
