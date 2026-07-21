@@ -147,7 +147,7 @@ class mip_node_t {
   {
     update_branched_variable_bounds(lower, upper, bounds_changed);
 
-    mip_node_t<i_t, f_t>* parent_ptr = parent;
+    mip_node_t* parent_ptr = parent;
     while (parent_ptr != nullptr && parent_ptr->node_id != 0) {
       parent_ptr->update_branched_variable_bounds(lower, upper, bounds_changed);
       parent_ptr = parent_ptr->parent;
@@ -160,6 +160,9 @@ class mip_node_t {
                                        std::vector<f_t>& upper,
                                        std::vector<bool>& bounds_changed) const
   {
+    // We in the root node and the lower/upper are already set to their starting value
+    if (parent == nullptr) return;
+
     assert(branch_var >= 0);
     assert(lower.size() > branch_var);
     assert(upper.size() > branch_var);

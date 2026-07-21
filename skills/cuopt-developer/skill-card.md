@@ -9,14 +9,14 @@ NVIDIA <br>
 ### License/Terms of Use: <br>
 Apache 2.0 <br>
 ## Use Case: <br>
-Developers and engineers who modify, build, test, and contribute to the NVIDIA cuOpt GPU-accelerated optimization engine codebase. <br>
+Developers and engineers contributing to the NVIDIA cuOpt codebase use this skill to navigate the build system, follow coding conventions, submit PRs with DCO sign-off, and debug solver internals across C++/CUDA, Python, and server components. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
 
 ## Requirements / Dependencies: <br>
-**Requires API Key or External Credential:** [Not Specified] <br>
-**Credential Type(s):** [None identified] <br>
+**Requires API Key or External Credential:** [Yes] <br>
+**Credential Type(s):** [API key] <br>
 
 Do not include secrets in prompts/logs/output; use least-privilege credentials; rotate keys as appropriate. <br>
 
@@ -25,32 +25,31 @@ Risk: Review before execution as proposals could introduce incorrect or misleadi
 Mitigation: Review and scan skill before deployment. <br>
 
 ## Reference(s): <br>
-- [first_time_setup.md](references/first_time_setup.md) <br>
 - [build_and_test.md](references/build_and_test.md) <br>
 - [contributing.md](references/contributing.md) <br>
 - [conventions.md](references/conventions.md) <br>
+- [first_time_setup.md](references/first_time_setup.md) <br>
 - [python_bindings.md](references/python_bindings.md) <br>
 - [troubleshooting.md](references/troubleshooting.md) <br>
 - [vrp_skills.md](references/vrp_skills.md) <br>
-- [numerical_debugging.md](resources/numerical_debugging.md) <br>
 - [cuOpt User Guide](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html) <br>
 - [cuopt-examples](https://github.com/NVIDIA/cuopt-examples) <br>
 
 
 ## Skill Output: <br>
-**Output Type(s):** [Shell commands, Code, Configuration instructions] <br>
+**Output Type(s):** [Code, Shell commands, Configuration instructions, Analysis] <br>
 **Output Format:** [Markdown with inline code blocks] <br>
 **Output Parameters:** [1D] <br>
 **Other Properties Related to Output:** [None] <br>
 
 ## Evaluation Agents Used: <br>
-- `claude-code` <br>
-- `codex` <br>
+- claude-code <br>
+- codex <br>
 
 
 
 ## Evaluation Tasks: <br>
-Evaluated against 3 evaluation tasks in the NVSkills-Eval external profile (astra-sandbox environment, 1 attempt per task, 50% pass threshold). <br>
+Evaluated against 3 internal evaluation tasks (positive skill-activation cases). <br>
 
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
@@ -75,13 +74,13 @@ Underlying evaluation signals used in this run: <br>
 | Dimension | Num | `claude-code` | `codex` |
 |---|---:|---:|---:|
 | Security | 3 | 100% (+0%) | 100% (+0%) |
-| Correctness | 3 | 75% (+20%) | 90% (+43%) |
-| Discoverability | 3 | 42% (+25%) | 79% (+52%) |
-| Effectiveness | 3 | 95% (+26%) | 78% (+35%) |
-| Efficiency | 3 | 48% (+22%) | 77% (+35%) |
+| Correctness | 3 | 75% (+18%) | 90% (+38%) |
+| Discoverability | 3 | 42% (+25%) | 88% (+62%) |
+| Effectiveness | 3 | 94% (+32%) | 90% (+36%) |
+| Efficiency | 3 | 48% (+22%) | 89% (+49%) |
 
 ## Skill Version(s): <br>
-26.08.00 (source: frontmatter) <br>
+26.08.00 (source: frontmatter, pyproject.toml) <br>
 
 ## Ethical Considerations: <br>
 NVIDIA believes Trustworthy AI is a shared responsibility and we have established policies and practices to enable development for a wide array of AI applications. When downloaded or used in accordance with our terms of service, developers should work with their internal team to ensure this skill meets requirements for the relevant industry and use case and addresses unforeseen product misuse. <br>

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import numpy as np
@@ -228,7 +228,7 @@ def test_compute_cost_matrix():
     ]
 
     # Set vehicle constraints
-    vehicle_constraints = routing.add_vehicle_constraints(
+    vehicle_constraints = utils.add_vehicle_constraints(
         num_vehicles,
         vehicle_capacity,
         break_earliest,
@@ -255,7 +255,7 @@ def test_compute_cost_matrix():
                 matrix_df,
                 order_data,
                 vehicle_data,
-            ) = routing.create_pickup_delivery_data(
+            ) = utils.create_pickup_delivery_data(
                 matrix_pdf, single_day_order_pdf, depot, vehicle_constraints
             )
             check_matrix(

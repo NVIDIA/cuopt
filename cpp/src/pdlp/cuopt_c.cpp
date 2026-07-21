@@ -217,9 +217,8 @@ cuopt_int_t cuOptReadProblem(const char* filename, cuOptOptimizationProblem* pro
     }
   }
 
-  // Populate interface directly from MPS data model (avoids temporary GPU allocation)
-  cuopt::mathematical_optimization::populate_from_mps_data_model(problem_and_stream->get_problem(),
-                                                                 *mps_data_model_ptr);
+  cuopt::mathematical_optimization::adopt_from_mps_data_model(problem_and_stream->get_problem(),
+                                                              std::move(*mps_data_model_ptr));
 
   *problem_ptr = static_cast<cuOptOptimizationProblem>(problem_and_stream);
   return CUOPT_SUCCESS;

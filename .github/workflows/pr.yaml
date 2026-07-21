@@ -97,6 +97,7 @@ jobs:
           - '!.github/workflows/trigger-breaking-change-alert.yaml'
           - '!.gitignore'
           - '!.pre-commit-config.yaml'
+          - '!codecov.yml'
           - '!AGENTS.md'
           - '!CHANGELOG.md'
           - '!CONTRIBUTING.md'
@@ -155,6 +156,7 @@ jobs:
           - '!.github/workflows/trigger-breaking-change-alert.yaml'
           - '!.gitignore'
           - '!.pre-commit-config.yaml'
+          - '!codecov.yml'
           - '!AGENTS.md'
           - '!CONTRIBUTING.md'
           - '!LICENSE'
@@ -224,6 +226,7 @@ jobs:
           - '!.github/workflows/trigger-breaking-change-alert.yaml'
           - '!.gitignore'
           - '!.pre-commit-config.yaml'
+          - '!codecov.yml'
           - '!AGENTS.md'
           - '!CONTRIBUTING.md'
           - '!LICENSE'
@@ -290,6 +293,7 @@ jobs:
           - '!.github/workflows/trigger-breaking-change-alert.yaml'
           - '!.gitignore'
           - '!.pre-commit-config.yaml'
+          - '!codecov.yml'
           - '!AGENTS.md'
           - '!CONTRIBUTING.md'
           - '!LICENSE'
@@ -410,16 +414,11 @@ jobs:
     uses: rapidsai/shared-workflows/.github/workflows/conda-python-tests.yaml@main
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_conda
     with:
-      run_codecov: false
       build_type: pull-request
       script: ci/test_python.sh
     secrets:
-      script-env-secret-1-key: CUOPT_S3_URI
-      script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}
-      script-env-secret-2-key: CUOPT_AWS_ACCESS_KEY_ID
-      script-env-secret-2-value: ${{ secrets.CUOPT_AWS_ACCESS_KEY_ID }}
-      script-env-secret-3-key: CUOPT_AWS_SECRET_ACCESS_KEY
-      script-env-secret-3-value: ${{ secrets.CUOPT_AWS_SECRET_ACCESS_KEY }}
+      script-env-secret-1-key: CODECOV_TOKEN
+      script-env-secret-1-value: ${{ secrets.CODECOV_TOKEN }}
   docs-build:
     needs: [conda-python-build, changed-files]
     permissions:
