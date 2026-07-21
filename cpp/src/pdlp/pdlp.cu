@@ -3574,6 +3574,25 @@ pdlp_solver_t<i_t, f_t>::get_current_termination_strategy()
   return current_termination_strategy_;
 }
 
+template <typename i_t, typename f_t>
+pdlp_initial_scaling_strategy_t<i_t, f_t>&
+pdlp_solver_t<i_t, f_t>::get_initial_scaling_strategy()
+{
+  return initial_scaling_strategy_;
+}
+
+template <typename i_t, typename f_t>
+pdlp_restart_strategy_t<i_t, f_t>& pdlp_solver_t<i_t, f_t>::get_restart_strategy()
+{
+  return restart_strategy_;
+}
+
+template <typename i_t, typename f_t>
+bool pdlp_solver_t<i_t, f_t>::is_distributed_master() const
+{
+  return multi_gpu_engine.has_value();
+}
+
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 template class pdlp_solver_t<int, float>;
 

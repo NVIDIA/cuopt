@@ -113,11 +113,8 @@ class pdlp_solver_t {
   void create_spmv_op_plans();
 
   // Needed by multi-GPU to mutate them
-  pdlp_initial_scaling_strategy_t<i_t, f_t>& get_initial_scaling_strategy()
-  {
-    return initial_scaling_strategy_;
-  }
-  pdlp_restart_strategy_t<i_t, f_t>& get_restart_strategy() { return restart_strategy_; }
+  pdlp_initial_scaling_strategy_t<i_t, f_t>& get_initial_scaling_strategy();
+  pdlp_restart_strategy_t<i_t, f_t>& get_restart_strategy();
 
   // Per-shard primal/dual step sizes are private state on pdlp_solver_t but
   // are needed inside the multi-GPU dispatch paths that fan out a master cub
@@ -230,7 +227,7 @@ class pdlp_solver_t {
   // This solver is the distributed-PDLP master orchestrator iff it owns the
   // multi-GPU engine. Shards (sub-solvers) leave the optional empty -> false.
   // Single-GPU PDLP reports false.
-  bool is_distributed_master() const { return multi_gpu_engine.has_value(); }
+  bool is_distributed_master() const;
 
  private:
   void compute_fixed_error(std::vector<int>& has_restarted);
