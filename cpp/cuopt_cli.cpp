@@ -161,8 +161,8 @@ int run_single_file(const std::string& file_path,
     return 0;
   }
 
-  cuopt::mathematical_optimization::populate_from_mps_data_model(problem_interface.get(),
-                                                                 mps_data_model);
+  cuopt::mathematical_optimization::adopt_from_mps_data_model(problem_interface.get(),
+                                                              std::move(mps_data_model));
 
   const bool is_mip = (problem_interface->get_problem_category() ==
                          cuopt::mathematical_optimization::problem_category_t::MIP ||
@@ -175,7 +175,7 @@ int run_single_file(const std::string& file_path,
       initial_solution_file.empty()
         ? std::vector<double>()
         : cuopt::mathematical_optimization::solution_reader_t::get_variable_values_from_sol_file(
-            initial_solution_file, mps_data_model.get_variable_names());
+            initial_solution_file, problem_interface->get_variable_names());
 
     if (is_mip) {
       auto& mip_settings = settings.get_mip_settings();
