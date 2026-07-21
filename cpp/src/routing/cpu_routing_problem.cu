@@ -83,7 +83,12 @@ std::unique_ptr<rmm::device_uvector<bool>> copy_u8_as_bool(std::vector<uint8_t> 
 {
   if (host.empty()) { return nullptr; }
   std::vector<bool> as_bool(host.begin(), host.end());
-  return std::make_unique<rmm::device_uvector<bool>>(cuopt::device_copy(as_bool, stream));
+  auto d = std::make_unique<rmm::device_uvector<bool>>(cuopt::device_copy(as_bool, stream));
+  // as_bool is a local temporary and the H2D copy above is async; drain the
+  // stream before it goes out of scope so the copy does not read freed host
+  // memory.
+  stream.synchronize();
+  return d;
 }
 
 }  // namespace
@@ -201,6 +206,15 @@ cpu_routing_problem_t::to_device(raft::handle_t* handle) const
   }
 
   for (auto const& dim : capacity_dimensions) {
+    // Validate client-provided sizes before they reach the device view:
+    // populate_demand_container reads exactly `orders` demand and `fleet_size`
+    // capacity values, so an undersized request would be an out-of-bounds read.
+    if (static_cast<int32_t>(dim.demand.size()) != orders ||
+        static_cast<int32_t>(dim.capacity.size()) != fleet_size) {
+      throw std::invalid_argument(
+        "cpu_routing_problem_t::to_device: capacity dimension '" + dim.name +
+        "' must have num_orders demand values and fleet_size capacity values");
+    }
     auto d_demand   = copy_vector(dim.demand, stream);
     auto d_capacity = copy_vector(dim.capacity, stream);
     if (!d_demand || !d_capacity) {
@@ -286,6 +300,9 @@ cpu_routing_problem_t::to_device(raft::handle_t* handle) const
       types.push_back(static_cast<node_type_t>(t));
     }
     data->init_types = copy_vector(types, stream);
+    // types is a local temporary feeding an async H2D copy; drain before it
+    // goes out of scope.
+    stream.synchronize();
 
     int32_t n_nodes = static_cast<int32_t>(initial_solutions.routes.size());
     int32_t n_sols  = static_cast<int32_t>(initial_solutions.sol_offsets.size());

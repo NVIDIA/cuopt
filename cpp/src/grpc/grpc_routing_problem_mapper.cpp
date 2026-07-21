@@ -7,6 +7,8 @@
 
 #include "grpc_routing_problem_mapper.hpp"
 
+#include <cuopt/error.hpp>
+
 #include <algorithm>
 #include <cstdint>
 
@@ -47,6 +49,24 @@ void copy_bool_to_u8(const google::protobuf::RepeatedField<bool>& src, std::vect
   for (bool v : src) {
     dst.push_back(v ? 1 : 0);
   }
+}
+
+// Mirror grpc_server_types.hpp's format_cuopt_error without pulling that heavy
+// server header into this (client-linked) mapper: parse the structured
+// {"error_type","msg"} payload logic_error embeds down to a clean "type: msg"
+// so raw internal error detail is not sent to remote clients.
+std::string sanitize_error_message(const cuopt::logic_error& e)
+{
+  std::string s = e.what();
+  std::string msg;
+  auto pos = s.find("\"msg\": \"");
+  if (pos != std::string::npos) {
+    pos += 8;
+    auto end = s.rfind('"');
+    if (end > pos) { msg = s.substr(pos, end - pos); }
+  }
+  if (msg.empty()) { msg = s; }
+  return cuopt::error_to_string(e.get_error_type()) + ": " + msg;
 }
 
 cuopt::remote::RoutingSolutionStatus to_proto_status(cuopt::routing::solution_status_t s)
@@ -324,7 +344,7 @@ void map_routing_solution_to_proto(const cuopt::routing::assignment_t<int>& assi
   pb->set_status_message(assignment.get_status_string());
   if (assignment.get_status() == cuopt::routing::solution_status_t::ERROR) {
     try {
-      pb->set_error_message(assignment.get_error_status().what());
+      pb->set_error_message(sanitize_error_message(assignment.get_error_status()));
     } catch (...) {
       pb->set_error_message("routing solve error");
     }
