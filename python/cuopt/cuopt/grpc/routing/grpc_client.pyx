@@ -38,6 +38,38 @@ class RoutingSolveError(RuntimeError):
     """A remote VRP job failed or returned no routing solution."""
 
 
+# Recorded setters that _populate() maps into cpu_routing_problem_t. Must match
+# the dispatch in _populate; test_grpc_serialization asserts this covers every
+# name in cuopt.routing._deferred._SETTERS so a new setter cannot be missed.
+HANDLED_SETTERS = frozenset({
+    "add_cost_matrix",
+    "add_transit_time_matrix",
+    "set_order_time_windows",
+    "set_vehicle_time_windows",
+    "set_vehicle_locations",
+    "set_pickup_delivery_pairs",
+    "add_capacity_dimension",
+    "set_order_service_times",
+    "add_vehicle_order_match",
+    "add_order_vehicle_match",
+    "add_order_precedence",
+    "add_break_dimension",
+    "add_vehicle_break",
+    "set_objective_function",
+    "add_initial_solutions",
+    "set_min_vehicles",
+    "set_order_locations",
+    "set_order_prizes",
+    "set_vehicle_types",
+    "set_drop_return_trips",
+    "set_skip_first_trips",
+    "set_vehicle_max_costs",
+    "set_vehicle_max_times",
+    "set_vehicle_fixed_costs",
+    "set_break_locations",
+})
+
+
 def _to_host(x):
     """Return a host numpy array from numpy/pandas/cuDF/cupy/list input."""
     if isinstance(x, np.ndarray):
@@ -214,6 +246,51 @@ cdef void _populate(cpu_routing_problem_t& p, data_model) except *:
                 f"no VRP gRPC mapping for recorded setter {name!r}; add a case "
                 "to cuopt.grpc.routing.grpc_client._populate"
             )
+
+
+def problem_summary(data_model):
+    """Populate a ``cpu_routing_problem_t`` from ``data_model`` and return a
+    ``{field: size}`` summary. Runs the exact ``_populate`` path used by
+    ``submit`` (so a mis-mapped or unmapped setter fails here too), without a
+    server. Intended for tests.
+    """
+    cdef cpu_routing_problem_t p
+    _populate(p, data_model)
+    return {
+        "num_locations": int(p.num_locations),
+        "fleet_size": int(p.fleet_size),
+        "num_orders": int(p.num_orders),
+        "min_vehicles": int(p.min_vehicles),
+        "cost_matrices": p.cost_matrices.size(),
+        "transit_time_matrices": p.transit_time_matrices.size(),
+        "vehicle_start_locations": p.vehicle_start_locations.size(),
+        "vehicle_return_locations": p.vehicle_return_locations.size(),
+        "vehicle_tw_earliest": p.vehicle_tw_earliest.size(),
+        "vehicle_tw_latest": p.vehicle_tw_latest.size(),
+        "vehicle_types": p.vehicle_types.size(),
+        "drop_return_trips": p.drop_return_trips.size(),
+        "skip_first_trips": p.skip_first_trips.size(),
+        "vehicle_max_costs": p.vehicle_max_costs.size(),
+        "vehicle_max_times": p.vehicle_max_times.size(),
+        "vehicle_fixed_costs": p.vehicle_fixed_costs.size(),
+        "order_locations": p.order_locations.size(),
+        "order_tw_earliest": p.order_tw_earliest.size(),
+        "order_tw_latest": p.order_tw_latest.size(),
+        "order_prizes": p.order_prizes.size(),
+        "order_service_times": p.order_service_times.size(),
+        "pickup_indices": p.pickup_indices.size(),
+        "delivery_indices": p.delivery_indices.size(),
+        "capacity_dimensions": p.capacity_dimensions.size(),
+        "break_locations": p.break_locations.size(),
+        "uniform_breaks": p.uniform_breaks.size(),
+        "vehicle_breaks": p.vehicle_breaks.size(),
+        "vehicle_order_match": p.vehicle_order_match.size(),
+        "order_vehicle_match": p.order_vehicle_match.size(),
+        "order_precedence": p.order_precedence.size(),
+        "objectives": p.objectives.size(),
+        "objective_weights": p.objective_weights.size(),
+        "initial_solutions_routes": p.initial_solutions.routes.size(),
+    }
 
 
 cdef _solution_to_py(cpu_routing_solution_t s):
