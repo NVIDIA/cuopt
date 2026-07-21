@@ -5,7 +5,7 @@
  */
 /* clang-format on */
 
-#include <cuopt/linear_programming/mip/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 
 #include <thrust/count.h>
@@ -23,7 +23,7 @@
 #include "bounds_presolve_helpers.cuh"
 #include "bounds_update_helpers.cuh"
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 // Tobias Achterberg, Robert E. Bixby, Zonghao Gu, Edward Rothberg, Dieter Weninger (2019) Presolve
 // Reductions in Mixed Integer Programming. INFORMS Journal on Computing 32(2):473-506.
@@ -118,6 +118,8 @@ bool bound_presolve_t<i_t, f_t>::calculate_bounds_update(problem_t<i_t, f_t>& pb
   constexpr i_t zero       = 0;
   constexpr auto n_threads = 256;
 
+  upd.candidate_bound_scale =
+    pb.tolerances.absolute_tolerance / context.settings.semi_continuous_big_m;
   upd.bounds_changed.set_value_async(zero, pb.handle_ptr->get_stream());
   update_bounds_kernel<i_t, f_t, n_threads>
     <<<pb.n_variables, n_threads, 0, pb.handle_ptr->get_stream()>>>(pb.view(), upd.view());
@@ -364,4 +366,4 @@ template class bound_presolve_t<int, float>;
 template class bound_presolve_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

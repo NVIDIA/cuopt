@@ -24,7 +24,6 @@ set(CMAKE_CUDA_STANDARD 20)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
 find_package(cuopt "${RAPIDS_VERSION}")
-find_package(mps_parser "${RAPIDS_VERSION}")
 
 include(rapids-cython-core)
 rapids_cython_init()

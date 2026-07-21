@@ -16,7 +16,7 @@
 
 #include <limits>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 early_gpufj_t<i_t, f_t>::early_gpufj_t(const optimization_problem_t<i_t, f_t>& op_problem,
@@ -60,7 +60,8 @@ void early_gpufj_t<i_t, f_t>::start()
 
   CUOPT_LOG_DEBUG("Launching early GPUFJ task");
 
-#pragma omp task default(none) shared(fj_ptr_) depend(out : *fj_ptr_)
+#pragma omp task default(none) shared(fj_ptr_) priority(CUOPT_DEFAULT_TASK_PRIORITY) \
+  depend(out : *fj_ptr_)
   {
     RAFT_CUDA_TRY(cudaSetDevice(this->device_id_));
     fj_ptr_->solve(*this->solution_ptr_);
@@ -88,4 +89,4 @@ template class early_gpufj_t<int, float>;
 template class early_gpufj_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

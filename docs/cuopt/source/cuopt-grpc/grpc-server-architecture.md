@@ -1,4 +1,4 @@
-# gRPC server behavior
+# gRPC Server Behavior
 
 NVIDIA cuOpt's **`cuopt_grpc_server`** uses one **main process** (gRPC front end, job tracking, background threads) and **worker processes** that run GPU solves. That layout gives isolation between jobs, optional parallelism when you set multiple workers, and streaming for large problems and logs.
 
@@ -6,39 +6,7 @@ Implementation details (IPC layout, C++ source map, chunked transfer internals) 
 
 ## Process model
 
-```text
-┌──────────────────────────────────────────────────────────────────────┐
-│                        Main Server Process                           │
-│                                                                      │
-│  ┌─────────────┐  ┌──────────────┐  ┌─────────────────────────────┐  │
-│  │  gRPC       │  │  Job         │  │  Background Threads         │  │
-│  │  Service    │  │  Tracker     │  │  - Result retrieval         │  │
-│  │  Handler    │  │  (job status,│  │  - Incumbent retrieval      │  │
-│  │             │  │   results)   │  │  - Worker monitor           │  │
-│  └─────────────┘  └──────────────┘  └─────────────────────────────┘  │
-│         │                                        ▲                   │
-│         │ shared memory                          │ pipes             │
-│         ▼                                        │                   │
-│  ┌─────────────────────────────────────────────────────────────────┐ │
-│  │                       Shared Memory Queues                      │ │
-│  │                                                                 │ │
-│  │   ┌─────────────────┐        ┌─────────────────────┐            │ │
-│  │   │  Job Queue      │        │  Result Queue       │            │ │
-│  │   │  (MAX_JOBS=100) │        │  (MAX_RESULTS=100)  │            │ │
-│  │   └─────────────────┘        └─────────────────────┘            │ │
-│  └─────────────────────────────────────────────────────────────────┘ │
-└──────────────────────────────────────────────────────────────────────┘
-               │                                        ▲
-               │ fork()                                 │
-               ▼                                        │
-     ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
-     │  Worker 0       │  │  Worker 1       │  │  Worker N       │
-     │  ┌───────────┐  │  │  ┌───────────┐  │  │  ┌───────────┐  │
-     │  │ GPU Solve │  │  │  │ GPU Solve │  │  │  │ GPU Solve │  │
-     │  └───────────┘  │  │  └───────────┘  │  │  └───────────┘  │
-     │  (separate proc)│  │  (separate proc)│  │  (separate proc)│
-     └─────────────────┘  └─────────────────┘  └─────────────────┘
-```
+![gRPC Server Process Model](images/grpc-process-model.png)
 
 ## Job lifecycle (summary)
 
@@ -46,17 +14,7 @@ Implementation details (IPC layout, C++ source map, chunked transfer internals) 
 
 ## Job states
 
-```text
-┌─────────┐  submit   ┌───────────┐  claim   ┌────────────┐
-│ QUEUED  │──────────►│ PROCESSING│─────────►│ COMPLETED  │
-└─────────┘           └───────────┘          └────────────┘
-     │                      │
-     │ cancel               │ error
-     ▼                      ▼
-┌───────────┐          ┌─────────┐
-│ CANCELLED │          │ FAILED  │
-└───────────┘          └─────────┘
-```
+![gRPC Server Job States](images/grpc-job-states.png)
 
 ## Logs, capacity, and workers
 

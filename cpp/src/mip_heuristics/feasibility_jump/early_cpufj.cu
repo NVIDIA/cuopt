@@ -9,7 +9,7 @@
 
 #include <mip_heuristics/mip_constants.hpp>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 early_cpufj_t<i_t, f_t>::early_cpufj_t(
@@ -45,7 +45,8 @@ void early_cpufj_t<i_t, f_t>::start()
                                          double) { this->try_update_best(solver_obj, assignment); };
 
   CUOPT_LOG_DEBUG("Launching early CPUFJ task");
-#pragma omp task shared(fj_cpu_) depend(out : *fj_cpu_) default(none)
+#pragma omp task shared(fj_cpu_) priority(CUOPT_DEFAULT_TASK_PRIORITY) \
+  depend(out : *fj_cpu_) default(none)
   cpufj_solve(fj_cpu_.get());
 }
 
@@ -74,4 +75,4 @@ template class early_cpufj_t<int, float>;
 template class early_cpufj_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

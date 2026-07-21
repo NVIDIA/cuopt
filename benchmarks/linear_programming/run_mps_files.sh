@@ -24,6 +24,8 @@
 #   --batch-num : Batch number.  This allows to split the work across multiple batches uniformly when resources are limited.
 #   --n-batches : Number of batches
 #   --log-to-console : Log to console
+#   --recursive : Recursively search for .mps/.MPS/.SIF files under --path
+#   --cut-mode : Cut family configuration: default, no-cuts, flow-cover-only
 #
 # Examples:
 #   # Run all MPS files in /data/lp using 2 GPUs with 1 hour time limit
@@ -75,6 +77,8 @@ Optional Arguments:
     --log-to-console   Log to console
     --model-list       File containing a list of models to run
     --pdlp-tolerances  Tolerances for PDLP solver (default: 1e-4)
+    --recursive        Recursively search for .mps/.MPS/.SIF files under --path
+    --cut-mode MODE    Cut family configuration: default, no-cuts, flow-cover-only
     -h, --help         Show this help message and exit
 
 Examples:
@@ -193,6 +197,16 @@ while [[ $# -gt 0 ]]; do
             PDLP_TOLERANCES="$2"
             shift 2
             ;;
+        --recursive)
+            echo "RECURSIVE: true"
+            RECURSIVE=true
+            shift
+            ;;
+        --cut-mode)
+            echo "CUT_MODE: $2"
+            CUT_MODE="$2"
+            shift 2
+            ;;
         *)
             echo "Unknown argument: $1"
             print_help
@@ -221,12 +235,23 @@ N_BATCHES=${N_BATCHES:-1}
 LOG_TO_CONSOLE=${LOG_TO_CONSOLE:-true}
 MODEL_LIST=${MODEL_LIST:-}
 PDLP_TOLERANCES=${PDLP_TOLERANCES:-1e-4}
+RECURSIVE=${RECURSIVE:-false}
+CUT_MODE=${CUT_MODE:-default}
 
 # Validate GPUS_PER_INSTANCE
 if [[ "$GPUS_PER_INSTANCE" != "1" && "$GPUS_PER_INSTANCE" != "2" ]]; then
     echo "Error: --gpus-per-instance must be 1 or 2"
     exit 1
 fi
+
+case "$CUT_MODE" in
+    default|no-cuts|flow-cover-only)
+        ;;
+    *)
+        echo "Error: --cut-mode must be one of: default, no-cuts, flow-cover-only"
+        exit 1
+        ;;
+esac
 
 # Determine GPU list
 if [[ -n "$CUDA_VISIBLE_DEVICES" ]]; then
@@ -331,8 +356,12 @@ if [[ -n "$MODEL_LIST" ]]; then
         exit 1
     fi
 else
-    # Gather both .mps and .SIF files in the directory
-    mapfile -t mps_files < <(ls "$MPS_DIR"/*.mps "$MPS_DIR"/*.SIF 2>/dev/null)
+    if [ "$RECURSIVE" = true ]; then
+        mapfile -t mps_files < <(find "$MPS_DIR" -type f \( -name "*.mps" -o -name "*.MPS" -o -name "*.SIF" \) | sort)
+    else
+        # Gather .mps/.MPS and .SIF files in the directory
+        mapfile -t mps_files < <(ls "$MPS_DIR"/*.mps "$MPS_DIR"/*.MPS "$MPS_DIR"/*.SIF 2>/dev/null)
+    fi
 
     echo "Found ${#mps_files[@]} .mps and .SIF files in $MPS_DIR"
 fi
@@ -419,6 +448,11 @@ worker() {
         fi
         if [ -n "$METHOD" ]; then
             args="$args --method $METHOD"
+        fi
+        if [ "$CUT_MODE" = "no-cuts" ]; then
+            args="$args --mip-mixed-integer-rounding-cuts 0 --mip-mixed-integer-gomory-cuts 0 --mip-knapsack-cuts 0 --mip-flow-cover-cuts 0 --mip-clique-cuts 0 --mip-implied-bound-cuts 0 --mip-strong-chvatal-gomory-cuts 0 --mip-reduced-cost-strengthening 0"
+        elif [ "$CUT_MODE" = "flow-cover-only" ]; then
+            args="$args --mip-mixed-integer-rounding-cuts 0 --mip-mixed-integer-gomory-cuts 0 --mip-knapsack-cuts 0 --mip-flow-cover-cuts 1 --mip-clique-cuts 0 --mip-implied-bound-cuts 0 --mip-strong-chvatal-gomory-cuts 0 --mip-reduced-cost-strengthening 0"
         fi
         if [ -n "$PDLP_TOLERANCES" ]; then
             args="$args --absolute-primal-tolerance $PDLP_TOLERANCES --absolute-dual-tolerance $PDLP_TOLERANCES --relative-primal-tolerance $PDLP_TOLERANCES --relative-dual-tolerance $PDLP_TOLERANCES --absolute-gap-tolerance $PDLP_TOLERANCES --relative-gap-tolerance $PDLP_TOLERANCES"

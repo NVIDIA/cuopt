@@ -1,10 +1,10 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 // Codegen target: this file builds and parses cuopt::remote::Incumbent protobuf messages.
-// A future version of cpp/codegen/generate_conversions.py can produce this from
+// A future version of cpp/src/grpc/codegen/generate_conversions.py can produce this from
 // an incumbent section in field_registry.yaml.
 
 #pragma once

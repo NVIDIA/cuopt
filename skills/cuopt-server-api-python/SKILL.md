@@ -1,12 +1,40 @@
 ---
 name: cuopt-server-api-python
-version: "26.06.00"
+version: "26.08.00"
 description: cuOpt REST server — start server, endpoints, Python/curl client examples. Use when the user is deploying or calling the REST API.
+license: Apache-2.0
+metadata:
+  author: NVIDIA cuOpt Team
+  tags:
+    - cuopt
+    - server
+    - rest-api
+    - python
+    - deployment
 ---
+
+
 
 # cuOpt Server — Deploy and client (Python/curl)
 
 This skill covers **starting the server** and **client examples** (curl, Python). Server has no separate C API (clients can be any language).
+
+## Problem types supported
+
+| Problem type | Supported |
+|--------------|:---------:|
+| Routing      | ✓         |
+| LP           | ✓         |
+| MILP         | ✓         |
+| QP           | ✗         |
+
+## Required questions
+
+Ask these if not already clear:
+
+1. **Problem type** — Routing or LP/MILP? (QP not available via REST.)
+2. **Deployment** — Local, Docker, Kubernetes, or cloud?
+3. **Client** — Which language or tool will call the API (e.g. Python, curl, another service)?
 
 ## Start server
 

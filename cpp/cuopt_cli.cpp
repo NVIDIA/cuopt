@@ -5,13 +5,13 @@
  */
 /* clang-format on */
 
-#include <cuopt/linear_programming/backend_selection.hpp>
-#include <cuopt/linear_programming/cpu_optimization_problem.hpp>
-#include <cuopt/linear_programming/mip/solver_settings.hpp>
-#include <cuopt/linear_programming/optimization_problem.hpp>
-#include <cuopt/linear_programming/optimization_problem_utils.hpp>
-#include <cuopt/linear_programming/solve.hpp>
-#include <mps_parser/parser.hpp>
+#include <cuopt/mathematical_optimization/backend_selection.hpp>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
 #include <utilities/logger.hpp>
 #include <utilities/timer.hpp>
 
@@ -38,17 +38,18 @@ static char cuda_module_loading_env[] = "CUDA_MODULE_LOADING=EAGER";
  * @brief Command line interface for solving Linear Programming (LP) and Mixed Integer Programming
  * (MIP) problems using cuOpt
  *
- * This CLI provides a simple interface to solve LP/MIP problems using cuOpt. It accepts MPS format
- * input files and various solver parameters.
+ * This CLI provides a simple interface to solve LP/MIP problems using cuOpt. It accepts MPS, QPS,
+ * or LP format input files (dispatched automatically by extension; see run_single_file below for
+ * the full list of supported suffixes) and various solver parameters.
  *
  * Usage:
  * ```
- * cuopt_cli <mps_file_path> [OPTIONS]
- * cuopt_cli [OPTIONS] <mps_file_path>
+ * cuopt_cli <input_file_path> [OPTIONS]
+ * cuopt_cli [OPTIONS] <input_file_path>
  * ```
  *
  * Required arguments:
- * - <mps_file_path>: Path to the MPS format input file containing the optimization problem
+ * - <input_file_path>: Path to the MPS or LP format input file containing the optimization problem
  *
  * Optional arguments:
  * - --initial-solution: Path to initial solution file in SOL format
@@ -76,7 +77,7 @@ inline auto make_async() { return std::make_shared<rmm::mr::cuda_async_memory_re
  * @return cuopt::init_logger_t
  */
 inline cuopt::init_logger_t dummy_logger(
-  const cuopt::linear_programming::solver_settings_t<int, double>& settings)
+  const cuopt::mathematical_optimization::solver_settings_t<int, double>& settings)
 {
   return cuopt::init_logger_t(settings.template get_parameter<std::string>(CUOPT_LOG_FILE),
                               settings.template get_parameter<bool>(CUOPT_LOG_TO_CONSOLE));
@@ -84,71 +85,77 @@ inline cuopt::init_logger_t dummy_logger(
 
 /**
  * @brief Run a single file
- * @param file_path Path to the MPS format input file containing the optimization problem
+ * @param file_path Path to the input file. Dispatched by extension:
+ *                  .lp/.lp.gz/.lp.bz2 → LP parser;
+ *                  .mps/.qps and their .gz/.bz2 variants → MPS parser;
+ *                  anything else is rejected.
  * @param initial_solution_file Path to initial solution file in SOL format
+ * @param mps_reader MPS reader implementation selected by the CLI
  * @param settings Merged solver settings (config file loaded in main, then CLI overrides applied)
  */
 int run_single_file(const std::string& file_path,
                     const std::string& initial_solution_file,
                     bool solve_relaxation,
-                    cuopt::linear_programming::solver_settings_t<int, double>& settings)
+                    cuopt::mathematical_optimization::io::mps_reader_type_t mps_reader,
+                    cuopt::mathematical_optimization::solver_settings_t<int, double>& settings)
 {
   cuopt::init_logger_t log(settings.get_parameter<std::string>(CUOPT_LOG_FILE),
                            settings.get_parameter<bool>(CUOPT_LOG_TO_CONSOLE));
 
   std::string base_filename = file_path.substr(file_path.find_last_of("/\\") + 1);
 
-  constexpr bool input_mps_strict = false;
-  cuopt::mps_parser::mps_data_model_t<int, double> mps_data_model;
+  cuopt::mathematical_optimization::io::mps_data_model_t<int, double> mps_data_model;
   bool parsing_failed = false;
   auto timer          = cuopt::timer_t(settings.get_parameter<double>(CUOPT_TIME_LIMIT));
   {
     CUOPT_LOG_INFO("Reading file %s", base_filename.c_str());
     try {
-      mps_data_model = cuopt::mps_parser::parse_mps<int, double>(file_path, input_mps_strict);
+      mps_data_model =
+        cuopt::mathematical_optimization::io::read<int, double>(file_path, mps_reader);
     } catch (const std::logic_error& e) {
-      CUOPT_LOG_ERROR("MPS parser execption: %s", e.what());
+      CUOPT_LOG_ERROR("Parser exception: %s", e.what());
       parsing_failed = true;
     }
   }
   if (parsing_failed) {
     auto log = dummy_logger(settings);
-    CUOPT_LOG_ERROR("Parsing MPS failed. Exiting!");
+    CUOPT_LOG_ERROR("Parsing input file failed. Exiting!");
     return -1;
   }
   CUOPT_LOG_INFO("Read file %s in %.2f seconds", base_filename.c_str(), timer.elapsed_time());
 
   // Determine memory backend and create problem using interface
   // Create handle only for GPU memory backend (avoid CUDA init on CPU-only hosts)
-  auto memory_backend = cuopt::linear_programming::get_memory_backend_type();
+  auto memory_backend = cuopt::mathematical_optimization::get_memory_backend_type();
   std::unique_ptr<raft::handle_t> handle_ptr;
-  std::unique_ptr<cuopt::linear_programming::optimization_problem_interface_t<int, double>>
+  std::unique_ptr<cuopt::mathematical_optimization::optimization_problem_interface_t<int, double>>
     problem_interface;
 
-  if (memory_backend == cuopt::linear_programming::memory_backend_t::GPU) {
+  if (memory_backend == cuopt::mathematical_optimization::memory_backend_t::GPU) {
     handle_ptr = std::make_unique<raft::handle_t>();
     problem_interface =
-      std::make_unique<cuopt::linear_programming::optimization_problem_t<int, double>>(
+      std::make_unique<cuopt::mathematical_optimization::optimization_problem_t<int, double>>(
         handle_ptr.get());
   } else {
     problem_interface =
-      std::make_unique<cuopt::linear_programming::cpu_optimization_problem_t<int, double>>();
+      std::make_unique<cuopt::mathematical_optimization::cpu_optimization_problem_t<int, double>>();
   }
 
-  cuopt::linear_programming::populate_from_mps_data_model(problem_interface.get(), mps_data_model);
+  cuopt::mathematical_optimization::adopt_from_mps_data_model(problem_interface.get(),
+                                                              std::move(mps_data_model));
 
   const bool is_mip = (problem_interface->get_problem_category() ==
-                         cuopt::linear_programming::problem_category_t::MIP ||
+                         cuopt::mathematical_optimization::problem_category_t::MIP ||
                        problem_interface->get_problem_category() ==
-                         cuopt::linear_programming::problem_category_t::IP) &&
+                         cuopt::mathematical_optimization::problem_category_t::IP) &&
                       !solve_relaxation;
 
   try {
     auto initial_solution =
       initial_solution_file.empty()
         ? std::vector<double>()
-        : cuopt::linear_programming::solution_reader_t::get_variable_values_from_sol_file(
-            initial_solution_file, mps_data_model.get_variable_names());
+        : cuopt::mathematical_optimization::solution_reader_t::get_variable_values_from_sol_file(
+            initial_solution_file, problem_interface->get_variable_names());
 
     if (is_mip) {
       auto& mip_settings = settings.get_mip_settings();
@@ -170,10 +177,12 @@ int run_single_file(const std::string& file_path,
   try {
     if (is_mip) {
       auto& mip_settings = settings.get_mip_settings();
-      auto solution = cuopt::linear_programming::solve_mip(problem_interface.get(), mip_settings);
+      auto solution =
+        cuopt::mathematical_optimization::solve_mip(problem_interface.get(), mip_settings);
     } else {
       auto& lp_settings = settings.get_pdlp_settings();
-      auto solution     = cuopt::linear_programming::solve_lp(problem_interface.get(), lp_settings);
+      auto solution =
+        cuopt::mathematical_optimization::solve_lp(problem_interface.get(), lp_settings);
     }
   } catch (const std::exception& e) {
     fprintf(stderr, "cuopt_cli error: %s\n", e.what());
@@ -256,12 +265,12 @@ int main(int argc, char* argv[])
   for (int i = 1; i < argc; ++i) {
     std::string arg = argv[i];
     if (arg == "--dump-hyper-params") {
-      cuopt::linear_programming::solver_settings_t<int, double> settings;
+      cuopt::mathematical_optimization::solver_settings_t<int, double> settings;
       settings.dump_parameters_to_file("/dev/stdout", true);
       return 0;
     }
     if (arg == "--dump-params") {
-      cuopt::linear_programming::solver_settings_t<int, double> settings;
+      cuopt::mathematical_optimization::solver_settings_t<int, double> settings;
       settings.dump_parameters_to_file("/dev/stdout", false);
       return 0;
     }
@@ -278,7 +287,13 @@ int main(int argc, char* argv[])
   argparse::ArgumentParser program("cuopt_cli", version_string);
 
   // Define all arguments with appropriate defaults and help messages
-  program.add_argument("filename").help("input mps file").nargs(1).required();
+  program.add_argument("filename")
+    .help(
+      "input problem file; format dispatched by extension (case-insensitive). "
+      "Supported: .lp, .mps, .qps and their .gz / .bz2 / .lz4 compressed variants "
+      "(e.g. .lp.gz, .mps.bz2, .qps.lz4).")
+    .nargs(1)
+    .required();
 
   // FIXME: use a standard format for initial solution file
   program.add_argument("--initial-solution")
@@ -290,14 +305,17 @@ int main(int argc, char* argv[])
     .default_value(false)
     .implicit_value(true);
 
-  program.add_argument("--presolve")
-    .help("enable/disable presolve (default: true for MIP problems, false for LP problems)")
-    .default_value(true)
-    .implicit_value(true);
-
   program.add_argument("--params-file")
     .help("path to parameter config file (key = value format, supports all parameters)")
     .default_value(std::string(""));
+
+  program.add_argument("--mps-reader")
+    .help(
+      "MPS reader implementation: default uses the production parser; experimental-fast uses the "
+      "experimental SIMD parser for free-format LP/MIP/QP/QCQP (SOCP) .mps/.qps files and their "
+      ".gz/.bz2/.lz4 compressed variants")
+    .default_value(std::string("default"))
+    .choices("default", "experimental-fast");
 
   program.add_argument("--dump-hyper-params")
     .help("print hyper-parameters only in config file format and exit")
@@ -323,7 +341,7 @@ int main(int argc, char* argv[])
 
   {
     // Add all solver settings as arguments
-    cuopt::linear_programming::solver_settings_t<int, double> dummy_settings;
+    cuopt::mathematical_optimization::solver_settings_t<int, double> dummy_settings;
 
     auto int_params    = dummy_settings.get_int_parameters();
     auto double_params = dummy_settings.get_float_parameters();
@@ -399,8 +417,14 @@ int main(int argc, char* argv[])
   const auto initial_solution_file = program.get<std::string>("--initial-solution");
   const auto solve_relaxation      = program.get<bool>("--relaxation");
   const auto params_file           = program.get<std::string>("--params-file");
+  const auto mps_reader_arg        = program.get<std::string>("--mps-reader");
 
-  cuopt::linear_programming::solver_settings_t<int, double> settings;
+  auto mps_reader = cuopt::mathematical_optimization::io::mps_reader_type_t::default_reader;
+  if (mps_reader_arg == "experimental-fast") {
+    mps_reader = cuopt::mathematical_optimization::io::mps_reader_type_t::fast_experimental;
+  }
+
+  cuopt::mathematical_optimization::solver_settings_t<int, double> settings;
   try {
     if (!params_file.empty()) { settings.load_parameters_from_file(params_file); }
     for (auto& [key, val] : settings_strings) {
@@ -413,10 +437,10 @@ int main(int argc, char* argv[])
   }
 
   // Only initialize CUDA resources if using GPU memory backend (not remote execution)
-  auto memory_backend = cuopt::linear_programming::get_memory_backend_type();
+  auto memory_backend = cuopt::mathematical_optimization::get_memory_backend_type();
   std::vector<rmm::mr::cuda_async_memory_resource> memory_resources;
 
-  if (memory_backend == cuopt::linear_programming::memory_backend_t::GPU) {
+  if (memory_backend == cuopt::mathematical_optimization::memory_backend_t::GPU) {
     const int num_gpus = settings.get_parameter<int>(CUOPT_NUM_GPUS);
 
     memory_resources.reserve(std::min(raft::device_setter::get_device_count(), num_gpus));
@@ -428,5 +452,5 @@ int main(int argc, char* argv[])
     RAFT_CUDA_TRY(cudaSetDevice(0));
   }
 
-  return run_single_file(file_name, initial_solution_file, solve_relaxation, settings);
+  return run_single_file(file_name, initial_solution_file, solve_relaxation, mps_reader, settings);
 }

@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 #pragma once
@@ -8,16 +8,16 @@
 #include <cuopt_remote.pb.h>
 #include <cuopt_remote_service.pb.h>
 
-#include <cuopt/linear_programming/cpu_optimization_problem_solution.hpp>
-#include <cuopt/linear_programming/mip/solver_solution.hpp>
-#include <cuopt/linear_programming/pdlp/solver_solution.hpp>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem_solution.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_solution.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>
 
 #include <cstddef>
 #include <cstdint>
 #include <map>
 #include <vector>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 /**
  * @brief Map cpu_lp_solution_t to protobuf LPSolution message.
@@ -58,49 +58,9 @@ template <typename i_t, typename f_t>
 cpu_mip_solution_t<i_t, f_t> map_proto_to_mip_solution(
   const cuopt::remote::MIPSolution& pb_solution);
 
-/**
- * @brief Convert cuOpt termination status to protobuf enum.
- * @param status cuOpt PDLP termination status
- * @return Protobuf PDLPTerminationStatus enum
- */
-cuopt::remote::PDLPTerminationStatus to_proto_pdlp_status(pdlp_termination_status_t status);
-
-/**
- * @brief Convert protobuf enum to cuOpt termination status.
- * @param status Protobuf PDLPTerminationStatus enum
- * @return cuOpt PDLP termination status
- */
-pdlp_termination_status_t from_proto_pdlp_status(cuopt::remote::PDLPTerminationStatus status);
-
-/**
- * @brief Convert cuOpt MIP termination status to protobuf enum.
- * @param status cuOpt MIP termination status
- * @return Protobuf MIPTerminationStatus enum
- */
-cuopt::remote::MIPTerminationStatus to_proto_mip_status(mip_termination_status_t status);
-
-/**
- * @brief Convert protobuf enum to cuOpt MIP termination status.
- * @param status Protobuf MIPTerminationStatus enum
- * @return cuOpt MIP termination status
- */
-mip_termination_status_t from_proto_mip_status(cuopt::remote::MIPTerminationStatus status);
-
 // ============================================================================
 // Chunked result support (for results exceeding gRPC max message size)
 // ============================================================================
-
-/**
- * @brief Estimate serialized protobuf size of an LP solution.
- */
-template <typename i_t, typename f_t>
-size_t estimate_lp_solution_proto_size(const cpu_lp_solution_t<i_t, f_t>& solution);
-
-/**
- * @brief Estimate serialized protobuf size of a MIP solution.
- */
-template <typename i_t, typename f_t>
-size_t estimate_mip_solution_proto_size(const cpu_mip_solution_t<i_t, f_t>& solution);
 
 /**
  * @brief Populate a ChunkedResultHeader from an LP solution (scalar fields + array descriptors).
@@ -180,4 +140,4 @@ void build_mip_solution_proto(const cuopt::remote::ChunkedResultHeader& header,
                               const std::map<int32_t, std::vector<uint8_t>>& arrays,
                               cuopt::remote::MIPSolution* proto);
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

@@ -22,7 +22,8 @@
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/solution.hpp>
 #include <dual_simplex/solve.hpp>
-#include <dual_simplex/types.hpp>
+
+#include <math_optimization/types.hpp>
 
 #include <utilities/macros.cuh>
 #include <utilities/omp_helpers.hpp>
@@ -30,7 +31,9 @@
 #include <utilities/work_limit_context.hpp>
 #include <utilities/work_unit_scheduler.hpp>
 
-#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
+
+#include <mip_heuristics/presolve/third_party_presolve.hpp>
 
 #include <omp.h>
 
@@ -40,29 +43,43 @@
 #include <memory>
 #include <vector>
 
-namespace cuopt::linear_programming::detail {
-template <typename i_t, typename f_t>
-struct clique_table_t;
-}
-
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::mip {
 
 enum class mip_status_t {
-  OPTIMAL    = 0,  // The optimal integer solution was found
-  UNBOUNDED  = 1,  // The problem is unbounded
-  INFEASIBLE = 2,  // The problem is infeasible
-  TIME_LIMIT = 3,  // The solver reached a time limit
-  NODE_LIMIT = 4,  // The maximum number of nodes was reached (not implemented)
-  NUMERICAL  = 5,  // The solver encountered a numerical error
-  UNSET      = 6,  // The status is not set
-  WORK_LIMIT = 7,  // The solver reached a deterministic work limit
+  OPTIMAL         = 0,  // The optimal integer solution was found
+  UNBOUNDED       = 1,  // The problem is unbounded
+  INFEASIBLE      = 2,  // The problem is infeasible
+  TIME_LIMIT      = 3,  // The solver reached a time limit
+  NODE_LIMIT      = 4,  // The maximum number of nodes was reached
+  ITERATION_LIMIT = 5,  // The maximum number of simplex iterations was reached
+  NUMERICAL       = 6,  // The solver encountered a numerical error
+  UNSET           = 7,  // The status is not set
+  WORK_LIMIT      = 8,  // The solver reached a deterministic work limit
+  SUBMIP_HALT     = 9   // Halt the solver
 };
 
-template <typename i_t, typename f_t>
-class bounds_strengthening_t;
+inline std::string mip_status_to_string(mip_status_t status)
+{
+  switch (status) {
+    case mip_status_t::OPTIMAL: return "OPTIMAL";
+    case mip_status_t::UNBOUNDED: return "UNBOUNDED";
+    case mip_status_t::INFEASIBLE: return "INFEASIBLE";
+    case mip_status_t::TIME_LIMIT: return "TIME_LIMIT";
+    case mip_status_t::NODE_LIMIT: return "NODE_LIMIT";
+    case mip_status_t::ITERATION_LIMIT: return "ITERATION_LIMIT";
+    case mip_status_t::NUMERICAL: return "NUMERICAL";
+    case mip_status_t::UNSET: return "UNSET";
+    case mip_status_t::WORK_LIMIT: return "WORK_LIMIT";
+    case mip_status_t::SUBMIP_HALT: return "SUBMIP_HALT";
+  }
+  return "UNKNOWN";
+}
 
 template <typename i_t, typename f_t>
-void upper_bound_callback(f_t upper_bound);
+struct clique_table_t;
+
+template <typename i_t, typename f_t>
+struct mip_symmetry_t;
 
 template <typename i_t, typename f_t>
 struct nondeterministic_policy_t;
@@ -76,14 +93,20 @@ struct deterministic_diving_policy_t;
 template <typename i_t, typename f_t>
 class branch_and_bound_t {
  public:
-  branch_and_bound_t(const user_problem_t<i_t, f_t>& user_problem,
-                     const simplex_solver_settings_t<i_t, f_t>& solver_settings,
+  branch_and_bound_t(const simplex::user_problem_t<i_t, f_t>& user_problem,
+                     const simplex::simplex_solver_settings_t<i_t, f_t>& solver_settings,
                      f_t start_time,
                      const probing_implied_bound_t<i_t, f_t>& probing_implied_bound,
-                     std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table = nullptr);
+                     std::shared_ptr<mip::clique_table_t<i_t, f_t>> clique_table = nullptr,
+                     mip_symmetry_t<i_t, f_t>* symmetry                          = nullptr);
 
   // Set an initial guess based on the user_problem. This should be called before solve.
   void set_initial_guess(const std::vector<f_t>& user_guess) { guess_ = user_guess; }
+
+  void set_submip_halt_callback(std::function<bool(f_t, f_t)> callback)
+  {
+    submip_halt_callback_ = std::move(callback);
+  }
 
   // Set the root solution found by PDLP
   void set_root_relaxation_solution(const std::vector<f_t>& primal,
@@ -108,7 +131,10 @@ class branch_and_bound_t {
   }
 
   // Set a solution based on the user problem during the course of the solve
-  void set_new_solution(const std::vector<f_t>& solution);
+  bool set_solution_from_heuristics(const std::vector<f_t>& solution, heuristics_origin_t origin);
+
+  // Apply a solution found by a CPU FJ worker.
+  void set_solution_from_cpu_fj(f_t obj, const std::vector<f_t>& assignment, double work_units);
 
   // This queues the solution to be processed at the correct work unit timestamp
   void queue_external_solution_deterministic(const std::vector<f_t>& solution, double work_unit_ts);
@@ -124,6 +150,9 @@ class branch_and_bound_t {
   // `bound` must be in B&B's internal objective space.
   void set_initial_upper_bound(f_t bound);
 
+  void set_initial_pseudocost(const pseudo_costs_t<i_t, f_t>& parent_pc,
+                              const std::vector<i_t>& reduced_to_original);
+
   f_t get_upper_bound() const { return upper_bound_.load(); }
   bool has_solver_space_incumbent() const { return incumbent_.has_incumbent; }
 
@@ -137,20 +166,21 @@ class branch_and_bound_t {
   bool enable_concurrent_lp_root_solve() const { return enable_concurrent_lp_root_solve_; }
   std::atomic<int>* get_root_concurrent_halt() { return &root_concurrent_halt_; }
   void set_root_concurrent_halt(int value) { root_concurrent_halt_ = value; }
-  lp_status_t solve_root_relaxation(simplex_solver_settings_t<i_t, f_t> const& lp_settings,
-                                    lp_solution_t<i_t, f_t>& root_relax_soln,
-                                    std::vector<variable_status_t>& root_vstatus,
-                                    basis_update_mpf_t<i_t, f_t>& basis_update,
-                                    std::vector<i_t>& basic_list,
-                                    std::vector<i_t>& nonbasic_list,
-                                    std::vector<f_t>& edge_norms);
+  simplex::lp_status_t solve_root_relaxation(
+    simplex::simplex_solver_settings_t<i_t, f_t> const& lp_settings,
+    simplex::lp_solution_t<i_t, f_t>& root_relax_soln,
+    std::vector<simplex::variable_status_t>& root_vstatus,
+    simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
+    std::vector<i_t>& basic_list,
+    std::vector<i_t>& nonbasic_list,
+    std::vector<f_t>& edge_norms);
 
   i_t find_reduced_cost_fixings(f_t upper_bound,
                                 std::vector<f_t>& lower_bounds,
                                 std::vector<f_t>& upper_bounds);
 
   // The main entry routine. Returns the solver status and populates solution with the incumbent.
-  mip_status_t solve(mip_solution_t<i_t, f_t>& solution);
+  mip_status_t solve(simplex::mip_solution_t<i_t, f_t>& solution);
 
   work_limit_context_t& get_work_unit_context() { return work_unit_context_; }
 
@@ -158,11 +188,12 @@ class branch_and_bound_t {
   producer_sync_t& get_producer_sync() { return producer_sync_; }
 
  private:
-  const user_problem_t<i_t, f_t>& original_problem_;
-  const simplex_solver_settings_t<i_t, f_t> settings_;
+  const simplex::user_problem_t<i_t, f_t>& original_problem_;
+  const simplex::simplex_solver_settings_t<i_t, f_t> settings_;
   const probing_implied_bound_t<i_t, f_t>& probing_implied_bound_;
-  std::shared_ptr<detail::clique_table_t<i_t, f_t>> clique_table_;
+  std::shared_ptr<mip::clique_table_t<i_t, f_t>> clique_table_;
   omp_atomic_t<bool> signal_extend_cliques_{false};
+  mip_symmetry_t<i_t, f_t>* symmetry_;
 
   work_limit_context_t work_unit_context_{"B&B"};
 
@@ -171,9 +202,9 @@ class branch_and_bound_t {
 
   // LP relaxation
   csr_matrix_t<i_t, f_t> Arow_;
-  lp_problem_t<i_t, f_t> original_lp_;
+  simplex::lp_problem_t<i_t, f_t> original_lp_;
   std::vector<i_t> new_slacks_;
-  std::vector<variable_type_t> var_types_;
+  std::vector<simplex::variable_type_t> var_types_;
 
   // Variable locks (see definition 3.3 from T. Achterberg, “Constraint Integer Programming,”
   // PhD, Technischen Universität Berlin, Berlin, 2007. doi: 10.14279/depositonce-1634).
@@ -196,17 +227,14 @@ class branch_and_bound_t {
   // original-space in the mip_solver_context_t), but does NOT imply incumbent_.has_incumbent.
   omp_atomic_t<f_t> upper_bound_;
 
-  // Solver-space incumbent tracked directly by B&B.
-  mip_solution_t<i_t, f_t> incumbent_;
+  // Callback for halting the solver. This passes the current upper and lower bound of the solver
+  // in user space. The main use of this callback is to stop the sub-MIP solve when
+  // the status of the main solve has changed (optimal, time/node/work limit, etc.) or
+  // the sub-MIP become suboptimal (lower bound is greater than the current incumbent)
+  std::function<bool(f_t, f_t)> submip_halt_callback_;
 
-  // Whether obj should replace the stored incumbent. Must be called under mutex_upper_.
-  // Compares against the stored incumbent's objective, NOT against upper_bound_, because
-  // set_initial_upper_bound can set a tighter bound from an OG-space solution that has no
-  // corresponding solver-space incumbent (e.g. papilo can't crush it back).
-  bool improves_incumbent(f_t obj) const
-  {
-    return !incumbent_.has_incumbent || obj < incumbent_.objective;
-  }
+  // Solver-space incumbent tracked directly by B&B.
+  simplex::mip_solution_t<i_t, f_t> incumbent_;
 
   // Structure with the general info of the solver.
   branch_and_bound_stats_t<i_t, f_t> exploration_stats_;
@@ -216,11 +244,11 @@ class branch_and_bound_t {
   std::vector<std::vector<f_t>> repair_queue_;
 
   // Variables for the root node in the search tree.
-  std::vector<variable_status_t> root_vstatus_;
-  std::vector<variable_status_t> crossover_vstatus_;
+  std::vector<simplex::variable_status_t> root_vstatus_;
+  std::vector<simplex::variable_status_t> crossover_vstatus_;
   f_t root_objective_;
-  lp_solution_t<i_t, f_t> root_relax_soln_;
-  lp_solution_t<i_t, f_t> root_crossover_soln_;
+  simplex::lp_solution_t<i_t, f_t> root_relax_soln_;
+  simplex::lp_solution_t<i_t, f_t> root_crossover_soln_;
   method_t root_relax_solved_by{Unset};
   std::vector<f_t> edge_norms_;
   std::atomic<bool> root_crossover_solution_set_{false};
@@ -230,22 +258,23 @@ class branch_and_bound_t {
   std::atomic<int> root_concurrent_halt_{0};
   std::atomic<int> node_concurrent_halt_{0};
   bool is_root_solution_set{false};
+  bool has_initial_pseudocost_{false};
 
   // Pseudocosts
   pseudo_costs_t<i_t, f_t> pc_;
 
-  // Heap storing the nodes waiting to be explored.
-  node_queue_t<i_t, f_t> node_queue_;
-
   // Search tree
   search_tree_t<i_t, f_t> search_tree_;
 
-  // Count the number of workers per type that either are being executed or
-  // are waiting to be executed.
-  std::array<omp_atomic_t<i_t>, num_search_strategies> active_workers_per_strategy_;
+  // Worker pool dedicated to the best-first search
+  bfs_worker_pool_t<i_t, f_t> bfs_worker_pool_;
 
-  // Worker pool
-  branch_and_bound_worker_pool_t<i_t, f_t> worker_pool_;
+  // Worker pool dedicated to diving
+  diving_worker_pool_t<i_t, f_t> diving_worker_pool_;
+
+  // Worker pool dedicated to recursive RINS
+  diving_worker_pool_t<i_t, f_t> rins_worker_pool_;
+  submip_stats_t rins_stats_;
 
   // Global status of the solver.
   omp_atomic_t<mip_status_t> solver_status_;
@@ -257,11 +286,13 @@ class branch_and_bound_t {
   i_t min_node_queue_size_;
 
   // In case, a best-first thread encounters a numerical issue when solving a node,
-  // its blocks the progression of the lower bound.
-  omp_atomic_t<f_t> lower_bound_ceiling_;
+  // its blocks the progression of the lower bound as it cannot explore the
+  // corresponding subtree.
+  omp_atomic_t<f_t> lower_bound_numerical_;
   std::function<void(f_t)> user_bound_callback_;
 
-  void report_heuristic(f_t obj);
+  void print_table_header();
+  void report_heuristic(f_t obj, heuristics_origin_t origin);
   void report(char symbol,
               f_t obj,
               f_t lower_bound,
@@ -276,17 +307,17 @@ class branch_and_bound_t {
   };
 
   cut_pass_result_t do_cut_pass(i_t cut_pass,
-                                mip_solution_t<i_t, f_t>& solution,
+                                simplex::mip_solution_t<i_t, f_t>& solution,
                                 i_t& num_fractional,
                                 std::vector<i_t>& fractional,
                                 cut_generation_t<i_t, f_t>& cut_generation,
-                                basis_update_mpf_t<i_t, f_t>& basis_update,
+                                simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
                                 std::vector<i_t>& basic_list,
                                 std::vector<i_t>& nonbasic_list,
                                 variable_bounds_t<i_t, f_t>& variable_bounds,
                                 cut_pool_t<i_t, f_t>& cut_pool,
                                 cut_info_t<i_t, f_t>& cut_info,
-                                simplex_solver_settings_t<i_t, f_t>& lp_settings,
+                                simplex::simplex_solver_settings_t<i_t, f_t>& lp_settings,
                                 i_t original_rows,
                                 f_t& last_upper_bound,
                                 f_t& last_objective,
@@ -295,12 +326,12 @@ class branch_and_bound_t {
                                 const std::vector<f_t>& saved_solution);
 
   // Set the solution when found at the root node
-  void set_solution_at_root(mip_solution_t<i_t, f_t>& solution,
+  void set_solution_at_root(simplex::mip_solution_t<i_t, f_t>& solution,
                             const cut_info_t<i_t, f_t>& cut_info);
   void update_user_bound(f_t lower_bound);
 
   // Set the final solution.
-  void set_final_solution(mip_solution_t<i_t, f_t>& solution, f_t lower_bound);
+  void set_final_solution(simplex::mip_solution_t<i_t, f_t>& solution, f_t lower_bound);
 
   // Update the incumbent solution with the new feasible solution
   // found during branch and bound.
@@ -312,28 +343,64 @@ class branch_and_bound_t {
   // Repairs low-quality solutions from the heuristics, if it is applicable.
   void repair_heuristic_solutions();
 
+  // Launch a new diving worker from a given best-first worker.
+  bool launch_diving_worker(bfs_worker_t<i_t, f_t>* bfs_worker);
+
+  void snap_to_lattice(mip_node_t<i_t, f_t>* node_ptr, f_t leaf_obj);
+
+  // Launch a new best-first worker from a given bfs worker.
+  void launch_bfs_worker(bfs_worker_t<i_t, f_t>* worker);
+
+  // Perform best-first search with a given bfs worker.
+  void best_first_search_with(bfs_worker_t<i_t, f_t>* worker);
+
   // We use best-first to pick the `start_node` and then perform a depth-first search
   // from this node (i.e., a plunge). It can only backtrack to a sibling node.
   // Unexplored nodes in the subtree are inserted back into the global heap.
-  void plunge_with(branch_and_bound_worker_t<i_t, f_t>* worker);
+  void plunge_with(bfs_worker_t<i_t, f_t>* worker, mip_node_t<i_t, f_t>* start_node);
+
+  // A worker attempts to steal nodes from another worker
+  void work_stealing(bfs_worker_t<i_t, f_t>* worker);
 
   // Perform a deep dive in the subtree determined by the `start_node` in order
   // to find integer feasible solutions.
-  void dive_with(branch_and_bound_worker_t<i_t, f_t>* worker);
+  void dive_with(diving_worker_t<i_t, f_t>* worker, i_t backtrack_limit);
 
-  // Run the scheduler whose will schedule and manage
-  // all the other workers.
-  void run_scheduler();
+  // Launch a new RINS worker
+  bool launch_rins_worker(const std::vector<f_t>& sol);
+  void set_solution_from_submip(const std::vector<f_t>& solution,
+                                const third_party_presolve_t<i_t, f_t>& presolver,
+                                f_t fixrate,
+                                f_t obj);
 
-  // Run the branch-and-bound algorithm in single threaded mode.
-  // This disable all diving heuristics.
-  void single_threaded_solve();
+  // Solve the RINS sub-MIP
+  void solve_submip(diving_worker_t<i_t, f_t>* worker,
+                    const std::vector<f_t>& current_incumbent,
+                    i_t num_var_fixed,
+                    i_t num_integers,
+                    i_t submip_level,
+                    std::string_view log_prefix);
+
+  // Creates and solves the RINS sub-MIP
+  void rins(diving_worker_t<i_t, f_t>* rins_worker, const std::vector<f_t>& node_solution);
+
+  // Get the simplex settings for solving the LP of a single node
+  simplex::simplex_solver_settings_t<i_t, f_t> get_node_lp_settings();
 
   // Solve the LP relaxation of a leaf node
-  dual::status_t solve_node_lp(mip_node_t<i_t, f_t>* node_ptr,
-                               branch_and_bound_worker_t<i_t, f_t>* worker,
-                               branch_and_bound_stats_t<i_t, f_t>& stats,
-                               logger_t& log);
+  simplex::dual_status_t solve_node_lp(mip_node_t<i_t, f_t>* node_ptr,
+                                       branch_and_bound_worker_t<i_t, f_t>* worker,
+                                       branch_and_bound_stats_t<i_t, f_t>& stats,
+                                       simplex::logger_t& log,
+                                       i_t iter_limit = std::numeric_limits<i_t>::max());
+
+  // Apply symmetry-based bound reductions (orbital fixing and, when
+  // settings_.symmetry == 2, lexical reduction) to the current node.
+  // Tightens worker->leaf_problem bounds and updates stats. Returns false
+  // if lexical reduction proves the node infeasible.
+  bool apply_symmetry_reductions(mip_node_t<i_t, f_t>* node_ptr,
+                                 branch_and_bound_worker_t<i_t, f_t>* worker,
+                                 branch_and_bound_stats_t<i_t, f_t>& stats);
 
   // Selects the variable to branch on.
   branch_variable_t<i_t> variable_selection(mip_node_t<i_t, f_t>* node_ptr,
@@ -346,7 +413,7 @@ class branch_and_bound_t {
     mip_node_t<i_t, f_t>* node_ptr,
     search_tree_t<i_t, f_t>& search_tree,
     WorkerT* worker,
-    dual::status_t lp_status,
+    simplex::dual_status_t lp_status,
     Policy& policy);
 
   // Opportunistic tree update wrapper.
@@ -354,8 +421,8 @@ class branch_and_bound_t {
     mip_node_t<i_t, f_t>* node_ptr,
     search_tree_t<i_t, f_t>& search_tree,
     branch_and_bound_worker_t<i_t, f_t>* worker,
-    dual::status_t lp_status,
-    logger_t& log);
+    simplex::dual_status_t lp_status,
+    simplex::logger_t& log);
 
   // ============================================================================
   // Deterministic BSP (Bulk Synchronous Parallel) methods for deterministic parallel B&B
@@ -463,4 +530,4 @@ class branch_and_bound_t {
   heap_t<diving_entry_t, diving_score_comp> diving_heap_;
 };
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::mip

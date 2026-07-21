@@ -7,16 +7,17 @@
 
 #include <branch_and_bound/pseudo_costs.hpp>
 #include <branch_and_bound/shared_strong_branching_context.hpp>
+#include <branch_and_bound/symmetry.hpp>
 #include <branch_and_bound/worker.hpp>
 
 #include <dual_simplex/phase2.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/solve.hpp>
-#include <dual_simplex/tic_toc.hpp>
+#include <math_optimization/tic_toc.hpp>
 
 #include <mip_heuristics/mip_constants.hpp>
 
-#include <cuopt/linear_programming/solve.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
 
 #include <utilities/copy_helpers.hpp>
 
@@ -24,13 +25,25 @@
 
 #include <omp.h>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::mip {
+
+using simplex::basis_update_mpf_t;
+using simplex::compute_initial_nonbasic_end;
+using simplex::compute_objective;
+using simplex::dual_status_t;
+using simplex::logger_t;
+using simplex::lp_problem_t;
+using simplex::lp_solution_t;
+using simplex::simplex_solver_settings_t;
+using simplex::variable_status_t;
+using simplex::variable_type_t;
+
 namespace {
 
-static bool is_dual_simplex_done(dual::status_t status)
+static bool is_dual_simplex_done(dual_status_t status)
 {
-  return status == dual::status_t::DUAL_UNBOUNDED || status == dual::status_t::OPTIMAL ||
-         status == dual::status_t::ITERATION_LIMIT || status == dual::status_t::CUTOFF;
+  return status == dual_status_t::DUAL_UNBOUNDED || status == dual_status_t::OPTIMAL ||
+         status == dual_status_t::ITERATION_LIMIT || status == dual_status_t::CUTOFF;
 }
 
 template <typename f_t>
@@ -66,14 +79,14 @@ template <typename i_t, typename f_t>
 objective_change_estimate_t<f_t> single_pivot_objective_change_estimate(
   const lp_problem_t<i_t, f_t>& lp,
   const simplex_solver_settings_t<i_t, f_t>& settings,
-  const csc_matrix_t<i_t, f_t>& A_transpose,
+  const csr_matrix_t<i_t, f_t>& Arow,
   const std::vector<variable_status_t>& vstatus,
   i_t variable_j,
   i_t basic_j,
   const lp_solution_t<i_t, f_t>& lp_solution,
   const std::vector<i_t>& basic_list,
   const std::vector<i_t>& nonbasic_list,
-  const std::vector<i_t>& nonbasic_mark,
+  const std::vector<i_t>& nonbasic_end,
   basis_update_mpf_t<i_t, f_t>& basis_factors,
   std::vector<i_t>& workspace,
   std::vector<f_t>& delta_z,
@@ -82,7 +95,6 @@ objective_change_estimate_t<f_t> single_pivot_objective_change_estimate(
   // Compute the objective estimate for the down and up branches of variable j
   assert(variable_j >= 0);
   assert(basic_j >= 0);
-
   // Down branch
   i_t direction = -1;
   sparse_vector_t<i_t, f_t> e_k(lp.num_rows, 0);
@@ -104,28 +116,28 @@ objective_change_estimate_t<f_t> single_pivot_objective_change_estimate(
   std::vector<i_t> delta_z_indices;
   // delta_z starts out all zero
   if (use_transpose) {
-    compute_delta_z(A_transpose,
-                    delta_y,
-                    variable_j,
-                    direction,
-                    nonbasic_mark,
-                    workspace,
-                    delta_z_indices,
-                    delta_z,
-                    work_estimate);
+    simplex::compute_delta_z(Arow,
+                             delta_y,
+                             variable_j,
+                             direction,
+                             nonbasic_end,
+                             workspace,
+                             delta_z_indices,
+                             delta_z,
+                             work_estimate);
   } else {
     std::vector<f_t> delta_y_dense(lp.num_rows, 0);
     delta_y.to_dense(delta_y_dense);
-    compute_reduced_cost_update(lp,
-                                basic_list,
-                                nonbasic_list,
-                                delta_y_dense,
-                                variable_j,
-                                direction,
-                                workspace,
-                                delta_z_indices,
-                                delta_z,
-                                work_estimate);
+    simplex::compute_reduced_cost_update(lp,
+                                         basic_list,
+                                         nonbasic_list,
+                                         delta_y_dense,
+                                         variable_j,
+                                         direction,
+                                         workspace,
+                                         delta_z_indices,
+                                         delta_z,
+                                         work_estimate);
   }
 
   // Verify dual feasibility
@@ -218,7 +230,7 @@ void initialize_pseudo_costs_with_estimate(const lp_problem_t<i_t, f_t>& lp,
                                            const std::vector<i_t>& basic_list,
                                            const std::vector<i_t>& nonbasic_list,
                                            const std::vector<i_t>& fractional,
-                                           const csc_matrix_t<i_t, f_t>& AT,
+                                           const csr_matrix_t<i_t, f_t>& Arow,
                                            basis_update_mpf_t<i_t, f_t>& basis_factors,
                                            std::vector<f_t>& strong_branch_down,
                                            std::vector<f_t>& strong_branch_up)
@@ -236,10 +248,11 @@ void initialize_pseudo_costs_with_estimate(const lp_problem_t<i_t, f_t>& lp,
     basic_map[basic_list[i]] = i;
   }
 
-  std::vector<i_t> nonbasic_mark(n, -1);
-  for (i_t i = 0; i < n - m; i++) {
-    nonbasic_mark[nonbasic_list[i]] = i;
-  }
+  // compute_initial_nonbasic_end permutes columns in place; copy so pc.Arow is unchanged
+  csr_matrix_t<i_t, f_t> local_Arow = Arow;
+
+  std::vector<i_t> nonbasic_end(m);
+  compute_initial_nonbasic_end(basic_map, local_Arow, nonbasic_end);
 
   for (i_t k = 0; k < fractional.size(); k++) {
     const i_t j = fractional[k];
@@ -248,14 +261,14 @@ void initialize_pseudo_costs_with_estimate(const lp_problem_t<i_t, f_t>& lp,
     objective_change_estimate_t<f_t> estimate =
       single_pivot_objective_change_estimate(lp,
                                              settings,
-                                             AT,
+                                             local_Arow,
                                              vstatus,
                                              j,
                                              basic_map[j],
                                              lp_solution,
                                              basic_list,
                                              nonbasic_list,
-                                             nonbasic_mark,
+                                             nonbasic_end,
                                              basis_factors,
                                              workspace,
                                              delta_z,
@@ -304,8 +317,8 @@ void strong_branch_helper(i_t start,
                           std::vector<f_t>& strong_branch_up,
                           std::vector<f_t>& dual_simplex_obj_down,
                           std::vector<f_t>& dual_simplex_obj_up,
-                          std::vector<dual::status_t>& dual_simplex_status_down,
-                          std::vector<dual::status_t>& dual_simplex_status_up,
+                          std::vector<dual_status_t>& dual_simplex_status_down,
+                          std::vector<dual_status_t>& dual_simplex_status_up,
                           shared_strong_branching_context_view_t<i_t, f_t>& sb_view,
                           omp_atomic_t<i_t>& num_strong_branches_completed)
 {
@@ -357,22 +370,22 @@ void strong_branch_helper(i_t start,
       i_t iter                               = 0;
       std::vector<variable_status_t> vstatus = root_vstatus;
       std::vector<f_t> child_edge_norms      = edge_norms;
-      dual::status_t status                  = dual_phase2(2,
-                                          0,
-                                          lp_start_time,
-                                          child_problem,
-                                          child_settings,
-                                          vstatus,
-                                          solution,
-                                          iter,
-                                          child_edge_norms);
+      dual_status_t status                   = simplex::dual_phase2(2,
+                                                  0,
+                                                  lp_start_time,
+                                                  child_problem,
+                                                  child_settings,
+                                                  vstatus,
+                                                  solution,
+                                                  iter,
+                                                  child_edge_norms);
 
       f_t obj = std::numeric_limits<f_t>::quiet_NaN();
-      if (status == dual::status_t::DUAL_UNBOUNDED) {
+      if (status == dual_status_t::DUAL_UNBOUNDED) {
         // LP was infeasible
         obj = std::numeric_limits<f_t>::infinity();
-      } else if (status == dual::status_t::OPTIMAL || status == dual::status_t::ITERATION_LIMIT ||
-                 status == dual::status_t::CUTOFF) {
+      } else if (status == dual_status_t::OPTIMAL || status == dual_status_t::ITERATION_LIMIT ||
+                 status == dual_status_t::CUTOFF) {
         obj = compute_objective(child_problem, solution.x);
       } else {
         settings.log.debug("Thread id %2d remaining %d variable %d branch %d status %d\n",
@@ -453,21 +466,21 @@ void strong_branch_helper(i_t start,
 }
 
 template <typename i_t, typename f_t>
-std::pair<f_t, dual::status_t> trial_branching(const lp_problem_t<i_t, f_t>& original_lp,
-                                               const simplex_solver_settings_t<i_t, f_t>& settings,
-                                               const std::vector<variable_type_t>& var_types,
-                                               const std::vector<variable_status_t>& vstatus,
-                                               const std::vector<f_t>& edge_norms,
-                                               const basis_update_mpf_t<i_t, f_t>& basis_factors,
-                                               const std::vector<i_t>& basic_list,
-                                               const std::vector<i_t>& nonbasic_list,
-                                               i_t branch_var,
-                                               f_t branch_var_lower,
-                                               f_t branch_var_upper,
-                                               f_t upper_bound,
-                                               f_t start_time,
-                                               i_t iter_limit,
-                                               i_t& iter)
+std::pair<f_t, dual_status_t> trial_branching(const lp_problem_t<i_t, f_t>& original_lp,
+                                              const simplex_solver_settings_t<i_t, f_t>& settings,
+                                              const std::vector<variable_type_t>& var_types,
+                                              const std::vector<variable_status_t>& vstatus,
+                                              const std::vector<f_t>& edge_norms,
+                                              const basis_update_mpf_t<i_t, f_t>& basis_factors,
+                                              const std::vector<i_t>& basic_list,
+                                              const std::vector<i_t>& nonbasic_list,
+                                              i_t branch_var,
+                                              f_t branch_var_lower,
+                                              f_t branch_var_upper,
+                                              f_t upper_bound,
+                                              f_t start_time,
+                                              i_t iter_limit,
+                                              i_t& iter)
 {
   lp_problem_t child_problem      = original_lp;
   child_problem.lower[branch_var] = branch_var_lower;
@@ -493,47 +506,47 @@ std::pair<f_t, dual::status_t> trial_branching(const lp_problem_t<i_t, f_t>& ori
   // Only refactor the basis if we encounter numerical issues.
   child_basis_factors.set_refactor_frequency(iter_limit);
 
-  dual::status_t status = dual_phase2_with_advanced_basis(2,
-                                                          0,
-                                                          initialize_basis,
-                                                          start_time,
-                                                          child_problem,
-                                                          child_settings,
-                                                          child_vstatus,
-                                                          child_basis_factors,
-                                                          child_basic_list,
-                                                          child_nonbasic_list,
-                                                          solution,
-                                                          iter,
-                                                          child_edge_norms);
+  dual_status_t status = simplex::dual_phase2_with_advanced_basis(2,
+                                                                  0,
+                                                                  initialize_basis,
+                                                                  start_time,
+                                                                  child_problem,
+                                                                  child_settings,
+                                                                  child_vstatus,
+                                                                  child_basis_factors,
+                                                                  child_basic_list,
+                                                                  child_nonbasic_list,
+                                                                  solution,
+                                                                  iter,
+                                                                  child_edge_norms);
 
   settings.log.debug("Trial branching on variable %d. Lo: %e Up: %e. Iter %d. Status %s. Obj %e\n",
                      branch_var,
                      child_problem.lower[branch_var],
                      child_problem.upper[branch_var],
                      iter,
-                     dual::status_to_string(status).c_str(),
+                     simplex::dual_status_to_string(status).c_str(),
                      compute_objective(child_problem, solution.x));
 
-  if (status == dual::status_t::DUAL_UNBOUNDED) {
+  if (status == dual_status_t::DUAL_UNBOUNDED) {
     // LP was infeasible
-    return {std::numeric_limits<f_t>::infinity(), dual::status_t::DUAL_UNBOUNDED};
-  } else if (status == dual::status_t::OPTIMAL || status == dual::status_t::ITERATION_LIMIT ||
-             status == dual::status_t::CUTOFF) {
+    return {std::numeric_limits<f_t>::infinity(), dual_status_t::DUAL_UNBOUNDED};
+  } else if (status == dual_status_t::OPTIMAL || status == dual_status_t::ITERATION_LIMIT ||
+             status == dual_status_t::CUTOFF) {
     return {compute_objective(child_problem, solution.x), status};
   } else {
-    return {std::numeric_limits<f_t>::quiet_NaN(), dual::status_t::NUMERICAL};
+    return {std::numeric_limits<f_t>::quiet_NaN(), dual_status_t::NUMERICAL};
   }
 }
 
 }  // namespace
 
 template <typename i_t, typename f_t>
-static cuopt::mps_parser::mps_data_model_t<i_t, f_t> simplex_problem_to_mps_data_model(
-  const dual_simplex::lp_problem_t<i_t, f_t>& lp,
-  const std::vector<i_t>& new_slacks,
-  const std::vector<f_t>& root_soln,
-  std::vector<f_t>& original_root_soln_x)
+static cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t>
+simplex_problem_to_mps_data_model(const lp_problem_t<i_t, f_t>& lp,
+                                  const std::vector<i_t>& new_slacks,
+                                  const std::vector<f_t>& root_soln,
+                                  std::vector<f_t>& original_root_soln_x)
 {
   // Branch and bound has a problem of the form:
   // minimize c^T x
@@ -548,13 +561,13 @@ static cuopt::mps_parser::mps_data_model_t<i_t, f_t> simplex_problem_to_mps_data
   // subject to  lb <= A*x <= ub
   //             l <= x <= u
 
-  cuopt::mps_parser::mps_data_model_t<i_t, f_t> mps_model;
+  cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> mps_model;
   int m = lp.num_rows;
   int n = lp.num_cols - new_slacks.size();
   original_root_soln_x.resize(n);
 
   // Remove slacks from A
-  dual_simplex::csc_matrix_t<i_t, f_t> A_no_slacks = lp.A;
+  csc_matrix_t<i_t, f_t> A_no_slacks = lp.A;
   std::vector<i_t> cols_to_remove(lp.A.n, 0);
   for (i_t j : new_slacks) {
     cols_to_remove[j] = 1;
@@ -566,7 +579,7 @@ static cuopt::mps_parser::mps_data_model_t<i_t, f_t> simplex_problem_to_mps_data
   }
 
   // Convert CSC to CSR using built-in method
-  dual_simplex::csr_matrix_t<i_t, f_t> csr_A(m, n, 0);
+  csr_matrix_t<i_t, f_t> csr_A(m, n, 0);
   A_no_slacks.to_compressed_row(csr_A);
 
   int nz = csr_A.row_start[m];
@@ -656,34 +669,34 @@ enum class sb_source_t { DUAL_SIMPLEX, PDLP, NONE };
 //   5. Else if none converged -> NaN (original objective)
 template <typename i_t, typename f_t>
 static std::pair<f_t, sb_source_t> merge_sb_result(f_t dual_simplex_val,
-                                                   dual::status_t dual_simplex_status,
+                                                   dual_status_t dual_simplex_status,
                                                    f_t pdlp_dual_obj,
                                                    bool pdlp_optimal)
 {
   // Dual simplex always maintains dual feasibility, so OPTIMAL and ITERATION_LIMIT both qualify
 
   // Rule 1: Both optimal -> keep DS
-  if (dual_simplex_status == dual::status_t::OPTIMAL && pdlp_optimal) {
+  if (dual_simplex_status == dual_status_t::OPTIMAL && pdlp_optimal) {
     return {dual_simplex_val, sb_source_t::DUAL_SIMPLEX};
   }
 
   // Rule 2: Dual Simplex found infeasible -> declare infeasible
-  if (dual_simplex_status == dual::status_t::DUAL_UNBOUNDED) {
+  if (dual_simplex_status == dual_status_t::DUAL_UNBOUNDED) {
     return {std::numeric_limits<f_t>::infinity(), sb_source_t::DUAL_SIMPLEX};
   }
 
   // Rule 3: Only one converged -> keep that
-  if (dual_simplex_status == dual::status_t::OPTIMAL && !pdlp_optimal) {
+  if (dual_simplex_status == dual_status_t::OPTIMAL && !pdlp_optimal) {
     return {dual_simplex_val, sb_source_t::DUAL_SIMPLEX};
   }
-  if (pdlp_optimal && dual_simplex_status != dual::status_t::OPTIMAL) {
+  if (pdlp_optimal && dual_simplex_status != dual_status_t::OPTIMAL) {
     return {pdlp_dual_obj, sb_source_t::PDLP};
   }
 
   // Rule 4: Dual Simplex hit iteration limit or work limit or cutoff -> keep DS
-  if (dual_simplex_status == dual::status_t::ITERATION_LIMIT ||
-      dual_simplex_status == dual::status_t::WORK_LIMIT ||
-      dual_simplex_status == dual::status_t::CUTOFF) {
+  if (dual_simplex_status == dual_status_t::ITERATION_LIMIT ||
+      dual_simplex_status == dual_status_t::WORK_LIMIT ||
+      dual_simplex_status == dual_status_t::CUTOFF) {
     return {dual_simplex_val, sb_source_t::DUAL_SIMPLEX};
   }
 
@@ -725,7 +738,7 @@ static void batch_pdlp_strong_branching_task(
 
   std::vector<f_t> original_root_soln_y, original_root_soln_z;
   // TODO put back later once Chris has this part
-  /*uncrush_dual_solution(
+  /*simplex::uncrush_dual_solution(
     original_problem, original_lp, root_soln_y, root_soln_z, original_root_soln_y,
     original_root_soln_z);*/
 
@@ -995,27 +1008,29 @@ static void batch_pdlp_reliability_branching_task(
 }
 
 template <typename i_t, typename f_t>
-void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
-                      const simplex_solver_settings_t<i_t, f_t>& settings,
-                      f_t start_time,
-                      const std::vector<i_t>& new_slacks,
-                      const std::vector<variable_type_t>& var_types,
-                      const lp_solution_t<i_t, f_t>& root_solution,
-                      const std::vector<i_t>& fractional,
-                      f_t root_obj,
-                      f_t upper_bound,
-                      const std::vector<variable_status_t>& root_vstatus,
-                      const std::vector<f_t>& edge_norms,
-                      const std::vector<i_t>& basic_list,
-                      const std::vector<i_t>& nonbasic_list,
-                      basis_update_mpf_t<i_t, f_t>& basis_factors,
-                      pseudo_costs_t<i_t, f_t>& pc)
+void strong_branching_reduced(const lp_problem_t<i_t, f_t>& original_lp,
+                              const simplex_solver_settings_t<i_t, f_t>& settings,
+                              f_t start_time,
+                              const std::vector<i_t>& new_slacks,
+                              const std::vector<variable_type_t>& var_types,
+                              const lp_solution_t<i_t, f_t>& root_solution,
+                              const std::vector<i_t>& fractional,
+                              f_t root_obj,
+                              f_t upper_bound,
+                              const std::vector<variable_status_t>& root_vstatus,
+                              const std::vector<f_t>& edge_norms,
+                              const std::vector<i_t>& basic_list,
+                              const std::vector<i_t>& nonbasic_list,
+                              basis_update_mpf_t<i_t, f_t>& basis_factors,
+                              std::vector<f_t>& strong_branch_down,
+                              std::vector<f_t>& strong_branch_up,
+                              pseudo_costs_t<i_t, f_t>& pc)
 {
   raft::common::nvtx::range scope("BB::strong_branching");
 
   pc.resize(original_lp.num_cols);
-  std::vector<f_t> strong_branch_down(fractional.size(), std::numeric_limits<f_t>::quiet_NaN());
-  std::vector<f_t> strong_branch_up(fractional.size(), std::numeric_limits<f_t>::quiet_NaN());
+  strong_branch_down.assign(fractional.size(), std::numeric_limits<f_t>::quiet_NaN());
+  strong_branch_up.assign(fractional.size(), std::numeric_limits<f_t>::quiet_NaN());
   omp_atomic_t<i_t> num_strong_branches_completed = 0;
 
   const f_t elapsed_time = toc(start_time);
@@ -1025,7 +1040,7 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
   i_t effective_batch_pdlp = settings.mip_batch_pdlp_strong_branching;
 
   // Disable for sub MIP
-  if (settings.sub_mip) { effective_batch_pdlp = 0; }
+  if (settings.inside_submip) { effective_batch_pdlp = 0; }
 
   // Disable if running in deterministic mode
   if (settings.deterministic && settings.mip_batch_pdlp_strong_branching == 1) {
@@ -1038,7 +1053,7 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
   }
 
   if (settings.mip_batch_pdlp_strong_branching != 0 &&
-      (settings.sub_mip || settings.deterministic)) {
+      (settings.inside_submip || settings.deterministic)) {
     settings.log.printf(
       "Batch PDLP strong branching is disabled because sub-MIP or deterministic mode is enabled\n");
   }
@@ -1056,8 +1071,8 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
   std::vector<f_t> pdlp_obj_down(fractional.size(), std::numeric_limits<f_t>::quiet_NaN());
   std::vector<f_t> pdlp_obj_up(fractional.size(), std::numeric_limits<f_t>::quiet_NaN());
 
-  std::vector<dual::status_t> dual_simplex_status_down(fractional.size(), dual::status_t::UNSET);
-  std::vector<dual::status_t> dual_simplex_status_up(fractional.size(), dual::status_t::UNSET);
+  std::vector<dual_status_t> dual_simplex_status_down(fractional.size(), dual_status_t::UNSET);
+  std::vector<dual_status_t> dual_simplex_status_up(fractional.size(), dual_status_t::UNSET);
   std::vector<f_t> dual_simplex_obj_down(fractional.size(), std::numeric_limits<f_t>::quiet_NaN());
   std::vector<f_t> dual_simplex_obj_up(fractional.size(), std::numeric_limits<f_t>::quiet_NaN());
   f_t strong_branching_start_time = tic();
@@ -1071,13 +1086,13 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
                                           basic_list,
                                           nonbasic_list,
                                           fractional,
-                                          *pc.AT,
+                                          pc.Arow,
                                           basis_factors,
                                           strong_branch_down,
                                           strong_branch_up);
   } else {
     if (effective_batch_pdlp != 0) {
-#pragma omp task default(shared)
+#pragma omp task default(shared) priority(CUOPT_HIGH_TASK_PRIORITY)
       batch_pdlp_strong_branching_task(settings,
                                        effective_batch_pdlp,
                                        start_time,
@@ -1097,10 +1112,9 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
       i_t n = std::min<i_t>(4 * settings.num_threads, fractional.size());
 // Here we are creating more tasks than the number of threads
 // such that they can be scheduled dynamically to the threads.
-#pragma omp taskloop num_tasks(n) default(shared)
+#pragma omp taskloop num_tasks(n) default(shared) priority(CUOPT_DEFAULT_TASK_PRIORITY)
       for (i_t k = 0; k < n; ++k) {
-        i_t start = std::floor(k * fractional.size() / n);
-        i_t end   = std::floor((k + 1) * fractional.size() / n);
+        auto [start, end] = calculate_index_range(k, fractional.size(), n);
 
         constexpr bool verbose = false;
         if (verbose) {
@@ -1155,15 +1169,15 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
     for (i_t k = 0; k < fractional.size(); k++) {
       for (auto st : {dual_simplex_status_down[k], dual_simplex_status_up[k]}) {
         switch (st) {
-          case dual::status_t::OPTIMAL: dual_simplex_optimal++; break;
-          case dual::status_t::DUAL_UNBOUNDED: dual_simplex_infeasible++; break;
-          case dual::status_t::ITERATION_LIMIT: dual_simplex_iter_limit++; break;
-          case dual::status_t::NUMERICAL: dual_simplex_numerical++; break;
-          case dual::status_t::CUTOFF: dual_simplex_cutoff++; break;
-          case dual::status_t::TIME_LIMIT: dual_simplex_time_limit++; break;
-          case dual::status_t::CONCURRENT_LIMIT: dual_simplex_concurrent++; break;
-          case dual::status_t::WORK_LIMIT: dual_simplex_work_limit++; break;
-          case dual::status_t::UNSET: dual_simplex_unset++; break;
+          case dual_status_t::OPTIMAL: dual_simplex_optimal++; break;
+          case dual_status_t::DUAL_UNBOUNDED: dual_simplex_infeasible++; break;
+          case dual_status_t::ITERATION_LIMIT: dual_simplex_iter_limit++; break;
+          case dual_status_t::NUMERICAL: dual_simplex_numerical++; break;
+          case dual_status_t::CUTOFF: dual_simplex_cutoff++; break;
+          case dual_status_t::TIME_LIMIT: dual_simplex_time_limit++; break;
+          case dual_status_t::CONCURRENT_LIMIT: dual_simplex_concurrent++; break;
+          case dual_status_t::WORK_LIMIT: dual_simplex_work_limit++; break;
+          case dual_status_t::UNSET: dual_simplex_unset++; break;
         }
       }
     }
@@ -1202,14 +1216,13 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
     i_t solved_by_both   = 0;
     for (i_t k = 0; k < fractional.size(); k++) {
       for (i_t branch = 0; branch < 2; branch++) {
-        const bool is_down = (branch == 0);
-        f_t& sb_dest       = is_down ? strong_branch_down[k] : strong_branch_up[k];
-        f_t ds_obj         = is_down ? dual_simplex_obj_down[k] : dual_simplex_obj_up[k];
-        dual::status_t ds_status =
-          is_down ? dual_simplex_status_down[k] : dual_simplex_status_up[k];
-        f_t pdlp_obj  = is_down ? pdlp_obj_down[k] : pdlp_obj_up[k];
-        bool pdlp_has = !std::isnan(pdlp_obj);
-        bool ds_has   = ds_status != dual::status_t::UNSET;
+        const bool is_down      = (branch == 0);
+        f_t& sb_dest            = is_down ? strong_branch_down[k] : strong_branch_up[k];
+        f_t ds_obj              = is_down ? dual_simplex_obj_down[k] : dual_simplex_obj_up[k];
+        dual_status_t ds_status = is_down ? dual_simplex_status_down[k] : dual_simplex_status_up[k];
+        f_t pdlp_obj            = is_down ? pdlp_obj_down[k] : pdlp_obj_up[k];
+        bool pdlp_has           = !std::isnan(pdlp_obj);
+        bool ds_has             = ds_status != dual_status_t::UNSET;
 
         const auto [value, source] =
           merge_sb_result<i_t, f_t>(ds_obj, ds_status, pdlp_obj, pdlp_has);
@@ -1250,9 +1263,110 @@ void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
         solved_by_both);
     }
   }
+}
 
-  pc.update_pseudo_costs_from_strong_branching(
-    fractional, strong_branch_down, strong_branch_up, root_solution.x);
+template <typename i_t, typename f_t>
+void strong_branching(const lp_problem_t<i_t, f_t>& original_lp,
+                      const simplex_solver_settings_t<i_t, f_t>& settings,
+                      f_t start_time,
+                      const std::vector<i_t>& new_slacks,
+                      const std::vector<variable_type_t>& var_types,
+                      const lp_solution_t<i_t, f_t>& root_solution,
+                      const std::vector<i_t>& fractional,
+                      f_t root_obj,
+                      f_t upper_bound,
+                      const std::vector<variable_status_t>& root_vstatus,
+                      const std::vector<f_t>& edge_norms,
+                      const std::vector<i_t>& basic_list,
+                      const std::vector<i_t>& nonbasic_list,
+                      basis_update_mpf_t<i_t, f_t>& basis_factors,
+                      mip_symmetry_t<i_t, f_t>* symmetry,
+                      pseudo_costs_t<i_t, f_t>& pc)
+{
+  std::vector<f_t> strong_branch_down;
+  std::vector<f_t> strong_branch_up;
+  if (symmetry == nullptr) {
+    strong_branching_reduced(original_lp,
+                             settings,
+                             start_time,
+                             new_slacks,
+                             var_types,
+                             root_solution,
+                             fractional,
+                             root_obj,
+                             upper_bound,
+                             root_vstatus,
+                             edge_norms,
+                             basic_list,
+                             nonbasic_list,
+                             basis_factors,
+                             strong_branch_down,
+                             strong_branch_up,
+                             pc);
+    pc.update_pseudo_costs_from_strong_branching(
+      fractional, strong_branch_down, strong_branch_up, root_solution.x);
+  } else {
+    // Use precomputed orbit representatives from the full group G. Variables
+    // in the same orbit have identical branching behavior by symmetry.
+    // Keep only one fractional variable per orbit. We use the first fractional
+    // variable encountered as the orbit's delegate (not the orbit representative,
+    // which might not be fractional itself).
+    // orbit_delegate[rep] maps each orbit representative to the position of
+    // its delegate in reduced_fractional, or -1 if the orbit has no
+    // fractional variable.
+    std::vector<i_t> orbit_delegate(symmetry->num_original_vars, -1);
+    std::vector<i_t> reduced_fractional;
+    for (i_t j : fractional) {
+      i_t rep = symmetry->orbit_rep[j];
+      if (orbit_delegate[rep] == -1) {
+        orbit_delegate[rep] = static_cast<i_t>(reduced_fractional.size());
+        reduced_fractional.push_back(j);
+      }
+    }
+
+    if (reduced_fractional.size() < fractional.size()) {
+      settings.log.printf("Strong branching: %d fractional variables reduced to %d by symmetry\n",
+                          (int)fractional.size(),
+                          (int)reduced_fractional.size());
+    }
+
+    strong_branching_reduced(original_lp,
+                             settings,
+                             start_time,
+                             new_slacks,
+                             var_types,
+                             root_solution,
+                             reduced_fractional,
+                             root_obj,
+                             upper_bound,
+                             root_vstatus,
+                             edge_norms,
+                             basic_list,
+                             nonbasic_list,
+                             basis_factors,
+                             strong_branch_down,
+                             strong_branch_up,
+                             pc);
+
+    // Map strong-branch results from "reduced_fractional" indexing back
+    // to per-fractional indexing using each variable's orbit delegate.
+    // By symmetry, the objective change from branching any variable in an
+    // orbit equals the objective change from branching its delegate; we
+    // expand the delegate's result out to every orbit member so that
+    // update_pseudo_costs_from_strong_branching uses each variable's *own*
+    // LP fractionality in the pseudocost normalization.
+    std::vector<f_t> all_sb_down(fractional.size(), std::numeric_limits<f_t>::quiet_NaN());
+    std::vector<f_t> all_sb_up(fractional.size(), std::numeric_limits<f_t>::quiet_NaN());
+    for (size_t i = 0; i < fractional.size(); i++) {
+      i_t k = orbit_delegate[symmetry->orbit_rep[fractional[i]]];
+      if (k >= 0) {
+        all_sb_down[i] = strong_branch_down[k];
+        all_sb_up[i]   = strong_branch_up[k];
+      }
+    }
+    pc.update_pseudo_costs_from_strong_branching(
+      fractional, all_sb_down, all_sb_up, root_solution.x);
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -1309,6 +1423,10 @@ template <typename i_t, typename f_t>
 void pseudo_costs_t<i_t, f_t>::update_pseudo_costs(mip_node_t<i_t, f_t>* node_ptr,
                                                    f_t leaf_objective)
 {
+  // The root node carries no branching decision (branch_var < 0), so there is no variable to
+  // attribute the objective change to.
+  if (node_ptr->branch_var < 0) return;
+
   const f_t change_in_obj = std::max(leaf_objective - node_ptr->lower_bound, 0.0);
   const f_t frac          = node_ptr->branch_dir == branch_direction_t::DOWN
                               ? node_ptr->fractional_val - std::floor(node_ptr->fractional_val)
@@ -1375,7 +1493,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
   f_t avg_up{0};
   lp_solution_t<i_t, f_t>& leaf_solution = worker->leaf_solution;
 
-  const int64_t branch_and_bound_lp_iters = bnb_stats.total_lp_iters;
+  const int64_t branch_and_bound_lp_iters = bnb_stats.total_simplex_iters;
   const i_t branch_and_bound_lp_iter_per_node =
     bnb_stats.nodes_explored > 0 ? branch_and_bound_lp_iters / bnb_stats.nodes_explored : 0;
   const i_t iter_limit_per_trial = std::clamp(2 * branch_and_bound_lp_iter_per_node,
@@ -1402,8 +1520,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
 
   // If `reliable_threshold == 0`, then we set the uninitialized pseudocosts to the average.
   // Otherwise, the best ones are initialized via strong branching, while the other are ignored.  //
-  // In the latter, we are not using the average pseudocost (which calculated in the `initialized`
-  // method).
+  // So we only need to initialize the average for the former.
   if (reliable_threshold == 0) {
     avg_down = compute_pseudocost_average_down();
     avg_up   = compute_pseudocost_average_up();
@@ -1454,7 +1571,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
   // Use the heuristic to decide if it should be used (in case it is set to automatic)
   if (!use_pdlp && rb_mode != 0) {
     // Check if it is a sub MIP or the determinism mode is on.
-    use_pdlp = !settings.sub_mip;
+    use_pdlp = !settings.inside_submip;
     use_pdlp &= !settings.deterministic;
 
     // Check if the warm cache was filled at the root
@@ -1474,7 +1591,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
   // Use the heuristic to decide if it should be used (in case it is set to automatic)
   if (!use_pdlp && rb_mode != 0) {
     // Check if it is a sub MIP or the determinism mode is on.
-    use_pdlp = !settings.sub_mip;
+    use_pdlp = !settings.inside_submip;
     use_pdlp &= !settings.deterministic;
 
     // Check if the warm cache was filled at the root
@@ -1490,7 +1607,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
 
   if (rb_mode != 0 && !pdlp_warm_cache->populated) {
     settings.log.debug("PDLP warm start data not populated, using DS only\n");
-  } else if (rb_mode != 0 && settings.sub_mip) {
+  } else if (rb_mode != 0 && settings.inside_submip) {
     settings.log.debug("Batch PDLP reliability branching is disabled because sub-MIP is enabled\n");
   } else if (rb_mode != 0 && settings.deterministic) {
     settings.log.debug(
@@ -1509,14 +1626,12 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
       min_percent_solved_by_batch_pdlp_at_root_for_pdlp);
   }
 
-  const int num_tasks     = std::max(max_num_tasks, 1);
-  const int task_priority = reliability_branching_settings.task_priority;
+  const int num_tasks = std::max(max_num_tasks, 1);
   // If both batch PDLP and DS are used we double the max number of candidates
   const i_t max_num_candidates = use_pdlp ? 2 * reliability_branching_settings.max_num_candidates
                                           : reliability_branching_settings.max_num_candidates;
   const i_t num_candidates     = std::min<size_t>(unreliable_list.size(), max_num_candidates);
 
-  assert(task_priority > 0);
   assert(max_num_candidates > 0);
   assert(num_candidates > 0);
   assert(num_tasks > 0);
@@ -1543,10 +1658,13 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
         basic_map[worker->basic_list[i]] = i;
       }
 
-      std::vector<i_t> nonbasic_mark(n, -1);
-      for (i_t i = 0; i < n - m; i++) {
-        nonbasic_mark[worker->nonbasic_list[i]] = i;
-      }
+      // Each thread will have a different basis
+      // So we need to make a copy of Arow before we permute the columns
+      // so that nonbasic variables appear first
+      csr_matrix_t<i_t, f_t> local_Arow = Arow;
+
+      std::vector<i_t> nonbasic_end(m);
+      compute_initial_nonbasic_end(basic_map, local_Arow, nonbasic_end);
 
       for (auto& [score, j] : unreliable_list) {
         if (pseudo_cost_num_down[j] == 0 || pseudo_cost_num_up[j] == 0) {
@@ -1554,14 +1672,14 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
           objective_change_estimate_t<f_t> estimate =
             single_pivot_objective_change_estimate(worker->leaf_problem,
                                                    settings,
-                                                   *AT,
-                                                   node_ptr->vstatus,
+                                                   local_Arow,
+                                                   worker->leaf_vstatus,
                                                    j,
                                                    basic_map[j],
                                                    leaf_solution,
                                                    worker->basic_list,
                                                    worker->nonbasic_list,
-                                                   nonbasic_mark,
+                                                   nonbasic_end,
                                                    worker->basis_factors,
                                                    workspace,
                                                    delta_z,
@@ -1607,7 +1725,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
   std::atomic<int> concurrent_halt{0};
 
   if (use_pdlp) {
-#pragma omp task default(shared)
+#pragma omp task default(shared) priority(CUOPT_HIGH_TASK_PRIORITY)
     batch_pdlp_reliability_branching_task(settings.log,
                                           rb_mode,
                                           num_candidates,
@@ -1636,13 +1754,14 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
 
   std::vector<f_t> dual_simplex_obj_down(num_candidates, std::numeric_limits<f_t>::quiet_NaN());
   std::vector<f_t> dual_simplex_obj_up(num_candidates, std::numeric_limits<f_t>::quiet_NaN());
-  std::vector<dual::status_t> dual_simplex_status_down(num_candidates, dual::status_t::UNSET);
-  std::vector<dual::status_t> dual_simplex_status_up(num_candidates, dual::status_t::UNSET);
+  std::vector<dual_status_t> dual_simplex_status_down(num_candidates, dual_status_t::UNSET);
+  std::vector<dual_status_t> dual_simplex_status_up(num_candidates, dual_status_t::UNSET);
 
   f_t dual_simplex_start_time = tic();
 
   if (rb_mode != 2) {
-#pragma omp taskloop if (num_tasks > 1) priority(task_priority) num_tasks(num_tasks) default(shared)
+#pragma omp taskloop if (num_tasks > 1) priority(CUOPT_HIGH_TASK_PRIORITY) \
+  num_tasks(num_tasks) default(shared)
     for (i_t i = 0; i < num_candidates; ++i) {
       auto [score, j] = unreliable_list[i];
 
@@ -1659,7 +1778,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
           const auto [obj, status] = trial_branching(worker->leaf_problem,
                                                      settings,
                                                      var_types,
-                                                     node_ptr->vstatus,
+                                                     worker->leaf_vstatus,
                                                      worker->leaf_edge_norms,
                                                      worker->basis_factors,
                                                      worker->basic_list,
@@ -1704,7 +1823,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
           const auto [obj, status] = trial_branching(worker->leaf_problem,
                                                      settings,
                                                      var_types,
-                                                     node_ptr->vstatus,
+                                                     worker->leaf_vstatus,
                                                      worker->leaf_edge_norms,
                                                      worker->basis_factors,
                                                      worker->basic_list,
@@ -1885,8 +2004,9 @@ template void strong_branching<int, double>(const lp_problem_t<int, double>& ori
                                             const std::vector<int>& basic_list,
                                             const std::vector<int>& nonbasic_list,
                                             basis_update_mpf_t<int, double>& basis_factors,
+                                            mip_symmetry_t<int, double>* symmetry,
                                             pseudo_costs_t<int, double>& pc);
 
 #endif
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::mip

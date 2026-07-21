@@ -1,8 +1,9 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import os
 import time
+import warnings
 
 from cuopt.linear_programming.solver import solver_wrapper
 from cuopt.linear_programming.solver_settings import SolverSettings
@@ -16,7 +17,7 @@ def Solve(data_model, solver_settings=None):
 
     Data Model object can be construed through setters
     (see linear_programming.DataModel class) or through a MPS file
-    (see cuopt_mps_parser.ParseMps function)
+    (see cuopt.linear_programming.Read function)
 
 
     Notes
@@ -88,12 +89,15 @@ def Solve(data_model, solver_settings=None):
         if len(set(map(type, var_types))) == 1:
             # Homogeneous - use appropriate check
             if isinstance(var_types[0], bytes):
-                return b"I" in var_types
+                return b"I" in var_types or b"S" in var_types
             else:
-                return "I" in var_types
+                return "I" in var_types or "S" in var_types
         else:
             # Mixed types - fallback to comprehensive check
-            return any(vt == "I" or vt == b"I" for vt in var_types)
+            return any(
+                vt == "I" or vt == b"I" or vt == "S" or vt == b"S"
+                for vt in var_types
+            )
 
     s = solver_wrapper.Solve(
         data_model,
@@ -111,9 +115,16 @@ def BatchSolve(data_model_list, solver_settings=None):
     Solve the list of Linear Programs passed as input and returns the solutions
     and total solve time.
 
+    .. deprecated::
+        LP BatchSolve is deprecated and will be removed in a future release.
+        It runs concurrent LPs in multiple C++ threads, which can be done
+        independently in user code. Use sequential :func:`Solve` calls instead,
+        e.g. ``[Solve(dm, solver_settings) for dm in data_model_list]``, or
+        implement your own parallelism (e.g. ``concurrent.futures``).
+
     Data Model objects can be construed through setters
     (see linear_programming.DataModel class) or through a MPS file
-    (see cuopt_mps_parser.ParseMps function)
+    (see cuopt.linear_programming.Read function)
 
 
     Notes
@@ -149,11 +160,11 @@ def BatchSolve(data_model_list, solver_settings=None):
     >>> from cuopt import linear_programming
     >>> from cuopt.linear_programming.solver_settings import PDLPSolverMode
     >>> from cuopt.linear_programming.solver.solver_parameters import *
-    >>> import cuopt_mps_parser
+    >>> from cuopt.linear_programming import Read
     >>>
     >>> data_models = []
     >>> for i in range(...):
-    >>>     data_models.append(cuopt_mps_parser.ParseMps(...))
+    >>>     data_models.append(Read(...))
     >>>
     >>> # Build a solver setting object
     >>> settings = linear_programming.SolverSettings()
@@ -179,6 +190,13 @@ def BatchSolve(data_model_list, solver_settings=None):
     >>>     # Print the value of one specific variable
     >>>     print(solution.get_vars()["var_name"])
     """
+    warnings.warn(
+        "LP BatchSolve is deprecated and will be removed in a future release. "
+        "Use sequential Solve() calls or implement your own parallelism "
+        "(e.g. concurrent.futures).",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     if solver_settings is None:
         solver_settings = SolverSettings()
 

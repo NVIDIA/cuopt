@@ -13,13 +13,13 @@
 #include <dual_simplex/phase2.hpp>
 #include <dual_simplex/primal.hpp>
 #include <dual_simplex/solve.hpp>
-#include <dual_simplex/tic_toc.hpp>
+#include <math_optimization/tic_toc.hpp>
 
 #include <raft/core/nvtx.hpp>
 
 #include <array>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 namespace {
 
@@ -1079,22 +1079,33 @@ i_t add_slacks_to_basis(const lp_problem_t<i_t, f_t>& lp,
                         std::vector<variable_status_t>& vstatus)
 {
   const i_t n   = lp.num_cols;
+  const i_t m   = lp.num_rows;
   i_t num_basic = 0;
-  // Add a slack to the basis for each dependent row
-  for (i_t i : dependent_rows) {
-    for (i_t j = n - 1; j >= 0; --j) {
-      const i_t col_start = lp.A.col_start[j];
-      const i_t col_end   = lp.A.col_start[j + 1];
-      const i_t nz        = col_end - col_start;
-      if (nz == 1) {
-        if (i == lp.A.i[col_start]) {
-          vstatus[j] = variable_status_t::BASIC;
-          num_basic++;
-          break;
-        }
-      }
+
+  // O(m) work to create the slack_map
+  // slack_map[i] = j when j is the slack variable for row i
+  std::vector<i_t> slack_map(m, -1);
+  for (i_t j = n - 1; j >= n - m; --j) {
+    const i_t col_start = lp.A.col_start[j];
+    const i_t col_end   = lp.A.col_start[j + 1];
+    const i_t nz        = col_end - col_start;
+    if (nz == 1) {
+      const i_t i  = lp.A.i[col_start];
+      slack_map[i] = j;
     }
   }
+
+  // Add a slack to the basis for each dependent row
+  // O( | dependent_rows | )
+  for (i_t i : dependent_rows) {
+    const i_t j = slack_map[i];
+    if (j >= 0) {
+      vstatus[j] = variable_status_t::BASIC;
+      num_basic++;
+    }
+  }
+
+  // Total work is O(m + | dependent_rows |) = O(m)
   return num_basic;
 }
 
@@ -1244,6 +1255,10 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
   if (rank < m) {
     num_basic = add_slacks_to_basis(lp, dependent_rows, vstatus);
     settings.log.debug("num basic %d from slacks\n", num_basic);
+  }
+  if (num_basic + rank != m) {
+    settings.log.printf("Error: could not find a full-rank initial basis\n");
+    return crossover_status_t::NUMERICAL_ISSUES;
   }
 
   for (i_t k = 0; k < candidate_columns.size(); k++) {
@@ -1408,7 +1423,7 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
   } else if (dual_feasible && !primal_feasible) {
     i_t dual_iter = 0;
     std::vector<f_t> edge_norms;
-    dual::status_t status =
+    dual_status_t status =
       dual_phase2(2, 0, start_time, lp, settings, vstatus, solution, dual_iter, edge_norms);
     if (toc(start_time) > settings.time_limit) {
       settings.log.printf("Time limit exceeded\n");
@@ -1422,7 +1437,7 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
     dual_infeas   = dual_infeasibility(lp, settings, vstatus, solution.z);
     primal_res    = primal_residual(lp, solution);
     dual_res      = dual_residual(lp, solution);
-    if (status != dual::status_t::OPTIMAL) {
+    if (status != dual_status_t::OPTIMAL) {
       print_crossover_info(lp, settings, vstatus, solution, "Dual phase 2 complete");
     }
     solution.iterations += dual_iter;
@@ -1454,10 +1469,10 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
     i_t iter = 0;
     lp_solution_t<i_t, f_t> phase1_solution(phase1_problem.num_rows, phase1_problem.num_cols);
     std::vector<f_t> junk;
-    dual::status_t phase1_status = dual_phase2(
+    dual_status_t phase1_status = dual_phase2(
       1, 1, start_time, phase1_problem, settings, phase1_vstatus, phase1_solution, iter, junk);
-    if (phase1_status == dual::status_t::NUMERICAL ||
-        phase1_status == dual::status_t::DUAL_UNBOUNDED) {
+    if (phase1_status == dual_status_t::NUMERICAL ||
+        phase1_status == dual_status_t::DUAL_UNBOUNDED) {
       settings.log.printf("Failed in Phase 1\n");
       phase1_solution.objective = -std::numeric_limits<f_t>::infinity();
     }
@@ -1566,8 +1581,8 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
       }
       settings.log.debug("Num flips %d\n", num_flips);
       print_crossover_info(lp, settings, vstatus, solution, "Dual phase 1 complete");
-      dual_infeas           = dual_infeasibility(lp, settings, vstatus, solution.z);
-      dual::status_t status = dual::status_t::NUMERICAL;
+      dual_infeas          = dual_infeasibility(lp, settings, vstatus, solution.z);
+      dual_status_t status = dual_status_t::NUMERICAL;
       if (dual_infeas <= settings.dual_tol) {
         std::vector<f_t> edge_norms;
         status = dual_phase2(
@@ -1586,7 +1601,7 @@ crossover_status_t crossover(const lp_problem_t<i_t, f_t>& lp,
       dual_infeas   = dual_infeasibility(lp, settings, vstatus, solution.z);
       primal_res    = primal_residual(lp, solution);
       dual_res      = dual_residual(lp, solution);
-      if (status != dual::status_t::OPTIMAL) {
+      if (status != dual_status_t::OPTIMAL) {
         print_crossover_info(lp, settings, vstatus, solution, "Dual phase 2 complete");
       }
       primal_feasible = primal_infeas <= primal_tol && primal_res <= primal_tol;
@@ -1621,4 +1636,4 @@ template crossover_status_t crossover<int, double>(
 
 #endif
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

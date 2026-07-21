@@ -39,7 +39,7 @@ on:
         default: false
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.build_type || 'branch' }}
   cancel-in-progress: true
 
 permissions: {}
@@ -93,47 +93,7 @@ jobs:
       branch: ${{ inputs.branch }}
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
-  wheel-build-cuopt-mps-parser:
-    permissions:
-      actions: read
-      contents: read
-      id-token: write
-      packages: read
-      pull-requests: read
-    secrets: inherit # zizmor: ignore[secrets-inherit]
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
-    with:
-      build_type: ${{ inputs.build_type || 'branch' }}
-      branch: ${{ inputs.branch }}
-      sha: ${{ inputs.sha }}
-      date: ${{ inputs.date }}
-      script: ci/build_wheel_cuopt_mps_parser.sh
-      package-name: cuopt_mps_parser
-      package-type: python
-      append-cuda-suffix: false
-      # need 1 build per Python version and arch (but CUDA version doesn't matter so choose the latest)
-      matrix_filter: 'group_by([.ARCH, (.PY_VER |split(".") | map(tonumber))])|map(max_by([(.CUDA_VER|split(".")|map(tonumber))]))'
-  wheel-publish-cuopt-mps-parser:
-    needs: wheel-build-cuopt-mps-parser
-    permissions:
-      actions: read
-      contents: read
-      id-token: write
-      packages: read
-      pull-requests: read
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-publish.yaml@main
-    secrets:
-      CONDA_RAPIDSAI_WHEELS_NIGHTLY_TOKEN: ${{ secrets.CONDA_RAPIDSAI_WHEELS_NIGHTLY_TOKEN }}
-      RAPIDSAI_PYPI_TOKEN: ${{ secrets.RAPIDSAI_PYPI_TOKEN }}
-    with:
-      build_type: ${{ inputs.build_type || 'branch' }}
-      branch: ${{ inputs.branch }}
-      sha: ${{ inputs.sha }}
-      date: ${{ inputs.date }}
-      package-name: cuopt_mps_parser
-      package-type: python
   wheel-build-libcuopt:
-    needs: wheel-build-cuopt-mps-parser
     permissions:
       actions: read
       contents: read
@@ -170,8 +130,9 @@ jobs:
       date: ${{ inputs.date }}
       package-name: libcuopt
       package-type: cpp
+      publish-wheel-search-key: cuopt_wheel_cpp_libcuopt
   wheel-build-cuopt:
-    needs: [wheel-build-cuopt-mps-parser, wheel-build-libcuopt]
+    needs: [wheel-build-libcuopt]
     permissions:
       actions: read
       contents: read
@@ -207,6 +168,7 @@ jobs:
       date: ${{ inputs.date }}
       package-name: cuopt
       package-type: python
+      publish-wheel-search-key: cuopt_wheel_python_cuopt_
   wheel-build-cuopt-server:
     permissions:
       actions: read
@@ -246,6 +208,7 @@ jobs:
       date: ${{ inputs.date }}
       package-name: cuopt_server
       package-type: python
+      publish-wheel-search-key: cuopt_wheel_python_cuopt-server
   docs-build:
     needs: [python-build]
     permissions:
@@ -265,7 +228,7 @@ jobs:
       arch: "amd64"
       file_to_upload: "docs/cuopt/build/html/"
       artifact-name: "cuopt_docs"
-      container_image: "rapidsai/ci-conda:26.06-latest"
+      container_image: "rapidsai/ci-conda:26.08-latest"
       script: "ci/build_docs.sh"
   wheel-build-cuopt-sh-client:
     permissions:
@@ -307,13 +270,13 @@ jobs:
       date: ${{ inputs.date }}
       package-name: cuopt_sh_client
       package-type: python
+      publish-wheel-search-key: cuopt_wheel_python_cuopt-sh-client
   tests:
     # Docker image build / tests aren't necessary for the 'test.yaml' workflow,
     # so 'test.yaml' can be triggered without waiting for those.
     needs:
       - upload-conda
       - wheel-publish-cuopt
-      - wheel-publish-cuopt-mps-parser
       - wheel-publish-cuopt-server
       - wheel-publish-cuopt-sh-client
       - wheel-publish-libcuopt

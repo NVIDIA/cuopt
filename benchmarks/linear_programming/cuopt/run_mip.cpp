@@ -6,13 +6,14 @@
 /* clang-format on */
 #include "initial_solution_reader.hpp"
 #include "mip_test_instances.hpp"
+#include "miplib2017_bks.hpp"
 
 #include <cstdio>
-#include <cuopt/linear_programming/mip/solver_settings.hpp>
-#include <cuopt/linear_programming/mip/solver_solution.hpp>
-#include <cuopt/linear_programming/optimization_problem_interface.hpp>
-#include <cuopt/linear_programming/solve.hpp>
-#include <mps_parser/parser.hpp>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_solution.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
 #include <utilities/logger.hpp>
 
 #include <raft/core/handle.hpp>
@@ -151,7 +152,7 @@ int run_single_file(std::string file_path,
                     bool deterministic)
 {
   const raft::handle_t handle_{};
-  cuopt::linear_programming::mip_solver_settings_t<int, double> settings;
+  cuopt::mathematical_optimization::mip_solver_settings_t<int, double> settings;
   std::string base_filename = file_path.substr(file_path.find_last_of("/\\") + 1);
   // if output directory is given, set the log file
   if (write_log_file) {
@@ -166,12 +167,13 @@ int run_single_file(std::string file_path,
   }
 
   constexpr bool input_mps_strict = false;
-  cuopt::mps_parser::mps_data_model_t<int, double> mps_data_model;
+  cuopt::mathematical_optimization::io::mps_data_model_t<int, double> mps_data_model;
   bool parsing_failed = false;
   {
     CUOPT_LOG_INFO("running file %s on gpu : %d", base_filename.c_str(), device);
     try {
-      mps_data_model = cuopt::mps_parser::parse_mps<int, double>(file_path, input_mps_strict);
+      mps_data_model =
+        cuopt::mathematical_optimization::io::read_mps<int, double>(file_path, input_mps_strict);
     } catch (const std::logic_error& e) {
       CUOPT_LOG_ERROR("MPS parser execption: %s", e.what());
       parsing_failed = true;
@@ -209,14 +211,14 @@ int run_single_file(std::string file_path,
   settings.determinism_mode = deterministic ? CUOPT_MODE_DETERMINISTIC : CUOPT_MODE_OPPORTUNISTIC;
   settings.tolerances.relative_tolerance = 1e-12;
   settings.tolerances.absolute_tolerance = 1e-6;
-  settings.presolver                     = cuopt::linear_programming::presolver_t::Default;
+  settings.presolver                     = cuopt::mathematical_optimization::presolver_t::Default;
   settings.reliability_branching         = reliability_branching;
   settings.clique_cuts                   = -1;
   settings.seed                          = 42;
-  cuopt::linear_programming::benchmark_info_t benchmark_info;
+  cuopt::mathematical_optimization::benchmark_info_t benchmark_info;
   settings.benchmark_info_ptr = &benchmark_info;
   auto start_run_solver       = std::chrono::high_resolution_clock::now();
-  auto solution = cuopt::linear_programming::solve_mip(&handle_, mps_data_model, settings);
+  auto solution = cuopt::mathematical_optimization::solve_mip(&handle_, mps_data_model, settings);
   CUOPT_LOG_INFO(
     "first obj: %f last improvement of best feasible: %f last improvement after recombination: %f",
     benchmark_info.objective_of_initial_population,
@@ -229,20 +231,57 @@ int run_single_file(std::string file_path,
   CUOPT_LOG_INFO("run_solver %d", duration.count());
   handle_.sync_stream();
   int sol_found  = int(solution.get_termination_status() ==
-                        cuopt::linear_programming::mip_termination_status_t::FeasibleFound ||
+                        cuopt::mathematical_optimization::mip_termination_status_t::FeasibleFound ||
                       solution.get_termination_status() ==
-                        cuopt::linear_programming::mip_termination_status_t::Optimal);
+                        cuopt::mathematical_optimization::mip_termination_status_t::Optimal);
   double obj_val = sol_found ? solution.get_objective_value() : std::numeric_limits<double>::max();
   if (sol_found) {
     CUOPT_LOG_INFO("%s: solution found, obj: %f", base_filename.c_str(), obj_val);
   } else {
     CUOPT_LOG_INFO("%s: no solution found", base_filename.c_str());
   }
+
+  // Per-instance "gap closed to BKS" stat. Emits a single
+  // grep-friendly "MIPLIBGapStat ..." line via printf so cross-branch
+  // comparison is just `grep '^MIPLIBGapStat' branchA.log` then diff.
+  // BKS values are looked up from the in-source MIPLIB2017 benchmark-set
+  // table (miplib2017_bks.hpp); unknown instances emit "opt=TBD"
+  // and infeasibility-flagged instances emit "opt=Infeasible".
+  {
+    const double _gap_seconds = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                  std::chrono::high_resolution_clock::now() - start_run_solver)
+                                  .count() /
+                                1000.0;
+    std::string _status_str;
+    switch (solution.get_termination_status()) {
+      case cuopt::mathematical_optimization::mip_termination_status_t::Optimal:
+        _status_str = "Optimal";
+        break;
+      case cuopt::mathematical_optimization::mip_termination_status_t::FeasibleFound:
+        _status_str = "FeasibleFound";
+        break;
+      case cuopt::mathematical_optimization::mip_termination_status_t::TimeLimit:
+        _status_str = "TimeLimit";
+        break;
+      case cuopt::mathematical_optimization::mip_termination_status_t::Infeasible:
+        _status_str = "Infeasible";
+        break;
+      default: _status_str = "Other"; break;
+    }
+    cuopt_bench::print_miplib_gap_stat(base_filename,
+                                       solution,
+                                       _gap_seconds,
+                                       _status_str,
+                                       benchmark_info.root_lp_no_cuts,
+                                       benchmark_info.root_lp_with_cuts,
+                                       benchmark_info.cut_generation_time_sec);
+  }
+
   std::stringstream ss;
   int decimal_places = 2;
   double mip_gap     = solution.get_mip_gap();
   int is_optimal     = solution.get_termination_status() ==
-                       cuopt::linear_programming::mip_termination_status_t::Optimal
+                       cuopt::mathematical_optimization::mip_termination_status_t::Optimal
                          ? 1
                          : 0;
   ss << std::fixed << std::setprecision(decimal_places) << base_filename << "," << sol_found << ","
@@ -533,31 +572,36 @@ int main(int argc, char* argv[])
     merge_result_files(out_dir, result_file, n_gpus, batch_num);
   } else {
     auto memory_resource = make_async();
+    auto run_single      = [&]() {
+      run_single_file(path,
+                      0,
+                      0,
+                      n_gpus,
+                      out_dir,
+                      initial_solution_file,
+                      heuristics_only,
+                      num_cpu_threads,
+                      write_log_file,
+                      log_to_console,
+                      reliability_branching,
+                      time_limit,
+                      work_limit,
+                      deterministic);
+    };
     if (memory_limit > 0) {
       auto limiting_adaptor =
         rmm::mr::limiting_resource_adaptor(memory_resource, memory_limit * 1024ULL * 1024ULL);
       rmm::mr::set_current_device_resource(limiting_adaptor);
+      run_single();
     } else if (track_allocations) {
       rmm::mr::tracking_resource_adaptor tracking_adaptor(memory_resource,
                                                           /*capture_stacks=*/true);
       rmm::mr::set_current_device_resource(tracking_adaptor);
+      run_single();
     } else {
       rmm::mr::set_current_device_resource(memory_resource);
+      run_single();
     }
-    run_single_file(path,
-                    0,
-                    0,
-                    n_gpus,
-                    out_dir,
-                    initial_solution_file,
-                    heuristics_only,
-                    num_cpu_threads,
-                    write_log_file,
-                    log_to_console,
-                    reliability_branching,
-                    time_limit,
-                    work_limit,
-                    deterministic);
   }
 
   return 0;

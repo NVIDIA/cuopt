@@ -35,3 +35,6 @@ container-builder/ @nvidia/cuopt-infra-codeowners
 /dependencies.yaml @nvidia/cuopt-ci-codeowners
 /build.sh          @nvidia/cuopt-ci-codeowners
 pyproject.toml     @nvidia/cuopt-ci-codeowners
+
+# Ops code owners
+/SECURITY.md             @nvidia/cuopt-ci-codeowners

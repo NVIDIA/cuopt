@@ -15,9 +15,16 @@
 #include <pdlp/solve.cuh>
 
 #include <branch_and_bound/branch_and_bound.hpp>
+#include <branch_and_bound/symmetry.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <dual_simplex/solve.hpp>
+#include <pdlp/translate.hpp>
+
+// Must match the setting in solve.cu
+#define DETECT_SYMMETRY_AFTER_PRESOLVE
+
 #include <mip_heuristics/feasibility_jump/early_cpufj.cuh>
+#include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
 
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/cusparse_macros.hpp>
@@ -27,7 +34,10 @@
 #include <memory>
 #include <thread>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
+
+using simplex::simplex_solver_settings_t;
+using simplex::user_problem_t;
 
 // This serves as both a warm up but also a mandatory initial call to setup cuSparse and cuBLAS
 static void init_handler(const raft::handle_t* handle_ptr)
@@ -54,13 +64,12 @@ mip_solver_t<i_t, f_t>::mip_solver_t(const problem_t<i_t, f_t>& op_problem,
 template <typename i_t, typename f_t>
 struct branch_and_bound_solution_helper_t {
   branch_and_bound_solution_helper_t(diversity_manager_t<i_t, f_t>* dm,
-                                     dual_simplex::simplex_solver_settings_t<i_t, f_t>& settings)
+                                     simplex_solver_settings_t<i_t, f_t>& settings)
     : dm(dm), settings_(settings) {};
 
   void solution_callback(std::vector<f_t>& solution, f_t objective)
   {
     dm->population.add_external_solution(solution, objective, solution_origin_t::BRANCH_AND_BOUND);
-    dm->rins.new_best_incumbent_callback(solution);
   }
 
   void set_simplex_solution(std::vector<f_t>& solution,
@@ -70,28 +79,22 @@ struct branch_and_bound_solution_helper_t {
     dm->set_simplex_solution(solution, dual_solution, objective);
   }
 
-  void node_processed_callback(const std::vector<f_t>& solution, f_t objective)
-  {
-    dm->rins.node_callback(solution, objective);
-  }
-
   void preempt_heuristic_solver() { dm->population.preempt_heuristic_solver(); }
   diversity_manager_t<i_t, f_t>* dm;
-  dual_simplex::simplex_solver_settings_t<i_t, f_t>& settings_;
+  simplex_solver_settings_t<i_t, f_t>& settings_;
 };
 
 // Extract probing cache into CPU-only CSR struct for implied bounds cuts
 template <typename i_t, typename f_t>
-void extract_probing_implied_bounds(
-  const problem_t<i_t, f_t>& op_problem,
-  const dual_simplex::user_problem_t<i_t, f_t>& branch_and_bound_problem,
-  const probing_cache_t<i_t, f_t>& probing_cache,
-  dual_simplex::probing_implied_bound_t<i_t, f_t>& probing_implied_bound)
+void extract_probing_implied_bounds(const problem_t<i_t, f_t>& op_problem,
+                                    const user_problem_t<i_t, f_t>& branch_and_bound_problem,
+                                    const probing_cache_t<i_t, f_t>& probing_cache,
+                                    mip::probing_implied_bound_t<i_t, f_t>& probing_implied_bound)
 
 {
   auto& pc              = probing_cache.probing_cache;
   const i_t num_cols    = branch_and_bound_problem.num_cols;
-  probing_implied_bound = dual_simplex::probing_implied_bound_t<i_t, f_t>(num_cols);
+  probing_implied_bound = mip::probing_implied_bound_t<i_t, f_t>(num_cols);
 
   // First pass: count entries per binary variable
   // Probing cache indices are in pre-trivial-presolve space; remap to post-presolve (B&B) space
@@ -175,7 +178,7 @@ void extract_probing_implied_bounds(
     }
   }
 
-  CUOPT_LOG_INFO("Probing implied bounds: %d zero entries, %d one entries", zero_nnz, one_nnz);
+  CUOPT_LOG_INFO("\nProbing implied bounds: %d zero entries, %d one entries", zero_nnz, one_nnz);
 }
 
 template <typename i_t, typename f_t>
@@ -286,26 +289,52 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
 
   context.work_unit_scheduler_.register_context(context.gpu_heur_loop);
 
-  namespace dual_simplex                             = cuopt::linear_programming::dual_simplex;
-  dual_simplex::mip_status_t branch_and_bound_status = dual_simplex::mip_status_t::UNSET;
-  dual_simplex::user_problem_t<i_t, f_t> branch_and_bound_problem(context.problem_ptr->handle_ptr);
+#ifdef DETECT_SYMMETRY_AFTER_PRESOLVE
+  // Detect symmetry after all presolve steps (PaPILO, cuOpt probing, bounds, trivial presolve).
+  // context.problem_ptr is the final reduced problem with correct variable indices.
+  if (context.settings.symmetry != 0 && !context.problem_ptr->empty) {
+    simplex_solver_settings_t<i_t, f_t> simplex_settings;
+    simplex_settings.set_log(true);
+    simplex_settings.time_limit                    = context.settings.time_limit;
+    user_problem_t<i_t, f_t> post_presolve_problem = cuopt_problem_to_user_problem<i_t, f_t>(
+      context.problem_ptr->handle_ptr, *context.problem_ptr);
+    bool has_symmetry_post = false;
+    context.symmetry       = cuopt::mathematical_optimization::mip::detect_symmetry(
+      post_presolve_problem, simplex_settings, has_symmetry_post);
+  }
+#endif
+
+  namespace simplex                         = cuopt::mathematical_optimization::simplex;
+  mip::mip_status_t branch_and_bound_status = mip::mip_status_t::UNSET;
+  user_problem_t<i_t, f_t> branch_and_bound_problem(context.problem_ptr->handle_ptr);
   context.problem_ptr->recompute_objective_integrality();
+  if (context.settings.objective_step) { context.problem_ptr->compute_objective_step(); }
   if (context.problem_ptr->is_objective_integral()) {
     CUOPT_LOG_INFO("Objective function is integral, scale %g",
                    context.problem_ptr->presolve_data.objective_scaling_factor);
   }
+  if (context.settings.objective_step && context.problem_ptr->get_objective_step().has_step()) {
+    f_t scale     = context.problem_ptr->presolve_data.objective_scaling_factor;
+    f_t user_step = context.problem_ptr->get_objective_step().step_size * std::abs(scale);
+    CUOPT_LOG_INFO("Objective step size %g (unscaled: %g)",
+                   context.problem_ptr->get_objective_step().step_size,
+                   user_step);
+  }
   branch_and_bound_problem.objective_is_integral = context.problem_ptr->is_objective_integral();
-  dual_simplex::simplex_solver_settings_t<i_t, f_t> branch_and_bound_settings;
-  std::unique_ptr<dual_simplex::branch_and_bound_t<i_t, f_t>> branch_and_bound;
+  if (context.settings.objective_step) {
+    branch_and_bound_problem.objective_step = context.problem_ptr->get_objective_step();
+  }
+  simplex_solver_settings_t<i_t, f_t> branch_and_bound_settings;
+  std::unique_ptr<mip::branch_and_bound_t<i_t, f_t>> branch_and_bound;
   branch_and_bound_solution_helper_t solution_helper(&dm, branch_and_bound_settings);
-  dual_simplex::mip_solution_t<i_t, f_t> branch_and_bound_solution(1);
+  simplex::mip_solution_t<i_t, f_t> branch_and_bound_solution(1);
 
-  dual_simplex::probing_implied_bound_t<i_t, f_t> probing_implied_bound;
+  mip::probing_implied_bound_t<i_t, f_t> probing_implied_bound;
 
   i_t num_threads = omp_get_num_threads();
 
   if (!context.settings.heuristics_only) {
-    // Convert the presolved problem to dual_simplex::user_problem_t
+    // Convert the presolved problem to user_problem_t
     op_problem_.get_host_user_problem(branch_and_bound_problem);
     // Resize the solution now that we know the number of columns/variables
     branch_and_bound_solution.resize(branch_and_bound_problem.num_cols);
@@ -337,12 +366,17 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     branch_and_bound_settings.mixed_integer_gomory_cuts =
       context.settings.mixed_integer_gomory_cuts;
     branch_and_bound_settings.knapsack_cuts      = context.settings.knapsack_cuts;
+    branch_and_bound_settings.flow_cover_cuts    = context.settings.flow_cover_cuts;
     branch_and_bound_settings.implied_bound_cuts = context.settings.implied_bound_cuts;
     branch_and_bound_settings.clique_cuts        = context.settings.clique_cuts;
+    branch_and_bound_settings.zero_half_cuts     = context.settings.zero_half_cuts;
     branch_and_bound_settings.strong_chvatal_gomory_cuts =
       context.settings.strong_chvatal_gomory_cuts;
     branch_and_bound_settings.cut_change_threshold  = context.settings.cut_change_threshold;
     branch_and_bound_settings.cut_min_orthogonality = context.settings.cut_min_orthogonality;
+    // Forward the run-level benchmark_info_t so B&B can publish root LP
+    // bounds (before / after cuts) for gap-closed-by-cuts measurement.
+    branch_and_bound_settings.benchmark_info_ptr = context.settings.benchmark_info_ptr;
     branch_and_bound_settings.mip_batch_pdlp_strong_branching =
       context.settings.mip_batch_pdlp_strong_branching;
     branch_and_bound_settings.mip_batch_pdlp_reliability_branching =
@@ -357,6 +391,10 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
       context.settings.reduced_cost_strengthening == -1
         ? 2
         : context.settings.reduced_cost_strengthening;
+    branch_and_bound_settings.symmetry = context.settings.symmetry;
+
+    branch_and_bound_settings.diving_settings = context.settings.diving_params;
+    branch_and_bound_settings.submip_settings = context.settings.submip_params;
 
     // Set the branch and bound -> primal heuristics callback
     branch_and_bound_settings.solution_callback =
@@ -377,21 +415,16 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
                   std::placeholders::_1,
                   std::placeholders::_2,
                   std::placeholders::_3);
-
-      branch_and_bound_settings.node_processed_callback =
-        std::bind(&branch_and_bound_solution_helper_t<i_t, f_t>::node_processed_callback,
-                  &solution_helper,
-                  std::placeholders::_1,
-                  std::placeholders::_2);
     }
 
     // Create the branch and bound object
-    branch_and_bound = std::make_unique<dual_simplex::branch_and_bound_t<i_t, f_t>>(
-      branch_and_bound_problem,
-      branch_and_bound_settings,
-      timer_.get_tic_start(),
-      probing_implied_bound,
-      context.problem_ptr->clique_table);
+    branch_and_bound =
+      std::make_unique<mip::branch_and_bound_t<i_t, f_t>>(branch_and_bound_problem,
+                                                          branch_and_bound_settings,
+                                                          timer_.get_tic_start(),
+                                                          probing_implied_bound,
+                                                          context.problem_ptr->clique_table,
+                                                          context.symmetry.get());
     context.branch_and_bound_ptr = branch_and_bound.get();
 
     // Convert the best external upper bound from user-space to B&B's internal objective space.
@@ -415,9 +448,10 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
       branch_and_bound->set_concurrent_lp_root_solve(true);
 
       context.problem_ptr->branch_and_bound_callback =
-        std::bind(&dual_simplex::branch_and_bound_t<i_t, f_t>::set_new_solution,
+        std::bind(&mip::branch_and_bound_t<i_t, f_t>::set_solution_from_heuristics,
                   branch_and_bound.get(),
-                  std::placeholders::_1);
+                  std::placeholders::_1,
+                  std::placeholders::_2);
     } else if (context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC) {
       branch_and_bound->set_concurrent_lp_root_solve(false);
       // TODO once deterministic GPU heuristics are integrated
@@ -431,7 +465,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     // context.work_unit_scheduler_.verbose = true;
 
     context.problem_ptr->set_root_relaxation_solution_callback =
-      std::bind(&dual_simplex::branch_and_bound_t<i_t, f_t>::set_root_relaxation_solution,
+      std::bind(&mip::branch_and_bound_t<i_t, f_t>::set_root_relaxation_solution,
                 branch_and_bound.get(),
                 std::placeholders::_1,
                 std::placeholders::_2,
@@ -452,7 +486,7 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
 #pragma omp taskgroup
   {
     if (!context.settings.heuristics_only) {
-#pragma omp task default(shared)
+#pragma omp task default(shared) priority(CUOPT_CRITICAL_TASK_PRIORITY)
       {
         branch_and_bound_status = branch_and_bound->solve(branch_and_bound_solution);
       }
@@ -463,12 +497,23 @@ solution_t<i_t, f_t> mip_solver_t<i_t, f_t>::run_solver()
     sol                           = dm.run_solver();
   }  // implicit barrier for all tasks created in B&B and heuristics
 
+  if (!context.settings.heuristics_only && branch_and_bound->has_solver_space_incumbent()) {
+    solution_t<i_t, f_t> branch_and_bound_sol(*context.problem_ptr);
+    branch_and_bound_sol.copy_new_assignment(branch_and_bound_solution.x);
+    branch_and_bound_sol.compute_feasibility();
+
+    if (branch_and_bound_sol.get_feasible() &&
+        (!sol.get_feasible() || branch_and_bound_sol.get_objective() < sol.get_objective())) {
+      sol = std::move(branch_and_bound_sol);
+    }
+  }
+
   if (!context.settings.heuristics_only) {
     if (branch_and_bound_solution.lower_bound > -std::numeric_limits<f_t>::infinity()) {
       context.stats.set_solution_bound(
         context.problem_ptr->get_user_obj_from_solver_obj(branch_and_bound_solution.lower_bound));
     }
-    if (branch_and_bound_status == dual_simplex::mip_status_t::INFEASIBLE) {
+    if (branch_and_bound_status == mip::mip_status_t::INFEASIBLE) {
       sol.set_problem_fully_reduced();
     }
     context.stats.num_nodes              = branch_and_bound_solution.nodes_explored;
@@ -500,4 +545,4 @@ template class mip_solver_t<int, float>;
 template class mip_solver_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

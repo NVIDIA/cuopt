@@ -49,7 +49,7 @@ class data_model_view_t {
    * contains the smallest possible number of vehicles which may be smaller or
    * equal to the fleet_size.
    */
-  data_model_view_t(raft::handle_t const* handle_ptr,
+  data_model_view_t(raft::handle_t* handle_ptr,
                     i_t num_locations,
                     i_t const fleet_size,
                     i_t num_orders = -1);
@@ -611,10 +611,16 @@ class data_model_view_t {
    * @brief Get raft handle object containing GPU resource objects
    * @return Handle object
    */
+  raft::handle_t* get_handle_ptr() noexcept;
+
+  /**
+   * @brief Get raft handle object containing GPU resource objects
+   * @return Handle object
+   */
   raft::handle_t const* get_handle_ptr() const noexcept;
 
  private:
-  raft::handle_t const* handle_ptr_{nullptr};
+  raft::handle_t* handle_ptr_{nullptr};
   i_t num_locations_{};
   i_t fleet_size_{};
   i_t num_orders_{};

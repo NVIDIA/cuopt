@@ -1,4 +1,4 @@
-# NVIDIA cuOpt gRPC server architecture
+# NVIDIA cuOpt gRPC Server Architecture
 
 <!--
   SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.

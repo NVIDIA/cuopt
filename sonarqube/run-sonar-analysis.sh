@@ -6,11 +6,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BRANCHES_FILE="$SCRIPT_DIR/sonar-branches.txt"
 WORK_DIR="/tmp/sonar-analysis-$(date +%Y%m%d-%H%M%S)"
 
-# Conda environment file to use for building
-# Adjust this path based on your CUDA version and architecture
-# Available: all_cuda-129_arch-{x86_64,aarch64}.yaml, all_cuda-131_arch-{x86_64,aarch64}.yaml
+# Architecture used to pick the matching conda env file per branch (below).
 ARCH=$(uname -m)
-CONDA_ENV_FILE="conda/environments/all_cuda-131_arch-${ARCH}.yaml"
 
 # SonarQube Configuration
 # The token should be set via environment variable SONAR_TOKEN for security
@@ -125,6 +122,23 @@ for branch in "${branches[@]}"; do
 
   # Setup conda environment, build, and analyze
   echo "Setting up conda environment for: $branch"
+
+  # Pick the newest CUDA env yaml present on this branch. sort -V is
+  # version-aware (cuda-129 < cuda-132) so future CUDA bumps don't require
+  # editing this script — each branch's own conda/environments/ is the
+  # source of truth.
+  shopt -s nullglob
+  candidates=(conda/environments/all_cuda-*_arch-"${ARCH}".yaml)
+  shopt -u nullglob
+  if [ ${#candidates[@]} -eq 0 ]; then
+    echo "ERROR: No conda env file matching conda/environments/all_cuda-*_arch-${ARCH}.yaml on branch: $branch"
+    failed_branches+=("$branch (no conda env file found)")
+    cd "$WORK_DIR" || echo "WARNING: Failed to cd to $WORK_DIR"
+    rm -rf "$clone_dir"
+    continue
+  fi
+  CONDA_ENV_FILE=$(printf '%s\n' "${candidates[@]}" | sort -V | tail -1)
+  echo "Using conda env file: $CONDA_ENV_FILE"
 
   # Create a unique conda environment name for this branch
   conda_env_name="cuopt_sonar_${safe_branch_name}"

@@ -10,17 +10,18 @@
 #include <branch_and_bound/constants.hpp>
 
 #include <dual_simplex/initial_basis.hpp>
-#include <dual_simplex/types.hpp>
+#include <math_optimization/types.hpp>
 
 #include <utilities/hashing.hpp>
 #include <utilities/omp_helpers.hpp>
 
 #include <cmath>
+#include <cstdio>
 #include <list>
 #include <memory>
 #include <vector>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::mip {
 
 enum class node_status_t : int {
   PENDING          = 0,  // Node is still in the tree, waiting to be solved
@@ -44,22 +45,39 @@ class mip_node_t {
   {
     // Iterative teardown to avoid stack overflow on deep trees.
     // Detach all descendants breadth-first, then destroy them as leaves.
-    std::vector<std::unique_ptr<mip_node_t>> nodes;
-    for (auto& c : children) {
-      if (c) { nodes.push_back(std::move(c)); }
-    }
-    // nodes.size() grows so that this loop only terminates when only leaves remain
-    for (size_t i = 0; i < nodes.size(); ++i) {
-      for (auto& c : nodes[i]->children) {
+    // vector::push_back can throw bad_alloc; the catch-all keeps the destructor
+    // exception-free. Under OOM, any not-yet-detached descendants are destroyed
+    // via the recursive unique_ptr chain in `children` as this frame unwinds.
+    try {
+      std::vector<std::unique_ptr<mip_node_t>> nodes;
+      for (auto& c : children) {
         if (c) { nodes.push_back(std::move(c)); }
       }
-    }
+      // nodes.size() grows so that this loop only terminates when only leaves remain
+      for (size_t i = 0; i < nodes.size(); ++i) {
+        for (auto& c : nodes[i]->children) {
+          if (c) { nodes.push_back(std::move(c)); }
+        }
+      }
 
-    // scope-exit ensure destruction of all detached leaves
+      // scope-exit ensure destruction of all detached leaves
+    } catch (const std::exception& e) {
+      // fprintf to stderr is allocation-free and cannot throw; using the
+      // project logger here would risk a secondary bad_alloc that would
+      // escape the destructor and re-introduce std::terminate.
+      std::fprintf(stderr,
+                   "mip_node_t destructor: iterative teardown failed (%s); falling back to "
+                   "recursive unique_ptr destruction.\n",
+                   e.what());
+    } catch (...) {
+      std::fprintf(stderr,
+                   "mip_node_t destructor: iterative teardown failed (unknown exception); "
+                   "falling back to recursive unique_ptr destruction.\n");
+    }
   }
 
-  mip_node_t(mip_node_t&&)            = default;
-  mip_node_t& operator=(mip_node_t&&) = default;
+  mip_node_t(mip_node_t&&) noexcept            = default;
+  mip_node_t& operator=(mip_node_t&&) noexcept = default;
 
   mip_node_t()
     : status(node_status_t::PENDING),
@@ -73,13 +91,13 @@ class mip_node_t {
       branch_var_upper(std::numeric_limits<f_t>::infinity()),
       fractional_val(std::numeric_limits<f_t>::infinity()),
       objective_estimate(std::numeric_limits<f_t>::infinity()),
-      vstatus(0)
+      packed_vstatus(0)
   {
     children[0] = nullptr;
     children[1] = nullptr;
   }
 
-  mip_node_t(f_t root_lower_bound, const std::vector<variable_status_t>& basis)
+  mip_node_t(f_t root_lower_bound, const std::vector<simplex::variable_status_t>& basis)
     : status(node_status_t::PENDING),
       lower_bound(root_lower_bound),
       depth(0),
@@ -89,20 +107,20 @@ class mip_node_t {
       branch_dir(branch_direction_t::NONE),
       integer_infeasible(-1),
       objective_estimate(std::numeric_limits<f_t>::infinity()),
-      vstatus(basis)
+      packed_vstatus(compress_vstatus(basis))
   {
     children[0] = nullptr;
     children[1] = nullptr;
   }
 
-  mip_node_t(const lp_problem_t<i_t, f_t>& problem,
+  mip_node_t(const simplex::lp_problem_t<i_t, f_t>& problem,
              mip_node_t* parent_node,
              i_t node_num,
              i_t branch_variable,
              branch_direction_t branch_direction,
              f_t branch_var_value,
              i_t integer_inf,
-             const std::vector<variable_status_t>& basis)
+             const std::vector<simplex::variable_status_t>& basis)
     : status(node_status_t::PENDING),
       lower_bound(parent_node->lower_bound),
       depth(parent_node->depth + 1),
@@ -113,7 +131,7 @@ class mip_node_t {
       fractional_val(branch_var_value),
       integer_infeasible(integer_inf),
       objective_estimate(parent_node->objective_estimate),
-      vstatus(basis)
+      packed_vstatus(compress_vstatus(basis))
   {
     branch_var_lower = branch_direction == branch_direction_t::DOWN ? problem.lower[branch_var]
                                                                     : std::ceil(branch_var_value);
@@ -129,7 +147,7 @@ class mip_node_t {
   {
     update_branched_variable_bounds(lower, upper, bounds_changed);
 
-    mip_node_t<i_t, f_t>* parent_ptr = parent;
+    mip_node_t* parent_ptr = parent;
     while (parent_ptr != nullptr && parent_ptr->node_id != 0) {
       parent_ptr->update_branched_variable_bounds(lower, upper, bounds_changed);
       parent_ptr = parent_ptr->parent;
@@ -142,6 +160,9 @@ class mip_node_t {
                                        std::vector<f_t>& upper,
                                        std::vector<bool>& bounds_changed) const
   {
+    // We in the root node and the lower/upper are already set to their starting value
+    if (parent == nullptr) return;
+
     assert(branch_var >= 0);
     assert(lower.size() > branch_var);
     assert(upper.size() > branch_var);
@@ -168,7 +189,7 @@ class mip_node_t {
     children[0] = std::move(down_child);
     children[1] = std::move(up_child);
     // When we add children we no longer need to store our basis
-    vstatus.clear();
+    packed_vstatus = {};
   }
 
   bool is_inactive() const
@@ -256,7 +277,7 @@ class mip_node_t {
   // This method creates a copy of the current node
   // with its parent set to `nullptr`
   // This detaches the node from the tree.
-  mip_node_t<i_t, f_t> detach_copy() const
+  mip_node_t detach_copy() const
   {
     mip_node_t<i_t, f_t> copy;
     copy.lower_bound        = lower_bound;
@@ -264,7 +285,7 @@ class mip_node_t {
     copy.depth              = depth;
     copy.node_id            = node_id;
     copy.integer_infeasible = integer_infeasible;
-    copy.vstatus            = vstatus;
+    copy.packed_vstatus     = packed_vstatus;
     copy.branch_var         = branch_var;
     copy.branch_dir         = branch_dir;
     copy.branch_var_lower   = branch_var_lower;
@@ -275,6 +296,8 @@ class mip_node_t {
     copy.children[1]        = nullptr;
     copy.status             = node_status_t::PENDING;
 
+    copy.orbital_fix_zero = orbital_fix_zero;
+    copy.orbital_fix_one  = orbital_fix_one;
     copy.origin_worker_id = origin_worker_id;
     copy.creation_seq     = creation_seq;
     return copy;
@@ -295,7 +318,17 @@ class mip_node_t {
   mip_node_t<i_t, f_t>* parent;
   std::unique_ptr<mip_node_t> children[2];
 
-  std::vector<variable_status_t> vstatus;
+  std::vector<uint8_t> packed_vstatus;
+
+  // Indicate if we can dive from this node or not. This is set to false when
+  // this node was already selected for diving once.
+  omp_atomic_t<bool> can_dive{true};
+
+  // Cumulative orbital fixing bound changes from root to this node.
+  // Stored so that when a child starts a new plunge, the parent's
+  // orbital fixings can be restored without re-derivation.
+  std::vector<i_t> orbital_fix_zero;
+  std::vector<i_t> orbital_fix_one;
 
   // Worker-local identification for deterministic ordering:
   // - origin_worker_id: which worker created this node
@@ -320,7 +353,7 @@ class mip_node_t {
       path_steps.push_back(step);
       node = node->parent;
     }
-    return detail::compute_hash(path_steps);
+    return cuopt::compute_hash(path_steps);
   }
 };
 
@@ -353,9 +386,9 @@ class search_tree_t {
               const i_t branch_var,
               const f_t fractional_val,
               const i_t integer_infeasible,
-              const std::vector<variable_status_t>& parent_vstatus,
-              const lp_problem_t<i_t, f_t>& original_lp,
-              logger_t& log)
+              const std::vector<simplex::variable_status_t>& parent_vstatus,
+              const simplex::lp_problem_t<i_t, f_t>& original_lp,
+              simplex::logger_t& log)
   {
     i_t id = num_nodes.fetch_add(2);
 
@@ -395,7 +428,7 @@ class search_tree_t {
                               std::move(up_child));  // child pointers moved into the tree
   }
 
-  void graphviz_node(logger_t& log,
+  void graphviz_node(simplex::logger_t& log,
                      const mip_node_t<i_t, f_t>* node_ptr,
                      const std::string label,
                      const f_t val)
@@ -405,7 +438,7 @@ class search_tree_t {
     }
   }
 
-  void graphviz_edge(logger_t& log,
+  void graphviz_edge(simplex::logger_t& log,
                      const mip_node_t<i_t, f_t>* origin_ptr,
                      const mip_node_t<i_t, f_t>* dest_ptr,
                      const i_t branch_var,
@@ -429,4 +462,4 @@ class search_tree_t {
   static constexpr bool write_graphviz = false;
 };
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::mip

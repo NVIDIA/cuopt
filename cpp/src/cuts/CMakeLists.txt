@@ -5,6 +5,7 @@
 
 set(CUTS_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/cuts.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/objective_step.cpp
   )
 
 set(CUOPT_SRC_FILES ${CUOPT_SRC_FILES}

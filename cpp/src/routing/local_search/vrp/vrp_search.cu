@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -253,9 +253,9 @@ DI thrust::pair<double, double> evaluate_2_opt_route(
                                               route_1.get_objective_cost(),
                                               route_1.get_infeasibility_cost());
 
-  auto vehicle_fixed_cost_delta = vehicle_info.fixed_cost - route_1.vehicle_info().fixed_cost;
-
-  return {delta + vehicle_fixed_cost_delta, selection_delta + vehicle_fixed_cost_delta};
+  // delta includes (F_new - F_old): vehicle_fixed_cost_node_t::get_cost contributes F_new in
+  // the fragment, and route_1.get_objective_cost() supplies F_old in old_obj_cost.
+  return {delta, selection_delta};
 }
 
 template <typename i_t, typename f_t, request_t REQUEST>

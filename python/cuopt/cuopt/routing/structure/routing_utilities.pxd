@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved. # noqa
 # SPDX-License-Identifier: Apache-2.0
 
 # cython: profile=False
@@ -125,7 +125,7 @@ cdef extern from "cuopt/routing/cython/cython.hpp" namespace "cuopt::cython": # 
         i_t seed) except +
 
     cdef unique_ptr[dataset_ret_t] call_generate_dataset(
-        const handle_t& handle,
+        handle_t& handle,
         const dataset_params_t[int, float]& params
     ) except +
 

@@ -35,6 +35,13 @@ __global__ void kernel_get_best_insertion_ejection_solution(
   feasible_move_t feasible_candidates,
   int64_t seed);
 
+template <int BLOCK_SIZE, typename i_t, typename f_t, request_t REQUEST>
+bool set_shmem_for_kernel_get_best_insertion_ejection_solution(size_t dynamic_shmem_size);
+
+template <int BLOCK_SIZE, typename i_t, typename f_t, request_t REQUEST>
+void launch_kernel_get_best_insertion_ejection_solution(
+  dim3 grid, dim3 blocks, size_t shmem_bytes, void** kernel_args, rmm::cuda_stream_view stream);
+
 template <int BLOCK_SIZE,
           typename i_t,
           typename f_t,

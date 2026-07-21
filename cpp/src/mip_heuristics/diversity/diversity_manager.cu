@@ -9,6 +9,7 @@
 #include "diversity_manager.cuh"
 
 #include <mip_heuristics/mip_constants.hpp>
+#include <mip_heuristics/presolve/third_party_presolve.hpp>
 
 #include <mip_heuristics/presolve/conflict_graph/clique_table.cuh>
 #include <mip_heuristics/presolve/probing_cache.cuh>
@@ -20,10 +21,11 @@
 #include <utilities/scope_guard.hpp>
 
 #include <memory>
+#include <numeric>
 
 constexpr bool fj_only_run = false;
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 size_t fp_recombiner_config_t::max_n_of_vars_from_other =
   fp_recombiner_config_t::initial_n_of_vars_from_other;
@@ -54,7 +56,6 @@ diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t
     lp_dual_optimal_solution(context.problem_ptr->n_constraints,
                              context.problem_ptr->handle_ptr->get_stream()),
     ls(context, lp_optimal_solution),
-    rins(context, *this),
     timer(diversity_config.default_time_limit),
     bound_prop_recombiner(context,
                           context.problem_ptr->n_variables,
@@ -182,10 +183,66 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
   std::vector<solution_t<i_t, f_t>>& initial_sol_vector)
 {
   raft::common::nvtx::range fun_scope("add_user_given_solutions");
-  for (const auto& init_sol : context.settings.initial_solutions) {
+  const bool has_papilo   = problem_ptr->has_papilo_presolve_data();
+  const i_t papilo_orig_n = problem_ptr->get_papilo_original_num_variables();
+  for (size_t sol_idx = 0; sol_idx < context.settings.initial_solutions.size(); ++sol_idx) {
+    const auto& init_sol = context.settings.initial_solutions[sol_idx];
     solution_t<i_t, f_t> sol(*problem_ptr);
     rmm::device_uvector<f_t> init_sol_assignment(*init_sol, sol.handle_ptr->get_stream());
+
+    if (has_papilo) {
+      if ((i_t)init_sol_assignment.size() != papilo_orig_n) {
+        CUOPT_LOG_ERROR(
+          "add the provided initial solution! Initial solution %zu has %zu vars, "
+          "expected %d; skipping",
+          sol_idx,
+          init_sol_assignment.size(),
+          papilo_orig_n);
+        continue;
+      }
+      std::vector<f_t> h_original = host_copy(init_sol_assignment, sol.handle_ptr->get_stream());
+      std::vector<f_t> h_crushed;
+      const auto* presolver_ptr = problem_ptr->presolve_data.papilo_presolve_ptr;
+      presolver_ptr->crush_primal_solution(
+        *problem_ptr->original_problem_ptr, h_original, h_crushed);
+      init_sol_assignment = cuopt::device_copy(h_crushed, sol.handle_ptr->get_stream());
+
+#if CUOPT_LOG_ACTIVE_LEVEL <= CUOPT_LOG_LEVEL_DEBUG
+      const auto& reduced_problem       = *problem_ptr->original_problem_ptr;
+      const std::vector<f_t> h_red_obj  = reduced_problem.get_objective_coefficients_host();
+      const std::vector<f_t>& h_ori_obj = presolver_ptr->get_original_objective_coefficients();
+      cuopt_assert(h_ori_obj.size() == h_original.size(),
+                   "original objective size must match input solution dimension");
+      cuopt_assert(h_red_obj.size() == h_crushed.size(),
+                   "reduced objective size must match crushed solution dimension");
+      // Map each solution to user space with its own problem's scale, so the comparison holds even
+      // if the original and reduced objective scales ever diverge.
+      const double input_obj =
+        (double)presolver_ptr->get_original_objective_scaling_factor() *
+        std::inner_product(h_ori_obj.begin(),
+                           h_ori_obj.end(),
+                           h_original.begin(),
+                           (double)presolver_ptr->get_original_objective_offset());
+      const double crushed_obj = (double)reduced_problem.get_objective_scaling_factor() *
+                                 std::inner_product(h_red_obj.begin(),
+                                                    h_red_obj.end(),
+                                                    h_crushed.begin(),
+                                                    (double)reduced_problem.get_objective_offset());
+      CUOPT_LOG_DEBUG(
+        "Crushed initial solution %d through Papilo (%d -> %d vars), objective %g -> %g",
+        sol_idx,
+        papilo_orig_n,
+        h_crushed.size(),
+        input_obj,
+        crushed_obj);
+#endif
+    }
+
     if (problem_ptr->pre_process_assignment(init_sol_assignment)) {
+      raft::copy(sol.assignment.data(),
+                 init_sol_assignment.data(),
+                 init_sol_assignment.size(),
+                 sol.handle_ptr->get_stream());
       relaxed_lp_settings_t lp_settings;
       lp_settings.time_limit            = std::min(60., timer.remaining_time() / 2);
       lp_settings.tolerance             = problem_ptr->tolerances.absolute_tolerance;
@@ -196,23 +253,26 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
                              problem_ptr->integer_indices,
                              lp_settings,
                              static_cast<bound_presolve_t<i_t, f_t>*>(nullptr));
-      raft::copy(sol.assignment.data(),
-                 init_sol_assignment.data(),
-                 init_sol_assignment.size(),
-                 sol.handle_ptr->get_stream());
       bool is_feasible = sol.compute_feasibility();
+      if (!is_feasible) {
+        raft::copy(sol.assignment.data(),
+                   init_sol_assignment.data(),
+                   init_sol_assignment.size(),
+                   sol.handle_ptr->get_stream());
+        is_feasible = sol.compute_feasibility();
+      }
+
       cuopt_func_call(sol.test_variable_bounds(true));
-      CUOPT_LOG_INFO("Adding initial solution success! feas %d objective %f excess %f",
-                     is_feasible,
-                     sol.get_user_objective(),
-                     sol.get_total_excess());
+      CUOPT_LOG_DEBUG("Adding initial solution success! feas %d objective %f excess %f",
+                      is_feasible,
+                      sol.get_user_objective(),
+                      sol.get_total_excess());
       population.run_solution_callbacks(sol);
       initial_sol_vector.emplace_back(std::move(sol));
     } else {
       CUOPT_LOG_ERROR(
-        "Error cannot add the provided initial solution! \
-    Assignment size %lu \
-    initial solution size %lu",
+        "Error cannot add the provided initial solution! Assignment size %lu initial solution size "
+        "%lu",
         sol.assignment.size(),
         init_sol_assignment.size());
     }
@@ -223,7 +283,7 @@ template <typename i_t, typename f_t>
 bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_timer)
 {
   raft::common::nvtx::range fun_scope("run_presolve");
-  CUOPT_LOG_INFO("Running presolve!");
+  CUOPT_LOG_INFO("\nRunning cuOpt presolve");
   timer_t presolve_timer(time_limit);
 
   auto term_crit = ls.constraint_prop.bounds_update.solve(*problem_ptr);
@@ -238,6 +298,12 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
   // Don't run probing cache in deterministic mode yet as neither B&B nor CPUFJ need it
   // and it doesn't make use of work units yet
   if (context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC) { run_probing_cache = false; }
+  // Allow the user to disable the probing-cache step of cuOpt's internal presolve
+  // independently of the higher-level presolver setting.
+  if (!context.settings.probing) {
+    CUOPT_LOG_INFO("Probing-cache step disabled via %s=false", CUOPT_MIP_PROBING);
+    run_probing_cache = false;
+  }
   if (run_probing_cache) {
     // Run probing cache before trivial presolve to discover variable implications
     const f_t max_time_on_probing = diversity_config.max_time_on_probing;
@@ -256,7 +322,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
   //     !problem_ptr->empty) {
   //   f_t time_limit_for_clique_table = std::min(3., presolve_timer.remaining_time() / 5);
   //   timer_t clique_timer(time_limit_for_clique_table);
-  //   dual_simplex::user_problem_t<i_t, f_t> host_problem(problem_ptr->handle_ptr);
+  //   simplex::user_problem_t<i_t, f_t> host_problem(problem_ptr->handle_ptr);
   //   problem_ptr->get_host_user_problem(host_problem);
   //   std::shared_ptr<clique_table_t<i_t, f_t>> clique_table;
   //   constexpr bool modify_problem_with_cliques = false;
@@ -418,6 +484,9 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     CUOPT_LOG_INFO("GPU heuristics disabled via CUOPT_DISABLE_GPU_HEURISTICS=1");
     population.initialize_population();
     population.allocate_solutions();
+    add_user_given_solutions(initial_sol_vector);
+    population.add_solutions_from_vec(std::move(initial_sol_vector));
+    if (check_b_b_preemption()) { return population.best_feasible(); }
 
     while (!check_b_b_preemption()) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -448,8 +517,9 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     "The problem must not be ii");
   population.initialize_population();
   population.allocate_solutions();
-  if (check_b_b_preemption()) { return population.best_feasible(); }
   add_user_given_solutions(initial_sol_vector);
+  population.add_solutions_from_vec(std::move(initial_sol_vector));
+  if (check_b_b_preemption()) { return population.best_feasible(); }
   // Run CPUFJ early to find quick initial solutions
   ls_cpufj_raii_guard_t ls_cpufj_raii_guard(ls);  // RAII to stop cpufj threads on solve stop
   ls.start_cpufj_scratch_threads(population);
@@ -487,15 +557,22 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     timer_t lp_timer(lp_time_limit);
     auto lp_result = solve_lp_with_method<i_t, f_t>(*problem_ptr, pdlp_settings, lp_timer);
 
+    // The concurrent root LP can fail to produce a usable solution -- e.g. the barrier
+    // hits a numerical error on an infeasible problem and PDLP returns NumericalError
+    // with empty primal/dual. In that case we must not copy or hand off the empty
+    // result (copying n elements from an empty buffer throws), and we must still
+    // release B&B's root-relaxation wait so it proceeds with its own dual-simplex root
+    // instead of spinning forever.
+    const bool root_lp_usable =
+      lp_result.get_termination_status() != pdlp_termination_status_t::NumericalError &&
+      lp_result.get_primal_solution().size() == lp_optimal_solution.size() &&
+      lp_result.get_dual_solution().size() == lp_dual_optimal_solution.size();
+
     bool use_staged_simplex_solution = false;
     {
       std::lock_guard<std::mutex> guard(relaxed_solution_mutex);
       use_staged_simplex_solution = simplex_solution_exists.load();
-      if (!use_staged_simplex_solution) {
-        cuopt_assert(lp_result.get_primal_solution().size() == lp_optimal_solution.size(),
-                     "LP optimal solution size mismatch");
-        cuopt_assert(lp_result.get_dual_solution().size() == lp_dual_optimal_solution.size(),
-                     "LP dual optimal solution size mismatch");
+      if (!use_staged_simplex_solution && root_lp_usable) {
         raft::copy(lp_optimal_solution.data(),
                    lp_result.get_primal_solution().data(),
                    lp_optimal_solution.size(),
@@ -507,14 +584,26 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
       }
     }
     if (use_staged_simplex_solution) { consume_staged_simplex_solution(lp_state); }
-    cuopt_assert(thrust::all_of(problem_ptr->handle_ptr->get_thrust_policy(),
-                                lp_optimal_solution.begin(),
-                                lp_optimal_solution.end(),
-                                [] __host__ __device__(f_t val) { return std::isfinite(val); }),
-                 "LP optimal solution contains non-finite values");
+    if (use_staged_simplex_solution || root_lp_usable) {
+      cuopt_assert(thrust::all_of(problem_ptr->handle_ptr->get_thrust_policy(),
+                                  lp_optimal_solution.begin(),
+                                  lp_optimal_solution.end(),
+                                  [] __host__ __device__(f_t val) { return std::isfinite(val); }),
+                   "LP optimal solution contains non-finite values");
+    }
     ls.lp_optimal_exists = true;
     if (!use_staged_simplex_solution) {
-      if (lp_result.get_termination_status() == pdlp_termination_status_t::Optimal) {
+      if (!root_lp_usable) {
+        // The concurrent root LP produced no usable solution. Do not hand an empty
+        // solution to B&B; instead release its root-relaxation wait loop so it falls
+        // back to its own dual-simplex root rather than deadlocking.
+        CUOPT_LOG_DEBUG("Root LP produced no usable solution (status %d); releasing B&B root solve",
+                        (int)lp_result.get_termination_status());
+        ls.lp_optimal_exists = false;
+        if (context.branch_and_bound_ptr != nullptr) {
+          context.branch_and_bound_ptr->set_root_concurrent_halt(1);
+        }
+      } else if (lp_result.get_termination_status() == pdlp_termination_status_t::Optimal) {
         solution_t<i_t, f_t> lp_sol(*problem_ptr);
         lp_sol.copy_new_assignment(lp_optimal_solution);
         const bool consider_integrality = false;
@@ -535,9 +624,11 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
       }
     }
 
-    // Send  relaxed solution to branch and bound only if PDLP found it (not dual simplex via
-    // set_simplex_solution)
-    if (!use_staged_simplex_solution &&
+    // Hand the root relaxation off to branch and bound when we have a usable solution
+    // (sets root_crossover_solution_set_, releasing B&B's wait). When the root LP failed
+    // the wait is instead released above via set_root_concurrent_halt, and a staged
+    // dual-simplex solution is owned by B&B already, so neither needs this hand-off.
+    if (!use_staged_simplex_solution && root_lp_usable &&
         problem_ptr->set_root_relaxation_solution_callback != nullptr) {
       auto& d_primal_solution = lp_result.get_primal_solution();
       auto& d_dual_solution   = lp_result.get_dual_solution();
@@ -570,7 +661,7 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
         host_primal, host_dual, host_reduced_costs, solver_obj, user_obj, iterations, method);
     }
 
-    if (!use_staged_simplex_solution) {
+    if (!use_staged_simplex_solution && root_lp_usable) {
       // in case the pdlp returned var boudns that are out of bounds
       clamp_within_var_bounds(lp_optimal_solution, problem_ptr, problem_ptr->handle_ptr);
     }
@@ -585,8 +676,6 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     ls.start_cpufj_lptopt_scratch_threads(population);
   }
 
-  population.add_solutions_from_vec(std::move(initial_sol_vector));
-
   if (check_b_b_preemption()) { return population.best_feasible(); }
 
   if (context.settings.benchmark_info_ptr != nullptr) {
@@ -599,8 +688,6 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     run_fj_alone(sol);
     return sol;
   }
-
-  if (omp_get_num_threads() > CUOPT_MIP_RINS_REQUIRED_THREAD_COUNT) { rins.enable(); }
 
   generate_solution(timer.remaining_time(), false);
   if (timer.check_time_limit()) {
@@ -939,4 +1026,4 @@ template class diversity_manager_t<int, float>;
 template class diversity_manager_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

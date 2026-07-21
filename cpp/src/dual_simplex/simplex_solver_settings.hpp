@@ -7,8 +7,11 @@
 
 #pragma once
 
+#include <cuopt/mathematical_optimization/mip/diving_hyper_params.hpp>
+#include <cuopt/mathematical_optimization/mip/submip_hyper_params.hpp>
+
 #include <dual_simplex/logger.hpp>
-#include <dual_simplex/types.hpp>
+#include <math_optimization/types.hpp>
 
 #include <omp.h>
 #include <algorithm>
@@ -18,30 +21,11 @@
 #include <limits>
 #include <vector>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization {
+struct benchmark_info_t;
+}
 
-template <typename i_t, typename f_t>
-struct diving_heuristics_settings_t {
-  // -1 automatic, 0 disabled, 1 enabled
-  i_t line_search_diving = -1;
-  i_t pseudocost_diving  = -1;
-  i_t guided_diving      = -1;
-  i_t coefficient_diving = -1;
-
-  // The minimum depth to start diving from.
-  i_t min_node_depth = 10;
-
-  // The maximum number of nodes when performing a dive.
-  i_t node_limit = 500;
-
-  // The maximum number of dual simplex iteration allowed
-  // in a single dive. This set in terms of the total number of
-  // iterations in the best-first threads.
-  f_t iteration_limit_factor = 0.05;
-
-  // The maximum backtracking allowed.
-  i_t backtrack_limit = 5;
-};
+namespace cuopt::mathematical_optimization::simplex {
 
 template <typename i_t, typename f_t>
 struct simplex_solver_settings_t {
@@ -51,6 +35,7 @@ struct simplex_solver_settings_t {
       node_limit(std::numeric_limits<i_t>::max()),
       time_limit(std::numeric_limits<f_t>::infinity()),
       work_limit(std::numeric_limits<f_t>::infinity()),
+      branch_and_bound_simplex_iteration_limit(std::numeric_limits<int64_t>::max()),
       absolute_mip_gap_tol(0.0),
       relative_mip_gap_tol(1e-3),
       integer_tol(1e-5),
@@ -84,6 +69,8 @@ struct simplex_solver_settings_t {
       deterministic(false),
       barrier(false),
       eliminate_dense_columns(true),
+      barrier_iterative_refinement(true),
+      barrier_step_scale(0.9),
       num_gpus(1),
       folding(-1),
       augmented(0),
@@ -100,9 +87,12 @@ struct simplex_solver_settings_t {
       mir_cuts(-1),
       mixed_integer_gomory_cuts(-1),
       knapsack_cuts(-1),
+      flow_cover_cuts(-1),
       implied_bound_cuts(-1),
       clique_cuts(-1),
+      zero_half_cuts(-1),
       strong_chvatal_gomory_cuts(-1),
+      symmetry(-1),
       reduced_cost_strengthening(-1),
       cut_change_threshold(1e-3),
       cut_min_orthogonality(0.5),
@@ -110,9 +100,12 @@ struct simplex_solver_settings_t {
       mip_batch_pdlp_reliability_branching(0),
       strong_branching_simplex_iteration_limit(-1),
       random_seed(0),
+      bnb_steal_chance(-1),
+      bnb_nodes_per_steal(-1),
+      bnb_max_steal_attempts(-1),
       reliability_branching(-1),
       inside_mip(0),
-      sub_mip(0),
+      inside_submip(0),
       solution_callback(nullptr),
       heuristic_preemption_callback(nullptr),
       dual_simplex_objective_callback(nullptr),
@@ -128,15 +121,17 @@ struct simplex_solver_settings_t {
   i_t node_limit;
   f_t time_limit;
   f_t work_limit;
-  f_t absolute_mip_gap_tol;  // Tolerance on mip gap to declare optimal
-  f_t relative_mip_gap_tol;  // Tolerance on mip gap to declare optimal
-  f_t integer_tol;           // Tolerance on integralitiy violation
-  f_t primal_tol;            // Absolute primal infeasibility tolerance
-  f_t dual_tol;              // Absolute dual infeasibility tolerance
-  f_t pivot_tol;             // Simplex pivot tolerance
-  f_t tight_tol;             // A tight tolerance used to check for infeasibility
-  f_t fixed_tol;             // If l <= x <= u with u - l < fixed_tol a variable is consider fixed
-  f_t zero_tol;              // Values below this tolerance are considered numerically zero
+  int64_t branch_and_bound_simplex_iteration_limit;  // Limit of the total number of simplex
+                                                     // iterations in B&B
+  f_t absolute_mip_gap_tol;                          // Tolerance on mip gap to declare optimal
+  f_t relative_mip_gap_tol;                          // Tolerance on mip gap to declare optimal
+  f_t integer_tol;                                   // Tolerance on integralitiy violation
+  f_t primal_tol;                                    // Absolute primal infeasibility tolerance
+  f_t dual_tol;                                      // Absolute dual infeasibility tolerance
+  f_t pivot_tol;                                     // Simplex pivot tolerance
+  f_t tight_tol;  // A tight tolerance used to check for infeasibility
+  f_t fixed_tol;  // If l <= x <= u with u - l < fixed_tol a variable is consider fixed
+  f_t zero_tol;   // Values below this tolerance are considered numerically zero
   f_t barrier_relative_feasibility_tol;  // Relative feasibility tolerance for barrier method
   f_t barrier_relative_optimality_tol;   // Relative optimality tolerance for barrier method
   f_t
@@ -164,7 +159,9 @@ struct simplex_solver_settings_t {
   bool cudss_deterministic;   // true to use cuDSS deterministic mode, false for non-deterministic
   bool barrier;               // true to use barrier method, false to use dual simplex method
   bool deterministic;  // true to use B&B deterministic mode, false to use non-deterministic mode
-  bool eliminate_dense_columns;  // true to eliminate dense columns from A*D*A^T
+  bool eliminate_dense_columns;       // true to eliminate dense columns from A*D*A^T
+  bool barrier_iterative_refinement;  // true to use iterative refinement for barrier method
+  f_t barrier_step_scale;             // step scale for barrier method
   int num_gpus;   // Number of GPUs to use (maximum of 2 gpus are supported at the moment)
   i_t folding;    // -1 automatic, 0 don't fold, 1 fold
   i_t augmented;  // -1 automatic, 0 to solve with ADAT, 1 to solve with augmented system
@@ -184,10 +181,13 @@ struct simplex_solver_settings_t {
   i_t mixed_integer_gomory_cuts;   // -1 automatic, 0 to disable, >0 to enable mixed integer Gomory
                                    // cuts
   i_t knapsack_cuts;               // -1 automatic, 0 to disable, >0 to enable knapsack cuts
+  i_t flow_cover_cuts;             // -1 automatic, 0 to disable, >0 to enable flow cover cuts
   i_t implied_bound_cuts;          // -1 automatic, 0 to disable, >0 to enable implied bound cuts
   i_t clique_cuts;                 // -1 automatic, 0 to disable, >0 to enable clique cuts
+  i_t zero_half_cuts;              // -1 automatic, 0 to disable, >0 to enable zero-half cuts
   i_t strong_chvatal_gomory_cuts;  // -1 automatic, 0 to disable, >0 to enable strong Chvatal Gomory
                                    // cuts
+  i_t symmetry;  // -1 automatic, 0 to disable, >0 to enable different symmetry methods
   i_t reduced_cost_strengthening;  // -1 automatic, 0 to disable, >0 to enable reduced cost
                                    // strengthening
   f_t cut_change_threshold;        // threshold for cut change
@@ -198,12 +198,20 @@ struct simplex_solver_settings_t {
                                              // PDLP only
   // Set the maximum number of simplex iterations allowed per trial branch when applying
   // strong branching to the root node.
-  // -1 - Automatic (iteration limit = 200)
-  // 0, 1 - Estimate the objective change using a single pivot of dual simplex
-  // >1 - Set as the iteration limit in dual simplex
+  // -1 - automatic (iteration limit = 200)
+  // 0, 1 - estimate the objective change using a single pivot of dual simplex
+  // >1 - set as the iteration limit in dual simplex
   i_t strong_branching_simplex_iteration_limit;
 
-  diving_heuristics_settings_t<i_t, f_t> diving_settings;  // Settings for the diving heuristics
+  mip_diving_hyper_params_t<i_t, f_t> diving_settings;  // Settings for the diving heuristics
+
+  // In B&B, indicate the chance in which a worker can steal a node from another worker.
+  // -1 - automatic (0.05)
+  // 0 - disable
+  // >0 - set the stealing chance [0, 1]
+  f_t bnb_steal_chance;
+  i_t bnb_nodes_per_steal;
+  i_t bnb_max_steal_attempts;
 
   // Settings for the reliability branching.
   // - -1: automatic
@@ -212,16 +220,20 @@ struct simplex_solver_settings_t {
   i_t reliability_branching;
 
   i_t inside_mip;  // 0 if outside MIP, 1 if inside MIP at root node, 2 if inside MIP at leaf node
-  i_t sub_mip;     // 0 if in regular MIP solve, 1 if in sub-MIP solve
+  i_t inside_submip;  // 0 if in regular MIP solve, 1 if in sub-MIP solve
+
+  // Settings for the recursive sub-MIP
+  mip_submip_hyper_params_t<i_t, f_t> submip_settings;
 
   std::function<void(std::vector<f_t>&, f_t)> solution_callback;
-  std::function<void(const std::vector<f_t>&, f_t)> node_processed_callback;
   std::function<void()> heuristic_preemption_callback;
   std::function<void(std::vector<f_t>&, std::vector<f_t>&, f_t)> set_simplex_solution_callback;
   std::function<void(f_t)> dual_simplex_objective_callback;  // Called with current dual obj
   mutable logger_t log;
   std::atomic<int>* concurrent_halt;  // if nullptr ignored, if !nullptr, 0 if solver should
                                       // continue, 1 if solver should halt
+  // Optional non-owning pointer to run-level benchmark stats.
+  benchmark_info_t* benchmark_info_ptr = nullptr;
 };
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

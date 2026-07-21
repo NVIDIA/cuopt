@@ -8,10 +8,10 @@
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 #include "mip_utils.cuh"
 
-#include <cuopt/linear_programming/constants.h>
-#include <cuopt/linear_programming/mip/solver_settings.hpp>
-#include <cuopt/linear_programming/solve.hpp>
-#include <mps_parser/parser.hpp>
+#include <cuopt/mathematical_optimization/constants.h>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
 #include <utilities/common_utils.hpp>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/error.hpp>
@@ -27,7 +27,7 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::linear_programming::test {
+namespace cuopt::mathematical_optimization::test {
 
 namespace {
 
@@ -56,7 +56,7 @@ class DeterministicBBTest : public ::testing::Test {
 TEST_F(DeterministicBBTest, reproducible_objective)
 {
   auto path    = make_path_absolute("/mip/gen-ip054.mps");
-  auto problem = mps_parser::parse_mps<int, double>(path, false);
+  auto problem = io::read_mps<int, double>(path, false);
   handle_.sync_stream();
 
   mip_solver_settings_t<int, double> settings;
@@ -88,7 +88,7 @@ TEST_F(DeterministicBBTest, reproducible_objective)
 TEST_F(DeterministicBBTest, reproducible_infeasibility)
 {
   auto path    = make_path_absolute("/mip/stein9inf.mps");
-  auto problem = mps_parser::parse_mps<int, double>(path, false);
+  auto problem = io::read_mps<int, double>(path, false);
   handle_.sync_stream();
 
   mip_solver_settings_t<int, double> settings;
@@ -120,7 +120,7 @@ TEST_F(DeterministicBBTest, reproducible_infeasibility)
 TEST_F(DeterministicBBTest, reproducible_high_contention)
 {
   auto path    = make_path_absolute("/mip/gen-ip054.mps");
-  auto problem = mps_parser::parse_mps<int, double>(path, false);
+  auto problem = io::read_mps<int, double>(path, false);
   handle_.sync_stream();
 
   mip_solver_settings_t<int, double> settings;
@@ -155,7 +155,7 @@ TEST_F(DeterministicBBTest, reproducible_high_contention)
 TEST_F(DeterministicBBTest, reproducible_solution_vector)
 {
   auto path    = make_path_absolute("/mip/swath1.mps");
-  auto problem = mps_parser::parse_mps<int, double>(path, false);
+  auto problem = io::read_mps<int, double>(path, false);
   handle_.sync_stream();
 
   mip_solver_settings_t<int, double> settings;
@@ -188,7 +188,7 @@ TEST_P(DeterministicBBInstanceTest, deterministic_across_runs)
 {
   auto [instance_path, num_threads, time_limit, work_limit] = GetParam();
   auto path                                                 = make_path_absolute(instance_path);
-  auto problem = mps_parser::parse_mps<int, double>(path, false);
+  auto problem = io::read_mps<int, double>(path, false);
   handle_.sync_stream();
 
   // Get a random seed for each run
@@ -246,4 +246,4 @@ INSTANTIATE_TEST_SUITE_P(
     return name + "_threads" + std::to_string(threads);
   });
 
-}  // namespace cuopt::linear_programming::test
+}  // namespace cuopt::mathematical_optimization::test

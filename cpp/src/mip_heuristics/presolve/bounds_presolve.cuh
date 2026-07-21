@@ -23,7 +23,7 @@
 
 #include <omp.h>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 class probing_cache_t;
@@ -84,4 +84,4 @@ class bound_presolve_t {
   i_t solve_iter;
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

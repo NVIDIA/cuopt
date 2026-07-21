@@ -6,4 +6,5 @@
 ConfigureTest(DUAL_SIMPLEX_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/solve.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/solve_barrier.cu
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/right_looking_ldlt.cpp
     LABELS numopt)

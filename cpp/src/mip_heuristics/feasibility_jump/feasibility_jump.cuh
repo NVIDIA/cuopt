@@ -9,7 +9,7 @@
 
 #include "utils.cuh"
 
-#include <cuopt/linear_programming/mip/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
 #include <mip_heuristics/diversity/weights.cuh>
 #include <mip_heuristics/logger.cuh>
 #include <mip_heuristics/problem/problem.cuh>
@@ -18,13 +18,14 @@
 #include <mip_heuristics/utils.cuh>
 
 #include <utilities/event_handler.cuh>
+#include <utilities/manual_cuda_graph.cuh>
 
 #include <functional>
 
 #define FJ_DEBUG_LOAD_BALANCING 0
 #define FJ_SINGLE_STEP          0
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename f_t>
 using fj_improvement_callback_t =
@@ -267,8 +268,7 @@ class fj_t {
   rmm::device_uvector<fj_load_balancing_workid_mapping_t> work_id_to_nonbin_var_idx;
   rmm::device_uvector<i_t> work_ids_for_related_vars;
 
-  cudaGraphExec_t graph_instance;
-  bool graph_created = false;
+  cuopt::manual_cuda_graph_t step_graph_;
 
   // kernel launch dimensions, computed once inside the constructor
   std::pair<dim3, dim3> setval_launch_dims;
@@ -632,9 +632,13 @@ class fj_t {
   std::vector<std::unique_ptr<climber_data_t>> climbers;
   rmm::device_uvector<typename climber_data_t::view_t> climber_views;
   fj_settings_t settings;
+  // Device-side mirror of `settings`. `run_step_device` pushes the host
+  // `settings` here before each kernel launch; kernels read it via
+  // `view_t::settings`.
+  rmm::device_scalar<fj_settings_t> device_settings;
 
   fj_improvement_callback_t<f_t> improvement_callback;
   f_t last_reported_objective_{std::numeric_limits<f_t>::infinity()};
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

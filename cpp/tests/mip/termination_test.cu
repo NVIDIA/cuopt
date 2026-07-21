@@ -8,10 +8,10 @@
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 #include "mip_utils.cuh"
 
-#include <cuopt/linear_programming/mip/solver_solution.hpp>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_solution.hpp>
 #include <mip_heuristics/presolve/trivial_presolve.cuh>
 #include <mip_heuristics/relaxed_lp/relaxed_lp.cuh>
-#include <mps_parser/parser.hpp>
 #include <pdlp/pdlp.cuh>
 #include <pdlp/utilities/problem_checking.cuh>
 #include <utilities/common_utils.hpp>
@@ -33,7 +33,7 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::linear_programming::test {
+namespace cuopt::mathematical_optimization::test {
 
 constexpr double default_time_limit    = 10;
 constexpr bool default_heuristics_only = true;
@@ -132,4 +132,4 @@ TEST(termination_status, bb_infeasible_test)
   }
 }
 
-}  // namespace cuopt::linear_programming::test
+}  // namespace cuopt::mathematical_optimization::test

@@ -14,6 +14,7 @@
 #include <dual_simplex/simplex_solver_settings.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/problem/problem.cuh>
+#include <mip_heuristics/problem/problem_helpers.cuh>
 #include <mip_heuristics/solver_context.cuh>
 #include <pdlp/translate.hpp>
 #include <utilities/copy_helpers.hpp>
@@ -26,7 +27,7 @@
 #include <limits>
 #include <vector>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 namespace {
 
@@ -39,35 +40,60 @@ bool is_effectively_infinite_sc_upper_bound(f_t ub)
 }
 
 template <typename i_t, typename f_t>
+void ensure_constraint_bounds_populated(optimization_problem_t<i_t, f_t>& op_problem)
+{
+  if (!op_problem.get_constraint_lower_bounds().is_empty() ||
+      !op_problem.get_constraint_upper_bounds().is_empty()) {
+    return;
+  }
+  if (op_problem.get_row_types().is_empty() || op_problem.get_constraint_bounds().is_empty()) {
+    return;
+  }
+  const auto* handle_ptr = op_problem.get_handle_ptr();
+  const auto stream      = handle_ptr->get_stream();
+  const i_t n            = static_cast<i_t>(op_problem.get_row_types().size());
+  rmm::device_uvector<f_t> clb(n, stream);
+  rmm::device_uvector<f_t> cub(n, stream);
+  auto in_first  = thrust::make_zip_iterator(thrust::make_tuple(
+    op_problem.get_row_types().cbegin(), op_problem.get_constraint_bounds().cbegin()));
+  auto in_last   = thrust::make_zip_iterator(thrust::make_tuple(
+    op_problem.get_row_types().cend(), op_problem.get_constraint_bounds().cend()));
+  auto out_first = thrust::make_zip_iterator(thrust::make_tuple(clb.begin(), cub.begin()));
+  thrust::transform(
+    handle_ptr->get_thrust_policy(), in_first, in_last, out_first, transform_bounds_functor<f_t>{});
+  op_problem.set_constraint_lower_bounds(clb.data(), n);
+  op_problem.set_constraint_upper_bounds(cub.data(), n);
+}
+
+template <typename i_t, typename f_t>
 std::vector<f_t> call_host_bounds_strengthening(const optimization_problem_t<i_t, f_t>& op_problem,
                                                 const mip_solver_settings_t<i_t, f_t>& settings,
                                                 const std::vector<i_t>& sc_indices)
 {
   auto user_problem =
-    cuopt_problem_to_simplex_problem<i_t, f_t>(op_problem.get_handle_ptr(), op_problem);
+    cuopt_problem_to_user_problem<i_t, f_t>(op_problem.get_handle_ptr(), op_problem);
 
-  dual_simplex::lp_problem_t<i_t, f_t> lp_problem(op_problem.get_handle_ptr(), 1, 1, 1);
+  simplex::lp_problem_t<i_t, f_t> lp_problem(op_problem.get_handle_ptr(), 1, 1, 1);
   std::vector<i_t> new_slacks;
-  dual_simplex::dualize_info_t<i_t, f_t> dualize_info;
-  dual_simplex::simplex_solver_settings_t<i_t, f_t> simplex_settings;
+  simplex::dualize_info_t<i_t, f_t> dualize_info;
+  simplex::simplex_solver_settings_t<i_t, f_t> simplex_settings;
   simplex_settings.primal_tol  = settings.tolerances.presolve_absolute_tolerance;
   simplex_settings.integer_tol = settings.tolerances.integrality_tolerance;
   simplex_settings.set_log(false);
 
-  dual_simplex::convert_user_problem(
+  simplex::convert_user_problem(
     user_problem, simplex_settings, lp_problem, new_slacks, dualize_info);
 
   auto var_types = user_problem.var_types;
-  var_types.resize(lp_problem.num_cols, dual_simplex::variable_type_t::CONTINUOUS);
+  var_types.resize(lp_problem.num_cols, simplex::variable_type_t::CONTINUOUS);
 
-  dual_simplex::csr_matrix_t<i_t, f_t> Arow(1, 1, 1);
+  csr_matrix_t<i_t, f_t> Arow(1, 1, 1);
   lp_problem.A.to_compressed_row(Arow);
 
   // convert_user_problem returns an equality-form LP. Empty row_sense makes
   // bounds_strengthening_t use rhs as both lower and upper row bounds.
   std::vector<char> row_sense;
-  dual_simplex::bounds_strengthening_t<i_t, f_t> strengthening(
-    lp_problem, Arow, row_sense, var_types);
+  simplex::bounds_strengthening_t<i_t, f_t> strengthening(lp_problem, Arow, row_sense, var_types);
   std::vector<bool> bounds_changed(lp_problem.num_cols, false);
   for (i_t idx : sc_indices) {
     bounds_changed[idx] = true;
@@ -147,6 +173,8 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
     op_relaxed.set_variable_types(relaxed_types.data(), n_orig);
     op_relaxed.set_variable_lower_bounds(relaxed_lb.data(), n_orig);
     op_relaxed.set_variable_upper_bounds(relaxed_ub.data(), n_orig);
+
+    ensure_constraint_bounds_populated(op_relaxed);
   }
 
   // 3. Run deterministic CPU bounds strengthening on the relaxed problem to tighten UBs.
@@ -159,6 +187,8 @@ bool reformulate_semi_continuous(optimization_problem_t<i_t, f_t>& op_problem,
 
   // 4. Fetch all host arrays we need to extend with the new binary variables
   //    and linking constraints.
+  ensure_constraint_bounds_populated(op_problem);
+
   auto obj_c  = op_problem.get_objective_coefficients_host();
   auto A_vals = op_problem.get_constraint_matrix_values_host();
   auto A_idx  = op_problem.get_constraint_matrix_indices_host();
@@ -385,4 +415,4 @@ template void expand_initial_solutions_for_semi_continuous(mip_solver_settings_t
                                                            rmm::cuda_stream_view);
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

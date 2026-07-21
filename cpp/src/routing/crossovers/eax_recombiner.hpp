@@ -41,6 +41,7 @@ struct a_eax {
   std::vector<ESET_graph::edge> cycle;
 
   std::optional<detail::NodeInfo<>> single_depot_node;
+  bool use_virtual_depot_node{false};
 
   a_eax(size_t nodes_number) : eset(nodes_number), succesor_cpy(nodes_number, detail::NodeInfo<>())
   {
@@ -58,7 +59,7 @@ struct a_eax {
     raft::common::nvtx::range fun_scope("eax");
     // THIS IS TEMPORARY UNTIL EMPTY ROUTES ARE FIXED
     if (check_if_routes_empty(a) || check_if_routes_empty(b)) return false;
-    single_depot_node = a.problem->get_single_depot();
+    if (!set_recombination_depot(a, b)) { return false; }
 
     // different routes from a & b > 1. Set min routes
     if (a.routes.size() != b.routes.size() || !single_depot_node.has_value()) return false;
@@ -108,6 +109,55 @@ struct a_eax {
       a.clear();
   }
 
+  detail::NodeInfo<> normalize_depot(detail::NodeInfo<> node) const
+  {
+    if (use_virtual_depot_node && node.is_depot()) { return single_depot_node.value(); }
+    return node;
+  }
+
+  bool set_recombination_depot(Solution const& a, Solution const& b)
+  {
+    single_depot_node      = a.problem->get_single_depot();
+    use_virtual_depot_node = false;
+    if (single_depot_node.has_value()) { return true; }
+
+    single_depot_node      = get_path_tsp_virtual_depot(a, b);
+    use_virtual_depot_node = single_depot_node.has_value();
+    return single_depot_node.has_value();
+  }
+
+  std::optional<detail::NodeInfo<>> get_path_tsp_virtual_depot(Solution const& a, Solution const& b)
+  {
+    if (!a.problem->is_tsp || a.routes.size() != 1 || b.routes.size() != 1) { return std::nullopt; }
+    if (a.problem->data_view_ptr->get_vehicle_locations().first == nullptr) { return std::nullopt; }
+    if (a.routes[0].is_empty() || b.routes[0].is_empty()) { return std::nullopt; }
+
+    auto a_start_depot = a.pred[a.routes[0].start.node()];
+    auto a_end_depot   = a.succ[a.routes[0].end.node()];
+    auto b_start_depot = b.pred[b.routes[0].start.node()];
+    auto b_end_depot   = b.succ[b.routes[0].end.node()];
+
+    if (!a_start_depot.is_depot() || !a_end_depot.is_depot() || !b_start_depot.is_depot() ||
+        !b_end_depot.is_depot()) {
+      return std::nullopt;
+    }
+
+    if (a_start_depot.node() != a_end_depot.node() ||
+        a_start_depot.node() != b_start_depot.node() ||
+        a_start_depot.node() != b_end_depot.node()) {
+      return std::nullopt;
+    }
+
+    if (a_start_depot.location() != b_start_depot.location() ||
+        a_end_depot.location() != b_end_depot.location()) {
+      return std::nullopt;
+    }
+
+    // Fixed start/end TSP is a path. EAX works on closed tours, so represent
+    // the two endpoint depots as one virtual depot vertex during recombination.
+    return detail::NodeInfo<>{a_start_depot.node(), a_start_depot.location(), node_type_t::DEPOT};
+  }
+
   void fill_eset(Solution& a, const Solution& b)
   {
     // from_sol = 0 <=> solution = a
@@ -121,17 +171,21 @@ struct a_eax {
       detail::NodeInfo<> start = route.start;
       cuopt_expects(!route.is_empty(), error_type_t::ValidationError, "Route cannot be empty");
       while (!start.is_depot()) {
-        if (b.pred[start.node()] != a.pred[start.node()]) {
-          a01[a.pred[start.node()].node()].emplace_back(a.pred[start.node()], start, 0);
-          a00[start.node()].emplace_back(a.pred[start.node()], start, 0);
+        auto a_pred = normalize_depot(a.pred[start.node()]);
+        auto b_pred = normalize_depot(b.pred[start.node()]);
+        if (b_pred != a_pred) {
+          a01[a_pred.node()].emplace_back(a_pred, start, 0);
+          a00[start.node()].emplace_back(a_pred, start, 0);
         }
         start = a.succ[start.node()];
       }
       detail::NodeInfo<> end = route.end;
       // record last endge of the route
-      if (b.succ[end.node()] != a.succ[end.node()]) {
-        a01[end.node()].emplace_back(end, a.succ[end.node()], 0);
-        a00[a.succ[end.node()].node()].emplace_back(end, a.succ[end.node()], 0);
+      auto a_succ = normalize_depot(a.succ[end.node()]);
+      auto b_succ = normalize_depot(b.succ[end.node()]);
+      if (b_succ != a_succ) {
+        a01[end.node()].emplace_back(end, a_succ, 0);
+        a00[a_succ.node()].emplace_back(end, a_succ, 0);
       }
     }
 
@@ -139,17 +193,21 @@ struct a_eax {
       cuopt_expects(!route.is_empty(), error_type_t::ValidationError, "Route cannot be empty");
       auto start = route.start;
       while (!start.is_depot()) {
-        if (a.pred[start.node()] != b.pred[start.node()]) {
-          a11[b.pred[start.node()].node()].emplace_back(b.pred[start.node()], start, 1);
-          a10[start.node()].emplace_back(b.pred[start.node()], start, 1);
+        auto a_pred = normalize_depot(a.pred[start.node()]);
+        auto b_pred = normalize_depot(b.pred[start.node()]);
+        if (a_pred != b_pred) {
+          a11[b_pred.node()].emplace_back(b_pred, start, 1);
+          a10[start.node()].emplace_back(b_pred, start, 1);
         }
         start = b.succ[start.node()];
       }
       auto end = route.end;
       // record last edge of the route
-      if (b.succ[end.node()] != a.succ[end.node()]) {
-        a11[end.node()].emplace_back(end, b.succ[end.node()], 1);
-        a10[b.succ[end.node()].node()].emplace_back(end, b.succ[end.node()], 1);
+      auto a_succ = normalize_depot(a.succ[end.node()]);
+      auto b_succ = normalize_depot(b.succ[end.node()]);
+      if (b_succ != a_succ) {
+        a11[end.node()].emplace_back(end, b_succ, 1);
+        a10[b_succ.node()].emplace_back(end, b_succ, 1);
       }
     }
 
@@ -176,11 +234,11 @@ struct a_eax {
 
     // Fill the eset structure with edges from affected routes from a
     for (auto start : route_start_ids) {
-      detail::NodeInfo<> node = a.pred[start.node()];
+      detail::NodeInfo<> node = normalize_depot(a.pred[start.node()]);
       ab_graph[node.node()].push_back(start);
       if (!asymmetric) ab_graph[start.node()].push_back(node);
       while (!start.is_depot()) {
-        node = a.succ[start.node()];
+        node = normalize_depot(a.succ[start.node()]);
         ab_graph[start.node()].push_back(node);
         if (!asymmetric) ab_graph[node.node()].push_back(start);
         start = node;
@@ -264,6 +322,10 @@ struct a_eax {
     a.add_new_routes(routes_to_add);
     // identify and insert cycles if some are left
     for (int i = 0; i < (int)ab_graph.size(); i++) {
+      if (single_depot_node.has_value() && i == single_depot_node.value().node()) {
+        cuopt_assert(ab_graph[i].empty(), "Depot edges should have been converted to routes");
+        continue;
+      }
       if (!ab_graph[i].empty()) {
         route_helper.clear();
         detail::NodeInfo<> node_i    = a.problem->get_node_info_of_node(i);

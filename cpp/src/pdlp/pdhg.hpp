@@ -6,7 +6,7 @@
 /* clang-format on */
 
 #pragma once
-#include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
 #include <mip_heuristics/problem/problem.cuh>
 #include <pdlp/cusparse_view.hpp>
 #include <pdlp/pdlp_climber_strategy.hpp>
@@ -23,15 +23,15 @@
 #include <tuple>
 #include <vector>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 template <typename i_t, typename f_t>
 class pdhg_solver_t {
  public:
   pdhg_solver_t(raft::handle_t const* handle_ptr,
-                problem_t<i_t, f_t>& op_problem,
+                mip::problem_t<i_t, f_t>& op_problem,
                 bool is_legacy_batch_mode,
                 const std::vector<pdlp_climber_strategy_t>& climber_strategies,
-                const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params,
+                const pdlp::pdlp_hyper_params_t& hyper_params,
                 const std::vector<std::tuple<i_t, i_t, f_t, f_t>>& new_bounds,
                 bool enable_mixed_precision_spmv = false);
 
@@ -95,12 +95,14 @@ class pdhg_solver_t {
   void compute_primal_projection(rmm::device_uvector<f_t>& primal_step_size);
   void compute_At_y();
   void compute_A_x();
+  void spmvop_At_y();
+  void spmvop_A_x();
 
   bool batch_mode_{false};
   raft::handle_t const* handle_ptr_{nullptr};
   rmm::cuda_stream_view stream_view_;
 
-  problem_t<i_t, f_t>* problem_ptr;
+  mip::problem_t<i_t, f_t>* problem_ptr;
 
   i_t primal_size_h_;
   i_t dual_size_h_;
@@ -127,7 +129,13 @@ class pdhg_solver_t {
 
   // Different graphs for each case
   // Either compute the whole next primal step
-  // Or skip the SpMV (most cases) if it was done at the previous iteration
+  // Or skip the SpMV (most cases) if it was done at the previous iteration.
+  // The reflected primal/dual path branches on `should_major`, and the two branches build
+  // different graph topologies. They get separate ping-pong caches so each branch can key its
+  // 2-slot cache on `total_pdlp_iterations` parity (the swap state of the primal/dual buffers
+  // baked into the captured graph) without colliding with the other branch's topology.
+  // graph_all serves the non-reflected path and the major reflected branch (mutually exclusive
+  // at runtime); graph_all_non_major serves the non-major reflected branch.
   ping_pong_graph_t<i_t> graph_all;
   ping_pong_graph_t<i_t> graph_prim_proj_gradient_dual;
 
@@ -136,7 +144,7 @@ class pdhg_solver_t {
   rmm::device_scalar<i_t> d_total_pdhg_iterations_;
 
   const std::vector<pdlp_climber_strategy_t>& climber_strategies_;
-  const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params_;
+  const pdlp::pdlp_hyper_params_t& hyper_params_;
   rmm::device_uvector<i_t> new_bounds_climber_id_;
   rmm::device_uvector<i_t> new_bounds_idx_;
   rmm::device_uvector<f_t> new_bounds_lower_;
@@ -144,4 +152,4 @@ class pdhg_solver_t {
   cuda::fast_mod_div<size_t> batch_size_divisor_;
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

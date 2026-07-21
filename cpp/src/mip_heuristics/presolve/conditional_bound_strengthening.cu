@@ -26,7 +26,7 @@
 #include "conditional_bound_strengthening.cuh"
 
 #include <unordered_set>
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 constexpr size_t max_pair_per_row = 100;
 
@@ -249,7 +249,8 @@ void conditional_bound_strengthening_t<i_t, f_t>::select_constraint_pairs_host(
   i_t num_tasks = std::max(omp_get_num_threads() - 2, 1);
 
   CUOPT_LOG_INFO("Selecting constraint pairs with %d tasks", num_tasks);
-#pragma omp taskloop num_tasks(num_tasks) private(cnstr_pair) default(shared)
+#pragma omp taskloop num_tasks(num_tasks) private(cnstr_pair) default(shared) \
+  priority(CUOPT_DEFAULT_TASK_PRIORITY)
   for (i_t cnstr = 0; cnstr < problem.n_constraints; ++cnstr) {
     for (i_t jj = offsets[cnstr]; jj < offsets[cnstr + 1]; ++jj) {
       int var = variables[jj];
@@ -722,4 +723,4 @@ template class conditional_bound_strengthening_t<int, float>;
 #if MIP_INSTANTIATE_DOUBLE
 template class conditional_bound_strengthening_t<int, double>;
 #endif
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip
