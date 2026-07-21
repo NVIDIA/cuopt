@@ -995,183 +995,123 @@ void launch_dense_hessian_matvec(raft::device_span<const f_t> x,
   apply_hessian<i_t, f_t>(x, out, cones, stream, 1, out_input, 1, true);
 }
 
-// One block per sparse cone. Write the diagonal of the implicit cone Hessian:
-// eta^2 on every entry, with the head entry scaled by the rank-2 corner d.
-template <std::integral i_t, std::floating_point f_t>
-__global__ void get_Hs_sparse_kernel(raft::device_span<f_t> Hs_diag,
-                                     raft::device_span<const f_t> eta,
-                                     raft::device_span<const f_t> d,
-                                     raft::device_span<const i_t> sparse_cone_ids,
-                                     raft::device_span<const i_t> sparse_entry_offsets,
-                                     raft::device_span<const i_t> sparse_cone_dims,
-                                     i_t n_sparse_cones)
+// Bucket index owning `entry` via upper-bound search on the exclusive prefix ends in
+// offsets[1..n_buckets].
+template <std::integral i_t, typename offset_t>
+__device__ i_t bucket_index(raft::device_span<const offset_t> offsets,
+                            offset_t entry,
+                            i_t n_buckets)
 {
-  const i_t sparse_idx = blockIdx.x;
-  if (sparse_idx >= n_sparse_cones) { return; }
-
-  const i_t block_start = sparse_entry_offsets[sparse_idx];
-  const i_t block_dim   = sparse_cone_dims[sparse_idx];
-  const i_t cone_idx    = sparse_cone_ids[sparse_idx];
-  const f_t eta_sq      = eta[cone_idx] * eta[cone_idx];
-
-  for (i_t j = threadIdx.x; j < block_dim; j += blockDim.x) {
-    Hs_diag[block_start + j] = eta_sq;
+  i_t lo = 0;
+  i_t hi = n_buckets;
+  while (lo < hi) {
+    const i_t mid = lo + (hi - lo) / 2;
+    if (offsets[mid + 1] <= entry) {
+      lo = mid + 1;
+    } else {
+      hi = mid;
+    }
   }
-  __syncthreads();
+  return lo;
+}
 
-  if (threadIdx.x == 0) { Hs_diag[block_start] *= d[sparse_idx]; }
+template <std::integral i_t, std::floating_point f_t>
+__global__ void __launch_bounds__(soc_block_size) scatter_sparse_hessian_into_augmented_kernel(
+  raft::device_span<f_t> augmented_x,
+  raft::device_span<f_t> Hs_diag,
+  raft::device_span<const f_t> eta,
+  raft::device_span<const f_t> d,
+  raft::device_span<const i_t> sparse_cone_ids,
+  raft::device_span<const i_t> sparse_entry_offsets,
+  i_t n_sparse_cones,
+  raft::device_span<const i_t> hessian_diag_csr_indices,
+  raft::device_span<const f_t> q_values,
+  raft::device_span<const f_t> sparse_v,
+  raft::device_span<const f_t> sparse_u,
+  raft::device_span<const i_t> exp_v_col,
+  raft::device_span<const i_t> exp_u_col,
+  raft::device_span<const i_t> exp_v_row,
+  raft::device_span<const i_t> exp_u_row,
+  raft::device_span<const i_t> sparse_expansion_D,
+  f_t dual_perturb)
+{
+  const size_t e = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (e >= Hs_diag.size()) { return; }
+
+  const i_t e_i        = static_cast<i_t>(e);  // single cast, reused below
+  const i_t sparse_idx = bucket_index(sparse_entry_offsets, e_i, n_sparse_cones);
+  const i_t cone_idx   = sparse_cone_ids[sparse_idx];
+  const bool is_head   = e_i == sparse_entry_offsets[sparse_idx];
+  const f_t eta_val    = eta[cone_idx];
+  const f_t eta_sq     = eta_val * eta_val;
+  const f_t hs_val     = is_head ? eta_sq * d[sparse_idx] : eta_sq;
+  Hs_diag[e]           = hs_val;
+
+  augmented_x[hessian_diag_csr_indices[e]] = -hs_val - q_values[e] - dual_perturb;
+
+  const f_t v_val           = sparse_v[e];
+  const f_t u_val           = sparse_u[e];
+  augmented_x[exp_v_col[e]] = v_val;
+  augmented_x[exp_u_col[e]] = u_val;
+  augmented_x[exp_v_row[e]] = v_val;
+  augmented_x[exp_u_row[e]] = u_val;
+
+  if (is_head) {
+    const f_t perturbed_eta_sq                          = eta_sq + dual_perturb;
+    augmented_x[sparse_expansion_D[2 * sparse_idx]]     = -perturbed_eta_sq;
+    augmented_x[sparse_expansion_D[2 * sparse_idx + 1]] = perturbed_eta_sq;
+  }
 }
 
 /**
- * Compute the packed diagonal `Hs_diag` of the implicit sparse cone Hessians,
- * one contiguous block of `sparse_cone_dims[s]` entries per sparse cone. This is
- * the diagonal that gets scattered onto the cone rows of the augmented system.
+ * Fused sparse SOC augmented-system assembly: one kernel launch with one thread per packed
+ * sparse entry (E threads total), writing `Hs_diag`, the Hessian CSR scatter, and the four
+ * rank-2 couplings, with each cone's unique head thread additionally applying the rank-2
+ * corner scale and writing that cone's two expansion diagonals.
+ *
+ * `Hs_diag` is left populated for downstream matrix-free matvec / iterative refinement use.
  */
 template <std::integral i_t, std::floating_point f_t>
-void launch_get_Hs_sparse(cone_data_t<i_t, f_t>& cones,
-                          rmm::device_uvector<f_t>& Hs_diag,
-                          rmm::cuda_stream_view stream)
+void scatter_sparse_hessian_into_augmented(cone_data_t<i_t, f_t>& cones,
+                                           rmm::device_uvector<f_t>& augmented_x,
+                                           rmm::device_uvector<f_t>& Hs_diag,
+                                           const rmm::device_uvector<i_t>& hessian_diag_csr_indices,
+                                           const rmm::device_uvector<f_t>& q_values,
+                                           const rmm::device_uvector<i_t>& exp_v_col,
+                                           const rmm::device_uvector<i_t>& exp_u_col,
+                                           const rmm::device_uvector<i_t>& exp_v_row,
+                                           const rmm::device_uvector<i_t>& exp_u_row,
+                                           const rmm::device_uvector<i_t>& sparse_expansion_D,
+                                           rmm::cuda_stream_view stream,
+                                           f_t dual_perturb)
 {
   if (!cones.has_sparse_cones()) { return; }
 
-  const i_t n_sparse = cones.n_sparse_cones;
-  cuopt_assert(Hs_diag.size() == cones.n_sparse_cone_entries, "Hs_diag size mismatch");
-
-  get_Hs_sparse_kernel<i_t, f_t>
-    <<<n_sparse, soc_block_size, 0, stream.value()>>>(cuopt::make_span(Hs_diag),
-                                                      cuopt::make_span(cones.eta),
-                                                      cuopt::make_span(cones.d),
-                                                      cuopt::make_span(cones.sparse_cone_ids),
-                                                      cuopt::make_span(cones.sparse_entry_offsets),
-                                                      cuopt::make_span(cones.sparse_cone_dims),
-                                                      n_sparse);
+  const i_t n_sparse      = cones.n_sparse_cones;
+  const size_t E          = cones.n_sparse_cone_entries;
+  const size_t entry_grid = raft::ceildiv<size_t>(E, soc_block_size);
+  scatter_sparse_hessian_into_augmented_kernel<i_t, f_t>
+    <<<entry_grid, soc_block_size, 0, stream.value()>>>(
+      cuopt::make_span(augmented_x),
+      cuopt::make_span(Hs_diag),
+      cuopt::make_span(cones.eta),
+      cuopt::make_span(cones.d),
+      cuopt::make_span(cones.sparse_cone_ids),
+      cuopt::make_span(cones.sparse_entry_offsets),
+      n_sparse,
+      cuopt::make_span(hessian_diag_csr_indices),
+      cuopt::make_span(q_values),
+      cuopt::make_span(cones.sparse_v),
+      cuopt::make_span(cones.sparse_u),
+      cuopt::make_span(exp_v_col),
+      cuopt::make_span(exp_u_col),
+      cuopt::make_span(exp_v_row),
+      cuopt::make_span(exp_u_row),
+      cuopt::make_span(sparse_expansion_D),
+      dual_perturb);
   RAFT_CUDA_TRY(cudaPeekAtLastError());
 }
 
-// Scatter one sparse-cone diagonal entry into the augmented value buffer:
-// augmented_x[csr_indices[e]] = -Hs_diag[e] - q_values[e] - dual_perturb,
-// matching the sign convention of the dense scatter (negated KKT block plus
-// any quadratic-objective contribution and diagonal regularization).
-template <std::integral i_t, std::floating_point f_t>
-__global__ void __launch_bounds__(soc_block_size)
-  scatter_sparse_hessian_diag_kernel(raft::device_span<f_t> augmented_x,
-                                     raft::device_span<const i_t> csr_indices,
-                                     raft::device_span<const f_t> Hs_diag,
-                                     raft::device_span<const f_t> q_values,
-                                     f_t dual_perturb)
-{
-  const size_t e = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  if (e >= csr_indices.size()) { return; }
-
-  augmented_x[csr_indices[e]] = -Hs_diag[e] - q_values[e] - dual_perturb;
-}
-
-/**
- * Write the sparse cone Hessian diagonals into the augmented system value buffer.
- *
- * `csr_indices[e]` gives the value-buffer position of the diagonal for packed
- * cone entry `e`; each is set to `-Hs_diag[e] - q_values[e] - dual_perturb`.
- */
-template <std::integral i_t, std::floating_point f_t>
-void scatter_sparse_hessian_diag_into_augmented(rmm::device_uvector<f_t>& augmented_x,
-                                                const rmm::device_uvector<i_t>& csr_indices,
-                                                const rmm::device_uvector<f_t>& Hs_diag,
-                                                const rmm::device_uvector<f_t>& q_values,
-                                                rmm::cuda_stream_view stream,
-                                                f_t dual_perturb)
-{
-  const size_t count = csr_indices.size();
-  if (count == 0) { return; }
-  cuopt_assert(count == Hs_diag.size(), "sparse Hessian index/value size mismatch");
-  cuopt_assert(count == q_values.size(), "sparse Hessian Q-value size mismatch");
-
-  const size_t grid = raft::ceildiv<size_t>(count, soc_block_size);
-  scatter_sparse_hessian_diag_kernel<i_t, f_t>
-    <<<grid, soc_block_size, 0, stream.value()>>>(cuopt::make_span(augmented_x),
-                                                  cuopt::make_span(csr_indices),
-                                                  cuopt::make_span(Hs_diag),
-                                                  cuopt::make_span(q_values),
-                                                  dual_perturb);
-  RAFT_CUDA_TRY(cudaPeekAtLastError());
-}
-
-/**
- * Refresh the expansion (rank-2 coupling) entries of the augmented system.
- *
- * For each sparse cone this scatters the rank-2 vectors v, u into their four
- * coupling positions -- the v/u columns and the symmetric v/u rows linking the
- * cone variables to the two expansion variables -- and writes the expansion
- * diagonal +/-(eta^2 + dual_perturb). The Hessian diagonal itself is written
- * separately by `scatter_sparse_hessian_diag_into_augmented`.
- */
-template <std::integral i_t, std::floating_point f_t>
-void update_sparse_expansion_in_augmented(rmm::device_uvector<f_t>& augmented_x,
-                                          const rmm::device_uvector<i_t>& sparse_exp_v_col,
-                                          const rmm::device_uvector<i_t>& sparse_exp_u_col,
-                                          const rmm::device_uvector<i_t>& sparse_exp_v_row,
-                                          const rmm::device_uvector<i_t>& sparse_exp_u_row,
-                                          const rmm::device_uvector<i_t>& sparse_expansion_D,
-                                          const rmm::device_uvector<f_t>& sparse_v,
-                                          const rmm::device_uvector<f_t>& sparse_u,
-                                          const rmm::device_uvector<f_t>& eta,
-                                          const rmm::device_uvector<i_t>& sparse_cone_ids,
-                                          rmm::cuda_stream_view stream,
-                                          f_t dual_perturb)
-{
-  const size_t n_coupling = sparse_exp_v_col.size();
-  if (n_coupling == 0) { return; }
-
-  cuopt_assert(sparse_exp_u_col.size() == n_coupling, "sparse_exp_u_col size mismatch");
-  cuopt_assert(sparse_exp_v_row.size() == n_coupling, "sparse_exp_v_row size mismatch");
-  cuopt_assert(sparse_exp_u_row.size() == n_coupling, "sparse_exp_u_row size mismatch");
-  cuopt_assert(sparse_v.size() == n_coupling, "sparse_v size mismatch");
-  cuopt_assert(sparse_u.size() == n_coupling, "sparse_u size mismatch");
-
-  thrust::scatter(rmm::exec_policy(stream),
-                  sparse_v.begin(),
-                  sparse_v.end(),
-                  sparse_exp_v_col.begin(),
-                  augmented_x.begin());
-  thrust::scatter(rmm::exec_policy(stream),
-                  sparse_u.begin(),
-                  sparse_u.end(),
-                  sparse_exp_u_col.begin(),
-                  augmented_x.begin());
-  thrust::scatter(rmm::exec_policy(stream),
-                  sparse_v.begin(),
-                  sparse_v.end(),
-                  sparse_exp_v_row.begin(),
-                  augmented_x.begin());
-  thrust::scatter(rmm::exec_policy(stream),
-                  sparse_u.begin(),
-                  sparse_u.end(),
-                  sparse_exp_u_row.begin(),
-                  augmented_x.begin());
-
-  const i_t n_expansion = static_cast<i_t>(sparse_expansion_D.size());
-  if (n_expansion > 0) {
-    auto eta_span             = cuopt::make_span(eta);
-    auto sparse_cone_ids_span = cuopt::make_span(sparse_cone_ids);
-    // Expansion-row diagonal of sparse cone i/2: -(eta^2 + dual_perturb) for the
-    // v-row (even i), +(eta^2 + dual_perturb) for the u-row (odd i).
-    auto diag_values = thrust::make_transform_iterator(
-      thrust::counting_iterator<i_t>(0),
-      [eta_span, sparse_cone_ids_span, dual_perturb] HD(i_t i) -> f_t {
-        const i_t sparse_idx = i / 2;
-        const f_t eta_val    = eta_span[sparse_cone_ids_span[sparse_idx]];
-        const f_t sign       = (i % 2 == 0) ? f_t(-1) : f_t(1);
-        return sign * (eta_val * eta_val + dual_perturb);
-      });
-    thrust::scatter(rmm::exec_policy(stream),
-                    diag_values,
-                    diag_values + n_expansion,
-                    sparse_expansion_D.begin(),
-                    augmented_x.begin());
-  }
-}
-
-// Remove factorization-only regularization from the assembled augmented CSR values so
-// iterative refinement can use a single SpMV against the true KKT operator.
 template <std::integral i_t, std::floating_point f_t>
 __global__ void strip_linear_primal_diag_kernel(raft::device_span<f_t> augmented_x,
                                                 raft::device_span<const i_t> diag_indices,
@@ -1427,18 +1367,7 @@ __global__ void __launch_bounds__(soc_block_size)
   const size_t e = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (e >= csr_indices.size()) { return; }
 
-  i_t lo = 0;
-  i_t hi = n_dense_cones;
-  while (lo < hi) {
-    const i_t mid = lo + (hi - lo) / 2;
-    if (dense_block_offsets[mid + 1] <= e) {
-      lo = mid + 1;
-    } else {
-      hi = mid;
-    }
-  }
-
-  const i_t dense_idx  = lo;
+  const i_t dense_idx  = bucket_index(dense_block_offsets, e, n_dense_cones);
   const i_t cone       = dense_cone_ids[dense_idx];
   const size_t off     = cone_offsets[cone];
   const size_t q       = cone_offsets[cone + 1] - off;

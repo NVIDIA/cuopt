@@ -1185,25 +1185,18 @@ class iteration_data_t {
 
       if (has_soc) {
         if (cones().has_sparse_cones()) {
-          launch_get_Hs_sparse(cones(), d_sparse_Hs_diag_, handle_ptr->get_stream());
-          scatter_sparse_hessian_diag_into_augmented(device_augmented.x,
-                                                     d_sparse_hessian_diag_,
-                                                     d_sparse_Hs_diag_,
-                                                     d_sparse_hessian_Q_,
-                                                     handle_ptr->get_stream(),
-                                                     dual_perturb);
-          update_sparse_expansion_in_augmented(device_augmented.x,
-                                               d_sparse_exp_v_col_,
-                                               d_sparse_exp_u_col_,
-                                               d_sparse_exp_v_row_,
-                                               d_sparse_exp_u_row_,
-                                               d_sparse_expansion_D_,
-                                               cones().sparse_v,
-                                               cones().sparse_u,
-                                               cones().eta,
-                                               cones().sparse_cone_ids,
-                                               handle_ptr->get_stream(),
-                                               dual_perturb);
+          scatter_sparse_hessian_into_augmented(cones(),
+                                                device_augmented.x,
+                                                d_sparse_Hs_diag_,
+                                                d_sparse_hessian_diag_,
+                                                d_sparse_hessian_Q_,
+                                                d_sparse_exp_v_col_,
+                                                d_sparse_exp_u_col_,
+                                                d_sparse_exp_v_row_,
+                                                d_sparse_exp_u_row_,
+                                                d_sparse_expansion_D_,
+                                                handle_ptr->get_stream(),
+                                                dual_perturb);
           RAFT_CHECK_CUDA(handle_ptr->get_stream());
         }
         if (cones().n_dense_cones() > 0) {
@@ -3164,7 +3157,6 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
   if (!data.has_factorization) {
     i_t status;
     if (use_augmented) {
-      RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view_));
       data.dual_perturb   = dual_perturb;
       data.primal_perturb = primal_perturb;
       {

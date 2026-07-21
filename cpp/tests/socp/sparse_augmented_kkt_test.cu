@@ -18,24 +18,34 @@
 
 namespace cuopt::mathematical_optimization::barrier::test {
 
-TEST(sparse_augmented_kkt, cone_counts_and_expansion_size)
+namespace {
+
+// Packed Hs_diag reference: eta^2 on every entry, head scaled by rank-2 corner d.
+std::vector<double> expected_Hs_diag(const cone_data_t<int, double>& cones,
+                                     rmm::cuda_stream_view stream)
 {
-  auto stream = rmm::cuda_stream_default;
+  const int E                    = static_cast<int>(cones.n_sparse_cone_entries);
+  auto d_host                    = cuopt::host_copy(cones.d, stream);
+  auto eta_host                  = cuopt::host_copy(cones.eta, stream);
+  auto sparse_cone_ids_host      = cuopt::host_copy(cones.sparse_cone_ids, stream);
+  auto sparse_entry_offsets_host = cuopt::host_copy(cones.sparse_entry_offsets, stream);
 
-  std::vector<int> cone_dimensions{3, 6, 5};
-  rmm::device_uvector<double> x(14, stream);
-  rmm::device_uvector<double> z(14, stream);
-
-  cone_data_t<int, double> cones(
-    cone_dimensions, cuopt::make_span(x), cuopt::make_span(z), stream, /*soc_threshold=*/4);
-
-  EXPECT_EQ(cones.n_sparse_cones, 2);
-  EXPECT_EQ(cones.n_dense_cones(), 1);
-  EXPECT_EQ(cones.expansion_var_count(), 4);
-  EXPECT_EQ(cones.n_sparse_cone_entries, 11u);
+  std::vector<double> hs(E);
+  for (int s = 0; s < cones.n_sparse_cones; ++s) {
+    const int head      = sparse_entry_offsets_host[s];
+    const int end       = sparse_entry_offsets_host[s + 1];
+    const int cone_idx  = sparse_cone_ids_host[s];
+    const double eta_sq = eta_host[cone_idx] * eta_host[cone_idx];
+    for (int e = head; e < end; ++e) {
+      hs[e] = (e == head) ? eta_sq * d_host[s] : eta_sq;
+    }
+  }
+  return hs;
 }
 
-TEST(sparse_augmented_kkt, launch_get_Hs_sparse)
+}  // namespace
+
+TEST(sparse_augmented_kkt, cone_counts_and_expansion_size)
 {
   auto stream = rmm::cuda_stream_default;
 
@@ -46,134 +56,121 @@ TEST(sparse_augmented_kkt, launch_get_Hs_sparse)
   cone_data_t<int, double> cones(
     cone_dimensions, cuopt::make_span(x), cuopt::make_span(z), stream, /*soc_threshold=*/4);
 
-  ASSERT_EQ(cones.n_sparse_cones, 1);
-
-  std::vector<double> x_host(9, 0.0);
-  std::vector<double> z_host(9, 0.0);
-  x_host[3] = 2.0;
-  z_host[3] = 1.5;
-  for (int j = 1; j < 6; ++j) {
-    x_host[3 + j] = 0.1 * j;
-    z_host[3 + j] = 0.08 * j;
-  }
-  x_host[0] = 1.5;
-  z_host[0] = 1.2;
-  for (int j = 1; j < 3; ++j) {
-    x_host[j] = 0.05;
-    z_host[j] = 0.04;
-  }
-
-  raft::copy(cones.x.data(), x_host.data(), x_host.size(), stream);
-  raft::copy(cones.z.data(), z_host.data(), z_host.size(), stream);
-
-  launch_nt_scaling(cones, stream);
-  launch_update_scaling_sparse(cones, stream);
-
-  rmm::device_uvector<double> Hs_diag(cones.n_sparse_cone_entries, stream);
-  launch_get_Hs_sparse(cones, Hs_diag, stream);
-
-  auto d_host   = cuopt::host_copy(cones.d, stream);
-  auto eta_host = cuopt::host_copy(cones.eta, stream);
-  auto hs_host  = cuopt::host_copy(Hs_diag, stream);
-
-  const int sparse_cone = 1;
-  const double eta_sq   = eta_host[sparse_cone] * eta_host[sparse_cone];
-
-  EXPECT_NEAR(hs_host[0], eta_sq * d_host[0], 1e-10);
-  for (int j = 1; j < 6; ++j) {
-    EXPECT_NEAR(hs_host[j], eta_sq, 1e-10) << "tail index " << j;
-  }
+  EXPECT_EQ(cones.n_sparse_cones, 2);
+  EXPECT_EQ(cones.n_dense_cones(), 1);
+  EXPECT_EQ(cones.expansion_var_count(), 4);
+  EXPECT_EQ(cones.n_sparse_cone_entries, 11u);
 }
 
-TEST(sparse_augmented_kkt, scatter_and_update_sparse_expansion)
+TEST(sparse_augmented_kkt, scatter_sparse_hessian_into_augmented)
 {
   auto stream = rmm::cuda_stream_default;
 
-  std::vector<int> cone_dimensions{6};
-  rmm::device_uvector<double> x(6, stream);
-  rmm::device_uvector<double> z(6, stream);
+  // Two sparse cones so the fused entry-parallel kernel has more than one sparse-cone
+  // boundary to get right.
+  std::vector<int> cone_dimensions{6, 5};
+  rmm::device_uvector<double> x(11, stream);
+  rmm::device_uvector<double> z(11, stream);
 
   cone_data_t<int, double> cones(
     cone_dimensions, cuopt::make_span(x), cuopt::make_span(z), stream, /*soc_threshold=*/4);
 
-  ASSERT_EQ(cones.n_sparse_cones, 1);
-  ASSERT_EQ(cones.expansion_var_count(), 2);
+  ASSERT_EQ(cones.n_sparse_cones, 2);
+  ASSERT_EQ(cones.n_sparse_cone_entries, 11u);
+  ASSERT_EQ(cones.expansion_var_count(), 4);
 
-  std::vector<double> x_host{2.0, 0.2, 0.3, 0.4, 0.5, 0.6};
-  std::vector<double> z_host{1.5, 0.1, 0.15, 0.2, 0.25, 0.3};
+  std::vector<double> x_host(11, 0.0);
+  std::vector<double> z_host(11, 0.0);
+  x_host[0] = 2.0;
+  z_host[0] = 1.5;
+  for (int j = 1; j < 6; ++j) {
+    x_host[j] = 0.1 * j;
+    z_host[j] = 0.08 * j;
+  }
+  x_host[6] = 1.8;
+  z_host[6] = 1.4;
+  for (int j = 1; j < 5; ++j) {
+    x_host[6 + j] = 0.09 * j;
+    z_host[6 + j] = 0.07 * j;
+  }
+
   raft::copy(cones.x.data(), x_host.data(), x_host.size(), stream);
   raft::copy(cones.z.data(), z_host.data(), z_host.size(), stream);
 
   launch_nt_scaling(cones, stream);
   launch_update_scaling_sparse(cones, stream);
 
-  const int nnz = 32;
+  const int E               = static_cast<int>(cones.n_sparse_cone_entries);
+  const double dual_perturb = 0.02;
+  const auto hs_expected    = expected_Hs_diag(cones, stream);
+
+  // Distinct augmented-value slots per packed entry: hessian diag, then the four rank-2
+  // couplings, then two expansion diagonals per sparse cone.
+  std::vector<int> hessian_diag_csr(E);
+  std::vector<double> q_values(E);
+  std::vector<int> exp_v_col(E);
+  std::vector<int> exp_u_col(E);
+  std::vector<int> exp_v_row(E);
+  std::vector<int> exp_u_row(E);
+  for (int e = 0; e < E; ++e) {
+    hessian_diag_csr[e] = e;
+    q_values[e]         = 0.01 * (e + 1);
+    exp_v_col[e]        = 11 + e;
+    exp_u_col[e]        = 22 + e;
+    exp_v_row[e]        = 33 + e;
+    exp_u_row[e]        = 44 + e;
+  }
+  std::vector<int> sparse_expansion_D{55, 56, 57, 58};
+  const int nnz = 59;
+
+  auto d_hessian_diag_csr   = cuopt::device_copy(hessian_diag_csr, stream);
+  auto d_q_values           = cuopt::device_copy(q_values, stream);
+  auto d_exp_v_col          = cuopt::device_copy(exp_v_col, stream);
+  auto d_exp_u_col          = cuopt::device_copy(exp_u_col, stream);
+  auto d_exp_v_row          = cuopt::device_copy(exp_v_row, stream);
+  auto d_exp_u_row          = cuopt::device_copy(exp_u_row, stream);
+  auto d_sparse_expansion_D = cuopt::device_copy(sparse_expansion_D, stream);
 
   rmm::device_uvector<double> augmented_x(nnz, stream);
   thrust::fill(rmm::exec_policy(stream), augmented_x.begin(), augmented_x.end(), 0.0);
+  rmm::device_uvector<double> d_hs_actual(E, stream);
 
-  // One coupling/Hessian CSR entry per sparse-cone element, matching production where every
-  // *_col/*_row index array has size n_sparse_cone_entries (== cones.sparse_v.size()).
-  const int q_dim = 6;
-  ASSERT_EQ(cones.n_sparse_cone_entries, static_cast<std::size_t>(q_dim));
+  scatter_sparse_hessian_into_augmented(cones,
+                                        augmented_x,
+                                        d_hs_actual,
+                                        d_hessian_diag_csr,
+                                        d_q_values,
+                                        d_exp_v_col,
+                                        d_exp_u_col,
+                                        d_exp_v_row,
+                                        d_exp_u_row,
+                                        d_sparse_expansion_D,
+                                        stream,
+                                        dual_perturb);
 
-  std::vector<int> sparse_hessian_diag(q_dim);
-  std::vector<double> sparse_hessian_Q(q_dim, 0.0);
-  std::vector<int> sparse_exp_v_col(q_dim);
-  std::vector<int> sparse_exp_u_col(q_dim);
-  std::vector<int> sparse_exp_v_row(q_dim);
-  std::vector<int> sparse_exp_u_row(q_dim);
-  std::vector<int> sparse_expansion_D{30, 31};
-  for (int j = 0; j < q_dim; ++j) {
-    sparse_hessian_diag[j] = j;       // CSR slots 0..5
-    sparse_exp_v_col[j]    = 6 + j;   // 6..11
-    sparse_exp_u_col[j]    = 12 + j;  // 12..17
-    sparse_exp_v_row[j]    = 18 + j;  // 18..23
-    sparse_exp_u_row[j]    = 24 + j;  // 24..29
+  auto hs_actual_host       = cuopt::host_copy(d_hs_actual, stream);
+  auto aug_host             = cuopt::host_copy(augmented_x, stream);
+  auto v_host               = cuopt::host_copy(cones.sparse_v, stream);
+  auto u_host               = cuopt::host_copy(cones.sparse_u, stream);
+  auto eta_host             = cuopt::host_copy(cones.eta, stream);
+  auto sparse_cone_ids_host = cuopt::host_copy(cones.sparse_cone_ids, stream);
+
+  for (int e = 0; e < E; ++e) {
+    EXPECT_NEAR(hs_actual_host[e], hs_expected[e], 1e-10) << "Hs_diag entry " << e;
+    EXPECT_NEAR(aug_host[e], -hs_actual_host[e] - q_values[e] - dual_perturb, 1e-10)
+      << "hessian diag " << e;
+    EXPECT_NEAR(aug_host[11 + e], v_host[e], 1e-10) << "v col " << e;
+    EXPECT_NEAR(aug_host[22 + e], u_host[e], 1e-10) << "u col " << e;
+    EXPECT_NEAR(aug_host[33 + e], v_host[e], 1e-10) << "v row " << e;
+    EXPECT_NEAR(aug_host[44 + e], u_host[e], 1e-10) << "u row " << e;
   }
 
-  auto d_sparse_hessian_diag = cuopt::device_copy(sparse_hessian_diag, stream);
-  auto d_sparse_hessian_Q    = cuopt::device_copy(sparse_hessian_Q, stream);
-  auto d_sparse_exp_v_col    = cuopt::device_copy(sparse_exp_v_col, stream);
-  auto d_sparse_exp_u_col    = cuopt::device_copy(sparse_exp_u_col, stream);
-  auto d_sparse_exp_v_row    = cuopt::device_copy(sparse_exp_v_row, stream);
-  auto d_sparse_exp_u_row    = cuopt::device_copy(sparse_exp_u_row, stream);
-  auto d_sparse_expansion_D  = cuopt::device_copy(sparse_expansion_D, stream);
-  rmm::device_uvector<double> d_sparse_Hs_diag(cones.n_sparse_cone_entries, stream);
-
-  launch_get_Hs_sparse(cones, d_sparse_Hs_diag, stream);
-  scatter_sparse_hessian_diag_into_augmented(
-    augmented_x, d_sparse_hessian_diag, d_sparse_Hs_diag, d_sparse_hessian_Q, stream, 0.0);
-  update_sparse_expansion_in_augmented(augmented_x,
-                                       d_sparse_exp_v_col,
-                                       d_sparse_exp_u_col,
-                                       d_sparse_exp_v_row,
-                                       d_sparse_exp_u_row,
-                                       d_sparse_expansion_D,
-                                       cones.sparse_v,
-                                       cones.sparse_u,
-                                       cones.eta,
-                                       cones.sparse_cone_ids,
-                                       stream,
-                                       0.0);
-
-  auto aug_host = cuopt::host_copy(augmented_x, stream);
-  auto v_host   = cuopt::host_copy(cones.sparse_v, stream);
-  auto u_host   = cuopt::host_copy(cones.sparse_u, stream);
-  auto hs_host  = cuopt::host_copy(d_sparse_Hs_diag, stream);
-  auto eta_host = cuopt::host_copy(cones.eta, stream);
-
-  for (int j = 0; j < q_dim; ++j) {
-    EXPECT_NEAR(aug_host[j], -hs_host[j], 1e-10) << "hessian diag " << j;
-    EXPECT_NEAR(aug_host[6 + j], v_host[j], 1e-10) << "v col " << j;
-    EXPECT_NEAR(aug_host[12 + j], u_host[j], 1e-10) << "u col " << j;
-    EXPECT_NEAR(aug_host[18 + j], v_host[j], 1e-10) << "v row " << j;
-    EXPECT_NEAR(aug_host[24 + j], u_host[j], 1e-10) << "u row " << j;
+  for (int s = 0; s < cones.n_sparse_cones; ++s) {
+    const int cone_idx  = sparse_cone_ids_host[s];
+    const double eta_sq = eta_host[cone_idx] * eta_host[cone_idx];
+    EXPECT_NEAR(aug_host[55 + 2 * s], -(eta_sq + dual_perturb), 1e-10) << "expansion v " << s;
+    EXPECT_NEAR(aug_host[55 + 2 * s + 1], eta_sq + dual_perturb, 1e-10) << "expansion u " << s;
   }
-
-  const double eta_sq = eta_host[0] * eta_host[0];
-  EXPECT_NEAR(aug_host[30], -eta_sq, 1e-10);
-  EXPECT_NEAR(aug_host[31], eta_sq, 1e-10);
 }
 
 TEST(sparse_augmented_kkt, sparse_augmented_matvec)
@@ -213,16 +210,17 @@ TEST(sparse_augmented_kkt, sparse_augmented_matvec)
   x_vec[n_primal + m_rows]     = 0.25;   // expansion v
   x_vec[n_primal + m_rows + 1] = -0.15;  // expansion u
 
+  const auto hs_host = expected_Hs_diag(cones, stream);
+  auto d_hs          = cuopt::device_copy(hs_host, stream);
+
   rmm::device_uvector<double> d_x(sys_size, stream);
   rmm::device_uvector<double> d_r1(n_primal, stream);
   rmm::device_uvector<double> d_y_exp(p, stream);
-  rmm::device_uvector<double> d_hs(cones.n_sparse_cone_entries, stream);
 
   raft::copy(d_x.data(), x_vec.data(), sys_size, stream);
   thrust::fill(rmm::exec_policy(stream), d_r1.begin(), d_r1.end(), 0.0);
   thrust::fill(rmm::exec_policy(stream), d_y_exp.begin(), d_y_exp.end(), 0.0);
 
-  launch_get_Hs_sparse(cones, d_hs, stream);
   launch_sparse_augmented_matvec(raft::device_span<const double>(d_x.data(), d_x.size()),
                                  raft::device_span<double>(d_r1.data(), d_r1.size()),
                                  raft::device_span<double>(d_y_exp.data(), d_y_exp.size()),
@@ -235,7 +233,6 @@ TEST(sparse_augmented_kkt, sparse_augmented_matvec)
 
   auto r1_host   = cuopt::host_copy(d_r1, stream);
   auto yexp_host = cuopt::host_copy(d_y_exp, stream);
-  auto hs_host   = cuopt::host_copy(d_hs, stream);
   auto v_host    = cuopt::host_copy(cones.sparse_v, stream);
   auto u_host    = cuopt::host_copy(cones.sparse_u, stream);
   auto eta_host  = cuopt::host_copy(cones.eta, stream);
@@ -297,8 +294,8 @@ TEST(sparse_augmented_kkt, update_scaling_sparse_dim_1000)
     EXPECT_TRUE(std::isfinite(u_host[j])) << "u entry " << j;
   }
 
-  rmm::device_uvector<double> Hs_diag(cones.n_sparse_cone_entries, stream);
-  launch_get_Hs_sparse(cones, Hs_diag, stream);
+  const auto hs_host = expected_Hs_diag(cones, stream);
+  auto d_hs          = cuopt::device_copy(hs_host, stream);
 
   const int n_primal = 1000;
   const int m_rows   = 1;
@@ -324,7 +321,7 @@ TEST(sparse_augmented_kkt, update_scaling_sparse_dim_1000)
                                  raft::device_span<double>(d_r1.data(), d_r1.size()),
                                  raft::device_span<double>(d_y_exp.data(), d_y_exp.size()),
                                  cones,
-                                 raft::device_span<const double>(Hs_diag.data(), Hs_diag.size()),
+                                 raft::device_span<const double>(d_hs.data(), d_hs.size()),
                                  /*cone_var_start=*/0,
                                  n_primal,
                                  m_rows,
@@ -332,7 +329,6 @@ TEST(sparse_augmented_kkt, update_scaling_sparse_dim_1000)
 
   auto r1_host   = cuopt::host_copy(d_r1, stream);
   auto yexp_host = cuopt::host_copy(d_y_exp, stream);
-  auto hs_host   = cuopt::host_copy(Hs_diag, stream);
 
   const double eta_sq  = eta_host[0] * eta_host[0];
   const double x_exp_v = x_vec[n_primal + m_rows];
