@@ -217,4 +217,28 @@ TEST(barrier, min_x_squared_free_variable_dual_correction)
   EXPECT_NEAR(h_z[0], 0.0, tol);
 }
 
+TEST(barrier, qplib_8515_column_imbalance)
+{
+  // Regression test for the Ruiz equilibration skip heuristic in scaling().
+  // QPLIB_8515 has balanced rows (max-entry ratio 2) but severely imbalanced
+  // columns: its free variables appear in the constraint matrix only with
+  // ~1e-8 coefficients against O(1) rows.
+  //
+  // Reference objective 319.9999 from https://qplib.zib.de/QPLIB_8515.html.
+  const raft::handle_t handle{};
+  init_handler(&handle);
+
+  auto path =
+    cuopt::test::get_rapids_dataset_root_dir() + "/quadratic_programming/qplib/QPLIB_8515.lp";
+  auto mps_data = io::read_lp<int, double>(path);
+
+  auto settings   = pdlp_solver_settings_t<int, double>{};
+  settings.method = method_t::Barrier;
+
+  auto solution = solve_lp(&handle, mps_data, settings);
+
+  EXPECT_EQ(solution.get_termination_status(), pdlp_termination_status_t::Optimal);
+  EXPECT_NEAR(solution.get_objective_value(), 319.9999, 1e-2);
+}
+
 }  // namespace cuopt::mathematical_optimization::simplex::test
