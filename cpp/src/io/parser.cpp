@@ -50,11 +50,13 @@ mps_data_model_t<i_t, f_t> read_mps_fast_experimental(const std::string& mps_fil
   return detail::parse_mps_fast_file<i_t, f_t>(mps_file_path);
 }
 
-template mps_data_model_t<int, float> read_mps_fast_experimental(const std::string& mps_file_path);
-template mps_data_model_t<int, double> read_mps_fast_experimental(const std::string& mps_file_path);
-template mps_data_model_t<int64_t, float> read_mps_fast_experimental(
+template CUOPT_EXPORT mps_data_model_t<int, float> read_mps_fast_experimental(
   const std::string& mps_file_path);
-template mps_data_model_t<int64_t, double> read_mps_fast_experimental(
+template CUOPT_EXPORT mps_data_model_t<int, double> read_mps_fast_experimental(
+  const std::string& mps_file_path);
+template CUOPT_EXPORT mps_data_model_t<int64_t, float> read_mps_fast_experimental(
+  const std::string& mps_file_path);
+template CUOPT_EXPORT mps_data_model_t<int64_t, double> read_mps_fast_experimental(
   const std::string& mps_file_path);
 
 }  // namespace cuopt::mathematical_optimization::io
