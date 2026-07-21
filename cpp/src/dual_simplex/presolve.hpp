@@ -22,6 +22,22 @@
 
 namespace cuopt::mathematical_optimization::simplex {
 
+// Two-sided activity bounds [lower, upper] of a constraint row.
+template <typename f_t>
+struct row_bounds_t {
+  f_t lower;
+  f_t upper;
+};
+
+// Compute the two-sided bounds [lower, upper] of a range row from its `row_sense`,
+// right-side vector `b`, and signed range value `r:
+//   'L'         -> [b - |r|, b]
+//   'G'         -> [b, b + |r|]
+//   'E', r > 0  -> [b, b + |r|]
+//   'E', r <= 0 -> [b - |r|, b]
+template <typename f_t>
+row_bounds_t<f_t> get_range_bounds_from_sense(char row_sense, f_t rhs, f_t range_value);
+
 template <typename i_t, typename f_t>
 struct lp_problem_t {
   lp_problem_t(raft::handle_t const* handle_ptr_, i_t m, i_t n, i_t nz)
@@ -58,13 +74,20 @@ struct lp_problem_t {
   f_t max_abs_obj_coeff = 0;
   f_t min_abs_obj_coeff = 0;
 
-  void write_mps(const std::string& path) const
+  // Dump the problem to an MPS file. When `var_types` is provided (length up to num_cols; any
+  // trailing columns such as slacks are treated as continuous), integer columns are wrapped in
+  // 'MARKER' 'INTORG'/'INTEND' pairs so the file round-trips as a MIP. With an empty `var_types`
+  // (the default) the output is the pure continuous LP as before.
+  void write_mps(const std::string& path, const std::vector<variable_type_t>& var_types = {}) const
   {
     std::ofstream mps_file(path);
     if (!mps_file.is_open()) {
       printf("Failed to open file %s\n", path.c_str());
       return;
     }
+    auto is_integer_col = [&](i_t j) {
+      return j < var_types.size() && var_types[j] != variable_type_t::CONTINUOUS;
+    };
     mps_file << std::setprecision(std::numeric_limits<f_t>::max_digits10);
     mps_file << "NAME " << "cuopt_lp_problem_t" << "\n";
     mps_file << "ROWS\n";
@@ -73,7 +96,17 @@ struct lp_problem_t {
       mps_file << " E  R" << i << "\n";
     }
     mps_file << "COLUMNS\n";
+    bool in_integer_block = false;
+    i_t marker_id         = 0;
     for (i_t j = 0; j < num_cols; j++) {
+      const bool integer_col = is_integer_col(j);
+      if (integer_col && !in_integer_block) {
+        mps_file << "    MARKER" << marker_id++ << "    'MARKER'    'INTORG'\n";
+        in_integer_block = true;
+      } else if (!integer_col && in_integer_block) {
+        mps_file << "    MARKER" << marker_id++ << "    'MARKER'    'INTEND'\n";
+        in_integer_block = false;
+      }
       const i_t col_start = A.col_start[j];
       const i_t col_end   = A.col_start[j + 1];
       mps_file << "    " << "C" << j << " OBJ " << objective[j] << "\n";
@@ -84,6 +117,10 @@ struct lp_problem_t {
         std::string row_name = "R" + std::to_string(i);
         mps_file << "    " << col_name << " " << row_name << " " << x << "\n";
       }
+    }
+    if (in_integer_block) {
+      mps_file << "    MARKER" << marker_id++ << "    'MARKER'    'INTEND'\n";
+      in_integer_block = false;
     }
     mps_file << "RHS\n";
     for (i_t i = 0; i < num_rows; i++) {
@@ -106,6 +143,10 @@ struct lp_problem_t {
         }
         if (ub != std::numeric_limits<f_t>::infinity()) {
           mps_file << " UP BOUND1    " << col_name << " " << ub << "\n";
+        } else if (is_integer_col(j)) {
+          // An integer column inside an INTORG/INTEND block with no explicit upper bound defaults
+          // to [0, 1] in most MPS readers (HiGHS, SCIP). Emit PL to keep it unbounded above.
+          mps_file << " PL BOUND1    " << col_name << "\n";
         }
       }
     }
@@ -204,6 +245,12 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
                           lp_problem_t<i_t, f_t>& problem,
                           std::vector<i_t>& new_slacks,
                           dualize_info_t<i_t, f_t>& dualize_info);
+
+template <typename i_t, typename f_t>
+void convert_lp_to_user_problem(const lp_problem_t<i_t, f_t>& lp,
+                                const std::vector<variable_type_t>& var_types,
+                                const simplex_solver_settings_t<i_t, f_t>& settings,
+                                user_problem_t<i_t, f_t>& user_problem);
 
 template <typename i_t, typename f_t>
 void convert_user_problem_with_guess(const user_problem_t<i_t, f_t>& user_problem,
