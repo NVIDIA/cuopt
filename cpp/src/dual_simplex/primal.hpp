@@ -27,6 +27,19 @@ enum class primal_status_t {
   CONCURRENT_LIMIT = 6
 };
 
+
+template <typename i_t, typename f_t>
+i_t primal_ratio_test(const lp_problem_t<i_t, f_t>& lp,
+                      const simplex_solver_settings_t<i_t, f_t>& settings,
+                      const std::vector<variable_status_t>& vstatus,
+                      const std::vector<i_t>& basic_list,
+                      std::vector<f_t>& x,
+                      std::vector<f_t>& delta_x,
+                      f_t& step_length,
+                      i_t& basic_leaving,
+                      i_t entering_index,
+                      i_t direction);
+
 template <typename i_t, typename f_t>
 primal_status_t primal_phase2(i_t phase,
                               f_t start_time,

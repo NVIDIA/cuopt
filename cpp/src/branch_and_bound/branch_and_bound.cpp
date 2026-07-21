@@ -23,6 +23,7 @@
 #include <dual_simplex/crossover.hpp>
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/logger.hpp>
+#include <dual_simplex/primal.hpp>
 #include <dual_simplex/phase2.hpp>
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/random.hpp>
@@ -88,6 +89,7 @@ i_t fractional_variables(const simplex_solver_settings_t<i_t, f_t>& settings,
 {
   const i_t n = x.size();
   assert(x.size() == var_types.size());
+  fractional.clear();
   for (i_t j = 0; j < n; ++j) {
     if (is_fractional(x[j], var_types[j], settings.integer_tol)) { fractional.push_back(j); }
   }
@@ -762,6 +764,9 @@ void branch_and_bound_t<i_t, f_t>::set_final_solution(mip_solution_t<i_t, f_t>& 
       exploration_stats_.lexical_reduction_nodes.load(),
       exploration_stats_.lexical_reduction_fixings_applied.load(),
       exploration_stats_.lexical_reduction_pruned_nodes.load());
+  }
+  if (integer_pivots_.load() > 0) {
+    settings_.log.print_format("Number of integer pivots: {}\n", integer_pivots_.load());
   }
 
   if (gap <= settings_.absolute_mip_gap_tol || gap_rel <= settings_.relative_mip_gap_tol) {
@@ -1545,6 +1550,20 @@ dual_status_t branch_and_bound_t<i_t, f_t>::solve_node_lp(
 
       stats.total_lp_solve_time += toc(lp_start_time);
       stats.total_lp_iters += node_iter;
+
+      if (lp_status == dual_status_t::OPTIMAL) {
+        std::vector<i_t> fractional;
+        i_t num_fractional =
+          fractional_variables(settings_, worker->leaf_solution.x, var_types_, fractional);
+        pivot_out_integer_variables(worker->leaf_problem,
+                                    worker->basic_list,
+                                    worker->nonbasic_list,
+                                    worker->leaf_vstatus,
+                                    worker->leaf_solution,
+                                    worker->basis_factors,
+                                    num_fractional,
+                                    fractional);
+      }
     }
   }
 
@@ -2390,6 +2409,19 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   }
   root_objective_ = compute_objective(original_lp_, root_relax_soln_.x);
 
+  // Refresh fractional info after re-solving with cuts; the pre-cut count is stale.
+  num_fractional =
+    fractional_variables(settings_, root_relax_soln_.x, var_types_, fractional);
+
+  pivot_out_integer_variables(original_lp_,
+                              basic_list,
+                              nonbasic_list,
+                              root_vstatus_,
+                              root_relax_soln_,
+                              basis_update,
+                              num_fractional,
+                              fractional);
+
   if (settings_.benchmark_info_ptr != nullptr) {
     settings_.benchmark_info_ptr->root_lp_with_cuts =
       compute_user_objective(original_lp_, root_objective_);
@@ -2453,6 +2485,165 @@ auto branch_and_bound_t<i_t, f_t>::do_cut_pass(
   }
   last_objective = root_objective_;
   return {cut_pass_action_t::CONTINUE, mip_status_t::UNSET};
+}
+
+template <typename i_t, typename f_t>
+void branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
+  const simplex::lp_problem_t<i_t, f_t>& lp,
+  std::vector<i_t>& basic_list,
+  std::vector<i_t>& nonbasic_list,
+  std::vector<simplex::variable_status_t>& vstatus,
+  simplex::lp_solution_t<i_t, f_t>& solution,
+  simplex::basis_update_mpf_t<i_t, f_t>& basis_update,
+  i_t& num_fractional,
+  std::vector<i_t>& fractional)
+{
+  std::vector<i_t> zero_reduced_costs_vars;
+  std::vector<i_t> zero_reduced_costs_vars_nonbasic_index;
+  for (i_t k = 0; k < static_cast<i_t>(nonbasic_list.size()); k++) {
+    const i_t j = nonbasic_list[k];
+    if (std::abs(solution.z[j]) <= 1e-10) {
+      zero_reduced_costs_vars.push_back(j);
+      zero_reduced_costs_vars_nonbasic_index.push_back(k);
+    }
+  }
+  if (zero_reduced_costs_vars.empty()) { return; }
+
+  lp_solution_t<i_t, f_t> soln_copy                       = solution;
+  std::vector<i_t> basic_list_copy                        = basic_list;
+  std::vector<i_t> nonbasic_list_copy                     = nonbasic_list;
+  std::vector<variable_status_t> vstatus_copy             = vstatus;
+  simplex::basis_update_mpf_t<i_t, f_t> basis_update_copy = basis_update;
+
+  const i_t start_num_fractional = num_fractional;
+
+  for (i_t k = 0; k < static_cast<i_t>(zero_reduced_costs_vars.size()); k++) {
+    const i_t j = zero_reduced_costs_vars[k];
+    if (var_types_[j] == variable_type_t::INTEGER) { continue; }
+    if (vstatus_copy[j] == variable_status_t::BASIC) { continue; }
+
+    const i_t direction =
+      (vstatus_copy[j] == variable_status_t::NONBASIC_LOWER ||
+       vstatus_copy[j] == variable_status_t::NONBASIC_FIXED)
+        ? 1
+        : -1;
+    const i_t entering_index    = j;
+    const i_t nonbasic_entering = zero_reduced_costs_vars_nonbasic_index[k];
+    if (nonbasic_list_copy[nonbasic_entering] != j) { continue; }
+
+    // Solve B * dxB = A(:, j) so utilde is valid for the MPF update.
+    // Apply direction when forming delta_x (same convention as primal_phase2).
+    sparse_vector_t<i_t, f_t> rhs(lp.A, j);
+    sparse_vector_t<i_t, f_t> delta_xB;
+    sparse_vector_t<i_t, f_t> utilde_sparse;
+    basis_update_copy.b_solve(rhs, delta_xB, utilde_sparse);
+
+    std::vector<f_t> delta_xB_dense;
+    delta_xB.to_dense(delta_xB_dense);
+    std::vector<f_t> delta_x(lp.num_cols, 0.0);
+    for (i_t h = 0; h < static_cast<i_t>(basic_list_copy.size()); h++) {
+      delta_x[basic_list_copy[h]] = -direction * delta_xB_dense[h];
+    }
+    delta_x[j] = direction;
+
+    f_t step_length;
+    i_t basic_leaving;
+    const i_t leaving_index = simplex::primal_ratio_test(lp,
+                                                         settings_,
+                                                         vstatus_copy,
+                                                         basic_list_copy,
+                                                         soln_copy.x,
+                                                         delta_x,
+                                                         step_length,
+                                                         basic_leaving,
+                                                         entering_index,
+                                                         direction);
+    bool binding_integer =
+      leaving_index != -1 &&
+      is_fractional(soln_copy.x[leaving_index], var_types_[leaving_index], settings_.integer_tol);
+    if (!binding_integer) { continue; }
+
+    std::vector<f_t> test_x = soln_copy.x;
+    i_t integer_destroyed   = 0;
+    for (i_t h = 0; h < lp.num_cols; ++h) {
+      test_x[h] += step_length * delta_x[h];
+      if (var_types_[h] != variable_type_t::INTEGER) { continue; }
+      const bool was_fractional =
+        is_fractional(soln_copy.x[h], var_types_[h], settings_.integer_tol);
+      const bool now_fractional =
+        is_fractional(test_x[h], var_types_[h], settings_.integer_tol);
+      if (now_fractional && !was_fractional) {
+        integer_destroyed++;
+      } else if (!now_fractional && was_fractional) {
+        integer_destroyed--;
+      }
+    }
+    // Require a strict net decrease in fractional integers.
+    if (integer_destroyed >= 0) { continue; }
+
+    soln_copy.x                           = test_x;
+    basic_list_copy[basic_leaving]        = entering_index;
+    nonbasic_list_copy[nonbasic_entering] = leaving_index;
+    vstatus_copy[entering_index]          = variable_status_t::BASIC;
+    if (std::abs(lp.upper[leaving_index] - lp.lower[leaving_index]) < 1e-12) {
+      vstatus_copy[leaving_index] = variable_status_t::NONBASIC_FIXED;
+    } else if (delta_x[leaving_index] < 0) {
+      vstatus_copy[leaving_index] = variable_status_t::NONBASIC_LOWER;
+    } else {
+      vstatus_copy[leaving_index] = variable_status_t::NONBASIC_UPPER;
+    }
+
+    const i_t m = lp.num_rows;
+    sparse_vector_t<i_t, f_t> es_sparse(m, 1);
+    es_sparse.i[0] = basic_leaving;
+    es_sparse.x[0] = 1.0;
+    sparse_vector_t<i_t, f_t> UTsol_sparse(m, 1);
+    sparse_vector_t<i_t, f_t> solution_sparse(m, 1);
+    basis_update_copy.b_transpose_solve(es_sparse, solution_sparse, UTsol_sparse);
+    const i_t recommend_refactor =
+      basis_update_copy.update(utilde_sparse, UTsol_sparse, basic_leaving);
+    if (recommend_refactor == 1) {
+      csc_matrix_t<i_t, f_t> L(m, m, 1);
+      csc_matrix_t<i_t, f_t> U(m, m, 1);
+      std::vector<i_t> pinv(m);
+      std::vector<i_t> p(m);
+      std::vector<i_t> q(m);
+      std::vector<i_t> deficient;
+      std::vector<i_t> slacks_needed;
+      f_t factorize_work_estimate = 0.0;
+      const i_t rank              = factorize_basis(lp.A,
+                                      settings_,
+                                      basic_list_copy,
+                                      exploration_stats_.start_time,
+                                      L,
+                                      U,
+                                      p,
+                                      pinv,
+                                      q,
+                                      deficient,
+                                      slacks_needed,
+                                      factorize_work_estimate);
+      if (rank == CONCURRENT_HALT_RETURN || rank == TIME_LIMIT_RETURN) { return; }
+      if (rank < 0 || rank != lp.num_rows) { return; }
+      simplex::reorder_basic_list(q, basic_list_copy);
+      basis_update_copy.reset(L, U, p);
+    }
+  }
+
+  std::vector<i_t> new_fractional;
+  const i_t num_new_fractional =
+    fractional_variables(settings_, soln_copy.x, var_types_, new_fractional);
+  if (num_new_fractional < start_num_fractional) {
+    i_t num_integer_increased = start_num_fractional - num_new_fractional;
+    integer_pivots_.fetch_add(num_integer_increased, std::memory_order_release);
+    num_fractional = num_new_fractional;
+    fractional     = new_fractional;
+    basic_list     = basic_list_copy;
+    nonbasic_list  = nonbasic_list_copy;
+    vstatus        = vstatus_copy;
+    basis_update   = basis_update_copy;
+    solution       = soln_copy;
+  }
 }
 
 template <typename i_t, typename f_t>
@@ -2655,6 +2846,15 @@ mip_status_t branch_and_bound_t<i_t, f_t>::solve(mip_solution_t<i_t, f_t>& solut
 
   is_running_            = true;
   lower_bound_numerical_ = inf;
+
+  pivot_out_integer_variables(original_lp_,
+                              basic_list,
+                              nonbasic_list,
+                              root_vstatus_,
+                              root_relax_soln_,
+                              basis_update,
+                              num_fractional,
+                              fractional);
 
   if (num_fractional != 0 && settings_.max_cut_passes > 0) { print_table_header(); }
 

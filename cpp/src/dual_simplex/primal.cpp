@@ -151,78 +151,6 @@ i_t phase2_pricing(const lp_problem_t<i_t, f_t>& lp,
 }
 
 template <typename i_t, typename f_t>
-i_t ratio_test(const lp_problem_t<i_t, f_t>& lp,
-               const std::vector<variable_status_t>& vstatus,
-               const std::vector<i_t>& basic_list,
-               std::vector<f_t>& x,
-               std::vector<f_t>& delta_x,
-               f_t& step_length,
-               i_t& basic_leaving,
-               i_t entering_index,
-               i_t direction)
-{
-  const i_t m             = lp.num_rows;
-  const i_t n             = lp.num_cols;
-  basic_leaving           = -1;
-  i_t leaving_index       = -1;
-  f_t min_val             = inf;
-  constexpr f_t pivot_tol = 1e-8;
-
-  // Entering variable can hit its opposite bound: limit step by that
-  if (direction > 0 && lp.upper[entering_index] < inf) {
-    const f_t limit = lp.upper[entering_index] - x[entering_index];
-    if (limit >= 0 && limit < min_val) {
-      min_val       = limit;
-      leaving_index = -1;  // no basic leaves; will be handled by caller
-      basic_leaving = -1;
-    }
-  } else if (direction < 0 && lp.lower[entering_index] > -inf) {
-    const f_t limit = x[entering_index] - lp.lower[entering_index];
-    if (limit >= 0 && limit < min_val) {
-      min_val       = limit;
-      leaving_index = -1;
-      basic_leaving = -1;
-    }
-  }
-
-  for (i_t k = 0; k < m; ++k) {
-    const i_t j = basic_list[k];
-    if (delta_x[j] == 0.0) { continue; }
-    if (lp.lower[j] > -inf && delta_x[j] < -pivot_tol) {
-      // xj + step * delta_x[j] >= lp.lower[j]
-      // step * delta_x[j] >= lp.lower[j] - x[j]
-      // step <= (lp.lower[j] - x[j]) / delta_x[j], delta_x[j] < 0
-      const f_t neum = lp.lower[j] - x[j];
-      f_t ratio      = neum / delta_x[j];
-      // Already below lower and moving further (delta_x < 0): cap step at 0
-      if (x[j] < lp.lower[j]) { ratio = 0; }
-      if (ratio >= 0 && ratio < min_val) {
-        min_val       = ratio;
-        basic_leaving = k;
-        leaving_index = j;
-      }
-    }
-    if (lp.upper[j] < inf && delta_x[j] > pivot_tol) {
-      // xj + step * delta_x[j] <= lp.upper[j]
-      // step * delta_x[j] <= lp.upper[j] - x[j]
-      // step <= (lp.upper[j] - x[j]) / delta_x[j], delta_x[j] > 0
-      const f_t neum = lp.upper[j] - x[j];
-      f_t ratio      = neum / delta_x[j];
-      // If x[j] > upper (slightly infeasible), ratio < 0; skip so we don't use it.
-      // But if we're already above upper and would move further (delta_x > 0), cap step at 0.
-      if (x[j] > lp.upper[j]) { ratio = 0; }
-      if (ratio >= 0 && ratio < min_val) {
-        min_val       = ratio;
-        basic_leaving = k;
-        leaving_index = j;
-      }
-    }
-  }
-  step_length = min_val;
-  return leaving_index;
-}
-
-template <typename i_t, typename f_t>
 f_t primal_infeasibility(const lp_problem_t<i_t, f_t>& lp,
                          const simplex_solver_settings_t<i_t, f_t>& settings,
                          const std::vector<variable_status_t>& vstatus,
@@ -322,6 +250,80 @@ void compute_dual_variables(const lp_problem_t<i_t, f_t>& lp,
 }
 
 }  // namespace
+
+
+template <typename i_t, typename f_t>
+i_t primal_ratio_test(const lp_problem_t<i_t, f_t>& lp,
+                      const simplex_solver_settings_t<i_t, f_t>& settings,
+                      const std::vector<variable_status_t>& vstatus,
+                      const std::vector<i_t>& basic_list,
+                      std::vector<f_t>& x,
+                      std::vector<f_t>& delta_x,
+                      f_t& step_length,
+                      i_t& basic_leaving,
+                      i_t entering_index,
+                      i_t direction)
+{
+  const i_t m             = lp.num_rows;
+  const i_t n             = lp.num_cols;
+  basic_leaving           = -1;
+  i_t leaving_index       = -1;
+  f_t min_val             = inf;
+  constexpr f_t pivot_tol = 1e-8;
+
+  // Entering variable can hit its opposite bound: limit step by that
+  if (direction > 0 && lp.upper[entering_index] < inf) {
+    const f_t limit = lp.upper[entering_index] - x[entering_index];
+    if (limit >= 0 && limit < min_val) {
+      min_val       = limit;
+      leaving_index = -1;  // no basic leaves; will be handled by caller
+      basic_leaving = -1;
+    }
+  } else if (direction < 0 && lp.lower[entering_index] > -inf) {
+    const f_t limit = x[entering_index] - lp.lower[entering_index];
+    if (limit >= 0 && limit < min_val) {
+      min_val       = limit;
+      leaving_index = -1;
+      basic_leaving = -1;
+    }
+  }
+
+  for (i_t k = 0; k < m; ++k) {
+    const i_t j = basic_list[k];
+    if (delta_x[j] == 0.0) { continue; }
+    if (lp.lower[j] > -inf && delta_x[j] < -pivot_tol) {
+      // xj + step * delta_x[j] >= lp.lower[j]
+      // step * delta_x[j] >= lp.lower[j] - x[j]
+      // step <= (lp.lower[j] - x[j]) / delta_x[j], delta_x[j] < 0
+      const f_t neum = lp.lower[j] - x[j];
+      f_t ratio      = neum / delta_x[j];
+      // Already below lower and moving further (delta_x < 0): cap step at 0
+      if (x[j] < lp.lower[j]) { ratio = 0; }
+      if (ratio >= 0 && ratio < min_val) {
+        min_val       = ratio;
+        basic_leaving = k;
+        leaving_index = j;
+      }
+    }
+    if (lp.upper[j] < inf && delta_x[j] > pivot_tol) {
+      // xj + step * delta_x[j] <= lp.upper[j]
+      // step * delta_x[j] <= lp.upper[j] - x[j]
+      // step <= (lp.upper[j] - x[j]) / delta_x[j], delta_x[j] > 0
+      const f_t neum = lp.upper[j] - x[j];
+      f_t ratio      = neum / delta_x[j];
+      // If x[j] > upper (slightly infeasible), ratio < 0; skip so we don't use it.
+      // But if we're already above upper and would move further (delta_x > 0), cap step at 0.
+      if (x[j] > lp.upper[j]) { ratio = 0; }
+      if (ratio >= 0 && ratio < min_val) {
+        min_val       = ratio;
+        basic_leaving = k;
+        leaving_index = j;
+      }
+    }
+  }
+  step_length = min_val;
+  return leaving_index;
+}
 
 // Note this implementation of primal simplex is experimental
 // It is meant only to serve as a method to remove the perturbation to the objective
@@ -553,8 +555,8 @@ primal_status_t primal_phase2(i_t phase,
 
     i_t basic_leaving;
     f_t step_length;
-    i_t leaving_index = ratio_test(
-      lp, vstatus, basic_list, x, delta_x, step_length, basic_leaving, entering_index, direction);
+    i_t leaving_index = primal_ratio_test(
+      lp, settings, vstatus, basic_list, x, delta_x, step_length, basic_leaving, entering_index, direction);
     if (leaving_index == -1 && step_length >= inf) {
       settings.log.printf("No leaving variable. Primal unbounded?\n");
       return primal_status_t::PRIMAL_UNBOUNDED;
@@ -653,6 +655,18 @@ primal_status_t primal_phase2(i_t phase,
 }
 
 #ifdef DUAL_SIMPLEX_INSTANTIATE_DOUBLE
+
+template
+int primal_ratio_test(const lp_problem_t<int, double>& lp,
+                      const simplex_solver_settings_t<int, double>& settings,
+                      const std::vector<variable_status_t>& vstatus,
+                      const std::vector<int>& basic_list,
+                      std::vector<double>& x,
+                      std::vector<double>& delta_x,
+                      double& step_length,
+                      int& basic_leaving,
+                      int entering_index,
+                      int direction);
 
 template primal_status_t primal_phase2<int, double>(
   int phase,
