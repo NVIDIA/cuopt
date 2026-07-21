@@ -4,3 +4,5 @@ include = cuopt/cuopt/*
           cuopt_server/cuopt_server/*
 omit = cuopt_server/cuopt_server/tests/*
        cuopt/cuopt/tests/*
+disable_warnings = module-not-measured
+                   no-data-collected

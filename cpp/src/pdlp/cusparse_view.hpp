@@ -23,8 +23,6 @@
 #include <memory>
 #include <type_traits>
 
-// cuSPARSE 12.7 ships with CUDA Toolkit 13.2
-#define CUOPT_CUSPARSE_VER_12_7_UP (CUSPARSE_VERSION >= 12700)
 // cuSPARSE 12.8 ships with CUDA Toolkit 13.3
 #define CUOPT_CUSPARSE_VER_12_8_UP (CUSPARSE_VERSION >= 12800)
 
@@ -103,7 +101,7 @@ inline cusparse_dn_mat_uptr make_dnmat(
   return cusparse_dn_mat_uptr{descr};
 }
 
-#if CUOPT_CUSPARSE_VER_12_7_UP
+#if CUOPT_CUSPARSE_VER_12_8_UP
 // ---------------------------------------------------------------------------
 // SpMVOp descriptor and plan deleters.
 //
@@ -140,7 +138,7 @@ cusparse_spmvop_descr_uptr make_spmvop_descr(cusparseHandle_t handle,
 // `make_spmvop_plan` passes nullptr/0 for ltoIRBuf/ltoIRSize so cuSPARSE JITs
 // internally; cuOpt does not supply user-provided LTO IR.
 cusparse_spmvop_plan_uptr make_spmvop_plan(cusparseHandle_t handle, cusparseSpMVOpDescr_t descr);
-#endif  // CUOPT_CUSPARSE_VER_12_7_UP
+#endif  // CUOPT_CUSPARSE_VER_12_8_UP
 
 template <typename i_t, typename f_t>
 class cusparse_view_t {
@@ -238,13 +236,13 @@ class cusparse_view_t {
   rmm::device_uvector<uint8_t> buffer_non_transpose_spmvop{0, handle_ptr_->get_stream()};
   rmm::device_uvector<uint8_t> buffer_transpose_spmvop{0, handle_ptr_->get_stream()};
 
-#if CUOPT_CUSPARSE_VER_12_7_UP
+#if CUOPT_CUSPARSE_VER_12_8_UP
   // SpMVOp descriptors and plans for A and A_T (descr before plan so dtor destroys plan first)
   cusparse_spmvop_descr_uptr spmv_op_descr_A_;
   cusparse_spmvop_plan_uptr spmv_op_plan_A_;
   cusparse_spmvop_descr_uptr spmv_op_descr_A_t_;
   cusparse_spmvop_plan_uptr spmv_op_plan_A_t_;
-#endif  // CUOPT_CUSPARSE_VER_12_7_UP
+#endif  // CUOPT_CUSPARSE_VER_12_8_UP
   // reuse buffers for cusparse spmm
   rmm::device_uvector<uint8_t> buffer_transpose_batch;
   rmm::device_uvector<uint8_t> buffer_non_transpose_batch;
@@ -343,10 +341,11 @@ void my_cusparsespmm_preprocess(cusparseHandle_t handle,
 
 bool is_cusparse_runtime_mixed_precision_supported();
 
-// False if the cuSPARSE headers/runtime do not support SpMVOp symbols. True otherwise.
+// False if cuSparse version < 12.8 or runtime cuSPARSE does not export SpMVOp symbols. True
+// otherwise.
 bool is_cusparse_runtime_spmvop_supported();
 
-#if CUOPT_CUSPARSE_VER_12_7_UP
+#if CUOPT_CUSPARSE_VER_12_8_UP
 // Dispatches to the runtime cusparseSpMVOp via dlsym so callers (e.g., pdhg.cu) never
 // reference the symbol statically. Caller must have verified
 // is_cusparse_runtime_spmvop_supported().
@@ -358,6 +357,6 @@ void cusparse_spmvop_run(cusparseHandle_t handle,
                          cusparse_dn_vec_descr_view vecY,
                          cusparse_dn_vec_descr_view vecZ,
                          cudaStream_t stream);
-#endif  // CUOPT_CUSPARSE_VER_12_7_UP
+#endif  // CUOPT_CUSPARSE_VER_12_8_UP
 
 }  // namespace cuopt::mathematical_optimization::pdlp

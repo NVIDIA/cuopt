@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 #pragma once
@@ -85,12 +85,29 @@ using grpc_log_line_callback_t = int (*)(const char* line,
                                          int job_complete,
                                          void* user_data);
 
+/** TLS selection for the Python gRPC client (mirrors grpc_tls_mode_t). */
+enum class grpc_python_tls_mode_t : int {
+  ENV      = 0,
+  DISABLED = 1,
+  EXPLICIT = 2,
+};
+
+struct grpc_python_client_connect_options_t {
+  grpc_python_tls_mode_t tls_mode = grpc_python_tls_mode_t::ENV;
+  std::string tls_root_certs;
+  std::string tls_client_cert;
+  std::string tls_client_key;
+};
+
 /**
  * @brief Owning wrapper around grpc_client_t for Cython.
  */
 class grpc_python_client_t {
  public:
   grpc_python_client_t(const std::string& host, int port);
+  grpc_python_client_t(const std::string& host,
+                       int port,
+                       const grpc_python_client_connect_options_t& options);
   ~grpc_python_client_t();
 
   grpc_python_client_t(const grpc_python_client_t&)            = delete;
