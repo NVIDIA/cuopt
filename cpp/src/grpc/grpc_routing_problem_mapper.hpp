@@ -32,5 +32,9 @@ void map_routing_solution_to_proto(const cuopt::routing::assignment_t<int>& assi
                                    const cuopt::routing::host_assignment_t<int>& host,
                                    cuopt::remote::RoutingSolution* pb);
 
+// Client direction: parse a RoutingSolution proto into a host solution struct.
+void map_proto_to_routing_solution(const cuopt::remote::RoutingSolution& pb,
+                                   cuopt::routing::cpu_routing_solution_t& sol);
+
 }  // namespace mathematical_optimization
 }  // namespace cuopt

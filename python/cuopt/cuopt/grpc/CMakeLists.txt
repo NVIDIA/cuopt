@@ -4,3 +4,4 @@
 # cmake-format: on
 
 add_subdirectory(linear_programming)
+add_subdirectory(routing)

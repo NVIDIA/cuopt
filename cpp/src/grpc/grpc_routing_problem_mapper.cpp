@@ -331,5 +331,27 @@ void map_routing_solution_to_proto(const cuopt::routing::assignment_t<int>& assi
   }
 }
 
+void map_proto_to_routing_solution(const cuopt::remote::RoutingSolution& pb,
+                                   cuopt::routing::cpu_routing_solution_t& sol)
+{
+  copy_repeated_to_vector(pb.route(), sol.route);
+  copy_repeated_to_vector(pb.arrival_stamp(), sol.arrival_stamp);
+  copy_repeated_to_vector(pb.truck_id(), sol.truck_id);
+  copy_repeated_to_vector(pb.locations(), sol.locations);
+  copy_repeated_to_vector(pb.node_types(), sol.node_types);
+  copy_repeated_to_vector(pb.unserviced_nodes(), sol.unserviced_nodes);
+  copy_repeated_to_vector(pb.accepted(), sol.accepted);
+
+  sol.vehicle_count         = pb.vehicle_count();
+  sol.total_objective_value = pb.total_objective_value();
+  sol.objective_values.clear();
+  for (auto const& [obj, value] : pb.objective_values()) {
+    sol.objective_values[static_cast<int32_t>(obj)] = value;
+  }
+  sol.status         = static_cast<int32_t>(pb.status());
+  sol.status_message = pb.status_message();
+  sol.error_message  = pb.error_message();
+}
+
 }  // namespace mathematical_optimization
 }  // namespace cuopt

@@ -123,5 +123,27 @@ class cpu_routing_problem_t {
   std::pair<data_model_view_t<int, float>, device_data_ptr> to_device(raft::handle_t* handle) const;
 };
 
+/**
+ * @brief Host-memory routing solution (remote-execution analog of the parsed
+ * RoutingSolution proto). Populated on the client from the server's response.
+ */
+struct cpu_routing_solution_t {
+  std::vector<int32_t> route;
+  std::vector<double> arrival_stamp;
+  std::vector<int32_t> truck_id;
+  std::vector<int32_t> locations;
+  std::vector<int32_t> node_types;
+  std::vector<int32_t> unserviced_nodes;
+  std::vector<int32_t> accepted;
+
+  int32_t vehicle_count        = 0;
+  double total_objective_value = 0.0;
+  std::map<int32_t, double> objective_values;
+
+  int32_t status = 0;  // cuopt.remote.RoutingSolutionStatus (0 == SUCCESS)
+  std::string status_message;
+  std::string error_message;
+};
+
 }  // namespace routing
 }  // namespace cuopt

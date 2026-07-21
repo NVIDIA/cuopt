@@ -151,6 +151,36 @@ grpc_submit_result_t grpc_python_client_t::submit(
   return out;
 }
 
+grpc_submit_result_t grpc_python_client_t::submit_vrp(
+  cuopt::routing::cpu_routing_problem_t* problem,
+  cuopt::routing::solver_settings_t<int, float>* settings)
+{
+  grpc_submit_result_t out;
+  if (problem == nullptr || settings == nullptr) {
+    out.error_message = "problem and settings must not be null";
+    return out;
+  }
+  auto sub          = impl_->client.submit_vrp(*problem, *settings);
+  out.success       = sub.success;
+  out.error_message = sub.error_message;
+  out.job_id        = sub.job_id;
+  out.is_mip        = false;
+  return out;
+}
+
+grpc_vrp_result_outcome_t grpc_python_client_t::result_vrp(const std::string& job_id)
+{
+  grpc_vrp_result_outcome_t out;
+  auto remote = impl_->client.get_vrp_result(job_id);
+  if (!remote.success) {
+    out.error_message = remote.error_message;
+    return out;
+  }
+  out.success  = true;
+  out.solution = std::move(remote.solution);
+  return out;
+}
+
 grpc_status_result_t grpc_python_client_t::status(const std::string& job_id)
 {
   return map_status_result(impl_->client.check_status(job_id));
