@@ -469,7 +469,7 @@ jobs:
           npm install -g "fern-api@${FERN_VERSION}"
           OUTPUT=$(fern generate --docs --preview --id "$GITHUB_HEAD_REF" 2>&1) || true
           echo "$OUTPUT"
-          URL=$(echo "$OUTPUT" | grep -oP 'Published docs to \K[^ ]+')
+          URL=$(echo "$OUTPUT" | grep -oP 'Published docs to \K[^ ]+') || true
           if [[ -n "$URL" ]]; then
             PR_NUMBER="${GITHUB_REF_NAME##pull-request/}"
             BODY=":herb: **Preview your docs:** ${URL}"
