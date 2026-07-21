@@ -137,6 +137,27 @@ void populate_from_mps_data_model(optimization_problem_interface_t<i_t, f_t>* pr
 }
 
 /**
+ * @brief Transfer parsed MPS/QPS storage into a CPU-backed problem without copying payload arrays.
+ *
+ * For GPU-backed problems this falls back to populate_from_mps_data_model (copy/H2D path).
+ *
+ * @tparam i_t Integer type for indices
+ * @tparam f_t Floating point type for values
+ * @param[out] problem The optimization problem interface to populate
+ * @param[in] data_model Parsed model; moved-from on return for CPU adopt
+ */
+template <typename i_t, typename f_t>
+void adopt_from_mps_data_model(optimization_problem_interface_t<i_t, f_t>* problem,
+                               io::mps_data_model_t<i_t, f_t>&& data_model)
+{
+  if (auto* cpu_problem = dynamic_cast<cpu_optimization_problem_t<i_t, f_t>*>(problem)) {
+    cpu_problem->adopt_from_mps_data_model(std::move(data_model));
+    return;
+  }
+  populate_from_mps_data_model(problem, data_model);
+}
+
+/**
  * @brief Helper function to populate optimization_problem_interface_t from data_model_view_t
  *
  * This is used by the Python Cython interface which provides data_model_view_t.

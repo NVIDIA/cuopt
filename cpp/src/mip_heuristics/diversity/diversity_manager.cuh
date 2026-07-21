@@ -21,7 +21,6 @@
 #include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
 #include <cuopt/mathematical_optimization/mip/solver_stats.hpp>
 
-#include <mip_heuristics/diversity/lns/rins.cuh>
 #include <mip_heuristics/local_search/local_search.cuh>
 #include <mip_heuristics/solution/solution.cuh>
 #include <mip_heuristics/solver.cuh>
@@ -101,8 +100,6 @@ class diversity_manager_t {
   std::mutex relaxed_solution_mutex;
   // atomic for signalling pdlp to stop
   std::atomic<int> global_concurrent_halt{0};
-
-  rins_t<i_t, f_t> rins;
 
   bool run_only_ls_recombiner{false};
   bool run_only_bp_recombiner{false};

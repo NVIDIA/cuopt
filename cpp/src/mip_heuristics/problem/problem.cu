@@ -1706,6 +1706,13 @@ void problem_t<i_t, f_t>::fix_given_variables(problem_t<i_t, f_t>& original_prob
                    variables_to_fix.end(),
                    [variable_fix_mask = make_span(fixing_helpers.variable_fix_mask)] __device__(
                      i_t x) { variable_fix_mask[x] = 1; });
+  cuopt_func_call(thrust::for_each(handle_ptr->get_thrust_policy(),
+                                   variables_to_fix.begin(),
+                                   variables_to_fix.end(),
+                                   [assignment = make_span(assignment)] __device__(i_t x) {
+                                     cuopt_assert(isfinite(assignment[x]),
+                                                  "Fixing a variable to a non-finite value");
+                                   }));
   const i_t num_segments = original_problem.n_constraints;
   f_t initial_value{0.};
 

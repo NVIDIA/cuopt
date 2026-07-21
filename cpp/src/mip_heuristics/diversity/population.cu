@@ -304,7 +304,8 @@ void population_t<i_t, f_t>::run_solution_callbacks(solution_t<i_t, f_t>& sol)
     }
     CUOPT_LOG_DEBUG("Population: Found new best solution %g", sol.get_user_objective());
     if (problem_ptr->branch_and_bound_callback != nullptr) {
-      problem_ptr->branch_and_bound_callback(sol.get_host_assignment());
+      problem_ptr->branch_and_bound_callback(sol.get_host_assignment(),
+                                             heuristics_origin_t::HEURISTICS);
     }
     for (auto callback : user_callbacks) {
       if (callback->get_type() == internals::base_solution_callback_type::GET_SOLUTION) {
