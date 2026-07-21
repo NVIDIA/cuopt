@@ -118,6 +118,7 @@ cdef extern from "cuopt/grpc/cython_grpc_client.hpp" namespace "cuopt::cython": 
         grpc_job_status_t status
 
     cdef cppclass grpc_vrp_result_outcome_t:
+        bool not_ready
         bool success
         string error_message
         cpu_routing_solution_t solution

@@ -338,13 +338,13 @@ cdef class RoutingClient:
             return
         if isinstance(settings, dict):
             tl = settings.get("time_limit")
-            if tl:
+            if tl is not None:
                 s.set_time_limit(<float>float(tl))
             return
         get_time_limit = getattr(settings, "get_time_limit", None)
         if get_time_limit is not None:
             tl = get_time_limit()
-            if tl:
+            if tl is not None:
                 s.set_time_limit(<float>float(tl))
 
     def submit(self, data_model, settings=None):
@@ -368,10 +368,15 @@ cdef class RoutingClient:
         return <int>st.status
 
     def result(self, str job_id):
-        """Fetch and parse the routing solution for a completed job."""
+        """Fetch and parse the routing solution for a completed job.
+
+        Returns ``None`` if the job is still in flight (mirrors the LP client).
+        """
         cdef grpc_vrp_result_outcome_t out = self._client.get().result_vrp(
             job_id.encode("utf-8")
         )
+        if out.not_ready:
+            return None
         if not out.success:
             raise RoutingSolveError(out.error_message.decode("utf-8"))
         return _solution_to_py(out.solution)
