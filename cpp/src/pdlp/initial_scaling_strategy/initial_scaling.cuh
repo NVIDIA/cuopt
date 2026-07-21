@@ -46,10 +46,13 @@ class pdlp_initial_scaling_strategy_t {
     raft::device_span<f_t> cummulative_variable_scaling;
   };  // struct view_t
 
-  // skip_initial_scaling: when true, the ctor performs identity-initialization
-  // of the scaling vectors but does NOT run local Ruiz / Pock-Chambolle. Used
+  // skip_ruiz_pock_compute: when true, the ctor performs identity-initialization
+  // of the scaling vectors but does NOT run local Ruiz / Pock-Chambolle at construction time. Used
   // by distributed PDLP shards, where cross-shard-coherent scaling is applied
   // later by multi_gpu_engine_t::distributed_scaling.
+  // bound objective rescaling happens only when scale_problem() is called so
+  // skip_ruiz_pock_compute has no impact on this part of the scaling. bound objective rescaling is
+  // only dependent on hyper_params_.bound_objective_rescaling
   pdlp_initial_scaling_strategy_t(raft::handle_t const* handle_ptr,
                                   mip::problem_t<i_t, f_t>& op_problem_scaled,
                                   i_t number_of_ruiz_iterations,
@@ -60,8 +63,8 @@ class pdlp_initial_scaling_strategy_t {
                                   pdhg_solver_t<i_t, f_t>* pdhg_solver_ptr,
                                   const pdlp::pdlp_hyper_params_t& hyper_params,
                                   i_t original_batch_size,
-                                  bool running_mip          = false,
-                                  bool skip_initial_scaling = false);
+                                  bool running_mip            = false,
+                                  bool skip_ruiz_pock_compute = false);
 
   void scale_problem();
 
@@ -81,16 +84,11 @@ class pdlp_initial_scaling_strategy_t {
   void unscale_solutions(mip::solution_t<i_t, f_t>& solution) const;
   const rmm::device_uvector<f_t>& get_constraint_matrix_scaling_vector() const;
   // Mutable access needed by distributed PDLP to broadcast owned constraint
-  rmm::device_uvector<f_t>& get_cummulative_constraint_matrix_scaling()
-  {
-    return cummulative_constraint_matrix_scaling_;
-  }
+  // (row) scaling into the halo copies between scaling iterations.
+  rmm::device_uvector<f_t>& get_cummulative_constraint_matrix_scaling();
   // Mutable access needed by distributed PDLP to broadcast owned variable
   // (column) scaling into the halo copies between scaling iterations.
-  rmm::device_uvector<f_t>& get_cummulative_variable_scaling()
-  {
-    return cummulative_variable_scaling_;
-  }
+  rmm::device_uvector<f_t>& get_cummulative_variable_scaling();
   const rmm::device_uvector<f_t>& get_variable_scaling_vector() const;
   const mip::problem_t<i_t, f_t>& get_scaled_op_problem();
 
@@ -134,11 +132,8 @@ class pdlp_initial_scaling_strategy_t {
   // Iteration_* scratch buffers used by ruiz_iter_local /
   // pock_chambolle_scaling. Exposed mutably so distributed PDLP can grow
   // them back to full size after the ctor's release (see distributed_scaling).
-  rmm::device_uvector<f_t>& get_iteration_variable_scaling() { return iteration_variable_scaling_; }
-  rmm::device_uvector<f_t>& get_iteration_constraint_matrix_scaling()
-  {
-    return iteration_constraint_matrix_scaling_;
-  }
+  rmm::device_uvector<f_t>& get_iteration_variable_scaling();
+  rmm::device_uvector<f_t>& get_iteration_constraint_matrix_scaling();
 
   /**
    * @brief Gets the device-side view (with raw pointers), for ease of access

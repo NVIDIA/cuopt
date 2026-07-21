@@ -69,7 +69,7 @@ pdlp_initial_scaling_strategy_t<i_t, f_t>::pdlp_initial_scaling_strategy_t(
   const pdlp::pdlp_hyper_params_t& hyper_params,
   i_t original_batch_size,
   bool running_mip,
-  bool skip_initial_scaling)
+  bool skip_ruiz_pock_compute)
   : handle_ptr_(handle_ptr),
     stream_view_(handle_ptr_->get_stream()),
     primal_size_h_(op_problem_scaled.n_variables),
@@ -123,7 +123,7 @@ pdlp_initial_scaling_strategy_t<i_t, f_t>::pdlp_initial_scaling_strategy_t(
   // Distributed PDLP shards defer scaling to multi_gpu_engine_t::distributed_scaling,
   // which runs a cross-shard-coherent Ruiz. Local per-shard Ruiz would be incoherent
   // across shards, so skip it here.
-  if (!skip_initial_scaling) { compute_scaling_vectors(number_of_ruiz_iterations, alpha); }
+  if (!skip_ruiz_pock_compute) { compute_scaling_vectors(number_of_ruiz_iterations, alpha); }
 }
 
 template <typename i_t, typename f_t>
@@ -961,10 +961,38 @@ pdlp_initial_scaling_strategy_t<i_t, f_t>::get_constraint_matrix_scaling_vector(
 }
 
 template <typename i_t, typename f_t>
+rmm::device_uvector<f_t>&
+pdlp_initial_scaling_strategy_t<i_t, f_t>::get_cummulative_constraint_matrix_scaling()
+{
+  return cummulative_constraint_matrix_scaling_;
+}
+
+template <typename i_t, typename f_t>
+rmm::device_uvector<f_t>&
+pdlp_initial_scaling_strategy_t<i_t, f_t>::get_cummulative_variable_scaling()
+{
+  return cummulative_variable_scaling_;
+}
+
+template <typename i_t, typename f_t>
 const rmm::device_uvector<f_t>&
 pdlp_initial_scaling_strategy_t<i_t, f_t>::get_variable_scaling_vector() const
 {
   return cummulative_variable_scaling_;
+}
+
+template <typename i_t, typename f_t>
+rmm::device_uvector<f_t>&
+pdlp_initial_scaling_strategy_t<i_t, f_t>::get_iteration_variable_scaling()
+{
+  return iteration_variable_scaling_;
+}
+
+template <typename i_t, typename f_t>
+rmm::device_uvector<f_t>&
+pdlp_initial_scaling_strategy_t<i_t, f_t>::get_iteration_constraint_matrix_scaling()
+{
+  return iteration_constraint_matrix_scaling_;
 }
 
 template <typename i_t, typename f_t>
