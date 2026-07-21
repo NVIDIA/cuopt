@@ -51,8 +51,8 @@ class pdlp_initial_scaling_strategy_t {
   // by distributed PDLP shards, where cross-shard-coherent scaling is applied
   // later by multi_gpu_engine_t::distributed_scaling.
   // bound objective rescaling happens only when scale_problem() is called so
-  // skip_ruiz_pock_compute has no impact on this part of the scaling. bound objective rescaling is
-  // only dependent on hyper_params_.bound_objective_rescaling
+  // skip_ruiz_pock_compute, a ctor parameter, has no impact on this part of the scaling. bound
+  // objective rescaling is only dependent on hyper_params_.bound_objective_rescaling
   pdlp_initial_scaling_strategy_t(raft::handle_t const* handle_ptr,
                                   mip::problem_t<i_t, f_t>& op_problem_scaled,
                                   i_t number_of_ruiz_iterations,
