@@ -369,7 +369,7 @@ TEST(second_order_cone_kernels, cone_step_length_keeps_iterate_in_cone)
 {
   auto stream = rmm::cuda_stream_default;
 
-  std::vector<int> cone_dimensions{3, 65, 32769};
+  std::vector<int> cone_dimensions{3, 65, 32769, 40000};
   std::size_t n_cone_entries = 0;
   for (const auto dim : cone_dimensions) {
     n_cone_entries += static_cast<std::size_t>(dim);
@@ -431,6 +431,55 @@ TEST(second_order_cone_kernels, cone_step_length_keeps_iterate_in_cone)
     EXPECT_GE(u0 * u0 + cone_tol, tail_sq) << label << " cone " << cone_idx;
   };
 
+  const auto host_cone_step_length_from_scalars = [](double u0,
+                                                     double du0,
+                                                     double du_tail_sq,
+                                                     double u_tail_du_tail,
+                                                     double u_tail_sq,
+                                                     double alpha_max_in) {
+    const double a     = du0 * du0 - du_tail_sq;
+    const double b     = u0 * du0 - u_tail_du_tail;
+    const double c_raw = u0 * u0 - u_tail_sq;
+    const double c     = c_raw > 0 ? c_raw : 0;
+    const double disc  = b * b - a * c;
+    double alpha       = alpha_max_in;
+
+    if (u0 >= 0 && du0 < 0) { alpha = std::min(alpha, -u0 / du0); }
+
+    if ((a > 0 && b > 0) || disc < 0) { return alpha; }
+
+    if (a == 0) {
+      return alpha;
+    } else if (c == 0) {
+      alpha = a >= 0 ? alpha : 0;
+    } else {
+      const double t = -(b + std::copysign(std::sqrt(disc), b));
+      double r1      = c / t;
+      double r2      = t / a;
+      if (r1 < 0) { r1 = alpha; }
+      if (r2 < 0) { r2 = alpha; }
+      alpha = std::min(alpha, std::min(r1, r2));
+    }
+
+    return alpha;
+  };
+
+  const auto host_cone_step_length_one =
+    [&](std::vector<double> const& u, std::vector<double> const& du, std::size_t off, int dim) {
+      double du_tail_sq     = 0.0;
+      double u_tail_du_tail = 0.0;
+      double u_tail_sq      = 0.0;
+      for (int j = 1; j < dim; ++j) {
+        const double ui  = u[off + static_cast<std::size_t>(j)];
+        const double dui = du[off + static_cast<std::size_t>(j)];
+        du_tail_sq += dui * dui;
+        u_tail_du_tail += ui * dui;
+        u_tail_sq += ui * ui;
+      }
+      return host_cone_step_length_from_scalars(
+        u[off], du[off], du_tail_sq, u_tail_du_tail, u_tail_sq, alpha_max);
+    };
+
   auto x  = cuopt::device_copy(x_host, stream);
   auto z  = cuopt::device_copy(z_host, stream);
   auto dx = cuopt::device_copy(dx_host, stream);
@@ -454,6 +503,14 @@ TEST(second_order_cone_kernels, cone_step_length_keeps_iterate_in_cone)
   // both the x/dx and z/dz feasibility checks below, which is still valid since it is
   // <= each side's own feasibility boundary.
   for (std::size_t cone = 0; cone < cone_dimensions.size(); ++cone) {
+    const std::size_t off    = cone_block_offset(cone);
+    const auto dim           = cone_dimensions[cone];
+    const double host_primal = host_cone_step_length_one(x_host, dx_host, off, dim);
+    const double host_dual   = host_cone_step_length_one(z_host, dz_host, off, dim);
+    // Reduction order may differ slightly from the GPU path.
+    EXPECT_NEAR(primal_per_cone[cone], host_primal, 1e-10) << "primal host ref cone " << cone;
+    EXPECT_NEAR(dual_per_cone[cone], host_dual, 1e-10) << "dual host ref cone " << cone;
+
     const double combined_cone = std::min(primal_per_cone[cone], dual_per_cone[cone]);
     EXPECT_GT(primal_per_cone[cone], 0.0) << "primal cone " << cone;
     EXPECT_GT(dual_per_cone[cone], 0.0) << "dual cone " << cone;

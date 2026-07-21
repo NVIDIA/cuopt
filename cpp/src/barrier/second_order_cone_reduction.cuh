@@ -75,6 +75,7 @@ struct segmented_sum_t {
   std::vector<std::size_t> large_cone_offsets;
   std::vector<i_t> large_cone_ids;
   std::vector<i_t> large_cone_dimensions;
+  rmm::device_uvector<i_t> large_cone_ids_device;  // device copy for batched kernels
 
   // Maximum CUB temporary storage needed by prepared large reductions.
   std::size_t cub_workspace_bytes = 0;
@@ -163,6 +164,7 @@ struct segmented_sum_t {
     : cone_offsets(cone_offsets_in),
       small_cone_ids(0, stream),
       medium_cone_ids(0, stream),
+      large_cone_ids_device(0, stream),
       cub_workspace(0, stream)
   {
     std::vector<i_t> small_cone_ids_host;
@@ -191,6 +193,10 @@ struct segmented_sum_t {
     }
     if (!medium_cone_ids_host.empty()) {
       cuopt::device_copy(medium_cone_ids, medium_cone_ids_host, stream);
+      need_sync = true;
+    }
+    if (!large_cone_ids.empty()) {
+      cuopt::device_copy(large_cone_ids_device, large_cone_ids, stream);
       need_sync = true;
     }
     if (need_sync) { stream.synchronize(); }
