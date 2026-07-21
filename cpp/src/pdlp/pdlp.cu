@@ -543,7 +543,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   multi_gpu_engine->set_master(this);
 
   // Wire the engine into master's pdhg_solver_; shards keep mgpu_engine_ == nullptr.
-  pdhg_solver_.set_multi_gpu_engine(&*multi_gpu_engine);
+  pdhg_solver_.set_multi_gpu_engine(&multi_gpu_engine.value());
 
   // ----- 9. Resize master gather destinations to the full problem size -----
   pdhg_solver_.get_potential_next_primal_solution().resize(n_vars, stream_view_);
