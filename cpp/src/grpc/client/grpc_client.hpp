@@ -366,12 +366,6 @@ class grpc_client_t {
   remote_vrp_result_t get_vrp_result(const std::string& job_id);
 
   /**
-   * @brief Submit a VRP problem, wait for completion, and return the solution.
-   */
-  remote_vrp_result_t solve_vrp(const cuopt::routing::cpu_routing_problem_t& problem,
-                                const cuopt::routing::solver_settings_t<int, float>& settings);
-
-  /**
    * @brief Cancel a running job
    * @param job_id The job ID to cancel
    * @return Cancel result with status

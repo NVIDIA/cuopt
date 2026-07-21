@@ -109,31 +109,15 @@ cdef extern from "cuopt/grpc/cython_grpc_client.hpp" namespace "cuopt::cython": 
         CANCELLED "cuopt::cython::grpc_job_status_t::CANCELLED"
         NOT_FOUND "cuopt::cython::grpc_job_status_t::NOT_FOUND"
 
-    ctypedef enum grpc_python_tls_mode_t "cuopt::cython::grpc_python_tls_mode_t":
-        ENV "cuopt::cython::grpc_python_tls_mode_t::ENV"
-        DISABLED "cuopt::cython::grpc_python_tls_mode_t::DISABLED"
-
-    cdef cppclass grpc_python_client_connect_options_t:
-        grpc_python_tls_mode_t tls_mode
-        string tls_root_certs
-        string tls_client_cert
-        string tls_client_key
-
     cdef cppclass grpc_submit_result_t:
         bool success
         string error_message
         string job_id
-        bool is_mip
 
     cdef cppclass grpc_status_result_t:
-        bool success
-        string error_message
         grpc_job_status_t status
-        string message
-        long long result_size_bytes
 
     cdef cppclass grpc_vrp_result_outcome_t:
-        bool not_ready
         bool success
         string error_message
         cpu_routing_solution_t solution
@@ -144,8 +128,6 @@ cdef extern from "cuopt/grpc/cython_grpc_client.hpp" namespace "cuopt::cython": 
         grpc_submit_result_t submit_vrp(
             cpu_routing_problem_t* problem,
             solver_settings_t[int, float]* settings) except +
-        grpc_status_result_t status(const string& job_id) except +
         grpc_status_result_t wait(const string& job_id, int timeout_seconds) except +
         grpc_vrp_result_outcome_t result_vrp(const string& job_id) except +
         bool delete_job(const string& job_id, string& error_out) except +
-        string last_error() except +

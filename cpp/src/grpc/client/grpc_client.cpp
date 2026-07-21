@@ -821,29 +821,6 @@ remote_vrp_result_t grpc_client_t::get_vrp_result(const std::string& job_id)
   return result;
 }
 
-remote_vrp_result_t grpc_client_t::solve_vrp(
-  const cuopt::routing::cpu_routing_problem_t& problem,
-  const cuopt::routing::solver_settings_t<int, float>& settings)
-{
-  remote_vrp_result_t result;
-
-  auto sub = submit_vrp(problem, settings);
-  if (!sub.success) {
-    result.error_message = sub.error_message;
-    return result;
-  }
-
-  auto poll = poll_for_completion(sub.job_id);
-  if (!poll.completed) {
-    result.error_message = poll.error_message;
-    return result;
-  }
-
-  result = get_vrp_result(sub.job_id);
-  if (result.success) { delete_job(sub.job_id); }
-  return result;
-}
-
 // =============================================================================
 // Polling helper
 // =============================================================================

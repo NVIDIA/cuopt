@@ -136,10 +136,10 @@ cdef _f64_to_np(const vector[double]& v):
 # --- DataModel IR -> cpu_routing_problem_t ----------------------------------
 
 cdef void _add_matrix(vector[cpu_cost_matrix_t]& dst, args) except *:
+    # _fill_f32 already casts to float32 and C-order ravels (row-major).
     cdef cpu_cost_matrix_t cm
-    mat = _to_host(args[0]).astype(np.float32, copy=False)
     cm.vehicle_type = <uint8_t>(int(args[1]) if len(args) > 1 else 0)
-    _fill_f32(cm.matrix, np.ascontiguousarray(mat).ravel(order="C"))
+    _fill_f32(cm.matrix, args[0])
     dst.push_back(cm)
 
 
