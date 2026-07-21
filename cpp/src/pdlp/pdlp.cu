@@ -3575,8 +3575,7 @@ pdlp_solver_t<i_t, f_t>::get_current_termination_strategy()
 }
 
 template <typename i_t, typename f_t>
-pdlp_initial_scaling_strategy_t<i_t, f_t>&
-pdlp_solver_t<i_t, f_t>::get_initial_scaling_strategy()
+pdlp_initial_scaling_strategy_t<i_t, f_t>& pdlp_solver_t<i_t, f_t>::get_initial_scaling_strategy()
 {
   return initial_scaling_strategy_;
 }
