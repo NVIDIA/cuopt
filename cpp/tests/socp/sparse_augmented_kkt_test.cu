@@ -49,9 +49,9 @@ TEST(sparse_augmented_kkt, cone_counts_and_expansion_size)
 {
   auto stream = rmm::cuda_stream_default;
 
-  std::vector<int> cone_dimensions{3, 6};
-  rmm::device_uvector<double> x(9, stream);
-  rmm::device_uvector<double> z(9, stream);
+  std::vector<int> cone_dimensions{3, 6, 5};
+  rmm::device_uvector<double> x(14, stream);
+  rmm::device_uvector<double> z(14, stream);
 
   cone_data_t<int, double> cones(
     cone_dimensions, cuopt::make_span(x), cuopt::make_span(z), stream, /*soc_threshold=*/4);
