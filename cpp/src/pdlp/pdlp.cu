@@ -3088,11 +3088,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
           transpose_problem_fields(/*to_row=*/true);
         }
       }
-      if (is_distributed_master()) {
-        multi_gpu_engine->for_each_shard([&](auto& shard) { shard.sub_pdlp->halpern_update(); });
-      } else {
-        halpern_update();
-      }
+      halpern_update();
     }
 
     ++total_pdlp_iterations_;
@@ -3168,6 +3164,10 @@ void pdlp_solver_t<i_t, f_t>::halpern_update()
 {
   raft::common::nvtx::range fun_scope("halpern_update");
 
+  if (is_distributed_master()) {
+    multi_gpu_engine->for_each_shard([&](auto& shard) { shard.sub_pdlp->halpern_update(); });
+    return;
+  }
   // TODO later batch mode: handle if element in the batch have different one if restart per climber
   const f_t weight =
     f_t(restart_strategy_.weighted_average_solution_.get_iterations_since_last_restart() + 1) /
