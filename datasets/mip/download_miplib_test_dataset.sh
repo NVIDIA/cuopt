@@ -4,6 +4,7 @@
 
 INSTANCES=(
     "50v-10"
+    "ex9"
     "fiball"
     "gen-ip054"
     "sct2"

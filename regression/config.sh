@@ -1,6 +1,6 @@
 #!/bin/bash
 # shellcheck disable=all
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 
@@ -14,6 +14,7 @@ PARTITION="batch"
 GPUS_PER_NODE=8
 
 # Path to the squashs file containing the container image
+# rapids-pre-commit-hooks: disable-next-line[verify-hardcoded-version]
 IMAGE="nvidia/cuopt:26.6.0a-cu12"
 
 ALL_CONFIGS_PATH=$SCRATCH_DIR/configs/

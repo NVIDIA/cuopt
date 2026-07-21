@@ -1040,7 +1040,7 @@ void strong_branching_reduced(const lp_problem_t<i_t, f_t>& original_lp,
   i_t effective_batch_pdlp = settings.mip_batch_pdlp_strong_branching;
 
   // Disable for sub MIP
-  if (settings.sub_mip) { effective_batch_pdlp = 0; }
+  if (settings.inside_submip) { effective_batch_pdlp = 0; }
 
   // Disable if running in deterministic mode
   if (settings.deterministic && settings.mip_batch_pdlp_strong_branching == 1) {
@@ -1053,7 +1053,7 @@ void strong_branching_reduced(const lp_problem_t<i_t, f_t>& original_lp,
   }
 
   if (settings.mip_batch_pdlp_strong_branching != 0 &&
-      (settings.sub_mip || settings.deterministic)) {
+      (settings.inside_submip || settings.deterministic)) {
     settings.log.printf(
       "Batch PDLP strong branching is disabled because sub-MIP or deterministic mode is enabled\n");
   }
@@ -1423,6 +1423,10 @@ template <typename i_t, typename f_t>
 void pseudo_costs_t<i_t, f_t>::update_pseudo_costs(mip_node_t<i_t, f_t>* node_ptr,
                                                    f_t leaf_objective)
 {
+  // The root node carries no branching decision (branch_var < 0), so there is no variable to
+  // attribute the objective change to.
+  if (node_ptr->branch_var < 0) return;
+
   const f_t change_in_obj = std::max(leaf_objective - node_ptr->lower_bound, 0.0);
   const f_t frac          = node_ptr->branch_dir == branch_direction_t::DOWN
                               ? node_ptr->fractional_val - std::floor(node_ptr->fractional_val)
@@ -1489,7 +1493,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
   f_t avg_up{0};
   lp_solution_t<i_t, f_t>& leaf_solution = worker->leaf_solution;
 
-  const int64_t branch_and_bound_lp_iters = bnb_stats.total_lp_iters;
+  const int64_t branch_and_bound_lp_iters = bnb_stats.total_simplex_iters;
   const i_t branch_and_bound_lp_iter_per_node =
     bnb_stats.nodes_explored > 0 ? branch_and_bound_lp_iters / bnb_stats.nodes_explored : 0;
   const i_t iter_limit_per_trial = std::clamp(2 * branch_and_bound_lp_iter_per_node,
@@ -1567,7 +1571,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
   // Use the heuristic to decide if it should be used (in case it is set to automatic)
   if (!use_pdlp && rb_mode != 0) {
     // Check if it is a sub MIP or the determinism mode is on.
-    use_pdlp = !settings.sub_mip;
+    use_pdlp = !settings.inside_submip;
     use_pdlp &= !settings.deterministic;
 
     // Check if the warm cache was filled at the root
@@ -1587,7 +1591,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
   // Use the heuristic to decide if it should be used (in case it is set to automatic)
   if (!use_pdlp && rb_mode != 0) {
     // Check if it is a sub MIP or the determinism mode is on.
-    use_pdlp = !settings.sub_mip;
+    use_pdlp = !settings.inside_submip;
     use_pdlp &= !settings.deterministic;
 
     // Check if the warm cache was filled at the root
@@ -1603,7 +1607,7 @@ i_t pseudo_costs_t<i_t, f_t>::reliable_variable_selection(
 
   if (rb_mode != 0 && !pdlp_warm_cache->populated) {
     settings.log.debug("PDLP warm start data not populated, using DS only\n");
-  } else if (rb_mode != 0 && settings.sub_mip) {
+  } else if (rb_mode != 0 && settings.inside_submip) {
     settings.log.debug("Batch PDLP reliability branching is disabled because sub-MIP is enabled\n");
   } else if (rb_mode != 0 && settings.deterministic) {
     settings.log.debug(

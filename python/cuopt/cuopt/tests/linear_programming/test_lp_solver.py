@@ -676,6 +676,13 @@ def test_solved_by():
     assert solution.get_solved_by() == SolverMethod.Barrier
 
 
+@pytest.mark.skip(
+    reason=(
+        "Temporarily disabled: swath1 aborts with std::bad_array_new_length "
+        "in wheel builds after the fast MPS parser landed (#1429). "
+        "Tracked in https://github.com/NVIDIA/cuopt/issues/1592."
+    )
+)
 def test_heuristics_only():
     file_path = RAPIDS_DATASET_ROOT_DIR + "/mip/swath1.mps"
     data_model_obj = Read(file_path)

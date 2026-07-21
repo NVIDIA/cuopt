@@ -18,38 +18,21 @@
 
 namespace cuopt::mathematical_optimization::mip {
 
-// When `log_diving_type` is true, each diving strategy gets its own letter;
-// otherwise every dive collapses to 'D'.
-inline char feasible_solution_symbol(search_strategy_t strategy, bool log_diving_type)
-{
-  if (strategy == BEST_FIRST) return 'B';
-  if (!log_diving_type) { return 'D'; }
-  switch (strategy) {
-    case COEFFICIENT_DIVING: return 'C';
-    case LINE_SEARCH_DIVING: return 'L';
-    case PSEUDOCOST_DIVING: return 'P';
-    case GUIDED_DIVING: return 'G';
-    case FARKAS_DIVING: return 'F';
-    case VECTOR_LENGTH_DIVING: return 'V';
-    default: return 'U';
-  }
-}
-
 template <typename i_t, typename f_t>
-bool is_search_strategy_enabled(search_strategy_t strategy,
-                                const mip_diving_hyper_params_t<i_t, f_t>& settings)
+void get_diving_heuristic_list(const mip_diving_hyper_params_t<i_t, f_t>& settings,
+                               std::vector<search_strategy_t>& heuristic_list)
 {
-  switch (strategy) {
-    case BEST_FIRST: return true;
-    case PSEUDOCOST_DIVING: return settings.pseudocost_diving != 0;
-    case LINE_SEARCH_DIVING: return settings.line_search_diving != 0;
-    case GUIDED_DIVING: return settings.guided_diving != 0;
-    case COEFFICIENT_DIVING: return settings.coefficient_diving != 0;
-    case FARKAS_DIVING: return settings.farkas_diving != 0;
-    case VECTOR_LENGTH_DIVING: return settings.vector_length_diving != 0;
-  }
-
-  return false;
+  heuristic_list.clear();
+  if (settings.pseudocost_diving != 0)
+    heuristic_list.push_back(search_strategy_t::PSEUDOCOST_DIVING);
+  if (settings.line_search_diving != 0)
+    heuristic_list.push_back(search_strategy_t::LINE_SEARCH_DIVING);
+  if (settings.guided_diving != 0) heuristic_list.push_back(search_strategy_t::GUIDED_DIVING);
+  if (settings.coefficient_diving != 0)
+    heuristic_list.push_back(search_strategy_t::COEFFICIENT_DIVING);
+  if (settings.farkas_diving != 0) heuristic_list.push_back(search_strategy_t::FARKAS_DIVING);
+  if (settings.vector_length_diving != 0)
+    heuristic_list.push_back(search_strategy_t::VECTOR_LENGTH_DIVING);
 }
 
 template <typename i_t, typename f_t>
