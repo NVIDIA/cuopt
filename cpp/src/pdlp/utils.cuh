@@ -66,7 +66,19 @@ struct max_abs_value {
 template <typename i_t>
 i_t conditional_major(uint64_t total_pdlp_iterations)
 {
-  uint64_t step                       = 10;
+  // `step` is how often (in PDHG iterations) the sub-1000-iteration regime runs a full
+  // termination/convergence evaluation. That evaluation is an un-graphed chain of ~12-15
+  // eager kernel launches plus one blocking cudaStreamSynchronize (termination_strategy.cu),
+  // which is expensive relative to a single graphed PDHG step on small edge/MPC-sized LPs.
+  // At step=10 a controller-sized LP that converges in a few hundred iterations pays ~20-40
+  // such evaluations. Widening the stride trades a handful of extra (cheap, graphed) PDHG
+  // steps of convergence-detection latency for far fewer expensive evaluations — a net win in
+  // the small-problem regime that dominates on-robot use. Larger regimes keep the x10 scaling.
+  //
+  // NOT bit-identical: convergence is detected up to `step-1` iterations later, so a few extra
+  // PDHG steps may run; the reported optimum/termination status are unchanged. Benchmark on the
+  // mpc_H*/assign_* suite and re-tune this constant against measured net solve time.
+  uint64_t step                       = 25;
   uint64_t threshold                  = 1000;
   [[maybe_unused]] uint64_t iteration = 0;
 
