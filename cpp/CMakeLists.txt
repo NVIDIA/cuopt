@@ -623,6 +623,9 @@ target_link_libraries(cuopt_objs
         ${CUDSS_LIB_FILE}
         PRIVATE
         ${CUOPT_PRIVATE_CUDA_LIBS}
+        simde::simde
+        OpenMP::OpenMP_CXX
+        OpenMP::OpenMP_CUDA
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:protobuf::libprotobuf>
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:gRPC::grpc++>
 )

@@ -32,6 +32,7 @@ patterns=(
     'rmm::'
     'cuopt::mathematical_optimization::detail'
     'cuopt::routing::detail'
+    'cuopt::detail'
     'grpc::'
     'google::protobuf'
     'tbb::'
@@ -39,7 +40,6 @@ patterns=(
     'dejavu::'
     'papilo::'
     'boost::'
-    'pslp_'
 )
 
 failed=0
