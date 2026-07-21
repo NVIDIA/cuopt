@@ -75,7 +75,6 @@ inline bool log_every_n_should_emit(std::atomic<uint64_t>& counter)
 
 }  // namespace cuopt::detail
 
-
 // Rate-limited logging built on the generated CUOPT_LOG_<level> macros. `level` is one of
 // TRACE/DEBUG/INFO/WARN/ERROR/CRITICAL; `n` must be a positive compile-time constant. Each
 // call site owns its own counter, so throttling is independent per use.
