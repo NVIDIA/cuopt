@@ -2572,8 +2572,6 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
   std::cout << "Starting PDLP loop:" << std::endl;
 #endif
 
-  bool warm_start_was_given = settings_.get_pdlp_warm_start_data().is_populated();
-
   // The four setup calls (compute_initial_step_size, compute_initial_primal_weight,
   // scale_problem, create_spmv_op_plans) run unconditionally here.  Each of them
   // branches on is_distributed_master() at entry.
@@ -2867,6 +2865,7 @@ optimization_problem_solution_t<i_t, f_t> pdlp_solver_t<i_t, f_t>::run_solver(co
       }
 
       // If a warm start is given and it's the first step, the average solutions were already filled
+      const bool warm_start_was_given = settings_.get_pdlp_warm_start_data().is_populated();
       bool no_rescale_average = (internal_solver_iterations_ == 0 && warm_start_was_given) ||
                                 settings_.hyper_params.never_restart_to_average;
 
