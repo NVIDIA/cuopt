@@ -23,10 +23,11 @@ ARG PYTHON_SHORT_VER
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install Python and set up alternatives. wget/unzip/gnupg2/software-properties-common
-# are only needed here to add the deadsnakes PPA — purge them in the same layer so
-# they never persist as a separate image layer.
+# Apply all available OS security patches (fixes CVE-2026-45447 openssl and others),
+# then install Python. wget/unzip/gnupg2/software-properties-common are only needed
+# to add the deadsnakes PPA — purge them in the same layer so they never persist.
 RUN apt-get update \
+    && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends \
         software-properties-common \
         gnupg2 \
