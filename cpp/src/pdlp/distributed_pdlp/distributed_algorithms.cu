@@ -10,8 +10,6 @@
 #include <pdlp/pdlp.cuh>
 #include <pdlp/utils.cuh>
 
-#include <cuopt/mathematical_optimization/utilities/segmented_sum_handler.cuh>
-
 #include <raft/core/nvtx.hpp>
 
 #include <rmm/device_scalar.hpp>
@@ -19,8 +17,6 @@
 
 #include <thrust/fill.h>
 #include <thrust/gather.h>
-#include <thrust/iterator/transform_iterator.h>
-#include <thrust/iterator/zip_iterator.h>
 
 #include <cmath>
 #include <vector>
@@ -57,36 +53,28 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_bound_objective_rescaling(f_t c_s
 {
   raft::common::nvtx::range scope("distributed_bound_objective_rescaling");
 
-  // 1) + 2) Local transform-reduce on each shard, accumulate the global
-  //         squared L2 norms on host as we go.
-  // Avoid thrust::transform_reduce: it can allocate/deallocate outside our RMM pool
-  // (or on the wrong stream). Prefer segmented_sum_handler (CUB + pooled temp storage,
-  // ordered on the shard stream), matching single-GPU bound_objective_rescaling().
-  // Output is the raw squared sum (no fused sqrt): we accumulate across shards first.
+  // 1) + 2) Local raw squared norms on each shard, accumulate on host.
+  // Use compute_sum_bounds_squared / compute_sum_weighted_squares (not
+  // thrust::transform_reduce, and not compute_sum_bounds which fuses sqrt —
+  // sqrt is not additive across shards).
   f_t global_bound_sq = f_t(0);
   f_t global_obj_sq   = f_t(0);
   for_each_shard([&](auto& s) {
     const auto& scaled = s.sub_pdlp->get_initial_scaling_strategy().get_scaled_op_problem();
     const auto stream  = s.stream.view();
-    cuopt::segmented_sum_handler_t<i_t, f_t> segmented_sum_handler(stream);
     rmm::device_scalar<f_t> d_bound_sq(f_t(0), stream);
     rmm::device_scalar<f_t> d_obj_sq(f_t(0), stream);
 
-    segmented_sum_handler.segmented_sum_helper(
-      thrust::make_transform_iterator(
-        thrust::make_zip_iterator(scaled.constraint_lower_bounds.data(),
-                                  scaled.constraint_upper_bounds.data()),
-        rhs_sum_of_squares_t<f_t>{}),
-      d_bound_sq.data(),
-      i_t(1),
-      s.rank_data.owned_cstr_size);
-
-    segmented_sum_handler.segmented_sum_helper(
-      thrust::make_transform_iterator(scaled.objective_coefficients.data(),
-                                      weighted_square_op<f_t>{c_scaling_weight}),
-      d_obj_sq.data(),
-      i_t(1),
-      s.rank_data.owned_var_size);
+    compute_sum_bounds_squared(scaled.constraint_lower_bounds,
+                               scaled.constraint_upper_bounds,
+                               d_bound_sq,
+                               stream,
+                               static_cast<std::size_t>(s.rank_data.owned_cstr_size));
+    compute_sum_weighted_squares(scaled.objective_coefficients,
+                                 c_scaling_weight,
+                                 d_obj_sq,
+                                 stream,
+                                 static_cast<std::size_t>(s.rank_data.owned_var_size));
 
     global_bound_sq += d_bound_sq.value(stream);
     global_obj_sq += d_obj_sq.value(stream);

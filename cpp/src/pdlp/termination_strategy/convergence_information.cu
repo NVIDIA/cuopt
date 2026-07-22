@@ -35,7 +35,6 @@
 #include <thrust/iterator/transform_iterator.h>
 #include <thrust/iterator/transform_output_iterator.h>
 #include <thrust/iterator/zip_iterator.h>
-#include <thrust/transform_reduce.h>
 
 #include <cub/cub.cuh>
 
@@ -229,31 +228,23 @@ void convergence_information_t<i_t, f_t>::distributed_init_l2_norms(
   raft::common::nvtx::range scope("distributed_init_l2_norms");
 
   f_t global_rhs_sq = f_t(0);
-  f_t global_obj_sq = f_t(0);
 
   // Mirrors init_l2_norms with hyper_params_.initial_primal_weight_combined_bounds = false.
+  // Bounds need their custom finite-bound transform. Accumulate raw squared sums
+  // across shards before taking sqrt because sqrt is not additive.
   engine.for_each_shard([&](pdlp_shard_t<i_t, f_t>& s) {
     const auto& problem =
       *s.sub_pdlp->get_current_termination_strategy().get_convergence_information().problem_ptr;
-    auto policy    = rmm::exec_policy(s.stream.view());
-    auto rhs_begin = thrust::make_zip_iterator(problem.constraint_lower_bounds.data(),
-                                               problem.constraint_upper_bounds.data());
+    const auto stream = s.stream.view();
+    rmm::device_scalar<f_t> d_rhs_sq(f_t(0), stream);
 
-    // RHS L2 norm
-    global_rhs_sq += thrust::transform_reduce(policy,
-                                              rhs_begin,
-                                              rhs_begin + s.rank_data.owned_cstr_size,
-                                              rhs_sum_of_squares_t<f_t>{},
-                                              f_t(0),
-                                              thrust::plus<f_t>{});
-    // Objective L2 norm
-    global_obj_sq +=
-      thrust::transform_reduce(policy,
-                               problem.objective_coefficients.data(),
-                               problem.objective_coefficients.data() + s.rank_data.owned_var_size,
-                               weighted_square_op<f_t>{f_t(1)},
-                               f_t(0),
-                               thrust::plus<f_t>{});
+    compute_sum_bounds_squared(problem.constraint_lower_bounds,
+                               problem.constraint_upper_bounds,
+                               d_rhs_sq,
+                               stream,
+                               static_cast<std::size_t>(s.rank_data.owned_cstr_size));
+
+    global_rhs_sq += d_rhs_sq.value(stream);
   });
 
   engine.set_scalar_on_master_and_shards(std::sqrt(global_rhs_sq),
@@ -262,12 +253,21 @@ void convergence_information_t<i_t, f_t>::distributed_init_l2_norms(
                                              .get_convergence_information()
                                              .l2_norm_primal_right_hand_side_.data();
                                          });
-  engine.set_scalar_on_master_and_shards(std::sqrt(global_obj_sq),
-                                         [](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
-                                           return sp.get_current_termination_strategy()
-                                             .get_convergence_information()
-                                             .l2_norm_primal_linear_objective_.data();
-                                         });
+
+  // Distributed PDLP is non-batch, so the objective side is an ordinary global
+  // L2 norm over the owned variable slices.
+  engine.distributed_l2_norm_to_master(
+    [](pdlp_solver_t<i_t, f_t>& sp) -> rmm::device_uvector<f_t>& {
+      return sp.get_current_termination_strategy()
+        .get_convergence_information()
+        .problem_ptr->objective_coefficients;
+    },
+    [](pdlp_solver_t<i_t, f_t>& sp) -> f_t* {
+      return sp.get_current_termination_strategy()
+        .get_convergence_information()
+        .l2_norm_primal_linear_objective_.data();
+    },
+    [](pdlp_shard_t<i_t, f_t>& s) -> i_t { return s.rank_data.owned_var_size; });
 }
 
 // ---------------------------------------------------------------------------

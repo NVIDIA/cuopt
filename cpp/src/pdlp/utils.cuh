@@ -332,6 +332,86 @@ void inline combine_constraint_bounds(const mip::problem_t<i_t, f_t>& op_problem
                                   op_problem.handle_ptr->get_stream());
 }
 
+// Same as compute_sum_bounds, but without the fused sqrt.
+// Used in Distributed PDLP.
+template <typename f_t>
+void inline compute_sum_bounds_squared(const rmm::device_uvector<f_t>& constraint_lower_bounds,
+                                       const rmm::device_uvector<f_t>& constraint_upper_bounds,
+                                       rmm::device_scalar<f_t>& out,
+                                       rmm::cuda_stream_view stream_view,
+                                       std::size_t n)
+{
+  cuopt_assert(constraint_lower_bounds.size() == constraint_upper_bounds.size(),
+               "constraint_lower_bounds and constraint_upper_bounds must have the same size");
+  cuopt_assert(n <= constraint_lower_bounds.size(),
+               "n exceeds constraint bound vector size");
+
+  rmm::device_buffer d_temp_storage;
+  size_t bytes = 0;
+  cub::DeviceReduce::TransformReduce(
+    nullptr,
+    bytes,
+    thrust::make_zip_iterator(constraint_lower_bounds.data(), constraint_upper_bounds.data()),
+    out.data(),
+    n,
+    cuda::std::plus<>{},
+    rhs_sum_of_squares_t<f_t>{},
+    f_t(0),
+    stream_view);
+
+  d_temp_storage.resize(bytes, stream_view);
+
+  cub::DeviceReduce::TransformReduce(
+    d_temp_storage.data(),
+    bytes,
+    thrust::make_zip_iterator(constraint_lower_bounds.data(), constraint_upper_bounds.data()),
+    out.data(),
+    n,
+    cuda::std::plus<>{},
+    rhs_sum_of_squares_t<f_t>{},
+    f_t(0),
+    stream_view);
+  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view));
+}
+
+// Weighted sum of squares of the first n entries of `values` (no fused sqrt).
+// Companion to compute_sum_bounds_squared.
+template <typename f_t>
+void inline compute_sum_weighted_squares(const rmm::device_uvector<f_t>& values,
+                                         f_t weight,
+                                         rmm::device_scalar<f_t>& out,
+                                         rmm::cuda_stream_view stream_view,
+                                         std::size_t n)
+{
+  cuopt_assert(n <= values.size(), "n exceeds values size");
+
+  rmm::device_buffer d_temp_storage;
+  size_t bytes = 0;
+  cub::DeviceReduce::TransformReduce(nullptr,
+                                     bytes,
+                                     values.data(),
+                                     out.data(),
+                                     n,
+                                     cuda::std::plus<>{},
+                                     weighted_square_op<f_t>{weight},
+                                     f_t(0),
+                                     stream_view);
+
+  d_temp_storage.resize(bytes, stream_view);
+
+  cub::DeviceReduce::TransformReduce(d_temp_storage.data(),
+                                     bytes,
+                                     values.data(),
+                                     out.data(),
+                                     n,
+                                     cuda::std::plus<>{},
+                                     weighted_square_op<f_t>{weight},
+                                     f_t(0),
+                                     stream_view);
+  RAFT_CUDA_TRY(cudaStreamSynchronize(stream_view));
+}
+
+// Like compute_sum_bounds_squared, but writes sqrt(sum of squares) (the L2 norm).
 template <typename f_t>
 void inline compute_sum_bounds(const rmm::device_uvector<f_t>& constraint_lower_bounds,
                                const rmm::device_uvector<f_t>& constraint_upper_bounds,
