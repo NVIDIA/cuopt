@@ -156,7 +156,7 @@ std::vector<i_t> kaminpar_partitioner_t<i_t, f_t>::partition(
   auto t1         = std::chrono::high_resolution_clock::now();
   const double dt = std::chrono::duration<double>(t1 - t0).count();
 
-  CUOPT_LOG_INFO(
+  CUOPT_LOG_TRACE(
     "KaMinPar partitioned bipartite graph: nvtx=%d nnz=%d nb_parts=%d nthreads=%d edge_cut=%lld "
     "in %.3fs",
     static_cast<int>(nvtx),

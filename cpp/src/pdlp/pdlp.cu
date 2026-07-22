@@ -501,7 +501,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   const char* kind_name      = (kind == partitioner_kind_t::RoundRobin) ? "round_robin"
                                : (kind == partitioner_kind_t::KaMinPar) ? "kaminpar"
                                                                         : "unknown";
-  CUOPT_LOG_INFO(
+  CUOPT_LOG_TRACE(
     "Partitioning %d constraints + %d variables into %d part(s) using the %s "
     "partitioner",
     n_cstr,
