@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # cmake-format: on
 
-ConfigureTest(LP_UNIT_TEST
+ConfigureInternalTest(LP_UNIT_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/optimization_problem_test.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/solver_settings_test.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/presolve_test.cu
@@ -11,17 +11,17 @@ ConfigureTest(LP_UNIT_TEST
     LABELS numopt)
 # ##################################################################################################
 # - Linear programming PDLP tests ----------------------------------------------------------------------
-ConfigureTest(PDLP_TEST
+ConfigureInternalTest(PDLP_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/pdlp_test.cu
     LABELS numopt)
 
 # ##################################################################################################
 # - MPS / LP parser tests --------------------------------------------------------------------------
-ConfigureTest(MPS_PARSER_TEST
+ConfigureInternalTest(MPS_PARSER_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/parser_test.cpp
     LABELS numopt)
 
-ConfigureTest(MPS_FAST_PARSER_TEST
+ConfigureInternalTest(MPS_FAST_PARSER_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/experimental_mps_fast/fast_fp64_parser_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/experimental_mps_fast/fast_parser_edge_test.cpp
     LABELS numopt)
@@ -65,7 +65,7 @@ if (NOT SKIP_C_PYTHON_ADAPTERS)
 
     target_link_libraries(C_API_TEST
         PRIVATE
-        cuopt # link against the shared library to verify that the public C API is properly exported
+        cuopt_static # TODO: Change this to link against the shared library to verify that the public C API is properly exported
         cuopttestutils
         c_api_tester
         GTest::gmock

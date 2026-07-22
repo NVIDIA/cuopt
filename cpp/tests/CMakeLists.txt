@@ -4,7 +4,7 @@
 # cmake-format: on
 
 if(BUILD_TESTS)
-  add_library(cuopttestutils STATIC
+  add_library(cuopttestutils SHARED
       routing/utilities/check_constraints.cu
   )
 

@@ -11,16 +11,16 @@ ConfigureTest(MIP_TEST
 ConfigureTest(SEMI_CONTINUOUS_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/semi_continuous_test.cu
     LABELS numopt)
-ConfigureTest(PROBLEM_TEST
+ConfigureInternalTest(PROBLEM_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/problem_test.cu
     LABELS numopt)
-ConfigureTest(ELIM_VAR_REMAP_TEST
+ConfigureInternalTest(ELIM_VAR_REMAP_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/elim_var_remap_test.cu
     LABELS numopt)
-ConfigureTest(STANDARDIZATION_TEST
+ConfigureInternalTest(STANDARDIZATION_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/bounds_standardization_test.cu
     LABELS numopt)
-ConfigureTest(MULTI_PROBE_TEST
+ConfigureInternalTest(MULTI_PROBE_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/multi_probe_test.cu
     LABELS numopt)
 ConfigureTest(INCUMBENT_CALLBACK_TEST
@@ -29,17 +29,17 @@ ConfigureTest(INCUMBENT_CALLBACK_TEST
 ConfigureTest(DOC_EXAMPLE_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/doc_example_test.cu
     LABELS numopt)
-ConfigureTest(CUTS_TEST
+ConfigureInternalTest(CUTS_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/cuts_test.cu
     LABELS numopt)
-ConfigureTest(UNIT_TEST
+ConfigureInternalTest(UNIT_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_test.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/integer_with_real_bounds.cu
     LABELS numopt)
 ConfigureTest(EMPTY_FIXED_PROBLEMS_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/empty_fixed_problems_test.cu
     LABELS numopt)
-ConfigureTest(PRESOLVE_TEST
+ConfigureInternalTest(PRESOLVE_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/presolve_test.cu
     LABELS numopt)
 # Disable for now
@@ -49,7 +49,7 @@ ConfigureTest(PRESOLVE_TEST
 ConfigureTest(MIP_TERMINATION_STATUS_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/termination_test.cu
     LABELS numopt)
-ConfigureTest(DETERMINISM_TEST
+ConfigureInternalTest(DETERMINISM_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/determinism_test.cu
     LABELS numopt)
 ConfigureTest(HEURISTICS_HYPER_PARAMS_TEST
