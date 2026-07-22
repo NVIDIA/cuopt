@@ -350,6 +350,11 @@ class grpc_client_t {
 
   /**
    * @brief Delete a job and its results from server
+   *
+   * If the job is still queued or running, it is cancelled first (queued jobs
+   * will not run; running workers are killed), then all server-side state is
+   * removed.
+   *
    * @param job_id The job ID to delete
    * @return true if deletion successful
    */
