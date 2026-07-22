@@ -77,6 +77,13 @@ multi_gpu_engine_t<i_t, f_t>::multi_gpu_engine_t(
   }
 }
 
+template <typename i_t, typename f_t>
+void multi_gpu_engine_t<i_t, f_t>::set_master(pdlp_solver_t<i_t, f_t>* m)
+{
+  cuopt_assert(m != nullptr, "set_master: master pointer must not be null");
+  master_pdlp_ = m;
+}
+
 // -------- High-level: A @ x and A_T @ y -----------------------------------
 template <typename i_t, typename f_t>
 void multi_gpu_engine_t<i_t, f_t>::distributed_compute_A_x()

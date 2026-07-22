@@ -524,7 +524,7 @@ struct multi_gpu_engine_t {
 
   // Non-owning back-pointer to the master pdlp_solver_t.
   pdlp_solver_t<i_t, f_t>* master_pdlp_ = nullptr;
-  void set_master(pdlp_solver_t<i_t, f_t>* m) { master_pdlp_ = m; }
+  void set_master(pdlp_solver_t<i_t, f_t>* m);
 
   // ===== Cross-stream synchronization events =====
   // two different events
