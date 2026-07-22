@@ -17,16 +17,14 @@ FROM nvidia/cuda:${CUDA_VER}-base-ubi10 AS python-env
 ARG CUDA_VER
 ARG CUOPT_VER
 
-# Apply all available OS security patches, then remove packages that are not
-# needed at runtime and carry unpatched CVEs:
-#   vim-minimal / vim-data  — CVE-2026-47162, CVE-2026-55895, CVE-2026-57456
-#   curl                    — CVE-2026-9547, CVE-2026-8925, CVE-2026-8286,
-#                             CVE-2026-12064, CVE-2026-11586, CVE-2026-11352
-#   tar                     — CVE-2026-59874, CVE-2026-59873
-# Switch to Python 3.14 (eliminates CVE-2024-12254 present in the default
-# python3 3.12 packages shipped by the base image).
+# Apply all available OS security patches (fixes openssl-libs, expat, vim CVEs),
+# remove packages not needed at runtime, and install Python 3.14.
+# Note: curl/libcurl-minimal cannot be removed — rpm itself requires curl.
+#   vim-minimal / vim-data  — removed (patched by dnf update, but not needed at runtime)
+#   tar                     — CVE-2026-59874, CVE-2026-59873 (no fix in repos yet)
+# Switch to Python 3.14 (eliminates CVE-2024-12254 in the default python3 3.12 stream).
 RUN dnf update -y \
-    && dnf remove -y vim-minimal vim-data curl tar \
+    && dnf remove -y vim-minimal vim-data tar \
     && dnf install -y python3.14 python3.14-devel \
     && dnf clean all
 
