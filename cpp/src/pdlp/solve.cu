@@ -2442,7 +2442,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
   const i_t nnz    = static_cast<i_t>(mps_data_model.get_constraint_matrix_values().size());
   CUOPT_LOG_INFO(
     "Solving a problem with %d constraints, %d variables (%d integers), and %d "
-    "nonzeros (distributed mps-direct path)",
+    "nonzeros",
     n_cstr,
     n_vars,
     0,
