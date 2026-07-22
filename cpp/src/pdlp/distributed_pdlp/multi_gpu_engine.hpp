@@ -118,10 +118,7 @@ struct multi_gpu_engine_t {
   }
 
   // Host-blocking barrier: waits until every shard stream has drained.
-  void synchronize_shards()
-  {
-    for_each_shard([](auto& s) { s.stream.synchronize(); });
-  }
+  void synchronize_shards();
 
   // Core: launches cub::DeviceTransform on every shard using per-shard
   // pre-resolved inputs / outputs / sizes.
