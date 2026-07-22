@@ -415,10 +415,8 @@ jobs:
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_conda
     with:
       build_type: pull-request
+      run_codecov: false
       script: ci/test_python.sh
-    secrets:
-      script-env-secret-1-key: CODECOV_TOKEN
-      script-env-secret-1-value: ${{ secrets.CODECOV_TOKEN }}
   docs-build:
     needs: [conda-python-build, changed-files]
     permissions:
