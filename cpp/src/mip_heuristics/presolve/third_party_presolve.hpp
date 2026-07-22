@@ -104,6 +104,8 @@ class third_party_presolve_t {
     f_t time_limit,
     i_t num_threads);
 
+  // Undo the presolve from a device-side optimization_problem_t.
+  // This is a wrapper around undo().
   void undo_from_device(rmm::device_uvector<f_t>& primal_solution,
                         rmm::device_uvector<f_t>& dual_solution,
                         rmm::device_uvector<f_t>& reduced_costs,
@@ -113,7 +115,6 @@ class third_party_presolve_t {
                         rmm::cuda_stream_view stream_view);
 
   // Host-only postsolve. Resizes the vectors to original-problem dimensions.
-  // The device-side `undo_from_device` above is a thin wrapper around this method.
   void undo(std::vector<f_t>& primal_solution,
             std::vector<f_t>& dual_solution,
             std::vector<f_t>& reduced_costs,
