@@ -17,17 +17,34 @@ fi
 # Install Boost and TBB
 bash ci/utils/install_boost_tbb.sh
 
-# Install libuuid (needed by cuopt_grpc_server)
+# Install libuuid and LLVM's OpenMP runtime
 if command -v dnf &> /dev/null; then
-    dnf install -y libuuid-devel
+    # LLVM Toolset is distributed as a module on Rocky/RHEL 8.
+    dnf module install -y llvm-toolset
+    dnf install -y libuuid-devel libomp-devel
 elif command -v apt-get &> /dev/null; then
-    apt-get update && apt-get install -y uuid-dev
+    apt-get update
+    apt-get install -y uuid-dev libomp-dev
 fi
 
 # Install Protobuf + gRPC (protoc + grpc_cpp_plugin)
 bash ci/utils/install_protobuf_grpc.sh
 
-export SKBUILD_CMAKE_ARGS="-DCUOPT_BUILD_WHEELS=ON;-DDISABLE_DEPRECATION_WARNING=ON"
+# Compile with GCC, but use LLVM libomp as the OpenMP runtime bundled in the wheel. Resolve the
+# versioned ELF library rather than an unversioned linker script or compiler-toolset indirection.
+LIBOMP_LIBRARY="$(
+    ldconfig -p |
+        awk '$1 ~ /^libomp\.so(\.[0-9]+)*$/ && !library { library = $NF }
+             END { print library }'
+)"
+if [[ "${LIBOMP_LIBRARY}" != /* || ! -f "${LIBOMP_LIBRARY}" ]]; then
+    echo "Could not resolve the LLVM OpenMP runtime: '${LIBOMP_LIBRARY}'" >&2
+    exit 1
+fi
+
+echo "Using LLVM OpenMP runtime: ${LIBOMP_LIBRARY}"
+
+export SKBUILD_CMAKE_ARGS="-DOpenMP_gomp_LIBRARY:FILEPATH=${LIBOMP_LIBRARY}"
 
 # OpenSSL 3 hints for libcuopt's own find_package(OpenSSL).
 #

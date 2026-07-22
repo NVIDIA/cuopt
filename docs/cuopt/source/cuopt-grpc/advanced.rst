@@ -236,7 +236,7 @@ Typical run:
 
    docker run --gpus all -p 5001:5001 \
      -e CUOPT_SERVER_TYPE=grpc \
-     nvcr.io/nvidia/cuopt/cuopt:latest
+     nvcr.io/nvidia/cuopt/cuopt:latest-cu12
 
 TLS example with a cert volume:
 
@@ -246,14 +246,14 @@ TLS example with a cert volume:
      -e CUOPT_SERVER_TYPE=grpc \
      -e CUOPT_GRPC_ARGS="--tls --tls-cert /certs/server.crt --tls-key /certs/server.key --log-to-console" \
      -v ./certs:/certs:ro \
-     nvcr.io/nvidia/cuopt/cuopt:latest
+     nvcr.io/nvidia/cuopt/cuopt:latest-cu12
 
 Bypass the entrypoint:
 
 .. code-block:: bash
 
    docker run --gpus all -p 5001:5001 \
-     nvcr.io/nvidia/cuopt/cuopt:latest \
+     nvcr.io/nvidia/cuopt/cuopt:latest-cu12 \
      cuopt_grpc_server --port 5001 --workers 2
 
 Client Environment (Examples)

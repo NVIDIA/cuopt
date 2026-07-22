@@ -186,7 +186,6 @@ list(APPEND CUOPT_CUDA_FLAGS -Xfatbin=-compress-all)
 if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.9 AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0)
     list(APPEND CUOPT_CUDA_FLAGS -Xfatbin=--compress-level=3)
 endif ()
-list(APPEND CUOPT_CUDA_FLAGS -fopenmp)
 
 # Add jobserver flags for parallel compilation if PARALLEL_LEVEL is set
 if (PARALLEL_LEVEL AND NOT "${PARALLEL_LEVEL}" STREQUAL "")
@@ -198,13 +197,14 @@ if (PARALLEL_LEVEL AND NOT "${PARALLEL_LEVEL}" STREQUAL "")
     endif ()
 endif ()
 
-# The MIP solver requires OpenMP to work
-find_package(OpenMP REQUIRED)
+# The MIP solver requires OpenMP for both C++ and CUDA host code.
+find_package(OpenMP REQUIRED COMPONENTS CXX CUDA)
 message(VERBOSE "cuOpt: OpenMP found in ${OpenMP_CXX_INCLUDE_DIRS}")
 
-# MPS/QPS parser supports compressed inputs via bzip2 and zlib
+# MPS/QPS parser supports compressed inputs via bzip2, zlib and lz4
 option(CUOPT_PARSER_WITH_BZIP2 "Build MPS parser with bzip2 decompression" ON)
 option(CUOPT_PARSER_WITH_ZLIB "Build MPS parser with zlib decompression" ON)
+option(CUOPT_PARSER_WITH_LZ4 "Build experimental fast MPS parser with LZ4 decompression" ON)
 if (CUOPT_PARSER_WITH_BZIP2)
     find_package(BZip2 REQUIRED)
     add_compile_definitions(MPS_PARSER_WITH_BZIP2)
@@ -212,6 +212,10 @@ endif ()
 if (CUOPT_PARSER_WITH_ZLIB)
     find_package(ZLIB REQUIRED)
     add_compile_definitions(MPS_PARSER_WITH_ZLIB)
+endif ()
+if (CUOPT_PARSER_WITH_LZ4)
+    # No headers or link target needed; the experimental reader loads one liblz4 symbol at runtime.
+    add_compile_definitions(MPS_PARSER_WITH_LZ4)
 endif ()
 
 # Debug options
@@ -250,16 +254,30 @@ else ()
     find_package(RAFT REQUIRED)
 endif ()
 
+rapids_cpm_find(simde 0.8.2
+        CPM_ARGS
+        GIT_REPOSITORY https://github.com/simd-everywhere/simde.git
+        GIT_TAG v0.8.2
+        GIT_SHALLOW TRUE
+        DOWNLOAD_ONLY TRUE
+)
+
+if (NOT TARGET simde::simde)
+    add_library(simde::simde INTERFACE IMPORTED GLOBAL)
+    set_target_properties(simde::simde
+            PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${simde_SOURCE_DIR}")
+endif ()
+
 FetchContent_Declare(
         papilo
-        GIT_REPOSITORY "https://github.com/scipopt/papilo.git"
+        GIT_REPOSITORY "https://github.com/nguidotti/papilo.git"
         # We would want to get the main branch. However, the main branch
         # does not have some of the presolvers and settings that we need
         # Mainly, probing and clique merging.
         # This is the reason we are using the development branch
         # from Oct 12, 2025. Once these changes are merged into the main branch,
         #we can switch to the main branch.
-        GIT_TAG "741a2b9c8155b249d6df574d758b4d97d4417520"
+        GIT_TAG "0cfea20c5655249174dbd04f0fb7bd6b1f6e9a0c"
         GIT_PROGRESS TRUE
         EXCLUDE_FROM_ALL
         SYSTEM
@@ -293,13 +311,13 @@ set(BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS_SAVED})
 # dejavu - header-only graph automorphism library for MIP symmetry detection
 # https://github.com/markusa4/dejavu (header-only, skip its CMakeLists.txt)
 FetchContent_Declare(
-  dejavu
-  GIT_REPOSITORY "https://github.com/markusa4/dejavu.git"
-  GIT_TAG "v2.1"
-  GIT_PROGRESS TRUE
-  EXCLUDE_FROM_ALL
-  SYSTEM
-  SOURCE_SUBDIR _nonexistent
+        dejavu
+        GIT_REPOSITORY "https://github.com/markusa4/dejavu.git"
+        GIT_TAG "v2.1"
+        GIT_PROGRESS TRUE
+        EXCLUDE_FROM_ALL
+        SYSTEM
+        SOURCE_SUBDIR _nonexistent
 )
 FetchContent_MakeAvailable(dejavu)
 message(STATUS "dejavu (graph automorphism): ${dejavu_SOURCE_DIR}")
@@ -369,7 +387,7 @@ if (NOT SKIP_GRPC_BUILD)
 
     # Proto search paths: manual protos in src/grpc, generated data proto in src/grpc/codegen/generated
     set(PROTO_PATH_MANUAL "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc")
-    set(PROTO_PATH_GEN    "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc/codegen/generated")
+    set(PROTO_PATH_GEN "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc/codegen/generated")
 
     # Generate C++ code from cuopt_remote_data.proto (auto-generated data definitions)
     set(DATA_PROTO_FILE "${PROTO_PATH_GEN}/cuopt_remote_data.proto")
@@ -436,16 +454,34 @@ if (BUILD_TESTS)
 endif ()
 
 set(CUOPT_SRC_FILES)
+set(MPS_FAST_SRC_FILES)
 add_subdirectory(src)
+
+# nvcc 13.0.3 ICE (signal 11) compiling sliding_window.cu with 7 GPU architectures;
+# --split-compile breaks the codegen into per-arch sub-jobs to avoid the crash
+set_source_files_properties(
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/routing/local_search/sliding_window.cu
+        PROPERTIES COMPILE_OPTIONS "--split-compile=0")
+
 if (HOST_LINEINFO)
-    set_source_files_properties(${CUOPT_SRC_FILES} DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTIES COMPILE_OPTIONS "-g1")
+    set_source_files_properties(${CUOPT_SRC_FILES} DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTIES COMPILE_OPTIONS "-g1")
 endif ()
+
+# Needed for the fast MPS parser, available on all x86-64-v3 compliant x86 CPUs (essentially since Haswell ~2013)
+if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$" AND
+        CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang|AppleClang)$")
+    set_property(SOURCE ${MPS_FAST_SRC_FILES} DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            APPEND PROPERTY COMPILE_OPTIONS "-mbmi2;-mavx2;-msse4.2")
+endif ()
+
+# TODO: figure out a set of flags for ARM that fits the range of CPUs we wish to support (neoverse?)
+# NEON should be universal on aarch64 and enough for our purposes (parsing) though
 
 # Apply -UNDEBUG only to solver source files (not gRPC infrastructure).
 # Must happen before gRPC files are appended to CUOPT_SRC_FILES.
 # Uses APPEND to preserve any existing per-file options (e.g. -g1 from HOST_LINEINFO).
 if (DEFINE_ASSERT)
-    set_property(SOURCE ${CUOPT_SRC_FILES} DIRECTORY ${CMAKE_SOURCE_DIR}
+    set_property(SOURCE ${CUOPT_SRC_FILES} DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             APPEND PROPERTY COMPILE_OPTIONS "-UNDEBUG")
 endif ()
 
@@ -461,6 +497,8 @@ if (NOT SKIP_GRPC_BUILD)
             src/grpc/grpc_settings_mapper.cpp
             src/grpc/grpc_service_mapper.cpp
             src/grpc/client/grpc_client.cpp
+            src/grpc/client/grpc_client_env.cpp
+            src/grpc/client/cython_grpc_client.cpp
             src/grpc/client/solve_remote.cpp
     )
     list(APPEND CUOPT_SRC_FILES ${GRPC_INFRA_FILES})
@@ -470,7 +508,7 @@ if (NOT SKIP_GRPC_BUILD)
     # The conda-forge abseil shared library is built with NDEBUG and does not
     # export that symbol (abseil-cpp#1624).  Without this, Debug builds fail
     # at runtime with "undefined symbol: absl::…::Mutex::Dtor".
-    set_property(SOURCE ${GRPC_INFRA_FILES} DIRECTORY ${CMAKE_SOURCE_DIR}
+    set_property(SOURCE ${GRPC_INFRA_FILES} DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             APPEND PROPERTY COMPILE_OPTIONS "-DNDEBUG")
 endif (NOT SKIP_GRPC_BUILD)
 
@@ -486,8 +524,8 @@ set_target_properties(cuopt
 )
 
 target_compile_definitions(cuopt
-  PUBLIC "CUOPT_LOG_ACTIVE_LEVEL=RAPIDS_LOGGER_LOG_LEVEL_${LIBCUOPT_LOGGING_LEVEL}"
-  PUBLIC CUSPARSE_ENABLE_EXPERIMENTAL_API
+        PUBLIC "CUOPT_LOG_ACTIVE_LEVEL=RAPIDS_LOGGER_LOG_LEVEL_${LIBCUOPT_LOGGING_LEVEL}"
+        PUBLIC CUSPARSE_ENABLE_EXPERIMENTAL_API
 )
 
 target_compile_options(cuopt
@@ -519,8 +557,8 @@ target_include_directories(cuopt PRIVATE
 )
 
 target_include_directories(cuopt SYSTEM PRIVATE
-  "${pslp_SOURCE_DIR}/include"
-  "${dejavu_SOURCE_DIR}"
+        "${pslp_SOURCE_DIR}/include"
+        "${dejavu_SOURCE_DIR}"
 )
 
 target_include_directories(cuopt
@@ -596,10 +634,12 @@ target_link_libraries(cuopt
         ${CUDSS_LIB_FILE}
         PRIVATE
         ${CUOPT_PRIVATE_CUDA_LIBS}
+        simde::simde
+        OpenMP::OpenMP_CXX
+        OpenMP::OpenMP_CUDA
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:protobuf::libprotobuf>
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:gRPC::grpc++>
 )
-
 
 # ##################################################################################################
 # - generate tests --------------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SPDX-FileCopyrightText: Copyright (c) 2019-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2019-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # This script executes Jupyter notebooks directly using nbconvert.
@@ -34,7 +34,7 @@ for nb in "$@"; do
 
     # Skip notebooks that are not yet supported
     SKIP_NOTEBOOKS=(
-        "trnsport_cuopt"
+        "transport_cuopt"
         "Production_Planning_Example_Pulp"
         "Simple_LP_pulp"
         "Simple_MIP_pulp"

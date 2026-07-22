@@ -53,6 +53,7 @@ These constants configure MIP-specific solver behavior. Use them with :c:func:`c
 .. doxygendefine:: CUOPT_MIP_FLOW_COVER_CUTS
 .. doxygendefine:: CUOPT_MIP_IMPLIED_BOUND_CUTS
 .. doxygendefine:: CUOPT_MIP_CLIQUE_CUTS
+.. doxygendefine:: CUOPT_MIP_ZERO_HALF_CUTS
 .. doxygendefine:: CUOPT_MIP_STRONG_CHVATAL_GOMORY_CUTS
 .. doxygendefine:: CUOPT_MIP_REDUCED_COST_STRENGTHENING
 .. doxygendefine:: CUOPT_MIP_OBJECTIVE_STEP

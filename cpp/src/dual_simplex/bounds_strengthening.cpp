@@ -10,7 +10,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 template <typename f_t>
 static inline f_t update_lb(f_t curr_lb, f_t coeff, f_t delta_min_act, f_t delta_max_act)
@@ -294,4 +294,4 @@ bool bounds_strengthening_t<i_t, f_t>::bounds_strengthening(
 template class bounds_strengthening_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

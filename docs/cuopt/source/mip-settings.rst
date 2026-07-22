@@ -332,6 +332,16 @@ Set this value to ``1`` to enable clique cuts.
 
 .. note:: The default value is ``-1`` (automatic).
 
+Zero-Half Cuts
+^^^^^^^^^^^^^^
+
+``CUOPT_MIP_ZERO_HALF_CUTS`` controls whether to use zero-half cuts.
+Set this value to ``-1`` (automatic) to let the solver decide.
+Set this value to ``0`` to disable zero-half cuts.
+Set this value to ``1`` to enable zero-half cuts.
+
+.. note:: The default value is ``-1`` (automatic).
+
 Objective Step
 ^^^^^^^^^^^^^^^
 

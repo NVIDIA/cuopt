@@ -15,7 +15,7 @@
 #include <pdlp/swap_and_resize_helper.cuh>
 #include <pdlp/termination_strategy/convergence_information.hpp>
 
-#include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
 
 #include <mip_heuristics/problem/problem.cuh>
 
@@ -28,7 +28,7 @@
 
 #include <raft/core/device_span.hpp>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 template <typename i_t, typename f_t>
 class pdlp_restart_strategy_t {
  public:
@@ -80,7 +80,7 @@ class pdlp_restart_strategy_t {
     i_t* testing_range_high;
 
     raft::device_span<f_t> shared_live_kernel_accumulator;
-    pdlp_hyper_params::pdlp_hyper_params_t hyper_params;
+    pdlp::pdlp_hyper_params_t hyper_params;
   };
 
   struct cupdlpx_restart_view_t {
@@ -98,7 +98,7 @@ class pdlp_restart_strategy_t {
     raft::device_span<f_t> new_primal_step_size;
     raft::device_span<f_t> new_dual_step_size;
     raft::device_span<f_t> best_primal_dual_residual_gap;
-    pdlp_hyper_params::pdlp_hyper_params_t hyper_params;
+    pdlp::pdlp_hyper_params_t hyper_params;
   };
 
   enum class restart_strategy_t {
@@ -112,13 +112,13 @@ class pdlp_restart_strategy_t {
   void resize_context(i_t new_size);
 
   pdlp_restart_strategy_t(raft::handle_t const* handle_ptr,
-                          problem_t<i_t, f_t>& op_problem,
+                          mip::problem_t<i_t, f_t>& op_problem,
                           const cusparse_view_t<i_t, f_t>& cusparse_view,
                           const i_t primal_size,
                           const i_t dual_size,
                           bool is_legacy_batch_mode,
                           const std::vector<pdlp_climber_strategy_t>& climber_strategies_,
-                          const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params);
+                          const pdlp::pdlp_hyper_params_t& hyper_params);
 
   // Compute kkt score on passed argument using the container tmp_kkt score and stream view
   f_t compute_kkt_score(const rmm::device_uvector<f_t>& l2_primal_residual,
@@ -308,7 +308,7 @@ class pdlp_restart_strategy_t {
   i_t primal_size_h_;
   i_t dual_size_h_;
 
-  problem_t<i_t, f_t>* problem_ptr;
+  mip::problem_t<i_t, f_t>* problem_ptr;
 
   rmm::device_scalar<f_t> primal_norm_weight_;
   rmm::device_scalar<f_t> dual_norm_weight_;
@@ -386,11 +386,11 @@ class pdlp_restart_strategy_t {
   thrust::universal_host_pinned_vector<f_t> best_primal_dual_residual_gap_;
 
   const std::vector<pdlp_climber_strategy_t>& climber_strategies_;
-  const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params_;
+  const pdlp::pdlp_hyper_params_t& hyper_params_;
 };
 
 template <typename i_t, typename f_t>
-bool is_trust_region_restart(const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params)
+bool is_trust_region_restart(const pdlp::pdlp_hyper_params_t& hyper_params)
 {
   return hyper_params.restart_strategy ==
          static_cast<int>(
@@ -398,17 +398,17 @@ bool is_trust_region_restart(const pdlp_hyper_params::pdlp_hyper_params_t& hyper
 }
 
 template <typename i_t, typename f_t>
-bool is_kkt_restart(const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params)
+bool is_kkt_restart(const pdlp::pdlp_hyper_params_t& hyper_params)
 {
   return hyper_params.restart_strategy ==
          static_cast<int>(pdlp_restart_strategy_t<i_t, f_t>::restart_strategy_t::KKT_RESTART);
 }
 
 template <typename i_t, typename f_t>
-bool is_cupdlpx_restart(const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params)
+bool is_cupdlpx_restart(const pdlp::pdlp_hyper_params_t& hyper_params)
 {
   return hyper_params.restart_strategy ==
          static_cast<int>(pdlp_restart_strategy_t<i_t, f_t>::restart_strategy_t::CUPDLPX_RESTART);
 }
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

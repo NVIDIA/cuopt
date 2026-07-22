@@ -9,10 +9,10 @@
 
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/presolve.hpp>
-#include <dual_simplex/sparse_matrix.hpp>
-#include <dual_simplex/types.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
+#include <math_optimization/types.hpp>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 template <typename i_t>
 i_t reorder_basic_list(const std::vector<i_t>& q, std::vector<i_t>& basic_list);
@@ -91,4 +91,4 @@ i_t b_solve(const csc_matrix_t<i_t, f_t>& L,
             const std::vector<f_t>& rhs,
             std::vector<f_t>& solution);
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

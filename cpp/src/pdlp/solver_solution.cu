@@ -5,7 +5,7 @@
  */
 /* clang-format on */
 
-#include <cuopt/linear_programming/pdlp/solver_solution.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>
 
 #include <math_optimization/solution_writer.hpp>
 
@@ -20,7 +20,7 @@
 #include <limits>
 #include <vector>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 template <typename i_t, typename f_t>
 optimization_problem_solution_t<i_t, f_t>::optimization_problem_solution_t(
@@ -459,4 +459,4 @@ template class optimization_problem_solution_t<int, float>;
 #if MIP_INSTANTIATE_DOUBLE
 template class optimization_problem_solution_t<int, double>;
 #endif
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization
