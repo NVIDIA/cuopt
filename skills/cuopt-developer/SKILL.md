@@ -223,6 +223,12 @@ For pre-commit setup, DCO sign-off (`git commit -s`), the fork-based PR workflow
 
 For C++ naming (`snake_case`, `d_`/`h_` prefixes, `_t` suffix), file extensions (`.hpp`/`.cpp`/`.cu`/`.cuh` and which compiler each uses), include order, Python style, error handling (`CUOPT_EXPECTS`, `RAFT_CUDA_TRY`), memory management (RMM patterns, no raw `new`/`delete`), and test-impact rules, see [references/conventions.md](references/conventions.md).
 
+## OpenMP task/runtime compatibility
+
+Treat `#pragma omp task if(...) firstprivate(...)` with a non-trivial C++ capture as runtime-ABI-sensitive. In affected LLVM libomp versions, the GCC `GOMP_task` compatibility path skips the GCC copy function for an included (`if(false)`) task, so the task body can observe an unconstructed object. Branch explicitly instead: create the OpenMP task only when deferral is wanted, and call the body synchronously otherwise.
+
+When diagnosing OpenMP-only failures, test compiler/runtime pairs separately. A Clang + libomp pass exercises the `__kmpc_*` ABI and does not cover GCC + libomp's `GOMP_*` path; reduce suspicious cases to a direct runtime-ABI probe before attributing them to solver logic.
+
 ## Troubleshooting & CI
 
 For build/test pitfalls (Cython rebuild, OOM, CUDA driver mismatch, missing `nvcc`) and CI failure diagnostics (style checks, DCO failures, dependency drift), see [references/troubleshooting.md](references/troubleshooting.md).
