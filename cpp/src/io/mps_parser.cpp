@@ -1711,6 +1711,19 @@ template class mps_parser_t<int, float>;
 
 template class mps_parser_t<int, double>;
 
+template void check_symmetric_offdiagonal_pairs<int, float>(const std::vector<int>&,
+                                                            const std::vector<int>&,
+                                                            const std::vector<float>&);
+template void check_symmetric_offdiagonal_pairs<int, double>(const std::vector<int>&,
+                                                             const std::vector<int>&,
+                                                             const std::vector<double>&);
+template void check_symmetric_offdiagonal_pairs<int64_t, float>(const std::vector<int64_t>&,
+                                                                const std::vector<int64_t>&,
+                                                                const std::vector<float>&);
+template void check_symmetric_offdiagonal_pairs<int64_t, double>(const std::vector<int64_t>&,
+                                                                 const std::vector<int64_t>&,
+                                                                 const std::vector<double>&);
+
 template void canonicalize_coo_matrix<int, float>(std::vector<int>&,
                                                   std::vector<int>&,
                                                   std::vector<float>&);
