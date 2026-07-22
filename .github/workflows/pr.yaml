@@ -466,7 +466,8 @@ jobs:
         run: |
           FERN_VERSION=$(jq -r .version fern/fern.config.json)
           npm install -g "fern-api@${FERN_VERSION}"
-          OUTPUT=$(fern generate --docs --preview --id "$GITHUB_HEAD_REF" 2>&1)
+          fern_exit=0
+          OUTPUT=$(fern generate --docs --preview --id "$GITHUB_HEAD_REF" 2>&1) || fern_exit=$?
           echo "$OUTPUT"
           URL=$(echo "$OUTPUT" | grep -oP 'Published docs to \K[^ ]+') || true
           if [[ -n "$URL" ]]; then
@@ -475,6 +476,7 @@ jobs:
             gh pr comment "${PR_NUMBER}" --body "${BODY}" --edit-last 2>/dev/null || \
             gh pr comment "${PR_NUMBER}" --body "${BODY}"
           fi
+          exit $fern_exit
   wheel-build-libcuopt:
     needs: [compute-matrix-filters, changed-files]
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels
