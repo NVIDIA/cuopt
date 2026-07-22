@@ -163,24 +163,38 @@ static double get_available_memory_gb()
   return kb / (1024.0 * 1024.0);  // Convert KB to GB
 }
 
-void print_version_info()
+void print_version_info(int num_devices)
 {
-  bool has_gpu  = true;
-  int device_id = 0;
-  cudaDeviceProp device_prop{};
-  char uuid_str[37] = {0};
-  int version       = 0;
+  int version = 0;
+  if (cudaRuntimeGetVersion(&version) != cudaSuccess) {
+    CUOPT_LOG_WARN("Failed to query CUDA runtime version");
+    version = 0;
+  }
+  int major = version / 1000;
+  int minor = (version % 1000) / 10;
 
-  if (cudaGetDevice(&device_id) != cudaSuccess) {
-    CUOPT_LOG_WARN("No CUDA device available, skipping GPU info");
-    has_gpu = false;
-  }
-  if (has_gpu && cudaGetDeviceProperties(&device_prop, device_id) != cudaSuccess) {
-    CUOPT_LOG_WARN("Failed to query CUDA device properties");
-    has_gpu = false;
-  }
-  if (has_gpu) {
-    cudaUUID_t uuid = device_prop.uuid;
+  CUOPT_LOG_INFO("cuOpt version: %d.%d.%d, git hash: %s, host arch: %s, device archs: %s",
+                 CUOPT_VERSION_MAJOR,
+                 CUOPT_VERSION_MINOR,
+                 CUOPT_VERSION_PATCH,
+                 CUOPT_GIT_COMMIT_HASH,
+                 CUOPT_CPU_ARCHITECTURE,
+                 CUOPT_CUDA_ARCHITECTURES);
+  CUOPT_LOG_INFO("CPU: %s, threads (physical/logical): %d/%d, RAM: %.2f GiB",
+                 get_cpu_model().c_str(),
+                 get_physical_cores(),
+                 std::thread::hardware_concurrency(),
+                 get_available_memory_gb());
+
+  for (int device_id = 0; device_id < num_devices; ++device_id) {
+    cudaDeviceProp device_prop{};
+    if (cudaGetDeviceProperties(&device_prop, device_id) != cudaSuccess) {
+      CUOPT_LOG_WARN("Failed to query CUDA device properties for device ID %d", device_id);
+      continue;
+    }
+
+    const cudaUUID_t uuid = device_prop.uuid;
+    char uuid_str[37]     = {0};
     snprintf(uuid_str,
              sizeof(uuid_str),
              "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
@@ -200,33 +214,14 @@ void print_version_info()
              (unsigned char)uuid.bytes[13],
              (unsigned char)uuid.bytes[14],
              (unsigned char)uuid.bytes[15]);
-    if (cudaRuntimeGetVersion(&version) != cudaSuccess) {
-      CUOPT_LOG_WARN("Failed to query CUDA runtime version");
-      version = 0;
-    }
-  }
-  int major = version / 1000;
-  int minor = (version % 1000) / 10;
-  CUOPT_LOG_INFO("cuOpt version: %d.%d.%d, git hash: %s, host arch: %s, device archs: %s",
-                 CUOPT_VERSION_MAJOR,
-                 CUOPT_VERSION_MINOR,
-                 CUOPT_VERSION_PATCH,
-                 CUOPT_GIT_COMMIT_HASH,
-                 CUOPT_CPU_ARCHITECTURE,
-                 CUOPT_CUDA_ARCHITECTURES);
-  CUOPT_LOG_INFO("CPU: %s, threads (physical/logical): %d/%d, RAM: %.2f GiB",
-                 get_cpu_model().c_str(),
-                 get_physical_cores(),
-                 std::thread::hardware_concurrency(),
-                 get_available_memory_gb());
-  if (has_gpu) {
+
     CUOPT_LOG_INFO("CUDA %d.%d, device: %s (ID %d), VRAM: %.2f GiB",
                    major,
                    minor,
                    device_prop.name,
                    device_id,
                    (double)device_prop.totalGlobalMem / (1024.0 * 1024.0 * 1024.0));
-    CUOPT_LOG_INFO("CUDA device UUID: %s\n", uuid_str);
+    CUOPT_LOG_INFO("CUDA device UUID: %s", uuid_str);
   }
 }
 

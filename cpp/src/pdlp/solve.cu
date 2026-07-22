@@ -2394,12 +2394,9 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
     set_pdlp_solver_mode(settings_resolved);
   }
 
+  const int visible_device_count = raft::device_setter::get_device_count();
   if (settings_resolved.distributed_pdlp_num_gpus == -1) {
-    settings_resolved.distributed_pdlp_num_gpus = raft::device_setter::get_device_count();
-    CUOPT_LOG_INFO(
-      "solve_lp_distributed_from_mps: distributed_pdlp_num_gpus == -1, auto-detected "
-      "%d visible CUDA device(s)",
-      settings_resolved.distributed_pdlp_num_gpus);
+    settings_resolved.distributed_pdlp_num_gpus = visible_device_count;
   }
   // PDLP precision validations (mirror the checks in run_pdlp; distributed
   // path only supports the default-precision, non-batch double config).
@@ -2437,7 +2434,10 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
     "the hyper-params to match.");
 
   init_logger_t log(settings_resolved.log_file, settings_resolved.log_to_console);
-  print_version_info();
+  print_version_info(visible_device_count);
+  CUOPT_LOG_INFO("Distributed PDLP: using %d of %d visible GPUs",
+                 settings_resolved.distributed_pdlp_num_gpus,
+                 visible_device_count);
   init_handler(handle_ptr);
 
   const i_t n_vars = static_cast<i_t>(mps_data_model.get_objective_coefficients().size());

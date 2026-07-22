@@ -7,5 +7,6 @@
 #pragma once
 
 namespace cuopt {
-void print_version_info();
+// Prints devices [0, num_devices). Defaults to the first visible device.
+void print_version_info(int num_devices = 1);
 }
