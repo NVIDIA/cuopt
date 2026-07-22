@@ -1711,11 +1711,30 @@ template class mps_parser_t<int, float>;
 
 template class mps_parser_t<int, double>;
 
+template void check_symmetric_offdiagonal_pairs<int, float>(const std::vector<int>&,
+                                                            const std::vector<int>&,
+                                                            const std::vector<float>&);
+template void check_symmetric_offdiagonal_pairs<int, double>(const std::vector<int>&,
+                                                             const std::vector<int>&,
+                                                             const std::vector<double>&);
+template void check_symmetric_offdiagonal_pairs<int64_t, float>(const std::vector<int64_t>&,
+                                                                const std::vector<int64_t>&,
+                                                                const std::vector<float>&);
+template void check_symmetric_offdiagonal_pairs<int64_t, double>(const std::vector<int64_t>&,
+                                                                 const std::vector<int64_t>&,
+                                                                 const std::vector<double>&);
+
 template void canonicalize_coo_matrix<int, float>(std::vector<int>&,
                                                   std::vector<int>&,
                                                   std::vector<float>&);
 template void canonicalize_coo_matrix<int, double>(std::vector<int>&,
                                                    std::vector<int>&,
                                                    std::vector<double>&);
+template void canonicalize_coo_matrix<int64_t, float>(std::vector<int64_t>&,
+                                                      std::vector<int64_t>&,
+                                                      std::vector<float>&);
+template void canonicalize_coo_matrix<int64_t, double>(std::vector<int64_t>&,
+                                                       std::vector<int64_t>&,
+                                                       std::vector<double>&);
 
 }  // namespace cuopt::mathematical_optimization::io

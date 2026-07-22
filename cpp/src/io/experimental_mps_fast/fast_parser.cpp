@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // reserved. SPDX-License-Identifier: Apache-2.0
 
 #include "fast_parser.hpp"
@@ -42,6 +42,7 @@
 #include <vector>
 
 #include <file_to_string.hpp>
+#include <mps_parser_internal.hpp>
 
 #define MPS_FAST_COMPACT_ROW_HASH
 #define MPS_FAST_THP_PREFAULT
@@ -2769,6 +2770,7 @@ static void finalize_qcmatrix_constraints(parse_state_t<i_t, f_t>& state)
       return std::get<1>(ea) < std::get<1>(eb);
     });
 
+    // Match reference ingest: canonicalize MPS symmetric halves to upper-triangular COO.
     qc.rows.reserve(block.entries.size());
     qc.cols.reserve(block.entries.size());
     qc.vals.reserve(block.entries.size());
@@ -2778,6 +2780,8 @@ static void finalize_qcmatrix_constraints(parse_state_t<i_t, f_t>& state)
       qc.cols.push_back(col);
       qc.vals.push_back(val);
     }
+    check_symmetric_offdiagonal_pairs(qc.rows, qc.cols, qc.vals);
+    canonicalize_coo_matrix(qc.rows, qc.cols, qc.vals);
     state.problem.quadratic_constraints_.push_back(std::move(qc));
   }
 
