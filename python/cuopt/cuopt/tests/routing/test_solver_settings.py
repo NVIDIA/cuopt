@@ -49,11 +49,11 @@ def test_solver_settings_getters():
     assert s.get_time_limit() == time_limit
 
 
-def test_dump_config():
+def test_dump_config(tmp_path):
     """Test SolverSettings solve with config file"""
     s = routing.SolverSettings()
-    config_file = "solver_cfg.yaml"
-    best_results_file = "best_results.txt"
+    config_file = str(tmp_path / "solver_cfg.yaml")
+    best_results_file = str(tmp_path / "best_results.txt")
     s.dump_config_file(config_file)
     s.dump_best_results(best_results_file, 0)
     assert s.get_config_file_name() == config_file
