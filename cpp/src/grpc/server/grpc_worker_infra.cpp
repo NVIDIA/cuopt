@@ -208,8 +208,57 @@ void spawn_workers()
   }
 }
 
+void kill_all_workers()
+{
+  for (pid_t pid : worker_pids) {
+    if (pid > 0) { kill(pid, SIGKILL); }
+  }
+}
+
+void cancel_all_active_jobs_for_shutdown()
+{
+  if (job_queue != nullptr) {
+    for (size_t i = 0; i < MAX_JOBS; ++i) {
+      if (job_queue[i].ready.load(std::memory_order_acquire)) {
+        job_queue[i].cancelled.store(true, std::memory_order_release);
+      }
+    }
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(tracker_mutex);
+    for (auto& [job_id, info] : job_tracker) {
+      (void)job_id;
+      if (info.status == JobStatus::QUEUED || info.status == JobStatus::PROCESSING) {
+        info.status        = JobStatus::CANCELLED;
+        info.error_message = "Server shutting down";
+      }
+    }
+  }
+
+  {
+    std::lock_guard<std::mutex> wlock(waiters_mutex);
+    for (auto& [job_id, waiter] : waiting_threads) {
+      (void)job_id;
+      {
+        std::lock_guard<std::mutex> waiter_lock(waiter->mutex);
+        waiter->error_message = "Server shutting down";
+        waiter->success       = false;
+        waiter->ready         = true;
+      }
+      waiter->cv.notify_all();
+    }
+    waiting_threads.clear();
+  }
+
+  result_cv.notify_all();
+}
+
 void wait_for_workers()
 {
+  // Mid-solve workers only check shutdown_requested between jobs, so force-kill
+  // before waitpid or Ctrl-C / SIGTERM can hang until the current solve ends.
+  kill_all_workers();
   for (pid_t pid : worker_pids) {
     if (pid <= 0) continue;
     int status;

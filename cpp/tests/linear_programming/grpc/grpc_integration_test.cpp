@@ -190,6 +190,8 @@ class ServerProcess {
 
   int port() const { return port_; }
 
+  pid_t pid() const { return pid_; }
+
   bool is_running() const
   {
     if (pid_ <= 0) return false;
@@ -1693,6 +1695,41 @@ TEST_F(ErrorRecoveryTests, ClientHandlesServerCrashDuringSolve)
   auto status_result = client->check_status(submit_result.job_id);
   EXPECT_FALSE(status_result.success);
   EXPECT_FALSE(status_result.error_message.empty());
+}
+
+TEST_F(ErrorRecoveryTests, SigintDuringRunningJobShutsDownPromptly)
+{
+  ASSERT_TRUE(start_server());
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
+  auto problem         = load_problem_from_file(mps_path);
+
+  mip_solver_settings_t<int32_t, double> settings;
+  settings.time_limit = 120.0;
+
+  auto submit_result = client->submit_mip(problem, settings);
+  ASSERT_TRUE(submit_result.success);
+
+  std::this_thread::sleep_for(std::chrono::seconds(2));
+  ASSERT_TRUE(server_.is_running());
+
+  auto start = std::chrono::steady_clock::now();
+  ASSERT_EQ(kill(server_.pid(), SIGINT), 0);
+
+  // Server must exit well before the solve time_limit; previously Ctrl-C could
+  // hang until the mid-solve worker finished.
+  while (server_.is_running()) {
+    auto elapsed = std::chrono::steady_clock::now() - start;
+    ASSERT_LT(elapsed, std::chrono::seconds(15))
+      << "Server did not shut down promptly after SIGINT during a running job";
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+
+  auto elapsed =
+    std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - start);
+  EXPECT_LT(elapsed.count(), 15);
 }
 
 TEST_F(ErrorRecoveryTests, ClientTimeoutConfiguration)

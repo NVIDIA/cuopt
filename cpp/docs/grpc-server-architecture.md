@@ -292,10 +292,13 @@ If a worker process crashes:
 ### Graceful Shutdown
 
 On SIGINT/SIGTERM:
-1. Set `shm_ctrl->shutdown_requested = true`
-2. Workers finish current job and exit
-3. Main process waits for workers
-4. Cleanup shared memory segments
+1. Set `keep_running = false` and `shm_ctrl->shutdown_requested = true`
+2. Mark all queued/running jobs `CANCELLED` and wake any `WaitForCompletion` waiters
+3. `SIGKILL` all worker processes (mid-solve workers do not poll the shutdown flag)
+4. Shut down the gRPC server with a short deadline so lingering RPCs cannot block exit
+5. Join background threads, `waitpid` workers, and clean up shared memory
+
+Workers ignore SIGINT/SIGTERM so only the parent process owns shutdown; the parent always force-kills workers rather than waiting for the current solve to finish.
 
 ### Job Cancellation
 
