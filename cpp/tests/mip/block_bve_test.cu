@@ -27,6 +27,7 @@
 
 #include <rmm/device_uvector.hpp>
 
+#include <utilities/integer_scaling.hpp>
 #include <utilities/timer.hpp>
 
 #include <omp.h>
@@ -152,6 +153,25 @@ Binaries
 End
 )LP";
 
+// Same gadget with every row scaled by 1/2, so the block coefficients and bounds are FRACTIONAL.
+// The feasible region (hence the reduction: b + c <= 1, `a` eliminated) is identical — positive
+// row scaling preserves feasibility. This forces block-BVE's per-row integerization
+// (bve_row_int_scale) to recover integer coefficients before the exact tol-0 projection; if that
+// path were wrong (N1), the reduction or its reconstruction would break.
+static constexpr const char* kFractionalBlockLp = R"LP(
+Minimize
+ obj: b + c
+Subject To
+ r0: 0.5 a - 0.5 b >= 0
+ r1: 0.5 a - 0.5 c >= 0
+ r2: 0.5 a + 0.5 b + 0.5 c <= 1
+Binaries
+ a
+ b
+ c
+End
+)LP";
+
 // solve_mip opens an OMP team before MIP internals that use taskloops; probing_cache sizes its
 // pool from omp_get_num_threads()-1 (0 outside a parallel region → silent no-op).
 template <typename F>
@@ -268,6 +288,50 @@ TEST(block_bve_core, sanity_check_rejects_corrupted_clauses)
   EXPECT_FALSE((mip::bve_sanity_check<int, double>(feas, 2, wrong, 1)));
 }
 
+// --- N1 (numerical): the row integerization GATE. block-BVE scales each block row to integers via
+// find_scaling_rational (strict caps mirroring bve_row_int_scale) so the projection is exact at
+// tolerance 0; a row that will not integerize within the caps must be REJECTED (NaN), never rounded
+// into a different model. This pins the accept/reject decision that keeps large / non-rational
+// coefficients off the exact-projection path. ---
+TEST(block_bve_core, integer_scaling_accepts_rational_rejects_pathological)
+{
+  // Strict caps matching bve_row_int_scale (maxdnom/maxfinal = BVE_INT_SCALE_MAX = 1e6).
+  const double kMaxScale  = 1e12;
+  const int64_t kMaxDenom = 1000000;
+  const double kMaxFinal  = 1e6;
+  const double kIntTol    = 1e-9;
+  auto all_integer        = [](double s, const std::vector<double>& v) {
+    for (double c : v)
+      if (std::abs(s * c - std::round(s * c)) >= 1e-9) return false;
+    return true;
+  };
+
+  // Fractional-but-rational: {1/2, 1/4, -3/4, 1} integerize (expected multiplier 4).
+  {
+    std::vector<double> v{0.5, 0.25, -0.75, 1.0};
+    double s = cuopt::find_scaling_rational(v, kMaxScale, kMaxDenom, kMaxFinal, kIntTol);
+    ASSERT_TRUE(std::isfinite(s)) << "rational coefficients must integerize";
+    EXPECT_GT(s, 0.0);
+    EXPECT_TRUE(all_integer(s, v));
+  }
+
+  // Large integer coefficients stay exact (already integer -> multiplier 1, no rounding).
+  {
+    std::vector<double> v{1e9, -1e9, 3.0};
+    double s = cuopt::find_scaling_rational(v, kMaxScale, kMaxDenom, kMaxFinal, kIntTol);
+    ASSERT_TRUE(std::isfinite(s));
+    EXPECT_TRUE(all_integer(s, v));
+  }
+
+  // Pathological: distinct prime reciprocals need lcm(11,13,17,19,23) = 1062347 > maxfinal (1e6),
+  // so no bounded integer multiplier exists -> rejected (NaN), NOT silently rounded.
+  {
+    std::vector<double> v{1.0 / 11, 1.0 / 13, 1.0 / 17, 1.0 / 19, 1.0 / 23};
+    double s = cuopt::find_scaling_rational(v, kMaxScale, kMaxDenom, kMaxFinal, kIntTol);
+    EXPECT_TRUE(std::isnan(s)) << "un-integerizable coefficients must be rejected, got " << s;
+  }
+}
+
 // Build a random block LAYOUT (na/nb/n_rows + sparsity pattern), coefficients/bounds left unset.
 // Reps of one shape reuse the SAME layout so they land in one GPU shape-bin (exercising the num>1
 // path).
@@ -354,6 +418,70 @@ TEST(block_bve_projection, gpu_batch_matches_host_oracle)
   }
 }
 
+// Fill a layout with LARGE integer coefficients and integer bounds (all exact fp64 integers, well
+// under 2^53), leaving the pattern fixed. This is the shape block-BVE feeds the projection after
+// integerization, and the magnitude range where a 1e-6-tolerance fp test would be marginal but
+// exact integer arithmetic is not.
+static void randomize_block_data_integer(std::mt19937& rng, mip::bve_block_t<double>& blk)
+{
+  const double INF     = std::numeric_limits<double>::infinity();
+  const double coefs[] = {-2e6, -1e6, 1e6, 2e6, 5e6};
+  std::uniform_int_distribution<int> coef_pick(0, 4);
+  std::uniform_int_distribution<int> bnd_pick(0, 2);  // 0:[lo,inf] 1:[-inf,up] 2:[lo,up]
+  for (int k = 0; k < blk.row_off[blk.n_rows]; ++k)
+    blk.row_coef[k] = coefs[coef_pick(rng)];
+  for (int r = 0; r < blk.n_rows; ++r) {
+    const int terms = blk.row_off[r + 1] - blk.row_off[r];
+    // Activity lies in [-5e6*terms, 5e6*terms]; pick finite integer bounds (multiples of 1e6) that
+    // can bind.
+    const double lo = -5e6 * static_cast<double>(terms);
+    std::uniform_int_distribution<int> up_pick(0, 2 * terms);
+    const double up = 1e6 * static_cast<double>(up_pick(rng));
+    const int kind  = bnd_pick(rng);
+    blk.row_lo[r]   = (kind == 1) ? -INF : lo;
+    blk.row_up[r]   = (kind == 0) ? INF : up;
+  }
+}
+
+// --- N1: the EXACT projection path. Production integerizes each block and projects at tolerance 0;
+//     the 1e-6 differential test above never exercises that. On large-integer-coefficient blocks
+//     the GPU projection at tol 0 must still equal the host enumeration oracle at tol 0 everywhere.
+//     ---
+TEST(block_bve_projection, exact_projection_matches_host_at_tol0)
+{
+  const raft::handle_t handle_{};
+  std::mt19937 rng(2024u);
+
+  const int shapes[][3] = {{1, 2, 3}, {2, 2, 2}, {1, 3, 4}, {3, 3, 5}, {2, 4, 3}};
+  std::vector<mip::bve_block_t<double>> blocks;
+  for (const auto& s : shapes) {
+    const mip::bve_block_t<double> layout = make_block_layout(rng, s[0], s[1], s[2]);
+    for (int rep = 0; rep < 6; ++rep) {
+      mip::bve_block_t<double> blk = layout;
+      randomize_block_data_integer(rng, blk);
+      blocks.push_back(blk);
+    }
+  }
+
+  std::vector<mip::bve_candidate_t<int, double>> cands(blocks.size());
+  for (size_t i = 0; i < blocks.size(); ++i)
+    cands[i].blk = blocks[i];
+
+  mip::bve_project_batch_gpu<int, double>(handle_, cands, 0.0);  // exact: tol 0
+
+  for (size_t i = 0; i < blocks.size(); ++i) {
+    uint8_t exp_feas[mip::BVE_MAX_PATTERNS];
+    uint32_t exp_wit[mip::BVE_MAX_PATTERNS];
+    mip::bve_project(blocks[i], 0.0, exp_feas, exp_wit);
+    const int patterns = 1 << blocks[i].nb;
+    for (int m = 0; m < patterns; ++m) {
+      EXPECT_EQ(cands[i].feas[m], exp_feas[m]) << "block " << i << " pattern " << m;
+      if (exp_feas[m])
+        EXPECT_EQ(cands[i].witness[m], exp_wit[m]) << "block " << i << " pattern " << m;
+    }
+  }
+}
+
 // --- 3. end-to-end: run the pass on a problem_t, then reconstruct through postsolve ---
 TEST(block_bve_presolve, end_to_end_reduction_and_reconstruction)
 {
@@ -389,6 +517,54 @@ TEST(block_bve_presolve, end_to_end_reduction_and_reconstruction)
   // wrongly, a - b >= 0 or a - c >= 0 is violated. Since one boundary variable is set to 1, a
   // correct reconstruction forces the aux to 1 — the feasibility check below is exactly that
   // correctness test.
+  auto m_off = model.get_constraint_matrix_offsets();
+  auto m_var = model.get_constraint_matrix_indices();
+  auto m_val = model.get_constraint_matrix_values();
+  auto m_rl  = model.get_constraint_lower_bounds();
+  auto m_ru  = model.get_constraint_upper_bounds();
+  for (size_t r = 0; r + 1 < m_off.size(); ++r) {
+    double s = 0.0;
+    for (int k = m_off[r]; k < m_off[r + 1]; ++k)
+      s += m_val[k] * full[m_var[k]];
+    EXPECT_GE(s, m_rl[r] - 1e-6);
+    EXPECT_LE(s, m_ru[r] + 1e-6);
+  }
+}
+
+// --- N1 end-to-end: the SAME gadget with fractional block coefficients (rows scaled by 1/2). The
+//     reduction and its reconstruction must be identical to the integer gadget — block-BVE has to
+//     integerize the 0.5 coefficients before the exact projection and undo it correctly at
+//     postsolve.
+TEST(block_bve_presolve, fractional_gadget_reduces_and_reconstructs)
+{
+  const raft::handle_t handle_{};
+  auto model      = io::read_lp_from_string<int, double>(kFractionalBlockLp);
+  auto op_problem = mps_data_model_to_optimization_problem(&handle_, model);
+  mip::problem_t<int, double> problem(op_problem);
+  problem.preprocess_problem();
+  problem.presolve_data.initialize_var_mapping(problem, problem.handle_ptr);
+  const int n_before = problem.n_variables;
+
+  auto impl_adj = probing_impl_adj(problem);
+
+  cuopt::timer_t bve_timer(10.0);
+  double bve_work_units = 0.0;
+  const bool applied    = mip::block_bve_presolve(problem, impl_adj, bve_timer, bve_work_units);
+  // Probing/trivial may already have eliminated the aux; either way exactly one variable is gone.
+  EXPECT_TRUE(applied || problem.n_variables < n_before);
+  ASSERT_EQ(problem.n_variables, n_before - 1) << "fractional gadget did not eliminate the aux";
+
+  // Set the first surviving (boundary) variable to 1; a correct reconstruction forces the aux so
+  // the full assignment satisfies every ORIGINAL (fractional) constraint.
+  std::vector<double> reduced(problem.n_variables, 0.0);
+  if (!reduced.empty()) reduced[0] = 1.0;
+  rmm::device_uvector<double> assignment(problem.n_variables, handle_.get_stream());
+  raft::copy(assignment.data(), reduced.data(), reduced.size(), handle_.get_stream());
+  problem.presolve_data.post_process_assignment(problem, assignment, /*resize_to_original=*/true);
+  auto full = cuopt::host_copy(assignment, handle_.get_stream());
+  handle_.sync_stream();
+
+  ASSERT_EQ(full.size(), static_cast<size_t>(n_before));
   auto m_off = model.get_constraint_matrix_offsets();
   auto m_var = model.get_constraint_matrix_indices();
   auto m_val = model.get_constraint_matrix_values();
