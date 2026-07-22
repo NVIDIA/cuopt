@@ -10,16 +10,17 @@
 #include <pdlp/pdlp.cuh>
 #include <pdlp/utils.cuh>
 
+#include <cuopt/mathematical_optimization/utilities/segmented_sum_handler.cuh>
+
 #include <raft/core/nvtx.hpp>
 
 #include <rmm/device_scalar.hpp>
 #include <rmm/exec_policy.hpp>
 
 #include <thrust/fill.h>
-#include <thrust/functional.h>
 #include <thrust/gather.h>
+#include <thrust/iterator/transform_iterator.h>
 #include <thrust/iterator/zip_iterator.h>
-#include <thrust/transform_reduce.h>
 
 #include <cmath>
 #include <vector>
@@ -58,26 +59,37 @@ void multi_gpu_engine_t<i_t, f_t>::distributed_bound_objective_rescaling(f_t c_s
 
   // 1) + 2) Local transform-reduce on each shard, accumulate the global
   //         squared L2 norms on host as we go.
+  // Avoid thrust::transform_reduce: it can allocate/deallocate outside our RMM pool
+  // (or on the wrong stream). Prefer segmented_sum_handler (CUB + pooled temp storage,
+  // ordered on the shard stream), matching single-GPU bound_objective_rescaling().
+  // Output is the raw squared sum (no fused sqrt): we accumulate across shards first.
   f_t global_bound_sq = f_t(0);
   f_t global_obj_sq   = f_t(0);
   for_each_shard([&](auto& s) {
     const auto& scaled = s.sub_pdlp->get_initial_scaling_strategy().get_scaled_op_problem();
-    auto policy        = rmm::exec_policy(s.stream.view());
-    auto bounds_begin  = thrust::make_zip_iterator(scaled.constraint_lower_bounds.data(),
-                                                  scaled.constraint_upper_bounds.data());
-    global_bound_sq += thrust::transform_reduce(policy,
-                                                bounds_begin,
-                                                bounds_begin + s.rank_data.owned_cstr_size,
-                                                rhs_sum_of_squares_t<f_t>{},
-                                                f_t(0),
-                                                thrust::plus<f_t>{});
-    global_obj_sq +=
-      thrust::transform_reduce(policy,
-                               scaled.objective_coefficients.data(),
-                               scaled.objective_coefficients.data() + s.rank_data.owned_var_size,
-                               weighted_square_op<f_t>{c_scaling_weight},
-                               f_t(0),
-                               thrust::plus<f_t>{});
+    const auto stream  = s.stream.view();
+    cuopt::segmented_sum_handler_t<i_t, f_t> segmented_sum_handler(stream);
+    rmm::device_scalar<f_t> d_bound_sq(f_t(0), stream);
+    rmm::device_scalar<f_t> d_obj_sq(f_t(0), stream);
+
+    segmented_sum_handler.segmented_sum_helper(
+      thrust::make_transform_iterator(
+        thrust::make_zip_iterator(scaled.constraint_lower_bounds.data(),
+                                  scaled.constraint_upper_bounds.data()),
+        rhs_sum_of_squares_t<f_t>{}),
+      d_bound_sq.data(),
+      i_t(1),
+      s.rank_data.owned_cstr_size);
+
+    segmented_sum_handler.segmented_sum_helper(
+      thrust::make_transform_iterator(scaled.objective_coefficients.data(),
+                                      weighted_square_op<f_t>{c_scaling_weight}),
+      d_obj_sq.data(),
+      i_t(1),
+      s.rank_data.owned_var_size);
+
+    global_bound_sq += d_bound_sq.value(stream);
+    global_obj_sq += d_obj_sq.value(stream);
   });
 
   // 3) Host-side derivation of the (identical on every shard) scaling scalars.
