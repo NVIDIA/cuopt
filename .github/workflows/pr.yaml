@@ -448,6 +448,7 @@ jobs:
       script: "ci/build_docs.sh"
   docs-preview:
     needs: [docs-build, changed-files]
+    continue-on-error: true
     permissions:
       contents: read
       pull-requests: write
@@ -465,7 +466,7 @@ jobs:
         run: |
           FERN_VERSION=$(jq -r .version fern/fern.config.json)
           npm install -g "fern-api@${FERN_VERSION}"
-          OUTPUT=$(fern generate --docs --preview --id "$GITHUB_HEAD_REF" 2>&1) || true
+          OUTPUT=$(fern generate --docs --preview --id "$GITHUB_HEAD_REF" 2>&1)
           echo "$OUTPUT"
           URL=$(echo "$OUTPUT" | grep -oP 'Published docs to \K[^ ]+') || true
           if [[ -n "$URL" ]]; then
