@@ -4,7 +4,7 @@
 # cmake-format: on
 
 if(BUILD_TESTS)
-  add_library(cuopttestutils SHARED
+  add_library(cuopttestutils STATIC
       routing/utilities/check_constraints.cu
   )
 
@@ -27,7 +27,7 @@ if(BUILD_TESTS)
       GTest::gmock
       GTest::gtest
       PRIVATE
-      cuopt_static
+      cuopt
   )
   if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
     target_link_options(cuopttestutils PRIVATE -Wl,--enable-new-dtags)
