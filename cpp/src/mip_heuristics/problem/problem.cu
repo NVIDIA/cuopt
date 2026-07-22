@@ -2171,36 +2171,29 @@ void problem_t<i_t, f_t>::set_constraints_from_host_user_problem(
   raft::common::nvtx::range fun_scope("set_constraints_from_host_user_problem");
   cuopt_assert(user_problem.handle_ptr == handle_ptr, "handle mismatch");
   cuopt_assert(user_problem.num_cols == n_variables, "num cols mismatch");
-  n_constraints = user_problem.num_rows;
-  cuopt_assert(user_problem.rhs.size() == static_cast<size_t>(n_constraints), "rhs size mismatch");
-  cuopt_assert(user_problem.row_sense.size() == static_cast<size_t>(n_constraints),
+  const i_t num_rows = user_problem.num_rows;
+  cuopt_assert(user_problem.rhs.size() == static_cast<size_t>(num_rows), "rhs size mismatch");
+  cuopt_assert(user_problem.row_sense.size() == static_cast<size_t>(num_rows),
                "row sense size mismatch");
   cuopt_assert(user_problem.range_rows.size() == user_problem.range_value.size(),
                "range rows/value size mismatch");
 
-  csr_matrix_t<i_t, f_t> csr_A(n_constraints, n_variables, user_problem.A.nnz());
+  csr_matrix_t<i_t, f_t> csr_A(num_rows, n_variables, user_problem.A.nnz());
   user_problem.A.to_compressed_row(csr_A);
-  nnz   = csr_A.row_start[n_constraints];
-  empty = (nnz == 0 && n_constraints == 0 && n_variables == 0);
 
-  auto stream = handle_ptr->get_stream();
-  cuopt::device_copy(coefficients, csr_A.x, stream);
-  cuopt::device_copy(variables, csr_A.j, stream);
-  cuopt::device_copy(offsets, csr_A.row_start, stream);
-
-  std::vector<f_t> h_constraint_lower_bounds(n_constraints);
-  std::vector<f_t> h_constraint_upper_bounds(n_constraints);
-  std::vector<f_t> range_value_per_row(n_constraints, f_t{0});
-  std::vector<char> is_range_row(n_constraints, 0);
+  std::vector<f_t> h_constraint_lower_bounds(num_rows);
+  std::vector<f_t> h_constraint_upper_bounds(num_rows);
+  std::vector<f_t> range_value_per_row(num_rows, f_t{0});
+  std::vector<char> is_range_row(num_rows, 0);
   for (size_t idx = 0; idx < user_problem.range_rows.size(); ++idx) {
     auto row = user_problem.range_rows[idx];
-    cuopt_assert(row >= 0 && row < n_constraints, "range row out of bounds");
+    cuopt_assert(row >= 0 && row < num_rows, "range row out of bounds");
     is_range_row[row]        = 1;
     range_value_per_row[row] = user_problem.range_value[idx];
   }
 
   const auto inf = std::numeric_limits<f_t>::infinity();
-  for (i_t i = 0; i < n_constraints; ++i) {
+  for (i_t i = 0; i < num_rows; ++i) {
     const f_t rhs    = user_problem.rhs[i];
     const char sense = user_problem.row_sense[i];
     if (sense == 'E') {
@@ -2217,47 +2210,37 @@ void problem_t<i_t, f_t>::set_constraints_from_host_user_problem(
       cuopt_assert(false, "Unsupported row sense");
     }
   }
-
-  cuopt::device_copy(constraint_lower_bounds, h_constraint_lower_bounds, stream);
-  cuopt::device_copy(constraint_upper_bounds, h_constraint_upper_bounds, stream);
-
-  if (!user_problem.row_names.empty()) {
-    row_names = user_problem.row_names;
-  } else if (row_names.size() != static_cast<size_t>(n_constraints)) {
-    row_names.clear();
-  }
-
-  integer_fixed_problem = nullptr;
-  fixing_helpers.reduction_in_rhs.resize(n_constraints, stream);
-  auto prev_dual_size = lp_state.prev_dual.size();
-  lp_state.prev_dual.resize(n_constraints, stream);
-  if (n_constraints > (i_t)prev_dual_size) {
-    thrust::fill(handle_ptr->get_thrust_policy(),
-                 lp_state.prev_dual.begin() + prev_dual_size,
-                 lp_state.prev_dual.end(),
-                 f_t{0});
-  }
-  handle_ptr->sync_stream();
-  RAFT_CHECK_CUDA(stream);
-
-  compute_transpose_of_problem();
-  combined_bounds.resize(n_constraints, stream);
-  pdlp::combine_constraint_bounds<i_t, f_t>(*this, combined_bounds);
+  set_constraints_from_host_csr(csr_A.row_start,
+                                csr_A.j,
+                                csr_A.x,
+                                h_constraint_lower_bounds,
+                                h_constraint_upper_bounds,
+                                user_problem.row_names);
 }
 
 template <typename i_t, typename f_t>
-void problem_t<i_t, f_t>::update_problem_matrix(const std::vector<i_t>& offsets_in,
-                                                const std::vector<i_t>& variables_in,
-                                                const std::vector<f_t>& coefficients_in,
-                                                const std::vector<f_t>& row_lower,
-                                                const std::vector<f_t>& row_upper)
+void problem_t<i_t, f_t>::set_constraints_from_host_csr(const std::vector<i_t>& offsets_in,
+                                                        const std::vector<i_t>& variables_in,
+                                                        const std::vector<f_t>& coefficients_in,
+                                                        const std::vector<f_t>& row_lower,
+                                                        const std::vector<f_t>& row_upper,
+                                                        const std::vector<std::string>& names)
 {
-  raft::common::nvtx::range fun_scope("update_problem_matrix");
+  raft::common::nvtx::range fun_scope("set_constraints_from_host_csr");
   n_constraints = static_cast<i_t>(row_lower.size());
   cuopt_assert(row_upper.size() == static_cast<size_t>(n_constraints), "row bound size mismatch");
   cuopt_assert(offsets_in.size() == static_cast<size_t>(n_constraints) + 1,
                "offsets size mismatch");
+  cuopt_assert(!offsets_in.empty() && offsets_in.front() == 0, "invalid CSR offsets");
+  cuopt_assert(std::is_sorted(offsets_in.begin(), offsets_in.end()), "unsorted CSR offsets");
   cuopt_assert(variables_in.size() == coefficients_in.size(), "csr index/value size mismatch");
+  cuopt_assert(static_cast<size_t>(offsets_in.back()) == variables_in.size(),
+               "CSR offsets/entries size mismatch");
+  cuopt_assert(names.empty() || names.size() == static_cast<size_t>(n_constraints),
+               "row names size mismatch");
+  for (i_t variable : variables_in) {
+    cuopt_assert(variable >= 0 && variable < n_variables, "CSR variable out of bounds");
+  }
   nnz   = static_cast<i_t>(variables_in.size());
   empty = (nnz == 0 && n_constraints == 0 && n_variables == 0);
 
@@ -2269,7 +2252,7 @@ void problem_t<i_t, f_t>::update_problem_matrix(const std::vector<i_t>& offsets_
   cuopt::device_copy(constraint_upper_bounds, row_upper, stream);
 
   // the previous row set is gone: drop stale row names and any fixed-problem cache
-  row_names.clear();
+  row_names             = names;
   integer_fixed_problem = nullptr;
 
   // Full row rewrite (e.g. block-BVE): previous duals / RHS reductions are for a different
