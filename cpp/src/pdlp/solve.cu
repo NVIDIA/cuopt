@@ -2435,9 +2435,6 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
 
   init_logger_t log(settings_resolved.log_file, settings_resolved.log_to_console);
   print_version_info(visible_device_count);
-  CUOPT_LOG_INFO("Distributed PDLP: using %d of %d visible GPUs",
-                 settings_resolved.distributed_pdlp_num_gpus,
-                 visible_device_count);
   print_distributed_gpu_topology_info(settings_resolved.distributed_pdlp_num_gpus);
   init_handler(handle_ptr);
 
