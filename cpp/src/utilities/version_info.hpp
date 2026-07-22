@@ -9,7 +9,4 @@
 namespace cuopt {
 // Prints devices [0, num_devices). Defaults to the first visible device.
 void print_version_info(int num_devices = 1);
-
-// Reports whether devices [0, num_devices) have all-to-all NVLink/NVSwitch connectivity.
-void print_distributed_gpu_topology_info(int num_devices);
 }  // namespace cuopt

@@ -700,7 +700,6 @@ target_link_libraries(cuopt
         ${CUOPT_PRIVATE_CUDA_LIBS}
         nccl_external
         simde::simde
-        ${CMAKE_DL_LIBS}
         OpenMP::OpenMP_CXX
         OpenMP::OpenMP_CUDA
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:protobuf::libprotobuf>
