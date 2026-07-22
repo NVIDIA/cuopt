@@ -11,6 +11,8 @@
 #include <mip_heuristics/problem/presolve_data.cuh>
 #include <mip_heuristics/utils.cuh>
 
+#include <utilities/integer_scaling.hpp>  // find_scaling_rational (exact row integerization)
+
 #include <raft/util/cuda_utils.cuh>  // raft::warpReduce
 #include <raft/util/cudart_utils.hpp>
 
@@ -43,6 +45,54 @@ template <typename f_t>
 static bool bve_bound_finite(f_t x)
 {
   return std::isfinite(x) && std::abs(x) < f_t(1e30);
+}
+
+// Largest per-row rational multiplier / denominator we will apply. A row that would need a larger
+// multiplier to become integer is treated as not exactly representable (passed to
+// find_scaling_rational as its maxdnom/maxfinal caps).
+static constexpr int64_t BVE_INT_SCALE_MAX = 1000000;  // 1e6
+// The exact subset sum (<= BVE_MAX_ROW_LEN integer terms) plus the bound compare must stay below
+// 2^53 so the fp64 projection arithmetic never rounds.
+static constexpr double BVE_EXACT_SUM_BUDGET = 9007199254740992.0;  // 2^53
+
+// Scale one block row (coefficients + finite bounds) to integers by a single positive rational
+// multiplier so the projection's subset-sum feasibility test is EXACT in fp64: enumerated values
+// are binary, so Sigma coeff*value is a subset sum; once every coefficient and finite bound is an
+// exactly representable integer of bounded magnitude, that sum (<= BVE_MAX_ROW_LEN terms) never
+// rounds and feasibility is an exact integer comparison (projection tol 0). +/-inf bounds are
+// ignored (they stay infinite). Returns the multiplier, or 0 if the row does not integerize within
+// the caps -- the caller then rejects the whole block (leaves it un-eliminated) rather than risk a
+// tolerance-sensitive misclassification on large or non-rational coefficients.
+//
+// The rationalization reuses find_scaling_rational (utilities/integer_scaling.hpp), the same
+// continued-fraction vector->integer scaling used for objective integer-scaling. A strict tolerance
+// is passed so only genuinely small-rational coefficients integerize; anything noisier yields NaN
+// and the block is rejected, never silently rounded into a different model.
+template <typename f_t>
+static double bve_row_int_scale(const f_t* coef, int n, f_t lo, f_t up)
+{
+  std::vector<double> vals;
+  vals.reserve(n + 2);
+  for (int k = 0; k < n; ++k)
+    vals.push_back((double)coef[k]);
+  if (bve_bound_finite(lo)) vals.push_back((double)lo);
+  if (bve_bound_finite(up)) vals.push_back((double)up);
+
+  const double scale = find_scaling_rational(vals,
+                                             /*maxscale=*/1e12,
+                                             /*maxdnom=*/BVE_INT_SCALE_MAX,
+                                             /*maxfinal=*/(double)BVE_INT_SCALE_MAX,
+                                             /*intcheck_tol=*/1e-9);
+  if (!std::isfinite(scale) || scale <= 0.0) return 0.0;
+
+  // find_scaling_rational bounds the multiplier, not the resulting magnitude: guard the exactness
+  // budget so the subset sum (<= BVE_MAX_ROW_LEN integer terms) stays below 2^53 (no fp rounding).
+  double maxabs = 0.0;
+  for (double v : vals)
+    maxabs = std::max(maxabs, std::abs(v * scale));
+  if (maxabs * (double)BVE_MAX_ROW_LEN >= BVE_EXACT_SUM_BUDGET) return 0.0;
+
+  return scale;
 }
 
 // Closed-form work estimate for commit_projected: Quine-style literal dropping in
@@ -308,6 +358,29 @@ bool bve_reducer_t<i_t, f_t>::stage(const std::vector<i_t>& interior_in,
     return false;
   }
   blk.row_off[blk.n_rows] = nzc;
+
+  // Integerize every row so the GPU projection is exact (tol 0). A row whose coefficients/bounds do
+  // not scale to bounded integers is not exactly representable: reject the whole block (leave it
+  // un-eliminated) rather than risk a tolerance-sensitive feasibility misclassification on large or
+  // non-rational coefficients. Only the projection's internal copy is scaled -- the block rows are
+  // dropped from the model and the appended no-goods are scale-independent +/-1 clauses, so this
+  // never perturbs the installed model.
+  for (int rr = 0; rr < blk.n_rows; ++rr) {
+    const int rb = blk.row_off[rr];
+    const int re = blk.row_off[rr + 1];
+    const double s =
+      bve_row_int_scale<f_t>(blk.row_coef + rb, re - rb, blk.row_lo[rr], blk.row_up[rr]);
+    if (s == 0.0) {
+      finish_ops();
+      return false;
+    }
+    for (int k = rb; k < re; ++k)
+      blk.row_coef[k] = (f_t)std::llround((double)blk.row_coef[k] * s);
+    if (bve_bound_finite(blk.row_lo[rr]))
+      blk.row_lo[rr] = (f_t)std::llround((double)blk.row_lo[rr] * s);
+    if (bve_bound_finite(blk.row_up[rr]))
+      blk.row_up[rr] = (f_t)std::llround((double)blk.row_up[rr] * s);
+  }
 
   out.interior = std::move(interior);
   out.boundary = std::move(bnd);
@@ -838,7 +911,9 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
     if (cands.empty() || timer.check_time_limit()) break;
     {
       timer_t phase(std::numeric_limits<double>::infinity());
-      work_units += bve_project_batch_gpu<i_t, f_t>(handle, cands, R.tol);
+      // Staged blocks are integerized (bve_row_int_scale), so the subset-sum feasibility test is
+      // exact: project with tolerance 0 rather than R.tol.
+      work_units += bve_project_batch_gpu<i_t, f_t>(handle, cands, f_t(0));
       t_project += phase.elapsed_time();
     }
     if (timer.check_time_limit()) break;

@@ -74,9 +74,14 @@
 // — it is the trusted differential oracle for the GPU kernel and lives in
 // tests/mip/block_bve_test.cu.
 //
-// fp64 + 1e-6 tol throughout; integrality is a value property, never a storage type; fractional
-// coefficients are handled natively (no scaling). All column/row ids are in the CURRENT problem_t
-// space at detection time (post-Papilo, before this pass's trivial_presolve).
+// fp64; integrality is a value property, never a storage type. Each candidate block is integerized
+// per row before projection (bve_row_int_scale): coefficients and finite bounds are scaled by a
+// bounded rational multiplier so the binary subset-sum feasibility test is EXACT and the projection
+// runs at tolerance 0. A row that does not integerize within the caps makes the whole block not
+// exactly representable, so the block is rejected (left un-eliminated) rather than classified with
+// a magnitude-sensitive fp tolerance. The 1e-6 presolve tolerance still governs binary
+// variable-bound detection (is_bin). All column/row ids are in the CURRENT problem_t space at
+// detection time (post-Papilo, before this pass's trivial_presolve).
 
 namespace cuopt::mathematical_optimization::mip {
 
@@ -325,10 +330,11 @@ std::vector<std::vector<i_t>> bve_build_impl_adj(const probing_cache_t<i_t, f_t>
 // `timer` is the caller's deadline clock for this pass (typically a stage timer bounded by
 // min(global remaining, presolve remaining)). `work_units` is set to a deterministic unscaled
 // estimate of work performed (host term/edge walks + commit Quine cost + GPU assignments·nnz;
-// parallel growth contributes the per-round critical-path max). Feasibility / binary-bound
-// tolerance is taken from `problem.tolerances.presolve_absolute_tolerance`. Returns true iff at
-// least one sanity checked reduction was applied (and the model was rewritten + a
-// trivial_presolve compaction run). Bcap/enumcap/margin mirror the host reference.
+// parallel growth contributes the per-round critical-path max). The projection is exact
+// (integerized blocks, tolerance 0); `problem.tolerances.presolve_absolute_tolerance` governs only
+// binary variable-bound detection (is_bin). Returns true iff at least one sanity checked reduction
+// was applied (and the model was rewritten + a trivial_presolve compaction run).
+// Bcap/enumcap/margin mirror the host reference.
 template <typename i_t, typename f_t>
 bool block_bve_presolve(problem_t<i_t, f_t>& problem,
                         const std::vector<std::vector<i_t>>& impl_adj,
