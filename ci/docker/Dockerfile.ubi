@@ -17,11 +17,14 @@ FROM nvidia/cuda:${CUDA_VER}-base-ubi10 AS python-env
 ARG CUDA_VER
 ARG CUOPT_VER
 
-# Apply all available OS security patches (fixes CVEs in openssl-libs, expat, and others
-# as Red Hat releases updates). Remove vim-minimal/vim-data which are not needed at
-# runtime and carry unpatched CVEs (CVE-2026-47162, CVE-2026-55895, CVE-2026-57456).
+# Apply all available OS security patches, then remove packages that are not
+# needed at runtime and carry unpatched CVEs:
+#   vim-minimal / vim-data  — CVE-2026-47162, CVE-2026-55895, CVE-2026-57456
+#   curl                    — CVE-2026-9547, CVE-2026-8925, CVE-2026-8286,
+#                             CVE-2026-12064, CVE-2026-11586, CVE-2026-11352
+#   tar                     — CVE-2026-59874, CVE-2026-59873
 RUN dnf update -y \
-    && dnf remove -y vim-minimal vim-data \
+    && dnf remove -y vim-minimal vim-data curl tar \
     && dnf clean all
 
 # gcc is required for building psutils
