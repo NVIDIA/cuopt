@@ -87,14 +87,6 @@ cuopt_int_t test_cpu_host_create_problem_api();
 /* GPU-backed problem created before remote env is set must reject remote solve */
 cuopt_int_t test_gpu_problem_remote_after_create(const char* filename);
 
-/* Problem attribute getters, verified against ground-truth values set through the cuOptCreate /
- * cuOptSet interfaces. Each builds a known problem and reads every relevant getter back. */
-cuopt_int_t test_problem_attributes_created(void);   /* LP/MIP via cuOptCreateProblem            */
-cuopt_int_t test_problem_attributes_ranged(void);    /* ranged rows via cuOptCreateRangedProblem */
-cuopt_int_t test_problem_attributes_quadratic(void); /* QP/QCQP flags via cuOptSetQuadratic*      */
-/* Names are the only attribute no create/set routine can set: read a tiny MPS with known names. */
-cuopt_int_t test_problem_attributes_names(const char* mps_path);
-
 #ifdef __cplusplus
 }
 #endif

@@ -566,9 +566,7 @@ cuopt_int_t cuOptGetNumNonZeros(cuOptOptimizationProblem problem, cuopt_int_t* n
 /** @brief Get the linear constraint matrix of an optimization problem in compressed sparse row
  * format. This is the matrix of the linear constraints only.
  *
- * @note **Deprecated:** Use ``cuOptGetConstraintMatrixCSR`` (identical CSR output) or
- * ``cuOptGetConstraintMatrixCSC``. This function forwards to ``cuOptGetConstraintMatrixCSR`` and
- * logs a deprecation warning at runtime.
+ * @note **Deprecated:** Use ``cuOptGetConstraintMatrixCSR``.
  *
  * @param[in] problem - The optimization problem.
  *
@@ -591,10 +589,8 @@ cuopt_int_t cuOptGetConstraintMatrix(cuOptOptimizationProblem problem,
                                      cuopt_int_t* constraint_matrix_column_indices_ptr,
                                      cuopt_float_t* constraint_matrix_coefficients_ptr);
 
-/** @brief Get the linear constraint matrix in compressed sparse row (CSR) format.
- *
- * This is the canonical CSR getter; it pairs symmetrically with cuOptGetConstraintMatrixCSC. The
- * deprecated cuOptGetConstraintMatrix forwards here.
+/** @brief Get the linear constraint matrix of an optimization problem in compressed sparse row
+ * format. This is the matrix of the linear constraints only.
  *
  * @param[in] problem - The optimization problem.
  *

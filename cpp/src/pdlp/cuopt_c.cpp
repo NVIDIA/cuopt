@@ -14,6 +14,7 @@
 #include <cuopt/mathematical_optimization/solve.hpp>
 #include <cuopt/mathematical_optimization/solver_settings.hpp>
 #include <cuopt/utilities/timestamp_utils.hpp>
+#include <linear_algebra/sparse_matrix.hpp>
 #include <pdlp/cuopt_c_internal.hpp>
 #include <utilities/logger.hpp>
 
@@ -29,6 +30,8 @@
 #include <vector>
 
 using cuopt::mathematical_optimization::char_to_var_type;
+using cuopt::mathematical_optimization::csc_matrix_t;
+using cuopt::mathematical_optimization::csr_matrix_t;
 using cuopt::mathematical_optimization::get_memory_backend_type;
 using cuopt::mathematical_optimization::is_valid_public_var_type_code;
 using cuopt::mathematical_optimization::optimization_problem_interface_t;
@@ -792,7 +795,7 @@ cuopt_int_t cuOptGetConstraintMatrix(cuOptOptimizationProblem problem,
                                      cuopt_int_t* constraint_matrix_column_indices_ptr,
                                      cuopt_float_t* constraint_matrix_coefficients_ptr)
 {
-  CUOPT_LOG_WARN("%s", k_deprecated_get_constraint_matrix_msg);
+  CUOPT_LOG_ONCE(WARN, "%s", k_deprecated_get_constraint_matrix_msg);
   return cuOptGetConstraintMatrixCSR(problem,
                                      constraint_matrix_row_offsets_ptr,
                                      constraint_matrix_column_indices_ptr,
@@ -1360,7 +1363,7 @@ cuopt_int_t cuOptGetReducedCosts(cuOptSolution solution, cuopt_float_t* reduced_
 }
 
 /* -------------------------------------------------------------------------- */
-/* Generic problem attribute getters (declared in cuopt_c.h)                  */
+/* Generic problem attribute getters                                          */
 /* -------------------------------------------------------------------------- */
 
 cuopt_int_t cuOptGetProblemIntAttribute(cuOptOptimizationProblem problem,
@@ -1541,43 +1544,28 @@ cuopt_int_t cuOptGetConstraintMatrixCSC(cuOptOptimizationProblem problem,
   const cuopt_int_t n = iface->get_n_variables();
   const cuopt_int_t m = iface->get_n_constraints();
 
-  const std::vector<cuopt_int_t> row_offsets = iface->get_constraint_matrix_offsets_host();
-  const std::vector<cuopt_int_t> col_indices = iface->get_constraint_matrix_indices_host();
-  const std::vector<cuopt_float_t> values    = iface->get_constraint_matrix_values_host();
-  const cuopt_int_t nnz                      = static_cast<cuopt_int_t>(values.size());
+  std::vector<cuopt_int_t> row_offsets = iface->get_constraint_matrix_offsets_host();
+  std::vector<cuopt_int_t> col_indices = iface->get_constraint_matrix_indices_host();
+  std::vector<cuopt_float_t> values    = iface->get_constraint_matrix_values_host();
+  const cuopt_int_t nnz                = static_cast<cuopt_int_t>(values.size());
 
   // Empty / unset matrix: emit all-zero column offsets and nothing else.
   if (row_offsets.size() < m + 1 || nnz == 0) {
-    for (cuopt_int_t c = 0; c <= n; ++c) {
-      column_offsets_ptr[c] = 0;
-    }
+    std::fill(column_offsets_ptr, column_offsets_ptr + (n + 1), 0);
     return CUOPT_SUCCESS;
   }
   if (row_indices_ptr == nullptr || values_ptr == nullptr) { return CUOPT_INVALID_ARGUMENT; }
 
-  // Count non-zeros per column, then prefix-sum into column offsets.
-  std::vector<cuopt_int_t> col_counts(n, 0);
-  for (cuopt_int_t k = 0; k < nnz; ++k) {
-    const cuopt_int_t c = col_indices[k];
-    if (c < 0 || c >= n) { return CUOPT_VALIDATION_ERROR; }
-    ++col_counts[c];
-  }
-  column_offsets_ptr[0] = 0;
-  for (cuopt_int_t c = 0; c < n; ++c) {
-    column_offsets_ptr[c + 1] = column_offsets_ptr[c] + col_counts[c];
-  }
+  csr_matrix_t<cuopt_int_t, cuopt_float_t> csr(m, n, nnz);
+  csr.row_start = std::move(row_offsets);
+  csr.j         = std::move(col_indices);
+  csr.x         = std::move(values);
 
-  // Scatter each CSR entry into its CSC position using a running write cursor per column.
-  std::vector<cuopt_int_t> next(column_offsets_ptr, column_offsets_ptr + n);
-  for (cuopt_int_t i = 0; i < m; ++i) {
-    const cuopt_int_t row_begin = row_offsets[i];
-    const cuopt_int_t row_end   = row_offsets[i + 1];
-    for (cuopt_int_t k = row_begin; k < row_end; ++k) {
-      const cuopt_int_t c    = col_indices[k];
-      const cuopt_int_t dest = next[c]++;
-      row_indices_ptr[dest]  = i;
-      values_ptr[dest]       = values[k];
-    }
-  }
+  csc_matrix_t<cuopt_int_t, cuopt_float_t> csc(m, n, nnz);
+  csr.to_compressed_col(csc);
+
+  std::copy(csc.col_start.begin(), csc.col_start.end(), column_offsets_ptr);
+  std::copy(csc.i.begin(), csc.i.end(), row_indices_ptr);
+  std::copy(csc.x.begin(), csc.x.end(), values_ptr);
   return CUOPT_SUCCESS;
 }
