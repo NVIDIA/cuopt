@@ -343,8 +343,7 @@ void inline compute_sum_bounds_squared(const rmm::device_uvector<f_t>& constrain
 {
   cuopt_assert(constraint_lower_bounds.size() == constraint_upper_bounds.size(),
                "constraint_lower_bounds and constraint_upper_bounds must have the same size");
-  cuopt_assert(n <= constraint_lower_bounds.size(),
-               "n exceeds constraint bound vector size");
+  cuopt_assert(n <= constraint_lower_bounds.size(), "n exceeds constraint bound vector size");
 
   rmm::device_buffer d_temp_storage;
   size_t bytes = 0;

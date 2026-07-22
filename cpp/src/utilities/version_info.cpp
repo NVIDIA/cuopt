@@ -7,6 +7,7 @@
 #include "version_info.hpp"
 
 #include <cuda_runtime.h>
+#include <dlfcn.h>
 
 #include <cuopt/version_config.hpp>
 #include <utilities/build_info.hpp>
@@ -18,8 +19,29 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include <utility>
+#include <vector>
 
 namespace cuopt {
+
+namespace {
+
+// Keep NVML optional: the driver provides libnvidia-ml.so.1 at runtime, but build
+// environments and CPU-only hosts do not necessarily provide the NVML headers or library.
+struct nvml_device_st;
+using nvml_device_t = nvml_device_st*;
+
+using nvml_init_t                  = int (*)();
+using nvml_shutdown_t              = int (*)();
+using nvml_device_by_pci_bus_id_t  = int (*)(const char*, nvml_device_t*);
+using nvml_device_get_p2p_status_t = int (*)(nvml_device_t, nvml_device_t, int, int*);
+using nvml_error_string_t          = const char* (*)(int);
+
+constexpr int nvml_success               = 0;
+constexpr int nvml_p2p_caps_index_nvlink = 2;
+constexpr int nvml_p2p_status_ok         = 0;
+
+}  // namespace
 
 static int get_physical_cores()
 {
@@ -223,6 +245,127 @@ void print_version_info(int num_devices)
                    (double)device_prop.totalGlobalMem / (1024.0 * 1024.0 * 1024.0));
     CUOPT_LOG_INFO("CUDA device UUID: %s", uuid_str);
   }
+}
+
+void print_distributed_gpu_topology_info(int num_devices)
+{
+  if (num_devices <= 1) {
+    CUOPT_LOG_INFO("GPU topology is valid for distributed PDLP (%d GPU; NVLink mesh not required).",
+                   num_devices);
+    return;
+  }
+
+  void* nvml_library = dlopen("libnvidia-ml.so.1", RTLD_LAZY | RTLD_LOCAL);
+  if (nvml_library == nullptr) {
+    CUOPT_LOG_WARN(
+      "WARNING: Unable to validate the GPU topology for distributed PDLP: NVML is unavailable.");
+    return;
+  }
+
+  const auto nvml_init     = reinterpret_cast<nvml_init_t>(dlsym(nvml_library, "nvmlInit_v2"));
+  const auto nvml_shutdown = reinterpret_cast<nvml_shutdown_t>(dlsym(nvml_library, "nvmlShutdown"));
+  const auto nvml_device_by_pci_bus_id = reinterpret_cast<nvml_device_by_pci_bus_id_t>(
+    dlsym(nvml_library, "nvmlDeviceGetHandleByPciBusId_v2"));
+  const auto nvml_device_get_p2p_status =
+    reinterpret_cast<nvml_device_get_p2p_status_t>(dlsym(nvml_library, "nvmlDeviceGetP2PStatus"));
+  const auto nvml_error_string =
+    reinterpret_cast<nvml_error_string_t>(dlsym(nvml_library, "nvmlErrorString"));
+
+  if (nvml_init == nullptr || nvml_shutdown == nullptr || nvml_device_by_pci_bus_id == nullptr ||
+      nvml_device_get_p2p_status == nullptr || nvml_error_string == nullptr) {
+    CUOPT_LOG_WARN(
+      "WARNING: Unable to validate the GPU topology for distributed PDLP: required NVML symbols "
+      "are unavailable.");
+    dlclose(nvml_library);
+    return;
+  }
+
+  const int init_status = nvml_init();
+  if (init_status != nvml_success) {
+    CUOPT_LOG_WARN(
+      "WARNING: Unable to validate the GPU topology for distributed PDLP: NVML initialization "
+      "failed (%s).",
+      nvml_error_string(init_status));
+    dlclose(nvml_library);
+    return;
+  }
+
+  std::vector<nvml_device_t> nvml_devices(static_cast<std::size_t>(num_devices));
+  bool query_failed = false;
+  for (int device_id = 0; device_id < num_devices; ++device_id) {
+    char pci_bus_id[32]{};
+    const cudaError_t cuda_status =
+      cudaDeviceGetPCIBusId(pci_bus_id, sizeof(pci_bus_id), device_id);
+    if (cuda_status != cudaSuccess) {
+      CUOPT_LOG_WARN(
+        "WARNING: Unable to validate the GPU topology for distributed PDLP: failed to get the "
+        "PCI bus ID for CUDA device %d (%s).",
+        device_id,
+        cudaGetErrorString(cuda_status));
+      query_failed = true;
+      break;
+    }
+
+    const int nvml_status =
+      nvml_device_by_pci_bus_id(pci_bus_id, &nvml_devices[static_cast<std::size_t>(device_id)]);
+    if (nvml_status != nvml_success) {
+      CUOPT_LOG_WARN(
+        "WARNING: Unable to validate the GPU topology for distributed PDLP: failed to map CUDA "
+        "device %d to NVML (%s).",
+        device_id,
+        nvml_error_string(nvml_status));
+      query_failed = true;
+      break;
+    }
+  }
+
+  std::vector<std::pair<int, int>> disconnected_pairs;
+  if (!query_failed) {
+    for (int first = 0; first < num_devices; ++first) {
+      for (int second = first + 1; second < num_devices; ++second) {
+        int p2p_status = nvml_p2p_status_ok;
+        const int nvml_status =
+          nvml_device_get_p2p_status(nvml_devices[static_cast<std::size_t>(first)],
+                                     nvml_devices[static_cast<std::size_t>(second)],
+                                     nvml_p2p_caps_index_nvlink,
+                                     &p2p_status);
+        if (nvml_status != nvml_success || p2p_status != nvml_p2p_status_ok) {
+          disconnected_pairs.emplace_back(first, second);
+          CUOPT_LOG_TRACE(
+            "NVLink topology check failed for CUDA devices %d and %d: NVML result=%s "
+            "P2P status=%d",
+            first,
+            second,
+            nvml_error_string(nvml_status),
+            p2p_status);
+        }
+      }
+    }
+  }
+
+  nvml_shutdown();
+  dlclose(nvml_library);
+
+  if (query_failed) { return; }
+
+  if (disconnected_pairs.empty()) {
+    CUOPT_LOG_INFO(
+      "GPU topology is valid for distributed PDLP: all %d GPUs are connected through "
+      "NVLink/NVSwitch.",
+      num_devices);
+    return;
+  }
+
+  std::ostringstream pairs;
+  for (std::size_t i = 0; i < disconnected_pairs.size(); ++i) {
+    if (i != 0) { pairs << ", "; }
+    pairs << disconnected_pairs[i].first << "<->" << disconnected_pairs[i].second;
+  }
+  CUOPT_LOG_WARN(
+    "WARNING: GPU topology is not all-to-all NVLink connected for distributed PDLP. Missing "
+    "NVLink/NVSwitch connectivity between CUDA device pairs: %s. Distributed PDLP will continue, "
+    "but communication performance may be degraded.",
+    pairs.str().c_str());
 }
 
 }  // namespace cuopt
