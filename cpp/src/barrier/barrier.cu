@@ -553,11 +553,6 @@ class iteration_data_t {
         d_aug_y2_.resize(lp.num_rows, stream_view_);
         d_aug_y_exp_.resize(augmented_expansion_count(), stream_view_);
         d_aug_y_exp_orig_.resize(augmented_expansion_count(), stream_view_);
-        if (settings.barrier_csr_ir_matvec) {
-          settings.log.printf("IR matvec                     : csr\n");
-        } else {
-          settings.log.printf("IR matvec                     : matrix-free\n");
-        }
       } else {
         settings.log.printf("Linear system               : ADAT\n");
       }
