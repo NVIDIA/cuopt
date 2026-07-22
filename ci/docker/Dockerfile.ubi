@@ -74,6 +74,8 @@ RUN alternatives --install /usr/bin/python  python  /usr/bin/python3.14 100 \
         python3-hawkey \
         python3-libcomps \
         python3-rpm \
+        python3 \
+        python3-libs \
         libdnf \
         libdnf-plugin-subscription-manager \
         librepo \
