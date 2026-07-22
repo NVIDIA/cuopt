@@ -31,7 +31,8 @@ i_t scaling(const lp_problem_t<i_t, f_t>& unscaled,
   // For SOCP problems, apply Ruiz equilibration: alternating row and column
   // infinity-norm scaling to bring the constraint matrix close to equilibrium.
   // This dramatically improves the conditioning of the augmented KKT system.
-  // Applied only when the constraint matrix has a large row-norm imbalance.
+  // Applied only when the constraint matrix has a large row-norm or
+  // column-norm imbalance.
   if (!unscaled.second_order_cone_dims.empty() || unscaled.Q.n > 0) {
     // col_scale and row_scale accumulate reciprocal scale factors during Ruiz iterations.
     std::vector<f_t> col_scale(n, 1.0);
