@@ -112,8 +112,7 @@ struct multi_gpu_engine_t {
         fn(s);
       } else {
         // Otherwise, the function has an invalid signature.
-        cuopt_expects(
-          false, error_type_t::RuntimeError, "for_each_shard: invalid function signature");
+        cuopt_assert(false, "for_each_shard: invalid function signature");
       }
     }
   }
