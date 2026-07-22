@@ -1030,7 +1030,7 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
   }
   // ---- 5. install the rewritten rows into problem_t (matrix + derived state) ----
   work_units += double(new_var.size()) + double(new_clb.size());
-  problem.update_problem_matrix(new_off, new_var, new_coef, new_clb, new_cub);
+  problem.set_constraints_from_host_csr(new_off, new_var, new_coef, new_clb, new_cub, {});
 
   // ---- 6. record reconstructions on the unified append-only log (detection-space ids ->
   // post-Papilo variable_mapping frame). Commit order preserved; postsolve replays reverse. ----

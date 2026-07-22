@@ -149,12 +149,13 @@ class problem_t {
   // tables via recompute_auxilliary_data). The variable/column set is UNCHANGED — empty columns
   // left by a rewrite are compacted by a subsequent trivial_presolve. Used by presolve passes that
   // rewrite rows in place (e.g. block-BVE). offsets has n_rows+1 entries; row_lower/row_upper have
-  // n_rows entries.
-  void update_problem_matrix(const std::vector<i_t>& offsets,
-                             const std::vector<i_t>& variables,
-                             const std::vector<f_t>& coefficients,
-                             const std::vector<f_t>& row_lower,
-                             const std::vector<f_t>& row_upper);
+  // n_rows entries. names is either empty or has n_rows entries.
+  void set_constraints_from_host_csr(const std::vector<i_t>& offsets,
+                                     const std::vector<i_t>& variables,
+                                     const std::vector<f_t>& coefficients,
+                                     const std::vector<f_t>& row_lower,
+                                     const std::vector<f_t>& row_upper,
+                                     const std::vector<std::string>& names);
 
   uint32_t get_fingerprint() const;
 
