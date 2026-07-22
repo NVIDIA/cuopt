@@ -38,8 +38,7 @@ problem_category_t from_proto_problem_category(cuopt::remote::ProblemCategory v)
     case cuopt::remote::LP: return problem_category_t::LP;
     case cuopt::remote::MIP: return problem_category_t::MIP;
     case cuopt::remote::VRP:
-      throw std::invalid_argument(
-        "VRP is not a mathematical_optimization::problem_category_t");
+      throw std::invalid_argument("VRP has no problem_category_t equivalent");
   }
   throw std::invalid_argument("Unknown cuopt::remote::ProblemCategory: " + std::to_string(static_cast<int>(v)));
 }

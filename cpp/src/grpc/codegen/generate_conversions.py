@@ -224,33 +224,38 @@ def parse_settings_fields(entries, prefix=""):
 def parse_enum_entry(entry, index=0):
     """Parse a single enum value entry.
 
-    Supports three forms:
-      - bare string 'CppName'        → (name, index)
-      - {CppName: null}              → (name, index)
-      - {CppName: number}            → (name, number)
+    Supports:
+      - bare string 'CppName'            → (name, index, {})
+      - {CppName: null}                  → (name, index, {})
+      - {CppName: number}                → (name, number, {})
+      - {CppName: {attr: val, ...}}      → (name, attrs.get('num', index), attrs)
 
-    The caller is responsible for tracking the running counter; explicit values
-    reset it (C-style enum semantics).
+    The attribute form carries per-value semantics (e.g. ``proto_only: true``
+    for a proto enum value that has no C++ enumerator). The caller tracks the
+    running counter; explicit numbers reset it (C-style enum semantics).
     """
     if isinstance(entry, str):
-        return entry, index
+        return entry, index, {}
     assert isinstance(entry, dict) and len(entry) == 1
     name = next(iter(entry))
-    num = entry[name]
-    return name, num if num is not None else index
+    val = entry[name]
+    if isinstance(val, dict):
+        return name, val.get("num", index), val
+    return name, val if val is not None else index, {}
 
 
 def parse_enum_values(values):
     """Parse a full enum values list with C-style auto-numbering.
 
     Bare names get the next sequential number; explicit {Name: N} overrides
-    reset the counter so the next bare name gets N+1.
+    reset the counter so the next bare name gets N+1. Returns
+    ``(name, num, attrs)`` triples.
     """
     counter = 0
     result = []
     for entry in values:
-        name, num = parse_enum_entry(entry, index=counter)
-        result.append((name, num))
+        name, num, attrs = parse_enum_entry(entry, index=counter)
+        result.append((name, num, attrs))
         counter = num + 1
     return result
 
@@ -369,7 +374,7 @@ def _enum_default(key, edef):
     if "default" in edef:
         return edef["default"]
     first = edef["values"][0]
-    name, _ = parse_enum_entry(first)
+    name, _, _ = parse_enum_entry(first)
     return name
 
 
@@ -1024,7 +1029,7 @@ def generate_enum_proto_from_registry(registry):
         proto_type_name = _enum_proto_type(key, edef)
         prefix = edef.get("proto_prefix", "")
         lines = [f"enum {proto_type_name} {{"]
-        for cpp_name, num in parse_enum_values(edef["values"]):
+        for cpp_name, num, _attrs in parse_enum_values(edef["values"]):
             pname = _proto_enum_value_name(cpp_name, prefix)
             lines.append(f"  {pname} = {num};")
         lines.append("}")
@@ -1060,10 +1065,20 @@ def generate_enum_converters_inc(registry, domain=None):
             "{",
             "  switch (v) {",
         ]
-        for cpp_name, _ in parse_enum_values(edef["values"]):
+        # to_proto: one case per C++ enumerator. proto_only values have no C++
+        # enumerator (skip). cpp_aliases are C++-only enumerators that serialize
+        # to an existing proto value (e.g. IP -> MIP).
+        for cpp_name, _num, attrs in parse_enum_values(edef["values"]):
+            if attrs.get("proto_only"):
+                continue
             pname = _proto_enum_value_name(cpp_name, prefix)
             lines.append(
                 f"    case {cpp_type}::{cpp_name}: return cuopt::remote::{pname};"
+            )
+        for cpp_alias, proto_target in edef.get("cpp_aliases", {}).items():
+            ptarget = _proto_enum_value_name(proto_target, prefix)
+            lines.append(
+                f"    case {cpp_type}::{cpp_alias}: return cuopt::remote::{ptarget};"
             )
         lines.extend(
             [
@@ -1079,11 +1094,19 @@ def generate_enum_converters_inc(registry, domain=None):
             "{",
             "  switch (v) {",
         ]
-        for cpp_name, _ in parse_enum_values(edef["values"]):
+        # from_proto: one case per proto value. proto_only values have no C++
+        # enumerator, so their wire value is rejected at runtime.
+        for cpp_name, _num, attrs in parse_enum_values(edef["values"]):
             pname = _proto_enum_value_name(cpp_name, prefix)
-            lines.append(
-                f"    case cuopt::remote::{pname}: return {cpp_type}::{cpp_name};"
-            )
+            if attrs.get("proto_only"):
+                lines.append(
+                    f"    case cuopt::remote::{pname}:\n"
+                    f'      throw std::invalid_argument("{pname} has no {cpp_type} equivalent");'
+                )
+            else:
+                lines.append(
+                    f"    case cuopt::remote::{pname}: return {cpp_type}::{cpp_name};"
+                )
         lines.extend(
             [
                 "  }",
@@ -1439,6 +1462,17 @@ def generate_chunked_result_header_proto(registry):
                     )
                 )
     lines.extend(_iter_embeds(registry.get("chunked_result_header", {})))
+    # Scalars declared directly on chunked_result_header (e.g. VRP is_vrp /
+    # routing_solution). These are set on the header by the worker directly, so
+    # they only emit into the proto -- no LP/MIP conversion code is generated
+    # for them. Emit the field's declared type verbatim so bytes/bool work.
+    for entry in registry.get("chunked_result_header", {}).get("scalars", []):
+        f = parse_field(entry)
+        num = f.get("field_num")
+        if num is not None:
+            lines.append(
+                (num, f"  {f.get('type', 'double')} {f['name']} = {num};")
+            )
     lines.sort(key=lambda x: x[0])
     return "\n".join(item[1] for item in lines)
 
