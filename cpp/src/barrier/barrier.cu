@@ -40,8 +40,6 @@
 #include <optional>
 #include <span>
 
-#include <cstdio>
-
 #include <raft/sparse/detail/cusparse_wrappers.h>
 #include <raft/core/nvtx.hpp>
 #include <raft/linalg/dot.cuh>
@@ -51,6 +49,8 @@
 #include <thrust/iterator/transform_output_iterator.h>
 #include <thrust/iterator/zip_iterator.h>
 #include <thrust/reduce.h>
+
+#include <cstdio>
 
 namespace cuopt::mathematical_optimization::barrier {
 
@@ -799,7 +799,7 @@ class iteration_data_t {
           if (cone_sparse_idx[k] < 0) {
             dense_cone_idx_by_cone[k] = dense_idx;
             dense_cone_ids_host.push_back(k);
-            const auto q_k = cone_offsets_host[k + 1] - cone_offsets_host[k];
+            const i_t q_k = cone_offsets_host[k + 1] - cone_offsets_host[k];
             dense_cone_block_offsets_host.push_back(dense_cone_block_offsets_host.back() +
                                                     q_k * q_k);
             ++dense_idx;
@@ -980,9 +980,9 @@ class iteration_data_t {
           const i_t l                = k - n;
           const i_t col_beg          = AT.col_start[l];
           const i_t col_end          = AT.col_start[l + 1];
-          for (i_t idx = col_beg; idx < col_end; ++idx) {
-            augmented_CSR.j[q]   = AT.i[idx];
-            augmented_CSR.x[q++] = AT.x[idx];
+          for (i_t p = col_beg; p < col_end; ++p) {
+            augmented_CSR.j[q]   = AT.i[p];
+            augmented_CSR.x[q++] = AT.x[p];
           }
           augmented_diagonal_indices[k] = q;
           augmented_CSR.j[q]            = k;
@@ -999,9 +999,9 @@ class iteration_data_t {
           const i_t prow_u         = n + m + 2 * s + 1;
 
           augmented_CSR.row_start[prow_v] = q;
-          for (i_t j = 0; j < q_k; ++j) {
-            sparse_exp_v_row_host[flat_base + j] = q;
-            augmented_CSR.j[q]                   = cone_col_start + j;
+          for (i_t t = 0; t < q_k; ++t) {
+            sparse_exp_v_row_host[flat_base + t] = q;
+            augmented_CSR.j[q]                   = cone_col_start + t;
             augmented_CSR.x[q++]                 = f_t(0);
           }
           sparse_expansion_D_host[2 * s] = q;
@@ -1009,9 +1009,9 @@ class iteration_data_t {
           augmented_CSR.x[q++]           = f_t(0);
 
           augmented_CSR.row_start[prow_u] = q;
-          for (i_t j = 0; j < q_k; ++j) {
-            sparse_exp_u_row_host[flat_base + j] = q;
-            augmented_CSR.j[q]                   = cone_col_start + j;
+          for (i_t t = 0; t < q_k; ++t) {
+            sparse_exp_u_row_host[flat_base + t] = q;
+            augmented_CSR.j[q]                   = cone_col_start + t;
             augmented_CSR.x[q++]                 = f_t(0);
           }
           sparse_expansion_D_host[2 * s + 1] = q;
@@ -1026,7 +1026,7 @@ class iteration_data_t {
         i_t expected_nnz =
           2 * nnzA + (n - m_c) + dense_soc_kkt_nnz + m + off_diag_Qnz + sparse_soc_kkt_nnz;
         settings_.log.debug("augmented nz %d predicted %d\n", q, expected_nnz);
-        cuopt_assert(q == expected_nnz, "augmented nz != predicted");
+        cuopt_assert(q == expected_nnz, "augmented nnz != predicted");
         cuopt_assert(A.col_start[n] == AT.col_start[m], "A nz != AT nz");
 
         if (n_sparse_entries > 0) {
@@ -3910,8 +3910,10 @@ void barrier_solver_t<i_t, f_t>::compute_target_mu(
     step_primal_aff = step_dual_aff = std::min(step_primal_aff, step_dual_aff);
   }
 
-  // Compute complementarity_xz_aff_sum and complementarity_wv_aff_sum. Save the affine direction as
-  // a side effect.
+  // Compute complementarity_xz_aff_sum = sum(x_aff * z_aff),
+  // where x_aff = x + step_primal_aff * dx_aff and z_aff = z + step_dual_aff * dz_aff
+  // Here the update of x_aff and z_aff are done temporarily and sum of their products is
+  // computed without storing intermediate results.
   raft::device_span<const f_t> x_span(data.d_x_.data(), data.d_x_.size());
   raft::device_span<const f_t> z_span(data.d_z_.data(), data.d_z_.size());
   raft::device_span<const f_t> dx_span(data.d_dx_.data(), data.d_dx_.size());
@@ -3941,6 +3943,8 @@ void barrier_solver_t<i_t, f_t>::compute_target_mu(
     data.d_x_.size(),
     stream_view_);
 
+  // Here the update of w_aff and v_aff are done temporarily and sum of their products is
+  // computed without storing intermediate results.
   raft::device_span<const f_t> w_span(data.d_w_.data(), data.d_w_.size());
   raft::device_span<const f_t> v_span(data.d_v_.data(), data.d_v_.size());
   raft::device_span<const f_t> dw_span(data.d_dw_.data(), data.d_dw_.size());
