@@ -288,7 +288,6 @@ class iteration_data_t {
       d_sparse_exp_u_row_(0, lp.handle_ptr->get_stream()),
       d_sparse_expansion_D_(0, lp.handle_ptr->get_stream()),
       d_sparse_Hs_diag_(0, lp.handle_ptr->get_stream()),
-      d_dense_cone_diag_csr_indices_(0, lp.handle_ptr->get_stream()),
       use_augmented(false),
       has_factorization(false),
       n_direct_free_linear(0),
@@ -662,10 +661,6 @@ class iteration_data_t {
         }
         if (settings.concurrent_halt != nullptr && *settings.concurrent_halt == 1) { return; }
         symbolic_status = chol->analyze(device_augmented);
-        if (use_csr_ir_matvec()) {
-          augmented_cusparse_view_ =
-            std::make_unique<cusparse_view_t<i_t, f_t>>(handle_ptr, device_augmented);
-        }
       } else {
         {
           raft::common::nvtx::range form_scope("Barrier: LP Data: form ADAT");
@@ -708,8 +703,6 @@ class iteration_data_t {
   {
     return has_sparse_cones() ? cones().expansion_var_count() : i_t(0);
   }
-
-  bool use_csr_ir_matvec() const { return settings_.barrier_csr_ir_matvec && use_augmented; }
 
   i_t augmented_system_size(i_t n, i_t m) const { return n + m + augmented_expansion_count(); }
 
@@ -819,7 +812,6 @@ class iteration_data_t {
       std::vector<i_t> augmented_diagonal_indices(factorization_size, -1);
       std::vector<i_t> cone_csr_indices_host(dense_soc_kkt_nnz, -1);
       std::vector<f_t> cone_Q_values_host(dense_soc_kkt_nnz, f_t(0));
-      std::vector<i_t> dense_cone_diag_indices_host;
       std::vector<i_t> sparse_hessian_diag_host(n_sparse_entries, -1);
       std::vector<f_t> sparse_hessian_Q_host(n_sparse_entries, f_t(0));
       std::vector<i_t> sparse_exp_v_col_host(n_sparse_entries, -1);
@@ -921,10 +913,7 @@ class iteration_data_t {
 
                 cone_csr_indices_host[block_base + c] = q;
                 cone_Q_values_host[block_base + c]    = q_contrib;
-                if (col == i) {
-                  augmented_diagonal_indices[i] = q;
-                  dense_cone_diag_indices_host.push_back(q);
-                }
+                if (col == i) { augmented_diagonal_indices[i] = q; }
                 augmented_CSR.j[q]   = col;
                 augmented_CSR.x[q++] = initial_val - q_contrib;
               }
@@ -1077,15 +1066,6 @@ class iteration_data_t {
             raft::copy(d_dense_cone_ids_.data(),
                        dense_cone_ids_host.data(),
                        dense_cone_ids_host.size(),
-                       handle_ptr->get_stream());
-          }
-
-          d_dense_cone_diag_csr_indices_.resize(dense_cone_diag_indices_host.size(),
-                                                handle_ptr->get_stream());
-          if (!dense_cone_diag_indices_host.empty()) {
-            raft::copy(d_dense_cone_diag_csr_indices_.data(),
-                       dense_cone_diag_indices_host.data(),
-                       dense_cone_diag_indices_host.size(),
                        handle_ptr->get_stream());
           }
 
@@ -2099,41 +2079,6 @@ class iteration_data_t {
     __host__ __device__ T operator()(T x, T y) const { return alpha * x + beta * y; }
   };
 
-  void strip_augmented_perturbation()
-  {
-    raft::common::nvtx::range fun_scope("Barrier: strip augmented perturbation");
-    const i_t n        = A.n;
-    const i_t m        = A.m;
-    const i_t linear_n = has_cones() ? cone_start() : n;
-    strip_augmented_perturbation_values(device_augmented.x,
-                                        d_augmented_diagonal_indices_,
-                                        d_Q_diag_,
-                                        d_is_direct_free_linear_,
-                                        d_sparse_hessian_diag_,
-                                        d_sparse_expansion_D_,
-                                        d_dense_cone_diag_csr_indices_,
-                                        linear_n,
-                                        n,
-                                        m,
-                                        dual_perturb,
-                                        primal_perturb,
-                                        stream_view_);
-  }
-
-  void augmented_csr_multiply(f_t alpha,
-                              const rmm::device_uvector<f_t>& x,
-                              f_t beta,
-                              rmm::device_uvector<f_t>& y)
-  {
-    raft::common::nvtx::range fun_scope("Barrier: augmented_csr_multiply");
-    cuopt_assert(use_csr_ir_matvec(), "augmented_csr_multiply requires CSR IR matvec path");
-    cuopt_assert(augmented_cusparse_view_ != nullptr, "augmented cusparse view not initialized");
-    const i_t sys_size = augmented_system_size(A.n, A.m);
-    cuopt_assert(static_cast<i_t>(x.size()) >= sys_size, "augmented_csr_multiply: x too small");
-    cuopt_assert(static_cast<i_t>(y.size()) >= sys_size, "augmented_csr_multiply: y too small");
-    augmented_cusparse_view_->spmv(alpha, x, beta, y);
-  }
-
   // y <- alpha * Augmented * x + beta * y
   void augmented_multiply(f_t alpha,
                           const rmm::device_uvector<f_t>& x,
@@ -2328,7 +2273,6 @@ class iteration_data_t {
   rmm::device_uvector<i_t> d_sparse_exp_u_row_;
   rmm::device_uvector<i_t> d_sparse_expansion_D_;
   rmm::device_uvector<f_t> d_sparse_Hs_diag_;
-  rmm::device_uvector<i_t> d_dense_cone_diag_csr_indices_;
   bool indefinite_Q;
   cusparse_view_t<i_t, f_t> cusparse_Q_view_;
 
@@ -2346,7 +2290,6 @@ class iteration_data_t {
   f_t primal_perturb{1e-8};
 
   std::unique_ptr<sparse_cholesky_base_t<i_t, f_t>> chol;
-  std::unique_ptr<cusparse_view_t<i_t, f_t>> augmented_cusparse_view_;
 
   bool has_factorization;
   bool has_solve_info;
@@ -2596,10 +2539,6 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
 #ifdef CHOLESKY_DEBUG_CHECK
     cholesky_debug_check(data, lp, use_augmented);
 #endif
-    if (data.use_csr_ir_matvec()) {
-      // Strip augmented perturbation for CSR IR matvec path
-      data.strip_augmented_perturbation();
-    }
   } else {
     status = data.chol->factorize(data.device_ADAT);
   }
@@ -2640,11 +2579,7 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
                       f_t beta,
                       rmm::device_uvector<f_t>& y) const
       {
-        if (data_.use_csr_ir_matvec()) {
-          data_.augmented_csr_multiply(alpha, x, beta, y);
-        } else {
-          data_.augmented_multiply(alpha, x, beta, y);
-        }
+        data_.augmented_multiply(alpha, x, beta, y);
       }
       void solve(rmm::device_uvector<f_t>& b, rmm::device_uvector<f_t>& x) const
       {
@@ -3168,11 +3103,6 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
         raft::common::nvtx::range fun_scope("Barrier: factorize");
         status = data.chol->factorize(data.device_augmented);
       }
-      if (data.use_csr_ir_matvec()) {
-        raft::common::nvtx::range fun_scope("Barrier: strip_augmented_perturbation");
-        // Strip augmented perturbation for CSR IR matvec path
-        data.strip_augmented_perturbation();
-      }
 
 #ifdef CHOLESKY_DEBUG_CHECK
       cholesky_debug_check(data, lp, use_augmented);
@@ -3274,11 +3204,7 @@ i_t barrier_solver_t<i_t, f_t>::gpu_compute_search_direction(iteration_data_t<i_
                       f_t beta,
                       rmm::device_uvector<f_t>& y)
       {
-        if (data_.use_csr_ir_matvec()) {
-          data_.augmented_csr_multiply(alpha, x, beta, y);
-        } else {
-          data_.augmented_multiply(alpha, x, beta, y);
-        }
+        data_.augmented_multiply(alpha, x, beta, y);
       }
 
       void solve(rmm::device_uvector<f_t>& b, rmm::device_uvector<f_t>& x) const

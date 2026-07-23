@@ -239,54 +239,6 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
 }
 
 template <typename i_t, typename f_t>
-cusparse_view_t<i_t, f_t>::cusparse_view_t(raft::handle_t const* handle_ptr,
-                                           device_csr_matrix_t<i_t, f_t>& matrix)
-  : handle_ptr_(handle_ptr),
-    A_offsets_(0, handle_ptr->get_stream()),
-    A_indices_(0, handle_ptr->get_stream()),
-    A_data_(0, handle_ptr->get_stream()),
-    A_T_offsets_(0, handle_ptr->get_stream()),
-    A_T_indices_(0, handle_ptr->get_stream()),
-    A_T_data_(0, handle_ptr->get_stream()),
-    spmv_buffer_(0, handle_ptr->get_stream()),
-    spmv_buffer_transpose_(0, handle_ptr->get_stream()),
-    d_one_(f_t(1), handle_ptr->get_stream()),
-    d_minus_one_(f_t(-1), handle_ptr->get_stream()),
-    d_zero_(f_t(0), handle_ptr->get_stream()),
-    rows_(matrix.m)
-{
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsesetpointermode(
-    handle_ptr->get_cusparse_handle(), CUSPARSE_POINTER_MODE_DEVICE, handle_ptr->get_stream()));
-
-  const i_t cols = matrix.n;
-  const i_t nnz  = matrix.nz_max;
-
-  RAFT_CUSPARSE_TRY(cusparseCreateCsr(&A_,
-                                      rows_,
-                                      cols,
-                                      nnz,
-                                      matrix.row_start.data(),
-                                      matrix.j.data(),
-                                      matrix.x.data(),
-                                      CUSPARSE_INDEX_32I,
-                                      CUSPARSE_INDEX_32I,
-                                      CUSPARSE_INDEX_BASE_ZERO,
-                                      CUDA_R_64F));
-
-  cusparseDnVecDescr_t x;
-  cusparseDnVecDescr_t y;
-  rmm::device_uvector<f_t> d_x(cols, handle_ptr_->get_stream());
-  rmm::device_uvector<f_t> d_y(rows_, handle_ptr_->get_stream());
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(&x, d_x.size(), d_x.data()));
-  RAFT_CUSPARSE_TRY(raft::sparse::detail::cusparsecreatednvec(&y, d_y.size(), d_y.data()));
-
-  init_spmv_buffer_and_preprocess(A_, x, y, spmv_buffer_, rows_);
-
-  RAFT_CUSPARSE_TRY(cusparseDestroyDnVec(x));
-  RAFT_CUSPARSE_TRY(cusparseDestroyDnVec(y));
-}
-
-template <typename i_t, typename f_t>
 cusparse_view_t<i_t, f_t>::~cusparse_view_t()
 {
   CUOPT_CUSPARSE_TRY_NO_THROW(cusparseDestroySpMat(A_));
