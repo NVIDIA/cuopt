@@ -2598,7 +2598,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
   }
 
   sol.set_solve_time(lp_timer.elapsed_time());
-  CUOPT_LOG_INFO("Distributed PDLP finished");
+  CUOPT_LOG_INFO("PDLP finished");
   CUOPT_LOG_INFO("Status: %s   Objective: %.8e  Iterations: %d  Time: %.3fs",
                  sol.get_termination_status_string().c_str(),
                  sol.get_objective_value(),
