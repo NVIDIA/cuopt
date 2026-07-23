@@ -483,8 +483,8 @@ int main(int argc, char* argv[])
   std::vector<rmm::mr::cuda_async_memory_resource> memory_resources;
 
   if (memory_backend == cuopt::mathematical_optimization::memory_backend_t::GPU) {
-    int device_count     = raft::device_setter::get_device_count();
-    int requested_gpus   = settings.get_parameter<int>(CUOPT_NUM_GPUS);
+    int device_count   = raft::device_setter::get_device_count();
+    int requested_gpus = settings.get_parameter<int>(CUOPT_NUM_GPUS);
     if (requested_gpus > device_count) {
       CUOPT_LOG_ERROR("num_gpus=%d exceeds the number of visible CUDA devices (%d).",
                       requested_gpus,
