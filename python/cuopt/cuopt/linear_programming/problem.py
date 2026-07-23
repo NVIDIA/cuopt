@@ -5,6 +5,7 @@
 import copy
 import os
 from enum import Enum
+from itertools import chain
 
 import numpy as np
 from scipy.sparse import coo_matrix, csr_matrix
@@ -1469,6 +1470,32 @@ class Problem:
         self.var_type = None
         self._index_to_var_cache = None
         self._constraint_csr_scipy = None
+        self._constraint_index_to_csr_row = None
+        # Value/structure dirtiness for warm DataModel sync.
+        # True = must refresh that category before the next solve.
+        self._stale = {
+            "structure": True,
+            "objective": True,
+            "rhs": True,
+            "bounds": True,
+            "A_values": True,
+        }
+
+    def _mark_stale(self, *keys):
+        for key in keys:
+            if key not in self._stale:
+                raise KeyError(f"Unknown stale key: {key}")
+            self._stale[key] = True
+
+    def _clear_stale(self, *keys):
+        if not keys:
+            for key in self._stale:
+                self._stale[key] = False
+            return
+        for key in keys:
+            if key not in self._stale:
+                raise KeyError(f"Unknown stale key: {key}")
+            self._stale[key] = False
 
     class dict_to_object:
         def __init__(self, mdict):
@@ -1529,45 +1556,64 @@ class Problem:
     def _to_data_model(self):
         dm = data_model.DataModel()
 
-        # iterate through the constraints and construct the constraint matrix
+        # A full DataModel rebuild always regenerates CSR from the constraint
+        # dictionaries. Warm value-only paths use _refresh_data_model_values().
         n = len(self.vars)
-        self.rhs = []
-        self.row_sense = []
-        self.row_names = []
+        linear_constrs = [
+            constr for constr in self.constrs if not constr.is_quadratic
+        ]
+        m = len(linear_constrs)
+        self._constraint_index_to_csr_row = {
+            constr.index: row for row, constr in enumerate(linear_constrs)
+        }
+        self.rhs = np.fromiter(
+            (constr.RHS for constr in linear_constrs),
+            dtype=np.float64,
+            count=m,
+        )
+        self.row_sense = np.asarray(
+            [constr.Sense for constr in linear_constrs], dtype="S1"
+        )
+        self.row_names = [
+            constr.ConstraintName or "R" + str(constr.index)
+            for constr in linear_constrs
+        ]
 
-        if self.constraint_csr_matrix is None:
-            csr_dict = {
-                "row_pointers": [0],
-                "column_indices": [],
-                "values": [],
-            }
-            for constr in self.constrs:
-                if constr.is_quadratic:
-                    continue
-                csr_dict["column_indices"].extend(
-                    list(constr.vindex_coeff_dict.keys())
-                )
-                csr_dict["values"].extend(
-                    list(constr.vindex_coeff_dict.values())
-                )
-                csr_dict["row_pointers"].append(
-                    len(csr_dict["column_indices"])
-                )
-                self.rhs.append(constr.RHS)
-                self.row_sense.append(constr.Sense)
-                constr_name = constr.ConstraintName
-                if constr_name == "":
-                    constr_name = "R" + str(constr.index)
-                self.row_names.append(constr_name)
-            self.constraint_csr_matrix = csr_dict
-            self._constraint_csr_scipy = None
+        row_sizes = np.fromiter(
+            (
+                len(constr.vindex_coeff_dict)
+                for constr in linear_constrs
+            ),
+            dtype=np.int32,
+            count=m,
+        )
+        row_pointers = np.empty(m + 1, dtype=np.int32)
+        row_pointers[0] = 0
+        np.cumsum(row_sizes, out=row_pointers[1:])
+        nnz = int(row_pointers[-1])
 
-        else:
-            for constr in self.constrs:
-                if constr.is_quadratic:
-                    continue
-                self.rhs.append(constr.RHS)
-                self.row_sense.append(constr.Sense)
+        column_indices = np.fromiter(
+            chain.from_iterable(
+                constr.vindex_coeff_dict.keys()
+                for constr in linear_constrs
+            ),
+            dtype=np.int32,
+            count=nnz,
+        )
+        values = np.fromiter(
+            chain.from_iterable(
+                constr.vindex_coeff_dict.values()
+                for constr in linear_constrs
+            ),
+            dtype=np.float64,
+            count=nnz,
+        )
+        self.constraint_csr_matrix = {
+            "row_pointers": row_pointers,
+            "column_indices": column_indices,
+            "values": values,
+        }
+        self._constraint_csr_scipy = None
 
         self.objective = np.zeros(n)
         self.lower_bound, self.upper_bound = np.zeros(n), np.zeros(n)
@@ -1588,15 +1634,14 @@ class Problem:
 
         # Initialize datamodel
         dm.set_csr_constraint_matrix(
-            np.array(self.constraint_csr_matrix["values"]),
-            np.array(self.constraint_csr_matrix["column_indices"]),
-            np.array(self.constraint_csr_matrix["row_pointers"]),
+            self.constraint_csr_matrix["values"],
+            self.constraint_csr_matrix["column_indices"],
+            self.constraint_csr_matrix["row_pointers"],
         )
         if self.ObjSense == -1:
             dm.set_maximize(True)
-        dm.set_constraint_bounds(np.array(self.rhs))
-        self.rhs = np.asarray(self.rhs, dtype=np.float64)
-        dm.set_row_types(np.array(self.row_sense, dtype="S1"))
+        dm.set_constraint_bounds(self.rhs)
+        dm.set_row_types(self.row_sense)
         dm.set_objective_coefficients(self.objective)
         dm.set_objective_offset(self.ObjConstant)
         if self.objective_qmatrix is not None:
@@ -1633,6 +1678,7 @@ class Problem:
             dm.set_initial_primal_solution(self.mip_start)
 
         self.model = dm
+        self._clear_stale()
 
     def _index_to_var(self):
         if (
@@ -1645,6 +1691,7 @@ class Problem:
     def _invalidate_index_to_var_cache(self):
         self._index_to_var_cache = None
         self._constraint_csr_scipy = None
+        self._constraint_index_to_csr_row = None
 
     def _constraint_csr_scipy_matrix(self):
         csr_dict = self.constraint_csr_matrix
@@ -1652,18 +1699,13 @@ class Problem:
             return None
         if self._constraint_csr_scipy is not None:
             return self._constraint_csr_scipy
-        n_rows = (
-            len(self.rhs)
-            if isinstance(self.rhs, np.ndarray)
-            else len(self.rhs)
-        )
         self._constraint_csr_scipy = csr_matrix(
             (
                 np.asarray(csr_dict["values"], dtype=np.float64),
                 np.asarray(csr_dict["column_indices"], dtype=np.int32),
                 np.asarray(csr_dict["row_pointers"], dtype=np.int32),
             ),
-            shape=(n_rows, len(self.vars)),
+            shape=(len(self.rhs), len(self.vars)),
         )
         return self._constraint_csr_scipy
 
@@ -1676,49 +1718,54 @@ class Problem:
             or self.objective is None
             or len(self.objective) != n
             or self.rhs is None
+            or self._stale["structure"]
         ):
             self._to_data_model()
             return
 
-        for j in range(n):
-            self.objective[j] = self.vars[j].getObjectiveCoefficient()
+        # Nothing changed since last sync.
+        if not any(self._stale.values()):
+            return
 
-        rhs_arr = (
-            self.rhs
-            if isinstance(self.rhs, np.ndarray)
-            else np.asarray(self.rhs, dtype=np.float64)
-        )
-        linear_row = 0
-        for constr in self.constrs:
-            if constr.is_quadratic:
-                continue
-            rhs_arr[linear_row] = constr.RHS
-            linear_row += 1
-        self.rhs = rhs_arr
+        if self._stale["objective"]:
+            for j in range(n):
+                self.objective[j] = self.vars[j].getObjectiveCoefficient()
+            self.model.set_objective_coefficients(self.objective)
+            self.model.set_objective_offset(self.ObjConstant)
+            self.model.set_maximize(self.ObjSense == -1)
+            self._stale["objective"] = False
 
-        self.model.set_objective_coefficients(self.objective)
-        self.model.set_constraint_bounds(rhs_arr)
+        if self._stale["rhs"]:
+            # self.rhs is a float64 ndarray after _to_data_model().
+            linear_row = 0
+            for constr in self.constrs:
+                if constr.is_quadratic:
+                    continue
+                self.rhs[linear_row] = constr.RHS
+                linear_row += 1
+            self.model.set_constraint_bounds(self.rhs)
+            self._stale["rhs"] = False
 
-    def _populate_slacks_vectorized(self, primal_sol):
-        """Assign constraint slacks via CSR matvec (structure-stable problems)."""
-        A = self._constraint_csr_scipy_matrix()
-        if A is None:
-            return False
+        if self._stale["bounds"]:
+            if self.lower_bound is None or self.upper_bound is None:
+                self._to_data_model()
+                return
+            for j in range(n):
+                self.lower_bound[j] = self.vars[j].getLowerBound()
+                self.upper_bound[j] = self.vars[j].getUpperBound()
+            self.model.set_variable_lower_bounds(self.lower_bound)
+            self.model.set_variable_upper_bounds(self.upper_bound)
+            self._stale["bounds"] = False
 
-        rhs_arr = (
-            self.rhs
-            if isinstance(self.rhs, np.ndarray)
-            else np.asarray(self.rhs, dtype=np.float64)
-        )
-        slacks = rhs_arr - A.dot(primal_sol)
-
-        linear_row = 0
-        for constr in self.constrs:
-            if constr.is_quadratic:
-                continue
-            constr.Slack = slacks[linear_row]
-            linear_row += 1
-        return True
+        if self._stale["A_values"]:
+            # Existing nonzero values changed but CSR topology is stable.
+            # Reuse indices/offsets and synchronize the updated values once.
+            self.model.set_csr_constraint_matrix(
+                self.constraint_csr_matrix["values"],
+                self.constraint_csr_matrix["column_indices"],
+                self.constraint_csr_matrix["row_pointers"],
+            )
+            self._stale["A_values"] = False
 
     def update(self):
         """
@@ -1727,23 +1774,37 @@ class Problem:
         modified.
         """
         self.reset_solved_values()
-
-    def reset_solved_values(self):
-        # Resets all post solve values
-        for var in self.vars:
-            var.Value = float("nan")
-            var.ReducedCost = float("nan")
-
-        for constr in self.constrs:
-            constr.Slack = float("nan")
-            constr.DualValue = float("nan")
-
-        self.model = None
+        # Direct attribute edits (e.g. x.Obj / c.RHS) are opaque; mark all
+        # value categories stale. Drop CSR because direct coefficient edits
+        # cannot be mapped back to cached A_values reliably.
         self.constraint_csr_matrix = None
-        self.objective_qmatrix = None
+        self._constraint_csr_scipy = None
+        self._mark_stale("objective", "rhs", "bounds", "A_values")
+
+    def reset_solved_values(
+        self, *, invalidate_structure=False, invalidate_solution=True
+    ):
+        # Resets post-solve values and/or drops structure caches.
+        if invalidate_solution:
+            for var in self.vars:
+                var.Value = float("nan")
+                var.ReducedCost = float("nan")
+
+            for constr in self.constrs:
+                constr.Slack = float("nan")
+                constr.DualValue = float("nan")
+
         self.warmstart_data = None
         self.solved = False
-        self._invalidate_index_to_var_cache()
+
+        if invalidate_structure:
+            self.model = None
+            self.constraint_csr_matrix = None
+            self.objective_qmatrix = None
+            self._invalidate_index_to_var_cache()
+            self._mark_stale(
+                "structure", "objective", "rhs", "bounds", "A_values"
+            )
 
     def addVariable(
         self, lb=0.0, ub=float("inf"), obj=0.0, vtype=CONTINUOUS, name=""
@@ -1776,11 +1837,13 @@ class Problem:
                 name="Var1")
         """
         if self.solved:
-            self.reset_solved_values()  # Reset all solved values
-        else:
-            self.constraint_csr_matrix = None
-            self.model = None
-            self._invalidate_index_to_var_cache()
+            self.reset_solved_values()
+        self.constraint_csr_matrix = None
+        self.model = None
+        self._invalidate_index_to_var_cache()
+        self._mark_stale(
+            "structure", "objective", "rhs", "bounds", "A_values"
+        )
         n = len(self.vars)
         var = Variable(lb, ub, obj, vtype, name)
         var.index = n
@@ -1811,11 +1874,13 @@ class Problem:
         >>> problem.addConstraint(-x*x + y*y <= 0, name="soc")
         """
         if self.solved:
-            self.reset_solved_values()  # Reset all solved values
-        else:
-            self.constraint_csr_matrix = None
-            self.model = None
-            self._invalidate_index_to_var_cache()
+            self.reset_solved_values()
+        self.constraint_csr_matrix = None
+        self.model = None
+        self._invalidate_index_to_var_cache()
+        self._mark_stale(
+            "structure", "objective", "rhs", "bounds", "A_values"
+        )
         n = len(self.constrs)
         match constr:
             case Constraint():
@@ -1850,21 +1915,74 @@ class Problem:
         >>> c2 = problem.addConstraint(x + y <= 5, name="c2")
         >>> problem.updateConstraint(c1, coeffs=[(x, 1)], rhs=10)
         """
-        self.reset_solved_values()
-        if isinstance(constr, Constraint):
-            if constr.is_quadratic:
-                raise ValueError(
-                    "updateConstraint applies to linear constraints only"
-                )
-            if isinstance(coeffs, dict):
-                coeffs = coeffs.items()
-            for var, coeff in coeffs:
-                idx = var.index
-                constr.vindex_coeff_dict[idx] = coeff
-            if rhs:
-                constr.RHS = rhs
-        else:
+        if not isinstance(constr, Constraint):
             raise ValueError("Object to update must be a Constraint")
+        if (
+            constr.index < 0
+            or constr.index >= len(self.constrs)
+            or self.constrs[constr.index] is not constr
+        ):
+            raise ValueError("Constraint does not belong to this Problem")
+        if constr.is_quadratic:
+            raise ValueError(
+                "updateConstraint applies to linear constraints only"
+            )
+        if isinstance(coeffs, dict):
+            coeffs = list(coeffs.items())
+        else:
+            coeffs = list(coeffs)
+
+        has_new_nonzero = False
+        if coeffs:
+            for var, coeff in coeffs:
+                if var.index not in constr.vindex_coeff_dict:
+                    has_new_nonzero = True
+                constr.vindex_coeff_dict[var.index] = coeff
+
+            if not has_new_nonzero:
+                if (
+                    self.constraint_csr_matrix is not None
+                    and not self._stale["structure"]
+                ):
+                    row = self._constraint_index_to_csr_row[constr.index]
+                    row_pointers = self.constraint_csr_matrix[
+                        "row_pointers"
+                    ]
+                    column_indices = self.constraint_csr_matrix[
+                        "column_indices"
+                    ]
+                    values = self.constraint_csr_matrix["values"]
+                    start = int(row_pointers[row])
+                    end = int(row_pointers[row + 1])
+
+                    for var, coeff in coeffs:
+                        position = start + int(
+                            np.flatnonzero(
+                                column_indices[start:end] == var.index
+                            )[0]
+                        )
+                        values[position] = coeff
+                        if self._constraint_csr_scipy is not None:
+                            self._constraint_csr_scipy.data[
+                                position
+                            ] = coeff
+
+                    # Defer DataModel sync until solve() so multiple edits batch.
+                    self._mark_stale("A_values")
+
+        if rhs is not None:
+            constr.RHS = rhs
+            self._mark_stale("rhs")
+
+        if has_new_nonzero:
+            # Topology changed: always drop structure caches. Skip the O(n)
+            # solution wipe when already dirty from a prior mutation.
+            self.reset_solved_values(
+                invalidate_structure=True,
+                invalidate_solution=self.solved,
+            )
+        elif self.solved:
+            self.reset_solved_values()
 
     def setObjective(self, expr, sense=MINIMIZE):
         """
@@ -1893,6 +2011,7 @@ class Problem:
         if self.solved:
             self.reset_solved_values()  # Reset all solved values
         self.ObjSense = sense
+        self._mark_stale("objective")
         match expr:
             case int() | float():
                 for var in self.vars:
@@ -1935,6 +2054,8 @@ class Problem:
                 if expr.qmatrix is not None:
                     self.objective_qmatrix += expr.qmatrix
                 self.objective_qmatrix = self.objective_qmatrix.tocsr()
+                # Q topology/values require a DataModel rebuild today.
+                self._mark_stale("structure")
             case _:
                 raise ValueError(
                     "Objective must be a Variable, Expression or a constant"
@@ -1964,7 +2085,8 @@ class Problem:
         >>> problem.updateObjective(coeffs=[(x1, 1.0), (x2, 3.0)], constant=5,
                 sense=MINIMIZE)
         """
-        self.reset_solved_values()
+        if self.solved:
+            self.reset_solved_values()
         if isinstance(coeffs, dict):
             coeffs = coeffs.items()
         for var, coeff in coeffs:
@@ -1973,6 +2095,7 @@ class Problem:
             self.ObjConstant = constant
         if sense:
             self.ObjSense = sense
+        self._mark_stale("objective")
 
     def getIncumbentValues(self, solution, vars):
         """
@@ -2142,8 +2265,10 @@ class Problem:
         --------
         >>> problem.writeMPS("model.mps")
         """
-        if self.model is None:
+        if self.model is None or self._stale["structure"]:
             self._to_data_model()
+        elif any(self._stale.values()):
+            self._refresh_data_model_values()
         self.model.writeMPS(mps_file)
 
     @property
@@ -2204,19 +2329,19 @@ class Problem:
         Computes and returns the CSR representation of the
         constraint matrix.
         """
-        if self.constraint_csr_matrix is not None:
-            return self.dict_to_object(self.constraint_csr_matrix)
-        csr_dict = {"row_pointers": [0], "column_indices": [], "values": []}
-        for constr in self.constrs:
-            if constr.is_quadratic:
-                continue
-            csr_dict["column_indices"].extend(
-                list(constr.vindex_coeff_dict.keys())
-            )
-            csr_dict["values"].extend(list(constr.vindex_coeff_dict.values()))
-            csr_dict["row_pointers"].append(len(csr_dict["column_indices"]))
-        self.constraint_csr_matrix = csr_dict
-        return self.dict_to_object(csr_dict)
+        if self._stale["structure"] or self.constraint_csr_matrix is None:
+            # Rebuild typed CSR (and DataModel) so topology matches constraints.
+            self._to_data_model()
+        # Preserve the public list-valued API while keeping typed arrays
+        # internally for DataModel and SciPy consumers.
+        return self.dict_to_object(
+            {
+                key: value.tolist()
+                if isinstance(value, np.ndarray)
+                else value
+                for key, value in self.constraint_csr_matrix.items()
+            }
+        )
 
     def getQCSR(self):
         """
@@ -2286,28 +2411,24 @@ class Problem:
         dual_sol = None
         if not IsMIP:
             dual_sol = solution.get_dual_solution()
-        if not (
-            not IsMIP
-            and len(primal_sol) > 0
-            and self._populate_slacks_vectorized(primal_sol)
-        ):
-            index_to_var = self._index_to_var()
-            linear_row = 0
-            for constr in self.constrs:
-                if constr.is_quadratic:
-                    continue
-                if dual_sol is not None and len(dual_sol) > linear_row:
-                    constr.DualValue = dual_sol[linear_row]
-                constr.Slack = constr.compute_slack(index_to_var)
-                linear_row += 1
-        else:
-            linear_row = 0
-            for constr in self.constrs:
-                if constr.is_quadratic:
-                    continue
-                if dual_sol is not None and len(dual_sol) > linear_row:
-                    constr.DualValue = dual_sol[linear_row]
-                linear_row += 1
+
+        # Vectorized slacks when a full primal and CSR/`rhs` are available;
+        # otherwise leave Slack as NaN (same outcome as unset Values).
+        slacks = None
+        if len(primal_sol) == len(self.vars):
+            A = self._constraint_csr_scipy_matrix()
+            if A is not None and len(primal_sol) == A.shape[1]:
+                slacks = self.rhs - A.dot(primal_sol)
+
+        linear_row = 0
+        for constr in self.constrs:
+            if constr.is_quadratic:
+                continue
+            if dual_sol is not None and len(dual_sol) > linear_row:
+                constr.DualValue = dual_sol[linear_row]
+            if slacks is not None:
+                constr.Slack = slacks[linear_row]
+            linear_row += 1
         self.solved = True
 
     def solve(self, settings=solver_settings.SolverSettings()):
@@ -2326,7 +2447,11 @@ class Problem:
         >>> problem.setObjective(x + y, sense=MAXIMIZE)
         >>> problem.solve()
         """
-        if self.model is None or self.constraint_csr_matrix is None:
+        if (
+            self.model is None
+            or self.constraint_csr_matrix is None
+            or self._stale["structure"]
+        ):
             self._to_data_model()
         else:
             self._refresh_data_model_values()
