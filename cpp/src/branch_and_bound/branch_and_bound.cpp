@@ -2168,9 +2168,14 @@ bool branch_and_bound_t<i_t, f_t>::launch_rins_worker(const std::vector<f_t>& so
   worker->set_active();
   worker->search_strategy = search_strategy_t::SUBMIP;
 
-#pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) affinity(worker) \
-  firstprivate(worker, sol) if (!settings_.inside_submip)
-  rins(worker, sol);
+  if (settings_.inside_submip) {
+    // LLVM libomp's GOMP compatibility path skips GCC's firstprivate copy
+    // function for included tasks.
+    rins(worker, sol);
+  } else {
+#pragma omp task priority(CUOPT_DEFAULT_TASK_PRIORITY) affinity(worker) firstprivate(worker, sol)
+    rins(worker, sol);
+  }
 
   return true;
 }

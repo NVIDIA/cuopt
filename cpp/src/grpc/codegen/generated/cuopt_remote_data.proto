@@ -137,7 +137,7 @@ message OptimizationProblem {
   string problem_name = 1;
   string objective_name = 2;
   bool maximize = 3;
-  double objective_scaling_factor = 4;
+  optional double objective_scaling_factor = 4;
   double objective_offset = 5;
   repeated string variable_names = 7;
   repeated string row_names = 8;
