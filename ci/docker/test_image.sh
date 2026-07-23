@@ -14,8 +14,9 @@ if [ -f /etc/redhat-release ]; then
     EXTRA_LD_PATH="/usr/local/lib/python3.14/site-packages/nvidia/cu13/lib"
 else
     apt-get update
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends file bzip2 gcc
-    EXTRA_LD_PATH=""
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends file bzip2 gcc wget
+    # Collect all nvidia per-package lib dirs so LD_LIBRARY_PATH survives su - reset
+    EXTRA_LD_PATH=$(find /usr/local/lib/python*/dist-packages/nvidia -maxdepth 2 -name 'lib' -type d 2>/dev/null | tr '\n' ':')
 fi
 
 # Download test data
