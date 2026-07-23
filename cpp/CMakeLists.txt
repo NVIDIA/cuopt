@@ -454,6 +454,9 @@ if (BUILD_TESTS)
 endif ()
 
 set(CUOPT_SRC_FILES)
+set(CUOPT_BASE_SRC_FILES)
+set(CUOPT_ROUTING_SRC_FILES)
+set(CUOPT_LP_SRC_FILES)
 set(MPS_FAST_SRC_FILES)
 add_subdirectory(src)
 
@@ -464,7 +467,9 @@ set_source_files_properties(
         PROPERTIES COMPILE_OPTIONS "--split-compile=0")
 
 if (HOST_LINEINFO)
-    set_source_files_properties(${CUOPT_SRC_FILES} DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTIES COMPILE_OPTIONS "-g1")
+    set_source_files_properties(
+            ${CUOPT_BASE_SRC_FILES} ${CUOPT_ROUTING_SRC_FILES} ${CUOPT_LP_SRC_FILES}
+            DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTIES COMPILE_OPTIONS "-g1")
 endif ()
 
 # Needed for the fast MPS parser, available on all x86-64-v3 compliant x86 CPUs (essentially since Haswell ~2013)
@@ -477,16 +482,17 @@ endif ()
 # TODO: figure out a set of flags for ARM that fits the range of CPUs we wish to support (neoverse?)
 # NEON should be universal on aarch64 and enough for our purposes (parsing) though
 
-# Apply -UNDEBUG only to solver source files (not gRPC infrastructure).
-# Must happen before gRPC files are appended to CUOPT_SRC_FILES.
+# Apply -UNDEBUG to solver source files (not gRPC infrastructure).
 # Uses APPEND to preserve any existing per-file options (e.g. -g1 from HOST_LINEINFO).
 if (DEFINE_ASSERT)
-    set_property(SOURCE ${CUOPT_SRC_FILES} DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    set_property(
+            SOURCE ${CUOPT_BASE_SRC_FILES} ${CUOPT_ROUTING_SRC_FILES} ${CUOPT_LP_SRC_FILES}
+            DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             APPEND PROPERTY COMPILE_OPTIONS "-UNDEBUG")
 endif ()
 
 if (NOT SKIP_GRPC_BUILD)
-    # Add gRPC mapper files and generated protobuf sources
+    # gRPC integration layer: maps proto <-> C++ LP API; lives in the umbrella, not in cuopt_lp
     set(GRPC_INFRA_FILES
             ${DATA_PROTO_SRCS}
             ${PROTO_SRCS}
@@ -501,7 +507,6 @@ if (NOT SKIP_GRPC_BUILD)
             src/grpc/client/cython_grpc_client.cpp
             src/grpc/client/solve_remote.cpp
     )
-    list(APPEND CUOPT_SRC_FILES ${GRPC_INFRA_FILES})
 
     # Always keep NDEBUG defined for gRPC infrastructure files so that abseil
     # headers inline Mutex::Dtor() instead of emitting an external call.
@@ -512,25 +517,185 @@ if (NOT SKIP_GRPC_BUILD)
             APPEND PROPERTY COMPILE_OPTIONS "-DNDEBUG")
 endif (NOT SKIP_GRPC_BUILD)
 
-add_library(cuopt SHARED
-        ${CUOPT_SRC_FILES}
+# ##################################################################################################
+# - cuopt component libraries (STATIC, position-independent for use in the umbrella SHARED) ------
+
+# Helper: apply compile options and common include paths to all cuOpt component libs
+function(cuopt_configure_component target)
+    set_target_properties(${target} PROPERTIES
+            POSITION_INDEPENDENT_CODE ON
+            CXX_SCAN_FOR_MODULES OFF
+    )
+    target_compile_options(${target}
+            PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
+            "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
+    )
+    target_compile_definitions(${target}
+            PUBLIC "CUOPT_LOG_ACTIVE_LEVEL=RAPIDS_LOGGER_LOG_LEVEL_${LIBCUOPT_LOGGING_LEVEL}"
+    )
+    target_include_directories(${target}
+            PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/src"
+            "${CMAKE_CURRENT_BINARY_DIR}"
+            PUBLIC
+            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+            "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
+            INTERFACE
+            "$<INSTALL_INTERFACE:include>"
+    )
+endfunction()
+
+# Compute git hash and generate build_info.hpp before any component is defined
+execute_process(
+        COMMAND git rev-parse --short HEAD
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE GIT_COMMIT_HASH
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+message("-- Building with GIT_COMMIT_HASH = '${GIT_COMMIT_HASH}'")
+
+configure_file(
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/utilities/build_info.hpp.in
+        ${CMAKE_CURRENT_BINARY_DIR}/include/utilities/build_info.hpp
+        @ONLY
 )
 
-set_target_properties(cuopt
-        PROPERTIES BUILD_RPATH "\$ORIGIN"
+list(JOIN CMAKE_CUDA_ARCHITECTURES "," JOINED_CUDA_ARCHITECTURES)
+
+set(CUOPT_PRIVATE_CUDA_LIBS
+        CUDA::cublasLt
+        CUDA::curand
+        CUDA::cusolver
+        TBB::tbb
+        OpenMP::OpenMP_CXX)
+
+get_filename_component(CUDSS_MT_LIB_FILE_NAME "${CUDSS_MT_LIB_FILE}" NAME)
+
+# cuopt_base: utilities + linear algebra (stateful shared infra — logger, work scheduler)
+add_library(cuopt_base STATIC ${CUOPT_BASE_SRC_FILES})
+cuopt_configure_component(cuopt_base)
+target_include_directories(cuopt_base PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/include")
+target_compile_definitions(cuopt_base PUBLIC
+        CUOPT_CUDA_ARCHITECTURES="${JOINED_CUDA_ARCHITECTURES}"
+        CUOPT_CPU_ARCHITECTURE="${CMAKE_SYSTEM_PROCESSOR}"
+)
+target_link_libraries(cuopt_base
+        PUBLIC
+        rmm::rmm
+        rapids_logger::rapids_logger
+        CCCL::CCCL
+        raft::raft
+        CUDA::cublas
+        CUDA::cusparse
+        PRIVATE
+        OpenMP::OpenMP_CXX
+        OpenMP::OpenMP_CUDA
+)
+add_library(cuopt::base ALIAS cuopt_base)
+
+# cuopt_routing: VRP / routing engine (omitted when SKIP_ROUTING_BUILD=ON)
+if(NOT SKIP_ROUTING_BUILD)
+    add_library(cuopt_routing STATIC ${CUOPT_ROUTING_SRC_FILES})
+    cuopt_configure_component(cuopt_routing)
+    target_link_libraries(cuopt_routing
+            PUBLIC cuopt_base
+            PRIVATE simde::simde OpenMP::OpenMP_CXX
+    )
+    add_library(cuopt::routing ALIAS cuopt_routing)
+endif()
+
+# cuopt_lp: LP / MIP / numerical optimization engine
+add_library(cuopt_lp STATIC ${CUOPT_LP_SRC_FILES})
+cuopt_configure_component(cuopt_lp)
+target_include_directories(cuopt_lp PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/io"
+        "${CUDSS_INCLUDE}"
+        $<$<BOOL:${CUOPT_PARSER_WITH_BZIP2}>:${BZIP2_INCLUDE_DIRS}>
+        $<$<BOOL:${CUOPT_PARSER_WITH_ZLIB}>:${ZLIB_INCLUDE_DIRS}>
+)
+# Adding Papilo as a system include messes up clang's include resolution if papilo is already installed as a conda package
+target_include_directories(cuopt_lp PRIVATE
+        "${papilo_SOURCE_DIR}/src"
+        "${papilo_BINARY_DIR}"
+)
+target_include_directories(cuopt_lp SYSTEM PRIVATE
+        "${pslp_SOURCE_DIR}/include"
+        "${dejavu_SOURCE_DIR}"
+)
+target_compile_definitions(cuopt_lp
+        PUBLIC CUSPARSE_ENABLE_EXPERIMENTAL_API
+        PRIVATE CUDSS_MT_LIB_FILE_NAME="${CUDSS_MT_LIB_FILE_NAME}"
+)
+target_link_libraries(cuopt_lp
+        PUBLIC
+        cuopt_base
+        ${CUDSS_LIB_FILE}
+        PRIVATE
+        ${CUOPT_PRIVATE_CUDA_LIBS}
+        OpenMP::OpenMP_CUDA
+)
+target_link_libraries(cuopt_lp PRIVATE $<TARGET_FILE:PSLP>)
+add_dependencies(cuopt_lp PSLP)
+add_library(cuopt::lp ALIAS cuopt_lp)
+
+# ##################################################################################################
+# - cuopt: umbrella shared library ----------------------------------------------------------------
+# Re-exports all symbols from the three component libs via --whole-archive.
+# Backward-compatible: GAMS and any consumer using -lcuopt / libcuopt.so is unaffected.
+# gRPC integration layer (maps proto <-> C++ LP API) lives here, not in cuopt_lp.
+
+message(STATUS "target include directories CUDSS_INCLUDES = ${CUDSS_INCLUDE}")
+
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/cuopt_umbrella.cpp" "// cuopt umbrella\n")
+
+if(NOT SKIP_GRPC_BUILD)
+    set(CUOPT_UMBRELLA_EXTRA_SRCS ${GRPC_INFRA_FILES})
+endif()
+
+add_library(cuopt SHARED
+        "${CMAKE_CURRENT_BINARY_DIR}/cuopt_umbrella.cpp"
+        ${CUOPT_UMBRELLA_EXTRA_SRCS}
+)
+
+set_target_properties(cuopt PROPERTIES
+        BUILD_RPATH "\$ORIGIN"
         INSTALL_RPATH "\$ORIGIN"
         INTERFACE_POSITION_INDEPENDENT_CODE ON
         CXX_SCAN_FOR_MODULES OFF
 )
 
-target_compile_definitions(cuopt
-        PUBLIC "CUOPT_LOG_ACTIVE_LEVEL=RAPIDS_LOGGER_LOG_LEVEL_${LIBCUOPT_LOGGING_LEVEL}"
-        PUBLIC CUSPARSE_ENABLE_EXPERIMENTAL_API
-)
-
 target_compile_options(cuopt
         PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
         "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
+)
+
+target_include_directories(cuopt
+        PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc/client"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc/codegen/generated"
+        "${CMAKE_CURRENT_BINARY_DIR}"
+        PUBLIC
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
+        INTERFACE
+        "$<INSTALL_INTERFACE:include>"
+)
+
+if(NOT SKIP_ROUTING_BUILD)
+    target_link_libraries(cuopt PUBLIC
+            $<LINK_LIBRARY:WHOLE_ARCHIVE,cuopt_base,cuopt_routing,cuopt_lp>)
+else()
+    target_link_libraries(cuopt PUBLIC
+            $<LINK_LIBRARY:WHOLE_ARCHIVE,cuopt_base,cuopt_lp>)
+endif()
+
+target_link_libraries(cuopt
+        PRIVATE
+        $<$<BOOL:${CUOPT_ENABLE_GRPC}>:protobuf::libprotobuf>
+        $<$<BOOL:${CUOPT_ENABLE_GRPC}>:gRPC::grpc++>
 )
 
 if (WRITE_FATBIN)
@@ -546,100 +711,6 @@ if (WRITE_FATBIN)
 endif ()
 
 add_library(cuopt::cuopt ALIAS cuopt)
-# ##################################################################################################
-# - include paths ---------------------------------------------------------------------------------
-message(STATUS "target include directories CUDSS_INCLUDES = ${CUDSS_INCLUDE}")
-
-# Adding Papilo as a system include messes up clang's include resolution if papilo is already installed as a conda package
-target_include_directories(cuopt PRIVATE
-        "${papilo_SOURCE_DIR}/src"
-        "${papilo_BINARY_DIR}"
-)
-
-target_include_directories(cuopt SYSTEM PRIVATE
-        "${pslp_SOURCE_DIR}/include"
-        "${dejavu_SOURCE_DIR}"
-)
-
-target_include_directories(cuopt
-        PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/io"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc/client"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc/codegen/generated"
-        "${CMAKE_CURRENT_BINARY_DIR}"
-        "${CUDSS_INCLUDE}"
-        $<$<BOOL:${CUOPT_PARSER_WITH_BZIP2}>:${BZIP2_INCLUDE_DIRS}>
-        $<$<BOOL:${CUOPT_PARSER_WITH_ZLIB}>:${ZLIB_INCLUDE_DIRS}>
-        PUBLIC
-        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-        "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
-        INTERFACE
-        "$<INSTALL_INTERFACE:include>"
-)
-
-# Link PSLP by file to avoid export dependency tracking
-target_link_libraries(cuopt PRIVATE $<TARGET_FILE:PSLP>)
-add_dependencies(cuopt PSLP)
-
-# ##################################################################################################
-# - link libraries --------------------------------------------------------------------------------
-
-set(CUOPT_PRIVATE_CUDA_LIBS
-        CUDA::curand
-        CUDA::cusolver
-        TBB::tbb
-        OpenMP::OpenMP_CXX)
-
-list(PREPEND CUOPT_PRIVATE_CUDA_LIBS CUDA::cublasLt)
-
-# Pass CUDSS_MT_LIB_FILE_NAME as a compile definition
-get_filename_component(CUDSS_MT_LIB_FILE_NAME "${CUDSS_MT_LIB_FILE}" NAME)
-target_compile_definitions(cuopt PRIVATE CUDSS_MT_LIB_FILE_NAME="${CUDSS_MT_LIB_FILE_NAME}")
-
-execute_process(
-        COMMAND git rev-parse --short HEAD
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        OUTPUT_VARIABLE GIT_COMMIT_HASH
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-message("-- Building with GIT_COMMIT_HASH = '${GIT_COMMIT_HASH}'")
-
-# Generate build_info.hpp from template
-# configure_file() only updates the output if content changes, avoiding unnecessary rebuilds
-configure_file(
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/utilities/build_info.hpp.in
-        ${CMAKE_CURRENT_BINARY_DIR}/include/utilities/build_info.hpp
-        @ONLY
-)
-
-# Add the generated include directory
-target_include_directories(cuopt PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/include)
-
-list(JOIN CMAKE_CUDA_ARCHITECTURES "," JOINED_CUDA_ARCHITECTURES)
-target_compile_definitions(cuopt PUBLIC
-        CUOPT_CUDA_ARCHITECTURES="${JOINED_CUDA_ARCHITECTURES}"
-        CUOPT_CPU_ARCHITECTURE="${CMAKE_SYSTEM_PROCESSOR}")
-
-target_link_libraries(cuopt
-        PUBLIC
-        CUDA::cublas
-        CUDA::cusparse
-        rmm::rmm
-        rapids_logger::rapids_logger
-        CCCL::CCCL
-        raft::raft
-        ${CUDSS_LIB_FILE}
-        PRIVATE
-        ${CUOPT_PRIVATE_CUDA_LIBS}
-        simde::simde
-        OpenMP::OpenMP_CXX
-        OpenMP::OpenMP_CUDA
-        $<$<BOOL:${CUOPT_ENABLE_GRPC}>:protobuf::libprotobuf>
-        $<$<BOOL:${CUOPT_ENABLE_GRPC}>:gRPC::grpc++>
-)
 
 # ##################################################################################################
 # - generate tests --------------------------------------------------------------------------------
@@ -669,14 +740,25 @@ else ()
     set(_INCLUDE_DEST include/cuopt/)
 endif ()
 
-# adds the .so files to the runtime deb package
+# Install component static libs (runtime: none — statics are build-time only;
+# dev: headers are shared, statics go in the dev package for downstream cmake consumers)
+set(CUOPT_COMPONENT_TARGETS cuopt_base cuopt_lp)
+if(NOT SKIP_ROUTING_BUILD)
+    list(APPEND CUOPT_COMPONENT_TARGETS cuopt_routing)
+endif()
+install(TARGETS ${CUOPT_COMPONENT_TARGETS}
+        DESTINATION ${_LIB_DEST}
+        COMPONENT dev
+        EXPORT cuopt-exports
+)
+
+# Install umbrella shared library (the primary runtime artifact)
 install(TARGETS cuopt
         DESTINATION ${_LIB_DEST}
         COMPONENT runtime
         EXPORT cuopt-exports
 )
 
-# adds the .so files to the development deb package
 install(TARGETS cuopt
         DESTINATION ${_LIB_DEST}
         COMPONENT dev
@@ -700,12 +782,14 @@ set(doc_string
 Provide targets for cuOpt.
 
 cuOpt library is a collection of GPU accelerated combinatorial optimization algorithms.
+Component targets: cuopt::base, cuopt::routing, cuopt::lp
+Umbrella target:   cuopt::cuopt (re-exports all symbols — backward-compatible with -lcuopt)
 
 ]=])
 
 rapids_export(INSTALL cuopt
         EXPORT_SET cuopt-exports
-        GLOBAL_TARGETS cuopt
+        GLOBAL_TARGETS cuopt ${CUOPT_COMPONENT_TARGETS}
         NAMESPACE cuopt::
         DOCUMENTATION doc_string
 )
@@ -714,7 +798,7 @@ rapids_export(INSTALL cuopt
 # - build export -------------------------------------------------------------------------------
 rapids_export(BUILD cuopt
         EXPORT_SET cuopt-exports
-        GLOBAL_TARGETS cuopt
+        GLOBAL_TARGETS cuopt ${CUOPT_COMPONENT_TARGETS}
         NAMESPACE cuopt::
         DOCUMENTATION doc_string
 )
