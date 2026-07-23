@@ -1,11 +1,12 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 
 #include <cuopt/error.hpp>
+#include <cuopt/export.hpp>
 #include <cuopt/routing/distance_engine/waypoint_matrix.hpp>
 
 #include <routing/utilities/check_input.hpp>
@@ -408,7 +409,7 @@ void waypoint_matrix_t<i_t, f_t>::compute_shortest_path_costs(f_t* d_custom_matr
   stream_view_.synchronize();
 }
 
-template class waypoint_matrix_t<int, float>;
+template class CUOPT_EXPORT waypoint_matrix_t<int, float>;
 
 }  // namespace distance_engine
 }  // namespace cuopt

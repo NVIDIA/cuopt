@@ -6,6 +6,7 @@
 /* clang-format on */
 
 #include <cuopt/error.hpp>
+#include <cuopt/export.hpp>
 #include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <raft/util/cudart_utils.hpp>
@@ -48,11 +49,11 @@ mip_solver_settings_t<i_t, f_t>::get_tolerances() const noexcept
 
 // Explicit template instantiations for common types
 #if MIP_INSTANTIATE_FLOAT
-template class mip_solver_settings_t<int, float>;
+template class CUOPT_EXPORT mip_solver_settings_t<int, float>;
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
-template class mip_solver_settings_t<int, double>;
+template class CUOPT_EXPORT mip_solver_settings_t<int, double>;
 #endif
 
 }  // namespace cuopt::mathematical_optimization
