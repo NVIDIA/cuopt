@@ -145,7 +145,8 @@ void convert_quadratic_constraints_to_second_order_cones(
       qc.constraint_row_name.c_str());
     cuopt_expects(q_nnz >= 1,
                   error_type_t::ValidationError,
-                  "Quadratic constraint '%s' SOC must have at least 1 entry in Q (nnz %d)",
+                  "Quadratic constraint '%s': second-order cone must have at least 1 entry in Q "
+                  "(nnz %d)",
                   qc.constraint_row_name.c_str(),
                   static_cast<int>(q_nnz));
 
@@ -242,9 +243,9 @@ void convert_quadratic_constraints_to_second_order_cones(
       tail_vars.push_back(pr.first);
     }
 
-    // Route to a fast SOC path when Q matches a known pattern (rhs = 0, no linear part);
-    // otherwise use the general LDLT check. Eligibility must be exact: valid SOCs have an
-    // indefinite raw Hessian H = Q + Q^T and would be rejected by the general PSD check.
+    // Route to a fast SOC path when the quadratic constraint matches a known pattern (rhs = 0, no
+    // linear part); otherwise use the general LDLT check. Eligibility must be exact: valid SOCs
+    // have an indefinite raw Hessian H = Q + Q^T and would be rejected by the general PSD check.
     const bool has_nonzero_rhs = !(qc.rhs_value < tol && qc.rhs_value > -tol);
     bool has_nonuniform_diag   = false;
     if (pos_diag_rows.size() > 1) {
@@ -282,12 +283,13 @@ void convert_quadratic_constraints_to_second_order_cones(
 
     if (!use_general_path) {
       // Special-case rhs == 0 requirement for SOC patterns
-      cuopt_expects((qc.rhs_value < tol) && (qc.rhs_value > -tol),
-                    error_type_t::ValidationError,
-                    "SOC conversion currently requires rhs = 0 for quadratic constraints "
-                    "(constraint '%s' has rhs %.17g)",
-                    qc.constraint_row_name.c_str(),
-                    static_cast<double>(qc.rhs_value));
+      cuopt_expects(
+        (qc.rhs_value < tol) && (qc.rhs_value > -tol),
+        error_type_t::ValidationError,
+        "second-order cone conversion currently requires rhs = 0 for quadratic constraints "
+        "(constraint '%s' has rhs %.17g)",
+        qc.constraint_row_name.c_str(),
+        static_cast<double>(qc.rhs_value));
 
       // Infer the uniform scale s.
       f_t uniform_s        = 0;
@@ -295,7 +297,7 @@ void convert_quadratic_constraints_to_second_order_cones(
       auto note_positive_s = [&](f_t v) {
         cuopt_expects(v > tol,
                       error_type_t::ValidationError,
-                      "Quadratic constraint '%s' SOC Q: expected strictly positive diagonal tail "
+                      "Quadratic constraint '%s': expected strictly positive diagonal tail in Q"
                       "coefficient, got %.17g",
                       qc.constraint_row_name.c_str(),
                       static_cast<double>(v));
@@ -306,7 +308,7 @@ void convert_quadratic_constraints_to_second_order_cones(
           cuopt_expects(
             approx_eq_scaled(v, uniform_s),
             error_type_t::ValidationError,
-            "Quadratic constraint '%s' SOC Q: all positive diagonal coefficients must match; got "
+            "Quadratic constraint '%s': all positive diagonal coefficients in Q must match; got "
             "%.17g vs %.17g",
             qc.constraint_row_name.c_str(),
             static_cast<double>(v),
@@ -322,19 +324,20 @@ void convert_quadratic_constraints_to_second_order_cones(
       // No +s tail diagonals means a head-only standard cone, where s comes from the lone -s head
       // entry.
       if (!have_uniform_s) {
-        cuopt_expects(
-          offdiag_entries.empty(),
-          error_type_t::ValidationError,
-          "Quadratic constraint '%s' rotated SOC Q must have at least one positive tail "
-          "diagonal +s to define the scale s",
-          qc.constraint_row_name.c_str());
+        cuopt_expects(offdiag_entries.empty(),
+                      error_type_t::ValidationError,
+                      "Quadratic constraint '%s': rotated second-order cone Q must have at least "
+                      "one positive tail "
+                      "diagonal +s to define the scale s",
+                      qc.constraint_row_name.c_str());
         uniform_s = -neg_diag_rows[0].second;
       }
 
       // s must be positive.
       cuopt_expects(uniform_s > tol,
                     error_type_t::ValidationError,
-                    "Quadratic constraint '%s' SOC Q: uniform scale s must be positive (got %.17g)",
+                    "Quadratic constraint '%s': uniform scale s in Q must be "
+                    "positive (got %.17g)",
                     qc.constraint_row_name.c_str(),
                     static_cast<double>(uniform_s));
       qc_soc_uniform_scale[qc_i] = uniform_s;
@@ -345,7 +348,8 @@ void convert_quadratic_constraints_to_second_order_cones(
         cuopt_expects(
           approx_eq_scaled(neg_v, -uniform_s),
           error_type_t::ValidationError,
-          "Quadratic constraint '%s' SOC Q: cone head diagonal must be -s with the same s as "
+          "Quadratic constraint '%s': second-order cone head diagonal in Q must be -s with the "
+          "same s as "
           "positive tail diagonals; head %.17g vs -s = %.17g",
           qc.constraint_row_name.c_str(),
           static_cast<double>(neg_v),
@@ -358,7 +362,8 @@ void convert_quadratic_constraints_to_second_order_cones(
         // so the conversion cannot tighten the original constraint.
         cuopt_expects(std::max(user_problem.lower[head], implied_lower[head]) >= 0,
                       error_type_t::ValidationError,
-                      "Quadratic constraint '%s' SOC head variable (index %d) must have a "
+                      "Quadratic constraint '%s': second-order cone head variable (index %d) must "
+                      "have a "
                       "non-negative lower bound for the constraint to be convex",
                       qc.constraint_row_name.c_str(),
                       static_cast<int>(head));
@@ -375,15 +380,18 @@ void convert_quadratic_constraints_to_second_order_cones(
         const f_t head_lift_sqrt_ratio = std::sqrt(cross_d / uniform_s);
         cuopt_expects(std::isfinite(static_cast<double>(head_lift_sqrt_ratio)),
                       error_type_t::ValidationError,
-                      "Quadratic constraint '%s' rotated SOC Q head lift ratio sqrt(d/s) is not "
+                      "Quadratic constraint '%s': rotated second-order cone Q head lift ratio "
+                      "sqrt(d/s) is not "
                       "finite (d=%.17g, s=%.17g)",
                       qc.constraint_row_name.c_str(),
                       static_cast<double>(cross_d),
                       static_cast<double>(uniform_s));
-        cuopt_expects(q_nnz >= 2,
-                      error_type_t::ValidationError,
-                      "Quadratic constraint '%s' rotated SOC Q must have at least 1 tail entry",
-                      qc.constraint_row_name.c_str());
+        cuopt_expects(
+          q_nnz >= 2,
+          error_type_t::ValidationError,
+          "Quadratic constraint '%s': rotated second-order cone in Q must have at least 1 "
+          "tail entry",
+          qc.constraint_row_name.c_str());
 
         cone.reserve(q_nnz);
         cone.push_back(a);
@@ -395,13 +403,15 @@ void convert_quadratic_constraints_to_second_order_cones(
         // Check explicit bound or implied bound from singleton inequality constraints.
         cuopt_expects(std::max(user_problem.lower[a], implied_lower[a]) >= 0,
                       error_type_t::ValidationError,
-                      "Quadratic constraint '%s' rotated SOC head variable (index %d) must have a "
+                      "Quadratic constraint '%s': rotated second-order cone head variable (index "
+                      "%d) must have a "
                       "non-negative lower bound for the constraint to be convex",
                       qc.constraint_row_name.c_str(),
                       static_cast<int>(a));
         cuopt_expects(std::max(user_problem.lower[b], implied_lower[b]) >= 0,
                       error_type_t::ValidationError,
-                      "Quadratic constraint '%s' rotated SOC head variable (index %d) must have a "
+                      "Quadratic constraint '%s': rotated second-order cone head variable (index "
+                      "%d) must have a "
                       "non-negative lower bound for the constraint to be convex",
                       qc.constraint_row_name.c_str(),
                       static_cast<int>(b));
@@ -411,7 +421,8 @@ void convert_quadratic_constraints_to_second_order_cones(
       cuopt_expects(
         static_cast<i_t>(tail_vars.size()) == q_nnz - 1,
         error_type_t::ValidationError,
-        "Quadratic constraint '%s' SOC Q: expected %d diagonal +s entries (tails), found %zu",
+        "Quadratic constraint '%s': second-order cone expected %d diagonal +s entries (tails) in "
+        "Q, found %zu",
         qc.constraint_row_name.c_str(),
         static_cast<int>(q_nnz - 1),
         tail_vars.size());
@@ -671,18 +682,18 @@ void convert_quadratic_constraints_to_second_order_cones(
       cuopt_expects(user_problem.var_types[rc.head0] ==
                       cuopt::mathematical_optimization::simplex::variable_type_t::CONTINUOUS,
                     error_type_t::ValidationError,
-                    "Rotated SOC head variables must be continuous");
+                    "Rotated second-order cone head variables must be continuous");
       if (!rc.head1_is_constant_half) {
         cuopt_expects(user_problem.var_types[rc.head1] ==
                         cuopt::mathematical_optimization::simplex::variable_type_t::CONTINUOUS,
                       error_type_t::ValidationError,
-                      "Rotated SOC head variables must be continuous");
+                      "Rotated second-order cone head variables must be continuous");
       }
       for (const i_t t : rc.tails) {
         cuopt_expects(user_problem.var_types[t] ==
                         cuopt::mathematical_optimization::simplex::variable_type_t::CONTINUOUS,
                       error_type_t::ValidationError,
-                      "Rotated SOC tail variables must be continuous");
+                      "Rotated second-order cone tail variables must be continuous");
       }
     }
 
@@ -795,16 +806,16 @@ void convert_quadratic_constraints_to_second_order_cones(
 
     cuopt_expects(ri == rotated_cones.size(),
                   error_type_t::RuntimeError,
-                  "Internal error: rotated SOC cone metadata mismatch");
+                  "Internal error: rotated second-order cone metadata mismatch");
     cuopt_expects(slack_base == n_prob,
                   error_type_t::RuntimeError,
                   "Internal error: slack variable count mismatch");
     cuopt_expects(row_idx == m_old + n_slack_total,
                   error_type_t::RuntimeError,
-                  "Internal error: rotated SOC equality row count mismatch");
+                  "Internal error: rotated second-order cone equality row count mismatch");
     cuopt_expects(csr_A.m == m_old + n_slack_total,
                   error_type_t::RuntimeError,
-                  "Internal error: CSR row count after rotated SOC lift");
+                  "Internal error: CSR row count after rotated second-order cone lift");
   }
 
   // If a variable appears in multiple cones, create per-cone aliases and add linking rows
@@ -818,7 +829,7 @@ void convert_quadratic_constraints_to_second_order_cones(
       for (i_t& var : cone) {
         cuopt_expects(var >= 0 && var < n_prob,
                       error_type_t::ValidationError,
-                      "SOC variable index %d is outside [0, %d)",
+                      "second-order cone variable index %d is outside [0, %d)",
                       static_cast<int>(var),
                       static_cast<int>(n_prob));
         if (first_owner[var] == -1) {
@@ -906,7 +917,7 @@ void convert_quadratic_constraints_to_second_order_cones(
         i_t& var = cone[idx];
         cuopt_expects(var >= 0 && var < n_prob,
                       error_type_t::ValidationError,
-                      "SOC variable index %d is outside [0, %d)",
+                      "second-order cone variable index %d is outside [0, %d)",
                       static_cast<int>(var),
                       static_cast<int>(n_prob));
         if (user_problem.lower[var] == neg_inf && user_problem.upper[var] == pos_inf) { continue; }
@@ -979,7 +990,7 @@ void convert_quadratic_constraints_to_second_order_cones(
     for (const i_t var : cone) {
       cuopt_expects(var >= 0 && var < n_prob,
                     error_type_t::ValidationError,
-                    "SOC variable index %d is outside [0, %d) after cone aliasing",
+                    "second-order cone variable index %d is outside [0, %d) after cone aliasing",
                     static_cast<int>(var),
                     static_cast<int>(n_prob));
       is_cone_var[var] = 1;
@@ -1003,7 +1014,7 @@ void convert_quadratic_constraints_to_second_order_cones(
   }
   cuopt_expects(static_cast<i_t>(new_to_old.size()) == n_prob,
                 error_type_t::RuntimeError,
-                "Internal error while building SOC variable permutation");
+                "Internal error while building second-order cone variable permutation");
 
   for (i_t row = 0; row < csr_A.m; ++row) {
     for (i_t p = csr_A.row_start[row]; p < csr_A.row_start[row + 1]; ++p) {
@@ -1046,7 +1057,8 @@ void convert_quadratic_constraints_to_second_order_cones(
                   "Quadratic objective indices and values length mismatch");
     cuopt_expects(user_problem.Q_offsets.size() == static_cast<size_t>(n_model) + 1,
                   error_type_t::ValidationError,
-                  "Quadratic objective CSR offsets length must be n+1 when SOC QCMATRIX "
+                  "Quadratic objective CSR offsets length must be n+1 when second-order cone "
+                  "QCMATRIX "
                   "conversion permutes variables");
     cuopt_expects(user_problem.Q_offsets[0] == 0,
                   error_type_t::ValidationError,
