@@ -22,7 +22,7 @@ class waypoint_matrix_waypoints_sequence_test_t
     public ::testing::TestWithParam<
       waypoint_matrix_params_t<waypoint_sequence_params_t<i_t, f_t>, i_t, f_t>> {
  public:
-  waypoint_matrix_waypoints_sequence_test_t() {}
+  waypoint_matrix_waypoints_sequence_test_t() = default;
 
   void SetUp() override
   {
@@ -44,7 +44,7 @@ class waypoint_matrix_waypoints_sequence_test_t
     this->expected_sequence_offsets = param.sequence_offsets;
   }
 
-  void TearDown() override {}
+  void TearDown() override { /* no-op */ }
 
   void test_compute_waypoint_sequence()
   {
@@ -111,7 +111,7 @@ class waypoint_matrix_shortest_path_cost_t
     public ::testing::TestWithParam<
       waypoint_matrix_params_t<shortest_path_cost_params_t<f_t>, i_t, f_t>> {
  public:
-  waypoint_matrix_shortest_path_cost_t() {}
+  waypoint_matrix_shortest_path_cost_t() = default;
 
   void SetUp() override
   {
@@ -131,7 +131,7 @@ class waypoint_matrix_shortest_path_cost_t
                                                         this->weights.data());
   }
 
-  void TearDown() override {}
+  void TearDown() override { /* no-op */ }
 
   void test_compute_shortest_path_costs()
   {
@@ -173,7 +173,7 @@ class waypoint_matrix_cost_matrix_test_t
   : public base_test_t<i_t, f_t>,
     public ::testing::TestWithParam<waypoint_matrix_params_t<cost_matrix_params_t<f_t>, i_t, f_t>> {
  public:
-  waypoint_matrix_cost_matrix_test_t() {}
+  waypoint_matrix_cost_matrix_test_t() = default;
 
   void SetUp() override
   {
@@ -192,7 +192,7 @@ class waypoint_matrix_cost_matrix_test_t
                                                         this->weights.data());
   }
 
-  void TearDown() override {}
+  void TearDown() override { /* no-op */ }
 
   void test_compute_cost_matrix()
   {

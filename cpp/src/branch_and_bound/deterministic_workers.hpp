@@ -453,7 +453,7 @@ class deterministic_diving_worker_pool_t
   }
 
   void collect_worker_events(deterministic_diving_worker_t<i_t, f_t>&, bb_event_batch_t<i_t, f_t>&)
-  {
+  { /* no-op */
   }
 };
 
