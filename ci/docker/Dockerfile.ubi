@@ -63,6 +63,36 @@ RUN \
 
 FROM install-env AS cuopt-final
 
+# All dnf usage is complete. Now:
+# 1. Wire python/python3 to python3.14 (safe — dnf no longer runs after this).
+# 2. Remove the entire package-manager stack (dnf, rpm, curl) since the running
+#    container never needs them. rpm -e --nodeps removes all in one shot.
+RUN alternatives --install /usr/bin/python  python  /usr/bin/python3.14 100 \
+    && alternatives --install /usr/bin/python3 python3 /usr/bin/python3.14 100 \
+    && rpm -e --nodeps \
+        curl \
+        libcurl-minimal \
+        dnf \
+        dnf-data \
+        python3-dnf \
+        python3-dnf-plugins-core \
+        python3-hawkey \
+        python3-libcomps \
+        python3-rpm \
+        python3 \
+        python3-libs \
+        libdnf \
+        libdnf-plugin-subscription-manager \
+        librepo \
+        libmodulemd \
+        libsolv \
+        rpm-build-libs \
+        rpm-sign-libs \
+        rpm-sequoia \
+        rpm \
+        rpm-libs \
+    && rm -rf /var/lib/rpm /var/lib/dnf /var/cache/dnf /etc/dnf
+
 # On UBI10: libcuopt, cuopt, rapids_logger install to lib64; cuopt_server to lib.
 ENV PATH="/usr/local/cuda/bin:/usr/bin:/usr/local/bin:/usr/local/nvidia/bin/:/usr/local/lib64/python3.14/site-packages/libcuopt/bin:${PATH}"
 ENV LD_LIBRARY_PATH="/usr/lib64:/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/lib/wsl/lib:/usr/local/lib64/python3.14/site-packages/libcuopt/lib64/:/usr/local/lib64/python3.14/site-packages/rapids_logger/lib64:/usr/local/lib/python3.14/site-packages/nvidia/cu13/lib:${LD_LIBRARY_PATH}"
