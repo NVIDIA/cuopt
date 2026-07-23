@@ -175,9 +175,15 @@ def health():
 
 # Get name for file that stores the result of Solve
 def get_output_name(resultdir, CUOPT_DATA_FILE, CUOPT_RESULT_FILE):
-    # Prevent absolute paths, or navigating with ../..
-    if CUOPT_RESULT_FILE.startswith("/") or ".." in CUOPT_RESULT_FILE:
-        CUOPT_RESULT_FILE = ""
+    # Reject paths that escape resultdir using canonicalized containment check.
+    if CUOPT_RESULT_FILE and resultdir:
+        root = os.path.realpath(resultdir)
+        candidate = os.path.realpath(os.path.join(root, CUOPT_RESULT_FILE))
+        if (
+            os.path.isabs(CUOPT_RESULT_FILE)
+            or os.path.commonpath([root, candidate]) != root
+        ):
+            CUOPT_RESULT_FILE = ""
     if not resultdir:
         res = ""
     elif CUOPT_RESULT_FILE:
@@ -343,6 +349,18 @@ def getsolverlogs(
                 f"supported values are {[mime_json, mime_msgpack, mime_zlib]}",
             )
 
+        try:
+            uuid.UUID(id)
+        except ValueError:
+            raise HTTPException(
+                status_code=400, detail="Invalid request id format"
+            )
+
+        if frombyte < 0:
+            raise HTTPException(
+                status_code=422, detail="frombyte must be >= 0"
+            )
+
         # result_dir is guaranteed to exist on startup
         log_dir, _, _ = settings.get_result_dir()
         log_fname = "log_" + id
@@ -446,6 +464,13 @@ def deletesolverlogs(
                 status_code=415,
                 detail=f"Unsupported Accept value {accept}, "
                 f"supported values are {[mime_json, mime_msgpack, mime_zlib]}",
+            )
+
+        try:
+            uuid.UUID(id)
+        except ValueError:
+            raise HTTPException(
+                status_code=400, detail="Invalid request id format"
             )
 
         # Delete the log for the request if the request is not done
