@@ -22,7 +22,6 @@
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/solve.hpp>
 
-#include <cuopt/mathematical_optimization/utilities/internals.hpp>
 #include <linear_algebra/sparse_matrix.hpp>
 #include <math_optimization/tic_toc.hpp>
 #include <math_optimization/types.hpp>
@@ -2359,6 +2358,26 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     }
   }
 
+  // Verify A*x = b
+  dense_vector_t<i_t, f_t> init_primal_residual(lp.num_rows);
+  init_primal_residual = lp.rhs;
+  data.cusparse_view_.spmv(1.0, data.x, -1.0, init_primal_residual);
+  data.handle_ptr->get_stream().synchronize();
+#ifdef PRINT_INFO
+  settings.log.printf("||b - A * x||: %.16e\n", vector_norm2<i_t, f_t>(init_primal_residual));
+#endif
+
+  if (data.n_upper_bounds > 0) {
+    dense_vector_t<i_t, f_t> init_bound_residual(data.n_upper_bounds);
+    for (i_t k = 0; k < data.n_upper_bounds; k++) {
+      i_t j                  = data.upper_bounds[k];
+      init_bound_residual[k] = lp.upper[j] - data.w[k] - data.x[j];
+    }
+#ifdef PRINT_INFO
+    settings.log.printf("|| u - w - x||: %e\n", vector_norm2<i_t, f_t>(init_bound_residual));
+#endif
+  }
+
   float64_t epsilon_adjust = 10.0;
   // Push entries into interior of nonnegative orthant and SOC.
   const bool has_soc   = data.has_cones();
@@ -2467,6 +2486,22 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
     data.v.ensure_positive(epsilon_adjust);
   }
 
+  // Verify A'*y + z - E*v  - Q*x = c
+  dense_vector_t<i_t, f_t> init_dual_residual(lp.num_cols);
+  data.z.pairwise_subtract(data.c, init_dual_residual);
+  if (data.Q.n > 0) { matrix_vector_multiply(data.Q, -1.0, data.x, 1.0, init_dual_residual); }
+  data.cusparse_view_.transpose_spmv(1.0, data.y, 1.0, init_dual_residual);
+  if (data.n_upper_bounds > 0) {
+    for (i_t k = 0; k < data.n_upper_bounds; k++) {
+      i_t j = data.upper_bounds[k];
+      init_dual_residual[j] -= data.v[k];
+    }
+  }
+#ifdef PRINT_INFO
+  settings.log.printf("||A^T y + z - E*v - Q*x - c ||: %e\n",
+                      vector_norm2<i_t, f_t>(init_dual_residual));
+#endif
+
   // Make sure (w, x, v, z) > 0. Skip free variables being handled directly.
   data.w.ensure_positive(epsilon_adjust);
   std::vector<i_t> nonnegative_variables(data.x.size(), 1);
@@ -2485,43 +2520,6 @@ int barrier_solver_t<i_t, f_t>::initial_point(iteration_data_t<i_t, f_t>& data)
   }
 #ifdef PRINT_INFO
   settings.log.printf("min v %e min z %e\n", data.v.minimum(), data.z.minimum());
-#endif
-
-  // Residual checks below reflect the final initial point, after positivity shifts.
-  // Verify A*x = b
-  dense_vector_t<i_t, f_t> init_primal_residual(lp.num_rows);
-  init_primal_residual = lp.rhs;
-  data.cusparse_view_.spmv(1.0, data.x, -1.0, init_primal_residual);
-  data.handle_ptr->get_stream().synchronize();
-#ifdef PRINT_INFO
-  settings.log.printf("||b - A * x||: %.16e\n", vector_norm2<i_t, f_t>(init_primal_residual));
-#endif
-
-  if (data.n_upper_bounds > 0) {
-    dense_vector_t<i_t, f_t> init_bound_residual(data.n_upper_bounds);
-    for (i_t k = 0; k < data.n_upper_bounds; k++) {
-      i_t j                  = data.upper_bounds[k];
-      init_bound_residual[k] = lp.upper[j] - data.w[k] - data.x[j];
-    }
-#ifdef PRINT_INFO
-    settings.log.printf("|| u - w - x||: %e\n", vector_norm2<i_t, f_t>(init_bound_residual));
-#endif
-  }
-
-  // Verify A'*y + z - E*v  - Q*x = c
-  dense_vector_t<i_t, f_t> init_dual_residual(lp.num_cols);
-  data.z.pairwise_subtract(data.c, init_dual_residual);
-  if (data.Q.n > 0) { matrix_vector_multiply(data.Q, -1.0, data.x, 1.0, init_dual_residual); }
-  data.cusparse_view_.transpose_spmv(1.0, data.y, 1.0, init_dual_residual);
-  if (data.n_upper_bounds > 0) {
-    for (i_t k = 0; k < data.n_upper_bounds; k++) {
-      i_t j = data.upper_bounds[k];
-      init_dual_residual[j] -= data.v[k];
-    }
-  }
-#ifdef PRINT_INFO
-  settings.log.printf("||A^T y + z - E*v - Q*x - c ||: %e\n",
-                      vector_norm2<i_t, f_t>(init_dual_residual));
 #endif
 
   return 0;
