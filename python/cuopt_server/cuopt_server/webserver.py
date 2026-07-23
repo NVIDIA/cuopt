@@ -1343,6 +1343,8 @@ def cuopt(request: Request, data_bytes: bytes = Depends(get_body)):
 
         # Canonicalize NVCF_LARGE_OUTPUT_DIR before use as a write directory.
         # Headers are untrusted; resolve symlinks and require absolute paths.
+        # If CUOPT_NVCF_OUTPUT_ROOT is set, further require containment within
+        # that deployment-configured root.
         large_output_dir = ""
         if NVCF_LARGE_OUTPUT_DIR:
             if not os.path.isabs(NVCF_LARGE_OUTPUT_DIR):
@@ -1351,18 +1353,21 @@ def cuopt(request: Request, data_bytes: bytes = Depends(get_body)):
                     detail="nvcf-large-output-dir must be an absolute path",
                 )
             large_output_dir = os.path.realpath(NVCF_LARGE_OUTPUT_DIR)
+            nvcf_output_root = os.environ.get("CUOPT_NVCF_OUTPUT_ROOT", "")
+            if nvcf_output_root:
+                trusted_root = os.path.realpath(nvcf_output_root)
+                if (
+                    os.path.commonpath([trusted_root, large_output_dir])
+                    != trusted_root
+                ):
+                    raise HTTPException(
+                        status_code=400,
+                        detail="nvcf-large-output-dir must be within the configured output root",
+                    )
 
-        # Create a NVCFJobResult to hold the solution
-        if os.environ.get("CUOPT_SERVER_TEST_LARGE_RESULT", False):
-            maxresult = 0
-        else:
-            try:
-                maxresult = int(NVCF_MAX_RESPONSE_SIZE_BYTES) / 1000
-            except Exception:
-                _, maxresult, _ = settings.get_result_dir()
-        r = NVCFJobResult(large_output_dir, maxresult, accept)
-        id = r.register_result()
-
+        # Validate NVCF asset path before registering the result so that
+        # validation failures do not leave a registered-but-unreachable result.
+        file_path = None
         if NVCF_FUNCTION_ASSET_IDS:
             asset_id = NVCF_FUNCTION_ASSET_IDS.split(",")[0]
             if not NVCF_ASSET_DIR:
@@ -1381,6 +1386,19 @@ def cuopt(request: Request, data_bytes: bytes = Depends(get_body)):
                     detail="Asset path must stay within the asset directory",
                 )
             file_path = candidate
+
+        # Create a NVCFJobResult to hold the solution
+        if os.environ.get("CUOPT_SERVER_TEST_LARGE_RESULT", False):
+            maxresult = 0
+        else:
+            try:
+                maxresult = int(NVCF_MAX_RESPONSE_SIZE_BYTES) / 1000
+            except Exception:
+                _, maxresult, _ = settings.get_result_dir()
+        r = NVCFJobResult(large_output_dir, maxresult, accept)
+        id = r.register_result()
+
+        if file_path is not None:
             job = SolverBinaryJobPath(
                 id,
                 warnings,
