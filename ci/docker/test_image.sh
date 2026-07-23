@@ -11,7 +11,7 @@ if [ -f /etc/redhat-release ]; then
     dnf clean all
     # pip-installed CUDA wheels land in a non-standard prefix on UBI/RHEL.
     # su - resets the environment, so carry the path forward explicitly.
-    EXTRA_LD_PATH="/usr/local/lib/python3.14/site-packages/nvidia/cu13/lib"
+    EXTRA_LD_PATH=$(find /usr/local/lib/python*/site-packages/nvidia -maxdepth 2 -name 'lib' -type d 2>/dev/null | tr '\n' ':')
 else
     apt-get update
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends file bzip2 gcc wget
