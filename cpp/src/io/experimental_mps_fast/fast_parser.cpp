@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // reserved. SPDX-License-Identifier: Apache-2.0
 
 #include "fast_parser.hpp"
@@ -221,13 +221,16 @@ class scoped_timer_t {
       ~scoped_timer_t()
   {
 #ifdef MPS_FAST_TIMERS
-    auto end          = std::chrono::high_resolution_clock::now();
-    double elapsed_ms = std::chrono::duration<double, std::milli>(end - start_).count();
-    nvtx_.end();
-    if (accumulator_) { *accumulator_ += elapsed_ms; }
-    auto [rss_kb, hwm_kb] = current_process_rss_kb();
-    std::lock_guard<std::mutex> lock(get_timer_mutex());
-    get_timer_buffer().push_back({name_, elapsed_ms, rss_kb, hwm_kb});
+    try {
+      auto end          = std::chrono::high_resolution_clock::now();
+      double elapsed_ms = std::chrono::duration<double, std::milli>(end - start_).count();
+      nvtx_.end();
+      if (accumulator_) { *accumulator_ += elapsed_ms; }
+      auto [rss_kb, hwm_kb] = current_process_rss_kb();
+      std::lock_guard<std::mutex> lock(get_timer_mutex());
+      get_timer_buffer().push_back({name_, elapsed_ms, rss_kb, hwm_kb});
+    } catch (...) {
+    }
 #endif
   }
 
@@ -1199,7 +1202,7 @@ static const char* find_line_start(const char* section_start, const char* p)
 {
   while (p > section_start && p[-1] != '\n')
     --p;
-  return p;
+  return p;  // NOSONAR: pointer stays within [section_start, original_p]; guard prevents underflow
 }
 
 static std::vector<bounds_chunk_boundary_t> compute_bounds_chunk_boundaries(

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // reserved. SPDX-License-Identifier: Apache-2.0
 
 #include "file_reader.hpp"
@@ -452,9 +452,11 @@ struct lz4_pipeline_t {
     : input(input_),
       window_count(cuda::ceil_div(input.compressed_size_, window_bytes)),
       windows(window_count),
-      window_state_(std::make_unique<window_state_t[]>(window_count)),
+      window_state_(std::make_unique<window_state_t[]>(
+        window_count)),  // NOSONAR: window_count declared before window_state_ (line 869 vs 891)
       io_threads(std::min(lz4_input_max_io_threads, window_count)),
-      window_done(window_count, 0)
+      window_done(window_count,
+                  0)  // NOSONAR: window_count declared before window_done (line 869 vs 880)
   {
     for (std::size_t i = 0; i < window_count; ++i) {
       std::size_t offset     = i * window_bytes;

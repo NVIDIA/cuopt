@@ -10,6 +10,7 @@
 #include <cuopt/mathematical_optimization/cuopt_c.h>
 
 #include <cuda_runtime.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -262,7 +263,7 @@ static cuopt_int_t test_mip_callbacks_internal(int include_set_callback)
     goto DONE;
   }
 
-  if (context.last_solution_bound != context.last_solution_bound) {
+  if (isnan(context.last_solution_bound)) {
     printf("Error reading solution bound in callback\n");
     status = CUOPT_INVALID_ARGUMENT;
     goto DONE;
