@@ -247,6 +247,7 @@ inline ResultQueueEntry* result_queue = nullptr;
 inline SharedMemoryControl* shm_ctrl  = nullptr;
 
 inline std::vector<pid_t> worker_pids;
+inline std::mutex worker_pids_mutex;
 
 inline ServerConfig config;
 

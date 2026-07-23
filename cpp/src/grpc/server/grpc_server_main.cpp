@@ -194,8 +194,9 @@ int main(int argc, char** argv)
     sigemptyset(&shutdown_sigset);
     sigaddset(&shutdown_sigset, SIGINT);
     sigaddset(&shutdown_sigset, SIGTERM);
-    if (pthread_sigmask(SIG_BLOCK, &shutdown_sigset, nullptr) != 0) {
-      SERVER_LOG_ERROR("[Server] Failed to block shutdown signals: %s", strerror(errno));
+    int mask_rc = pthread_sigmask(SIG_BLOCK, &shutdown_sigset, nullptr);
+    if (mask_rc != 0) {
+      SERVER_LOG_ERROR("[Server] Failed to block shutdown signals: %s", strerror(mask_rc));
       return 1;
     }
 
@@ -275,7 +276,17 @@ int main(int argc, char** argv)
     log_worker_gpu_layout();
     spawn_workers();
 
-    cuopt_expects(!worker_pids.empty(), error_type_t::RuntimeError, "No workers started");
+    {
+      std::lock_guard<std::mutex> lock(worker_pids_mutex);
+      bool any_worker = false;
+      for (pid_t pid : worker_pids) {
+        if (pid > 0) {
+          any_worker = true;
+          break;
+        }
+      }
+      cuopt_expects(any_worker, error_type_t::RuntimeError, "No workers started");
+    }
 
   } catch (const cuopt::logic_error& e) {
     SERVER_LOG_ERROR("[Server] %s", format_cuopt_error(e));

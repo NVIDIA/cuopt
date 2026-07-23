@@ -201,15 +201,19 @@ pid_t spawn_worker(int worker_id, bool is_replacement)
 
 void spawn_workers()
 {
+  std::lock_guard<std::mutex> lock(worker_pids_mutex);
+  // Index i is worker_id: keep failed startups as 0 so monitor/respawn and
+  // pipe tables stay aligned even when some initial forks fail.
+  worker_pids.assign(static_cast<size_t>(config.num_workers), 0);
   for (int i = 0; i < config.num_workers; ++i) {
     pid_t pid = spawn_worker(i, false);
-    if (pid < 0) { continue; }
-    worker_pids.push_back(pid);
+    if (pid > 0) { worker_pids[static_cast<size_t>(i)] = pid; }
   }
 }
 
 void kill_all_workers()
 {
+  std::lock_guard<std::mutex> lock(worker_pids_mutex);
   for (pid_t pid : worker_pids) {
     if (pid > 0) { kill(pid, SIGKILL); }
   }
@@ -276,31 +280,40 @@ void wait_for_workers()
   auto deadline                = std::chrono::steady_clock::now() + kShutdownWait;
   while (std::chrono::steady_clock::now() < deadline) {
     bool any_alive = false;
-    for (pid_t& pid : worker_pids) {
-      if (pid <= 0) continue;
-      int status   = 0;
-      pid_t reaped = waitpid(pid, &status, WNOHANG);
-      if (reaped == pid || (reaped < 0 && errno == ECHILD)) {
-        pid = 0;
-      } else if (reaped < 0 && errno == EINTR) {
-        any_alive = true;
-      } else {
-        any_alive = true;
+    {
+      std::lock_guard<std::mutex> lock(worker_pids_mutex);
+      for (pid_t& pid : worker_pids) {
+        if (pid <= 0) continue;
+        int status   = 0;
+        pid_t reaped = waitpid(pid, &status, WNOHANG);
+        if (reaped == pid || (reaped < 0 && errno == ECHILD)) {
+          pid = 0;
+        } else if (reaped < 0 && errno == EINTR) {
+          any_alive = true;
+        } else {
+          any_alive = true;
+        }
+      }
+      if (!any_alive) {
+        worker_pids.clear();
+        return;
       }
     }
-    if (!any_alive) break;
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
   }
 
-  for (pid_t pid : worker_pids) {
-    if (pid > 0) {
-      kill(pid, SIGKILL);
-      SERVER_LOG_WARN(
-        "[Server] Worker pid %d did not exit within shutdown grace period; abandoning",
-        static_cast<int>(pid));
+  {
+    std::lock_guard<std::mutex> lock(worker_pids_mutex);
+    for (pid_t pid : worker_pids) {
+      if (pid > 0) {
+        kill(pid, SIGKILL);
+        SERVER_LOG_WARN(
+          "[Server] Worker pid %d did not exit within shutdown grace period; abandoning",
+          static_cast<int>(pid));
+      }
     }
+    worker_pids.clear();
   }
-  worker_pids.clear();
 }
 
 pid_t spawn_single_worker(int worker_id) { return spawn_worker(worker_id, true); }
