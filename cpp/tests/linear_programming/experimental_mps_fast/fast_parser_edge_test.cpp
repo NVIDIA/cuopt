@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
 #include "fast_parser.hpp"
@@ -853,6 +853,7 @@ TEST(FastMpsParserEdgeTest, QcMatrixRowsMatchReferenceBitwise)
                          "QCMATRIX   QC1\n"
                          " X1 X1 1.25\n"
                          " X1 X2 -2.5\n"
+                         " X2 X1 -2.5\n"
                          "QCMATRIX   QC2\n"
                          " X2 X2 3.75\n"
                          "ENDATA\n");
