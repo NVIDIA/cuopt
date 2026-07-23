@@ -73,13 +73,29 @@ i_t scaling(const lp_problem_t<i_t, f_t>& unscaled,
     }
     f_t col_norm_ratio = (min_col_norm > 0) ? max_col_norm / min_col_norm : 1.0;
 
-    if (row_norm_ratio < 100.0 && col_norm_ratio < 100.0) {
-      settings.log.printf(
-        "Skipping Ruiz equilibration (row norm ratio %.1f, column norm ratio %.1f < 100)\n",
-        row_norm_ratio,
-        col_norm_ratio);
+    // qcqp_ruiz_equilibration: -1 automatic (imbalance heuristic), 0 force off, 1 force on.
+    const i_t ruiz_mode  = settings.qcqp_ruiz_equilibration;
+    const bool skip_ruiz = (ruiz_mode == 0) ||
+                           (ruiz_mode < 0 && row_norm_ratio < 100.0 && col_norm_ratio < 100.0);
+
+    if (skip_ruiz) {
+      if (ruiz_mode == 0) {
+        settings.log.printf("Skipping Ruiz equilibration (qcqp_hyper_ruiz_equilibration = 0)\n");
+      } else {
+        settings.log.printf(
+          "Skipping Ruiz equilibration (row norm ratio %.1f, column norm ratio %.1f < 100)\n",
+          row_norm_ratio,
+          col_norm_ratio);
+      }
       column_scaling.assign(n, 1.0);
       return 0;
+    }
+    if (ruiz_mode > 0) {
+      settings.log.printf(
+        "Applying Ruiz equilibration (qcqp_hyper_ruiz_equilibration = 1, row norm ratio %.1f, "
+        "column norm ratio %.1f)\n",
+        row_norm_ratio,
+        col_norm_ratio);
     }
 
     // Apply Ruiz equilibration

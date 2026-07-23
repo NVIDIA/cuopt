@@ -241,4 +241,42 @@ TEST(barrier, qplib_8515_column_imbalance)
   EXPECT_NEAR(solution.get_objective_value(), 319.9999, 1e-2);
 }
 
+TEST(barrier, qplib_8515_ruiz_toggle)
+{
+  // Forcing Ruiz equilibration on (=1) conditions the barrier system so
+  // QPLIB_8515 converges to 319.9999; forcing it off (=0) leaves the column
+  // imbalance and drives the iteration count far higher. The blow-up proves
+  // scaling() consumes qcqp_hyper_ruiz_equilibration.
+  const raft::handle_t handle{};
+  init_handler(&handle);
+
+  auto path =
+    cuopt::test::get_rapids_dataset_root_dir() + "/quadratic_programming/qplib/QPLIB_8515.lp";
+
+  auto solve_with = [&](int mode) {
+    auto mps_data                    = io::read_lp<int, double>(path);
+    auto settings                    = pdlp_solver_settings_t<int, double>{};
+    settings.method                  = method_t::Barrier;
+    settings.qcqp_ruiz_equilibration = mode;
+    return solve_lp(&handle, mps_data, settings);
+  };
+
+  auto on  = solve_with(1);  // force equilibration on
+  auto off = solve_with(0);  // force equilibration off
+
+  // number_of_steps_taken is the barrier iteration count (solve.cu sets it to
+  // solution.iterations); optimization_problem_solution_t exposes it through
+  // get_additional_termination_information() rather than get_num_iterations().
+  const int on_iters  = on.get_additional_termination_information().number_of_steps_taken;
+  const int off_iters = off.get_additional_termination_information().number_of_steps_taken;
+
+  EXPECT_EQ(on.get_termination_status(), pdlp_termination_status_t::Optimal);
+  EXPECT_NEAR(on.get_objective_value(), 319.9999, 1e-2);
+
+  // Without equilibration the barrier takes substantially more iterations.
+  // The 2x margin is a starting point; confirm the observed counts in Step 6
+  // and widen the margin (or switch to an absolute floor) if headroom is thin.
+  EXPECT_GT(off_iters, 2 * on_iters);
+}
+
 }  // namespace cuopt::mathematical_optimization::simplex::test
