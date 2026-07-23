@@ -22,6 +22,8 @@
 #include <argparse/argparse.hpp>
 #include <cuopt/version_config.hpp>
 
+#include <pthread.h>
+
 // Defined in grpc_service_impl.cpp
 std::unique_ptr<grpc::Service> create_cuopt_grpc_service();
 
@@ -184,8 +186,18 @@ int main(int argc, char** argv)
     SERVER_LOG_INFO("Port: %d", config.port);
     SERVER_LOG_INFO("Workers: %d", config.num_workers);
 
-    signal(SIGINT, signal_handler);
-    signal(SIGTERM, signal_handler);
+    // Block shutdown signals in this thread before spawning workers / gRPC /
+    // background threads so they inherit the mask. A dedicated sigwait thread
+    // (started later) is then the only place SIGINT/SIGTERM are consumed.
+    // Async signal() handlers are unreliable once libraries mask signals.
+    sigset_t shutdown_sigset;
+    sigemptyset(&shutdown_sigset);
+    sigaddset(&shutdown_sigset, SIGINT);
+    sigaddset(&shutdown_sigset, SIGTERM);
+    if (pthread_sigmask(SIG_BLOCK, &shutdown_sigset, nullptr) != 0) {
+      SERVER_LOG_ERROR("[Server] Failed to block shutdown signals: %s", strerror(errno));
+      return 1;
+    }
 
     ensure_log_dir_exists();
 
@@ -329,20 +341,41 @@ int main(int argc, char** argv)
                   server_max_message_bytes() / kMiB);
   SERVER_LOG_INFO("[gRPC Server] Press Ctrl+C to shutdown");
 
-  // On signal: cancel active jobs and SIGKILL workers before gRPC Shutdown so
-  // WaitForCompletion / StreamLogs RPCs unblock and we never hang on mid-solve
-  // workers. Use a short deadline in case an RPC is stuck for another reason.
-  std::thread shutdown_thread([&server]() {
-    while (keep_running.load()) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  // Dedicated signal thread: sigwait is reliable in multithreaded processes
+  // where gRPC/CUDA may mask signals on their threads. On SIGINT/SIGTERM we
+  // cancel jobs, kill workers, close pipes, and shut down gRPC. A watchdog
+  // forces process exit if cleanup hangs (e.g. GPU driver D-state).
+  sigset_t shutdown_sigset;
+  sigemptyset(&shutdown_sigset);
+  sigaddset(&shutdown_sigset, SIGINT);
+  sigaddset(&shutdown_sigset, SIGTERM);
+
+  std::thread shutdown_thread([&server, shutdown_sigset]() mutable {
+    int sig = 0;
+    int rc  = sigwait(&shutdown_sigset, &sig);
+    if (rc != 0) {
+      SERVER_LOG_ERROR("[Server] sigwait failed: %s", strerror(rc));
+      sig = SIGTERM;
     }
-    SERVER_LOG_INFO("[Server] Shutdown signal received; cancelling jobs and killing workers");
+
+    SERVER_LOG_INFO("[Server] Shutdown signal %d received; cancelling jobs and killing workers",
+                    sig);
+    keep_running = false;
     if (shm_ctrl) { shm_ctrl->shutdown_requested = true; }
+
+    // If joins / waitpid / gRPC Shutdown wedge, still die promptly so Ctrl-C
+    // and the integration test cannot hang indefinitely.
+    std::thread([]() {
+      std::this_thread::sleep_for(std::chrono::seconds(3));
+      SERVER_LOG_ERROR("[Server] Shutdown watchdog expired; forcing exit");
+      _exit(0);
+    }).detach();
+
     cancel_all_active_jobs_for_shutdown();
     kill_all_workers();
     close_all_server_worker_pipes();
     if (server) {
-      auto deadline = std::chrono::system_clock::now() + std::chrono::seconds(2);
+      auto deadline = std::chrono::system_clock::now() + std::chrono::seconds(1);
       server->Shutdown(deadline);
     }
   });

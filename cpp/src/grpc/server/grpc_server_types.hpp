@@ -330,13 +330,8 @@ inline std::string read_file_to_string(const std::string& path)
 // Signal handling
 // =============================================================================
 
-inline void signal_handler(int signal)
-{
-  if (signal == SIGINT || signal == SIGTERM) {
-    keep_running = false;
-    if (shm_ctrl) { shm_ctrl->shutdown_requested = true; }
-  }
-}
+// SIGINT/SIGTERM are handled via sigwait on a dedicated thread (see main).
+// Using signal() handlers is unreliable once gRPC/CUDA threads mask signals.
 
 // =============================================================================
 // Forward declarations

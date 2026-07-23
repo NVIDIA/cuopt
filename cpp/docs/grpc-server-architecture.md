@@ -291,13 +291,15 @@ If a worker process crashes:
 
 ### Graceful Shutdown
 
-On SIGINT/SIGTERM:
+On SIGINT/SIGTERM (delivered to a dedicated `sigwait` thread — async `signal()`
+handlers are unreliable once gRPC/CUDA threads mask signals):
 1. Set `keep_running = false` and `shm_ctrl->shutdown_requested = true`
 2. Mark all queued/running jobs `CANCELLED` and wake any `WaitForCompletion` waiters
 3. `SIGKILL` all worker processes (mid-solve workers do not poll the shutdown flag)
 4. Close server-side worker pipes so background threads blocked on pipe I/O unblock
 5. Shut down the gRPC server with a short deadline so lingering RPCs cannot block exit
 6. Join background threads, wait briefly for workers (`waitpid` with a grace period), and clean up shared memory
+7. A 3s watchdog calls `_exit(0)` if the clean path wedges (e.g. GPU driver D-state)
 
 Workers ignore SIGINT/SIGTERM so only the parent process owns shutdown; the parent always force-kills workers rather than waiting for the current solve to finish. Mid-CUDA workers can sit in uninterruptible D-state after `SIGKILL`, so `waitpid` is bounded — stragglers are abandoned for init/the test harness to reap.
 
