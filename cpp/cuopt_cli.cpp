@@ -461,18 +461,19 @@ int main(int argc, char* argv[])
     return -1;
   }
 
-  // --method 1 --num-gpus N (N>1) selects distributed PDLP. Default / concurrent
-  // rejects num_gpus > 2.
+  // --method 1 --num-gpus N (N>1 or -1 for all visible GPUs) selects distributed PDLP.
+  // Default / concurrent requires 1–2 GPUs.
   {
     auto& pdlp_settings = settings.get_pdlp_settings();
     const int num_gpus  = pdlp_settings.num_gpus;
-    if (pdlp_settings.method == cuopt::mathematical_optimization::method_t::PDLP && num_gpus > 1) {
+    if (pdlp_settings.method == cuopt::mathematical_optimization::method_t::PDLP &&
+        (num_gpus == -1 || num_gpus > 1)) {
       pdlp_settings.use_distributed_pdlp = true;
-    } else if (!pdlp_settings.use_distributed_pdlp && num_gpus > 2) {
+    } else if (!pdlp_settings.use_distributed_pdlp && (num_gpus < 1 || num_gpus > 2)) {
       auto log = dummy_logger(settings);
       CUOPT_LOG_ERROR(
-        "num_gpus=%d is only supported with --method 1 (distributed PDLP). "
-        "Concurrent / default mode supports at most 2 GPUs.",
+        "num_gpus=%d is only supported with --method 1 (distributed PDLP, where -1 selects "
+        "all visible GPUs). Concurrent / default mode requires 1 or 2 GPUs.",
         num_gpus);
       return -1;
     }
@@ -485,6 +486,10 @@ int main(int argc, char* argv[])
   if (memory_backend == cuopt::mathematical_optimization::memory_backend_t::GPU) {
     int device_count   = raft::device_setter::get_device_count();
     int requested_gpus = settings.get_parameter<int>(CUOPT_NUM_GPUS);
+    if (requested_gpus == -1) {
+      requested_gpus                        = device_count;
+      settings.get_pdlp_settings().num_gpus = requested_gpus;
+    }
     if (requested_gpus > device_count) {
       CUOPT_LOG_ERROR("num_gpus=%d exceeds the number of visible CUDA devices (%d).",
                       requested_gpus,

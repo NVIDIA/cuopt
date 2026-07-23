@@ -2361,8 +2361,8 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     return solve_lp_distributed_from_mps(
       handle_ptr, mps_data_model, settings, use_pdlp_solver_mode);
   }
-  // method=PDLP with num_gpus>1 is the public way to request distributed PDLP.
-  if (settings.method == method_t::PDLP && settings.num_gpus > 1) {
+  // method=PDLP with num_gpus>1 (or -1 for all visible GPUs) requests distributed PDLP.
+  if (settings.method == method_t::PDLP && (settings.num_gpus == -1 || settings.num_gpus > 1)) {
     pdlp_solver_settings_t<i_t, f_t> distributed_settings = settings;
     distributed_settings.use_distributed_pdlp             = true;
     return solve_lp_distributed_from_mps(
@@ -2402,6 +2402,7 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
   }
 
   const int visible_device_count = raft::device_setter::get_device_count();
+  if (settings_resolved.num_gpus == -1) { settings_resolved.num_gpus = visible_device_count; }
   cuopt_expects(settings_resolved.num_gpus >= 1,
                 error_type_t::ValidationError,
                 "Distributed PDLP requires num_gpus >= 1.");
