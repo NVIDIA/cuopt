@@ -1115,17 +1115,17 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
     work_units += double(red.interior.size() + red.boundary.size() + red.witness.size());
     reconstruction_t<i_t, f_t> rec;
     rec.kind = reconstruction_kind_t::BlockBve;
-    rec.interior.reserve(red.interior.size());
+    rec.bve.interior.reserve(red.interior.size());
     for (i_t c : red.interior) {
       cuopt_assert(c >= 0 && c < (i_t)h_vmap.size(), "interior col out of variable_mapping range");
-      rec.interior.push_back(h_vmap[c]);
+      rec.bve.interior.push_back(h_vmap[c]);
     }
-    rec.boundary.reserve(red.boundary.size());
+    rec.bve.boundary.reserve(red.boundary.size());
     for (i_t c : red.boundary) {
       cuopt_assert(c >= 0 && c < (i_t)h_vmap.size(), "boundary col out of variable_mapping range");
-      rec.boundary.push_back(h_vmap[c]);
+      rec.bve.boundary.push_back(h_vmap[c]);
     }
-    rec.witness = red.witness;
+    rec.bve.witness = red.witness;
     recs.push_back(std::move(rec));
   }
   t_install = wall.elapsed_time() - t_install_begin;
