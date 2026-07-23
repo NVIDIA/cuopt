@@ -25,6 +25,7 @@ jobs:
       - conda-python-build
       - conda-python-tests
       - docs-build
+      - docs-preview
       - multi-gpu-cpp-tests
       - wheel-build-libcuopt
       - wheel-build-cuopt
@@ -71,7 +72,9 @@ jobs:
           - '**'
           - '!.ai/**'
           - '!.clang-format'
+          - '!.claude-plugin/**'
           - '!.coderabbit.yaml'
+          - '!.cursor-plugin/**'
           - '!.gitattributes'
           - '!.github/.ai/**'
           - '!.github/.coderabbit_review_guide.md'
@@ -104,6 +107,7 @@ jobs:
           - '!LICENSE'
           - '!README.md'
           - '!SECURITY.md'
+          - '!agents/**'
           - '!ci/build_wheel*.sh'
           - '!ci/check_style.sh'
           - '!ci/docker/**'
@@ -116,9 +120,17 @@ jobs:
           - '!ci/test_self_hosted_service.sh'
           - '!ci/test_wheel*.sh'
           - '!ci/thirdparty-testing/**'
+          - '!ci/utils/sync_skills_version.sh'
+          - '!ci/utils/validate_skills.sh'
+          - '!conda/**'
           - '!container-builder/**'
+          - '!datasets/**'
+          - '!gemini-extension.json'
           - '!helmchart/**'
+          - '!img/**'
           - '!ngc/**'
+          - '!notebooks/**'
+          - '!skills/**'
           - '!sonar-project.properties'
           - '!sonarqube/**'
           - '!ucf/**'
@@ -176,7 +188,7 @@ jobs:
           - '!ci/utils/sync_skills_version.sh'
           - '!ci/utils/validate_skills.sh'
           - '!container-builder/**'
-          - '!docs/**'
+          - '!fern/**'
           - '!gemini-extension.json'
           - '!helmchart/**'
           - '!img/**'
@@ -244,7 +256,7 @@ jobs:
           - '!ci/utils/sync_skills_version.sh'
           - '!ci/utils/validate_skills.sh'
           - '!container-builder/**'
-          - '!docs/**'
+          - '!fern/**'
           - '!gemini-extension.json'
           - '!helmchart/**'
           - '!img/**'
@@ -430,12 +442,41 @@ jobs:
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).build_docs
     with:
       build_type: pull-request
-      node_type: "gpu-l4-latest-1"
+      node_type: "cpu4"
       arch: "amd64"
-      file_to_upload: "docs/cuopt/build/html/"
-      artifact-name: "cuopt_docs"
       container_image: "rapidsai/ci-conda:26.08-latest"
       script: "ci/build_docs.sh"
+  docs-preview:
+    needs: [docs-build, changed-files]
+    continue-on-error: true
+    permissions:
+      contents: read
+      pull-requests: write
+    if: fromJSON(needs.changed-files.outputs.changed_file_groups).build_docs
+    runs-on: ubuntu-latest
+    env:
+      FERN_TOKEN: ${{ secrets.FERN_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install Fern CLI and publish preview
+        run: |
+          FERN_VERSION=$(jq -r .version fern/fern.config.json)
+          npm install -g "fern-api@${FERN_VERSION}"
+          fern_exit=0
+          OUTPUT=$(fern generate --docs --preview --id "$GITHUB_HEAD_REF" 2>&1) || fern_exit=$?
+          echo "$OUTPUT"
+          URL=$(echo "$OUTPUT" | grep -oP 'Published docs to \K[^ ]+') || true
+          if [[ -n "$URL" ]]; then
+            PR_NUMBER="${GITHUB_REF_NAME##pull-request/}"
+            BODY=":herb: **Preview your docs:** ${URL}"
+            gh pr comment "${PR_NUMBER}" --body "${BODY}" --edit-last 2>/dev/null || \
+            gh pr comment "${PR_NUMBER}" --body "${BODY}"
+          fi
+          exit $fern_exit
   wheel-build-libcuopt:
     needs: [compute-matrix-filters, changed-files]
     if: fromJSON(needs.changed-files.outputs.changed_file_groups).test_python_wheels

@@ -1,0 +1,80 @@
+---
+title: "Configuration Guide"
+---
+
+This guide covers configuration options for the CuOpt NIM Operator deployment.
+
+## Image Configuration
+
+### CuOpt Image Versions
+
+Update the image tag in `cuopt-nimservice.yaml`:
+
+| CUDA Version | Image Tag     |
+| ------------ | ------------- |
+| CUDA 12.x    | `26.6.0-cu12` |
+| CUDA 13.x    | `26.6.0-cu13` |
+
+## Resource Configuration
+
+### GPU Resources
+
+Configure GPU allocation:
+
+### Memory Resources
+
+For workloads requiring specific memory allocation:
+
+## Environment Variables
+
+CuOpt supports several environment variables for configuration:
+
+## Storage Configuration
+
+The deployment optionally uses persistent storage so that datasets can be passed through the filesystem rather than over http. If data is sent over http (the default), this storage is not needed.
+
+For custom storage class:
+
+## Networking Configuration
+
+### Service Configuration
+
+Default ClusterIP service:
+
+For NodePort access:
+
+For LoadBalancer (cloud environments): .. note:: Currently the cuopt service does not support scaling; there can only be 1 instance of the pod per service. Therefore a LoadBalancer service is unnecessary.
+
+### Ingress Configuration
+
+To expose CuOpt externally via ingress:
+
+With TLS:
+
+## Scaling Configuration
+
+Currently the cuOpt service does not support scaling. Only a single instance of the pod per service is supported.
+
+## Health Probes
+
+### Liveness Probe
+
+Determines if the container is running:
+
+### Readiness Probe
+
+Determines if the container is ready to accept traffic:
+
+### Startup Probe
+
+For slower starting containers:
+
+## Monitoring Configuration
+
+Enable Prometheus metrics and ServiceMonitor:
+
+## Full Configuration Example
+
+Here's a complete production-ready configuration:
+
+[cuopt-nimservice-full.yaml](guide/cuopt-nimservice-full.yaml)

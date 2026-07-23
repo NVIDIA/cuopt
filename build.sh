@@ -14,7 +14,7 @@ ARGS=$*
 REPODIR=$(cd "$(dirname "$0")"; pwd)
 LIBCUOPT_BUILD_DIR=${LIBCUOPT_BUILD_DIR:=${REPODIR}/cpp/build}
 
-VALIDARGS="clean codegen libcuopt cuopt_grpc_server cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -fsanitize -tsan -msan -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-grpc-build --skip-fatbin-write --host-lineinfo [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] -n --allgpuarch --ci-only-arch --show_depr_warn -h --help"
+VALIDARGS="clean codegen libcuopt cuopt_grpc_server cuopt cuopt_server cuopt_sh_client docs deb -a -b -g -fsanitize -tsan -msan -v -l= --verbose-pdlp --build-lp-only  --no-fetch-rapids --skip-c-python-adapters --skip-tests-build --skip-routing-build --skip-grpc-build --skip-fatbin-write --host-lineinfo [--cmake-args=\\\"<args>\\\"] [--cache-tool=<tool>] -n --allgpuarch --ci-only-arch --show_depr_warn --publish-docs --preview --check -h --help"
 HELP="$0 [<target> ...] [<flag> ...]
  where <target> is:
    clean            - remove all existing build artifacts and configuration (start over)
@@ -24,7 +24,10 @@ HELP="$0 [<target> ...] [<flag> ...]
    cuopt            - build the cuopt Python package
    cuopt_server     - build the cuopt_server Python package
    cuopt_sh_client  - build cuopt self host client
-   docs             - build the docs
+   docs             - build the Fern docs (generate MDX + validate); starts local
+                      preview server at http://localhost:3000 when done.
+                      Pass --publish-docs to publish to production, or
+                      --preview for a CI PR preview build
    deb              - build deb package (requires libcuopt to be built first)
  and <flag> is:
    -v               - verbose build mode
@@ -63,8 +66,7 @@ PY_LIBCUOPT_BUILD_DIR=${REPODIR}/python/libcuopt/build
 CUOPT_BUILD_DIR=${REPODIR}/python/cuopt/build
 CUOPT_SERVER_BUILD_DIR=${REPODIR}/python/cuopt_server/build
 CUOPT_SH_CLIENT_BUILD_DIR=${REPODIR}/python/cuopt_self_hosted/build
-DOCS_BUILD_DIR=${REPODIR}/docs/cuopt/build
-BUILD_DIRS="${LIBCUOPT_BUILD_DIR} ${CUOPT_BUILD_DIR} ${CUOPT_SERVER_BUILD_DIR} ${CUOPT_SERVICE_CLIENT_BUILD_DIR} ${CUOPT_SH_CLIENT_BUILD_DIR} ${PY_LIBCUOPT_BUILD_DIR} ${DOCS_BUILD_DIR}"
+BUILD_DIRS="${LIBCUOPT_BUILD_DIR} ${CUOPT_BUILD_DIR} ${CUOPT_SERVER_BUILD_DIR} ${CUOPT_SERVICE_CLIENT_BUILD_DIR} ${CUOPT_SH_CLIENT_BUILD_DIR} ${PY_LIBCUOPT_BUILD_DIR}"
 
 # Set defaults for vars modified by flags to this script
 VERBOSE_FLAG=""
@@ -432,12 +434,11 @@ if buildAll || hasArg cuopt_sh_client; then
     python "${PYTHON_ARGS_FOR_INSTALL[@]}" .
 fi
 
-# Build the docs (opt-in; pass 'docs' explicitly to build)
+# Build the Fern docs (opt-in; pass 'docs' explicitly to build)
 if hasArg docs; then
-    cd "${REPODIR}"/cpp/doxygen
-    doxygen Doxyfile
-
-    cd "${REPODIR}"/docs/cuopt
-    make clean
-    make html linkcheck
+    DOCS_FLAG=""
+    hasArg --publish-docs && DOCS_FLAG="--publish-docs"
+    hasArg --preview && DOCS_FLAG="--preview"
+    hasArg --check && DOCS_FLAG="--check"
+    bash "${REPODIR}/fern/build_docs.sh" ${DOCS_FLAG}
 fi

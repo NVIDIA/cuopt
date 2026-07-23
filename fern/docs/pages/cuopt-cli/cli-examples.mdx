@@ -1,0 +1,34 @@
+---
+title: "Examples"
+---
+
+## Input File Format
+
+`cuopt_cli` accepts both **MPS** and **LP** format input files. The format is dispatched automatically from the file extension (case-insensitive):
+
+  - `*.lp`, `*.lp.gz`, `*.lp.bz2` → parsed as LP format
+  - `*.mps`, `*.mps.gz`, `*.mps.bz2` (and the equivalent `*.qps` variants) → parsed as MPS / QPS
+
+Any other extension (including no extension) is rejected with an error listing the supported suffixes. See `read` in `cuopt/mathematical_optimization/io/parser.hpp` (and the Python `~cuopt.linear_programming.io.Read` wrapper).
+
+## Basic Usage
+
+To solve a simple LP problem using cuopt\_cli:
+
+[basic\_lp\_example.sh](examples/lp/examples/basic_lp_example.sh)
+
+This should give you the following output:
+
+## Mixed Integer Programming Example
+
+Here's an example of solving a Mixed Integer Programming (MIP) problem using the CLI:
+
+[basic\_milp\_example.sh](examples/milp/examples/basic_milp_example.sh)
+
+This should produce output similar to:
+
+## Using Solver Parameters
+
+You can customize the solver behavior using various command line parameters. Here's a comprehensive example showing different parameter options:
+
+[solver\_parameters\_example.sh](examples/lp/examples/solver_parameters_example.sh)

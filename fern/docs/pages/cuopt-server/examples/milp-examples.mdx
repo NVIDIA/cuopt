@@ -1,0 +1,53 @@
+---
+title: "MILP Python Examples"
+---
+
+The major difference between this example and the LP example is that some of the variables are integers, so `variable_types` need to be shared. The OpenAPI specification for the server is available in [open-api spec](../../open-api). The example data is structured as per the OpenAPI specification for the server, please refer [LPData data under "POST /cuopt/request"](../../open-api) under schema section. LP and MILP share same spec.
+
+## Generic Example
+
+[basic\_milp\_example.py](milp/examples/basic_milp_example.py)
+
+The response would be as follows:
+
+## Incumbent and Logging Callback
+
+The incumbent solution can be retrieved using a callback function as follows:
+
+<Note>
+Incumbent solution callback is only applicable to MILP. The callback bound can be `None` when the solver has found an incumbent but no finite global bound is available yet.
+</Note>
+
+[incumbent\_callback\_example.py](milp/examples/incumbent_callback_example.py)
+
+Log the callback response:
+
+Incumbent callback response:
+
+An example with DataModel is available in the [Examples Notebooks Repository](https://github.com/NVIDIA/cuopt-examples).
+
+The `data` argument to `get_LP_solve` may be a dictionary of the format shown in [MILP Open-API spec](../../open-api). More details on the response can be found under responses schema in ["/cuopt/request" and "/cuopt/solution" API spec](../../open-api). They can be of different format as well, please check the documentation.
+
+## Aborting a Running Job in Thin Client
+
+[abort\_job\_example.py](milp/examples/abort_job_example.py)
+
+# MILP CLI Examples
+
+## Generic MILP Example
+
+The only difference between this example and the prior LP example would be the variable types provided in data.
+
+Invoke the CLI:
+
+In case the user needs to update solver settings through CLI, the option `-ss` can be used as follows:
+
+<Note>
+Batch mode is not supported for MILP.
+</Note>
+
+## Aborting a Running Job In CLI
+
+UUID that is returned by the solver while the solver is trying to find a solution so users can come back and check the status or query for results.
+
+This aborts a job with UUID if it's in running state.

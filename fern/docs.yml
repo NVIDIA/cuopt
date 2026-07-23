@@ -1,0 +1,39 @@
+instances:
+  - url: nvidia-cuopt.docs.buildwithfern.com
+
+title: NVIDIA cuOpt
+
+global-theme: nvidia
+
+navbar-links:
+  - type: github
+    value: https://github.com/NVIDIA/cuopt
+
+css:
+  - docs/scripts/install-selector.css
+
+js:
+  - path: docs/scripts/cuopt-install-version.js
+  - path: docs/scripts/install-selector.js
+
+tabs:
+  docs:
+    display-name: Documentation
+    icon: book
+
+versions:
+  # rapids-pre-commit-hooks: disable-next-line
+  - display-name: "26.08 (Latest)"
+    path: docs-v26-08.yml
+  - display-name: "26.06"
+    path: docs-v26-06.yml
+  - display-name: "26.04"
+    path: docs-v26-04.yml
+  - display-name: "26.02"
+    path: docs-v26-02.yml
+  - display-name: "25.12"
+    path: docs-v25-12.yml
+  - display-name: "25.08"
+    path: docs-v25-08.yml
+  - display-name: "25.05"
+    path: docs-v25-05.yml

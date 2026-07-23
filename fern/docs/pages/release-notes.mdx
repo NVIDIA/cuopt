@@ -1,0 +1,399 @@
+---
+title: "Release Notes"
+---
+
+## Release Notes 26.06
+
+### New Features (26.06)
+- Add support for quadratic constraints (convex quadratic, second-order cone, and rotated second-order cone) in the barrier solver
+- Add support for semi-continuous variables in the MIP solver
+- Add support for reading LP (.lp) files; LP files are accepted wherever MPS files were previously, including the compressed variants (`.lp.gz`, `.lp.bz2`)
+- Branch and bound workers now maintain their own heaps and steal nodes from other workers; on average, this increases the number of nodes explored by 3x given a fixed time limit
+- Add support for detecting and exploiting symmetry in MIP
+- Add support for flow cover cuts in MIP
+- Add support for detecting and exploiting discrete objective steps in MIP
+- Add support for handling free variables directly in barrier's augmented system when a problem has a quadratic objective or constraints
+- New right-looking Markowitz LU factorization for dual simplex and crossover
+- Add setting for specifying a limit on the number of nodes explored in branch and bound
+- Add setting for disabling probing in cuOpt MIP presolve
+
+### Breaking Changes (26.06)
+- Routing API: drop `const` qualifier in `raft::handle_t` on the `data_model_view_t`
+- Move `libmps_parser` into `libcuopt` and the `mps_parser` Python module into `cuopt`; the standalone `libmps_parser` shared library and Python module are no longer shipped. Imports should move from `libmps_parser` to `cuopt`. Refer to https://github.com/NVIDIA/cuopt/pull/1193
+
+### Improvements (26.06)
+- Replace SpMV calls with SpMVOp calls in PDLP; 9% faster
+- Improve performance of QP solver on portfolio optimization problems
+- Improve performance of dual simplex (remove unnecessary BTran, swap coefficients for faster reduced cost calculation, trigger basis refactorization based on work limits); 16% faster on NETLIB LP, 6% faster on MIPLIB relaxations
+- Improve accuracy of dual simplex (refactor when optimal and primal residual is large with basis updates present)
+- Reduce concurrent overhead for LP solves
+- Reduce memory footprint of PDLP by around 50%
+- Unify threading model across LP (concurrent mode) and MIP to use OpenMP task model to allow stricter control of the number of threads
+- Unify Python `read` API on `Problem` for both MPS and LP file formats
+- Build and test with CUDA 13.2
+- Build against OpenSSL3 in container and wheel for gRPC
+- Substantially expand the in-repo skill set for AI coding agents (Copilot, Cline, Windsurf, Jules, Aider, Codex) covering developer onboarding, installation, numerical optimization, routing, and the server; add NVIDIA-signed skill cards, evaluation datasets, and a skill-evolution workflow under `skills/`
+
+### Bug Fixes (26.06)
+- Fix a bug in MIP where the probing cache did not correctly update the model after each batch
+- Fix a bug in MIP where loose tolerances in the objective function could lead to incorrect integrality detection
+- Fix a bug in MIP where branch and bound nodes could be lost when a plunge exits early due to LP solve limits
+- Fix a bug in MIP where the lower bound could be incorrect when using a single thread
+- Fix a bug in LP/QP where dual variables and reduced costs could be incorrect when applying implied bounds to free variables
+- Fix an issue in crossover where adding slack variables to a rank-deficient basis was accidentally O(rows^2)
+
+### Deprecated APIs (26.06)
+- Python API: `readMPS` is deprecated
+- C API: `cuOptCreateQuadraticProblem` and `cuOptCreateQuadraticRangedProblem` is deprecated
+- LP batch mode is deprecated
+
+### Documentation (26.06)
+- Refresh the contributor guide (`CONTRIBUTING.md`) with conda-environment recommendations and clarified test-suite scope
+- Update the MIP scaling guide
+- Migrate the support link to GitHub Discussions and tidy broken doc links
+
+### New Contributors (26.06)
+- @np96
+- @srib
+- @yuwenchen95
+- @Bubullzz
+- @aycsi
+
+## Release Notes 26.04
+
+### New Features (26.04)
+- Run no-relaxation heuristics before presolve
+- Add new MIP cuts: clique cuts and implied bounds cuts
+- Add support for FP32 and mixed precision in PDLP
+- Add option for using Batch PDLP in reliability branching
+- Add UnboundedOrInfeasible termination status
+- Expose settings for tuning heuristics
+- Add support for Python 3.14
+- Add support for writing presolved model to a file
+- gRPC based remote execution support on Python, C and CLI interface for LP/QP and MIP
+
+### Breaking Changes (26.04)
+- The solved_by_pdlp field in the Python LP solution object was changed to solved_by
+- Drop support for Python 3.10
+
+### Improvements (26.04)
+- Improve reliability branching by better ranking of unreliable variables
+- Generate more MIR and Knapsack cuts
+- Improve aggregation and complementation in MIR cuts
+- Use variable lower and variable upper bounds in MIR cuts
+- Improve numerics of mixed integer Gomory cuts
+- Lift knapsack cuts
+- Improve row and objective scaling for MIP
+- Use objective function integrality when pruning node
+- Reduce time for Markowitz factorization in dual simplex
+- Reduce time for dual push inside crossover
+- Reduce number of free variables in barrier
+- Add gap information to primal heuristics logs when root relaxation is still solving
+- Refactoring agentic skills to follow standard skill structure and add developer skills
+- Adding skill to evolve skills
+
+### Bug Fixes (26.04)
+- Fix a bug in LP/MIP where cuOpt reported incorrect termination status; we now correctly report UnboundedOrInfeasible
+- Fix a bug in MIP where Papilo's probing presolver crashed; fix will be pushed upstream
+- Fix a bug in MIP with a missing stream sync in the probing cache that was causing a crash
+- Fix a bug in MIP leading to incorrect dual bound when nodes remain in the heap
+- Fix a bug in MIP where nodes with objective less than the incumbent objective value were incorrectly fathomed
+- Fix a bug in MIP where variables could violate their bounds in Feasibility Jump on the CPU
+- Fix a bug in MIP where a race condition could occur when sharing solutions between branch and bound and heuristics
+- Fix a bug in MIP where the solver was not respecting the time limit
+- Fix a bug in MIP where the solver terminated at the end of the root relaxation solve
+- Fix a bug in QP where quadratic terms were not written out to MPS files
+- Fix a bug in MIP where cuOpt was taking a long time to terminate after optimal solution found
+- Fix a bug in LP/barrier on problems containing variables with infinite lower bounds
+- Fix a bug in MIP where batch PDLP for strong branching was running on the problem without cuts
+- Fix a bug in Python API when using x + x*x, +x, -x expressions
+- Update to the latest version of PSLP which includes bug fixes for incorrect infeasible classification
+
+### Documentation (26.04)
+- Update docs to clarify the usage of getIncumbentValues() in the Python API
+
+## Release Notes 26.02
+
+### New Features (26.02)
+
+- New parallel reliability branching inside MIP solver
+- Mixed Integer Gomory, Mixed Integer Rounding, Knapsack and Strong Chvatal Gomory cuts are now added at root node
+- Added an option to use batch PDLP when running strong branching at the root. Based on [Batched First-Order Methods for Parallel LP Solving in MIP](https://arxiv.org/abs/2601.21990) ([Nicolas Blin](https://github.com/Kh4ster), [Stefano Gualandi](https://github.com/stegua), [Christopher Maes](https://github.com/chris-maes), [Andrea Lodi](https://github.com/andrealodi), [Bartolomeo Stellato](https://github.com/bstellato))
+- Quadratic programming (QP) solver is now generally available (previously beta)
+- New infeasibility detection option for PDLP's default solver mode Stable3
+- Solutions callbacks added to C API. Users can now retrieve the dual bound and pass in user data
+- Multiple new diving techniques added for finding integer feasible solutions
+- The [PSLP presolver](https://github.com/dance858/PSLP) is enabled by default for LP problems. Use the presolve option to select Papilo or disable
+- Added a batch solve for routing to boost throughput for many similar instances
+- Added experimental support for determinism in the parallel branch-and-bound solver. GPU heuristics are not supported yet in this mode
+
+### Breaking Changes (26.02)
+
+- The signatures of the solution callbacks have changed for the Python API
+- To use PDLP warm start, presolve must now be explicitly disabled by setting `CUOPT_PRESOLVE=0`. Previously, presolve was disabled automatically
+
+### Improvements (26.02)
+
+- Improved primal/dual warm start for PDLP's default solver mode Stable3
+- Quadratic objectives can now be constructed via a matrix in Python API
+- QP barrier now updates and solves augmented system on the GPU
+- Improved performance for LP folding
+- Probing implications and better variable ordering to strengthen presolve and branching
+- Replace deprecated cuDF Column/Buffer APIs with pylibcudf and public cuDF interfaces
+- Modernize dependency pinnings; make CUDA runtime linkage static for portability
+- Build/tooling: add `--split-compile`, `--jobserver`, Clang host build, ThreadSanitizer, improved container scripts, and branch/commit metadata in images
+- Use explicit `cudaStream_t` with `cub::DeviceTransform` and non-blocking streams for GPU control
+- Enable barrier LP tests, add regression testing, and add SonarQube static analysis
+- Added parameter for specifying the random seed used by the solver
+
+### Bug Fixes (26.02)
+
+- Fixed an issue with incorrect signs of dual variables and reduced costs on maximization problems
+- Fix out-of-bounds in dense-column detection in barrier
+- Correct infeasible-list handling to avoid incorrect infeasibility reports in dual simplex
+- Fix race conditions found via Clang host build + ThreadSanitizer
+- Resolve CUDA–Numba version mismatches with cuDF
+- Fix device code to include required trailing return types
+- Fix issue in crossover after dualization in barrier
+- Repair container build and test failures
+- Miscellaneous additional fixes and stability improvements
+
+### Documentation (26.02)
+
+- Update README and top-level docs for current build and usage
+- Document new repository branching strategies and release-cycle details in README and CONTRIBUTING
+- Add best practices for batch solving
+
+## Release Notes 25.12
+
+### New Features (25.12)
+
+- New quadratic programming solver using the barrier method (currently in beta).
+- Support for quadratic objectives added to the C and Python modeling APIs.
+- LP concurrent mode now supports multiple GPUs. PDLP and barrier can now be run on separate GPUs.
+- MIP root relaxation solves now use concurrent mode: PDLP, barrier, and dual simplex.
+
+### Improvements (25.12)
+
+- RINS heuristic adds a new improvement strategy in the MIP solver.
+- Basis factorizations are now reused in the branch and bound tree.
+- Improvement in propagating bounds from parent to child nodes in the branch and bound tree.
+- GMRES with Cholesky/LDL preconditioning is now used for iterative refinement on QPs.
+- Improved numerical stability of dual simplex when the basis is ill-conditioned.
+- Improved robustness in barrier and PDLP: fixed cuSPARSE related leaks and added RAII-style wrappers for cuSPARSE structures.
+- Papilo-based presolve carries over implied integer information from reductions, improving consistency of integrality handling.
+- Build and CI workflows improved through assertion-default changes, better handling of git-hash rebuilds, and fixes to the nightly build matrix.
+- Reduced package sizes by adjusting build outputs and test-only library linkage, and the TSP dataset download logic disables unneeded downloads.
+
+### Bug Fixes (25.12)
+
+- A crash in the incumbent test is resolved.
+- Fixed memory leaks in Barrier and PDLP's cuSPARSE usage.
+- The explored nodes in the MIP log now correctly reflects the actual nodes examined.
+- A compilation issue in the solve_MIP benchmarking executable is fixed, restoring benchmark builds.
+- A logger bug when log_to_console is false is fixed.
+- Routing fixes improve TSP behavior when order locations are set.
+- Nightly container testing and CI handling fix issues in the nightly container test suite and build jobs.
+- A cuDF build_column deprecation issue fixed to keep compatibility with newer cuDF versions.
+
+### Documentation (25.12)
+
+- Missing parameters added to the documentation for LP and MILP.
+- Release notes added to the main repository for easy access.
+- Examples in the documentation improved.
+- The openapi spec for the service showed the 'status' value for LP/MILP results as an int but it is actually a string.
+
+## Release Notes 25.10
+
+### New Features (25.10)
+
+- New barrier method for solving LPs. Uses cuDSS for sparse Cholesky / LDT.
+- Concurrent mode for LPs now uses PDLP, dual simplex, and barrier
+- New PDLP solver mode Stable3.
+- MIP presolve using Papilo (enabled by default). LP presolve using Papilo (optional).
+- Parallel branch and bound on the CPU: multiple best-first search and diving threads
+
+### Breaking Changes (25.10)
+
+- New PDLP Solver mode Stable3 is the default
+
+### Improvements (25.10)
+
+- Add setting "CUOPT_BARRIER_DUAL_INITIAL_POINT" to change the dual initial point used by barrier
+- CPUFJ for local search + simple rounding
+- FP as a local search
+- Sub-MIP recombiner and B&B global variable changes
+- Implement GF(2) presolve reduction
+- Implement node presolve
+- CUDA 13/12.9 support
+- Build and test with CUDA 13.0.0
+- Add read/write MPS and relaxation to python API
+- Decompression for ``.mps.gz`` and ``.mps.bz2`` files
+- Enable parallelism for root node presolve
+- Enable singleton stuffing and use Papilo default params
+- Make infeasibility checks consistent between the main solver and presolver
+- Add maximization support for root node presolve
+- Performance improvement in dual simplex's right-looking LU factorization
+- Fix high GPU memory usage
+- Print cuOpt version / machine info before solving
+- ``cuopt-server``: update dependencies (drop httpx, add psutil)
+- Add nightly testing of cuOpt jump interface
+- Compression tests are not run when compression is disabled
+- Add sanitizer build option- Heuristic Improvements: balance between generation and improvement heuristics
+- Loosen presolve tolerance and update timers to report cumulative presolve/solve time
+- Warn in case a dependent library is not found in libcuopt load
+- Combined variable bounds
+- Add Commit Sha to container for reference
+- use GCC 14, consolidate dependency groups, update pre-commit hooks
+- Add support for nightly ``cuopt-examples`` notebook testing
+- Reduce hard-coded version usage in repo
+- Container to work on all different users including root
+- Changes to download LP and MILP datasets, and also disable cvxpy testing for 3.10
+- Faster engine compile time
+- Fix pre-commit for trailing whitespace and end of file
+- Merge update version and fix version format bugs
+- This library now supports the QPS format, which is an extension of the standard MPS format for representing quadratic programming problems.
+
+### Bug Fixes (25.10)
+
+- Fix variables out of bounds caused by CPUFJ LP scratch thread
+- Fix the maybe-uninitialized compilation error
+- Fix linking errors in the test suite when disabling C adaptor
+- Compute relative gap with respect to user objectives
+- Add http timeout values for general, send, and receive to client
+- Fix bug in ``fixed_problem_computation``
+- Remove ``limiting_resource_adaptor`` leftover
+- Add support for cuda13 container and fix cuda13 lib issues in wheel
+- Return Infeasible if the user problem contains crossing bounds
+- Fix out-of-bound access in ``clean_up_infeasibilities``
+- Empty columns with infinite bounds are not removed
+
+### Documentation (25.10)
+
+- Add tutorial video links to Decompression
+- Add warmstart, model update, update docs
+- add docs on CI workflow inputs
+- Add name to drop-down for video link
+- Add video link to the docs and to the Readme
+- Add documentation on nightly installation commands
+- Fix version in version tab, change log, and fix typos
+- Doc update for container version update, and add ``nvidia-cuda-runtime`` as a dependency
+
+## Release Notes 25.08
+
+### New Features (25.08)
+
+- Added Python API for LP and MILP ([#223](https://github.com/NVIDIA/cuopt/pull/223))
+
+### Breaking Changes (25.08)
+
+- Fixed versioning for nightly and release package ([#175](https://github.com/NVIDIA/cuopt/pull/175))
+
+### Improvements (25.08)
+
+- New heuristic improvements ([#178](https://github.com/NVIDIA/cuopt/pull/178))
+- Add helm chart for cuOpt service ([#224](https://github.com/NVIDIA/cuopt/pull/224))
+- Add nightly container support ([#180](https://github.com/NVIDIA/cuopt/pull/180))
+- Adding deb package support as a beta feature ([#190](https://github.com/NVIDIA/cuopt/pull/190))
+- Use cusparsespmv_preprocess() now that Raft implements it ([#120](https://github.com/NVIDIA/cuopt/pull/120))
+- Create a bash script to run MPS files in parallel ([#87](https://github.com/NVIDIA/cuopt/pull/87))
+- Several fixes needed to compile cuOpt with LLVM ([#121](https://github.com/NVIDIA/cuopt/pull/121))
+- Small fixes for corner cases ([#130](https://github.com/NVIDIA/cuopt/pull/130))
+- Small improvements on how paths are handled in tests ([#129](https://github.com/NVIDIA/cuopt/pull/129))
+- Update cxxopts to v3.3.1 ([#128](https://github.com/NVIDIA/cuopt/pull/128))
+- Bump actions/checkout in nightly.yaml to v4 ([#230](https://github.com/NVIDIA/cuopt/pull/230))
+- Remove CUDA 11 specific changes from repo ([#222](https://github.com/NVIDIA/cuopt/pull/222))
+- Heuristic improvements with solution hash, MAB and simplex root solution ([#216](https://github.com/NVIDIA/cuopt/pull/216))
+- Various typos in comments and strings, note on result dir ([#200](https://github.com/NVIDIA/cuopt/pull/200))
+- Split very large tests into smaller individual test cases ([#152](https://github.com/NVIDIA/cuopt/pull/152))
+- Fix compile error when using clang with C++20 ([#145](https://github.com/NVIDIA/cuopt/pull/145))
+- Relax pinnings on several dependencies, remove nvidia channel ([#125](https://github.com/NVIDIA/cuopt/pull/125))
+- Fix compile error when building with clang ([#119](https://github.com/NVIDIA/cuopt/pull/119))
+- cuOpt service add healthcheck for / ([#114](https://github.com/NVIDIA/cuopt/pull/114))
+- refactor(shellcheck): fix all remaining shellcheck errors/warnings ([#99](https://github.com/NVIDIA/cuopt/pull/99))
+- Add CTK 12.9 fatbin flags to maintain existing binary sizes ([#58](https://github.com/NVIDIA/cuopt/pull/58))
+
+### Bug Fixes (25.08)
+
+- Fixed a segfault on bnatt500 due to small mu leading to inf/nan ([#254](https://github.com/NVIDIA/cuopt/pull/254))
+- Fixed a bug in basis repair. Recover from numerical issues in primal update ([#249](https://github.com/NVIDIA/cuopt/pull/249))
+- Unset NDEBUG in cmake in assert mode ([#248](https://github.com/NVIDIA/cuopt/pull/248))
+- Manual cuda graph creation in load balanced bounds presolve ([#242](https://github.com/NVIDIA/cuopt/pull/242))
+- Fixed bug on initial solution size in the check and cuda set device order ([#226](https://github.com/NVIDIA/cuopt/pull/226))
+- Disable cuda graph in batched PDLP ([#225](https://github.com/NVIDIA/cuopt/pull/225))
+- Fix logging levels format with timestamps ([#201](https://github.com/NVIDIA/cuopt/pull/201))
+- Fix bug in scaling of dual slacks and sign of dual variables for >= constraints ([#191](https://github.com/NVIDIA/cuopt/pull/191))
+- Fix inversion crossover bug with PDP and prize collection ([#179](https://github.com/NVIDIA/cuopt/pull/179))
+- Fix a bug in extract_best_per_route kernel ([#156](https://github.com/NVIDIA/cuopt/pull/156))
+- Fix several bugs appeared in unit testing of JuMP interface ([#149](https://github.com/NVIDIA/cuopt/pull/149))
+- Fix incorrect reported solving time ([#131](https://github.com/NVIDIA/cuopt/pull/131))
+- Fix max offset ([#113](https://github.com/NVIDIA/cuopt/pull/113))
+- Fix batch graph capture issue caused by pinned memory allocator ([#110](https://github.com/NVIDIA/cuopt/pull/110))
+- Fix bug in optimization_problem_solution_t::copy_from ([#109](https://github.com/NVIDIA/cuopt/pull/109))
+- Fix issue when problem has an empty problem in PDLP ([#107](https://github.com/NVIDIA/cuopt/pull/107))
+- Fix crash on models with variables but no constraints ([#105](https://github.com/NVIDIA/cuopt/pull/105))
+- Fix inversion of constraint bounds in conditional bounds presolve ([#75](https://github.com/NVIDIA/cuopt/pull/75))
+- Fix data initialization in create depot node for max travel time feature ([#74](https://github.com/NVIDIA/cuopt/pull/74))
+
+### Documentation (25.08)
+
+- Added more pre-commit checks to ensure coding standards ([#213](https://github.com/NVIDIA/cuopt/pull/213))
+- Mention GAMS and GAMSPy in third-party modeling languages page in documentation ([#206](https://github.com/NVIDIA/cuopt/pull/206))
+- Enable doc build workflow and build script for PR and Nightly ([#203](https://github.com/NVIDIA/cuopt/pull/203))
+- Fix the link to Python docs in README ([#118](https://github.com/NVIDIA/cuopt/pull/118))
+- Add link checker for doc build and test ([#229](https://github.com/NVIDIA/cuopt/pull/229))
+
+## Release Notes 25.05
+
+### New Features (25.05)
+
+- Added concurrent mode that runs PDLP and Dual Simplex together
+- Added crossover from PDLP to Dual Simplex
+- Added a C API for LP and MILP
+- PDLP: Faster iterations and new more robust default PDLPSolverMode Stable2
+- Added support for writing out mps file containing user problem. Useful for debugging
+
+### Breaking Changes (25.05)
+
+- NoTermination is now a NumericalError
+- Split cuOpt as libcuopt and cuopt wheel
+
+### Improvements (25.05)
+
+- Hook up MILP Gap parameters and add info about number of nodes explored and simplex iterations
+- FJ bug fixes, tests and improvements
+- Allow no time limit in MILP
+- Refactor routing
+- Probing cache optimization
+- Diversity improvements for routing
+- Enable more compile warnings and faster compile by bypassing rapids fetch
+- Constraint prop based on load balanced bounds update
+- Logger file handling and bug fixes on MILP
+- Add shellcheck to pre-commit and fix warnings
+
+### Bug Fixes (25.05)
+
+- In the solution, ``termination_status`` should be cast to correct enum.
+- Fixed a bug using vehicle IDs in construct feasible solution algorithm.
+- FP recombiner probing bug fix.
+- Fix concurrent LP crashes.
+- Fix print relative dual residual.
+- Handle empty problems gracefully.
+- Improve breaks to allow dimensions at arbitrary places in the route.
+- Free var elimination with a substitute variable for each free variable.
+- Fixed race condition when resetting vehicle IDs in heterogenous mode.
+- cuOpt self-hosted client, some MILPs do not have all fields in ``lp_stats``.
+- Fixed RAPIDS logger usage.
+- Handle LP state more cleanly, per solution.
+- Fixed routing solver intermittent failures.
+- Gracefully exit when the problem is infeasible after presolve.
+- Fixed bug on dual resizing.
+- Fix occasional incorrect solution bound on maximization problems
+- Fix inversion of constraint bounds in conditional bounds presolve
+- Pdlp fix batch cuda graph
+- Fix obj constant on max. Fix undefined memory access at root
+- Allow long client version in service version check, this fixes the issue in case version is of the format 25.05.00.dev0
+
+### Documentation (25.05)
+
+- Restructure documentation to accommodate new APIs

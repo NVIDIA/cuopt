@@ -1,0 +1,107 @@
+---
+title: "LP Python Examples"
+---
+
+The following example showcases how to use the `CuOptServiceSelfHostClient` to solve a simple LP problem in normal mode and batch mode (where multiple problems are solved at once).
+
+<Note>
+LP batch mode is deprecated and will be removed in a future release. Prefer sequential `cuopt.linear_programming.Solve` calls. Server and CLI batch paths still use batch solve today; check response `warnings` or logs for the deprecation notice.
+</Note>
+
+The OpenAPI specification for the server is available in [open-api spec](../../open-api). The example data is structured as per the OpenAPI specification for the server, please refer [LPData under "POST /cuopt/request"](../../open-api) under schema section. LP and MILP share same spec.
+
+If you want to run server locally, please run the following command in a terminal or tmux session so you can test examples in another terminal.
+
+## Genric Example With Normal Mode and Batch Mode
+
+[basic\_lp\_example.py](lp/examples/basic_lp_example.py)
+
+The response would be as follows:
+
+Normal mode response:
+
+Batch mode response:
+
+<Note>
+Warm start is only applicable to LP and not for MILP.
+</Note>
+
+## Warm Start
+
+Previously run solutions can be saved and be used as warm start for new requests using previously run reqIds as follows:
+
+[warmstart\_example.py](lp/examples/warmstart_example.py)
+
+The response would be as follows:
+
+## Using MPS or LP file directly
+
+The self-hosted client accepts both MPS and LP format files — the client dispatches on the file extension (`.lp` ⇒ LP parser, otherwise MPS) and sends the parsed data model to the server. An example on using .mps files as input is shown below:
+
+[mps\_file\_example.py](lp/examples/mps_file_example.py)
+
+The response is:
+
+## Generate Datamodel using Problem File Parser
+
+Use a `~cuopt.linear_programming.data_model.DataModel` built with `~cuopt.linear_programming.io.Read` as input to `get_LP_solve`; the client dispatches on the file extension (`.mps` / `.qps` vs `.lp`, including `.gz` / `.bz2` compressed variants). For solver settings see [convex optimization parameters](../../convex-settings) and [MIP parameters](../../mip-settings).
+
+### MPS format
+
+[mps\_datamodel\_example.py](lp/examples/mps_datamodel_example.py)
+
+### LP format
+
+[lp\_datamodel\_example.py](lp/examples/lp_datamodel_example.py)
+
+### Expected output (either example, same problem instance)
+
+Example with DataModel is available in the [Examples Notebooks Repository](https://github.com/NVIDIA/cuopt-examples).
+
+The `data` argument to `get_LP_solve` may be a dictionary of the format shown in [LP Open-API spec](../../open-api). More details on the response can be found under the responses schema ["get /cuopt/request" and "get /cuopt/solution" API spec](../../open-api).
+
+## Aborting a Running Job in Thin Client
+
+Please refer to the [aborting-thin-client](#aborting-thin-client) in the MILP Example for more details.
+
+# LP CLI Examples
+
+## Generic Example
+
+The following examples showcase how to use the `cuopt_sh` CLI to solve a simple LP problem.
+
+Invoke the CLI.
+
+Response is as follows:
+
+## Warm Start in CLI
+
+To use a previous solution as the initial/warm start solution for a new request ID, you are required to save the previous solution, which can be accomplished use option `-k`. Use the previous reqId in the next request as follows:
+
+<Note>
+Warm start is only applicable to LP and not for MILP.
+</Note>
+
+In case the user needs to update solver settings through CLI, the option `-ss` can be used as follows:
+
+In the case of batch mode, you can send a bunch of `mps` files at once, and acquire results. The batch mode works only for `mps` in the case of CLI:
+
+<Note>
+LP batch mode is deprecated; see [Batch Mode](#batch-mode) in [Convex Features](../../convex-features).
+</Note>
+
+<Note>
+Batch mode is not available for MILP problems.
+</Note>
+
+A sample MPS file ([sample.mps](lp/examples/sample.mps)):
+
+Run the example:
+
+## Aborting a Running Job In CLI
+
+Please refer to the [aborting-cli](#aborting-cli) in the MILP Example for more details.
+
+<Note>
+Please use solver settings while using .mps files.
+</Note>

@@ -117,11 +117,9 @@ for DEP in "${DEPENDENCIES[@]}"; do
   for FILE in python/*/pyproject.toml; do
     sed_runner "/\"${DEP}==/ s/==.*\"/==${NEXT_SHORT_TAG_PEP440}.*,>=0.0.0a0\"/g" "${FILE}"
   done
-  for FILE in docs/cuopt/source/*/quick-start.rst README.md; do
-    sed_runner "/${DEP}\(-cu[[:digit:]]\{2\}\)\{0,1\}==/ s/==[0-9]\+\.[0-9]\+\.\*/==${NEXT_SHORT_TAG_PEP440}.\*/g" "${FILE}"
-    sed_runner "/${DEP}=/ s/=[0-9]\+\.[0-9]\+\(\.[0-9]\+\)\?[^ ]*/=${NEXT_SHORT_TAG}.*/g" "${FILE}"
-    sed_runner "/${DEP}:/ s/:[0-9]\{2\}\.[0-9]\{1,2\}\.[0-9]\+\(-cuda[0-9]\+\.[0-9]\+-\)\(py[0-9]\+\)/:${DOCKER_TAG}\1\2/g" "${FILE}"
-  done
+  sed_runner "/${DEP}\(-cu[[:digit:]]\{2\}\)\{0,1\}==/ s/==[0-9]\+\.[0-9]\+\.\*/==${NEXT_SHORT_TAG_PEP440}.\*/g" README.md
+  sed_runner "/${DEP}=/ s/=[0-9]\+\.[0-9]\+\(\.[0-9]\+\)\?[^ ]*/=${NEXT_SHORT_TAG}.*/g" README.md
+  sed_runner "/${DEP}:/ s/:[0-9]\{2\}\.[0-9]\{1,2\}\.[0-9]\+\(-cuda[0-9]\+\.[0-9]\+-\)\(py[0-9]\+\)/:${DOCKER_TAG}\1\2/g" README.md
 done
 
 # Update README.md version badge
@@ -135,6 +133,10 @@ sed_runner 's/\(tag: "\)[0-9][0-9]\.[0-9]\+\.[0-9]\+\(-cuda12\.9-py3\.12"\)/\1'$
 sed_runner 's/\(appVersion: \)[0-9][0-9]\.[0-9]\+\.[0-9]\+/\1'${DOCKER_TAG}'/g' helmchart/cuopt-server/Chart.yaml
 sed_runner 's/\(version: \)[0-9][0-9]\.[0-9]\+\.[0-9]\+/\1'${DOCKER_TAG}'/g' helmchart/cuopt-server/Chart.yaml
 
+# Update Fern docs version switcher and install widget
+python ci/utils/update_fern_versions.py
+python ci/utils/update_fern_install_version.py
+
 # CI files - context-aware branch references and version updates
 for FILE in .github/workflows/*.yaml; do
   sed_runner "/shared-workflows/ s|@.*|@${RAPIDS_BRANCH_NAME}|g" "${FILE}"
@@ -142,15 +144,3 @@ for FILE in .github/workflows/*.yaml; do
   # Scoped to rapidsai/ so unrelated images like python:3.14-slim aren't rewritten.
   sed_runner "/rapidsai\// s|:[0-9]*\\.[0-9]*-|:${NEXT_SHORT_TAG}-|g" "${FILE}"
 done
-
-# Documentation references - context-aware
-if [[ "${RUN_CONTEXT}" == "main" ]]; then
-  # In main context, keep external documentation on main (no changes needed)
-  :
-elif [[ "${RUN_CONTEXT}" == "release" ]]; then
-  # In release context, use release branch for external documentation links (word boundaries to avoid partial matches)
-  sed_runner "s|\\bmain\\b|release/${NEXT_SHORT_TAG}|g" docs/cuopt/source/faq.rst
-fi
-
-# Update docs version switcher to include the new version
-python ci/utils/update_doc_versions.py

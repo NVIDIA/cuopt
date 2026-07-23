@@ -250,6 +250,7 @@ For build/test pitfalls (Cython rebuild, OOM, CUDA driver mismatch, missing `nvc
 - **CI scripts**: [ci/README.md](../../ci/README.md)
 - **Release scripts**: [ci/release/README.md](../../ci/release/README.md)
 - **Docs build**: [docs/cuopt/README.md](../../docs/cuopt/README.md)
+- **Fern docs maintenance** (add symbols, examples, nav, pre-commit notes): [references/fern_docs.md](references/fern_docs.md)
 - **Python binding architecture**: [references/python_bindings.md](references/python_bindings.md)
 
 _Shell-execution, install, conda-env, and sudo policies are covered by [Refusal Rules — Read First](#refusal-rules--read-first) at the top of this skill._

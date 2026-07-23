@@ -26,6 +26,10 @@ For the latest version, ensure you are on the `main` branch.
 
 [cuOpt Documentation](https://docs.nvidia.com/cuopt/user-guide/latest/introduction.html)
 
+## Contributing to the Documentation
+
+See [`fern/README.md`](fern/README.md) for how to edit pages, add API symbols or examples, and run a local preview.
+
 ## Supported APIs
 
 cuOpt supports the following APIs:

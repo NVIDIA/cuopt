@@ -1,0 +1,161 @@
+---
+title: "Introduction"
+---
+
+**NVIDIA® cuOpt™** is a GPU-accelerated optimization library that solves [Linear Programming (LP)](https://en.wikipedia.org/wiki/Linear_programming), [Quadratic Programming (QP)](https://en.wikipedia.org/wiki/Quadratic_programming), and [Vehicle Routing Problems (VRP)](https://en.wikipedia.org/wiki/Vehicle_routing_problem), with support for [Quadratically Constrained Quadratic Programming (QCQP)](https://en.wikipedia.org/wiki/Quadratically_constrained_quadratic_program) (beta), [Second-Order Cone Programming (SOCP)](https://en.wikipedia.org/wiki/Second-order_cone_programming) (beta), and [Mixed Integer Linear Programming (MILP)](https://en.wikipedia.org/wiki/Linear_programming#Integer_unknowns) (beta). It enables solutions for large-scale problems with millions of variables and constraints, offering seamless deployment across hybrid and multi-cloud environments.
+
+Using accelerated computing, NVIDIA® cuOpt optimizes operations research and logistics by enabling better, faster decisions.
+
+As part of [NVIDIA AI Enterprise](https://www.nvidia.com/en-us/data-center/products/ai-enterprise/), NVIDIA cuOpt offers a secure, efficient way to rapidly generate world-class route optimization solutions. Using a single optimized container, you can deploy the AI microservice in under 5 minutes on accelerated NVIDIA GPU systems in the cloud, data center, workstations, or PCs. A license for NVIDIA AI Enterprise or membership in the NVIDIA Developer Program is required. For more information about NVAIE licensing, accessing NGC registry, and pulling container images, please refer to the [FAQ section](faq).
+
+<Note>
+NVAIE support is extended to only cuOpt Routing service API. LP and MILP are not supported as part of it, they are just add-ons.
+</Note>
+
+<Note>
+Check out this [FAQ](https://forums.developer.nvidia.com/t/nvidia-nim-faq/300317) for more information about the NVIDIA Developer Program.
+</Note>
+
+The core engine is built on C++ and all the APIs are built on top of it as wrappers. For example, cuOpt Python API uses Cython to wrap the C++ core engine and provide a Python interface. Similarly, other interfaces wrap different layers to communicate with the core engine.
+
+## Routing (TSP, VRP, and PDP)
+
+The **Vehicle Routing Problem (VRP)** and **Pickup and Delivery Problems (PDP)** are derived from the **Traveling Salesperson Problem (TSP)**, which is one of the most studied problems in operations research and, more generally, in computer science.
+
+TSP asks the following question:
+
+>   - Given a list of destinations and a matrix of distances between each pair of destinations, what is the shortest possible route that visits each destination exactly one time and returns to the original location?
+
+For example, the TSP has several applications in planning and logistics, where a good solution can save significant travel time and fuel costs in the transportation and delivery of goods. VRP and PDP are essentially extensions of TSP with additional complexity.
+
+The VRP generalizes the TSP to solve for the optimal set of routes for a fleet of vehicles in order to deliver to a given set of customers. The PDP adds the possibility of two different types of services, namely pickup or delivery, whereas in VRP all customers require the same service be performed at a customer location.
+
+### How cuOpt Solves the Routing Problem
+
+cuOpt first generates an initial population of solutions, then iteratively improves the population until the time limit is reached, and picks the best solution from the population.
+
+### The Necessity for Heuristics
+
+Given the time and computational resources required for brute-force enumeration, obtaining the exact optimal solution is not realistic. However, there are well-studied heuristics that yield near-optimal solutions for very large problems within a reasonable time, and NVIDIA cuOpt focuses on using these heuristics.
+
+## Linear Programming (LP)
+
+**Linear Programming** is a technique for optimizing a linear objective function over a feasible region defined by a set of linear inequality and equality constraints. For example, consider the following system constraints
+
+> 2x + 4y \>= 230
+>
+> 3x + 2y &lt;= 190
+>
+> x \>= 0
+>
+> y \>= 0,
+
+and suppose we want to maximize the objective function
+
+> f(x,y) = 5x + 3y.
+
+This is a linear program.
+
+### How cuOpt Solves the Linear Programming Problem
+
+cuOpt includes three LP solving methods:
+
+  - **PDLP**: Based on [PDLP](https://arxiv.org/abs/2106.04756), a First-Order Method (FOM) for solving large-scale LPs. This solver implements primal-dual hybrid gradient enhanced by heuristics. Sparse matrix-vector products are perfomed efficiently on NVIDIA GPUs.
+  - **Barrier (Interior-Point)**: A primal-dual interior-point method that uses GPU-accelerated sparse Cholesky and LDLT solves via cuDSS, and sparse matrix operations via cuSparse.
+  - **Dual Simplex**: A CPU-based dual simplex solver for small to medium-sized problems.
+
+All three algorithms can be run concurrently on both GPU and CPU, with the fastest solution returned automatically.
+
+## Mixed Integer Linear Programming (MILP) (Beta)
+
+A **Mixed Integer Program (MIP)** is an optimization problem where some variables are restricted to take on only integer values, while other variables can vary continuously. A **Mixed Integer Linear Program (MILP)** is a MIP with a linear objective and linear constraints.
+
+<Note>
+The cuOpt MIP solver is in **beta** and under active development. The solver currently excels at finding high-quality feasible solutions quickly with GPU-accelerated primal heuristics. Proving feasible solutions optimal remains under active development.
+</Note>
+
+For example, consider the following system of constraints:
+
+> 2x + 4y \>= 230
+>
+> 3x + 2y &lt;= 190
+>
+> x \>= 0 and x is integer
+>
+> y \>= 0 and y is continuous,
+
+and suppose we wish to maximize the objective function
+
+> f(x,y) = 5x + 3y.
+
+This is a mixed integer linear program.
+
+Although MILPs seems similar to a LPs, they require much more computation to solve.
+
+### How cuOpt Solves the Mixed-Integer Linear Programming Problem
+
+cuOpt combines GPU-accelerated primal heuristics for improving the primal bound with traditional CPU algorithms, including branch and bound, to improve the dual bound. Primal heuristics such as local search, feasibility pump, and feasibility jump run on the GPU. Integer feasible solutions are shared between these components.
+
+# Supported APIs
+
+cuOpt supports the following APIs:
+
+  -   - C API support
+
+          - [Linear Programming (LP) / Quadratic Programming (QP) - C](cuopt-c/quick-start)
+          - [Mixed Integer Linear Programming (MILP) - C](cuopt-c/quick-start)
+
+  -   - C++ API support
+
+          - cuOpt is written in C++ and includes a native C++ API. However, we do not provide documentation for the C++ API at this time. We anticipate that the C++ API will change significantly in the future. Use it at your own risk.
+
+  -   - Python support
+
+          - [Routing (TSP, VRP, and PDP) - Python](cuopt-python/quick-start)
+          - [Linear Programming (LP) / Quadratic Programming (QP) and Mixed Integer Linear Programming (MILP) - Python](cuopt-python/quick-start)
+
+  -   - gRPC remote execution
+
+          - [Linear Programming (LP) / Quadratic Programming (QP) and Mixed Integer Linear Programming (MILP) - gRPC remote](cuopt-grpc/quick-start)
+
+  -   - Server support
+
+          - [Linear Programming (LP) - Server](cuopt-server/quick-start)
+          - [Mixed Integer Linear Programming (MILP) - Server](cuopt-server/quick-start)
+          - [Routing (TSP, VRP, and PDP) - Server](cuopt-server/quick-start)
+
+  -   - Third-party modeling languages
+
+          - [AMPL](https://www.ampl.com/)
+          - [GAMS](https://www.gams.com/)
+          - [PuLP](https://pypi.org/project/PuLP/)
+          - [JuMP](https://github.com/jump-dev/cuOpt.jl)
+          - [Pyomo](https://www.pyomo.org/)
+          - [CVXPY](https://www.cvxpy.org/)
+
+# Installation Options
+
+NVIDIA cuOpt is available in several formats to suit different deployment needs:
+
+## Source Code
+
+For users who want to customize cuOpt or contribute to its development, the source code is available on [GitHub](https://github.com/NVIDIA/cuopt). Building from source allows maximum flexibility but requires setting up the build environment.
+
+## Pip Wheels
+
+For Python users with existing pip-based workflows, cuOpt can be installed directly via pip from the NVIDIA Python Package Index. This is the simplest installation method for most users.
+
+## Conda Packages
+
+Available from the NVIDIA channel, conda packages provide a convenient way to manage cuOpt and its dependencies in conda environments. This is ideal for users who prefer conda-based workflow management.
+
+## Containers
+
+NVIDIA provides ready-to-use containers with cuOpt pre-installed, available from:
+
+  - Docker Hub (`nvidia/cuopt`)
+  - NVIDIA NGC (for NVIDIA AI Enterprise subscribers)
+
+Containers offer a consistent, isolated environment and are particularly useful for cloud deployments or microservices architectures.
+
+For detailed installation instructions for each option, please refer to the respective quickstart guides in the documentation.

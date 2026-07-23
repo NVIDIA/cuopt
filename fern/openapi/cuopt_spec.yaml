@@ -1,0 +1,4273 @@
+openapi: 3.1.0
+info:
+  title: cuOpt Server
+  summary: OpenAPI Specification for cuOpt
+  version: '26.08'
+paths:
+  /v2/health/live:
+    get:
+      summary: Health
+      description: To check liveness of the server
+      operationId: health_v2_health_live_get
+      responses:
+        '200':
+          description: Successful health check
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponseModel'
+              examples:
+                Healthy response:
+                  value:
+                    status: RUNNING
+                    version: '26.08'
+        '500':
+          description: Unsuccessful health check
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+              examples:
+                Unhealthy response:
+                  value:
+                    error: '
+
+                      Status : Broken
+
+                      The server will be restarted and will be available in 15 mins
+                      !!!
+
+                      ERROR : Server is BROKEN'
+                    error_result: false
+  /v2/health/ready:
+    get:
+      summary: Health
+      description: To check readiness of the server
+      operationId: health_v2_health_ready_get
+      responses:
+        '200':
+          description: Successful health check
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponseModel'
+              examples:
+                Healthy response:
+                  value:
+                    status: RUNNING
+                    version: '26.08'
+        '500':
+          description: Unsuccessful health check
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+              examples:
+                Unhealthy response:
+                  value:
+                    error: '
+
+                      Status : Broken
+
+                      The server will be restarted and will be available in 15 mins
+                      !!!
+
+                      ERROR : Server is BROKEN'
+                    error_result: false
+  /cuopt/health:
+    get:
+      summary: Health
+      description: To ping if server is running
+      operationId: health_cuopt_health_get
+      responses:
+        '200':
+          description: Successful health check
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponseModel'
+              examples:
+                Healthy response:
+                  value:
+                    status: RUNNING
+                    version: '26.08'
+        '500':
+          description: Unsuccessful health check
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+              examples:
+                Unhealthy response:
+                  value:
+                    error: '
+
+                      Status : Broken
+
+                      The server will be restarted and will be available in 15 mins
+                      !!!
+
+                      ERROR : Server is BROKEN'
+                    error_result: false
+  /:
+    get:
+      summary: Health
+      description: To ping if server is running
+      operationId: health__get
+      responses:
+        '200':
+          description: Successful health check
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponseModel'
+              examples:
+                Healthy response:
+                  value:
+                    status: RUNNING
+                    version: '26.08'
+        '500':
+          description: Unsuccessful health check
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+              examples:
+                Unhealthy response:
+                  value:
+                    error: '
+
+                      Status : Broken
+
+                      The server will be restarted and will be available in 15 mins
+                      !!!
+
+                      ERROR : Server is BROKEN'
+                    error_result: false
+  /cuopt/log/{id}:
+    get:
+      summary: Query solver logs by id self-hosted
+      description: 'Note: This is for self-hosted. Query solver log. The ''id'' is
+        the uuid returned when the request was made.'
+      operationId: getsolverlogs_cuopt_log__id__get
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Id
+      - name: frombyte
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          description: Indicates the position to start log read
+          default: 0
+          title: Frombyte
+        description: Indicates the position to start log read
+      - name: accept
+        in: header
+        required: false
+        schema:
+          type: string
+          description: 'Supported result mime_types are ''application/json'', ''application/vnd.msgpack'',
+            ''application/zlib'', and standard mime_type wildcards. '
+          default: application/json
+          title: Accept
+        description: 'Supported result mime_types are ''application/json'', ''application/vnd.msgpack'',
+          ''application/zlib'', and standard mime_type wildcards. '
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogResponseModel'
+        '415':
+          description: Unsupported mime_type specified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+        '422':
+          description: Unprocessable Entity or Runtime Error or Out of memory error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+        '500':
+          description: Any uncaught cuOpt error or Server errors
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+    delete:
+      summary: Delete solver logs by id (self-hosted)
+      description: 'Note: This is for self-hosted. Delete accumulated logs for a particular
+        request.'
+      operationId: deletesolverlogs_cuopt_log__id__delete
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Id
+      - name: accept
+        in: header
+        required: false
+        schema:
+          type: string
+          description: Supported result mime_types are 'application/json', 'application/vnd.msgpack',
+            'application/zlib', and standard mime_type wildcards. This applies to
+            exception messages returned by this request.
+          default: application/json
+          title: Accept
+        description: Supported result mime_types are 'application/json', 'application/vnd.msgpack',
+          'application/zlib', and standard mime_type wildcards. This applies to exception
+          messages returned by this request.
+      responses:
+        '200':
+          description: Successful request response (no content)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyResponseModel'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+        '500':
+          description: Any uncaught cuOpt error or Server errors
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+  /cuopt/solution/{id}/incumbents:
+    get:
+      summary: Get incumbent solutions for MIP (self-hosted)
+      description: 'Note: for use with self-hosted cuOpt instances. Return incumbent
+        solutions from the MIP solver produced for this id since the last GET. Result
+        will be a list of the form [{''solution'': [1.0, 1.0], ''cost'': 2.0, ''bound'':
+        1.5}] where each item contains the fields ''solution'' (a list of floats),
+        ''cost'' (a float), and ''bound'' (a float or None when no finite bound is
+        available yet). An empty list indicates that there are no current incumbent
+        solutions at this time. A sentinel value of [{''solution'': [], ''cost'':
+        None, ''bound'': None}] indicates that no future incumbent values will be
+        produced. The ''id'' is the reqId value returned from a POST to /cuopt/request'
+      operationId: getincumbent_cuopt_solution__id__incumbents_get
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Id
+      - name: accept
+        in: header
+        required: false
+        schema:
+          type: string
+          description: Supported result mime_types are 'application/json', 'application/vnd.msgpack',
+            'application/zlib', and standard mime_type wildcards. If a wildcard is
+            used, the accept mime_type will be set to the content_type mime_type of
+            the original request.
+          default: application/json
+          title: Accept
+        description: Supported result mime_types are 'application/json', 'application/vnd.msgpack',
+          'application/zlib', and standard mime_type wildcards. If a wildcard is used,
+          the accept mime_type will be set to the content_type mime_type of the original
+          request.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/IncumbentSolution'
+                title: Response Getincumbent Cuopt Solution  Id  Incumbents Get
+              examples:
+                Empty response (no current solutions):
+                  value: []
+                Sentinel response (no future solutions).:
+                  value:
+                  - solution: []
+                    cost: null
+                    bound: null
+                Solution response:
+                  value:
+                  - solution:
+                    - 1.0
+                    - 2.0
+                    cost: 3.0
+                    bound: null
+                  - solution:
+                    - 4.0
+                    - 5.0
+                    cost: 6.0
+                    bound: null
+        '415':
+          description: Unsupported mime_type specified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+        '422':
+          description: Unprocessable Entity or Runtime Error or Out of memory error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+        '500':
+          description: Any uncaught cuOpt error or Server errors
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+  /cuopt/solution:
+    post:
+      summary: Upload a routing solution only(self-hosted)
+      description: 'Note: for use with self-hosted cuOpt instances. Accepts a cuOpt
+        solution and returns a reqId. This is useful for uploading a VRP solution
+        to use as an initial solution for another request.'
+      operationId: postsolution_cuopt_solution_post
+      parameters:
+      - name: accept
+        in: header
+        required: false
+        schema:
+          type: string
+          description: Supported result mime_types are 'application/json', 'application/vnd.msgpack',
+            'application/zlib', and standard mime_type wildcards. If a wildcard is
+            used, the accept mime_type will be set to the content_type mime_type
+          default: application/json
+          title: Accept
+        description: Supported result mime_types are 'application/json', 'application/vnd.msgpack',
+          'application/zlib', and standard mime_type wildcards. If a wildcard is used,
+          the accept mime_type will be set to the content_type mime_type
+      - name: content-type
+        in: header
+        required: false
+        schema:
+          type: string
+          description: Supported content mime_types are 'application/json', 'application/vnd.msgpack',
+            and 'application/zlib'
+          default: application/json
+          title: Content-Type
+        description: Supported content mime_types are 'application/json', 'application/vnd.msgpack',
+          and 'application/zlib'
+      - name: content-length
+        in: header
+        required: true
+        schema:
+          type: integer
+          title: Content-Length
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdModel'
+              examples:
+                Id response:
+                  value:
+                    reqId: e8421e9e-e42e-4511-8da2-314253667dcf
+        '400':
+          description: Value Error Or Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+        '415':
+          description: Unsupported mime_type specified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+        '422':
+          description: Unprocessable Entity or Runtime Error or Out of memory error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+        '500':
+          description: Any uncaught cuOpt error or Server errors
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                response:
+                  anyOf:
+                  - additionalProperties: false
+                    properties:
+                      solver_response:
+                        additionalProperties: false
+                        properties:
+                          status:
+                            default: 0
+                            description: "0 - Solution is available \n1 - Infeasible\
+                              \ solution is available \n"
+                            examples:
+                            - 0
+                            title: Status
+                            type: integer
+                          num_vehicles:
+                            default: -1
+                            description: Number of vehicle being used for the solution
+                            examples:
+                            - 2
+                            title: Num Vehicles
+                            type: integer
+                          solution_cost:
+                            default: -1.0
+                            description: Total cost of the solution
+                            examples:
+                            - 2
+                            title: Solution Cost
+                            type: number
+                          objective_values:
+                            additionalProperties:
+                              type: number
+                            default: {}
+                            description: Individual objective values
+                            examples:
+                            - objective_values:
+                                cost: 100.0
+                                prize: -1000.0
+                                travel_time: 245.0
+                            title: Objective Values
+                            type: object
+                          vehicle_data:
+                            additionalProperties:
+                              additionalProperties: false
+                              properties:
+                                task_id:
+                                  default: []
+                                  description: task_ids being assigned to vehicle
+                                    along with depot and breaks
+                                  items:
+                                    type: string
+                                  title: Task Id
+                                  type: array
+                                arrival_stamp:
+                                  default: []
+                                  description: arrival stamps at each task locations
+                                  items:
+                                    type: number
+                                  title: Arrival Stamp
+                                  type: array
+                                route:
+                                  default: []
+                                  description: Route indices as per waypoint graph
+                                    or cost matrix provided
+                                  items:
+                                    type: integer
+                                  title: Route
+                                  type: array
+                                type:
+                                  default: []
+                                  description: "Type of routing point, whether it\
+                                    \ is Depot, Waypoint - w \nDelivery, Break, Pickup\
+                                    \ \n"
+                                  items:
+                                    enum:
+                                    - Depot
+                                    - Pickup
+                                    - Delivery
+                                    - Break
+                                    - w
+                                    title: LocationTypeEnum
+                                    type: string
+                                  title: Type
+                                  type: array
+                              title: VehicleData
+                              type: object
+                            default: {}
+                            description: All the details of vehicle routes and timestamps
+                            examples:
+                            - vehicle_data:
+                                veh-1:
+                                  arrival_stamp:
+                                  - 1
+                                  - 2
+                                  route:
+                                  - 1
+                                  - 1
+                                  task_id:
+                                  - Break
+                                  - Task-A
+                                  type:
+                                  - Break
+                                  - Delivery
+                                veh-2:
+                                  arrival_stamp:
+                                  - 2
+                                  - 2
+                                  - 4
+                                  - 5
+                                  route:
+                                  - 0
+                                  - 0
+                                  - 2
+                                  - 0
+                                  task_id:
+                                  - Depot
+                                  - Break
+                                  - Task-B
+                                  - Depot
+                                  type:
+                                  - Depot
+                                  - Break
+                                  - Delivery
+                                  - Depot
+                            title: Vehicle Data
+                            type: object
+                          initial_solutions:
+                            default: []
+                            description: Indicates whether each initial solution was
+                              accepted, not accepted or not evaluated by the solver
+                              in case initial solutions were provided in request.
+                            items:
+                              type: string
+                            title: Initial Solutions
+                            type: array
+                          dropped_tasks:
+                            additionalProperties: false
+                            properties:
+                              task_id:
+                                anyOf:
+                                - items:
+                                    type: integer
+                                  type: array
+                                - items:
+                                    type: string
+                                  type: array
+                                default: []
+                                description: With prize collection enabled, there
+                                  is a chance of tasks being dropped to make a feasible
+                                  solution. This list contains infeasible task ids
+                                  which are dropped.
+                                title: Task Id
+                              task_index:
+                                default: []
+                                description: With prize collection enabled, there
+                                  is a chance of tasks being dropped to make a feasible
+                                  solution. This list contains infeasible task indices
+                                  into task locations which are dropped.
+                                items:
+                                  type: integer
+                                title: Task Index
+                                type: array
+                            title: DroppedTasks
+                            type: object
+                          msg:
+                            anyOf:
+                            - type: string
+                            - type: 'null'
+                            default: ''
+                            description: Any information pertaining to the run.
+                            title: Msg
+                        title: FeasibleResultData
+                        type: object
+                      perf_times:
+                        anyOf:
+                        - additionalProperties: true
+                          type: object
+                        - type: 'null'
+                        description: Etl and Solve times of the solve call
+                        title: Perf Times
+                    title: FeasibleSolve
+                    type: object
+                  - additionalProperties: false
+                    properties:
+                      solver_infeasible_response:
+                        additionalProperties: false
+                        properties:
+                          status:
+                            default: 1
+                            description: "1 - Infeasible solution is available \n"
+                            examples:
+                            - 1
+                            title: Status
+                            type: integer
+                          num_vehicles:
+                            default: -1
+                            description: Number of vehicle being used for the solution
+                            examples:
+                            - 2
+                            title: Num Vehicles
+                            type: integer
+                          solution_cost:
+                            default: -1.0
+                            description: Total cost of the solution
+                            examples:
+                            - 2
+                            title: Solution Cost
+                            type: number
+                          objective_values:
+                            additionalProperties:
+                              type: number
+                            default: {}
+                            description: Individual objective values
+                            examples:
+                            - objective_values:
+                                cost: 100.0
+                                prize: -1000.0
+                                travel_time: 245.0
+                            title: Objective Values
+                            type: object
+                          vehicle_data:
+                            additionalProperties:
+                              additionalProperties: false
+                              properties:
+                                task_id:
+                                  default: []
+                                  description: task_ids being assigned to vehicle
+                                    along with depot and breaks
+                                  items:
+                                    type: string
+                                  title: Task Id
+                                  type: array
+                                arrival_stamp:
+                                  default: []
+                                  description: arrival stamps at each task locations
+                                  items:
+                                    type: number
+                                  title: Arrival Stamp
+                                  type: array
+                                route:
+                                  default: []
+                                  description: Route indices as per waypoint graph
+                                    or cost matrix provided
+                                  items:
+                                    type: integer
+                                  title: Route
+                                  type: array
+                                type:
+                                  default: []
+                                  description: "Type of routing point, whether it\
+                                    \ is Depot, Waypoint - w \nDelivery, Break, Pickup\
+                                    \ \n"
+                                  items:
+                                    enum:
+                                    - Depot
+                                    - Pickup
+                                    - Delivery
+                                    - Break
+                                    - w
+                                    title: LocationTypeEnum
+                                    type: string
+                                  title: Type
+                                  type: array
+                              title: VehicleData
+                              type: object
+                            default: {}
+                            description: All the details of vehicle routes and timestamps
+                            examples:
+                            - vehicle_data:
+                                veh-1:
+                                  arrival_stamp:
+                                  - 1
+                                  - 2
+                                  route:
+                                  - 1
+                                  - 1
+                                  task_id:
+                                  - Break
+                                  - Task-A
+                                  type:
+                                  - Break
+                                  - Delivery
+                                veh-2:
+                                  arrival_stamp:
+                                  - 2
+                                  - 2
+                                  - 4
+                                  - 5
+                                  route:
+                                  - 0
+                                  - 0
+                                  - 2
+                                  - 0
+                                  task_id:
+                                  - Depot
+                                  - Break
+                                  - Task-B
+                                  - Depot
+                                  type:
+                                  - Depot
+                                  - Break
+                                  - Delivery
+                                  - Depot
+                            title: Vehicle Data
+                            type: object
+                          initial_solutions:
+                            default: []
+                            description: Indicates whether each initial solution was
+                              accepted, not accepted or not evaluated by the solver
+                              in case initial solutions were provided in request.
+                            items:
+                              type: string
+                            title: Initial Solutions
+                            type: array
+                          dropped_tasks:
+                            additionalProperties: false
+                            properties:
+                              task_id:
+                                anyOf:
+                                - items:
+                                    type: integer
+                                  type: array
+                                - items:
+                                    type: string
+                                  type: array
+                                default: []
+                                description: With prize collection enabled, there
+                                  is a chance of tasks being dropped to make a feasible
+                                  solution. This list contains infeasible task ids
+                                  which are dropped.
+                                title: Task Id
+                              task_index:
+                                default: []
+                                description: With prize collection enabled, there
+                                  is a chance of tasks being dropped to make a feasible
+                                  solution. This list contains infeasible task indices
+                                  into task locations which are dropped.
+                                items:
+                                  type: integer
+                                title: Task Index
+                                type: array
+                            title: DroppedTasks
+                            type: object
+                          msg:
+                            anyOf:
+                            - type: string
+                            - type: 'null'
+                            default: ''
+                            description: Any information pertaining to the run.
+                            title: Msg
+                        title: InfeasibleResultData
+                        type: object
+                      perf_times:
+                        anyOf:
+                        - additionalProperties: true
+                          type: object
+                        - type: 'null'
+                        description: Etl and Solve times of the solve call
+                        title: Perf Times
+                    title: InFeasibleSolve
+                    type: object
+                  - additionalProperties: false
+                    properties:
+                      solver_response:
+                        anyOf:
+                        - additionalProperties: false
+                          properties:
+                            status:
+                              default: NoTermination
+                              description: "In case of LP : \n\nNoTermination - No\
+                                \ Termination \n\nNumericalError - Numerical Error\
+                                \ \n\nOptimal - Optimal solution is available \n\n\
+                                PrimalInfeasible - Primal Infeasible solution \n\n\
+                                DualInfeasible - Dual Infeasible solution \n\nIterationLimit\
+                                \ - Iteration Limit reached \n\nTimeLimit - TimeLimit\
+                                \ reached \n\nPrimalFeasible - Primal Feasible \n\n\
+                                ---------------------- \n\nIn case of MILP/IP : \n\
+                                \nNoTermination - No Termination \n\nOptimal - Optimal\
+                                \ solution is available \n\nFeasibleFound - Feasible\
+                                \ solution is available \n\nInfeasible - Infeasible\
+                                \ \n\nUnbounded - Unbounded \n\nTimeLimit - TimeLimit\
+                                \ reached \n\n"
+                              examples:
+                              - Optimal
+                              title: Status
+                            solution:
+                              additionalProperties: false
+                              properties:
+                                problem_category:
+                                  description: Category of the solution, LP-0/MIP-1/IP-2
+                                  title: Problem Category
+                                  type: integer
+                                primal_solution:
+                                  default: []
+                                  description: Primal solution of the LP problem
+                                  items:
+                                    type: number
+                                  title: Primal Solution
+                                  type: array
+                                dual_solution:
+                                  default: []
+                                  description: "Note: Only applicable to LP \nDual\
+                                    \ solution of the LP problem\n"
+                                  items:
+                                    type: number
+                                  title: Dual Solution
+                                  type: array
+                                solver_time:
+                                  description: Returns the engine solve time in seconds
+                                  title: Solver Time
+                                  type: number
+                                solved_by:
+                                  description: Returns whether problem was solved
+                                    by PDLP, Barrier or Dual Simplex
+                                  title: Solved By
+                                  type: integer
+                                primal_objective:
+                                  description: Primal objective of the LP problem
+                                  title: Primal Objective
+                                  type: number
+                                dual_objective:
+                                  description: "Note: Only applicable to LP \nDual\
+                                    \ objective of the LP problem \n"
+                                  title: Dual Objective
+                                  type: number
+                                vars:
+                                  additionalProperties: true
+                                  default: {}
+                                  description: Dictionary mapping each variable (name)
+                                    to its value
+                                  title: Vars
+                                  type: object
+                                lp_statistics:
+                                  additionalProperties: true
+                                  default: {}
+                                  description: "Note: Only applicable to LP \nConvergence\
+                                    \ statistics of the solution \nIncludes primal\
+                                    \ residual, dual residual, \nreduced cost and\
+                                    \ gap \n"
+                                  title: Lp Statistics
+                                  type: object
+                                milp_statistics:
+                                  additionalProperties: true
+                                  default: {}
+                                  description: "Note: Only applicable to MILP \nConvergence\
+                                    \ statistics of the solution \nIncludes mip gap,\
+                                    \ solution_bound, pre-solve time, \nmax_constraint_violation,\
+                                    \ max_int_violatione and \n max_variable_bound_violation\
+                                    \ \n"
+                                  title: Milp Statistics
+                                  type: object
+                              title: SolutionData
+                              type: object
+                          title: SolutionResultData
+                          type: object
+                        - items:
+                            additionalProperties: false
+                            properties:
+                              status:
+                                default: NoTermination
+                                description: "In case of LP : \n\nNoTermination -\
+                                  \ No Termination \n\nNumericalError - Numerical\
+                                  \ Error \n\nOptimal - Optimal solution is available\
+                                  \ \n\nPrimalInfeasible - Primal Infeasible solution\
+                                  \ \n\nDualInfeasible - Dual Infeasible solution\
+                                  \ \n\nIterationLimit - Iteration Limit reached \n\
+                                  \nTimeLimit - TimeLimit reached \n\nPrimalFeasible\
+                                  \ - Primal Feasible \n\n---------------------- \n\
+                                  \nIn case of MILP/IP : \n\nNoTermination - No Termination\
+                                  \ \n\nOptimal - Optimal solution is available \n\
+                                  \nFeasibleFound - Feasible solution is available\
+                                  \ \n\nInfeasible - Infeasible \n\nUnbounded - Unbounded\
+                                  \ \n\nTimeLimit - TimeLimit reached \n\n"
+                                examples:
+                                - Optimal
+                                title: Status
+                              solution:
+                                additionalProperties: false
+                                properties:
+                                  problem_category:
+                                    description: Category of the solution, LP-0/MIP-1/IP-2
+                                    title: Problem Category
+                                    type: integer
+                                  primal_solution:
+                                    default: []
+                                    description: Primal solution of the LP problem
+                                    items:
+                                      type: number
+                                    title: Primal Solution
+                                    type: array
+                                  dual_solution:
+                                    default: []
+                                    description: "Note: Only applicable to LP \nDual\
+                                      \ solution of the LP problem\n"
+                                    items:
+                                      type: number
+                                    title: Dual Solution
+                                    type: array
+                                  solver_time:
+                                    description: Returns the engine solve time in
+                                      seconds
+                                    title: Solver Time
+                                    type: number
+                                  solved_by:
+                                    description: Returns whether problem was solved
+                                      by PDLP, Barrier or Dual Simplex
+                                    title: Solved By
+                                    type: integer
+                                  primal_objective:
+                                    description: Primal objective of the LP problem
+                                    title: Primal Objective
+                                    type: number
+                                  dual_objective:
+                                    description: "Note: Only applicable to LP \nDual\
+                                      \ objective of the LP problem \n"
+                                    title: Dual Objective
+                                    type: number
+                                  vars:
+                                    additionalProperties: true
+                                    default: {}
+                                    description: Dictionary mapping each variable
+                                      (name) to its value
+                                    title: Vars
+                                    type: object
+                                  lp_statistics:
+                                    additionalProperties: true
+                                    default: {}
+                                    description: "Note: Only applicable to LP \nConvergence\
+                                      \ statistics of the solution \nIncludes primal\
+                                      \ residual, dual residual, \nreduced cost and\
+                                      \ gap \n"
+                                    title: Lp Statistics
+                                    type: object
+                                  milp_statistics:
+                                    additionalProperties: true
+                                    default: {}
+                                    description: "Note: Only applicable to MILP \n\
+                                      Convergence statistics of the solution \nIncludes\
+                                      \ mip gap, solution_bound, pre-solve time, \n\
+                                      max_constraint_violation, max_int_violatione\
+                                      \ and \n max_variable_bound_violation \n"
+                                    title: Milp Statistics
+                                    type: object
+                                title: SolutionData
+                                type: object
+                            title: SolutionResultData
+                            type: object
+                          type: array
+                        default:
+                          status: NoTermination
+                          solution:
+                            dual_solution: []
+                            lp_statistics: {}
+                            milp_statistics: {}
+                            primal_solution: []
+                            vars: {}
+                        description: LP solution
+                        title: Solver Response
+                      perf_times:
+                        anyOf:
+                        - additionalProperties: true
+                          type: object
+                        - type: 'null'
+                        description: Etl and Solve times of the solve call
+                        title: Perf Times
+                      total_solve_time:
+                        anyOf:
+                        - type: number
+                        - type: 'null'
+                        description: Total Solve time of batch problem
+                        title: Total Solve Time
+                    title: LPSolve
+                    type: object
+                  description: Solution
+                  title: Response
+                warnings:
+                  default: []
+                  description: List of warnings for users to handle issues
+                  items:
+                    type: string
+                  title: Warnings
+                  type: array
+                notes:
+                  default: []
+                  description: Any notes for users
+                  items:
+                    type: string
+                  title: Notes
+                  type: array
+                reqId:
+                  description: Id of request
+                  example: d6e60f36-8c3a-488b-a70b-a8c9b8cce377
+                  title: Reqid
+                  type: string
+              required:
+              - response
+              - reqId
+              title: SolutionModelWithId
+              type: object
+        required: true
+  /cuopt/solution/{id}:
+    delete:
+      summary: Delete a solution by id (self-hosted)
+      description: 'Note: for use with self-hosted cuOpt instances.  Delete a solution
+        by id. The ''id'' is the reqId value returned from a POST to /cuopt/request
+        or /cuopt/solution.'
+      operationId: deletesolution_cuopt_solution__id__delete
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          description: 'ID of the solution to delete. '
+          title: Id
+        description: 'ID of the solution to delete. '
+      - name: accept
+        in: header
+        required: false
+        schema:
+          type: string
+          description: Supported result mime_types are 'application/json', 'application/vnd.msgpack',
+            'application/zlib', and standard mime_type wildcards. This applies to
+            exception messages returned by this request.
+          default: application/json
+          title: Accept
+        description: Supported result mime_types are 'application/json', 'application/vnd.msgpack',
+          'application/zlib', and standard mime_type wildcards. This applies to exception
+          messages returned by this request.
+      responses:
+        '200':
+          description: Successful request response (no content)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyResponseModel'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+        '500':
+          description: Any uncaught cuOpt error or Server errors
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+    get:
+      summary: Get a solution by id (self-hosted)
+      description: 'Note: for use with cuOpt self-hosted instances. Get a solution
+        by id. The ''id'' is the reqId value returned from a POST to /cuopt/request
+        or /cuopt/solution. If the solution is generated by a POST to /cuopt/request
+        and the request has not yet completed, the reqId value will be returned and
+        can be used to continue polling.'
+      operationId: getsolution_cuopt_solution__id__get
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Id
+      - name: accept
+        in: header
+        required: false
+        schema:
+          type: string
+          description: Supported result mime_types are 'application/json', 'application/vnd.msgpack',
+            'application/zlib', and standard mime_type wildcards. If a wildcard is
+            used, the accept mime_type will be set to the content_type mime_type of
+            the original request.
+          default: application/json
+          title: Accept
+        description: Supported result mime_types are 'application/json', 'application/vnd.msgpack',
+          'application/zlib', and standard mime_type wildcards. If a wildcard is used,
+          the accept mime_type will be set to the content_type mime_type of the original
+          request.
+      responses:
+        '200':
+          description: Successful request response
+          content:
+            application/json:
+              schema:
+                anyOf:
+                - $ref: '#/components/schemas/SolutionModelWithId'
+                - $ref: '#/components/schemas/SolutionModelInFile'
+                - $ref: '#/components/schemas/IdModel'
+                title: Response Getsolution Cuopt Solution  Id  Get
+              examples:
+                VRP response:
+                  value:
+                    response:
+                      solver_response:
+                        status: 0
+                        num_vehicles: 2
+                        solution_cost: 2.0
+                        objective_values:
+                          cost: 2.0
+                        vehicle_data:
+                          veh-1:
+                            task_id:
+                            - Break
+                            - Task-A
+                            arrival_stamp:
+                            - 1.0
+                            - 2.0
+                            type:
+                            - Break
+                            - Delivery
+                            route:
+                            - 1
+                            - 1
+                          veh-2:
+                            task_id:
+                            - Depot
+                            - Break
+                            - Task-B
+                            - Depot
+                            arrival_stamp:
+                            - 2.0
+                            - 2.0
+                            - 4.0
+                            - 5.0
+                            type:
+                            - Depot
+                            - Break
+                            - Delivery
+                            - Depot
+                            route:
+                            - 0
+                            - 0
+                            - 2
+                            - 0
+                        dropped_tasks:
+                          task_id: []
+                          task_index: []
+                    reqId: e8421e9e-e42e-4511-8da2-314253667dcf
+                LP response:
+                  value:
+                    response:
+                      solver_response:
+                        status: Optimal
+                        solution:
+                          problem_category: 0
+                          primal_solution:
+                          - 0.0
+                          - 0.0
+                          dual_solution:
+                          - 0.0
+                          - 0.0
+                          primal_objective: 0.0
+                          dual_objective: 0.0
+                          solver_time: 43.0
+                          vars: {}
+                          lp_statistics:
+                            primal_residual: 0.0
+                            dual_residual: 0.0
+                            gap: 0.0
+                          reduced_cost:
+                          - 0.2
+                          - 0.1
+                          mip_statistics: {}
+                    reqId: 644dac46-5198-4293-ae3e-0f02a6d41863
+                MILP response:
+                  value:
+                    response:
+                      solver_response:
+                        status: FeasibleFound
+                        solution:
+                          problem_category: 1
+                          primal_solution:
+                          - 0.0
+                          - 0.0
+                          primal_objective: 0.0
+                          solver_time: 43.0
+                          vars: {}
+                          lp_statistics: {}
+                          mip_statistics:
+                            mip_gap: 0.0
+                            presolve_time: 0.0
+                            solution_bound: 0.0
+                            max_constraint_violation: 0.0
+                            max_int_violation: 0.0
+                            max_variable_bound_violation: 0.0
+                    reqId: 644dac46-5198-4293-ae3e-0f02a6d41863
+                ID response:
+                  value:
+                    reqId: e8421e9e-e42e-4511-8da2-314253667dcf
+            application/vnd.msgpack:
+              schema:
+                type: string
+                format: byte
+              examples:
+                VRP response compressed with msgpack:
+                  value: \x82\xa8response\x81\xafsolver_response\x86\xa6status\x00\xacnum_vehicles\x02\xadsolution_cost\xcb@\x00\x00\x00\x00\x00\x00\x00\xb0objective_values\x81\xa4cost\xcb@\x00\x00\x00\x00\x00\x00\x00\xacvehicle_data\x82\xa5veh-1\x84\xa7task_id\x92\xa5Break\xa6Task-A\xadarrival_stamp\x92\xcb?\xf0\x00\x00\x00\x00\x00\x00\xcb@\x00\x00\x00\x00\x00\x00\x00\xa4type\x92\xa5Break\xa8Delivery\xa5route\x92\x01\x01\xa5veh-2\x84\xa7task_id\x94\xa5Depot\xa5Break\xa6Task-B\xa5Depot\xadarrival_stamp\x94\xcb@\x00\x00\x00\x00\x00\x00\x00\xcb@\x00\x00\x00\x00\x00\x00\x00\xcb@\x10\x00\x00\x00\x00\x00\x00\xcb@\x14\x00\x00\x00\x00\x00\x00\xa4type\x94\xa5Depot\xa5Break\xa8Delivery\xa5Depot\xa5route\x94\x00\x00\x02\x00\xaddropped_tasks\x82\xa7task_id\x90\xaatask_index\x90\xa5reqId\xd9$9147524d-c5fb-4413-976d-752e84a39123
+                LP response compressed with msgpack:
+                  value: \x83\xa8response\x81\xafsolver_response\x82\xa6status\x01\xa8solution\x87\xafprimal_solution\x92\xcb\x00\x00\x00\x00\x00\x00\x00\x00\xcb\x00\x00\x00\x00\x00\x00\x00\x00\xaddual_solution\x92\xcb\x00\x00\x00\x00\x00\x00\x00\x00\xcb\x00\x00\x00\x00\x00\x00\x00\x00\xb0primal_objective\xcb\x00\x00\x00\x00\x00\x00\x00\x00\xaedual_objective\xcb\x00\x00\x00\x00\x00\x00\x00\x00\xabsolver_time\xcb@\x08\x00\x00\x00\x00\x00\x00\xa4vars\x80\xadlp_statistics\x84\xafprimal_residual\xcb\x00\x00\x00\x00\x00\x00\x00\x00\xaddual_residual\xcb\x00\x00\x00\x00\x00\x00\x00\x00\xa3gap\xcb\x00\x00\x00\x00\x00\x00\x00\x00\xacreduced_cost\x92\xcb?\xc9\x99\x99\x99\x99\x99\x9a\xcb?\xb9\x99\x99\x99\x99\x99\x9a\xa5reqId\xd9$d47dfa94-e9f4-4207-ba70-a07775a3b044\xa5notes\x91\xa7Optimal
+            application/zlib:
+              schema:
+                type: string
+                format: byte
+              examples:
+                VRP response compressed with zlib:
+                  value: x\x01mQ\xc1n\x830\x0c\xfd\x15\x94s3\x01*\x08v[\xd5\xcb\xee\xbbM(\xf2\x82\xab\xb1R\x92%\x01\xadB\xfc\xfb\xec\xac\xea\xca\xbaKd=?\xfb=\xbf\xcc\xc2\xa1\xb7f\xf0(\x1e\x93Yx\xd3O\xe8\xd4\x1a\x0b\x10FO\xedt\x93\x88a<\xa9\t\xdf;\xdd#C9A43\x86\xce\x0cJ\x1b\x1f\x18{`\xa2y\xfb@\x1d\xba\t\xd5\x04\xfd\x18\xc9\xb3\xf8e,D\xb9\xecQ-\x04\x88\xea\x04\xc8,V\x01\xfcQu-\xd5\xafb\xe7\x10\x8e\x82\xf8/\x04\xca'\xd1P\t\xceu\xb4W\xf9\x00'\xcb\xac\x8cEI\x99\x9b\xe1l\xf9\x9a\x9b\xc9=\xf6\xe4\xc4\x9d\xe3\xac3c\x88\xfdl\x93d\xcd\xc5\x88\xcc\xeft\xf7hM`\xdd\xb5\x81\x1dC?\xbd\x7f\x9d\xc4\xf3\xe3\xb3eO\xc5\x1fO\xf7[\xaf\xe6V{\xaf.i\x07\x9fFo\xb3\xb0\xd9\xd6\x19k\xb1U\x1c\x11\x7f\xc1,n\xc2\x8a\xe7\xc7\xec\x86\x16\xbf8\x04\x1a\xe2)\x87\x9f\xcf\x1c\xa78\x949b\x05Z\x96\x95\xd6r[\xa7
+                    \xeb\xbc,dq\xc0\xba\xd6e\x9eBQ\x89\xe5\x1b\xe6o\xa1\x12
+                LP response compressed with zlib:
+                  value: x\x01}OK\n\x830\x14\xbc\x8adm\x8a\x9fjKo\xd0U\x0f "\xf9<K\x8a5i\x12\xdd\x88w\xef\x8b\x95R\x11\x9a\xc5#\xcc\x87\x99\x99\x88\x05gt\xef\x80\\\xa2\x898\xdd\x8d`\x9b-\xe6\x99\x1f\x1c\xd2i\x1c\x05\xc1\xe0\x95\xee\x17\xb5\xb1\xea\xc9\xba\xe6\x07\xab\x92C\x12Gxj\xd4\xca\xe1\x0f\xb9z5\x7f\x80\xf0j\x0c\xf1\x8b\xf7\xe3\xda\xc3k3\xaf\x9eA\x9a\x87\x1822\x1bzM3\xfe;\xd38,\xaa\x9cWb\x01\xc9\x9a\x80[Th\xb2\r\xd8\xa1wf\xbe\n\x0br\x10
+                    \x1b\xa1\x9dG\x10GeaTZ\xcf\xf80\xcb\xc2\xeb*\x91 \xe2T\x14\xb2\xcd[*\xce-\xa7\xc7,\x01\xcaE\x96S^B)\x99hy\n)AC\xaf=\x84R\x15\xb9\x19\\\x80e\xea\xf9\r%\xb1vx
+        '400':
+          description: Value Error Or Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+        '415':
+          description: Unsupported mime_type specified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+        '422':
+          description: Unprocessable Entity or Runtime Error or Out of memory error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+        '409':
+          description: Solver returned invalid status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+        '500':
+          description: Any uncaught cuOpt error or Server errors
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+  /cuopt/request/{id}:
+    delete:
+      summary: Delete a request by id (self-hosted)
+      description: 'Note: for use with self-hosted cuOpt instances. Delete a request
+        (either a cached request or a request to be solved). The ''id'' is the reqId
+        value returned from a POST to /cuopt/request.'
+      operationId: deleterequest_cuopt_request__id__delete
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          description: ID of the request to delete. The wildcard ID '*' will match
+            all requests.
+          title: Id
+        description: ID of the request to delete. The wildcard ID '*' will match all
+          requests.
+      - name: running
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          description: If set to True, the request will be aborted if it is currently
+            running. Defaults to True if a specific request id is given and running,
+            queued, and cached are all unspecified, otherwise defaults to False.
+          title: Running
+        description: If set to True, the request will be aborted if it is currently
+          running. Defaults to True if a specific request id is given and running,
+          queued, and cached are all unspecified, otherwise defaults to False.
+      - name: queued
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          description: If set to True, the request will be aborted if it is queued.
+            Defaults to True if a specific request id is given and running, queued,
+            and cached are all unspecified, otherwise defaults to False.
+          title: Queued
+        description: If set to True, the request will be aborted if it is queued.
+          Defaults to True if a specific request id is given and running, queued,
+          and cached are all unspecified, otherwise defaults to False.
+      - name: cached
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          description: If set to True, the request will be aborted if it is cached.
+            Defaults to True if a specific request id is given and running, queued,
+            and cached are all unspecified, otherwise defaults to False.
+          title: Cached
+        description: If set to True, the request will be aborted if it is cached.
+          Defaults to True if a specific request id is given and running, queued,
+          and cached are all unspecified, otherwise defaults to False.
+      - name: accept
+        in: header
+        required: false
+        schema:
+          type: string
+          description: 'Supported result mime_types are ''application/json'', ''application/vnd.msgpack'',
+            ''application/zlib'', and standard mime_type wildcards. '
+          default: application/json
+          title: Accept
+        description: 'Supported result mime_types are ''application/json'', ''application/vnd.msgpack'',
+          ''application/zlib'', and standard mime_type wildcards. '
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteRequestModel'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+        '500':
+          description: Any uncaught cuOpt error or Server errors
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+    get:
+      summary: Check the status of a request by id (self-hosted)
+      description: 'Note: for use with self-hosted cuOpt instances. Check the status
+        of a request.'
+      operationId: getrequest_cuopt_request__id__get
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Id
+      - name: accept
+        in: header
+        required: false
+        schema:
+          type: string
+          description: Supported result mime_types are 'application/json', 'application/vnd.msgpack',
+            'application/zlib', and standard mime_type wildcards. If a wildcard is
+            used, the accept mime_type will be set to the content_type mime_type of
+            the original request.
+          default: application/json
+          title: Accept
+        description: Supported result mime_types are 'application/json', 'application/vnd.msgpack',
+          'application/zlib', and standard mime_type wildcards. If a wildcard is used,
+          the accept mime_type will be set to the content_type mime_type of the original
+          request.
+      responses:
+        '200':
+          description: Successful request response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestStatusModel'
+              examples:
+                completed request:
+                  value: completed
+                queued request:
+                  value: queued
+                aborted request:
+                  value: aborted
+                running request:
+                  value: running
+        '415':
+          description: Unsupported mime_type specified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+        '422':
+          description: Unprocessable Entity or Runtime Error or Out of memory error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+        '500':
+          description: Any uncaught cuOpt error or Server errors
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+  /cuopt/request:
+    post:
+      summary: Solve a cuOpt problem (self-hosted)
+      description: 'Note: This endpoint is for use with self-hosted cuOpt instances.
+        Takes VRP/LP/MILP data and options at once, submits any type of cuOpt problem
+        and returns the request id.'
+      operationId: postrequest_cuopt_request_post
+      parameters:
+      - name: cache
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          description: If set to True, the data for the request will be cached and
+            a request id returned.
+          default: false
+          title: Cache
+        description: If set to True, the data for the request will be cached and a
+          request id returned.
+      - name: reqId
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: If set, this request will use the cached data from the request
+            identified by reqId.
+          title: Reqid
+        description: If set, this request will use the cached data from the request
+          identified by reqId.
+      - name: initialId
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              type: string
+          - type: 'null'
+          description: 'Note: Only applicable to routing. If set, the solutions identified
+            by id will be used by the solver as initial solutions for this request'
+          title: Initialid
+        description: 'Note: Only applicable to routing. If set, the solutions identified
+          by id will be used by the solver as initial solutions for this request'
+      - name: warmstartId
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: If set, the warmstart data in solution identified by id will
+            be used by the solver as warmstart data for this request. Enabled for
+            single LP problem, not enabled for Batch LP
+          title: Warmstartid
+        description: If set, the warmstart data in solution identified by id will
+          be used by the solver as warmstart data for this request. Enabled for single
+          LP problem, not enabled for Batch LP
+      - name: validation_only
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          description: If set to True, input will be validated, if input is valid,
+            returns a successful message, else returns an error.
+          default: false
+          title: Validation Only
+        description: If set to True, input will be validated, if input is valid, returns
+          a successful message, else returns an error.
+      - name: incumbent_solutions
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          description: If set to True, MIP problems will produce incumbent solutions
+            that can be retrieved from /cuopt/solution/{id}/incumbents
+          default: false
+          title: Incumbent Solutions
+        description: If set to True, MIP problems will produce incumbent solutions
+          that can be retrieved from /cuopt/solution/{id}/incumbents
+      - name: incumbent_set_solutions
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          description: If set to True, MIP problems will register a set-solution callback
+            (this disables presolve).
+          default: false
+          title: Incumbent Set Solutions
+        description: If set to True, MIP problems will register a set-solution callback
+          (this disables presolve).
+      - name: solver_logs
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          description: 'If set to True, math optimization problems will produce detailed
+            solver logs that can be retrieved from /cuopt/log/{id}. '
+          default: false
+          title: Solver Logs
+        description: 'If set to True, math optimization problems will produce detailed
+          solver logs that can be retrieved from /cuopt/log/{id}. '
+      - name: cuopt-data-file
+        in: header
+        required: false
+        schema:
+          type: string
+          description: Name of data file to process in the server's CUOPT_DATA_DIR
+            when using the local file feature
+          title: Cuopt-Data-File
+        description: Name of data file to process in the server's CUOPT_DATA_DIR when
+          using the local file feature
+      - name: cuopt-result-file
+        in: header
+        required: false
+        schema:
+          type: string
+          description: Result file name if output dir is enabled and size >= maxresult
+          title: Cuopt-Result-File
+        description: Result file name if output dir is enabled and size >= maxresult
+      - name: client-version
+        in: header
+        required: false
+        schema:
+          type: string
+          description: cuOpt client version. Set to 'custom' to skip version check
+          title: Client-Version
+        description: cuOpt client version. Set to 'custom' to skip version check
+      - name: accept
+        in: header
+        required: false
+        schema:
+          type: string
+          description: Supported result mime_types are 'application/json', 'application/vnd.msgpack',
+            'application/zlib', and standard mime_type wildcards. If a wildcard is
+            used, the accept mime_type will be set to the content_type mime_type
+          default: application/json
+          title: Accept
+        description: Supported result mime_types are 'application/json', 'application/vnd.msgpack',
+          'application/zlib', and standard mime_type wildcards. If a wildcard is used,
+          the accept mime_type will be set to the content_type mime_type
+      - name: content-type
+        in: header
+        required: false
+        schema:
+          type: string
+          description: Supported content mime_types are 'application/json', 'application/vnd.msgpack',
+            and 'application/zlib'
+          default: application/json
+          title: Content-Type
+        description: Supported content mime_types are 'application/json', 'application/vnd.msgpack',
+          and 'application/zlib'
+      - name: content-length
+        in: header
+        required: true
+        schema:
+          type: integer
+          title: Content-Length
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdModel'
+              examples:
+                Id response:
+                  value:
+                    reqId: e8421e9e-e42e-4511-8da2-314253667dcf
+        '400':
+          description: Value Error Or Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+        '415':
+          description: Unsupported mime_type specified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+        '422':
+          description: Unprocessable Entity or Runtime Error or Out of memory error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+        '500':
+          description: Any uncaught cuOpt error or Server errors
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailModel'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              oneOf:
+              - additionalProperties: false
+                properties:
+                  cost_waypoint_graph_data:
+                    anyOf:
+                    - additionalProperties: false
+                      properties:
+                        waypoint_graph:
+                          anyOf:
+                          - additionalProperties:
+                              additionalProperties: false
+                              properties:
+                                edges:
+                                  description: "dtype: int32, edge >= 0. \n\n Vertices\
+                                    \ of all the directed edges."
+                                  items:
+                                    type: integer
+                                  title: Edges
+                                  type: array
+                                offsets:
+                                  description: "dtype: int32, offset >= 0. \n\n Offsets\
+                                    \ which provide number of edges from the source\
+                                    \ vertex signified by the index."
+                                  items:
+                                    type: integer
+                                  title: Offsets
+                                  type: array
+                                weights:
+                                  anyOf:
+                                  - items:
+                                      type: number
+                                    type: array
+                                  - type: 'null'
+                                  description: "dtype: float32, weight >= 0. \n\n\
+                                    \ Weights of each edges."
+                                  title: Weights
+                              required:
+                              - edges
+                              - offsets
+                              title: WaypointGraph
+                              type: object
+                            type: object
+                          - type: 'null'
+                          title: Waypoint Graph
+                      title: WaypointGraphData
+                      type: object
+                    - type: 'null'
+                    default: {}
+                    description: "Waypoint graph with weights as cost to travel from\
+                      \ A to B \nand B to A. If there are different types of vehicles\
+                      \ \nthey can be provided with key value pair \nwhere key is\
+                      \ vehicle-type and value is the graph. Value of \nvehicle type\
+                      \ should be within [0, 255]"
+                    examples:
+                    - null
+                  travel_time_waypoint_graph_data:
+                    anyOf:
+                    - additionalProperties: false
+                      properties:
+                        waypoint_graph:
+                          anyOf:
+                          - additionalProperties:
+                              additionalProperties: false
+                              properties:
+                                edges:
+                                  description: "dtype: int32, edge >= 0. \n\n Vertices\
+                                    \ of all the directed edges."
+                                  items:
+                                    type: integer
+                                  title: Edges
+                                  type: array
+                                offsets:
+                                  description: "dtype: int32, offset >= 0. \n\n Offsets\
+                                    \ which provide number of edges from the source\
+                                    \ vertex signified by the index."
+                                  items:
+                                    type: integer
+                                  title: Offsets
+                                  type: array
+                                weights:
+                                  anyOf:
+                                  - items:
+                                      type: number
+                                    type: array
+                                  - type: 'null'
+                                  description: "dtype: float32, weight >= 0. \n\n\
+                                    \ Weights of each edges."
+                                  title: Weights
+                              required:
+                              - edges
+                              - offsets
+                              title: WaypointGraph
+                              type: object
+                            type: object
+                          - type: 'null'
+                          title: Waypoint Graph
+                      title: WaypointGraphData
+                      type: object
+                    - type: 'null'
+                    default: {}
+                    description: "Waypoint graph with weights as time to travel from\
+                      \ A to B \nand B to A. If there are different types of vehicles\
+                      \ \nthey can be provided with key value pair \nwhere key is\
+                      \ vehicle-type and value is the graph. Value of \nvehicle type\
+                      \ should be within [0, 255]"
+                    examples:
+                    - null
+                  cost_matrix_data:
+                    anyOf:
+                    - additionalProperties: false
+                      properties:
+                        data:
+                          anyOf:
+                          - additionalProperties:
+                              items:
+                                items:
+                                  type: number
+                                type: array
+                              type: array
+                            type: object
+                          - type: 'null'
+                          description: "dtype : vehicle-type (uint8), cost (float32),\
+                            \ cost >= 0.\n \n\n Sqaure matrix with cost to travel\
+                            \ from A to B and B to A. \nIf there different types of\
+                            \ vehicles which have different \ncost matrices, they\
+                            \ can be provided with key value pair \nwhere key is vehicle-type\
+                            \ and value is cost matrix. Value of \nvehicle type should\
+                            \ be within [0, 255]"
+                          title: Data
+                      title: CostMatrices
+                      type: object
+                    - type: 'null'
+                    default: {}
+                    description: "Sqaure matrix with cost to travel from A to B and\
+                      \ B to A. \nCost is defined by user, it can be distance/fuel/time\
+                      \ or \na function of several factors.If there are different\
+                      \ types of vehicles which have different \ncost matrices, they\
+                      \ can be provided with key value pair \nwhere key is vehicle-type\
+                      \ and value is cost matrix. Value of \nvehicle type should be\
+                      \ within [0, 255]"
+                    examples:
+                    - cost_matrix:
+                        '1':
+                        - - 0
+                          - 1
+                          - 1
+                        - - 1
+                          - 0
+                          - 1
+                        - - 1
+                          - 1
+                          - 0
+                        '2':
+                        - - 0
+                          - 1
+                          - 1
+                        - - 1
+                          - 0
+                          - 1
+                        - - 1
+                          - 2
+                          - 0
+                  travel_time_matrix_data:
+                    anyOf:
+                    - additionalProperties: false
+                      properties:
+                        data:
+                          anyOf:
+                          - additionalProperties:
+                              items:
+                                items:
+                                  type: number
+                                type: array
+                              type: array
+                            type: object
+                          - type: 'null'
+                          description: "dtype : vehicle-type (uint8), cost (float32),\
+                            \ cost >= 0.\n \n\n Sqaure matrix with cost to travel\
+                            \ from A to B and B to A. \nIf there different types of\
+                            \ vehicles which have different \ncost matrices, they\
+                            \ can be provided with key value pair \nwhere key is vehicle-type\
+                            \ and value is cost matrix. Value of \nvehicle type should\
+                            \ be within [0, 255]"
+                          title: Data
+                      title: CostMatrices
+                      type: object
+                    - type: 'null'
+                    default: {}
+                    description: "Sqaure matrix with time to travel from A to B and\
+                      \ B to A. \nIf there are different types of vehicles which have\
+                      \ different \ntravel time matrices, they can be provided with\
+                      \ key value pair \nwhere key is vehicle-type and value is time\
+                      \ matrix. Value of \nvehicle type should be within [0, 255]"
+                    examples:
+                    - cost_matrix:
+                        '1':
+                        - - 0
+                          - 1
+                          - 1
+                        - - 1
+                          - 0
+                          - 1
+                        - - 1
+                          - 1
+                          - 0
+                        '2':
+                        - - 0
+                          - 1
+                          - 1
+                        - - 1
+                          - 0
+                          - 1
+                        - - 1
+                          - 2
+                          - 0
+                  fleet_data:
+                    additionalProperties: false
+                    properties:
+                      vehicle_locations:
+                        description: "dtype: int32, vehicle_location >= 0. \n\n Start\
+                          \ and end location of the vehicles in the given set of locations\
+                          \ in WayPointGraph or CostMatrices.\nExample: For 2 vehicles,\
+                          \  \n\n     [ \n\n         [veh_1_start_loc, veh_1_end_loc],\
+                          \ \n\n         [veh_2_start_loc, veh_2_end_loc] \n\n   \
+                          \  ]"
+                        examples:
+                        - - - 0
+                            - 0
+                          - - 0
+                            - 0
+                        items:
+                          items:
+                            type: integer
+                          type: array
+                        title: Vehicle Locations
+                        type: array
+                      vehicle_ids:
+                        anyOf:
+                        - items:
+                            type: string
+                          type: array
+                        - type: 'null'
+                        description: List of the vehicle ids or names provided as
+                          a string. Must be unique; duplicates are not allowed.
+                        examples:
+                        - - veh-1
+                          - veh-2
+                        title: Vehicle Ids
+                      capacities:
+                        anyOf:
+                        - items:
+                            items:
+                              type: integer
+                            type: array
+                          type: array
+                        - type: 'null'
+                        description: "dtype: int32, capacity >= 0. \n\n Note: For\
+                          \ this release number of capacity dimensions are limited\
+                          \ to 3. \n\n Lists of capacities of each vehicle.\nMultiple\
+                          \ capacities can be added and each list will represent one\
+                          \ kind of capacity. Order of kind of the capacities should\
+                          \ match order of the demands.\nTotal capacity for each type\
+                          \ should be sufficient to complete all demand of that type.Example:\
+                          \ In case of two sets of capacities per vehicle with 3 vehicles,\
+                          \  \n\n     [ \n\n         [cap_1_veh_1, cap_1_veh_2, cap_1_veh_3],\
+                          \ \n\n         [cap_2_veh_1, cap_2_veh_2, cap_2_veh_3] \n\
+                          \n     ]"
+                        examples:
+                        - - - 2
+                            - 2
+                          - - 4
+                            - 1
+                        title: Capacities
+                      vehicle_time_windows:
+                        anyOf:
+                        - items:
+                            items:
+                              type: integer
+                            type: array
+                          type: array
+                        - type: 'null'
+                        description: "dtype: int32, time >= 0. \n\n Earliest and Latest\
+                          \ time window pairs for each vehicle,\nfor example the data\
+                          \ would look as follows for 2 vehicles, \n \n\n     [ \n\
+                          \n         [veh_1_earliest, veh_1_latest], \n\n        \
+                          \ [veh_2_earliest, veh_2_latest] \n\n     ]"
+                        examples:
+                        - - - 0
+                            - 10
+                          - - 0
+                            - 10
+                        title: Vehicle Time Windows
+                      vehicle_break_time_windows:
+                        anyOf:
+                        - items:
+                            items:
+                              items:
+                                type: integer
+                              type: array
+                            type: array
+                          type: array
+                        - type: 'null'
+                        description: "dtype: int32, time >= 0. \n\n Multiple break\
+                          \ time windows can be added for each vehicle.Earliest and\
+                          \ Latest break time window pairs for each vehicle,\nFor\
+                          \ example, in case of 2 sets of breaks for each vehicle\
+                          \ which translates to 2 dimensions of breaks,\n \n\n   \
+                          \  [ \n\n         [[brk_1_veh_1_earliest, brk_1_veh_1_latest],\
+                          \ [brk_1_veh_2_earliest, brk_1_veh_2_latest]] \n\n     \
+                          \    [[brk_2_veh_1_earliest, brk_2_veh_1_latest], [brk_2_veh_2_earliest,\
+                          \ brk_2_veh_2_latest]] \n\n     ] \n\n The break duration\
+                          \ within this time window is provided through vehicle_break_durations."
+                        examples:
+                        - - - - 1
+                              - 2
+                            - - 2
+                              - 3
+                        title: Vehicle Break Time Windows
+                      vehicle_break_durations:
+                        anyOf:
+                        - items:
+                            items:
+                              type: integer
+                            type: array
+                          type: array
+                        - type: 'null'
+                        description: "dtype: int32, time >= 0. \n\n Break duration\
+                          \ for each vehicle. vehicle_break_time_windows should be\
+                          \ provided to use this option.For example, in case of having\
+                          \ 2 breaks for each vehicle,  \n\n     [ \n\n         [brk_1_veh_1_duration,\
+                          \ brk_1_veh_2_duration], \n\n         [brk_2_veh_1_duration,\
+                          \ brk_2_veh_2_duration], \n\n     ]"
+                        examples:
+                        - - - 1
+                            - 1
+                        title: Vehicle Break Durations
+                      vehicle_break_locations:
+                        anyOf:
+                        - items:
+                            type: integer
+                          type: array
+                        - type: 'null'
+                        description: "dtype: int32, location >= 0. \n\n Break location\
+                          \ where vehicles can take breaks. If not set, any location\
+                          \ can be used for the break."
+                        examples:
+                        - - 0
+                          - 1
+                        title: Vehicle Break Locations
+                      vehicle_breaks:
+                        anyOf:
+                        - items:
+                            additionalProperties: false
+                            properties:
+                              vehicle_id:
+                                description: "dtype: int32, vehicle_id >= 0. \n\n\
+                                  \ Vehicle id as an integer denoting the vehicle\
+                                  \ index for which the break is added"
+                                title: Vehicle Id
+                                type: integer
+                              earliest:
+                                description: "dtype: int32, earliest >= 0. \n\n Earliest\
+                                  \ break time"
+                                title: Earliest
+                                type: integer
+                              latest:
+                                description: "dtype: int32, latest > 0. \n\n Latest\
+                                  \ break time"
+                                title: Latest
+                                type: integer
+                              duration:
+                                description: "dtype: int32, duration >= 0. \n\n Duration\
+                                  \ of the break time"
+                                title: Duration
+                                type: integer
+                              locations:
+                                anyOf:
+                                - items:
+                                    type: integer
+                                  type: array
+                                - type: 'null'
+                                description: "dtype: int32, location_id >= 0. \n\n\
+                                  \ Location ids where this break can be taken."
+                                title: Locations
+                            required:
+                            - vehicle_id
+                            - earliest
+                            - latest
+                            - duration
+                            - locations
+                            title: VehicleBreak
+                            type: object
+                          type: array
+                        - type: 'null'
+                        description: A list of Vehicle Breaks where vehicle id can
+                          take a break between earliest and latest time for specified
+                          duration in the specified locations. By default any location
+                          can be used.
+                        examples:
+                        - - duration: 2
+                            earliest: 0
+                            latest: 10
+                            locations:
+                            - 2
+                            vehicle_id: 0
+                          - duration: 3
+                            earliest: 10
+                            latest: 15
+                            locations:
+                            - 3
+                            - 5
+                            vehicle_id: 1
+                          - duration: 2
+                            earliest: 0
+                            latest: 5
+                            vehicle_id: 1
+                        title: Vehicle Breaks
+                      vehicle_types:
+                        anyOf:
+                        - items:
+                            type: integer
+                          type: array
+                        - type: 'null'
+                        description: "dtype: uint8. \n\n Types of vehicles in the\
+                          \ fleet given as positive integers."
+                        examples:
+                        - - 1
+                          - 2
+                        title: Vehicle Types
+                      vehicle_order_match:
+                        anyOf:
+                        - items:
+                            additionalProperties: false
+                            properties:
+                              vehicle_id:
+                                description: "dtype: int32, vehicle_id >= 0. \n\n\
+                                  \ Vehicle id as an integer, and can serve all the\
+                                  \ order listed in order_ids."
+                                title: Vehicle Id
+                                type: integer
+                              order_ids:
+                                description: "dtype: int32, order_id >= 0. \n\n Indices\
+                                  \ of orders which can be served by this particular\
+                                  \ vehicle"
+                                items:
+                                  type: integer
+                                title: Order Ids
+                                type: array
+                            required:
+                            - vehicle_id
+                            - order_ids
+                            title: VehicleOrderMatch
+                            type: object
+                          type: array
+                        - type: 'null'
+                        description: A list of vehicle order match, where the match
+                          would contain a vehicle id and a list of orders that vehicle
+                          can serve.
+                        examples:
+                        - - order_ids:
+                            - 0
+                            vehicle_id: 0
+                          - order_ids:
+                            - 1
+                            vehicle_id: 1
+                        title: Vehicle Order Match
+                      skip_first_trips:
+                        anyOf:
+                        - items:
+                            type: boolean
+                          type: array
+                        - type: 'null'
+                        description: Drop the cost of trip to first location for that
+                          vehicle.
+                        examples:
+                        - - true
+                          - false
+                        title: Skip First Trips
+                      drop_return_trips:
+                        anyOf:
+                        - items:
+                            type: boolean
+                          type: array
+                        - type: 'null'
+                        description: Drop cost of return trip for each vehicle.
+                        examples:
+                        - - true
+                          - false
+                        title: Drop Return Trips
+                      min_vehicles:
+                        anyOf:
+                        - type: integer
+                        - type: 'null'
+                        description: "dtype: int32, min_vehicles >= 1. \n\n Solution\
+                          \ should consider minimum number of vehicles"
+                        examples:
+                        - 2
+                        title: Min Vehicles
+                      vehicle_max_costs:
+                        anyOf:
+                        - items:
+                            type: number
+                          type: array
+                        - type: 'null'
+                        description: "dtype: float32, max_costs >= 0. \n\n Maximum\
+                          \ cost a vehicle can incur and it is based on cost matrix/cost\
+                          \ waypoint graph."
+                        examples:
+                        - - 7
+                          - 10
+                        title: Vehicle Max Costs
+                      vehicle_max_times:
+                        anyOf:
+                        - items:
+                            type: number
+                          type: array
+                        - type: 'null'
+                        description: "dtype: float32, max_time >= 0. \n\n Maximum\
+                          \ time a vehicle can operate (includes drive, service and\
+                          \ wait time), this is based on travel time matrix/travel\
+                          \ time waypoint graph."
+                        examples:
+                        - - 7
+                          - 10
+                        title: Vehicle Max Times
+                      vehicle_fixed_costs:
+                        anyOf:
+                        - items:
+                            type: number
+                          type: array
+                        - type: 'null'
+                        description: "dtype: float32, fixed_cost >= 0. \n\n Cost of\
+                          \ each vehicle.This helps in routing where may be 2 vehicles\
+                          \ with less cost is effective compared to 1 vehicle with\
+                          \ huge cost. As example shows veh-0 (15) > veh-1 (5) + veh-2\
+                          \ (5)"
+                        examples:
+                        - - 15
+                          - 5
+                        title: Vehicle Fixed Costs
+                    required:
+                    - vehicle_locations
+                    title: FleetData
+                    type: object
+                  task_data:
+                    additionalProperties: false
+                    properties:
+                      task_locations:
+                        description: "dtype: int32, location >= 0. \n\n Location where\
+                          \ the task has been requested."
+                        examples:
+                        - - 1
+                          - 2
+                        items:
+                          type: integer
+                        title: Task Locations
+                        type: array
+                      task_ids:
+                        anyOf:
+                        - items:
+                            type: string
+                          type: array
+                        - type: 'null'
+                        description: List of the task ids or names provided as a string.
+                        examples:
+                        - - Task-A
+                          - Task-B
+                        title: Task Ids
+                      demand:
+                        anyOf:
+                        - items:
+                            items:
+                              type: integer
+                            type: array
+                          type: array
+                        - type: 'null'
+                        description: "dtype: int32 \n\n Note: For this release number\
+                          \ of demand dimensions are limited to 3. \n\n Lists of demands\
+                          \ of each tasks.\nMultiple demands can be added and each\
+                          \ list represents one kind of demand. Order of these demands\
+                          \ should match the type of vehicle capacities provided.Example:\
+                          \ In case of two sets of demands per vehicle with 3 vehicles,\
+                          \  \n\n     [ \n\n         [dem_1_tsk_1, dem_1_tsk_2, dem_1_tsk_3],\
+                          \ \n\n         [dem_2_tsk_1, dem_2_tsk_2, dem_2_tsk_3] \n\
+                          \n     ]"
+                        examples:
+                        - - - 1
+                            - 1
+                          - - 3
+                            - 1
+                        title: Demand
+                      pickup_and_delivery_pairs:
+                        anyOf:
+                        - items:
+                            items:
+                              type: integer
+                            type: array
+                          type: array
+                        - type: 'null'
+                        description: "dtype: int32, pairs >= 0. \n\n List of Pick-up\
+                          \ and delivery index pairs from task locations.\nIn case\
+                          \ we have the following pick-up and delivery locations,\
+                          \ 2->1, 4->5, 3->4, then task locations would look something\
+                          \ like, task_locations = [0, 2, 1, 4, 5, 3, 4] and pick-up\
+                          \ and delivery pairs would be index of those locations in\
+                          \ task location and would look like [[1, 2], [3, 4], [5,\
+                          \ 6]], 1 is pickup index for location 2 and it should be\
+                          \ delivered to location 1 which is at index 2.Example schema:\
+                          \  \n\n     [ \n\n         [pcikup_1_idx_to_task, drop_1_idx_to_task],\
+                          \ \n\n         [pcikup_2_idx_to_task, drop_2_idx_to_task],\
+                          \ \n\n     ]"
+                        examples:
+                        - null
+                        title: Pickup And Delivery Pairs
+                      task_time_windows:
+                        anyOf:
+                        - items:
+                            items:
+                              type: integer
+                            type: array
+                          type: array
+                        - type: 'null'
+                        description: "dtype: int32, time >= 0. \n\n Earliest and Latest\
+                          \ time windows for each tasks.\nFor example the data would\
+                          \ look as follows, \n \n\n     [ \n\n         [tsk_1_earliest,\
+                          \ tsk_1_latest], \n\n         [tsk_2_earliest, tsk_2_latest]\
+                          \ \n\n     ]"
+                        examples:
+                        - - - 0
+                            - 5
+                          - - 3
+                            - 9
+                        title: Task Time Windows
+                      service_times:
+                        anyOf:
+                        - items:
+                            type: integer
+                          type: array
+                        - additionalProperties:
+                            items:
+                              type: integer
+                            type: array
+                          type: object
+                        - type: 'null'
+                        description: "dtype: int32, time >= 0. \n\n Service time for\
+                          \ each task. Accepts a list of service times for all vehicles.\
+                          \ In case of vehicle specific service times, accepts a dict\
+                          \ with key as vehicle id and value as list of service times.Example\
+                          \ schema: In case all vehicles have same service times,\
+                          \  \n\n     [tsk_1_srv_time, tsk_2_srv_time, tsk_3_srv_time]\
+                          \ \n\n  \n\n In case, there are 2 vehicles and each of them\
+                          \ have different service times, \n\n     { \n\n        \
+                          \ vehicle-id-1: [tsk_1_veh_1_srv_time, tsk_2_veh_1_srv_time,\
+                          \ tsk_3_veh_1_srv_time], \n\n         vehicle-id-2: [tsk_1_veh_2_srv_time,\
+                          \ tsk_2_veh_2_srv_time, tsk_3_veh_2_srv_time], \n\n    \
+                          \ }"
+                        examples:
+                        - - 0
+                          - 0
+                        title: Service Times
+                      prizes:
+                        anyOf:
+                        - items:
+                            type: number
+                          type: array
+                        - type: 'null'
+                        description: "dtype: float32, prizes >= 0. \n\n List of values\
+                          \ which signifies prizes that are collected for fulfilling\
+                          \ each task. This can be used effectively in case solution\
+                          \ is infeasible and need to drop few tasks to get feasible\
+                          \ solution. Solver will prioritize for higher prize tasks "
+                        examples:
+                        - null
+                        title: Prizes
+                      order_vehicle_match:
+                        anyOf:
+                        - items:
+                            additionalProperties: false
+                            properties:
+                              order_id:
+                                description: "dtype: int32, order_id >= 0. \n\n Indices\
+                                  \ of orders which can be served by this particular\
+                                  \ vehicleOrder id as an integer"
+                                title: Order Id
+                                type: integer
+                              vehicle_ids:
+                                description: "dtype: int32, vehicle_id >= 0. \n\n\
+                                  \ Indices of the vehicles which can serve this particular\
+                                  \ order. \n"
+                                items:
+                                  type: integer
+                                title: Vehicle Ids
+                                type: array
+                            required:
+                            - order_id
+                            - vehicle_ids
+                            title: OrderVehicleMatch
+                            type: object
+                          type: array
+                        - type: 'null'
+                        description: A list of order vehicle match, where the match
+                          would contain a order id and a list of vehicle ids that
+                          can serve this order.
+                        examples:
+                        - - order_id: 0
+                            vehicle_ids:
+                            - 0
+                          - order_id: 1
+                            vehicle_ids:
+                            - 1
+                        title: Order Vehicle Match
+                    required:
+                    - task_locations
+                    title: TaskData
+                    type: object
+                  initial_solution:
+                    anyOf:
+                    - items:
+                        additionalProperties:
+                          properties:
+                            task_id:
+                              default: []
+                              description: task_ids being assigned to vehicle along
+                                with depot and breaks
+                              items:
+                                type: string
+                              title: Task Id
+                              type: array
+                            type:
+                              default: []
+                              description: "Type of routing point, whether it is Depot,\
+                                \ Waypoint - w \nDelivery, Break, Pickup \n"
+                              items:
+                                enum:
+                                - Depot
+                                - Pickup
+                                - Delivery
+                                - Break
+                                - w
+                                title: LocationTypeEnum
+                                type: string
+                              title: Type
+                              type: array
+                          title: VehicleSolData
+                          type: object
+                        default: {}
+                        description: Details of initial solution routes
+                        examples:
+                        - veh-1:
+                            task_id:
+                            - Break
+                            - Task-A
+                            type:
+                            - Break
+                            - Delivery
+                          veh-2:
+                            task_id:
+                            - Depot
+                            - Break
+                            - Task-B
+                            - Depot
+                            type:
+                            - Depot
+                            - Break
+                            - Delivery
+                            - Depot
+                        title: InitialSolution
+                        type: object
+                      type: array
+                    - type: 'null'
+                    title: Initial Solution
+                  solver_config:
+                    anyOf:
+                    - additionalProperties: false
+                      properties:
+                        time_limit:
+                          anyOf:
+                          - type: number
+                          - type: 'null'
+                          description: SolverSettings time limit
+                          examples:
+                          - 5.0
+                          title: Time Limit
+                        objectives:
+                          anyOf:
+                          - additionalProperties: false
+                            properties:
+                              cost:
+                                anyOf:
+                                - type: number
+                                - type: 'null'
+                                description: "dtype: float32.  \n\n The weight assigned\
+                                  \ to minimizing the cost for a given solution, default\
+                                  \ value is 1"
+                                examples:
+                                - 1
+                                title: Cost
+                              travel_time:
+                                anyOf:
+                                - type: number
+                                - type: 'null'
+                                description: "dtype: float32. \n\n The weight assigned\
+                                  \ to minimizing total travel time for a given solution\
+                                  \ (includes drive, service and wait time)"
+                                examples:
+                                - 0
+                                title: Travel Time
+                              variance_route_size:
+                                anyOf:
+                                - type: number
+                                - type: 'null'
+                                description: "dtype: float32. \n\n The weight assigned\
+                                  \ to the variance in the number of orders served\
+                                  \ by each route."
+                                examples:
+                                - 0
+                                title: Variance Route Size
+                              variance_route_service_time:
+                                anyOf:
+                                - type: number
+                                - type: 'null'
+                                description: "dtype: float32. \n\n The weight assigned\
+                                  \ to the variance in the accumulated service times\
+                                  \ of each route"
+                                examples:
+                                - 0
+                                title: Variance Route Service Time
+                              prize:
+                                anyOf:
+                                - type: number
+                                - type: 'null'
+                                description: "dtype: float32. \n\n The weight assigned\
+                                  \ to the prize in accumulated prizes for each job\
+                                  \ fulfilled.This will be negated from overall values\
+                                  \ accumulated with other objectives.For example,\
+                                  \ if cost accumulated is 10 and objective value\
+                                  \ for it is 1, and if the prize accumulated is 3\
+                                  \ and objective is 2, then total cost would look\
+                                  \ something like this 10 x 1 - 3 x 2 = 4.Note: When\
+                                  \ this value is zero the prize objective is ignored."
+                                examples:
+                                - 0
+                                title: Prize
+                              vehicle_fixed_cost:
+                                anyOf:
+                                - type: number
+                                - type: 'null'
+                                description: "dtype: float32. \n\n The weight assigned\
+                                  \ to the accumulated fixed costs of each vehicle\
+                                  \ used in solution"
+                                examples:
+                                - 0
+                                title: Vehicle Fixed Cost
+                            title: Objective
+                            type: object
+                          - type: 'null'
+                          description: Values provided dictate the linear combination
+                            of factors used to evaluate solution quality.Only prize
+                            will be negated, all others gets accumulated. That's why
+                            sometime you might come across negative value as solution
+                            cost.
+                        config_file:
+                          anyOf:
+                          - type: string
+                          - type: 'null'
+                          description: Dump configuration information in a given file
+                            as yaml
+                          examples:
+                          - null
+                          title: Config File
+                        verbose_mode:
+                          anyOf:
+                          - type: boolean
+                          - type: 'null'
+                          default: false
+                          description: Displaying internal information during the
+                            solver execution.
+                          examples:
+                          - false
+                          title: Verbose Mode
+                        error_logging:
+                          anyOf:
+                          - type: boolean
+                          - type: 'null'
+                          default: true
+                          description: Displaying constraint error information during
+                            the solver execution.
+                          examples:
+                          - true
+                          title: Error Logging
+                      title: SolverSettingsConfig
+                      type: object
+                    - type: 'null'
+                required:
+                - fleet_data
+                - task_data
+                title: OptimizedRoutingData
+                type: object
+              - additionalProperties: false
+                properties:
+                  csr_constraint_matrix:
+                    additionalProperties: false
+                    description: 'Constraints depicted in CSR format.
+
+                      For example lets consider following problem,
+
+
+                      # Constraints
+
+
+                      3x + 4y <= 5.4
+
+                      2.7x + 10.1y <= 4.9
+
+
+                      # variables
+
+                      x, y >= 0
+
+
+                      # Objective
+
+                      minimize(0.2x + 0.1y)
+
+
+                      The constraints on the top are converted to CSR and their
+
+                      indices, offsets and values are shared in this matrix.
+
+
+                      Offsets depict number of coefficients/values for each constraint.
+
+                      Indices signify variable with which the coefficients/values
+                      are associated.
+
+                      And coefficients 3, 4, 2.7, 10.1 become values.
+
+
+                      For more details please refer here <https://docs.nvidia.com/nvpl/_static/sparse/storage_format/sparse_matrix.html#compressed-sparse-row-csr>
+                      # noqa'
+                    properties:
+                      indices:
+                        description: Indices of constraint matrix
+                        items:
+                          type: integer
+                        title: Indices
+                        type: array
+                      offsets:
+                        description: Offsets of constraint matrix.
+                        items:
+                          type: integer
+                        title: Offsets
+                        type: array
+                      values:
+                        description: Values in constraint matrix
+                        items:
+                          type: number
+                        title: Values
+                        type: array
+                    title: CSRConstraintMatrix
+                    type: object
+                  objective_data:
+                    anyOf:
+                    - additionalProperties: false
+                      description: 'Coefficients of the objective data is passed as
+                        a list,
+
+                        For example lets consider following problem,
+
+
+                        # Constraints
+
+
+                        3x + 4y <= 5.4
+
+                        2.7x + 10.1y <= 4.9
+
+
+                        # variables
+
+                        x, y >= 0
+
+
+                        # Objective
+
+                        minimize(0.2x + 0.1y)
+
+
+                        Coefficients of the objective 0.2 and 0.1 is passed in the
+                        same order.'
+                      properties:
+                        coefficients:
+                          description: Objective coefficients (c) array
+                          items:
+                            type: number
+                          title: Coefficients
+                          type: array
+                        scalability_factor:
+                          anyOf:
+                          - type: number
+                          - type: 'null'
+                          description: Scaling factor of the objective function
+                          title: Scalability Factor
+                        offset:
+                          anyOf:
+                          - type: number
+                          - type: 'null'
+                          description: Offset of the objective function
+                          title: Offset
+                      title: ObjectiveData
+                      type: object
+                    - type: 'null'
+                    default: {}
+                    description: '
+
+                      Coefficients of the objective data is passed as a list,
+
+                      For example lets consider following problem,
+
+
+                      # Constraints
+
+
+                      3x + 4y <= 5.4
+
+                      2.7x + 10.1y <= 4.9
+
+
+                      # variables
+
+                      x, y >= 0
+
+
+                      # Objective
+
+                      minimize(0.2x + 0.1y)
+
+
+                      Coefficients of the objective 0.2 and 0.1 is passed in the same
+                      order.
+
+                      '
+                    examples:
+                    - coefficients:
+                      - 0.2
+                      - 0.1
+                      offset: 0.0
+                      scalability_factor: 1.0
+                  constraint_bounds:
+                    anyOf:
+                    - additionalProperties: false
+                      description: 'Bounds for the constraints will be set here,
+
+                        For example lets consider following problem,
+
+
+                        # Constraints
+
+
+                        3x + 4y <= 5.4 # Constraint-1
+
+                        2.7x + 10.1y <= 4.9 # Constraint-2
+
+
+                        # variables
+
+                        x, y >= 0
+
+
+                        # Objective
+
+                        minimize(0.2x + 0.1y)
+
+
+                        Two ways to set this,
+
+                        Option #1: using upper and lower bounds,
+
+                        (Higher Priority in case both ways are used).
+
+
+                        Bounds for the constraints are added here as a list,
+
+
+                        Constraint-1 upper bound is 5.4
+
+                        Constraint-2 upper bound is 4.9
+
+
+                        Since no lower bound is explicitly set,
+
+
+                        Constraint-1 lower bound is negative infinity
+
+                        Constraint-2 lower bound is negative infinity
+
+
+                        Option #2: Set using bounds and types
+
+
+                        Set values 5.4, 4.9 as list
+
+
+                        set types as "L", "L" which means Less than of equal to.'
+                      properties:
+                        bounds:
+                          anyOf:
+                          - items:
+                              anyOf:
+                              - type: number
+                              - enum:
+                                - inf
+                                - ninf
+                                type: string
+                            type: array
+                          - type: 'null'
+                          description: Constraint bounds (b / right-hand side) array
+                          title: Bounds
+                        upper_bounds:
+                          anyOf:
+                          - items:
+                              anyOf:
+                              - type: number
+                              - enum:
+                                - inf
+                                - ninf
+                                type: string
+                            type: array
+                          - type: 'null'
+                          description: Constraints upper bounds
+                          title: Upper Bounds
+                        lower_bounds:
+                          anyOf:
+                          - items:
+                              anyOf:
+                              - type: number
+                              - enum:
+                                - inf
+                                - ninf
+                                type: string
+                            type: array
+                          - type: 'null'
+                          description: Constraints lower bounds
+                          title: Lower Bounds
+                        types:
+                          anyOf:
+                          - {}
+                          - type: 'null'
+                          description: 'Type of each row (constraint).Supported options
+                            are,''E'' for equality ( = ): lower & upper constrains
+                            bound equal to b''L'' for less-than ( <= ): lower constrains
+                            bound equal to -infinity,upper constrains bound equal
+                            to b''G'' for greater-than ( >= ): lower constrains bound
+                            equal to b,upper constrains bound equal to +infinity'
+                          items:
+                            type: string
+                          title: Types
+                          type: array
+                      title: ConstraintBounds
+                      type: object
+                    - type: 'null'
+                    default: {}
+                    description: '
+
+                      Bounds for the constraints will be set here,
+
+                      For example lets consider following problem,
+
+
+                      # Constraints
+
+
+                      3x + 4y <= 5.4 # Constraint-1
+
+                      2.7x + 10.1y <= 4.9 # Constraint-2
+
+
+                      # variables
+
+                      x, y >= 0
+
+
+                      # Objective
+
+                      minimize(0.2x + 0.1y)
+
+
+                      Two ways to set this,
+
+                      Option #1: using upper and lower bounds,
+
+                      (Higher Priority in case both ways are used).
+
+
+                      Bounds for the constraints are added here as a list,
+
+
+                      Constraint-1 upper bound is 5.4
+
+                      Constraint-2 upper bound is 4.9
+
+
+                      Since no lower bound is explicitly set,
+
+
+                      Constraint-1 lower bound is negative infinity
+
+                      Constraint-2 lower bound is negative infinity
+
+
+                      Option #2: Set using bounds and types
+
+
+                      Set values 5.4, 4.9 as list
+
+
+                      set types as "L", "L" which means Less than of equal to.
+
+
+                      '
+                    examples:
+                    - lower_bounds:
+                      - ninf
+                      - ninf
+                      upper_bounds:
+                      - 5.4
+                      - 4.9
+                  variable_bounds:
+                    anyOf:
+                    - additionalProperties: false
+                      description: 'Bounds for the variable will be set here,
+
+                        For example lets consider following problem,
+
+
+                        # Constraints
+
+
+                        3x + 4y <= 5.4 # Constraint-1
+
+                        2.7x + 10.1y <= 4.9 # Constraint-2
+
+
+                        # variables
+
+                        x, y >= 0
+
+
+                        # Objective
+
+                        minimize(0.2x + 0.1y)
+
+
+                        # Since there is not specific upper bound is set for variables
+
+                        x - upper bound is infinity
+
+                        y - upper bound is infinity
+
+
+                        x - lower bound is 0
+
+                        y - lower bound is 0'
+                      properties:
+                        upper_bounds:
+                          anyOf:
+                          - items:
+                              anyOf:
+                              - type: number
+                              - enum:
+                                - inf
+                                - ninf
+                                type: string
+                            type: array
+                          - type: 'null'
+                          description: Variables (x) upper bounds
+                          title: Upper Bounds
+                        lower_bounds:
+                          anyOf:
+                          - items:
+                              anyOf:
+                              - type: number
+                              - enum:
+                                - inf
+                                - ninf
+                                type: string
+                            type: array
+                          - type: 'null'
+                          description: Variables (x) lower bounds
+                          title: Lower Bounds
+                      title: VariableBounds
+                      type: object
+                    - type: 'null'
+                    default: {}
+                    description: '
+
+                      Bounds for the variable will be set here,
+
+                      For example lets consider following problem,
+
+
+                      # Constraints
+
+
+                      3x + 4y <= 5.4 # Constraint-1
+
+                      2.7x + 10.1y <= 4.9 # Constraint-2
+
+
+                      # variables
+
+                      x, y >= 0
+
+
+                      # Objective
+
+                      minimize(0.2x + 0.1y)
+
+
+                      # Since there is not specific upper bound is set for variables
+
+                      x - upper bound is infinity
+
+                      y - upper bound is infinity
+
+
+                      x - lower bound is 0
+
+                      y - lower bound is 0
+
+                      '
+                    examples:
+                    - lower_bounds:
+                      - 0.0
+                      - 0.0
+                      upper_bounds:
+                      - inf
+                      - inf
+                  initial_solution:
+                    anyOf:
+                    - additionalProperties: false
+                      description: Initial solution for the solver.
+                      properties:
+                        primal:
+                          anyOf:
+                          - {}
+                          - type: 'null'
+                          description: Initial primal solution
+                          items:
+                            type: number
+                          title: Primal
+                          type: array
+                        dual:
+                          anyOf:
+                          - {}
+                          - type: 'null'
+                          description: 'Initial dual solution<br>Note: Not supported
+                            for MILP. '
+                          items:
+                            type: number
+                          title: Dual
+                          type: array
+                      title: InitialSolution
+                      type: object
+                    - type: 'null'
+                    default: {}
+                    description: ' '
+                  maximize:
+                    anyOf:
+                    - type: boolean
+                    - type: 'null'
+                    default: false
+                    description: If set to True, solver tries to maximize objective
+                      function else it will try to minimize
+                    examples:
+                    - false
+                    title: Maximize
+                  variable_types:
+                    anyOf:
+                    - {}
+                    - type: 'null'
+                    description: Type of each variable, this is must for MILP,Available
+                      options are, 'I' - Integer'C' - Continuous
+                    items:
+                      type: string
+                    title: Variable Types
+                    type: array
+                  variable_names:
+                    anyOf:
+                    - {}
+                    - type: 'null'
+                    description: Name of variables
+                    items:
+                      type: string
+                    title: Variable Names
+                    type: array
+                  solver_config:
+                    anyOf:
+                    - properties:
+                        tolerances:
+                          anyOf:
+                          - properties:
+                              optimality:
+                                description: absolute and relative tolerance on the
+                                  primal feasibility, dual feasibility, and gap
+                                title: Optimality
+                                type: number
+                              absolute_primal_tolerance:
+                                description: Absolute primal tolerance
+                                title: Absolute Primal Tolerance
+                                type: number
+                              absolute_dual_tolerance:
+                                description: 'Absolute dual tolerance NOTE: Only applicable
+                                  to LP'
+                                title: Absolute Dual Tolerance
+                                type: number
+                              absolute_gap_tolerance:
+                                description: 'Absolute gap tolerance NOTE: Only applicable
+                                  to LP'
+                                title: Absolute Gap Tolerance
+                                type: number
+                              relative_primal_tolerance:
+                                description: Relative primal tolerance
+                                title: Relative Primal Tolerance
+                                type: number
+                              relative_dual_tolerance:
+                                description: 'Relative dual tolerance NOTE: Only applicable
+                                  to LP'
+                                title: Relative Dual Tolerance
+                                type: number
+                              relative_gap_tolerance:
+                                description: 'Relative gap tolerance NOTE: Only applicable
+                                  to LP'
+                                title: Relative Gap Tolerance
+                                type: number
+                              primal_infeasible_tolerance:
+                                description: 'Primal infeasible tolerance NOTE: Only
+                                  applicable to LP'
+                                title: Primal Infeasible Tolerance
+                                type: number
+                              dual_infeasible_tolerance:
+                                description: 'Dual infeasible tolerance NOTE: Only
+                                  applicable to LP'
+                                title: Dual Infeasible Tolerance
+                                type: number
+                              mip_integrality_tolerance:
+                                description: 'NOTE: Only applicable to MILP. Integrality
+                                  tolerance.'
+                                title: Mip Integrality Tolerance
+                                type: number
+                              mip_absolute_gap:
+                                description: 'MIP gap absolute tolerance NOTE: Only
+                                  applicable to MILP'
+                                title: Mip Absolute Gap
+                                type: number
+                              mip_relative_gap:
+                                description: 'MIP gap relative tolerance NOTE: Only
+                                  applicable to MILP'
+                                title: Mip Relative Gap
+                                type: number
+                              mip_absolute_tolerance:
+                                description: MIP absolute tolerance
+                                title: Mip Absolute Tolerance
+                                type: number
+                              mip_relative_tolerance:
+                                description: MIP relative tolerance
+                                title: Mip Relative Tolerance
+                                type: number
+                            title: Tolerances
+                            type: object
+                          - type: 'null'
+                          default: {}
+                          description: 'Note: Not supported for MILP.absolute is fixed
+                            to 1e-4, relative is fixed for 1e-6 and integrality is
+                            fixed for 1e-4.'
+                        infeasibility_detection:
+                          anyOf:
+                          - type: boolean
+                          - type: 'null'
+                          default: false
+                          description: ' Detect and leave if the problem is detected
+                            as infeasible.<br>Note: Not supported for MILP. '
+                          examples:
+                          - true
+                          title: Infeasibility Detection
+                        time_limit:
+                          anyOf:
+                          - type: number
+                          - type: 'null'
+                          description: 'Time limit in seconds after which the solver
+                            will return the current solution. Mandatory in case of
+                            MILP. <br>LP: Solver runs until optimality is reached
+                            within the time limit. If it does, it will return and
+                            will not wait for the entire duration of the time limit.<br>MILP:
+                            Solver runs the entire duration of the time limit to search
+                            for a better solution.'
+                          examples:
+                          - 10
+                          title: Time Limit
+                        iteration_limit:
+                          anyOf:
+                          - type: integer
+                          - type: 'null'
+                          description: 'Iteration limit after which the solver will
+                            return the current solution<br>Note: Not supported for
+                            MILP. '
+                          title: Iteration Limit
+                        pdlp_solver_mode:
+                          anyOf:
+                          - type: integer
+                          - type: 'null'
+                          default: 4
+                          description: 'Solver mode to use for PDLP:<br>- Stable1:
+                            0, Legacy stable mode<br>- Stable2: 1, Legacy stable mode<br>-
+                            Methodical1: 2, Takes slower individual steps, but fewer
+                            are needed to converge<br>- Fast1: 3, Fastest mode, but
+                            with less success in convergence<br>- Stable3: 4, Best
+                            overall mode from experiments; balances speed and convergence
+                            success<br>Note: Not supported for MILP. '
+                          title: Pdlp Solver Mode
+                        method:
+                          anyOf:
+                          - type: integer
+                          - type: 'null'
+                          default: 0
+                          description: 'Method to use:<br>- Concurrent: 0, Concurrent
+                            method<br>- PDLP: 1, PDLP method<br>- Dual Simplex: 2,
+                            Dual Simplex method<br>- Barrier: 3, Barrier method<br>Note:
+                            Not supported for MILP. '
+                          title: Method
+                        mip_scaling:
+                          anyOf:
+                          - type: integer
+                          - type: 'null'
+                          default: 1
+                          description: 'MIP scaling mode:<br>- 0: No scaling<br>-
+                            1: Full scaling (objective + row)<br>- 2: Row scaling
+                            only (no objective scaling), default'
+                          title: Mip Scaling
+                        mip_heuristics_only:
+                          anyOf:
+                          - type: boolean
+                          - type: 'null'
+                          default: false
+                          description: Set True to run heuristics only, False to run
+                            heuristics and branch and bound for MILP
+                          title: Mip Heuristics Only
+                        mip_batch_pdlp_strong_branching:
+                          anyOf:
+                          - type: integer
+                          - type: 'null'
+                          default: 0
+                          description: 'Strong branching mode: 0 = Dual Simplex only,
+                            1 = cooperative work-stealing (DS + batch PDLP), 2 = batch
+                            PDLP only.'
+                          title: Mip Batch Pdlp Strong Branching
+                        mip_batch_pdlp_reliability_branching:
+                          anyOf:
+                          - type: integer
+                          - type: 'null'
+                          default: 0
+                          description: 'Reliability branching mode: 0 = Dual Simplex
+                            only, 1 = cooperative work-stealing (DS + batch PDLP),
+                            2 = batch PDLP only.'
+                          title: Mip Batch Pdlp Reliability Branching
+                        num_cpu_threads:
+                          anyOf:
+                          - type: integer
+                          - type: 'null'
+                          description: Set the number of CPU threads to use in the
+                            MIP solver
+                          title: Num Cpu Threads
+                        num_gpus:
+                          anyOf:
+                          - type: integer
+                          - type: 'null'
+                          description: Set the number of GPUs to use for LP solve.
+                          title: Num Gpus
+                        augmented:
+                          anyOf:
+                          - type: integer
+                          - type: 'null'
+                          default: -1
+                          description: Set the types of system solved by the barrier
+                            solver. -1 for automatic, 0 for ADAT, 1 for augmented
+                            system
+                          title: Augmented
+                        folding:
+                          anyOf:
+                          - type: integer
+                          - type: 'null'
+                          default: -1
+                          description: Set if folding should be used on a linear program.
+                            -1 for automatic, 0 to not fold, 1 to force folding
+                          title: Folding
+                        dualize:
+                          anyOf:
+                          - type: integer
+                          - type: 'null'
+                          default: -1
+                          description: Set if dualization should be used on a linear
+                            program. -1 for automatic, 0 to turn off dualization,
+                            1 to force dualization
+                          title: Dualize
+                        ordering:
+                          anyOf:
+                          - type: integer
+                          - type: 'null'
+                          default: -1
+                          description: Set the type of ordering to use for the barrier
+                            solver.-1 for automatic, 0 to use cuDSS default ordering,
+                            1 to use AMD
+                          title: Ordering
+                        barrier_dual_initial_point:
+                          anyOf:
+                          - type: integer
+                          - type: 'null'
+                          default: -1
+                          description: Set the type of dual initial point to use for
+                            the barriersolver. -1 for automatic, 0 to use Lustig,
+                            Marsten, and Shannoinitial point, 1 to use initial point
+                            from a dual least squaresproblem
+                          title: Barrier Dual Initial Point
+                        eliminate_dense_columns:
+                          anyOf:
+                          - type: boolean
+                          - type: 'null'
+                          default: true
+                          description: Set if dense columns should be eliminated from
+                            the constraint matrix in the barrier solver. True to eliminate,
+                            False to not eliminate
+                          title: Eliminate Dense Columns
+                        cudss_deterministic:
+                          anyOf:
+                          - type: boolean
+                          - type: 'null'
+                          default: false
+                          description: Set if cuDSS should use deterministic mode.
+                            True to use deterministic mode, False to not use deterministic
+                            mode
+                          title: Cudss Deterministic
+                        crossover:
+                          anyOf:
+                          - type: boolean
+                          - type: 'null'
+                          default: false
+                          description: Set True to use crossover, False to not use
+                            crossover.
+                          title: Crossover
+                        presolve:
+                          anyOf:
+                          - type: integer
+                          - type: 'null'
+                          description: 'Set presolve mode: 0 to disable presolve,
+                            1 for Papilo presolve for MIP or LPs, 2 for PSLP LP presolve.
+                            Presolve can reduce problem size and improve solve time.
+                            Default is 1 for MIP problems and 2 for LP problems.'
+                          title: Presolve
+                        mip_probing:
+                          anyOf:
+                          - type: boolean
+                          - type: 'null'
+                          description: Enable or disable the cuOpt-internal probing-cache
+                            step of MIP presolve. True (default) runs probing as part
+                            of presolve; False skips probing while leaving the rest
+                            of presolve untouched. Has no effect if presolve is disabled
+                            (presolve=0) or when running in deterministic mode (probing
+                            is already skipped). LP-only solves ignore this setting.
+                          title: Mip Probing
+                        dual_postsolve:
+                          anyOf:
+                          - type: boolean
+                          - type: 'null'
+                          description: Set True to enable dual postsolve, False to
+                            disable dual postsolve. Dual postsolve can improve solve
+                            time at the expense of not having access to the dual solution.
+                            Default is True for LP problems when presolve is enabled.
+                            This is not relevant for MIP problems.
+                          title: Dual Postsolve
+                        log_to_console:
+                          anyOf:
+                          - type: boolean
+                          - type: 'null'
+                          default: true
+                          description: Set True to write logs to console, False to
+                            not write logs to console.
+                          title: Log To Console
+                        strict_infeasibility:
+                          anyOf:
+                          - type: boolean
+                          - type: 'null'
+                          default: false
+                          description: ' controls the strict infeasibility mode in
+                            PDLP. When true if either the current or the average solution
+                            is detected as infeasible, PDLP will stop. When false
+                            both the current and average solution need to be detected
+                            as infeasible for PDLP to stop.'
+                          title: Strict Infeasibility
+                        user_problem_file:
+                          anyOf:
+                          - type: string
+                          - type: 'null'
+                          default: ''
+                          description: Ignored by the service but included for dataset
+                            compatibility
+                          title: User Problem File
+                        per_constraint_residual:
+                          anyOf:
+                          - type: boolean
+                          - type: 'null'
+                          default: false
+                          description: Controls whether PDLP should compute the primal
+                            & dual residual per constraint instead of globally.
+                          title: Per Constraint Residual
+                        save_best_primal_so_far:
+                          anyOf:
+                          - type: boolean
+                          - type: 'null'
+                          default: false
+                          description: controls whether PDLP should save the best
+                            primal solution so far. With this parameter set to true,
+                            PDLP will always prioritize a primal feasible to a non
+                            primal feasible. If a new primal feasible is found, the
+                            one with the best primal objective will be kept. If no
+                            primal feasible was found, the one with the lowest primal
+                            residual will be kept. If two have the same primal residual,
+                            the one with the best objective will be kept.
+                          title: Save Best Primal So Far
+                        first_primal_feasible:
+                          anyOf:
+                          - type: boolean
+                          - type: 'null'
+                          default: false
+                          description: Controls whether PDLP should stop when the
+                            first primal feasible solution is found.
+                          title: First Primal Feasible
+                        log_file:
+                          anyOf:
+                          - type: string
+                          - type: 'null'
+                          default: ''
+                          description: Ignored by the service but included for dataset
+                            compatibility
+                          title: Log File
+                        solution_file:
+                          anyOf:
+                          - type: string
+                          - type: 'null'
+                          default: ''
+                          description: Ignored by the service but included for dataset
+                            compatibility
+                          title: Solution File
+                      title: SolverConfig
+                      type: object
+                    - type: 'null'
+                    default:
+                      tolerances: {}
+                      infeasibility_detection: false
+                      pdlp_solver_mode: 4
+                      method: 0
+                      mip_scaling: 1
+                      mip_heuristics_only: false
+                      mip_batch_pdlp_strong_branching: 0
+                      mip_batch_pdlp_reliability_branching: 0
+                      augmented: -1
+                      folding: -1
+                      dualize: -1
+                      ordering: -1
+                      barrier_dual_initial_point: -1
+                      eliminate_dense_columns: true
+                      cudss_deterministic: false
+                      crossover: false
+                      log_to_console: true
+                      strict_infeasibility: false
+                      user_problem_file: ''
+                      per_constraint_residual: false
+                      save_best_primal_so_far: false
+                      first_primal_feasible: false
+                      log_file: ''
+                      solution_file: ''
+                    description: ' '
+                    examples:
+                    - tolerances:
+                        optimality: 0.0001
+                title: LPData
+                type: object
+            examples:
+              VRP request:
+                value:
+                  cost_matrix_data:
+                    data:
+                      '1':
+                      - - 0
+                        - 1
+                        - 1
+                      - - 1
+                        - 0
+                        - 1
+                      - - 1
+                        - 1
+                        - 0
+                      '2':
+                      - - 0
+                        - 1
+                        - 1
+                      - - 1
+                        - 0
+                        - 1
+                      - - 1
+                        - 2
+                        - 0
+                  travel_time_matrix_data:
+                    data:
+                      '1':
+                      - - 0
+                        - 1
+                        - 1
+                      - - 1
+                        - 0
+                        - 1
+                      - - 1
+                        - 1
+                        - 0
+                      '2':
+                      - - 0
+                        - 1
+                        - 1
+                      - - 1
+                        - 0
+                        - 1
+                      - - 1
+                        - 2
+                        - 0
+                  fleet_data:
+                    vehicle_locations:
+                    - - 0
+                      - 0
+                    - - 0
+                      - 0
+                    vehicle_ids:
+                    - veh-1
+                    - veh-2
+                    capacities:
+                    - - 2
+                      - 2
+                    - - 4
+                      - 1
+                    vehicle_time_windows:
+                    - - 0
+                      - 10
+                    - - 0
+                      - 10
+                    vehicle_break_time_windows:
+                    - - - 1
+                        - 2
+                      - - 2
+                        - 3
+                    vehicle_break_durations:
+                    - - 1
+                      - 1
+                    vehicle_break_locations:
+                    - 0
+                    - 1
+                    vehicle_types:
+                    - 1
+                    - 2
+                    vehicle_order_match:
+                    - order_ids:
+                      - 0
+                      vehicle_id: 0
+                    - order_ids:
+                      - 1
+                      vehicle_id: 1
+                    skip_first_trips:
+                    - true
+                    - false
+                    drop_return_trips:
+                    - true
+                    - false
+                    min_vehicles: 2
+                    vehicle_max_costs:
+                    - 7
+                    - 10
+                    vehicle_max_times:
+                    - 7
+                    - 10
+                    vehicle_fixed_costs:
+                    - 15
+                    - 5
+                  task_data:
+                    task_locations:
+                    - 1
+                    - 2
+                    task_ids:
+                    - Task-A
+                    - Task-B
+                    demand:
+                    - - 1
+                      - 1
+                    - - 3
+                      - 1
+                    task_time_windows:
+                    - - 0
+                      - 5
+                    - - 3
+                      - 9
+                    service_times:
+                    - 0
+                    - 0
+                    order_vehicle_match:
+                    - order_id: 0
+                      vehicle_ids:
+                      - 0
+                    - order_id: 1
+                      vehicle_ids:
+                      - 1
+                  solver_config:
+                    time_limit: 1
+                    objectives:
+                      cost: 1
+                      travel_time: 0
+                      variance_route_size: 0
+                      variance_route_service_time: 0
+                      prize: 0
+                      vehicle_fixed_cost: 0
+                    verbose_mode: false
+                    error_logging: true
+              LP request:
+                value:
+                  csr_constraint_matrix:
+                    offsets:
+                    - 0
+                    - 2
+                    - 4
+                    indices:
+                    - 0
+                    - 1
+                    - 0
+                    - 1
+                    values:
+                    - 3.0
+                    - 4.0
+                    - 2.7
+                    - 10.1
+                  constraint_bounds:
+                    upper_bounds:
+                    - 5.4
+                    - 4.9
+                    lower_bounds:
+                    - ninf
+                    - ninf
+                  objective_data:
+                    coefficients:
+                    - 0.2
+                    - 0.1
+                    scalability_factor: 1.0
+                    offset: 0.0
+                  variable_bounds:
+                    upper_bounds:
+                    - inf
+                    - inf
+                    lower_bounds:
+                    - 0.0
+                    - 0.0
+                  maximize: false
+                  solver_config:
+                    tolerances:
+                      optimality: 0.0001
+          application/vnd.msgpack:
+            schema:
+              type: string
+              format: byte
+            examples:
+              VRP request compressed with msgpack:
+                value: \x85\xb0cost_matrix_data\x81\xa4data\x82\xa11\x93\x93\x00\x01\x01\x93\x01\x00\x01\x93\x01\x01\x00\xa12\x93\x93\x00\x01\x01\x93\x01\x00\x01\x93\x01\x02\x00\xb7travel_time_matrix_data\x81\xa4data\x82\xa11\x93\x93\x00\x01\x01\x93\x01\x00\x01\x93\x01\x01\x00\xa12\x93\x93\x00\x01\x01\x93\x01\x00\x01\x93\x01\x02\x00\xaafleet_data\x8f\xb1vehicle_locations\x92\x92\x00\x00\x92\x00\x00\xabvehicle_ids\x92\xa5veh-1\xa5veh-2\xaacapacities\x92\x92\x02\x02\x92\x04\x01\xb4vehicle_time_windows\x92\x92\x00\n\x92\x00\n\xbavehicle_break_time_windows\x91\x92\x92\x01\x02\x92\x02\x03\xb7vehicle_break_durations\x91\x92\x01\x01\xb7vehicle_break_locations\x92\x00\x01\xadvehicle_types\x92\x01\x02\xb3vehicle_order_match\x92\x82\xa9order_ids\x91\x00\xaavehicle_id\x00\x82\xa9order_ids\x91\x01\xaavehicle_id\x01\xb0skip_first_trips\x92\xc3\xc2\xb1drop_return_trips\x92\xc3\xc2\xacmin_vehicles\x02\xb1vehicle_max_costs\x92\x07\n\xb1vehicle_max_times\x92\x07\n\xb3vehicle_fixed_costs\x92\x0f\x05\xa9task_data\x86\xaetask_locations\x92\x01\x02\xa8task_ids\x92\xa6Task-A\xa6Task-B\xa6demand\x92\x92\x01\x01\x92\x03\x01\xb1task_time_windows\x92\x92\x00\x05\x92\x03\t\xadservice_times\x92\x00\x00\xb3order_vehicle_match\x92\x82\xa8order_id\x00\xabvehicle_ids\x91\x00\x82\xa8order_id\x01\xabvehicle_ids\x91\x01\xadsolver_config\x84\xaatime_limit\x01\xaaobjectives\x86\xa4cost\x01\xabtravel_time\x00\xb3variance_route_size\x00\xbbvariance_route_service_time\x00\xa5prize\x00\xb2vehicle_fixed_cost\x00\xacverbose_mode\xc2\xaderror_logging\xc3
+              LP request compressed with msgpack:
+                value: \x86\xb5csr_constraint_matrix\x83\xa7offsets\x93\x00\x02\x04\xa7indices\x94\x00\x01\x00\x01\xa6values\x94\x03\x04\xcb@\x05\x99\x99\x99\x99\x99\x9a\xcb@$333333\xb1constraint_bounds\x82\xacupper_bounds\x92\xcb@\x15\x99\x99\x99\x99\x99\x9a\xcb@\x13\x99\x99\x99\x99\x99\x9a\xaclower_bounds\x92\xa4ninf\xa4ninf\xaeobjective_data\x83\xaccoefficients\x92\xcb?\xc9\x99\x99\x99\x99\x99\x9a\xcb?\xb9\x99\x99\x99\x99\x99\x9a\xb2scalability_factor\x01\xa6offset\x00\xafvariable_bounds\x82\xacupper_bounds\x92\xa3inf\xa3inf\xaclower_bounds\x92\x00\x00\xa8maximize\xc2\xadsolver_config\x81\xaatolerances\x81\xaaoptimality\xcb?\x1a6\xe2\xeb\x1cC-
+          application/zlib:
+            schema:
+              type: string
+              format: byte
+            examples:
+              LP request compressed with zlib:
+                value: x\x01\x8dR\xd1j\xc4 \x10|\xcfW\x88\xcf%$\xd7\x94\xd2\xfeJ9\xc2\xc6h\xd9b4\xa8\xc9]{\xe4\xdf\xab1\x9a\x0b\x1c\xa5o\xbb#\xb3;\xb3\xe3\xad
+                  \x842kZ\xa6\x95u\x06P\xb9v\x00g\xf0J\xdf\xc9\xcd?\xfag-\x84\xe5\xcez\xe0c\x05\x08\xa9\x9e\xb6\xe2\x94\x8af\x05\xce\xb1\xa5\xa8zd\xfc!\xa3N\x8c<\xa3>Pg\x90\xd3\x81\xf9\x9c\x08M*N\xe5k*\xeb\xaa\xdc\xe8~\xc8\x12Pzg\xa4\xd3\x93\xea\x83\x8a\xcd\xc84\x8e\xdc\xb4\x19Mn^\xca<\xba)\xdf\x0ej\xa4\xbe<bP\x85J\xd0$"v\x91\x97e\xe8\xee\x8b3\x873o{p\xb0k`\x9a\x0b\x81\x0c\xb9:^\xb4\xcc\xa7\xcc\x96\xe2|j\x19H\xe8P\xa2\xfbn\x050\xa7\x8d\x9f\xb6\x9dq\xcb\xc6\x03U\xde<\x83A\xe8$\xdf\x8d\xfem\xdf\xa7u\xe7%4\xff9A\x8e/,&\xe4\x9c\xd7\x0fp\xc5\x01\x7f\xb8\xd7$@Z\xbe\x86b\xb5\x9c\xfd!}6\x02?\xf7c8-\xb9\x01\x15\xbfJT\x19\xfe\xdb\xe8p\x80\xe07\xf8*\xab\xaa\x8a\x19/aG\xb1\x14E\xf1\x0b;\x07\xa4W
+        required: true
+components:
+  schemas:
+    DeleteRequestModel:
+      properties:
+        queued:
+          type: integer
+          title: Queued
+          description: Number of queued jobs that were deleted.
+        running:
+          type: integer
+          title: Running
+          description: Number of running jobs that were deleted.
+        cached:
+          type: integer
+          title: Cached
+          description: Number of cached jobs that were deleted.
+      additionalProperties: false
+      type: object
+      required:
+      - queued
+      - running
+      - cached
+      title: DeleteRequestModel
+    DetailModel:
+      properties:
+        error:
+          type: string
+          title: Error
+          description: Error details
+        error_result:
+          type: boolean
+          title: Error Result
+          description: Whether or not the error is a result from the solver
+      type: object
+      required:
+      - error
+      - error_result
+      title: DetailModel
+    DroppedTasks:
+      properties:
+        task_id:
+          anyOf:
+          - items:
+              type: integer
+            type: array
+          - items:
+              type: string
+            type: array
+          title: Task Id
+          description: With prize collection enabled, there is a chance of tasks being
+            dropped to make a feasible solution. This list contains infeasible task
+            ids which are dropped.
+          default: []
+        task_index:
+          items:
+            type: integer
+          type: array
+          title: Task Index
+          description: With prize collection enabled, there is a chance of tasks being
+            dropped to make a feasible solution. This list contains infeasible task
+            indices into task locations which are dropped.
+          default: []
+      additionalProperties: false
+      type: object
+      title: DroppedTasks
+    EmptyResponseModel:
+      properties: {}
+      additionalProperties: false
+      type: object
+      title: EmptyResponseModel
+    FeasibleResultData:
+      properties:
+        status:
+          type: integer
+          title: Status
+          description: "0 - Solution is available \n1 - Infeasible solution is available\
+            \ \n"
+          default: 0
+          examples:
+          - 0
+        num_vehicles:
+          type: integer
+          title: Num Vehicles
+          description: Number of vehicle being used for the solution
+          default: -1
+          examples:
+          - 2
+        solution_cost:
+          type: number
+          title: Solution Cost
+          description: Total cost of the solution
+          default: -1.0
+          examples:
+          - 2
+        objective_values:
+          additionalProperties:
+            type: number
+          type: object
+          title: Objective Values
+          description: Individual objective values
+          default: {}
+          examples:
+          - objective_values:
+              cost: 100.0
+              prize: -1000.0
+              travel_time: 245.0
+        vehicle_data:
+          additionalProperties:
+            $ref: '#/components/schemas/VehicleData'
+          type: object
+          title: Vehicle Data
+          description: All the details of vehicle routes and timestamps
+          default: {}
+          examples:
+          - vehicle_data:
+              veh-1:
+                arrival_stamp:
+                - 1
+                - 2
+                route:
+                - 1
+                - 1
+                task_id:
+                - Break
+                - Task-A
+                type:
+                - Break
+                - Delivery
+              veh-2:
+                arrival_stamp:
+                - 2
+                - 2
+                - 4
+                - 5
+                route:
+                - 0
+                - 0
+                - 2
+                - 0
+                task_id:
+                - Depot
+                - Break
+                - Task-B
+                - Depot
+                type:
+                - Depot
+                - Break
+                - Delivery
+                - Depot
+        initial_solutions:
+          items:
+            type: string
+          type: array
+          title: Initial Solutions
+          description: Indicates whether each initial solution was accepted, not accepted
+            or not evaluated by the solver in case initial solutions were provided
+            in request.
+          default: []
+        dropped_tasks:
+          $ref: '#/components/schemas/DroppedTasks'
+          description: Contains details of dropped tasks when prize collection is
+            enabled
+          default: []
+        msg:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Msg
+          description: Any information pertaining to the run.
+          default: ''
+      additionalProperties: false
+      type: object
+      title: FeasibleResultData
+    FeasibleSolve:
+      properties:
+        solver_response:
+          $ref: '#/components/schemas/FeasibleResultData'
+          description: Feasible solution
+          default:
+            status: 0
+            num_vehicles: -1
+            solution_cost: -1.0
+            objective_values: {}
+            vehicle_data: {}
+            initial_solutions: []
+            dropped_tasks: []
+            msg: ''
+        perf_times:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Perf Times
+          description: Etl and Solve times of the solve call
+      additionalProperties: false
+      type: object
+      title: FeasibleSolve
+    HealthResponseModel:
+      properties:
+        status:
+          type: string
+          title: Status
+          description: The status of the service. RUNNING is normal.
+        version:
+          type: string
+          title: Version
+          description: The version of the service.
+      additionalProperties: false
+      type: object
+      required:
+      - status
+      - version
+      title: HealthResponseModel
+    IdModel:
+      properties:
+        reqId:
+          type: string
+          title: Reqid
+          description: Id to poll for result
+          example: f398042f-21e9-4b0c-92ce-3ee52ee2fc05
+      type: object
+      required:
+      - reqId
+      title: IdModel
+    InFeasibleSolve:
+      properties:
+        solver_infeasible_response:
+          $ref: '#/components/schemas/InfeasibleResultData'
+          description: Infeasible solution, this can mean the problem itself is infeasible
+            or solver requires more time to find a solution. Setting default solve
+            time is suggested in case you are not aware of the expected time.
+          default:
+            status: 1
+            num_vehicles: -1
+            solution_cost: -1.0
+            objective_values: {}
+            vehicle_data: {}
+            initial_solutions: []
+            dropped_tasks: []
+            msg: ''
+        perf_times:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Perf Times
+          description: Etl and Solve times of the solve call
+      additionalProperties: false
+      type: object
+      title: InFeasibleSolve
+    IncumbentSolution:
+      properties:
+        solution:
+          items:
+            type: number
+          type: array
+          title: Solution
+        cost:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Cost
+        bound:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Bound
+      additionalProperties: false
+      type: object
+      required:
+      - solution
+      - cost
+      - bound
+      title: IncumbentSolution
+    InfeasibleResultData:
+      properties:
+        status:
+          type: integer
+          title: Status
+          description: "1 - Infeasible solution is available \n"
+          default: 1
+          examples:
+          - 1
+        num_vehicles:
+          type: integer
+          title: Num Vehicles
+          description: Number of vehicle being used for the solution
+          default: -1
+          examples:
+          - 2
+        solution_cost:
+          type: number
+          title: Solution Cost
+          description: Total cost of the solution
+          default: -1.0
+          examples:
+          - 2
+        objective_values:
+          additionalProperties:
+            type: number
+          type: object
+          title: Objective Values
+          description: Individual objective values
+          default: {}
+          examples:
+          - objective_values:
+              cost: 100.0
+              prize: -1000.0
+              travel_time: 245.0
+        vehicle_data:
+          additionalProperties:
+            $ref: '#/components/schemas/VehicleData'
+          type: object
+          title: Vehicle Data
+          description: All the details of vehicle routes and timestamps
+          default: {}
+          examples:
+          - vehicle_data:
+              veh-1:
+                arrival_stamp:
+                - 1
+                - 2
+                route:
+                - 1
+                - 1
+                task_id:
+                - Break
+                - Task-A
+                type:
+                - Break
+                - Delivery
+              veh-2:
+                arrival_stamp:
+                - 2
+                - 2
+                - 4
+                - 5
+                route:
+                - 0
+                - 0
+                - 2
+                - 0
+                task_id:
+                - Depot
+                - Break
+                - Task-B
+                - Depot
+                type:
+                - Depot
+                - Break
+                - Delivery
+                - Depot
+        initial_solutions:
+          items:
+            type: string
+          type: array
+          title: Initial Solutions
+          description: Indicates whether each initial solution was accepted, not accepted
+            or not evaluated by the solver in case initial solutions were provided
+            in request.
+          default: []
+        dropped_tasks:
+          $ref: '#/components/schemas/DroppedTasks'
+          description: 'Note: This is just a place holder since there will not be
+            any dropped tasks in infeasible solution.Contains details of dropped tasks
+            when prize collection is enabled.'
+          default: []
+        msg:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Msg
+          description: Any information pertaining to the run.
+          default: ''
+      additionalProperties: false
+      type: object
+      title: InfeasibleResultData
+    LPSolve:
+      properties:
+        solver_response:
+          anyOf:
+          - $ref: '#/components/schemas/SolutionResultData'
+          - items:
+              $ref: '#/components/schemas/SolutionResultData'
+            type: array
+          title: Solver Response
+          description: LP solution
+          default:
+            status: NoTermination
+            solution:
+              dual_solution: []
+              lp_statistics: {}
+              milp_statistics: {}
+              primal_solution: []
+              vars: {}
+        perf_times:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Perf Times
+          description: Etl and Solve times of the solve call
+        total_solve_time:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Total Solve Time
+          description: Total Solve time of batch problem
+      additionalProperties: false
+      type: object
+      title: LPSolve
+    LocationTypeEnum:
+      type: string
+      enum:
+      - Depot
+      - Pickup
+      - Delivery
+      - Break
+      - w
+      title: LocationTypeEnum
+    LogResponseModel:
+      properties:
+        log:
+          items:
+            type: string
+          type: array
+          title: Log
+        nbytes:
+          type: integer
+          title: Nbytes
+      additionalProperties: false
+      type: object
+      required:
+      - log
+      - nbytes
+      title: LogResponseModel
+    RequestStatusModel:
+      type: string
+      enum:
+      - completed
+      - aborted
+      - running
+      - queued
+      title: RequestStatusModel
+    SolutionData:
+      properties:
+        problem_category:
+          type: integer
+          title: Problem Category
+          description: Category of the solution, LP-0/MIP-1/IP-2
+        primal_solution:
+          items:
+            type: number
+          type: array
+          title: Primal Solution
+          description: Primal solution of the LP problem
+          default: []
+        dual_solution:
+          items:
+            type: number
+          type: array
+          title: Dual Solution
+          description: "Note: Only applicable to LP \nDual solution of the LP problem\n"
+          default: []
+        solver_time:
+          type: number
+          title: Solver Time
+          description: Returns the engine solve time in seconds
+        solved_by:
+          type: integer
+          title: Solved By
+          description: Returns whether problem was solved by PDLP, Barrier or Dual
+            Simplex
+        primal_objective:
+          type: number
+          title: Primal Objective
+          description: Primal objective of the LP problem
+        dual_objective:
+          type: number
+          title: Dual Objective
+          description: "Note: Only applicable to LP \nDual objective of the LP problem\
+            \ \n"
+        vars:
+          additionalProperties: true
+          type: object
+          title: Vars
+          description: Dictionary mapping each variable (name) to its value
+          default: {}
+        lp_statistics:
+          additionalProperties: true
+          type: object
+          title: Lp Statistics
+          description: "Note: Only applicable to LP \nConvergence statistics of the\
+            \ solution \nIncludes primal residual, dual residual, \nreduced cost and\
+            \ gap \n"
+          default: {}
+        milp_statistics:
+          additionalProperties: true
+          type: object
+          title: Milp Statistics
+          description: "Note: Only applicable to MILP \nConvergence statistics of\
+            \ the solution \nIncludes mip gap, solution_bound, pre-solve time, \n\
+            max_constraint_violation, max_int_violatione and \n max_variable_bound_violation\
+            \ \n"
+          default: {}
+      additionalProperties: false
+      type: object
+      title: SolutionData
+    SolutionModelInFile:
+      properties:
+        result_file:
+          type: string
+          title: Result File
+          description: result_file is a file path to result
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+          description: List of warnings for users to handle issues
+          default: []
+        notes:
+          items:
+            type: string
+          type: array
+          title: Notes
+          description: Any notes for users
+          default: []
+        format:
+          type: string
+          title: Format
+          description: Indicator of the format of the result file
+      additionalProperties: false
+      type: object
+      required:
+      - result_file
+      - format
+      title: SolutionModelInFile
+    SolutionModelWithId:
+      properties:
+        response:
+          anyOf:
+          - $ref: '#/components/schemas/FeasibleSolve'
+          - $ref: '#/components/schemas/InFeasibleSolve'
+          - $ref: '#/components/schemas/LPSolve'
+          title: Response
+          description: Solution
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+          description: List of warnings for users to handle issues
+          default: []
+        notes:
+          items:
+            type: string
+          type: array
+          title: Notes
+          description: Any notes for users
+          default: []
+        reqId:
+          type: string
+          title: Reqid
+          description: Id of request
+          example: d6e60f36-8c3a-488b-a70b-a8c9b8cce377
+      additionalProperties: false
+      type: object
+      required:
+      - response
+      - reqId
+      title: SolutionModelWithId
+    SolutionResultData:
+      properties:
+        status:
+          type: string
+          title: Status
+          description: "In case of LP : \n\nNoTermination - No Termination \n\nNumericalError\
+            \ - Numerical Error \n\nOptimal - Optimal solution is available \n\nPrimalInfeasible\
+            \ - Primal Infeasible solution \n\nDualInfeasible - Dual Infeasible solution\
+            \ \n\nIterationLimit - Iteration Limit reached \n\nTimeLimit - TimeLimit\
+            \ reached \n\nPrimalFeasible - Primal Feasible \n\n----------------------\
+            \ \n\nIn case of MILP/IP : \n\nNoTermination - No Termination \n\nOptimal\
+            \ - Optimal solution is available \n\nFeasibleFound - Feasible solution\
+            \ is available \n\nInfeasible - Infeasible \n\nUnbounded - Unbounded \n\
+            \nTimeLimit - TimeLimit reached \n\n"
+          default: NoTermination
+          examples:
+          - Optimal
+        solution:
+          $ref: '#/components/schemas/SolutionData'
+          description: Solution of the LP problem
+          default:
+            primal_solution: []
+            dual_solution: []
+            vars: {}
+            lp_statistics: {}
+            milp_statistics: {}
+      additionalProperties: false
+      type: object
+      title: SolutionResultData
+    VehicleData:
+      properties:
+        task_id:
+          items:
+            type: string
+          type: array
+          title: Task Id
+          description: task_ids being assigned to vehicle along with depot and breaks
+          default: []
+        arrival_stamp:
+          items:
+            type: number
+          type: array
+          title: Arrival Stamp
+          description: arrival stamps at each task locations
+          default: []
+        route:
+          items:
+            type: integer
+          type: array
+          title: Route
+          description: Route indices as per waypoint graph or cost matrix provided
+          default: []
+        type:
+          items:
+            $ref: '#/components/schemas/LocationTypeEnum'
+          type: array
+          title: Type
+          description: "Type of routing point, whether it is Depot, Waypoint - w \n\
+            Delivery, Break, Pickup \n"
+          default: []
+      additionalProperties: false
+      type: object
+      title: VehicleData

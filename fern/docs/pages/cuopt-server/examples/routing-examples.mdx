@@ -1,0 +1,87 @@
+---
+title: "Routing Python Examples"
+---
+
+The following example showcases how to use the `CuOptServiceSelfHostClient` to solve a simple routing problem.
+
+The OpenAPI specification for the server is available in [open-api spec](../../open-api). The example data is structured as per the OpenAPI specification for the server, please refer [OptimizeRoutingData under "POST /cuopt/request"](../../open-api) under schema section.
+
+## Generic Example
+
+[basic\_routing\_example.py](routing/examples/basic_routing_example.py)
+
+The response would be as follows:
+
+>
+>
+>
+
+## Initial Solution
+
+Previously run solutions or uploaded solutions can be used as the initial solution for new requests using previously run reqIds as follows:
+
+[initial\_solution\_example.py](routing/examples/initial_solution_example.py)
+
+The initial solution in the response is `not accepted`, because the problem is too small, and the optimal solution is found even before cuOpt could use an initial solution.
+
+The response would be as follows:
+
+>
+>
+>
+
+The `data` argument to `get_optimized_routes` may be a dictionary of the format shown in [Get Routes Open-API spec](../../open-api). It may also be the path of a file containing such a dictionary as JSON or written using the Python *msgpack* module. A JSON file may optionally be compressed with zlib. More details on the responses can be found under the responses schema in ["get /cuopt/request" and "get /cuopt/solution" API spec](../../open-api).
+
+To enable HTTPS:
+
+  - In the case of the server using public certificates, simply enable https.
+
+
+
+  - In the case of a self-signed certificate, provide the complete path to the certificate.
+
+
+
+    You can generate a self-signed certificate easily as follows:
+
+
+
+    `server.crt` and `server.key` are meant for server, `ca.crt` is meant for client.
+
+More examples are available in the [Examples Notebooks Repository](https://github.com/NVIDIA/cuopt-examples).
+
+## Aborting a Running Job in Thin Client
+
+Please refer to the [aborting-thin-client](#aborting-thin-client) for more details.
+
+# Routing CLI Examples
+
+Create a `data.json` file containing this sample data:
+
+## Routing Example
+
+Invoke the CLI.
+
+## Initial Solution in CLI
+
+To use a previous solution as an initial solution for a new request ID, you are required to save the previous solution, which can be accomplished use option `-k`. Use the previous reqId in the next request as follows:
+
+## Uploading a Solution
+
+Users can also upload a solution which might have been saved for later runs.
+
+## Aborting a Running Job In CLI
+
+Please refer to the [aborting-cli](#aborting-cli) for more in MILP Example.
+
+<Note>
+Please use solver settings while using .mps files.
+</Note>
+
+## To enable HTTPS
+
+  - In the case of the server using public certificates, simply enable https.
+
+
+
+  - In the case of a self-signed certificate, provide the complete path to the certificate.

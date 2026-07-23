@@ -41,6 +41,7 @@ repos:
             cpp|
             conda|
             docs|
+            fern|
             notebooks
           )
   - repo: https://github.com/pre-commit/mirrors-clang-format
@@ -100,24 +101,29 @@ repos:
             ^docs/cuopt/source/cuopt-server/nim-operator/guide/|
             (^|/)VERSION$|
             (^|/)RAPIDS_BRANCH$|
-            [.](md|rst|avro|parquet|png|orc|gz|pkl|sas7bdat|msgpack|pickle|jpg|bz2|zlib)$|
-            ^docs/cuopt/source/cuopt-python/routing/routing-example[.]ipynb$|
-            ^docs/cuopt/source/versions1[.]json$|
+            [.](md|mdx|rst|avro|parquet|png|orc|gz|pkl|sas7bdat|msgpack|pickle|jpg|bz2|zlib)$|
+
             ^helmchart/cuopt-server/(Chart[.]yaml|values[.]yaml)$|
             ^[.]cursor-plugin/plugin[.]json$|
             ^[.]claude-plugin/marketplace[.]json$|
-            ^gemini-extension[.]json$
+            ^gemini-extension[.]json$|
+            ^fern/docs[.]yml$|
+            ^fern/docs-v[0-9].*[.]yml$|
+            ^fern/openapi/cuopt_spec[.]yaml$|
+            ^fern/docs/scripts/cuopt-install-version[.]js$|
+            ^fern/docs/pages/cuopt-server/nim-operator/guide/
   - repo: https://github.com/zizmorcore/zizmor-pre-commit
     rev: v1.24.1
     hooks:
       - id: zizmor
   - repo: local
     hooks:
-      - id: update-versions
-        name: Update versions1.json
-        entry: python ci/utils/update_doc_versions.py
+      - id: update-fern-install-version
+        name: Update Fern install version script
+        entry: python ci/utils/update_fern_install_version.py
         language: system
-        files: docs/cuopt/source/versions1.json
+        pass_filenames: false
+        files: ^VERSION$
       - id: sync-skills-version
         name: Sync skills version from VERSION
         entry: ci/utils/sync_skills_version.sh

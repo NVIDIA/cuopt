@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-rapids-logger "Create test conda environment"
+rapids-logger "Create docs conda environment"
 . /opt/conda/etc/profile.d/conda.sh
 
 rapids-logger "Configuring conda strict channel priority"
@@ -21,7 +21,6 @@ CPP_CHANNEL=$(rapids-download-from-github "$(rapids-artifact-name conda_cpp libc
 PYTHON_CHANNEL=$(rapids-download-from-github "$(rapids-artifact-name conda_python cuopt cuopt --py "$RAPIDS_PY_VERSION" --cuda "$RAPIDS_CUDA_VERSION")")
 
 rapids-logger "Generating conda environment YAML"
-
 rapids-dependency-file-generator \
   --output conda \
   --file-key docs \
@@ -34,5 +33,10 @@ conda activate docs
 
 rapids-print-env
 
-rapids-logger "Build Docs"
-./build.sh docs
+if rapids-is-release-build; then
+    rapids-logger "Publishing Fern docs to production (release build)"
+    ./build.sh docs --publish-docs
+else
+    rapids-logger "Validating Fern docs (publish skipped — only runs on tagged release)"
+    ./build.sh docs --check
+fi

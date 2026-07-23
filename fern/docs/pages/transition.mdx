@@ -1,0 +1,76 @@
+---
+title: "Transition Guide for Change in Features"
+---
+
+In addition to the quality improvements, some new features were added, and some features were deprecated to improve user experience. For any questions, please reach out to the cuOpt team through github issues.
+
+Parameter/option statuses are listed below, they express how each of these options are affected:
+
+> **New** - A new feature has been added.
+>
+> **Update** - A change in definition of feature.
+>
+> **Deprecated** - These options will be accepted but will be removed in the future. In the case of the cuOpt service, the server will also return a warning noting that a feature is deprecated.
+>
+> **Limited** - These options are limited with respect to the number of dimensions that can be provided.
+>
+> **Removed** - These features were deprecated in a previous release and completely removed in this one.
+
+For all solver\_configs fields, see the [Convex Settings](convex-settings) and [Mip Settings](mip-settings) guides or the service openapi spec [Open Api](open-api).
+
+## Changes to solver\_configs.tolerances
+
+The following fields are **Deprecated** in `solver_configs.tolerances` for the service:
+
+  - absolute\_primal
+  - absolute\_dual
+  - absolute\_gap
+  - relative\_primal
+  - relative\_dual
+  - relative\_gap
+  - primal\_infeasible
+  - dual\_infeasible
+  - integrality\_tolerance
+  - absolute\_mip\_gap
+  - relative\_mip\_gap
+
+The following fields are **New** in `solver_configs.tolerances` for the service and replace the deprecated fields above:
+
+  - absolute\_primal\_tolerance
+  - absolute\_dual\_tolerance
+  - absolute\_gap\_tolerance
+  - relative\_primal\_tolerance
+  - relative\_dual\_tolerance
+  - relative\_gap\_tolerance
+  - primal\_infeasible\_tolerance
+  - dual\_infeasible\_tolerance
+  - mip\_integrality\_tolerance
+  - mip\_absolute\_gap
+  - mip\_relative\_gap
+
+The following fields are **New** in `solver_configs.tolerances` for the service but were available in the C API in 25.05
+
+  - mip\_absolute\_tolerance
+  - mip\_relative\_tolerance
+
+## Changes to solver\_configs
+
+The following fields are **Deprecated** in `solver_configs` for the service:
+
+  - solver\_mode
+  - heuristics\_only
+
+The following fields are **New** in `solver_configs` for the service and replace the deprecated fields above:
+
+  - pdlp\_solver\_mode
+  - mip\_heuristics\_only
+
+The following are **New** in `solver_configs` for the service but were available in the C API in 25.05
+
+  - strict\_infeasibility
+  - user\_problem\_file
+  - per\_constraint\_residual
+  - save\_best\_primal\_so\_far
+  - first\_primal\_feasible
+  - log\_file
+  - solution\_file

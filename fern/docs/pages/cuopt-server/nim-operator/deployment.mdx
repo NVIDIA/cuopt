@@ -1,0 +1,106 @@
+---
+title: "Deployment Guide"
+---
+
+This guide covers deploying CuOpt using the NIM Operator.
+
+## Automated Deployment
+
+The easiest way to deploy CuOpt is using the provided deployment script.
+
+### Using the Deploy Script
+
+[deploy.sh](guide/deploy.sh)
+
+1.  Set your NGC API Key:
+
+
+
+2.  Run the deployment script:
+
+
+
+3.  With custom options:
+
+
+
+### Script Options
+
+## Manual Deployment
+
+If you prefer to deploy manually, follow these steps.
+
+### Step 1: Create Namespace
+
+[namespace.yaml](guide/namespace.yaml)
+
+Apply the namespace:
+
+### Step 2: Create Secrets
+
+Create the image pull secret:
+
+Create the NGC API key secret:
+
+### Step 3: Deploy CuOpt NIMService
+
+[cuopt-nimservice.yaml](guide/cuopt-nimservice.yaml)
+
+Apply the NIMService:
+
+## Verifying the Deployment
+
+### Check NIMService Status
+
+Expected output:
+
+### Check Pods
+
+### Check Service
+
+Expected output:
+
+### Check Logs
+
+You should see output indicating the server is running:
+
+## Testing the Deployment
+
+### Port Forward for Local Testing
+
+Then access the service at `http://localhost:8000`.
+
+### Test with cuopt\_sh CLI
+
+Example output:
+
+### Health Endpoints
+
+  - Liveness: `GET /v2/health/live`
+  - Readiness: `GET /v2/health/ready`
+
+## Cleanup
+
+### Using the Script
+
+### Manual Cleanup
+
+## Troubleshooting
+
+### Pod Not Starting
+
+Check pod events:
+
+Check GPU operator status:
+
+### Image Pull Errors
+
+Verify your NGC credentials:
+
+### Health Check Failures
+
+Check the readiness and liveness probe logs:
+
+## Next Steps
+
+See [configuration](#cuopt-nim-configuration) for advanced configuration options.

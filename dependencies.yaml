@@ -73,14 +73,11 @@ files:
   docs:
     output: none
     includes:
-        - cuda
-        - cuda_version
-        - depends_on_libcuopt
-        - depends_on_cuopt
-        - depends_on_cuopt_server
-        - depends_on_cuopt_sh_client
-        - docs
-        - py_version
+      - cuda_version
+      - depends_on_libcuopt
+      - depends_on_cuopt
+      - docs
+      - py_version
   py_build_libcuopt:
     output: pyproject
     pyproject_dir: python/libcuopt
@@ -787,32 +784,19 @@ dependencies:
     common:
       - output_types: [conda]
         packages:
+          - jq
+          - nodejs        # provides npm; used to install fern-api CLI
+          - *pyyaml
           - *doxygen
-          - &ipython ipython
-          - *jsonref
-          - make
-          - *msgpack_python
-          - *msgpack_numpy
-          - myst-parser
+          - fastapi
           - numpydoc
-          - pyrsistent
-          - breathe
-          - sphinx
-          - sphinx-copybutton
-          - sphinx-markdown-tables
-          - sphinx_rtd_theme
-          - sphinxcontrib-openapi
-          - sphinxcontrib-websupport
-          - sphinx-design
-          - pip:
-            - swagger-plugin-for-sphinx
-            - nvidia-sphinx-theme
+          - pydantic
 
   notebooks:
     common:
       - output_types: [conda, requirements]
         packages:
-          - *ipython
+          - ipython
           - notebook
       - output_types: [conda]
         packages:

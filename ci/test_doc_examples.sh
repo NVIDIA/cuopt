@@ -25,7 +25,7 @@ SKIPPED_TESTS=0
 # Directory setup
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-DOCS_ROOT="${PROJECT_ROOT}/docs/cuopt/source"
+DOCS_ROOT="${PROJECT_ROOT}/fern/docs/pages"
 RESULTS_DIR="${PROJECT_ROOT}/test-results"
 SERVER_PID=""
 

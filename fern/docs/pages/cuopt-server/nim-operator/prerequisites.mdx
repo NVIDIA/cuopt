@@ -1,0 +1,98 @@
+---
+title: "Prerequisites"
+---
+
+This document covers all prerequisites needed before deploying CuOpt with the NIM Operator.
+
+## Kubernetes Cluster Setup
+
+You need a Kubernetes cluster with GPU-enabled nodes. Choose one of the following installation methods:
+
+### Option 1: kubeadm (Manual Setup)
+
+Standard Kubernetes installation using kubeadm. Follow the [official Kubernetes documentation](https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/).
+
+### Option 2: Cloud Native Stack (Recommended)
+
+Use NVIDIA Cloud Native Stack Ansible playbooks for automated setup including GPU Operator:
+
+This method automatically deploys necessary operators including the GPU Operator.
+
+### Option 3: Minikube (Development/Testing)
+
+For local development and testing:
+
+## GPU Operator Installation
+
+If not using Cloud Native Stack, install the GPU Operator manually.
+
+### Add NVIDIA Helm Repository
+
+### Install GPU Operator
+
+This typically takes 3-5 minutes to install the driver and set up the cloud native stack for GPU usage.
+
+### Verify GPU Operator
+
+All pods should be in `Running` state.
+
+## Storage Provisioner
+
+CuOpt requires persistent storage. Deploy a storage provisioner if your cluster doesn't have one.
+
+### Local Path Provisioner (Development/Single Node)
+
+Wait for the provisioner to be ready:
+
+### Set Default Storage Class
+
+### Verify Storage Class
+
+You should see `local-path` marked as `(default)`.
+
+### Production Storage Options
+
+For production deployments, consider:
+
+  - **Cloud providers**: Use native storage classes (AWS EBS, GCP PD, Azure Disk)
+  - **On-premises**: Longhorn, OpenEBS, Rook-Ceph
+
+## NIM Operator Installation
+
+### Create Namespace
+
+### Install NIM Operator
+
+### Verify Installation
+
+You should see the `nimservices.apps.nvidia.com` CRD registered.
+
+## NGC API Key
+
+You need an NGC API key to pull NVIDIA container images.
+
+### Obtain NGC API Key
+
+1.  Go to [NGC](https://ngc.nvidia.com/)
+2.  Sign in or create an account
+3.  Navigate to **Setup** → **API Key**
+4.  Generate a new API key
+
+### Set Environment Variable
+
+For persistent configuration, add to your shell profile:
+
+## Verification Checklist
+
+Before proceeding with CuOpt deployment, verify:
+
+  - Kubernetes cluster is running (`kubectl cluster-info`)
+  - GPU nodes are available (`kubectl get nodes -l nvidia.com/gpu.present=true`)
+  - GPU Operator pods are running (`kubectl get pods -n gpu-operator`)
+  - Storage class is configured (`kubectl get storageclass`)
+  - NIM Operator is installed (`kubectl get pods -n nim-operator`)
+  - NGC API key is set (`echo $NGC_API_KEY`)
+
+## Next Steps
+
+Once all prerequisites are met, proceed to [deployment](#cuopt-nim-deployment).

@@ -45,6 +45,7 @@ datasets/**
 ## Doxygen
 cpp/doxygen/html
 cpp/doxygen/xml
+fern/.doxygen-xml/
 
 # Jupyter Notebooks
 .ipynb_checkpoints
@@ -80,3 +81,7 @@ cpp/include/cuopt/semantic_version.hpp
 
 # conda env (recommended name)
 .cuopt_env
+cpp/build_split/
+
+# Fern theme export staging dir (uploaded to Fern cloud; not tracked in git)
+fern/theme/

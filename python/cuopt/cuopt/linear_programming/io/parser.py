@@ -81,6 +81,35 @@ def ParseMps(mps_file_path: str, fixed_mps_format: bool = False) -> DataModel:
 
 
 def toDict(model, json=False):
+    """Convert a :class:`DataModel` to a plain Python dictionary.
+
+    Serializes all problem arrays (constraint matrix, bounds, objective
+    coefficients, variable types, and names) into a nested ``dict``.
+    Infinity values (``numpy.inf`` / ``-numpy.inf``) are replaced with the
+    strings ``"inf"`` / ``"ninf"`` when ``json=True`` so the result is
+    JSON-serializable.
+
+    Parameters
+    ----------
+    model : DataModel
+        A problem loaded via :func:`Read` or :func:`ParseMps`.
+    json : bool
+        If ``True``, converts NumPy arrays to Python lists and replaces
+        infinity values with ``"inf"`` / ``"ninf"`` strings so the result
+        can be passed to :func:`json.dumps`. Defaults to ``False``.
+
+    Returns
+    -------
+    dict
+        Nested dictionary with keys: ``csr_constraint_matrix``,
+        ``constraint_bounds``, ``objective_data``, ``variable_bounds``,
+        ``maximize``, ``variable_types``, ``variable_names``.
+
+    Raises
+    ------
+    ValueError
+        If *model* is not a :class:`DataModel` instance.
+    """
     if not isinstance(model, parser_wrapper.DataModel):
         raise ValueError(
             "model must be a cuopt.linear_programming.io.parser_wrapper.DataModel"
