@@ -28,8 +28,8 @@ class solution_t;
 template <typename i_t, typename f_t>
 class third_party_presolve_t;
 
-// Discovery-time probing substitution (current-space ids). Flattened and remapped before append to
-// reconstructions.
+// Affine substitution payload. Discovery-time probing substitutions use current-space ids; entries
+// appended to reconstructions are remapped to the post-Papilo frame.
 template <typename i_t, typename f_t>
 struct substitution_t {
   f_t timestamp;
@@ -39,23 +39,24 @@ struct substitution_t {
   f_t coefficient;
 };
 
+template <typename i_t>
+struct bve_postsolve_t {
+  std::vector<i_t> interior;
+  std::vector<i_t> boundary;
+  std::vector<uint32_t> witness;  // size 2^boundary.size()
+};
+
 // GPU-presolve value reconstructions, append-only in commit order. Replayed in REVERSE order in
 // post_process_assignment so multi-round probe→BVE stacks undo as reverse chronology. All variable
 // indices are in the post-Papilo frame (variable_mapping values).
 enum class reconstruction_kind_t : uint8_t { AffineSub = 0, BlockBve = 1 };
 
+// could be a tagged union, but alas non-trivial members
 template <typename i_t, typename f_t>
 struct reconstruction_t {
   reconstruction_kind_t kind{};
-  // AffineSub: x[substituted_var] = offset + coefficient * x[substituting_var]
-  i_t substituting_var{};
-  i_t substituted_var{};
-  f_t offset{};
-  f_t coefficient{};
-  // BlockBve: interiors recovered from witness[pattern(boundary)]
-  std::vector<i_t> interior;
-  std::vector<i_t> boundary;
-  std::vector<uint32_t> witness;  // size 2^boundary.size()
+  substitution_t<i_t, f_t> sub{};
+  bve_postsolve_t<i_t> bve{};
 };
 
 template <typename i_t, typename f_t>

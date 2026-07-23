@@ -739,23 +739,22 @@ void apply_substitution_queue_to_problem(
       coefficient_values.push_back(substitution.coefficient);
 
       reconstruction_t<i_t, f_t> rec;
-      rec.kind             = reconstruction_kind_t::AffineSub;
-      rec.substituted_var  = h_variable_mapping[substitution.substituted_var];
-      rec.substituting_var = h_variable_mapping[substitution.substituting_var];
-      rec.offset           = substitution.offset;
-      rec.coefficient      = substitution.coefficient;
+      rec.kind                 = reconstruction_kind_t::AffineSub;
+      rec.sub                  = substitution;
+      rec.sub.substituted_var  = h_variable_mapping[substitution.substituted_var];
+      rec.sub.substituting_var = h_variable_mapping[substitution.substituting_var];
       batch_recs.push_back(std::move(rec));
       CUOPT_LOG_TRACE("Stored AffineSub for post-processing: x[%d] = %f + %f * x[%d]",
-                      batch_recs.back().substituted_var,
-                      batch_recs.back().offset,
-                      batch_recs.back().coefficient,
-                      batch_recs.back().substituting_var);
+                      batch_recs.back().sub.substituted_var,
+                      batch_recs.back().sub.offset,
+                      batch_recs.back().sub.coefficient,
+                      batch_recs.back().sub.substituting_var);
     }
   }
   std::sort(batch_recs.begin(),
             batch_recs.end(),
             [](const reconstruction_t<i_t, f_t>& a, const reconstruction_t<i_t, f_t>& b) {
-              return a.substituted_var < b.substituted_var;
+              return a.sub.substituted_var < b.sub.substituted_var;
             });
   auto& recs = problem.presolve_data.reconstructions;
   recs.insert(recs.end(),
