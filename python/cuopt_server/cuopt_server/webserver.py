@@ -1341,6 +1341,17 @@ def cuopt(request: Request, data_bytes: bytes = Depends(get_body)):
             )
         )
 
+        # Canonicalize NVCF_LARGE_OUTPUT_DIR before use as a write directory.
+        # Headers are untrusted; resolve symlinks and require absolute paths.
+        large_output_dir = ""
+        if NVCF_LARGE_OUTPUT_DIR:
+            if not os.path.isabs(NVCF_LARGE_OUTPUT_DIR):
+                raise HTTPException(
+                    status_code=400,
+                    detail="nvcf-large-output-dir must be an absolute path",
+                )
+            large_output_dir = os.path.realpath(NVCF_LARGE_OUTPUT_DIR)
+
         # Create a NVCFJobResult to hold the solution
         if os.environ.get("CUOPT_SERVER_TEST_LARGE_RESULT", False):
             maxresult = 0
@@ -1349,13 +1360,27 @@ def cuopt(request: Request, data_bytes: bytes = Depends(get_body)):
                 maxresult = int(NVCF_MAX_RESPONSE_SIZE_BYTES) / 1000
             except Exception:
                 _, maxresult, _ = settings.get_result_dir()
-        r = NVCFJobResult(NVCF_LARGE_OUTPUT_DIR, maxresult, accept)
+        r = NVCFJobResult(large_output_dir, maxresult, accept)
         id = r.register_result()
 
         if NVCF_FUNCTION_ASSET_IDS:
-            file_path = os.path.join(
-                NVCF_ASSET_DIR, NVCF_FUNCTION_ASSET_IDS.split(",")[0]
-            )
+            asset_id = NVCF_FUNCTION_ASSET_IDS.split(",")[0]
+            if not NVCF_ASSET_DIR:
+                raise HTTPException(
+                    status_code=400,
+                    detail="nvcf-asset-dir must be set when nvcf-function-asset-ids is provided",
+                )
+            asset_root = os.path.realpath(NVCF_ASSET_DIR)
+            candidate = os.path.realpath(os.path.join(asset_root, asset_id))
+            if (
+                os.path.isabs(asset_id)
+                or os.path.commonpath([asset_root, candidate]) != asset_root
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Asset path must stay within the asset directory",
+                )
+            file_path = candidate
             job = SolverBinaryJobPath(
                 id,
                 warnings,
