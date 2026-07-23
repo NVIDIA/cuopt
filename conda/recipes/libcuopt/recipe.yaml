@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 schema_version: 1
 
@@ -107,6 +107,7 @@ outputs:
       script:
         content: |
           cmake --install cpp/build
+          ./ci/check_symbols.sh cpp/build/libcuopt.so
       dynamic_linking:
         overlinking_behavior: "error"
       prefix_detection:
@@ -118,6 +119,7 @@ outputs:
       build:
         - cmake ${{ cmake_version }}
         - ${{ stdlib("c") }}
+        - binutils
       host:
         - libboost-devel
         - cuda-version =${{ cuda_version }}
