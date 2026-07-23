@@ -319,12 +319,12 @@ class pdlp_solver_settings_t {
   bool all_primal_feasible{false};
   presolver_t presolver{presolver_t::Default};
   bool dual_postsolve{true};
+  // Concurrent LP/MIP: 1–2 GPUs. Distributed PDLP (method=PDLP and num_gpus>1): up to the
+  // visible device count. See use_distributed_pdlp.
   int num_gpus{1};
-  // Dispatch the LP to the multi-GPU distributed PDLP engine
+  // Dispatch the LP to the multi-GPU distributed PDLP engine (typically set when
+  // method=PDLP and num_gpus>1).
   bool use_distributed_pdlp{false};
-  // Number of GPUs to use specifically for distributed PDLP (use_distributed_pdlp=true).
-  // -1 means auto-detect
-  int distributed_pdlp_num_gpus{-1};
   // Which graph partitioner distributed PDLP uses. See
   // distributed_pdlp_partitioner_t for the meaning of each value.
   distributed_pdlp_partitioner_t distributed_pdlp_partitioner{distributed_pdlp_partitioner_t::Auto};

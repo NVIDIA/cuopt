@@ -2361,6 +2361,13 @@ optimization_problem_solution_t<i_t, f_t> solve_lp(
     return solve_lp_distributed_from_mps(
       handle_ptr, mps_data_model, settings, use_pdlp_solver_mode);
   }
+  // method=PDLP with num_gpus>1 is the public way to request distributed PDLP.
+  if (settings.method == method_t::PDLP && settings.num_gpus > 1) {
+    pdlp_solver_settings_t<i_t, f_t> distributed_settings = settings;
+    distributed_settings.use_distributed_pdlp             = true;
+    return solve_lp_distributed_from_mps(
+      handle_ptr, mps_data_model, distributed_settings, use_pdlp_solver_mode);
+  }
   auto op_problem = mps_data_model_to_optimization_problem(handle_ptr, mps_data_model);
   return solve_lp(op_problem, settings, problem_checking, use_pdlp_solver_mode, false);
 }
@@ -2395,9 +2402,12 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_distributed_from_mps(
   }
 
   const int visible_device_count = raft::device_setter::get_device_count();
-  if (settings_resolved.distributed_pdlp_num_gpus == -1) {
-    settings_resolved.distributed_pdlp_num_gpus = visible_device_count;
-  }
+  cuopt_expects(settings_resolved.num_gpus >= 1,
+                error_type_t::ValidationError,
+                "Distributed PDLP requires num_gpus >= 1.");
+  cuopt_expects(settings_resolved.num_gpus <= visible_device_count,
+                error_type_t::ValidationError,
+                "Distributed PDLP num_gpus exceeds the number of visible CUDA devices.");
   // PDLP precision validations (mirror the checks in run_pdlp; distributed
   // path only supports the default-precision, non-batch double config).
   cuopt_expects(settings_resolved.pdlp_precision == pdlp_precision_t::DefaultPrecision,

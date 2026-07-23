@@ -49,16 +49,14 @@ cuopt::mathematical_optimization::optimization_problem_solution_t<i_t, f_t> solv
  * maximization sign-flip on the dual / reduced cost when the sense is maximize,
  * and returns the gathered solution.
  *
- * Resolves the `distributed_pdlp_num_gpus == -1` sentinel against the
- * visible-device count. Several configurations are rejected up front
- * (see @pre).
+ * Uses `settings.num_gpus` as the shard count. Several configurations are
+ * rejected up front (see @pre).
  *
  * @param handle_ptr  Master raft handle (its stream owns the gather buffers and
  *                    any master-side aggregator allocations). Must be non-null.
  * @param mps_data_model  Host-resident MPS data (CPU vectors only).
- * @param settings    User-supplied PDLP solver settings; the
- *                    `distributed_pdlp_num_gpus == -1` sentinel is resolved
- *                    here against the visible-device count.
+ * @param settings    User-supplied PDLP solver settings; `num_gpus` is the
+ *                    distributed shard count when `use_distributed_pdlp` is true.
  * @param use_pdlp_solver_mode  When true, applies `set_pdlp_solver_mode()` to a
  *                    local copy of settings before solving and enforces
  *                    `settings.pdlp_solver_mode == Stable3`

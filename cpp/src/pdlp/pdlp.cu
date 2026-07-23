@@ -406,7 +406,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   cuopt_expects(settings.hyper_params.never_restart_to_average,
                 error_type_t::ValidationError,
                 "Distributed PDLP requires never_restart_to_average = true");
-  const int distributed_pdlp_num_gpus = settings.distributed_pdlp_num_gpus;
+  const int distributed_pdlp_num_gpus = settings.num_gpus;
   CUOPT_LOG_INFO("Solving with distributed PDLP on %d GPUs.", distributed_pdlp_num_gpus);
 
   if constexpr (!std::is_same_v<f_t, double>) {
@@ -520,7 +520,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
                                           h_A_t_row_offsets,
                                           h_A_t_col_indices,
                                           h_A_t_values,
-                                          settings.distributed_pdlp_num_gpus,
+                                          settings.num_gpus,
                                           n_cstr,
                                           n_vars,
                                           nnz);
@@ -528,7 +528,7 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   // ----- 5. Per-shard settings -----
   pdlp_solver_settings_t<i_t, f_t> sub_pdlp_settings = settings;
   sub_pdlp_settings.num_gpus                         = 1;
-  sub_pdlp_settings.distributed_pdlp_num_gpus        = 1;
+  sub_pdlp_settings.use_distributed_pdlp             = false;
   // Disable automatic ruiz and pock-chambolle in the initial_scaling ctor: the
   // distributed pipeline computes them via distributed_scaling using the
   // GLOBAL problem.

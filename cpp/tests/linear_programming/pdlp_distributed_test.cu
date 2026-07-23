@@ -29,7 +29,7 @@
 namespace cuopt::mathematical_optimization::test {
 
 // Solve `mps_rel_path` with the single-GPU PDLP ("base") and with distributed PDLP
-// (num_gpus = -1 => auto-detect), then assert the distributed run is:
+// (num_gpus = all visible devices), then assert the distributed run is:
 //   - optimal (same status as base),
 //   - within a loose relative tolerance of base on primal/dual objective and step count.
 static void expect_distributed_matches_base(raft::handle_t const& handle,
@@ -53,8 +53,8 @@ static void expect_distributed_matches_base(raft::handle_t const& handle,
 
   pdlp_solver_settings_t<int, double> dist_settings = base_settings;
   dist_settings.use_distributed_pdlp                = true;
-  dist_settings.distributed_pdlp_num_gpus           = -1;
-  auto dist                                         = solve_lp(&handle, problem, dist_settings);
+  dist_settings.num_gpus = raft::device_setter::get_device_count();
+  auto dist              = solve_lp(&handle, problem, dist_settings);
 
   ASSERT_EQ(static_cast<int>(base.get_termination_status()), CUOPT_TERMINATION_STATUS_OPTIMAL)
     << mps_rel_path << ": base did not reach optimal";
