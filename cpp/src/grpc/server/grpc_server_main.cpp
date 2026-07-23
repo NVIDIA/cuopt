@@ -289,6 +289,10 @@ int main(int argc, char** argv)
     keep_running                 = false;
     shm_ctrl->shutdown_requested = true;
     cancel_all_active_jobs_for_shutdown();
+    kill_all_workers();
+    // Close our pipe ends so any background thread blocked in write/read
+    // returns instead of delaying join past Ctrl-C.
+    close_all_server_worker_pipes();
     result_cv.notify_all();
 
     if (result_thread.joinable()) result_thread.join();
@@ -327,7 +331,7 @@ int main(int argc, char** argv)
 
   // On signal: cancel active jobs and SIGKILL workers before gRPC Shutdown so
   // WaitForCompletion / StreamLogs RPCs unblock and we never hang on mid-solve
-  // workers. Use a deadline in case an RPC is stuck for another reason.
+  // workers. Use a short deadline in case an RPC is stuck for another reason.
   std::thread shutdown_thread([&server]() {
     while (keep_running.load()) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -336,8 +340,9 @@ int main(int argc, char** argv)
     if (shm_ctrl) { shm_ctrl->shutdown_requested = true; }
     cancel_all_active_jobs_for_shutdown();
     kill_all_workers();
+    close_all_server_worker_pipes();
     if (server) {
-      auto deadline = std::chrono::system_clock::now() + std::chrono::seconds(5);
+      auto deadline = std::chrono::system_clock::now() + std::chrono::seconds(2);
       server->Shutdown(deadline);
     }
   });

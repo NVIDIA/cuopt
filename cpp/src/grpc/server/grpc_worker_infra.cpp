@@ -215,6 +215,14 @@ void kill_all_workers()
   }
 }
 
+void close_all_server_worker_pipes()
+{
+  std::lock_guard<std::mutex> lock(worker_pipes_mutex);
+  for (auto& wp : worker_pipes) {
+    close_all_worker_pipes(wp);
+  }
+}
+
 void cancel_all_active_jobs_for_shutdown()
 {
   if (job_queue != nullptr) {
@@ -258,11 +266,39 @@ void wait_for_workers()
 {
   // Mid-solve workers only check shutdown_requested between jobs, so force-kill
   // before waitpid or Ctrl-C / SIGTERM can hang until the current solve ends.
+  // A worker killed mid-CUDA can sit in uninterruptible D-state while the GPU
+  // driver tears down; a blocking waitpid would then hang the whole server
+  // (and ignore SIGTERM because we retry on EINTR). Bound the wait and abandon
+  // stragglers — the test harness / init reaps them.
   kill_all_workers();
+
+  constexpr auto kShutdownWait = std::chrono::seconds(2);
+  auto deadline                = std::chrono::steady_clock::now() + kShutdownWait;
+  while (std::chrono::steady_clock::now() < deadline) {
+    bool any_alive = false;
+    for (pid_t& pid : worker_pids) {
+      if (pid <= 0) continue;
+      int status   = 0;
+      pid_t reaped = waitpid(pid, &status, WNOHANG);
+      if (reaped == pid || (reaped < 0 && errno == ECHILD)) {
+        pid = 0;
+      } else if (reaped < 0 && errno == EINTR) {
+        any_alive = true;
+      } else {
+        any_alive = true;
+      }
+    }
+    if (!any_alive) break;
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  }
+
   for (pid_t pid : worker_pids) {
-    if (pid <= 0) continue;
-    int status;
-    while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
+    if (pid > 0) {
+      kill(pid, SIGKILL);
+      SERVER_LOG_WARN(
+        "[Server] Worker pid %d did not exit within shutdown grace period; abandoning",
+        static_cast<int>(pid));
+    }
   }
   worker_pids.clear();
 }

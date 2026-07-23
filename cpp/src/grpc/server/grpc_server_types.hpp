@@ -351,6 +351,7 @@ void log_worker_gpu_layout();
 bool init_worker_cuda_environment(int worker_id);
 void spawn_workers();
 void kill_all_workers();
+void close_all_server_worker_pipes();
 void wait_for_workers();
 void cancel_all_active_jobs_for_shutdown();
 void worker_monitor_thread();
