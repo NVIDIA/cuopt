@@ -498,16 +498,15 @@ pdlp_solver_t<i_t, f_t>::pdlp_solver_t(
   partition_input.A_t.num_cols    = n_cstr;
   // 0 => KaMinPar auto-detects and uses all hardware threads.
   partition_input.nb_threads = 0;
-  const char* kind_name      = (kind == partitioner_kind_t::RoundRobin) ? "round_robin"
-                               : (kind == partitioner_kind_t::KaMinPar) ? "kaminpar"
-                                                                        : "unknown";
   CUOPT_LOG_TRACE(
     "Partitioning %d constraints + %d variables into %d part(s) using the %s "
     "partitioner",
     n_cstr,
     n_vars,
     distributed_pdlp_num_gpus,
-    kind_name);
+    (kind == partitioner_kind_t::RoundRobin) ? "round_robin"
+    : (kind == partitioner_kind_t::KaMinPar) ? "kaminpar"
+                                             : "unknown");
   auto partitioner = make_partitioner<i_t, f_t>(kind);
   parts            = partitioner->partition(partition_input);
 
