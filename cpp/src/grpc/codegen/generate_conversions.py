@@ -1049,6 +1049,10 @@ def generate_enum_converters_inc(registry, domain=None):
     for key, edef in enums.items():
         if "values" not in edef:
             continue
+        # proto_enum_only enums are wire-only: emit the proto enum (elsewhere) but
+        # no C++ <-> proto converter, so no problem-representation mapping lives here.
+        if edef.get("proto_enum_only"):
+            continue
         if domain is not None and edef.get("domain") != domain:
             continue
         cpp_type = _enum_cpp_type(key, edef)
@@ -1065,20 +1069,11 @@ def generate_enum_converters_inc(registry, domain=None):
             "{",
             "  switch (v) {",
         ]
-        # to_proto: one case per C++ enumerator. proto_only values have no C++
-        # enumerator (skip). cpp_aliases are C++-only enumerators that serialize
-        # to an existing proto value (e.g. IP -> MIP).
-        for cpp_name, _num, attrs in parse_enum_values(edef["values"]):
-            if attrs.get("proto_only"):
-                continue
+        # to_proto: one case per C++ enumerator.
+        for cpp_name, _num, _attrs in parse_enum_values(edef["values"]):
             pname = _proto_enum_value_name(cpp_name, prefix)
             lines.append(
                 f"    case {cpp_type}::{cpp_name}: return cuopt::remote::{pname};"
-            )
-        for cpp_alias, proto_target in edef.get("cpp_aliases", {}).items():
-            ptarget = _proto_enum_value_name(proto_target, prefix)
-            lines.append(
-                f"    case {cpp_type}::{cpp_alias}: return cuopt::remote::{ptarget};"
             )
         lines.extend(
             [
@@ -1094,19 +1089,12 @@ def generate_enum_converters_inc(registry, domain=None):
             "{",
             "  switch (v) {",
         ]
-        # from_proto: one case per proto value. proto_only values have no C++
-        # enumerator, so their wire value is rejected at runtime.
-        for cpp_name, _num, attrs in parse_enum_values(edef["values"]):
+        # from_proto: one case per proto value.
+        for cpp_name, _num, _attrs in parse_enum_values(edef["values"]):
             pname = _proto_enum_value_name(cpp_name, prefix)
-            if attrs.get("proto_only"):
-                lines.append(
-                    f"    case cuopt::remote::{pname}:\n"
-                    f'      throw std::invalid_argument("{pname} has no {cpp_type} equivalent");'
-                )
-            else:
-                lines.append(
-                    f"    case cuopt::remote::{pname}: return {cpp_type}::{cpp_name};"
-                )
+            lines.append(
+                f"    case cuopt::remote::{pname}: return {cpp_type}::{cpp_name};"
+            )
         lines.extend(
             [
                 "  }",

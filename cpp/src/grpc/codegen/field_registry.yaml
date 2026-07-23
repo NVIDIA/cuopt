@@ -165,17 +165,17 @@ enums:
 
   problem_category:
     domain: problem
-    # The C++ problem_category_t (LP, MIP, IP) and the proto ProblemCategory
-    # (LP, MIP, VRP) intentionally diverge: VRP is a transport-only routing
-    # category with no math-opt enumerator, and IP is a C++-only value that
-    # serializes as MIP on the wire.
+    # Transport-only wire enum. Deliberately generates NO C++ <-> proto converter
+    # (proto_enum_only): the job's category is assigned directly from the request
+    # oneof in the service (has_lp_request / has_mip_request / has_vrp_request), so
+    # no enum conversion — and no problem-representation decision — lives in the
+    # grpc codegen. VRP sits at 1000 to leave the low numbers for future math-opt
+    # categories (QP, SOCP, ...).
+    proto_enum_only: true
     values:
     - LP
     - MIP
-    - VRP:
-        proto_only: true   # proto value with no problem_category_t; from_proto throws
-    cpp_aliases:
-      IP: MIP              # C++-only enumerator; to_proto serializes it as MIP
+    - VRP: 1000
 
   # ResultFieldId is auto-derived from solution/warm-start array_id fields.
   # Aliases here preserve backward compatibility with upstream's abbreviated

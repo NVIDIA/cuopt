@@ -51,7 +51,7 @@ enum VariableType {
 enum ProblemCategory {
   LP = 0;
   MIP = 1;
-  VRP = 2;
+  VRP = 1000;
 }
 
 enum ResultFieldId {
