@@ -5,7 +5,6 @@ import numpy as np
 
 import cudf
 
-from cuopt import routing
 from cuopt.routing import vehicle_routing_wrapper
 from cuopt.routing._deferred import _DeferredDataModel
 from cuopt.utilities import catch_cuopt_exception
@@ -1561,7 +1560,11 @@ def Solve(data_model, solver_settings=None):
         data_model._build(), solver_settings
     )
     if solver_settings.get_config_file_name() is not None:
-        routing.utils.save_data_model_to_yaml(
+        # imported here rather than at module scope: utils lives outside the
+        # cuopt.routing import path so that importing routing stays GPU-free.
+        from cuopt.routing import utils
+
+        utils.save_data_model_to_yaml(
             data_model,
             solver_settings,
             solution,

@@ -1597,7 +1597,12 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
             } else {
               call_barrier_thread();
             }
+          } catch (const std::exception& e) {
+            CUOPT_LOG_ERROR("Exception in concurrent barrier LP: %s", e.what());
+            barrier_exception = std::current_exception();
+            request_concurrent_halt();
           } catch (...) {
+            CUOPT_LOG_ERROR("Unknown exception in concurrent barrier LP");
             barrier_exception = std::current_exception();
             request_concurrent_halt();
           }
@@ -1611,7 +1616,12 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
           try {
             run_dual_simplex_thread<i_t, f_t>(
               dual_simplex_problem, settings_pdlp, sol_dual_simplex_ptr, timer);
+          } catch (const std::exception& e) {
+            CUOPT_LOG_ERROR("Exception in concurrent dual simplex LP: %s", e.what());
+            dual_simplex_exception = std::current_exception();
+            request_concurrent_halt();
           } catch (...) {
+            CUOPT_LOG_ERROR("Unknown exception in concurrent dual simplex LP");
             dual_simplex_exception = std::current_exception();
             request_concurrent_halt();
           }
@@ -1625,7 +1635,12 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
       // PDLP runs synchronously on the dispatcher, concurrently with the queued tasks.
       try {
         sol_pdlp = run_pdlp(problem, settings_pdlp, timer, is_batch_mode);
+      } catch (const std::exception& e) {
+        CUOPT_LOG_ERROR("Exception in concurrent PDLP: %s", e.what());
+        pdlp_exception = std::current_exception();
+        request_concurrent_halt();
       } catch (...) {
+        CUOPT_LOG_ERROR("Unknown exception in concurrent PDLP");
         pdlp_exception = std::current_exception();
         request_concurrent_halt();
       }
