@@ -39,7 +39,7 @@ Contribute to the NVIDIA cuOpt codebase. This skill is for modifying cuOpt itsel
 - **Environment setup is allowed.** You may create and activate the conda env from the checked-in `conda/environments/all_cuda-*.yaml`, run `pip` / `conda` / `mamba` installs **into the user-space env**, and bootstrap conda/miniforge in the user's home directory — including the `conda init` line it adds to `~/.bashrc`. Bootstrapping conda must not require `sudo`; install it into `$HOME`, not a system path.
 - **A new *permanent* project dependency is different from a one-off install.** A package the project should always ship belongs in `dependencies.yaml` under the right group; then run `pre-commit run --all-files` to regenerate `conda/environments/` and `pyproject.toml` so other contributors get it too. A throwaway install to unblock your own build doesn't need this round-trip.
 - **Don't bypass CI checks** (`--no-verify`, skipping pre-commit or tests). If hooks feel slow, diagnose with `pre-commit run --all-files --verbose` or tune the offending hook — don't skip it.
-- **Be careful with destructive commands** (`rm -rf`, `git reset --hard`, `git push --force`, killing processes, dropping data). Confirm intent before running and prefer the safer alternative (e.g. `./build.sh clean` for a stale build dir).
+- **Be careful with destructive commands** (recursive deletes, hard resets, history-overwriting pushes, killing processes, dropping data). Confirm intent before running and prefer the safer alternative (e.g. `./build.sh clean` for a stale build dir).
 
 ---
 
