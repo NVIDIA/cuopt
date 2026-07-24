@@ -819,6 +819,10 @@ optimization_problem:
       getter: get_sense()
   - objective_scaling_factor:
       field_num: 4
+      # C++ defaults to 1 while an absent proto3 scalar reads as 0. Track
+      # presence so external clients may omit the field without changing the
+      # objective to an unsupported zero scaling factor.
+      optional: true
   - objective_offset:
       field_num: 5
 

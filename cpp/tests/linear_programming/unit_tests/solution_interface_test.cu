@@ -424,6 +424,97 @@ End
   EXPECT_NEAR(problem.get_quadratic_constraints()[0].rhs_value, 0.5, 1e-9);
 }
 
+// Build one CPU problem by copying the model (populate) and another by moving an equal model
+// (adopt), then assert the two are field-for-field identical. Guards the adopt path against
+// silently dropping or mis-moving any member.
+static void expect_adopt_matches_populate(const io::mps_data_model_t<int, double>& model_src)
+{
+  io::mps_data_model_t<int, double> model_for_copy = model_src;
+  io::mps_data_model_t<int, double> model_for_move = model_src;
+
+  cpu_optimization_problem_t<int, double> copied;
+  populate_from_mps_data_model(&copied, model_for_copy);
+
+  cpu_optimization_problem_t<int, double> moved;
+  adopt_from_mps_data_model(&moved, std::move(model_for_move));
+
+  // Scalars
+  EXPECT_EQ(copied.get_n_variables(), moved.get_n_variables());
+  EXPECT_EQ(copied.get_n_constraints(), moved.get_n_constraints());
+  EXPECT_EQ(copied.get_nnz(), moved.get_nnz());
+  EXPECT_EQ(copied.get_n_integers(), moved.get_n_integers());
+  EXPECT_EQ(copied.get_problem_category(), moved.get_problem_category());
+  EXPECT_EQ(copied.get_sense(), moved.get_sense());
+  EXPECT_DOUBLE_EQ(copied.get_objective_offset(), moved.get_objective_offset());
+  EXPECT_DOUBLE_EQ(copied.get_objective_scaling_factor(), moved.get_objective_scaling_factor());
+  EXPECT_EQ(copied.has_quadratic_objective(), moved.has_quadratic_objective());
+  EXPECT_EQ(copied.has_quadratic_constraints(), moved.has_quadratic_constraints());
+
+  // Numeric / char / string arrays
+  EXPECT_EQ(copied.get_constraint_matrix_values_host(), moved.get_constraint_matrix_values_host());
+  EXPECT_EQ(copied.get_constraint_matrix_indices_host(),
+            moved.get_constraint_matrix_indices_host());
+  EXPECT_EQ(copied.get_constraint_matrix_offsets_host(),
+            moved.get_constraint_matrix_offsets_host());
+  EXPECT_EQ(copied.get_constraint_bounds_host(), moved.get_constraint_bounds_host());
+  EXPECT_EQ(copied.get_constraint_lower_bounds_host(), moved.get_constraint_lower_bounds_host());
+  EXPECT_EQ(copied.get_constraint_upper_bounds_host(), moved.get_constraint_upper_bounds_host());
+  EXPECT_EQ(copied.get_objective_coefficients_host(), moved.get_objective_coefficients_host());
+  EXPECT_EQ(copied.get_variable_lower_bounds_host(), moved.get_variable_lower_bounds_host());
+  EXPECT_EQ(copied.get_variable_upper_bounds_host(), moved.get_variable_upper_bounds_host());
+  EXPECT_EQ(copied.get_row_types_host(), moved.get_row_types_host());
+  EXPECT_EQ(copied.get_variable_types_host(), moved.get_variable_types_host());
+  EXPECT_EQ(copied.get_variable_names(), moved.get_variable_names());
+  EXPECT_EQ(copied.get_row_names(), moved.get_row_names());
+
+  // Quadratic objective (CSR)
+  EXPECT_EQ(copied.get_quadratic_objective_values(), moved.get_quadratic_objective_values());
+  EXPECT_EQ(copied.get_quadratic_objective_indices(), moved.get_quadratic_objective_indices());
+  EXPECT_EQ(copied.get_quadratic_objective_offsets(), moved.get_quadratic_objective_offsets());
+
+  // Quadratic constraints (compare size + per-row key fields)
+  const auto& qc_copied = copied.get_quadratic_constraints();
+  const auto& qc_moved  = moved.get_quadratic_constraints();
+  ASSERT_EQ(qc_copied.size(), qc_moved.size());
+  for (size_t i = 0; i < qc_copied.size(); ++i) {
+    EXPECT_EQ(qc_copied[i].constraint_row_name, qc_moved[i].constraint_row_name);
+    EXPECT_EQ(qc_copied[i].constraint_row_type, qc_moved[i].constraint_row_type);
+    EXPECT_DOUBLE_EQ(qc_copied[i].rhs_value, qc_moved[i].rhs_value);
+    EXPECT_EQ(qc_copied[i].linear_values, qc_moved[i].linear_values);
+    EXPECT_EQ(qc_copied[i].linear_indices, qc_moved[i].linear_indices);
+    EXPECT_EQ(qc_copied[i].rows, qc_moved[i].rows);
+    EXPECT_EQ(qc_copied[i].cols, qc_moved[i].cols);
+    EXPECT_EQ(qc_copied[i].vals, qc_moved[i].vals);
+  }
+
+  // The moved-from model must be left empty (adopt consumed it).
+  EXPECT_EQ(model_for_move.get_n_variables(), 0);
+  EXPECT_EQ(model_for_move.get_n_constraints(), 0);
+}
+
+// adopt_from_mps_data_model must produce a problem identical to populate_from_mps_data_model.
+TEST_F(SolutionInterfaceTest, adopt_matches_populate_lp_file)
+{
+  const auto model = io::read_mps<int, double>(lp_file_);
+  expect_adopt_matches_populate(model);
+}
+
+TEST_F(SolutionInterfaceTest, adopt_matches_populate_quadratic_constraints)
+{
+  const auto model = io::read_lp_from_string<int, double>(R"LP(
+Minimize
+  obj: x + y
+Subject To
+  q0: [ 4 x * y ] <= 0.5
+Bounds
+  -1 <= x <= 1
+  -1 <= y <= 1
+End
+)LP");
+  ASSERT_TRUE(model.has_quadratic_constraints());
+  expect_adopt_matches_populate(model);
+}
+
 // =============================================================================
 // Solution conversion tests (hand-constructed, known values)
 // =============================================================================
