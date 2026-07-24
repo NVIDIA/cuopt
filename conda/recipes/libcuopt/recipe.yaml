@@ -162,6 +162,9 @@ outputs:
     - package_contents:
         files:
           - lib/libcuopt.so
+          - lib/libcuopt_base.a
+          - lib/libcuopt_routing.a
+          - lib/libcuopt_lp.a
           - bin/cuopt_cli
           - bin/cuopt_grpc_server
     about:
