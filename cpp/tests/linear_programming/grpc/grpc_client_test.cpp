@@ -1857,6 +1857,53 @@ TEST(MapperRoundtrip, ProblemWithVariableTypes)
   EXPECT_DOUBLE_EQ(restored_obj[2], 3.0);
 }
 
+TEST(MapperRoundtrip, UnaryProblemObjectiveScalingPresence)
+{
+  cuopt::remote::OptimizationProblem omitted;
+  omitted.add_c(0.0);
+  omitted.add_variable_lower_bounds(0.0);
+  omitted.add_variable_upper_bounds(1.0);
+  ASSERT_FALSE(omitted.has_objective_scaling_factor());
+
+  cpu_optimization_problem_t<int32_t, double> restored_default;
+  map_proto_to_problem(omitted, restored_default);
+  EXPECT_DOUBLE_EQ(restored_default.get_objective_scaling_factor(), 1.0);
+
+  cpu_optimization_problem_t<int32_t, double> orig;
+  const std::vector<double> objective{0.0};
+  const std::vector<double> lower_bound{0.0};
+  const std::vector<double> upper_bound{1.0};
+  orig.set_objective_coefficients(objective.data(), objective.size());
+  orig.set_variable_lower_bounds(lower_bound.data(), lower_bound.size());
+  orig.set_variable_upper_bounds(upper_bound.data(), upper_bound.size());
+  orig.set_objective_scaling_factor(2.5);
+  cuopt::remote::OptimizationProblem present;
+  map_problem_to_proto(orig, &present);
+  ASSERT_TRUE(present.has_objective_scaling_factor());
+  EXPECT_DOUBLE_EQ(present.objective_scaling_factor(), 2.5);
+
+  cpu_optimization_problem_t<int32_t, double> restored_present;
+  map_proto_to_problem(present, restored_present);
+  EXPECT_DOUBLE_EQ(restored_present.get_objective_scaling_factor(), 2.5);
+}
+
+TEST(MapperRoundtrip, ChunkedProblemObjectiveScalingPresence)
+{
+  cuopt::remote::ChunkedProblemHeader omitted;
+  ASSERT_FALSE(omitted.has_objective_scaling_factor());
+
+  cpu_optimization_problem_t<int32_t, double> restored_default;
+  map_chunked_header_to_problem(omitted, restored_default);
+  EXPECT_DOUBLE_EQ(restored_default.get_objective_scaling_factor(), 1.0);
+
+  omitted.set_objective_scaling_factor(2.5);
+  ASSERT_TRUE(omitted.has_objective_scaling_factor());
+
+  cpu_optimization_problem_t<int32_t, double> restored_present;
+  map_chunked_header_to_problem(omitted, restored_present);
+  EXPECT_DOUBLE_EQ(restored_present.get_objective_scaling_factor(), 2.5);
+}
+
 TEST(MapperRoundtrip, MIPSolutionAllFields)
 {
   std::vector<double> sol_vec = {1.0, 0.0, 1.0, 0.0, 1.0};

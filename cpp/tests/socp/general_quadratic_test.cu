@@ -384,6 +384,118 @@ TEST(general_quadratic, rank_deficient_psd_solve)
   EXPECT_NEAR(solution.objective, -1.0, 1e-4);
 }
 
+TEST(general_quadratic, mixed_general_and_affine_soc_conversion)
+{
+  raft::handle_t handle{};
+  init_handler(&handle);
+
+  // qc_general: [ x ^ 2 + 2 x * y + y ^ 2 ] <= 4  (nonzero rhs -> general LDLT path)
+  // affine:  - z + [ 2 x ^ 2 + 2 y ^ 2 ] <= 0 (linear part -> general LDLT path)
+  // Order matters: general first reproduces the hub1 failure mode before the fix.
+  auto lp = io::read_lp_from_string<i_t, f_t>(R"LP(
+Minimize
+  obj: x + y
+Subject To
+  qc_general: [ x ^ 2 + 2 x * y + y ^ 2 ] <= 4
+  affine: - z + [ 2 x ^ 2 + 2 y ^ 2 ] <= 0
+Bounds
+  x free
+  y free
+  z free
+End
+)LP");
+
+  ASSERT_TRUE(lp.has_quadratic_constraints());
+  ASSERT_EQ(lp.get_quadratic_constraints().size(), 2u);
+  EXPECT_EQ(lp.get_quadratic_constraints()[0].constraint_row_name, "qc_general");
+  EXPECT_EQ(lp.get_quadratic_constraints()[1].constraint_row_name, "affine");
+
+  const i_t n = lp.get_n_variables();
+  const i_t m = lp.get_n_constraints();
+  EXPECT_EQ(n, 3);
+  EXPECT_EQ(m, 0);
+
+  user_problem_t<i_t, f_t> user_problem(&handle);
+  user_problem.num_rows  = m;
+  user_problem.num_cols  = n;
+  user_problem.objective = lp.get_objective_coefficients();
+
+  user_problem.A.m      = m;
+  user_problem.A.n      = n;
+  user_problem.A.nz_max = 0;
+  user_problem.A.reallocate(0);
+  user_problem.A.col_start.assign(n + 1, 0);
+
+  user_problem.rhs.clear();
+  user_problem.row_sense.clear();
+  user_problem.lower          = lp.get_variable_lower_bounds();
+  user_problem.upper          = lp.get_variable_upper_bounds();
+  user_problem.num_range_rows = 0;
+  user_problem.var_types.assign(n, variable_type_t::CONTINUOUS);
+
+  csr_matrix_t<i_t, f_t> csr_A(m, n, 0);
+  csr_A.m         = m;
+  csr_A.n         = n;
+  csr_A.row_start = {0};
+
+  std::vector<qc_t> qcs;
+  qcs.reserve(lp.get_quadratic_constraints().size());
+  for (const auto& src_qc : lp.get_quadratic_constraints()) {
+    qc_t qc;
+    qc.constraint_row_index = src_qc.constraint_row_index;
+    qc.constraint_row_name  = src_qc.constraint_row_name;
+    qc.constraint_row_type  = src_qc.constraint_row_type;
+    qc.linear_values        = src_qc.linear_values;
+    qc.linear_indices       = src_qc.linear_indices;
+    qc.rhs_value            = src_qc.rhs_value;
+    qc.rows                 = src_qc.rows;
+    qc.cols                 = src_qc.cols;
+    qc.vals                 = src_qc.vals;
+    qcs.push_back(std::move(qc));
+  }
+  EXPECT_NO_THROW(
+    (convert_quadratic_constraints_to_second_order_cones<i_t, f_t>(n, qcs, csr_A, user_problem)));
+
+  csr_A.to_compressed_col(user_problem.A);
+
+  EXPECT_EQ(user_problem.A.n, user_problem.num_cols);
+  EXPECT_EQ(static_cast<int>(user_problem.objective.size()), user_problem.num_cols);
+  EXPECT_EQ(static_cast<int>(user_problem.lower.size()), user_problem.num_cols);
+  EXPECT_EQ(static_cast<int>(user_problem.upper.size()), user_problem.num_cols);
+  EXPECT_EQ(static_cast<int>(user_problem.var_types.size()), user_problem.num_cols);
+  EXPECT_GE(user_problem.num_cols, n + 2);
+  EXPECT_GT(user_problem.second_order_cone_dims.size(), 0u);
+  EXPECT_GT(user_problem.cone_var_start, 0);
+
+  i_t cone_end = user_problem.cone_var_start;
+  for (i_t d : user_problem.second_order_cone_dims) {
+    cone_end += d;
+  }
+  EXPECT_EQ(cone_end, user_problem.num_cols);
+
+  // Solve and verify optimum: min (x+y) s.t. (x+y)^2 <= 4 and 2(x^2+y^2) - z <= 0.
+  simplex_solver_settings_t<i_t, f_t> settings;
+  settings.barrier          = true;
+  settings.barrier_presolve = true;
+  settings.dualize          = 0;
+
+  lp_solution_t<i_t, f_t> solution(user_problem.num_rows, user_problem.num_cols);
+  auto status = solve_linear_program_with_barrier(user_problem, settings, solution);
+
+  EXPECT_EQ(status, lp_status_t::OPTIMAL);
+  EXPECT_NEAR(solution.objective, -2.0, 1e-4);
+
+  project_barrier_solution_to_model_variables(user_problem, solution);
+  ASSERT_EQ(static_cast<int>(solution.x.size()), n);
+
+  const f_t x = solution.x[0];
+  const f_t y = solution.x[1];
+  const f_t z = solution.x[2];
+  EXPECT_NEAR(x + y, -2.0, 1e-3);
+  EXPECT_LE(x * x + 2.0 * x * y + y * y - 4.0, 1e-6);
+  EXPECT_LE(-z + 2.0 * x * x + 2.0 * y * y, 1e-6);
+}
+
 // Test: general quadratic constraint WITH an inequality linear constraint.
 // minimize x0 + x1
 // subject to x^T [2 1; 1 2] x <= 1   (quadratic, via general path)

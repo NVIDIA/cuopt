@@ -242,9 +242,10 @@ section:
   (the setter / assignment is skipped). This is the case the flag is designed
   for: without `optional:`, an external client that omits the field silently
   overwrites the C++ default with the proto3 zero.
-- **Problem-chunked**: currently *not honored* — the chunked path reads from
-  the hand-written `ChunkedProblemHeader` message which does not declare
-  `optional` on its fields. Tracked for unification (see §6).
+- **Problem-chunked**: the C++ field's in-class default is preserved, provided
+  the matching field in the hand-written `ChunkedProblemHeader` message is
+  also declared `optional`. The generator emits a `has_X()` guard for registry
+  fields marked `optional`.
 - **Solution**: cosmetic. Solutions are constructor-built each call; there's no
   pre-existing default to preserve. The `optional` keyword adds `has_X()` to
   the proto for client-side presence detection, but the from-proto path still

@@ -5,7 +5,9 @@
   cpu_problem.set_problem_name(header.problem_name());
   cpu_problem.set_objective_name(header.objective_name());
   cpu_problem.set_maximize(header.maximize());
-  cpu_problem.set_objective_scaling_factor(header.objective_scaling_factor());
+  if (header.has_objective_scaling_factor()) {
+    cpu_problem.set_objective_scaling_factor(header.objective_scaling_factor());
+  }
   cpu_problem.set_objective_offset(header.objective_offset());
 
   if (header.variable_names_size() > 0) {
