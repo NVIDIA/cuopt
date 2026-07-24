@@ -19,20 +19,19 @@
 #include <string>
 #include <vector>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 // forward declare
 template <typename i_t, typename f_t>
 class diversity_manager_t;
 
-enum class solution_origin_t { BRANCH_AND_BOUND, CPUFJ, RINS, EXTERNAL };
+enum class solution_origin_t { BRANCH_AND_BOUND, CPUFJ, EXTERNAL };
 
 constexpr const char* solution_origin_to_string(solution_origin_t origin)
 {
   switch (origin) {
     case solution_origin_t::BRANCH_AND_BOUND: return "B&B";
     case solution_origin_t::CPUFJ: return "CPUFJ";
-    case solution_origin_t::RINS: return "RINS";
     case solution_origin_t::EXTERNAL: return "injected";
     default: return "unknown";
   }
@@ -214,4 +213,4 @@ class population_t {
   cuopt::timer_t timer;
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

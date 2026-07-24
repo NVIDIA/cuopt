@@ -13,7 +13,7 @@ from libcpp.string cimport string
 from libcpp.vector cimport vector
 
 
-cdef extern from "cuopt/linear_programming/io/mps_data_model.hpp" namespace "cuopt::linear_programming::io" nogil: # noqa
+cdef extern from "cuopt/mathematical_optimization/io/mps_data_model.hpp" namespace "cuopt::mathematical_optimization::io" nogil: # noqa
 
     cdef cppclass mps_data_model_t[i_t, f_t]:
         cppclass quadratic_constraint_t:
@@ -28,7 +28,7 @@ cdef extern from "cuopt/linear_programming/io/mps_data_model.hpp" namespace "cuo
             vector[double] vals
 
 
-cdef extern from "cuopt/linear_programming/io/data_model_view.hpp" namespace "cuopt::linear_programming::io" nogil: # noqa
+cdef extern from "cuopt/mathematical_optimization/io/data_model_view.hpp" namespace "cuopt::mathematical_optimization::io" nogil: # noqa
 
     cdef cppclass data_model_view_t[i_t, f_t]:
         void set_maximize(bool maximize) except +
@@ -74,7 +74,7 @@ cdef extern from "cuopt/linear_programming/io/data_model_view.hpp" namespace "cu
             vector[mps_data_model_t[i_t, f_t].quadratic_constraint_t] constraints) except +
 
 
-cdef extern from "cuopt/linear_programming/io/writer.hpp" namespace "cuopt::linear_programming::io" nogil: # noqa
+cdef extern from "cuopt/mathematical_optimization/io/writer.hpp" namespace "cuopt::mathematical_optimization::io" nogil: # noqa
 
     cdef void write_mps(
         const data_model_view_t[int, double] data_model,

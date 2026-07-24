@@ -8,7 +8,7 @@
 #include "../linear_programming/utilities/pdlp_test_utilities.cuh"
 #include "mip_utils.cuh"
 
-#include <cuopt/linear_programming/solve.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
 #include <utilities/common_utils.hpp>
 #include <utilities/inline_lp_test_utils.hpp>
 
@@ -16,7 +16,7 @@
 
 #include <gtest/gtest.h>
 
-namespace cuopt::linear_programming::test {
+namespace cuopt::mathematical_optimization::test {
 
 io::mps_data_model_t<int, double> create_std_lp_problem()
 {
@@ -47,19 +47,19 @@ TEST(ServerTest, TestSampleLP)
   raft::handle_t handle;
   auto problem = create_std_lp_problem();
 
-  cuopt::linear_programming::pdlp_solver_settings_t<int, double> settings{};
+  cuopt::mathematical_optimization::pdlp_solver_settings_t<int, double> settings{};
   settings.set_optimality_tolerance(1e-4);
   settings.set_time_limit(5);
 
-  auto result = cuopt::linear_programming::solve_lp(&handle, problem, settings);
+  auto result = cuopt::mathematical_optimization::solve_lp(&handle, problem, settings);
 
   EXPECT_EQ(result.get_termination_status(),
-            cuopt::linear_programming::pdlp_termination_status_t::Optimal);
+            cuopt::mathematical_optimization::pdlp_termination_status_t::Optimal);
 }
 
 class MILPTestParams
   : public testing::TestWithParam<
-      std::tuple<bool, int, bool, cuopt::linear_programming::mip_termination_status_t>> {};
+      std::tuple<bool, int, bool, cuopt::mathematical_optimization::mip_termination_status_t>> {};
 
 TEST_P(MILPTestParams, TestSampleMILP)
 {
@@ -71,12 +71,12 @@ TEST_P(MILPTestParams, TestSampleMILP)
   raft::handle_t handle;
   auto problem = create_std_milp_problem(maximize);
 
-  cuopt::linear_programming::mip_solver_settings_t<int, double> settings{};
+  cuopt::mathematical_optimization::mip_solver_settings_t<int, double> settings{};
   settings.time_limit      = 5;
   settings.mip_scaling     = scaling;
   settings.heuristics_only = heuristics_only;
 
-  auto result = cuopt::linear_programming::solve_mip(&handle, problem, settings);
+  auto result = cuopt::mathematical_optimization::solve_mip(&handle, problem, settings);
 
   EXPECT_EQ(result.get_termination_status(), expected_termination_status);
 }
@@ -88,18 +88,18 @@ INSTANTIATE_TEST_SUITE_P(
     std::make_tuple(true,
                     CUOPT_MIP_SCALING_ON,
                     true,
-                    cuopt::linear_programming::mip_termination_status_t::FeasibleFound),
+                    cuopt::mathematical_optimization::mip_termination_status_t::FeasibleFound),
     std::make_tuple(false,
                     CUOPT_MIP_SCALING_ON,
                     false,
-                    cuopt::linear_programming::mip_termination_status_t::Optimal),
+                    cuopt::mathematical_optimization::mip_termination_status_t::Optimal),
     std::make_tuple(true,
                     CUOPT_MIP_SCALING_OFF,
                     true,
-                    cuopt::linear_programming::mip_termination_status_t::FeasibleFound),
+                    cuopt::mathematical_optimization::mip_termination_status_t::FeasibleFound),
     std::make_tuple(false,
                     CUOPT_MIP_SCALING_OFF,
                     false,
-                    cuopt::linear_programming::mip_termination_status_t::Optimal)));
+                    cuopt::mathematical_optimization::mip_termination_status_t::Optimal)));
 
-}  // namespace cuopt::linear_programming::test
+}  // namespace cuopt::mathematical_optimization::test

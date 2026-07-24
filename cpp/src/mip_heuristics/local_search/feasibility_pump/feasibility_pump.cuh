@@ -17,7 +17,7 @@
 
 #include <deque>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 constexpr double default_alpha                  = 0.99;
 constexpr double distance_to_check_for_feasible = 0.01;
@@ -159,4 +159,4 @@ class feasibility_pump_t {
   cuopt::timer_t timer;
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

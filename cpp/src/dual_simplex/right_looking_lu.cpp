@@ -6,18 +6,17 @@
 /* clang-format on */
 
 #include <dual_simplex/right_looking_lu.hpp>
-#include <dual_simplex/tic_toc.hpp>
+#include <math_optimization/tic_toc.hpp>
 #include <utilities/memory_instrumentation.hpp>
 
 #include <raft/core/nvtx.hpp>
 
 #include <cassert>
 #include <cmath>
-#include <cstdio>
 
 using cuopt::ins_vector;
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 namespace {
 
@@ -1684,7 +1683,8 @@ i_t right_looking_ldlt(const csc_matrix_t<i_t, f_t>& A,
                        f_t& work_estimate)
 {
   raft::common::nvtx::range scope("LU::right_looking_ldlt");
-  const i_t n = A.n;
+  const i_t n         = A.n;
+  const i_t input_nnz = A.nnz();
   assert(A.m == n);
 
   symmetric_trailing_matrix_t<i_t, f_t> trailing_matrix(A);
@@ -1720,7 +1720,12 @@ i_t right_looking_ldlt(const csc_matrix_t<i_t, f_t>& A,
     f_t pivot_val = 0;
     trailing_matrix.symmetric_markowitz_search(pivot_tol, pivot_p, pivot_val);
 
-    if (pivot_p == -1) { break; }  // No acceptable pivot found (remaining diagonals are zero/tiny)
+    if (pivot_p == -1) {
+      // No acceptable diagonal pivot. Zero matrix is rank 0; nonzero cross-only indefinite
+      // matrices (e.g. [[0, a]; [a, 0]]) also stall here and must not be treated as PSD.
+      if (pivots == 0 && input_nnz > 0) { return INDEFINITE_MATRIX_RETURN; }
+      break;
+    }
 
     // Check for indefiniteness: a negative pivot means the matrix is not PSD
     if (pivot_val < 0) { return INDEFINITE_MATRIX_RETURN; }
@@ -1813,4 +1818,4 @@ template int right_looking_ldlt<int, double>(const csc_matrix_t<int, double>& A,
                                              double& work_estimate);
 #endif
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

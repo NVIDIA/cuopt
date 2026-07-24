@@ -9,7 +9,7 @@ General FAQ
 
     There are two options:
     - NVIDIA Docker Hub (https://hub.docker.com/r/nvidia/cuopt)
-    - NVIDIA NGC registry (https://catalog.ngc.nvidia.com/orgs/nvidia/teams/cuopt/containers/cuopt/tags) with NVAIE license.
+    - NVIDIA NGC registry (https://catalog.ngc.nvidia.com/orgs/nvidia/cuopt/containers/cuopt/tags) with an NVAIE license or NVIDIA Developer Program membership.
 
 .. dropdown:: How to get a NVAIE license?
 
@@ -17,7 +17,7 @@ General FAQ
 
 .. dropdown:: How to access NGC registry?
 
-    Once you have a NVAIE license, you can access the `NGC registry <https://catalog.ngc.nvidia.com/orgs/nvidia/teams/cuopt/containers/cuopt/tags>`_ for cuOpt container images.
+    With an NVAIE license or NVIDIA Developer Program membership, you can access the `NGC registry <https://catalog.ngc.nvidia.com/orgs/nvidia/cuopt/containers/cuopt/tags>`_ for cuOpt container images.
 
 .. dropdown:: How to pull cuOpt container images from NGC registry?
 

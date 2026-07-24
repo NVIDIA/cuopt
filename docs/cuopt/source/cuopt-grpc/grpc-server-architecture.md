@@ -28,6 +28,7 @@ Implementation details (IPC layout, C++ source map, chunked transfer internals) 
 
 - If a **worker process crashes**, jobs it was running are marked **FAILED**; the server can spawn replacement workers (see contributor doc for details).
 - **`CancelJob`** cancels **queued** jobs immediately (the worker skips them). If the solver has already started, the **worker process is killed** and the job is marked **CANCELLED**; a replacement worker is spawned automatically.
+- **`DeleteResult`** also cancels a queued or running job (same kill/skip behavior as ``CancelJob``), then removes all server-side state for that ``job_id``.
 
 ## Further reading
 

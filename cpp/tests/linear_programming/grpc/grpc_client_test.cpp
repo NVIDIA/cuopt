@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 /**
@@ -18,12 +18,12 @@
 
 #include <utilities/inline_lp_test_utils.hpp>
 
-#include <cuopt/linear_programming/cpu_optimization_problem.hpp>
-#include <cuopt/linear_programming/cpu_optimization_problem_solution.hpp>
-#include <cuopt/linear_programming/mip/solver_settings.hpp>
-#include <cuopt/linear_programming/optimization_problem_interface.hpp>
-#include <cuopt/linear_programming/optimization_problem_utils.hpp>
-#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem_solution.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 #include "grpc_client.hpp"
 #include "grpc_problem_mapper.hpp"
 #include "grpc_service_mapper.hpp"
@@ -38,7 +38,7 @@
 
 #include <map>
 
-using namespace cuopt::linear_programming;
+using namespace cuopt::mathematical_optimization;
 using namespace ::testing;
 
 /**
@@ -1460,7 +1460,7 @@ class MockLogStream : public grpc::ClientReaderInterface<cuopt::remote::LogMessa
     *sz = messages_[idx_].ByteSizeLong();
     return true;
   }
-  void WaitForInitialMetadata() override {}
+  void WaitForInitialMetadata() override { /* no-op */ }
 
  private:
   std::vector<cuopt::remote::LogMessage> messages_;
@@ -1855,6 +1855,53 @@ TEST(MapperRoundtrip, ProblemWithVariableTypes)
   EXPECT_DOUBLE_EQ(restored_obj[0], 1.0);
   EXPECT_DOUBLE_EQ(restored_obj[1], 2.0);
   EXPECT_DOUBLE_EQ(restored_obj[2], 3.0);
+}
+
+TEST(MapperRoundtrip, UnaryProblemObjectiveScalingPresence)
+{
+  cuopt::remote::OptimizationProblem omitted;
+  omitted.add_c(0.0);
+  omitted.add_variable_lower_bounds(0.0);
+  omitted.add_variable_upper_bounds(1.0);
+  ASSERT_FALSE(omitted.has_objective_scaling_factor());
+
+  cpu_optimization_problem_t<int32_t, double> restored_default;
+  map_proto_to_problem(omitted, restored_default);
+  EXPECT_DOUBLE_EQ(restored_default.get_objective_scaling_factor(), 1.0);
+
+  cpu_optimization_problem_t<int32_t, double> orig;
+  const std::vector<double> objective{0.0};
+  const std::vector<double> lower_bound{0.0};
+  const std::vector<double> upper_bound{1.0};
+  orig.set_objective_coefficients(objective.data(), objective.size());
+  orig.set_variable_lower_bounds(lower_bound.data(), lower_bound.size());
+  orig.set_variable_upper_bounds(upper_bound.data(), upper_bound.size());
+  orig.set_objective_scaling_factor(2.5);
+  cuopt::remote::OptimizationProblem present;
+  map_problem_to_proto(orig, &present);
+  ASSERT_TRUE(present.has_objective_scaling_factor());
+  EXPECT_DOUBLE_EQ(present.objective_scaling_factor(), 2.5);
+
+  cpu_optimization_problem_t<int32_t, double> restored_present;
+  map_proto_to_problem(present, restored_present);
+  EXPECT_DOUBLE_EQ(restored_present.get_objective_scaling_factor(), 2.5);
+}
+
+TEST(MapperRoundtrip, ChunkedProblemObjectiveScalingPresence)
+{
+  cuopt::remote::ChunkedProblemHeader omitted;
+  ASSERT_FALSE(omitted.has_objective_scaling_factor());
+
+  cpu_optimization_problem_t<int32_t, double> restored_default;
+  map_chunked_header_to_problem(omitted, restored_default);
+  EXPECT_DOUBLE_EQ(restored_default.get_objective_scaling_factor(), 1.0);
+
+  omitted.set_objective_scaling_factor(2.5);
+  ASSERT_TRUE(omitted.has_objective_scaling_factor());
+
+  cpu_optimization_problem_t<int32_t, double> restored_present;
+  map_chunked_header_to_problem(omitted, restored_present);
+  EXPECT_DOUBLE_EQ(restored_present.get_objective_scaling_factor(), 2.5);
 }
 
 TEST(MapperRoundtrip, MIPSolutionAllFields)
@@ -2258,10 +2305,8 @@ namespace {
 
 using QC = optimization_problem_interface_t<int32_t, double>::quadratic_constraint_t;
 
-// Q is stored COO-style on quadratic_constraint_t: three parallel arrays
-// (rows, cols, vals) of the same length, one entry per non-zero in the
-// Q matrix block for this row.  Older CSR storage was replaced by the
-// SOCP barrier work upstream; the wire format renames track the struct.
+// Q is canonical COO: parallel (rows, cols, vals), one entry per variable pair
+// with row <= col (upper-triangular).
 QC make_qc(int32_t row_index,
            std::string name,
            char row_type,
@@ -2429,11 +2474,16 @@ TEST(MapperRoundtrip, QuadraticConstraintsChunkedPath)
     lv0[i] = 0.5 * i + 1.0;
     li0[i] = i;
   }
-  for (int i = 0; i < n0_q; ++i) {
-    qr0[i] = i % n0_linear;
-    qc0[i] = (i + 7) % n0_linear;
-    qv0[i] = -0.25 * i + 7.0;
+  // Upper-triangular unique pairs (row <= col); enough exist for n0_q entries.
+  int q_idx = 0;
+  for (int r = 0; r < n0_linear && q_idx < n0_q; ++r) {
+    for (int c = r; c < n0_linear && q_idx < n0_q; ++c, ++q_idx) {
+      qr0[q_idx] = r;
+      qc0[q_idx] = c;
+      qv0[q_idx] = -0.25 * q_idx + 7.125;
+    }
   }
+  ASSERT_EQ(q_idx, n0_q);
 
   std::vector<double> lv1(n1_linear);
   std::vector<int32_t> li1(n1_linear);

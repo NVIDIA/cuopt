@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include <cuopt/linear_programming/io/mps_data_model.hpp>
+#include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
 
 #include <stdarg.h>
 #include <limits>
@@ -16,7 +16,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace cuopt::linear_programming::io {
+namespace cuopt::mathematical_optimization::io {
 
 /**
  * Sparse COO (coordinate) entries for a matrix: parallel row/col/val vectors.
@@ -42,6 +42,30 @@ struct coo_entries_t {
     vals.clear();
   }
 };
+
+/**
+ * @brief Validate MPS QCMATRIX COO entries before canonicalization.
+ *
+ * - Reject duplicate (row, col) indices.
+ * - Require each off-diagonal pair as matching (i,j,v) and (j,i,v) entries.
+ */
+template <typename i_t, typename f_t>
+void check_symmetric_offdiagonal_pairs(const std::vector<i_t>& rows,
+                                       const std::vector<i_t>& cols,
+                                       const std::vector<f_t>& vals);
+
+/**
+ * @brief Canonicalize a symmetric matrix in COO form to upper-triangular storage.
+ *
+ * - Merges duplicate (row, col) indices by summing coefficients.
+ * - Merges each off-diagonal variable pair into one (min,max) entry with coefficient
+ *   Q[min,max]+Q[max,min] (x^T Q x semantics).
+ * - Sorts output by (row, col).
+ */
+template <typename i_t, typename f_t>
+void canonicalize_coo_matrix(std::vector<i_t>& rows,
+                             std::vector<i_t>& cols,
+                             std::vector<f_t>& vals);
 
 /**
  * @brief Different possible types of 'ROWS'
@@ -221,4 +245,4 @@ class mps_parser_t {
 
 };  // class mps_parser_t
 
-}  // namespace cuopt::linear_programming::io
+}  // namespace cuopt::mathematical_optimization::io

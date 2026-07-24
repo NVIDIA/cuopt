@@ -47,21 +47,6 @@ rapids-pip-retry install \
 
 python -c "import cuopt"
 
-if command -v apt-get &> /dev/null; then
-    apt-get -y update
-    apt-get -y install file unzip
-elif command -v dnf &> /dev/null; then
-    dnf -y update
-    dnf -y install file unzip
-fi
-
-./datasets/linear_programming/download_pdlp_test_dataset.sh
-./datasets/mip/download_miplib_test_dataset.sh
-cd ./datasets
-./get_test_data.sh --solomon
-./get_test_data.sh --tsp
-cd -
-
 RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
 export RAPIDS_DATASET_ROOT_DIR
 

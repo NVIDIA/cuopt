@@ -9,8 +9,8 @@
 
 #include <utilities/copy_helpers.hpp>
 
-#include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
-#include <cuopt/linear_programming/utilities/segmented_sum_handler.cuh>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/mathematical_optimization/utilities/segmented_sum_handler.cuh>
 #include <mip_heuristics/mip_constants.hpp>
 #include <pdlp/initial_scaling_strategy/initial_scaling.cuh>
 #include <pdlp/pdlp_constants.hpp>
@@ -29,7 +29,7 @@
 #include <thrust/iterator/zip_iterator.h>
 #include <thrust/scatter.h>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 
 template <typename f_t>
 struct weighted_square_op {
@@ -70,14 +70,14 @@ __global__ void scaling_swap_rescaling_kernel(const swap_pair_t<i_t>* swap_pairs
 template <typename i_t, typename f_t>
 pdlp_initial_scaling_strategy_t<i_t, f_t>::pdlp_initial_scaling_strategy_t(
   raft::handle_t const* handle_ptr,
-  problem_t<i_t, f_t>& op_problem_scaled,
+  mip::problem_t<i_t, f_t>& op_problem_scaled,
   i_t number_of_ruiz_iterations,
   f_t alpha,
   rmm::device_uvector<f_t>& A_T,
   rmm::device_uvector<i_t>& A_T_offsets,
   rmm::device_uvector<i_t>& A_T_indices,
   pdhg_solver_t<i_t, f_t>* pdhg_solver_ptr,
-  const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params,
+  const pdlp::pdlp_hyper_params_t& hyper_params,
   i_t original_batch_size,
   bool running_mip)
   : handle_ptr_(handle_ptr),
@@ -150,7 +150,7 @@ template <typename i_t, typename f_t>
 void pdlp_initial_scaling_strategy_t<i_t, f_t>::bound_objective_rescaling()
 {
   // TODO: test bound obj scaling w/ MIP
-  segmented_sum_handler_t<i_t, f_t> segmented_sum_handler(stream_view_);
+  cuopt::segmented_sum_handler_t<i_t, f_t> segmented_sum_handler(stream_view_);
 
   // ------- Constraints bounds scaling -------
   // This works whether we have different bounds per climber or not because of the
@@ -185,7 +185,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::bound_objective_rescaling()
 
 template <typename i_t, typename f_t>
 __global__ void inf_norm_row_and_col_kernel(
-  const typename problem_t<i_t, f_t>::view_t op_problem,
+  const typename mip::problem_t<i_t, f_t>::view_t op_problem,
   typename pdlp_initial_scaling_strategy_t<i_t, f_t>::view_t initial_scaling_view)
 {
   for (int row = blockIdx.x; row < op_problem.n_constraints; row += gridDim.x) {
@@ -267,7 +267,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::reset_integer_variables()
 
 template <typename i_t, typename f_t, int BLOCK_SIZE>
 __global__ void pock_chambolle_scaling_kernel_row(
-  const typename problem_t<i_t, f_t>::view_t op_problem,
+  const typename mip::problem_t<i_t, f_t>::view_t op_problem,
   f_t alpha,
   typename pdlp_initial_scaling_strategy_t<i_t, f_t>::view_t initial_scaling_view)
 {
@@ -306,7 +306,7 @@ __global__ void pock_chambolle_scaling_kernel_row(
 // This is to avoid multiple atomic between blocks and having indeterminism
 template <typename i_t, typename f_t, int BLOCK_SIZE>
 __global__ void pock_chambolle_scaling_kernel_col(
-  const typename problem_t<i_t, f_t>::view_t op_problem,
+  const typename mip::problem_t<i_t, f_t>::view_t op_problem,
   f_t alpha,
   typename pdlp_initial_scaling_strategy_t<i_t, f_t>::view_t initial_scaling_view,
   const f_t* A_T,
@@ -401,7 +401,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::pock_chambolle_scaling(f_t alpha
 template <typename i_t, typename f_t>
 __global__ void scale_problem_kernel(
   const typename pdlp_initial_scaling_strategy_t<i_t, f_t>::view_t initial_scaling_view,
-  const typename problem_t<i_t, f_t>::view_t op_problem)
+  const typename mip::problem_t<i_t, f_t>::view_t op_problem)
 {
   for (int row = blockIdx.x; row < op_problem.n_constraints; row += gridDim.x) {
     i_t row_offset              = op_problem.offsets[row];
@@ -877,7 +877,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::unscale_solutions(
 
 template <typename i_t, typename f_t>
 void pdlp_initial_scaling_strategy_t<i_t, f_t>::unscale_solutions(
-  solution_t<i_t, f_t>& solution) const
+  mip::solution_t<i_t, f_t>& solution) const
 {
   auto& primal_solution = solution.assignment;
   rmm::device_uvector<f_t> dummy(0, solution.handle_ptr->get_stream());
@@ -894,7 +894,7 @@ void pdlp_initial_scaling_strategy_t<i_t, f_t>::unscale_solutions(
 }
 
 template <typename i_t, typename f_t>
-const problem_t<i_t, f_t>& pdlp_initial_scaling_strategy_t<i_t, f_t>::get_scaled_op_problem()
+const mip::problem_t<i_t, f_t>& pdlp_initial_scaling_strategy_t<i_t, f_t>::get_scaled_op_problem()
 {
   return op_problem_scaled_;
 }
@@ -938,11 +938,11 @@ pdlp_initial_scaling_strategy_t<i_t, f_t>::view()
   template class pdlp_initial_scaling_strategy_t<int, F_TYPE>;                                \
                                                                                               \
   template __global__ void inf_norm_row_and_col_kernel<int, F_TYPE>(                          \
-    const typename problem_t<int, F_TYPE>::view_t op_problem,                                 \
+    const typename mip::problem_t<int, F_TYPE>::view_t op_problem,                            \
     typename pdlp_initial_scaling_strategy_t<int, F_TYPE>::view_t initial_scaling_view);      \
                                                                                               \
   template __global__ void pock_chambolle_scaling_kernel_col<int, F_TYPE, 128>(               \
-    const typename problem_t<int, F_TYPE>::view_t op_problem,                                 \
+    const typename mip::problem_t<int, F_TYPE>::view_t op_problem,                            \
     F_TYPE alpha,                                                                             \
     typename pdlp_initial_scaling_strategy_t<int, F_TYPE>::view_t initial_scaling_view,       \
     const F_TYPE* A_T,                                                                        \
@@ -950,13 +950,13 @@ pdlp_initial_scaling_strategy_t<i_t, f_t>::view()
     const int* A_T_indices);                                                                  \
                                                                                               \
   template __global__ void pock_chambolle_scaling_kernel_row<int, F_TYPE, 128>(               \
-    const typename problem_t<int, F_TYPE>::view_t op_problem,                                 \
+    const typename mip::problem_t<int, F_TYPE>::view_t op_problem,                            \
     F_TYPE alpha,                                                                             \
     typename pdlp_initial_scaling_strategy_t<int, F_TYPE>::view_t initial_scaling_view);      \
                                                                                               \
   template __global__ void scale_problem_kernel<int, F_TYPE>(                                 \
     const typename pdlp_initial_scaling_strategy_t<int, F_TYPE>::view_t initial_scaling_view, \
-    const typename problem_t<int, F_TYPE>::view_t op_problem);                                \
+    const typename mip::problem_t<int, F_TYPE>::view_t op_problem);                           \
                                                                                               \
   template __global__ void scale_transposed_problem_kernel<int, F_TYPE>(                      \
     const typename pdlp_initial_scaling_strategy_t<int, F_TYPE>::view_t initial_scaling_view, \
@@ -972,4 +972,4 @@ INSTANTIATE(float)
 INSTANTIATE(double)
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

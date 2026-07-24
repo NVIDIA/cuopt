@@ -25,7 +25,7 @@
   } while (0)
 #endif
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t>
 static inline i_t positive_modulo(i_t i, i_t n)
@@ -203,11 +203,12 @@ papilo::PresolveStatus GF2Presolve<f_t>::execute(const papilo::Problem<f_t>& pro
   std::vector<std::vector<int>> A(gf2_constraints.size(),
                                   std::vector<int>(gf2_constraints.size(), 0));
   std::vector<int> b(gf2_constraints.size());
-  for (const auto& cons : gf2_constraints) {
+  for (size_t gf2_cstr_idx = 0; gf2_cstr_idx < gf2_constraints.size(); ++gf2_cstr_idx) {
+    const auto& cons = gf2_constraints[gf2_cstr_idx];
     for (auto [bin_var, _] : cons.bin_vars) {
-      A[cons.cstr_idx][gf2_bin_vars[bin_var]] = 1;
+      A[gf2_cstr_idx][gf2_bin_vars[bin_var]] = 1;
     }
-    b[cons.cstr_idx] = cons.rhs;
+    b[gf2_cstr_idx] = cons.rhs;
   }
 
   std::vector<int> solution(gf2_constraints.size());
@@ -257,4 +258,4 @@ INSTANTIATE(double)
 
 #undef INSTANTIATE
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

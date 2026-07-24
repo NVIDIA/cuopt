@@ -5,9 +5,19 @@
 
 set -euo pipefail
 
-# Install dependencies
-apt-get update
-DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends file bzip2 gcc
+# Detect distro and install test dependencies
+if [ -f /etc/redhat-release ]; then
+    dnf install -y file bzip2 gcc wget unzip tar
+    dnf clean all
+    # pip-installed CUDA wheels land in a non-standard prefix on UBI/RHEL.
+    # su - resets the environment, so carry the path forward explicitly.
+    EXTRA_LD_PATH=$(find /usr/local/lib/python*/site-packages/nvidia -maxdepth 2 -name 'lib' -type d 2>/dev/null | tr '\n' ':' | sed 's/:$//')
+else
+    apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends file bzip2 gcc wget unzip
+    # Collect all nvidia per-package lib dirs so LD_LIBRARY_PATH survives su - reset
+    EXTRA_LD_PATH=$(find /usr/local/lib/python*/dist-packages/nvidia -maxdepth 2 -name 'lib' -type d 2>/dev/null | tr '\n' ':' | sed 's/:$//')
+fi
 
 # Download test data
 bash datasets/linear_programming/download_pdlp_test_dataset.sh
@@ -26,6 +36,11 @@ chmod -R a+w "$(pwd)"
 cat > /opt/cuopt/test.sh <<EOF
 set -euo pipefail
 
+# Restore library path stripped by su - login shell
+if [ -n "${EXTRA_LD_PATH}" ]; then
+    export LD_LIBRARY_PATH="${EXTRA_LD_PATH}:\${LD_LIBRARY_PATH:-}"
+fi
+
 cd /opt/cuopt/cuopt
 python -m pip install pytest pexpect
 export RAPIDS_DATASET_ROOT_DIR=\$(realpath datasets)
@@ -41,8 +56,8 @@ python -m pytest python/cuopt_server/cuopt_server/tests/
 echo '----------------- CUOPT SERVER TEST END ---------------'
 EOF
 
-# Create a temporary user with UID 888
-useradd -m -u 888 -s /bin/bash tempuser888
+# Create a temporary user with UID 1001 (within standard range for both Ubuntu and RHEL)
+useradd -m -u 1001 -s /bin/bash tempuser1001 2>/dev/null || true
 
 # Switch to it
-su - tempuser888 -c "bash /opt/cuopt/test.sh"
+su - tempuser1001 -c "bash /opt/cuopt/test.sh"
