@@ -13,6 +13,7 @@
 #include <cuopt/mathematical_optimization/constants.h>
 #include <cuopt/mathematical_optimization/mip/diving_hyper_params.hpp>
 #include <cuopt/mathematical_optimization/mip/heuristics_hyper_params.hpp>
+#include <cuopt/mathematical_optimization/mip/submip_hyper_params.hpp>
 #include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
 #include <cuopt/mathematical_optimization/utilities/internals.hpp>
 
@@ -184,8 +185,8 @@ class mip_solver_settings_t {
   pdlp::pdlp_hyper_params_t hyper_params;
 
   mip_heuristics_hyper_params_t<i_t, f_t> heuristic_params;
-
   mip_diving_hyper_params_t<i_t, f_t> diving_params;
+  mip_submip_hyper_params_t<i_t, f_t> submip_params;
 
  private:
   std::vector<internals::base_solution_callback_t*> mip_callbacks_;

@@ -35,6 +35,7 @@
 #else
 #pragma GCC diagnostic pop
 #endif
+#include <dual_simplex/presolve.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/presolve/gf2_presolve.hpp>
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
@@ -207,6 +208,149 @@ papilo::Problem<f_t> build_papilo_problem(const optimization_problem_t<i_t, f_t>
   }
 
   return problem;
+}
+
+template <typename i_t, typename f_t>
+papilo::Problem<f_t> build_papilo_problem(const simplex::user_problem_t<i_t, f_t>& problem)
+{
+  raft::common::nvtx::range fun_scope("Build papilo problem");
+  // Build a papilo problem from a (host-side) dual-simplex user_problem_t. Unlike the
+  // optimization_problem_t overload, all data already lives on the host and the constraint
+  // matrix is stored column-major (CSC), so there are no device copies and no COO step: the
+  // CSC matrix is converted once to CSR and handed straight to papilo's SparseStorage.
+  papilo::ProblemBuilder<f_t> builder;
+
+  const i_t num_cols = problem.num_cols;
+  const i_t num_rows = problem.num_rows;
+  const i_t nnz      = problem.A.nnz();
+
+  builder.reserve(nnz, num_rows, num_cols);
+
+  const std::vector<f_t>& obj_coeffs                     = problem.objective;
+  const std::vector<f_t>& var_lb                         = problem.lower;
+  const std::vector<f_t>& var_ub                         = problem.upper;
+  const std::vector<simplex::variable_type_t>& var_types = problem.var_types;
+  const std::vector<char>& row_sense                     = problem.row_sense;
+  const std::vector<f_t>& rhs                            = problem.rhs;
+
+  // Range rows carry an extra width and are listed separately; mark them so the row-bound
+  // derivation below matches convert_user_problem in dual_simplex/presolve.cpp. papilo
+  // represents ranged rows natively as two-sided lhs <= a^T x <= rhs, so we do not add slack
+  // columns.
+  std::vector<f_t> range_of_row(num_rows, 0);
+  std::vector<bool> is_range_row(num_rows, false);
+  for (i_t k = 0; k < problem.num_range_rows; ++k) {
+    const i_t row     = problem.range_rows[k];
+    is_range_row[row] = true;
+    range_of_row[row] = problem.range_value[k];
+  }
+
+  // Derive two-sided row bounds [lhs, rhs] from the row sense.
+  std::vector<f_t> h_constr_lb(num_rows);
+  std::vector<f_t> h_constr_ub(num_rows);
+  for (i_t i = 0; i < num_rows; ++i) {
+    const f_t b = rhs[i];
+    if (is_range_row[i]) {
+      auto [lower, upper] = simplex::get_range_bounds_from_sense(row_sense[i], b, range_of_row[i]);
+      h_constr_lb[i]      = lower;
+      h_constr_ub[i]      = upper;
+    } else if (row_sense[i] == 'L') {
+      h_constr_lb[i] = -std::numeric_limits<f_t>::infinity();
+      h_constr_ub[i] = b;
+    } else if (row_sense[i] == 'G') {
+      h_constr_lb[i] = b;
+      h_constr_ub[i] = std::numeric_limits<f_t>::infinity();
+    } else {  // 'E'
+      h_constr_lb[i] = b;
+      h_constr_ub[i] = b;
+    }
+  }
+
+  builder.setNumCols(num_cols);
+  builder.setNumRows(num_rows);
+
+  // user_problem_t stores the objective already in minimization sense (obj_scale carries the
+  // original min/max direction for reporting only), so no sign flip is needed here.
+  builder.setObjAll(obj_coeffs);
+  builder.setObjOffset(problem.obj_constant);
+
+  if (!var_lb.empty() && !var_ub.empty()) {
+    builder.setColLbAll(var_lb);
+    builder.setColUbAll(var_ub);
+    if (static_cast<i_t>(problem.col_names.size()) == num_cols) {
+      builder.setColNameAll(problem.col_names);
+    }
+  }
+
+  for (i_t j = 0; j < num_cols; ++j) {
+    builder.setColIntegral(j, var_types[j] != simplex::variable_type_t::CONTINUOUS);
+  }
+
+  // Row bounds + infinity flags, set on the builder so build() materializes the constraint
+  // matrix directly. build() also sets RowFlag::kEquation where a finite lhs == rhs.
+  if (num_rows > 0) {
+    builder.setRowLhsAll(h_constr_lb);
+    builder.setRowRhsAll(h_constr_ub);
+  }
+  // Per-row inf flags (mirrors the optimization_problem_t overload). The zeroed lhs/rhs and the
+  // flags are handed to setConstraintMatrix below.
+  std::vector<papilo::RowFlags> h_row_flags(num_rows);
+  for (i_t i = 0; i < num_rows; ++i) {
+    const bool lhs_inf = h_constr_lb[i] == -std::numeric_limits<f_t>::infinity();
+    const bool rhs_inf = h_constr_ub[i] == std::numeric_limits<f_t>::infinity();
+    if (lhs_inf) {
+      h_row_flags[i].set(papilo::RowFlag::kLhsInf);
+      h_constr_lb[i] = 0;
+    }
+    if (rhs_inf) {
+      h_row_flags[i].set(papilo::RowFlag::kRhsInf);
+      h_constr_ub[i] = 0;
+    }
+  }
+
+  for (i_t j = 0; j < num_cols; ++j) {
+    builder.setColLbInf(j, var_lb[j] == -std::numeric_limits<f_t>::infinity());
+    builder.setColUbInf(j, var_ub[j] == std::numeric_limits<f_t>::infinity());
+    if (var_lb[j] == -std::numeric_limits<f_t>::infinity()) { builder.setColLb(j, 0); }
+    if (var_ub[j] == std::numeric_limits<f_t>::infinity()) { builder.setColUb(j, 0); }
+  }
+
+  // Assemble COO entries (row, col, value) from the CSC storage and hand the matrix to papilo via
+  // SparseStorage with the MIP fill-in headroom, exactly like the optimization_problem_t overload.
+  // The default ProblemBuilder path (addColEntries) omits that headroom, which leaves papilo's
+  // in-place presolve in a state where DualInfer can assert on a row it reduced.
+  std::vector<std::tuple<i_t, i_t, f_t>> h_entries;
+  h_entries.reserve(nnz);
+  const std::vector<i_t>& col_start = problem.A.col_start;
+  const std::vector<i_t>& row_index = problem.A.i;
+  const std::vector<f_t>& values    = problem.A.x;
+  for (i_t j = 0; j < num_cols; ++j) {
+    for (i_t p = col_start[j]; p < col_start[j + 1]; ++p) {
+      h_entries.push_back(std::make_tuple(row_index[p], j, values[p]));
+    }
+  }
+
+  auto papilo_problem = builder.build();
+  if (!h_entries.empty()) {
+    // CSC iteration is column-major, so entries are not row-sorted; let papilo sort them.
+    constexpr bool sorted_entries = false;
+    // MIP reductions like clique merging and substitution require more fillin.
+    const double spare_ratio      = 10.0;
+    const int min_inter_row_space = 30;
+    auto csr_storage              = papilo::SparseStorage<f_t>(
+      h_entries, num_rows, num_cols, sorted_entries, spare_ratio, min_inter_row_space);
+    papilo_problem.setConstraintMatrix(csr_storage, h_constr_lb, h_constr_ub, h_row_flags);
+
+    papilo::ConstraintMatrix<f_t>& matrix = papilo_problem.getConstraintMatrix();
+    for (i_t i = 0; i < papilo_problem.getNRows(); ++i) {
+      papilo::RowFlags rowFlag = matrix.getRowFlags()[i];
+      if (!rowFlag.test(papilo::RowFlag::kRhsInf) && !rowFlag.test(papilo::RowFlag::kLhsInf) &&
+          matrix.getLeftHandSides()[i] == matrix.getRightHandSides()[i])
+        matrix.getRowFlags()[i].set(papilo::RowFlag::kEquation);
+    }
+  }
+
+  return papilo_problem;
 }
 
 struct PSLPContext {
@@ -481,6 +625,109 @@ optimization_problem_t<i_t, f_t> build_optimization_problem(
   op_problem.set_variable_types(var_types.data(), var_types.size());
 
   return op_problem;
+}
+
+// Read a reduced (presolved) papilo problem back into a host-side dual-simplex user_problem_t,
+// overwriting `problem` in place.
+template <typename i_t, typename f_t>
+void build_user_problem(papilo::Problem<f_t> const& papilo_problem,
+                        simplex::user_problem_t<i_t, f_t>& problem)
+{
+  raft::common::nvtx::range fun_scope("Build user problem");
+
+  const i_t reduced_rows        = papilo_problem.getNRows();
+  const i_t reduced_cols        = papilo_problem.getNCols();
+  auto const& constraint_matrix = papilo_problem.getConstraintMatrix();
+
+  // Objective (already minimization sense).
+  auto const& obj = papilo_problem.getObjective();
+  problem.objective.assign(obj.coefficients.begin(), obj.coefficients.end());
+  problem.obj_constant = obj.offset;
+
+  // Column bounds and integrality.
+  auto const& col_lower = papilo_problem.getLowerBounds();
+  auto const& col_upper = papilo_problem.getUpperBounds();
+  auto const& col_flags = papilo_problem.getColFlags();
+  problem.lower.resize(reduced_cols);
+  problem.upper.resize(reduced_cols);
+  problem.var_types.resize(reduced_cols);
+  for (i_t j = 0; j < reduced_cols; ++j) {
+    problem.lower[j]     = col_flags[j].test(papilo::ColFlag::kLbInf)
+                             ? -std::numeric_limits<f_t>::infinity()
+                             : col_lower[j];
+    problem.upper[j]     = col_flags[j].test(papilo::ColFlag::kUbInf)
+                             ? std::numeric_limits<f_t>::infinity()
+                             : col_upper[j];
+    problem.var_types[j] = col_flags[j].test(papilo::ColFlag::kIntegral)
+                             ? simplex::variable_type_t::INTEGER
+                             : simplex::variable_type_t::CONTINUOUS;
+  }
+
+  // Row sense / rhs / ranges -- inverse of the derivation in build_papilo_problem_mip.
+  auto const& lhs       = constraint_matrix.getLeftHandSides();
+  auto const& rhs_v     = constraint_matrix.getRightHandSides();
+  auto const& row_flags = constraint_matrix.getRowFlags();
+
+  problem.row_sense.clear();
+  problem.rhs.clear();
+  problem.row_sense.reserve(reduced_rows);
+  problem.rhs.reserve(reduced_rows);
+  problem.range_rows.clear();
+  problem.range_value.clear();
+  for (i_t r = 0; r < reduced_rows; ++r) {
+    const bool lhs_inf = row_flags[r].test(papilo::RowFlag::kLhsInf);
+    const bool rhs_inf = row_flags[r].test(papilo::RowFlag::kRhsInf);
+    const bool eq      = row_flags[r].test(papilo::RowFlag::kEquation);
+    if (eq || (!lhs_inf && !rhs_inf && lhs[r] == rhs_v[r])) {
+      problem.row_sense.push_back('E');
+      problem.rhs.push_back(rhs_v[r]);
+    } else if (lhs_inf && !rhs_inf) {
+      problem.row_sense.push_back('L');
+      problem.rhs.push_back(rhs_v[r]);
+    } else if (!lhs_inf && rhs_inf) {
+      problem.row_sense.push_back('G');
+      problem.rhs.push_back(lhs[r]);
+    } else if (!lhs_inf && !rhs_inf) {
+      problem.row_sense.push_back('E');
+      problem.rhs.push_back(lhs[r]);
+      problem.range_rows.push_back(r);
+      problem.range_value.push_back(rhs_v[r] - lhs[r]);
+    } else {
+      assert(false && "Papilo should remove all the free rows");
+    }
+  }
+
+  problem.num_range_rows = problem.range_rows.size();
+
+  // Constraint matrix: read papilo's column-major (CSC) transpose straight into A, packing out
+  // the spare gaps SparseStorage leaves between columns.
+  const i_t reduced_nnz = constraint_matrix.getNnz();
+  problem.A.resize(reduced_rows, reduced_cols, reduced_nnz);
+  auto const& csc        = constraint_matrix.getMatrixTranspose();
+  const auto* col_ranges = csc.getRowRanges();  // per-column [start, end)
+  const int* row_indices = csc.getColumns();    // transpose columns == original rows
+  const f_t* values      = csc.getValues();
+  i_t pos                = 0;
+  for (i_t j = 0; j < reduced_cols; ++j) {
+    problem.A.col_start[j] = pos;
+    for (i_t p = col_ranges[j].start; p < col_ranges[j].end; ++p) {
+      problem.A.i[pos] = row_indices[p];
+      problem.A.x[pos] = values[p];
+      ++pos;
+    }
+  }
+  problem.A.col_start[reduced_cols] = pos;
+  cuopt_assert(pos == reduced_nnz, "papilo CSC nonzero count mismatch");
+
+  problem.num_cols = reduced_cols;
+  problem.num_rows = reduced_rows;
+}
+
+template <typename i_t, typename f_t>
+void papilo_round_trip(simplex::user_problem_t<i_t, f_t>& problem)
+{
+  papilo::Problem<f_t> papilo_problem = build_papilo_problem(problem);
+  build_user_problem(papilo_problem, problem);
 }
 
 void check_presolve_status(const papilo::PresolveStatus& status)
@@ -780,6 +1027,91 @@ third_party_presolve_result_t<i_t, f_t> third_party_presolve_t<i_t, f_t>::apply(
 }
 
 template <typename i_t, typename f_t>
+third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_to_subproblem(
+  simplex::user_problem_t<i_t, f_t>& problem,
+  const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+  f_t time_limit,
+  i_t num_threads)
+{
+  const bool dual_postsolve = false;
+  presolver_                = Papilo;
+  // build_papilo_problem_mip keeps the objective in minimization sense (user_problem_t carries
+  // the direction in obj_scale), so the read-back must not flip signs either.
+  maximize_ = false;
+
+  // Capture original dimensions before the problem is overwritten in place.
+  const i_t orig_cols = problem.num_cols;
+  const i_t orig_rows = problem.num_rows;
+  const i_t orig_nnz  = problem.A.nnz();
+
+  papilo::Problem<f_t> papilo_problem = build_papilo_problem(problem);
+
+  settings.log.debug("Presolve input: %d constraints, %d variables, %d nonzeros",
+                     papilo_problem.getNRows(),
+                     papilo_problem.getNCols(),
+                     papilo_problem.getConstraintMatrix().getNnz());
+
+  papilo::Presolve<f_t> papilo_presolver;
+  set_presolve_methods(papilo_presolver, problem_category_t::MIP, dual_postsolve);
+  set_presolve_options<i_t, f_t>(papilo_presolver,
+                                 problem_category_t::MIP,
+                                 settings.primal_tol,
+                                 settings.dual_tol,
+                                 time_limit,
+                                 dual_postsolve,
+                                 num_threads);
+  set_presolve_parameters(papilo_presolver, problem_category_t::MIP, orig_rows, orig_cols);
+
+  // Disable papilo logs
+  papilo_presolver.setVerbosityLevel(papilo::VerbosityLevel::kQuiet);
+
+  auto result = papilo_presolver.apply(papilo_problem);
+  auto status = convert_papilo_presolve_status_to_third_party_presolve_status(result.status);
+
+  // Infeasible / unbounded: leave `problem` untouched; the caller branches on the status.
+  if (result.status == papilo::PresolveStatus::kInfeasible ||
+      result.status == papilo::PresolveStatus::kUnbndOrInfeas ||
+      result.status == papilo::PresolveStatus::kUnbounded) {
+    return status;
+  }
+
+  papilo_post_solve_storage_.reset(new papilo::PostsolveStorage<f_t>(result.postsolve));
+
+  const i_t reduced_rows = papilo_problem.getNRows();
+  const i_t reduced_cols = papilo_problem.getNCols();
+  const i_t reduced_nnz  = papilo_problem.getConstraintMatrix().getNnz();
+  settings.log.debug("Presolve removed: %d constraints, %d variables, %d nonzeros",
+                     orig_rows - reduced_rows,
+                     orig_cols - reduced_cols,
+                     orig_nnz - reduced_nnz);
+
+  // Presolve fully solved the problem.
+  if (reduced_rows == 0 && reduced_cols == 0) { status = third_party_presolve_status_t::OPTIMAL; }
+
+  // Rebuild `problem` in place from the reduced papilo problem.
+  build_user_problem<i_t, f_t>(papilo_problem, problem);
+
+  // Presolve changes the dimensions, so the original row/column names no longer line up with the
+  // reduced problem. They are not needed for the sub-MIP solve, so clear them and let downstream
+  // size checks skip them.
+  problem.col_names.clear();
+  problem.row_names.clear();
+
+  // Column maps for postsolve (reduced -> original and its inverse).
+  auto const& col_map = result.postsolve.origcol_mapping;
+  reduced_to_original_map_.assign(col_map.begin(), col_map.end());
+  original_to_reduced_map_.assign(orig_cols, -1);
+  for (size_t i = 0; i < reduced_to_original_map_.size(); ++i) {
+    auto original_idx = reduced_to_original_map_[i];
+    if (original_idx >= 0 && original_idx < original_to_reduced_map_.size()) {
+      original_to_reduced_map_[original_idx] = i;
+    }
+  }
+
+  return status;
+}
+
+template <typename i_t, typename f_t>
 void third_party_presolve_t<i_t, f_t>::undo(rmm::device_uvector<f_t>& primal_solution,
                                             rmm::device_uvector<f_t>& dual_solution,
                                             rmm::device_uvector<f_t>& reduced_costs,
@@ -869,7 +1201,7 @@ template <typename i_t, typename f_t>
 void third_party_presolve_t<i_t, f_t>::uncrush_primal_solution(
   const std::vector<f_t>& reduced_primal, std::vector<f_t>& full_primal) const
 {
-  if (presolver_ == cuopt::mathematical_optimization::presolver_t::PSLP) {
+  if (presolver_ == PSLP) {
     cuopt_expects(false,
                   error_type_t::RuntimeError,
                   "This code path should be never called, as this is meant for callbacks and they "
@@ -925,6 +1257,45 @@ void third_party_presolve_t<i_t, f_t>::crush_primal_solution(
                "reduced problem must match crush output dimension");
   for (size_t j = 0; j < reduced_primal.size(); ++j) {
     reduced_primal[j] = std::clamp(reduced_primal[j], lb[j], ub[j]);
+  }
+}
+
+template <typename i_t, typename f_t>
+void third_party_presolve_t<i_t, f_t>::crush_primal_solution(
+  const simplex::user_problem_t<i_t, f_t>& reduced_problem,
+  const std::vector<f_t>& original_primal,
+  std::vector<f_t>& reduced_primal) const
+{
+  cuopt_expects(presolver_ == Papilo,
+                error_type_t::RuntimeError,
+                "Primal crushing is only supported for PaPILO presolve");
+  cuopt_assert(papilo_post_solve_storage_ != nullptr, "No postsolve storage available");
+  std::vector<f_t> unused_y, unused_z;
+  std::vector<f_t> empty_vals;
+  std::vector<i_t> empty_indices, empty_offsets;
+  crush_primal_dual_solution(original_primal,
+                             {},
+                             reduced_primal,
+                             unused_y,
+                             {},
+                             unused_z,
+                             empty_vals,
+                             empty_indices,
+                             empty_offsets);
+
+  // Dual bound strengthening (e.g. DualFix kVarBoundChange which aren't emitted in primal mode)
+  // can tighten a bound past a value
+  // that was feasible in the original polytope. A simple clamp is often enough to crush a solution
+  // inside the tightened polytope without breaking feasibility (dualfix seems to emit purely dual
+  // based bounds reductions so primality is safe when clamping)
+  cuopt_assert(reduced_problem.num_cols == (i_t)reduced_to_original_map_.size(),
+               "reduced_problem does not match this presolver's reduction");
+  cuopt_assert(reduced_primal.size() == reduced_problem.lower.size() &&
+                 reduced_primal.size() == reduced_problem.upper.size(),
+               "reduced problem must match crush output dimension");
+  for (size_t j = 0; j < reduced_primal.size(); ++j) {
+    reduced_primal[j] =
+      std::clamp(reduced_primal[j], reduced_problem.lower[j], reduced_problem.upper[j]);
   }
 }
 
@@ -1167,11 +1538,13 @@ void papilo_postsolve_deleter<f_t>::operator()(papilo::PostsolveStorage<f_t>* pt
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 template struct papilo_postsolve_deleter<float>;
 template class third_party_presolve_t<int, float>;
+template void papilo_round_trip(simplex::user_problem_t<int, float>&);
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
 template struct papilo_postsolve_deleter<double>;
 template class third_party_presolve_t<int, double>;
+template void papilo_round_trip(simplex::user_problem_t<int, double>&);
 #endif
 
 }  // namespace cuopt::mathematical_optimization::mip

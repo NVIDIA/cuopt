@@ -1,0 +1,12 @@
+# Configuration File for CodeCov
+comment: false
+coverage:
+  status:
+    project: off
+    patch:
+      default:
+        target: auto
+        threshold: 5%
+        informational: true
+github_checks:
+  annotations: true

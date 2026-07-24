@@ -343,6 +343,39 @@ int cancel_job(const std::string& job_id, JobStatus& job_status_out, std::string
   return 0;
 }
 
+bool delete_job(const std::string& job_id, std::string& message)
+{
+  // Cancel first so a queued job is never run and a running worker is killed.
+  // cancel_job returns 1 only when the job is unknown; other non-zero codes
+  // mean the job is already terminal (completed/failed/cancelled) and we still
+  // remove its stored state below.
+  JobStatus cancel_status = JobStatus::NOT_FOUND;
+  std::string cancel_msg;
+  if (cancel_job(job_id, cancel_status, cancel_msg) == 1) {
+    message = "Job not found: " + job_id;
+    return false;
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(tracker_mutex);
+    job_tracker.erase(job_id);
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(pending_data_mutex);
+    pending_job_data.erase(job_id);
+    pending_chunked_data.erase(job_id);
+  }
+
+  // No waiter handling here: cancel_job() already notified and erased any
+  // waiter for a queued/running job, and a job that was already terminal had
+  // its waiters signaled when it reached that state.
+
+  delete_log_file(job_id);
+  message = "Result deleted";
+  return true;
+}
+
 std::string generate_job_id()
 {
   uuid_t uuid;

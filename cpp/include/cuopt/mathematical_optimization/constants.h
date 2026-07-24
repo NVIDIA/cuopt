@@ -75,6 +75,7 @@
 #define CUOPT_MIP_ZERO_HALF_CUTS                   "mip_zero_half_cuts"
 #define CUOPT_MIP_STRONG_CHVATAL_GOMORY_CUTS       "mip_strong_chvatal_gomory_cuts"
 #define CUOPT_MIP_REDUCED_COST_STRENGTHENING       "mip_reduced_cost_strengthening"
+#define CUOPT_MIP_RINS                             "mip_rins"
 #define CUOPT_MIP_OBJECTIVE_STEP                   "mip_objective_step"
 #define CUOPT_MIP_CUT_CHANGE_THRESHOLD             "mip_cut_change_threshold"
 #define CUOPT_MIP_CUT_MIN_ORTHOGONALITY            "mip_cut_min_orthogonality"
@@ -127,8 +128,18 @@
 #define CUOPT_MIP_HYPER_DIVING_NODE_LIMIT             "mip_hyper_diving_node_limit"
 #define CUOPT_MIP_HYPER_DIVING_ITERATION_LIMIT_FACTOR "mip_hyper_diving_iteration_limit_factor"
 #define CUOPT_MIP_HYPER_DIVING_BACKTRACK_LIMIT        "mip_hyper_diving_backtrack_limit"
-/* @brief Show per-strategy diving symbol in logs (true) instead of a generic 'D' */
+/* @brief Show per-strategy diving symbol in logs instead of a generic 'D' */
 #define CUOPT_MIP_HYPER_DIVING_SHOW_TYPE "mip_hyper_diving_show_type"
+
+/* @brief Recursive sub-MIP (RINS) hyper-parameters */
+#define CUOPT_MIP_HYPER_SUBMIP_BASE_TARGET_FIXRATE   "mip_hyper_submip_base_target_fixrate"
+#define CUOPT_MIP_HYPER_SUBMIP_MIN_FIXRATE           "mip_hyper_submip_min_fixrate"
+#define CUOPT_MIP_HYPER_SUBMIP_MIN_FIXRATE_CAP       "mip_hyper_submip_min_fixrate_cap"
+#define CUOPT_MIP_HYPER_SUBMIP_TARGET_MIP_GAP        "mip_hyper_submip_target_mip_gap"
+#define CUOPT_MIP_HYPER_SUBMIP_NODE_LIMIT_BASE       "mip_hyper_submip_node_limit_base"
+#define CUOPT_MIP_HYPER_SUBMIP_MAX_LEVEL             "mip_hyper_submip_max_level"
+#define CUOPT_MIP_HYPER_SUBMIP_ITERATION_LIMIT_RATIO "mip_hyper_submip_iteration_limit_ratio"
+#define CUOPT_MIP_HYPER_SUBMIP_ENABLE_CPUFJ          "mip_hyper_submip_enable_cpufj"
 
 /* @brief MIP determinism mode constants */
 #define CUOPT_MODE_OPPORTUNISTIC 0
@@ -213,5 +224,37 @@
 
 #define CUOPT_BARRIER_ITERATIVE_REFINEMENT_OFF 0
 #define CUOPT_BARRIER_ITERATIVE_REFINEMENT_ON  1
+
+/* @brief Scalar problem attribute selectors
+ * Passed as cuopt_int_t; the valid set depends on the accessor's value type. */
+#define CUOPT_ATTR_NUM_VARIABLES             0
+#define CUOPT_ATTR_NUM_CONSTRAINTS           1
+#define CUOPT_ATTR_NUM_NONZEROS              2
+#define CUOPT_ATTR_NUM_INTEGERS              3
+#define CUOPT_ATTR_OBJECTIVE_SENSE           4
+#define CUOPT_ATTR_OBJECTIVE_OFFSET          5
+#define CUOPT_ATTR_OBJECTIVE_SCALING_FACTOR  6
+#define CUOPT_ATTR_PROBLEM_CATEGORY          7
+#define CUOPT_ATTR_IS_MIP                    8
+#define CUOPT_ATTR_HAS_QUADRATIC_OBJECTIVE   9
+#define CUOPT_ATTR_HAS_QUADRATIC_CONSTRAINTS 10
+
+/* @brief Numeric/char array problem attribute selectors
+ * (see cuOptGetProblem{Float,Char}ArrayAttribute; sized by num_variables / num_constraints).
+ * Passed as cuopt_int_t. Numbered in a separate range from the scalar selectors for safety.
+ */
+#define CUOPT_ARRAY_ATTR_OBJECTIVE_COEFFICIENTS  100
+#define CUOPT_ARRAY_ATTR_VARIABLE_LOWER_BOUNDS   101
+#define CUOPT_ARRAY_ATTR_VARIABLE_UPPER_BOUNDS   102
+#define CUOPT_ARRAY_ATTR_CONSTRAINT_LOWER_BOUNDS 103
+#define CUOPT_ARRAY_ATTR_CONSTRAINT_UPPER_BOUNDS 104
+#define CUOPT_ARRAY_ATTR_CONSTRAINT_RHS          105
+#define CUOPT_ARRAY_ATTR_CONSTRAINT_SENSE        106
+#define CUOPT_ARRAY_ATTR_VARIABLE_TYPES          107
+
+/* @brief String-array problem attribute selectors (see cuOptGetProblemStringArrayAttribute).
+ * Passed as cuopt_int_t; numbered in a separate range from the scalar and array selectors. */
+#define CUOPT_STRING_ARRAY_VARIABLE_NAMES 200
+#define CUOPT_STRING_ARRAY_ROW_NAMES      201
 
 #endif  // CUOPT_CONSTANTS_H

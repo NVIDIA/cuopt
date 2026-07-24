@@ -58,7 +58,7 @@ struct deterministic_snapshot_t {
   f_t upper_bound;
   pseudo_cost_snapshot_t<i_t, f_t> pc_snapshot;
   std::vector<f_t> incumbent;
-  int64_t total_lp_iters;
+  int64_t total_simplex_iters;
 };
 
 template <typename i_t, typename f_t, typename Derived>
@@ -102,7 +102,7 @@ class deterministic_worker_base_t : public branch_and_bound_worker_t<i_t, f_t> {
     local_upper_bound       = snap.upper_bound;
     pc_snapshot             = snap.pc_snapshot;
     incumbent_snapshot      = snap.incumbent;
-    total_lp_iters_snapshot = snap.total_lp_iters;
+    total_lp_iters_snapshot = snap.total_simplex_iters;
   }
 
   bool has_work() const { return static_cast<const Derived*>(this)->has_work_impl(); }

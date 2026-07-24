@@ -56,7 +56,6 @@ diversity_manager_t<i_t, f_t>::diversity_manager_t(mip_solver_context_t<i_t, f_t
     lp_dual_optimal_solution(context.problem_ptr->n_constraints,
                              context.problem_ptr->handle_ptr->get_stream()),
     ls(context, lp_optimal_solution),
-    rins(context, *this),
     timer(diversity_config.default_time_limit),
     bound_prop_recombiner(context,
                           context.problem_ptr->n_variables,
@@ -194,7 +193,7 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
     if (has_papilo) {
       if ((i_t)init_sol_assignment.size() != papilo_orig_n) {
         CUOPT_LOG_ERROR(
-          "Error cannot add the provided initial solution! Initial solution %zu has %zu vars, "
+          "add the provided initial solution! Initial solution %zu has %zu vars, "
           "expected %d; skipping",
           sol_idx,
           init_sol_assignment.size(),
@@ -240,6 +239,10 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
     }
 
     if (problem_ptr->pre_process_assignment(init_sol_assignment)) {
+      raft::copy(sol.assignment.data(),
+                 init_sol_assignment.data(),
+                 init_sol_assignment.size(),
+                 sol.handle_ptr->get_stream());
       relaxed_lp_settings_t lp_settings;
       lp_settings.time_limit            = std::min(60., timer.remaining_time() / 2);
       lp_settings.tolerance             = problem_ptr->tolerances.absolute_tolerance;
@@ -250,11 +253,15 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
                              problem_ptr->integer_indices,
                              lp_settings,
                              static_cast<bound_presolve_t<i_t, f_t>*>(nullptr));
-      raft::copy(sol.assignment.data(),
-                 init_sol_assignment.data(),
-                 init_sol_assignment.size(),
-                 sol.handle_ptr->get_stream());
       bool is_feasible = sol.compute_feasibility();
+      if (!is_feasible) {
+        raft::copy(sol.assignment.data(),
+                   init_sol_assignment.data(),
+                   init_sol_assignment.size(),
+                   sol.handle_ptr->get_stream());
+        is_feasible = sol.compute_feasibility();
+      }
+
       cuopt_func_call(sol.test_variable_bounds(true));
       CUOPT_LOG_DEBUG("Adding initial solution success! feas %d objective %f excess %f",
                       is_feasible,
@@ -264,9 +271,8 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
       initial_sol_vector.emplace_back(std::move(sol));
     } else {
       CUOPT_LOG_ERROR(
-        "Error cannot add the provided initial solution! \
-    Assignment size %lu \
-    initial solution size %lu",
+        "Error cannot add the provided initial solution! Assignment size %lu initial solution size "
+        "%lu",
         sol.assignment.size(),
         init_sol_assignment.size());
     }
@@ -682,8 +688,6 @@ solution_t<i_t, f_t> diversity_manager_t<i_t, f_t>::run_solver()
     run_fj_alone(sol);
     return sol;
   }
-
-  if (omp_get_num_threads() > CUOPT_MIP_RINS_REQUIRED_THREAD_COUNT) { rins.enable(); }
 
   generate_solution(timer.remaining_time(), false);
   if (timer.check_time_limit()) {

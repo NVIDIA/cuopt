@@ -968,9 +968,9 @@ void mps_parser_t<i_t, f_t>::parse_rows(std::string_view line)
   }
   if (type == Objective) {
     // Keep only the first name or OBJNAME since it was set before
-    if (objective_name.empty())
-      objective_name = name;
-    else
+    if (objective_name.empty()) objective_name = name;
+    // aligns with CPLEX/SCIP behavior
+    else if (name != objective_name)
       ignored_objective_names.emplace(name);
     // If we wanted to strictly follow MPS definition: a new objective row ('N') should be treated
     // as an unbounded constraints, aka an extra contraints row with lower bound -infinity and upper
@@ -1711,11 +1711,30 @@ template class mps_parser_t<int, float>;
 
 template class mps_parser_t<int, double>;
 
+template void check_symmetric_offdiagonal_pairs<int, float>(const std::vector<int>&,
+                                                            const std::vector<int>&,
+                                                            const std::vector<float>&);
+template void check_symmetric_offdiagonal_pairs<int, double>(const std::vector<int>&,
+                                                             const std::vector<int>&,
+                                                             const std::vector<double>&);
+template void check_symmetric_offdiagonal_pairs<int64_t, float>(const std::vector<int64_t>&,
+                                                                const std::vector<int64_t>&,
+                                                                const std::vector<float>&);
+template void check_symmetric_offdiagonal_pairs<int64_t, double>(const std::vector<int64_t>&,
+                                                                 const std::vector<int64_t>&,
+                                                                 const std::vector<double>&);
+
 template void canonicalize_coo_matrix<int, float>(std::vector<int>&,
                                                   std::vector<int>&,
                                                   std::vector<float>&);
 template void canonicalize_coo_matrix<int, double>(std::vector<int>&,
                                                    std::vector<int>&,
                                                    std::vector<double>&);
+template void canonicalize_coo_matrix<int64_t, float>(std::vector<int64_t>&,
+                                                      std::vector<int64_t>&,
+                                                      std::vector<float>&);
+template void canonicalize_coo_matrix<int64_t, double>(std::vector<int64_t>&,
+                                                       std::vector<int64_t>&,
+                                                       std::vector<double>&);
 
 }  // namespace cuopt::mathematical_optimization::io

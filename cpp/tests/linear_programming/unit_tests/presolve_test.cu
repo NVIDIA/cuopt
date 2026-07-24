@@ -27,7 +27,9 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <pdlp/translate.hpp>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace cuopt::mathematical_optimization::test {
@@ -899,6 +901,165 @@ INSTANTIATE_TEST_SUITE_P(
   }
 );
 // clang-format on
+
+class papilo_problem : public ::testing::TestWithParam<std::string> {};
+
+// clang-format off
+INSTANTIATE_TEST_SUITE_P(
+  papilo_presolve,
+  papilo_problem,
+  ::testing::Values(
+    "mip/fiball.mps",
+    "mip/50v-10.mps",
+    "mip/drayage-25-23.mps",
+    "mip/neos-3004026-krka.mps",
+    "mip/app1-1.mps",
+    "mip/bnatt400.mps",
+    "mip/decomp2.mps",
+    "mip/graph20-20-1rand.mps",
+    "mip/neos-1582420.mps",
+    "mip/neos-5188808-nattai.mps",
+    "mip/net12.mps",
+    "mip/n2seq36q.mps",
+    "mip/seymour1.mps",
+    "mip/neos8.mps",
+    "mip/CMS750_4.mps",
+    "mip/cbs-cta.mps",
+    "mip/swath3.mps",
+    "mip/air05.mps",
+    "mip/fastxgemm-n2r6s0t2.mps",
+    "mip/dws008-01.mps",
+    "mip/neos-1445765.mps",
+    "mip/neos-3083819-nubu.mps",
+    "mip/neos-5107597-kakapo.mps",
+    "mip/rocI-4-11.mps"
+  ),
+  [](const ::testing::TestParamInfo<std::string>& info) {
+    std::string name = info.param;
+    std::replace(name.begin(), name.end(), '/', '_');
+    std::replace(name.begin(), name.end(), '.', '_');
+    std::replace(name.begin(), name.end(), '-', '_');
+    return name;
+  }
+);
+// clang-format on
+
+TEST_P(papilo_problem, round_trip)
+{
+  const raft::handle_t handle_{};
+
+  auto path           = make_path_absolute(GetParam());
+  auto mps_data_model = cuopt::mathematical_optimization::io::read_mps<int, double>(path, false);
+  auto op_problem     = mps_data_model_to_optimization_problem(&handle_, mps_data_model);
+  auto user_problem = cuopt_optimization_problem_to_user_problem<int, double>(&handle_, op_problem);
+  simplex::user_problem_t<int, double> output_problem = user_problem;
+
+  // papilo_round_trip is a pure conversion method
+  // (user_problem -> papilo::Problem -> user_problem)
+  mip::papilo_round_trip(output_problem);
+
+  // Sizes.
+  EXPECT_EQ(output_problem.num_rows, user_problem.num_rows);
+  EXPECT_EQ(output_problem.num_cols, user_problem.num_cols);
+  EXPECT_EQ(output_problem.A.m, user_problem.A.m);
+  EXPECT_EQ(output_problem.A.n, user_problem.A.n);
+
+  // Objective (minimization sense), bounds, and integrality.
+  EXPECT_EQ(output_problem.objective, user_problem.objective);
+  EXPECT_DOUBLE_EQ(output_problem.obj_constant, user_problem.obj_constant);
+  EXPECT_EQ(output_problem.lower, user_problem.lower);
+  EXPECT_EQ(output_problem.upper, user_problem.upper);
+  EXPECT_EQ(output_problem.var_types, user_problem.var_types);
+
+  // Row senses / rhs / ranges recover exactly (no '>=' -> '<=' fold).
+  EXPECT_EQ(output_problem.row_sense, user_problem.row_sense);
+  ASSERT_EQ(output_problem.rhs.size(), user_problem.rhs.size());
+  for (int i = 0; i < user_problem.num_rows; ++i) {
+    EXPECT_DOUBLE_EQ(output_problem.rhs[i], user_problem.rhs[i]) << "rhs[" << i << "]";
+  }
+  EXPECT_EQ(output_problem.num_range_rows, user_problem.num_range_rows);
+  EXPECT_EQ(output_problem.range_rows, user_problem.range_rows);
+  ASSERT_EQ(output_problem.range_value.size(), user_problem.range_value.size());
+  for (std::size_t k = 0; k < user_problem.range_value.size(); ++k) {
+    EXPECT_DOUBLE_EQ(output_problem.range_value[k], user_problem.range_value[k])
+      << "range_value[" << k << "]";
+  }
+
+  // Constraint matrix: same per-column structure and, per column, the same
+  // (row, value) entries. Compare order-independently since papilo's SparseStorage
+  // transpose need not preserve the input CSC's within-column ordering.
+  ASSERT_EQ(output_problem.A.col_start, user_problem.A.col_start);
+  for (int j = 0; j < user_problem.num_cols; ++j) {
+    std::vector<std::pair<int, double>> in_col;
+    std::vector<std::pair<int, double>> out_col;
+    for (int p = user_problem.A.col_start[j]; p < user_problem.A.col_start[j + 1]; ++p) {
+      in_col.emplace_back(user_problem.A.i[p], user_problem.A.x[p]);
+    }
+    for (int p = output_problem.A.col_start[j]; p < output_problem.A.col_start[j + 1]; ++p) {
+      out_col.emplace_back(output_problem.A.i[p], output_problem.A.x[p]);
+    }
+    std::sort(in_col.begin(), in_col.end());
+    std::sort(out_col.begin(), out_col.end());
+    ASSERT_EQ(out_col.size(), in_col.size()) << "column " << j;
+    for (std::size_t p = 0; p < in_col.size(); ++p) {
+      EXPECT_EQ(out_col[p].first, in_col[p].first) << "column " << j << " entry " << p;
+      EXPECT_DOUBLE_EQ(out_col[p].second, in_col[p].second) << "column " << j << " entry " << p;
+    }
+  }
+
+  EXPECT_EQ(output_problem.col_names, user_problem.col_names);
+  EXPECT_EQ(output_problem.row_names, user_problem.row_names);
+  EXPECT_DOUBLE_EQ(output_problem.obj_scale, user_problem.obj_scale);
+  EXPECT_EQ(output_problem.problem_name, user_problem.problem_name);
+  EXPECT_EQ(output_problem.handle_ptr, user_problem.handle_ptr);
+  EXPECT_EQ(output_problem.Q_values, user_problem.Q_values);
+  EXPECT_EQ(output_problem.second_order_cone_dims, user_problem.second_order_cone_dims);
+  EXPECT_EQ(output_problem.cone_var_start, user_problem.cone_var_start);
+}
+
+// Exercises the MIP presolve path: presolver_t::apply -> third_party_presolve_t::apply
+// reduces a user_problem_t in place via PaPILO. ex9 is fully solved by presolve (it collapses
+// to a 0x0 problem), so this also checks the OPTIMAL status and that postsolve maps the empty
+// reduced solution back to a full-dimension, objective-81 assignment.
+TEST(submip_presolve, ex9_fully_reduced)
+{
+  const raft::handle_t handle_{};
+
+  auto path           = make_path_absolute("mip/ex9.mps");
+  auto mps_data_model = cuopt::mathematical_optimization::io::read_mps<int, double>(path, false);
+  auto op_problem     = mps_data_model_to_optimization_problem(&handle_, mps_data_model);
+
+  // The MIP presolve operates on the  host representation.
+  auto user_problem = cuopt_optimization_problem_to_user_problem<int, double>(&handle_, op_problem);
+
+  const int orig_cols   = user_problem.num_cols;
+  const auto obj_coeffs = op_problem.get_objective_coefficients_host();
+  ASSERT_GT(user_problem.num_rows, 0);
+  ASSERT_GT(orig_cols, 0);
+
+  simplex::simplex_solver_settings_t<int, double> settings;
+
+  mip::third_party_presolve_t<int, double> presolver;
+  auto status = presolver.apply_to_subproblem(user_problem, settings, 120, 8);
+
+  // PaPILO solves ex9 entirely during presolve -> empty reduced problem.
+  EXPECT_EQ(status, mip::third_party_presolve_status_t::OPTIMAL);
+  EXPECT_EQ(user_problem.num_rows, 0);
+  EXPECT_EQ(user_problem.num_cols, 0);
+  EXPECT_EQ(user_problem.A.nnz(), 0);
+
+  // Postsolve reconstructs the full original assignment from the (empty) reduced solution.
+  std::vector<double> reduced_solution;  // no reduced columns remain
+  std::vector<double> full_solution;
+  presolver.uncrush_primal_solution(reduced_solution, full_solution);
+  ASSERT_EQ(static_cast<int>(full_solution.size()), orig_cols);
+
+  double objective = 0.0;
+  for (int j = 0; j < orig_cols; ++j) {
+    objective += obj_coeffs[j] * full_solution[j];
+  }
+  EXPECT_NEAR(objective, 81.0, 1e-6);
+}
 
 }  // namespace cuopt::mathematical_optimization::test
 

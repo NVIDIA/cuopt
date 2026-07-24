@@ -20,6 +20,11 @@
 
 namespace cuopt::mathematical_optimization {
 
+namespace io {
+template <typename i_t, typename f_t>
+class mps_data_model_t;
+}
+
 // Forward declarations
 template <typename i_t, typename f_t>
 class optimization_problem_t;
@@ -76,6 +81,13 @@ class cpu_optimization_problem_t : public optimization_problem_interface_t<i_t, 
   void set_problem_name(const std::string& problem_name) override;
   void set_variable_names(const std::vector<std::string>& variable_names) override;
   void set_row_names(const std::vector<std::string>& row_names) override;
+
+  /**
+   * @brief Transfer parsed MPS/QPS storage into this CPU problem without copying array/string data.
+   *
+   * The model is left in a moved-from state and must not be used afterward.
+   */
+  void adopt_from_mps_data_model(io::mps_data_model_t<i_t, f_t>&& data_model);
 
   // Device getters - throw exceptions (not supported for CPU implementation)
   i_t get_n_variables() const override;
