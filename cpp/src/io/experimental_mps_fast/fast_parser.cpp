@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-// reserved. SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: Apache-2.0
 
 #include "fast_parser.hpp"
 #include "fast_parse_primitives.hpp"
@@ -219,19 +219,17 @@ class scoped_timer_t {
   }
 #endif
 
-      ~scoped_timer_t()
+      ~scoped_timer_t()  // NOSONAR(S1048): profiling-only path; none of the called functions
+                         // realistically throw
   {
 #ifdef MPS_FAST_TIMERS
-    try {
-      auto end          = std::chrono::high_resolution_clock::now();
-      double elapsed_ms = std::chrono::duration<double, std::milli>(end - start_).count();
-      nvtx_.end();
-      if (accumulator_) { *accumulator_ += elapsed_ms; }
-      auto [rss_kb, hwm_kb] = current_process_rss_kb();
-      std::lock_guard<std::mutex> lock(get_timer_mutex());
-      get_timer_buffer().push_back({name_, elapsed_ms, rss_kb, hwm_kb});
-    } catch (...) {
-    }
+    auto end          = std::chrono::high_resolution_clock::now();
+    double elapsed_ms = std::chrono::duration<double, std::milli>(end - start_).count();
+    nvtx_.end();
+    if (accumulator_) { *accumulator_ += elapsed_ms; }
+    auto [rss_kb, hwm_kb] = current_process_rss_kb();
+    std::lock_guard<std::mutex> lock(get_timer_mutex());
+    get_timer_buffer().push_back({name_, elapsed_ms, rss_kb, hwm_kb});
 #endif
   }
 
