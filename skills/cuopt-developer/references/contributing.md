@@ -6,70 +6,30 @@ Read this for anything related to committing, pushing, opening PRs, or making st
 
 ## GitHub Etiquette — Non-Negotiable Rules
 
-These apply to every interaction with the cuOpt GitHub repository, including automated agent actions.
-
-### Protected Branches — Never Push Directly
+### Never Push to Protected Branches
 
 **Never push commits directly to `main` or any `release/YY.MM` branch.**
 
-```
-# WRONG — do not do this
+```bash
+# WRONG
 git push origin main
 git push origin release/26.06
 
 # RIGHT — push to a feature branch, then open a PR
-git push origin my-feature-branch
+git push origin fix/my-change
 ```
 
-These branches have required status checks, DCO sign-off enforcement, and code-review gates. A direct push bypasses all of them — even when the push technically succeeds via a bypass, it violates the team's workflow and cannot be cleanly reverted without disrupting other contributors.
+These branches have required status checks, DCO enforcement, and review gates. A direct push bypasses all of them — even when it technically succeeds via bypass.
 
-**Before any `git push`, confirm the target ref is a feature branch, never `main` or `release/*`.**
+**Before every `git push`, confirm the target ref is a feature branch.**
 
-### Always Work on a Feature Branch
+For the fork workflow, draft-PR rule, choosing the right base branch, and pre-commit/DCO requirements, see the sections below.
 
-Every change — including one-line CI fixes — goes through a branch and PR:
+### Exception: Skills PRs Must Use an Upstream Branch (Not a Fork)
 
-```bash
-git checkout -b fix/short-description   # branch from the correct base (see below)
-# ... make changes, commit, pre-commit ...
-git push origin fix/short-description
-gh pr create --draft --title "..." --body "..."
-```
+NVSkills CI validation requires the PR to originate from a branch **in `NVIDIA/cuopt`**, not a fork. For changes under `skills/`, push to a feature branch on the upstream repo (not your personal fork) and open a PR from there.
 
-### Choose the Right Base Branch
-
-| Target | Base branch |
-|--------|-------------|
-| New features / fixes for the *next* release | `main` |
-| Fixes for the *current* release in burn-down | `release/YY.MM` |
-
-Check whether a release branch is active: `git branch -r | grep release`.
-When in doubt, target `main`.
-
-### Pre-commit Before Every Push
-
-Run pre-commit on changed files before pushing — CI will reject style failures:
-
-```bash
-pre-commit run --files <changed files>
-# or all files:
-pre-commit run --all-files
-```
-
-If hooks aren't installed yet: `pre-commit install` (once per clone).
-
-### PR Hygiene
-
-- Open PRs as **draft** (`gh pr create --draft`) when created by an agent or when work is still in progress — lets the developer review before reviewers get pinged.
-- Keep PR descriptions short: *what* changed and *why*, in a paragraph or 3–5 bullets. No file-by-file tables, no walkthroughs, no restated diffs.
-- Sign commits with `-s` (DCO): `git commit -s -m "message"`.
-- Respond to review comments before merging; don't dismiss without explanation.
-
-### Responding to CI Failures
-
-- Never bypass hooks with `--no-verify`.
-- Fix the root cause; don't add workarounds to silence CI.
-- If a job fails and you don't understand why, read the log before asking for a re-run.
+After opening the PR, a maintainer must comment `/nvskills-ci` to trigger NVSkills CI validation. The bot pushes a signature commit (`Attach NVSkills validation signatures`) that must remain in the PR — do not squash or rebase it away. Re-comment `/nvskills-ci` after any further pushes to re-sign.
 
 ---
 
