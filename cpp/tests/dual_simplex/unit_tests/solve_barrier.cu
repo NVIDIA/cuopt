@@ -217,4 +217,56 @@ TEST(barrier, min_x_squared_free_variable_dual_correction)
   EXPECT_NEAR(h_z[0], 0.0, tol);
 }
 
+TEST(barrier, qplib_8515_column_imbalance)
+{
+  // Regression test for the Ruiz equilibration skip heuristic in scaling().
+  // QPLIB_8515 has balanced rows (max-entry ratio 2) but severely imbalanced
+  // columns: its free variables appear in the constraint matrix only with
+  // ~1e-8 coefficients against O(1) rows.
+  //
+  // Reference objective 319.9999 from https://qplib.zib.de/QPLIB_8515.html.
+  const raft::handle_t handle{};
+  init_handler(&handle);
+
+  auto path =
+    cuopt::test::get_rapids_dataset_root_dir() + "/quadratic_programming/qplib/QPLIB_8515.lp";
+  auto mps_data = io::read_lp<int, double>(path);
+
+  auto settings   = pdlp_solver_settings_t<int, double>{};
+  settings.method = method_t::Barrier;
+
+  auto solution = solve_lp(&handle, mps_data, settings);
+
+  EXPECT_EQ(solution.get_termination_status(), pdlp_termination_status_t::Optimal);
+  EXPECT_NEAR(solution.get_objective_value(), 319.9999, 1e-2);
+
+  // With equilibration (the default), the well-conditioned barrier converges
+  // quickly (~14 iterations); un-equilibrated it needs far more.
+  const int iters = solution.get_additional_termination_information().number_of_steps_taken;
+  EXPECT_LT(iters, 30);
+}
+
+TEST(barrier, qplib_8515_ruiz_forced_off)
+{
+  // Forcing Ruiz equilibration off (=0) leaves QPLIB_8515's severe column
+  // imbalance in place, so the barrier needs far more iterations than the ~14
+  // it takes when equilibrated. The blow-up proves scaling() consumes
+  // qcqp_hyper_ruiz_equilibration.
+  const raft::handle_t handle{};
+  init_handler(&handle);
+
+  auto path =
+    cuopt::test::get_rapids_dataset_root_dir() + "/quadratic_programming/qplib/QPLIB_8515.lp";
+  auto mps_data = io::read_lp<int, double>(path);
+
+  auto settings                    = pdlp_solver_settings_t<int, double>{};
+  settings.method                  = method_t::Barrier;
+  settings.qcqp_ruiz_equilibration = 0;  // force off
+
+  auto solution = solve_lp(&handle, mps_data, settings);
+
+  const int iters = solution.get_additional_termination_information().number_of_steps_taken;
+  EXPECT_GT(iters, 50);
+}
+
 }  // namespace cuopt::mathematical_optimization::simplex::test
