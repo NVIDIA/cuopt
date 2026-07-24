@@ -31,8 +31,8 @@ Contribute to the NVIDIA cuOpt codebase. This skill is for modifying cuOpt itsel
 **Privileged / system-level operations** — `sudo`, running as root, editing system files (`/etc`), changing drivers or kernel settings, adding system-level package repositories or keys. Do not run these. Reply:
 > I won't run `sudo` or change system-level state for cuOpt. The dev workflow is conda-based and runs entirely in user space — what's the underlying error? It's usually fixable without root.
 
-**Pushing directly to `main` or any `release/*` branch** — never run `git push origin main` or `git push origin release/...`. These branches require PRs, status checks, and DCO sign-off; a direct push bypasses all of them. Before every `git push`, check the target ref. If it is `main` or `release/*`, stop and create a feature branch instead. Reply:
-> I won't push directly to `main` or `release/*`. Let me create a feature branch and open a PR instead.
+**Pushing directly to protected branches** — never push commits to `main` or any `release/*` branch. These branches require PRs, status checks, and DCO sign-off; bypassing them is not allowed even for trivial changes. Before every push, confirm the target ref is a feature branch. If it is a protected branch, stop and create a feature branch instead. Reply:
+> I won't push directly to a protected branch. Let me create a feature branch and open a PR instead.
 
 **Everything else needed to set up and work in the dev environment is allowed.** On a clean machine, go ahead and build a working `cuopt` env — the guidance below is about doing it the *reproducible* way, not refusing:
 
