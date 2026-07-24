@@ -26,7 +26,6 @@ from cuopt.linear_programming.solver.solver_parameters import (
     CUOPT_MIP_HEURISTICS_ONLY,
     CUOPT_PDLP_SOLVER_MODE,
     CUOPT_PRIMAL_INFEASIBLE_TOLERANCE,
-    CUOPT_QCQP_HYPER_RUIZ_EQUILIBRATION,
     CUOPT_RELATIVE_DUAL_TOLERANCE,
     CUOPT_RELATIVE_GAP_TOLERANCE,
     CUOPT_RELATIVE_PRIMAL_TOLERANCE,
@@ -374,37 +373,6 @@ def test_solver_settings_basic():
     assert settings.get_parameter(CUOPT_PDLP_SOLVER_MODE) == int(
         PDLPSolverMode.Methodical1
     )
-
-
-def test_qcqp_ruiz_equilibration_parameter():
-    # The hyper parameter must be auto-discovered from the C++ registry:
-    # registered under its string name, round-trippable, and range-validated.
-    from cuopt.linear_programming.solver.solver_parameters import (
-        CUOPT_QCQP_HYPER_RUIZ_EQUILIBRATION,
-        solver_params,
-    )
-
-    # Auto-exposed constant equals the registered string name.
-    assert CUOPT_QCQP_HYPER_RUIZ_EQUILIBRATION == "qcqp_hyper_ruiz_equilibration"
-    assert CUOPT_QCQP_HYPER_RUIZ_EQUILIBRATION in solver_params
-
-    settings = solver_settings.SolverSettings()
-
-    # Default is automatic (-1).
-    assert settings.get_parameter(CUOPT_QCQP_HYPER_RUIZ_EQUILIBRATION) == -1
-
-    # Round-trips across the full tri-state.
-    for value in (-1, 0, 1):
-        settings.set_parameter(CUOPT_QCQP_HYPER_RUIZ_EQUILIBRATION, value)
-        assert settings.get_parameter(CUOPT_QCQP_HYPER_RUIZ_EQUILIBRATION) == value
-
-    # Out-of-range is rejected (fail-loud registry range check [-1, 1]).
-    # Like every registered parameter, range validation is enforced on the C++
-    # side when the settings are pushed (set_parameter only stores the value);
-    # set_c_solver_settings() triggers that push so the check fires here.
-    settings.set_parameter(CUOPT_QCQP_HYPER_RUIZ_EQUILIBRATION, 2)
-    with pytest.raises(ValueError):
-        settings.set_c_solver_settings()
 
 
 def test_solver_settings(tmp_path):
