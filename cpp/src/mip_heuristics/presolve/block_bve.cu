@@ -274,13 +274,6 @@ std::vector<i_t> bve_reducer_t<i_t, f_t>::boundary_of(const std::unordered_set<i
 }
 
 template <typename i_t, typename f_t>
-i_t bve_reducer_t<i_t, f_t>::boundary_size(const std::vector<i_t>& interior) const
-{
-  std::unordered_set<i_t> A(interior.begin(), interior.end());
-  return boundary_of(rows_of(interior), A).size();
-}
-
-template <typename i_t, typename f_t>
 bool bve_reducer_t<i_t, f_t>::stage(const std::vector<i_t>& interior_in,
                                     bve_candidate_t<i_t, f_t>& out,
                                     int64_t* ops_out)
@@ -739,14 +732,10 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
     return R.col2rows[a].size() < R.col2rows[b].size();
   });
 
-  double t_growth = 0.0, t_stage = 0.0, t_project = 0.0, t_commit = 0.0;
-  i_t n_rounds = 0, n_seeds = 0, max_na = 0, max_nbrs = 0, max_steps = 0, n_nbr_gated = 0;
-  int64_t sum_growth_ops = 0, max_growth_ops_all = 0, sum_na = 0;
   std::vector<char> attempted(R.n_vars, 0);  // a seed is attempted once (whether or not it commits)
   // Grow each seed at most once; overlap-deferred seeds only re-stage from the cached interior.
   // Re-growing hubs every round dominated wall; retiring them on first overlap killed reductions.
   std::vector<char> growth_done(R.n_vars, 0);
-  std::vector<char> growth_gated(R.n_vars, 0);
   std::vector<std::vector<i_t>> growth_interior(R.n_vars);
   for (;;) {
     if (timer.check_time_limit()) break;
@@ -757,111 +746,74 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
       if (!attempted[seed] && !R.done[seed] && !R.col2rows[seed].empty())
         round_seeds.push_back(seed);
     if (round_seeds.empty()) break;
-    ++n_rounds;
-    n_seeds += (i_t)round_seeds.size();
 
     // Grow each seed against the frozen model (read-only on R → OMP-safe). Acceptance below is
     // serial in round_seeds order, so the plan matches a serial frozen-growth run.
     std::vector<std::vector<i_t>> interiors(round_seeds.size());
     std::vector<int64_t> growth_ops(round_seeds.size(), 0);
-    std::vector<i_t> growth_steps(round_seeds.size(), 0);
-    std::vector<i_t> growth_max_nbrs(round_seeds.size(), 0);
-    std::vector<i_t> growth_nbr_gated(round_seeds.size(), 0);
-    {
-      timer_t phase(std::numeric_limits<double>::infinity());
 #pragma omp parallel for schedule(dynamic)
-      for (i_t k = 0; k < (i_t)round_seeds.size(); ++k) {
-        const i_t seed = round_seeds[k];
-        if (growth_done[seed]) {
-          interiors[k]        = growth_interior[seed];
-          growth_nbr_gated[k] = growth_gated[seed];
-          continue;
+    for (i_t k = 0; k < (i_t)round_seeds.size(); ++k) {
+      const i_t seed = round_seeds[k];
+      if (growth_done[seed]) {
+        interiors[k] = growth_interior[seed];
+        continue;
+      }
+      // Interior A starts as {seed}; greedily absorb neighbors that shrink the boundary.
+      std::unordered_set<i_t> A = {seed};
+      int64_t ops               = 0;
+      for (;;) {
+        // Hub fast-path: raw implication degree upper-bounds |cands_w|. Skip boundary walks
+        // and adj materialization when the neighborhood is past the probe cap.
+        if (A.size() == 1) {
+          const i_t s   = *A.begin();
+          const i_t deg = has_adj(s) ? (i_t)impl_adj[s].size() : 0;
+          if (deg > BVE_MAX_GROWTH_NBRS) break;
         }
-        // Interior A starts as {seed}; greedily absorb neighbors that shrink the boundary.
-        std::unordered_set<i_t> A = {seed};
-        int64_t ops               = 0;
-        i_t steps                 = 0;
-        i_t seed_max_nbrs         = 0;
-        i_t seed_nbr_gated        = 0;
-        for (;;) {
-          // Hub fast-path: raw implication degree upper-bounds |cands_w|. Skip boundary walks
-          // and adj materialization when the neighborhood is past the probe cap.
-          if (A.size() == 1) {
-            const i_t s   = *A.begin();
-            const i_t deg = has_adj(s) ? (i_t)impl_adj[s].size() : 0;
-            seed_max_nbrs = std::max(seed_max_nbrs, deg);
-            if (deg > BVE_MAX_GROWTH_NBRS) {
-              ++seed_nbr_gated;
+        std::vector<i_t> Av(A.begin(), A.end());
+        const i_t cur = bve_boundary_size_ops(R, Av, ops);
+        // Implication-neighbors of A that are still eligible to enter the interior.
+        std::unordered_set<i_t> cands_w;
+        bool gated = false;
+        for (i_t a : A) {
+          if (!has_adj(a)) continue;
+          for (i_t w : impl_adj[a]) {
+            ++ops;
+            if (A.count(w) || !eligible(w)) continue;
+            cands_w.insert(w);
+            if ((i_t)cands_w.size() > BVE_MAX_GROWTH_NBRS) {
+              gated = true;
               break;
             }
           }
-          std::vector<i_t> Av(A.begin(), A.end());
-          const i_t cur = bve_boundary_size_ops(R, Av, ops);
-          // Implication-neighbors of A that are still eligible to enter the interior.
-          std::unordered_set<i_t> cands_w;
-          bool gated = false;
-          for (i_t a : A) {
-            if (!has_adj(a)) continue;
-            for (i_t w : impl_adj[a]) {
-              ++ops;
-              if (A.count(w) || !eligible(w)) continue;
-              cands_w.insert(w);
-              if ((i_t)cands_w.size() > BVE_MAX_GROWTH_NBRS) {
-                gated = true;
-                break;
-              }
-            }
-            if (gated) break;
-          }
-          seed_max_nbrs = std::max(seed_max_nbrs, (i_t)cands_w.size());
-          // Hub neighborhoods: full probe is Θ(|cands_w|) boundary walks and rarely absorbs.
-          if (gated) {
-            ++seed_nbr_gated;
-            break;
-          }
-          // Pick the neighbor with the smallest boundary; stop when none strictly improves.
-          i_t best    = -1;
-          i_t best_nb = cur;
-          for (i_t w : cands_w) {
-            Av.push_back(w);  // probe A ∪ {w}; pop restores Av
-            const i_t na = Av.size();
-            const i_t nb = bve_boundary_size_ops(R, Av, ops);
-            Av.pop_back();
-            if (nb < best_nb && na + nb <= R.enumcap && na <= BVE_MAX_INTERIOR) {
-              best_nb = nb;
-              best    = w;
-            }
-          }
-          if (best < 0) break;
-          A.insert(best);
-          ++steps;
+          if (gated) break;
         }
-        interiors[k].assign(A.begin(), A.end());
-        growth_ops[k]         = ops;
-        growth_steps[k]       = steps;
-        growth_max_nbrs[k]    = seed_max_nbrs;
-        growth_nbr_gated[k]   = seed_nbr_gated;
-        growth_interior[seed] = interiors[k];
-        growth_done[seed]     = 1;
-        growth_gated[seed]    = seed_nbr_gated ? 1 : 0;
+        // Hub neighborhoods: full probe is Θ(|cands_w|) boundary walks and rarely absorbs.
+        if (gated) break;
+        // Pick the neighbor with the smallest boundary; stop when none strictly improves.
+        i_t best    = -1;
+        i_t best_nb = cur;
+        for (i_t w : cands_w) {
+          Av.push_back(w);  // probe A ∪ {w}; pop restores Av
+          const i_t na = Av.size();
+          const i_t nb = bve_boundary_size_ops(R, Av, ops);
+          Av.pop_back();
+          if (nb < best_nb && na + nb <= R.enumcap && na <= BVE_MAX_INTERIOR) {
+            best_nb = nb;
+            best    = w;
+          }
+        }
+        if (best < 0) break;
+        A.insert(best);
       }
-      t_growth += phase.elapsed_time();
+      interiors[k].assign(A.begin(), A.end());
+      growth_ops[k]         = ops;
+      growth_interior[seed] = interiors[k];
+      growth_done[seed]     = 1;
     }
     // OMP growth: wall ≈ critical-path seed (max), not sum across threads.
     int64_t max_growth_ops = 0;
-    for (size_t k = 0; k < growth_ops.size(); ++k) {
-      max_growth_ops = std::max(max_growth_ops, growth_ops[k]);
-      sum_growth_ops += growth_ops[k];
-      const i_t na = (i_t)interiors[k].size();
-      sum_na += na;
-      max_na    = std::max(max_na, na);
-      max_nbrs  = std::max(max_nbrs, growth_max_nbrs[k]);
-      max_steps = std::max(max_steps, growth_steps[k]);
-      // Cache hits leave ops/max_nbrs/steps at 0; only count gates from a fresh grow.
-      if (growth_ops[k] > 0 || growth_max_nbrs[k] > 0 || growth_steps[k] > 0)
-        n_nbr_gated += growth_nbr_gated[k];
-    }
-    max_growth_ops_all = std::max(max_growth_ops_all, max_growth_ops);
+    for (int64_t ops : growth_ops)
+      max_growth_ops = std::max(max_growth_ops, ops);
     work_units += double(max_growth_ops);
 
     if (timer.check_time_limit()) break;
@@ -870,84 +822,53 @@ static bve_plan_t<i_t, f_t> bve_detect_closure_batched(
     // round_seeds order. Nothing mutates the model until commit, so this stays serial.
     std::vector<bve_candidate_t<i_t, f_t>> cands;
     std::unordered_set<i_t> claimed;  // interior+boundary columns of already-accepted candidates
-    {
-      timer_t phase(std::numeric_limits<double>::infinity());
-      for (size_t k = 0; k < round_seeds.size(); ++k) {
-        if (timer.check_time_limit()) break;
-        const i_t seed = round_seeds[k];
-        bve_candidate_t<i_t, f_t> cand;
-        int64_t stage_ops = 0;
-        if (!R.stage(interiors[k], cand, &stage_ops)) {
-          work_units += double(stage_ops);
-          attempted[seed] =
-            1;  // failed the caps against this model; treat as one touch, like sequential
-          continue;
-        }
+    for (size_t k = 0; k < round_seeds.size(); ++k) {
+      if (timer.check_time_limit()) break;
+      const i_t seed = round_seeds[k];
+      bve_candidate_t<i_t, f_t> cand;
+      int64_t stage_ops = 0;
+      if (!R.stage(interiors[k], cand, &stage_ops)) {
         work_units += double(stage_ops);
-        bool overlap = false;
-        for (i_t c : cand.interior)
+        attempted[seed] =
+          1;  // failed the caps against this model; treat as one touch, like sequential
+        continue;
+      }
+      work_units += double(stage_ops);
+      bool overlap = false;
+      for (i_t c : cand.interior)
+        if (claimed.count(c)) {
+          overlap = true;
+          break;
+        }
+      if (!overlap)
+        for (i_t c : cand.boundary)
           if (claimed.count(c)) {
             overlap = true;
             break;
           }
-        if (!overlap)
-          for (i_t c : cand.boundary)
-            if (claimed.count(c)) {
-              overlap = true;
-              break;
-            }
-        if (overlap) continue;  // scope collides; retry stage later from cached interior
+      if (overlap) continue;  // scope collides; retry stage later from cached interior
 
-        attempted[seed] = 1;
-        for (i_t c : cand.interior)
-          claimed.insert(c);
-        for (i_t c : cand.boundary)
-          claimed.insert(c);
-        cands.push_back(std::move(cand));
-      }
-      t_stage += phase.elapsed_time();
+      attempted[seed] = 1;
+      for (i_t c : cand.interior)
+        claimed.insert(c);
+      for (i_t c : cand.boundary)
+        claimed.insert(c);
+      cands.push_back(std::move(cand));
     }
 
     if (cands.empty() || timer.check_time_limit()) break;
-    {
-      timer_t phase(std::numeric_limits<double>::infinity());
-      // Staged blocks are integerized (bve_row_int_scale), so the subset-sum feasibility test is
-      // exact: project with tolerance 0 rather than R.tol.
-      work_units += bve_project_batch_gpu<i_t, f_t>(handle, cands, f_t(0));
-      t_project += phase.elapsed_time();
-    }
+    // Staged blocks are integerized (bve_row_int_scale), so the subset-sum feasibility test is
+    // exact: project with tolerance 0 rather than R.tol.
+    work_units += bve_project_batch_gpu<i_t, f_t>(handle, cands, f_t(0));
     if (timer.check_time_limit()) break;
-    {
-      timer_t phase(std::numeric_limits<double>::infinity());
-      i_t committed = 0;
-      for (auto& cand : cands) {
-        if (timer.check_time_limit()) break;
-        work_units += bve_commit_wall_ops(cand.blk.nb, cand.blk.n_rows + R.margin);
-        if (R.commit_projected(cand)) ++committed;
-      }
-      t_commit += phase.elapsed_time();
-      if (committed == 0) break;
+    i_t committed = 0;
+    for (auto& cand : cands) {
+      if (timer.check_time_limit()) break;
+      work_units += bve_commit_wall_ops(cand.blk.nb, cand.blk.n_rows + R.margin);
+      if (R.commit_projected(cand)) ++committed;
     }
+    if (committed == 0) break;
   }
-  const double avg_na = n_seeds > 0 ? double(sum_na) / double(n_seeds) : 0.0;
-  CUOPT_LOG_DEBUG("Block-BVE detect: growth=%.2fs stage=%.2fs project=%.2fs commit=%.2fs",
-                  t_growth,
-                  t_stage,
-                  t_project,
-                  t_commit);
-  CUOPT_LOG_DEBUG(
-    "Block-BVE growth: rounds=%d seeds=%d max_ops=%.0f sum_ops=%.0f max_na=%d avg_na=%.1f "
-    "max_nbrs=%d max_steps=%d nbr_gated=%d (cap %d)",
-    n_rounds,
-    n_seeds,
-    double(max_growth_ops_all),
-    double(sum_growth_ops),
-    max_na,
-    avg_na,
-    max_nbrs,
-    max_steps,
-    n_nbr_gated,
-    BVE_MAX_GROWTH_NBRS);
   return R.finalize();
 }
 
