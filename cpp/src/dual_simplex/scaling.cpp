@@ -74,9 +74,9 @@ i_t scaling(const lp_problem_t<i_t, f_t>& unscaled,
     f_t col_norm_ratio = (min_col_norm > 0) ? max_col_norm / min_col_norm : 1.0;
 
     // qcqp_ruiz_equilibration: -1 automatic (imbalance heuristic), 0 force off, 1 force on.
-    const i_t ruiz_mode  = settings.qcqp_ruiz_equilibration;
-    const bool skip_ruiz = (ruiz_mode == 0) ||
-                           (ruiz_mode < 0 && row_norm_ratio < 100.0 && col_norm_ratio < 100.0);
+    const i_t ruiz_mode = settings.qcqp_ruiz_equilibration;
+    const bool skip_ruiz =
+      (ruiz_mode == 0) || (ruiz_mode < 0 && row_norm_ratio < 100.0 && col_norm_ratio < 100.0);
 
     if (skip_ruiz) {
       if (ruiz_mode == 0) {
