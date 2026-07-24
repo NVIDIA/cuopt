@@ -299,7 +299,10 @@ handlers are unreliable once gRPC/CUDA threads mask signals):
 4. Close server-side worker pipes so background threads blocked on pipe I/O unblock
 5. Shut down the gRPC server with a short deadline so lingering RPCs cannot block exit
 6. Join background threads, wait briefly for workers (`waitpid` with a grace period), and clean up shared memory
-7. A 3s watchdog calls `_exit(0)` if the clean path wedges (e.g. GPU driver D-state)
+7. A cancelable ~10s watchdog calls `_exit(1)` if the clean path wedges (e.g. GPU
+   driver D-state). The margin is above the bounded clean-path work (gRPC
+   Shutdown deadline + worker wait grace + thread joins). On a healthy
+   shutdown the watchdog is disarmed before process exit.
 
 Workers ignore SIGINT/SIGTERM so only the parent process owns shutdown; the parent always force-kills workers rather than waiting for the current solve to finish. Mid-CUDA workers can sit in uninterruptible D-state after `SIGKILL`, so `waitpid` is bounded — stragglers are abandoned for init/the test harness to reap.
 

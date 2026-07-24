@@ -354,14 +354,21 @@ int main(int argc, char** argv)
 
   // Dedicated signal thread: sigwait is reliable in multithreaded processes
   // where gRPC/CUDA may mask signals on their threads. On SIGINT/SIGTERM we
-  // cancel jobs, kill workers, close pipes, and shut down gRPC. A watchdog
-  // forces process exit if cleanup hangs (e.g. GPU driver D-state).
+  // cancel jobs, kill workers, close pipes, and shut down gRPC. A cancelable
+  // watchdog forces process exit only if cleanup hangs (e.g. GPU D-state).
   sigset_t shutdown_sigset;
   sigemptyset(&shutdown_sigset);
   sigaddset(&shutdown_sigset, SIGINT);
   sigaddset(&shutdown_sigset, SIGTERM);
 
-  std::thread shutdown_thread([&server, shutdown_sigset]() mutable {
+  // Shared so the detached watchdog can observe cancellation after a healthy
+  // shutdown_all() completes. Margin is well above the bounded pieces of the
+  // clean path (gRPC Shutdown deadline 1s + wait_for_workers grace 2s + joins).
+  // static constexpr: nested lambdas can use it without capturing.
+  static constexpr auto kShutdownWatchdog = std::chrono::seconds(10);
+  auto shutdown_watchdog_cancelled        = std::make_shared<std::atomic<bool>>(false);
+
+  std::thread shutdown_thread([&server, shutdown_sigset, shutdown_watchdog_cancelled]() mutable {
     int sig = 0;
     int rc  = sigwait(&shutdown_sigset, &sig);
     if (rc != 0) {
@@ -374,12 +381,16 @@ int main(int argc, char** argv)
     keep_running = false;
     if (shm_ctrl) { shm_ctrl->shutdown_requested = true; }
 
-    // If joins / waitpid / gRPC Shutdown wedge, still die promptly so Ctrl-C
-    // and the integration test cannot hang indefinitely.
-    std::thread([]() {
-      std::this_thread::sleep_for(std::chrono::seconds(3));
-      SERVER_LOG_ERROR("[Server] Shutdown watchdog expired; forcing exit");
-      _exit(0);
+    std::thread([shutdown_watchdog_cancelled]() {
+      auto deadline = std::chrono::steady_clock::now() + kShutdownWatchdog;
+      while (!shutdown_watchdog_cancelled->load(std::memory_order_acquire)) {
+        if (std::chrono::steady_clock::now() >= deadline) {
+          SERVER_LOG_ERROR("[Server] Shutdown watchdog expired after %llds; forcing unclean exit",
+                           static_cast<long long>(kShutdownWatchdog.count()));
+          _exit(1);
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      }
     }).detach();
 
     cancel_all_active_jobs_for_shutdown();
@@ -396,6 +407,9 @@ int main(int argc, char** argv)
 
   SERVER_LOG_INFO("[Server] Shutting down...");
   shutdown_all();
+
+  // Disarm the watchdog so a healthy cleanup cannot race into _exit(1).
+  shutdown_watchdog_cancelled->store(true, std::memory_order_release);
 
   SERVER_LOG_INFO("[Server] Shutdown complete");
   return 0;
