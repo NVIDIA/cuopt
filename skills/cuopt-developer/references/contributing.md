@@ -2,6 +2,77 @@
 
 Read this for anything related to committing, pushing, opening PRs, or making structural changes to cuOpt (adding a solver parameter, dependency, server endpoint, or CUDA kernel).
 
+---
+
+## GitHub Etiquette — Non-Negotiable Rules
+
+These apply to every interaction with the cuOpt GitHub repository, including automated agent actions.
+
+### Protected Branches — Never Push Directly
+
+**Never push commits directly to `main` or any `release/YY.MM` branch.**
+
+```
+# WRONG — do not do this
+git push origin main
+git push origin release/26.06
+
+# RIGHT — push to a feature branch, then open a PR
+git push origin my-feature-branch
+```
+
+These branches have required status checks, DCO sign-off enforcement, and code-review gates. A direct push bypasses all of them — even when the push technically succeeds via a bypass, it violates the team's workflow and cannot be cleanly reverted without disrupting other contributors.
+
+**Before any `git push`, confirm the target ref is a feature branch, never `main` or `release/*`.**
+
+### Always Work on a Feature Branch
+
+Every change — including one-line CI fixes — goes through a branch and PR:
+
+```bash
+git checkout -b fix/short-description   # branch from the correct base (see below)
+# ... make changes, commit, pre-commit ...
+git push origin fix/short-description
+gh pr create --draft --title "..." --body "..."
+```
+
+### Choose the Right Base Branch
+
+| Target | Base branch |
+|--------|-------------|
+| New features / fixes for the *next* release | `main` |
+| Fixes for the *current* release in burn-down | `release/YY.MM` |
+
+Check whether a release branch is active: `git branch -r | grep release`.
+When in doubt, target `main`.
+
+### Pre-commit Before Every Push
+
+Run pre-commit on changed files before pushing — CI will reject style failures:
+
+```bash
+pre-commit run --files <changed files>
+# or all files:
+pre-commit run --all-files
+```
+
+If hooks aren't installed yet: `pre-commit install` (once per clone).
+
+### PR Hygiene
+
+- Open PRs as **draft** (`gh pr create --draft`) when created by an agent or when work is still in progress — lets the developer review before reviewers get pinged.
+- Keep PR descriptions short: *what* changed and *why*, in a paragraph or 3–5 bullets. No file-by-file tables, no walkthroughs, no restated diffs.
+- Sign commits with `-s` (DCO): `git commit -s -m "message"`.
+- Respond to review comments before merging; don't dismiss without explanation.
+
+### Responding to CI Failures
+
+- Never bypass hooks with `--no-verify`.
+- Fix the root cause; don't add workarounds to silence CI.
+- If a job fails and you don't understand why, read the log before asking for a re-run.
+
+---
+
 ## Before You Commit
 
 ### 1. Install Pre-commit Hooks
