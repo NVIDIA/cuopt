@@ -834,7 +834,11 @@ mip_solution_t<i_t, f_t> solve_mip(optimization_problem_t<i_t, f_t>& op_problem,
     {
       try {
         sol = solve_mip_helper<i_t, f_t>(op_problem, settings_const);
+      } catch (const std::exception& e) {
+        CUOPT_LOG_ERROR("Exception in MIP OpenMP region: %s", e.what());
+        exception = std::current_exception();
       } catch (...) {
+        CUOPT_LOG_ERROR("Unknown exception in MIP OpenMP region");
         // We cannot throw inside an OpenMP parallel region. So we need to catch and then
         // re-throw later.
         exception = std::current_exception();
