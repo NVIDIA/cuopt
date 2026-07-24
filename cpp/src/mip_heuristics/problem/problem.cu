@@ -1233,10 +1233,6 @@ void problem_t<i_t, f_t>::insert_constraints(constraints_delta_t<i_t, f_t>& h_co
   pdlp::combine_constraint_bounds<i_t, f_t>(*this, combined_bounds);
 }
 
-// Integer/rational coefficient-scaling helpers (rational_approximation, find_scaling_brute_force,
-// find_scaling_rational, find_objective_scaling_factor) live in utilities/integer_scaling.hpp
-// (namespace cuopt); they resolve here via enclosing-namespace lookup.
-
 template <typename i_t, typename f_t>
 void problem_t<i_t, f_t>::set_implied_integers(const std::vector<i_t>& implied_integer_indices)
 {
@@ -2142,8 +2138,6 @@ void problem_t<i_t, f_t>::set_constraints_from_host_csr(const std::vector<i_t>& 
   row_names             = names;
   integer_fixed_problem = nullptr;
 
-  // Full row rewrite (e.g. block-BVE): previous duals / RHS reductions are for a different
-  // constraint set and must not alias reordered or replaced rows.
   fixing_helpers.reduction_in_rhs.resize(n_constraints, stream);
   thrust::fill(handle_ptr->get_thrust_policy(),
                fixing_helpers.reduction_in_rhs.begin(),
@@ -2158,8 +2152,6 @@ void problem_t<i_t, f_t>::set_constraints_from_host_csr(const std::vector<i_t>& 
   compute_transpose_of_problem();
   combined_bounds.resize(n_constraints, stream);
   pdlp::combine_constraint_bounds<i_t, f_t>(*this, combined_bounds);
-  // Constraint graph changed; defer representation checks until callers finish column compaction
-  // (e.g. trivial_presolve after empty interiors).
   recompute_auxilliary_data(false);
 }
 

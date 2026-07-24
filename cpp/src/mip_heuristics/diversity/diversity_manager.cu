@@ -51,11 +51,6 @@ size_t sub_mip_recombiner_config_t::max_n_of_vars_from_other =
 template <typename i_t, typename f_t>
 std::vector<recombiner_enum_t> recombiner_t<i_t, f_t>::enabled_recombiners;
 
-// Convert the CURRENT (solver-space, post-presolve) problem_t into an owning io::mps_data_model_t,
-// so the model can be serialized without problem_t depending on the MPS writer. Free-function
-// adapter, mirroring simplex_problem_to_mps_data_model. Minimization sense (solver space); the
-// writer generates default variable/row names. Problem NAME is taken from original_problem_ptr
-// when present, otherwise "cuopt".
 template <typename i_t, typename f_t>
 static cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> problem_to_mps_data_model(
   const problem_t<i_t, f_t>& problem)
@@ -82,7 +77,7 @@ static cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> problem_
     var_types[v] = var_type_to_char(h_vt[v]);
 
   cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> model;
-  model.set_maximize(false);  // problem_t is always in minimization solver space
+  model.set_maximize(false);
   if (!h_off.empty()) {
     model.set_csr_constraint_matrix(std::span<const f_t>{h_val.data(), h_val.size()},
                                     std::span<const i_t>{h_ind.data(), h_ind.size()},
@@ -98,7 +93,7 @@ static cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t> problem_
     model.set_variable_upper_bounds(std::span<const f_t>{var_upper.data(), var_upper.size()});
     model.set_variable_types(var_types);
   }
-  model.set_objective_scaling_factor(f_t(1.0));  // solver-space objective is written as-is
+  model.set_objective_scaling_factor(problem.presolve_data.objective_scaling_factor);
   model.set_objective_offset(problem.presolve_data.objective_offset);
   if (problem.original_problem_ptr != nullptr &&
       !problem.original_problem_ptr->get_problem_name().empty()) {
@@ -377,9 +372,9 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
   if (run_probing_cache) { log_presolve_budget("PROBING", probing_features, probing_budget); }
   const bool remap_cache_ids           = true;
   problem_ptr->related_vars_time_limit = context.settings.heuristic_params.related_vars_time_limit;
-  // Outer probe → trivial → BVE rounds: after a reducing BVE the matrix (and useful implications)
-  // change; rebuild the probing cache and run BVE again until quiet or the round cap.
-  const i_t max_bve_rounds = (i_t)diversity_config.max_block_bve_probe_rounds;
+
+  // run block-BVE presolve rounds
+  const i_t max_bve_rounds = 3;
   for (i_t bve_round = 0;; ++bve_round) {
     if (run_probing_cache) {
       if (global_timer.check_time_limit() || presolve_timer.check_time_limit()) { break; }
@@ -395,7 +390,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
                                                          (size_t)probing_budget.probing_step_size);
       if (problem_is_infeasible) { return false; }
     } else if (bve_round > 0) {
-      break;  // further BVE rounds need a fresh probing cache
+      break;
     }
 
     if (!global_timer.check_time_limit()) { trivial_presolve(*problem_ptr, remap_cache_ids); }
@@ -424,9 +419,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
     if (!reduced || !run_probing_cache || bve_round + 1 >= max_bve_rounds) { break; }
     if (problem_ptr->n_variables >= n_vars_before) { break; }
   }
-  // Optional debug export of the GPU-presolved model (env CUOPT_EXPORT_GPU_PRESOLVED_PROBLEM=1).
-  // Runs after cuOpt's presolve (trivial_presolve + block-BVE); writes <instance>_gpupresolved.mps
-  // to CWD.
+
   if (const char* export_flag = std::getenv("CUOPT_EXPORT_GPU_PRESOLVED_PROBLEM");
       export_flag != nullptr && std::atoi(export_flag) != 0) {
     const std::string instance_name =
@@ -435,7 +428,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
         ? problem_ptr->original_problem_ptr->get_problem_name()
         : std::string("cuopt");
     const std::string mps_path = instance_name + "_gpupresolved.mps";
-    CUOPT_LOG_INFO("Exporting GPU-presolved problem to %s", mps_path.c_str());
+    CUOPT_LOG_DEBUG("Exporting GPU-presolved problem to %s", mps_path.c_str());
     auto model = problem_to_mps_data_model(*problem_ptr);
     cuopt::mathematical_optimization::io::mps_writer_t<i_t, f_t> writer(model);
     writer.write(mps_path);

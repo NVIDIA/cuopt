@@ -16,11 +16,6 @@
 
 #include <utilities/macros.cuh>
 
-// Integer/rational coefficient-scaling utilities: find a positive scalar that makes a vector of
-// floating-point coefficients (near-)integer, via continued-fraction rationalization or a brute
-// sweep. Shared by objective integer-scaling (problem.cu) and block-BVE row integerization
-// (block_bve.cu). Header-only. A broader unification with cuts/rational.hpp (which carries a
-// second, template rational_approximation) is a planned follow-up; kept separate here on purpose.
 namespace cuopt {
 
 namespace detail {

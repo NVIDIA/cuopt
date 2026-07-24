@@ -137,38 +137,42 @@ void presolve_data_t<i_t, f_t>::post_process_assignment(
 
   // Reverse-append undo of the unified GPU-presolve reconstruction log (probe AffineSub and BVE
   // BlockBve interleaved in commit order across outer rounds).
-  for (auto it = reconstructions.rbegin(); it != reconstructions.rend(); ++it) {
+  for (auto it = var_postsolve.rbegin(); it != var_postsolve.rend(); ++it) {
     const auto& rec = *it;
-    if (rec.kind == reconstruction_kind_t::BlockBve) {
-      cuopt_assert(rec.bve.witness.size() == (size_t{1} << rec.bve.boundary.size()),
-                   "block witness size mismatch");
-      uint32_t pattern = 0;
-      for (size_t j = 0; j < rec.bve.boundary.size(); ++j) {
-        cuopt_assert(rec.bve.boundary[j] < (i_t)h_assignment.size(),
-                     "block boundary out of bounds");
-        const int bit = (h_assignment[rec.bve.boundary[j]] > static_cast<f_t>(0.5)) ? 1 : 0;
-        pattern |= (static_cast<uint32_t>(bit) << j);
+    switch (rec.kind) {
+      case reconstruction_kind_t::BlockBve: {
+        cuopt_assert(rec.bve.witness.size() == (size_t{1} << rec.bve.boundary.size()),
+                     "block witness size mismatch");
+        uint32_t pattern = 0;
+        for (size_t j = 0; j < rec.bve.boundary.size(); ++j) {
+          cuopt_assert(rec.bve.boundary[j] < (i_t)h_assignment.size(),
+                       "block boundary out of bounds");
+          const int bit = (h_assignment[rec.bve.boundary[j]] > static_cast<f_t>(0.5)) ? 1 : 0;
+          pattern |= (static_cast<uint32_t>(bit) << j);
+        }
+        const uint32_t w = rec.bve.witness[pattern];
+        for (size_t k = 0; k < rec.bve.interior.size(); ++k) {
+          cuopt_assert(rec.bve.interior[k] < (i_t)h_assignment.size(),
+                       "block interior out of bounds");
+          h_assignment[rec.bve.interior[k]] = static_cast<f_t>((w >> k) & 1u);
+        }
+        break;
       }
-      const uint32_t w = rec.bve.witness[pattern];
-      for (size_t k = 0; k < rec.bve.interior.size(); ++k) {
-        cuopt_assert(rec.bve.interior[k] < (i_t)h_assignment.size(),
-                     "block interior out of bounds");
-        h_assignment[rec.bve.interior[k]] = static_cast<f_t>((w >> k) & 1u);
+      case reconstruction_kind_t::AffineSub: {
+        cuopt_assert(rec.sub.substituted_var < (i_t)h_assignment.size(),
+                     "substituted_var out of bounds");
+        cuopt_assert(rec.sub.substituting_var < (i_t)h_assignment.size(),
+                     "substituting_var out of bounds");
+        h_assignment[rec.sub.substituted_var] =
+          rec.sub.offset + rec.sub.coefficient * h_assignment[rec.sub.substituting_var];
+        CUOPT_LOG_DEBUG("Post-process substitution: x[%d] = %f + %f * x[%d] = %f",
+                        rec.sub.substituted_var,
+                        rec.sub.offset,
+                        rec.sub.coefficient,
+                        rec.sub.substituting_var,
+                        h_assignment[rec.sub.substituted_var]);
+        break;
       }
-    } else {
-      cuopt_assert(rec.kind == reconstruction_kind_t::AffineSub, "unknown reconstruction kind");
-      cuopt_assert(rec.sub.substituted_var < (i_t)h_assignment.size(),
-                   "substituted_var out of bounds");
-      cuopt_assert(rec.sub.substituting_var < (i_t)h_assignment.size(),
-                   "substituting_var out of bounds");
-      h_assignment[rec.sub.substituted_var] =
-        rec.sub.offset + rec.sub.coefficient * h_assignment[rec.sub.substituting_var];
-      CUOPT_LOG_DEBUG("Post-process substitution: x[%d] = %f + %f * x[%d] = %f",
-                      rec.sub.substituted_var,
-                      rec.sub.offset,
-                      rec.sub.coefficient,
-                      rec.sub.substituting_var,
-                      h_assignment[rec.sub.substituted_var]);
     }
   }
 
