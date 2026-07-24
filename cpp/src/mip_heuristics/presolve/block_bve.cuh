@@ -24,18 +24,14 @@
 #include <utilities/timer.hpp>
 #endif
 
-// Post-Papilo GPU block-BVE presolve pass. This header DECLARES the public surface; all function
-// bodies live in block_bve.cu (explicit-instantiation style, matching the rest of the codebase).
-//
-// WHAT IT IS, in standard vocabulary. A block of zero-objective binary auxiliary variables (the
+// A block of zero-objective binary auxiliary variables (the
 // block "interior") is eliminated by EXISTENTIAL PROJECTION onto the remaining "boundary" columns
 // (∃interior. block_rows), and the projected feasible region is re-encoded over the boundary as the
 // prime-implicate CNF of that projection (a set of set-covering no-goods). This is a PRIMAL,
-// feasibility- and optimality-preserving reformulation in the sense of Achterberg et al., "Presolve
-// Reductions in MIP" (INFORMS JoC 2020): a boundary assignment is feasible in the reduced model iff
-// some interior completes it in the original, and eliminating only zero-objective aux leaves the
-// objective untouched. It is MORE GENERAL than affine substitution/aggregation (the interior is
-// removed via a general Boolean function, not an affine equality) and is adjacent to
+// feasibility- and optimality-preserving reformulation: a boundary assignment is feasible in the
+// reduced model iff some interior completes it in the original, and eliminating only zero-objective
+// aux leaves the objective untouched. It is MORE GENERAL than affine substitution/aggregation (the
+// interior is removed via a general Boolean function, not an affine equality) and is adjacent to
 // gate/definitional variable elimination in SAT (Ostrowski et al. 2002, "Recovering Structural
 // Knowledge from CNF"). The growth gate |clauses| <= |rows| + margin is the bounded-elimination
 // criterion of Een & Biere's SatELite (SAT'05) — hence "BVE" — though the mechanism here is block
@@ -43,15 +39,8 @@
 // (`witness`, below) plays the role of the witness substitution w in VeriPB's redundance-based
 // strengthening rule: for a certified pipeline it maps each eliminated interior column to its value
 // given the boundary. See Hoen, Oertel, Gleixner & Nordstrom, "Certifying MIP-Based Presolve
-// Reductions for 0-1 ILPs" (CPAIOR 2024), which certifies exactly this class of PaPILO reductions
+// Reductions for 0-1 ILPs" (CPAIOR 2024), which certifies exactly this class of reductions
 // with machine-checkable pseudo-Boolean proofs.
-//
-// TRUST MODEL (read the honest caveat in bve_sanity_check). We do NOT emit a machine-checkable
-// certificate. commit_projected runs an inline SANITY CHECK (certifying-algorithm / result-checking
-// style): the emitted clauses are re-evaluated by an independent evaluator and must reproduce the
-// projected feasibility array, else the block is kept verbatim. This guards against
-// detector/encoder bugs; it is not a proof a third party can verify. The certified variant would be
-// VeriPB proof logging (Hoen et al. 2024) atop PaPILO, which cuOpt already runs.
 //
 // Layers:
 //   1. Clause core (bve_block_t / bve_prime_implicates / bve_sanity_check). The projection
@@ -73,15 +62,6 @@
 // The host enumeration projection (bve_project / bve_project_and_check) is NOT part of this header
 // — it is the trusted differential oracle for the GPU kernel and lives in
 // tests/mip/block_bve_test.cu.
-//
-// fp64; integrality is a value property, never a storage type. Each candidate block is integerized
-// per row before projection (bve_row_int_scale): coefficients and finite bounds are scaled by a
-// bounded rational multiplier so the binary subset-sum feasibility test is EXACT and the projection
-// runs at tolerance 0. A row that does not integerize within the caps makes the whole block not
-// exactly representable, so the block is rejected (left un-eliminated) rather than classified with
-// a magnitude-sensitive fp tolerance. The 1e-6 presolve tolerance still governs binary
-// variable-bound detection (is_bin). All column/row ids are in the CURRENT problem_t space at
-// detection time (post-Papilo, before this pass's trivial_presolve).
 
 namespace cuopt::mathematical_optimization::mip {
 

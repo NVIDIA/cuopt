@@ -1109,11 +1109,11 @@ bool block_bve_presolve(problem_t<i_t, f_t>& problem,
 
   // ---- 6. record reconstructions on the unified append-only log (detection-space ids ->
   // post-Papilo variable_mapping frame). Commit order preserved; postsolve replays reverse. ----
-  auto& recs = problem.presolve_data.reconstructions;
+  auto& recs = problem.presolve_data.var_postsolve;
   recs.reserve(recs.size() + plan.reductions.size());
   for (const auto& red : plan.reductions) {
     work_units += double(red.interior.size() + red.boundary.size() + red.witness.size());
-    reconstruction_t<i_t, f_t> rec;
+    var_postsolve_t<i_t, f_t> rec;
     rec.kind = reconstruction_kind_t::BlockBve;
     rec.bve.interior.reserve(red.interior.size());
     for (i_t c : red.interior) {

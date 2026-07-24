@@ -41,15 +41,6 @@
 #include <utility>
 #include <vector>
 
-// ============================================================================================
-// TEST-ONLY host enumeration oracle for the block-BVE pass (NOT production — projection there
-// runs on the GPU). Reopens namespace ...::mip so tests can call e.g. mip::bve_project_and_check:
-//   * bve_project / bve_project_and_check — host ENUMERATION projection, ported bit-for-bit from
-//     the validated reference cpufj_sc22/bve_blocks.cpp (itself checked against `bveblk`). The
-//     differential oracle for the GPU kernel: for any block, the GPU's feas/witness must equal
-//     these. This pins projection correctness, which the inline sanity check (bve_sanity_check)
-//     does NOT — the sanity check trusts feas and only verifies the clauses reproduce it.
-// ============================================================================================
 namespace cuopt::mathematical_optimization::mip {
 
 // ---- host enumeration projection (the differential oracle) ----

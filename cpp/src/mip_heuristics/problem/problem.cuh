@@ -143,13 +143,8 @@ class problem_t {
     cuopt::mathematical_optimization::simplex::user_problem_t<i_t, f_t>& user_problem) const;
   void set_constraints_from_host_user_problem(
     const cuopt::mathematical_optimization::simplex::user_problem_t<i_t, f_t>& user_problem);
-  // Replace the constraint matrix + row bounds in place from host CSR (row-major
-  // offsets/variables/coefficients and per-row lower/upper), rebuilding all matrix-derived device
-  // state (transpose, combined bounds, n_constraints-sized auxiliary buffers, and constraint-graph
-  // tables via recompute_auxilliary_data). The variable/column set is UNCHANGED — empty columns
-  // left by a rewrite are compacted by a subsequent trivial_presolve. Used by presolve passes that
-  // rewrite rows in place (e.g. block-BVE). offsets has n_rows+1 entries; row_lower/row_upper have
-  // n_rows entries. names is either empty or has n_rows entries.
+  // Replace the constraint matrix + row bounds in place from host CSR
+  // Used by presolve passes that rewrite rows in place (e.g. block-BVE)
   void set_constraints_from_host_csr(const std::vector<i_t>& offsets,
                                      const std::vector<i_t>& variables,
                                      const std::vector<f_t>& coefficients,

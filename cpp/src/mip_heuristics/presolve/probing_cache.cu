@@ -720,7 +720,7 @@ void apply_substitution_queue_to_problem(
   problem.handle_ptr->sync_stream();
 
   // Collect AffineSub reconstructions, then append in deterministic order (by substituted_var).
-  std::vector<reconstruction_t<i_t, f_t>> batch_recs;
+  std::vector<var_postsolve_t<i_t, f_t>> batch_recs;
   batch_recs.reserve(all_substitutions.size());
   for (const auto& [substituting_var, substitutions] : all_substitutions) {
     for (const auto& [substituted_var, substitution] : substitutions) {
@@ -738,7 +738,7 @@ void apply_substitution_queue_to_problem(
       offset_values.push_back(substitution.offset);
       coefficient_values.push_back(substitution.coefficient);
 
-      reconstruction_t<i_t, f_t> rec;
+      var_postsolve_t<i_t, f_t> rec;
       rec.kind                 = reconstruction_kind_t::AffineSub;
       rec.sub                  = substitution;
       rec.sub.substituted_var  = h_variable_mapping[substitution.substituted_var];
@@ -753,10 +753,10 @@ void apply_substitution_queue_to_problem(
   }
   std::sort(batch_recs.begin(),
             batch_recs.end(),
-            [](const reconstruction_t<i_t, f_t>& a, const reconstruction_t<i_t, f_t>& b) {
+            [](const var_postsolve_t<i_t, f_t>& a, const var_postsolve_t<i_t, f_t>& b) {
               return a.sub.substituted_var < b.sub.substituted_var;
             });
-  auto& recs = problem.presolve_data.reconstructions;
+  auto& recs = problem.presolve_data.var_postsolve;
   recs.insert(recs.end(),
               std::make_move_iterator(batch_recs.begin()),
               std::make_move_iterator(batch_recs.end()));
@@ -877,12 +877,8 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
                            timer_t timer)
 {
   raft::common::nvtx::range fun_scope("compute_probing_cache");
-  // Drop any prior cache: keys are original-frame ids for a previous column set. Re-probing after
-  // BVE/compaction must not mix stale implications into bve_build_impl_adj.
+
   bound_presolve.probing_cache.probing_cache.clear();
-  // Align original_ids / reverse_original_ids with variable_mapping before writing cache keys.
-  // A prior trivial_presolve(..., remap_cache_ids=false) can compact columns without updating
-  // those maps; readers (and bve_build_impl_adj) treat cache keys as original-frame ids.
   {
     auto stream = problem.handle_ptr->get_stream();
     auto h_vmap = host_copy(problem.presolve_data.variable_mapping, stream);

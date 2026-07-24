@@ -28,8 +28,6 @@ class solution_t;
 template <typename i_t, typename f_t>
 class third_party_presolve_t;
 
-// Affine substitution payload. Discovery-time probing substitutions use current-space ids; entries
-// appended to reconstructions are remapped to the post-Papilo frame.
 template <typename i_t, typename f_t>
 struct substitution_t {
   f_t timestamp;
@@ -46,14 +44,11 @@ struct bve_postsolve_t {
   std::vector<uint32_t> witness;  // size 2^boundary.size()
 };
 
-// GPU-presolve value reconstructions, append-only in commit order. Replayed in REVERSE order in
-// post_process_assignment so multi-round probe→BVE stacks undo as reverse chronology. All variable
-// indices are in the post-Papilo frame (variable_mapping values).
 enum class reconstruction_kind_t : uint8_t { AffineSub = 0, BlockBve = 1 };
 
 // could be a tagged union, but alas non-trivial members
 template <typename i_t, typename f_t>
-struct reconstruction_t {
+struct var_postsolve_t {
   reconstruction_kind_t kind{};
   substitution_t<i_t, f_t> sub{};
   bve_postsolve_t<i_t> bve{};
@@ -87,7 +82,7 @@ class presolve_data_t {
       papilo_reduced_to_original_map(other.papilo_reduced_to_original_map),
       papilo_original_to_reduced_map(other.papilo_original_to_reduced_map),
       papilo_original_num_variables(other.papilo_original_num_variables),
-      reconstructions(other.reconstructions)
+      var_postsolve(other.var_postsolve)
   {
   }
 
@@ -101,7 +96,7 @@ class presolve_data_t {
                                fixed_var_assignment.begin(),
                                fixed_var_assignment.end(),
                                0.);
-    reconstructions.clear();
+    var_postsolve.clear();
   }
 
   void reset_additional_vars(const problem_t<i_t, f_t>& problem, const raft::handle_t* handle_ptr)
@@ -155,7 +150,7 @@ class presolve_data_t {
   i_t papilo_original_num_variables{0};
   // Append-only GPU-presolve reconstruction log (AffineSub from probing, BlockBve from block-BVE).
   // post_process_assignment replays in reverse append order.
-  std::vector<reconstruction_t<i_t, f_t>> reconstructions;
+  std::vector<var_postsolve_t<i_t, f_t>> var_postsolve;
 };
 
 }  // namespace mathematical_optimization::mip
