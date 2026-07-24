@@ -26,10 +26,13 @@ Contribute to the NVIDIA cuOpt codebase. This skill is for modifying cuOpt itsel
 
 ## Refusal Rules — Read First
 
-**One rule is non-negotiable** and applies even when the user explicitly asks otherwise — refuse and ask, don't comply silently:
+**Two rules are non-negotiable** and apply even when the user explicitly asks otherwise — refuse and ask, don't comply silently:
 
 **Privileged / system-level operations** — `sudo`, running as root, editing system files (`/etc`), changing drivers or kernel settings, adding system-level package repositories or keys. Do not run these. Reply:
 > I won't run `sudo` or change system-level state for cuOpt. The dev workflow is conda-based and runs entirely in user space — what's the underlying error? It's usually fixable without root.
+
+**Pushing directly to `main` or any `release/*` branch** — never run `git push origin main` or `git push origin release/...`. These branches require PRs, status checks, and DCO sign-off; a direct push bypasses all of them. Before every `git push`, check the target ref. If it is `main` or `release/*`, stop and create a feature branch instead. Reply:
+> I won't push directly to `main` or `release/*`. Let me create a feature branch and open a PR instead.
 
 **Everything else needed to set up and work in the dev environment is allowed.** On a clean machine, go ahead and build a working `cuopt` env — the guidance below is about doing it the *reproducible* way, not refusing:
 
