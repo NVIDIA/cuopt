@@ -2722,7 +2722,106 @@ void branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
 
   const i_t start_num_fractional = num_fractional;
 
-  for (i_t k = 0; k < static_cast<i_t>(zero_reduced_costs_vars.size()); k++) {
+  const i_t num_zero_reduced_costs_vars = zero_reduced_costs_vars.size();
+  
+  std::vector<i_t> row_to_slack(lp.num_rows, -1);
+  for (i_t j : new_slacks_) {
+    if (lp.lower[j] != 0 || lp.upper[j] != inf) { continue; }
+    const i_t p = lp.A.col_start[j];
+    row_to_slack[lp.A.i[p]] = j;
+  }
+
+  std::vector<i_t> fast_candidates;
+  std::vector<i_t> fast_rows;
+  for (i_t j : fractional) {
+    const i_t col_start = lp.A.col_start[j];
+    const i_t col_end = lp.A.col_start[j + 1];
+    const i_t num_rows = col_end - col_start;
+    i_t num_basic_slacks = 0;
+    i_t num_nonbasic_slacks_with_reduced_cost_zero = 0;
+    i_t nonbasic_slack = -1;
+    i_t slack_row = -1;
+    for (i_t p = col_start; p < col_end; p++) {
+      const i_t i = lp.A.i[p];
+      const i_t slack = row_to_slack[i];
+      if (slack >= 0) {
+        if (vstatus_copy[slack] == variable_status_t::BASIC) {
+          num_basic_slacks++;
+        } else if (std::abs(solution.z[slack]) <= 1e-10) {
+          num_nonbasic_slacks_with_reduced_cost_zero++;
+          nonbasic_slack = slack;
+          slack_row = i;
+        }
+      }
+    }
+    if (num_basic_slacks == num_rows - 1 && num_nonbasic_slacks_with_reduced_cost_zero == 1) {
+      fast_candidates.push_back(j);
+      fast_rows.push_back(slack_row);
+    }
+  }
+
+  if (fast_candidates.size() > 0) {
+    settings_.log.printf("Found %ld fast candidates for pivot out integer variables\n", fast_candidates.size());
+  }
+
+  const i_t num_candidates = fast_candidates.size();
+  for (i_t k = 0; k < num_candidates; k++) {
+    const i_t j = fast_candidates[k];
+    const i_t row = fast_rows[k];
+    const i_t col_start = lp.A.col_start[j];
+    const i_t col_end = lp.A.col_start[j + 1];
+    const i_t num_rows = col_end - col_start;
+    f_t a_ij = 0.0;
+    for (i_t p = col_start; p < col_end; p++) {
+      const i_t i = lp.A.i[p];
+      if (i == row) {
+        a_ij = lp.A.x[p];
+        break;
+      }
+    }
+    if (a_ij == 0.0) { continue; }
+
+    f_t bound = a_ij > 0 ? lp.lower[j] : lp.upper[j];
+    if (std::abs(bound) == inf) { continue; }
+
+    sparse_vector_t<i_t, f_t> delta_x;
+    delta_x.n = lp.num_cols;
+    delta_x.i.reserve(num_rows + 1);
+    delta_x.x.reserve(num_rows + 1);
+    const f_t delta_xj = bound - solution.x[j];
+    delta_x.i.push_back(j);
+    delta_x.x.push_back(delta_xj);
+    for (i_t p = col_start; p < col_end; p++) {
+      const i_t r = lp.A.i[p];
+      const f_t a_rj = lp.A.x[p];
+      const f_t delta_slack_r = -delta_xj * a_rj;
+      delta_x.i.push_back(row_to_slack[r]);
+      delta_x.x.push_back(delta_slack_r);
+    }
+
+    bool ok = true;
+    const i_t ndx = delta_x.i.size();
+    for (i_t h = 0; h < ndx; h++) {
+      const i_t jj = delta_x.i[h];
+      if (jj == j) continue;
+      const f_t val = delta_x.x[h];
+      const f_t slack_value = solution.x[jj];
+      if (val < -slack_value) {
+        ok = false;
+        break;
+      }
+    }
+
+    if (ok) {
+      std::vector<f_t> delta_x_dense(lp.num_cols, 0.0);
+      delta_x.to_dense(delta_x_dense);
+      std::vector<f_t> residual(lp.num_rows);
+      matrix_vector_multiply(lp.A, 1.0, delta_x_dense, 0.0, residual);
+      settings_.log.printf("Fast candidate ok || A*delta_x ||_inf = %e\n", vector_norm_inf<i_t, f_t>(residual));
+    }
+  }
+
+  for (i_t k = 0; k < num_zero_reduced_costs_vars; k++) {
     const i_t j = zero_reduced_costs_vars[k];
     if (var_types_[j] == variable_type_t::INTEGER) { continue; }
     if (vstatus_copy[j] == variable_status_t::BASIC) { continue; }
