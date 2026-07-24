@@ -599,7 +599,7 @@ if(NOT SKIP_ROUTING_BUILD)
     cuopt_configure_component(cuopt_routing)
     target_link_libraries(cuopt_routing
             PUBLIC cuopt_base
-            PRIVATE simde::simde OpenMP::OpenMP_CXX
+            PRIVATE simde::simde OpenMP::OpenMP_CXX OpenMP::OpenMP_CUDA
     )
     add_library(cuopt::routing ALIAS cuopt_routing)
 endif()
@@ -634,6 +634,7 @@ target_link_libraries(cuopt_lp
         PRIVATE
         ${CUOPT_PRIVATE_CUDA_LIBS}
         OpenMP::OpenMP_CUDA
+        simde::simde
 )
 target_link_libraries(cuopt_lp PRIVATE $<TARGET_FILE:PSLP>)
 add_dependencies(cuopt_lp PSLP)
@@ -673,6 +674,7 @@ target_compile_options(cuopt
 target_include_directories(cuopt
         PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/io"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc/client"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc/codegen/generated"
@@ -685,17 +687,33 @@ target_include_directories(cuopt
 )
 
 if(NOT SKIP_ROUTING_BUILD)
-    target_link_libraries(cuopt PUBLIC
+    target_link_libraries(cuopt PRIVATE
             $<LINK_LIBRARY:WHOLE_ARCHIVE,cuopt_base,cuopt_routing,cuopt_lp>)
 else()
-    target_link_libraries(cuopt PUBLIC
+    target_link_libraries(cuopt PRIVATE
             $<LINK_LIBRARY:WHOLE_ARCHIVE,cuopt_base,cuopt_lp>)
 endif()
 
+# Re-expose the component statics' PUBLIC deps so that consumers of cuopt::cuopt
+# (tests, downstream cmake, GAMS) receive the correct include dirs and link targets.
 target_link_libraries(cuopt
+        PUBLIC
+        rmm::rmm
+        rapids_logger::rapids_logger
+        CCCL::CCCL
+        raft::raft
+        CUDA::cublas
+        CUDA::cusparse
+        ${CUDSS_LIB_FILE}
         PRIVATE
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:protobuf::libprotobuf>
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:gRPC::grpc++>
+)
+target_compile_definitions(cuopt PUBLIC
+        "CUOPT_LOG_ACTIVE_LEVEL=RAPIDS_LOGGER_LOG_LEVEL_${LIBCUOPT_LOGGING_LEVEL}"
+        CUOPT_CUDA_ARCHITECTURES="${JOINED_CUDA_ARCHITECTURES}"
+        CUOPT_CPU_ARCHITECTURE="${CMAKE_SYSTEM_PROCESSOR}"
+        CUSPARSE_ENABLE_EXPERIMENTAL_API
 )
 
 if (WRITE_FATBIN)
