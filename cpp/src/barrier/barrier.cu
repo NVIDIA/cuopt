@@ -8,6 +8,7 @@
 #include <barrier/barrier.hpp>
 
 #include <barrier/conjugate_gradient.hpp>
+#include <barrier/csr_kkt_build.cuh>
 #include <barrier/cusparse_info.hpp>
 #include <barrier/cusparse_view.hpp>
 #include <barrier/device_sparse_matrix.cuh>
@@ -268,6 +269,7 @@ class iteration_data_t {
       device_ADAT(lp.num_rows, lp.num_rows, 0, lp.handle_ptr->get_stream()),
       device_augmented(
         lp.num_cols + lp.num_rows, lp.num_cols + lp.num_rows, 0, lp.handle_ptr->get_stream()),
+      augmented_csr_metadata_(lp.handle_ptr->get_stream()),
       d_original_A_values(0, lp.handle_ptr->get_stream()),
       device_A_x_values(0, lp.handle_ptr->get_stream()),
       d_inv_diag_prime(0, lp.handle_ptr->get_stream()),
@@ -278,8 +280,7 @@ class iteration_data_t {
       d_augmented_diagonal_indices_(0, lp.handle_ptr->get_stream()),
       d_cone_csr_indices_(0, lp.handle_ptr->get_stream()),
       d_cone_Q_values_(0, lp.handle_ptr->get_stream()),
-      d_dense_cone_block_offsets_(0, lp.handle_ptr->get_stream()),
-      d_dense_cone_ids_(0, lp.handle_ptr->get_stream()),
+      d_dense_cone_diag_csr_indices_(0, lp.handle_ptr->get_stream()),
       d_sparse_hessian_diag_(0, lp.handle_ptr->get_stream()),
       d_sparse_hessian_Q_(0, lp.handle_ptr->get_stream()),
       d_sparse_exp_v_col_(0, lp.handle_ptr->get_stream()),
@@ -581,6 +582,7 @@ class iteration_data_t {
       if (n_upper_bounds > 0 || (has_Q && !use_augmented)) { diag.inverse(inv_diag); }
       // TMP diag and inv_diag should directly created and filled on the GPU
       raft::copy(d_inv_diag.data(), inv_diag.data(), inv_diag.size(), stream_view_);
+      raft::copy(d_diag_.data(), diag.data(), diag.size(), stream_view_);
       inv_sqrt_diag.set_scalar(1.0);
       if (n_upper_bounds > 0 || (has_Q && !use_augmented)) { inv_diag.sqrt(inv_sqrt_diag); }
     }
@@ -619,6 +621,22 @@ class iteration_data_t {
       }
 
       AD.transpose(AT);
+    }
+
+    if (use_augmented) {
+      raft::common::nvtx::range scope("Barrier: augmented: device CSC upload");
+      device_A_csc_.emplace(A, handle_ptr->get_stream());
+      device_AT_csc_.emplace(AT, handle_ptr->get_stream());
+      if (Q.n > 0 && Q.col_start[Q.n] > 0) {
+        device_Q_csc_.emplace(Q, handle_ptr->get_stream());
+      } else {
+        // Keep an empty but correctly shaped Q so device views are never zero-sized/uninitialized.
+        device_Q_csc_.emplace(A.n, A.n, 0, handle_ptr->get_stream());
+        thrust::fill(rmm::exec_policy(handle_ptr->get_stream()),
+                     device_Q_csc_->col_start.begin(),
+                     device_Q_csc_->col_start.end(),
+                     i_t(0));
+      }
     }
 
     // device_AD / device_A / ADAT path is only used when forming ADAT (!use_augmented).
@@ -733,7 +751,6 @@ class iteration_data_t {
   {
     i_t n    = A.n;
     i_t m    = A.m;
-    i_t nnzA = A.col_start[n];
     i_t nnzQ = Q.n > 0 ? Q.col_start[n] : 0;
 
     const bool has_soc     = has_cones();
@@ -741,379 +758,74 @@ class iteration_data_t {
     const i_t p            = augmented_expansion_count();
     i_t factorization_size = augmented_system_size(n, m);
 
-    i_t dense_soc_kkt_nnz = 0;
-
-    std::vector<std::size_t> cone_offsets_host;
-    std::vector<std::size_t> dense_cone_block_offsets_host;
-    std::vector<i_t> dense_cone_ids_host;
-    std::vector<i_t> dense_cone_idx_by_cone;
-    std::vector<i_t> cone_sparse_idx;
-    std::vector<i_t> sparse_cone_ids_host;
-    std::vector<std::size_t> sparse_entry_offsets;
-    std::vector<i_t> local_to_cone;
-
     if (first_call) {
-      const i_t n_sparse_soc = has_soc ? cones().n_sparse_cones : i_t(0);
+      raft::common::nvtx::range scope("Barrier: augmented: device CSR build");
+      cuopt_assert(
+        device_A_csc_.has_value() && device_AT_csc_.has_value() && device_Q_csc_.has_value(),
+        "augmented CSR build requires device CSC matrices");
+
+      const size_t n_sparse_entries = has_soc && p > 0 ? cones().n_sparse_cone_entries : size_t{0};
+
       if (has_soc) {
-        raft::common::nvtx::range scope("Barrier: augmented: SOC offsets");
-        const i_t n_cones = cone_count();
-        // TODO: Once form_augmented() is moved to GPU, we can avoid D2H round-trip.
-        cone_offsets_host.resize(n_cones + 1);
-        raft::copy(
-          cone_offsets_host.data(), cones().cone_offsets.data(), n_cones + 1, stream_view_);
-        handle_ptr->sync_stream();
-
-        cone_sparse_idx.assign(n_cones, i_t(-1));
-        if (n_sparse_soc > 0) {
-          // TODO: Once form_augmented() is moved to GPU, we can avoid D2H round-trip for
-          // sparse_cone_ids / sparse_cone_dims.
-          sparse_cone_ids_host = cuopt::host_copy(cones().sparse_cone_ids, stream_view_);
-          for (i_t s = 0; s < n_sparse_soc; ++s) {
-            cone_sparse_idx[sparse_cone_ids_host[s]] = s;
-          }
-          sparse_entry_offsets.resize(n_sparse_soc + 1, 0);
-          const auto sparse_dims_host = cuopt::host_copy(cones().sparse_cone_dims, stream_view_);
-          for (i_t s = 0; s < n_sparse_soc; ++s) {
-            sparse_entry_offsets[s + 1] = sparse_entry_offsets[s] + sparse_dims_host[s];
-          }
-        }
-
-        dense_cone_ids_host.reserve(n_cones);
-        dense_cone_idx_by_cone.assign(n_cones, i_t(-1));
-        dense_cone_block_offsets_host = {0};
-        dense_cone_block_offsets_host.reserve(n_cones + 1);
-        i_t dense_idx = 0;
-        for (i_t k = 0; k < n_cones; ++k) {
-          if (cone_sparse_idx[k] < 0) {
-            dense_cone_idx_by_cone[k] = dense_idx;
-            dense_cone_ids_host.push_back(k);
-            const i_t q_k = cone_offsets_host[k + 1] - cone_offsets_host[k];
-            dense_cone_block_offsets_host.push_back(dense_cone_block_offsets_host.back() +
-                                                    q_k * q_k);
-            ++dense_idx;
-          }
-        }
-        dense_soc_kkt_nnz = static_cast<i_t>(dense_cone_block_offsets_host.back());
-
-        local_to_cone.resize(m_c);
-        for (i_t k = 0; k < n_cones; ++k) {
-          const i_t lo = cone_offsets_host[k];
-          const i_t hi = cone_offsets_host[k + 1];
-          for (i_t idx = lo; idx < hi; idx++) {
-            local_to_cone[idx] = k;
-          }
-        }
+        build_augmented_csr_metadata(cones(), augmented_csr_metadata_, stream_view_);
+      } else {
+        augmented_csr_metadata_.dense_soc_kkt_nnz = 0;
       }
 
-      const size_t n_sparse_entries = p > 0 ? cones().n_sparse_cone_entries : size_t{0};
-      const i_t sparse_soc_kkt_nnz  = static_cast<i_t>(5 * n_sparse_entries + p);
-      i_t new_nnz = 2 * nnzA + n + m + p + nnzQ + dense_soc_kkt_nnz + sparse_soc_kkt_nnz;
-      csr_matrix_t<i_t, f_t> augmented_CSR(factorization_size, factorization_size, new_nnz);
-      std::vector<i_t> augmented_diagonal_indices(factorization_size, -1);
-      std::vector<i_t> cone_csr_indices_host(dense_soc_kkt_nnz, -1);
-      std::vector<f_t> cone_Q_values_host(dense_soc_kkt_nnz, f_t(0));
-      std::vector<i_t> sparse_hessian_diag_host(n_sparse_entries, -1);
-      std::vector<f_t> sparse_hessian_Q_host(n_sparse_entries, f_t(0));
-      std::vector<i_t> sparse_exp_v_col_host(n_sparse_entries, -1);
-      std::vector<i_t> sparse_exp_u_col_host(n_sparse_entries, -1);
-      std::vector<i_t> sparse_exp_v_row_host(n_sparse_entries, -1);
-      std::vector<i_t> sparse_exp_u_row_host(n_sparse_entries, -1);
-      std::vector<i_t> sparse_expansion_D_host(p, -1);
-      i_t q            = 0;
-      i_t off_diag_Qnz = 0;
+      augmented_csr_side_buffers_t<i_t, f_t> side{d_augmented_diagonal_indices_,
+                                                  d_cone_csr_indices_,
+                                                  d_cone_Q_values_,
+                                                  d_dense_cone_diag_csr_indices_,
+                                                  d_sparse_hessian_diag_,
+                                                  d_sparse_hessian_Q_,
+                                                  d_sparse_exp_v_col_,
+                                                  d_sparse_exp_u_col_,
+                                                  d_sparse_exp_v_row_,
+                                                  d_sparse_exp_u_row_,
+                                                  d_sparse_expansion_D_};
 
-      {
-        raft::common::nvtx::range scope("Barrier: augmented: host CSR build");
-        for (i_t i = 0; i < n; i++) {
-          augmented_CSR.row_start[i] = q;
-
-          const bool is_cone_row = is_cone_variable(i);
-
-          if (is_cone_row) {
-            i_t local_idx = i - cone_start();
-            i_t k         = local_to_cone[local_idx];
-            i_t local_r =
-              static_cast<i_t>(static_cast<std::size_t>(local_idx) - cone_offsets_host[k]);
-            i_t q_k            = static_cast<i_t>(cone_offsets_host[k + 1] - cone_offsets_host[k]);
-            i_t cone_col_start = cone_start() + static_cast<i_t>(cone_offsets_host[k]);
-            i_t cone_col_end   = cone_col_start + q_k;
-
-            i_t qp    = (nnzQ > 0) ? Q.col_start[i] : 0;
-            i_t q_end = (nnzQ > 0) ? Q.col_start[i + 1] : 0;
-
-            // Row of sparse SOC.
-            if (cone_sparse_idx[k] >= 0) {
-              const i_t sparse_idx  = cone_sparse_idx[k];
-              const size_t flat_idx = sparse_entry_offsets[sparse_idx] + local_r;
-              const i_t exp_v_col   = n + m + 2 * sparse_idx;
-              const i_t exp_u_col   = n + m + 2 * sparse_idx + 1;
-
-              // Handle off-diagonal entries of sparse SOC before diagonal entry.
-              for (; qp < q_end && Q.i[qp] < cone_col_start; qp++) {
-                augmented_CSR.j[q]   = Q.i[qp];
-                augmented_CSR.x[q++] = -Q.x[qp];
-                off_diag_Qnz++;
-              }
-
-              // Handle diagonal entry of sparse SOC.
-              f_t q_contrib = f_t(0);
-              if (qp < q_end && Q.i[qp] == i) {
-                q_contrib = Q.x[qp];
-                qp++;
-              }
-              sparse_hessian_diag_host[flat_idx] = q;
-              sparse_hessian_Q_host[flat_idx]    = q_contrib;
-              augmented_diagonal_indices[i]      = q;
-              augmented_CSR.j[q]                 = i;
-              augmented_CSR.x[q++]               = -dual_perturb - q_contrib;
-
-              // Handle expansion columns of sparse SOC.
-              sparse_exp_v_col_host[flat_idx] = q;
-              augmented_CSR.j[q]              = exp_v_col;
-              augmented_CSR.x[q++]            = f_t(0);
-
-              sparse_exp_u_col_host[flat_idx] = q;
-              augmented_CSR.j[q]              = exp_u_col;
-              augmented_CSR.x[q++]            = f_t(0);
-
-              // Handle off-diagonal entries of dense SOC before diagonal entry.
-              for (; qp < q_end && Q.i[qp] < cone_col_end; qp++) {
-                if (Q.i[qp] == i) { continue; }
-                augmented_CSR.j[q]   = Q.i[qp];
-                augmented_CSR.x[q++] = -Q.x[qp];
-                off_diag_Qnz++;
-              }
-              for (; qp < q_end; qp++) {
-                augmented_CSR.j[q]   = Q.i[qp];
-                augmented_CSR.x[q++] = -Q.x[qp];
-                off_diag_Qnz++;
-              }
-            } else {
-              // Row of dense SOC.
-              const i_t dense_idx = dense_cone_idx_by_cone[k];
-              cuopt_assert(dense_idx >= 0, "dense cone index unset");
-              i_t block_base =
-                static_cast<i_t>(dense_cone_block_offsets_host[dense_idx]) + local_r * q_k;
-
-              for (; qp < q_end && Q.i[qp] < cone_col_start; qp++) {
-                augmented_CSR.j[q]   = Q.i[qp];
-                augmented_CSR.x[q++] = -Q.x[qp];
-                off_diag_Qnz++;
-              }
-
-              for (i_t c = 0; c < q_k; c++) {
-                i_t col         = cone_col_start + c;
-                f_t q_contrib   = f_t(0);
-                f_t initial_val = (c == local_r) ? f_t(-dual_perturb) : f_t(0);
-
-                if (qp < q_end && Q.i[qp] == col) {
-                  q_contrib = Q.x[qp];
-                  qp++;
-                }
-
-                cone_csr_indices_host[block_base + c] = q;
-                cone_Q_values_host[block_base + c]    = q_contrib;
-                if (col == i) { augmented_diagonal_indices[i] = q; }
-                augmented_CSR.j[q]   = col;
-                augmented_CSR.x[q++] = initial_val - q_contrib;
-              }
-
-              for (; qp < q_end; qp++) {
-                augmented_CSR.j[q]   = Q.i[qp];
-                augmented_CSR.x[q++] = -Q.x[qp];
-                off_diag_Qnz++;
-              }
-            }
-          } else if (nnzQ == 0) {
-            augmented_diagonal_indices[i] = q;
-            augmented_CSR.j[q]            = i;
-            augmented_CSR.x[q++]          = -diag[i] - dual_perturb;
-          } else {
-            // Q is symmetric
-            const i_t q_col_beg = Q.col_start[i];
-            const i_t q_col_end = Q.col_start[i + 1];
-            bool has_diagonal   = false;
-            for (i_t p = q_col_beg; p < q_col_end; ++p) {
-              augmented_CSR.j[q] = Q.i[p];
-              if (Q.i[p] == i) {
-                has_diagonal                  = true;
-                augmented_diagonal_indices[i] = q;
-                augmented_CSR.x[q++]          = -Q.x[p] - diag[i] - dual_perturb;
-              } else {
-                off_diag_Qnz++;
-                augmented_CSR.x[q++] = -Q.x[p];
-              }
-            }
-            if (!has_diagonal) {
-              augmented_diagonal_indices[i] = q;
-              augmented_CSR.j[q]            = i;
-              augmented_CSR.x[q++]          = -diag[i] - dual_perturb;
-            }
-          }
-          // AT block, we can use A in csc directly
-          const i_t col_beg = A.col_start[i];
-          const i_t col_end = A.col_start[i + 1];
-          for (i_t p = col_beg; p < col_end; ++p) {
-            augmented_CSR.j[q]   = A.i[p] + n;
-            augmented_CSR.x[q++] = A.x[p];
-          }
-        }
-
-        for (i_t k = n; k < n + m; ++k) {
-          augmented_CSR.row_start[k] = q;
-          const i_t l                = k - n;
-          const i_t col_beg          = AT.col_start[l];
-          const i_t col_end          = AT.col_start[l + 1];
-          for (i_t p = col_beg; p < col_end; ++p) {
-            augmented_CSR.j[q]   = AT.i[p];
-            augmented_CSR.x[q++] = AT.x[p];
-          }
-          augmented_diagonal_indices[k] = q;
-          augmented_CSR.j[q]            = k;
-          augmented_CSR.x[q++]          = primal_perturb;
-        }
-
-        // Handle expansion rows of sparse SOC.
-        for (i_t s = 0; s < n_sparse_soc; ++s) {
-          const i_t k   = sparse_cone_ids_host[s];
-          const i_t q_k = static_cast<i_t>(cone_offsets_host[k + 1] - cone_offsets_host[k]);
-          const i_t cone_col_start = cone_start() + static_cast<i_t>(cone_offsets_host[k]);
-          const size_t flat_base   = sparse_entry_offsets[s];
-          const i_t prow_v         = n + m + 2 * s;
-          const i_t prow_u         = n + m + 2 * s + 1;
-
-          augmented_CSR.row_start[prow_v] = q;
-          for (i_t t = 0; t < q_k; ++t) {
-            sparse_exp_v_row_host[flat_base + t] = q;
-            augmented_CSR.j[q]                   = cone_col_start + t;
-            augmented_CSR.x[q++]                 = f_t(0);
-          }
-          sparse_expansion_D_host[2 * s] = q;
-          augmented_CSR.j[q]             = prow_v;
-          augmented_CSR.x[q++]           = f_t(0);
-
-          augmented_CSR.row_start[prow_u] = q;
-          for (i_t t = 0; t < q_k; ++t) {
-            sparse_exp_u_row_host[flat_base + t] = q;
-            augmented_CSR.j[q]                   = cone_col_start + t;
-            augmented_CSR.x[q++]                 = f_t(0);
-          }
-          sparse_expansion_D_host[2 * s + 1] = q;
-          augmented_CSR.j[q]                 = prow_u;
-          augmented_CSR.x[q++]               = f_t(0);
-        }
-
-        augmented_CSR.row_start[factorization_size] = q;
-        augmented_CSR.nz_max                        = q;
-        augmented_CSR.j.resize(q);
-        augmented_CSR.x.resize(q);
-        i_t expected_nnz =
-          2 * nnzA + (n - m_c) + dense_soc_kkt_nnz + m + off_diag_Qnz + sparse_soc_kkt_nnz;
-        settings_.log.debug("augmented nz %d predicted %d\n", q, expected_nnz);
-        cuopt_assert(q == expected_nnz, "augmented nnz != predicted");
-        cuopt_assert(A.col_start[n] == AT.col_start[m], "A nz != AT nz");
-
-        if (n_sparse_entries > 0) {
-          for (size_t e = 0; e < n_sparse_entries; ++e) {
-            cuopt_assert(sparse_hessian_diag_host[e] >= 0,
-                         "sparse Hessian diagonal CSR index unset");
-            cuopt_assert(sparse_exp_v_col_host[e] >= 0,
-                         "sparse expansion v-column CSR index unset");
-            cuopt_assert(sparse_exp_u_col_host[e] >= 0,
-                         "sparse expansion u-column CSR index unset");
-            cuopt_assert(sparse_exp_v_row_host[e] >= 0, "sparse expansion v-row CSR index unset");
-            cuopt_assert(sparse_exp_u_row_host[e] >= 0, "sparse expansion u-row CSR index unset");
-          }
-          for (i_t s = 0; s < n_sparse_soc; ++s) {
-            cuopt_assert(sparse_expansion_D_host[2 * s] >= 0,
-                         "sparse expansion v diagonal CSR index unset");
-            cuopt_assert(sparse_expansion_D_host[2 * s + 1] >= 0,
-                         "sparse expansion u diagonal CSR index unset");
-          }
-        }
+      raft::device_span<const i_t> element_cone_ids_span{};
+      raft::device_span<const size_t> cone_offsets_span{};
+      raft::device_span<const i_t> sparse_cone_ids_span{};
+      raft::device_span<const i_t> sparse_entry_offsets_span{};
+      size_t n_sparse_cone_entries = 0;
+      if (has_soc) {
+        element_cone_ids_span     = cuopt::make_span(cones().element_cone_ids);
+        cone_offsets_span         = cuopt::make_span(cones().cone_offsets);
+        sparse_cone_ids_span      = cuopt::make_span(cones().sparse_cone_ids);
+        sparse_entry_offsets_span = cuopt::make_span(cones().sparse_entry_offsets);
+        n_sparse_cone_entries     = cones().n_sparse_cone_entries;
       }
 
-      {
-        raft::common::nvtx::range scope("Barrier: augmented: device upload");
-        device_augmented.copy(augmented_CSR, handle_ptr->get_stream());
-        d_augmented_diagonal_indices_.resize(augmented_diagonal_indices.size(),
-                                             handle_ptr->get_stream());
-        raft::copy(d_augmented_diagonal_indices_.data(),
-                   augmented_diagonal_indices.data(),
-                   augmented_diagonal_indices.size(),
-                   handle_ptr->get_stream());
+      if (n_sparse_entries > 0) { d_sparse_Hs_diag_.resize(n_sparse_entries, stream_view_); }
 
-        if (has_soc) {
-          d_cone_csr_indices_.resize(dense_soc_kkt_nnz, handle_ptr->get_stream());
-          raft::copy(d_cone_csr_indices_.data(),
-                     cone_csr_indices_host.data(),
-                     dense_soc_kkt_nnz,
-                     handle_ptr->get_stream());
-          d_cone_Q_values_.resize(dense_soc_kkt_nnz, handle_ptr->get_stream());
-          raft::copy(d_cone_Q_values_.data(),
-                     cone_Q_values_host.data(),
-                     dense_soc_kkt_nnz,
-                     handle_ptr->get_stream());
+      const i_t total_nnz =
+        build_augmented_csr_on_device(n,
+                                      m,
+                                      p,
+                                      cone_start(),
+                                      m_c,
+                                      nnzQ,
+                                      dual_perturb,
+                                      primal_perturb,
+                                      *device_A_csc_,
+                                      *device_Q_csc_,
+                                      *device_AT_csc_,
+                                      raft::device_span<const f_t>{d_diag_.data(), d_diag_.size()},
+                                      element_cone_ids_span,
+                                      cone_offsets_span,
+                                      sparse_cone_ids_span,
+                                      sparse_entry_offsets_span,
+                                      n_sparse_cone_entries,
+                                      augmented_csr_metadata_,
+                                      device_augmented,
+                                      side,
+                                      stream_view_);
 
-          d_dense_cone_block_offsets_.resize(dense_cone_block_offsets_host.size(),
-                                             handle_ptr->get_stream());
-          raft::copy(d_dense_cone_block_offsets_.data(),
-                     dense_cone_block_offsets_host.data(),
-                     dense_cone_block_offsets_host.size(),
-                     handle_ptr->get_stream());
-          d_dense_cone_ids_.resize(dense_cone_ids_host.size(), handle_ptr->get_stream());
-          if (!dense_cone_ids_host.empty()) {
-            raft::copy(d_dense_cone_ids_.data(),
-                       dense_cone_ids_host.data(),
-                       dense_cone_ids_host.size(),
-                       handle_ptr->get_stream());
-          }
+      settings_.log.debug("augmented nz %d (gpu build)\n", total_nnz);
+      cuopt_assert(A.col_start[n] == AT.col_start[m], "A nz != AT nz");
+      handle_ptr->sync_stream();
 
-          const size_t n_sparse_entries = cones().n_sparse_cone_entries;
-          d_sparse_hessian_diag_.resize(n_sparse_entries, handle_ptr->get_stream());
-          d_sparse_hessian_Q_.resize(n_sparse_entries, handle_ptr->get_stream());
-          d_sparse_exp_v_col_.resize(n_sparse_entries, handle_ptr->get_stream());
-          d_sparse_exp_u_col_.resize(n_sparse_entries, handle_ptr->get_stream());
-          d_sparse_exp_v_row_.resize(n_sparse_entries, handle_ptr->get_stream());
-          d_sparse_exp_u_row_.resize(n_sparse_entries, handle_ptr->get_stream());
-          d_sparse_expansion_D_.resize(p, handle_ptr->get_stream());
-          d_sparse_Hs_diag_.resize(n_sparse_entries, handle_ptr->get_stream());
-          if (n_sparse_entries > 0) {
-            raft::copy(d_sparse_hessian_diag_.data(),
-                       sparse_hessian_diag_host.data(),
-                       n_sparse_entries,
-                       handle_ptr->get_stream());
-            raft::copy(d_sparse_hessian_Q_.data(),
-                       sparse_hessian_Q_host.data(),
-                       n_sparse_entries,
-                       handle_ptr->get_stream());
-            raft::copy(d_sparse_exp_v_col_.data(),
-                       sparse_exp_v_col_host.data(),
-                       n_sparse_entries,
-                       handle_ptr->get_stream());
-            raft::copy(d_sparse_exp_u_col_.data(),
-                       sparse_exp_u_col_host.data(),
-                       n_sparse_entries,
-                       handle_ptr->get_stream());
-            raft::copy(d_sparse_exp_v_row_.data(),
-                       sparse_exp_v_row_host.data(),
-                       n_sparse_entries,
-                       handle_ptr->get_stream());
-            raft::copy(d_sparse_exp_u_row_.data(),
-                       sparse_exp_u_row_host.data(),
-                       n_sparse_entries,
-                       handle_ptr->get_stream());
-          }
-          if (p > 0) {
-            raft::copy(d_sparse_expansion_D_.data(),
-                       sparse_expansion_D_host.data(),
-                       sparse_expansion_D_host.size(),
-                       handle_ptr->get_stream());
-          }
-        }
-
-        handle_ptr->sync_stream();
-      }
 #ifdef CHECK_SYMMETRY
       csc_matrix_t<i_t, f_t> augmented_transpose(1, 1, 1);
       augmented.transpose(augmented_transpose);
@@ -1179,8 +891,8 @@ class iteration_data_t {
                                                device_augmented.x,
                                                d_cone_csr_indices_,
                                                d_cone_Q_values_,
-                                               d_dense_cone_block_offsets_,
-                                               d_dense_cone_ids_,
+                                               augmented_csr_metadata_.dense_block_offsets,
+                                               augmented_csr_metadata_.dense_cone_ids,
                                                handle_ptr->get_stream(),
                                                dual_perturb);
           RAFT_CHECK_CUDA(handle_ptr->get_stream());
@@ -2234,6 +1946,10 @@ class iteration_data_t {
   csc_matrix_t<i_t, f_t> ADAT;
   // csc_matrix_t<i_t, f_t> augmented;
   device_csr_matrix_t<i_t, f_t> device_augmented;
+  std::optional<device_csc_matrix_t<i_t, f_t>> device_A_csc_;
+  std::optional<device_csc_matrix_t<i_t, f_t>> device_Q_csc_;
+  std::optional<device_csc_matrix_t<i_t, f_t>> device_AT_csc_;
+  augmented_csr_metadata_t<i_t, f_t> augmented_csr_metadata_;
 
   device_csr_matrix_t<i_t, f_t> device_ADAT;
   device_csr_matrix_t<i_t, f_t> device_A;
@@ -2263,8 +1979,7 @@ class iteration_data_t {
   rmm::device_uvector<i_t> d_augmented_diagonal_indices_;
   rmm::device_uvector<i_t> d_cone_csr_indices_;
   rmm::device_uvector<f_t> d_cone_Q_values_;
-  rmm::device_uvector<size_t> d_dense_cone_block_offsets_;
-  rmm::device_uvector<i_t> d_dense_cone_ids_;
+  rmm::device_uvector<i_t> d_dense_cone_diag_csr_indices_;
   rmm::device_uvector<i_t> d_sparse_hessian_diag_;
   rmm::device_uvector<f_t> d_sparse_hessian_Q_;
   rmm::device_uvector<i_t> d_sparse_exp_v_col_;

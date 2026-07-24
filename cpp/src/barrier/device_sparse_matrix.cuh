@@ -185,7 +185,8 @@ class device_csc_matrix_t {
       nz_max(A.col_start[A.n]),
       col_start(A.col_start.size(), stream),
       i(A.i.size(), stream),
-      x(A.x.size(), stream)
+      x(A.x.size(), stream),
+      col_index(0, stream)
   {
     col_start = cuopt::device_copy(A.col_start, stream);
     i         = cuopt::device_copy(A.i, stream);
