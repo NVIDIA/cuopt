@@ -69,6 +69,8 @@ void worker_monitor_thread()
       }
       if (new_pid > 0) {
         SERVER_LOG_INFO("[Server] Restarted worker %zu with PID %d", dw.index, new_pid);
+      } else {
+        SERVER_LOG_ERROR("[Server] Failed to restart worker %zu", dw.index);
       }
     }
 
