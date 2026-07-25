@@ -373,5 +373,7 @@ std::pair<bool, std::string> submit_chunked_job_async(PendingChunkedUpload&& chu
                                                       uint32_t problem_category);
 JobStatus check_job_status(const std::string& job_id, std::string& message);
 int cancel_job(const std::string& job_id, JobStatus& job_status_out, std::string& message);
+// Cancel if queued/running, then remove all server-side state for the job.
+bool delete_job(const std::string& job_id, std::string& message);
 
 #endif  // CUOPT_ENABLE_GRPC
