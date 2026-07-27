@@ -165,6 +165,7 @@ outputs:
           - lib/libcuopt_base.so
           - lib/libcuopt_routing.so
           - lib/libcuopt_lp.so
+          - lib/libcuopt_grpc.so
           - bin/cuopt_cli
           - bin/cuopt_grpc_server
     about:

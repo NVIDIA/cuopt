@@ -492,7 +492,7 @@ if (DEFINE_ASSERT)
 endif ()
 
 if (NOT SKIP_GRPC_BUILD)
-    # gRPC integration layer: maps proto <-> C++ LP API; compiled into cuopt_lp
+    # gRPC integration layer: maps proto <-> C++ LP/routing APIs; compiled into cuopt_grpc
     set(GRPC_INFRA_FILES
             ${DATA_PROTO_SRCS}
             ${PROTO_SRCS}
@@ -639,16 +639,27 @@ target_link_libraries(cuopt_lp
 )
 target_link_libraries(cuopt_lp PRIVATE $<TARGET_FILE:PSLP>)
 add_dependencies(cuopt_lp PSLP)
+add_library(cuopt::lp ALIAS cuopt_lp)
+
+# cuopt_grpc: gRPC bridge — proto mappers + Cython client (LP and routing over gRPC)
+# Depends on cuopt_lp and cuopt_routing so it can reference both APIs without forcing
+# either component to take a gRPC dependency.
 if(NOT SKIP_GRPC_BUILD)
-    target_sources(cuopt_lp PRIVATE ${GRPC_INFRA_FILES})
-    target_include_directories(cuopt_lp PRIVATE
+    add_library(cuopt_grpc SHARED ${GRPC_INFRA_FILES})
+    cuopt_configure_component(cuopt_grpc)
+    target_include_directories(cuopt_grpc PRIVATE
             "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc"
             "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc/client"
             "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc/codegen/generated"
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/io"
     )
-    target_link_libraries(cuopt_lp PRIVATE protobuf::libprotobuf gRPC::grpc++)
+    if(NOT SKIP_ROUTING_BUILD)
+        target_link_libraries(cuopt_grpc PUBLIC cuopt_lp cuopt_routing PRIVATE protobuf::libprotobuf gRPC::grpc++)
+    else()
+        target_link_libraries(cuopt_grpc PUBLIC cuopt_lp PRIVATE protobuf::libprotobuf gRPC::grpc++)
+    endif()
+    add_library(cuopt::grpc ALIAS cuopt_grpc)
 endif()
-add_library(cuopt::lp ALIAS cuopt_lp)
 
 # ##################################################################################################
 # - cuopt: thin umbrella shared library -----------------------------------------------------------
@@ -680,6 +691,9 @@ if(NOT SKIP_ROUTING_BUILD)
     target_link_libraries(cuopt PUBLIC cuopt_base cuopt_routing cuopt_lp)
 else()
     target_link_libraries(cuopt PUBLIC cuopt_base cuopt_lp)
+endif()
+if(NOT SKIP_GRPC_BUILD)
+    target_link_libraries(cuopt PUBLIC cuopt_grpc)
 endif()
 
 if (WRITE_FATBIN)
@@ -728,6 +742,9 @@ set(CUOPT_COMPONENT_TARGETS cuopt_base cuopt_lp)
 if(NOT SKIP_ROUTING_BUILD)
     list(APPEND CUOPT_COMPONENT_TARGETS cuopt_routing)
 endif()
+if(NOT SKIP_GRPC_BUILD)
+    list(APPEND CUOPT_COMPONENT_TARGETS cuopt_grpc)
+endif()
 install(TARGETS ${CUOPT_COMPONENT_TARGETS}
         DESTINATION ${_LIB_DEST}
         COMPONENT runtime
@@ -764,8 +781,8 @@ set(doc_string
 Provide targets for cuOpt.
 
 cuOpt library is a collection of GPU accelerated combinatorial optimization algorithms.
-Component targets: cuopt::base, cuopt::routing, cuopt::lp
-Umbrella target:   cuopt::cuopt (re-exports all symbols — backward-compatible with -lcuopt)
+Component targets: cuopt::base, cuopt::routing, cuopt::lp, cuopt::grpc (when gRPC is built)
+Umbrella target:   cuopt::cuopt (links all component libs — backward-compatible with -lcuopt)
 
 ]=])
 
@@ -967,7 +984,7 @@ if (NOT SKIP_GRPC_BUILD)
 
     target_link_libraries(cuopt_grpc_server
             PUBLIC
-            cuopt
+            cuopt_grpc
             OpenMP::OpenMP_CXX
             PRIVATE
             protobuf::libprotobuf
