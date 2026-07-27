@@ -61,6 +61,16 @@ Skip how-it-works walkthroughs, file-by-file tables, exhaustive test-plan checkl
 
 For extra context (a design decision, unusual constraint, follow-up), one or two sentences with a link to an issue or doc beats expanding the body.
 
+### Addressing PR Reviews
+
+Collect all open comments before touching any file — fixes are easier to batch and nothing gets missed.
+
+For each comment, decide whether it needs a **code change**, a **reply**, or **both**:
+
+- **Reply to explicit questions in the thread**, even when the code change makes the answer obvious. A reviewer who asked a question wants confirmation that their concern was understood, not just acted on. Post a short comment explaining the reasoning before or alongside the commit.
+- **Some comments need only a reply** — if the existing code is already correct, explain why rather than making an unnecessary change.
+- **After fixing, confirm in the thread** that you addressed it and, if the fix was non-trivial, note where to look.
+
 ### Writing scripts and CI workflows
 
 Follow YAGNI strictly here — flags, fallbacks, env-var overrides, and config knobs without a concrete failure mode they prevent should be dropped. This applies to scripts and CI workflows specifically, not the codebase as a whole.

@@ -38,6 +38,20 @@ Read this for cuOpt code style: naming, file extensions, include order, error ha
   short predicates and callbacks; large local lambdas obscure control flow and can lead to repeated
   scans.
 
+### `// NOSONAR` suppression comments
+
+Use `// NOSONAR(RuleId)` to suppress a SonarQube false positive at the exact site. The comment must explain *why* the flagged code is safe:
+
+```cpp
+// ✅ GOOD — names what is safe and why
+window_count)),  // NOSONAR(S836): window_count is declared before window_state_ in this struct
+
+// ❌ BAD — hardcoded line numbers go stale as the file changes
+window_count)),  // NOSONAR: window_count declared before window_state_ (line 869 vs 891)
+```
+
+**Never reference line numbers in code comments** — use member names, function names, or type names. Line numbers change on every nearby edit; names refactor together with the code.
+
 ## Python Style
 
 - Follow PEP 8
