@@ -3,24 +3,19 @@
 # SPDX-License-Identifier: Apache-2.0
 # cmake-format: on
 
-ConfigureTest(ROUTING_TEST ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_routing_test.cu
-    LABELS routing
-    STATIC_LIB)
-
+# Level-0 routing tests need internal (hidden) symbols, so they link cuopt_static.
+# They are consolidated into a single static binary rather than one static binary
+# per test: each STATIC_LIB target embeds the full multi-arch cuopt_static device
+# code, so N standalone static binaries would explode the libcuopt-tests package
+# size. See cpp/tests/internal/CMakeLists.txt for the same consolidation pattern.
 ConfigureTest(ROUTING_INTERNAL_TEST
     ${CUOPT_TEST_DIR}/internal/main.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_ges_test.cu
+    ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_routing_test.cu
+    ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_vehicle_order_match.cu
+    ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_vehicle_types_test.cu
+    ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_objective_function_test.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/top_k.cu
-    LABELS routing
-    STATIC_LIB)
-
-ConfigureTest(VEHICLE_ORDER_TEST ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_vehicle_order_match.cu
-    LABELS routing
-    STATIC_LIB)
-ConfigureTest(VEHICLE_TYPES_TEST ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_vehicle_types_test.cu
-    LABELS routing
-    STATIC_LIB)
-ConfigureTest(OBJECTIVE_FUNCTION_TEST ${CMAKE_CURRENT_SOURCE_DIR}/level0/l0_objective_function_test.cu
     LABELS routing
     STATIC_LIB)
 
