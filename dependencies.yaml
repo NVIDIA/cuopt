@@ -73,14 +73,14 @@ files:
   docs:
     output: none
     includes:
-        - cuda
-        - cuda_version
-        - depends_on_libcuopt
-        - depends_on_cuopt
-        - depends_on_cuopt_server
-        - depends_on_cuopt_sh_client
-        - docs
-        - py_version
+      - cuda
+      - cuda_version
+      - depends_on_libcuopt
+      - depends_on_cuopt
+      - depends_on_cuopt_server
+      - depends_on_cuopt_sh_client
+      - docs
+      - py_version
   py_build_libcuopt:
     output: pyproject
     pyproject_dir: python/libcuopt
@@ -154,6 +154,7 @@ files:
       - test_python_common
       - test_python_cuopt
       - depends_on_rapids_logger
+      - test_cufile
   py_build_cuopt_server:
     output: pyproject
     pyproject_dir: python/cuopt_server
@@ -238,8 +239,8 @@ dependencies:
     common:
       - output_types: [conda, requirements, pyproject]
         packages:
-          - &cmake_ver cmake>=4.0
-          - &ninja ninja
+          - cmake>=4.0
+          - ninja
       - output_types: conda
         packages:
           - c-compiler
@@ -472,7 +473,7 @@ dependencies:
     common:
       - output_types: [conda, requirements, pyproject]
         packages:
-          - &cuopt_sh_client_unsuffixed cuopt-sh-client==26.8.*,>=0.0.0a0
+          - cuopt-sh-client==26.8.*,>=0.0.0a0
       - output_types: requirements
         packages:
           # pip recognizes the index as a global option for the requirements.txt file
@@ -804,8 +805,8 @@ dependencies:
           - sphinxcontrib-websupport
           - sphinx-design
           - pip:
-            - swagger-plugin-for-sphinx
-            - nvidia-sphinx-theme
+              - swagger-plugin-for-sphinx
+              - nvidia-sphinx-theme
 
   notebooks:
     common:
@@ -848,3 +849,17 @@ dependencies:
           - matrix:
             packages:
               - python>=3.11,<3.15
+  test_cufile:
+    specific:
+      # The `cufile` extra was added to the `cuda-toolkit` metapackage in 12.6.3
+      # Adding an explicit test dependency on the cufile package here for
+      # testing on versions before 12.6.3
+      - output_types: pyproject
+        matrices:
+          - matrix:
+              cuda: "12.[012345]"
+              use_cuda_wheels: "true"
+            packages:
+              - nvidia-cufile-cu12
+          - matrix:
+            packages:

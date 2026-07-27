@@ -157,14 +157,18 @@ TEST(pdlp_class, concurrent_pdlp_exception_joins_worker_threads)
   auto settings           = pdlp_solver_settings_t<int, double>{};
   settings.method         = cuopt::mathematical_optimization::method_t::Concurrent;
   settings.presolver      = cuopt::mathematical_optimization::presolver_t::None;
-  settings.log_to_console = false;
+  settings.log_to_console = true;
   // In concurrent mode, dual simplex and barrier workers are started before PDLP validates that
   // all_primal_feasible is batch-only. This exercises the exception path with live worker threads.
   settings.all_primal_feasible = true;
 
+  testing::internal::CaptureStdout();
   optimization_problem_solution_t<int, double> solution = solve_lp(&handle_, op_problem, settings);
+  const auto logs                                       = testing::internal::GetCapturedStdout();
   const auto error_status                               = solution.get_error_status();
 
+  EXPECT_THAT(logs, testing::HasSubstr("Exception in concurrent PDLP:"));
+  EXPECT_THAT(logs, testing::HasSubstr("all_primal_feasible only applies in batch mode"));
   EXPECT_EQ(error_status.get_error_type(), cuopt::error_type_t::ValidationError);
   EXPECT_THAT(error_status.what(),
               testing::HasSubstr("all_primal_feasible only applies in batch mode"));
@@ -4765,5 +4769,3 @@ TEST(pdlp_class, batch_with_optimal_size_query)
 }
 
 }  // namespace cuopt::mathematical_optimization::test
-
-CUOPT_TEST_PROGRAM_MAIN()

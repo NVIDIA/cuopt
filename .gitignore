@@ -72,6 +72,8 @@ docs/cuopt/build
 cpp/include/cuopt/semantic_version.hpp
 !datasets/quadratic_programming
 !datasets/quadratic_programming/**
+# downloaded QPLIB instances (see download_qplib_test_dataset.sh)
+datasets/quadratic_programming/qplib/
 !datasets/solomon/
 !datasets/solomon/In/
 !datasets/solomon/In/r107.txt

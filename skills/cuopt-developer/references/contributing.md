@@ -2,6 +2,37 @@
 
 Read this for anything related to committing, pushing, opening PRs, or making structural changes to cuOpt (adding a solver parameter, dependency, server endpoint, or CUDA kernel).
 
+---
+
+## GitHub Etiquette — Non-Negotiable Rules
+
+### Never Push to Protected Branches
+
+**Never push commits directly to `main` or any `release/YY.MM` branch.**
+
+```bash
+# WRONG
+git push origin main
+git push origin release/26.06
+
+# RIGHT — push to a feature branch, then open a PR
+git push origin fix/my-change
+```
+
+These branches have required status checks, DCO enforcement, and review gates. A direct push bypasses all of them — even when it technically succeeds via bypass.
+
+**Before every `git push`, confirm the target ref is a feature branch.**
+
+For the fork workflow, draft-PR rule, choosing the right base branch, and pre-commit/DCO requirements, see the sections below.
+
+### Exception: Skills PRs Must Use an Upstream Branch (Not a Fork)
+
+NVSkills CI validation requires the PR to originate from a branch **in `NVIDIA/cuopt`**, not a fork. For changes under `skills/`, push to a feature branch on the upstream repo (not your personal fork) and open a PR from there.
+
+After opening the PR, a maintainer must comment `/nvskills-ci` to trigger NVSkills CI validation. The bot pushes a signature commit (`Attach NVSkills validation signatures`) that must remain in the PR — do not squash or rebase it away. Re-comment `/nvskills-ci` after any further pushes to re-sign.
+
+---
+
 ## Before You Commit
 
 ### 1. Install Pre-commit Hooks

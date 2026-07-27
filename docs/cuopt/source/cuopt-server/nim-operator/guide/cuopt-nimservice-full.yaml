@@ -50,13 +50,13 @@ spec:
           - host: cuopt.example.com
             http:
               paths:
-              - backend:
-                  service:
-                    name: cuopt-service
-                    port:
-                      number: 8000
-                path: /
-                pathType: Prefix
+                - backend:
+                    service:
+                      name: cuopt-service
+                      port:
+                        number: 8000
+                  path: /
+                  pathType: Prefix
   metrics:
     enabled: true
     serviceMonitor:
