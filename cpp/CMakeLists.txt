@@ -515,6 +515,9 @@ if (NOT SKIP_GRPC_BUILD)
     # at runtime with "undefined symbol: absl::…::Mutex::Dtor".
     set_property(SOURCE ${GRPC_INFRA_FILES} DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             APPEND PROPERTY COMPILE_OPTIONS "-DNDEBUG")
+    # Include gRPC sources in CUOPT_SRC_FILES so cuopt_objs (and cuopt_static for tests)
+    # have solve_lp_remote / solve_mip_remote defined when CUOPT_ENABLE_GRPC is set.
+    list(APPEND CUOPT_SRC_FILES ${GRPC_INFRA_FILES})
 endif (NOT SKIP_GRPC_BUILD)
 
 # ##################################################################################################
