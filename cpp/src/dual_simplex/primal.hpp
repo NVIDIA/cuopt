@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <dual_simplex/basis_updates.hpp>
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/phase1.hpp>
 #include <dual_simplex/presolve.hpp>
@@ -27,7 +28,6 @@ enum class primal_status_t {
   CONCURRENT_LIMIT = 6
 };
 
-
 template <typename i_t, typename f_t>
 i_t primal_ratio_test(const lp_problem_t<i_t, f_t>& lp,
                       const simplex_solver_settings_t<i_t, f_t>& settings,
@@ -39,6 +39,20 @@ i_t primal_ratio_test(const lp_problem_t<i_t, f_t>& lp,
                       i_t& basic_leaving,
                       i_t entering_index,
                       i_t direction);
+
+template <typename i_t, typename f_t>
+primal_status_t primal_phase2_with_advanced_basis(
+  i_t phase,
+  f_t start_time,
+  const lp_problem_t<i_t, f_t>& lp,
+  const simplex_solver_settings_t<i_t, f_t>& settings,
+  std::vector<variable_status_t>& vstatus,
+  basis_update_mpf_t<i_t, f_t>& basis_update,
+  std::vector<i_t>& basic_list,
+  std::vector<i_t>& nonbasic_list,
+  lp_solution_t<i_t, f_t>& sol,
+  i_t& iter,
+  f_t& work_estimate);
 
 template <typename i_t, typename f_t>
 primal_status_t primal_phase2(i_t phase,

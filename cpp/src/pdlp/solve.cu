@@ -431,7 +431,7 @@ optimization_problem_solution_t<i_t, f_t> convert_dual_simplex_sol(
       termination_status != pdlp_termination_status_t::TimeLimit &&
       termination_status != pdlp_termination_status_t::ConcurrentLimit) {
     CUOPT_LOG_INFO("%s Solve status %s",
-                   method == method_t::DualSimplex ? "Dual Simplex" : "Barrier",
+                   method_to_string(method).c_str(),
                    sol.get_termination_status_string().c_str());
   }
 
@@ -628,6 +628,59 @@ optimization_problem_solution_t<i_t, f_t> run_dual_simplex(
                                   std::get<3>(sol_dual_simplex),
                                   std::get<4>(sol_dual_simplex),
                                   method_t::DualSimplex);
+}
+
+template <typename i_t, typename f_t>
+std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t> run_primal(
+  simplex::user_problem_t<i_t, f_t>& user_problem,
+  pdlp_solver_settings_t<i_t, f_t> const& settings,
+  const timer_t& timer)
+{
+  f_t norm_user_objective = vector_norm2<i_t, f_t>(user_problem.objective);
+  f_t norm_rhs            = vector_norm2<i_t, f_t>(user_problem.rhs);
+
+  simplex::simplex_solver_settings_t<i_t, f_t> primal_settings;
+  primal_settings.time_limit      = settings.time_limit;
+  primal_settings.iteration_limit = settings.iteration_limit;
+  primal_settings.concurrent_halt = settings.concurrent_halt;
+  if (primal_settings.concurrent_halt != nullptr) {
+    // Don't show the primal simplex log in concurrent mode. Show the PDLP log instead
+    primal_settings.log.log = false;
+  }
+
+  simplex::lp_solution_t<i_t, f_t> solution(user_problem.num_rows, user_problem.num_cols);
+  auto status = simplex::solve_linear_program_with_primal<i_t, f_t>(
+    user_problem, primal_settings, timer.get_tic_start(), solution);
+
+  CUOPT_LOG_CONDITIONAL_INFO(
+    !settings.inside_mip, "Primal simplex finished in %.2f seconds", timer.elapsed_time());
+
+  if (settings.concurrent_halt != nullptr &&
+      (status == simplex::lp_status_t::OPTIMAL || status == simplex::lp_status_t::UNBOUNDED ||
+       status == simplex::lp_status_t::INFEASIBLE ||
+       status == simplex::lp_status_t::UNBOUNDED_OR_INFEASIBLE)) {
+    // We finished. Tell PDLP to stop if it is still running.
+    *settings.concurrent_halt = 1;
+  }
+
+  return {std::move(solution), status, timer.elapsed_time(), norm_user_objective, norm_rhs};
+}
+
+template <typename i_t, typename f_t>
+optimization_problem_solution_t<i_t, f_t> run_primal(mip::problem_t<i_t, f_t>& problem,
+                                                     pdlp_solver_settings_t<i_t, f_t> const& settings,
+                                                     const timer_t& timer)
+{
+  simplex::user_problem_t<i_t, f_t> primal_problem =
+    cuopt_problem_to_user_problem<i_t, f_t>(problem.handle_ptr, problem);
+  auto sol_primal = run_primal(primal_problem, settings, timer);
+  return convert_dual_simplex_sol(problem,
+                                  std::get<0>(sol_primal),
+                                  std::get<1>(sol_primal),
+                                  std::get<2>(sol_primal),
+                                  std::get<3>(sol_primal),
+                                  std::get<4>(sol_primal),
+                                  method_t::Primal);
 }
 
 #if PDLP_INSTANTIATE_FLOAT || CUOPT_INSTANTIATE_FLOAT
@@ -1754,19 +1807,27 @@ optimization_problem_solution_t<i_t, f_t> solve_lp_with_method(
   if constexpr (std::is_same_v<f_t, double>) {
     if (settings.method == method_t::DualSimplex) {
       return run_dual_simplex(problem, settings, timer);
+    } else if (settings.method == method_t::Primal) {
+      return run_primal(problem, settings, timer);
     } else if (settings.method == method_t::Barrier) {
       return run_barrier(problem, settings, timer);
     } else if (settings.method == method_t::Concurrent) {
       return run_concurrent(problem, settings, timer, is_batch_mode);
+    } else if (settings.method == method_t::PDLP) {
+      return run_pdlp(problem, settings, timer, is_batch_mode);
     } else {
+      cuopt_expects(false,
+                    error_type_t::ValidationError,
+                    "Invalid LP method. Valid values: Concurrent(0), PDLP(1), DualSimplex(2), "
+                    "Barrier(3), Primal(4).");
       return run_pdlp(problem, settings, timer, is_batch_mode);
     }
   } else {
     // Float precision only supports PDLP without presolve/crossover
     cuopt_expects(settings.method == method_t::PDLP,
                   error_type_t::ValidationError,
-                  "Float precision only supports PDLP method. DualSimplex, Barrier, and Concurrent "
-                  "require double precision.");
+                  "Float precision only supports PDLP method. DualSimplex, Primal, Barrier, and "
+                  "Concurrent require double precision.");
     return run_pdlp(problem, settings, timer, is_batch_mode);
   }
 }

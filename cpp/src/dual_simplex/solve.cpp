@@ -61,6 +61,52 @@ void write_matlab(const std::string& filename, const simplex::lp_problem_t<i_t, 
   fclose(fid);
 }
 
+lp_status_t map_primal_status_to_lp_status(primal_status_t status)
+{
+  switch (status) {
+    case primal_status_t::OPTIMAL: return lp_status_t::OPTIMAL;
+    case primal_status_t::PRIMAL_UNBOUNDED: return lp_status_t::UNBOUNDED;
+    case primal_status_t::TIME_LIMIT: return lp_status_t::TIME_LIMIT;
+    case primal_status_t::ITERATION_LIMIT: return lp_status_t::ITERATION_LIMIT;
+    case primal_status_t::CONCURRENT_LIMIT: return lp_status_t::CONCURRENT_LIMIT;
+    case primal_status_t::NUMERICAL:
+    case primal_status_t::NOT_LOADED:
+    default: return lp_status_t::NUMERICAL_ISSUES;
+  }
+}
+
+template <typename i_t, typename f_t>
+void initialize_slack_basis_vstatus(const lp_problem_t<i_t, f_t>& lp,
+                                    std::vector<variable_status_t>& vstatus)
+{
+  const i_t m = lp.num_rows;
+  const i_t n = lp.num_cols;
+  vstatus.resize(n);
+  for (i_t j = 0; j < n; ++j) {
+    if (lp.lower[j] == -inf && lp.upper[j] == inf) {
+      vstatus[j] = variable_status_t::NONBASIC_FREE;
+    } else if (std::abs(lp.upper[j] - lp.lower[j]) < 1e-12) {
+      vstatus[j] = variable_status_t::NONBASIC_FIXED;
+    } else if (lp.lower[j] > -inf) {
+      vstatus[j] = variable_status_t::NONBASIC_LOWER;
+    } else {
+      vstatus[j] = variable_status_t::NONBASIC_UPPER;
+    }
+  }
+  i_t num_basic = 0;
+  for (i_t j = n - 1; j >= 0; --j) {
+    const i_t col_start = lp.A.col_start[j];
+    const i_t col_end   = lp.A.col_start[j + 1];
+    const i_t nz        = col_end - col_start;
+    if (nz == 1 && std::abs(lp.A.x[col_start]) == 1.0) {
+      vstatus[j] = variable_status_t::BASIC;
+      num_basic++;
+    }
+    if (num_basic == m) { break; }
+  }
+  assert(num_basic == m);
+}
+
 }  // namespace
 
 template <typename i_t, typename f_t>
@@ -288,7 +334,7 @@ lp_status_t solve_linear_program_with_advanced_basis(
                                                edge_norms,
                                                work_unit_context);
     }
-    constexpr bool primal_cleanup = false;
+    constexpr bool primal_cleanup = true;
     if (status == dual_status_t::OPTIMAL && primal_cleanup) {
       settings.log.printf("Running primal cleanup\n");
       primal_phase2(2, start_time, lp, settings, vstatus, solution, iter);
@@ -685,6 +731,109 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
 }
 
 template <typename i_t, typename f_t>
+lp_status_t solve_linear_program_with_primal(const user_problem_t<i_t, f_t>& user_problem,
+                                             const simplex_solver_settings_t<i_t, f_t>& settings,
+                                             f_t start_time,
+                                             lp_solution_t<i_t, f_t>& solution)
+{
+  raft::common::nvtx::range scope("PrimalSimplex::solve_lp");
+  lp_problem_t<i_t, f_t> original_lp(user_problem.handle_ptr, 1, 1, 1);
+  std::vector<i_t> new_slacks;
+  dualize_info_t<i_t, f_t> dualize_info;
+  convert_user_problem(user_problem, settings, original_lp, new_slacks, dualize_info);
+
+  solution.resize(user_problem.num_rows, user_problem.num_cols);
+  lp_solution_t<i_t, f_t> original_solution(original_lp.num_rows, original_lp.num_cols);
+
+  // Presolve adds/retains artificial variables so a full slack basis exists.
+  lp_problem_t<i_t, f_t> presolved_lp(original_lp.handle_ptr, 1, 1, 1);
+  presolve_info_t<i_t, f_t> presolve_info;
+  const i_t ok = presolve(original_lp, settings, presolved_lp, presolve_info);
+  if (ok == CONCURRENT_HALT_RETURN) { return lp_status_t::CONCURRENT_LIMIT; }
+  if (ok == TIME_LIMIT_RETURN) { return lp_status_t::TIME_LIMIT; }
+  if (ok == -1) { return lp_status_t::INFEASIBLE; }
+
+  lp_problem_t<i_t, f_t> lp(original_lp.handle_ptr,
+                            presolved_lp.num_rows,
+                            presolved_lp.num_cols,
+                            presolved_lp.A.col_start[presolved_lp.num_cols]);
+  std::vector<f_t> column_scales;
+  std::vector<f_t> row_scales;
+  scaling(presolved_lp, settings, lp, column_scales, row_scales);
+
+  std::vector<variable_status_t> vstatus;
+  initialize_slack_basis_vstatus(lp, vstatus);
+
+  lp_solution_t<i_t, f_t> lp_solution(lp.num_rows, lp.num_cols);
+  i_t iter = 0;
+  const primal_status_t primal_status =
+    primal_phase2(2, start_time, lp, settings, vstatus, lp_solution, iter);
+  lp_solution.iterations     = iter;
+  original_solution.iterations = iter;
+
+  if (primal_status == primal_status_t::CONCURRENT_LIMIT) {
+    solution.iterations = iter;
+    return lp_status_t::CONCURRENT_LIMIT;
+  }
+
+  if (primal_status == primal_status_t::OPTIMAL) {
+    lp_solution.objective      = compute_objective(lp, lp_solution.x);
+    lp_solution.user_objective = compute_user_objective(lp, lp_solution.objective);
+
+    std::vector<f_t> residual = lp.rhs;
+    matrix_vector_multiply(lp.A, 1.0, lp_solution.x, -1.0, residual);
+    lp_solution.l2_primal_residual = vector_norm2<i_t, f_t>(residual);
+
+    std::vector<f_t> dual_residual = lp_solution.z;
+    for (i_t j = 0; j < lp.num_cols; ++j) {
+      dual_residual[j] -= lp.objective[j];
+    }
+    matrix_transpose_vector_multiply(lp.A, 1.0, lp_solution.y, 1.0, dual_residual);
+    lp_solution.l2_dual_residual = vector_norm2<i_t, f_t>(dual_residual);
+
+    std::vector<f_t> unscaled_x(lp.num_cols);
+    std::vector<f_t> unscaled_y(lp.num_rows);
+    std::vector<f_t> unscaled_z(lp.num_cols);
+    unscale_solution<i_t, f_t>(column_scales,
+                               row_scales,
+                               lp_solution.x,
+                               lp_solution.y,
+                               lp_solution.z,
+                               unscaled_x,
+                               unscaled_y,
+                               unscaled_z);
+    uncrush_solution(presolve_info,
+                     settings,
+                     original_lp,
+                     unscaled_x,
+                     unscaled_y,
+                     unscaled_z,
+                     original_solution.x,
+                     original_solution.y,
+                     original_solution.z);
+    original_solution.objective          = lp_solution.objective;
+    original_solution.user_objective     = lp_solution.user_objective;
+    original_solution.l2_primal_residual = lp_solution.l2_primal_residual;
+    original_solution.l2_dual_residual   = lp_solution.l2_dual_residual;
+  }
+
+  uncrush_primal_solution(user_problem, original_lp, original_solution.x, solution.x);
+  uncrush_dual_solution(user_problem,
+                        original_lp,
+                        original_solution.y,
+                        original_solution.z,
+                        solution.y,
+                        solution.z);
+  solution.objective          = original_solution.objective;
+  solution.user_objective     = original_solution.user_objective;
+  solution.iterations         = original_solution.iterations;
+  solution.l2_primal_residual = original_solution.l2_primal_residual;
+  solution.l2_dual_residual   = original_solution.l2_dual_residual;
+  return map_primal_status_to_lp_status(primal_status);
+}
+
+
+template <typename i_t, typename f_t>
 lp_status_t solve_linear_program(const user_problem_t<i_t, f_t>& user_problem,
                                  const simplex_solver_settings_t<i_t, f_t>& settings,
                                  f_t start_time,
@@ -826,6 +975,12 @@ template lp_status_t solve_linear_program_with_barrier(
   lp_solution_t<int, double>& solution);
 
 template lp_status_t solve_linear_program_with_barrier(
+  const user_problem_t<int, double>& user_problem,
+  const simplex_solver_settings_t<int, double>& settings,
+  double start_time,
+  lp_solution_t<int, double>& solution);
+
+template lp_status_t solve_linear_program_with_primal(
   const user_problem_t<int, double>& user_problem,
   const simplex_solver_settings_t<int, double>& settings,
   double start_time,
