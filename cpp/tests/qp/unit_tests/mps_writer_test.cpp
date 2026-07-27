@@ -13,8 +13,8 @@
 
 #include <utilities/common_utils.hpp>
 
-#include <cuopt/linear_programming/optimization_problem.hpp>
-#include <cuopt/linear_programming/optimization_problem_interface.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 
 #include <raft/core/handle.hpp>
 
@@ -136,8 +136,9 @@ void setup_two_var_unconstrained_qp(Op& op)
   op.set_variable_lower_bounds(lb_host, 2);
   op.set_variable_upper_bounds(ub_host, 2);
 
-  cuopt::linear_programming::var_t const var_types_host[] = {
-    cuopt::linear_programming::var_t::CONTINUOUS, cuopt::linear_programming::var_t::CONTINUOUS};
+  cuopt::mathematical_optimization::var_t const var_types_host[] = {
+    cuopt::mathematical_optimization::var_t::CONTINUOUS,
+    cuopt::mathematical_optimization::var_t::CONTINUOUS};
   op.set_variable_types(var_types_host, 2);
 
   double c_host[] = {0.0, 0.0};
@@ -160,10 +161,10 @@ void setup_three_var_unconstrained_qp(Op& op)
   op.set_variable_lower_bounds(lb_host, 3);
   op.set_variable_upper_bounds(ub_host, 3);
 
-  cuopt::linear_programming::var_t const var_types_host[] = {
-    cuopt::linear_programming::var_t::CONTINUOUS,
-    cuopt::linear_programming::var_t::CONTINUOUS,
-    cuopt::linear_programming::var_t::CONTINUOUS};
+  cuopt::mathematical_optimization::var_t const var_types_host[] = {
+    cuopt::mathematical_optimization::var_t::CONTINUOUS,
+    cuopt::mathematical_optimization::var_t::CONTINUOUS,
+    cuopt::mathematical_optimization::var_t::CONTINUOUS};
   op.set_variable_types(var_types_host, 3);
 
   double c_host[] = {0.0, 0.0, 0.0};
@@ -172,7 +173,7 @@ void setup_three_var_unconstrained_qp(Op& op)
 
 }  // namespace
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 TEST(mps_writer_op, write_to_mps_diagonal_qp_quadobj_matches_symmetrized_hessian)
 {
@@ -257,4 +258,4 @@ TEST(mps_writer_op, write_to_mps_nonsymmetric_Q_quadobj_matches_Q_plus_Q_transpo
   }
 }
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

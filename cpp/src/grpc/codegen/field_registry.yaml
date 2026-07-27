@@ -682,6 +682,10 @@ mip_settings:
       field_num: 22
       type: int32
       optional: true
+  - zero_half_cuts:
+      field_num: 52
+      type: int32
+      optional: true
   - implied_bound_cuts:
       field_num: 31
       type: int32
@@ -731,7 +735,7 @@ mip_settings:
 
     # MIP heuristic hyper-parameters (nested: settings.heuristic_params.<field>)
     # Tuning knobs for MIP GPU heuristics; see mip_heuristics_hyper_params_t
-    # in cpp/include/cuopt/linear_programming/mip/heuristics_hyper_params.hpp.
+    # in cpp/include/cuopt/mathematical_optimization/mip/heuristics_hyper_params.hpp.
     # All fields carry non-zero defaults on the C++ side, so they are declared
     # `optional` in the proto: a client that omits any of them gets the C++
     # default rather than the proto3 wire zero (0).
@@ -815,6 +819,10 @@ optimization_problem:
       getter: get_sense()
   - objective_scaling_factor:
       field_num: 4
+      # C++ defaults to 1 while an absent proto3 scalar reads as 0. Track
+      # presence so external clients may omit the field without changing the
+      # objective to an unsupported zero scaling factor.
+      optional: true
   - objective_offset:
       field_num: 5
 

@@ -10,11 +10,11 @@
 #include <utilities/copy_helpers.hpp>
 #include <utilities/macros.cuh>
 
-#include <cuopt/linear_programming/optimization_problem_interface.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 
 #include <vector>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 struct constraints_delta_t {
@@ -65,4 +65,4 @@ struct variables_delta_t {
   }
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

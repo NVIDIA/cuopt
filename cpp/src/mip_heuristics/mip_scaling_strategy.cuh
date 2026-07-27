@@ -7,18 +7,19 @@
 
 #pragma once
 
-#include <cuopt/linear_programming/optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem.hpp>
 
 #include <raft/core/handle.hpp>
 
 #include <rmm/cuda_stream_view.hpp>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 class mip_scaling_strategy_t {
  public:
-  using optimization_problem_type_t = cuopt::linear_programming::optimization_problem_t<i_t, f_t>;
+  using optimization_problem_type_t =
+    cuopt::mathematical_optimization::optimization_problem_t<i_t, f_t>;
   explicit mip_scaling_strategy_t(optimization_problem_type_t& op_problem_scaled);
 
   void scale_problem(bool scale_objective = true);
@@ -29,4 +30,4 @@ class mip_scaling_strategy_t {
   optimization_problem_type_t& op_problem_scaled_;
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

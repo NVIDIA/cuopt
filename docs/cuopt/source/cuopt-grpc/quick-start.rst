@@ -3,7 +3,7 @@
    SPDX-License-Identifier: Apache-2.0
 
 ===========
-Quick start
+Quick Start
 ===========
 
 **NVIDIA cuOpt gRPC remote execution** runs LP, MILP, and QP solves on a **GPU host** while your **Python** code, **C API** program, **`cuopt_cli`**, or a **custom** client runs elsewhere. When you set ``CUOPT_REMOTE_HOST`` and ``CUOPT_REMOTE_PORT``, the bundled **Python**, **C API**, and **cuopt_cli** clients forward ``solve_lp`` / ``solve_mip`` to ``cuopt_grpc_server`` with **no code changes**. **Custom** clients call ``CuOptRemoteService`` directly (see :doc:`api`).
@@ -12,7 +12,7 @@ Quick start
 
    **Problem types (gRPC remote):** **LP**, **MILP**, and **QP** are supported today. **Routing** (VRP, TSP, PDP) over this path is **not** available;  For remote routing, use the HTTP/JSON :doc:`REST self-hosted server <../cuopt-server/index>`. This guide is **not** the REST server—see :doc:`../cuopt-server/index` for HTTP/JSON.
 
-How remote execution works
+How Remote Execution Works
 ==========================
 
 1. **GPU host** — Run ``cuopt_grpc_server`` (bare metal or in the official container) so it listens on a TCP port (default **5001**).
@@ -35,7 +35,7 @@ Verify the server binary after install:
 
 For the same install selector with **Container** / registry choices (Docker Hub or NGC), see :doc:`../install`.
 
-Run the gRPC server (GPU host)
+Run the gRPC Server (GPU Host)
 ==============================
 
 **Bare metal** — after activating the same environment you used to install NVIDIA cuOpt:
@@ -68,7 +68,7 @@ Or invoke the binary explicitly:
 
    The container image defaults to the Python **REST** server when ``CUOPT_SERVER_TYPE`` is unset and you do not override the command; setting ``CUOPT_SERVER_TYPE=grpc`` selects ``cuopt_grpc_server``. Extra environment variables (``CUOPT_SERVER_PORT``, ``CUOPT_GPU_COUNT``, ``CUOPT_GRPC_ARGS``) and TLS are documented in :doc:`Advanced configuration <advanced>`.
 
-Point the client at the server
+Point the Client at the Server
 ==============================
 
 On the machine where you run Python, the C API, or ``cuopt_cli`` (use ``127.0.0.1`` if the server is on the same host):
@@ -80,7 +80,7 @@ On the machine where you run Python, the C API, or ``cuopt_cli`` (use ``127.0.0.
 
 Optional TLS and tuning variables are in :doc:`advanced`.
 
-Minimal Python example (LP)
+Minimal Python Example (LP)
 ============================
 
 The script is the same for **local** or **remote** solves: with the exports above, the client library forwards to ``cuopt_grpc_server``; without them, the solve runs locally (where a GPU is available).
@@ -111,7 +111,7 @@ You should see an optimal termination. To solve **locally**, unset the remote va
    unset CUOPT_REMOTE_HOST CUOPT_REMOTE_PORT
    python remote_lp_demo.py
 
-Minimal ``cuopt_cli`` example (LP)
+Minimal ``cuopt_cli`` Example (LP)
 ==================================
 
 The same **LP** is available as MPS. With ``CUOPT_REMOTE_HOST`` and ``CUOPT_REMOTE_PORT`` set as above, ``cuopt_cli`` forwards the solve to the remote server; unset them for a **local** run (GPU on that machine).
@@ -147,7 +147,7 @@ More options (time limits, relaxation): :doc:`../cuopt-cli/quick-start` and :doc
 
 More patterns (MPS variants, custom gRPC): :doc:`examples`.
 
-Next steps
+Next Steps
 ==========
 
 * :doc:`../install` — Top-level install selector (all interfaces), including **Container** pulls.

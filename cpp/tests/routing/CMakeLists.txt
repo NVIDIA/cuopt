@@ -38,6 +38,7 @@ ConfigureTest(ROUTING_UNIT_TEST
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/order_locations.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/horizontal_loading.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/route_constraints.cu
+      ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/capacity_route_resize.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/heterogenous_fleet.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/prize_collection.cu
       ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/objective_function.cu

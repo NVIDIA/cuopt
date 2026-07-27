@@ -79,18 +79,15 @@ requirements:
     - rapids-build-backend >=0.4.0,<0.5.0
     - rmm =${{ minor_version }}
     - scikit-build-core>=0.11.0
-    - if: cuda_major == "12"
-      then: cuda-python >=12.9.2,<13.0
-      else: cuda-python >=13.0.1,<14.0
   run:
     - ${{ pin_compatible("cuda-version", upper_bound="x", lower_bound="x") }}
     - cudf =${{ minor_version }}
-    - cupy >=13.6.0,!=14.0.0,!=14.1.0
+    - cupy >=14.0.1,!=14.1.0
     - h5py
     - libcuopt =${{ version }}
     - numba>=0.60.0,<0.65.0
     - numba-cuda>=0.22.1
-    - numpy >=1.23,<3.0
+    - numpy >=2.0,<3.0
     - pandas >=2.0
     - pylibraft =${{ minor_version }}
     - python
@@ -100,9 +97,6 @@ requirements:
     - cuda-nvcc-impl
     # TODO: Add nvjitlink here
     # xref: https://github.com/rapidsai/cudf/issues/12822
-    - if: cuda_major == "12"
-      then: cuda-python >=12.9.2,<13.0
-      else: cuda-python >=13.0.1,<14.0
   ignore_run_exports:
     by_name:
       - cuda-version

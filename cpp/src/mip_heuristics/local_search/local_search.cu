@@ -20,7 +20,7 @@
 
 #include <mip_heuristics/feasibility_jump/fj_cpu.cuh>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 local_search_t<i_t, f_t>::local_search_t(mip_solver_context_t<i_t, f_t>& context_,
@@ -160,8 +160,7 @@ void local_search_t<i_t, f_t>::stop_cpufj_scratch_threads()
 }
 
 template <typename i_t, typename f_t>
-void local_search_t<i_t, f_t>::start_cpufj_deterministic(
-  dual_simplex::branch_and_bound_t<i_t, f_t>& bb)
+void local_search_t<i_t, f_t>::start_cpufj_deterministic(mip::branch_and_bound_t<i_t, f_t>& bb)
 {
   producer_sync_t& producer_sync = bb.get_producer_sync();
 
@@ -903,4 +902,4 @@ template class local_search_t<int, float>;
 template class local_search_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

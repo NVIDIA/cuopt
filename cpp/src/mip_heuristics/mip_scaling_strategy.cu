@@ -36,7 +36,7 @@
 #include <cstdint>
 #include <limits>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 constexpr int row_scaling_max_iterations             = 8;
 constexpr double row_scaling_min_initial_log2_spread = 12.0;
@@ -145,7 +145,7 @@ struct integer_coeff_for_integer_var_transform_t {
 
 template <typename i_t, typename f_t>
 void compute_row_inf_norm(
-  const cuopt::linear_programming::optimization_problem_t<i_t, f_t>& op_problem,
+  const cuopt::mathematical_optimization::optimization_problem_t<i_t, f_t>& op_problem,
   rmm::device_uvector<std::uint8_t>& temp_storage,
   size_t temp_storage_bytes,
   rmm::device_uvector<f_t>& row_inf_norm,
@@ -170,7 +170,7 @@ void compute_row_inf_norm(
 
 template <typename i_t, typename f_t>
 void compute_row_integer_gcd(
-  const cuopt::linear_programming::optimization_problem_t<i_t, f_t>& op_problem,
+  const cuopt::mathematical_optimization::optimization_problem_t<i_t, f_t>& op_problem,
   rmm::device_uvector<std::uint8_t>& temp_storage,
   size_t temp_storage_bytes,
   rmm::device_uvector<std::int64_t>& row_integer_gcd,
@@ -208,7 +208,7 @@ void compute_row_integer_gcd(
 
 template <typename i_t, typename f_t>
 void compute_big_m_skip_rows(
-  const cuopt::linear_programming::optimization_problem_t<i_t, f_t>& op_problem,
+  const cuopt::mathematical_optimization::optimization_problem_t<i_t, f_t>& op_problem,
   rmm::device_uvector<std::uint8_t>& temp_storage,
   size_t temp_storage_bytes,
   rmm::device_uvector<f_t>& row_inf_norm,
@@ -286,7 +286,7 @@ void compute_big_m_skip_rows(
 }
 
 template <typename i_t, typename f_t>
-void scale_objective(cuopt::linear_programming::optimization_problem_t<i_t, f_t>& op_problem)
+void scale_objective(cuopt::mathematical_optimization::optimization_problem_t<i_t, f_t>& op_problem)
 {
   auto& obj_coefficients = op_problem.get_objective_coefficients();
   const i_t n_cols       = op_problem.get_n_variables();
@@ -354,7 +354,7 @@ void scale_objective(cuopt::linear_programming::optimization_problem_t<i_t, f_t>
 
 template <typename i_t, typename f_t>
 rmm::device_uvector<std::int64_t> capture_pre_scaling_integer_gcd(
-  const cuopt::linear_programming::optimization_problem_t<i_t, f_t>& op_problem,
+  const cuopt::mathematical_optimization::optimization_problem_t<i_t, f_t>& op_problem,
   rmm::device_uvector<std::uint8_t>& temp_storage,
   size_t temp_storage_bytes,
   rmm::cuda_stream_view stream_view)
@@ -367,7 +367,7 @@ rmm::device_uvector<std::int64_t> capture_pre_scaling_integer_gcd(
 
 template <typename i_t, typename f_t>
 void assert_integer_coefficient_integrality(
-  const cuopt::linear_programming::optimization_problem_t<i_t, f_t>& op_problem,
+  const cuopt::mathematical_optimization::optimization_problem_t<i_t, f_t>& op_problem,
   rmm::device_uvector<std::uint8_t>& temp_storage,
   size_t temp_storage_bytes,
   const rmm::device_uvector<std::int64_t>& pre_scaling_gcd,
@@ -408,13 +408,14 @@ mip_scaling_strategy_t<i_t, f_t>::mip_scaling_strategy_t(
 }
 
 template <typename i_t, typename f_t>
-size_t dry_run_cub(const cuopt::linear_programming::optimization_problem_t<i_t, f_t>& op_problem,
-                   i_t n_rows,
-                   rmm::device_uvector<f_t>& row_inf_norm,
-                   rmm::device_uvector<f_t>& row_min_nonzero,
-                   rmm::device_uvector<i_t>& row_nonzero_count,
-                   rmm::device_uvector<std::int64_t>& row_integer_gcd,
-                   rmm::cuda_stream_view stream_view)
+size_t dry_run_cub(
+  const cuopt::mathematical_optimization::optimization_problem_t<i_t, f_t>& op_problem,
+  i_t n_rows,
+  rmm::device_uvector<f_t>& row_inf_norm,
+  rmm::device_uvector<f_t>& row_min_nonzero,
+  rmm::device_uvector<i_t>& row_nonzero_count,
+  rmm::device_uvector<std::int64_t>& row_integer_gcd,
+  rmm::cuda_stream_view stream_view)
 {
   const auto& matrix_values     = op_problem.get_constraint_matrix_values();
   const auto& matrix_indices    = op_problem.get_constraint_matrix_indices();
@@ -879,4 +880,4 @@ INSTANTIATE(float)
 INSTANTIATE(double)
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

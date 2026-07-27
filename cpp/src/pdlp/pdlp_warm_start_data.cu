@@ -5,8 +5,8 @@
  */
 /* clang-format on */
 
-#include <cuopt/linear_programming/pdlp/pdlp_warm_start_data.hpp>
-#include <cuopt/linear_programming/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_warm_start_data.hpp>
+#include <cuopt/mathematical_optimization/solver_settings.hpp>
 
 #include <mip_heuristics/mip_constants.hpp>
 
@@ -16,7 +16,7 @@
 
 #include <utilities/macros.cuh>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 template <typename i_t, typename f_t>
 pdlp_warm_start_data_t<i_t, f_t>::pdlp_warm_start_data_t(
@@ -185,4 +185,4 @@ template class pdlp_warm_start_data_t<int, float>;
 #if MIP_INSTANTIATE_DOUBLE
 template class pdlp_warm_start_data_t<int, double>;
 #endif
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

@@ -9,10 +9,16 @@ NVIDIA <br>
 ### License/Terms of Use: <br>
 Apache 2.0 <br>
 ## Use Case: <br>
-Developers and engineers who need to formulate linear, mixed-integer linear, or quadratic optimization problems using cuOpt, translating natural-language problem descriptions into structured mathematical formulations. <br>
+Developers and engineers use this skill to parse natural-language optimization problem descriptions and formulate them as LP, MILP, or QP models with identified parameters, constraints, decision variables, and objectives. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
+
+## Requirements / Dependencies: <br>
+**Requires API Key or External Credential:** [No] <br>
+**Credential Type(s):** [None] <br>  
+
+Do not include secrets in prompts/logs/output; use least-privilege credentials; rotate keys as appropriate. <br>
 
 ## Known Risks and Mitigations: <br>
 Risk: Review before execution as proposals could introduce incorrect or misleading guidance into skills. <br>
@@ -24,19 +30,19 @@ Mitigation: Review and scan skill before deployment. <br>
 
 
 ## Skill Output: <br>
-**Output Type(s):** [Analysis, Code] <br>
-**Output Format:** [Markdown with mathematical formulations] <br>
+**Output Type(s):** [Analysis, Formulation guidance] <br>
+**Output Format:** [Markdown] <br>
 **Output Parameters:** [1D] <br>
 **Other Properties Related to Output:** [None] <br>
 
 ## Evaluation Agents Used: <br>
-- `claude-code` <br>
-- `codex` <br>
+- claude-code <br>
+- codex <br>
 
 
 
 ## Evaluation Tasks: <br>
-Evaluated against 1 internal evaluation task with 2 attempts per task via NVSkills-Eval (external profile). <br>
+Evaluated against 3 internal evaluation tasks (all positive skill-activation cases). <br>
 
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
@@ -60,11 +66,16 @@ Underlying evaluation signals used in this run: <br>
 ## Evaluation Results: <br>
 | Dimension | Num | `claude-code` | `codex` |
 |---|---:|---:|---:|
-| Security | 2 | 100% (+0%) | 100% (+0%) |
-| Correctness | 2 | 100% (+0%) | 97% (+28%) |
-| Discoverability | 2 | 100% (+0%) | 97% (+66%) |
-| Effectiveness | 2 | 96% (+0%) | 90% (-5%) |
-| Efficiency | 2 | 93% (-0%) | 96% (+51%) |
+| Security | 3 | 100% (+0%) | 100% (+0%) |
+| Correctness | 3 | 67% (+23%) | 37% (+0%) |
+| Discoverability | 3 | 33% (+33%) | 0% (+0%) |
+| Effectiveness | 3 | 93% (+10%) | 71% (+1%) |
+| Efficiency | 3 | 49% (+22%) | 28% (-0%) |
+
+## Testing Completed: <br>
+**[x] Agent Red-Teaming** <br>
+**[ ] Network Security** <br>
+**[ ] Product Security** <br>
 
 ## Skill Version(s): <br>
 26.08.00 (source: frontmatter) <br>

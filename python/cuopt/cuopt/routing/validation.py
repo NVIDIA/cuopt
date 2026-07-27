@@ -1,10 +1,32 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-import cudf
+import numpy as np
+
+
+def _reject_list(var, name):
+    # Host inputs are limited to numpy / pandas; Python lists/tuples are not
+    # supported (rejected here, before the wrapper, for a clear message).
+    if isinstance(var, (list, tuple)):
+        raise TypeError(
+            name + " must be a numpy array, pandas, or cudf object; "
+            "Python lists/tuples are not supported"
+        )
+
+
+def _contains_null(mat):
+    # cudf / pandas DataFrames expose isnull(); numpy arrays do not, so fall
+    # back to np.isnan (only meaningful for floating-point matrices).
+    if hasattr(mat, "isnull"):
+        return bool(mat.isnull().any(axis=1).any())
+    arr = np.asarray(mat)
+    if np.issubdtype(arr.dtype, np.floating):
+        return bool(np.isnan(arr).any())
+    return False
 
 
 def validate_matrix(mat, mat_name, num_locations):
+    _reject_list(mat, mat_name)
     if mat.shape[0] != mat.shape[1]:
         raise ValueError(mat_name + " is expected to be a square matrix")
 
@@ -14,7 +36,7 @@ def validate_matrix(mat, mat_name, num_locations):
             + " number of locations in matrix"
         )
 
-    if mat.isnull().any(axis=1).any():
+    if _contains_null(mat):
         raise ValueError(mat_name + " cannot have NULL values")
 
     validate_positive_df(mat, mat_name)
@@ -62,6 +84,8 @@ def validate_size(var_1, var_1_str, var_2, var_2_str):
 
 
 def validate_time_windows(earliest, latest, size, size_str):
+    _reject_list(earliest, "earliest times")
+    _reject_list(latest, "latest times")
     validate_size(earliest, "earliest times", size, size_str)
     validate_non_negative(earliest, "earliest times")
     validate_size(latest, "latest times", size, size_str)
@@ -71,7 +95,8 @@ def validate_time_windows(earliest, latest, size, size_str):
 
 
 def validate_range(var, var_name, min, max):
-    if isinstance(var, cudf.Series):
+    # Array-like (cudf.Series / numpy.ndarray / pandas.Series) vs scalar.
+    if hasattr(var, "__len__"):
         if (var < min).any():
             raise ValueError(
                 "All values in "

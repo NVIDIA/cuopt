@@ -1,4 +1,4 @@
-# NVIDIA cuOpt gRPC server architecture
+# NVIDIA cuOpt gRPC Server Architecture
 
 <!--
   SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
@@ -303,6 +303,8 @@ When `CancelJob` is called:
 1. Set `job_queue[slot].cancelled = true`
 2. If the job is **queued** (no worker yet): the worker checks the flag before starting and skips to the next job
 3. If the job is **running** (worker has claimed it): the worker process is killed with `SIGKILL`, the worker-monitor thread detects the exit and posts a `RESULT_CANCELLED` status, and a replacement worker is spawned automatically
+
+`DeleteResult` performs the same cancel for queued/running jobs, then removes all server-side state (tracker entry, pending payload, log file) so the job id is gone.
 
 ## Memory Management
 

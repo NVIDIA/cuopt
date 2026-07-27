@@ -12,7 +12,7 @@
 
 #include <mip_heuristics/problem/problem.cuh>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 struct bounds_update_data_t {
@@ -24,6 +24,7 @@ struct bounds_update_data_t {
   rmm::device_uvector<i_t> changed_constraints;
   rmm::device_uvector<i_t> next_changed_constraints;
   rmm::device_uvector<i_t> changed_variables;
+  f_t candidate_bound_scale;
 
   struct view_t {
     i_t* bounds_changed;
@@ -34,6 +35,7 @@ struct bounds_update_data_t {
     raft::device_span<i_t> changed_constraints;
     raft::device_span<i_t> next_changed_constraints;
     raft::device_span<i_t> changed_variables;
+    f_t candidate_bound_scale;
   };
 
   bounds_update_data_t(problem_t<i_t, f_t>& pb);
@@ -43,4 +45,4 @@ struct bounds_update_data_t {
   view_t view();
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

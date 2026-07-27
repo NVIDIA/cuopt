@@ -1,0 +1,29 @@
+/* clang-format off */
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+/* clang-format on */
+
+#pragma once
+
+#include <cstdint>
+#include <limits>
+
+namespace cuopt::mathematical_optimization {
+
+#define DUAL_SIMPLEX_INSTANTIATE_DOUBLE
+
+using float32_t = float;
+using float64_t = double;
+
+constexpr float64_t inf = std::numeric_limits<float64_t>::infinity();
+
+// We return this constant to signal that a concurrent halt has occurred
+#define CONCURRENT_HALT_RETURN -2
+// We return this constant to signal that a time limit has occurred
+#define TIME_LIMIT_RETURN -3
+// We return this constant to signal that a matrix is indefinite (has a negative pivot)
+#define INDEFINITE_MATRIX_RETURN -4
+
+}  // namespace cuopt::mathematical_optimization

@@ -2215,6 +2215,10 @@ def _gen_proto_to_problem(registry, indent="  "):
                 f'{b["name"]} size mismatch");'
             )
             lines.append(f"{ind}    }}")
+        if name == "quadratic_constraints":
+            lines.append(
+                f"{ind}    io::canonicalize_coo_matrix(_entry.rows, _entry.cols, _entry.vals);"
+            )
         lines.append(f"{ind}    _entries.push_back(std::move(_entry));")
         lines.append(f"{ind}  }}")
         lines.append(f"{ind}  cpu_problem.{setter}(std::move(_entries));")
@@ -2416,14 +2420,14 @@ def _gen_chunked_header_to_problem(registry, indent="  "):
     ind = indent
     lines = []
 
-    # `ChunkedProblemHeader` is hand-written (see cuopt_remote_service.proto);
-    # it does not declare `optional` for any field, so we pass has_check=None
-    # to suppress the has_X() guard.  `sentinel:` still applies — the wire
-    # mapping must stay consistent with the unary path.
+    # `ChunkedProblemHeader` is hand-written (see cuopt_remote_service.proto).
+    # Fields marked optional in the registry must also be declared optional in
+    # that message so the chunked path can preserve non-zero C++ defaults.
     for entry in obj.get("scalars", []):
         f = parse_field(entry)
         pname = _proto_cpp_name(f["name"])
         setter = _default_problem_setter(f)
+        has_check = f"header.has_{pname}()" if f.get("optional") else None
         lines.extend(
             emit_scalar_from_proto_assign(
                 lambda v, s=setter: f"cpu_problem.{s}({v});",
@@ -2431,7 +2435,7 @@ def _gen_chunked_header_to_problem(registry, indent="  "):
                 f,
                 registry,
                 ind,
-                has_check=None,
+                has_check=has_check,
             )
         )
 
@@ -2811,6 +2815,10 @@ def _gen_chunked_arrays_to_problem(registry, indent="  "):
                     f'{b["name"]} size mismatch");'
                 )
                 lines.append(f"{ind}    }}")
+            if name == "quadratic_constraints":
+                lines.append(
+                    f"{ind}    io::canonicalize_coo_matrix(_entry.rows, _entry.cols, _entry.vals);"
+                )
             lines.append(f"{ind}    _entries.push_back(std::move(_entry));")
             lines.append(f"{ind}  }}")
             lines.append(f"{ind}  cpu_problem.{setter}(std::move(_entries));")
