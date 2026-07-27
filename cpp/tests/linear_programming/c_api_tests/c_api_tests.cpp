@@ -23,10 +23,6 @@
 #include <utilities/common_utils.hpp>
 #include <utilities/error.hpp>
 
-namespace cuopt::mathematical_optimization::pdlp {
-bool is_cusparse_runtime_mixed_precision_supported();
-}
-
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
