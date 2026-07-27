@@ -121,6 +121,8 @@ bool create_worker_pipes(int worker_id)
   wp.worker_read_fd = fds[0];
   wp.to_worker_fd   = fds[1];
   fcntl(wp.to_worker_fd, F_SETPIPE_SZ, kPipeBufferSize);
+  // Nonblocking write end: write_to_pipe polls + retries so shutdown can abort.
+  fcntl(wp.to_worker_fd, F_SETFL, fcntl(wp.to_worker_fd, F_GETFL) | O_NONBLOCK);
 
   if (pipe(fds) < 0) {
     SERVER_LOG_ERROR("[Server] Failed to create output pipe for worker %d", worker_id);
@@ -130,6 +132,9 @@ bool create_worker_pipes(int worker_id)
   wp.from_worker_fd  = fds[0];
   wp.worker_write_fd = fds[1];
   fcntl(wp.worker_write_fd, F_SETPIPE_SZ, kPipeBufferSize);
+  fcntl(wp.worker_write_fd, F_SETFL, fcntl(wp.worker_write_fd, F_GETFL) | O_NONBLOCK);
+  // Parent read end is also nonblocking; read_from_pipe polls before read.
+  fcntl(wp.from_worker_fd, F_SETFL, fcntl(wp.from_worker_fd, F_GETFL) | O_NONBLOCK);
 
   if (pipe(fds) < 0) {
     SERVER_LOG_ERROR("[Server] Failed to create incumbent pipe for worker %d", worker_id);
@@ -138,6 +143,11 @@ bool create_worker_pipes(int worker_id)
   }
   wp.incumbent_from_worker_fd  = fds[0];
   wp.worker_incumbent_write_fd = fds[1];
+  fcntl(wp.worker_incumbent_write_fd,
+        F_SETFL,
+        fcntl(wp.worker_incumbent_write_fd, F_GETFL) | O_NONBLOCK);
+  fcntl(
+    wp.incumbent_from_worker_fd, F_SETFL, fcntl(wp.incumbent_from_worker_fd, F_GETFL) | O_NONBLOCK);
 
   return true;
 }

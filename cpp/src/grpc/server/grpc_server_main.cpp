@@ -313,16 +313,17 @@ int main(int argc, char** argv)
     shm_ctrl->shutdown_requested = true;
     cancel_all_active_jobs_for_shutdown();
     kill_all_workers();
-    // Close our pipe ends so any background thread blocked in write/read
-    // returns instead of delaying join past Ctrl-C.
-    close_all_server_worker_pipes();
     result_cv.notify_all();
 
+    // Join writers/readers before closing FDs. Closing a pipe FD from another
+    // thread does not unblock an in-flight write on Linux and can race with
+    // FD-number reuse. Pipe I/O aborts via shutdown_requested + O_NONBLOCK.
     if (result_thread.joinable()) result_thread.join();
     if (incumbent_thread.joinable()) incumbent_thread.join();
     if (monitor_thread.joinable()) monitor_thread.join();
     if (reaper_thread.joinable()) reaper_thread.join();
 
+    close_all_server_worker_pipes();
     wait_for_workers();
     cleanup_shared_memory();
   };
@@ -395,7 +396,9 @@ int main(int argc, char** argv)
 
     cancel_all_active_jobs_for_shutdown();
     kill_all_workers();
-    close_all_server_worker_pipes();
+    // Do not close server-side pipes here: result/incumbent threads may still
+    // be in write_to_pipe/read_from_pipe. They abort via shutdown_requested;
+    // shutdown_all() closes FDs after those threads join.
     if (server) {
       auto deadline = std::chrono::system_clock::now() + std::chrono::seconds(1);
       server->Shutdown(deadline);
