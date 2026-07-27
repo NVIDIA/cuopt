@@ -173,8 +173,8 @@ enums:
     # categories (QP, SOCP, ...).
     proto_enum_only: true
     values:
-    - LP
-    - MIP
+    - LP: 0
+    - MIP: 1
     - VRP: 1000
 
   # ResultFieldId is auto-derived from solution/warm-start array_id fields.
