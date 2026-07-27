@@ -11,7 +11,8 @@ ConfigureTest(LP_UNIT_TEST
 ConfigureTest(MPS_FAST_PARSER_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/experimental_mps_fast/fast_fp64_parser_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/experimental_mps_fast/fast_parser_edge_test.cpp
-    LABELS numopt)
+    LABELS numopt
+    STATIC_LIB)
 target_include_directories(MPS_FAST_PARSER_TEST
     PRIVATE
     "${CUOPT_TEST_DIR}/../src/io/experimental_mps_fast"
