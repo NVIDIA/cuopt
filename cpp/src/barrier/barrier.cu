@@ -269,7 +269,9 @@ class iteration_data_t {
       device_ADAT(lp.num_rows, lp.num_rows, 0, lp.handle_ptr->get_stream()),
       device_augmented(
         lp.num_cols + lp.num_rows, lp.num_cols + lp.num_rows, 0, lp.handle_ptr->get_stream()),
-      augmented_csr_metadata_(lp.handle_ptr->get_stream()),
+      device_A_csc_(lp.handle_ptr->get_stream()),
+      device_Q_csc_(lp.handle_ptr->get_stream()),
+      device_AT_csc_(lp.handle_ptr->get_stream()),
       d_original_A_values(0, lp.handle_ptr->get_stream()),
       device_A_x_values(0, lp.handle_ptr->get_stream()),
       d_inv_diag_prime(0, lp.handle_ptr->get_stream()),
@@ -278,17 +280,7 @@ class iteration_data_t {
       d_inv_diag(lp.num_cols, lp.handle_ptr->get_stream()),
       d_cols_to_remove(0, lp.handle_ptr->get_stream()),
       d_augmented_diagonal_indices_(0, lp.handle_ptr->get_stream()),
-      d_cone_csr_indices_(0, lp.handle_ptr->get_stream()),
-      d_cone_Q_values_(0, lp.handle_ptr->get_stream()),
-      d_dense_cone_diag_csr_indices_(0, lp.handle_ptr->get_stream()),
-      d_sparse_hessian_diag_(0, lp.handle_ptr->get_stream()),
-      d_sparse_hessian_Q_(0, lp.handle_ptr->get_stream()),
-      d_sparse_exp_v_col_(0, lp.handle_ptr->get_stream()),
-      d_sparse_exp_u_col_(0, lp.handle_ptr->get_stream()),
-      d_sparse_exp_v_row_(0, lp.handle_ptr->get_stream()),
-      d_sparse_exp_u_row_(0, lp.handle_ptr->get_stream()),
-      d_sparse_expansion_D_(0, lp.handle_ptr->get_stream()),
-      d_sparse_Hs_diag_(0, lp.handle_ptr->get_stream()),
+      cone_kkt_data_(lp.handle_ptr->get_stream()),
       use_augmented(false),
       has_factorization(false),
       n_direct_free_linear(0),
@@ -625,17 +617,13 @@ class iteration_data_t {
 
     if (use_augmented) {
       raft::common::nvtx::range scope("Barrier: augmented: device CSC upload");
-      device_A_csc_.emplace(A, handle_ptr->get_stream());
-      device_AT_csc_.emplace(AT, handle_ptr->get_stream());
+      device_A_csc_.copy(A, handle_ptr->get_stream());
+      device_AT_csc_.copy(AT, handle_ptr->get_stream());
       if (Q.n > 0 && Q.col_start[Q.n] > 0) {
-        device_Q_csc_.emplace(Q, handle_ptr->get_stream());
+        device_Q_csc_.copy(Q, handle_ptr->get_stream());
       } else {
         // Keep an empty but correctly shaped Q so device views are never zero-sized/uninitialized.
-        device_Q_csc_.emplace(A.n, A.n, 0, handle_ptr->get_stream());
-        thrust::fill(rmm::exec_policy(handle_ptr->get_stream()),
-                     device_Q_csc_->col_start.begin(),
-                     device_Q_csc_->col_start.end(),
-                     i_t(0));
+        device_Q_csc_.reset_empty(A.n, A.n, handle_ptr->get_stream());
       }
     }
 
@@ -760,44 +748,27 @@ class iteration_data_t {
 
     if (first_call) {
       raft::common::nvtx::range scope("Barrier: augmented: device CSR build");
-      cuopt_assert(
-        device_A_csc_.has_value() && device_AT_csc_.has_value() && device_Q_csc_.has_value(),
-        "augmented CSR build requires device CSC matrices");
 
       const size_t n_sparse_entries = has_soc && p > 0 ? cones().n_sparse_cone_entries : size_t{0};
 
       if (has_soc) {
-        build_augmented_csr_metadata(cones(), augmented_csr_metadata_, stream_view_);
+        build_augmented_csr_metadata(cones(), cone_kkt_data_, stream_view_);
       } else {
-        augmented_csr_metadata_.dense_soc_kkt_nnz = 0;
+        cone_kkt_data_.dense_soc_kkt_nnz = 0;
       }
 
-      augmented_csr_side_buffers_t<i_t, f_t> side{d_augmented_diagonal_indices_,
-                                                  d_cone_csr_indices_,
-                                                  d_cone_Q_values_,
-                                                  d_dense_cone_diag_csr_indices_,
-                                                  d_sparse_hessian_diag_,
-                                                  d_sparse_hessian_Q_,
-                                                  d_sparse_exp_v_col_,
-                                                  d_sparse_exp_u_col_,
-                                                  d_sparse_exp_v_row_,
-                                                  d_sparse_exp_u_row_,
-                                                  d_sparse_expansion_D_};
-
-      raft::device_span<const i_t> element_cone_ids_span{};
-      raft::device_span<const size_t> cone_offsets_span{};
-      raft::device_span<const i_t> sparse_cone_ids_span{};
-      raft::device_span<const i_t> sparse_entry_offsets_span{};
-      size_t n_sparse_cone_entries = 0;
+      sparse_cone_views_t<i_t, f_t> cone_views;
       if (has_soc) {
-        element_cone_ids_span     = cuopt::make_span(cones().element_cone_ids);
-        cone_offsets_span         = cuopt::make_span(cones().cone_offsets);
-        sparse_cone_ids_span      = cuopt::make_span(cones().sparse_cone_ids);
-        sparse_entry_offsets_span = cuopt::make_span(cones().sparse_entry_offsets);
-        n_sparse_cone_entries     = cones().n_sparse_cone_entries;
+        cone_views.element_cone_ids      = cuopt::make_span(cones().element_cone_ids);
+        cone_views.cone_offsets          = cuopt::make_span(cones().cone_offsets);
+        cone_views.sparse_cone_ids       = cuopt::make_span(cones().sparse_cone_ids);
+        cone_views.sparse_entry_offsets  = cuopt::make_span(cones().sparse_entry_offsets);
+        cone_views.n_sparse_cone_entries = cones().n_sparse_cone_entries;
       }
 
-      if (n_sparse_entries > 0) { d_sparse_Hs_diag_.resize(n_sparse_entries, stream_view_); }
+      if (n_sparse_entries > 0) {
+        cone_kkt_data_.sparse_Hs_diag.resize(n_sparse_entries, stream_view_);
+      }
 
       const i_t total_nnz =
         build_augmented_csr_on_device(n,
@@ -808,18 +779,14 @@ class iteration_data_t {
                                       nnzQ,
                                       dual_perturb,
                                       primal_perturb,
-                                      *device_A_csc_,
-                                      *device_Q_csc_,
-                                      *device_AT_csc_,
+                                      device_A_csc_,
+                                      device_Q_csc_,
+                                      device_AT_csc_,
                                       raft::device_span<const f_t>{d_diag_.data(), d_diag_.size()},
-                                      element_cone_ids_span,
-                                      cone_offsets_span,
-                                      sparse_cone_ids_span,
-                                      sparse_entry_offsets_span,
-                                      n_sparse_cone_entries,
-                                      augmented_csr_metadata_,
+                                      cone_views,
+                                      cone_kkt_data_,
+                                      d_augmented_diagonal_indices_,
                                       device_augmented,
-                                      side,
                                       stream_view_);
 
       settings_.log.debug("augmented nz %d (gpu build)\n", total_nnz);
@@ -874,14 +841,14 @@ class iteration_data_t {
         if (cones().has_sparse_cones()) {
           scatter_sparse_hessian_into_augmented(cones(),
                                                 device_augmented.x,
-                                                d_sparse_Hs_diag_,
-                                                d_sparse_hessian_diag_,
-                                                d_sparse_hessian_Q_,
-                                                d_sparse_exp_v_col_,
-                                                d_sparse_exp_u_col_,
-                                                d_sparse_exp_v_row_,
-                                                d_sparse_exp_u_row_,
-                                                d_sparse_expansion_D_,
+                                                cone_kkt_data_.sparse_Hs_diag,
+                                                cone_kkt_data_.sparse_hessian_diag,
+                                                cone_kkt_data_.sparse_hessian_Q,
+                                                cone_kkt_data_.sparse_exp_v_col,
+                                                cone_kkt_data_.sparse_exp_u_col,
+                                                cone_kkt_data_.sparse_exp_v_row,
+                                                cone_kkt_data_.sparse_exp_u_row,
+                                                cone_kkt_data_.sparse_expansion_D,
                                                 handle_ptr->get_stream(),
                                                 dual_perturb);
           RAFT_CHECK_CUDA(handle_ptr->get_stream());
@@ -889,10 +856,10 @@ class iteration_data_t {
         if (cones().n_dense_cones() > 0) {
           scatter_dense_hessian_into_augmented(cones(),
                                                device_augmented.x,
-                                               d_cone_csr_indices_,
-                                               d_cone_Q_values_,
-                                               augmented_csr_metadata_.dense_block_offsets,
-                                               augmented_csr_metadata_.dense_cone_ids,
+                                               cone_kkt_data_.cone_csr_indices,
+                                               cone_kkt_data_.cone_Q_values,
+                                               cone_kkt_data_.dense_block_offsets,
+                                               cone_kkt_data_.dense_cone_ids,
                                                handle_ptr->get_stream(),
                                                dual_perturb);
           RAFT_CHECK_CUDA(handle_ptr->get_stream());
@@ -1844,7 +1811,8 @@ class iteration_data_t {
           raft::device_span<f_t>(d_r1_.data(), d_r1_.size()),
           raft::device_span<f_t>(d_aug_y_exp_.data(), d_aug_y_exp_.size()),
           cones(),
-          raft::device_span<const f_t>(d_sparse_Hs_diag_.data(), d_sparse_Hs_diag_.size()),
+          raft::device_span<const f_t>(cone_kkt_data_.sparse_Hs_diag.data(),
+                                       cone_kkt_data_.sparse_Hs_diag.size()),
           cone_start(),
           n,
           m,
@@ -1946,10 +1914,9 @@ class iteration_data_t {
   csc_matrix_t<i_t, f_t> ADAT;
   // csc_matrix_t<i_t, f_t> augmented;
   device_csr_matrix_t<i_t, f_t> device_augmented;
-  std::optional<device_csc_matrix_t<i_t, f_t>> device_A_csc_;
-  std::optional<device_csc_matrix_t<i_t, f_t>> device_Q_csc_;
-  std::optional<device_csc_matrix_t<i_t, f_t>> device_AT_csc_;
-  augmented_csr_metadata_t<i_t, f_t> augmented_csr_metadata_;
+  device_csc_matrix_t<i_t, f_t> device_A_csc_;
+  device_csc_matrix_t<i_t, f_t> device_Q_csc_;
+  device_csc_matrix_t<i_t, f_t> device_AT_csc_;
 
   device_csr_matrix_t<i_t, f_t> device_ADAT;
   device_csr_matrix_t<i_t, f_t> device_A;
@@ -1977,17 +1944,7 @@ class iteration_data_t {
   std::vector<f_t> Qdiag;
   bool Q_diagonal;
   rmm::device_uvector<i_t> d_augmented_diagonal_indices_;
-  rmm::device_uvector<i_t> d_cone_csr_indices_;
-  rmm::device_uvector<f_t> d_cone_Q_values_;
-  rmm::device_uvector<i_t> d_dense_cone_diag_csr_indices_;
-  rmm::device_uvector<i_t> d_sparse_hessian_diag_;
-  rmm::device_uvector<f_t> d_sparse_hessian_Q_;
-  rmm::device_uvector<i_t> d_sparse_exp_v_col_;
-  rmm::device_uvector<i_t> d_sparse_exp_u_col_;
-  rmm::device_uvector<i_t> d_sparse_exp_v_row_;
-  rmm::device_uvector<i_t> d_sparse_exp_u_row_;
-  rmm::device_uvector<i_t> d_sparse_expansion_D_;
-  rmm::device_uvector<f_t> d_sparse_Hs_diag_;
+  cone_kkt_data_t<i_t, f_t> cone_kkt_data_;
   bool indefinite_Q;
   cusparse_view_t<i_t, f_t> cusparse_Q_view_;
 

@@ -210,7 +210,7 @@ class device_csc_matrix_t {
     return A;
   }
 
-  void copy(csc_matrix_t<i_t, f_t>& A, rmm::cuda_stream_view stream)
+  void copy(const csc_matrix_t<i_t, f_t>& A, rmm::cuda_stream_view stream)
   {
     m      = A.m;
     n      = A.n;
@@ -221,6 +221,16 @@ class device_csc_matrix_t {
     raft::copy(i.data(), A.i.data(), A.i.size(), stream);
     x.resize(A.x.size(), stream);
     raft::copy(x.data(), A.x.data(), A.x.size(), stream);
+  }
+
+  /** Reset to an empty (all-zero col_start, no nonzeros) matrix of the given shape. */
+  void reset_empty(i_t rows, i_t cols, rmm::cuda_stream_view stream)
+  {
+    m      = rows;
+    n      = cols;
+    nz_max = 0;
+    resize_to_nnz(0, stream);
+    thrust::fill(rmm::exec_policy(stream), col_start.begin(), col_start.end(), i_t(0));
   }
 
   /** Same semantics as csc_matrix_t::to_compressed_row, entirely on

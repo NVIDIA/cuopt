@@ -24,46 +24,58 @@ namespace cuopt::mathematical_optimization::barrier {
 
 constexpr int augmented_csr_block_size = 256;
 
+// Cone -> augmented-KKT-CSR assembly data.
 template <std::integral i_t, std::floating_point f_t>
-struct augmented_csr_metadata_t {
-  explicit augmented_csr_metadata_t(rmm::cuda_stream_view stream)
+struct cone_kkt_data_t {
+  explicit cone_kkt_data_t(rmm::cuda_stream_view stream)
     : sparse_ids_by_cone(0, stream),
       dense_ids_by_cone(0, stream),
       dense_cone_entry_rank(0, stream),
       dense_block_offsets(0, stream),
-      dense_cone_ids(0, stream)
+      dense_cone_ids(0, stream),
+      cone_csr_indices(0, stream),
+      cone_Q_values(0, stream),
+      dense_cone_diag_csr_indices(0, stream),
+      sparse_hessian_diag(0, stream),
+      sparse_hessian_Q(0, stream),
+      sparse_exp_v_col(0, stream),
+      sparse_exp_u_col(0, stream),
+      sparse_exp_v_row(0, stream),
+      sparse_exp_u_row(0, stream),
+      sparse_expansion_D(0, stream),
+      sparse_Hs_diag(0, stream)
   {
   }
 
+  // Routing metadata (build_augmented_csr_metadata).
   rmm::device_uvector<i_t> sparse_ids_by_cone;
   rmm::device_uvector<i_t> dense_ids_by_cone;
   rmm::device_uvector<i_t> dense_cone_entry_rank;
   rmm::device_uvector<size_t> dense_block_offsets;
   rmm::device_uvector<i_t> dense_cone_ids;
   i_t dense_soc_kkt_nnz{0};
+
+  // CSR positions / baked-in values (fill_augmented_csr_row_kernel).
+  rmm::device_uvector<i_t> cone_csr_indices;
+  rmm::device_uvector<f_t> cone_Q_values;
+  rmm::device_uvector<i_t> dense_cone_diag_csr_indices;
+  rmm::device_uvector<i_t> sparse_hessian_diag;
+  rmm::device_uvector<f_t> sparse_hessian_Q;
+  rmm::device_uvector<i_t> sparse_exp_v_col;
+  rmm::device_uvector<i_t> sparse_exp_u_col;
+  rmm::device_uvector<i_t> sparse_exp_v_row;
+  rmm::device_uvector<i_t> sparse_exp_u_row;
+  rmm::device_uvector<i_t> sparse_expansion_D;
+  rmm::device_uvector<f_t> sparse_Hs_diag;  // recomputed every refactorization
 };
 
-// Host-side handle referencing the persistent side-index device buffers. Used to resize them on
-// the host before the fill kernel runs. rmm::device_uvector is a host-only type, so these
-// references must NOT be dereferenced inside a kernel.
+// Device-usable view of the cone-augmented-CSR buffers (plain spans, safe to pass to kernels).
+// augmented_diagonal_indices is the one non-cone field: it indexes the diagonal of every
+// augmented-matrix row (linear, dual, and cone alike), but is populated in the same
+// fill/refactor-scatter pass as the cone fields below, so it's threaded through here rather than
+// via a separate parameter.
 template <std::integral i_t, std::floating_point f_t>
-struct augmented_csr_side_buffers_t {
-  rmm::device_uvector<i_t>& augmented_diagonal_indices;
-  rmm::device_uvector<i_t>& cone_csr_indices;
-  rmm::device_uvector<f_t>& cone_Q_values;
-  rmm::device_uvector<i_t>& dense_cone_diag_csr_indices;
-  rmm::device_uvector<i_t>& sparse_hessian_diag;
-  rmm::device_uvector<f_t>& sparse_hessian_Q;
-  rmm::device_uvector<i_t>& sparse_exp_v_col;
-  rmm::device_uvector<i_t>& sparse_exp_u_col;
-  rmm::device_uvector<i_t>& sparse_exp_v_row;
-  rmm::device_uvector<i_t>& sparse_exp_u_row;
-  rmm::device_uvector<i_t>& sparse_expansion_D;
-};
-
-// Device-usable view of the side-index buffers (plain spans, safe to pass to kernels).
-template <std::integral i_t, std::floating_point f_t>
-struct augmented_csr_side_views_t {
+struct cone_kkt_views_t {
   raft::device_span<i_t> augmented_diagonal_indices;
   raft::device_span<i_t> cone_csr_indices;
   raft::device_span<f_t> cone_Q_values;
@@ -78,20 +90,34 @@ struct augmented_csr_side_views_t {
 };
 
 template <std::integral i_t, std::floating_point f_t>
-augmented_csr_side_views_t<i_t, f_t> make_side_views(augmented_csr_side_buffers_t<i_t, f_t>& b)
+cone_kkt_views_t<i_t, f_t> make_cone_kkt_views(cone_kkt_data_t<i_t, f_t>& d,
+                                               rmm::device_uvector<i_t>& augmented_diagonal_indices)
 {
-  return augmented_csr_side_views_t<i_t, f_t>{cuopt::make_span(b.augmented_diagonal_indices),
-                                              cuopt::make_span(b.cone_csr_indices),
-                                              cuopt::make_span(b.cone_Q_values),
-                                              cuopt::make_span(b.dense_cone_diag_csr_indices),
-                                              cuopt::make_span(b.sparse_hessian_diag),
-                                              cuopt::make_span(b.sparse_hessian_Q),
-                                              cuopt::make_span(b.sparse_exp_v_col),
-                                              cuopt::make_span(b.sparse_exp_u_col),
-                                              cuopt::make_span(b.sparse_exp_v_row),
-                                              cuopt::make_span(b.sparse_exp_u_row),
-                                              cuopt::make_span(b.sparse_expansion_D)};
+  return cone_kkt_views_t<i_t, f_t>{cuopt::make_span(augmented_diagonal_indices),
+                                    cuopt::make_span(d.cone_csr_indices),
+                                    cuopt::make_span(d.cone_Q_values),
+                                    cuopt::make_span(d.dense_cone_diag_csr_indices),
+                                    cuopt::make_span(d.sparse_hessian_diag),
+                                    cuopt::make_span(d.sparse_hessian_Q),
+                                    cuopt::make_span(d.sparse_exp_v_col),
+                                    cuopt::make_span(d.sparse_exp_u_col),
+                                    cuopt::make_span(d.sparse_exp_v_row),
+                                    cuopt::make_span(d.sparse_exp_u_row),
+                                    cuopt::make_span(d.sparse_expansion_D)};
 }
+
+// Per-call read-only spans describing the cone <-> row-element mapping, sourced from cone_data_t
+// (cones()) inside form_augmented(). Distinct from cone_kkt_views_t above: this struct
+// is entirely read-only classification input (not mutable write-targets), and is genuinely all
+// cone data (no non-cone fields).
+template <std::integral i_t, std::floating_point f_t>
+struct sparse_cone_views_t {
+  raft::device_span<const i_t> element_cone_ids{};
+  raft::device_span<const size_t> cone_offsets{};
+  raft::device_span<const i_t> sparse_cone_ids{};
+  raft::device_span<const i_t> sparse_entry_offsets{};
+  size_t n_sparse_cone_entries{0};
+};
 
 template <std::integral i_t>
 __global__ void scatter_sparse_ids_by_cone_kernel(raft::device_span<i_t> sparse_ids_by_cone,
@@ -235,9 +261,7 @@ __global__ void count_augmented_row_nnz_kernel(i_t factorization_size,
                                                csc_view_t<i_t, f_t> A,
                                                csc_view_t<i_t, f_t> Q,
                                                csc_view_t<i_t, f_t> AT,
-                                               raft::device_span<const i_t> element_cone_ids,
-                                               raft::device_span<const size_t> cone_offsets,
-                                               raft::device_span<const i_t> sparse_cone_ids,
+                                               sparse_cone_views_t<i_t, f_t> cone_views,
                                                raft::device_span<const i_t> sparse_ids_by_cone,
                                                raft::device_span<i_t> row_nnz)
 {
@@ -245,8 +269,15 @@ __global__ void count_augmented_row_nnz_kernel(i_t factorization_size,
   if (row >= factorization_size) { return; }
 
   if (row < n) {
-    row_nnz[row] = count_primal_row_nnz_device(
-      row, cone_start, m_c, nnzQ, A, Q, element_cone_ids, cone_offsets, sparse_ids_by_cone);
+    row_nnz[row] = count_primal_row_nnz_device(row,
+                                               cone_start,
+                                               m_c,
+                                               nnzQ,
+                                               A,
+                                               Q,
+                                               cone_views.element_cone_ids,
+                                               cone_views.cone_offsets,
+                                               sparse_ids_by_cone);
     return;
   }
 
@@ -258,8 +289,8 @@ __global__ void count_augmented_row_nnz_kernel(i_t factorization_size,
 
   const i_t exp_row = row - (n + m);
   const i_t s       = exp_row / 2;
-  const i_t k       = sparse_cone_ids[s];
-  const i_t q_k     = static_cast<i_t>(cone_offsets[k + 1] - cone_offsets[k]);
+  const i_t k       = cone_views.sparse_cone_ids[s];
+  const i_t q_k     = static_cast<i_t>(cone_views.cone_offsets[k + 1] - cone_views.cone_offsets[k]);
   row_nnz[row]      = q_k + 1;
 }
 
@@ -280,15 +311,12 @@ __global__ void fill_augmented_csr_row_kernel(i_t factorization_size,
                                               raft::device_span<const i_t> row_start,
                                               raft::device_span<i_t> j,
                                               raft::device_span<f_t> x,
-                                              raft::device_span<const i_t> element_cone_ids,
-                                              raft::device_span<const size_t> cone_offsets,
-                                              raft::device_span<const i_t> sparse_cone_ids,
+                                              sparse_cone_views_t<i_t, f_t> cone_views,
                                               raft::device_span<const i_t> sparse_ids_by_cone,
                                               raft::device_span<const i_t> dense_ids_by_cone,
                                               raft::device_span<const size_t> dense_block_offsets,
                                               raft::device_span<const i_t> dense_cone_entry_rank,
-                                              raft::device_span<const i_t> sparse_entry_offsets,
-                                              augmented_csr_side_views_t<i_t, f_t> side)
+                                              cone_kkt_views_t<i_t, f_t> views)
 {
   const i_t row = static_cast<i_t>(blockIdx.x * blockDim.x + threadIdx.x);
   if (row >= factorization_size) { return; }
@@ -306,11 +334,12 @@ __global__ void fill_augmented_csr_row_kernel(i_t factorization_size,
     i_t exp_u_col       = 0;
 
     if (is_cone_row) {
-      const i_t local_idx      = row - cone_start;
-      const i_t k              = element_cone_ids[local_idx];
-      const i_t local_r        = static_cast<i_t>(static_cast<size_t>(local_idx) - cone_offsets[k]);
-      const i_t q_k            = static_cast<i_t>(cone_offsets[k + 1] - cone_offsets[k]);
-      const i_t cone_col_start = cone_start + static_cast<i_t>(cone_offsets[k]);
+      const i_t local_idx = row - cone_start;
+      const i_t k         = cone_views.element_cone_ids[local_idx];
+      const i_t local_r =
+        static_cast<i_t>(static_cast<size_t>(local_idx) - cone_views.cone_offsets[k]);
+      const i_t q_k = static_cast<i_t>(cone_views.cone_offsets[k + 1] - cone_views.cone_offsets[k]);
+      const i_t cone_col_start = cone_start + static_cast<i_t>(cone_views.cone_offsets[k]);
       const i_t sparse_idx     = sparse_ids_by_cone[k];
 
       if (sparse_idx >= 0) {
@@ -330,12 +359,12 @@ __global__ void fill_augmented_csr_row_kernel(i_t factorization_size,
           q_contrib = Q.x[qp];
           ++qp;
         }
-        const size_t flat_idx                = sparse_entry_offsets[sparse_idx] + local_r;
-        side.sparse_hessian_diag[flat_idx]   = q;
-        side.sparse_hessian_Q[flat_idx]      = q_contrib;
-        side.augmented_diagonal_indices[row] = q;
-        j[q]                                 = row;
-        x[q++]                               = -dual_perturb - q_contrib;
+        const size_t flat_idx               = cone_views.sparse_entry_offsets[sparse_idx] + local_r;
+        views.sparse_hessian_diag[flat_idx] = q;
+        views.sparse_hessian_Q[flat_idx]    = q_contrib;
+        views.augmented_diagonal_indices[row] = q;
+        j[q]                                  = row;
+        x[q++]                                = -dual_perturb - q_contrib;
 
         for (; qp < q_end; ++qp) {
           j[q]   = Q.i[qp];
@@ -365,12 +394,12 @@ __global__ void fill_augmented_csr_row_kernel(i_t factorization_size,
               q_contrib = Q.x[qp];
               ++qp;
             }
-            side.cone_csr_indices[block_base + c] = q;
-            side.cone_Q_values[block_base + c]    = q_contrib;
+            views.cone_csr_indices[block_base + c] = q;
+            views.cone_Q_values[block_base + c]    = q_contrib;
             if (col == row) {
-              side.augmented_diagonal_indices[row] = q;
-              const i_t dense_rank                 = dense_cone_entry_rank[local_idx];
-              if (dense_rank >= 0) { side.dense_cone_diag_csr_indices[dense_rank] = q; }
+              views.augmented_diagonal_indices[row] = q;
+              const i_t dense_rank                  = dense_cone_entry_rank[local_idx];
+              if (dense_rank >= 0) { views.dense_cone_diag_csr_indices[dense_rank] = q; }
             }
             j[q]   = col;
             x[q++] = initial_val - q_contrib;
@@ -381,14 +410,14 @@ __global__ void fill_augmented_csr_row_kernel(i_t factorization_size,
           }
         } else {
           for (i_t c = 0; c < q_k; ++c) {
-            const i_t col                         = cone_col_start + c;
-            const f_t initial_val                 = (c == local_r) ? f_t(-dual_perturb) : f_t(0);
-            side.cone_csr_indices[block_base + c] = q;
-            side.cone_Q_values[block_base + c]    = f_t(0);
+            const i_t col                          = cone_col_start + c;
+            const f_t initial_val                  = (c == local_r) ? f_t(-dual_perturb) : f_t(0);
+            views.cone_csr_indices[block_base + c] = q;
+            views.cone_Q_values[block_base + c]    = f_t(0);
             if (col == row) {
-              side.augmented_diagonal_indices[row] = q;
-              const i_t dense_rank                 = dense_cone_entry_rank[local_idx];
-              if (dense_rank >= 0) { side.dense_cone_diag_csr_indices[dense_rank] = q; }
+              views.augmented_diagonal_indices[row] = q;
+              const i_t dense_rank                  = dense_cone_entry_rank[local_idx];
+              if (dense_rank >= 0) { views.dense_cone_diag_csr_indices[dense_rank] = q; }
             }
             j[q]   = col;
             x[q++] = initial_val;
@@ -396,9 +425,9 @@ __global__ void fill_augmented_csr_row_kernel(i_t factorization_size,
         }
       }
     } else if (nnzQ == 0) {
-      side.augmented_diagonal_indices[row] = q;
-      j[q]                                 = row;
-      x[q++]                               = -diag[row] - dual_perturb;
+      views.augmented_diagonal_indices[row] = q;
+      j[q]                                  = row;
+      x[q++]                                = -diag[row] - dual_perturb;
     } else {
       // Column-sorted: Q entries with column < row, the diagonal in place
       // (folding Q's diagonal if present), then Q entries with column > row.
@@ -413,9 +442,9 @@ __global__ void fill_augmented_csr_row_kernel(i_t factorization_size,
         q_diag = Q.x[qp];
         ++qp;
       }
-      side.augmented_diagonal_indices[row] = q;
-      j[q]                                 = row;
-      x[q++]                               = -q_diag - diag[row] - dual_perturb;
+      views.augmented_diagonal_indices[row] = q;
+      j[q]                                  = row;
+      x[q++]                                = -q_diag - diag[row] - dual_perturb;
       for (; qp < q_end; ++qp) {
         j[q]   = Q.i[qp];
         x[q++] = -Q.x[qp];
@@ -432,12 +461,12 @@ __global__ void fill_augmented_csr_row_kernel(i_t factorization_size,
 
     // Sparse-cone expansion columns (columns >= n + m).
     if (exp_v_col >= 0) {
-      side.sparse_exp_v_col[exp_flat_idx] = q;
-      j[q]                                = exp_v_col;
-      x[q++]                              = f_t(0);
-      side.sparse_exp_u_col[exp_flat_idx] = q;
-      j[q]                                = exp_u_col;
-      x[q++]                              = f_t(0);
+      views.sparse_exp_v_col[exp_flat_idx] = q;
+      j[q]                                 = exp_v_col;
+      x[q++]                               = f_t(0);
+      views.sparse_exp_u_col[exp_flat_idx] = q;
+      j[q]                                 = exp_u_col;
+      x[q++]                               = f_t(0);
     }
     return;
   }
@@ -451,35 +480,35 @@ __global__ void fill_augmented_csr_row_kernel(i_t factorization_size,
       j[q]   = AT.i[idx];
       x[q++] = AT.x[idx];
     }
-    side.augmented_diagonal_indices[row] = q;
-    j[q]                                 = row;
-    x[q++]                               = primal_perturb;
+    views.augmented_diagonal_indices[row] = q;
+    j[q]                                  = row;
+    x[q++]                                = primal_perturb;
     return;
   }
 
   // Fill the expansion column and D slot.
-  const i_t exp_row        = row - (n + m);
-  const i_t s              = exp_row / 2;
-  const i_t k              = sparse_cone_ids[s];
-  const i_t q_k            = static_cast<i_t>(cone_offsets[k + 1] - cone_offsets[k]);
-  const i_t cone_col_start = cone_start + static_cast<i_t>(cone_offsets[k]);
-  const size_t flat_base   = sparse_entry_offsets[s];
+  const i_t exp_row = row - (n + m);
+  const i_t s       = exp_row / 2;
+  const i_t k       = cone_views.sparse_cone_ids[s];
+  const i_t q_k     = static_cast<i_t>(cone_views.cone_offsets[k + 1] - cone_views.cone_offsets[k]);
+  const i_t cone_col_start = cone_start + static_cast<i_t>(cone_views.cone_offsets[k]);
+  const size_t flat_base   = cone_views.sparse_entry_offsets[s];
 
   raft::device_span<i_t> exp_row_idx =
-    (exp_row % 2 == 0) ? side.sparse_exp_v_row : side.sparse_exp_u_row;
+    (exp_row % 2 == 0) ? views.sparse_exp_v_row : views.sparse_exp_u_row;
   for (i_t jj = 0; jj < q_k; ++jj) {
     exp_row_idx[flat_base + jj] = q;
     j[q]                        = cone_col_start + jj;
     x[q++]                      = f_t(0);
   }
-  side.sparse_expansion_D[exp_row] = q;
-  j[q]                             = n + m + exp_row;
-  x[q++]                           = f_t(0);
+  views.sparse_expansion_D[exp_row] = q;
+  j[q]                              = n + m + exp_row;
+  x[q++]                            = f_t(0);
 }
 
 template <std::integral i_t, std::floating_point f_t>
 void build_augmented_csr_metadata(const cone_data_t<i_t, f_t>& cones,
-                                  augmented_csr_metadata_t<i_t, f_t>& metadata,
+                                  cone_kkt_data_t<i_t, f_t>& metadata,
                                   rmm::cuda_stream_view stream)
 {
   raft::common::nvtx::range scope("Barrier: augmented: device CSR metadata");
@@ -606,14 +635,10 @@ i_t build_augmented_csr_on_device(i_t n,
                                   device_csc_matrix_t<i_t, f_t>& Q,
                                   device_csc_matrix_t<i_t, f_t>& AT,
                                   raft::device_span<const f_t> diag,
-                                  raft::device_span<const i_t> element_cone_ids,
-                                  raft::device_span<const size_t> cone_offsets,
-                                  raft::device_span<const i_t> sparse_cone_ids,
-                                  raft::device_span<const i_t> sparse_entry_offsets,
-                                  size_t n_sparse_cone_entries,
-                                  augmented_csr_metadata_t<i_t, f_t>& metadata,
+                                  sparse_cone_views_t<i_t, f_t> cone_views,
+                                  cone_kkt_data_t<i_t, f_t>& cone_data,
+                                  rmm::device_uvector<i_t>& augmented_diagonal_indices,
                                   device_csr_matrix_t<i_t, f_t>& device_augmented,
-                                  augmented_csr_side_buffers_t<i_t, f_t> side,
                                   rmm::cuda_stream_view stream)
 {
   const i_t factorization_size       = n + m + p;
@@ -635,10 +660,8 @@ i_t build_augmented_csr_on_device(i_t n,
       A_view,
       Q_view,
       AT_view,
-      element_cone_ids,
-      cone_offsets,
-      sparse_cone_ids,
-      cuopt::make_span(metadata.sparse_ids_by_cone),
+      cone_views,
+      cuopt::make_span(cone_data.sparse_ids_by_cone),
       cuopt::make_span(row_nnz));
     RAFT_CUDA_TRY(cudaPeekAtLastError());
   }
@@ -663,32 +686,34 @@ i_t build_augmented_csr_on_device(i_t n,
     device_augmented.x.resize(total_nnz, stream);
   }
 
-  // Resize a side buffer and initialize every element to a sentinel in one shot.
+  // Resize a buffer and initialize every element to a sentinel in one shot.
   // A size of 0 makes both the resize and the fill no-ops.
   auto resize_and_fill = [&](auto& buf, size_t size, auto value) {
     buf.resize(size, stream);
     thrust::fill(rmm::exec_policy(stream), buf.begin(), buf.end(), value);
   };
 
-  resize_and_fill(side.augmented_diagonal_indices, factorization_size, i_t(-1));
-  resize_and_fill(side.cone_csr_indices, metadata.dense_soc_kkt_nnz, i_t(-1));
-  resize_and_fill(side.cone_Q_values, metadata.dense_soc_kkt_nnz, f_t(0));
+  resize_and_fill(augmented_diagonal_indices, factorization_size, i_t(-1));
+  resize_and_fill(cone_data.cone_csr_indices, cone_data.dense_soc_kkt_nnz, i_t(-1));
+  resize_and_fill(cone_data.cone_Q_values, cone_data.dense_soc_kkt_nnz, f_t(0));
 
-  const size_t n_sparse_entries = n_sparse_cone_entries;
-  resize_and_fill(side.sparse_hessian_diag, n_sparse_entries, i_t(-1));
-  resize_and_fill(side.sparse_hessian_Q, n_sparse_entries, f_t(0));
-  resize_and_fill(side.sparse_exp_v_col, n_sparse_entries, i_t(-1));
-  resize_and_fill(side.sparse_exp_u_col, n_sparse_entries, i_t(-1));
-  resize_and_fill(side.sparse_exp_v_row, n_sparse_entries, i_t(-1));
-  resize_and_fill(side.sparse_exp_u_row, n_sparse_entries, i_t(-1));
-  resize_and_fill(side.sparse_expansion_D, p, i_t(-1));
+  const size_t n_sparse_entries = cone_views.n_sparse_cone_entries;
+  resize_and_fill(cone_data.sparse_hessian_diag, n_sparse_entries, i_t(-1));
+  resize_and_fill(cone_data.sparse_hessian_Q, n_sparse_entries, f_t(0));
+  resize_and_fill(cone_data.sparse_exp_v_col, n_sparse_entries, i_t(-1));
+  resize_and_fill(cone_data.sparse_exp_u_col, n_sparse_entries, i_t(-1));
+  resize_and_fill(cone_data.sparse_exp_v_row, n_sparse_entries, i_t(-1));
+  resize_and_fill(cone_data.sparse_exp_u_row, n_sparse_entries, i_t(-1));
+  resize_and_fill(cone_data.sparse_expansion_D, p, i_t(-1));
 
-  const i_t n_dense_entries = static_cast<i_t>(m_c) - static_cast<i_t>(n_sparse_cone_entries);
-  resize_and_fill(side.dense_cone_diag_csr_indices, std::max<i_t>(0, n_dense_entries), i_t(-1));
+  const i_t n_dense_entries =
+    static_cast<i_t>(m_c) - static_cast<i_t>(cone_views.n_sparse_cone_entries);
+  resize_and_fill(
+    cone_data.dense_cone_diag_csr_indices, std::max<i_t>(0, n_dense_entries), i_t(-1));
 
   {
     raft::common::nvtx::range scope("Barrier: augmented: device CSR fill");
-    auto side_views   = make_side_views(side);
+    auto views        = make_cone_kkt_views(cone_data, augmented_diagonal_indices);
     const size_t grid = raft::ceildiv<size_t>(factorization_size, augmented_csr_block_size);
     fill_augmented_csr_row_kernel<i_t, f_t><<<grid, augmented_csr_block_size, 0, stream.value()>>>(
       factorization_size,
@@ -707,15 +732,12 @@ i_t build_augmented_csr_on_device(i_t n,
       cuopt::make_span(device_augmented.row_start),
       cuopt::make_span(device_augmented.j),
       cuopt::make_span(device_augmented.x),
-      element_cone_ids,
-      cone_offsets,
-      sparse_cone_ids,
-      cuopt::make_span(metadata.sparse_ids_by_cone),
-      cuopt::make_span(metadata.dense_ids_by_cone),
-      cuopt::make_span(metadata.dense_block_offsets),
-      cuopt::make_span(metadata.dense_cone_entry_rank),
-      sparse_entry_offsets,
-      side_views);
+      cone_views,
+      cuopt::make_span(cone_data.sparse_ids_by_cone),
+      cuopt::make_span(cone_data.dense_ids_by_cone),
+      cuopt::make_span(cone_data.dense_block_offsets),
+      cuopt::make_span(cone_data.dense_cone_entry_rank),
+      views);
     RAFT_CUDA_TRY(cudaPeekAtLastError());
   }
 

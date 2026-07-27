@@ -358,7 +358,7 @@ TEST(sparse_augmented_kkt, gpu_augmented_csr_metadata_matches_host)
   cone_data_t<int, double> cones(
     cone_dimensions, cuopt::make_span(x), cuopt::make_span(z), stream, /*soc_threshold=*/4);
 
-  augmented_csr_metadata_t<int, double> metadata(stream);
+  cone_kkt_data_t<int, double> metadata(stream);
   build_augmented_csr_metadata(cones, metadata, stream);
 
   auto sparse_idx_host    = cuopt::host_copy(metadata.sparse_ids_by_cone, stream);
@@ -462,57 +462,38 @@ TEST(sparse_augmented_kkt, augmented_csr_indices_mixed_dense_sparse_qp)
   ASSERT_EQ(p, 2);
   ASSERT_EQ(cones.n_sparse_cone_entries, 4u);
 
-  augmented_csr_metadata_t<i_t, f_t> metadata(stream);
-  build_augmented_csr_metadata(cones, metadata, stream);
+  cone_kkt_data_t<i_t, f_t> cone_data(stream);
+  build_augmented_csr_metadata(cones, cone_data, stream);
 
   device_csr_matrix_t<i_t, f_t> device_augmented(stream);
   rmm::device_uvector<i_t> d_augmented_diagonal_indices(0, stream);
-  rmm::device_uvector<i_t> d_cone_csr_indices(0, stream);
-  rmm::device_uvector<f_t> d_cone_Q_values(0, stream);
-  rmm::device_uvector<i_t> d_dense_cone_diag_csr_indices(0, stream);
-  rmm::device_uvector<i_t> d_sparse_hessian_diag(0, stream);
-  rmm::device_uvector<f_t> d_sparse_hessian_Q(0, stream);
-  rmm::device_uvector<i_t> d_sparse_exp_v_col(0, stream);
-  rmm::device_uvector<i_t> d_sparse_exp_u_col(0, stream);
-  rmm::device_uvector<i_t> d_sparse_exp_v_row(0, stream);
-  rmm::device_uvector<i_t> d_sparse_exp_u_row(0, stream);
-  rmm::device_uvector<i_t> d_sparse_expansion_D(0, stream);
 
-  augmented_csr_side_buffers_t<i_t, f_t> side{d_augmented_diagonal_indices,
-                                              d_cone_csr_indices,
-                                              d_cone_Q_values,
-                                              d_dense_cone_diag_csr_indices,
-                                              d_sparse_hessian_diag,
-                                              d_sparse_hessian_Q,
-                                              d_sparse_exp_v_col,
-                                              d_sparse_exp_u_col,
-                                              d_sparse_exp_v_row,
-                                              d_sparse_exp_u_row,
-                                              d_sparse_expansion_D};
-
-  const i_t total_nnz = build_augmented_csr_on_device(
-    n,
-    m,
-    p,
-    cone_start,
-    m_c,
-    nnzQ,
-    dual_perturb,
-    primal_perturb,
-    d_A,
-    d_Q,
-    d_AT,
-    raft::device_span<const f_t>{d_diag.data(), d_diag.size()},
+  sparse_cone_views_t<i_t, f_t> cone_views{
     raft::device_span<const i_t>{cones.element_cone_ids.data(), cones.element_cone_ids.size()},
     raft::device_span<const size_t>{cones.cone_offsets.data(), cones.cone_offsets.size()},
     raft::device_span<const i_t>{cones.sparse_cone_ids.data(), cones.sparse_cone_ids.size()},
     raft::device_span<const i_t>{cones.sparse_entry_offsets.data(),
                                  cones.sparse_entry_offsets.size()},
-    cones.n_sparse_cone_entries,
-    metadata,
-    device_augmented,
-    side,
-    stream);
+    cones.n_sparse_cone_entries};
+
+  const i_t total_nnz =
+    build_augmented_csr_on_device(n,
+                                  m,
+                                  p,
+                                  cone_start,
+                                  m_c,
+                                  nnzQ,
+                                  dual_perturb,
+                                  primal_perturb,
+                                  d_A,
+                                  d_Q,
+                                  d_AT,
+                                  raft::device_span<const f_t>{d_diag.data(), d_diag.size()},
+                                  cone_views,
+                                  cone_data,
+                                  d_augmented_diagonal_indices,
+                                  device_augmented,
+                                  stream);
 
   // Expected column-sorted CSR. Row blocks: primal [0,8), dual [8,10),
   // expansion [10,12). Column blocks: primal [0,8), dual [8,10), expansion cols
