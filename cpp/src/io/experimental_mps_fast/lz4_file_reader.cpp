@@ -453,10 +453,11 @@ struct lz4_pipeline_t {
       window_count(cuda::ceil_div(input.compressed_size_, window_bytes)),
       windows(window_count),
       window_state_(std::make_unique<window_state_t[]>(
-        window_count)),  // NOSONAR: window_count declared before window_state_ (line 869 vs 891)
+        window_count)),  // NOSONAR(S836): window_count is declared before window_state_ in this
+                         // struct
       io_threads(std::min(lz4_input_max_io_threads, window_count)),
       window_done(window_count,
-                  0)  // NOSONAR: window_count declared before window_done (line 869 vs 880)
+                  0)  // NOSONAR(S836): window_count is declared before window_done in this struct
   {
     for (std::size_t i = 0; i < window_count; ++i) {
       std::size_t offset     = i * window_bytes;
