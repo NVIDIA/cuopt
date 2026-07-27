@@ -20,7 +20,7 @@
 #include "bounds_update_helpers.cuh"
 #include "multi_probe.cuh"
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 // Tobias Achterberg, Robert E. Bixby, Zonghao Gu, Edward Rothberg, Dieter Weninger (2019) Presolve
 // Reductions in Mixed Integer Programming. INFORMS Journal on Computing 32(2):473-506.
@@ -141,6 +141,10 @@ bool multi_probe_t<i_t, f_t>::calculate_bounds_update(problem_t<i_t, f_t>& pb,
   constexpr i_t zero       = 0;
   constexpr auto n_threads = 256;
 
+  upd_0.candidate_bound_scale =
+    pb.tolerances.absolute_tolerance / context.settings.semi_continuous_big_m;
+  upd_1.candidate_bound_scale =
+    pb.tolerances.absolute_tolerance / context.settings.semi_continuous_big_m;
   if (skip_0 && skip_1) {
     return false;
   } else if (skip_0) {
@@ -492,4 +496,4 @@ template class multi_probe_t<int, float>;
 template class multi_probe_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

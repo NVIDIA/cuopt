@@ -27,7 +27,7 @@ struct double_to_float_functor {
   __host__ __device__ float operator()(double val) const { return static_cast<float>(val); }
 };
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 
 // cusparse_sp_mat_descr_wrapper_t implementation
 template <typename i_t, typename f_t>
@@ -270,27 +270,29 @@ void my_cusparsespmm_preprocess(cusparseHandle_t handle,
 }
 #endif
 
-#if CUDA_VER_13_2_UP
+#if CUOPT_CUSPARSE_VER_12_8_UP
 // SpMVOp symbols. Resolved at runtime via dlsym, because the runtime minor version might not match
 // the compiled minor version. We can go back to direct linking once CUDA 14 is adopted
 using cusparseSpMVOp_destroyDescr_sig = cusparse_sig<cusparseSpMVOpDescr_t>;
 using cusparseSpMVOp_destroyPlan_sig  = cusparse_sig<cusparseSpMVOpPlan_t>;
 using cusparseSpMVOp_bufferSize_sig   = cusparse_sig<cusparseHandle_t,
                                                      cusparseOperation_t,
-                                                     cusparseSpMatDescr_t,
-                                                     cusparseDnVecDescr_t,
+                                                     cusparseConstSpMatDescr_t,
+                                                     cusparseConstDnVecDescr_t,
                                                      cusparseDnVecDescr_t,
                                                      cusparseDnVecDescr_t,
                                                      cudaDataType,
+                                                     cusparseSpMVOpAlg_t,
                                                      size_t*>;
 using cusparseSpMVOp_createDescr_sig  = cusparse_sig<cusparseHandle_t,
                                                      cusparseSpMVOpDescr_t*,
                                                      cusparseOperation_t,
-                                                     cusparseSpMatDescr_t,
-                                                     cusparseDnVecDescr_t,
+                                                     cusparseConstSpMatDescr_t,
+                                                     cusparseConstDnVecDescr_t,
                                                      cusparseDnVecDescr_t,
                                                      cusparseDnVecDescr_t,
                                                      cudaDataType,
+                                                     cusparseSpMVOpAlg_t,
                                                      void*>;
 using cusparseSpMVOp_createPlan_sig =
   cusparse_sig<cusparseHandle_t, cusparseSpMVOpDescr_t, cusparseSpMVOpPlan_t*, char*, size_t>;
@@ -314,7 +316,8 @@ cusparseStatus_t cusparse_spmvop_descr_wrapper_t::dlsym_create(cusparseHandle_t 
 {
   static const auto fn =
     dynamic_load_runtime::function<cusparseSpMVOp_createDescr_sig>("cusparseSpMVOp_createDescr");
-  return (*fn)(handle, descr, opA, matA, vecX, vecY, vecZ, computeType, buffer);
+  return (*fn)(
+    handle, descr, opA, matA, vecX, vecY, vecZ, computeType, CUSPARSE_SPMVOP_ALG_DEFAULT, buffer);
 }
 
 cusparseStatus_t cusparse_spmvop_descr_wrapper_t::dlsym_destroy(cusparseSpMVOpDescr_t descr)
@@ -436,7 +439,7 @@ void cusparse_spmvop_run(cusparseHandle_t handle,
   RAFT_CUSPARSE_TRY(cusparseSetStream(handle, stream));
   RAFT_CUSPARSE_TRY((*func)(handle, plan, alpha, beta, vecX, vecY, vecZ));
 }
-#endif
+#endif  // CUOPT_CUSPARSE_VER_12_8_UP
 
 // This cstr is used in pdhg, step size strategy and in cuPDLPx infeasible detection
 // A_T is owned by the scaled problem
@@ -444,14 +447,14 @@ void cusparse_spmvop_run(cusparseHandle_t handle,
 template <typename i_t, typename f_t>
 cusparse_view_t<i_t, f_t>::cusparse_view_t(
   raft::handle_t const* handle_ptr,
-  const problem_t<i_t, f_t>& op_problem_scaled,
+  const mip::problem_t<i_t, f_t>& op_problem_scaled,
   saddle_point_state_t<i_t, f_t>& current_saddle_point_state,
   rmm::device_uvector<f_t>& _tmp_primal,
   rmm::device_uvector<f_t>& _tmp_dual,
   rmm::device_uvector<f_t>& _potential_next_dual_solution,
   rmm::device_uvector<f_t>& _reflected_primal_solution,
   const std::vector<pdlp_climber_strategy_t>& climber_strategies,
-  const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params,
+  const pdlp::pdlp_hyper_params_t& hyper_params,
   bool enable_mixed_precision_spmv)
   : batch_mode_(climber_strategies.size() > 1),
     handle_ptr_(handle_ptr),
@@ -859,7 +862,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
 template <typename i_t, typename f_t>
 cusparse_view_t<i_t, f_t>::cusparse_view_t(
   raft::handle_t const* handle_ptr,
-  const problem_t<i_t, f_t>& op_problem,
+  const mip::problem_t<i_t, f_t>& op_problem,
   rmm::device_uvector<f_t>& _primal_solution,
   rmm::device_uvector<f_t>& _dual_solution,
   rmm::device_uvector<f_t>& _tmp_primal,
@@ -870,7 +873,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   const rmm::device_uvector<i_t>& _A_T_offsets,
   const rmm::device_uvector<i_t>& _A_T_indices,
   const std::vector<pdlp_climber_strategy_t>& climber_strategies,
-  const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params)
+  const pdlp::pdlp_hyper_params_t& hyper_params)
   : batch_mode_(climber_strategies.size() > 1),
     handle_ptr_(handle_ptr),
     A{},
@@ -1082,7 +1085,7 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
 template <typename i_t, typename f_t>
 cusparse_view_t<i_t, f_t>::cusparse_view_t(
   raft::handle_t const* handle_ptr,
-  const problem_t<i_t, f_t>& op_problem,  // Just used for the sizes
+  const mip::problem_t<i_t, f_t>& op_problem,  // Just used for the sizes
   const cusparse_view_t<i_t, f_t>& existing_cusparse_view,
   f_t* _primal_solution,  // Solutions of each duality gap container
   f_t* _dual_solution,
@@ -1263,7 +1266,7 @@ void cusparse_view_t<i_t, f_t>::update_mixed_precision_matrices()
 // so the duplicated row/column buffers can be freed.
 template <typename i_t, typename f_t>
 void cusparse_view_t<i_t, f_t>::redirect_cusparse_csr_structure_pointers(
-  const problem_t<i_t, f_t>& original_problem)
+  const mip::problem_t<i_t, f_t>& original_problem)
 {
   RAFT_CUSPARSE_TRY(cusparseCsrSetPointers(A,
                                            const_cast<i_t*>(original_problem.offsets.data()),
@@ -1360,21 +1363,21 @@ bool is_cusparse_runtime_mixed_precision_supported()
 
 bool is_cusparse_runtime_spmvop_supported()
 {
-#if CUDA_VER_13_2_UP
+#if CUOPT_CUSPARSE_VER_12_8_UP
   // Probe the runtimme to ensure cusparseSpMVOp is supported
   static const bool supported =
     dynamic_load_runtime::function<cusparseSpMVOp_sig>("cusparseSpMVOp").has_value();
   return supported;
 #else
   return false;
-#endif
+#endif  // CUOPT_CUSPARSE_VER_12_8_UP
 }
 
 // Creates SpMVOp plans. Must be called after scale_problem() so plans use the scaled matrix.
 template <typename i_t, typename f_t>
 void cusparse_view_t<i_t, f_t>::create_spmv_op_plans(bool is_reflected)
 {
-#if CUDA_VER_13_2_UP
+#if CUOPT_CUSPARSE_VER_12_8_UP
   if (!is_cusparse_runtime_spmvop_supported() || !(std::is_same_v<f_t, double>)) { return; }
   static const auto buffer_size =
     dynamic_load_runtime::function<cusparseSpMVOp_bufferSize_sig>("cusparseSpMVOp_bufferSize");
@@ -1388,6 +1391,7 @@ void cusparse_view_t<i_t, f_t>::create_spmv_op_plans(bool is_reflected)
                                    current_AtY,
                                    current_AtY,
                                    CUDA_R_64F,
+                                   CUSPARSE_SPMVOP_ALG_DEFAULT,
                                    &buffer_size_transpose));
   buffer_transpose_spmvop.resize(buffer_size_transpose, handle_ptr_->get_stream());
 
@@ -1412,6 +1416,7 @@ void cusparse_view_t<i_t, f_t>::create_spmv_op_plans(bool is_reflected)
                                      dual_gradient,
                                      dual_gradient,
                                      CUDA_R_64F,
+                                     CUSPARSE_SPMVOP_ALG_DEFAULT,
                                      &buffer_size_non_transpose));
     buffer_non_transpose_spmvop.resize(buffer_size_non_transpose, handle_ptr_->get_stream());
 
@@ -1426,7 +1431,7 @@ void cusparse_view_t<i_t, f_t>::create_spmv_op_plans(bool is_reflected)
 
     spmv_op_plan_A_.create(handle_ptr_->get_cusparse_handle(), spmv_op_descr_A_);
   }
-#endif
+#endif  // CUOPT_CUSPARSE_VER_12_8_UP
 }
 
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
@@ -1471,4 +1476,4 @@ template void my_cusparsespmm_preprocess<double>(cusparseHandle_t,
 #endif
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

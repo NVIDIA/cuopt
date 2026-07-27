@@ -32,7 +32,7 @@
 #include <span>
 #include <vector>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::barrier {
 
 template <std::integral i_t,
           typename value_t,
@@ -258,4 +258,4 @@ __global__ void __launch_bounds__(warps_per_cta* raft::WarpSize)
   if (lane_id == 0) { output[cone] = sum; }
 }
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::barrier

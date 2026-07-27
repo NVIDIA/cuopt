@@ -9,14 +9,14 @@
 
 #include <dual_simplex/right_looking_lu.hpp>
 #include <dual_simplex/singletons.hpp>
-#include <dual_simplex/tic_toc.hpp>
+#include <math_optimization/tic_toc.hpp>
 
 #include <raft/core/nvtx.hpp>
 
 #include <cassert>
 #include <cmath>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 uint8_t encode(variable_status_t vstatus)
 {
@@ -325,4 +325,4 @@ template int initial_basis_selection<int, double>(
 
 #endif
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

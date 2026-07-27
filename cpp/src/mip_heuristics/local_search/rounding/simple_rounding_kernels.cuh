@@ -13,7 +13,7 @@
 #include <utilities/cuda_helpers.cuh>
 #include <utilities/device_utils.cuh>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 __global__ void simple_rounding_kernel(typename solution_t<i_t, f_t>::view_t solution,
@@ -197,4 +197,4 @@ __global__ void random_rounding_kernel(typename solution_t<i_t, f_t>::view_t sol
   }
 }
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

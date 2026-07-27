@@ -6,8 +6,8 @@
 /* clang-format on */
 
 #include <cuopt/error.hpp>
-#include <cuopt/linear_programming/mip/heuristics_hyper_params.hpp>
-#include <cuopt/linear_programming/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/mip/heuristics_hyper_params.hpp>
+#include <cuopt/mathematical_optimization/solver_settings.hpp>
 
 #include <gtest/gtest.h>
 
@@ -16,7 +16,7 @@
 #include <fstream>
 #include <string>
 
-namespace cuopt::linear_programming::test {
+namespace cuopt::mathematical_optimization::test {
 
 using settings_t = solver_settings_t<int, double>;
 
@@ -280,4 +280,4 @@ TEST_F(HeuristicsHyperParamsTest, UnterminatedQuoteThrows)
   EXPECT_THROW(settings.load_parameters_from_file(tmp_path), cuopt::logic_error);
 }
 
-}  // namespace cuopt::linear_programming::test
+}  // namespace cuopt::mathematical_optimization::test

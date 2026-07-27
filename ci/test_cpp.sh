@@ -10,7 +10,7 @@ set -euo pipefail
 rapids-logger "Configuring conda strict channel priority"
 conda config --set channel_priority strict
 
-CPP_CHANNEL=$(rapids-download-conda-from-github cpp)
+CPP_CHANNEL=$(rapids-download-from-github "$(rapids-artifact-name conda_cpp libcuopt cuopt --cuda "$RAPIDS_CUDA_VERSION")")
 
 rapids-logger "Generate C++ testing dependencies"
 rapids-dependency-file-generator \
@@ -40,6 +40,7 @@ nvidia-smi
 rapids-logger "Download datasets"
 ./datasets/linear_programming/download_pdlp_test_dataset.sh
 ./datasets/mip/download_miplib_test_dataset.sh
+./datasets/quadratic_programming/download_qplib_test_dataset.sh
 
 RAPIDS_DATASET_ROOT_DIR="$(realpath datasets)"
 export RAPIDS_DATASET_ROOT_DIR

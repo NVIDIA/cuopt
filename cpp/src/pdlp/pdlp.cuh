@@ -8,8 +8,8 @@
 #pragma once
 
 #include <branch_and_bound/shared_strong_branching_context.hpp>
-#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
-#include <cuopt/linear_programming/pdlp/solver_solution.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_solution.hpp>
 
 #include <pdlp/cusparse_view.hpp>
 #include <pdlp/initial_scaling_strategy/initial_scaling.cuh>
@@ -33,7 +33,7 @@
 #include <optional>
 #include <unordered_set>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 /**
  * @brief Solver for an optimization problem (Currently only linear program) to be solved,
  * pdlp_parameters and pdlp_internal_state
@@ -55,10 +55,10 @@ class pdlp_solver_t {
    *
    * For full description of algorithm, see https://arxiv.org/abs/2106.04756
    *
-   * @param[in] op_problem An problem_t<i_t, f_t> object with a
+   * @param[in] op_problem An mip::problem_t<i_t, f_t> object with a
    * representation of a linear program
    */
-  pdlp_solver_t(problem_t<i_t, f_t>& op_problem,
+  pdlp_solver_t(mip::problem_t<i_t, f_t>& op_problem,
                 pdlp_solver_settings_t<i_t, f_t> const& settings,
                 bool is_batch_mode = false);
 
@@ -67,7 +67,7 @@ class pdlp_solver_t {
   f_t get_primal_weight_h(i_t id) const;
   f_t get_step_size_h(i_t id) const;
   i_t get_total_pdhg_iterations() const;
-  detail::pdlp_termination_strategy_t<i_t, f_t>& get_current_termination_strategy();
+  pdlp::pdlp_termination_strategy_t<i_t, f_t>& get_current_termination_strategy();
 
   void swap_context(const thrust::universal_host_pinned_vector<swap_pair_t<i_t>>& swap_pairs);
   void resize_context(i_t new_size);
@@ -76,7 +76,7 @@ class pdlp_solver_t {
   void resize_and_swap_all_context_loop(
     const std::unordered_set<i_t>& climber_strategies_to_remove);
 
-  void set_problem_ptr(problem_t<i_t, f_t>* problem_ptr_);
+  void set_problem_ptr(mip::problem_t<i_t, f_t>* problem_ptr_);
 
   // Interface to let MIP set an initial solution
   // Users will keep on using the optimization_problem to provide an initial solution
@@ -116,8 +116,8 @@ class pdlp_solver_t {
   optimization_problem_solution_t<i_t, f_t> finalize_batch_return_with_limit_reached(
     pdlp_termination_status_t limit_reached_status);
   std::optional<optimization_problem_solution_t<i_t, f_t>> check_limits(const timer_t& timer);
-  void record_best_primal_so_far(const detail::pdlp_termination_strategy_t<i_t, f_t>& current,
-                                 const detail::pdlp_termination_strategy_t<i_t, f_t>& average,
+  void record_best_primal_so_far(const pdlp::pdlp_termination_strategy_t<i_t, f_t>& current,
+                                 const pdlp::pdlp_termination_strategy_t<i_t, f_t>& average,
                                  const pdlp_termination_status_t& termination_current,
                                  const pdlp_termination_status_t& termination_average);
 
@@ -148,13 +148,12 @@ class pdlp_solver_t {
   rmm::cuda_stream_view stream_view_;
   // Intentionnaly take a copy to avoid an unintentional modification in the calling context
   const pdlp_solver_settings_t<i_t, f_t> settings_;
-  dual_simplex::shared_strong_branching_context_view_t<i_t, f_t> sb_view_{
-    settings_.shared_sb_solved};
+  mip::shared_strong_branching_context_view_t<i_t, f_t> sb_view_{settings_.shared_sb_solved};
 
-  problem_t<i_t, f_t>* problem_ptr;
+  mip::problem_t<i_t, f_t>* problem_ptr;
   // Combined bounds in op_problem_scaled_ will only be scaled if
   // compute_initial_primal_weight_before_scaling is false because of compute_initial_primal_weight
-  problem_t<i_t, f_t> op_problem_scaled_;
+  mip::problem_t<i_t, f_t> op_problem_scaled_;
 
   rmm::device_uvector<f_t> unscaled_primal_avg_solution_;
   rmm::device_uvector<f_t> unscaled_dual_avg_solution_;
@@ -182,11 +181,11 @@ class pdlp_solver_t {
   rmm::device_uvector<f_t> step_size_;
 
   // Step size strategy
-  detail::adaptive_step_size_strategy_t<i_t, f_t> step_size_strategy_;
+  pdlp::adaptive_step_size_strategy_t<i_t, f_t> step_size_strategy_;
 
  public:
   // Inner solver
-  detail::pdhg_solver_t<i_t, f_t> pdhg_solver_;
+  pdlp::pdhg_solver_t<i_t, f_t> pdhg_solver_;
   void halpern_update();
 
  private:
@@ -203,17 +202,17 @@ class pdlp_solver_t {
                                          rmm::device_uvector<f_t>& dual_slack_to_transpose);
 
   // Initial scaling strategy
-  detail::pdlp_initial_scaling_strategy_t<i_t, f_t> initial_scaling_strategy_;
+  pdlp::pdlp_initial_scaling_strategy_t<i_t, f_t> initial_scaling_strategy_;
 
   // For the average evaluation
-  detail::cusparse_view_t<i_t, f_t> average_op_problem_evaluation_cusparse_view_;
-  detail::cusparse_view_t<i_t, f_t> current_op_problem_evaluation_cusparse_view_;
+  pdlp::cusparse_view_t<i_t, f_t> average_op_problem_evaluation_cusparse_view_;
+  pdlp::cusparse_view_t<i_t, f_t> current_op_problem_evaluation_cusparse_view_;
 
   // Restart strategy
-  detail::pdlp_restart_strategy_t<i_t, f_t> restart_strategy_;
+  pdlp::pdlp_restart_strategy_t<i_t, f_t> restart_strategy_;
   // Termination strategy
-  detail::pdlp_termination_strategy_t<i_t, f_t> average_termination_strategy_;
-  detail::pdlp_termination_strategy_t<i_t, f_t> current_termination_strategy_;
+  pdlp::pdlp_termination_strategy_t<i_t, f_t> average_termination_strategy_;
+  pdlp::pdlp_termination_strategy_t<i_t, f_t> current_termination_strategy_;
 
   /* Two counters are necessary because of the PDLP warm start data
    *  total_pdlp_iterations_: total, counting potential previous PDLP iterations
@@ -249,4 +248,4 @@ class pdlp_solver_t {
   bool inside_mip_{false};
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

@@ -17,7 +17,7 @@
 
 #include <cusparse_v2.h>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::barrier {
 
 template <typename i_t, typename f_t>
 struct cusparse_info_t {
@@ -67,4 +67,4 @@ struct cusparse_info_t {
   size_t buffer_size_5_size;
 };
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::barrier

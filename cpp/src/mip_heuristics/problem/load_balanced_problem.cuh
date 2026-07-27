@@ -10,8 +10,8 @@
 // THIS IS LIKELY THE INNER-MOST INCLUDE
 // FOR COMPILE TIME, WE SHOULD KEEP THE INCLUDES ON THIS HEADER MINIMAL
 
-#include <cuopt/linear_programming/mip/solver_settings.hpp>
-#include <cuopt/linear_programming/optimization_problem_interface.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 #include "host_helper.cuh"
 
 #include <utilities/macros.cuh>
@@ -28,7 +28,7 @@
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 class load_balanced_bounds_presolve_t;
@@ -86,4 +86,4 @@ class load_balanced_problem_t {
   vertex_bin_t<i_t> vars_binner;
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

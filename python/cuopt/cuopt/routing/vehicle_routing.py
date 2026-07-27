@@ -5,8 +5,8 @@ import numpy as np
 
 import cudf
 
-from cuopt import routing
 from cuopt.routing import vehicle_routing_wrapper
+from cuopt.routing._deferred import _DeferredDataModel
 from cuopt.utilities import catch_cuopt_exception
 
 from .validation import (
@@ -19,7 +19,7 @@ from .validation import (
 )
 
 
-class DataModel(vehicle_routing_wrapper.DataModel):
+class DataModel(_DeferredDataModel):
     """
 
     DataModel(n_locations, n_fleet, n_orders: int = -1)
@@ -43,6 +43,18 @@ class DataModel(vehicle_routing_wrapper.DataModel):
         cost/transit time matrix, time windows, capacity dimension,
         order location is considered as start and end location of all the
         vehicles.
+
+      - Array parameters documented below as ``cudf.Series`` or
+        ``cudf.DataFrame`` also accept an equivalent ``numpy.ndarray`` or
+        ``pandas.Series``/``pandas.DataFrame``. cuDF inputs stay on the GPU;
+        host (numpy/pandas) inputs are copied to the device for the local
+        solve. Python lists and tuples are not supported.
+
+      - Inputs are recorded and the device model is built on demand (deferred
+        to ``Solve``), so solver-side (C++) validation and dtype-cast warnings
+        surface when the model is built rather than at the individual setter
+        call. Structural checks (matrix shape, array sizes, value ranges) are
+        still validated eagerly at the setter.
 
     Examples
     --------
@@ -81,9 +93,9 @@ class DataModel(vehicle_routing_wrapper.DataModel):
 
         Parameters
         ----------
-        cost_mat : cudf.DataFrame dtype - float32
-            cudf.DataFrame representing floating point square matrix with
-            num_location rows and columns.
+        cost_mat : cudf.DataFrame, pandas.DataFrame or numpy.ndarray, dtype - float32
+            Floating point square matrix with num_location rows and columns.
+            See the DataModel note on accepted array types.
         vehicle_type : uint8
             Identifier of the vehicle.
         skip_validation : bool
@@ -128,7 +140,8 @@ class DataModel(vehicle_routing_wrapper.DataModel):
         >>> data_model.add_cost_matrix(cost_mat_car, 2)
         """
 
-        if vehicle_type in self.costs:
+        # a[1] is vehicle_type: the recorded call is (cost_mat, vehicle_type).
+        if vehicle_type in {a[1] for a in self._recorded("add_cost_matrix")}:
             raise ValueError("Vehicle type matrix has already been added")
 
         if not skip_validation:
@@ -210,7 +223,10 @@ class DataModel(vehicle_routing_wrapper.DataModel):
         >>> time_mat = cudf.DataFrame(time_mat)
         >>> data_model.add_transit_time_matrix(time_mat, 0)
         """
-        if vehicle_type in self.transit_times:
+        # a[1] is vehicle_type (see add_cost_matrix).
+        if vehicle_type in {
+            a[1] for a in self._recorded("add_transit_time_matrix")
+        }:
             raise ValueError("Vehicle type matrix has already been added")
 
         validate_matrix(mat, "transit time matrix", self.get_num_locations())
@@ -1540,9 +1556,15 @@ def Solve(data_model, solver_settings=None):
     if solver_settings is None:
         solver_settings = SolverSettings()
 
-    solution = vehicle_routing_wrapper.Solve(data_model, solver_settings)
+    solution = vehicle_routing_wrapper.Solve(
+        data_model._build(), solver_settings
+    )
     if solver_settings.get_config_file_name() is not None:
-        routing.utils.save_data_model_to_yaml(
+        # imported here rather than at module scope: utils lives outside the
+        # cuopt.routing import path so that importing routing stays GPU-free.
+        from cuopt.routing import utils
+
+        utils.save_data_model_to_yaml(
             data_model,
             solver_settings,
             solution,
@@ -1597,4 +1619,5 @@ def BatchSolve(data_model_list, solver_settings=None):
     if solver_settings is None:
         solver_settings = SolverSettings()
 
-    return vehicle_routing_wrapper.BatchSolve(data_model_list, solver_settings)
+    built_list = [dm._build() for dm in data_model_list]
+    return vehicle_routing_wrapper.BatchSolve(built_list, solver_settings)

@@ -18,7 +18,7 @@
 
 #include "load_balanced_problem.cuh"
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t>
 std::tuple<i_t, i_t, i_t> bin_meta(std::vector<i_t>& bins, i_t deg_beg, i_t deg_end)
@@ -406,4 +406,4 @@ template class load_balanced_problem_t<int, float>;
 template class load_balanced_problem_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

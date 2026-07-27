@@ -135,12 +135,19 @@ language = "en"
 # a list of builtin themes.
 #
 html_theme = "nvidia_sphinx_theme"
-html_logo = "images/main_nv_logo_square.png"
 html_title = f"{project} ({version})"
 
 autosectionlabel_prefix_document = True
 
 html_theme_options = {
+    "icon_links": [
+        {
+            "name": "GitHub",
+            "url": "https://github.com/NVIDIA/cuopt",
+            "icon": "fa-brands fa-github",
+            "type": "fontawesome",
+        },
+    ],
     "collapse_navigation": False,
     "navigation_depth": 6,
     "switcher": {
@@ -178,11 +185,6 @@ breathe_default_project = "libcuopt"
 breathe_domain_by_extension = {"hpp": "cpp", "h": "c", "c": "c"}
 breathe_implementation_filename_extensions = [".cpp", ".cu"]
 
-# Configure Breathe to handle source files
-breathe_projects_source = {
-    "libcuopt": ("../../../cpp/src", ["*.hpp", "*.h", "*.cuh", "*.cu"])
-}
-
 # Configure Breathe to handle CUDA and template attributes
 breathe_doxygen_aliases = {
     "int32_t": "int32_t",
@@ -212,7 +214,7 @@ latex_documents = [
     (
         master_doc,
         "cuopt.tex",
-        "cuopt Documentation",
+        f"{project} Documentation",
         "NVIDIA Corporation",
         "manual",
     )
@@ -222,7 +224,7 @@ latex_documents = [
 
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
-man_pages = [(master_doc, "cuopt", "cuopt Documentation", [author], 1)]
+man_pages = [(master_doc, "cuopt", f"{project} Documentation", [author], 1)]
 
 
 # -- Options for Texinfo output -------------------------------------------
@@ -234,7 +236,7 @@ texinfo_documents = [
     (
         master_doc,
         "cuopt",
-        "cuopt Documentation",
+        f"{project} Documentation",
         author,
         "cuopt",
         "One line description of project.",

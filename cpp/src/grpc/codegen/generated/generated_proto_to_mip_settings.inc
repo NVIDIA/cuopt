@@ -73,6 +73,9 @@
   if (pb_settings.has_clique_cuts()) {
     settings.clique_cuts = pb_settings.clique_cuts();
   }
+  if (pb_settings.has_zero_half_cuts()) {
+    settings.zero_half_cuts = pb_settings.zero_half_cuts();
+  }
   if (pb_settings.has_implied_bound_cuts()) {
     settings.implied_bound_cuts = pb_settings.implied_bound_cuts();
   }

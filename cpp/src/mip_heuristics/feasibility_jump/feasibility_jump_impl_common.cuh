@@ -7,7 +7,7 @@
 
 #include "feasibility_jump.cuh"
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t, typename Iterator>
 HDI f_t fj_kahan_babushka_neumaier_sum(Iterator begin, Iterator end)
@@ -228,4 +228,4 @@ HDI f_t get_breakthrough_move(typename fj_t<i_t, f_t>::climber_data_t::view_t fj
   return new_val;
 }
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

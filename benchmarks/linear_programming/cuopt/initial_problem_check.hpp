@@ -16,7 +16,7 @@ double combine_finite_abs_bounds(f_t lower, f_t upper)
 
 template <typename f_t>
 struct violation {
-  violation() {}
+  violation() = default;
   violation(f_t* _scalar) {}
   __device__ __host__ f_t operator()(f_t value, f_t lower, f_t upper)
   {
@@ -30,7 +30,7 @@ struct violation {
 };
 
 bool test_constraint_and_variable_sanity(
-  const cuopt::linear_programming::io::mps_data_model_t<int, double>& op_problem,
+  const cuopt::mathematical_optimization::io::mps_data_model_t<int, double>& op_problem,
   const std::vector<double>& primal_vars,
   double abs_tol,
   double rel_tol,

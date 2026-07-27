@@ -13,12 +13,12 @@
 #include <unordered_set>
 #include <vector>
 
-#include <mip_heuristics/feasibility_jump/cpu_fj_thread.cuh>
 #include <mip_heuristics/feasibility_jump/feasibility_jump.cuh>
+#include <mip_heuristics/feasibility_jump/fj_cpu_worker.cuh>
 #include <utilities/memory_instrumentation.hpp>
 #include <utilities/producer_sync.hpp>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 // NOTE: this seems an easy pick for reflection/xmacros once this is available (C++26?)
 // Maintaining a single source of truth for all members would be nice
@@ -204,4 +204,4 @@ std::unique_ptr<fj_cpu_climber_t<i_t, f_t>> init_fj_cpu_standalone(
   std::atomic<bool>& preemption_flag,
   fj_settings_t settings = fj_settings_t{});
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

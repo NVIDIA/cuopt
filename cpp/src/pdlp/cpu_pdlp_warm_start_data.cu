@@ -5,12 +5,12 @@
  */
 /* clang-format on */
 
-#include <cuopt/linear_programming/cpu_pdlp_warm_start_data.hpp>
-#include <cuopt/linear_programming/pdlp/pdlp_warm_start_data.hpp>
+#include <cuopt/mathematical_optimization/cpu_pdlp_warm_start_data.hpp>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_warm_start_data.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <raft/core/copy.hpp>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 // Helper to copy device_uvector to std::vector (D2H)
 template <typename T>
@@ -123,4 +123,4 @@ template pdlp_warm_start_data_t<int, float> convert_to_gpu_warmstart(
   const cpu_pdlp_warm_start_data_t<int, float>&, rmm::cuda_stream_view);
 #endif
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

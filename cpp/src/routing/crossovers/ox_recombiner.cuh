@@ -169,6 +169,14 @@ struct OX {
     return graphs_size + sol_arrays_size + helper_arrays_size;
   }
 
+  /// @brief OX recombination of two parents into A (offspring built in place).
+  ///        In fixed_route mode (fleet_size == min_vehicles) the vehicle count
+  ///        is preserved; otherwise the offspring route count may vary.
+  /// @param A first parent; on success, replaced by the recombined offspring.
+  /// @param B second parent (read-only donor genome).
+  /// @return true if a valid offspring was produced and applied to A; false if
+  ///         recombination was rejected (e.g. mismatched parents, fixed-route
+  ///         count violation, size/memory guards) — A is then left unchanged.
   bool recombine(Solution& A, Solution& B)
   {
     raft::common::nvtx::range fun_scope("ox");
@@ -204,7 +212,13 @@ struct OX {
     routes_number = std::min(routesA.size(), routesB.size());
 
     const auto& dimensions_info = A.problem->dimensions_info;
-    if (dimensions_info.has_dimension(dim_t::VEHICLE_FIXED_COST)) {
+    // Optimal-routes search lets Bellman-Ford pick a variable number of routes to minimize
+    // vehicle fixed cost. This is incompatible with fixed_route mode (fleet_size ==
+    // min_vehicles): the vehicle count cannot change, so searching over route counts both
+    // breaks the recreate_solution invariant (routes removed == routes added) and can drift
+    // the solution below min_vehicles. When the route count is fixed there is nothing to
+    // optimize over, so keep the strict fixed-route path.
+    if (!fixed_route && dimensions_info.has_dimension(dim_t::VEHICLE_FIXED_COST)) {
       routes_number         = max_vehicle_increase + std::max(routesA.size(), routesB.size());
       optimal_routes_search = true;
     }
@@ -390,9 +404,13 @@ struct OX {
       --i;
     }
 
-    if (fixed_route) {
-      cuopt_assert(routes_to_remove.size() == tmp_routes.size(),
-                   "number of routes removed and routes added should be same");
+    if (fixed_route && routes_to_remove.size() != tmp_routes.size()) {
+      // In fixed_route mode the vehicle count must be preserved: we add one route per changed
+      // offspring segment (tmp_routes) and remove the distinct original routes those segments
+      // touch (routes_to_remove). A mismatch would change the vehicle count and drop it below
+      // min_vehicles, so reject this offspring instead of applying it.
+      cuopt_assert(false, "number of routes removed and routes added should be same");
+      return false;
     }
     if (routes_to_remove.size() == 0 || tmp_routes.size() == 0) { return false; }
 

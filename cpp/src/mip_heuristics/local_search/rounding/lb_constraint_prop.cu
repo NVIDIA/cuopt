@@ -18,7 +18,7 @@
 #include <thrust/partition.h>
 #include <thrust/sort.h>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 lb_constraint_prop_t<i_t, f_t>::lb_constraint_prop_t(mip_solver_context_t<i_t, f_t>& context_)
@@ -959,4 +959,4 @@ template class lb_constraint_prop_t<int, float>;
 template class lb_constraint_prop_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip
