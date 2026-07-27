@@ -23,8 +23,6 @@
 
 #include <rmm/device_uvector.hpp>
 
-#include <raft/core/nvtx.hpp>
-
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -83,10 +81,7 @@ f_t iterative_refinement_simple(T& op,
                  delta_x.data() + delta_x.size(),
                  0.0);
     RAFT_CHECK_CUDA(op.data_.handle_ptr->get_stream());
-    {
-      raft::common::nvtx::range solve_scope("Barrier: iterative_refinement: linear system solve");
-      op.solve(r, delta_x);
-    }
+    op.solve(r, delta_x);
 
     thrust::transform(op.data_.handle_ptr->get_thrust_policy(),
                       x.data(),
@@ -132,7 +127,6 @@ f_t iterative_refinement_gmres(T& op,
                                rmm::device_uvector<f_t>& x,
                                f_t tol = 1e-8)
 {
-  raft::common::nvtx::range fun_scope("Barrier: iterative_refinement: gmres");
   // Parameters
   // Ideally, we do not need to restart here. But having restarts helps as a checkpoint to get
   // better solutions in case of true residual is far from the measured residual and true residuals
@@ -158,14 +152,11 @@ f_t iterative_refinement_gmres(T& op,
   f_t rel_res    = 1.0;
   int outer_iter = 0;
 
-  f_t norm_r;
-  {
-    raft::common::nvtx::range scope("Barrier: iterative_refinement: initial residual");
-    // r = b - A*x
-    raft::copy(r.data(), b.data(), b.size(), x.stream());
-    op.a_multiply(-1.0, x, 1.0, r);
-    norm_r = vector_norm_inf<f_t>(r);
-  }
+  // r = b - A*x
+  raft::copy(r.data(), b.data(), b.size(), x.stream());
+  op.a_multiply(-1.0, x, 1.0, r);
+
+  f_t norm_r = vector_norm_inf<f_t>(r);
   if (show_info) { CUOPT_LOG_INFO("GMRES IR: initial residual = %e, |b| = %e", norm_r, bnorm); }
   if (norm_r <= tol) { return norm_r; }
 
@@ -174,7 +165,6 @@ f_t iterative_refinement_gmres(T& op,
 
   // Main loop
   while (residual > tol && outer_iter < max_restarts) {
-    raft::common::nvtx::range restart_scope("Barrier: iterative_refinement: restart");
     // For right preconditioning: Apply preconditioner on Krylov directions, not on the residual.
     // So, start GMRES on r = b - A*x. v0 = r / ||r||
     std::vector<rmm::device_uvector<f_t>> V;
@@ -200,12 +190,8 @@ f_t iterative_refinement_gmres(T& op,
     // Hessenberg building
     int k = 0;
     for (; k < m; ++k) {
-      raft::common::nvtx::range arnoldi_scope("Barrier: iterative_refinement: arnoldi step");
       // Z[k] = M^{-1} V[k], i.e., apply right preconditioner and store
-      {
-        raft::common::nvtx::range solve_scope("Barrier: iterative_refinement: linear system solve");
-        op.solve(V[k], Z[k]);
-      }
+      op.solve(V[k], Z[k]);
 
       // Check if solve produced NaN (indicates cuDSS failure)
       f_t z_norm = vector_norm_inf<f_t>(Z[k]);
@@ -215,10 +201,7 @@ f_t iterative_refinement_gmres(T& op,
       }
 
       // w = A * Z[k]
-      {
-        raft::common::nvtx::range matvec_scope("Barrier: iterative_refinement: matvec");
-        op.a_multiply(1.0, Z[k], 0.0, V[k + 1]);
-      }
+      op.a_multiply(1.0, Z[k], 0.0, V[k + 1]);
 
       // Modified Gram-Schmidt orthogonalization
       for (int j = 0; j <= k; ++j) {
@@ -293,7 +276,6 @@ f_t iterative_refinement_gmres(T& op,
       }
     }  // end Arnoldi loop
 
-    raft::common::nvtx::range update_scope("Barrier: iterative_refinement: solution update");
     // Solve least squares H y = e
     // Back-substitution (H is (k+1)xk upper Hessenberg, cs/sin already applied)
     std::fill(y.begin(), y.end(), 0.0);

@@ -8,8 +8,6 @@
 #include <dual_simplex/scaling.hpp>
 #include <linear_algebra/sparse_matrix.hpp>
 
-#include <raft/core/nvtx.hpp>
-
 #include <cmath>
 
 namespace cuopt::mathematical_optimization::simplex {
@@ -21,7 +19,6 @@ i_t scaling(const lp_problem_t<i_t, f_t>& unscaled,
             std::vector<f_t>& column_scaling,
             std::vector<f_t>& row_scaling)
 {
-  raft::common::nvtx::range fun_scope("QCQP: scaling");
   scaled = unscaled;
   i_t m  = scaled.num_rows;
   i_t n  = scaled.num_cols;

@@ -13,8 +13,6 @@
 #include <dual_simplex/solve.hpp>
 #include <math_optimization/tic_toc.hpp>
 
-#include <raft/core/nvtx.hpp>
-
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -727,7 +725,6 @@ void convert_user_problem(const user_problem_t<i_t, f_t>& user_problem,
                           std::vector<i_t>& new_slacks,
                           dualize_info_t<i_t, f_t>& dualize_info)
 {
-  raft::common::nvtx::range fun_scope("QCQP: convert_user_problem");
   constexpr bool verbose = false;
   if (verbose) {
     settings.log.printf("Converting problem with %d rows and %d columns and %d nonzeros\n",
@@ -990,7 +987,6 @@ i_t presolve(const lp_problem_t<i_t, f_t>& original,
              lp_problem_t<i_t, f_t>& problem,
              presolve_info_t<i_t, f_t>& presolve_info)
 {
-  raft::common::nvtx::range fun_scope("QCQP: presolve");
   problem               = original;
   const i_t linear_cols = linear_variable_count(problem);
   const bool has_cones  = !problem.second_order_cone_dims.empty();
