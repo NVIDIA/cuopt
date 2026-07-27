@@ -31,14 +31,16 @@ i_t scaling(const lp_problem_t<i_t, f_t>& unscaled,
   // For SOCP problems, apply Ruiz equilibration: alternating row and column
   // infinity-norm scaling to bring the constraint matrix close to equilibrium.
   // This dramatically improves the conditioning of the augmented KKT system.
-  // Applied only when the constraint matrix has a large row-norm imbalance.
+  // Applied only when the constraint matrix has a large row-norm or
+  // column-norm imbalance.
   if (!unscaled.second_order_cone_dims.empty() || unscaled.Q.n > 0) {
     // col_scale and row_scale accumulate reciprocal scale factors during Ruiz iterations.
     std::vector<f_t> col_scale(n, 1.0);
 
-    // Decide whether Ruiz scaling is needed by checking row-norm imbalance.
-    // If max_row_norm / min_row_norm is small, the matrix is already well-conditioned
-    // and scaling can hurt (e.g. by amplifying tiny noise coefficients).
+    // Decide whether Ruiz scaling is needed by checking row- and column-norm
+    // imbalance. If both max_norm / min_norm ratios are small, the matrix is
+    // already well-conditioned and scaling can hurt (e.g. by amplifying tiny
+    // noise coefficients).
     csr_matrix_t<i_t, f_t> Arow_check(0, 0, 0);
     scaled.A.to_compressed_row(Arow_check);
     f_t max_row_norm = 0;
@@ -56,11 +58,44 @@ i_t scaling(const lp_problem_t<i_t, f_t>& unscaled,
     }
     f_t row_norm_ratio = (min_row_norm > 0) ? max_row_norm / min_row_norm : 1.0;
 
-    if (row_norm_ratio < 100.0) {
-      settings.log.printf("Skipping Ruiz equilibration (row norm ratio %.1f < 100)\n",
-                          row_norm_ratio);
+    f_t max_col_norm = 0;
+    f_t min_col_norm = std::numeric_limits<f_t>::max();
+    for (i_t j = 0; j < n; ++j) {
+      f_t col_norm = 0;
+      for (i_t p = scaled.A.col_start[j]; p < scaled.A.col_start[j + 1]; ++p) {
+        f_t a = std::abs(scaled.A.x[p]);
+        if (a > col_norm) col_norm = a;
+      }
+      if (col_norm > 0) {
+        max_col_norm = std::max(max_col_norm, col_norm);
+        min_col_norm = std::min(min_col_norm, col_norm);
+      }
+    }
+    f_t col_norm_ratio = (min_col_norm > 0) ? max_col_norm / min_col_norm : 1.0;
+
+    // qcqp_ruiz_equilibration: -1 automatic (imbalance heuristic), 0 force off, 1 force on.
+    const i_t ruiz_mode = settings.qcqp_ruiz_equilibration;
+    const bool skip_ruiz =
+      (ruiz_mode == 0) || (ruiz_mode < 0 && row_norm_ratio < 100.0 && col_norm_ratio < 100.0);
+
+    if (skip_ruiz) {
+      if (ruiz_mode == 0) {
+        settings.log.printf("Skipping Ruiz equilibration (qcqp_hyper_ruiz_equilibration = 0)\n");
+      } else {
+        settings.log.printf(
+          "Skipping Ruiz equilibration (row norm ratio %.1f, column norm ratio %.1f < 100)\n",
+          row_norm_ratio,
+          col_norm_ratio);
+      }
       column_scaling.assign(n, 1.0);
       return 0;
+    }
+    if (ruiz_mode > 0) {
+      settings.log.printf(
+        "Applying Ruiz equilibration (qcqp_hyper_ruiz_equilibration = 1, row norm ratio %.1f, "
+        "column norm ratio %.1f)\n",
+        row_norm_ratio,
+        col_norm_ratio);
     }
 
     // Apply Ruiz equilibration

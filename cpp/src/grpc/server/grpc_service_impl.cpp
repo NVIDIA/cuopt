@@ -527,27 +527,21 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
                       const cuopt::remote::DeleteRequest* request,
                       cuopt::remote::DeleteResponse* response) override
   {
+    (void)context;
     std::string job_id = request->job_id();
 
-    size_t erased = 0;
-    {
-      std::lock_guard<std::mutex> lock(tracker_mutex);
-      erased = job_tracker.erase(job_id);
-    }
-
-    if (erased == 0) {
+    std::string message;
+    if (!delete_job(job_id, message)) {
       response->set_status(cuopt::remote::ERROR_NOT_FOUND);
-      response->set_message("Job not found: " + job_id);
+      response->set_message(message);
       if (config.verbose) {
         SERVER_LOG_DEBUG("[gRPC] DeleteResult job not found: %s", job_id.c_str());
       }
       return Status::OK;
     }
 
-    delete_log_file(job_id);
-
     response->set_status(cuopt::remote::SUCCESS);
-    response->set_message("Result deleted");
+    response->set_message(message);
 
     if (config.verbose) { SERVER_LOG_DEBUG("[gRPC] Result deleted for job: %s", job_id.c_str()); }
 

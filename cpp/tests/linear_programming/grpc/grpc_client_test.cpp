@@ -1460,7 +1460,7 @@ class MockLogStream : public grpc::ClientReaderInterface<cuopt::remote::LogMessa
     *sz = messages_[idx_].ByteSizeLong();
     return true;
   }
-  void WaitForInitialMetadata() override {}
+  void WaitForInitialMetadata() override { /* no-op */ }
 
  private:
   std::vector<cuopt::remote::LogMessage> messages_;

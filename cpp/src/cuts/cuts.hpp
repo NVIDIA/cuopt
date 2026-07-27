@@ -794,7 +794,7 @@ class scratch_pad_t {
 template <typename i_t, typename f_t>
 class mixed_integer_gomory_cut_t {
  public:
-  mixed_integer_gomory_cut_t() {}
+  mixed_integer_gomory_cut_t() = default;
 };
 
 template <typename i_t, typename f_t>
