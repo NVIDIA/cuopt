@@ -2,6 +2,27 @@
 
 Read this for cuOpt code style: naming, file extensions, include order, error handling, memory management, and test impact.
 
+## Comments
+
+**Never embed volatile details in code comments.** Anything that changes independently of the code will silently become wrong and mislead future readers. Volatile details include:
+
+- Line numbers (`line 869`, `see line 42`)
+- Commit hashes or PR numbers (`fixed in abc1234`, `from PR #1234`)
+- Timestamps or version strings
+- External URLs that may rot
+
+Use stable identifiers instead — member names, function names, type names, section headings, or file paths. These refactor together with the code; volatile references do not.
+
+```cpp
+// ✅ GOOD — stable name
+window_count)),  // NOSONAR(S836): window_count is declared before window_state_ in this struct
+
+// ❌ BAD — line number goes stale on the next nearby edit
+window_count)),  // NOSONAR: window_count declared before window_state_ (line 869 vs 891)
+```
+
+This applies to all comment types: inline comments, block comments, suppression directives (`// NOSONAR`, `// NOLINT`, `# noqa`, `# type: ignore`), and doc comments.
+
 ## C++ Naming
 
 | Element | Convention | Example |
@@ -40,17 +61,15 @@ Read this for cuOpt code style: naming, file extensions, include order, error ha
 
 ### Suppression comments (`// NOSONAR`, `// NOLINT`, etc.)
 
-When suppressing a static-analysis or linter warning at the call site, the comment must explain *why* the flagged code is safe — not just silence the tool:
+When suppressing a static-analysis or linter warning at the call site, include the rule ID and explain *why* the flagged code is safe — not just silence the tool:
 
 ```cpp
-// ✅ GOOD — identifies the rule and explains the invariant in terms of stable names
+// ✅ GOOD — rule ID + reason in terms of stable names
 window_count)),  // NOSONAR(S836): window_count is declared before window_state_ in this struct
 
-// ❌ BAD — hardcoded line numbers go stale as the file changes
+// ❌ BAD — no rule ID, reason uses a volatile line number
 window_count)),  // NOSONAR: window_count declared before window_state_ (line 869 vs 891)
 ```
-
-**Never reference line numbers in suppression comments** — use member names, function names, or type names. Line numbers shift on every nearby edit; names refactor together with the code. This rule applies regardless of the tool (`// NOSONAR`, `// NOLINT`, `# noqa`, `# type: ignore`, pragma-style suppressions).
 
 ## Python Style
 
