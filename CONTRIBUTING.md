@@ -222,6 +222,7 @@ To run the C++ tests, run
 cd $CUOPT_HOME/datasets && ./get_test_data.sh
 cd $CUOPT_HOME && datasets/linear_programming/download_pdlp_test_dataset.sh
 datasets/mip/download_miplib_test_dataset.sh
+datasets/quadratic_programming/download_qplib_test_dataset.sh
 export RAPIDS_DATASET_ROOT_DIR=$CUOPT_HOME/datasets/
 ctest --test-dir ${CUOPT_HOME}/cpp/build  # libcuopt
 ```
@@ -234,6 +235,7 @@ To run python tests, run
 cd $CUOPT_HOME/datasets && ./get_test_data.sh
 cd $CUOPT_HOME && datasets/linear_programming/download_pdlp_test_dataset.sh
 datasets/mip/download_miplib_test_dataset.sh
+datasets/quadratic_programming/download_qplib_test_dataset.sh
 export RAPIDS_DATASET_ROOT_DIR=$CUOPT_HOME/datasets/
 cd $CUOPT_HOME/python
 pytest -v ${CUOPT_HOME}/python/cuopt/cuopt/tests
