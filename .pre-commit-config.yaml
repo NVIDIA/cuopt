@@ -60,8 +60,19 @@ repos:
     hooks:
       - id: shellcheck
         args: ["--severity=warning"]
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.38.0
+    hooks:
+      - id: yamllint
+        additional_dependencies: [pyyaml]
+        exclude: |
+          (?x)^(
+            [.]clang-format$|
+            conda/environments/.*|
+            ^helmchart/cuopt-server/templates
+          )
   - repo: https://github.com/rapidsai/pre-commit-hooks
-    rev: v1.4.3
+    rev: v1.6.0
     hooks:
       - id: verify-copyright
         args: [--fix, --spdx]
@@ -97,6 +108,7 @@ repos:
             (^|/)pom[.]xml$|
             ^[.]pre-commit-config[.]yaml$|
             ^conda/environments/|
+            ^docs/cuopt/source/cuopt-server/nim-operator/guide/|
             (^|/)VERSION$|
             (^|/)RAPIDS_BRANCH$|
             [.](md|rst|avro|parquet|png|orc|gz|pkl|sas7bdat|msgpack|pickle|jpg|bz2|zlib)$|
@@ -132,4 +144,4 @@ repos:
 
 
 default_language_version:
-      python: python3
+  python: python3

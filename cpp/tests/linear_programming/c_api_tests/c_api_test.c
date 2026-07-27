@@ -2847,3 +2847,322 @@ DONE:
   cuOptDestroySolution(&solution);
   return status;
 }
+
+/**
+ * Exercise read-only C API on a CPU-backed problem (CUDA_VISIBLE_DEVICES="" and no remote).
+ * Caller must set CUDA_VISIBLE_DEVICES="" before invoking.
+ */
+cuopt_int_t test_cpu_host_read_problem_api(const char* filename)
+{
+  cuOptOptimizationProblem problem = NULL;
+  cuopt_int_t status;
+  cuopt_int_t num_variables    = 0;
+  cuopt_int_t num_constraints  = 0;
+  cuopt_int_t nnz              = 0;
+  cuopt_int_t objective_sense  = 0;
+  cuopt_float_t objective_offset = 0;
+  cuopt_float_t* objective_coefficients = NULL;
+  cuopt_float_t* var_lower_bounds       = NULL;
+  cuopt_float_t* var_upper_bounds       = NULL;
+  cuopt_int_t* row_offsets              = NULL;
+  cuopt_int_t* column_indices           = NULL;
+  cuopt_float_t* values                 = NULL;
+  char* constraint_sense                = NULL;
+  cuopt_float_t* rhs                    = NULL;
+  cuopt_int_t is_mip                    = 0;
+
+  status = cuOptReadProblem(filename, &problem);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error reading problem on CPU host: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetNumVariables(problem, &num_variables);
+  if (status != CUOPT_SUCCESS || num_variables != 32) {
+    printf("Unexpected num variables on CPU host (status=%d, n=%d)\n", status, num_variables);
+    status = CUOPT_VALIDATION_ERROR;
+    goto DONE;
+  }
+
+  status = cuOptGetNumConstraints(problem, &num_constraints);
+  if (status != CUOPT_SUCCESS || num_constraints != 27) {
+    printf("Unexpected num constraints on CPU host (status=%d, n=%d)\n", status, num_constraints);
+    status = CUOPT_VALIDATION_ERROR;
+    goto DONE;
+  }
+
+  status = cuOptGetNumNonZeros(problem, &nnz);
+  if (status != CUOPT_SUCCESS || nnz <= 0) {
+    printf("Unexpected nnz on CPU host (status=%d, nnz=%d)\n", status, nnz);
+    status = CUOPT_VALIDATION_ERROR;
+    goto DONE;
+  }
+
+  status = cuOptGetObjectiveSense(problem, &objective_sense);
+  if (status != CUOPT_SUCCESS || objective_sense != CUOPT_MINIMIZE) {
+    printf("Unexpected objective sense on CPU host (status=%d, sense=%d)\n",
+           status,
+           objective_sense);
+    status = CUOPT_VALIDATION_ERROR;
+    goto DONE;
+  }
+
+  status = cuOptGetObjectiveOffset(problem, &objective_offset);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting objective offset on CPU host: %d\n", status);
+    goto DONE;
+  }
+
+  objective_coefficients = (cuopt_float_t*)malloc(num_variables * sizeof(cuopt_float_t));
+  var_lower_bounds       = (cuopt_float_t*)malloc(num_variables * sizeof(cuopt_float_t));
+  var_upper_bounds       = (cuopt_float_t*)malloc(num_variables * sizeof(cuopt_float_t));
+  row_offsets            = (cuopt_int_t*)malloc((num_constraints + 1) * sizeof(cuopt_int_t));
+  column_indices         = (cuopt_int_t*)malloc(nnz * sizeof(cuopt_int_t));
+  values                 = (cuopt_float_t*)malloc(nnz * sizeof(cuopt_float_t));
+  constraint_sense       = (char*)malloc(num_constraints * sizeof(char));
+  rhs                    = (cuopt_float_t*)malloc(num_constraints * sizeof(cuopt_float_t));
+  if (objective_coefficients == NULL || var_lower_bounds == NULL || var_upper_bounds == NULL ||
+      row_offsets == NULL || column_indices == NULL || values == NULL || constraint_sense == NULL ||
+      rhs == NULL) {
+    printf("Out of memory allocating CPU host API buffers\n");
+    status = CUOPT_OUT_OF_MEMORY;
+    goto DONE;
+  }
+
+  status = cuOptGetObjectiveCoefficients(problem, objective_coefficients);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting objective coefficients on CPU host: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetVariableLowerBounds(problem, var_lower_bounds);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting variable lower bounds on CPU host: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetVariableUpperBounds(problem, var_upper_bounds);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting variable upper bounds on CPU host: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetConstraintMatrix(problem, row_offsets, column_indices, values);
+  if (status != CUOPT_SUCCESS || row_offsets[0] != 0 || row_offsets[num_constraints] != nnz) {
+    printf("Unexpected constraint matrix on CPU host (status=%d)\n", status);
+    status = CUOPT_VALIDATION_ERROR;
+    goto DONE;
+  }
+
+  status = cuOptGetConstraintSense(problem, constraint_sense);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting constraint sense on CPU host: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptGetConstraintRightHandSide(problem, rhs);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error getting constraint rhs on CPU host: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptIsMIP(problem, &is_mip);
+  if (status != CUOPT_SUCCESS || is_mip != 0) {
+    printf("Expected LP problem on CPU host (status=%d, is_mip=%d)\n", status, is_mip);
+    status = CUOPT_VALIDATION_ERROR;
+    goto DONE;
+  }
+
+  printf("CPU host read-only C API test passed (%d vars, %d cons, nnz=%d)\n",
+         num_variables,
+         num_constraints,
+         nnz);
+
+DONE:
+  free(objective_coefficients);
+  free(var_lower_bounds);
+  free(var_upper_bounds);
+  free(row_offsets);
+  free(column_indices);
+  free(values);
+  free(constraint_sense);
+  free(rhs);
+  cuOptDestroyProblem(&problem);
+  return status;
+}
+
+/**
+ * Build a small MIP via cuOptCreateProblem on a CPU-backed host and verify getters (no solve).
+ * Caller must set CUDA_VISIBLE_DEVICES="" before invoking.
+ */
+cuopt_int_t test_cpu_host_create_problem_api()
+{
+  cuOptOptimizationProblem problem = NULL;
+  cuopt_int_t status;
+
+  enum { k_num_items = 8, k_num_constraints = 1 };
+  const cuopt_int_t num_variables   = k_num_items;
+  const cuopt_int_t num_constraints = k_num_constraints;
+  const cuopt_int_t nnz             = k_num_items;
+  const cuopt_float_t max_weight    = 102;
+  cuopt_float_t value[]             = {15, 100, 90, 60, 40, 15, 10, 1};
+  cuopt_float_t weight[]            = {2, 20, 20, 30, 40, 30, 60, 10};
+  cuopt_int_t row_offsets[]         = {0, k_num_items};
+  cuopt_int_t column_indices[k_num_items];
+  cuopt_float_t rhs[]               = {max_weight};
+  char constraint_sense[]           = {CUOPT_LESS_THAN};
+  cuopt_float_t lower_bounds[k_num_items];
+  cuopt_float_t upper_bounds[k_num_items];
+  char variable_types[k_num_items];
+  cuopt_int_t objective_sense         = CUOPT_MAXIMIZE;
+  cuopt_float_t objective_offset      = 0;
+  cuopt_int_t is_mip                  = 0;
+
+  for (cuopt_int_t j = 0; j < k_num_items; j++) {
+    column_indices[j] = j;
+    variable_types[j] = CUOPT_INTEGER;
+    lower_bounds[j]   = 0;
+    upper_bounds[j]   = 1;
+  }
+
+  status = cuOptCreateProblem(num_constraints,
+                              num_variables,
+                              objective_sense,
+                              objective_offset,
+                              value,
+                              row_offsets,
+                              column_indices,
+                              weight,
+                              constraint_sense,
+                              rhs,
+                              lower_bounds,
+                              upper_bounds,
+                              variable_types,
+                              &problem);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating optimization problem on CPU host: %d\n", status);
+    goto DONE;
+  }
+
+  status = check_problem(problem,
+                         num_constraints,
+                         num_variables,
+                         nnz,
+                         objective_sense,
+                         objective_offset,
+                         value,
+                         row_offsets,
+                         column_indices,
+                         weight,
+                         constraint_sense,
+                         rhs,
+                         lower_bounds,
+                         upper_bounds,
+                         variable_types);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error checking CPU host created problem\n");
+    goto DONE;
+  }
+
+  status = cuOptIsMIP(problem, &is_mip);
+  if (status != CUOPT_SUCCESS || is_mip != 1) {
+    printf("Expected MIP on CPU host (status=%d, is_mip=%d)\n", status, is_mip);
+    status = CUOPT_VALIDATION_ERROR;
+    goto DONE;
+  }
+
+  printf("CPU host create-problem C API test passed\n");
+
+DONE:
+  cuOptDestroyProblem(&problem);
+  return status;
+}
+
+/**
+ * Read a problem as a GPU-backed handle (remote env must be unset), then enable
+ * remote execution and verify cuOptSolve rejects the GPU problem.
+ */
+cuopt_int_t test_gpu_problem_remote_after_create(const char* filename)
+{
+  cuOptOptimizationProblem problem = NULL;
+  cuOptSolverSettings settings     = NULL;
+  cuOptSolution solution           = NULL;
+  cuopt_int_t status;
+
+  const char* orig_remote_host = getenv("CUOPT_REMOTE_HOST");
+  const char* orig_remote_port = getenv("CUOPT_REMOTE_PORT");
+  const int host_was_set       = (orig_remote_host != NULL);
+  const int port_was_set       = (orig_remote_port != NULL);
+  char saved_remote_host[256]  = "";
+  char saved_remote_port[64]   = "";
+
+  if (host_was_set) {
+    strncpy(saved_remote_host, orig_remote_host, sizeof(saved_remote_host) - 1);
+    saved_remote_host[sizeof(saved_remote_host) - 1] = '\0';
+  }
+  if (port_was_set) {
+    strncpy(saved_remote_port, orig_remote_port, sizeof(saved_remote_port) - 1);
+    saved_remote_port[sizeof(saved_remote_port) - 1] = '\0';
+  }
+
+  unsetenv("CUOPT_REMOTE_HOST");
+  unsetenv("CUOPT_REMOTE_PORT");
+
+  printf("Testing GPU problem rejects remote solve after create...\n");
+  printf("  (read with remote unset, then set CUOPT_REMOTE_* before solve)\n");
+
+  status = cuOptReadProblem(filename, &problem);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error reading problem: %d\n", status);
+    goto DONE;
+  }
+
+  setenv("CUOPT_REMOTE_HOST", "localhost", 1);
+  setenv("CUOPT_REMOTE_PORT", "18500", 1);
+
+  status = cuOptCreateSolverSettings(&settings);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error creating solver settings: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptSetParameter(settings, "log_to_console", "true");
+  if (status != CUOPT_SUCCESS) {
+    printf("Error setting log_to_console: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptSetIntegerParameter(settings, CUOPT_METHOD, CUOPT_METHOD_PDLP);
+  if (status != CUOPT_SUCCESS) {
+    printf("Error setting method: %d\n", status);
+    goto DONE;
+  }
+
+  status = cuOptSolve(problem, settings, &solution);
+  if (status != CUOPT_VALIDATION_ERROR) {
+    printf("Expected CUOPT_VALIDATION_ERROR (%d), got %d\n", CUOPT_VALIDATION_ERROR, status);
+    status = -1;
+    goto DONE;
+  }
+
+  printf("GPU problem correctly rejected remote solve with CUOPT_VALIDATION_ERROR\n");
+  status = CUOPT_SUCCESS;
+
+DONE:
+  cuOptDestroyProblem(&problem);
+  cuOptDestroySolverSettings(&settings);
+  cuOptDestroySolution(&solution);
+
+  if (host_was_set) {
+    setenv("CUOPT_REMOTE_HOST", saved_remote_host, 1);
+  } else {
+    unsetenv("CUOPT_REMOTE_HOST");
+  }
+  if (port_was_set) {
+    setenv("CUOPT_REMOTE_PORT", saved_remote_port, 1);
+  } else {
+    unsetenv("CUOPT_REMOTE_PORT");
+  }
+
+  return status;
+}

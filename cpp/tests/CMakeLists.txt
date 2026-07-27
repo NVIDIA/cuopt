@@ -23,6 +23,8 @@ if(BUILD_TESTS)
   target_link_libraries(cuopttestutils
       PUBLIC
       cuopt
+      OpenMP::OpenMP_CXX
+      OpenMP::OpenMP_CUDA
       GTest::gmock
       GTest::gtest
   )
@@ -35,11 +37,19 @@ endif()
 set(CUOPT_TEST_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
 # ################################################################ ------------------------------------------------------------------
-# ConfigureTest(NAME source1.cu source2.cu [LABELS label1 label2 ...])
+# ConfigureTest(NAME source1.cu source2.cu [STATIC_LIB] [LABELS label1 label2 ...])
 #
 # LABELS sets CTest labels for selective local test execution via `ctest -L <label>`.
+# STATIC_LIB links cuopt_static instead of cuopt (for tests needing internal symbols).
 function(ConfigureTest CMAKE_TEST_NAME)
-    cmake_parse_arguments(CT "" "" "LABELS" ${ARGN})
+    cmake_parse_arguments(CT "STATIC_LIB" "" "LABELS" ${ARGN})
+    if(CT_STATIC_LIB)
+        set(_cuopt_link_target cuopt_static)
+        set(_extra_libs "")
+    else()
+        set(_cuopt_link_target cuopt)
+        set(_extra_libs cuopttestutils)
+    endif()
     add_executable(${CMAKE_TEST_NAME} ${CT_UNPARSED_ARGUMENTS})
     target_include_directories(${CMAKE_TEST_NAME}
         PRIVATE
@@ -51,11 +61,10 @@ function(ConfigureTest CMAKE_TEST_NAME)
         "${pslp_SOURCE_DIR}/include"
         "${dejavu_SOURCE_DIR}"
     )
-
     target_link_libraries(${CMAKE_TEST_NAME}
        PRIVATE
-        cuopt
-        cuopttestutils
+        ${_cuopt_link_target}
+        ${_extra_libs}
         GTest::gmock
         GTest::gmock_main
         GTest::gtest
@@ -65,13 +74,10 @@ function(ConfigureTest CMAKE_TEST_NAME)
     if(NOT DEFINED INSTALL_TARGET OR "${INSTALL_TARGET}" STREQUAL "")
       target_link_options(${CMAKE_TEST_NAME} PRIVATE -Wl,--enable-new-dtags)
     endif()
-
     add_test(NAME ${CMAKE_TEST_NAME} COMMAND ${CMAKE_TEST_NAME})
-
     if(CT_LABELS)
         set_tests_properties(${CMAKE_TEST_NAME} PROPERTIES LABELS "${CT_LABELS}")
     endif()
-
     install(
         TARGETS ${CMAKE_TEST_NAME}
         COMPONENT testing
@@ -101,8 +107,7 @@ if(BUILD_TESTS)
     add_subdirectory(mip)
   endif()
   add_subdirectory(linear_programming)
-  add_subdirectory(dual_simplex)
-  add_subdirectory(socp)
+  add_subdirectory(internal)
   add_subdirectory(qp)
   add_subdirectory(utilities)
 

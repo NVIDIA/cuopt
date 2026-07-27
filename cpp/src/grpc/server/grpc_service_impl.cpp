@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 #ifdef CUOPT_ENABLE_GRPC
@@ -527,27 +527,21 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
                       const cuopt::remote::DeleteRequest* request,
                       cuopt::remote::DeleteResponse* response) override
   {
+    (void)context;
     std::string job_id = request->job_id();
 
-    size_t erased = 0;
-    {
-      std::lock_guard<std::mutex> lock(tracker_mutex);
-      erased = job_tracker.erase(job_id);
-    }
-
-    if (erased == 0) {
+    std::string message;
+    if (!delete_job(job_id, message)) {
       response->set_status(cuopt::remote::ERROR_NOT_FOUND);
-      response->set_message("Job not found: " + job_id);
+      response->set_message(message);
       if (config.verbose) {
         SERVER_LOG_DEBUG("[gRPC] DeleteResult job not found: %s", job_id.c_str());
       }
       return Status::OK;
     }
 
-    delete_log_file(job_id);
-
     response->set_status(cuopt::remote::SUCCESS);
-    response->set_message("Result deleted");
+    response->set_message(message);
 
     if (config.verbose) { SERVER_LOG_DEBUG("[gRPC] Result deleted for job: %s", job_id.c_str()); }
 
@@ -884,7 +878,7 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     if (max_count > 0 && count > max_count) { count = max_count; }
 
     for (int64_t i = 0; i < count; ++i) {
-      const auto& inc = incumbents[static_cast<size_t>(from_index + i)];
+      const auto& inc = incumbents[from_index + i];
       auto* out       = response->add_incumbents();
       out->set_index(from_index + i);
       out->set_objective(inc.objective);

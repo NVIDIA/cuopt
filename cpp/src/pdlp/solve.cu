@@ -510,6 +510,7 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   barrier_settings.eliminate_dense_columns         = settings.eliminate_dense_columns;
   barrier_settings.barrier_iterative_refinement    = settings.barrier_iterative_refinement;
   barrier_settings.barrier_step_scale              = settings.barrier_step_scale;
+  barrier_settings.qcqp_ruiz_equilibration         = settings.qcqp_ruiz_equilibration;
   barrier_settings.cudss_deterministic             = settings.cudss_deterministic;
   barrier_settings.barrier_relaxed_feasibility_tol = settings.tolerances.relative_primal_tolerance;
   barrier_settings.barrier_relaxed_optimality_tol  = settings.tolerances.relative_dual_tolerance;
@@ -1597,7 +1598,12 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
             } else {
               call_barrier_thread();
             }
+          } catch (const std::exception& e) {
+            CUOPT_LOG_ERROR("Exception in concurrent barrier LP: %s", e.what());
+            barrier_exception = std::current_exception();
+            request_concurrent_halt();
           } catch (...) {
+            CUOPT_LOG_ERROR("Unknown exception in concurrent barrier LP");
             barrier_exception = std::current_exception();
             request_concurrent_halt();
           }
@@ -1611,7 +1617,12 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
           try {
             run_dual_simplex_thread<i_t, f_t>(
               dual_simplex_problem, settings_pdlp, sol_dual_simplex_ptr, timer);
+          } catch (const std::exception& e) {
+            CUOPT_LOG_ERROR("Exception in concurrent dual simplex LP: %s", e.what());
+            dual_simplex_exception = std::current_exception();
+            request_concurrent_halt();
           } catch (...) {
+            CUOPT_LOG_ERROR("Unknown exception in concurrent dual simplex LP");
             dual_simplex_exception = std::current_exception();
             request_concurrent_halt();
           }
@@ -1625,7 +1636,12 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
       // PDLP runs synchronously on the dispatcher, concurrently with the queued tasks.
       try {
         sol_pdlp = run_pdlp(problem, settings_pdlp, timer, is_batch_mode);
+      } catch (const std::exception& e) {
+        CUOPT_LOG_ERROR("Exception in concurrent PDLP: %s", e.what());
+        pdlp_exception = std::current_exception();
+        request_concurrent_halt();
       } catch (...) {
+        CUOPT_LOG_ERROR("Unknown exception in concurrent PDLP");
         pdlp_exception = std::current_exception();
         request_concurrent_halt();
       }
@@ -2294,6 +2310,10 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
   // Local execution - dispatch to appropriate overload based on problem type
   auto* cpu_prob = dynamic_cast<cpu_optimization_problem_t<i_t, f_t>*>(problem_interface);
   if (cpu_prob != nullptr) {
+    cuopt_expects(is_remote_execution_enabled(),
+                  error_type_t::ValidationError,
+                  "A CPU-memory problem requires remote execution. Set CUOPT_REMOTE_HOST and "
+                  "CUOPT_REMOTE_PORT to solve on a remote GPU server.");
     return solve_lp(*cpu_prob, settings, problem_checking, use_pdlp_solver_mode, is_batch_mode);
   }
 

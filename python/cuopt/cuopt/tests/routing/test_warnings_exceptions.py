@@ -22,18 +22,23 @@ def test_type_casting_warnings():
     constraints["service"] = [2.5, 2.5, 2.5]
 
     dm = routing.DataModel(3, 2)
+    dm.add_cost_matrix(cost_matrix)
+    dm.set_order_time_windows(constraints["earliest"], constraints["latest"])
+    dm.set_order_service_times(constraints["service"])
+
+    # DataModel records inputs and converts them to device only when the model
+    # is built (store-then-build), so the dtype-cast warnings surface at build
+    # time. get_cost_matrix triggers the build that replays the recorded setters.
     with warnings.catch_warnings(record=True) as w:
-        dm.add_cost_matrix(cost_matrix)
-        assert "Casting cost_matrix from int64 to float32" in str(w[0].message)
-
-        dm.set_order_time_windows(
-            constraints["earliest"], constraints["latest"]
-        )
-
-        dm.set_order_service_times(constraints["service"])
-        assert "Casting service_times from float64 to int32" in str(
-            w[1].message
-        )
+        warnings.simplefilter("always")
+        dm.get_cost_matrix(0)
+    messages = [str(rec.message) for rec in w]
+    assert any(
+        "Casting cost_matrix from int64 to float32" in m for m in messages
+    )
+    assert any(
+        "Casting service_times from float64 to int32" in m for m in messages
+    )
 
 
 # ----- Validation (matrix, time windows, range) -----
@@ -68,6 +73,21 @@ def test_dist_mat():
         str(exc_info.value)
         == "All values in cost matrix must be greater than or equal to zero"
     )
+
+
+def test_dist_mat_null():
+    cost_matrix = cudf.DataFrame(
+        [
+            [0, 5.0, 5.0, 5.0],
+            [5.0, 0, 5.0, 5.0],
+            [5.0, 5.0, 0, 5.0],
+            [5.0, None, 5.0, 0],
+        ]
+    )
+    with pytest.raises(Exception) as exc_info:
+        dm = routing.DataModel(cost_matrix.shape[0], 3)
+        dm.add_cost_matrix(cost_matrix)
+    assert str(exc_info.value) == "cost matrix cannot have NULL values"
 
 
 def test_time_windows():
@@ -124,6 +144,9 @@ def test_range():
 
 
 def test_invalid_datamodel():
+    # Validation is deferred to build/solve time (store-then-build): the empty
+    # model is recorded at construction and rejected when it is solved.
+    dm = routing.DataModel(0, 0, 0)
     with pytest.raises(InputValidationError) as err:
-        routing.DataModel(0, 0, 0)
+        routing.Solve(dm)
     assert str(err.value) == "The data model needs at least one location"

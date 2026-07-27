@@ -13,8 +13,8 @@
 #include <unordered_set>
 #include <vector>
 
-#include <mip_heuristics/feasibility_jump/cpu_fj_thread.cuh>
 #include <mip_heuristics/feasibility_jump/feasibility_jump.cuh>
+#include <mip_heuristics/feasibility_jump/fj_cpu_worker.cuh>
 #include <utilities/memory_instrumentation.hpp>
 #include <utilities/producer_sync.hpp>
 

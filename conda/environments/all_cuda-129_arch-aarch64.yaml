@@ -16,7 +16,6 @@ dependencies:
 - cpp-argparse
 - cuda-nvcc
 - cuda-nvtx-dev
-- cuda-python>=12.9.2,<13.0
 - cuda-sanitizer-api
 - cuda-version=12.9
 - cudf==26.8.*,>=0.0.0a0
