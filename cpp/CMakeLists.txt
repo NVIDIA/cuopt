@@ -705,6 +705,7 @@ if (BUILD_TESTS)
             OpenMP::OpenMP_CXX
             PRIVATE
             ${CUOPT_PRIVATE_CUDA_LIBS}
+            nccl_external
             $<$<BOOL:${CUOPT_ENABLE_GRPC}>:protobuf::libprotobuf>
             $<$<BOOL:${CUOPT_ENABLE_GRPC}>:gRPC::grpc++>
     )
