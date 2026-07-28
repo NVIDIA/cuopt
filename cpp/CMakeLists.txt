@@ -614,7 +614,7 @@ add_dependencies(cuopt_objs PSLP)
 # "target KaMinPar is not in any export set"). libKaMinPar.a is self-contained (the
 # kaminpar-common OBJECT lib is archived into it); we only need its public headers
 # (<kaminpar.h>, which pulls in stdlib + TBB) at compile time.
-target_include_directories(cuopt SYSTEM PRIVATE
+target_include_directories(cuopt_objs SYSTEM PRIVATE
         $<TARGET_PROPERTY:KaMinPar::KaMinPar,INTERFACE_INCLUDE_DIRECTORIES>)
 # partitioner.cpp includes <kaminpar.h>. Because KaMinPar is linked by file, cuopt
 # does NOT inherit KaMinPar's PUBLIC compile definitions, so we must replicate the ones that
@@ -625,12 +625,11 @@ target_include_directories(cuopt SYSTEM PRIVATE
 #                                   with the KAMINPAR_64BIT_* options in get_kaminpar.cmake;
 #                                   otherwise the public API types (e.g. copy_graph's span<>
 #                                   widths) mismatch the prebuilt archive => undefined refs.
-target_compile_definitions(cuopt PRIVATE TBB_PREVIEW_GLOBAL_CONTROL KAMINPAR_64BIT_EDGE_IDS)
-target_link_libraries(cuopt PRIVATE $<TARGET_FILE:KaMinPar::KaMinPar>)
+target_compile_definitions(cuopt_objs PRIVATE TBB_PREVIEW_GLOBAL_CONTROL KAMINPAR_64BIT_EDGE_IDS)
 # Real (non-imported) target only exists when KaMinPar is built from source via CPM;
-# force it to build before cuopt since it is EXCLUDE_FROM_ALL.
+# force it to build before the objects that include its headers since it is EXCLUDE_FROM_ALL.
 if (TARGET KaMinPar)
-        add_dependencies(cuopt KaMinPar)
+        add_dependencies(cuopt_objs KaMinPar)
 endif ()
 
 # ##################################################################################################
@@ -728,6 +727,10 @@ if (BUILD_TESTS)
     )
     target_link_libraries(cuopt_static PRIVATE $<TARGET_FILE:PSLP>)
     add_dependencies(cuopt_static PSLP)
+    target_link_libraries(cuopt_static PRIVATE $<TARGET_FILE:KaMinPar::KaMinPar>)
+    if (TARGET KaMinPar)
+        add_dependencies(cuopt_static KaMinPar)
+    endif ()
     add_subdirectory(tests)
 endif (BUILD_TESTS)
 
@@ -768,6 +771,10 @@ target_link_libraries(cuopt
 )
 target_link_libraries(cuopt PRIVATE $<TARGET_FILE:PSLP>)
 add_dependencies(cuopt PSLP)
+target_link_libraries(cuopt PRIVATE $<TARGET_FILE:KaMinPar::KaMinPar>)
+if (TARGET KaMinPar)
+        add_dependencies(cuopt KaMinPar)
+endif ()
 # Propagate compile definitions that consumers need when including cuopt headers.
 # These were on cuopt directly before the cuopt_objs refactor; $<TARGET_OBJECTS:...>
 # does not carry INTERFACE properties, so we restore them explicitly.
