@@ -981,6 +981,7 @@ if (NOT BUILD_LP_ONLY)
     target_link_libraries(cuopt_cli
             PUBLIC
             cuopt
+            $<$<BOOL:${CUOPT_ENABLE_GRPC}>:cuopt_grpc>
             OpenMP::OpenMP_CXX
             ${CUDSS_LIBRARIES}
             TBB::tbb
