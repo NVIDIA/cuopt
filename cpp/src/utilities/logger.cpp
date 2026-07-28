@@ -146,6 +146,43 @@ struct logger_config_guard {
 static std::weak_ptr<logger_config_guard> g_active_guard;
 static std::mutex g_guard_mutex;
 
+// Pending user log callback set by the C API before a solve.
+// Accessed under g_guard_mutex.
+static log_callback_with_data_t g_pending_callback      = nullptr;
+static void* g_pending_callback_data                    = nullptr;
+static int g_pending_log_level                          = -1;  // -1 = use compiled default
+
+static void user_log_bridge(int lvl, const char* msg)
+{
+  if (g_pending_callback) { g_pending_callback(lvl, msg, g_pending_callback_data); }
+}
+
+void set_pending_log_callback(log_callback_with_data_t cb, void* user_data)
+{
+  std::lock_guard<std::mutex> lock(g_guard_mutex);
+  g_pending_callback      = cb;
+  g_pending_callback_data = user_data;
+}
+
+void clear_pending_log_callback()
+{
+  std::lock_guard<std::mutex> lock(g_guard_mutex);
+  g_pending_callback      = nullptr;
+  g_pending_callback_data = nullptr;
+}
+
+void set_pending_log_level(int level)
+{
+  std::lock_guard<std::mutex> lock(g_guard_mutex);
+  g_pending_log_level = level;
+}
+
+void clear_pending_log_level()
+{
+  std::lock_guard<std::mutex> lock(g_guard_mutex);
+  g_pending_log_level = -1;
+}
+
 init_logger_t::init_logger_t(std::string log_file, bool log_to_console)
 {
   std::lock_guard<std::mutex> lock(g_guard_mutex);
@@ -169,12 +206,20 @@ init_logger_t::init_logger_t(std::string log_file, bool log_to_console)
       std::make_shared<rapids_logger::basic_file_sink_mt>(log_file, true));
     cuopt::default_logger().flush_on(rapids_logger::level_enum::debug);
   }
+  if (g_pending_callback) {
+    cuopt::default_logger().sinks().push_back(
+      std::make_shared<rapids_logger::callback_sink_mt>(user_log_bridge));
+  }
 
 #if CUOPT_LOG_ACTIVE_LEVEL >= RAPIDS_LOGGER_LOG_LEVEL_INFO
   cuopt::default_logger().set_pattern("%v");
 #else
   cuopt::default_logger().set_pattern(cuopt::default_pattern());
 #endif
+
+  if (g_pending_log_level >= 0) {
+    cuopt::default_logger().set_level(static_cast<rapids_logger::level_enum>(g_pending_log_level));
+  }
 
   // Extract messages from the global buffer and log to the default logger
   auto buffered_messages = global_log_buffer().drain_all();

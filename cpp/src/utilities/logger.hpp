@@ -36,6 +36,26 @@ rapids_logger::logger& default_logger();
  */
 void reset_default_logger();
 
+// C-compatible log callback type: void callback(int level, const char* msg, void* user_data)
+// Matches cuOptLogCallback in cuopt_c.h — layout-compatible, no dependency on that header.
+using log_callback_with_data_t = void (*)(int level, const char* message, void* user_data);
+
+/**
+ * @brief Install a user log callback to be picked up by the next init_logger_t.
+ *
+ * Must be called before the init_logger_t that starts the targeted solve.
+ * Protected by the same mutex as init_logger_t so it is safe to call from
+ * any thread, but do not call from inside the callback itself.
+ */
+void set_pending_log_callback(log_callback_with_data_t cb, void* user_data);
+void clear_pending_log_callback();
+
+/**
+ * @brief Override the log level for the next init_logger_t.  Pass -1 to restore the default.
+ */
+void set_pending_log_level(int level);
+void clear_pending_log_level();
+
 // Ref-counted logger initializer
 class init_logger_t {
   // Using shared_ptr for ref-counting
