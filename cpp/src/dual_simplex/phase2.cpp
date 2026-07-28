@@ -11,6 +11,7 @@
 #include <dual_simplex/initial_basis.hpp>
 #include <dual_simplex/phase1.hpp>
 #include <dual_simplex/phase2.hpp>
+#include <dual_simplex/primal.hpp>
 #include <dual_simplex/random.hpp>
 #include <dual_simplex/solve.hpp>
 #include <linear_algebra/sparse_matrix.hpp>
@@ -2331,13 +2332,15 @@ void prepare_optimality(i_t info,
                         const simplex_solver_settings_t<i_t, f_t>& settings,
                         basis_update_mpf_t<i_t, f_t>& ft,
                         const std::vector<f_t>& objective,
-                        const std::vector<i_t>& basic_list,
-                        const std::vector<i_t>& nonbasic_list,
-                        const std::vector<variable_status_t>& vstatus,
+                        // Primal cleanup below pivots, so the basis, the statuses
+                        // and the iteration count are updated in place.
+                        std::vector<i_t>& basic_list,
+                        std::vector<i_t>& nonbasic_list,
+                        std::vector<variable_status_t>& vstatus,
                         int phase,
                         f_t start_time,
                         f_t max_val,
-                        i_t iter,
+                        i_t& iter,
                         const std::vector<f_t>& x,
                         std::vector<f_t>& y,
                         std::vector<f_t>& z,
@@ -2370,6 +2373,54 @@ void prepare_optimality(i_t info,
         settings.log.printf("Unperturbed dual infeasibility: %.2e\n", dual_infeas);
         settings.log.printf("Objective: %+.16e\n", sol.user_objective);
         settings.log.printf("Num updates: %d\n", ft.num_updates());
+
+        // Primal pivots in place, so keep the perturbed solution to fall back on.
+        // The factor is snapshot rather than refactorized on failure: the copy is
+        // exact, keeps ft consistent with the restored basis, and cannot itself
+        // fail the way a refactorization can.
+        const basis_update_mpf_t<i_t, f_t> saved_ft        = ft;
+        const std::vector<f_t> saved_x                     = sol.x;
+        const std::vector<f_t> saved_y                     = sol.y;
+        const std::vector<f_t> saved_z                     = sol.z;
+        const std::vector<variable_status_t> saved_vstatus = vstatus;
+        const std::vector<i_t> saved_basic_list            = basic_list;
+        const std::vector<i_t> saved_nonbasic_list         = nonbasic_list;
+
+        // Reoptimize the unperturbed objective from this basis. The point is
+        // primal feasible, so primal simplex stays in phase 2 and pivots only to
+        // restore dual feasibility. It writes through sol, so x, y and z here see
+        // the cleaned up solution. It prints no summary; the one below reports the
+        // final result.
+        primal_status_t primal_status = primal_phase2_with_advanced_basis(2,
+                                                                          start_time,
+                                                                          lp,
+                                                                          settings,
+                                                                          vstatus,
+                                                                          ft,
+                                                                          basic_list,
+                                                                          nonbasic_list,
+                                                                          sol,
+                                                                          iter,
+                                                                          work_estimate,
+                                                                          false);
+        if (primal_status == primal_status_t::OPTIMAL) {
+          // z now prices the original objective, so no perturbation remains.
+          settings.log.printf("Primal cleanup successful.\n");
+          perturbation       = 0.0;
+          sol.objective      = compute_objective(lp, sol.x);
+          sol.user_objective = compute_user_objective(lp, sol.objective);
+        } else {
+          // Restore the perturbed optimum; a partially pivoted basis is worse than
+          // the dual feasible point we started from.
+          settings.log.printf("Primal cleanup failed. Reporting the perturbed solution.\n");
+          ft            = saved_ft;
+          sol.x         = saved_x;
+          sol.y         = saved_y;
+          sol.z         = saved_z;
+          vstatus       = saved_vstatus;
+          basic_list    = saved_basic_list;
+          nonbasic_list = saved_nonbasic_list;
+        }
       }
     }
   }

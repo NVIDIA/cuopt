@@ -442,7 +442,7 @@ i_t primal_ratio_test(const lp_problem_t<i_t, f_t>& lp,
       // step * delta_x[j] >= lp.lower[j] - x[j]
       // step <= (lp.lower[j] - x[j]) / delta_x[j], delta_x[j] < 0
       f_t neum = lp.lower[j] - x[j];
-      // A basic sitting a hair below its bound (within the primal tolerance) is on
+      // A basic sitting below its bound (within the primal tolerance) is on
       // the bound numerically, but gives a tiny negative ratio. Dropping it lets
       // the step run straight through the bound, so treat it as a zero-length
       // block. A genuine violation is left to the branches above, which stop at
@@ -466,7 +466,7 @@ i_t primal_ratio_test(const lp_problem_t<i_t, f_t>& lp,
       // step * delta_x[j] <= lp.upper[j] - x[j]
       // step <= (lp.upper[j] - x[j]) / delta_x[j], delta_x[j] > 0
       f_t neum = lp.upper[j] - x[j];
-      // Mirror of the lower bound case: a hair above the bound is on the bound.
+      // Mirror of the lower bound case: slightly above the bound is considered on the bound.
       if (neum < 0 && -neum <= settings.primal_tol) { neum = 0.0; }
       f_t ratio = neum / delta_x[j];
       if (ratio >= 0 && ratio < min_val) {
@@ -603,7 +603,8 @@ primal_status_t primal_phase2_with_advanced_basis(
   std::vector<i_t>& nonbasic_list,
   lp_solution_t<i_t, f_t>& sol,
   i_t& iter,
-  f_t& work_estimate)
+  f_t& work_estimate,
+  bool print_summary)
 {
   const i_t m = lp.num_rows;
   const i_t n = lp.num_cols;
@@ -793,7 +794,7 @@ primal_status_t primal_phase2_with_advanced_basis(
         obj                = compute_objective(lp, x);
         sol.objective      = obj;
         sol.user_objective = compute_user_objective(lp, obj);
-        if (!settings.inside_mip) {
+        if (!settings.inside_mip && print_summary) {
           settings.log.printf("\n");
           settings.log.printf(
             "Optimal solution found in %d iterations and %.2fs\n", iter, toc(start_time));
@@ -990,7 +991,7 @@ primal_status_t primal_phase2_with_advanced_basis(
         set_primal_variables_on_bounds(lp, settings, vstatus, x);
         compute_basic_primal_variables(lp, basis_update, basic_list, nonbasic_list, x);
       } else if (rebuild_x_after_bound_snap) {
-        // FT update already matches the new basis; recompute x_B with the leaver
+        // FT update already matches the new basis; recompute x_B with the leaving variable
         // snapped onto its bound.
         compute_basic_primal_variables(lp, basis_update, basic_list, nonbasic_list, x);
       }
@@ -1092,7 +1093,8 @@ template primal_status_t primal_phase2_with_advanced_basis<int, double>(
   std::vector<int>& nonbasic_list,
   lp_solution_t<int, double>& sol,
   int& iter,
-  double& work_estimate);
+  double& work_estimate,
+  bool print_summary);
 
 #endif
 

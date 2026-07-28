@@ -52,7 +52,10 @@ primal_status_t primal_phase2_with_advanced_basis(
   std::vector<i_t>& nonbasic_list,
   lp_solution_t<i_t, f_t>& sol,
   i_t& iter,
-  f_t& work_estimate);
+  f_t& work_estimate,
+  // Callers that print their own summary (dual simplex perturbation cleanup)
+  // suppress this one, so optimality is not reported twice.
+  bool print_summary = true);
 
 template <typename i_t, typename f_t>
 primal_status_t primal_phase2(i_t phase,
