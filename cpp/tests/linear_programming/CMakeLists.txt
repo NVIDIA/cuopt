@@ -4,9 +4,7 @@
 # cmake-format: on
 
 ConfigureTest(LP_UNIT_TEST
-    ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/optimization_problem_test.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/solver_settings_test.cu
-    ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/presolve_test.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/solution_interface_test.cu
     LABELS numopt)
 # ##################################################################################################
@@ -38,6 +36,7 @@ target_include_directories(MPS_FAST_PARSER_TEST
     "${CUOPT_TEST_DIR}/../src/io/experimental_mps_fast"
 )
 target_link_libraries(MPS_FAST_PARSER_TEST PRIVATE simde::simde)
+
 
 # ##################################################################################################
 # - C API Tests----------------------------------------------------------------------

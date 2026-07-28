@@ -246,5 +246,3 @@ INSTANTIATE_TEST_SUITE_P(level0_ges, double_test_vrp, ::testing::Values(std::mak
 }  // namespace test
 }  // namespace routing
 }  // namespace cuopt
-
-CUOPT_TEST_PROGRAM_MAIN()

@@ -109,6 +109,9 @@
 # Proto value names: proto_prefix + UPPER_SNAKE(CppName), or just CppName if
 # no prefix.
 #
+
+# yamllint disable rule:indentation
+
 enums:
   pdlp_termination_status:
     domain: solution
