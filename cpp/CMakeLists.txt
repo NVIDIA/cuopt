@@ -677,6 +677,7 @@ target_link_libraries(cuopt_lp
         ${CUOPT_PRIVATE_CUDA_LIBS}
         OpenMP::OpenMP_CUDA
         simde::simde
+        nccl_external
 )
 target_link_libraries(cuopt_lp PRIVATE $<TARGET_FILE:PSLP>)
 add_dependencies(cuopt_lp PSLP)
