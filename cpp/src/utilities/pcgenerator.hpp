@@ -85,7 +85,7 @@ class pcgenerator_t {
     state               = oldstate * 6364136223846793005ULL + stream;
     uint32_t xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
     uint32_t rot        = oldstate >> 59u;
-    ret                 = (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
+    ret                 = (xorshifted >> rot) | (xorshifted << ((32u - rot) & 31u));
     return ret;
   }
 

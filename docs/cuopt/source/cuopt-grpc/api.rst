@@ -32,7 +32,7 @@ Asynchronous Jobs
    * - ``GetResult``
      - Fetch a completed result (unary, when the payload fits one message).
    * - ``DeleteResult``
-     - Remove a stored result from server memory.
+     - Cancel the job if it is still queued or running, then remove all server-side state for that ``job_id``.
    * - ``CancelJob``
      - Cancel a queued or running job.
    * - ``WaitForCompletion``
