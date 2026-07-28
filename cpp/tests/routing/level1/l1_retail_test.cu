@@ -232,5 +232,3 @@ INSTANTIATE_TEST_SUITE_P(level1_retail, retail_float_test_t, ::testing::ValuesIn
 }  // namespace test
 }  // namespace routing
 }  // namespace cuopt
-
-CUOPT_TEST_PROGRAM_MAIN()
