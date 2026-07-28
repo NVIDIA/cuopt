@@ -43,9 +43,7 @@ void test_cost_boundaries_reset()
   std::vector<float> cost_matrix(n_locations * n_locations, 0.f);
   for (int from = 0; from < n_locations; ++from) {
     for (int to = 0; to < n_locations; ++to) {
-      if (from != to) {
-        cost_matrix[from * n_locations + to] = from * n_locations + to + 1.f;
-      }
+      if (from != to) { cost_matrix[from * n_locations + to] = from * n_locations + to + 1.f; }
     }
   }
 
