@@ -176,7 +176,7 @@ int run_single_file(const std::string& file_path,
   }
 
   try {
-    if (memory_backend == cuopt::mathematical_optimization::memory_backend_t::CPU) {
+    if (cuopt::mathematical_optimization::is_remote_execution_enabled()) {
       // Remote execution: problem_interface holds a cpu_optimization_problem_t.
       // Call solve_lp/mip_remote directly so libcuopt_grpc.so is a real DT_NEEDED
       // dependency of this binary rather than an implicit runtime lookup.
