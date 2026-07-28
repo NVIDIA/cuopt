@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-// reserved. SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: Apache-2.0
 
 #include "fast_parser.hpp"
 #include "fast_parse_primitives.hpp"
@@ -219,7 +219,8 @@ class scoped_timer_t {
   }
 #endif
 
-      ~scoped_timer_t()
+      ~scoped_timer_t()  // NOSONAR(S1048): profiling-only path; none of the called functions
+                         // realistically throw
   {
 #ifdef MPS_FAST_TIMERS
     auto end          = std::chrono::high_resolution_clock::now();
@@ -1200,7 +1201,7 @@ static const char* find_line_start(const char* section_start, const char* p)
 {
   while (p > section_start && p[-1] != '\n')
     --p;
-  return p;
+  return p;  // NOSONAR: pointer stays within [section_start, original_p]; guard prevents underflow
 }
 
 static std::vector<bounds_chunk_boundary_t> compute_bounds_chunk_boundaries(

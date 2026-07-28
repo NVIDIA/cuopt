@@ -267,6 +267,7 @@ dependencies:
           - libboost-devel
           - cpp-argparse
           - &pyyaml pyyaml>=6.0.0
+          - nccl >=2.19
           - tbb-devel
           - zlib
           - bzip2
@@ -757,6 +758,7 @@ dependencies:
             packages:
               - cuda-toolkit[cublas,cudart,curand,cusolver,cusparse,nvtx]==12.*
               - nvidia-cudss-cu12>=0.7,<0.8
+              - nvidia-nccl-cu12>=2.19
               - nvidia-nvjitlink-cu12>=12.9,<13
           - matrix:
               cuda: "13.*"
@@ -764,6 +766,7 @@ dependencies:
             packages:
               - &ctk_cu13 cuda-toolkit[cublas,cudart,curand,cusolver,cusparse,nvtx]==13.*
               - &cudss_cu13 nvidia-cudss-cu13>=0.7,<0.8
+              - &nccl_cu13 nvidia-nccl-cu13>=2.19
               - &nvjitlink_cu13 nvidia-nvjitlink>=13.3,<14
           # if no matching matrix selectors passed, list the CUDA 13 requirement
           # (just as a source of documentation, as this populates pyproject.toml in source control)
@@ -771,6 +774,7 @@ dependencies:
             packages:
               - *ctk_cu13
               - *cudss_cu13
+              - *nccl_cu13
               - *nvjitlink_cu13
   develop:
     common:

@@ -247,6 +247,7 @@ inline ResultQueueEntry* result_queue = nullptr;
 inline SharedMemoryControl* shm_ctrl  = nullptr;
 
 inline std::vector<pid_t> worker_pids;
+inline std::mutex worker_pids_mutex;
 
 inline ServerConfig config;
 
@@ -330,13 +331,8 @@ inline std::string read_file_to_string(const std::string& path)
 // Signal handling
 // =============================================================================
 
-inline void signal_handler(int signal)
-{
-  if (signal == SIGINT || signal == SIGTERM) {
-    keep_running = false;
-    if (shm_ctrl) { shm_ctrl->shutdown_requested = true; }
-  }
-}
+// SIGINT/SIGTERM are handled via sigwait on a dedicated thread (see main).
+// Using signal() handlers is unreliable once gRPC/CUDA threads mask signals.
 
 // =============================================================================
 // Forward declarations
@@ -350,7 +346,10 @@ void cleanup_shared_memory();
 void log_worker_gpu_layout();
 bool init_worker_cuda_environment(int worker_id);
 void spawn_workers();
+void kill_all_workers();
+void close_all_server_worker_pipes();
 void wait_for_workers();
+void cancel_all_active_jobs_for_shutdown();
 void worker_monitor_thread();
 void result_retrieval_thread();
 void incumbent_retrieval_thread();

@@ -330,6 +330,44 @@ create_logger_macros(CUOPT "cuopt::default_logger()" include/cuopt)
 find_package(CUDSS REQUIRED)
 
 # ##################################################################################################
+# - NCCL (multi-GPU distributed PDLP) -------------------------------------------------------------
+# NCCL is shipped via the conda env; no canonical CMake config target, so look it
+# up by name in the standard lib paths (plus CONDA_PREFIX as a hint).
+set(NCCL_HINT_PREFIXES "")
+if (DEFINED ENV{CONDA_PREFIX} AND NOT "$ENV{CONDA_PREFIX}" STREQUAL "")
+    list(APPEND NCCL_HINT_PREFIXES "$ENV{CONDA_PREFIX}")
+endif ()
+find_path(NCCL_INCLUDE_DIR
+    NAMES nccl.h
+    HINTS ${NCCL_HINT_PREFIXES}
+    PATH_SUFFIXES include
+)
+find_library(NCCL_LIBRARY
+    NAMES nccl
+    HINTS ${NCCL_HINT_PREFIXES}
+    PATH_SUFFIXES lib lib64
+)
+if (NOT NCCL_INCLUDE_DIR OR NOT NCCL_LIBRARY)
+    message(FATAL_ERROR "NCCL not found. Looked in ${NCCL_HINT_PREFIXES}. Install nccl-dev / libnccl-dev in the active env.")
+endif ()
+add_library(nccl_external UNKNOWN IMPORTED GLOBAL)
+set_target_properties(nccl_external PROPERTIES
+    IMPORTED_LOCATION "${NCCL_LIBRARY}"
+    INTERFACE_INCLUDE_DIRECTORIES "${NCCL_INCLUDE_DIR}"
+)
+message(STATUS "Using NCCL: ${NCCL_LIBRARY}")
+
+# ##################################################################################################
+# - KaMinPar (multi-threaded partitioning for distributed PDLP) ------------------------------------
+# Brought in the RAPIDS way (rapids_cpm_find): uses an installed KaMinPar (deb/rpm/conda,
+# discovered via its CMake config) if present, otherwise builds the pinned source via CPM.
+include(cmake/thirdparty/get_kaminpar.cmake)
+if (NOT TARGET KaMinPar::KaMinPar)
+    message(FATAL_ERROR "KaMinPar::KaMinPar was not made available by get_kaminpar.cmake")
+endif ()
+message(STATUS "Using KaMinPar (distributed PDLP graph partitioner)")
+
+# ##################################################################################################
 # - gRPC and Protobuf setup -----------------------------------------------------------------------
 
 if (NOT SKIP_GRPC_BUILD)
@@ -574,6 +612,31 @@ target_include_directories(cuopt_objs
 target_link_libraries(cuopt_objs PRIVATE $<TARGET_FILE:PSLP>)
 add_dependencies(cuopt_objs PSLP)
 
+# Link KaMinPar by file to avoid export dependency tracking (mirrors PSLP above).
+# KaMinPar is a from-source static library fully embedded into libcuopt.so; it is never
+# installed (INSTALL_KAMINPAR OFF) and consumers of cuopt::cuopt never use it, so it must
+# not leak into cuopt's exported link interface (otherwise rapids_export fails with
+# "target KaMinPar is not in any export set"). libKaMinPar.a is self-contained (the
+# kaminpar-common OBJECT lib is archived into it); we only need its public headers
+# (<kaminpar.h>, which pulls in stdlib + TBB) at compile time.
+target_include_directories(cuopt_objs SYSTEM PRIVATE
+        $<TARGET_PROPERTY:KaMinPar::KaMinPar,INTERFACE_INCLUDE_DIRECTORIES>)
+# partitioner.cpp includes <kaminpar.h>. Because KaMinPar is linked by file, cuopt
+# does NOT inherit KaMinPar's PUBLIC compile definitions, so we must replicate the ones that
+# affect what <kaminpar.h> compiles to:
+#   * TBB_PREVIEW_GLOBAL_CONTROL  - <kaminpar.h> includes <tbb/global_control.h>, which older
+#                                   TBB gates behind this macro.
+#   * KAMINPAR_64BIT_EDGE_IDS     - selects EdgeID = uint64 in <kaminpar.h>. MUST stay in sync
+#                                   with the KAMINPAR_64BIT_* options in get_kaminpar.cmake;
+#                                   otherwise the public API types (e.g. copy_graph's span<>
+#                                   widths) mismatch the prebuilt archive => undefined refs.
+target_compile_definitions(cuopt_objs PRIVATE TBB_PREVIEW_GLOBAL_CONTROL KAMINPAR_64BIT_EDGE_IDS)
+# Real (non-imported) target only exists when KaMinPar is built from source via CPM;
+# force it to build before the objects that include its headers since it is EXCLUDE_FROM_ALL.
+if (TARGET KaMinPar)
+        add_dependencies(cuopt_objs KaMinPar)
+endif ()
+
 # ##################################################################################################
 # - link libraries --------------------------------------------------------------------------------
 
@@ -648,6 +711,7 @@ if (BUILD_TESTS)
             OpenMP::OpenMP_CXX
             PRIVATE
             ${CUOPT_PRIVATE_CUDA_LIBS}
+            nccl_external
             $<$<BOOL:${CUOPT_ENABLE_GRPC}>:protobuf::libprotobuf>
             $<$<BOOL:${CUOPT_ENABLE_GRPC}>:gRPC::grpc++>
     )
@@ -670,6 +734,10 @@ if (BUILD_TESTS)
     )
     target_link_libraries(cuopt_static PRIVATE $<TARGET_FILE:PSLP>)
     add_dependencies(cuopt_static PSLP)
+    target_link_libraries(cuopt_static PRIVATE $<TARGET_FILE:KaMinPar::KaMinPar>)
+    if (TARGET KaMinPar)
+        add_dependencies(cuopt_static KaMinPar)
+    endif ()
     add_subdirectory(tests)
 endif (BUILD_TESTS)
 
@@ -701,6 +769,7 @@ target_link_libraries(cuopt
         ${CUDSS_LIB_FILE}
         PRIVATE
         ${CUOPT_PRIVATE_CUDA_LIBS}
+        nccl_external
         simde::simde
         OpenMP::OpenMP_CXX
         OpenMP::OpenMP_CUDA
@@ -709,6 +778,10 @@ target_link_libraries(cuopt
 )
 target_link_libraries(cuopt PRIVATE $<TARGET_FILE:PSLP>)
 add_dependencies(cuopt PSLP)
+target_link_libraries(cuopt PRIVATE $<TARGET_FILE:KaMinPar::KaMinPar>)
+if (TARGET KaMinPar)
+        add_dependencies(cuopt KaMinPar)
+endif ()
 # Propagate compile definitions that consumers need when including cuopt headers.
 # These were on cuopt directly before the cuopt_objs refactor; $<TARGET_OBJECTS:...>
 # does not carry INTERFACE properties, so we restore them explicitly.

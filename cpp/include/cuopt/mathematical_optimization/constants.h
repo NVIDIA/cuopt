@@ -84,14 +84,16 @@
 #define CUOPT_MIP_STRONG_BRANCHING_SIMPLEX_ITERATION_LIMIT \
   "mip_strong_branching_simplex_iteration_limit"
 
-#define CUOPT_SOLUTION_FILE            "solution_file"
-#define CUOPT_NUM_CPU_THREADS          "num_cpu_threads"
-#define CUOPT_NUM_GPUS                 "num_gpus"
-#define CUOPT_USER_PROBLEM_FILE        "user_problem_file"
-#define CUOPT_PRESOLVE_FILE            "presolve_file"
-#define CUOPT_RANDOM_SEED              "random_seed"
-#define CUOPT_PDLP_PRECISION           "pdlp_precision"
-#define CUOPT_MIP_SEMICONTINUOUS_BIG_M "mip_semi_continuous_big_m"
+#define CUOPT_SOLUTION_FILE                "solution_file"
+#define CUOPT_NUM_CPU_THREADS              "num_cpu_threads"
+#define CUOPT_NUM_GPUS                     "num_gpus"
+#define CUOPT_DISTRIBUTED_PDLP_PARTITIONER "distributed_pdlp_partitioner"
+#define CUOPT_USE_DISTRIBUTED_PDLP         "use_distributed_pdlp"
+#define CUOPT_USER_PROBLEM_FILE            "user_problem_file"
+#define CUOPT_PRESOLVE_FILE                "presolve_file"
+#define CUOPT_RANDOM_SEED                  "random_seed"
+#define CUOPT_PDLP_PRECISION               "pdlp_precision"
+#define CUOPT_MIP_SEMICONTINUOUS_BIG_M     "mip_semi_continuous_big_m"
 
 #define CUOPT_MIP_HYPER_HEURISTIC_POPULATION_SIZE     "mip_hyper_heuristic_population_size"
 #define CUOPT_MIP_HYPER_HEURISTIC_NUM_CPUFJ_THREADS   "mip_hyper_heuristic_num_cpufj_threads"
@@ -219,6 +221,14 @@
 #define CUOPT_PRESOLVE_OFF     0
 #define CUOPT_PRESOLVE_PAPILO  1
 #define CUOPT_PRESOLVE_PSLP    2
+
+/* @brief distributed_pdlp_partitioner values.
+ * Auto: pick automatically (RoundRobin on 1 GPU, KaMinPar otherwise).
+ * KaMinPar: multi-threaded KaMinPar graph partitioner.
+ * RoundRobin: round-robin assignment, no graph. */
+#define CUOPT_DISTRIBUTED_PDLP_PARTITIONER_AUTO        0
+#define CUOPT_DISTRIBUTED_PDLP_PARTITIONER_KAMINPAR    1
+#define CUOPT_DISTRIBUTED_PDLP_PARTITIONER_ROUND_ROBIN 2
 
 /* @brief MIP scaling mode constants */
 #define CUOPT_MIP_SCALING_OFF          0
