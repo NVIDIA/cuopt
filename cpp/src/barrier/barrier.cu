@@ -319,9 +319,9 @@ class iteration_data_t {
       d_dz_(0, lp.handle_ptr->get_stream()),
       d_dv_(0, lp.handle_ptr->get_stream()),
       d_dw_(0, lp.handle_ptr->get_stream()),
-      d_dw_aff_(0, lp.handle_ptr->get_stream()),
+      d_dw_aff_(num_upper_bounds, lp.handle_ptr->get_stream()),
       d_dx_aff_(lp.num_cols, lp.handle_ptr->get_stream()),
-      d_dv_aff_(0, lp.handle_ptr->get_stream()),
+      d_dv_aff_(num_upper_bounds, lp.handle_ptr->get_stream()),
       d_dz_aff_(lp.num_cols, lp.handle_ptr->get_stream()),
       d_dy_aff_(lp.num_rows, lp.handle_ptr->get_stream()),
       d_primal_residual_(0, lp.handle_ptr->get_stream()),
@@ -467,9 +467,6 @@ class iteration_data_t {
       if (n_upper_bounds > 0) {
         settings.log.printf("Upper bounds                : %d\n", n_upper_bounds);
       }
-
-      d_dw_aff_.resize(n_upper_bounds, stream_view_);
-      d_dv_aff_.resize(n_upper_bounds, stream_view_);
     }
 
     std::vector<i_t> dense_columns_unordered;
@@ -749,7 +746,8 @@ class iteration_data_t {
     if (first_call) {
       raft::common::nvtx::range scope("Barrier: augmented: device CSR build");
 
-      const size_t n_sparse_entries = has_soc && p > 0 ? cones().n_sparse_cone_entries : size_t{0};
+      const size_t n_sparse_cone_entries =
+        has_soc && p > 0 ? cones().n_sparse_cone_entries : size_t{0};
 
       if (has_soc) {
         build_augmented_csr_metadata(cones(), cone_kkt_data_, stream_view_);
@@ -766,8 +764,8 @@ class iteration_data_t {
         cone_views.n_sparse_cone_entries = cones().n_sparse_cone_entries;
       }
 
-      if (n_sparse_entries > 0) {
-        cone_kkt_data_.sparse_Hs_diag.resize(n_sparse_entries, stream_view_);
+      if (n_sparse_cone_entries > 0) {
+        cone_kkt_data_.sparse_Hs_diag.resize(n_sparse_cone_entries, stream_view_);
       }
 
       const i_t total_nnz =
