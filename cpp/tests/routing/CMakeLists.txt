@@ -19,16 +19,23 @@ ConfigureTest(ROUTING_INTERNAL_TEST
     LABELS routing
     STATIC_LIB)
 
-# Level-1 routing regression tests (disabled by default) combined into a single
+# Level-1 routing regression tests, disabled by default. Combined into a single
 # static binary so the two never-run tests don't ship as two separate multi-arch
 # cuopt_static binaries.
-ConfigureTest(ROUTING_L1_TEST
+#
+# The target name intentionally ends in "L1TEST", NOT "_TEST": ci/run_ctests.sh
+# runs every installed binary matching "*_TEST", and these regression tests are
+# not maintained to pass in CI. Ending the name outside that glob keeps them out
+# of the CI run (matching the original RETAIL_L1TEST/ROUTING_L1TEST names). The
+# DISABLED property below only affects local `ctest` invocations. Do not rename
+# this to end in "_TEST" without also excluding it from run_ctests.sh.
+ConfigureTest(ROUTING_L1TEST
     ${CUOPT_TEST_DIR}/internal/main.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/level1/l1_retail_test.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/level1/l1_routing_test.cu
     LABELS routing
     STATIC_LIB)
-set_tests_properties(ROUTING_L1_TEST PROPERTIES DISABLED TRUE)
+set_tests_properties(ROUTING_L1TEST PROPERTIES DISABLED TRUE)
 
 # # - ${CMAKE_CURRENT_SOURCE_DIR} unit tests ----------------------------------------------------------------------------
 ConfigureTest(ROUTING_UNIT_TEST
