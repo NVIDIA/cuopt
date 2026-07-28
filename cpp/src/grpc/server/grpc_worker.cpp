@@ -602,6 +602,12 @@ void worker_process(int worker_id)
 {
   SERVER_LOG_INFO("[Worker %d] Started (PID: %d)", worker_id, getpid());
 
+  // Parent owns SIGINT/SIGTERM shutdown. Ignoring here prevents the inherited
+  // soft handler from leaving mid-solve workers alive after Ctrl-C while the
+  // parent waits on them.
+  signal(SIGINT, SIG_IGN);
+  signal(SIGTERM, SIG_IGN);
+
   if (!init_worker_cuda_environment(worker_id)) {
     SERVER_LOG_ERROR("[Worker %d] CUDA environment initialization failed; exiting", worker_id);
     _exit(1);

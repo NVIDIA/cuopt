@@ -61,7 +61,9 @@ std::vector<char> bz2_file_to_string(const std::string& file)
     void operator()(void* f)
     {
       int bzerror;
-      if (f != nullptr) fptr(&bzerror, f);
+      if (f != nullptr)
+        fptr(&bzerror,
+             f);  // NOSONAR: mps_parser_expects/LZ4F guards above throw before this is reached
       mps_parser_expects_fatal(
         bzerror == BZ_OK, error_type_t::ValidationError, "Error closing bzip2 file!");
     }
@@ -105,7 +107,9 @@ std::vector<char> bz2_file_to_string(const std::string& file)
                      file.c_str());
   int bzerror = BZ_OK;
   std::unique_ptr<void, BzReadCloseDeleter> bzfile{
-    BZ2_bzReadOpen(&bzerror, fp.get(), 0, 0, nullptr, 0), {BZ2_bzReadClose}};
+    BZ2_bzReadOpen(&bzerror, fp.get(), 0, 0, nullptr, 0),
+    {BZ2_bzReadClose}};  // NOSONAR: mps_parser_expects/LZ4F guards above throw before this is
+                         // reached
   mps_parser_expects(bzerror == BZ_OK,
                      error_type_t::ValidationError,
                      "Could not open bzip2 compressed file! Given path: %s",
@@ -115,7 +119,12 @@ std::vector<char> bz2_file_to_string(const std::string& file)
   const size_t readbufsize = 1ull << 24;  // 16MiB - just a guess.
   std::vector<char> readbuf(readbufsize);
   while (bzerror == BZ_OK) {
-    const size_t bytes_read = BZ2_bzRead(&bzerror, bzfile.get(), readbuf.data(), readbuf.size());
+    const size_t bytes_read = BZ2_bzRead(
+      &bzerror,
+      bzfile.get(),
+      readbuf.data(),
+      readbuf
+        .size());  // NOSONAR: mps_parser_expects/LZ4F guards above throw before this is reached
     if (bzerror == BZ_OK || bzerror == BZ_STREAM_END) {
       buf.insert(buf.end(), begin(readbuf), begin(readbuf) + bytes_read);
     }
@@ -150,7 +159,8 @@ std::vector<char> zlib_file_to_string(const std::string& file)
   struct GzCloseDeleter {
     void operator()(gzFile_s* f)
     {
-      int err = fptr(f);
+      int err =
+        fptr(f);  // NOSONAR: mps_parser_expects/LZ4F guards above throw before this is reached
       mps_parser_expects_fatal(
         err == Z_OK, error_type_t::ValidationError, "Error closing gz file!");
     }
@@ -177,12 +187,15 @@ std::vector<char> zlib_file_to_string(const std::string& file)
     "Error loading zlib! Library version might be incompatible. Please decompress the .gz file "
     "manually and open the uncompressed file. Given path: %s",
     file.c_str());
-  std::unique_ptr<gzFile_s, GzCloseDeleter> gzfp{gzopen(file.c_str(), "rb"), {gzclose_r}};
+  std::unique_ptr<gzFile_s, GzCloseDeleter> gzfp{
+    gzopen(file.c_str(), "rb"),
+    {gzclose_r}};  // NOSONAR: mps_parser_expects/LZ4F guards above throw before this is reached
   mps_parser_expects(gzfp != nullptr,
                      error_type_t::ValidationError,
                      "Error opening compressed input file! Given path: %s",
                      file.c_str());
-  int zlib_status = gzbuffer(gzfp.get(), 1 << 20);  // 1 MiB
+  int zlib_status = gzbuffer(gzfp.get(), 1 << 20);  // 1 MiB  // NOSONAR: mps_parser_expects/LZ4F
+                                                    // guards above throw before this is reached
   mps_parser_expects(zlib_status == Z_OK,
                      error_type_t::ValidationError,
                      "Could not set zlib internal buffer size for decompression! Given path: %s",
@@ -192,10 +205,13 @@ std::vector<char> zlib_file_to_string(const std::string& file)
   std::vector<char> readbuf(readbufsize);
   int bytes_read = -1;
   while (bytes_read != 0) {
-    bytes_read = gzread(gzfp.get(), readbuf.data(), readbuf.size());
+    bytes_read = gzread(
+      gzfp.get(), readbuf.data(), readbuf.size());  // NOSONAR: mps_parser_expects/LZ4F guards above
+                                                    // throw before this is reached
     if (bytes_read > 0) { buf.insert(buf.end(), begin(readbuf), begin(readbuf) + bytes_read); }
     if (bytes_read < 0) {
-      gzerror(gzfp.get(), &zlib_status);
+      gzerror(gzfp.get(), &zlib_status);  // NOSONAR: mps_parser_expects/LZ4F guards above throw
+                                          // before this is reached
       break;
     }
   }
@@ -247,7 +263,8 @@ std::vector<char> lz4_file_to_string(const std::string& file)
     void operator()(LZ4F_dctx* f)
     {
       if (f != nullptr) {
-        const LZ4F_errorCode_t err = fptr(f);
+        const LZ4F_errorCode_t err =
+          fptr(f);  // NOSONAR: mps_parser_expects/LZ4F guards above throw before this is reached
         mps_parser_expects_fatal(
           !is_error(err), error_type_t::ValidationError, "Error closing lz4 file!");
       }
@@ -317,12 +334,17 @@ std::vector<char> lz4_file_to_string(const std::string& file)
 
   constexpr unsigned lz4f_version = 100;
   LZ4F_dctx* raw_dctx             = nullptr;
-  LZ4F_errorCode_t lz4_status     = LZ4F_createDecompressionContext(&raw_dctx, lz4f_version);
-  mps_parser_expects(!LZ4F_isError(lz4_status),
-                     error_type_t::ValidationError,
-                     "Could not open lz4 compressed file '%s': %s",
-                     file.c_str(),
-                     LZ4F_getErrorName(lz4_status));
+  LZ4F_errorCode_t lz4_status     = LZ4F_createDecompressionContext(
+    &raw_dctx,
+    lz4f_version);  // NOSONAR: mps_parser_expects/LZ4F guards above throw before this is reached
+  mps_parser_expects(
+    !LZ4F_isError(
+      lz4_status),  // NOSONAR: mps_parser_expects/LZ4F guards above throw before this is reached
+    error_type_t::ValidationError,
+    "Could not open lz4 compressed file '%s': %s",
+    file.c_str(),
+    LZ4F_getErrorName(
+      lz4_status));  // NOSONAR: mps_parser_expects/LZ4F guards above throw before this is reached
   std::unique_ptr<LZ4F_dctx, Lz4DctxDeleter> dctx{raw_dctx,
                                                   {LZ4F_freeDecompressionContext, LZ4F_isError}};
 
@@ -330,7 +352,11 @@ std::vector<char> lz4_file_to_string(const std::string& file)
   size_t src_size = compressed.size();
   LZ4F_frameInfo_t frame_info{};
   size_t src_used = src_size;
-  lz4_status      = LZ4F_getFrameInfo(dctx.get(), &frame_info, src, &src_used);
+  lz4_status      = LZ4F_getFrameInfo(
+    dctx.get(),
+    &frame_info,
+    src,
+    &src_used);  // NOSONAR: mps_parser_expects/LZ4F guards above throw before this is reached
   mps_parser_expects(!LZ4F_isError(lz4_status),
                      error_type_t::ValidationError,
                      "Error reading lz4 frame info for input file '%s': %s",
@@ -346,7 +372,13 @@ std::vector<char> lz4_file_to_string(const std::string& file)
   while (lz4_status != 0) {
     size_t dst_size = readbuf.size();
     src_used        = src_size;
-    lz4_status = LZ4F_decompress(dctx.get(), readbuf.data(), &dst_size, src, &src_used, nullptr);
+    lz4_status      = LZ4F_decompress(
+      dctx.get(),
+      readbuf.data(),
+      &dst_size,
+      src,
+      &src_used,
+      nullptr);  // NOSONAR: mps_parser_expects/LZ4F guards above throw before this is reached
     mps_parser_expects(!LZ4F_isError(lz4_status),
                        error_type_t::ValidationError,
                        "Error in lz4 decompression of input file '%s': %s",

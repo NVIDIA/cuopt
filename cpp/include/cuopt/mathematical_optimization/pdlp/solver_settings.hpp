@@ -96,6 +96,19 @@ enum pdlp_precision_t : int {
   MixedPrecision   = CUOPT_PDLP_MIXED_PRECISION
 };
 
+/**
+ * @brief Which graph partitioner distributed PDLP uses.
+ *
+ * Auto: pick automatically (RoundRobin on 1 GPU, KaMinPar otherwise).
+ * KaMinPar: multi-threaded KaMinPar graph partitioner.
+ * RoundRobin: round-robin assignment, no graph.
+ */
+enum distributed_pdlp_partitioner_t : int {
+  Auto       = CUOPT_DISTRIBUTED_PDLP_PARTITIONER_AUTO,
+  KaMinPar   = CUOPT_DISTRIBUTED_PDLP_PARTITIONER_KAMINPAR,
+  RoundRobin = CUOPT_DISTRIBUTED_PDLP_PARTITIONER_ROUND_ROBIN,
+};
+
 template <typename i_t, typename f_t>
 class pdlp_solver_settings_t {
  public:
@@ -310,7 +323,15 @@ class pdlp_solver_settings_t {
   bool all_primal_feasible{false};
   presolver_t presolver{presolver_t::Default};
   bool dual_postsolve{true};
+  // Concurrent LP/MIP: 1–2 GPUs. Distributed PDLP (method=PDLP): up to the visible device
+  // count; -1 selects all visible GPUs. See use_distributed_pdlp.
   int num_gpus{1};
+  // Dispatch the LP to the multi-GPU distributed PDLP engine (typically set when
+  // method=PDLP and num_gpus>1, or num_gpus=-1).
+  bool use_distributed_pdlp{false};
+  // Which graph partitioner distributed PDLP uses. See
+  // distributed_pdlp_partitioner_t for the meaning of each value.
+  distributed_pdlp_partitioner_t distributed_pdlp_partitioner{distributed_pdlp_partitioner_t::Auto};
   method_t method{method_t::Concurrent};
   bool inside_mip{false};
   // For concurrent termination
