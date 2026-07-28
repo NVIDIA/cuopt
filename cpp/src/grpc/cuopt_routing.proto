@@ -124,7 +124,9 @@ message RoutingProblem {
 // --- Settings ---
 
 message RoutingSolverSettings {
-  float time_limit = 1;
+  // Presence-tracked: an omitted time_limit lets the solver derive its default
+  // (num_orders / 5), while an explicit value — including 0 — is honored.
+  optional float time_limit = 1;
   bool verbose = 2;
   bool error_logging = 3;
   string dump_best_results_path = 10;

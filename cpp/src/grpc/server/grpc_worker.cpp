@@ -574,6 +574,10 @@ static void publish_result(const SolveResult& sr, const std::string& job_id, int
     for (const auto& [fid, data] : sr.arrays) {
       result_total_bytes += data.size();
     }
+    // VRP embeds its solution in the header (sr.header.routing_solution), not in
+    // sr.arrays. Count it too, otherwise data_size stays ~0 and the GetResult
+    // oversized-result guard (RESOURCE_EXHAUSTED) and reported size are wrong.
+    result_total_bytes += static_cast<int64_t>(sr.header.routing_solution().size());
   }
 
   // Same CAS protocol as store_simple_result (see comment there).

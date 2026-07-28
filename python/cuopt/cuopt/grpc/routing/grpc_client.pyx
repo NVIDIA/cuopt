@@ -361,10 +361,16 @@ cdef class RoutingClient:
         return sub.job_id.decode("utf-8")
 
     def wait(self, str job_id, int timeout=0):
-        """Block until the job finishes; return the terminal status int."""
+        """Block until the job finishes; return the terminal status int.
+
+        Raises ``RoutingSolveError`` if the wait itself fails (e.g. transport
+        error or unknown job), mirroring the LP/MILP client.
+        """
         cdef grpc_status_result_t st = self._client.get().wait(
             job_id.encode("utf-8"), timeout
         )
+        if not st.success:
+            raise RoutingSolveError(st.error_message.decode("utf-8"))
         return <int>st.status
 
     def result(self, str job_id):
@@ -382,18 +388,24 @@ cdef class RoutingClient:
         return _solution_to_py(out.solution)
 
     def delete(self, str job_id):
+        """Delete a job's server-side result; raise ``RoutingSolveError`` on failure."""
         cdef string err
-        self._client.get().delete_job(job_id.encode("utf-8"), err)
+        if not self._client.get().delete_job(job_id.encode("utf-8"), err):
+            raise RoutingSolveError(err.decode("utf-8"))
 
     def solve(self, data_model, settings=None, *, int timeout=0, bint delete=True):
         """Submit, wait, and return the solution (the common path)."""
         job_id = self.submit(data_model, settings)
-        status = self.wait(job_id, timeout)
-        if status != <int>COMPLETED:
-            raise RoutingSolveError(
-                f"job {job_id} did not complete (status {status})"
-            )
         try:
+            status = self.wait(job_id, timeout)
+            if status != <int>COMPLETED:
+                # A non-completed terminal status means the solve failed;
+                # result() surfaces the server's error_message. If it somehow
+                # doesn't raise, fall back to a status-only message.
+                self.result(job_id)
+                raise RoutingSolveError(
+                    f"job {job_id} did not complete (status {status})"
+                )
             return self.result(job_id)
         finally:
             if delete:

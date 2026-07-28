@@ -115,7 +115,11 @@ cdef extern from "cuopt/grpc/cython_grpc_client.hpp" namespace "cuopt::cython": 
         string job_id
 
     cdef cppclass grpc_status_result_t:
+        bint success
+        string error_message
         grpc_job_status_t status
+        string message
+        long long result_size_bytes
 
     cdef cppclass grpc_vrp_result_outcome_t:
         bool not_ready
