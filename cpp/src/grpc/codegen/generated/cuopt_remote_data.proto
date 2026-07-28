@@ -5,6 +5,8 @@ syntax = "proto3";
 
 package cuopt.remote;
 
+import "cuopt_routing_solution.proto";
+
 enum PDLPTerminationStatus {
   PDLP_NO_TERMINATION = 0;
   PDLP_NUMERICAL_ERROR = 1;
@@ -345,5 +347,5 @@ message ChunkedResultHeader {
   double ws_sum_solution_weight = 3006;
   int32 ws_iterations_since_last_restart = 3007;
   bool is_vrp = 4000;
-  bytes routing_solution = 4001;
+  RoutingSolution routing_solution = 4001;
 }

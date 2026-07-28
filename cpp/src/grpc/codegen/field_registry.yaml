@@ -109,6 +109,13 @@
 # Proto value names: proto_prefix + UPPER_SNAKE(CppName), or just CppName if
 # no prefix.
 #
+
+# Extra `import "...";` lines emitted at the top of the generated
+# cuopt_remote_data.proto — needed when a field references a message defined in
+# a hand-authored proto (e.g. ChunkedResultHeader.routing_solution : RoutingSolution).
+proto_imports:
+  - cuopt_routing_solution.proto
+
 enums:
   pdlp_termination_status:
     domain: solution
@@ -419,7 +426,7 @@ chunked_result_header:
         type: bool
     - routing_solution:
         field_num: 4001
-        type: bytes
+        type: RoutingSolution   # structured; from cuopt_routing_solution.proto (see proto_imports)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PDLP Solver Settings

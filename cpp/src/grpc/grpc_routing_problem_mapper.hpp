@@ -12,6 +12,7 @@
 #include <cuopt/routing/solver_settings.hpp>
 
 #include <cuopt_routing.pb.h>
+#include <cuopt_routing_solution.pb.h>  // RoutingSolution / RoutingSolutionStatus
 
 namespace cuopt {
 namespace mathematical_optimization {

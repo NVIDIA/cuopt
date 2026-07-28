@@ -23,6 +23,7 @@
 #include <cuopt_remote.pb.h>
 #include <cuopt_remote_service.grpc.pb.h>
 #include <cuopt_routing.pb.h>
+#include <cuopt_routing_solution.pb.h>
 
 #include <grpcpp/grpcpp.h>
 #include <nlohmann/json.hpp>
@@ -280,16 +281,12 @@ int main(int argc, char** argv)
       return 1;
     }
     if (!result_resp.has_routing_solution()) {
-      std::cerr << "Result missing routing_solution blob\n";
+      std::cerr << "Result missing routing_solution\n";
       return 1;
     }
 
-    cuopt::remote::RoutingSolution sol;
-    if (!sol.ParseFromString(result_resp.routing_solution())) {
-      std::cerr << "Failed to parse RoutingSolution\n";
-      return 1;
-    }
-    print_solution(sol);
+    // routing_solution is a structured message now (no manual parse).
+    print_solution(result_resp.routing_solution());
     return 0;
   } catch (std::exception const& e) {
     std::cerr << "Error: " << e.what() << "\n";

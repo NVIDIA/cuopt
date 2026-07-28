@@ -9,6 +9,8 @@ package cuopt.remote;
 // auto-generated from field_registry.yaml.  Using "import public" so that any
 // file importing cuopt_remote.proto also sees the data types.
 import public "cuopt_remote_data.proto";
+// RoutingSolution (leaf proto, no back-imports) embedded structurally below.
+import "cuopt_routing_solution.proto";
 
 // Protocol version and metadata
 message RequestHeader {
@@ -58,10 +60,6 @@ message StatusResponse {
 }
 
 // Response for get result
-// Note: RoutingSolution lives in cuopt_routing.proto. To avoid a circular
-// import (cuopt_routing.proto imports this file for RequestHeader), the VRP
-// solution is carried as a serialized RoutingSolution blob here. Callers
-// parse it with RoutingSolution::ParseFromString.
 message ResultResponse {
   ResponseStatus status = 1;
   string error_message = 2;
@@ -69,7 +67,7 @@ message ResultResponse {
   oneof solution {
     LPSolution lp_solution = 10;
     MIPSolution mip_solution = 11;
-    bytes routing_solution = 12;  // serialized cuopt.remote.RoutingSolution
+    RoutingSolution routing_solution = 12;
   }
 }
 

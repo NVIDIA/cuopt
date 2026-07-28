@@ -542,19 +542,13 @@ static SolveResult run_vrp_solve(DeserializedJob& dj, raft::handle_t& handle)
     auto assignment          = cuopt::routing::solve(view, dj.routing_settings);
     cuopt::routing::host_assignment_t<int> host(assignment);
 
-    cuopt::remote::RoutingSolution routing_solution;
-    map_routing_solution_to_proto(assignment, host, &routing_solution);
-
     sr.header.set_problem_category(cuopt::remote::VRP);
     sr.header.set_is_vrp(true);
-    std::string serialized;
-    if (!routing_solution.SerializeToString(&serialized)) {
-      sr.error_message = "Failed to serialize RoutingSolution";
-      return sr;
-    }
-    sr.header.set_routing_solution(std::move(serialized));
+    // Embed the RoutingSolution structurally (ChunkedResultHeader.routing_solution
+    // is a message field now, not a serialized blob).
+    map_routing_solution_to_proto(assignment, host, sr.header.mutable_routing_solution());
     SERVER_LOG_INFO("[Worker] Result path: VRP solution -> embedded RoutingSolution (%zu bytes)",
-                    sr.header.routing_solution().size());
+                    sr.header.routing_solution().ByteSizeLong());
     sr.success = true;
   } catch (const cuopt::logic_error& e) {
     sr.error_message = format_cuopt_error(e);
@@ -577,7 +571,7 @@ static void publish_result(const SolveResult& sr, const std::string& job_id, int
     // VRP embeds its solution in the header (sr.header.routing_solution), not in
     // sr.arrays. Count it too, otherwise data_size stays ~0 and the GetResult
     // oversized-result guard (RESOURCE_EXHAUSTED) and reported size are wrong.
-    result_total_bytes += static_cast<int64_t>(sr.header.routing_solution().size());
+    result_total_bytes += static_cast<int64_t>(sr.header.routing_solution().ByteSizeLong());
   }
 
   // Same CAS protocol as store_simple_result (see comment there).

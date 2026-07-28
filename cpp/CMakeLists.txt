@@ -389,6 +389,23 @@ if (NOT SKIP_GRPC_BUILD)
     set(PROTO_PATH_MANUAL "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc")
     set(PROTO_PATH_GEN "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc/codegen/generated")
 
+    # Routing solution proto (leaf; no imports). Embedded structurally by the
+    # generated data proto and by cuopt_remote.proto, so it is generated first.
+    set(ROUTING_SOLUTION_PROTO_FILE "${PROTO_PATH_MANUAL}/cuopt_routing_solution.proto")
+    set(ROUTING_SOLUTION_PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/cuopt_routing_solution.pb.cc")
+    set(ROUTING_SOLUTION_PROTO_HDRS "${CMAKE_CURRENT_BINARY_DIR}/cuopt_routing_solution.pb.h")
+
+    add_custom_command(
+            OUTPUT "${ROUTING_SOLUTION_PROTO_SRCS}" "${ROUTING_SOLUTION_PROTO_HDRS}"
+            COMMAND ${_PROTOBUF_PROTOC}
+            ARGS --cpp_out ${CMAKE_CURRENT_BINARY_DIR}
+            --proto_path ${PROTO_PATH_MANUAL}
+            ${ROUTING_SOLUTION_PROTO_FILE}
+            DEPENDS ${ROUTING_SOLUTION_PROTO_FILE}
+            COMMENT "Generating C++ code from cuopt_routing_solution.proto"
+            VERBATIM
+    )
+
     # Generate C++ code from cuopt_remote_data.proto (auto-generated data definitions)
     set(DATA_PROTO_FILE "${PROTO_PATH_GEN}/cuopt_remote_data.proto")
     set(DATA_PROTO_SRCS "${CMAKE_CURRENT_BINARY_DIR}/cuopt_remote_data.pb.cc")
@@ -399,8 +416,9 @@ if (NOT SKIP_GRPC_BUILD)
             COMMAND ${_PROTOBUF_PROTOC}
             ARGS --cpp_out ${CMAKE_CURRENT_BINARY_DIR}
             --proto_path ${PROTO_PATH_GEN}
+            --proto_path ${PROTO_PATH_MANUAL}
             ${DATA_PROTO_FILE}
-            DEPENDS ${DATA_PROTO_FILE}
+            DEPENDS ${DATA_PROTO_FILE} ${ROUTING_SOLUTION_PROTO_FILE}
             COMMENT "Generating C++ code from cuopt_remote_data.proto"
             VERBATIM
     )
@@ -417,7 +435,7 @@ if (NOT SKIP_GRPC_BUILD)
             --proto_path ${PROTO_PATH_MANUAL}
             --proto_path ${PROTO_PATH_GEN}
             ${PROTO_FILE}
-            DEPENDS ${PROTO_FILE} ${DATA_PROTO_FILE}
+            DEPENDS ${PROTO_FILE} ${DATA_PROTO_FILE} ${ROUTING_SOLUTION_PROTO_FILE}
             COMMENT "Generating C++ code from cuopt_remote.proto"
             VERBATIM
     )
@@ -441,7 +459,7 @@ if (NOT SKIP_GRPC_BUILD)
             --proto_path ${PROTO_PATH_MANUAL}
             --proto_path ${PROTO_PATH_GEN}
             ${ROUTING_PROTO_FILE}
-            DEPENDS ${ROUTING_PROTO_FILE} ${PROTO_FILE} ${DATA_PROTO_FILE}
+            DEPENDS ${ROUTING_PROTO_FILE} ${PROTO_FILE} ${DATA_PROTO_FILE} ${ROUTING_SOLUTION_PROTO_FILE}
             COMMENT "Generating C++ code from cuopt_routing.proto"
             VERBATIM
     )
@@ -455,7 +473,7 @@ if (NOT SKIP_GRPC_BUILD)
             --proto_path ${PROTO_PATH_MANUAL}
             --proto_path ${PROTO_PATH_GEN}
             ${GRPC_PROTO_FILE}
-            DEPENDS ${GRPC_PROTO_FILE} ${PROTO_FILE} ${DATA_PROTO_FILE} ${ROUTING_PROTO_FILE}
+            DEPENDS ${GRPC_PROTO_FILE} ${PROTO_FILE} ${DATA_PROTO_FILE} ${ROUTING_PROTO_FILE} ${ROUTING_SOLUTION_PROTO_FILE}
             COMMENT "Generating gRPC C++ code from cuopt_remote_service.proto"
             VERBATIM
     )
@@ -505,6 +523,7 @@ endif ()
 if (NOT SKIP_GRPC_BUILD)
     # Add gRPC mapper files and generated protobuf sources
     set(GRPC_INFRA_FILES
+            ${ROUTING_SOLUTION_PROTO_SRCS}
             ${DATA_PROTO_SRCS}
             ${PROTO_SRCS}
             ${ROUTING_PROTO_SRCS}

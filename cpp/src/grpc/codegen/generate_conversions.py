@@ -1552,6 +1552,14 @@ def generate_data_proto(registry):
         "",
         "package cuopt.remote;",
         "",
+    ]
+    # Extra imports for fields that reference hand-authored messages
+    # (e.g. ChunkedResultHeader.routing_solution : RoutingSolution).
+    for imp in registry.get("proto_imports", []):
+        parts.append(f'import "{imp}";')
+    if registry.get("proto_imports"):
+        parts.append("")
+    parts += [
         enums,
         "",
         rfid,

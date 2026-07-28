@@ -811,12 +811,8 @@ remote_vrp_result_t grpc_client_t::get_vrp_result(const std::string& job_id)
     return result;
   }
 
-  cuopt::remote::RoutingSolution sol_pb;
-  if (!sol_pb.ParseFromString(dl.response->routing_solution())) {
-    result.error_message = "failed to parse RoutingSolution from server response";
-    return result;
-  }
-  map_proto_to_routing_solution(sol_pb, result.solution);
+  // routing_solution is a structured message now (no manual parse).
+  map_proto_to_routing_solution(dl.response->routing_solution(), result.solution);
   result.success = true;
   return result;
 }

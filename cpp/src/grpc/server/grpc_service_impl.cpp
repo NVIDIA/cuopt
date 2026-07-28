@@ -363,7 +363,7 @@ class CuOptRemoteServiceImpl final : public cuopt::remote::CuOptRemoteService::S
     // Build the full protobuf solution from the raw arrays that were read
     // back from the worker pipe by the result retrieval thread.
     if (it->second.problem_category == cuopt::remote::VRP || it->second.result_header.is_vrp()) {
-      response->set_routing_solution(it->second.result_header.routing_solution());
+      *response->mutable_routing_solution() = it->second.result_header.routing_solution();
     } else if (it->second.problem_category == cuopt::remote::MIP) {
       cuopt::remote::MIPSolution mip_solution;
       cuopt::mathematical_optimization::build_mip_solution_proto<int, double>(
