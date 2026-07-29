@@ -3379,6 +3379,7 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(const simple
     reduced_basic_list[k] = original_col_to_reduced_col[basic_list[k]];
   }
 
+  f_t primal_work_estimate = 0.0;
   i_t iter = 0;
   i_t max_pump_iter = 10;
   simplex::random_t<i_t, f_t> rng(settings_.random_seed);
@@ -3416,7 +3417,6 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(const simple
 
     bool recompute_basis               = false;
     const i_t iter_before              = iter;
-    f_t primal_work_estimate = 0;
     simplex_solver_settings_t<i_t, f_t> primal_settings = settings_;
     primal_settings.log.log = false;
     simplex::primal_status_t lp_status = simplex::primal_phase2_with_advanced_basis(2,
@@ -3458,7 +3458,7 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(const simple
       i_t num_fractional_reduced =
         fractional_variables(settings_, adjusted_solution, var_types_, tmp_fractional);
       settings_.log.printf(
-        "Degenerate feasibility pump (%d/%d): fractional variables %d/%d\n", pump_iter, max_pump_iter, num_fractional_reduced, num_fractional);
+        "Degenerate feasibility pump (%d/%d): primal work estimate %.2e, iter %d, fractional variables %d/%d\n", pump_iter, max_pump_iter, primal_work_estimate, iter, num_fractional_reduced, num_fractional);
       // Also treat a pass that fails to improve the best as a stall, so we perturb
       // the next pass even when the solve pivoted (moved) without reducing the count.
       stalled = stalled || (num_fractional_reduced >= best_num_fractional);
