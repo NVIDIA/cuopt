@@ -286,6 +286,16 @@ std::vector<std::vector<int>> find_violated_odd_cycles_for_test(
   double min_violation,
   double time_limit);
 
+// Test-only helper to run the production sparse GF(2) row-dependency finder used
+// by general zero-half cuts. Each parity row contains the integer-variable
+// indices with an odd coefficient. A returned combination has even aggregate
+// parity and an odd aggregate rhs.
+std::vector<std::vector<int>> find_mod2_row_combinations_for_test(
+  const std::vector<std::vector<int>>& parity_rows,
+  const std::vector<char>& rhs_parity,
+  int max_combination_size,
+  int max_combinations);
+
 template <typename i_t, typename f_t>
 class cut_pool_t {
  public:
@@ -709,12 +719,16 @@ class cut_generation_t {
                             const std::vector<f_t>& reduced_costs,
                             f_t start_time);
 
-  // Generate zero-half (odd-cycle / odd-wheel) cuts from the conflict graph
+  // Generate general row-parity zero-half cuts and conflict-graph
+  // odd-cycle / odd-wheel cuts.
   bool generate_zero_half_cuts(const simplex::lp_problem_t<i_t, f_t>& lp,
                                const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
+                               csr_matrix_t<i_t, f_t>& Arow,
+                               const std::vector<i_t>& new_slacks,
                                const std::vector<simplex::variable_type_t>& var_types,
                                const std::vector<f_t>& xstar,
                                const std::vector<f_t>& reduced_costs,
+                               variable_bounds_t<i_t, f_t>& variable_bounds,
                                f_t start_time);
 
   // Generate implied bounds cuts from probing implications
@@ -955,7 +969,8 @@ class complemented_mixed_integer_rounding_cut_t {
                           const variable_bounds_t<i_t, f_t>& variable_bounds,
                           const std::vector<simplex::variable_type_t>& var_types,
                           const std::vector<f_t>& xstar,
-                          std::vector<f_t>& transformed_xstar);
+                          std::vector<f_t>& transformed_xstar,
+                          bool prefer_variable_bound_on_tie = false);
 
   // Converts an inequality of the form: sum_j a_j x_j >= beta
   // with l_j <= x_j <= u_j into the form:
@@ -997,6 +1012,14 @@ class complemented_mixed_integer_rounding_cut_t {
     const inequality_t<i_t, f_t>& inequality,
     const std::vector<simplex::variable_type_t>& var_types,
     inequality_t<i_t, f_t>& cut);
+
+  // Generate a lifted mixed-binary cover inequality from a transformed
+  // nonnegative >= row. Returns the cut in the same >= convention.
+  bool generate_lifted_mixed_binary_cover(const inequality_t<i_t, f_t>& transformed_inequality,
+                                          const std::vector<simplex::variable_type_t>& var_types,
+                                          const std::vector<f_t>& transformed_xstar,
+                                          inequality_t<i_t, f_t>& transformed_cut,
+                                          f_t& work_estimate);
 
   f_t compute_violation(const inequality_t<i_t, f_t>& cut, const std::vector<f_t>& xstar);
 

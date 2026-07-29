@@ -1126,6 +1126,112 @@ std::vector<std::vector<int>> find_violated_odd_cycles_for_test(
 
 namespace {
 
+template <typename i_t>
+void symmetric_difference_sorted(const std::vector<i_t>& a,
+                                 const std::vector<i_t>& b,
+                                 std::vector<i_t>& result)
+{
+  result.clear();
+  result.reserve(a.size() + b.size());
+  std::set_symmetric_difference(a.begin(), a.end(), b.begin(), b.end(), std::back_inserter(result));
+}
+
+template <typename i_t, typename f_t>
+std::vector<std::vector<i_t>> find_mod2_row_combinations(
+  const std::vector<std::vector<i_t>>& parity_rows,
+  const std::vector<char>& rhs_parity,
+  i_t max_combination_size,
+  i_t max_combinations,
+  f_t* work_estimate,
+  f_t max_work_estimate)
+{
+  cuopt_assert(parity_rows.size() == rhs_parity.size(),
+               "GF(2) parity row and rhs sizes must match");
+  if (max_combination_size <= 0 || max_combinations <= 0) { return {}; }
+
+  struct basis_row_t {
+    std::vector<i_t> parity;
+    std::vector<i_t> combination;
+    bool rhs{false};
+  };
+
+  std::vector<i_t> permutation(parity_rows.size());
+  std::iota(permutation.begin(), permutation.end(), 0);
+  std::stable_sort(permutation.begin(), permutation.end(), [&](i_t a, i_t b) {
+    if (parity_rows[a].size() != parity_rows[b].size()) {
+      return parity_rows[a].size() < parity_rows[b].size();
+    }
+    // Prefer an even-rhs representative for a pivot. If an otherwise
+    // identical odd-rhs row arrives later, their dependency is immediately a
+    // valid zero-half aggregation.
+    return rhs_parity[a] < rhs_parity[b];
+  });
+
+  i_t max_index = -1;
+  for (const auto& row : parity_rows) {
+    cuopt_assert(std::is_sorted(row.begin(), row.end()), "GF(2) parity rows must be sorted");
+    cuopt_assert(std::adjacent_find(row.begin(), row.end()) == row.end(),
+                 "GF(2) parity rows must not contain duplicates");
+    if (!row.empty()) {
+      cuopt_assert(row.front() >= 0, "GF(2) parity index must be nonnegative");
+      max_index = std::max(max_index, row.back());
+    }
+  }
+
+  std::vector<i_t> pivot_to_basis(static_cast<size_t>(max_index + 1), -1);
+  std::vector<basis_row_t> basis;
+  basis.reserve(std::min(parity_rows.size(), static_cast<size_t>(max_index + 1)));
+  std::vector<std::vector<i_t>> combinations;
+  combinations.reserve(std::min(static_cast<size_t>(max_combinations), parity_rows.size()));
+
+  std::vector<i_t> parity_tmp;
+  std::vector<i_t> combination_tmp;
+  for (const i_t candidate : permutation) {
+    basis_row_t current;
+    current.parity      = parity_rows[candidate];
+    current.combination = {candidate};
+    current.rhs         = rhs_parity[candidate] != 0;
+
+    bool abandoned = false;
+    while (!current.parity.empty()) {
+      const i_t pivot       = current.parity.front();
+      const i_t basis_index = pivot_to_basis[pivot];
+      if (basis_index < 0) { break; }
+
+      const auto& pivot_row = basis[basis_index];
+      symmetric_difference_sorted(current.parity, pivot_row.parity, parity_tmp);
+      symmetric_difference_sorted(current.combination, pivot_row.combination, combination_tmp);
+      if (add_work_estimate(
+            static_cast<f_t>(current.parity.size() + pivot_row.parity.size() +
+                             current.combination.size() + pivot_row.combination.size()),
+            work_estimate,
+            max_work_estimate) ||
+          combination_tmp.size() > static_cast<size_t>(max_combination_size)) {
+        abandoned = true;
+        break;
+      }
+      current.parity.swap(parity_tmp);
+      current.combination.swap(combination_tmp);
+      current.rhs = current.rhs != pivot_row.rhs;
+    }
+    if (abandoned) { continue; }
+
+    if (current.parity.empty()) {
+      if (current.rhs && !current.combination.empty()) {
+        combinations.push_back(std::move(current.combination));
+        if (combinations.size() >= static_cast<size_t>(max_combinations)) { break; }
+      }
+      continue;
+    }
+
+    const i_t pivot       = current.parity.front();
+    pivot_to_basis[pivot] = static_cast<i_t>(basis.size());
+    basis.push_back(std::move(current));
+    if (work_estimate != nullptr && *work_estimate > max_work_estimate) { break; }
+  }
+  return combinations;
+}
+
 // 64-bit integer mixer (SplitMix64). Used as the building block for the
 // cousin filter's per-slot independent hash family.
 inline uint64_t splitmix64_mix(uint64_t x)
@@ -1142,6 +1248,21 @@ inline uint64_t hash64_with_seed(uint64_t value, uint64_t seed)
 }
 
 }  // namespace
+
+std::vector<std::vector<int>> find_mod2_row_combinations_for_test(
+  const std::vector<std::vector<int>>& parity_rows,
+  const std::vector<char>& rhs_parity,
+  int max_combination_size,
+  int max_combinations)
+{
+  double work_estimate = 0.0;
+  return find_mod2_row_combinations<int, double>(parity_rows,
+                                                 rhs_parity,
+                                                 max_combination_size,
+                                                 max_combinations,
+                                                 &work_estimate,
+                                                 std::numeric_limits<double>::infinity());
+}
 
 template <typename i_t, typename f_t>
 void cut_pool_t<i_t, f_t>::add_cut(cut_type_t cut_type, const inequality_t<i_t, f_t>& cut)
@@ -3604,7 +3725,8 @@ bool cut_generation_t<i_t, f_t>::generate_cuts(const lp_problem_t<i_t, f_t>& lp,
     if (toc(start_time) >= settings.time_limit) { return true; }
     ZERO_HALF_DEBUG("generate_cuts: about to call generate_zero_half_cuts");
     f_t cut_start_time = tic();
-    bool feasible      = generate_zero_half_cuts(lp, settings, var_types, xstar, zstar, start_time);
+    bool feasible      = generate_zero_half_cuts(
+      lp, settings, Arow, new_slacks, var_types, xstar, zstar, variable_bounds, start_time);
     ZERO_HALF_DEBUG("generate_cuts: returned from generate_zero_half_cuts feasible=%d",
                     static_cast<int>(feasible));
     if (!feasible) {
@@ -3855,9 +3977,12 @@ template <typename i_t, typename f_t>
 bool cut_generation_t<i_t, f_t>::generate_zero_half_cuts(
   const lp_problem_t<i_t, f_t>& lp,
   const simplex_solver_settings_t<i_t, f_t>& settings,
+  csr_matrix_t<i_t, f_t>& Arow,
+  const std::vector<i_t>& new_slacks,
   const std::vector<variable_type_t>& var_types,
   const std::vector<f_t>& xstar,
   const std::vector<f_t>& reduced_costs,
+  variable_bounds_t<i_t, f_t>& variable_bounds,
   f_t start_time)
 {
   if (settings.zero_half_cuts == 0) { return true; }
@@ -3882,12 +4007,219 @@ bool cut_generation_t<i_t, f_t>::generate_zero_half_cuts(
     static_cast<int>(sub_cg_.ready),
     sub_cg_.vertices.size());
 
+  // General zero-half separation. The previous implementation only searched
+  // for odd cycles in the conflict graph. A zero-half separator must also find
+  // small GF(2) dependencies among tight rows:
+  //
+  //   sum_i (a_i x >= b_i), with even aggregate integer coefficients and an
+  //   odd aggregate rhs.
+  //
+  // Dividing that aggregation by two and applying c-MIR yields a valid
+  // zero-half cut. The sparse elimination below bounds both combination size
+  // and work so this path remains predictable on large models.
+  complemented_mixed_integer_rounding_cut_t<i_t, f_t> complemented_mir(lp, settings, new_slacks);
+  std::vector<f_t> transformed_xstar;
+  complemented_mir.bound_substitution(
+    lp, variable_bounds, var_types, xstar, transformed_xstar, true);
+
+  struct mod2_candidate_t {
+    inequality_t<i_t, f_t> transformed_inequality;
+    std::vector<i_t> parity;
+    bool rhs_parity{false};
+    bool reversible{false};
+  };
+
+  constexpr i_t max_integral_scale   = 1000;
+  constexpr i_t max_combination_size = 64;
+  constexpr i_t max_row_combinations = 1000;
+  const i_t max_integer_row_length   = 1000 + lp.num_cols / 10;
+  const f_t row_tight_tol            = std::max(settings.primal_tol, static_cast<f_t>(1e-7));
+  const f_t coefficient_integral_tol = static_cast<f_t>(1e-6);
+  const f_t min_violation            = std::max(settings.primal_tol, static_cast<f_t>(1e-6));
+  f_t mod2_work_estimate             = 0.0;
+  const f_t max_mod2_work_estimate   = static_cast<f_t>(1e8);
+  std::vector<mod2_candidate_t> mod2_candidates;
+  mod2_candidates.reserve(lp.num_rows);
+
+  auto integral_scale = [&](const inequality_t<i_t, f_t>& inequality) {
+    for (i_t scale = 1; scale <= max_integral_scale; ++scale) {
+      bool integral        = true;
+      const f_t scaled_rhs = static_cast<f_t>(scale) * inequality.rhs;
+      if (std::abs(scaled_rhs - std::round(scaled_rhs)) >
+          coefficient_integral_tol * std::max(static_cast<f_t>(1.0), std::abs(scaled_rhs))) {
+        integral = false;
+      }
+      for (i_t k = 0; integral && k < static_cast<i_t>(inequality.size()); ++k) {
+        const i_t j = inequality.index(k);
+        if (var_types[j] == variable_type_t::CONTINUOUS || transformed_xstar[j] <= row_tight_tol) {
+          continue;
+        }
+        const f_t scaled_coefficient = static_cast<f_t>(scale) * inequality.coeff(k);
+        if (std::abs(scaled_coefficient - std::round(scaled_coefficient)) >
+            coefficient_integral_tol *
+              std::max(static_cast<f_t>(1.0), std::abs(scaled_coefficient))) {
+          integral = false;
+        }
+      }
+      if (integral) { return scale; }
+    }
+    return i_t{0};
+  };
+
+  for (i_t row = 0; row < lp.num_rows; ++row) {
+    if (toc(start_time) >= settings.time_limit || mod2_work_estimate > max_mod2_work_estimate) {
+      break;
+    }
+    const i_t slack = complemented_mir.slack_cols(row);
+    if (slack < 0 || transformed_xstar[slack] > row_tight_tol) { continue; }
+
+    inequality_t<i_t, f_t> inequality(Arow, row, lp.rhs[row]);
+    if (inequality.size() > static_cast<size_t>(max_integer_row_length)) { continue; }
+    complemented_mir.transform_inequality(variable_bounds, var_types, inequality);
+    inequality.sort();
+    mod2_work_estimate += static_cast<f_t>(4 * inequality.size());
+
+    // Every LP row is an equality after slack insertion. Choose the direction
+    // in which the zero-valued transformed slack has a negative coefficient;
+    // it can then be removed while preserving a valid >= inequality.
+    i_t slack_position = -1;
+    for (i_t k = 0; k < static_cast<i_t>(inequality.size()); ++k) {
+      if (inequality.index(k) == slack) {
+        slack_position = k;
+        break;
+      }
+    }
+    if (slack_position < 0 || inequality.coeff(slack_position) == 0.0) { continue; }
+    if (inequality.coeff(slack_position) > 0.0) { inequality.negate(); }
+    inequality.vector.x[slack_position] = 0.0;
+    inequality_t<i_t, f_t> squeezed_inequality(lp.num_cols);
+    inequality.squeeze(squeezed_inequality);
+    inequality = std::move(squeezed_inequality);
+
+    // As in general mod-2 separators, only rows whose continuous variables
+    // are at their selected bounds participate in the parity system.
+    bool continuous_at_bounds = true;
+    for (i_t k = 0; k < static_cast<i_t>(inequality.size()); ++k) {
+      const i_t j = inequality.index(k);
+      if (var_types[j] == variable_type_t::CONTINUOUS &&
+          std::abs(inequality.coeff(k)) > coefficient_integral_tol &&
+          transformed_xstar[j] > row_tight_tol) {
+        continuous_at_bounds = false;
+        break;
+      }
+    }
+    if (!continuous_at_bounds) { continue; }
+
+    const i_t scale = integral_scale(inequality);
+    if (scale == 0) { continue; }
+    if (scale != 1) { inequality.scale(static_cast<f_t>(scale)); }
+
+    mod2_candidate_t candidate;
+    candidate.transformed_inequality = std::move(inequality);
+    candidate.rhs_parity =
+      (std::llabs(static_cast<long long>(std::llround(candidate.transformed_inequality.rhs))) %
+       2) != 0;
+    candidate.reversible = std::abs(lp.upper[slack] - lp.lower[slack]) <= row_tight_tol;
+    for (i_t k = 0; k < static_cast<i_t>(candidate.transformed_inequality.size()); ++k) {
+      const i_t j = candidate.transformed_inequality.index(k);
+      if (var_types[j] == variable_type_t::CONTINUOUS || transformed_xstar[j] <= row_tight_tol) {
+        continue;
+      }
+      const auto coefficient =
+        static_cast<long long>(std::llround(candidate.transformed_inequality.coeff(k)));
+      if ((std::llabs(coefficient) % 2) != 0) { candidate.parity.push_back(j); }
+    }
+    if (candidate.parity.size() > static_cast<size_t>(max_integer_row_length)) { continue; }
+    mod2_candidates.push_back(std::move(candidate));
+  }
+
+  std::vector<std::vector<i_t>> parity_rows;
+  std::vector<char> rhs_parity;
+  parity_rows.reserve(mod2_candidates.size());
+  rhs_parity.reserve(mod2_candidates.size());
+  for (const auto& candidate : mod2_candidates) {
+    parity_rows.push_back(candidate.parity);
+    rhs_parity.push_back(candidate.rhs_parity);
+  }
+
+  auto row_combinations = find_mod2_row_combinations<i_t, f_t>(parity_rows,
+                                                               rhs_parity,
+                                                               max_combination_size,
+                                                               max_row_combinations,
+                                                               &mod2_work_estimate,
+                                                               max_mod2_work_estimate);
+  scratch_pad_t<i_t, f_t> aggregate_pad(lp.num_cols);
+  i_t mod2_cuts_added = 0;
+  for (const auto& combination : row_combinations) {
+    if (toc(start_time) >= settings.time_limit || mod2_work_estimate > max_mod2_work_estimate) {
+      break;
+    }
+
+    inequality_t<i_t, f_t> aggregate(lp.num_cols);
+    bool reversible = true;
+    for (const i_t candidate_index : combination) {
+      const auto& candidate = mod2_candidates[candidate_index];
+      aggregate.rhs += candidate.transformed_inequality.rhs;
+      reversible = reversible && candidate.reversible;
+      for (i_t k = 0; k < static_cast<i_t>(candidate.transformed_inequality.size()); ++k) {
+        aggregate_pad.add_to_pad(candidate.transformed_inequality.index(k),
+                                 candidate.transformed_inequality.coeff(k));
+      }
+      mod2_work_estimate += static_cast<f_t>(candidate.transformed_inequality.size());
+    }
+    aggregate_pad.get_pad(aggregate.vector.i, aggregate.vector.x);
+    aggregate_pad.clear_pad();
+    aggregate.sort();
+    aggregate.scale(static_cast<f_t>(0.5));
+
+    auto generate_from_aggregate = [&](const inequality_t<i_t, f_t>& oriented_aggregate) {
+      auto add_transformed_cut = [&](inequality_t<i_t, f_t> transformed_cut) {
+        complemented_mir.untransform_inequality(variable_bounds, var_types, transformed_cut);
+        complemented_mir.remove_small_coefficients(lp.lower, lp.upper, transformed_cut);
+        complemented_mir.substitute_slacks(lp, Arow, transformed_cut);
+        complemented_mir.remove_small_coefficients(lp.lower, lp.upper, transformed_cut);
+        const f_t violation = complemented_mir.compute_violation(transformed_cut, xstar);
+        mod2_work_estimate += static_cast<f_t>(10 * transformed_cut.size());
+        if (violation > min_violation) {
+          cut_pool_.add_cut(cut_type_t::ZERO_HALF, transformed_cut);
+          mod2_cuts_added++;
+        }
+      };
+
+      inequality_t<i_t, f_t> mir_cut(lp.num_cols);
+      if (complemented_mir.generate_cut_nonnegative_maintain_indicies(
+            oriented_aggregate, var_types, mir_cut)) {
+        add_transformed_cut(std::move(mir_cut));
+      }
+
+      inequality_t<i_t, f_t> lifted_cover_cut(lp.num_cols);
+      if (complemented_mir.generate_lifted_mixed_binary_cover(oriented_aggregate,
+                                                              var_types,
+                                                              transformed_xstar,
+                                                              lifted_cover_cut,
+                                                              mod2_work_estimate)) {
+        add_transformed_cut(std::move(lifted_cover_cut));
+      }
+    };
+
+    generate_from_aggregate(aggregate);
+    if (reversible) {
+      aggregate.negate();
+      generate_from_aggregate(aggregate);
+    }
+  }
+  ZERO_HALF_DEBUG("general mod2 candidates=%lld combinations=%lld cuts=%lld work=%g",
+                  static_cast<long long>(mod2_candidates.size()),
+                  static_cast<long long>(row_combinations.size()),
+                  static_cast<long long>(mod2_cuts_added),
+                  static_cast<double>(mod2_work_estimate));
+
   // The fractional conflict-graph subgraph is built once per cut pass in
-  // prepare_fractional_sub_conflict_graph() (called from generate_cuts) and shared with
-  // the clique-cut separator. Skip if the build was unable to produce a
-  // useable sub-CG (clique table missing/empty, work/time budget hit, etc.).
+  // prepare_fractional_sub_conflict_graph() and remains a complementary
+  // odd-cycle / odd-wheel separator. If no conflict graph is available, the
+  // general row-parity cuts above are still retained.
   if (!sub_cg_.ready) {
-    ZERO_HALF_DEBUG("sub_cg_ not ready, skipping");
+    ZERO_HALF_DEBUG("sub_cg_ not ready, skipping odd-cycle path");
     return true;
   }
   if (sub_cg_.empty_subgraph()) {
@@ -3905,7 +4237,6 @@ bool cut_generation_t<i_t, f_t>::generate_zero_half_cuts(
   cuopt_assert(user_problem_.var_types.size() == static_cast<size_t>(num_vars),
                "Zero-half user problem var_types size mismatch");
 
-  const f_t min_violation = std::max(settings.primal_tol, static_cast<f_t>(1e-6));
   const f_t bound_tol     = settings.primal_tol;
   // shortest path of length >= 0.5 - min_violation cannot yield a violated cut
   const f_t cutoff            = static_cast<f_t>(0.5) - min_violation;
@@ -5304,7 +5635,8 @@ void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::bound_substitution(
   const variable_bounds_t<i_t, f_t>& variable_bounds,
   const std::vector<variable_type_t>& var_types,
   const std::vector<f_t>& xstar,
-  std::vector<f_t>& transformed_xstar)
+  std::vector<f_t>& transformed_xstar,
+  bool prefer_variable_bound_on_tie)
 {
   transformed_xstar.resize(lp.num_cols);
   // Perform bound substitution for continuous variables
@@ -5368,8 +5700,12 @@ void complemented_mixed_integer_rounding_cut_t<i_t, f_t>::bound_substitution(
       bound_changed_[j]     = 0;
       continue;
     }
-    if (has_finite_lower_bound &&
-        (!has_finite_upper_bound || (xstar_j - lb_star_[j] <= ub_star_[j] - xstar_j))) {
+    const f_t lower_distance = xstar_j - lb_star_[j];
+    const f_t upper_distance = ub_star_[j] - xstar_j;
+    const bool prefer_upper_variable_bound =
+      prefer_variable_bound_on_tie && ub_variable_[j] >= 0 && lower_distance == upper_distance;
+    if (has_finite_lower_bound && (!has_finite_upper_bound || (lower_distance <= upper_distance &&
+                                                               !prefer_upper_variable_bound))) {
       // Use the lower bound
       // lb_star_j <= x_j <= ub_star_j
       // v_j = x_j - lb_star_j,
@@ -5679,6 +6015,146 @@ bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::
     }
   }
 
+  return true;
+}
+
+template <typename i_t, typename f_t>
+bool complemented_mixed_integer_rounding_cut_t<i_t, f_t>::generate_lifted_mixed_binary_cover(
+  const inequality_t<i_t, f_t>& transformed_inequality,
+  const std::vector<variable_type_t>& var_types,
+  const std::vector<f_t>& transformed_xstar,
+  inequality_t<i_t, f_t>& transformed_cut,
+  f_t& work_estimate)
+{
+  constexpr f_t tolerance = static_cast<f_t>(1e-6);
+
+  // Work in <= form. All variables have already been shifted or complemented
+  // to nonnegative variables by bound_substitution()/transform_inequality().
+  inequality_t<i_t, f_t> base = transformed_inequality;
+  base.negate();
+
+  std::vector<char> locally_complemented(base.size(), 0);
+  std::vector<f_t> solution_value(base.size(), 0.0);
+  std::vector<char> is_integral(base.size(), 0);
+  for (i_t k = 0; k < static_cast<i_t>(base.size()); ++k) {
+    const i_t j = base.index(k);
+    f_t aj      = base.coeff(k);
+    if (var_types[j] == variable_type_t::CONTINUOUS) {
+      solution_value[k] = transformed_xstar[j];
+      // Positive continuous coefficients can be relaxed from a <= row.
+      if (aj > 0.0) { base.vector.x[k] = 0.0; }
+      continue;
+    }
+
+    const f_t upper = new_upper(j);
+    // This lifting function is for binary variables. General integer rows
+    // continue to use the c-MIR zero-half cut.
+    if (upper == inf || std::abs(upper - static_cast<f_t>(1.0)) > tolerance) { return false; }
+    is_integral[k] = 1;
+    if (aj < 0.0) {
+      // z = 1 - w makes the knapsack coefficient positive.
+      base.rhs -= aj * upper;
+      base.vector.x[k]        = -aj;
+      solution_value[k]       = upper - transformed_xstar[j];
+      locally_complemented[k] = 1;
+    } else {
+      solution_value[k] = transformed_xstar[j];
+    }
+  }
+
+  std::vector<i_t> cover;
+  cover.reserve(base.size());
+  for (i_t k = 0; k < static_cast<i_t>(base.size()); ++k) {
+    if (is_integral[k] && base.coeff(k) > tolerance && solution_value[k] > tolerance) {
+      cover.push_back(k);
+    }
+  }
+  if (cover.empty()) { return false; }
+
+  std::stable_sort(cover.begin(), cover.end(), [&](i_t a, i_t b) {
+    const bool a_at_upper = solution_value[a] >= 1.0 - tolerance;
+    const bool b_at_upper = solution_value[b] >= 1.0 - tolerance;
+    if (a_at_upper != b_at_upper) { return a_at_upper; }
+    const f_t contribution_a = solution_value[a] * base.coeff(a);
+    const f_t contribution_b = solution_value[b] * base.coeff(b);
+    if (contribution_a != contribution_b) { return contribution_a > contribution_b; }
+    return base.coeff(a) > base.coeff(b);
+  });
+
+  f_t cover_weight  = 0.0;
+  size_t cover_size = 0;
+  for (; cover_size < cover.size(); ++cover_size) {
+    cover_weight += base.coeff(cover[cover_size]);
+    if (cover_weight - base.rhs > tolerance * std::max(static_cast<f_t>(1.0), std::abs(base.rhs))) {
+      ++cover_size;
+      break;
+    }
+  }
+  if (cover_size == 0 || cover_size > cover.size()) { return false; }
+  cover.resize(cover_size);
+
+  const f_t lambda = cover_weight - base.rhs;
+  if (lambda <= tolerance) { return false; }
+  std::sort(
+    cover.begin(), cover.end(), [&](i_t a, i_t b) { return base.coeff(a) > base.coeff(b); });
+
+  std::vector<f_t> prefix(cover.size(), 0.0);
+  std::vector<char> in_cover(base.size(), 0);
+  f_t prefix_sum = 0.0;
+  size_t p       = cover.size();
+  for (size_t h = 0; h < cover.size(); ++h) {
+    const i_t k = cover[h];
+    in_cover[k] = 1;
+    if (base.coeff(k) - lambda <= tolerance && p == cover.size()) { p = h; }
+    if (h < p) {
+      prefix_sum += base.coeff(k);
+      prefix[h] = prefix_sum;
+    }
+  }
+  if (p == 0) { return false; }
+
+  auto lifting_function = [&](f_t coefficient) {
+    for (size_t h = 0; h < p; ++h) {
+      if (coefficient <= prefix[h] - lambda + tolerance) { return static_cast<f_t>(h) * lambda; }
+      if (coefficient <= prefix[h] + tolerance) {
+        return static_cast<f_t>(h + 1) * lambda + coefficient - prefix[h];
+      }
+    }
+    return static_cast<f_t>(p) * lambda + coefficient - prefix[p - 1];
+  };
+
+  transformed_cut     = base;
+  transformed_cut.rhs = -lambda;
+  for (i_t k = 0; k < static_cast<i_t>(base.size()); ++k) {
+    if (!is_integral[k]) {
+      if (base.coeff(k) >= 0.0) { transformed_cut.vector.x[k] = 0.0; }
+      continue;
+    }
+    if (in_cover[k]) {
+      transformed_cut.vector.x[k] = std::min(base.coeff(k), lambda);
+      transformed_cut.rhs += transformed_cut.coeff(k);
+    } else {
+      transformed_cut.vector.x[k] = lifting_function(base.coeff(k));
+    }
+  }
+
+  // Undo the extra sign-complementations used to obtain a positive knapsack
+  // row, then return to cuOpt's >= cut convention.
+  for (i_t k = 0; k < static_cast<i_t>(transformed_cut.size()); ++k) {
+    if (!locally_complemented[k]) { continue; }
+    const i_t j           = transformed_cut.index(k);
+    const f_t coefficient = transformed_cut.coeff(k);
+    transformed_cut.rhs -= coefficient * new_upper(j);
+    transformed_cut.vector.x[k] = -coefficient;
+  }
+  inequality_t<i_t, f_t> squeezed_cut(transformed_cut.vector.n);
+  transformed_cut.squeeze(squeezed_cut);
+  transformed_cut = std::move(squeezed_cut);
+  transformed_cut.negate();
+
+  work_estimate += static_cast<f_t>(12 * base.size()) +
+                   static_cast<f_t>(cover.size()) *
+                     std::log2(static_cast<f_t>(cover.size()) + static_cast<f_t>(1.0));
   return true;
 }
 
