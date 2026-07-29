@@ -121,6 +121,7 @@ class Variable:
         "VariableName": "variable",
         "MIPStart": "variable",
     }
+    _OUTPUT_ATTRIBUTES = frozenset({"Value", "ReducedCost"})
 
     def __init__(
         self,
@@ -142,6 +143,9 @@ class Variable:
 
     def __setattr__(self, name, value):
         object.__setattr__(self, name, value)
+        # Solution fields are written in hot loops; skip tracking lookups.
+        if name in self._OUTPUT_ATTRIBUTES:
+            return
         problem = self.__dict__.get("_problem")
         stale_key = self._STALE_ATTRIBUTE.get(name)
         if problem is not None and stale_key is not None:
@@ -1341,6 +1345,7 @@ class Constraint:
         "Sense": "structure",
         "ConstraintName": "structure",
     }
+    _OUTPUT_ATTRIBUTES = frozenset({"Slack", "DualValue"})
 
     def __init__(self, expr, sense, rhs, name=""):
         self.index = -1
@@ -1386,6 +1391,9 @@ class Constraint:
 
     def __setattr__(self, name, value):
         object.__setattr__(self, name, value)
+        # Solution fields are written in hot loops; skip tracking lookups.
+        if name in self._OUTPUT_ATTRIBUTES:
+            return
         problem = self.__dict__.get("_problem")
         stale_key = self._STALE_ATTRIBUTE.get(name)
         if problem is not None and stale_key is not None:
