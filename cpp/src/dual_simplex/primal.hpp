@@ -38,7 +38,8 @@ i_t primal_ratio_test(const lp_problem_t<i_t, f_t>& lp,
                       f_t& step_length,
                       i_t& basic_leaving,
                       i_t entering_index,
-                      i_t direction);
+                      i_t direction,
+                      f_t& work_estimate);
 
 template <typename i_t, typename f_t>
 primal_status_t primal_phase2_with_advanced_basis(

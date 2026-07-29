@@ -3700,6 +3700,7 @@ void branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
 
     f_t step_length;
     i_t basic_leaving;
+    f_t work_estimate = 0.0;
     const i_t leaving_index = simplex::primal_ratio_test(lp,
                                                          settings_,
                                                          vstatus_copy,
@@ -3709,7 +3710,8 @@ void branch_and_bound_t<i_t, f_t>::pivot_out_integer_variables(
                                                          step_length,
                                                          basic_leaving,
                                                          entering_index,
-                                                         direction);
+                                                         direction,
+                                                         work_estimate);
     bool binding_integer =
       leaving_index != -1 &&
       is_fractional(soln_copy.x[leaving_index], var_types_[leaving_index], settings_.integer_tol);

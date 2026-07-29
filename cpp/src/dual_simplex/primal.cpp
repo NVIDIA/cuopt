@@ -24,9 +24,12 @@ template <typename i_t, typename f_t>
 void set_primal_variables_on_bounds(const lp_problem_t<i_t, f_t>& lp,
                                     const simplex_solver_settings_t<i_t, f_t>& settings,
                                     std::vector<variable_status_t>& vstatus,
-                                    std::vector<f_t>& x)
+                                    std::vector<f_t>& x,
+                                    f_t& work_estimate)
 {
-  const i_t n            = lp.num_cols;
+  const i_t m = lp.num_rows;
+  const i_t n = lp.num_cols;
+  
   constexpr f_t diff_tol = 1e-6;
   for (i_t j = 0; j < n; ++j) {
     if (vstatus[j] == variable_status_t::BASIC) { continue; }
@@ -54,6 +57,7 @@ void set_primal_variables_on_bounds(const lp_problem_t<i_t, f_t>& lp,
       assert(1 == 0);
     }
   }
+  work_estimate += n + 3.0*(n - m);
 }
 
 template <typename i_t, typename f_t>
@@ -61,7 +65,8 @@ f_t dual_infeasibility(const lp_problem_t<i_t, f_t>& lp,
                        const std::vector<variable_status_t>& vstatus,
                        const std::vector<f_t>& z,
                        f_t tight_tol,
-                       i_t& num_infeasible)
+                       i_t& num_infeasible,
+                       f_t& work_estimate)
 {
   const i_t n             = lp.num_cols;
   num_infeasible          = 0;
@@ -103,6 +108,7 @@ f_t dual_infeasibility(const lp_problem_t<i_t, f_t>& lp,
       non_basic_upper_inf++;
     }
   }
+  work_estimate += 8 * n;
 
   return sum_infeasible;
 }
@@ -115,7 +121,8 @@ i_t phase2_pricing(const lp_problem_t<i_t, f_t>& lp,
                    f_t dual_tol,
                    i_t& direction,
                    i_t& basic_entering,
-                   f_t& dual_inf)
+                   f_t& dual_inf,
+                   f_t& work_estimate)
 {
   const i_t m        = lp.num_rows;
   const i_t n        = lp.num_cols;
@@ -149,6 +156,7 @@ i_t phase2_pricing(const lp_problem_t<i_t, f_t>& lp,
       }
     }
   }
+  work_estimate += 4 * (n - m);
   return entering_index;
 }
 
@@ -157,8 +165,10 @@ f_t primal_infeasibility(const lp_problem_t<i_t, f_t>& lp,
                          const simplex_solver_settings_t<i_t, f_t>& settings,
                          const std::vector<variable_status_t>& vstatus,
                          const std::vector<f_t>& x,
-                         i_t& num_infeasible)
+                         i_t& num_infeasible,
+                         f_t& work_estimate)
 {
+  const i_t m = lp.num_rows;
   const i_t n    = lp.num_cols;
   f_t primal_inf = 0;
   num_infeasible = 0;
@@ -196,6 +206,7 @@ f_t primal_infeasibility(const lp_problem_t<i_t, f_t>& lp,
       }
     }
   }
+  work_estimate += n + 4*m;
   return primal_inf;
 }
 
@@ -203,19 +214,23 @@ template <typename i_t, typename f_t>
 f_t primal_infeasibility(const lp_problem_t<i_t, f_t>& lp,
                          const simplex_solver_settings_t<i_t, f_t>& settings,
                          const std::vector<variable_status_t>& vstatus,
-                         const std::vector<f_t>& x)
+                         const std::vector<f_t>& x,
+                         f_t& work_estimate)
 {
   i_t num_infeasible = 0;
-  return primal_infeasibility(lp, settings, vstatus, x, num_infeasible);
+  return primal_infeasibility(lp, settings, vstatus, x, num_infeasible, work_estimate);
 }
 
+// work estimate: n-m + 4 * m 
 template <typename i_t, typename f_t>
 void compute_phase1_objective(const lp_problem_t<i_t, f_t>& lp,
                               const simplex_solver_settings_t<i_t, f_t>& settings,
                               const std::vector<variable_status_t>& vstatus,
                               const std::vector<f_t>& x,
-                              std::vector<f_t>& objective)
+                              std::vector<f_t>& objective,
+                              f_t& work_estimate)
 {
+  const i_t m = lp.num_rows;
   const i_t n = lp.num_cols;
   for (i_t j = 0; j < n; ++j) {
     if (vstatus[j] != variable_status_t::BASIC) {
@@ -228,6 +243,7 @@ void compute_phase1_objective(const lp_problem_t<i_t, f_t>& lp,
       objective[j] = 0.0;
     }
   }
+  work_estimate += n-m + 4 * m;
 }
 
 template <typename i_t, typename f_t>
@@ -249,11 +265,13 @@ template <typename i_t, typename f_t>
 void compute_delta_z(const csr_matrix_t<i_t, f_t>& Arow,
                      const std::vector<variable_status_t>& vstatus,
                      const sparse_vector_t<i_t, f_t>& delta_y,
-                     std::vector<f_t>& delta_z)
+                     std::vector<f_t>& delta_z,
+                     f_t& work_estimate)
 {
   // A^T delta_y + delta_z = 0
   // delta_z = -A^T delta_y = - sum_i A(i, :) * delta_y_i
   std::fill(delta_z.begin(), delta_z.end(), 0.0);
+  work_estimate += delta_z.size();
   for (i_t k = 0; k < static_cast<i_t>(delta_y.i.size()); ++k) {
     const i_t i         = delta_y.i[k];
     const f_t delta_y_i = delta_y.x[k];
@@ -263,7 +281,9 @@ void compute_delta_z(const csr_matrix_t<i_t, f_t>& Arow,
       const i_t j = Arow.j[p];
       if (vstatus[j] != variable_status_t::BASIC) { delta_z[j] -= Arow.x[p] * delta_y_i; }
     }
+    work_estimate += 4*(row_end - row_start);
   }
+  work_estimate += 4 * delta_y.i.size();
 }
 
 template <typename f_t>
@@ -274,12 +294,16 @@ f_t compute_dual_step_length(f_t entering_reduced_cost, f_t pivot)
 }
 
 template <typename i_t, typename f_t>
-void update_y(f_t dual_step_length, const sparse_vector_t<i_t, f_t>& delta_y, std::vector<f_t>& y)
+void update_y(f_t dual_step_length, 
+              const sparse_vector_t<i_t, f_t>& delta_y,
+              std::vector<f_t>& y,
+              f_t& work_estimate)
 {
   for (i_t k = 0; k < static_cast<i_t>(delta_y.i.size()); ++k) {
     const i_t i = delta_y.i[k];
     y[i] += dual_step_length * delta_y.x[k];
   }
+  work_estimate += 3 * delta_y.i.size();
 }
 
 template <typename i_t, typename f_t>
@@ -287,12 +311,14 @@ void update_z(f_t dual_step_length,
               const std::vector<i_t>& nonbasic_list,
               i_t entering_index,
               const std::vector<f_t>& delta_z,
-              std::vector<f_t>& z)
+              std::vector<f_t>& z,
+              f_t& work_estimate)
 {
   for (i_t k = 0; k < static_cast<i_t>(nonbasic_list.size()); ++k) {
     const i_t j = nonbasic_list[k];
     z[j] += dual_step_length * delta_z[j];
   }
+  work_estimate += 3 * nonbasic_list.size();
   z[entering_index] = 0.0;
 }
 
@@ -305,7 +331,8 @@ void compute_dual_variables(const lp_problem_t<i_t, f_t>& lp,
                             basis_update_mpf_t<i_t, f_t>& ft,
                             std::vector<f_t>& c_basic,
                             std::vector<f_t>& y,
-                            std::vector<f_t>& z)
+                            std::vector<f_t>& z,
+                            f_t& work_estimate)
 {
   const i_t m = lp.num_rows;
   const i_t n = lp.num_cols;
@@ -314,6 +341,7 @@ void compute_dual_variables(const lp_problem_t<i_t, f_t>& lp,
     const i_t j = basic_list[k];
     c_basic[k]  = objective[j];
   }
+  work_estimate += 3 * m;
   ft.b_transpose_solve(c_basic, y);
   // zN = cN - N'*y
   for (i_t k = 0; k < n - m; k++) {
@@ -328,12 +356,15 @@ void compute_dual_variables(const lp_problem_t<i_t, f_t>& lp,
     for (i_t p = col_start; p < col_end; ++p) {
       dot += lp.A.x[p] * y[lp.A.i[p]];
     }
+    work_estimate += 3.0*(col_end - col_start);
     z[j] -= dot;
   }
+  work_estimate += 6 * (n - m);
   // zB = 0
   for (i_t k = 0; k < m; ++k) {
     z[basic_list[k]] = 0.0;
   }
+  work_estimate += 2*m;
 }
 
 template <typename i_t, typename f_t>
@@ -341,7 +372,8 @@ void compute_basic_primal_variables(const lp_problem_t<i_t, f_t>& lp,
                                     const basis_update_mpf_t<i_t, f_t>& basis_update,
                                     const std::vector<i_t>& basic_list,
                                     const std::vector<i_t>& nonbasic_list,
-                                    std::vector<f_t>& x)
+                                    std::vector<f_t>& x,
+                                    f_t& work_estimate)
 {
   const i_t m          = lp.num_rows;
   const i_t n          = lp.num_cols;
@@ -354,12 +386,16 @@ void compute_basic_primal_variables(const lp_problem_t<i_t, f_t>& lp,
     for (i_t p = col_start; p < col_end; ++p) {
       rhs[lp.A.i[p]] -= xj * lp.A.x[p];
     }
+    work_estimate += 3.0*(col_end - col_start);
   }
+  work_estimate += 4 * (n - m);
   std::vector<f_t> xB(m);
+  work_estimate += m;
   basis_update.b_solve(rhs, xB);
   for (i_t k = 0; k < m; ++k) {
     x[basic_list[k]] = xB[k];
   }
+  work_estimate += 3 * m;
 }
 
 template <typename i_t, typename f_t>
@@ -383,7 +419,8 @@ i_t primal_ratio_test(const lp_problem_t<i_t, f_t>& lp,
                       f_t& step_length,
                       i_t& basic_leaving,
                       i_t entering_index,
-                      i_t direction)
+                      i_t direction,
+                      f_t& work_estimate)
 {
   const i_t m             = lp.num_rows;
   const i_t n             = lp.num_cols;
@@ -482,6 +519,7 @@ i_t primal_ratio_test(const lp_problem_t<i_t, f_t>& lp,
       }
     }
   }
+  work_estimate += 10*m;
   step_length = min_val;
   return leaving_index;
 }
@@ -505,6 +543,7 @@ primal_status_t primal_phase2(i_t phase,
   std::vector<i_t> superbasic_list;
 
   get_basis_from_vstatus(m, vstatus, basic_list, nonbasic_list, superbasic_list);
+  work_estimate += 2*n;
   assert(superbasic_list.size() == 0);
   assert(nonbasic_list.size() == n - m);
 
@@ -623,12 +662,14 @@ primal_status_t primal_phase2_with_advanced_basis(
 
   std::vector<f_t> incoming_x                     = x;
   std::vector<variable_status_t> incoming_vstatus = vstatus;
+  work_estimate += 2.0 * n;
   settings.log.printf("Primal Simplex\n");
   // Nonbasics must be on their bounds before forming B x_B = b - A_N x_N.
   // Setting them after the solve leaves ||A*x - b|| large whenever x_N != 0.
-  set_primal_variables_on_bounds(lp, settings, vstatus, x);
+  set_primal_variables_on_bounds(lp, settings, vstatus, x, work_estimate);
 
   std::vector<f_t> rhs = lp.rhs;
+  work_estimate += m;
   // rhs = b - sum_{j : x_j = l_j} A(:, j) l(j) - sum_{j : x_j = u_j} A(:, j) *
   // u(j)
   for (i_t k = 0; k < n - m; ++k) {
@@ -639,34 +680,45 @@ primal_status_t primal_phase2_with_advanced_basis(
     for (i_t p = col_start; p < col_end; ++p) {
       rhs[lp.A.i[p]] -= xj * lp.A.x[p];
     }
+    work_estimate += 3.0*(col_end - col_start);
   }
+  work_estimate += 4 * (n - m);
+
 
   std::vector<f_t> xB(m);
+  work_estimate += m;
+
   basis_update.b_solve(rhs, xB);
 
   for (i_t k = 0; k < m; ++k) {
     const i_t j = basic_list[k];
     x[j]        = xB[k];
   }
+  work_estimate += 3 * m;
+
   constexpr bool print_norms = false;
   if constexpr (print_norms) {
     settings.log.printf("|| x || %e\n", vector_norm2<i_t, f_t>(x));
   }
 
   std::vector<f_t> residual = lp.rhs;
+  work_estimate += m;
   matrix_vector_multiply(lp.A, 1.0, x, -1.0, residual);
+  work_estimate += m + 2*n + 4.0*lp.A.col_start[lp.A.n];
   f_t primal_residual = vector_norm_inf<i_t, f_t>(residual);
+  work_estimate += m;
   if (primal_residual > settings.primal_tol) {
     settings.log.printf("|| A*x - b || %e\n", primal_residual);
   }
  
  
   std::vector<f_t> objective = lp.objective;
+  work_estimate += 2*n;
   const f_t primal_tol       = settings.primal_tol;
-  f_t primal_inf = primal_infeasibility(lp, settings, vstatus, x);
+  f_t primal_inf = primal_infeasibility(lp, settings, vstatus, x, work_estimate);
   if (primal_inf > primal_tol) {
     // We are primal infeasible. Switch to phase 1
-    compute_phase1_objective(lp, settings, vstatus, x, objective);
+    compute_phase1_objective(lp, settings, vstatus, x, objective, work_estimate);
     settings.log.printf("Phase 1\n");
     settings.log.printf("Initial primal infeasibility %e\n", primal_inf);
     phase = 1;
@@ -676,8 +728,9 @@ primal_status_t primal_phase2_with_advanced_basis(
   }
 
   std::vector<f_t> c_basic(m);
+  work_estimate += m;
   compute_dual_variables(
-    lp, settings, objective, basic_list, nonbasic_list, basis_update, c_basic, y, z);
+    lp, settings, objective, basic_list, nonbasic_list, basis_update, c_basic, y, z, work_estimate);
   if constexpr (print_norms) {
     settings.log.printf("|| z || %e\n", vector_norm_inf<i_t, f_t>(z));
   }
@@ -685,13 +738,15 @@ primal_status_t primal_phase2_with_advanced_basis(
   i_t num_dual_inf        = 0;
   i_t num_primal_inf      = 0;
   const f_t init_dual_inf =
-    dual_infeasibility(lp, vstatus, z, settings.dual_tol, num_dual_inf);
+    dual_infeasibility(lp, vstatus, z, settings.dual_tol, num_dual_inf, work_estimate);
   if (num_dual_inf > 0) {
     settings.log.printf("Initial dual infeasibility %e\n", init_dual_inf);
   }
 
   csr_matrix_t<i_t, f_t> Arow(m, n, lp.A.nnz());
+  work_estimate += n + 2*lp.A.nnz();
   lp.A.to_compressed_row(Arow);
+  work_estimate += m + 6*lp.A.nnz();
 
   const i_t iter_limit = settings.iteration_limit;
   const i_t start_iter = iter;
@@ -699,11 +754,13 @@ primal_status_t primal_phase2_with_advanced_basis(
   sparse_vector_t<i_t, f_t> etilde(m, 0);
   std::vector<f_t> delta_z(n);
   std::vector<f_t> delta_x(n);
+  work_estimate += 2*m + 2*n;
 
   f_t dual_inf = init_dual_inf;
   f_t obj      = compute_objective(lp, x);
+  work_estimate += 2*n;
   f_t pricing_dual_tol = settings.dual_tol;
-  primal_inf           = primal_infeasibility(lp, settings, vstatus, x, num_primal_inf);
+  primal_inf           = primal_infeasibility(lp, settings, vstatus, x, num_primal_inf, work_estimate);
   settings.log.printf(" Iter     Objective           Num Inf.  Sum Inf.       Time\n");
   settings.log.printf("%5d %+.16e %7d %.8e %.2f\n",
                       iter,
@@ -712,11 +769,15 @@ primal_status_t primal_phase2_with_advanced_basis(
                       phase == 1 ? primal_inf : dual_inf,
                       toc(start_time));
   bool switched_phase = false;
+
+  work_estimate += basis_update.work_estimate();
+  basis_update.clear_work_estimate();
+
   while (iter < iter_limit) {
     i_t nonbasic_entering = -1;
     i_t direction;
     i_t entering_index = phase2_pricing(
-      lp, z, nonbasic_list, vstatus, pricing_dual_tol, direction, nonbasic_entering, dual_inf);
+      lp, z, nonbasic_list, vstatus, pricing_dual_tol, direction, nonbasic_entering, dual_inf, work_estimate);
     if (entering_index == -1) {
       if (phase == 2) {
         // Verify optimality with a consistent basic solution: refactor, put
@@ -732,23 +793,24 @@ primal_status_t primal_phase2_with_advanced_basis(
                                 iter);
             return primal_status_t::NUMERICAL;
           }
-          work_estimate = basis_update.work_estimate();
+          work_estimate += basis_update.work_estimate();
+          basis_update.clear_work_estimate();
         }
-        set_primal_variables_on_bounds(lp, settings, vstatus, x);
-        compute_basic_primal_variables(lp, basis_update, basic_list, nonbasic_list, x);
+        set_primal_variables_on_bounds(lp, settings, vstatus, x, work_estimate);
+        compute_basic_primal_variables(lp, basis_update, basic_list, nonbasic_list, x, work_estimate);
         compute_dual_variables(
-          lp, settings, objective, basic_list, nonbasic_list, basis_update, c_basic, y, z);
-        primal_inf = primal_infeasibility(lp, settings, vstatus, x, num_primal_inf);
+          lp, settings, objective, basic_list, nonbasic_list, basis_update, c_basic, y, z, work_estimate);
+        primal_inf = primal_infeasibility(lp, settings, vstatus, x, num_primal_inf, work_estimate);
         dual_inf =
-          dual_infeasibility(lp, vstatus, z, pricing_dual_tol, num_dual_inf);
+          dual_infeasibility(lp, vstatus, z, pricing_dual_tol, num_dual_inf, work_estimate);
         if (primal_inf > primal_tol) {
-          compute_phase1_objective(lp, settings, vstatus, x, objective);
+          compute_phase1_objective(lp, settings, vstatus, x, objective, work_estimate);
           phase            = 1;
           pricing_dual_tol = settings.dual_tol;
           compute_dual_variables(
-            lp, settings, objective, basic_list, nonbasic_list, basis_update, c_basic, y, z);
+            lp, settings, objective, basic_list, nonbasic_list, basis_update, c_basic, y, z, work_estimate);
           settings.log.printf(
-            "Switching to Primal Simplex Phase 1 after optimality refresh. "
+            "Switching to Primal Simplex Phase 1 after near optimality. "
             "Primal infeasibility %e\n",
             primal_inf);
           settings.log.printf(" Iter     Objective           Num Inf.  Sum Inf.       Time\n");
@@ -763,7 +825,7 @@ primal_status_t primal_phase2_with_advanced_basis(
 
         i_t num_tight_dual_inf = 0;
         const f_t tight_dual_inf =
-          dual_infeasibility(lp, vstatus, z, f_t(0.0), num_tight_dual_inf);
+          dual_infeasibility(lp, vstatus, z, f_t(0.0), num_tight_dual_inf, work_estimate);
         if (tight_dual_inf > settings.dual_tol) {
           // No candidate is visible at the active pricing tolerance, but the
           // zero-tolerance residual is still material. Try tighter pricing before
@@ -781,7 +843,8 @@ primal_status_t primal_phase2_with_advanced_basis(
                                             retry_dual_tol,
                                             direction,
                                             nonbasic_entering,
-                                            retry_dual_inf);
+                                            retry_dual_inf,
+                                            work_estimate);
           }
           if (retry_entering != -1) {
             pricing_dual_tol = retry_dual_tol;
@@ -792,6 +855,7 @@ primal_status_t primal_phase2_with_advanced_basis(
         dual_inf       = tight_dual_inf;
         num_dual_inf   = num_tight_dual_inf;
         obj                = compute_objective(lp, x);
+        work_estimate += 2*n;
         sol.objective      = obj;
         sol.user_objective = compute_user_objective(lp, obj);
         if (!settings.inside_mip && print_summary) {
@@ -807,7 +871,7 @@ primal_status_t primal_phase2_with_advanced_basis(
         }
         return primal_status_t::OPTIMAL;
       } else {
-        primal_inf = primal_infeasibility(lp, settings, vstatus, x, num_primal_inf);
+        primal_inf = primal_infeasibility(lp, settings, vstatus, x, num_primal_inf, work_estimate);
 
         if (primal_inf > primal_tol) {
           // Incremental duals may be stale relative to the current phase-I
@@ -815,9 +879,9 @@ primal_status_t primal_phase2_with_advanced_basis(
           // successively tighter dual tolerances.
           settings.log.printf("Refreshing phase-I objective and duals. Num updates %d. Iter %d\n", 
             basis_update.num_updates(), iter);
-          compute_phase1_objective(lp, settings, vstatus, x, objective);
+          compute_phase1_objective(lp, settings, vstatus, x, objective, work_estimate);
           compute_dual_variables(
-            lp, settings, objective, basic_list, nonbasic_list, basis_update, c_basic, y, z);
+            lp, settings, objective, basic_list, nonbasic_list, basis_update, c_basic, y, z, work_estimate);
           f_t retry_dual_tol = pricing_dual_tol;
           while (entering_index == -1 && retry_dual_tol > f_t(1e-10)) {
             retry_dual_tol *= f_t(0.1);
@@ -829,7 +893,8 @@ primal_status_t primal_phase2_with_advanced_basis(
                                             retry_dual_tol,
                                             direction,
                                             nonbasic_entering,
-                                            dual_inf);
+                                            dual_inf,
+                                            work_estimate);
           }
           if (entering_index == -1) {
             settings.log.printf(
@@ -849,10 +914,11 @@ primal_status_t primal_phase2_with_advanced_basis(
             "Primal phase I complete. Iterations %d. Time %.2f\n", iter, toc(start_time));
           settings.log.printf(" Iter     Objective           Num Inf.  Sum Inf.       Time\n");
           compute_dual_variables(
-            lp, settings, objective, basic_list, nonbasic_list, basis_update, c_basic, y, z);
+            lp, settings, objective, basic_list, nonbasic_list, basis_update, c_basic, y, z, work_estimate);
           obj      = compute_objective(lp, x);
+          work_estimate += 2*n;
           dual_inf =
-            dual_infeasibility(lp, vstatus, z, settings.dual_tol, num_dual_inf);
+            dual_infeasibility(lp, vstatus, z, settings.dual_tol, num_dual_inf, work_estimate);
           iter++;
           // Print here: continue may hit dual-optimal Phase 2 and return before
           // the end-of-loop log checks switched_phase.
@@ -868,20 +934,24 @@ primal_status_t primal_phase2_with_advanced_basis(
     }
 
     sparse_vector_t<i_t, f_t> rhs_sparse(lp.A, entering_index);
+    work_estimate += 3*rhs_sparse.i.size();
     sparse_vector_t<i_t, f_t> scaled_delta_xB_sparse(m, 0);
     sparse_vector_t<i_t, f_t> utilde_sparse(m, 0);
     basis_update.b_solve(rhs_sparse, scaled_delta_xB_sparse, utilde_sparse);
     std::vector<f_t> scaled_delta_xB(m);
     scaled_delta_xB_sparse.to_dense(scaled_delta_xB);
-
+    work_estimate += m + scaled_delta_xB_sparse.i.size();
+    
     for (i_t k = 0; k < m; ++k) {
       const i_t j = basic_list[k];
       delta_x[j]  = -direction * scaled_delta_xB[k];
     }
+    work_estimate += 3*m;
     for (i_t k = 0; k < n - m; ++k) {
       const i_t j = nonbasic_list[k];
       delta_x[j]  = 0.0;
     }
+    work_estimate += 2*(n - m);
     delta_x[entering_index] = direction;
 
 #ifdef CHECK_NULLSPACE
@@ -907,7 +977,8 @@ primal_status_t primal_phase2_with_advanced_basis(
                                           step_length,
                                           basic_leaving,
                                           entering_index,
-                                          direction);
+                                          direction,
+                                          work_estimate);
     if (leaving_index == -1 && step_length >= inf) {
       settings.log.printf("No leaving variable. Primal unbounded?\n");
       return primal_status_t::PRIMAL_UNBOUNDED;
@@ -918,6 +989,7 @@ primal_status_t primal_phase2_with_advanced_basis(
     for (i_t j = 0; j < n; ++j) {
       x[j] += step_length * delta_x[j];
     }
+    work_estimate += 2*n;
 
 #ifdef COMPUTE_RESIDUAL
     f_t debug_primal_residual = primal_constraint_residual(lp, x);
@@ -971,9 +1043,9 @@ primal_status_t primal_phase2_with_advanced_basis(
       x[leaving_index] = leave_bound;
 
       if (!should_refactor) {
-        compute_delta_z(Arow, vstatus, delta_y, delta_z);
-        update_y(dual_step_length, delta_y, y);
-        update_z(dual_step_length, nonbasic_list, entering_index, delta_z, z);
+        compute_delta_z(Arow, vstatus, delta_y, delta_z, work_estimate);
+        update_y(dual_step_length, delta_y, y, work_estimate);
+        update_z(dual_step_length, nonbasic_list, entering_index, delta_z, z, work_estimate);
         should_refactor = basis_update.update(utilde_sparse, etilde, basic_leaving) == 1;
       }
       if (should_refactor) {
@@ -985,15 +1057,16 @@ primal_status_t primal_phase2_with_advanced_basis(
           settings.log.printf("Failed to refactor basis. Iteration %d\n", iter);
           return primal_status_t::NUMERICAL;
         }
-        work_estimate   = basis_update.work_estimate();
+        work_estimate += basis_update.work_estimate();
+        basis_update.clear_work_estimate();
         recompute_duals = true;
         // Factor matches basic_list: rebuild x_B so Ax = b exactly.
-        set_primal_variables_on_bounds(lp, settings, vstatus, x);
-        compute_basic_primal_variables(lp, basis_update, basic_list, nonbasic_list, x);
+        set_primal_variables_on_bounds(lp, settings, vstatus, x, work_estimate);
+        compute_basic_primal_variables(lp, basis_update, basic_list, nonbasic_list, x, work_estimate);
       } else if (rebuild_x_after_bound_snap) {
         // FT update already matches the new basis; recompute x_B with the leaving variable
         // snapped onto its bound.
-        compute_basic_primal_variables(lp, basis_update, basic_list, nonbasic_list, x);
+        compute_basic_primal_variables(lp, basis_update, basic_list, nonbasic_list, x, work_estimate);
       }
     } else {
       if (direction > 0) {
@@ -1005,7 +1078,7 @@ primal_status_t primal_phase2_with_advanced_basis(
       }
     }
 
-    primal_inf = primal_infeasibility(lp, settings, vstatus, x, num_primal_inf);
+    primal_inf = primal_infeasibility(lp, settings, vstatus, x, num_primal_inf, work_estimate);
     if (primal_inf > primal_tol) {
       if (phase != 1) {
         settings.log.printf(
@@ -1015,7 +1088,7 @@ primal_status_t primal_phase2_with_advanced_basis(
         settings.log.printf(" Iter     Objective           Num Inf.  Sum Inf.       Time\n");
         switched_phase = true;
       }
-      compute_phase1_objective(lp, settings, vstatus, x, objective);
+      compute_phase1_objective(lp, settings, vstatus, x, objective, work_estimate);
       phase           = 1;
       recompute_duals = true;
     } else if (phase == 1) {
@@ -1031,17 +1104,18 @@ primal_status_t primal_phase2_with_advanced_basis(
 
     if (recompute_duals) {
       compute_dual_variables(
-        lp, settings, objective, basic_list, nonbasic_list, basis_update, c_basic, y, z);
+        lp, settings, objective, basic_list, nonbasic_list, basis_update, c_basic, y, z, work_estimate);
     }
 
     obj      = compute_objective(lp, x);
+    work_estimate += 2*n;
     dual_inf =
-      dual_infeasibility(lp, vstatus, z, pricing_dual_tol, num_dual_inf);
+      dual_infeasibility(lp, vstatus, z, pricing_dual_tol, num_dual_inf, work_estimate);
 
     iter++;
 
     f_t now = toc(start_time);
-    if (0|| (iter - start_iter) < settings.first_iteration_log ||
+    if ((iter - start_iter) < settings.first_iteration_log ||
         (iter % settings.iteration_log_frequency) == 0 || switched_phase) {
       const f_t user_obj = compute_user_objective(lp, obj);
       settings.log.printf("%5d %+.16e %7d %.8e %.2f\n",
@@ -1052,6 +1126,9 @@ primal_status_t primal_phase2_with_advanced_basis(
                           now);
       switched_phase = false;
     }
+
+    work_estimate += basis_update.work_estimate();
+    basis_update.clear_work_estimate();
   }
 
   if (iter == iter_limit) { return primal_status_t::ITERATION_LIMIT; }
@@ -1071,7 +1148,8 @@ int primal_ratio_test(const lp_problem_t<int, double>& lp,
                       double& step_length,
                       int& basic_leaving,
                       int entering_index,
-                      int direction);
+                      int direction,
+                      double& work_estimate);
 
 template primal_status_t primal_phase2<int, double>(
   int phase,
