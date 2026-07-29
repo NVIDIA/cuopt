@@ -832,6 +832,10 @@ cuopt_int_t cuOptGetFloatParameter(cuOptSolverSettings settings,
  *
  * @note The callback is invoked from the solver thread. Do not call back into
  *  cuOpt from inside the callback.
+ * @warning Log message formatting is not part of the stable API and may change
+ *  between releases. The callback is intended for display purposes (GUI integration,
+ *  log forwarding, stdout capture) — do not parse message content for programmatic
+ *  control flow.
  */
 typedef void (*cuOptLogCallback)(int level, const char* message, void* user_data);
 

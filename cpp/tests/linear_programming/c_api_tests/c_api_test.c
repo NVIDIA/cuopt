@@ -292,6 +292,161 @@ cuopt_int_t test_mip_get_callbacks_only() { return test_mip_callbacks_internal(0
 
 cuopt_int_t test_mip_get_set_callbacks() { return test_mip_callbacks_internal(1); }
 
+/* -------------------------------------------------------------------------
+ * Log callback tests
+ * Use a small LP (1 variable, 1 constraint) so no GPU / dataset is needed.
+ * ------------------------------------------------------------------------- */
+
+/* Build a trivial 1-variable LP: min x  s.t. x >= 1, 0 <= x <= inf */
+static cuopt_int_t make_trivial_lp(cuOptOptimizationProblem* problem_out,
+                                   cuOptSolverSettings* settings_out)
+{
+  cuopt_float_t obj[]     = {1.0};
+  cuopt_int_t row_off[]   = {0, 1};
+  cuopt_int_t col_idx[]   = {0};
+  cuopt_float_t coeff[]   = {1.0};
+  char sense[]            = {CUOPT_GREATER_THAN};
+  cuopt_float_t rhs[]     = {1.0};
+  cuopt_float_t lb[]      = {0.0};
+  cuopt_float_t ub[]      = {1e30};
+  char vtype[]            = {CUOPT_CONTINUOUS};
+
+  cuopt_int_t status =
+    cuOptCreateProblem(1, 1, CUOPT_MINIMIZE, 0.0, obj, row_off, col_idx, coeff,
+                       sense, rhs, lb, ub, vtype, problem_out);
+  if (status != CUOPT_SUCCESS) return status;
+  return cuOptCreateSolverSettings(settings_out);
+}
+
+typedef struct {
+  int calls;
+  void* received_user_data;
+} log_cb_context_t;
+
+static void counting_log_callback(int level, const char* message, void* user_data)
+{
+  (void)level;
+  (void)message;
+  log_cb_context_t* ctx  = (log_cb_context_t*)user_data;
+  ctx->calls++;
+  ctx->received_user_data = user_data;
+}
+
+cuopt_int_t test_log_callback(void)
+{
+  cuOptOptimizationProblem problem = NULL;
+  cuOptSolverSettings settings     = NULL;
+  cuOptSolution solution           = NULL;
+  log_cb_context_t ctx             = {0, NULL};
+  cuopt_int_t status               = make_trivial_lp(&problem, &settings);
+  if (status != CUOPT_SUCCESS) goto DONE;
+
+  status = cuOptSetLogCallback(settings, counting_log_callback, &ctx);
+  if (status != CUOPT_SUCCESS) goto DONE;
+
+  status = cuOptSolve(problem, settings, &solution);
+  if (status != CUOPT_SUCCESS) goto DONE;
+
+  if (ctx.calls < 1) {
+    printf("Expected log callback to be called at least once; got %d calls\n", ctx.calls);
+    status = CUOPT_INVALID_ARGUMENT;
+    goto DONE;
+  }
+  if (ctx.received_user_data != &ctx) {
+    printf("user_data pointer was not forwarded correctly\n");
+    status = CUOPT_INVALID_ARGUMENT;
+    goto DONE;
+  }
+
+DONE:
+  cuOptDestroyProblem(&problem);
+  cuOptDestroySolverSettings(&settings);
+  cuOptDestroySolution(&solution);
+  return status;
+}
+
+cuopt_int_t test_log_callback_cleared(void)
+{
+  cuOptOptimizationProblem problem = NULL;
+  cuOptSolverSettings settings     = NULL;
+  cuOptSolution solution           = NULL;
+  log_cb_context_t ctx             = {0, NULL};
+  cuopt_int_t status               = make_trivial_lp(&problem, &settings);
+  if (status != CUOPT_SUCCESS) goto DONE;
+
+  /* Register then immediately clear the callback */
+  status = cuOptSetLogCallback(settings, counting_log_callback, &ctx);
+  if (status != CUOPT_SUCCESS) goto DONE;
+  status = cuOptSetLogCallback(settings, NULL, NULL);
+  if (status != CUOPT_SUCCESS) goto DONE;
+
+  status = cuOptSolve(problem, settings, &solution);
+  if (status != CUOPT_SUCCESS) goto DONE;
+
+  if (ctx.calls != 0) {
+    printf("Expected 0 callback calls after clearing; got %d\n", ctx.calls);
+    status = CUOPT_INVALID_ARGUMENT;
+    goto DONE;
+  }
+
+DONE:
+  cuOptDestroyProblem(&problem);
+  cuOptDestroySolverSettings(&settings);
+  cuOptDestroySolution(&solution);
+  return status;
+}
+
+cuopt_int_t test_log_level_off(void)
+{
+  cuOptOptimizationProblem problem = NULL;
+  cuOptSolverSettings settings     = NULL;
+  cuOptSolution solution           = NULL;
+  log_cb_context_t ctx             = {0, NULL};
+  cuopt_int_t status               = make_trivial_lp(&problem, &settings);
+  if (status != CUOPT_SUCCESS) goto DONE;
+
+  status = cuOptSetLogCallback(settings, counting_log_callback, &ctx);
+  if (status != CUOPT_SUCCESS) goto DONE;
+  status = cuOptSetLogLevel(settings, CUOPT_LOG_LEVEL_OFF);
+  if (status != CUOPT_SUCCESS) goto DONE;
+
+  status = cuOptSolve(problem, settings, &solution);
+  if (status != CUOPT_SUCCESS) goto DONE;
+
+  if (ctx.calls != 0) {
+    printf("Expected 0 log calls with LOG_LEVEL_OFF; got %d\n", ctx.calls);
+    status = CUOPT_INVALID_ARGUMENT;
+    goto DONE;
+  }
+
+DONE:
+  cuOptDestroyProblem(&problem);
+  cuOptDestroySolverSettings(&settings);
+  cuOptDestroySolution(&solution);
+  return status;
+}
+
+cuopt_int_t test_log_level_invalid(void)
+{
+  cuOptSolverSettings settings = NULL;
+  cuopt_int_t status           = cuOptCreateSolverSettings(&settings);
+  if (status != CUOPT_SUCCESS) goto DONE;
+
+  if (cuOptSetLogLevel(settings, -1) != CUOPT_INVALID_ARGUMENT) {
+    status = CUOPT_INVALID_ARGUMENT;
+    goto DONE;
+  }
+  if (cuOptSetLogLevel(settings, CUOPT_LOG_LEVEL_OFF + 1) != CUOPT_INVALID_ARGUMENT) {
+    status = CUOPT_INVALID_ARGUMENT;
+    goto DONE;
+  }
+  status = CUOPT_SUCCESS;
+
+DONE:
+  cuOptDestroySolverSettings(&settings);
+  return status;
+}
+
 cuopt_int_t burglar_problem()
 {
   cuOptOptimizationProblem problem = NULL;

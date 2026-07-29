@@ -30,6 +30,10 @@ cuopt_int_t test_infeasible_problem();
 cuopt_int_t test_bad_parameter_name();
 cuopt_int_t test_mip_get_callbacks_only();
 cuopt_int_t test_mip_get_set_callbacks();
+cuopt_int_t test_log_callback();
+cuopt_int_t test_log_callback_cleared();
+cuopt_int_t test_log_level_off();
+cuopt_int_t test_log_level_invalid();
 cuopt_int_t test_ranged_problem(cuopt_int_t* termination_status_ptr, cuopt_float_t* objective_ptr);
 cuopt_int_t test_semi_continuous_problem(cuopt_int_t* termination_status_ptr,
                                          cuopt_float_t* objective_ptr,

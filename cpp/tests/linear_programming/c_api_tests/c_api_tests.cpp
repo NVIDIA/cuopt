@@ -114,6 +114,14 @@ TEST(c_api, mip_get_callbacks_only) { EXPECT_EQ(test_mip_get_callbacks_only(), C
 
 TEST(c_api, mip_get_set_callbacks) { EXPECT_EQ(test_mip_get_set_callbacks(), CUOPT_SUCCESS); }
 
+TEST(c_api, log_callback) { EXPECT_EQ(test_log_callback(), CUOPT_SUCCESS); }
+
+TEST(c_api, log_callback_cleared) { EXPECT_EQ(test_log_callback_cleared(), CUOPT_SUCCESS); }
+
+TEST(c_api, log_level_off) { EXPECT_EQ(test_log_level_off(), CUOPT_SUCCESS); }
+
+TEST(c_api, log_level_invalid) { EXPECT_EQ(test_log_level_invalid(), CUOPT_SUCCESS); }
+
 TEST(c_api, burglar) { EXPECT_EQ(burglar_problem(), CUOPT_SUCCESS); }
 
 TEST(c_api, test_missing_file) { EXPECT_EQ(test_missing_file(), CUOPT_MPS_FILE_ERROR); }
