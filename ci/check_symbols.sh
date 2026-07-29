@@ -77,6 +77,29 @@ for pattern in "${patterns[@]}"; do
     fi
 done
 
+# Required public API symbols that must stay exported. This is a small stability
+# anchor (core C API lifecycle entrypoints), not an exhaustive list: without it,
+# a library whose visibility was over-tightened so the public API is entirely
+# hidden would still pass the forbidden-symbol checks above while being unusable.
+# Keep this set minimal and limited to entrypoints guaranteed to exist.
+required_symbols=(
+    cuOptReadProblem
+    cuOptCreateProblem
+    cuOptSolve
+    cuOptDestroyProblem
+)
+
+exported_funcs="$(readelf --dyn-syms --wide "${LIBRARY}" | awk '$7 != "UND" && $4 == "FUNC" { print $8 }')"
+
+for sym in "${required_symbols[@]}"; do
+    echo "Checking that required symbol '${sym}' is exported..."
+    if ! grep -qxF "${sym}" <<< "${exported_funcs}"; then
+        echo "ERROR: Required public API symbol '${sym}' is not exported from ${LIBRARY}."
+        echo "ERROR: Symbol visibility may be over-restricted and hiding the public API."
+        failed=1
+    fi
+done
+
 if [[ "${failed}" -ne 0 ]]; then
     exit 1
 fi
