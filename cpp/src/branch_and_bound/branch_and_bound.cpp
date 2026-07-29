@@ -3417,10 +3417,12 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(const simple
     bool recompute_basis               = false;
     const i_t iter_before              = iter;
     f_t primal_work_estimate = 0;
+    simplex_solver_settings_t<i_t, f_t> primal_settings = settings_;
+    primal_settings.log.log = false;
     simplex::primal_status_t lp_status = simplex::primal_phase2_with_advanced_basis(2,
                                                                 exploration_stats_.start_time,
                                                                 lp_reduced,
-                                                                settings_,
+                                                                primal_settings,
                                                                 reduced_vstatus,
                                                                 reduced_basis_update,
                                                                 reduced_basic_list,
@@ -3446,15 +3448,17 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(const simple
       // Verify the solution is primal feasible
       std::vector<f_t> residual = lp.rhs;
       matrix_vector_multiply(lp.A, 1.0, adjusted_solution, -1.0, residual);
+      const f_t primal_residual = vector_norm_inf<i_t, f_t>(residual);
 
-      settings_.log.printf("Reduced LP residual|| A*x  - b ||_inf = %.16e\n",
-                           vector_norm_inf<i_t, f_t>(residual));
+      if (primal_residual > 1e-6) {
+        settings_.log.printf("Reduced LP residual|| A*x  - b ||_inf = %.4e\n", primal_residual);
+      }
 
       std::vector<i_t> tmp_fractional;
       i_t num_fractional_reduced =
         fractional_variables(settings_, adjusted_solution, var_types_, tmp_fractional);
       settings_.log.printf(
-        "Reduced LP fractional variables %d/%d\n", num_fractional_reduced, num_fractional);
+        "Degenerate feasibility pump (%d/%d): fractional variables %d/%d\n", pump_iter, max_pump_iter, num_fractional_reduced, num_fractional);
       // Also treat a pass that fails to improve the best as a stall, so we perturb
       // the next pass even when the solve pivoted (moved) without reducing the count.
       stalled = stalled || (num_fractional_reduced >= best_num_fractional);
@@ -3465,7 +3469,7 @@ void branch_and_bound_t<i_t, f_t>::dual_degenerate_feasibility_pump(const simple
     }
   }
 
-  settings_.log.printf("Best number of fractional variables %d/%d\n", best_num_fractional, num_fractional);
+  settings_.log.printf("Degenerate feasibility pump: Simplex iterations %d, Best number of fractional variables %d/%d\n", iter, best_num_fractional, num_fractional);
   if (best_num_fractional < num_fractional) {
     // Translate the vstatus from the reduced problem to the vstatus for the original problem
     i_t reduced_cols = 0;
