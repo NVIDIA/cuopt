@@ -862,15 +862,32 @@ endif (BUILD_TESTS)
 # Links publicly against the four component shared libs so that -lcuopt keeps working for
 # all existing consumers.
 
-# Reference cuOptDestroyProblem (from libcuopt_lp.so) so --as-needed keeps
-# libcuopt_lp.so in DT_NEEDED, preserving the -lcuopt C API contract for users
-# who compile C programs with -lcuopt.
-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/cuopt_umbrella.cpp" [=[
-// Thin umbrella. References cuOptDestroyProblem so --as-needed keeps
-// libcuopt_lp.so in DT_NEEDED, preserving the -lcuopt C API contract.
-extern "C" void cuOptDestroyProblem(void*);
-__attribute__((used)) void (* const _cuopt_lp_anchor)(void*) = &cuOptDestroyProblem;
+# Reference one symbol from each component lib so --as-needed keeps them in
+# DT_NEEDED.  The constructor in grpc_registration.cpp fires when
+# libcuopt_grpc.so is loaded and wires up the remote-solve function pointers
+# in libcuopt_lp.so, so that must happen whenever -lcuopt is used.
+set(_UMBRELLA_SRC [=[
+// Thin umbrella: one symbol reference per component so --as-needed keeps
+// each library in DT_NEEDED.
+extern "C" void cuOptDestroyProblem(void*);   // libcuopt_lp.so
+__attribute__((used)) void (* const _cuopt_lp_anchor)(void*)  = &cuOptDestroyProblem;
 ]=])
+
+if(NOT SKIP_GRPC_BUILD)
+    string(APPEND _UMBRELLA_SRC [=[
+// solve_lp_remote is in libcuopt_grpc.so; pulling it in ensures the
+// grpc_registration constructor runs and registers the remote-solve
+// function pointers in libcuopt_lp.so.
+#include <cuopt/mathematical_optimization/solve_remote.hpp>
+#include <cuopt/mathematical_optimization/remote_solve_registry.hpp>
+namespace cuopt::mathematical_optimization {
+__attribute__((used)) solve_lp_remote_fn_t const _cuopt_grpc_anchor =
+  &solve_lp_remote<int, double>;
+}
+]=])
+endif()
+
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/cuopt_umbrella.cpp" "${_UMBRELLA_SRC}")
 
 add_library(cuopt SHARED "${CMAKE_CURRENT_BINARY_DIR}/cuopt_umbrella.cpp")
 add_library(cuopt::cuopt ALIAS cuopt)
