@@ -79,6 +79,9 @@
   if (pb_settings.has_barrier_step_scale()) {
     settings.barrier_step_scale = pb_settings.barrier_step_scale();
   }
+  if (pb_settings.has_post_solve_info()) {
+    settings.post_solve_info = pb_settings.post_solve_info();
+  }
   settings.save_best_primal_so_far = pb_settings.save_best_primal_so_far();
   settings.first_primal_feasible = pb_settings.first_primal_feasible();
   if (pb_settings.has_pdlp_precision()) {

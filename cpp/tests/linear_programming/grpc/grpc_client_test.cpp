@@ -2033,6 +2033,7 @@ TEST(MapperRoundtrip, PDLPSettingsAllFields)
   orig.eliminate_dense_columns      = true;
   orig.barrier_iterative_refinement = false;  // not the default true, to detect overwrite-on-decode
   orig.barrier_step_scale           = 0.75;   // not the default 0.9
+  orig.post_solve_info              = 1;
   orig.pdlp_precision               = pdlp_precision_t::MixedPrecision;
   orig.save_best_primal_so_far      = true;
   orig.first_primal_feasible        = true;
@@ -2073,6 +2074,7 @@ TEST(MapperRoundtrip, PDLPSettingsAllFields)
   EXPECT_EQ(restored.eliminate_dense_columns, true);
   EXPECT_EQ(restored.barrier_iterative_refinement, false);
   EXPECT_DOUBLE_EQ(restored.barrier_step_scale, 0.75);
+  EXPECT_EQ(restored.post_solve_info, 1);
   EXPECT_EQ(restored.pdlp_precision, pdlp_precision_t::MixedPrecision);
   EXPECT_EQ(restored.save_best_primal_so_far, true);
   EXPECT_EQ(restored.first_primal_feasible, true);

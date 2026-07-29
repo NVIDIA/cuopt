@@ -418,24 +418,26 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
                                unscaled_y,
                                unscaled_z);
 
-    std::vector<f_t> residual = presolved_lp.rhs;
-    matrix_vector_multiply(presolved_lp.A, 1.0, unscaled_x, -1.0, residual);
-    f_t primal_residual = vector_norm_inf<i_t, f_t>(residual);
-    settings.log.printf("Unscaled Primal infeasibility   (abs/rel): %.2e/%.2e\n",
-                        primal_residual,
-                        primal_residual / (1.0 + vector_norm_inf<i_t, f_t>(presolved_lp.rhs)));
-    if (barrier_lp.Q.n == 0) {
-      std::vector<f_t> unscaled_dual_residual = unscaled_z;
-      for (i_t j = 0; j < unscaled_dual_residual.size(); ++j) {
-        unscaled_dual_residual[j] -= presolved_lp.objective[j];
+    if (settings.post_solve_info == 1) {
+      std::vector<f_t> residual = presolved_lp.rhs;
+      matrix_vector_multiply(presolved_lp.A, 1.0, unscaled_x, -1.0, residual);
+      f_t primal_residual = vector_norm_inf<i_t, f_t>(residual);
+      settings.log.printf("Unscaled Primal infeasibility   (abs/rel): %.2e/%.2e\n",
+                          primal_residual,
+                          primal_residual / (1.0 + vector_norm_inf<i_t, f_t>(presolved_lp.rhs)));
+      if (barrier_lp.Q.n == 0) {
+        std::vector<f_t> unscaled_dual_residual = unscaled_z;
+        for (i_t j = 0; j < unscaled_dual_residual.size(); ++j) {
+          unscaled_dual_residual[j] -= presolved_lp.objective[j];
+        }
+        matrix_transpose_vector_multiply(
+          presolved_lp.A, 1.0, unscaled_y, 1.0, unscaled_dual_residual);
+        f_t unscaled_dual_residual_norm = vector_norm_inf<i_t, f_t>(unscaled_dual_residual);
+        settings.log.printf(
+          "Unscaled Dual infeasibility     (abs/rel): %.2e/%.2e\n",
+          unscaled_dual_residual_norm,
+          unscaled_dual_residual_norm / (1.0 + vector_norm_inf<i_t, f_t>(presolved_lp.objective)));
       }
-      matrix_transpose_vector_multiply(
-        presolved_lp.A, 1.0, unscaled_y, 1.0, unscaled_dual_residual);
-      f_t unscaled_dual_residual_norm = vector_norm_inf<i_t, f_t>(unscaled_dual_residual);
-      settings.log.printf(
-        "Unscaled Dual infeasibility     (abs/rel): %.2e/%.2e\n",
-        unscaled_dual_residual_norm,
-        unscaled_dual_residual_norm / (1.0 + vector_norm_inf<i_t, f_t>(presolved_lp.objective)));
     }
 
     // Undo presolve
@@ -449,26 +451,28 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
                      lp_solution.y,
                      lp_solution.z);
 
-    std::vector<f_t> post_solve_residual = original_lp.rhs;
-    matrix_vector_multiply(original_lp.A, 1.0, lp_solution.x, -1.0, post_solve_residual);
-    f_t post_solve_primal_residual = vector_norm_inf<i_t, f_t>(post_solve_residual);
-    settings.log.printf(
-      "Post-solve Primal infeasibility (abs/rel): %.2e/%.2e\n",
-      post_solve_primal_residual,
-      post_solve_primal_residual / (1.0 + vector_norm_inf<i_t, f_t>(original_lp.rhs)));
-
-    if (barrier_lp.Q.n == 0) {
-      std::vector<f_t> post_solve_dual_residual = lp_solution.z;
-      for (i_t j = 0; j < post_solve_dual_residual.size(); ++j) {
-        post_solve_dual_residual[j] -= original_lp.objective[j];
-      }
-      matrix_transpose_vector_multiply(
-        original_lp.A, 1.0, lp_solution.y, 1.0, post_solve_dual_residual);
-      f_t post_solve_dual_residual_norm = vector_norm_inf<i_t, f_t>(post_solve_dual_residual);
+    if (settings.post_solve_info == 1) {
+      std::vector<f_t> post_solve_residual = original_lp.rhs;
+      matrix_vector_multiply(original_lp.A, 1.0, lp_solution.x, -1.0, post_solve_residual);
+      f_t post_solve_primal_residual = vector_norm_inf<i_t, f_t>(post_solve_residual);
       settings.log.printf(
-        "Post-solve Dual infeasibility   (abs/rel): %.2e/%.2e\n",
-        post_solve_dual_residual_norm,
-        post_solve_dual_residual_norm / (1.0 + vector_norm_inf<i_t, f_t>(original_lp.objective)));
+        "Post-solve Primal infeasibility (abs/rel): %.2e/%.2e\n",
+        post_solve_primal_residual,
+        post_solve_primal_residual / (1.0 + vector_norm_inf<i_t, f_t>(original_lp.rhs)));
+
+      if (barrier_lp.Q.n == 0) {
+        std::vector<f_t> post_solve_dual_residual = lp_solution.z;
+        for (i_t j = 0; j < post_solve_dual_residual.size(); ++j) {
+          post_solve_dual_residual[j] -= original_lp.objective[j];
+        }
+        matrix_transpose_vector_multiply(
+          original_lp.A, 1.0, lp_solution.y, 1.0, post_solve_dual_residual);
+        f_t post_solve_dual_residual_norm = vector_norm_inf<i_t, f_t>(post_solve_dual_residual);
+        settings.log.printf(
+          "Post-solve Dual infeasibility   (abs/rel): %.2e/%.2e\n",
+          post_solve_dual_residual_norm,
+          post_solve_dual_residual_norm / (1.0 + vector_norm_inf<i_t, f_t>(original_lp.objective)));
+      }
     }
 
     if (dualize_info.solving_dual) {
