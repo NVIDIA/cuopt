@@ -78,7 +78,7 @@ struct simplex_solver_settings_t {
       dualize(-1),
       ordering(-1),
       barrier_dual_initial_point(-1),
-      post_solve_info(-1),
+      postsolve_info(-1),
       qcqp_ruiz_equilibration(-1),
       check_Q(false),
       crossover(false),
@@ -173,7 +173,7 @@ struct simplex_solver_settings_t {
   i_t ordering;   // -1 automatic, 0 to use nested dissection, 1 to use AMD
   i_t barrier_dual_initial_point;  // -1 automatic, 0 to use Lustig, Marsten, and Shanno initial
                                    // point, 1 to use initial point form dual least squares problem
-  i_t post_solve_info;             // -1 automatic (disabled), 0 disabled, 1 enabled
+  i_t postsolve_info;              // -1 automatic (disabled), 0 disabled, 1 enabled
   i_t qcqp_ruiz_equilibration;     // -1 automatic (imbalance heuristic), 0 disabled, 1 enabled
   bool check_Q;                    // true to check if Q is positive semidefinite
   bool crossover;                  // true to do crossover, false to not

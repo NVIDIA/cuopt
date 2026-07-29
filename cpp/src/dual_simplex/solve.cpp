@@ -418,7 +418,7 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
                                unscaled_y,
                                unscaled_z);
 
-    if (settings.post_solve_info == 1) {
+    if (settings.postsolve_info == 1) {
       std::vector<f_t> residual = presolved_lp.rhs;
       matrix_vector_multiply(presolved_lp.A, 1.0, unscaled_x, -1.0, residual);
       f_t primal_residual = vector_norm_inf<i_t, f_t>(residual);
@@ -451,7 +451,7 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
                      lp_solution.y,
                      lp_solution.z);
 
-    if (settings.post_solve_info == 1) {
+    if (settings.postsolve_info == 1) {
       std::vector<f_t> post_solve_residual = original_lp.rhs;
       matrix_vector_multiply(original_lp.A, 1.0, lp_solution.x, -1.0, post_solve_residual);
       f_t post_solve_primal_residual = vector_norm_inf<i_t, f_t>(post_solve_residual);
@@ -506,7 +506,7 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
         k++;
       }
 
-      if (settings.post_solve_info == 1) {
+      if (settings.postsolve_info == 1) {
         // Check the objective and residuals on the primal problem.
         settings.log.printf(
           "Primal objective: %e\n",
@@ -562,7 +562,7 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
         problem.num_cols = num_cols;
       }
 
-      if (settings.post_solve_info == 1) {
+      if (settings.postsolve_info == 1) {
         std::vector<f_t> primal_residual = dualize_info.primal_problem.rhs;
         matrix_vector_multiply(
           dualize_info.primal_problem.A, 1.0, primal_solution.x, -1.0, primal_residual);

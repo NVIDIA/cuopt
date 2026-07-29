@@ -47,7 +47,7 @@
 #define CUOPT_DUALIZE                              "dualize"
 #define CUOPT_ORDERING                             "ordering"
 #define CUOPT_BARRIER_DUAL_INITIAL_POINT           "barrier_dual_initial_point"
-#define CUOPT_POST_SOLVE_INFO                      "post_solve_info"
+#define CUOPT_POSTSOLVE_INFO                       "postsolve_info"
 #define CUOPT_BARRIER_ITERATIVE_REFINEMENT         "barrier_iterative_refinement"
 #define CUOPT_BARRIER_STEP_SCALE                   "barrier_step_scale"
 #define CUOPT_ELIMINATE_DENSE_COLUMNS              "eliminate_dense_columns"

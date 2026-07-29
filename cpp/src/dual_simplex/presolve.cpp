@@ -1779,7 +1779,7 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
     }
     matrix_transpose_vector_multiply(
       presolve_info.folding_info.A_tilde, 1.0, ytilde, 1.0, dual_residual);
-    if (settings.post_solve_info == 1) {
+    if (settings.postsolve_info == 1) {
       settings.log.printf("Unfolded dual residual = %e\n",
                           vector_norm_inf<i_t, f_t>(dual_residual));
     }
@@ -1802,7 +1802,7 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
 
   const i_t num_free_variables = free_variable_pairs.size() / 2;
   if (num_free_variables > 0) {
-    if (settings.post_solve_info == 1) {
+    if (settings.postsolve_info == 1) {
       settings.log.printf("Post-solve: Handling free variables %d\n", num_free_variables);
     }
     // We added free variables so we need to map the crushed solution back to the original variables
@@ -1816,7 +1816,7 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
   }
 
   if (presolve_info.removed_variables.size() > 0) {
-    if (settings.post_solve_info == 1) {
+    if (settings.postsolve_info == 1) {
       settings.log.printf("Post-solve: Handling removed variables %d\n",
                           presolve_info.removed_variables.size());
     }
@@ -1846,7 +1846,7 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
   }
 
   if (presolve_info.removed_constraints.size() > 0) {
-    if (settings.post_solve_info == 1) {
+    if (settings.postsolve_info == 1) {
       settings.log.printf("Post-solve: Handling removed constraints %d\n",
                           presolve_info.removed_constraints.size());
     }
@@ -1877,7 +1877,7 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
       if (presolve_info.removed_lower_bounds[j] != 0.0) { num_lower_bounds++; }
       input_x[j] += presolve_info.removed_lower_bounds[j];
     }
-    if (settings.post_solve_info == 1) {
+    if (settings.postsolve_info == 1) {
       settings.log.printf("Post-solve: Handling removed lower bounds %d\n", num_lower_bounds);
     }
   }
@@ -1905,7 +1905,7 @@ void uncrush_solution(const presolve_info_t<i_t, f_t>& presolve_info,
   // z_bar_{j_f} = 0.
   if (!presolve_info.bounded_free_variables.empty()) {
     const i_t num_bfv = static_cast<i_t>(presolve_info.bounded_free_variables.size());
-    if (settings.post_solve_info == 1) {
+    if (settings.postsolve_info == 1) {
       settings.log.printf("Post-solve: Correcting duals for %d bounded free variables\n", num_bfv);
     }
     const csc_matrix_t<i_t, f_t>& A = original_problem.A;

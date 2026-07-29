@@ -70,9 +70,9 @@ TEST(SolverSettingsTest, TestSetGet)
   solver_settings.first_primal_feasible = true;
   EXPECT_TRUE(solver_settings.first_primal_feasible);
 
-  EXPECT_EQ(solver_settings.post_solve_info, -1);
-  solver_settings.post_solve_info = 1;
-  EXPECT_EQ(solver_settings.post_solve_info, 1);
+  EXPECT_EQ(solver_settings.postsolve_info, -1);
+  solver_settings.postsolve_info = 1;
+  EXPECT_EQ(solver_settings.postsolve_info, 1);
 }
 
 TEST(SolverSettingsTest, warm_start_smaller_vector)
