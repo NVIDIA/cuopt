@@ -63,10 +63,12 @@ RUN \
 
 FROM install-env AS cuopt-final
 
-# Register python/python3 via alternatives so the system alternatives database
-# is consistent with the /usr/bin/python symlink created in install-env.
-RUN alternatives --install /usr/bin/python  python  /usr/bin/python3.14 100 \
-    && alternatives --install /usr/bin/python3 python3 /usr/bin/python3.14 100
+# Register python via alternatives so the system alternatives database is
+# consistent with the /usr/bin/python symlink created in install-env.
+# NOTE: do NOT register python3 → python3.14 here: /usr/bin/dnf uses
+# #!/usr/bin/python3 and requires the system python3.12 (python3-libs) to
+# find its 'dnf' module; overriding python3 would break dnf at runtime.
+RUN alternatives --install /usr/bin/python python /usr/bin/python3.14 100
 
 # On UBI10: libcuopt, cuopt, rapids_logger install to lib64; cuopt_server to lib.
 ENV PATH="/usr/local/cuda/bin:/usr/bin:/usr/local/bin:/usr/local/nvidia/bin/:/usr/local/lib64/python3.14/site-packages/libcuopt/bin:${PATH}"

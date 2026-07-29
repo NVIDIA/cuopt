@@ -190,10 +190,42 @@ class ServerProcess {
 
   int port() const { return port_; }
 
+  pid_t pid() const { return pid_; }
+
   bool is_running() const
   {
     if (pid_ <= 0) return false;
     return kill(pid_, 0) == 0;
+  }
+
+  // Wait until the server parent has exited and been reaped. Unlike is_running(),
+  // this treats a zombie as exited (kill(pid,0) is true for zombies).
+  // Returns true once the parent has exited. If leftover workers are still
+  // alive (e.g. GPU D-state), lifecycle state is preserved so TearDown's
+  // stop() can finish draining the process group.
+  bool wait_exited(std::chrono::milliseconds timeout)
+  {
+    if (pid_ <= 0) return true;
+
+    auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (true) {
+      int status = 0;
+      pid_t ret  = waitpid(pid_, &status, WNOHANG);
+      if (ret == pid_ || (ret < 0 && errno == ECHILD)) {
+        auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+          deadline - std::chrono::steady_clock::now());
+        if (remaining > std::chrono::milliseconds(2000)) {
+          remaining = std::chrono::milliseconds(2000);
+        }
+        if (remaining.count() < 0) { remaining = std::chrono::milliseconds(0); }
+        if (reap_group(remaining)) { clear_lifecycle_state(); }
+        // Parent is gone either way; leave pid_/pgid_ intact if the group is
+        // not fully drained so TearDown can still signal it.
+        return true;
+      }
+      if (std::chrono::steady_clock::now() >= deadline) { return false; }
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
   }
 
   std::string log_path() const
@@ -1814,6 +1846,53 @@ TEST_F(ErrorRecoveryTests, ClientHandlesServerCrashDuringSolve)
   auto status_result = client->check_status(submit_result.job_id);
   EXPECT_FALSE(status_result.success);
   EXPECT_FALSE(status_result.error_message.empty());
+}
+
+TEST_F(ErrorRecoveryTests, SigintDuringRunningJobShutsDownPromptly)
+{
+  ASSERT_TRUE(start_server());
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
+  auto problem         = load_problem_from_file(mps_path);
+
+  mip_solver_settings_t<int32_t, double> settings;
+  settings.time_limit = 120.0;
+
+  auto submit_result = client->submit_mip(problem, settings);
+  ASSERT_TRUE(submit_result.success);
+  std::string job_id = submit_result.job_id;
+
+  // Wait until a worker has claimed the job so SIGINT interrupts an active solve.
+  bool processing = false;
+  for (int i = 0; i < 40; ++i) {
+    auto status = client->check_status(job_id);
+    if (status.status == job_status_t::PROCESSING) {
+      processing = true;
+      break;
+    }
+    if (status.status == job_status_t::COMPLETED || status.status == job_status_t::FAILED ||
+        status.status == job_status_t::CANCELLED) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  }
+  ASSERT_TRUE(processing) << "Job never reached PROCESSING before SIGINT";
+  ASSERT_TRUE(server_.is_running());
+
+  auto start = std::chrono::steady_clock::now();
+  ASSERT_EQ(kill(server_.pid(), SIGINT), 0);
+
+  // Server must exit well before the solve time_limit; previously Ctrl-C could
+  // hang until the mid-solve worker finished. Use waitpid-based polling so a
+  // zombie parent is not mistaken for a still-running process.
+  ASSERT_TRUE(server_.wait_exited(std::chrono::seconds(15)))
+    << "Server did not shut down promptly after SIGINT during a running job";
+
+  auto elapsed =
+    std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - start);
+  EXPECT_LT(elapsed.count(), 15);
 }
 
 TEST_F(ErrorRecoveryTests, ClientTimeoutConfiguration)
