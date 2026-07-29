@@ -7,30 +7,72 @@
 
 #pragma once
 
-#include <cuopt/linear_programming/optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem.hpp>
 
-#include <cuopt/linear_programming/io/mps_data_model.hpp>
+#include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
 
 #include <raft/core/handle.hpp>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
-namespace detail {
+namespace mip {
 template <typename i_t, typename f_t>
 class problem_t;
-}  // namespace detail
+}  // namespace mip
 
 template <typename i_t, typename f_t>
-cuopt::linear_programming::optimization_problem_t<i_t, f_t> mps_data_model_to_optimization_problem(
+cuopt::mathematical_optimization::optimization_problem_t<i_t, f_t>
+mps_data_model_to_optimization_problem(
   raft::handle_t const* handle_ptr,
-  const cuopt::linear_programming::io::mps_data_model_t<i_t, f_t>& data_model);
+  const cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t>& data_model);
 
 template <typename i_t, typename f_t>
-cuopt::linear_programming::optimization_problem_solution_t<i_t, f_t> solve_lp_with_method(
-  detail::problem_t<i_t, f_t>& problem,
+cuopt::mathematical_optimization::optimization_problem_solution_t<i_t, f_t> solve_lp_with_method(
+  mip::problem_t<i_t, f_t>& problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   const timer_t& timer,
   bool is_batch_mode = false);
+
+/**
+ * @brief Distributed-PDLP entry point that consumes the host MPS data model
+ *        directly, partitioning it across GPUs without ever materializing the
+ *        full problem on a single (master) GPU.
+ *
+ * Intended for problems whose `nnz` exceeds the memory of a single device. The
+ * master `pdlp_solver_t` is constructed from a shape-0 placeholder problem; the
+ * real work happens inside it, built straight from the host `mps_data_model`:
+ *   1. host-side graph partitioning off the MPS CSR,
+ *   2. per-shard host CSR slicing,
+ *   3. one shard pdlp_solver_t per GPU, while master holds only scalar metadata
+ *      + gather buffers (no full A / A^T / scaled copies).
+ * It then runs the solver, gathers the solution to master, applies the
+ * maximization sign-flip on the dual / reduced cost when the sense is maximize,
+ * and returns the gathered solution.
+ *
+ * Uses `settings.num_gpus` as the shard count; -1 selects all visible GPUs.
+ * Several configurations are rejected up front (see @pre).
+ *
+ * @param handle_ptr  Master raft handle (its stream owns the gather buffers and
+ *                    any master-side aggregator allocations). Must be non-null.
+ * @param mps_data_model  Host-resident MPS data (CPU vectors only).
+ * @param settings    User-supplied PDLP solver settings; `num_gpus` is the
+ *                    distributed shard count when `use_distributed_pdlp` is true,
+ *                    and -1 selects all visible GPUs.
+ * @param use_pdlp_solver_mode  When true, applies `set_pdlp_solver_mode()` to a
+ *                    local copy of settings before solving and enforces
+ *                    `settings.pdlp_solver_mode == Stable3`
+ *
+ * @pre `settings.use_distributed_pdlp == true`, `method == PDLP`, `settings.pdlp_solver_mode ==
+ * Stable3`, `pdlp_precision == DefaultPrecision`, not inside MIP, and no initial primal/dual or
+ * warm-start data.
+ */
+template <typename i_t, typename f_t>
+cuopt::mathematical_optimization::optimization_problem_solution_t<i_t, f_t>
+solve_lp_distributed_from_mps(
+  raft::handle_t const* handle_ptr,
+  const cuopt::mathematical_optimization::io::mps_data_model_t<i_t, f_t>& mps_data_model,
+  pdlp_solver_settings_t<i_t, f_t> const& settings,
+  bool use_pdlp_solver_mode);
 
 /**
  * @brief Entry point for batch PDLP. Solves multiple LPs sharing the same constraint
@@ -82,8 +124,8 @@ cuopt::linear_programming::optimization_problem_solution_t<i_t, f_t> solve_lp_wi
  * @endcode
  */
 template <typename i_t, typename f_t>
-cuopt::linear_programming::optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
-  cuopt::linear_programming::optimization_problem_t<i_t, f_t>& problem,
+cuopt::mathematical_optimization::optimization_problem_solution_t<i_t, f_t> run_batch_pdlp(
+  cuopt::mathematical_optimization::optimization_problem_t<i_t, f_t>& problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings);
 
 /**
@@ -101,7 +143,7 @@ cuopt::linear_programming::optimization_problem_solution_t<i_t, f_t> run_batch_p
 */
 template <typename i_t, typename f_t>
 size_t compute_optimal_batch_size(
-  const cuopt::linear_programming::optimization_problem_t<i_t, f_t>& problem,
+  const cuopt::mathematical_optimization::optimization_problem_t<i_t, f_t>& problem,
   bool per_climber_objectives,
   bool per_climber_constraint_bounds,
   bool collect_solutions = false);  // Only for testing
@@ -109,4 +151,4 @@ size_t compute_optimal_batch_size(
 template <typename i_t, typename f_t>
 void set_pdlp_solver_mode(pdlp_solver_settings_t<i_t, f_t>& settings);
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

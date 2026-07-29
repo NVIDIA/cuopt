@@ -163,7 +163,7 @@ Please install conda if you don't have it already. You can install [miniforge](h
 # create the conda environment (assuming in base `cuopt` directory)
 # note: cuOpt currently doesn't support `channel_priority: strict`;
 # use `channel_priority: flexible` instead
-conda env create -p ./.cuopt_env --file conda/environments/all_cuda-132_arch-$(uname -m).yaml
+conda env create -p ./.cuopt_env --file conda/environments/all_cuda-133_arch-$(uname -m).yaml
 # activate the environment
 conda activate ./.cuopt_env
 ```
@@ -222,6 +222,7 @@ To run the C++ tests, run
 cd $CUOPT_HOME/datasets && ./get_test_data.sh
 cd $CUOPT_HOME && datasets/linear_programming/download_pdlp_test_dataset.sh
 datasets/mip/download_miplib_test_dataset.sh
+datasets/quadratic_programming/download_qplib_test_dataset.sh
 export RAPIDS_DATASET_ROOT_DIR=$CUOPT_HOME/datasets/
 ctest --test-dir ${CUOPT_HOME}/cpp/build  # libcuopt
 ```
@@ -234,6 +235,7 @@ To run python tests, run
 cd $CUOPT_HOME/datasets && ./get_test_data.sh
 cd $CUOPT_HOME && datasets/linear_programming/download_pdlp_test_dataset.sh
 datasets/mip/download_miplib_test_dataset.sh
+datasets/quadratic_programming/download_qplib_test_dataset.sh
 export RAPIDS_DATASET_ROOT_DIR=$CUOPT_HOME/datasets/
 cd $CUOPT_HOME/python
 pytest -v ${CUOPT_HOME}/python/cuopt/cuopt/tests

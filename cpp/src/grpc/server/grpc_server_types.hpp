@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 #pragma once
@@ -13,10 +13,10 @@
 #include "cuopt_remote.pb.h"
 #include "cuopt_remote_service.grpc.pb.h"
 
-#include <cuopt/linear_programming/cpu_optimization_problem_solution.hpp>
-#include <cuopt/linear_programming/optimization_problem_interface.hpp>
-#include <cuopt/linear_programming/solve.hpp>
-#include <cuopt/linear_programming/utilities/internals.hpp>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem_solution.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
+#include <cuopt/mathematical_optimization/solve.hpp>
+#include <cuopt/mathematical_optimization/utilities/internals.hpp>
 #include "grpc_problem_mapper.hpp"
 #include "grpc_server_logger.hpp"
 #include "grpc_settings_mapper.hpp"
@@ -60,8 +60,9 @@ using grpc::ServerWriter;
 using grpc::Status;
 using grpc::StatusCode;
 
-using namespace cuopt::linear_programming;
-// Note: NOT using "using namespace cuopt::remote" to avoid JobStatus enum conflict
+// Note: cuopt::mathematical_optimization names are fully qualified below to avoid leaking
+// a header-scope using-namespace directive, and to avoid a JobStatus enum conflict
+// with cuopt::remote.
 
 // =============================================================================
 // Shared Memory Structures (must match between main process and workers)
@@ -216,7 +217,7 @@ struct ChunkedUploadState {
   // Top-level and container fields stay in separate maps so a top-level
   // field_id and a container-relative field_id can coexist without
   // colliding on the int32_t key.
-  std::map<cuopt::linear_programming::container_array_key_t, FieldMeta> container_field_meta;
+  std::map<cuopt::mathematical_optimization::container_array_key_t, FieldMeta> container_field_meta;
   std::vector<cuopt::remote::ArrayChunk> chunks;
   int64_t total_chunks = 0;
   int64_t total_bytes  = 0;
@@ -246,8 +247,12 @@ inline ResultQueueEntry* result_queue = nullptr;
 inline SharedMemoryControl* shm_ctrl  = nullptr;
 
 inline std::vector<pid_t> worker_pids;
+inline std::mutex worker_pids_mutex;
 
 inline ServerConfig config;
+
+// Physical GPU count used for startup logging only (no CUDA calls in the parent).
+inline int visible_gpu_count = 0;
 
 inline std::vector<WorkerPipes> worker_pipes;
 inline std::mutex worker_pipes_mutex;
@@ -326,13 +331,8 @@ inline std::string read_file_to_string(const std::string& path)
 // Signal handling
 // =============================================================================
 
-inline void signal_handler(int signal)
-{
-  if (signal == SIGINT || signal == SIGTERM) {
-    keep_running = false;
-    if (shm_ctrl) { shm_ctrl->shutdown_requested = true; }
-  }
-}
+// SIGINT/SIGTERM are handled via sigwait on a dedicated thread (see main).
+// Using signal() handlers is unreliable once gRPC/CUDA threads mask signals.
 
 // =============================================================================
 // Forward declarations
@@ -340,10 +340,16 @@ inline void signal_handler(int signal)
 
 std::string generate_job_id();
 void ensure_log_dir_exists();
+void create_job_log_file(const std::string& job_id);
 void delete_log_file(const std::string& job_id);
 void cleanup_shared_memory();
+void log_worker_gpu_layout();
+bool init_worker_cuda_environment(int worker_id);
 void spawn_workers();
+void kill_all_workers();
+void close_all_server_worker_pipes();
 void wait_for_workers();
+void cancel_all_active_jobs_for_shutdown();
 void worker_monitor_thread();
 void result_retrieval_thread();
 void incumbent_retrieval_thread();
@@ -366,5 +372,7 @@ std::pair<bool, std::string> submit_chunked_job_async(PendingChunkedUpload&& chu
                                                       uint32_t problem_category);
 JobStatus check_job_status(const std::string& job_id, std::string& message);
 int cancel_job(const std::string& job_id, JobStatus& job_status_out, std::string& message);
+// Cancel if queued/running, then remove all server-side state for the job.
+bool delete_job(const std::string& job_id, std::string& message);
 
 #endif  // CUOPT_ENABLE_GRPC

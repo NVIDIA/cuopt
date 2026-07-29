@@ -186,7 +186,6 @@ list(APPEND CUOPT_CUDA_FLAGS -Xfatbin=-compress-all)
 if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.9 AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0)
     list(APPEND CUOPT_CUDA_FLAGS -Xfatbin=--compress-level=3)
 endif ()
-list(APPEND CUOPT_CUDA_FLAGS -fopenmp)
 
 # Add jobserver flags for parallel compilation if PARALLEL_LEVEL is set
 if (PARALLEL_LEVEL AND NOT "${PARALLEL_LEVEL}" STREQUAL "")
@@ -198,13 +197,14 @@ if (PARALLEL_LEVEL AND NOT "${PARALLEL_LEVEL}" STREQUAL "")
     endif ()
 endif ()
 
-# The MIP solver requires OpenMP to work
-find_package(OpenMP REQUIRED)
+# The MIP solver requires OpenMP for both C++ and CUDA host code.
+find_package(OpenMP REQUIRED COMPONENTS CXX CUDA)
 message(VERBOSE "cuOpt: OpenMP found in ${OpenMP_CXX_INCLUDE_DIRS}")
 
-# MPS/QPS parser supports compressed inputs via bzip2 and zlib
+# MPS/QPS parser supports compressed inputs via bzip2, zlib and lz4
 option(CUOPT_PARSER_WITH_BZIP2 "Build MPS parser with bzip2 decompression" ON)
 option(CUOPT_PARSER_WITH_ZLIB "Build MPS parser with zlib decompression" ON)
+option(CUOPT_PARSER_WITH_LZ4 "Build experimental fast MPS parser with LZ4 decompression" ON)
 if (CUOPT_PARSER_WITH_BZIP2)
     find_package(BZip2 REQUIRED)
     add_compile_definitions(MPS_PARSER_WITH_BZIP2)
@@ -212,6 +212,10 @@ endif ()
 if (CUOPT_PARSER_WITH_ZLIB)
     find_package(ZLIB REQUIRED)
     add_compile_definitions(MPS_PARSER_WITH_ZLIB)
+endif ()
+if (CUOPT_PARSER_WITH_LZ4)
+    # No headers or link target needed; the experimental reader loads one liblz4 symbol at runtime.
+    add_compile_definitions(MPS_PARSER_WITH_LZ4)
 endif ()
 
 # Debug options
@@ -250,16 +254,30 @@ else ()
     find_package(RAFT REQUIRED)
 endif ()
 
+rapids_cpm_find(simde 0.8.2
+        CPM_ARGS
+        GIT_REPOSITORY https://github.com/simd-everywhere/simde.git
+        GIT_TAG v0.8.2
+        GIT_SHALLOW TRUE
+        DOWNLOAD_ONLY TRUE
+)
+
+if (NOT TARGET simde::simde)
+    add_library(simde::simde INTERFACE IMPORTED GLOBAL)
+    set_target_properties(simde::simde
+            PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${simde_SOURCE_DIR}")
+endif ()
+
 FetchContent_Declare(
         papilo
-        GIT_REPOSITORY "https://github.com/scipopt/papilo.git"
+        GIT_REPOSITORY "https://github.com/nguidotti/papilo.git"
         # We would want to get the main branch. However, the main branch
         # does not have some of the presolvers and settings that we need
         # Mainly, probing and clique merging.
         # This is the reason we are using the development branch
         # from Oct 12, 2025. Once these changes are merged into the main branch,
         #we can switch to the main branch.
-        GIT_TAG "741a2b9c8155b249d6df574d758b4d97d4417520"
+        GIT_TAG "0cfea20c5655249174dbd04f0fb7bd6b1f6e9a0c"
         GIT_PROGRESS TRUE
         EXCLUDE_FROM_ALL
         SYSTEM
@@ -293,13 +311,13 @@ set(BUILD_SHARED_LIBS ${BUILD_SHARED_LIBS_SAVED})
 # dejavu - header-only graph automorphism library for MIP symmetry detection
 # https://github.com/markusa4/dejavu (header-only, skip its CMakeLists.txt)
 FetchContent_Declare(
-  dejavu
-  GIT_REPOSITORY "https://github.com/markusa4/dejavu.git"
-  GIT_TAG "v2.1"
-  GIT_PROGRESS TRUE
-  EXCLUDE_FROM_ALL
-  SYSTEM
-  SOURCE_SUBDIR _nonexistent
+        dejavu
+        GIT_REPOSITORY "https://github.com/markusa4/dejavu.git"
+        GIT_TAG "v2.1"
+        GIT_PROGRESS TRUE
+        EXCLUDE_FROM_ALL
+        SYSTEM
+        SOURCE_SUBDIR _nonexistent
 )
 FetchContent_MakeAvailable(dejavu)
 message(STATUS "dejavu (graph automorphism): ${dejavu_SOURCE_DIR}")
@@ -310,6 +328,44 @@ rapids_cpm_rapids_logger(BUILD_EXPORT_SET cuopt-exports INSTALL_EXPORT_SET cuopt
 create_logger_macros(CUOPT "cuopt::default_logger()" include/cuopt)
 
 find_package(CUDSS REQUIRED)
+
+# ##################################################################################################
+# - NCCL (multi-GPU distributed PDLP) -------------------------------------------------------------
+# NCCL is shipped via the conda env; no canonical CMake config target, so look it
+# up by name in the standard lib paths (plus CONDA_PREFIX as a hint).
+set(NCCL_HINT_PREFIXES "")
+if (DEFINED ENV{CONDA_PREFIX} AND NOT "$ENV{CONDA_PREFIX}" STREQUAL "")
+    list(APPEND NCCL_HINT_PREFIXES "$ENV{CONDA_PREFIX}")
+endif ()
+find_path(NCCL_INCLUDE_DIR
+    NAMES nccl.h
+    HINTS ${NCCL_HINT_PREFIXES}
+    PATH_SUFFIXES include
+)
+find_library(NCCL_LIBRARY
+    NAMES nccl
+    HINTS ${NCCL_HINT_PREFIXES}
+    PATH_SUFFIXES lib lib64
+)
+if (NOT NCCL_INCLUDE_DIR OR NOT NCCL_LIBRARY)
+    message(FATAL_ERROR "NCCL not found. Looked in ${NCCL_HINT_PREFIXES}. Install nccl-dev / libnccl-dev in the active env.")
+endif ()
+add_library(nccl_external UNKNOWN IMPORTED GLOBAL)
+set_target_properties(nccl_external PROPERTIES
+    IMPORTED_LOCATION "${NCCL_LIBRARY}"
+    INTERFACE_INCLUDE_DIRECTORIES "${NCCL_INCLUDE_DIR}"
+)
+message(STATUS "Using NCCL: ${NCCL_LIBRARY}")
+
+# ##################################################################################################
+# - KaMinPar (multi-threaded partitioning for distributed PDLP) ------------------------------------
+# Brought in the RAPIDS way (rapids_cpm_find): uses an installed KaMinPar (deb/rpm/conda,
+# discovered via its CMake config) if present, otherwise builds the pinned source via CPM.
+include(cmake/thirdparty/get_kaminpar.cmake)
+if (NOT TARGET KaMinPar::KaMinPar)
+    message(FATAL_ERROR "KaMinPar::KaMinPar was not made available by get_kaminpar.cmake")
+endif ()
+message(STATUS "Using KaMinPar (distributed PDLP graph partitioner)")
 
 # ##################################################################################################
 # - gRPC and Protobuf setup -----------------------------------------------------------------------
@@ -369,7 +425,7 @@ if (NOT SKIP_GRPC_BUILD)
 
     # Proto search paths: manual protos in src/grpc, generated data proto in src/grpc/codegen/generated
     set(PROTO_PATH_MANUAL "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc")
-    set(PROTO_PATH_GEN    "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc/codegen/generated")
+    set(PROTO_PATH_GEN "${CMAKE_CURRENT_SOURCE_DIR}/src/grpc/codegen/generated")
 
     # Generate C++ code from cuopt_remote_data.proto (auto-generated data definitions)
     set(DATA_PROTO_FILE "${PROTO_PATH_GEN}/cuopt_remote_data.proto")
@@ -436,16 +492,34 @@ if (BUILD_TESTS)
 endif ()
 
 set(CUOPT_SRC_FILES)
+set(MPS_FAST_SRC_FILES)
 add_subdirectory(src)
+
+# nvcc 13.0.3 ICE (signal 11) compiling sliding_window.cu with 7 GPU architectures;
+# --split-compile breaks the codegen into per-arch sub-jobs to avoid the crash
+set_source_files_properties(
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/routing/local_search/sliding_window.cu
+        PROPERTIES COMPILE_OPTIONS "--split-compile=0")
+
 if (HOST_LINEINFO)
-    set_source_files_properties(${CUOPT_SRC_FILES} DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTIES COMPILE_OPTIONS "-g1")
+    set_source_files_properties(${CUOPT_SRC_FILES} DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTIES COMPILE_OPTIONS "-g1")
 endif ()
+
+# Needed for the fast MPS parser, available on all x86-64-v3 compliant x86 CPUs (essentially since Haswell ~2013)
+if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$" AND
+        CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang|AppleClang)$")
+    set_property(SOURCE ${MPS_FAST_SRC_FILES} DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            APPEND PROPERTY COMPILE_OPTIONS "-mbmi2;-mavx2;-msse4.2")
+endif ()
+
+# TODO: figure out a set of flags for ARM that fits the range of CPUs we wish to support (neoverse?)
+# NEON should be universal on aarch64 and enough for our purposes (parsing) though
 
 # Apply -UNDEBUG only to solver source files (not gRPC infrastructure).
 # Must happen before gRPC files are appended to CUOPT_SRC_FILES.
 # Uses APPEND to preserve any existing per-file options (e.g. -g1 from HOST_LINEINFO).
 if (DEFINE_ASSERT)
-    set_property(SOURCE ${CUOPT_SRC_FILES} DIRECTORY ${CMAKE_SOURCE_DIR}
+    set_property(SOURCE ${CUOPT_SRC_FILES} DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             APPEND PROPERTY COMPILE_OPTIONS "-UNDEBUG")
 endif ()
 
@@ -461,6 +535,8 @@ if (NOT SKIP_GRPC_BUILD)
             src/grpc/grpc_settings_mapper.cpp
             src/grpc/grpc_service_mapper.cpp
             src/grpc/client/grpc_client.cpp
+            src/grpc/client/grpc_client_env.cpp
+            src/grpc/client/cython_grpc_client.cpp
             src/grpc/client/solve_remote.cpp
     )
     list(APPEND CUOPT_SRC_FILES ${GRPC_INFRA_FILES})
@@ -470,60 +546,45 @@ if (NOT SKIP_GRPC_BUILD)
     # The conda-forge abseil shared library is built with NDEBUG and does not
     # export that symbol (abseil-cpp#1624).  Without this, Debug builds fail
     # at runtime with "undefined symbol: absl::…::Mutex::Dtor".
-    set_property(SOURCE ${GRPC_INFRA_FILES} DIRECTORY ${CMAKE_SOURCE_DIR}
+    set_property(SOURCE ${GRPC_INFRA_FILES} DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             APPEND PROPERTY COMPILE_OPTIONS "-DNDEBUG")
 endif (NOT SKIP_GRPC_BUILD)
 
-add_library(cuopt SHARED
+add_library(cuopt_objs OBJECT
         ${CUOPT_SRC_FILES}
 )
 
-set_target_properties(cuopt
-        PROPERTIES BUILD_RPATH "\$ORIGIN"
-        INSTALL_RPATH "\$ORIGIN"
-        INTERFACE_POSITION_INDEPENDENT_CODE ON
+set_target_properties(cuopt_objs
+        PROPERTIES POSITION_INDEPENDENT_CODE ON
         CXX_SCAN_FOR_MODULES OFF
 )
 
-target_compile_definitions(cuopt
+target_compile_definitions(cuopt_objs
   PUBLIC "CUOPT_LOG_ACTIVE_LEVEL=RAPIDS_LOGGER_LOG_LEVEL_${LIBCUOPT_LOGGING_LEVEL}"
   PUBLIC CUSPARSE_ENABLE_EXPERIMENTAL_API
 )
 
-target_compile_options(cuopt
+target_compile_options(cuopt_objs
         PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CUOPT_CXX_FLAGS}>"
         "$<$<COMPILE_LANGUAGE:CUDA>:${CUOPT_CUDA_FLAGS}>"
 )
 
-if (WRITE_FATBIN)
-    file(WRITE "${CUOPT_BINARY_DIR}/fatbin.ld"
-            [=[
-  SECTIONS
-  {
-    .nvFatBinSegment : { *(.nvFatBinSegment) }
-    .nv_fatbin : { *(.nv_fatbin) }
-  }
-  ]=])
-    target_link_options(cuopt PRIVATE "${CUOPT_BINARY_DIR}/fatbin.ld")
-endif ()
-
-add_library(cuopt::cuopt ALIAS cuopt)
 # ##################################################################################################
 # - include paths ---------------------------------------------------------------------------------
 message(STATUS "target include directories CUDSS_INCLUDES = ${CUDSS_INCLUDE}")
 
 # Adding Papilo as a system include messes up clang's include resolution if papilo is already installed as a conda package
-target_include_directories(cuopt PRIVATE
+target_include_directories(cuopt_objs PRIVATE
         "${papilo_SOURCE_DIR}/src"
         "${papilo_BINARY_DIR}"
 )
 
-target_include_directories(cuopt SYSTEM PRIVATE
+target_include_directories(cuopt_objs SYSTEM PRIVATE
   "${pslp_SOURCE_DIR}/include"
   "${dejavu_SOURCE_DIR}"
 )
 
-target_include_directories(cuopt
+target_include_directories(cuopt_objs
         PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty"
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
@@ -543,8 +604,33 @@ target_include_directories(cuopt
 )
 
 # Link PSLP by file to avoid export dependency tracking
-target_link_libraries(cuopt PRIVATE $<TARGET_FILE:PSLP>)
-add_dependencies(cuopt PSLP)
+target_link_libraries(cuopt_objs PRIVATE $<TARGET_FILE:PSLP>)
+add_dependencies(cuopt_objs PSLP)
+
+# Link KaMinPar by file to avoid export dependency tracking (mirrors PSLP above).
+# KaMinPar is a from-source static library fully embedded into libcuopt.so; it is never
+# installed (INSTALL_KAMINPAR OFF) and consumers of cuopt::cuopt never use it, so it must
+# not leak into cuopt's exported link interface (otherwise rapids_export fails with
+# "target KaMinPar is not in any export set"). libKaMinPar.a is self-contained (the
+# kaminpar-common OBJECT lib is archived into it); we only need its public headers
+# (<kaminpar.h>, which pulls in stdlib + TBB) at compile time.
+target_include_directories(cuopt_objs SYSTEM PRIVATE
+        $<TARGET_PROPERTY:KaMinPar::KaMinPar,INTERFACE_INCLUDE_DIRECTORIES>)
+# partitioner.cpp includes <kaminpar.h>. Because KaMinPar is linked by file, cuopt
+# does NOT inherit KaMinPar's PUBLIC compile definitions, so we must replicate the ones that
+# affect what <kaminpar.h> compiles to:
+#   * TBB_PREVIEW_GLOBAL_CONTROL  - <kaminpar.h> includes <tbb/global_control.h>, which older
+#                                   TBB gates behind this macro.
+#   * KAMINPAR_64BIT_EDGE_IDS     - selects EdgeID = uint64 in <kaminpar.h>. MUST stay in sync
+#                                   with the KAMINPAR_64BIT_* options in get_kaminpar.cmake;
+#                                   otherwise the public API types (e.g. copy_graph's span<>
+#                                   widths) mismatch the prebuilt archive => undefined refs.
+target_compile_definitions(cuopt_objs PRIVATE TBB_PREVIEW_GLOBAL_CONTROL KAMINPAR_64BIT_EDGE_IDS)
+# Real (non-imported) target only exists when KaMinPar is built from source via CPM;
+# force it to build before the objects that include its headers since it is EXCLUDE_FROM_ALL.
+if (TARGET KaMinPar)
+        add_dependencies(cuopt_objs KaMinPar)
+endif ()
 
 # ##################################################################################################
 # - link libraries --------------------------------------------------------------------------------
@@ -559,7 +645,7 @@ list(PREPEND CUOPT_PRIVATE_CUDA_LIBS CUDA::cublasLt)
 
 # Pass CUDSS_MT_LIB_FILE_NAME as a compile definition
 get_filename_component(CUDSS_MT_LIB_FILE_NAME "${CUDSS_MT_LIB_FILE}" NAME)
-target_compile_definitions(cuopt PRIVATE CUDSS_MT_LIB_FILE_NAME="${CUDSS_MT_LIB_FILE_NAME}")
+target_compile_definitions(cuopt_objs PRIVATE CUDSS_MT_LIB_FILE_NAME="${CUDSS_MT_LIB_FILE_NAME}")
 
 execute_process(
         COMMAND git rev-parse --short HEAD
@@ -578,13 +664,94 @@ configure_file(
 )
 
 # Add the generated include directory
-target_include_directories(cuopt PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/include)
+target_include_directories(cuopt_objs PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/include)
 
 list(JOIN CMAKE_CUDA_ARCHITECTURES "," JOINED_CUDA_ARCHITECTURES)
-target_compile_definitions(cuopt PUBLIC
+target_compile_definitions(cuopt_objs PUBLIC
         CUOPT_CUDA_ARCHITECTURES="${JOINED_CUDA_ARCHITECTURES}"
         CUOPT_CPU_ARCHITECTURE="${CMAKE_SYSTEM_PROCESSOR}")
 
+target_link_libraries(cuopt_objs
+        PUBLIC
+        CUDA::cublas
+        CUDA::cusparse
+        rmm::rmm
+        rapids_logger::rapids_logger
+        CCCL::CCCL
+        raft::raft
+        ${CUDSS_LIB_FILE}
+        PRIVATE
+        ${CUOPT_PRIVATE_CUDA_LIBS}
+        simde::simde
+        OpenMP::OpenMP_CUDA
+        $<$<BOOL:${CUOPT_ENABLE_GRPC}>:protobuf::libprotobuf>
+        $<$<BOOL:${CUOPT_ENABLE_GRPC}>:gRPC::grpc++>
+)
+
+# ##################################################################################################
+# - generate tests --------------------------------------------------------------------------------
+if (BUILD_TESTS)
+    include(CTest)
+    add_library(cuopt_static STATIC $<TARGET_OBJECTS:cuopt_objs>)
+    target_link_libraries(cuopt_static
+            PUBLIC
+            CUDA::cublas
+            CUDA::cusparse
+            rmm::rmm
+            rapids_logger::rapids_logger
+            CCCL::CCCL
+            raft::raft
+            ${CUDSS_LIB_FILE}
+            OpenMP::OpenMP_CXX
+            PRIVATE
+            ${CUOPT_PRIVATE_CUDA_LIBS}
+            nccl_external
+            $<$<BOOL:${CUOPT_ENABLE_GRPC}>:protobuf::libprotobuf>
+            $<$<BOOL:${CUOPT_ENABLE_GRPC}>:gRPC::grpc++>
+    )
+    # Internal test sources include OMP-dependent headers (omp_helpers.hpp, omp_atomic_t).
+    # Propagate -fopenmp for CUDA TUs since OpenMP::OpenMP_CXX only covers CXX.
+    target_compile_options(cuopt_static INTERFACE
+            "$<$<COMPILE_LANGUAGE:CUDA>:-fopenmp>"
+    )
+    target_include_directories(cuopt_static
+            PUBLIC
+            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+            "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
+            "$<INSTALL_INTERFACE:include>"
+    )
+    target_compile_definitions(cuopt_static PUBLIC
+            CUOPT_CUDA_ARCHITECTURES="${JOINED_CUDA_ARCHITECTURES}"
+            CUOPT_CPU_ARCHITECTURE="${CMAKE_SYSTEM_PROCESSOR}"
+            "CUOPT_LOG_ACTIVE_LEVEL=RAPIDS_LOGGER_LOG_LEVEL_${LIBCUOPT_LOGGING_LEVEL}"
+            CUSPARSE_ENABLE_EXPERIMENTAL_API
+    )
+    target_link_libraries(cuopt_static PRIVATE $<TARGET_FILE:PSLP>)
+    add_dependencies(cuopt_static PSLP)
+    target_link_libraries(cuopt_static PRIVATE $<TARGET_FILE:KaMinPar::KaMinPar>)
+    if (TARGET KaMinPar)
+        add_dependencies(cuopt_static KaMinPar)
+    endif ()
+    add_subdirectory(tests)
+endif (BUILD_TESTS)
+
+add_library(cuopt SHARED $<TARGET_OBJECTS:cuopt_objs>)
+add_library(cuopt::cuopt ALIAS cuopt)
+set_target_properties(cuopt
+        PROPERTIES BUILD_RPATH "\$ORIGIN"
+        INSTALL_RPATH "\$ORIGIN"
+        INTERFACE_POSITION_INDEPENDENT_CODE ON
+        CXX_SCAN_FOR_MODULES OFF
+        LINKER_LANGUAGE CUDA
+)
+# cuopt needs PUBLIC interface for consumers
+target_include_directories(cuopt
+        PUBLIC
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
+        INTERFACE
+        "$<INSTALL_INTERFACE:include>"
+)
 target_link_libraries(cuopt
         PUBLIC
         CUDA::cublas
@@ -596,17 +763,39 @@ target_link_libraries(cuopt
         ${CUDSS_LIB_FILE}
         PRIVATE
         ${CUOPT_PRIVATE_CUDA_LIBS}
+        nccl_external
+        simde::simde
+        OpenMP::OpenMP_CXX
+        OpenMP::OpenMP_CUDA
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:protobuf::libprotobuf>
         $<$<BOOL:${CUOPT_ENABLE_GRPC}>:gRPC::grpc++>
 )
+target_link_libraries(cuopt PRIVATE $<TARGET_FILE:PSLP>)
+add_dependencies(cuopt PSLP)
+target_link_libraries(cuopt PRIVATE $<TARGET_FILE:KaMinPar::KaMinPar>)
+if (TARGET KaMinPar)
+        add_dependencies(cuopt KaMinPar)
+endif ()
+# Propagate compile definitions that consumers need when including cuopt headers.
+# These were on cuopt directly before the cuopt_objs refactor; $<TARGET_OBJECTS:...>
+# does not carry INTERFACE properties, so we restore them explicitly.
+target_compile_definitions(cuopt
+        PUBLIC
+        "CUOPT_LOG_ACTIVE_LEVEL=RAPIDS_LOGGER_LOG_LEVEL_${LIBCUOPT_LOGGING_LEVEL}"
+        CUSPARSE_ENABLE_EXPERIMENTAL_API
+)
 
-
-# ##################################################################################################
-# - generate tests --------------------------------------------------------------------------------
-if (BUILD_TESTS)
-    include(CTest)
-    add_subdirectory(tests)
-endif (BUILD_TESTS)
+if (WRITE_FATBIN)
+    file(WRITE "${CUOPT_BINARY_DIR}/fatbin.ld"
+            [=[
+  SECTIONS
+  {
+    .nvFatBinSegment : { *(.nvFatBinSegment) }
+    .nv_fatbin : { *(.nv_fatbin) }
+  }
+  ]=])
+    target_link_options(cuopt PRIVATE "${CUOPT_BINARY_DIR}/fatbin.ld")
+endif ()
 
 # ##################################################################################################
 # - install targets -------------------------------------------------------------------------------

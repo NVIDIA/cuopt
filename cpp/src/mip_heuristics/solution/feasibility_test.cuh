@@ -11,7 +11,7 @@
 
 #include <mip_heuristics/utils.cuh>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 __global__ void test_feasibility_kernel(typename solution_t<i_t, f_t>::view_t sol)
@@ -100,4 +100,4 @@ void solution_t<i_t, f_t>::test_variable_bounds(bool check_integer, i_t* is_feas
   RAFT_CHECK_CUDA(handle_ptr->get_stream());
 }
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

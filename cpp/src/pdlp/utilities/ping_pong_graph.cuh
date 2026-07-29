@@ -14,7 +14,7 @@
 
 #include <utility>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 
 // Two-slot CUDA-graph cache for PDLP. PDLP swaps pointers (rather than
 // copying vectors) at the end of adaptive pdhg step, so the captured graph
@@ -68,4 +68,4 @@ class ping_pong_graph_t {
   bool is_legacy_batch_mode_{false};
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

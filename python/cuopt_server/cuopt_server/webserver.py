@@ -175,9 +175,15 @@ def health():
 
 # Get name for file that stores the result of Solve
 def get_output_name(resultdir, CUOPT_DATA_FILE, CUOPT_RESULT_FILE):
-    # Prevent absolute paths, or navigating with ../..
-    if CUOPT_RESULT_FILE.startswith("/") or ".." in CUOPT_RESULT_FILE:
-        CUOPT_RESULT_FILE = ""
+    # Reject paths that escape resultdir using canonicalized containment check.
+    if CUOPT_RESULT_FILE and resultdir:
+        root = os.path.realpath(resultdir)
+        candidate = os.path.realpath(os.path.join(root, CUOPT_RESULT_FILE))
+        if (
+            os.path.isabs(CUOPT_RESULT_FILE)
+            or os.path.commonpath([root, candidate]) != root
+        ):
+            CUOPT_RESULT_FILE = ""
     if not resultdir:
         res = ""
     elif CUOPT_RESULT_FILE:
@@ -190,36 +196,45 @@ def get_output_name(resultdir, CUOPT_DATA_FILE, CUOPT_RESULT_FILE):
 
 
 # Validate if given data file and file path exists
-def validate_file_path(CUOPT_DATA_FILE):
+def validate_file_path(cuopt_data_file):
     ddir = settings.get_data_dir()
-    try:
-        file_path = os.path.join(ddir, CUOPT_DATA_FILE)
-        if not ddir:
-            logging.error("cuopt data directory not set!")
-            # If no datadir was set but the path is relative,
-            # this can't work
-            if not CUOPT_DATA_FILE.startswith("/"):
-                raise ValueError(
-                    f"cuopt server was started without data directory "
-                    f"defined but local path {CUOPT_DATA_FILE} "
-                    "was specified"
-                )
-        if not os.path.exists(file_path):
-            logging.error(f"File path '{file_path}' doesn't exist")
-            msg = f"Specified path '{file_path}' does not exist"
-            if CUOPT_DATA_FILE.startswith("/"):
-                dir = os.path.dirname(CUOPT_DATA_FILE)
-                if not os.path.isdir(dir):
-                    msg += f". Absolute path '{dir}' does not exist"
-                msg += ". Perhaps you did not intend to "
-                "specify an absolute path?"
-            raise ValueError(msg)
-    except Exception as e:
+    if not ddir:
+        logging.error("cuopt data directory not set!")
         raise HTTPException(
             status_code=400,
-            detail="unable to read "
-            "optimization data from file %s, %s" % (file_path, str(e)),
+            detail="cuopt data directory not set",
         )
+
+    if os.path.isabs(cuopt_data_file):
+        raise HTTPException(
+            status_code=400,
+            detail="cuopt-data-file must be relative to CUOPT_DATA_DIR",
+        )
+
+    root = os.path.realpath(ddir)
+    file_path = os.path.realpath(os.path.join(root, cuopt_data_file))
+    if os.path.commonpath([root, file_path]) != root:
+        raise HTTPException(
+            status_code=400,
+            detail="cuopt-data-file must stay inside CUOPT_DATA_DIR",
+        )
+
+    if not os.path.exists(file_path):
+        logging.error("cuopt-data-file does not exist")
+        raise HTTPException(
+            status_code=400,
+            detail=f"specified data file does not exist: {cuopt_data_file}",
+        )
+
+    if not os.path.isfile(file_path):
+        logging.error("cuopt-data-file is not a regular file")
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"specified data file is not a regular file: {cuopt_data_file}"
+            ),
+        )
+
     return file_path
 
 
@@ -334,6 +349,18 @@ def getsolverlogs(
                 f"supported values are {[mime_json, mime_msgpack, mime_zlib]}",
             )
 
+        try:
+            uuid.UUID(id)
+        except ValueError:
+            raise HTTPException(
+                status_code=400, detail="Invalid request id format"
+            )
+
+        if frombyte < 0:
+            raise HTTPException(
+                status_code=422, detail="frombyte must be >= 0"
+            )
+
         # result_dir is guaranteed to exist on startup
         log_dir, _, _ = settings.get_result_dir()
         log_fname = "log_" + id
@@ -437,6 +464,13 @@ def deletesolverlogs(
                 status_code=415,
                 detail=f"Unsupported Accept value {accept}, "
                 f"supported values are {[mime_json, mime_msgpack, mime_zlib]}",
+            )
+
+        try:
+            uuid.UUID(id)
+        except ValueError:
+            raise HTTPException(
+                status_code=400, detail="Invalid request id format"
             )
 
         # Delete the log for the request if the request is not done
@@ -1307,6 +1341,52 @@ def cuopt(request: Request, data_bytes: bytes = Depends(get_body)):
             )
         )
 
+        # Canonicalize NVCF_LARGE_OUTPUT_DIR before use as a write directory.
+        # Headers are untrusted; resolve symlinks and require absolute paths.
+        # If CUOPT_NVCF_OUTPUT_ROOT is set, further require containment within
+        # that deployment-configured root.
+        large_output_dir = ""
+        if NVCF_LARGE_OUTPUT_DIR:
+            if not os.path.isabs(NVCF_LARGE_OUTPUT_DIR):
+                raise HTTPException(
+                    status_code=400,
+                    detail="nvcf-large-output-dir must be an absolute path",
+                )
+            large_output_dir = os.path.realpath(NVCF_LARGE_OUTPUT_DIR)
+            nvcf_output_root = os.environ.get("CUOPT_NVCF_OUTPUT_ROOT", "")
+            if nvcf_output_root:
+                trusted_root = os.path.realpath(nvcf_output_root)
+                if (
+                    os.path.commonpath([trusted_root, large_output_dir])
+                    != trusted_root
+                ):
+                    raise HTTPException(
+                        status_code=400,
+                        detail="nvcf-large-output-dir must be within the configured output root",
+                    )
+
+        # Validate NVCF asset path before registering the result so that
+        # validation failures do not leave a registered-but-unreachable result.
+        file_path = None
+        if NVCF_FUNCTION_ASSET_IDS:
+            asset_id = NVCF_FUNCTION_ASSET_IDS.split(",")[0]
+            if not NVCF_ASSET_DIR:
+                raise HTTPException(
+                    status_code=400,
+                    detail="nvcf-asset-dir must be set when nvcf-function-asset-ids is provided",
+                )
+            asset_root = os.path.realpath(NVCF_ASSET_DIR)
+            candidate = os.path.realpath(os.path.join(asset_root, asset_id))
+            if (
+                os.path.isabs(asset_id)
+                or os.path.commonpath([asset_root, candidate]) != asset_root
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Asset path must stay within the asset directory",
+                )
+            file_path = candidate
+
         # Create a NVCFJobResult to hold the solution
         if os.environ.get("CUOPT_SERVER_TEST_LARGE_RESULT", False):
             maxresult = 0
@@ -1315,13 +1395,10 @@ def cuopt(request: Request, data_bytes: bytes = Depends(get_body)):
                 maxresult = int(NVCF_MAX_RESPONSE_SIZE_BYTES) / 1000
             except Exception:
                 _, maxresult, _ = settings.get_result_dir()
-        r = NVCFJobResult(NVCF_LARGE_OUTPUT_DIR, maxresult, accept)
+        r = NVCFJobResult(large_output_dir, maxresult, accept)
         id = r.register_result()
 
-        if NVCF_FUNCTION_ASSET_IDS:
-            file_path = os.path.join(
-                NVCF_ASSET_DIR, NVCF_FUNCTION_ASSET_IDS.split(",")[0]
-            )
+        if file_path is not None:
             job = SolverBinaryJobPath(
                 id,
                 warnings,

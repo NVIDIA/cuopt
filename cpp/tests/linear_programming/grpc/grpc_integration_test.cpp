@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 /**
@@ -29,19 +29,20 @@
 #include <gtest/gtest.h>
 
 #include <atomic>
+#include <cerrno>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <mutex>
 #include <sstream>
 
-#include <cuopt/linear_programming/cpu_optimization_problem.hpp>
-#include <cuopt/linear_programming/io/parser.hpp>
-#include <cuopt/linear_programming/mip/solver_settings.hpp>
-#include <cuopt/linear_programming/optimization_problem.hpp>
-#include <cuopt/linear_programming/optimization_problem_interface.hpp>
-#include <cuopt/linear_programming/optimization_problem_utils.hpp>
-#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/io/parser.hpp>
+#include <cuopt/mathematical_optimization/mip/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem_utils.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 #include <utilities/inline_lp_test_utils.hpp>
 #include "grpc_client.hpp"
 
@@ -54,6 +55,7 @@
 
 #include <fcntl.h>
 #include <signal.h>
+#include <sys/prctl.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -66,19 +68,31 @@
 #include <string>
 #include <thread>
 
-using namespace cuopt::linear_programming;
-using cuopt::linear_programming::testing::GrpcTestLogCapture;
+using namespace cuopt::mathematical_optimization;
+using cuopt::mathematical_optimization::testing::GrpcTestLogCapture;
 
 namespace {
 
-// =============================================================================
-// Server Process Manager
-// =============================================================================
+// GRPC_INTEGRATION_TEST
+//   `-- cuopt_grpc_server parent (pid_, leads process group pgid_ == pid_)
+//         `-- GPU worker (inherits pgid_)
+//
+// The server is forked into its own process group so stop() can signal the whole
+// group. Killing the server parent orphans its GPU worker, so this test process
+// also marks itself a subreaper (PR_SET_CHILD_SUBREAPER): the orphan reparents
+// here and stop() reaps the entire group, even inside a container whose PID 1
+// does not reap. Polling kill(-pgid_, 0) instead is not enough -- it counts an
+// unreaped zombie as a live member and can never observe a grandchild's death.
 
 class ServerProcess {
  public:
-  ServerProcess() : pid_(-1), port_(0) {}
-  ~ServerProcess() { stop(); }
+  ServerProcess() : pid_(-1), pgid_(-1), port_(0) {}
+  ServerProcess(const ServerProcess&)            = delete;
+  ServerProcess& operator=(const ServerProcess&) = delete;
+  ~ServerProcess()
+  {
+    if (!stop()) { std::cerr << "Failed to clean up test server process group\n"; }
+  }
 
   void set_tls_config(const std::string& root_certs,
                       const std::string& client_cert = "",
@@ -91,7 +105,10 @@ class ServerProcess {
 
   bool start(int port, const std::vector<std::string>& extra_args = {})
   {
-    port_ = port;
+    if (pid_ > 0) {
+      std::cerr << "Cannot reuse a ServerProcess while it still owns a process lifecycle\n";
+      return false;
+    }
 
     std::string server_path = find_server_binary();
     if (server_path.empty()) {
@@ -99,13 +116,20 @@ class ServerProcess {
       return false;
     }
 
-    pid_ = fork();
+    // Reparent any process orphaned by killing the server (i.e. the GPU worker)
+    // onto this test process so stop() can reap it without relying on init.
+    prctl(PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0);
+
+    port_ = port;
+    pid_  = fork();
     if (pid_ < 0) {
       std::cerr << "fork() failed\n";
       return false;
     }
 
     if (pid_ == 0) {
+      setpgid(0, 0);  // child leads its own group; parent mirrors this below
+
       std::vector<const char*> args;
       args.push_back(server_path.c_str());
       args.push_back("--port");
@@ -131,38 +155,77 @@ class ServerProcess {
       _exit(127);
     }
 
-    return wait_for_ready(15000);
+    // Mirror the child's setpgid() so the group is established regardless of which
+    // process runs first; the child is a fresh fork, so its group id is its pid.
+    setpgid(pid_, pid_);
+    pgid_ = pid_;
+
+    if (!wait_for_ready(15000)) {
+      if (!stop()) { std::cerr << "Failed to clean up server after readiness failure\n"; }
+      return false;
+    }
+
+    return true;
   }
 
-  void stop()
+  bool stop()
   {
-    if (pid_ > 0) {
-      kill(pid_, SIGTERM);
+    if (pid_ <= 0) return true;
 
-      int status;
-      int wait_ms = 0;
-      while (wait_ms < 5000) {
-        int ret = waitpid(pid_, &status, WNOHANG);
-        if (ret != 0) break;
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        wait_ms += 100;
+    // Ask the whole group (server + GPU worker) to exit gracefully, then reap
+    // every member. Killing the server parent can orphan a mid-solve worker;
+    // because we are a subreaper it reparents here and reap_group() collects it.
+    kill(-pgid_, SIGTERM);
+    if (!reap_group(std::chrono::seconds(15))) {
+      kill(-pgid_, SIGKILL);
+      if (!reap_group(std::chrono::seconds(15))) {
+        std::cerr << "Server process group " << pgid_ << " did not exit\n";
+        return false;
       }
-
-      if (waitpid(pid_, &status, WNOHANG) == 0) {
-        kill(pid_, SIGKILL);
-        waitpid(pid_, &status, 0);
-      }
-
-      pid_ = -1;
     }
+
+    clear_lifecycle_state();
+    return true;
   }
 
   int port() const { return port_; }
+
+  pid_t pid() const { return pid_; }
 
   bool is_running() const
   {
     if (pid_ <= 0) return false;
     return kill(pid_, 0) == 0;
+  }
+
+  // Wait until the server parent has exited and been reaped. Unlike is_running(),
+  // this treats a zombie as exited (kill(pid,0) is true for zombies).
+  // Returns true once the parent has exited. If leftover workers are still
+  // alive (e.g. GPU D-state), lifecycle state is preserved so TearDown's
+  // stop() can finish draining the process group.
+  bool wait_exited(std::chrono::milliseconds timeout)
+  {
+    if (pid_ <= 0) return true;
+
+    auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (true) {
+      int status = 0;
+      pid_t ret  = waitpid(pid_, &status, WNOHANG);
+      if (ret == pid_ || (ret < 0 && errno == ECHILD)) {
+        auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+          deadline - std::chrono::steady_clock::now());
+        if (remaining > std::chrono::milliseconds(2000)) {
+          remaining = std::chrono::milliseconds(2000);
+        }
+        if (remaining.count() < 0) { remaining = std::chrono::milliseconds(0); }
+        if (reap_group(remaining)) { clear_lifecycle_state(); }
+        // Parent is gone either way; leave pid_/pgid_ intact if the group is
+        // not fully drained so TearDown can still signal it.
+        return true;
+      }
+      if (std::chrono::steady_clock::now() >= deadline) { return false; }
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
   }
 
   std::string log_path() const
@@ -172,6 +235,32 @@ class ServerProcess {
   }
 
  private:
+  void clear_lifecycle_state()
+  {
+    pid_  = -1;
+    pgid_ = -1;
+    port_ = 0;
+  }
+
+  // Reap every member of the server's process group, returning true once the
+  // group is fully drained. start() makes this process a subreaper, so a worker
+  // orphaned when the server parent dies reparents here and is reaped too --
+  // first the parent, then (once its death reparents the worker) the worker.
+  bool reap_group(std::chrono::milliseconds timeout)
+  {
+    auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (true) {
+      int status = 0;
+      pid_t ret  = waitpid(-pgid_, &status, WNOHANG);
+      if (ret > 0) continue;  // reaped a member; keep draining
+      if (ret < 0 && errno == EINTR) continue;
+      if (ret < 0 && errno == ECHILD) return true;  // no members left
+      // ret == 0: members remain but none have exited yet.
+      if (std::chrono::steady_clock::now() >= deadline) return false;
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+  }
+
   std::string find_in_path(const std::string& name)
   {
     const char* path_env = std::getenv("PATH");
@@ -246,8 +335,8 @@ class ServerProcess {
       grpc_client_t client(config);
       if (client.connect()) { return true; }
 
-      int status;
-      if (waitpid(pid_, &status, WNOHANG) != 0) {
+      int status = 0;
+      if (waitpid(pid_, &status, WNOHANG) == pid_) {
         std::cerr << "Server process died during startup\n";
         return false;
       }
@@ -257,6 +346,7 @@ class ServerProcess {
   }
 
   pid_t pid_;
+  pid_t pgid_;
   int port_;
   std::string tls_root_certs_;
   std::string tls_client_cert_;
@@ -384,7 +474,7 @@ class GrpcIntegrationTestBase : public ::testing::Test {
   // optional .gz/.bz2).  See io::read() in parser.hpp.
   cpu_optimization_problem_t<int32_t, double> load_problem_from_file(const std::string& path)
   {
-    auto mps_data = cuopt::linear_programming::io::read<int32_t, double>(path);
+    auto mps_data = cuopt::mathematical_optimization::io::read<int32_t, double>(path);
     cpu_optimization_problem_t<int32_t, double> problem;
     populate_from_mps_data_model(&problem, mps_data);
     return problem;
@@ -516,7 +606,7 @@ class DefaultServerTests : public GrpcIntegrationTestBase {
 
   static void TearDownTestSuite()
   {
-    if (s_server_) s_server_->stop();
+    if (s_server_) EXPECT_TRUE(s_server_->stop());
     s_server_.reset();
   }
 
@@ -1067,6 +1157,127 @@ TEST_F(DefaultServerTests, CancelRunningJob)
   client->delete_job(job_id);
 }
 
+// -- Delete should cancel queued / running jobs --
+
+TEST_F(DefaultServerTests, DeleteQueuedJobPreventsRun)
+{
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
+  auto problem         = load_problem_from_file(mps_path);
+
+  mip_solver_settings_t<int32_t, double> settings;
+  settings.time_limit = 120.0;
+
+  // Occupy the single worker with a long solve.
+  auto running = client->submit_mip(problem, settings);
+  ASSERT_TRUE(running.success);
+  std::this_thread::sleep_for(std::chrono::seconds(2));
+
+  auto queued = client->submit_mip(problem, settings);
+  ASSERT_TRUE(queued.success);
+
+  auto queued_status = client->check_status(queued.job_id);
+  ASSERT_TRUE(queued_status.success);
+  EXPECT_EQ(queued_status.status, job_status_t::QUEUED)
+    << "Second job should still be queued behind the running solve";
+
+  EXPECT_TRUE(client->delete_job(queued.job_id));
+
+  auto after_delete = client->check_status(queued.job_id);
+  EXPECT_EQ(after_delete.status, job_status_t::NOT_FOUND);
+
+  // Prove the worker is still usable and was not consumed by the deleted job:
+  // free it (cancel the long solve) and require a probe job to run to
+  // completion. If the deleted job were still occupying the queue/worker, the
+  // single worker could not pick up and finish the probe. With one worker we
+  // cannot observe the ghost's status once its tracker entry is gone, so we
+  // assert the worker stays functional instead.
+  client->cancel_job(running.job_id);
+
+  mip_solver_settings_t<int32_t, double> probe_settings;
+  probe_settings.time_limit = 10.0;
+  auto probe                = client->submit_mip(problem, probe_settings);
+  ASSERT_TRUE(probe.success);
+
+  wait_for_job_done(client.get(), probe.job_id, 60);
+  auto probe_status = client->check_status(probe.job_id);
+  EXPECT_EQ(probe_status.status, job_status_t::COMPLETED)
+    << "Worker should be free to process a new job after the queued job was deleted";
+
+  client->delete_job(probe.job_id);
+  client->delete_job(running.job_id);
+}
+
+TEST_F(DefaultServerTests, DeleteRunningJobCancelsWorker)
+{
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
+  auto problem         = load_problem_from_file(mps_path);
+
+  mip_solver_settings_t<int32_t, double> settings;
+  settings.time_limit = 120.0;
+
+  auto submit_result = client->submit_mip(problem, settings);
+  ASSERT_TRUE(submit_result.success);
+  std::string job_id = submit_result.job_id;
+
+  // Wait until the worker has claimed the job.
+  bool processing = false;
+  for (int i = 0; i < 40; ++i) {
+    auto status = client->check_status(job_id);
+    if (status.status == job_status_t::PROCESSING) {
+      processing = true;
+      break;
+    }
+    if (status.status == job_status_t::COMPLETED || status.status == job_status_t::FAILED ||
+        status.status == job_status_t::CANCELLED) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  }
+  ASSERT_TRUE(processing) << "Job never reached PROCESSING before delete";
+
+  // Measure only the delete latency: killing the worker must return promptly,
+  // not block until the 120s solve finishes.
+  auto delete_start = std::chrono::steady_clock::now();
+  EXPECT_TRUE(client->delete_job(job_id));
+  auto delete_elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+    std::chrono::steady_clock::now() - delete_start);
+  EXPECT_LT(delete_elapsed.count(), 15) << "Delete of a running job should return promptly";
+
+  auto after_delete = client->check_status(job_id);
+  EXPECT_EQ(after_delete.status, job_status_t::NOT_FOUND);
+
+  // Prove the killed worker was actually replaced: a probe job must be picked
+  // up (reach PROCESSING) and run to completion within a bounded interval.
+  mip_solver_settings_t<int32_t, double> probe_settings;
+  probe_settings.time_limit = 10.0;
+  auto probe                = client->submit_mip(problem, probe_settings);
+  ASSERT_TRUE(probe.success);
+
+  bool probe_started = false;
+  for (int i = 0; i < 120; ++i) {  // up to ~30s for the replacement worker
+    auto status = client->check_status(probe.job_id);
+    if (status.status == job_status_t::PROCESSING || status.status == job_status_t::COMPLETED) {
+      probe_started = true;
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  }
+  EXPECT_TRUE(probe_started) << "Replacement worker never picked up the probe job";
+
+  wait_for_job_done(client.get(), probe.job_id, 60);
+  auto probe_status = client->check_status(probe.job_id);
+  EXPECT_EQ(probe_status.status, job_status_t::COMPLETED)
+    << "Replacement worker should process a new job to completion";
+
+  client->delete_job(probe.job_id);
+}
+
 // =============================================================================
 // Chunked Upload Tests (--max-message-mb 256)
 // =============================================================================
@@ -1083,7 +1294,7 @@ class ChunkedUploadTests : public GrpcIntegrationTestBase {
 
   static void TearDownTestSuite()
   {
-    if (s_server_) s_server_->stop();
+    if (s_server_) EXPECT_TRUE(s_server_->stop());
     s_server_.reset();
   }
 
@@ -1399,7 +1610,7 @@ class PathSelectionTests : public GrpcIntegrationTestBase {
 
   static void TearDownTestSuite()
   {
-    if (s_server_) s_server_->stop();
+    if (s_server_) EXPECT_TRUE(s_server_->stop());
     s_server_.reset();
   }
 
@@ -1583,7 +1794,7 @@ TEST_F(PathSelectionTests, UnaryUploadMIPWithPathLogging)
 class ErrorRecoveryTests : public GrpcIntegrationTestBase {
  protected:
   void SetUp() override { port_ = get_test_port(); }
-  void TearDown() override { server_.stop(); }
+  void TearDown() override { EXPECT_TRUE(server_.stop()); }
 
   bool start_server(const std::vector<std::string>& extra_args = {})
   {
@@ -1602,7 +1813,7 @@ TEST_F(ErrorRecoveryTests, ClientReconnectsAfterServerRestart)
   auto status_before = client->check_status("test-job");
   EXPECT_TRUE(status_before.success);
 
-  server_.stop();
+  ASSERT_TRUE(server_.stop());
   EXPECT_FALSE(server_.is_running());
 
   auto status_down = client->check_status("test-job");
@@ -1630,11 +1841,58 @@ TEST_F(ErrorRecoveryTests, ClientHandlesServerCrashDuringSolve)
   ASSERT_TRUE(submit_result.success);
 
   std::this_thread::sleep_for(std::chrono::milliseconds(500));
-  server_.stop();
+  EXPECT_TRUE(server_.stop());
 
   auto status_result = client->check_status(submit_result.job_id);
   EXPECT_FALSE(status_result.success);
   EXPECT_FALSE(status_result.error_message.empty());
+}
+
+TEST_F(ErrorRecoveryTests, SigintDuringRunningJobShutsDownPromptly)
+{
+  ASSERT_TRUE(start_server());
+  auto client = create_client();
+  ASSERT_NE(client, nullptr);
+
+  std::string mps_path = get_test_mip_path("neos5-free-bound.mps");
+  auto problem         = load_problem_from_file(mps_path);
+
+  mip_solver_settings_t<int32_t, double> settings;
+  settings.time_limit = 120.0;
+
+  auto submit_result = client->submit_mip(problem, settings);
+  ASSERT_TRUE(submit_result.success);
+  std::string job_id = submit_result.job_id;
+
+  // Wait until a worker has claimed the job so SIGINT interrupts an active solve.
+  bool processing = false;
+  for (int i = 0; i < 40; ++i) {
+    auto status = client->check_status(job_id);
+    if (status.status == job_status_t::PROCESSING) {
+      processing = true;
+      break;
+    }
+    if (status.status == job_status_t::COMPLETED || status.status == job_status_t::FAILED ||
+        status.status == job_status_t::CANCELLED) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  }
+  ASSERT_TRUE(processing) << "Job never reached PROCESSING before SIGINT";
+  ASSERT_TRUE(server_.is_running());
+
+  auto start = std::chrono::steady_clock::now();
+  ASSERT_EQ(kill(server_.pid(), SIGINT), 0);
+
+  // Server must exit well before the solve time_limit; previously Ctrl-C could
+  // hang until the mid-solve worker finished. Use waitpid-based polling so a
+  // zombie parent is not mistaken for a still-running process.
+  ASSERT_TRUE(server_.wait_exited(std::chrono::seconds(15)))
+    << "Server did not shut down promptly after SIGINT during a running job";
+
+  auto elapsed =
+    std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - start);
+  EXPECT_LT(elapsed.count(), 15);
 }
 
 TEST_F(ErrorRecoveryTests, ClientTimeoutConfiguration)
@@ -1694,7 +1952,7 @@ TEST_F(ErrorRecoveryTests, ChunkedUploadAfterServerRestart)
   auto result1 = client->solve_mip(problem, settings, false);
   EXPECT_TRUE(result1.success) << result1.error_message;
 
-  server_.stop();
+  ASSERT_TRUE(server_.stop());
   ASSERT_TRUE(start_server({"--max-message-mb", "256"}));
 
   auto client2 = create_client(config);
@@ -1745,7 +2003,7 @@ class TlsServerTests : public GrpcIntegrationTestBase {
 
   static void TearDownTestSuite()
   {
-    if (s_server_) s_server_->stop();
+    if (s_server_) EXPECT_TRUE(s_server_->stop());
     s_server_.reset();
   }
 
@@ -1846,7 +2104,7 @@ class MtlsServerTests : public GrpcIntegrationTestBase {
 
   static void TearDownTestSuite()
   {
-    if (s_server_) s_server_->stop();
+    if (s_server_) EXPECT_TRUE(s_server_->stop());
     s_server_.reset();
   }
 
@@ -1917,7 +2175,7 @@ class ChunkValidationTests : public GrpcIntegrationTestBase {
 
   static void TearDownTestSuite()
   {
-    if (s_server_) s_server_->stop();
+    if (s_server_) EXPECT_TRUE(s_server_->stop());
     s_server_.reset();
   }
 

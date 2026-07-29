@@ -55,10 +55,31 @@ class capacity_route_t {
 
   void resize(i_t max_nodes_per_route, rmm::cuda_stream_view stream)
   {
-    demand.resize(dim_info.n_capacity_dimensions * max_nodes_per_route, stream);
-    gathered.resize(dim_info.n_capacity_dimensions * max_nodes_per_route, stream);
-    max_to_node.resize(dim_info.n_capacity_dimensions * max_nodes_per_route, stream);
-    max_after.resize(dim_info.n_capacity_dimensions * max_nodes_per_route, stream);
+    i_t n_dims = dim_info.n_capacity_dimensions;
+    if (n_dims == 0) { return; }
+    auto resize_strided = [&](rmm::device_uvector<i_t>& vec) {
+      i_t old_stride = vec.size() / n_dims;
+      i_t new_stride = max_nodes_per_route;
+      if (old_stride == new_stride) { return; }
+      i_t new_cols = new_stride > 0 ? new_stride : 0;
+      rmm::device_uvector<i_t> new_vec(n_dims * new_cols, stream);
+      if (old_stride > 0 && new_stride > 0) {
+        // Copy the row-major data when expanding to add new columns.
+        RAFT_CUDA_TRY(cudaMemcpy2DAsync(new_vec.data(),
+                                        new_stride * sizeof(i_t),
+                                        vec.data(),
+                                        old_stride * sizeof(i_t),
+                                        std::min(old_stride, new_stride) * sizeof(i_t),
+                                        n_dims,
+                                        cudaMemcpyDeviceToDevice,
+                                        stream.value()));
+      }
+      vec = std::move(new_vec);
+    };
+    resize_strided(demand);
+    resize_strided(gathered);
+    resize_strided(max_to_node);
+    resize_strided(max_after);
   }
 
   struct view_t {

@@ -137,6 +137,8 @@ cuOpt supports the following APIs:
    - `GAMS <https://www.gams.com/>`_
    - `PuLP <https://pypi.org/project/PuLP/>`_
    - `JuMP <https://github.com/jump-dev/cuOpt.jl>`_
+   - `Pyomo <https://www.pyomo.org/>`_
+   - `CVXPY <https://www.cvxpy.org/>`_
 
 
 ==================================

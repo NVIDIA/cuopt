@@ -93,7 +93,7 @@ For CUDA 12.x:
 pip install \
   --extra-index-url=https://pypi.nvidia.com \
   nvidia-cuda-runtime-cu12==12.9.* \
-  cuopt-server-cu12==26.6.* cuopt-sh-client==26.6.*
+  cuopt-server-cu12==26.08.* cuopt-sh-client==26.08.*
 ```
 
 Development wheels are available as nightlies, please update `--extra-index-url` to `https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/` to install latest nightly packages.
@@ -101,7 +101,7 @@ Development wheels are available as nightlies, please update `--extra-index-url`
 pip install --pre \
   --extra-index-url=https://pypi.nvidia.com \
   --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
-  cuopt-server-cu12==26.6.* cuopt-sh-client==26.6.*
+  cuopt-server-cu12==26.08.* cuopt-sh-client==26.08.*
 ```
 
 For CUDA 13.x:
@@ -109,7 +109,7 @@ For CUDA 13.x:
 ```bash
 pip install \
   --extra-index-url=https://pypi.nvidia.com \
-  cuopt-server-cu13==26.6.* cuopt-sh-client==26.6.*
+  cuopt-server-cu13==26.08.* cuopt-sh-client==26.08.*
 ```
 
 Development wheels are available as nightlies, please update `--extra-index-url` to `https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/` to install latest nightly packages.
@@ -117,7 +117,7 @@ Development wheels are available as nightlies, please update `--extra-index-url`
 pip install --pre \
   --extra-index-url=https://pypi.nvidia.com \
   --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple/ \
-  cuopt-server-cu13==26.6.* cuopt-sh-client==26.6.*
+  cuopt-server-cu13==26.08.* cuopt-sh-client==26.08.*
 ```
 
 
@@ -128,7 +128,7 @@ cuOpt can be installed with conda (via [miniforge](https://github.com/conda-forg
 All other dependencies are installed automatically when `cuopt-server` and `cuopt-sh-client` are installed.
 
 ```bash
-conda install -c rapidsai -c conda-forge -c nvidia cuopt-server=26.06.* cuopt-sh-client=26.06.*
+conda install -c rapidsai -c conda-forge -c nvidia cuopt-server=26.08.* cuopt-sh-client=26.08.*
 ```
 
 We also provide [nightly conda packages](https://anaconda.org/rapidsai-nightly) built from the HEAD
@@ -136,19 +136,33 @@ of our latest development branch. Just replace `-c rapidsai` with `-c rapidsai-n
 
 ### Container
 
-Users can pull the cuOpt container from the NVIDIA container registry.
+cuOpt ships two container variants on Docker Hub — an Ubuntu-based image for general use and a Red Hat Universal Base Image 10 (UBI10) image for FIPS 140-3 compliant environments.
+
+#### Ubuntu image
 
 ```bash
 # For CUDA 12.x
-docker pull nvidia/cuopt:latest-cuda12.9-py3.13
+docker pull nvidia/cuopt:latest-cu12
 
 # For CUDA 13.x
-docker pull nvidia/cuopt:latest-cuda13.0-py3.13
+docker pull nvidia/cuopt:latest-cu13
 ```
 
-Note: The ``latest`` tag is the latest stable release of cuOpt. If you want to use a specific version, you can use the ``<version>-cuda12.9-py3.13`` or ``<version>-cuda13.0-py3.13`` tag. For example, to use cuOpt 25.10.0, you can use the ``25.10.0-cuda12.9-py3.13`` or ``25.10.0-cuda13.0-py3.13`` tag. Please refer to [cuOpt dockerhub page](https://hub.docker.com/r/nvidia/cuopt/tags) for the list of available tags.
+The `latest` tag is the latest stable release. To pin a specific version use `<version>-cu12` / `<version>-cu13` (e.g. `26.6.0-cu13`). Fully-qualified tags that also pin the CUDA minor and Python version (e.g. `26.6.0-cuda13.3-py3.14`) are published alongside the short tags. See the [cuOpt Docker Hub page](https://hub.docker.com/r/nvidia/cuopt/tags) for the full list.
 
-Nightly container images are built from the HEAD of the development branch and use the upcoming CUDA/Python defaults (`cuda12.9-py3.14` and `cuda13.1-py3.14`). They are tagged as ``<version>a-cuda12.9-py3.14`` or ``<version>a-cuda13.1-py3.14`` (note the ``a`` alpha suffix). See the [cuOpt dockerhub page](https://hub.docker.com/r/nvidia/cuopt/tags) for the full list.
+#### UBI10 image (FIPS 140-3)
+
+Based on Red Hat Universal Base Image 10 (RHEL 10), which ships OpenSSL 3.5 validated under FIPS 140-3. Use this image in environments with strict FIPS or RHEL compliance requirements. UBI10 images are available for CUDA 13.x only.
+
+```bash
+docker pull nvidia/cuopt:latest-cu13-ubi10
+```
+
+Fully-qualified tags follow the pattern `<version>-cuda<X.Y>-ubi10` (e.g. `26.6.0-cuda13.3-ubi10`). Nightly builds use the `<version>a-cu13-ubi10` tag scheme. See the [cuOpt Docker Hub page](https://hub.docker.com/r/nvidia/cuopt/tags) for the full list.
+
+Both images include the same cuOpt packages (`libcuopt`, `cuopt`, `cuopt-server`, `cuopt-sh-client`) and expose the same server entrypoint. They are built and tested for x86-64 and ARM64.
+
+Nightly container images for both variants are built from the HEAD of the development branch. They are tagged as `<version>a-cu12` / `<version>a-cu13` (Ubuntu) and `<version>a-cu13-ubi10` (UBI10).
 
 More information about the cuOpt container can be found [here](https://docs.nvidia.com/cuopt/user-guide/latest/cuopt-server/quick-start.html#container-from-docker-hub).
 

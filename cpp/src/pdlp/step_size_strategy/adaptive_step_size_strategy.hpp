@@ -6,7 +6,7 @@
 /* clang-format on */
 #pragma once
 
-#include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
 #include <utilities/event_handler.cuh>
 #include <utilities/unique_pinned_ptr.hpp>
 
@@ -24,7 +24,9 @@
 
 #include <thrust/universal_vector.h>
 
-namespace cuopt::linear_programming::detail {
+#include <optional>
+
+namespace cuopt::mathematical_optimization::pdlp {
 template <typename i_t, typename f_t>
 class adaptive_step_size_strategy_t {
  public:
@@ -47,7 +49,7 @@ class adaptive_step_size_strategy_t {
     f_t* norm_squared_delta_primal;
     f_t* norm_squared_delta_dual;
 
-    pdlp_hyper_params::pdlp_hyper_params_t hyper_params;
+    pdlp::pdlp_hyper_params_t hyper_params;
   };
 
   adaptive_step_size_strategy_t(raft::handle_t const* handle_ptr,
@@ -57,7 +59,7 @@ class adaptive_step_size_strategy_t {
                                 i_t primal_size,
                                 i_t dual_size,
                                 const std::vector<pdlp_climber_strategy_t>& climber_strategies,
-                                const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params);
+                                const pdlp::pdlp_hyper_params_t& hyper_params);
 
   void compute_step_sizes(pdhg_solver_t<i_t, f_t>& pdhg_solver,
                           rmm::device_uvector<f_t>& primal_step_size,
@@ -81,9 +83,21 @@ class adaptive_step_size_strategy_t {
   const rmm::device_uvector<f_t>& get_norm_squared_delta_primal() const;
   const rmm::device_uvector<f_t>& get_norm_squared_delta_dual() const;
 
+  // Mutable overloads — used by the multi-GPU path to NCCL-allreduce the
+  // per-shard scalar contributions in place and to mirror them back to the
+  // master step_size_strategy_.
+  rmm::device_uvector<f_t>& get_interaction();
+  rmm::device_uvector<f_t>& get_norm_squared_delta_primal();
+  rmm::device_uvector<f_t>& get_norm_squared_delta_dual();
+
+  // owned_primal_size / owned_cstr_size are mGPU overrides.
+  // mGPU needs to know owned size to restrict the reductions to the owned prefix.
+  // When unset, reductions use the full primal/dual sizes from the saddle point state.
   void compute_interaction_and_movement(rmm::device_uvector<f_t>& tmp_primal,
                                         cusparse_view_t<i_t, f_t>& cusparse_view,
-                                        saddle_point_state_t<i_t, f_t>& current_saddle_point_state);
+                                        saddle_point_state_t<i_t, f_t>& current_saddle_point_state,
+                                        std::optional<i_t> owned_primal_size = std::nullopt,
+                                        std::optional<i_t> owned_cstr_size   = std::nullopt);
 
   void swap_context(const thrust::universal_host_pinned_vector<swap_pair_t<i_t>>& swap_pairs);
   void resize_context(i_t new_size);
@@ -118,6 +132,6 @@ class adaptive_step_size_strategy_t {
   ping_pong_graph_t<i_t> graph;
 
   const std::vector<pdlp_climber_strategy_t>& climber_strategies_;
-  const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params_;
+  const pdlp::pdlp_hyper_params_t& hyper_params_;
 };
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

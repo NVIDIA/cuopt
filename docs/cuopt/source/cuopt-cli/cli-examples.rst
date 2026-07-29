@@ -14,7 +14,7 @@ format is dispatched automatically from the file extension
 
 Any other extension (including no extension) is rejected with an error
 listing the supported suffixes. See ``read`` in
-``cuopt/linear_programming/io/parser.hpp`` (and the Python
+``cuopt/mathematical_optimization/io/parser.hpp`` (and the Python
 :func:`~cuopt.linear_programming.io.Read` wrapper).
 
 

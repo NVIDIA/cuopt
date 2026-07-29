@@ -5,7 +5,9 @@
   cpu_problem.set_problem_name(pb_problem.problem_name());
   cpu_problem.set_objective_name(pb_problem.objective_name());
   cpu_problem.set_maximize(pb_problem.maximize());
-  cpu_problem.set_objective_scaling_factor(pb_problem.objective_scaling_factor());
+  if (pb_problem.has_objective_scaling_factor()) {
+    cpu_problem.set_objective_scaling_factor(pb_problem.objective_scaling_factor());
+  }
   cpu_problem.set_objective_offset(pb_problem.objective_offset());
 
   if (pb_problem.a_offsets_size() > 0) {
@@ -96,6 +98,7 @@
       if (_entry.cols.size() != _entry.vals.size()) {
         throw std::invalid_argument("set_quadratic_constraints: cols/vals size mismatch");
       }
+      io::canonicalize_coo_matrix(_entry.rows, _entry.cols, _entry.vals);
       _entries.push_back(std::move(_entry));
     }
     cpu_problem.set_quadratic_constraints(std::move(_entries));

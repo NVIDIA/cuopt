@@ -12,7 +12,7 @@
 #include <utilities/device_utils.cuh>
 
 #include <raft/util/reduction.cuh>
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 // computes the lagrangian objectives with the given weights of the constraints
 // we need both left and right weights because constraints might have had excess from either lower
@@ -71,4 +71,4 @@ inline rmm::device_uvector<f_t> get_lagrangian_weights(solution_t<i_t, f_t>& sol
   return get_weighted_lagrangian_weights(solution, problem, cstr_weights, cstr_weights);
 }
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

@@ -118,7 +118,7 @@ message ChunkedProblemHeader {
 
   // Problem scalars
   bool maximize = 2;
-  double objective_scaling_factor = 3;
+  optional double objective_scaling_factor = 3;
   double objective_offset = 4;
   string problem_name = 5;
   string objective_name = 6;

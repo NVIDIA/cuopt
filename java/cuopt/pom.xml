@@ -59,7 +59,7 @@ SPDX-License-Identifier: Apache-2.0
             <configuration>
               <executable>${project.basedir}/scripts/generate_constants.sh</executable>
               <arguments>
-                <argument>${project.basedir}/../../cpp/include/cuopt/linear_programming/constants.h</argument>
+                <argument>${project.basedir}/../../cpp/include/cuopt/mathematical_optimization/constants.h</argument>
                 <argument>${project.build.directory}/generated-sources/cuopt</argument>
               </arguments>
             </configuration>

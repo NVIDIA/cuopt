@@ -12,9 +12,9 @@
 #include <pdlp/saddle_point.hpp>
 #include <pdlp/swap_and_resize_helper.cuh>
 
-#include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
-#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
-#include <cuopt/linear_programming/utilities/segmented_sum_handler.cuh>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/utilities/segmented_sum_handler.cuh>
 
 #include <mip_heuristics/problem/problem.cuh>
 
@@ -25,12 +25,12 @@
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 template <typename i_t, typename f_t>
 class convergence_information_t {
  public:
   convergence_information_t(raft::handle_t const* handle_ptr,
-                            problem_t<i_t, f_t>& op_problem,
+                            mip::problem_t<i_t, f_t>& op_problem,
                             cusparse_view_t<i_t, f_t>& cusparse_view,
                             i_t primal_size,
                             i_t dual_size,
@@ -65,6 +65,16 @@ class convergence_information_t {
   void set_relative_primal_tolerance_factor(f_t primal_tolerance_factor);
   const rmm::device_uvector<f_t>& get_l2_norm_primal_linear_objective() const;
   const rmm::device_uvector<f_t>& get_l2_norm_primal_right_hand_side() const;
+
+  // Multi-GPU counterpart of init_l2_norms().
+  //   - per-shard thrust::transform_reduce on the OWNED prefix, folded into
+  //     host scalars (blocking on each shard's stream);
+  //   - host-side sqrt;
+  //   - broadcast to master + every shard via set_scalar_on_master_and_shards.
+  // Objective term uses weighted_square_op with weight=1; RHS term uses
+  // rhs_sum_of_squares_t (skips infinite bounds and degenerate ranges,
+  // matching the single-GPU compute_sum_bounds semantics).
+  void distributed_init_l2_norms(multi_gpu_engine_t<i_t, f_t>& engine);
 
   struct view_t {
     i_t primal_size;
@@ -127,7 +137,28 @@ class convergence_information_t {
   void resize_context(i_t new_size);
 
  private:
+  // Non-batch single and distrivuted PDLP shared dot kernel.
+  // primal_objective_ = dot(objective_coefficients, primal_solution)
+  // In distributed mode n_owned = shard's owned var prefix and the caller
+  // allreduces across shards; in single-GPU n_owned = primal_size_h_.
+  void compute_primal_objective_owned_partial(const rmm::device_uvector<f_t>& primal_solution,
+                                              i_t n_owned);
+
+  // Non-batch single and distributed PDLP shared reflected-dual kernel.
+  // dual_objective_ = dot(dual_slack, primal_solution) + sum(primal_slack_)
+  void compute_dual_objective_owned_partial(const rmm::device_uvector<f_t>& primal_solution,
+                                            const rmm::device_uvector<f_t>& dual_slack,
+                                            i_t n_owned_var,
+                                            i_t n_owned_cstr);
+
   void compute_primal_objective(rmm::device_uvector<f_t>& primal_solution);
+
+  // Applies per-climber objective scaling + offset to primal_objective_.
+  // Single-GPU path: called from compute_primal_objective right after the dot.
+  // Multi-GPU path: called on master once after allreduce of partial sums.
+  void apply_primal_objective_scaling_and_offset();
+  // Same as above but for dual_objective_.
+  void apply_dual_objective_scaling_and_offset();
 
   void compute_dual_residual(cusparse_view_t<i_t, f_t>& cusparse_view,
                              rmm::device_uvector<f_t>& tmp_primal,
@@ -143,6 +174,13 @@ class convergence_information_t {
 
   void compute_reduced_costs_dual_objective_contribution();
 
+  // ----- Distributed-PDLP sub-steps of compute_convergence_information -----
+  // Halo exchange, per-shard primal/residual + partial (owned) primal/dual objective, allreduce and
+  // apply scaling+offset.
+  void distributed_compute_primal_residual_and_objective(
+    multi_gpu_engine_t<i_t, f_t>& engine, const pdlp_solver_settings_t<i_t, f_t>& settings);
+  void distributed_compute_dual_residual_and_objective(multi_gpu_engine_t<i_t, f_t>& engine);
+
   // Ctor helpers — each handles both batch and non-batch internally.
   void init_objective_offsets();
   void init_l2_norms();
@@ -157,7 +195,7 @@ class convergence_information_t {
   i_t primal_size_h_;
   i_t dual_size_h_;
 
-  problem_t<i_t, f_t>* problem_ptr;
+  mip::problem_t<i_t, f_t>* problem_ptr;
   cusparse_view_t<i_t, f_t>& op_problem_cusparse_view_;
 
   rmm::device_uvector<f_t> l2_norm_primal_linear_objective_;
@@ -201,12 +239,12 @@ class convergence_information_t {
   const rmm::device_scalar<f_t> reusable_device_scalar_value_1_;
   const rmm::device_scalar<f_t> reusable_device_scalar_value_0_;
   const rmm::device_scalar<f_t> reusable_device_scalar_value_neg_1_;
-  segmented_sum_handler_t<i_t, f_t> segmented_sum_handler_;
+  cuopt::segmented_sum_handler_t<i_t, f_t> segmented_sum_handler_;
 
   rmm::device_uvector<f_t> dual_dot_;
   rmm::device_uvector<f_t> sum_primal_slack_;
 
   const std::vector<pdlp_climber_strategy_t>& climber_strategies_;
-  const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params_;
+  const pdlp::pdlp_hyper_params_t& hyper_params_;
 };
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

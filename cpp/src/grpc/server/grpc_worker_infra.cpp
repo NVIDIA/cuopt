@@ -1,12 +1,74 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 #ifdef CUOPT_ENABLE_GRPC
 
 #include "grpc_pipe_serialization.hpp"
 #include "grpc_server_types.hpp"
+
+#include <cctype>
+#include <cstdio>
+
+namespace {
+
+// GPU discovery for startup logging only. Avoids CUDA calls in the parent before fork().
+int count_cuda_visible_devices()
+{
+  const char* visible = std::getenv("CUDA_VISIBLE_DEVICES");
+  if (visible == nullptr || visible[0] == '\0') { return 0; }
+
+  int count     = 0;
+  bool in_token = false;
+  for (const char* p = visible; *p != '\0'; ++p) {
+    if (*p == ',') {
+      in_token = false;
+    } else if (!std::isspace(static_cast<unsigned char>(*p))) {
+      if (!in_token) {
+        ++count;
+        in_token = true;
+      }
+    }
+  }
+  return count;
+}
+
+int discover_gpu_count_via_nvidia_smi()
+{
+  FILE* fp = popen("nvidia-smi -L 2>/dev/null", "r");
+  if (fp == nullptr) { return 0; }
+
+  int count = 0;
+  char line[512];
+  while (fgets(line, sizeof(line), fp) != nullptr) {
+    int gpu_id = -1;
+    if (std::sscanf(line, "GPU %d:", &gpu_id) == 1) { ++count; }
+  }
+  pclose(fp);
+  return count;
+}
+
+}  // namespace
+
+void log_worker_gpu_layout()
+{
+  visible_gpu_count = count_cuda_visible_devices();
+  if (visible_gpu_count <= 0) { visible_gpu_count = discover_gpu_count_via_nvidia_smi(); }
+
+  if (visible_gpu_count <= 0) {
+    SERVER_LOG_WARN(
+      "[Server] Could not determine GPU count; workers will select devices at startup");
+    return;
+  }
+
+  SERVER_LOG_INFO("[Server] %d GPU(s) available for worker assignment", visible_gpu_count);
+  if (config.num_workers > visible_gpu_count) {
+    SERVER_LOG_WARN("[Server] %d workers on %d GPU(s); multiple workers will share a GPU",
+                    config.num_workers,
+                    visible_gpu_count);
+  }
+}
 
 void cleanup_shared_memory()
 {
@@ -59,6 +121,8 @@ bool create_worker_pipes(int worker_id)
   wp.worker_read_fd = fds[0];
   wp.to_worker_fd   = fds[1];
   fcntl(wp.to_worker_fd, F_SETPIPE_SZ, kPipeBufferSize);
+  // Nonblocking write end: write_to_pipe polls + retries so shutdown can abort.
+  fcntl(wp.to_worker_fd, F_SETFL, fcntl(wp.to_worker_fd, F_GETFL) | O_NONBLOCK);
 
   if (pipe(fds) < 0) {
     SERVER_LOG_ERROR("[Server] Failed to create output pipe for worker %d", worker_id);
@@ -68,6 +132,9 @@ bool create_worker_pipes(int worker_id)
   wp.from_worker_fd  = fds[0];
   wp.worker_write_fd = fds[1];
   fcntl(wp.worker_write_fd, F_SETPIPE_SZ, kPipeBufferSize);
+  fcntl(wp.worker_write_fd, F_SETFL, fcntl(wp.worker_write_fd, F_GETFL) | O_NONBLOCK);
+  // Parent read end is also nonblocking; read_from_pipe polls before read.
+  fcntl(wp.from_worker_fd, F_SETFL, fcntl(wp.from_worker_fd, F_GETFL) | O_NONBLOCK);
 
   if (pipe(fds) < 0) {
     SERVER_LOG_ERROR("[Server] Failed to create incumbent pipe for worker %d", worker_id);
@@ -76,6 +143,11 @@ bool create_worker_pipes(int worker_id)
   }
   wp.incumbent_from_worker_fd  = fds[0];
   wp.worker_incumbent_write_fd = fds[1];
+  fcntl(wp.worker_incumbent_write_fd,
+        F_SETFL,
+        fcntl(wp.worker_incumbent_write_fd, F_GETFL) | O_NONBLOCK);
+  fcntl(
+    wp.incumbent_from_worker_fd, F_SETFL, fcntl(wp.incumbent_from_worker_fd, F_GETFL) | O_NONBLOCK);
 
   return true;
 }
@@ -139,21 +211,119 @@ pid_t spawn_worker(int worker_id, bool is_replacement)
 
 void spawn_workers()
 {
+  std::lock_guard<std::mutex> lock(worker_pids_mutex);
+  // Index i is worker_id: keep failed startups as 0 so monitor/respawn and
+  // pipe tables stay aligned even when some initial forks fail.
+  worker_pids.assign(static_cast<size_t>(config.num_workers), 0);
   for (int i = 0; i < config.num_workers; ++i) {
     pid_t pid = spawn_worker(i, false);
-    if (pid < 0) { continue; }
-    worker_pids.push_back(pid);
+    if (pid > 0) { worker_pids[static_cast<size_t>(i)] = pid; }
   }
+}
+
+void kill_all_workers()
+{
+  std::lock_guard<std::mutex> lock(worker_pids_mutex);
+  for (pid_t pid : worker_pids) {
+    if (pid > 0) { kill(pid, SIGKILL); }
+  }
+}
+
+void close_all_server_worker_pipes()
+{
+  std::lock_guard<std::mutex> lock(worker_pipes_mutex);
+  for (auto& wp : worker_pipes) {
+    close_all_worker_pipes(wp);
+  }
+}
+
+void cancel_all_active_jobs_for_shutdown()
+{
+  if (job_queue != nullptr) {
+    for (size_t i = 0; i < MAX_JOBS; ++i) {
+      if (job_queue[i].ready.load(std::memory_order_acquire)) {
+        job_queue[i].cancelled.store(true, std::memory_order_release);
+      }
+    }
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(tracker_mutex);
+    for (auto& [job_id, info] : job_tracker) {
+      (void)job_id;
+      if (info.status == JobStatus::QUEUED || info.status == JobStatus::PROCESSING) {
+        info.status        = JobStatus::CANCELLED;
+        info.error_message = "Server shutting down";
+      }
+    }
+  }
+
+  {
+    std::lock_guard<std::mutex> wlock(waiters_mutex);
+    for (auto& [job_id, waiter] : waiting_threads) {
+      (void)job_id;
+      {
+        std::lock_guard<std::mutex> waiter_lock(waiter->mutex);
+        waiter->error_message = "Server shutting down";
+        waiter->success       = false;
+        waiter->ready         = true;
+      }
+      waiter->cv.notify_all();
+    }
+    waiting_threads.clear();
+  }
+
+  result_cv.notify_all();
 }
 
 void wait_for_workers()
 {
-  for (pid_t pid : worker_pids) {
-    if (pid <= 0) continue;
-    int status;
-    while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
+  // Mid-solve workers only check shutdown_requested between jobs, so force-kill
+  // before waitpid or Ctrl-C / SIGTERM can hang until the current solve ends.
+  // A worker killed mid-CUDA can sit in uninterruptible D-state while the GPU
+  // driver tears down; a blocking waitpid would then hang the whole server
+  // (and ignore SIGTERM because we retry on EINTR). Bound the wait and abandon
+  // stragglers — the test harness / init reaps them.
+  kill_all_workers();
+
+  constexpr auto kShutdownWait = std::chrono::seconds(2);
+  auto deadline                = std::chrono::steady_clock::now() + kShutdownWait;
+  while (std::chrono::steady_clock::now() < deadline) {
+    bool any_alive = false;
+    {
+      std::lock_guard<std::mutex> lock(worker_pids_mutex);
+      for (pid_t& pid : worker_pids) {
+        if (pid <= 0) continue;
+        int status   = 0;
+        pid_t reaped = waitpid(pid, &status, WNOHANG);
+        if (reaped == pid || (reaped < 0 && errno == ECHILD)) {
+          pid = 0;
+        } else if (reaped < 0 && errno == EINTR) {
+          any_alive = true;
+        } else {
+          any_alive = true;
+        }
+      }
+      if (!any_alive) {
+        worker_pids.clear();
+        return;
+      }
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
   }
-  worker_pids.clear();
+
+  {
+    std::lock_guard<std::mutex> lock(worker_pids_mutex);
+    for (pid_t pid : worker_pids) {
+      if (pid > 0) {
+        kill(pid, SIGKILL);
+        SERVER_LOG_WARN(
+          "[Server] Worker pid %d did not exit within shutdown grace period; abandoning",
+          static_cast<int>(pid));
+      }
+    }
+    worker_pids.clear();
+  }
 }
 
 pid_t spawn_single_worker(int worker_id) { return spawn_worker(worker_id, true); }

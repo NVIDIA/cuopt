@@ -16,7 +16,7 @@
 #include <thrust/iterator/zip_iterator.h>
 #include <thrust/tuple.h>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 // from the paper, probability of choosing random candidate= noise parameter
 constexpr double p                  = 0.75;
@@ -152,4 +152,4 @@ class bounds_repair_t {
   i_t cycle_write_pos = 0;
 };
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

@@ -33,7 +33,7 @@ source file is currently required by the main cuOpt build.
 
 Maven generates `CuOptConstants.java` under
 `target/generated-sources/cuopt/com/nvidia/cuopt/mathematicalprogramming/`
-from `cpp/include/cuopt/linear_programming/constants.h`. Do not edit the
+from `cpp/include/cuopt/mathematical_optimization/constants.h`. Do not edit the
 generated file. Regenerate it after changing the C++ constants header with:
 
 ```bash

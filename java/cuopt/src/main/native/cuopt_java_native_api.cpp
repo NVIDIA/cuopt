@@ -5,7 +5,7 @@
 
 #include "cuopt_java_native_api.hpp"
 
-#include <cuopt/linear_programming/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/solver_settings.hpp>
 #include <pdlp/cuopt_c_internal.hpp>
 
 #include <cstdio>
@@ -13,9 +13,9 @@
 
 namespace {
 
-using namespace cuopt::linear_programming;
+using namespace cuopt::mathematical_optimization;
 using java_solver_settings_t =
-  cuopt::linear_programming::solver_settings_t<cuopt_int_t, cuopt_float_t>;
+  cuopt::mathematical_optimization::solver_settings_t<cuopt_int_t, cuopt_float_t>;
 using java_lp_solution_t  = lp_solution_interface_t<cuopt_int_t, cuopt_float_t>;
 using java_mip_solution_t = mip_solution_interface_t<cuopt_int_t, cuopt_float_t>;
 
