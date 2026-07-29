@@ -19,10 +19,25 @@ namespace cuopt::mathematical_optimization {
  */
 template <typename i_t, typename f_t>
 struct mip_heuristics_hyper_params_t {
-  i_t population_size                    = 32;      // max solutions in pool
-  i_t num_cpufj_threads                  = 8;       // parallel CPU FJ climbers
-  f_t presolve_time_ratio                = 0.1;     // fraction of total time for presolve
-  f_t presolve_max_time                  = 60.0;    // hard cap on presolve seconds
+  i_t population_size     = 32;    // max solutions in pool
+  i_t num_cpufj_threads   = 8;     // parallel CPU FJ climbers
+  f_t presolve_time_ratio = 0.1;   // fraction of total time for presolve
+  f_t presolve_max_time   = 60.0;  // hard cap on presolve seconds
+
+  // Presolve budgeting. presolve_budget_policy selects how the four knobs below are derived from
+  // the problem's dimensions and structure (see presolve_budget_policy.hpp); the values here are
+  // the defaults the policy starts from and the literal values used by the `manual` policy.
+  i_t presolve_budget_policy       = 1;     // presolve_budget_policy_t
+  i_t presolve_max_rounds          = 30;    // Papilo presolve rounds cap (<=0 = Papilo default)
+  i_t papilo_probing_max_badgesize = 1024;  // ceiling on Papilo's probing.minbadgesize
+  f_t cuopt_presolve_work_limit    = 30.0;  // probing-cache budget, work units
+  i_t probing_step_size            = 512;   // probed vars between work-budget checks
+  // Weights of the probing-cache work model. Work units measure probing effort reproducibly; they
+  // are not an estimate of elapsed time, so the effort-per-second they correspond to legitimately
+  // differs between instances.
+  f_t probe_host_overhead_work = 0.02;  // charged per probed variable
+  f_t probe_iter_work          = 0.01;  // charged per multi-probe propagation iteration
+
   f_t root_lp_time_ratio                 = 0.1;     // fraction of total time for root LP
   f_t root_lp_max_time                   = 15.0;    // hard cap on root LP seconds
   f_t rins_time_limit                    = 3.0;     // per-call RINS sub-MIP time

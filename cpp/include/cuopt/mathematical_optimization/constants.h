@@ -99,6 +99,17 @@
 #define CUOPT_MIP_HYPER_HEURISTIC_NUM_CPUFJ_THREADS   "mip_hyper_heuristic_num_cpufj_threads"
 #define CUOPT_MIP_HYPER_HEURISTIC_PRESOLVE_TIME_RATIO "mip_hyper_heuristic_presolve_time_ratio"
 #define CUOPT_MIP_HYPER_HEURISTIC_PRESOLVE_MAX_TIME   "mip_hyper_heuristic_presolve_max_time"
+#define CUOPT_MIP_HYPER_HEURISTIC_PRESOLVE_BUDGET_POLICY \
+  "mip_hyper_heuristic_presolve_budget_policy"
+#define CUOPT_MIP_HYPER_HEURISTIC_PRESOLVE_MAX_ROUNDS "mip_hyper_heuristic_presolve_max_rounds"
+#define CUOPT_MIP_HYPER_HEURISTIC_PAPILO_PROBING_MAX_BADGESIZE \
+  "mip_hyper_heuristic_papilo_probing_max_badgesize"
+#define CUOPT_MIP_HYPER_HEURISTIC_CUOPT_PRESOLVE_WORK_LIMIT \
+  "mip_hyper_heuristic_cuopt_presolve_work_limit"
+#define CUOPT_MIP_HYPER_HEURISTIC_PROBING_STEP_SIZE "mip_hyper_heuristic_probing_step_size"
+#define CUOPT_MIP_HYPER_HEURISTIC_PROBE_HOST_OVERHEAD_WORK \
+  "mip_hyper_heuristic_probe_host_overhead_work"
+#define CUOPT_MIP_HYPER_HEURISTIC_PROBE_ITER_WORK     "mip_hyper_heuristic_probe_iter_work"
 #define CUOPT_MIP_HYPER_HEURISTIC_ROOT_LP_TIME_RATIO  "mip_hyper_heuristic_root_lp_time_ratio"
 #define CUOPT_MIP_HYPER_HEURISTIC_ROOT_LP_MAX_TIME    "mip_hyper_heuristic_root_lp_max_time"
 #define CUOPT_MIP_HYPER_HEURISTIC_RINS_TIME_LIMIT     "mip_hyper_heuristic_rins_time_limit"

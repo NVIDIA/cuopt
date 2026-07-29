@@ -49,6 +49,7 @@
 #include <raft/core/nvtx.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <limits>
 #include <span>
 #include <tuple>
@@ -709,11 +710,15 @@ void set_presolve_options(papilo::Presolve<f_t>& presolver,
                           f_t relative_tolerance,
                           f_t time_limit,
                           bool dual_postsolve,
-                          i_t num_cpu_threads)
+                          i_t num_cpu_threads,
+                          i_t max_rounds)
 {
   presolver.getPresolveOptions().tlim    = time_limit;
   presolver.getPresolveOptions().threads = num_cpu_threads;  //  user setting or  0 (automatic)
   presolver.getPresolveOptions().feastol = 1e-5;
+  // A round cap bounds presolve independently of the clock, which is the only thing that bounds it
+  // in deterministic mode where tlim is infinite. <=0 keeps Papilo's default of unlimited rounds.
+  if (max_rounds > 0) { presolver.getPresolveOptions().maxrounds = max_rounds; }
   if (dual_postsolve) {
     presolver.getPresolveOptions().componentsmaxint = -1;
     presolver.getPresolveOptions().detectlindep     = 0;
@@ -724,7 +729,8 @@ template <typename f_t>
 void set_presolve_parameters(papilo::Presolve<f_t>& presolver,
                              problem_category_t category,
                              int nrows,
-                             int ncols)
+                             int ncols,
+                             int max_badgesize)
 {
   // It looks like a copy. But this copy has the pointers to relevant variables in papilo
   auto params = presolver.getParameters();
@@ -732,8 +738,13 @@ void set_presolve_parameters(papilo::Presolve<f_t>& presolver,
     // Papilo has work unit measurements for probing. Because of this when the first batch fails to
     // produce any reductions, the algorithm stops. To avoid stopping the algorithm, we set a
     // minimum badge size to a huge value. The time limit makes sure that we exit if it takes too
-    // long
+    // long.
+    // An uncapped ncols/2 forces one probing pass to span the whole problem, so probing never
+    // reaches its work-based stop and runs unbounded on large MIPs whenever the clock is infinite.
+    // Capping the badge keeps it large enough to still find reductions while Papilo's per-badge
+    // working limit (~2*nnz) bounds a single pass. <=0 restores the uncapped behaviour.
     int min_badgesize = std::max(ncols / 2, 32);
+    if (max_badgesize > 0) { min_badgesize = std::min(min_badgesize, max_badgesize); }
     params.setParameter("probing.minbadgesize", min_badgesize);
     params.setParameter("cliquemerging.enabled", true);
     params.setParameter("cliquemerging.maxcalls", 50);
@@ -818,7 +829,9 @@ third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_papilo(
   f_t absolute_tolerance,
   f_t relative_tolerance,
   double time_limit,
-  i_t num_cpu_threads)
+  i_t num_cpu_threads,
+  i_t max_rounds,
+  i_t max_badgesize)
 {
   raft::common::nvtx::range fun_scope("Apply Papilo presolve on host");
 
@@ -842,11 +855,32 @@ third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_papilo(
                                  relative_tolerance,
                                  time_limit,
                                  dual_postsolve,
-                                 num_cpu_threads);
-  set_presolve_parameters(papilo_presolver, category, original_n_cons, original_n_vars);
+                                 num_cpu_threads,
+                                 max_rounds);
+  set_presolve_parameters(
+    papilo_presolver, category, original_n_cons, original_n_vars, max_badgesize);
   papilo_presolver.setVerbosityLevel(papilo::VerbosityLevel::kQuiet);
+  CUOPT_LOG_INFO(
+    "PRESOLVE_PAPILO_BUDGET rounds=%d badge_cap=%d tlim=%g", max_rounds, max_badgesize, time_limit);
 
-  auto result = papilo_presolver.apply(papilo_problem);
+  const auto papilo_t0 = std::chrono::steady_clock::now();
+  auto result          = papilo_presolver.apply(papilo_problem);
+  const double papilo_wall =
+    std::chrono::duration<double>(std::chrono::steady_clock::now() - papilo_t0).count();
+  // The effective badge is what set_presolve_parameters actually installed; the cap alone is
+  // misleading because it only binds once ncols/2 exceeds it.
+  int effective_badge = std::max(original_n_vars / 2, 32);
+  if (max_badgesize > 0) { effective_badge = std::min(effective_badge, max_badgesize); }
+  // hit_tlim distinguishes "presolve converged" from "presolve was cut off mid-round", which
+  // changes how the reduced problem below should be read.
+  CUOPT_LOG_INFO(
+    "PRESOLVE_PAPILO wall=%.3f tlim=%g hit_tlim=%d rounds_cap=%d badge_cap=%d badge_effective=%d",
+    papilo_wall,
+    time_limit,
+    (int)(papilo_wall >= 0.99 * time_limit),
+    max_rounds,
+    max_badgesize,
+    effective_badge);
   check_presolve_status(result.status);
   auto status = convert_papilo_presolve_status_to_third_party_presolve_status(result.status);
   if (result.status == papilo::PresolveStatus::kInfeasible ||
@@ -902,7 +936,9 @@ third_party_presolve_t<i_t, f_t>::apply_presolve_from_op_problem(
   f_t absolute_tolerance,
   f_t relative_tolerance,
   double time_limit,
-  i_t num_cpu_threads)
+  i_t num_cpu_threads,
+  i_t max_rounds,
+  i_t max_badgesize)
 {
   auto* handle = op_problem.get_handle_ptr();
 
@@ -922,7 +958,9 @@ third_party_presolve_t<i_t, f_t>::apply_presolve_from_op_problem(
                                                absolute_tolerance,
                                                relative_tolerance,
                                                time_limit,
-                                               num_cpu_threads);
+                                               num_cpu_threads,
+                                               max_rounds,
+                                               max_badgesize);
 
   // On terminal statuses the mps entry returns an empty reduced problem;
   // mirror that shape on the device side without going through H->D.
@@ -962,7 +1000,9 @@ third_party_presolve_t<i_t, f_t>::apply_presolve_from_mps_data(
   f_t absolute_tolerance,
   f_t relative_tolerance,
   double time_limit,
-  i_t num_cpu_threads)
+  i_t num_cpu_threads,
+  i_t max_rounds,
+  i_t max_badgesize)
 {
   presolver_ = presolver;
   maximize_  = mps.get_sense();
@@ -1012,7 +1052,9 @@ third_party_presolve_t<i_t, f_t>::apply_presolve_from_mps_data(
                                absolute_tolerance,
                                relative_tolerance,
                                time_limit,
-                               num_cpu_threads);
+                               num_cpu_threads,
+                               max_rounds,
+                               max_badgesize);
 
     if (status == third_party_presolve_status_t::INFEASIBLE ||
         status == third_party_presolve_status_t::UNBOUNDED ||
@@ -1074,8 +1116,11 @@ third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_to_subprob
                                  settings.dual_tol,
                                  time_limit,
                                  dual_postsolve,
-                                 num_threads);
-  set_presolve_parameters(papilo_presolver, problem_category_t::MIP, orig_rows, orig_cols);
+                                 num_threads,
+                                 -1);
+  // Node presolve already runs under a finite time limit, so it keeps the unbounded round count and
+  // uncapped badge; the budgets apply to root presolve only.
+  set_presolve_parameters(papilo_presolver, problem_category_t::MIP, orig_rows, orig_cols, -1);
 
   // Disable papilo logs
   papilo_presolver.setVerbosityLevel(papilo::VerbosityLevel::kQuiet);

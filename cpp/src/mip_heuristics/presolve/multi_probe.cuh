@@ -75,6 +75,12 @@ class multi_probe_t {
   bool skip_0;
   bool skip_1;
   settings_t settings;
+  // When set, the number of propagation iterations run is accumulated here rather than on any
+  // shared counter. The probing cache runs one multi_probe_t per OMP task, so a shared counter
+  // would be an unsynchronized read-modify-write and would make the resulting budget
+  // nondeterministic. The owner folds the per-task counts in at a barrier, in a fixed order, and
+  // applies its own cost model.
+  double* local_iter_accumulator = nullptr;
   bool compute_stats             = true;
   bool init_changed_constraints  = true;
   i_t infeas_constraints_count_0 = 0;

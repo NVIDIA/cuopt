@@ -82,7 +82,9 @@ class third_party_presolve_t {
     f_t absolute_tolerance,
     f_t relative_tolerance,
     double time_limit,
-    i_t num_cpu_threads = 0);
+    i_t num_cpu_threads = 0,
+    i_t max_rounds      = -1,
+    i_t max_badgesize   = -1);
 
   // Host entry: takes an mps_data_model_t and returns a host-side reduced
   // mps_data_model_t. Pure-host throughout
@@ -94,7 +96,9 @@ class third_party_presolve_t {
     f_t absolute_tolerance,
     f_t relative_tolerance,
     double time_limit,
-    i_t num_cpu_threads = 0);
+    i_t num_cpu_threads = 0,
+    i_t max_rounds      = -1,
+    i_t max_badgesize   = -1);
 
   // Apply the presolve on an simplex::user_problem in-place. Used in sub MIP and (in the future)
   // restarts.
@@ -164,7 +168,9 @@ class third_party_presolve_t {
                                              f_t absolute_tolerance,
                                              f_t relative_tolerance,
                                              double time_limit,
-                                             i_t num_cpu_threads);
+                                             i_t num_cpu_threads,
+                                             i_t max_rounds,
+                                             i_t max_badgesize);
 
   // Host-only per-backend postsolve helpers. Both resize their vector args
   // to original-problem dimensions.

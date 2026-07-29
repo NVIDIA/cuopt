@@ -13,6 +13,7 @@
 #include <mip_heuristics/feasibility_jump/early_gpufj.cuh>
 #include <mip_heuristics/mip_constants.hpp>
 #include <mip_heuristics/mip_scaling_strategy.cuh>
+#include <mip_heuristics/presolve/presolve_budget_policy.hpp>
 #include <mip_heuristics/presolve/semi_continuous.cuh>
 #include <mip_heuristics/presolve/third_party_presolve.hpp>
 #include <mip_heuristics/presolve/trivial_presolve.cuh>
@@ -332,6 +333,36 @@ mip_solution_t<i_t, f_t> run_mip_solver(
   }
 }
 
+namespace mip {
+
+// Features of the problem as the user handed it in, i.e. before any reduction. This is what Papilo
+// itself will work on, so its budget is derived from these rather than from the reduced problem.
+template <typename i_t, typename f_t>
+presolve_features_t papilo_presolve_features(optimization_problem_t<i_t, f_t> const& op_problem)
+{
+  presolve_features_t f{};
+  f.n_vars = op_problem.get_n_variables();
+  f.n_cons = op_problem.get_n_constraints();
+  f.nnz    = op_problem.get_nnz();
+
+  const auto var_types = op_problem.get_variable_types_host();
+  const auto lower     = op_problem.get_variable_lower_bounds_host();
+  const auto upper     = op_problem.get_variable_upper_bounds_host();
+  for (size_t j = 0; j < var_types.size(); ++j) {
+    if (var_types[j] != var_t::INTEGER) { continue; }
+    f.n_int += 1.0;
+    if (lower[j] >= 0.0 && upper[j] <= 1.0) { f.n_bin += 1.0; }
+  }
+
+  const auto offsets = op_problem.get_constraint_matrix_offsets_host();
+  for (size_t i = 0; i + 1 < offsets.size(); ++i) {
+    f.max_row_len = std::max<double>(f.max_row_len, offsets[i + 1] - offsets[i]);
+  }
+  return f;
+}
+
+}  // namespace mip
+
 template <typename i_t, typename f_t>
 mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_problem,
                                           mip_solver_settings_t<i_t, f_t> const& settings_const)
@@ -561,12 +592,19 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
       sort_csr(op_problem);
       // allocate not more than 10% of the time limit to presolve.
       // Note that this is not the presolve time, but the time limit for presolve.
-      const auto& hp = settings.heuristic_params;
-      double presolve_time_limit =
-        std::min(hp.presolve_time_ratio * time_limit, hp.presolve_max_time);
+      const auto& hp             = settings.heuristic_params;
+      const auto papilo_features = mip::papilo_presolve_features(op_problem);
+      const auto papilo_budget   = mip::evaluate_presolve_budget(hp, papilo_features);
+      mip::log_presolve_budget("PAPILO", hp.presolve_budget_policy, papilo_features, papilo_budget);
+
+      // The round and badge caps are what shape presolve; the timer only carries the time actually
+      // left in the solve, so it cannot overrun the whole budget but also does not truncate
+      // presolve at some fraction of it the way a presolve-specific cap did.
+      double presolve_time_limit = timer.remaining_time();
       if (settings.determinism_mode == CUOPT_MODE_DETERMINISTIC) {
         presolve_time_limit = std::numeric_limits<double>::infinity();
       }
+
       presolver   = std::make_unique<mip::third_party_presolve_t<i_t, f_t>>();
       auto result = presolver->apply_presolve_from_op_problem(
         op_problem,
@@ -576,7 +614,9 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
         settings.tolerances.absolute_tolerance,
         settings.tolerances.relative_tolerance,
         presolve_time_limit,
-        settings.num_cpu_threads);
+        settings.num_cpu_threads,
+        papilo_budget.papilo_max_rounds,
+        papilo_budget.papilo_max_badgesize);
 
       if (result.status == mip::third_party_presolve_status_t::INFEASIBLE) {
         return mip_solution_t<i_t, f_t>(mip_termination_status_t::Infeasible,
@@ -606,6 +646,19 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
         CUOPT_LOG_INFO("%d implied integers", presolve_result_opt->implied_integer_indices.size());
       }
       CUOPT_LOG_INFO("Papilo presolve time: %.2f", presolve_time);
+      // What the round cap actually bought, logged here rather than inferred from the probing stage
+      // so it is still recorded when the run never gets that far.
+      CUOPT_LOG_INFO(
+        "PRESOLVE_PAPILO_REDUCED nvars=%d ncons=%d nnz=%d nint=%d nbin=%d from_nvars=%.0f "
+        "from_ncons=%.0f from_nnz=%.0f",
+        problem.n_variables,
+        problem.n_constraints,
+        problem.nnz,
+        problem.n_integer_vars,
+        problem.n_binary_vars,
+        papilo_features.n_vars,
+        papilo_features.n_cons,
+        papilo_features.nnz);
 
       if (result.status == mip::third_party_presolve_status_t::OPTIMAL) {
         CUOPT_LOG_INFO("Optimal solution found during presolve.");

@@ -106,6 +106,9 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     // MIP heuristic hyper-parameters (hidden from default --help: name contains "hyper_")
     {CUOPT_MIP_HYPER_HEURISTIC_PRESOLVE_TIME_RATIO, &mip_settings.heuristic_params.presolve_time_ratio, f_t(0.0), f_t(1.0), f_t(0.1), "fraction of total time for presolve"},
     {CUOPT_MIP_HYPER_HEURISTIC_PRESOLVE_MAX_TIME, &mip_settings.heuristic_params.presolve_max_time, f_t(0.0), std::numeric_limits<f_t>::infinity(), f_t(60.0), "hard cap on presolve seconds"},
+    {CUOPT_MIP_HYPER_HEURISTIC_CUOPT_PRESOLVE_WORK_LIMIT, &mip_settings.heuristic_params.cuopt_presolve_work_limit, f_t(0.0), std::numeric_limits<f_t>::infinity(), f_t(30.0), "probing-cache budget in work units (manual policy, or ceiling for derived policies)"},
+    {CUOPT_MIP_HYPER_HEURISTIC_PROBE_HOST_OVERHEAD_WORK, &mip_settings.heuristic_params.probe_host_overhead_work, f_t(0.0), std::numeric_limits<f_t>::infinity(), f_t(0.02), "work units charged per probed variable (host overhead)"},
+    {CUOPT_MIP_HYPER_HEURISTIC_PROBE_ITER_WORK, &mip_settings.heuristic_params.probe_iter_work, f_t(0.0), std::numeric_limits<f_t>::infinity(), f_t(0.01), "work units charged per multi-probe propagation iteration"},
     {CUOPT_MIP_HYPER_HEURISTIC_ROOT_LP_TIME_RATIO, &mip_settings.heuristic_params.root_lp_time_ratio, f_t(0.0), f_t(1.0), f_t(0.1), "fraction of total time for root LP"},
     {CUOPT_MIP_HYPER_HEURISTIC_ROOT_LP_MAX_TIME, &mip_settings.heuristic_params.root_lp_max_time, f_t(0.0), std::numeric_limits<f_t>::infinity(), f_t(15.0), "hard cap on root LP seconds"},
     {CUOPT_MIP_HYPER_HEURISTIC_RINS_TIME_LIMIT, &mip_settings.heuristic_params.rins_time_limit, f_t(0.0), std::numeric_limits<f_t>::infinity(), f_t(3.0), "per-call RINS sub-MIP time"},
@@ -167,6 +170,10 @@ solver_settings_t<i_t, f_t>::solver_settings_t() : pdlp_settings(), mip_settings
     // MIP heuristic hyper-parameters (hidden from default --help: name contains "hyper_")
     {CUOPT_MIP_HYPER_HEURISTIC_POPULATION_SIZE, &mip_settings.heuristic_params.population_size, 1, std::numeric_limits<i_t>::max(), 32, "max solutions in pool"},
     {CUOPT_MIP_HYPER_HEURISTIC_NUM_CPUFJ_THREADS, &mip_settings.heuristic_params.num_cpufj_threads, 0, std::numeric_limits<i_t>::max(), 8, "parallel CPU FJ climbers"},
+    {CUOPT_MIP_HYPER_HEURISTIC_PRESOLVE_BUDGET_POLICY, &mip_settings.heuristic_params.presolve_budget_policy, 0, 6, 1, "how presolve budgets are derived: 0=legacy 1=fixed 2=size 3=density 4=binary 5=combined 6=manual"},
+    {CUOPT_MIP_HYPER_HEURISTIC_PRESOLVE_MAX_ROUNDS, &mip_settings.heuristic_params.presolve_max_rounds, -1, std::numeric_limits<i_t>::max(), 30, "Papilo presolve rounds cap (<=0 keeps Papilo default)"},
+    {CUOPT_MIP_HYPER_HEURISTIC_PAPILO_PROBING_MAX_BADGESIZE, &mip_settings.heuristic_params.papilo_probing_max_badgesize, -1, std::numeric_limits<i_t>::max(), 1024, "ceiling on Papilo probing.minbadgesize (<=0 leaves it uncapped)"},
+    {CUOPT_MIP_HYPER_HEURISTIC_PROBING_STEP_SIZE, &mip_settings.heuristic_params.probing_step_size, 1, std::numeric_limits<i_t>::max(), 512, "probed variables between probing-cache work-budget checks"},
     {CUOPT_MIP_HYPER_HEURISTIC_STAGNATION_TRIGGER, &mip_settings.heuristic_params.stagnation_trigger, 1, std::numeric_limits<i_t>::max(), 3, "FP loops w/o improvement before recombination"},
     {CUOPT_MIP_HYPER_HEURISTIC_MAX_ITERS_WITHOUT_IMPROVEMENT, &mip_settings.heuristic_params.max_iterations_without_improvement, 1, std::numeric_limits<i_t>::max(), 8, "diversity step depth after stagnation"},
     {CUOPT_MIP_HYPER_HEURISTIC_N_OF_MINIMUMS_FOR_EXIT, &mip_settings.heuristic_params.n_of_minimums_for_exit, 1, std::numeric_limits<i_t>::max(), 7000, "FJ baseline local-minima exit threshold"},
