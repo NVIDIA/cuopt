@@ -7,6 +7,8 @@
 
 #include <cuopt/error.hpp>
 #include <cuopt/mathematical_optimization/remote_solve_registry.hpp>
+
+#include <dlfcn.h>
 #include <pdlp/cusparse_view.hpp>
 #include <pdlp/optimal_batch_size_handler/optimal_batch_size_handler.hpp>
 #include <pdlp/pdlp.cuh>
@@ -2691,6 +2693,9 @@ std::unique_ptr<lp_solution_interface_t<i_t, f_t>> solve_lp(
     cuopt_expects(cpu_prob != nullptr,
                   error_type_t::ValidationError,
                   "Remote execution requires CPU memory backend");
+    if (g_solve_lp_remote_fn == nullptr) {
+      dlopen("libcuopt_grpc.so", RTLD_NOW | RTLD_GLOBAL);
+    }
     cuopt_expects(g_solve_lp_remote_fn != nullptr,
                   error_type_t::RuntimeError,
                   "Remote execution requires the gRPC component (libcuopt_grpc.so) to be loaded");

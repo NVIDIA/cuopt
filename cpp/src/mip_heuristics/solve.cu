@@ -8,6 +8,8 @@
 #include <cuopt/error.hpp>
 #include <cuopt/mathematical_optimization/remote_solve_registry.hpp>
 
+#include <dlfcn.h>
+
 #include <linear_algebra/sort_csr.cuh>
 #include <mip_heuristics/feasibility_jump/early_cpufj.cuh>
 #include <mip_heuristics/feasibility_jump/early_gpufj.cuh>
@@ -913,6 +915,9 @@ std::unique_ptr<mip_solution_interface_t<i_t, f_t>> solve_mip(
       cuopt_expects(cpu_prob != nullptr,
                     error_type_t::ValidationError,
                     "Remote execution requires CPU memory backend");
+      if (g_solve_mip_remote_fn == nullptr) {
+        dlopen("libcuopt_grpc.so", RTLD_NOW | RTLD_GLOBAL);
+      }
       cuopt_expects(g_solve_mip_remote_fn != nullptr,
                     error_type_t::RuntimeError,
                     "Remote execution requires the gRPC component (libcuopt_grpc.so) to be loaded");
