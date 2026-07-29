@@ -5,6 +5,9 @@
  */
 /* clang-format on */
 
+#include <pdlp/distributed_pdlp/multi_gpu_engine.hpp>
+
+#include <pdlp/pdlp.cuh>
 #include <pdlp/pdlp_climber_strategy.hpp>
 #include <pdlp/pdlp_constants.hpp>
 #include <pdlp/swap_and_resize_helper.cuh>
@@ -191,6 +194,13 @@ void pdlp_termination_strategy_t<i_t, f_t>::evaluate_termination_criteria(
 template <typename i_t, typename f_t>
 const convergence_information_t<i_t, f_t>&
 pdlp_termination_strategy_t<i_t, f_t>::get_convergence_information() const
+{
+  return convergence_information_;
+}
+
+template <typename i_t, typename f_t>
+convergence_information_t<i_t, f_t>&
+pdlp_termination_strategy_t<i_t, f_t>::get_convergence_information()
 {
   return convergence_information_;
 }
@@ -545,12 +555,24 @@ pdlp_termination_strategy_t<i_t, f_t>::fill_return_problem_solution(
   std::vector<pdlp_termination_status_t>&& termination_status,
   bool deep_copy)
 {
-  cuopt_assert(
-    primal_iterate.size() == current_pdhg_solver.get_primal_size() * termination_status.size(),
-    "Primal iterate size mismatch");
-  cuopt_assert(
-    dual_iterate.size() == current_pdhg_solver.get_dual_size() * termination_status.size(),
-    "Dual iterate size mismatch");
+  // Skip the size checks on the distributed master: its pdhg_solver_ is built from a
+  // shape-0 placeholder while termination_strategy is built from the full problem size
+  if (!current_pdhg_solver.is_distributed_master()) {
+    cuopt_assert(
+      primal_iterate.size() == current_pdhg_solver.get_primal_size() * termination_status.size(),
+      "Primal iterate size mismatch");
+    cuopt_assert(
+      dual_iterate.size() == current_pdhg_solver.get_dual_size() * termination_status.size(),
+      "Dual iterate size mismatch");
+  }
+
+  // In distributed PDLP, gather solutions from the shards to the master.
+  if (auto* engine = current_pdhg_solver.get_mgpu_engine()) {
+    const bool is_current_live_iterate =
+      (&primal_iterate == &current_pdhg_solver.get_potential_next_primal_solution()) ||
+      (&primal_iterate == &current_pdhg_solver.get_primal_solution());
+    if (is_current_live_iterate) { engine->gather_potential_next_solutions_to_master(); }
+  }
 
   typename convergence_information_t<i_t, f_t>::view_t convergence_information_view =
     convergence_information_.view();

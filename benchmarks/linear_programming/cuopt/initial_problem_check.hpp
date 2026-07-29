@@ -16,7 +16,7 @@ double combine_finite_abs_bounds(f_t lower, f_t upper)
 
 template <typename f_t>
 struct violation {
-  violation() {}
+  violation() = default;
   violation(f_t* _scalar) {}
   __device__ __host__ f_t operator()(f_t value, f_t lower, f_t upper)
   {

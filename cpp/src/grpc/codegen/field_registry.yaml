@@ -116,6 +116,8 @@
 proto_imports:
   - cuopt_routing_solution.proto
 
+# yamllint disable rule:indentation
+
 enums:
   pdlp_termination_status:
     domain: solution

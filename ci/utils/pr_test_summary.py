@@ -140,8 +140,14 @@ def _build_body(failed, passed, skipped, cancelled, job_analysis):
                 parts.append(f"{len(skipped)} skipped")
             parts.append(f"{len(cancelled)} cancelled / not completed")
             lines.append(" · ".join(parts))
+        elif not passed:
+            # All test jobs were skipped (no relevant files changed).
+            lines.append(f"⏭️ All {len(skipped)} test job(s) skipped.")
         else:
-            lines.append(f"✅ All {len(passed)} test job(s) passed.")
+            msg = f"✅ All {len(passed)} test job(s) passed."
+            if skipped:
+                msg += f" ({len(skipped)} skipped)"
+            lines.append(msg)
     else:
         lines.append(
             f"**{len(failed)} failed** · {len(passed)} passed · {len(skipped)} skipped"
