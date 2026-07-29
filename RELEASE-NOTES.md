@@ -1,5 +1,80 @@
 # Release Notes
 
+## Release Notes 26.08
+
+### New Features (26.08)
+
+- Multi-GPU PDLP: distribute LP solves across multiple GPUs using METIS partitioning and NCCL communication; 2.5x–8.8x speedup on 8 NVLink-connected B200 GPUs
+- Fast free-format MPS parser with significantly reduced parse time on large models
+- Recursive RINS heuristic for MIP to find better feasible solutions earlier in the search
+- Zero-half (odd-cycle) cuts for MIP
+- Implied bound cuts, extended knapsack cuts, and lifted knapsack cuts
+- Conflict graph improvements: incorporate non-binary rows and probing implications
+- MIP row and objective scaling
+- Papilo-based primal/dual crush for MIP presolve
+- `UnboundedOrInfeasible` termination status for LP/MIP
+- Expose GPU heuristics tuning parameters via configuration files
+- Race batch PDLP against dual simplex in strong branching and reliability branching
+- Dump presolved problem to file for debugging
+- UBI10 (Red Hat Universal Base Image) container variant for FIPS 140-3 compliant environments; image tags use `-ubi10` suffix (e.g. `latest-cu13-ubi10`)
+- Routing: `cuopt.routing` is now importable without a GPU present (CPU-only environments and gRPC clients)
+- Routing: accept NumPy and pandas inputs in the routing Python `DataModel` in addition to cuDF
+- Routing: export the recorded routing problem to a host representation (Phase 3)
+- Routing: defer device construction to solve time (`DataModel` store-then-build)
+- gRPC: Python interface to the C++ gRPC async client
+- gRPC: allow TLS arguments in the Python gRPC async API
+- gRPC: assign gRPC workers to distinct GPUs via `cudaSetDevice`
+- C API: extend getters with additional query functions
+- C API: automatic CPU/GPU memory selection for problem construction
+
+### Breaking Changes (26.08)
+
+None.
+
+### Improvements (26.08)
+
+- Reduce latency in LP concurrent mode
+- Improve crossover dual simplex performance and accuracy
+- Reliability branching candidates are now ranked using a dual simplex single-pivot estimate
+- Build CUDA 13 wheels with CTK 13.3.0
+- Remove `cuda-python` as an explicit dependency
+- Clamp crushed solutions to dual-reduced bounds for better feasibility
+- `objective_scaling_factor` is now optional in gRPC requests
+- MIP log output cleanup and improved readability
+- Print diagnostic logs when exceptions are caught during solves
+
+### Bug Fixes (26.08)
+
+- Fix routing YAML best-results export writing incorrect values
+- Allow zero-valued coefficient updates in the LP Python model
+- Fix row-major layout not preserved when resizing capacity routes in routing
+- Fix libomp ABI incompatibility causing crashes in some environments
+- Fix variable fixing for initial solutions in MIP
+- Fix cuts ignoring the solver time limit
+- Fix clique size computation and associated numerical issues in MIP
+- Fix cuDSS descriptors being freed before their backing buffers in the barrier solver
+- Fix SOC index collision and incorrect QC-to-SOC conversion for rotated SOC constraints
+- Fix root-cut CPU feasibility-jump solutions being dropped by GPU heuristics
+- Fix incorrect GF2 presolve constraint addressing
+- Validate MPS row type byte before enum cast to avoid undefined behavior
+- Fix nonconvex quadratic constraint detection bug
+- Fix Ruiz equilibration skip heuristic to also check column imbalance
+- Fix race condition in CUDA graph capture when `set_simplex_solution()` is called
+- Fix infinite lower bounds handling in barrier when bounding free variables
+- Fix lower bound being incorrect in MIP single-thread mode
+- Add exception handling for PDLP failures in concurrent mode
+- Fix double `va_start` undefined behavior in C error handling
+- gRPC: terminate worker threads cleanly on server shutdown
+- gRPC: cancel active jobs when a job is deleted
+- gRPC: drain all remaining log lines at job completion in `StreamLogs`
+- gRPC: constrain server data file paths to prevent path traversal
+- Fix papilo probing cache synchronization bug
+- Fix Gomory cut generation when `b_bar` test is active
+
+### Documentation (26.08)
+
+- Align cuOpt documentation branding and update Doxygen configuration
+
 ## Release Notes 26.06
 
 ### New Features (26.06)
