@@ -112,6 +112,16 @@ class Variable:
         (unset). Only used for a MIP problem.
     """
 
+    # Input attrs: direct writes mark the matching Problem._stale key.
+    _STALE_ATTRIBUTE = {
+        "LB": "variable",
+        "UB": "variable",
+        "Obj": "objective",
+        "VariableType": "variable",
+        "VariableName": "variable",
+        "MIPStart": "variable",
+    }
+
     def __init__(
         self,
         lb=0.0,
@@ -129,6 +139,15 @@ class Variable:
         self.VariableType = vtype
         self.VariableName = vname
         self.MIPStart = float("nan")
+
+    def __setattr__(self, name, value):
+        object.__setattr__(self, name, value)
+        problem = self.__dict__.get("_problem")
+        stale_key = self._STALE_ATTRIBUTE.get(name)
+        if problem is not None and stale_key is not None:
+            if problem.solved:
+                problem.reset_solved_values()
+            problem._mark_stale(stale_key)
 
     def getIndex(self):
         """
@@ -1317,6 +1336,12 @@ class Constraint:
         Constraint dual value in the current solution.
     """
 
+    _STALE_ATTRIBUTE = {
+        "RHS": "rhs",
+        "Sense": "structure",
+        "ConstraintName": "structure",
+    }
+
     def __init__(self, expr, sense, rhs, name=""):
         self.index = -1
         self.Sense = sense
@@ -1358,6 +1383,18 @@ class Constraint:
                 else v_coeff
             )
         self.RHS = rhs - expr.getConstant()
+
+    def __setattr__(self, name, value):
+        object.__setattr__(self, name, value)
+        problem = self.__dict__.get("_problem")
+        stale_key = self._STALE_ATTRIBUTE.get(name)
+        if problem is not None and stale_key is not None:
+            if name == "RHS" and self.is_quadratic:
+                object.__setattr__(self, "rhs_value", value)
+                stale_key = "structure"
+            if problem.solved:
+                problem.reset_solved_values()
+            problem._mark_stale(stale_key)
 
     def __len__(self):
         return len(self.vindex_coeff_dict)
@@ -1469,15 +1506,14 @@ class Problem:
         self.upper_bound = None
         self.var_type = None
         self._index_to_var_cache = None
-        self._constraint_csr_scipy = None
         self._constraint_index_to_csr_row = None
         # Value/structure dirtiness for warm DataModel sync.
         # True = must refresh that category before the next solve.
         self._stale = {
             "structure": True,
+            "variable": True,
             "objective": True,
             "rhs": True,
-            "bounds": True,
             "A_values": True,
         }
 
@@ -1613,7 +1649,6 @@ class Problem:
             "column_indices": column_indices,
             "values": values,
         }
-        self._constraint_csr_scipy = None
 
         self.objective = np.zeros(n)
         self.lower_bound, self.upper_bound = np.zeros(n), np.zeros(n)
@@ -1690,24 +1725,21 @@ class Problem:
 
     def _invalidate_index_to_var_cache(self):
         self._index_to_var_cache = None
-        self._constraint_csr_scipy = None
         self._constraint_index_to_csr_row = None
 
     def _constraint_csr_scipy_matrix(self):
+        """Build a temporary SciPy CSR for matvec; not retained on Problem."""
         csr_dict = self.constraint_csr_matrix
         if csr_dict is None or self.rhs is None:
             return None
-        if self._constraint_csr_scipy is not None:
-            return self._constraint_csr_scipy
-        self._constraint_csr_scipy = csr_matrix(
+        return csr_matrix(
             (
-                np.asarray(csr_dict["values"], dtype=np.float64),
-                np.asarray(csr_dict["column_indices"], dtype=np.int32),
-                np.asarray(csr_dict["row_pointers"], dtype=np.int32),
+                csr_dict["values"],
+                csr_dict["column_indices"],
+                csr_dict["row_pointers"],
             ),
             shape=(len(self.rhs), len(self.vars)),
         )
-        return self._constraint_csr_scipy
 
     def _refresh_data_model_values(self):
         """Patch existing DataModel when sparsity structure is unchanged."""
@@ -1715,9 +1747,6 @@ class Problem:
         if (
             self.model is None
             or self.constraint_csr_matrix is None
-            or self.objective is None
-            or len(self.objective) != n
-            or self.rhs is None
             or self._stale["structure"]
         ):
             self._to_data_model()
@@ -1735,6 +1764,27 @@ class Problem:
             self.model.set_maximize(self.ObjSense == -1)
             self._stale["objective"] = False
 
+        if self._stale["variable"]:
+            # Rebuild non-objective variable arrays from Variable objects.
+            self.var_names = []
+            for j in range(n):
+                var = self.vars[j]
+                self.var_type[j] = var.getVariableType()
+                self.lower_bound[j] = var.getLowerBound()
+                self.upper_bound[j] = var.getUpperBound()
+                var_name = var.VariableName
+                if var_name == "":
+                    var_name = "C" + str(var.index)
+                self.var_names.append(var_name)
+                self.mip_start[j] = var.MIPStart
+            self.model.set_variable_lower_bounds(self.lower_bound)
+            self.model.set_variable_upper_bounds(self.upper_bound)
+            self.model.set_variable_types(self.var_type)
+            self.model.set_variable_names(self.var_names)
+            if self.mip_start.size > 0 and not np.all(np.isnan(self.mip_start)):
+                self.model.set_initial_primal_solution(self.mip_start)
+            self._stale["variable"] = False
+
         if self._stale["rhs"]:
             # self.rhs is a float64 ndarray after _to_data_model().
             linear_row = 0
@@ -1745,17 +1795,6 @@ class Problem:
                 linear_row += 1
             self.model.set_constraint_bounds(self.rhs)
             self._stale["rhs"] = False
-
-        if self._stale["bounds"]:
-            if self.lower_bound is None or self.upper_bound is None:
-                self._to_data_model()
-                return
-            for j in range(n):
-                self.lower_bound[j] = self.vars[j].getLowerBound()
-                self.upper_bound[j] = self.vars[j].getUpperBound()
-            self.model.set_variable_lower_bounds(self.lower_bound)
-            self.model.set_variable_upper_bounds(self.upper_bound)
-            self._stale["bounds"] = False
 
         if self._stale["A_values"]:
             # Existing nonzero values changed but CSR topology is stable.
@@ -1778,8 +1817,7 @@ class Problem:
         # value categories stale. Drop CSR because direct coefficient edits
         # cannot be mapped back to cached A_values reliably.
         self.constraint_csr_matrix = None
-        self._constraint_csr_scipy = None
-        self._mark_stale("objective", "rhs", "bounds", "A_values")
+        self._mark_stale("variable", "objective", "rhs", "A_values")
 
     def reset_solved_values(
         self, *, invalidate_structure=False, invalidate_solution=True
@@ -1803,7 +1841,7 @@ class Problem:
             self.objective_qmatrix = None
             self._invalidate_index_to_var_cache()
             self._mark_stale(
-                "structure", "objective", "rhs", "bounds", "A_values"
+                "structure", "variable", "objective", "rhs", "A_values"
             )
 
     def addVariable(
@@ -1842,11 +1880,12 @@ class Problem:
         self.model = None
         self._invalidate_index_to_var_cache()
         self._mark_stale(
-            "structure", "objective", "rhs", "bounds", "A_values"
+            "structure", "variable", "objective", "rhs", "A_values"
         )
         n = len(self.vars)
         var = Variable(lb, ub, obj, vtype, name)
         var.index = n
+        var._problem = self
         self.vars.append(var)
         return var
 
@@ -1879,13 +1918,14 @@ class Problem:
         self.model = None
         self._invalidate_index_to_var_cache()
         self._mark_stale(
-            "structure", "objective", "rhs", "bounds", "A_values"
+            "structure", "variable", "objective", "rhs", "A_values"
         )
         n = len(self.constrs)
         match constr:
             case Constraint():
                 constr.index = n
                 constr.ConstraintName = name
+                constr._problem = self
                 self.constrs.append(constr)
             case _:
                 raise ValueError("addConstraint requires a Constraint object")
@@ -1962,10 +2002,6 @@ class Problem:
                             )[0]
                         )
                         values[position] = coeff
-                        if self._constraint_csr_scipy is not None:
-                            self._constraint_csr_scipy.data[
-                                position
-                            ] = coeff
 
                     # Defer DataModel sync until solve() so multiple edits batch.
                     self._mark_stale("A_values")
@@ -2375,10 +2411,18 @@ class Problem:
         >>> mip_problem = problem.Problem.readMPS("MIP.mps")
         >>> lp_problem = problem.relax()
         """
-        self.reset_solved_values()
-        relaxed_problem = copy.deepcopy(self)
-        vars = relaxed_problem.getVariables()
-        for v in vars:
+        # DataModel wraps a Cython C++ view that cannot be deep-copied.
+        # Detach it for the copy; the original keeps its caches, and the
+        # clone rebuilds on its first solve (needed anyway after type changes).
+        model, self.model = self.model, None
+        try:
+            relaxed_problem = copy.deepcopy(self)
+        finally:
+            self.model = model
+
+        # Leave the original problem's solution intact; only wipe the clone.
+        relaxed_problem.reset_solved_values()
+        for v in relaxed_problem.getVariables():
             v.VariableType = CONTINUOUS
         return relaxed_problem
 
