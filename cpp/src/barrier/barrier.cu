@@ -567,7 +567,7 @@ class iteration_data_t {
       }
 
       inv_diag.set_scalar(1.0);
-      if (use_augmented) { diag.multiply_scalar(-1.0); }
+
       if (n_upper_bounds > 0 || (has_Q && !use_augmented)) { diag.inverse(inv_diag); }
       // TMP diag and inv_diag should directly created and filled on the GPU
       raft::copy(d_inv_diag.data(), inv_diag.data(), inv_diag.size(), stream_view_);
