@@ -544,6 +544,7 @@ if (NOT SKIP_GRPC_BUILD)
             src/grpc/client/grpc_client_env.cpp
             src/grpc/client/cython_grpc_client.cpp
             src/grpc/client/solve_remote.cpp
+            src/grpc/client/grpc_registration.cpp
     )
 
     # Always keep NDEBUG defined for gRPC infrastructure files so that abseil
@@ -861,7 +862,15 @@ endif (BUILD_TESTS)
 # Links publicly against the four component shared libs so that -lcuopt keeps working for
 # all existing consumers.
 
-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/cuopt_umbrella.cpp" "// thin umbrella\n")
+# Reference cuOptDestroyProblem (from libcuopt_lp.so) so --as-needed keeps
+# libcuopt_lp.so in DT_NEEDED, preserving the -lcuopt C API contract for users
+# who compile C programs with -lcuopt.
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/cuopt_umbrella.cpp" [=[
+// Thin umbrella. References cuOptDestroyProblem so --as-needed keeps
+// libcuopt_lp.so in DT_NEEDED, preserving the -lcuopt C API contract.
+extern "C" void cuOptDestroyProblem(void*);
+__attribute__((used)) void (* const _cuopt_lp_anchor)(void*) = &cuOptDestroyProblem;
+]=])
 
 add_library(cuopt SHARED "${CMAKE_CURRENT_BINARY_DIR}/cuopt_umbrella.cpp")
 add_library(cuopt::cuopt ALIAS cuopt)
