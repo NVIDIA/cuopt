@@ -13,9 +13,7 @@
 - Papilo-based primal/dual crush in MIP presolve
 - Vector length diving and Farkas diving heuristics for MIP
 - UBI10 (Red Hat Universal Base Image) container variant for FIPS 140-3 compliant environments; image tags use `-ubi10` suffix (e.g. `latest-cu13-ubi10`)
-- Routing: `cuopt.routing` is now importable without a GPU (CPU-only environments and gRPC clients)
 - Routing: accept NumPy and pandas inputs in the routing Python `DataModel` in addition to cuDF
-- Routing: export the recorded routing problem to a host representation
 - gRPC: Python interface to the C++ gRPC async client
 - gRPC: allow TLS arguments in the Python gRPC async API
 - C API: extend getters with additional query functions
@@ -35,12 +33,10 @@
 - Unify threading model in the MIP solver using OpenMP tasks
 - MIP log cleanup and improved readability
 - Add short `cu12`/`cu13` Docker tag aliases
-- Build and test with CUDA 13.3.0
 - Remove `cuda-python` as an explicit dependency
 - gRPC: `objective_scaling_factor` is now optional in requests
 - gRPC: assign workers to distinct GPUs via `cudaSetDevice`
-- Routing: cost matrix validation check is now optional
-
+  
 ### Bug Fixes (26.08)
 
 - Fix lower bound being incorrect in MIP single-thread mode
@@ -51,7 +47,7 @@
 - Fix vehicle fixed cost accounting in fragment-vs-route deltas
 - Fix PDLP cublas error capture and hang on infeasible solutions
 - Add guard for huge bounds in bounds propagation
-- gRPC: fix race condition with log streaming
+- gRPC: fix race condition in gRPC with log streaming
 - Fix routing min-vehicles bug
 - Fix nonconvex quadratic constraint detection bug
 - Fix rotated SOC detection: canonicalize QC Q COO
