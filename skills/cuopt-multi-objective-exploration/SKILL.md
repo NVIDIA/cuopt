@@ -14,8 +14,6 @@ metadata:
     - workflow
 ---
 
-
-
 # Multi-Objective Exploration
 
 
@@ -167,4 +165,3 @@ This skill is solver- and interface-agnostic. The per-solve mechanics — buildi
 
 - `cuopt-numerical-optimization-api` — LP, MILP, QP solves (Python, C, CLI).
 - `cuopt-routing-api-python` — the same frontier workflow applies to routing tradeoffs (distance vs. vehicles vs. time).
-- `cuopt-server-api-python` — deploy and call the REST server for remote multi-objective solves.
