@@ -9,7 +9,7 @@
 
 #include <dual_simplex/presolve.hpp>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 template <typename i_t, typename f_t>
 class bounds_strengthening_t {
@@ -42,4 +42,4 @@ class bounds_strengthening_t {
   std::vector<f_t> constraint_lb;
   std::vector<f_t> constraint_ub;
 };
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

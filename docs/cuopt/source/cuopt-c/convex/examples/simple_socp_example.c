@@ -1,6 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights
- * reserved. SPDX-License-Identifier: Apache-2.0
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
 /*
  * Simple SOCP C API Example
@@ -26,7 +26,7 @@
  *   ./simple_socp_example
  */
 
-#include <cuopt/linear_programming/cuopt_c.h>
+#include <cuopt/mathematical_optimization/cuopt_c.h>
 #include <stdio.h>
 #include <stdlib.h>
 

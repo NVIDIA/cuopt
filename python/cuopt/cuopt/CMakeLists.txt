@@ -8,6 +8,7 @@ add_subdirectory(linear_programming/data_model)
 add_subdirectory(linear_programming/io)
 add_subdirectory(linear_programming/solver)
 add_subdirectory(linear_programming/solver_settings)
+add_subdirectory(grpc)
 
 add_subdirectory(routing)
 

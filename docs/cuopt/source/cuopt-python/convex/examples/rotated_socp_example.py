@@ -14,11 +14,7 @@ Problem:
                 x1^2 + x2^2 <= x3 * x4     (rotated second-order cone)
                 x3 >= 0, x4 >= 0
 
-The rotated cone is supplied as the quadratic inequality
-``x1^2 + x2^2 - 0.5 * x3*x4 - 0.5 * x4*x3 <= 0``. cuOpt expects a symmetric quadratic matrix ``Q``,
-so the cross term is split into the two equal halves ``-0.5*x3*x4`` and
-``-0.5*x4*x3`` (i.e. ``Q[x3, x4] = Q[x4, x3] = -0.5``). cuOpt detects the
-second-order cone structure and solves with the barrier method.
+The rotated cone is written as ``x1^2 + x2^2 - x3*x4 <= 0``.
 
 Optimal solution: x1 = x2 = 1, x3 = x4 = sqrt(2) ~= 1.4142, objective ~= 2.8284.
 """
@@ -41,10 +37,9 @@ def main():
     # Linear constraint
     prob.addConstraint(x1 + x2 >= 2)
 
-    # Rotated cone x1^2 + x2^2 <= x3 * x4. The quadratic matrix must be
-    # symmetric, so the cross term is supplied as two equal halves.
+    # x1^2 + x2^2 <= x3*x4
     prob.addConstraint(
-        x1 * x1 + x2 * x2 - 0.5 * x3 * x4 - 0.5 * x4 * x3 <= 0,
+        x1 * x1 + x2 * x2 - x3 * x4 <= 0,
         name="rotated_soc",
     )
 

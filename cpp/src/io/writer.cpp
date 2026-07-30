@@ -5,11 +5,11 @@
  */
 /* clang-format on */
 
-#include <cuopt/linear_programming/io/writer.hpp>
+#include <cuopt/mathematical_optimization/io/writer.hpp>
 
-#include <cuopt/linear_programming/io/mps_writer.hpp>
+#include <cuopt/mathematical_optimization/io/mps_writer.hpp>
 
-namespace cuopt::linear_programming::io {
+namespace cuopt::mathematical_optimization::io {
 
 template <typename i_t, typename f_t>
 void write_mps(const data_model_view_t<i_t, f_t>& problem, const std::string& mps_file_path)
@@ -23,4 +23,4 @@ template void write_mps<int, float>(const data_model_view_t<int, float>& problem
 template void write_mps<int, double>(const data_model_view_t<int, double>& problem,
                                      const std::string& mps_file_path);
 
-}  // namespace cuopt::linear_programming::io
+}  // namespace cuopt::mathematical_optimization::io

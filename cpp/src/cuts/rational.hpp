@@ -13,7 +13,7 @@
 #include <numeric>
 #include <vector>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::mip {
 
 // Best rational approximation p/q to x with q <= max_denominator, via continued fractions.
 // On success, returns true with numerator/denominator set to a rational within 1e-14 of x.
@@ -185,4 +185,4 @@ f_t gcd_of_integer_values(const std::vector<f_t>& values)
   return static_cast<f_t>(g);
 }
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::mip

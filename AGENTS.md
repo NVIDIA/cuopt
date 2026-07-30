@@ -14,16 +14,12 @@ AI agent skills for NVIDIA cuOpt optimization engine. Skills live in **`skills/`
 ### Common (concepts only; no API code)
 - `skills/cuopt-numerical-optimization-formulation/` — LP / MILP / QP: concepts + problem parsing + common formulation patterns
 - `skills/cuopt-multi-objective-exploration/` — Multi-objective: trace + interpret the Pareto frontier across competing objectives (ε-constraint / weighted-sum over repeated cuOpt solves)
-- `skills/cuopt-routing-formulation/` — Routing: VRP, TSP, PDP (problem types, data)
-- `skills/cuopt-server-common/` — Server: capabilities, workflow
 
 ### Installation
 - `skills/cuopt-install/` — User install for Python, C, and server (pip, conda, Docker, verification). For building cuOpt from source, see `skills/cuopt-developer/`.
 
-### API (implementation; one interface per skill)
-- `skills/cuopt-numerical-optimization-api-python/` (LP, MILP, QP)
-- `skills/cuopt-numerical-optimization-api-c/` (LP, MILP, QP)
-- `skills/cuopt-numerical-optimization-api-cli/` (LP, MILP, QP)
+### API (implementation)
+- `skills/cuopt-numerical-optimization-api/` (LP, MILP, QP — Python, C, CLI; interface-specific details in `references/`)
 - `skills/cuopt-routing-api-python/`
 - `skills/cuopt-server-api-python/` (deploy + client)
 

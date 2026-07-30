@@ -11,8 +11,8 @@
 #include <pdlp/pdhg.hpp>
 #include <pdlp/saddle_point.hpp>
 
-#include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
-#include <cuopt/linear_programming/utilities/segmented_sum_handler.cuh>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/mathematical_optimization/utilities/segmented_sum_handler.cuh>
 
 #include <mip_heuristics/problem/problem.cuh>
 
@@ -23,23 +23,23 @@
 #include <rmm/device_scalar.hpp>
 #include <rmm/device_uvector.hpp>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 template <typename i_t, typename f_t>
 class infeasibility_information_t {
  public:
-  infeasibility_information_t(
-    raft::handle_t const* handle_ptr,
-    problem_t<i_t, f_t>& op_problem,
-    const problem_t<i_t, f_t>& op_problem_scaled,  // Only used for cuPDLPx infeasibility detection
-    cusparse_view_t<i_t, f_t>& cusparse_view,
-    const cusparse_view_t<i_t, f_t>& scaled_cusparse_view,
-    i_t primal_size,
-    i_t dual_size,
-    const pdlp_initial_scaling_strategy_t<i_t, f_t>&
-      scaling_strategy,  // Only used for cuPDLPx infeasibility detection
-    bool infeasibility_detection,
-    const std::vector<pdlp_climber_strategy_t>& climber_strategies,
-    const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params);
+  infeasibility_information_t(raft::handle_t const* handle_ptr,
+                              mip::problem_t<i_t, f_t>& op_problem,
+                              const mip::problem_t<i_t, f_t>&
+                                op_problem_scaled,  // Only used for cuPDLPx infeasibility detection
+                              cusparse_view_t<i_t, f_t>& cusparse_view,
+                              const cusparse_view_t<i_t, f_t>& scaled_cusparse_view,
+                              i_t primal_size,
+                              i_t dual_size,
+                              const pdlp_initial_scaling_strategy_t<i_t, f_t>&
+                                scaling_strategy,  // Only used for cuPDLPx infeasibility detection
+                              bool infeasibility_detection,
+                              const std::vector<pdlp_climber_strategy_t>& climber_strategies,
+                              const pdlp::pdlp_hyper_params_t& hyper_params);
 
   void compute_infeasibility_information(pdhg_solver_t<i_t, f_t>& current_pdhg_solver,
                                          rmm::device_uvector<f_t>& primal_ray,
@@ -90,7 +90,7 @@ class infeasibility_information_t {
   i_t primal_size_h_;
   i_t dual_size_h_;
 
-  problem_t<i_t, f_t>* problem_ptr;
+  mip::problem_t<i_t, f_t>* problem_ptr;
   cusparse_view_t<i_t, f_t>& op_problem_cusparse_view_;
   const cusparse_view_t<i_t, f_t>& scaled_cusparse_view_;
 
@@ -130,10 +130,10 @@ class infeasibility_information_t {
   const rmm::device_scalar<f_t> reusable_device_scalar_value_neg_1_;
 
   const pdlp_initial_scaling_strategy_t<i_t, f_t>& scaling_strategy_;
-  const problem_t<i_t, f_t>& op_problem_scaled_;
+  const mip::problem_t<i_t, f_t>& op_problem_scaled_;
 
-  segmented_sum_handler_t<i_t, f_t> segmented_sum_handler_;
+  cuopt::segmented_sum_handler_t<i_t, f_t> segmented_sum_handler_;
   const std::vector<pdlp_climber_strategy_t>& climber_strategies_;
-  const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params_;
+  const pdlp::pdlp_hyper_params_t& hyper_params_;
 };
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

@@ -13,6 +13,7 @@ metadata:
     - python-bindings
 ---
 
+
 # cuOpt Developer Skill
 
 Contribute to the NVIDIA cuOpt codebase. This skill is for modifying cuOpt itself, not for using it.
@@ -86,6 +87,13 @@ Is this correct?"
 ### 5. No Privileged Operations
 
 `sudo`/system-level changes are the one non-negotiable refusal; user-space installs and conda env setup are allowed. See [Refusal Rules — Read First](#refusal-rules--read-first).
+
+### 6. Prefer Low-Maintenance, Hard-to-Break Designs
+
+When adding an API — a setter, endpoint, parameter, or a layer that wraps another — favor the design that keeps a single source of truth and has no silent-failure path:
+
+- **Derive, don't duplicate.** A second copy of a surface (a hand-maintained list of the methods/fields another layer already defines, or shadow state kept in parallel with the real data) drifts the moment someone forgets to update it. Derive it from the single source instead, so there is nothing to keep in sync.
+- **Fail loud, not silent.** Prefer a design where forgetting a step is caught automatically over one that quietly does the wrong thing. When a mechanism leans on a convention, add a test that asserts full coverage, so a case that slips the convention fails CI instead of silently misbehaving.
 
 ---
 
@@ -214,6 +222,12 @@ For pre-commit setup, DCO sign-off (`git commit -s`), the fork-based PR workflow
 ## Coding Conventions
 
 For C++ naming (`snake_case`, `d_`/`h_` prefixes, `_t` suffix), file extensions (`.hpp`/`.cpp`/`.cu`/`.cuh` and which compiler each uses), include order, Python style, error handling (`CUOPT_EXPECTS`, `RAFT_CUDA_TRY`), memory management (RMM patterns, no raw `new`/`delete`), and test-impact rules, see [references/conventions.md](references/conventions.md).
+
+## OpenMP task/runtime compatibility
+
+Treat `#pragma omp task if(...) firstprivate(...)` with a non-trivial C++ capture as runtime-ABI-sensitive. In affected LLVM libomp versions, the GCC `GOMP_task` compatibility path skips the GCC copy function for an included (`if(false)`) task, so the task body can observe an unconstructed object. Branch explicitly instead: create the OpenMP task only when deferral is wanted, and call the body synchronously otherwise.
+
+When diagnosing OpenMP-only failures, test compiler/runtime pairs separately. A Clang + libomp pass exercises the `__kmpc_*` ABI and does not cover GCC + libomp's `GOMP_*` path; reduce suspicious cases to a direct runtime-ABI probe before attributing them to solver logic.
 
 ## Troubleshooting & CI
 

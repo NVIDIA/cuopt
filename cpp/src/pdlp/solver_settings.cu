@@ -6,8 +6,8 @@
 /* clang-format on */
 
 #include <cuopt/error.hpp>
-#include <cuopt/linear_programming/pdlp/pdlp_warm_start_data.hpp>
-#include <cuopt/linear_programming/pdlp/solver_settings.hpp>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_warm_start_data.hpp>
+#include <cuopt/mathematical_optimization/pdlp/solver_settings.hpp>
 #include <math_optimization/solution_writer.hpp>
 #include <mip_heuristics/mip_constants.hpp>
 #include <utilities/logger.hpp>
@@ -20,7 +20,7 @@
 #include <thrust/scatter.h>
 #include <span>
 
-namespace cuopt::linear_programming {
+namespace cuopt::mathematical_optimization {
 
 template <typename i_t, typename f_t>
 void pdlp_solver_settings_t<i_t, f_t>::set_optimality_tolerance(f_t eps_optimal)
@@ -422,4 +422,4 @@ template class pdlp_solver_settings_t<int, float>;
 template class pdlp_solver_settings_t<int, double>;
 #endif
 
-}  // namespace cuopt::linear_programming
+}  // namespace cuopt::mathematical_optimization

@@ -10,9 +10,9 @@
 #include <branch_and_bound/mip_node.hpp>
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/simplex_solver_settings.hpp>
-#include <dual_simplex/tic_toc.hpp>
-#include <dual_simplex/types.hpp>
 #include <dual_simplex/user_problem.hpp>
+#include <math_optimization/tic_toc.hpp>
+#include <math_optimization/types.hpp>
 
 #include "dejavu.h"
 
@@ -20,7 +20,7 @@
 #include <numeric>
 #include <sstream>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::mip {
 
 // permutation_t stores a dense permutation plus its support (non-identity entries).
 template <typename i_t>
@@ -338,9 +338,9 @@ class orbital_fixing_t {
   // Returns the number of free variables in conflicting orbits (orbits with
   // both zero and one sources).
   i_t orbital_fixing(mip_symmetry_t<i_t, f_t>* symmetry,
-                     const simplex_solver_settings_t<i_t, f_t>& settings,
+                     const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
                      mip_node_t<i_t, f_t>* node_ptr,
-                     lp_problem_t<i_t, f_t>& problem,
+                     simplex::lp_problem_t<i_t, f_t>& problem,
                      const std::vector<f_t>& start_lower,
                      const std::vector<f_t>& start_upper)
   {
@@ -605,7 +605,7 @@ class lexical_reduction_t {
   // Return -1 to prune the node, otherwise return the number of fixings applied.
   i_t lexical_reduce(mip_symmetry_t<i_t, f_t>* symmetry,
                      mip_node_t<i_t, f_t>* node_ptr,
-                     lp_problem_t<i_t, f_t>& problem)
+                     simplex::lp_problem_t<i_t, f_t>& problem)
   {
     reverse_branched_variables_.clear();
     mip_node_t<i_t, f_t>* node = node_ptr;
@@ -680,22 +680,24 @@ class lexical_reduction_t {
 
 template <typename i_t, typename f_t>
 std::unique_ptr<mip_symmetry_t<i_t, f_t>> detect_symmetry(
-  const user_problem_t<i_t, f_t>& user_problem,
-  const simplex_solver_settings_t<i_t, f_t>& settings,
+  const simplex::user_problem_t<i_t, f_t>& user_problem,
+  const simplex::simplex_solver_settings_t<i_t, f_t>& settings,
   bool& has_symmetry)
 {
+  settings.log.printf("\nRunning symmetry detection...\n");
+
   has_symmetry = false;
 
   f_t start_time = tic();
-  lp_problem_t<i_t, f_t> problem(user_problem.handle_ptr, 1, 1, 1);
+  simplex::lp_problem_t<i_t, f_t> problem(user_problem.handle_ptr, 1, 1, 1);
   std::vector<i_t> new_slacks;
-  dualize_info_t<i_t, f_t> dualize_info;
+  simplex::dualize_info_t<i_t, f_t> dualize_info;
   convert_user_problem(user_problem, settings, problem, new_slacks, dualize_info);
-  std::vector<variable_type_t> var_types = user_problem.var_types;
+  std::vector<simplex::variable_type_t> var_types = user_problem.var_types;
   if (problem.num_cols > user_problem.num_cols) {
     var_types.resize(problem.num_cols);
     for (i_t k = user_problem.num_cols; k < problem.num_cols; k++) {
-      var_types[k] = variable_type_t::CONTINUOUS;
+      var_types[k] = simplex::variable_type_t::CONTINUOUS;
     }
   }
 
@@ -729,12 +731,12 @@ std::unique_ptr<mip_symmetry_t<i_t, f_t>> detect_symmetry(
     return var_types[a] < var_types[b];
   });
   std::vector<i_t> var_colors(problem.num_cols, -1);
-  i_t var_color             = 0;
-  f_t last_obj              = problem.objective[obj_perm[0]];
-  f_t last_lower            = problem.lower[obj_perm[0]];
-  f_t last_upper            = problem.upper[obj_perm[0]];
-  variable_type_t last_type = var_types[obj_perm[0]];
-  var_colors[obj_perm[0]]   = var_color;
+  i_t var_color                      = 0;
+  f_t last_obj                       = problem.objective[obj_perm[0]];
+  f_t last_lower                     = problem.lower[obj_perm[0]];
+  f_t last_upper                     = problem.upper[obj_perm[0]];
+  simplex::variable_type_t last_type = var_types[obj_perm[0]];
+  var_colors[obj_perm[0]]            = var_color;
   for (i_t k = 1; k < problem.num_cols; k++) {
     const i_t j   = obj_perm[k];
     const f_t obj = problem.objective[j];
@@ -970,7 +972,7 @@ std::unique_ptr<mip_symmetry_t<i_t, f_t>> detect_symmetry(
   result->num_original_vars = num_original_vars;
   result->is_binary.resize(num_original_vars, 0);
   for (i_t j = 0; j < num_original_vars; j++) {
-    if (var_types[j] != variable_type_t::CONTINUOUS) {
+    if (var_types[j] != simplex::variable_type_t::CONTINUOUS) {
       if (user_problem.lower[j] == 0.0 && user_problem.upper[j] == 1.0) {
         result->is_binary[j] = 1;
         result->binary_variables.push_back(j);
@@ -1138,4 +1140,4 @@ std::unique_ptr<mip_symmetry_t<i_t, f_t>> detect_symmetry(
   return result;
 }
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::mip

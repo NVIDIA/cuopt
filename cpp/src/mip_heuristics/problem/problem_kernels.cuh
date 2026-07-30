@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -11,7 +11,7 @@
 
 #include "problem.cuh"
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 __global__ void compute_new_offsets(const typename problem_t<i_t, f_t>::view_t orig_problem,
@@ -77,4 +77,4 @@ __global__ void compute_related_vars_unique(const typename problem_t<i_t, f_t>::
   }
 }
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

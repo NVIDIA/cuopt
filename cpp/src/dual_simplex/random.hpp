@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2023-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -9,7 +9,7 @@
 
 #include <random>
 
-namespace cuopt::linear_programming::dual_simplex {
+namespace cuopt::mathematical_optimization::simplex {
 
 template <typename i_t, typename f_t>
 class random_t {
@@ -34,4 +34,4 @@ class random_t {
   std::mt19937 gen;
 };
 
-}  // namespace cuopt::linear_programming::dual_simplex
+}  // namespace cuopt::mathematical_optimization::simplex

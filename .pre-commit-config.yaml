@@ -1,14 +1,21 @@
 # SPDX-FileCopyrightText: Copyright (c) 2019-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+exclude: |
+  (?x)^(
+    skills/.*/skill\.oms\.sig|
+    skills/.*/skill-card\.md|
+    skills/.*/BENCHMARK\.md
+  )$
+
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: 'v6.0.0'
     hooks:
       - id: end-of-file-fixer
-        exclude: ^(datasets|helmchart)/.*\.(mps|json|yaml|yml|txt)$|^skills/.*/skill\.oms\.sig$
+        exclude: ^(datasets|helmchart)/.*\.(mps|json|yaml|yml|txt)$
       - id: trailing-whitespace
-        exclude: ^datasets/.*\.(mps|json|yaml|yml|txt)$|^skills/.*/skill\.oms\.sig$
+        exclude: ^datasets/.*\.(mps|json|yaml|yml|txt)$
       - id: check-builtin-literals
       - id: check-executables-have-shebangs
       - id: check-json
@@ -54,7 +61,7 @@ repos:
       - id: shellcheck
         args: ["--severity=warning"]
   - repo: https://github.com/rapidsai/pre-commit-hooks
-    rev: v1.4.3
+    rev: v1.6.0
     hooks:
       - id: verify-copyright
         args: [--fix, --spdx]
@@ -90,6 +97,7 @@ repos:
             (^|/)pom[.]xml$|
             ^[.]pre-commit-config[.]yaml$|
             ^conda/environments/|
+            ^docs/cuopt/source/cuopt-server/nim-operator/guide/|
             (^|/)VERSION$|
             (^|/)RAPIDS_BRANCH$|
             [.](md|rst|avro|parquet|png|orc|gz|pkl|sas7bdat|msgpack|pickle|jpg|bz2|zlib)$|

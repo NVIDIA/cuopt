@@ -7,8 +7,8 @@
 
 #include <gtest/gtest.h>
 
-#include <cuopt/linear_programming/constants.h>
-#include <cuopt/linear_programming/solve.hpp>
+#include <cuopt/mathematical_optimization/constants.h>
+#include <cuopt/mathematical_optimization/solve.hpp>
 #include <dual_simplex/presolve.hpp>
 #include <dual_simplex/scaling.hpp>
 #include <dual_simplex/solve.hpp>
@@ -20,7 +20,7 @@
 #include <cmath>
 #include <vector>
 
-namespace cuopt::linear_programming::dual_simplex::test {
+namespace cuopt::mathematical_optimization::simplex::test {
 
 // This serves as both a warm up but also a mandatory initial call to setup cuSparse and cuBLAS
 static void init_handler(const raft::handle_t* handle_ptr)
@@ -37,7 +37,6 @@ TEST(barrier, cone_metadata_reindexed_when_slack_is_inserted_before_cones)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<int, double> user_problem(&handle);
 
   constexpr int m       = 1;
@@ -98,7 +97,6 @@ TEST(barrier, presolve_reindexes_cone_start_after_empty_column_removal)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<int, double> user_problem(&handle);
 
   constexpr int m  = 1;
@@ -167,7 +165,6 @@ TEST(barrier, presolve_keeps_direct_free_variables_before_cones)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<int, double> user_problem(&handle);
 
   constexpr int m  = 1;
@@ -230,7 +227,6 @@ TEST(barrier, rejects_middle_cone_input_before_barrier)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<int, double> user_problem(&handle);
 
   constexpr int m  = 3;
@@ -282,7 +278,6 @@ TEST(barrier, socp_min_x0_subject_to_norm_constraint)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<int, double> user_problem(&handle);
 
   constexpr int m  = 1;
@@ -343,7 +338,6 @@ TEST(barrier, mixed_linear_and_soc_block)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<int, double> user_problem(&handle);
 
   constexpr int m  = 2;
@@ -409,7 +403,6 @@ TEST(barrier, mixed_linear_and_soc_tail_coupling)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<int, double> user_problem(&handle);
 
   constexpr int m  = 2;
@@ -476,7 +469,6 @@ TEST(barrier, mixed_linear_and_soc_tail_coupling_with_inequality)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<int, double> user_problem(&handle);
 
   constexpr int m  = 2;
@@ -546,7 +538,6 @@ TEST(barrier, mixed_linear_and_two_soc_blocks)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<int, double> user_problem(&handle);
 
   constexpr int m  = 4;
@@ -627,7 +618,6 @@ TEST(barrier, mixed_linear_and_two_soc_blocks_with_inequality)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<int, double> user_problem(&handle);
 
   constexpr int m  = 4;
@@ -707,7 +697,6 @@ TEST(barrier, free_linear_prefix_is_uncrushed_correctly_with_soc_block)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<int, double> user_problem(&handle);
 
   constexpr int m  = 2;
@@ -771,7 +760,6 @@ TEST(barrier, qp_with_soc_block)
   raft::handle_t handle{};
   init_handler(&handle);
 
-  using namespace cuopt::linear_programming::dual_simplex;
   user_problem_t<int, double> user_problem(&handle);
 
   constexpr int m  = 1;
@@ -824,4 +812,4 @@ TEST(barrier, qp_with_soc_block)
   EXPECT_NEAR(std::abs(solution.x[3]), 0.0, 1e-4);
 }
 
-}  // namespace cuopt::linear_programming::dual_simplex::test
+}  // namespace cuopt::mathematical_optimization::simplex::test

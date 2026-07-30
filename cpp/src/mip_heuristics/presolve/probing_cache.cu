@@ -24,7 +24,7 @@
 #include <unordered_set>
 #include <utilities/omp_helpers.hpp>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 i_t probing_cache_t<i_t, f_t>::check_number_of_conflicting_vars(
@@ -967,4 +967,4 @@ INSTANTIATE(double)
 
 #undef INSTANTIATE
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::mip

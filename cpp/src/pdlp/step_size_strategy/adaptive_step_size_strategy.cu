@@ -5,7 +5,7 @@
  */
 /* clang-format on */
 
-#include <cuopt/linear_programming/pdlp/pdlp_hyper_params.cuh>
+#include <cuopt/mathematical_optimization/pdlp/pdlp_hyper_params.cuh>
 
 #include <pdlp/pdlp_climber_strategy.hpp>
 #include <pdlp/pdlp_constants.hpp>
@@ -33,7 +33,7 @@
 
 #include <limits>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 
 template <typename i_t, typename f_t>
 adaptive_step_size_strategy_t<i_t, f_t>::adaptive_step_size_strategy_t(
@@ -44,7 +44,7 @@ adaptive_step_size_strategy_t<i_t, f_t>::adaptive_step_size_strategy_t(
   i_t primal_size,
   i_t dual_size,
   const std::vector<pdlp_climber_strategy_t>& climber_strategies,
-  const pdlp_hyper_params::pdlp_hyper_params_t& hyper_params)
+  const pdlp::pdlp_hyper_params_t& hyper_params)
   : batch_mode_(climber_strategies.size() > 1),
     handle_ptr_(handle_ptr),
     stream_view_(handle_ptr_->get_stream()),
@@ -585,4 +585,4 @@ INSTANTIATE(float)
 INSTANTIATE(double)
 #endif
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp

@@ -1,6 +1,6 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
@@ -10,7 +10,7 @@
 #include <rmm/device_uvector.hpp>
 
 namespace cuopt {
-namespace linear_programming::detail {
+namespace mathematical_optimization::mip {
 
 template <typename i_t, typename f_t>
 struct problem_fixing_helpers_t {
@@ -30,5 +30,5 @@ struct problem_fixing_helpers_t {
   rmm::device_uvector<i_t> variable_fix_mask;
 };
 
-}  // namespace linear_programming::detail
+}  // namespace mathematical_optimization::mip
 }  // namespace cuopt

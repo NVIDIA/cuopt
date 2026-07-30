@@ -30,7 +30,7 @@
 #include <thrust/transform_reduce.h>
 #include <thrust/tuple.h>
 
-namespace cuopt::linear_programming::detail {
+namespace cuopt::mathematical_optimization::pdlp {
 
 template <typename f_t, int BLOCK_SIZE>
 DI f_t deterministic_block_reduce(raft::device_span<f_t> shared, f_t val)
@@ -265,7 +265,7 @@ struct rhs_sum_of_squares_t {
 };
 
 template <typename i_t, typename f_t>
-void inline combine_constraint_bounds(const problem_t<i_t, f_t>& op_problem,
+void inline combine_constraint_bounds(const mip::problem_t<i_t, f_t>& op_problem,
                                       rmm::device_uvector<f_t>& combined_bounds)
 {
   cuopt_assert(
@@ -671,4 +671,4 @@ void inline my_inf_norm(const rmm::device_uvector<f_t>& input_vector,
   my_inf_norm(input_vector, result.data(), handle_ptr);
 }
 
-}  // namespace cuopt::linear_programming::detail
+}  // namespace cuopt::mathematical_optimization::pdlp
