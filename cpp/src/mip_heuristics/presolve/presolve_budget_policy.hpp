@@ -76,6 +76,9 @@ struct presolve_budget_t {
   double probing_work_limit{std::numeric_limits<double>::infinity()};
   // Probed variables per step, i.e. the granularity at which the budget can be enforced.
   int probing_step_size{2048};
+  // Coverage the policy asked for, kept only so the log can be compared against what was realised;
+  // the two diverge when an instance's probes are dearer than the average the budget assumed.
+  double intended_probe_fraction{1.0};
 };
 
 namespace detail {
@@ -98,15 +101,25 @@ presolve_budget_t evaluate_presolve_budget(const mip_heuristics_hyper_params_t<i
 
   presolve_budget_t b{};
 
-  const double nnz   = std::max<double>(feat.nnz, 1.0);
-  const double arl   = std::max<double>(feat.avg_row_len(), 1.0);
-  const double n_int = std::max<double>(feat.n_int, 1.0);
-  const double n_bin = std::max<double>(feat.n_bin, 1.0);
-  const double bf    = feat.bin_frac();
+  const double nnz = std::max<double>(feat.nnz, 1.0);
+  const double arl = std::max<double>(feat.avg_row_len(), 1.0);
+  // Probing candidates are the integers of the problem the probing cache runs on.
+  const double n_cand = std::max<double>(feat.n_int, 1.0);
+  const double n_bin  = std::max<double>(feat.n_bin, 1.0);
+  const double bf     = feat.bin_frac();
 
+  // Probing cost is close to linear in the candidate count -- ~0.055 work units per candidate,
+  // measured across the 240-instance benchmark -- and the candidate set is the integers of the
+  // reduced problem. A constant budget therefore probes a small problem exhaustively and a large
+  // one barely at all: a flat 30 units covered 21% of 30n20b8 but 0.8% of netdiversion, which cost
+  // four instances their feasible solution. Policies state the fraction of candidates they want
+  // probed instead, converted below with the same cost model the probing loop charges.
+  constexpr double avg_iters_per_probe = 3.5;
+  const double per_candidate_work =
+    (double)hp.probe_host_overhead_work + avg_iters_per_probe * (double)hp.probe_iter_work;
   // Lets a single knob scale every derived policy without recompiling: 1.0 at the default of 30.
   const double work_scale = static_cast<double>(hp.cuopt_presolve_work_limit) / 30.0;
-  double raw_work         = 30.0;
+  double probe_fraction   = 1.0;
 
   switch (static_cast<presolve_budget_policy_t>(hp.presolve_budget_policy)) {
     case presolve_budget_policy_t::legacy:
@@ -116,12 +129,14 @@ presolve_budget_t evaluate_presolve_budget(const mip_heuristics_hyper_params_t<i
       b.probing_step_size    = 2048;
       return b;
 
+    // Papilo-only arm: the round and badge caps measured clean against the baseline, so probing is
+    // left unbounded here to isolate their effect from the probing budget's.
     case presolve_budget_policy_t::fixed:
       b.papilo_max_rounds    = 30;
       b.papilo_max_badgesize = 1024;
-      b.probing_work_limit   = 30.0;
-      b.probing_step_size    = 512;
-      return b;
+      probe_fraction         = 1.0;
+      b.probing_step_size    = 128;
+      break;
 
     case presolve_budget_policy_t::manual:
       b.papilo_max_rounds    = hp.presolve_max_rounds;
@@ -136,12 +151,16 @@ presolve_budget_t evaluate_presolve_budget(const mip_heuristics_hyper_params_t<i
     // problems the opposite holds (mzzv11, 30n20b8, air05 all reduce measurably worse at 32), so
     // the cap is applied by width only. Rounds are kept non-binding on wide problems -- everything
     // measured saturates well before 50 -- and capped on narrow ones, where mzzv11 keeps growing.
+    // The probing fraction is the hypothesis under test here, not a measured value: truncated
+    // probing was what won on bab6 (0.5% of candidates), square41 (4.3%) and square47 (2.9%), and
+    // what lost on 30n20b8 (21.6%) and physiciansched3-3 (9.1%), so the benchmark has one point per
+    // instance and no curve. A quarter sits between those two clusters.
     case presolve_budget_policy_t::size: {
       const bool wide        = feat.n_vars > 2.0e4;
       b.papilo_max_rounds    = wide ? 50 : 20;
       b.papilo_max_badgesize = wide ? 32 : -1;
-      raw_work               = 120.0;
-      b.probing_step_size    = 512;
+      probe_fraction         = 0.25;
+      b.probing_step_size    = 128;
       break;
     }
 
@@ -151,8 +170,8 @@ presolve_budget_t evaluate_presolve_budget(const mip_heuristics_hyper_params_t<i
     case presolve_budget_policy_t::density:
       b.papilo_max_rounds    = arl <= 10 ? 40 : arl <= 50 ? 20 : 8;
       b.papilo_max_badgesize = clamp_i(2.0e6 / arl, 32, 4096);
-      raw_work               = 30.0 * (10.0 / arl);
-      b.probing_step_size    = arl <= 50 ? 1024 : 256;
+      probe_fraction         = clamp_d(10.0 / arl, 0.05, 1.0);
+      b.probing_step_size    = arl <= 50 ? 256 : 128;
       break;
 
     // Probing and clique merging only pay off on binaries, so scale with how many there are and how
@@ -160,8 +179,8 @@ presolve_budget_t evaluate_presolve_budget(const mip_heuristics_hyper_params_t<i
     case presolve_budget_policy_t::binary:
       b.papilo_max_rounds    = bf >= 0.9 ? 50 : bf >= 0.5 ? 30 : 15;
       b.papilo_max_badgesize = clamp_i(std::max(n_bin / 2.0, 32.0), 32, 1024);
-      raw_work               = (2.0 / 3.0) * std::sqrt(n_bin);
-      b.probing_step_size    = 512;
+      probe_fraction         = clamp_d(bf, 0.05, 1.0);
+      b.probing_step_size    = 128;
       break;
 
     // Multiplicative over the three effects above, so no single feature can dominate the budget.
@@ -172,13 +191,19 @@ presolve_budget_t evaluate_presolve_budget(const mip_heuristics_hyper_params_t<i
       const double factor    = size_f * density_f * binary_f;
       b.papilo_max_rounds    = clamp_i(30.0 * factor, 5, 60);
       b.papilo_max_badgesize = clamp_i(2.0e6 / arl, 32, 2048);
-      raw_work               = 30.0 * factor;
-      b.probing_step_size    = clamp_i(512.0 * density_f, 128, 2048);
+      probe_fraction         = clamp_d(0.25 * factor, 0.05, 1.0);
+      b.probing_step_size    = clamp_i(128.0 * density_f, 64, 512);
       break;
     }
   }
 
-  b.probing_work_limit = work_scale * clamp_d(raw_work, 5.0, 120.0);
+  // A fraction at or above 1 means "probe everything", carried as no budget rather than as a large
+  // number: per_candidate_work is an average, so on an instance whose probes are dearer than
+  // average a finite budget sized for full coverage would still cut probing short.
+  probe_fraction *= work_scale;
+  b.intended_probe_fraction = std::min(probe_fraction, 1.0);
+  b.probing_work_limit      = probe_fraction >= 1.0 ? std::numeric_limits<double>::infinity()
+                                                    : probe_fraction * n_cand * per_candidate_work;
   return b;
 }
 
@@ -192,7 +217,7 @@ inline void log_presolve_budget(const char* stage,
   CUOPT_LOG_INFO(
     "PRESOLVE_BUDGET stage=%s policy=%s nvars=%.0f ncons=%.0f nnz=%.0f nint=%.0f nbin=%.0f "
     "arl=%.3f acl=%.3f maxrow=%.0f density=%.3e intfrac=%.3f binfrac=%.3f "
-    "rounds=%d badge=%d work=%.3f step=%d",
+    "rounds=%d badge=%d work=%.3f step=%d intended_probe_frac=%.4f",
     stage,
     presolve_budget_policy_name(policy),
     f.n_vars,
@@ -209,7 +234,8 @@ inline void log_presolve_budget(const char* stage,
     b.papilo_max_rounds,
     b.papilo_max_badgesize,
     b.probing_work_limit,
-    b.probing_step_size);
+    b.probing_step_size,
+    b.intended_probe_fraction);
 }
 
 }  // namespace cuopt::mathematical_optimization::mip
