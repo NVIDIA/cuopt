@@ -27,7 +27,7 @@ struct mip_heuristics_hyper_params_t {
   // Presolve budgeting. presolve_budget_policy selects how the four knobs below are derived from
   // the problem's dimensions and structure (see presolve_budget_policy.hpp); the values here are
   // the defaults the policy starts from and the literal values used by the `manual` policy.
-  i_t presolve_budget_policy       = 1;     // presolve_budget_policy_t
+  i_t presolve_budget_policy       = 7;     // presolve_budget_policy_t (cost)
   i_t presolve_max_rounds          = 30;    // Papilo presolve rounds cap (<=0 = Papilo default)
   i_t papilo_probing_max_badgesize = 1024;  // ceiling on Papilo's probing.minbadgesize
   f_t cuopt_presolve_work_limit    = 30.0;  // probing-cache budget, work units
@@ -37,6 +37,12 @@ struct mip_heuristics_hyper_params_t {
   // differs between instances.
   f_t probe_host_overhead_work = 0.02;  // charged per probed variable
   f_t probe_iter_work          = 0.01;  // charged per multi-probe propagation iteration
+  // Numerator of the work ceiling that keeps probing inside a wall-clock budget. Work units are
+  // reproducible but their cost is not: realised throughput spans 1.9 to 689 units/s across the
+  // 240-instance benchmark, so a coverage target alone lets slow instances run for the whole solve.
+  // Dividing this by the cost proxy (nnz + n_cand * avg_col_len) bounds the wall time instead; at
+  // 1.5e8 the slowest of 660 measured probing runs finishes in 44s, none above 60s.
+  f_t probing_work_time_scale = 1.5e8;
 
   f_t root_lp_time_ratio                 = 0.1;     // fraction of total time for root LP
   f_t root_lp_max_time                   = 15.0;    // hard cap on root LP seconds

@@ -33,6 +33,7 @@ enum class presolve_budget_policy_t : int {
   binary   = 4,
   combined = 5,
   manual   = 6,
+  cost     = 7,
 };
 
 inline const char* presolve_budget_policy_name(int policy)
@@ -45,28 +46,39 @@ inline const char* presolve_budget_policy_name(int policy)
     case presolve_budget_policy_t::binary: return "binary";
     case presolve_budget_policy_t::combined: return "combined";
     case presolve_budget_policy_t::manual: return "manual";
+    case presolve_budget_policy_t::cost: return "cost";
     default: return "unknown";
   }
 }
 
 // Benchmark points selected by CUOPT_CONFIG_ID, overriding the policy hyper-parameter so one build
-// covers the whole sweep. The 240-instance run conflated two effects -- the Papilo round/badge caps
-// and how much of the problem gets probed -- so these span them as a 2x3 factorial: two Papilo
-// rules against three probing coverages. Coverage is spaced geometrically rather than evenly
-// because truncating probing both won (bab6 at 0.5% of candidates, square41 at 4.3%) and lost
-// (30n20b8 at 21.6%, physiciansched3-3 at 9.1%), which puts the crossover somewhere below 10%.
+// covers the whole sweep. The previous 240-instance run showed that neither stage was actually
+// bounded: presolve ran 243-403s (Papilo, ns1760995) and up to 598s (probing, six instances) out of
+// a 600s solve, and the instances that lost their dual bound are the ones that spent it there. Both
+// stages now carry a cost model instead of a coverage target, so these points span the two models
+// against the previously measured coverage fractions.
+//
+// `work_time_scale` of 0 disables the probing ceiling, which separates "probe a fixed fraction"
+// from "probe until a wall-clock proxy is exhausted"; the fractions bracket the crossover the
+// earlier run pointed at, where truncation won on bab6 (0.5% of candidates), square41 (4.3%) and
+// square47 (2.9%) and lost on 30n20b8 (21.6%) and physiciansched3-3 (9.1%).
 struct presolve_config_t {
   presolve_budget_policy_t papilo_rule;
   double probe_fraction;
+  double work_time_scale;
 };
 
 inline constexpr presolve_config_t presolve_configs[] = {
-  {presolve_budget_policy_t::fixed, 1.00},  // 0: Papilo rounds=30/badge=1024, probing unbounded
-  {presolve_budget_policy_t::fixed, 0.25},  // 1
-  {presolve_budget_policy_t::fixed, 0.05},  // 2
-  {presolve_budget_policy_t::size, 1.00},  // 3: Papilo measured wide/narrow rule, probing unbounded
-  {presolve_budget_policy_t::size, 0.25},  // 4
-  {presolve_budget_policy_t::size, 0.05},  // 5
+  // Old Papilo rule, so the probing ceiling is measured on its own.
+  {presolve_budget_policy_t::fixed, 1.00, 1.5e8},  // 0
+  // New Papilo cost rule against the ceiling and the two coverage fractions.
+  {presolve_budget_policy_t::cost, 1.00, 1.5e8},  // 1
+  {presolve_budget_policy_t::cost, 0.25, 1.5e8},  // 2
+  {presolve_budget_policy_t::cost, 0.05, 1.5e8},  // 3
+  // Half the ceiling: 29s worst case rather than 44s, to see whether the margin costs quality.
+  {presolve_budget_policy_t::cost, 1.00, 7.5e7},  // 4
+  // Coverage only, no ceiling -- the control that says whether the ceiling earns its keep.
+  {presolve_budget_policy_t::cost, 0.05, 0.0},  // 5
 };
 inline constexpr int n_presolve_configs = 6;
 
@@ -127,6 +139,10 @@ struct presolve_budget_t {
   // Coverage the policy asked for, kept only so the log can be compared against what was realised;
   // the two diverge when an instance's probes are dearer than the average the budget assumed.
   double intended_probe_fraction{1.0};
+  // The work ceiling the cost proxy produced, and whether it rather than the coverage target is
+  // what set probing_work_limit. Logged so a run can be attributed to one or the other offline.
+  double probing_work_ceiling{std::numeric_limits<double>::infinity()};
+  bool probing_ceiling_binding{false};
   // The policy that actually ran and the config that selected it, so a log line is attributable
   // even when CUOPT_CONFIG_ID overrode the hyper-parameter.
   int policy{1};
@@ -172,6 +188,14 @@ presolve_budget_t evaluate_presolve_budget(const mip_heuristics_hyper_params_t<i
   // Lets a single knob scale every derived policy without recompiling: 1.0 at the default of 30.
   const double work_scale = static_cast<double>(hp.cuopt_presolve_work_limit) / 30.0;
   double probe_fraction   = 1.0;
+  double work_time_scale  = (double)hp.probing_work_time_scale;
+
+  // Cost of one probing sweep: every propagation touches the rows of the probed column, so the work
+  // a second buys falls off with problem size. nnz + n_cand * avg_col_len tracked that better than
+  // nnz, arl or n_cand alone over 660 measured probing runs, and dividing the scale by it bounds
+  // the wall time that a pure coverage target cannot: throughput ranged 1.9 to 689 work units per
+  // second, so the same budget was worth 360x more time on one instance than another.
+  const double probing_cost_proxy = nnz + n_cand * std::max<double>(feat.avg_col_len(), 1.0);
 
   // A config id, when set, replaces both the policy and its coverage. Resolved here rather than at
   // each call site so the Papilo stage and the probing stage cannot disagree about which point of
@@ -225,6 +249,26 @@ presolve_budget_t evaluate_presolve_budget(const mip_heuristics_hyper_params_t<i
       break;
     }
 
+    // Papilo's cost is driven by probing.minbadgesize, and how much that badge is worth depends on
+    // how many binaries there are and how many rows each one touches -- n_bin * avg_col_len, the
+    // nonzeros one probing sweep visits. Above ~2e5 a large badge stops paying for itself:
+    // square47 (2.7e7) went from 40.6s at badge 1024 to 8.1s at 32 with a bit-identical reduced
+    // problem, and sorrell3 (3.4e5) from 42.9s to 14.0s, also identical. ns1760995 (1.8e6) is the
+    // one instance where the badge does buy reduction -- 1024 removes 120174 rows where anything up
+    // to 512 removes 226 -- but it costs 273s to do it, and the run that truncated Papilo at 60s
+    // closed the gap to 1.37% while every run that let it finish ended with no dual bound at all.
+    // Below the threshold the reverse holds (mzzv11, 30n20b8 and air05 all reduce measurably worse
+    // at badge 32), so those keep Papilo's own default. Rounds are not a useful limit here: every
+    // one of the 240 instances converged inside 30 without hitting its round or time cap.
+    case presolve_budget_policy_t::cost: {
+      const double papilo_probe_cost = n_bin * std::max<double>(feat.avg_col_len(), 1.0);
+      b.papilo_max_rounds            = 30;
+      b.papilo_max_badgesize         = papilo_probe_cost > 2.0e5 ? 32 : -1;
+      probe_fraction                 = 1.0;
+      b.probing_step_size            = 128;
+      break;
+    }
+
     // A single propagation sweep costs roughly one pass over each touched row, so long rows make
     // every probe more expensive: buy fewer of them, and size the badge so one badge's working
     // limit (~2*nnz in Papilo) stays roughly constant.
@@ -258,14 +302,24 @@ presolve_budget_t evaluate_presolve_budget(const mip_heuristics_hyper_params_t<i
     }
   }
 
+  if (config >= 0) {
+    probe_fraction  = presolve_configs[config].probe_fraction;
+    work_time_scale = presolve_configs[config].work_time_scale;
+  }
+  probe_fraction *= work_scale;
+  b.intended_probe_fraction = std::min(probe_fraction, 1.0);
+
   // A fraction at or above 1 means "probe everything", carried as no budget rather than as a large
   // number: per_candidate_work is an average, so on an instance whose probes are dearer than
   // average a finite budget sized for full coverage would still cut probing short.
-  if (config >= 0) { probe_fraction = presolve_configs[config].probe_fraction; }
-  probe_fraction *= work_scale;
-  b.intended_probe_fraction = std::min(probe_fraction, 1.0);
-  b.probing_work_limit      = probe_fraction >= 1.0 ? std::numeric_limits<double>::infinity()
-                                                    : probe_fraction * n_cand * per_candidate_work;
+  const double coverage_work = probe_fraction >= 1.0 ? std::numeric_limits<double>::infinity()
+                                                     : probe_fraction * n_cand * per_candidate_work;
+  b.probing_work_ceiling     = work_time_scale > 0.0 ? work_time_scale / probing_cost_proxy
+                                                     : std::numeric_limits<double>::infinity();
+  // Whichever binds first. The ceiling is what keeps probing away from the wall cap it used to run
+  // into, and the fraction is what stops it probing more of a cheap problem than is worth probing.
+  b.probing_ceiling_binding = b.probing_work_ceiling < coverage_work;
+  b.probing_work_limit      = std::min(coverage_work, b.probing_work_ceiling);
   return b;
 }
 
@@ -278,7 +332,8 @@ inline void log_presolve_budget(const char* stage,
   CUOPT_LOG_INFO(
     "PRESOLVE_BUDGET stage=%s config=%d policy=%s nvars=%.0f ncons=%.0f nnz=%.0f nint=%.0f "
     "nbin=%.0f arl=%.3f acl=%.3f maxrow=%.0f density=%.3e intfrac=%.3f binfrac=%.3f "
-    "rounds=%d badge=%d work=%.3f step=%d intended_probe_frac=%.4f",
+    "rounds=%d badge=%d work=%.3f step=%d intended_probe_frac=%.4f work_ceiling=%.3f "
+    "ceiling_binding=%d",
     stage,
     b.config_id,
     presolve_budget_policy_name(b.policy),
@@ -297,7 +352,9 @@ inline void log_presolve_budget(const char* stage,
     b.papilo_max_badgesize,
     b.probing_work_limit,
     b.probing_step_size,
-    b.intended_probe_fraction);
+    b.intended_probe_fraction,
+    b.probing_work_ceiling,
+    (int)b.probing_ceiling_binding);
 }
 
 }  // namespace cuopt::mathematical_optimization::mip
