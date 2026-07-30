@@ -34,10 +34,20 @@ get less than they could use.
 ## Verify which knob costs, rather than the one that looks like it should
 
 Iteration or round counts read like cost limits and often are not: a stage that converges
-before its round cap is not bounded by it at all. Check whether the cap ever binds
-(`rounds_used < rounds_cap`, `hit_tlim=0`) before tuning it. The knob that drives cost is
-usually the one controlling work *per* round — batch or candidate-set size — and it may sit
-behind a third-party default.
+before its round cap is not bounded by it at all. The knob that drives cost is usually the one
+controlling work *per* round — batch or candidate-set size — and it may sit behind a
+third-party default.
+
+Establish whether a cap binds by **running the stage with it removed and diffing the output**,
+not by reading a flag. Flags answer narrower questions than they appear to: a `hit_tlim` /
+`timed_out` field reports the *time* limit only, so it stays clear on a stage the round cap
+stopped early, and reading it as "no limit bound" silently exonerates the wrong knob. Unless a
+counter records the cap's own trigger, the A/B is the only sound check.
+
+When a round cap does bind, prefer deleting it over tuning it. It is a poor cost limit in both
+directions — where it binds it truncates a stage mid-convergence and costs output, and where it
+does not it saves nothing — while the wall ceiling bounds cost directly and only fires when
+time is genuinely short.
 
 A knob can also be free on some instances and a genuine quality lever on others. Sweep it and
 record both cost and the stage's own output (reduced dimensions, cuts kept) — identical output
@@ -55,6 +65,13 @@ gap): that pairing means the stage starved the root relaxation.
 
 Run these checks in order; each can end the investigation:
 
+0. **Is the regression larger than the instance's own noise?** Use the spread between repeats
+   of the *same* build as a per-instance noise band and drop everything inside it. This is not
+   a formality: on one 240-instance run it removed 18 of 26 apparent regressions, and four of
+   the remaining eight turned out to have a bit-identical reduced problem, leaving four real
+   ones. Tuning against noise is worse than not tuning, because the change looks justified.
+   Instances with wide bands cannot be settled by single runs at all — carry them to the full
+   set as competing configs rather than picking a winner from one measurement.
 1. **Did the limit bind?** Split instances by the `budget_exhausted` flag and compare the mean
    error delta per group. If the regressed set is not the bound set, the limit is not the
    cause.
