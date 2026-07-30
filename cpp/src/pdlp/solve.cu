@@ -592,8 +592,7 @@ template <typename i_t, typename f_t>
 std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t> run_dual_simplex(
   const simplex::user_problem_t<i_t, f_t>& user_problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
-  const timer_t& timer,
-  bool preserve_solution_shape = true)
+  const timer_t& timer)
 {
   f_t norm_user_objective = vector_norm2<i_t, f_t>(user_problem.objective);
   f_t norm_rhs            = vector_norm2<i_t, f_t>(user_problem.rhs);
@@ -607,14 +606,9 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
     dual_simplex_settings.log.log = false;
   }
 
-  simplex::lp_solution_t<i_t, f_t> solution(0, 0);
+  simplex::lp_solution_t<i_t, f_t> solution(user_problem.num_rows, user_problem.num_cols);
   auto status = simplex::solve_linear_program<i_t, f_t>(
     user_problem, dual_simplex_settings, timer.get_tic_start(), solution);
-  if (preserve_solution_shape &&
-      (solution.x.size() != static_cast<size_t>(user_problem.num_cols) ||
-       solution.y.size() != static_cast<size_t>(user_problem.num_rows))) {
-    solution.resize(user_problem.num_rows, user_problem.num_cols);
-  }
 
   CUOPT_LOG_CONDITIONAL_INFO(
     !settings.inside_mip, "Dual simplex finished in %.2f seconds", timer.elapsed_time());
@@ -1523,7 +1517,7 @@ void run_dual_simplex_thread(
   // We will return the solution from the thread as a unique_ptr
   sol_ptr = std::make_unique<
     std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t>>(
-    run_dual_simplex(problem, settings, timer, false));
+    run_dual_simplex(problem, settings, timer));
 }
 
 template <typename i_t, typename f_t>
@@ -1785,11 +1779,7 @@ optimization_problem_solution_t<i_t, f_t> run_concurrent(
              sol_pdlp.get_termination_status() == pdlp_termination_status_t::ConcurrentLimit) {
     sol_barrier_ptr.reset();
     auto& dual_simplex_solution = std::get<0>(*sol_dual_simplex_ptr);
-    if (dual_simplex_solution.x.size() != static_cast<size_t>(problem.n_variables) ||
-        dual_simplex_solution.y.size() != static_cast<size_t>(problem.n_constraints)) {
-      dual_simplex_solution.resize(problem.n_constraints, problem.n_variables);
-    }
-    auto sol_dual_simplex = convert_dual_simplex_sol(problem,
+    auto sol_dual_simplex       = convert_dual_simplex_sol(problem,
                                                      dual_simplex_solution,
                                                      std::get<1>(*sol_dual_simplex_ptr),
                                                      std::get<2>(*sol_dual_simplex_ptr),

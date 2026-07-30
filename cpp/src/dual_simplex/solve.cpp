@@ -699,6 +699,7 @@ lp_status_t solve_linear_program(const user_problem_t<i_t, f_t>& user_problem,
   std::vector<i_t> new_slacks;
   dualize_info_t<i_t, f_t> dualize_info;
   convert_user_problem(user_problem, settings, original_lp, new_slacks, dualize_info);
+  solution.resize(user_problem.num_rows, user_problem.num_cols);
   lp_solution_t<i_t, f_t> lp_solution(original_lp.num_rows, original_lp.num_cols);
   std::vector<variable_status_t> vstatus;
   std::vector<f_t> edge_norms;

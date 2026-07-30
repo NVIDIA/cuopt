@@ -195,12 +195,12 @@ void print_version_info(int num_devices)
                  CUOPT_CUDA_ARCHITECTURES);
   const auto memory = get_host_memory_info();
   CUOPT_LOG_INFO(
-    "CPU: %s, threads (physical/logical): %d/%d, RAM: %.2f GiB total, %.2f GiB available",
+    "CPU: %s, threads (physical/logical): %d/%d, RAM (available/total): %.2f / %.2f GiB",
     get_cpu_model().c_str(),
     get_physical_cores(),
     std::thread::hardware_concurrency(),
-    memory.total_gb,
-    memory.available_gb);
+    memory.available_gb,
+    memory.total_gb);
 
   for (int device_id = 0; device_id < num_devices; ++device_id) {
     cudaDeviceProp device_prop{};
