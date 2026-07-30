@@ -1939,7 +1939,7 @@ class Problem:
                 raise ValueError("addConstraint requires a Constraint object")
         return constr
 
-    def updateConstraint(self, constr, coeffs=[], rhs=None):
+    def updateConstraint(self, constr, coeffs=None, rhs=None):
         """
         Updates a previously added constraint. Values that can be updated are
         constraint coefficients and RHS.
@@ -1963,6 +1963,8 @@ class Problem:
         >>> c2 = problem.addConstraint(x + y <= 5, name="c2")
         >>> problem.updateConstraint(c1, coeffs=[(x, 1)], rhs=10)
         """
+        if coeffs is None:
+            coeffs = []
         if not isinstance(constr, Constraint):
             raise ValueError("Object to update must be a Constraint")
         if (
@@ -2105,7 +2107,7 @@ class Problem:
                     "Objective must be a Variable, Expression or a constant"
                 )
 
-    def updateObjective(self, coeffs=[], constant=None, sense=None):
+    def updateObjective(self, coeffs=None, constant=None, sense=None):
         """
         Updates the objective of the problem. Values that can be updated are
         objective coefficients, constant and sense.
@@ -2131,13 +2133,15 @@ class Problem:
         """
         if self.solved:
             self.reset_solved_values()
+        if coeffs is None:
+            coeffs = []
         if isinstance(coeffs, dict):
             coeffs = coeffs.items()
         for var, coeff in coeffs:
             var.setObjectiveCoefficient(coeff)
-        if constant:
+        if constant is not None:
             self.ObjConstant = constant
-        if sense:
+        if sense is not None:
             self.ObjSense = sense
         self._mark_stale("objective")
 

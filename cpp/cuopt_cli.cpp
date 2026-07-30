@@ -5,6 +5,7 @@
  */
 /* clang-format on */
 
+#include <cuopt/error.hpp>
 #include <cuopt/mathematical_optimization/backend_selection.hpp>
 #include <cuopt/mathematical_optimization/cpu_optimization_problem.hpp>
 #include <cuopt/mathematical_optimization/io/parser.hpp>
@@ -141,6 +142,25 @@ int run_single_file(const std::string& file_path,
       std::make_unique<cuopt::mathematical_optimization::cpu_optimization_problem_t<int, double>>();
   }
 
+  // Distributed PDLP is used for large problems that don't fit on a single GPU.
+  // We need to debranch before the problem_interface is created and tries to materialize the
+  // problem in device memory.
+  if (settings.get_pdlp_settings().use_distributed_pdlp) {
+    if (handle_ptr == nullptr) {
+      CUOPT_LOG_ERROR(
+        "Distributed PDLP requires the GPU memory backend; no GPU handle is available for the "
+        "selected memory backend.");
+      return -1;
+    }
+    if (!initial_solution_file.empty()) {
+      CUOPT_LOG_ERROR("Initial solution file is not supported for distributed PDLP.");
+      return -1;
+    }
+    auto solution = cuopt::mathematical_optimization::solve_lp(
+      handle_ptr.get(), mps_data_model, settings.get_pdlp_settings());
+    return 0;
+  }
+
   cuopt::mathematical_optimization::adopt_from_mps_data_model(problem_interface.get(),
                                                               std::move(mps_data_model));
 
@@ -180,6 +200,8 @@ int run_single_file(const std::string& file_path,
       auto solution =
         cuopt::mathematical_optimization::solve_mip(problem_interface.get(), mip_settings);
     } else {
+      // Distributed PDLP was handled by the early-exit branch above; this
+      // path is always single-GPU LP going through problem_interface.
       auto& lp_settings = settings.get_pdlp_settings();
       auto solution =
         cuopt::mathematical_optimization::solve_lp(problem_interface.get(), lp_settings);
@@ -371,7 +393,10 @@ int main(int argc, char* argv[])
       std::string arg_name = param_name_to_arg_name(param.param_name);
       if (arg_name_to_param_name.count(arg_name) == 0) {
         auto& arg = program.add_argument(arg_name.c_str()).default_value(param.default_value);
-        if (param.param_name.find("hyper_") != std::string::npos) { arg.hidden(); }
+        if (param.param_name.find("hyper_") != std::string::npos ||
+            param.param_name == CUOPT_USE_DISTRIBUTED_PDLP) {
+          arg.hidden();
+        }
         arg_name_to_param_name[arg_name] = param.param_name;
       }
     }
@@ -436,20 +461,47 @@ int main(int argc, char* argv[])
     return -1;
   }
 
+  // --method 1 --num-gpus N (N>1 or -1 for all visible GPUs) selects distributed PDLP.
+  // Default / concurrent requires 1–2 GPUs.
+  {
+    auto& pdlp_settings = settings.get_pdlp_settings();
+    const int num_gpus  = pdlp_settings.num_gpus;
+    if (pdlp_settings.method == cuopt::mathematical_optimization::method_t::PDLP &&
+        (num_gpus == -1 || num_gpus > 1)) {
+      pdlp_settings.use_distributed_pdlp = true;
+    } else if (!pdlp_settings.use_distributed_pdlp && (num_gpus < 1 || num_gpus > 2)) {
+      auto log = dummy_logger(settings);
+      CUOPT_LOG_ERROR(
+        "num_gpus=%d is only supported with --method 1 (distributed PDLP, where -1 selects "
+        "all visible GPUs). Concurrent / default mode requires 1 or 2 GPUs.",
+        num_gpus);
+      return -1;
+    }
+  }
+
   // Only initialize CUDA resources if using GPU memory backend (not remote execution)
   auto memory_backend = cuopt::mathematical_optimization::get_memory_backend_type();
   std::vector<rmm::mr::cuda_async_memory_resource> memory_resources;
 
   if (memory_backend == cuopt::mathematical_optimization::memory_backend_t::GPU) {
-    const int num_gpus = settings.get_parameter<int>(CUOPT_NUM_GPUS);
-
-    memory_resources.reserve(std::min(raft::device_setter::get_device_count(), num_gpus));
-    for (int i = 0; i < std::min(raft::device_setter::get_device_count(), num_gpus); ++i) {
-      RAFT_CUDA_TRY(cudaSetDevice(i));
+    int device_count   = raft::device_setter::get_device_count();
+    int requested_gpus = settings.get_parameter<int>(CUOPT_NUM_GPUS);
+    if (requested_gpus == -1) {
+      requested_gpus                        = device_count;
+      settings.get_pdlp_settings().num_gpus = requested_gpus;
+    }
+    if (requested_gpus > device_count) {
+      CUOPT_LOG_ERROR("num_gpus=%d exceeds the number of visible CUDA devices (%d).",
+                      requested_gpus,
+                      device_count);
+      return -1;
+    }
+    memory_resources.reserve(requested_gpus);
+    for (int i = 0; i < requested_gpus; ++i) {
+      raft::device_setter guard(i);
       memory_resources.emplace_back();
       rmm::mr::set_per_device_resource(rmm::cuda_device_id{i}, memory_resources.back());
     }
-    RAFT_CUDA_TRY(cudaSetDevice(0));
   }
 
   return run_single_file(file_name, initial_solution_file, solve_relaxation, mps_reader, settings);

@@ -111,6 +111,7 @@ inline auto parse_test_options(int argc, char** argv)
  * the original functionality. In addition, this custom `main` function parses
  * the command line to customize test behavior, like the allocation mode used
  * for creating the default memory resource.
+ *
  */
 #define CUOPT_TEST_PROGRAM_MAIN()                                        \
   int main(int argc, char** argv)                                        \

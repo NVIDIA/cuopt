@@ -501,14 +501,17 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   // setup cusparse view
   A.create(op_problem_scaled.n_constraints,
            op_problem_scaled.n_variables,
-           op_problem_scaled.nnz,
+           static_cast<int64_t>(A_.size()),
            const_cast<i_t*>(op_problem_scaled.offsets.data()),
            const_cast<i_t*>(op_problem_scaled.variables.data()),
            const_cast<f_t*>(op_problem_scaled.coefficients.data()));
 
+  // A_T can have a different nnz than A in multi-GPU shards
+  // A is just what is needed to compute A_x for owned constraints
+  // A_T is just what is needed to compute A_T_y for owned variables
   A_T.create(op_problem_scaled.n_variables,
              op_problem_scaled.n_constraints,
-             op_problem_scaled.nnz,
+             static_cast<int64_t>(A_T_.size()),
              const_cast<i_t*>(A_T_offsets_.data()),
              const_cast<i_t*>(A_T_indices_.data()),
              const_cast<f_t*>(A_T_.data()));
@@ -545,7 +548,9 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
                            op_problem_scaled.n_variables,
                            current_saddle_point_state.get_next_AtY().data(),
                            CUSPARSE_ORDER_COL);
-    cuopt_assert(_reflected_primal_solution.size() > 0, "Reflected primal solution empty");
+    cuopt_assert(_reflected_primal_solution.size() >=
+                   static_cast<size_t>(op_problem_scaled.n_variables) * climber_strategies.size(),
+                 "Reflected primal solution undersized");
     batch_reflected_primal_solutions.create(op_problem_scaled.n_variables,
                                             climber_strategies.size(),
                                             climber_strategies.size(),
@@ -596,7 +601,9 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   tmp_primal.create(op_problem_scaled.n_variables, _tmp_primal.data());
   tmp_dual.create(op_problem_scaled.n_constraints, _tmp_dual.data());
   if (hyper_params.use_reflected_primal_dual) {
-    cuopt_assert(_reflected_primal_solution.size() > 0, "Reflected primal solution empty");
+    cuopt_assert(
+      _reflected_primal_solution.size() >= static_cast<size_t>(op_problem_scaled.n_variables),
+      "Reflected primal solution undersized");
     reflected_primal_solution.create(op_problem_scaled.n_variables,
                                      _reflected_primal_solution.data());
   }
@@ -917,14 +924,14 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   // setup cusparse view
   A.create(op_problem.n_constraints,
            op_problem.n_variables,
-           op_problem.nnz,
+           static_cast<int64_t>(A_.size()),
            const_cast<i_t*>(op_problem.offsets.data()),
            const_cast<i_t*>(op_problem.variables.data()),
            const_cast<f_t*>(op_problem.coefficients.data()));
 
   A_T.create(op_problem.n_variables,
              op_problem.n_constraints,
-             op_problem.nnz,
+             static_cast<int64_t>(A_T_.size()),
              const_cast<i_t*>(A_T_offsets_.data()),
              const_cast<i_t*>(A_T_indices_.data()),
              const_cast<f_t*>(A_T_.data()));
@@ -1132,16 +1139,18 @@ cusparse_view_t<i_t, f_t>::cusparse_view_t(
   // Copying them from the existing cuSparse view is a bad practice and creates segfault post
   // CUDA 12.4 Using the saved pointer of the existing cusparse view to make sure we capture the
   // correct pointer
+  // See comment in the PDHG cusparse_view_t ctor: bind the descriptor nnz to
+  // the actual value-buffer length so A and A_T stay symmetric and shard-safe.
   A.create(op_problem.n_constraints,
            op_problem.n_variables,
-           op_problem.nnz,
+           static_cast<int64_t>(A_.size()),
            const_cast<i_t*>(A_offsets_.data()),
            const_cast<i_t*>(A_indices_.data()),
            const_cast<f_t*>(A_.data()));
 
   A_T.create(op_problem.n_variables,
              op_problem.n_constraints,
-             op_problem.nnz,
+             static_cast<int64_t>(existing_cusparse_view.A_T_.size()),
              const_cast<i_t*>(existing_cusparse_view.A_T_offsets_.data()),
              const_cast<i_t*>(existing_cusparse_view.A_T_indices_.data()),
              const_cast<f_t*>(existing_cusparse_view.A_T_.data()));

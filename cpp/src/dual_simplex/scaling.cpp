@@ -76,14 +76,14 @@ i_t scaling(const lp_problem_t<i_t, f_t>& unscaled,
     // qcqp_ruiz_equilibration: -1 automatic (imbalance heuristic), 0 force off, 1 force on.
     const i_t ruiz_mode = settings.qcqp_ruiz_equilibration;
     const bool skip_ruiz =
-      (ruiz_mode == 0) || (ruiz_mode < 0 && row_norm_ratio < 100.0 && col_norm_ratio < 100.0);
+      (ruiz_mode == 0) || (ruiz_mode < 0 && row_norm_ratio < 100.0 && col_norm_ratio < 5e4);
 
     if (skip_ruiz) {
       if (ruiz_mode == 0) {
         settings.log.printf("Skipping Ruiz equilibration (qcqp_hyper_ruiz_equilibration = 0)\n");
       } else {
         settings.log.printf(
-          "Skipping Ruiz equilibration (row norm ratio %.1f, column norm ratio %.1f < 100)\n",
+          "Skipping Ruiz equilibration (row norm ratio %.1f, column norm ratio %.1f < 5e4)\n",
           row_norm_ratio,
           col_norm_ratio);
       }
