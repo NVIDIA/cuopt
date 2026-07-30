@@ -13,7 +13,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
+#include <exception>
 #include <limits>
+#include <string>
 
 namespace cuopt::mathematical_optimization::mip {
 
@@ -44,6 +47,51 @@ inline const char* presolve_budget_policy_name(int policy)
     case presolve_budget_policy_t::manual: return "manual";
     default: return "unknown";
   }
+}
+
+// Benchmark points selected by CUOPT_CONFIG_ID, overriding the policy hyper-parameter so one build
+// covers the whole sweep. The 240-instance run conflated two effects -- the Papilo round/badge caps
+// and how much of the problem gets probed -- so these span them as a 2x3 factorial: two Papilo
+// rules against three probing coverages. Coverage is spaced geometrically rather than evenly
+// because truncating probing both won (bab6 at 0.5% of candidates, square41 at 4.3%) and lost
+// (30n20b8 at 21.6%, physiciansched3-3 at 9.1%), which puts the crossover somewhere below 10%.
+struct presolve_config_t {
+  presolve_budget_policy_t papilo_rule;
+  double probe_fraction;
+};
+
+inline constexpr presolve_config_t presolve_configs[] = {
+  {presolve_budget_policy_t::fixed, 1.00},  // 0: Papilo rounds=30/badge=1024, probing unbounded
+  {presolve_budget_policy_t::fixed, 0.25},  // 1
+  {presolve_budget_policy_t::fixed, 0.05},  // 2
+  {presolve_budget_policy_t::size, 1.00},  // 3: Papilo measured wide/narrow rule, probing unbounded
+  {presolve_budget_policy_t::size, 0.25},  // 4
+  {presolve_budget_policy_t::size, 0.05},  // 5
+};
+inline constexpr int n_presolve_configs = 6;
+
+// -1 when unset or out of range. Read once; the environment cannot change mid-run.
+inline int presolve_config_id()
+{
+  static const int id = []() -> int {
+    const char* raw = std::getenv("CUOPT_CONFIG_ID");
+    if (raw == nullptr) { return -1; }
+    try {
+      const int v = std::stoi(raw);
+      if (v < 0 || v >= n_presolve_configs) {
+        CUOPT_LOG_WARN("CUOPT_CONFIG_ID=%d is outside [0, %d); ignoring it for presolve budgets",
+                       v,
+                       n_presolve_configs);
+        return -1;
+      }
+      CUOPT_LOG_INFO("Using presolve budget config %d from CUOPT_CONFIG_ID", v);
+      return v;
+    } catch (const std::exception& e) {
+      CUOPT_LOG_WARN("Failed to parse CUOPT_CONFIG_ID: %s", e.what());
+      return -1;
+    }
+  }();
+  return id;
 }
 
 // Dimensions plus cheap structural ratios. Both presolve stages populate this from whatever problem
@@ -79,6 +127,10 @@ struct presolve_budget_t {
   // Coverage the policy asked for, kept only so the log can be compared against what was realised;
   // the two diverge when an instance's probes are dearer than the average the budget assumed.
   double intended_probe_fraction{1.0};
+  // The policy that actually ran and the config that selected it, so a log line is attributable
+  // even when CUOPT_CONFIG_ID overrode the hyper-parameter.
+  int policy{1};
+  int config_id{-1};
 };
 
 namespace detail {
@@ -121,7 +173,16 @@ presolve_budget_t evaluate_presolve_budget(const mip_heuristics_hyper_params_t<i
   const double work_scale = static_cast<double>(hp.cuopt_presolve_work_limit) / 30.0;
   double probe_fraction   = 1.0;
 
-  switch (static_cast<presolve_budget_policy_t>(hp.presolve_budget_policy)) {
+  // A config id, when set, replaces both the policy and its coverage. Resolved here rather than at
+  // each call site so the Papilo stage and the probing stage cannot disagree about which point of
+  // the sweep is running.
+  const int config  = presolve_config_id();
+  const auto policy = config >= 0 ? presolve_configs[config].papilo_rule
+                                  : (presolve_budget_policy_t)hp.presolve_budget_policy;
+  b.policy          = (int)policy;
+  b.config_id       = config;
+
+  switch (policy) {
     case presolve_budget_policy_t::legacy:
       b.papilo_max_rounds    = -1;
       b.papilo_max_badgesize = -1;
@@ -200,6 +261,7 @@ presolve_budget_t evaluate_presolve_budget(const mip_heuristics_hyper_params_t<i
   // A fraction at or above 1 means "probe everything", carried as no budget rather than as a large
   // number: per_candidate_work is an average, so on an instance whose probes are dearer than
   // average a finite budget sized for full coverage would still cut probing short.
+  if (config >= 0) { probe_fraction = presolve_configs[config].probe_fraction; }
   probe_fraction *= work_scale;
   b.intended_probe_fraction = std::min(probe_fraction, 1.0);
   b.probing_work_limit      = probe_fraction >= 1.0 ? std::numeric_limits<double>::infinity()
@@ -210,16 +272,16 @@ presolve_budget_t evaluate_presolve_budget(const mip_heuristics_hyper_params_t<i
 // One line per presolve stage carrying the features that went in and the budgets that came out, so
 // a sweep can be regressed offline without re-deriving anything from the solver.
 inline void log_presolve_budget(const char* stage,
-                                int policy,
                                 const presolve_features_t& f,
                                 const presolve_budget_t& b)
 {
   CUOPT_LOG_INFO(
-    "PRESOLVE_BUDGET stage=%s policy=%s nvars=%.0f ncons=%.0f nnz=%.0f nint=%.0f nbin=%.0f "
-    "arl=%.3f acl=%.3f maxrow=%.0f density=%.3e intfrac=%.3f binfrac=%.3f "
+    "PRESOLVE_BUDGET stage=%s config=%d policy=%s nvars=%.0f ncons=%.0f nnz=%.0f nint=%.0f "
+    "nbin=%.0f arl=%.3f acl=%.3f maxrow=%.0f density=%.3e intfrac=%.3f binfrac=%.3f "
     "rounds=%d badge=%d work=%.3f step=%d intended_probe_frac=%.4f",
     stage,
-    presolve_budget_policy_name(policy),
+    b.config_id,
+    presolve_budget_policy_name(b.policy),
     f.n_vars,
     f.n_cons,
     f.nnz,

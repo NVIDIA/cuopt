@@ -317,7 +317,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
     run_probing_cache = false;
   }
   if (run_probing_cache) {
-    log_presolve_budget("PROBING", hp.presolve_budget_policy, probing_features, probing_budget);
+    log_presolve_budget("PROBING", probing_features, probing_budget);
     // Run probing cache before trivial presolve to discover variable implications. The work budget
     // decides how much probing happens; the timer only carries the time actually left in the solve,
     // so it cannot overrun the whole budget but also is not what shapes the amount of probing.

@@ -595,7 +595,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
       const auto& hp             = settings.heuristic_params;
       const auto papilo_features = mip::papilo_presolve_features(op_problem);
       const auto papilo_budget   = mip::evaluate_presolve_budget(hp, papilo_features);
-      mip::log_presolve_budget("PAPILO", hp.presolve_budget_policy, papilo_features, papilo_budget);
+      mip::log_presolve_budget("PAPILO", papilo_features, papilo_budget);
 
       // The round and badge caps are what shape presolve; the timer only carries the time actually
       // left in the solve, so it cannot overrun the whole budget but also does not truncate
