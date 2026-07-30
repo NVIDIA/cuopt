@@ -18,7 +18,7 @@ namespace internals {
 
 class Callback {
  public:
-  virtual ~Callback() {}
+  virtual ~Callback() = default;
 };
 
 enum class base_solution_callback_type { GET_SOLUTION, SET_SOLUTION };

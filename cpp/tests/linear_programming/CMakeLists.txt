@@ -4,15 +4,21 @@
 # cmake-format: on
 
 ConfigureTest(LP_UNIT_TEST
-    ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/optimization_problem_test.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/solver_settings_test.cu
-    ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/presolve_test.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/unit_tests/solution_interface_test.cu
     LABELS numopt)
 # ##################################################################################################
 # - Linear programming PDLP tests ----------------------------------------------------------------------
 ConfigureTest(PDLP_TEST
     ${CMAKE_CURRENT_SOURCE_DIR}/pdlp_test.cu
+    LABELS numopt)
+
+# Multi-GPU distributed PDLP tests. Binary name ends in _MG_TEST so that
+# ci/test_cpp_multi_gpu.sh picks it up via its *_MG_TEST glob. Each test
+# calls GTEST_SKIP when fewer than 2 GPUs are visible so the binary is
+# harmless on single-GPU runners.
+ConfigureTest(PDLP_MG_TEST
+    ${CMAKE_CURRENT_SOURCE_DIR}/pdlp_distributed_test.cu
     LABELS numopt)
 
 # ##################################################################################################
@@ -30,6 +36,7 @@ target_include_directories(MPS_FAST_PARSER_TEST
     "${CUOPT_TEST_DIR}/../src/io/experimental_mps_fast"
 )
 target_link_libraries(MPS_FAST_PARSER_TEST PRIVATE simde::simde)
+
 
 # ##################################################################################################
 # - C API Tests----------------------------------------------------------------------

@@ -23,21 +23,29 @@ ARG PYTHON_SHORT_VER
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# gcc is required for building psutils
-RUN apt-get update && apt-get install -y --no-install-recommends build-essential software-properties-common && \
-    add-apt-repository ppa:deadsnakes/ppa && \
-    apt-get install -y --no-install-recommends \
+# Apply all available OS security patches (fixes CVE-2026-45447 openssl and others),
+# then install Python. wget/unzip/gnupg2/software-properties-common are only needed
+# to add the deadsnakes PPA — purge them in the same layer so they never persist.
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && apt-get install -y --no-install-recommends \
+        software-properties-common \
+        gnupg2 \
         wget \
         unzip \
-        gcc \
-        gnupg2 \
+    && add-apt-repository ppa:deadsnakes/ppa \
+    && apt-get install -y --no-install-recommends \
         python${PYTHON_SHORT_VER} \
         python${PYTHON_SHORT_VER}-dev \
         python${PYTHON_SHORT_VER}-venv \
-    && apt-get install -y --no-install-recommends --only-upgrade gnupg2 \
-    && rm -rf /var/lib/apt/lists/* && \
-    python${PYTHON_SHORT_VER} -m ensurepip --upgrade && \
-    python${PYTHON_SHORT_VER} -m pip install --upgrade pip
+    && apt-get purge -y --autoremove \
+        software-properties-common \
+        gnupg2 \
+        wget \
+        unzip \
+    && rm -rf /var/lib/apt/lists/* \
+    && python${PYTHON_SHORT_VER} -m ensurepip --upgrade \
+    && python${PYTHON_SHORT_VER} -m pip install --upgrade pip
 
 ENV DEBIAN_FRONTEND=""
 
@@ -50,11 +58,13 @@ ARG CUDA_VER
 ARG CUOPT_VER
 ARG PYTHON_SHORT_VER
 
-# Install cuOpt as root to make it available to all users
+# Install gcc (needed to build psutils), pip-install cuopt, then remove gcc
+# — all in one layer so the build-only dep never persists in the final image.
 RUN \
     cuda_suffix=cu$(echo ${CUDA_VER} | cut -d'.' -f1) && \
-    cuda_major_minor=$(echo ${CUDA_VER} | cut -d'.' -f1-2) && \
-    python -m pip install \
+    apt-get update \
+    && apt-get install -y --no-install-recommends gcc \
+    && python -m pip install \
       --extra-index-url https://pypi.nvidia.com \
       --extra-index-url https://pypi.anaconda.org/rapidsai-wheels-nightly/simple \
       --no-cache-dir \
@@ -62,11 +72,10 @@ RUN \
       "cuopt-server-${cuda_suffix}==${CUOPT_VER}" \
       "cuopt-${cuda_suffix}==${CUOPT_VER}" \
       "libcuopt-${cuda_suffix}==${CUOPT_VER}" \
-      "cuopt-sh-client==${CUOPT_VER}" && \
-    python -m pip list
-
-# Remove build-only deps to save space and reduce CVE surface area
-RUN apt-get purge -y gcc gnupg2 && rm -rf /var/lib/apt/lists/*
+      "cuopt-sh-client==${CUOPT_VER}" \
+    && python -m pip list \
+    && apt-get purge -y --autoremove gcc \
+    && rm -rf /var/lib/apt/lists/*
 
 FROM install-env AS cuopt-final
 

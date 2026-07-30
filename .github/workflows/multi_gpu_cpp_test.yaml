@@ -39,6 +39,13 @@ on:
       script:
         type: string
         default: "ci/test_cpp_multi_gpu.sh"
+      container-options:
+        description: |
+          Extra 'docker run' options. NCCL allocates its inter-GPU buffers in
+          /dev/shm; the container default of 64 MB is too small and makes NCCL
+          setup fail with "No space left on device", so bump it with --shm-size.
+        type: string
+        default: "--shm-size=1g"
       continue-on-error:
         description: "Treat failures as non-blocking (useful while the MG suite is maturing)."
         type: boolean
@@ -63,5 +70,6 @@ jobs:
       node_type: ${{ inputs.node_type }}
       arch: ${{ inputs.arch }}
       container_image: ${{ inputs.container_image }}
+      container-options: ${{ inputs.container-options }}
       script: ${{ inputs.script }}
       continue-on-error: ${{ inputs.continue-on-error }}
