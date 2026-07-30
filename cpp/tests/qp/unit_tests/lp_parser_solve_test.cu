@@ -94,6 +94,25 @@ End
                           {2.0, 1.0});
 }
 
+// Maximizing a concave quadratic is converted to minimizing its negation.
+// The objective is the negation of qp_with_cross_term plus a constant:
+// maximize -x1^2 - 2 x1 x2 - 2 x2^2 + 6 x1 + 8 x2 + 5.
+TEST(lp_parser_solve, qp_maximize_concave)
+{
+  expect_optimal_solution(R"LP(
+Maximize
+  obj: 5 + 6 x1 + 8 x2 + [ -2 x1 ^ 2 - 4 x1 * x2 - 4 x2 ^ 2 ] / 2
+Subject To
+  c1: x1 + x2 <= 10
+Bounds
+  -100 <= x1 <= 100
+  -100 <= x2 <= 100
+End
+)LP",
+                          15.0,
+                          {2.0, 1.0});
+}
+
 // Quadratic objective with a negative cross-term coefficient. This
 // exercises the same upper-triangular off-diagonal storage path with a
 // sign that gets carried through parse_quadratic_bracket via the per-term
