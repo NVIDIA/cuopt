@@ -297,7 +297,7 @@ static simplex::user_problem_t<i_t, f_t> cuopt_optimization_problem_to_user_prob
   }
 
   // Note: get_sense() returns true when the problem is a maximization problem.
-  const bool maximize = model.get_sense();
+  const bool maximize       = model.get_sense();
   user_problem.obj_constant = model.get_objective_offset();
   user_problem.obj_scale =
     maximize ? -model.get_objective_scaling_factor() : model.get_objective_scaling_factor();

@@ -121,7 +121,7 @@ End
 TEST(lp_parser_solve, qp_maximize_duals)
 {
   raft::handle_t handle;
-  auto problem = io::read_lp_from_string<int, double>(R"LP(
+  auto problem  = io::read_lp_from_string<int, double>(R"LP(
 Maximize
   obj: 4 x1 + x2 + [ - x1 ^ 2 - x2 ^ 2 ] / 2
 Subject To
