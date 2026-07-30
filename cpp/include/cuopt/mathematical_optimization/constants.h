@@ -75,6 +75,7 @@
 #define CUOPT_MIP_ZERO_HALF_CUTS                   "mip_zero_half_cuts"
 #define CUOPT_MIP_STRONG_CHVATAL_GOMORY_CUTS       "mip_strong_chvatal_gomory_cuts"
 #define CUOPT_MIP_REDUCED_COST_STRENGTHENING       "mip_reduced_cost_strengthening"
+#define CUOPT_MIP_RINS                             "mip_rins"
 #define CUOPT_MIP_OBJECTIVE_STEP                   "mip_objective_step"
 #define CUOPT_MIP_CUT_CHANGE_THRESHOLD             "mip_cut_change_threshold"
 #define CUOPT_MIP_CUT_MIN_ORTHOGONALITY            "mip_cut_min_orthogonality"
@@ -83,14 +84,16 @@
 #define CUOPT_MIP_STRONG_BRANCHING_SIMPLEX_ITERATION_LIMIT \
   "mip_strong_branching_simplex_iteration_limit"
 
-#define CUOPT_SOLUTION_FILE            "solution_file"
-#define CUOPT_NUM_CPU_THREADS          "num_cpu_threads"
-#define CUOPT_NUM_GPUS                 "num_gpus"
-#define CUOPT_USER_PROBLEM_FILE        "user_problem_file"
-#define CUOPT_PRESOLVE_FILE            "presolve_file"
-#define CUOPT_RANDOM_SEED              "random_seed"
-#define CUOPT_PDLP_PRECISION           "pdlp_precision"
-#define CUOPT_MIP_SEMICONTINUOUS_BIG_M "mip_semi_continuous_big_m"
+#define CUOPT_SOLUTION_FILE                "solution_file"
+#define CUOPT_NUM_CPU_THREADS              "num_cpu_threads"
+#define CUOPT_NUM_GPUS                     "num_gpus"
+#define CUOPT_DISTRIBUTED_PDLP_PARTITIONER "distributed_pdlp_partitioner"
+#define CUOPT_USE_DISTRIBUTED_PDLP         "use_distributed_pdlp"
+#define CUOPT_USER_PROBLEM_FILE            "user_problem_file"
+#define CUOPT_PRESOLVE_FILE                "presolve_file"
+#define CUOPT_RANDOM_SEED                  "random_seed"
+#define CUOPT_PDLP_PRECISION               "pdlp_precision"
+#define CUOPT_MIP_SEMICONTINUOUS_BIG_M     "mip_semi_continuous_big_m"
 
 #define CUOPT_MIP_HYPER_HEURISTIC_POPULATION_SIZE     "mip_hyper_heuristic_population_size"
 #define CUOPT_MIP_HYPER_HEURISTIC_NUM_CPUFJ_THREADS   "mip_hyper_heuristic_num_cpufj_threads"
@@ -127,8 +130,21 @@
 #define CUOPT_MIP_HYPER_DIVING_NODE_LIMIT             "mip_hyper_diving_node_limit"
 #define CUOPT_MIP_HYPER_DIVING_ITERATION_LIMIT_FACTOR "mip_hyper_diving_iteration_limit_factor"
 #define CUOPT_MIP_HYPER_DIVING_BACKTRACK_LIMIT        "mip_hyper_diving_backtrack_limit"
-/* @brief Show per-strategy diving symbol in logs (true) instead of a generic 'D' */
+/* @brief Show per-strategy diving symbol in logs instead of a generic 'D' */
 #define CUOPT_MIP_HYPER_DIVING_SHOW_TYPE "mip_hyper_diving_show_type"
+
+/* @brief Recursive sub-MIP (RINS) hyper-parameters */
+#define CUOPT_MIP_HYPER_SUBMIP_BASE_TARGET_FIXRATE   "mip_hyper_submip_base_target_fixrate"
+#define CUOPT_MIP_HYPER_SUBMIP_MIN_FIXRATE           "mip_hyper_submip_min_fixrate"
+#define CUOPT_MIP_HYPER_SUBMIP_MIN_FIXRATE_CAP       "mip_hyper_submip_min_fixrate_cap"
+#define CUOPT_MIP_HYPER_SUBMIP_TARGET_MIP_GAP        "mip_hyper_submip_target_mip_gap"
+#define CUOPT_MIP_HYPER_SUBMIP_NODE_LIMIT_BASE       "mip_hyper_submip_node_limit_base"
+#define CUOPT_MIP_HYPER_SUBMIP_MAX_LEVEL             "mip_hyper_submip_max_level"
+#define CUOPT_MIP_HYPER_SUBMIP_ITERATION_LIMIT_RATIO "mip_hyper_submip_iteration_limit_ratio"
+#define CUOPT_MIP_HYPER_SUBMIP_ENABLE_CPUFJ          "mip_hyper_submip_enable_cpufj"
+
+/* @brief QCQP (barrier) scaling hyper-parameters */
+#define CUOPT_QCQP_HYPER_RUIZ_EQUILIBRATION "qcqp_hyper_ruiz_equilibration"
 
 /* @brief MIP determinism mode constants */
 #define CUOPT_MODE_OPPORTUNISTIC 0
@@ -206,6 +222,14 @@
 #define CUOPT_PRESOLVE_PAPILO  1
 #define CUOPT_PRESOLVE_PSLP    2
 
+/* @brief distributed_pdlp_partitioner values.
+ * Auto: pick automatically (RoundRobin on 1 GPU, KaMinPar otherwise).
+ * KaMinPar: multi-threaded KaMinPar graph partitioner.
+ * RoundRobin: round-robin assignment, no graph. */
+#define CUOPT_DISTRIBUTED_PDLP_PARTITIONER_AUTO        0
+#define CUOPT_DISTRIBUTED_PDLP_PARTITIONER_KAMINPAR    1
+#define CUOPT_DISTRIBUTED_PDLP_PARTITIONER_ROUND_ROBIN 2
+
 /* @brief MIP scaling mode constants */
 #define CUOPT_MIP_SCALING_OFF          0
 #define CUOPT_MIP_SCALING_ON           1
@@ -213,5 +237,37 @@
 
 #define CUOPT_BARRIER_ITERATIVE_REFINEMENT_OFF 0
 #define CUOPT_BARRIER_ITERATIVE_REFINEMENT_ON  1
+
+/* @brief Scalar problem attribute selectors
+ * Passed as cuopt_int_t; the valid set depends on the accessor's value type. */
+#define CUOPT_ATTR_NUM_VARIABLES             0
+#define CUOPT_ATTR_NUM_CONSTRAINTS           1
+#define CUOPT_ATTR_NUM_NONZEROS              2
+#define CUOPT_ATTR_NUM_INTEGERS              3
+#define CUOPT_ATTR_OBJECTIVE_SENSE           4
+#define CUOPT_ATTR_OBJECTIVE_OFFSET          5
+#define CUOPT_ATTR_OBJECTIVE_SCALING_FACTOR  6
+#define CUOPT_ATTR_PROBLEM_CATEGORY          7
+#define CUOPT_ATTR_IS_MIP                    8
+#define CUOPT_ATTR_HAS_QUADRATIC_OBJECTIVE   9
+#define CUOPT_ATTR_HAS_QUADRATIC_CONSTRAINTS 10
+
+/* @brief Numeric/char array problem attribute selectors
+ * (see cuOptGetProblem{Float,Char}ArrayAttribute; sized by num_variables / num_constraints).
+ * Passed as cuopt_int_t. Numbered in a separate range from the scalar selectors for safety.
+ */
+#define CUOPT_ARRAY_ATTR_OBJECTIVE_COEFFICIENTS  100
+#define CUOPT_ARRAY_ATTR_VARIABLE_LOWER_BOUNDS   101
+#define CUOPT_ARRAY_ATTR_VARIABLE_UPPER_BOUNDS   102
+#define CUOPT_ARRAY_ATTR_CONSTRAINT_LOWER_BOUNDS 103
+#define CUOPT_ARRAY_ATTR_CONSTRAINT_UPPER_BOUNDS 104
+#define CUOPT_ARRAY_ATTR_CONSTRAINT_RHS          105
+#define CUOPT_ARRAY_ATTR_CONSTRAINT_SENSE        106
+#define CUOPT_ARRAY_ATTR_VARIABLE_TYPES          107
+
+/* @brief String-array problem attribute selectors (see cuOptGetProblemStringArrayAttribute).
+ * Passed as cuopt_int_t; numbered in a separate range from the scalar and array selectors. */
+#define CUOPT_STRING_ARRAY_VARIABLE_NAMES 200
+#define CUOPT_STRING_ARRAY_ROW_NAMES      201
 
 #endif  // CUOPT_CONSTANTS_H

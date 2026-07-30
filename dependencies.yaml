@@ -73,14 +73,14 @@ files:
   docs:
     output: none
     includes:
-        - cuda
-        - cuda_version
-        - depends_on_libcuopt
-        - depends_on_cuopt
-        - depends_on_cuopt_server
-        - depends_on_cuopt_sh_client
-        - docs
-        - py_version
+      - cuda
+      - cuda_version
+      - depends_on_libcuopt
+      - depends_on_cuopt
+      - depends_on_cuopt_server
+      - depends_on_cuopt_sh_client
+      - docs
+      - py_version
   py_build_libcuopt:
     output: pyproject
     pyproject_dir: python/libcuopt
@@ -154,6 +154,7 @@ files:
       - test_python_common
       - test_python_cuopt
       - depends_on_rapids_logger
+      - test_cufile
   py_build_cuopt_server:
     output: pyproject
     pyproject_dir: python/cuopt_server
@@ -238,8 +239,8 @@ dependencies:
     common:
       - output_types: [conda, requirements, pyproject]
         packages:
-          - &cmake_ver cmake>=4.0
-          - &ninja ninja
+          - cmake>=4.0
+          - ninja
       - output_types: conda
         packages:
           - c-compiler
@@ -266,6 +267,7 @@ dependencies:
           - libboost-devel
           - cpp-argparse
           - &pyyaml pyyaml>=6.0.0
+          - nccl >=2.19
           - tbb-devel
           - zlib
           - bzip2
@@ -472,7 +474,7 @@ dependencies:
     common:
       - output_types: [conda, requirements, pyproject]
         packages:
-          - &cuopt_sh_client_unsuffixed cuopt-sh-client==26.8.*,>=0.0.0a0
+          - cuopt-sh-client==26.8.*,>=0.0.0a0
       - output_types: requirements
         packages:
           # pip recognizes the index as a global option for the requirements.txt file
@@ -756,6 +758,7 @@ dependencies:
             packages:
               - cuda-toolkit[cublas,cudart,curand,cusolver,cusparse,nvtx]==12.*
               - nvidia-cudss-cu12>=0.7,<0.8
+              - nvidia-nccl-cu12>=2.19
               - nvidia-nvjitlink-cu12>=12.9,<13
           - matrix:
               cuda: "13.*"
@@ -763,6 +766,7 @@ dependencies:
             packages:
               - &ctk_cu13 cuda-toolkit[cublas,cudart,curand,cusolver,cusparse,nvtx]==13.*
               - &cudss_cu13 nvidia-cudss-cu13>=0.7,<0.8
+              - &nccl_cu13 nvidia-nccl-cu13>=2.19
               - &nvjitlink_cu13 nvidia-nvjitlink>=13.3,<14
           # if no matching matrix selectors passed, list the CUDA 13 requirement
           # (just as a source of documentation, as this populates pyproject.toml in source control)
@@ -770,6 +774,7 @@ dependencies:
             packages:
               - *ctk_cu13
               - *cudss_cu13
+              - *nccl_cu13
               - *nvjitlink_cu13
   develop:
     common:
@@ -804,8 +809,8 @@ dependencies:
           - sphinxcontrib-websupport
           - sphinx-design
           - pip:
-            - swagger-plugin-for-sphinx
-            - nvidia-sphinx-theme
+              - swagger-plugin-for-sphinx
+              - nvidia-sphinx-theme
 
   notebooks:
     common:
@@ -848,3 +853,17 @@ dependencies:
           - matrix:
             packages:
               - python>=3.11,<3.15
+  test_cufile:
+    specific:
+      # The `cufile` extra was added to the `cuda-toolkit` metapackage in 12.6.3
+      # Adding an explicit test dependency on the cufile package here for
+      # testing on versions before 12.6.3
+      - output_types: pyproject
+        matrices:
+          - matrix:
+              cuda: "12.[012345]"
+              use_cuda_wheels: "true"
+            packages:
+              - nvidia-cufile-cu12
+          - matrix:
+            packages:
