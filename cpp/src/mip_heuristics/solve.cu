@@ -597,10 +597,14 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
       const auto papilo_budget   = mip::evaluate_presolve_budget(hp, papilo_features);
       mip::log_presolve_budget("PAPILO", papilo_features, papilo_budget);
 
-      // The round and badge caps are what shape presolve; the timer only carries the time actually
-      // left in the solve, so it cannot overrun the whole budget but also does not truncate
-      // presolve at some fraction of it the way a presolve-specific cap did.
-      double presolve_time_limit = timer.remaining_time();
+      // The round and badge caps shape presolve, but they do not bound its cost: ns1760995
+      // converges in well under 30 rounds and still spent 243-403s of a 600s budget in Papilo,
+      // which left no time to find a dual bound. The wall cap is what makes that survivable, so it
+      // stays a hard ceiling and remaining_time only stops presolve reaching past the end of the
+      // solve.
+      double presolve_time_limit =
+        std::min(std::min(hp.presolve_time_ratio * time_limit, hp.presolve_max_time),
+                 timer.remaining_time());
       if (settings.determinism_mode == CUOPT_MODE_DETERMINISTIC) {
         presolve_time_limit = std::numeric_limits<double>::infinity();
       }

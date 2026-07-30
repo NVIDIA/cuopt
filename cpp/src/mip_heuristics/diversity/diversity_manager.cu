@@ -319,9 +319,14 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
   if (run_probing_cache) {
     log_presolve_budget("PROBING", probing_features, probing_budget);
     // Run probing cache before trivial presolve to discover variable implications. The work budget
-    // decides how much probing happens; the timer only carries the time actually left in the solve,
-    // so it cannot overrun the whole budget but also is not what shapes the amount of probing.
-    timer_t probing_timer{global_timer.remaining_time()};
+    // shapes how much probing happens but cannot bound how long that takes: realised throughput
+    // spans 12 to 450 work units per second across the benchmark, so at the slow end even a quarter
+    // of the candidates ran 593 of the 600 available seconds and left the root LP with no dual
+    // bound. max_time_on_probing is therefore a hard ceiling rather than a target, and
+    // remaining_time only stops it reaching past the end of the solve.
+    f_t time_for_probing_cache =
+      std::min((f_t)diversity_config.max_time_on_probing, (f_t)global_timer.remaining_time());
+    timer_t probing_timer{time_for_probing_cache};
     const auto probing_t0 = std::chrono::steady_clock::now();
     // this function computes probing cache, finds singletons, substitutions and changes the problem
     bool problem_is_infeasible = compute_probing_cache(ls.constraint_prop.bounds_update,
