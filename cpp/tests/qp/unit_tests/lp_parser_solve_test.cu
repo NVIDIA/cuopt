@@ -152,6 +152,36 @@ End
   EXPECT_NEAR(h_z[1], -2.0, 1e-4);
 }
 
+// Maximize with a nonzero objective offset, quadratic constraints, and no
+// quadratic objective. Pins that obj_constant is negated for every maximize
+// problem in cuopt_optimization_problem_to_user_problem, not only when Q is
+// nonempty. Optimal: x = 1, objective = 5 + 1 = 6.
+TEST(lp_parser_solve, qcqp_maximize_offset_no_q_objective)
+{
+  raft::handle_t handle;
+  auto problem = io::read_lp_from_string<int, double>(R"LP(
+Maximize
+  obj: 5 + x
+Subject To
+  ball: [ x ^ 2 ] <= 1
+Bounds
+  x free
+End
+)LP");
+  ASSERT_FALSE(problem.has_quadratic_objective());
+  ASSERT_TRUE(problem.has_quadratic_constraints());
+
+  auto settings = pdlp_solver_settings_t<int, double>();
+  auto solution = solve_lp(&handle, problem, settings);
+
+  ASSERT_EQ(solution.get_termination_status(), pdlp_termination_status_t::Optimal);
+  EXPECT_NEAR(solution.get_objective_value(), 6.0, 1e-4);
+
+  auto h_x = cuopt::host_copy(solution.get_primal_solution(), handle.get_stream());
+  ASSERT_EQ(h_x.size(), 1u);
+  EXPECT_NEAR(h_x[0], 1.0, 1e-4);
+}
+
 // Quadratic objective with a negative cross-term coefficient. This
 // exercises the same upper-triangular off-diagonal storage path with a
 // sign that gets carried through parse_quadratic_bracket via the per-term

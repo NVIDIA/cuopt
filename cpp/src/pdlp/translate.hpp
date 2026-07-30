@@ -322,12 +322,10 @@ static simplex::user_problem_t<i_t, f_t> cuopt_optimization_problem_to_user_prob
     for (f_t& c : user_problem.objective) {
       c *= -1;
     }
-    if (!user_problem.Q_values.empty()) {
-      for (f_t& q : user_problem.Q_values) {
-        q *= -1;
-      }
-      user_problem.obj_constant = -user_problem.obj_constant;
+    for (f_t& q : user_problem.Q_values) {
+      q *= -1;
     }
+    user_problem.obj_constant = -user_problem.obj_constant;
   }
 
   if (model.has_quadratic_constraints()) {
