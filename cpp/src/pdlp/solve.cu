@@ -1841,15 +1841,6 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
     // Convert data structures to dual simplex format and back
     simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
       cuopt_optimization_problem_to_user_problem<i_t, f_t>(op_problem.get_handle_ptr(), op_problem);
-    if (has_q_obj && op_problem.get_sense()) {
-      // The translation already negates the linear objective for maximization. Negate the
-      // quadratic term and constant as well to form the equivalent minimization problem.
-      std::transform(dual_simplex_problem.Q_values.begin(),
-                     dual_simplex_problem.Q_values.end(),
-                     dual_simplex_problem.Q_values.begin(),
-                     [](f_t value) { return -value; });
-      dual_simplex_problem.obj_constant = -dual_simplex_problem.obj_constant;
-    }
     auto sol_dual_simplex = run_barrier(dual_simplex_problem, settings, qcqp_timer);
     auto solution         = convert_dual_simplex_sol(op_problem,
                                              std::get<0>(sol_dual_simplex),
