@@ -396,54 +396,51 @@ DONE:
   return status;
 }
 
-cuopt_int_t test_log_level_off(void)
+/* A callback registered for one solve must not fire on a later solve that uses
+ * fresh settings with no callback — otherwise a stale callback could run against
+ * destroyed user_data once the first solve's RAII scope ends. */
+cuopt_int_t test_log_callback_not_leaked_across_solves(void)
 {
-  cuOptOptimizationProblem problem = NULL;
-  cuOptSolverSettings settings     = NULL;
-  cuOptSolution solution           = NULL;
-  log_cb_context_t ctx             = {0, NULL};
-  cuopt_int_t status               = make_trivial_lp(&problem, &settings);
+  cuOptOptimizationProblem problem1 = NULL;
+  cuOptSolverSettings settings1     = NULL;
+  cuOptSolution solution1           = NULL;
+  cuOptOptimizationProblem problem2 = NULL;
+  cuOptSolverSettings settings2     = NULL;
+  cuOptSolution solution2           = NULL;
+  log_cb_context_t ctx              = {0, NULL};
+  int calls_after_first             = 0;
+
+  cuopt_int_t status = make_trivial_lp(&problem1, &settings1);
   if (status != CUOPT_SUCCESS) goto DONE;
 
-  status = cuOptSetLogCallback(settings, counting_log_callback, &ctx);
+  status = cuOptSetLogCallback(settings1, counting_log_callback, &ctx);
   if (status != CUOPT_SUCCESS) goto DONE;
-  status = cuOptSetLogLevel(settings, CUOPT_LOG_LEVEL_OFF);
-  if (status != CUOPT_SUCCESS) goto DONE;
-
-  status = cuOptSolve(problem, settings, &solution);
+  status = cuOptSolve(problem1, settings1, &solution1);
   if (status != CUOPT_SUCCESS) goto DONE;
 
-  if (ctx.calls != 0) {
-    printf("Expected 0 log calls with LOG_LEVEL_OFF; got %d\n", ctx.calls);
+  calls_after_first = ctx.calls;
+
+  /* Second solve uses fresh settings with no callback registered. */
+  status = make_trivial_lp(&problem2, &settings2);
+  if (status != CUOPT_SUCCESS) goto DONE;
+  status = cuOptSolve(problem2, settings2, &solution2);
+  if (status != CUOPT_SUCCESS) goto DONE;
+
+  if (ctx.calls != calls_after_first) {
+    printf("Callback leaked across solves; expected %d calls, got %d\n",
+           calls_after_first,
+           ctx.calls);
     status = CUOPT_INVALID_ARGUMENT;
     goto DONE;
   }
 
 DONE:
-  cuOptDestroyProblem(&problem);
-  cuOptDestroySolverSettings(&settings);
-  cuOptDestroySolution(&solution);
-  return status;
-}
-
-cuopt_int_t test_log_level_invalid(void)
-{
-  cuOptSolverSettings settings = NULL;
-  cuopt_int_t status           = cuOptCreateSolverSettings(&settings);
-  if (status != CUOPT_SUCCESS) goto DONE;
-
-  if (cuOptSetLogLevel(settings, -1) != CUOPT_INVALID_ARGUMENT) {
-    status = CUOPT_INVALID_ARGUMENT;
-    goto DONE;
-  }
-  if (cuOptSetLogLevel(settings, CUOPT_LOG_LEVEL_OFF + 1) != CUOPT_INVALID_ARGUMENT) {
-    status = CUOPT_INVALID_ARGUMENT;
-    goto DONE;
-  }
-  status = CUOPT_SUCCESS;
-
-DONE:
-  cuOptDestroySolverSettings(&settings);
+  cuOptDestroyProblem(&problem1);
+  cuOptDestroySolverSettings(&settings1);
+  cuOptDestroySolution(&solution1);
+  cuOptDestroyProblem(&problem2);
+  cuOptDestroySolverSettings(&settings2);
+  cuOptDestroySolution(&solution2);
   return status;
 }
 

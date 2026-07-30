@@ -207,7 +207,7 @@ void diversity_manager_t<i_t, f_t>::add_user_given_solutions(
         *problem_ptr->original_problem_ptr, h_original, h_crushed);
       init_sol_assignment = cuopt::device_copy(h_crushed, sol.handle_ptr->get_stream());
 
-#if CUOPT_LOG_ACTIVE_LEVEL <= CUOPT_LOG_LEVEL_DEBUG
+#if CUOPT_LOG_ACTIVE_LEVEL <= RAPIDS_LOGGER_LOG_LEVEL_DEBUG
       const auto& reduced_problem       = *problem_ptr->original_problem_ptr;
       const std::vector<f_t> h_red_obj  = reduced_problem.get_objective_coefficients_host();
       const std::vector<f_t>& h_ori_obj = presolver_ptr->get_original_objective_coefficients();

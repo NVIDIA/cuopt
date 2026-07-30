@@ -50,12 +50,6 @@ using log_callback_with_data_t = void (*)(int level, const char* message, void* 
 void set_pending_log_callback(log_callback_with_data_t cb, void* user_data);
 void clear_pending_log_callback();
 
-/**
- * @brief Override the log level for the next init_logger_t.  Pass -1 to restore the default.
- */
-void set_pending_log_level(int level);
-void clear_pending_log_level();
-
 // Ref-counted logger initializer
 class init_logger_t {
   // Using shared_ptr for ref-counting

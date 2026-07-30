@@ -118,9 +118,10 @@ TEST(c_api, log_callback) { EXPECT_EQ(test_log_callback(), CUOPT_SUCCESS); }
 
 TEST(c_api, log_callback_cleared) { EXPECT_EQ(test_log_callback_cleared(), CUOPT_SUCCESS); }
 
-TEST(c_api, log_level_off) { EXPECT_EQ(test_log_level_off(), CUOPT_SUCCESS); }
-
-TEST(c_api, log_level_invalid) { EXPECT_EQ(test_log_level_invalid(), CUOPT_SUCCESS); }
+TEST(c_api, log_callback_not_leaked_across_solves)
+{
+  EXPECT_EQ(test_log_callback_not_leaked_across_solves(), CUOPT_SUCCESS);
+}
 
 TEST(c_api, burglar) { EXPECT_EQ(burglar_problem(), CUOPT_SUCCESS); }
 

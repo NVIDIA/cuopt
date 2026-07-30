@@ -146,15 +146,6 @@
 /* @brief QCQP (barrier) scaling hyper-parameters */
 #define CUOPT_QCQP_HYPER_RUIZ_EQUILIBRATION "qcqp_hyper_ruiz_equilibration"
 
-/* @brief Log level constants for cuOptSetLogLevel */
-#define CUOPT_LOG_LEVEL_TRACE    0
-#define CUOPT_LOG_LEVEL_DEBUG    1
-#define CUOPT_LOG_LEVEL_INFO     2
-#define CUOPT_LOG_LEVEL_WARN     3
-#define CUOPT_LOG_LEVEL_ERROR    4
-#define CUOPT_LOG_LEVEL_CRITICAL 5
-#define CUOPT_LOG_LEVEL_OFF      6
-
 /* @brief MIP determinism mode constants */
 #define CUOPT_MODE_OPPORTUNISTIC 0
 #define CUOPT_MODE_DETERMINISTIC 1

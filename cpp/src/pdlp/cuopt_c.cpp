@@ -92,8 +92,6 @@ struct solver_settings_handle_t {
   // Log callback registered via cuOptSetLogCallback
   cuOptLogCallback log_callback{nullptr};
   void* log_callback_user_data{nullptr};
-  // Log level override registered via cuOptSetLogLevel (-1 = use default)
-  int log_level{-1};
 };
 
 solver_settings_handle_t* get_settings_handle(cuOptSolverSettings settings)
@@ -1075,23 +1073,13 @@ cuopt_int_t cuOptSetMIPSetSolutionCallback(cuOptSolverSettings settings,
 }
 
 cuopt_int_t cuOptSetLogCallback(cuOptSolverSettings settings,
-                               cuOptLogCallback callback,
-                               void* user_data)
+                                cuOptLogCallback callback,
+                                void* user_data)
 {
   if (settings == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   solver_settings_handle_t* handle = get_settings_handle(settings);
   handle->log_callback             = callback;
   handle->log_callback_user_data   = user_data;
-  return CUOPT_SUCCESS;
-}
-
-cuopt_int_t cuOptSetLogLevel(cuOptSolverSettings settings, int level)
-{
-  if (settings == nullptr) { return CUOPT_INVALID_ARGUMENT; }
-  if (level < CUOPT_LOG_LEVEL_TRACE || level > CUOPT_LOG_LEVEL_OFF) {
-    return CUOPT_INVALID_ARGUMENT;
-  }
-  get_settings_handle(settings)->log_level = level;
   return CUOPT_SUCCESS;
 }
 
@@ -1171,27 +1159,21 @@ cuopt_int_t cuOptSolve(cuOptOptimizationProblem problem,
   if (settings == nullptr) { return CUOPT_INVALID_ARGUMENT; }
   if (solution_ptr == nullptr) { return CUOPT_INVALID_ARGUMENT; }
 
-  // Install user log callback / level so init_logger_t inside the solver picks them up.
-  // The RAII guard clears them on scope exit (whether by return or exception).
+  // Install user log callback so init_logger_t inside the solver picks it up.
+  // The RAII guard clears it on scope exit (whether by return or exception).
   solver_settings_handle_t* handle = get_settings_handle(settings);
   struct log_scope_guard_t {
     bool has_callback;
-    bool has_level;
     ~log_scope_guard_t()
     {
       if (has_callback) { cuopt::clear_pending_log_callback(); }
-      if (has_level) { cuopt::clear_pending_log_level(); }
     }
-  } log_scope{false, false};
+  } log_scope{false};
 
   if (handle->log_callback) {
     // cuOptLogCallback and log_callback_with_data_t share the same signature.
     cuopt::set_pending_log_callback(handle->log_callback, handle->log_callback_user_data);
     log_scope.has_callback = true;
-  }
-  if (handle->log_level >= 0) {
-    cuopt::set_pending_log_level(handle->log_level);
-    log_scope.has_level = true;
   }
 
   problem_and_stream_view_t* problem_and_stream_view =

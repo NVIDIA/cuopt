@@ -826,7 +826,9 @@ cuopt_int_t cuOptGetFloatParameter(cuOptSolverSettings settings,
 /**
  * @brief Type of callback invoked once per log line emitted by the solver.
  *
- * @param level    Log level (one of CUOPT_LOG_LEVEL_*).
+ * @param level    Severity of the log line, increasing with value
+ *  (0=trace, 1=debug, 2=info, 3=warn, 4=error, 5=critical). Intended only for
+ *  display/filtering of output, not as a stable programmatic API.
  * @param message  Null-terminated log line without trailing newline.
  * @param user_data Opaque pointer passed to cuOptSetLogCallback.
  *
@@ -855,16 +857,6 @@ typedef void (*cuOptLogCallback)(int level, const char* message, void* user_data
 cuopt_int_t cuOptSetLogCallback(cuOptSolverSettings settings,
                                 cuOptLogCallback callback,
                                 void* user_data);
-
-/**
- * @brief Set the solver log verbosity level.
- *
- * @param[in] settings The solver settings object.
- * @param[in] level    One of CUOPT_LOG_LEVEL_TRACE … CUOPT_LOG_LEVEL_OFF.
- *
- * @return A status code indicating success or failure.
- */
-cuopt_int_t cuOptSetLogLevel(cuOptSolverSettings settings, int level);
 
 /**
  * @brief Type of callback for receiving incumbent MIP solutions with user context.

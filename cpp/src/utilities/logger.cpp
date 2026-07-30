@@ -1,12 +1,17 @@
 /* clang-format off */
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
 /* clang-format on */
 
 #include <utilities/logger.hpp>
 #include <utilities/version_info.hpp>
+
+#include <algorithm>
+#include <cctype>
+#include <cstdlib>
+#include <optional>
 
 namespace cuopt {
 
@@ -83,12 +88,43 @@ rapids_logger::sink_ptr default_sink()
 inline std::string default_pattern() { return "[%Y-%m-%d %H:%M:%S:%f] [%n] [%-6l] %v"; }
 
 /**
+ * @brief Runtime log-level override from the `CUOPT_LOG_LEVEL` environment variable.
+ *
+ * Accepts a level name (case-insensitive): TRACE, DEBUG, INFO, WARN, ERROR, CRITICAL, OFF.
+ * Returns std::nullopt if the variable is unset or holds an unrecognised value.
+ *
+ * @note Statements below the compile-time `CUOPT_LOG_ACTIVE_LEVEL` (default INFO) are
+ *  removed at build time, so raising verbosity above the build level has no effect;
+ *  lowering it (e.g. WARN/ERROR/OFF to suppress output) always works.
+ */
+inline std::optional<rapids_logger::level_enum> env_log_level()
+{
+  const char* env = std::getenv("CUOPT_LOG_LEVEL");
+  if (env == nullptr) { return std::nullopt; }
+  std::string level{env};
+  std::transform(level.begin(), level.end(), level.begin(), [](unsigned char c) {
+    return static_cast<char>(std::toupper(c));
+  });
+  if (level == "TRACE") { return rapids_logger::level_enum::trace; }
+  if (level == "DEBUG") { return rapids_logger::level_enum::debug; }
+  if (level == "INFO") { return rapids_logger::level_enum::info; }
+  if (level == "WARN") { return rapids_logger::level_enum::warn; }
+  if (level == "ERROR") { return rapids_logger::level_enum::error; }
+  if (level == "CRITICAL") { return rapids_logger::level_enum::critical; }
+  if (level == "OFF") { return rapids_logger::level_enum::off; }
+  return std::nullopt;  // unrecognised value: keep the compiled default
+}
+
+/**
  * @brief Returns the default log level for the global logger.
+ *
+ * The `CUOPT_LOG_LEVEL` environment variable, when set, overrides the compile-time default.
  *
  * @return rapids_logger::level_enum The default log level.
  */
 inline rapids_logger::level_enum default_level()
 {
+  if (auto lvl = env_log_level()) { return *lvl; }
 #if CUOPT_LOG_ACTIVE_LEVEL == RAPIDS_LOGGER_LOG_LEVEL_TRACE
   return rapids_logger::level_enum::trace;
 #elif CUOPT_LOG_ACTIVE_LEVEL == RAPIDS_LOGGER_LOG_LEVEL_DEBUG
@@ -167,11 +203,10 @@ static std::weak_ptr<logger_config_guard> g_active_guard;
 // while the sink is alive, and the sink is removed (in reset_default_logger) before
 // this pointer is cleared.
 
-// Pending user log callback/level set by the C API before cuOptSolve.
+// Pending user log callback set by the C API before cuOptSolve.
 // Consumed once (under g_guard_mutex) by init_logger_t to build the guard state.
 static log_callback_with_data_t g_pending_callback = nullptr;
 static void* g_pending_callback_data               = nullptr;
-static int g_pending_log_level                     = -1;  // -1 = use compiled default
 
 static void user_log_bridge(int lvl, const char* msg)
 {
@@ -193,18 +228,6 @@ void clear_pending_log_callback()
   std::lock_guard<std::mutex> lock(g_guard_mutex);
   g_pending_callback      = nullptr;
   g_pending_callback_data = nullptr;
-}
-
-void set_pending_log_level(int level)
-{
-  std::lock_guard<std::mutex> lock(g_guard_mutex);
-  g_pending_log_level = level;
-}
-
-void clear_pending_log_level()
-{
-  std::lock_guard<std::mutex> lock(g_guard_mutex);
-  g_pending_log_level = -1;
 }
 
 init_logger_t::init_logger_t(std::string log_file, bool log_to_console)
@@ -233,8 +256,8 @@ init_logger_t::init_logger_t(std::string log_file, bool log_to_console)
   // Capture pending callback into the guard so the bridge reads stable (immutable) state.
   auto guard = std::make_shared<logger_config_guard>();
   if (g_pending_callback) {
-    guard->callback_state =
-      std::make_unique<captured_log_callback_t>(captured_log_callback_t{g_pending_callback, g_pending_callback_data});
+    guard->callback_state = std::make_unique<captured_log_callback_t>(
+      captured_log_callback_t{g_pending_callback, g_pending_callback_data});
     g_active_log_callback = guard->callback_state.get();
     cuopt::default_logger().sinks().push_back(
       std::make_shared<rapids_logger::callback_sink_mt>(user_log_bridge));
@@ -245,10 +268,6 @@ init_logger_t::init_logger_t(std::string log_file, bool log_to_console)
 #else
   cuopt::default_logger().set_pattern(cuopt::default_pattern());
 #endif
-
-  if (g_pending_log_level >= 0) {
-    cuopt::default_logger().set_level(static_cast<rapids_logger::level_enum>(g_pending_log_level));
-  }
 
   // Extract messages from the global buffer and log to the default logger
   auto buffered_messages = global_log_buffer().drain_all();
