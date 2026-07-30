@@ -108,8 +108,7 @@ TEST_F(cli_test_t, basic_usage)
   std::string content((std::istreambuf_iterator<char>(sol)), std::istreambuf_iterator<char>());
   EXPECT_TRUE(content.find("Status:") != std::string::npos);
   EXPECT_TRUE(content.find("Objective value:") != std::string::npos);
-  EXPECT_TRUE(output.find("GiB total") != std::string::npos);
-  EXPECT_TRUE(output.find("GiB available") != std::string::npos);
+  EXPECT_TRUE(output.find("RAM (available/total):") != std::string::npos);
 }
 
 TEST_F(cli_test_t, with_initial_solution)
