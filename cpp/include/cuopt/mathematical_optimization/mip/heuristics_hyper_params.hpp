@@ -37,12 +37,14 @@ struct mip_heuristics_hyper_params_t {
   // differs between instances.
   f_t probe_host_overhead_work = 0.02;  // charged per probed variable
   f_t probe_iter_work          = 0.01;  // charged per multi-probe propagation iteration
-  // Numerator of the work ceiling that keeps probing inside a wall-clock budget. Work units are
-  // reproducible but their cost is not: realised throughput spans 1.9 to 689 units/s across the
-  // 240-instance benchmark, so a coverage target alone lets slow instances run for the whole solve.
-  // Dividing this by the cost proxy (nnz + n_cand * avg_col_len) bounds the wall time instead; at
-  // 1.5e8 the slowest of 660 measured probing runs finishes in 44s, none above 60s.
-  f_t probing_work_time_scale = 1.5e8;
+  // Numerator of the probing work ceiling, divided by the cost proxy (nnz + n_cand * avg_col_len).
+  // This is a reproducible backstop for pathological instances, not the wall-clock bound: the proxy
+  // predicts realised throughput only to within ~700x, so a scale tight enough to bound time
+  // starves everything else. At 1.5e8 no run exceeded 44s but the large instances got 1-9% of their
+  // candidates probed, which cost several of them their solution; buying even 14% coverage there
+  // needs 1e9, which puts 22 runs past 60s. max_time_on_probing bounds the time instead, measured
+  // rather than predicted, and this stays loose enough to bind only where the proxy is extreme.
+  f_t probing_work_time_scale = 3.0e9;
 
   f_t root_lp_time_ratio                 = 0.1;     // fraction of total time for root LP
   f_t root_lp_max_time                   = 15.0;    // hard cap on root LP seconds

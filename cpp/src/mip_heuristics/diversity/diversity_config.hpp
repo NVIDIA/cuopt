@@ -13,7 +13,11 @@ namespace cuopt::mathematical_optimization::mip {
 
 struct diversity_config_t {
   double time_ratio_of_probing_cache = 0.1;
-  double max_time_on_probing         = 60.0;
+  // The bound that actually holds on probing. Measuring beats predicting here: stopping at a wall
+  // target leaves ~80% of instances probing every candidate, where a structural work ceiling tight
+  // enough to guarantee the same time truncates the large ones to a few percent. 45s keeps margin
+  // under the 60s presolve budget.
+  double max_time_on_probing         = 45.0;
   int max_var_diff                   = 256;
   double default_time_limit          = 10.;
   int initial_island_size            = 3;

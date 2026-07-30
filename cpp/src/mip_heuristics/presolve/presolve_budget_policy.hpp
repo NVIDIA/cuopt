@@ -69,16 +69,17 @@ struct presolve_config_t {
 };
 
 inline constexpr presolve_config_t presolve_configs[] = {
-  // Old Papilo rule, so the probing ceiling is measured on its own.
-  {presolve_budget_policy_t::fixed, 1.00, 1.5e8},  // 0
-  // New Papilo cost rule against the ceiling and the two coverage fractions.
-  {presolve_budget_policy_t::cost, 1.00, 1.5e8},  // 1
-  {presolve_budget_policy_t::cost, 0.25, 1.5e8},  // 2
-  {presolve_budget_policy_t::cost, 0.05, 1.5e8},  // 3
-  // Half the ceiling: 29s worst case rather than 44s, to see whether the margin costs quality.
-  {presolve_budget_policy_t::cost, 1.00, 7.5e7},  // 4
-  // Coverage only, no ceiling -- the control that says whether the ceiling earns its keep.
-  {presolve_budget_policy_t::cost, 0.05, 0.0},  // 5
+  // Old Papilo rule, so the Papilo change can be read against the probing change.
+  {presolve_budget_policy_t::fixed, 1.00, 3.0e9},  // 0
+  // The defaults.
+  {presolve_budget_policy_t::cost, 1.00, 3.0e9},  // 1
+  // The tight ceiling that over-truncated: bounded time, but 1-9% coverage on large instances.
+  {presolve_budget_policy_t::cost, 1.00, 1.5e8},  // 2
+  // No ceiling at all -- isolates how much the backstop still contributes over the wall target.
+  {presolve_budget_policy_t::cost, 1.00, 0.0},  // 3
+  // Coverage fractions, to check the wall target is not leaving cheap probing on the table.
+  {presolve_budget_policy_t::cost, 0.25, 3.0e9},  // 4
+  {presolve_budget_policy_t::cost, 0.05, 3.0e9},  // 5
 };
 inline constexpr int n_presolve_configs = 6;
 
@@ -249,21 +250,30 @@ presolve_budget_t evaluate_presolve_budget(const mip_heuristics_hyper_params_t<i
       break;
     }
 
-    // Papilo's cost is driven by probing.minbadgesize, and how much that badge is worth depends on
-    // how many binaries there are and how many rows each one touches -- n_bin * avg_col_len, the
-    // nonzeros one probing sweep visits. Above ~2e5 a large badge stops paying for itself:
-    // square47 (2.7e7) went from 40.6s at badge 1024 to 8.1s at 32 with a bit-identical reduced
-    // problem, and sorrell3 (3.4e5) from 42.9s to 14.0s, also identical. ns1760995 (1.8e6) is the
-    // one instance where the badge does buy reduction -- 1024 removes 120174 rows where anything up
-    // to 512 removes 226 -- but it costs 273s to do it, and the run that truncated Papilo at 60s
-    // closed the gap to 1.37% while every run that let it finish ended with no dual bound at all.
-    // Below the threshold the reverse holds (mzzv11, 30n20b8 and air05 all reduce measurably worse
-    // at badge 32), so those keep Papilo's own default. Rounds are not a useful limit here: every
-    // one of the 240 instances converged inside 30 without hitting its round or time cap.
+    // cuOpt forces probing.minbadgesize to ncols/2 to stop Papilo aborting probing on its own work
+    // budget (working_limit = 2*nnz), so the first badge overshoots that budget in a single pass
+    // and the badge cap is the only thing left bounding it. How much one badge costs scales with
+    // the nonzeros a probing sweep visits, n_bin * avg_col_len, but that predicts *cost*, not
+    // whether the badge is worth paying for, so the cap only applies where the cost is large enough
+    // to matter.
+    //
+    // Above ~5e5 the badge stops paying for itself: square47 (2.7e7) went from 40.6s at badge 1024
+    // to 8.1s at 32 with a bit-identical reduced problem. ns1760995 (1.8e6) is the one instance
+    // where the badge does buy reduction -- it needs 640+ to remove 120k rows instead of 226 -- but
+    // that costs 100-274s against a 60s ceiling, and capping it matches the baseline gap (1.5% vs
+    // 1.4%) while letting it run cost every config its dual bound entirely.
+    //
+    // Nearer the threshold the reduction is worth more than the time: triptim1 (3.5e5) removes 669
+    // rows at badge 1024 against 545 at 32, for 17s instead of 10s, and clamping it regressed the
+    // instance. Below it the same holds for mzzv11, 30n20b8 and air05.
+    //
+    // Rounds are left uncapped. A round cap looks like a cost limit but is not one: triptim1 is
+    // bit-identical at 30 rounds and unlimited, while mzzv11 keeps reducing past 30 (1962 rows
+    // against 1576) for 6s more, so capping only cost reduction. The wall ceiling bounds the cost.
     case presolve_budget_policy_t::cost: {
       const double papilo_probe_cost = n_bin * std::max<double>(feat.avg_col_len(), 1.0);
-      b.papilo_max_rounds            = 30;
-      b.papilo_max_badgesize         = papilo_probe_cost > 2.0e5 ? 32 : -1;
+      b.papilo_max_rounds            = -1;
+      b.papilo_max_badgesize         = papilo_probe_cost > 5.0e5 ? 32 : -1;
       probe_fraction                 = 1.0;
       b.probing_step_size            = 128;
       break;
