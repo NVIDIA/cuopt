@@ -96,5 +96,7 @@ endif()
 message(STATUS "libcuopt: Final RPATH = ${rpaths}")
 
 set_property(TARGET cuopt PROPERTY INSTALL_RPATH ${rpaths} APPEND)
+set_property(TARGET cuopt_base PROPERTY INSTALL_RPATH ${rpaths} APPEND)
+set_property(TARGET cuopt_lp PROPERTY INSTALL_RPATH ${rpaths} APPEND)
 set_property(TARGET cuopt_cli PROPERTY INSTALL_RPATH ${rpaths} APPEND)
 set_property(TARGET cuopt_grpc_server PROPERTY INSTALL_RPATH ${rpaths} APPEND)
