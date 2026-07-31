@@ -388,8 +388,11 @@ if buildAll || hasArg libcuopt || hasArg cuopt_grpc_server; then
     if hasArg cuopt_grpc_server && ! hasArg libcuopt && ! buildAll; then
         # Build only the gRPC server (ninja resolves libcuopt as a dependency)
         cmake --build "${LIBCUOPT_BUILD_DIR}" --target cuopt_grpc_server ${VERBOSE_FLAG} ${JFLAG}
+    elif hasArg --install; then
+        cmake --build "${LIBCUOPT_BUILD_DIR}" --target ${INSTALL_TARGET} ${VERBOSE_FLAG} ${JFLAG}
     else
-        cmake --build "${LIBCUOPT_BUILD_DIR}" ${INSTALL_TARGET:+--target ${INSTALL_TARGET}} ${VERBOSE_FLAG} ${JFLAG}
+        # Manual make invocation to start its jobserver
+        make ${JFLAG} -C "${REPODIR}/cpp" LIBCUOPT_BUILD_DIR="${LIBCUOPT_BUILD_DIR}" VERBOSE_FLAG="${VERBOSE_FLAG}" PARALLEL_LEVEL="${PARALLEL_LEVEL}" ninja-build
     fi
 fi
 
