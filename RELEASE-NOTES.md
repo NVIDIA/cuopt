@@ -4,20 +4,18 @@
 
 ### New Features (26.08)
 
-- Multi-GPU PDLP: distribute LP solves across multiple GPUs using METIS partitioning and NCCL; 2.5x–8.8x speedup on 8 NVLink-connected B200 GPUs
-- Add sparsity exploitation for large-dimensional SOC constraints in the barrier solver
-- Fast free-format MPS parser with reduced parse time on large models
-- Recursive RINS heuristic for MIP
-- Zero-half (odd-cycle) cuts for MIP
-- Conflict graph improvements: incorporate non-binary rows and probing implications
-- Papilo-based primal/dual crush in MIP presolve
-- Vector length diving and Farkas diving heuristics for MIP
-- UBI10 (Red Hat Universal Base Image) container variant for FIPS 140-3 compliant environments; image tags use `-ubi10` suffix (e.g. `latest-cu13-ubi10`)
+- New Multi-GPU PDLP: distribute LP solves across multiple GPUs using METIS partitioning; 2.5x–8.8x speedup on 8 NVLink-connected B200 GPUs
+- Exploit sparsity in Barrier's augmented system on problems with large second order cone constraints
+- New free-format MPS parser with faster parse time on large models
+- New recursive RINS heuristic for MIP
+- New zero-half (odd-cycle) cuts for MIP
+- New vector length diving and Farkas diving heuristics for MIP
 - Routing: accept NumPy and pandas inputs in the routing Python `DataModel` in addition to cuDF
-- gRPC: Python interface to the C++ gRPC async client
-- gRPC: allow TLS arguments in the Python gRPC async API
 - C API: extend getters with additional query functions
 - C API: automatic CPU/GPU memory selection for problem construction
+- gRPC: Python interface to the C++ gRPC async client
+- gRPC: allow TLS arguments in the Python gRPC async API
+- UBI10 (Red Hat Universal Base Image) container variant for FIPS 140-3 compliant environments; image tags use `-ubi10` suffix (e.g. `latest-cu13-ubi10`)
 
 ### Breaking Changes (26.08)
 
@@ -25,10 +23,13 @@
 
 ### Improvements (26.08)
 
+- Conflict graph improvements: incorporate non-binary rows and probing implications
 - Reduce latency in LP concurrent mode
 - Reduce memory footprint of PDLP
 - Reduce QP solver overhead
+- Improve Ruiz equilibration heuristic to also check column imbalance on QPs
 - Run feasibility-jump (CPU-FJ) heuristics at the root node
+- Papilo-based primal/dual crush in MIP presolve
 - Expose diving hyperparameters for MIP solver configuration
 - Unify threading model in the MIP solver using OpenMP tasks
 - MIP log cleanup and improved readability
@@ -39,36 +40,36 @@
   
 ### Bug Fixes (26.08)
 
-- Fix lower bound being incorrect in MIP single-thread mode
-- Fix concurrent LP exception cleanup
+- Allow zero-valued coefficient updates in the LP Python model
+- Fix an issue in PDLP with cublas error capture and hang on infeasible solutions
+- Fix an exception in concurrent LP cleanup
+- Fix bug in barrier solver where cuDSS descriptors were being freed before their backing buffers
+- Fix a bug in MIP where the lower bound was incorrect when using a singlethread 
+- Fix a bug in MIP where nodes were lost in branch and bound
+- Fix a bug in MIP where root cut pass CPU feasibility-jump solutions were dropped by GPU heuristics
+- Add guard in MIP for huge bounds in bounds propagation
+- Fix a bug in MIP with incorrect GF2 presolve constraint addressing
+- Fix a bug in MIP in variable fixing for initial solutions
+- Fix issue in MIP in clique size computation and numerical issues
+- Fix an issue in MIP where cut generation did not obey the time limit
+- Fix an issue on QPs where maximization was not supported
+- Fix rotated second-order cone detection: canonicalize quadratic constraint Q matrix in triplet formt
+- Fix nonconvex quadratic constraint detection bug
+- Fix a bug on QCQP models that incorrectly threw an unsupported exception
+- Fix second-order cone index collision and incorrect quadratic constraint to cone conversion for rotated cone constraints
+- Validate MPS row type byte before enum cast to avoid undefined behavior
 - Fix destruction order and by-reference capture bugs in solve.cu
 - Fix route priority sort indexing in routing
-- Fix lost nodes in branch and bound
-- Fix vehicle fixed cost accounting in fragment-vs-route deltas
-- Fix PDLP cublas error capture and hang on infeasible solutions
-- Add guard for huge bounds in bounds propagation
-- gRPC: fix race condition in gRPC with log streaming
+- Fix vehicle fixed cost accounting in fragment-vs-route deltas in routing
 - Fix routing min-vehicles bug
-- Fix nonconvex quadratic constraint detection bug
-- Fix rotated SOC detection: canonicalize QC Q COO
-- Validate MPS row type byte before enum cast to avoid undefined behavior
-- Fix root-cut CPU feasibility-jump solutions being dropped by GPU heuristics
-- Fix incorrect GF2 presolve constraint addressing
-- Remove wrong unsupported-QCQP exception
-- Fix cuDSS descriptors being freed before their backing buffers in the barrier solver
-- Fix cuts not obeying the time limit
-- Fix variable fixing for initial solutions in MIP
-- Fix clique size computation and numerical issues in MIP
 - Fix libomp ABI incompatibility
-- Fix SOC index collision and incorrect QC-to-SOC conversion for rotated SOC constraints
+- gRPC: fix race condition in gRPC with log streaming
 - gRPC: cancel active jobs on delete
 - gRPC: terminate workers cleanly on server shutdown
 - gRPC: drain all remaining log lines at job completion in `StreamLogs`
-- Fix Ruiz equilibration skip heuristic to also check column imbalance
 - Fix row-major layout not preserved when resizing routing capacity routes
-- Allow zero-valued coefficient updates in the LP Python model
 - Fix routing YAML best-results export
-- Fix double `va_start` undefined behavior in C error handling
+- Fix double `va_start` undefined behavior in C API error handling
 
 ### Documentation (26.08)
 
