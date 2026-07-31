@@ -1819,12 +1819,6 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
       }
     }
 
-    if (op_problem.has_quadratic_objective() && op_problem.get_sense()) {
-      CUOPT_LOG_ERROR("Quadratic problems must be minimized");
-      return optimization_problem_solution_t<i_t, f_t>(pdlp_termination_status_t::NumericalError,
-                                                       op_problem.get_handle_ptr()->get_stream());
-    }
-
     raft::common::nvtx::range fun_scope("Running QCQP solver");
     const bool has_q_obj = op_problem.has_quadratic_objective();
     const bool has_qc    = op_problem.has_quadratic_constraints();
