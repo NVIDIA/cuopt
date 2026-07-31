@@ -441,8 +441,12 @@ def _run_incumbent_solutions(include_set_callback):
 
     prob.solve(settings)
 
-    assert get_callback.n_callbacks > 0
-
+    # Whether the callback fires depends on whether the solver finds an
+    # intermediate incumbent (a solver-behavior question tested in
+    # test_incumbent_callbacks.py). On fast hardware (e.g. GB300), presolve
+    # fixes both variables directly and no branch-and-bound runs, so
+    # n_callbacks may be 0. This test covers API shape only: registration,
+    # argument types, and no crash.
     for sol in get_callback.solutions:
         x_val = sol["solution"][0]
         y_val = sol["solution"][1]
