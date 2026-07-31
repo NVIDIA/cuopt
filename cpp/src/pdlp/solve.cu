@@ -523,7 +523,7 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
     barrier_settings.log.log = false;
   }
 
-  simplex::lp_solution_t<i_t, f_t> solution(0, 0);
+  simplex::lp_solution_t<i_t, f_t> solution(user_problem.num_rows, user_problem.num_cols);
   auto status = simplex::solve_linear_program_with_barrier<i_t, f_t>(
     user_problem,
     barrier_settings,
@@ -533,8 +533,6 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
 
   if (status == simplex::lp_status_t::OPTIMAL) {
     barrier::project_barrier_solution_to_model_variables(user_problem, solution);
-  } else if (handle_ptr == nullptr) {
-    solution.resize(user_problem.num_rows, user_problem.num_cols);
   }
 
   CUOPT_LOG_CONDITIONAL_INFO(
