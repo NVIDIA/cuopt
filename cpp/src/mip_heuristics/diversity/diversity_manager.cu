@@ -329,8 +329,15 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
     // so a short solve would spend all of itself here -- at --time-limit 10 probing could take the
     // whole 10s where it should get 1s. remaining_time only stops it reaching past the end of the
     // solve.
-    f_t time_for_probing_cache = std::min(
-      {(f_t)diversity_config.max_time_on_probing, time_limit, (f_t)global_timer.remaining_time()});
+    //
+    // A sweep config replaces the dedicated ceiling, so an arm can test whether the work budget
+    // bounds probing on its own. time_limit and remaining_time are not part of that experiment:
+    // they bound probing against the rest of the solve rather than tuning it, so they stay.
+    const f_t probing_wall_cap = probing_budget.config_id >= 0
+                                   ? (f_t)probing_budget.probing_wall_limit
+                                   : (f_t)diversity_config.max_time_on_probing;
+    f_t time_for_probing_cache =
+      std::min({probing_wall_cap, time_limit, (f_t)global_timer.remaining_time()});
     timer_t probing_timer{time_for_probing_cache};
     const auto probing_t0 = std::chrono::steady_clock::now();
     // this function computes probing cache, finds singletons, substitutions and changes the problem

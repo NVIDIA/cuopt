@@ -65,29 +65,43 @@ struct presolve_config_t {
   int badge_exempt;   // badge below it; -1 uncapped, i.e. Papilo's ncols/2
   double probe_fraction;
   double work_time_scale;
+  // Dedicated wall cap on probing in seconds; <=0 removes it and leaves the work budget as the only
+  // bound the policy imposes.
+  double probing_wall_limit;
 };
 
-// Three settings, each duplicated across an adjacent pair of ids, so a harness that runs every id
-// once still produces two repeats of each. Opportunistic mode is timing-dependent, so a duplicated
-// pair does not repeat itself -- it measures the run-to-run spread, which is the thing the previous
-// sweep lacked. The effects here are worth roughly 0.6 mean error while two baseline repeats differ
-// by 0.53, so one run per setting cannot separate them.
+// This sweep asks one question: can the work budget bound probing on its own, with the dedicated
+// wall cap removed? Everything except the probing bound is pinned at the current default, so any
+// difference is attributable to it.
 //
-// Only one knob moves per pair, against the pair at 0/1. The previous sweep could not attribute its
-// own result: it changed the round cap and the badge together, and the 231-instance net came out at
-// +0.02, hiding that the badge was doing all the damage while the rounds were doing all the good.
+// Removing the cap does not leave probing unbounded. The presolve share of the solve stays in the
+// minimum -- a tenth of the limit, so 60s at the benchmark's 600s -- and that is the number these
+// arms are measured against: an arm whose ceiling is too loose shows up as probing sitting at 60s
+// with a truncated candidate set, not as the 553s it would take unbounded. The count of instances
+// that reach it is the result, and 0 means the ceiling did the job.
+//
+// The scale is the knob under test because worst-case probing time is close to linear in it: 1.5e8
+// held the worst run to 44.7s, 1e9 reached 297s and 3e9 reached 553s. Tight is not free, though --
+// at 1.5e8 the large instances got 1-9% of their candidates probed and several lost their solution
+// -- so the arms bracket the range rather than assuming the safe end is usable.
+//
+// Unlike the previous table these are six distinct points rather than three duplicated pairs. What
+// is being measured here is probing wall time, whether the bound was reached, and coverage, all of
+// which are stable across repeats; it was per-instance *error* that needed the pairing, and error
+// is only a sanity check on the mean here.
 inline constexpr presolve_config_t presolve_configs[] = {
-  // 0, 1: the defaults, and the reference the other pairs are read against.
-  {presolve_budget_policy_t::cost, -1, 32, 1024, 0.25, 3.0e9},
-  {presolve_budget_policy_t::cost, -1, 32, 1024, 0.25, 3.0e9},
-  // 2, 3: full coverage. A quarter beat it by 0.615 mean error over 231 instances, on one run --
-  // this is the largest effect measured here, so it gets a second look before it is trusted.
-  {presolve_budget_policy_t::cost, -1, 32, 1024, 1.00, 3.0e9},
-  {presolve_budget_policy_t::cost, -1, 32, 1024, 1.00, 3.0e9},
-  // 4, 5: round cap restored. Uncapping rests on mzzv11 alone (0.07 error against 3.41) and was
-  // measured with the badge confounded, which makes it the weakest-evidenced of the defaults.
-  {presolve_budget_policy_t::cost, 30, 32, 1024, 0.25, 3.0e9},
-  {presolve_budget_policy_t::cost, 30, 32, 1024, 0.25, 3.0e9},
+  // 0: control. The current default, wall cap included, and the reference for the others.
+  {presolve_budget_policy_t::cost, -1, 32, 1024, 0.25, 3.0e9, 45.0},
+  // 1, 2, 3: the ceiling as the sole work bound. A fraction at or above 1 carries no coverage
+  // target, so probing_work_limit is exactly the ceiling and the scale-to-time curve is visible
+  // without the fraction masking which of the two bound a given instance.
+  {presolve_budget_policy_t::cost, -1, 32, 1024, 1.00, 1.5e8, 0.0},
+  {presolve_budget_policy_t::cost, -1, 32, 1024, 1.00, 4.0e8, 0.0},
+  {presolve_budget_policy_t::cost, -1, 32, 1024, 1.00, 1.0e9, 0.0},
+  // 4, 5: the candidates for a default. Coverage bounds the cheap instances and the ceiling bounds
+  // the expensive ones, which is the split the wall cap was standing in for.
+  {presolve_budget_policy_t::cost, -1, 32, 1024, 0.25, 4.0e8, 0.0},
+  {presolve_budget_policy_t::cost, -1, 32, 1024, 0.25, 1.0e9, 0.0},
 };
 inline constexpr int n_presolve_configs = 6;
 
@@ -152,6 +166,10 @@ struct presolve_budget_t {
   // what set probing_work_limit. Logged so a run can be attributed to one or the other offline.
   double probing_work_ceiling{std::numeric_limits<double>::infinity()};
   bool probing_ceiling_binding{false};
+  // Dedicated wall cap on probing, infinite when the work budget is meant to be the only bound.
+  // The presolve share of the solve and the global timer still apply on top of this; they are
+  // correctness bounds rather than tuning knobs and no config removes them.
+  double probing_wall_limit{std::numeric_limits<double>::infinity()};
   // The policy that actually ran and the config that selected it, so a log line is attributable
   // even when CUOPT_CONFIG_ID overrode the hyper-parameter.
   int policy{1};
@@ -341,6 +359,8 @@ presolve_budget_t evaluate_presolve_budget(const mip_heuristics_hyper_params_t<i
     b.papilo_max_rounds            = c.papilo_rounds;
     b.papilo_max_badgesize =
       (c.badge_clamp > 0 && papilo_probe_cost > 5.0e5) ? c.badge_clamp : c.badge_exempt;
+    b.probing_wall_limit =
+      c.probing_wall_limit > 0.0 ? c.probing_wall_limit : std::numeric_limits<double>::infinity();
   }
   probe_fraction *= work_scale;
   b.intended_probe_fraction = std::min(probe_fraction, 1.0);
@@ -369,7 +389,7 @@ inline void log_presolve_budget(const char* stage,
     "PRESOLVE_BUDGET stage=%s config=%d policy=%s nvars=%.0f ncons=%.0f nnz=%.0f nint=%.0f "
     "nbin=%.0f arl=%.3f acl=%.3f maxrow=%.0f density=%.3e intfrac=%.3f binfrac=%.3f "
     "rounds=%d badge=%d work=%.3f step=%d intended_probe_frac=%.4f work_ceiling=%.3f "
-    "ceiling_binding=%d",
+    "ceiling_binding=%d wall=%.1f",
     stage,
     b.config_id,
     presolve_budget_policy_name(b.policy),
@@ -390,7 +410,8 @@ inline void log_presolve_budget(const char* stage,
     b.probing_step_size,
     b.intended_probe_fraction,
     b.probing_work_ceiling,
-    (int)b.probing_ceiling_binding);
+    (int)b.probing_ceiling_binding,
+    b.probing_wall_limit);
 }
 
 }  // namespace cuopt::mathematical_optimization::mip
