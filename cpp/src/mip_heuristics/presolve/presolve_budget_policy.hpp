@@ -52,34 +52,38 @@ inline const char* presolve_budget_policy_name(int policy)
 }
 
 // Benchmark points selected by CUOPT_CONFIG_ID, overriding the policy hyper-parameter so one build
-// covers the whole sweep. The previous 240-instance run showed that neither stage was actually
-// bounded: presolve ran 243-403s (Papilo, ns1760995) and up to 598s (probing, six instances) out of
-// a 600s solve, and the instances that lost their dual bound are the ones that spent it there. Both
-// stages now carry a cost model instead of a coverage target, so these points span the two models
-// against the previously measured coverage fractions.
+// covers the whole sweep.
 //
-// `work_time_scale` of 0 disables the probing ceiling, which separates "probe a fixed fraction"
-// from "probe until a wall-clock proxy is exhausted"; the fractions bracket the crossover the
-// earlier run pointed at, where truncation won on bab6 (0.5% of candidates), square41 (4.3%) and
-// square47 (2.9%) and lost on 30n20b8 (21.6%) and physiciansched3-3 (9.1%).
+// Per-instance error on this set is far too noisy to tune against: across two baseline repeats
+// rail01 spans 20.6 to 35.8 and satellites2-40 spans 31.6 to 68.4, so any single instance can move
+// tens of points for free. Only the mean over the whole set, and Papilo/probing wall time (which is
+// stable), carry signal -- so each point below moves exactly one knob against config 0.
 struct presolve_config_t {
   presolve_budget_policy_t papilo_rule;
+  int papilo_rounds;  // -1 uncapped
+  int badge_clamp;    // badge at or above the cost threshold; <=0 applies no clamp
+  int badge_exempt;   // badge below it; -1 uncapped, i.e. Papilo's ncols/2
   double probe_fraction;
   double work_time_scale;
 };
 
+// One knob moves per point, all against config 0, so each arm is a paired A/B on the same build.
+// The previous sweep could not attribute its own result: config 0 changed the round cap and the
+// badge together, and the 231-instance net came out at +0.02, hiding that the badge was doing all
+// the damage while the rounds were doing all the good.
 inline constexpr presolve_config_t presolve_configs[] = {
-  // Old Papilo rule, so the Papilo change can be read against the probing change.
-  {presolve_budget_policy_t::fixed, 1.00, 3.0e9},  // 0
-  // The defaults.
-  {presolve_budget_policy_t::cost, 1.00, 3.0e9},  // 1
-  // The tight ceiling that over-truncated: bounded time, but 1-9% coverage on large instances.
-  {presolve_budget_policy_t::cost, 1.00, 1.5e8},  // 2
-  // No ceiling at all -- isolates how much the backstop still contributes over the wall target.
-  {presolve_budget_policy_t::cost, 1.00, 0.0},  // 3
-  // Coverage fractions, to check the wall target is not leaving cheap probing on the table.
-  {presolve_budget_policy_t::cost, 0.25, 3.0e9},  // 4
-  {presolve_budget_policy_t::cost, 0.05, 3.0e9},  // 5
+  // The defaults, and the reference every other point is read against.
+  {presolve_budget_policy_t::cost, -1, 32, 1024, 0.25, 3.0e9},  // 0
+  // Round cap restored. Uncapping is what took mzzv11 from 3.41 error to 0.07, and none of the
+  // Papilo blowups were rounds, but that was measured with the badge confounded -- so re-test it.
+  {presolve_budget_policy_t::cost, 30, 32, 1024, 0.25, 3.0e9},  // 1
+  // Coverage either side of 0.25, which beat full coverage by 0.615 mean error over 231 instances.
+  {presolve_budget_policy_t::cost, -1, 32, 1024, 1.00, 3.0e9},  // 2
+  {presolve_budget_policy_t::cost, -1, 32, 1024, 0.10, 3.0e9},  // 3
+  // No clamp: is 32 on the expensive instances still worth it once the badge is bounded at 1024?
+  {presolve_budget_policy_t::cost, -1, 0, 1024, 0.25, 3.0e9},  // 4
+  // No probing ceiling, leaving max_time_on_probing as the only bound.
+  {presolve_budget_policy_t::cost, -1, 32, 1024, 0.25, 0.0},  // 5
 };
 inline constexpr int n_presolve_configs = 6;
 
@@ -267,15 +271,26 @@ presolve_budget_t evaluate_presolve_budget(const mip_heuristics_hyper_params_t<i
     // rows at badge 1024 against 545 at 32, for 17s instead of 10s, and clamping it regressed the
     // instance. Below it the same holds for mzzv11, 30n20b8 and air05.
     //
-    // Rounds are left uncapped. A round cap looks like a cost limit but is not one: triptim1 is
+    // Being exempt from the clamp still means a bounded badge, not an unbounded one. Leaving it at
+    // -1 hands Papilo ncols/2, which on wide problems is enormous and costs most of the presolve
+    // budget for nothing: rail01 went to badge 58763 and Papilo 12.1s -> 49.2s, tbfp-network to
+    // 36373 and 4.8s -> 47.7s, neos-5114902-kasavu to 355082 and 7.3s -> 44.6s. Eight instances
+    // regressed that way on one run, all of them from the badge rather than the round cap. 1024 is
+    // large enough to keep the reduction that mattered on triptim1 and mzzv11.
+    //
+    // Rounds are uncapped. A round cap looks like a cost limit but is not one: triptim1 is
     // bit-identical at 30 rounds and unlimited, while mzzv11 keeps reducing past 30 (1962 rows
-    // against 1576) for 6s more, so capping only cost reduction. The wall ceiling bounds the cost.
+    // against 1576, and 0.07 error against 3.41) for 6s more. None of the Papilo blowups above came
+    // from rounds, so there is nothing for the cap to save; the wall ceiling bounds the cost.
     case presolve_budget_policy_t::cost: {
       const double papilo_probe_cost = n_bin * std::max<double>(feat.avg_col_len(), 1.0);
       b.papilo_max_rounds            = -1;
-      b.papilo_max_badgesize         = papilo_probe_cost > 5.0e5 ? 32 : -1;
-      probe_fraction                 = 1.0;
-      b.probing_step_size            = 128;
+      b.papilo_max_badgesize         = papilo_probe_cost > 5.0e5 ? 32 : 1024;
+      // Probing takes its time from branch and bound, and full coverage is not worth what it
+      // costs there: a quarter beat it by 0.615 mean error over 231 instances, winning big on
+      // satellites2-40 (100 -> 31.6), brazil3 and physiciansched3-3 against smaller losses.
+      probe_fraction      = 0.25;
+      b.probing_step_size = 128;
       break;
     }
 
@@ -313,8 +328,15 @@ presolve_budget_t evaluate_presolve_budget(const mip_heuristics_hyper_params_t<i
   }
 
   if (config >= 0) {
-    probe_fraction  = presolve_configs[config].probe_fraction;
-    work_time_scale = presolve_configs[config].work_time_scale;
+    const auto& c   = presolve_configs[config];
+    probe_fraction  = c.probe_fraction;
+    work_time_scale = c.work_time_scale;
+    // Re-derive the badge from the config's own pair so the sweep can separate "clamp the expensive
+    // instances" from "bound every badge", which the previous table conflated.
+    const double papilo_probe_cost = n_bin * std::max<double>(feat.avg_col_len(), 1.0);
+    b.papilo_max_rounds            = c.papilo_rounds;
+    b.papilo_max_badgesize =
+      (c.badge_clamp > 0 && papilo_probe_cost > 5.0e5) ? c.badge_clamp : c.badge_exempt;
   }
   probe_fraction *= work_scale;
   b.intended_probe_fraction = std::min(probe_fraction, 1.0);
