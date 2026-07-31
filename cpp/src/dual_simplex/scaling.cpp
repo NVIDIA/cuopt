@@ -28,11 +28,10 @@ i_t scaling(const lp_problem_t<i_t, f_t>& unscaled,
   // =========================================================================
   // Ruiz equilibration for SOCP (and QP) problems
   // =========================================================================
-  // For SOCP problems, apply Ruiz equilibration: alternating row and column
-  // infinity-norm scaling to bring the constraint matrix close to equilibrium.
-  // This dramatically improves the conditioning of the augmented KKT system.
-  // Applied only when the constraint matrix has a large row-norm or
-  // column-norm imbalance.
+  // For SOCP and QP problems, apply Ruiz equilibration to bring the
+  // constraint matrix A and Hessian Q close to equilibrium. This improves
+  // the conditioning of the KKT system. The skip heuristic considers
+  // imbalance in both A and Q.
   if (!unscaled.second_order_cone_dims.empty() || unscaled.Q.n > 0) {
     // col_scale and row_scale accumulate reciprocal scale factors during Ruiz iterations.
     std::vector<f_t> col_scale(n, 1.0);
@@ -73,11 +72,7 @@ i_t scaling(const lp_problem_t<i_t, f_t>& unscaled,
     }
     f_t col_norm_ratio = (min_col_norm > 0) ? max_col_norm / min_col_norm : 1.0;
 
-    // Also check the coefficient-magnitude spread of Q. A QP can have a
-    // perfectly balanced constraint matrix A but a badly scaled Hessian Q
-    // (e.g. quadratic coefficients spanning many orders of magnitude), which
-    // by itself is enough to badly condition the augmented KKT system even
-    // though A alone looks fine.
+    // Check coefficient-magnitude spread of Q for the skip heuristic.
     f_t max_q_coeff = 0;
     f_t min_q_coeff = std::numeric_limits<f_t>::max();
     if (scaled.Q.n > 0) {
@@ -92,8 +87,8 @@ i_t scaling(const lp_problem_t<i_t, f_t>& unscaled,
     f_t q_ratio = (min_q_coeff <= max_q_coeff) ? max_q_coeff / min_q_coeff : 1.0;
 
     // qcqp_ruiz_equilibration: -1 automatic (imbalance heuristic), 0 force off, 1 force on.
-    const i_t ruiz_mode = settings.qcqp_ruiz_equilibration;
-    const bool balanced = row_norm_ratio < 100.0 && col_norm_ratio < 5e4 && q_ratio < 100.0;
+    const i_t ruiz_mode  = settings.qcqp_ruiz_equilibration;
+    const bool balanced  = row_norm_ratio < 100.0 && col_norm_ratio < 5e4 && q_ratio < 100.0;
     const bool skip_ruiz = (ruiz_mode == 0) || (ruiz_mode < 0 && balanced);
 
     if (skip_ruiz) {
@@ -101,7 +96,8 @@ i_t scaling(const lp_problem_t<i_t, f_t>& unscaled,
         settings.log.printf("Skipping Ruiz equilibration (qcqp_hyper_ruiz_equilibration = 0)\n");
       } else {
         settings.log.printf(
-          "Skipping Ruiz equilibration (row norm ratio %.1f, column norm ratio %.1f < 5e4, Q coeff ratio "
+          "Skipping Ruiz equilibration (row norm ratio %.1f, column norm ratio %.1f < 5e4, Q coeff "
+          "ratio "
           "%.1f < 100)\n",
           row_norm_ratio,
           col_norm_ratio,
