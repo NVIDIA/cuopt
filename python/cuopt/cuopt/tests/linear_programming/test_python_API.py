@@ -420,8 +420,8 @@ def _run_incumbent_solutions(include_set_callback):
                 )
 
     # 0-1 knapsack: 8 items, capacity 12. The LP relaxation is fractional
-    # (the highest-ratio item doesn't fit exactly), so B&B is required and
-    # the incumbent callback is guaranteed to fire when a feasible integer
+    # (greedy fill leaves a partial item), so B&B is required and the
+    # incumbent callback is guaranteed to fire when a feasible integer
     # solution is found.
     weights = [4, 3, 5, 2, 6, 1, 4, 3]
     values = [7, 5, 8, 3, 9, 2, 6, 4]
@@ -455,6 +455,10 @@ def _run_incumbent_solutions(include_set_callback):
     for sol in get_callback.solutions:
         sol_vals = sol["solution"]
         cost = sol["cost"]
+        assert len(sol_vals) == n
+        assert all(
+            sol_vals[i] < tol or sol_vals[i] > 1 - tol for i in range(n)
+        )
         assert (
             sum(w * sol_vals[i] for i, w in enumerate(weights))
             <= capacity + tol
