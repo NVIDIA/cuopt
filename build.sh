@@ -360,7 +360,7 @@ fi
 # conda's $LDFLAGS injects -rpath,$CONDA_PREFIX/lib into every binary, so a
 # previously installed copy would shadow the freshly compiled build-dir one.
 if [ -z "${INSTALL_TARGET}" ] && [ -n "${INSTALL_PREFIX}" ]; then
-    if ls "${INSTALL_PREFIX}/lib/libcuopt"*.so* 2>/dev/null | grep -q .; then
+    if compgen -G "${INSTALL_PREFIX}/lib/libcuopt*.so*" > /dev/null 2>&1; then
         echo "Removing stale libcuopt from ${INSTALL_PREFIX}/lib to prevent shadowing the build-dir library..."
         rm -f "${INSTALL_PREFIX}"/lib/libcuopt*.so*
     fi
