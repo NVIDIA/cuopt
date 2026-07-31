@@ -356,13 +356,18 @@ if hasArg codegen; then
 fi
 
 ################################################################################
-# When not installing, remove any stale libcuopt.so from the conda prefix.
-# conda's $LDFLAGS injects -rpath,$CONDA_PREFIX/lib into every binary, so a
-# previously installed copy would shadow the freshly compiled build-dir one.
+# When not installing and rebuilding the C++ library, remove any stale
+# libcuopt.so from the conda prefix. conda's $LDFLAGS injects
+# -rpath,$CONDA_PREFIX/lib into every binary, so a previously installed copy
+# would shadow the freshly compiled build-dir one.
+# Only done when actually building libcuopt (not Python-only builds) to avoid
+# removing a legitimately conda-installed libcuopt that Python packages depend on.
 if [ -z "${INSTALL_TARGET}" ] && [ -n "${INSTALL_PREFIX}" ]; then
-    if compgen -G "${INSTALL_PREFIX}/lib/libcuopt*.so*" > /dev/null 2>&1; then
-        echo "Removing stale libcuopt from ${INSTALL_PREFIX}/lib to prevent shadowing the build-dir library..."
-        rm -f "${INSTALL_PREFIX}"/lib/libcuopt*.so*
+    if buildAll || hasArg libcuopt || hasArg cuopt_grpc_server; then
+        if compgen -G "${INSTALL_PREFIX}/lib/libcuopt*.so*" > /dev/null 2>&1; then
+            echo "Removing stale libcuopt from ${INSTALL_PREFIX}/lib to prevent shadowing the build-dir library..."
+            rm -f "${INSTALL_PREFIX}"/lib/libcuopt*.so*
+        fi
     fi
 fi
 
