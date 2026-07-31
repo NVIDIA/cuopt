@@ -65,8 +65,6 @@ jobs:
       date: ${{ inputs.date }}
       sha: ${{ inputs.sha }}
       script: ci/test_python.sh
-      # https://github.com/NVIDIA/cuopt/issues/1647
-      matrix_filter: map(select(.GPU != "gb300"))
     secrets:
       script-env-secret-1-key: CUOPT_S3_URI
       script-env-secret-1-value: ${{ secrets.CUOPT_S3_URI }}

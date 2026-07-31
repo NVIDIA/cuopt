@@ -421,8 +421,6 @@ jobs:
       build_type: pull-request
       run_codecov: false
       script: ci/test_python.sh
-      # https://github.com/NVIDIA/cuopt/issues/1647
-      matrix_filter: map(select(.GPU != "gb300"))
   docs-build:
     needs: [conda-python-build, changed-files]
     permissions:
