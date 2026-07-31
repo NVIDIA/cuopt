@@ -12,6 +12,8 @@
 #include <utilities/build_info.hpp>
 #include <utilities/logger.hpp>
 
+#include <dlfcn.h>
+
 #include <fstream>
 #include <iomanip>
 #include <set>
@@ -173,13 +175,18 @@ void print_version_info(int num_devices)
   int major = version / 1000;
   int minor = (version % 1000) / 10;
 
-  CUOPT_LOG_INFO("cuOpt version: %d.%d.%d, git hash: %s, host arch: %s, device archs: %s",
+  Dl_info dl_info{};
+  const char* lib_path = (dladdr(reinterpret_cast<void*>(&print_version_info), &dl_info) && dl_info.dli_fname)
+                           ? dl_info.dli_fname
+                           : "<unknown>";
+  CUOPT_LOG_INFO("cuOpt version: %d.%d.%d, git hash: %s, host arch: %s, device archs: %s, lib: %s",
                  CUOPT_VERSION_MAJOR,
                  CUOPT_VERSION_MINOR,
                  CUOPT_VERSION_PATCH,
                  CUOPT_GIT_COMMIT_HASH,
                  CUOPT_CPU_ARCHITECTURE,
-                 CUOPT_CUDA_ARCHITECTURES);
+                 CUOPT_CUDA_ARCHITECTURES,
+                 lib_path);
   CUOPT_LOG_INFO("CPU: %s, threads (physical/logical): %d/%d, RAM: %.2f GiB",
                  get_cpu_model().c_str(),
                  get_physical_cores(),
