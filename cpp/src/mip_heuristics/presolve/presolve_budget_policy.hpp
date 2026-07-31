@@ -67,23 +67,27 @@ struct presolve_config_t {
   double work_time_scale;
 };
 
-// One knob moves per point, all against config 0, so each arm is a paired A/B on the same build.
-// The previous sweep could not attribute its own result: config 0 changed the round cap and the
-// badge together, and the 231-instance net came out at +0.02, hiding that the badge was doing all
-// the damage while the rounds were doing all the good.
+// Three settings, each duplicated across an adjacent pair of ids, so a harness that runs every id
+// once still produces two repeats of each. Opportunistic mode is timing-dependent, so a duplicated
+// pair does not repeat itself -- it measures the run-to-run spread, which is the thing the previous
+// sweep lacked. The effects here are worth roughly 0.6 mean error while two baseline repeats differ
+// by 0.53, so one run per setting cannot separate them.
+//
+// Only one knob moves per pair, against the pair at 0/1. The previous sweep could not attribute its
+// own result: it changed the round cap and the badge together, and the 231-instance net came out at
+// +0.02, hiding that the badge was doing all the damage while the rounds were doing all the good.
 inline constexpr presolve_config_t presolve_configs[] = {
-  // The defaults, and the reference every other point is read against.
-  {presolve_budget_policy_t::cost, -1, 32, 1024, 0.25, 3.0e9},  // 0
-  // Round cap restored. Uncapping is what took mzzv11 from 3.41 error to 0.07, and none of the
-  // Papilo blowups were rounds, but that was measured with the badge confounded -- so re-test it.
-  {presolve_budget_policy_t::cost, 30, 32, 1024, 0.25, 3.0e9},  // 1
-  // Coverage either side of 0.25, which beat full coverage by 0.615 mean error over 231 instances.
-  {presolve_budget_policy_t::cost, -1, 32, 1024, 1.00, 3.0e9},  // 2
-  {presolve_budget_policy_t::cost, -1, 32, 1024, 0.10, 3.0e9},  // 3
-  // No clamp: is 32 on the expensive instances still worth it once the badge is bounded at 1024?
-  {presolve_budget_policy_t::cost, -1, 0, 1024, 0.25, 3.0e9},  // 4
-  // No probing ceiling, leaving max_time_on_probing as the only bound.
-  {presolve_budget_policy_t::cost, -1, 32, 1024, 0.25, 0.0},  // 5
+  // 0, 1: the defaults, and the reference the other pairs are read against.
+  {presolve_budget_policy_t::cost, -1, 32, 1024, 0.25, 3.0e9},
+  {presolve_budget_policy_t::cost, -1, 32, 1024, 0.25, 3.0e9},
+  // 2, 3: full coverage. A quarter beat it by 0.615 mean error over 231 instances, on one run --
+  // this is the largest effect measured here, so it gets a second look before it is trusted.
+  {presolve_budget_policy_t::cost, -1, 32, 1024, 1.00, 3.0e9},
+  {presolve_budget_policy_t::cost, -1, 32, 1024, 1.00, 3.0e9},
+  // 4, 5: round cap restored. Uncapping rests on mzzv11 alone (0.07 error against 3.41) and was
+  // measured with the badge confounded, which makes it the weakest-evidenced of the defaults.
+  {presolve_budget_policy_t::cost, 30, 32, 1024, 0.25, 3.0e9},
+  {presolve_budget_policy_t::cost, 30, 32, 1024, 0.25, 3.0e9},
 };
 inline constexpr int n_presolve_configs = 6;
 
