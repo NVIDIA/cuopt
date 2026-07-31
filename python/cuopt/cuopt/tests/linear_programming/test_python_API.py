@@ -441,13 +441,13 @@ def _run_incumbent_solutions(include_set_callback):
 
     prob.solve(settings)
 
-    # Incumbent callbacks only fire during branch-and-bound. On fast hardware
-    # (e.g. GB300), presolve fixes both variables directly and no branching
-    # occurs, so skip rather than fail when no callbacks fired.
+    # Incumbent callbacks only fire during branch-and-bound. If presolve
+    # fixes all variables directly, no branching occurs and n_callbacks stays
+    # at 0 — skip rather than fail in that case.
     if get_callback.n_callbacks == 0:
         pytest.skip(
             "No incumbent callbacks fired; problem was likely solved at the "
-            "root node without branching (e.g. GB300). See #1647."
+            "root node without branching."
         )
 
     for sol in get_callback.solutions:
