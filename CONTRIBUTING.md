@@ -175,7 +175,7 @@ conda activate ./.cuopt_env
 - A `build.sh` script is provided in `$CUOPT_HOME`. Running the script with no additional arguments
   will build the `libcuopt`, `cuopt`, `cuopt-server`, and `cuopt-sh-client` libraries without
   installing them into the conda environment. Pass `--install` to also install `libcuopt` into the
-  active conda environment (`$CONDA_PREFIX`, or a custom location via `$INSTALL_PREFIX`). Note that
+  active conda environment (`$CONDA_PREFIX`, or a custom location via `$PREFIX`). Note that
   the script depends on the `nvcc` executable being on your path, or defined in `$CUDACXX`.
 
 ```bash
