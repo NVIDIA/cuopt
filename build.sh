@@ -356,6 +356,17 @@ if hasArg codegen; then
 fi
 
 ################################################################################
+# When not installing, remove any stale libcuopt.so from the conda prefix.
+# conda's $LDFLAGS injects -rpath,$CONDA_PREFIX/lib into every binary, so a
+# previously installed copy would shadow the freshly compiled build-dir one.
+if [ -z "${INSTALL_TARGET}" ] && [ -n "${INSTALL_PREFIX}" ]; then
+    if ls "${INSTALL_PREFIX}/lib/libcuopt"*.so* 2>/dev/null | grep -q .; then
+        echo "Removing stale libcuopt from ${INSTALL_PREFIX}/lib to prevent shadowing the build-dir library..."
+        rm -f "${INSTALL_PREFIX}"/lib/libcuopt*.so*
+    fi
+fi
+
+################################################################################
 # Configure and build libcuopt (and optionally just the gRPC server)
 if buildAll || hasArg libcuopt || hasArg cuopt_grpc_server; then
     mkdir -p "${LIBCUOPT_BUILD_DIR}"
