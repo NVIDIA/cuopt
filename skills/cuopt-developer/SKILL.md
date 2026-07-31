@@ -224,7 +224,7 @@ For pre-commit setup, DCO sign-off (`git commit -s`), the fork-based PR workflow
 
 ## Coding Conventions
 
-For C++ naming (`snake_case`, `d_`/`h_` prefixes, `_t` suffix), file extensions (`.hpp`/`.cpp`/`.cu`/`.cuh` and which compiler each uses), include order, Python style, error handling (`CUOPT_EXPECTS`, `RAFT_CUDA_TRY`), memory management (RMM patterns, no raw `new`/`delete`), and test-impact rules, see [references/conventions.md](references/conventions.md).
+For C++ naming (`snake_case`, `d_`/`h_` prefixes, `_t` suffix), file extensions (`.hpp`/`.cpp`/`.cu`/`.cuh` and which compiler each uses), include order, Python style, error handling (`CUOPT_EXPECTS`, `RAFT_CUDA_TRY`), memory management (RMM patterns, no raw `new`/`delete`), test-impact rules, and volatile-comment rules (no PR numbers, commit hashes, issue links, or hardware names in comments or skip messages — these go stale), see [references/conventions.md](references/conventions.md).
 
 ## OpenMP task/runtime compatibility
 
