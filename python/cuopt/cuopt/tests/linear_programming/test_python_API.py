@@ -441,12 +441,15 @@ def _run_incumbent_solutions(include_set_callback):
 
     prob.solve(settings)
 
-    # Whether the callback fires depends on whether the solver finds an
-    # intermediate incumbent (a solver-behavior question tested in
-    # test_incumbent_callbacks.py). On fast hardware (e.g. GB300), presolve
-    # fixes both variables directly and no branch-and-bound runs, so
-    # n_callbacks may be 0. This test covers API shape only: registration,
-    # argument types, and no crash.
+    # Incumbent callbacks only fire during branch-and-bound. On fast hardware
+    # (e.g. GB300), presolve fixes both variables directly and no branching
+    # occurs, so skip rather than fail when no callbacks fired.
+    if get_callback.n_callbacks == 0:
+        pytest.skip(
+            "No incumbent callbacks fired; problem was likely solved at the "
+            "root node without branching (e.g. GB300). See #1647."
+        )
+
     for sol in get_callback.solutions:
         x_val = sol["solution"][0]
         y_val = sol["solution"][1]
