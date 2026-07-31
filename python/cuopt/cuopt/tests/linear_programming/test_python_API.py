@@ -419,12 +419,21 @@ def _run_incumbent_solutions(include_set_callback):
                     self.get_callback.solutions[-1]["cost"]
                 )
 
+    # 0-1 knapsack: 8 items, capacity 12. The LP relaxation is fractional
+    # (the highest-ratio item doesn't fit exactly), so B&B is required and
+    # the incumbent callback is guaranteed to fire when a feasible integer
+    # solution is found.
+    weights = [4, 3, 5, 2, 6, 1, 4, 3]
+    values = [7, 5, 8, 3, 9, 2, 6, 4]
+    capacity = 12
+    n = len(weights)
+
     prob = Problem()
-    x = prob.addVariable(vtype=VType.INTEGER)
-    y = prob.addVariable(vtype=VType.INTEGER)
-    prob.addConstraint(2 * x + 4 * y >= 230)
-    prob.addConstraint(3 * x + 2 * y <= 190)
-    prob.setObjective(5 * x + 3 * y, sense=sense.MAXIMIZE)
+    xs = [prob.addVariable(lb=0, ub=1, vtype=VType.INTEGER) for _ in range(n)]
+    prob.addConstraint(sum(w * x for w, x in zip(weights, xs)) <= capacity)
+    prob.setObjective(
+        sum(v * x for v, x in zip(values, xs)), sense=sense.MAXIMIZE
+    )
 
     user_data = {"source": "test_incumbent_solutions"}
     get_callback = CustomGetSolutionCallback(user_data)
@@ -437,27 +446,23 @@ def _run_incumbent_solutions(include_set_callback):
     settings.set_mip_callback(get_callback, user_data)
     if include_set_callback:
         settings.set_mip_callback(set_callback, user_data)
-    settings.set_parameter("time_limit", 1)
 
     prob.solve(settings)
 
-    # Incumbent callbacks only fire during branch-and-bound. If presolve
-    # fixes all variables directly, no branching occurs and n_callbacks stays
-    # at 0 — skip rather than fail in that case.
-    if get_callback.n_callbacks == 0:
-        pytest.skip(
-            "No incumbent callbacks fired; problem was likely solved at the "
-            "root node without branching."
-        )
+    assert get_callback.n_callbacks > 0
 
+    tol = 1e-6
     for sol in get_callback.solutions:
-        x_val = sol["solution"][0]
-        y_val = sol["solution"][1]
+        sol_vals = sol["solution"]
         cost = sol["cost"]
-        tol = 1e-6
-        assert 2 * x_val + 4 * y_val >= 230 - tol
-        assert 3 * x_val + 2 * y_val <= 190 + tol
-        assert abs(5 * x_val + 3 * y_val - cost) < tol
+        assert (
+            sum(w * sol_vals[i] for i, w in enumerate(weights))
+            <= capacity + tol
+        )
+        assert (
+            abs(sum(v * sol_vals[i] for i, v in enumerate(values)) - cost)
+            < tol
+        )
 
 
 def test_incumbent_get_solutions():
