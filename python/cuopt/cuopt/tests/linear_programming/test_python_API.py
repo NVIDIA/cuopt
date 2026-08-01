@@ -18,6 +18,7 @@ from cuopt.linear_programming.problem import (
     MINIMIZE,
     SEMI_CONTINUOUS,
     CType,
+    LinearExpression,
     Problem,
     VType,
     sense,
@@ -963,19 +964,36 @@ def test_str_and_repr():
     prob.addConstraint(c2, name="c2")
     prob.addConstraint(c3, name="c3")
 
-    # __str__: shows the original (un-moved) form
+    # __str__: shows the normalized form the solver holds (duplicate terms
+    # merged, expression constants folded into the right-hand side)
     assert str(c1) == "2.0 * x + 3.0 * y <= 10.0"
     assert str(c2) == "x - y >= 0.0"
-    assert str(c3) == "x + 1.0 == 5.0"
+    assert str(c3) == "x == 4.0"
 
     # __str__: unnamed constraint
     c_anon = 2 * x + 3 * y <= 10
     assert "2.0 * x + 3.0 * y <= 10.0" in str(c_anon)
 
+    # __str__: duplicate terms are merged
+    c_dup = 2 * x + 3 * x <= 5
+    assert str(c_dup) == "5.0 * x <= 5.0"
+
+    # __str__: quadratic constraint rendered from its QCMATRIX data
+    c_quad = x * x + 2 * x * y <= 4
+    assert str(c_quad) == "x^2 + 2.0 * x * y <= 4.0"
+
+    # __str__: reflects updateConstraint (no stale expression data)
+    prob_upd = Problem("upd_test")
+    a = prob_upd.addVariable(name="a")
+    b = prob_upd.addVariable(name="b")
+    c_upd = prob_upd.addConstraint(2 * a + 3 * b <= 10, name="c_upd")
+    prob_upd.updateConstraint(c_upd, coeffs=[(a, 7.0)], rhs=20.0)
+    assert str(c_upd) == "7.0 * a + 3.0 * b <= 20.0"
+
     # __repr__
     assert repr(c1) == "<cuopt.Constraint 'c1': 2.0 * x + 3.0 * y <= 10.0>"
     assert repr(c2) == "<cuopt.Constraint 'c2': x - y >= 0.0>"
-    assert repr(c3) == "<cuopt.Constraint 'c3': x + 1.0 == 5.0>"
+    assert repr(c3) == "<cuopt.Constraint 'c3': x == 4.0>"
 
     # === Problem ===
     # __repr__
@@ -1055,6 +1073,7 @@ def test_str_truncation_large_expression():
     for i in range(1, n):
         qexpr = qexpr + xs[i] * xs[i]
     qs = str(qexpr)
-    assert qs.count("^2") <= cap
+    assert qs.count("^2") == cap
+    assert qs.startswith("x0^2 + ")
     assert qs.endswith(f"... ({n - cap} more terms)")
     assert repr(qexpr) == f"<cuopt.QuadraticExpression: {qs}>"
