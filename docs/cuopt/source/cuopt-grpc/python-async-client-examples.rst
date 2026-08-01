@@ -22,16 +22,20 @@ After ``submit``, stream solver log lines until the job completes:
 
    client = Client("localhost", 5001)
    job_id = client.submit(dm, settings)
+   try:
+       client.start_log_stream(
+           job_id, callback=lambda line, _done: print(line, flush=True)
+       )
+       if client.wait(job_id, timeout=120) != JobStatus.COMPLETED:
+           raise RuntimeError("job did not complete")
 
-   client.start_log_stream(
-       job_id, callback=lambda line, _done: print(line, flush=True)
-   )
-   assert client.wait(job_id, timeout=120) == JobStatus.COMPLETED
-   client.join_log_stream(job_id)
-
-   solution = client.result(job_id, variable_names=["x0", "x1"])
-   print(solution.get_termination_reason(), solution.get_primal_objective())
-   client.delete(job_id)
+       solution = client.result(job_id, variable_names=["x0", "x1"])
+       print(solution.get_termination_reason(), solution.get_primal_objective())
+   finally:
+       try:
+           client.join_log_stream(job_id)
+       finally:
+           client.delete(job_id)
 
 Incumbent streaming (MIP)
 =========================
@@ -75,15 +79,18 @@ Runnable script:
 
    client = Client("localhost", 5001)
    job_id = client.submit(problem, settings)
-   # Pass the same settings so GetSolutionCallback instances receive incumbents.
-   client.start_incumbent_stream(job_id, settings=settings)
-   assert client.wait(job_id, timeout=120) == JobStatus.COMPLETED
-   client.join_incumbent_stream(job_id)
+   try:
+       # Pass the same settings so GetSolutionCallback instances receive incumbents.
+       client.start_incumbent_stream(job_id, settings=settings)
+       if client.wait(job_id, timeout=120) != JobStatus.COMPLETED:
+           raise RuntimeError("job did not complete")
+       client.join_incumbent_stream(job_id)
 
-   names = [v.getVariableName() for v in problem.getVariables()]
-   solution = client.result(job_id, variable_names=names)
-   print(solution.get_termination_reason(), solution.get_primal_objective())
-   client.delete(job_id)
+       names = [v.getVariableName() for v in problem.getVariables()]
+       solution = client.result(job_id, variable_names=names)
+       print(solution.get_termination_reason(), solution.get_primal_objective())
+   finally:
+       client.delete(job_id)
 
 See also
 ========

@@ -33,13 +33,15 @@ from cuopt.linear_programming.solver_settings.solver_settings cimport (
 
 from enum import IntEnum
 import math
+import threading
+import time
+import warnings
+
 from libc.stdint cimport int64_t
 from libc.stddef cimport size_t
 from libcpp.memory cimport unique_ptr
 from libcpp.string cimport string
 from libcpp.utility cimport move
-import threading
-import time
 
 import numpy as np
 
@@ -286,8 +288,13 @@ cdef class Client:
     def wait(self, str job_id, timeout=None):
         """
         Block until ``job_id`` reaches a terminal state and return its
-        :class:`JobStatus`. ``timeout`` is in seconds (``None`` waits
-        indefinitely).
+        :class:`JobStatus`.
+
+        ``timeout`` is in whole seconds. ``None`` waits indefinitely.
+        Non-``None`` values are converted with ``int(timeout)`` (so ``0.5``
+        becomes ``0`` and waits indefinitely). Positive timeouts poll about
+        once per second and raise :class:`GrpcError` if the deadline expires
+        (they do not return a non-terminal :class:`JobStatus`).
         """
         cdef int timeout_seconds = 0 if timeout is None else int(timeout)
         cdef grpc_status_result_t wait_result = self._client.get().wait(
@@ -531,9 +538,9 @@ cdef class Client:
         when ``submit`` sees at least one such callback on ``settings``;
         without that, no incumbents are available to stream.
 
-        The plain ``callback`` argument is **deprecated** and will be removed.
-        Prefer ``settings`` with registered mip callbacks. Until removal,
-        ``callback`` is invoked as
+        The plain ``callback`` argument is **deprecated** and will be removed
+        in a future release. Prefer ``settings`` with registered mip
+        callbacks. Until removal, ``callback`` is invoked as
         ``callback(index, objective, assignment, job_complete)``; return
         ``False`` to cancel. ``assignment`` is a list of variable values.
 
@@ -543,6 +550,13 @@ cdef class Client:
             raise GrpcError(f"incumbent stream already running for job {job_id}")
         if callback is None and settings is None:
             raise GrpcError("callback or settings is required")
+        if callback is not None:
+            warnings.warn(
+                "Client.start_incumbent_stream(callback=...) is deprecated; "
+                "pass settings with SolverSettings.set_mip_callback instead",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
         def combined(index, objective, assignment, job_complete):
             if settings is not None:
@@ -574,9 +588,15 @@ cdef class Client:
 
     def join_incumbent_stream(self, str job_id, timeout=None):
         """Wait for the background incumbent-stream thread started by :meth:`start_incumbent_stream`."""
-        thread = self._incumbent_threads.pop(job_id, None)
+        thread = self._incumbent_threads.get(job_id)
         if thread is not None:
             thread.join(timeout)
+            if thread.is_alive():
+                exc = self._incumbent_thread_errors.get(job_id)
+                if exc is not None:
+                    raise exc
+                return
+            self._incumbent_threads.pop(job_id, None)
         exc = self._incumbent_thread_errors.pop(job_id, None)
         if exc is not None:
             raise exc

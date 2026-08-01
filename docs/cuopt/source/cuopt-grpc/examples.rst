@@ -8,8 +8,10 @@ Examples
 
 **Remote execution** uses the same **Python**, **C API**, and **cuopt_cli**
 entry points as a local solve. After you start ``cuopt_grpc_server`` on the
-GPU server (:doc:`quick-start`), set the client environment and run **any** of
-the examples below **unchanged** — no code edits are required.
+GPU server (:doc:`quick-start`), set the client environment and run the
+integrated examples below **unchanged** — no code edits are required. The
+:ref:`Python async gRPC client <cuopt-grpc-examples-async-client>` section is
+separate: it uses ``Client(host, port)`` and does not read ``CUOPT_REMOTE_*``.
 
 On the **client** machine, before running the example commands or scripts:
 
@@ -58,6 +60,8 @@ Included with the gRPC docs source for a quick copy-paste path (also walked thro
 
 Python Async gRPC Client
 ------------------------
+
+.. _cuopt-grpc-examples-async-client:
 
 For explicit job control (submit / wait / cancel / stream logs or incumbents)
 without ``CUOPT_REMOTE_*``, use ``cuopt.grpc.linear_programming.Client``:

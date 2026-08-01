@@ -97,14 +97,17 @@ Streaming and Callbacks
 Messages and Constraints
 ========================
 
-* **Problem types** — Wire category is LP or MILP; QP uses the LP path with
-  quadratic objective data in the problem payload. **Routing** over this
-  gRPC service is **not** available yet (planned; use REST for remote routing today).
+* **Problem types** — Wire categories are LP/QP or MILP. QP is submitted as
+  ``lp_request`` (``SolveLPRequest``) with quadratic fields on
+  ``OptimizationProblem``. **Routing** over this gRPC service is **not**
+  available yet (planned; use REST for remote routing today).
 * **Solver settings** — Carried as ``PDLPSolverSettings`` or ``MIPSolverSettings`` inside the request or chunked header, aligned with the NVIDIA cuOpt solver options documentation.
-* **Errors** — Transport and many hard failures use gRPC status codes. Some
-  outcomes (unknown job, solve failed, cancel/delete results) arrive as
-  ``Status::OK`` with fields in the response message (``job_status``,
-  ``status``, ``error_message``). See comments in ``cuopt_remote_service.proto``.
+* **Errors** — Transport failures use gRPC status codes. Some outcomes use
+  ``Status::OK`` with response fields: ``CheckStatus`` reports unknown jobs as
+  ``job_status=NOT_FOUND``; ``GetResult`` uses transport ``NOT_FOUND`` /
+  ``UNAVAILABLE`` (not ready) and ``status=ERROR_SOLVE_FAILED`` for failed
+  solves; ``DeleteResult`` / ``CancelJob`` report outcomes in the response.
+  See ``cuopt_remote_service.proto``.
 
 Further Reading
 ===============

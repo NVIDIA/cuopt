@@ -54,12 +54,14 @@ from the quick start (same constraint matrix and objective).
    settings = linear_programming.SolverSettings()
    client = Client("localhost", 5001)  # tls=None uses CUOPT_TLS_* if set
    job_id = client.submit(dm, settings)
-   assert client.wait(job_id, timeout=120) == JobStatus.COMPLETED
-
-   # Pass names if you want solution.get_vars() keyed by name.
-   solution = client.result(job_id, variable_names=["x0", "x1"])
-   print(solution.get_termination_reason(), solution.get_primal_objective())
-   client.delete(job_id)
+   try:
+       if client.wait(job_id, timeout=120) != JobStatus.COMPLETED:
+           raise RuntimeError("job did not complete")
+       # Pass names if you want solution.get_vars() keyed by name.
+       solution = client.result(job_id, variable_names=["x0", "x1"])
+       print(solution.get_termination_reason(), solution.get_primal_objective())
+   finally:
+       client.delete(job_id)
 
 ``Client.submit()`` accepts either a
 :class:`~cuopt.linear_programming.data_model.DataModel` or a

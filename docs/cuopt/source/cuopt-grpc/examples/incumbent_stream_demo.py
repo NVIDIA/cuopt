@@ -10,11 +10,11 @@ remote job runs.
 
 Start the server first::
 
-    cuopt_grpc_server --port 50051 --workers 1
+    cuopt_grpc_server --port 5001 --workers 1
 
 Then::
 
-    python incumbent_stream_demo.py --host localhost --port 50051
+    python incumbent_stream_demo.py --host localhost --port 5001
 """
 
 from __future__ import annotations
@@ -55,7 +55,7 @@ def build_problem():
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", default="localhost")
-    parser.add_argument("--port", type=int, default=50051)
+    parser.add_argument("--port", type=int, default=5001)
     args = parser.parse_args(argv)
 
     printer = IncumbentPrinter()
@@ -69,21 +69,22 @@ def main(argv=None):
     problem = build_problem()
     client = Client(args.host, args.port)
     job_id = client.submit(problem, settings)
-    client.start_incumbent_stream(job_id, settings=settings)
+    try:
+        client.start_incumbent_stream(job_id, settings=settings)
+        status = client.wait(job_id, timeout=120)
+        if status != JobStatus.COMPLETED:
+            print(f"unexpected status: {status}", file=sys.stderr)
+            return 1
+        client.join_incumbent_stream(job_id)
 
-    status = client.wait(job_id, timeout=120)
-    if status != JobStatus.COMPLETED:
-        print(f"unexpected status: {status}", file=sys.stderr)
-        return 1
-    client.join_incumbent_stream(job_id)
-
-    names = [v.getVariableName() for v in problem.getVariables()]
-    solution = client.result(job_id, variable_names=names)
-    print(
-        f"final reason={solution.get_termination_reason()} "
-        f"obj={solution.get_primal_objective()}"
-    )
-    client.delete(job_id)
+        names = [v.getVariableName() for v in problem.getVariables()]
+        solution = client.result(job_id, variable_names=names)
+        print(
+            f"final reason={solution.get_termination_reason()} "
+            f"obj={solution.get_primal_objective()}"
+        )
+    finally:
+        client.delete(job_id)
 
     if not printer.entries:
         print(

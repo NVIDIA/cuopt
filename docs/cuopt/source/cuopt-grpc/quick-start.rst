@@ -54,7 +54,9 @@ lightweight client.
 .. install-selector::
    :default-iface: c
 
-Verify the server binary after install:
+Verify the server binary on the **GPU server** after installing the C/libcuopt
+bundle (that package ships ``cuopt_grpc_server``). A Python-only client install
+does not include this binary:
 
 .. code-block:: bash
 
@@ -158,15 +160,17 @@ with:
    # Network location of cuopt_grpc_server (not CUOPT_REMOTE_*).
    client = Client("localhost", 5001)
    job_id = client.submit(dm, settings)
-   status = client.wait(job_id, timeout=120)
-   assert status == JobStatus.COMPLETED
-
-   # Pass variable names if you want solution.get_vars() keyed by name.
-   solution = client.result(job_id, variable_names=["x0", "x1"])
-   print("Termination:", solution.get_termination_reason())
-   print("Objective:  ", solution.get_primal_objective())
-   print("Primal x:   ", solution.get_primal_solution())
-   client.delete(job_id)
+   try:
+       status = client.wait(job_id, timeout=120)
+       if status != JobStatus.COMPLETED:
+           raise RuntimeError(f"unexpected status: {status}")
+       # Pass variable names if you want solution.get_vars() keyed by name.
+       solution = client.result(job_id, variable_names=["x0", "x1"])
+       print("Termination:", solution.get_termination_reason())
+       print("Objective:  ", solution.get_primal_objective())
+       print("Primal x:   ", solution.get_primal_solution())
+   finally:
+       client.delete(job_id)
 
 A full walkthrough of log and incumbent streaming is in
 :doc:`python-async-client-examples`. Overview and TLS details:
