@@ -126,8 +126,10 @@ cuOpt supports the following APIs:
 - Python support
    - :doc:`Routing (TSP, VRP, and PDP) - Python <cuopt-python/quick-start>`
    - :doc:`Linear Programming (LP) / Quadratic Programming (QP) and Mixed Integer Linear Programming (MILP) - Python <cuopt-python/quick-start>`
-- gRPC remote execution
-   - :doc:`Linear Programming (LP) / Quadratic Programming (QP) and Mixed Integer Linear Programming (MILP) - gRPC remote <cuopt-grpc/quick-start>`
+- gRPC remote execution and gRPC clients
+   - :doc:`Remote execution (zero code change) <cuopt-grpc/quick-start>` — set ``CUOPT_REMOTE_HOST`` / ``CUOPT_REMOTE_PORT``; Python, C (``cuOptSolve``), and ``cuopt_cli`` forward automatically
+   - :doc:`Python async gRPC client <cuopt-grpc/python-async-client>` — explicit job API (submit / wait / cancel / stream logs and incumbents)
+   - :doc:`Custom CuOptRemoteService clients <cuopt-grpc/api>` — speak the gRPC protos directly
 - Server support
    - :doc:`Linear Programming (LP) - Server <cuopt-server/quick-start>`
    - :doc:`Mixed Integer Linear Programming (MILP) - Server <cuopt-server/quick-start>`
