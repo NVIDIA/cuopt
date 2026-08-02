@@ -164,18 +164,11 @@ class _LogStreamHandler:
             raise
 
 
-def _call_incumbent_callback(callback, index, objective, assignment, job_complete):
-    try:
-        return callback(index, objective, assignment, job_complete)
-    except TypeError:
-        return callback(index, objective, assignment)
-
-
 def _forward_incumbent_to_settings(settings, index, objective, assignment, job_complete):
     from cuopt.linear_programming.internals import GetSolutionCallback
 
     if job_complete:
-        return True
+        return
     for mip_callback in settings.get_mip_callbacks():
         if mip_callback is None:
             continue
@@ -186,12 +179,10 @@ def _forward_incumbent_to_settings(settings, index, objective, assignment, job_c
             mip_callback.get_solution(
                 solution, cost, bound, mip_callback.user_data
             )
-    return True
 
 
 cdef class Client:
     cdef unique_ptr[grpc_python_client_t] _client
-    cdef dict _job_is_mip
     cdef dict _log_threads
     cdef dict _log_thread_errors
     cdef dict _log_stream_state
@@ -221,7 +212,6 @@ cdef class Client:
 
         options = _connect_options_from_tls(tls)
         self._client.reset(new grpc_python_client_t(host_cpp, port, options))
-        self._job_is_mip = {}
         self._log_threads = {}
         self._log_thread_errors = {}
         self._log_stream_state = {}
@@ -240,7 +230,6 @@ cdef class Client:
     def submit(self, problem, SolverSettings settings not None):
         cdef DataModel data_model
         cdef grpc_submit_result_t submit_result
-        cdef string job_id
         cdef bint mip
 
         data_model = self._as_data_model(problem)
@@ -260,9 +249,7 @@ cdef class Client:
         )
         if not submit_result.success:
             raise GrpcError(submit_result.error_message.decode("utf-8"))
-        job_id = submit_result.job_id
-        self._job_is_mip[job_id.decode("utf-8")] = bool(submit_result.is_mip)
-        return job_id.decode("utf-8")
+        return submit_result.job_id.decode("utf-8")
 
     def status(self, str job_id):
         cdef grpc_status_result_t status_result = self._client.get().status(
@@ -292,19 +279,19 @@ cdef class Client:
         cdef string error_out
         if not self._client.get().delete_job(job_id.encode("utf-8"), error_out):
             raise GrpcError(error_out.decode("utf-8"))
-        self._job_is_mip.pop(job_id, None)
 
-    def result(self, str job_id, variable_names=None, is_mip=None):
+    def result(self, str job_id, variable_names=None):
+        """
+        Fetch the solution for a completed job, or ``None`` if not ready.
+
+        LP vs MIP is determined from the server response (via
+        ``grpc_client_t::get_result``). Pass ``variable_names`` (column order)
+        to key ``solution.get_vars()`` by name.
+        """
         cdef grpc_result_outcome_t outcome
-        cdef bint fetch_mip
         cdef unique_ptr[solver_ret_t] sol_ret
 
-        if is_mip is not None:
-            fetch_mip = bool(is_mip)
-        else:
-            fetch_mip = self._job_is_mip.get(job_id, False)
-
-        outcome = self._client.get().result(job_id.encode("utf-8"), fetch_mip)
+        outcome = self._client.get().result(job_id.encode("utf-8"))
         if outcome.not_ready:
             return None
         if not outcome.success:
@@ -473,8 +460,7 @@ cdef class Client:
     def start_incumbent_stream(
         self,
         str job_id,
-        callback=None,
-        settings=None,
+        settings,
         from_index=0,
         poll_interval_ms=1000,
     ):
@@ -482,31 +468,29 @@ cdef class Client:
         Poll for MIP incumbent solutions on a background thread until the job
         completes.
 
-        ``callback`` is invoked as ``callback(index, objective, assignment,
-        job_complete)``. Return ``False`` to cancel the job. ``assignment`` is
-        a list of variable values.
+        Pass the same ``settings`` used for :meth:`submit`, with at least one
+        ``GetSolutionCallback`` registered through
+        :meth:`~cuopt.linear_programming.solver_settings.SolverSettings.set_mip_callback`
+        (same as a local solve). The server collects and sends incumbents only
+        when ``submit`` sees at least one such callback on ``settings``.
 
-        Alternatively pass ``settings`` with :meth:`SolverSettings.set_mip_callback`
-        registered :class:`GetSolutionCallback` instances (same as local solve).
-
-        Call :meth:`join_incumbent_stream` before :meth:`delete`.
+        Call :meth:`join_incumbent_stream` before :meth:`delete`. To cancel
+        early, call :meth:`cancel` from inside ``get_solution``.
         """
         if job_id in self._incumbent_threads:
             raise GrpcError(f"incumbent stream already running for job {job_id}")
-        if callback is None and settings is None:
-            raise GrpcError("callback or settings is required")
+        if settings is None:
+            raise GrpcError("settings is required")
+        if not any(cb is not None for cb in settings.get_mip_callbacks()):
+            raise GrpcError(
+                "settings must have at least one mip callback "
+                "(SolverSettings.set_mip_callback)"
+            )
 
-        def combined(index, objective, assignment, job_complete):
-            if settings is not None:
-                if _forward_incumbent_to_settings(
-                    settings, index, objective, assignment, job_complete
-                ) is False:
-                    return False
-            if callback is not None:
-                return _call_incumbent_callback(
-                    callback, index, objective, assignment, job_complete
-                )
-            return True
+        def deliver(index, objective, assignment, job_complete):
+            _forward_incumbent_to_settings(
+                settings, index, objective, assignment, job_complete
+            )
 
         incumbent_client = self._spawn_client()
         thread = threading.Thread(
@@ -514,7 +498,7 @@ cdef class Client:
             args=(
                 incumbent_client,
                 job_id,
-                combined,
+                deliver,
                 from_index,
                 poll_interval_ms,
             ),
@@ -525,7 +509,7 @@ cdef class Client:
         return thread
 
     def join_incumbent_stream(self, str job_id, timeout=None):
-        """Wait for a background incumbent poll started by :meth:`start_incumbent_stream`."""
+        """Wait for the background incumbent-stream thread started by :meth:`start_incumbent_stream`."""
         thread = self._incumbent_threads.pop(job_id, None)
         if thread is not None:
             thread.join(timeout)
@@ -537,24 +521,23 @@ cdef class Client:
         self,
         incumbent_client,
         str job_id,
-        callback,
+        deliver,
         from_index,
         poll_interval_ms,
     ):
         try:
             incumbent_client._poll_incumbents(
-                job_id, callback, from_index, poll_interval_ms
+                job_id, deliver, from_index, poll_interval_ms
             )
         except Exception as exc:
             self._incumbent_thread_errors[job_id] = exc
 
     def _poll_incumbents(
-        self, str job_id, callback, from_index=0, poll_interval_ms=1000
+        self, str job_id, deliver, from_index=0, poll_interval_ms=1000
     ):
         cdef grpc_incumbents_result_t outcome
         cdef int64_t next_index = from_index
         cdef bint job_complete = False
-        cdef double objective
         cdef list assignment
         cdef size_t i
         poll_seconds = max(poll_interval_ms, 1) / 1000.0
@@ -573,16 +556,12 @@ cdef class Client:
                 assignment = []
                 for i in range(entry.assignment.size()):
                     assignment.append(entry.assignment[i])
-                if _call_incumbent_callback(
-                    callback, entry.index, entry.objective, assignment, False
-                ) is False:
-                    self.cancel(job_id)
-                    return
+                deliver(entry.index, entry.objective, assignment, False)
 
             next_index = outcome.next_index
             job_complete = outcome.job_complete
             if job_complete:
-                _call_incumbent_callback(callback, 0, 0.0, [], True)
+                deliver(0, 0.0, [], True)
                 return
 
             time.sleep(poll_seconds)
