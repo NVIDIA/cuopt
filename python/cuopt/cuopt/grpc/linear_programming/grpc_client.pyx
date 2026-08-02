@@ -164,11 +164,18 @@ class _LogStreamHandler:
             raise
 
 
+def _call_incumbent_callback(callback, index, objective, assignment, job_complete):
+    try:
+        return callback(index, objective, assignment, job_complete)
+    except TypeError:
+        return callback(index, objective, assignment)
+
+
 def _forward_incumbent_to_settings(settings, index, objective, assignment, job_complete):
     from cuopt.linear_programming.internals import GetSolutionCallback
 
     if job_complete:
-        return
+        return True
     for mip_callback in settings.get_mip_callbacks():
         if mip_callback is None:
             continue
@@ -179,6 +186,7 @@ def _forward_incumbent_to_settings(settings, index, objective, assignment, job_c
             mip_callback.get_solution(
                 solution, cost, bound, mip_callback.user_data
             )
+    return True
 
 
 cdef class Client:
@@ -468,27 +476,18 @@ cdef class Client:
         Poll for MIP incumbent solutions on a background thread until the job
         completes.
 
-        Pass the same ``settings`` used for :meth:`submit`, with at least one
-        ``GetSolutionCallback`` registered through
-        :meth:`~cuopt.linear_programming.solver_settings.SolverSettings.set_mip_callback`
-        (same as a local solve). The server collects and sends incumbents only
-        when ``submit`` sees at least one such callback on ``settings``.
+        Pass ``settings`` with :meth:`SolverSettings.set_mip_callback`
+        registered :class:`GetSolutionCallback` instances (same as local solve).
 
-        Call :meth:`join_incumbent_stream` before :meth:`delete`. To cancel
-        early, call :meth:`cancel` from inside ``get_solution``.
+        Call :meth:`join_incumbent_stream` before :meth:`delete`.
         """
         if job_id in self._incumbent_threads:
             raise GrpcError(f"incumbent stream already running for job {job_id}")
         if settings is None:
             raise GrpcError("settings is required")
-        if not any(cb is not None for cb in settings.get_mip_callbacks()):
-            raise GrpcError(
-                "settings must have at least one mip callback "
-                "(SolverSettings.set_mip_callback)"
-            )
 
-        def deliver(index, objective, assignment, job_complete):
-            _forward_incumbent_to_settings(
+        def combined(index, objective, assignment, job_complete):
+            return _forward_incumbent_to_settings(
                 settings, index, objective, assignment, job_complete
             )
 
@@ -498,7 +497,7 @@ cdef class Client:
             args=(
                 incumbent_client,
                 job_id,
-                deliver,
+                combined,
                 from_index,
                 poll_interval_ms,
             ),
@@ -509,7 +508,7 @@ cdef class Client:
         return thread
 
     def join_incumbent_stream(self, str job_id, timeout=None):
-        """Wait for the background incumbent-stream thread started by :meth:`start_incumbent_stream`."""
+        """Wait for a background incumbent poll started by :meth:`start_incumbent_stream`."""
         thread = self._incumbent_threads.pop(job_id, None)
         if thread is not None:
             thread.join(timeout)
@@ -521,23 +520,24 @@ cdef class Client:
         self,
         incumbent_client,
         str job_id,
-        deliver,
+        callback,
         from_index,
         poll_interval_ms,
     ):
         try:
             incumbent_client._poll_incumbents(
-                job_id, deliver, from_index, poll_interval_ms
+                job_id, callback, from_index, poll_interval_ms
             )
         except Exception as exc:
             self._incumbent_thread_errors[job_id] = exc
 
     def _poll_incumbents(
-        self, str job_id, deliver, from_index=0, poll_interval_ms=1000
+        self, str job_id, callback, from_index=0, poll_interval_ms=1000
     ):
         cdef grpc_incumbents_result_t outcome
         cdef int64_t next_index = from_index
         cdef bint job_complete = False
+        cdef double objective
         cdef list assignment
         cdef size_t i
         poll_seconds = max(poll_interval_ms, 1) / 1000.0
@@ -556,12 +556,16 @@ cdef class Client:
                 assignment = []
                 for i in range(entry.assignment.size()):
                     assignment.append(entry.assignment[i])
-                deliver(entry.index, entry.objective, assignment, False)
+                if _call_incumbent_callback(
+                    callback, entry.index, entry.objective, assignment, False
+                ) is False:
+                    self.cancel(job_id)
+                    return
 
             next_index = outcome.next_index
             job_complete = outcome.job_complete
             if job_complete:
-                deliver(0, 0.0, [], True)
+                _call_incumbent_callback(callback, 0, 0.0, [], True)
                 return
 
             time.sleep(poll_seconds)
