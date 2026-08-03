@@ -41,7 +41,7 @@ You should see the following output:
 .. code-block:: bash
   :caption: Output
 
-   Creating and solving simple LP problem...
+   Creating and solving simple MIP problem...
    Solving a problem with 2 constraints 2 variables (1 integers) and 4 nonzeros
    Objective offset 0.000000 scaling_factor 1.000000
    After trivial presolve updated 2 constraints 2 variables

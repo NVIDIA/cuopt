@@ -433,7 +433,7 @@ Mixed Integer Programming FAQs
 
 .. dropdown:: What are the limitations of the MIP solver?
 
-    #. There is no inherit limit imposed on the number of variables, number of constraints, or number of non-zeros you can have in a MIP or LP, except the restrictions due to the number of bits in integer and the amount of memory in the CPU and GPU.
+    #. There is no inherit limit imposed on the number of variables, number of constraints, or number of non-zeros you can have in a MIP or LP, except the restrictions due to the number of bits in an integer and the amount of memory in the CPU and GPU.
 
     Depending on these factors, the problems that can be solved can vary, for example:
 
