@@ -506,6 +506,7 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   barrier_settings.dualize                         = settings.dualize;
   barrier_settings.ordering                        = settings.ordering;
   barrier_settings.barrier_dual_initial_point      = settings.barrier_dual_initial_point;
+  barrier_settings.postsolve_info                  = settings.postsolve_info;
   barrier_settings.barrier                         = true;
   barrier_settings.barrier_presolve                = true;
   barrier_settings.crossover                       = settings.crossover;
@@ -1840,12 +1841,6 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
         return optimization_problem_solution_t<i_t, f_t>(
           pdlp_termination_status_t::PrimalInfeasible, op_problem.get_handle_ptr()->get_stream());
       }
-    }
-
-    if (op_problem.has_quadratic_objective() && op_problem.get_sense()) {
-      CUOPT_LOG_ERROR("Quadratic problems must be minimized");
-      return optimization_problem_solution_t<i_t, f_t>(pdlp_termination_status_t::NumericalError,
-                                                       op_problem.get_handle_ptr()->get_stream());
     }
 
     raft::common::nvtx::range fun_scope("Running QCQP solver");
