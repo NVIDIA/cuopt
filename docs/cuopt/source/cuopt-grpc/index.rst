@@ -6,7 +6,7 @@
 gRPC Remote Execution
 ==========================
 
-NVIDIA cuOpt can run LP, MILP, and QP solves on a remote GPU host through
+NVIDIA cuOpt can run LP, MIP, and QP solves on a remote GPU host through
 ``cuopt_grpc_server``. There are two ways to reach that server:
 
 **Remote execution** (zero code change)
@@ -27,7 +27,7 @@ themselves, we say **gRPC client**.
 
 .. note::
 
-   **Problem types:** LP, MILP, and QP are supported today. **Routing** (VRP,
+   **Problem types:** LP, MIP, and QP are supported today. **Routing** (VRP,
    TSP, PDP, and related APIs) over gRPC is **not** available yet; support is
    planned for an **upcoming** release. For remote routing today, use the
    HTTP/JSON :doc:`REST self-hosted server <../cuopt-server/index>`.

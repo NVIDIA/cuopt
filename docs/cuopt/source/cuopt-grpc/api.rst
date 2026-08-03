@@ -35,7 +35,7 @@ Asynchronous Jobs
    * - RPC
      - Purpose
    * - ``SubmitJob``
-     - Submit an LP or MILP job in one message (within gRPC message size limits).
+     - Submit an LP or MIP job in one message (within gRPC message size limits).
    * - ``CheckStatus``
      - Poll job status by ``job_id``.
    * - ``GetResult``
@@ -91,13 +91,13 @@ Streaming and Callbacks
    * - ``StreamLogs``
      - Server-streaming solver log lines for a job.
    * - ``GetIncumbents``
-     - MILP incumbent solutions since a given index (only if the job was
+     - MIP incumbent solutions since a given index (only if the job was
        submitted with ``enable_incumbents``; otherwise the list is empty).
 
 Messages and Constraints
 ========================
 
-* **Problem types** — Wire categories are LP/QP or MILP. QP is submitted as
+* **Problem types** — Wire categories are LP/QP or MIP. QP is submitted as
   ``lp_request`` (``SolveLPRequest``) with quadratic fields on
   ``OptimizationProblem``. **Routing** over this gRPC service is **not**
   available yet (planned; use REST for remote routing today).

@@ -22,7 +22,7 @@ directly (see :doc:`api`).
 
 .. note::
 
-   **Problem types:** **LP**, **MILP**, and **QP** are supported today.
+   **Problem types:** **LP**, **MIP**, and **QP** are supported today.
    **Routing** (VRP, TSP, PDP) over gRPC is **not** available; for remote
    routing, use the HTTP/JSON :doc:`REST self-hosted server <../cuopt-server/index>`.
    This guide is **not** the REST server.
@@ -222,7 +222,7 @@ Next Steps
 * :doc:`../install` — Top-level install selector (all interfaces), including **Container** pulls.
 * :doc:`python-async-client` — Python async gRPC client (explicit jobs).
 * :doc:`advanced` — TLS / mTLS, Docker environment reference, tuning, limitations, troubleshooting.
-* :doc:`examples` — Additional client examples and links to LP/MILP sample collections.
+* :doc:`examples` — Additional client examples and links to LP/MIP sample collections.
 * :doc:`api` and :doc:`grpc-server-architecture` — RPC summary and server behavior overview.
 
 See :doc:`../system-requirements` for GPU, CUDA, and OS requirements.

@@ -29,17 +29,17 @@ Add TLS or tuning variables from :doc:`advanced` if your deployment uses them.
 Where to Find Examples
 ======================
 
-Python (LP / QP / MILP)
+Python (LP / QP / MIP)
 -----------------------
 
 * :doc:`../cuopt-python/convex/convex-examples` — runnable Python samples (LP, QP). With ``CUOPT_REMOTE_HOST`` and ``CUOPT_REMOTE_PORT`` set on the client, solves go to the remote server automatically.
-* :doc:`../cuopt-python/mip/mip-examples` — runnable Python samples (MILP). With ``CUOPT_REMOTE_HOST`` and ``CUOPT_REMOTE_PORT`` set on the client, solves go to the remote server automatically.
+* :doc:`../cuopt-python/mip/mip-examples` — runnable Python samples (MIP). With ``CUOPT_REMOTE_HOST`` and ``CUOPT_REMOTE_PORT`` set on the client, solves go to the remote server automatically.
 
-C API (LP / QP / MILP)
+C API (LP / QP / MIP)
 ----------------------
 
 * :doc:`../cuopt-c/convex/convex-examples` — LP and QP C examples.
-* :doc:`../cuopt-c/mip/mip-examples` — MILP C examples.
+* :doc:`../cuopt-c/mip/mip-examples` — MIP C examples.
 
   Compile and run these programs with the same exports in the shell;
   ``cuOptSolve`` uses gRPC when both remote variables are set (see

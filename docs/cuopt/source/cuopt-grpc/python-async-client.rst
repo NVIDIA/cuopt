@@ -47,6 +47,7 @@ from the quick start (same constraint matrix and objective).
    )
    dm.set_constraint_bounds(np.array([5.4, 4.9], dtype=np.float64))
    dm.set_objective_coefficients(np.array([0.2, 0.1], dtype=np.float64))
+   dm.set_maximize(True)
    dm.set_row_types(np.array(["L", "L"]))
    dm.set_variable_lower_bounds(np.array([0.0, 0.0], dtype=np.float64))
    dm.set_variable_upper_bounds(np.array([2.0, np.inf], dtype=np.float64))
@@ -68,7 +69,7 @@ from the quick start (same constraint matrix and objective).
 :class:`~cuopt.linear_programming.problem.Problem`. Always call
 ``delete`` after you are done with the job so the server can release state.
 
-Variable names
+Variable Names
 ==============
 
 ``result(job_id, variable_names=...)`` builds the solution object. Pass a list

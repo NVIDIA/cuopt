@@ -16,7 +16,7 @@ Client
    :undoc-members:
    :exclude-members: _spawn_client, _as_data_model, _backfill_log_stream, _run_log_stream, _stream_logs, _run_incumbent_stream, _poll_incumbents
 
-Supporting types
+Supporting Types
 ================
 
 .. autoclass:: cuopt.grpc.linear_programming.TlsConfig

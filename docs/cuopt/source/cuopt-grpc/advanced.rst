@@ -363,7 +363,7 @@ See :doc:`python-async-client` for the full job API.
 Limitations and Scope
 =====================
 
-* **Problem types** — **LP**, **MILP**, and **QP** are supported on the gRPC remote path. **Routing** (VRP, TSP, PDP) is **not** supported yet; use the :doc:`REST self-hosted server <../cuopt-server/index>` for remote routing until a future release adds routing over ``CuOptRemoteService``.
+* **Problem types** — **LP**, **MIP**, and **QP** are supported on the gRPC remote path. **Routing** (VRP, TSP, PDP) is **not** supported yet; use the :doc:`REST self-hosted server <../cuopt-server/index>` for remote routing until a future release adds routing over ``CuOptRemoteService``.
 * **Message size** — Large problems use chunking; very large models can still hit gRPC max message / timeout limits. Tune ``CUOPT_CHUNK_SIZE``, ``CUOPT_MAX_MESSAGE_BYTES``, server ``--max-message-mb``, and solver ``time_limit`` as needed.
 * **``CUOPT_GRPC_ARGS``** — Parsed on whitespace only; arguments containing spaces are awkward unless you invoke ``cuopt_grpc_server`` directly.
 * **CRL / OCSP** — Not handled by the integrated gRPC TLS stack; use a private CA rotation strategy or a TLS-terminating proxy if you need revocation workflows.
