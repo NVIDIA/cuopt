@@ -300,7 +300,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
   const auto& hp              = context.settings.heuristic_params;
   const bool deterministic    = context.settings.determinism_mode == CUOPT_MODE_DETERMINISTIC;
   const auto probing_features = probing_presolve_features(*problem_ptr);
-  const auto probing_budget   = evaluate_presolve_budget(hp, probing_features);
+  auto probing_budget         = evaluate_presolve_budget(hp, probing_features);
   bool run_probing_cache      = !fj_only_run;
   // Under the legacy policy the probing cache carries no work budget, so in deterministic mode
   // nothing would bound it: the wall clock is infinite there. Keep it off, which is also what makes
@@ -317,27 +317,26 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
     run_probing_cache = false;
   }
   if (run_probing_cache) {
-    log_presolve_budget("PROBING", probing_features, probing_budget);
     // Run probing cache before trivial presolve to discover variable implications. The work budget
-    // shapes how much probing happens but cannot bound how long that takes: realised throughput
-    // spans 12 to 450 work units per second across the benchmark, so at the slow end even a quarter
-    // of the candidates ran 593 of the 600 available seconds and left the root LP with no dual
-    // bound. max_time_on_probing is therefore a hard ceiling rather than a target.
+    // is what bounds this: at probing_work_time_scale it stopped every one of 240 instances before
+    // max_time_on_probing could fire, so the wall is a backstop for a badly mispredicted instance
+    // rather than the working limit it used to be.
     //
     // time_limit is the presolve share of the solve (presolve_time_ratio, so a tenth by default)
-    // and has to stay in the minimum: dropping it left probing bounded only by its own 45s ceiling,
+    // and has to stay in the minimum: without it probing would be bounded only by its own wall cap,
     // so a short solve would spend all of itself here -- at --time-limit 10 probing could take the
     // whole 10s where it should get 1s. remaining_time only stops it reaching past the end of the
     // solve.
     //
-    // A sweep config replaces the dedicated ceiling, so an arm can test whether the work budget
-    // bounds probing on its own. time_limit and remaining_time are not part of that experiment:
-    // they bound probing against the rest of the solve rather than tuning it, so they stay.
-    const f_t probing_wall_cap = probing_budget.config_id >= 0
-                                   ? (f_t)probing_budget.probing_wall_limit
-                                   : (f_t)diversity_config.max_time_on_probing;
-    f_t time_for_probing_cache =
-      std::min({probing_wall_cap, time_limit, (f_t)global_timer.remaining_time()});
+    // A sweep config replaces the wall cap so an arm can be measured with the work budget as the
+    // only bound. time_limit and remaining_time are not part of that experiment: they bound probing
+    // against the rest of the solve rather than tuning it, so they stay.
+    if (probing_budget.config_id < 0) {
+      probing_budget.probing_wall_limit = diversity_config.max_time_on_probing;
+    }
+    log_presolve_budget("PROBING", probing_features, probing_budget);
+    f_t time_for_probing_cache = std::min(
+      {(f_t)probing_budget.probing_wall_limit, time_limit, (f_t)global_timer.remaining_time()});
     timer_t probing_timer{time_for_probing_cache};
     const auto probing_t0 = std::chrono::steady_clock::now();
     // this function computes probing cache, finds singletons, substitutions and changes the problem

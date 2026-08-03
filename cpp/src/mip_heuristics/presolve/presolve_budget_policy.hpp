@@ -70,38 +70,32 @@ struct presolve_config_t {
   double probing_wall_limit;
 };
 
-// This sweep asks one question: can the work budget bound probing on its own, with the dedicated
-// wall cap removed? Everything except the probing bound is pinned at the current default, so any
-// difference is attributable to it.
+// The scale ladder that settled the probing bound, kept so the result can be re-measured. Slot 0 is
+// the adopted default; the rest are the arms it was chosen over. Only the probing bound moves.
 //
-// Removing the cap does not leave probing unbounded. The presolve share of the solve stays in the
-// minimum -- a tenth of the limit, so 60s at the benchmark's 600s -- and that is the number these
-// arms are measured against: an arm whose ceiling is too loose shows up as probing sitting at 60s
-// with a truncated candidate set, not as the 553s it would take unbounded. The count of instances
-// that reach it is the result, and 0 means the ceiling did the job.
+// Result over 240 instances: the number of instances where probing hit a wall bound was 0 at 1.5e8,
+// 2 at 4e8 and 8 at 1e9, and total probing time across the set was 582s, 1136s and 1867s. Solves
+// that overran their own limit followed the same ordering (7, 27, 24) against 17 for the
+// wall-capped arm. Mean error spanned 11.48 to 12.51 across all six arms while two repeats of one
+// build differ by 0.53, so error could not rank them and did not decide this.
 //
-// The scale is the knob under test because worst-case probing time is close to linear in it: 1.5e8
-// held the worst run to 44.7s, 1e9 reached 297s and 3e9 reached 553s. Tight is not free, though --
-// at 1.5e8 the large instances got 1-9% of their candidates probed and several lost their solution
-// -- so the arms bracket the range rather than assuming the safe end is usable.
-//
-// Unlike the previous table these are six distinct points rather than three duplicated pairs. What
-// is being measured here is probing wall time, whether the bound was reached, and coverage, all of
-// which are stable across repeats; it was per-instance *error* that needed the pairing, and error
-// is only a sanity check on the mean here.
+// Note what these arms do *not* test. The presolve share of the solve stays in the minimum, so an
+// arm whose ceiling is too loose shows up as probing sitting at that share with a truncated
+// candidate set rather than running unbounded. Only 1.5e8 is bounded by its own ceiling; 4e8 and
+// 1e9 are still leaning on a wall, which is the real reason they were rejected.
 inline constexpr presolve_config_t presolve_configs[] = {
-  // 0: control. The current default, wall cap included, and the reference for the others.
-  {presolve_budget_policy_t::cost, -1, 32, 1024, 0.25, 3.0e9, 45.0},
-  // 1, 2, 3: the ceiling as the sole work bound. A fraction at or above 1 carries no coverage
-  // target, so probing_work_limit is exactly the ceiling and the scale-to-time curve is visible
-  // without the fraction masking which of the two bound a given instance.
-  {presolve_budget_policy_t::cost, -1, 32, 1024, 1.00, 1.5e8, 0.0},
+  // 0, 1: the adopted default. No coverage target, so the ceiling is the sole work bound, and the
+  // wall left loose enough that it is a backstop rather than the thing shaping probing.
+  {presolve_budget_policy_t::cost, -1, 32, 1024, 1.00, 1.5e8, 120.0},
+  {presolve_budget_policy_t::cost, -1, 32, 1024, 1.00, 1.5e8, 120.0},
+  // 2, 3: looser scales. Rejected for needing the wall on 2 and 8 instances, and for spending 2-3x
+  // the probing time to do it.
   {presolve_budget_policy_t::cost, -1, 32, 1024, 1.00, 4.0e8, 0.0},
   {presolve_budget_policy_t::cost, -1, 32, 1024, 1.00, 1.0e9, 0.0},
-  // 4, 5: the candidates for a default. Coverage bounds the cheap instances and the ceiling bounds
-  // the expensive ones, which is the split the wall cap was standing in for.
+  // 4: a quarter coverage alongside the ceiling, the shape used before this sweep.
   {presolve_budget_policy_t::cost, -1, 32, 1024, 0.25, 4.0e8, 0.0},
-  {presolve_budget_policy_t::cost, -1, 32, 1024, 0.25, 1.0e9, 0.0},
+  // 5: the previous default, wall-capped and with a scale loose enough never to bind.
+  {presolve_budget_policy_t::cost, -1, 32, 1024, 0.25, 3.0e9, 45.0},
 };
 inline constexpr int n_presolve_configs = 6;
 
@@ -308,10 +302,13 @@ presolve_budget_t evaluate_presolve_budget(const mip_heuristics_hyper_params_t<i
       const double papilo_probe_cost = n_bin * std::max<double>(feat.avg_col_len(), 1.0);
       b.papilo_max_rounds            = -1;
       b.papilo_max_badgesize         = papilo_probe_cost > 5.0e5 ? 32 : 1024;
-      // Probing takes its time from branch and bound, and full coverage is not worth what it
-      // costs there: a quarter beat it by 0.615 mean error over 231 instances, winning big on
-      // satellites2-40 (100 -> 31.6), brazil3 and physiciansched3-3 against smaller losses.
-      probe_fraction      = 0.25;
+      // No coverage target: the work ceiling is the only bound, which is what let the wall cap go.
+      // A coverage fraction cuts every instance by the same proportion whether or not it is the
+      // expensive one, so pairing it with the ceiling only obscured which of the two stopped a
+      // given run. Dropping it also stops penalising the cheap instances -- probing runs over a
+      // second on 102 instances here against 81 before, while runs over ten seconds fell from 34 to
+      // 11, since the ceiling truncates by cost rather than uniformly.
+      probe_fraction      = 1.0;
       b.probing_step_size = 128;
       break;
     }

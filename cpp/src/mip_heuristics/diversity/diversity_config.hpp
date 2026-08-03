@@ -13,11 +13,14 @@ namespace cuopt::mathematical_optimization::mip {
 
 struct diversity_config_t {
   double time_ratio_of_probing_cache = 0.1;
-  // The bound that actually holds on probing. Measuring beats predicting here: stopping at a wall
-  // target leaves ~80% of instances probing every candidate, where a structural work ceiling tight
-  // enough to guarantee the same time truncates the large ones to a few percent. 45s keeps margin
-  // under the 60s presolve budget.
-  double max_time_on_probing         = 45.0;
+  // Backstop only. probing_work_time_scale is what bounds probing -- across 240 instances it
+  // stopped every run before this could fire, worst case 42.8s -- so this exists for an instance
+  // whose cost the proxy misses badly, not for routine use. Kept loose deliberately: tightening it
+  // would start shaping the common case again, which is what the work ceiling replaced.
+  //
+  // At the default presolve share (a tenth of the solve) this cannot bind below a 1200s limit,
+  // since the share itself is the smaller bound before then.
+  double max_time_on_probing         = 120.0;
   int max_var_diff                   = 256;
   double default_time_limit          = 10.;
   int initial_island_size            = 3;
