@@ -1,8 +1,8 @@
 #!/bin/bash
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
-# Basic MILP Example using cuopt_cli
+# Basic MIP Example using cuopt_cli
 #
 # This example demonstrates how to solve a Mixed Integer Programming (MIP)
 # problem using cuopt_cli. The main difference from LP is that variables
@@ -12,7 +12,7 @@
 #   - cuopt_cli installed and available in PATH
 #
 
-# Create MILP problem MPS file
+# Create MIP problem MPS file
 echo "* Optimal solution -28
 NAME          MIP_SAMPLE
 ROWS
