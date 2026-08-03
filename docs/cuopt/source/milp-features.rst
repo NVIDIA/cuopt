@@ -1,5 +1,5 @@
 ====================
-MILP Features
+MIP Features
 ====================
 
 Availability
@@ -10,9 +10,9 @@ currently excels at finding high-quality feasible solutions quickly with
 GPU-accelerated primal heuristics. Proving feasible solutions optimal remains
 under active development.
 
-The MILP solver can be accessed in the following ways:
+The MIP solver can be accessed in the following ways:
 
-- **Third-Party Modeling Languages**: cuOpt's LP and MILP solver can be called directly from the following third-party modeling languages. This allows you to leverage GPU acceleration while maintaining your existing optimization workflow in these modeling languages.
+- **Third-Party Modeling Languages**: cuOpt's LP and MIP solver can be called directly from the following third-party modeling languages. This allows you to leverage GPU acceleration while maintaining your existing optimization workflow in these modeling languages.
 
   Currently supported solvers:
    - AMPL
@@ -21,11 +21,11 @@ The MILP solver can be accessed in the following ways:
    - JuMP
    - Pyomo
 
-- **C API**: A native C API that provides direct low-level access to cuOpt's MILP solver, enabling integration into any application or system that can interface with C.
+- **C API**: A native C API that provides direct low-level access to cuOpt's MIP solver, enabling integration into any application or system that can interface with C.
 
-- **Python SDK**: A Python package that provides direct access to cuOpt's MILP capabilities through a simple, intuitive API. This allows for seamless integration into Python applications and workflows. For more information, see :doc:`cuopt-python/quick-start`.
+- **Python SDK**: A Python package that provides direct access to cuOpt's MIP capabilities through a simple, intuitive API. This allows for seamless integration into Python applications and workflows. For more information, see :doc:`cuopt-python/quick-start`.
 
-- **As a Self-Hosted Service**: cuOpt's MILP solver can be deployed in your own infrastructure, enabling you to maintain full control while integrating it into your existing systems.
+- **As a Self-Hosted Service**: cuOpt's MIP solver can be deployed in your own infrastructure, enabling you to maintain full control while integrating it into your existing systems.
 
 Each option provides the same mixed-integer optimization capabilities while offering flexibility in deployment and integration.
 
@@ -39,7 +39,7 @@ Constraints
 
 The constraint matrix is specified in `Compressed Sparse Row (CSR) format  <https://docs.nvidia.com/cuda/cusparse/#compressed-sparse-row-csr>`_.
 
-There are two ways to specify constraints in cuOpt MILP:
+There are two ways to specify constraints in cuOpt MIP:
 
 1. Using row_type and right-hand side:
 
@@ -67,7 +67,7 @@ When using the service, users can provide a callback to receive new integer feas
 Logging
 -------
 
-The CUOPT_LOG_FILE parameter can be set to write detailed solver logs for MILP problems. This parameter is available in all APIs that allow setting solver parameters except for the cuOpt service. For the service, see the logging callback below.
+The CUOPT_LOG_FILE parameter can be set to write detailed solver logs for MIP problems. This parameter is available in all APIs that allow setting solver parameters except for the cuOpt service. For the service, see the logging callback below.
 
 Logging Callback in the Service
 -------------------------------
