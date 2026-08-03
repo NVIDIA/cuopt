@@ -44,7 +44,7 @@
 - Fix an issue in PDLP with cublas error capture and hang on infeasible solutions
 - Fix an exception in concurrent LP cleanup
 - Fix bug in barrier solver where cuDSS descriptors were being freed before their backing buffers
-- Fix a bug in MIP where the lower bound was incorrect when using a singlethread 
+- Fix a bug in MIP where the lower bound was incorrect when using a single thread 
 - Fix a bug in MIP where nodes were lost in branch and bound
 - Fix a bug in MIP where root cut pass CPU feasibility-jump solutions were dropped by GPU heuristics
 - Add guard in MIP for huge bounds in bounds propagation
@@ -53,7 +53,7 @@
 - Fix issue in MIP in clique size computation and numerical issues
 - Fix an issue in MIP where cut generation did not obey the time limit
 - Fix an issue on QPs where maximization was not supported
-- Fix rotated second-order cone detection: canonicalize quadratic constraint Q matrix in triplet formt
+- Fix rotated second-order cone detection: make canonical quadratic constraint Q matrix in triplet form
 - Fix nonconvex quadratic constraint detection bug
 - Fix a bug on QCQP models that incorrectly threw an unsupported exception
 - Fix second-order cone index collision and incorrect quadratic constraint to cone conversion for rotated cone constraints
