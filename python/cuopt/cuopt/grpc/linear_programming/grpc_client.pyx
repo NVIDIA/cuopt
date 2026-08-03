@@ -519,8 +519,9 @@ cdef class Client:
         Poll for MIP incumbent solutions on a background thread until the job
         completes.
 
-        Pass ``settings`` with :meth:`SolverSettings.set_mip_callback`
-        registered :class:`GetSolutionCallback` instances (same as local solve).
+        Pass ``settings`` with ``GetSolutionCallback`` instances registered via
+        :meth:`~cuopt.linear_programming.solver_settings.SolverSettings.set_mip_callback`
+        (same as local solve).
 
         Call :meth:`join_incumbent_stream` before :meth:`delete`.
         """

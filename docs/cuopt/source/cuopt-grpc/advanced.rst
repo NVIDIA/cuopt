@@ -360,6 +360,7 @@ variables above apply. For explicit PEM paths, use ``TlsConfig``:
    client = Client("localhost", 5001, tls=False)
 
 See :doc:`python-async-client` for the full job API.
+
 Limitations and Scope
 =====================
 
