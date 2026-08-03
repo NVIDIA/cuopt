@@ -491,7 +491,7 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
   const simplex::user_problem_t<i_t, f_t>& user_problem,
   pdlp_solver_settings_t<i_t, f_t> const& settings,
   const timer_t& timer,
-  const raft::handle_t* handle_ptr = nullptr)
+  const raft::handle_t* handle_ptr)
 {
   f_t norm_user_objective = vector_norm2<i_t, f_t>(user_problem.objective);
   f_t norm_rhs            = vector_norm2<i_t, f_t>(user_problem.rhs);
@@ -525,11 +525,7 @@ std::tuple<simplex::lp_solution_t<i_t, f_t>, simplex::lp_status_t, f_t, f_t, f_t
 
   simplex::lp_solution_t<i_t, f_t> solution(user_problem.num_rows, user_problem.num_cols);
   auto status = simplex::solve_linear_program_with_barrier<i_t, f_t>(
-    user_problem,
-    barrier_settings,
-    timer.get_tic_start(),
-    solution,
-    handle_ptr == nullptr ? user_problem.handle_ptr : handle_ptr);
+    user_problem, barrier_settings, timer.get_tic_start(), solution, handle_ptr);
 
   if (status == simplex::lp_status_t::OPTIMAL) {
     barrier::project_barrier_solution_to_model_variables(user_problem, solution);
@@ -558,7 +554,7 @@ optimization_problem_solution_t<i_t, f_t> run_barrier(
   // Convert data structures to dual simplex format and back
   simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
     cuopt_problem_to_user_problem<i_t, f_t>(problem.handle_ptr, problem, false);
-  auto sol_dual_simplex = run_barrier(dual_simplex_problem, settings, timer);
+  auto sol_dual_simplex = run_barrier(dual_simplex_problem, settings, timer, problem.handle_ptr);
   return convert_dual_simplex_sol(problem,
                                   std::get<0>(sol_dual_simplex),
                                   std::get<1>(sol_dual_simplex),
@@ -1875,8 +1871,9 @@ optimization_problem_solution_t<i_t, f_t> solve_qcqp(
     // Convert data structures to dual simplex format and back
     simplex::user_problem_t<i_t, f_t> dual_simplex_problem =
       cuopt_optimization_problem_to_user_problem<i_t, f_t>(op_problem.get_handle_ptr(), op_problem);
-    auto sol_dual_simplex = run_barrier(dual_simplex_problem, settings, qcqp_timer);
-    auto solution         = convert_dual_simplex_sol(op_problem,
+    auto sol_dual_simplex =
+      run_barrier(dual_simplex_problem, settings, qcqp_timer, op_problem.get_handle_ptr());
+    auto solution = convert_dual_simplex_sol(op_problem,
                                              std::get<0>(sol_dual_simplex),
                                              std::get<1>(sol_dual_simplex),
                                              std::get<2>(sol_dual_simplex),
