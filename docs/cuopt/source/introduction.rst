@@ -77,7 +77,7 @@ cuOpt includes three LP solving methods:
 All three algorithms can be run concurrently on both GPU and CPU, with the fastest solution returned automatically.
 
 Mixed Integer Programming (MIP) (Beta)
-=====================================
+======================================
 
 A **Mixed Integer Program (MIP)** is an optimization problem where some variables are restricted to take on only integer values, while other variables can vary continuously. cuOpt's MIP support covers problems with a linear objective and linear constraints.
 
