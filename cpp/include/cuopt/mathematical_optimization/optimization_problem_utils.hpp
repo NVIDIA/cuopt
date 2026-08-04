@@ -11,6 +11,7 @@
 #include <cuopt/mathematical_optimization/cpu_pdlp_warm_start_data.hpp>
 #include <cuopt/mathematical_optimization/io/data_model_view.hpp>
 #include <cuopt/mathematical_optimization/io/mps_data_model.hpp>
+#include <cuopt/mathematical_optimization/optimization_problem.hpp>
 #include <cuopt/mathematical_optimization/optimization_problem_interface.hpp>
 #include <cuopt/mathematical_optimization/solver_settings.hpp>
 
@@ -139,12 +140,13 @@ void populate_from_mps_data_model(optimization_problem_interface_t<i_t, f_t>* pr
 /**
  * @brief Transfer parsed MPS/QPS storage into a CPU-backed problem without copying payload arrays.
  *
- * For GPU-backed problems this falls back to populate_from_mps_data_model (copy/H2D path).
+ * For GPU-backed problems this falls back to populate_from_mps_data_model (copy/H2D path), waits
+ * for the copies to complete, and releases the parsed host storage.
  *
  * @tparam i_t Integer type for indices
  * @tparam f_t Floating point type for values
  * @param[out] problem The optimization problem interface to populate
- * @param[in] data_model Parsed model; moved-from on return for CPU adopt
+ * @param[in] data_model Parsed model; moved-from on return
  */
 template <typename i_t, typename f_t>
 void adopt_from_mps_data_model(optimization_problem_interface_t<i_t, f_t>* problem,
@@ -155,6 +157,10 @@ void adopt_from_mps_data_model(optimization_problem_interface_t<i_t, f_t>* probl
     return;
   }
   populate_from_mps_data_model(problem, data_model);
+  if (auto* gpu_problem = dynamic_cast<optimization_problem_t<i_t, f_t>*>(problem)) {
+    gpu_problem->get_handle_ptr()->sync_stream();
+    data_model = {};
+  }
 }
 
 /**

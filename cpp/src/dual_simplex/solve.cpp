@@ -351,10 +351,11 @@ template <typename i_t, typename f_t>
 lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& user_problem,
                                               const simplex_solver_settings_t<i_t, f_t>& settings,
                                               f_t start_time,
-                                              lp_solution_t<i_t, f_t>& solution)
+                                              lp_solution_t<i_t, f_t>& solution,
+                                              const raft::handle_t* handle_ptr)
 {
   lp_status_t status = lp_status_t::UNSET;
-  lp_problem_t<i_t, f_t> original_lp(user_problem.handle_ptr, 1, 1, 1);
+  lp_problem_t<i_t, f_t> original_lp(handle_ptr, 1, 1, 1);
 
   // Convert the user problem to a linear program with only equality constraints
   std::vector<i_t> new_slacks;
@@ -369,14 +370,14 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
 
   // Presolve the linear program
   presolve_info_t<i_t, f_t> presolve_info;
-  lp_problem_t<i_t, f_t> presolved_lp(user_problem.handle_ptr, 1, 1, 1);
+  lp_problem_t<i_t, f_t> presolved_lp(handle_ptr, 1, 1, 1);
   const i_t ok = presolve(original_lp, barrier_settings, presolved_lp, presolve_info);
   if (ok == CONCURRENT_HALT_RETURN) { return lp_status_t::CONCURRENT_LIMIT; }
   if (ok == TIME_LIMIT_RETURN) { return lp_status_t::TIME_LIMIT; }
   if (ok == -1) { return lp_status_t::INFEASIBLE; }
 
   // Apply columns scaling to the presolve LP
-  lp_problem_t<i_t, f_t> barrier_lp(user_problem.handle_ptr,
+  lp_problem_t<i_t, f_t> barrier_lp(handle_ptr,
                                     presolved_lp.num_rows,
                                     presolved_lp.num_cols,
                                     presolved_lp.A.col_start[presolved_lp.num_cols]);
@@ -418,24 +419,26 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
                                unscaled_y,
                                unscaled_z);
 
-    std::vector<f_t> residual = presolved_lp.rhs;
-    matrix_vector_multiply(presolved_lp.A, 1.0, unscaled_x, -1.0, residual);
-    f_t primal_residual = vector_norm_inf<i_t, f_t>(residual);
-    settings.log.printf("Unscaled Primal infeasibility   (abs/rel): %.2e/%.2e\n",
-                        primal_residual,
-                        primal_residual / (1.0 + vector_norm_inf<i_t, f_t>(presolved_lp.rhs)));
-    if (barrier_lp.Q.n == 0) {
-      std::vector<f_t> unscaled_dual_residual = unscaled_z;
-      for (i_t j = 0; j < unscaled_dual_residual.size(); ++j) {
-        unscaled_dual_residual[j] -= presolved_lp.objective[j];
+    if (settings.postsolve_info == 1) {
+      std::vector<f_t> residual = presolved_lp.rhs;
+      matrix_vector_multiply(presolved_lp.A, 1.0, unscaled_x, -1.0, residual);
+      f_t primal_residual = vector_norm_inf<i_t, f_t>(residual);
+      settings.log.printf("Unscaled Primal infeasibility   (abs/rel): %.2e/%.2e\n",
+                          primal_residual,
+                          primal_residual / (1.0 + vector_norm_inf<i_t, f_t>(presolved_lp.rhs)));
+      if (barrier_lp.Q.n == 0) {
+        std::vector<f_t> unscaled_dual_residual = unscaled_z;
+        for (i_t j = 0; j < unscaled_dual_residual.size(); ++j) {
+          unscaled_dual_residual[j] -= presolved_lp.objective[j];
+        }
+        matrix_transpose_vector_multiply(
+          presolved_lp.A, 1.0, unscaled_y, 1.0, unscaled_dual_residual);
+        f_t unscaled_dual_residual_norm = vector_norm_inf<i_t, f_t>(unscaled_dual_residual);
+        settings.log.printf(
+          "Unscaled Dual infeasibility     (abs/rel): %.2e/%.2e\n",
+          unscaled_dual_residual_norm,
+          unscaled_dual_residual_norm / (1.0 + vector_norm_inf<i_t, f_t>(presolved_lp.objective)));
       }
-      matrix_transpose_vector_multiply(
-        presolved_lp.A, 1.0, unscaled_y, 1.0, unscaled_dual_residual);
-      f_t unscaled_dual_residual_norm = vector_norm_inf<i_t, f_t>(unscaled_dual_residual);
-      settings.log.printf(
-        "Unscaled Dual infeasibility     (abs/rel): %.2e/%.2e\n",
-        unscaled_dual_residual_norm,
-        unscaled_dual_residual_norm / (1.0 + vector_norm_inf<i_t, f_t>(presolved_lp.objective)));
     }
 
     // Undo presolve
@@ -449,26 +452,28 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
                      lp_solution.y,
                      lp_solution.z);
 
-    std::vector<f_t> post_solve_residual = original_lp.rhs;
-    matrix_vector_multiply(original_lp.A, 1.0, lp_solution.x, -1.0, post_solve_residual);
-    f_t post_solve_primal_residual = vector_norm_inf<i_t, f_t>(post_solve_residual);
-    settings.log.printf(
-      "Post-solve Primal infeasibility (abs/rel): %.2e/%.2e\n",
-      post_solve_primal_residual,
-      post_solve_primal_residual / (1.0 + vector_norm_inf<i_t, f_t>(original_lp.rhs)));
-
-    if (barrier_lp.Q.n == 0) {
-      std::vector<f_t> post_solve_dual_residual = lp_solution.z;
-      for (i_t j = 0; j < post_solve_dual_residual.size(); ++j) {
-        post_solve_dual_residual[j] -= original_lp.objective[j];
-      }
-      matrix_transpose_vector_multiply(
-        original_lp.A, 1.0, lp_solution.y, 1.0, post_solve_dual_residual);
-      f_t post_solve_dual_residual_norm = vector_norm_inf<i_t, f_t>(post_solve_dual_residual);
+    if (settings.postsolve_info == 1) {
+      std::vector<f_t> post_solve_residual = original_lp.rhs;
+      matrix_vector_multiply(original_lp.A, 1.0, lp_solution.x, -1.0, post_solve_residual);
+      f_t post_solve_primal_residual = vector_norm_inf<i_t, f_t>(post_solve_residual);
       settings.log.printf(
-        "Post-solve Dual infeasibility   (abs/rel): %.2e/%.2e\n",
-        post_solve_dual_residual_norm,
-        post_solve_dual_residual_norm / (1.0 + vector_norm_inf<i_t, f_t>(original_lp.objective)));
+        "Post-solve Primal infeasibility (abs/rel): %.2e/%.2e\n",
+        post_solve_primal_residual,
+        post_solve_primal_residual / (1.0 + vector_norm_inf<i_t, f_t>(original_lp.rhs)));
+
+      if (barrier_lp.Q.n == 0) {
+        std::vector<f_t> post_solve_dual_residual = lp_solution.z;
+        for (i_t j = 0; j < post_solve_dual_residual.size(); ++j) {
+          post_solve_dual_residual[j] -= original_lp.objective[j];
+        }
+        matrix_transpose_vector_multiply(
+          original_lp.A, 1.0, lp_solution.y, 1.0, post_solve_dual_residual);
+        f_t post_solve_dual_residual_norm = vector_norm_inf<i_t, f_t>(post_solve_dual_residual);
+        settings.log.printf(
+          "Post-solve Dual infeasibility   (abs/rel): %.2e/%.2e\n",
+          post_solve_dual_residual_norm,
+          post_solve_dual_residual_norm / (1.0 + vector_norm_inf<i_t, f_t>(original_lp.objective)));
+      }
     }
 
     if (dualize_info.solving_dual) {
@@ -502,9 +507,12 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
         k++;
       }
 
-      // Check the objective and residuals on the primal problem.
-      settings.log.printf("Primal objective: %e\n",
-                          dot<i_t, f_t>(dualize_info.primal_problem.objective, primal_solution.x));
+      if (settings.postsolve_info == 1) {
+        // Check the objective and residuals on the primal problem.
+        settings.log.printf(
+          "Primal objective: %e\n",
+          dot<i_t, f_t>(dualize_info.primal_problem.objective, primal_solution.x));
+      }
 
       std::vector<i_t> inequality_rows(dualize_info.primal_problem.num_rows, 1);
       for (i_t i : dualize_info.equality_rows) {
@@ -555,27 +563,29 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
         problem.num_cols = num_cols;
       }
 
-      std::vector<f_t> primal_residual = dualize_info.primal_problem.rhs;
-      matrix_vector_multiply(
-        dualize_info.primal_problem.A, 1.0, primal_solution.x, -1.0, primal_residual);
+      if (settings.postsolve_info == 1) {
+        std::vector<f_t> primal_residual = dualize_info.primal_problem.rhs;
+        matrix_vector_multiply(
+          dualize_info.primal_problem.A, 1.0, primal_solution.x, -1.0, primal_residual);
 
-      f_t primal_residual_norm     = vector_norm_inf<i_t, f_t>(primal_residual);
-      const f_t norm_b             = vector_norm_inf<i_t, f_t>(dualize_info.primal_problem.rhs);
-      f_t primal_relative_residual = primal_residual_norm / (1.0 + norm_b);
-      settings.log.printf(
-        "Primal residual (abs/rel): %e/%e\n", primal_residual_norm, primal_relative_residual);
+        f_t primal_residual_norm     = vector_norm_inf<i_t, f_t>(primal_residual);
+        const f_t norm_b             = vector_norm_inf<i_t, f_t>(dualize_info.primal_problem.rhs);
+        f_t primal_relative_residual = primal_residual_norm / (1.0 + norm_b);
+        settings.log.printf(
+          "Primal residual (abs/rel): %e/%e\n", primal_residual_norm, primal_relative_residual);
 
-      std::vector<f_t> dual_residual = dualize_info.primal_problem.objective;
-      for (i_t j = 0; j < dualize_info.primal_problem.num_cols; ++j) {
-        dual_residual[j] -= z[j];
+        std::vector<f_t> dual_residual = dualize_info.primal_problem.objective;
+        for (i_t j = 0; j < dualize_info.primal_problem.num_cols; ++j) {
+          dual_residual[j] -= z[j];
+        }
+        matrix_transpose_vector_multiply(
+          dualize_info.primal_problem.A, 1.0, primal_solution.y, -1.0, dual_residual);
+        f_t dual_residual_norm = vector_norm_inf<i_t, f_t>(dual_residual);
+        const f_t norm_c       = vector_norm_inf<i_t, f_t>(dualize_info.primal_problem.objective);
+        f_t dual_relative_residual = dual_residual_norm / (1.0 + norm_c);
+        settings.log.printf(
+          "Dual residual (abs/rel): %e/%e\n", dual_residual_norm, dual_relative_residual);
       }
-      matrix_transpose_vector_multiply(
-        dualize_info.primal_problem.A, 1.0, primal_solution.y, -1.0, dual_residual);
-      f_t dual_residual_norm     = vector_norm_inf<i_t, f_t>(dual_residual);
-      const f_t norm_c           = vector_norm_inf<i_t, f_t>(dualize_info.primal_problem.objective);
-      f_t dual_relative_residual = dual_residual_norm / (1.0 + norm_c);
-      settings.log.printf(
-        "Dual residual (abs/rel): %e/%e\n", dual_residual_norm, dual_relative_residual);
 
       original_lp = dualize_info.primal_problem;
       lp_solution = primal_solution;
@@ -667,6 +677,16 @@ lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& us
     if (crossover_status == crossover_status_t::OPTIMAL) { barrier_status = lp_status_t::OPTIMAL; }
   }
   return barrier_status;
+}
+
+template <typename i_t, typename f_t>
+lp_status_t solve_linear_program_with_barrier(const user_problem_t<i_t, f_t>& user_problem,
+                                              const simplex_solver_settings_t<i_t, f_t>& settings,
+                                              f_t start_time,
+                                              lp_solution_t<i_t, f_t>& solution)
+{
+  return solve_linear_program_with_barrier(
+    user_problem, settings, start_time, solution, user_problem.handle_ptr);
 }
 
 template <typename i_t, typename f_t>
@@ -824,6 +844,13 @@ template lp_status_t solve_linear_program_with_barrier(
   const simplex_solver_settings_t<int, double>& settings,
   double start_time,
   lp_solution_t<int, double>& solution);
+
+template lp_status_t solve_linear_program_with_barrier(
+  const user_problem_t<int, double>& user_problem,
+  const simplex_solver_settings_t<int, double>& settings,
+  double start_time,
+  lp_solution_t<int, double>& solution,
+  const raft::handle_t* handle_ptr);
 
 template lp_status_t solve_linear_program(const user_problem_t<int, double>& user_problem,
                                           const simplex_solver_settings_t<int, double>& settings,
