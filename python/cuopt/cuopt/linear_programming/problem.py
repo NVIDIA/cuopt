@@ -1770,6 +1770,13 @@ class Problem:
             self.model.set_objective_coefficients(self.objective)
             self.model.set_objective_offset(self.ObjConstant)
             self.model.set_maximize(self.ObjSense == -1)
+            # Q is independent of A topology; replace it in place.
+            if self.objective_qmatrix is not None:
+                self.model.set_quadratic_objective_matrix(
+                    self.objective_qmatrix.data,
+                    self.objective_qmatrix.indices,
+                    self.objective_qmatrix.indptr,
+                )
             self._stale["objective"] = False
 
         if self._stale["variable"]:
@@ -1791,6 +1798,10 @@ class Problem:
             self.model.set_variable_names(self.var_names)
             if self.mip_start.size > 0 and not np.all(np.isnan(self.mip_start)):
                 self.model.set_initial_primal_solution(self.mip_start)
+            else:
+                # Empty so the next Solve skips add_initial_mip_solution /
+                # set_initial_pdlp_primal_solution (clears a prior warm start).
+                self.model.set_initial_primal_solution(np.array([]))
             self._stale["variable"] = False
 
         if self._stale["rhs"]:
@@ -1844,9 +1855,10 @@ class Problem:
         self.solved = False
 
         if invalidate_structure:
+            # Constraint topology only; the quadratic objective is unrelated
+            # and must survive.
             self.model = None
             self.constraint_csr_matrix = None
-            self.objective_qmatrix = None
             self._invalidate_index_to_var_cache()
             self._mark_stale(
                 "structure", "variable", "objective", "rhs", "A_values"
@@ -1895,6 +1907,9 @@ class Problem:
         var.index = n
         var._problem = self
         self.vars.append(var)
+        if self.objective_qmatrix is not None:
+            # Q is sized by variable count; the new column/row is all zeros.
+            self.objective_qmatrix.resize((n + 1, n + 1))
         return var
 
     def addConstraint(self, constr, name=""):
@@ -2056,6 +2071,8 @@ class Problem:
             self.reset_solved_values()  # Reset all solved values
         self.ObjSense = sense
         self._mark_stale("objective")
+        had_qmatrix = self.objective_qmatrix is not None
+        is_quadratic = False
         match expr:
             case int() | float():
                 for var in self.vars:
@@ -2077,6 +2094,7 @@ class Problem:
                     )
                 self.ObjConstant = expr.getConstant()
             case QuadraticExpression():
+                is_quadratic = True
                 for var in self.vars:
                     var.setObjectiveCoefficient(0.0)
                 for var, coeff in zip(expr.vars, expr.coefficients):
@@ -2098,12 +2116,17 @@ class Problem:
                 if expr.qmatrix is not None:
                     self.objective_qmatrix += expr.qmatrix
                 self.objective_qmatrix = self.objective_qmatrix.tocsr()
-                # Q topology/values require a DataModel rebuild today.
-                self._mark_stale("structure")
             case _:
                 raise ValueError(
                     "Objective must be a Variable, Expression or a constant"
                 )
+
+        if not is_quadratic:
+            self.objective_qmatrix = None
+            if had_qmatrix:
+                # DataModel has no API to clear Q from its persistent C++
+                # view, so QP → LP must rebuild the view without Q.
+                self._mark_stale("structure")
 
     def updateObjective(self, coeffs=[], constant=None, sense=None):
         """
