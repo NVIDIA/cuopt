@@ -487,6 +487,7 @@ class branch_and_bound_t {
   mip_status_t deterministic_global_termination_status_{mip_status_t::UNSET};
   double deterministic_horizon_step_{5.0};     // Work unit step per horizon (tunable)
   double deterministic_current_horizon_{0.0};  // Current horizon target
+  double deterministic_root_work_offset_{0.0};
   bool deterministic_mode_enabled_{false};
   int deterministic_horizon_number_{0};  // Current horizon number (for debugging)
 

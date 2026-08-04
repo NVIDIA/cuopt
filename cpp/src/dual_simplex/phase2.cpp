@@ -2559,6 +2559,23 @@ dual_status_t dual_phase2_with_advanced_basis(i_t phase,
   f_t phase2_work_estimate = 0.0;
   ft.clear_work_estimate();
 
+  struct final_work_flush_t {
+    work_limit_context_t* context;
+    f_t& phase_work;
+    basis_update_mpf_t<i_t, f_t>& basis_update;
+
+    ~final_work_flush_t()
+    {
+      if (context == nullptr) { return; }
+      phase_work += basis_update.work_estimate();
+      basis_update.clear_work_estimate();
+      if (phase_work > static_cast<f_t>(0.0)) {
+        context->record_work_sync_on_horizon(phase_work / static_cast<f_t>(1e8));
+        phase_work = 0.0;
+      }
+    }
+  } final_work_flush{work_unit_context, phase2_work_estimate, ft};
+
   std::vector<f_t>& x = sol.x;
   std::vector<f_t>& y = sol.y;
   std::vector<f_t>& z = sol.z;

@@ -981,6 +981,22 @@ TEST(cuts, test_duplicate_cuts_detection)
   cut_pool.add_cut(mip::cut_type_t::MIXED_INTEGER_GOMORY, cut8);
 
   cut_pool.check_for_duplicate_cuts();
+
+  std::vector<double> xstar(4, 0.0);
+  const double scoring_work = cut_pool.score_cuts(xstar, 1.0);
+  EXPECT_GT(scoring_work, 1.0);
+  EXPECT_TRUE(std::isfinite(scoring_work));
+}
+
+TEST(cuts, cut_work_stats_total)
+{
+  mip::cut_work_stats_t<double> stats;
+  stats.gomory         = 1.0;
+  stats.mir            = 2.0;
+  stats.zero_half      = 3.0;
+  stats.conflict_graph = 4.0;
+  EXPECT_DOUBLE_EQ(stats.total(), 10.0);
+  EXPECT_DOUBLE_EQ(stats.work_units(), 1e-7);
 }
 
 TEST(cuts, clique_phase1_smoke_conflict_graph_edges)
@@ -1514,6 +1530,26 @@ TEST(cuts, zero_half_unit_mod2_row_finder_single_pair_and_four_row_dependencies)
     ASSERT_EQ(combinations.size(), 1);
     EXPECT_EQ(combinations.front(), (std::vector<int>{0, 1, 2, 3}));
   }
+}
+
+TEST(cuts, zero_half_unit_mod2_row_finder_stops_at_work_limit)
+{
+  std::vector<int> support(64);
+  std::iota(support.begin(), support.end(), 0);
+  const std::vector<std::vector<int>> parity_rows(256, support);
+  const std::vector<char> rhs_parity(256, 0);
+
+  // The budget admits preprocessing and the first basis row, then expires at
+  // the next symmetric difference. The search must return immediately rather
+  // than repeating an over-budget reduction for every remaining input row.
+  constexpr double max_work = 18900.0;
+  double work               = 0.0;
+  const auto combinations =
+    mip::find_mod2_row_combinations_for_test(parity_rows, rhs_parity, 64, 1000, max_work, &work);
+
+  EXPECT_TRUE(combinations.empty());
+  EXPECT_GT(work, max_work);
+  EXPECT_LT(work, 19100.0);
 }
 
 TEST(cuts, zero_half_unit_separator_no_cycle_for_4_cycle)

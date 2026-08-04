@@ -17,6 +17,7 @@
 #include <array>
 #include <atomic>
 #include <future>
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <string>
@@ -52,6 +53,29 @@ struct cut_gap_closure_t {
   f_t final_gap{0.0};
   f_t gap_closed{0.0};
   f_t gap_closed_ratio{0.0};
+};
+
+// Deterministic operation estimates for one separator pass. Raw estimates are
+// kept per phase so expensive cut families remain attributable; callers can
+// convert the total to solver work units with total() / 1e8.
+template <typename f_t>
+struct cut_work_stats_t {
+  f_t gomory{0.0};
+  f_t knapsack{0.0};
+  f_t flow_cover{0.0};
+  f_t mir{0.0};
+  f_t implied_bound{0.0};
+  f_t conflict_graph{0.0};
+  f_t clique{0.0};
+  f_t zero_half{0.0};
+
+  f_t total() const
+  {
+    return gomory + knapsack + flow_cover + mir + implied_bound + conflict_graph + clique +
+           zero_half;
+  }
+
+  f_t work_units() const { return total() / static_cast<f_t>(1e8); }
 };
 
 template <typename f_t>
@@ -296,6 +320,14 @@ std::vector<std::vector<int>> find_mod2_row_combinations_for_test(
   int max_combination_size,
   int max_combinations);
 
+std::vector<std::vector<int>> find_mod2_row_combinations_for_test(
+  const std::vector<std::vector<int>>& parity_rows,
+  const std::vector<char>& rhs_parity,
+  int max_combination_size,
+  int max_combinations,
+  double max_work_estimate,
+  double* work_estimate);
+
 template <typename i_t, typename f_t>
 class cut_pool_t {
  public:
@@ -314,7 +346,10 @@ class cut_pool_t {
   // We expect that the cut is violated by the current relaxation xstar.
   void add_cut(cut_type_t cut_type, const inequality_t<i_t, f_t>& cut);
 
-  void score_cuts(std::vector<f_t>& x_relax);
+  // Returns a deterministic operation estimate. Orthogonality selection is
+  // stopped at max_work_estimate, preserving the best cuts found so far.
+  f_t score_cuts(std::vector<f_t>& x_relax,
+                 f_t max_work_estimate = std::numeric_limits<f_t>::infinity());
 
   // We return the cuts in the form best_cuts*x <= best_rhs
   i_t get_best_cuts(csr_matrix_t<i_t, f_t>& best_cuts,
@@ -330,6 +365,7 @@ class cut_pool_t {
   void print_cutpool_types() { print_cut_types("In cut pool", cut_type_, settings_); }
 
   void check_for_duplicate_cuts();
+  bool check_for_duplicate_cuts(f_t& work_estimate, f_t max_work_estimate);
 
  private:
   f_t cut_distance(i_t row, const std::vector<f_t>& x, f_t& cut_violation, f_t& cut_norm);
@@ -669,6 +705,8 @@ class cut_generation_t {
                      variable_bounds_t<i_t, f_t>& variable_bounds,
                      f_t start_time);
 
+  const cut_work_stats_t<f_t>& last_work_stats() const { return last_work_stats_; }
+
  private:
   // Generate all mixed integer gomory cuts
   void generate_gomory_cuts(const simplex::lp_problem_t<i_t, f_t>& lp,
@@ -751,6 +789,7 @@ class cut_generation_t {
   std::shared_ptr<mip::clique_table_t<i_t, f_t>> clique_table_;
   omp_atomic_t<bool>* signal_extend_{nullptr};
   fractional_conflict_subgraph_t<i_t, f_t> sub_cg_;
+  cut_work_stats_t<f_t> last_work_stats_;
 };
 
 template <typename i_t, typename f_t>
@@ -839,7 +878,9 @@ class tableau_equality_t {
                              const std::vector<i_t>& basic_list,
                              const std::vector<i_t>& nonbasic_list,
                              i_t i,
-                             inequality_t<i_t, f_t>& inequality);
+                             inequality_t<i_t, f_t>& inequality,
+                             f_t& work_estimate,
+                             f_t max_work_estimate);
 
  private:
   std::vector<f_t> b_bar_;
@@ -1019,7 +1060,8 @@ class complemented_mixed_integer_rounding_cut_t {
                                           const std::vector<simplex::variable_type_t>& var_types,
                                           const std::vector<f_t>& transformed_xstar,
                                           inequality_t<i_t, f_t>& transformed_cut,
-                                          f_t& work_estimate);
+                                          f_t& work_estimate,
+                                          f_t max_work_estimate);
 
   f_t compute_violation(const inequality_t<i_t, f_t>& cut, const std::vector<f_t>& xstar);
 
