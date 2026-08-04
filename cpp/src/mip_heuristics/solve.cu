@@ -333,36 +333,6 @@ mip_solution_t<i_t, f_t> run_mip_solver(
   }
 }
 
-namespace mip {
-
-// Features of the problem as the user handed it in, i.e. before any reduction. This is what Papilo
-// itself will work on, so its budget is derived from these rather than from the reduced problem.
-template <typename i_t, typename f_t>
-presolve_features_t papilo_presolve_features(optimization_problem_t<i_t, f_t> const& op_problem)
-{
-  presolve_features_t f{};
-  f.n_vars = op_problem.get_n_variables();
-  f.n_cons = op_problem.get_n_constraints();
-  f.nnz    = op_problem.get_nnz();
-
-  const auto var_types = op_problem.get_variable_types_host();
-  const auto lower     = op_problem.get_variable_lower_bounds_host();
-  const auto upper     = op_problem.get_variable_upper_bounds_host();
-  for (size_t j = 0; j < var_types.size(); ++j) {
-    if (var_types[j] != var_t::INTEGER) { continue; }
-    f.n_int += 1.0;
-    if (lower[j] >= 0.0 && upper[j] <= 1.0) { f.n_bin += 1.0; }
-  }
-
-  const auto offsets = op_problem.get_constraint_matrix_offsets_host();
-  for (size_t i = 0; i + 1 < offsets.size(); ++i) {
-    f.max_row_len = std::max<double>(f.max_row_len, offsets[i + 1] - offsets[i]);
-  }
-  return f;
-}
-
-}  // namespace mip
-
 template <typename i_t, typename f_t>
 mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_problem,
                                           mip_solver_settings_t<i_t, f_t> const& settings_const)
@@ -652,7 +622,7 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
       CUOPT_LOG_INFO("Papilo presolve time: %.2f", presolve_time);
       // What the round cap actually bought, logged here rather than inferred from the probing stage
       // so it is still recorded when the run never gets that far.
-      CUOPT_LOG_INFO(
+      CUOPT_LOG_DEBUG(
         "PRESOLVE_PAPILO_REDUCED nvars=%d ncons=%d nnz=%d nint=%d nbin=%d from_nvars=%.0f "
         "from_ncons=%.0f from_nnz=%.0f",
         problem.n_variables,

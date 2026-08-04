@@ -860,7 +860,7 @@ third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_papilo(
   set_presolve_parameters(
     papilo_presolver, category, original_n_cons, original_n_vars, max_badgesize);
   papilo_presolver.setVerbosityLevel(papilo::VerbosityLevel::kQuiet);
-  CUOPT_LOG_INFO(
+  CUOPT_LOG_DEBUG(
     "PRESOLVE_PAPILO_BUDGET rounds=%d badge_cap=%d tlim=%g", max_rounds, max_badgesize, time_limit);
 
   const auto papilo_t0 = std::chrono::steady_clock::now();
@@ -873,7 +873,7 @@ third_party_presolve_status_t third_party_presolve_t<i_t, f_t>::apply_papilo(
   if (max_badgesize > 0) { effective_badge = std::min(effective_badge, max_badgesize); }
   // hit_tlim distinguishes "presolve converged" from "presolve was cut off mid-round", which
   // changes how the reduced problem below should be read.
-  CUOPT_LOG_INFO(
+  CUOPT_LOG_DEBUG(
     "PRESOLVE_PAPILO wall=%.3f tlim=%g hit_tlim=%d rounds_cap=%d badge_cap=%d badge_effective=%d",
     papilo_wall,
     time_limit,
@@ -1604,16 +1604,42 @@ void papilo_postsolve_deleter<f_t>::operator()(papilo::PostsolveStorage<f_t>* pt
   delete ptr;
 }
 
+template <typename i_t, typename f_t>
+presolve_features_t papilo_presolve_features(optimization_problem_t<i_t, f_t> const& op_problem)
+{
+  presolve_features_t f{};
+  f.n_vars = op_problem.get_n_variables();
+  f.n_cons = op_problem.get_n_constraints();
+  f.nnz    = op_problem.get_nnz();
+
+  const auto var_types = op_problem.get_variable_types_host();
+  const auto lower     = op_problem.get_variable_lower_bounds_host();
+  const auto upper     = op_problem.get_variable_upper_bounds_host();
+  for (size_t j = 0; j < var_types.size(); ++j) {
+    if (var_types[j] != var_t::INTEGER) { continue; }
+    f.n_int += 1.0;
+    if (lower[j] >= 0.0 && upper[j] <= 1.0) { f.n_bin += 1.0; }
+  }
+
+  const auto offsets = op_problem.get_constraint_matrix_offsets_host();
+  for (size_t i = 0; i + 1 < offsets.size(); ++i) {
+    f.max_row_len = std::max<double>(f.max_row_len, offsets[i + 1] - offsets[i]);
+  }
+  return f;
+}
+
 #if MIP_INSTANTIATE_FLOAT || PDLP_INSTANTIATE_FLOAT
 template struct papilo_postsolve_deleter<float>;
 template class third_party_presolve_t<int, float>;
 template void papilo_round_trip(simplex::user_problem_t<int, float>&);
+template presolve_features_t papilo_presolve_features(optimization_problem_t<int, float> const&);
 #endif
 
 #if MIP_INSTANTIATE_DOUBLE
 template struct papilo_postsolve_deleter<double>;
 template class third_party_presolve_t<int, double>;
 template void papilo_round_trip(simplex::user_problem_t<int, double>&);
+template presolve_features_t papilo_presolve_features(optimization_problem_t<int, double> const&);
 #endif
 
 }  // namespace cuopt::mathematical_optimization::mip

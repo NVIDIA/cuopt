@@ -890,12 +890,9 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   std::atomic<bool> problem_is_infeasible(false);
   size_t last_it_implied_singletons = 0;
   bool early_exit                   = false;
-  // Two additive terms with independently tunable weights, so a sweep can shift the budget between
-  // counting propagation iterations and counting probes. Both are exact counts, which is what keeps
-  // the budget reproducible.
-  const double iter_cost = (double)bound_presolve.context.settings.heuristic_params.probe_iter_work;
-  const double probe_cost =
-    (double)bound_presolve.context.settings.heuristic_params.probe_host_overhead_work;
+  // Two additive terms, both exact counts, which is what keeps the budget reproducible.
+  const double iter_cost  = probing_iter_work;
+  const double probe_cost = probing_probe_work;
   // Only for the diagnostic below: a work budget buys wildly different amounts of time per
   // instance, so the realised rate has to be recorded to translate a budget back into seconds
   // afterwards.
