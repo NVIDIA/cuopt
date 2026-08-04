@@ -7,15 +7,16 @@ set -euo pipefail
 
 # Detect distro and install test dependencies
 if [ -f /etc/redhat-release ]; then
-    dnf install -y file bzip2 gcc wget unzip
+    dnf install -y file bzip2 gcc wget unzip tar
     dnf clean all
     # pip-installed CUDA wheels land in a non-standard prefix on UBI/RHEL.
     # su - resets the environment, so carry the path forward explicitly.
-    EXTRA_LD_PATH="/usr/local/lib/python3.12/site-packages/nvidia/cu13/lib"
+    EXTRA_LD_PATH=$(find /usr/local/lib/python*/site-packages/nvidia -maxdepth 2 -name 'lib' -type d 2>/dev/null | tr '\n' ':' | sed 's/:$//')
 else
     apt-get update
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends file bzip2 gcc
-    EXTRA_LD_PATH=""
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends file bzip2 gcc wget unzip
+    # Collect all nvidia per-package lib dirs so LD_LIBRARY_PATH survives su - reset
+    EXTRA_LD_PATH=$(find /usr/local/lib/python*/dist-packages/nvidia -maxdepth 2 -name 'lib' -type d 2>/dev/null | tr '\n' ':' | sed 's/:$//')
 fi
 
 # Download test data

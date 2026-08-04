@@ -16,7 +16,7 @@ previous one.
 
 Note:
     Warmstart data is only available for Linear Programming (LP) problems,
-    not for Mixed Integer Linear Programming (MILP) problems.
+    not for Mixed Integer Programming (MIP) problems.
 
 Problem 1:
     Maximize: 2*x + y

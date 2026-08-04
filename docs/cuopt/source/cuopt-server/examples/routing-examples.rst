@@ -277,7 +277,7 @@ Users can also upload a solution which might have been saved for later runs.
 Aborting a Running Job In CLI
 -----------------------------
 
-Please refer to the :ref:`aborting-cli` for more in MILP Example.
+Please refer to the :ref:`aborting-cli` in the MIP examples for more details.
 
 .. note::
    Please use solver settings while using .mps files.

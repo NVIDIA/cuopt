@@ -2420,14 +2420,14 @@ def _gen_chunked_header_to_problem(registry, indent="  "):
     ind = indent
     lines = []
 
-    # `ChunkedProblemHeader` is hand-written (see cuopt_remote_service.proto);
-    # it does not declare `optional` for any field, so we pass has_check=None
-    # to suppress the has_X() guard.  `sentinel:` still applies — the wire
-    # mapping must stay consistent with the unary path.
+    # `ChunkedProblemHeader` is hand-written (see cuopt_remote_service.proto).
+    # Fields marked optional in the registry must also be declared optional in
+    # that message so the chunked path can preserve non-zero C++ defaults.
     for entry in obj.get("scalars", []):
         f = parse_field(entry)
         pname = _proto_cpp_name(f["name"])
         setter = _default_problem_setter(f)
+        has_check = f"header.has_{pname}()" if f.get("optional") else None
         lines.extend(
             emit_scalar_from_proto_assign(
                 lambda v, s=setter: f"cpu_problem.{s}({v});",
@@ -2435,7 +2435,7 @@ def _gen_chunked_header_to_problem(registry, indent="  "):
                 f,
                 registry,
                 ind,
-                has_check=None,
+                has_check=has_check,
             )
         )
 

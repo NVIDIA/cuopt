@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Mixed Integer Linear Programming Example
+Mixed Integer Programming Example
 
 This example demonstrates how to:
 - Create a mixed integer programming problem
