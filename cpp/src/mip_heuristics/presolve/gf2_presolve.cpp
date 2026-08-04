@@ -290,13 +290,32 @@ papilo::PresolveStatus GF2Presolve<f_t>::execute(const papilo::Problem<f_t>& pro
     if (!all_bins_determined) continue;
 
     auto [key_var_idx, key_var_coeff] = cons.key_var;
-    f_t constraint_rhs                = lhs_values[cons.cstr_idx];  // equality constraint
+    const f_t constraint_rhs          = std::round(lhs_values[cons.cstr_idx]);
     f_t lhs                           = -constraint_rhs;
     for (auto [bin_var, coeff] : cons.bin_vars) {
       cuopt_assert(fixings.count(bin_var), "");
       lhs += fixings[bin_var] * coeff;
     }
-    fixings[key_var_idx] = std::round(-lhs / key_var_coeff);
+    const f_t key_val = std::round(-lhs / key_var_coeff);
+
+    // Residual must be exactly 0 after rounding (rejects half-integer / inconsistent carry)
+    if (!num.isEq(lhs + key_val * key_var_coeff, f_t{0})) {
+      return papilo::PresolveStatus::kInfeasible;
+    }
+    // Dual-role: same var already fixed as a GF(2) binary
+    if (fixings.count(key_var_idx) && !num.isEq(fixings[key_var_idx], key_val)) {
+      return papilo::PresolveStatus::kInfeasible;
+    }
+    if (!col_flags[key_var_idx].test(papilo::ColFlag::kLbInf) &&
+        key_val < lower_bounds[key_var_idx] - integrality_tolerance) {
+      return papilo::PresolveStatus::kInfeasible;
+    }
+    if (!col_flags[key_var_idx].test(papilo::ColFlag::kUbInf) &&
+        key_val > upper_bounds[key_var_idx] + integrality_tolerance) {
+      return papilo::PresolveStatus::kInfeasible;
+    }
+
+    fixings[key_var_idx] = key_val;
   }
 
   // necessary because Papilo asserts on empty TransactionGuard

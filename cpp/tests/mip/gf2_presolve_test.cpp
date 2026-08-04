@@ -433,7 +433,8 @@ TEST(gf2_presolve, uses_compact_constraint_indices)
   problem.set_constraint_upper_bounds(constraint_ub.data(), constraint_ub.size());
 
   auto presolver = std::make_unique<mip::third_party_presolve_t<int, double>>();
-  auto result    = presolver->apply_presolve_from_op_problem(
+  presolver->set_reduction_allowlist(std::unordered_set<std::string>{"gf2presolve"});
+  auto result = presolver->apply_presolve_from_op_problem(
     problem, problem_category_t::MIP, presolver_t::Papilo, false, 1e-6, 1e-12, 20, 1);
 
   EXPECT_EQ(result.status, mip::third_party_presolve_status_t::REDUCED);
@@ -553,6 +554,45 @@ Binaries
   x0
   k0
   k1
+End
+)LP");
+  EXPECT_EQ(result.status, mip::third_party_presolve_status_t::INFEASIBLE);
+}
+
+// Dual-role: k is key in c0 and a ±1 bin in c1. GF(2) forces k=1; ℤ key recovery wants k=0.
+TEST(gf2_presolve, dual_role_key_bin_conflict_infeasible)
+{
+  auto result = run_gf2_presolve(R"LP(
+Minimize
+  obj: x0 + k + y
+Subject To
+  c0: x0 + 2 k = 1
+  c1: k + 2 y = 1
+Binaries
+  x0
+  k
+  y
+End
+)LP");
+  EXPECT_EQ(result.status, mip::third_party_presolve_status_t::INFEASIBLE);
+}
+
+// GF(2)-consistent with x0=x1=1, but key recovery gives k=-1 outside [0,1].
+TEST(gf2_presolve, key_out_of_bounds_infeasible)
+{
+  auto result = run_gf2_presolve(R"LP(
+Minimize
+  obj: x0 + x1 + a + b + k
+Subject To
+  c0: x0 + 2 a = 1
+  c1: x1 + 2 b = 1
+  c2: x0 + x1 + 2 k = 0
+Binaries
+  x0
+  x1
+  a
+  b
+  k
 End
 )LP");
   EXPECT_EQ(result.status, mip::third_party_presolve_status_t::INFEASIBLE);
