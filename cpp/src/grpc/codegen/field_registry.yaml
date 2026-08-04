@@ -555,6 +555,10 @@ pdlp_settings:
       # consistency with the other f_t scalars (tolerances, time_limit, ...).
       field_num: 32
       optional: true
+  - postsolve_info:
+      field_num: 33
+      type: int32
+      optional: true
   - save_best_primal_so_far:
       field_num: 28
       type: bool

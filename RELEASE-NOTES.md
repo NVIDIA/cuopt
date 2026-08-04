@@ -198,10 +198,10 @@
 
 ### Documentation (25.12)
 
-- Missing parameters added to the documentation for LP and MILP.
+- Missing parameters added to the documentation for LP and MIP.
 - Release notes added to the main repository for easy access.
 - Examples in the documentation improved.
-- The openapi spec for the service showed the 'status' value for LP/MILP results as an int but it is actually a string.
+- The openapi spec for the service showed the 'status' value for LP/MIP results as an int but it is actually a string.
 
 ## Release Notes 25.10
 
@@ -249,7 +249,7 @@
 - Add support for nightly ``cuopt-examples`` notebook testing
 - Reduce hard-coded version usage in repo
 - Container to work on all different users including root
-- Changes to download LP and MILP datasets, and also disable cvxpy testing for 3.10
+- Changes to download LP and MIP datasets, and also disable cvxpy testing for 3.10
 - Faster engine compile time
 - Fix pre-commit for trailing whitespace and end of file
 - Merge update version and fix version format bugs
@@ -287,7 +287,7 @@
 
 ### New Features (25.08)
 
-- Added Python API for LP and MILP ([#223](https://github.com/NVIDIA/cuopt/pull/223))
+- Added Python API for LP and MIP ([#223](https://github.com/NVIDIA/cuopt/pull/223))
 
 ### Breaking Changes (25.08)
 
@@ -353,7 +353,7 @@
 
 - Added concurrent mode that runs PDLP and Dual Simplex together
 - Added crossover from PDLP to Dual Simplex
-- Added a C API for LP and MILP
+- Added a C API for LP and MIP
 - PDLP: Faster iterations and new more robust default PDLPSolverMode Stable2
 - Added support for writing out mps file containing user problem. Useful for debugging
 
@@ -364,15 +364,15 @@
 
 ### Improvements (25.05)
 
-- Hook up MILP Gap parameters and add info about number of nodes explored and simplex iterations
+- Hook up MIP Gap parameters and add info about number of nodes explored and simplex iterations
 - FJ bug fixes, tests and improvements
-- Allow no time limit in MILP
+- Allow no time limit in MIP
 - Refactor routing
 - Probing cache optimization
 - Diversity improvements for routing
 - Enable more compile warnings and faster compile by bypassing rapids fetch
 - Constraint prop based on load balanced bounds update
-- Logger file handling and bug fixes on MILP
+- Logger file handling and bug fixes on MIP
 - Add shellcheck to pre-commit and fix warnings
 
 ### Bug Fixes (25.05)
@@ -386,7 +386,7 @@
 - Improve breaks to allow dimensions at arbitrary places in the route.
 - Free var elimination with a substitute variable for each free variable.
 - Fixed race condition when resetting vehicle IDs in heterogenous mode.
-- cuOpt self-hosted client, some MILPs do not have all fields in ``lp_stats``.
+- cuOpt self-hosted client, some MIPs do not have all fields in ``lp_stats``.
 - Fixed RAPIDS logger usage.
 - Handle LP state more cleanly, per solution.
 - Fixed routing solver intermittent failures.

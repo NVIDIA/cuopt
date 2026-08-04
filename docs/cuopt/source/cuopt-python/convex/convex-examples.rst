@@ -247,7 +247,7 @@ Working with PDLP Warmstart Data
 Warmstart data allows to restart PDLP with a previous solution context. This should be used when you solve a new problem which is similar to the previous one.
 
 .. note::
-    Warmstart data is only available for Linear Programming (LP) problems, not for Mixed Integer Linear Programming (MILP) problems.
+    Warmstart data is only available for Linear Programming (LP) problems, not for Mixed Integer Programming (MIP) problems.
 
 :download:`pdlp_warmstart_example.py <examples/pdlp_warmstart_example.py>`
 
