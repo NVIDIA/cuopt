@@ -27,7 +27,7 @@ A running ``cuopt_grpc_server`` on a GPU host (see :doc:`quick-start`):
 
    cuopt_grpc_server --port 5001 --workers 1
 
-Connect and solve
+Connect and Solve
 =================
 
 The LP below matches :download:`remote_lp_demo.py <examples/remote_lp_demo.py>`

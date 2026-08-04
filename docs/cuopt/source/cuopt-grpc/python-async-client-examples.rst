@@ -6,7 +6,7 @@
 Python Async gRPC Client Examples
 =====================================
 
-These snippets build on the :doc:`python-async-client` **Connect and solve**
+These snippets build on the :doc:`python-async-client` **Connect and Solve**
 example. Start ``cuopt_grpc_server`` first, and pass the server host and port
 to ``Client`` (not ``CUOPT_REMOTE_*``). Always call ``delete`` when finished,
 and pass ``variable_names`` to ``result()`` if you want named ``get_vars()``.
@@ -57,7 +57,7 @@ receive incumbents while the job runs.
 See Also
 ========
 
-* :doc:`python-async-client` — overview and Connect and solve
+* :doc:`python-async-client` — overview and Connect and Solve
 * :doc:`python-async-client-api` — API reference
 * :doc:`quick-start` — remote execution and the same LP via ``Client``
 * :doc:`examples` — remote execution examples (``CUOPT_REMOTE_*``)
