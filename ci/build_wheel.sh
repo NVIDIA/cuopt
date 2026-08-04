@@ -12,8 +12,9 @@ source rapids-configure-sccache
 source rapids-datetime-string
 source rapids-init-pip
 
-# Update the version to accomdate nightly and release changes for the wheel name
-rapids-generate-version > ./VERSION
+# Update the version to accomodate nightly and release changes for the wheel name
+RAPIDS_VERSION_SUFFIX=".post${RAPIDS_DATETIME_STRING}" \
+  rapids-generate-version > ./VERSION
 
 cd "${package_dir}"
 
