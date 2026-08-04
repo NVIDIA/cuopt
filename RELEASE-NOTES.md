@@ -22,7 +22,7 @@
 - Routing `DataModel` now defers GPU device construction to solve time; applications that accessed device-side data between `DataModel` construction and the solve call must be updated
 
 ### Improvements (26.08)
-
+Include Q matrix in Ruiz scaling to improve convergence 
 - Conflict graph improvements: incorporate non-binary rows and probing implications
 - Reduce latency in LP concurrent mode
 - Reduce memory footprint of PDLP
