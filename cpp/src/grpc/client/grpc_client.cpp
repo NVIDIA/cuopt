@@ -761,6 +761,58 @@ remote_mip_result_t<i_t, f_t> grpc_client_t::get_mip_result(const std::string& j
   return result;
 }
 
+template <typename i_t, typename f_t>
+remote_result_t<i_t, f_t> grpc_client_t::get_result(const std::string& job_id)
+{
+  remote_result_t<i_t, f_t> result;
+
+  if (!is_connected()) {
+    result.error_message = "Not connected to server";
+    return result;
+  }
+
+  downloaded_result_t dl;
+  if (!get_result_or_download(job_id, dl)) {
+    result.error_message = last_error_;
+    return result;
+  }
+
+  const bool is_mip = dl.was_chunked ? (dl.chunked_header->problem_category() == cuopt::remote::MIP)
+                                     : dl.response->has_mip_solution();
+
+  if (is_mip) {
+    if (dl.was_chunked) {
+      result.mip_solution = std::make_unique<cpu_mip_solution_t<i_t, f_t>>(
+        chunked_result_to_mip_solution<i_t, f_t>(*dl.chunked_header, dl.chunked_arrays));
+    } else {
+      if (!dl.response->has_mip_solution()) {
+        result.error_message = "GetResult succeeded but no MIP solution in response";
+        return result;
+      }
+      result.mip_solution = std::make_unique<cpu_mip_solution_t<i_t, f_t>>(
+        map_proto_to_mip_solution<i_t, f_t>(dl.response->mip_solution()));
+    }
+    result.is_mip  = true;
+    result.success = true;
+    return result;
+  }
+
+  if (dl.was_chunked) {
+    result.lp_solution = std::make_unique<cpu_lp_solution_t<i_t, f_t>>(
+      chunked_result_to_lp_solution<i_t, f_t>(*dl.chunked_header, dl.chunked_arrays));
+  } else {
+    if (!dl.response->has_lp_solution()) {
+      result.error_message = "GetResult succeeded but no LP solution in response";
+      return result;
+    }
+    result.lp_solution = std::make_unique<cpu_lp_solution_t<i_t, f_t>>(
+      map_proto_to_lp_solution<i_t, f_t>(dl.response->lp_solution()));
+  }
+  result.is_mip  = false;
+  result.success = true;
+  return result;
+}
+
 // =============================================================================
 // Polling helper
 // =============================================================================
@@ -1258,6 +1310,7 @@ template submit_result_t grpc_client_t::submit_mip(
 template remote_lp_result_t<int32_t, float> grpc_client_t::get_lp_result(const std::string& job_id);
 template remote_mip_result_t<int32_t, float> grpc_client_t::get_mip_result(
   const std::string& job_id);
+template remote_result_t<int32_t, float> grpc_client_t::get_result(const std::string& job_id);
 template bool grpc_client_t::upload_chunked_arrays(
   const cpu_optimization_problem_t<int32_t, float>& problem,
   const cuopt::remote::ChunkedProblemHeader& header,
@@ -1283,6 +1336,7 @@ template remote_lp_result_t<int32_t, double> grpc_client_t::get_lp_result(
   const std::string& job_id);
 template remote_mip_result_t<int32_t, double> grpc_client_t::get_mip_result(
   const std::string& job_id);
+template remote_result_t<int32_t, double> grpc_client_t::get_result(const std::string& job_id);
 template bool grpc_client_t::upload_chunked_arrays(
   const cpu_optimization_problem_t<int32_t, double>& problem,
   const cuopt::remote::ChunkedProblemHeader& header,

@@ -11,7 +11,7 @@ This page describes the parameter settings available for cuOpt's convex optimiza
 Common Parameters
 -----------------
 
-We begin by describing parameters common to both the MILP and LP solvers
+We begin by describing parameters common to both the MIP and LP solvers
 
 
 Time Limit

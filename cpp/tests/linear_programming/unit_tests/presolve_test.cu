@@ -517,13 +517,13 @@ TEST_P(dual_crush_round_trip, kkt_check)
   // Step 1: Presolve with a single presolver instance (same one used for crush later)
   sort_csr(op_problem);
   mip::third_party_presolve_t<int, double> presolver;
-  auto result = presolver.apply(op_problem,
-                                problem_category_t::LP,
-                                presolver_t::Papilo,
-                                /*dual_postsolve=*/true,
-                                /*abs_tol=*/1e-6,
-                                /*rel_tol=*/1e-9,
-                                /*time_limit=*/60.0);
+  auto result = presolver.apply_presolve_from_op_problem(op_problem,
+                                                         problem_category_t::LP,
+                                                         presolver_t::Papilo,
+                                                         /*dual_postsolve=*/true,
+                                                         /*abs_tol=*/1e-6,
+                                                         /*rel_tol=*/1e-9,
+                                                         /*time_limit=*/60.0);
   ASSERT_TRUE(result.status == mip::third_party_presolve_status_t::REDUCED ||
               result.status == mip::third_party_presolve_status_t::UNCHANGED);
 
@@ -571,7 +571,8 @@ TEST_P(dual_crush_round_trip, kkt_check)
     rc_sol = cuopt::device_copy(reduced_solution.get_reduced_cost(), stream);
   }
 
-  presolver.undo(primal_sol, dual_sol, rc_sol, problem_category_t::LP, false, true, stream);
+  presolver.undo_from_device(
+    primal_sol, dual_sol, rc_sol, problem_category_t::LP, false, true, stream);
 
   auto x_orig  = host_copy(primal_sol, stream);
   auto y_orig  = host_copy(dual_sol, stream);
@@ -774,13 +775,13 @@ TEST_P(crush_warmstart, round_trip)
   // Step 1: Presolve
   sort_csr(op_problem);
   mip::third_party_presolve_t<int, double> presolver;
-  auto result = presolver.apply(op_problem,
-                                problem_category_t::LP,
-                                presolver_t::Papilo,
-                                /*dual_postsolve=*/true,
-                                /*abs_tol=*/1e-6,
-                                /*rel_tol=*/1e-9,
-                                /*time_limit=*/60.0);
+  auto result = presolver.apply_presolve_from_op_problem(op_problem,
+                                                         problem_category_t::LP,
+                                                         presolver_t::Papilo,
+                                                         /*dual_postsolve=*/true,
+                                                         /*abs_tol=*/1e-6,
+                                                         /*rel_tol=*/1e-9,
+                                                         /*time_limit=*/60.0);
   ASSERT_TRUE(result.status == mip::third_party_presolve_status_t::REDUCED ||
               result.status == mip::third_party_presolve_status_t::UNCHANGED);
 
@@ -819,7 +820,8 @@ TEST_P(crush_warmstart, round_trip)
   }
   auto rc_sol = cuopt::device_copy(z_red, stream);
 
-  presolver.undo(primal_sol, dual_sol, rc_sol, problem_category_t::LP, false, true, stream);
+  presolver.undo_from_device(
+    primal_sol, dual_sol, rc_sol, problem_category_t::LP, false, true, stream);
 
   auto x_orig = host_copy(primal_sol, stream);
   auto y_orig = host_copy(dual_sol, stream);
@@ -1062,5 +1064,3 @@ TEST(submip_presolve, ex9_fully_reduced)
 }
 
 }  // namespace cuopt::mathematical_optimization::test
-
-CUOPT_TEST_PROGRAM_MAIN()

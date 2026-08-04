@@ -63,39 +63,33 @@ RUN \
 
 FROM install-env AS cuopt-final
 
-# Remove the entire package-manager stack (dnf, rpm, curl) — the running
-# container never needs them. rpm -e --nodeps removes all in one shot.
-# Wire python/python3 to python3.14 AFTER the erase so that rpm's %postun
-# scriptlets cannot call alternatives --remove and leave the symlinks dangling.
-RUN rpm -e --nodeps \
-        curl \
-        libcurl-minimal \
-        dnf \
-        dnf-data \
-        python3-dnf \
-        python3-dnf-plugins-core \
-        python3-hawkey \
-        python3-libcomps \
-        python3-rpm \
-        python3 \
-        python3-libs \
-        libdnf \
-        libdnf-plugin-subscription-manager \
-        librepo \
-        libmodulemd \
-        libsolv \
-        rpm-build-libs \
-        rpm-sign-libs \
-        rpm-sequoia \
-        rpm \
-        rpm-libs \
-    && rm -rf /var/lib/rpm /var/lib/dnf /var/cache/dnf /etc/dnf \
-    && alternatives --install /usr/bin/python  python  /usr/bin/python3.14 100 \
-    && alternatives --install /usr/bin/python3 python3 /usr/bin/python3.14 100
+# Register python via alternatives so the system alternatives database is
+# consistent with the /usr/bin/python symlink created in install-env.
+# NOTE: do NOT register python3 → python3.14 here: /usr/bin/dnf uses
+# #!/usr/bin/python3 and requires the system python3.12 (python3-libs) to
+# find its 'dnf' module; overriding python3 would break dnf at runtime.
+RUN alternatives --install /usr/bin/python python /usr/bin/python3.14 100
 
 # On UBI10: libcuopt, cuopt, rapids_logger install to lib64; cuopt_server to lib.
 ENV PATH="/usr/local/cuda/bin:/usr/bin:/usr/local/bin:/usr/local/nvidia/bin/:/usr/local/lib64/python3.14/site-packages/libcuopt/bin:${PATH}"
 ENV LD_LIBRARY_PATH="/usr/lib64:/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/lib/wsl/lib:/usr/local/lib64/python3.14/site-packages/libcuopt/lib64/:/usr/local/lib64/python3.14/site-packages/rapids_logger/lib64:/usr/local/lib/python3.14/site-packages/nvidia/cu13/lib:${LD_LIBRARY_PATH}"
+
+# libcuopt's RPATH reaches the NVIDIA wheels via $ORIGIN/../../nvidia/<pkg>/lib,
+# which assumes libcuopt and those wheels share one site-packages directory. That
+# holds on Debian/Ubuntu (purelib == platlib == dist-packages) but not on RHEL,
+# where platlib is lib64 and purelib is lib: libcuopt installs to lib64 while the
+# NVIDIA wheels (Root-Is-Purelib: true) install to lib, so every $ORIGIN-relative
+# entry misses. Index the wheel lib dirs with the dynamic linker instead of
+# extending LD_LIBRARY_PATH per package — this covers wheels added later, and
+# keeps a lower lookup precedence than the driver libs the container runtime
+# injects at start. Without it, cuopt_grpc_server dies on libnccl.so.2.
+RUN find /usr/local/lib/python*/site-packages/nvidia \
+         /usr/local/lib64/python*/site-packages/nvidia \
+         -maxdepth 2 -type d -name lib 2>/dev/null \
+      | tee /etc/ld.so.conf.d/cuopt-nvidia-wheels.conf \
+    && grep -q '/nvidia/nccl/lib$' /etc/ld.so.conf.d/cuopt-nvidia-wheels.conf \
+    && ldconfig \
+    && ldconfig -p | grep -qE 'libnccl\.so\.2([.0-9]*)[[:space:]].*/nvidia/nccl/lib/'
 
 # Directory creation, permissions
 RUN mkdir -p /opt/cuopt && \
