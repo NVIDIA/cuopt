@@ -1,0 +1,73 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: Promote nightly images to release on NGC staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      nightly_tag_prefix:
+        description: "Nightly IMAGE_TAG_PREFIX to promote from (e.g. 26.8.0a)"
+        required: true
+        type: string
+      release_version:
+        description: "Release version to tag as (e.g. 26.8.0)"
+        required: true
+        type: string
+      cuda_ver:
+        description: 'JSON array of CUDA versions to promote (e.g. ["12.9.0", "13.3.0"])'
+        required: false
+        type: string
+        default: '["12.9.0", "13.3.0"]'
+      python_ver:
+        description: 'JSON array of Python versions to promote (e.g. ["3.14.4"])'
+        required: false
+        type: string
+        default: '["3.14.4"]'
+
+defaults:
+  run:
+    shell: bash
+
+permissions: {}
+
+jobs:
+  promote-images:
+    name: Promote cuda${{ matrix.cuda_ver }}-py${{ matrix.python_ver }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        cuda_ver: ${{ fromJson(inputs.cuda_ver) }}
+        python_ver: ${{ fromJson(inputs.python_ver) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Login to NGC
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: "nvcr.io"
+          username: "$oauthtoken"
+          password: ${{ secrets.CUOPT_NGC_DOCKER_KEY }}
+
+      - name: Trim CUDA and Python versions
+        id: trim
+        env:
+          CUDA_VER: ${{ matrix.cuda_ver }}
+          PYTHON_VER: ${{ matrix.python_ver }}
+        run: |
+          echo "CUDA_SHORT=$(echo "$CUDA_VER" | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')" >> $GITHUB_OUTPUT
+          echo "PYTHON_SHORT=$(echo "$PYTHON_VER" | sed -E 's/([0-9]+\.[0-9]+)\.[0-9]+/\1/')" >> $GITHUB_OUTPUT
+
+      - name: Promote nightly to release
+        env:
+          NIGHTLY_TAG_PREFIX: ${{ inputs.nightly_tag_prefix }}
+          RELEASE_VERSION: ${{ inputs.release_version }}
+          CUDA_SHORT: ${{ steps.trim.outputs.CUDA_SHORT }}
+          PYTHON_SHORT: ${{ steps.trim.outputs.PYTHON_SHORT }}
+        run: bash ci/docker/promote_nightly_to_release.sh
