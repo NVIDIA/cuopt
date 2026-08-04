@@ -9,7 +9,7 @@ package_name=$1
 package_dir=$2
 
 source rapids-configure-sccache
-source rapids-date-string
+source rapids-datetime-string
 source rapids-init-pip
 
 # Update the version to accomdate nightly and release changes for the wheel name
