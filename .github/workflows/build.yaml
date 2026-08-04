@@ -56,7 +56,7 @@ jobs:
       pull-requests: read
     needs: [build-details]
     secrets: inherit # zizmor: ignore[secrets-inherit]
-    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-build.yaml@release/26.08
+    uses: rapidsai/shared-workflows/.github/workflows/conda-cpp-build.yaml@main
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       build-datetime: ${{ needs.build-details.outputs.build-datetime }}
@@ -73,7 +73,7 @@ jobs:
       packages: read
       pull-requests: read
     secrets: inherit # zizmor: ignore[secrets-inherit]
-    uses: rapidsai/shared-workflows/.github/workflows/conda-python-build.yaml@release/26.08
+    uses: rapidsai/shared-workflows/.github/workflows/conda-python-build.yaml@main
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       build-datetime: ${{ needs.build-details.outputs.build-datetime }}
@@ -107,7 +107,7 @@ jobs:
       pull-requests: read
     needs: [build-details]
     secrets: inherit # zizmor: ignore[secrets-inherit]
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@release/26.08
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       build-datetime: ${{ needs.build-details.outputs.build-datetime }}
@@ -147,7 +147,7 @@ jobs:
       packages: read
       pull-requests: read
     secrets: inherit # zizmor: ignore[secrets-inherit]
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@release/26.08
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       build-datetime: ${{ needs.build-details.outputs.build-datetime }}
@@ -186,7 +186,7 @@ jobs:
       pull-requests: read
     needs: [build-details]
     secrets: inherit # zizmor: ignore[secrets-inherit]
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@release/26.08
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       build-datetime: ${{ needs.build-details.outputs.build-datetime }}
@@ -249,7 +249,7 @@ jobs:
       pull-requests: read
     needs: [build-details]
     secrets: inherit # zizmor: ignore[secrets-inherit]
-    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@release/26.08
+    uses: rapidsai/shared-workflows/.github/workflows/wheels-build.yaml@main
     with:
       build_type: ${{ inputs.build_type || 'branch' }}
       build-datetime: ${{ needs.build-details.outputs.build-datetime }}
