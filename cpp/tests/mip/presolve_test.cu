@@ -16,6 +16,7 @@
 #include <utilities/common_utils.hpp>
 #include <utilities/copy_helpers.hpp>
 #include <utilities/error.hpp>
+#include <utilities/inline_lp_test_utils.hpp>
 
 #include <raft/core/handle.hpp>
 #include <raft/util/cudart_utils.hpp>
@@ -148,6 +149,159 @@ TEST(gf2_presolve, uses_compact_constraint_indices)
   auto result    = presolver->apply_presolve_from_op_problem(
     problem, problem_category_t::MIP, presolver_t::Papilo, false, 1e-6, 1e-12, 20, 1);
 
+  EXPECT_EQ(result.status, mip::third_party_presolve_status_t::REDUCED);
+}
+
+static mip::third_party_presolve_device_result_t<int, double> run_gf2_presolve(
+  std::string_view lp_text)
+{
+  const raft::handle_t handle{};
+  auto mps_data_model = cuopt::test::parse_inline_lp(lp_text);
+  auto op_problem     = mps_data_model_to_optimization_problem(&handle, mps_data_model);
+  auto presolver      = std::make_unique<mip::third_party_presolve_t<int, double>>();
+  presolver->set_reduction_allowlist(std::unordered_set<std::string>{"gf2presolve"});
+  return presolver->apply_presolve_from_op_problem(
+    op_problem, problem_category_t::MIP, presolver_t::Papilo, false, 1e-6, 1e-12, 20, 1);
+}
+
+// Consistent singular: both rows x⊕y = 1. Check we do not return infeasible.
+TEST(gf2_presolve, consistent_singular_unchanged)
+{
+  auto result = run_gf2_presolve(R"LP(
+Minimize
+  obj: x0 + x1 + k0 + k1
+Subject To
+  c0: x0 + x1 + 2 k0 = 1
+  c1: x0 + x1 + 2 k1 = 1
+Binaries
+  x0
+  x1
+  k0
+  k1
+End
+)LP");
+  EXPECT_EQ(result.status, mip::third_party_presolve_status_t::UNCHANGED);
+}
+
+// Inconsistent singular: x⊕y = 1 and x⊕y = 0.
+TEST(gf2_presolve, inconsistent_singular_infeasible)
+{
+  auto result = run_gf2_presolve(R"LP(
+Minimize
+  obj: x0 + x1 + k0 + k1
+Subject To
+  c0: x0 + x1 + 2 k0 = 1
+  c1: x0 + x1 + 2 k1 = 0
+Binaries
+  x0
+  x1
+  k0
+  k1
+End
+)LP");
+  EXPECT_EQ(result.status, mip::third_party_presolve_status_t::INFEASIBLE);
+}
+
+// Partially determined: y is unique over GF(2); x,z free with x⊕z = 1.
+// Rows: [1,0,1], [0,1,0], [1,1,1] with rhs [1,1,0] (row2 = row0⊕row1).
+TEST(gf2_presolve, partial_determination_reduces)
+{
+  auto result = run_gf2_presolve(R"LP(
+Minimize
+  obj: x0 + x1 + x2 + k0 + k1 + k2
+Subject To
+  c0: x0 - x2 + 2 k0 = 1
+  c1: x1 + 2 k1 = 1
+  c2: x0 + x1 - x2 + 2 k2 = 0
+Binaries
+  x0
+  x1
+  x2
+  k0
+  k1
+  k2
+End
+)LP");
+  EXPECT_EQ(result.status, mip::third_party_presolve_status_t::REDUCED);
+}
+
+// Fat (n > m): x0 fixed; x1⊕x2 free.
+TEST(gf2_presolve, more_bins_than_rows_reduces)
+{
+  auto result = run_gf2_presolve(R"LP(
+Minimize
+  obj: x0 + x1 + x2 + k0 + k1
+Subject To
+  c0: x0 + 2 k0 = 1
+  c1: x1 + x2 + 2 k1 = 1
+Binaries
+  x0
+  x1
+  x2
+  k0
+  k1
+End
+)LP");
+  EXPECT_EQ(result.status, mip::third_party_presolve_status_t::REDUCED);
+}
+
+// Tall consistent (m > n): x0=1, x1=0 uniquely (third row redundant).
+TEST(gf2_presolve, more_rows_than_bins_reduces)
+{
+  auto result = run_gf2_presolve(R"LP(
+Minimize
+  obj: x0 + x1 + k0 + k1 + k2
+Subject To
+  c0: x0 + 2 k0 = 1
+  c1: x0 + x1 + 2 k1 = 1
+  c2: x1 + 2 k2 = 0
+Binaries
+  x0
+  x1
+  k0
+  k1
+  k2
+End
+)LP");
+  EXPECT_EQ(result.status, mip::third_party_presolve_status_t::REDUCED);
+}
+
+// Tall inconsistent (m > n): x0 = 1 and x0 = 0.
+TEST(gf2_presolve, more_rows_than_bins_infeasible)
+{
+  auto result = run_gf2_presolve(R"LP(
+Minimize
+  obj: x0 + k0 + k1
+Subject To
+  c0: x0 + 2 k0 = 1
+  c1: x0 + 2 k1 = 0
+Binaries
+  x0
+  k0
+  k1
+End
+)LP");
+  EXPECT_EQ(result.status, mip::third_party_presolve_status_t::INFEASIBLE);
+}
+
+// Near-miss row must not leak key/bin vars into the maps and suppress a valid GF2 reduction.
+TEST(gf2_presolve, near_miss_row_does_not_suppress_reduction)
+{
+  auto result = run_gf2_presolve(R"LP(
+Minimize
+  obj: x0 + x1 + k0 + k_bad + w
+Subject To
+  c0: x0 + 2 k0 = 1
+  c_bad: x0 + x1 + 2 k_bad + 3 w = 1
+Binaries
+  x0
+  x1
+  k0
+  k_bad
+Generals
+  w
+End
+)LP");
   EXPECT_EQ(result.status, mip::third_party_presolve_status_t::REDUCED);
 }
 
