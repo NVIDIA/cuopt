@@ -12,7 +12,7 @@
 
 
 
-NVIDIA® cuOpt™ is a GPU-accelerated optimization engine that excels in linear programming (LP), quadratic programming (QP), and vehicle routing problems (VRP), with support for quadratically constrained quadratic programming (QCQP) (beta), second-order cone programming (SOCP) (beta), and mixed integer linear programming (MILP) (beta). cuOpt enables near real-time solutions for large-scale LPs with millions of variables and constraints and offers easy integration into existing modeling languages with seamless deployment across hybrid and multi-cloud environments.
+NVIDIA® cuOpt™ is a GPU-accelerated optimization engine that excels in linear programming (LP), quadratic programming (QP), and vehicle routing problems (VRP), with support for quadratically constrained quadratic programming (QCQP) (beta), second-order cone programming (SOCP) (beta), and mixed integer programming (MIP) (beta). cuOpt enables near real-time solutions for large-scale LPs with millions of variables and constraints and offers easy integration into existing modeling languages with seamless deployment across hybrid and multi-cloud environments.
 
 The cuOpt MIP solver is in beta and under active development. The solver currently excels at finding high-quality feasible solutions quickly with GPU-accelerated primal heuristics. Proving feasible solutions optimal remains under active development.
 
@@ -35,7 +35,7 @@ cuOpt supports the following APIs:
     - Quadratic Programming (QP)
     - Quadratically Constrained Quadratic Programming (QCQP) (beta)
     - Second-Order Cone Programming (SOCP) (beta)
-    - Mixed Integer Linear Programming (MILP) (beta)
+    - Mixed Integer Programming (MIP) (beta)
 - C++ API support
     - cuOpt is written in C++ and includes a native C++ API. However, we do not provide documentation for the C++ API at this time. We anticipate that the C++ API will change significantly in the future. Use it at your own risk.
 - Python support
@@ -44,12 +44,12 @@ cuOpt supports the following APIs:
     - Quadratic Programming (QP)
     - Quadratically Constrained Quadratic Programming (QCQP) (beta)
     - Second-Order Cone Programming (SOCP) (beta)
-    - Mixed Integer Linear Programming (MILP) (beta)
+    - Mixed Integer Programming (MIP) (beta)
     - Algebraic modeling Python API allows users to easily build constraints and objectives
 - Server support
     - Linear Programming (LP)
     - Routing (TSP, VRP, and PDP)
-    - Mixed Integer Linear Programming (MILP) (beta)
+    - Mixed Integer Programming (MIP) (beta)
 
 This repo is also hosted as a [COIN-OR](http://github.com/coin-or/cuopt/) project.
 

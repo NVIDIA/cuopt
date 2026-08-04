@@ -74,6 +74,23 @@ RUN alternatives --install /usr/bin/python python /usr/bin/python3.14 100
 ENV PATH="/usr/local/cuda/bin:/usr/bin:/usr/local/bin:/usr/local/nvidia/bin/:/usr/local/lib64/python3.14/site-packages/libcuopt/bin:${PATH}"
 ENV LD_LIBRARY_PATH="/usr/lib64:/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/lib/wsl/lib:/usr/local/lib64/python3.14/site-packages/libcuopt/lib64/:/usr/local/lib64/python3.14/site-packages/rapids_logger/lib64:/usr/local/lib/python3.14/site-packages/nvidia/cu13/lib:${LD_LIBRARY_PATH}"
 
+# libcuopt's RPATH reaches the NVIDIA wheels via $ORIGIN/../../nvidia/<pkg>/lib,
+# which assumes libcuopt and those wheels share one site-packages directory. That
+# holds on Debian/Ubuntu (purelib == platlib == dist-packages) but not on RHEL,
+# where platlib is lib64 and purelib is lib: libcuopt installs to lib64 while the
+# NVIDIA wheels (Root-Is-Purelib: true) install to lib, so every $ORIGIN-relative
+# entry misses. Index the wheel lib dirs with the dynamic linker instead of
+# extending LD_LIBRARY_PATH per package — this covers wheels added later, and
+# keeps a lower lookup precedence than the driver libs the container runtime
+# injects at start. Without it, cuopt_grpc_server dies on libnccl.so.2.
+RUN find /usr/local/lib/python*/site-packages/nvidia \
+         /usr/local/lib64/python*/site-packages/nvidia \
+         -maxdepth 2 -type d -name lib 2>/dev/null \
+      | tee /etc/ld.so.conf.d/cuopt-nvidia-wheels.conf \
+    && grep -q '/nvidia/nccl/lib$' /etc/ld.so.conf.d/cuopt-nvidia-wheels.conf \
+    && ldconfig \
+    && ldconfig -p | grep -qE 'libnccl\.so\.2([.0-9]*)[[:space:]].*/nvidia/nccl/lib/'
+
 # Directory creation, permissions
 RUN mkdir -p /opt/cuopt && \
     chmod 777 /opt/cuopt && \

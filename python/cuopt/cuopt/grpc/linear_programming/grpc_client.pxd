@@ -89,7 +89,7 @@ cdef extern from "cuopt/grpc/cython_grpc_client.hpp" namespace "cuopt::cython":
         grpc_status_result_t wait(const string& job_id, int timeout_seconds) except +
         bint cancel(const string& job_id, string& error_out) except +
         bint delete_job(const string& job_id, string& error_out) except +
-        grpc_result_outcome_t result(const string& job_id, bint is_mip) except +
+        grpc_result_outcome_t result(const string& job_id) except +
         grpc_logs_result_t fetch_logs(const string& job_id, long long from_byte) except +
         bint stream_logs(
             const string& job_id,
