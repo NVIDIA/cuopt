@@ -11,7 +11,7 @@
 - New vector length diving and Farkas diving heuristics for MIP
 - Routing: accept NumPy and pandas inputs in the routing Python `DataModel` in addition to cuDF
 - C API: extend getters with additional query functions
-- C API: automatic CPU/GPU memory selection for problem construction
+- C API: automatic CPU/GPU memory selection for problem construction (supports remote solve via gRPC from CPU host)
 - gRPC: Python interface to the C++ gRPC async client
 - gRPC: allow TLS arguments in the Python gRPC async API
 - UBI10 (Red Hat Universal Base Image) container variant for FIPS 140-3 compliant environments; image tags use `-ubi10` suffix (e.g. `latest-cu13-ubi10`)
