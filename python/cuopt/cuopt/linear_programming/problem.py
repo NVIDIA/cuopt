@@ -1624,10 +1624,7 @@ class Problem:
         ]
 
         row_sizes = np.fromiter(
-            (
-                len(constr.vindex_coeff_dict)
-                for constr in linear_constrs
-            ),
+            (len(constr.vindex_coeff_dict) for constr in linear_constrs),
             dtype=np.int32,
             count=m,
         )
@@ -1638,16 +1635,14 @@ class Problem:
 
         column_indices = np.fromiter(
             chain.from_iterable(
-                constr.vindex_coeff_dict.keys()
-                for constr in linear_constrs
+                constr.vindex_coeff_dict.keys() for constr in linear_constrs
             ),
             dtype=np.int32,
             count=nnz,
         )
         values = np.fromiter(
             chain.from_iterable(
-                constr.vindex_coeff_dict.values()
-                for constr in linear_constrs
+                constr.vindex_coeff_dict.values() for constr in linear_constrs
             ),
             dtype=np.float64,
             count=nnz,
@@ -1724,10 +1719,9 @@ class Problem:
         self._clear_stale()
 
     def _index_to_var(self):
-        if (
-            self._index_to_var_cache is None
-            or len(self._index_to_var_cache) != len(self.vars)
-        ):
+        if self._index_to_var_cache is None or len(
+            self._index_to_var_cache
+        ) != len(self.vars):
             self._index_to_var_cache = {var.index: var for var in self.vars}
         return self._index_to_var_cache
 
@@ -1796,7 +1790,9 @@ class Problem:
             self.model.set_variable_upper_bounds(self.upper_bound)
             self.model.set_variable_types(self.var_type)
             self.model.set_variable_names(self.var_names)
-            if self.mip_start.size > 0 and not np.all(np.isnan(self.mip_start)):
+            if self.mip_start.size > 0 and not np.all(
+                np.isnan(self.mip_start)
+            ):
                 self.model.set_initial_primal_solution(self.mip_start)
             else:
                 # Empty so the next Solve skips add_initial_mip_solution /
@@ -2008,9 +2004,7 @@ class Problem:
                     and not self._stale["structure"]
                 ):
                     row = self._constraint_index_to_csr_row[constr.index]
-                    row_pointers = self.constraint_csr_matrix[
-                        "row_pointers"
-                    ]
+                    row_pointers = self.constraint_csr_matrix["row_pointers"]
                     column_indices = self.constraint_csr_matrix[
                         "column_indices"
                     ]
@@ -2403,9 +2397,7 @@ class Problem:
         # internally for DataModel and SciPy consumers.
         return self.dict_to_object(
             {
-                key: value.tolist()
-                if isinstance(value, np.ndarray)
-                else value
+                key: value.tolist() if isinstance(value, np.ndarray) else value
                 for key, value in self.constraint_csr_matrix.items()
             }
         )
