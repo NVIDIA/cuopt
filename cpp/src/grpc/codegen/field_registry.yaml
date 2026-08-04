@@ -755,6 +755,9 @@ mip_settings:
         field_num: 36
         type: int32
         optional: true
+    # 37 and 38 held presolve_time_ratio and presolve_max_time, removed when
+    # presolve stopped taking a wall budget. Do not reuse: an older client
+    # still sends them on those numbers.
     - root_lp_time_ratio:
         field_num: 39
         optional: true
@@ -798,6 +801,14 @@ mip_settings:
         optional: true
     - related_vars_time_limit:
         field_num: 51
+        optional: true
+    - presolve_max_rounds:
+        field_num: 53
+        type: int32
+        optional: true
+    - papilo_probing_max_badgesize:
+        field_num: 54
+        type: int32
         optional: true
 
 # ─────────────────────────────────────────────────────────────────────────────

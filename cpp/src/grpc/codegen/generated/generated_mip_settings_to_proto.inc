@@ -56,3 +56,5 @@
   pb_settings->set_cycle_detection_length(settings.heuristic_params.cycle_detection_length);
   pb_settings->set_relaxed_lp_time_limit(settings.heuristic_params.relaxed_lp_time_limit);
   pb_settings->set_related_vars_time_limit(settings.heuristic_params.related_vars_time_limit);
+  pb_settings->set_presolve_max_rounds(settings.heuristic_params.presolve_max_rounds);
+  pb_settings->set_papilo_probing_max_badgesize(settings.heuristic_params.papilo_probing_max_badgesize);

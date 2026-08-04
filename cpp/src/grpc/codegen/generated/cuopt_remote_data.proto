@@ -248,6 +248,8 @@ message MIPSolverSettings {
   optional double relaxed_lp_time_limit = 50;
   optional double related_vars_time_limit = 51;
   optional int32 zero_half_cuts = 52;
+  optional int32 presolve_max_rounds = 53;
+  optional int32 papilo_probing_max_badgesize = 54;
 }
 
 message PDLPWarmStartData {

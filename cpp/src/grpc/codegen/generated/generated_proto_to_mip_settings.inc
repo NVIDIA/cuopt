@@ -146,3 +146,9 @@
   if (pb_settings.has_related_vars_time_limit()) {
     settings.heuristic_params.related_vars_time_limit = pb_settings.related_vars_time_limit();
   }
+  if (pb_settings.has_presolve_max_rounds()) {
+    settings.heuristic_params.presolve_max_rounds = pb_settings.presolve_max_rounds();
+  }
+  if (pb_settings.has_papilo_probing_max_badgesize()) {
+    settings.heuristic_params.papilo_probing_max_badgesize = pb_settings.papilo_probing_max_badgesize();
+  }

@@ -1891,6 +1891,8 @@ TEST(MapperRoundtrip, MIPSettingsAllFields)
   // mapping line would produce a default-valued mismatch on decode.
   orig.heuristic_params.population_size                    = 64;     // default 32
   orig.heuristic_params.num_cpufj_threads                  = 4;      // default 8
+  orig.heuristic_params.presolve_max_rounds                = 12;     // default -1
+  orig.heuristic_params.papilo_probing_max_badgesize       = 64;     // default -1
   orig.heuristic_params.root_lp_time_ratio                 = 0.25;   // default 0.1
   orig.heuristic_params.root_lp_max_time                   = 7.5;    // default 15.0
   orig.heuristic_params.rins_time_limit                    = 4.0;    // default 3.0
@@ -1959,6 +1961,8 @@ TEST(MapperRoundtrip, MIPSettingsAllFields)
   // Heuristic hyper-parameters
   EXPECT_EQ(restored.heuristic_params.population_size, 64);
   EXPECT_EQ(restored.heuristic_params.num_cpufj_threads, 4);
+  EXPECT_EQ(restored.heuristic_params.presolve_max_rounds, 12);
+  EXPECT_EQ(restored.heuristic_params.papilo_probing_max_badgesize, 64);
   EXPECT_DOUBLE_EQ(restored.heuristic_params.root_lp_time_ratio, 0.25);
   EXPECT_DOUBLE_EQ(restored.heuristic_params.root_lp_max_time, 7.5);
   EXPECT_DOUBLE_EQ(restored.heuristic_params.rins_time_limit, 4.0);
@@ -2492,6 +2496,9 @@ TEST(MapperRoundtrip, MIPSettingsDefaultProtoPreservesAllCppDefaults)
   // heuristic_params: spot-check one of each kind (int, double).
   EXPECT_EQ(after.heuristic_params.population_size, fresh.heuristic_params.population_size);
   EXPECT_EQ(after.heuristic_params.num_cpufj_threads, fresh.heuristic_params.num_cpufj_threads);
+  EXPECT_EQ(after.heuristic_params.presolve_max_rounds, fresh.heuristic_params.presolve_max_rounds);
+  EXPECT_EQ(after.heuristic_params.papilo_probing_max_badgesize,
+            fresh.heuristic_params.papilo_probing_max_badgesize);
   EXPECT_DOUBLE_EQ(after.heuristic_params.root_lp_time_ratio,
                    fresh.heuristic_params.root_lp_time_ratio);
   EXPECT_DOUBLE_EQ(after.heuristic_params.root_lp_max_time,
