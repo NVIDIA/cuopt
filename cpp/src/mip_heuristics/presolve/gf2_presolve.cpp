@@ -35,8 +35,6 @@ static inline i_t positive_modulo(i_t i, i_t n)
   return (i % n + n) % n;
 }
 
-enum class gf2_status_t { Feasible, Infeasible };
-
 static constexpr int GF2_WORD_BITS = 64;
 
 static inline int gf2_nwords(int N) { return (N + GF2_WORD_BITS - 1) / GF2_WORD_BITS; }
@@ -55,12 +53,11 @@ static inline void gf2_set_bit(std::vector<uint64_t>& row, int col)
 // problems and they're small) but cuDSS could be used for this since A is likely to be sparse and
 // low-bandwidth (i think?) unlikely to occur in real-world problems however. doubt it'd be worth
 // the effort
-// trashes A and b. A is m x n (m rows, each packed over n columns).
-static gf2_status_t gf2_solve(std::vector<std::vector<uint64_t>>& A,
-                              int n_cols,
-                              std::vector<int>& b,
-                              std::vector<int>& x,
-                              std::vector<uint8_t>& determined)
+gf2_status_t gf2_solve(std::vector<std::vector<uint64_t>>& A,
+                       int n_cols,
+                       std::vector<int>& b,
+                       std::vector<int>& x,
+                       std::vector<uint8_t>& determined)
 {
   const int m      = (int)A.size();
   const int n      = n_cols;
