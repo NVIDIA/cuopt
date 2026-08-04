@@ -37,14 +37,14 @@
 - Remove `cuda-python` as an explicit dependency
 - gRPC: `objective_scaling_factor` is now optional in requests
 - gRPC: assign workers to distinct GPUs via `cudaSetDevice`
-  
+
 ### Bug Fixes (26.08)
 
 - Allow zero-valued coefficient updates in the LP Python model
 - Fix an issue in PDLP with cublas error capture and hang on infeasible solutions
 - Fix an exception in concurrent LP cleanup
 - Fix bug in barrier solver where cuDSS descriptors were being freed before their backing buffers
-- Fix a bug in MIP where the lower bound was incorrect when using a single thread 
+- Fix a bug in MIP where the lower bound was incorrect when using a single thread
 - Fix a bug in MIP where nodes were lost in branch and bound
 - Fix a bug in MIP where root cut pass CPU feasibility-jump solutions were dropped by GPU heuristics
 - Add guard in MIP for huge bounds in bounds propagation
