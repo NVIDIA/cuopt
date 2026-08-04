@@ -716,8 +716,6 @@ void set_presolve_options(papilo::Presolve<f_t>& presolver,
   presolver.getPresolveOptions().tlim    = time_limit;
   presolver.getPresolveOptions().threads = num_cpu_threads;  //  user setting or  0 (automatic)
   presolver.getPresolveOptions().feastol = 1e-5;
-  // A round cap bounds presolve independently of the clock, which is the only thing that bounds it
-  // in deterministic mode where tlim is infinite. <=0 keeps Papilo's default of unlimited rounds.
   if (max_rounds > 0) { presolver.getPresolveOptions().maxrounds = max_rounds; }
   if (dual_postsolve) {
     presolver.getPresolveOptions().componentsmaxint = -1;

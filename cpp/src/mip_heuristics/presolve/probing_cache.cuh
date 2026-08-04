@@ -123,8 +123,6 @@ class lb_probing_cache_t {
   std::unordered_map<i_t, std::array<cache_entry_t<i_t, f_t>, 2>> probing_cache;
 };
 
-// Features of the Papilo-reduced problem, which is what the probing cache actually runs on. These
-// differ from the features Papilo's own budget was derived from, sometimes by a lot.
 template <typename i_t, typename f_t>
 presolve_features_t probing_presolve_features(problem_t<i_t, f_t> const& problem)
 {
@@ -142,9 +140,6 @@ presolve_features_t probing_presolve_features(problem_t<i_t, f_t> const& problem
   return f;
 }
 
-// `work_limit` bounds probing in work units, checked at every step barrier and therefore
-// independent of thread count and wall clock. `step_size_hint` is the number of variables probed
-// per step, i.e. the granularity at which the budget can be enforced.
 template <typename i_t, typename f_t>
 bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
                            problem_t<i_t, f_t>& problem,

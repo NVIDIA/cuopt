@@ -565,11 +565,6 @@ mip_solution_t<i_t, f_t> solve_mip_helper(optimization_problem_t<i_t, f_t>& op_p
       const auto papilo_budget   = mip::evaluate_presolve_budget(hp, papilo_features);
       mip::log_presolve_budget("PAPILO", papilo_features, papilo_budget);
 
-      // Papilo carries no wall budget of its own: the badge cap is the only thing shaping its cost,
-      // and remaining_time just stops it reaching past the end of the solve. The removed ceiling
-      // was load-bearing once -- ns1760995 converges in well under 30 rounds and still spent
-      // 243-403s of a 600s budget here, leaving no time to find a dual bound -- so watch that
-      // instance and the inf-gap count if this regresses.
       const double presolve_time_limit = settings.determinism_mode == CUOPT_MODE_DETERMINISTIC
                                            ? std::numeric_limits<double>::infinity()
                                            : timer.remaining_time();

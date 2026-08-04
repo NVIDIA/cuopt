@@ -872,8 +872,6 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   std::vector<std::vector<std::tuple<f_t, i_t, f_t, f_t>>> modification_vector_pool(num_tasks);
   std::vector<std::vector<substitution_t<i_t, f_t>>> substitution_vector_pool(num_tasks);
 
-  // Each task counts its own propagation iterations; the counts are folded in at the step barrier
-  // below, where only one thread is running.
   std::vector<double> iter_accum_pool(num_tasks, 0.0);
 
   // Initialize multi_probe_presolve_pool
@@ -890,16 +888,12 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   std::atomic<bool> problem_is_infeasible(false);
   size_t last_it_implied_singletons = 0;
   bool early_exit                   = false;
-  // Two additive terms, both exact counts, which is what keeps the budget reproducible.
-  const double iter_cost  = probing_iter_work;
-  const double probe_cost = probing_probe_work;
-  // Only for the diagnostic below: a work budget buys wildly different amounts of time per
-  // instance, so the realised rate has to be recorded to translate a budget back into seconds
-  // afterwards.
-  const auto probing_t0 = std::chrono::steady_clock::now();
-  double iters_done     = 0.0;
-  size_t probes_done    = 0;
-  double work_used      = 0.0;
+  const double iter_cost            = probing_iter_work;
+  const double probe_cost           = probing_probe_work;
+  const auto probing_t0             = std::chrono::steady_clock::now();
+  double iters_done                 = 0.0;
+  size_t probes_done                = 0;
+  double work_used                  = 0.0;
   // Work is only folded in at the step barrier, so the step size is also the granularity at which
   // the budget can be enforced: too large and a single step runs effectively unbudgeted.
   const size_t step_size = min(step_size_hint, priority_indices.size());
@@ -909,7 +903,7 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   // are visible before any per-thread kernel can reference that memory.
   problem.handle_ptr->sync_stream();
 
-  CUOPT_LOG_INFO(
+  CUOPT_LOG_DEBUG(
     "Running probing cache with %zu tasks (%zu candidate vars, work limit %.3f, step %zu)",
     num_tasks,
     priority_indices.size(),
@@ -978,7 +972,7 @@ bool compute_probing_cache(bound_presolve_t<i_t, f_t>& bound_presolve,
   apply_substitution_queue_to_problem(substitution_vector_pool, problem);
   const double probing_wall =
     std::chrono::duration<double>(std::chrono::steady_clock::now() - probing_t0).count();
-  CUOPT_LOG_INFO(
+  CUOPT_LOG_DEBUG(
     "PRESOLVE_PROBING probes=%zu candidates=%zu iters=%.0f work=%.3f work_limit=%.3f step=%zu "
     "iter_cost=%.5f probe_cost=%.5f wall=%.3f wall_limit=%.3f units_per_s=%.1f "
     "budget_exhausted=%d early_exit=%d timed_out=%d cached=%lu implied_singletons=%lu",

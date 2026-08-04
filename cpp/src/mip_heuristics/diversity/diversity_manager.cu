@@ -308,15 +308,10 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
     run_probing_cache = false;
   }
   if (run_probing_cache) {
-    // Run probing cache before trivial presolve to discover variable implications. The work ceiling
-    // in presolve_budget_policy.hpp is now the only bound on its cost -- there is no wall cap and
-    // no presolve share -- so a proxy miss shows up as wall time rather than being clipped. Across
-    // 240 instances the ceiling stopped every run at a worst case of 44.7s, which is what makes
-    // that survivable. The timers below only stop probing reaching past the end of the solve.
     log_presolve_budget("PROBING", probing_features, probing_budget);
     f_t time_for_probing_cache = std::min(time_limit, (f_t)global_timer.remaining_time());
     timer_t probing_timer{time_for_probing_cache};
-    const auto probing_t0 = std::chrono::steady_clock::now();
+    [[maybe_unused]] const auto probing_t0 = std::chrono::steady_clock::now();
     // this function computes probing cache, finds singletons, substitutions and changes the problem
     bool problem_is_infeasible = compute_probing_cache(ls.constraint_prop.bounds_update,
                                                        *problem_ptr,
@@ -324,7 +319,7 @@ bool diversity_manager_t<i_t, f_t>::run_presolve(f_t time_limit, timer_t global_
                                                        probing_budget.probing_work_limit,
                                                        (size_t)probing_budget.probing_step_size);
     problem_ptr->handle_ptr->sync_stream();
-    CUOPT_LOG_INFO(
+    CUOPT_LOG_DEBUG(
       "PRESOLVE_PROBING_WALL wall=%.3f",
       std::chrono::duration<double>(std::chrono::steady_clock::now() - probing_t0).count());
     if (problem_is_infeasible) { return false; }

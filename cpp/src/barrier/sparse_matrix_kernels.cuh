@@ -145,11 +145,8 @@ void multiply_kernels(raft::handle_t const* handle,
   int64_t ADAT_num_rows, ADAT_num_cols, ADAT_nnz1;
   RAFT_CUSPARSE_TRY(
     cusparseSpMatGetSize(cusparse_data.matADAT_descr, &ADAT_num_rows, &ADAT_num_cols, &ADAT_nnz1));
-  // cuSPARSE sizes the product in 64 bits, but the CSR arrays are indexed by i_t. A tall problem
-  // with a few near-full columns leaves ADAT dense enough to pass that range even after dense
-  // columns are eliminated, and narrowing would hand RMM a negative count that resurfaces as an
-  // unrelated "size overflows device_uvector storage" from deep inside the allocator. Report the
-  // real cause instead, as the capacity failure the caller already knows how to fall back from.
+  // cuSPARSE sizes the product in 64 bits while the CSR arrays are indexed by i_t; narrowing would
+  // reach RMM as a negative count and surface as an unrelated device_uvector overflow.
   if (ADAT_nnz1 > std::numeric_limits<i_t>::max()) {
     throw rmm::out_of_memory(
       "ADAT needs " + std::to_string(ADAT_nnz1) + " nonzeros over " +

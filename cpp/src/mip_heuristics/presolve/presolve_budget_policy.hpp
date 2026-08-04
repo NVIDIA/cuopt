@@ -145,7 +145,7 @@ inline void log_presolve_budget(const char* stage,
                                 const presolve_features_t& f,
                                 const presolve_budget_t& b)
 {
-  CUOPT_LOG_INFO(
+  CUOPT_LOG_DEBUG(
     "PRESOLVE_BUDGET stage=%s nvars=%.0f ncons=%.0f nnz=%.0f nint=%.0f "
     "nbin=%.0f arl=%.3f acl=%.3f maxrow=%.0f density=%.3e intfrac=%.3f binfrac=%.3f "
     "rounds=%d badge=%d work=%.3f step=%d",
